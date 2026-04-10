@@ -1,0 +1,127 @@
+//! ╔══════════════════════════════════════════════════════════════╗
+//! ║  commands/verificacoes.rs — Verificações Técnicas            ║
+//! ╠══════════════════════════════════════════════════════════════╣
+//! ║  - salvar_verificacao_tecnica: Upsert de verificação         ║
+//! ║  - buscar_verificacao_tecnica: Busca por equipamento_id      ║
+//! ╚══════════════════════════════════════════════════════════════╝
+
+use crate::commands::types::{VerificacaoInput, VerificacaoRow, VERIFICACAO_SELECT};
+use crate::db::get_pool;
+use tracing::{debug, error, info, instrument};
+
+/// Salvar verificação técnica (upsert: cria ou atualiza).
+/// Se já existe verificação para o equipamento, atualiza; senão, cria nova.
+#[tauri::command]
+#[instrument(skip_all, fields(equipamento_id = input.equipamento_id))]
+pub async fn salvar_verificacao_tecnica(input: VerificacaoInput) -> Result<VerificacaoRow, String> {
+    debug!("Salvando verificação técnica para equipamento {}", input.equipamento_id);
+    let pool = get_pool().await.map_err(|e| e.to_string())?;
+
+    // Verificar se já existe uma verificação para este equipamento
+    let existing: Option<(i32,)> = sqlx::query_as(
+        "SELECT id FROM verificacoes WHERE equipamento_id = $1"
+    )
+    .bind(input.equipamento_id)
+    .fetch_optional(&pool)
+    .await
+    .map_err(|e| {
+        error!("Erro ao verificar existência de verificação: {}", e);
+        e.to_string()
+    })?;
+
+    if let Some((id,)) = existing {
+        // UPDATE existente
+        debug!("Atualizando verificação existente id={}", id);
+        sqlx::query(
+            r#"
+            UPDATE verificacoes SET
+                tecnico_nome = $1, problema_relatado = $2, diagnostico = $3,
+                itens_verificados = $4, servicos_necessarios = $5, pecas_necessarias = $6,
+                custo_estimado_mao_obra = $7, custo_estimado_pecas = $8, custo_total = $9,
+                tempo_estimado = $10, concluida = $11, observacoes = $12,
+                data_fim = CASE WHEN $11 = true THEN NOW() ELSE data_fim END
+            WHERE id = $13
+            "#,
+        )
+        .bind(&input.tecnico_nome)
+        .bind(&input.problema_relatado)
+        .bind(&input.diagnostico)
+        .bind(&input.itens_verificados)
+        .bind(&input.servicos_necessarios)
+        .bind(&input.pecas_necessarias)
+        .bind(input.custo_estimado_mao_obra)
+        .bind(input.custo_estimado_pecas)
+        .bind(input.custo_total)
+        .bind(input.tempo_estimado)
+        .bind(input.concluida.unwrap_or(false))
+        .bind(&input.observacoes)
+        .bind(id)
+        .execute(&pool)
+        .await
+        .map_err(|e| {
+            error!("Erro ao atualizar verificação {}: {}", id, e);
+            e.to_string()
+        })?;
+
+        info!("Verificação {} atualizada", id);
+        return buscar_verificacao_tecnica(input.equipamento_id).await;
+    }
+
+    // INSERT nova verificação
+    debug!("Criando nova verificação");
+    sqlx::query(
+        r#"
+        INSERT INTO verificacoes (
+            equipamento_id, tecnico_nome, problema_relatado, diagnostico,
+            itens_verificados, servicos_necessarios, pecas_necessarias,
+            custo_estimado_mao_obra, custo_estimado_pecas, custo_total,
+            tempo_estimado, concluida, observacoes
+        ) VALUES (
+            $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13
+        )
+        "#,
+    )
+    .bind(input.equipamento_id)
+    .bind(&input.tecnico_nome)
+    .bind(&input.problema_relatado)
+    .bind(&input.diagnostico)
+    .bind(&input.itens_verificados)
+    .bind(&input.servicos_necessarios)
+    .bind(&input.pecas_necessarias)
+    .bind(input.custo_estimado_mao_obra)
+    .bind(input.custo_estimado_pecas)
+    .bind(input.custo_total)
+    .bind(input.tempo_estimado)
+    .bind(input.concluida.unwrap_or(false))
+    .bind(&input.observacoes)
+    .execute(&pool)
+    .await
+    .map_err(|e| {
+        error!("Erro ao criar verificação: {}", e);
+        e.to_string()
+    })?;
+
+    info!("Verificação criada para equipamento {}", input.equipamento_id);
+    buscar_verificacao_tecnica(input.equipamento_id).await
+}
+
+/// Buscar verificação técnica por equipamento_id.
+#[tauri::command]
+#[instrument(skip_all, fields(equipamento_id = equipamento_id))]
+pub async fn buscar_verificacao_tecnica(equipamento_id: i32) -> Result<VerificacaoRow, String> {
+    debug!("Buscando verificação do equipamento {}", equipamento_id);
+    let pool = get_pool().await.map_err(|e| e.to_string())?;
+
+    let query = format!("{} WHERE equipamento_id = $1", VERIFICACAO_SELECT);
+    let row = sqlx::query_as::<_, VerificacaoRow>(&query)
+        .bind(equipamento_id)
+        .fetch_one(&pool)
+        .await
+        .map_err(|e| {
+            error!("Verificação do equipamento {} não encontrada: {}", equipamento_id, e);
+            e.to_string()
+        })?;
+
+    info!("Verificação do equipamento {} encontrada", equipamento_id);
+    Ok(row)
+}
