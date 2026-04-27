@@ -4,6 +4,7 @@ version = "0.0.1"
 description = "Sistema de Gestão de Impressoras e Estoque de Insumos"
 authors = ["BMITAG"]
 edition = "2021"
+default-run = "autoos"
 
 [build-dependencies]
 tauri-build = { version = "2.0", features = [] }

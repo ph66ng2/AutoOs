@@ -8,7 +8,9 @@
 //! ║  - deletar_produto: DELETE por ID                            ║
 //! ╚══════════════════════════════════════════════════════════════╝
 
-use crate::commands::auth::{require_permission, PERMISSION_DELETE_RECORDS, PERMISSION_STOCK_CONTROL};
+use crate::commands::auth::{
+    record_security_event, require_permission, PERMISSION_DELETE_RECORDS, PERMISSION_STOCK_CONTROL,
+};
 use crate::commands::types::{MovimentacaoEstoqueInput, ProdutoInput, ProdutoRow, PRODUTO_SELECT};
 use crate::db::get_pool;
 use sqlx::Row;
@@ -114,7 +116,7 @@ pub async fn buscar_produto(id: i32) -> Result<ProdutoRow, String> {
 #[tauri::command]
 #[instrument(skip_all, fields(codigo = %input.codigo))]
 pub async fn criar_produto(input: ProdutoInput) -> Result<ProdutoRow, String> {
-    require_permission(PERMISSION_STOCK_CONTROL)?;
+    let actor = require_permission(PERMISSION_STOCK_CONTROL)?;
     debug!("Criando produto: {}", input.codigo);
     let pool = get_pool().await.map_err(|e| e.to_string())?;
     let codigo = required_text(&input.codigo, "Código")?;
@@ -191,6 +193,13 @@ pub async fn criar_produto(input: ProdutoInput) -> Result<ProdutoRow, String> {
     })?;
 
     let id: i32 = row.get("id");
+    record_security_event(
+        "PRODUCT_CREATED",
+        Some(&actor),
+        format!("produto_id={}; codigo={}", id, input.codigo.trim()),
+        true,
+    )
+    .await;
     info!("Produto criado: id={}", id);
     buscar_produto(id).await
 }
@@ -199,7 +208,7 @@ pub async fn criar_produto(input: ProdutoInput) -> Result<ProdutoRow, String> {
 #[tauri::command]
 #[instrument(skip_all, fields(id = id))]
 pub async fn atualizar_produto(id: i32, input: ProdutoInput) -> Result<ProdutoRow, String> {
-    require_permission(PERMISSION_STOCK_CONTROL)?;
+    let actor = require_permission(PERMISSION_STOCK_CONTROL)?;
     debug!("Atualizando produto {}", id);
     let pool = get_pool().await.map_err(|e| e.to_string())?;
     let codigo = required_text(&input.codigo, "Código")?;
@@ -274,6 +283,14 @@ pub async fn atualizar_produto(id: i32, input: ProdutoInput) -> Result<ProdutoRo
         e.to_string()
     })?;
 
+    record_security_event(
+        "PRODUCT_UPDATED",
+        Some(&actor),
+        format!("produto_id={}; codigo={}", id, input.codigo.trim()),
+        true,
+    )
+    .await;
+
     info!("Produto {} atualizado", id);
     buscar_produto(id).await
 }
@@ -282,7 +299,7 @@ pub async fn atualizar_produto(id: i32, input: ProdutoInput) -> Result<ProdutoRo
 #[tauri::command]
 #[instrument(skip_all, fields(id = id))]
 pub async fn deletar_produto(id: i32) -> Result<bool, String> {
-    require_permission(PERMISSION_DELETE_RECORDS)?;
+    let actor = require_permission(PERMISSION_DELETE_RECORDS)?;
     debug!("Deletando produto {}", id);
     let pool = get_pool().await.map_err(|e| e.to_string())?;
 
@@ -297,6 +314,13 @@ pub async fn deletar_produto(id: i32) -> Result<bool, String> {
         })?;
 
     let deleted = result.rows_affected() > 0;
+    record_security_event(
+        "PRODUCT_DELETED",
+        Some(&actor),
+        format!("produto_id={}; deleted={}", id, deleted),
+        deleted,
+    )
+    .await;
     if deleted {
         info!("Produto {} marcado como inativo", id);
     } else {
@@ -309,7 +333,7 @@ pub async fn deletar_produto(id: i32) -> Result<bool, String> {
 #[tauri::command]
 #[instrument(skip_all, fields(produto_id = input.produto_id, tipo = %input.tipo))]
 pub async fn registrar_movimentacao_estoque(input: MovimentacaoEstoqueInput) -> Result<bool, String> {
-    require_permission(PERMISSION_STOCK_CONTROL)?;
+    let actor = require_permission(PERMISSION_STOCK_CONTROL)?;
 
     if input.quantidade <= 0 {
         return Err("Quantidade da movimentação deve ser maior que zero".to_string());
@@ -388,6 +412,20 @@ pub async fn registrar_movimentacao_estoque(input: MovimentacaoEstoqueInput) -> 
         error!("Erro ao confirmar transação de movimentação do produto {}: {}", input.produto_id, e);
         e.to_string()
     })?;
+
+    record_security_event(
+        "STOCK_MOVEMENT_RECORDED",
+        Some(&actor),
+        format!(
+            "produto_id={}; tipo={}; quantidade={}; origem={}",
+            input.produto_id,
+            movimento,
+            input.quantidade,
+            origem,
+        ),
+        true,
+    )
+    .await;
 
     info!("Movimentação {} registrada para produto {}", movimento, input.produto_id);
     Ok(true)

@@ -18,6 +18,7 @@
 
 use sqlx::{migrate::Migrator, postgres::PgPool};
 use std::env;
+use std::path::{Path, PathBuf};
 use std::sync::OnceLock;
 
 static MIGRATOR: Migrator = sqlx::migrate!("./migrations");
@@ -54,17 +55,67 @@ pub async fn run_pending_migrations() -> Result<(), String> {
     MIGRATOR.run(&pool).await.map_err(|e| e.to_string())
 }
 
+fn database_url_missing_error() -> sqlx::Error {
+    sqlx::Error::Configuration(Box::new(std::io::Error::new(
+        std::io::ErrorKind::NotFound,
+        "DATABASE_URL não configurada. Defina a conexão em src-tauri/.env ou nas variáveis de ambiente.",
+    )))
+}
+
+fn push_env_candidate(candidates: &mut Vec<PathBuf>, path: PathBuf) {
+    if !candidates.contains(&path) {
+        candidates.push(path);
+    }
+}
+
+fn collect_env_candidates() -> Vec<PathBuf> {
+    let mut candidates = Vec::new();
+    push_env_candidate(
+        &mut candidates,
+        Path::new(env!("CARGO_MANIFEST_DIR")).join(".env"),
+    );
+
+    if let Ok(executable_path) = env::current_exe() {
+        let mut current_dir = executable_path.parent();
+        for _ in 0..4 {
+            if let Some(dir) = current_dir {
+                push_env_candidate(&mut candidates, dir.join(".env"));
+                current_dir = dir.parent();
+            } else {
+                break;
+            }
+        }
+    }
+
+    candidates
+}
+
+fn resolve_database_url() -> Result<String, sqlx::Error> {
+    let _ = dotenv::dotenv();
+
+    if let Ok(database_url) = env::var("DATABASE_URL") {
+        return Ok(database_url);
+    }
+
+    for env_path in collect_env_candidates() {
+        if !env_path.is_file() {
+            continue;
+        }
+
+        if dotenv::from_path(&env_path).is_ok() {
+            if let Ok(database_url) = env::var("DATABASE_URL") {
+                return Ok(database_url);
+            }
+        }
+    }
+
+    Err(database_url_missing_error())
+}
+
 /// Inicializa o banco PostgreSQL, aplica migrações versionadas e disponibiliza a pool global.
 /// Chamada uma única vez no `main.rs` durante o `setup` do Tauri.
 pub async fn init_database() -> Result<PgPool, sqlx::Error> {
-    let _ = dotenv::dotenv();
-
-    let database_url = env::var("DATABASE_URL").map_err(|_| {
-        sqlx::Error::Configuration(Box::new(std::io::Error::new(
-            std::io::ErrorKind::NotFound,
-            "DATABASE_URL não configurada. Defina a conexão em src-tauri/.env ou nas variáveis de ambiente.",
-        )))
-    })?;
+    let database_url = resolve_database_url()?;
     
     let pool = PgPool::connect(&database_url).await?;
     MIGRATOR.run(&pool).await?;

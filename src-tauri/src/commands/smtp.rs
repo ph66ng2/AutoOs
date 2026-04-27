@@ -10,7 +10,7 @@ use crate::commands::types::{
     EmailAttachmentInput, EmailSendInput, SmtpConfigInput, SmtpConfigResponse, SmtpConfigStored,
 };
 use crate::commands::auth::{
-    require_permission, PERMISSION_CONFIG_SMTP, PERMISSION_FINANCIAL_ACTIONS,
+    record_security_event, require_permission, PERMISSION_CONFIG_SMTP,
 };
 use keyring::Entry;
 use lettre::{
@@ -149,7 +149,7 @@ fn resolve_allowed_attachment_path(path: &str) -> Result<PathBuf, String> {
 #[tauri::command]
 #[instrument(skip_all)]
 pub async fn salvar_config_smtp(config: SmtpConfigInput) -> Result<bool, String> {
-    require_permission(PERMISSION_CONFIG_SMTP)?;
+    let actor = require_permission(PERMISSION_CONFIG_SMTP)?;
     validate_smtp_config(&config)?;
     debug!("Salvando configuração SMTP");
 
@@ -187,6 +187,20 @@ pub async fn salvar_config_smtp(config: SmtpConfigInput) -> Result<bool, String>
         e.to_string()
     })?;
 
+    record_security_event(
+        "SMTP_CONFIG_SAVED",
+        Some(&actor),
+        format!(
+            "host={}; port={}; username={}; use_tls={}",
+            stored.host,
+            stored.port,
+            stored.username,
+            stored.use_tls,
+        ),
+        true,
+    )
+    .await;
+
     info!("Configuração SMTP salva com sucesso");
     Ok(true)
 }
@@ -223,11 +237,24 @@ pub async fn carregar_config_smtp() -> Result<SmtpConfigResponse, String> {
 #[tauri::command]
 #[instrument(skip_all)]
 pub async fn enviar_email(input: EmailSendInput) -> Result<bool, String> {
-    require_permission(PERMISSION_FINANCIAL_ACTIONS)?;
+    let actor = require_permission(PERMISSION_CONFIG_SMTP)?;
     debug!("Enviando email via SMTP");
 
-    let config = load_stored_smtp_config()?
-        .ok_or_else(|| "Configure o SMTP primeiro".to_string())?;
+    let audit_details = format!(
+        "destinatario={}; email={}; assunto={}",
+        input.destinatario.trim(),
+        input.email.trim(),
+        input.assunto.trim(),
+    );
+
+    let config = match load_stored_smtp_config()? {
+        Some(config) => config,
+        None => {
+            let details = format!("{}; motivo=configuracao_ausente", audit_details);
+            record_security_event("EMAIL_SEND_FAILED", Some(&actor), details, false).await;
+            return Err("Configure o SMTP primeiro".to_string());
+        }
+    };
 
     // Construir a mensagem
     let from = format!("{} <{}>", config.from_name, config.from_email);
@@ -337,8 +364,16 @@ pub async fn enviar_email(input: EmailSendInput) -> Result<bool, String> {
     // Enviar
     mailer.send(email).await.map_err(|e| {
         error!("Erro ao enviar email: {}", e);
-        format!("Erro ao enviar email: {}", e)
+        let error_message = format!("Erro ao enviar email: {}", e);
+        let details = format!("{}; motivo={}", audit_details, error_message);
+        let actor = actor.clone();
+        tauri::async_runtime::spawn(async move {
+            record_security_event("EMAIL_SEND_FAILED", Some(&actor), details, false).await;
+        });
+        error_message
     })?;
+
+    record_security_event("EMAIL_SENT", Some(&actor), audit_details, true).await;
 
     info!("Email enviado com sucesso para {}", input.email);
     Ok(true)

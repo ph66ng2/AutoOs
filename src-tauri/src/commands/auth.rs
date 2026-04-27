@@ -37,7 +37,7 @@ struct SensitiveSession {
     profile: Option<SecurityProfileSummary>,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
 pub struct SecurityProfileSummary {
     pub id: i32,
     pub nome: String,
@@ -46,6 +46,12 @@ pub struct SecurityProfileSummary {
     pub pin_configured: bool,
     pub is_default: bool,
     pub ativo: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum PermissionGateFailure {
+    SessionLocked,
+    MissingPermission(SecurityProfileSummary),
 }
 
 #[derive(Debug, Serialize)]
@@ -223,6 +229,29 @@ fn has_permission(profile: &SecurityProfileSummary, permission: &str) -> bool {
     profile.role == "ADMIN" || has_permission_values(&profile.permissions, permission)
 }
 
+fn evaluate_permission_gate(
+    profile: Option<SecurityProfileSummary>,
+    permission: &str,
+) -> Result<SecurityProfileSummary, PermissionGateFailure> {
+    let profile = profile.ok_or(PermissionGateFailure::SessionLocked)?;
+    if has_permission(&profile, permission) {
+        Ok(profile)
+    } else {
+        Err(PermissionGateFailure::MissingPermission(profile))
+    }
+}
+
+fn spawn_security_event(
+    event_type: &'static str,
+    profile: Option<SecurityProfileSummary>,
+    details: String,
+    success: bool,
+) {
+    tauri::async_runtime::spawn(async move {
+        record_security_event(event_type, profile.as_ref(), details, success).await;
+    });
+}
+
 fn clear_session() -> Result<(), String> {
     let mut session = session_state().lock().map_err(|_| "Sessão sensível indisponível".to_string())?;
     session.unlocked_until = None;
@@ -266,20 +295,50 @@ pub fn touch_sensitive_access() -> Result<(), String> {
 }
 
 pub fn require_sensitive_access() -> Result<SecurityProfileSummary, String> {
-    let (_, profile) = current_session_profile()?
-        .ok_or_else(|| "Acesso sensível bloqueado. Informe o PIN para continuar.".to_string())?;
+    let (_, profile) = match current_session_profile()? {
+        Some(current) => current,
+        None => {
+            spawn_security_event(
+                "SENSITIVE_ACCESS_DENIED",
+                None,
+                "Sessão sensível bloqueada".to_string(),
+                false,
+            );
+            return Err("Acesso sensível bloqueado. Informe o PIN para continuar.".to_string());
+        }
+    };
     touch_sensitive_access()?;
     Ok(profile)
 }
 
 pub fn require_permission(permission: &str) -> Result<SecurityProfileSummary, String> {
-    let profile = require_sensitive_access()?;
-    if !has_permission(&profile, permission) {
-        return Err(format!(
-            "Perfil {} não possui permissão necessária para esta ação.",
-            profile.nome
-        ));
-    }
+    let profile = evaluate_permission_gate(Some(require_sensitive_access()?), permission)
+    .map_err(|failure| match failure {
+        PermissionGateFailure::SessionLocked => {
+            spawn_security_event(
+                "SENSITIVE_ACCESS_DENIED",
+                None,
+                format!("permission={}", permission),
+                false,
+            );
+            "Acesso sensível bloqueado. Informe o PIN para continuar.".to_string()
+        }
+        PermissionGateFailure::MissingPermission(profile) => {
+            let profile_name = profile.nome.clone();
+            spawn_security_event(
+                "PERMISSION_DENIED",
+                Some(profile),
+                format!("permission={}", permission),
+                false,
+            );
+            format!(
+                "Perfil {} não possui permissão necessária para esta ação.",
+                profile_name
+            )
+        }
+    })?;
+
+    touch_sensitive_access()?;
     Ok(profile)
 }
 
@@ -853,4 +912,67 @@ pub async fn list_security_audit_events(limit: Option<i32>) -> Result<Vec<Securi
         error!("Erro ao listar auditoria de segurança: {}", e);
         e.to_string()
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn build_profile(role: &str, permissions: &[&str]) -> SecurityProfileSummary {
+        SecurityProfileSummary {
+            id: 1,
+            nome: "Operador".to_string(),
+            role: role.to_string(),
+            permissions: permissions.iter().map(|permission| permission.to_string()).collect(),
+            pin_configured: true,
+            is_default: false,
+            ativo: true,
+        }
+    }
+
+    #[test]
+    fn p0_sensitive_permission_gate_allows_each_critical_permission_when_present() {
+        for permission in [
+            PERMISSION_FINANCIAL_ACTIONS,
+            PERMISSION_STOCK_CONTROL,
+            PERMISSION_DELETE_RECORDS,
+            PERMISSION_MANAGE_PROFILES,
+        ] {
+            let profile = build_profile("OPERADOR", &[permission]);
+            assert_eq!(evaluate_permission_gate(Some(profile.clone()), permission), Ok(profile));
+        }
+    }
+
+    #[test]
+    fn p0_sensitive_permission_gate_denies_each_critical_permission_when_missing() {
+        for permission in [
+            PERMISSION_FINANCIAL_ACTIONS,
+            PERMISSION_STOCK_CONTROL,
+            PERMISSION_DELETE_RECORDS,
+            PERMISSION_MANAGE_PROFILES,
+        ] {
+            let result = evaluate_permission_gate(Some(build_profile("OPERADOR", &[])), permission);
+            assert!(matches!(
+                result,
+                Err(PermissionGateFailure::MissingPermission(profile)) if profile.nome == "Operador"
+            ));
+        }
+    }
+
+    #[test]
+    fn p0_sensitive_permission_gate_denies_locked_session() {
+        assert!(matches!(
+            evaluate_permission_gate(None, PERMISSION_FINANCIAL_ACTIONS),
+            Err(PermissionGateFailure::SessionLocked)
+        ));
+    }
+
+    #[test]
+    fn p0_sensitive_permission_gate_allows_admin_profile() {
+        let admin = build_profile("ADMIN", &[]);
+        assert_eq!(
+            evaluate_permission_gate(Some(admin.clone()), PERMISSION_MANAGE_PROFILES),
+            Ok(admin)
+        );
+    }
 }

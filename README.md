@@ -36,6 +36,8 @@ npm install
 npm run tauri dev
 ```
 
+O backend resolve automaticamente `src-tauri/.env` tanto no fluxo oficial `npm run tauri dev` quanto em execuções diretas do binário Rust via `cargo run`.
+
 ## Build e validação
 
 ```bash
@@ -44,10 +46,17 @@ cd src-tauri && cargo check
 npm run tauri build
 ```
 
+Para uma prova barata de runtime real com PostgreSQL, migrações e persistência mínima, rode também:
+
+```bash
+cargo run --manifest-path src-tauri/Cargo.toml --bin runtime_smoke
+```
+
 ## Documentação operacional
 
 - Setup do PostgreSQL: [POSTGRES_SETUP.md](./POSTGRES_SETUP.md)
 - Backup e restore: [POSTGRES_BACKUP_RESTORE.md](./POSTGRES_BACKUP_RESTORE.md)
+- **Runbook de recuperação operacional:** [OPERATIONAL_RECOVERY.md](./OPERATIONAL_RECOVERY.md) — Procedimentos testados de backup, restore e plano de manutenção
 - Nota técnica sobre migrações: [MIGRACAO_POSTGRESQL.md](./MIGRACAO_POSTGRESQL.md)
 - Roadmap do produto: [NEXT_STEPS.md](./NEXT_STEPS.md)
 

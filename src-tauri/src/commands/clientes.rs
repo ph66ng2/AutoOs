@@ -9,7 +9,7 @@
 //! ╚══════════════════════════════════════════════════════════════╝
 
 use crate::commands::types::{ClienteInput, ClienteRow, CLIENTE_SELECT};
-use crate::commands::auth::{require_permission, PERMISSION_DELETE_RECORDS};
+use crate::commands::auth::{record_security_event, require_permission, PERMISSION_DELETE_RECORDS};
 use crate::db::get_pool;
 use sqlx::Row;
 use tracing::{debug, error, info, instrument};
@@ -319,7 +319,7 @@ pub async fn atualizar_cliente(id: i32, input: ClienteInput) -> Result<ClienteRo
 #[tauri::command]
 #[instrument(skip_all, fields(id = id))]
 pub async fn deletar_cliente(id: i32) -> Result<bool, String> {
-    require_permission(PERMISSION_DELETE_RECORDS)?;
+    let actor = require_permission(PERMISSION_DELETE_RECORDS)?;
     debug!("Deletando cliente {}", id);
     let pool = get_pool().await.map_err(|e| e.to_string())?;
 
@@ -334,6 +334,13 @@ pub async fn deletar_cliente(id: i32) -> Result<bool, String> {
         })?;
 
     let deleted = result.rows_affected() > 0;
+    record_security_event(
+        "CLIENT_DELETED",
+        Some(&actor),
+        format!("cliente_id={}; deleted={}", id, deleted),
+        deleted,
+    )
+    .await;
     if deleted {
         info!("Cliente {} marcado como inativo", id);
     } else {

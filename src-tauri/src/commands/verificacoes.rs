@@ -6,8 +6,38 @@
 //! ╚══════════════════════════════════════════════════════════════╝
 
 use crate::commands::types::{VerificacaoInput, VerificacaoRow, VERIFICACAO_SELECT};
+use crate::commands::auth::{
+    record_security_event, require_permission, SecurityProfileSummary, PERMISSION_FINANCIAL_ACTIONS,
+};
 use crate::db::get_pool;
 use tracing::{debug, error, info, instrument};
+
+fn verification_has_sensitive_financial_input(input: &VerificacaoInput) -> bool {
+    input.custo_estimado_mao_obra.is_some()
+        || input.custo_estimado_pecas.is_some()
+        || input.custo_total.is_some()
+}
+
+fn verification_audit_details(action: &str, input: &VerificacaoInput) -> String {
+    format!(
+        "action={}; equipamento_id={}; custo_mao_obra={}; custo_pecas={}; custo_total={}",
+        action,
+        input.equipamento_id,
+        input.custo_estimado_mao_obra.is_some(),
+        input.custo_estimado_pecas.is_some(),
+        input.custo_total.is_some(),
+    )
+}
+
+fn require_financial_actor_for_verification_write(
+    input: &VerificacaoInput,
+) -> Result<Option<SecurityProfileSummary>, String> {
+    if verification_has_sensitive_financial_input(input) {
+        return Ok(Some(require_permission(PERMISSION_FINANCIAL_ACTIONS)?));
+    }
+
+    Ok(None)
+}
 
 /// Salvar verificação técnica (upsert: cria ou atualiza).
 /// Se já existe verificação para o equipamento, atualiza; senão, cria nova.
@@ -15,6 +45,7 @@ use tracing::{debug, error, info, instrument};
 #[instrument(skip_all, fields(equipamento_id = input.equipamento_id))]
 pub async fn salvar_verificacao_tecnica(input: VerificacaoInput) -> Result<VerificacaoRow, String> {
     debug!("Salvando verificação técnica para equipamento {}", input.equipamento_id);
+    let financial_actor = require_financial_actor_for_verification_write(&input)?;
     let pool = get_pool().await.map_err(|e| e.to_string())?;
 
     // Verificar se já existe uma verificação para este equipamento
@@ -63,6 +94,16 @@ pub async fn salvar_verificacao_tecnica(input: VerificacaoInput) -> Result<Verif
             e.to_string()
         })?;
 
+        if let Some(actor) = financial_actor.as_ref() {
+            record_security_event(
+                "VERIFICATION_FINANCIAL_SAVED",
+                Some(actor),
+                verification_audit_details("update", &input),
+                true,
+            )
+            .await;
+        }
+
         info!("Verificação {} atualizada", id);
         return buscar_verificacao_tecnica(input.equipamento_id).await;
     }
@@ -101,6 +142,16 @@ pub async fn salvar_verificacao_tecnica(input: VerificacaoInput) -> Result<Verif
         e.to_string()
     })?;
 
+    if let Some(actor) = financial_actor.as_ref() {
+        record_security_event(
+            "VERIFICATION_FINANCIAL_SAVED",
+            Some(actor),
+            verification_audit_details("create", &input),
+            true,
+        )
+        .await;
+    }
+
     info!("Verificação criada para equipamento {}", input.equipamento_id);
     buscar_verificacao_tecnica(input.equipamento_id).await
 }
@@ -124,4 +175,18 @@ pub async fn buscar_verificacao_tecnica(equipamento_id: i32) -> Result<Verificac
 
     info!("Verificação do equipamento {} encontrada", equipamento_id);
     Ok(row)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn p0_sensitive_verification_write_detects_financial_payload() {
+        let mut input = VerificacaoInput::default();
+        assert!(!verification_has_sensitive_financial_input(&input));
+
+        input.custo_total = Some(150.0);
+        assert!(verification_has_sensitive_financial_input(&input));
+    }
 }

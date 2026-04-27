@@ -1,5 +1,5 @@
 use crate::commands::auth::{
-    require_permission, PERMISSION_CONFIG_WHATSAPP, PERMISSION_FINANCIAL_ACTIONS,
+    record_security_event, require_permission, PERMISSION_CONFIG_WHATSAPP,
 };
 use crate::commands::types::{
     WhatsappConfigInput, WhatsappConfigResponse, WhatsappConfigStored, WhatsappSendInput,
@@ -79,7 +79,7 @@ fn sanitize_phone(raw: &str) -> Result<String, String> {
 #[tauri::command]
 #[instrument(skip_all)]
 pub async fn salvar_config_whatsapp(config: WhatsappConfigInput) -> Result<bool, String> {
-    require_permission(PERMISSION_CONFIG_WHATSAPP)?;
+    let actor = require_permission(PERMISSION_CONFIG_WHATSAPP)?;
     let (provider, api_url) = validate_whatsapp_config(&config)?;
     debug!("Salvando configuração de WhatsApp");
 
@@ -116,6 +116,14 @@ pub async fn salvar_config_whatsapp(config: WhatsappConfigInput) -> Result<bool,
         e.to_string()
     })?;
 
+    record_security_event(
+        "WHATSAPP_CONFIG_SAVED",
+        Some(&actor),
+        format!("provider={}; api_url={}", stored.provider, stored.api_url),
+        true,
+    )
+    .await;
+
     info!("Configuração de WhatsApp salva com sucesso");
     Ok(true)
 }
@@ -139,11 +147,19 @@ pub async fn carregar_config_whatsapp() -> Result<WhatsappConfigResponse, String
 #[tauri::command]
 #[instrument(skip_all)]
 pub async fn enviar_whatsapp(input: WhatsappSendInput) -> Result<bool, String> {
-    require_permission(PERMISSION_FINANCIAL_ACTIONS)?;
+    let actor = require_permission(PERMISSION_CONFIG_WHATSAPP)?;
     debug!("Enviando WhatsApp via provider HTTP");
 
-    let config = load_stored_whatsapp_config()?
-        .ok_or_else(|| "Configure o WhatsApp primeiro".to_string())?;
+    let audit_details = format!("contato={}", input.contato.trim());
+
+    let config = match load_stored_whatsapp_config()? {
+        Some(config) => config,
+        None => {
+            let details = format!("{}; motivo=configuracao_ausente", audit_details);
+            record_security_event("WHATSAPP_SEND_FAILED", Some(&actor), details, false).await;
+            return Err("Configure o WhatsApp primeiro".to_string());
+        }
+    };
 
     let provider = normalize_provider(&config.provider)?;
     if provider != DEFAULT_PROVIDER {
@@ -193,12 +209,25 @@ pub async fn enviar_whatsapp(input: WhatsappSendInput) -> Result<bool, String> {
     if !status.is_success() {
         let body = response.text().await.unwrap_or_default();
         error!("Provider WhatsApp retornou {}: {}", status, body);
+        record_security_event(
+            "WHATSAPP_SEND_FAILED",
+            Some(&actor),
+            if body.trim().is_empty() {
+                format!("{}; status={}", audit_details, status)
+            } else {
+                format!("{}; status={}; body={}", audit_details, status, body)
+            },
+            false,
+        )
+        .await;
         return Err(if body.trim().is_empty() {
             format!("Provider WhatsApp retornou status {}", status)
         } else {
             format!("Provider WhatsApp retornou status {}: {}", status, body)
         });
     }
+
+    record_security_event("WHATSAPP_SENT", Some(&actor), audit_details, true).await;
 
     info!("WhatsApp enviado com sucesso para {}", contato);
     Ok(true)

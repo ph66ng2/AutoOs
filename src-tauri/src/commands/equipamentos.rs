@@ -11,7 +11,8 @@
 
 use crate::commands::types::{EquipamentoInput, EquipamentoRow, EQUIPAMENTO_SELECT};
 use crate::commands::auth::{
-    require_permission, PERMISSION_DELETE_RECORDS, PERMISSION_FINANCIAL_ACTIONS,
+    record_security_event, require_permission, SecurityProfileSummary, PERMISSION_DELETE_RECORDS,
+    PERMISSION_FINANCIAL_ACTIONS,
 };
 use crate::db::get_pool;
 use sqlx::Row;
@@ -89,6 +90,37 @@ fn status_change_requires_sensitive_access(
             "AGUARDANDO_APROVACAO" | "APROVADO" | "REPROVADO" | "ORCAMENTO_VENCIDO" | "ENTREGUE" | "ABANDONADO"
         )
 }
+
+    fn equipment_has_sensitive_financial_input(input: &EquipamentoInput) -> bool {
+        input.preco_compra.is_some()
+            || input.preco_venda.is_some()
+            || input.valor_orcamento.is_some()
+            || optional_text(input.prazo_aprovacao.as_deref()).is_some()
+    }
+
+    fn equipment_financial_audit_details(action: &str, equipamento_id: Option<i32>, input: &EquipamentoInput) -> String {
+        format!(
+            "action={}; equipamento_id={}; preco_compra={}; preco_venda={}; valor_orcamento={}; prazo_aprovacao={}",
+            action,
+            equipamento_id
+                .map(|value| value.to_string())
+                .unwrap_or_else(|| "novo".to_string()),
+            input.preco_compra.is_some(),
+            input.preco_venda.is_some(),
+            input.valor_orcamento.is_some(),
+            optional_text(input.prazo_aprovacao.as_deref()).is_some(),
+        )
+    }
+
+    fn require_financial_actor_for_equipment_write(
+        input: &EquipamentoInput,
+    ) -> Result<Option<SecurityProfileSummary>, String> {
+        if equipment_has_sensitive_financial_input(input) {
+            return Ok(Some(require_permission(PERMISSION_FINANCIAL_ACTIONS)?));
+        }
+
+        Ok(None)
+    }
 
 /// Listar equipamentos com paginação.
 /// - `page`: Página atual (começa em 0)
@@ -178,6 +210,7 @@ pub async fn buscar_equipamento(id: i32) -> Result<EquipamentoRow, String> {
 #[instrument(skip_all, fields(serial = %input.serial_number))]
 pub async fn criar_equipamento(input: EquipamentoInput) -> Result<EquipamentoRow, String> {
     debug!("Criando equipamento: {}", input.serial_number);
+    let financial_actor = require_financial_actor_for_equipment_write(&input)?;
     let pool = get_pool().await.map_err(|e| e.to_string())?;
     let serial_number = required_text(&input.serial_number, "Número de série")?;
     let defeito_relatado = required_text(input.defeito_relatado.as_deref().unwrap_or(""), "Defeito")?;
@@ -238,6 +271,15 @@ pub async fn criar_equipamento(input: EquipamentoInput) -> Result<EquipamentoRow
     })?;
 
     let id: i32 = row.get("id");
+    if let Some(actor) = financial_actor.as_ref() {
+        record_security_event(
+            "EQUIPMENT_FINANCIAL_CREATED",
+            Some(actor),
+            equipment_financial_audit_details("create", Some(id), &input),
+            true,
+        )
+        .await;
+    }
     info!("Equipamento criado: id={}", id);
     buscar_equipamento(id).await
 }
@@ -247,6 +289,7 @@ pub async fn criar_equipamento(input: EquipamentoInput) -> Result<EquipamentoRow
 #[instrument(skip_all, fields(id = id))]
 pub async fn atualizar_equipamento(id: i32, input: EquipamentoInput) -> Result<EquipamentoRow, String> {
     debug!("Atualizando equipamento {}", id);
+    let financial_actor = require_financial_actor_for_equipment_write(&input)?;
     let pool = get_pool().await.map_err(|e| e.to_string())?;
     let serial_number = required_text(&input.serial_number, "Número de série")?;
     let defeito_relatado = required_text(input.defeito_relatado.as_deref().unwrap_or(""), "Defeito")?;
@@ -304,6 +347,16 @@ pub async fn atualizar_equipamento(id: i32, input: EquipamentoInput) -> Result<E
         e.to_string()
     })?;
 
+    if let Some(actor) = financial_actor.as_ref() {
+        record_security_event(
+            "EQUIPMENT_FINANCIAL_UPDATED",
+            Some(actor),
+            equipment_financial_audit_details("update", Some(id), &input),
+            true,
+        )
+        .await;
+    }
+
     info!("Equipamento {} atualizado", id);
     buscar_equipamento(id).await
 }
@@ -312,7 +365,7 @@ pub async fn atualizar_equipamento(id: i32, input: EquipamentoInput) -> Result<E
 #[tauri::command]
 #[instrument(skip_all, fields(id = id))]
 pub async fn deletar_equipamento(id: i32) -> Result<bool, String> {
-    require_permission(PERMISSION_DELETE_RECORDS)?;
+    let actor = require_permission(PERMISSION_DELETE_RECORDS)?;
     debug!("Deletando equipamento {}", id);
     let pool = get_pool().await.map_err(|e| e.to_string())?;
 
@@ -326,6 +379,13 @@ pub async fn deletar_equipamento(id: i32) -> Result<bool, String> {
         })?;
 
     let deleted = result.rows_affected() > 0;
+    record_security_event(
+        "EQUIPMENT_DELETED",
+        Some(&actor),
+        format!("equipamento_id={}; deleted={}", id, deleted),
+        deleted,
+    )
+    .await;
     if deleted {
         info!("Equipamento {} deletado", id);
     } else {
@@ -345,15 +405,24 @@ pub async fn atualizar_status_equipamento(
     prazo_aprovacao: Option<String>,
     valor_final: Option<f64>,
 ) -> Result<EquipamentoRow, String> {
+    validate_non_negative_f64(valor_orcamento, "Valor do orçamento")?;
+    validate_non_negative_f64(valor_final, "Valor final")?;
     let normalized_status = normalize_status_key(&novo_status);
-    if status_change_requires_sensitive_access(
+    let prazo_aprovacao_value = prazo_aprovacao
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(|value| value.to_string());
+    let financial_actor = if status_change_requires_sensitive_access(
         &normalized_status,
         valor_orcamento,
-        prazo_aprovacao.as_deref().filter(|value| !value.trim().is_empty()),
+        prazo_aprovacao_value.as_deref(),
         valor_final,
     ) {
-        require_permission(PERMISSION_FINANCIAL_ACTIONS)?;
-    }
+        Some(require_permission(PERMISSION_FINANCIAL_ACTIONS)?)
+    } else {
+        None
+    };
 
     debug!("Atualizando status do equipamento {} para {}", id, normalized_status);
     let pool = get_pool().await.map_err(|e| e.to_string())?;
@@ -380,10 +449,7 @@ pub async fn atualizar_status_equipamento(
     sqlx::query(&query)
         .bind(&normalized_status)
         .bind(valor_orcamento)
-        .bind(prazo_aprovacao.and_then(|value| {
-            let trimmed = value.trim().to_string();
-            if trimmed.is_empty() { None } else { Some(trimmed) }
-        }))
+        .bind(prazo_aprovacao_value.clone())
         .bind(valor_final)
         .bind(id)
         .execute(&pool)
@@ -393,6 +459,53 @@ pub async fn atualizar_status_equipamento(
             e.to_string()
         })?;
 
+    if let Some(actor) = financial_actor.as_ref() {
+        record_security_event(
+            "EQUIPMENT_STATUS_UPDATED",
+            Some(actor),
+            format!(
+                "equipamento_id={}; status={}; valor_orcamento={}; prazo_aprovacao={}; valor_final={}",
+                id,
+                normalized_status,
+                valor_orcamento.is_some(),
+                prazo_aprovacao_value.is_some(),
+                valor_final.is_some(),
+            ),
+            true,
+        )
+        .await;
+    }
+
     info!("Status do equipamento {} atualizado para {}", id, normalized_status);
     buscar_equipamento(id).await
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn p0_sensitive_equipment_write_detects_financial_payload() {
+        let mut input = EquipamentoInput::default();
+        assert!(!equipment_has_sensitive_financial_input(&input));
+
+        input.preco_compra = Some(10.0);
+        assert!(equipment_has_sensitive_financial_input(&input));
+
+        input.preco_compra = None;
+        input.prazo_aprovacao = Some("2026-04-16".to_string());
+        assert!(equipment_has_sensitive_financial_input(&input));
+    }
+
+    #[test]
+    fn p0_sensitive_status_gate_flags_financial_status_or_values() {
+        assert!(status_change_requires_sensitive_access("APROVADO", None, None, None));
+        assert!(status_change_requires_sensitive_access(
+            "RECEBIDO",
+            Some(99.0),
+            None,
+            None,
+        ));
+        assert!(!status_change_requires_sensitive_access("RECEBIDO", None, None, None));
+    }
 }
