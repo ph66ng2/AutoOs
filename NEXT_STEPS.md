@@ -302,10 +302,10 @@ Validação adicional obrigatória desta etapa:
 - **Resultado: Runbook completo, testado e documentado**
 
 ### 4. Corrigir a trilha oficial de QA e E2E
-- [ ] Alinhar host e porta entre Vite, Tauri e Playwright para `npm run e2e` funcionar no estado padrão do projeto.
-- [ ] Garantir que a suíte oficial não dependa de inicialização manual paralela fora do comando documentado.
-- [ ] Separar explicitamente o que é E2E com mock do que é validação real de integração.
-- [ ] Preservar artefatos de falha úteis para análise de regressão.
+- [x] Alinhar host e porta entre Vite, Tauri e Playwright para `npm run e2e` funcionar no estado padrão do projeto.
+- [x] Garantir que a suíte oficial não dependa de inicialização manual paralela fora do comando documentado.
+- [x] Separar explicitamente o que é E2E com mock do que é validação real de integração.
+- [x] Preservar artefatos de falha úteis para análise de regressão.
 
 Saída esperada:
 O comando oficial de QA roda de forma reprodutível e confiável para a equipe.
@@ -313,38 +313,43 @@ O comando oficial de QA roda de forma reprodutível e confiável para a equipe.
 Plano de execução delegável:
 
 #### 4.1. Fechar a configuração determinística do ambiente de teste
-- [ ] Revisar `playwright.config.ts`, `vite.config.ts` e `src-tauri/tauri.conf.json` como um único contrato de host/porta.
-- [ ] Remover divergência entre `localhost` e `127.0.0.1` no fluxo oficial.
-- [ ] Garantir que `npm run e2e` reflita o caminho documentado pela equipe.
+- [x] Revisar `playwright.config.ts`, `vite.config.ts` e `src-tauri/tauri.conf.json` como um único contrato de host/porta.
+- [x] Remover divergência entre `localhost` e `127.0.0.1` no fluxo oficial.
+- [x] Garantir que `npm run e2e` reflita o caminho documentado pela equipe.
 
 Critério de aceite:
 O comando oficial sobe e encontra a aplicação sem ajuste manual de host ou boot paralelo improvisado.
 
 #### 4.2. Separar camadas de QA por intenção
-- [ ] Nomear claramente o que é teste com mock de Tauri.
-- [ ] Nomear claramente o que é teste de integração real.
-- [ ] Evitar que resultado verde de mock seja vendido como prova do runtime completo.
-- [ ] Ajustar scripts e documentação para refletir essa separação.
+- [x] Nomear claramente o que é teste com mock de Tauri.
+- [x] Nomear claramente o que é teste de integração real.
+- [x] Evitar que resultado verde de mock seja vendido como prova do runtime completo.
+- [x] Ajustar scripts e documentação para refletir essa separação.
 
 Critério de aceite:
 Qualquer pessoa da equipe consegue distinguir teste de interface mockada de validação de integração real.
 
 #### 4.3. Preservar artefatos úteis de falha
-- [ ] Garantir screenshots, traces, vídeos ou logs úteis quando houver falha.
-- [ ] Organizar a pasta de resultados para facilitar leitura da última execução.
-- [ ] Confirmar que CI ou execução local preserva evidência suficiente para triagem.
+- [x] Garantir screenshots, traces, vídeos ou logs úteis quando houver falha.
+- [x] Organizar a pasta de resultados para facilitar leitura da última execução.
+- [x] Confirmar que CI ou execução local preserva evidência suficiente para triagem.
 
 Critério de aceite:
 Uma falha de E2E produz evidência útil para diagnóstico sem exigir reprodução cega.
 
 #### 4.4. Encerrar com fluxo reproduzível
-- [ ] Rodar `npm run e2e` no estado padrão do repositório.
-- [ ] Registrar qualquer pré-requisito legítimo de ambiente que permaneça necessário.
-- [ ] Atualizar a documentação de QA caso o fluxo oficial mude.
+- [x] Rodar `npm run e2e` no estado padrão do repositório.
+- [x] Registrar qualquer pré-requisito legítimo de ambiente que permaneça necessário.
+- [x] Atualizar a documentação de QA caso o fluxo oficial mude.
 
 Validação adicional obrigatória desta etapa:
 - `npm run e2e` passa sem workaround manual fora do fluxo documentado.
 - A distinção entre mock e integração real fica explícita em scripts ou docs.
+
+Status em 2026-04-27:
+- Playwright passou a usar `http://localhost:1420` (sem divergência com `tauri.conf.json`).
+- `npm run e2e` virou alias explícito de `npm run e2e:mock` e existe um comando separado `qa:integration:local`.
+- Execução confirmada: `npm run e2e` (16 testes) ✓, `npx tsc --noEmit` ✓, `cargo check` ✓, `npm run test:run` ✓.
 
 ---
 
@@ -352,8 +357,8 @@ Validação adicional obrigatória desta etapa:
 
 ### 5. Cobrir os fluxos críticos com testes de verdade
 - [ ] Expandir testes para os fluxos de equipamentos, estoque, permissões, orçamento/OS e comunicações.
-- [ ] Incluir testes no backend Rust para regras de negócio críticas e comandos sensíveis.
-- [ ] Tratar como prioritário o que afeta dinheiro, estoque, status da impressora e integridade do cliente.
+- [x] Incluir testes no backend Rust para regras de negócio críticas e comandos sensíveis.
+- [x] Tratar como prioritário o que afeta dinheiro, estoque, status da impressora e integridade do cliente.
 
 Saída esperada:
 O que sustenta a operação deixa de depender quase só de teste manual.
@@ -361,43 +366,98 @@ O que sustenta a operação deixa de depender quase só de teste manual.
 Plano de execução delegável:
 
 #### 5.1. Montar matriz de risco por fluxo
-- [ ] Classificar os fluxos por impacto em dinheiro, estoque, estado da impressora e integridade do cliente.
-- [ ] Priorizar testes onde erro gera perda operacional, retrabalho ou inconsistência difícil de detectar.
-- [ ] Não gastar a primeira rodada com cobertura cosmética de UI.
+- [x] Classificar os fluxos por impacto em dinheiro, estoque, estado da impressora e integridade do cliente.
+- [x] Priorizar testes onde erro gera perda operacional, retrabalho ou inconsistência difícil de detectar.
+- [x] Não gastar a primeira rodada com cobertura cosmética de UI.
 
 Critério de aceite:
 Existe uma ordem explícita de testes baseada em risco operacional, não em facilidade de implementação.
 
 #### 5.2. Cobrir regras críticas do backend Rust
-- [ ] Criar testes para permissões, mutações financeiras, movimentação de estoque e transições sensíveis de status.
-- [ ] Incluir casos felizes, negação de acesso e validações de entrada.
-- [ ] Priorizar funções e comandos que mudam estado persistido.
+- [x] Criar testes para permissões, mutações financeiras, movimentação de estoque e transições sensíveis de status.
+- [x] Incluir casos felizes, negação de acesso e validações de entrada.
+- [x] Priorizar funções e comandos que mudam estado persistido.
 
 Critério de aceite:
 As regras de negócio críticas do backend têm cobertura mínima contra regressão.
 
 #### 5.3. Cobrir fluxos integrados do frontend
-- [ ] Testar caminhos principais de cadastro, edição e mudança de status.
+- [x] Testar caminhos principais de cadastro, edição e mudança de status.
 - [ ] Testar geração de orçamento/OS e envio de comunicação onde houver superfície testável.
-- [ ] Testar comportamentos de erro relevantes, não só caminho feliz.
+- [x] Testar comportamentos de erro relevantes, não só caminho feliz.
 
 Critério de aceite:
 Os fluxos que o usuário realmente usa deixam de depender apenas de verificação manual ad hoc.
 
 #### 5.4. Subir o piso de validação contínua
-- [ ] Garantir que os testes adicionados entrem na validação padrão da equipe.
-- [ ] Remover testes frágeis ou redundantes que mascaram confiança falsa.
-- [ ] Documentar rapidamente a intenção dos testes mais sensíveis.
+- [x] Garantir que os testes adicionados entrem na validação padrão da equipe.
+- [x] Remover testes frágeis ou redundantes que mascaram confiança falsa.
+- [x] Documentar rapidamente a intenção dos testes mais sensíveis.
 
 Validação adicional obrigatória desta etapa:
 - Prova de pelo menos um teste novo para cada domínio crítico: permissões, equipamentos e estoque.
 - Falha reproduzível antes da correção quando aplicável.
 
+Status em 2026-04-28 (factual, sem overclaim):
+- Concluído nesta rodada:
+  - Matriz de risco consolidada e deduplicada em `TEST_RISK_MATRIX.md`.
+  - Testes de unidade no backend para regras críticas de estoque/status em `src-tauri/src/commands/produtos.rs` e `src-tauri/src/commands/equipamentos.rs`.
+  - Teste de integração real com PostgreSQL em `src-tauri/src/bin/p1_critical_integration.rs`, cobrindo:
+    - permissão sensível negada e permitida,
+    - movimentação de estoque com saldo final consistente,
+    - transição de status com impacto financeiro.
+  - Teste de integração real em ambiente controlado em `src-tauri/src/bin/p1_communication_integration.rs`, cobrindo:
+    - envio SMTP real contra servidor local efêmero,
+    - envio WhatsApp real contra endpoint HTTP local efêmero,
+    - registro de auditoria para `SMTP_CONFIG_SAVED`, `WHATSAPP_CONFIG_SAVED`, `EMAIL_SENT` e `WHATSAPP_SENT`.
+  - Testes frontend com mock em `src/hooks/useStatusEquipamento.test.tsx` para fluxo feliz e erro.
+  - Cenário E2E de PDF estabilizado em `e2e/app.spec.ts` com captura determinística do `alert()` em `e2e/support/tauri-mock.ts`, removendo dependência do diálogo nativo do browser.
+- Ainda pendente para fechar 5 sem ressalvas:
+  - evidência de integração frontend+backend sem mock para o fluxo completo de comunicação;
+  - validação do envio contra provedores externos reais fora do ambiente controlado, se isso passar a ser requisito operacional antes de produção.
+
+Evidência executável desta rodada:
+- Comando: `npx tsc --noEmit`
+  - Esperado: compilar TypeScript sem erro.
+  - Observado: passou.
+  - Artefato: saída de terminal da execução local.
+- Comando: `cd src-tauri && cargo check`
+  - Esperado: compilar backend Rust sem erro.
+  - Observado: passou (com warnings conhecidos de dead code).
+  - Artefato: saída de terminal da execução local.
+- Comando: `npm run test:run`
+  - Esperado: suíte Vitest passar.
+  - Observado: houve falha intermitente de worker timeout em execução anterior; após hardening em `vitest.config.ts` (`fileParallelism: false`, `maxWorkers: 1`) a execução passou.
+  - Artefato: logs de falha e de sucesso no terminal.
+- Comando: `cargo run --quiet --bin p1_critical_integration`
+  - Esperado: imprimir `P1_INTEGRATION_OK` com provas de negação/autorização e saldo final.
+  - Observado: passou com `P1_INTEGRATION_PERMISSION_DENIED=ok`, `P1_INTEGRATION_PERMISSION_ALLOWED=ok`, `P1_INTEGRATION_STOCK_OK=ok` e `P1_INTEGRATION_OK`.
+  - Artefato: logs estruturados do binário de integração no terminal.
+- Comando: `cd src-tauri && cargo run --quiet --bin p1_communication_integration`
+  - Esperado: imprimir `P1_COMM_OK` com prova de entrega SMTP/WhatsApp em ambiente controlado e auditoria registrada.
+  - Observado: passou com `P1_COMM_SMTP_MESSAGE_OK=ok`, `P1_COMM_WHATSAPP_REQUEST_OK=ok`, `P1_COMM_AUDIT_OK=ok` e `P1_COMM_OK`.
+  - Artefato: logs estruturados do binário de integração no terminal.
+- Comando: `npx playwright test e2e/app.spec.ts -g "deve gerar PDF de orçamento usando o registro fotográfico salvo" --project=chromium`
+  - Esperado: o cenário de PDF passar de forma repetível sem timeout nem dependência de diálogo nativo.
+  - Observado: passou 3 execuções consecutivas (`PDF_E2E_RUN=1..3`).
+  - Artefato: saída de terminal da execução local.
+- Comando: `npm run e2e`
+  - Esperado: suíte E2E oficial rodar sem workaround.
+  - Observado: após estabilização do fluxo PDF, a suíte oficial passou completa (`16/16`).
+  - Artefato: `e2e/report` + `e2e/results` da execução verde, além do log local.
+
+Checklist mínimo para marcar qualquer item como concluído (hardening):
+- [ ] Existe evidência de teste automatizado relevante para o risco do item.
+- [ ] Segurança: existe caso negado + caso autorizado.
+- [ ] Está explícito o que é teste mockado vs integração real.
+- [ ] Existe comando reproduzível por outra pessoa do time e resultado observado registrado.
+- [ ] Não há linguagem de aprovação sem prova executável associada.
+
 ### 6. Validar concorrência compatível com 2 técnicos
-- [ ] Testar alteração simultânea de estoque.
-- [ ] Testar alteração simultânea de status de equipamento.
-- [ ] Testar cadastro/edição concorrente de cliente e equipamento.
-- [ ] Identificar onde a consistência depende só de disciplina do usuário e endurecer o backend quando necessário.
+- [x] Testar alteração simultânea de estoque.
+- [x] Testar alteração simultânea de status de equipamento.
+- [x] Testar cadastro/edição concorrente de cliente e equipamento.
+- [x] Identificar onde a consistência depende só de disciplina do usuário e endurecer o backend quando necessário.
 
 Saída esperada:
 Dois técnicos trabalhando em paralelo não geram perda silenciosa de consistência.
@@ -405,122 +465,280 @@ Dois técnicos trabalhando em paralelo não geram perda silenciosa de consistên
 Plano de execução delegável:
 
 #### 6.1. Identificar hotspots de escrita concorrente
-- [ ] Mapear entidades com maior chance de colisão: produtos, movimentações, equipamentos e clientes.
-- [ ] Definir quais invariantes não podem ser quebradas em escrita concorrente.
-- [ ] Distinguir conflito tolerável de conflito que precisa ser bloqueado.
+- [x] Mapear entidades com maior chance de colisão: produtos, movimentações, equipamentos e clientes.
+- [x] Definir quais invariantes não podem ser quebradas em escrita concorrente.
+- [x] Distinguir conflito tolerável de conflito que precisa ser bloqueado.
 
 Critério de aceite:
 Há uma lista explícita do que deve permanecer consistente com dois técnicos atuando em paralelo.
 
+Status em 2026-04-28:
+- Hotspots mapeados:
+  - `produtos`/`movimentacoes_estoque`: risco de baixa dupla no mesmo saldo.
+  - `equipamentos`: risco de sobrescrita silenciosa em edição completa e em transição de status.
+  - `clientes`: risco de último salvamento apagar alterações divergentes.
+- Invariantes que não podem quebrar:
+  - saldo de estoque não pode ficar negativo nem registrar duas saídas bem-sucedidas quando só existe saldo para uma;
+  - edição de cadastro não pode sobrescrever atualização feita por outro técnico com snapshot stale;
+  - mudança de status com impacto financeiro não pode prevalecer silenciosamente sobre outra mudança concorrente.
+- Regra definida por tipo de conflito:
+  - estoque: o backend deve serializar a escrita e rejeitar explicitamente a baixa excedente;
+  - cadastro/status: última escrita silenciosa não é tolerável; a segunda sessão deve receber erro de concorrência e recarregar antes de reenviar;
+  - conflito tolerável permanece apenas para leituras concorrentes ou reenvio após revalidação explícita.
+
 #### 6.2. Definir cenários de concorrência reais
-- [ ] Simular baixa simultânea no mesmo item de estoque.
-- [ ] Simular mudança simultânea do mesmo equipamento.
-- [ ] Simular edição concorrente de cadastro com dados divergentes.
-- [ ] Registrar o comportamento esperado para cada caso: bloquear, prevalecer última escrita ou exigir revalidação.
+- [x] Simular baixa simultânea no mesmo item de estoque.
+- [x] Simular mudança simultânea do mesmo equipamento.
+- [x] Simular edição concorrente de cadastro com dados divergentes.
+- [x] Registrar o comportamento esperado para cada caso: bloquear, prevalecer última escrita ou exigir revalidação.
 
 Critério de aceite:
 Cada cenário concorrente relevante tem comportamento esperado definido antes da implementação do teste.
 
+Comportamento esperado registrado:
+- Baixa simultânea do mesmo insumo: uma escrita pode confirmar; a outra deve falhar com mensagem explícita de estoque insuficiente.
+- Status simultâneo do mesmo equipamento: somente a primeira atualização com o token `atualizado_em` válido confirma; a segunda deve falhar com conflito de concorrência.
+- Edição concorrente de cliente/equipamento/produto: qualquer atualização enviada com `atualizado_em` stale deve falhar com conflito explícito; o usuário precisa recarregar e revalidar antes de salvar.
+
 #### 6.3. Endurecer backend e banco onde necessário
-- [ ] Revisar transações, constraints, updates condicionais e possíveis verificações de versão.
-- [ ] Corrigir pontos onde a consistência depende apenas do usuário perceber conflito visualmente.
-- [ ] Garantir que erro de concorrência seja explícito e tratável.
+- [x] Revisar transações, constraints, updates condicionais e possíveis verificações de versão.
+- [x] Corrigir pontos onde a consistência depende apenas do usuário perceber conflito visualmente.
+- [x] Garantir que erro de concorrência seja explícito e tratável.
 
 Critério de aceite:
 Conflitos relevantes deixam de virar corrupção silenciosa ou sobrescrita invisível.
 
+Endurecimento aplicado:
+- `src-tauri/src/commands/produtos.rs`
+  - `registrar_movimentacao_estoque` deixou de depender de leitura prévia ingênua e passou a usar `UPDATE ... WHERE quantidade_estoque >= $1 RETURNING quantidade_estoque` para saída concorrente.
+  - `atualizar_produto` agora exige `atualizado_em` e rejeita snapshot stale com erro explícito.
+- `src-tauri/src/commands/clientes.rs`
+  - `atualizar_cliente` agora exige `atualizado_em` e falha com conflito de concorrência quando outro técnico já persistiu uma mudança.
+- `src-tauri/src/commands/equipamentos.rs`
+  - `atualizar_equipamento` e `atualizar_status_equipamento` agora exigem `atualizado_em`/`expected_updated_em` e rejeitam sobrescrita invisível.
+- Frontend endurecido para propagar o token e tratar o erro:
+  - `src/pages/Equipamentos.tsx`, `src/pages/Clientes.tsx`, `src/pages/Insumos.tsx`, `src/hooks/useStatusEquipamento.ts` e `src/lib/db.ts` passaram a reenviar `atualizado_em` e exibir falha explícita ao usuário em caso de conflito.
+
 #### 6.4. Validar com prova prática
-- [ ] Reexecutar os cenários com dois clientes ou duas sessões.
-- [ ] Registrar resultado observado e qualquer regra de negócio ainda ambígua.
+- [x] Reexecutar os cenários com dois clientes ou duas sessões.
+- [x] Registrar resultado observado e qualquer regra de negócio ainda ambígua.
 
 Validação adicional obrigatória desta etapa:
 - Evidência de pelo menos um cenário concorrente de estoque e um de equipamento.
 - Regra documentada para resolução ou rejeição de conflito.
 
+Evidência executável desta etapa:
+- Comando: `npx tsc --noEmit`
+  - Esperado: TypeScript compilar sem erro após propagar `atualizado_em` no frontend.
+  - Observado: passou.
+  - Artefato: saída de terminal da execução local.
+- Comando: `cd src-tauri && cargo check`
+  - Esperado: backend Rust compilar sem erro após endurecimento de concorrência.
+  - Observado: passou; permanecem warnings conhecidos de `dead_code` nos bins auxiliares.
+  - Artefato: saída de terminal da execução local.
+- Comando: `npm run test:run`
+  - Esperado: suíte Vitest continuar verde após ajustar `useStatusEquipamento` para tokens de versão.
+  - Observado: passou (`20/20`).
+  - Artefato: log local da execução.
+- Comando: `cd src-tauri && cargo run --quiet --bin p1_concurrency_integration`
+  - Esperado: imprimir evidência estruturada de concorrência sem perda silenciosa.
+  - Observado: passou com:
+    - `P1_CONCURRENCY_STOCK_OK=ok:successes=1;conflicts=1;saldo_final=1`
+    - `P1_CONCURRENCY_CLIENT_OK=ok`
+    - `P1_CONCURRENCY_EQUIPMENT_EDIT_OK=ok`
+    - `P1_CONCURRENCY_EQUIPMENT_STATUS_OK=ok:REPROVADO`
+    - `P1_CONCURRENCY_OK`
+  - Artefato: log estruturado do binário no terminal.
+
+Regra operacional fechada:
+- Estoque concorrente: confirmar no máximo uma baixa quando o saldo só comporta uma; a outra sessão recebe rejeição explícita.
+- Cadastro e status concorrentes: backend rejeita snapshot stale por versão (`atualizado_em`) e obriga revalidação antes de reenviar.
+- Nenhum dos cenários acima permanece dependendo só do usuário perceber “visualmente” que outro técnico salvou antes.
+
 ### 7. Endurecer a operação Windows e a observabilidade
-- [ ] Revisar estratégia de logs para suporte e investigação de incidente.
-- [ ] Revisar assinatura de build, empacotamento e distribuição Windows.
-- [ ] Revisar uso de diretórios temporários, abertura de arquivos e superfícies expostas por capability.
-- [ ] Definir o mínimo de telemetria local ou trilha de suporte necessária para operação assistida.
+- [x] Revisar estratégia de logs para suporte e investigação de incidente.
+- [x] Revisar assinatura de build, empacotamento e distribuição Windows.
+- [x] Revisar uso de diretórios temporários, abertura de arquivos e superfícies expostas por capability.
+- [x] Definir o mínimo de telemetria local ou trilha de suporte necessária para operação assistida.
 
 Saída esperada:
 O sistema fica mais previsível de operar, distribuir e diagnosticar em campo.
 
+Status em 2026-04-28:
+- Backend Tauri passou a gravar `tracing` em stdout e também em arquivo local com rotação diária em `%LOCALAPPDATA%\AutoOS\logs`.
+- O app agora mantém housekeeping local para artefatos antigos: `%TEMP%\autoos` (7 dias), `%LOCALAPPDATA%\AutoOS\logs` (14 dias) e `%LOCALAPPDATA%\AutoOS\support` (30 dias).
+- Foi criado um snapshot mínimo de suporte/exportação local (`obter_diagnostico_suporte_local` e `exportar_pacote_suporte_local`) com versão, build, paths operacionais, schema, ferramentas PostgreSQL, capability ativa e bloqueios de distribuição Windows.
+- A capability principal foi reduzida para `core:default`; `shell:allow-open` e a dependência do `plugin-shell` foram removidos porque o app só usava abertura arbitrária para a pasta de backup.
+- A prontidão de distribuição Windows foi registrada com bloqueios factuais: `certificateThumbprint` ausente, `timestampUrl` vazio e versionamento ainda em `0.0.1`.
+- O checklist/runbook mínimo de suporte desta etapa foi consolidado em `WINDOWS_OPERATION_READINESS.md` e refletido na tela `Configurações > Segurança`.
+
 Plano de execução delegável:
 
 #### 7.1. Definir trilha mínima de observabilidade local
-- [ ] Revisar onde os logs nascem, como são configurados e como podem ser coletados em suporte.
-- [ ] Padronizar o mínimo de contexto para erro operacional relevante.
-- [ ] Garantir que eventos críticos do backend não se percam em logging insuficiente.
+- [x] Revisar onde os logs nascem, como são configurados e como podem ser coletados em suporte.
+- [x] Padronizar o mínimo de contexto para erro operacional relevante.
+- [x] Garantir que eventos críticos do backend não se percam em logging insuficiente.
 
 Critério de aceite:
 Existe uma forma consistente de investigar incidente sem depender apenas de relato verbal do usuário.
 
+Entregue nesta subetapa:
+- `src-tauri/src/main.rs`: tracing com camada adicional em arquivo local (`tracing-appender`) e housekeeping registrado na inicialização.
+- `src-tauri/src/commands/util.rs`: snapshot/exportação de suporte com diretórios, schema, ferramentas PostgreSQL, capability e prontidão do bundle.
+- `src/pages/Configuracoes.tsx`: painel de suporte local com paths, logs recentes, exportação do pacote JSON e bloqueios atuais de distribuição.
+
 #### 7.2. Revisar prontidão de build e distribuição Windows
-- [ ] Revisar assinatura, timestamp, nome de artefato, empacotamento e passos de distribuição.
-- [ ] Identificar o que é indispensável para produção assistida e o que pode ficar para maturidade posterior.
-- [ ] Registrar bloqueios concretos para distribuição confiável.
+- [x] Revisar assinatura, timestamp, nome de artefato, empacotamento e passos de distribuição.
+- [x] Identificar o que é indispensável para produção assistida e o que pode ficar para maturidade posterior.
+- [x] Registrar bloqueios concretos para distribuição confiável.
 
 Critério de aceite:
 O time sabe exatamente o que falta para distribuir o app em Windows com previsibilidade.
 
+Bloqueios concretos registrados:
+- `src-tauri/tauri.conf.json` mantém `bundle.active = true` e `targets = "all"`, mas a assinatura Authenticode ainda não está pronta porque `certificateThumbprint` segue ausente.
+- `timestampUrl` continua vazio; mesmo com certificado, a assinatura ainda não teria carimbo de tempo confiável.
+- A versão de distribuição permanece `0.0.1`, o que foi registrado como placeholder operacional até existir convenção formal de release.
+
 #### 7.3. Endurecer superfícies locais sensíveis
-- [ ] Revisar diretórios temporários, limpeza de artefatos e abertura de arquivos externos.
-- [ ] Revisar capabilities expostas e o menor privilégio viável.
-- [ ] Garantir que o suporte operacional não aumente a superfície de risco sem necessidade.
+- [x] Revisar diretórios temporários, limpeza de artefatos e abertura de arquivos externos.
+- [x] Revisar capabilities expostas e o menor privilégio viável.
+- [x] Garantir que o suporte operacional não aumente a superfície de risco sem necessidade.
 
 Critério de aceite:
 As capacidades locais expostas pelo app estão justificadas e minimizadas.
 
+Endurecimento aplicado:
+- `src-tauri/capabilities/default.json` ficou somente com `core:default`.
+- `src-tauri/Cargo.toml`, `package.json` e `src-tauri/src/main.rs` deixaram de depender de `tauri-plugin-shell`.
+- `src/pages/Configuracoes.tsx` deixou de abrir caminhos arbitrários via shell e passou a usar exportação controlada de pacote local de suporte.
+- A limpeza automática de temporários/logs/pacotes antigos deixa de acumular material operacional indefinidamente em disco.
+
 #### 7.4. Fechar checklist de suporte
-- [ ] Definir o que coletar em incidente: versão, logs, ambiente, banco, artefato e reprodução.
-- [ ] Registrar o fluxo mínimo de diagnóstico para problemas comuns de operação.
+- [x] Definir o que coletar em incidente: versão, logs, ambiente, banco, artefato e reprodução.
+- [x] Registrar o fluxo mínimo de diagnóstico para problemas comuns de operação.
 
 Validação adicional obrigatória desta etapa:
 - Checklist mínimo de suporte documentado.
 - Lista explícita de riscos pendentes de distribuição Windows.
 
+Checklist mínimo fechado:
+- Versão/build do app, paths locais e housekeeping disponíveis no snapshot de suporte.
+- Logs locais e pacote JSON exportável disponíveis para anexar a chamado.
+- Banco/schema/migrações e ferramentas PostgreSQL expostos no diagnóstico.
+- Bloqueios pendentes de distribuição Windows registrados em `WINDOWS_OPERATION_READINESS.md`.
+
+Evidência executável desta etapa:
+- Comando: `npx tsc --noEmit`
+  - Esperado: frontend compilar após o novo painel de suporte e remoção do `plugin-shell`.
+  - Observado: passou.
+  - Artefato: saída local do terminal.
+- Comando: `cd src-tauri && cargo check`
+  - Esperado: backend compilar após adicionar logging em arquivo, housekeeping e exportação de suporte.
+  - Observado: passou; permanecem warnings conhecidos de `dead_code` nos bins auxiliares.
+  - Artefato: saída local do terminal.
+- Comando: `npm run test:run`
+  - Esperado: suíte Vitest permanecer verde após os ajustes de configuração/segurança.
+  - Observado: passou (`20/20`).
+  - Artefato: log local do Vitest.
+- Comando: `cd src-tauri && cargo run --quiet --bin p1_windows_support_check`
+  - Esperado: gerar evidência estruturada do diretório de logs, capability mínima e pacote exportado.
+  - Observado: passou com:
+    - `P1_SUPPORT_LOG_DIR_OK=C:\Users\Usuario\AppData\Local\AutoOS\logs`
+    - `P1_SUPPORT_CAPABILITY_OK=core:default`
+    - `P1_SUPPORT_BUILD_BLOCKERS_OK=Assinatura Windows pendente: certificateThumbprint não configurado em tauri.conf.json. | Timestamp Authenticode pendente: timestampUrl não configurado em tauri.conf.json. | Versionamento de distribuição ainda parece placeholder (0.0.1).`
+    - `P1_SUPPORT_BUNDLE_OK=C:\Users\Usuario\AppData\Local\AutoOS\support\autoos-support-20260429-003953.json`
+    - `P1_SUPPORT_OK`
+  - Artefato: pacote JSON exportado em `%LOCALAPPDATA%\AutoOS\support`.
+- Comando: `npm run e2e`
+  - Esperado: suíte Playwright estabilizada após serializar workers e aumentar a tolerância do `page.goto` inicial.
+  - Observado: primeira execução desta etapa falhou no `beforeEach` do cenário “deve carregar a página inicial” por timeout de 60s no `page.goto('/')`; após ajustar `playwright.config.ts` (`workers: 1`, `timeout`/`navigationTimeout` maiores) e `e2e/app.spec.ts`, a reexecução passou (`16/16`).
+  - Artefato: relatório Playwright em `e2e/report`.
+
 ### 8. Sincronizar a documentação operacional
-- [ ] Atualizar `README.md` para refletir o fluxo real de execução e validação.
-- [ ] Atualizar `POSTGRES_SETUP.md` com o estado atual de migrações e dependências.
-- [ ] Atualizar `POSTGRES_BACKUP_RESTORE.md` com o checklist real de homologação.
-- [ ] Atualizar `MIGRACAO_POSTGRESQL.md` para refletir o modelo atual de migrações versionadas.
+- [x] Atualizar `README.md` para refletir o fluxo real de execução e validação.
+- [x] Atualizar `POSTGRES_SETUP.md` com o estado atual de migrações e dependências.
+- [x] Atualizar `POSTGRES_BACKUP_RESTORE.md` com o checklist real de homologação.
+- [x] Atualizar `MIGRACAO_POSTGRESQL.md` para refletir o modelo atual de migrações versionadas.
 
 Saída esperada:
 A operação deixa de depender de conhecimento tácito ou instruções antigas.
 
+Status em 2026-04-28:
+- `README.md` foi reescrito para refletir o fluxo real do app: PostgreSQL obrigatório, scripts atuais (`test:run`, `e2e`, `tauri build`), superfícies de suporte local e bloqueios conhecidos da distribuição Windows.
+- `POSTGRES_SETUP.md` foi sincronizado com o bootstrap real do backend (`DATABASE_URL`, `sqlx::migrate!`, `runtime_smoke`) e com o baseline atual de migrações `0001` a `0004`.
+- `POSTGRES_BACKUP_RESTORE.md` deixou de documentar comportamento inexistente na UI e agora reflete o card real de `Configurações > Segurança`, incluindo validação de ferramentas, `Gerar backup agora`, restore com caminho absoluto e confirmação `RESTAURAR`.
+- `MIGRACAO_POSTGRESQL.md` não existia na raiz do repositório; foi criado como nota técnica operacional para o modelo atual de migrações versionadas.
+- A trilha principal de documentação deixou de apontar para um arquivo ausente e passou a privilegiar os documentos operacionais realmente mantidos.
+
 Plano de execução delegável:
 
 #### 8.1. Auditar documentação contra o repositório real
-- [ ] Comparar scripts, migrações, dependências e fluxos documentados com o estado atual do código.
-- [ ] Tratar divergência factual como bug operacional.
-- [ ] Registrar links quebrados, passos inexistentes e premissas antigas.
+- [x] Comparar scripts, migrações, dependências e fluxos documentados com o estado atual do código.
+- [x] Tratar divergência factual como bug operacional.
+- [x] Registrar links quebrados, passos inexistentes e premissas antigas.
 
 Critério de aceite:
 Existe uma lista objetiva do que está defasado e precisa ser corrigido.
 
+Auditoria factual registrada:
+- `MIGRACAO_POSTGRESQL.md` era referenciado por `README.md` e outras docs, mas não existia na raiz do projeto.
+- `POSTGRES_SETUP.md` e `POSTGRES_BACKUP_RESTORE.md` ainda paravam na migração `0003_equipment_intake_fields.sql`, embora o repositório já tenha `0004_equipment_images.sql`.
+- `POSTGRES_BACKUP_RESTORE.md` ainda sugeria um fluxo de homologação com abertura de pasta de backup pelo app, comportamento removido quando `shell:allow-open` saiu da capability principal.
+- `README.md` ainda priorizava um mapa documental menos aderente ao estado atual de suporte/Windows readiness.
+
 #### 8.2. Atualizar a entrada principal do projeto
-- [ ] Fazer `README.md` refletir stack, execução, validação e fluxo de build reais.
-- [ ] Garantir que um novo colaborador consiga iniciar o projeto a partir desse arquivo.
+- [x] Fazer `README.md` refletir stack, execução, validação e fluxo de build reais.
+- [x] Garantir que um novo colaborador consiga iniciar o projeto a partir desse arquivo.
 
 Critério de aceite:
 O README deixa de ser material promocional e passa a ser entrada operacional confiável.
 
+Atualização aplicada:
+- Stack, escopo funcional, pré-requisitos e scripts reais foram alinhados com `package.json`, `tauri.conf.json` e o estado atual do app.
+- O mapa de documentação principal foi simplificado para os documentos mantidos (`POSTGRES_SETUP.md`, `POSTGRES_BACKUP_RESTORE.md`, `MIGRACAO_POSTGRESQL.md`, `WINDOWS_OPERATION_READINESS.md`, `NEXT_STEPS.md`).
+- O README agora explicita que o bundle Windows ainda não está pronto para distribuição assistida por falta de assinatura/timestamp.
+
 #### 8.3. Atualizar os runbooks de PostgreSQL
-- [ ] Sincronizar `POSTGRES_SETUP.md` com as migrações reais e dependências atuais.
-- [ ] Sincronizar `POSTGRES_BACKUP_RESTORE.md` com o procedimento efetivamente validado.
-- [ ] Atualizar `MIGRACAO_POSTGRESQL.md` para o modelo atual de migrações versionadas.
+- [x] Sincronizar `POSTGRES_SETUP.md` com as migrações reais e dependências atuais.
+- [x] Sincronizar `POSTGRES_BACKUP_RESTORE.md` com o procedimento efetivamente validado.
+- [x] Atualizar `MIGRACAO_POSTGRESQL.md` para o modelo atual de migrações versionadas.
 
 Critério de aceite:
 Os documentos de banco refletem exatamente o fluxo que a equipe consegue executar.
 
+Runbooks sincronizados:
+- `POSTGRES_SETUP.md` agora cobre `DATABASE_URL`, bootstrap do backend, `runtime_smoke` e o inventário `0001` a `0004`.
+- `POSTGRES_BACKUP_RESTORE.md` foi alinhado com `src-tauri/src/commands/util.rs`, incluindo geração de `.dump`, restore `.dump`/`.sql`, auditoria e reaplicação de migrações.
+- `MIGRACAO_POSTGRESQL.md` passou a documentar a fonte de verdade do schema, o uso de `_sqlx_migrations`, o papel do `sqlx::migrate!("./migrations")` e as regras de manutenção do time.
+
 #### 8.4. Tratar documentação como parte da entrega
-- [ ] Não fechar item técnico cujo fluxo mudou sem revisar a documentação correspondente.
-- [ ] Relacionar mudanças operacionais no roadmap quando elas afetarem release ou suporte.
+- [x] Não fechar item técnico cujo fluxo mudou sem revisar a documentação correspondente.
+- [x] Relacionar mudanças operacionais no roadmap quando elas afetarem release ou suporte.
 
 Validação adicional obrigatória desta etapa:
 - Revisão cruzada entre docs e comandos reais do repositório.
 - Nenhum documento principal apontando para passo inexistente ou arquivo incorreto.
+
+Regra operacional reforçada:
+- Mudança estrutural, fluxo de suporte ou comportamento administrativo não deve mais ser dado como encerrado sem revisão explícita de `README.md`, docs PostgreSQL e roadmap quando aplicável.
+
+Evidência executável desta etapa:
+- Auditoria documental:
+  - `README.md`, `POSTGRES_SETUP.md`, `POSTGRES_BACKUP_RESTORE.md`, `package.json`, `src-tauri/src/db.rs`, `src-tauri/src/commands/util.rs`, `src-tauri/tauri.conf.json` e o diretório `src-tauri/migrations/` foram comparados para alinhar scripts, migrações e fluxos reais.
+  - Resultado observado: divergências corrigidas, inclusive criação do arquivo ausente `MIGRACAO_POSTGRESQL.md`.
+- Comando: `npx tsc --noEmit`
+  - Esperado: projeto continuar íntegro após a sincronização documental.
+  - Observado: passou.
+  - Artefato: saída local do terminal.
+- Comando: `cd src-tauri && cargo check`
+  - Esperado: backend continuar compilando após a atualização da documentação operacional.
+  - Observado: passou; permanecem warnings conhecidos de `dead_code` nos bins auxiliares.
+  - Artefato: saída local do terminal.
+- Revisão cruzada por conteúdo:
+  - Esperado: docs principais refletirem `0004_equipment_images.sql`, o card real de backup/restore e a existência do arquivo `MIGRACAO_POSTGRESQL.md`.
+  - Observado: `README.md`, `POSTGRES_SETUP.md`, `POSTGRES_BACKUP_RESTORE.md` e `MIGRACAO_POSTGRESQL.md` agora apontam para o fluxo correto e para arquivos existentes.
+  - Artefato: conteúdo atualizado dos documentos na raiz do repositório.
 
 ---
 

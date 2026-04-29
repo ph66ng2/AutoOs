@@ -204,15 +204,23 @@ export default function Insumos() {
         preco_custo: Number(data.preco_custo) || 0,
         preco_venda: Number(data.preco_venda) || 0,
         localizacao: data.localizacao || null,
+        atualizado_em: editando?.atualizado_em,
       };
       if (editando) {
-        await atualizar(editando.id, payload);
+        const resultado = await atualizar(editando.id, payload);
+        if (!resultado.sucesso) {
+          throw new Error(resultado.erro || "Não foi possível salvar o insumo.");
+        }
       } else {
-        await criar(payload);
+        const resultado = await criar(payload);
+        if (!resultado.sucesso) {
+          throw new Error(resultado.erro || "Não foi possível criar o insumo.");
+        }
       }
       setDialogOpen(false);
-    } catch (err) {
+    } catch (err: any) {
       console.error("Erro ao salvar:", err);
+      alert(err?.message || "Erro ao salvar insumo.");
     } finally {
       setSalvando(false);
     }
@@ -222,16 +230,20 @@ export default function Insumos() {
     if (!movimentando) return;
     setSalvando(true);
     try {
-      await registrarMovimentacao(
+      const resultado = await registrarMovimentacao(
         movimentando.id,
         data.tipo,
         Number(data.quantidade),
         data.origem,
         data.referencia || undefined
       );
+      if (!resultado.sucesso) {
+        throw new Error(resultado.erro || "Não foi possível registrar a movimentação.");
+      }
       setMovDialogOpen(false);
-    } catch (err) {
+    } catch (err: any) {
       console.error("Erro movimentação:", err);
+      alert(err?.message || "Erro ao registrar movimentação.");
     } finally {
       setSalvando(false);
     }

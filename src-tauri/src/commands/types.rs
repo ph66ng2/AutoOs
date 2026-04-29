@@ -42,6 +42,7 @@ pub struct EquipamentoInput {
     pub cliente_email: Option<String>,
     pub prazo_aprovacao: Option<String>,
     pub valor_orcamento: Option<f64>,
+    pub atualizado_em: Option<String>,
 }
 
 #[derive(Debug, Deserialize, Default, Clone)]
@@ -82,6 +83,7 @@ pub struct ClienteInput {
     pub receber_email: Option<bool>,
     pub receber_whatsapp: Option<bool>,
     pub observacoes: Option<String>,
+    pub atualizado_em: Option<String>,
 }
 
 /// Input para criar/atualizar produto de estoque.
@@ -107,6 +109,7 @@ pub struct ProdutoInput {
     pub modelos_compativeis: Option<String>,
     pub fornecedor_principal: Option<String>,
     pub prazo_entrega: Option<i32>,
+    pub atualizado_em: Option<String>,
 }
 
 /// Input para registrar movimentação de estoque.

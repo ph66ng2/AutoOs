@@ -100,6 +100,7 @@ async fn main() -> Result<()> {
             receber_email: Some(true),
             receber_whatsapp: Some(true),
             observacoes: Some("runtime_smoke:update".to_string()),
+            atualizado_em: cliente_criado.atualizado_em.clone(),
             ..ClienteInput::default()
         },
     )
@@ -139,6 +140,7 @@ async fn main() -> Result<()> {
             cliente_nome: equipamento_criado.cliente_nome.clone(),
             cliente_telefone: equipamento_criado.cliente_telefone.clone(),
             cliente_email: equipamento_criado.cliente_email.clone(),
+            atualizado_em: equipamento_criado.atualizado_em.clone(),
             ..EquipamentoInput::default()
         },
     )
@@ -150,6 +152,7 @@ async fn main() -> Result<()> {
         None,
         None,
         None,
+        equipamento_atualizado.atualizado_em.clone(),
     )
     .await, "Falha ao alterar status real do equipamento")?;
 
@@ -177,6 +180,7 @@ async fn main() -> Result<()> {
                 modelos_compativeis: Some("LaserJet Smoke".to_string()),
                 fornecedor_principal: Some("Fornecedor Smoke".to_string()),
                 prazo_entrega: Some(3),
+                atualizado_em: None,
             })
             .await, "Falha ao criar produto real via comandos")?;
 
@@ -202,6 +206,7 @@ async fn main() -> Result<()> {
                     modelos_compativeis: produto.modelos_compativeis.clone(),
                     fornecedor_principal: produto.fornecedor_principal.clone(),
                     prazo_entrega: produto.prazo_entrega,
+                    atualizado_em: produto.atualizado_em.clone(),
                 },
             )
             .await, "Falha ao editar produto real via comandos")?;

@@ -34,6 +34,60 @@ fn optional_text(value: Option<&str>) -> Option<String> {
         .map(|value| value.to_string())
 }
 
+fn validate_movimentacao_input(input: &MovimentacaoEstoqueInput) -> Result<(String, String, Option<String>), String> {
+    if input.quantidade <= 0 {
+        return Err("Quantidade da movimentação deve ser maior que zero".to_string());
+    }
+
+    let movimento = input.tipo.trim().to_uppercase();
+    if movimento != "ENTRADA" && movimento != "SAIDA" {
+        return Err("Tipo de movimentação inválido".to_string());
+    }
+
+    let origem = input.origem.trim().to_string();
+    if origem.is_empty() {
+        return Err("Origem da movimentação é obrigatória".to_string());
+    }
+
+    let referencia = input
+        .referencia
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(|value| value.to_string());
+
+    Ok((movimento, origem, referencia))
+}
+
+fn calculate_resulting_stock(quantidade_atual: i32, quantidade: i32, movimento: &str) -> Result<i32, String> {
+    let quantidade_resultante = if movimento == "ENTRADA" {
+        quantidade_atual + quantidade
+    } else {
+        quantidade_atual - quantidade
+    };
+
+    if quantidade_resultante < 0 {
+        return Err("Estoque insuficiente para registrar a saída informada".to_string());
+    }
+
+    Ok(quantidade_resultante)
+}
+
+fn required_concurrency_token(token: Option<&str>, entity_label: &str) -> Result<String, String> {
+    token
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(|value| value.to_string())
+        .ok_or_else(|| format!("Token de concorrência de {} é obrigatório para atualizar o cadastro.", entity_label))
+}
+
+fn concurrency_conflict_message(entity_label: &str) -> String {
+    format!(
+        "Conflito de concorrência: {} foi alterado por outro técnico. Recarregue os dados antes de salvar novamente.",
+        entity_label
+    )
+}
+
 /// Listar produtos com paginação.
 #[tauri::command]
 #[instrument(skip_all, fields(page = page))]
@@ -211,6 +265,7 @@ pub async fn atualizar_produto(id: i32, input: ProdutoInput) -> Result<ProdutoRo
     let actor = require_permission(PERMISSION_STOCK_CONTROL)?;
     debug!("Atualizando produto {}", id);
     let pool = get_pool().await.map_err(|e| e.to_string())?;
+    let concurrency_token = required_concurrency_token(input.atualizado_em.as_deref(), "produto")?;
     let codigo = required_text(&input.codigo, "Código")?;
     let nome = required_text(&input.nome, "Nome")?;
     let categoria = required_text(&input.categoria, "Categoria")?;
@@ -244,7 +299,7 @@ pub async fn atualizar_produto(id: i32, input: ProdutoInput) -> Result<ProdutoRo
         }
     }
 
-    sqlx::query(
+    let updated_rows = sqlx::query(
         r#"
         UPDATE produtos SET
             codigo = $1, nome = $2, descricao = $3, categoria = $4,
@@ -253,7 +308,7 @@ pub async fn atualizar_produto(id: i32, input: ProdutoInput) -> Result<ProdutoRo
             preco_venda = $11, margem_lucro = $12, marca_original = $13,
             tipo_cartucho = $14, cor = $15, rendimento = $16, modelos_compativeis = $17,
             fornecedor_principal = $18, prazo_entrega = $19, atualizado_em = NOW()
-        WHERE id = $20
+        WHERE id = $20 AND atualizado_em::TEXT = $21
         "#,
     )
     .bind(codigo)
@@ -276,12 +331,18 @@ pub async fn atualizar_produto(id: i32, input: ProdutoInput) -> Result<ProdutoRo
     .bind(optional_text(input.fornecedor_principal.as_deref()))
     .bind(input.prazo_entrega)
     .bind(id)
+    .bind(concurrency_token)
     .execute(&pool)
     .await
     .map_err(|e| {
         error!("Erro ao atualizar produto {}: {}", id, e);
         e.to_string()
-    })?;
+    })?
+    .rows_affected();
+
+    if updated_rows == 0 {
+        return Err(concurrency_conflict_message("o produto"));
+    }
 
     record_security_event(
         "PRODUCT_UPDATED",
@@ -334,60 +395,65 @@ pub async fn deletar_produto(id: i32) -> Result<bool, String> {
 #[instrument(skip_all, fields(produto_id = input.produto_id, tipo = %input.tipo))]
 pub async fn registrar_movimentacao_estoque(input: MovimentacaoEstoqueInput) -> Result<bool, String> {
     let actor = require_permission(PERMISSION_STOCK_CONTROL)?;
-
-    if input.quantidade <= 0 {
-        return Err("Quantidade da movimentação deve ser maior que zero".to_string());
-    }
-
-    let movimento = input.tipo.trim().to_uppercase();
-    if movimento != "ENTRADA" && movimento != "SAIDA" {
-        return Err("Tipo de movimentação inválido".to_string());
-    }
-
-    let origem = input.origem.trim();
-    if origem.is_empty() {
-        return Err("Origem da movimentação é obrigatória".to_string());
-    }
+    let (movimento, origem, referencia) = validate_movimentacao_input(&input)?;
 
     let pool = get_pool().await.map_err(|e| e.to_string())?;
     let mut tx = pool.begin().await.map_err(|e| e.to_string())?;
-
-    let produto = sqlx::query_as::<_, ProdutoRow>(&format!("{} WHERE id = $1", PRODUTO_SELECT))
+    let _saldo_resultante = if movimento == "ENTRADA" {
+        sqlx::query_scalar(
+            r#"
+            UPDATE produtos
+            SET quantidade_estoque = COALESCE(quantidade_estoque, 0) + $1, atualizado_em = NOW()
+            WHERE id = $2 AND ativo = true
+            RETURNING quantidade_estoque
+            "#,
+        )
+        .bind(input.quantidade)
         .bind(input.produto_id)
         .fetch_optional(&mut *tx)
         .await
         .map_err(|e| {
-            error!("Erro ao carregar produto {} para movimentação: {}", input.produto_id, e);
+            error!("Erro ao registrar entrada no produto {}: {}", input.produto_id, e);
             e.to_string()
         })?
-        .ok_or_else(|| "Produto não encontrado".to_string())?;
-
-    let quantidade_atual = produto.quantidade_estoque.unwrap_or(0);
-    let quantidade_resultante = if movimento == "ENTRADA" {
-        quantidade_atual + input.quantidade
+        .ok_or_else(|| "Produto não encontrado".to_string())?
     } else {
-        quantidade_atual - input.quantidade
+        match sqlx::query_scalar(
+            r#"
+            UPDATE produtos
+            SET quantidade_estoque = COALESCE(quantidade_estoque, 0) - $1, atualizado_em = NOW()
+            WHERE id = $2
+              AND ativo = true
+              AND COALESCE(quantidade_estoque, 0) >= $1
+            RETURNING quantidade_estoque
+            "#,
+        )
+        .bind(input.quantidade)
+        .bind(input.produto_id)
+        .fetch_optional(&mut *tx)
+        .await
+        .map_err(|e| {
+            error!("Erro ao registrar saída no produto {}: {}", input.produto_id, e);
+            e.to_string()
+        })? {
+            Some(quantidade) => quantidade,
+            None => {
+                let saldo_atual = sqlx::query_scalar::<_, i32>(
+                    "SELECT COALESCE(quantidade_estoque, 0) FROM produtos WHERE id = $1 AND ativo = true",
+                )
+                .bind(input.produto_id)
+                .fetch_optional(&mut *tx)
+                .await
+                .map_err(|e| {
+                    error!("Erro ao verificar saldo atual do produto {}: {}", input.produto_id, e);
+                    e.to_string()
+                })?;
+
+                let quantidade_atual = saldo_atual.ok_or_else(|| "Produto não encontrado".to_string())?;
+                calculate_resulting_stock(quantidade_atual, input.quantidade, &movimento)?
+            }
+        }
     };
-
-    if quantidade_resultante < 0 {
-        return Err("Estoque insuficiente para registrar a saída informada".to_string());
-    }
-
-    sqlx::query(
-        r#"
-        UPDATE produtos
-        SET quantidade_estoque = $1, atualizado_em = NOW()
-        WHERE id = $2
-        "#,
-    )
-    .bind(quantidade_resultante)
-    .bind(input.produto_id)
-    .execute(&mut *tx)
-    .await
-    .map_err(|e| {
-        error!("Erro ao atualizar saldo do produto {}: {}", input.produto_id, e);
-        e.to_string()
-    })?;
 
     sqlx::query(
         r#"
@@ -399,8 +465,8 @@ pub async fn registrar_movimentacao_estoque(input: MovimentacaoEstoqueInput) -> 
     .bind(input.produto_id)
     .bind(&movimento)
     .bind(input.quantidade)
-    .bind(origem)
-    .bind(input.referencia.as_deref().map(str::trim).filter(|value| !value.is_empty()))
+    .bind(&origem)
+    .bind(referencia)
     .execute(&mut *tx)
     .await
     .map_err(|e| {
@@ -429,4 +495,46 @@ pub async fn registrar_movimentacao_estoque(input: MovimentacaoEstoqueInput) -> 
 
     info!("Movimentação {} registrada para produto {}", movimento, input.produto_id);
     Ok(true)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn movement_input(tipo: &str, quantidade: i32, origem: &str) -> MovimentacaoEstoqueInput {
+        MovimentacaoEstoqueInput {
+            produto_id: 1,
+            tipo: tipo.to_string(),
+            quantidade,
+            origem: origem.to_string(),
+            referencia: None,
+        }
+    }
+
+    #[test]
+    fn p1_stock_movement_input_validation_rejects_invalid_payloads() {
+        let invalid_qty = movement_input("ENTRADA", 0, "COMPRA");
+        assert!(validate_movimentacao_input(&invalid_qty)
+            .unwrap_err()
+            .contains("maior que zero"));
+
+        let invalid_type = movement_input("TRANSFERENCIA", 2, "COMPRA");
+        assert!(validate_movimentacao_input(&invalid_type)
+            .unwrap_err()
+            .contains("inválido"));
+
+        let invalid_origin = movement_input("SAIDA", 2, "   ");
+        assert!(validate_movimentacao_input(&invalid_origin)
+            .unwrap_err()
+            .contains("Origem"));
+    }
+
+    #[test]
+    fn p1_stock_movement_calculation_enforces_non_negative_balance() {
+        assert_eq!(calculate_resulting_stock(10, 3, "ENTRADA").unwrap(), 13);
+        assert_eq!(calculate_resulting_stock(10, 3, "SAIDA").unwrap(), 7);
+        assert!(calculate_resulting_stock(2, 3, "SAIDA")
+            .unwrap_err()
+            .contains("insuficiente"));
+    }
 }

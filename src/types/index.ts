@@ -470,6 +470,59 @@ export interface PostgresRestoreResult {
   restored_at: string;
 }
 
+export interface SupportFileSummary {
+  file_name: string;
+  file_path: string;
+  size_bytes: number;
+  modified_at?: string | null;
+}
+
+export interface LocalHousekeepingStatus {
+  temp_files_removed: number;
+  log_files_removed: number;
+  support_files_removed: number;
+}
+
+export interface WindowsBundleReadiness {
+  product_name: string;
+  version: string;
+  identifier: string;
+  targets: string;
+  has_certificate_thumbprint: boolean;
+  has_timestamp_url: boolean;
+  icon_count: number;
+  blockers: string[];
+}
+
+export interface LocalSupportStatus {
+  product_name: string;
+  app_version: string;
+  app_identifier: string;
+  target_os: string;
+  build_profile: string;
+  log_directory: string;
+  support_directory: string;
+  temp_directory: string;
+  backup_directory: string;
+  capability_permissions: string[];
+  capability_review: string;
+  recent_log_files: SupportFileSummary[];
+  recent_support_files: SupportFileSummary[];
+  recent_temp_files: SupportFileSummary[];
+  schema_status?: DatabaseSchemaStatus | null;
+  schema_error?: string | null;
+  backup_tools_status?: PostgresBackupToolsStatus | null;
+  backup_tools_error?: string | null;
+  windows_bundle: WindowsBundleReadiness;
+  housekeeping: LocalHousekeepingStatus;
+}
+
+export interface LocalSupportBundleResult {
+  file_name: string;
+  file_path: string;
+  created_at: string;
+}
+
 // ─── Checklist padrão ───────────────────────────────────
 
 /**

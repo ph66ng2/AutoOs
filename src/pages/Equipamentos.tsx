@@ -527,6 +527,7 @@ export default function Equipamentos() {
         cliente_nome: nomeCliente,
         cliente_telefone: clienteVinculado.telefone || null,
         cliente_email: clienteVinculado.email || null,
+        atualizado_em: editando?.atualizado_em,
       };
       const imagensPayload: EquipamentoImagemInput[] = normalizarOrdemPorCategoria(imagensFormulario)
         .map(({ local_id, preview_url, ...imagem }) => imagem);
@@ -597,12 +598,16 @@ export default function Equipamentos() {
 
     setSalvando(true);
     try {
-      await finalizarVerificacao(selecionado, dados);
+      const resultado = await finalizarVerificacao(selecionado, dados);
+      if (!resultado.sucesso) {
+        throw new Error(resultado.erro || "Não foi possível finalizar a verificação.");
+      }
       setVerificacaoDialogOpen(false);
 
       await recarregar();
-    } catch (err) {
+    } catch (err: any) {
       console.error("Erro ao finalizar verificação:", err);
+      alert(err?.message || "Erro ao finalizar verificação.");
     } finally {
       setSalvando(false);
     }
@@ -624,10 +629,14 @@ export default function Equipamentos() {
 
     setSalvando(true);
     try {
-      await marcarComoPronto(eq);
+      const resultado = await marcarComoPronto(eq);
+      if (!resultado.sucesso) {
+        throw new Error(resultado.erro || "Não foi possível marcar o equipamento como pronto.");
+      }
       await recarregar();
-    } catch (err) {
+    } catch (err: any) {
       console.error("Erro ao marcar pronto:", err);
+      alert(err?.message || "Erro ao marcar equipamento como pronto.");
     } finally {
       setSalvando(false);
     }
@@ -653,9 +662,22 @@ export default function Equipamentos() {
 
     setSalvando(true);
     try {
-      await atualizarStatus(selecionado.id!, novoStatus, valorOrcamento || undefined, prazoAprovacao || undefined, valorFinal || undefined);
+      const resultado = await atualizarStatus(
+        selecionado.id!,
+        novoStatus,
+        valorOrcamento || undefined,
+        prazoAprovacao || undefined,
+        valorFinal || undefined,
+        selecionado.atualizado_em
+      );
+      if (!resultado.sucesso) {
+        throw new Error(resultado.erro || "Não foi possível alterar o status.");
+      }
       setStatusDialogOpen(false);
-    } catch (err) { console.error("Erro:", err); }
+    } catch (err: any) {
+      console.error("Erro:", err);
+      alert(err?.message || "Erro ao alterar status.");
+    }
     finally { setSalvando(false); }
   }
 
@@ -673,8 +695,16 @@ export default function Equipamentos() {
     }
 
     setSalvando(true);
-    try { await atualizarStatus(eq.id!, novoSt); }
-    catch (err) { console.error("Erro:", err); }
+    try {
+      const resultado = await atualizarStatus(eq.id!, novoSt, undefined, undefined, undefined, eq.atualizado_em);
+      if (!resultado.sucesso) {
+        throw new Error(resultado.erro || "Não foi possível aplicar a ação rápida.");
+      }
+    }
+    catch (err: any) {
+      console.error("Erro:", err);
+      alert(err?.message || "Erro ao aplicar a ação rápida.");
+    }
     finally { setSalvando(false); }
   }
 

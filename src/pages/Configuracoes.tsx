@@ -20,7 +20,6 @@
  * ╚══════════════════════════════════════════════════════════════╝
  */
 import { useEffect, useState } from "react";
-import { open } from "@tauri-apps/plugin-shell";
 import { useForm, Controller } from "react-hook-form";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -44,6 +43,8 @@ import {
   SENSITIVE_PERMISSIONS,
   SENSITIVE_PERMISSION_LABELS,
   type DatabaseSchemaStatus,
+  type LocalSupportBundleResult,
+  type LocalSupportStatus,
   type PostgresBackupToolsStatus,
   type SecurityAuditEvent,
   type SecurityProfile,
@@ -113,6 +114,11 @@ export default function Configuracoes() {
   const [restoreBusy, setRestoreBusy] = useState(false);
   const [restoreError, setRestoreError] = useState<string | null>(null);
   const [restoreMessage, setRestoreMessage] = useState<string | null>(null);
+  const [supportStatus, setSupportStatus] = useState<LocalSupportStatus | null>(null);
+  const [supportLoading, setSupportLoading] = useState(false);
+  const [supportBusy, setSupportBusy] = useState(false);
+  const [supportError, setSupportError] = useState<string | null>(null);
+  const [supportMessage, setSupportMessage] = useState<string | null>(null);
 
   const permissionOptions = Object.values(SENSITIVE_PERMISSIONS);
   const canConfigureSmtp = hasPermission(SENSITIVE_PERMISSIONS.CONFIG_SMTP);
@@ -260,6 +266,26 @@ export default function Configuracoes() {
     }
   }
 
+  async function loadSupportStatus() {
+    if (!canManageProfiles) {
+      setSupportStatus(null);
+      setSupportError(null);
+      return;
+    }
+
+    setSupportLoading(true);
+    setSupportError(null);
+    try {
+      const nextStatus = await db.obterDiagnosticoSuporteLocal();
+      setSupportStatus(nextStatus);
+    } catch (error: any) {
+      setSupportStatus(null);
+      setSupportError(error?.message || error?.toString() || "Falha ao montar o diagnóstico local de suporte.");
+    } finally {
+      setSupportLoading(false);
+    }
+  }
+
   useEffect(() => {
     async function loadConfig() {
       if (!canConfigureSmtp) {
@@ -365,6 +391,10 @@ export default function Configuracoes() {
     void loadBackupToolsStatus();
   }, [canManageProfiles, accessStatus?.active_profile_id]);
 
+  useEffect(() => {
+    void loadSupportStatus();
+  }, [canManageProfiles, accessStatus?.active_profile_id]);
+
   async function onSubmit(values: SmtpFormValues) {
     setSaving(true);
     setStatus(null);
@@ -418,22 +448,7 @@ export default function Configuracoes() {
     await loadProfilesCatalog();
     await loadSchemaStatus();
     await loadBackupToolsStatus();
-  }
-
-  async function abrirPastaBackups() {
-    setBackupError(null);
-
-    try {
-      let nextStatus = backupToolsStatus;
-      if (!nextStatus) {
-        nextStatus = await db.obterStatusFerramentasBackupPostgres();
-        setBackupToolsStatus(nextStatus);
-      }
-
-      await open(nextStatus.backup_directory);
-    } catch (error: any) {
-      setBackupError(error?.message || error?.toString() || "Falha ao abrir a pasta de backup.");
-    }
+    await loadSupportStatus();
   }
 
   async function gerarBackupBanco() {
@@ -679,6 +694,22 @@ export default function Configuracoes() {
       setSecurityMessage("CSV da auditoria exportado para a pasta temporária do app.");
     } catch (error: any) {
       setSecurityMessage(error?.message || error?.toString() || "Falha ao exportar a auditoria.");
+    }
+  }
+
+  async function exportarPacoteSuporte() {
+    setSupportBusy(true);
+    setSupportError(null);
+    setSupportMessage(null);
+    try {
+      const result: LocalSupportBundleResult = await db.exportarPacoteSuporteLocal();
+      setSupportMessage(`Pacote de suporte exportado com sucesso em ${result.file_path}.`);
+      await loadSupportStatus();
+      await loadAuditEvents();
+    } catch (error: any) {
+      setSupportError(error?.message || error?.toString() || "Falha ao exportar o pacote de suporte local.");
+    } finally {
+      setSupportBusy(false);
     }
   }
 
@@ -973,9 +1004,6 @@ export default function Configuracoes() {
                     <Button type="button" variant="outline" onClick={() => void loadBackupToolsStatus()} disabled={backupLoading || backupBusy || restoreBusy}>
                       {backupLoading ? "Validando..." : "Validar ferramentas"}
                     </Button>
-                    <Button type="button" variant="outline" onClick={() => void abrirPastaBackups()} disabled={backupBusy || restoreBusy}>
-                      Abrir pasta de backup
-                    </Button>
                     <Button
                       type="button"
                       onClick={() => void gerarBackupBanco()}
@@ -1068,6 +1096,173 @@ export default function Configuracoes() {
               )}
             </CardContent>
           </Card>
+
+          {canManageProfiles && (
+            <Card>
+              <CardHeader>
+                <CardTitle>Suporte local e observabilidade</CardTitle>
+                <CardDescription>
+                  Snapshot operacional mínimo para suporte assistido: diretórios locais, logs recentes, housekeeping e prontidão do bundle Windows.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                {supportLoading && !supportStatus ? (
+                  <div className="flex items-center justify-center h-24">
+                    <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600" />
+                  </div>
+                ) : supportStatus ? (
+                  <>
+                    <div className="grid gap-4 md:grid-cols-4">
+                      <div className="rounded-lg border bg-muted/40 p-4 text-sm">
+                        <div className="text-muted-foreground">App</div>
+                        <div className="font-medium">{supportStatus.product_name}</div>
+                        <div className="text-xs text-muted-foreground">
+                          v{supportStatus.app_version} • {supportStatus.build_profile}
+                        </div>
+                      </div>
+                      <div className="rounded-lg border bg-muted/40 p-4 text-sm">
+                        <div className="text-muted-foreground">Logs locais</div>
+                        <div className="font-medium">{supportStatus.recent_log_files.length} arquivo(s)</div>
+                        <div className="text-xs text-muted-foreground break-all">{supportStatus.log_directory}</div>
+                      </div>
+                      <div className="rounded-lg border bg-muted/40 p-4 text-sm">
+                        <div className="text-muted-foreground">Pacotes de suporte</div>
+                        <div className="font-medium">{supportStatus.recent_support_files.length} arquivo(s)</div>
+                        <div className="text-xs text-muted-foreground break-all">{supportStatus.support_directory}</div>
+                      </div>
+                      <div className="rounded-lg border bg-muted/40 p-4 text-sm">
+                        <div className="text-muted-foreground">Housekeeping</div>
+                        <div className="font-medium">
+                          {supportStatus.housekeeping.temp_files_removed
+                            + supportStatus.housekeeping.log_files_removed
+                            + supportStatus.housekeeping.support_files_removed} remoções nesta rodada
+                        </div>
+                        <div className="text-xs text-muted-foreground">
+                          temp {supportStatus.housekeeping.temp_files_removed} • logs {supportStatus.housekeeping.log_files_removed} • suporte {supportStatus.housekeeping.support_files_removed}
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="grid gap-4 md:grid-cols-2">
+                      <div className="rounded-lg border p-4 text-sm space-y-2">
+                        <div className="font-medium">Diretórios operacionais</div>
+                        <div>
+                          <div className="text-muted-foreground">Logs</div>
+                          <div className="break-all">{supportStatus.log_directory}</div>
+                        </div>
+                        <div>
+                          <div className="text-muted-foreground">Suporte</div>
+                          <div className="break-all">{supportStatus.support_directory}</div>
+                        </div>
+                        <div>
+                          <div className="text-muted-foreground">Temporários</div>
+                          <div className="break-all">{supportStatus.temp_directory}</div>
+                        </div>
+                        <div>
+                          <div className="text-muted-foreground">Backups</div>
+                          <div className="break-all">{supportStatus.backup_directory}</div>
+                        </div>
+                      </div>
+
+                      <div className="rounded-lg border p-4 text-sm space-y-2">
+                        <div className="font-medium">Capability e superfície local</div>
+                        <div className="text-muted-foreground">{supportStatus.capability_review}</div>
+                        <div>
+                          <div className="text-muted-foreground">Permissões ativas</div>
+                          <div>{supportStatus.capability_permissions.join(", ")}</div>
+                        </div>
+                        {supportStatus.backup_tools_error ? (
+                          <div className="text-amber-700">{supportStatus.backup_tools_error}</div>
+                        ) : supportStatus.backup_tools_status ? (
+                          <div className="text-muted-foreground">
+                            pg_dump {supportStatus.backup_tools_status.pg_dump_available ? "ok" : "ausente"} •
+                            pg_restore {supportStatus.backup_tools_status.pg_restore_available ? " ok" : " ausente"} •
+                            psql {supportStatus.backup_tools_status.psql_available ? " ok" : " ausente"}
+                          </div>
+                        ) : null}
+                      </div>
+                    </div>
+
+                    <div className="rounded-lg border p-4 text-sm space-y-3">
+                      <div className="font-medium">Prontidão do bundle Windows</div>
+                      <div className="text-muted-foreground">
+                        {supportStatus.windows_bundle.product_name} • {supportStatus.windows_bundle.identifier} • targets {supportStatus.windows_bundle.targets}
+                      </div>
+                      <div className="text-muted-foreground">
+                        Ícones configurados: {supportStatus.windows_bundle.icon_count} •
+                        thumbprint {supportStatus.windows_bundle.has_certificate_thumbprint ? " configurado" : " pendente"} •
+                        timestamp {supportStatus.windows_bundle.has_timestamp_url ? " configurado" : " pendente"}
+                      </div>
+                      <div className="space-y-2">
+                        {supportStatus.windows_bundle.blockers.length === 0 ? (
+                          <div className="text-emerald-700">Nenhum bloqueio imediato de distribuição Windows registrado no snapshot.</div>
+                        ) : supportStatus.windows_bundle.blockers.map((blocker) => (
+                          <div key={blocker} className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-amber-900">
+                            {blocker}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+
+                    <div className="grid gap-4 md:grid-cols-3">
+                      <div className="rounded-lg border p-4 text-sm space-y-2">
+                        <div className="font-medium">Logs recentes</div>
+                        {supportStatus.recent_log_files.length === 0 ? (
+                          <div className="text-muted-foreground">Nenhum log local encontrado ainda.</div>
+                        ) : supportStatus.recent_log_files.map((file) => (
+                          <div key={file.file_path} className="text-muted-foreground">
+                            <div className="font-medium text-foreground">{file.file_name}</div>
+                            <div>{file.modified_at ? new Date(file.modified_at).toLocaleString("pt-BR") : "sem data"}</div>
+                          </div>
+                        ))}
+                      </div>
+
+                      <div className="rounded-lg border p-4 text-sm space-y-2">
+                        <div className="font-medium">Pacotes recentes</div>
+                        {supportStatus.recent_support_files.length === 0 ? (
+                          <div className="text-muted-foreground">Nenhum pacote de suporte exportado ainda.</div>
+                        ) : supportStatus.recent_support_files.map((file) => (
+                          <div key={file.file_path} className="text-muted-foreground">
+                            <div className="font-medium text-foreground">{file.file_name}</div>
+                            <div>{file.modified_at ? new Date(file.modified_at).toLocaleString("pt-BR") : "sem data"}</div>
+                          </div>
+                        ))}
+                      </div>
+
+                      <div className="rounded-lg border p-4 text-sm space-y-2">
+                        <div className="font-medium">Checklist mínimo em incidente</div>
+                        <div className="text-muted-foreground">1. Confirmar versão/build do app e perfil ativo.</div>
+                        <div className="text-muted-foreground">2. Exportar pacote local de suporte e anexar ao chamado.</div>
+                        <div className="text-muted-foreground">3. Informar banco/schema, arquivo afetado e passos de reprodução.</div>
+                        <div className="text-muted-foreground">4. Verificar backups disponíveis antes de qualquer ação destrutiva.</div>
+                      </div>
+                    </div>
+                  </>
+                ) : null}
+
+                {supportError && (
+                  <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
+                    {supportError}
+                  </div>
+                )}
+
+                {supportMessage && (
+                  <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-900">
+                    {supportMessage}
+                  </div>
+                )}
+
+                <div className="flex flex-wrap justify-end gap-2">
+                  <Button type="button" variant="outline" onClick={() => void loadSupportStatus()} disabled={supportLoading || supportBusy}>
+                    {supportLoading ? "Atualizando..." : "Atualizar diagnóstico"}
+                  </Button>
+                  <Button type="button" onClick={() => void exportarPacoteSuporte()} disabled={supportBusy || supportLoading}>
+                    {supportBusy ? "Exportando..." : "Exportar pacote de suporte"}
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+          )}
 
           <Card>
             <CardHeader>

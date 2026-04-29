@@ -7,19 +7,26 @@
 
 use crate::commands::auth::{record_security_event, require_permission, PERMISSION_MANAGE_PROFILES};
 use crate::db::{get_pool, known_migrations, run_pending_migrations};
-use chrono::Utc;
-use serde::Serialize;
+use chrono::{DateTime, Utc};
+use serde::{Deserialize, Serialize};
 use sqlx::FromRow;
 use std::collections::BTreeMap;
 use std::env;
 use std::fs;
 use std::path::{Component, Path, PathBuf};
 use std::process::Command;
+use std::time::{Duration, SystemTime};
 use tracing::{debug, error, info, instrument};
 use url::Url;
 
 const AUTOOS_TEMP_DIR: &str = "autoos";
 const AUTOOS_BACKUP_DIR: &str = "AutoOS/backups";
+const AUTOOS_LOCAL_DATA_DIR: &str = "AutoOS";
+const AUTOOS_LOG_DIR: &str = "logs";
+const AUTOOS_SUPPORT_DIR: &str = "support";
+const LOCAL_TEMP_RETENTION_DAYS: u64 = 7;
+const LOCAL_LOG_RETENTION_DAYS: u64 = 14;
+const LOCAL_SUPPORT_RETENTION_DAYS: u64 = 30;
 
 #[derive(Debug, Serialize, FromRow)]
 struct DatabaseIdentityRow {
@@ -86,6 +93,268 @@ struct ParsedDatabaseUrl {
     database_name: String,
     host: Option<String>,
     port: Option<u16>,
+}
+
+#[derive(Debug, Serialize, Clone)]
+pub struct SupportFileSummary {
+    pub file_name: String,
+    pub file_path: String,
+    pub size_bytes: u64,
+    pub modified_at: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct LocalHousekeepingStatus {
+    pub temp_files_removed: usize,
+    pub log_files_removed: usize,
+    pub support_files_removed: usize,
+}
+
+#[derive(Debug, Serialize)]
+pub struct WindowsBundleReadiness {
+    pub product_name: String,
+    pub version: String,
+    pub identifier: String,
+    pub targets: String,
+    pub has_certificate_thumbprint: bool,
+    pub has_timestamp_url: bool,
+    pub icon_count: usize,
+    pub blockers: Vec<String>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct LocalSupportStatus {
+    pub product_name: String,
+    pub app_version: String,
+    pub app_identifier: String,
+    pub target_os: String,
+    pub build_profile: String,
+    pub log_directory: String,
+    pub support_directory: String,
+    pub temp_directory: String,
+    pub backup_directory: String,
+    pub capability_permissions: Vec<String>,
+    pub capability_review: String,
+    pub recent_log_files: Vec<SupportFileSummary>,
+    pub recent_support_files: Vec<SupportFileSummary>,
+    pub recent_temp_files: Vec<SupportFileSummary>,
+    pub schema_status: Option<DatabaseSchemaStatus>,
+    pub schema_error: Option<String>,
+    pub backup_tools_status: Option<PostgresBackupToolsStatus>,
+    pub backup_tools_error: Option<String>,
+    pub windows_bundle: WindowsBundleReadiness,
+    pub housekeeping: LocalHousekeepingStatus,
+}
+
+#[derive(Debug, Serialize)]
+pub struct LocalSupportBundleResult {
+    pub file_name: String,
+    pub file_path: String,
+    pub created_at: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct TauriConfigSnapshot {
+    #[serde(rename = "productName")]
+    product_name: String,
+    version: String,
+    identifier: String,
+    bundle: TauriBundleSnapshot,
+}
+
+#[derive(Debug, Deserialize)]
+struct TauriBundleSnapshot {
+    active: bool,
+    targets: serde_json::Value,
+    icon: Option<Vec<String>>,
+    windows: Option<TauriBundleWindowsSnapshot>,
+}
+
+#[derive(Debug, Deserialize)]
+struct TauriBundleWindowsSnapshot {
+    #[serde(rename = "certificateThumbprint")]
+    certificate_thumbprint: Option<String>,
+    #[serde(rename = "timestampUrl")]
+    timestamp_url: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct CapabilitySnapshot {
+    permissions: Vec<CapabilityPermissionEntry>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(untagged)]
+enum CapabilityPermissionEntry {
+    Simple(String),
+    Scoped { identifier: String },
+}
+
+fn local_app_data_dir() -> Result<PathBuf, String> {
+    let base_dir = if cfg!(target_os = "windows") {
+        env::var("LOCALAPPDATA")
+            .map(PathBuf::from)
+            .or_else(|_| env::var("APPDATA").map(PathBuf::from))
+            .or_else(|_| env::current_dir().map(|dir| dir.join(".autoos")))
+            .map_err(|e| format!("Não foi possível localizar a pasta local de dados do app: {}", e))?
+    } else if let Ok(home) = env::var("HOME") {
+        PathBuf::from(home).join(".local").join("share")
+    } else {
+        env::current_dir().map_err(|e| format!("Não foi possível localizar a pasta local de dados do app: {}", e))?
+    };
+
+    let app_dir = base_dir.join(AUTOOS_LOCAL_DATA_DIR);
+    fs::create_dir_all(&app_dir).map_err(|e| format!("Erro ao preparar diretório local do app: {}", e))?;
+    Ok(app_dir)
+}
+
+pub(crate) fn autoos_logs_dir() -> Result<PathBuf, String> {
+    let dir = local_app_data_dir()?.join(AUTOOS_LOG_DIR);
+    fs::create_dir_all(&dir).map_err(|e| format!("Erro ao preparar diretório de logs: {}", e))?;
+    Ok(dir)
+}
+
+fn autoos_support_dir() -> Result<PathBuf, String> {
+    let dir = local_app_data_dir()?.join(AUTOOS_SUPPORT_DIR);
+    fs::create_dir_all(&dir).map_err(|e| format!("Erro ao preparar diretório de suporte: {}", e))?;
+    Ok(dir)
+}
+
+fn list_recent_files(directory: &Path, limit: usize) -> Result<Vec<SupportFileSummary>, String> {
+    if !directory.exists() {
+        return Ok(Vec::new());
+    }
+
+    let mut entries = Vec::new();
+    for entry in fs::read_dir(directory).map_err(|e| format!("Erro ao listar diretório {}: {}", directory.display(), e))? {
+        let entry = entry.map_err(|e| format!("Erro ao ler entrada de {}: {}", directory.display(), e))?;
+        let metadata = entry
+            .metadata()
+            .map_err(|e| format!("Erro ao ler metadados de {}: {}", entry.path().display(), e))?;
+        if !metadata.is_file() {
+            continue;
+        }
+
+        let modified_at = metadata
+            .modified()
+            .ok()
+            .map(|value| DateTime::<Utc>::from(value).to_rfc3339());
+        entries.push(SupportFileSummary {
+            file_name: entry.file_name().to_string_lossy().to_string(),
+            file_path: entry.path().to_string_lossy().to_string(),
+            size_bytes: metadata.len(),
+            modified_at,
+        });
+    }
+
+    entries.sort_by(|left, right| right.modified_at.cmp(&left.modified_at));
+    entries.truncate(limit);
+    Ok(entries)
+}
+
+fn prune_old_files(directory: &Path, max_age_days: u64) -> Result<usize, String> {
+    if !directory.exists() {
+        return Ok(0);
+    }
+
+    let now = SystemTime::now();
+    let max_age = Duration::from_secs(max_age_days * 24 * 60 * 60);
+    let mut removed = 0;
+
+    for entry in fs::read_dir(directory).map_err(|e| format!("Erro ao listar diretório {}: {}", directory.display(), e))? {
+        let entry = entry.map_err(|e| format!("Erro ao ler entrada de {}: {}", directory.display(), e))?;
+        let metadata = entry
+            .metadata()
+            .map_err(|e| format!("Erro ao ler metadados de {}: {}", entry.path().display(), e))?;
+        if !metadata.is_file() {
+            continue;
+        }
+
+        if let Ok(modified_at) = metadata.modified() {
+            if now.duration_since(modified_at).unwrap_or_default() > max_age {
+                fs::remove_file(entry.path())
+                    .map_err(|e| format!("Erro ao remover artefato antigo {}: {}", entry.path().display(), e))?;
+                removed += 1;
+            }
+        }
+    }
+
+    Ok(removed)
+}
+
+pub(crate) fn run_local_housekeeping() -> Result<LocalHousekeepingStatus, String> {
+    let temp_files_removed = prune_old_files(&autoos_temp_dir()?, LOCAL_TEMP_RETENTION_DAYS)?;
+    let log_files_removed = prune_old_files(&autoos_logs_dir()?, LOCAL_LOG_RETENTION_DAYS)?;
+    let support_files_removed = prune_old_files(&autoos_support_dir()?, LOCAL_SUPPORT_RETENTION_DAYS)?;
+
+    Ok(LocalHousekeepingStatus {
+        temp_files_removed,
+        log_files_removed,
+        support_files_removed,
+    })
+}
+
+fn load_tauri_config_snapshot() -> Result<TauriConfigSnapshot, String> {
+    serde_json::from_str(include_str!("../../tauri.conf.json"))
+        .map_err(|e| format!("Falha ao interpretar tauri.conf.json: {}", e))
+}
+
+fn load_capability_permissions() -> Result<Vec<String>, String> {
+    let capability: CapabilitySnapshot = serde_json::from_str(include_str!("../../capabilities/default.json"))
+        .map_err(|e| format!("Falha ao interpretar capability principal: {}", e))?;
+
+    Ok(capability
+        .permissions
+        .into_iter()
+        .map(|permission| match permission {
+            CapabilityPermissionEntry::Simple(value) => value,
+            CapabilityPermissionEntry::Scoped { identifier } => identifier,
+        })
+        .collect())
+}
+
+fn build_windows_bundle_readiness(config: &TauriConfigSnapshot) -> WindowsBundleReadiness {
+    let windows = config.bundle.windows.as_ref();
+    let has_certificate_thumbprint = windows
+        .and_then(|value| value.certificate_thumbprint.as_deref())
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .is_some();
+    let has_timestamp_url = windows
+        .and_then(|value| value.timestamp_url.as_deref())
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .is_some();
+
+    let mut blockers = Vec::new();
+    if !config.bundle.active {
+        blockers.push("Empacotamento Tauri está desativado.".to_string());
+    }
+    if !has_certificate_thumbprint {
+        blockers.push("Assinatura Windows pendente: certificateThumbprint não configurado em tauri.conf.json.".to_string());
+    }
+    if !has_timestamp_url {
+        blockers.push("Timestamp Authenticode pendente: timestampUrl não configurado em tauri.conf.json.".to_string());
+    }
+    if config.version == "0.0.1" {
+        blockers.push("Versionamento de distribuição ainda parece placeholder (0.0.1).".to_string());
+    }
+
+    WindowsBundleReadiness {
+        product_name: config.product_name.clone(),
+        version: config.version.clone(),
+        identifier: config.identifier.clone(),
+        targets: config
+            .bundle
+            .targets
+            .as_str()
+            .map(|value| value.to_string())
+            .unwrap_or_else(|| config.bundle.targets.to_string()),
+        has_certificate_thumbprint,
+        has_timestamp_url,
+        icon_count: config.bundle.icon.as_ref().map(|icons| icons.len()).unwrap_or_default(),
+        blockers,
+    }
 }
 
 fn autoos_temp_dir() -> Result<PathBuf, String> {
@@ -261,7 +530,10 @@ pub async fn salvar_arquivo_temp(filename: String, bytes: Vec<u8>) -> Result<Str
 #[instrument(skip_all)]
 pub async fn obter_status_ferramentas_backup_postgres() -> Result<PostgresBackupToolsStatus, String> {
     require_permission(PERMISSION_MANAGE_PROFILES)?;
+    build_backup_tools_status().await
+}
 
+async fn build_backup_tools_status() -> Result<PostgresBackupToolsStatus, String> {
     let database_url = current_database_url()?;
     let parsed = parse_database_url(&database_url)?;
     let backup_directory = default_backup_directory()?;
@@ -500,4 +772,93 @@ pub async fn obter_status_schema_banco() -> Result<DatabaseSchemaStatus, String>
         pending_count,
         migrations,
     })
+}
+
+pub(crate) async fn collect_local_support_status() -> Result<LocalSupportStatus, String> {
+    let config = load_tauri_config_snapshot()?;
+    let housekeeping = run_local_housekeeping()?;
+    let log_directory = autoos_logs_dir()?;
+    let support_directory = autoos_support_dir()?;
+    let temp_directory = autoos_temp_dir()?;
+    let backup_directory = default_backup_directory()?;
+    let capability_permissions = load_capability_permissions()?;
+    let capability_review = if capability_permissions.len() == 1 && capability_permissions[0] == "core:default" {
+        "Capability principal reduzida ao baseline `core:default`; nenhuma permissão extra de shell permanece ativa.".to_string()
+    } else {
+        format!("Capability principal expõe permissões adicionais: {}", capability_permissions.join(", "))
+    };
+
+    let schema_snapshot = obter_status_schema_banco().await;
+    let schema_error = schema_snapshot.as_ref().err().cloned();
+    let schema_status = schema_snapshot.ok();
+
+    let backup_snapshot = build_backup_tools_status().await;
+    let backup_tools_error = backup_snapshot.as_ref().err().cloned();
+    let backup_tools_status = backup_snapshot.ok();
+
+    Ok(LocalSupportStatus {
+        product_name: config.product_name.clone(),
+        app_version: env!("CARGO_PKG_VERSION").to_string(),
+        app_identifier: config.identifier.clone(),
+        target_os: env::consts::OS.to_string(),
+        build_profile: if cfg!(debug_assertions) { "debug" } else { "release" }.to_string(),
+        log_directory: log_directory.to_string_lossy().to_string(),
+        support_directory: support_directory.to_string_lossy().to_string(),
+        temp_directory: temp_directory.to_string_lossy().to_string(),
+        backup_directory: backup_directory.to_string_lossy().to_string(),
+        capability_permissions,
+        capability_review,
+        recent_log_files: list_recent_files(&log_directory, 5)?,
+        recent_support_files: list_recent_files(&support_directory, 5)?,
+        recent_temp_files: list_recent_files(&temp_directory, 5)?,
+        schema_status,
+        schema_error,
+        backup_tools_status,
+        backup_tools_error,
+        windows_bundle: build_windows_bundle_readiness(&config),
+        housekeeping,
+    })
+}
+
+pub(crate) async fn export_local_support_bundle() -> Result<LocalSupportBundleResult, String> {
+    let support_status = collect_local_support_status().await?;
+    let support_directory = autoos_support_dir()?;
+    let created_at = Utc::now();
+    let file_name = format!("autoos-support-{}.json", created_at.format("%Y%m%d-%H%M%S"));
+    let file_path = support_directory.join(&file_name);
+    let payload = serde_json::to_vec_pretty(&support_status)
+        .map_err(|e| format!("Falha ao serializar o pacote de suporte local: {}", e))?;
+
+    fs::write(&file_path, payload).map_err(|e| {
+        error!("Erro ao salvar pacote de suporte local: {}", e);
+        format!("Erro ao salvar pacote de suporte local: {}", e)
+    })?;
+
+    Ok(LocalSupportBundleResult {
+        file_name,
+        file_path: file_path.to_string_lossy().to_string(),
+        created_at: created_at.to_rfc3339(),
+    })
+}
+
+#[tauri::command]
+#[instrument(skip_all)]
+pub async fn obter_diagnostico_suporte_local() -> Result<LocalSupportStatus, String> {
+    require_permission(PERMISSION_MANAGE_PROFILES)?;
+    collect_local_support_status().await
+}
+
+#[tauri::command]
+#[instrument(skip_all)]
+pub async fn exportar_pacote_suporte_local() -> Result<LocalSupportBundleResult, String> {
+    let actor = require_permission(PERMISSION_MANAGE_PROFILES)?;
+    let result = export_local_support_bundle().await?;
+    record_security_event(
+        "SUPPORT_BUNDLE_EXPORTED",
+        Some(&actor),
+        format!("arquivo={}", result.file_path),
+        true,
+    )
+    .await;
+    Ok(result)
 }

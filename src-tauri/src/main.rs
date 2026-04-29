@@ -12,8 +12,7 @@
 //! ║  - db.rs (init_database, AppState)                           ║
 //! ║  - commands/ (módulos: equipamentos, clientes, produtos,     ║
 //! ║               verificacoes, comunicacoes, smtp, util)        ║
-//! ║  - tauri-plugin-shell (abrir URLs no navegador — WhatsApp)  ║
-//! ║  - tracing (logging estruturado)                             ║
+//! ║  - tracing (logging estruturado + arquivo local)             ║
 //! ║                                                              ║
 //! ║  FLUXO DE INICIALIZAÇÃO:                                     ║
 //! ║  1. Inicializa tracing para logging estruturado              ║
@@ -27,29 +26,65 @@
 mod db;
 mod commands;
 
+use std::sync::OnceLock;
 use tracing::{info, Level};
-use tracing_subscriber::FmtSubscriber;
+use tracing_appender::non_blocking::WorkerGuard;
+use tracing_subscriber::{fmt, prelude::*, EnvFilter};
 
-fn main() {
+static LOG_GUARD: OnceLock<WorkerGuard> = OnceLock::new();
+
+fn init_tracing() -> Result<(), String> {
     let max_level = if cfg!(debug_assertions) {
         Level::DEBUG
     } else {
         Level::INFO
     };
 
-    // Inicializar tracing para logging estruturado
-    let subscriber = FmtSubscriber::builder()
-        .with_max_level(max_level)
+    let log_directory = commands::util::autoos_logs_dir()?;
+    let file_appender = tracing_appender::rolling::daily(&log_directory, "autoos.log");
+    let (file_writer, guard) = tracing_appender::non_blocking(file_appender);
+    let _ = LOG_GUARD.set(guard);
+
+    let env_filter = EnvFilter::builder()
+        .with_default_directive(max_level.into())
+        .from_env_lossy();
+
+    let stdout_layer = fmt::layer()
+        .with_target(true)
+        .with_thread_ids(true)
+        .with_file(true)
+        .with_line_number(true);
+
+    let file_layer = fmt::layer()
+        .with_ansi(false)
         .with_target(true)
         .with_thread_ids(true)
         .with_file(true)
         .with_line_number(true)
-        .finish();
+        .with_writer(file_writer);
+
+    let subscriber = tracing_subscriber::registry()
+        .with(env_filter)
+        .with(stdout_layer)
+        .with(file_layer);
 
     tracing::subscriber::set_global_default(subscriber)
-        .expect("Falha ao configurar tracing");
+        .map_err(|e| format!("Falha ao configurar tracing: {}", e))
+}
+
+fn main() {
+    init_tracing().expect("Falha ao configurar tracing");
 
     info!("AutoOS iniciando...");
+    match commands::util::run_local_housekeeping() {
+        Ok(status) => info!(
+            "Housekeeping local concluído: temp_removidos={}, logs_removidos={}, suporte_removidos={}",
+            status.temp_files_removed,
+            status.log_files_removed,
+            status.support_files_removed
+        ),
+        Err(error) => info!("Housekeeping local não pôde ser concluído: {}", error),
+    }
 
     tauri::Builder::default()
         .setup(|_app| {
@@ -62,7 +97,6 @@ fn main() {
 
             Ok(())
         })
-        .plugin(tauri_plugin_shell::init())
         .invoke_handler(tauri::generate_handler![
             // Auth sensível
             commands::auth::get_sensitive_access_status,
@@ -84,6 +118,8 @@ fn main() {
             commands::util::obter_status_ferramentas_backup_postgres,
             commands::util::gerar_backup_postgres,
             commands::util::restaurar_backup_postgres,
+            commands::util::obter_diagnostico_suporte_local,
+            commands::util::exportar_pacote_suporte_local,
             // Equipamentos
             commands::equipamentos::listar_equipamentos,
             commands::equipamentos::buscar_equipamento,

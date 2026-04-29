@@ -91,6 +91,21 @@ fn status_change_requires_sensitive_access(
         )
 }
 
+fn required_concurrency_token(token: Option<&str>, entity_label: &str) -> Result<String, String> {
+    token
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(|value| value.to_string())
+        .ok_or_else(|| format!("Token de concorrência de {} é obrigatório para atualizar o registro.", entity_label))
+}
+
+fn concurrency_conflict_message(entity_label: &str) -> String {
+    format!(
+        "Conflito de concorrência: {} foi alterado por outro técnico. Recarregue os dados antes de tentar novamente.",
+        entity_label
+    )
+}
+
     fn equipment_has_sensitive_financial_input(input: &EquipamentoInput) -> bool {
         input.preco_compra.is_some()
             || input.preco_venda.is_some()
@@ -291,6 +306,7 @@ pub async fn atualizar_equipamento(id: i32, input: EquipamentoInput) -> Result<E
     debug!("Atualizando equipamento {}", id);
     let financial_actor = require_financial_actor_for_equipment_write(&input)?;
     let pool = get_pool().await.map_err(|e| e.to_string())?;
+    let concurrency_token = required_concurrency_token(input.atualizado_em.as_deref(), "equipamento")?;
     let serial_number = required_text(&input.serial_number, "Número de série")?;
     let defeito_relatado = required_text(input.defeito_relatado.as_deref().unwrap_or(""), "Defeito")?;
     let marca = required_text(&input.marca, "Marca")?;
@@ -304,7 +320,7 @@ pub async fn atualizar_equipamento(id: i32, input: EquipamentoInput) -> Result<E
     validate_non_negative_f64(input.preco_venda, "Preço de venda")?;
     validate_non_negative_f64(input.valor_orcamento, "Valor do orçamento")?;
 
-    sqlx::query(
+    let updated_rows = sqlx::query(
         r#"
         UPDATE equipamentos SET
             serial_number = $1, patrimonio = $2, marca = $3, modelo = $4, tipo = $5, status = $6,
@@ -313,7 +329,7 @@ pub async fn atualizar_equipamento(id: i32, input: EquipamentoInput) -> Result<E
             proprietario = $14, preco_compra = $15, preco_venda = $16, observacoes = $17,
             cliente_id = $18, cliente_nome = $19, cliente_telefone = $20, cliente_email = $21,
             prazo_aprovacao = $22, valor_orcamento = $23, atualizado_em = NOW()
-        WHERE id = $24
+        WHERE id = $24 AND atualizado_em::TEXT = $25
         "#,
     )
     .bind(serial_number)
@@ -340,12 +356,18 @@ pub async fn atualizar_equipamento(id: i32, input: EquipamentoInput) -> Result<E
     .bind(optional_text(input.prazo_aprovacao.as_deref()))
     .bind(input.valor_orcamento)
     .bind(id)
+    .bind(concurrency_token)
     .execute(&pool)
     .await
     .map_err(|e| {
         error!("Erro ao atualizar equipamento {}: {}", id, e);
         e.to_string()
-    })?;
+    })?
+    .rows_affected();
+
+    if updated_rows == 0 {
+        return Err(concurrency_conflict_message("o equipamento"));
+    }
 
     if let Some(actor) = financial_actor.as_ref() {
         record_security_event(
@@ -404,9 +426,11 @@ pub async fn atualizar_status_equipamento(
     valor_orcamento: Option<f64>,
     prazo_aprovacao: Option<String>,
     valor_final: Option<f64>,
+    expected_updated_em: Option<String>,
 ) -> Result<EquipamentoRow, String> {
     validate_non_negative_f64(valor_orcamento, "Valor do orçamento")?;
     validate_non_negative_f64(valor_final, "Valor final")?;
+    let concurrency_token = required_concurrency_token(expected_updated_em.as_deref(), "equipamento")?;
     let normalized_status = normalize_status_key(&novo_status);
     let prazo_aprovacao_value = prazo_aprovacao
         .as_deref()
@@ -439,25 +463,31 @@ pub async fn atualizar_status_equipamento(
 
     let query = if !date_field.is_empty() {
         format!(
-            "UPDATE equipamentos SET status = $1, {} = NOW(), valor_orcamento = COALESCE($2, valor_orcamento), prazo_aprovacao = COALESCE($3, prazo_aprovacao), valor_final = COALESCE($4, valor_final), atualizado_em = NOW() WHERE id = $5",
+            "UPDATE equipamentos SET status = $1, {} = NOW(), valor_orcamento = COALESCE($2, valor_orcamento), prazo_aprovacao = COALESCE($3, prazo_aprovacao), valor_final = COALESCE($4, valor_final), atualizado_em = NOW() WHERE id = $5 AND atualizado_em::TEXT = $6",
             date_field
         )
     } else {
-        "UPDATE equipamentos SET status = $1, valor_orcamento = COALESCE($2, valor_orcamento), prazo_aprovacao = COALESCE($3, prazo_aprovacao), valor_final = COALESCE($4, valor_final), atualizado_em = NOW() WHERE id = $5".to_string()
+        "UPDATE equipamentos SET status = $1, valor_orcamento = COALESCE($2, valor_orcamento), prazo_aprovacao = COALESCE($3, prazo_aprovacao), valor_final = COALESCE($4, valor_final), atualizado_em = NOW() WHERE id = $5 AND atualizado_em::TEXT = $6".to_string()
     };
 
-    sqlx::query(&query)
+    let updated_rows = sqlx::query(&query)
         .bind(&normalized_status)
         .bind(valor_orcamento)
         .bind(prazo_aprovacao_value.clone())
         .bind(valor_final)
         .bind(id)
+        .bind(concurrency_token)
         .execute(&pool)
         .await
         .map_err(|e| {
             error!("Erro ao atualizar status do equipamento {}: {}", id, e);
             e.to_string()
-        })?;
+        })?
+        .rows_affected();
+
+    if updated_rows == 0 {
+        return Err(concurrency_conflict_message("o equipamento"));
+    }
 
     if let Some(actor) = financial_actor.as_ref() {
         record_security_event(
@@ -507,5 +537,23 @@ mod tests {
             None,
         ));
         assert!(!status_change_requires_sensitive_access("RECEBIDO", None, None, None));
+    }
+
+    #[test]
+    fn p1_equipment_status_normalization_supports_legacy_labels() {
+        assert_eq!(normalize_status_key("Recebido"), "RECEBIDO");
+        assert_eq!(normalize_status_key("Em Verificação"), "EM_VERIFICACAO");
+        assert_eq!(normalize_status_key("Orçamento Vencido"), "ORCAMENTO_VENCIDO");
+    }
+
+    #[test]
+    fn p1_equipment_financial_validation_rejects_negative_values() {
+        assert!(validate_non_negative_f64(Some(-1.0), "Valor do orçamento")
+            .unwrap_err()
+            .contains("negativo"));
+        assert!(validate_non_negative_i32(Some(-1), "Páginas impressas")
+            .unwrap_err()
+            .contains("negativo"));
+        assert!(validate_non_negative_f64(Some(0.0), "Valor do orçamento").is_ok());
     }
 }

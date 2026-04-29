@@ -82,6 +82,21 @@ fn validate_cliente_identity(
     Ok((razao_social, document_digits))
 }
 
+fn required_concurrency_token(token: Option<&str>, entity_label: &str) -> Result<String, String> {
+    token
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(|value| value.to_string())
+        .ok_or_else(|| format!("Token de concorrência de {} é obrigatório para atualizar o cadastro.", entity_label))
+}
+
+fn concurrency_conflict_message(entity_label: &str) -> String {
+    format!(
+        "Conflito de concorrência: {} foi alterado por outro técnico. Recarregue os dados antes de salvar novamente.",
+        entity_label
+    )
+}
+
 /// Listar clientes com paginação.
 #[tauri::command]
 #[instrument(skip_all, fields(page = page))]
@@ -241,6 +256,7 @@ pub async fn criar_cliente(input: ClienteInput) -> Result<ClienteRow, String> {
 pub async fn atualizar_cliente(id: i32, input: ClienteInput) -> Result<ClienteRow, String> {
     debug!("Atualizando cliente {}", id);
     let pool = get_pool().await.map_err(|e| e.to_string())?;
+    let concurrency_token = required_concurrency_token(input.atualizado_em.as_deref(), "cliente")?;
     let tipo_pessoa = normalize_tipo_pessoa(
         input.tipo_pessoa.as_deref(),
         input.documento.as_deref(),
@@ -270,7 +286,7 @@ pub async fn atualizar_cliente(id: i32, input: ClienteInput) -> Result<ClienteRo
         }
     }
 
-    sqlx::query(
+    let updated_rows = sqlx::query(
         r#"
         UPDATE clientes SET
             nome = $1, tipo_pessoa = $2, documento = $3, razao_social = $4,
@@ -280,7 +296,7 @@ pub async fn atualizar_cliente(id: i32, input: ClienteInput) -> Result<ClienteRo
             bairro = $15, cidade = $16, uf = $17,
             receber_email = $18, receber_whatsapp = $19, observacoes = $20,
             atualizado_em = NOW()
-        WHERE id = $21
+        WHERE id = $21 AND atualizado_em::TEXT = $22
         "#,
     )
     .bind(Some(nome_exibicao))
@@ -304,12 +320,18 @@ pub async fn atualizar_cliente(id: i32, input: ClienteInput) -> Result<ClienteRo
     .bind(input.receber_whatsapp)
     .bind(optional_text(input.observacoes.as_deref()))
     .bind(id)
+    .bind(concurrency_token)
     .execute(&pool)
     .await
     .map_err(|e| {
         error!("Erro ao atualizar cliente {}: {}", id, e);
         e.to_string()
-    })?;
+    })?
+    .rows_affected();
+
+    if updated_rows == 0 {
+        return Err(concurrency_conflict_message("o cliente"));
+    }
 
     info!("Cliente {} atualizado", id);
     buscar_cliente(id).await

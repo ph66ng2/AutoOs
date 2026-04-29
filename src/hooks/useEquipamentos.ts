@@ -129,10 +129,18 @@ export function useEquipamentos(params?: UseEquipamentosParams) {
     novoStatus: string,
     valorOrcamento?: number,
     prazoAprovacao?: string,
-    valorFinal?: number
+    valorFinal?: number,
+    expectedUpdatedEm?: string
   ) => {
     try {
-      await db.atualizarStatusEquipamento(id, novoStatus, valorOrcamento, prazoAprovacao, valorFinal);
+      await db.atualizarStatusEquipamento(
+        id,
+        novoStatus,
+        valorOrcamento,
+        prazoAprovacao,
+        valorFinal,
+        expectedUpdatedEm
+      );
       await carregar();
       return { sucesso: true };
     } catch (err: any) {

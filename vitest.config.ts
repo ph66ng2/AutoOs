@@ -28,6 +28,12 @@ export default defineConfig({
     
     // Globals para não precisar importar describe/it/expect
     globals: true,
+
+    // No Windows, o pool "forks" pode falhar/intermitir (startup lento/AV).
+    // Padronizamos em threads e reduzimos paralelismo para tornar `npm run test:run` reprodutível.
+    pool: 'threads',
+    fileParallelism: false,
+    maxWorkers: 1,
     
     // Coverage
     coverage: {
@@ -44,6 +50,11 @@ export default defineConfig({
     
     // CSS
     css: true,
+  },
+  poolOptions: {
+    threads: {
+      singleThread: true,
+    },
   },
   resolve: {
     alias: {

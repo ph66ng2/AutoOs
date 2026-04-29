@@ -33,6 +33,8 @@ import type {
   Verificacao,
   Comunicacao,
   DatabaseSchemaStatus,
+  LocalSupportBundleResult,
+  LocalSupportStatus,
   PostgresBackupResult,
   PostgresRestoreResult,
   PostgresBackupToolsStatus,
@@ -75,7 +77,8 @@ export const db = {
     novoStatus: string,
     valorOrcamento?: number,
     prazoAprovacao?: string,
-    valorFinal?: number
+    valorFinal?: number,
+    expectedUpdatedEm?: string
   ): Promise<void> {
     return invoke<void>("atualizar_status_equipamento", {
       id,
@@ -83,6 +86,7 @@ export const db = {
       valorOrcamento: valorOrcamento ?? null,
       prazoAprovacao: prazoAprovacao ?? null,
       valorFinal: valorFinal ?? null,
+      expectedUpdatedEm: expectedUpdatedEm ?? null,
     });
   },
 
@@ -223,6 +227,16 @@ export const db = {
   /** Restaura um backup PostgreSQL .dump ou .sql */
   async restaurarBackupPostgres(filePath: string): Promise<PostgresRestoreResult> {
     return invoke<PostgresRestoreResult>("restaurar_backup_postgres", { filePath });
+  },
+
+  /** Consulta o snapshot local mínimo de suporte/observabilidade */
+  async obterDiagnosticoSuporteLocal(): Promise<LocalSupportStatus> {
+    return invoke<LocalSupportStatus>("obter_diagnostico_suporte_local");
+  },
+
+  /** Exporta um pacote JSON com diagnóstico local para suporte */
+  async exportarPacoteSuporteLocal(): Promise<LocalSupportBundleResult> {
+    return invoke<LocalSupportBundleResult>("exportar_pacote_suporte_local");
   },
 
   // ─── Arquivo Temporário ────────────────────────────────

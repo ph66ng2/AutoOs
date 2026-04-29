@@ -1,200 +1,153 @@
 # PostgreSQL Setup para AutoOS
 
-## 📥 Passo 1 — Instalação no Windows
+## Objetivo
 
-1. Acesse: **https://www.postgresql.org/download/windows/**
-2. Clique em **"Download the installer"** (EnterpriseDB)
-3. Escolha a versão **PostgreSQL 18** (ou outra 15+), Windows x86-64
-4. Execute o instalador e siga o assistente:
+Preparar uma máquina Windows para rodar o AutoOS com PostgreSQL real, `DATABASE_URL` válida e migrações versionadas aplicadas automaticamente pelo backend.
 
-| Tela do instalador | O que fazer |
-|---|---|
-| Installation Directory | Deixe o padrão (`C:\Program Files\PostgreSQL\18`) ou o da versão escolhida |
-| Select Components | Marque **PostgreSQL Server** e **Command Line Tools**. **pgAdmin 4** é opcional. **Stack Builder** não é necessário para o AutoOS |
-| Data Directory | Deixe o padrão |
-| **Password** | **ANOTE ESSA SENHA!** É a senha do usuário `postgres` (superadmin) |
-| Port | Mantenha **5432** |
-| Locale | Deixe o padrão |
+Este projeto não usa SQLite. Sem `DATABASE_URL`, o backend falha na inicialização.
 
-5. Clique **Next** até finalizar
+## Pré-requisitos
 
-> **Observação:** Nos exemplos abaixo, usamos a pasta `PostgreSQL\18`. Se você instalou outra versão, troque `18` pela versão correspondente.
+- PostgreSQL 15+ instalado
+- `psql`, `pg_dump` e `pg_restore` disponíveis no `PATH` ou acessíveis por caminho absoluto
+- Node.js 18+
+- Rust estável
+- Visual Studio C++ Build Tools no Windows
 
----
+## 1. Instalar PostgreSQL no Windows
 
-## ✅ Passo 2 — Verificar se o serviço está rodando
+Baixe o instalador oficial em [postgresql.org/download/windows](https://www.postgresql.org/download/windows/) e instale:
 
-Abra o **PowerShell** e rode:
+- PostgreSQL Server
+- Command Line Tools
+- pgAdmin é opcional
+
+Nos exemplos abaixo, use a sua versão instalada. Se o comando não estiver no `PATH`, substitua por algo como:
+
+```powershell
+& "C:\Program Files\PostgreSQL\<VERSAO>\bin\psql.exe"
+```
+
+## 2. Confirmar que o serviço está rodando
 
 ```powershell
 Get-Service -Name "postgresql*"
 ```
 
-Deve mostrar `Running`. Se mostrar `Stopped`:
+Se estiver parado:
 
 ```powershell
 Get-Service -Name "postgresql*" | Start-Service
 ```
 
-> **Dica:** O serviço inicia automaticamente com o Windows. Se não quiser isso, mude para "Manual" em `services.msc`.
+## 3. Criar banco e usuário do app
 
----
-
-## 🗄️ Passo 3 — Criar o banco de dados e usuário
-
-Abra o **PowerShell** e rode:
+Abra o `psql` como `postgres`:
 
 ```powershell
-# Se o comando estiver no PATH:
 psql -U postgres
-
-# Se o comando acima não for reconhecido, use o caminho completo.
-# Vai pedir a senha que você definiu na instalação.
-& "C:\Program Files\PostgreSQL\18\bin\psql.exe" -U postgres
 ```
 
-Dentro do prompt `postgres=#`, execute **linha por linha**:
-
-> **Atenção:** Cada comando SQL precisa terminar com `;`. Se aparecer `postgres-#` ou `autoos-#`, o `psql` ainda está esperando o fim do comando anterior. Só `\c` e `\q` não usam `;`.
+Dentro do prompt, execute:
 
 ```sql
--- Criar o banco
 CREATE DATABASE autoos;
-
--- Criar o usuário com senha
 CREATE USER autoos_user WITH PASSWORD 'SUA_SENHA_FORTE_AQUI';
-
--- Dar permissões completas ao usuário no banco
 GRANT ALL PRIVILEGES ON DATABASE autoos TO autoos_user;
-
--- Conectar ao banco autoos para dar permissões no schema
 \c autoos
-
--- Dar permissões no schema public (necessário no PostgreSQL 15+)
 GRANT ALL ON SCHEMA public TO autoos_user;
 ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON TABLES TO autoos_user;
 ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON SEQUENCES TO autoos_user;
-
--- Sair
 \q
 ```
 
-> ⚠️ **IMPORTANTE:** No PostgreSQL 15+, sem o `GRANT ALL ON SCHEMA public`, o usuário não consegue criar tabelas. Esse passo é obrigatório.
+No PostgreSQL 15+, o `GRANT ALL ON SCHEMA public` é obrigatório para que o app consiga aplicar migrações.
 
----
+## 4. Configurar `src-tauri/.env`
 
-## 📝 Passo 4 — Criar o arquivo .env
-
-Crie o arquivo `.env` **dentro da pasta `src-tauri/`** do projeto:
+Na raiz do projeto:
 
 ```powershell
-# Rodar na raiz do projeto
 Set-Content -Path "src-tauri\.env" -Value 'DATABASE_URL=postgres://autoos_user:SUA_SENHA_FORTE_AQUI@localhost:5432/autoos'
 ```
 
-Ou crie manualmente o arquivo `src-tauri/.env` com este conteúdo:
+Conteúdo esperado:
 
 ```env
 DATABASE_URL=postgres://autoos_user:SUA_SENHA_FORTE_AQUI@localhost:5432/autoos
 ```
 
-> **Atenção:** O arquivo `.env` deve ficar em `src-tauri/.env` (não na raiz do projeto). O backend resolve esse caminho automaticamente tanto em `npm run tauri dev` quanto em execuções diretas via `cargo run`.
+O backend tenta resolver `DATABASE_URL` a partir do ambiente atual e de `src-tauri/.env`.
 
-> **Segurança:** O app não usa mais fallback inseguro de conexão. Sem `DATABASE_URL`, o backend não inicializa.
-
----
-
-## 🔍 Passo 5 — Verificar conexão
-
-Teste se tudo funciona:
+## 5. Validar conectividade básica
 
 ```powershell
-# Se o comando estiver no PATH:
 psql -U autoos_user -d autoos -h localhost
-
-# Se o comando acima não for reconhecido, use o caminho completo.
-& "C:\Program Files\PostgreSQL\18\bin\psql.exe" -U autoos_user -d autoos -h localhost
 ```
 
-Vai pedir a senha que você definiu para o usuário autoos_user. Se aparecer `autoos=>`, está tudo certo. Digite `\q` para sair.
+Se aparecer `autoos=>`, a conexão básica está funcional. Saia com `\q`.
 
-### Validação opcional do runtime real
+## 6. Validar bootstrap do app
 
-Depois que a conexão básica estiver funcionando, você pode validar bootstrap, migrações e CRUD mínimo do app com:
+Na raiz do projeto:
+
+```powershell
+npx tsc --noEmit
+cd src-tauri
+cargo check
+cd ..
+```
+
+Depois, rode um smoke real contra o PostgreSQL configurado:
 
 ```powershell
 cargo run --manifest-path src-tauri/Cargo.toml --bin runtime_smoke
 ```
 
-Esse helper usa a mesma `DATABASE_URL` do backend, prova a conexão real com PostgreSQL e executa um smoke de cliente, equipamento e estoque antes de limpar os dados temporários.
+Esse binário usa a mesma `DATABASE_URL` do backend, valida bootstrap, migrações e persistência mínima antes de limpar os dados temporários.
 
----
-
-## 🚀 Passo 6 — Rodar o AutoOS
+## 7. Rodar o AutoOS
 
 ```powershell
-# Na raiz do projeto AutoOS
 npm run tauri dev
 ```
 
-O sistema vai:
-1. Conectar ao PostgreSQL usando a `DATABASE_URL` do `.env`
-2. Aplicar automaticamente as migrações versionadas em `src-tauri/migrations/`
-3. Abrir a janela do app
+Na inicialização, o app:
 
-### Estruturas de segurança criadas automaticamente
+1. resolve a `DATABASE_URL`;
+2. cria a pool PostgreSQL;
+3. aplica migrações pendentes de `src-tauri/migrations`;
+4. inicializa o desktop Tauri.
 
-- `security_profiles`: perfis locais usados pelo acesso sensível, com papel e permissões granulares.
-- `security_audit_log`: trilha mínima de auditoria para desbloqueios, troca/reset de PIN, mudança de perfil e gestão de perfis.
+## Baseline atual de migração
 
-### Baseline atual de migração
+Migrações conhecidas hoje:
 
-- `src-tauri/migrations/0001_initial_schema.sql`: schema inicial do AutoOS, incluindo tabelas operacionais e de segurança.
-- `src-tauri/migrations/0002_schema_hardening.sql`: hardening do schema com constraints, defaults operacionais e índices para filtros frequentes.
-- `src-tauri/migrations/0003_equipment_intake_fields.sql`: campos de recebimento do equipamento, incluindo patrimônio, defeito inicial e acessórios.
-- A tabela de controle de migração é gerenciada pelo `sqlx` automaticamente no banco.
+- `0001_initial_schema.sql`: baseline operacional com clientes, equipamentos, produtos, movimentações, verificações, comunicações e segurança local.
+- `0002_schema_hardening.sql`: constraints, defaults e índices operacionais.
+- `0003_equipment_intake_fields.sql`: patrimônio, defeito relatado e acessórios no recebimento técnico.
+- `0004_equipment_images.sql`: armazenamento de imagens de entrada/saída por equipamento.
 
-### Backup e restore
+A tabela `_sqlx_migrations` é gerenciada pelo `sqlx`, e o status aplicado pode ser conferido em `Configurações > Segurança > Banco e schema`.
 
-- O procedimento operacional para troca de máquina está em `POSTGRES_BACKUP_RESTORE.md`.
+## Estruturas operacionais importantes criadas pelo schema
 
----
+- `security_profiles`: perfis locais usados pelo acesso sensível
+- `security_audit_log`: auditoria mínima de ações sensíveis
+- `equipamento_imagens`: imagens de entrada e saída associadas ao equipamento
 
-## 🛠️ Resolução de Problemas
+## Troubleshooting rápido
 
-| Erro | Causa | Solução |
+| Sintoma | Causa provável | Ação |
 |---|---|---|
-| `PoolTimedOut` | PostgreSQL não está rodando | `Get-Service -Name "postgresql*" | Start-Service` |
-| `password authentication failed` | Senha errada no `.env` | Verifique se a senha no `.env` é a mesma que usou no `CREATE USER` |
-| `database "autoos" does not exist` | Banco não foi criado | Execute o Passo 3 novamente |
-| `permission denied for schema public` | Faltou GRANT no schema | Execute `GRANT ALL ON SCHEMA public TO autoos_user;` no Passo 3 |
-| `psql` não é reconhecido como comando | PATH não configurado para os tools do PostgreSQL | Use o caminho completo `C:\Program Files\PostgreSQL\18\bin\psql.exe` ou reinstale com `Command Line Tools` |
-| `could not connect to server: Connection refused` | Porta errada ou firewall | Verifique se a porta 5432 está aberta em `services.msc` |
+| `DATABASE_URL não configurada` | `.env` ausente ou inválido | recrie `src-tauri/.env` |
+| `password authentication failed` | senha errada | alinhe a senha do usuário com a `DATABASE_URL` |
+| `database "autoos" does not exist` | banco não criado | recrie o banco no passo 3 |
+| `permission denied for schema public` | grant faltando | reaplique `GRANT ALL ON SCHEMA public TO autoos_user;` |
+| `psql` não reconhecido | tools fora do `PATH` | use caminho absoluto do executável |
+| `PoolTimedOut` ou `Connection refused` | serviço PostgreSQL parado | inicie o serviço com `Start-Service` |
 
----
+## Próximos documentos
 
-## 📊 Gerenciar o Banco Visualmente (Opcional)
-
-Se você instalou o **pgAdmin 4** junto com o PostgreSQL, para usar:
-
-1. Abra **pgAdmin 4** pelo menu Iniciar
-2. Na primeira vez, defina uma "master password" (qualquer uma)
-3. No painel esquerdo: **Servers → PostgreSQL 18** (ou a versão instalada) e coloque a senha do `postgres`
-4. Navegue: **Databases → autoos → Schemas → public → Tables**
-5. Clique com botão direito em qualquer tabela → **View/Edit Data → All Rows**
-
----
-
-## 📂 Resumo dos dados de conexão
-
-| Campo | Valor |
-|---|---|
-| Host | `localhost` |
-| Porta | `5432` |
-| Banco | `autoos` |
-| Usuário | `autoos_user` |
-| Senha | `SUA_SENHA_FORTE_AQUI` |
-| URL completa | `postgres://autoos_user:SUA_SENHA_FORTE_AQUI@localhost:5432/autoos` |
-| Arquivo .env | `src-tauri/.env` |
-
-> Segurança: o backend não usa mais fallback local de conexão. Se `DATABASE_URL` não estiver definida corretamente, o app falha ao iniciar de forma explícita.
+- Backup e restore operacionais: [POSTGRES_BACKUP_RESTORE.md](./POSTGRES_BACKUP_RESTORE.md)
+- Modelo de migrações versionadas: [MIGRACAO_POSTGRESQL.md](./MIGRACAO_POSTGRESQL.md)

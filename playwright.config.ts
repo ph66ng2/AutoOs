@@ -21,7 +21,10 @@ export default defineConfig({
   outputDir: './e2e/results',
   
   // Timeout por teste (60 segundos)
-  timeout: 60 * 1000,
+  timeout: 90 * 1000,
+
+  // No Windows local, executar um worker reduz timeouts no cold start do Vite.
+  workers: 1,
   
   // Retries em CI
   retries: process.env.CI ? 2 : 0,
@@ -35,7 +38,9 @@ export default defineConfig({
   // Configurações globais
   use: {
     // URL base do servidor de desenvolvimento
-    baseURL: 'http://127.0.0.1:1420',
+    baseURL: 'http://localhost:1420',
+
+    navigationTimeout: 90 * 1000,
     
     // Tirar screenshot em falha
     screenshot: 'only-on-failure',
@@ -67,7 +72,7 @@ export default defineConfig({
   // Servidor de desenvolvimento (inicia automaticamente)
   webServer: {
     command: 'npm run dev',
-    url: 'http://127.0.0.1:1420',
+    url: 'http://localhost:1420',
     reuseExistingServer: !process.env.CI,
     timeout: 120 * 1000,
   },

@@ -28,6 +28,7 @@ import type { DadosVerificacao } from "@/components/equipamentos/VerificacaoTecn
 /** Resultado da automação com status de cada canal de comunicação */
 interface ResultadoAutomacao {
   sucesso: boolean;
+  erro?: string;
   email?: { sucesso: boolean; erro?: string };
   whatsapp?: { sucesso: boolean; erro?: string };
 }
@@ -58,7 +59,16 @@ export function useStatusEquipamento() {
       await db.salvarVerificacao(dadosVerificacao);
 
       // 2. Atualizar para VERIFICADO
-      await db.atualizarStatusEquipamento(equipamento.id!, "VERIFICADO");
+      await db.atualizarStatusEquipamento(
+        equipamento.id!,
+        "VERIFICADO",
+        undefined,
+        undefined,
+        undefined,
+        equipamento.atualizado_em
+      );
+
+      const equipamentoVerificado = await db.buscarEquipamento(equipamento.id!);
 
       // 3. Calcular prazo (3 dias úteis)
       const prazo = calcularPrazoAprovacao(3);
@@ -69,7 +79,8 @@ export function useStatusEquipamento() {
         "AGUARDANDO_APROVACAO",
         dadosVerificacao.custo_total || undefined,
         prazo.toISOString().split("T")[0],
-        undefined
+        undefined,
+        equipamentoVerificado.atualizado_em
       );
 
       // 5. Buscar dados atualizados
@@ -99,7 +110,7 @@ export function useStatusEquipamento() {
       };
     } catch (error: any) {
       console.error("Erro ao finalizar verificação:", error);
-      return { sucesso: false };
+      return { sucesso: false, erro: error?.message || String(error) };
     } finally {
       setLoading(false);
     }
@@ -114,7 +125,14 @@ export function useStatusEquipamento() {
     setLoading(true);
     try {
       // 1. Atualizar status para PRONTO
-      await db.atualizarStatusEquipamento(equipamento.id!, "PRONTO");
+      await db.atualizarStatusEquipamento(
+        equipamento.id!,
+        "PRONTO",
+        undefined,
+        undefined,
+        undefined,
+        equipamento.atualizado_em
+      );
 
       // 2. Buscar dados atualizados
       const eqAtualizado = await db.buscarEquipamento(equipamento.id!);
@@ -138,7 +156,7 @@ export function useStatusEquipamento() {
       };
     } catch (error: any) {
       console.error("Erro ao marcar como pronto:", error);
-      return { sucesso: false };
+      return { sucesso: false, erro: error?.message || String(error) };
     } finally {
       setLoading(false);
     }

@@ -13,7 +13,9 @@
     "test:run": "vitest run",
     "test:coverage": "vitest run --coverage",
     "lint": "tsc --noEmit",
-    "e2e": "playwright test",
+    "e2e": "npm run e2e:mock",
+    "e2e:mock": "playwright test",
+    "qa:integration:local": "npx tsc --noEmit && cd src-tauri && cargo test",
     "e2e:ui": "playwright test --ui",
     "e2e:headed": "playwright test --headed"
   },
@@ -26,7 +28,6 @@
     "@radix-ui/react-tabs": "^1.1.0",
     "@tanstack/react-table": "^8.20.5",
     "@tauri-apps/api": "^2.0.0",
-    "@tauri-apps/plugin-shell": "^2.0.0",
     "class-variance-authority": "^0.7.0",
     "clsx": "^2.1.1",
     "date-fns": "^3.6.0",

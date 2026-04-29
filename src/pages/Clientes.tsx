@@ -283,16 +283,24 @@ export default function Clientes() {
         receber_whatsapp: true,
         observacoes: data.observacoes || null,
         ativo: true,
+        atualizado_em: editando?.atualizado_em,
       } as any;
 
       if (editando) {
-        await atualizar(editando.id!, payload);
+        const resultado = await atualizar(editando.id!, payload);
+        if (!resultado.sucesso) {
+          throw new Error(resultado.erro || "Não foi possível salvar o cliente.");
+        }
       } else {
-        await criar(payload);
+        const resultado = await criar(payload);
+        if (!resultado.sucesso) {
+          throw new Error(resultado.erro || "Não foi possível criar o cliente.");
+        }
       }
       setDialogOpen(false);
-    } catch (err) {
+    } catch (err: any) {
       console.error("Erro:", err);
+      alert(err?.message || "Erro ao salvar cliente.");
     } finally {
       setSalvando(false);
     }
