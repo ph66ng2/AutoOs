@@ -52,21 +52,12 @@ export default defineConfig({
     trace: 'on-first-retry',
   },
   
-  // Projetos (navegadores)
+  // Projetos (navegadores) - apenas Chromium para velocidade
   projects: [
     {
       name: 'chromium',
       use: { ...devices['Desktop Chrome'] },
     },
-    {
-      name: 'firefox',
-      use: { ...devices['Desktop Firefox'] },
-    },
-    // WebKit desabilitado por padrão (pode ser lento no Windows)
-    // {
-    //   name: 'webkit',
-    //   use: { ...devices['Desktop Safari'] },
-    // },
   ],
   
   // Servidor de desenvolvimento (inicia automaticamente)

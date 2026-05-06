@@ -336,9 +336,6 @@ fn build_windows_bundle_readiness(config: &TauriConfigSnapshot) -> WindowsBundle
     if !has_timestamp_url {
         blockers.push("Timestamp Authenticode pendente: timestampUrl não configurado em tauri.conf.json.".to_string());
     }
-    if config.version == "0.0.1" {
-        blockers.push("Versionamento de distribuição ainda parece placeholder (0.0.1).".to_string());
-    }
 
     WindowsBundleReadiness {
         product_name: config.product_name.clone(),

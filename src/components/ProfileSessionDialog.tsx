@@ -88,6 +88,17 @@ export function ProfileSessionDialog({
       : "Configurar PIN";
   })();
 
+  const primaryDisabled =
+    !selectedProfile ||
+    busy ||
+    (shouldAskForPin && pin.length < 4) ||
+    (shouldConfirmPin && confirmPin.length < 4);
+
+  const handlePrimaryAction = () => {
+    if (primaryDisabled) return;
+    onSubmit();
+  };
+
   const helperText = (() => {
     if (!selectedProfile) {
       return "Selecione um perfil para visualizar o contexto da sessão.";
@@ -220,44 +231,54 @@ export function ProfileSessionDialog({
               </Card>
             )}
 
-            <div className="mt-5 space-y-4">
-              {shouldAskForPin ? (
-                <>
+            {shouldAskForPin ? (
+              <form
+                id="profile-session-pin-form"
+                className="mt-5 space-y-4"
+                onSubmit={(event) => {
+                  event.preventDefault();
+                  handlePrimaryAction();
+                }}
+              >
+                <div className="space-y-2">
+                  <Label htmlFor="sensitive-pin">PIN do perfil</Label>
+                  <Input
+                    id="sensitive-pin"
+                    type="password"
+                    inputMode="numeric"
+                    value={pin}
+                    onChange={(event) => onPinChange(event.target.value.replace(/\D/g, "").slice(0, 8))}
+                    placeholder="PIN de 4 a 8 dígitos"
+                    autoComplete="current-password"
+                    autoFocus
+                  />
+                </div>
+
+                {shouldConfirmPin && (
                   <div className="space-y-2">
-                    <Label htmlFor="sensitive-pin">PIN do perfil</Label>
+                    <Label htmlFor="sensitive-pin-confirm">Confirmar PIN</Label>
                     <Input
-                      id="sensitive-pin"
+                      id="sensitive-pin-confirm"
                       type="password"
                       inputMode="numeric"
-                      value={pin}
-                      onChange={(event) => onPinChange(event.target.value.replace(/\D/g, "").slice(0, 8))}
-                      placeholder="PIN de 4 a 8 dígitos"
-                      autoFocus
+                      value={confirmPin}
+                      onChange={(event) => onConfirmPinChange(event.target.value.replace(/\D/g, "").slice(0, 8))}
+                      placeholder="Repita o PIN"
+                      autoComplete="new-password"
                     />
                   </div>
+                )}
 
-                  {shouldConfirmPin && (
-                    <div className="space-y-2">
-                      <Label htmlFor="sensitive-pin-confirm">Confirmar PIN</Label>
-                      <Input
-                        id="sensitive-pin-confirm"
-                        type="password"
-                        inputMode="numeric"
-                        value={confirmPin}
-                        onChange={(event) => onConfirmPinChange(event.target.value.replace(/\D/g, "").slice(0, 8))}
-                        placeholder="Repita o PIN"
-                      />
-                    </div>
-                  )}
-                </>
-              ) : (
+                {error && <p className="text-sm text-red-600">{error}</p>}
+              </form>
+            ) : (
+              <div className="mt-5 space-y-4">
                 <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-800">
                   Você já está neste perfil. Use o botão abaixo para continuar sem trocar a conta atual.
                 </div>
-              )}
-
-              {error && <p className="text-sm text-red-600">{error}</p>}
-            </div>
+                {error && <p className="text-sm text-red-600">{error}</p>}
+              </div>
+            )}
           </div>
         </div>
 
@@ -268,9 +289,10 @@ export function ProfileSessionDialog({
             </Button>
           )}
           <Button
-            type="button"
-            onClick={onSubmit}
-            disabled={!selectedProfile || busy || (shouldAskForPin && pin.length < 4) || (shouldConfirmPin && confirmPin.length < 4)}
+            type={shouldAskForPin ? "submit" : "button"}
+            form={shouldAskForPin ? "profile-session-pin-form" : undefined}
+            onClick={shouldAskForPin ? undefined : handlePrimaryAction}
+            disabled={primaryDisabled}
           >
             {busy ? "Validando..." : primaryActionLabel}
           </Button>

@@ -1,7 +1,7 @@
 {
   "name": "autoos",
   "private": true,
-  "version": "0.0.1",
+  "version": "1.0.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -13,8 +13,16 @@
     "test:run": "vitest run",
     "test:coverage": "vitest run --coverage",
     "lint": "tsc --noEmit",
-    "e2e": "npm run e2e:mock",
-    "e2e:mock": "playwright test",
+    "e2e": "npm run e2e:web",
+    "e2e:web": "playwright test",
+    "e2e:mock": "npm run e2e:web",
+    "e2e:real": "npm run qa:integrations:critical && npm run qa:integrations:communication && npm run e2e:web",
+    "bundle:prep:windows:sign": "node scripts/apply-windows-bundle-signing.mjs",
+    "qa:tier:e2e": "npm run e2e:web",
+    "qa:integrations:critical": "cd src-tauri && cargo run --quiet --bin p1_critical_integration",
+    "qa:integrations:communication": "cd src-tauri && cargo run --quiet --bin p1_communication_integration",
+    "qa:integrations": "npm run qa:integrations:critical && npm run qa:integrations:communication",
+    "qa:tier:jornada-real": "npm run lint && npm run test:run && npm run e2e:real",
     "qa:integration:local": "npx tsc --noEmit && cd src-tauri && cargo test",
     "e2e:ui": "playwright test --ui",
     "e2e:headed": "playwright test --headed"

@@ -84,9 +84,9 @@ export function useClientes(params?: UseClientesParams) {
    */
   const criar = async (cliente: Omit<Cliente, "id">) => {
     try {
-      const id = await db.criarCliente(cliente);
+      const criado = await db.criarCliente(cliente);
       await carregar();
-      return { sucesso: true, id };
+      return { sucesso: true, id: criado.id! };
     } catch (err: any) {
       return { sucesso: false, erro: err?.toString() };
     }

@@ -5,22 +5,21 @@
 //! ║  main.rs — Entry Point do Backend Tauri                      ║
 //! ╠══════════════════════════════════════════════════════════════╣
 //! ║  Inicializa o app Tauri, cria a pool PostgreSQL e registra  ║
-//! ║  todos os 25 comandos IPC (invoke) disponíveis para o       ║
+//! ║  todos os comandos IPC (invoke) disponíveis para o          ║
 //! ║  frontend React.                                             ║
 //! ║                                                              ║
 //! ║  DEPENDE DE:                                                 ║
-//! ║  - db.rs (init_database, AppState)                           ║
-//! ║  - commands/ (módulos: equipamentos, clientes, produtos,     ║
-//! ║               verificacoes, comunicacoes, smtp, util)        ║
+//! ║  - db.rs (init_database)                                     ║
+//! ║  - commands/ (módulos: auth, equipamentos, clientes,         ║
+//! ║               produtos, verificacoes, comunicacoes, smtp,    ║
+//! ║               whatsapp, util, equipamento_imagens)           ║
 //! ║  - tracing (logging estruturado + arquivo local)             ║
 //! ║                                                              ║
 //! ║  FLUXO DE INICIALIZAÇÃO:                                     ║
 //! ║  1. Inicializa tracing para logging estruturado              ║
 //! ║  2. Inicializa banco PostgreSQL via block_on (síncrono)     ║
-//! ║  3. Armazena AppState (pool PostgreSQL) no estado Tauri     ║
-//! ║  4. Registra 25 comandos: Equipamentos(6) + Clientes(5) +   ║
-//! ║     Produtos(5) + Verificações(2) + Comunicações(2) +       ║
-//! ║     SMTP(3) + Util(2)                                        ║
+//! ║  3. Inicializa a pool global de banco em db.rs              ║
+//! ║  4. Registra todos os comandos IPC usados pelo frontend     ║
 //! ╚══════════════════════════════════════════════════════════════╝
 
 mod db;

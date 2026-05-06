@@ -40,6 +40,33 @@ import type {
   PostgresBackupToolsStatus,
 } from "@/types";
 
+/** Payload esperado pelo Rust em `criar_cliente` / `atualizar_cliente` (parâmetro `input`). */
+function clientePersistenciaParaInput(cliente: Omit<Cliente, "id">) {
+  return {
+    nome: cliente.nome ?? undefined,
+    tipo_pessoa: cliente.tipo_pessoa ?? undefined,
+    documento: cliente.documento ?? undefined,
+    razao_social: cliente.razao_social ?? undefined,
+    nome_fantasia: cliente.nome_fantasia ?? undefined,
+    inscricao_estadual: cliente.inscricao_estadual ?? undefined,
+    cpf_cnpj: cliente.cpf_cnpj ?? undefined,
+    telefone: (cliente.telefone ?? "").trim(),
+    telefone_secundario: cliente.telefone_secundario ?? undefined,
+    email: cliente.email ?? undefined,
+    cep: cliente.cep ?? undefined,
+    endereco: cliente.endereco ?? undefined,
+    numero: cliente.numero ?? undefined,
+    complemento: cliente.complemento ?? undefined,
+    bairro: cliente.bairro ?? undefined,
+    cidade: cliente.cidade ?? undefined,
+    uf: cliente.uf ?? undefined,
+    receber_email: cliente.receber_email ?? true,
+    receber_whatsapp: cliente.receber_whatsapp ?? true,
+    observacoes: cliente.observacoes ?? undefined,
+    atualizado_em: cliente.atualizado_em ?? undefined,
+  };
+}
+
 export const db = {
   // ─── Equipamentos ─────────────────────────────────────
 
@@ -102,14 +129,14 @@ export const db = {
     return invoke<Cliente>("buscar_cliente", { id });
   },
 
-  /** Cria novo cliente (PF ou PJ) → Rust: criar_cliente. Retorna o ID inserido */
-  async criarCliente(cliente: Omit<Cliente, "id">): Promise<number> {
-    return invoke<number>("criar_cliente", { cliente });
+  /** Cria novo cliente (PF ou PJ) → Rust: criar_cliente. Retorna o registro persistido */
+  async criarCliente(cliente: Omit<Cliente, "id">): Promise<Cliente> {
+    return invoke<Cliente>("criar_cliente", { input: clientePersistenciaParaInput(cliente) });
   },
 
   /** Atualiza cliente existente → Rust: atualizar_cliente */
   async atualizarCliente(id: number, cliente: Omit<Cliente, "id">): Promise<void> {
-    return invoke<void>("atualizar_cliente", { id, cliente });
+    return invoke<void>("atualizar_cliente", { id, input: clientePersistenciaParaInput(cliente) });
   },
 
   /** Deleta cliente → Rust: deletar_cliente */

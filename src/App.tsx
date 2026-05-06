@@ -17,38 +17,68 @@
  * ║  USADO POR: main.tsx (ponto de entrada)                    ║
  * ╚══════════════════════════════════════════════════════════════╝
  */
+import { useEffect, useState } from "react";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
-import { SensitiveRoute } from "@/hooks/useSensitiveAccess";
+import { BootSplash } from "@/components/BootSplash";
+import { SensitiveRoute, useSensitiveAccess } from "@/hooks/useSensitiveAccess";
 import { Layout } from "@/components/Layout";
 import Dashboard from "@/pages/Dashboard";
 import Equipamentos from "@/pages/Equipamentos";
 import Clientes from "@/pages/Clientes";
 import Insumos from "@/pages/Insumos";
 import Configuracoes from "@/pages/Configuracoes";
+import Perfil from "@/pages/Perfil";
+
+/** Exibição mínima do boot (IPC em dev pode resolver em poucos ms). Prod fica igual ou mais pesado só se o Rust/DB demorar. */
+const MIN_BOOT_SPLASH_MS = 1_100;
 
 function App() {
+  const { loading, bootProgress } = useSensitiveAccess();
+  const [splashVisible, setSplashVisible] = useState(true);
+  const [minSplashElapsed, setMinSplashElapsed] = useState(false);
+
+  useEffect(() => {
+    const t = window.setTimeout(() => setMinSplashElapsed(true), MIN_BOOT_SPLASH_MS);
+    return () => window.clearTimeout(t);
+  }, []);
+
+  const splashCanFadeOut = !loading && minSplashElapsed;
+
+  useEffect(() => {
+    if (splashVisible && splashCanFadeOut) {
+      const t = window.setTimeout(() => setSplashVisible(false), 540);
+      return () => window.clearTimeout(t);
+    }
+  }, [splashVisible, splashCanFadeOut]);
+
   return (
-    <BrowserRouter>
-      <Routes>
-        <Route element={<Layout />}>
-          <Route path="/" element={<Dashboard />} />
-          <Route path="/equipamentos" element={<Equipamentos />} />
-          <Route path="/clientes" element={<Clientes />} />
-          <Route path="/insumos" element={<Insumos />} />
-          <Route
-            path="/configuracoes"
-            element={
-              <SensitiveRoute
-                title="Configurações SMTP protegidas"
-                description="Desbloqueie o acesso sensível para visualizar ou alterar credenciais e envios SMTP."
-              >
-                <Configuracoes />
-              </SensitiveRoute>
-            }
-          />
-        </Route>
-      </Routes>
-    </BrowserRouter>
+    <>
+      <BrowserRouter>
+        <Routes>
+          <Route element={<Layout />}>
+            <Route path="/" element={<Dashboard />} />
+            <Route path="/perfil" element={<Perfil />} />
+            <Route path="/equipamentos" element={<Equipamentos />} />
+            <Route path="/clientes" element={<Clientes />} />
+            <Route path="/insumos" element={<Insumos />} />
+            <Route
+              path="/configuracoes"
+              element={
+                <SensitiveRoute
+                  title="Configurações SMTP protegidas"
+                  description="Desbloqueie o acesso sensível para visualizar ou alterar credenciais e envios SMTP."
+                >
+                  <Configuracoes />
+                </SensitiveRoute>
+              }
+            />
+          </Route>
+        </Routes>
+      </BrowserRouter>
+      {splashVisible && (
+        <BootSplash progress={loading ? bootProgress : 100} fadeOut={splashCanFadeOut} />
+      )}
+    </>
   );
 }
 

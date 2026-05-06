@@ -1,6 +1,6 @@
 {
   "productName": "AutoOS",
-  "version": "0.0.1",
+  "version": "1.0.0",
   "identifier": "com.bmitag.autoos",
   "build": {
     "beforeDevCommand": "npm run dev",
@@ -21,7 +21,7 @@
     "windows": {
       "certificateThumbprint": null,
       "digestAlgorithm": "sha256",
-      "timestampUrl": ""
+      "timestampUrl": "http://timestamp.digicert.com"
     }
   },
   "app": {

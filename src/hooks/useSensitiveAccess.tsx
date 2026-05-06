@@ -36,6 +36,8 @@ type SensitiveDialogMode = "startup" | "selector" | "sensitive";
 interface SensitiveAccessContextValue {
   status: SensitiveAccessStatus | null;
   loading: boolean;
+  /** 0–100 durante o primeiro arranque (conexão com backend / status sensível). */
+  bootProgress: number;
   refreshStatus: () => Promise<void>;
   ensureSensitiveAccess: (options?: SensitiveAccessPromptOptions) => Promise<boolean>;
   openProfileSelector: (options?: ProfileSelectorOptions) => Promise<boolean>;
@@ -78,6 +80,7 @@ const SensitiveAccessContext = createContext<SensitiveAccessContextValue | null>
 export function SensitiveAccessProvider({ children }: { children: ReactNode }) {
   const [status, setStatus] = useState<SensitiveAccessStatus | null>(null);
   const [loading, setLoading] = useState(true);
+  const [bootProgress, setBootProgress] = useState(6);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [dialogMandatory, setDialogMandatory] = useState(false);
   const [dialogMode, setDialogMode] = useState<SensitiveDialogMode>("sensitive");
@@ -89,10 +92,20 @@ export function SensitiveAccessProvider({ children }: { children: ReactNode }) {
   const [selectedProfileId, setSelectedProfileId] = useState<string>("");
   const resolverRef = useRef<((value: boolean) => void) | null>(null);
   const startupPromptedRef = useRef(false);
+  const bootPhasesTrackedRef = useRef(true);
 
   const refreshStatus = useCallback(async () => {
+    if (bootPhasesTrackedRef.current) {
+      setBootProgress((p) => Math.max(p, 14));
+    }
     try {
+      if (bootPhasesTrackedRef.current) {
+        setBootProgress((p) => Math.max(p, 38));
+      }
       const nextStatus = await SensitiveAccessService.status();
+      if (bootPhasesTrackedRef.current) {
+        setBootProgress((p) => Math.max(p, 86));
+      }
       setStatus(nextStatus);
       setSelectedProfileId(nextStatus.active_profile_id ? String(nextStatus.active_profile_id) : "");
 
@@ -114,6 +127,10 @@ export function SensitiveAccessProvider({ children }: { children: ReactNode }) {
       setStatus(EMPTY_STATUS);
       setError(refreshError?.message || refreshError?.toString() || "Não foi possível verificar o acesso sensível.");
     } finally {
+      if (bootPhasesTrackedRef.current) {
+        setBootProgress(100);
+        bootPhasesTrackedRef.current = false;
+      }
       setLoading(false);
     }
   }, []);
@@ -284,13 +301,14 @@ export function SensitiveAccessProvider({ children }: { children: ReactNode }) {
   const value = useMemo<SensitiveAccessContextValue>(() => ({
     status,
     loading,
+    bootProgress,
     refreshStatus,
     ensureSensitiveAccess,
     openProfileSelector,
     lockSensitiveAccess,
     hasPermission,
     setActiveProfile,
-  }), [ensureSensitiveAccess, hasPermission, loading, lockSensitiveAccess, openProfileSelector, refreshStatus, setActiveProfile, status]);
+  }), [bootProgress, ensureSensitiveAccess, hasPermission, loading, lockSensitiveAccess, openProfileSelector, refreshStatus, setActiveProfile, status]);
 
   const activeProfile = status?.profiles.find((profile) => profile.id === status.active_profile_id) ?? null;
   const selectedProfile = status?.profiles.find((profile) => String(profile.id) === selectedProfileId) ?? activeProfile ?? null;

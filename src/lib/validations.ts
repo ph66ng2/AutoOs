@@ -160,9 +160,9 @@ export function formatarCEP(valor: string): string {
   tipo: z.string().min(1, "Selecione um tipo"),
   status: z.string().default("RECEBIDO"),
   defeito_relatado: z.string().min(3, "Defeito é obrigatório"),
-  acessorios: z.string().optional().or(z.literal("")),
-  acessorios_outros: z.string().optional().or(z.literal("")),
-  observacoes: z.string().max(1000).optional().or(z.literal("")),
+   acessorios: z.array(z.string()).optional(),
+   acessorios_outros: z.string().optional().or(z.literal("")),
+   observacoes: z.string().max(1000).optional().or(z.literal("")),
 });
 
 export type EquipamentoFormData = z.infer<typeof equipamentoSchema>;
@@ -176,74 +176,90 @@ export type EquipamentoFormData = z.infer<typeof equipamentoSchema>;
  * Conecta-se a: Clientes.tsx, ClienteSelector.tsx (useForm com zodResolver)
  */
 export const clienteSchema = z.object({
-  // Documento (obrigatório)
-  documento: z
-    .string()
-    .min(1, "CPF ou CNPJ é obrigatório")
-    .refine(
-      (val) => {
-        const numeros = val.replace(/\D/g, "");
-        return numeros.length === 11 || numeros.length === 14;
-      },
-      { message: "Digite um CPF (11 dígitos) ou CNPJ (14 dígitos) válido" }
-    )
-    .refine(
-      (val) => {
-        const numeros = val.replace(/\D/g, "");
-        if (numeros.length === 11) return validarCPF(numeros);
-        if (numeros.length === 14) return validarCNPJ(numeros);
-        return false;
-      },
-      { message: "CPF ou CNPJ inválido" }
-    ),
-  tipo_pessoa: z.enum(["PF", "PJ"]).default("PF"),
+   // Documento (obrigatório)
+   documento: z
+     .string()
+     .min(1, "CPF ou CNPJ é obrigatório")
+     .refine(
+       (val) => {
+         const numeros = val.replace(/\D/g, "");
+         return numeros.length === 11 || numeros.length === 14;
+       },
+       {
+         message:
+           "Complete o número: CPF deve ter 11 dígitos e CNPJ 14 dígitos (confira se nada ficou faltando).",
+       }
+     )
+     .refine(
+       (val) => {
+         const numeros = val.replace(/\D/g, "");
+         if (numeros.length === 11) return validarCPF(numeros);
+         if (numeros.length === 14) return validarCNPJ(numeros);
+         return false;
+       },
+       {
+         message:
+           "CPF ou CNPJ não confere nos dígitos verificadores. Verifique cada número ou use um documento oficialmente válido.",
+       }
+     ),
+   tipo_pessoa: z.enum(["PF", "PJ"]).default("PF"),
 
-  // PF
-  nome: z.string().optional().or(z.literal("")),
+   // PF
+   nome: z.string().optional().or(z.literal("")),
 
-  // PJ
-  razao_social: z.string().optional().or(z.literal("")),
-  nome_fantasia: z.string().optional().or(z.literal("")),
-  inscricao_estadual: z.string().optional().or(z.literal("")),
+   // PJ
+   razao_social: z.string().optional().or(z.literal("")),
+   nome_fantasia: z.string().optional().or(z.literal("")),
+   inscricao_estadual: z.string().optional().or(z.literal("")),
 
-  // Contato
-  telefone: z.string().optional().or(z.literal("")),
-  telefone_secundario: z.string().optional().or(z.literal("")),
-  email: z.string().email("Email inválido").optional().or(z.literal("")),
+   // Contato
+   telefone: z.string().optional().or(z.literal("")),
+   telefone_secundario: z.string().optional().or(z.literal("")),
+   email: z
+     .union([z.literal(""), z.string().email("Email inválido")]),
 
-  // Endereço
-  cep: z.string().optional().or(z.literal("")),
-  endereco: z.string().optional().or(z.literal("")),
-  numero: z.string().optional().or(z.literal("")),
-  complemento: z.string().optional().or(z.literal("")),
-  bairro: z.string().optional().or(z.literal("")),
-  cidade: z.string().optional().or(z.literal("")),
-  uf: z.string().max(2).optional().or(z.literal("")),
+   // Endereço
+   cep: z.string().optional().or(z.literal("")),
+   endereco: z.string().optional().or(z.literal("")),
+   numero: z.string().optional().or(z.literal("")),
+   complemento: z.string().optional().or(z.literal("")),
+   bairro: z.string().optional().or(z.literal("")),
+   cidade: z.string().optional().or(z.literal("")),
+uf: z.string().max(2).optional().or(z.literal("")),
 
-  // Preferências
-  observacoes: z.string().optional().or(z.literal("")),
-}).superRefine((data, ctx) => {
-  const numeros = data.documento.replace(/\D/g, "");
-  if (numeros.length === 11) {
-    // PF: nome obrigatório
-    if (!data.nome || data.nome.trim().length < 2) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: "Nome completo é obrigatório para Pessoa Física",
-        path: ["nome"],
-      });
-    }
-  } else if (numeros.length === 14) {
-    // PJ: razao_social obrigatória
-    if (!data.razao_social || data.razao_social.trim().length < 2) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: "Razão Social é obrigatória para Pessoa Jurídica",
-        path: ["razao_social"],
-      });
-    }
-  }
-});
+    // Preferências
+   observacoes: z.string().optional().or(z.literal("")),
+ }).superRefine((data, ctx) => {
+   const numeros = data.documento.replace(/\D/g, "");
+   if (numeros.length === 11) {
+     // PF: nome obrigatório
+     if (!data.nome || data.nome.trim().length < 2) {
+       ctx.addIssue({
+         code: z.ZodIssueCode.custom,
+         message: "Nome completo é obrigatório para Pessoa Física",
+         path: ["nome"],
+       });
+     }
+   } else if (numeros.length === 14) {
+     // PJ: razao_social obrigatória
+     if (!data.razao_social || data.razao_social.trim().length < 2) {
+       ctx.addIssue({
+         code: z.ZodIssueCode.custom,
+         message: "Razão Social é obrigatória para Pessoa Jurídica",
+         path: ["razao_social"],
+       });
+     }
+   }
+
+   const telDigitos = (data.telefone || "").replace(/\D/g, "");
+   if (telDigitos.length < 10) {
+     ctx.addIssue({
+       code: z.ZodIssueCode.custom,
+       message: "Telefone é obrigatório (DDD + número, no mínimo 10 dígitos)",
+       path: ["telefone"],
+     });
+   }
+ });
 
 export type ClienteFormData = z.infer<typeof clienteSchema>;
 

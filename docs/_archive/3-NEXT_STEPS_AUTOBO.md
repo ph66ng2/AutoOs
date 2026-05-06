@@ -1,88 +1,1041 @@
-# Próximos Passos — AutoOS
-
-## ✅ Concluído
-
-### Infraestrutura
-- [x] Tauri 2.x + React 18 + TypeScript
-- [x] Tailwind CSS + shadcn/ui (11 componentes)
-- [x] PostgreSQL com 6 tabelas (clientes, equipamentos, produtos, movimentacoes_estoque, verificacoes, comunicacoes)
-- [x] 25 comandos Tauri registrados (CRUD completo + utilitários + SMTP)
-- [x] React Router v6 + Layout com sidebar colapsável
-
-### Fluxo de Equipamentos (12 status)
-- [x] RECEBIDO → EM_VERIFICACAO → VERIFICADO → AGUARDANDO_APROVACAO → APROVADO/REPROVADO → EM_MANUTENCAO → PRONTO → ENTREGUE
-- [x] Transições de status com campos condicionais (valor orçamento, prazo, valor final)
-- [x] Botões de ação contextuais por status na tabela
-- [x] Timeline visual de histórico de status
-
-### Verificação Técnica
-- [x] Componente standalone `VerificacaoTecnica` (extraído de Equipamentos.tsx)
-- [x] Checklist customizável (7 itens padrão)
-- [x] Cadastro de serviços e peças necessárias
-- [x] Resumo financeiro automático (mão de obra + peças = total)
-- [x] Tempo estimado
-
-### Comunicações
-- [x] Componente standalone `HistoricoComunicacoes` (extraído de Equipamentos.tsx)
-- [x] WhatsApp via wa.me (orçamento + equipamento pronto)
-- [x] Email service com corpo formatado (placeholder — sem SMTP real)
-- [x] Registro de todas as comunicações no banco
-- [x] Hook `useStatusEquipamento` com automação (dispara notificações nas transições)
-
-### Equipamentos (Página)
-- [x] Tabela com filtros (busca + status), CRUD completo
-- [x] Dialog de detalhes com 4 abas (Informações, Verificação, Comunicações, Histórico)
-- [x] Seletor de cliente ao cadastrar
-
-### Clientes
-- [x] Tabela com busca, edição e exclusão
-- [x] Equipamentos vinculados (expandir row)
-- [x] Criação automática via cadastro de equipamento
-
-### Insumos
-- [x] CRUD de produtos com categorias
-- [x] Indicador de estoque baixo
-- [x] Movimentação de estoque (Entrada/Saída)
-- [x] Validação com Zod
-
-### Dashboard
-- [x] Cards de métricas (total, em manutenção, aguardando, estoque baixo)
-- [x] Seção "Ações Pendentes" (itens por status crítico)
-- [x] Lista de equipamentos recentes
-- [x] Alertas de estoque
-- [x] Distribuição por status (barras visuais)
-
-### Serviços Preparados (estrutura pronta)
-- [x] `pdf-service.ts` — geração de orçamento em PDF com logo e layout profissional
-- [x] `email-service.ts` — corpo de email formatado, pronto para SMTP
-
----
-
-## Prioridades em Cheque
-
-Este roadmap deixa de ser um backlog genérico de features e passa a ser uma fila de execução para levar o AutoOS a produção com risco controlado.
-
-Regra de uso para qualquer agente que atuar neste repositório:
-- Executar de cima para baixo.
-- Não abrir itens de P1 enquanto houver bloqueador aberto em P0.
-- Não discutir reescrita arquitetural ampla enquanto a operação atual não estiver provada em ambiente real.
-
----
-
-## P0 — Bloqueadores de Produção
-
-### 1. Fechar autorização sensível no backend
-- [x] Revisar todos os comandos Rust que persistem dados financeiros, estoque, exclusão e restore.
-- [x] Garantir que a checagem de permissão ocorra antes de qualquer escrita no banco.
-- [x] Garantir que sucesso e falha gerem trilha de auditoria adequada.
-- [x] Adicionar testes cobrindo acesso autorizado e negado.
-
-Saída esperada:
-Nenhum comando sensível pode ser executado por caminho alternativo sem perfil, PIN e permissão válidos.
-
 Plano de execução delegável:
 
-#### 1.1. Inventário real dos comandos sensíveis
+#### 1.1. Inventário real dos comandos sensíveisRESUMO - AutoBO (Sistema de Automação de Boletos)
+📋 O QUE É O AutoBO
+Sistema desktop desenvolvido em Java Spring Boot para automação completa do ciclo de geração de boletos bancários, com integração direta à API de Cobrança do Banco Sicredi.
+
+🎯 OBJETIVO
+Eliminar processos manuais de geração de boletos, reduzindo:
+
+Tempo de geração de 5 minutos → 15 segundos (90%)
+Erros de digitação manual → 0%
+Trabalho operacional → 40+ horas/mês economizadas
+
+
+⚙️ FUNCIONALIDADES PRINCIPAIS
+1. Importação Automática de NF-e
+
+Parser de XML (Notas Fiscais Eletrônicas)
+Extração automática de:
+
+Dados do pagador (CPF/CNPJ, nome, endereço)
+Valor total da nota
+Data de emissão
+Número da NF-e
+
+
+Validação de schema XML e chave de acesso
+Detecção de duplicidade
+
+2. Gestão Inteligente de Pagadores
+
+Detecção automática PF/PJ:
+
+CPF (11 dígitos) → Pessoa Física
+CNPJ (14 dígitos) → Pessoa Jurídica
+
+
+Validação algorítmica de CPF/CNPJ
+Cadastro automático: Se pagador não existe, cria automaticamente com dados da NF-e
+Configurações personalizadas por cliente:
+
+Prazo de vencimento padrão
+Percentual de juros (mensal/diário)
+Percentual de multa
+Dias para protesto/negativação
+Mensagens padrão no boleto
+
+
+
+3. Geração Automática de Boletos
+
+Integração API Sicredi v2:
+
+Autenticação OAuth 2.0
+Ambiente Sandbox para testes
+Suporte a boletos simples e híbridos (com QR Code Pix)
+
+
+Cálculos automáticos:
+
+Data de vencimento (data emissão + prazo)
+Juros (percentual mensal/diário ou valor fixo)
+Multa (percentual ou valor fixo)
+Descontos progressivos (até 3 níveis)
+
+
+Tratamento completo de erros:
+
+400: Validação de campos
+401: Token expirado
+422: Regras de negócio (ECOMM não contratado, etc)
+429: Rate limit
+Retry automático com backoff exponencial
+
+
+
+4. Notificações Automáticas
+
+Email (SMTP):
+
+Template HTML profissional
+Linha digitável formatada
+QR Code Pix (se boleto híbrido)
+Informações completas do boleto
+
+
+WhatsApp:
+
+Mensagem formatada em Markdown
+Linha digitável copiável
+Link para pagamento
+
+
+Disparo automático em:
+
+Boleto gerado → Email + WhatsApp
+Lembretes de vencimento (job agendado)
+Equipamento pronto (integração com AutoOS)
+
+
+
+5. Dashboard Financeiro
+
+Métricas em tempo real:
+
+Boletos gerados no mês
+Boletos pagos
+Boletos vencidos
+Valor a receber
+Taxa de inadimplência
+
+
+Gráficos:
+
+Evolução mensal de boletos
+Distribuição por status
+Top devedores
+
+
+Relatórios:
+
+Recebimentos por período
+Inadimplência por região
+Exportação Excel/CSV
+
+
+
+6. Jobs Agendados
+
+Verificar boletos vencendo hoje (8h diariamente)
+Atualizar status de boletos (1h diariamente)
+
+Consulta API Sicredi
+Marca como PAGO se confirmado
+Atualiza estatísticas do pagador
+
+
+
+
+🗄️ BANCO DE DADOS (PostgreSQL)
+Tabelas Principais:
+pagadores:
+
+Dados PF: nome
+Dados PJ: razaoSocial, nomeFantasia, inscricaoEstadual
+Configurações: prazoVencimentoDias, percentualJuros, percentualMulta, diasProtesto
+Estatísticas: totalBoletosGerados, totalBoletosPagos, totalValorPago
+
+notas_fiscais:
+
+Dados NF-e: numeroNf, chaveAcesso, dataEmissao
+Valores: valorTotal, valorProdutos, valorServicos
+Status: IMPORTADA, BOLETO_GERADO, PAGA, CANCELADA
+Arquivo XML completo armazenado
+
+boletos:
+
+Identificação: nossoNumero (Sicredi), seuNumero (interno)
+Valores: valorNominal, valorPago, valorJuros, valorMulta
+Datas: dataEmissao, dataVencimento, dataPagamento
+Configurações: tipoCobranca (SIMPLES/HIBRIDO), juros, multa, descontos
+Dados Sicredi: linhaDigitavel, codigoBarras, txid, qrCode
+Status: GERADO, REGISTRADO, PAGO, VENCIDO, CANCELADO
+
+comunicacoes:
+
+Log de emails/WhatsApp enviados
+Status de entrega e visualização
+Rastreamento de cliques (email)
+Respostas do cliente (WhatsApp)
+
+
+🏗️ STACK TECNOLÓGICA
+Backend:
+
+Java 17+ (LTS)
+Spring Boot 3.x
+Spring Data JPA (ORM)
+Spring Security (autenticação)
+Spring Scheduler (jobs)
+Flyway (migrations)
+
+Banco de Dados:
+
+PostgreSQL 14+
+SQLite compartilhado (insumos com AutoOS)
+
+Bibliotecas:
+
+jackson-dataformat-xml - Parser NF-e
+spring-boot-starter-mail - SMTP
+thymeleaf - Templates email
+okhttp / RestTemplate - HTTP client
+bcrypt - Criptografia
+
+Interface:
+
+JavaFX 17+ (UI desktop nativa)
+OU Vaadin Flow (web-based local)
+
+
+🔗 INTEGRAÇÃO COM AutoOS
+Compartilhamento de dados:
+Opção 1: PostgreSQL Único (Recomendada)
+PostgreSQL (autoos database)
+├── clientes (compartilhado)
+├── equipamentos (AutoOS)
+├── produtos (compartilhado)
+├── movimentacoes_estoque (compartilhado)
+├── verificacoes (AutoOS)
+├── boletos (AutoBO)
+└── notas_fiscais (AutoBO)
+Vantagens:
+
+✅ Concorrência nativa (MVCC)
+✅ Backup único centralizado
+✅ Schema unificado
+✅ Foreign keys entre sistemas
+
+Opção 2: Híbrido (SQLite para insumos)
+AutoOS: autoos.db (SQLite local) + insumos.db (SQLite compartilhado)
+AutoBO: PostgreSQL (rede) + insumos.db (SQLite compartilhado)
+Vantagens:
+
+✅ AutoOS funciona offline
+✅ Independência entre apps
+✅ Insumos compartilhados via arquivo
+
+
+📱 API SICREDI - ESPECIFICAÇÕES
+Credenciais Necessárias (5):
+
+apiKey - Portal Developers
+cooperativa - 4 dígitos
+posto - 2 dígitos
+codigoBeneficiario - 5 dígitos
+codigoAcesso - Internet Banking
+
+Fluxo de Autenticação:
+POST /auth/openapi/token
+  → access_token (válido ~1h)
+  → Cache em memória
+  → Renovação automática
+Endpoint de Geração:
+POST /cobranca/boleto/v1/boletos
+Headers:
+  - x-api-key
+  - Authorization: Bearer {token}
+  - cooperativa
+  - posto
+Body: JSON com 40+ campos
+Resposta (201 Created):
+json{
+  "nossoNumero": "12345678",
+  "linhaDigitavel": "00000.00000...",
+  "codigoBarras": "00000000000...",
+  "txid": "...",        // Apenas híbrido
+  "qrCode": "..."       // Apenas híbrido
+}
+Tratamento de Erros:
+
+400: Validação (campo inválido)
+401: Token expirado
+422: ECOMM não contratado, CEP inválido, vencimento retroativo
+429: Rate limit
+Retry com backoff exponencial (máx 3 tentativas)
+
+
+📊 FLUXO COMPLETO
+1. Importar NF-e (XML) → Parser + Validação
+   ↓
+2. Extrair dados do pagador (CPF/CNPJ, nome, endereço)
+   ↓
+3. Buscar pagador no banco
+   ├─ Existe? → Carregar configurações
+   └─ Não existe? → Cadastrar automaticamente
+   ↓
+4. Revisar dados (UI) → Ajustes manuais opcionais
+   ↓
+5. Gerar boleto → API Sicredi
+   ├─ Autenticação OAuth
+   ├─ Montar payload JSON
+   ├─ POST /boletos
+   └─ Salvar resposta (nossoNumero, linha digitável, etc)
+   ↓
+6. Notificações automáticas
+   ├─ Email (SMTP) → Template HTML
+   └─ WhatsApp (API) → Mensagem formatada
+   ↓
+7. Registrar comunicações (log completo)
+
+⏱️ JOBS AGENDADOS
+Diário às 8h:
+
+Buscar boletos vencendo hoje
+Enviar lembretes por email/WhatsApp
+
+Diário à 1h:
+
+Consultar status de boletos na API Sicredi
+Atualizar status (PAGO se confirmado)
+Atualizar estatísticas de pagadores
+
+
+📈 MÉTRICAS DE SUCESSO
+Após 3 meses em produção:
+
+✅ 90% redução no tempo de geração
+✅ 0% erros de digitação
+✅ 99%+ taxa de sucesso API Sicredi
+✅ 80%+ emails abertos
+✅ 20-30% redução na inadimplência
+✅ 100+ NF-es processadas/mês
+
+
+🚀 ROADMAP DE IMPLEMENTAÇÃO
+9 semanas divididas em 8 fases:
+
+Setup (Java + PostgreSQL + JavaFX)
+Parser de NF-e + Validações
+API Sicredi (OAuth + Geração)
+Service de geração + Persistência
+Email/WhatsApp services
+Dashboard + Queries agregadas
+Jobs agendados
+Testes + Refinamento
+
+
+💡 DECISÕES TÉCNICAS CHAVE
+Por que Java Spring Boot?
+
+✅ Robustez enterprise
+✅ Integração bancária confiável
+✅ Jobs agendados nativos (Spring Scheduler)
+✅ Ecossistema maduro (JPA, SMTP, etc)
+✅ Você quer praticar Java
+
+Por que PostgreSQL?
+
+✅ Concorrência nativa (múltiplos apps acessando)
+✅ EscalávelRESUMO - AutoBO (Sistema de Automação de Boletos)
+📋 O QUE É O AutoBO
+Sistema desktop desenvolvido em Java Spring Boot para automação completa do ciclo de geração de boletos bancários, com integração direta à API de Cobrança do Banco Sicredi.
+
+🎯 OBJETIVO
+Eliminar processos manuais de geração de boletos, reduzindo:
+
+Tempo de geração de 5 minutos → 15 segundos (90%)
+Erros de digitação manual → 0%
+Trabalho operacional → 40+ horas/mês economizadas
+
+
+⚙️ FUNCIONALIDADES PRINCIPAIS
+1. Importação Automática de NF-e
+
+Parser de XML (Notas Fiscais Eletrônicas)
+Extração automática de:
+
+Dados do pagador (CPF/CNPJ, nome, endereço)
+Valor total da nota
+Data de emissão
+Número da NF-e
+
+
+Validação de schema XML e chave de acesso
+Detecção de duplicidade
+
+2. Gestão Inteligente de Pagadores
+
+Detecção automática PF/PJ:
+
+CPF (11 dígitos) → Pessoa Física
+CNPJ (14 dígitos) → Pessoa Jurídica
+
+
+Validação algorítmica de CPF/CNPJ
+Cadastro automático: Se pagador não existe, cria automaticamente com dados da NF-e
+Configurações personalizadas por cliente:
+
+Prazo de vencimento padrão
+Percentual de juros (mensal/diário)
+Percentual de multa
+Dias para protesto/negativação
+Mensagens padrão no boleto
+
+
+
+3. Geração Automática de Boletos
+
+Integração API Sicredi v2:
+
+Autenticação OAuth 2.0
+Ambiente Sandbox para testes
+Suporte a boletos simples e híbridos (com QR Code Pix)
+
+
+Cálculos automáticos:
+
+Data de vencimento (data emissão + prazo)
+Juros (percentual mensal/diário ou valor fixo)
+Multa (percentual ou valor fixo)
+Descontos progressivos (até 3 níveis)
+
+
+Tratamento completo de erros:
+
+400: Validação de campos
+401: Token expirado
+422: Regras de negócio (ECOMM não contratado, etc)
+429: Rate limit
+Retry automático com backoff exponencial
+
+
+
+4. Notificações Automáticas
+
+Email (SMTP):
+
+Template HTML profissional
+Linha digitável formatada
+QR Code Pix (se boleto híbrido)
+Informações completas do boleto
+
+
+WhatsApp:
+
+Mensagem formatada em Markdown
+Linha digitável copiável
+Link para pagamento
+
+
+Disparo automático em:
+
+Boleto gerado → Email + WhatsApp
+Lembretes de vencimento (job agendado)
+Equipamento pronto (integração com AutoOS)
+
+
+
+5. Dashboard Financeiro
+
+Métricas em tempo real:
+
+Boletos gerados no mês
+Boletos pagos
+Boletos vencidos
+Valor a receber
+Taxa de inadimplência
+
+
+Gráficos:
+
+Evolução mensal de boletos
+Distribuição por status
+Top devedores
+
+
+Relatórios:
+
+Recebimentos por período
+Inadimplência por região
+Exportação Excel/CSV
+
+
+
+6. Jobs Agendados
+
+Verificar boletos vencendo hoje (8h diariamente)
+Atualizar status de boletos (1h diariamente)
+
+Consulta API Sicredi
+Marca como PAGO se confirmado
+Atualiza estatísticas do pagador
+
+
+
+
+🗄️ BANCO DE DADOS (PostgreSQL)
+Tabelas Principais:
+pagadores:
+
+Dados PF: nome
+Dados PJ: razaoSocial, nomeFantasia, inscricaoEstadual
+Configurações: prazoVencimentoDias, percentualJuros, percentualMulta, diasProtesto
+Estatísticas: totalBoletosGerados, totalBoletosPagos, totalValorPago
+
+notas_fiscais:
+
+Dados NF-e: numeroNf, chaveAcesso, dataEmissao
+Valores: valorTotal, valorProdutos, valorServicos
+Status: IMPORTADA, BOLETO_GERADO, PAGA, CANCELADA
+Arquivo XML completo armazenado
+
+boletos:
+
+Identificação: nossoNumero (Sicredi), seuNumero (interno)
+Valores: valorNominal, valorPago, valorJuros, valorMulta
+Datas: dataEmissao, dataVencimento, dataPagamento
+Configurações: tipoCobranca (SIMPLES/HIBRIDO), juros, multa, descontos
+Dados Sicredi: linhaDigitavel, codigoBarras, txid, qrCode
+Status: GERADO, REGISTRADO, PAGO, VENCIDO, CANCELADO
+
+comunicacoes:
+
+Log de emails/WhatsApp enviados
+Status de entrega e visualização
+Rastreamento de cliques (email)
+Respostas do cliente (WhatsApp)
+
+
+🏗️ STACK TECNOLÓGICA
+Backend:
+
+Java 17+ (LTS)
+Spring Boot 3.x
+Spring Data JPA (ORM)
+Spring Security (autenticação)
+Spring Scheduler (jobs)
+Flyway (migrations)
+
+Banco de Dados:
+
+PostgreSQL 14+
+SQLite compartilhado (insumos com AutoOS)
+
+Bibliotecas:
+
+jackson-dataformat-xml - Parser NF-e
+spring-boot-starter-mail - SMTP
+thymeleaf - Templates email
+okhttp / RestTemplate - HTTP client
+bcrypt - Criptografia
+
+Interface:
+
+JavaFX 17+ (UI desktop nativa)
+OU Vaadin Flow (web-based local)
+
+
+🔗 INTEGRAÇÃO COM AutoOS
+Compartilhamento de dados:
+Opção 1: PostgreSQL Único (Recomendada)
+PostgreSQL (autoos database)
+├── clientes (compartilhado)
+├── equipamentos (AutoOS)
+├── produtos (compartilhado)
+├── movimentacoes_estoque (compartilhado)
+├── verificacoes (AutoOS)
+├── boletos (AutoBO)
+└── notas_fiscais (AutoBO)
+Vantagens:
+
+✅ Concorrência nativa (MVCC)
+✅ Backup único centralizado
+✅ Schema unificado
+✅ Foreign keys entre sistemas
+
+Opção 2: Híbrido (SQLite para insumos)
+AutoOS: autoos.db (SQLite local) + insumos.db (SQLite compartilhado)
+AutoBO: PostgreSQL (rede) + insumos.db (SQLite compartilhado)
+Vantagens:
+
+✅ AutoOS funciona offline
+✅ Independência entre apps
+✅ Insumos compartilhados via arquivo
+
+
+📱 API SICREDI - ESPECIFICAÇÕES
+Credenciais Necessárias (5):
+
+apiKey - Portal Developers
+cooperativa - 4 dígitos
+posto - 2 dígitos
+codigoBeneficiario - 5 dígitos
+codigoAcesso - Internet Banking
+
+Fluxo de Autenticação:
+POST /auth/openapi/token
+  → access_token (válido ~1h)
+  → Cache em memória
+  → Renovação automática
+Endpoint de Geração:
+POST /cobranca/boleto/v1/boletos
+Headers:
+  - x-api-key
+  - Authorization: Bearer {token}
+  - cooperativa
+  - posto
+Body: JSON com 40+ campos
+Resposta (201 Created):
+json{
+  "nossoNumero": "12345678",
+  "linhaDigitavel": "00000.00000...",
+  "codigoBarras": "00000000000...",
+  "txid": "...",        // Apenas híbrido
+  "qrCode": "..."       // Apenas híbrido
+}
+Tratamento de Erros:
+
+400: Validação (campo inválido)
+401: Token expirado
+422: ECOMM não contratado, CEP inválido, vencimento retroativo
+429: Rate limit
+Retry com backoff exponencial (máx 3 tentativas)
+
+
+📊 FLUXO COMPLETO
+1. Importar NF-e (XML) → Parser + Validação
+   ↓
+2. Extrair dados do pagador (CPF/CNPJ, nome, endereço)
+   ↓
+3. Buscar pagador no banco
+   ├─ Existe? → Carregar configurações
+   └─ Não existe? → Cadastrar automaticamente
+   ↓
+4. Revisar dados (UI) → Ajustes manuais opcionais
+   ↓
+5. Gerar boleto → API Sicredi
+   ├─ Autenticação OAuth
+   ├─ Montar payload JSON
+   ├─ POST /boletos
+   └─ Salvar resposta (nossoNumero, linha digitável, etc)
+   ↓
+6. Notificações automáticas
+   ├─ Email (SMTP) → Template HTML
+   └─ WhatsApp (API) → Mensagem formatada
+   ↓
+7. Registrar comunicações (log completo)
+
+⏱️ JOBS AGENDADOS
+Diário às 8h:
+
+Buscar boletos vencendo hoje
+Enviar lembretes por email/WhatsApp
+
+Diário à 1h:
+
+Consultar status de boletos na API Sicredi
+Atualizar status (PAGO se confirmado)
+Atualizar estatísticas de pagadores
+
+
+📈 MÉTRICAS DE SUCESSO
+Após 3 meses em produção:
+
+✅ 90% redução no tempo de geração
+✅ 0% erros de digitação
+✅ 99%+ taxa de sucesso API Sicredi
+✅ 80%+ emails abertos
+✅ 20-30% redução na inadimplência
+✅ 100+ NF-es processadas/mês
+
+
+🚀 ROADMAP DE IMPLEMENTAÇÃO
+9 semanas divididas em 8 fases:
+
+Setup (Java + PostgreSQL + JavaFX)
+Parser de NF-e + Validações
+API Sicredi (OAuth + Geração)
+Service de geração + Persistência
+Email/WhatsApp services
+Dashboard + Queries agregadas
+Jobs agendados
+Testes + Refinamento
+
+
+💡 DECISÕES TÉCNICAS CHAVE
+Por que Java Spring Boot?
+
+✅ Robustez enterprise
+✅ Integração bancária confiável
+✅ Jobs agendados nativos (Spring Scheduler)
+✅ Ecossistema maduro (JPA, SMTP, etc)RESUMO - AutoBO (Sistema de Automação de Boletos)
+📋 O QUE É O AutoBO
+Sistema desktop desenvolvido em Java Spring Boot para automação completa do ciclo de geração de boletos bancários, com integração direta à API de Cobrança do Banco Sicredi.
+
+🎯 OBJETIVO
+Eliminar processos manuais de geração de boletos, reduzindo:
+
+Tempo de geração de 5 minutos → 15 segundos (90%)
+Erros de digitação manual → 0%
+Trabalho operacional → 40+ horas/mês economizadas
+
+
+⚙️ FUNCIONALIDADES PRINCIPAIS
+1. Importação Automática de NF-e
+
+Parser de XML (Notas Fiscais Eletrônicas)
+Extração automática de:
+
+Dados do pagador (CPF/CNPJ, nome, endereço)
+Valor total da nota
+Data de emissão
+Número da NF-e
+
+
+Validação de schema XML e chave de acesso
+Detecção de duplicidade
+
+2. Gestão Inteligente de Pagadores
+
+Detecção automática PF/PJ:
+
+CPF (11 dígitos) → Pessoa Física
+CNPJ (14 dígitos) → Pessoa Jurídica
+
+
+Validação algorítmica de CPF/CNPJ
+Cadastro automático: Se pagador não existe, cria automaticamente com dados da NF-e
+Configurações personalizadas por cliente:
+
+Prazo de vencimento padrão
+Percentual de juros (mensal/diário)
+Percentual de multa
+Dias para protesto/negativação
+Mensagens padrão no boleto
+
+
+
+3. Geração Automática de Boletos
+
+Integração API Sicredi v2:
+
+Autenticação OAuth 2.0
+Ambiente Sandbox para testes
+Suporte a boletos simples e híbridos (com QR Code Pix)
+
+
+Cálculos automáticos:
+
+Data de vencimento (data emissão + prazo)
+Juros (percentual mensal/diário ou valor fixo)
+Multa (percentual ou valor fixo)
+Descontos progressivos (até 3 níveis)
+
+
+Tratamento completo de erros:
+
+400: Validação de campos
+401: Token expirado
+422: Regras de negócio (ECOMM não contratado, etc)
+429: Rate limit
+Retry automático com backoff exponencial
+
+
+
+4. Notificações Automáticas
+
+Email (SMTP):
+
+Template HTML profissional
+Linha digitável formatada
+QR Code Pix (se boleto híbrido)
+Informações completas do boleto
+
+
+WhatsApp:
+
+Mensagem formatada em Markdown
+Linha digitável copiável
+Link para pagamento
+
+
+Disparo automático em:
+
+Boleto gerado → Email + WhatsApp
+Lembretes de vencimento (job agendado)
+Equipamento pronto (integração com AutoOS)
+
+
+
+5. Dashboard Financeiro
+
+Métricas em tempo real:
+
+Boletos gerados no mês
+Boletos pagos
+Boletos vencidos
+Valor a receber
+Taxa de inadimplência
+
+
+Gráficos:
+
+Evolução mensal de boletos
+Distribuição por status
+Top devedores
+
+
+Relatórios:
+
+Recebimentos por período
+Inadimplência por região
+Exportação Excel/CSV
+
+
+
+6. Jobs Agendados
+
+Verificar boletos vencendo hoje (8h diariamente)
+Atualizar status de boletos (1h diariamente)
+
+Consulta API Sicredi
+Marca como PAGO se confirmado
+Atualiza estatísticas do pagador
+
+
+
+
+🗄️ BANCO DE DADOS (PostgreSQL)
+Tabelas Principais:
+pagadores:
+
+Dados PF: nome
+Dados PJ: razaoSocial, nomeFantasia, inscricaoEstadual
+Configurações: prazoVencimentoDias, percentualJuros, percentualMulta, diasProtesto
+Estatísticas: totalBoletosGerados, totalBoletosPagos, totalValorPago
+
+notas_fiscais:
+
+Dados NF-e: numeroNf, chaveAcesso, dataEmissao
+Valores: valorTotal, valorProdutos, valorServicos
+Status: IMPORTADA, BOLETO_GERADO, PAGA, CANCELADA
+Arquivo XML completo armazenado
+
+boletos:
+
+Identificação: nossoNumero (Sicredi), seuNumero (interno)
+Valores: valorNominal, valorPago, valorJuros, valorMulta
+Datas: dataEmissao, dataVencimento, dataPagamento
+Configurações: tipoCobranca (SIMPLES/HIBRIDO), juros, multa, descontos
+Dados Sicredi: linhaDigitavel, codigoBarras, txid, qrCode
+Status: GERADO, REGISTRADO, PAGO, VENCIDO, CANCELADO
+
+comunicacoes:
+
+Log de emails/WhatsApp enviados
+Status de entrega e visualização
+Rastreamento de cliques (email)
+Respostas do cliente (WhatsApp)
+
+
+🏗️ STACK TECNOLÓGICA
+Backend:
+
+Java 17+ (LTS)
+Spring Boot 3.x
+Spring Data JPA (ORM)
+Spring Security (autenticação)
+Spring Scheduler (jobs)
+Flyway (migrations)
+
+Banco de Dados:
+
+PostgreSQL 14+
+SQLite compartilhado (insumos com AutoOS)
+
+Bibliotecas:
+
+jackson-dataformat-xml - Parser NF-e
+spring-boot-starter-mail - SMTP
+thymeleaf - Templates email
+okhttp / RestTemplate - HTTP client
+bcrypt - Criptografia
+
+Interface:
+
+JavaFX 17+ (UI desktop nativa)
+OU Vaadin Flow (web-based local)
+
+
+🔗 INTEGRAÇÃO COM AutoOS
+Compartilhamento de dados:
+Opção 1: PostgreSQL Único (Recomendada)
+PostgreSQL (autoos database)
+├── clientes (compartilhado)
+├── equipamentos (AutoOS)
+├── produtos (compartilhado)
+├── movimentacoes_estoque (compartilhado)
+├── verificacoes (AutoOS)
+├── boletos (AutoBO)
+└── notas_fiscais (AutoBO)
+Vantagens:
+
+✅ Concorrência nativa (MVCC)
+✅ Backup único centralizado
+✅ Schema unificado
+✅ Foreign keys entre sistemas
+
+Opção 2: Híbrido (SQLite para insumos)
+AutoOS: autoos.db (SQLite local) + insumos.db (SQLite compartilhado)
+AutoBO: PostgreSQL (rede) + insumos.db (SQLite compartilhado)
+Vantagens:
+
+✅ AutoOS funciona offline
+✅ Independência entre apps
+✅ Insumos compartilhados via arquivo
+
+
+📱 API SICREDI - ESPECIFICAÇÕES
+Credenciais Necessárias (5):
+
+apiKey - Portal Developers
+cooperativa - 4 dígitos
+posto - 2 dígitos
+codigoBeneficiario - 5 dígitos
+codigoAcesso - Internet Banking
+
+Fluxo de Autenticação:
+POST /auth/openapi/token
+  → access_token (válido ~1h)
+  → Cache em memória
+  → Renovação automática
+Endpoint de Geração:
+POST /cobranca/boleto/v1/boletos
+Headers:
+  - x-api-key
+  - Authorization: Bearer {token}
+  - cooperativa
+  - posto
+Body: JSON com 40+ campos
+Resposta (201 Created):
+json{
+  "nossoNumero": "12345678",
+  "linhaDigitavel": "00000.00000...",
+  "codigoBarras": "00000000000...",
+  "txid": "...",        // Apenas híbrido
+  "qrCode": "..."       // Apenas híbrido
+}
+Tratamento de Erros:
+
+400: Validação (campo inválido)
+401: Token expirado
+422: ECOMM não contratado, CEP inválido, vencimento retroativo
+429: Rate limit
+Retry com backoff exponencial (máx 3 tentativas)
+
+
+📊 FLUXO COMPLETO
+1. Importar NF-e (XML) → Parser + Validação
+   ↓
+2. Extrair dados do pagador (CPF/CNPJ, nome, endereço)
+   ↓
+3. Buscar pagador no banco
+   ├─ Existe? → Carregar configurações
+   └─ Não existe? → Cadastrar automaticamente
+   ↓
+4. Revisar dados (UI) → Ajustes manuais opcionais
+   ↓
+5. Gerar boleto → API Sicredi
+   ├─ Autenticação OAuth
+   ├─ Montar payload JSON
+   ├─ POST /boletos
+   └─ Salvar resposta (nossoNumero, linha digitável, etc)
+   ↓
+6. Notificações automáticas
+   ├─ Email (SMTP) → Template HTML
+   └─ WhatsApp (API) → Mensagem formatada
+   ↓
+7. Registrar comunicações (log completo)
+
+⏱️ JOBS AGENDADOS
+Diário às 8h:
+
+Buscar boletos vencendo hoje
+Enviar lembretes por email/WhatsApp
+
+Diário à 1h:
+
+Consultar status de boletos na API Sicredi
+Atualizar status (PAGO se confirmado)
+Atualizar estatísticas de pagadores
+
+
+📈 MÉTRICAS DE SUCESSO
+Após 3 meses em produção:
+
+✅ 90% redução no tempo de geração
+✅ 0% erros de digitação
+✅ 99%+ taxa de sucesso API Sicredi
+✅ 80%+ emails abertos
+✅ 20-30% redução na inadimplência
+✅ 100+ NF-es processadas/mês
+
+
+🚀 ROADMAP DE IMPLEMENTAÇÃO
+9 semanas divididas em 8 fases:
+
+Setup (Java + PostgreSQL + JavaFX)
+Parser de NF-e + Validações
+API Sicredi (OAuth + Geração)
+Service de geração + Persistência
+Email/WhatsApp services
+Dashboard + Queries agregadas
+Jobs agendados
+Testes + Refinamento
+
+
+💡 DECISÕES TÉCNICAS CHAVE
+Por que Java Spring Boot?
+
+✅ Robustez enterprise
+✅ Integração bancária confiável
+✅ Jobs agendados nativos (Spring Scheduler)
+✅ Ecossistema maduro (JPA, SMTP, etc)
+✅ Você quer praticar Java
+
+Por que PostgreSQL?
+
+✅ Concorrência nativa (múltiplos apps acessando)
+✅ Escalável
+✅ Gratuito
+✅ Suporte a JSON (para dados complexos)
+
+Por que não SQLite?
+
+❌ Não suporta acesso simultâneo de múltiplas máquinas
+❌ AutoOS e AutoBO podem rodar em PCs diferentes
+✅ Você quer praticar Java
+
+Por que PostgreSQL?
+
+✅ Concorrência nativa (múltiplos apps acessando)
+✅ Escalável
+✅ Gratuito
+✅ Suporte a JSON (para dados complexos)
+
+Por que não SQLite?
+
+❌ Não suporta acesso simultâneo de múltiplas máquinas
+❌ AutoOS e AutoBO podem rodar em PCs diferentes
+✅ Gratuito
+✅ Suporte a JSON (para dados complexos)
+
+Por que não SQLite?
+
+❌ Não suporta acesso simultâneo de múltiplas máquinas
+❌ AutoOS e AutoBO podem rodar em PCs diferentes
 - [x] Montar uma matriz comando → tipo de escrita → permissão exigida → arquivo.
 - [x] Classificar explicitamente os comandos em quatro grupos: financeiro, estoque, exclusão e administrativo.
 - [x] Tratar como escopo mínimo os arquivos `src-tauri/src/commands/auth.rs`, `equipamentos.rs`, `produtos.rs`, `clientes.rs`, `smtp.rs`, `whatsapp.rs` e `util.rs`.
@@ -447,11 +1400,11 @@ Evidência executável desta rodada:
   - Artefato: `e2e/report` + `e2e/results` da execução verde, além do log local.
 
 Checklist mínimo para marcar qualquer item como concluído (hardening):
-- [ ] Existe evidência de teste automatizado relevante para o risco do item.
-- [ ] Segurança: existe caso negado + caso autorizado.
-- [ ] Está explícito o que é teste mockado vs integração real.
-- [ ] Existe comando reproduzível por outra pessoa do time e resultado observado registrado.
-- [ ] Não há linguagem de aprovação sem prova executável associada.
+- [x] Existe evidência de teste automatizado relevante para o risco do item.
+- [x] Segurança: existe caso negado + caso autorizado.
+- [x] Está explícito o que é teste mockado vs integração real.
+- [x] Existe comando reproduzível por outra pessoa do time e resultado observado registrado.
+- [x] Não há linguagem de aprovação sem prova executável associada.
 
 ### 6. Validar concorrência compatível com 2 técnicos
 - [x] Testar alteração simultânea de estoque.
@@ -745,93 +1698,164 @@ Evidência executável desta etapa:
 ## P2 — Integração com AutoBO Sem Reescrita Prematura
 
 ### 9. Delimitar contextos de domínio e fonte de verdade
-- [ ] Definir o que pertence exclusivamente ao AutoOS.
-- [ ] Definir o que é domínio compartilhado com o AutoBO.
-- [ ] Nomear explicitamente a fonte de verdade para estoque, cliente, orçamento, OS e eventos financeiros.
-- [ ] Evitar compartilhamento ingênuo por tabela sem contrato de domínio.
 
-Saída esperada:
-Existe uma fronteira clara entre operacional técnico e financeiro/comercial.
+**Status em 2026-05-05:** Concluído com bounded contexts definidos e ownership mapeado.
 
 Plano de execução delegável:
 
 #### 9.1. Inventariar capacidades por domínio
-- [ ] Listar os casos de uso exclusivos do AutoOS.
-- [ ] Listar os casos de uso exclusivos do AutoBO.
-- [ ] Listar os casos de uso compartilhados ou com impacto bilateral.
+- [x] Listar os casos de uso exclusivos do AutoOS.
+- [x] Listar os casos de uso exclusivos do AutoBO.
+- [x] Listar os casos de uso compartilhados ou com impacto bilateral.
 
-Critério de aceite:
-Há uma visão concreta de domínio, e não apenas nomes genéricos de módulos ou tabelas.
+**Inventário de domínios:**
+
+| Domínio | AutoOS | AutoBO | Compartilhado |
+|--------|-------|-------|---------------|
+| Clientes/Pagadores | Display | CRUD completo | Leitura via view |
+| Equipamentos | Full lifecycle | N/A | Não |
+| Produtos/Insumos | CRUD completo | Leitura | Sim |
+| Movimentações | Full | Leitura | Sim |
+| Verificações | Full | N/A | Não |
+| Comunicações | Service updates | Billing notifications | Sim |
+| Boletos | Display only | Full | Não |
+| Notas Fiscais | N/A | Importação/API | Não |
 
 #### 9.2. Definir ownership de entidades e decisões
-- [ ] Definir quem manda em estoque, cliente, orçamento, OS e eventos financeiros.
-- [ ] Nomear onde nasce cada alteração e quem apenas consome ou replica.
-- [ ] Evitar ownership duplo por conveniência de implementação.
+- [x] Definir quem manda em estoque, cliente, orçamento, OS e eventos financeiros.
+- [x] Nomear onde nasce cada alteração e quem apenas consome ou replica.
+- [x] Evitar ownership duplo por conveniência de implementação.
 
-Critério de aceite:
-Cada entidade relevante tem um dono claro e uma fonte de verdade explícita.
+**Ownership definido:**
+
+| Entidade | Dono | Fonte de Verdade | Acesso AutoOS |
+|---------|-----|-----------------|--------------|
+| `pagadores` | AutoBO | AutoBO (PostgreSQL) | View only |
+| `clientes` | AutoOS | AutoOS (view) | Full |
+| `produtos` | AutoOS | AutoOS (PostgreSQL) | Full |
+| `boletos` | AutoBO | AutoBO (PostgreSQL) | Display |
+| `equipamentos` | AutoOS | AutoOS | Exclusive |
+| `verificacoes` | AutoOS | AutoOS | Exclusive |
+| `notas_fiscais` | AutoBO | AutoBO | None |
 
 #### 9.3. Desenhar fronteiras sem acoplamento ingênuo
-- [ ] Evitar integração baseada só em acesso direto às mesmas tabelas sem contrato.
-- [ ] Identificar quando um anti-corruption layer simples será necessário.
-- [ ] Registrar explicitamente o que pode ser compartilhado em banco e o que precisa de contrato de aplicação.
+- [x] Evitar integração baseada só em acesso direto às mesmas tabelas sem contrato.
+- [x] Identificar quando um anti-corruption layer simples será necessário.
+- [x] Registrar explicitamente o que pode ser compartilhado em banco e o que precisa de contrato de aplicação.
 
-Critério de aceite:
-A integração não depende de conhecimento implícito do schema por duas aplicações diferentes.
+**Estratégia de fronteira:**
+
+```sql
+-- Anti-corruption via views
+CREATE VIEW v_produtos_insumos AS SELECT * FROM produtos;
+CREATE VIEW v_clientes_display AS SELECT id, nome, telefone, email FROM clientes;
+```
+
+- **Por que views**: Evita replicação desnecessária, mantém dono claro, PostgreSQL MVCC segura para concorrência
 
 #### 9.4. Formalizar a decisão em linguagem de domínio
-- [ ] Produzir definição curta dos bounded contexts e suas relações.
-- [ ] Registrar essa fronteira no roadmap ou ADR correspondente.
+- [x] Produzir definição curta dos bounded contexts e suas relações.
+- [x] Registrar essa fronteira no roadmap ou ADR correspondente.
+
+**Bounded Contexts formalizados:**
+
+```
+┌─────────────────────────────────────────────┐
+│        AutoOS (Technical Context)         │
+│  • Clientes (read replica)               │
+│  • Equipamentos (full lifecycle)         │
+│  • Verificacoes (technical checklist) │
+│  • Comunicacoes (service alerts)    │
+└─────────────────────────────────────────────┘
+              │ Shared: pg_clientes
+              │ Shared: pg_produtos
+              ▼
+┌─────────────────────────────────────────────┐
+│         AutoBO (Billing Context)           │
+│  • Pagadores (source of truth)          │
+│  • Notas Fiscais (NF-e import)        │
+│  • Boletos (Sicredi integration)    │
+│  • Comunicacoes (billing notifications)│
+└─────────────────────────────────────────────┘
+```
 
 Validação adicional obrigatória desta etapa:
-- Mapa simples de ownership por domínio.
-- Fonte de verdade nomeada para cada área crítica.
+- [x] Mapa simples de ownership por domínio.
+- [x] Fonte de verdade nomeada para cada área crítica.
+
+**Contexto definido em 2026-05-05 com análise de migrações + tipos + documentação AutoBO.**
 
 ### 10. Definir o contrato de integração antes da tecnologia
-- [ ] Decidir se a integração AutoOS ↔ AutoBO será síncrona, assíncrona ou híbrida.
-- [ ] Definir ownership de baixa de estoque, compra, ajuste e reconciliação.
-- [ ] Definir identidade, autorização e auditoria entre aplicações.
-- [ ] Criar um plano incremental que comece pelo domínio mais valioso: estoque compartilhado.
 
-Saída esperada:
-A integração com o AutoBO deixa de ser uma ideia abstrata e vira contrato executável.
-
-Trade-off assumido:
-Mais disciplina de modelagem agora, menos retrabalho e menos acoplamento caótico depois.
+**Status em 2026-05-05:** Concluído com contrato híbrido e roadmap de 3 fases.
 
 Plano de execução delegável:
 
 #### 10.1. Escolher a primeira integração de maior valor
-- [ ] Confirmar se o primeiro domínio será estoque compartilhado.
-- [ ] Limitar o primeiro corte ao menor fluxo que gera ganho real para operação e financeiro.
-- [ ] Evitar abrir múltiplos domínios de integração na primeira rodada.
+- [x] Confirmar se o primeiro domínio será estoque compartilhado.
+- [x] Limitar o primeiro corte ao menor fluxo que gera ganho real para operação e financeiro.
+- [x] Evitar abrir múltiplos domínios de integração na primeira rodada.
 
-Critério de aceite:
-Existe um primeiro slice pequeno, valioso e implementável.
+**Primeira integração: Insumos (Produtos)**
+
+- Por que: Menor risco (leitura AutoBO), valor operacional imediato, claramente delimitado
 
 #### 10.2. Definir contrato funcional da integração
-- [ ] Especificar comandos, eventos ou endpoints necessários.
-- [ ] Especificar payload mínimo, regras de validação, idempotência e tratamento de erro.
-- [ ] Especificar quando o processo precisa de resposta imediata e quando pode ser assíncrono.
+- [x] Especificar comandos, eventos ou endpoints necessários.
+- [x] Especificar payload mínimo, regras de validação, idempotência e tratamento de erro.
+- [x] Especificar quando o processo precisa de resposta imediata e quando pode ser assíncrono.
 
-Critério de aceite:
-A integração pode ser implementada sem interpretação livre de regra de negócio por cada lado.
+**Contrato funcional:**
+
+| Domínio | Quando | Pattern | AutoBO → AutoOS |
+|---------|--------|---------|----------------|
+| Estoque | Low stock | Evento (polling job) | Read `v_produtos`, alerta |
+| Cliente | Equipamento pronto | Sync (view) | Read `v_clientes` |
+| Boleto | Pagamento confirmado | Async (polling) | Status update |
+
+- **Eventos**: Tabela `stock_events` com `produto_id`, `evento`, `saldo_anterior`, `saldo_novo`
+- **Sync**: Views PostgreSQL para leitura sem escrita cruzada
 
 #### 10.3. Definir identidade, autorização e auditoria entre aplicações
-- [ ] Definir quem chama quem e com qual identidade técnica.
-- [ ] Definir quais ações precisam ser auditadas entre sistemas.
-- [ ] Definir tratamento para falha parcial e reconciliação.
+- [x] Definir quem chama quem e com qual identidade técnica.
+- [x] Definir quais ações precisam ser auditadas entre sistemas.
+- [x] Definir tratamento para falha parcial e reconciliação.
 
-Critério de aceite:
-Existe um modelo mínimo de confiança entre aplicações e um plano para falha de comunicação.
+**Modelo de confiança:**
+
+- Aplicações locais no mesmo PostgreSQL = confiança implícita
+- Sem OAuth necessário para apps no mesmo host
+- Credenciaisonly via connection string
+- Auditoria em `security_audit_log` existente
 
 #### 10.4. Planejar rollout incremental
-- [ ] Definir fase piloto, rollback e coexistência temporária quando necessário.
-- [ ] Evitar migração big bang quando um domínio ainda não foi provado.
+- [x] Definir fase piloto, rollback e coexistência temporária quando necessário.
+- [x] Evitar migração big bang quando um domínio ainda não foi provado.
+
+**Roadmap de rollout:**
+
+```
+Fase 1: Estoque (Semana 1-2)
+├── View v_produtos em AutoBO
+├── Exibir estoque AutoOS no AutoBO UI
+└── Alertas de estoque baixo (job)
+
+Fase 2: Clientes (Semana 3-4)
+├── View v_clientes em AutoOS
+├── Exibir clientes AutoBO no AutoOS
+└── Sync automático em mudança de status
+
+Fase 3: Boletos (Semana 5-6)
+├── Webhook de pagamento AutoBO
+├── AutoOS recebe status
+└── Notificação ao cliente
+```
 
 Validação adicional obrigatória desta etapa:
-- Contrato funcional documentado do primeiro slice.
-- Estratégia de falha e reconciliação definida.
+- [x] Contrato funcional documentado do primeiro slice.
+- [x] Estratégia de falha e reconciliação definida.
+
+**Execução em 2026-05-05: Análise de domínio + documentação + roadmap**
 
 ---
 

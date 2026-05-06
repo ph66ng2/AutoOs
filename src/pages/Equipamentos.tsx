@@ -307,12 +307,12 @@ export default function Equipamentos() {
   }, []);
 
   const form = useForm<EquipamentoFormData>({
-    resolver: zodResolver(equipamentoSchema),
-    defaultValues: {
-      serial_number: "", patrimonio: "", marca: "", modelo: "", tipo: "", status: "RECEBIDO",
-      defeito_relatado: "", acessorios: "", acessorios_outros: "",
-      observacoes: "",
-    },
+     resolver: zodResolver(equipamentoSchema),
+      defaultValues: {
+        serial_number: "", patrimonio: "", marca: "", modelo: "", tipo: "", status: "RECEBIDO",
+        defeito_relatado: "", acessorios: [], acessorios_outros: "",
+        observacoes: "",
+      },
   });
 
   // ─── Handlers ─────────────────────────────────────────
@@ -327,7 +327,7 @@ export default function Equipamentos() {
     setCarregandoImagensFormulario(false);
     form.reset({
       serial_number: "", patrimonio: "", marca: "", modelo: "", tipo: "", status: "RECEBIDO",
-      defeito_relatado: "", acessorios: "", acessorios_outros: "",
+      defeito_relatado: "", acessorios: [], acessorios_outros: "",
       observacoes: "",
     });
     setDialogOpen(true);
@@ -381,7 +381,7 @@ export default function Equipamentos() {
     form.reset({
       serial_number: eq.serial_number, patrimonio: eq.patrimonio || "", marca: eq.marca, modelo: eq.modelo,
       tipo: eq.tipo, status: eq.status, defeito_relatado: eq.defeito_relatado || "",
-      acessorios: eq.acessorios || "", acessorios_outros: eq.acessorios_outros || "", observacoes: eq.observacoes || "",
+      acessorios: eq.acessorios ? eq.acessorios.split(", ").filter(Boolean) : [], acessorios_outros: eq.acessorios_outros || "", observacoes: eq.observacoes || "",
     });
     setDialogOpen(true);
   }
@@ -1090,7 +1090,9 @@ export default function Equipamentos() {
                 readOnly={false}
               />
               {erroCliente && (
-                <p className="text-sm text-red-500 font-medium">{erroCliente}</p>
+                <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+                  {erroCliente}
+                </div>
               )}
             </div>
             <hr />
@@ -1142,10 +1144,31 @@ export default function Equipamentos() {
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label>Acessórios</Label>
-                  <Textarea {...form.register("acessorios")} placeholder="Liste um item por linha: fonte, cabo USB, bandeja..." rows={4} />
+                  <div className="flex flex-wrap gap-2">
+                    <label className="flex items-center gap-1 text-sm">
+                      <input type="checkbox" value="Cabo de Força" {...form.register("acessorios")} />
+                      Cabo de Força
+                    </label>
+                    <label className="flex items-center gap-1 text-sm">
+                      <input type="checkbox" value="Fonte" {...form.register("acessorios")} />
+                      Fonte
+                    </label>
+                    <label className="flex items-center gap-1 text-sm">
+                      <input type="checkbox" value="Etiqueta" {...form.register("acessorios")} />
+                      Etiqueta
+                    </label>
+                    <label className="flex items-center gap-1 text-sm">
+                      <input type="checkbox" value="Ribbon" {...form.register("acessorios")} />
+                      Ribbon
+                    </label>
+                    <label className="flex items-center gap-1 text-sm">
+                      <input type="checkbox" value="Cabo USB" {...form.register("acessorios")} />
+                      Cabo USB
+                    </label>
+                  </div>
                 </div>
                 <div className="space-y-2">
-                  <Label>Complemento dos acessórios</Label>
+                  <Label>Outros Acessórios</Label>
                   <Textarea {...form.register("acessorios_outros")} placeholder="Descreva itens fora do comum ou detalhes adicionais" rows={4} />
                 </div>
               </div>
@@ -1304,8 +1327,8 @@ export default function Equipamentos() {
                     <div><span className="text-muted-foreground">Nº Série:</span> <span className="ml-1 font-medium font-mono">{selecionado.serial_number}</span></div>
                   </div>
                   {selecionado.defeito_relatado && <div className="text-sm"><p className="text-muted-foreground mb-1">Defeito na entrada:</p><p className="bg-accent/50 p-2 rounded whitespace-pre-wrap">{selecionado.defeito_relatado}</p></div>}
-                  {selecionado.acessorios && <div className="text-sm"><p className="text-muted-foreground mb-1">Acessórios:</p><p className="bg-accent/50 p-2 rounded whitespace-pre-wrap">{selecionado.acessorios}</p></div>}
-                  {selecionado.acessorios_outros && <div className="text-sm"><p className="text-muted-foreground mb-1">Complemento dos acessórios:</p><p className="bg-accent/50 p-2 rounded whitespace-pre-wrap">{selecionado.acessorios_outros}</p></div>}
+                  {selecionado.acessorios && Array.isArray(selecionado.acessorios) && selecionado.acessorios.length > 0 && <div className="text-sm"><p className="text-muted-foreground mb-1">Acessórios:</p><p className="bg-accent/50 p-2 rounded">{selecionado.acessorios.join(", ")}</p></div>}
+                  {selecionado.acessorios_outros && <div className="text-sm"><p className="text-muted-foreground mb-1">Outros Acessórios:</p><p className="bg-accent/50 p-2 rounded whitespace-pre-wrap">{selecionado.acessorios_outros}</p></div>}
                   {selecionado.observacoes && <div className="text-sm"><p className="text-muted-foreground mb-1">Observação física:</p><p className="bg-accent/50 p-2 rounded whitespace-pre-wrap">{selecionado.observacoes}</p></div>}
                   <div className="grid gap-4 lg:grid-cols-2">
                     <div className="space-y-2">

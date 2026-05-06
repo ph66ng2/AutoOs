@@ -18,10 +18,10 @@ import {
   Printer,
   Package,
   Users,
-  ChevronLeft,
-  ChevronRight,
+  Menu,
   Lock,
   Settings,
+  ShieldCheck,
 } from "lucide-react";
 import { useState } from "react";
 import { cn } from "@/lib/utils";
@@ -30,6 +30,7 @@ import { SensitiveAccessBadge, useSensitiveAccess } from "@/hooks/useSensitiveAc
 
 /** Itens de navegação da sidebar. Cada item mapeia para uma rota do React Router */
 const navItems = [
+  { label: "Perfil", path: "/perfil", icon: Users },
   { label: "Dashboard", path: "/", icon: LayoutDashboard },
   { label: "Equipamentos", path: "/equipamentos", icon: Printer },
   { label: "Clientes", path: "/clientes", icon: Users },
@@ -48,11 +49,9 @@ export function Layout() {
         {/* Logo */}
         <div className="flex h-[150px] items-center justify-center border-b border-sidebar-border px-4">
           {!collapsed ? (
-            <img src="/logo-tag-trasparente.svg" alt="BMITAG" className="h-[150px] w-auto" />
+            <img src="/logo-tag-trasparente.svg" alt="BMITAG" className="h-[110px] w-auto" />
           ) : (
-            <div className="h-8 w-8 rounded-lg bg-white/10 flex items-center justify-center">
-              <span className="text-white font-bold text-xs">B</span>
-            </div>
+            <div className="h-8 w-8" aria-hidden="true" />
           )}
         </div>
 
@@ -93,7 +92,9 @@ export function Layout() {
           )}
           {collapsed && status?.pin_configured && status.unlocked && (
             <div className="flex justify-center">
-              <SensitiveAccessBadge />
+              <span className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-emerald-200 bg-emerald-50 text-emerald-700">
+                <ShieldCheck className="h-4 w-4" />
+              </span>
             </div>
           )}
           {status?.pin_configured && status.unlocked && (
@@ -117,7 +118,8 @@ export function Layout() {
             className="w-full justify-center text-white/50 hover:text-white hover:bg-white/10"
             onClick={() => setCollapsed(!collapsed)}
           >
-            {collapsed ? <ChevronRight className="h-4 w-4" /> : <><ChevronLeft className="h-4 w-4 mr-2" /><span>Recolher</span></>}
+            <Menu className="h-4 w-4" />
+            {!collapsed && <span className="ml-2">Recolher</span>}
           </Button>
         </div>
       </aside>

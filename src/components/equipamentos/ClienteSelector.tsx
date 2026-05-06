@@ -39,9 +39,9 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { ClienteFormularioCampos } from "@/components/clientes/ClienteFormularioCampos";
 import { db } from "@/lib/db";
 import type { Cliente, Equipamento } from "@/types";
 import {
@@ -49,7 +49,6 @@ import {
   type ClienteFormData,
   formatarDocumento,
   formatarTelefone,
-  formatarCEP,
   detectarTipoDocumento,
 } from "@/lib/validations";
 
@@ -272,8 +271,7 @@ export function ClienteSelector({
         ativo: true,
       } as any;
 
-      const id = await db.criarCliente(payload);
-      const novoCliente: Cliente = { ...payload, id, telefone: payload.telefone };
+      const novoCliente = await db.criarCliente(payload);
       setClienteSelecionado(novoCliente);
       setModo("selecionado");
       onClienteSelecionado(novoCliente);
@@ -459,9 +457,9 @@ export function ClienteSelector({
   /** Renderiza formulário inline de novo cliente com detecção automática PF/PJ pelo documento */
   function renderFormNovoCliente() {
     return (
-      <div className="space-y-4 border rounded-lg p-4 bg-accent/20">
-        <div className="flex items-center justify-between">
-          <h3 className="font-semibold text-sm flex items-center gap-2">
+      <div className="flex max-h-[min(560px,72vh)] min-h-0 flex-col gap-4 rounded-lg border bg-accent/20 p-4">
+        <div className="flex shrink-0 items-center justify-between">
+          <h3 className="flex items-center gap-2 text-sm font-semibold">
             <Plus className="h-4 w-4" /> Novo Cliente
           </h3>
           <Button type="button" variant="ghost" size="icon" className="h-7 w-7" onClick={() => setModo("busca")}>
@@ -469,129 +467,31 @@ export function ClienteSelector({
           </Button>
         </div>
 
-        <div className="space-y-4">
-          {/* Documento */}
-          <div className="space-y-2">
-            <Label>CPF ou CNPJ *</Label>
-            <div className="flex gap-3 items-start">
-              <div className="flex-1 space-y-1">
-                <Input
-                  value={formNovoCliente.watch("documento")}
-                  onChange={(e) => {
-                    const formatted = formatarDocumento(e.target.value);
-                    formNovoCliente.setValue("documento", formatted, { shouldValidate: false });
-                  }}
-                  placeholder="Digite CPF ou CNPJ"
-                  maxLength={18}
-                />
-                {formNovoCliente.formState.errors.documento && (
-                  <p className="text-xs text-red-500">{formNovoCliente.formState.errors.documento.message}</p>
-                )}
-              </div>
-              {tipoPessoa && (
-                <div className="pt-1">
-                  {tipoPessoa === "PF" ? (
-                    <Badge className="bg-blue-100 text-blue-800 hover:bg-blue-100">
-                      <User className="h-3 w-3 mr-1" />PF
-                    </Badge>
-                  ) : (
-                    <Badge className="bg-purple-100 text-purple-800 hover:bg-purple-100">
-                      <Building2 className="h-3 w-3 mr-1" />PJ
-                    </Badge>
-                  )}
-                </div>
-              )}
-            </div>
-          </div>
+        <div className="min-h-0 flex-1 overflow-y-auto pr-1">
+          <ClienteFormularioCampos
+            form={formNovoCliente}
+            tipoPessoa={tipoPessoa}
+            buscarCep={buscarCep}
+            buscandoCep={buscandoCep}
+          />
+        </div>
 
-          {/* Campos PF */}
-          {tipoPessoa === "PF" && (
-            <div className="space-y-2 p-3 rounded-lg border border-blue-200 bg-blue-50/50">
-              <Label>Nome Completo *</Label>
-              <Input {...formNovoCliente.register("nome")} placeholder="Nome completo" />
-              {formNovoCliente.formState.errors.nome && (
-                <p className="text-xs text-red-500">{formNovoCliente.formState.errors.nome.message}</p>
-              )}
-            </div>
-          )}
-
-          {/* Campos PJ */}
-          {tipoPessoa === "PJ" && (
-            <div className="space-y-2 p-3 rounded-lg border border-purple-200 bg-purple-50/50">
-              <Label>Razão Social *</Label>
-              <Input {...formNovoCliente.register("razao_social")} placeholder="Razão Social" />
-              {formNovoCliente.formState.errors.razao_social && (
-                <p className="text-xs text-red-500">{formNovoCliente.formState.errors.razao_social.message}</p>
-              )}
-            </div>
-          )}
-
-          {/* Contato */}
-          <div className="grid grid-cols-2 gap-3">
-            <div className="space-y-2">
-              <Label>Telefone</Label>
-              <Input
-                value={formNovoCliente.watch("telefone")}
-                onChange={(e) => {
-                  const formatted = formatarTelefone(e.target.value);
-                  formNovoCliente.setValue("telefone", formatted, { shouldValidate: false });
-                }}
-                placeholder="(11) 99999-9999"
-                maxLength={15}
-              />
-            </div>
-            <div className="space-y-2">
-              <Label>Email</Label>
-              <Input {...formNovoCliente.register("email")} placeholder="email@exemplo.com" type="email" />
-            </div>
-          </div>
-
-          {/* Endereço resumido */}
-          <div className="grid grid-cols-3 gap-3">
-            <div className="space-y-2">
-              <Label>CEP</Label>
-              <div className="relative">
-                <Input
-                  value={formNovoCliente.watch("cep") || ""}
-                  onChange={(e) => {
-                    const formatted = formatarCEP(e.target.value);
-                    formNovoCliente.setValue("cep", formatted, { shouldValidate: false });
-                  }}
-                  onBlur={(e) => buscarCep(e.target.value)}
-                  placeholder="00000-000"
-                  maxLength={9}
-                />
-                {buscandoCep && <Loader2 className="absolute right-2 top-1/2 -translate-y-1/2 h-3 w-3 animate-spin" />}
-              </div>
-            </div>
-            <div className="space-y-2">
-              <Label>Cidade</Label>
-              <Input {...formNovoCliente.register("cidade")} />
-            </div>
-            <div className="space-y-2">
-              <Label>UF</Label>
-              <Input {...formNovoCliente.register("uf")} placeholder="SP" maxLength={2} className="uppercase" />
-            </div>
-          </div>
-
-          {/* Botão salvar */}
-          <div className="flex justify-end gap-2 pt-2">
-            <Button type="button" variant="outline" size="sm" onClick={() => setModo("busca")}>
-              Cancelar
-            </Button>
-            <Button
-              type="button"
-              size="sm"
-              disabled={salvandoNovo}
-              onClick={formNovoCliente.handleSubmit(salvarNovoCliente)}
-            >
-              {salvandoNovo ? (
-                <><Loader2 className="h-4 w-4 mr-1 animate-spin" />Salvando...</>
-              ) : (
-                <><Check className="h-4 w-4 mr-1" />Cadastrar e Vincular</>
-              )}
-            </Button>
-          </div>
+        <div className="flex shrink-0 justify-end gap-2 border-t pt-3">
+          <Button type="button" variant="outline" size="sm" onClick={() => setModo("busca")}>
+            Cancelar
+          </Button>
+          <Button
+            type="button"
+            size="sm"
+            disabled={salvandoNovo}
+            onClick={formNovoCliente.handleSubmit(salvarNovoCliente)}
+          >
+            {salvandoNovo ? (
+              <><Loader2 className="h-4 w-4 mr-1 animate-spin" />Salvando...</>
+            ) : (
+              <><Check className="h-4 w-4 mr-1" />Cadastrar e Vincular</>
+            )}
+          </Button>
         </div>
       </div>
     );
