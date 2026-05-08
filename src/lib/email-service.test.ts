@@ -5,6 +5,8 @@ const mockInvoke = vi.hoisted(() => vi.fn());
 const mockRegistrarComunicacao = vi.hoisted(() => vi.fn());
 const mockGerarOrcamento = vi.hoisted(() => vi.fn());
 const mockBuscarVerificacao = vi.hoisted(() => vi.fn());
+const mockCopiarAnexoEmailParaTemp = vi.hoisted(() => vi.fn());
+const mockRemoverAnexoEmailTemp = vi.hoisted(() => vi.fn());
 
 vi.mock("@tauri-apps/api/core", () => ({
   invoke: (...args: unknown[]) => mockInvoke(...args),
@@ -14,6 +16,8 @@ vi.mock("@/lib/db", () => ({
   db: {
     registrarComunicacao: (...args: unknown[]) => mockRegistrarComunicacao(...args),
     buscarVerificacao: (...args: unknown[]) => mockBuscarVerificacao(...args),
+    copiarAnexoEmailParaTemp: (...args: unknown[]) => mockCopiarAnexoEmailParaTemp(...args),
+    removerAnexoEmailTemp: (...args: unknown[]) => mockRemoverAnexoEmailTemp(...args),
   },
 }));
 
@@ -58,6 +62,8 @@ describe("EmailService", () => {
     vi.clearAllMocks();
     mockGerarOrcamento.mockResolvedValue("/fake/path/orcamento_test.pdf");
     mockBuscarVerificacao.mockResolvedValue(verificacaoBase);
+    mockCopiarAnexoEmailParaTemp.mockResolvedValue("/tmp/autoos/orcamento_test.pdf");
+    mockRemoverAnexoEmailTemp.mockResolvedValue(undefined);
     mockInvoke.mockResolvedValue(undefined);
   });
 
@@ -83,6 +89,13 @@ describe("EmailService", () => {
     expect(args.input.corpo_html).toContain('Marca/Modelo');
     expect(args.input.corpo_html).toContain('Serial Number');
     expect(args.input.anexos?.[0]?.filename).toBe("orcamento_test.pdf");
+    expect(args.input.anexos?.[0]?.path).toBe("/tmp/autoos/orcamento_test.pdf");
+
+    expect(mockCopiarAnexoEmailParaTemp).toHaveBeenCalledWith(
+      "/fake/path/orcamento_test.pdf",
+      "orcamento_test.pdf",
+    );
+    expect(mockRemoverAnexoEmailTemp).toHaveBeenCalledWith("/tmp/autoos/orcamento_test.pdf");
 
     expect(mockRegistrarComunicacao).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -109,6 +122,7 @@ describe("EmailService", () => {
         canal: "EMAIL",
       }),
     );
+    expect(mockRemoverAnexoEmailTemp).toHaveBeenCalledWith("/tmp/autoos/orcamento_test.pdf");
   });
 
   it("enviarEquipamentoPronto envia e registra sucesso", async () => {

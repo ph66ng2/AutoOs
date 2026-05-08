@@ -91,7 +91,6 @@ import { PdfService } from "@/lib/pdf-service";
 import { db } from "@/lib/db";
 import {
   STATUS_LABELS,
-  STATUS_COLORS,
   SENSITIVE_PERMISSIONS,
   type Equipamento,
   type EquipamentoImagemCategoria,
@@ -103,7 +102,6 @@ import {
   type PecaNecessaria,
   type Verificacao,
   type Comunicacao,
-  type ResultadoAutomacao,
 } from "@/types";
 
 // Componentes extraídos
@@ -114,6 +112,7 @@ import {
 } from "@/components/equipamentos/VerificacaoTecnica";
 import { HistoricoComunicacoes } from "@/components/equipamentos/HistoricoComunicacoes";
 import { ClienteSelector } from "@/components/equipamentos/ClienteSelector";
+import { ActionPriorityRow, type PriorityAction } from "@/components/ui/action-priority-row";
 import {
   arquivoParaImagemEquipamento,
   imagemPersistidaParaDraft,
@@ -121,273 +120,26 @@ import {
   normalizarOrdemPorCategoria,
   type EquipamentoImagemDraft,
 } from "@/lib/equipamento-imagem-utils";
-
-const STATUS_OPTIONS = [
-  { value: "TODOS", label: "Todos os Status" },
-  ...Object.entries(STATUS_LABELS).map(([value, label]) => ({ value, label })),
-];
-
-const TIPO_OPTIONS = [
-  "Impressora Térmico Direta",
-  "Coletor de Dados",
-  "Leitor de Dados",
-  "Impressora de Cartão",
-  "Outro",
-];
-
-const STATUS_SENSIVEIS = new Set([
-  "AGUARDANDO_APROVACAO",
-  "APROVADO",
-  "REPROVADO",
-  "ORCAMENTO_VENCIDO",
-  "ENTREGUE",
-  "ABANDONADO",
-]);
-
-const CATEGORIA_IMAGEM_LABELS: Record<EquipamentoImagemCategoria, string> = {
-  ENTRADA: "entrada",
-  SAIDA: "saída",
-};
-const EMAIL_POR_TECNICO: Record<string, string> = {
-  Ivan: "ivan@bmicode.com",
-  Isaias: "isaias@bmicode.com",
-};
-const TECNICOS_DISPONIVEIS: TecnicoDisponivel[] = ["Ivan", "Isaias"];
-
-function extrairTecnicoInicialDeObservacoes(observacoes?: string | null): TecnicoDisponivel | null {
-  if (!observacoes) return null;
-  const match = observacoes.match(/^Técnico inicial:\s*(Ivan|Isaias)\b/m);
-  return (match?.[1] as TecnicoDisponivel | undefined) || null;
-}
-
-function removerTecnicoInicialDasObservacoes(observacoes?: string | null) {
-  if (!observacoes) return "";
-  return observacoes
-    .replace(/^Técnico inicial:.*(?:\r?\n)?/m, "")
-    .trim();
-}
-
-function mensagemResultadoCanais(resultado: ResultadoAutomacao) {
-  if (!resultado.canais) return "";
-  const linhas: string[] = [];
-  const whatsapp = resultado.canais.whatsapp;
-  const email = resultado.canais.email;
-
-  if (whatsapp) {
-    linhas.push(
-      whatsapp.enviado
-        ? "WhatsApp: enviado com sucesso."
-        : `WhatsApp: não enviado${whatsapp.erro ? ` (${whatsapp.erro})` : "."}`
-    );
-  }
-  if (email) {
-    linhas.push(
-      email.enviado
-        ? "Email: enviado com sucesso."
-        : `Email: não enviado${email.erro ? ` (${email.erro})` : "."}`
-    );
-  }
-  return linhas.join("\n");
-}
-
-function emailValido(email: string) {
-  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim());
-}
-
-function statusExigeAcessoSensivel(
-  status: string,
-  valorOrcamento?: number,
-  prazoAprovacao?: string,
-  valorFinal?: number,
-) {
-  return Boolean(
-    STATUS_SENSIVEIS.has(status) ||
-    valorOrcamento != null ||
-    valorFinal != null ||
-    (prazoAprovacao && prazoAprovacao.trim())
-  );
-}
-
-function whatsappNaoConfigurado(erro?: string) {
-  return (erro || "").toLowerCase().includes("configure o whatsapp primeiro");
-}
-
-function traduzirErroSalvarEquipamento(erro?: string) {
-  const mensagem = (erro || "").toLowerCase();
-  if (mensagem.includes("ux_equipamentos_patrimonio_when_present")) {
-    return "Já existe um equipamento com este patrimônio. Informe outro código ou deixe o campo em branco.";
-  }
-  if (mensagem.includes("ux_equipamentos_serial")) {
-    return "Já existe um equipamento com este número de série.";
-  }
-  return erro || "Erro ao salvar equipamento.";
-}
-
-async function buscarEquipamentoDuplicado(
-  data: EquipamentoFormData,
-  editandoId?: number
-): Promise<{ equipamento: Equipamento; campo: "serial_number" | "patrimonio" } | null> {
-  const todos = await db.listarEquipamentos();
-  const serial = (data.serial_number || "").trim().toLowerCase();
-  const patrimonio = (data.patrimonio || "").trim().toLowerCase();
-
-  const porSerial = todos.find((eq) =>
-    eq.id !== editandoId &&
-    (eq.serial_number || "").trim().toLowerCase() === serial
-  );
-  if (porSerial) {
-    return { equipamento: porSerial, campo: "serial_number" };
-  }
-
-  if (patrimonio) {
-    const porPatrimonio = todos.find((eq) =>
-      eq.id !== editandoId &&
-      (eq.patrimonio || "").trim().toLowerCase() === patrimonio
-    );
-    if (porPatrimonio) {
-      return { equipamento: porPatrimonio, campo: "patrimonio" };
-    }
-  }
-
-  return null;
-}
-
-/** Componente local que exibe badge colorido com o label do status */
-function StatusBadge({ status }: { status: string }) {
-  const label = STATUS_LABELS[status as StatusEquipamento] || status;
-  const color = STATUS_COLORS[status as StatusEquipamento] || "bg-gray-100 text-gray-800";
-  return (
-    <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${color}`}>
-      {label}
-    </span>
-  );
-}
-
-function filtrarImagensPorCategoria(
-  imagens: EquipamentoImagemDraft[],
-  categoria: EquipamentoImagemCategoria,
-) {
-  return imagens.filter((imagem) => imagem.categoria === categoria);
-}
-
-function GaleriaImagensEquipamento({
-  imagens,
-  mensagemVazia,
-  onRemover,
-  onLegendaChange,
-  onVisualizar,
-  onExportar,
-}: {
-  imagens: EquipamentoImagemDraft[];
-  mensagemVazia: string;
-  onRemover?: (localId: string) => void;
-  onLegendaChange?: (localId: string, value: string) => void;
-  onVisualizar?: (imagem: EquipamentoImagemDraft) => void;
-  onExportar?: (imagem: EquipamentoImagemDraft) => void;
-}) {
-  if (imagens.length === 0) {
-    return (
-      <div className="rounded-lg border border-dashed p-4 text-sm text-muted-foreground">
-        {mensagemVazia}
-      </div>
-    );
-  }
-
-  return (
-    <div className="grid grid-cols-2 gap-3 md:grid-cols-3">
-      {imagens.map((imagem) => (
-        <div key={imagem.local_id} className="overflow-hidden rounded-lg border bg-background">
-          <div className="relative aspect-[4/3] bg-muted">
-            <img
-              src={imagem.preview_url}
-              alt={imagem.filename}
-              className="h-full w-full object-cover"
-            />
-            <div className="absolute bottom-2 left-2 flex gap-2">
-              {onVisualizar && (
-                <Button
-                  type="button"
-                  size="icon"
-                  variant="secondary"
-                  className="h-7 w-7"
-                  onClick={() => onVisualizar(imagem)}
-                  title="Visualizar em tamanho maior"
-                >
-                  <Eye className="h-3.5 w-3.5" />
-                </Button>
-              )}
-              {onExportar && (
-                <Button
-                  type="button"
-                  size="icon"
-                  variant="secondary"
-                  className="h-7 w-7"
-                  onClick={() => onExportar(imagem)}
-                  title="Exportar imagem"
-                >
-                  <Download className="h-3.5 w-3.5" />
-                </Button>
-              )}
-            </div>
-            {onRemover && (
-              <Button
-                type="button"
-                size="icon"
-                variant="secondary"
-                className="absolute right-2 top-2 h-7 w-7"
-                onClick={() => onRemover(imagem.local_id)}
-              >
-                <Trash2 className="h-3.5 w-3.5" />
-              </Button>
-            )}
-          </div>
-          <div className="space-y-2 p-2 text-xs text-muted-foreground">
-            <p className="truncate font-medium text-foreground" title={imagem.filename}>{imagem.filename}</p>
-            <p>
-              {(imagem.largura || 0)} x {(imagem.altura || 0)} px
-            </p>
-            {onLegendaChange ? (
-              <Textarea
-                value={imagem.observacao || ""}
-                onChange={(event) => onLegendaChange(imagem.local_id, event.target.value)}
-                rows={2}
-                placeholder={`Legenda da foto de ${CATEGORIA_IMAGEM_LABELS[imagem.categoria]}`}
-                className="min-h-[68px] resize-none text-xs"
-              />
-            ) : imagem.observacao ? (
-              <p className="rounded-md bg-accent/60 p-2 whitespace-pre-wrap text-[11px] text-foreground">
-                {imagem.observacao}
-              </p>
-            ) : null}
-          </div>
-        </div>
-      ))}
-    </div>
-  );
-}
-
-/**
- * Retorna array de status permitidos a partir do status atual.
- * Define o fluxo de transição (máquina de estados).
- * Conecta-se a: renderAcoes (botões de ação), dialog de mudar status
- */
-function getProximosStatus(statusAtual: string): string[] {
-  const transicoes: Record<string, string[]> = {
-    RECEBIDO: ["EM_VERIFICACAO"],
-    EM_VERIFICACAO: ["VERIFICADO"],
-    VERIFICADO: ["AGUARDANDO_APROVACAO"],
-    AGUARDANDO_APROVACAO: ["APROVADO", "REPROVADO", "ORCAMENTO_VENCIDO"],
-    APROVADO: ["EM_MANUTENCAO"],
-    EM_MANUTENCAO: ["AGUARDANDO_PECA", "PRONTO"],
-    AGUARDANDO_PECA: ["EM_MANUTENCAO"],
-    PRONTO: ["ENTREGUE"],
-    REPROVADO: ["ENTREGUE", "ABANDONADO"],
-    ORCAMENTO_VENCIDO: ["ABANDONADO", "AGUARDANDO_APROVACAO"],
-    ENTREGUE: [],
-    ABANDONADO: [],
-  };
-  return transicoes[statusAtual] || [];
-}
+import {
+  EMAIL_POR_TECNICO,
+  STATUS_OPTIONS,
+  TECNICOS_DISPONIVEIS,
+  TIPO_OPTIONS,
+} from "@/pages/equipamentos/equipamentos-page-constants";
+import { GaleriaImagensEquipamento } from "@/pages/equipamentos/EquipamentosPageGallery";
+import { StatusBadge } from "@/pages/equipamentos/EquipamentosStatusBadge";
+import {
+  buscarEquipamentoDuplicado,
+  emailValido,
+  extrairTecnicoInicialDeObservacoes,
+  filtrarImagensPorCategoria,
+  getProximosStatus,
+  mensagemResultadoCanais,
+  removerTecnicoInicialDasObservacoes,
+  statusExigeAcessoSensivel,
+  traduzirErroSalvarEquipamento,
+  whatsappNaoConfigurado,
+} from "@/pages/equipamentos/equipamentos-page-utils";
 
 export default function Equipamentos() {
   const [busca, setBusca] = useState("");
@@ -412,6 +164,8 @@ export default function Equipamentos() {
   const [novoStatus, setNovoStatus] = useState("");
   const [valorOrcamento, setValorOrcamento] = useState<number>(0);
   const [prazoAprovacao, setPrazoAprovacao] = useState("");
+  const [valorOrcamentoOriginal, setValorOrcamentoOriginal] = useState<number | null>(null);
+  const [valorOrcamentoAnterior, setValorOrcamentoAnterior] = useState<number | null>(null);
   const [valorFinal, setValorFinal] = useState<number>(0);
   const [valorFinalSugerido, setValorFinalSugerido] = useState<number | null>(null);
   const [acordoExcecaoEntrega, setAcordoExcecaoEntrega] = useState(false);
@@ -625,6 +379,17 @@ export default function Equipamentos() {
     setAcordoExcecaoEntrega(false);
   }
 
+  async function prepararAjusteOrcamentoPadrao(eq: Equipamento) {
+    const verificacao = await db.buscarVerificacao(eq.id!);
+    const valorOriginal = verificacao?.custo_total ?? null;
+    const valorAnterior = eq.valor_orcamento ?? null;
+    const valorBase = eq.valor_orcamento ?? verificacao?.custo_total ?? 0;
+    setValorOrcamentoOriginal(valorOriginal);
+    setValorOrcamentoAnterior(valorAnterior);
+    setValorOrcamento(valorBase);
+    setPrazoAprovacao(eq.prazo_aprovacao || "");
+  }
+
   function handleNovoStatusChange(status: string) {
     setNovoStatus(status);
     if (status === "ENTREGUE" && selecionado) {
@@ -645,8 +410,10 @@ export default function Equipamentos() {
 
     setSelecionado(eq);
     setNovoStatus(statusPreSelecionado || "");
-    setValorOrcamento(0);
-    setPrazoAprovacao("");
+    setValorOrcamento(eq.valor_orcamento ?? 0);
+    setPrazoAprovacao(eq.prazo_aprovacao || "");
+    setValorOrcamentoOriginal(null);
+    setValorOrcamentoAnterior(null);
     setValorFinal(0);
     setValorFinalSugerido(null);
     setAcordoExcecaoEntrega(false);
@@ -664,6 +431,9 @@ export default function Equipamentos() {
       } finally {
         setCarregandoImagensSaidaEntrega(false);
       }
+    }
+    if ((statusPreSelecionado || "") === "AGUARDANDO_APROVACAO") {
+      await prepararAjusteOrcamentoPadrao(eq);
     }
     setStatusDialogOpen(true);
   }
@@ -1149,132 +919,249 @@ export default function Equipamentos() {
    * Conecta-se a: acaoRapida, abrirVerificacao, abrirMudarStatus, handleMarcarPronto, WhatsApp
    */
   function renderAcoes(eq: Equipamento) {
-    const botoes: React.ReactNode[] = [];
-    const stop = (e: React.MouseEvent) => e.stopPropagation();
-    botoes.push(
-      <Button key="status" variant="outline" size="sm" className="h-8 text-xs gap-1" title="Abrir Status e detalhes" onClick={(e) => { stop(e); void abrirDetalhes(eq); }}>
-        <Eye className="h-3.5 w-3.5" />Status
-      </Button>
-    );
+    let primary: PriorityAction | null = null;
+    let secondary: PriorityAction | undefined;
+    const overflow: PriorityAction[] = [];
+    const classeAcaoPrincipal = "min-w-[170px] justify-center";
+
+    const acaoStatus: PriorityAction = {
+      id: "status",
+      label: "Status",
+      icon: <Eye className="h-3.5 w-3.5" />,
+      variant: "outline",
+      onClick: () => void abrirDetalhes(eq),
+    };
+    const acaoEditar: PriorityAction = {
+      id: "editar",
+      label: "Editar",
+      icon: <Edit className="h-3.5 w-3.5" />,
+      variant: "outline",
+      onClick: () => abrirEditar(eq),
+    };
+    const acaoExcluir: PriorityAction = {
+      id: "excluir",
+      label: "Excluir",
+      icon: <Trash2 className="h-3.5 w-3.5" />,
+      variant: "ghost",
+      className: "text-red-600",
+      onClick: () => void solicitarExclusao(eq),
+    };
 
     switch (eq.status) {
       case "RECEBIDO":
-        botoes.push(
-          <Button key="iniciar" variant="ghost" size="sm" className="h-8 text-xs gap-1 text-blue-600" onClick={(e) => { stop(e); acaoRapida(eq, "EM_VERIFICACAO"); }} disabled={salvando}>
-            <Play className="h-3.5 w-3.5" />Iniciar Verificação
-          </Button>,
-          <Button key="os" variant="ghost" size="icon" className="h-8 w-8" title="Gerar Ordem de Serviço PDF" onClick={(e) => { stop(e); gerarOrdemServicoPdf(eq); }} disabled={salvando}>
-            <FileDown className="h-3.5 w-3.5 text-blue-600" />
-          </Button>
+        primary = {
+          id: "iniciar_verificacao",
+          label: "Iniciar Verificação",
+          icon: <Play className="h-3.5 w-3.5" />,
+          variant: "default",
+          className: classeAcaoPrincipal,
+          onClick: () => void acaoRapida(eq, "EM_VERIFICACAO"),
+          disabled: salvando,
+        };
+        secondary = acaoStatus;
+        overflow.push(
+          {
+            id: "os_pdf",
+            label: "OS PDF",
+            icon: <FileDown className="h-3.5 w-3.5" />,
+            onClick: () => void gerarOrdemServicoPdf(eq),
+            disabled: salvando,
+          },
+          acaoEditar,
+          acaoExcluir
         );
         break;
       case "EM_VERIFICACAO":
-        botoes.push(
-          <Button key="verif" variant="ghost" size="sm" className="h-8 text-xs gap-1 text-purple-600" onClick={(e) => { stop(e); abrirVerificacao(eq); }}>
-            <ClipboardCheck className="h-3.5 w-3.5" />Abrir Verificação
-          </Button>
-        );
+        primary = {
+          id: "abrir_verificacao",
+          label: "Abrir Verificação",
+          icon: <ClipboardCheck className="h-3.5 w-3.5" />,
+          variant: "default",
+          className: classeAcaoPrincipal,
+          onClick: () => abrirVerificacao(eq),
+        };
+        secondary = acaoStatus;
+        overflow.push(acaoEditar, acaoExcluir);
         break;
       case "VERIFICADO":
-        botoes.push(
-          <Button key="orc" variant="ghost" size="sm" className="h-8 text-xs gap-1 text-orange-600" onClick={(e) => { stop(e); void abrirMudarStatus(eq, "AGUARDANDO_APROVACAO"); }}>
-            <Send className="h-3.5 w-3.5" />Enviar Orçamento
-          </Button>,
-          <Button key="pdf" variant="ghost" size="icon" className="h-8 w-8" title="Gerar Orçamento PDF" onClick={(e) => { stop(e); gerarOrcamentoPdf(eq); }} disabled={salvando}>
-            <FileDown className="h-3.5 w-3.5 text-red-600" />
-          </Button>
+        primary = {
+          id: "enviar_orcamento",
+          label: "Enviar Orçamento",
+          icon: <Send className="h-3.5 w-3.5" />,
+          variant: "default",
+          className: classeAcaoPrincipal,
+          onClick: () => void abrirMudarStatus(eq, "AGUARDANDO_APROVACAO"),
+        };
+        secondary = acaoStatus;
+        overflow.push(
+          {
+            id: "orcamento_pdf",
+            label: "Orçamento PDF",
+            icon: <FileDown className="h-3.5 w-3.5" />,
+            onClick: () => void gerarOrcamentoPdf(eq),
+            disabled: salvando,
+          }
         );
         if (eq.cliente_telefone) {
-          botoes.push(
-            <Button key="wpp" variant="ghost" size="icon" className="h-8 w-8" title="WhatsApp" onClick={(e) => { stop(e); enviarWhatsAppOrcamento(eq); }}>
-              <MessageSquare className="h-3.5 w-3.5 text-green-600" />
-            </Button>
-          );
+          overflow.push({
+            id: "whatsapp_orcamento",
+            label: "WhatsApp",
+            icon: <MessageSquare className="h-3.5 w-3.5" />,
+            onClick: () => void enviarWhatsAppOrcamento(eq),
+          });
         }
+        overflow.push(acaoEditar, acaoExcluir);
         break;
       case "AGUARDANDO_APROVACAO":
-        botoes.push(
-          <Button key="apr" variant="ghost" size="sm" className="h-8 text-xs gap-1 text-green-600" onClick={(e) => { stop(e); acaoRapida(eq, "APROVADO"); }} disabled={salvando}>
-            <CheckCircle className="h-3.5 w-3.5" />Aprovar
-          </Button>,
-          <Button key="rep" variant="ghost" size="sm" className="h-8 text-xs gap-1 text-red-600" onClick={(e) => { stop(e); acaoRapida(eq, "REPROVADO"); }} disabled={salvando}>
-            <XCircle className="h-3.5 w-3.5" />Reprovar
-          </Button>,
-          <Button key="pdf" variant="ghost" size="icon" className="h-8 w-8" title="Gerar Orçamento PDF" onClick={(e) => { stop(e); gerarOrcamentoPdf(eq); }} disabled={salvando}>
-            <FileDown className="h-3.5 w-3.5 text-red-600" />
-          </Button>
+        primary = {
+          id: "ajustar_orcamento",
+          label: "Ajustar Orçamento",
+          icon: <RefreshCw className="h-3.5 w-3.5" />,
+          variant: "default",
+          className: classeAcaoPrincipal,
+          onClick: () => void abrirMudarStatus(eq, "AGUARDANDO_APROVACAO"),
+        };
+        secondary = {
+          id: "aprovar",
+          label: "Aprovar",
+          icon: <CheckCircle className="h-3.5 w-3.5" />,
+          variant: "outline",
+          className: "text-green-600",
+          onClick: () => void acaoRapida(eq, "APROVADO"),
+          disabled: salvando,
+        };
+        overflow.push(
+          {
+            id: "reprovar",
+            label: "Reprovar",
+            icon: <XCircle className="h-3.5 w-3.5" />,
+            className: "text-red-600",
+            onClick: () => void acaoRapida(eq, "REPROVADO"),
+            disabled: salvando,
+          },
+          {
+            id: "orcamento_pdf",
+            label: "Orçamento PDF",
+            icon: <FileDown className="h-3.5 w-3.5" />,
+            onClick: () => void gerarOrcamentoPdf(eq),
+            disabled: salvando,
+          }
         );
         if (eq.cliente_telefone) {
-          botoes.push(
-            <Button key="wpp" variant="ghost" size="icon" className="h-8 w-8" title="WhatsApp" onClick={(e) => { stop(e); enviarWhatsAppOrcamento(eq); }}>
-              <MessageSquare className="h-3.5 w-3.5 text-green-600" />
-            </Button>
-          );
+          overflow.push({
+            id: "whatsapp_orcamento",
+            label: "WhatsApp",
+            icon: <MessageSquare className="h-3.5 w-3.5" />,
+            onClick: () => void enviarWhatsAppOrcamento(eq),
+          });
         }
+        overflow.push(acaoStatus, acaoEditar, acaoExcluir);
         break;
       case "APROVADO":
-        botoes.push(
-          <Button key="man" variant="ghost" size="sm" className="h-8 text-xs gap-1 text-indigo-600" onClick={(e) => { stop(e); acaoRapida(eq, "EM_MANUTENCAO"); }} disabled={salvando}>
-            <Wrench className="h-3.5 w-3.5" />Iniciar Manutenção
-          </Button>
-        );
+        primary = {
+          id: "iniciar_manutencao",
+          label: "Iniciar Manutenção",
+          icon: <Wrench className="h-3.5 w-3.5" />,
+          variant: "default",
+          className: classeAcaoPrincipal,
+          onClick: () => void acaoRapida(eq, "EM_MANUTENCAO"),
+          disabled: salvando,
+        };
+        secondary = acaoStatus;
+        overflow.push(acaoEditar, acaoExcluir);
         break;
       case "EM_MANUTENCAO":
-        botoes.push(
-          <Button key="pronto" variant="ghost" size="sm" className="h-8 text-xs gap-1 text-emerald-600" onClick={(e) => { stop(e); handleMarcarPronto(eq); }} disabled={salvando || loadingAutomacao}>
-            <PackageCheck className="h-3.5 w-3.5" />Marcar Pronto
-          </Button>
-        );
+        primary = {
+          id: "marcar_pronto",
+          label: "Marcar Pronto",
+          icon: <PackageCheck className="h-3.5 w-3.5" />,
+          variant: "default",
+          className: classeAcaoPrincipal,
+          onClick: () => void handleMarcarPronto(eq),
+          disabled: salvando || loadingAutomacao,
+        };
+        secondary = acaoStatus;
+        overflow.push(acaoEditar, acaoExcluir);
         break;
       case "AGUARDANDO_PECA":
-        botoes.push(
-          <Button key="ret" variant="ghost" size="sm" className="h-8 text-xs gap-1 text-indigo-600" onClick={(e) => { stop(e); acaoRapida(eq, "EM_MANUTENCAO"); }} disabled={salvando}>
-            <Wrench className="h-3.5 w-3.5" />Retomar Manutenção
-          </Button>
-        );
+        primary = {
+          id: "retomar_manutencao",
+          label: "Retomar Manutenção",
+          icon: <Wrench className="h-3.5 w-3.5" />,
+          variant: "default",
+          className: classeAcaoPrincipal,
+          onClick: () => void acaoRapida(eq, "EM_MANUTENCAO"),
+          disabled: salvando,
+        };
+        secondary = acaoStatus;
+        overflow.push(acaoEditar, acaoExcluir);
         break;
       case "PRONTO":
-        botoes.push(
-          <Button key="ent" variant="ghost" size="sm" className="h-8 text-xs gap-1 text-gray-700" onClick={(e) => { stop(e); void abrirMudarStatus(eq, "ENTREGUE"); }}>
-            <PackageCheck className="h-3.5 w-3.5" />Registrar Entrega
-          </Button>
-        );
+        primary = {
+          id: "registrar_entrega",
+          label: "Registrar Entrega",
+          icon: <PackageCheck className="h-3.5 w-3.5" />,
+          variant: "default",
+          className: classeAcaoPrincipal,
+          onClick: () => void abrirMudarStatus(eq, "ENTREGUE"),
+        };
+        secondary = acaoStatus;
         if (eq.cliente_telefone) {
-          botoes.push(
-            <Button key="wpp" variant="ghost" size="icon" className="h-8 w-8" title="WhatsApp Pronto" onClick={(e) => { stop(e); enviarWhatsAppPronto(eq); }}>
-              <MessageSquare className="h-3.5 w-3.5 text-green-600" />
-            </Button>
-          );
+          overflow.push({
+            id: "whatsapp_pronto",
+            label: "WhatsApp",
+            icon: <MessageSquare className="h-3.5 w-3.5" />,
+            onClick: () => void enviarWhatsAppPronto(eq),
+          });
         }
+        overflow.push(acaoEditar, acaoExcluir);
         break;
       case "ORCAMENTO_VENCIDO":
-        botoes.push(
-          <Button key="reenviar" variant="ghost" size="sm" className="h-8 text-xs gap-1 text-orange-600" onClick={(e) => { stop(e); void abrirMudarStatus(eq, "AGUARDANDO_APROVACAO"); }}>
-            <RefreshCw className="h-3.5 w-3.5" />Reenviar Orçamento
-          </Button>
-        );
+        primary = {
+          id: "ajustar_orcamento_vencido",
+          label: "Ajustar Orçamento",
+          icon: <RefreshCw className="h-3.5 w-3.5" />,
+          variant: "default",
+          className: classeAcaoPrincipal,
+          onClick: () => void abrirMudarStatus(eq, "AGUARDANDO_APROVACAO"),
+        };
+        secondary = {
+          id: "reenviar_orcamento",
+          label: "Reenviar",
+          icon: <Send className="h-3.5 w-3.5" />,
+          variant: "outline",
+          onClick: () => void abrirMudarStatus(eq, "AGUARDANDO_APROVACAO"),
+        };
+        overflow.push(acaoStatus, acaoEditar, acaoExcluir);
         break;
       default:
+        primary = acaoStatus;
+        secondary = undefined;
         if (getProximosStatus(eq.status).length > 0) {
-          botoes.push(
-            <Button key="st" variant="ghost" size="icon" className="h-8 w-8" title="Mudar Status" onClick={(e) => { stop(e); void abrirMudarStatus(eq); }}>
-              <RefreshCw className="h-3.5 w-3.5 text-blue-600" />
-            </Button>
-          );
+          secondary = {
+            id: "mudar_status",
+            label: "Mudar Status",
+            icon: <RefreshCw className="h-3.5 w-3.5" />,
+            variant: "outline",
+            onClick: () => void abrirMudarStatus(eq),
+          };
         }
+        overflow.push(acaoEditar, acaoExcluir);
         break;
     }
 
-    botoes.push(
-      <Button key="edit" variant="default" size="sm" className="h-8 text-xs gap-1" title="Editar dados do equipamento" onClick={(e) => { stop(e); abrirEditar(eq); }}>
-        <Edit className="h-3.5 w-3.5" />Editar
-      </Button>,
-      <Button key="del" variant="ghost" size="icon" className="h-8 w-8" title="Excluir" onClick={(e) => { stop(e); void solicitarExclusao(eq); }}>
-        <Trash2 className="h-3.5 w-3.5 text-red-500" />
-      </Button>
-    );
-
-    return botoes;
+    return primary
+      ? (
+        <ActionPriorityRow
+          primary={primary}
+          iconOnlyPrimary={eq.status === "ENTREGUE" || eq.status === "ABANDONADO"}
+          secondary={secondary}
+          overflow={overflow}
+          iconOnlySecondary
+          iconOnlyOverflowTrigger
+        />
+      )
+      : null;
   }
 
   // ─── Sub-renders para abas do drawer de detalhes ──────
@@ -1466,12 +1353,22 @@ export default function Equipamentos() {
                           </div>
                         ) : <span className="text-muted-foreground">—</span>}
                       </TableCell>
-                      <TableCell><StatusBadge status={eq.status} /></TableCell>
+                      <TableCell>
+                        <div className="flex flex-wrap items-center gap-2">
+                          <StatusBadge status={eq.status} />
+                          {(eq.status === "AGUARDANDO_APROVACAO" || eq.status === "ORCAMENTO_VENCIDO") &&
+                            eq.valor_orcamento != null && eq.valor_orcamento > 0 && (
+                              <div className="inline-flex items-center rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-xs font-medium text-amber-900">
+                                Orçamento: R$ {eq.valor_orcamento.toFixed(2)}
+                              </div>
+                            )}
+                        </div>
+                      </TableCell>
                       <TableCell className="text-sm text-muted-foreground">
                         {eq.data_entrada ? new Date(eq.data_entrada).toLocaleDateString("pt-BR") : "—"}
                       </TableCell>
                       <TableCell className="text-right">
-                        <div className="flex justify-end gap-1 flex-wrap">
+                        <div className="flex justify-end">
                           {renderAcoes(eq)}
                         </div>
                       </TableCell>
@@ -1810,7 +1707,11 @@ export default function Equipamentos() {
       {/* ═══ Dialog Mudar Status ═══ */}
       <Dialog open={statusDialogOpen} onOpenChange={setStatusDialogOpen}>
         <DialogContent className="sm:max-w-md">
-          <DialogHeader><DialogTitle>Alterar Status</DialogTitle></DialogHeader>
+          <DialogHeader>
+            <DialogTitle>
+              {novoStatus === "AGUARDANDO_APROVACAO" ? "Ajuste de Orçamento" : "Alterar Status"}
+            </DialogTitle>
+          </DialogHeader>
           {selecionado && (
             <div className="space-y-4">
               <div className="flex items-center gap-2">
@@ -1837,8 +1738,32 @@ export default function Equipamentos() {
               )}
               {novoStatus === "AGUARDANDO_APROVACAO" && (
                 <>
+                  <div className="rounded-md border bg-amber-50 px-3 py-2 text-sm text-amber-900">
+                    Revise o valor e o prazo para reenviar o orçamento atualizado ao cliente.
+                  </div>
+                  {(valorOrcamentoOriginal != null || valorOrcamentoAnterior != null) && (
+                    <div className="grid gap-2 sm:grid-cols-2">
+                      <div className="rounded-md border bg-muted/30 px-3 py-2 text-sm">
+                        <p className="text-xs text-muted-foreground">Valor original (verificação)</p>
+                        <p className="font-semibold">
+                          {valorOrcamentoOriginal != null ? `R$ ${valorOrcamentoOriginal.toFixed(2)}` : "—"}
+                        </p>
+                      </div>
+                      <div className="rounded-md border bg-blue-50 px-3 py-2 text-sm text-blue-900">
+                        <p className="text-xs text-blue-700">Valor atual antes do ajuste</p>
+                        <p className="font-semibold">
+                          {valorOrcamentoAnterior != null ? `R$ ${valorOrcamentoAnterior.toFixed(2)}` : "—"}
+                        </p>
+                      </div>
+                    </div>
+                  )}
                   <div className="space-y-2"><Label>Valor Orçamento (R$)</Label><Input type="number" step="0.01" value={valorOrcamento || ""} onChange={e => setValorOrcamento(Number(e.target.value))} /></div>
                   <div className="space-y-2"><Label>Prazo Aprovação</Label><Input type="date" value={prazoAprovacao} onChange={e => setPrazoAprovacao(e.target.value)} /></div>
+                  {valorOrcamentoAnterior != null && valorOrcamento !== valorOrcamentoAnterior && (
+                    <p className="text-xs text-amber-700">
+                      Novo valor em negociação: R$ {valorOrcamento.toFixed(2)} (antes: R$ {valorOrcamentoAnterior.toFixed(2)}).
+                    </p>
+                  )}
                 </>
               )}
               {novoStatus === "ENTREGUE" && (

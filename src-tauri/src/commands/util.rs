@@ -651,6 +651,92 @@ pub async fn salvar_arquivo_temp(filename: String, bytes: Vec<u8>) -> Result<Str
     Ok(path_str)
 }
 
+/// Copia um arquivo já gerado pelo app (ex.: PDF do orçamento salvo em
+/// `Documents/Orcamentos`) para o diretório temporário do AutoOS, devolvendo
+/// o caminho temporário. Esse caminho é o único aceito como anexo pelo
+/// comando `enviar_email` (ver `resolve_allowed_attachment_path` em smtp.rs).
+#[tauri::command]
+#[instrument(skip_all)]
+pub async fn copiar_anexo_email_para_temp(
+    origem: String,
+    filename: String,
+) -> Result<String, String> {
+    let trimmed_origem = origem.trim();
+    if trimmed_origem.is_empty() {
+        return Err("Caminho de origem do anexo é obrigatório".to_string());
+    }
+
+    let origem_path = PathBuf::from(trimmed_origem);
+    if !origem_path.is_absolute() {
+        return Err("Caminho de origem do anexo deve ser absoluto".to_string());
+    }
+
+    let metadata = fs::metadata(&origem_path).map_err(|e| {
+        error!("Erro ao acessar arquivo de origem do anexo: {}", e);
+        format!("Erro ao acessar arquivo de origem do anexo: {}", e)
+    })?;
+    if !metadata.is_file() {
+        return Err("Origem do anexo não é um arquivo válido".to_string());
+    }
+
+    let safe_filename = sanitize_temp_filename(&filename)?;
+    let destino = autoos_temp_dir()?.join(&safe_filename);
+
+    fs::copy(&origem_path, &destino).map_err(|e| {
+        error!("Erro ao copiar anexo para diretório temporário: {}", e);
+        format!("Erro ao copiar anexo para diretório temporário: {}", e)
+    })?;
+
+    let destino_str = destino.to_string_lossy().to_string();
+    debug!("Anexo copiado para temporário: {}", destino_str);
+    Ok(destino_str)
+}
+
+/// Remove um arquivo previamente salvo no diretório temporário do AutoOS.
+/// Usado para apagar anexos de email após o envio. Apenas caminhos dentro
+/// do diretório temporário do app são aceitos.
+#[tauri::command]
+#[instrument(skip_all)]
+pub async fn remover_anexo_email_temp(path: String) -> Result<(), String> {
+    let trimmed = path.trim();
+    if trimmed.is_empty() {
+        return Err("Caminho do anexo temporário é obrigatório".to_string());
+    }
+
+    let allowed_root = autoos_temp_dir()?;
+    let allowed_root = fs::canonicalize(&allowed_root).map_err(|e| {
+        error!("Erro ao resolver diretório temporário seguro: {}", e);
+        "Diretório temporário seguro indisponível".to_string()
+    })?;
+
+    let requested = PathBuf::from(trimmed);
+    if !requested.is_absolute() {
+        return Err("Caminho do anexo temporário deve ser absoluto".to_string());
+    }
+
+    if !requested.exists() {
+        debug!("Anexo temporário já foi removido: {}", trimmed);
+        return Ok(());
+    }
+
+    let canonical = fs::canonicalize(&requested).map_err(|e| {
+        error!("Erro ao resolver caminho do anexo temporário: {}", e);
+        format!("Erro ao acessar anexo temporário: {}", e)
+    })?;
+
+    if !canonical.starts_with(&allowed_root) {
+        return Err("Anexo fora do diretório temporário permitido".to_string());
+    }
+
+    fs::remove_file(&canonical).map_err(|e| {
+        error!("Erro ao remover anexo temporário: {}", e);
+        format!("Erro ao remover anexo temporário: {}", e)
+    })?;
+
+    debug!("Anexo temporário removido: {}", canonical.display());
+    Ok(())
+}
+
 /// Salva PDF da Ordem de Serviço em Documents/Ordens de Servico
 /// e tenta abrir o gerenciador de arquivos com o arquivo selecionado.
 #[tauri::command]

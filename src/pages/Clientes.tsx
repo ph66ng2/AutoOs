@@ -79,6 +79,7 @@ import {
 } from "@/types";
 import { useSensitiveAccess } from "@/hooks/useSensitiveAccess";
 import { ClienteFormularioCampos } from "@/components/clientes/ClienteFormularioCampos";
+import { ActionPriorityRow } from "@/components/ui/action-priority-row";
 
 /** Badge colorido de status de equipamento. Reutilizado na expansão de equipamentos do cliente */
 function StatusBadge({ status }: { status: string }) {
@@ -454,15 +455,31 @@ export default function Clientes() {
                         </TableCell>
                         <TableCell className="text-right">
                           <div className="flex justify-end gap-1">
-                            <Button variant="outline" size="sm" className="h-8 gap-1 text-xs" onClick={() => void toggleExpandir(c.id!)}>
-                              <Eye className="h-4 w-4" />Equipamentos
-                            </Button>
-                            <Button variant="default" size="sm" className="h-8 gap-1 text-xs" onClick={() => abrirEditar(c)}>
-                              <Edit className="h-4 w-4" />Editar
-                            </Button>
-                            <Button variant="ghost" size="icon" onClick={() => void solicitarExclusao(c)}>
-                              <Trash2 className="h-4 w-4 text-red-500" />
-                            </Button>
+                            <ActionPriorityRow
+                              primary={{
+                                id: `equipamentos-${c.id}`,
+                                label: "Equipamentos",
+                                icon: <Eye className="h-4 w-4" />,
+                                variant: "default",
+                                onClick: () => void toggleExpandir(c.id!),
+                              }}
+                              secondary={{
+                                id: `editar-${c.id}`,
+                                label: "Editar",
+                                icon: <Edit className="h-4 w-4" />,
+                                variant: "outline",
+                                onClick: () => abrirEditar(c),
+                              }}
+                              overflow={[
+                                {
+                                  id: `excluir-${c.id}`,
+                                  label: "Excluir",
+                                  icon: <Trash2 className="h-4 w-4" />,
+                                  className: "text-red-600",
+                                  onClick: () => void solicitarExclusao(c),
+                                },
+                              ]}
+                            />
                           </div>
                         </TableCell>
                       </TableRow>

@@ -27,6 +27,7 @@ import { servicoCatalogoSchema, type ServicoCatalogoFormData } from "@/lib/valid
 import { useServicos } from "@/hooks/useServicos";
 import { useSensitiveAccess } from "@/hooks/useSensitiveAccess";
 import { SENSITIVE_PERMISSIONS, type ServicoCatalogo } from "@/types";
+import { ActionPriorityRow } from "@/components/ui/action-priority-row";
 
 export default function Servicos() {
   const [busca, setBusca] = useState("");
@@ -208,16 +209,24 @@ export default function Servicos() {
                       </TableCell>
                       <TableCell className="text-right">
                         <div className="flex justify-end gap-1">
-                          <Button variant="ghost" size="icon" onClick={() => void abrirEditar(servico)}>
-                            <Edit className="h-4 w-4" />
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            onClick={() => void solicitarExclusao(servico)}
-                          >
-                            <Trash2 className="h-4 w-4 text-red-500" />
-                          </Button>
+                          <ActionPriorityRow
+                            primary={{
+                              id: `editar-${servico.id}`,
+                              label: "Editar",
+                              icon: <Edit className="h-4 w-4" />,
+                              variant: "default",
+                              onClick: () => void abrirEditar(servico),
+                            }}
+                            overflow={[
+                              {
+                                id: `excluir-${servico.id}`,
+                                label: "Excluir",
+                                icon: <Trash2 className="h-4 w-4" />,
+                                className: "text-red-600",
+                                onClick: () => void solicitarExclusao(servico),
+                              },
+                            ]}
+                          />
                         </div>
                       </TableCell>
                     </TableRow>

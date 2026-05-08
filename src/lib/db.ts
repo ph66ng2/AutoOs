@@ -307,4 +307,22 @@ export const db = {
   async salvarArquivoTemp(bytes: number[], filename: string): Promise<string> {
     return invoke<string>("salvar_arquivo_temp", { bytes, filename });
   },
+
+  /**
+   * Copia um arquivo já gerado pelo app para o diretório temporário do AutoOS,
+   * de forma que ele possa ser anexado em emails (apenas anexos vindos do
+   * diretório temporário são aceitos pelo backend SMTP).
+   * @returns Caminho absoluto do arquivo no diretório temporário.
+   */
+  async copiarAnexoEmailParaTemp(origem: string, filename: string): Promise<string> {
+    return invoke<string>("copiar_anexo_email_para_temp", { origem, filename });
+  },
+
+  /**
+   * Remove um anexo previamente salvo no diretório temporário do AutoOS,
+   * tipicamente após o envio do email.
+   */
+  async removerAnexoEmailTemp(path: string): Promise<void> {
+    await invoke<void>("remover_anexo_email_temp", { path });
+  },
 };

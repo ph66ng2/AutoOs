@@ -67,6 +67,7 @@ import { produtoSchema, movimentacaoSchema } from "@/lib/validations";
 import { useInsumos } from "@/hooks/useInsumos";
 import { useSensitiveAccess } from "@/hooks/useSensitiveAccess";
 import { SENSITIVE_PERMISSIONS } from "@/types";
+import { ActionPriorityRow } from "@/components/ui/action-priority-row";
 
 const CATEGORIA_OPTIONS = [
   { value: "TODOS", label: "Todas as Categorias" },
@@ -414,28 +415,31 @@ export default function Insumos() {
                         </TableCell>
                         <TableCell className="text-right">
                           <div className="flex justify-end gap-1">
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              title="Entrada"
-                              onClick={() => void abrirMovimentacao(p)}
-                            >
-                              <ArrowUpCircle className="h-4 w-4 text-green-600" />
-                            </Button>
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              onClick={() => void abrirEditar(p)}
-                            >
-                              <Edit className="h-4 w-4" />
-                            </Button>
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              onClick={() => void solicitarExclusao(p)}
-                            >
-                              <Trash2 className="h-4 w-4 text-red-500" />
-                            </Button>
+                            <ActionPriorityRow
+                              primary={{
+                                id: `movimentar-${p.id}`,
+                                label: "Movimentar",
+                                icon: <ArrowUpCircle className="h-4 w-4" />,
+                                variant: "default",
+                                onClick: () => void abrirMovimentacao(p),
+                              }}
+                              secondary={{
+                                id: `editar-${p.id}`,
+                                label: "Editar",
+                                icon: <Edit className="h-4 w-4" />,
+                                variant: "outline",
+                                onClick: () => void abrirEditar(p),
+                              }}
+                              overflow={[
+                                {
+                                  id: `excluir-${p.id}`,
+                                  label: "Excluir",
+                                  icon: <Trash2 className="h-4 w-4" />,
+                                  className: "text-red-600",
+                                  onClick: () => void solicitarExclusao(p),
+                                },
+                              ]}
+                            />
                           </div>
                         </TableCell>
                       </TableRow>

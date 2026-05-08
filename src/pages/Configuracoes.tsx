@@ -20,28 +20,21 @@
  * ╚══════════════════════════════════════════════════════════════╝
  */
 import { useEffect, useState } from "react";
-import { useForm, Controller } from "react-hook-form";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Button } from "@/components/ui/button";
-import { Checkbox } from "@/components/ui/checkbox";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+import { useForm } from "react-hook-form";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { db } from "@/lib/db";
 import { SmtpConfigService } from "@/lib/smtp-config";
 import { WhatsappConfigService } from "@/lib/whatsapp-config";
 import { SensitiveAccessService } from "@/lib/sensitive-access";
 import { useSensitiveAccess } from "@/hooks/useSensitiveAccess";
+import { ConfiguracoesTabInfra } from "@/pages/configuracoes/ConfiguracoesTabInfra";
+import { ConfiguracoesTabIntegracoes } from "@/pages/configuracoes/ConfiguracoesTabIntegracoes";
+import { ConfiguracoesTabObservabilidade } from "@/pages/configuracoes/ConfiguracoesTabObservabilidade";
+import { ConfiguracoesTabSeguranca } from "@/pages/configuracoes/ConfiguracoesTabSeguranca";
+import { SMTP_DEFAULTS, type SmtpFormValues, type WhatsappFormValues } from "@/pages/configuracoes/configuracoes-shared";
+import { detectRestoreMode } from "@/pages/configuracoes/detect-restore-mode";
 import {
   SENSITIVE_PERMISSIONS,
-  SENSITIVE_PERMISSION_LABELS,
   type DatabaseSchemaStatus,
   type LocalSupportBundleResult,
   type LocalSupportStatus,
@@ -53,33 +46,19 @@ import {
   type WhatsappConfigInput,
 } from "@/types";
 
-interface SmtpFormValues {
-  host: string;
-  port: number;
-  username: string;
-  from_name: string;
-  from_email: string;
-  use_tls: boolean;
-  password: string;
-}
-
-interface WhatsappFormValues {
-  provider: string;
-  api_url: string;
-  token: string;
-}
-
 export default function Configuracoes() {
-  const { status: accessStatus, refreshStatus, hasPermission, setActiveProfile } = useSensitiveAccess();
+  const { status: accessStatus, refreshStatus, hasPermission, setActiveProfile, ensureSensitiveAccess } = useSensitiveAccess();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [hasPassword, setHasPassword] = useState(false);
   const [status, setStatus] = useState<string | null>(null);
+  const [smtpEditUnlocked, setSmtpEditUnlocked] = useState(false);
   const [whatsappLoading, setWhatsappLoading] = useState(true);
   const [savingWhatsapp, setSavingWhatsapp] = useState(false);
   const [whatsappHasToken, setWhatsappHasToken] = useState(false);
   const [whatsappStatus, setWhatsappStatus] = useState<string | null>(null);
   const [securityMessage, setSecurityMessage] = useState<string | null>(null);
+  const [securityAdminUnlocked, setSecurityAdminUnlocked] = useState(false);
   const [tab, setTab] = useState("smtp");
   const [auditEvents, setAuditEvents] = useState<SecurityAuditEvent[]>([]);
   const [profilesCatalog, setProfilesCatalog] = useState<SecurityProfile[]>([]);
@@ -155,12 +134,7 @@ export default function Configuracoes() {
 
   const { register, handleSubmit, setValue, control } = useForm<SmtpFormValues>({
     defaultValues: {
-      host: "",
-      port: 587,
-      username: "",
-      from_name: "",
-      from_email: "",
-      use_tls: true,
+      ...SMTP_DEFAULTS,
       password: "",
     },
   });
@@ -192,17 +166,6 @@ export default function Configuracoes() {
     }
 
     setter([...currentPermissions, permission]);
-  }
-
-  function detectRestoreMode(filePath: string): "pg_restore" | "psql" | null {
-    const normalized = filePath.trim().toLowerCase();
-    if (normalized.endsWith(".dump")) {
-      return "pg_restore";
-    }
-    if (normalized.endsWith(".sql")) {
-      return "psql";
-    }
-    return null;
   }
 
   async function loadAuditEvents() {
@@ -305,9 +268,24 @@ export default function Configuracoes() {
           setValue("from_email", config.from_email);
           setValue("use_tls", config.use_tls);
           setHasPassword(!!config.has_password);
+        } else {
+          setValue("host", SMTP_DEFAULTS.host);
+          setValue("port", SMTP_DEFAULTS.port);
+          setValue("username", SMTP_DEFAULTS.username);
+          setValue("from_name", SMTP_DEFAULTS.from_name);
+          setValue("from_email", SMTP_DEFAULTS.from_email);
+          setValue("use_tls", SMTP_DEFAULTS.use_tls);
+          setHasPassword(false);
         }
       } catch (error) {
         console.error("Erro ao carregar config SMTP:", error);
+        setValue("host", SMTP_DEFAULTS.host);
+        setValue("port", SMTP_DEFAULTS.port);
+        setValue("username", SMTP_DEFAULTS.username);
+        setValue("from_name", SMTP_DEFAULTS.from_name);
+        setValue("from_email", SMTP_DEFAULTS.from_email);
+        setValue("use_tls", SMTP_DEFAULTS.use_tls);
+        setHasPassword(false);
       } finally {
         setLoading(false);
       }
@@ -396,6 +374,11 @@ export default function Configuracoes() {
   }, [canManageProfiles, accessStatus?.active_profile_id]);
 
   async function onSubmit(values: SmtpFormValues) {
+    if (!smtpEditUnlocked) {
+      setStatus("Libere a edição com PIN de administrador para alterar a configuração SMTP.");
+      return;
+    }
+
     setSaving(true);
     setStatus(null);
     try {
@@ -418,6 +401,28 @@ export default function Configuracoes() {
     } finally {
       setSaving(false);
     }
+  }
+
+  async function handleSmtpEditToggle(nextValue: boolean) {
+    if (!nextValue) {
+      setSmtpEditUnlocked(false);
+      return;
+    }
+
+    const liberado = await ensureSensitiveAccess({
+      title: "Liberar edição de SMTP",
+      description: "Informe o PIN do administrador para permitir alterações na configuração padrão de SMTP.",
+      permission: SENSITIVE_PERMISSIONS.MANAGE_PROFILES,
+    });
+
+    if (!liberado) {
+      setSmtpEditUnlocked(false);
+      setStatus("Edição SMTP não liberada. PIN/Admin necessário.");
+      return;
+    }
+
+    setSmtpEditUnlocked(true);
+    setStatus("Edição SMTP liberada para esta sessão.");
   }
 
   async function onSubmitWhatsapp(values: WhatsappFormValues) {
@@ -516,6 +521,11 @@ export default function Configuracoes() {
   }
 
   async function trocarMeuPin() {
+    if (!securityAdminUnlocked) {
+      setSecurityMessage("Desbloqueie a gestão de segurança com PIN/Admin para alterar PINs e perfis.");
+      return;
+    }
+
     if (newPin.length < 4) {
       setSecurityMessage("O novo PIN deve ter entre 4 e 8 dígitos.");
       return;
@@ -544,6 +554,10 @@ export default function Configuracoes() {
 
   async function salvarPerfilAtual() {
     if (!managedProfileId) return;
+    if (!securityAdminUnlocked) {
+      setSecurityMessage("Desbloqueie a gestão de segurança com PIN/Admin para alterar perfis.");
+      return;
+    }
 
     const permissions = permissionsForRole(editProfileRole, editPermissions);
     setSecurityBusy(true);
@@ -564,6 +578,11 @@ export default function Configuracoes() {
   }
 
   async function criarPerfil() {
+    if (!securityAdminUnlocked) {
+      setSecurityMessage("Desbloqueie a gestão de segurança com PIN/Admin para criar perfis.");
+      return;
+    }
+
     if (newProfilePin.length < 4) {
       setSecurityMessage("O PIN inicial do novo perfil deve ter entre 4 e 8 dígitos.");
       return;
@@ -599,6 +618,10 @@ export default function Configuracoes() {
 
   async function resetarPinPerfil() {
     if (!managedProfileId) return;
+    if (!securityAdminUnlocked) {
+      setSecurityMessage("Desbloqueie a gestão de segurança com PIN/Admin para resetar PINs.");
+      return;
+    }
 
     if (resetPin.length < 4) {
       setSecurityMessage("O novo PIN deve ter entre 4 e 8 dígitos.");
@@ -627,6 +650,10 @@ export default function Configuracoes() {
 
   async function desativarPerfilSelecionado() {
     if (!managedProfileId) return;
+    if (!securityAdminUnlocked) {
+      setSecurityMessage("Desbloqueie a gestão de segurança com PIN/Admin para alterar perfis.");
+      return;
+    }
 
     setSecurityBusy(true);
     setSecurityMessage(null);
@@ -643,6 +670,10 @@ export default function Configuracoes() {
 
   async function reativarPerfilSelecionado() {
     if (!managedProfileId) return;
+    if (!securityAdminUnlocked) {
+      setSecurityMessage("Desbloqueie a gestão de segurança com PIN/Admin para alterar perfis.");
+      return;
+    }
 
     setSecurityBusy(true);
     setSecurityMessage(null);
@@ -713,6 +744,29 @@ export default function Configuracoes() {
     }
   }
 
+  async function handleSecurityAdminToggle(nextValue: boolean) {
+    if (!nextValue) {
+      setSecurityAdminUnlocked(false);
+      setSecurityMessage("Gestão de segurança bloqueada novamente.");
+      return;
+    }
+
+    const liberado = await ensureSensitiveAccess({
+      title: "Desbloquear gestão de segurança",
+      description: "Informe o PIN do administrador para liberar alterações de perfis e PINs.",
+      permission: SENSITIVE_PERMISSIONS.MANAGE_PROFILES,
+    });
+
+    if (!liberado) {
+      setSecurityAdminUnlocked(false);
+      setSecurityMessage("Desbloqueio não autorizado. PIN/Admin obrigatório.");
+      return;
+    }
+
+    setSecurityAdminUnlocked(true);
+    setSecurityMessage("Gestão de segurança liberada para esta sessão.");
+  }
+
   if ((canConfigureSmtp && loading) || (canConfigureWhatsapp && whatsappLoading)) {
     return (
       <div className="flex items-center justify-center h-64">
@@ -731,859 +785,125 @@ export default function Configuracoes() {
       <Tabs value={tab} onValueChange={setTab} className="space-y-4">
         <TabsList>
           <TabsTrigger value="smtp" disabled={!canConfigureIntegrations}>Integracoes</TabsTrigger>
+          <TabsTrigger value="infra">Banco</TabsTrigger>
           <TabsTrigger value="seguranca">Seguranca</TabsTrigger>
+          {canManageProfiles && <TabsTrigger value="observabilidade">Suporte e Logs</TabsTrigger>}
         </TabsList>
 
-        <TabsContent value="smtp" className="space-y-4">
-          <Card>
-            <CardHeader>
-              <CardTitle>SMTP (Email Real)</CardTitle>
-              <CardDescription>Credenciais e parametros de envio protegidos por permissao de SMTP.</CardDescription>
-            </CardHeader>
-            <CardContent>
-              {canConfigureSmtp ? (
-                <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
-                  <div className="grid gap-4 md:grid-cols-2">
-                    <div className="space-y-2">
-                      <Label htmlFor="host">Host</Label>
-                      <Input id="host" placeholder="smtp.gmail.com" {...register("host")} />
-                    </div>
+        <ConfiguracoesTabIntegracoes
+          canConfigureSmtp={canConfigureSmtp}
+          canConfigureWhatsapp={canConfigureWhatsapp}
+          register={register}
+          handleSubmit={handleSubmit}
+          control={control}
+          onSubmit={onSubmit}
+          saving={saving}
+          status={status}
+          smtpEditUnlocked={smtpEditUnlocked}
+          handleSmtpEditToggle={handleSmtpEditToggle}
+          hasPassword={hasPassword}
+          registerWhatsapp={registerWhatsapp}
+          handleSubmitWhatsapp={handleSubmitWhatsapp}
+          onSubmitWhatsapp={onSubmitWhatsapp}
+          savingWhatsapp={savingWhatsapp}
+          whatsappStatus={whatsappStatus}
+          whatsappHasToken={whatsappHasToken}
+        />
 
-                    <div className="space-y-2">
-                      <Label htmlFor="port">Porta</Label>
-                      <Input id="port" type="number" min={1} max={65535} {...register("port", { valueAsNumber: true })} />
-                    </div>
+        <ConfiguracoesTabInfra
+          canManageProfiles={canManageProfiles}
+          schemaLoading={schemaLoading}
+          schemaStatus={schemaStatus}
+          schemaError={schemaError}
+          loadSchemaStatus={loadSchemaStatus}
+          backupLoading={backupLoading}
+          backupToolsStatus={backupToolsStatus}
+          backupError={backupError}
+          backupMessage={backupMessage}
+          backupBusy={backupBusy}
+          restoreFilePath={restoreFilePath}
+          setRestoreFilePath={setRestoreFilePath}
+          restoreConfirmText={restoreConfirmText}
+          setRestoreConfirmText={setRestoreConfirmText}
+          restoreBusy={restoreBusy}
+          restoreError={restoreError}
+          restoreMessage={restoreMessage}
+          restoreMode={restoreMode}
+          restoreReady={restoreReady}
+          loadBackupToolsStatus={loadBackupToolsStatus}
+          gerarBackupBanco={gerarBackupBanco}
+          restaurarBackupBanco={restaurarBackupBanco}
+        />
 
-                    <div className="space-y-2">
-                      <Label htmlFor="username">Usuario</Label>
-                      <Input id="username" placeholder="email@dominio.com" {...register("username")} />
-                    </div>
+        {canManageProfiles && (
+          <ConfiguracoesTabObservabilidade
+            supportLoading={supportLoading}
+            supportStatus={supportStatus}
+            supportError={supportError}
+            supportMessage={supportMessage}
+            supportBusy={supportBusy}
+            loadSupportStatus={loadSupportStatus}
+            exportarPacoteSuporte={exportarPacoteSuporte}
+            auditSearch={auditSearch}
+            setAuditSearch={setAuditSearch}
+            auditOutcomeFilter={auditOutcomeFilter}
+            setAuditOutcomeFilter={setAuditOutcomeFilter}
+            auditProfileFilter={auditProfileFilter}
+            setAuditProfileFilter={setAuditProfileFilter}
+            auditProfileOptions={auditProfileOptions}
+            filteredAuditEvents={filteredAuditEvents}
+            exportarAuditoriaCsv={exportarAuditoriaCsv}
+          />
+        )}
 
-                    <div className="space-y-2">
-                      <Label htmlFor="from_name">Nome do Remetente</Label>
-                      <Input id="from_name" placeholder="BMITAG" {...register("from_name")} />
-                    </div>
+        <ConfiguracoesTabSeguranca
+          canManageProfiles={canManageProfiles}
+          securityAdminUnlocked={securityAdminUnlocked}
+          securityBusy={securityBusy}
+          handleSecurityAdminToggle={handleSecurityAdminToggle}
+          accessStatus={accessStatus}
+          trocarPerfilAtivo={trocarPerfilAtivo}
+          currentPin={currentPin}
+          setCurrentPin={setCurrentPin}
+          newPin={newPin}
+          setNewPin={setNewPin}
+          confirmPin={confirmPin}
+          setConfirmPin={setConfirmPin}
+          trocarMeuPin={trocarMeuPin}
+          managedProfileId={managedProfileId}
+          setManagedProfileId={setManagedProfileId}
+          profilesCatalog={profilesCatalog}
+          managedProfile={managedProfile}
+          editProfileName={editProfileName}
+          setEditProfileName={setEditProfileName}
+          editProfileRole={editProfileRole}
+          setEditProfileRole={setEditProfileRole}
+          editPermissions={editPermissions}
+          setEditPermissions={setEditPermissions}
+          permissionOptions={permissionOptions}
+          togglePermission={togglePermission}
+          desativarPerfilSelecionado={desativarPerfilSelecionado}
+          reativarPerfilSelecionado={reativarPerfilSelecionado}
+          salvarPerfilAtual={salvarPerfilAtual}
+          resetPin={resetPin}
+          setResetPin={setResetPin}
+          resetPinConfirm={resetPinConfirm}
+          setResetPinConfirm={setResetPinConfirm}
+          resetarPinPerfil={resetarPinPerfil}
+          newProfileName={newProfileName}
+          setNewProfileName={setNewProfileName}
+          newProfileRole={newProfileRole}
+          setNewProfileRole={setNewProfileRole}
+          newProfilePermissions={newProfilePermissions}
+          setNewProfilePermissions={setNewProfilePermissions}
+          newProfilePin={newProfilePin}
+          setNewProfilePin={setNewProfilePin}
+          newProfilePinConfirm={newProfilePinConfirm}
+          setNewProfilePinConfirm={setNewProfilePinConfirm}
+          criarPerfil={criarPerfil}
+          securityMessage={securityMessage}
+        />
 
-                    <div className="space-y-2">
-                      <Label htmlFor="from_email">Email do Remetente</Label>
-                      <Input id="from_email" placeholder="contato@dominio.com" {...register("from_email")} />
-                    </div>
-
-                    <div className="space-y-2">
-                      <Label htmlFor="password">Senha / App Password</Label>
-                      <Input id="password" type="password" placeholder={hasPassword ? "Senha ja configurada" : "Digite a senha"} {...register("password")} />
-                      {hasPassword && (
-                        <p className="text-xs text-muted-foreground">Deixe em branco para manter a senha atual.</p>
-                      )}
-                    </div>
-                  </div>
-
-                  <div className="flex items-center gap-2">
-                    <Controller
-                      name="use_tls"
-                      control={control}
-                      render={({ field }) => (
-                        <Checkbox checked={field.value} onCheckedChange={(value) => field.onChange(!!value)} />
-                      )}
-                    />
-                    <Label>Usar TLS/STARTTLS</Label>
-                  </div>
-
-                  {status && (
-                    <p className="text-sm text-muted-foreground">{status}</p>
-                  )}
-
-                  <div className="flex justify-end">
-                    <Button type="submit" disabled={saving}>
-                      {saving ? "Salvando..." : "Salvar configuracao"}
-                    </Button>
-                  </div>
-                </form>
-              ) : (
-                <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
-                  O perfil ativo nao possui permissao para configurar SMTP. Troque para um perfil com essa permissao para editar este bloco.
-                </div>
-              )}
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader>
-              <CardTitle>WhatsApp API</CardTitle>
-              <CardDescription>
-                Provider padrao: Evolution API self-hosted. Configure a URL completa do endpoint de envio e o token da API.
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              {canConfigureWhatsapp ? (
-                <form onSubmit={handleSubmitWhatsapp(onSubmitWhatsapp)} className="space-y-4">
-                  <div className="grid gap-4 md:grid-cols-2">
-                    <div className="space-y-2">
-                      <Label htmlFor="whatsapp-provider">Provider</Label>
-                      <Input id="whatsapp-provider" readOnly {...registerWhatsapp("provider")} />
-                    </div>
-
-                    <div className="space-y-2 md:col-span-2">
-                      <Label htmlFor="whatsapp-api-url">API URL</Label>
-                      <Input
-                        id="whatsapp-api-url"
-                        placeholder="http://localhost:8080/message/sendText/minha-instancia"
-                        {...registerWhatsapp("api_url")}
-                      />
-                      <p className="text-xs text-muted-foreground">
-                        Informe a URL final do endpoint sendText da sua instância Evolution.
-                      </p>
-                    </div>
-
-                    <div className="space-y-2 md:col-span-2">
-                      <Label htmlFor="whatsapp-token">Token da API</Label>
-                      <Input
-                        id="whatsapp-token"
-                        type="password"
-                        placeholder={whatsappHasToken ? "Token ja configurado" : "Digite o token da API"}
-                        {...registerWhatsapp("token")}
-                      />
-                      {whatsappHasToken && (
-                        <p className="text-xs text-muted-foreground">Deixe em branco para manter o token atual.</p>
-                      )}
-                    </div>
-                  </div>
-
-                  {whatsappStatus && (
-                    <p className="text-sm text-muted-foreground">{whatsappStatus}</p>
-                  )}
-
-                  <div className="flex justify-end">
-                    <Button type="submit" disabled={savingWhatsapp}>
-                      {savingWhatsapp ? "Salvando..." : "Salvar configuracao"}
-                    </Button>
-                  </div>
-                </form>
-              ) : (
-                <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
-                  O perfil ativo nao possui permissao para configurar a API de WhatsApp. Troque para um perfil com essa permissao para editar este bloco.
-                </div>
-              )}
-            </CardContent>
-          </Card>
-        </TabsContent>
-
-        <TabsContent value="seguranca" className="space-y-4">
-          <Card>
-            <CardHeader>
-              <CardTitle>Banco e schema</CardTitle>
-              <CardDescription>
-                Painel de conferência da versão do schema aplicada no PostgreSQL e das migrações conhecidas pelo AutoOS.
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              {schemaLoading && !schemaStatus ? (
-                <div className="flex items-center justify-center h-24">
-                  <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600" />
-                </div>
-              ) : schemaError ? (
-                <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
-                  {schemaError}
-                </div>
-              ) : schemaStatus ? (
-                <>
-                  <div className="grid gap-4 md:grid-cols-4">
-                    <div className="rounded-lg border bg-muted/40 p-4 text-sm">
-                      <div className="text-muted-foreground">Banco</div>
-                      <div className="font-medium">{schemaStatus.database_name}</div>
-                      <div className="text-xs text-muted-foreground">schema {schemaStatus.schema_name}</div>
-                    </div>
-                    <div className="rounded-lg border bg-muted/40 p-4 text-sm">
-                      <div className="text-muted-foreground">Versão aplicada</div>
-                      <div className="font-medium">{schemaStatus.latest_applied_version ?? "—"}</div>
-                    </div>
-                    <div className="rounded-lg border bg-muted/40 p-4 text-sm">
-                      <div className="text-muted-foreground">Versão conhecida</div>
-                      <div className="font-medium">{schemaStatus.latest_known_version ?? "—"}</div>
-                    </div>
-                    <div className="rounded-lg border bg-muted/40 p-4 text-sm">
-                      <div className="text-muted-foreground">Migrações</div>
-                      <div className="font-medium">{schemaStatus.applied_count} de {schemaStatus.known_count}</div>
-                      <div className={`text-xs ${schemaStatus.pending_count === 0 ? "text-emerald-600" : "text-amber-600"}`}>
-                        {schemaStatus.pending_count === 0 ? "schema atualizado" : `${schemaStatus.pending_count} pendente(s)`}
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="space-y-3">
-                    {schemaStatus.migrations.map((migration) => (
-                      <div key={migration.version} className="rounded-lg border p-3 text-sm">
-                        <div className="flex items-center justify-between gap-3">
-                          <div className="font-medium">v{migration.version} • {migration.description}</div>
-                          <span className={migration.applied && migration.success ? "text-emerald-600" : "text-amber-600"}>
-                            {migration.applied && migration.success ? "aplicada" : "pendente"}
-                          </span>
-                        </div>
-                        <div className="text-xs text-muted-foreground mt-1">
-                          {migration.installed_on ? `Instalada em ${new Date(migration.installed_on).toLocaleString("pt-BR")}` : "Ainda não aplicada neste banco"}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </>
-              ) : null}
-
-              <div className="flex justify-end">
-                <Button type="button" variant="outline" onClick={() => void loadSchemaStatus()} disabled={schemaLoading}>
-                  {schemaLoading ? "Atualizando..." : "Atualizar status do schema"}
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader>
-              <CardTitle>Backup e restore do banco</CardTitle>
-              <CardDescription>
-                Gera backup .dump, valida pg_dump, pg_restore e psql, e permite restore manual com confirmação explícita.
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              {!canManageProfiles ? (
-                <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
-                  O perfil ativo nao possui permissao para validar ferramentas, gerar backups ou executar restore do banco.
-                </div>
-              ) : (
-                <>
-                  {backupLoading && !backupToolsStatus ? (
-                    <div className="flex items-center justify-center h-24">
-                      <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600" />
-                    </div>
-                  ) : backupToolsStatus ? (
-                    <div className="grid gap-4 md:grid-cols-4">
-                      <div className="rounded-lg border bg-muted/40 p-4 text-sm">
-                        <div className="text-muted-foreground">Banco</div>
-                        <div className="font-medium">{backupToolsStatus.database_name}</div>
-                      </div>
-                      <div className="rounded-lg border bg-muted/40 p-4 text-sm">
-                        <div className="text-muted-foreground">Host</div>
-                        <div className="font-medium">
-                          {backupToolsStatus.host || "localhost"}
-                          {backupToolsStatus.port ? `:${backupToolsStatus.port}` : ""}
-                        </div>
-                      </div>
-                      <div className="rounded-lg border bg-muted/40 p-4 text-sm md:col-span-2">
-                        <div className="text-muted-foreground">Pasta de backup</div>
-                        <div className="font-medium break-all">{backupToolsStatus.backup_directory}</div>
-                      </div>
-                      <div className="rounded-lg border bg-muted/40 p-4 text-sm md:col-span-4">
-                        <div className="text-muted-foreground mb-2">Ferramentas PostgreSQL</div>
-                        <div className="grid gap-2 md:grid-cols-3">
-                          <div className={backupToolsStatus.pg_dump_available ? "text-emerald-600" : "text-amber-600"}>
-                            pg_dump: {backupToolsStatus.pg_dump_available ? "disponivel" : "ausente"}
-                          </div>
-                          <div className={backupToolsStatus.pg_restore_available ? "text-emerald-600" : "text-amber-600"}>
-                            pg_restore: {backupToolsStatus.pg_restore_available ? "disponivel" : "ausente"}
-                          </div>
-                          <div className={backupToolsStatus.psql_available ? "text-emerald-600" : "text-amber-600"}>
-                            psql: {backupToolsStatus.psql_available ? "disponivel" : "ausente"}
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  ) : null}
-
-                  {backupError && (
-                    <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
-                      {backupError}
-                    </div>
-                  )}
-
-                  {backupMessage && (
-                    <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-900">
-                      {backupMessage}
-                    </div>
-                  )}
-
-                  <div className="flex flex-wrap justify-end gap-2">
-                    <Button type="button" variant="outline" onClick={() => void loadBackupToolsStatus()} disabled={backupLoading || backupBusy || restoreBusy}>
-                      {backupLoading ? "Validando..." : "Validar ferramentas"}
-                    </Button>
-                    <Button
-                      type="button"
-                      onClick={() => void gerarBackupBanco()}
-                      disabled={backupBusy || backupLoading || restoreBusy || !backupToolsStatus?.pg_dump_available}
-                    >
-                      {backupBusy ? "Gerando backup..." : "Gerar backup agora"}
-                    </Button>
-                  </div>
-
-                  <div className="space-y-4 border-t pt-4">
-                    <div>
-                      <div className="font-medium">Restore manual</div>
-                      <p className="text-sm text-muted-foreground">
-                        Use apenas em manutenção controlada. O restore substitui os dados atuais do banco configurado na DATABASE_URL.
-                      </p>
-                    </div>
-
-                    <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
-                      Aceita arquivos .dump via pg_restore e .sql via psql. Feche outras rotinas operacionais antes de restaurar.
-                    </div>
-
-                    <div className="grid gap-4 md:grid-cols-2">
-                      <div className="space-y-2 md:col-span-2">
-                        <Label htmlFor="restore-file-path">Caminho do arquivo de backup</Label>
-                        <Input
-                          id="restore-file-path"
-                          placeholder="C:/Users/Usuario/Documents/AutoOS/backups/autoos-20260406-153000.dump"
-                          value={restoreFilePath}
-                          onChange={(event) => setRestoreFilePath(event.target.value)}
-                        />
-                        <p className="text-xs text-muted-foreground">
-                          Informe o caminho absoluto completo. O app aceita somente .dump e .sql.
-                        </p>
-                      </div>
-
-                      <div className="space-y-2">
-                        <Label htmlFor="restore-confirm-text">Confirmação</Label>
-                        <Input
-                          id="restore-confirm-text"
-                          placeholder="Digite RESTAURAR"
-                          value={restoreConfirmText}
-                          onChange={(event) => setRestoreConfirmText(event.target.value.toUpperCase())}
-                        />
-                      </div>
-
-                      <div className="space-y-2">
-                        <Label>Ferramenta detectada</Label>
-                        <div className="rounded-md border bg-muted/40 px-3 py-2 text-sm">
-                          {restoreMode === "pg_restore"
-                            ? "pg_restore (.dump)"
-                            : restoreMode === "psql"
-                              ? "psql (.sql)"
-                              : "aguardando arquivo .dump ou .sql"}
-                        </div>
-                      </div>
-                    </div>
-
-                    {restoreError && (
-                      <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
-                        {restoreError}
-                      </div>
-                    )}
-
-                    {restoreMessage && (
-                      <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-900">
-                        {restoreMessage}
-                      </div>
-                    )}
-
-                    <div className="flex justify-end">
-                      <Button
-                        type="button"
-                        variant="destructive"
-                        onClick={() => void restaurarBackupBanco()}
-                        disabled={
-                          restoreBusy
-                          || backupBusy
-                          || backupLoading
-                          || !restoreMode
-                          || !restoreReady
-                          || !restoreFilePath.trim()
-                          || restoreConfirmText.trim().toUpperCase() !== "RESTAURAR"
-                        }
-                      >
-                        {restoreBusy ? "Restaurando backup..." : "Restaurar backup agora"}
-                      </Button>
-                    </div>
-                  </div>
-                </>
-              )}
-            </CardContent>
-          </Card>
-
-          {canManageProfiles && (
-            <Card>
-              <CardHeader>
-                <CardTitle>Suporte local e observabilidade</CardTitle>
-                <CardDescription>
-                  Snapshot operacional mínimo para suporte assistido: diretórios locais, logs recentes, housekeeping e prontidão do bundle Windows.
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                {supportLoading && !supportStatus ? (
-                  <div className="flex items-center justify-center h-24">
-                    <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600" />
-                  </div>
-                ) : supportStatus ? (
-                  <>
-                    <div className="grid gap-4 md:grid-cols-4">
-                      <div className="rounded-lg border bg-muted/40 p-4 text-sm">
-                        <div className="text-muted-foreground">App</div>
-                        <div className="font-medium">{supportStatus.product_name}</div>
-                        <div className="text-xs text-muted-foreground">
-                          v{supportStatus.app_version} • {supportStatus.build_profile}
-                        </div>
-                      </div>
-                      <div className="rounded-lg border bg-muted/40 p-4 text-sm">
-                        <div className="text-muted-foreground">Logs locais</div>
-                        <div className="font-medium">{supportStatus.recent_log_files.length} arquivo(s)</div>
-                        <div className="text-xs text-muted-foreground break-all">{supportStatus.log_directory}</div>
-                      </div>
-                      <div className="rounded-lg border bg-muted/40 p-4 text-sm">
-                        <div className="text-muted-foreground">Pacotes de suporte</div>
-                        <div className="font-medium">{supportStatus.recent_support_files.length} arquivo(s)</div>
-                        <div className="text-xs text-muted-foreground break-all">{supportStatus.support_directory}</div>
-                      </div>
-                      <div className="rounded-lg border bg-muted/40 p-4 text-sm">
-                        <div className="text-muted-foreground">Housekeeping</div>
-                        <div className="font-medium">
-                          {supportStatus.housekeeping.temp_files_removed
-                            + supportStatus.housekeeping.log_files_removed
-                            + supportStatus.housekeeping.support_files_removed} remoções nesta rodada
-                        </div>
-                        <div className="text-xs text-muted-foreground">
-                          temp {supportStatus.housekeeping.temp_files_removed} • logs {supportStatus.housekeeping.log_files_removed} • suporte {supportStatus.housekeeping.support_files_removed}
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="grid gap-4 md:grid-cols-2">
-                      <div className="rounded-lg border p-4 text-sm space-y-2">
-                        <div className="font-medium">Diretórios operacionais</div>
-                        <div>
-                          <div className="text-muted-foreground">Logs</div>
-                          <div className="break-all">{supportStatus.log_directory}</div>
-                        </div>
-                        <div>
-                          <div className="text-muted-foreground">Suporte</div>
-                          <div className="break-all">{supportStatus.support_directory}</div>
-                        </div>
-                        <div>
-                          <div className="text-muted-foreground">Temporários</div>
-                          <div className="break-all">{supportStatus.temp_directory}</div>
-                        </div>
-                        <div>
-                          <div className="text-muted-foreground">Backups</div>
-                          <div className="break-all">{supportStatus.backup_directory}</div>
-                        </div>
-                      </div>
-
-                      <div className="rounded-lg border p-4 text-sm space-y-2">
-                        <div className="font-medium">Capability e superfície local</div>
-                        <div className="text-muted-foreground">{supportStatus.capability_review}</div>
-                        <div>
-                          <div className="text-muted-foreground">Permissões ativas</div>
-                          <div>{supportStatus.capability_permissions.join(", ")}</div>
-                        </div>
-                        {supportStatus.backup_tools_error ? (
-                          <div className="text-amber-700">{supportStatus.backup_tools_error}</div>
-                        ) : supportStatus.backup_tools_status ? (
-                          <div className="text-muted-foreground">
-                            pg_dump {supportStatus.backup_tools_status.pg_dump_available ? "ok" : "ausente"} •
-                            pg_restore {supportStatus.backup_tools_status.pg_restore_available ? " ok" : " ausente"} •
-                            psql {supportStatus.backup_tools_status.psql_available ? " ok" : " ausente"}
-                          </div>
-                        ) : null}
-                      </div>
-                    </div>
-
-                    <div className="rounded-lg border p-4 text-sm space-y-3">
-                      <div className="font-medium">Prontidão do bundle Windows</div>
-                      <div className="text-muted-foreground">
-                        {supportStatus.windows_bundle.product_name} • {supportStatus.windows_bundle.identifier} • targets {supportStatus.windows_bundle.targets}
-                      </div>
-                      <div className="text-muted-foreground">
-                        Ícones configurados: {supportStatus.windows_bundle.icon_count} •
-                        thumbprint {supportStatus.windows_bundle.has_certificate_thumbprint ? " configurado" : " pendente"} •
-                        timestamp {supportStatus.windows_bundle.has_timestamp_url ? " configurado" : " pendente"}
-                      </div>
-                      <div className="space-y-2">
-                        {supportStatus.windows_bundle.blockers.length === 0 ? (
-                          <div className="text-emerald-700">Nenhum bloqueio imediato de distribuição Windows registrado no snapshot.</div>
-                        ) : supportStatus.windows_bundle.blockers.map((blocker) => (
-                          <div key={blocker} className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-amber-900">
-                            {blocker}
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-
-                    <div className="grid gap-4 md:grid-cols-3">
-                      <div className="rounded-lg border p-4 text-sm space-y-2">
-                        <div className="font-medium">Logs recentes</div>
-                        {supportStatus.recent_log_files.length === 0 ? (
-                          <div className="text-muted-foreground">Nenhum log local encontrado ainda.</div>
-                        ) : supportStatus.recent_log_files.map((file) => (
-                          <div key={file.file_path} className="text-muted-foreground">
-                            <div className="font-medium text-foreground">{file.file_name}</div>
-                            <div>{file.modified_at ? new Date(file.modified_at).toLocaleString("pt-BR") : "sem data"}</div>
-                          </div>
-                        ))}
-                      </div>
-
-                      <div className="rounded-lg border p-4 text-sm space-y-2">
-                        <div className="font-medium">Pacotes recentes</div>
-                        {supportStatus.recent_support_files.length === 0 ? (
-                          <div className="text-muted-foreground">Nenhum pacote de suporte exportado ainda.</div>
-                        ) : supportStatus.recent_support_files.map((file) => (
-                          <div key={file.file_path} className="text-muted-foreground">
-                            <div className="font-medium text-foreground">{file.file_name}</div>
-                            <div>{file.modified_at ? new Date(file.modified_at).toLocaleString("pt-BR") : "sem data"}</div>
-                          </div>
-                        ))}
-                      </div>
-
-                      <div className="rounded-lg border p-4 text-sm space-y-2">
-                        <div className="font-medium">Checklist mínimo em incidente</div>
-                        <div className="text-muted-foreground">1. Confirmar versão/build do app e perfil ativo.</div>
-                        <div className="text-muted-foreground">2. Exportar pacote local de suporte e anexar ao chamado.</div>
-                        <div className="text-muted-foreground">3. Informar banco/schema, arquivo afetado e passos de reprodução.</div>
-                        <div className="text-muted-foreground">4. Verificar backups disponíveis antes de qualquer ação destrutiva.</div>
-                      </div>
-                    </div>
-                  </>
-                ) : null}
-
-                {supportError && (
-                  <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
-                    {supportError}
-                  </div>
-                )}
-
-                {supportMessage && (
-                  <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-900">
-                    {supportMessage}
-                  </div>
-                )}
-
-                <div className="flex flex-wrap justify-end gap-2">
-                  <Button type="button" variant="outline" onClick={() => void loadSupportStatus()} disabled={supportLoading || supportBusy}>
-                    {supportLoading ? "Atualizando..." : "Atualizar diagnóstico"}
-                  </Button>
-                  <Button type="button" onClick={() => void exportarPacoteSuporte()} disabled={supportBusy || supportLoading}>
-                    {supportBusy ? "Exportando..." : "Exportar pacote de suporte"}
-                  </Button>
-                </div>
-              </CardContent>
-            </Card>
-          )}
-
-          <Card>
-            <CardHeader>
-              <CardTitle>Perfil ativo</CardTitle>
-              <CardDescription>
-                O acesso sensivel atual esta associado ao perfil {accessStatus?.active_profile_name || "selecionado"}.
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="grid gap-4 md:grid-cols-2">
-              <div className="rounded-lg border bg-muted/40 p-4 text-sm">
-                <div className="font-medium">{accessStatus?.active_profile_name || "Perfil sem nome"}</div>
-                <div className="text-muted-foreground">Papel: {accessStatus?.active_role || "-"}</div>
-                <div className="mt-2 text-muted-foreground">
-                  Permissoes: {accessStatus?.permissions.length ? accessStatus.permissions.join(", ") : "nenhuma"}
-                </div>
-                <div className="mt-4 space-y-2">
-                  <Label>Selecionar perfil da sessão</Label>
-                  <Select
-                    value={accessStatus?.active_profile_id ? String(accessStatus.active_profile_id) : undefined}
-                    onValueChange={(value) => void trocarPerfilAtivo(Number(value))}
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Selecione um perfil" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {accessStatus?.profiles.map((profile) => (
-                        <SelectItem key={`active-${profile.id}`} value={String(profile.id)}>
-                          {profile.nome} ({profile.role})
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  <p className="text-xs text-muted-foreground">
-                    A troca do perfil ativo encerra o desbloqueio atual e passa a usar o PIN do perfil escolhido.
-                  </p>
-                </div>
-              </div>
-
-              <div className="space-y-3">
-                <div className="space-y-2">
-                  <Label htmlFor="current-pin">PIN atual</Label>
-                  <Input id="current-pin" type="password" inputMode="numeric" value={currentPin} onChange={(event) => setCurrentPin(event.target.value.replace(/\D/g, "").slice(0, 8))} />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="new-pin">Novo PIN</Label>
-                  <Input id="new-pin" type="password" inputMode="numeric" value={newPin} onChange={(event) => setNewPin(event.target.value.replace(/\D/g, "").slice(0, 8))} />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="confirm-new-pin">Confirmar novo PIN</Label>
-                  <Input id="confirm-new-pin" type="password" inputMode="numeric" value={confirmPin} onChange={(event) => setConfirmPin(event.target.value.replace(/\D/g, "").slice(0, 8))} />
-                </div>
-                <div className="flex justify-end">
-                  <Button type="button" onClick={() => void trocarMeuPin()} disabled={securityBusy}>
-                    {securityBusy ? "Processando..." : "Trocar meu PIN"}
-                  </Button>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-
-          {canManageProfiles && (
-            <Card>
-              <CardHeader>
-                <CardTitle>Perfis e permissoes</CardTitle>
-                <CardDescription>Crie perfis locais, ajuste permissoes sensiveis e redefina PINs quando necessario.</CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-6">
-                <div className="grid gap-4 md:grid-cols-2">
-                  <div className="space-y-2">
-                    <Label>Perfil para editar</Label>
-                    <Select value={managedProfileId ? String(managedProfileId) : undefined} onValueChange={(value) => setManagedProfileId(Number(value))}>
-                      <SelectTrigger>
-                        <SelectValue placeholder="Selecione um perfil" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {profilesCatalog.map((profile) => (
-                          <SelectItem key={profile.id} value={String(profile.id)}>
-                            {profile.nome} ({profile.role}){profile.ativo ? "" : " • inativo"}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label htmlFor="edit-profile-name">Nome</Label>
-                    <Input id="edit-profile-name" value={editProfileName} onChange={(event) => setEditProfileName(event.target.value)} />
-                    {managedProfile && (
-                      <p className="text-xs text-muted-foreground">
-                        {managedProfile.pin_configured ? "PIN configurado" : "PIN pendente"}
-                        {managedProfile.ativo ? "" : " • perfil inativo"}
-                        {managedProfile.is_default ? " • perfil ativo padrão" : ""}
-                      </p>
-                    )}
-                  </div>
-                </div>
-
-                <div className="grid gap-4 md:grid-cols-2">
-                  <div className="space-y-2">
-                    <Label>Papel</Label>
-                    <Select value={editProfileRole} onValueChange={(value) => {
-                      setEditProfileRole(value);
-                      if (value === "ADMIN") {
-                        setEditPermissions(permissionOptions);
-                      }
-                    }}>
-                      <SelectTrigger>
-                        <SelectValue placeholder="Selecione um papel" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="ADMIN">ADMIN</SelectItem>
-                        <SelectItem value="CUSTOM">CUSTOM</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-
-                  <div className="rounded-lg border bg-muted/40 p-4 text-sm text-muted-foreground">
-                    O perfil ADMIN recebe todas as permissoes automaticamente. No papel CUSTOM, voce escolhe cada permissao abaixo.
-                  </div>
-                </div>
-
-                <div className="grid gap-3 md:grid-cols-2">
-                  {permissionOptions.map((permission) => (
-                    <label key={permission} className="flex items-start gap-3 rounded-lg border p-3 text-sm">
-                      <Checkbox
-                        checked={editProfileRole === "ADMIN" ? true : editPermissions.includes(permission)}
-                        disabled={editProfileRole === "ADMIN" || !managedProfile?.ativo}
-                        onCheckedChange={() => togglePermission(editPermissions, permission, setEditPermissions)}
-                      />
-                      <span>{SENSITIVE_PERMISSION_LABELS[permission]}</span>
-                    </label>
-                  ))}
-                </div>
-
-                <div className="flex flex-col gap-3 md:flex-row md:justify-between md:items-center">
-                  {managedProfile?.ativo ? (
-                    <Button
-                      type="button"
-                      variant="outline"
-                      className="border-red-200 text-red-700 hover:bg-red-50"
-                      onClick={() => void desativarPerfilSelecionado()}
-                      disabled={securityBusy || !managedProfileId}
-                    >
-                      Desativar perfil
-                    </Button>
-                  ) : (
-                    <Button
-                      type="button"
-                      variant="outline"
-                      className="border-emerald-200 text-emerald-700 hover:bg-emerald-50"
-                      onClick={() => void reativarPerfilSelecionado()}
-                      disabled={securityBusy || !managedProfileId}
-                    >
-                      Reativar perfil
-                    </Button>
-                  )}
-                  <Button type="button" onClick={() => void salvarPerfilAtual()} disabled={securityBusy || !managedProfileId || !managedProfile?.ativo}>
-                    {securityBusy ? "Salvando..." : "Salvar perfil"}
-                  </Button>
-                </div>
-
-                <div className="border-t pt-6 space-y-4">
-                  <h3 className="text-lg font-semibold">Resetar PIN do perfil selecionado</h3>
-                  <div className="grid gap-4 md:grid-cols-2">
-                    <div className="space-y-2">
-                      <Label htmlFor="reset-pin">Novo PIN</Label>
-                      <Input id="reset-pin" type="password" inputMode="numeric" value={resetPin} onChange={(event) => setResetPin(event.target.value.replace(/\D/g, "").slice(0, 8))} />
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="reset-pin-confirm">Confirmar novo PIN</Label>
-                      <Input id="reset-pin-confirm" type="password" inputMode="numeric" value={resetPinConfirm} onChange={(event) => setResetPinConfirm(event.target.value.replace(/\D/g, "").slice(0, 8))} />
-                    </div>
-                  </div>
-                  <div className="flex justify-end">
-                    <Button type="button" variant="outline" onClick={() => void resetarPinPerfil()} disabled={securityBusy || !managedProfileId || !managedProfile?.ativo}>
-                      Redefinir PIN do perfil
-                    </Button>
-                  </div>
-                </div>
-
-                <div className="border-t pt-6 space-y-4">
-                  <h3 className="text-lg font-semibold">Criar novo perfil</h3>
-                  <div className="grid gap-4 md:grid-cols-2">
-                    <div className="space-y-2">
-                      <Label htmlFor="new-profile-name">Nome</Label>
-                      <Input id="new-profile-name" value={newProfileName} onChange={(event) => setNewProfileName(event.target.value)} placeholder="Ex.: Estoque Local" />
-                    </div>
-                    <div className="space-y-2">
-                      <Label>Papel</Label>
-                      <Select value={newProfileRole} onValueChange={(value) => {
-                        setNewProfileRole(value);
-                        if (value === "ADMIN") {
-                          setNewProfilePermissions(permissionOptions);
-                        }
-                      }}>
-                        <SelectTrigger>
-                          <SelectValue placeholder="Selecione um papel" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="ADMIN">ADMIN</SelectItem>
-                          <SelectItem value="CUSTOM">CUSTOM</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-                  </div>
-
-                  <div className="grid gap-3 md:grid-cols-2">
-                    {permissionOptions.map((permission) => (
-                      <label key={`new-${permission}`} className="flex items-start gap-3 rounded-lg border p-3 text-sm">
-                        <Checkbox
-                          checked={newProfileRole === "ADMIN" ? true : newProfilePermissions.includes(permission)}
-                          disabled={newProfileRole === "ADMIN"}
-                          onCheckedChange={() => togglePermission(newProfilePermissions, permission, setNewProfilePermissions)}
-                        />
-                        <span>{SENSITIVE_PERMISSION_LABELS[permission]}</span>
-                      </label>
-                    ))}
-                  </div>
-
-                  <div className="grid gap-4 md:grid-cols-2">
-                    <div className="space-y-2">
-                      <Label htmlFor="new-profile-pin">PIN inicial</Label>
-                      <Input id="new-profile-pin" type="password" inputMode="numeric" value={newProfilePin} onChange={(event) => setNewProfilePin(event.target.value.replace(/\D/g, "").slice(0, 8))} />
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="new-profile-pin-confirm">Confirmar PIN inicial</Label>
-                      <Input id="new-profile-pin-confirm" type="password" inputMode="numeric" value={newProfilePinConfirm} onChange={(event) => setNewProfilePinConfirm(event.target.value.replace(/\D/g, "").slice(0, 8))} />
-                    </div>
-                  </div>
-
-                  <div className="flex justify-end">
-                    <Button type="button" onClick={() => void criarPerfil()} disabled={securityBusy}>
-                      Criar perfil
-                    </Button>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          )}
-
-          {canManageProfiles && (
-            <Card>
-              <CardHeader>
-                <CardTitle>Auditoria recente</CardTitle>
-                <CardDescription>Eventos sensiveis recentes de desbloqueio, troca de PIN e gestao de perfis.</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="grid gap-4 md:grid-cols-4 mb-4">
-                  <div className="space-y-2 md:col-span-2">
-                    <Label htmlFor="audit-search">Buscar evento</Label>
-                    <Input
-                      id="audit-search"
-                      value={auditSearch}
-                      onChange={(event) => setAuditSearch(event.target.value)}
-                      placeholder="Evento, perfil ou detalhe"
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label>Resultado</Label>
-                    <Select value={auditOutcomeFilter} onValueChange={setAuditOutcomeFilter}>
-                      <SelectTrigger>
-                        <SelectValue placeholder="Todos" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="ALL">Todos</SelectItem>
-                        <SelectItem value="SUCCESS">Somente sucesso</SelectItem>
-                        <SelectItem value="FAILED">Somente falha</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div className="space-y-2">
-                    <Label>Perfil</Label>
-                    <Select value={auditProfileFilter} onValueChange={setAuditProfileFilter}>
-                      <SelectTrigger>
-                        <SelectValue placeholder="Todos os perfis" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="ALL">Todos os perfis</SelectItem>
-                        {auditProfileOptions.map(([profileId, profileName]) => (
-                          <SelectItem key={`audit-${profileId}`} value={profileId}>
-                            {profileName}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                </div>
-
-                <div className="flex justify-end mb-4">
-                  <Button type="button" variant="outline" onClick={() => void exportarAuditoriaCsv()}>
-                    Exportar CSV filtrado
-                  </Button>
-                </div>
-
-                <div className="space-y-3">
-                  {filteredAuditEvents.length === 0 ? (
-                    <p className="text-sm text-muted-foreground">Nenhum evento de auditoria encontrado para os filtros atuais.</p>
-                  ) : filteredAuditEvents.map((event) => (
-                    <div key={event.id} className="rounded-lg border p-3 text-sm">
-                      <div className="flex items-center justify-between gap-3">
-                        <div className="font-medium">{event.event_type}</div>
-                        <span className={event.success ? "text-emerald-600" : "text-red-600"}>
-                          {event.success ? "sucesso" : "falha"}
-                        </span>
-                      </div>
-                      <div className="text-muted-foreground">Perfil: {event.profile_name || "sistema"}</div>
-                      {event.details && <div className="text-muted-foreground">{event.details}</div>}
-                      <div className="text-xs text-muted-foreground mt-1">
-                        {event.created_at ? new Date(event.created_at).toLocaleString("pt-BR") : "sem data"}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </CardContent>
-            </Card>
-          )}
-
-          {securityMessage && (
-            <p className="text-sm text-muted-foreground">{securityMessage}</p>
-          )}
-        </TabsContent>
       </Tabs>
     </div>
   );

@@ -56,6 +56,36 @@ async function registrarComunicacaoSegura(comunicacao: Omit<Comunicacao, "id">) 
   }
 }
 
+/**
+ * Prepara um anexo de email a partir de um arquivo já salvo pelo app: copia o
+ * arquivo para o diretório temporário do AutoOS (único local aceito pelo
+ * backend SMTP) e devolve o `EmailAttachment` apontando para o caminho
+ * temporário, junto da função para apagar o arquivo após o envio.
+ */
+async function prepararAnexoTemporario(
+  caminhoOrigem: string,
+  fallbackFilename: string,
+): Promise<{ anexo: EmailAttachment; cleanup: () => Promise<void> } | null> {
+  const filename = caminhoOrigem.split(/[/\\]/).pop() || fallbackFilename;
+  try {
+    const caminhoTemp = await db.copiarAnexoEmailParaTemp(caminhoOrigem, filename);
+    const cleanup = async () => {
+      try {
+        await db.removerAnexoEmailTemp(caminhoTemp);
+      } catch (error) {
+        console.warn("[EmailService] Falha ao remover anexo temporário:", error);
+      }
+    };
+    return {
+      anexo: { filename, content_type: "application/pdf", path: caminhoTemp },
+      cleanup,
+    };
+  } catch (error) {
+    console.warn("[EmailService] Falha ao copiar PDF para diretório temporário:", error);
+    return null;
+  }
+}
+
 export const EmailService = {
   /** Envia email da ordem de entrada (ordem de serviço) via SMTP e registra no banco */
   async enviarOrdemEntrada(equipamento: Equipamento) {
@@ -92,15 +122,15 @@ Equipe Técnica BMITAG`;
     `;
 
     let anexos: EmailAttachment[] | undefined;
+    let limparAnexoTemp: (() => Promise<void>) | undefined;
     try {
       const caminhoPdf = await PdfService.gerarOrdemServico(equipamento);
       if (caminhoPdf) {
-        const filename = caminhoPdf.split(/[/\\]/).pop() || "ordem_entrada.pdf";
-        anexos = [{
-          filename,
-          content_type: "application/pdf",
-          path: caminhoPdf,
-        }];
+        const preparado = await prepararAnexoTemporario(caminhoPdf, "ordem_entrada.pdf");
+        if (preparado) {
+          anexos = [preparado.anexo];
+          limparAnexoTemp = preparado.cleanup;
+        }
       }
     } catch (error) {
       console.warn("[EmailService] Falha ao gerar PDF de ordem de entrada:", error);
@@ -145,6 +175,10 @@ Equipe Técnica BMITAG`;
         erro: erroMsg,
       });
       return { sucesso: false, erro: erroMsg };
+    } finally {
+      if (limparAnexoTemp) {
+        await limparAnexoTemp();
+      }
     }
   },
 
@@ -161,15 +195,15 @@ Equipe Técnica BMITAG`;
     const cc = emailTecnico ? [emailTecnico] : undefined;
 
     let anexos: EmailAttachment[] | undefined;
+    let limparAnexoTemp: (() => Promise<void>) | undefined;
     try {
       const caminhoPdf = await PdfService.gerarOrcamento(equipamento, verificacao);
       if (caminhoPdf) {
-        const filename = caminhoPdf.split(/[/\\]/).pop() || "orcamento.pdf";
-        anexos = [{
-          filename,
-          content_type: "application/pdf",
-          path: caminhoPdf,
-        }];
+        const preparado = await prepararAnexoTemporario(caminhoPdf, "orcamento.pdf");
+        if (preparado) {
+          anexos = [preparado.anexo];
+          limparAnexoTemp = preparado.cleanup;
+        }
       }
     } catch (error) {
       console.warn("[EmailService] Falha ao gerar PDF de orçamento:", error);
@@ -220,6 +254,10 @@ Equipe Técnica BMITAG`;
       });
 
       return { sucesso: false, erro: erroMsg };
+    } finally {
+      if (limparAnexoTemp) {
+        await limparAnexoTemp();
+      }
     }
   },
 
