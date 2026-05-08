@@ -4,6 +4,7 @@ import type { Equipamento, Verificacao } from "@/types";
 const mockInvoke = vi.hoisted(() => vi.fn());
 const mockRegistrarComunicacao = vi.hoisted(() => vi.fn());
 const mockGerarOrcamento = vi.hoisted(() => vi.fn());
+const mockBuscarVerificacao = vi.hoisted(() => vi.fn());
 
 vi.mock("@tauri-apps/api/core", () => ({
   invoke: (...args: unknown[]) => mockInvoke(...args),
@@ -12,6 +13,7 @@ vi.mock("@tauri-apps/api/core", () => ({
 vi.mock("@/lib/db", () => ({
   db: {
     registrarComunicacao: (...args: unknown[]) => mockRegistrarComunicacao(...args),
+    buscarVerificacao: (...args: unknown[]) => mockBuscarVerificacao(...args),
   },
 }));
 
@@ -55,6 +57,7 @@ describe("EmailService", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockGerarOrcamento.mockResolvedValue("/fake/path/orcamento_test.pdf");
+    mockBuscarVerificacao.mockResolvedValue(verificacaoBase);
     mockInvoke.mockResolvedValue(undefined);
   });
 

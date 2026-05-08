@@ -3,12 +3,11 @@
  * ║  hooks/useStatusEquipamento.ts — Automação de Status        ║
  * ╠══════════════════════════════════════════════════════════════╣
  * ║  Hook que gerencia transições de status com automação de    ║
- * ║  comunicações (WhatsApp e Email).                            ║
+ * ║  comunicações (WhatsApp).                                    ║
  * ║                                                              ║
  * ║  DEPENDE DE:                                                 ║
  * ║  - lib/db.ts (salvar verificação, atualizar status, buscar) ║
  * ║  - lib/whatsapp-service.ts (envio via API)                  ║
- * ║  - lib/email-service.ts (envio SMTP real)                   ║
  * ║  - types/index.ts (Equipamento)                              ║
  * ║  - components/VerificacaoTecnica.tsx (DadosVerificacao)     ║
  * ║                                                              ║
@@ -20,27 +19,19 @@
 
 import { useState } from "react";
 import { db } from "@/lib/db";
-import { EmailService } from "@/lib/email-service";
 import { WhatsAppService } from "@/lib/whatsapp-service";
-import type { Equipamento } from "@/types";
+import { EmailService } from "@/lib/email-service";
+import type { Equipamento, ResultadoAutomacao } from "@/types";
 import type { DadosVerificacao } from "@/components/equipamentos/VerificacaoTecnica";
-
-/** Resultado da automação com status de cada canal de comunicação */
-interface ResultadoAutomacao {
-  sucesso: boolean;
-  erro?: string;
-  email?: { sucesso: boolean; erro?: string };
-  whatsapp?: { sucesso: boolean; erro?: string };
-}
 
 /**
  * Hook que gerencia transições de status com automação de comunicações.
  *
  * Transições automáticas:
  * 1. Finalizar Verificação  → salva verificação + muda para VERIFICADO → AGUARDANDO_APROVACAO
- *    → dispara WhatsApp + Email
+ *    → dispara WhatsApp
  * 2. Marcar como Pronto     → muda para PRONTO
- *    → dispara WhatsApp + Email
+ *    → dispara WhatsApp
  */
 export function useStatusEquipamento() {
   const [loading, setLoading] = useState(false);
@@ -51,7 +42,8 @@ export function useStatusEquipamento() {
    */
   async function finalizarVerificacao(
     equipamento: Equipamento,
-    dadosVerificacao: DadosVerificacao
+    dadosVerificacao: DadosVerificacao,
+    emailContatoFallback?: string
   ): Promise<ResultadoAutomacao> {
     setLoading(true);
     try {
@@ -88,25 +80,43 @@ export function useStatusEquipamento() {
       const verificacao = await db.buscarVerificacao(equipamento.id!);
 
       if (!verificacao) {
-        return { sucesso: true };
+        return {
+          sucesso: true,
+          canais: {
+            whatsapp: { enviado: false, erro: "Verificação não encontrada para envio de WhatsApp." },
+            email: { enviado: false, erro: "Verificação não encontrada para envio de Email." },
+          },
+        };
       }
 
-      const [resultadoWhatsAppSettled, resultadoEmailSettled] = await Promise.allSettled([
-        WhatsAppService.enviarOrcamento(eqAtualizado, verificacao),
-        EmailService.enviarOrcamento(eqAtualizado, verificacao),
-      ]);
+      let resultadoWhatsApp: { sucesso: boolean; erro?: string };
+      try {
+        resultadoWhatsApp = await WhatsAppService.enviarOrcamento(eqAtualizado, verificacao);
+      } catch (error: any) {
+        resultadoWhatsApp = { sucesso: false, erro: error?.message || String(error) };
+      }
 
-      const resultadoWhatsApp = resultadoWhatsAppSettled.status === "fulfilled"
-        ? resultadoWhatsAppSettled.value
-        : { sucesso: false, erro: resultadoWhatsAppSettled.reason?.message || String(resultadoWhatsAppSettled.reason) };
-      const resultadoEmail = resultadoEmailSettled.status === "fulfilled"
-        ? resultadoEmailSettled.value
-        : { sucesso: false, erro: resultadoEmailSettled.reason?.message || String(resultadoEmailSettled.reason) };
+      let resultadoEmail: { sucesso: boolean; erro?: string };
+      try {
+        const emailContato = (eqAtualizado.cliente_email || emailContatoFallback || "").trim();
+        if (!emailContato) {
+          resultadoEmail = { sucesso: false, erro: "Cliente sem email cadastrado" };
+        } else {
+          resultadoEmail = await EmailService.enviarOrcamento(
+            { ...eqAtualizado, cliente_email: emailContato },
+            verificacao
+          );
+        }
+      } catch (error: any) {
+        resultadoEmail = { sucesso: false, erro: error?.message || String(error) };
+      }
 
       return {
         sucesso: true,
-        email: resultadoEmail,
-        whatsapp: resultadoWhatsApp,
+        canais: {
+          whatsapp: { enviado: !!resultadoWhatsApp.sucesso, erro: resultadoWhatsApp.erro },
+          email: { enviado: !!resultadoEmail.sucesso, erro: resultadoEmail.erro },
+        },
       };
     } catch (error: any) {
       console.error("Erro ao finalizar verificação:", error);
@@ -120,7 +130,8 @@ export function useStatusEquipamento() {
    * Marca equipamento como PRONTO e notifica cliente automaticamente.
    */
   async function marcarComoPronto(
-    equipamento: Equipamento
+    equipamento: Equipamento,
+    emailContatoFallback?: string
   ): Promise<ResultadoAutomacao> {
     setLoading(true);
     try {
@@ -137,22 +148,33 @@ export function useStatusEquipamento() {
       // 2. Buscar dados atualizados
       const eqAtualizado = await db.buscarEquipamento(equipamento.id!);
 
-      const [resultadoWhatsAppSettled, resultadoEmailSettled] = await Promise.allSettled([
-        WhatsAppService.enviarEquipamentoPronto(eqAtualizado),
-        EmailService.enviarEquipamentoPronto(eqAtualizado),
-      ]);
+      let resultadoWhatsApp: { sucesso: boolean; erro?: string };
+      try {
+        resultadoWhatsApp = await WhatsAppService.enviarEquipamentoPronto(eqAtualizado);
+      } catch (error: any) {
+        resultadoWhatsApp = { sucesso: false, erro: error?.message || String(error) };
+      }
 
-      const resultadoWhatsApp = resultadoWhatsAppSettled.status === "fulfilled"
-        ? resultadoWhatsAppSettled.value
-        : { sucesso: false, erro: resultadoWhatsAppSettled.reason?.message || String(resultadoWhatsAppSettled.reason) };
-      const resultadoEmail = resultadoEmailSettled.status === "fulfilled"
-        ? resultadoEmailSettled.value
-        : { sucesso: false, erro: resultadoEmailSettled.reason?.message || String(resultadoEmailSettled.reason) };
+      let resultadoEmail: { sucesso: boolean; erro?: string };
+      try {
+        const emailContato = (eqAtualizado.cliente_email || emailContatoFallback || "").trim();
+        if (!emailContato) {
+          resultadoEmail = { sucesso: false, erro: "Cliente sem email cadastrado" };
+        } else {
+          resultadoEmail = await EmailService.enviarEquipamentoPronto(
+            { ...eqAtualizado, cliente_email: emailContato }
+          );
+        }
+      } catch (error: any) {
+        resultadoEmail = { sucesso: false, erro: error?.message || String(error) };
+      }
 
       return {
         sucesso: true,
-        email: resultadoEmail,
-        whatsapp: resultadoWhatsApp,
+        canais: {
+          whatsapp: { enviado: !!resultadoWhatsApp.sucesso, erro: resultadoWhatsApp.erro },
+          email: { enviado: !!resultadoEmail.sucesso, erro: resultadoEmail.erro },
+        },
       };
     } catch (error: any) {
       console.error("Erro ao marcar como pronto:", error);

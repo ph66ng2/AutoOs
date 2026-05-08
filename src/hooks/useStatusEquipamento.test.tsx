@@ -12,13 +12,6 @@ vi.mock("@/lib/db", () => ({
   },
 }));
 
-vi.mock("@/lib/email-service", () => ({
-  EmailService: {
-    enviarOrcamento: vi.fn(),
-    enviarEquipamentoPronto: vi.fn(),
-  },
-}));
-
 vi.mock("@/lib/whatsapp-service", () => ({
   WhatsAppService: {
     enviarOrcamento: vi.fn(),
@@ -26,9 +19,16 @@ vi.mock("@/lib/whatsapp-service", () => ({
   },
 }));
 
+vi.mock("@/lib/email-service", () => ({
+  EmailService: {
+    enviarOrcamento: vi.fn(),
+    enviarEquipamentoPronto: vi.fn(),
+  },
+}));
+
 import { db } from "@/lib/db";
-import { EmailService } from "@/lib/email-service";
 import { WhatsAppService } from "@/lib/whatsapp-service";
+import { EmailService } from "@/lib/email-service";
 
 const equipamentoBase: Equipamento = {
   id: 10,
@@ -64,9 +64,11 @@ const verificacaoBase: Verificacao = {
 describe("useStatusEquipamento", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.mocked(EmailService.enviarOrcamento).mockResolvedValue({ sucesso: true });
+    vi.mocked(EmailService.enviarEquipamentoPronto).mockResolvedValue({ sucesso: true });
   });
 
-  it("finaliza verificacao e envia comunicacoes de orcamento", async () => {
+  it("finaliza verificacao e envia comunicacao de orcamento por WhatsApp", async () => {
     vi.mocked(db.salvarVerificacao).mockResolvedValue(1);
     vi.mocked(db.atualizarStatusEquipamento).mockResolvedValue();
     vi.mocked(db.buscarEquipamento)
@@ -83,7 +85,6 @@ describe("useStatusEquipamento", () => {
       });
     vi.mocked(db.buscarVerificacao).mockResolvedValue(verificacaoBase);
     vi.mocked(WhatsAppService.enviarOrcamento).mockResolvedValue({ sucesso: true });
-    vi.mocked(EmailService.enviarOrcamento).mockResolvedValue({ sucesso: true });
 
     const { result } = renderHook(() => useStatusEquipamento());
     let resposta: Awaited<ReturnType<typeof result.current.finalizarVerificacao>> | undefined;
@@ -96,8 +97,10 @@ describe("useStatusEquipamento", () => {
 
     expect(resposta).toEqual({
       sucesso: true,
-      email: { sucesso: true },
-      whatsapp: { sucesso: true },
+      canais: {
+        whatsapp: { enviado: true, erro: undefined },
+        email: { enviado: true, erro: undefined },
+      },
     });
     expect(db.atualizarStatusEquipamento).toHaveBeenNthCalledWith(
       1,
@@ -119,14 +122,13 @@ describe("useStatusEquipamento", () => {
     );
   });
 
-  it("marca como pronto e retorna erro de canal sem quebrar fluxo", async () => {
+  it("marca como pronto e retorna status por canal", async () => {
     vi.mocked(db.atualizarStatusEquipamento).mockResolvedValue();
     vi.mocked(db.buscarEquipamento).mockResolvedValue({
       ...equipamentoBase,
       status: "PRONTO",
     });
     vi.mocked(WhatsAppService.enviarEquipamentoPronto).mockResolvedValue({ sucesso: true });
-    vi.mocked(EmailService.enviarEquipamentoPronto).mockRejectedValue(new Error("SMTP indisponivel"));
 
     const { result } = renderHook(() => useStatusEquipamento());
     let resposta: Awaited<ReturnType<typeof result.current.marcarComoPronto>> | undefined;
@@ -136,8 +138,10 @@ describe("useStatusEquipamento", () => {
     });
 
     expect(resposta?.sucesso).toBe(true);
-    expect(resposta?.whatsapp).toEqual({ sucesso: true });
-    expect(resposta?.email).toEqual({ sucesso: false, erro: "SMTP indisponivel" });
+    expect(resposta?.canais).toEqual({
+      whatsapp: { enviado: true, erro: undefined },
+      email: { enviado: true, erro: undefined },
+    });
     expect(db.atualizarStatusEquipamento).toHaveBeenCalledWith(
       10,
       "PRONTO",

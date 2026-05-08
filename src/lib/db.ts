@@ -30,6 +30,7 @@ import type {
   EquipamentoImagemInput,
   Cliente,
   Produto,
+  ServicoCatalogo,
   Verificacao,
   Comunicacao,
   DatabaseSchemaStatus,
@@ -234,6 +235,36 @@ export const db = {
         referencia: referencia ?? null,
       },
     });
+  },
+
+  // ─── Serviços de Catálogo ─────────────────────────────
+
+  /** Lista serviços padrão com busca opcional. */
+  async listarServicos(busca?: string, apenasAtivos = true): Promise<ServicoCatalogo[]> {
+    return invoke<ServicoCatalogo[]>("listar_servicos", {
+      busca: busca ?? null,
+      apenasAtivos,
+    });
+  },
+
+  /** Busca serviço por ID. */
+  async buscarServico(id: number): Promise<ServicoCatalogo> {
+    return invoke<ServicoCatalogo>("buscar_servico", { id });
+  },
+
+  /** Cria novo serviço de catálogo. */
+  async criarServico(servico: Omit<ServicoCatalogo, "id">): Promise<ServicoCatalogo> {
+    return invoke<ServicoCatalogo>("criar_servico", { input: servico });
+  },
+
+  /** Atualiza serviço de catálogo existente. */
+  async atualizarServico(id: number, servico: Omit<ServicoCatalogo, "id">): Promise<ServicoCatalogo> {
+    return invoke<ServicoCatalogo>("atualizar_servico", { id, input: servico });
+  },
+
+  /** Desativa serviço de catálogo. */
+  async deletarServico(id: number): Promise<void> {
+    return invoke<void>("deletar_servico", { id });
   },
 
   /** Consulta a versão do schema e as migrações conhecidas/aplicadas → Rust: obter_status_schema_banco */

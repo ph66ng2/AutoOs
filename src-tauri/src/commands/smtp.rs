@@ -260,7 +260,7 @@ pub async fn enviar_email(input: EmailSendInput) -> Result<bool, String> {
     let from = format!("{} <{}>", config.from_name, config.from_email);
     let to = format!("{} <{}>", input.destinatario, input.email);
 
-    let message_builder = Message::builder()
+    let mut message_builder = Message::builder()
         .from(from.parse().map_err(|e| {
             error!("Email de origem inválido: {}", e);
             format!("Email de origem inválido: {}", e)
@@ -270,6 +270,19 @@ pub async fn enviar_email(input: EmailSendInput) -> Result<bool, String> {
             format!("Email de destino inválido: {}", e)
         })?)
         .subject(&input.assunto);
+
+    if let Some(cc_list) = &input.cc {
+        for cc in cc_list {
+            let cc_email = cc.trim();
+            if cc_email.is_empty() {
+                continue;
+            }
+            message_builder = message_builder.cc(cc_email.parse().map_err(|e| {
+                error!("Email de CC inválido: {}", e);
+                format!("Email de CC inválido: {}", e)
+            })?);
+        }
+    }
 
     let corpo_texto = input
         .corpo_texto

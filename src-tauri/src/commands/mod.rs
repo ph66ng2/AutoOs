@@ -18,6 +18,7 @@ pub mod equipamentos;
 pub mod equipamento_imagens;
 pub mod clientes;
 pub mod produtos;
+pub mod servicos;
 pub mod verificacoes;
 pub mod comunicacoes;
 pub mod smtp;

@@ -282,6 +282,15 @@ export const produtoSchema = z.object({
 
 export type ProdutoFormData = z.infer<typeof produtoSchema>;
 
+/** Schema Zod para cadastro de serviços padrão com preço pré-definido. */
+export const servicoCatalogoSchema = z.object({
+  nome: z.string().min(2, "Nome do serviço é obrigatório"),
+  descricao: z.string().optional().or(z.literal("")),
+  preco_padrao: z.coerce.number().positive("Preço deve ser maior que zero"),
+});
+
+export type ServicoCatalogoFormData = z.infer<typeof servicoCatalogoSchema>;
+
 /**
  * Schema Zod para movimentação de estoque (entrada/saída).
  * Conecta-se a: Insumos.tsx (dialog de movimentação)

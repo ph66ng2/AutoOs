@@ -113,6 +113,10 @@ fn main() {
             commands::auth::list_security_audit_events,
             // Util
             commands::util::salvar_arquivo_temp,
+            commands::util::salvar_ordem_servico_pdf,
+            commands::util::salvar_orcamento_pdf,
+            commands::util::salvar_imagem_equipamento,
+            commands::util::salvar_relatorio_status_pdf,
             commands::util::obter_status_schema_banco,
             commands::util::obter_status_ferramentas_backup_postgres,
             commands::util::gerar_backup_postgres,
@@ -141,6 +145,12 @@ fn main() {
             commands::produtos::atualizar_produto,
             commands::produtos::deletar_produto,
             commands::produtos::registrar_movimentacao_estoque,
+            // Serviços (catálogo)
+            commands::servicos::listar_servicos,
+            commands::servicos::buscar_servico,
+            commands::servicos::criar_servico,
+            commands::servicos::atualizar_servico,
+            commands::servicos::deletar_servico,
             // Verificações
             commands::verificacoes::salvar_verificacao_tecnica,
             commands::verificacoes::buscar_verificacao_tecnica,

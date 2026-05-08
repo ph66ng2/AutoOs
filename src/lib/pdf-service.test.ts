@@ -84,16 +84,31 @@ describe("PdfService — orçamento/OS", () => {
     mockInvoke.mockResolvedValue("/fake/temp/Orcamento_SN-PDF-1_test.pdf");
   });
 
-  it("gera PDF, persiste bytes via salvar_arquivo_temp e devolve caminho", async () => {
+  it("gera PDF, persiste bytes via salvar_orcamento_pdf e devolve caminho", async () => {
     const path = await PdfService.gerarOrcamento(equipamento, verificacao);
 
     expect(path).toBe("/fake/temp/Orcamento_SN-PDF-1_test.pdf");
     expect(mockInvoke).toHaveBeenCalledTimes(1);
-    const [, args] = mockInvoke.mock.calls[0]!;
-    expect(args.filename).toMatch(/^Orcamento_SN-PDF-1_\d+\.pdf$/);
+    const [command, args] = mockInvoke.mock.calls[0]!;
+    expect(command).toBe("salvar_orcamento_pdf");
+    expect(args.empresaNome).toBe("Empresa Alfa");
     expect(Array.isArray(args.bytes)).toBe(true);
     expect(args.bytes.length).toBeGreaterThan(1000);
 
     expect(mockListarImagens).toHaveBeenCalledWith(501);
+  });
+
+  it("gera PDF de ordem de serviço e devolve caminho", async () => {
+    mockInvoke.mockResolvedValueOnce("/fake/temp/OrdemServico_SN-PDF-1_test.pdf");
+
+    const path = await PdfService.gerarOrdemServico(equipamento);
+
+    expect(path).toBe("/fake/temp/OrdemServico_SN-PDF-1_test.pdf");
+    expect(mockInvoke).toHaveBeenCalledTimes(1);
+    const [command, args] = mockInvoke.mock.calls[0]!;
+    expect(command).toBe("salvar_ordem_servico_pdf");
+    expect(args.empresaNome).toBe("Empresa Alfa");
+    expect(Array.isArray(args.bytes)).toBe(true);
+    expect(args.bytes.length).toBeGreaterThan(500);
   });
 });

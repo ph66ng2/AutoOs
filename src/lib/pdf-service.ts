@@ -9,8 +9,8 @@
  * ║  FLUXO:                                                      ║
  * ║  1. Coleta dados do equipamento + verificação                ║
  * ║  2. Gera PDF com jsPDF + jspdf-autotable                   ║
- * ║  3. Envia bytes para Rust salvar em arquivo temporário      ║
- * ║  4. Rust abre o PDF com o app padrão do sistema             ║
+ * ║  3. Envia bytes para Rust salvar em Documents/Orcamentos    ║
+ * ║  4. Rust abre a pasta com o arquivo selecionado             ║
  * ║                                                              ║
  * ║  DEPENDE DE:                                                 ║
  * ║  - jspdf + jspdf-autotable (npm packages)                   ║
@@ -26,6 +26,7 @@ import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
 import { invoke } from "@tauri-apps/api/core";
 import { db } from "@/lib/db";
+import { STATUS_LABELS } from "@/types";
 import type {
   Equipamento,
   EquipamentoImagem,
@@ -52,6 +53,17 @@ const COR_FUNDO_HEADER: [number, number, number] = [30, 30, 30];
 const COR_TEXTO_BRANCO: [number, number, number] = [255, 255, 255];
 const COR_CINZA_MEDIO: [number, number, number] = [80, 80, 80];
 const COR_FUNDO_TOTAL: [number, number, number] = [240, 240, 240];
+const CABECALHO_EMPRESA = {
+  nome: "BMITAG TECNOLOGIA QRCODE E RFID",
+  descricao: "Vendas e Manutenções de Equipamentos ZEBRA",
+  telefone: "Tel: +55 71 98223-5050 / +55 71 98165-0801",
+  contato: "E-mail: bmitag@bmitag.com.br | bmitag.com.br",
+  cnpj: "CNPJ: 57.522.734/0001-58",
+};
+const LOGO_TOPO_URL = "/logo-bmitag.png";
+const ICONE_RODAPE_URL = "/src-tauri/icons/icon.png";
+let logoTopoCache: Promise<string | null> | null = null;
+let iconeRodapeCache: Promise<string | null> | null = null;
 
 // ─── Utilitários de formatação ──────────────────────────
 
@@ -77,6 +89,48 @@ async function svgToPng(svgBase64: string, width: number, height: number): Promi
     img.onerror = () => reject(new Error("Failed to load SVG"));
     img.src = `data:image/svg+xml;base64,${svgBase64}`;
   });
+}
+
+function urlImagemParaDataUrl(url: string): Promise<string> {
+  return fetch(url)
+    .then((response) => {
+      if (!response.ok) {
+        throw new Error(`Falha ao carregar imagem: ${url}`);
+      }
+      return response.blob();
+    })
+    .then(
+      (blob) =>
+        new Promise<string>((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = () => resolve(String(reader.result || ""));
+          reader.onerror = () => reject(new Error(`Falha ao converter imagem para data URL: ${url}`));
+          reader.readAsDataURL(blob);
+        })
+    );
+}
+
+async function obterLogoTopoDataUrl(): Promise<string | null> {
+  if (!logoTopoCache) {
+    logoTopoCache = urlImagemParaDataUrl(LOGO_TOPO_URL)
+      .catch(async () => {
+        try {
+          const logoPngBase64 = await svgToPng(LOGO_BMITAG_BASE64, 200, 200);
+          return `data:image/png;base64,${logoPngBase64}`;
+        } catch {
+          return null;
+        }
+      });
+  }
+  return logoTopoCache;
+}
+
+async function obterIconeRodapeDataUrl(): Promise<string | null> {
+  if (!iconeRodapeCache) {
+    iconeRodapeCache = urlImagemParaDataUrl(ICONE_RODAPE_URL)
+      .catch(() => null);
+  }
+  return iconeRodapeCache;
 }
 
 // ─── Utilitários de formatação ──────────────────────────
@@ -137,8 +191,66 @@ function formatoImagemPdf(mimeType: string): "PNG" | "JPEG" {
   return mimeType === "image/png" ? "PNG" : "JPEG";
 }
 
-function aplicarRodape(doc: jsPDF, numeroOS: string) {
+function emailTecnicoPorNome(tecnicoNome?: string) {
+  if (tecnicoNome === "Ivan") return "ivan@bmicode.com";
+  if (tecnicoNome === "Isaias") return "isaias@bmicode.com";
+  return "";
+}
+
+function extrairTecnicoInicialDeObservacoes(observacoes?: string | null) {
+  if (!observacoes) return "";
+  const match = observacoes.match(/^Técnico inicial:\s*(Ivan|Isaias)\b/m);
+  return match?.[1] || "";
+}
+
+function limparObservacoesParaDocumento(observacoes?: string | null) {
+  if (!observacoes) return "";
+  return observacoes
+    .replace(/^Técnico inicial:.*(?:\r?\n)?/m, "")
+    .trim();
+}
+
+async function aplicarCabecalhoPadrao(doc: jsPDF, y: number, subtitulo: string) {
+  const alturaHeader = 35;
+  doc.setFillColor(...COR_FUNDO_HEADER);
+  doc.rect(MARGIN_LEFT, y, CONTENT_WIDTH, alturaHeader, "F");
+
+  const logoSize = 25;
+  const logoX = MARGIN_LEFT + 5;
+  const logoY = y + (alturaHeader - logoSize) / 2;
+  const logoTopoDataUrl = await obterLogoTopoDataUrl();
+  if (logoTopoDataUrl) {
+    doc.addImage(logoTopoDataUrl, "PNG", logoX, logoY, logoSize, logoSize);
+  }
+
+  const textoInicioX = MARGIN_LEFT + logoSize + 10;
+  const textoLargura = CONTENT_WIDTH - logoSize - 15;
+  const centroTexto = textoInicioX + textoLargura / 2;
+  doc.setTextColor(...COR_TEXTO_BRANCO);
+  doc.setFontSize(11);
+  doc.setFont("helvetica", "bold");
+  doc.text(CABECALHO_EMPRESA.nome, centroTexto, y + 8, { align: "center" });
+  doc.setFontSize(7);
+  doc.setFont("helvetica", "normal");
+  doc.text(CABECALHO_EMPRESA.descricao, centroTexto, y + 13, { align: "center" });
+  doc.text(CABECALHO_EMPRESA.telefone, centroTexto, y + 18, { align: "center" });
+  doc.text(CABECALHO_EMPRESA.contato, centroTexto, y + 23, { align: "center" });
+  doc.text(CABECALHO_EMPRESA.cnpj, centroTexto, y + 28, { align: "center" });
+  doc.setFontSize(8);
+  doc.setFont("helvetica", "bold");
+  doc.text(subtitulo, centroTexto, y + 33, { align: "center" });
+
+  return y + alturaHeader + 7;
+}
+
+async function aplicarRodape(doc: jsPDF, numeroOS: string) {
   const pageHeight = doc.internal.pageSize.getHeight();
+  const iconeRodapeDataUrl = await obterIconeRodapeDataUrl();
+  if (iconeRodapeDataUrl) {
+    const iconSize = 6;
+    const iconY = pageHeight - 13;
+    doc.addImage(iconeRodapeDataUrl, "PNG", MARGIN_LEFT, iconY, iconSize, iconSize);
+  }
   doc.setFontSize(7);
   doc.setTextColor(150, 150, 150);
   doc.text(
@@ -271,49 +383,7 @@ export const PdfService = {
       // 1. CABEÇALHO DA EMPRESA (com logo à esquerda)
       // ═══════════════════════════════════════════════════
 
-      const alturaHeader = 35;
-
-      // Fundo preto do cabeçalho
-      doc.setFillColor(...COR_FUNDO_HEADER);
-      doc.rect(MARGIN_LEFT, y, CONTENT_WIDTH, alturaHeader, "F");
-
-      // Logo à esquerda (quadrado, centralizado verticalmente no header)
-      const logoSize = 25; // mm (quadrado)
-      const logoX = MARGIN_LEFT + 5;
-      const logoY = y + (alturaHeader - logoSize) / 2;
-      try {
-        // Converte SVG para PNG em runtime
-        const logoPngBase64 = await svgToPng(LOGO_BMITAG_BASE64, 200, 200);
-        doc.addImage(
-          `data:image/png;base64,${logoPngBase64}`,
-          "PNG",
-          logoX,
-          logoY,
-          logoSize,
-          logoSize
-        );
-      } catch (e) {
-        console.warn("[PdfService] Não foi possível adicionar logo:", e);
-      }
-
-      // Textos do cabeçalho (deslocados para a direita do logo)
-      const textoInicioX = MARGIN_LEFT + logoSize + 10;
-      const textoLargura = CONTENT_WIDTH - logoSize - 15;
-      const centroTexto = textoInicioX + textoLargura / 2;
-
-      doc.setTextColor(...COR_TEXTO_BRANCO);
-      doc.setFontSize(11);
-      doc.setFont("helvetica", "bold");
-      doc.text("BMITAG TECNOLOGIA QRCODE E RFID", centroTexto, y + 8, { align: "center" });
-
-      doc.setFontSize(7);
-      doc.setFont("helvetica", "normal");
-      doc.text("Vendas e Manutenções de Equipamentos ZEBRA", centroTexto, y + 13, { align: "center" });
-      doc.text("Tel: (71) 3328-2000 / 3012-3332", centroTexto, y + 18, { align: "center" });
-      doc.text("E-mail: bmicode@bmicode.com | www.bmicode.com", centroTexto, y + 23, { align: "center" });
-      doc.text("CNPJ: 57.522.734/0001-58", centroTexto, y + 28, { align: "center" });
-
-      y += alturaHeader + 7;
+      y = await aplicarCabecalhoPadrao(doc, y, "ORÇAMENTO TÉCNICO");
 
       // ═══════════════════════════════════════════════════
       // 2. NÚMERO DA OS E DATA
@@ -336,6 +406,15 @@ export const PdfService = {
       // 3. DADOS DO CLIENTE
       // ═══════════════════════════════════════════════════
 
+      const tecnicoResponsavelOrcamento =
+        verificacao.tecnico_nome?.trim() ||
+        extrairTecnicoInicialDeObservacoes(equipamento.observacoes) ||
+        "—";
+      const emailTecnicoOrcamento = emailTecnicoPorNome(tecnicoResponsavelOrcamento);
+      const responsavelCabecalho = emailTecnicoOrcamento
+        ? `${tecnicoResponsavelOrcamento} (${emailTecnicoOrcamento})`
+        : tecnicoResponsavelOrcamento;
+
       autoTable(doc, {
         startY: y,
         margin: { left: MARGIN_LEFT, right: MARGIN_RIGHT },
@@ -355,7 +434,7 @@ export const PdfService = {
         head: [["EMPRESA", "RESPONSÁVEL", "TIPO DE ORÇAMENTO"]],
         body: [[
           equipamento.cliente_nome || "—",
-          equipamento.cliente_nome || "—",
+          responsavelCabecalho,
           "Serviços",
         ]],
       });
@@ -363,7 +442,7 @@ export const PdfService = {
       y = (doc as unknown as { lastAutoTable: { finalY: number } }).lastAutoTable.finalY + 5;
 
       // ═══════════════════════════════════════════════════
-      // 4. PLANILHA DE VALORES
+      // 4. PLANILHA DE VALORES (somente quando houver valores)
       // ═══════════════════════════════════════════════════
 
       // Parsear serviços e peças da verificação
@@ -399,75 +478,78 @@ export const PdfService = {
         ]);
       });
 
-      // Se não houver itens, adicionar linha vazia
-      if (linhasTabela.length === 0) {
-        linhasTabela.push(["Sem serviços/peças registrados", "—", "—", "—", "—"]);
-      }
-
       // Calcular totais
       const totalServicos = servicos.reduce((acc, s) => acc + s.valor, 0);
       const totalPecas = pecas.reduce((acc, p) => acc + p.valorTotal, 0);
       const custoTotal = verificacao.custo_total ?? (totalServicos + totalPecas);
+      const exibirBlocosFinanceiros = custoTotal > 0 || totalServicos > 0 || totalPecas > 0;
 
-      // Título da seção
-      doc.setFillColor(...COR_FUNDO_HEADER);
-      doc.rect(MARGIN_LEFT, y, CONTENT_WIDTH, 7, "F");
-      doc.setTextColor(...COR_TEXTO_BRANCO);
-      doc.setFontSize(9);
-      doc.setFont("helvetica", "bold");
-      doc.text("PLANILHA DE VALORES", PAGE_WIDTH / 2, y + 5, { align: "center" });
-      y += 7;
+      if (exibirBlocosFinanceiros) {
+        // Se não houver itens detalhados mas houver custo agregado, adicionar linha única
+        if (linhasTabela.length === 0) {
+          linhasTabela.push(["Serviços técnicos", `${equipamento.marca} ${equipamento.modelo}`, "01", formatarMoeda(custoTotal), formatarMoeda(custoTotal)]);
+        }
 
-      // Tabela de valores
-      autoTable(doc, {
-        startY: y,
-        margin: { left: MARGIN_LEFT, right: MARGIN_RIGHT },
-        theme: "grid",
-        styles: {
-          fontSize: 9,
-          cellPadding: 3,
-          lineColor: COR_CINZA_CLARO,
-          lineWidth: 0.3,
-          halign: "center",
-        },
-        headStyles: {
-          fillColor: COR_CINZA_MEDIO,
-          textColor: COR_TEXTO_BRANCO,
-          fontStyle: "bold",
-        },
-        columnStyles: {
-          0: { halign: "left", cellWidth: 55 },  // Descrição
-          1: { halign: "center", cellWidth: 35 }, // Modelo
-          2: { halign: "center", cellWidth: 15 }, // Qtd
-          3: { halign: "right", cellWidth: 35 },  // Valor Unitário
-          4: { halign: "right", cellWidth: 35 },  // Valor Total
-        },
-        head: [["Descrição", "Modelo", "Qtd", "Valor Unitário", "Valor Total"]],
-        body: linhasTabela,
-      });
+        // Título da seção
+        doc.setFillColor(...COR_FUNDO_HEADER);
+        doc.rect(MARGIN_LEFT, y, CONTENT_WIDTH, 7, "F");
+        doc.setTextColor(...COR_TEXTO_BRANCO);
+        doc.setFontSize(9);
+        doc.setFont("helvetica", "bold");
+        doc.text("PLANILHA DE VALORES", PAGE_WIDTH / 2, y + 5, { align: "center" });
+        y += 7;
 
-      y = (doc as unknown as { lastAutoTable: { finalY: number } }).lastAutoTable.finalY + 2;
+        // Tabela de valores
+        autoTable(doc, {
+          startY: y,
+          margin: { left: MARGIN_LEFT, right: MARGIN_RIGHT },
+          theme: "grid",
+          styles: {
+            fontSize: 9,
+            cellPadding: 3,
+            lineColor: COR_CINZA_CLARO,
+            lineWidth: 0.3,
+            halign: "center",
+          },
+          headStyles: {
+            fillColor: COR_CINZA_MEDIO,
+            textColor: COR_TEXTO_BRANCO,
+            fontStyle: "bold",
+          },
+          columnStyles: {
+            0: { halign: "left", cellWidth: 55 },  // Descrição
+            1: { halign: "center", cellWidth: 35 }, // Modelo
+            2: { halign: "center", cellWidth: 15 }, // Qtd
+            3: { halign: "right", cellWidth: 35 },  // Valor Unitário
+            4: { halign: "right", cellWidth: 35 },  // Valor Total
+          },
+          head: [["Descrição", "Modelo", "Qtd", "Valor Unitário", "Valor Total"]],
+          body: linhasTabela,
+        });
 
-      // Linha de total
-      autoTable(doc, {
-        startY: y,
-        margin: { left: MARGIN_LEFT, right: MARGIN_RIGHT },
-        theme: "grid",
-        styles: {
-          fontSize: 10,
-          cellPadding: 3,
-          lineColor: COR_CINZA_CLARO,
-          lineWidth: 0.3,
-          fontStyle: "bold",
-        },
-        columnStyles: {
-          0: { halign: "right", cellWidth: CONTENT_WIDTH * 0.6 },
-          1: { halign: "right", cellWidth: CONTENT_WIDTH * 0.4, fillColor: COR_FUNDO_TOTAL },
-        },
-        body: [["VALOR TOTAL:", formatarMoeda(custoTotal)]],
-      });
+        y = (doc as unknown as { lastAutoTable: { finalY: number } }).lastAutoTable.finalY + 2;
 
-      y = (doc as unknown as { lastAutoTable: { finalY: number } }).lastAutoTable.finalY + 8;
+        // Linha de total
+        autoTable(doc, {
+          startY: y,
+          margin: { left: MARGIN_LEFT, right: MARGIN_RIGHT },
+          theme: "grid",
+          styles: {
+            fontSize: 10,
+            cellPadding: 3,
+            lineColor: COR_CINZA_CLARO,
+            lineWidth: 0.3,
+            fontStyle: "bold",
+          },
+          columnStyles: {
+            0: { halign: "right", cellWidth: CONTENT_WIDTH * 0.6 },
+            1: { halign: "right", cellWidth: CONTENT_WIDTH * 0.4, fillColor: COR_FUNDO_TOTAL },
+          },
+          body: [["VALOR TOTAL:", formatarMoeda(custoTotal)]],
+        });
+
+        y = (doc as unknown as { lastAutoTable: { finalY: number } }).lastAutoTable.finalY + 8;
+      }
 
       // ═══════════════════════════════════════════════════
       // 5. NÚMERO DE SÉRIE
@@ -482,49 +564,50 @@ export const PdfService = {
       y += 8;
 
       // ═══════════════════════════════════════════════════
-      // 6. CONDIÇÕES COMERCIAIS
+      // 6. CONDIÇÕES COMERCIAIS (somente com bloco financeiro)
       // ═══════════════════════════════════════════════════
+      if (exibirBlocosFinanceiros) {
+        doc.setFontSize(9);
+        doc.setFont("helvetica", "bold");
+        doc.setTextColor(...COR_PRETA);
 
-      doc.setFontSize(9);
-      doc.setFont("helvetica", "bold");
-      doc.setTextColor(...COR_PRETA);
+        const condicoes = [
+          "• Forma de Pagamento: 5% desconto Pix",
+          "• Obs.: A opção de boleto bancário está sujeita à aprovação do sistema.",
+        ];
 
-      const condicoes = [
-        "• Forma de Pagamento: 5% desconto Pix",
-        "• Obs.: A opção de boleto bancário está sujeita à aprovação do sistema.",
-      ];
+        condicoes.forEach((linha) => {
+          doc.text(linha, MARGIN_LEFT, y);
+          y += 5;
+        });
 
-      condicoes.forEach((linha) => {
-        doc.text(linha, MARGIN_LEFT, y);
-        y += 5;
-      });
+        y += 3;
 
-      y += 3;
+        // Prazos e garantias
+        doc.setFont("helvetica", "bold");
+        doc.setFontSize(10);
+        doc.text("Prazo de Execução:", MARGIN_LEFT, y);
+        doc.setFont("helvetica", "normal");
+        doc.text(
+          verificacao.tempo_estimado
+            ? `${verificacao.tempo_estimado} horas (após aprovação)`
+            : "10 dias úteis (após aprovação)",
+          MARGIN_LEFT + 40, y
+        );
+        y += 6;
 
-      // Prazos e garantias
-      doc.setFont("helvetica", "bold");
-      doc.setFontSize(10);
-      doc.text("Prazo de Execução:", MARGIN_LEFT, y);
-      doc.setFont("helvetica", "normal");
-      doc.text(
-        verificacao.tempo_estimado
-          ? `${verificacao.tempo_estimado} horas (após aprovação)`
-          : "10 dias úteis (após aprovação)",
-        MARGIN_LEFT + 40, y
-      );
-      y += 6;
+        doc.setFont("helvetica", "bold");
+        doc.text("Garantia:", MARGIN_LEFT, y);
+        doc.setFont("helvetica", "normal");
+        doc.text("90 dias para serviços executados", MARGIN_LEFT + 40, y);
+        y += 6;
 
-      doc.setFont("helvetica", "bold");
-      doc.text("Garantia:", MARGIN_LEFT, y);
-      doc.setFont("helvetica", "normal");
-      doc.text("90 dias para serviços executados", MARGIN_LEFT + 40, y);
-      y += 6;
-
-      doc.setFont("helvetica", "bold");
-      doc.text("Validade:", MARGIN_LEFT, y);
-      doc.setFont("helvetica", "normal");
-      doc.text("05 dias úteis", MARGIN_LEFT + 40, y);
-      y += 10;
+        doc.setFont("helvetica", "bold");
+        doc.text("Validade:", MARGIN_LEFT, y);
+        doc.setFont("helvetica", "normal");
+        doc.text("05 dias úteis", MARGIN_LEFT + 40, y);
+        y += 10;
+      }
 
       // ═══════════════════════════════════════════════════
       // 7. DIAGNÓSTICO (extra)
@@ -567,7 +650,7 @@ export const PdfService = {
       const totalPages = doc.getNumberOfPages();
       for (let page = 1; page <= totalPages; page += 1) {
         doc.setPage(page);
-        aplicarRodape(doc, numeroOS);
+        await aplicarRodape(doc, numeroOS);
       }
 
       // ═══════════════════════════════════════════════════
@@ -578,17 +661,203 @@ export const PdfService = {
       const pdfBytes = doc.output("arraybuffer");
       const uint8 = new Uint8Array(pdfBytes);
 
-      // Enviar para Rust salvar e abrir
-      const nomeArquivo = `Orcamento_${equipamento.serial_number}_${Date.now()}.pdf`;
-      const caminho = await invoke<string>("salvar_arquivo_temp", {
+      // Enviar para Rust salvar em Documents/Orcamentos e revelar o arquivo
+      const caminho = await invoke<string>("salvar_orcamento_pdf", {
         bytes: Array.from(uint8),
-        filename: nomeArquivo,
+        empresaNome: equipamento.cliente_nome || equipamento.proprietario || "Cliente",
       });
 
       console.info(`[PdfService] Orçamento PDF gerado: ${caminho}`);
       return caminho;
     } catch (error) {
       console.error("[PdfService] Erro ao gerar orçamento PDF:", error);
+      throw error;
+    }
+  },
+
+  /**
+   * Gera PDF de ordem de serviço para recebimento técnico.
+   * Lista os campos preenchidos na seção "Dados do Equipamento".
+   */
+  async gerarOrdemServico(equipamento: Equipamento): Promise<string | null> {
+    try {
+      const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
+      let y = 15;
+
+      y = await aplicarCabecalhoPadrao(doc, y, "ORDEM DE SERVIÇO");
+
+      const numeroOS = `OS-${String(equipamento.id ?? 0).padStart(5, "0")}`;
+      const dataRegistro = equipamento.data_entrada
+        ? new Date(equipamento.data_entrada)
+        : new Date();
+
+      autoTable(doc, {
+        startY: y,
+        margin: { left: MARGIN_LEFT, right: MARGIN_RIGHT },
+        theme: "grid",
+        styles: { fontSize: 9, cellPadding: 3, lineColor: COR_CINZA_CLARO, lineWidth: 0.3 },
+        headStyles: { fillColor: COR_CINZA_MEDIO, textColor: COR_TEXTO_BRANCO, fontStyle: "bold" },
+        body: [
+          ["Ordem", numeroOS],
+          ["Data de entrada", dataRegistro.toLocaleDateString("pt-BR")],
+          ["Status atual", STATUS_LABELS[equipamento.status as keyof typeof STATUS_LABELS] || equipamento.status],
+        ],
+      });
+
+      y = (doc as unknown as { lastAutoTable: { finalY: number } }).lastAutoTable.finalY + 6;
+
+      let verificacao = null;
+      if (equipamento.id) {
+        try {
+          verificacao = await db.buscarVerificacao(equipamento.id);
+        } catch (error) {
+          console.warn("[PdfService] Verificação não encontrada para a OS, seguindo sem dados de técnico.", error);
+        }
+      }
+      const tecnicoInicial = extrairTecnicoInicialDeObservacoes(equipamento.observacoes);
+      const tecnicoResponsavel = verificacao?.tecnico_nome?.trim() || tecnicoInicial || "";
+      const emailTecnico = emailTecnicoPorNome(tecnicoResponsavel);
+      const observacoesDocumento = limparObservacoesParaDocumento(equipamento.observacoes);
+
+      const linhasDados: string[][] = [
+        ["Nº de Série", equipamento.serial_number || "—"],
+        ["Patrimônio", equipamento.patrimonio || "—"],
+        ["Marca", equipamento.marca || "—"],
+        ["Modelo", equipamento.modelo || "—"],
+        ["Tipo", equipamento.tipo || "—"],
+        ["Técnico responsável", tecnicoResponsavel || "—"],
+        ["E-mail técnico", emailTecnico || "—"],
+        ["Defeito relatado", equipamento.defeito_relatado || "—"],
+        ["Acessórios", equipamento.acessorios || "—"],
+        ["Outros acessórios", equipamento.acessorios_outros || "—"],
+        ["Observações", observacoesDocumento || "—"],
+      ];
+
+      autoTable(doc, {
+        startY: y,
+        margin: { left: MARGIN_LEFT, right: MARGIN_RIGHT },
+        theme: "grid",
+        styles: { fontSize: 9, cellPadding: 3, lineColor: COR_CINZA_CLARO, lineWidth: 0.3 },
+        headStyles: { fillColor: COR_CINZA_MEDIO, textColor: COR_TEXTO_BRANCO, fontStyle: "bold" },
+        columnStyles: {
+          0: { cellWidth: 48, fontStyle: "bold" },
+          1: { cellWidth: CONTENT_WIDTH - 48 },
+        },
+        head: [["Campo", "Valor informado"]],
+        body: linhasDados,
+      });
+
+      const imagensEquipamento = equipamento.id
+        ? await db.listarImagensEquipamento(equipamento.id)
+        : [];
+      const imagensEntrada = imagensEquipamento.filter((imagem) => imagem.categoria === "ENTRADA");
+      await adicionarRegistroFotografico(
+        doc,
+        imagensEntrada,
+        "Registro Fotográfico de Entrada",
+        "Imagens anexadas para documentar o estado do equipamento no recebimento.",
+      );
+
+      const totalPages = doc.getNumberOfPages();
+      for (let page = 1; page <= totalPages; page += 1) {
+        doc.setPage(page);
+        await aplicarRodape(doc, numeroOS);
+      }
+
+      const pdfBytes = doc.output("arraybuffer");
+      const uint8 = new Uint8Array(pdfBytes);
+      const caminho = await invoke<string>("salvar_ordem_servico_pdf", {
+        bytes: Array.from(uint8),
+        empresaNome: equipamento.cliente_nome || equipamento.proprietario || "Empresa",
+      });
+
+      console.info(`[PdfService] Ordem de serviço PDF gerada: ${caminho}`);
+      return caminho;
+    } catch (error) {
+      console.error("[PdfService] Erro ao gerar ordem de serviço PDF:", error);
+      throw error;
+    }
+  },
+
+  /**
+   * Gera PDF com histórico/status completo do equipamento.
+   */
+  async gerarRelatorioStatus(equipamento: Equipamento): Promise<string | null> {
+    try {
+      const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
+      let y = 15;
+
+      y = await aplicarCabecalhoPadrao(doc, y, "RELATÓRIO DE STATUS");
+      const numeroOS = gerarNumeroOS(equipamento.id);
+      const dataRegistro = equipamento.data_entrada
+        ? new Date(equipamento.data_entrada)
+        : new Date();
+
+      autoTable(doc, {
+        startY: y,
+        margin: { left: MARGIN_LEFT, right: MARGIN_RIGHT },
+        theme: "grid",
+        styles: { fontSize: 9, cellPadding: 3, lineColor: COR_CINZA_CLARO, lineWidth: 0.3 },
+        headStyles: { fillColor: COR_CINZA_MEDIO, textColor: COR_TEXTO_BRANCO, fontStyle: "bold" },
+        body: [
+          ["Ordem", numeroOS],
+          ["Equipamento", `${equipamento.marca || "—"} ${equipamento.modelo || ""}`.trim()],
+          ["Nº de Série", equipamento.serial_number || "—"],
+          ["Cliente", equipamento.cliente_nome || "—"],
+          ["Data de entrada", dataRegistro.toLocaleDateString("pt-BR")],
+          ["Status atual", STATUS_LABELS[equipamento.status as keyof typeof STATUS_LABELS] || equipamento.status],
+        ],
+      });
+
+      y = (doc as unknown as { lastAutoTable: { finalY: number } }).lastAutoTable.finalY + 6;
+
+      const eventos: { label: string; data: string; status: string }[] = [];
+      if (equipamento.data_entrada) eventos.push({ label: "Recebido", data: equipamento.data_entrada, status: "RECEBIDO" });
+      if (equipamento.data_verificacao) eventos.push({ label: "Verificado", data: equipamento.data_verificacao, status: "VERIFICADO" });
+      if (equipamento.data_aprovacao) eventos.push({ label: "Aprovado", data: equipamento.data_aprovacao, status: "APROVADO" });
+      if (equipamento.data_reprovacao) eventos.push({ label: "Reprovado", data: equipamento.data_reprovacao, status: "REPROVADO" });
+      if (equipamento.data_pronto) eventos.push({ label: "Pronto", data: equipamento.data_pronto, status: "PRONTO" });
+      if (equipamento.data_saida) eventos.push({ label: "Entregue", data: equipamento.data_saida, status: "ENTREGUE" });
+      eventos.sort((a, b) => new Date(a.data).getTime() - new Date(b.data).getTime());
+
+      if (eventos.length === 0) {
+        doc.setFont("helvetica", "italic");
+        doc.setFontSize(10);
+        doc.setTextColor(...COR_CINZA_MEDIO);
+        doc.text("Não há eventos de histórico registrados para este equipamento.", MARGIN_LEFT, y);
+      } else {
+        autoTable(doc, {
+          startY: y,
+          margin: { left: MARGIN_LEFT, right: MARGIN_RIGHT },
+          theme: "grid",
+          styles: { fontSize: 9, cellPadding: 3, lineColor: COR_CINZA_CLARO, lineWidth: 0.3 },
+          headStyles: { fillColor: COR_FUNDO_HEADER, textColor: COR_TEXTO_BRANCO, fontStyle: "bold" },
+          head: [["Etapa", "Status", "Data"]],
+          body: eventos.map((evento) => [
+            evento.label,
+            STATUS_LABELS[evento.status as keyof typeof STATUS_LABELS] || evento.status,
+            new Date(evento.data).toLocaleDateString("pt-BR"),
+          ]),
+        });
+      }
+
+      const totalPages = doc.getNumberOfPages();
+      for (let page = 1; page <= totalPages; page += 1) {
+        doc.setPage(page);
+        await aplicarRodape(doc, numeroOS);
+      }
+
+      const pdfBytes = doc.output("arraybuffer");
+      const uint8 = new Uint8Array(pdfBytes);
+      const caminho = await invoke<string>("salvar_relatorio_status_pdf", {
+        bytes: Array.from(uint8),
+        empresaNome: equipamento.cliente_nome || equipamento.proprietario || "Cliente",
+      });
+
+      console.info(`[PdfService] Relatório de status PDF gerado: ${caminho}`);
+      return caminho;
+    } catch (error) {
+      console.error("[PdfService] Erro ao gerar relatório de status PDF:", error);
       throw error;
     }
   },

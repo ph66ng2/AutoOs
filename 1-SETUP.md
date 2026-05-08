@@ -94,6 +94,35 @@ cargo run --manifest-path src-tauri/Cargo.toml --bin runtime_smoke
 
 ---
 
+## 5. Configuração Inicial de Segurança (Perfis + PIN)
+
+> Faça isso no primeiro acesso do ambiente (homologação ou produção).
+
+1. Abra `Configurações > Segurança`.
+2. Configure o **PIN de acesso sensível**.
+3. Revise o perfil padrão `Administrador Local`.
+4. Crie os perfis que vão operar o sistema no dia a dia:
+   - Perfil técnico (fluxo operacional)
+   - Perfil gestor (financeiro/ajustes sensíveis)
+5. Valide o bloqueio:
+   - Bloqueie o acesso sensível
+   - Tente executar ação protegida
+   - Confirme que o app pede PIN
+
+### Permissões recomendadas por perfil
+
+- **Técnico (produção diária):**
+  - `STOCK_CONTROL`
+  - `FINANCIAL_ACTIONS` (somente se a empresa permitir orçamento/entrega no mesmo perfil)
+- **Gestor/Admin:**
+  - todas as permissões críticas, incluindo:
+  - `DELETE_RECORDS`
+  - `MANAGE_PROFILES`
+  - `CONFIG_WHATSAPP`
+  - `CONFIG_SMTP` (se/quando usar)
+
+---
+
 ## Migrações Atuais
 
 | Arquivo | Descrição |
@@ -102,6 +131,7 @@ cargo run --manifest-path src-tauri/Cargo.toml --bin runtime_smoke
 | 0002_schema_hardening.sql | Constraints, defaults, índices |
 | 0003_equipment_intake_fields.sql | Patrimônio, defeito relatado, acessórios |
 | 0004_equipment_images.sql | Imagens de entrada/saída |
+| 0005_service_catalog.sql | Catálogo de serviços com preço padrão |
 
 Ver status em: `Configurações > Segurança > Banco e schema`
 

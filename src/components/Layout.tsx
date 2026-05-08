@@ -17,6 +17,7 @@ import {
   LayoutDashboard,
   Printer,
   Package,
+  Wrench,
   Users,
   Menu,
   Lock,
@@ -35,6 +36,7 @@ const navItems = [
   { label: "Equipamentos", path: "/equipamentos", icon: Printer },
   { label: "Clientes", path: "/clientes", icon: Users },
   { label: "Insumos", path: "/insumos", icon: Package },
+  { label: "Servicos", path: "/servicos", icon: Wrench },
   { label: "Configuracoes", path: "/configuracoes", icon: Settings },
 ];
 

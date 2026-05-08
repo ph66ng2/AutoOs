@@ -28,13 +28,19 @@ import {
   Plus,
   Trash2,
   Check,
+  Search,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { Checkbox } from "@/components/ui/checkbox";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import {
   Dialog,
   DialogContent,
@@ -44,13 +50,15 @@ import {
   DialogClose,
 } from "@/components/ui/dialog";
 import {
-  CHECKLIST_PADRAO,
   type Equipamento,
-  type ItemVerificacao,
+  type ServicoCatalogo,
   type ServicoNecessario,
-  type PecaNecessaria,
   type Verificacao,
 } from "@/types";
+import { db } from "@/lib/db";
+
+const TECNICOS_DISPONIVEIS = ["Ivan", "Isaias"] as const;
+export type TecnicoDisponivel = (typeof TECNICOS_DISPONIVEIS)[number];
 
 /** Dados de verificação sem ID (para criação). Usado por useStatusEquipamento.finalizarVerificacao */
 export interface DadosVerificacao extends Omit<Verificacao, "id"> {}
@@ -62,6 +70,7 @@ interface VerificacaoTecnicaProps {
   onOpenChange: (open: boolean) => void;
   onConcluir: (dados: DadosVerificacao) => Promise<void>;
   salvando?: boolean;
+  tecnicoInicial?: TecnicoDisponivel;
 }
 
 export function VerificacaoTecnica({
@@ -70,66 +79,71 @@ export function VerificacaoTecnica({
   onOpenChange,
   onConcluir,
   salvando = false,
+  tecnicoInicial = "Ivan",
 }: VerificacaoTecnicaProps) {
   // ─── State ──────────────────────────────────────────
-  const [checklist, setChecklist] = useState<ItemVerificacao[]>([
-    ...CHECKLIST_PADRAO.map((i) => ({ ...i, verificado: false })),
-  ]);
-  const [tecnicoNome, setTecnicoNome] = useState("");
-  const [problemaRelatado, setProblemaRelatado] = useState("");
   const [diagnostico, setDiagnostico] = useState("");
   const [servicos, setServicos] = useState<ServicoNecessario[]>([]);
-  const [pecas, setPecas] = useState<PecaNecessaria[]>([]);
-  const [custoMaoObra, setCustoMaoObra] = useState(0);
-  const [tempoEstimado, setTempoEstimado] = useState(0);
   const [observacoesVerif, setObservacoesVerif] = useState("");
+  const [tecnicoNome, setTecnicoNome] = useState<TecnicoDisponivel>(tecnicoInicial);
+  const [catalogoServicos, setCatalogoServicos] = useState<ServicoCatalogo[]>([]);
+  const [carregandoCatalogo, setCarregandoCatalogo] = useState(false);
+  const [linhaSugestaoAberta, setLinhaSugestaoAberta] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    setCarregandoCatalogo(true);
+    void db.listarServicos(undefined, true)
+      .then((servicosDoCatalogo) => setCatalogoServicos(servicosDoCatalogo))
+      .catch((err) => {
+        console.error("Erro ao carregar catálogo de serviços:", err);
+        setCatalogoServicos([]);
+      })
+      .finally(() => setCarregandoCatalogo(false));
+  }, [open]);
+
+  useEffect(() => {
+    if (!open) return;
+    setTecnicoNome(tecnicoInicial);
+  }, [open, tecnicoInicial]);
 
   // ─── Helpers ────────────────────────────────────────
   /** Limpa todos os campos do formulário para valores iniciais */
   function resetForm() {
-    setChecklist(CHECKLIST_PADRAO.map((i) => ({ ...i, verificado: false })));
-    setTecnicoNome("");
-    setProblemaRelatado("");
     setDiagnostico("");
     setServicos([]);
-    setPecas([]);
-    setCustoMaoObra(0);
-    setTempoEstimado(0);
     setObservacoesVerif("");
+    setTecnicoNome(tecnicoInicial);
   }
 
   /** Adiciona um novo serviço vazio à lista (id = timestamp) */
   function adicionarServico() {
     setServicos([
       ...servicos,
-      { id: Date.now().toString(), descricao: "", valor: 0 },
+      { id: Date.now().toString(), descricao: "", valor: 0, catalogo_id: undefined },
     ]);
   }
   /** Remove serviço da lista pelo ID */
   function removerServico(id: string) {
     setServicos(servicos.filter((s) => s.id !== id));
   }
-  /** Adiciona uma nova peça vazia à lista (id = timestamp) */
-  function adicionarPeca() {
-    setPecas([
-      ...pecas,
-      {
-        id: Date.now().toString(),
-        nome: "",
-        quantidade: 1,
-        valorUnitario: 0,
-        valorTotal: 0,
-      },
-    ]);
-  }
-  /** Remove peça da lista pelo ID */
-  function removerPeca(id: string) {
-    setPecas(pecas.filter((p) => p.id !== id));
+
+  function atualizarServico(id: string, patch: Partial<ServicoNecessario>) {
+    setServicos((estadoAtual) =>
+      estadoAtual.map((servico) =>
+        servico.id === id ? { ...servico, ...patch } : servico,
+      ),
+    );
   }
 
-  const custoPecas = pecas.reduce((acc, p) => acc + p.valorTotal, 0);
-  const custoTotal = custoMaoObra + custoPecas;
-
+  function selecionarServicoCatalogo(linhaId: string, servicoCatalogo: ServicoCatalogo) {
+    atualizarServico(linhaId, {
+      catalogo_id: servicoCatalogo.id,
+      descricao: servicoCatalogo.nome,
+      valor: Number(servicoCatalogo.preco_padrao || 0),
+    });
+    setLinhaSugestaoAberta(null);
+  }
   /**
    * Monta o objeto DadosVerificacao com todos os dados preenchidos
    * (checklist, serviços, peças como JSON strings) e chama onConcluir do parent.
@@ -137,19 +151,35 @@ export function VerificacaoTecnica({
    */
   async function handleConcluir() {
     if (!equipamento) return;
+    const servicosInvalidos = servicos.some(
+      (servico) => !servico.descricao.trim() || Number(servico.valor) <= 0 || Number.isNaN(Number(servico.valor)),
+    );
+    if (servicosInvalidos) {
+      alert("Cada serviço precisa ter descrição e valor maior que zero.");
+      return;
+    }
+
+    const servicosNormalizados = servicos
+      .filter((servico) => servico.descricao.trim())
+      .map((servico) => ({
+        ...servico,
+        descricao: servico.descricao.trim(),
+        valor: Number(servico.valor),
+      }));
+    const custoTotalServicos = servicosNormalizados.reduce((acum, servico) => acum + servico.valor, 0);
 
     const dados: DadosVerificacao = {
       equipamento_id: equipamento.id!,
       tecnico_nome: tecnicoNome,
-      problema_relatado: problemaRelatado,
+      problema_relatado: equipamento.defeito_relatado || "Não informado",
       diagnostico,
-      itens_verificados: JSON.stringify(checklist),
-      servicos_necessarios: JSON.stringify(servicos),
-      pecas_necessarias: JSON.stringify(pecas),
-      custo_estimado_mao_obra: custoMaoObra,
-      custo_estimado_pecas: custoPecas,
-      custo_total: custoTotal,
-      tempo_estimado: tempoEstimado,
+      itens_verificados: JSON.stringify([]),
+      servicos_necessarios: JSON.stringify(servicosNormalizados),
+      pecas_necessarias: JSON.stringify([]),
+      custo_estimado_mao_obra: custoTotalServicos,
+      custo_estimado_pecas: 0,
+      custo_total: custoTotalServicos,
+      tempo_estimado: 0,
       concluida: true,
       observacoes: observacoesVerif,
     };
@@ -163,13 +193,6 @@ export function VerificacaoTecnica({
     if (!value) resetForm();
     onOpenChange(value);
   }
-
-  useEffect(() => {
-    if (open && equipamento) {
-      setProblemaRelatado(equipamento.defeito_relatado || "");
-    }
-  }, [equipamento, open]);
-
   // ─── Render ─────────────────────────────────────────
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
@@ -193,107 +216,28 @@ export function VerificacaoTecnica({
               </p>
             </div>
 
-            {/* Informações Básicas */}
+            {/* Verificação Inicial */}
             <Card>
               <CardHeader>
-                <CardTitle className="text-sm">Informações Básicas</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label>Técnico Responsável *</Label>
-                    <Input
-                      value={tecnicoNome}
-                      onChange={(e) => setTecnicoNome(e.target.value)}
-                      placeholder="Nome do técnico"
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label>Tempo Estimado (horas)</Label>
-                    <Input
-                      type="number"
-                      min={0}
-                      step="0.5"
-                      value={tempoEstimado}
-                      onChange={(e) => setTempoEstimado(Number(e.target.value))}
-                      placeholder="Ex: 2.5"
-                    />
-                  </div>
-                </div>
-                <div className="space-y-2">
-                  <Label>Problema Relatado pelo Cliente *</Label>
-                  <Textarea
-                    value={problemaRelatado}
-                    onChange={(e) => setProblemaRelatado(e.target.value)}
-                    placeholder="Descreva o problema relatado pelo cliente..."
-                    rows={3}
-                  />
-                </div>
-              </CardContent>
-            </Card>
-
-            {/* Checklist de Verificação */}
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-sm">
-                  Checklist de Verificação
-                </CardTitle>
+                <CardTitle className="text-sm">Verificação Inicial</CardTitle>
               </CardHeader>
               <CardContent>
-                <div className="space-y-3">
-                  {checklist.map((item, idx) => (
-                    <div
-                      key={item.id}
-                      className="flex items-start gap-3 p-3 border rounded"
-                    >
-                      <Checkbox
-                        checked={item.verificado}
-                        onCheckedChange={(checked) => {
-                          const newList = [...checklist];
-                          newList[idx] = {
-                            ...item,
-                            verificado: Boolean(checked),
-                          };
-                          setChecklist(newList);
-                        }}
-                        className="mt-1"
-                      />
-                      <div className="flex-1">
-                        <p
-                          className={
-                            item.verificado
-                              ? "line-through text-muted-foreground"
-                              : ""
-                          }
-                        >
-                          {item.nome}
-                        </p>
-                        <Input
-                          placeholder="Observações (opcional)"
-                          value={item.observacao || ""}
-                          onChange={(e) => {
-                            const newList = [...checklist];
-                            newList[idx] = {
-                              ...item,
-                              observacao: e.target.value,
-                            };
-                            setChecklist(newList);
-                          }}
-                          className="mt-2 text-sm"
-                        />
-                      </div>
-                    </div>
-                  ))}
+                <div className="mb-3 space-y-2">
+                  <label className="text-sm font-medium">Técnico responsável</label>
+                  <Select value={tecnicoNome} onValueChange={(value: (typeof TECNICOS_DISPONIVEIS)[number]) => setTecnicoNome(value)}>
+                    <SelectTrigger className="w-full sm:w-64">
+                      <SelectValue placeholder="Selecione o técnico" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {TECNICOS_DISPONIVEIS.map((tecnico) => (
+                        <SelectItem key={tecnico} value={tecnico}>
+                          {tecnico}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 </div>
-              </CardContent>
-            </Card>
-
-            {/* Diagnóstico Técnico */}
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-sm">Diagnóstico Técnico</CardTitle>
-              </CardHeader>
-              <CardContent>
+                <label className="mb-2 block text-sm font-medium">Diagnóstico Técnico</label>
                 <Textarea
                   value={diagnostico}
                   onChange={(e) => setDiagnostico(e.target.value)}
@@ -321,33 +265,64 @@ export function VerificacaoTecnica({
                 </div>
               </CardHeader>
               <CardContent>
+                <p className="text-xs text-muted-foreground mb-3">
+                  Digite para buscar no catálogo e selecionar o serviço pré-cadastrado com preço automático.
+                </p>
                 <div className="space-y-3">
-                  {servicos.map((s, idx) => (
-                    <div key={s.id} className="flex gap-3 items-center">
-                      <Input
-                        placeholder="Descrição do serviço"
-                        value={s.descricao}
-                        onChange={(e) => {
-                          const n = [...servicos];
-                          n[idx] = { ...s, descricao: e.target.value };
-                          setServicos(n);
-                        }}
-                        className="flex-1"
-                      />
+                  {servicos.map((s) => (
+                    <div key={s.id} className="flex gap-3 items-start">
+                      <div className="relative flex-1">
+                        <Search className="pointer-events-none absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
+                        <Input
+                          placeholder="Nome do serviço"
+                          value={s.descricao}
+                          onFocus={() => setLinhaSugestaoAberta(s.id)}
+                          onBlur={() => window.setTimeout(() => setLinhaSugestaoAberta(null), 120)}
+                          onChange={(e) => {
+                            atualizarServico(s.id, {
+                              descricao: e.target.value,
+                              catalogo_id: undefined,
+                            });
+                            setLinhaSugestaoAberta(s.id);
+                          }}
+                          className="pl-8"
+                        />
+                        {linhaSugestaoAberta === s.id && (
+                          <div className="absolute z-20 mt-1 max-h-44 w-full overflow-auto rounded-md border bg-popover shadow">
+                            {(catalogoServicos
+                              .filter((item) =>
+                                item.nome.toLowerCase().includes((s.descricao || "").toLowerCase()),
+                              )
+                              .slice(0, 8)).map((item) => (
+                              <button
+                                key={item.id}
+                                type="button"
+                                className="w-full px-3 py-2 text-left text-sm hover:bg-accent"
+                                onMouseDown={(e) => e.preventDefault()}
+                                onClick={() => selecionarServicoCatalogo(s.id, item)}
+                              >
+                                <span className="font-medium">{item.nome}</span>
+                                <span className="text-muted-foreground"> — R$ {Number(item.preco_padrao || 0).toFixed(2)}</span>
+                              </button>
+                            ))}
+                            {!carregandoCatalogo && catalogoServicos.filter((item) =>
+                              item.nome.toLowerCase().includes((s.descricao || "").toLowerCase()),
+                            ).length === 0 && (
+                              <div className="px-3 py-2 text-xs text-muted-foreground">
+                                Nenhum serviço pré-cadastrado encontrado.
+                              </div>
+                            )}
+                          </div>
+                        )}
+                      </div>
                       <Input
                         type="number"
+                        min={0.01}
                         step="0.01"
-                        placeholder="R$ 0,00"
-                        value={s.valor || ""}
-                        onChange={(e) => {
-                          const n = [...servicos];
-                          n[idx] = {
-                            ...s,
-                            valor: parseFloat(e.target.value) || 0,
-                          };
-                          setServicos(n);
-                        }}
-                        className="w-28"
+                        placeholder="Valor"
+                        value={Number.isFinite(Number(s.valor)) ? Number(s.valor) : ""}
+                        onChange={(e) => atualizarServico(s.id, { valor: Number(e.target.value) })}
+                        className="w-32"
                       />
                       <Button
                         variant="ghost"
@@ -361,90 +336,6 @@ export function VerificacaoTecnica({
                   {servicos.length === 0 && (
                     <p className="text-sm text-muted-foreground text-center py-4">
                       Nenhum serviço adicionado.
-                    </p>
-                  )}
-                </div>
-              </CardContent>
-            </Card>
-
-            {/* Peças Necessárias */}
-            <Card>
-              <CardHeader>
-                <div className="flex justify-between items-center">
-                  <CardTitle className="text-sm">Peças Necessárias</CardTitle>
-                  <Button
-                    onClick={adicionarPeca}
-                    variant="outline"
-                    size="sm"
-                  >
-                    <Plus className="mr-1 h-4 w-4" />
-                    Adicionar Peça
-                  </Button>
-                </div>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-3">
-                  {pecas.map((p, idx) => (
-                    <div key={p.id} className="flex gap-2 items-center">
-                      <Input
-                        placeholder="Nome da peça"
-                        value={p.nome}
-                        onChange={(e) => {
-                          const n = [...pecas];
-                          n[idx] = { ...p, nome: e.target.value };
-                          setPecas(n);
-                        }}
-                        className="flex-1"
-                      />
-                      <Input
-                        type="number"
-                        min={1}
-                        placeholder="Qtd"
-                        value={p.quantidade || ""}
-                        onChange={(e) => {
-                          const n = [...pecas];
-                          const q = parseInt(e.target.value) || 1;
-                          n[idx] = {
-                            ...p,
-                            quantidade: q,
-                            valorTotal: q * p.valorUnitario,
-                          };
-                          setPecas(n);
-                        }}
-                        className="w-16"
-                      />
-                      <Input
-                        type="number"
-                        step="0.01"
-                        placeholder="Val.Un."
-                        value={p.valorUnitario || ""}
-                        onChange={(e) => {
-                          const n = [...pecas];
-                          const v = parseFloat(e.target.value) || 0;
-                          n[idx] = {
-                            ...p,
-                            valorUnitario: v,
-                            valorTotal: p.quantidade * v,
-                          };
-                          setPecas(n);
-                        }}
-                        className="w-28"
-                      />
-                      <span className="text-sm w-24 text-right font-medium">
-                        R$ {p.valorTotal.toFixed(2)}
-                      </span>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        onClick={() => removerPeca(p.id)}
-                      >
-                        <Trash2 className="h-4 w-4 text-red-500" />
-                      </Button>
-                    </div>
-                  ))}
-                  {pecas.length === 0 && (
-                    <p className="text-sm text-muted-foreground text-center py-4">
-                      Nenhuma peça adicionada.
                     </p>
                   )}
                 </div>
@@ -466,63 +357,13 @@ export function VerificacaoTecnica({
               </CardContent>
             </Card>
 
-            {/* Custo Mão de Obra */}
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-sm">Custo Mão de Obra</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-2">
-                  <Label>Valor (R$)</Label>
-                  <Input
-                    type="number"
-                    step="0.01"
-                    min={0}
-                    value={custoMaoObra || ""}
-                    onChange={(e) =>
-                      setCustoMaoObra(parseFloat(e.target.value) || 0)
-                    }
-                    placeholder="0.00"
-                  />
-                </div>
-              </CardContent>
-            </Card>
-
-            {/* Resumo Financeiro */}
-            <Card className="bg-blue-50 border-blue-200 dark:bg-blue-950 dark:border-blue-800">
-              <CardHeader>
-                <CardTitle className="text-sm">Resumo do Orçamento</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-2">
-                  <div className="flex justify-between text-sm">
-                    <span>Mão de Obra:</span>
-                    <span className="font-semibold">
-                      R$ {custoMaoObra.toFixed(2)}
-                    </span>
-                  </div>
-                  <div className="flex justify-between text-sm">
-                    <span>Peças:</span>
-                    <span className="font-semibold">
-                      R$ {custoPecas.toFixed(2)}
-                    </span>
-                  </div>
-                  <hr className="border-blue-200 dark:border-blue-700" />
-                  <div className="flex justify-between text-lg font-bold text-blue-700 dark:text-blue-300">
-                    <span>TOTAL:</span>
-                    <span>R$ {custoTotal.toFixed(2)}</span>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-
             <DialogFooter>
               <DialogClose asChild>
                 <Button variant="outline">Cancelar</Button>
               </DialogClose>
               <Button
                 onClick={handleConcluir}
-                disabled={salvando || !tecnicoNome || !problemaRelatado}
+                disabled={salvando || servicos.some((s) => !s.descricao.trim() || Number(s.valor) <= 0)}
                 className="bg-green-600 hover:bg-green-700"
               >
                 <Check className="mr-2 h-4 w-4" />

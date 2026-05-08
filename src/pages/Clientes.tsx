@@ -20,7 +20,7 @@
  * ║  USADO POR: App.tsx (rota /clientes)                        ║
  * ╚══════════════════════════════════════════════════════════════╝
  */
-import { useState, useEffect, useCallback } from "react";
+import { Fragment, useState, useEffect, useCallback } from "react";
 import {
   Users,
   Search,
@@ -35,6 +35,7 @@ import {
   Plus,
   Building2,
   User,
+  Eye,
 } from "lucide-react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -106,6 +107,7 @@ function documentoExibicao(c: Cliente): string {
 }
 
 export default function Clientes() {
+  const LIMITE_EQUIPAMENTOS_EXPANDIDOS = 5;
   const [busca, setBusca] = useState("");
   const [dialogOpen, setDialogOpen] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
@@ -119,6 +121,8 @@ export default function Clientes() {
   const [expandido, setExpandido] = useState<number | null>(null);
   const [equipamentosCliente, setEquipamentosCliente] = useState<Equipamento[]>([]);
   const [carregandoEquip, setCarregandoEquip] = useState(false);
+  const [modalEquipamentosOpen, setModalEquipamentosOpen] = useState(false);
+  const [clienteEquipamentosSelecionado, setClienteEquipamentosSelecionado] = useState<Cliente | null>(null);
 
   const { clientes, loading, criar, atualizar, deletar, recarregar } =
     useClientes({ busca: busca || undefined });
@@ -203,6 +207,11 @@ export default function Clientes() {
     } finally {
       setCarregandoEquip(false);
     }
+  }
+
+  function abrirModalTodosEquipamentos(cliente: Cliente) {
+    setClienteEquipamentosSelecionado(cliente);
+    setModalEquipamentosOpen(true);
   }
 
   /** Abre dialog para criar novo cliente. Reseta form e tipo de pessoa */
@@ -385,13 +394,23 @@ export default function Clientes() {
                 </TableHeader>
                 <TableBody>
                   {clientes.map(c => (
-                    <>
-                      <TableRow key={c.id} className="cursor-pointer" onClick={() => toggleExpandir(c.id!)}>
+                    <Fragment key={c.id}>
+                      <TableRow key={c.id}>
                         <TableCell>
-                          {expandido === c.id
-                            ? <ChevronDown className="h-4 w-4 text-muted-foreground" />
-                            : <ChevronRight className="h-4 w-4 text-muted-foreground" />
-                          }
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-8 gap-1 px-2 text-xs"
+                            onClick={() => void toggleExpandir(c.id!)}
+                            title={expandido === c.id ? "Ocultar equipamentos" : "Ver equipamentos"}
+                          >
+                            {expandido === c.id ? (
+                              <ChevronDown className="h-4 w-4 text-muted-foreground" />
+                            ) : (
+                              <ChevronRight className="h-4 w-4 text-muted-foreground" />
+                            )}
+                            Equip.
+                          </Button>
                         </TableCell>
                         <TableCell>
                           {c.tipo_pessoa === "PJ" ? (
@@ -434,9 +453,12 @@ export default function Clientes() {
                           {c.cidade && c.uf ? `${c.cidade}/${c.uf}` : c.cidade || c.uf || "—"}
                         </TableCell>
                         <TableCell className="text-right">
-                          <div className="flex justify-end gap-1" onClick={e => e.stopPropagation()}>
-                            <Button variant="ghost" size="icon" onClick={() => abrirEditar(c)}>
-                              <Edit className="h-4 w-4" />
+                          <div className="flex justify-end gap-1">
+                            <Button variant="outline" size="sm" className="h-8 gap-1 text-xs" onClick={() => void toggleExpandir(c.id!)}>
+                              <Eye className="h-4 w-4" />Equipamentos
+                            </Button>
+                            <Button variant="default" size="sm" className="h-8 gap-1 text-xs" onClick={() => abrirEditar(c)}>
+                              <Edit className="h-4 w-4" />Editar
                             </Button>
                             <Button variant="ghost" size="icon" onClick={() => void solicitarExclusao(c)}>
                               <Trash2 className="h-4 w-4 text-red-500" />
@@ -464,7 +486,7 @@ export default function Clientes() {
                                   <p className="text-xs font-medium text-muted-foreground mb-2">
                                     {equipamentosCliente.length} equipamento(s) vinculado(s)
                                   </p>
-                                  {equipamentosCliente.map(eq => (
+                                  {equipamentosCliente.slice(0, LIMITE_EQUIPAMENTOS_EXPANDIDOS).map(eq => (
                                     <div key={eq.id} className="flex items-center justify-between p-2 rounded border bg-background">
                                       <div className="flex items-center gap-3">
                                         <Printer className="h-4 w-4 text-muted-foreground" />
@@ -481,13 +503,25 @@ export default function Clientes() {
                                       </div>
                                     </div>
                                   ))}
+                                  {equipamentosCliente.length > LIMITE_EQUIPAMENTOS_EXPANDIDOS && (
+                                    <div className="flex justify-end pt-1">
+                                      <Button
+                                        variant="outline"
+                                        size="sm"
+                                        className="h-8 text-xs"
+                                        onClick={() => abrirModalTodosEquipamentos(c)}
+                                      >
+                                        Mostrar mais ({equipamentosCliente.length - LIMITE_EQUIPAMENTOS_EXPANDIDOS})
+                                      </Button>
+                                    </div>
+                                  )}
                                 </div>
                               )}
                             </div>
                           </TableCell>
                         </TableRow>
                       )}
-                    </>
+                    </Fragment>
                   ))}
                 </TableBody>
               </Table>
@@ -529,6 +563,42 @@ export default function Clientes() {
           <DialogFooter>
             <DialogClose asChild><Button variant="outline">Cancelar</Button></DialogClose>
             <Button variant="destructive" onClick={onDelete} disabled={salvando}>{salvando ? "Excluindo..." : "Excluir"}</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={modalEquipamentosOpen} onOpenChange={setModalEquipamentosOpen}>
+        <DialogContent className="sm:max-w-3xl max-h-[80vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>
+              Todos os equipamentos - {clienteEquipamentosSelecionado ? nomeExibicao(clienteEquipamentosSelecionado) : "Cliente"}
+            </DialogTitle>
+          </DialogHeader>
+          {equipamentosCliente.length === 0 ? (
+            <div className="text-sm text-muted-foreground">Nenhum equipamento vinculado.</div>
+          ) : (
+            <div className="space-y-2">
+              {equipamentosCliente.map((eq) => (
+                <div key={eq.id} className="flex items-center justify-between rounded border p-2">
+                  <div className="flex items-center gap-3">
+                    <Printer className="h-4 w-4 text-muted-foreground" />
+                    <div>
+                      <p className="text-sm font-medium">{eq.marca} {eq.modelo}</p>
+                      <p className="text-xs text-muted-foreground font-mono">{eq.serial_number}</p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <StatusBadge status={eq.status} />
+                    <span className="text-xs text-muted-foreground">
+                      {eq.data_entrada ? new Date(eq.data_entrada).toLocaleDateString("pt-BR") : ""}
+                    </span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+          <DialogFooter>
+            <DialogClose asChild><Button variant="outline">Fechar</Button></DialogClose>
           </DialogFooter>
         </DialogContent>
       </Dialog>

@@ -31,6 +31,23 @@ import type {
   PecaNecessaria,
 } from "@/types";
 
+function emailTecnicoPorNome(tecnicoNome?: string) {
+  const normalizado = (tecnicoNome || "")
+    .trim()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase();
+  if (normalizado === "ivan") return "ivan@bmicode.com";
+  if (normalizado === "isaias") return "isaias@bmicode.com";
+  return "";
+}
+
+function extrairTecnicoInicialDeObservacoes(observacoes?: string | null) {
+  if (!observacoes) return "";
+  const match = observacoes.match(/^Técnico inicial:\s*(Ivan|Isaias|Isaías)\b/m);
+  return match?.[1] || "";
+}
+
 async function registrarComunicacaoSegura(comunicacao: Omit<Comunicacao, "id">) {
   try {
     await db.registrarComunicacao(comunicacao);
@@ -40,6 +57,97 @@ async function registrarComunicacaoSegura(comunicacao: Omit<Comunicacao, "id">) 
 }
 
 export const EmailService = {
+  /** Envia email da ordem de entrada (ordem de serviço) via SMTP e registra no banco */
+  async enviarOrdemEntrada(equipamento: Equipamento) {
+    if (!equipamento.cliente_email) {
+      return { sucesso: false, erro: "Cliente não possui email cadastrado" };
+    }
+
+    const assunto = `Ordem de Entrada - ${equipamento.marca} ${equipamento.modelo} (SN: ${equipamento.serial_number})`;
+    const corpoTexto = `Prezado(a) ${equipamento.cliente_nome || "cliente"},
+
+Registramos a entrada do seu equipamento em nosso laboratório técnico.
+
+Equipamento: ${equipamento.marca} ${equipamento.modelo}
+Serial Number: ${equipamento.serial_number}
+Data de Entrada: ${formatarData(equipamento.data_entrada)}
+
+A Ordem de Entrada segue em anexo.
+
+Atenciosamente,
+Equipe Técnica BMITAG`;
+
+    const corpoHtml = `
+      <div style="font-family: Arial, sans-serif; color: #111827; line-height: 1.5;">
+        <p>Prezado(a) <strong>${escapeHtml(equipamento.cliente_nome || "cliente")}</strong>,</p>
+        <p>Registramos a entrada do seu equipamento em nosso laboratório técnico.</p>
+        <p>
+          <strong>Equipamento:</strong> ${escapeHtml(`${equipamento.marca} ${equipamento.modelo}`)}<br />
+          <strong>Serial Number:</strong> ${escapeHtml(equipamento.serial_number)}<br />
+          <strong>Data de Entrada:</strong> ${escapeHtml(formatarData(equipamento.data_entrada))}
+        </p>
+        <p>A Ordem de Entrada segue em anexo.</p>
+        <p>Atenciosamente,<br />Equipe Técnica BMITAG</p>
+      </div>
+    `;
+
+    let anexos: EmailAttachment[] | undefined;
+    try {
+      const caminhoPdf = await PdfService.gerarOrdemServico(equipamento);
+      if (caminhoPdf) {
+        const filename = caminhoPdf.split(/[/\\]/).pop() || "ordem_entrada.pdf";
+        anexos = [{
+          filename,
+          content_type: "application/pdf",
+          path: caminhoPdf,
+        }];
+      }
+    } catch (error) {
+      console.warn("[EmailService] Falha ao gerar PDF de ordem de entrada:", error);
+    }
+
+    const emailData: EmailSendRequest = {
+      destinatario: equipamento.cliente_nome || "",
+      email: equipamento.cliente_email,
+      assunto,
+      corpo: corpoTexto,
+      corpo_texto: corpoTexto,
+      corpo_html: corpoHtml,
+      anexos,
+    };
+
+    try {
+      await invoke<void>("enviar_email", { input: emailData });
+      await registrarComunicacaoSegura({
+        equipamento_id: equipamento.id!,
+        tipo: "MANUAL",
+        canal: "EMAIL",
+        destinatario: equipamento.cliente_nome || "",
+        contato: equipamento.cliente_email,
+        assunto,
+        mensagem: corpoTexto,
+        anexos: anexos ? JSON.stringify(anexos.map((a) => a.filename)) : undefined,
+        enviado: true,
+      });
+      return { sucesso: true };
+    } catch (error: any) {
+      const erroMsg = typeof error === "string" ? error : (error?.message || "Falha ao enviar email");
+      await registrarComunicacaoSegura({
+        equipamento_id: equipamento.id!,
+        tipo: "MANUAL",
+        canal: "EMAIL",
+        destinatario: equipamento.cliente_nome || "",
+        contato: equipamento.cliente_email,
+        assunto,
+        mensagem: corpoTexto,
+        anexos: anexos ? JSON.stringify(anexos.map((a) => a.filename)) : undefined,
+        enviado: false,
+        erro: erroMsg,
+      });
+      return { sucesso: false, erro: erroMsg };
+    }
+  },
+
   /** Envia email de orçamento via SMTP e registra no banco */
   async enviarOrcamento(equipamento: Equipamento, verificacao: Verificacao) {
     if (!equipamento.cliente_email) {
@@ -49,6 +157,8 @@ export const EmailService = {
     const corpoTexto = gerarCorpoOrcamentoTexto(equipamento, verificacao);
     const corpoHtml = gerarCorpoOrcamentoHtml(equipamento, verificacao);
     const assunto = `Orçamento - ${equipamento.marca} ${equipamento.modelo} (SN: ${equipamento.serial_number})`;
+    const emailTecnico = emailTecnicoPorNome(verificacao.tecnico_nome);
+    const cc = emailTecnico ? [emailTecnico] : undefined;
 
     let anexos: EmailAttachment[] | undefined;
     try {
@@ -68,6 +178,7 @@ export const EmailService = {
     const emailData: EmailSendRequest = {
       destinatario: equipamento.cliente_nome || "",
       email: equipamento.cliente_email,
+      cc,
       assunto,
       corpo: corpoTexto,
       corpo_texto: corpoTexto,
@@ -121,10 +232,17 @@ export const EmailService = {
     const corpoTexto = gerarCorpoEquipamentoProntoTexto(equipamento);
     const corpoHtml = gerarCorpoEquipamentoProntoHtml(equipamento);
     const assunto = `Seu equipamento está pronto! - ${equipamento.marca} ${equipamento.modelo}`;
+    const verificacao = equipamento.id
+      ? await db.buscarVerificacao(equipamento.id).catch(() => null)
+      : null;
+    const tecnicoNome = verificacao?.tecnico_nome || extrairTecnicoInicialDeObservacoes(equipamento.observacoes);
+    const emailTecnico = emailTecnicoPorNome(tecnicoNome);
+    const cc = emailTecnico ? [emailTecnico] : undefined;
 
     const emailData: EmailSendRequest = {
       destinatario: equipamento.cliente_nome || "",
       email: equipamento.cliente_email,
+      cc,
       assunto,
       corpo: corpoTexto,
       corpo_texto: corpoTexto,

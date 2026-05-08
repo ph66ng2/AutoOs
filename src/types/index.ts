@@ -217,6 +217,17 @@ export interface Produto {
   atualizado_em?: string;
 }
 
+/** Serviço padrão do catálogo para orçamento/verificação técnica. */
+export interface ServicoCatalogo {
+  id?: number;
+  nome: string;
+  descricao?: string;
+  preco_padrao: number;
+  ativo?: boolean;
+  criado_em?: string;
+  atualizado_em?: string;
+}
+
 /**
  * Movimentação de entrada/saída de estoque.
  * Espelha a tabela `movimentacoes_estoque` em db.rs.
@@ -250,6 +261,7 @@ export interface ItemVerificacao {
 /** Serviço necessário identificado na verificação (ex: "Limpeza cabeça térmica") */
 export interface ServicoNecessario {
   id: string;
+  catalogo_id?: number;
   descricao: string;
   valor: number;
 }
@@ -359,6 +371,7 @@ export interface EmailAttachment {
 export interface EmailSendRequest {
   destinatario: string;
   email: string;
+  cc?: string[];
   assunto: string;
   corpo: string;
   corpo_texto?: string;
@@ -369,6 +382,16 @@ export interface EmailSendRequest {
 export interface WhatsappSendRequest {
   contato: string;
   mensagem: string;
+}
+
+export interface ResultadoAutomacao {
+  sucesso: boolean;
+  erro?: string;
+  mensagem?: string;
+  canais?: {
+    whatsapp?: { enviado: boolean; erro?: string };
+    email?: { enviado: boolean; erro?: string };
+  };
 }
 
 export const SENSITIVE_PERMISSIONS = {

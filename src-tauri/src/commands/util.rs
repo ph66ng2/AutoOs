@@ -21,6 +21,10 @@ use url::Url;
 
 const AUTOOS_TEMP_DIR: &str = "autoos";
 const AUTOOS_BACKUP_DIR: &str = "AutoOS/backups";
+const AUTOOS_ORDERS_DIR: &str = "Ordens de Servico";
+const AUTOOS_QUOTES_DIR: &str = "Orcamentos";
+const AUTOOS_EQUIPMENT_IMAGES_DIR: &str = "Imagens Equipamentos";
+const AUTOOS_STATUS_REPORTS_DIR: &str = "Relatorios de Status";
 const AUTOOS_LOCAL_DATA_DIR: &str = "AutoOS";
 const AUTOOS_LOG_DIR: &str = "logs";
 const AUTOOS_SUPPORT_DIR: &str = "support";
@@ -438,6 +442,130 @@ fn default_backup_directory() -> Result<PathBuf, String> {
     Ok(backup_dir)
 }
 
+fn default_documents_directory() -> Result<PathBuf, String> {
+    let base_dir = if cfg!(target_os = "windows") {
+        if let Ok(user_profile) = env::var("USERPROFILE") {
+            PathBuf::from(user_profile).join("Documents")
+        } else if let (Ok(home_drive), Ok(home_path)) = (env::var("HOMEDRIVE"), env::var("HOMEPATH")) {
+            PathBuf::from(format!("{}{}", home_drive, home_path)).join("Documents")
+        } else {
+            env::current_dir().map_err(|e| format!("Não foi possível localizar a pasta Documents: {}", e))?
+        }
+    } else if let Ok(home) = env::var("HOME") {
+        PathBuf::from(home).join("Documents")
+    } else {
+        env::current_dir().map_err(|e| format!("Não foi possível localizar a pasta Documents: {}", e))?
+    };
+
+    fs::create_dir_all(&base_dir).map_err(|e| {
+        error!("Erro ao preparar diretório Documents: {}", e);
+        format!("Erro ao preparar diretório Documents: {}", e)
+    })?;
+
+    Ok(base_dir)
+}
+
+fn default_orders_directory() -> Result<PathBuf, String> {
+    let orders_dir = default_documents_directory()?.join(AUTOOS_ORDERS_DIR);
+    fs::create_dir_all(&orders_dir).map_err(|e| {
+        error!("Erro ao preparar diretório de ordens de serviço: {}", e);
+        format!("Erro ao preparar diretório de ordens de serviço: {}", e)
+    })?;
+    Ok(orders_dir)
+}
+
+fn default_quotes_directory() -> Result<PathBuf, String> {
+    let quotes_dir = default_documents_directory()?.join(AUTOOS_QUOTES_DIR);
+    fs::create_dir_all(&quotes_dir).map_err(|e| {
+        error!("Erro ao preparar diretório de orçamentos: {}", e);
+        format!("Erro ao preparar diretório de orçamentos: {}", e)
+    })?;
+    Ok(quotes_dir)
+}
+
+fn default_equipment_images_directory() -> Result<PathBuf, String> {
+    let images_dir = default_documents_directory()?.join(AUTOOS_EQUIPMENT_IMAGES_DIR);
+    fs::create_dir_all(&images_dir).map_err(|e| {
+        error!("Erro ao preparar diretório de imagens de equipamentos: {}", e);
+        format!("Erro ao preparar diretório de imagens de equipamentos: {}", e)
+    })?;
+    Ok(images_dir)
+}
+
+fn default_status_reports_directory() -> Result<PathBuf, String> {
+    let reports_dir = default_documents_directory()?.join(AUTOOS_STATUS_REPORTS_DIR);
+    fs::create_dir_all(&reports_dir).map_err(|e| {
+        error!("Erro ao preparar diretório de relatórios de status: {}", e);
+        format!("Erro ao preparar diretório de relatórios de status: {}", e)
+    })?;
+    Ok(reports_dir)
+}
+
+fn sanitize_filename_component(value: &str) -> String {
+    let sanitized: String = value
+        .trim()
+        .chars()
+        .map(|character| match character {
+            'a'..='z' | 'A'..='Z' | '0'..='9' => character,
+            _ => '_',
+        })
+        .collect();
+
+    sanitized
+        .trim_matches('_')
+        .chars()
+        .take(80)
+        .collect::<String>()
+}
+
+fn reveal_file_in_manager(file_path: &Path) -> Result<(), String> {
+    #[cfg(target_os = "windows")]
+    {
+        Command::new("explorer")
+            .arg("/select,")
+            .arg(file_path)
+            .spawn()
+            .map_err(|e| format!("Arquivo salvo, mas não foi possível abrir o Explorer: {}", e))?;
+        return Ok(());
+    }
+
+    #[cfg(target_os = "linux")]
+    {
+        let file_path_string = file_path.to_string_lossy().to_string();
+        let mut commands: Vec<(&str, Vec<String>)> = vec![
+            ("nautilus", vec!["--select".to_string(), file_path_string.clone()]),
+            ("dolphin", vec!["--select".to_string(), file_path_string.clone()]),
+            ("nemo", vec!["--no-desktop".to_string(), file_path_string.clone()]),
+        ];
+
+        for (command_name, args) in commands.drain(..) {
+            if Command::new(command_name).args(&args).spawn().is_ok() {
+                return Ok(());
+            }
+        }
+
+        let parent = file_path.parent().unwrap_or(file_path);
+        Command::new("xdg-open")
+            .arg(parent)
+            .spawn()
+            .map_err(|e| format!("Arquivo salvo, mas não foi possível abrir a pasta: {}", e))?;
+        return Ok(());
+    }
+
+    #[cfg(target_os = "macos")]
+    {
+        Command::new("open")
+            .arg("-R")
+            .arg(file_path)
+            .spawn()
+            .map_err(|e| format!("Arquivo salvo, mas não foi possível abrir o Finder: {}", e))?;
+        return Ok(());
+    }
+
+    #[allow(unreachable_code)]
+    Ok(())
+}
+
 fn parse_database_url(database_url: &str) -> Result<ParsedDatabaseUrl, String> {
     let parsed = Url::parse(database_url).map_err(|e| format!("DATABASE_URL inválida: {}", e))?;
     let database_name = parsed
@@ -520,6 +648,166 @@ pub async fn salvar_arquivo_temp(filename: String, bytes: Vec<u8>) -> Result<Str
 
     let path_str = file_path.to_string_lossy().to_string();
     info!("Arquivo temporário salvo com sucesso");
+    Ok(path_str)
+}
+
+/// Salva PDF da Ordem de Serviço em Documents/Ordens de Servico
+/// e tenta abrir o gerenciador de arquivos com o arquivo selecionado.
+#[tauri::command]
+#[instrument(skip_all, fields(bytes_len = bytes.len()))]
+pub async fn salvar_ordem_servico_pdf(bytes: Vec<u8>, empresa_nome: Option<String>) -> Result<String, String> {
+    debug!("Salvando ordem de serviço ({} bytes)", bytes.len());
+
+    let empresa = sanitize_filename_component(empresa_nome.as_deref().unwrap_or("Empresa"));
+    let empresa = if empresa.is_empty() {
+        "Empresa".to_string()
+    } else {
+        empresa
+    };
+
+    let created_at = Utc::now();
+    let file_name = format!(
+        "OrdemServico_{}_{}.pdf",
+        empresa,
+        created_at.format("%Y-%m-%d_%H-%M-%S")
+    );
+
+    let file_path = default_orders_directory()?.join(file_name);
+
+    fs::write(&file_path, &bytes).map_err(|e| {
+        error!("Erro ao salvar ordem de serviço: {}", e);
+        format!("Erro ao salvar ordem de serviço: {}", e)
+    })?;
+
+    if let Err(reveal_error) = reveal_file_in_manager(&file_path) {
+        error!("{}", reveal_error);
+        return Err(reveal_error);
+    }
+
+    let path_str = file_path.to_string_lossy().to_string();
+    info!("Ordem de serviço salva com sucesso em {}", path_str);
+    Ok(path_str)
+}
+
+/// Salva PDF do Orçamento em Documents/Orcamentos
+/// e tenta abrir o gerenciador de arquivos com o arquivo selecionado.
+#[tauri::command]
+#[instrument(skip_all, fields(bytes_len = bytes.len()))]
+pub async fn salvar_orcamento_pdf(bytes: Vec<u8>, empresa_nome: Option<String>) -> Result<String, String> {
+    debug!("Salvando orçamento ({} bytes)", bytes.len());
+
+    let empresa = sanitize_filename_component(empresa_nome.as_deref().unwrap_or("Cliente"));
+    let empresa = if empresa.is_empty() {
+        "Cliente".to_string()
+    } else {
+        empresa
+    };
+
+    let created_at = Utc::now();
+    let file_name = format!(
+        "Orcamento_{}_{}.pdf",
+        empresa,
+        created_at.format("%Y-%m-%d_%H-%M-%S")
+    );
+
+    let file_path = default_quotes_directory()?.join(file_name);
+
+    fs::write(&file_path, &bytes).map_err(|e| {
+        error!("Erro ao salvar orçamento: {}", e);
+        format!("Erro ao salvar orçamento: {}", e)
+    })?;
+
+    if let Err(reveal_error) = reveal_file_in_manager(&file_path) {
+        error!("{}", reveal_error);
+        return Err(reveal_error);
+    }
+
+    let path_str = file_path.to_string_lossy().to_string();
+    info!("Orçamento salvo com sucesso em {}", path_str);
+    Ok(path_str)
+}
+
+/// Salva imagem de equipamento em Documents/Imagens Equipamentos
+/// e tenta abrir o gerenciador de arquivos com o arquivo selecionado.
+#[tauri::command]
+#[instrument(skip_all, fields(bytes_len = bytes.len()))]
+pub async fn salvar_imagem_equipamento(
+    bytes: Vec<u8>,
+    file_name: Option<String>,
+    mime_type: Option<String>,
+) -> Result<String, String> {
+    debug!("Salvando imagem de equipamento ({} bytes)", bytes.len());
+
+    let base_name = sanitize_filename_component(file_name.as_deref().unwrap_or("imagem_equipamento"));
+    let base_name = if base_name.is_empty() {
+        "imagem_equipamento".to_string()
+    } else {
+        base_name
+    };
+    let extension = match mime_type.as_deref().unwrap_or("image/jpeg") {
+        "image/png" => "png",
+        "image/webp" => "webp",
+        _ => "jpg",
+    };
+
+    let created_at = Utc::now();
+    let file_name = format!(
+        "{}_{}.{}",
+        base_name,
+        created_at.format("%Y-%m-%d_%H-%M-%S"),
+        extension
+    );
+
+    let file_path = default_equipment_images_directory()?.join(file_name);
+    fs::write(&file_path, &bytes).map_err(|e| {
+        error!("Erro ao salvar imagem do equipamento: {}", e);
+        format!("Erro ao salvar imagem do equipamento: {}", e)
+    })?;
+
+    if let Err(reveal_error) = reveal_file_in_manager(&file_path) {
+        error!("{}", reveal_error);
+        return Err(reveal_error);
+    }
+
+    let path_str = file_path.to_string_lossy().to_string();
+    info!("Imagem de equipamento salva com sucesso em {}", path_str);
+    Ok(path_str)
+}
+
+/// Salva PDF de relatório de status em Documents/Relatorios de Status
+/// e tenta abrir o gerenciador de arquivos com o arquivo selecionado.
+#[tauri::command]
+#[instrument(skip_all, fields(bytes_len = bytes.len()))]
+pub async fn salvar_relatorio_status_pdf(bytes: Vec<u8>, empresa_nome: Option<String>) -> Result<String, String> {
+    debug!("Salvando relatório de status ({} bytes)", bytes.len());
+
+    let empresa = sanitize_filename_component(empresa_nome.as_deref().unwrap_or("Cliente"));
+    let empresa = if empresa.is_empty() {
+        "Cliente".to_string()
+    } else {
+        empresa
+    };
+
+    let created_at = Utc::now();
+    let file_name = format!(
+        "RelatorioStatus_{}_{}.pdf",
+        empresa,
+        created_at.format("%Y-%m-%d_%H-%M-%S")
+    );
+
+    let file_path = default_status_reports_directory()?.join(file_name);
+    fs::write(&file_path, &bytes).map_err(|e| {
+        error!("Erro ao salvar relatório de status: {}", e);
+        format!("Erro ao salvar relatório de status: {}", e)
+    })?;
+
+    if let Err(reveal_error) = reveal_file_in_manager(&file_path) {
+        error!("{}", reveal_error);
+        return Err(reveal_error);
+    }
+
+    let path_str = file_path.to_string_lossy().to_string();
+    info!("Relatório de status salvo com sucesso em {}", path_str);
     Ok(path_str)
 }
 

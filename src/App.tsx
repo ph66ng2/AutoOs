@@ -26,6 +26,7 @@ import Dashboard from "@/pages/Dashboard";
 import Equipamentos from "@/pages/Equipamentos";
 import Clientes from "@/pages/Clientes";
 import Insumos from "@/pages/Insumos";
+import Servicos from "@/pages/Servicos";
 import Configuracoes from "@/pages/Configuracoes";
 import Perfil from "@/pages/Perfil";
 
@@ -61,6 +62,7 @@ function App() {
             <Route path="/equipamentos" element={<Equipamentos />} />
             <Route path="/clientes" element={<Clientes />} />
             <Route path="/insumos" element={<Insumos />} />
+            <Route path="/servicos" element={<Servicos />} />
             <Route
               path="/configuracoes"
               element={

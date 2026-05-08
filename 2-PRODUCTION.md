@@ -29,7 +29,7 @@ Validar fluxo completo antes de colocar em produção.
 - PostgreSQL 15+ instalado
 - Ferramentas no PATH: psql, pg_dump, pg_restore
 
-### 1. PostgreSQL
+### 1. PostgreSQL no PC da Empresa
 
 ```powershell
 # Verificar serviço
@@ -45,6 +45,13 @@ GRANT ALL PRIVILEGES ON DATABASE autoos TO autoos_user;
 GRANT ALL ON SCHEMA public TO autoos_user;
 ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON TABLES TO autoos_user;
 ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON SEQUENCES TO autoos_user;
+\q
+```
+
+Validação imediata:
+
+```powershell
+psql -h localhost -p 5432 -U autoos_user -d autoos -c "SELECT current_database(), current_user;"
 ```
 
 ### 2. DATABASE_URL
@@ -58,6 +65,14 @@ ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON SEQUENCES TO autoos_user;
 )
 ```
 
+Feche e abra novamente o terminal/sessão do Windows após definir a variável.
+
+Validação da variável:
+
+```powershell
+[Environment]::GetEnvironmentVariable("DATABASE_URL","User")
+```
+
 ### 3. Instalar App
 
 1. Obter instalador gerado pela equipe
@@ -65,7 +80,22 @@ ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON SEQUENCES TO autoos_user;
 3. Abrir AutoOS
 4. Validar inicialização sem erro
 
-### 4. Validação Go-Live
+### 4. Segurança em Produção: Criar Perfis Operacionais
+
+No primeiro acesso do app no PC da empresa:
+
+1. Entre em `Configurações > Segurança`.
+2. Configure o **PIN de acesso sensível**.
+3. Crie os perfis reais da operação (ex.: `Tecnico`, `Gestor`).
+4. Associe permissões por perfil:
+   - `Tecnico`: operação diária (status, verificação, catálogo, estoque conforme política)
+   - `Gestor`: financeiro, exclusão, perfis, administração
+5. Faça teste de bloqueio:
+   - bloquear acesso sensível
+   - tentar ação protegida
+   - confirmar solicitação de PIN
+
+### 5. Validação Go-Live
 
 ```powershell
 # Fluxo mínimo
@@ -76,6 +106,15 @@ ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON SEQUENCES TO autoos_user;
 5. Fechar e abrir app
 6. Validar dados persistidos
 ```
+
+Checklist final (antes de liberar para uso real):
+
+- [ ] App abre sem erro de banco
+- [ ] Migrações aplicadas automaticamente
+- [ ] PIN configurado
+- [ ] Perfis criados e testados
+- [ ] Backup manual executado uma vez
+- [ ] Restore validado em base de homologação (não na base operacional)
 
 ---
 

@@ -112,6 +112,16 @@ pub struct ProdutoInput {
     pub atualizado_em: Option<String>,
 }
 
+/// Input para criar/atualizar serviço do catálogo.
+#[derive(Debug, Deserialize, Default)]
+#[serde(default)]
+pub struct ServicoCatalogoInput {
+    pub nome: String,
+    pub descricao: Option<String>,
+    pub preco_padrao: f64,
+    pub atualizado_em: Option<String>,
+}
+
 /// Input para registrar movimentação de estoque.
 #[derive(Debug, Deserialize)]
 pub struct MovimentacaoEstoqueInput {
@@ -208,6 +218,7 @@ pub struct EmailAttachmentInput {
 pub struct EmailSendInput {
     pub destinatario: String,
     pub email: String,
+    pub cc: Option<Vec<String>>,
     pub assunto: String,
     pub corpo: String,
     pub corpo_texto: Option<String>,
@@ -362,6 +373,18 @@ pub struct ProdutoRow {
     pub atualizado_em: Option<String>,
 }
 
+/// Serviço padrão retornado ao frontend para seleção na verificação técnica.
+#[derive(Debug, Serialize, FromRow)]
+pub struct ServicoCatalogoRow {
+    pub id: i32,
+    pub nome: String,
+    pub descricao: Option<String>,
+    pub preco_padrao: Option<f64>,
+    pub ativo: Option<bool>,
+    pub criado_em: Option<String>,
+    pub atualizado_em: Option<String>,
+}
+
 /// Verificação técnica completa retornada ao frontend.
 #[derive(Debug, Serialize, FromRow)]
 pub struct VerificacaoRow {
@@ -441,6 +464,11 @@ pub const PRODUTO_SELECT: &str = "
            fornecedor_principal, prazo_entrega, ativo,
            criado_em::TEXT as criado_em, atualizado_em::TEXT as atualizado_em
     FROM produtos";
+
+pub const SERVICO_CATALOGO_SELECT: &str = "
+    SELECT id, nome, descricao, preco_padrao::FLOAT8 as preco_padrao,
+           ativo, criado_em::TEXT as criado_em, atualizado_em::TEXT as atualizado_em
+    FROM servicos_catalogo";
 
 pub const VERIFICACAO_SELECT: &str = "
     SELECT id, equipamento_id, tecnico_nome,

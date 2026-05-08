@@ -95,6 +95,7 @@ async fn main() -> Result<()> {
         smtp::enviar_email(EmailSendInput {
             destinatario: "Cliente Integracao".to_string(),
             email: "cliente@test.local".to_string(),
+            cc: None,
             assunto: "P1 Communication Integration".to_string(),
             corpo: "Body from controlled SMTP integration".to_string(),
             corpo_texto: None,
