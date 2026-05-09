@@ -28,8 +28,19 @@ import type {
   Equipamento,
   Verificacao,
   ServicoNecessario,
-  PecaNecessaria,
 } from "@/types";
+
+/**
+ * Email da gerência que deve sempre receber cópia (CC) de toda comunicação
+ * automática enviada ao cliente, independentemente do técnico responsável.
+ */
+const CC_GERENCIA = "medeiros@bmitag.com.br";
+
+/** Frase padrão sobre extensão de prazo em caso de troca de peças. */
+const AVISO_TROCA_PECAS_TEXTO =
+  "Atenção: em caso de troca de peças, o prazo de execução do serviço pode ser estendido.";
+const AVISO_TROCA_PECAS_HTML =
+  "<strong>Atenção:</strong> em caso de troca de peças, o prazo de execução do serviço pode ser estendido.";
 
 function emailTecnicoPorNome(tecnicoNome?: string) {
   const normalizado = (tecnicoNome || "")
@@ -46,6 +57,46 @@ function extrairTecnicoInicialDeObservacoes(observacoes?: string | null) {
   if (!observacoes) return "";
   const match = observacoes.match(/^Técnico inicial:\s*(Ivan|Isaias|Isaías)\b/m);
   return match?.[1] || "";
+}
+
+/**
+ * Monta a lista de cópias (CC) de um email automático.
+ * - Sempre inclui {@link CC_GERENCIA}.
+ * - Inclui o email do técnico responsável quando conhecido.
+ * - Remove vazios e duplicados (case-insensitive).
+ */
+function montarCcs(emailTecnico?: string): string[] {
+  const candidatos = [CC_GERENCIA, emailTecnico].filter(
+    (email): email is string => !!email && email.trim().length > 0,
+  );
+  const vistos = new Set<string>();
+  const ccs: string[] = [];
+  for (const email of candidatos) {
+    const chave = email.trim().toLowerCase();
+    if (vistos.has(chave)) continue;
+    vistos.add(chave);
+    ccs.push(email.trim());
+  }
+  return ccs;
+}
+
+/**
+ * Frase para orientar o cliente sobre o canal mais ágil para tirar dúvidas.
+ * Quando o técnico responsável é conhecido, sugere contato direto com ele.
+ */
+function fraseContatoTecnicoTexto(emailTecnico?: string): string {
+  if (emailTecnico) {
+    return `Em caso de dúvidas, para uma resolução mais rápida, entre em contato diretamente com o técnico responsável: ${emailTecnico}.`;
+  }
+  return "Em caso de dúvidas, para uma resolução mais rápida, responda este email para falar diretamente com nossa equipe técnica.";
+}
+
+function fraseContatoTecnicoHtml(emailTecnico?: string): string {
+  if (emailTecnico) {
+    const escapedEmail = escapeHtml(emailTecnico);
+    return `Em caso de dúvidas, para uma resolução mais rápida, entre em contato diretamente com o técnico responsável: <a href="mailto:${escapedEmail}">${escapedEmail}</a>.`;
+  }
+  return "Em caso de dúvidas, para uma resolução mais rápida, responda este email para falar diretamente com nossa equipe técnica.";
 }
 
 async function registrarComunicacaoSegura(comunicacao: Omit<Comunicacao, "id">) {
@@ -94,6 +145,9 @@ export const EmailService = {
     }
 
     const assunto = `Ordem de Entrada - ${equipamento.marca} ${equipamento.modelo} (SN: ${equipamento.serial_number})`;
+    const tecnicoNome = extrairTecnicoInicialDeObservacoes(equipamento.observacoes);
+    const emailTecnico = emailTecnicoPorNome(tecnicoNome);
+    const cc = montarCcs(emailTecnico);
     const corpoTexto = `Prezado(a) ${equipamento.cliente_nome || "cliente"},
 
 Registramos a entrada do seu equipamento em nosso laboratório técnico.
@@ -103,6 +157,10 @@ Serial Number: ${equipamento.serial_number}
 Data de Entrada: ${formatarData(equipamento.data_entrada)}
 
 A Ordem de Entrada segue em anexo.
+
+${AVISO_TROCA_PECAS_TEXTO}
+
+${fraseContatoTecnicoTexto(emailTecnico)}
 
 Atenciosamente,
 Equipe Técnica BMITAG`;
@@ -117,6 +175,8 @@ Equipe Técnica BMITAG`;
           <strong>Data de Entrada:</strong> ${escapeHtml(formatarData(equipamento.data_entrada))}
         </p>
         <p>A Ordem de Entrada segue em anexo.</p>
+        <p>${AVISO_TROCA_PECAS_HTML}</p>
+        <p>${fraseContatoTecnicoHtml(emailTecnico)}</p>
         <p>Atenciosamente,<br />Equipe Técnica BMITAG</p>
       </div>
     `;
@@ -139,6 +199,7 @@ Equipe Técnica BMITAG`;
     const emailData: EmailSendRequest = {
       destinatario: equipamento.cliente_nome || "",
       email: equipamento.cliente_email,
+      cc,
       assunto,
       corpo: corpoTexto,
       corpo_texto: corpoTexto,
@@ -188,11 +249,11 @@ Equipe Técnica BMITAG`;
       return { sucesso: false, erro: "Cliente não possui email cadastrado" };
     }
 
-    const corpoTexto = gerarCorpoOrcamentoTexto(equipamento, verificacao);
-    const corpoHtml = gerarCorpoOrcamentoHtml(equipamento, verificacao);
     const assunto = `Orçamento - ${equipamento.marca} ${equipamento.modelo} (SN: ${equipamento.serial_number})`;
     const emailTecnico = emailTecnicoPorNome(verificacao.tecnico_nome);
-    const cc = emailTecnico ? [emailTecnico] : undefined;
+    const cc = montarCcs(emailTecnico);
+    const corpoTexto = gerarCorpoOrcamentoTexto(equipamento, verificacao, emailTecnico);
+    const corpoHtml = gerarCorpoOrcamentoHtml(equipamento, verificacao, emailTecnico);
 
     let anexos: EmailAttachment[] | undefined;
     let limparAnexoTemp: (() => Promise<void>) | undefined;
@@ -267,15 +328,15 @@ Equipe Técnica BMITAG`;
       return { sucesso: false, erro: "Cliente não possui email cadastrado" };
     }
 
-    const corpoTexto = gerarCorpoEquipamentoProntoTexto(equipamento);
-    const corpoHtml = gerarCorpoEquipamentoProntoHtml(equipamento);
     const assunto = `Seu equipamento está pronto! - ${equipamento.marca} ${equipamento.modelo}`;
     const verificacao = equipamento.id
       ? await db.buscarVerificacao(equipamento.id).catch(() => null)
       : null;
     const tecnicoNome = verificacao?.tecnico_nome || extrairTecnicoInicialDeObservacoes(equipamento.observacoes);
     const emailTecnico = emailTecnicoPorNome(tecnicoNome);
-    const cc = emailTecnico ? [emailTecnico] : undefined;
+    const cc = montarCcs(emailTecnico);
+    const corpoTexto = gerarCorpoEquipamentoProntoTexto(equipamento, emailTecnico);
+    const corpoHtml = gerarCorpoEquipamentoProntoHtml(equipamento, emailTecnico);
 
     const emailData: EmailSendRequest = {
       destinatario: equipamento.cliente_nome || "",
@@ -354,21 +415,26 @@ function escapeHtml(value: string) {
 }
 
 /**
- * Gera corpo de email de orçamento com todos os detalhes da verificação.
- * Inclui: dados do equipamento, diagnóstico, serviços, peças, valores, prazo.
+ * Gera corpo de email de orçamento com os detalhes da verificação técnica.
+ * O orçamento atual é composto exclusivamente por uma lista de serviços
+ * (cada um com descrição e valor); o total é a soma desses serviços.
  * Conecta-se a: EmailService.enviarOrcamento()
  */
-function gerarCorpoOrcamentoTexto(equipamento: Equipamento, verificacao: Verificacao): string {
+function gerarCorpoOrcamentoTexto(
+  equipamento: Equipamento,
+  verificacao: Verificacao,
+  emailTecnico?: string,
+): string {
   const servicos = parseJsonList<ServicoNecessario>(verificacao.servicos_necessarios);
-  const pecas = parseJsonList<PecaNecessaria>(verificacao.pecas_necessarias);
+  const total = verificacao.custo_total ?? servicos.reduce((acc, s) => acc + (Number(s.valor) || 0), 0);
 
-  let detalhes = "";
-  if (servicos.length > 0) {
-    detalhes += "\nSERVIÇOS:\n" + servicos.map(s => `  • ${s.descricao}: R$ ${s.valor.toFixed(2)}`).join("\n");
-  }
-  if (pecas.length > 0) {
-    detalhes += "\nPEÇAS:\n" + pecas.map(p => `  • ${p.nome} (x${p.quantidade}): R$ ${p.valorTotal.toFixed(2)}`).join("\n");
-  }
+  const linhasServicos = servicos.length > 0
+    ? servicos.map((s) => `  • ${s.descricao}: ${formatarMoeda(s.valor)}`).join("\n")
+    : "  • Nenhum serviço registrado";
+
+  const prazoLinha = equipamento.prazo_aprovacao
+    ? `\nPRAZO PARA APROVAÇÃO: ${formatarData(equipamento.prazo_aprovacao)}`
+    : "";
 
   return `Prezado(a) ${equipamento.cliente_nome},
 
@@ -383,34 +449,42 @@ Data de Entrada: ${formatarData(equipamento.data_entrada)}
 DIAGNÓSTICO:
 ━━━━━━━━━━━━━━━━━━━━━━━━━━
 ${verificacao.diagnostico || "Sem diagnóstico registrado"}
-${detalhes}
 
-ORÇAMENTO:
+SERVIÇOS:
 ━━━━━━━━━━━━━━━━━━━━━━━━━━
-Mão de Obra: ${formatarMoeda(verificacao.custo_estimado_mao_obra)}
-Peças: ${formatarMoeda(verificacao.custo_estimado_pecas)}
+${linhasServicos}
 ─────────────────────────────
-TOTAL: ${formatarMoeda(verificacao.custo_total)}
+TOTAL: ${formatarMoeda(total)}${prazoLinha}
 
-Tempo Estimado: ${verificacao.tempo_estimado || 0}h
-${equipamento.prazo_aprovacao ? `PRAZO PARA APROVAÇÃO: ${formatarData(equipamento.prazo_aprovacao)}` : ""}
+${AVISO_TROCA_PECAS_TEXTO}
 
 Para aprovar este orçamento, responda este email com "APROVADO" ou entre em contato conosco.
+
+${fraseContatoTecnicoTexto(emailTecnico)}
 
 Atenciosamente,
 Equipe Técnica BMITAG`.trim();
 }
 
-function gerarCorpoOrcamentoHtml(equipamento: Equipamento, verificacao: Verificacao): string {
+function gerarCorpoOrcamentoHtml(
+  equipamento: Equipamento,
+  verificacao: Verificacao,
+  emailTecnico?: string,
+): string {
   const servicos = parseJsonList<ServicoNecessario>(verificacao.servicos_necessarios);
-  const pecas = parseJsonList<PecaNecessaria>(verificacao.pecas_necessarias);
+  const total = verificacao.custo_total ?? servicos.reduce((acc, s) => acc + (Number(s.valor) || 0), 0);
 
-  const listaServicos = servicos.length > 0
-    ? `<h3 style="margin:24px 0 8px;font-size:16px;">Serviços</h3><ul style="margin:0 0 16px 20px;padding:0;">${servicos.map((servico) => `<li style="margin-bottom:6px;">${escapeHtml(servico.descricao)}: ${escapeHtml(formatarMoeda(servico.valor))}</li>`).join("")}</ul>`
-    : "";
+  const linhasServicosHtml = servicos.length > 0
+    ? servicos
+        .map(
+          (servico) =>
+            `<tr><td style="padding:6px 0;">${escapeHtml(servico.descricao)}</td><td style="padding:6px 0;text-align:right;">${escapeHtml(formatarMoeda(servico.valor))}</td></tr>`,
+        )
+        .join("")
+    : `<tr><td style="padding:6px 0;color:#6b7280;" colspan="2">Nenhum serviço registrado.</td></tr>`;
 
-  const listaPecas = pecas.length > 0
-    ? `<h3 style="margin:24px 0 8px;font-size:16px;">Peças</h3><ul style="margin:0 0 16px 20px;padding:0;">${pecas.map((peca) => `<li style="margin-bottom:6px;">${escapeHtml(peca.nome)} (x${peca.quantidade}): ${escapeHtml(formatarMoeda(peca.valorTotal))}</li>`).join("")}</ul>`
+  const linhaPrazoHtml = equipamento.prazo_aprovacao
+    ? `<tr><td style="padding:6px 0;font-weight:600;">Prazo para aprovação</td><td style="padding:6px 0;text-align:right;">${escapeHtml(formatarData(equipamento.prazo_aprovacao))}</td></tr>`
     : "";
 
   return `
@@ -427,19 +501,17 @@ function gerarCorpoOrcamentoHtml(equipamento: Equipamento, verificacao: Verifica
       </table>
       <h2 style="margin:24px 0 8px;font-size:18px;">Diagnóstico</h2>
       <p style="white-space:pre-line;">${escapeHtml(verificacao.diagnostico || "Sem diagnóstico registrado")}</p>
-      ${listaServicos}
-      ${listaPecas}
-      <h2 style="margin:24px 0 8px;font-size:18px;">Orçamento</h2>
+      <h2 style="margin:24px 0 8px;font-size:18px;">Serviços</h2>
       <table style="width:100%;border-collapse:collapse;margin-bottom:16px;">
         <tbody>
-          <tr><td style="padding:6px 0;font-weight:600;">Mão de obra</td><td style="padding:6px 0;">${escapeHtml(formatarMoeda(verificacao.custo_estimado_mao_obra))}</td></tr>
-          <tr><td style="padding:6px 0;font-weight:600;">Peças</td><td style="padding:6px 0;">${escapeHtml(formatarMoeda(verificacao.custo_estimado_pecas))}</td></tr>
-          <tr><td style="padding:12px 0 6px;font-weight:700;border-top:1px solid #d1d5db;">Total</td><td style="padding:12px 0 6px;font-weight:700;border-top:1px solid #d1d5db;">${escapeHtml(formatarMoeda(verificacao.custo_total))}</td></tr>
-          <tr><td style="padding:6px 0;font-weight:600;">Tempo estimado</td><td style="padding:6px 0;">${escapeHtml(`${verificacao.tempo_estimado || 0}h`)}</td></tr>
-          ${equipamento.prazo_aprovacao ? `<tr><td style="padding:6px 0;font-weight:600;">Prazo para aprovação</td><td style="padding:6px 0;">${escapeHtml(formatarData(equipamento.prazo_aprovacao))}</td></tr>` : ""}
+          ${linhasServicosHtml}
+          <tr><td style="padding:12px 0 6px;font-weight:700;border-top:1px solid #d1d5db;">Total</td><td style="padding:12px 0 6px;font-weight:700;border-top:1px solid #d1d5db;text-align:right;">${escapeHtml(formatarMoeda(total))}</td></tr>
+          ${linhaPrazoHtml}
         </tbody>
       </table>
+      <p>${AVISO_TROCA_PECAS_HTML}</p>
       <p>Para aprovar este orçamento, responda este email com <strong>APROVADO</strong> ou entre em contato conosco.</p>
+      <p>${fraseContatoTecnicoHtml(emailTecnico)}</p>
       <p>Atenciosamente,<br />Equipe Técnica BMITAG</p>
     </div>
   `.trim();
@@ -450,7 +522,7 @@ function gerarCorpoOrcamentoHtml(equipamento: Equipamento, verificacao: Verifica
  * Inclui: dados do equipamento, horário, valor a pagar.
  * Conecta-se a: EmailService.enviarEquipamentoPronto()
  */
-function gerarCorpoEquipamentoProntoTexto(equipamento: Equipamento): string {
+function gerarCorpoEquipamentoProntoTexto(equipamento: Equipamento, emailTecnico?: string): string {
   const valor = equipamento.valor_final || equipamento.valor_orcamento;
   return `Prezado(a) ${equipamento.cliente_nome},
 
@@ -468,8 +540,10 @@ PARA RETIRADA:
 Horário: Segunda a Sexta, 8h às 18h
          Sábado, 8h às 12h
 
-Por favor, traga um documento com foto para retirada.
+Por favor, traga a OS do seu equipamento para retirada.
 ${valor ? `\nValor a pagar: ${formatarMoeda(valor)}` : ""}
+
+${fraseContatoTecnicoTexto(emailTecnico)}
 
 Aguardamos você!
 
@@ -477,7 +551,7 @@ Atenciosamente,
 Equipe Técnica BMITAG`.trim();
 }
 
-function gerarCorpoEquipamentoProntoHtml(equipamento: Equipamento): string {
+function gerarCorpoEquipamentoProntoHtml(equipamento: Equipamento, emailTecnico?: string): string {
   const valor = equipamento.valor_final || equipamento.valor_orcamento;
 
   return `
@@ -494,6 +568,7 @@ function gerarCorpoEquipamentoProntoHtml(equipamento: Equipamento): string {
       </table>
       <p>Horário de retirada: Segunda a Sexta, 8h às 18h, e Sábado, 8h às 12h.</p>
       <p>Por favor, traga um documento com foto para retirada.</p>
+      <p>${fraseContatoTecnicoHtml(emailTecnico)}</p>
       <p>Atenciosamente,<br />Equipe Técnica BMITAG</p>
     </div>
   `.trim();

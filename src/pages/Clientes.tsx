@@ -44,14 +44,6 @@ import { Input } from "@/components/ui/input";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogFooter,
-  DialogClose,
-} from "@/components/ui/dialog";
-import {
   Table,
   TableBody,
   TableCell,
@@ -70,42 +62,19 @@ import {
 import { useClientes } from "@/hooks/useClientes";
 import { db } from "@/lib/db";
 import {
-  STATUS_LABELS,
-  STATUS_COLORS,
   SENSITIVE_PERMISSIONS,
   type Cliente,
   type Equipamento,
-  type StatusEquipamento,
 } from "@/types";
 import { useSensitiveAccess } from "@/hooks/useSensitiveAccess";
-import { ClienteFormularioCampos } from "@/components/clientes/ClienteFormularioCampos";
+import { nomeExibicaoCliente, documentoExibicaoCliente } from "@/components/clientes/cliente-display-utils";
+import { ClientesStatusBadge } from "@/pages/clientes/ClientesStatusBadge";
+import {
+  ClientesDeleteDialog,
+  ClientesEquipamentosModal,
+  ClientesFormDialog,
+} from "@/pages/clientes/ClientesDialogs";
 import { ActionPriorityRow } from "@/components/ui/action-priority-row";
-
-/** Badge colorido de status de equipamento. Reutilizado na expansão de equipamentos do cliente */
-function StatusBadge({ status }: { status: string }) {
-  const label = STATUS_LABELS[status as StatusEquipamento] || status;
-  const color = STATUS_COLORS[status as StatusEquipamento] || "bg-gray-100 text-gray-800";
-  return (
-    <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${color}`}>
-      {label}
-    </span>
-  );
-}
-
-/** Retorna nome de exibição do cliente */
-function nomeExibicao(c: Cliente): string {
-  if (c.tipo_pessoa === "PJ") {
-    return c.nome_fantasia || c.razao_social || c.nome || "—";
-  }
-  return c.nome || "—";
-}
-
-/** Retorna o documento formatado para exibição */
-function documentoExibicao(c: Cliente): string {
-  const doc = c.documento || c.cpf_cnpj;
-  if (!doc) return "—";
-  return formatarDocumento(doc);
-}
 
 export default function Clientes() {
   const LIMITE_EQUIPAMENTOS_EXPANDIDOS = 5;
@@ -197,7 +166,7 @@ export default function Clientes() {
     try {
       const cliente = clientes.find(c => c.id === clienteId);
       if (cliente) {
-        const nome = nomeExibicao(cliente);
+        const nome = nomeExibicaoCliente(cliente);
         const todos = await db.listarEquipamentos(nome);
         const doCliente = todos.filter(eq => eq.cliente_nome === nome || eq.cliente_nome === cliente.nome);
         setEquipamentosCliente(doCliente);
@@ -426,13 +395,13 @@ export default function Clientes() {
                         </TableCell>
                         <TableCell className="font-medium">
                           <div>
-                            <p>{nomeExibicao(c)}</p>
+                            <p>{nomeExibicaoCliente(c)}</p>
                             {c.tipo_pessoa === "PJ" && c.razao_social && c.nome_fantasia && (
                               <p className="text-xs text-muted-foreground">{c.razao_social}</p>
                             )}
                           </div>
                         </TableCell>
-                        <TableCell className="text-sm font-mono">{documentoExibicao(c)}</TableCell>
+                        <TableCell className="text-sm font-mono">{documentoExibicaoCliente(c)}</TableCell>
                         <TableCell>
                           <div className="flex items-center gap-1">
                             <Phone className="h-3 w-3 text-muted-foreground" />
@@ -513,7 +482,7 @@ export default function Clientes() {
                                         </div>
                                       </div>
                                       <div className="flex items-center gap-3">
-                                        <StatusBadge status={eq.status} />
+                                        <ClientesStatusBadge status={eq.status} />
                                         <span className="text-xs text-muted-foreground">
                                           {eq.data_entrada ? new Date(eq.data_entrada).toLocaleDateString("pt-BR") : ""}
                                         </span>
@@ -547,78 +516,32 @@ export default function Clientes() {
         </CardContent>
       </Card>
 
-      {/* Dialog Criar/Editar */}
-      <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-        <DialogContent className="sm:max-w-2xl max-h-[85vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>{editando ? "Editar Cliente" : "Novo Cliente"}</DialogTitle>
-          </DialogHeader>
-          <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-5">
-            <ClienteFormularioCampos
-              form={form}
-              tipoPessoa={tipoPessoa}
-              buscarCep={buscarCep}
-              buscandoCep={buscandoCep}
-            />
+      <ClientesFormDialog
+        open={dialogOpen}
+        onOpenChange={setDialogOpen}
+        editando={editando}
+        form={form}
+        tipoPessoa={tipoPessoa}
+        buscarCep={buscarCep}
+        buscandoCep={buscandoCep}
+        salvando={salvando}
+        onSubmit={onSubmit}
+      />
 
-            <DialogFooter>
-              <DialogClose asChild><Button variant="outline" type="button">Cancelar</Button></DialogClose>
-              <Button type="submit" disabled={salvando}>
-                {salvando ? "Salvando..." : editando ? "Salvar" : "Cadastrar"}
-              </Button>
-            </DialogFooter>
-          </form>
-        </DialogContent>
-      </Dialog>
+      <ClientesDeleteDialog
+        open={deleteDialogOpen}
+        onOpenChange={setDeleteDialogOpen}
+        deletando={deletando}
+        salvando={salvando}
+        onDelete={onDelete}
+      />
 
-      {/* Dialog Exclusão */}
-      <Dialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader><DialogTitle>Confirmar Exclusão</DialogTitle></DialogHeader>
-          <p className="text-muted-foreground">Excluir cliente <strong>{deletando ? nomeExibicao(deletando) : ""}</strong>?</p>
-          <p className="text-sm text-red-500">Esta ação não pode ser desfeita.</p>
-          <DialogFooter>
-            <DialogClose asChild><Button variant="outline">Cancelar</Button></DialogClose>
-            <Button variant="destructive" onClick={onDelete} disabled={salvando}>{salvando ? "Excluindo..." : "Excluir"}</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      <Dialog open={modalEquipamentosOpen} onOpenChange={setModalEquipamentosOpen}>
-        <DialogContent className="sm:max-w-3xl max-h-[80vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>
-              Todos os equipamentos - {clienteEquipamentosSelecionado ? nomeExibicao(clienteEquipamentosSelecionado) : "Cliente"}
-            </DialogTitle>
-          </DialogHeader>
-          {equipamentosCliente.length === 0 ? (
-            <div className="text-sm text-muted-foreground">Nenhum equipamento vinculado.</div>
-          ) : (
-            <div className="space-y-2">
-              {equipamentosCliente.map((eq) => (
-                <div key={eq.id} className="flex items-center justify-between rounded border p-2">
-                  <div className="flex items-center gap-3">
-                    <Printer className="h-4 w-4 text-muted-foreground" />
-                    <div>
-                      <p className="text-sm font-medium">{eq.marca} {eq.modelo}</p>
-                      <p className="text-xs text-muted-foreground font-mono">{eq.serial_number}</p>
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-3">
-                    <StatusBadge status={eq.status} />
-                    <span className="text-xs text-muted-foreground">
-                      {eq.data_entrada ? new Date(eq.data_entrada).toLocaleDateString("pt-BR") : ""}
-                    </span>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-          <DialogFooter>
-            <DialogClose asChild><Button variant="outline">Fechar</Button></DialogClose>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <ClientesEquipamentosModal
+        open={modalEquipamentosOpen}
+        onOpenChange={setModalEquipamentosOpen}
+        cliente={clienteEquipamentosSelecionado}
+        equipamentos={equipamentosCliente}
+      />
     </div>
   );
 }

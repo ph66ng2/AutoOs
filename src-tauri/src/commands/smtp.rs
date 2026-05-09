@@ -22,7 +22,17 @@ use lettre::{
 use std::env;
 use std::fs;
 use std::path::{Component, Path, PathBuf};
+use std::time::Duration;
 use tracing::{debug, error, info, instrument, warn};
+
+/// Timeout para conexão e envio SMTP. Sem timeout o cliente pode ficar
+/// pendurado indefinidamente em caso de host/porta incorretos ou servidor
+/// que não responde (ex.: STARTTLS contra porta de SMTPS implícito).
+const SMTP_TIMEOUT: Duration = Duration::from_secs(30);
+
+/// Porta padrão de SMTPS implícito (TLS desde o handshake).
+/// Diferente de 587 (STARTTLS), que conecta em texto plano e faz upgrade.
+const SMTPS_IMPLICIT_PORT: u16 = 465;
 
 const KEYRING_SERVICE: &str = "autoos";
 const KEYRING_USER: &str = "smtp_config";
@@ -358,22 +368,51 @@ pub async fn enviar_email(input: EmailSendInput) -> Result<bool, String> {
     // Configurar transporte SMTP
     let creds = Credentials::new(config.username.clone(), config.password.clone());
 
-    let mailer = if config.use_tls {
-        AsyncSmtpTransport::<Tokio1Executor>::starttls_relay(&config.host)
+    let mailer = if !config.use_tls {
+        info!(
+            "Configurando SMTP sem TLS (host={}, porta={})",
+            config.host, config.port
+        );
+        AsyncSmtpTransport::<Tokio1Executor>::builder_dangerous(&config.host)
+            .credentials(creds)
+            .port(config.port)
+            .timeout(Some(SMTP_TIMEOUT))
+            .build()
+    } else if config.port == SMTPS_IMPLICIT_PORT {
+        // SMTPS implícito (TLS desde o handshake). Usar `relay()` em vez de
+        // `starttls_relay()`. Caso contrário a conexão fica pendurada
+        // indefinidamente, pois o servidor espera TLS antes de qualquer
+        // comando SMTP em texto.
+        info!(
+            "Configurando SMTPS implícito (host={}, porta={})",
+            config.host, config.port
+        );
+        AsyncSmtpTransport::<Tokio1Executor>::relay(&config.host)
             .map_err(|e| {
-                error!("Erro ao configurar SMTP TLS: {}", e);
+                error!("Erro ao configurar SMTPS implícito: {}", e);
                 e.to_string()
             })?
             .credentials(creds)
             .port(config.port)
+            .timeout(Some(SMTP_TIMEOUT))
             .build()
     } else {
-        AsyncSmtpTransport::<Tokio1Executor>::builder_dangerous(&config.host)
+        info!(
+            "Configurando SMTP STARTTLS (host={}, porta={})",
+            config.host, config.port
+        );
+        AsyncSmtpTransport::<Tokio1Executor>::starttls_relay(&config.host)
+            .map_err(|e| {
+                error!("Erro ao configurar SMTP STARTTLS: {}", e);
+                e.to_string()
+            })?
             .credentials(creds)
             .port(config.port)
+            .timeout(Some(SMTP_TIMEOUT))
             .build()
     };
 
+    debug!("Conectando ao servidor SMTP...");
     // Enviar
     mailer.send(email).await.map_err(|e| {
         error!("Erro ao enviar email: {}", e);

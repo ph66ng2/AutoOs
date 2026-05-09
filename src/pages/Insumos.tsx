@@ -27,27 +27,16 @@ import {
   Edit,
   Trash2,
   ArrowUpCircle,
-  ArrowDownCircle,
   Filter,
   RefreshCw,
   AlertTriangle,
 } from "lucide-react";
-import { useForm, Controller } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
+import { useForm } from "react-hook-form";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogFooter,
-  DialogClose,
-} from "@/components/ui/dialog";
 import {
   Select,
   SelectContent,
@@ -63,22 +52,22 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { produtoSchema, movimentacaoSchema } from "@/lib/validations";
+import {
+  produtoSchema,
+  movimentacaoSchema,
+  type MovimentacaoFormData,
+  type ProdutoFormData,
+} from "@/lib/validations";
 import { useInsumos } from "@/hooks/useInsumos";
 import { useSensitiveAccess } from "@/hooks/useSensitiveAccess";
-import { SENSITIVE_PERMISSIONS } from "@/types";
+import { SENSITIVE_PERMISSIONS, type Produto } from "@/types";
 import { ActionPriorityRow } from "@/components/ui/action-priority-row";
-
-const CATEGORIA_OPTIONS = [
-  { value: "TODOS", label: "Todas as Categorias" },
-  { value: "TONER", label: "Toner" },
-  { value: "CARTUCHO", label: "Cartucho" },
-  { value: "CILINDRO", label: "Cilindro" },
-  { value: "FUSOR", label: "Fusor" },
-  { value: "ROLO", label: "Rolo" },
-  { value: "PEÇA", label: "Peça" },
-  { value: "OUTRO", label: "Outro" },
-];
+import { CATEGORIA_OPTIONS } from "@/pages/insumos/insumos-page-constants";
+import {
+  InsumosDeleteDialog,
+  InsumosMovimentacaoDialog,
+  InsumosProdutoDialog,
+} from "@/pages/insumos/InsumosDialogs";
 
 export default function Insumos() {
   const [busca, setBusca] = useState("");
@@ -87,9 +76,9 @@ export default function Insumos() {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [movDialogOpen, setMovDialogOpen] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
-  const [editando, setEditando] = useState<any>(null);
-  const [movimentando, setMovimentando] = useState<any>(null);
-  const [deletando, setDeletando] = useState<any>(null);
+  const [editando, setEditando] = useState<Produto | null>(null);
+  const [movimentando, setMovimentando] = useState<Produto | null>(null);
+  const [deletando, setDeletando] = useState<Produto | null>(null);
   const [salvando, setSalvando] = useState(false);
 
   const {
@@ -108,7 +97,7 @@ export default function Insumos() {
   });
   const { ensureSensitiveAccess } = useSensitiveAccess();
 
-  const form = useForm({
+  const form = useForm<ProdutoFormData>({
     resolver: zodResolver(produtoSchema),
     defaultValues: {
       nome: "",
@@ -123,7 +112,7 @@ export default function Insumos() {
     },
   });
 
-  const movForm = useForm({
+  const movForm = useForm<MovimentacaoFormData>({
     resolver: zodResolver(movimentacaoSchema),
     defaultValues: {
       tipo: "ENTRADA" as "ENTRADA" | "SAIDA",
@@ -156,7 +145,7 @@ export default function Insumos() {
     setDialogOpen(true);
   }
 
-  async function abrirEditar(p: any) {
+  async function abrirEditar(p: Produto) {
     const liberado = await ensureSensitiveAccess({
       title: "Editar insumo",
       description: "Informe o PIN para alterar preços e parâmetros de estoque deste insumo.",
@@ -179,7 +168,7 @@ export default function Insumos() {
     setDialogOpen(true);
   }
 
-  async function abrirMovimentacao(p: any) {
+  async function abrirMovimentacao(p: Produto) {
     const liberado = await ensureSensitiveAccess({
       title: "Movimentar estoque",
       description: "Informe o PIN para registrar entradas e saídas de estoque.",
@@ -192,7 +181,7 @@ export default function Insumos() {
     setMovDialogOpen(true);
   }
 
-  async function onSubmit(data: any) {
+  async function onSubmit(data: ProdutoFormData) {
     setSalvando(true);
     try {
       const payload = {
@@ -208,7 +197,7 @@ export default function Insumos() {
         atualizado_em: editando?.atualizado_em,
       };
       if (editando) {
-        const resultado = await atualizar(editando.id, payload);
+        const resultado = await atualizar(editando.id!, payload);
         if (!resultado.sucesso) {
           throw new Error(resultado.erro || "Não foi possível salvar o insumo.");
         }
@@ -227,12 +216,12 @@ export default function Insumos() {
     }
   }
 
-  async function onMovSubmit(data: any) {
+  async function onMovSubmit(data: MovimentacaoFormData) {
     if (!movimentando) return;
     setSalvando(true);
     try {
       const resultado = await registrarMovimentacao(
-        movimentando.id,
+        movimentando.id!,
         data.tipo,
         Number(data.quantidade),
         data.origem,
@@ -254,7 +243,7 @@ export default function Insumos() {
     if (!deletando) return;
     setSalvando(true);
     try {
-      await deletar(deletando.id);
+      await deletar(deletando.id!);
       setDeleteDialogOpen(false);
       setDeletando(null);
     } catch (err) {
@@ -264,7 +253,7 @@ export default function Insumos() {
     }
   }
 
-  async function solicitarExclusao(produto: any) {
+  async function solicitarExclusao(produto: Produto) {
     const liberado = await ensureSensitiveAccess({
       title: "Excluir insumo",
       description: "Informe o PIN para excluir um insumo do estoque.",
@@ -452,273 +441,29 @@ export default function Insumos() {
         </CardContent>
       </Card>
 
-      {/* Dialog Criar/Editar Produto */}
-      <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-        <DialogContent className="sm:max-w-lg max-h-[85vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>
-              {editando ? "Editar Insumo" : "Novo Insumo"}
-            </DialogTitle>
-          </DialogHeader>
-          <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label>Nome *</Label>
-                <Input {...form.register("nome")} placeholder="Toner HP 26A" />
-                {form.formState.errors.nome && (
-                  <p className="text-xs text-red-500">
-                    {form.formState.errors.nome.message}
-                  </p>
-                )}
-              </div>
-              <div className="space-y-2">
-                <Label>Código</Label>
-                <Input {...form.register("codigo")} placeholder="SKU-001" />
-              </div>
-            </div>
-
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label>Categoria *</Label>
-                <Controller
-                  control={form.control}
-                  name="categoria"
-                  render={({ field }) => (
-                    <Select value={field.value} onValueChange={field.onChange}>
-                      <SelectTrigger>
-                        <SelectValue placeholder="Selecione..." />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {CATEGORIA_OPTIONS.filter((c) => c.value !== "TODOS").map(
-                          (c) => (
-                            <SelectItem key={c.value} value={c.value}>
-                              {c.label}
-                            </SelectItem>
-                          )
-                        )}
-                      </SelectContent>
-                    </Select>
-                  )}
-                />
-                {form.formState.errors.categoria && (
-                  <p className="text-xs text-red-500">
-                    {form.formState.errors.categoria.message}
-                  </p>
-                )}
-              </div>
-            </div>
-
-            <div className="space-y-2">
-              <Label>Descrição</Label>
-              <Textarea
-                {...form.register("descricao")}
-                placeholder="Descrição do produto..."
-                rows={2}
-              />
-            </div>
-
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label>Qtd. Estoque *</Label>
-                <Input
-                  type="number"
-                  {...form.register("quantidade_estoque", { valueAsNumber: true })}
-                  min={0}
-                />
-                {form.formState.errors.quantidade_estoque && (
-                  <p className="text-xs text-red-500">
-                    {form.formState.errors.quantidade_estoque.message}
-                  </p>
-                )}
-              </div>
-              <div className="space-y-2">
-                <Label>Qtd. Mínima *</Label>
-                <Input
-                  type="number"
-                  {...form.register("quantidade_minima", { valueAsNumber: true })}
-                  min={0}
-                />
-              </div>
-            </div>
-
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label>Preço Custo</Label>
-                <Input
-                  type="number"
-                  step="0.01"
-                  {...form.register("preco_custo", { valueAsNumber: true })}
-                  min={0}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label>Preço Venda</Label>
-                <Input
-                  type="number"
-                  step="0.01"
-                  {...form.register("preco_venda", { valueAsNumber: true })}
-                  min={0}
-                />
-              </div>
-            </div>
-
-            <div className="space-y-2">
-              <Label>Localização</Label>
-              <Input
-                {...form.register("localizacao")}
-                placeholder="Prateleira A, Gaveta 3..."
-              />
-            </div>
-
-            <DialogFooter>
-              <DialogClose asChild>
-                <Button variant="outline" type="button">
-                  Cancelar
-                </Button>
-              </DialogClose>
-              <Button type="submit" disabled={salvando}>
-                {salvando ? "Salvando..." : editando ? "Salvar" : "Cadastrar"}
-              </Button>
-            </DialogFooter>
-          </form>
-        </DialogContent>
-      </Dialog>
-
-      {/* Dialog Movimentação */}
-      <Dialog open={movDialogOpen} onOpenChange={setMovDialogOpen}>
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle>Movimentação de Estoque</DialogTitle>
-          </DialogHeader>
-          {movimentando && (
-            <div className="bg-accent/50 p-3 rounded-lg mb-2">
-              <p className="font-medium">{movimentando.nome}</p>
-              <p className="text-sm text-muted-foreground">
-                Estoque atual:{" "}
-                <span className="font-bold">{movimentando.quantidade_estoque}</span>{" "}
-                un.
-              </p>
-            </div>
-          )}
-          <form onSubmit={movForm.handleSubmit(onMovSubmit)} className="space-y-4">
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label>Tipo *</Label>
-                <Controller
-                  control={movForm.control}
-                  name="tipo"
-                  render={({ field }) => (
-                    <Select value={field.value} onValueChange={field.onChange}>
-                      <SelectTrigger>
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="ENTRADA">
-                          <div className="flex items-center gap-2">
-                            <ArrowUpCircle className="h-4 w-4 text-green-600" />
-                            Entrada
-                          </div>
-                        </SelectItem>
-                        <SelectItem value="SAIDA">
-                          <div className="flex items-center gap-2">
-                            <ArrowDownCircle className="h-4 w-4 text-red-500" />
-                            Saída
-                          </div>
-                        </SelectItem>
-                      </SelectContent>
-                    </Select>
-                  )}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label>Quantidade *</Label>
-                <Input
-                  type="number"
-                  {...movForm.register("quantidade", { valueAsNumber: true })}
-                  min={1}
-                />
-                {movForm.formState.errors.quantidade && (
-                  <p className="text-xs text-red-500">
-                    {movForm.formState.errors.quantidade.message}
-                  </p>
-                )}
-              </div>
-            </div>
-
-            <div className="space-y-2">
-              <Label>Origem / Motivo *</Label>
-              <Input
-                {...movForm.register("origem")}
-                placeholder="Compra, uso em manutenção..."
-              />
-              {movForm.formState.errors.origem && (
-                <p className="text-xs text-red-500">
-                  {movForm.formState.errors.origem.message}
-                </p>
-              )}
-            </div>
-
-            <div className="space-y-2">
-              <Label>Referência (NF, OS...)</Label>
-              <Input
-                {...movForm.register("referencia")}
-                placeholder="NF-12345, OS-789..."
-              />
-            </div>
-
-            {movimentando && (
-              <div className="bg-muted p-3 rounded-lg text-sm">
-                <p>
-                  Estoque resultante:{" "}
-                  <span className="font-bold">
-                    {movForm.watch("tipo") === "ENTRADA"
-                      ? movimentando.quantidade_estoque + (movForm.watch("quantidade") || 0)
-                      : movimentando.quantidade_estoque - (movForm.watch("quantidade") || 0)}
-                  </span>{" "}
-                  un.
-                </p>
-              </div>
-            )}
-
-            <DialogFooter>
-              <DialogClose asChild>
-                <Button variant="outline" type="button">
-                  Cancelar
-                </Button>
-              </DialogClose>
-              <Button type="submit" disabled={salvando}>
-                {salvando ? "Registrando..." : "Registrar Movimentação"}
-              </Button>
-            </DialogFooter>
-          </form>
-        </DialogContent>
-      </Dialog>
-
-      {/* Dialog Confirmar Exclusão */}
-      <Dialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle>Confirmar Exclusão</DialogTitle>
-          </DialogHeader>
-          <p className="text-muted-foreground">
-            Tem certeza que deseja excluir o insumo{" "}
-            <strong>{deletando?.nome}</strong>?
-          </p>
-          <p className="text-sm text-red-500">Esta ação não pode ser desfeita.</p>
-          <DialogFooter>
-            <DialogClose asChild>
-              <Button variant="outline">Cancelar</Button>
-            </DialogClose>
-            <Button
-              variant="destructive"
-              onClick={onDelete}
-              disabled={salvando}
-            >
-              {salvando ? "Excluindo..." : "Excluir"}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <InsumosProdutoDialog
+        open={dialogOpen}
+        onOpenChange={setDialogOpen}
+        editando={editando}
+        form={form}
+        salvando={salvando}
+        onSubmit={onSubmit}
+      />
+      <InsumosMovimentacaoDialog
+        open={movDialogOpen}
+        onOpenChange={setMovDialogOpen}
+        movimentando={movimentando}
+        movForm={movForm}
+        salvando={salvando}
+        onMovSubmit={onMovSubmit}
+      />
+      <InsumosDeleteDialog
+        open={deleteDialogOpen}
+        onOpenChange={setDeleteDialogOpen}
+        deletando={deletando}
+        salvando={salvando}
+        onDelete={onDelete}
+      />
     </div>
   );
 }
