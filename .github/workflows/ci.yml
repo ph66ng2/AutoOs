@@ -1,7 +1,7 @@
 # ╔══════════════════════════════════════════════════════════════╗
 # ║  CI/CD — Build, Lint e Testes                                  ║
 # ╠══════════════════════════════════════════════════════════════╣
-# ║  Executa em: push e PR para main/develop                       ║
+# ║  Executa em: push e PR para master                           ║
 # ║  Jobs: lint, test-frontend, test-rust, qa-real, build-tauri     ║
 # ╚══════════════════════════════════════════════════════════════╝
 
@@ -9,9 +9,9 @@ name: CI/CD
 
 on:
   push:
-    branches: [main, develop]
+    branches: [master]
   pull_request:
-    branches: [main, develop]
+    branches: [master]
 
 env:
   CARGO_TERM_COLOR: always
@@ -147,12 +147,12 @@ jobs:
         run: npm run e2e:real
 
   # ═══════════════════════════════════════════════════════════
-  # Build Tauri (apenas em push para main)
+  # Build Tauri (apenas em push para master)
   # ═══════════════════════════════════════════════════════════
   build-tauri:
     name: Build Tauri App
     needs: [lint, test-frontend, test-rust, qa-real]
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    if: github.event_name == 'push' && github.ref == 'refs/heads/master'
     strategy:
       matrix:
         include:

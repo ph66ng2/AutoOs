@@ -73,7 +73,7 @@ export function useClientes(params?: UseClientesParams) {
   /**
    * Cria um novo cliente (PF ou PJ) no banco de dados.
    *
-   * Fluxo: `db.criarCliente` → Rust `criar_cliente` (INSERT no SQLite).
+   * Fluxo: `db.criarCliente` → Rust `criar_cliente` (INSERT no PostgreSQL).
    * Após a criação, recarrega a lista automaticamente.
    *
    * @param cliente — Dados do cliente sem o campo `id` (gerado pelo banco).
@@ -95,7 +95,7 @@ export function useClientes(params?: UseClientesParams) {
   /**
    * Atualiza os dados de um cliente existente.
    *
-   * Fluxo: `db.atualizarCliente` → Rust `atualizar_cliente` (UPDATE no SQLite).
+   * Fluxo: `db.atualizarCliente` → Rust `atualizar_cliente` (UPDATE no PostgreSQL).
    * Após a atualização, recarrega a lista automaticamente.
    *
    * @param id      — ID do cliente a ser atualizado.
@@ -115,7 +115,7 @@ export function useClientes(params?: UseClientesParams) {
   /**
    * Remove um cliente do banco de dados.
    *
-   * Fluxo: `db.deletarCliente` → Rust `deletar_cliente` (DELETE no SQLite).
+   * Fluxo: `db.deletarCliente` → Rust `deletar_cliente` (DELETE no PostgreSQL).
    * Após a exclusão, recarrega a lista automaticamente.
    *
    * @param id — ID do cliente a ser removido.

@@ -148,6 +148,7 @@ Ver status em: `Configurações > Segurança > Banco e schema`
 
 ## Referências
 
+- LAN com servidor dedicado: [5-LAN-SERVER-SETUP.md](./5-LAN-SERVER-SETUP.md)
 - Backup/Restore: [4-BACKUP.md](./4-BACKUP.md)
 - Roadmap: [3-NEXT_STEPS.md](./3-NEXT_STEPS.md)
 - Produção: [2-PRODUCTION.md](./2-PRODUCTION.md)

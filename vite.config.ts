@@ -3,6 +3,7 @@ import react from "@vitejs/plugin-react";
 import path from "path";
 
 const host = process.env.TAURI_DEV_HOST;
+const isE2eMock = process.env.VITE_E2E_MOCK === "1";
 
 // https://vitejs.dev/config/
 export default defineConfig(async () => ({
@@ -11,6 +12,11 @@ export default defineConfig(async () => ({
   resolve: {
     alias: {
       "@": path.resolve(__dirname, "./src"),
+      ...(isE2eMock
+        ? {
+            "@tauri-apps/api/core": path.resolve(__dirname, "./e2e/mocks/tauri-core.ts"),
+          }
+        : {}),
     },
   },
 

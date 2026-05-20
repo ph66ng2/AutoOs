@@ -117,6 +117,7 @@ O app mantém housekeeping local desses diretórios e expõe um snapshot de supo
 
 - Setup e configuração: [1-SETUP.md](./1-SETUP.md)
 - Produção e homologação: [2-PRODUCTION.md](./2-PRODUCTION.md)
+- Servidor PostgreSQL na LAN: [5-LAN-SERVER-SETUP.md](./5-LAN-SERVER-SETUP.md)
 - Release e QA em camadas: [docs/RELEASE.md](./docs/RELEASE.md)
 - Assinatura Windows: [docs/WINDOWS_CODE_SIGNING.md](./docs/WINDOWS_CODE_SIGNING.md)
 - Roadmap: [3-NEXT_STEPS.md](./3-NEXT_STEPS.md)

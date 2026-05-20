@@ -5,7 +5,7 @@
  * Fornece operações CRUD completas (criar, ler, atualizar, deletar) e
  * registro de movimentações de estoque (entradas e saídas).
  *
- * @dependência lib/db.ts - Bridge de comunicação com o banco de dados SQLite via Tauri
+ * @dependência lib/db.ts - Bridge de comunicação com PostgreSQL via Tauri
  * @dependência types/index.ts - Interface {@link Produto} que define a estrutura de um produto
  *
  * @utilizadoPor pages/Insumos.tsx - Página de gestão de insumos/estoque

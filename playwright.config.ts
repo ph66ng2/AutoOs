@@ -6,9 +6,9 @@
  * ║  Execução: npm run e2e                                        ║
  * ║  UI: npm run e2e:ui                                           ║
  * ║                                                               ║
- * ║  NOTA: Para Tauri, testes E2E são executados no browser      ║
- * ║  simulando a interface web. Para testes nativos, usar        ║
- * ║  tauri-driver (não configurado aqui).                        ║
+ * ║  NOTA: Playwright usa VITE_E2E_MOCK=1 (store in-memory via alias).  ║
+ * ║  Isso valida fluxos de UI/IPC mockado — não substitui Tauri+Postgres. ║
+ * ║  Integração real: npm run qa:integrations / e2e:real.              ║
  * ╚══════════════════════════════════════════════════════════════╝
  */
 import { defineConfig, devices } from '@playwright/test';
@@ -66,5 +66,8 @@ export default defineConfig({
     url: 'http://localhost:1420',
     reuseExistingServer: !process.env.CI,
     timeout: 120 * 1000,
+    env: {
+      VITE_E2E_MOCK: '1',
+    },
   },
 });

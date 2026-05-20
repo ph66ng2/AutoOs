@@ -30,7 +30,7 @@ Depois do bump: executar `npm install` uma vez para alinhar metadados de `packag
 |---------|--------------|
 | `npm run lint` | TypeScript |
 | `npm run test:run` | Vitest + mocks IPC |
-| `npm run e2e` | Playwright contra UI web (`localhost:1420`) — não é driver Tauri nativo |
+| `npm run e2e` | Playwright com `VITE_E2E_MOCK=1` (store in-memory + alias do invoke) — fluxos de UI, não Postgres real |
 | `npm run qa:integrations:critical` | Postgres real + cliente/equipamento/estoque/permissões (`p1_critical_integration`) |
 | `npm run qa:integrations:communication` | Postgres + SMTP efémero local + HTTP fake WhatsApp + auditoria (`p1_communication_integration`) |
 

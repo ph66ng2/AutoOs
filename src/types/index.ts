@@ -80,7 +80,7 @@ export const STATUS_COLORS: Record<StatusEquipamento, string> = {
 
 /**
  * Equipamento em manutenção. Espelha a struct Rust `Equipamento` em commands.rs
- * e a tabela SQLite `equipamentos` em db.rs.
+ * e a tabela PostgreSQL `equipamentos` (migrações em src-tauri/migrations).
  *
  * Usado por: useEquipamentos hook, Equipamentos.tsx, ClienteSelector.tsx,
  *            WhatsAppService, EmailService, useStatusEquipamento
@@ -161,7 +161,7 @@ export interface EquipamentoImagemInput {
 
 /**
  * Cliente (Pessoa Física ou Jurídica). Espelha a struct Rust `Cliente` em commands.rs
- * e a tabela SQLite `clientes` em db.rs.
+ * e a tabela PostgreSQL `clientes` (migrações em src-tauri/migrations).
  *
  * - PF: campos `nome`, `documento` (CPF)
  * - PJ: campos `razao_social`, `nome_fantasia`, `documento` (CNPJ)

@@ -147,5 +147,6 @@ Checklist final (antes de liberar para uso real):
 ## Referências
 
 - Setup: [1-SETUP.md](./1-SETUP.md)
+- LAN (1 servidor + 2 clientes): [5-LAN-SERVER-SETUP.md](./5-LAN-SERVER-SETUP.md)
 - Backup/Restore: [4-BACKUP.md](./4-BACKUP.md)
 - Roadmap: [3-NEXT_STEPS.md](./3-NEXT_STEPS.md)
