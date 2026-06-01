@@ -51,11 +51,6 @@ export default defineConfig({
     // CSS
     css: true,
   },
-  poolOptions: {
-    threads: {
-      singleThread: true,
-    },
-  },
   resolve: {
     alias: {
       '@': path.resolve(__dirname, './src'),

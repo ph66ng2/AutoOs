@@ -56,6 +56,7 @@ import {
   type Verificacao,
 } from "@/types";
 import { db } from "@/lib/db";
+import { useNotification } from "@/hooks/useNotification";
 
 const TECNICOS_DISPONIVEIS = ["Ivan", "Isaias"] as const;
 export type TecnicoDisponivel = (typeof TECNICOS_DISPONIVEIS)[number];
@@ -89,6 +90,7 @@ export function VerificacaoTecnica({
   const [catalogoServicos, setCatalogoServicos] = useState<ServicoCatalogo[]>([]);
   const [carregandoCatalogo, setCarregandoCatalogo] = useState(false);
   const [linhaSugestaoAberta, setLinhaSugestaoAberta] = useState<string | null>(null);
+  const { warning } = useNotification();
 
   useEffect(() => {
     if (!open) return;
@@ -155,7 +157,7 @@ export function VerificacaoTecnica({
       (servico) => !servico.descricao.trim() || Number(servico.valor) <= 0 || Number.isNaN(Number(servico.valor)),
     );
     if (servicosInvalidos) {
-      alert("Cada serviço precisa ter descrição e valor maior que zero.");
+      warning("Verificação", "Cada serviço precisa ter descrição e valor maior que zero.");
       return;
     }
 

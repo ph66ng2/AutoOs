@@ -59,7 +59,9 @@ import {
   type ProdutoFormData,
 } from "@/lib/validations";
 import { useInsumos } from "@/hooks/useInsumos";
+import { useNotification } from "@/hooks/useNotification";
 import { useSensitiveAccess } from "@/hooks/useSensitiveAccess";
+import { ErrorAlert } from "@/components/ui/error-alert";
 import { SENSITIVE_PERMISSIONS, type Produto } from "@/types";
 import { ActionPriorityRow } from "@/components/ui/action-priority-row";
 import { CATEGORIA_OPTIONS } from "@/pages/insumos/insumos-page-constants";
@@ -84,6 +86,7 @@ export default function Insumos() {
   const {
     produtos,
     loading,
+    error,
     insumosAbaixoMinimo,
     criar,
     atualizar,
@@ -95,6 +98,7 @@ export default function Insumos() {
     categoria: categoriaFiltro,
     apenasEstoqueBaixo,
   });
+  const { error: showError } = useNotification();
   const { ensureSensitiveAccess } = useSensitiveAccess();
 
   const form = useForm<ProdutoFormData>({
@@ -210,7 +214,7 @@ export default function Insumos() {
       setDialogOpen(false);
     } catch (err: any) {
       console.error("Erro ao salvar:", err);
-      alert(err?.message || "Erro ao salvar insumo.");
+      showError("Insumos", "Salvar produto", err);
     } finally {
       setSalvando(false);
     }
@@ -233,7 +237,7 @@ export default function Insumos() {
       setMovDialogOpen(false);
     } catch (err: any) {
       console.error("Erro movimentação:", err);
-      alert(err?.message || "Erro ao registrar movimentação.");
+      showError("Insumos", "Registrar movimentação", err);
     } finally {
       setSalvando(false);
     }
@@ -288,6 +292,15 @@ export default function Insumos() {
           </Button>
         </div>
       </div>
+
+      {error && (
+        <ErrorAlert
+          variant="error"
+          context="Insumos"
+          message={error}
+          action="Carregar"
+        />
+      )}
 
       {/* Filtros */}
       <Card>

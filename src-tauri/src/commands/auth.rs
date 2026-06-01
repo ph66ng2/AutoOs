@@ -1,10 +1,14 @@
 use crate::db::get_pool;
+use argon2::{
+    password_hash::{rand_core::OsRng, PasswordHash, PasswordHasher, PasswordVerifier, SaltString},
+    Argon2,
+};
 use chrono::{DateTime, Duration, Utc};
 use keyring::Entry;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use sqlx::{FromRow, Row};
-use std::collections::BTreeSet;
+use std::collections::{BTreeSet, HashMap};
 use std::sync::{Mutex, OnceLock};
 use tracing::{debug, error, instrument, warn};
 
@@ -12,6 +16,8 @@ const KEYRING_SERVICE: &str = "autoos";
 const LEGACY_KEYRING_USER: &str = "sensitive_access_pin";
 const PROFILE_KEYRING_PREFIX: &str = "sensitive_access_profile_";
 const SESSION_TIMEOUT_MINUTES: i64 = 15;
+const MAX_UNLOCK_ATTEMPTS: u32 = 5;
+const LOCKOUT_DURATION_MINUTES: i64 = 15;
 
 pub const PERMISSION_CONFIG_SMTP: &str = "CONFIG_SMTP";
 pub const PERMISSION_CONFIG_WHATSAPP: &str = "CONFIG_WHATSAPP";
@@ -30,14 +36,22 @@ const ALL_PERMISSIONS: [&str; 6] = [
 ];
 
 static SENSITIVE_SESSION: OnceLock<Mutex<SensitiveSession>> = OnceLock::new();
+static UNLOCK_ATTEMPTS: OnceLock<Mutex<HashMap<i32, UnlockAttemptTracker>>> = OnceLock::new();
+
+#[derive(Debug, Default, Clone)]
+struct UnlockAttemptTracker {
+    failed_attempts: u32,
+    locked_until: Option<DateTime<Utc>>,
+}
 
 #[derive(Debug, Default, Clone)]
 struct SensitiveSession {
     unlocked_until: Option<DateTime<Utc>>,
-    profile: Option<SecurityProfileSummary>,
+    profile_obfuscated: Option<Vec<u8>>,
+    profile_key: Option<Vec<u8>>,
 }
 
-#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct SecurityProfileSummary {
     pub id: i32,
     pub nome: String,
@@ -117,10 +131,102 @@ fn profile_keyring_user(profile_id: i32) -> String {
     format!("{}{}", PROFILE_KEYRING_PREFIX, profile_id)
 }
 
-fn hash_pin(pin: &str) -> String {
+const PIN_SALT: &str = "autoos_pin_salt_v2_7a3b9c1d";
+
+fn unlock_attempts() -> &'static Mutex<HashMap<i32, UnlockAttemptTracker>> {
+    UNLOCK_ATTEMPTS.get_or_init(|| Mutex::new(HashMap::new()))
+}
+
+fn check_unlock_lockout(profile_id: i32) -> Result<(), String> {
+    let mut attempts = unlock_attempts()
+        .lock()
+        .map_err(|_| "Controle de tentativas de PIN indisponível".to_string())?;
+    let tracker = attempts.entry(profile_id).or_default();
+
+    if let Some(locked_until) = tracker.locked_until {
+        if locked_until > Utc::now() {
+            let minutes = (locked_until - Utc::now()).num_minutes().max(1);
+            return Err(format!(
+                "Muitas tentativas inválidas. Tente novamente em {} minuto(s).",
+                minutes
+            ));
+        }
+        tracker.failed_attempts = 0;
+        tracker.locked_until = None;
+    }
+
+    Ok(())
+}
+
+fn record_unlock_failure(profile_id: i32) {
+    if let Ok(mut attempts) = unlock_attempts().lock() {
+        let tracker = attempts.entry(profile_id).or_default();
+        tracker.failed_attempts += 1;
+        if tracker.failed_attempts >= MAX_UNLOCK_ATTEMPTS {
+            tracker.locked_until = Some(Utc::now() + Duration::minutes(LOCKOUT_DURATION_MINUTES));
+        }
+    }
+}
+
+fn reset_unlock_attempts(profile_id: i32) {
+    if let Ok(mut attempts) = unlock_attempts().lock() {
+        attempts.remove(&profile_id);
+    }
+}
+
+fn hash_pin_argon2(pin: &str) -> Result<String, String> {
+    let salt = SaltString::generate(&mut OsRng);
+    Argon2::default()
+        .hash_password(pin.trim().as_bytes(), &salt)
+        .map(|hash| hash.to_string())
+        .map_err(|error| {
+            error!("Erro ao gerar hash Argon2 do PIN: {}", error);
+            "Erro ao proteger o PIN informado".to_string()
+        })
+}
+
+fn hash_pin_salted(pin: &str) -> String {
+    let mut hasher = Sha256::new();
+    hasher.update(pin.as_bytes());
+    hasher.update(PIN_SALT.as_bytes());
+    hex::encode(hasher.finalize())
+}
+
+fn hash_pin_unsalted(pin: &str) -> String {
     let mut hasher = Sha256::new();
     hasher.update(pin.as_bytes());
     hex::encode(hasher.finalize())
+}
+
+fn verify_pin(pin: &str, stored: &StoredSensitivePin) -> bool {
+    let trimmed = pin.trim();
+    if stored.pin_hash.starts_with("$argon2") {
+        if let Ok(parsed) = PasswordHash::new(&stored.pin_hash) {
+            return Argon2::default()
+                .verify_password(trimmed.as_bytes(), &parsed)
+                .is_ok();
+        }
+        return false;
+    }
+    if stored.pin_hash == hash_pin_salted(trimmed) {
+        return true;
+    }
+    if stored.pin_hash == hash_pin_unsalted(trimmed) {
+        return true;
+    }
+    false
+}
+
+fn hash_pin(pin: &str) -> Result<String, String> {
+    hash_pin_argon2(pin)
+}
+
+fn upgrade_pin_hash_if_legacy(profile_id: i32, pin: &str, stored: &StoredSensitivePin) -> Result<(), String> {
+    if stored.pin_hash.starts_with("$argon2") {
+        return Ok(());
+    }
+
+    store_profile_pin(profile_id, pin)
 }
 
 fn validate_pin_format(pin: &str) -> Result<(), String> {
@@ -214,11 +320,21 @@ fn store_profile_pin_record(profile_id: i32, record: &StoredSensitivePin) -> Res
 
 fn store_profile_pin(profile_id: i32, pin: &str) -> Result<(), String> {
     let stored = StoredSensitivePin {
-        pin_hash: hash_pin(pin.trim()),
+        pin_hash: hash_pin(pin.trim())?,
         created_at: Utc::now().to_rfc3339(),
     };
 
     store_profile_pin_record(profile_id, &stored)
+}
+
+async fn any_profile_has_pin() -> Result<bool, String> {
+    for profile in fetch_profile_records().await? {
+        if load_profile_pin(profile.id)?.is_some() {
+            return Ok(true);
+        }
+    }
+
+    Ok(false)
 }
 
 fn has_permission_values(permissions: &[String], permission: &str) -> bool {
@@ -252,20 +368,60 @@ fn spawn_security_event(
     });
 }
 
+fn generate_session_key() -> Vec<u8> {
+    let entropy = format!(
+        "{}{}",
+        Utc::now().timestamp_nanos_opt().unwrap_or(0),
+        std::process::id()
+    );
+    let mut hasher = Sha256::new();
+    hasher.update(entropy.as_bytes());
+    hasher.finalize().to_vec()
+}
+
+fn obfuscate_profile(profile: &SecurityProfileSummary, key: &[u8]) -> Result<(Vec<u8>, Vec<u8>), String> {
+    let plain = serde_json::to_vec(profile).map_err(|e| {
+        error!("Erro ao serializar perfil para sessão: {}", e);
+        e.to_string()
+    })?;
+    let obfuscated: Vec<u8> = plain.iter().enumerate().map(|(i, byte)| byte ^ key[i % key.len()]).collect();
+    Ok((obfuscated, key.to_vec()))
+}
+
+fn deobfuscate_profile(data: &[u8], key: &[u8]) -> Result<SecurityProfileSummary, String> {
+    let plain: Vec<u8> = data.iter().enumerate().map(|(i, byte)| byte ^ key[i % key.len()]).collect();
+    serde_json::from_slice(&plain).map_err(|e| {
+        error!("Erro ao deserializar perfil da sessão: {}", e);
+        e.to_string()
+    })
+}
+
 fn clear_session() -> Result<(), String> {
     let mut session = session_state().lock().map_err(|_| "Sessão sensível indisponível".to_string())?;
     session.unlocked_until = None;
-    session.profile = None;
+    session.profile_obfuscated = None;
+    session.profile_key = None;
     Ok(())
 }
 
 fn current_session_profile() -> Result<Option<(DateTime<Utc>, SecurityProfileSummary)>, String> {
     let mut session = session_state().lock().map_err(|_| "Sessão sensível indisponível".to_string())?;
-    match (session.unlocked_until, session.profile.clone()) {
-        (Some(until), Some(profile)) if until > Utc::now() => Ok(Some((until, profile))),
+    match (session.unlocked_until, session.profile_obfuscated.clone(), session.profile_key.clone()) {
+        (Some(until), Some(data), Some(key)) if until > Utc::now() => {
+            match deobfuscate_profile(&data, &key) {
+                Ok(profile) => Ok(Some((until, profile))),
+                Err(_) => {
+                    session.unlocked_until = None;
+                    session.profile_obfuscated = None;
+                    session.profile_key = None;
+                    Ok(None)
+                }
+            }
+        },
         _ => {
             session.unlocked_until = None;
-            session.profile = None;
+            session.profile_obfuscated = None;
+            session.profile_key = None;
             Ok(None)
         }
     }
@@ -273,22 +429,26 @@ fn current_session_profile() -> Result<Option<(DateTime<Utc>, SecurityProfileSum
 
 fn unlock_session(profile: SecurityProfileSummary) -> Result<(), String> {
     let expires_at = Utc::now() + Duration::minutes(SESSION_TIMEOUT_MINUTES);
+    let key = generate_session_key();
+    let (obfuscated, key) = obfuscate_profile(&profile, &key)?;
     let mut session = session_state().lock().map_err(|_| "Sessão sensível indisponível".to_string())?;
     session.unlocked_until = Some(expires_at);
-    session.profile = Some(profile);
+    session.profile_obfuscated = Some(obfuscated);
+    session.profile_key = Some(key);
     Ok(())
 }
 
 pub fn touch_sensitive_access() -> Result<(), String> {
     let mut session = session_state().lock().map_err(|_| "Sessão sensível indisponível".to_string())?;
-    match (session.unlocked_until, session.profile.clone()) {
-        (Some(until), Some(_)) if until > Utc::now() => {
+    match (session.unlocked_until, session.profile_obfuscated.clone(), session.profile_key.clone()) {
+        (Some(until), Some(_), Some(_)) if until > Utc::now() => {
             session.unlocked_until = Some(Utc::now() + Duration::minutes(SESSION_TIMEOUT_MINUTES));
             Ok(())
         }
         _ => {
             session.unlocked_until = None;
-            session.profile = None;
+            session.profile_obfuscated = None;
+            session.profile_key = None;
             Err("Acesso sensível bloqueado. Informe o PIN para continuar.".to_string())
         }
     }
@@ -556,7 +716,11 @@ async fn status_snapshot() -> Result<SensitiveAccessStatus, String> {
     let (unlocked, expires_at) = match current_session_profile()? {
         Some((until, profile)) if profile.id == active_summary.id => {
             let mut session = session_state().lock().map_err(|_| "Sessão sensível indisponível".to_string())?;
-            session.profile = Some(active_summary.clone());
+            let key = generate_session_key();
+            if let Ok((obfuscated, key)) = obfuscate_profile(&active_summary, &key) {
+                session.profile_obfuscated = Some(obfuscated);
+                session.profile_key = Some(key);
+            }
             (true, Some(until.to_rfc3339()))
         }
         Some(_) => {
@@ -566,16 +730,36 @@ async fn status_snapshot() -> Result<SensitiveAccessStatus, String> {
         None => (false, None),
     };
 
+    let visible_profiles = if unlocked {
+        profiles
+    } else {
+        profiles
+            .into_iter()
+            .map(|mut profile| {
+                profile.permissions = Vec::new();
+                profile
+            })
+            .collect()
+    };
+
     Ok(SensitiveAccessStatus {
         pin_configured: active_summary.pin_configured,
         unlocked,
         expires_at,
         active_profile_id: Some(active_summary.id),
         active_profile_name: Some(active_summary.nome.clone()),
-        active_role: Some(active_summary.role.clone()),
-        permissions: active_summary.permissions.clone(),
-        can_manage_profiles: has_permission(&active_summary, PERMISSION_MANAGE_PROFILES),
-        profiles,
+        active_role: if unlocked {
+            Some(active_summary.role.clone())
+        } else {
+            None
+        },
+        permissions: if unlocked {
+            active_summary.permissions.clone()
+        } else {
+            Vec::new()
+        },
+        can_manage_profiles: unlocked && has_permission(&active_summary, PERMISSION_MANAGE_PROFILES),
+        profiles: visible_profiles,
     })
 }
 
@@ -593,14 +777,17 @@ pub async fn configure_sensitive_pin(pin: String, current_pin: Option<String>) -
     let active_profile = to_profile_summary(fetch_active_profile_record().await?)?;
     if let Some(stored) = load_profile_pin(active_profile.id)? {
         let provided_pin = current_pin.ok_or_else(|| "Informe o PIN atual para alterar o acesso sensível.".to_string())?;
-        if stored.pin_hash != hash_pin(provided_pin.trim()) {
+        if !verify_pin(provided_pin.trim(), &stored) {
             warn!("Tentativa de alteração de PIN com credencial inválida");
             record_security_event("PIN_CHANGE_FAILED", Some(&active_profile), "PIN atual inválido", false).await;
             return Err("PIN atual inválido".to_string());
         }
+    } else if any_profile_has_pin().await? {
+        require_permission(PERMISSION_MANAGE_PROFILES)?;
     }
 
     store_profile_pin(active_profile.id, &pin)?;
+    reset_unlock_attempts(active_profile.id);
     unlock_session(active_profile.clone())?;
     record_security_event("PIN_CHANGED", Some(&active_profile), "PIN do perfil ativo atualizado", true).await;
     status_snapshot().await
@@ -611,15 +798,19 @@ pub async fn configure_sensitive_pin(pin: String, current_pin: Option<String>) -
 pub async fn unlock_sensitive_access(pin: String) -> Result<SensitiveAccessStatus, String> {
     validate_pin_format(&pin)?;
     let active_profile = to_profile_summary(fetch_active_profile_record().await?)?;
+    check_unlock_lockout(active_profile.id)?;
     let stored = load_profile_pin(active_profile.id)?
         .ok_or_else(|| "PIN sensível ainda não configurado para o perfil ativo".to_string())?;
 
-    if stored.pin_hash != hash_pin(pin.trim()) {
+    if !verify_pin(pin.trim(), &stored) {
+        record_unlock_failure(active_profile.id);
         warn!("Tentativa de desbloqueio sensível com PIN inválido");
         record_security_event("UNLOCK_FAILED", Some(&active_profile), "PIN inválido", false).await;
         return Err("PIN inválido".to_string());
     }
 
+    upgrade_pin_hash_if_legacy(active_profile.id, pin.trim(), &stored)?;
+    reset_unlock_attempts(active_profile.id);
     debug!("Acesso sensível desbloqueado para perfil {}", active_profile.nome);
     unlock_session(active_profile.clone())?;
     record_security_event("UNLOCK_SUCCESS", Some(&active_profile), "Sessão sensível desbloqueada", true).await;
@@ -640,6 +831,7 @@ pub async fn lock_sensitive_access() -> Result<bool, String> {
 #[tauri::command]
 #[instrument(skip_all)]
 pub async fn set_active_security_profile(profile_id: i32) -> Result<SensitiveAccessStatus, String> {
+    let actor = require_permission(PERMISSION_MANAGE_PROFILES)?;
     let profile = fetch_profile_record_by_id(profile_id).await?;
     let pool = get_pool().await.map_err(|e| e.to_string())?;
 
@@ -654,7 +846,13 @@ pub async fn set_active_security_profile(profile_id: i32) -> Result<SensitiveAcc
 
     clear_session()?;
     let summary = to_profile_summary(profile)?;
-    record_security_event("PROFILE_SWITCH", Some(&summary), "Perfil ativo alterado", true).await;
+    record_security_event(
+        "PROFILE_SWITCH",
+        Some(&actor),
+        format!("Perfil ativo alterado para {}", summary.nome),
+        true,
+    )
+    .await;
     status_snapshot().await
 }
 
@@ -823,7 +1021,7 @@ pub async fn deactivate_security_profile(profile_id: i32) -> Result<SensitiveAcc
 
     ensure_default_profile_exists().await?;
 
-    if actor.id == profile_id || actor.id == profile.id {
+    if actor.id == profile_id {
         clear_session()?;
     }
 

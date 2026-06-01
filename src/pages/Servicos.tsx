@@ -26,6 +26,9 @@ import {
 import { servicoCatalogoSchema, type ServicoCatalogoFormData } from "@/lib/validations";
 import { useServicos } from "@/hooks/useServicos";
 import { useSensitiveAccess } from "@/hooks/useSensitiveAccess";
+import { useNotification } from "@/hooks/useNotification";
+import { ErrorAlert } from "@/components/ui/error-alert";
+import { FormValidationError } from "@/components/ui/form-validation-error";
 import { SENSITIVE_PERMISSIONS, type ServicoCatalogo } from "@/types";
 import { ActionPriorityRow } from "@/components/ui/action-priority-row";
 
@@ -37,8 +40,9 @@ export default function Servicos() {
   const [deletando, setDeletando] = useState<ServicoCatalogo | null>(null);
   const [salvando, setSalvando] = useState(false);
   const { ensureSensitiveAccess } = useSensitiveAccess();
+  const { error: showError } = useNotification();
 
-  const { servicos, loading, criar, atualizar, deletar, recarregar } = useServicos({
+  const { servicos, loading, error, criar, atualizar, deletar, recarregar } = useServicos({
     busca: busca || undefined,
     apenasAtivos: true,
   });
@@ -102,7 +106,7 @@ export default function Servicos() {
       setDialogOpen(false);
     } catch (err: any) {
       console.error("Erro ao salvar serviço:", err);
-      alert(err?.message || "Erro ao salvar serviço.");
+      showError("Serviços", "Salvar serviço", err);
     } finally {
       setSalvando(false);
     }
@@ -132,7 +136,7 @@ export default function Servicos() {
       setDeletando(null);
     } catch (err: any) {
       console.error("Erro ao excluir serviço:", err);
-      alert(err?.message || "Erro ao excluir serviço.");
+      showError("Serviços", "Excluir serviço", err);
     } finally {
       setSalvando(false);
     }
@@ -152,6 +156,8 @@ export default function Servicos() {
           Novo Serviço
         </Button>
       </div>
+
+      {error && <ErrorAlert variant="error" context="Serviços" message={error} action="Carregar" />}
 
       <Card>
         <CardContent className="pt-6">
@@ -247,16 +253,12 @@ export default function Servicos() {
             <div className="space-y-2">
               <Label>Nome do serviço *</Label>
               <Input {...form.register("nome")} placeholder="Ex.: Limpeza de cabeça térmica" />
-              {form.formState.errors.nome && (
-                <p className="text-xs text-red-500">{form.formState.errors.nome.message}</p>
-              )}
+              <FormValidationError message={form.formState.errors.nome?.message} />
             </div>
             <div className="space-y-2">
               <Label>Preço padrão *</Label>
               <Input type="number" step="0.01" min={0.01} {...form.register("preco_padrao")} />
-              {form.formState.errors.preco_padrao && (
-                <p className="text-xs text-red-500">{form.formState.errors.preco_padrao.message}</p>
-              )}
+              <FormValidationError message={form.formState.errors.preco_padrao?.message} />
             </div>
             <div className="space-y-2">
               <Label>Descrição</Label>

@@ -14,6 +14,7 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { FormValidationError } from "@/components/ui/form-validation-error";
 import type { ClienteFormData } from "@/lib/validations";
 import { formatarCEP, formatarDocumento, formatarTelefone } from "@/lib/validations";
 
@@ -45,9 +46,7 @@ export function ClienteFormularioCampos({
               placeholder="Digite CPF ou CNPJ"
               maxLength={18}
             />
-            {form.formState.errors.documento && (
-              <p className="text-xs text-red-500">{form.formState.errors.documento.message}</p>
-            )}
+            <FormValidationError message={form.formState.errors.documento?.message} />
           </div>
           {tipoPessoa && (
             <div className="pt-1">
@@ -71,9 +70,7 @@ export function ClienteFormularioCampos({
         <div className="space-y-2 p-4 rounded-lg border border-blue-200 bg-blue-50/50">
           <Label>Nome Completo *</Label>
           <Input {...form.register("nome")} placeholder="Nome completo do cliente" />
-          {form.formState.errors.nome && (
-            <p className="text-xs text-red-500">{form.formState.errors.nome.message}</p>
-          )}
+            <FormValidationError message={form.formState.errors.nome?.message} />
         </div>
       )}
 
@@ -82,9 +79,7 @@ export function ClienteFormularioCampos({
           <div className="space-y-2">
             <Label>Razão Social *</Label>
             <Input {...form.register("razao_social")} placeholder="Razão Social da empresa" />
-            {form.formState.errors.razao_social && (
-              <p className="text-xs text-red-500">{form.formState.errors.razao_social.message}</p>
-            )}
+              <FormValidationError message={form.formState.errors.razao_social?.message} />
           </div>
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
@@ -115,9 +110,7 @@ export function ClienteFormularioCampos({
               placeholder="(11) 99999-9999"
               maxLength={15}
             />
-            {form.formState.errors.telefone && (
-              <p className="text-xs text-red-500">{form.formState.errors.telefone.message}</p>
-            )}
+              <FormValidationError message={form.formState.errors.telefone?.message} />
           </div>
           <div className="space-y-2">
             <Label>Telefone Secundário</Label>
@@ -135,9 +128,7 @@ export function ClienteFormularioCampos({
         <div className="space-y-2">
           <Label>Email</Label>
           <Input {...form.register("email")} placeholder="email@exemplo.com" type="email" />
-          {form.formState.errors.email && (
-            <p className="text-xs text-red-500">{form.formState.errors.email.message}</p>
-          )}
+            <FormValidationError message={form.formState.errors.email?.message} />
         </div>
       </div>
 

@@ -52,6 +52,7 @@ async fn main() -> Result<()> {
     let restricted_profile_permissions = serde_json::to_string(&vec![
         auth::PERMISSION_STOCK_CONTROL.to_string(),
         auth::PERMISSION_CONFIG_SMTP.to_string(),
+        auth::PERMISSION_MANAGE_PROFILES.to_string(),
     ])
     .context("serialize restricted permissions failed")?;
     let restricted_profile_id: i32 = sqlx::query_scalar(

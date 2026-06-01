@@ -5,7 +5,9 @@
 //! ║  - salvar_arquivo_temp: Salva bytes em arquivo temporário    ║
 //! ╚══════════════════════════════════════════════════════════════╝
 
-use crate::commands::auth::{record_security_event, require_permission, PERMISSION_MANAGE_PROFILES};
+use crate::commands::auth::{
+    record_security_event, require_permission, PERMISSION_CONFIG_SMTP, PERMISSION_MANAGE_PROFILES,
+};
 use crate::db::{get_pool, known_migrations, run_pending_migrations};
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
@@ -618,6 +620,59 @@ fn normalize_restore_file_path(file_path: &str) -> Result<PathBuf, String> {
     fs::canonicalize(path).map_err(|e| format!("Não foi possível resolver o caminho do backup: {}", e))
 }
 
+fn allowed_app_document_roots() -> Result<Vec<PathBuf>, String> {
+    Ok(vec![
+        default_orders_directory()?,
+        default_quotes_directory()?,
+        default_status_reports_directory()?,
+        autoos_temp_dir()?,
+    ])
+}
+
+fn resolve_allowed_app_document_path(path: &str) -> Result<PathBuf, String> {
+    let trimmed = path.trim();
+    if trimmed.is_empty() {
+        return Err("Caminho de origem do anexo é obrigatório".to_string());
+    }
+
+    let requested_path = PathBuf::from(trimmed);
+    if !requested_path.is_absolute() {
+        return Err("Caminho de origem do anexo deve ser absoluto".to_string());
+    }
+
+    let canonical = fs::canonicalize(&requested_path).map_err(|e| {
+        error!("Erro ao resolver caminho de origem do anexo: {}", e);
+        format!("Erro ao acessar arquivo de origem do anexo: {}", e)
+    })?;
+
+    let metadata = fs::metadata(&canonical).map_err(|e| {
+        error!("Erro ao acessar arquivo de origem do anexo: {}", e);
+        format!("Erro ao acessar arquivo de origem do anexo: {}", e)
+    })?;
+    if !metadata.is_file() {
+        return Err("Origem do anexo não é um arquivo válido".to_string());
+    }
+
+    for root in allowed_app_document_roots()? {
+        let canonical_root = fs::canonicalize(&root).unwrap_or(root);
+        if canonical.starts_with(&canonical_root) {
+            return Ok(canonical);
+        }
+    }
+
+    Err("Origem do anexo deve estar em um diretório gerado pelo AutoOS".to_string())
+}
+
+fn ensure_restore_path_in_backup_directory(restore_path: &Path) -> Result<(), String> {
+    let backup_root = default_backup_directory()?;
+    let canonical_backup_root = fs::canonicalize(&backup_root).unwrap_or(backup_root);
+    if !restore_path.starts_with(&canonical_backup_root) {
+        return Err("O backup deve estar no diretório de backups do AutoOS.".to_string());
+    }
+
+    Ok(())
+}
+
 fn detect_restore_tool(file_path: &Path) -> Result<&'static str, String> {
     let extension = file_path
         .extension()
@@ -661,23 +716,8 @@ pub async fn copiar_anexo_email_para_temp(
     origem: String,
     filename: String,
 ) -> Result<String, String> {
-    let trimmed_origem = origem.trim();
-    if trimmed_origem.is_empty() {
-        return Err("Caminho de origem do anexo é obrigatório".to_string());
-    }
-
-    let origem_path = PathBuf::from(trimmed_origem);
-    if !origem_path.is_absolute() {
-        return Err("Caminho de origem do anexo deve ser absoluto".to_string());
-    }
-
-    let metadata = fs::metadata(&origem_path).map_err(|e| {
-        error!("Erro ao acessar arquivo de origem do anexo: {}", e);
-        format!("Erro ao acessar arquivo de origem do anexo: {}", e)
-    })?;
-    if !metadata.is_file() {
-        return Err("Origem do anexo não é um arquivo válido".to_string());
-    }
+    let _actor = require_permission(PERMISSION_CONFIG_SMTP)?;
+    let origem_path = resolve_allowed_app_document_path(&origem)?;
 
     let safe_filename = sanitize_temp_filename(&filename)?;
     let destino = autoos_temp_dir()?.join(&safe_filename);
@@ -977,6 +1017,7 @@ pub async fn restaurar_backup_postgres(file_path: String) -> Result<PostgresRest
     let database_url = current_database_url()?;
     let parsed = parse_database_url(&database_url)?;
     let restore_path = normalize_restore_file_path(&file_path)?;
+    ensure_restore_path_in_backup_directory(&restore_path)?;
     let restore_tool = detect_restore_tool(&restore_path)?;
 
     if !command_available(restore_tool) {
@@ -1057,6 +1098,7 @@ pub async fn restaurar_backup_postgres(file_path: String) -> Result<PostgresRest
 #[tauri::command]
 #[instrument(skip_all)]
 pub async fn obter_status_schema_banco() -> Result<DatabaseSchemaStatus, String> {
+    let _actor = require_permission(PERMISSION_MANAGE_PROFILES)?;
     let pool = get_pool().await.map_err(|e| {
         error!("Erro ao obter pool para status do schema: {}", e);
         e

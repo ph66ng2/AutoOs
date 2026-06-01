@@ -88,6 +88,7 @@ import { useSensitiveAccess } from "@/hooks/useSensitiveAccess";
 import { WhatsAppService } from "@/lib/whatsapp-service";
 import { EmailService } from "@/lib/email-service";
 import { PdfService } from "@/lib/pdf-service";
+import { FormValidationError } from "@/components/ui/form-validation-error";
 import { db } from "@/lib/db";
 import {
   STATUS_LABELS,
@@ -137,9 +138,12 @@ import {
   mensagemResultadoCanais,
   removerTecnicoInicialDasObservacoes,
   statusExigeAcessoSensivel,
-  traduzirErroSalvarEquipamento,
   whatsappNaoConfigurado,
 } from "@/pages/equipamentos/equipamentos-page-utils";
+import { useNotification } from "@/hooks/useNotification";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { InputDialog } from "@/components/ui/input-dialog";
+import { ErrorAlert } from "@/components/ui/error-alert";
 
 export default function Equipamentos() {
   const [busca, setBusca] = useState("");
@@ -181,6 +185,25 @@ export default function Equipamentos() {
   const [imagensFormulario, setImagensFormulario] = useState<EquipamentoImagemDraft[]>([]);
   const [erroImagens, setErroImagens] = useState<string | null>(null);
   const [carregandoImagensFormulario, setCarregandoImagensFormulario] = useState(false);
+
+  const { success, error: showError, warning } = useNotification();
+
+  const [confirmOpen, setConfirmOpen] = useState(false);
+  const [confirmProps, setConfirmProps] = useState<{
+    title: string;
+    description: string;
+    variant?: "default" | "destructive";
+    onConfirm: () => void;
+  }>({ title: "", description: "", onConfirm: () => {} });
+
+  const [inputOpen, setInputOpen] = useState(false);
+  const [inputProps, setInputProps] = useState<{
+    title: string;
+    description?: string;
+    label: string;
+    placeholder?: string;
+    onConfirm: (value: string) => void;
+  }>({ title: "", label: "", onConfirm: () => {} });
 
   const { equipamentos, loading, criar, atualizar, deletar, atualizarStatus, recarregar } =
     useEquipamentos({ busca: busca || undefined, status: statusFiltro });
@@ -455,17 +478,20 @@ export default function Equipamentos() {
       const duplicado = await buscarEquipamentoDuplicado(data, editando?.id);
       if (duplicado) {
         const registro = duplicado.campo === "serial_number" ? "número de série" : "patrimônio";
-        const confirmarNovaVerificacao = window.confirm(
-          `Já existe outra impressora com este ${registro}.\n\n` +
-          `Equipamento encontrado: ${duplicado.equipamento.marca} ${duplicado.equipamento.modelo} (SN: ${duplicado.equipamento.serial_number}).\n\n` +
-          "Deseja incluir uma nova verificação nesta impressora já registrada?"
-        );
-
-        if (confirmarNovaVerificacao) {
-          setDialogOpen(false);
-          setSelecionado(duplicado.equipamento);
-          setVerificacaoDialogOpen(true);
-        }
+        setConfirmProps({
+          title: "Equipamento duplicado",
+          description:
+            `Já existe outra impressora com este ${registro}. ` +
+            `Equipamento encontrado: ${duplicado.equipamento.marca} ${duplicado.equipamento.modelo} (SN: ${duplicado.equipamento.serial_number}). ` +
+            "Deseja incluir uma nova verificação nesta impressora já registrada?",
+          variant: "destructive",
+          onConfirm: () => {
+            setDialogOpen(false);
+            setSelecionado(duplicado.equipamento);
+            setVerificacaoDialogOpen(true);
+          },
+        });
+        setConfirmOpen(true);
         return;
       }
 
@@ -520,22 +546,46 @@ export default function Equipamentos() {
       }
 
       if (!editando) {
-        const emailParaEntrada = await solicitarEmailParaEnvio(
-          {
+        const liberadoEmail = await ensureSensitiveAccess({
+          title: "Enviar ordem de entrada",
+          description: "Informe o PIN para enviar a ordem de entrada por email ao cliente.",
+          permission: SENSITIVE_PERMISSIONS.FINANCIAL_ACTIONS,
+        });
+        if (liberadoEmail) {
+          const equipamentoComEmail = {
             ...resultado.data,
             cliente_email: resultado.data.cliente_email || clienteVinculado.email || undefined,
-          },
-          "enviar a ordem de entrada"
-        );
-        if (emailParaEntrada) {
-          const retornoEmailEntrada = await EmailService.enviarOrdemEntrada({
-            ...resultado.data,
-            cliente_email: emailParaEntrada,
-          });
-          if (!retornoEmailEntrada.sucesso) {
-            alert(`Email de ordem de entrada não enviado: ${retornoEmailEntrada.erro || "Falha desconhecida."}`);
+          };
+          const emailAtual = (equipamentoComEmail.cliente_email || "").trim();
+          async function enviarOrdemEntrada(email: string) {
+            const retornoEmailEntrada = await EmailService.enviarOrdemEntrada({
+              ...resultado.data,
+              cliente_email: email,
+            } as Equipamento);
+            if (!retornoEmailEntrada.sucesso) {
+              showError("Equipamentos", "Enviar ordem de entrada", new Error(retornoEmailEntrada.erro || "Falha desconhecida."));
+            } else {
+              success("Equipamentos", "Email de ordem de entrada enviado com sucesso.", "Enviar email");
+            }
+          }
+          if (emailAtual) {
+            await enviarOrdemEntrada(emailAtual);
           } else {
-            alert("Email de ordem de entrada enviado com sucesso.");
+            setInputProps({
+              title: "Envio por email",
+              description: "Este cliente não possui e-mail cadastrado. Informe um e-mail para enviar a ordem de entrada:",
+              label: "Email",
+              placeholder: "email@exemplo.com",
+              onConfirm: (value: string) => {
+                const email = value.trim();
+                if (!emailValido(email)) {
+                  warning("Equipamentos", "O e-mail informado é inválido. O envio por e-mail será ignorado neste evento.");
+                  return;
+                }
+                void enviarOrdemEntrada(email);
+              },
+            });
+            setInputOpen(true);
           }
         }
       }
@@ -545,7 +595,7 @@ export default function Equipamentos() {
       setErroImagens(null);
     } catch (err: any) {
       console.error("Erro ao salvar:", err);
-      alert(traduzirErroSalvarEquipamento(err?.message));
+      showError("Equipamentos", "Salvar equipamento", err);
     }
     finally { setSalvando(false); }
   }
@@ -587,29 +637,48 @@ export default function Equipamentos() {
     });
     if (!liberado) return;
 
-    setSalvando(true);
-    try {
-      const emailParaEnvio = await solicitarEmailParaEnvio(
-        selecionado,
-        "finalizar a verificação e enviar o orçamento"
-      );
-      const resultado = await finalizarVerificacao(selecionado, dados, emailParaEnvio);
-      if (!resultado.sucesso) {
-        throw new Error(resultado.erro || "Não foi possível finalizar a verificação.");
+    async function executarComEmail(email: string | undefined) {
+      setSalvando(true);
+      try {
+        const resultado = await finalizarVerificacao(selecionado!, dados, email);
+        if (!resultado.sucesso) {
+          throw new Error(resultado.erro || "Não foi possível finalizar a verificação.");
+        }
+        setVerificacaoDialogOpen(false);
+        await recarregar();
+        const resumoCanais = mensagemResultadoCanais(resultado);
+        if (resumoCanais) {
+          success("Equipamentos", resumoCanais, "Finalizar verificação");
+        }
+      } catch (err: any) {
+        console.error("Erro ao finalizar verificação:", err);
+        showError("Equipamentos", "Finalizar verificação", err);
+      } finally {
+        setSalvando(false);
       }
-      setVerificacaoDialogOpen(false);
-
-      await recarregar();
-      const resumoCanais = mensagemResultadoCanais(resultado);
-      if (resumoCanais) {
-        alert(resumoCanais);
-      }
-    } catch (err: any) {
-      console.error("Erro ao finalizar verificação:", err);
-      alert(err?.message || "Erro ao finalizar verificação.");
-    } finally {
-      setSalvando(false);
     }
+
+    const emailAtual = (selecionado.cliente_email || "").trim();
+    if (!emailAtual) {
+      setInputProps({
+        title: "Envio por email",
+        description: "Este cliente não possui e-mail cadastrado. Informe um e-mail para finalizar a verificação e enviar o orçamento:",
+        label: "Email",
+        placeholder: "email@exemplo.com",
+        onConfirm: (value: string) => {
+          const email = value.trim();
+          if (!emailValido(email)) {
+            warning("Equipamentos", "O e-mail informado é inválido. O envio por e-mail será ignorado neste evento.");
+            return;
+          }
+          void executarComEmail(email);
+        },
+      });
+      setInputOpen(true);
+      return;
+    }
+
+    await executarComEmail(emailAtual);
   }
 
   // ─── Automação: Marcar como Pronto ────────────────────
@@ -626,27 +695,47 @@ export default function Equipamentos() {
     });
     if (!liberado) return;
 
-    setSalvando(true);
-    try {
-      const emailParaEnvio = await solicitarEmailParaEnvio(
-        eq,
-        "avisar que o equipamento está pronto para retirada"
-      );
-      const resultado = await marcarComoPronto(eq, emailParaEnvio);
-      if (!resultado.sucesso) {
-        throw new Error(resultado.erro || "Não foi possível marcar o equipamento como pronto.");
+    async function executarComEmail(email: string | undefined) {
+      setSalvando(true);
+      try {
+        const resultado = await marcarComoPronto(eq, email);
+        if (!resultado.sucesso) {
+          throw new Error(resultado.erro || "Não foi possível marcar o equipamento como pronto.");
+        }
+        await recarregar();
+        const resumoCanais = mensagemResultadoCanais(resultado);
+        if (resumoCanais) {
+          success("Equipamentos", resumoCanais, "Marcar como pronto");
+        }
+      } catch (err: any) {
+        console.error("Erro ao marcar pronto:", err);
+        showError("Equipamentos", "Marcar como pronto", err);
+      } finally {
+        setSalvando(false);
       }
-      await recarregar();
-      const resumoCanais = mensagemResultadoCanais(resultado);
-      if (resumoCanais) {
-        alert(resumoCanais);
-      }
-    } catch (err: any) {
-      console.error("Erro ao marcar pronto:", err);
-      alert(err?.message || "Erro ao marcar equipamento como pronto.");
-    } finally {
-      setSalvando(false);
     }
+
+    const emailAtual = (eq.cliente_email || "").trim();
+    if (!emailAtual) {
+      setInputProps({
+        title: "Envio por email",
+        description: "Este cliente não possui e-mail cadastrado. Informe um e-mail para avisar que o equipamento está pronto para retirada:",
+        label: "Email",
+        placeholder: "email@exemplo.com",
+        onConfirm: (value: string) => {
+          const email = value.trim();
+          if (!emailValido(email)) {
+            warning("Equipamentos", "O e-mail informado é inválido. O envio por e-mail será ignorado neste evento.");
+            return;
+          }
+          void executarComEmail(email);
+        },
+      });
+      setInputOpen(true);
+      return;
+    }
+
+    await executarComEmail(emailAtual);
   }
 
   /** Confirma mudança manual de status com campos extras (valor, prazo, etc) */
@@ -699,7 +788,7 @@ export default function Equipamentos() {
       setErroImagensSaidaEntrega(null);
     } catch (err: any) {
       console.error("Erro:", err);
-      alert(err?.message || "Erro ao alterar status.");
+      showError("Equipamentos", "Alterar status", err);
     }
     finally { setSalvando(false); }
   }
@@ -726,7 +815,7 @@ export default function Equipamentos() {
     }
     catch (err: any) {
       console.error("Erro:", err);
-      alert(err?.message || "Erro ao aplicar a ação rápida.");
+      showError("Equipamentos", "Ação rápida", err);
     }
     finally { setSalvando(false); }
   }
@@ -795,30 +884,11 @@ export default function Equipamentos() {
         fileName: imagem.filename,
         mimeType: imagem.mime_type,
       });
-      alert(`Imagem exportada com sucesso!\n\nArquivo: ${caminho}`);
+      success("Equipamentos", `Imagem exportada com sucesso. Arquivo: ${caminho}`, "Exportar imagem");
     } catch (err: any) {
       console.error("Erro ao exportar imagem do equipamento:", err);
-      alert(err?.message || "Não foi possível exportar a imagem.");
+      showError("Equipamentos", "Exportar imagem", err);
     }
-  }
-
-  async function solicitarEmailParaEnvio(equipamento: Equipamento, contexto: string) {
-    const emailAtual = (equipamento.cliente_email || "").trim();
-    if (emailAtual) return emailAtual;
-
-    const informado = window.prompt(
-      `Este cliente não possui e-mail cadastrado.\n\nInforme um e-mail para ${contexto}:`,
-      ""
-    );
-    if (!informado) return undefined;
-
-    const email = informado.trim();
-    if (!emailValido(email)) {
-      alert("O e-mail informado é inválido. O envio por e-mail será ignorado neste evento.");
-      return undefined;
-    }
-
-    return email;
   }
 
   /** Envia orçamento manualmente via WhatsApp. Busca verificação do banco primeiro */
@@ -831,14 +901,14 @@ export default function Equipamentos() {
     if (!liberado) return;
 
     const verif = await db.buscarVerificacao(eq.id!);
-    if (!verif) { alert("Nenhuma verificação encontrada."); return; }
+    if (!verif) { warning("Equipamentos", "Nenhuma verificação técnica encontrada para este equipamento."); return; }
     const r = await WhatsAppService.enviarOrcamento(eq, verif);
     if (!r.sucesso) {
       if (whatsappNaoConfigurado(r.erro)) {
         console.warn("[WhatsApp] Integração não configurada. Fluxo segue com envio manual de PDF.");
         return;
       }
-      alert("Erro: " + r.erro);
+      showError("Equipamentos", "Enviar WhatsApp", new Error(r.erro));
     }
   }
 
@@ -848,14 +918,14 @@ export default function Equipamentos() {
     try {
       setSalvando(true);
       const verif = await db.buscarVerificacao(eq.id!);
-      if (!verif) { alert("Nenhuma verificação encontrada para este equipamento."); return; }
+      if (!verif) { warning("Equipamentos", "Nenhuma verificação técnica encontrada para este equipamento."); return; }
       const caminho = await PdfService.gerarOrcamento(eq, verif);
       if (caminho) {
-        alert(`Orçamento PDF gerado com sucesso!\n\nArquivo: ${caminho}`);
+        success("Equipamentos", `Orçamento PDF gerado com sucesso. Arquivo: ${caminho}`, "Gerar PDF");
       }
     } catch (err) {
       console.error("Erro ao gerar orçamento PDF:", err);
-      alert("Erro ao gerar orçamento PDF. Tente novamente.");
+      showError("Equipamentos", "Gerar orçamento PDF", err);
     } finally {
       setSalvando(false);
     }
@@ -867,11 +937,11 @@ export default function Equipamentos() {
       setSalvando(true);
       const caminho = await PdfService.gerarOrdemServico(eq);
       if (caminho) {
-        alert(`Ordem de Serviço PDF gerada com sucesso!\n\nArquivo: ${caminho}`);
+        success("Equipamentos", `Ordem de Serviço PDF gerada com sucesso. Arquivo: ${caminho}`, "Gerar PDF");
       }
     } catch (err) {
       console.error("Erro ao gerar Ordem de Serviço PDF:", err);
-      alert("Erro ao gerar Ordem de Serviço PDF. Tente novamente.");
+      showError("Equipamentos", "Gerar Ordem de Serviço PDF", err);
     } finally {
       setSalvando(false);
     }
@@ -882,11 +952,11 @@ export default function Equipamentos() {
       setSalvando(true);
       const caminho = await PdfService.gerarRelatorioStatus(eq);
       if (caminho) {
-        alert(`Relatório de Status gerado com sucesso!\n\nArquivo: ${caminho}`);
+        success("Equipamentos", `Relatório de Status gerado com sucesso. Arquivo: ${caminho}`, "Gerar PDF");
       }
     } catch (err) {
       console.error("Erro ao gerar Relatório de Status PDF:", err);
-      alert("Erro ao gerar Relatório de Status PDF. Tente novamente.");
+      showError("Equipamentos", "Gerar Relatório de Status PDF", err);
     } finally {
       setSalvando(false);
     }
@@ -907,7 +977,7 @@ export default function Equipamentos() {
         console.warn("[WhatsApp] Integração não configurada. Fluxo segue sem envio automático.");
         return;
       }
-      alert("Erro: " + r.erro);
+      showError("Equipamentos", "Enviar WhatsApp", new Error(r.erro));
     }
   }
 
@@ -1397,9 +1467,7 @@ export default function Equipamentos() {
                 readOnly={false}
               />
               {erroCliente && (
-                <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
-                  {erroCliente}
-                </div>
+                <ErrorAlert variant="error" context="Equipamentos" message={erroCliente} />
               )}
             </div>
             <hr />
@@ -1411,24 +1479,24 @@ export default function Equipamentos() {
                 <div className="space-y-2">
                   <Label>Nº Série *</Label>
                   <Input {...form.register("serial_number")} />
-                  {form.formState.errors.serial_number && <p className="text-xs text-red-500">{form.formState.errors.serial_number.message}</p>}
+                  <FormValidationError message={form.formState.errors.serial_number?.message} />
                 </div>
                 <div className="space-y-2">
                   <Label>Patrimônio</Label>
                   <Input {...form.register("patrimonio")} placeholder="Código patrimonial, se houver" />
-                  {form.formState.errors.patrimonio && <p className="text-xs text-red-500">{form.formState.errors.patrimonio.message}</p>}
+                  <FormValidationError message={form.formState.errors.patrimonio?.message} />
                 </div>
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label>Marca *</Label>
                   <Input {...form.register("marca")} placeholder="Zebra, Datacard" />
-                  {form.formState.errors.marca && <p className="text-xs text-red-500">{form.formState.errors.marca.message}</p>}
+                  <FormValidationError message={form.formState.errors.marca?.message} />
                 </div>
                 <div className="space-y-2">
                   <Label>Modelo do equipamento</Label>
                   <Input {...form.register("modelo")} placeholder="ZD421, GC420T" />
-                  {form.formState.errors.modelo && <p className="text-xs text-red-500">{form.formState.errors.modelo.message}</p>}
+                  <FormValidationError message={form.formState.errors.modelo?.message} />
                 </div>
               </div>
               <div className="grid grid-cols-2 gap-4">
@@ -1440,12 +1508,12 @@ export default function Equipamentos() {
                       <SelectContent>{TIPO_OPTIONS.map(t => <SelectItem key={t} value={t}>{t}</SelectItem>)}</SelectContent>
                     </Select>
                   )} />
-                  {form.formState.errors.tipo && <p className="text-xs text-red-500">{form.formState.errors.tipo.message}</p>}
+                  <FormValidationError message={form.formState.errors.tipo?.message} />
                 </div>
                 <div className="space-y-2">
                   <Label>Defeito *</Label>
                   <Textarea {...form.register("defeito_relatado")} placeholder="Defeito informado no recebimento" rows={3} />
-                  {form.formState.errors.defeito_relatado && <p className="text-xs text-red-500">{form.formState.errors.defeito_relatado.message}</p>}
+                  <FormValidationError message={form.formState.errors.defeito_relatado?.message} />
                 </div>
               </div>
               <div className="grid grid-cols-2 gap-4">
@@ -1511,7 +1579,7 @@ export default function Equipamentos() {
                     {imagensFormulario.length}/{LIMITE_IMAGENS_POR_EQUIPAMENTO}
                   </span>
                 </div>
-                {erroImagens && <p className="text-sm text-red-500">{erroImagens}</p>}
+                {erroImagens && <ErrorAlert variant="error" context="Equipamentos" message={erroImagens} />}
                 <div className="grid gap-4 lg:grid-cols-2">
                   <div className="space-y-3 rounded-lg border p-3">
                     <div className="flex items-center justify-between gap-2">
@@ -1900,6 +1968,28 @@ export default function Equipamentos() {
           )}
         </DialogContent>
       </Dialog>
+
+      <ConfirmDialog
+        open={confirmOpen}
+        onOpenChange={setConfirmOpen}
+        title={confirmProps.title}
+        description={confirmProps.description}
+        variant={confirmProps.variant}
+        onConfirm={() => {
+          confirmProps.onConfirm();
+          setConfirmOpen(false);
+        }}
+      />
+
+      <InputDialog
+        open={inputOpen}
+        onOpenChange={setInputOpen}
+        title={inputProps.title}
+        description={inputProps.description}
+        label={inputProps.label}
+        placeholder={inputProps.placeholder}
+        onConfirm={inputProps.onConfirm}
+      />
     </div>
   );
 }

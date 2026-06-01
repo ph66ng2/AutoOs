@@ -134,7 +134,10 @@ pub async fn listar_clientes(page: Option<i32>, busca: Option<String>) -> Result
         query_builder.push(")");
     }
 
-    query_builder.push(format!(" ORDER BY id DESC LIMIT {} OFFSET {}", PAGE_SIZE, offset));
+    query_builder.push(" ORDER BY id DESC LIMIT ");
+    query_builder.push_bind(PAGE_SIZE);
+    query_builder.push(" OFFSET ");
+    query_builder.push_bind(offset);
 
     let rows = query_builder
         .build_query_as::<ClienteRow>()
@@ -296,7 +299,7 @@ pub async fn atualizar_cliente(id: i32, input: ClienteInput) -> Result<ClienteRo
             bairro = $15, cidade = $16, uf = $17,
             receber_email = $18, receber_whatsapp = $19, observacoes = $20,
             atualizado_em = NOW()
-        WHERE id = $21 AND atualizado_em::TEXT = $22
+        WHERE id = $21 AND atualizado_em = $22::TIMESTAMPTZ
         "#,
     )
     .bind(Some(nome_exibicao))

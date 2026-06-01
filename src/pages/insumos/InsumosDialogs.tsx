@@ -4,6 +4,7 @@ import {
 } from "lucide-react";
 import { Controller, type UseFormReturn } from "react-hook-form";
 import { Button } from "@/components/ui/button";
+import { FormValidationError } from "@/components/ui/form-validation-error";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
@@ -57,11 +58,7 @@ export function InsumosProdutoDialog({
             <div className="space-y-2">
               <Label>Nome *</Label>
               <Input {...form.register("nome")} placeholder="Toner HP 26A" />
-              {form.formState.errors.nome && (
-                <p className="text-xs text-red-500">
-                  {form.formState.errors.nome.message}
-                </p>
-              )}
+              <FormValidationError message={form.formState.errors.nome?.message} />
             </div>
             <div className="space-y-2">
               <Label>Código</Label>
@@ -92,11 +89,7 @@ export function InsumosProdutoDialog({
                   </Select>
                 )}
               />
-              {form.formState.errors.categoria && (
-                <p className="text-xs text-red-500">
-                  {form.formState.errors.categoria.message}
-                </p>
-              )}
+              <FormValidationError message={form.formState.errors.categoria?.message} />
             </div>
           </div>
 
@@ -117,11 +110,7 @@ export function InsumosProdutoDialog({
                 {...form.register("quantidade_estoque", { valueAsNumber: true })}
                 min={0}
               />
-              {form.formState.errors.quantidade_estoque && (
-                <p className="text-xs text-red-500">
-                  {form.formState.errors.quantidade_estoque.message}
-                </p>
-              )}
+              <FormValidationError message={form.formState.errors.quantidade_estoque?.message} />
             </div>
             <div className="space-y-2">
               <Label>Qtd. Mínima *</Label>
@@ -246,11 +235,7 @@ export function InsumosMovimentacaoDialog({
                 {...movForm.register("quantidade", { valueAsNumber: true })}
                 min={1}
               />
-              {movForm.formState.errors.quantidade && (
-                <p className="text-xs text-red-500">
-                  {movForm.formState.errors.quantidade.message}
-                </p>
-              )}
+              <FormValidationError message={movForm.formState.errors.quantidade?.message} />
             </div>
           </div>
 
@@ -260,11 +245,7 @@ export function InsumosMovimentacaoDialog({
               {...movForm.register("origem")}
               placeholder="Compra, uso em manutenção..."
             />
-            {movForm.formState.errors.origem && (
-              <p className="text-xs text-red-500">
-                {movForm.formState.errors.origem.message}
-              </p>
-            )}
+            <FormValidationError message={movForm.formState.errors.origem?.message} />
           </div>
 
           <div className="space-y-2">

@@ -22,6 +22,7 @@ lettre = { version = "0.11", default-features = false, features = ["builder", "t
 keyring = "2"
 sha2 = "0.10"
 hex = "0.4"
+argon2 = "0.5"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 url = "2"
