@@ -201,6 +201,7 @@ export default function Equipamentos() {
     description: string;
     variant?: "default" | "destructive";
     onConfirm: () => void;
+    onCancel?: () => void;
   }>({ title: "", description: "", onConfirm: () => {} });
 
   const [inputOpen, setInputOpen] = useState(false);
@@ -575,25 +576,32 @@ export default function Equipamentos() {
               success("Equipamentos", "Email de ordem de entrada enviado com sucesso.", "Enviar email");
             }
           }
-          if (emailAtual) {
-            await enviarOrdemEntrada(emailAtual);
-          } else {
-            setInputProps({
-              title: "Envio por email",
-              description: "Este cliente não possui e-mail cadastrado. Informe um e-mail para enviar a ordem de entrada:",
-              label: "Email",
-              placeholder: "email@exemplo.com",
-              onConfirm: (value: string) => {
-                const email = value.trim();
-                if (!emailValido(email)) {
-                  warning("Equipamentos", "O e-mail informado é inválido. O envio por e-mail será ignorado neste evento.");
-                  return;
-                }
-                void enviarOrdemEntrada(email);
-              },
-            });
-            setInputOpen(true);
-          }
+          setConfirmProps({
+            title: "Envio por email",
+            description: "Quer enviar a ordem de entrada automaticamente por email?",
+            onConfirm: () => {
+              if (emailAtual) {
+                void enviarOrdemEntrada(emailAtual);
+              } else {
+                setInputProps({
+                  title: "Envio por email",
+                  description: "Este cliente não possui e-mail cadastrado. Informe um e-mail para enviar a ordem de entrada:",
+                  label: "Email",
+                  placeholder: "email@exemplo.com",
+                  onConfirm: (value: string) => {
+                    const email = value.trim();
+                    if (!emailValido(email)) {
+                      warning("Equipamentos", "O e-mail informado é inválido. O envio por e-mail será ignorado neste evento.");
+                      return;
+                    }
+                    void enviarOrdemEntrada(email);
+                  },
+                });
+                setInputOpen(true);
+              }
+            },
+          });
+          setConfirmOpen(true);
         }
       }
 
@@ -666,26 +674,35 @@ export default function Equipamentos() {
     }
 
     const emailAtual = (selecionado.cliente_email || "").trim();
-    if (!emailAtual) {
-      setInputProps({
-        title: "Envio por email",
-        description: "Este cliente não possui e-mail cadastrado. Informe um e-mail para finalizar a verificação e enviar o orçamento:",
-        label: "Email",
-        placeholder: "email@exemplo.com",
-        onConfirm: (value: string) => {
-          const email = value.trim();
-          if (!emailValido(email)) {
-            warning("Equipamentos", "O e-mail informado é inválido. O envio por e-mail será ignorado neste evento.");
-            return;
-          }
-          void executarComEmail(email);
-        },
-      });
-      setInputOpen(true);
-      return;
-    }
-
-    await executarComEmail(emailAtual);
+    setConfirmProps({
+      title: "Envio por email",
+      description: "Quer enviar o orçamento automaticamente por email?",
+      onConfirm: () => {
+        if (!emailAtual) {
+          setInputProps({
+            title: "Envio por email",
+            description: "Este cliente não possui e-mail cadastrado. Informe um e-mail para finalizar a verificação e enviar o orçamento:",
+            label: "Email",
+            placeholder: "email@exemplo.com",
+            onConfirm: (value: string) => {
+              const email = value.trim();
+              if (!emailValido(email)) {
+                warning("Equipamentos", "O e-mail informado é inválido. O envio por e-mail será ignorado neste evento.");
+                return;
+              }
+              void executarComEmail(email);
+            },
+          });
+          setInputOpen(true);
+        } else {
+          void executarComEmail(emailAtual);
+        }
+      },
+      onCancel: () => {
+        void executarComEmail(undefined);
+      },
+    });
+    setConfirmOpen(true);
   }
 
   // ─── Automação: Marcar como Pronto ────────────────────
@@ -723,26 +740,35 @@ export default function Equipamentos() {
     }
 
     const emailAtual = (eq.cliente_email || "").trim();
-    if (!emailAtual) {
-      setInputProps({
-        title: "Envio por email",
-        description: "Este cliente não possui e-mail cadastrado. Informe um e-mail para avisar que o equipamento está pronto para retirada:",
-        label: "Email",
-        placeholder: "email@exemplo.com",
-        onConfirm: (value: string) => {
-          const email = value.trim();
-          if (!emailValido(email)) {
-            warning("Equipamentos", "O e-mail informado é inválido. O envio por e-mail será ignorado neste evento.");
-            return;
-          }
-          void executarComEmail(email);
-        },
-      });
-      setInputOpen(true);
-      return;
-    }
-
-    await executarComEmail(emailAtual);
+    setConfirmProps({
+      title: "Envio por email",
+      description: "Quer avisar o cliente que o equipamento está pronto por email?",
+      onConfirm: () => {
+        if (!emailAtual) {
+          setInputProps({
+            title: "Envio por email",
+            description: "Este cliente não possui e-mail cadastrado. Informe um e-mail para avisar que o equipamento está pronto para retirada:",
+            label: "Email",
+            placeholder: "email@exemplo.com",
+            onConfirm: (value: string) => {
+              const email = value.trim();
+              if (!emailValido(email)) {
+                warning("Equipamentos", "O e-mail informado é inválido. O envio por e-mail será ignorado neste evento.");
+                return;
+              }
+              void executarComEmail(email);
+            },
+          });
+          setInputOpen(true);
+        } else {
+          void executarComEmail(emailAtual);
+        }
+      },
+      onCancel: () => {
+        void executarComEmail(undefined);
+      },
+    });
+    setConfirmOpen(true);
   }
 
   /** Confirma mudança manual de status com campos extras (valor, prazo, etc) */
@@ -2052,6 +2078,7 @@ export default function Equipamentos() {
           confirmProps.onConfirm();
           setConfirmOpen(false);
         }}
+        onCancel={confirmProps.onCancel}
       />
 
       <InputDialog
