@@ -779,26 +779,30 @@ pub async fn remover_anexo_email_temp(path: String) -> Result<(), String> {
 
 /// Salva PDF da Ordem de Serviço em Documents/Ordens de Servico
 /// e tenta abrir o gerenciador de arquivos com o arquivo selecionado.
+/// Se `nome_arquivo` for fornecido, usa esse nome em vez de gerar um timestamped.
 #[tauri::command]
 #[instrument(skip_all, fields(bytes_len = bytes.len()))]
-pub async fn salvar_ordem_servico_pdf(bytes: Vec<u8>, empresa_nome: Option<String>) -> Result<String, String> {
+pub async fn salvar_ordem_servico_pdf(bytes: Vec<u8>, empresa_nome: Option<String>, nome_arquivo: Option<String>) -> Result<String, String> {
     debug!("Salvando ordem de serviço ({} bytes)", bytes.len());
 
-    let empresa = sanitize_filename_component(empresa_nome.as_deref().unwrap_or("Empresa"));
-    let empresa = if empresa.is_empty() {
-        "Empresa".to_string()
+    let file_name = if let Some(nome) = nome_arquivo.filter(|n| !n.is_empty()) {
+        nome
     } else {
-        empresa
+        let empresa = sanitize_filename_component(empresa_nome.as_deref().unwrap_or("Empresa"));
+        let empresa = if empresa.is_empty() {
+            "Empresa".to_string()
+        } else {
+            empresa
+        };
+        let created_at = Utc::now();
+        format!(
+            "OrdemServico_{}_{}.pdf",
+            empresa,
+            created_at.format("%Y-%m-%d_%H-%M-%S")
+        )
     };
 
-    let created_at = Utc::now();
-    let file_name = format!(
-        "OrdemServico_{}_{}.pdf",
-        empresa,
-        created_at.format("%Y-%m-%d_%H-%M-%S")
-    );
-
-    let file_path = default_orders_directory()?.join(file_name);
+    let file_path = default_orders_directory()?.join(&file_name);
 
     fs::write(&file_path, &bytes).map_err(|e| {
         error!("Erro ao salvar ordem de serviço: {}", e);
@@ -817,26 +821,30 @@ pub async fn salvar_ordem_servico_pdf(bytes: Vec<u8>, empresa_nome: Option<Strin
 
 /// Salva PDF do Orçamento em Documents/Orcamentos
 /// e tenta abrir o gerenciador de arquivos com o arquivo selecionado.
+/// Se `nome_arquivo` for fornecido, usa esse nome em vez de gerar um timestamped.
 #[tauri::command]
 #[instrument(skip_all, fields(bytes_len = bytes.len()))]
-pub async fn salvar_orcamento_pdf(bytes: Vec<u8>, empresa_nome: Option<String>) -> Result<String, String> {
+pub async fn salvar_orcamento_pdf(bytes: Vec<u8>, empresa_nome: Option<String>, nome_arquivo: Option<String>) -> Result<String, String> {
     debug!("Salvando orçamento ({} bytes)", bytes.len());
 
-    let empresa = sanitize_filename_component(empresa_nome.as_deref().unwrap_or("Cliente"));
-    let empresa = if empresa.is_empty() {
-        "Cliente".to_string()
+    let file_name = if let Some(nome) = nome_arquivo.filter(|n| !n.is_empty()) {
+        nome
     } else {
-        empresa
+        let empresa = sanitize_filename_component(empresa_nome.as_deref().unwrap_or("Cliente"));
+        let empresa = if empresa.is_empty() {
+            "Cliente".to_string()
+        } else {
+            empresa
+        };
+        let created_at = Utc::now();
+        format!(
+            "Orcamento_{}_{}.pdf",
+            empresa,
+            created_at.format("%Y-%m-%d_%H-%M-%S")
+        )
     };
 
-    let created_at = Utc::now();
-    let file_name = format!(
-        "Orcamento_{}_{}.pdf",
-        empresa,
-        created_at.format("%Y-%m-%d_%H-%M-%S")
-    );
-
-    let file_path = default_quotes_directory()?.join(file_name);
+    let file_path = default_quotes_directory()?.join(&file_name);
 
     fs::write(&file_path, &bytes).map_err(|e| {
         error!("Erro ao salvar orçamento: {}", e);
@@ -851,6 +859,38 @@ pub async fn salvar_orcamento_pdf(bytes: Vec<u8>, empresa_nome: Option<String>) 
     let path_str = file_path.to_string_lossy().to_string();
     info!("Orçamento salvo com sucesso em {}", path_str);
     Ok(path_str)
+}
+
+fn resolve_document_directory(nome_arquivo: &str) -> Result<PathBuf, String> {
+    if nome_arquivo.starts_with("Orcamento_") || nome_arquivo.starts_with("orcamento_") {
+        default_quotes_directory()
+    } else if nome_arquivo.starts_with("OrdemServico_") || nome_arquivo.starts_with("ordemservico_") {
+        default_orders_directory()
+    } else if nome_arquivo.starts_with("RelatorioStatus_") || nome_arquivo.starts_with("relatoriostatus_") {
+        default_status_reports_directory()
+    } else {
+        default_orders_directory()
+    }
+}
+
+/// Check if a document exists in the appropriate Documents subdirectory.
+#[tauri::command]
+pub async fn verificar_documento_existe(nome_arquivo: String) -> Result<bool, String> {
+    let dir = resolve_document_directory(&nome_arquivo)?;
+    let path = dir.join(&nome_arquivo);
+    Ok(path.exists())
+}
+
+/// Open an existing document in the file manager.
+#[tauri::command]
+pub async fn abrir_documento(nome_arquivo: String) -> Result<String, String> {
+    let dir = resolve_document_directory(&nome_arquivo)?;
+    let path = dir.join(&nome_arquivo);
+    if !path.exists() {
+        return Err("Documento não encontrado".to_string());
+    }
+    reveal_file_in_manager(&path).map_err(|e| e.to_string())?;
+    Ok(path.to_string_lossy().to_string())
 }
 
 /// Salva imagem de equipamento em Documents/Imagens Equipamentos

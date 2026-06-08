@@ -395,4 +395,20 @@ export const db = {
   async removerAnexoEmailTemp(path: string): Promise<void> {
     await invoke<void>("remover_anexo_email_temp", { path });
   },
+
+  // ─── Documentos de Equipamento ─────────────────────────
+
+  /**
+   * Verifica se um documento PDF já existe no diretório de documentos.
+   */
+  async verificarDocumentoExiste(nomeArquivo: string): Promise<boolean> {
+    return invoke<boolean>("verificar_documento_existe", { nomeArquivo });
+  },
+
+  /**
+   * Abre um documento PDF existente no gerenciador de arquivos.
+   */
+  async abrirDocumento(nomeArquivo: string): Promise<string> {
+    return invoke<string>("abrir_documento", { nomeArquivo });
+  },
 };

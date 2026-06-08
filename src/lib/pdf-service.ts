@@ -373,7 +373,8 @@ export const PdfService = {
    */
   async gerarOrcamento(
     equipamento: Equipamento,
-    verificacao: Verificacao
+    verificacao: Verificacao,
+    nomeArquivo?: string
   ): Promise<string | null> {
     try {
       const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
@@ -672,6 +673,7 @@ export const PdfService = {
       const caminho = await invoke<string>("salvar_orcamento_pdf", {
         bytes: Array.from(uint8),
         empresaNome: equipamento.cliente_nome || equipamento.proprietario || "Cliente",
+        nomeArquivo: nomeArquivo || null,
       });
 
       console.info(`[PdfService] Orçamento PDF gerado: ${caminho}`);
@@ -686,7 +688,7 @@ export const PdfService = {
    * Gera PDF de ordem de serviço para recebimento técnico.
    * Lista os campos preenchidos na seção "Dados do Equipamento".
    */
-  async gerarOrdemServico(equipamento: Equipamento): Promise<string | null> {
+  async gerarOrdemServico(equipamento: Equipamento, nomeArquivo?: string): Promise<string | null> {
     try {
       const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
       let y = 15;
@@ -783,6 +785,7 @@ export const PdfService = {
       const caminho = await invoke<string>("salvar_ordem_servico_pdf", {
         bytes: Array.from(uint8),
         empresaNome: equipamento.cliente_nome || equipamento.proprietario || "Empresa",
+        nomeArquivo: nomeArquivo || null,
       });
 
       console.info(`[PdfService] Ordem de serviço PDF gerada: ${caminho}`);

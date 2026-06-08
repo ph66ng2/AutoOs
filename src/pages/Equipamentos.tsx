@@ -115,6 +115,7 @@ import {
 import { HistoricoComunicacoes } from "@/components/equipamentos/HistoricoComunicacoes";
 import { ClienteSelector } from "@/components/equipamentos/ClienteSelector";
 import { PhotoUploadDialog } from "@/components/equipamentos/PhotoUploadDialog";
+import { DocumentosEquipamento } from "@/components/equipamentos/DocumentosEquipamento";
 import { ActionPriorityRow, type PriorityAction } from "@/components/ui/action-priority-row";
 import {
   arquivoParaImagemEquipamento,
@@ -1825,6 +1826,7 @@ export default function Equipamentos() {
                     </Card>
                   )}
                   {selecionado.observacoes && <div><p className="text-sm text-muted-foreground">Observações:</p><p className="text-sm mt-1 bg-accent/50 p-2 rounded">{selecionado.observacoes}</p></div>}
+                  <DocumentosEquipamento equipamento={selecionado} />
                 </TabsContent>
 
                 <TabsContent value="verificacao" className="mt-4">{renderVerificacaoTab()}</TabsContent>
