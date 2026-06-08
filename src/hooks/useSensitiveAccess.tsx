@@ -260,10 +260,8 @@ export function SensitiveAccessProvider({ children }: { children: ReactNode }) {
       }
 
       const isCurrentSelection = targetProfileId === status?.active_profile_id;
-      const targetProfile =
-        status?.profiles.find((profile) => profile.id === targetProfileId) ?? null;
       const shouldAskForPin =
-        dialogMode !== "selector" || !isCurrentSelection || !!targetProfile?.pin_configured;
+        dialogMode !== "selector" || !isCurrentSelection;
 
       if (!shouldAskForPin) {
         closeDialog(true);
@@ -366,10 +364,12 @@ export function SensitiveRoute({
   children,
   title,
   description,
+  permission,
 }: {
   children: ReactNode;
   title?: string;
   description?: string;
+  permission?: SensitivePermission;
 }) {
   const { loading, status, ensureSensitiveAccess, hasPermission } = useSensitiveAccess();
 
@@ -419,7 +419,7 @@ export function SensitiveRoute({
     );
   }
 
-  if (!hasPermission(SENSITIVE_PERMISSIONS.MANAGE_PROFILES)) {
+  if (permission && !hasPermission(permission)) {
     return (
       <div className="flex min-h-[60vh] items-center justify-center">
         <Card className="max-w-lg w-full">
@@ -429,7 +429,7 @@ export function SensitiveRoute({
               Acesso restrito
             </CardTitle>
             <CardDescription>
-              O perfil ativo não possui permissão para acessar as configurações administrativas do sistema.
+              O perfil ativo não possui permissão para {permission ? permissionDescription(permission) : "acessar esta página"}.
             </CardDescription>
           </CardHeader>
         </Card>

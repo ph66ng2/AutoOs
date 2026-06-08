@@ -22,12 +22,14 @@ import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { Toaster } from "sonner";
 import { BootSplash } from "@/components/BootSplash";
 import { SensitiveRoute, useSensitiveAccess } from "@/hooks/useSensitiveAccess";
+import { SENSITIVE_PERMISSIONS } from "@/types";
 import { Layout } from "@/components/Layout";
 import Dashboard from "@/pages/Dashboard";
 import Equipamentos from "@/pages/Equipamentos";
 import Clientes from "@/pages/Clientes";
 // import Insumos from "@/pages/Insumos"; // [BLOQUEIO-TEMPORARIO-INSUMOS] descomente esta linha para restaurar o módulo de Insumos
 import Servicos from "@/pages/Servicos";
+import Gastos from "@/pages/Gastos";
 
 /**
  * Componente placeholder para o módulo de Insumos temporariamente bloqueado.
@@ -108,11 +110,24 @@ function App() {
             <Route path="/insumos" element={<BlockedInsumosPage />} />
             <Route path="/servicos" element={<Servicos />} />
             <Route
+              path="/gastos"
+              element={
+                <SensitiveRoute
+                  title="Gastos e despesas protegidos"
+                  description="Desbloqueie o acesso sensível para visualizar gastos e despesas do sistema."
+                  permission={SENSITIVE_PERMISSIONS.VIEW_EXPENSES}
+                >
+                  <Gastos />
+                </SensitiveRoute>
+              }
+            />
+            <Route
               path="/configuracoes"
               element={
                 <SensitiveRoute
                   title="Configurações SMTP protegidas"
                   description="Desbloqueie o acesso sensível para visualizar ou alterar credenciais e envios SMTP."
+                  permission={SENSITIVE_PERMISSIONS.MANAGE_PROFILES}
                 >
                   <Configuracoes />
                 </SensitiveRoute>
