@@ -401,6 +401,7 @@ export const SENSITIVE_PERMISSIONS = {
   FINANCIAL_ACTIONS: "FINANCIAL_ACTIONS",
   STOCK_CONTROL: "STOCK_CONTROL",
   MANAGE_PROFILES: "MANAGE_PROFILES",
+  VIEW_EXPENSES: "VIEW_EXPENSES",
 } as const;
 
 export type SensitivePermission = (typeof SENSITIVE_PERMISSIONS)[keyof typeof SENSITIVE_PERMISSIONS];
@@ -412,6 +413,7 @@ export const SENSITIVE_PERMISSION_LABELS: Record<SensitivePermission, string> = 
   FINANCIAL_ACTIONS: "alterar orçamentos, aprovações e valores",
   STOCK_CONTROL: "movimentar e editar estoque",
   MANAGE_PROFILES: "gerenciar perfis e auditoria",
+  VIEW_EXPENSES: "visualizar gastos e despesas",
 };
 
 export interface SecurityProfile {
@@ -544,6 +546,84 @@ export interface LocalSupportBundleResult {
   file_name: string;
   file_path: string;
   created_at: string;
+}
+
+// ─── Gastos Fixos e Variáveis ───────────────────────────
+
+/**
+ * Categorias válidas para gastos fixos e variáveis.
+ * Espelha os nomes seedados em gastos_fixos na migration 0006.
+ */
+export type GastosFixosCategoria =
+  | 'Aluguel'
+  | 'Energia'
+  | 'Internet'
+  | 'Fornecedores'
+  | 'Folha'
+  | 'Outros';
+
+/**
+ * Gasto fixo (despesa recorrente). Espelha a struct Rust `GastoFixoRow`
+ * e a tabela PostgreSQL `gastos_fixos` (migration 0006).
+ */
+export interface GastoFixo {
+  id?: number;
+  nome: string;
+  valor: number;
+  vencimento_dia?: number;
+  categoria: GastosFixosCategoria;
+  ativo?: boolean;
+  criado_em?: string;
+  atualizado_em?: string;
+}
+
+/**
+ * Gasto variável (despesa avulsa). Espelha a struct Rust `GastoVariavelRow`
+ * e a tabela PostgreSQL `gastos_variaveis` (migration 0006).
+ */
+export interface GastoVariavel {
+  id?: number;
+  descricao: string;
+  valor: number;
+  data: string;
+  categoria: GastosFixosCategoria;
+  nota?: string;
+  referencia_id?: number;
+  criado_em?: string;
+  atualizado_em?: string;
+}
+
+/**
+ * Input para criar gasto variável.
+ * Espelha a struct Rust `GastoVariavelInput`.
+ */
+export interface GastoVariavelInput {
+  descricao: string;
+  valor: number;
+  data: string;
+  categoria: GastosFixosCategoria;
+  nota?: string;
+  referencia_id?: number;
+}
+
+/**
+ * Valor agregado por categoria (usado no resumo mensal).
+ * Espelha a struct Rust `CategoriaValor`.
+ */
+export interface CategoriaValor {
+  categoria: string;
+  valor: number;
+}
+
+/**
+ * Resumo mensal de gastos (fixos + variáveis + por categoria).
+ * Espelha a struct Rust `GastoResumoMensal`.
+ */
+export interface GastoResumoMensal {
+  total_fixo: number;
+  total_variavel: number;
+  total_geral: number;
+  por_categoria: CategoriaValor[];
 }
 
 // ─── Checklist padrão ───────────────────────────────────
