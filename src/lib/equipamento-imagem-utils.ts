@@ -27,6 +27,7 @@ export function normalizarOrdemPorCategoria(
   const proximaOrdem: Record<EquipamentoImagemCategoria, number> = {
     ENTRADA: 0,
     SAIDA: 0,
+    VERIFICACAO: 0,
   };
 
   return imagens.map((imagem) => ({

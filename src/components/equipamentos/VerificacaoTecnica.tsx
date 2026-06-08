@@ -29,6 +29,7 @@ import {
   Trash2,
   Check,
   Search,
+  Smartphone,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -57,6 +58,8 @@ import {
 } from "@/types";
 import { db } from "@/lib/db";
 import { useNotification } from "@/hooks/useNotification";
+import { PhotoUploadDialog } from "@/components/equipamentos/PhotoUploadDialog";
+import { imagemPersistidaParaDraft, type EquipamentoImagemDraft } from "@/lib/equipamento-imagem-utils";
 
 const TECNICOS_DISPONIVEIS = ["Ivan", "Isaias"] as const;
 export type TecnicoDisponivel = (typeof TECNICOS_DISPONIVEIS)[number];
@@ -90,6 +93,8 @@ export function VerificacaoTecnica({
   const [catalogoServicos, setCatalogoServicos] = useState<ServicoCatalogo[]>([]);
   const [carregandoCatalogo, setCarregandoCatalogo] = useState(false);
   const [linhaSugestaoAberta, setLinhaSugestaoAberta] = useState<string | null>(null);
+  const [photoVerifOpen, setPhotoVerifOpen] = useState(false);
+  const [imagensVerificacao, setImagensVerificacao] = useState<EquipamentoImagemDraft[]>([]);
   const { warning } = useNotification();
 
   useEffect(() => {
@@ -109,6 +114,20 @@ export function VerificacaoTecnica({
     setTecnicoNome(tecnicoInicial);
   }, [open, tecnicoInicial]);
 
+  useEffect(() => {
+    if (!open || !equipamento?.id) {
+      setImagensVerificacao([]);
+      return;
+    }
+    void db.listarImagensEquipamento(equipamento.id)
+      .then((imagens) => Promise.all(imagens.map(imagemPersistidaParaDraft)))
+      .then((drafts) => setImagensVerificacao(drafts.filter((d) => d.categoria === "VERIFICACAO")))
+      .catch((err) => {
+        console.error("Erro ao carregar imagens de verificação:", err);
+        setImagensVerificacao([]);
+      });
+  }, [open, equipamento?.id]);
+
   // ─── Helpers ────────────────────────────────────────
   /** Limpa todos os campos do formulário para valores iniciais */
   function resetForm() {
@@ -116,6 +135,7 @@ export function VerificacaoTecnica({
     setServicos([]);
     setObservacoesVerif("");
     setTecnicoNome(tecnicoInicial);
+    setImagensVerificacao([]);
   }
 
   /** Adiciona um novo serviço vazio à lista (id = timestamp) */
@@ -349,7 +369,38 @@ export function VerificacaoTecnica({
               <CardHeader>
                 <CardTitle className="text-sm">Observações</CardTitle>
               </CardHeader>
-              <CardContent>
+              <CardContent className="space-y-3">
+                <div className="flex items-center gap-2">
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    className="h-6 w-6"
+                    onClick={() => setPhotoVerifOpen(true)}
+                    title="Registrar foto da verificação"
+                  >
+                    <Smartphone className="h-4 w-4" />
+                  </Button>
+                  <span className="text-xs text-muted-foreground">Registrar foto da verificação</span>
+                </div>
+
+                {imagensVerificacao.length > 0 && (
+                  <div className="flex gap-2 overflow-x-auto pb-1">
+                    {imagensVerificacao.map((imagem) => (
+                      <div
+                        key={imagem.local_id}
+                        className="relative h-16 w-16 flex-shrink-0 overflow-hidden rounded-md border"
+                      >
+                        <img
+                          src={imagem.preview_url}
+                          alt={imagem.filename}
+                          className="h-full w-full object-cover"
+                        />
+                      </div>
+                    ))}
+                  </div>
+                )}
+
                 <Textarea
                   value={observacoesVerif}
                   onChange={(e) => setObservacoesVerif(e.target.value)}
@@ -372,6 +423,22 @@ export function VerificacaoTecnica({
                 {salvando ? "Salvando..." : "Finalizar Verificação"}
               </Button>
             </DialogFooter>
+
+            {equipamento?.id && (
+              <PhotoUploadDialog
+                equipamentoId={equipamento.id}
+                categoria="VERIFICACAO"
+                open={photoVerifOpen}
+                onOpenChange={setPhotoVerifOpen}
+                onPhotoUploaded={async () => {
+                  if (equipamento?.id) {
+                    const imagens = await db.listarImagensEquipamento(equipamento.id);
+                    const drafts = await Promise.all(imagens.map(imagemPersistidaParaDraft));
+                    setImagensVerificacao(drafts.filter((d) => d.categoria === "VERIFICACAO"));
+                  }
+                }}
+              />
+            )}
           </div>
         )}
       </DialogContent>

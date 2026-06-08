@@ -126,6 +126,7 @@ export interface Equipamento {
 export const CATEGORIAS_IMAGEM_EQUIPAMENTO = {
   ENTRADA: "ENTRADA",
   SAIDA: "SAIDA",
+  VERIFICACAO: "VERIFICACAO",
 } as const;
 
 export type EquipamentoImagemCategoria =

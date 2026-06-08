@@ -23,7 +23,7 @@ interface PhotoUploadData {
 
 interface PhotoUploadDialogProps {
   equipamentoId: number;
-  categoria: "ENTRADA" | "SAIDA";
+  categoria: "ENTRADA" | "SAIDA" | "VERIFICACAO";
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onPhotoUploaded: () => void;

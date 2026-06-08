@@ -30,6 +30,7 @@ export const STATUS_SENSIVEIS = new Set([
 export const CATEGORIA_IMAGEM_LABELS: Record<EquipamentoImagemCategoria, string> = {
   ENTRADA: "entrada",
   SAIDA: "saída",
+  VERIFICACAO: "verificação",
 };
 
 export const STATUS_BADGE_LABELS_PADRAO: Partial<Record<StatusEquipamento, string>> = {

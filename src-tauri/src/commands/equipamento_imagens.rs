@@ -12,6 +12,7 @@ fn normalize_category(category: &str) -> Result<String, String> {
     match category.trim() {
         "" | "ENTRADA" => Ok("ENTRADA".to_string()),
         "SAIDA" => Ok("SAIDA".to_string()),
+        "VERIFICACAO" => Ok("VERIFICACAO".to_string()),
         other => Err(format!("Categoria de imagem inválida: {}", other)),
     }
 }

@@ -630,11 +630,18 @@ export const PdfService = {
         : [];
       const imagensEntrada = imagensEquipamento.filter((imagem) => imagem.categoria === "ENTRADA");
       const imagensSaida = imagensEquipamento.filter((imagem) => imagem.categoria === "SAIDA");
+      const imagensVerificacao = imagensEquipamento.filter((imagem) => imagem.categoria === "VERIFICACAO");
       await adicionarRegistroFotografico(
         doc,
         imagensEntrada,
         "Registro Fotográfico de Entrada",
         "Imagens anexadas para documentar o estado do equipamento no recebimento.",
+      );
+      await adicionarRegistroFotografico(
+        doc,
+        imagensVerificacao,
+        "Registro Fotográfico de Verificação",
+        "Imagens anexadas durante a verificação técnica do equipamento.",
       );
       await adicionarRegistroFotografico(
         doc,
@@ -751,11 +758,18 @@ export const PdfService = {
         ? await db.listarImagensEquipamento(equipamento.id)
         : [];
       const imagensEntrada = imagensEquipamento.filter((imagem) => imagem.categoria === "ENTRADA");
+      const imagensVerificacao = imagensEquipamento.filter((imagem) => imagem.categoria === "VERIFICACAO");
       await adicionarRegistroFotografico(
         doc,
         imagensEntrada,
         "Registro Fotográfico de Entrada",
         "Imagens anexadas para documentar o estado do equipamento no recebimento.",
+      );
+      await adicionarRegistroFotografico(
+        doc,
+        imagensVerificacao,
+        "Registro Fotográfico de Verificação",
+        "Imagens anexadas durante a verificação técnica do equipamento.",
       );
 
       const totalPages = doc.getNumberOfPages();
