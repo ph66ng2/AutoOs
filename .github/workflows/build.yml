@@ -1,0 +1,58 @@
+name: Build e Release Windows
+
+on:
+  push:
+    tags:
+      - 'v*'         # Dispara ao criar uma tag como v1.0.0, v2.3.1, etc.
+
+  # Permite rodar manualmente pela aba "Actions" no GitHub
+  workflow_dispatch:
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+    permissions:
+      contents: write  # Necessário para criar o GitHub Release
+
+    steps:
+      - name: Checkout do repositório
+        uses: actions/checkout@v4
+
+      - name: Instalar Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: lts/*
+          cache: 'npm'
+
+      - name: Instalar Rust stable
+        uses: dtolnay/rust-toolchain@stable
+
+      # Cache do Cargo para acelerar builds futuros
+      - name: Cache Cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            src-tauri/target/
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-
+
+      - name: Instalar dependências do frontend
+        run: npm install
+
+      - name: Build e criar Release
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          # O nome da tag vira o nome do release (ex: v1.0.0 → "Release v1.0.0")
+          tagName: ${{ github.ref_name }}
+          releaseName: 'Release ${{ github.ref_name }}'
+          releaseBody: |
+            Veja os assets abaixo para baixar o instalador Windows (.exe).
+          releaseDraft: false    # false = release público imediatamente
+          prerelease: false
