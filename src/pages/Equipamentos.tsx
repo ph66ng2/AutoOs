@@ -1125,21 +1125,21 @@ export default function Equipamentos() {
         break;
       case "AGUARDANDO_APROVACAO":
         primary = {
-          id: "ajustar_orcamento",
-          label: "Ajustar Orçamento",
-          icon: <RefreshCw className="h-3.5 w-3.5" />,
-          variant: "default",
-          className: classeAcaoPrincipal,
-          onClick: () => void abrirMudarStatus(eq, "AGUARDANDO_APROVACAO"),
-        };
-        secondary = {
           id: "aprovar",
           label: "Aprovar",
           icon: <CheckCircle className="h-3.5 w-3.5" />,
-          variant: "outline",
-          className: "text-green-600",
+          variant: "default",
+          className: "bg-green-600 hover:bg-green-700 text-white",
           onClick: () => void acaoRapida(eq, "APROVADO"),
           disabled: salvando,
+        };
+        secondary = {
+          id: "ajustar_orcamento",
+          label: "Ajustar Orçamento",
+          icon: <RefreshCw className="h-3.5 w-3.5" />,
+          variant: "outline",
+          className: classeAcaoPrincipal,
+          onClick: () => void abrirMudarStatus(eq, "AGUARDANDO_APROVACAO"),
         };
         overflow.push(
           {
