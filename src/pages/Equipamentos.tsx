@@ -202,6 +202,8 @@ export default function Equipamentos() {
     variant?: "default" | "destructive";
     onConfirm: () => void;
     onCancel?: () => void;
+    closeLabel?: string;
+    onClose?: () => void;
   }>({ title: "", description: "", onConfirm: () => {} });
 
   const [inputOpen, setInputOpen] = useState(false);
@@ -579,6 +581,8 @@ export default function Equipamentos() {
           setConfirmProps({
             title: "Envio por email",
             description: "Quer enviar a ordem de entrada automaticamente por email?",
+            closeLabel: "Fechar",
+            onClose: () => {},
             onConfirm: () => {
               if (emailAtual) {
                 void enviarOrdemEntrada(emailAtual);
@@ -677,6 +681,8 @@ export default function Equipamentos() {
     setConfirmProps({
       title: "Envio por email",
       description: "Quer enviar o orçamento automaticamente por email?",
+      closeLabel: "Fechar",
+      onClose: () => {},
       onConfirm: () => {
         if (!emailAtual) {
           setInputProps({
@@ -743,6 +749,8 @@ export default function Equipamentos() {
     setConfirmProps({
       title: "Envio por email",
       description: "Quer avisar o cliente que o equipamento está pronto por email?",
+      closeLabel: "Fechar",
+      onClose: () => {},
       onConfirm: () => {
         if (!emailAtual) {
           setInputProps({
@@ -2074,11 +2082,13 @@ export default function Equipamentos() {
         title={confirmProps.title}
         description={confirmProps.description}
         variant={confirmProps.variant}
+        closeLabel={confirmProps.closeLabel}
         onConfirm={() => {
           confirmProps.onConfirm();
           setConfirmOpen(false);
         }}
         onCancel={confirmProps.onCancel}
+        onClose={confirmProps.onClose}
       />
 
       <InputDialog

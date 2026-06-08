@@ -17,9 +17,11 @@ interface ConfirmDialogProps {
   description: string;
   confirmLabel?: string;
   cancelLabel?: string;
+  closeLabel?: string;
   variant?: "default" | "destructive";
   onConfirm: () => void;
   onCancel?: () => void;
+  onClose?: () => void;
 }
 
 export function ConfirmDialog({
@@ -29,12 +31,18 @@ export function ConfirmDialog({
   description,
   confirmLabel = "Confirmar",
   cancelLabel = "Cancelar",
+  closeLabel,
   variant = "default",
   onConfirm,
   onCancel,
+  onClose,
 }: ConfirmDialogProps) {
+  function handleClose() {
+    if (onClose) onClose();
+    else onOpenChange(false);
+  }
   return (
-    <AlertDialog open={open} onOpenChange={onOpenChange}>
+    <AlertDialog open={open} onOpenChange={handleClose}>
       <AlertDialogContent>
         <AlertDialogHeader>
           <AlertDialogTitle>{title}</AlertDialogTitle>
@@ -42,6 +50,11 @@ export function ConfirmDialog({
         </AlertDialogHeader>
         <AlertDialogFooter>
           <AlertDialogCancel onClick={onCancel}>{cancelLabel}</AlertDialogCancel>
+          {closeLabel && (
+            <AlertDialogCancel onClick={handleClose} className="border-red-300 text-red-600 hover:bg-red-50">
+              {closeLabel}
+            </AlertDialogCancel>
+          )}
           <AlertDialogAction
             onClick={onConfirm}
             className={cn(
