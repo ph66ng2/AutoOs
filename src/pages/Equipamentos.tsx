@@ -1138,7 +1138,6 @@ export default function Equipamentos() {
           label: "Ajustar Orçamento",
           icon: <RefreshCw className="h-3.5 w-3.5" />,
           variant: "outline",
-          className: classeAcaoPrincipal,
           onClick: () => void abrirMudarStatus(eq, "AGUARDANDO_APROVACAO"),
         };
         overflow.push(
