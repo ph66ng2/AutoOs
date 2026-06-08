@@ -63,3 +63,4 @@ src-tauri/target
 .opencode/
 .sisyphus/
 .sissyphus/
+.github/agents/
