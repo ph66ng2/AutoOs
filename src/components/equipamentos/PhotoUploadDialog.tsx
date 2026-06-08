@@ -14,12 +14,20 @@ const PHOTO_SERVER_PORT = 8765;
 const TOKEN_TTL_SECONDS = 600;
 const POLL_INTERVAL_MS = 3000;
 
+interface PhotoUploadData {
+  bytes: number[];
+  filename: string;
+  mime_type: string;
+  categoria: string;
+}
+
 interface PhotoUploadDialogProps {
   equipamentoId: number;
   categoria: "ENTRADA" | "SAIDA";
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onPhotoUploaded: () => void;
+  onPhotoData?: (data: PhotoUploadData) => void;
 }
 
 interface QrData {
@@ -34,6 +42,7 @@ export function PhotoUploadDialog({
   open,
   onOpenChange,
   onPhotoUploaded,
+  onPhotoData,
 }: PhotoUploadDialogProps) {
   const [qrData, setQrData] = useState<QrData | null>(null);
   const [timer, setTimer] = useState(TOKEN_TTL_SECONDS);
@@ -102,14 +111,23 @@ export function PhotoUploadDialog({
         if (data.used) {
           cleanup();
           await stopServer();
-          onPhotoUploaded();
+          if (onPhotoData && data.image_data) {
+            onPhotoData({
+              bytes: data.image_data.bytes,
+              filename: data.image_data.filename,
+              mime_type: data.image_data.mime_type,
+              categoria,
+            });
+          } else {
+            onPhotoUploaded();
+          }
           onOpenChange(false);
         }
       } catch {
         // Polling error - ignore, will retry
       }
     }, POLL_INTERVAL_MS);
-  }, [equipamentoId, categoria, cleanup, stopServer, onPhotoUploaded, onOpenChange, qrData?.token]);
+  }, [equipamentoId, categoria, cleanup, stopServer, onPhotoUploaded, onOpenChange, onPhotoData, qrData?.token]);
 
   useEffect(() => {
     if (open) {

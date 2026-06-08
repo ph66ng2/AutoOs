@@ -118,6 +118,7 @@ import { PhotoUploadDialog } from "@/components/equipamentos/PhotoUploadDialog";
 import { ActionPriorityRow, type PriorityAction } from "@/components/ui/action-priority-row";
 import {
   arquivoParaImagemEquipamento,
+  bytesParaDataUrl,
   imagemPersistidaParaDraft,
   LIMITE_IMAGENS_POR_EQUIPAMENTO,
   normalizarOrdemPorCategoria,
@@ -183,6 +184,7 @@ export default function Equipamentos() {
 
   const [photoUploadOpen, setPhotoUploadOpen] = useState(false);
   const [photoUploadCategoria, setPhotoUploadCategoria] = useState<"ENTRADA" | "SAIDA">("ENTRADA");
+  const [photoUploadNewEquip, setPhotoUploadNewEquip] = useState(false);
 
   // Cliente vinculado ao equipamento (gerenciado pelo ClienteSelector)
   const [clienteVinculado, setClienteVinculado] = useState<Cliente | null>(null);
@@ -1587,27 +1589,47 @@ export default function Equipamentos() {
                 {erroImagens && <ErrorAlert variant="error" context="Equipamentos" message={erroImagens} />}
                   <div className="grid gap-4 lg:grid-cols-2">
                     <div className="space-y-3 rounded-lg border p-3">
-                      <div className="flex items-center justify-between gap-2">
-                        <div>
-                          <Label htmlFor="equipamento-imagens-entrada">Fotos da entrada</Label>
-                          <p className="text-xs text-muted-foreground">Use para registrar avarias e estado no recebimento.</p>
-                        </div>
-                        <Button
-                          type="button"
-                          variant="outline"
-                          size="sm"
-                          asChild
-                          disabled={
-                            salvando ||
-                            carregandoImagensFormulario ||
-                            imagensFormulario.length >= LIMITE_IMAGENS_POR_EQUIPAMENTO
-                          }
-                        >
-                          <label htmlFor="equipamento-imagens-entrada" className="cursor-pointer">
-                            <ImagePlus className="h-4 w-4" />Adicionar
-                          </label>
-                        </Button>
-                      </div>
+                       <div className="flex items-center justify-between gap-2">
+                         <div>
+                           <Label htmlFor="equipamento-imagens-entrada">Fotos da entrada</Label>
+                           <p className="text-xs text-muted-foreground">Use para registrar avarias e estado no recebimento.</p>
+                         </div>
+                         <div className="flex items-center gap-1">
+                           <Button
+                             type="button"
+                             variant="outline"
+                             size="sm"
+                             asChild
+                             disabled={
+                               salvando ||
+                               carregandoImagensFormulario ||
+                               imagensFormulario.length >= LIMITE_IMAGENS_POR_EQUIPAMENTO
+                             }
+                           >
+                             <label htmlFor="equipamento-imagens-entrada" className="cursor-pointer">
+                               <ImagePlus className="h-4 w-4" />Adicionar
+                             </label>
+                           </Button>
+                           <Button
+                             type="button"
+                             variant="ghost"
+                             size="icon"
+                             className="h-6 w-6"
+                             disabled={
+                               salvando ||
+                               carregandoImagensFormulario ||
+                               imagensFormulario.length >= LIMITE_IMAGENS_POR_EQUIPAMENTO
+                             }
+                             onClick={() => {
+                               setPhotoUploadCategoria("ENTRADA");
+                               setPhotoUploadNewEquip(true);
+                               setPhotoUploadOpen(true);
+                             }}
+                           >
+                             <Smartphone className="h-3.5 w-3.5" />
+                           </Button>
+                         </div>
+                       </div>
                     <input
                       id="equipamento-imagens-entrada"
                       type="file"
@@ -1897,29 +1919,49 @@ export default function Equipamentos() {
                     </p>
                   )}
                   <div className="space-y-3 rounded-lg border p-3">
-                    <div className="flex items-center justify-between gap-2">
-                      <div>
-                        <Label htmlFor="equipamento-imagens-saida-entrega">Foto da saída (entrega)</Label>
-                        <p className="text-xs text-muted-foreground">
-                          Registre o estado final do equipamento no momento da entrega.
-                        </p>
-                      </div>
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        asChild
-                        disabled={
-                          salvando ||
-                          carregandoImagensSaidaEntrega ||
-                          imagensSaidaEntrega.length >= LIMITE_IMAGENS_POR_EQUIPAMENTO
-                        }
-                      >
-                        <label htmlFor="equipamento-imagens-saida-entrega" className="cursor-pointer">
-                          <ImagePlus className="h-4 w-4" />Adicionar
-                        </label>
-                      </Button>
-                    </div>
+                     <div className="flex items-center justify-between gap-2">
+                       <div>
+                         <Label htmlFor="equipamento-imagens-saida-entrega">Foto da saída (entrega)</Label>
+                         <p className="text-xs text-muted-foreground">
+                           Registre o estado final do equipamento no momento da entrega.
+                         </p>
+                       </div>
+                       <div className="flex items-center gap-1">
+                         <Button
+                           type="button"
+                           variant="outline"
+                           size="sm"
+                           asChild
+                           disabled={
+                             salvando ||
+                             carregandoImagensSaidaEntrega ||
+                             imagensSaidaEntrega.length >= LIMITE_IMAGENS_POR_EQUIPAMENTO
+                           }
+                         >
+                           <label htmlFor="equipamento-imagens-saida-entrega" className="cursor-pointer">
+                             <ImagePlus className="h-4 w-4" />Adicionar
+                           </label>
+                         </Button>
+                         <Button
+                           type="button"
+                           variant="ghost"
+                           size="icon"
+                           className="h-6 w-6"
+                           disabled={
+                             salvando ||
+                             carregandoImagensSaidaEntrega ||
+                             imagensSaidaEntrega.length >= LIMITE_IMAGENS_POR_EQUIPAMENTO
+                           }
+                           onClick={() => {
+                             setPhotoUploadCategoria("SAIDA");
+                             setPhotoUploadNewEquip(false);
+                             setPhotoUploadOpen(true);
+                           }}
+                         >
+                           <Smartphone className="h-3.5 w-3.5" />
+                         </Button>
+                       </div>
+                     </div>
                     {erroImagensSaidaEntrega && (
                       <p className="text-xs text-red-500">{erroImagensSaidaEntrega}</p>
                     )}
@@ -2023,7 +2065,7 @@ export default function Equipamentos() {
       />
 
       <PhotoUploadDialog
-        equipamentoId={selecionado?.id ?? 0}
+        equipamentoId={photoUploadNewEquip ? 0 : (selecionado?.id ?? 0)}
         categoria={photoUploadCategoria}
         open={photoUploadOpen}
         onOpenChange={setPhotoUploadOpen}
@@ -2033,6 +2075,23 @@ export default function Equipamentos() {
             setImagensDetalhes(imagens);
           }
         }}
+        onPhotoData={photoUploadNewEquip ? async (data) => {
+          const previewUrl = await bytesParaDataUrl(data.bytes, data.mime_type);
+          const nextOrdem = imagensFormulario
+            .filter((img) => img.categoria === data.categoria)
+            .reduce((max, img) => Math.max(max, img.ordem), -1) + 1;
+          const draft: EquipamentoImagemDraft = {
+            local_id: crypto.randomUUID?.() || `imagem-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`,
+            categoria: data.categoria as EquipamentoImagemCategoria,
+            filename: data.filename,
+            mime_type: data.mime_type,
+            tamanho_bytes: data.bytes.length,
+            ordem: nextOrdem,
+            bytes: data.bytes,
+            preview_url: previewUrl,
+          };
+          setImagensFormulario((prev) => [...prev, draft]);
+        } : undefined}
       />
     </div>
   );

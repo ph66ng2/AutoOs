@@ -195,6 +195,16 @@ struct TokenData {
     categoria: String,
     expires_at: Instant,
     used: bool,
+    /// Stores resized image bytes when equipamento_id == 0 (draft mode)
+    image_data: Option<Arc<ImageData>>,
+}
+
+/// Image data returned via status endpoint for draft uploads (equipamento_id == 0)
+#[derive(Clone)]
+struct ImageData {
+    bytes: Vec<u8>,
+    filename: String,
+    mime_type: String,
 }
 
 type TokenStore = Arc<TokioMutex<HashMap<String, TokenData>>>;
@@ -229,9 +239,18 @@ struct UploadParams {
 }
 
 #[derive(Serialize)]
+struct ImageDataResponse {
+    bytes: Vec<u8>,
+    filename: String,
+    mime_type: String,
+}
+
+#[derive(Serialize)]
 struct StatusResponse {
     valid: bool,
     used: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    image_data: Option<ImageDataResponse>,
 }
 
 // ── Helpers ────────────────────────────────────────────────────
@@ -363,6 +382,26 @@ async fn upload_handler(
             }));
         }
 
+        // Draft mode: equipamento_id == 0 means don't save to DB
+        if token_data.equipamento_id == 0 {
+            let mut store = state.token_store.lock().await;
+            if let Some(t) = store.get_mut(&params.token) {
+                t.used = true;
+                t.image_data = Some(Arc::new(ImageData {
+                    bytes: encoded,
+                    filename: filename.clone(),
+                    mime_type: final_mime.clone(),
+                }));
+            }
+
+            info!("Foto recebida (modo rascunho): filename={}", filename);
+
+            return Json(json!({
+                "success": true,
+                "message": "Foto recebida com sucesso!"
+            }));
+        }
+
         match adicionar_imagem_equipamento_raw(
             token_data.equipamento_id,
             token_data.categoria.clone(),
@@ -470,7 +509,14 @@ async fn status_handler(
         None => false,
     };
     let used = token_data.map(|t| t.used).unwrap_or(false);
-    Json(StatusResponse { valid, used })
+    let image_data = token_data
+        .and_then(|t| t.image_data.clone())
+        .map(|data| ImageDataResponse {
+            bytes: data.bytes.clone(),
+            filename: data.filename.clone(),
+            mime_type: data.mime_type.clone(),
+        });
+    Json(StatusResponse { valid, used, image_data })
 }
 
 // ── Auto-shutdown monitor ──────────────────────────────────────
@@ -662,6 +708,7 @@ pub async fn generate_upload_token(
             categoria,
             expires_at: Instant::now() + Duration::from_secs(600),
             used: false,
+            image_data: None,
         },
     );
 
