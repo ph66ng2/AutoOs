@@ -134,6 +134,11 @@ fn main() {
             commands::equipamentos::atualizar_status_equipamento,
             commands::equipamento_imagens::listar_imagens_equipamento,
             commands::equipamento_imagens::substituir_imagens_equipamento,
+            commands::equipamento_imagens::adicionar_imagem_equipamento,
+            commands::photo_server::start_photo_server,
+            commands::photo_server::stop_photo_server,
+            commands::photo_server::generate_upload_token,
+            commands::qr_code::gerar_qr_upload,
             // Clientes
             commands::clientes::listar_clientes,
             commands::clientes::buscar_cliente,
@@ -147,6 +152,13 @@ fn main() {
             commands::produtos::atualizar_produto,
             commands::produtos::deletar_produto,
             commands::produtos::registrar_movimentacao_estoque,
+            // Gastos
+            commands::gastos::listar_gastos_fixos,
+            commands::gastos::criar_gasto_fixo,
+            commands::gastos::atualizar_gasto_fixo,
+            commands::gastos::listar_gastos_variaveis,
+            commands::gastos::criar_gasto_variavel,
+            commands::gastos::resumo_mensal,
             // Serviços (catálogo)
             commands::servicos::listar_servicos,
             commands::servicos::buscar_servico,
