@@ -49,6 +49,7 @@ import {
   ImagePlus,
   Eye,
   Download,
+  Smartphone,
 } from "lucide-react";
 import { useForm, Controller } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -113,6 +114,7 @@ import {
 } from "@/components/equipamentos/VerificacaoTecnica";
 import { HistoricoComunicacoes } from "@/components/equipamentos/HistoricoComunicacoes";
 import { ClienteSelector } from "@/components/equipamentos/ClienteSelector";
+import { PhotoUploadDialog } from "@/components/equipamentos/PhotoUploadDialog";
 import { ActionPriorityRow, type PriorityAction } from "@/components/ui/action-priority-row";
 import {
   arquivoParaImagemEquipamento,
@@ -178,6 +180,9 @@ export default function Equipamentos() {
   const [erroImagensSaidaEntrega, setErroImagensSaidaEntrega] = useState<string | null>(null);
   const [carregandoImagensSaidaEntrega, setCarregandoImagensSaidaEntrega] = useState(false);
   const [imagemExpandida, setImagemExpandida] = useState<EquipamentoImagemDraft | null>(null);
+
+  const [photoUploadOpen, setPhotoUploadOpen] = useState(false);
+  const [photoUploadCategoria, setPhotoUploadCategoria] = useState<"ENTRADA" | "SAIDA">("ENTRADA");
 
   // Cliente vinculado ao equipamento (gerenciado pelo ClienteSelector)
   const [clienteVinculado, setClienteVinculado] = useState<Cliente | null>(null);
@@ -1580,29 +1585,29 @@ export default function Equipamentos() {
                   </span>
                 </div>
                 {erroImagens && <ErrorAlert variant="error" context="Equipamentos" message={erroImagens} />}
-                <div className="grid gap-4 lg:grid-cols-2">
-                  <div className="space-y-3 rounded-lg border p-3">
-                    <div className="flex items-center justify-between gap-2">
-                      <div>
-                        <Label htmlFor="equipamento-imagens-entrada">Fotos da entrada</Label>
-                        <p className="text-xs text-muted-foreground">Use para registrar avarias e estado no recebimento.</p>
+                  <div className="grid gap-4 lg:grid-cols-2">
+                    <div className="space-y-3 rounded-lg border p-3">
+                      <div className="flex items-center justify-between gap-2">
+                        <div>
+                          <Label htmlFor="equipamento-imagens-entrada">Fotos da entrada</Label>
+                          <p className="text-xs text-muted-foreground">Use para registrar avarias e estado no recebimento.</p>
+                        </div>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          asChild
+                          disabled={
+                            salvando ||
+                            carregandoImagensFormulario ||
+                            imagensFormulario.length >= LIMITE_IMAGENS_POR_EQUIPAMENTO
+                          }
+                        >
+                          <label htmlFor="equipamento-imagens-entrada" className="cursor-pointer">
+                            <ImagePlus className="h-4 w-4" />Adicionar
+                          </label>
+                        </Button>
                       </div>
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        asChild
-                        disabled={
-                          salvando ||
-                          carregandoImagensFormulario ||
-                          imagensFormulario.length >= LIMITE_IMAGENS_POR_EQUIPAMENTO
-                        }
-                      >
-                        <label htmlFor="equipamento-imagens-entrada" className="cursor-pointer">
-                          <ImagePlus className="h-4 w-4" />Adicionar
-                        </label>
-                      </Button>
-                    </div>
                     <input
                       id="equipamento-imagens-entrada"
                       type="file"
@@ -1677,9 +1682,22 @@ export default function Equipamentos() {
                     <div className="space-y-2">
                       <div className="flex items-center justify-between">
                         <p className="text-sm text-muted-foreground">Fotos da entrada</p>
-                        <span className="text-xs text-muted-foreground">
-                          {filtrarImagensPorCategoria(imagensDetalhes, "ENTRADA").length} registrada(s)
-                        </span>
+                        <div className="flex items-center gap-1">
+                          <span className="text-xs text-muted-foreground">
+                            {filtrarImagensPorCategoria(imagensDetalhes, "ENTRADA").length} registrada(s)
+                          </span>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-6 w-6"
+                            onClick={() => {
+                              setPhotoUploadCategoria("ENTRADA");
+                              setPhotoUploadOpen(true);
+                            }}
+                          >
+                            <Smartphone className="h-3.5 w-3.5" />
+                          </Button>
+                        </div>
                       </div>
                       {carregandoDetalhes ? (
                         <div className="flex items-center justify-center rounded-lg border border-dashed p-6">
@@ -1697,9 +1715,22 @@ export default function Equipamentos() {
                     <div className="space-y-2">
                       <div className="flex items-center justify-between">
                         <p className="text-sm text-muted-foreground">Fotos da saída</p>
-                        <span className="text-xs text-muted-foreground">
-                          {filtrarImagensPorCategoria(imagensDetalhes, "SAIDA").length} registrada(s)
-                        </span>
+                        <div className="flex items-center gap-1">
+                          <span className="text-xs text-muted-foreground">
+                            {filtrarImagensPorCategoria(imagensDetalhes, "SAIDA").length} registrada(s)
+                          </span>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-6 w-6"
+                            onClick={() => {
+                              setPhotoUploadCategoria("SAIDA");
+                              setPhotoUploadOpen(true);
+                            }}
+                          >
+                            <Smartphone className="h-3.5 w-3.5" />
+                          </Button>
+                        </div>
                       </div>
                       {carregandoDetalhes ? (
                         <div className="flex items-center justify-center rounded-lg border border-dashed p-6">
@@ -1989,6 +2020,19 @@ export default function Equipamentos() {
         label={inputProps.label}
         placeholder={inputProps.placeholder}
         onConfirm={inputProps.onConfirm}
+      />
+
+      <PhotoUploadDialog
+        equipamentoId={selecionado?.id ?? 0}
+        categoria={photoUploadCategoria}
+        open={photoUploadOpen}
+        onOpenChange={setPhotoUploadOpen}
+        onPhotoUploaded={async () => {
+          if (selecionado?.id) {
+            const imagens = await carregarImagensComPreview(selecionado.id);
+            setImagensDetalhes(imagens);
+          }
+        }}
       />
     </div>
   );
