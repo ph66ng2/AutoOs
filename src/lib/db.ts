@@ -31,6 +31,10 @@ import type {
   Cliente,
   Produto,
   ServicoCatalogo,
+  GastoFixo,
+  GastoVariavel,
+  GastoVariavelInput,
+  GastoResumoMensal,
   Verificacao,
   Comunicacao,
   DatabaseSchemaStatus,
@@ -173,6 +177,17 @@ export const db = {
     });
   },
 
+  /** Adiciona uma única imagem ao equipamento → Rust: adicionar_imagem_equipamento */
+  async adicionarImagemEquipamento(
+    equipamentoId: number,
+    imagem: EquipamentoImagemInput
+  ): Promise<EquipamentoImagem> {
+    return invoke<EquipamentoImagem>("adicionar_imagem_equipamento", {
+      equipamentoId,
+      imagem,
+    });
+  },
+
   // ─── Comunicações ─────────────────────────────────────
 
   /** Registra envio de comunicação (WhatsApp/Email) → Rust: registrar_comunicacao */
@@ -267,6 +282,38 @@ export const db = {
     return invoke<void>("deletar_servico", { id });
   },
 
+  // ─── Gastos Fixos e Variáveis ───────────────────────────
+
+  /** Lista todos os gastos fixos ativos → Rust: listar_gastos_fixos */
+  async listarGastosFixos(): Promise<GastoFixo[]> {
+    return invoke<GastoFixo[]>("listar_gastos_fixos");
+  },
+
+  /** Cria novo gasto fixo → Rust: criar_gasto_fixo. Retorna o registro persistido */
+  async criarGastoFixo(input: Omit<GastoFixo, "id">): Promise<GastoFixo> {
+    return invoke<GastoFixo>("criar_gasto_fixo", { input });
+  },
+
+  /** Atualiza gasto fixo existente → Rust: atualizar_gasto_fixo */
+  async atualizarGastoFixo(id: number, input: Omit<GastoFixo, "id">): Promise<GastoFixo> {
+    return invoke<GastoFixo>("atualizar_gasto_fixo", { id, input });
+  },
+
+  /** Lista gastos variáveis de um mês/ano → Rust: listar_gastos_variaveis */
+  async listarGastosVariaveis(mes: number, ano: number): Promise<GastoVariavel[]> {
+    return invoke<GastoVariavel[]>("listar_gastos_variaveis", { mes, ano });
+  },
+
+  /** Cria novo gasto variável → Rust: criar_gasto_variavel. Retorna o registro persistido */
+  async criarGastoVariavel(input: GastoVariavelInput): Promise<GastoVariavel> {
+    return invoke<GastoVariavel>("criar_gasto_variavel", { input });
+  },
+
+  /** Resumo mensal de gastos (fixos + variáveis + por categoria) → Rust: resumo_mensal */
+  async resumoMensal(mes: number, ano: number): Promise<GastoResumoMensal> {
+    return invoke<GastoResumoMensal>("resumo_mensal", { mes, ano });
+  },
+
   /** Consulta a versão do schema e as migrações conhecidas/aplicadas → Rust: obter_status_schema_banco */
   async obterStatusSchemaBanco(): Promise<DatabaseSchemaStatus> {
     return invoke<DatabaseSchemaStatus>("obter_status_schema_banco");
@@ -295,6 +342,29 @@ export const db = {
   /** Exporta um pacote JSON com diagnóstico local para suporte */
   async exportarPacoteSuporteLocal(): Promise<LocalSupportBundleResult> {
     return invoke<LocalSupportBundleResult>("exportar_pacote_suporte_local");
+  },
+
+  /** Gera QR code com token de upload para foto via dispositivo móvel → Rust: gerar_qr_upload */
+  async gerarQrUpload(
+    equipamentoId: number,
+    categoria: string,
+    port: number,
+  ): Promise<{ qr_svg: string; url: string; token: string }> {
+    return invoke<{ qr_svg: string; url: string; token: string }>("gerar_qr_upload", {
+      equipamentoId,
+      categoria,
+      port,
+    });
+  },
+
+  /** Inicia o servidor HTTP local para recebimento de fotos via celular → Rust: start_photo_server */
+  async startPhotoServer(port: number): Promise<string> {
+    return invoke<string>("start_photo_server", { port });
+  },
+
+  /** Para o servidor HTTP local de fotos → Rust: stop_photo_server */
+  async stopPhotoServer(): Promise<void> {
+    return invoke<void>("stop_photo_server");
   },
 
   // ─── Arquivo Temporário ────────────────────────────────
