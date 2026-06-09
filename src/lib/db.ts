@@ -85,6 +85,11 @@ export const db = {
     return invoke<Equipamento>("buscar_equipamento", { id });
   },
 
+  /** Busca equipamentos por número de série (case-insensitive) → Rust: buscar_equipamentos_por_serial */
+  async buscarEquipamentosPorSerial(serial: string): Promise<Equipamento[]> {
+    return invoke<Equipamento[]>("buscar_equipamentos_por_serial", { serial });
+  },
+
   /** Cria novo equipamento → Rust: criar_equipamento. Retorna o registro persistido */
   async criarEquipamento(equipamento: Omit<Equipamento, "id">): Promise<Equipamento> {
     return invoke<Equipamento>("criar_equipamento", { input: equipamento });

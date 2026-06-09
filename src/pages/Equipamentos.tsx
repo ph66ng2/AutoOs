@@ -134,7 +134,6 @@ import {
 import { GaleriaImagensEquipamento } from "@/pages/equipamentos/EquipamentosPageGallery";
 import { StatusBadge } from "@/pages/equipamentos/EquipamentosStatusBadge";
 import {
-  buscarEquipamentoDuplicado,
   emailValido,
   extrairTecnicoInicialDeObservacoes,
   filtrarImagensPorCategoria,
@@ -161,6 +160,10 @@ export default function Equipamentos() {
   const [deletando, setDeletando] = useState<Equipamento | null>(null);
   const [selecionado, setSelecionado] = useState<Equipamento | null>(null);
   const [salvando, setSalvando] = useState(false);
+
+  // Duplicidade de serial (múltiplos ciclos de manutenção)
+  const [registrosAnteriores, setRegistrosAnteriores] = useState<Equipamento[]>([]);
+  const [confirmouNovoCiclo, setConfirmouNovoCiclo] = useState(false);
 
   // Dados do drawer de detalhes
   const [verificacaoDetalhes, setVerificacaoDetalhes] = useState<Verificacao | null>(null);
@@ -249,6 +252,8 @@ export default function Equipamentos() {
     setImagensFormulario([]);
     setCarregandoImagensFormulario(false);
     setTecnicoNovoEquipamento("Ivan");
+    setRegistrosAnteriores([]);
+    setConfirmouNovoCiclo(false);
     form.reset({
       serial_number: "", patrimonio: "", marca: "", modelo: "", tipo: "", status: "RECEBIDO",
       defeito_relatado: "", acessorios: [], acessorios_outros: "",
@@ -351,6 +356,27 @@ export default function Equipamentos() {
       setErroImagens(err?.message || "Não foi possível processar as fotos selecionadas.");
     } finally {
       setCarregandoImagensFormulario(false);
+    }
+  }
+
+  /** Ao perder foco no campo serial, busca registros existentes com mesmo número de série */
+  async function handleSerialBlur() {
+    const serial = form.getValues("serial_number");
+    if (!serial || serial.trim().length < 3) {
+      setRegistrosAnteriores([]);
+      setConfirmouNovoCiclo(false);
+      return;
+    }
+    try {
+      const registros = await db.buscarEquipamentosPorSerial(serial);
+      // Quando editando, excluir o registro atual da lista de anteriores
+      const anteriores = editando
+        ? registros.filter((r) => r.id !== editando.id)
+        : registros;
+      setRegistrosAnteriores(anteriores);
+      setConfirmouNovoCiclo(false);
+    } catch (err) {
+      console.error("Erro ao buscar registros anteriores:", err);
     }
   }
 
@@ -486,26 +512,6 @@ export default function Equipamentos() {
     setErroCliente(null);
     setSalvando(true);
     try {
-      const duplicado = await buscarEquipamentoDuplicado(data, editando?.id);
-      if (duplicado) {
-        const registro = duplicado.campo === "serial_number" ? "número de série" : "patrimônio";
-        setConfirmProps({
-          title: "Equipamento duplicado",
-          description:
-            `Já existe outra impressora com este ${registro}. ` +
-            `Equipamento encontrado: ${duplicado.equipamento.marca} ${duplicado.equipamento.modelo} (SN: ${duplicado.equipamento.serial_number}). ` +
-            "Deseja incluir uma nova verificação nesta impressora já registrada?",
-          variant: "destructive",
-          onConfirm: () => {
-            setDialogOpen(false);
-            setSelecionado(duplicado.equipamento);
-            setVerificacaoDialogOpen(true);
-          },
-        });
-        setConfirmOpen(true);
-        return;
-      }
-
       // Nome de exibição do cliente
       const nomeCliente = clienteVinculado.tipo_pessoa === "PJ"
         ? (clienteVinculado.nome_fantasia || clienteVinculado.razao_social || clienteVinculado.nome || "")
@@ -1493,7 +1499,10 @@ export default function Equipamentos() {
       </Card>
 
       {/* ═══ Dialog Criar/Editar ═══ */}
-      <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+      <Dialog open={dialogOpen} onOpenChange={(open) => {
+        if (!open) { setRegistrosAnteriores([]); setConfirmouNovoCiclo(false); }
+        setDialogOpen(open);
+      }}>
         <DialogContent className="sm:max-w-2xl max-h-[85vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>{editando ? "Editar Equipamento" : "Novo Equipamento"}</DialogTitle>
@@ -1519,8 +1528,42 @@ export default function Equipamentos() {
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label>Nº Série *</Label>
-                  <Input {...form.register("serial_number")} />
+                  <Input
+                    {...form.register("serial_number")}
+                    onBlur={(e) => {
+                      void form.register("serial_number").onBlur(e);
+                      void handleSerialBlur();
+                    }}
+                  />
                   <FormValidationError message={form.formState.errors.serial_number?.message} />
+                  {registrosAnteriores.length > 0 && (
+                    <div className="mt-2 rounded-md border border-amber-200 bg-amber-50 p-3 space-y-2">
+                      <p className="text-sm font-medium text-amber-800">
+                        ⚠️ Este número de série já possui {registrosAnteriores.length} registro{registrosAnteriores.length > 1 ? 's' : ''} anterior{registrosAnteriores.length > 1 ? 'es' : ''}:
+                      </p>
+                      <ul className="space-y-1">
+                        {registrosAnteriores.map((r) => (
+                          <li key={r.id} className="text-xs text-amber-700 flex items-center gap-1 flex-wrap">
+                            <span>• #{r.id}</span>
+                            <StatusBadge status={r.status} />
+                            <span>— Entrada: {r.data_entrada ? new Date(r.data_entrada).toLocaleDateString("pt-BR") : "—"}</span>
+                            {r.data_saida && (
+                              <span>| Saída: {new Date(r.data_saida).toLocaleDateString("pt-BR")}</span>
+                            )}
+                          </li>
+                        ))}
+                      </ul>
+                      <label className="flex items-center gap-2 text-sm cursor-pointer pt-1">
+                        <input
+                          type="checkbox"
+                          checked={confirmouNovoCiclo}
+                          onChange={(e) => setConfirmouNovoCiclo(e.target.checked)}
+                          className="rounded border-amber-300"
+                        />
+                        <span className="text-amber-800">Este equipamento já possui registro anterior. Desejo criar um novo ciclo de manutenção?</span>
+                      </label>
+                    </div>
+                  )}
                 </div>
                 <div className="space-y-2">
                   <Label>Patrimônio</Label>
@@ -1695,7 +1738,9 @@ export default function Equipamentos() {
             </div>
             <DialogFooter>
               <DialogClose asChild><Button variant="outline" type="button">Cancelar</Button></DialogClose>
-              <Button type="submit" disabled={salvando}>{salvando ? "Salvando..." : editando ? "Salvar" : "Cadastrar"}</Button>
+              <Button type="submit" disabled={salvando || (registrosAnteriores.length > 0 && !confirmouNovoCiclo)}>
+                {salvando ? "Salvando..." : registrosAnteriores.length > 0 ? "Criar novo ciclo" : editando ? "Salvar" : "Cadastrar"}
+              </Button>
             </DialogFooter>
           </form>
         </DialogContent>

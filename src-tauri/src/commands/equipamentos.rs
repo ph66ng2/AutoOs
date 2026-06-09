@@ -260,6 +260,26 @@ pub async fn buscar_equipamento(id: i32) -> Result<EquipamentoRow, String> {
     Ok(row)
 }
 
+/// Buscar equipamentos por número de série (case-insensitive).
+/// Retorna múltiplos registros para o mesmo serial (ciclos de manutenção).
+#[tauri::command]
+#[instrument(skip_all, fields(serial = %serial))]
+pub async fn buscar_equipamentos_por_serial(serial: String) -> Result<Vec<EquipamentoRow>, String> {
+    debug!("Buscando equipamentos por serial: {}", serial);
+    let pool = get_pool().await.map_err(|e| e.to_string())?;
+    let query = format!("{} WHERE LOWER(serial_number) = LOWER($1) ORDER BY id DESC", EQUIPAMENTO_SELECT);
+    let rows = sqlx::query_as::<_, EquipamentoRow>(&query)
+        .bind(serial.trim())
+        .fetch_all(&pool)
+        .await
+        .map_err(|e| {
+            error!("Erro ao buscar equipamentos por serial: {}", e);
+            format!("Erro ao buscar equipamentos: {}", e)
+        })?;
+    info!("Equipamentos encontrados para serial {}: {}", serial, rows.len());
+    Ok(rows)
+}
+
 /// Criar novo equipamento.
 #[tauri::command]
 #[instrument(skip_all, fields(serial = %input.serial_number))]
