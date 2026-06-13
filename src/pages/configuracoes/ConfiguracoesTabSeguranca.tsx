@@ -249,6 +249,8 @@ export function ConfiguracoesTabSeguranca({
                   setEditProfileRole(value);
                   if (value === "ADMIN") {
                     setEditPermissions(permissionOptions);
+                  } else {
+                    setEditPermissions([]);
                   }
                 }} disabled={!securityAdminUnlocked || securityBusy || !managedProfile?.ativo}>
                   <SelectTrigger>
@@ -334,12 +336,14 @@ export function ConfiguracoesTabSeguranca({
                 </div>
                 <div className="space-y-2">
                   <Label>Papel</Label>
-                  <Select value={newProfileRole} onValueChange={(value) => {
-                    setNewProfileRole(value);
-                    if (value === "ADMIN") {
-                      setNewProfilePermissions(permissionOptions);
-                    }
-                  }} disabled={!securityAdminUnlocked || securityBusy}>
+                <Select value={newProfileRole} onValueChange={(value) => {
+                  setNewProfileRole(value);
+                  if (value === "ADMIN") {
+                    setNewProfilePermissions(permissionOptions);
+                  } else {
+                    setNewProfilePermissions([]);
+                  }
+                }} disabled={!securityAdminUnlocked || securityBusy}>
                     <SelectTrigger>
                       <SelectValue placeholder="Selecione um papel" />
                     </SelectTrigger>

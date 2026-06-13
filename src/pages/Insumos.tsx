@@ -128,8 +128,8 @@ export default function Insumos() {
 
   async function abrirNovo() {
     const liberado = await ensureSensitiveAccess({
-      title: "Cadastrar insumo",
-      description: "Informe o PIN para alterar estoque, custos e preços dos insumos.",
+      title: "Cadastrar insumo/peça",
+      description: "Informe o PIN para alterar estoque, custos e preços dos insumos/peças.",
       permission: SENSITIVE_PERMISSIONS.STOCK_CONTROL,
     });
     if (!liberado) return;
@@ -151,8 +151,8 @@ export default function Insumos() {
 
   async function abrirEditar(p: Produto) {
     const liberado = await ensureSensitiveAccess({
-      title: "Editar insumo",
-      description: "Informe o PIN para alterar preços e parâmetros de estoque deste insumo.",
+      title: "Editar insumo/peça",
+      description: "Informe o PIN para alterar preços e parâmetros de estoque deste insumo/peça.",
       permission: SENSITIVE_PERMISSIONS.STOCK_CONTROL,
     });
     if (!liberado) return;
@@ -203,18 +203,18 @@ export default function Insumos() {
       if (editando) {
         const resultado = await atualizar(editando.id!, payload);
         if (!resultado.sucesso) {
-          throw new Error(resultado.erro || "Não foi possível salvar o insumo.");
+          throw new Error(resultado.erro || "Não foi possível salvar o insumo/peça.");
         }
       } else {
         const resultado = await criar(payload);
         if (!resultado.sucesso) {
-          throw new Error(resultado.erro || "Não foi possível criar o insumo.");
+          throw new Error(resultado.erro || "Não foi possível criar o insumo/peça.");
         }
       }
       setDialogOpen(false);
     } catch (err: any) {
       console.error("Erro ao salvar:", err);
-      showError("Insumos", "Salvar produto", err);
+      showError("Insumos/Peças", "Salvar produto", err);
     } finally {
       setSalvando(false);
     }
@@ -237,7 +237,7 @@ export default function Insumos() {
       setMovDialogOpen(false);
     } catch (err: any) {
       console.error("Erro movimentação:", err);
-      showError("Insumos", "Registrar movimentação", err);
+      showError("Insumos/Peças", "Registrar movimentação", err);
     } finally {
       setSalvando(false);
     }
@@ -259,8 +259,8 @@ export default function Insumos() {
 
   async function solicitarExclusao(produto: Produto) {
     const liberado = await ensureSensitiveAccess({
-      title: "Excluir insumo",
-      description: "Informe o PIN para excluir um insumo do estoque.",
+      title: "Excluir insumo/peça",
+      description: "Informe o PIN para excluir um insumo/peça do estoque.",
       permission: SENSITIVE_PERMISSIONS.DELETE_RECORDS,
     });
     if (!liberado) return;
@@ -274,7 +274,7 @@ export default function Insumos() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight">Insumos & Estoque</h1>
+          <h1 className="text-3xl font-bold tracking-tight">Insumos/Peças & Estoque</h1>
           <p className="text-muted-foreground">
             Controle de suprimentos e movimentação de estoque
           </p>
@@ -288,7 +288,7 @@ export default function Insumos() {
           )}
           <Button onClick={() => void abrirNovo()}>
             <Plus className="h-4 w-4 mr-2" />
-            Novo Insumo
+            Novo Insumo/Peça
           </Button>
         </div>
       </div>
@@ -296,7 +296,7 @@ export default function Insumos() {
       {error && (
         <ErrorAlert
           variant="error"
-          context="Insumos"
+          context="Insumos/Peças"
           message={error}
           action="Carregar"
         />
@@ -354,11 +354,11 @@ export default function Insumos() {
           ) : produtos.length === 0 ? (
             <div className="text-center py-12 text-muted-foreground">
               <Package className="h-16 w-16 mx-auto mb-4 opacity-20" />
-              <p className="text-lg font-medium mb-1">Nenhum insumo encontrado</p>
+              <p className="text-lg font-medium mb-1">Nenhum insumo/peça encontrado</p>
               <p className="text-sm">
                 {busca || categoriaFiltro !== "TODOS" || apenasEstoqueBaixo
                   ? "Tente ajustar os filtros"
-                  : "Clique em 'Novo Insumo' para cadastrar"}
+                  : "Clique em 'Novo Insumo/Peça' para cadastrar"}
               </p>
             </div>
           ) : (

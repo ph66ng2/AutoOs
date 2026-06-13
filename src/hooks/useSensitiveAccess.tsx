@@ -112,7 +112,25 @@ export function SensitiveAccessProvider({ children }: { children: ReactNode }) {
         setBootProgress((p) => Math.max(p, 86));
       }
       setStatus(nextStatus);
-      setSelectedProfileId(nextStatus.active_profile_id ? String(nextStatus.active_profile_id) : "");
+
+      // Pré-selecionar o último perfil usado, se ainda existir e estiver ativo
+      let lastProfileId: string | null = null;
+      try {
+        lastProfileId = localStorage.getItem("autoos_last_profile_id");
+      } catch { /* ignorar — localStorage pode estar indisponível */ }
+
+      if (lastProfileId) {
+        const savedProfile = nextStatus.profiles.find(
+          (p) => String(p.id) === lastProfileId && p.ativo !== false
+        );
+        if (savedProfile) {
+          setSelectedProfileId(lastProfileId);
+        } else {
+          setSelectedProfileId(nextStatus.active_profile_id ? String(nextStatus.active_profile_id) : "");
+        }
+      } else {
+        setSelectedProfileId(nextStatus.active_profile_id ? String(nextStatus.active_profile_id) : "");
+      }
 
       if (!startupPromptedRef.current && nextStatus.profiles.length > 0) {
         startupPromptedRef.current = true;
@@ -297,6 +315,12 @@ export function SensitiveAccessProvider({ children }: { children: ReactNode }) {
       }
 
       setStatus(nextStatus);
+
+      // Lembrar último perfil usado para pré-selecionar na próxima inicialização
+      try {
+        localStorage.setItem("autoos_last_profile_id", String(workingStatus!.active_profile_id!));
+      } catch { /* localStorage pode estar indisponível (modo anônimo, storage cheio) */ }
+
       closeDialog(true);
     } catch (submitError: any) {
       setError(submitError?.message || submitError?.toString() || "Falha ao validar o acesso sensível.");

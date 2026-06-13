@@ -596,6 +596,11 @@ export default function Configuracoes() {
       return;
     }
 
+    if (editProfileRole === "CUSTOM" && editPermissions.length === 0) {
+      setSecurityMessage("Um perfil CUSTOM deve ter pelo menos uma permissão.");
+      return;
+    }
+
     const permissions = permissionsForRole(editProfileRole, editPermissions);
     setSecurityBusy(true);
     setSecurityMessage(null);
@@ -627,6 +632,11 @@ export default function Configuracoes() {
 
     if (newProfilePin !== newProfilePinConfirm) {
       setSecurityMessage("A confirmação do PIN do novo perfil não confere.");
+      return;
+    }
+
+    if (newProfileRole === "CUSTOM" && newProfilePermissions.length === 0) {
+      setSecurityMessage("Um perfil CUSTOM deve ter pelo menos uma permissão.");
       return;
     }
 

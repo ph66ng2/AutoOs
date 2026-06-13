@@ -32,10 +32,10 @@ import Servicos from "@/pages/Servicos";
 import Gastos from "@/pages/Gastos";
 
 /**
- * Componente placeholder para o módulo de Insumos temporariamente bloqueado.
+ * Componente placeholder para o módulo de Insumos/Peças temporariamente bloqueado.
  * 
  * ═══════════════════════════════════════════════════════════════
- * COMO DESBLOQUEAR O MÓDULO DE INSUMOS (3 passos, ~2 min):
+ * COMO DESBLOQUEAR O MÓDULO DE INSUMOS/PEÇAS (3 passos, ~2 min):
  * ═══════════════════════════════════════════════════════════════
  * 
  * 1. NESTE ARQUIVO (App.tsx):
@@ -44,10 +44,10 @@ import Gastos from "@/pages/Gastos";
  *    - Troque a rota /insumos de volta para: element={<Insumos />}
  * 
  * 2. Em src/components/Layout.tsx (~linha 38):
- *    - Descomente o item: { label: "Insumos", path: "/insumos", icon: Package }
+ *    - Descomente o item: { label: "Insumos/Peças", path: "/insumos", icon: Package }
  * 
  * 3. Em src/pages/Dashboard.tsx (~linhas 220, 263, 370):
- *    - Descomente/restaure os botões "Novo Insumo", card "Estoque Baixo" e "Ver todos"
+ *    - Descomente/restaure os botões "Novo Insumo/Peça", card "Estoque Baixo" e "Ver todos"
  * 
  * Busque por: [BLOQUEIO-TEMPORARIO-INSUMOS] no projeto para localizar todos os pontos.
  * ═══════════════════════════════════════════════════════════════
@@ -56,9 +56,9 @@ function BlockedInsumosPage() {
   return (
     <div className="flex flex-col items-center justify-center py-24 text-center">
       <Package className="h-16 w-16 text-muted-foreground mb-6 opacity-30" />
-      <h2 className="text-2xl font-bold text-foreground mb-2">Módulo de Insumos</h2>
+      <h2 className="text-2xl font-bold text-foreground mb-2">Módulo de Insumos/Peças</h2>
       <p className="text-muted-foreground max-w-md mb-6">
-        O módulo de controle de estoque e insumos está temporariamente indisponível
+        O módulo de controle de estoque e insumos/peças está temporariamente indisponível
         para manutenção. Nenhum dado foi perdido — o banco permanece íntegro.
       </p>
       <Badge variant="secondary" className="text-xs">

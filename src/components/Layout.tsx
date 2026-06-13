@@ -4,7 +4,7 @@
  * ╠══════════════════════════════════════════════════════════════╣
  * ║  Componente de layout que envolve todas as páginas.          ║
  * ║  Sidebar com navegação: Dashboard, Equipamentos, Clientes,  ║
- * ║  Insumos. Suporta collapse (16px / 60px).                   ║
+ * ║  Insumos/Peças. Suporta collapse (16px / 60px).            ║
  * ║  Usa React Router <Outlet /> para renderizar a página ativa.║
  * ║                                                              ║
  * ║  DEPENDE DE: react-router-dom (NavLink, Outlet)              ║
@@ -43,7 +43,7 @@ const navItems: {
   { label: "Equipamentos", path: "/equipamentos", icon: Printer },
   { label: "Clientes", path: "/clientes", icon: Users },
   // [BLOQUEIO-TEMPORARIO-INSUMOS] descomente a linha abaixo para restaurar Insumos na sidebar
-  // { label: "Insumos", path: "/insumos", icon: Package },
+  // { label: "Insumos/Peças", path: "/insumos", icon: Package },
   { label: "Servicos", path: "/servicos", icon: Wrench },
   { label: "Gastos", path: "/gastos", icon: Receipt, permission: SENSITIVE_PERMISSIONS.VIEW_EXPENSES },
   { label: "Configuracoes", path: "/configuracoes", icon: Settings },

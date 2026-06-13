@@ -219,7 +219,7 @@ export default function Dashboard() {
           </Button>
           {/* [BLOQUEIO-TEMPORARIO-INSUMOS] descomente o botão abaixo para restaurar */}
           {/* <Button onClick={() => navigate("/insumos")} variant="outline" size="sm">
-            <Package className="h-4 w-4 mr-1" />Novo Insumo
+            <Package className="h-4 w-4 mr-1" />Novo Insumo/Peça
           </Button> */}
         </div>
       </div>

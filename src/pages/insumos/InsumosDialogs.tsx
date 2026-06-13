@@ -50,7 +50,7 @@ export function InsumosProdutoDialog({
       <DialogContent className="sm:max-w-lg max-h-[85vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>
-            {editando ? "Editar Insumo" : "Novo Insumo"}
+            {editando ? "Editar Insumo/Peça" : "Novo Insumo/Peça"}
           </DialogTitle>
         </DialogHeader>
         <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
@@ -306,7 +306,7 @@ export function InsumosDeleteDialog({
           <DialogTitle>Confirmar Exclusão</DialogTitle>
         </DialogHeader>
         <p className="text-muted-foreground">
-          Tem certeza que deseja excluir o insumo{" "}
+          Tem certeza que deseja excluir o insumo/peça{" "}
           <strong>{deletando?.nome}</strong>?
         </p>
         <p className="text-sm text-red-500">Esta ação não pode ser desfeita.</p>
