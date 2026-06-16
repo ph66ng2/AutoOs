@@ -833,24 +833,46 @@ pub async fn lock_sensitive_access() -> Result<bool, String> {
 #[tauri::command]
 #[instrument(skip_all)]
 pub async fn set_active_security_profile(profile_id: i32) -> Result<SensitiveAccessStatus, String> {
-    let actor = require_permission(PERMISSION_MANAGE_PROFILES)?;
+    let actor = fetch_active_profile_record().await.ok().and_then(|profile| to_profile_summary(profile).ok());
     let profile = fetch_profile_record_by_id(profile_id).await?;
     let pool = get_pool().await.map_err(|e| e.to_string())?;
 
-    sqlx::query("UPDATE security_profiles SET is_default = (id = $1), atualizado_em = NOW() WHERE ativo = true")
+    // Duas queries separadas para evitar violação da constraint parcial unique
+    // (ux_security_profiles_single_default_active). O PostgreSQL valida constraints
+    // linha a linha durante o UPDATE, então fazer tudo numa query só pode causar
+    // estado transitório com dois is_default=true.
+    let mut tx = pool.begin().await.map_err(|e| {
+        error!("Erro ao iniciar transação de perfil: {}", e);
+        e.to_string()
+    })?;
+
+    sqlx::query("UPDATE security_profiles SET is_default = false, atualizado_em = NOW() WHERE ativo = true AND is_default = true")
+        .execute(&mut *tx)
+        .await
+        .map_err(|e| {
+            error!("Erro ao limpar perfil ativo anterior: {}", e);
+            e.to_string()
+        })?;
+
+    sqlx::query("UPDATE security_profiles SET is_default = true, atualizado_em = NOW() WHERE id = $1 AND ativo = true")
         .bind(profile_id)
-        .execute(&pool)
+        .execute(&mut *tx)
         .await
         .map_err(|e| {
             error!("Erro ao definir perfil ativo {}: {}", profile_id, e);
             e.to_string()
         })?;
 
+    tx.commit().await.map_err(|e| {
+        error!("Erro ao confirmar transação de perfil: {}", e);
+        e.to_string()
+    })?;
+
     clear_session()?;
     let summary = to_profile_summary(profile)?;
     record_security_event(
         "PROFILE_SWITCH",
-        Some(&actor),
+        actor.as_ref(),
         format!("Perfil ativo alterado para {}", summary.nome),
         true,
     )
