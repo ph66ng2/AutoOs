@@ -50,6 +50,22 @@ export function PhotoUploadDialog({
   const [loading, setLoading] = useState(false);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const tokenRef = useRef<string | null>(null);
+  const openRef = useRef(open);
+  const onPhotoUploadedRef = useRef(onPhotoUploaded);
+  const onOpenChangeRef = useRef(onOpenChange);
+  const onPhotoDataRef = useRef(onPhotoData);
+  const categoriaRef = useRef(categoria);
+  const equipamentoIdRef = useRef(equipamentoId);
+
+  useEffect(() => {
+    openRef.current = open;
+    onPhotoUploadedRef.current = onPhotoUploaded;
+    onOpenChangeRef.current = onOpenChange;
+    onPhotoDataRef.current = onPhotoData;
+    categoriaRef.current = categoria;
+    equipamentoIdRef.current = equipamentoId;
+  }, [open, onPhotoUploaded, onOpenChange, onPhotoData, categoria, equipamentoId]);
 
   const cleanup = useCallback(() => {
     if (pollRef.current) {
@@ -70,6 +86,7 @@ export function PhotoUploadDialog({
       // Server may already be stopped
     }
     setQrData(null);
+    tokenRef.current = null;
     setTimer(TOKEN_TTL_SECONDS);
     setError(null);
     setLoading(false);
@@ -79,23 +96,36 @@ export function PhotoUploadDialog({
     setLoading(true);
     setError(null);
     setQrData(null);
+    tokenRef.current = null;
     setTimer(TOKEN_TTL_SECONDS);
+
+    const currentEquipamentoId = equipamentoIdRef.current;
+    const currentCategoria = categoriaRef.current;
 
     try {
       await db.startPhotoServer(PHOTO_SERVER_PORT);
-      const result = await db.gerarQrUpload(equipamentoId, categoria, PHOTO_SERVER_PORT);
+      const result = await db.gerarQrUpload(currentEquipamentoId, currentCategoria, PHOTO_SERVER_PORT);
       setQrData(result);
+      tokenRef.current = result.token;
     } catch {
       setError("Não foi possível iniciar o servidor de fotos");
-      return;
-    } finally {
       setLoading(false);
+      return;
     }
+
+    setLoading(false);
 
     timerRef.current = setInterval(() => {
       setTimer((prev) => {
         if (prev <= 1) {
-          cleanup();
+          if (timerRef.current) {
+            clearInterval(timerRef.current);
+            timerRef.current = null;
+          }
+          if (pollRef.current) {
+            clearInterval(pollRef.current);
+            pollRef.current = null;
+          }
           setError("Token expirado. Gere um novo QR code.");
           return 0;
         }
@@ -104,30 +134,41 @@ export function PhotoUploadDialog({
     }, 1000);
 
     pollRef.current = setInterval(async () => {
-      if (!qrData?.token) return;
+      const token = tokenRef.current;
+      if (!token) return;
       try {
-        const res = await fetch(`http://localhost:${PHOTO_SERVER_PORT}/status/${qrData.token}`);
+        const res = await fetch(`http://localhost:${PHOTO_SERVER_PORT}/status/${token}`);
         const data = await res.json();
         if (data.used) {
           cleanup();
-          await stopServer();
-          if (onPhotoData && data.image_data) {
-            onPhotoData({
+          try {
+            await db.stopPhotoServer();
+          } catch {
+            // ignore
+          }
+          setQrData(null);
+          tokenRef.current = null;
+          setTimer(TOKEN_TTL_SECONDS);
+          setError(null);
+          setLoading(false);
+
+          if (onPhotoDataRef.current && data.image_data) {
+            onPhotoDataRef.current({
               bytes: data.image_data.bytes,
               filename: data.image_data.filename,
               mime_type: data.image_data.mime_type,
-              categoria,
+              categoria: currentCategoria,
             });
           } else {
-            onPhotoUploaded();
+            onPhotoUploadedRef.current();
           }
-          onOpenChange(false);
+          onOpenChangeRef.current(false);
         }
       } catch {
         // Polling error - ignore, will retry
       }
     }, POLL_INTERVAL_MS);
-  }, [equipamentoId, categoria, cleanup, stopServer, onPhotoUploaded, onOpenChange, onPhotoData, qrData?.token]);
+  }, [cleanup]);
 
   useEffect(() => {
     if (open) {
@@ -138,7 +179,8 @@ export function PhotoUploadDialog({
     return () => {
       cleanup();
     };
-  }, [open, startServer, stopServer, cleanup]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open]);
 
   const handleRegenerate = useCallback(() => {
     void stopServer();
@@ -221,6 +263,13 @@ export function PhotoUploadDialog({
             <div className="flex items-center justify-center gap-2 text-sm text-muted-foreground">
               <Clock className="h-4 w-4" />
               <span>Expira em {formatTime(timer)}</span>
+            </div>
+
+            <div className="rounded-md bg-amber-50 border border-amber-200 p-3 flex items-start gap-2">
+              <AlertCircle className="h-4 w-4 text-amber-600 mt-0.5 shrink-0" />
+              <p className="text-xs text-amber-800">
+                Certifique-se de que o celular está na mesma rede Wi-Fi que o computador.
+              </p>
             </div>
           </div>
         )}

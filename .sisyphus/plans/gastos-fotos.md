@@ -216,7 +216,7 @@ Max Concurrent: 4 (Waves 2 and 3)
 
 ## TODOs
 
-- [ ] 1. Gastos migration + Rust/TS type definitions
+- [x] 1. Gastos migration + Rust/TS type definitions
 
   **What to do**:
   - Create migration `src-tauri/migrations/0006_gastos.sql` with two tables:
@@ -295,7 +295,7 @@ Max Concurrent: 4 (Waves 2 and 3)
   - Files: `src-tauri/migrations/0006_gastos.sql`, `src-tauri/src/commands/types.rs`, `src/types/index.ts`
   - Pre-commit: `cargo check && npx tsc --noEmit`
 
-- [ ] 2. VIEW_EXPENSES permission integration
+- [x] 2. VIEW_EXPENSES permission integration
 
   **What to do**:
   - Add `pub const PERMISSION_VIEW_EXPENSES: &str = "VIEW_EXPENSES";` to `src-tauri/src/commands/auth.rs` (around line 27, after existing constants)
@@ -384,7 +384,7 @@ Max Concurrent: 4 (Waves 2 and 3)
   - Files: `src-tauri/src/commands/auth.rs`, `src/types/index.ts`
   - Pre-commit: `cargo check && npx tsc --noEmit`
 
-- [ ] 8. Gastos page — cards, chart, table, forms
+- [x] 8. Gastos page — cards, chart, table, forms
 
   **What to do**:
   - Create `src/pages/Gastos.tsx` as the main page component (under 400 lines, componentized):
@@ -492,15 +492,16 @@ Max Concurrent: 4 (Waves 2 and 3)
   - Files: `src/pages/Gastos.tsx`, `src/components/gastos/GastosSummaryCards.tsx`, `src/components/gastos/GastosChart.tsx`, `src/components/gastos/GastosTable.tsx`, `src/components/gastos/GastosFormFixo.tsx`, `src/components/gastos/GastosFormVariavel.tsx`
   - Pre-commit: `npx tsc --noEmit`
 
-- [ ] 9. QR code generation + LAN IP detection module
+- [x] 9. QR code generation + LAN IP detection module
 
   **What to do**:
   - Create `src-tauri/src/commands/qr_code.rs` with IPC commands:
     - `gerar_qr_upload(equipamento_id: i32, categoria: String, port: u16)` — Generates a single-use upload token via `photo_server::generate_upload_token`, constructs URL `http://{LAN_IP}:{port}/?token={token}&eq={equipamento_id}&cat={categoria}`, generates QR code as SVG string using the `qrcode` crate, returns `{ qr_svg: String, url: String, token: String }`
     - `get_lan_ip()` — Returns the machine's LAN IPv4 address using `local_ip` crate or manual interface detection (fallback: return error with message "Não foi possível detectar o IP da rede local")
+  - Note: `get_lan_ip()` is already implemented in `photo_server.rs` (Task 7). Import and reuse it from `qr_code.rs` rather than reimplementing.
   - Add `pub mod qr_code;` to `src-tauri/src/commands/mod.rs`
   - Register both commands in `src-tauri/src/main.rs` invoke_handler
-  - Add IPC bridge functions to `src/lib/db.ts`: `gerarQrUpload(equipamentoId, categoria, port)`, `getLanIp()`
+  - Add IPC bridge function to `src/lib/db.ts`: `gerarQrUpload(equipamentoId, categoria, port)` only — `getLanIp()` is already registered in Task 7
   - Verify: `cargo check` passes
 
   **Must NOT do**:
@@ -563,7 +564,7 @@ Max Concurrent: 4 (Waves 2 and 3)
   - Files: `src-tauri/src/commands/qr_code.rs`, `src-tauri/src/commands/mod.rs`, `src-tauri/src/main.rs`, `src/lib/db.ts`
   - Pre-commit: `cargo check`
 
-- [ ] 10. Photo upload dialog component
+- [x] 10. Photo upload dialog component
 
   **What to do**:
   - Create `src/components/equipamentos/PhotoUploadDialog.tsx`:
@@ -650,7 +651,7 @@ Max Concurrent: 4 (Waves 2 and 3)
   - Files: `src/components/equipamentos/PhotoUploadDialog.tsx`, `src/pages/Equipamentos.tsx` (modified)
   - Pre-commit: `npx tsc --noEmit`
 
-- [ ] 11. Phone HTML upload page + image validation
+- [x] 11. Phone HTML upload page + image validation
 
   **What to do**:
   - Create the embedded HTML string in `src-tauri/src/commands/photo_server.rs` (in the `HTML_UPLOAD_PAGE` constant):
@@ -747,7 +748,7 @@ Max Concurrent: 4 (Waves 2 and 3)
   - Files: `src-tauri/src/commands/photo_server.rs` (modified — added HTML and validation)
   - Pre-commit: `cargo check`
 
-- [ ] 12. Gastos route + navigation + permission guard
+- [x] 12. Gastos route + navigation + permission guard
 
   **What to do**:
   - Add route for `/gastos` in `src/App.tsx` (or router configuration file) with a `SensitiveRoute` wrapper that checks `VIEW_EXPENSES` permission
@@ -818,7 +819,7 @@ Max Concurrent: 4 (Waves 2 and 3)
   - Files: `src/App.tsx` (or router), navigation component, `src/types/index.ts`
   - Pre-commit: `npx tsc --noEmit`
 
-- [ ] 13. Photo server lifecycle + Tauri event wiring
+- [x] 13. Photo server lifecycle + Tauri event wiring
 
   **What to do**:
   - Wire the photo server lifecycle into the main Tauri app:
@@ -921,7 +922,7 @@ Max Concurrent: 4 (Waves 2 and 3)
   - Files: `src-tauri/src/commands/photo_server.rs`, `src-tauri/src/main.rs`, `src/components/equipamentos/PhotoUploadDialog.tsx`
   - Pre-commit: `cargo check && npx tsc --noEmit`
 
-- [ ] 14. Gastos feature end-to-end QA
+- [x] 14. Gastos feature end-to-end QA
 
   **What to do**:
   - Execute comprehensive QA for the Gastos feature covering all scenarios:
@@ -1007,7 +1008,7 @@ Max Concurrent: 4 (Waves 2 and 3)
 
   **Commit**: NO (QA task, no code changes)
 
-- [ ] 15. Photo feature end-to-end QA
+- [x] 15. Photo feature end-to-end QA
 
   **What to do**:
   - Execute comprehensive QA for the Photo capture feature covering all scenarios:
@@ -1091,6 +1092,8 @@ Max Concurrent: 4 (Waves 2 and 3)
   ```
 
   **Commit**: NO (QA task, no code changes)
+
+- [x] 4. Rust gastos.rs — all IPC commands
 
   **What to do**:
   - Create `src-tauri/src/commands/gastos.rs` with 6 IPC commands following existing patterns in `clientes.rs` and `produtos.rs`:
@@ -1187,7 +1190,7 @@ Max Concurrent: 4 (Waves 2 and 3)
   - Files: `src-tauri/src/commands/gastos.rs`, `src-tauri/src/commands/mod.rs`, `src-tauri/src/main.rs`
   - Pre-commit: `cargo check`
 
-- [ ] 5. Gastos hook + db service layer
+- [x] 5. Gastos hook + db service layer
 
   **What to do**:
   - Create `src/hooks/useGastos.ts` following pattern from `src/hooks/useServicos.ts` (or similar hooks):
@@ -1260,7 +1263,7 @@ Max Concurrent: 4 (Waves 2 and 3)
   - Files: `src/hooks/useGastos.ts`, `src/lib/db.ts`
   - Pre-commit: `npx tsc --noEmit`
 
-- [ ] 6. Rust adicionar_imagem_equipamento command
+- [x] 6. Rust adicionar_imagem_equipamento command
 
   **What to do**:
   - Add a new `adicionar_imagem_equipamento` command to `src-tauri/src/commands/equipamento_imagens.rs`:
@@ -1350,7 +1353,7 @@ Max Concurrent: 4 (Waves 2 and 3)
   - Files: `src-tauri/src/commands/equipamento_imagens.rs`, `src-tauri/src/main.rs`, `src/lib/db.ts`
   - Pre-commit: `cargo check && npx tsc --noEmit`
 
-- [ ] 7. Rust photo_server.rs — axum server + routes + token store
+- [x] 7. Rust photo_server.rs — axum server + routes + token store
 
   **What to do**:
   - Create `src-tauri/src/commands/photo_server.rs` with the following components:
@@ -1467,7 +1470,7 @@ Max Concurrent: 4 (Waves 2 and 3)
   - Files: `src-tauri/src/commands/photo_server.rs`, `src-tauri/src/commands/mod.rs`, `src-tauri/src/main.rs`
   - Pre-commit: `cargo check`
 
-- [ ] 3. Cargo.toml dependencies for photo feature
+- [x] 3. Cargo.toml dependencies for photo feature
 
   **What to do**:
   - Add the following dependencies to `src-tauri/Cargo.toml`:
@@ -1548,19 +1551,19 @@ Max Concurrent: 4 (Waves 2 and 3)
 
 ## Final Verification Wave
 
-- [ ] F1. **Plan Compliance Audit** — `oracle`
+- [x] F1. **Plan Compliance Audit** — `oracle`
   Read the plan end-to-end. For each "Must Have": verify implementation exists (read file, run command). For each "Must NOT Have": search codebase for forbidden patterns — reject with file:line if found. Check evidence files exist in `.sisyphus/evidence/`. Compare deliverables against plan.
   Output: `Must Have [N/N] | Must NOT Have [N/N] | Tasks [N/N] | VERDICT: APPROVE/REJECT`
 
-- [ ] F2. **Code Quality Review** — `unspecified-high`
+- [x] F2. **Code Quality Review** — `unspecified-high`
   Run `cargo check` + `npx tsc --noEmit`. Review all changed files for: `as any`/`@ts-ignore`, empty catches, console.log in prod, commented-out code, unused imports. Check AI slop: excessive comments, over-abstraction, generic names (data/result/item/temp). Verify Gastos.tsx is under 400 lines or properly componentized.
   Output: `Build [PASS/FAIL] | Lint [PASS/FAIL] | Types [PASS/FAIL] | Files [N clean/N issues] | VERDICT`
 
-- [ ] F3. **Real Manual QA** — `unspecified-high` (+ `playwright` skill)
+- [x] F3. **Real Manual QA** — `unspecified-high` (+ `playwright` skill)
   Start from clean state. Execute EVERY QA scenario from EVERY task — follow exact steps, capture evidence. Test cross-task integration: Gastos tab behind permission, photo flow from desktop to phone. Test edge cases: empty month, 6-image limit, expired token, HEIC rejection. Save to `.sisyphus/evidence/final-qa/`.
   Output: `Scenarios [N/N pass] | Integration [N/N] | Edge Cases [N tested] | VERDICT`
 
-- [ ] F4. **Scope Fidelity Check** — `deep`
+- [x] F4. **Scope Fidelity Check** — `deep`
   For each task: read "What to do", read actual diff (git log/diff). Verify 1:1 — everything in spec was built (no missing), nothing beyond spec was built (no creep). Check "Must NOT Have" compliance. Detect cross-task contamination. Flag unaccounted changes.
   Output: `Tasks [N/N compliant] | Contamination [CLEAN/N issues] | Unaccounted [CLEAN/N files] | VERDICT`
 

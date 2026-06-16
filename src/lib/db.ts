@@ -193,6 +193,11 @@ export const db = {
     });
   },
 
+  /** Remove uma única imagem do equipamento → Rust: remover_imagem_equipamento */
+  async removerImagemEquipamento(imagemId: number): Promise<void> {
+    return invoke<void>("remover_imagem_equipamento", { imagemId });
+  },
+
   // ─── Comunicações ─────────────────────────────────────
 
   /** Registra envio de comunicação (WhatsApp/Email) → Rust: registrar_comunicacao */

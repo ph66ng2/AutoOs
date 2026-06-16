@@ -14,8 +14,8 @@ export function GaleriaImagensEquipamento({
 }: {
   imagens: EquipamentoImagemDraft[];
   mensagemVazia: string;
-  onRemover?: (localId: string) => void;
-  onLegendaChange?: (localId: string, value: string) => void;
+  onRemover?: (imagem: EquipamentoImagemDraft) => void;
+  onLegendaChange?: (imagem: EquipamentoImagemDraft, value: string) => void;
   onVisualizar?: (imagem: EquipamentoImagemDraft) => void;
   onExportar?: (imagem: EquipamentoImagemDraft) => void;
 }) {
@@ -69,7 +69,7 @@ export function GaleriaImagensEquipamento({
                 size="icon"
                 variant="secondary"
                 className="absolute right-2 top-2 h-7 w-7"
-                onClick={() => onRemover(imagem.local_id)}
+                onClick={() => onRemover(imagem)}
               >
                 <Trash2 className="h-3.5 w-3.5" />
               </Button>
@@ -83,7 +83,7 @@ export function GaleriaImagensEquipamento({
             {onLegendaChange ? (
               <Textarea
                 value={imagem.observacao || ""}
-                onChange={(event) => onLegendaChange(imagem.local_id, event.target.value)}
+                onChange={(event) => onLegendaChange(imagem, event.target.value)}
                 rows={2}
                 placeholder={`Legenda da foto de ${CATEGORIA_IMAGEM_LABELS[imagem.categoria]}`}
                 className="min-h-[68px] resize-none text-xs"

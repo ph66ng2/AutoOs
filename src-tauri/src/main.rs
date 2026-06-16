@@ -138,6 +138,7 @@ fn main() {
             commands::equipamento_imagens::listar_imagens_equipamento,
             commands::equipamento_imagens::substituir_imagens_equipamento,
             commands::equipamento_imagens::adicionar_imagem_equipamento,
+            commands::equipamento_imagens::remover_imagem_equipamento,
             commands::photo_server::start_photo_server,
             commands::photo_server::stop_photo_server,
             commands::photo_server::generate_upload_token,

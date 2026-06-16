@@ -11,6 +11,7 @@ const QUALIDADE_JPEG = 0.82;
 export type EquipamentoImagemDraft = EquipamentoImagemInput & {
   local_id: string;
   preview_url: string;
+  id?: number;
 };
 
 function gerarIdLocalImagem() {
@@ -94,6 +95,7 @@ export async function imagemPersistidaParaDraft(
   imagem: EquipamentoImagem
 ): Promise<EquipamentoImagemDraft> {
   return {
+    id: imagem.id,
     local_id: gerarIdLocalImagem(),
     categoria: imagem.categoria,
     filename: imagem.filename,

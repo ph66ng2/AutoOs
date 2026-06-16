@@ -284,6 +284,28 @@ pub async fn adicionar_imagem_equipamento_raw(
 }
 
 #[tauri::command]
+#[instrument(skip_all, fields(imagem_id = imagem_id))]
+pub async fn remover_imagem_equipamento(imagem_id: i32) -> Result<(), String> {
+    let pool = get_pool().await.map_err(|e| e.to_string())?;
+
+    let result = sqlx::query("DELETE FROM equipamento_imagens WHERE id = $1")
+        .bind(imagem_id)
+        .execute(&pool)
+        .await
+        .map_err(|e| {
+            error!("Erro ao remover imagem {}: {}", imagem_id, e);
+            e.to_string()
+        })?;
+
+    if result.rows_affected() == 0 {
+        return Err("Imagem não encontrada".to_string());
+    }
+
+    info!("Imagem {} removida com sucesso", imagem_id);
+    Ok(())
+}
+
+#[tauri::command]
 #[instrument(skip_all, fields(equipamento_id = equipamento_id))]
 pub async fn adicionar_imagem_equipamento(
     equipamento_id: i32,

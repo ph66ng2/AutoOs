@@ -397,21 +397,34 @@ export default function Equipamentos() {
     void handleSerialBlur();
   }
 
-  function removerImagemFormulario(localId: string) {
+  function removerImagemFormulario(imagem: EquipamentoImagemDraft) {
     setImagensFormulario((estadoAtual) =>
-      normalizarOrdemPorCategoria(estadoAtual.filter((imagem) => imagem.local_id !== localId))
+      normalizarOrdemPorCategoria(estadoAtual.filter((img) => img.local_id !== imagem.local_id))
     );
     setErroImagens(null);
   }
 
-  function atualizarLegendaImagem(localId: string, value: string) {
+  function atualizarLegendaImagem(imagem: EquipamentoImagemDraft, value: string) {
     setImagensFormulario((estadoAtual) =>
-      estadoAtual.map((imagem) => (
-        imagem.local_id === localId
-          ? { ...imagem, observacao: value.slice(0, 280) }
-          : imagem
+      estadoAtual.map((img) => (
+        img.local_id === imagem.local_id
+          ? { ...img, observacao: value.slice(0, 280) }
+          : img
       ))
     );
+  }
+
+  async function removerImagemDetalhes(imagem: EquipamentoImagemDraft) {
+    if (!imagem.id || !selecionado?.id) return;
+    try {
+      await db.removerImagemEquipamento(imagem.id);
+      success("Equipamentos", "Foto removida com sucesso", "Remover foto");
+      const imagens = await carregarImagensComPreview(selecionado.id);
+      setImagensDetalhes(imagens);
+    } catch (err) {
+      console.error("Erro ao remover imagem:", err);
+      showError("Equipamentos", "Remover foto", err);
+    }
   }
 
   /**
@@ -913,19 +926,19 @@ export default function Equipamentos() {
     }
   }
 
-  function removerImagemSaidaEntrega(localId: string) {
+  function removerImagemSaidaEntrega(imagem: EquipamentoImagemDraft) {
     setImagensSaidaEntrega((estadoAtual) =>
-      normalizarOrdemPorCategoria(estadoAtual.filter((imagem) => imagem.local_id !== localId))
+      normalizarOrdemPorCategoria(estadoAtual.filter((img) => img.local_id !== imagem.local_id))
     );
     setErroImagensSaidaEntrega(null);
   }
 
-  function atualizarLegendaImagemSaidaEntrega(localId: string, value: string) {
+  function atualizarLegendaImagemSaidaEntrega(imagem: EquipamentoImagemDraft, value: string) {
     setImagensSaidaEntrega((estadoAtual) =>
-      estadoAtual.map((imagem) => (
-        imagem.local_id === localId
-          ? { ...imagem, observacao: value.slice(0, 280) }
-          : imagem
+      estadoAtual.map((img) => (
+        img.local_id === imagem.local_id
+          ? { ...img, observacao: value.slice(0, 280) }
+          : img
       ))
     );
   }
@@ -1839,6 +1852,7 @@ export default function Equipamentos() {
                           mensagemVazia="Nenhuma foto de entrada foi registrada para este equipamento."
                           onVisualizar={setImagemExpandida}
                           onExportar={(imagem) => void exportarImagemEquipamento(imagem)}
+                          onRemover={(imagem) => void removerImagemDetalhes(imagem)}
                         />
                       )}
                     </div>
@@ -1872,6 +1886,7 @@ export default function Equipamentos() {
                           mensagemVazia="Nenhuma foto de saída foi registrada para este equipamento."
                           onVisualizar={setImagemExpandida}
                           onExportar={(imagem) => void exportarImagemEquipamento(imagem)}
+                          onRemover={(imagem) => void removerImagemDetalhes(imagem)}
                         />
                       )}
                     </div>

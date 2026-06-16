@@ -1,133 +1,49 @@
 {
-  "active_plan": "/home/paulo/Projetos/AutoOs/.sisyphus/plans/error-modal-cohesion.md",
-  "started_at": "2026-05-25T22:41:32.420Z",
+  "active_plan": "/home/paulo/Projetos/AutoOs/.sisyphus/plans/propostas-autoos.md",
+  "started_at": "2026-06-13T02:57:11.432Z",
   "session_ids": [
-    "ses_19ed7a7a2ffeuBYSfM4bMvxSZE",
-    "ses_19eb1c117ffem4GEON0R6HC8eP",
-    "ses_19eb19227ffefZSLrDc0fWyEqN",
-    "ses_19eb11e6dffeQqf7FuDD5dYIz9",
-    "ses_19eb0dbf3ffe3pAqqC38v5bJYL",
-    "ses_19eaea54cffeGSuEjCPz0x6eSn",
-    "ses_19eadae81ffeFdaRB7l5s7txe0",
-    "ses_19eac4bb7ffe0KuEb3XYIMnaBv",
-    "ses_19eac1fd8ffeZxtwiYJLLVlH01",
-    "ses_19eabdfb8ffepkjR4yBarQj3lO",
-    "ses_19eab9058ffeCpf1DmlGeTirMr",
-    "ses_19ea9fc3effeSfLUtP0bYSuDJS",
-    "ses_19ea9be75ffe2n4Tx387FFsMyg",
-    "ses_19ea9886dffe5IHya1K99fwp7i",
-    "ses_19ea96271ffemCVihWT1RHnJjq",
-    "ses_19ea937eeffehzmE2jdC3zDoHn",
-    "ses_19ea7575dffec4NNwMzu7zMuaQ",
-    "ses_19e9deb14ffe3E09LH89cdatR7",
-    "ses_19e9d6c97ffeTHaLfDBPfQ7cOz",
-    "ses_19e97d351ffe8NnbS0Rw2WDP8T",
-    "ses_19e97923fffenQ4UZZGtdZVTMw",
-    "ses_19e975701ffe6QoNM8s9RFO6sv",
-    "ses_19e97204dffeDnsKb9t3FHByHW",
-    "ses_19e8cd0beffeuROyaJNWGF8pfe",
-    "ses_19e8ca178ffeiQTs867T1GjY9H"
+    "ses_1413d7e3dffehQ1b3JQcDZooCO"
   ],
   "session_origins": {
-    "ses_19ed7a7a2ffeuBYSfM4bMvxSZE": "direct",
-    "ses_19eb1c117ffem4GEON0R6HC8eP": "appended",
-    "ses_19eb19227ffefZSLrDc0fWyEqN": "appended",
-    "ses_19eb11e6dffeQqf7FuDD5dYIz9": "appended",
-    "ses_19eb0dbf3ffe3pAqqC38v5bJYL": "appended",
-    "ses_19eaea54cffeGSuEjCPz0x6eSn": "appended",
-    "ses_19eadae81ffeFdaRB7l5s7txe0": "appended",
-    "ses_19eac4bb7ffe0KuEb3XYIMnaBv": "appended",
-    "ses_19eac1fd8ffeZxtwiYJLLVlH01": "appended",
-    "ses_19eabdfb8ffepkjR4yBarQj3lO": "appended",
-    "ses_19eab9058ffeCpf1DmlGeTirMr": "appended",
-    "ses_19ea9fc3effeSfLUtP0bYSuDJS": "appended",
-    "ses_19ea9be75ffe2n4Tx387FFsMyg": "appended",
-    "ses_19ea9886dffe5IHya1K99fwp7i": "appended",
-    "ses_19ea96271ffemCVihWT1RHnJjq": "appended",
-    "ses_19ea937eeffehzmE2jdC3zDoHn": "appended",
-    "ses_19ea7575dffec4NNwMzu7zMuaQ": "appended",
-    "ses_19e9deb14ffe3E09LH89cdatR7": "appended",
-    "ses_19e9d6c97ffeTHaLfDBPfQ7cOz": "appended",
-    "ses_19e97d351ffe8NnbS0Rw2WDP8T": "appended",
-    "ses_19e97923fffenQ4UZZGtdZVTMw": "appended",
-    "ses_19e975701ffe6QoNM8s9RFO6sv": "appended",
-    "ses_19e97204dffeDnsKb9t3FHByHW": "appended",
-    "ses_19e8cd0beffeuROyaJNWGF8pfe": "appended",
-    "ses_19e8ca178ffeiQTs867T1GjY9H": "appended"
+    "ses_1413d7e3dffehQ1b3JQcDZooCO": "direct"
   },
-  "plan_name": "error-modal-cohesion",
+  "plan_name": "propostas-autoos",
   "agent": "atlas",
   "task_sessions": {
     "todo:1": {
       "task_key": "todo:1",
       "task_label": "1",
-      "task_title": "Instalar Sonner + AlertDialog + Configurar Toaster",
-      "session_id": "ses_19eb11e6dffeQqf7FuDD5dYIz9",
+      "task_title": "Mudar SMTP Padrão para Gmail",
+      "session_id": "ses_141158fcfffeLc6yi5Omj5aaDc",
       "agent": "Sisyphus-Junior",
       "category": "quick",
-      "updated_at": "2026-05-25T22:45:13.117Z"
+      "updated_at": "2026-06-13T02:58:50.164Z"
     },
-    "todo:3": {
-      "task_key": "todo:3",
-      "task_label": "3",
-      "task_title": "Criar Error Utility (error-utils.ts)",
-      "session_id": "ses_19eaea54cffeGSuEjCPz0x6eSn",
+    "todo:2": {
+      "task_key": "todo:2",
+      "task_label": "2",
+      "task_title": "Renomear \"Insumos\" para \"Insumos/Peças\" na UI",
+      "session_id": "ses_141144de6ffeDp2eSsE4eI7uWL",
       "agent": "Sisyphus-Junior",
       "category": "quick",
-      "updated_at": "2026-05-25T22:46:59.007Z"
+      "updated_at": "2026-06-13T03:02:15.107Z"
     },
-    "todo:5": {
-      "task_key": "todo:5",
-      "task_label": "5",
-      "task_title": "Criar useNotification Hook",
-      "session_id": "ses_19eadae81ffeFdaRB7l5s7txe0",
-      "agent": "Sisyphus-Junior",
-      "category": "quick",
-      "updated_at": "2026-05-25T22:48:06.756Z"
-    },
-    "todo:7": {
-      "task_key": "todo:7",
-      "task_label": "7",
-      "task_title": "Criar ErrorAlert Component",
-      "session_id": "ses_19eabdfb8ffepkjR4yBarQj3lO",
-      "agent": "Sisyphus-Junior",
-      "category": "unspecified-low",
-      "updated_at": "2026-05-25T22:50:00.211Z"
-    },
-    "todo:10": {
-      "task_key": "todo:10",
-      "task_label": "10",
-      "task_title": "Criar InputDialog Component",
-      "session_id": "ses_19eab9058ffeCpf1DmlGeTirMr",
-      "agent": "Sisyphus-Junior",
-      "category": "unspecified-low",
-      "updated_at": "2026-05-25T22:50:40.291Z"
-    },
-    "todo:11": {
-      "task_key": "todo:11",
-      "task_label": "11",
-      "task_title": "Migrar Equipamentos.tsx (Maior ofensor — ~30 alert calls)",
-      "session_id": "ses_19ea7575dffec4NNwMzu7zMuaQ",
+    "todo:4": {
+      "task_key": "todo:4",
+      "task_label": "4",
+      "task_title": "Lembrar Último Perfil Selecionado",
+      "session_id": "ses_14110f863ffeUuA7yvKIB81EYm",
       "agent": "Sisyphus-Junior",
       "category": "unspecified-high",
-      "updated_at": "2026-05-25T23:03:27.776Z"
-    },
-    "todo:18": {
-      "task_key": "todo:18",
-      "task_label": "18",
-      "task_title": "Vitest — Testes Unitários para error-utils + useNotification",
-      "session_id": "ses_19e9d6c97ffeTHaLfDBPfQ7cOz",
-      "agent": "Sisyphus-Junior",
-      "category": "unspecified-high",
-      "updated_at": "2026-05-25T23:10:18.564Z"
+      "updated_at": "2026-06-13T03:04:33.334Z"
     },
     "final-wave:f1": {
       "task_key": "final-wave:f1",
       "task_label": "F1",
       "task_title": "**Plan Compliance Audit** — `oracle`",
-      "session_id": "ses_19e8ca178ffeiQTs867T1GjY9H",
+      "session_id": "ses_1410a60bdffeTr276JXXax2Gb5",
       "agent": "oracle",
-      "updated_at": "2026-05-25T23:24:29.622Z"
+      "updated_at": "2026-06-13T03:10:48.017Z"
     }
   }
 }

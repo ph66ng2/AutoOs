@@ -262,11 +262,7 @@ fn get_token_store() -> TokenStore {
 }
 
 fn generate_token() -> String {
-    use std::sync::atomic::{AtomicU64, Ordering};
-    static COUNTER: AtomicU64 = AtomicU64::new(0);
-    let counter = COUNTER.fetch_add(1, Ordering::SeqCst);
-    let nanos = Instant::now().elapsed().as_nanos();
-    format!("{:x}{:x}", nanos, counter)
+    uuid::Uuid::new_v4().to_string()
 }
 
 pub(crate) fn get_lan_ip() -> Option<String> {
