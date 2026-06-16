@@ -164,6 +164,8 @@ export default function Equipamentos() {
   // Duplicidade de serial (múltiplos ciclos de manutenção)
   const [registrosAnteriores, setRegistrosAnteriores] = useState<Equipamento[]>([]);
   const [confirmouNovoCiclo, setConfirmouNovoCiclo] = useState(false);
+  const [sugestoesSerial, setSugestoesSerial] = useState<Equipamento[]>([]);
+  const [mostrarSugestoes, setMostrarSugestoes] = useState(false);
 
   // Dados do drawer de detalhes
   const [verificacaoDetalhes, setVerificacaoDetalhes] = useState<Verificacao | null>(null);
@@ -206,8 +208,6 @@ export default function Equipamentos() {
     variant?: "default" | "destructive";
     onConfirm: () => void;
     onCancel?: () => void;
-    closeLabel?: string;
-    onClose?: () => void;
   }>({ title: "", description: "", onConfirm: () => {} });
 
   const [inputOpen, setInputOpen] = useState(false);
@@ -362,6 +362,8 @@ export default function Equipamentos() {
   /** Ao perder foco no campo serial, busca registros existentes com mesmo número de série */
   async function handleSerialBlur() {
     const serial = form.getValues("serial_number");
+    // Esconde sugestões após blur (delay pra permitir clique)
+    setTimeout(() => setMostrarSugestoes(false), 200);
     if (!serial || serial.trim().length < 3) {
       setRegistrosAnteriores([]);
       setConfirmouNovoCiclo(false);
@@ -369,7 +371,6 @@ export default function Equipamentos() {
     }
     try {
       const registros = await db.buscarEquipamentosPorSerial(serial);
-      // Quando editando, excluir o registro atual da lista de anteriores
       const anteriores = editando
         ? registros.filter((r) => r.id !== editando.id)
         : registros;
@@ -378,6 +379,22 @@ export default function Equipamentos() {
     } catch (err) {
       console.error("Erro ao buscar registros anteriores:", err);
     }
+  }
+
+  async function handleSerialInput(value: string) {
+    const serial = value.trim();
+    if (serial.length < 2) { setSugestoesSerial([]); setMostrarSugestoes(false); return; }
+    try {
+      const registros = await db.buscarEquipamentosPorSerial(serial);
+      setSugestoesSerial(registros.filter((r) => r.serial_number.toLowerCase().startsWith(serial.toLowerCase())));
+      setMostrarSugestoes(true);
+    } catch { setSugestoesSerial([]); }
+  }
+
+  function selecionarSerialSugestao(serial: string) {
+    form.setValue("serial_number", serial);
+    setMostrarSugestoes(false);
+    void handleSerialBlur();
   }
 
   function removerImagemFormulario(localId: string) {
@@ -588,8 +605,6 @@ export default function Equipamentos() {
           setConfirmProps({
             title: "Envio por email",
             description: "Quer enviar a ordem de entrada automaticamente por email?",
-            closeLabel: "Fechar",
-            onClose: () => {},
             onConfirm: () => {
               if (emailAtual) {
                 void enviarOrdemEntrada(emailAtual);
@@ -688,8 +703,6 @@ export default function Equipamentos() {
     setConfirmProps({
       title: "Envio por email",
       description: "Quer enviar o orçamento automaticamente por email?",
-      closeLabel: "Fechar",
-      onClose: () => {},
       onConfirm: () => {
         if (!emailAtual) {
           setInputProps({
@@ -710,9 +723,6 @@ export default function Equipamentos() {
         } else {
           void executarComEmail(emailAtual);
         }
-      },
-      onCancel: () => {
-        void executarComEmail(undefined);
       },
     });
     setConfirmOpen(true);
@@ -756,8 +766,6 @@ export default function Equipamentos() {
     setConfirmProps({
       title: "Envio por email",
       description: "Quer avisar o cliente que o equipamento está pronto por email?",
-      closeLabel: "Fechar",
-      onClose: () => {},
       onConfirm: () => {
         if (!emailAtual) {
           setInputProps({
@@ -778,9 +786,6 @@ export default function Equipamentos() {
         } else {
           void executarComEmail(emailAtual);
         }
-      },
-      onCancel: () => {
-        void executarComEmail(undefined);
       },
     });
     setConfirmOpen(true);
@@ -1528,22 +1533,43 @@ export default function Equipamentos() {
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label>Nº Série *</Label>
-                  <Input
-                    {...form.register("serial_number")}
-                    onBlur={(e) => {
-                      void form.register("serial_number").onBlur(e);
-                      void handleSerialBlur();
-                    }}
-                  />
+                  <div className="relative">
+                    <Input
+                      {...form.register("serial_number")}
+                      onInput={(e) => handleSerialInput((e.target as HTMLInputElement).value)}
+                      onBlur={(e) => {
+                        void form.register("serial_number").onBlur(e);
+                        void handleSerialBlur();
+                      }}
+                    />
+                    {mostrarSugestoes && sugestoesSerial.length > 0 && (
+                      <div className="absolute z-50 mt-1 w-full rounded-md border bg-popover shadow-md">
+                        {sugestoesSerial.map((r) => (
+                          <button
+                            key={r.id}
+                            type="button"
+                            className="flex items-center gap-2 w-full px-3 py-2 text-sm hover:bg-accent text-left"
+                            onClick={() => selecionarSerialSugestao(r.serial_number)}
+                          >
+                            <span className="font-mono font-medium">{r.serial_number}</span>
+                            <StatusBadge status={r.status} />
+                            <span className="text-xs text-muted-foreground ml-auto">
+                              #{r.id} — {r.marca} {r.modelo}
+                            </span>
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
                   <FormValidationError message={form.formState.errors.serial_number?.message} />
                   {registrosAnteriores.length > 0 && (
-                    <div className="mt-2 rounded-md border border-amber-200 bg-amber-50 p-3 space-y-2">
-                      <p className="text-sm font-medium text-amber-800">
-                        ⚠️ Este número de série já possui {registrosAnteriores.length} registro{registrosAnteriores.length > 1 ? 's' : ''} anterior{registrosAnteriores.length > 1 ? 'es' : ''}:
+                    <div className="mt-2 rounded-md border border-amber-400 bg-amber-100 p-3 space-y-2">
+                      <p className="text-sm font-bold text-amber-900">
+                        ⚠️ ATENÇÃO: Este número de série já foi registrado anteriormente. Marque esta caixa apenas se realmente deseja criar um NOVO ciclo de manutenção.
                       </p>
                       <ul className="space-y-1">
                         {registrosAnteriores.map((r) => (
-                          <li key={r.id} className="text-xs text-amber-700 flex items-center gap-1 flex-wrap">
+                          <li key={r.id} className="text-xs text-amber-800 flex items-center gap-1 flex-wrap">
                             <span>• #{r.id}</span>
                             <StatusBadge status={r.status} />
                             <span>— Entrada: {r.data_entrada ? new Date(r.data_entrada).toLocaleDateString("pt-BR") : "—"}</span>
@@ -1553,14 +1579,17 @@ export default function Equipamentos() {
                           </li>
                         ))}
                       </ul>
+                      <p className="text-xs text-amber-800">
+                        O histórico anterior será preservado. Este será um registro independente.
+                      </p>
                       <label className="flex items-center gap-2 text-sm cursor-pointer pt-1">
                         <input
                           type="checkbox"
                           checked={confirmouNovoCiclo}
                           onChange={(e) => setConfirmouNovoCiclo(e.target.checked)}
-                          className="rounded border-amber-300"
+                          className="rounded border-amber-400"
                         />
-                        <span className="text-amber-800">Este equipamento já possui registro anterior. Desejo criar um novo ciclo de manutenção?</span>
+                        <span className="text-amber-900 font-semibold">Confirmo que desejo criar um novo ciclo de manutenção para este equipamento</span>
                       </label>
                     </div>
                   )}
@@ -2128,13 +2157,11 @@ export default function Equipamentos() {
         title={confirmProps.title}
         description={confirmProps.description}
         variant={confirmProps.variant}
-        closeLabel={confirmProps.closeLabel}
         onConfirm={() => {
           confirmProps.onConfirm();
           setConfirmOpen(false);
         }}
         onCancel={confirmProps.onCancel}
-        onClose={confirmProps.onClose}
       />
 
       <InputDialog

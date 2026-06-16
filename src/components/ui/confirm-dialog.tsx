@@ -8,6 +8,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import { X } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 interface ConfirmDialogProps {
@@ -17,11 +18,9 @@ interface ConfirmDialogProps {
   description: string;
   confirmLabel?: string;
   cancelLabel?: string;
-  closeLabel?: string;
   variant?: "default" | "destructive";
   onConfirm: () => void;
   onCancel?: () => void;
-  onClose?: () => void;
 }
 
 export function ConfirmDialog({
@@ -29,32 +28,35 @@ export function ConfirmDialog({
   onOpenChange,
   title,
   description,
-  confirmLabel = "Confirmar",
-  cancelLabel = "Cancelar",
-  closeLabel,
+  confirmLabel = "Sim",
+  cancelLabel = "Não",
   variant = "default",
   onConfirm,
   onCancel,
-  onClose,
 }: ConfirmDialogProps) {
-  function handleClose() {
-    if (onClose) onClose();
-    else onOpenChange(false);
-  }
   return (
-    <AlertDialog open={open} onOpenChange={handleClose}>
-      <AlertDialogContent>
+    <AlertDialog open={open} onOpenChange={onOpenChange}>
+      <AlertDialogContent className="sm:max-w-md">
+        <button
+          onClick={() => onOpenChange(false)}
+          className="absolute right-4 top-4 rounded-sm opacity-70 ring-offset-background transition-opacity hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:pointer-events-none"
+          aria-label="Fechar"
+        >
+          <X className="h-4 w-4" />
+        </button>
         <AlertDialogHeader>
           <AlertDialogTitle>{title}</AlertDialogTitle>
           <AlertDialogDescription>{description}</AlertDialogDescription>
         </AlertDialogHeader>
-        <AlertDialogFooter>
-          <AlertDialogCancel onClick={onCancel}>{cancelLabel}</AlertDialogCancel>
-          {closeLabel && (
-            <AlertDialogCancel onClick={handleClose} className="border-red-300 text-red-600 hover:bg-red-50">
-              {closeLabel}
-            </AlertDialogCancel>
-          )}
+        <AlertDialogFooter className="gap-2">
+          <AlertDialogCancel
+            onClick={() => {
+              if (onCancel) onCancel();
+              onOpenChange(false);
+            }}
+          >
+            {cancelLabel}
+          </AlertDialogCancel>
           <AlertDialogAction
             onClick={onConfirm}
             className={cn(
