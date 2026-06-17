@@ -2,10 +2,12 @@
   "active_plan": "/home/paulo/Projetos/AutoOs/.sisyphus/plans/propostas-autoos.md",
   "started_at": "2026-06-13T02:57:11.432Z",
   "session_ids": [
-    "ses_1413d7e3dffehQ1b3JQcDZooCO"
+    "ses_1413d7e3dffehQ1b3JQcDZooCO",
+    "ses_12cbffd3dffelj65EDueokA9TX"
   ],
   "session_origins": {
-    "ses_1413d7e3dffehQ1b3JQcDZooCO": "direct"
+    "ses_1413d7e3dffehQ1b3JQcDZooCO": "direct",
+    "ses_12cbffd3dffelj65EDueokA9TX": "appended"
   },
   "plan_name": "propostas-autoos",
   "agent": "atlas",
