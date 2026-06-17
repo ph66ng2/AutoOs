@@ -1,6 +1,6 @@
 [package]
 name = "autoos"
-version = "1.0.0"
+version = "1.0.3"
 description = "Sistema de Gestão de Impressoras e Estoque de Insumos"
 authors = ["BMITAG"]
 edition = "2021"
