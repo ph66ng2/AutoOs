@@ -193,6 +193,13 @@ export default function Equipamentos() {
   const [photoUploadCategoria, setPhotoUploadCategoria] = useState<"ENTRADA" | "SAIDA">("ENTRADA");
   const [photoUploadNewEquip, setPhotoUploadNewEquip] = useState(false);
 
+  const [orcamentoRapidoOpen, setOrcamentoRapidoOpen] = useState(false);
+  const [orcamentoRapidoCliente, setOrcamentoRapidoCliente] = useState<Cliente | null>(null);
+  const [orcamentoRapidoSerial, setOrcamentoRapidoSerial] = useState("");
+  const [orcamentoRapidoDefeito, setOrcamentoRapidoDefeito] = useState("");
+  const [orcamentoRapidoObservacoes, setOrcamentoRapidoObservacoes] = useState("");
+  const [orcamentoRapidoErroCliente, setOrcamentoRapidoErroCliente] = useState<string | null>(null);
+
   // Cliente vinculado ao equipamento (gerenciado pelo ClienteSelector)
   const [clienteVinculado, setClienteVinculado] = useState<Cliente | null>(null);
   const [erroCliente, setErroCliente] = useState<string | null>(null);
@@ -277,6 +284,73 @@ export default function Equipamentos() {
       observacoes: "",
     });
     setDialogOpen(true);
+  }
+
+  /** Cria equipamento mínimo para orçamento rápido (visita técnica) e gera PDF */
+  async function submitOrcamentoRapido() {
+    if (!orcamentoRapidoCliente) {
+      setOrcamentoRapidoErroCliente("Selecione ou cadastre um cliente.");
+      return;
+    }
+    setOrcamentoRapidoErroCliente(null);
+    setSalvando(true);
+    try {
+      const nomeCliente = orcamentoRapidoCliente.tipo_pessoa === "PJ"
+        ? (orcamentoRapidoCliente.nome_fantasia || orcamentoRapidoCliente.razao_social || orcamentoRapidoCliente.nome || "")
+        : (orcamentoRapidoCliente.nome || "");
+
+      const payload: Omit<Equipamento, "id"> = {
+        serial_number: orcamentoRapidoSerial || "NÃO INFORMADO",
+        patrimonio: undefined,
+        marca: "Não informado",
+        modelo: "",
+        tipo: "Visita Técnica",
+        status: "AGUARDANDO_APROVACAO",
+        defeito_relatado: orcamentoRapidoDefeito || undefined,
+        acessorios: undefined,
+        acessorios_outros: undefined,
+        data_entrada: new Date().toISOString().split("T")[0],
+        observacoes: orcamentoRapidoObservacoes || undefined,
+        cliente_id: orcamentoRapidoCliente.id || undefined,
+        cliente_nome: nomeCliente,
+        cliente_telefone: orcamentoRapidoCliente.telefone || undefined,
+        cliente_email: orcamentoRapidoCliente.email || undefined,
+      };
+
+      const resultado = await criar(payload);
+      if (!resultado.sucesso || !resultado.data?.id) {
+        throw new Error(resultado.erro || "Não foi possível criar o equipamento.");
+      }
+
+      const eq = resultado.data;
+
+      const verificacaoMinima: Verificacao = {
+        equipamento_id: eq.id!,
+        tecnico_nome: "",
+        problema_relatado: orcamentoRapidoDefeito || "",
+        servicos_necessarios: "[]",
+        pecas_necessarias: "[]",
+        custo_total: 0,
+      };
+
+      const caminho = await PdfService.gerarOrcamento(eq, verificacaoMinima);
+      if (caminho) {
+        success("Equipamentos", `Orçamento PDF gerado: ${caminho}`, "Orçamento Rápido");
+      }
+
+      setOrcamentoRapidoOpen(false);
+      setOrcamentoRapidoCliente(null);
+      setOrcamentoRapidoSerial("");
+      setOrcamentoRapidoDefeito("");
+      setOrcamentoRapidoObservacoes("");
+
+      abrirDetalhes(eq);
+    } catch (err: any) {
+      console.error("Erro no orçamento rápido:", err);
+      showError("Equipamentos", "Orçamento Rápido", err);
+    } finally {
+      setSalvando(false);
+    }
   }
 
   /** Abre dialog para editar equipamento existente. Carrega cliente vinculado do banco */
@@ -1439,7 +1513,13 @@ export default function Equipamentos() {
           <h1 className="text-3xl font-bold tracking-tight">Equipamentos</h1>
           <p className="text-muted-foreground">Gerencie equipamentos, verificações e orçamentos</p>
         </div>
-        <Button onClick={abrirNovo}><Plus className="h-4 w-4 mr-2" />Novo Equipamento</Button>
+        <div className="flex items-center gap-2">
+          <Button variant="outline" onClick={() => setOrcamentoRapidoOpen(true)}>
+            <FileText className="h-4 w-4 mr-2" />
+            Orçamento Rápido
+          </Button>
+          <Button onClick={abrirNovo}><Plus className="h-4 w-4 mr-2" />Novo Equipamento</Button>
+        </div>
       </div>
 
       {/* Filtros */}
@@ -1803,6 +1883,66 @@ export default function Equipamentos() {
               </Button>
             </DialogFooter>
           </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* ═══ Dialog Orçamento Rápido ═══ */}
+      <Dialog open={orcamentoRapidoOpen} onOpenChange={setOrcamentoRapidoOpen}>
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Orçamento Rápido — Visita Técnica</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <ClienteSelector
+                clienteInicial={orcamentoRapidoCliente}
+                onClienteSelecionado={(c) => { setOrcamentoRapidoCliente(c); setOrcamentoRapidoErroCliente(null); }}
+                onClienteRemovido={() => setOrcamentoRapidoCliente(null)}
+                readOnly={false}
+              />
+              {orcamentoRapidoErroCliente && (
+                <ErrorAlert variant="error" context="Equipamentos" message={orcamentoRapidoErroCliente} />
+              )}
+            </div>
+            <div className="space-y-2">
+              <Label>Nº Série</Label>
+              <Input
+                value={orcamentoRapidoSerial}
+                onChange={(e) => setOrcamentoRapidoSerial(e.target.value)}
+                placeholder="Número de série do equipamento"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>Defeito Relatado</Label>
+              <Textarea
+                value={orcamentoRapidoDefeito}
+                onChange={(e) => setOrcamentoRapidoDefeito(e.target.value)}
+                placeholder="Defeito informado pelo cliente"
+                rows={3}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>Observações (opcional)</Label>
+              <Textarea
+                value={orcamentoRapidoObservacoes}
+                onChange={(e) => setOrcamentoRapidoObservacoes(e.target.value)}
+                placeholder="Observações adicionais"
+                rows={2}
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <DialogClose asChild>
+              <Button variant="outline" type="button">Cancelar</Button>
+            </DialogClose>
+            <Button
+              type="button"
+              disabled={salvando}
+              onClick={() => void submitOrcamentoRapido()}
+            >
+              {salvando ? "Gerando..." : "Gerar Orçamento"}
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
 

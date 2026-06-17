@@ -821,6 +821,19 @@ pub async fn unlock_sensitive_access(pin: String) -> Result<SensitiveAccessStatu
 
 #[tauri::command]
 #[instrument(skip_all)]
+pub async fn unlock_session_without_pin() -> Result<SensitiveAccessStatus, String> {
+    let active_profile = to_profile_summary(fetch_active_profile_record().await?)?;
+    let stored = load_profile_pin(active_profile.id)?;
+    if stored.is_some() {
+        return Err("Este perfil possui PIN configurado. Informe o PIN para continuar.".to_string());
+    }
+    unlock_session(active_profile.clone())?;
+    record_security_event("SESSION_UNLOCKED_NO_PIN", Some(&active_profile), "Sessão desbloqueada sem PIN", true).await;
+    status_snapshot().await
+}
+
+#[tauri::command]
+#[instrument(skip_all)]
 pub async fn lock_sensitive_access() -> Result<bool, String> {
     let profile = current_session_profile()?.map(|(_, profile)| profile);
     clear_session()?;

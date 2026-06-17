@@ -101,6 +101,7 @@ fn main() {
             commands::auth::get_sensitive_access_status,
             commands::auth::configure_sensitive_pin,
             commands::auth::unlock_sensitive_access,
+            commands::auth::unlock_session_without_pin,
             commands::auth::lock_sensitive_access,
             commands::auth::set_active_security_profile,
             commands::auth::create_security_profile,

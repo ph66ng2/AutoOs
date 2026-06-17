@@ -298,13 +298,7 @@ export function SensitiveAccessProvider({ children }: { children: ReactNode }) {
       if (activeProfile?.pin_configured) {
         nextStatus = await SensitiveAccessService.unlock(pin);
       } else {
-        if (pin !== confirmPin) {
-          setError("Os PINs informados não conferem.");
-          setBusy(false);
-          return;
-        }
-
-        nextStatus = await SensitiveAccessService.configurePin(pin);
+        nextStatus = await SensitiveAccessService.unlockWithoutPin();
       }
 
       if (!profileHasPermission(nextStatus, promptOptions.permission)) {

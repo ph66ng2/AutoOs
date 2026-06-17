@@ -22,6 +22,10 @@ export const SensitiveAccessService = {
     return invoke<SensitiveAccessStatus>("unlock_sensitive_access", { pin });
   },
 
+  async unlockWithoutPin(): Promise<SensitiveAccessStatus> {
+    return invoke<SensitiveAccessStatus>("unlock_session_without_pin");
+  },
+
   async lock(): Promise<boolean> {
     return invoke<boolean>("lock_sensitive_access");
   },
