@@ -51,6 +51,7 @@ export function PhotoUploadDialog({
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const tokenRef = useRef<string | null>(null);
+
   const openRef = useRef(open);
   const onPhotoUploadedRef = useRef(onPhotoUploaded);
   const onOpenChangeRef = useRef(onOpenChange);
@@ -58,6 +59,7 @@ export function PhotoUploadDialog({
   const categoriaRef = useRef(categoria);
   const equipamentoIdRef = useRef(equipamentoId);
 
+  // Sync refs with latest props
   useEffect(() => {
     openRef.current = open;
     onPhotoUploadedRef.current = onPhotoUploaded;
@@ -65,7 +67,7 @@ export function PhotoUploadDialog({
     onPhotoDataRef.current = onPhotoData;
     categoriaRef.current = categoria;
     equipamentoIdRef.current = equipamentoId;
-  }, [open, onPhotoUploaded, onOpenChange, onPhotoData, categoria, equipamentoId]);
+  });
 
   const cleanup = useCallback(() => {
     if (pollRef.current) {
@@ -99,33 +101,22 @@ export function PhotoUploadDialog({
     tokenRef.current = null;
     setTimer(TOKEN_TTL_SECONDS);
 
-    const currentEquipamentoId = equipamentoIdRef.current;
-    const currentCategoria = categoriaRef.current;
-
     try {
       await db.startPhotoServer(PHOTO_SERVER_PORT);
-      const result = await db.gerarQrUpload(currentEquipamentoId, currentCategoria, PHOTO_SERVER_PORT);
+      const result = await db.gerarQrUpload(equipamentoIdRef.current, categoriaRef.current, PHOTO_SERVER_PORT);
       setQrData(result);
       tokenRef.current = result.token;
     } catch {
       setError("Não foi possível iniciar o servidor de fotos");
-      setLoading(false);
       return;
+    } finally {
+      setLoading(false);
     }
-
-    setLoading(false);
 
     timerRef.current = setInterval(() => {
       setTimer((prev) => {
         if (prev <= 1) {
-          if (timerRef.current) {
-            clearInterval(timerRef.current);
-            timerRef.current = null;
-          }
-          if (pollRef.current) {
-            clearInterval(pollRef.current);
-            pollRef.current = null;
-          }
+          cleanup();
           setError("Token expirado. Gere um novo QR code.");
           return 0;
         }
@@ -141,23 +132,13 @@ export function PhotoUploadDialog({
         const data = await res.json();
         if (data.used) {
           cleanup();
-          try {
-            await db.stopPhotoServer();
-          } catch {
-            // ignore
-          }
-          setQrData(null);
-          tokenRef.current = null;
-          setTimer(TOKEN_TTL_SECONDS);
-          setError(null);
-          setLoading(false);
-
+          await stopServer();
           if (onPhotoDataRef.current && data.image_data) {
             onPhotoDataRef.current({
               bytes: data.image_data.bytes,
               filename: data.image_data.filename,
               mime_type: data.image_data.mime_type,
-              categoria: currentCategoria,
+              categoria: categoriaRef.current,
             });
           } else {
             onPhotoUploadedRef.current();
@@ -171,7 +152,7 @@ export function PhotoUploadDialog({
   }, [cleanup]);
 
   useEffect(() => {
-    if (open) {
+    if (openRef.current) {
       void startServer();
     } else {
       void stopServer();
@@ -211,7 +192,7 @@ export function PhotoUploadDialog({
             Adicionar Foto via Celular
           </DialogTitle>
           <DialogDescription>
-            Escaneie o QR code com seu celular ou acesse o endereço abaixo
+            Escaneie o QR code com seu celular ou acesse o endereço abaixo (Para enviar a foto é necessario estar na mesma rede Wi-Fi do computador)
           </DialogDescription>
         </DialogHeader>
 

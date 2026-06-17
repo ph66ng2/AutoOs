@@ -1729,24 +1729,25 @@ export default function Equipamentos() {
                                <ImagePlus className="h-4 w-4" />Adicionar
                              </label>
                            </Button>
-                           <Button
-                             type="button"
-                             variant="ghost"
-                             size="icon"
-                             className="h-6 w-6"
-                             disabled={
-                               salvando ||
-                               carregandoImagensFormulario ||
-                               imagensFormulario.length >= LIMITE_IMAGENS_POR_EQUIPAMENTO
-                             }
-                             onClick={() => {
-                               setPhotoUploadCategoria("ENTRADA");
-                               setPhotoUploadNewEquip(true);
-                               setPhotoUploadOpen(true);
-                             }}
-                           >
-                             <Smartphone className="h-3.5 w-3.5" />
-                           </Button>
+<Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              className="gap-1.5 border-blue-300 bg-blue-50 text-blue-700 hover:bg-blue-100 hover:text-blue-800"
+                              disabled={
+                                salvando ||
+                                carregandoImagensFormulario ||
+                                imagensFormulario.length >= LIMITE_IMAGENS_POR_EQUIPAMENTO
+                              }
+                              onClick={() => {
+                                setPhotoUploadCategoria("ENTRADA");
+                                setPhotoUploadNewEquip(true);
+                                setPhotoUploadOpen(true);
+                              }}
+                            >
+                              <Smartphone className="h-3.5 w-3.5" />
+                              Via Celular
+                            </Button>
                          </div>
                        </div>
                     <input
@@ -2066,24 +2067,25 @@ export default function Equipamentos() {
                              <ImagePlus className="h-4 w-4" />Adicionar
                            </label>
                          </Button>
-                         <Button
-                           type="button"
-                           variant="ghost"
-                           size="icon"
-                           className="h-6 w-6"
-                           disabled={
-                             salvando ||
-                             carregandoImagensSaidaEntrega ||
-                             imagensSaidaEntrega.length >= LIMITE_IMAGENS_POR_EQUIPAMENTO
-                           }
-                           onClick={() => {
-                             setPhotoUploadCategoria("SAIDA");
-                             setPhotoUploadNewEquip(false);
-                             setPhotoUploadOpen(true);
-                           }}
-                         >
-                           <Smartphone className="h-3.5 w-3.5" />
-                         </Button>
+<Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            className="gap-1.5 border-blue-300 bg-blue-50 text-blue-700 hover:bg-blue-100 hover:text-blue-800"
+                            disabled={
+                              salvando ||
+                              carregandoImagensSaidaEntrega ||
+                              imagensSaidaEntrega.length >= LIMITE_IMAGENS_POR_EQUIPAMENTO
+                            }
+                            onClick={() => {
+                              setPhotoUploadCategoria("SAIDA");
+                              setPhotoUploadNewEquip(false);
+                              setPhotoUploadOpen(true);
+                            }}
+                          >
+                            <Smartphone className="h-3.5 w-3.5" />
+                            Via Celular
+                          </Button>
                        </div>
                      </div>
                     {erroImagensSaidaEntrega && (

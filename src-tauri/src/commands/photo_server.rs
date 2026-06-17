@@ -62,30 +62,80 @@ const HTML_UPLOAD_PAGE: &str = r#"<!DOCTYPE html>
             text-align: center;
             margin-bottom: 24px;
         }
-        .form-group {
+        .btn-group {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
             margin-bottom: 20px;
         }
-        label {
-            display: block;
-            font-weight: 600;
-            margin-bottom: 8px;
-            color: #444;
-            font-size: 1rem;
-        }
-        input[type="file"] {
+        .btn-option {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
             width: 100%;
-            padding: 12px;
-            border: 2px dashed #ccc;
-            border-radius: 8px;
-            font-size: 1rem;
+            padding: 16px;
+            border: 2px solid #e0e0e0;
+            border-radius: 12px;
+            background: white;
+            font-size: 1.05rem;
+            font-weight: 600;
+            color: #333;
             cursor: pointer;
-            min-height: 44px;
+            min-height: 56px;
+            touch-action: manipulation;
+            -webkit-tap-highlight-color: transparent;
+            transition: border-color 0.15s, background 0.15s;
         }
-        input[type="file"]:active {
+        .btn-option:active {
+            background: #f0f8ff;
+            border-color: #007bff;
+        }
+        .btn-option.camera {
             border-color: #007bff;
             background: #f0f8ff;
+            color: #007bff;
         }
-        button {
+        .btn-option.camera:active {
+            background: #dbeaff;
+        }
+        .btn-option .icon {
+            font-size: 1.4rem;
+        }
+        .btn-option .label-small {
+            font-size: 0.78rem;
+            font-weight: 400;
+            color: #888;
+            margin-top: 2px;
+        }
+        .btn-option .btn-text {
+            display: flex;
+            flex-direction: column;
+            align-items: flex-start;
+        }
+        input[type="file"] {
+            display: none;
+        }
+        .preview-area {
+            display: none;
+            margin-bottom: 16px;
+            text-align: center;
+        }
+        .preview-area.visible {
+            display: block;
+        }
+        .preview-area img {
+            max-width: 100%;
+            max-height: 240px;
+            border-radius: 8px;
+            border: 1px solid #e0e0e0;
+        }
+        .preview-area .file-name {
+            font-size: 0.85rem;
+            color: #666;
+            margin-top: 6px;
+        }
+        button.submit-btn {
             width: 100%;
             padding: 16px;
             background: #007bff;
@@ -98,11 +148,15 @@ const HTML_UPLOAD_PAGE: &str = r#"<!DOCTYPE html>
             min-height: 44px;
             touch-action: manipulation;
             -webkit-tap-highlight-color: transparent;
+            display: none;
         }
-        button:active {
+        button.submit-btn.visible {
+            display: block;
+        }
+        button.submit-btn:active {
             background: #0056b3;
         }
-        button:disabled {
+        button.submit-btn:disabled {
             background: #ccc;
             cursor: not-allowed;
         }
@@ -139,11 +193,29 @@ const HTML_UPLOAD_PAGE: &str = r#"<!DOCTYPE html>
         <h1>AutoOS</h1>
         <p class="subtitle">Upload de Foto</p>
         <form id="uploadForm" enctype="multipart/form-data" method="POST">
-            <div class="form-group">
-                <label for="photo">Selecione uma foto</label>
-                <input type="file" id="photo" name="photo" accept="image/jpeg,image/png" capture="environment" required>
+            <div class="btn-group">
+                <button type="button" class="btn-option camera" id="cameraBtn">
+                    <span class="icon">&#128247;</span>
+                    <div class="btn-text">
+                        <span>Tirar Foto</span>
+                        <span class="label-small">Usar c&#226;mera do celular</span>
+                    </div>
+                </button>
+                <button type="button" class="btn-option" id="galleryBtn">
+                    <span class="icon">&#128444;&#65039;</span>
+                    <div class="btn-text">
+                        <span>Escolher da Galeria</span>
+                        <span class="label-small">Selecionar foto existente</span>
+                    </div>
+                </button>
             </div>
-            <button type="submit" id="submitBtn">Enviar Foto</button>
+            <input type="file" id="cameraInput" name="photo" accept="image/jpeg,image/png" capture="environment">
+            <input type="file" id="galleryInput" name="photo" accept="image/jpeg,image/png">
+            <div class="preview-area" id="previewArea">
+                <img id="previewImg" src="" alt="Pr&#233;-visualiza&#231;&#227;o">
+                <div class="file-name" id="fileName"></div>
+            </div>
+            <button type="submit" class="submit-btn" id="submitBtn">Enviar Foto</button>
         </form>
         <div id="status"></div>
     </div>
@@ -151,27 +223,91 @@ const HTML_UPLOAD_PAGE: &str = r#"<!DOCTYPE html>
         const form = document.getElementById('uploadForm');
         const statusEl = document.getElementById('status');
         const submitBtn = document.getElementById('submitBtn');
+        const cameraBtn = document.getElementById('cameraBtn');
+        const galleryBtn = document.getElementById('galleryBtn');
+        const cameraInput = document.getElementById('cameraInput');
+        const galleryInput = document.getElementById('galleryInput');
+        const previewArea = document.getElementById('previewArea');
+        const previewImg = document.getElementById('previewImg');
+        const fileNameEl = document.getElementById('fileName');
         const params = new URLSearchParams(window.location.search);
         const token = params.get('token');
         
         form.action = '/upload?token=' + encodeURIComponent(token || '');
+
+        let activeInput = null;
+
+        function showPreview(file) {
+            if (!file) return;
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                previewImg.src = e.target.result;
+                previewArea.classList.add('visible');
+                submitBtn.classList.add('visible');
+                fileNameEl.textContent = file.name;
+            };
+            reader.readAsDataURL(file);
+        }
+
+        cameraBtn.addEventListener('click', function() {
+            galleryInput.value = '';
+            activeInput = cameraInput;
+            cameraInput.click();
+        });
+
+        galleryBtn.addEventListener('click', function() {
+            cameraInput.value = '';
+            activeInput = galleryInput;
+            galleryInput.click();
+        });
+
+        cameraInput.addEventListener('change', function() {
+            if (this.files && this.files[0]) {
+                galleryInput.value = '';
+                activeInput = cameraInput;
+                showPreview(this.files[0]);
+            }
+        });
+
+        galleryInput.addEventListener('change', function() {
+            if (this.files && this.files[0]) {
+                cameraInput.value = '';
+                activeInput = galleryInput;
+                showPreview(this.files[0]);
+            }
+        });
         
         form.addEventListener('submit', async (e) => {
             e.preventDefault();
+            const input = activeInput || cameraInput;
+            if (!input || !input.files || !input.files[0]) {
+                statusEl.className = 'error';
+                statusEl.textContent = 'Selecione uma foto primeiro.';
+                return;
+            }
             submitBtn.disabled = true;
             statusEl.className = 'info';
             statusEl.textContent = 'Enviando...';
             
+            const formData = new FormData();
+            formData.append('photo', input.files[0]);
+
             try {
                 const response = await fetch(form.action, {
                     method: 'POST',
-                    body: new FormData(form)
+                    body: formData
                 });
                 const result = await response.json();
                 if (result.success) {
                     statusEl.className = 'success';
                     statusEl.textContent = result.message || 'Foto enviada com sucesso! \u2713';
                     form.reset();
+                    cameraInput.value = '';
+                    galleryInput.value = '';
+                    previewArea.classList.remove('visible');
+                    submitBtn.classList.remove('visible');
+                    submitBtn.classList.remove('visible');
+                    activeInput = null;
                 } else {
                     statusEl.className = 'error';
                     statusEl.textContent = result.error || result.message || 'Erro ao enviar foto';
