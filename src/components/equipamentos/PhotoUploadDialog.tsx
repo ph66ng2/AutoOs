@@ -1,5 +1,5 @@
 import { useState, useCallback, useEffect, useRef } from "react";
-import { Smartphone, Clock, AlertCircle, RefreshCw, X } from "lucide-react";
+import { Smartphone, Clock, AlertCircle, RefreshCw, X, ExternalLink } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -236,9 +236,15 @@ export function PhotoUploadDialog({
 
             <div className="space-y-1">
               <p className="text-xs text-muted-foreground">Endereço para acesso manual:</p>
-              <code className="block text-xs bg-muted px-2 py-1 rounded break-all">
+              <a
+                href={qrData.url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex items-center gap-1 text-xs bg-muted px-2 py-1 rounded break-all text-blue-600 hover:text-blue-800 hover:underline transition-colors"
+              >
                 {qrData.url}
-              </code>
+                <ExternalLink className="h-3 w-3 shrink-0" />
+              </a>
             </div>
 
             <div className="flex items-center justify-center gap-2 text-sm text-muted-foreground">
