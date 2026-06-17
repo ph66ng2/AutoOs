@@ -207,6 +207,7 @@ export function VerificacaoTecnica({
     };
 
     await onConcluir(dados);
+    onOpenChange(false);
     resetForm();
   }
 

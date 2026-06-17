@@ -137,8 +137,10 @@ export async function arquivoParaImagemEquipamento(
   ctx.drawImage(imagem, 0, 0, canvas.width, canvas.height);
 
   const previewUrl = canvas.toDataURL("image/jpeg", QUALIDADE_JPEG);
-  const buffer = await fetch(previewUrl).then((response) => response.arrayBuffer());
-  const bytes = Array.from(new Uint8Array(buffer));
+  // Converte data URL para bytes sem usar fetch (fetch bloqueado no WebView2 do Windows)
+  const base64Data = previewUrl.split(",")[1];
+  const binaryString = atob(base64Data);
+  const bytes = Array.from(new Uint8Array(binaryString.length).map((_, index) => binaryString.charCodeAt(index)));
 
   return {
     local_id: gerarIdLocalImagem(),
