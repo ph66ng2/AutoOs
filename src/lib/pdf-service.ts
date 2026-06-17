@@ -112,23 +112,33 @@ function urlImagemParaDataUrl(url: string): Promise<string> {
 
 async function obterLogoTopoDataUrl(): Promise<string | null> {
   if (!logoTopoCache) {
-    logoTopoCache = urlImagemParaDataUrl(LOGO_TOPO_URL)
-      .catch(async () => {
+    logoTopoCache = (async () => {
+      // Primary: SVG→PNG (embedded, always available)
+      try {
+        const logoPngBase64 = await svgToPng(LOGO_BMITAG_BASE64, 200, 200);
+        return `data:image/png;base64,${logoPngBase64}`;
+      } catch {
+        // Fallback: fetch PNG file (works on Vite dev, may fail on Tauri EXE)
         try {
-          const logoPngBase64 = await svgToPng(LOGO_BMITAG_BASE64, 200, 200);
-          return `data:image/png;base64,${logoPngBase64}`;
+          return await urlImagemParaDataUrl(LOGO_TOPO_URL);
         } catch {
           return null;
         }
-      });
+      }
+    })();
   }
   return logoTopoCache;
 }
 
 async function obterIconeRodapeDataUrl(): Promise<string | null> {
   if (!iconeRodapeCache) {
-    iconeRodapeCache = urlImagemParaDataUrl(ICONE_RODAPE_URL)
-      .catch(() => null);
+    iconeRodapeCache = (async () => {
+      try {
+        return await urlImagemParaDataUrl(ICONE_RODAPE_URL);
+      } catch {
+        return null;
+      }
+    })();
   }
   return iconeRodapeCache;
 }
@@ -220,7 +230,11 @@ async function aplicarCabecalhoPadrao(doc: jsPDF, y: number, subtitulo: string) 
   const logoY = y + (alturaHeader - logoSize) / 2;
   const logoTopoDataUrl = await obterLogoTopoDataUrl();
   if (logoTopoDataUrl) {
-    doc.addImage(logoTopoDataUrl, "PNG", logoX, logoY, logoSize, logoSize);
+    try {
+      doc.addImage(logoTopoDataUrl, "PNG", logoX, logoY, logoSize, logoSize);
+    } catch (err) {
+      console.error("Falha ao adicionar logo no cabeçalho PDF:", err);
+    }
   }
 
   const textoInicioX = MARGIN_LEFT + logoSize + 10;
@@ -249,7 +263,11 @@ async function aplicarRodape(doc: jsPDF, numeroOS: string) {
   if (iconeRodapeDataUrl) {
     const iconSize = 6;
     const iconY = pageHeight - 13;
-    doc.addImage(iconeRodapeDataUrl, "PNG", MARGIN_LEFT, iconY, iconSize, iconSize);
+    try {
+      doc.addImage(iconeRodapeDataUrl, "PNG", MARGIN_LEFT, iconY, iconSize, iconSize);
+    } catch (err) {
+      console.error("Falha ao adicionar ícone no rodapé PDF:", err);
+    }
   }
   doc.setFontSize(7);
   doc.setTextColor(150, 150, 150);
@@ -338,14 +356,18 @@ async function adicionarRegistroFotografico(
       const imagemX = frameX + (frameWidth - dimensoes.largura) / 2;
       const imagemY = frameY + (frameHeight - dimensoes.altura) / 2;
 
-      doc.addImage(
-        imagem.dataUrl,
-        formatoImagemPdf(imagem.mime_type),
-        imagemX,
-        imagemY,
-        dimensoes.largura,
-        dimensoes.altura,
-      );
+      try {
+        doc.addImage(
+          imagem.dataUrl,
+          formatoImagemPdf(imagem.mime_type),
+          imagemX,
+          imagemY,
+          dimensoes.largura,
+          dimensoes.altura,
+        );
+      } catch (err) {
+        console.error(`Falha ao adicionar imagem "${imagem.filename}" no PDF:`, err);
+      }
 
       pageY += cardHeight + 8;
     });
