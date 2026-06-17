@@ -893,6 +893,36 @@ pub async fn abrir_documento(nome_arquivo: String) -> Result<String, String> {
     Ok(path.to_string_lossy().to_string())
 }
 
+#[tauri::command]
+pub async fn abrir_url(url: String) -> Result<(), String> {
+    let url_trimmed = url.trim().to_string();
+    if url_trimmed.is_empty() || (!url_trimmed.starts_with("http://") && !url_trimmed.starts_with("https://")) {
+        return Err("URL inválida".to_string());
+    }
+    #[cfg(target_os = "linux")]
+    {
+        std::process::Command::new("xdg-open")
+            .arg(&url_trimmed)
+            .spawn()
+            .map_err(|e| format!("Erro ao abrir navegador: {}", e))?;
+    }
+    #[cfg(target_os = "windows")]
+    {
+        std::process::Command::new("cmd")
+            .args(["/c", "start", "", &url_trimmed])
+            .spawn()
+            .map_err(|e| format!("Erro ao abrir navegador: {}", e))?;
+    }
+    #[cfg(target_os = "macos")]
+    {
+        std::process::Command::new("open")
+            .arg(&url_trimmed)
+            .spawn()
+            .map_err(|e| format!("Erro ao abrir navegador: {}", e))?;
+    }
+    Ok(())
+}
+
 /// Salva imagem de equipamento em Documents/Imagens Equipamentos
 /// e tenta abrir o gerenciador de arquivos com o arquivo selecionado.
 #[tauri::command]

@@ -236,15 +236,14 @@ export function PhotoUploadDialog({
 
             <div className="space-y-1">
               <p className="text-xs text-muted-foreground">Endereço para acesso manual:</p>
-              <a
-                href={qrData.url}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="flex items-center gap-1 text-xs bg-muted px-2 py-1 rounded break-all text-blue-600 hover:text-blue-800 hover:underline transition-colors"
+              <button
+                type="button"
+                onClick={() => { db.abrirUrl(qrData.url).catch(() => {}); }}
+                className="flex items-center gap-1 text-xs bg-muted px-2 py-1 rounded break-all text-blue-600 hover:text-blue-800 hover:underline transition-colors w-full text-left cursor-pointer"
               >
                 {qrData.url}
                 <ExternalLink className="h-3 w-3 shrink-0" />
-              </a>
+              </button>
             </div>
 
             <div className="flex items-center justify-center gap-2 text-sm text-muted-foreground">

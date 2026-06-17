@@ -119,6 +119,7 @@ fn main() {
             commands::util::salvar_orcamento_pdf,
             commands::util::verificar_documento_existe,
             commands::util::abrir_documento,
+            commands::util::abrir_url,
             commands::util::salvar_imagem_equipamento,
             commands::util::salvar_relatorio_status_pdf,
             commands::util::obter_status_schema_banco,

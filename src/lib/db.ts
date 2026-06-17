@@ -421,4 +421,9 @@ export const db = {
   async abrirDocumento(nomeArquivo: string): Promise<string> {
     return invoke<string>("abrir_documento", { nomeArquivo });
   },
+
+  /** Abre URL no navegador padrão do sistema → Rust: abrir_url */
+  async abrirUrl(url: string): Promise<void> {
+    return invoke<void>("abrir_url", { url });
+  },
 };
