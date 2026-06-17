@@ -1725,28 +1725,28 @@ export default function Equipamentos() {
                 {erroImagens && <ErrorAlert variant="error" context="Equipamentos" message={erroImagens} />}
                   <div className="grid gap-4 lg:grid-cols-2">
                     <div className="space-y-3 rounded-lg border p-3">
-                       <div className="flex items-center justify-between gap-2">
-                         <div>
-                           <Label htmlFor="equipamento-imagens-entrada">Fotos da entrada</Label>
-                           <p className="text-xs text-muted-foreground">Use para registrar avarias e estado no recebimento.</p>
-                         </div>
-                         <div className="flex items-center gap-1">
-                           <Button
-                             type="button"
-                             variant="outline"
-                             size="sm"
-                             asChild
-                             disabled={
-                               salvando ||
-                               carregandoImagensFormulario ||
-                               imagensFormulario.length >= LIMITE_IMAGENS_POR_EQUIPAMENTO
-                             }
-                           >
-                             <label htmlFor="equipamento-imagens-entrada" className="cursor-pointer">
-                               <ImagePlus className="h-4 w-4" />Adicionar
-                             </label>
-                           </Button>
-<Button
+                         <div className="flex items-center gap-2">
+                          <div>
+                            <Label htmlFor="equipamento-imagens-entrada">Fotos da entrada</Label>
+                            <p className="text-xs text-muted-foreground">Use para registrar avarias e estado no recebimento.</p>
+                          </div>
+                          <div className="flex flex-col gap-1">
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              asChild
+                              disabled={
+                                salvando ||
+                                carregandoImagensFormulario ||
+                                imagensFormulario.length >= LIMITE_IMAGENS_POR_EQUIPAMENTO
+                              }
+                            >
+                              <label htmlFor="equipamento-imagens-entrada" className="cursor-pointer">
+                                <ImagePlus className="h-4 w-4" />Adicionar
+                              </label>
+                            </Button>
+                            <Button
                               type="button"
                               variant="outline"
                               size="sm"
@@ -1765,8 +1765,8 @@ export default function Equipamentos() {
                               <Smartphone className="h-3.5 w-3.5" />
                               Via Celular
                             </Button>
-                         </div>
-                       </div>
+                          </div>
+                        </div>
                     <input
                       id="equipamento-imagens-entrada"
                       type="file"
@@ -2061,30 +2061,30 @@ export default function Equipamentos() {
                     </p>
                   )}
                   <div className="space-y-3 rounded-lg border p-3">
-                     <div className="flex items-center justify-between gap-2">
-                       <div>
-                         <Label htmlFor="equipamento-imagens-saida-entrega">Foto da saída (entrega)</Label>
-                         <p className="text-xs text-muted-foreground">
-                           Registre o estado final do equipamento no momento da entrega.
-                         </p>
-                       </div>
-                       <div className="flex items-center gap-1">
-                         <Button
-                           type="button"
-                           variant="outline"
-                           size="sm"
-                           asChild
-                           disabled={
-                             salvando ||
-                             carregandoImagensSaidaEntrega ||
-                             imagensSaidaEntrega.length >= LIMITE_IMAGENS_POR_EQUIPAMENTO
-                           }
-                         >
-                           <label htmlFor="equipamento-imagens-saida-entrega" className="cursor-pointer">
-                             <ImagePlus className="h-4 w-4" />Adicionar
-                           </label>
-                         </Button>
-<Button
+                     <div className="flex items-center gap-2">
+                        <div>
+                          <Label htmlFor="equipamento-imagens-saida-entrega">Foto da saída (entrega)</Label>
+                          <p className="text-xs text-muted-foreground">
+                            Registre o estado final do equipamento no momento da entrega.
+                          </p>
+                        </div>
+                        <div className="flex flex-col gap-1">
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            asChild
+                            disabled={
+                              salvando ||
+                              carregandoImagensSaidaEntrega ||
+                              imagensSaidaEntrega.length >= LIMITE_IMAGENS_POR_EQUIPAMENTO
+                            }
+                          >
+                            <label htmlFor="equipamento-imagens-saida-entrega" className="cursor-pointer">
+                              <ImagePlus className="h-4 w-4" />Adicionar
+                            </label>
+                          </Button>
+                          <Button
                             type="button"
                             variant="outline"
                             size="sm"
@@ -2103,8 +2103,8 @@ export default function Equipamentos() {
                             <Smartphone className="h-3.5 w-3.5" />
                             Via Celular
                           </Button>
-                       </div>
-                     </div>
+                        </div>
+                      </div>
                     {erroImagensSaidaEntrega && (
                       <p className="text-xs text-red-500">{erroImagensSaidaEntrega}</p>
                     )}
