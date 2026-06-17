@@ -57,7 +57,7 @@ export function ConfiguracoesTabIntegracoes({
           {canConfigureSmtp ? (
             <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
               <div className="rounded-lg border border-blue-200 bg-blue-50 p-4 text-sm text-blue-900">
-                Configuração padrão aplicada no sistema: hostmail.bmitag.com.br, porta 465, usuário bmitag@bmitag.com.br, TLS/SSL habilitado, remetente BMI Tag.
+                Configuração padrão aplicada no sistema: smtp.gmail.com, porta 465, TLS/SSL habilitado, remetente BMI Tag. Para usar Gmail, gere uma Senha de App em https://myaccount.google.com/apppasswords e cole-a no campo de senha abaixo.
               </div>
 
               <div className="flex items-center gap-2 rounded-md border p-3">
@@ -105,6 +105,9 @@ export function ConfiguracoesTabIntegracoes({
                   <Input id="password" type="password" placeholder={hasPassword ? "Senha ja configurada" : "Digite a senha"} {...register("password")} disabled={!smtpEditUnlocked || saving} />
                   {hasPassword && (
                     <p className="text-xs text-muted-foreground">Deixe em branco para manter a senha atual.</p>
+                  )}
+                  {!hasPassword && (
+                    <p className="text-xs text-amber-600">⚠️ Para Gmail, use uma Senha de App (não sua senha normal). Gere em: myaccount.google.com/apppasswords</p>
                   )}
                 </div>
               </div>

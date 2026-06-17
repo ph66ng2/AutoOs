@@ -59,7 +59,9 @@ import {
   type ProdutoFormData,
 } from "@/lib/validations";
 import { useInsumos } from "@/hooks/useInsumos";
+import { useNotification } from "@/hooks/useNotification";
 import { useSensitiveAccess } from "@/hooks/useSensitiveAccess";
+import { ErrorAlert } from "@/components/ui/error-alert";
 import { SENSITIVE_PERMISSIONS, type Produto } from "@/types";
 import { ActionPriorityRow } from "@/components/ui/action-priority-row";
 import { CATEGORIA_OPTIONS } from "@/pages/insumos/insumos-page-constants";
@@ -84,6 +86,7 @@ export default function Insumos() {
   const {
     produtos,
     loading,
+    error,
     insumosAbaixoMinimo,
     criar,
     atualizar,
@@ -95,6 +98,7 @@ export default function Insumos() {
     categoria: categoriaFiltro,
     apenasEstoqueBaixo,
   });
+  const { error: showError } = useNotification();
   const { ensureSensitiveAccess } = useSensitiveAccess();
 
   const form = useForm<ProdutoFormData>({
@@ -124,8 +128,8 @@ export default function Insumos() {
 
   async function abrirNovo() {
     const liberado = await ensureSensitiveAccess({
-      title: "Cadastrar insumo",
-      description: "Informe o PIN para alterar estoque, custos e preços dos insumos.",
+      title: "Cadastrar insumo/peça",
+      description: "Informe o PIN para alterar estoque, custos e preços dos insumos/peças.",
       permission: SENSITIVE_PERMISSIONS.STOCK_CONTROL,
     });
     if (!liberado) return;
@@ -147,8 +151,8 @@ export default function Insumos() {
 
   async function abrirEditar(p: Produto) {
     const liberado = await ensureSensitiveAccess({
-      title: "Editar insumo",
-      description: "Informe o PIN para alterar preços e parâmetros de estoque deste insumo.",
+      title: "Editar insumo/peça",
+      description: "Informe o PIN para alterar preços e parâmetros de estoque deste insumo/peça.",
       permission: SENSITIVE_PERMISSIONS.STOCK_CONTROL,
     });
     if (!liberado) return;
@@ -199,18 +203,18 @@ export default function Insumos() {
       if (editando) {
         const resultado = await atualizar(editando.id!, payload);
         if (!resultado.sucesso) {
-          throw new Error(resultado.erro || "Não foi possível salvar o insumo.");
+          throw new Error(resultado.erro || "Não foi possível salvar o insumo/peça.");
         }
       } else {
         const resultado = await criar(payload);
         if (!resultado.sucesso) {
-          throw new Error(resultado.erro || "Não foi possível criar o insumo.");
+          throw new Error(resultado.erro || "Não foi possível criar o insumo/peça.");
         }
       }
       setDialogOpen(false);
     } catch (err: any) {
       console.error("Erro ao salvar:", err);
-      alert(err?.message || "Erro ao salvar insumo.");
+      showError("Insumos/Peças", "Salvar produto", err);
     } finally {
       setSalvando(false);
     }
@@ -233,7 +237,7 @@ export default function Insumos() {
       setMovDialogOpen(false);
     } catch (err: any) {
       console.error("Erro movimentação:", err);
-      alert(err?.message || "Erro ao registrar movimentação.");
+      showError("Insumos/Peças", "Registrar movimentação", err);
     } finally {
       setSalvando(false);
     }
@@ -255,8 +259,8 @@ export default function Insumos() {
 
   async function solicitarExclusao(produto: Produto) {
     const liberado = await ensureSensitiveAccess({
-      title: "Excluir insumo",
-      description: "Informe o PIN para excluir um insumo do estoque.",
+      title: "Excluir insumo/peça",
+      description: "Informe o PIN para excluir um insumo/peça do estoque.",
       permission: SENSITIVE_PERMISSIONS.DELETE_RECORDS,
     });
     if (!liberado) return;
@@ -270,7 +274,7 @@ export default function Insumos() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight">Insumos & Estoque</h1>
+          <h1 className="text-3xl font-bold tracking-tight">Insumos/Peças & Estoque</h1>
           <p className="text-muted-foreground">
             Controle de suprimentos e movimentação de estoque
           </p>
@@ -284,10 +288,19 @@ export default function Insumos() {
           )}
           <Button onClick={() => void abrirNovo()}>
             <Plus className="h-4 w-4 mr-2" />
-            Novo Insumo
+            Novo Insumo/Peça
           </Button>
         </div>
       </div>
+
+      {error && (
+        <ErrorAlert
+          variant="error"
+          context="Insumos/Peças"
+          message={error}
+          action="Carregar"
+        />
+      )}
 
       {/* Filtros */}
       <Card>
@@ -341,11 +354,11 @@ export default function Insumos() {
           ) : produtos.length === 0 ? (
             <div className="text-center py-12 text-muted-foreground">
               <Package className="h-16 w-16 mx-auto mb-4 opacity-20" />
-              <p className="text-lg font-medium mb-1">Nenhum insumo encontrado</p>
+              <p className="text-lg font-medium mb-1">Nenhum insumo/peça encontrado</p>
               <p className="text-sm">
                 {busca || categoriaFiltro !== "TODOS" || apenasEstoqueBaixo
                   ? "Tente ajustar os filtros"
-                  : "Clique em 'Novo Insumo' para cadastrar"}
+                  : "Clique em 'Novo Insumo/Peça' para cadastrar"}
               </p>
             </div>
           ) : (

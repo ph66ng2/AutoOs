@@ -1,6 +1,7 @@
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
+import { ErrorAlert } from "@/components/ui/error-alert";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
@@ -248,6 +249,8 @@ export function ConfiguracoesTabSeguranca({
                   setEditProfileRole(value);
                   if (value === "ADMIN") {
                     setEditPermissions(permissionOptions);
+                  } else {
+                    setEditPermissions([]);
                   }
                 }} disabled={!securityAdminUnlocked || securityBusy || !managedProfile?.ativo}>
                   <SelectTrigger>
@@ -333,12 +336,14 @@ export function ConfiguracoesTabSeguranca({
                 </div>
                 <div className="space-y-2">
                   <Label>Papel</Label>
-                  <Select value={newProfileRole} onValueChange={(value) => {
-                    setNewProfileRole(value);
-                    if (value === "ADMIN") {
-                      setNewProfilePermissions(permissionOptions);
-                    }
-                  }} disabled={!securityAdminUnlocked || securityBusy}>
+                <Select value={newProfileRole} onValueChange={(value) => {
+                  setNewProfileRole(value);
+                  if (value === "ADMIN") {
+                    setNewProfilePermissions(permissionOptions);
+                  } else {
+                    setNewProfilePermissions([]);
+                  }
+                }} disabled={!securityAdminUnlocked || securityBusy}>
                     <SelectTrigger>
                       <SelectValue placeholder="Selecione um papel" />
                     </SelectTrigger>
@@ -385,7 +390,7 @@ export function ConfiguracoesTabSeguranca({
       )}
 
       {securityMessage && (
-        <p className="text-sm text-muted-foreground">{securityMessage}</p>
+        <ErrorAlert variant="info" message={securityMessage} />
       )}
     </TabsContent>
   );

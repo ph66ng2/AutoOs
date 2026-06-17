@@ -60,6 +60,7 @@ import {
   detectarTipoDocumento,
 } from "@/lib/validations";
 import { useClientes } from "@/hooks/useClientes";
+import { useNotification } from "@/hooks/useNotification";
 import { db } from "@/lib/db";
 import {
   SENSITIVE_PERMISSIONS,
@@ -67,6 +68,7 @@ import {
   type Equipamento,
 } from "@/types";
 import { useSensitiveAccess } from "@/hooks/useSensitiveAccess";
+import { ErrorAlert } from "@/components/ui/error-alert";
 import { nomeExibicaoCliente, documentoExibicaoCliente } from "@/components/clientes/cliente-display-utils";
 import { ClientesStatusBadge } from "@/pages/clientes/ClientesStatusBadge";
 import {
@@ -94,9 +96,10 @@ export default function Clientes() {
   const [modalEquipamentosOpen, setModalEquipamentosOpen] = useState(false);
   const [clienteEquipamentosSelecionado, setClienteEquipamentosSelecionado] = useState<Cliente | null>(null);
 
-  const { clientes, loading, criar, atualizar, deletar, recarregar } =
+  const { clientes, loading, error, criar, atualizar, deletar, recarregar } =
     useClientes({ busca: busca || undefined });
   const { ensureSensitiveAccess } = useSensitiveAccess();
+  const { error: showError } = useNotification();
 
   const form = useForm<ClienteFormData>({
     resolver: zodResolver(clienteSchema),
@@ -276,7 +279,7 @@ export default function Clientes() {
       setDialogOpen(false);
     } catch (err: any) {
       console.error("Erro:", err);
-      alert(err?.message || "Erro ao salvar cliente.");
+      showError("Clientes", "Salvar cliente", err);
     } finally {
       setSalvando(false);
     }
@@ -339,6 +342,9 @@ export default function Clientes() {
       {/* Tabela */}
       <Card>
         <CardContent className="pt-6">
+          {error && (
+            <ErrorAlert variant="error" context="Clientes" message={error} action="Carregar" />
+          )}
           {loading ? (
             <div className="flex items-center justify-center h-32"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600" /></div>
           ) : clientes.length === 0 ? (

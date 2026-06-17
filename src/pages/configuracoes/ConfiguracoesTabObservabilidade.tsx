@@ -1,5 +1,6 @@
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { ErrorAlert } from "@/components/ui/error-alert";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
@@ -133,15 +134,11 @@ export function ConfiguracoesTabObservabilidade({
           ) : null}
 
           {supportError && (
-            <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
-              {supportError}
-            </div>
+            <ErrorAlert variant="error" context="Suporte" message={supportError} />
           )}
 
           {supportMessage && (
-            <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-900">
-              {supportMessage}
-            </div>
+            <ErrorAlert variant="success" context="Suporte" message={supportMessage} />
           )}
 
           <div className="flex flex-wrap justify-end gap-2">

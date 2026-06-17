@@ -130,7 +130,10 @@ pub async fn listar_produtos(
         query_builder.push(" AND quantidade_estoque < quantidade_minima");
     }
 
-    query_builder.push(format!(" ORDER BY id DESC LIMIT {} OFFSET {}", PAGE_SIZE, offset));
+    query_builder.push(" ORDER BY id DESC LIMIT ");
+    query_builder.push_bind(PAGE_SIZE);
+    query_builder.push(" OFFSET ");
+    query_builder.push_bind(offset);
 
     let rows = query_builder
         .build_query_as::<ProdutoRow>()
@@ -308,7 +311,7 @@ pub async fn atualizar_produto(id: i32, input: ProdutoInput) -> Result<ProdutoRo
             preco_venda = $11, margem_lucro = $12, marca_original = $13,
             tipo_cartucho = $14, cor = $15, rendimento = $16, modelos_compativeis = $17,
             fornecedor_principal = $18, prazo_entrega = $19, atualizado_em = NOW()
-        WHERE id = $20 AND atualizado_em::TEXT = $21
+        WHERE id = $20 AND atualizado_em = $21::TIMESTAMPTZ
         "#,
     )
     .bind(codigo)

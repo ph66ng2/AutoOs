@@ -5,7 +5,9 @@
 //! ║  - salvar_arquivo_temp: Salva bytes em arquivo temporário    ║
 //! ╚══════════════════════════════════════════════════════════════╝
 
-use crate::commands::auth::{record_security_event, require_permission, PERMISSION_MANAGE_PROFILES};
+use crate::commands::auth::{
+    record_security_event, require_permission, PERMISSION_CONFIG_SMTP, PERMISSION_MANAGE_PROFILES,
+};
 use crate::db::{get_pool, known_migrations, run_pending_migrations};
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
@@ -618,6 +620,59 @@ fn normalize_restore_file_path(file_path: &str) -> Result<PathBuf, String> {
     fs::canonicalize(path).map_err(|e| format!("Não foi possível resolver o caminho do backup: {}", e))
 }
 
+fn allowed_app_document_roots() -> Result<Vec<PathBuf>, String> {
+    Ok(vec![
+        default_orders_directory()?,
+        default_quotes_directory()?,
+        default_status_reports_directory()?,
+        autoos_temp_dir()?,
+    ])
+}
+
+fn resolve_allowed_app_document_path(path: &str) -> Result<PathBuf, String> {
+    let trimmed = path.trim();
+    if trimmed.is_empty() {
+        return Err("Caminho de origem do anexo é obrigatório".to_string());
+    }
+
+    let requested_path = PathBuf::from(trimmed);
+    if !requested_path.is_absolute() {
+        return Err("Caminho de origem do anexo deve ser absoluto".to_string());
+    }
+
+    let canonical = fs::canonicalize(&requested_path).map_err(|e| {
+        error!("Erro ao resolver caminho de origem do anexo: {}", e);
+        format!("Erro ao acessar arquivo de origem do anexo: {}", e)
+    })?;
+
+    let metadata = fs::metadata(&canonical).map_err(|e| {
+        error!("Erro ao acessar arquivo de origem do anexo: {}", e);
+        format!("Erro ao acessar arquivo de origem do anexo: {}", e)
+    })?;
+    if !metadata.is_file() {
+        return Err("Origem do anexo não é um arquivo válido".to_string());
+    }
+
+    for root in allowed_app_document_roots()? {
+        let canonical_root = fs::canonicalize(&root).unwrap_or(root);
+        if canonical.starts_with(&canonical_root) {
+            return Ok(canonical);
+        }
+    }
+
+    Err("Origem do anexo deve estar em um diretório gerado pelo AutoOS".to_string())
+}
+
+fn ensure_restore_path_in_backup_directory(restore_path: &Path) -> Result<(), String> {
+    let backup_root = default_backup_directory()?;
+    let canonical_backup_root = fs::canonicalize(&backup_root).unwrap_or(backup_root);
+    if !restore_path.starts_with(&canonical_backup_root) {
+        return Err("O backup deve estar no diretório de backups do AutoOS.".to_string());
+    }
+
+    Ok(())
+}
+
 fn detect_restore_tool(file_path: &Path) -> Result<&'static str, String> {
     let extension = file_path
         .extension()
@@ -661,23 +716,8 @@ pub async fn copiar_anexo_email_para_temp(
     origem: String,
     filename: String,
 ) -> Result<String, String> {
-    let trimmed_origem = origem.trim();
-    if trimmed_origem.is_empty() {
-        return Err("Caminho de origem do anexo é obrigatório".to_string());
-    }
-
-    let origem_path = PathBuf::from(trimmed_origem);
-    if !origem_path.is_absolute() {
-        return Err("Caminho de origem do anexo deve ser absoluto".to_string());
-    }
-
-    let metadata = fs::metadata(&origem_path).map_err(|e| {
-        error!("Erro ao acessar arquivo de origem do anexo: {}", e);
-        format!("Erro ao acessar arquivo de origem do anexo: {}", e)
-    })?;
-    if !metadata.is_file() {
-        return Err("Origem do anexo não é um arquivo válido".to_string());
-    }
+    let _actor = require_permission(PERMISSION_CONFIG_SMTP)?;
+    let origem_path = resolve_allowed_app_document_path(&origem)?;
 
     let safe_filename = sanitize_temp_filename(&filename)?;
     let destino = autoos_temp_dir()?.join(&safe_filename);
@@ -739,26 +779,30 @@ pub async fn remover_anexo_email_temp(path: String) -> Result<(), String> {
 
 /// Salva PDF da Ordem de Serviço em Documents/Ordens de Servico
 /// e tenta abrir o gerenciador de arquivos com o arquivo selecionado.
+/// Se `nome_arquivo` for fornecido, usa esse nome em vez de gerar um timestamped.
 #[tauri::command]
 #[instrument(skip_all, fields(bytes_len = bytes.len()))]
-pub async fn salvar_ordem_servico_pdf(bytes: Vec<u8>, empresa_nome: Option<String>) -> Result<String, String> {
+pub async fn salvar_ordem_servico_pdf(bytes: Vec<u8>, empresa_nome: Option<String>, nome_arquivo: Option<String>) -> Result<String, String> {
     debug!("Salvando ordem de serviço ({} bytes)", bytes.len());
 
-    let empresa = sanitize_filename_component(empresa_nome.as_deref().unwrap_or("Empresa"));
-    let empresa = if empresa.is_empty() {
-        "Empresa".to_string()
+    let file_name = if let Some(nome) = nome_arquivo.filter(|n| !n.is_empty()) {
+        nome
     } else {
-        empresa
+        let empresa = sanitize_filename_component(empresa_nome.as_deref().unwrap_or("Empresa"));
+        let empresa = if empresa.is_empty() {
+            "Empresa".to_string()
+        } else {
+            empresa
+        };
+        let created_at = Utc::now();
+        format!(
+            "OrdemServico_{}_{}.pdf",
+            empresa,
+            created_at.format("%Y-%m-%d_%H-%M-%S")
+        )
     };
 
-    let created_at = Utc::now();
-    let file_name = format!(
-        "OrdemServico_{}_{}.pdf",
-        empresa,
-        created_at.format("%Y-%m-%d_%H-%M-%S")
-    );
-
-    let file_path = default_orders_directory()?.join(file_name);
+    let file_path = default_orders_directory()?.join(&file_name);
 
     fs::write(&file_path, &bytes).map_err(|e| {
         error!("Erro ao salvar ordem de serviço: {}", e);
@@ -777,26 +821,30 @@ pub async fn salvar_ordem_servico_pdf(bytes: Vec<u8>, empresa_nome: Option<Strin
 
 /// Salva PDF do Orçamento em Documents/Orcamentos
 /// e tenta abrir o gerenciador de arquivos com o arquivo selecionado.
+/// Se `nome_arquivo` for fornecido, usa esse nome em vez de gerar um timestamped.
 #[tauri::command]
 #[instrument(skip_all, fields(bytes_len = bytes.len()))]
-pub async fn salvar_orcamento_pdf(bytes: Vec<u8>, empresa_nome: Option<String>) -> Result<String, String> {
+pub async fn salvar_orcamento_pdf(bytes: Vec<u8>, empresa_nome: Option<String>, nome_arquivo: Option<String>) -> Result<String, String> {
     debug!("Salvando orçamento ({} bytes)", bytes.len());
 
-    let empresa = sanitize_filename_component(empresa_nome.as_deref().unwrap_or("Cliente"));
-    let empresa = if empresa.is_empty() {
-        "Cliente".to_string()
+    let file_name = if let Some(nome) = nome_arquivo.filter(|n| !n.is_empty()) {
+        nome
     } else {
-        empresa
+        let empresa = sanitize_filename_component(empresa_nome.as_deref().unwrap_or("Cliente"));
+        let empresa = if empresa.is_empty() {
+            "Cliente".to_string()
+        } else {
+            empresa
+        };
+        let created_at = Utc::now();
+        format!(
+            "Orcamento_{}_{}.pdf",
+            empresa,
+            created_at.format("%Y-%m-%d_%H-%M-%S")
+        )
     };
 
-    let created_at = Utc::now();
-    let file_name = format!(
-        "Orcamento_{}_{}.pdf",
-        empresa,
-        created_at.format("%Y-%m-%d_%H-%M-%S")
-    );
-
-    let file_path = default_quotes_directory()?.join(file_name);
+    let file_path = default_quotes_directory()?.join(&file_name);
 
     fs::write(&file_path, &bytes).map_err(|e| {
         error!("Erro ao salvar orçamento: {}", e);
@@ -811,6 +859,68 @@ pub async fn salvar_orcamento_pdf(bytes: Vec<u8>, empresa_nome: Option<String>) 
     let path_str = file_path.to_string_lossy().to_string();
     info!("Orçamento salvo com sucesso em {}", path_str);
     Ok(path_str)
+}
+
+fn resolve_document_directory(nome_arquivo: &str) -> Result<PathBuf, String> {
+    if nome_arquivo.starts_with("Orcamento_") || nome_arquivo.starts_with("orcamento_") {
+        default_quotes_directory()
+    } else if nome_arquivo.starts_with("OrdemServico_") || nome_arquivo.starts_with("ordemservico_") {
+        default_orders_directory()
+    } else if nome_arquivo.starts_with("RelatorioStatus_") || nome_arquivo.starts_with("relatoriostatus_") {
+        default_status_reports_directory()
+    } else {
+        default_orders_directory()
+    }
+}
+
+/// Check if a document exists in the appropriate Documents subdirectory.
+#[tauri::command]
+pub async fn verificar_documento_existe(nome_arquivo: String) -> Result<bool, String> {
+    let dir = resolve_document_directory(&nome_arquivo)?;
+    let path = dir.join(&nome_arquivo);
+    Ok(path.exists())
+}
+
+/// Open an existing document in the file manager.
+#[tauri::command]
+pub async fn abrir_documento(nome_arquivo: String) -> Result<String, String> {
+    let dir = resolve_document_directory(&nome_arquivo)?;
+    let path = dir.join(&nome_arquivo);
+    if !path.exists() {
+        return Err("Documento não encontrado".to_string());
+    }
+    reveal_file_in_manager(&path).map_err(|e| e.to_string())?;
+    Ok(path.to_string_lossy().to_string())
+}
+
+#[tauri::command]
+pub async fn abrir_url(url: String) -> Result<(), String> {
+    let url_trimmed = url.trim().to_string();
+    if url_trimmed.is_empty() || (!url_trimmed.starts_with("http://") && !url_trimmed.starts_with("https://")) {
+        return Err("URL inválida".to_string());
+    }
+    #[cfg(target_os = "linux")]
+    {
+        std::process::Command::new("xdg-open")
+            .arg(&url_trimmed)
+            .spawn()
+            .map_err(|e| format!("Erro ao abrir navegador: {}", e))?;
+    }
+    #[cfg(target_os = "windows")]
+    {
+        std::process::Command::new("cmd")
+            .args(["/c", "start", "", &url_trimmed])
+            .spawn()
+            .map_err(|e| format!("Erro ao abrir navegador: {}", e))?;
+    }
+    #[cfg(target_os = "macos")]
+    {
+        std::process::Command::new("open")
+            .arg(&url_trimmed)
+            .spawn()
+            .map_err(|e| format!("Erro ao abrir navegador: {}", e))?;
+    }
+    Ok(())
 }
 
 /// Salva imagem de equipamento em Documents/Imagens Equipamentos
@@ -977,6 +1087,7 @@ pub async fn restaurar_backup_postgres(file_path: String) -> Result<PostgresRest
     let database_url = current_database_url()?;
     let parsed = parse_database_url(&database_url)?;
     let restore_path = normalize_restore_file_path(&file_path)?;
+    ensure_restore_path_in_backup_directory(&restore_path)?;
     let restore_tool = detect_restore_tool(&restore_path)?;
 
     if !command_available(restore_tool) {
@@ -1057,6 +1168,7 @@ pub async fn restaurar_backup_postgres(file_path: String) -> Result<PostgresRest
 #[tauri::command]
 #[instrument(skip_all)]
 pub async fn obter_status_schema_banco() -> Result<DatabaseSchemaStatus, String> {
+    let _actor = require_permission(PERMISSION_MANAGE_PROFILES)?;
     let pool = get_pool().await.map_err(|e| {
         error!("Erro ao obter pool para status do schema: {}", e);
         e

@@ -1,0 +1,66 @@
+[PASS] App is reachable via curl — HTTP 200
+[PASS] App HTML is non-empty — 648 bytes
+[PASS] Sonner is in package.json — v^2.0.7
+[PASS] Sonner shadcn component exists — src/components/ui/sonner.tsx
+[PASS] Toaster/sonner imported in App.tsx — Toaster element found
+[PASS] Toaster configured with richColors
+[PASS] Toaster configured with closeButton
+[PASS] Toaster configured with visibleToasts — found
+[PASS] Toaster configured with position — found
+[PASS] ErrorAlert component file exists — src/components/ui/error-alert.tsx
+[PASS] ErrorAlert has error/destructive variant
+[PASS] ErrorAlert has warning variant
+[PASS] ErrorAlert has info variant
+[PASS] ErrorAlert has success variant
+[PASS] ErrorAlert has expandable details
+[PASS] ErrorAlert has copy button
+[PASS] ErrorAlert imported in at least 1 page/component — Found in 8 files: pages/Clientes.tsx, pages/Insumos.tsx, pages/Equipamentos.tsx, pages/Servicos.tsx, pages/configuracoes/ConfiguracoesTabInfra.tsx, pages/configuracoes/ConfiguracoesTabObservabilidade.tsx, pages/configuracoes/ConfiguracoesTabSeguranca.tsx, components/ui/__tests__/error-alert.test.tsx
+[PASS] ErrorBoundary component file exists
+[PASS] ErrorBoundary imported and used in App.tsx
+[PASS] ErrorBoundary has PT-BR friendly message — Algo deu errado, erro inesperado, Tente, Recarregar
+[PASS] ErrorBoundary has reload button
+[PASS] ErrorBoundary has copy details
+[PASS] ErrorBoundary catches errors (componentDidCatch/getDerivedStateFromError)
+[PASS] ErrorBoundary has error state handling
+[PASS] FormValidationError component file exists
+[PASS] FormValidationError uses AlertCircle icon
+[PASS] FormValidationError uses red/destructive text color
+[PASS] FormValidationError returns null for empty message
+[PASS] FormValidationError used in pages/components — Found in 6 files
+[PASS] ConfirmDialog component file exists
+[PASS] InputDialog component file exists
+[PASS] ConfirmDialog imported in at least 1 page — Found in 3 files: components/ui/__tests__/confirm-dialog.test.tsx, pages/Equipamentos.tsx, types/notification.ts
+[PASS] InputDialog imported in at least 1 page — Found in 3 files: components/ui/__tests__/input-dialog.test.tsx, pages/Equipamentos.tsx, types/notification.ts
+[PASS] No window.confirm/prompt/alert in pages — Clean — all migrated
+[PASS] No standalone alert() calls in pages — Clean — all migrated
+[PASS] No window.confirm/prompt anywhere in src/ — Clean
+[PASS] Equipamentos.tsx uses useNotification hook
+[PASS] Equipamentos.tsx uses ConfirmDialog
+[PASS] Equipamentos.tsx uses InputDialog
+[PASS] Equipamentos.tsx has 0 alert() calls — 0 found
+[PASS] Equipamentos.tsx has 0 window.confirm calls
+[PASS] Equipamentos.tsx has 0 window.prompt calls
+[PASS] useNotification hook file exists
+[PASS] useNotification exports success
+[PASS] useNotification exports error
+[PASS] useNotification exports warning
+[PASS] useNotification exports info
+[PASS] useNotification has copy-details for errors
+[PASS] useNotification errors use manual dismiss (Infinity)
+[PASS] useNotification used in pages — 8 files: components/equipamentos/ClienteSelector.tsx, components/equipamentos/VerificacaoTecnica.tsx, hooks/useNotification.ts, hooks/__tests__/useNotification.test.ts, pages/Clientes.tsx
+[PASS] notification.ts types file exists
+[PASS] error-utils.ts file exists
+[PASS] NotificationType type defined
+[PASS] AppError interface defined
+[PASS] ConfirmDialogProps defined
+[PASS] NotificationMessage defined
+[PASS] formatAppError function exists
+[PASS] createNotificationMessage function exists
+[PASS] copyErrorDetails function exists
+[PASS] formatErrorForCopy function exists
+[PASS] --warning CSS variable defined
+[PASS] --info CSS variable defined
+[PASS] npx tsc --noEmit passes — Clean
+[PASS] DoD: grep alert( in pages returns 0 — Clean
+[PASS] DoD: grep window.prompt returns 0 — Clean
+[PASS] DoD: grep window.confirm returns 0 — Clean

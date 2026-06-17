@@ -127,10 +127,47 @@ fn concurrency_conflict_message(entity_label: &str) -> String {
         )
     }
 
-    fn require_financial_actor_for_equipment_write(
+    async fn require_financial_actor_for_equipment_write(
+        equipment_id: Option<i32>,
         input: &EquipamentoInput,
     ) -> Result<Option<SecurityProfileSummary>, String> {
-        if equipment_has_sensitive_financial_input(input) {
+        let normalized_status = normalize_status_key(&input.status);
+        let prazo_aprovacao = optional_text(input.prazo_aprovacao.as_deref());
+
+        let mut needs_financial = equipment_has_sensitive_financial_input(input)
+            || status_change_requires_sensitive_access(
+                &normalized_status,
+                input.valor_orcamento,
+                prazo_aprovacao.as_deref(),
+                None,
+            );
+
+        if !needs_financial {
+            if let Some(id) = equipment_id {
+                let pool = get_pool().await.map_err(|e| e.to_string())?;
+                let current_status: Option<String> = sqlx::query_scalar(
+                    "SELECT status FROM equipamentos WHERE id = $1",
+                )
+                .bind(id)
+                .fetch_optional(&pool)
+                .await
+                .map_err(|e| {
+                    error!("Erro ao consultar status atual do equipamento {}: {}", id, e);
+                    e.to_string()
+                })?;
+
+                if let Some(current_status) = current_status {
+                    let current_normalized = normalize_status_key(&current_status);
+                    if current_normalized != normalized_status
+                        && status_change_requires_sensitive_access(&normalized_status, None, None, None)
+                    {
+                        needs_financial = true;
+                    }
+                }
+            }
+        }
+
+        if needs_financial {
             return Ok(Some(require_permission(PERMISSION_FINANCIAL_ACTIONS)?));
         }
 
@@ -184,7 +221,10 @@ pub async fn listar_equipamentos(
         query_builder.push_bind(normalize_status_key(status));
     }
 
-    query_builder.push(format!(" ORDER BY id DESC LIMIT {} OFFSET {}", PAGE_SIZE, offset));
+    query_builder.push(" ORDER BY id DESC LIMIT ");
+    query_builder.push_bind(PAGE_SIZE);
+    query_builder.push(" OFFSET ");
+    query_builder.push_bind(offset);
 
     let rows = query_builder
         .build_query_as::<EquipamentoRow>()
@@ -220,12 +260,32 @@ pub async fn buscar_equipamento(id: i32) -> Result<EquipamentoRow, String> {
     Ok(row)
 }
 
+/// Buscar equipamentos por número de série (case-insensitive).
+/// Retorna múltiplos registros para o mesmo serial (ciclos de manutenção).
+#[tauri::command]
+#[instrument(skip_all, fields(serial = %serial))]
+pub async fn buscar_equipamentos_por_serial(serial: String) -> Result<Vec<EquipamentoRow>, String> {
+    debug!("Buscando equipamentos por serial: {}", serial);
+    let pool = get_pool().await.map_err(|e| e.to_string())?;
+    let query = format!("{} WHERE LOWER(serial_number) = LOWER($1) ORDER BY id DESC", EQUIPAMENTO_SELECT);
+    let rows = sqlx::query_as::<_, EquipamentoRow>(&query)
+        .bind(serial.trim())
+        .fetch_all(&pool)
+        .await
+        .map_err(|e| {
+            error!("Erro ao buscar equipamentos por serial: {}", e);
+            format!("Erro ao buscar equipamentos: {}", e)
+        })?;
+    info!("Equipamentos encontrados para serial {}: {}", serial, rows.len());
+    Ok(rows)
+}
+
 /// Criar novo equipamento.
 #[tauri::command]
 #[instrument(skip_all, fields(serial = %input.serial_number))]
 pub async fn criar_equipamento(input: EquipamentoInput) -> Result<EquipamentoRow, String> {
     debug!("Criando equipamento: {}", input.serial_number);
-    let financial_actor = require_financial_actor_for_equipment_write(&input)?;
+    let financial_actor = require_financial_actor_for_equipment_write(None, &input).await?;
     let pool = get_pool().await.map_err(|e| e.to_string())?;
     let serial_number = required_text(&input.serial_number, "Número de série")?;
     let defeito_relatado = required_text(input.defeito_relatado.as_deref().unwrap_or(""), "Defeito")?;
@@ -304,7 +364,7 @@ pub async fn criar_equipamento(input: EquipamentoInput) -> Result<EquipamentoRow
 #[instrument(skip_all, fields(id = id))]
 pub async fn atualizar_equipamento(id: i32, input: EquipamentoInput) -> Result<EquipamentoRow, String> {
     debug!("Atualizando equipamento {}", id);
-    let financial_actor = require_financial_actor_for_equipment_write(&input)?;
+    let financial_actor = require_financial_actor_for_equipment_write(Some(id), &input).await?;
     let pool = get_pool().await.map_err(|e| e.to_string())?;
     let concurrency_token = required_concurrency_token(input.atualizado_em.as_deref(), "equipamento")?;
     let serial_number = required_text(&input.serial_number, "Número de série")?;
@@ -329,7 +389,7 @@ pub async fn atualizar_equipamento(id: i32, input: EquipamentoInput) -> Result<E
             proprietario = $14, preco_compra = $15, preco_venda = $16, observacoes = $17,
             cliente_id = $18, cliente_nome = $19, cliente_telefone = $20, cliente_email = $21,
             prazo_aprovacao = $22, valor_orcamento = $23, atualizado_em = NOW()
-        WHERE id = $24 AND atualizado_em::TEXT = $25
+        WHERE id = $24 AND atualizado_em = $25::TIMESTAMPTZ
         "#,
     )
     .bind(serial_number)
@@ -463,11 +523,11 @@ pub async fn atualizar_status_equipamento(
 
     let query = if !date_field.is_empty() {
         format!(
-            "UPDATE equipamentos SET status = $1, {} = NOW(), valor_orcamento = COALESCE($2, valor_orcamento), prazo_aprovacao = COALESCE($3, prazo_aprovacao), valor_final = COALESCE($4, valor_final), atualizado_em = NOW() WHERE id = $5 AND atualizado_em::TEXT = $6",
+            "UPDATE equipamentos SET status = $1, {} = NOW(), valor_orcamento = COALESCE($2, valor_orcamento), prazo_aprovacao = COALESCE($3, prazo_aprovacao), valor_final = COALESCE($4, valor_final), atualizado_em = NOW() WHERE id = $5 AND atualizado_em = $6::TIMESTAMPTZ",
             date_field
         )
     } else {
-        "UPDATE equipamentos SET status = $1, valor_orcamento = COALESCE($2, valor_orcamento), prazo_aprovacao = COALESCE($3, prazo_aprovacao), valor_final = COALESCE($4, valor_final), atualizado_em = NOW() WHERE id = $5 AND atualizado_em::TEXT = $6".to_string()
+        "UPDATE equipamentos SET status = $1, valor_orcamento = COALESCE($2, valor_orcamento), prazo_aprovacao = COALESCE($3, prazo_aprovacao), valor_final = COALESCE($4, valor_final), atualizado_em = NOW() WHERE id = $5 AND atualizado_em = $6::TIMESTAMPTZ".to_string()
     };
 
     let updated_rows = sqlx::query(&query)
@@ -513,6 +573,12 @@ pub async fn atualizar_status_equipamento(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn p0_sensitive_status_gate_flags_status_only_changes_on_update() {
+        assert!(status_change_requires_sensitive_access("ENTREGUE", None, None, None));
+        assert!(!status_change_requires_sensitive_access("EM_VERIFICACAO", None, None, None));
+    }
 
     #[test]
     fn p0_sensitive_equipment_write_detects_financial_payload() {

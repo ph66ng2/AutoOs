@@ -4,7 +4,7 @@
  * ╠══════════════════════════════════════════════════════════════╣
  * ║  Componente de layout que envolve todas as páginas.          ║
  * ║  Sidebar com navegação: Dashboard, Equipamentos, Clientes,  ║
- * ║  Insumos. Suporta collapse (16px / 60px).                   ║
+ * ║  Insumos/Peças. Suporta collapse (16px / 60px).            ║
  * ║  Usa React Router <Outlet /> para renderizar a página ativa.║
  * ║                                                              ║
  * ║  DEPENDE DE: react-router-dom (NavLink, Outlet)              ║
@@ -16,7 +16,8 @@ import { NavLink, Outlet } from "react-router-dom";
 import {
   LayoutDashboard,
   Printer,
-  Package,
+  // Package, // [BLOQUEIO-TEMPORARIO-INSUMOS] descomente ao restaurar Insumos na sidebar
+  Receipt,
   Wrench,
   Users,
   Menu,
@@ -28,21 +29,34 @@ import { useState } from "react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { SensitiveAccessBadge, useSensitiveAccess } from "@/hooks/useSensitiveAccess";
+import { SENSITIVE_PERMISSIONS, type SensitivePermission } from "@/types";
 
 /** Itens de navegação da sidebar. Cada item mapeia para uma rota do React Router */
-const navItems = [
+const navItems: {
+  label: string;
+  path: string;
+  icon: React.ComponentType<{ className?: string }>;
+  permission?: SensitivePermission;
+}[] = [
   { label: "Perfil", path: "/perfil", icon: Users },
   { label: "Dashboard", path: "/", icon: LayoutDashboard },
   { label: "Equipamentos", path: "/equipamentos", icon: Printer },
   { label: "Clientes", path: "/clientes", icon: Users },
-  { label: "Insumos", path: "/insumos", icon: Package },
+  // [BLOQUEIO-TEMPORARIO-INSUMOS] descomente a linha abaixo para restaurar Insumos na sidebar
+  // { label: "Insumos/Peças", path: "/insumos", icon: Package },
   { label: "Servicos", path: "/servicos", icon: Wrench },
+  { label: "Gastos", path: "/gastos", icon: Receipt, permission: SENSITIVE_PERMISSIONS.VIEW_EXPENSES },
   { label: "Configuracoes", path: "/configuracoes", icon: Settings },
 ];
 
 export function Layout() {
   const [collapsed, setCollapsed] = useState(false);
   const { status, lockSensitiveAccess } = useSensitiveAccess();
+
+  const visibleNavItems = navItems.filter(item => {
+    if (!item.permission) return true;
+    return status?.permissions?.includes(item.permission) ?? false;
+  });
 
   return (
     <div className="flex h-screen bg-background">
@@ -59,7 +73,7 @@ export function Layout() {
 
         {/* Navigation */}
         <nav className="flex-1 space-y-1 p-3">
-          {navItems.map(item => (
+          {visibleNavItems.map(item => (
             <NavLink
               key={item.path}
               to={item.path}

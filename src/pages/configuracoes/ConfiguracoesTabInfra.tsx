@@ -1,5 +1,6 @@
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { ErrorAlert } from "@/components/ui/error-alert";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { TabsContent } from "@/components/ui/tabs";
@@ -70,9 +71,7 @@ export function ConfiguracoesTabInfra({
               <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600" />
             </div>
           ) : schemaError ? (
-            <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
-              {schemaError}
-            </div>
+            <ErrorAlert variant="warning" context="Schema" message={schemaError} />
           ) : schemaStatus ? (
             <>
               <div className="grid gap-4 md:grid-cols-4">
@@ -133,9 +132,10 @@ export function ConfiguracoesTabInfra({
         </CardHeader>
         <CardContent className="space-y-4">
           {!canManageProfiles ? (
-            <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
-              O perfil ativo nao possui permissao para validar ferramentas, gerar backups ou executar restore do banco.
-            </div>
+            <ErrorAlert
+              variant="warning"
+              message="O perfil ativo nao possui permissao para validar ferramentas, gerar backups ou executar restore do banco."
+            />
           ) : (
             <>
               {backupLoading && !backupToolsStatus ? (
@@ -177,15 +177,11 @@ export function ConfiguracoesTabInfra({
               ) : null}
 
               {backupError && (
-                <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
-                  {backupError}
-                </div>
+                <ErrorAlert variant="error" context="Backup" message={backupError} />
               )}
 
               {backupMessage && (
-                <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-900">
-                  {backupMessage}
-                </div>
+                <ErrorAlert variant="success" context="Backup" message={backupMessage} />
               )}
 
               <div className="flex flex-wrap justify-end gap-2">
@@ -209,9 +205,10 @@ export function ConfiguracoesTabInfra({
                   </p>
                 </div>
 
-                <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
-                  Aceita arquivos .dump via pg_restore e .sql via psql. Feche outras rotinas operacionais antes de restaurar.
-                </div>
+                <ErrorAlert
+                  variant="warning"
+                  message="Aceita arquivos .dump via pg_restore e .sql via psql. Feche outras rotinas operacionais antes de restaurar."
+                />
 
                 <div className="grid gap-4 md:grid-cols-2">
                   <div className="space-y-2 md:col-span-2">
@@ -250,15 +247,11 @@ export function ConfiguracoesTabInfra({
                 </div>
 
                 {restoreError && (
-                  <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
-                    {restoreError}
-                  </div>
+                  <ErrorAlert variant="error" context="Restore" message={restoreError} />
                 )}
 
                 {restoreMessage && (
-                  <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-900">
-                    {restoreMessage}
-                  </div>
+                  <ErrorAlert variant="success" context="Restore" message={restoreMessage} />
                 )}
 
                 <div className="flex justify-end">

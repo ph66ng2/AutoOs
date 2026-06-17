@@ -1,0 +1,81 @@
+═══════════════════════════════════════════════════════════
+FINAL QA REPORT — Notification System
+Date: 2026-05-25T23:20:38.642Z
+═══════════════════════════════════════════════════════════
+
+Total Scenarios: 66
+Passed: 66
+Failed: 0
+Pass Rate: 100%
+
+───────────────────────────────────────────────────────────
+DETAILED RESULTS
+───────────────────────────────────────────────────────────
+1. [✓] App is reachable via curl — HTTP 200
+2. [✓] App HTML is non-empty — 648 bytes
+3. [✓] Sonner is in package.json — v^2.0.7
+4. [✓] Sonner shadcn component exists — src/components/ui/sonner.tsx
+5. [✓] Toaster/sonner imported in App.tsx — Toaster element found
+6. [✓] Toaster configured with richColors
+7. [✓] Toaster configured with closeButton
+8. [✓] Toaster configured with visibleToasts — found
+9. [✓] Toaster configured with position — found
+10. [✓] ErrorAlert component file exists — src/components/ui/error-alert.tsx
+11. [✓] ErrorAlert has error/destructive variant
+12. [✓] ErrorAlert has warning variant
+13. [✓] ErrorAlert has info variant
+14. [✓] ErrorAlert has success variant
+15. [✓] ErrorAlert has expandable details
+16. [✓] ErrorAlert has copy button
+17. [✓] ErrorAlert imported in at least 1 page/component — Found in 8 files: pages/Clientes.tsx, pages/Insumos.tsx, pages/Equipamentos.tsx, pages/Servicos.tsx, pages/configuracoes/ConfiguracoesTabInfra.tsx, pages/configuracoes/ConfiguracoesTabObservabilidade.tsx, pages/configuracoes/ConfiguracoesTabSeguranca.tsx, components/ui/__tests__/error-alert.test.tsx
+18. [✓] ErrorBoundary component file exists
+19. [✓] ErrorBoundary imported and used in App.tsx
+20. [✓] ErrorBoundary has PT-BR friendly message — Algo deu errado, erro inesperado, Tente, Recarregar
+21. [✓] ErrorBoundary has reload button
+22. [✓] ErrorBoundary has copy details
+23. [✓] ErrorBoundary catches errors (componentDidCatch/getDerivedStateFromError)
+24. [✓] ErrorBoundary has error state handling
+25. [✓] FormValidationError component file exists
+26. [✓] FormValidationError uses AlertCircle icon
+27. [✓] FormValidationError uses red/destructive text color
+28. [✓] FormValidationError returns null for empty message
+29. [✓] FormValidationError used in pages/components — Found in 6 files
+30. [✓] ConfirmDialog component file exists
+31. [✓] InputDialog component file exists
+32. [✓] ConfirmDialog imported in at least 1 page — Found in 3 files: components/ui/__tests__/confirm-dialog.test.tsx, pages/Equipamentos.tsx, types/notification.ts
+33. [✓] InputDialog imported in at least 1 page — Found in 3 files: components/ui/__tests__/input-dialog.test.tsx, pages/Equipamentos.tsx, types/notification.ts
+34. [✓] No window.confirm/prompt/alert in pages — Clean — all migrated
+35. [✓] No standalone alert() calls in pages — Clean — all migrated
+36. [✓] No window.confirm/prompt anywhere in src/ — Clean
+37. [✓] Equipamentos.tsx uses useNotification hook
+38. [✓] Equipamentos.tsx uses ConfirmDialog
+39. [✓] Equipamentos.tsx uses InputDialog
+40. [✓] Equipamentos.tsx has 0 alert() calls — 0 found
+41. [✓] Equipamentos.tsx has 0 window.confirm calls
+42. [✓] Equipamentos.tsx has 0 window.prompt calls
+43. [✓] useNotification hook file exists
+44. [✓] useNotification exports success
+45. [✓] useNotification exports error
+46. [✓] useNotification exports warning
+47. [✓] useNotification exports info
+48. [✓] useNotification has copy-details for errors
+49. [✓] useNotification errors use manual dismiss (Infinity)
+50. [✓] useNotification used in pages — 8 files: components/equipamentos/ClienteSelector.tsx, components/equipamentos/VerificacaoTecnica.tsx, hooks/useNotification.ts, hooks/__tests__/useNotification.test.ts, pages/Clientes.tsx
+51. [✓] notification.ts types file exists
+52. [✓] error-utils.ts file exists
+53. [✓] NotificationType type defined
+54. [✓] AppError interface defined
+55. [✓] ConfirmDialogProps defined
+56. [✓] NotificationMessage defined
+57. [✓] formatAppError function exists
+58. [✓] createNotificationMessage function exists
+59. [✓] copyErrorDetails function exists
+60. [✓] formatErrorForCopy function exists
+61. [✓] --warning CSS variable defined
+62. [✓] --info CSS variable defined
+63. [✓] npx tsc --noEmit passes — Clean
+64. [✓] DoD: grep alert( in pages returns 0 — Clean
+65. [✓] DoD: grep window.prompt returns 0 — Clean
+66. [✓] DoD: grep window.confirm returns 0 — Clean
+
+VERDICT: PASS ✓

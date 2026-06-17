@@ -73,7 +73,10 @@ pub async fn listar_servicos(
         query_builder.push(")");
     }
 
-    query_builder.push(format!(" ORDER BY nome ASC LIMIT {} OFFSET {}", PAGE_SIZE, offset));
+    query_builder.push(" ORDER BY nome ASC LIMIT ");
+    query_builder.push_bind(PAGE_SIZE);
+    query_builder.push(" OFFSET ");
+    query_builder.push_bind(offset);
 
     query_builder
         .build_query_as::<ServicoCatalogoRow>()
@@ -163,7 +166,7 @@ pub async fn atualizar_servico(id: i32, input: ServicoCatalogoInput) -> Result<S
             descricao = $2,
             preco_padrao = $3,
             atualizado_em = NOW()
-        WHERE id = $4 AND atualizado_em::TEXT = $5
+        WHERE id = $4 AND atualizado_em = $5::TIMESTAMPTZ
         "#,
     )
     .bind(nome.clone())

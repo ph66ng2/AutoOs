@@ -15,6 +15,7 @@ import { ProfileSessionDialog } from "@/components/ProfileSessionDialog";
 import { SensitiveAccessService } from "@/lib/sensitive-access";
 import {
   SENSITIVE_PERMISSION_LABELS,
+  SENSITIVE_PERMISSIONS,
   type SensitiveAccessStatus,
   type SensitivePermission,
 } from "@/types";
@@ -64,8 +65,12 @@ const EMPTY_STATUS: SensitiveAccessStatus = {
 };
 
 function profileHasPermission(status: SensitiveAccessStatus | null, permission?: SensitivePermission) {
-  if (!status || !permission) {
+  if (!permission) {
     return true;
+  }
+
+  if (!status) {
+    return false;
   }
 
   return status.permissions.includes(permission);
@@ -107,7 +112,25 @@ export function SensitiveAccessProvider({ children }: { children: ReactNode }) {
         setBootProgress((p) => Math.max(p, 86));
       }
       setStatus(nextStatus);
-      setSelectedProfileId(nextStatus.active_profile_id ? String(nextStatus.active_profile_id) : "");
+
+      // Pré-selecionar o último perfil usado, se ainda existir e estiver ativo
+      let lastProfileId: string | null = null;
+      try {
+        lastProfileId = localStorage.getItem("autoos_last_profile_id");
+      } catch { /* ignorar — localStorage pode estar indisponível */ }
+
+      if (lastProfileId) {
+        const savedProfile = nextStatus.profiles.find(
+          (p) => String(p.id) === lastProfileId && p.ativo !== false
+        );
+        if (savedProfile) {
+          setSelectedProfileId(lastProfileId);
+        } else {
+          setSelectedProfileId(nextStatus.active_profile_id ? String(nextStatus.active_profile_id) : "");
+        }
+      } else {
+        setSelectedProfileId(nextStatus.active_profile_id ? String(nextStatus.active_profile_id) : "");
+      }
 
       if (!startupPromptedRef.current && nextStatus.profiles.length > 0) {
         startupPromptedRef.current = true;
@@ -255,7 +278,8 @@ export function SensitiveAccessProvider({ children }: { children: ReactNode }) {
       }
 
       const isCurrentSelection = targetProfileId === status?.active_profile_id;
-      const shouldAskForPin = dialogMode !== "selector" || !isCurrentSelection;
+      const shouldAskForPin =
+        dialogMode !== "selector" || !isCurrentSelection;
 
       if (!shouldAskForPin) {
         closeDialog(true);
@@ -291,6 +315,12 @@ export function SensitiveAccessProvider({ children }: { children: ReactNode }) {
       }
 
       setStatus(nextStatus);
+
+      // Lembrar último perfil usado para pré-selecionar na próxima inicialização
+      try {
+        localStorage.setItem("autoos_last_profile_id", String(workingStatus!.active_profile_id!));
+      } catch { /* localStorage pode estar indisponível (modo anônimo, storage cheio) */ }
+
       closeDialog(true);
     } catch (submitError: any) {
       setError(submitError?.message || submitError?.toString() || "Falha ao validar o acesso sensível.");
@@ -358,12 +388,14 @@ export function SensitiveRoute({
   children,
   title,
   description,
+  permission,
 }: {
   children: ReactNode;
   title?: string;
   description?: string;
+  permission?: SensitivePermission;
 }) {
-  const { loading, status, ensureSensitiveAccess } = useSensitiveAccess();
+  const { loading, status, ensureSensitiveAccess, hasPermission } = useSensitiveAccess();
 
   if (loading || !status) {
     return (
@@ -373,36 +405,63 @@ export function SensitiveRoute({
     );
   }
 
-  if (status.unlocked) {
-    return <>{children}</>;
+  if (!status.unlocked) {
+    const actionLabel = status.pin_configured ? "Desbloquear acesso sensível" : "Configurar PIN sensível";
+    const Icon = status.pin_configured ? ShieldAlert : ShieldOff;
+
+    return (
+      <div className="flex min-h-[60vh] items-center justify-center">
+        <Card className="max-w-lg w-full">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Icon className="h-5 w-5 text-amber-600" />
+              {title || "Configurações protegidas"}
+            </CardTitle>
+            <CardDescription>
+              {description || "Esta área exige desbloqueio com o PIN do acesso sensível."}
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
+              SMTP, exclusões e alterações críticas ficam disponíveis apenas durante a sessão sensível desbloqueada.
+            </div>
+            <Button
+              className="w-full"
+              onClick={() =>
+                void ensureSensitiveAccess({
+                  title,
+                  description,
+                  permission: SENSITIVE_PERMISSIONS.MANAGE_PROFILES,
+                })
+              }
+            >
+              {actionLabel}
+            </Button>
+          </CardContent>
+        </Card>
+      </div>
+    );
   }
 
-  const actionLabel = status.pin_configured ? "Desbloquear acesso sensível" : "Configurar PIN sensível";
-  const Icon = status.pin_configured ? ShieldAlert : ShieldOff;
+  if (permission && !hasPermission(permission)) {
+    return (
+      <div className="flex min-h-[60vh] items-center justify-center">
+        <Card className="max-w-lg w-full">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <ShieldAlert className="h-5 w-5 text-amber-600" />
+              Acesso restrito
+            </CardTitle>
+            <CardDescription>
+              O perfil ativo não possui permissão para {permission ? permissionDescription(permission) : "acessar esta página"}.
+            </CardDescription>
+          </CardHeader>
+        </Card>
+      </div>
+    );
+  }
 
-  return (
-    <div className="flex min-h-[60vh] items-center justify-center">
-      <Card className="max-w-lg w-full">
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Icon className="h-5 w-5 text-amber-600" />
-            {title || "Configurações protegidas"}
-          </CardTitle>
-          <CardDescription>
-            {description || "Esta área exige desbloqueio com o PIN do acesso sensível."}
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
-            SMTP, exclusões e alterações críticas ficam disponíveis apenas durante a sessão sensível desbloqueada.
-          </div>
-          <Button className="w-full" onClick={() => void ensureSensitiveAccess({ title, description })}>
-            {actionLabel}
-          </Button>
-        </CardContent>
-      </Card>
-    </div>
-  );
+  return <>{children}</>;
 }
 
 export function SensitiveAccessBadge() {

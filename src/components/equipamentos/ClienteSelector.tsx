@@ -35,6 +35,7 @@ import { nomeExibicaoCliente } from "@/components/clientes/cliente-display-utils
 import { ClienteSelectorBusca } from "@/components/equipamentos/ClienteSelectorBusca";
 import { ClienteSelectorClienteCard } from "@/components/equipamentos/ClienteSelectorClienteCard";
 import { ClienteSelectorFormNovo } from "@/components/equipamentos/ClienteSelectorFormNovo";
+import { useNotification } from "@/hooks/useNotification";
 
 /** Props do componente ClienteSelector */
 interface ClienteSelectorProps {
@@ -78,6 +79,7 @@ export function ClienteSelector({
   const [tipoPessoa, setTipoPessoa] = useState<"PF" | "PJ" | null>(null);
   const [buscandoCep, setBuscandoCep] = useState(false);
   const [salvandoNovo, setSalvandoNovo] = useState(false);
+  const { warning, error: showError } = useNotification();
 
   const formNovoCliente = useForm<ClienteFormData>({
     resolver: zodResolver(clienteSchema),
@@ -243,10 +245,10 @@ export function ClienteSelector({
     } catch (err: unknown) {
       const msg = err?.toString() || "";
       if (msg.includes("UNIQUE")) {
-        alert("Já existe um cliente com este CPF/CNPJ. Use a busca para encontrá-lo.");
+        warning("Clientes", "Já existe um cliente com este CPF/CNPJ. Use a busca para encontrá-lo.");
       } else {
         console.error("Erro ao criar cliente:", err);
-        alert("Erro ao criar cliente: " + msg);
+        showError("Clientes", "Criar cliente", err || "Erro ao criar cliente.");
       }
     } finally {
       setSalvandoNovo(false);

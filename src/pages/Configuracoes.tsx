@@ -411,8 +411,8 @@ export default function Configuracoes() {
 
     const liberado = await ensureSensitiveAccess({
       title: "Liberar edição de SMTP",
-      description: "Informe o PIN do administrador para permitir alterações na configuração padrão de SMTP.",
-      permission: SENSITIVE_PERMISSIONS.MANAGE_PROFILES,
+      description: "Informe o PIN para permitir alterações na configuração padrão de SMTP.",
+      permission: SENSITIVE_PERMISSIONS.CONFIG_SMTP,
     });
 
     if (!liberado) {
@@ -426,6 +426,16 @@ export default function Configuracoes() {
   }
 
   async function onSubmitWhatsapp(values: WhatsappFormValues) {
+    const liberado = await ensureSensitiveAccess({
+      title: "Salvar configuração do WhatsApp",
+      description: "Informe o PIN para salvar credenciais e parâmetros do WhatsApp.",
+      permission: SENSITIVE_PERMISSIONS.CONFIG_WHATSAPP,
+    });
+    if (!liberado) {
+      setWhatsappStatus("Salvamento do WhatsApp não autorizado. PIN/permissão necessários.");
+      return;
+    }
+
     setSavingWhatsapp(true);
     setWhatsappStatus(null);
 
@@ -457,6 +467,15 @@ export default function Configuracoes() {
   }
 
   async function gerarBackupBanco() {
+    const liberado = await ensureSensitiveAccess({
+      title: "Gerar backup do banco",
+      description: "Informe o PIN de administrador para gerar um backup PostgreSQL.",
+      permission: SENSITIVE_PERMISSIONS.MANAGE_PROFILES,
+    });
+    if (!liberado) {
+      return;
+    }
+
     setBackupBusy(true);
     setBackupError(null);
     setBackupMessage(null);
@@ -489,6 +508,15 @@ export default function Configuracoes() {
       return;
     }
 
+    const liberado = await ensureSensitiveAccess({
+      title: "Restaurar backup do banco",
+      description: "Informe o PIN de administrador para restaurar um backup PostgreSQL.",
+      permission: SENSITIVE_PERMISSIONS.MANAGE_PROFILES,
+    });
+    if (!liberado) {
+      return;
+    }
+
     setRestoreBusy(true);
     setRestoreError(null);
     setRestoreMessage(null);
@@ -508,6 +536,15 @@ export default function Configuracoes() {
   }
 
   async function trocarPerfilAtivo(profileId: number) {
+    const liberado = await ensureSensitiveAccess({
+      title: "Trocar perfil ativo",
+      description: "Informe o PIN de administrador para alterar o perfil de segurança ativo.",
+      permission: SENSITIVE_PERMISSIONS.MANAGE_PROFILES,
+    });
+    if (!liberado) {
+      return;
+    }
+
     setSecurityBusy(true);
     setSecurityMessage(null);
     try {
@@ -559,6 +596,11 @@ export default function Configuracoes() {
       return;
     }
 
+    if (editProfileRole === "CUSTOM" && editPermissions.length === 0) {
+      setSecurityMessage("Um perfil CUSTOM deve ter pelo menos uma permissão.");
+      return;
+    }
+
     const permissions = permissionsForRole(editProfileRole, editPermissions);
     setSecurityBusy(true);
     setSecurityMessage(null);
@@ -590,6 +632,11 @@ export default function Configuracoes() {
 
     if (newProfilePin !== newProfilePinConfirm) {
       setSecurityMessage("A confirmação do PIN do novo perfil não confere.");
+      return;
+    }
+
+    if (newProfileRole === "CUSTOM" && newProfilePermissions.length === 0) {
+      setSecurityMessage("Um perfil CUSTOM deve ter pelo menos uma permissão.");
       return;
     }
 

@@ -446,6 +446,91 @@ pub const EQUIPAMENTO_SELECT: &str = "
             criado_em::TEXT as criado_em, atualizado_em::TEXT as atualizado_em
         FROM equipamento_imagens";
 
+// ═══════════════════════════════════════════════════════════════
+// Structs de Gastos
+// ═══════════════════════════════════════════════════════════════
+
+/// Input para criar/atualizar gasto fixo.
+#[derive(Debug, Deserialize, Default)]
+#[serde(default)]
+pub struct GastoFixoInput {
+    pub nome: String,
+    pub valor: f64,
+    pub vencimento_dia: Option<i32>,
+    pub categoria: String,
+    pub ativo: Option<bool>,
+}
+
+/// Input para criar gasto variável.
+#[derive(Debug, Deserialize, Default)]
+#[serde(default)]
+pub struct GastoVariavelInput {
+    pub descricao: String,
+    pub valor: f64,
+    pub data: String,
+    pub categoria: String,
+    pub nota: Option<String>,
+    pub referencia_id: Option<i32>,
+}
+
+/// Gasto fixo completo retornado ao frontend.
+#[derive(Debug, Clone, Serialize, FromRow)]
+pub struct GastoFixoRow {
+    pub id: i32,
+    pub nome: String,
+    pub valor: f64,
+    pub vencimento_dia: Option<i32>,
+    pub categoria: String,
+    pub ativo: Option<bool>,
+    pub criado_em: Option<String>,
+    pub atualizado_em: Option<String>,
+}
+
+/// Gasto variável completo retornado ao frontend.
+#[derive(Debug, Clone, Serialize, FromRow)]
+pub struct GastoVariavelRow {
+    pub id: i32,
+    pub descricao: String,
+    pub valor: f64,
+    pub data: String,
+    pub categoria: String,
+    pub nota: Option<String>,
+    pub referencia_id: Option<i32>,
+    pub criado_em: Option<String>,
+    pub atualizado_em: Option<String>,
+}
+
+/// Valor agregado por categoria (usado no resumo mensal).
+#[derive(Debug, Clone, Serialize, FromRow)]
+pub struct CategoriaValor {
+    pub categoria: String,
+    pub valor: f64,
+}
+
+/// Resumo mensal de gastos (fixos + variáveis + por categoria).
+#[derive(Debug, Clone, Serialize)]
+pub struct GastoResumoMensal {
+    pub total_fixo: f64,
+    pub total_variavel: f64,
+    pub total_geral: f64,
+    pub por_categoria: Vec<CategoriaValor>,
+}
+
+pub const GASTO_FIXO_SELECT: &str = "
+    SELECT id, nome,
+           valor::FLOAT8 as valor,
+           vencimento_dia, categoria, ativo,
+           criado_em::TEXT as criado_em, atualizado_em::TEXT as atualizado_em
+    FROM gastos_fixos";
+
+pub const GASTO_VARIAVEL_SELECT: &str = "
+    SELECT id, descricao,
+           valor::FLOAT8 as valor,
+           data::TEXT as data,
+           categoria, nota, referencia_id,
+           criado_em::TEXT as criado_em, atualizado_em::TEXT as atualizado_em
+    FROM gastos_variaveis";
+
 pub const CLIENTE_SELECT: &str = "
     SELECT id, nome, tipo_pessoa, documento, razao_social, nome_fantasia,
            inscricao_estadual, cpf_cnpj, telefone, telefone_secundario, email,

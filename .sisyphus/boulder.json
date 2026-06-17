@@ -1,0 +1,51 @@
+{
+  "active_plan": "/home/paulo/Projetos/AutoOs/.sisyphus/plans/propostas-autoos.md",
+  "started_at": "2026-06-13T02:57:11.432Z",
+  "session_ids": [
+    "ses_1413d7e3dffehQ1b3JQcDZooCO",
+    "ses_12cbffd3dffelj65EDueokA9TX"
+  ],
+  "session_origins": {
+    "ses_1413d7e3dffehQ1b3JQcDZooCO": "direct",
+    "ses_12cbffd3dffelj65EDueokA9TX": "appended"
+  },
+  "plan_name": "propostas-autoos",
+  "agent": "atlas",
+  "task_sessions": {
+    "todo:1": {
+      "task_key": "todo:1",
+      "task_label": "1",
+      "task_title": "Mudar SMTP Padrão para Gmail",
+      "session_id": "ses_141158fcfffeLc6yi5Omj5aaDc",
+      "agent": "Sisyphus-Junior",
+      "category": "quick",
+      "updated_at": "2026-06-13T02:58:50.164Z"
+    },
+    "todo:2": {
+      "task_key": "todo:2",
+      "task_label": "2",
+      "task_title": "Renomear \"Insumos\" para \"Insumos/Peças\" na UI",
+      "session_id": "ses_141144de6ffeDp2eSsE4eI7uWL",
+      "agent": "Sisyphus-Junior",
+      "category": "quick",
+      "updated_at": "2026-06-13T03:02:15.107Z"
+    },
+    "todo:4": {
+      "task_key": "todo:4",
+      "task_label": "4",
+      "task_title": "Lembrar Último Perfil Selecionado",
+      "session_id": "ses_14110f863ffeUuA7yvKIB81EYm",
+      "agent": "Sisyphus-Junior",
+      "category": "unspecified-high",
+      "updated_at": "2026-06-13T03:04:33.334Z"
+    },
+    "final-wave:f1": {
+      "task_key": "final-wave:f1",
+      "task_label": "F1",
+      "task_title": "**Plan Compliance Audit** — `oracle`",
+      "session_id": "ses_1410a60bdffeTr276JXXax2Gb5",
+      "agent": "oracle",
+      "updated_at": "2026-06-13T03:10:48.017Z"
+    }
+  }
+}

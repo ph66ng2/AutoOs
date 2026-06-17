@@ -24,7 +24,8 @@
  * ║  USADO POR: App.tsx (rota /equipamentos)                    ║
  * ╚══════════════════════════════════════════════════════════════╝
  */
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
+import { useLocation, useNavigate } from "react-router-dom";
 import { invoke } from "@tauri-apps/api/core";
 import {
   Printer,
@@ -49,6 +50,7 @@ import {
   ImagePlus,
   Eye,
   Download,
+  Smartphone,
 } from "lucide-react";
 import { useForm, Controller } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -88,6 +90,7 @@ import { useSensitiveAccess } from "@/hooks/useSensitiveAccess";
 import { WhatsAppService } from "@/lib/whatsapp-service";
 import { EmailService } from "@/lib/email-service";
 import { PdfService } from "@/lib/pdf-service";
+import { FormValidationError } from "@/components/ui/form-validation-error";
 import { db } from "@/lib/db";
 import {
   STATUS_LABELS,
@@ -112,9 +115,12 @@ import {
 } from "@/components/equipamentos/VerificacaoTecnica";
 import { HistoricoComunicacoes } from "@/components/equipamentos/HistoricoComunicacoes";
 import { ClienteSelector } from "@/components/equipamentos/ClienteSelector";
+import { PhotoUploadDialog } from "@/components/equipamentos/PhotoUploadDialog";
+import { DocumentosEquipamento } from "@/components/equipamentos/DocumentosEquipamento";
 import { ActionPriorityRow, type PriorityAction } from "@/components/ui/action-priority-row";
 import {
   arquivoParaImagemEquipamento,
+  bytesParaDataUrl,
   imagemPersistidaParaDraft,
   LIMITE_IMAGENS_POR_EQUIPAMENTO,
   normalizarOrdemPorCategoria,
@@ -129,7 +135,6 @@ import {
 import { GaleriaImagensEquipamento } from "@/pages/equipamentos/EquipamentosPageGallery";
 import { StatusBadge } from "@/pages/equipamentos/EquipamentosStatusBadge";
 import {
-  buscarEquipamentoDuplicado,
   emailValido,
   extrairTecnicoInicialDeObservacoes,
   filtrarImagensPorCategoria,
@@ -137,9 +142,12 @@ import {
   mensagemResultadoCanais,
   removerTecnicoInicialDasObservacoes,
   statusExigeAcessoSensivel,
-  traduzirErroSalvarEquipamento,
   whatsappNaoConfigurado,
 } from "@/pages/equipamentos/equipamentos-page-utils";
+import { useNotification } from "@/hooks/useNotification";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { InputDialog } from "@/components/ui/input-dialog";
+import { ErrorAlert } from "@/components/ui/error-alert";
 
 export default function Equipamentos() {
   const [busca, setBusca] = useState("");
@@ -153,6 +161,12 @@ export default function Equipamentos() {
   const [deletando, setDeletando] = useState<Equipamento | null>(null);
   const [selecionado, setSelecionado] = useState<Equipamento | null>(null);
   const [salvando, setSalvando] = useState(false);
+
+  // Duplicidade de serial (múltiplos ciclos de manutenção)
+  const [registrosAnteriores, setRegistrosAnteriores] = useState<Equipamento[]>([]);
+  const [confirmouNovoCiclo, setConfirmouNovoCiclo] = useState(false);
+  const [sugestoesSerial, setSugestoesSerial] = useState<Equipamento[]>([]);
+  const [mostrarSugestoes, setMostrarSugestoes] = useState(false);
 
   // Dados do drawer de detalhes
   const [verificacaoDetalhes, setVerificacaoDetalhes] = useState<Verificacao | null>(null);
@@ -175,12 +189,36 @@ export default function Equipamentos() {
   const [carregandoImagensSaidaEntrega, setCarregandoImagensSaidaEntrega] = useState(false);
   const [imagemExpandida, setImagemExpandida] = useState<EquipamentoImagemDraft | null>(null);
 
+  const [photoUploadOpen, setPhotoUploadOpen] = useState(false);
+  const [photoUploadCategoria, setPhotoUploadCategoria] = useState<"ENTRADA" | "SAIDA">("ENTRADA");
+  const [photoUploadNewEquip, setPhotoUploadNewEquip] = useState(false);
+
   // Cliente vinculado ao equipamento (gerenciado pelo ClienteSelector)
   const [clienteVinculado, setClienteVinculado] = useState<Cliente | null>(null);
   const [erroCliente, setErroCliente] = useState<string | null>(null);
   const [imagensFormulario, setImagensFormulario] = useState<EquipamentoImagemDraft[]>([]);
   const [erroImagens, setErroImagens] = useState<string | null>(null);
   const [carregandoImagensFormulario, setCarregandoImagensFormulario] = useState(false);
+
+  const { success, error: showError, warning } = useNotification();
+
+  const [confirmOpen, setConfirmOpen] = useState(false);
+  const [confirmProps, setConfirmProps] = useState<{
+    title: string;
+    description: string;
+    variant?: "default" | "destructive";
+    onConfirm: () => void;
+    onCancel?: () => void;
+  }>({ title: "", description: "", onConfirm: () => {} });
+
+  const [inputOpen, setInputOpen] = useState(false);
+  const [inputProps, setInputProps] = useState<{
+    title: string;
+    description?: string;
+    label: string;
+    placeholder?: string;
+    onConfirm: (value: string) => void;
+  }>({ title: "", label: "", onConfirm: () => {} });
 
   const { equipamentos, loading, criar, atualizar, deletar, atualizarStatus, recarregar } =
     useEquipamentos({ busca: busca || undefined, status: statusFiltro });
@@ -189,6 +227,22 @@ export default function Equipamentos() {
   const { loading: loadingAutomacao, finalizarVerificacao, marcarComoPronto } =
     useStatusEquipamento();
   const { ensureSensitiveAccess } = useSensitiveAccess();
+  const location = useLocation();
+  const navigate = useNavigate();
+
+  useEffect(() => {
+    const state = location.state as { equipamentoId?: number } | null;
+    if (state?.equipamentoId && !detalhesDialogOpen) {
+      db.buscarEquipamento(state.equipamentoId)
+        .then((eq) => {
+          abrirDetalhes(eq);
+          navigate(location.pathname, { replace: true, state: {} });
+        })
+        .catch((err) => {
+          console.error("Erro ao buscar equipamento do estado de navegação:", err);
+        });
+    }
+  }, [location.state, detalhesDialogOpen]);
 
   const carregarImagensComPreview = useCallback(async (equipamentoId: number) => {
     const imagens = await db.listarImagensEquipamento(equipamentoId);
@@ -215,6 +269,8 @@ export default function Equipamentos() {
     setImagensFormulario([]);
     setCarregandoImagensFormulario(false);
     setTecnicoNovoEquipamento("Ivan");
+    setRegistrosAnteriores([]);
+    setConfirmouNovoCiclo(false);
     form.reset({
       serial_number: "", patrimonio: "", marca: "", modelo: "", tipo: "", status: "RECEBIDO",
       defeito_relatado: "", acessorios: [], acessorios_outros: "",
@@ -320,21 +376,72 @@ export default function Equipamentos() {
     }
   }
 
-  function removerImagemFormulario(localId: string) {
+  /** Ao perder foco no campo serial, busca registros existentes com mesmo número de série */
+  async function handleSerialBlur() {
+    const serial = form.getValues("serial_number");
+    // Esconde sugestões após blur (delay pra permitir clique)
+    setTimeout(() => setMostrarSugestoes(false), 200);
+    if (!serial || serial.trim().length < 3) {
+      setRegistrosAnteriores([]);
+      setConfirmouNovoCiclo(false);
+      return;
+    }
+    try {
+      const registros = await db.buscarEquipamentosPorSerial(serial);
+      const anteriores = editando
+        ? registros.filter((r) => r.id !== editando.id)
+        : registros;
+      setRegistrosAnteriores(anteriores);
+      setConfirmouNovoCiclo(false);
+    } catch (err) {
+      console.error("Erro ao buscar registros anteriores:", err);
+    }
+  }
+
+  async function handleSerialInput(value: string) {
+    const serial = value.trim();
+    if (serial.length < 2) { setSugestoesSerial([]); setMostrarSugestoes(false); return; }
+    try {
+      const registros = await db.buscarEquipamentosPorSerial(serial);
+      setSugestoesSerial(registros.filter((r) => r.serial_number.toLowerCase().startsWith(serial.toLowerCase())));
+      setMostrarSugestoes(true);
+    } catch { setSugestoesSerial([]); }
+  }
+
+  function selecionarSerialSugestao(serial: string) {
+    form.setValue("serial_number", serial);
+    setMostrarSugestoes(false);
+    void handleSerialBlur();
+  }
+
+  function removerImagemFormulario(imagem: EquipamentoImagemDraft) {
     setImagensFormulario((estadoAtual) =>
-      normalizarOrdemPorCategoria(estadoAtual.filter((imagem) => imagem.local_id !== localId))
+      normalizarOrdemPorCategoria(estadoAtual.filter((img) => img.local_id !== imagem.local_id))
     );
     setErroImagens(null);
   }
 
-  function atualizarLegendaImagem(localId: string, value: string) {
+  function atualizarLegendaImagem(imagem: EquipamentoImagemDraft, value: string) {
     setImagensFormulario((estadoAtual) =>
-      estadoAtual.map((imagem) => (
-        imagem.local_id === localId
-          ? { ...imagem, observacao: value.slice(0, 280) }
-          : imagem
+      estadoAtual.map((img) => (
+        img.local_id === imagem.local_id
+          ? { ...img, observacao: value.slice(0, 280) }
+          : img
       ))
     );
+  }
+
+  async function removerImagemDetalhes(imagem: EquipamentoImagemDraft) {
+    if (!imagem.id || !selecionado?.id) return;
+    try {
+      await db.removerImagemEquipamento(imagem.id);
+      success("Equipamentos", "Foto removida com sucesso", "Remover foto");
+      const imagens = await carregarImagensComPreview(selecionado.id);
+      setImagensDetalhes(imagens);
+    } catch (err) {
+      console.error("Erro ao remover imagem:", err);
+      showError("Equipamentos", "Remover foto", err);
+    }
   }
 
   /**
@@ -452,23 +559,6 @@ export default function Equipamentos() {
     setErroCliente(null);
     setSalvando(true);
     try {
-      const duplicado = await buscarEquipamentoDuplicado(data, editando?.id);
-      if (duplicado) {
-        const registro = duplicado.campo === "serial_number" ? "número de série" : "patrimônio";
-        const confirmarNovaVerificacao = window.confirm(
-          `Já existe outra impressora com este ${registro}.\n\n` +
-          `Equipamento encontrado: ${duplicado.equipamento.marca} ${duplicado.equipamento.modelo} (SN: ${duplicado.equipamento.serial_number}).\n\n` +
-          "Deseja incluir uma nova verificação nesta impressora já registrada?"
-        );
-
-        if (confirmarNovaVerificacao) {
-          setDialogOpen(false);
-          setSelecionado(duplicado.equipamento);
-          setVerificacaoDialogOpen(true);
-        }
-        return;
-      }
-
       // Nome de exibição do cliente
       const nomeCliente = clienteVinculado.tipo_pessoa === "PJ"
         ? (clienteVinculado.nome_fantasia || clienteVinculado.razao_social || clienteVinculado.nome || "")
@@ -520,23 +610,54 @@ export default function Equipamentos() {
       }
 
       if (!editando) {
-        const emailParaEntrada = await solicitarEmailParaEnvio(
-          {
+        const liberadoEmail = await ensureSensitiveAccess({
+          title: "Enviar ordem de entrada",
+          description: "Informe o PIN para enviar a ordem de entrada por email ao cliente.",
+          permission: SENSITIVE_PERMISSIONS.FINANCIAL_ACTIONS,
+        });
+        if (liberadoEmail) {
+          const equipamentoComEmail = {
             ...resultado.data,
             cliente_email: resultado.data.cliente_email || clienteVinculado.email || undefined,
-          },
-          "enviar a ordem de entrada"
-        );
-        if (emailParaEntrada) {
-          const retornoEmailEntrada = await EmailService.enviarOrdemEntrada({
-            ...resultado.data,
-            cliente_email: emailParaEntrada,
-          });
-          if (!retornoEmailEntrada.sucesso) {
-            alert(`Email de ordem de entrada não enviado: ${retornoEmailEntrada.erro || "Falha desconhecida."}`);
-          } else {
-            alert("Email de ordem de entrada enviado com sucesso.");
+          };
+          const emailAtual = (equipamentoComEmail.cliente_email || "").trim();
+          async function enviarOrdemEntrada(email: string) {
+            const retornoEmailEntrada = await EmailService.enviarOrdemEntrada({
+              ...resultado.data,
+              cliente_email: email,
+            } as Equipamento);
+            if (!retornoEmailEntrada.sucesso) {
+              showError("Equipamentos", "Enviar ordem de entrada", new Error(retornoEmailEntrada.erro || "Falha desconhecida."));
+            } else {
+              success("Equipamentos", "Email de ordem de entrada enviado com sucesso.", "Enviar email");
+            }
           }
+          setConfirmProps({
+            title: "Envio por email",
+            description: "Quer enviar a ordem de entrada automaticamente por email?",
+            onConfirm: () => {
+              if (emailAtual) {
+                void enviarOrdemEntrada(emailAtual);
+              } else {
+                setInputProps({
+                  title: "Envio por email",
+                  description: "Este cliente não possui e-mail cadastrado. Informe um e-mail para enviar a ordem de entrada:",
+                  label: "Email",
+                  placeholder: "email@exemplo.com",
+                  onConfirm: (value: string) => {
+                    const email = value.trim();
+                    if (!emailValido(email)) {
+                      warning("Equipamentos", "O e-mail informado é inválido. O envio por e-mail será ignorado neste evento.");
+                      return;
+                    }
+                    void enviarOrdemEntrada(email);
+                  },
+                });
+                setInputOpen(true);
+              }
+            },
+          });
+          setConfirmOpen(true);
         }
       }
 
@@ -545,7 +666,7 @@ export default function Equipamentos() {
       setErroImagens(null);
     } catch (err: any) {
       console.error("Erro ao salvar:", err);
-      alert(traduzirErroSalvarEquipamento(err?.message));
+      showError("Equipamentos", "Salvar equipamento", err);
     }
     finally { setSalvando(false); }
   }
@@ -587,29 +708,54 @@ export default function Equipamentos() {
     });
     if (!liberado) return;
 
-    setSalvando(true);
-    try {
-      const emailParaEnvio = await solicitarEmailParaEnvio(
-        selecionado,
-        "finalizar a verificação e enviar o orçamento"
-      );
-      const resultado = await finalizarVerificacao(selecionado, dados, emailParaEnvio);
-      if (!resultado.sucesso) {
-        throw new Error(resultado.erro || "Não foi possível finalizar a verificação.");
+    async function executarComEmail(email: string | undefined) {
+      setSalvando(true);
+      try {
+        const resultado = await finalizarVerificacao(selecionado!, dados, email);
+        if (!resultado.sucesso) {
+          throw new Error(resultado.erro || "Não foi possível finalizar a verificação.");
+        }
+        setVerificacaoDialogOpen(false);
+        await recarregar();
+        const resumoCanais = mensagemResultadoCanais(resultado);
+        if (resumoCanais) {
+          success("Equipamentos", resumoCanais, "Finalizar verificação");
+        }
+      } catch (err: any) {
+        console.error("Erro ao finalizar verificação:", err);
+        showError("Equipamentos", "Finalizar verificação", err);
+      } finally {
+        setSalvando(false);
       }
-      setVerificacaoDialogOpen(false);
-
-      await recarregar();
-      const resumoCanais = mensagemResultadoCanais(resultado);
-      if (resumoCanais) {
-        alert(resumoCanais);
-      }
-    } catch (err: any) {
-      console.error("Erro ao finalizar verificação:", err);
-      alert(err?.message || "Erro ao finalizar verificação.");
-    } finally {
-      setSalvando(false);
     }
+
+    const emailAtual = (selecionado.cliente_email || "").trim();
+    setConfirmProps({
+      title: "Envio por email",
+      description: "Quer enviar o orçamento automaticamente por email?",
+      onConfirm: () => {
+        if (!emailAtual) {
+          setInputProps({
+            title: "Envio por email",
+            description: "Este cliente não possui e-mail cadastrado. Informe um e-mail para finalizar a verificação e enviar o orçamento:",
+            label: "Email",
+            placeholder: "email@exemplo.com",
+            onConfirm: (value: string) => {
+              const email = value.trim();
+              if (!emailValido(email)) {
+                warning("Equipamentos", "O e-mail informado é inválido. O envio por e-mail será ignorado neste evento.");
+                return;
+              }
+              void executarComEmail(email);
+            },
+          });
+          setInputOpen(true);
+        } else {
+          void executarComEmail(emailAtual);
+        }
+      },
+    });
+    setConfirmOpen(true);
   }
 
   // ─── Automação: Marcar como Pronto ────────────────────
@@ -626,27 +772,53 @@ export default function Equipamentos() {
     });
     if (!liberado) return;
 
-    setSalvando(true);
-    try {
-      const emailParaEnvio = await solicitarEmailParaEnvio(
-        eq,
-        "avisar que o equipamento está pronto para retirada"
-      );
-      const resultado = await marcarComoPronto(eq, emailParaEnvio);
-      if (!resultado.sucesso) {
-        throw new Error(resultado.erro || "Não foi possível marcar o equipamento como pronto.");
+    async function executarComEmail(email: string | undefined) {
+      setSalvando(true);
+      try {
+        const resultado = await marcarComoPronto(eq, email);
+        if (!resultado.sucesso) {
+          throw new Error(resultado.erro || "Não foi possível marcar o equipamento como pronto.");
+        }
+        await recarregar();
+        const resumoCanais = mensagemResultadoCanais(resultado);
+        if (resumoCanais) {
+          success("Equipamentos", resumoCanais, "Marcar como pronto");
+        }
+      } catch (err: any) {
+        console.error("Erro ao marcar pronto:", err);
+        showError("Equipamentos", "Marcar como pronto", err);
+      } finally {
+        setSalvando(false);
       }
-      await recarregar();
-      const resumoCanais = mensagemResultadoCanais(resultado);
-      if (resumoCanais) {
-        alert(resumoCanais);
-      }
-    } catch (err: any) {
-      console.error("Erro ao marcar pronto:", err);
-      alert(err?.message || "Erro ao marcar equipamento como pronto.");
-    } finally {
-      setSalvando(false);
     }
+
+    const emailAtual = (eq.cliente_email || "").trim();
+    setConfirmProps({
+      title: "Envio por email",
+      description: "Quer avisar o cliente que o equipamento está pronto por email?",
+      onConfirm: () => {
+        if (!emailAtual) {
+          setInputProps({
+            title: "Envio por email",
+            description: "Este cliente não possui e-mail cadastrado. Informe um e-mail para avisar que o equipamento está pronto para retirada:",
+            label: "Email",
+            placeholder: "email@exemplo.com",
+            onConfirm: (value: string) => {
+              const email = value.trim();
+              if (!emailValido(email)) {
+                warning("Equipamentos", "O e-mail informado é inválido. O envio por e-mail será ignorado neste evento.");
+                return;
+              }
+              void executarComEmail(email);
+            },
+          });
+          setInputOpen(true);
+        } else {
+          void executarComEmail(emailAtual);
+        }
+      },
+    });
+    setConfirmOpen(true);
   }
 
   /** Confirma mudança manual de status com campos extras (valor, prazo, etc) */
@@ -699,7 +871,7 @@ export default function Equipamentos() {
       setErroImagensSaidaEntrega(null);
     } catch (err: any) {
       console.error("Erro:", err);
-      alert(err?.message || "Erro ao alterar status.");
+      showError("Equipamentos", "Alterar status", err);
     }
     finally { setSalvando(false); }
   }
@@ -726,7 +898,7 @@ export default function Equipamentos() {
     }
     catch (err: any) {
       console.error("Erro:", err);
-      alert(err?.message || "Erro ao aplicar a ação rápida.");
+      showError("Equipamentos", "Ação rápida", err);
     }
     finally { setSalvando(false); }
   }
@@ -771,19 +943,19 @@ export default function Equipamentos() {
     }
   }
 
-  function removerImagemSaidaEntrega(localId: string) {
+  function removerImagemSaidaEntrega(imagem: EquipamentoImagemDraft) {
     setImagensSaidaEntrega((estadoAtual) =>
-      normalizarOrdemPorCategoria(estadoAtual.filter((imagem) => imagem.local_id !== localId))
+      normalizarOrdemPorCategoria(estadoAtual.filter((img) => img.local_id !== imagem.local_id))
     );
     setErroImagensSaidaEntrega(null);
   }
 
-  function atualizarLegendaImagemSaidaEntrega(localId: string, value: string) {
+  function atualizarLegendaImagemSaidaEntrega(imagem: EquipamentoImagemDraft, value: string) {
     setImagensSaidaEntrega((estadoAtual) =>
-      estadoAtual.map((imagem) => (
-        imagem.local_id === localId
-          ? { ...imagem, observacao: value.slice(0, 280) }
-          : imagem
+      estadoAtual.map((img) => (
+        img.local_id === imagem.local_id
+          ? { ...img, observacao: value.slice(0, 280) }
+          : img
       ))
     );
   }
@@ -795,30 +967,11 @@ export default function Equipamentos() {
         fileName: imagem.filename,
         mimeType: imagem.mime_type,
       });
-      alert(`Imagem exportada com sucesso!\n\nArquivo: ${caminho}`);
+      success("Equipamentos", `Imagem exportada com sucesso. Arquivo: ${caminho}`, "Exportar imagem");
     } catch (err: any) {
       console.error("Erro ao exportar imagem do equipamento:", err);
-      alert(err?.message || "Não foi possível exportar a imagem.");
+      showError("Equipamentos", "Exportar imagem", err);
     }
-  }
-
-  async function solicitarEmailParaEnvio(equipamento: Equipamento, contexto: string) {
-    const emailAtual = (equipamento.cliente_email || "").trim();
-    if (emailAtual) return emailAtual;
-
-    const informado = window.prompt(
-      `Este cliente não possui e-mail cadastrado.\n\nInforme um e-mail para ${contexto}:`,
-      ""
-    );
-    if (!informado) return undefined;
-
-    const email = informado.trim();
-    if (!emailValido(email)) {
-      alert("O e-mail informado é inválido. O envio por e-mail será ignorado neste evento.");
-      return undefined;
-    }
-
-    return email;
   }
 
   /** Envia orçamento manualmente via WhatsApp. Busca verificação do banco primeiro */
@@ -831,14 +984,14 @@ export default function Equipamentos() {
     if (!liberado) return;
 
     const verif = await db.buscarVerificacao(eq.id!);
-    if (!verif) { alert("Nenhuma verificação encontrada."); return; }
+    if (!verif) { warning("Equipamentos", "Nenhuma verificação técnica encontrada para este equipamento."); return; }
     const r = await WhatsAppService.enviarOrcamento(eq, verif);
     if (!r.sucesso) {
       if (whatsappNaoConfigurado(r.erro)) {
         console.warn("[WhatsApp] Integração não configurada. Fluxo segue com envio manual de PDF.");
         return;
       }
-      alert("Erro: " + r.erro);
+      showError("Equipamentos", "Enviar WhatsApp", new Error(r.erro));
     }
   }
 
@@ -848,14 +1001,14 @@ export default function Equipamentos() {
     try {
       setSalvando(true);
       const verif = await db.buscarVerificacao(eq.id!);
-      if (!verif) { alert("Nenhuma verificação encontrada para este equipamento."); return; }
+      if (!verif) { warning("Equipamentos", "Nenhuma verificação técnica encontrada para este equipamento."); return; }
       const caminho = await PdfService.gerarOrcamento(eq, verif);
       if (caminho) {
-        alert(`Orçamento PDF gerado com sucesso!\n\nArquivo: ${caminho}`);
+        success("Equipamentos", `Orçamento PDF gerado com sucesso. Arquivo: ${caminho}`, "Gerar PDF");
       }
     } catch (err) {
       console.error("Erro ao gerar orçamento PDF:", err);
-      alert("Erro ao gerar orçamento PDF. Tente novamente.");
+      showError("Equipamentos", "Gerar orçamento PDF", err);
     } finally {
       setSalvando(false);
     }
@@ -867,11 +1020,11 @@ export default function Equipamentos() {
       setSalvando(true);
       const caminho = await PdfService.gerarOrdemServico(eq);
       if (caminho) {
-        alert(`Ordem de Serviço PDF gerada com sucesso!\n\nArquivo: ${caminho}`);
+        success("Equipamentos", `Ordem de Serviço PDF gerada com sucesso. Arquivo: ${caminho}`, "Gerar PDF");
       }
     } catch (err) {
       console.error("Erro ao gerar Ordem de Serviço PDF:", err);
-      alert("Erro ao gerar Ordem de Serviço PDF. Tente novamente.");
+      showError("Equipamentos", "Gerar Ordem de Serviço PDF", err);
     } finally {
       setSalvando(false);
     }
@@ -882,11 +1035,11 @@ export default function Equipamentos() {
       setSalvando(true);
       const caminho = await PdfService.gerarRelatorioStatus(eq);
       if (caminho) {
-        alert(`Relatório de Status gerado com sucesso!\n\nArquivo: ${caminho}`);
+        success("Equipamentos", `Relatório de Status gerado com sucesso. Arquivo: ${caminho}`, "Gerar PDF");
       }
     } catch (err) {
       console.error("Erro ao gerar Relatório de Status PDF:", err);
-      alert("Erro ao gerar Relatório de Status PDF. Tente novamente.");
+      showError("Equipamentos", "Gerar Relatório de Status PDF", err);
     } finally {
       setSalvando(false);
     }
@@ -907,7 +1060,7 @@ export default function Equipamentos() {
         console.warn("[WhatsApp] Integração não configurada. Fluxo segue sem envio automático.");
         return;
       }
-      alert("Erro: " + r.erro);
+      showError("Equipamentos", "Enviar WhatsApp", new Error(r.erro));
     }
   }
 
@@ -1014,21 +1167,20 @@ export default function Equipamentos() {
         break;
       case "AGUARDANDO_APROVACAO":
         primary = {
-          id: "ajustar_orcamento",
-          label: "Ajustar Orçamento",
-          icon: <RefreshCw className="h-3.5 w-3.5" />,
-          variant: "default",
-          className: classeAcaoPrincipal,
-          onClick: () => void abrirMudarStatus(eq, "AGUARDANDO_APROVACAO"),
-        };
-        secondary = {
           id: "aprovar",
           label: "Aprovar",
           icon: <CheckCircle className="h-3.5 w-3.5" />,
-          variant: "outline",
-          className: "text-green-600",
+          variant: "default",
+          className: "bg-green-600 hover:bg-green-700 text-white",
           onClick: () => void acaoRapida(eq, "APROVADO"),
           disabled: salvando,
+        };
+        secondary = {
+          id: "ajustar_orcamento",
+          label: "Ajustar Orçamento",
+          icon: <RefreshCw className="h-3.5 w-3.5" />,
+          variant: "outline",
+          onClick: () => void abrirMudarStatus(eq, "AGUARDANDO_APROVACAO"),
         };
         overflow.push(
           {
@@ -1382,7 +1534,10 @@ export default function Equipamentos() {
       </Card>
 
       {/* ═══ Dialog Criar/Editar ═══ */}
-      <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+      <Dialog open={dialogOpen} onOpenChange={(open) => {
+        if (!open) { setRegistrosAnteriores([]); setConfirmouNovoCiclo(false); }
+        setDialogOpen(open);
+      }}>
         <DialogContent className="sm:max-w-2xl max-h-[85vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>{editando ? "Editar Equipamento" : "Novo Equipamento"}</DialogTitle>
@@ -1397,9 +1552,7 @@ export default function Equipamentos() {
                 readOnly={false}
               />
               {erroCliente && (
-                <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
-                  {erroCliente}
-                </div>
+                <ErrorAlert variant="error" context="Equipamentos" message={erroCliente} />
               )}
             </div>
             <hr />
@@ -1410,25 +1563,83 @@ export default function Equipamentos() {
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label>Nº Série *</Label>
-                  <Input {...form.register("serial_number")} />
-                  {form.formState.errors.serial_number && <p className="text-xs text-red-500">{form.formState.errors.serial_number.message}</p>}
+                  <div className="relative">
+                    <Input
+                      {...form.register("serial_number")}
+                      onInput={(e) => handleSerialInput((e.target as HTMLInputElement).value)}
+                      onBlur={(e) => {
+                        void form.register("serial_number").onBlur(e);
+                        void handleSerialBlur();
+                      }}
+                    />
+                    {mostrarSugestoes && sugestoesSerial.length > 0 && (
+                      <div className="absolute z-50 mt-1 w-full rounded-md border bg-popover shadow-md">
+                        {sugestoesSerial.map((r) => (
+                          <button
+                            key={r.id}
+                            type="button"
+                            className="flex items-center gap-2 w-full px-3 py-2 text-sm hover:bg-accent text-left"
+                            onClick={() => selecionarSerialSugestao(r.serial_number)}
+                          >
+                            <span className="font-mono font-medium">{r.serial_number}</span>
+                            <StatusBadge status={r.status} />
+                            <span className="text-xs text-muted-foreground ml-auto">
+                              #{r.id} — {r.marca} {r.modelo}
+                            </span>
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                  <FormValidationError message={form.formState.errors.serial_number?.message} />
+                  {registrosAnteriores.length > 0 && (
+                    <div className="mt-2 rounded-md border border-amber-400 bg-amber-100 p-3 space-y-2">
+                      <p className="text-sm font-bold text-amber-900">
+                        ⚠️ ATENÇÃO: Este número de série já foi registrado anteriormente. Marque esta caixa apenas se realmente deseja criar um NOVO ciclo de manutenção.
+                      </p>
+                      <ul className="space-y-1">
+                        {registrosAnteriores.map((r) => (
+                          <li key={r.id} className="text-xs text-amber-800 flex items-center gap-1 flex-wrap">
+                            <span>• #{r.id}</span>
+                            <StatusBadge status={r.status} />
+                            <span>— Entrada: {r.data_entrada ? new Date(r.data_entrada).toLocaleDateString("pt-BR") : "—"}</span>
+                            {r.data_saida && (
+                              <span>| Saída: {new Date(r.data_saida).toLocaleDateString("pt-BR")}</span>
+                            )}
+                          </li>
+                        ))}
+                      </ul>
+                      <p className="text-xs text-amber-800">
+                        O histórico anterior será preservado. Este será um registro independente.
+                      </p>
+                      <label className="flex items-center gap-2 text-sm cursor-pointer pt-1">
+                        <input
+                          type="checkbox"
+                          checked={confirmouNovoCiclo}
+                          onChange={(e) => setConfirmouNovoCiclo(e.target.checked)}
+                          className="rounded border-amber-400"
+                        />
+                        <span className="text-amber-900 font-semibold">Confirmo que desejo criar um novo ciclo de manutenção para este equipamento</span>
+                      </label>
+                    </div>
+                  )}
                 </div>
                 <div className="space-y-2">
                   <Label>Patrimônio</Label>
                   <Input {...form.register("patrimonio")} placeholder="Código patrimonial, se houver" />
-                  {form.formState.errors.patrimonio && <p className="text-xs text-red-500">{form.formState.errors.patrimonio.message}</p>}
+                  <FormValidationError message={form.formState.errors.patrimonio?.message} />
                 </div>
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label>Marca *</Label>
                   <Input {...form.register("marca")} placeholder="Zebra, Datacard" />
-                  {form.formState.errors.marca && <p className="text-xs text-red-500">{form.formState.errors.marca.message}</p>}
+                  <FormValidationError message={form.formState.errors.marca?.message} />
                 </div>
                 <div className="space-y-2">
                   <Label>Modelo do equipamento</Label>
                   <Input {...form.register("modelo")} placeholder="ZD421, GC420T" />
-                  {form.formState.errors.modelo && <p className="text-xs text-red-500">{form.formState.errors.modelo.message}</p>}
+                  <FormValidationError message={form.formState.errors.modelo?.message} />
                 </div>
               </div>
               <div className="grid grid-cols-2 gap-4">
@@ -1440,12 +1651,12 @@ export default function Equipamentos() {
                       <SelectContent>{TIPO_OPTIONS.map(t => <SelectItem key={t} value={t}>{t}</SelectItem>)}</SelectContent>
                     </Select>
                   )} />
-                  {form.formState.errors.tipo && <p className="text-xs text-red-500">{form.formState.errors.tipo.message}</p>}
+                  <FormValidationError message={form.formState.errors.tipo?.message} />
                 </div>
                 <div className="space-y-2">
                   <Label>Defeito *</Label>
                   <Textarea {...form.register("defeito_relatado")} placeholder="Defeito informado no recebimento" rows={3} />
-                  {form.formState.errors.defeito_relatado && <p className="text-xs text-red-500">{form.formState.errors.defeito_relatado.message}</p>}
+                  <FormValidationError message={form.formState.errors.defeito_relatado?.message} />
                 </div>
               </div>
               <div className="grid grid-cols-2 gap-4">
@@ -1511,30 +1722,51 @@ export default function Equipamentos() {
                     {imagensFormulario.length}/{LIMITE_IMAGENS_POR_EQUIPAMENTO}
                   </span>
                 </div>
-                {erroImagens && <p className="text-sm text-red-500">{erroImagens}</p>}
-                <div className="grid gap-4 lg:grid-cols-2">
-                  <div className="space-y-3 rounded-lg border p-3">
-                    <div className="flex items-center justify-between gap-2">
-                      <div>
-                        <Label htmlFor="equipamento-imagens-entrada">Fotos da entrada</Label>
-                        <p className="text-xs text-muted-foreground">Use para registrar avarias e estado no recebimento.</p>
-                      </div>
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        asChild
-                        disabled={
-                          salvando ||
-                          carregandoImagensFormulario ||
-                          imagensFormulario.length >= LIMITE_IMAGENS_POR_EQUIPAMENTO
-                        }
-                      >
-                        <label htmlFor="equipamento-imagens-entrada" className="cursor-pointer">
-                          <ImagePlus className="h-4 w-4" />Adicionar
-                        </label>
-                      </Button>
-                    </div>
+                {erroImagens && <ErrorAlert variant="error" context="Equipamentos" message={erroImagens} />}
+                  <div className="grid gap-4 lg:grid-cols-2">
+                    <div className="space-y-3 rounded-lg border p-3">
+                         <div className="flex items-center gap-2">
+                          <div>
+                            <Label htmlFor="equipamento-imagens-entrada">Fotos da entrada</Label>
+                            <p className="text-xs text-muted-foreground">Use para registrar avarias e estado no recebimento.</p>
+                          </div>
+                          <div className="flex flex-col gap-1">
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              asChild
+                              disabled={
+                                salvando ||
+                                carregandoImagensFormulario ||
+                                imagensFormulario.length >= LIMITE_IMAGENS_POR_EQUIPAMENTO
+                              }
+                            >
+                              <label htmlFor="equipamento-imagens-entrada" className="cursor-pointer">
+                                <ImagePlus className="h-4 w-4" />Adicionar
+                              </label>
+                            </Button>
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              className="gap-1.5 border-blue-300 bg-blue-50 text-blue-700 hover:bg-blue-100 hover:text-blue-800"
+                              disabled={
+                                salvando ||
+                                carregandoImagensFormulario ||
+                                imagensFormulario.length >= LIMITE_IMAGENS_POR_EQUIPAMENTO
+                              }
+                              onClick={() => {
+                                setPhotoUploadCategoria("ENTRADA");
+                                setPhotoUploadNewEquip(true);
+                                setPhotoUploadOpen(true);
+                              }}
+                            >
+                              <Smartphone className="h-3.5 w-3.5" />
+                              Via Celular
+                            </Button>
+                          </div>
+                        </div>
                     <input
                       id="equipamento-imagens-entrada"
                       type="file"
@@ -1566,7 +1798,9 @@ export default function Equipamentos() {
             </div>
             <DialogFooter>
               <DialogClose asChild><Button variant="outline" type="button">Cancelar</Button></DialogClose>
-              <Button type="submit" disabled={salvando}>{salvando ? "Salvando..." : editando ? "Salvar" : "Cadastrar"}</Button>
+              <Button type="submit" disabled={salvando || (registrosAnteriores.length > 0 && !confirmouNovoCiclo)}>
+                {salvando ? "Salvando..." : registrosAnteriores.length > 0 ? "Criar novo ciclo" : editando ? "Salvar" : "Cadastrar"}
+              </Button>
             </DialogFooter>
           </form>
         </DialogContent>
@@ -1609,9 +1843,22 @@ export default function Equipamentos() {
                     <div className="space-y-2">
                       <div className="flex items-center justify-between">
                         <p className="text-sm text-muted-foreground">Fotos da entrada</p>
-                        <span className="text-xs text-muted-foreground">
-                          {filtrarImagensPorCategoria(imagensDetalhes, "ENTRADA").length} registrada(s)
-                        </span>
+                        <div className="flex items-center gap-1">
+                          <span className="text-xs text-muted-foreground">
+                            {filtrarImagensPorCategoria(imagensDetalhes, "ENTRADA").length} registrada(s)
+                          </span>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-6 w-6"
+                            onClick={() => {
+                              setPhotoUploadCategoria("ENTRADA");
+                              setPhotoUploadOpen(true);
+                            }}
+                          >
+                            <Smartphone className="h-3.5 w-3.5" />
+                          </Button>
+                        </div>
                       </div>
                       {carregandoDetalhes ? (
                         <div className="flex items-center justify-center rounded-lg border border-dashed p-6">
@@ -1623,15 +1870,29 @@ export default function Equipamentos() {
                           mensagemVazia="Nenhuma foto de entrada foi registrada para este equipamento."
                           onVisualizar={setImagemExpandida}
                           onExportar={(imagem) => void exportarImagemEquipamento(imagem)}
+                          onRemover={(imagem) => void removerImagemDetalhes(imagem)}
                         />
                       )}
                     </div>
                     <div className="space-y-2">
                       <div className="flex items-center justify-between">
                         <p className="text-sm text-muted-foreground">Fotos da saída</p>
-                        <span className="text-xs text-muted-foreground">
-                          {filtrarImagensPorCategoria(imagensDetalhes, "SAIDA").length} registrada(s)
-                        </span>
+                        <div className="flex items-center gap-1">
+                          <span className="text-xs text-muted-foreground">
+                            {filtrarImagensPorCategoria(imagensDetalhes, "SAIDA").length} registrada(s)
+                          </span>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-6 w-6"
+                            onClick={() => {
+                              setPhotoUploadCategoria("SAIDA");
+                              setPhotoUploadOpen(true);
+                            }}
+                          >
+                            <Smartphone className="h-3.5 w-3.5" />
+                          </Button>
+                        </div>
                       </div>
                       {carregandoDetalhes ? (
                         <div className="flex items-center justify-center rounded-lg border border-dashed p-6">
@@ -1643,6 +1904,7 @@ export default function Equipamentos() {
                           mensagemVazia="Nenhuma foto de saída foi registrada para este equipamento."
                           onVisualizar={setImagemExpandida}
                           onExportar={(imagem) => void exportarImagemEquipamento(imagem)}
+                          onRemover={(imagem) => void removerImagemDetalhes(imagem)}
                         />
                       )}
                     </div>
@@ -1671,6 +1933,7 @@ export default function Equipamentos() {
                     </Card>
                   )}
                   {selecionado.observacoes && <div><p className="text-sm text-muted-foreground">Observações:</p><p className="text-sm mt-1 bg-accent/50 p-2 rounded">{selecionado.observacoes}</p></div>}
+                  <DocumentosEquipamento equipamento={selecionado} />
                 </TabsContent>
 
                 <TabsContent value="verificacao" className="mt-4">{renderVerificacaoTab()}</TabsContent>
@@ -1798,29 +2061,50 @@ export default function Equipamentos() {
                     </p>
                   )}
                   <div className="space-y-3 rounded-lg border p-3">
-                    <div className="flex items-center justify-between gap-2">
-                      <div>
-                        <Label htmlFor="equipamento-imagens-saida-entrega">Foto da saída (entrega)</Label>
-                        <p className="text-xs text-muted-foreground">
-                          Registre o estado final do equipamento no momento da entrega.
-                        </p>
+                     <div className="flex items-center gap-2">
+                        <div>
+                          <Label htmlFor="equipamento-imagens-saida-entrega">Foto da saída (entrega)</Label>
+                          <p className="text-xs text-muted-foreground">
+                            Registre o estado final do equipamento no momento da entrega.
+                          </p>
+                        </div>
+                        <div className="flex flex-col gap-1">
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            asChild
+                            disabled={
+                              salvando ||
+                              carregandoImagensSaidaEntrega ||
+                              imagensSaidaEntrega.length >= LIMITE_IMAGENS_POR_EQUIPAMENTO
+                            }
+                          >
+                            <label htmlFor="equipamento-imagens-saida-entrega" className="cursor-pointer">
+                              <ImagePlus className="h-4 w-4" />Adicionar
+                            </label>
+                          </Button>
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            className="gap-1.5 border-blue-300 bg-blue-50 text-blue-700 hover:bg-blue-100 hover:text-blue-800"
+                            disabled={
+                              salvando ||
+                              carregandoImagensSaidaEntrega ||
+                              imagensSaidaEntrega.length >= LIMITE_IMAGENS_POR_EQUIPAMENTO
+                            }
+                            onClick={() => {
+                              setPhotoUploadCategoria("SAIDA");
+                              setPhotoUploadNewEquip(false);
+                              setPhotoUploadOpen(true);
+                            }}
+                          >
+                            <Smartphone className="h-3.5 w-3.5" />
+                            Via Celular
+                          </Button>
+                        </div>
                       </div>
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        asChild
-                        disabled={
-                          salvando ||
-                          carregandoImagensSaidaEntrega ||
-                          imagensSaidaEntrega.length >= LIMITE_IMAGENS_POR_EQUIPAMENTO
-                        }
-                      >
-                        <label htmlFor="equipamento-imagens-saida-entrega" className="cursor-pointer">
-                          <ImagePlus className="h-4 w-4" />Adicionar
-                        </label>
-                      </Button>
-                    </div>
                     {erroImagensSaidaEntrega && (
                       <p className="text-xs text-red-500">{erroImagensSaidaEntrega}</p>
                     )}
@@ -1900,6 +2184,59 @@ export default function Equipamentos() {
           )}
         </DialogContent>
       </Dialog>
+
+      <ConfirmDialog
+        open={confirmOpen}
+        onOpenChange={setConfirmOpen}
+        title={confirmProps.title}
+        description={confirmProps.description}
+        variant={confirmProps.variant}
+        onConfirm={() => {
+          confirmProps.onConfirm();
+          setConfirmOpen(false);
+        }}
+        onCancel={confirmProps.onCancel}
+      />
+
+      <InputDialog
+        open={inputOpen}
+        onOpenChange={setInputOpen}
+        title={inputProps.title}
+        description={inputProps.description}
+        label={inputProps.label}
+        placeholder={inputProps.placeholder}
+        onConfirm={inputProps.onConfirm}
+      />
+
+      <PhotoUploadDialog
+        equipamentoId={photoUploadNewEquip ? 0 : (selecionado?.id ?? 0)}
+        categoria={photoUploadCategoria}
+        open={photoUploadOpen}
+        onOpenChange={setPhotoUploadOpen}
+        onPhotoUploaded={async () => {
+          if (selecionado?.id) {
+            const imagens = await carregarImagensComPreview(selecionado.id);
+            setImagensDetalhes(imagens);
+          }
+        }}
+        onPhotoData={photoUploadNewEquip ? async (data) => {
+          const previewUrl = await bytesParaDataUrl(data.bytes, data.mime_type);
+          const nextOrdem = imagensFormulario
+            .filter((img) => img.categoria === data.categoria)
+            .reduce((max, img) => Math.max(max, img.ordem), -1) + 1;
+          const draft: EquipamentoImagemDraft = {
+            local_id: crypto.randomUUID?.() || `imagem-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`,
+            categoria: data.categoria as EquipamentoImagemCategoria,
+            filename: data.filename,
+            mime_type: data.mime_type,
+            tamanho_bytes: data.bytes.length,
+            ordem: nextOrdem,
+            bytes: data.bytes,
+            preview_url: previewUrl,
+          };
+          setImagensFormulario((prev) => [...prev, draft]);
+        } : undefined}
+      />
     </div>
   );
 }

@@ -19,16 +19,59 @@
  */
 import { useEffect, useState } from "react";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
+import { Toaster } from "sonner";
 import { BootSplash } from "@/components/BootSplash";
 import { SensitiveRoute, useSensitiveAccess } from "@/hooks/useSensitiveAccess";
+import { SENSITIVE_PERMISSIONS } from "@/types";
 import { Layout } from "@/components/Layout";
 import Dashboard from "@/pages/Dashboard";
 import Equipamentos from "@/pages/Equipamentos";
 import Clientes from "@/pages/Clientes";
-import Insumos from "@/pages/Insumos";
+// import Insumos from "@/pages/Insumos"; // [BLOQUEIO-TEMPORARIO-INSUMOS] descomente esta linha para restaurar o módulo de Insumos
 import Servicos from "@/pages/Servicos";
+import Gastos from "@/pages/Gastos";
+
+/**
+ * Componente placeholder para o módulo de Insumos/Peças temporariamente bloqueado.
+ * 
+ * ═══════════════════════════════════════════════════════════════
+ * COMO DESBLOQUEAR O MÓDULO DE INSUMOS/PEÇAS (3 passos, ~2 min):
+ * ═══════════════════════════════════════════════════════════════
+ * 
+ * 1. NESTE ARQUIVO (App.tsx):
+ *    - Descomente: import Insumos from "@/pages/Insumos";
+ *    - Apague este componente BlockedPage e a função
+ *    - Troque a rota /insumos de volta para: element={<Insumos />}
+ * 
+ * 2. Em src/components/Layout.tsx (~linha 38):
+ *    - Descomente o item: { label: "Insumos/Peças", path: "/insumos", icon: Package }
+ * 
+ * 3. Em src/pages/Dashboard.tsx (~linhas 220, 263, 370):
+ *    - Descomente/restaure os botões "Novo Insumo/Peça", card "Estoque Baixo" e "Ver todos"
+ * 
+ * Busque por: [BLOQUEIO-TEMPORARIO-INSUMOS] no projeto para localizar todos os pontos.
+ * ═══════════════════════════════════════════════════════════════
+ */
+function BlockedInsumosPage() {
+  return (
+    <div className="flex flex-col items-center justify-center py-24 text-center">
+      <Package className="h-16 w-16 text-muted-foreground mb-6 opacity-30" />
+      <h2 className="text-2xl font-bold text-foreground mb-2">Módulo de Insumos/Peças</h2>
+      <p className="text-muted-foreground max-w-md mb-6">
+        O módulo de controle de estoque e insumos/peças está temporariamente indisponível
+        para manutenção. Nenhum dado foi perdido — o banco permanece íntegro.
+      </p>
+      <Badge variant="secondary" className="text-xs">
+        Bloqueio programado — procure [BLOQUEIO-TEMPORARIO-INSUMOS] no código para reverter
+      </Badge>
+    </div>
+  );
+}
 import Configuracoes from "@/pages/Configuracoes";
 import Perfil from "@/pages/Perfil";
+import { ErrorBoundary } from "@/components/ErrorBoundary";
+import { Package } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
 
 /** Exibição mínima do boot (IPC em dev pode resolver em poucos ms). Prod fica igual ou mais pesado só se o Rust/DB demorar. */
 const MIN_BOOT_SPLASH_MS = 1_100;
@@ -54,21 +97,37 @@ function App() {
 
   return (
     <>
-      <BrowserRouter>
+      <Toaster position="top-right" visibleToasts={3} richColors closeButton duration={5000} />
+      <ErrorBoundary>
+        <BrowserRouter>
         <Routes>
           <Route element={<Layout />}>
             <Route path="/" element={<Dashboard />} />
             <Route path="/perfil" element={<Perfil />} />
             <Route path="/equipamentos" element={<Equipamentos />} />
             <Route path="/clientes" element={<Clientes />} />
-            <Route path="/insumos" element={<Insumos />} />
+            {/* [BLOQUEIO-TEMPORARIO-INSUMOS] Troque <BlockedInsumosPage /> por <Insumos /> para restaurar */}
+            <Route path="/insumos" element={<BlockedInsumosPage />} />
             <Route path="/servicos" element={<Servicos />} />
+            <Route
+              path="/gastos"
+              element={
+                <SensitiveRoute
+                  title="Gastos e despesas protegidos"
+                  description="Desbloqueie o acesso sensível para visualizar gastos e despesas do sistema."
+                  permission={SENSITIVE_PERMISSIONS.VIEW_EXPENSES}
+                >
+                  <Gastos />
+                </SensitiveRoute>
+              }
+            />
             <Route
               path="/configuracoes"
               element={
                 <SensitiveRoute
                   title="Configurações SMTP protegidas"
                   description="Desbloqueie o acesso sensível para visualizar ou alterar credenciais e envios SMTP."
+                  permission={SENSITIVE_PERMISSIONS.MANAGE_PROFILES}
                 >
                   <Configuracoes />
                 </SensitiveRoute>
@@ -76,10 +135,11 @@ function App() {
             />
           </Route>
         </Routes>
-      </BrowserRouter>
-      {splashVisible && (
-        <BootSplash progress={loading ? bootProgress : 100} fadeOut={splashCanFadeOut} />
-      )}
+        </BrowserRouter>
+        {splashVisible && (
+          <BootSplash progress={loading ? bootProgress : 100} fadeOut={splashCanFadeOut} />
+        )}
+      </ErrorBoundary>
     </>
   );
 }

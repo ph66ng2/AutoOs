@@ -431,9 +431,19 @@ pub async fn enviar_email(input: EmailSendInput) -> Result<bool, String> {
     Ok(true)
 }
 
+/// Tamanho máximo de anexo permitido (25 MB).
+const MAX_ATTACHMENT_SIZE: usize = 25 * 1024 * 1024;
+
 /// Obter bytes do anexo (de bytes diretos ou lendo arquivo).
 fn get_attachment_bytes(anexo: &EmailAttachmentInput) -> Result<Vec<u8>, String> {
     if let Some(ref bytes) = anexo.bytes {
+        if bytes.len() > MAX_ATTACHMENT_SIZE {
+            return Err(format!(
+                "Anexo {} excede o limite de {} MB",
+                anexo.filename,
+                MAX_ATTACHMENT_SIZE / (1024 * 1024)
+            ));
+        }
         debug!("Usando bytes diretos para anexo {}", anexo.filename);
         return Ok(bytes.clone());
     }
@@ -441,6 +451,17 @@ fn get_attachment_bytes(anexo: &EmailAttachmentInput) -> Result<Vec<u8>, String>
     if let Some(ref path) = anexo.path {
         debug!("Lendo anexo de arquivo permitido");
         let allowed_path = resolve_allowed_attachment_path(path)?;
+        let metadata = fs::metadata(&allowed_path).map_err(|e| {
+            error!("Erro ao verificar tamanho do anexo: {}", e);
+            format!("Erro ao acessar anexo informado: {}", e)
+        })?;
+        if metadata.len() > MAX_ATTACHMENT_SIZE as u64 {
+            return Err(format!(
+                "Anexo {} excede o limite de {} MB",
+                anexo.filename,
+                MAX_ATTACHMENT_SIZE / (1024 * 1024)
+            ));
+        }
         return fs::read(&allowed_path).map_err(|e| {
             error!("Erro ao ler anexo informado: {}", e);
             format!("Erro ao ler anexo informado: {}", e)
