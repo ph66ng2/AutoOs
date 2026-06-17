@@ -295,7 +295,7 @@ export default function Dashboard() {
               {acoesPendentes.slice(0, 8).map(eq => {
                 const acao = getAcaoPendente(eq);
                 return (
-                  <div key={eq.id} className="flex items-center justify-between p-3 rounded-lg border bg-background hover:bg-accent/50 transition-colors cursor-pointer" onClick={() => navigate("/equipamentos")}>
+                  <div key={eq.id} className="flex items-center justify-between p-3 rounded-lg border bg-background hover:bg-accent/50 transition-colors cursor-pointer" onClick={() => navigate("/equipamentos", { state: { equipamentoId: eq.id } })}>
                     <div className="flex items-center gap-3">
                       <div className="flex-shrink-0">
                         <StatusBadge status={eq.status} />
@@ -348,7 +348,7 @@ export default function Dashboard() {
             ) : (
               <div className="space-y-3">
                 {equipamentosRecentes.map(eq => (
-                  <div key={eq.id} className="flex items-center justify-between p-3 rounded-lg border hover:bg-accent/50 transition-colors">
+                  <div key={eq.id} className="flex items-center justify-between p-3 rounded-lg border hover:bg-accent/50 transition-colors cursor-pointer" onClick={() => navigate("/equipamentos", { state: { equipamentoId: eq.id } })}>
                     <div className="space-y-1">
                       <p className="font-medium text-sm">{eq.marca} {eq.modelo}</p>
                       <p className="text-xs text-muted-foreground">{eq.cliente_nome || eq.serial_number}</p>

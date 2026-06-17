@@ -24,7 +24,8 @@
  * ║  USADO POR: App.tsx (rota /equipamentos)                    ║
  * ╚══════════════════════════════════════════════════════════════╝
  */
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
+import { useLocation, useNavigate } from "react-router-dom";
 import { invoke } from "@tauri-apps/api/core";
 import {
   Printer,
@@ -226,6 +227,22 @@ export default function Equipamentos() {
   const { loading: loadingAutomacao, finalizarVerificacao, marcarComoPronto } =
     useStatusEquipamento();
   const { ensureSensitiveAccess } = useSensitiveAccess();
+  const location = useLocation();
+  const navigate = useNavigate();
+
+  useEffect(() => {
+    const state = location.state as { equipamentoId?: number } | null;
+    if (state?.equipamentoId && !detalhesDialogOpen) {
+      db.buscarEquipamento(state.equipamentoId)
+        .then((eq) => {
+          abrirDetalhes(eq);
+          navigate(location.pathname, { replace: true, state: {} });
+        })
+        .catch((err) => {
+          console.error("Erro ao buscar equipamento do estado de navegação:", err);
+        });
+    }
+  }, [location.state, detalhesDialogOpen]);
 
   const carregarImagensComPreview = useCallback(async (equipamentoId: number) => {
     const imagens = await db.listarImagensEquipamento(equipamentoId);
