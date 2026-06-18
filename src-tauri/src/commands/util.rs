@@ -196,7 +196,7 @@ enum CapabilityPermissionEntry {
     Scoped { identifier: String },
 }
 
-fn local_app_data_dir() -> Result<PathBuf, String> {
+pub(crate) fn local_app_data_dir() -> Result<PathBuf, String> {
     let base_dir = if cfg!(target_os = "windows") {
         env::var("LOCALAPPDATA")
             .map(PathBuf::from)
@@ -1322,6 +1322,94 @@ pub(crate) async fn export_local_support_bundle() -> Result<LocalSupportBundleRe
         file_path: file_path.to_string_lossy().to_string(),
         created_at: created_at.to_rfc3339(),
     })
+}
+
+pub(crate) const DATABASE_CONFIG_FILE: &str = "database-config.json";
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct DatabaseConnectionConfig {
+    pub host: String,
+    pub port: u16,
+    pub database: String,
+    pub username: String,
+    pub password: String,
+}
+
+impl DatabaseConnectionConfig {
+    pub fn to_database_url(&self) -> String {
+        format!(
+            "postgres://{}:{}@{}:{}/{}",
+            self.username, self.password, self.host, self.port, self.database
+        )
+    }
+}
+
+pub(crate) fn database_config_path() -> Result<PathBuf, String> {
+    let dir = local_app_data_dir()?;
+    Ok(dir.join(DATABASE_CONFIG_FILE))
+}
+
+#[tauri::command]
+#[instrument(skip_all)]
+pub async fn carregar_config_banco() -> Result<Option<DatabaseConnectionConfig>, String> {
+    let path = database_config_path()?;
+    if !path.is_file() {
+        return Ok(None);
+    }
+    let contents = fs::read_to_string(&path).map_err(|e| {
+        error!("Erro ao ler configuração de banco: {}", e);
+        format!("Erro ao ler configuração de banco: {}", e)
+    })?;
+    let config: DatabaseConnectionConfig = serde_json::from_str(&contents).map_err(|e| {
+        error!("Erro ao parsear configuração de banco: {}", e);
+        format!("Erro ao parsear configuração de banco: {}", e)
+    })?;
+    Ok(Some(config))
+}
+
+#[tauri::command]
+#[instrument(skip_all)]
+pub async fn salvar_config_banco(config: DatabaseConnectionConfig) -> Result<(), String> {
+    let path = database_config_path()?;
+    let payload = serde_json::to_vec_pretty(&config)
+        .map_err(|e| format!("Falha ao serializar configuração de banco: {}", e))?;
+    fs::write(&path, payload).map_err(|e| {
+        error!("Erro ao salvar configuração de banco: {}", e);
+        format!("Erro ao salvar configuração de banco: {}", e)
+    })?;
+    info!("Configuração de banco salva em: {}", path.display());
+    Ok(())
+}
+
+#[tauri::command]
+#[instrument(skip_all)]
+pub async fn verificar_status_banco() -> Result<bool, String> {
+    Ok(crate::db::is_database_initialized())
+}
+
+#[tauri::command]
+#[instrument(skip_all)]
+pub async fn reiniciar_banco_com_config(config: DatabaseConnectionConfig) -> Result<bool, String> {
+    let database_url = config.to_database_url();
+    crate::db::init_database_with_url(&database_url)
+        .await
+        .map_err(|e| format!("Falha ao conectar com nova configuração: {}", e))?;
+    Ok(true)
+}
+
+#[tauri::command]
+#[instrument(skip_all)]
+pub async fn testar_config_banco(config: DatabaseConnectionConfig) -> Result<bool, String> {
+    use sqlx::postgres::PgPoolOptions;
+    let database_url = config.to_database_url();
+    let pool = PgPoolOptions::new()
+        .max_connections(1)
+        .connect(&database_url)
+        .await
+        .map_err(|e| format!("Falha ao conectar ao banco: {}", e))?;
+    let _ = sqlx::query("SELECT 1").fetch_one(&pool).await.map_err(|e| format!("Falha ao executar query de teste: {}", e))?;
+    pool.close().await;
+    Ok(true)
 }
 
 #[tauri::command]

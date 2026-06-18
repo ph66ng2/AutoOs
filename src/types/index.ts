@@ -642,3 +642,11 @@ export const CHECKLIST_PADRAO: ItemVerificacao[] = [
   { id: "6", nome: "Verificação de cartuchos/toner", verificado: false },
   { id: "7", nome: "Teste de scanner (se multifuncional)", verificado: false },
 ];
+
+export interface DatabaseConnectionConfig {
+  host: string;
+  port: number;
+  database: string;
+  username: string;
+  password: string;
+}

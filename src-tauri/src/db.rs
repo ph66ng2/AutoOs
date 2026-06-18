@@ -16,10 +16,12 @@
 //! ║  USADO POR: main.rs (init_database no setup)                ║
 //! ╚══════════════════════════════════════════════════════════════╝
 
+use crate::commands::util::{local_app_data_dir, DATABASE_CONFIG_FILE};
 use sqlx::{migrate::Migrator, postgres::PgPool};
 use std::env;
+use std::fs;
 use std::path::{Path, PathBuf};
-use std::sync::OnceLock;
+use std::sync::Mutex;
 
 static MIGRATOR: Migrator = sqlx::migrate!("./migrations");
 
@@ -29,15 +31,29 @@ pub struct KnownMigration {
     pub description: String,
 }
 
-/// Pool global para acesso pelos comandos sem precisar de State.
-static POOL: OnceLock<PgPool> = OnceLock::new();
+static POOL: Mutex<Option<PgPool>> = Mutex::new(None);
+static INIT_ERROR: Mutex<Option<String>> = Mutex::new(None);
 
-/// Obtém referência ao pool global de conexões PostgreSQL.
-/// Retorna erro se o pool não foi inicializado.
 pub async fn get_pool() -> Result<PgPool, String> {
-    POOL.get()
-        .cloned()
-        .ok_or_else(|| "Pool de conexões não inicializado".to_string())
+    let guard = POOL.lock().map_err(|e| format!("Lock do pool corrompido: {}", e))?;
+    guard.clone().ok_or_else(|| {
+        let err_guard = INIT_ERROR.lock().unwrap_or_else(|e| panic!("Lock de erro corrompido: {}", e));
+        err_guard.clone().unwrap_or_else(|| "Pool de conexões não inicializado".to_string())
+    })
+}
+
+pub fn is_database_initialized() -> bool {
+    POOL.lock().map(|g| g.is_some()).unwrap_or(false)
+}
+
+pub fn database_init_error() -> Option<String> {
+    INIT_ERROR.lock().ok().and_then(|g| g.clone())
+}
+
+pub fn clear_database_init_error() {
+    if let Ok(mut guard) = INIT_ERROR.lock() {
+        *guard = None;
+    }
 }
 
 pub fn known_migrations() -> Vec<KnownMigration> {
@@ -90,6 +106,26 @@ fn collect_env_candidates() -> Vec<PathBuf> {
     candidates
 }
 
+fn resolve_database_url_from_config_file() -> Option<String> {
+    let config_path = local_app_data_dir()
+        .ok()?
+        .join(DATABASE_CONFIG_FILE);
+    if !config_path.is_file() {
+        return None;
+    }
+    let contents = fs::read_to_string(&config_path).ok()?;
+    let config: serde_json::Value = serde_json::from_str(&contents).ok()?;
+    let host = config.get("host")?.as_str()?;
+    let port = config.get("port")?.as_u64()? as u16;
+    let database = config.get("database")?.as_str()?;
+    let username = config.get("username")?.as_str()?;
+    let password = config.get("password")?.as_str()?;
+    Some(format!(
+        "postgres://{}:{}@{}:{}/{}",
+        username, password, host, port, database
+    ))
+}
+
 fn resolve_database_url() -> Result<String, sqlx::Error> {
     let _ = dotenv::dotenv();
 
@@ -109,18 +145,30 @@ fn resolve_database_url() -> Result<String, sqlx::Error> {
         }
     }
 
+    if let Some(database_url) = resolve_database_url_from_config_file() {
+        return Ok(database_url);
+    }
+
     Err(database_url_missing_error())
 }
 
-/// Inicializa o banco PostgreSQL, aplica migrações versionadas e disponibiliza a pool global.
-/// Chamada uma única vez no `main.rs` durante o `setup` do Tauri.
 pub async fn init_database() -> Result<PgPool, sqlx::Error> {
     let database_url = resolve_database_url()?;
-    
-    let pool = PgPool::connect(&database_url).await?;
+    connect_and_setup_pool(&database_url).await
+}
+
+pub async fn init_database_with_url(database_url: &str) -> Result<PgPool, sqlx::Error> {
+    connect_and_setup_pool(database_url).await
+}
+
+async fn connect_and_setup_pool(database_url: &str) -> Result<PgPool, sqlx::Error> {
+    let pool = PgPool::connect(database_url).await?;
     MIGRATOR.run(&pool).await?;
-
-    let _ = POOL.set(pool.clone());
-
+    if let Ok(mut guard) = POOL.lock() {
+        *guard = Some(pool.clone());
+    }
+    if let Ok(mut guard) = INIT_ERROR.lock() {
+        *guard = None;
+    }
     Ok(pool)
 }

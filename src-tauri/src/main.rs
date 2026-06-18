@@ -88,12 +88,15 @@ fn main() {
     tauri::Builder::default()
         .setup(|_app| {
             info!("Inicializando banco de dados...");
-            // block_on garante que o pool está pronto antes do app iniciar.
-            // O pool é armazenado no OnceLock global em db::get_pool()
-            let _pool = tauri::async_runtime::block_on(db::init_database())
-                .expect("Falha ao inicializar banco PostgreSQL");
-            info!("Banco de dados inicializado com sucesso");
-
+            match tauri::async_runtime::block_on(db::init_database()) {
+                Ok(_pool) => {
+                    info!("Banco de dados inicializado com sucesso");
+                }
+                Err(e) => {
+                    let msg = format!("Banco de dados não configurado ou indisponível: {}. O app continuará no modo de configuração.", e);
+                    info!("{}", msg);
+                }
+            }
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -129,6 +132,11 @@ fn main() {
             commands::util::restaurar_backup_postgres,
             commands::util::obter_diagnostico_suporte_local,
             commands::util::exportar_pacote_suporte_local,
+            commands::util::carregar_config_banco,
+            commands::util::salvar_config_banco,
+            commands::util::testar_config_banco,
+            commands::util::verificar_status_banco,
+            commands::util::reiniciar_banco_com_config,
             // Equipamentos
             commands::equipamentos::listar_equipamentos,
             commands::equipamentos::buscar_equipamento,

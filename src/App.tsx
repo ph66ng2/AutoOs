@@ -21,9 +21,11 @@ import { useEffect, useState } from "react";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { Toaster } from "sonner";
 import { BootSplash } from "@/components/BootSplash";
+import { DatabaseConfigDialog } from "@/components/DatabaseConfigDialog";
 import { SensitiveRoute, useSensitiveAccess } from "@/hooks/useSensitiveAccess";
 import { SENSITIVE_PERMISSIONS } from "@/types";
 import { Layout } from "@/components/Layout";
+import { DatabaseConfigService } from "@/lib/db-config";
 import Dashboard from "@/pages/Dashboard";
 import Equipamentos from "@/pages/Equipamentos";
 import Clientes from "@/pages/Clientes";
@@ -76,7 +78,7 @@ import { Badge } from "@/components/ui/badge";
 /** Exibição mínima do boot (IPC em dev pode resolver em poucos ms). Prod fica igual ou mais pesado só se o Rust/DB demorar. */
 const MIN_BOOT_SPLASH_MS = 1_100;
 
-function App() {
+function AppContent() {
   const { loading, bootProgress } = useSensitiveAccess();
   const [splashVisible, setSplashVisible] = useState(true);
   const [minSplashElapsed, setMinSplashElapsed] = useState(false);
@@ -97,9 +99,7 @@ function App() {
 
   return (
     <>
-      <Toaster position="top-right" visibleToasts={3} richColors closeButton duration={5000} />
-      <ErrorBoundary>
-        <BrowserRouter>
+      <BrowserRouter>
         <Routes>
           <Route element={<Layout />}>
             <Route path="/" element={<Dashboard />} />
@@ -135,10 +135,52 @@ function App() {
             />
           </Route>
         </Routes>
-        </BrowserRouter>
-        {splashVisible && (
-          <BootSplash progress={loading ? bootProgress : 100} fadeOut={splashCanFadeOut} />
-        )}
+      </BrowserRouter>
+      {splashVisible && (
+        <BootSplash progress={loading ? bootProgress : 100} fadeOut={splashCanFadeOut} />
+      )}
+    </>
+  );
+}
+
+function App() {
+  const [dbReady, setDbReady] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    void (async () => {
+      try {
+        const status = await DatabaseConfigService.checkStatus();
+        setDbReady(status);
+      } catch {
+        setDbReady(false);
+      }
+    })();
+  }, []);
+
+  if (dbReady === null) {
+    return (
+      <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-[#050608]">
+        <div className="h-8 w-8 animate-spin rounded-full border-b-2 border-cyan-400" />
+      </div>
+    );
+  }
+
+  if (!dbReady) {
+    return (
+      <>
+        <Toaster position="top-right" visibleToasts={3} richColors closeButton duration={5000} />
+        <ErrorBoundary>
+          <DatabaseConfigDialog onConfigured={() => setDbReady(true)} />
+        </ErrorBoundary>
+      </>
+    );
+  }
+
+  return (
+    <>
+      <Toaster position="top-right" visibleToasts={3} richColors closeButton duration={5000} />
+      <ErrorBoundary>
+        <AppContent />
       </ErrorBoundary>
     </>
   );
