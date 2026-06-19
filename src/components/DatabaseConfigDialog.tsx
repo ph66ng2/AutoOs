@@ -153,7 +153,7 @@ export function DatabaseConfigDialog({ onConfigured }: DatabaseConfigDialogProps
           <div className="flex gap-2 pt-2">
             <Button
               variant="outline"
-              className="flex-1 border-white/10 text-white hover:bg-white/5"
+              className="flex-1 border-white/10 bg-white/10 text-white hover:bg-white/20"
               onClick={() => void handleTest()}
               disabled={testing || saving}
             >
