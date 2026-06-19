@@ -127,6 +127,66 @@ O app mantém housekeeping local desses diretórios e expõe um snapshot de supo
 
 As migrações versionadas vivem em `src-tauri/migrations` e são a fonte de verdade do schema. O estado aplicado pode ser conferido no app em `Configurações > Segurança > Banco e schema`.
 
+## Regras de Migration
+
+### Nunca edite uma migration já existente
+
+O sqlx guarda o checksum SHA-256 de cada migration na tabela `_sqlx_migrations`. Se você editar um arquivo `.sql` que já foi aplicado em algum banco, o checksum do arquivo não bate com o do banco e o app falha com:
+
+```
+migration N was previously applied but has been modified
+```
+
+Isso quebra instalações existentes. **Regra de ouro:** se o arquivo já foi commitado e aplicado, é imutável.
+
+### Sempre crie uma nova migration
+
+Qualquer alteração de schema (nova tabela, nova coluna, novo índice, correção de constraint) deve ser feita em um arquivo novo com o próximo número sequencial:
+
+```
+src-tauri/migrations/
+  0001_initial_schema.sql
+  0002_schema_hardening.sql
+  ...
+  0009_idempotencia_final.sql   ← exemplo de migration corretiva
+```
+
+Use `CREATE TABLE IF NOT EXISTS`, `CREATE INDEX IF NOT EXISTS`, `ALTER TABLE ... ADD COLUMN IF NOT EXISTS` e equivalentes sempre que possível.
+
+### Como corrigir manualmente um VersionMismatch em ambiente de teste
+
+Se você precisar testar uma migration editada (apenas em desenvolvimento, nunca em produção):
+
+1. Conecte-se ao banco:
+   ```bash
+   psql -h SEU_HOST -U SEU_USUARIO -d SEU_BANCO
+   ```
+
+2. Delete o registro da migration problemática:
+   ```sql
+   DELETE FROM _sqlx_migrations WHERE version = N;
+   ```
+
+3. Recrie o banco do zero (mais seguro):
+   ```sql
+   DROP TABLE IF EXISTS _sqlx_migrations CASCADE;
+   -- ou recrie todo o banco
+   DROP DATABASE autoos;
+   CREATE DATABASE autoos;
+   ```
+
+4. Reexecute o app — ele aplicará todas as migrations do zero com os arquivos atuais.
+
+> **Atenção:** Em produção/shared, nunca edite `_sqlx_migrations` manualmente. A solução correta é garantir que os arquivos de migration nunca mudem e, se necessário, criar uma nova migration para corrigir o schema.
+
+### Idempotência no build
+
+O `cargo tauri build` embute as migrations no binário. Para que o `.exe` funcione tanto em bancos novos quanto já existentes:
+
+- Use `IF NOT EXISTS`/`IF EXISTS` em toda migration
+- Para `ALTER TABLE ... ADD CONSTRAINT` (que não tem IF NOT EXISTS no PostgreSQL), use o padrão `DO $$ ... EXCEPTION WHEN duplicate_object THEN ... END $$;`
+- Se um banco já foi populado com uma versão anterior do `.exe`, a única solução segura é recriar o banco ou usar a nova migration de correção (ex: `0009_idempotencia_final.sql`)
+
 ## Licença
 
 Proprietário - BMITAG
