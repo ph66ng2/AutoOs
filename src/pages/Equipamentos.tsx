@@ -180,6 +180,7 @@ export default function Equipamentos() {
   const [prazoAprovacao, setPrazoAprovacao] = useState("");
   const [valorOrcamentoOriginal, setValorOrcamentoOriginal] = useState<number | null>(null);
   const [valorOrcamentoAnterior, setValorOrcamentoAnterior] = useState<number | null>(null);
+  const [verificacaoAjusteOrcamento, setVerificacaoAjusteOrcamento] = useState<Verificacao | null>(null);
   const [valorFinal, setValorFinal] = useState<number>(0);
   const [valorFinalSugerido, setValorFinalSugerido] = useState<number | null>(null);
   const [acordoExcecaoEntrega, setAcordoExcecaoEntrega] = useState(false);
@@ -343,8 +344,6 @@ export default function Equipamentos() {
       setOrcamentoRapidoSerial("");
       setOrcamentoRapidoDefeito("");
       setOrcamentoRapidoObservacoes("");
-
-      abrirDetalhes(eq);
     } catch (err: any) {
       console.error("Erro no orçamento rápido:", err);
       showError("Equipamentos", "Orçamento Rápido", err);
@@ -424,24 +423,39 @@ export default function Equipamentos() {
     const arquivosProcessados = arquivos.slice(0, vagasRestantes);
     setCarregandoImagensFormulario(true);
     try {
-      const novasImagens = await Promise.all(
+      const resultados = await Promise.allSettled(
         arquivosProcessados.map((arquivo, index) =>
           arquivoParaImagemEquipamento(
             arquivo,
             filtrarImagensPorCategoria(imagensFormulario, categoria).length + index,
             categoria,
-          )
+          ).then((imagem) => ({ sucesso: true as const, imagem, arquivo }))
+            .catch((err: any) => ({ sucesso: false as const, erro: err?.message || String(err), arquivo }))
         )
       );
 
-      setImagensFormulario((estadoAtual) =>
-        normalizarOrdemPorCategoria([...estadoAtual, ...novasImagens])
-      );
-      setErroImagens(
-        arquivos.length > arquivosProcessados.length
-          ? `Somente ${LIMITE_IMAGENS_POR_EQUIPAMENTO} fotos podem ser mantidas por equipamento.`
-          : null
-      );
+      const imagensBemSucedidas = resultados
+        .filter((r): r is PromiseFulfilledResult<{ sucesso: true; imagem: any; arquivo: File }> => r.status === "fulfilled" && r.value.sucesso)
+        .map((r) => r.value.imagem);
+
+      const erros = resultados
+        .filter((r): r is PromiseFulfilledResult<{ sucesso: false; erro: string; arquivo: File }> => r.status === "fulfilled" && !r.value.sucesso)
+        .map((r) => `${r.value.arquivo.name}: ${r.value.erro}`);
+
+      if (imagensBemSucedidas.length > 0) {
+        setImagensFormulario((estadoAtual) =>
+          normalizarOrdemPorCategoria([...estadoAtual, ...imagensBemSucedidas])
+        );
+      }
+
+      const mensagensErro: string[] = [];
+      if (arquivos.length > arquivosProcessados.length) {
+        mensagensErro.push(`Somente ${LIMITE_IMAGENS_POR_EQUIPAMENTO} fotos podem ser mantidas por equipamento.`);
+      }
+      if (erros.length > 0) {
+        mensagensErro.push(`Erros no processamento:\n${erros.join("\n")}`);
+      }
+      setErroImagens(mensagensErro.length > 0 ? mensagensErro.join("\n") : null);
     } catch (err: any) {
       console.error("Erro ao processar imagens do equipamento:", err);
       setErroImagens(err?.message || "Não foi possível processar as fotos selecionadas.");
@@ -569,6 +583,7 @@ export default function Equipamentos() {
     setValorOrcamentoAnterior(valorAnterior);
     setValorOrcamento(valorBase);
     setPrazoAprovacao(eq.prazo_aprovacao || "");
+    setVerificacaoAjusteOrcamento(verificacao);
   }
 
   function handleNovoStatusChange(status: string) {
@@ -595,6 +610,7 @@ export default function Equipamentos() {
     setPrazoAprovacao(eq.prazo_aprovacao || "");
     setValorOrcamentoOriginal(null);
     setValorOrcamentoAnterior(null);
+    setVerificacaoAjusteOrcamento(null);
     setValorFinal(0);
     setValorFinalSugerido(null);
     setAcordoExcecaoEntrega(false);
@@ -828,6 +844,9 @@ export default function Equipamentos() {
           void executarComEmail(emailAtual);
         }
       },
+      onCancel: () => {
+        void executarComEmail(undefined);
+      },
     });
     setConfirmOpen(true);
   }
@@ -890,6 +909,9 @@ export default function Equipamentos() {
         } else {
           void executarComEmail(emailAtual);
         }
+      },
+      onCancel: () => {
+        void executarComEmail(undefined);
       },
     });
     setConfirmOpen(true);
@@ -2166,6 +2188,57 @@ export default function Equipamentos() {
                     <p className="text-xs text-amber-700">
                       Novo valor em negociação: R$ {valorOrcamento.toFixed(2)} (antes: R$ {valorOrcamentoAnterior.toFixed(2)}).
                     </p>
+                  )}
+                  {verificacaoAjusteOrcamento && (
+                    <div className="space-y-3 rounded-md border p-3">
+                      {(() => {
+                        let servicos: ServicoNecessario[] = [];
+                        let pecas: PecaNecessaria[] = [];
+                        try {
+                          servicos = JSON.parse(verificacaoAjusteOrcamento.servicos_necessarios || "[]") as ServicoNecessario[];
+                        } catch {
+                          servicos = [];
+                        }
+                        try {
+                          pecas = JSON.parse(verificacaoAjusteOrcamento.pecas_necessarias || "[]") as PecaNecessaria[];
+                        } catch {
+                          pecas = [];
+                        }
+                        return (
+                          <>
+                            {servicos.length > 0 && (
+                              <div>
+                                <p className="text-xs font-semibold text-muted-foreground mb-1">Serviços da verificação</p>
+                                <ul className="space-y-1">
+                                  {servicos.map((s) => (
+                                    <li key={s.id} className="flex justify-between text-sm">
+                                      <span>{s.descricao}</span>
+                                      <span className="font-medium">R$ {s.valor.toFixed(2)}</span>
+                                    </li>
+                                  ))}
+                                </ul>
+                              </div>
+                            )}
+                            {pecas.length > 0 && (
+                              <div>
+                                <p className="text-xs font-semibold text-muted-foreground mb-1">Peças da verificação</p>
+                                <ul className="space-y-1">
+                                  {pecas.map((p) => (
+                                    <li key={p.id} className="flex justify-between text-sm">
+                                      <span>{p.nome} (x{p.quantidade})</span>
+                                      <span className="font-medium">R$ {p.valorTotal.toFixed(2)}</span>
+                                    </li>
+                                  ))}
+                                </ul>
+                              </div>
+                            )}
+                            {servicos.length === 0 && pecas.length === 0 && (
+                              <p className="text-xs text-muted-foreground">Nenhum serviço ou peça registrado na verificação.</p>
+                            )}
+                          </>
+                        );
+                      })()}
+                    </div>
                   )}
                 </>
               )}
