@@ -133,13 +133,18 @@ export function PhotoUploadDialog({
         if (data.used) {
           cleanup();
           await stopServer();
+          // 500ms delay to ensure DB has fully committed before parent refreshes
+          await new Promise((resolve) => setTimeout(resolve, 500));
           if (onPhotoDataRef.current && data.image_data) {
-            onPhotoDataRef.current({
-              bytes: data.image_data.bytes,
-              filename: data.image_data.filename,
-              mime_type: data.image_data.mime_type,
-              categoria: categoriaRef.current,
-            });
+            const images = Array.isArray(data.image_data) ? data.image_data : [data.image_data];
+            for (const img of images) {
+              onPhotoDataRef.current({
+                bytes: img.bytes,
+                filename: img.filename,
+                mime_type: img.mime_type,
+                categoria: categoriaRef.current,
+              });
+            }
           } else {
             onPhotoUploadedRef.current();
           }

@@ -119,21 +119,27 @@ const HTML_UPLOAD_PAGE: &str = r#"<!DOCTYPE html>
         .preview-area {
             display: none;
             margin-bottom: 16px;
-            text-align: center;
         }
         .preview-area.visible {
             display: block;
         }
-        .preview-area img {
-            max-width: 100%;
-            max-height: 240px;
+        .preview-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 8px;
+            margin-bottom: 8px;
+        }
+        .preview-grid img {
+            width: 100%;
+            height: 80px;
+            object-fit: cover;
             border-radius: 8px;
             border: 1px solid #e0e0e0;
         }
-        .preview-area .file-name {
+        .file-count {
             font-size: 0.85rem;
             color: #666;
-            margin-top: 6px;
+            text-align: center;
         }
         button.submit-btn {
             width: 100%;
@@ -186,6 +192,44 @@ const HTML_UPLOAD_PAGE: &str = r#"<!DOCTYPE html>
             border: 1px solid #bee5eb;
             display: block;
         }
+        .success-overlay {
+            display: none;
+            text-align: center;
+            padding: 24px 16px;
+        }
+        .success-overlay.visible {
+            display: block;
+        }
+        .success-icon {
+            font-size: 4rem;
+            color: #28a745;
+            margin-bottom: 16px;
+        }
+        .success-title {
+            font-size: 1.3rem;
+            font-weight: 700;
+            color: #155724;
+            margin-bottom: 8px;
+        }
+        .success-count {
+            font-size: 1rem;
+            color: #666;
+            margin-bottom: 24px;
+        }
+        .success-btn {
+            width: 100%;
+            padding: 14px;
+            background: #007bff;
+            color: white;
+            border: none;
+            border-radius: 8px;
+            font-size: 1rem;
+            font-weight: 600;
+            cursor: pointer;
+        }
+        .success-btn:active {
+            background: #0056b3;
+        }
     </style>
 </head>
 <body>
@@ -193,7 +237,7 @@ const HTML_UPLOAD_PAGE: &str = r#"<!DOCTYPE html>
         <h1>AutoOS</h1>
         <p class="subtitle">Upload de Foto</p>
         <form id="uploadForm" enctype="multipart/form-data" method="POST">
-            <div class="btn-group">
+            <div class="btn-group" id="formContent">
                 <button type="button" class="btn-option camera" id="cameraBtn">
                     <span class="icon">&#128247;</span>
                     <div class="btn-text">
@@ -205,19 +249,25 @@ const HTML_UPLOAD_PAGE: &str = r#"<!DOCTYPE html>
                     <span class="icon">&#128444;&#65039;</span>
                     <div class="btn-text">
                         <span>Escolher da Galeria</span>
-                        <span class="label-small">Selecionar foto existente</span>
+                        <span class="label-small">Selecionar at&#233; 3 fotos</span>
                     </div>
                 </button>
             </div>
-            <input type="file" id="cameraInput" name="photo" accept="image/jpeg,image/png" capture="environment">
-            <input type="file" id="galleryInput" name="photo" accept="image/jpeg,image/png">
+            <input type="file" id="cameraInput" name="photo" accept="image/*" capture="environment" multiple>
+            <input type="file" id="galleryInput" name="photo" accept="image/*" multiple>
             <div class="preview-area" id="previewArea">
-                <img id="previewImg" src="" alt="Pr&#233;-visualiza&#231;&#227;o">
-                <div class="file-name" id="fileName"></div>
+                <div class="preview-grid" id="previewGrid"></div>
+                <div class="file-count" id="fileCount"></div>
             </div>
             <button type="submit" class="submit-btn" id="submitBtn">Enviar Foto</button>
         </form>
         <div id="status"></div>
+        <div class="success-overlay" id="successOverlay">
+            <div class="success-icon">&#9989;</div>
+            <div class="success-title">Imagem(ns) Carregada(s) com Sucesso!</div>
+            <div class="success-count" id="successCount"></div>
+            <button type="button" class="success-btn" id="sendMoreBtn">Enviar mais fotos</button>
+        </div>
     </div>
     <script>
         const form = document.getElementById('uploadForm');
@@ -228,61 +278,85 @@ const HTML_UPLOAD_PAGE: &str = r#"<!DOCTYPE html>
         const cameraInput = document.getElementById('cameraInput');
         const galleryInput = document.getElementById('galleryInput');
         const previewArea = document.getElementById('previewArea');
-        const previewImg = document.getElementById('previewImg');
-        const fileNameEl = document.getElementById('fileName');
+        const previewGrid = document.getElementById('previewGrid');
+        const fileCountEl = document.getElementById('fileCount');
+        const successOverlay = document.getElementById('successOverlay');
+        const successCountEl = document.getElementById('successCount');
+        const sendMoreBtn = document.getElementById('sendMoreBtn');
+        const formContent = document.getElementById('formContent');
         const params = new URLSearchParams(window.location.search);
         const token = params.get('token');
         
         form.action = '/upload?token=' + encodeURIComponent(token || '');
 
-        let activeInput = null;
+        let selectedFiles = [];
 
-        function showPreview(file) {
-            if (!file) return;
-            const reader = new FileReader();
-            reader.onload = function(e) {
-                previewImg.src = e.target.result;
-                previewArea.classList.add('visible');
-                submitBtn.classList.add('visible');
-                fileNameEl.textContent = file.name;
-            };
-            reader.readAsDataURL(file);
+        function updatePreview() {
+            previewGrid.innerHTML = '';
+            if (selectedFiles.length === 0) {
+                previewArea.classList.remove('visible');
+                submitBtn.classList.remove('visible');
+                return;
+            }
+            selectedFiles.forEach(file => {
+                const reader = new FileReader();
+                reader.onload = function(e) {
+                    const img = document.createElement('img');
+                    img.src = e.target.result;
+                    img.alt = file.name;
+                    previewGrid.appendChild(img);
+                };
+                reader.readAsDataURL(file);
+            });
+            previewArea.classList.add('visible');
+            submitBtn.classList.add('visible');
+            const count = selectedFiles.length;
+            fileCountEl.textContent = count + ' foto' + (count > 1 ? 's' : '') + ' selecionada' + (count > 1 ? 's' : '');
+            submitBtn.textContent = 'Enviar ' + count + ' Foto' + (count > 1 ? 's' : '');
+        }
+
+        function addFiles(files) {
+            if (!files) return;
+            const newFiles = Array.from(files);
+            if (selectedFiles.length + newFiles.length > 3) {
+                statusEl.className = 'error';
+                statusEl.textContent = 'M\u00e1ximo de 3 fotos permitido.';
+                return;
+            }
+            selectedFiles = selectedFiles.concat(newFiles);
+            updatePreview();
         }
 
         cameraBtn.addEventListener('click', function() {
-            galleryInput.value = '';
-            activeInput = cameraInput;
+            cameraInput.value = '';
             cameraInput.click();
         });
 
         galleryBtn.addEventListener('click', function() {
-            cameraInput.value = '';
-            activeInput = galleryInput;
+            galleryInput.value = '';
             galleryInput.click();
         });
 
         cameraInput.addEventListener('change', function() {
-            if (this.files && this.files[0]) {
-                galleryInput.value = '';
-                activeInput = cameraInput;
-                showPreview(this.files[0]);
-            }
+            selectedFiles = [];
+            addFiles(this.files);
         });
 
         galleryInput.addEventListener('change', function() {
-            if (this.files && this.files[0]) {
-                cameraInput.value = '';
-                activeInput = galleryInput;
-                showPreview(this.files[0]);
-            }
+            selectedFiles = [];
+            addFiles(this.files);
         });
         
         form.addEventListener('submit', async (e) => {
             e.preventDefault();
-            const input = activeInput || cameraInput;
-            if (!input || !input.files || !input.files[0]) {
+            if (selectedFiles.length === 0) {
                 statusEl.className = 'error';
                 statusEl.textContent = 'Selecione uma foto primeiro.';
+                return;
+            }
+            if (selectedFiles.length > 3) {
+                statusEl.className = 'error';
+                statusEl.textContent = 'M\u00e1ximo de 3 fotos permitido.';
                 return;
             }
             submitBtn.disabled = true;
@@ -290,7 +364,9 @@ const HTML_UPLOAD_PAGE: &str = r#"<!DOCTYPE html>
             statusEl.textContent = 'Enviando...';
             
             const formData = new FormData();
-            formData.append('photo', input.files[0]);
+            selectedFiles.forEach(file => {
+                formData.append('photo[]', file);
+            });
 
             try {
                 const response = await fetch(form.action, {
@@ -299,15 +375,13 @@ const HTML_UPLOAD_PAGE: &str = r#"<!DOCTYPE html>
                 });
                 const result = await response.json();
                 if (result.success) {
-                    statusEl.className = 'success';
-                    statusEl.textContent = result.message || 'Foto enviada com sucesso! \u2713';
-                    form.reset();
-                    cameraInput.value = '';
-                    galleryInput.value = '';
-                    previewArea.classList.remove('visible');
-                    submitBtn.classList.remove('visible');
-                    submitBtn.classList.remove('visible');
-                    activeInput = null;
+                    formContent.style.display = 'none';
+                    form.style.display = 'none';
+                    statusEl.style.display = 'none';
+                    successOverlay.classList.add('visible');
+                    const count = result.count || selectedFiles.length;
+                    successCountEl.textContent = count + ' foto' + (count > 1 ? 's' : '') + ' enviada' + (count > 1 ? 's' : '');
+                    selectedFiles = [];
                 } else {
                     statusEl.className = 'error';
                     statusEl.textContent = result.error || result.message || 'Erro ao enviar foto';
@@ -318,6 +392,21 @@ const HTML_UPLOAD_PAGE: &str = r#"<!DOCTYPE html>
             } finally {
                 submitBtn.disabled = false;
             }
+        });
+
+        sendMoreBtn.addEventListener('click', function() {
+            formContent.style.display = 'flex';
+            form.style.display = 'block';
+            statusEl.style.display = 'none';
+            successOverlay.classList.remove('visible');
+            selectedFiles = [];
+            cameraInput.value = '';
+            galleryInput.value = '';
+            previewArea.classList.remove('visible');
+            submitBtn.classList.remove('visible');
+            submitBtn.textContent = 'Enviar Foto';
+            statusEl.className = '';
+            statusEl.textContent = '';
         });
     </script>
 </body>
@@ -332,7 +421,7 @@ struct TokenData {
     expires_at: Instant,
     used: bool,
     /// Stores resized image bytes when equipamento_id == 0 (draft mode)
-    image_data: Option<Arc<ImageData>>,
+    image_data: Option<Arc<Vec<ImageData>>>,
 }
 
 /// Image data returned via status endpoint for draft uploads (equipamento_id == 0)
@@ -386,7 +475,7 @@ struct StatusResponse {
     valid: bool,
     used: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
-    image_data: Option<ImageDataResponse>,
+    image_data: Option<Vec<ImageDataResponse>>,
 }
 
 // ── Helpers ────────────────────────────────────────────────────
@@ -449,18 +538,21 @@ async fn upload_handler(
     if let Some(content_length) = headers.get("content-length") {
         if let Ok(len_str) = content_length.to_str() {
             if let Ok(len) = len_str.parse::<usize>() {
-                if len > MAX_IMAGE_BYTES * 2 {
+                if len > MAX_IMAGE_BYTES * 3 {
                     return Json(json!({
                         "success": false,
-                        "error": "Arquivo muito grande. Máximo 3MB."
+                        "error": "Requisição muito grande. Máximo 9MB no total."
                     }));
                 }
             }
         }
     }
 
+    let mut images = Vec::new();
+
     while let Some(field) = multipart.next_field().await.ok().flatten() {
-        if field.name() != Some("photo") {
+        let name = field.name();
+        if name != Some("photo") && name != Some("photo[]") {
             continue;
         }
 
@@ -514,26 +606,53 @@ async fn upload_handler(
             }));
         }
 
-        // Draft mode: equipamento_id == 0 means don't save to DB
-        if token_data.equipamento_id == 0 {
-            let mut store = state.token_store.lock().await;
-            if let Some(t) = store.get_mut(&params.token) {
-                t.used = true;
-                t.image_data = Some(Arc::new(ImageData {
-                    bytes: encoded,
-                    filename: filename.clone(),
-                    mime_type: final_mime.clone(),
-                }));
-            }
+        images.push((encoded, final_mime, filename));
+    }
 
-            info!("Foto recebida (modo rascunho): filename={}", filename);
+    if images.is_empty() {
+        return Json(json!({
+            "success": false,
+            "error": "Nenhuma foto enviada"
+        }));
+    }
 
-            return Json(json!({
-                "success": true,
-                "message": "Foto recebida com sucesso!"
-            }));
+    if images.len() > 3 {
+        return Json(json!({
+            "success": false,
+            "error": "Máximo de 3 fotos permitido."
+        }));
+    }
+
+    // Draft mode: equipamento_id == 0 means don't save to DB
+    if token_data.equipamento_id == 0 {
+        let count = images.len();
+        let image_vec: Vec<ImageData> = images
+            .into_iter()
+            .map(|(bytes, mime_type, filename)| ImageData {
+                bytes,
+                filename,
+                mime_type,
+            })
+            .collect();
+
+        let mut store = state.token_store.lock().await;
+        if let Some(t) = store.get_mut(&params.token) {
+            t.used = true;
+            t.image_data = Some(Arc::new(image_vec));
         }
 
+        info!("Fotos recebidas (modo rascunho): count={}", count);
+
+        return Json(json!({
+            "success": true,
+            "message": format!("{} foto(s) enviada(s) com sucesso!", count),
+            "count": count
+        }));
+    }
+
+    let mut imagem_ids = Vec::new();
+
+    for (encoded, final_mime, filename) in images {
         match adicionar_imagem_equipamento_raw(
             token_data.equipamento_id,
             token_data.categoria.clone(),
@@ -545,36 +664,7 @@ async fn upload_handler(
         .await
         {
             Ok(row) => {
-                // ── Update last activity ──────────────────────
-                {
-                    let mut last = state.last_activity.lock().unwrap_or_else(|e| e.into_inner());
-                    *last = Instant::now();
-                }
-
-                // ── Emit photo-received event to frontend ─────
-                let payload = json!({
-                    "equipamento_id": token_data.equipamento_id,
-                    "imagem_id": row.id,
-                });
-                if let Err(e) = state.app_handle.emit("photo-received", payload) {
-                    error!("Falha ao emitir evento photo-received: {}", e);
-                }
-
-                // ── Mark token as used ───────────────────────
-                let mut store = state.token_store.lock().await;
-                if let Some(t) = store.get_mut(&params.token) {
-                    t.used = true;
-                }
-
-                info!(
-                    "Foto recebida: equipamento={} imagem={}",
-                    token_data.equipamento_id, row.id
-                );
-
-                return Json(json!({
-                    "success": true,
-                    "message": "Foto salva com sucesso!"
-                }));
+                imagem_ids.push(row.id);
             }
             Err(e) => {
                 return Json(json!({
@@ -585,9 +675,39 @@ async fn upload_handler(
         }
     }
 
+    // ── Update last activity ──────────────────────
+    {
+        let mut last = state.last_activity.lock().unwrap_or_else(|e| e.into_inner());
+        *last = Instant::now();
+    }
+
+    // ── Emit photo-received events to frontend ─────
+    for imagem_id in &imagem_ids {
+        let payload = json!({
+            "equipamento_id": token_data.equipamento_id,
+            "imagem_id": imagem_id,
+        });
+        if let Err(e) = state.app_handle.emit("photo-received", payload) {
+            error!("Falha ao emitir evento photo-received: {}", e);
+        }
+    }
+
+    // ── Mark token as used ───────────────────────
+    let mut store = state.token_store.lock().await;
+    if let Some(t) = store.get_mut(&params.token) {
+        t.used = true;
+    }
+
+    let count = imagem_ids.len();
+    info!(
+        "Fotos recebidas: equipamento={} count={}",
+        token_data.equipamento_id, count
+    );
+
     Json(json!({
-        "success": false,
-        "error": "Nenhuma foto enviada"
+        "success": true,
+        "message": format!("{} foto(s) salva(s) com sucesso!", count),
+        "count": count
     }))
 }
 
@@ -643,10 +763,14 @@ async fn status_handler(
     let used = token_data.map(|t| t.used).unwrap_or(false);
     let image_data = token_data
         .and_then(|t| t.image_data.clone())
-        .map(|data| ImageDataResponse {
-            bytes: data.bytes.clone(),
-            filename: data.filename.clone(),
-            mime_type: data.mime_type.clone(),
+        .map(|vec| {
+            vec.iter()
+                .map(|data| ImageDataResponse {
+                    bytes: data.bytes.clone(),
+                    filename: data.filename.clone(),
+                    mime_type: data.mime_type.clone(),
+                })
+                .collect::<Vec<_>>()
         });
     Json(StatusResponse { valid, used, image_data })
 }
