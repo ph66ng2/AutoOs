@@ -21,6 +21,7 @@
  */
 import { useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
+import { toast } from "sonner";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { db } from "@/lib/db";
 import { SmtpConfigService } from "@/lib/smtp-config";
@@ -63,6 +64,7 @@ export default function Configuracoes() {
   const [auditEvents, setAuditEvents] = useState<SecurityAuditEvent[]>([]);
   const [profilesCatalog, setProfilesCatalog] = useState<SecurityProfile[]>([]);
   const [securityBusy, setSecurityBusy] = useState(false);
+  const [inactivityLockEnabled, setInactivityLockEnabled] = useState(false);
   const [currentPin, setCurrentPin] = useState("");
   const [newPin, setNewPin] = useState("");
   const [confirmPin, setConfirmPin] = useState("");
@@ -250,6 +252,15 @@ export default function Configuracoes() {
     }
   }
 
+  async function loadInactivityConfig() {
+    try {
+      const config = await db.verificarConfigInatividade();
+      setInactivityLockEnabled(config.inactivity_lock_enabled);
+    } catch (error: any) {
+      setSecurityMessage(error?.message || error?.toString() || "Falha ao carregar configuração de inatividade.");
+    }
+  }
+
   useEffect(() => {
     async function loadConfig() {
       if (!canConfigureSmtp) {
@@ -372,6 +383,10 @@ export default function Configuracoes() {
 
   useEffect(() => {
     void loadSupportStatus();
+  }, [canManageProfiles, accessStatus?.active_profile_id]);
+
+  useEffect(() => {
+    void loadInactivityConfig();
   }, [canManageProfiles, accessStatus?.active_profile_id]);
 
   async function onSubmit(values: SmtpFormValues) {
@@ -818,6 +833,19 @@ export default function Configuracoes() {
     setSecurityMessage("Gestão de segurança liberada para esta sessão.");
   }
 
+  async function handleInactivityToggle(enabled: boolean) {
+    setSecurityBusy(true);
+    try {
+      const result = await db.salvarConfigInatividade(enabled);
+      setInactivityLockEnabled(result.inactivity_lock_enabled);
+      toast.success("Configuração salva");
+    } catch (error: any) {
+      setSecurityMessage(error?.message || error?.toString() || "Falha ao salvar configuração de inatividade.");
+    } finally {
+      setSecurityBusy(false);
+    }
+  }
+
   if ((canConfigureSmtp && loading) || (canConfigureWhatsapp && whatsappLoading)) {
     return (
       <div className="flex items-center justify-center h-64">
@@ -955,6 +983,8 @@ export default function Configuracoes() {
           setNewProfileNoPin={setNewProfileNoPin}
           criarPerfil={criarPerfil}
           securityMessage={securityMessage}
+          inactivityLockEnabled={inactivityLockEnabled}
+          onToggleInactivityLock={handleInactivityToggle}
         />
 
       </Tabs>

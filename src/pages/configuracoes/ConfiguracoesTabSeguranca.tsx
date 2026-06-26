@@ -71,6 +71,8 @@ export type ConfiguracoesTabSegurancaProps = {
   setNewProfileNoPin: (value: boolean) => void;
   criarPerfil: () => void | Promise<void>;
   securityMessage: string | null;
+  inactivityLockEnabled: boolean;
+  onToggleInactivityLock: (enabled: boolean) => void | Promise<void>;
 };
 
 export function ConfiguracoesTabSeguranca({
@@ -121,9 +123,38 @@ export function ConfiguracoesTabSeguranca({
   setNewProfileNoPin,
   criarPerfil,
   securityMessage,
+  inactivityLockEnabled,
+  onToggleInactivityLock,
 }: ConfiguracoesTabSegurancaProps) {
   return (
     <TabsContent value="seguranca" className="space-y-4">
+      {canManageProfiles && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Bloqueio por inatividade</CardTitle>
+            <CardDescription>
+              Quando ativado, o sistema pede PIN novamente ap&oacute;s 15 minutos sem uso.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="flex items-center gap-3 rounded-lg border p-3">
+              <Checkbox
+                id="inactivity-lock-toggle"
+                checked={inactivityLockEnabled}
+                onCheckedChange={(value) => void onToggleInactivityLock(!!value)}
+                disabled={securityBusy}
+              />
+              <Label htmlFor="inactivity-lock-toggle" className="cursor-pointer">
+                <p className="text-sm font-medium">Bloqueio por inatividade</p>
+                <p className="text-xs text-muted-foreground">
+                  Exige PIN novamente ap&oacute;s per&iacute;odo de inatividade
+                </p>
+              </Label>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       {canManageProfiles && (
         <Card>
           <CardHeader>
