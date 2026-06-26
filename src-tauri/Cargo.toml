@@ -9,6 +9,34 @@ default-run = "autoos"
 [build-dependencies]
 tauri-build = { version = "2.0", features = [] }
 
+[[bin]]
+name = "runtime_smoke"
+path = "src/bin/runtime_smoke.rs"
+
+[[bin]]
+name = "p1_concurrency_integration"
+path = "src/bin/p1_concurrency_integration.rs"
+
+[[bin]]
+name = "p1_windows_support_check"
+path = "src/bin/p1_windows_support_check.rs"
+
+[[bin]]
+name = "p1_critical_integration"
+path = "src/bin/p1_critical_integration.rs"
+
+[[bin]]
+name = "p1_communication_integration"
+path = "src/bin/p1_communication_integration.rs"
+
+[[bin]]
+name = "test_auth_inactivity"
+path = "src/bin/test_auth_inactivity.rs"
+
+[[bin]]
+name = "test_auth_optional_pin"
+path = "src/bin/test_auth_optional_pin.rs"
+
 [dependencies]
 tauri = { version = "2.11.0", features = [] }
 serde = { version = "1", features = ["derive"] }

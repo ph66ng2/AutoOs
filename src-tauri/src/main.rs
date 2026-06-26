@@ -115,6 +115,8 @@ fn main() {
             commands::auth::reactivate_security_profile,
             commands::auth::register_security_audit_export,
             commands::auth::list_security_audit_events,
+            commands::auth::verificar_config_inatividade,
+            commands::auth::salvar_config_inatividade,
             // Util
             commands::util::salvar_arquivo_temp,
             commands::util::copiar_anexo_email_para_temp,

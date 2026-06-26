@@ -9,6 +9,7 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use sqlx::{FromRow, Row};
 use std::collections::{BTreeSet, HashMap};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Mutex, OnceLock};
 use tracing::{debug, error, instrument, warn};
 
@@ -39,6 +40,7 @@ const ALL_PERMISSIONS: [&str; 7] = [
 
 static SENSITIVE_SESSION: OnceLock<Mutex<SensitiveSession>> = OnceLock::new();
 static UNLOCK_ATTEMPTS: OnceLock<Mutex<HashMap<i32, UnlockAttemptTracker>>> = OnceLock::new();
+static INACTIVITY_LOCK_ENABLED: AtomicBool = AtomicBool::new(false);
 
 #[derive(Debug, Default, Clone)]
 struct UnlockAttemptTracker {
@@ -47,10 +49,10 @@ struct UnlockAttemptTracker {
 }
 
 #[derive(Debug, Default, Clone)]
-struct SensitiveSession {
-    unlocked_until: Option<DateTime<Utc>>,
-    profile_obfuscated: Option<Vec<u8>>,
-    profile_key: Option<Vec<u8>>,
+pub(crate) struct SensitiveSession {
+    pub(crate) unlocked_until: Option<DateTime<Utc>>,
+    pub(crate) profile_obfuscated: Option<Vec<u8>>,
+    pub(crate) profile_key: Option<Vec<u8>>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -118,7 +120,7 @@ struct SecurityProfileRecord {
     is_default: bool,
 }
 
-fn session_state() -> &'static Mutex<SensitiveSession> {
+pub(crate) fn session_state() -> &'static Mutex<SensitiveSession> {
     SENSITIVE_SESSION.get_or_init(|| Mutex::new(SensitiveSession::default()))
 }
 
@@ -233,6 +235,9 @@ fn upgrade_pin_hash_if_legacy(profile_id: i32, pin: &str, stored: &StoredSensiti
 
 fn validate_pin_format(pin: &str) -> Result<(), String> {
     let trimmed = pin.trim();
+    if trimmed.is_empty() {
+        return Ok(());
+    }
     if !(4..=8).contains(&trimmed.len()) || !trimmed.chars().all(|character| character.is_ascii_digit()) {
         return Err("PIN deve conter entre 4 e 8 dígitos numéricos".to_string());
     }
@@ -406,10 +411,68 @@ fn clear_session() -> Result<(), String> {
     Ok(())
 }
 
-fn current_session_profile() -> Result<Option<(DateTime<Utc>, SecurityProfileSummary)>, String> {
+async fn read_inactivity_config_from_db() -> Result<bool, String> {
+    let pool = get_pool().await.map_err(|e| e.to_string())?;
+    let row = sqlx::query_scalar::<_, bool>(
+        "SELECT inactivity_lock_enabled FROM configuracoes_sistema WHERE id = 1"
+    )
+    .fetch_one(&pool)
+    .await
+    .map_err(|e| {
+        error!("Erro ao ler configuração de inatividade: {}", e);
+        e.to_string()
+    })?;
+    INACTIVITY_LOCK_ENABLED.store(row, Ordering::Relaxed);
+    Ok(row)
+}
+
+#[tauri::command]
+#[instrument(skip_all)]
+pub async fn verificar_config_inatividade() -> Result<bool, String> {
+    read_inactivity_config_from_db().await
+}
+
+#[tauri::command]
+#[instrument(skip_all)]
+pub async fn salvar_config_inatividade(enabled: bool) -> Result<bool, String> {
+    let actor = require_permission(PERMISSION_MANAGE_PROFILES)?;
+    let pool = get_pool().await.map_err(|e| e.to_string())?;
+
+    sqlx::query(
+        "UPDATE configuracoes_sistema SET inactivity_lock_enabled = $1, updated_at = NOW() WHERE id = 1"
+    )
+    .bind(enabled)
+    .execute(&pool)
+    .await
+    .map_err(|e| {
+        error!("Erro ao salvar configuração de inatividade: {}", e);
+        e.to_string()
+    })?;
+
+    INACTIVITY_LOCK_ENABLED.store(enabled, Ordering::Relaxed);
+
+    record_security_event(
+        "INACTIVITY_LOCK_TOGGLED",
+        Some(&actor),
+        format!("inactivity_lock_enabled={}", enabled),
+        true,
+    )
+    .await;
+
+    Ok(enabled)
+}
+
+pub(crate) fn current_session_profile() -> Result<Option<(DateTime<Utc>, SecurityProfileSummary)>, String> {
     let mut session = session_state().lock().map_err(|_| "Sessão sensível indisponível".to_string())?;
     match (session.unlocked_until, session.profile_obfuscated.clone(), session.profile_key.clone()) {
-        (Some(until), Some(data), Some(key)) if until > Utc::now() => {
+        (Some(until), Some(data), Some(key)) => {
+            let inactivity_enabled = INACTIVITY_LOCK_ENABLED.load(Ordering::Relaxed);
+            if inactivity_enabled && until <= Utc::now() {
+                session.unlocked_until = None;
+                session.profile_obfuscated = None;
+                session.profile_key = None;
+                return Ok(None);
+            }
             match deobfuscate_profile(&data, &key) {
                 Ok(profile) => Ok(Some((until, profile))),
                 Err(_) => {
@@ -429,7 +492,7 @@ fn current_session_profile() -> Result<Option<(DateTime<Utc>, SecurityProfileSum
     }
 }
 
-fn unlock_session(profile: SecurityProfileSummary) -> Result<(), String> {
+pub(crate) fn unlock_session(profile: SecurityProfileSummary) -> Result<(), String> {
     let expires_at = Utc::now() + Duration::minutes(SESSION_TIMEOUT_MINUTES);
     let key = generate_session_key();
     let (obfuscated, key) = obfuscate_profile(&profile, &key)?;
@@ -925,7 +988,9 @@ pub async fn create_security_profile(input: SecurityProfileInput, pin: String) -
     })?;
 
     let profile_id: i32 = row.try_get("id").map_err(|e| e.to_string())?;
-    store_profile_pin(profile_id, &pin)?;
+    if !pin.trim().is_empty() {
+        store_profile_pin(profile_id, &pin)?;
+    }
     tx.commit().await.map_err(|e| e.to_string())?;
 
     let created = to_profile_summary(fetch_profile_record_by_id(profile_id).await?)?;
