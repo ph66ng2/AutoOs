@@ -2,8 +2,7 @@
  * Testes do OrcamentoRapidoDialog — formulário enxuto de orçamento rápido
  *
  * Cobre:
- * - Renderização dos 5 campos (Cliente, Equipamento, Serviços, Valor, Defeito)
- * - Filtragem de equipamentos por cliente
+ * - Renderização dos campos principais
  * - Adição/remoção de serviços com auto-complete do catálogo
  * - Cálculo automático do valor total
  * - Submissão: cria equipamento + verificação + gera PDF
@@ -44,6 +43,7 @@ const mockDb = vi.hoisted(() => ({
   listarServicosCatalogoAtivos: vi.fn(),
   criarEquipamento: vi.fn(),
   salvarVerificacao: vi.fn(),
+  buscarCliente: vi.fn(),
 }));
 
 vi.mock("@/lib/db", () => ({
@@ -53,8 +53,8 @@ vi.mock("@/lib/db", () => ({
 // ─── Fixtures ───────────────────────────────────────────
 
 const clientesMock = [
-  { id: 1, nome: "Cliente A", tipo_pessoa: "PF", telefone: "11999990001", email: "a@ex.com" },
-  { id: 2, nome: "Cliente B", tipo_pessoa: "PJ", razao_social: "B Ltda", nome_fantasia: "B Fantasia", telefone: "11999990002", email: "b@ex.com" },
+  { id: 1, nome: "Cliente A", tipo_pessoa: "PF", telefone: "11999990001", email: "a@ex.com", documento: "12345678901", cpf_cnpj: "12345678901" },
+  { id: 2, nome: "Cliente B", tipo_pessoa: "PJ", razao_social: "B Ltda", nome_fantasia: "B Fantasia", telefone: "11999990002", email: "b@ex.com", documento: "12345678000100", cpf_cnpj: "12345678000100" },
 ];
 
 const equipamentosMock = [
@@ -68,6 +68,40 @@ const catalogoMock = [
   { id: 102, nome: "Troca de Cabeça", descricao: "Substituição cabeça térmica", preco_padrao: 450.0, ativo: true },
 ];
 
+// ─── Helpers ────────────────────────────────────────────
+
+async function selecionarClienteViaBusca(nomeCliente: string, cliente: typeof clientesMock[0]) {
+  const searchInput = screen.getByPlaceholderText(/Buscar cliente/i);
+
+  await act(async () => {
+    fireEvent.change(searchInput, { target: { value: nomeCliente } });
+  });
+
+  await waitFor(() => {
+    expect(screen.getByText(nomeCliente)).toBeInTheDocument();
+  });
+
+  await act(async () => {
+    fireEvent.click(screen.getByText(nomeCliente));
+  });
+}
+
+async function selecionarEquipamentoViaBusca(termo: string, equipamentoTexto: string) {
+  const searchInput = screen.getByPlaceholderText(/Buscar equipamento/i);
+
+  await act(async () => {
+    fireEvent.change(searchInput, { target: { value: termo } });
+  });
+
+  await waitFor(() => {
+    expect(screen.getByText(equipamentoTexto)).toBeInTheDocument();
+  });
+
+  await act(async () => {
+    fireEvent.click(screen.getByText(equipamentoTexto));
+  });
+}
+
 // ─── Suite ──────────────────────────────────────────────
 
 describe("OrcamentoRapidoDialog", () => {
@@ -79,8 +113,22 @@ describe("OrcamentoRapidoDialog", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
-    mockDb.listarClientes.mockResolvedValue(clientesMock);
-    mockDb.listarEquipamentos.mockResolvedValue(equipamentosMock);
+    mockDb.listarClientes.mockImplementation((termo?: string) => {
+      if (!termo || termo.length < 2) return Promise.resolve([]);
+      const filtrados = clientesMock.filter((c) =>
+        c.nome.toLowerCase().includes(termo.toLowerCase())
+      );
+      return Promise.resolve(filtrados);
+    });
+    mockDb.listarEquipamentos.mockImplementation((termo?: string) => {
+      if (!termo || termo.length < 2) return Promise.resolve([]);
+      const filtrados = equipamentosMock.filter((eq) =>
+        `${eq.marca} ${eq.modelo} ${eq.serial_number} ${eq.patrimonio || ""}`
+          .toLowerCase()
+          .includes(termo.toLowerCase())
+      );
+      return Promise.resolve(filtrados);
+    });
     mockDb.listarServicosCatalogoAtivos.mockResolvedValue(catalogoMock);
     mockDb.criarEquipamento.mockResolvedValue({
       id: 99,
@@ -98,55 +146,54 @@ describe("OrcamentoRapidoDialog", () => {
 
   // ─── Teste 1: Renderização dos campos ────────────────
 
-  it("renderiza os 5 campos principais e o label 'Orçamento Rápido'", async () => {
+  it("renderiza os campos principais e o label 'Orçamento Rápido'", async () => {
     render(<OrcamentoRapidoDialog {...defaultProps} />);
 
     await waitFor(() => {
       expect(screen.getByText("Orçamento Rápido")).toBeInTheDocument();
     });
 
-    expect(screen.getByLabelText(/Cliente/i)).toBeInTheDocument();
-    expect(screen.getByLabelText(/Equipamento/i)).toBeInTheDocument();
+    expect(screen.getByPlaceholderText(/Buscar cliente/i)).toBeInTheDocument();
+    expect(screen.getByPlaceholderText(/Buscar equipamento/i)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /Adicionar Serviço/i })).toBeInTheDocument();
     expect(screen.getByLabelText(/Valor total/i)).toBeInTheDocument();
     expect(screen.getByLabelText(/Defeito Relatado/i)).toBeInTheDocument();
   });
 
-  // ─── Teste 2: Carrega dados ao abrir ─────────────────
+  // ─── Teste 2: Carrega catálogo ao abrir ──────────────
 
-  it("carrega clientes, equipamentos e catálogo ao montar", async () => {
+  it("carrega catálogo de serviços ao montar", async () => {
     render(<OrcamentoRapidoDialog {...defaultProps} />);
 
     await waitFor(() => {
-      expect(mockDb.listarClientes).toHaveBeenCalled();
-      expect(mockDb.listarEquipamentos).toHaveBeenCalled();
       expect(mockDb.listarServicosCatalogoAtivos).toHaveBeenCalled();
     });
+
+    // listarEquipamentos is no longer called on mount — EquipamentoSelector handles its own search
+    expect(mockDb.listarEquipamentos).not.toHaveBeenCalled();
+    expect(mockDb.listarClientes).not.toHaveBeenCalled();
   });
 
-  // ─── Teste 3: Filtragem de equipamentos por cliente ──
+  // ─── Teste 3: Busca de equipamentos ──────────────────
 
-  it("filtra equipamentos no dropdown quando um cliente é selecionado", async () => {
+  it("busca equipamentos via EquipamentoSelector quando o usuário digita", async () => {
     render(<OrcamentoRapidoDialog {...defaultProps} />);
 
     await waitFor(() => {
-      expect(screen.getByLabelText(/Cliente/i)).toBeInTheDocument();
+      expect(screen.getByPlaceholderText(/Buscar equipamento/i)).toBeInTheDocument();
     });
-
-    const selectCliente = screen.getByLabelText(/Cliente/i) as HTMLSelectElement;
 
     await act(async () => {
-      fireEvent.change(selectCliente, { target: { value: "1" } });
+      fireEvent.change(screen.getByPlaceholderText(/Buscar equipamento/i), { target: { value: "Zebra" } });
     });
 
-    const selectEquipamento = screen.getByLabelText(/Equipamento/i) as HTMLSelectElement;
-    const options = Array.from(selectEquipamento.querySelectorAll("option"));
-    const values = options.map((o) => o.value);
+    await waitFor(() => {
+      expect(mockDb.listarEquipamentos).toHaveBeenCalledWith("Zebra");
+    });
 
-    // Deve ter placeholder + equipamentos do cliente 1 (2 equipamentos)
-    expect(values).toContain("10");
-    expect(values).toContain("11");
-    expect(values).not.toContain("20");
+    await waitFor(() => {
+      expect(screen.getByText("Zebra ZT230")).toBeInTheDocument();
+    });
   });
 
   // ─── Teste 4: Adicionar serviço do catálogo ──────────
@@ -181,7 +228,6 @@ describe("OrcamentoRapidoDialog", () => {
       fireEvent.click(screen.getByText(/Limpeza Geral/i));
     });
 
-    // O valor deve ser preenchido com 150.00
     const valorInputs = screen.getAllByPlaceholderText(/Valor/i);
     expect(valorInputs[0]).toHaveValue(150);
   });
@@ -195,7 +241,6 @@ describe("OrcamentoRapidoDialog", () => {
       expect(screen.getByText(/Adicionar Serviço/i)).toBeInTheDocument();
     });
 
-    // Adiciona 2 serviços
     await act(async () => {
       fireEvent.click(screen.getByText(/Adicionar Serviço/i));
     });
@@ -239,22 +284,17 @@ describe("OrcamentoRapidoDialog", () => {
     render(<OrcamentoRapidoDialog {...defaultProps} />);
 
     await waitFor(() => {
-      expect(screen.getByLabelText(/Cliente/i)).toBeInTheDocument();
+      expect(screen.getByPlaceholderText(/Buscar cliente/i)).toBeInTheDocument();
     });
 
-    // Seleciona cliente
-    const selectCliente = screen.getByLabelText(/Cliente/i) as HTMLSelectElement;
-    await act(async () => {
-      fireEvent.change(selectCliente, { target: { value: "1" } });
+    await selecionarClienteViaBusca("Cliente A", clientesMock[0]);
+
+    await waitFor(() => {
+      expect(screen.getByText("Cliente Vinculado")).toBeInTheDocument();
     });
 
-    // Seleciona equipamento
-    const selectEquipamento = screen.getByLabelText(/Equipamento/i) as HTMLSelectElement;
-    await act(async () => {
-      fireEvent.change(selectEquipamento, { target: { value: "10" } });
-    });
+    await selecionarEquipamentoViaBusca("Zebra", "Zebra ZT230");
 
-    // Adiciona serviço
     await act(async () => {
       fireEvent.click(screen.getByText(/Adicionar Serviço/i));
     });
@@ -264,13 +304,11 @@ describe("OrcamentoRapidoDialog", () => {
       fireEvent.change(valorInputs[0], { target: { value: "150" } });
     });
 
-    // Preenche defeito
     const defeito = screen.getByLabelText(/Defeito Relatado/i);
     await act(async () => {
       fireEvent.change(defeito, { target: { value: "Não liga" } });
     });
 
-    // Submete
     await act(async () => {
       fireEvent.click(screen.getByRole("button", { name: /Gerar Orçamento/i }));
     });
@@ -279,19 +317,15 @@ describe("OrcamentoRapidoDialog", () => {
       expect(mockDb.criarEquipamento).toHaveBeenCalled();
     });
 
-    // Verifica que o equipamento foi criado com status AGUARDANDO_APROVACAO
     const equipCall = mockDb.criarEquipamento.mock.calls[0][0];
     expect(equipCall.status).toBe("AGUARDANDO_APROVACAO");
     expect(equipCall.cliente_id).toBe(1);
 
-    // Verifica que a verificação foi salva com serviços JSON
-    expect(mockDb.salvarVerificacao).toHaveBeenCalled();
     const verifCall = mockDb.salvarVerificacao.mock.calls[0][0];
     expect(verifCall.equipamento_id).toBe(99);
     expect(verifCall.problema_relatado).toBe("Não liga");
     expect(JSON.parse(verifCall.servicos_necessarios)).toHaveLength(1);
 
-    // Verifica que o PDF foi gerado
     expect(mockGerarOrcamento).toHaveBeenCalled();
   });
 
@@ -301,12 +335,13 @@ describe("OrcamentoRapidoDialog", () => {
     render(<OrcamentoRapidoDialog {...defaultProps} />);
 
     await waitFor(() => {
-      expect(screen.getByLabelText(/Cliente/i)).toBeInTheDocument();
+      expect(screen.getByPlaceholderText(/Buscar cliente/i)).toBeInTheDocument();
     });
 
-    const selectCliente = screen.getByLabelText(/Cliente/i) as HTMLSelectElement;
-    await act(async () => {
-      fireEvent.change(selectCliente, { target: { value: "1" } });
+    await selecionarClienteViaBusca("Cliente A", clientesMock[0]);
+
+    await waitFor(() => {
+      expect(screen.getByText("Cliente Vinculado")).toBeInTheDocument();
     });
 
     await act(async () => {
@@ -340,7 +375,6 @@ describe("OrcamentoRapidoDialog", () => {
       fireEvent.change(valorInputs[0], { target: { value: "100" } });
     });
 
-    // Adiciona mais um
     await act(async () => {
       fireEvent.click(screen.getByText(/Adicionar Serviço/i));
     });
@@ -353,7 +387,6 @@ describe("OrcamentoRapidoDialog", () => {
     const valorTotal = screen.getByLabelText(/Valor total/i) as HTMLInputElement;
     expect(valorTotal.value).toBe("300");
 
-    // Remove o primeiro
     const removeButtons = screen.getAllByRole("button", { name: /Remover/i });
     await act(async () => {
       fireEvent.click(removeButtons[0]);
@@ -376,6 +409,5 @@ describe("OrcamentoRapidoDialog", () => {
     });
 
     expect(mockDb.criarEquipamento).not.toHaveBeenCalled();
-    expect(screen.getByText("Selecione um cliente.")).toBeInTheDocument();
   });
 });

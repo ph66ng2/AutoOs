@@ -9,7 +9,9 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use sqlx::{FromRow, Row};
 use std::collections::{BTreeSet, HashMap};
+use native_tls::TlsConnector;
 use tokio_postgres::NoTls;
+use postgres_native_tls::MakeTlsConnector;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Mutex, OnceLock};
 use tracing::{debug, error, instrument, warn};
@@ -1078,6 +1080,36 @@ pub async fn reset_security_profile_pin(profile_id: i32, new_pin: String) -> Res
     status_snapshot().await
 }
 
+/// Helper interno para conectar ao PostgreSQL via tokio-postgres.
+/// Quando `use_tls` é true, tenta TLS (necessário para conexões remotas/Supabase).
+/// Quando `use_tls` é false, conecta sem TLS (modo local).
+async fn try_connect_pg(conn_str: &str, use_tls: bool) -> Result<tokio_postgres::Client, String> {
+    if use_tls {
+        let connector = TlsConnector::new()
+            .map_err(|e| format!("Falha ao criar TLS connector: {}", e))?;
+        let tls = MakeTlsConnector::new(connector);
+        let (client, connection) = tokio_postgres::connect(conn_str, tls)
+            .await
+            .map_err(|e| format!("Falha na conexão TLS: {}", e))?;
+        tokio::spawn(async move {
+            if let Err(e) = connection.await {
+                warn!("Erro na conexão TLS tokio-postgres: {}", e);
+            }
+        });
+        Ok(client)
+    } else {
+        let (client, connection) = tokio_postgres::connect(conn_str, NoTls)
+            .await
+            .map_err(|e| format!("Falha na conexão NoTls: {}", e))?;
+        tokio::spawn(async move {
+            if let Err(e) = connection.await {
+                warn!("Erro na conexão NoTls tokio-postgres: {}", e);
+            }
+        });
+        Ok(client)
+    }
+}
+
 #[tauri::command]
 #[instrument(skip_all)]
 pub async fn verificar_credenciais_banco(
@@ -1092,24 +1124,28 @@ pub async fn verificar_credenciais_banco(
         host, port, database, username, password
     );
 
-    match tokio_postgres::connect(&conn_str, NoTls).await {
-        Ok((client, connection)) => {
-            tokio::spawn(async move {
-                if let Err(e) = connection.await {
-                    warn!("Erro na conexão tokio-postgres de verificação: {}", e);
-                }
-            });
-
-            match client.query_one("SELECT 1", &[]).await {
-                Ok(_) => Ok(true),
+    // TLS first for remote/Supabase connections, falls back to NoTls for local PostgreSQL
+    let client = match try_connect_pg(&conn_str, true).await {
+        Ok(client) => client,
+        Err(e) => {
+            warn!(
+                "TLS connection failed (expected for local PostgreSQL), falling back to NoTls: {}",
+                e
+            );
+            match try_connect_pg(&conn_str, false).await {
+                Ok(client) => client,
                 Err(e) => {
-                    warn!("Erro ao executar query de teste na conexão: {}", e);
-                    Ok(false)
+                    warn!("Falha ao conectar com tokio-postgres para verificação: {}", e);
+                    return Ok(false);
                 }
             }
         }
+    };
+
+    match client.query_one("SELECT 1", &[]).await {
+        Ok(_) => Ok(true),
         Err(e) => {
-            warn!("Falha ao conectar com tokio-postgres para verificação: {}", e);
+            warn!("Erro ao executar query de teste na conexão: {}", e);
             Ok(false)
         }
     }

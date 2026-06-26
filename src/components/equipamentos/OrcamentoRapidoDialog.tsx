@@ -23,6 +23,8 @@ import type {
 import { db } from "@/lib/db";
 import { PdfService } from "@/lib/pdf-service";
 import { useNotification } from "@/hooks/useNotification";
+import { ClienteSelector } from "@/components/equipamentos/ClienteSelector";
+import { EquipamentoSelector } from "@/components/equipamentos/EquipamentoSelector";
 
 export interface OrcamentoRapidoDialogProps {
   open: boolean;
@@ -37,10 +39,7 @@ export function OrcamentoRapidoDialog({
 }: OrcamentoRapidoDialogProps) {
   const { success, error: showError } = useNotification();
 
-  const [clientes, setClientes] = useState<Cliente[]>([]);
-  const [equipamentos, setEquipamentos] = useState<Equipamento[]>([]);
   const [catalogoServicos, setCatalogoServicos] = useState<ServicoCatalogo[]>([]);
-  const [carregando, setCarregando] = useState(false);
   const [salvando, setSalvando] = useState(false);
 
   const [clienteSelecionado, setClienteSelecionado] = useState<Cliente | null>(null);
@@ -49,24 +48,14 @@ export function OrcamentoRapidoDialog({
   const [valorTotal, setValorTotal] = useState<number>(0);
   const [valorTotalEditadoManualmente, setValorTotalEditadoManualmente] = useState(false);
   const [defeitoRelatado, setDefeitoRelatado] = useState("");
-  const [erroCliente, setErroCliente] = useState<string | null>(null);
   const [linhaSugestaoAberta, setLinhaSugestaoAberta] = useState<string | null>(null);
 
   const carregarDados = useCallback(async () => {
-    setCarregando(true);
     try {
-      const [c, e, s] = await Promise.all([
-        db.listarClientes(),
-        db.listarEquipamentos(),
-        db.listarServicosCatalogoAtivos(),
-      ]);
-      setClientes(c);
-      setEquipamentos(e);
+      const s = await db.listarServicosCatalogoAtivos();
       setCatalogoServicos(s);
     } catch (err) {
       console.error("Erro ao carregar dados do orçamento rápido:", err);
-    } finally {
-      setCarregando(false);
     }
   }, []);
 
@@ -82,24 +71,6 @@ export function OrcamentoRapidoDialog({
       setValorTotal(total);
     }
   }, [servicos, valorTotalEditadoManualmente]);
-
-  const equipamentosFiltrados = clienteSelecionado
-    ? equipamentos.filter((eq) => eq.cliente_id === clienteSelecionado.id)
-    : [];
-
-  function handleClienteChange(clienteId: string) {
-    const id = Number(clienteId);
-    const cliente = clientes.find((c) => c.id === id) || null;
-    setClienteSelecionado(cliente);
-    setEquipamentoSelecionado(null);
-    setErroCliente(null);
-  }
-
-  function handleEquipamentoChange(equipamentoId: string) {
-    const id = Number(equipamentoId);
-    const eq = equipamentos.find((e) => e.id === id) || null;
-    setEquipamentoSelecionado(eq);
-  }
 
   function adicionarServico() {
     const novo: ServicoNecessario = {
@@ -138,15 +109,12 @@ export function OrcamentoRapidoDialog({
     setValorTotal(0);
     setValorTotalEditadoManualmente(false);
     setDefeitoRelatado("");
-    setErroCliente(null);
   }
 
   async function handleSubmit() {
     if (!clienteSelecionado) {
-      setErroCliente("Selecione um cliente.");
       return;
     }
-    setErroCliente(null);
     setSalvando(true);
 
     try {
@@ -216,46 +184,23 @@ export function OrcamentoRapidoDialog({
 
         <div className="space-y-5">
           <div className="space-y-2">
-            <Label htmlFor="orc-cliente">Cliente</Label>
-            <select
-              id="orc-cliente"
-              value={clienteSelecionado?.id ?? ""}
-              onChange={(e) => handleClienteChange(e.target.value)}
-              disabled={carregando || salvando}
-              className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              <option value="">Selecione um cliente...</option>
-              {clientes.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.tipo_pessoa === "PJ"
-                    ? (c.nome_fantasia || c.razao_social || c.nome || `Cliente #${c.id}`)
-                    : (c.nome || `Cliente #${c.id}`)}
-                </option>
-              ))}
-            </select>
-            {erroCliente && (
-              <p className="text-sm text-red-500">{erroCliente}</p>
-            )}
+            <Label>Cliente</Label>
+            <ClienteSelector
+              onClienteSelecionado={(c) => {
+                setClienteSelecionado(c);
+                setEquipamentoSelecionado(null);
+              }}
+              onClienteRemovido={() => {
+                setClienteSelecionado(null);
+                setEquipamentoSelecionado(null);
+              }}
+            />
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="orc-equipamento">Equipamento</Label>
-            <select
-              id="orc-equipamento"
-              value={equipamentoSelecionado?.id ?? ""}
-              onChange={(e) => handleEquipamentoChange(e.target.value)}
-              disabled={carregando || salvando || !clienteSelecionado}
-              className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              <option value="">
-                {clienteSelecionado ? "Selecione um equipamento (opcional)..." : "Selecione um cliente primeiro..."}
-              </option>
-              {equipamentosFiltrados.map((eq) => (
-                <option key={eq.id} value={eq.id}>
-                  {eq.marca} {eq.modelo} — {eq.serial_number}
-                </option>
-              ))}
-            </select>
+            <EquipamentoSelector
+              onEquipamentoSelecionado={setEquipamentoSelecionado}
+            />
           </div>
 
           <Card>

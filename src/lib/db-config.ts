@@ -6,6 +6,14 @@ export const DatabaseConfigService = {
     return invoke<DatabaseConnectionConfig | null>("carregar_config_banco");
   },
 
+  async getCurrentConfig(): Promise<DatabaseConnectionConfig | null> {
+    try {
+      return await invoke<DatabaseConnectionConfig>("obter_config_banco_atual");
+    } catch {
+      return null;
+    }
+  },
+
   async save(config: DatabaseConnectionConfig): Promise<void> {
     return invoke("salvar_config_banco", { config });
   },

@@ -6,6 +6,8 @@ import {
   Loader2,
   AlertCircle,
   KeyRound,
+  Eye,
+  EyeOff,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -38,13 +40,9 @@ export function PasswordRecoveryDialog({
   onSuccess,
 }: PasswordRecoveryDialogProps) {
   const [step, setStep] = useState<RecoveryStep>("credentials");
-  const [creds, setCreds] = useState<DatabaseConnectionConfig>({
-    host: "",
-    port: 5432,
-    database: "",
-    username: "",
-    password: "",
-  });
+  const [savedConfig, setSavedConfig] = useState<DatabaseConnectionConfig | null>(null);
+  const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
   const [selectedProfileId, setSelectedProfileId] = useState<string>("");
   const [newPin, setNewPin] = useState("");
   const [confirmPin, setConfirmPin] = useState("");
@@ -59,6 +57,8 @@ export function PasswordRecoveryDialog({
     setSelectedProfileId("");
     setNewPin("");
     setConfirmPin("");
+    setPassword("");
+    setShowPassword(false);
     setError(null);
     setBusy(false);
   }, []);
@@ -90,14 +90,19 @@ export function PasswordRecoveryDialog({
     resetState();
 
     DatabaseConfigService.load().then((config) => {
-      if (!cancelled && config) {
-        setCreds((prev) => ({
-          ...prev,
-          host: config.host || prev.host,
-          port: config.port || prev.port,
-          database: config.database || prev.database,
-          username: config.username || prev.username,
-        }));
+      if (!cancelled) {
+        if (config) {
+          setSavedConfig(config);
+        } else {
+          DatabaseConfigService.getCurrentConfig().then((current) => {
+            if (!cancelled) {
+              setSavedConfig(current);
+              if (!current) {
+                setError("Configuração de banco não encontrada. Use a configuração inicial.");
+              }
+            }
+          });
+        }
       }
     });
 
@@ -117,14 +122,24 @@ export function PasswordRecoveryDialog({
     };
   }, [step, handleSuccess, clearAutoClose]);
 
-  const updateCred = (field: keyof DatabaseConnectionConfig, value: string | number) => {
-    setCreds((prev) => ({ ...prev, [field]: value }));
-    setError(null);
-  };
-
   const handleVerifyCredentials = async () => {
+    if (!savedConfig) {
+      setError("Configuração de banco não encontrada. Use a configuração inicial.");
+      return;
+    }
+
+    if (!password) {
+      setError("Informe a senha do PostgreSQL.");
+      return;
+    }
+
     setBusy(true);
     setError(null);
+
+    const creds: DatabaseConnectionConfig = {
+      ...savedConfig,
+      password,
+    };
 
     const result = await db.verificarCredenciaisBanco(creds);
 
@@ -138,6 +153,11 @@ export function PasswordRecoveryDialog({
   };
 
   const handleResetPin = async () => {
+    if (!savedConfig) {
+      setError("Configuração de banco não encontrada. Use a configuração inicial.");
+      return;
+    }
+
     if (!selectedProfileId) {
       setError("Selecione um perfil.");
       return;
@@ -155,6 +175,11 @@ export function PasswordRecoveryDialog({
 
     setBusy(true);
     setError(null);
+
+    const creds: DatabaseConnectionConfig = {
+      ...savedConfig,
+      password,
+    };
 
     const result = await db.redefinirPinViaDb(creds, Number(selectedProfileId), newPin);
 
@@ -198,54 +223,40 @@ export function PasswordRecoveryDialog({
 
         {step === "credentials" && (
           <div className="space-y-4">
-            <div className="grid grid-cols-3 gap-3">
-              <div className="col-span-2 space-y-1.5">
-                <Label htmlFor="recovery-host">Host</Label>
+            <p className="text-sm text-muted-foreground">
+              Digite a senha do banco de dados PostgreSQL para verificar sua identidade.
+              As demais informações já estão salvas na configuração do sistema.
+            </p>
+
+            <div className="space-y-1.5">
+              <Label htmlFor="recovery-password">Senha do PostgreSQL</Label>
+              <div className="relative">
                 <Input
-                  id="recovery-host"
-                  value={creds.host}
-                  onChange={(e) => updateCred("host", e.target.value)}
-                  placeholder="localhost"
+                  id="recovery-password"
+                  type={showPassword ? "text" : "password"}
+                  value={password}
+                  onChange={(e) => {
+                    setPassword(e.target.value);
+                    setError(null);
+                  }}
+                  placeholder="Senha do PostgreSQL"
+                  className="pr-10"
+                  disabled={!savedConfig}
                 />
+                <button
+                  type="button"
+                  tabIndex={-1}
+                  className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                  onClick={() => setShowPassword((v) => !v)}
+                  aria-label={showPassword ? "Ocultar senha" : "Mostrar senha"}
+                >
+                  {showPassword ? (
+                    <EyeOff className="h-4 w-4" />
+                  ) : (
+                    <Eye className="h-4 w-4" />
+                  )}
+                </button>
               </div>
-              <div className="space-y-1.5">
-                <Label htmlFor="recovery-port">Porta</Label>
-                <Input
-                  id="recovery-port"
-                  type="number"
-                  value={creds.port}
-                  onChange={(e) => updateCred("port", Number(e.target.value))}
-                />
-              </div>
-            </div>
-
-            <div className="space-y-1.5">
-              <Label htmlFor="recovery-database">Banco de Dados</Label>
-              <Input
-                id="recovery-database"
-                value={creds.database}
-                onChange={(e) => updateCred("database", e.target.value)}
-              />
-            </div>
-
-            <div className="space-y-1.5">
-              <Label htmlFor="recovery-username">Usuário</Label>
-              <Input
-                id="recovery-username"
-                value={creds.username}
-                onChange={(e) => updateCred("username", e.target.value)}
-              />
-            </div>
-
-            <div className="space-y-1.5">
-              <Label htmlFor="recovery-password">Senha</Label>
-              <Input
-                id="recovery-password"
-                type="password"
-                value={creds.password}
-                onChange={(e) => updateCred("password", e.target.value)}
-                placeholder="Senha do PostgreSQL"
-              />
             </div>
           </div>
         )}
@@ -333,7 +344,7 @@ export function PasswordRecoveryDialog({
               <Button
                 type="button"
                 onClick={() => void handleVerifyCredentials()}
-                disabled={busy}
+                disabled={busy || !savedConfig || !password}
               >
                 {busy ? (
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />

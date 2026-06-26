@@ -71,37 +71,80 @@ describe("PasswordRecoveryDialog", () => {
     mockInvoke.mockImplementation(() => Promise.resolve(undefined));
   });
 
-  describe("Step 1 — Credenciais PostgreSQL", () => {
-    it("renderiza formulário de credenciais ao abrir", async () => {
-      mockCmd({});
-      renderDialog();
-
-      expect(await screen.findByText(/Recuperação de PIN/i)).toBeInTheDocument();
-      expect(screen.getByLabelText(/Host/i)).toBeInTheDocument();
-      expect(screen.getByLabelText(/Porta/i)).toBeInTheDocument();
-      expect(screen.getByLabelText(/Banco de Dados/i)).toBeInTheDocument();
-      expect(screen.getByLabelText(/Usuário/i)).toBeInTheDocument();
-      expect(screen.getByLabelText(/Senha/i)).toBeInTheDocument();
-    });
-
-    it("preenche host, porta, banco e usuário da config existente", async () => {
+  describe("Step 1 — Senha PostgreSQL apenas", () => {
+    it("renderiza apenas campo de senha ao abrir com config carregada", async () => {
       mockCmd({ "carregar_config_banco": mockConfig });
       renderDialog();
 
-      const hostInput = await screen.findByLabelText(/Host/i);
-      expect(hostInput).toHaveValue("192.168.1.10");
-      expect(screen.getByLabelText(/Porta/i)).toHaveValue(5432);
-      expect(screen.getByLabelText(/Banco de Dados/i)).toHaveValue("autoos_prod");
-      expect(screen.getByLabelText(/Usuário/i)).toHaveValue("autoos_user");
-      expect(screen.getByLabelText(/Senha/i)).toHaveValue("");
+      expect(await screen.findByText(/Recuperação de PIN/i)).toBeInTheDocument();
+      expect(screen.getByLabelText(/Senha do PostgreSQL/i)).toBeInTheDocument();
+      expect(screen.queryByLabelText(/Host/i)).not.toBeInTheDocument();
+      expect(screen.queryByLabelText(/Porta/i)).not.toBeInTheDocument();
+      expect(screen.queryByLabelText(/Banco de Dados/i)).not.toBeInTheDocument();
+      expect(screen.queryByLabelText(/Usuário/i)).not.toBeInTheDocument();
     });
 
-    it("mantém campos com fallback quando não há config", async () => {
-      mockCmd({});
+    it("exibe texto informativo sobre config salva", async () => {
+      mockCmd({ "carregar_config_banco": mockConfig });
       renderDialog();
 
-      const hostInput = await screen.findByLabelText(/Host/i);
-      expect(hostInput).toHaveValue("");
+      expect(
+        await screen.findByText(/As demais informações já estão salvas/i)
+      ).toBeInTheDocument();
+    });
+
+    it("exibe erro quando não há config salva", async () => {
+      mockCmd({ "carregar_config_banco": null, "obter_config_banco_atual": null });
+      renderDialog();
+
+      await waitFor(() => {
+        expect(
+          screen.getByText(/Configuração de banco não encontrada/i)
+        ).toBeInTheDocument();
+      });
+    });
+
+    it("desabilita campo de senha quando não há config", async () => {
+      mockCmd({ "carregar_config_banco": null, "obter_config_banco_atual": null });
+      renderDialog();
+
+      const passwordInput = await screen.findByLabelText(/Senha do PostgreSQL/i);
+      expect(passwordInput).toBeDisabled();
+    });
+
+    it("desabilita botão de verificar quando não há config", async () => {
+      mockCmd({ "carregar_config_banco": null, "obter_config_banco_atual": null });
+      renderDialog();
+
+      const submitButton = await screen.findByRole("button", { name: /Verificar credenciais/i });
+      expect(submitButton).toBeDisabled();
+    });
+
+    it("usa fallback de obter_config_banco_atual quando load retorna null", async () => {
+      mockCmd({ "carregar_config_banco": null, "obter_config_banco_atual": mockConfig });
+      renderDialog();
+
+      const passwordInput = await screen.findByLabelText(/Senha do PostgreSQL/i);
+      expect(passwordInput).not.toBeDisabled();
+    });
+
+    it("desabilita botão de verificar quando senha está vazia", async () => {
+      mockCmd({ "carregar_config_banco": mockConfig });
+      renderDialog();
+
+      const submitButton = await screen.findByRole("button", { name: /Verificar credenciais/i });
+      expect(submitButton).toBeDisabled();
+    });
+
+    it("habilita botão de verificar quando há config e senha", async () => {
+      mockCmd({ "carregar_config_banco": mockConfig });
+      renderDialog();
+
+      const passwordInput = await screen.findByLabelText(/Senha do PostgreSQL/i);
+      await userEvent.type(passwordInput, "secret123");
+
+      const submitButton = screen.getByRole("button", { name: /Verificar credenciais/i });
+      expect(submitButton).not.toBeDisabled();
     });
 
     it("avanca para step 2 quando credenciais sao validas", async () => {
@@ -111,9 +154,7 @@ describe("PasswordRecoveryDialog", () => {
       });
       renderDialog();
 
-      await screen.findByLabelText(/Host/i);
-
-      const passwordInput = screen.getByLabelText(/Senha/i);
+      const passwordInput = await screen.findByLabelText(/Senha do PostgreSQL/i);
       await userEvent.type(passwordInput, "secret123");
 
       const submitButton = screen.getByRole("button", { name: /Verificar credenciais/i });
@@ -131,9 +172,7 @@ describe("PasswordRecoveryDialog", () => {
       });
       renderDialog();
 
-      await screen.findByLabelText(/Host/i);
-
-      const passwordInput = screen.getByLabelText(/Senha/i);
+      const passwordInput = await screen.findByLabelText(/Senha do PostgreSQL/i);
       await userEvent.type(passwordInput, "wrongpass");
 
       const submitButton = screen.getByRole("button", { name: /Verificar credenciais/i });
@@ -151,9 +190,7 @@ describe("PasswordRecoveryDialog", () => {
       });
       renderDialog();
 
-      await screen.findByLabelText(/Host/i);
-
-      const passwordInput = screen.getByLabelText(/Senha/i);
+      const passwordInput = await screen.findByLabelText(/Senha do PostgreSQL/i);
       await userEvent.type(passwordInput, "secret123");
 
       const submitButton = screen.getByRole("button", { name: /Verificar credenciais/i });
@@ -165,16 +202,30 @@ describe("PasswordRecoveryDialog", () => {
     });
 
     it("chama onClose ao clicar em Fechar no step 1", async () => {
-      mockCmd({});
+      mockCmd({ "carregar_config_banco": mockConfig });
       const onClose = vi.fn();
       renderDialog({ onClose });
 
-      await screen.findByLabelText(/Host/i);
+      await screen.findByLabelText(/Senha do PostgreSQL/i);
 
       const closeButton = screen.getByRole("button", { name: /Fechar/i });
       await userEvent.click(closeButton);
 
       expect(onClose).toHaveBeenCalledTimes(1);
+    });
+
+    it("alterna visibilidade da senha ao clicar no botão de olho", async () => {
+      mockCmd({ "carregar_config_banco": mockConfig });
+      renderDialog();
+
+      const passwordInput = await screen.findByLabelText(/Senha do PostgreSQL/i);
+      expect(passwordInput).toHaveAttribute("type", "password");
+
+      const toggleButton = screen.getByRole("button", { name: /Mostrar senha/i });
+      await userEvent.click(toggleButton);
+
+      expect(passwordInput).toHaveAttribute("type", "text");
+      expect(screen.getByRole("button", { name: /Ocultar senha/i })).toBeInTheDocument();
     });
   });
 
@@ -186,8 +237,8 @@ describe("PasswordRecoveryDialog", () => {
       });
       renderDialog();
 
-      await screen.findByLabelText(/Host/i);
-      await userEvent.type(screen.getByLabelText(/Senha/i), "secret123");
+      const passwordInput = await screen.findByLabelText(/Senha do PostgreSQL/i);
+      await userEvent.type(passwordInput, "secret123");
       await userEvent.click(screen.getByRole("button", { name: /Verificar credenciais/i }));
 
       await waitFor(() => {
@@ -307,7 +358,7 @@ describe("PasswordRecoveryDialog", () => {
       await userEvent.click(screen.getByRole("button", { name: /Voltar/i }));
 
       await waitFor(() => {
-        expect(screen.getByLabelText(/Host/i)).toBeInTheDocument();
+        expect(screen.getByLabelText(/Senha do PostgreSQL/i)).toBeInTheDocument();
       });
     });
 
@@ -334,8 +385,8 @@ describe("PasswordRecoveryDialog", () => {
       });
       renderDialog();
 
-      await screen.findByLabelText(/Host/i);
-      await userEvent.type(screen.getByLabelText(/Senha/i), "secret123");
+      const passwordInput = await screen.findByLabelText(/Senha do PostgreSQL/i);
+      await userEvent.type(passwordInput, "secret123");
       await userEvent.click(screen.getByRole("button", { name: /Verificar credenciais/i }));
 
       await waitFor(() => {
@@ -352,7 +403,7 @@ describe("PasswordRecoveryDialog", () => {
       });
     }
 
-    it("exibe mensagem de sucesso e icem check", async () => {
+    it("exibe mensagem de sucesso e icone check", async () => {
       await reachStep3();
       expect(screen.getByText(/PIN redefinido com sucesso/i)).toBeInTheDocument();
     });
@@ -370,8 +421,8 @@ describe("PasswordRecoveryDialog", () => {
       const onSuccess = vi.fn();
       renderDialog({ onClose, onSuccess });
 
-      await screen.findByLabelText(/Host/i);
-      await userEvent.type(screen.getByLabelText(/Senha/i), "secret123");
+      const passwordInput = await screen.findByLabelText(/Senha do PostgreSQL/i);
+      await userEvent.type(passwordInput, "secret123");
       await userEvent.click(screen.getByRole("button", { name: /Verificar credenciais/i }));
 
       await waitFor(() => {
@@ -409,8 +460,8 @@ describe("PasswordRecoveryDialog", () => {
       const onSuccess = vi.fn();
       renderDialog({ onClose, onSuccess });
 
-      await screen.findByLabelText(/Host/i);
-      await userEvent.type(screen.getByLabelText(/Senha/i), "secret123");
+      const passwordInput = await screen.findByLabelText(/Senha do PostgreSQL/i);
+      await userEvent.type(passwordInput, "secret123");
       await userEvent.click(screen.getByRole("button", { name: /Verificar credenciais/i }));
 
       await waitFor(() => {
@@ -442,8 +493,8 @@ describe("PasswordRecoveryDialog", () => {
       });
       renderDialog();
 
-      await screen.findByLabelText(/Host/i);
-      await userEvent.type(screen.getByLabelText(/Senha/i), "secret123");
+      const passwordInput = await screen.findByLabelText(/Senha do PostgreSQL/i);
+      await userEvent.type(passwordInput, "secret123");
       await userEvent.click(screen.getByRole("button", { name: /Verificar credenciais/i }));
 
       await waitFor(() => {

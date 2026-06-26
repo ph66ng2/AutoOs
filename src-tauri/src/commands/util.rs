@@ -1414,6 +1414,66 @@ pub async fn testar_config_banco(config: DatabaseConnectionConfig) -> Result<boo
 
 #[tauri::command]
 #[instrument(skip_all)]
+pub async fn obter_config_banco_atual() -> Result<DatabaseConnectionConfig, String> {
+    let path = database_config_path()?;
+    if path.is_file() {
+        let contents = fs::read_to_string(&path).map_err(|e| {
+            error!("Erro ao ler configuração de banco: {}", e);
+            format!("Erro ao ler configuração de banco: {}", e)
+        })?;
+        let mut config: DatabaseConnectionConfig = serde_json::from_str(&contents).map_err(|e| {
+            error!("Erro ao parsear configuração de banco: {}", e);
+            format!("Erro ao parsear configuração de banco: {}", e)
+        })?;
+        config.password = String::new();
+        return Ok(config);
+    }
+
+    let database_url = env::var("DATABASE_URL").map_err(|_| {
+        "Não foi possível determinar a configuração do banco de dados".to_string()
+    })?;
+
+    let parsed = Url::parse(&database_url).map_err(|e| {
+        format!("DATABASE_URL inválida: {}", e)
+    })?;
+
+    let scheme = parsed.scheme();
+    if scheme != "postgres" && scheme != "postgresql" {
+        return Err("DATABASE_URL deve usar o esquema postgres:// ou postgresql://".to_string());
+    }
+
+    let host = parsed.host_str()
+        .ok_or_else(|| "DATABASE_URL sem host".to_string())?
+        .to_string();
+
+    let port = parsed.port().unwrap_or(5432);
+
+    let database = parsed.path()
+        .trim_start_matches('/')
+        .to_string();
+
+    if database.is_empty() {
+        return Err("DATABASE_URL sem nome do banco de dados".to_string());
+    }
+
+    let username = parsed.username()
+        .to_string();
+
+    if username.is_empty() {
+        return Err("DATABASE_URL sem usuário".to_string());
+    }
+
+    Ok(DatabaseConnectionConfig {
+        host,
+        port,
+        database,
+        username,
+        password: String::new(),
+    })
+}
+
+#[tauri::command]
+#[instrument(skip_all)]
 pub async fn obter_diagnostico_suporte_local() -> Result<LocalSupportStatus, String> {
     require_permission(PERMISSION_MANAGE_PROFILES)?;
     collect_local_support_status().await

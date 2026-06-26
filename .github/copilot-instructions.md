@@ -104,6 +104,14 @@ npm run test:run
 
 Se a mudança envolver runtime operacional de PostgreSQL, deixe explícito quando a máquina atual não tiver as ferramentas instaladas para validação ponta a ponta.
 
+## Recuperação de PIN e Conexão PostgreSQL
+
+- A recuperação de PIN (`redefinir_pin_via_db`) usa credenciais PostgreSQL como fator de autenticação alternativo.
+- A verificação de credenciais (`verificar_credenciais_banco`) tenta **TLS primeiro** e, se falhar, faz *fallback* para `NoTls`.
+  - TLS é necessário para conexões remotas (ex: Supabase).
+  - `NoTls` é usado para PostgreSQL local em `localhost`.
+- Quando migrar para Supabase de forma definitiva, o *fallback* para `NoTls` pode ser removido e a conexão passará a exigir TLS obrigatoriamente.
+
 ## Diretriz de Colaboração
 
 - Mantenha comunicação concisa.

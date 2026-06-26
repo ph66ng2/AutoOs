@@ -122,4 +122,29 @@ describe("ProfileSessionDialog dropdown login sem PIN", () => {
     renderDialog({ profiles: [baseProfile] });
     expect(screen.queryByLabelText(/login rápido/i)).not.toBeInTheDocument();
   });
+
+  it("exibe botão 'Esqueci minha senha' no modo startup quando onForgotPassword é fornecido", () => {
+    renderDialog({ mode: "startup", onForgotPassword: vi.fn() });
+    expect(screen.getByRole("button", { name: /Esqueci minha senha/i })).toBeInTheDocument();
+  });
+
+  it("NÃO exibe botão 'Esqueci minha senha' no modo selector", () => {
+    renderDialog({ mode: "selector", onForgotPassword: vi.fn() });
+    expect(screen.queryByRole("button", { name: /Esqueci minha senha/i })).not.toBeInTheDocument();
+  });
+
+  it("NÃO exibe botão 'Esqueci minha senha' quando onForgotPassword não é fornecido", () => {
+    renderDialog({ mode: "startup" });
+    expect(screen.queryByRole("button", { name: /Esqueci minha senha/i })).not.toBeInTheDocument();
+  });
+
+  it("chama onForgotPassword ao clicar no botão", async () => {
+    const onForgotPassword = vi.fn();
+    renderDialog({ mode: "startup", onForgotPassword });
+
+    const button = screen.getByRole("button", { name: /Esqueci minha senha/i });
+    await userEvent.click(button);
+
+    expect(onForgotPassword).toHaveBeenCalledTimes(1);
+  });
 });

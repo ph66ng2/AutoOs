@@ -137,6 +137,7 @@ fn main() {
             commands::util::obter_diagnostico_suporte_local,
             commands::util::exportar_pacote_suporte_local,
             commands::util::carregar_config_banco,
+            commands::util::obter_config_banco_atual,
             commands::util::salvar_config_banco,
             commands::util::testar_config_banco,
             commands::util::verificar_status_banco,
