@@ -103,6 +103,7 @@ import {
   type StatusEquipamento,
   type ItemVerificacao,
   type ServicoNecessario,
+  type ServicoCatalogo,
   type PecaNecessaria,
   type Verificacao,
   type Comunicacao,
@@ -119,6 +120,7 @@ import { ClienteSelector } from "@/components/equipamentos/ClienteSelector";
 import { PhotoUploadDialog } from "@/components/equipamentos/PhotoUploadDialog";
 import { DocumentosEquipamento } from "@/components/equipamentos/DocumentosEquipamento";
 import { OrcamentoRapidoDialog } from "@/components/equipamentos/OrcamentoRapidoDialog";
+import { AjusteOrcamentoServicos } from "@/components/equipamentos/AjusteOrcamentoServicos";
 import { ActionPriorityRow, type PriorityAction } from "@/components/ui/action-priority-row";
 import {
   arquivoParaImagemEquipamento,
@@ -185,6 +187,9 @@ export default function Equipamentos() {
   const [valorOrcamentoOriginal, setValorOrcamentoOriginal] = useState<number | null>(null);
   const [valorOrcamentoAnterior, setValorOrcamentoAnterior] = useState<number | null>(null);
   const [verificacaoAjusteOrcamento, setVerificacaoAjusteOrcamento] = useState<Verificacao | null>(null);
+  const [servicosAjuste, setServicosAjuste] = useState<ServicoNecessario[]>([]);
+  const [catalogoServicosAjuste, setCatalogoServicosAjuste] = useState<ServicoCatalogo[]>([]);
+  const [carregandoCatalogoAjuste, setCarregandoCatalogoAjuste] = useState(false);
   const [valorFinal, setValorFinal] = useState<number>(0);
   const [valorFinalSugerido, setValorFinalSugerido] = useState<number | null>(null);
   const [acordoExcecaoEntrega, setAcordoExcecaoEntrega] = useState(false);
@@ -233,7 +238,7 @@ export default function Equipamentos() {
   // Hook de automação de status
   const { loading: loadingAutomacao, finalizarVerificacao, marcarComoPronto } =
     useStatusEquipamento();
-  const { ensureSensitiveAccess } = useSensitiveAccess();
+  const { ensureSensitiveAccess, status: sensitiveStatus } = useSensitiveAccess();
   const location = useLocation();
   const navigate = useNavigate();
 
@@ -279,6 +284,20 @@ export default function Equipamentos() {
       unlisten?.();
     };
   }, [carregarImagensComPreview]);
+
+  useEffect(() => {
+    if (novoStatus === "AGUARDANDO_APROVACAO" && verificacaoAjusteOrcamento) {
+      let pecasTotal = 0;
+      try {
+        const pecas = JSON.parse(verificacaoAjusteOrcamento.pecas_necessarias || "[]") as PecaNecessaria[];
+        pecasTotal = pecas.reduce((sum, p) => sum + (p.valorTotal || 0), 0);
+      } catch {
+        pecasTotal = 0;
+      }
+      const servicosTotal = servicosAjuste.reduce((sum, s) => sum + (Number(s.valor) || 0), 0);
+      setValorOrcamento(servicosTotal + pecasTotal);
+    }
+  }, [servicosAjuste, verificacaoAjusteOrcamento, novoStatus]);
 
   const form = useForm<EquipamentoFormData>({
      resolver: zodResolver(equipamentoSchema),
@@ -542,6 +561,24 @@ export default function Equipamentos() {
     setValorOrcamento(valorBase);
     setPrazoAprovacao(eq.prazo_aprovacao || "");
     setVerificacaoAjusteOrcamento(verificacao);
+
+    let servicosIniciais: ServicoNecessario[] = [];
+    try {
+      servicosIniciais = JSON.parse(verificacao?.servicos_necessarios || "[]") as ServicoNecessario[];
+    } catch {
+      servicosIniciais = [];
+    }
+    setServicosAjuste(servicosIniciais);
+
+    setCarregandoCatalogoAjuste(true);
+    try {
+      const catalogo = await db.listarServicosCatalogoAtivos();
+      setCatalogoServicosAjuste(catalogo);
+    } catch (err) {
+      console.error("Erro ao carregar catálogo de serviços:", err);
+    } finally {
+      setCarregandoCatalogoAjuste(false);
+    }
   }
 
   function handleNovoStatusChange(status: string) {
@@ -569,6 +606,9 @@ export default function Equipamentos() {
     setValorOrcamentoOriginal(null);
     setValorOrcamentoAnterior(null);
     setVerificacaoAjusteOrcamento(null);
+    setServicosAjuste([]);
+    setCatalogoServicosAjuste([]);
+    setCarregandoCatalogoAjuste(false);
     setValorFinal(0);
     setValorFinalSugerido(null);
     setAcordoExcecaoEntrega(false);
@@ -875,7 +915,37 @@ export default function Equipamentos() {
     setConfirmOpen(true);
   }
 
-  /** Confirma mudança manual de status com campos extras (valor, prazo, etc) */
+  function iniciarConfirmacaoStatus() {
+    if (novoStatus === "AGUARDANDO_APROVACAO" && verificacaoAjusteOrcamento) {
+      const servicosOriginal: ServicoNecessario[] = [];
+      try {
+        servicosOriginal.push(...JSON.parse(verificacaoAjusteOrcamento.servicos_necessarios || "[]") as ServicoNecessario[]);
+      } catch {}
+      const totalOriginal = servicosOriginal.reduce((sum, s) => sum + (Number(s.valor) || 0), 0);
+      const totalNovo = servicosAjuste.reduce((sum, s) => sum + (Number(s.valor) || 0), 0);
+      const lines = [
+        "Revise as alterações antes de confirmar:",
+        "",
+        ...servicosAjuste.map((s) => `• ${s.descricao || "(sem nome)"}: R$ ${Number(s.valor || 0).toFixed(2)}`),
+        "",
+        `Valor Original: R$ ${totalOriginal.toFixed(2)}`,
+        `Novo Valor: R$ ${totalNovo.toFixed(2)}`,
+      ];
+      setConfirmProps({
+        title: "Resumo do Ajuste de Orçamento",
+        description: lines.join("\n"),
+        onConfirm: () => {
+          setConfirmOpen(false);
+          void confirmarMudancaStatus();
+        },
+        onCancel: () => setConfirmOpen(false),
+      });
+      setConfirmOpen(true);
+      return;
+    }
+    void confirmarMudancaStatus();
+  }
+
   async function confirmarMudancaStatus() {
     if (!selecionado || !novoStatus) return;
     const precisaLiberacao = statusExigeAcessoSensivel(
@@ -907,6 +977,22 @@ export default function Equipamentos() {
           ...imagensEntradaPayload,
           ...imagensSaidaPayload,
         ]);
+      }
+
+      if (novoStatus === "AGUARDANDO_APROVACAO" && verificacaoAjusteOrcamento && sensitiveStatus?.active_profile_id) {
+        let pecas: PecaNecessaria[] = [];
+        try {
+          pecas = JSON.parse(verificacaoAjusteOrcamento.pecas_necessarias || "[]") as PecaNecessaria[];
+        } catch {}
+        await db.atualizarServicosVerificacao(
+          {
+            equipamento_id: selecionado.id!,
+            servicos: servicosAjuste,
+            pecas,
+            custo_total: valorOrcamento,
+          },
+          sensitiveStatus.active_profile_id,
+        );
       }
 
       const resultado = await atualizarStatus(
@@ -2098,14 +2184,27 @@ export default function Equipamentos() {
                   )}
                   {verificacaoAjusteOrcamento && (
                     <div className="space-y-3 rounded-md border p-3">
+                      <AjusteOrcamentoServicos
+                        servicos={servicosAjuste}
+                        catalogo={catalogoServicosAjuste}
+                        carregandoCatalogo={carregandoCatalogoAjuste}
+                        onChange={setServicosAjuste}
+                        onRemoverTodos={() => {
+                          setConfirmProps({
+                            title: "Remover todos os serviços",
+                            description: "Você está removendo TODOS os serviços do orçamento. Deseja continuar?",
+                            variant: "destructive",
+                            onConfirm: () => {
+                              setServicosAjuste([]);
+                              setConfirmOpen(false);
+                            },
+                            onCancel: () => setConfirmOpen(false),
+                          });
+                          setConfirmOpen(true);
+                        }}
+                      />
                       {(() => {
-                        let servicos: ServicoNecessario[] = [];
                         let pecas: PecaNecessaria[] = [];
-                        try {
-                          servicos = JSON.parse(verificacaoAjusteOrcamento.servicos_necessarios || "[]") as ServicoNecessario[];
-                        } catch {
-                          servicos = [];
-                        }
                         try {
                           pecas = JSON.parse(verificacaoAjusteOrcamento.pecas_necessarias || "[]") as PecaNecessaria[];
                         } catch {
@@ -2113,19 +2212,6 @@ export default function Equipamentos() {
                         }
                         return (
                           <>
-                            {servicos.length > 0 && (
-                              <div>
-                                <p className="text-xs font-semibold text-muted-foreground mb-1">Serviços da verificação</p>
-                                <ul className="space-y-1">
-                                  {servicos.map((s) => (
-                                    <li key={s.id} className="flex justify-between text-sm">
-                                      <span>{s.descricao}</span>
-                                      <span className="font-medium">R$ {s.valor.toFixed(2)}</span>
-                                    </li>
-                                  ))}
-                                </ul>
-                              </div>
-                            )}
                             {pecas.length > 0 && (
                               <div>
                                 <p className="text-xs font-semibold text-muted-foreground mb-1">Peças da verificação</p>
@@ -2139,12 +2225,24 @@ export default function Equipamentos() {
                                 </ul>
                               </div>
                             )}
-                            {servicos.length === 0 && pecas.length === 0 && (
+                            {pecas.length === 0 && servicosAjuste.length === 0 && (
                               <p className="text-xs text-muted-foreground">Nenhum serviço ou peça registrado na verificação.</p>
                             )}
                           </>
                         );
                       })()}
+                    </div>
+                  )}
+                  {valorOrcamentoOriginal != null && (
+                    <div className="grid gap-2 sm:grid-cols-2">
+                      <div className="rounded-md border bg-muted/30 px-3 py-2 text-sm">
+                        <p className="text-xs text-muted-foreground">Valor original (verificação)</p>
+                        <p className="font-semibold">R$ {valorOrcamentoOriginal.toFixed(2)}</p>
+                      </div>
+                      <div className="rounded-md border bg-emerald-50 px-3 py-2 text-sm text-emerald-900">
+                        <p className="text-xs text-emerald-700">Novo valor calculado</p>
+                        <p className="font-semibold">R$ {valorOrcamento.toFixed(2)}</p>
+                      </div>
                     </div>
                   )}
                 </>
@@ -2258,7 +2356,7 @@ export default function Equipamentos() {
               )}
               <DialogFooter>
                 <DialogClose asChild><Button variant="outline">Cancelar</Button></DialogClose>
-                <Button onClick={confirmarMudancaStatus} disabled={salvando || !novoStatus}>
+                <Button onClick={iniciarConfirmacaoStatus} disabled={salvando || !novoStatus}>
                   {salvando ? "Salvando..." : "Confirmar"}
                 </Button>
               </DialogFooter>
