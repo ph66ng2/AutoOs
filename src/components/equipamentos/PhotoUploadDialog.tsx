@@ -1,5 +1,5 @@
 import { useState, useCallback, useEffect, useRef } from "react";
-import { Smartphone, Clock, AlertCircle, RefreshCw, X, ExternalLink } from "lucide-react";
+import { Smartphone, Clock, AlertCircle, RefreshCw, X, ExternalLink, CheckCircle2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -48,9 +48,12 @@ export function PhotoUploadDialog({
   const [timer, setTimer] = useState(TOKEN_TTL_SECONDS);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [success, setSuccess] = useState(false);
+  const [successCount, setSuccessCount] = useState(0);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const tokenRef = useRef<string | null>(null);
+  const successTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const openRef = useRef(open);
   const onPhotoUploadedRef = useRef(onPhotoUploaded);
@@ -78,6 +81,10 @@ export function PhotoUploadDialog({
       clearInterval(timerRef.current);
       timerRef.current = null;
     }
+    if (successTimeoutRef.current) {
+      clearTimeout(successTimeoutRef.current);
+      successTimeoutRef.current = null;
+    }
   }, []);
 
   const stopServer = useCallback(async () => {
@@ -95,6 +102,8 @@ export function PhotoUploadDialog({
   }, [cleanup]);
 
   const startServer = useCallback(async () => {
+    setSuccess(false);
+    setSuccessCount(0);
     setLoading(true);
     setError(null);
     setQrData(null);
@@ -148,7 +157,16 @@ export function PhotoUploadDialog({
           } else {
             onPhotoUploadedRef.current();
           }
-          onOpenChangeRef.current(false);
+          // Show success state for 2s then auto-close
+          setSuccessCount(
+            onPhotoDataRef.current && data.image_data
+              ? (Array.isArray(data.image_data) ? data.image_data.length : 1)
+              : 1,
+          );
+          setSuccess(true);
+          successTimeoutRef.current = setTimeout(() => {
+            onOpenChangeRef.current(false);
+          }, 2000);
         }
       } catch {
         // Polling error - ignore, will retry
@@ -201,14 +219,29 @@ export function PhotoUploadDialog({
           </DialogDescription>
         </DialogHeader>
 
-        {loading && (
+        {success && (
+          <div className="flex flex-col items-center justify-center py-8 gap-4">
+            <div className="h-16 w-16 rounded-full bg-green-100 flex items-center justify-center">
+              <CheckCircle2 className="h-10 w-10 text-green-600" />
+            </div>
+            <p className="text-lg font-semibold text-green-800">
+              Imagem(ns) recebida(s) com sucesso!
+            </p>
+            <p className="text-sm text-muted-foreground">
+              {successCount} {successCount === 1 ? "foto" : "fotos"} recebida
+              {successCount !== 1 && "s"}
+            </p>
+          </div>
+        )}
+
+        {loading && !success && (
           <div className="flex flex-col items-center justify-center py-8 gap-3">
             <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600" />
             <p className="text-sm text-muted-foreground">Iniciando servidor...</p>
           </div>
         )}
 
-        {error && !qrData && (
+        {!success && error && !qrData && (
           <div className="flex flex-col items-center justify-center py-6 gap-3">
             <AlertCircle className="h-10 w-10 text-red-500" />
             <p className="text-sm text-red-600 text-center">{error}</p>
@@ -219,7 +252,7 @@ export function PhotoUploadDialog({
           </div>
         )}
 
-        {error && qrData && (
+        {!success && error && qrData && (
           <div className="flex flex-col items-center justify-center py-6 gap-3">
             <AlertCircle className="h-10 w-10 text-red-500" />
             <p className="text-sm text-red-600 text-center">{error}</p>
@@ -230,7 +263,7 @@ export function PhotoUploadDialog({
           </div>
         )}
 
-        {qrData && !error && (
+        {!success && qrData && !error && (
           <div className="space-y-4">
             <div className="flex justify-center">
               <div
