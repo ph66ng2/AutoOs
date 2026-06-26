@@ -77,6 +77,7 @@ export default function Configuracoes() {
   const [newProfilePermissions, setNewProfilePermissions] = useState<SensitivePermission[]>([]);
   const [newProfilePin, setNewProfilePin] = useState("");
   const [newProfilePinConfirm, setNewProfilePinConfirm] = useState("");
+  const [newProfileNoPin, setNewProfileNoPin] = useState(false);
   const [auditSearch, setAuditSearch] = useState("");
   const [auditOutcomeFilter, setAuditOutcomeFilter] = useState("ALL");
   const [auditProfileFilter, setAuditProfileFilter] = useState("ALL");
@@ -625,12 +626,14 @@ export default function Configuracoes() {
       return;
     }
 
-    if (newProfilePin.length < 4) {
+    const skipPin = newProfileRole === "CUSTOM" && newProfileNoPin;
+
+    if (!skipPin && newProfilePin.length < 4) {
       setSecurityMessage("O PIN inicial do novo perfil deve ter entre 4 e 8 dígitos.");
       return;
     }
 
-    if (newProfilePin !== newProfilePinConfirm) {
+    if (!skipPin && newProfilePin !== newProfilePinConfirm) {
       setSecurityMessage("A confirmação do PIN do novo perfil não confere.");
       return;
     }
@@ -648,12 +651,13 @@ export default function Configuracoes() {
         nome: newProfileName.trim(),
         role: newProfileRole,
         permissions,
-      }, newProfilePin);
+      }, skipPin ? "" : newProfilePin);
       setNewProfileName("");
       setNewProfileRole("CUSTOM");
       setNewProfilePermissions([]);
       setNewProfilePin("");
       setNewProfilePinConfirm("");
+      setNewProfileNoPin(false);
       setSecurityMessage("Novo perfil criado com sucesso.");
       await atualizarEstadoSeguranca();
     } catch (error: any) {
@@ -947,6 +951,8 @@ export default function Configuracoes() {
           setNewProfilePin={setNewProfilePin}
           newProfilePinConfirm={newProfilePinConfirm}
           setNewProfilePinConfirm={setNewProfilePinConfirm}
+          newProfileNoPin={newProfileNoPin}
+          setNewProfileNoPin={setNewProfileNoPin}
           criarPerfil={criarPerfil}
           securityMessage={securityMessage}
         />

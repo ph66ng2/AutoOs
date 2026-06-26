@@ -67,6 +67,8 @@ export type ConfiguracoesTabSegurancaProps = {
   setNewProfilePin: (value: string) => void;
   newProfilePinConfirm: string;
   setNewProfilePinConfirm: (value: string) => void;
+  newProfileNoPin: boolean;
+  setNewProfileNoPin: (value: boolean) => void;
   criarPerfil: () => void | Promise<void>;
   securityMessage: string | null;
 };
@@ -115,6 +117,8 @@ export function ConfiguracoesTabSeguranca({
   setNewProfilePin,
   newProfilePinConfirm,
   setNewProfilePinConfirm,
+  newProfileNoPin,
+  setNewProfileNoPin,
   criarPerfil,
   securityMessage,
 }: ConfiguracoesTabSegurancaProps) {
@@ -368,14 +372,28 @@ export function ConfiguracoesTabSeguranca({
                 ))}
               </div>
 
+              {newProfileRole === "CUSTOM" && (
+                <div className="flex items-center gap-3 rounded-lg border p-3">
+                  <Checkbox
+                    id="new-profile-no-pin"
+                    checked={newProfileNoPin}
+                    onCheckedChange={(value) => setNewProfileNoPin(!!value)}
+                    disabled={!securityAdminUnlocked || securityBusy}
+                  />
+                  <Label htmlFor="new-profile-no-pin" className="text-sm font-normal cursor-pointer">
+                    Este perfil não terá PIN (login por nome apenas)
+                  </Label>
+                </div>
+              )}
+
               <div className="grid gap-4 md:grid-cols-2">
                 <div className="space-y-2">
                   <Label htmlFor="new-profile-pin">PIN inicial</Label>
-                  <Input id="new-profile-pin" type="password" inputMode="numeric" value={newProfilePin} onChange={(event) => setNewProfilePin(event.target.value.replace(/\D/g, "").slice(0, 8))} disabled={!securityAdminUnlocked || securityBusy} />
+                  <Input id="new-profile-pin" type="password" inputMode="numeric" value={newProfilePin} onChange={(event) => setNewProfilePin(event.target.value.replace(/\D/g, "").slice(0, 8))} disabled={!securityAdminUnlocked || securityBusy || newProfileNoPin} />
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="new-profile-pin-confirm">Confirmar PIN inicial</Label>
-                  <Input id="new-profile-pin-confirm" type="password" inputMode="numeric" value={newProfilePinConfirm} onChange={(event) => setNewProfilePinConfirm(event.target.value.replace(/\D/g, "").slice(0, 8))} disabled={!securityAdminUnlocked || securityBusy} />
+                  <Input id="new-profile-pin-confirm" type="password" inputMode="numeric" value={newProfilePinConfirm} onChange={(event) => setNewProfilePinConfirm(event.target.value.replace(/\D/g, "").slice(0, 8))} disabled={!securityAdminUnlocked || securityBusy || newProfileNoPin} />
                 </div>
               </div>
 

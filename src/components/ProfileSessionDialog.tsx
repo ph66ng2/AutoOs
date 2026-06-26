@@ -37,6 +37,7 @@ interface ProfileSessionDialogProps {
   onPinChange: (value: string) => void;
   onConfirmPinChange: (value: string) => void;
   onSubmit: () => void;
+  onQuickLoginNoPin?: (profileId: string) => void;
 }
 
 export function ProfileSessionDialog({
@@ -59,12 +60,14 @@ export function ProfileSessionDialog({
   onPinChange,
   onConfirmPinChange,
   onSubmit,
+  onQuickLoginNoPin,
 }: ProfileSessionDialogProps) {
   const isSelectorMode = mode === "selector";
   const isCurrentProfileSelected = !!selectedProfile && selectedProfile.id === activeProfileId;
   const shouldAskForPin = !isSelectorMode || !isCurrentProfileSelected;
   const shouldConfirmPin = Boolean(shouldAskForPin && selectedProfile && !selectedProfile.pin_configured);
   const permissionPreview = selectedProfile?.permissions.slice(0, 3) ?? [];
+  const profilesWithoutPin = profiles.filter((profile) => !profile.pin_configured);
 
   const primaryActionLabel = (() => {
     if (!selectedProfile) {
@@ -138,6 +141,34 @@ export function ProfileSessionDialog({
               <DialogTitle className="text-2xl">{title}</DialogTitle>
               <DialogDescription className="max-w-xl">{description}</DialogDescription>
             </DialogHeader>
+
+            {profilesWithoutPin.length > 0 && (
+              <div className="mt-4 space-y-2">
+                <Label htmlFor="quick-login-no-pin">Login rápido (sem PIN)</Label>
+                <select
+                  id="quick-login-no-pin"
+                  aria-label="Login rápido sem PIN"
+                  value=""
+                  onChange={(event) => {
+                    const value = event.target.value;
+                    if (value && onQuickLoginNoPin) {
+                      onQuickLoginNoPin(value);
+                    }
+                    event.target.value = "";
+                  }}
+                  className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm ring-offset-background focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  <option value="" disabled>
+                    Selecionar operador...
+                  </option>
+                  {profilesWithoutPin.map((profile) => (
+                    <option key={`no-pin-${profile.id}`} value={String(profile.id)}>
+                      {profile.nome}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
 
             <div className="mt-6 grid gap-3">
               {profiles.map((profile) => {

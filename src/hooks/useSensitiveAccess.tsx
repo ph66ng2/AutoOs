@@ -322,6 +322,47 @@ export function SensitiveAccessProvider({ children }: { children: ReactNode }) {
     }
   }, [closeDialog, confirmPin, pin, promptOptions.permission, selectedProfileId, status]);
 
+  const quickLoginNoPin = useCallback(async (profileId: string) => {
+    setBusy(true);
+    setError(null);
+
+    try {
+      const targetProfileId = Number(profileId);
+      if (!targetProfileId) {
+        setError("Perfil inválido.");
+        setBusy(false);
+        return;
+      }
+
+      let workingStatus = status;
+
+      if (targetProfileId !== status?.active_profile_id) {
+        workingStatus = await SensitiveAccessService.setActiveProfile(targetProfileId);
+        setStatus(workingStatus);
+      }
+
+      const nextStatus = await SensitiveAccessService.unlockWithoutPin();
+
+      if (promptOptions.permission && !profileHasPermission(nextStatus, promptOptions.permission)) {
+        setStatus(nextStatus);
+        setError(`O perfil ativo não possui permissão para ${permissionDescription(promptOptions.permission)}.`);
+        setBusy(false);
+        return;
+      }
+
+      setStatus(nextStatus);
+
+      try {
+        localStorage.setItem("autoos_last_profile_id", String(targetProfileId));
+      } catch {}
+
+      closeDialog(true);
+    } catch (loginError: any) {
+      setError(loginError?.message || loginError?.toString() || "Falha no login rápido.");
+      setBusy(false);
+    }
+  }, [closeDialog, promptOptions.permission, status]);
+
   const value = useMemo<SensitiveAccessContextValue>(() => ({
     status,
     loading,
@@ -364,6 +405,7 @@ export function SensitiveAccessProvider({ children }: { children: ReactNode }) {
         onPinChange={setPin}
         onConfirmPinChange={setConfirmPin}
         onSubmit={() => void submitSensitiveAccess()}
+        onQuickLoginNoPin={(profileId) => void quickLoginNoPin(profileId)}
       />
     </SensitiveAccessContext.Provider>
   );
