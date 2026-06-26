@@ -12,6 +12,7 @@ import { ShieldAlert, ShieldCheck, ShieldOff } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { ProfileSessionDialog } from "@/components/ProfileSessionDialog";
+import { PasswordRecoveryDialog } from "@/components/PasswordRecoveryDialog";
 import { SensitiveAccessService } from "@/lib/sensitive-access";
 import {
   SENSITIVE_PERMISSION_LABELS,
@@ -90,6 +91,7 @@ export function SensitiveAccessProvider({ children }: { children: ReactNode }) {
   const [dialogMandatory, setDialogMandatory] = useState(false);
   const [dialogMode, setDialogMode] = useState<SensitiveDialogMode>("sensitive");
   const [promptOptions, setPromptOptions] = useState<SensitiveAccessPromptOptions>(defaultPrompt);
+  const [recoveryOpen, setRecoveryOpen] = useState(false);
   const [pin, setPin] = useState("");
   const [confirmPin, setConfirmPin] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -406,6 +408,17 @@ export function SensitiveAccessProvider({ children }: { children: ReactNode }) {
         onConfirmPinChange={setConfirmPin}
         onSubmit={() => void submitSensitiveAccess()}
         onQuickLoginNoPin={(profileId) => void quickLoginNoPin(profileId)}
+        onForgotPassword={() => setRecoveryOpen(true)}
+      />
+
+      <PasswordRecoveryDialog
+        open={recoveryOpen}
+        profiles={status?.profiles || []}
+        onClose={() => setRecoveryOpen(false)}
+        onSuccess={() => {
+          setRecoveryOpen(false);
+          void refreshStatus();
+        }}
       />
     </SensitiveAccessContext.Provider>
   );

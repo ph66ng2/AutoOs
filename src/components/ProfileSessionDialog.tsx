@@ -38,6 +38,7 @@ interface ProfileSessionDialogProps {
   onConfirmPinChange: (value: string) => void;
   onSubmit: () => void;
   onQuickLoginNoPin?: (profileId: string) => void;
+  onForgotPassword?: () => void;
 }
 
 export function ProfileSessionDialog({
@@ -61,6 +62,7 @@ export function ProfileSessionDialog({
   onConfirmPinChange,
   onSubmit,
   onQuickLoginNoPin,
+  onForgotPassword,
 }: ProfileSessionDialogProps) {
   const isSelectorMode = mode === "selector";
   const isCurrentProfileSelected = !!selectedProfile && selectedProfile.id === activeProfileId;
@@ -314,6 +316,16 @@ export function ProfileSessionDialog({
         </div>
 
         <DialogFooter className="border-t bg-background px-6 py-4">
+          {mode === "startup" && onForgotPassword && (
+            <Button
+              variant="link"
+              type="button"
+              onClick={onForgotPassword}
+              className="mr-auto text-cyan-600 hover:text-cyan-500 px-0"
+            >
+              Esqueci minha senha
+            </Button>
+          )}
           {!mandatory && (
             <Button variant="outline" type="button" onClick={onClose} disabled={busy}>
               Fechar
