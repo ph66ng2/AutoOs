@@ -177,6 +177,110 @@ pub async fn buscar_verificacao_tecnica(equipamento_id: i32) -> Result<Verificac
     Ok(row)
 }
 
+fn count_json_array_items(json: &Option<String>) -> usize {
+    match json {
+        Some(text) if !text.trim().is_empty() => {
+            serde_json::from_str::<Vec<serde_json::Value>>(text)
+                .map(|arr| arr.len())
+                .unwrap_or(0)
+        }
+        _ => 0,
+    }
+}
+
+#[tauri::command]
+#[instrument(skip_all, fields(equipamento_id = equipamento_id))]
+pub async fn atualizar_servicos_verificacao(
+    equipamento_id: i32,
+    servicos_json: Option<String>,
+    pecas_json: Option<String>,
+    custo_total: Option<f64>,
+    profile_id: i32,
+) -> Result<VerificacaoRow, String> {
+    let actor = require_permission(PERMISSION_FINANCIAL_ACTIONS)?;
+    let pool = get_pool().await.map_err(|e| e.to_string())?;
+
+    let existing: Option<(i32, Option<String>, Option<String>, Option<f64>)> = sqlx::query_as(
+        "SELECT id, servicos_necessarios, pecas_necessarias, custo_total FROM verificacoes WHERE equipamento_id = $1"
+    )
+    .bind(equipamento_id)
+    .fetch_optional(&pool)
+    .await
+    .map_err(|e| {
+        error!("Erro ao buscar verificação existente: {}", e);
+        e.to_string()
+    })?;
+
+    let (verificacao_id, old_servicos, _old_pecas, old_total) = match existing {
+        Some(row) => row,
+        None => return Err("Nenhuma verificação encontrada para este equipamento.".to_string()),
+    };
+
+    sqlx::query(
+        r#"
+        UPDATE verificacoes SET
+            servicos_necessarios = $1,
+            pecas_necessarias = $2,
+            custo_total = $3,
+            adjusted_at = NOW(),
+            adjusted_by_profile_id = $4
+        WHERE id = $5
+        "#,
+    )
+    .bind(&servicos_json)
+    .bind(&pecas_json)
+    .bind(custo_total)
+    .bind(profile_id)
+    .bind(verificacao_id)
+    .execute(&pool)
+    .await
+    .map_err(|e| {
+        error!("Erro ao atualizar serviços da verificação {}: {}", verificacao_id, e);
+        e.to_string()
+    })?;
+
+    sqlx::query("UPDATE equipamentos SET valor_orcamento = $1 WHERE id = $2")
+        .bind(custo_total)
+        .bind(equipamento_id)
+        .execute(&pool)
+        .await
+        .map_err(|e| {
+            error!("Erro ao sincronizar valor_orcamento do equipamento {}: {}", equipamento_id, e);
+            e.to_string()
+        })?;
+
+    let old_service_count = count_json_array_items(&old_servicos);
+    let new_service_count = count_json_array_items(&servicos_json);
+    let services_added = if new_service_count > old_service_count {
+        new_service_count - old_service_count
+    } else {
+        0
+    };
+    let services_removed = if old_service_count > new_service_count {
+        old_service_count - new_service_count
+    } else {
+        0
+    };
+
+    record_security_event(
+        "BUDGET_ADJUSTED",
+        Some(&actor),
+        format!(
+            "equipamento_id={}; old_total={}; new_total={}; services_added={}; services_removed={}",
+            equipamento_id,
+            old_total.unwrap_or(0.0),
+            custo_total.unwrap_or(0.0),
+            services_added,
+            services_removed
+        ),
+        true,
+    )
+    .await;
+
+    info!("Serviços e orçamento atualizados para equipamento {}", equipamento_id);
+    buscar_verificacao_tecnica(equipamento_id).await
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

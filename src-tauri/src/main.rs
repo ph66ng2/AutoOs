@@ -179,6 +179,7 @@ fn main() {
             commands::gastos::resumo_mensal,
             // Serviços (catálogo)
             commands::servicos::listar_servicos,
+            commands::servicos::listar_servicos_catalogo_ativos,
             commands::servicos::buscar_servico,
             commands::servicos::criar_servico,
             commands::servicos::atualizar_servico,
@@ -186,6 +187,7 @@ fn main() {
             // Verificações
             commands::verificacoes::salvar_verificacao_tecnica,
             commands::verificacoes::buscar_verificacao_tecnica,
+            commands::verificacoes::atualizar_servicos_verificacao,
             // Comunicações
             commands::comunicacoes::registrar_comunicacao,
             commands::comunicacoes::listar_comunicacoes,

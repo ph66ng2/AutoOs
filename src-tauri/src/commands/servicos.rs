@@ -89,6 +89,20 @@ pub async fn listar_servicos(
 }
 
 #[tauri::command]
+#[instrument(skip_all)]
+pub async fn listar_servicos_catalogo_ativos() -> Result<Vec<ServicoCatalogoRow>, String> {
+    let pool = get_pool().await.map_err(|e| e.to_string())?;
+    let query = format!("{} WHERE ativo = true ORDER BY nome ASC", SERVICO_CATALOGO_SELECT);
+    sqlx::query_as::<_, ServicoCatalogoRow>(&query)
+        .fetch_all(&pool)
+        .await
+        .map_err(|e| {
+            error!("Erro ao listar serviços ativos do catálogo: {}", e);
+            e.to_string()
+        })
+}
+
+#[tauri::command]
 #[instrument(skip_all, fields(id = id))]
 pub async fn buscar_servico(id: i32) -> Result<ServicoCatalogoRow, String> {
     let pool = get_pool().await.map_err(|e| e.to_string())?;

@@ -41,6 +41,10 @@ path = "src/bin/test_auth_optional_pin.rs"
 name = "test_recovery"
 path = "src/bin/test_recovery.rs"
 
+[[bin]]
+name = "test_budget_service_mgmt"
+path = "src/bin/test_budget_service_mgmt.rs"
+
 [dependencies]
 tauri = { version = "2.11.0", features = [] }
 serde = { version = "1", features = ["derive"] }
