@@ -706,6 +706,309 @@ export const PdfService = {
     }
   },
 
+  async gerarOrcamentoAjustado(
+    equipamento: Equipamento,
+    verificacao: Verificacao,
+    nomeArquivo?: string
+  ): Promise<string | null> {
+    if (!verificacao.adjusted_at) {
+      return PdfService.gerarOrcamento(equipamento, verificacao, nomeArquivo);
+    }
+
+    const servicos: ServicoNecessario[] = verificacao.servicos_necessarios
+      ? JSON.parse(verificacao.servicos_necessarios)
+      : [];
+    const pecas: PecaNecessaria[] = verificacao.pecas_necessarias
+      ? JSON.parse(verificacao.pecas_necessarias)
+      : [];
+
+    const totalServicos = servicos.reduce((acc, s) => acc + s.valor, 0);
+    const totalPecas = pecas.reduce((acc, p) => acc + p.valorTotal, 0);
+    const custoTotal = verificacao.custo_total ?? (totalServicos + totalPecas);
+
+    if (totalServicos + totalPecas !== custoTotal) {
+      alert(
+        `Divergência detectada: soma dos itens (${formatarMoeda(totalServicos + totalPecas)}) difere do custo total (${formatarMoeda(custoTotal)}).`
+      );
+      return null;
+    }
+
+    try {
+      const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
+      let y = 15;
+
+      const yAfterHeader = await aplicarCabecalhoPadrao(doc, y, "ORÇAMENTO TÉCNICO");
+
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(10);
+      doc.setTextColor(200, 0, 0);
+      doc.text("VERSÃO AJUSTADA", PAGE_WIDTH / 2, 52, { align: "center" });
+      doc.setTextColor(...COR_PRETA);
+
+      y = yAfterHeader;
+
+      doc.setTextColor(...COR_PRETA);
+      doc.setFontSize(11);
+      doc.setFont("helvetica", "bold");
+      const numeroOS = gerarNumeroOS(equipamento.id);
+      doc.text(`Nº ${numeroOS}`, PAGE_WIDTH / 2, y, { align: "center" });
+      y += 8;
+
+      doc.setFontSize(10);
+      doc.setFont("helvetica", "normal");
+      const dataExtenso = formatarDataExtenso(new Date());
+      doc.text(`Salvador, ${dataExtenso}`, PAGE_WIDTH - MARGIN_RIGHT, y, { align: "right" });
+      y += 10;
+
+      const tecnicoResponsavelOrcamento =
+        verificacao.tecnico_nome?.trim() ||
+        extrairTecnicoInicialDeObservacoes(equipamento.observacoes) ||
+        "—";
+      const emailTecnicoOrcamento = emailTecnicoPorNome(tecnicoResponsavelOrcamento);
+      const responsavelCabecalho = emailTecnicoOrcamento
+        ? `${tecnicoResponsavelOrcamento} (${emailTecnicoOrcamento})`
+        : tecnicoResponsavelOrcamento;
+
+      autoTable(doc, {
+        startY: y,
+        margin: { left: MARGIN_LEFT, right: MARGIN_RIGHT },
+        theme: "grid",
+        styles: {
+          fontSize: 9,
+          cellPadding: 3,
+          lineColor: COR_CINZA_CLARO,
+          lineWidth: 0.3,
+        },
+        headStyles: {
+          fillColor: COR_FUNDO_HEADER,
+          textColor: COR_TEXTO_BRANCO,
+          fontStyle: "bold",
+          halign: "center",
+        },
+        head: [["EMPRESA", "RESPONSÁVEL", "TIPO DE ORÇAMENTO"]],
+        body: [[
+          equipamento.cliente_nome || "—",
+          responsavelCabecalho,
+          "Serviços",
+        ]],
+      });
+
+      y = (doc as unknown as { lastAutoTable: { finalY: number } }).lastAutoTable.finalY + 5;
+
+      const linhasTabela: string[][] = [];
+
+      servicos.forEach((s) => {
+        linhasTabela.push([
+          s.descricao,
+          `${equipamento.marca} ${equipamento.modelo}`,
+          "01",
+          formatarMoeda(s.valor),
+          formatarMoeda(s.valor),
+        ]);
+      });
+
+      pecas.forEach((p) => {
+        linhasTabela.push([
+          p.nome,
+          `${equipamento.marca} ${equipamento.modelo}`,
+          String(p.quantidade).padStart(2, "0"),
+          formatarMoeda(p.valorUnitario),
+          formatarMoeda(p.valorTotal),
+        ]);
+      });
+
+      const exibirBlocosFinanceiros = custoTotal > 0 || totalServicos > 0 || totalPecas > 0;
+
+      if (exibirBlocosFinanceiros) {
+        if (linhasTabela.length === 0) {
+          linhasTabela.push(["Serviços técnicos", `${equipamento.marca} ${equipamento.modelo}`, "01", formatarMoeda(custoTotal), formatarMoeda(custoTotal)]);
+        }
+
+        doc.setFillColor(...COR_FUNDO_HEADER);
+        doc.rect(MARGIN_LEFT, y, CONTENT_WIDTH, 7, "F");
+        doc.setTextColor(...COR_TEXTO_BRANCO);
+        doc.setFontSize(9);
+        doc.setFont("helvetica", "bold");
+        doc.text("PLANILHA DE VALORES", PAGE_WIDTH / 2, y + 5, { align: "center" });
+        y += 7;
+
+        autoTable(doc, {
+          startY: y,
+          margin: { left: MARGIN_LEFT, right: MARGIN_RIGHT },
+          theme: "grid",
+          styles: {
+            fontSize: 9,
+            cellPadding: 3,
+            lineColor: COR_CINZA_CLARO,
+            lineWidth: 0.3,
+            halign: "center",
+          },
+          headStyles: {
+            fillColor: COR_CINZA_MEDIO,
+            textColor: COR_TEXTO_BRANCO,
+            fontStyle: "bold",
+          },
+          columnStyles: {
+            0: { halign: "left", cellWidth: 55 },
+            1: { halign: "center", cellWidth: 35 },
+            2: { halign: "center", cellWidth: 15 },
+            3: { halign: "right", cellWidth: 35 },
+            4: { halign: "right", cellWidth: 35 },
+          },
+          head: [["Descrição", "Modelo", "Qtd", "Valor Unitário", "Valor Total"]],
+          body: linhasTabela,
+        });
+
+        y = (doc as unknown as { lastAutoTable: { finalY: number } }).lastAutoTable.finalY + 2;
+
+        autoTable(doc, {
+          startY: y,
+          margin: { left: MARGIN_LEFT, right: MARGIN_RIGHT },
+          theme: "grid",
+          styles: {
+            fontSize: 10,
+            cellPadding: 3,
+            lineColor: COR_CINZA_CLARO,
+            lineWidth: 0.3,
+            fontStyle: "bold",
+          },
+          columnStyles: {
+            0: { halign: "right", cellWidth: CONTENT_WIDTH * 0.6 },
+            1: { halign: "right", cellWidth: CONTENT_WIDTH * 0.4, fillColor: COR_FUNDO_TOTAL },
+          },
+          body: [["VALOR TOTAL:", formatarMoeda(custoTotal)]],
+        });
+
+        y = (doc as unknown as { lastAutoTable: { finalY: number } }).lastAutoTable.finalY + 8;
+      }
+
+      doc.setTextColor(...COR_CINZA_ESCURO);
+      doc.setFontSize(9);
+      doc.setFont("helvetica", "bold");
+      doc.text("Número de Série do Equipamento: ", MARGIN_LEFT, y);
+      doc.setFont("helvetica", "normal");
+      doc.text(equipamento.serial_number, MARGIN_LEFT + 55, y);
+      y += 8;
+
+      if (exibirBlocosFinanceiros) {
+        doc.setFontSize(9);
+        doc.setFont("helvetica", "bold");
+        doc.setTextColor(...COR_PRETA);
+
+        const condicoes = [
+          "• Forma de Pagamento: 5% desconto Pix",
+          "• Obs.: A opção de boleto bancário está sujeita à aprovação do sistema.",
+        ];
+
+        condicoes.forEach((linha) => {
+          doc.text(linha, MARGIN_LEFT, y);
+          y += 5;
+        });
+
+        y += 3;
+
+        doc.setFont("helvetica", "bold");
+        doc.setFontSize(10);
+        doc.text("Prazo de Execução:", MARGIN_LEFT, y);
+        doc.setFont("helvetica", "normal");
+        doc.text(
+          verificacao.tempo_estimado
+            ? `${verificacao.tempo_estimado} horas (após aprovação)`
+            : "10 dias úteis (após aprovação)",
+          MARGIN_LEFT + 40, y
+        );
+        y += 6;
+
+        doc.setFont("helvetica", "bold");
+        doc.text("Garantia:", MARGIN_LEFT, y);
+        doc.setFont("helvetica", "normal");
+        doc.text("90 dias para serviços executados", MARGIN_LEFT + 40, y);
+        y += 6;
+
+        doc.setFont("helvetica", "bold");
+        doc.text("Validade:", MARGIN_LEFT, y);
+        doc.setFont("helvetica", "normal");
+        doc.text("05 dias úteis", MARGIN_LEFT + 40, y);
+        y += 10;
+      }
+
+      if (verificacao.diagnostico) {
+        doc.setFontSize(9);
+        doc.setFont("helvetica", "bold");
+        doc.setTextColor(...COR_CINZA_ESCURO);
+        doc.text("Diagnóstico:", MARGIN_LEFT, y);
+        y += 5;
+        doc.setFont("helvetica", "normal");
+        const linhasDiag = doc.splitTextToSize(verificacao.diagnostico, CONTENT_WIDTH);
+        doc.text(linhasDiag, MARGIN_LEFT, y);
+        y += linhasDiag.length * 4 + 5;
+      }
+
+      const imagensEquipamento = equipamento.id
+        ? await db.listarImagensEquipamento(equipamento.id)
+        : [];
+      const imagensEntrada = imagensEquipamento.filter((imagem) => imagem.categoria === "ENTRADA");
+      const imagensSaida = imagensEquipamento.filter((imagem) => imagem.categoria === "SAIDA");
+      const imagensVerificacao = imagensEquipamento.filter((imagem) => imagem.categoria === "VERIFICACAO");
+      await adicionarRegistroFotografico(
+        doc,
+        imagensEntrada,
+        "Registro Fotográfico de Entrada",
+        "Imagens anexadas para documentar o estado do equipamento no recebimento.",
+      );
+      await adicionarRegistroFotografico(
+        doc,
+        imagensVerificacao,
+        "Registro Fotográfico de Verificação",
+        "Imagens anexadas durante a verificação técnica do equipamento.",
+      );
+      await adicionarRegistroFotografico(
+        doc,
+        imagensSaida,
+        "Registro Fotográfico de Saída",
+        "Imagens anexadas para comparar o estado final do equipamento após o serviço.",
+      );
+
+      const dataAjuste = new Date(verificacao.adjusted_at);
+      const dia = String(dataAjuste.getDate()).padStart(2, "0");
+      const mes = String(dataAjuste.getMonth() + 1).padStart(2, "0");
+      const ano = dataAjuste.getFullYear();
+      const hora = String(dataAjuste.getHours()).padStart(2, "0");
+      const minuto = String(dataAjuste.getMinutes()).padStart(2, "0");
+      const dataAjusteFormatada = `${dia}/${mes}/${ano} ${hora}:${minuto}`;
+
+      const totalPages = doc.getNumberOfPages();
+      for (let page = 1; page <= totalPages; page += 1) {
+        doc.setPage(page);
+        await aplicarRodape(doc, numeroOS);
+        doc.setFontSize(7);
+        doc.setTextColor(150, 150, 150);
+        const pageHeight = doc.internal.pageSize.getHeight();
+        doc.text(
+          `Versão Ajustada em ${dataAjusteFormatada}`,
+          PAGE_WIDTH / 2,
+          pageHeight - 14,
+          { align: "center" }
+        );
+      }
+
+      const pdfBytes = doc.output("arraybuffer");
+      const uint8 = new Uint8Array(pdfBytes);
+
+      const caminho = await invoke<string>("salvar_orcamento_pdf", {
+        bytes: Array.from(uint8),
+        empresaNome: equipamento.cliente_nome || equipamento.proprietario || "Cliente",
+        nomeArquivo: nomeArquivo || null,
+      });
+
+      console.info(`[PdfService] Orçamento ajustado PDF gerado: ${caminho}`);
+      return caminho;
+    } catch (error) {
+      console.error("[PdfService] Erro ao gerar orçamento ajustado PDF:", error);
+      throw error;
+    }
+  },
+
   /**
    * Gera PDF de ordem de serviço para recebimento técnico.
    * Lista os campos preenchidos na seção "Dados do Equipamento".

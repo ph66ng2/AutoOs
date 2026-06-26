@@ -301,6 +301,7 @@ export interface Verificacao {
   tempo_estimado?: number;
   concluida?: boolean;
   observacoes?: string;
+  adjusted_at?: string;
 }
 
 // ─── Comunicações ───────────────────────────────────────
