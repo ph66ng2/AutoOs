@@ -45,6 +45,10 @@ path = "src/bin/test_recovery.rs"
 name = "test_budget_service_mgmt"
 path = "src/bin/test_budget_service_mgmt.rs"
 
+[[bin]]
+name = "test_auth_integration"
+path = "src/bin/test_auth_integration.rs"
+
 [dependencies]
 tauri = { version = "2.11.0", features = [] }
 serde = { version = "1", features = ["derive"] }
