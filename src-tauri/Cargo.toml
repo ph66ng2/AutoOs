@@ -37,6 +37,10 @@ path = "src/bin/test_auth_inactivity.rs"
 name = "test_auth_optional_pin"
 path = "src/bin/test_auth_optional_pin.rs"
 
+[[bin]]
+name = "test_recovery"
+path = "src/bin/test_recovery.rs"
+
 [dependencies]
 tauri = { version = "2.11.0", features = [] }
 serde = { version = "1", features = ["derive"] }
@@ -61,3 +65,4 @@ tower-http = { version = "0.6", features = ["cors"] }
 qrcode = "0.14"
 image = "0.25"
 uuid = { version = "1", features = ["v4"] }
+tokio-postgres = "0.7"

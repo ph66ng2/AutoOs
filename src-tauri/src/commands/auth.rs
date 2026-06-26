@@ -9,6 +9,7 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use sqlx::{FromRow, Row};
 use std::collections::{BTreeSet, HashMap};
+use tokio_postgres::NoTls;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Mutex, OnceLock};
 use tracing::{debug, error, instrument, warn};
@@ -105,7 +106,7 @@ pub struct SecurityProfileInput {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-struct StoredSensitivePin {
+pub(crate) struct StoredSensitivePin {
     pin_hash: String,
     created_at: String,
 }
@@ -202,7 +203,7 @@ fn hash_pin_unsalted(pin: &str) -> String {
     hex::encode(hasher.finalize())
 }
 
-fn verify_pin(pin: &str, stored: &StoredSensitivePin) -> bool {
+pub(crate) fn verify_pin(pin: &str, stored: &StoredSensitivePin) -> bool {
     let trimmed = pin.trim();
     if stored.pin_hash.starts_with("$argon2") {
         if let Ok(parsed) = PasswordHash::new(&stored.pin_hash) {
@@ -304,7 +305,7 @@ fn load_stored_pin_by_user(user: &str) -> Result<Option<StoredSensitivePin>, Str
     })
 }
 
-fn load_profile_pin(profile_id: i32) -> Result<Option<StoredSensitivePin>, String> {
+pub(crate) fn load_profile_pin(profile_id: i32) -> Result<Option<StoredSensitivePin>, String> {
     load_stored_pin_by_user(&profile_keyring_user(profile_id))
 }
 
@@ -325,7 +326,7 @@ fn store_profile_pin_record(profile_id: i32, record: &StoredSensitivePin) -> Res
     })
 }
 
-fn store_profile_pin(profile_id: i32, pin: &str) -> Result<(), String> {
+pub(crate) fn store_profile_pin(profile_id: i32, pin: &str) -> Result<(), String> {
     let stored = StoredSensitivePin {
         pin_hash: hash_pin(pin.trim())?,
         created_at: Utc::now().to_rfc3339(),
@@ -1075,6 +1076,95 @@ pub async fn reset_security_profile_pin(profile_id: i32, new_pin: String) -> Res
     )
     .await;
     status_snapshot().await
+}
+
+#[tauri::command]
+#[instrument(skip_all)]
+pub async fn verificar_credenciais_banco(
+    host: String,
+    port: u16,
+    database: String,
+    username: String,
+    password: String,
+) -> Result<bool, String> {
+    let conn_str = format!(
+        "host={} port={} dbname={} user={} password={}",
+        host, port, database, username, password
+    );
+
+    match tokio_postgres::connect(&conn_str, NoTls).await {
+        Ok((client, connection)) => {
+            tokio::spawn(async move {
+                if let Err(e) = connection.await {
+                    warn!("Erro na conexão tokio-postgres de verificação: {}", e);
+                }
+            });
+
+            match client.query_one("SELECT 1", &[]).await {
+                Ok(_) => Ok(true),
+                Err(e) => {
+                    warn!("Erro ao executar query de teste na conexão: {}", e);
+                    Ok(false)
+                }
+            }
+        }
+        Err(e) => {
+            warn!("Falha ao conectar com tokio-postgres para verificação: {}", e);
+            Ok(false)
+        }
+    }
+}
+
+#[tauri::command]
+#[instrument(skip_all)]
+pub async fn redefinir_pin_via_db(
+    host: String,
+    port: u16,
+    database: String,
+    username: String,
+    password: String,
+    profile_id: i32,
+    new_pin: String,
+) -> Result<bool, String> {
+    record_security_event(
+        "PIN_RECOVERY_ATTEMPT",
+        None,
+        format!("Tentativa de recovery de PIN para o perfil {}", profile_id),
+        true,
+    )
+    .await;
+
+    let credenciais_validas = verificar_credenciais_banco(
+        host, port, database, username, password,
+    )
+    .await
+    .map_err(|e| format!("Erro ao verificar credenciais: {}", e))?;
+
+    if !credenciais_validas {
+        record_security_event(
+            "PIN_RECOVERY_FAILED",
+            None,
+            format!("Credenciais inválidas para recovery do perfil {}", profile_id),
+            false,
+        )
+        .await;
+        return Err("Credenciais do banco de dados inválidas".to_string());
+    }
+
+    validate_pin_format(&new_pin)?;
+
+    let profile = to_profile_summary(fetch_profile_record_by_id(profile_id).await?)?;
+    store_profile_pin(profile_id, &new_pin)?;
+
+    record_security_event(
+        "PIN_RECOVERY_SUCCESS",
+        None,
+        format!("PIN redefinido via recovery para o perfil {}", profile.nome),
+        true,
+    )
+    .await;
+
+    Ok(true)
 }
 
 #[tauri::command]
