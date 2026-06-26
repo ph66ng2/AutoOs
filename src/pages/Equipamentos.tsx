@@ -24,9 +24,10 @@
  * ║  USADO POR: App.tsx (rota /equipamentos)                    ║
  * ╚══════════════════════════════════════════════════════════════╝
  */
-import { useState, useCallback, useEffect } from "react";
+import { useState, useCallback, useEffect, useRef } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { invoke } from "@tauri-apps/api/core";
+import { listen } from "@tauri-apps/api/event";
 import {
   Printer,
   Plus,
@@ -160,6 +161,8 @@ export default function Equipamentos() {
   const [editando, setEditando] = useState<Equipamento | null>(null);
   const [deletando, setDeletando] = useState<Equipamento | null>(null);
   const [selecionado, setSelecionado] = useState<Equipamento | null>(null);
+  const selecionadoIdRef = useRef<number | undefined>();
+  selecionadoIdRef.current = selecionado?.id;
   const [salvando, setSalvando] = useState(false);
 
   // Duplicidade de serial (múltiplos ciclos de manutenção)
@@ -256,6 +259,30 @@ export default function Equipamentos() {
     const imagens = await db.listarImagensEquipamento(equipamentoId);
     return Promise.all(imagens.map(imagemPersistidaParaDraft));
   }, []);
+
+  // ─── Event listener: photo-received ────────────────────
+  useEffect(() => {
+    let unlisten: (() => void) | undefined;
+
+    listen<{ equipamento_id: number; imagem_id: number }>("photo-received", (event) => {
+      const { equipamento_id } = event.payload;
+      if (selecionadoIdRef.current === equipamento_id) {
+        carregarImagensComPreview(equipamento_id)
+          .then((imagens) => {
+            setImagensDetalhes(imagens);
+          })
+          .catch((err) => {
+            console.error("Erro ao recarregar imagens após evento photo-received:", err);
+          });
+      }
+    }).then((fn) => {
+      unlisten = fn;
+    });
+
+    return () => {
+      unlisten?.();
+    };
+  }, [carregarImagensComPreview]);
 
   const form = useForm<EquipamentoFormData>({
      resolver: zodResolver(equipamentoSchema),
