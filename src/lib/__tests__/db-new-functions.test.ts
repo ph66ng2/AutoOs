@@ -163,6 +163,7 @@ describe("db — new functions (inactivity, db credentials, budget)", () => {
         pecasJson: JSON.stringify(pecas),
         custoTotal: 430,
         profileId: 3,
+        divergence: false,
       });
       expect(result).toBeDefined();
       expect(result.equipamento_id).toBe(5);
@@ -192,6 +193,7 @@ describe("db — new functions (inactivity, db credentials, budget)", () => {
         pecasJson: "[]",
         custoTotal: 0,
         profileId: 1,
+        divergence: false,
       });
       expect(result.custo_total).toBe(0);
     });
