@@ -183,6 +183,8 @@ export default function Equipamentos() {
   // Mudança de status
   const [novoStatus, setNovoStatus] = useState("");
   const [valorOrcamento, setValorOrcamento] = useState<number>(0);
+  const valorOrcamentoRef = useRef(valorOrcamento);
+  useEffect(() => { valorOrcamentoRef.current = valorOrcamento; }, [valorOrcamento]);
   const [prazoAprovacao, setPrazoAprovacao] = useState("");
   const [valorOrcamentoOriginal, setValorOrcamentoOriginal] = useState<number | null>(null);
   const [valorOrcamentoAnterior, setValorOrcamentoAnterior] = useState<number | null>(null);
@@ -219,6 +221,8 @@ export default function Equipamentos() {
     title: string;
     description: string;
     variant?: "default" | "destructive";
+    confirmLabel?: string;
+    cancelLabel?: string;
     onConfirm: () => void;
     onCancel?: () => void;
   }>({ title: "", description: "", onConfirm: () => {} });
@@ -923,6 +927,37 @@ export default function Equipamentos() {
       } catch {}
       const totalOriginal = servicosOriginal.reduce((sum, s) => sum + (Number(s.valor) || 0), 0);
       const totalNovo = servicosAjuste.reduce((sum, s) => sum + (Number(s.valor) || 0), 0);
+
+      let pecasTotal = 0;
+      try {
+        const pecas = JSON.parse(verificacaoAjusteOrcamento.pecas_necessarias || "[]") as PecaNecessaria[];
+        pecasTotal = pecas.reduce((sum, p) => sum + (p.valorTotal || 0), 0);
+      } catch {
+        pecasTotal = 0;
+      }
+      const calculado = totalNovo + pecasTotal;
+
+      if (Math.abs(calculado - valorOrcamentoRef.current) > 0.001) {
+        setConfirmProps({
+          title: "Divergência detectada",
+          description: `Divergência: soma dos serviços (R$ ${calculado.toFixed(2)}) ≠ valor total informado (R$ ${valorOrcamentoRef.current.toFixed(2)})`,
+          confirmLabel: "Continuar assim mesmo",
+          cancelLabel: "Corrigir",
+          variant: "destructive",
+          onConfirm: () => {
+            setConfirmOpen(false);
+            void confirmarMudancaStatus(true);
+          },
+          onCancel: () => {
+            setValorOrcamento(calculado);
+            setConfirmOpen(false);
+            setTimeout(() => iniciarConfirmacaoStatus(), 0);
+          },
+        });
+        setConfirmOpen(true);
+        return;
+      }
+
       const lines = [
         "Revise as alterações antes de confirmar:",
         "",
@@ -936,21 +971,22 @@ export default function Equipamentos() {
         description: lines.join("\n"),
         onConfirm: () => {
           setConfirmOpen(false);
-          void confirmarMudancaStatus();
+          void confirmarMudancaStatus(false);
         },
         onCancel: () => setConfirmOpen(false),
       });
       setConfirmOpen(true);
       return;
     }
-    void confirmarMudancaStatus();
+    void confirmarMudancaStatus(false);
   }
 
-  async function confirmarMudancaStatus() {
+  async function confirmarMudancaStatus(divergencia = false) {
     if (!selecionado || !novoStatus) return;
+    const totalAtual = valorOrcamentoRef.current;
     const precisaLiberacao = statusExigeAcessoSensivel(
       novoStatus,
-      valorOrcamento || undefined,
+      totalAtual || undefined,
       prazoAprovacao || undefined,
       valorFinal || undefined,
     );
@@ -989,7 +1025,8 @@ export default function Equipamentos() {
             equipamento_id: selecionado.id!,
             servicos: servicosAjuste,
             pecas,
-            custo_total: valorOrcamento,
+            custo_total: totalAtual,
+            divergence: divergencia,
           },
           sensitiveStatus.active_profile_id,
         );
@@ -998,7 +1035,7 @@ export default function Equipamentos() {
       const resultado = await atualizarStatus(
         selecionado.id!,
         novoStatus,
-        valorOrcamento || undefined,
+        totalAtual || undefined,
         prazoAprovacao || undefined,
         valorFinal || undefined,
         selecionado.atualizado_em
@@ -2159,6 +2196,17 @@ export default function Equipamentos() {
                   <div className="rounded-md border bg-amber-50 px-3 py-2 text-sm text-amber-900">
                     Revise o valor e o prazo para reenviar o orçamento atualizado ao cliente.
                   </div>
+                  {verificacaoAjusteOrcamento?.adjusted_at && (
+                    <div className="rounded-md border bg-blue-50 px-3 py-2 text-sm text-blue-900 flex items-center gap-2">
+                      <History className="h-4 w-4 text-blue-700" />
+                      <div>
+                        <p className="text-xs text-blue-700 font-medium">Histórico de Ajustes</p>
+                        <p className="text-xs">
+                          Último ajuste em {new Date(verificacaoAjusteOrcamento.adjusted_at).toLocaleDateString("pt-BR")}
+                        </p>
+                      </div>
+                    </div>
+                  )}
                   {(valorOrcamentoOriginal != null || valorOrcamentoAnterior != null) && (
                     <div className="grid gap-2 sm:grid-cols-2">
                       <div className="rounded-md border bg-muted/30 px-3 py-2 text-sm">
@@ -2175,7 +2223,7 @@ export default function Equipamentos() {
                       </div>
                     </div>
                   )}
-                  <div className="space-y-2"><Label>Valor Orçamento (R$)</Label><Input type="number" step="0.01" value={valorOrcamento || ""} onChange={e => setValorOrcamento(Number(e.target.value))} /></div>
+                  <div className="space-y-2"><Label>Valor Orçamento (R$)</Label><Input data-testid="valor-orcamento-input" type="number" step="0.01" value={valorOrcamento || ""} onChange={e => setValorOrcamento(Number(e.target.value))} /></div>
                   <div className="space-y-2"><Label>Prazo Aprovação</Label><Input type="date" value={prazoAprovacao} onChange={e => setPrazoAprovacao(e.target.value)} /></div>
                   {valorOrcamentoAnterior != null && valorOrcamento !== valorOrcamentoAnterior && (
                     <p className="text-xs text-amber-700">
@@ -2409,6 +2457,8 @@ export default function Equipamentos() {
         title={confirmProps.title}
         description={confirmProps.description}
         variant={confirmProps.variant}
+        confirmLabel={confirmProps.confirmLabel}
+        cancelLabel={confirmProps.cancelLabel}
         onConfirm={() => {
           confirmProps.onConfirm();
           setConfirmOpen(false);

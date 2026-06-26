@@ -196,6 +196,7 @@ pub async fn atualizar_servicos_verificacao(
     pecas_json: Option<String>,
     custo_total: Option<f64>,
     profile_id: i32,
+    divergence: bool,
 ) -> Result<VerificacaoRow, String> {
     let actor = require_permission(PERMISSION_FINANCIAL_ACTIONS)?;
     let pool = get_pool().await.map_err(|e| e.to_string())?;
@@ -266,12 +267,13 @@ pub async fn atualizar_servicos_verificacao(
         "BUDGET_ADJUSTED",
         Some(&actor),
         format!(
-            "equipamento_id={}; old_total={}; new_total={}; services_added={}; services_removed={}",
+            "equipamento_id={}; old_total={}; new_total={}; services_added={}; services_removed={}; divergence={}",
             equipamento_id,
             old_total.unwrap_or(0.0),
             custo_total.unwrap_or(0.0),
             services_added,
-            services_removed
+            services_removed,
+            divergence
         ),
         true,
     )

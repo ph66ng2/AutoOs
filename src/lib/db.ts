@@ -503,6 +503,7 @@ export const db = {
       pecasJson: JSON.stringify(input.pecas),
       custoTotal: input.custo_total,
       profileId,
+      divergence: input.divergence ?? false,
     });
   },
 

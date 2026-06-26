@@ -673,4 +673,5 @@ export interface AjusteOrcamentoInput {
   servicos: ServicoNecessario[];
   pecas: PecaNecessaria[];
   custo_total: number;
+  divergence?: boolean;
 }

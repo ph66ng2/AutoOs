@@ -119,6 +119,7 @@ async fn main() -> Result<()> {
         Some("[]".to_string()),
         Some(150.0),
         restricted_profile_id,
+        false,
     ).await;
     if denied.is_ok() {
         return Err(anyhow!("expected denied financial transition but it was allowed"));
@@ -154,6 +155,7 @@ async fn main() -> Result<()> {
         Some("[{\"nome\":\"Peça 1\"}]".to_string()),
         Some(225.0),
         privileged_profile_id,
+        false,
     ).await.map_err(|e| anyhow!(e))?;
 
     if updated.custo_total != Some(225.0) {
