@@ -650,3 +650,26 @@ export interface DatabaseConnectionConfig {
   username: string;
   password: string;
 }
+
+/** Configuração de bloqueio por inatividade. Espelha a struct/config do backend. */
+export interface ConfigInatividade {
+  inactivity_lock_enabled: boolean;
+}
+
+/** Resultado da verificação de credenciais do banco de dados. */
+export interface ResultadoVerificacaoCredenciais {
+  success: boolean;
+  error?: string;
+}
+
+/**
+ * Input para ajuste de orçamento/serviços de verificação técnica.
+ * Espelha os parâmetros do comando Rust `atualizar_servicos_verificacao`.
+ * Os arrays servicos/pecas são serializados como JSON strings no invoke wrapper.
+ */
+export interface AjusteOrcamentoInput {
+  equipamento_id: number;
+  servicos: ServicoNecessario[];
+  pecas: PecaNecessaria[];
+  custo_total: number;
+}

@@ -25,24 +25,28 @@
 
 import { invoke } from "@tauri-apps/api/core";
 import type {
+  AjusteOrcamentoInput,
+  Cliente,
+  Comunicacao,
+  ConfigInatividade,
+  DatabaseConnectionConfig,
+  DatabaseSchemaStatus,
   Equipamento,
   EquipamentoImagem,
   EquipamentoImagemInput,
-  Cliente,
-  Produto,
-  ServicoCatalogo,
   GastoFixo,
+  GastoResumoMensal,
   GastoVariavel,
   GastoVariavelInput,
-  GastoResumoMensal,
-  Verificacao,
-  Comunicacao,
-  DatabaseSchemaStatus,
   LocalSupportBundleResult,
   LocalSupportStatus,
   PostgresBackupResult,
   PostgresRestoreResult,
   PostgresBackupToolsStatus,
+  Produto,
+  ResultadoVerificacaoCredenciais,
+  ServicoCatalogo,
+  Verificacao,
 } from "@/types";
 
 /** Payload esperado pelo Rust em `criar_cliente` / `atualizar_cliente` (parâmetro `input`). */
@@ -425,5 +429,85 @@ export const db = {
   /** Abre URL no navegador padrão do sistema → Rust: abrir_url */
   async abrirUrl(url: string): Promise<void> {
     return invoke<void>("abrir_url", { url });
+  },
+
+  // ─── Configurações de Inatividade ─────────────────────
+
+  /** Verifica se o bloqueio por inatividade está ativo → Rust: verificar_config_inatividade */
+  async verificarConfigInatividade(): Promise<ConfigInatividade> {
+    const enabled = await invoke<boolean>("verificar_config_inatividade");
+    return { inactivity_lock_enabled: enabled };
+  },
+
+  /** Salva configuração de bloqueio por inatividade → Rust: salvar_config_inatividade */
+  async salvarConfigInatividade(enabled: boolean): Promise<ConfigInatividade> {
+    const result = await invoke<boolean>("salvar_config_inatividade", { enabled });
+    return { inactivity_lock_enabled: result };
+  },
+
+  // ─── Credenciais do Banco (Recuperação de PIN) ────────
+
+  /** Testa credenciais PostgreSQL contra o banco → Rust: verificar_credenciais_banco */
+  async verificarCredenciaisBanco(
+    creds: DatabaseConnectionConfig
+  ): Promise<ResultadoVerificacaoCredenciais> {
+    try {
+      const success = await invoke<boolean>("verificar_credenciais_banco", {
+        host: creds.host,
+        port: creds.port,
+        database: creds.database,
+        username: creds.username,
+        password: creds.password,
+      });
+      return { success };
+    } catch (e) {
+      return { success: false, error: String(e) };
+    }
+  },
+
+  /** Redefine PIN de um perfil via credenciais do banco → Rust: redefinir_pin_via_db */
+  async redefinirPinViaDb(
+    creds: DatabaseConnectionConfig,
+    profileId: number,
+    newPin: string
+  ): Promise<ResultadoVerificacaoCredenciais> {
+    try {
+      const success = await invoke<boolean>("redefinir_pin_via_db", {
+        host: creds.host,
+        port: creds.port,
+        database: creds.database,
+        username: creds.username,
+        password: creds.password,
+        profileId,
+        newPin,
+      });
+      return { success };
+    } catch (e) {
+      return { success: false, error: String(e) };
+    }
+  },
+
+  // ─── Serviços de Verificação (Orçamento) ──────────────
+
+  /**
+   * Atualiza serviços/peças/custo de uma verificação técnica → Rust: atualizar_servicos_verificacao.
+   * Serializa os arrays de serviços e peças como JSON strings para o backend.
+   */
+  async atualizarServicosVerificacao(
+    input: AjusteOrcamentoInput,
+    profileId: number
+  ): Promise<Verificacao> {
+    return invoke<Verificacao>("atualizar_servicos_verificacao", {
+      equipamentoId: input.equipamento_id,
+      servicosJson: JSON.stringify(input.servicos),
+      pecasJson: JSON.stringify(input.pecas),
+      custoTotal: input.custo_total,
+      profileId,
+    });
+  },
+
+  /** Lista serviços ativos do catálogo (apenas leitura) → Rust: listar_servicos_catalogo_ativos */
+  async listarServicosCatalogoAtivos(): Promise<ServicoCatalogo[]> {
+    return invoke<ServicoCatalogo[]>("listar_servicos_catalogo_ativos");
   },
 };
