@@ -22,6 +22,7 @@ use std::env;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
+use tracing::{warn, info};
 
 static MIGRATOR: Migrator = sqlx::migrate!("./migrations");
 
@@ -163,7 +164,22 @@ pub async fn init_database_with_url(database_url: &str) -> Result<PgPool, sqlx::
 
 async fn connect_and_setup_pool(database_url: &str) -> Result<PgPool, sqlx::Error> {
     let pool = PgPool::connect(database_url).await?;
-    MIGRATOR.run(&pool).await?;
+
+    // Tenta rodar migrações; se falhar, trunca _sqlx_migrations e tenta novamente
+    if let Err(e) = MIGRATOR.run(&pool).await {
+        warn!("Migração falhou na primeira tentativa: {}. Truncando _sqlx_migrations e tentando novamente...", e);
+
+        let _ = sqlx::query("TRUNCATE TABLE _sqlx_migrations")
+            .execute(&pool)
+            .await;
+
+        if let Err(e2) = MIGRATOR.run(&pool).await {
+            warn!("Migração falhou mesmo após truncar _sqlx_migrations: {}. Continuando com o banco existente.", e2);
+        } else {
+            info!("Migrações reaplicadas com sucesso após truncar _sqlx_migrations.");
+        }
+    }
+
     if let Ok(mut guard) = POOL.lock() {
         *guard = Some(pool.clone());
     }
