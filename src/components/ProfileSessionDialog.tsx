@@ -29,15 +29,12 @@ interface ProfileSessionDialogProps {
   selectedProfileId: string;
   selectedProfile: SecurityProfile | null;
   pin: string;
-  confirmPin: string;
   busy: boolean;
   error: string | null;
   onClose: () => void;
   onSelectProfile: (profileId: string) => void;
   onPinChange: (value: string) => void;
-  onConfirmPinChange: (value: string) => void;
   onSubmit: () => void;
-  onQuickLoginNoPin?: (profileId: string) => void;
   onForgotPassword?: () => void;
 }
 
@@ -53,23 +50,18 @@ export function ProfileSessionDialog({
   selectedProfileId,
   selectedProfile,
   pin,
-  confirmPin,
   busy,
   error,
   onClose,
   onSelectProfile,
   onPinChange,
-  onConfirmPinChange,
   onSubmit,
-  onQuickLoginNoPin,
   onForgotPassword,
 }: ProfileSessionDialogProps) {
   const isSelectorMode = mode === "selector";
   const isCurrentProfileSelected = !!selectedProfile && selectedProfile.id === activeProfileId;
-  const shouldAskForPin = !isSelectorMode || !isCurrentProfileSelected;
-  const shouldConfirmPin = Boolean(shouldAskForPin && selectedProfile && !selectedProfile.pin_configured);
+  const shouldAskForPin = Boolean(selectedProfile?.pin_configured) && (!isSelectorMode || !isCurrentProfileSelected);
   const permissionPreview = selectedProfile?.permissions.slice(0, 3) ?? [];
-  const profilesWithoutPin = profiles.filter((profile) => !profile.pin_configured);
 
   const primaryActionLabel = (() => {
     if (!selectedProfile) {
@@ -77,7 +69,7 @@ export function ProfileSessionDialog({
     }
 
     if (mode === "startup") {
-      return selectedProfile.pin_configured ? "Entrar com este perfil" : "Configurar PIN e entrar";
+      return selectedProfile.pin_configured ? "Entrar com este perfil" : "Entrar com este perfil";
     }
 
     if (mode === "selector") {
@@ -85,19 +77,18 @@ export function ProfileSessionDialog({
         ? "Continuar com este perfil"
         : selectedProfile.pin_configured
           ? "Trocar para este perfil"
-          : "Configurar PIN e trocar";
+          : "Trocar para este perfil";
     }
 
     return selectedProfile.pin_configured
       ? (isCurrentProfileSelected ? "Desbloquear perfil" : "Trocar perfil e continuar")
-      : "Configurar PIN";
+      : "Continuar";
   })();
 
   const primaryDisabled =
     !selectedProfile ||
     busy ||
-    (shouldAskForPin && pin.length < 4) ||
-    (shouldConfirmPin && confirmPin.length < 4);
+    (shouldAskForPin && pin.length < 4);
 
   const handlePrimaryAction = () => {
     if (primaryDisabled) return;
@@ -118,7 +109,7 @@ export function ProfileSessionDialog({
     }
 
     if (!selectedProfile.pin_configured) {
-      return "Este perfil ainda não tem PIN configurado. Defina um PIN para finalizar a troca.";
+      return "Este perfil não exige PIN. Clique abaixo para continuar.";
     }
 
     return "Informe o PIN do perfil selecionado para confirmar a sessão.";
@@ -143,34 +134,6 @@ export function ProfileSessionDialog({
               <DialogTitle className="text-2xl">{title}</DialogTitle>
               <DialogDescription className="max-w-xl">{description}</DialogDescription>
             </DialogHeader>
-
-            {profilesWithoutPin.length > 0 && (
-              <div className="mt-4 space-y-2">
-                <Label htmlFor="quick-login-no-pin">Login rápido (sem PIN)</Label>
-                <select
-                  id="quick-login-no-pin"
-                  aria-label="Login rápido sem PIN"
-                  value=""
-                  onChange={(event) => {
-                    const value = event.target.value;
-                    if (value && onQuickLoginNoPin) {
-                      onQuickLoginNoPin(value);
-                    }
-                    event.target.value = "";
-                  }}
-                  className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm ring-offset-background focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
-                >
-                  <option value="" disabled>
-                    Selecionar operador...
-                  </option>
-                  {profilesWithoutPin.map((profile) => (
-                    <option key={`no-pin-${profile.id}`} value={String(profile.id)}>
-                      {profile.nome}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            )}
 
             <div className="mt-6 grid gap-3">
               {profiles.map((profile) => {
@@ -287,28 +250,19 @@ export function ProfileSessionDialog({
                   />
                 </div>
 
-                {shouldConfirmPin && (
-                  <div className="space-y-2">
-                    <Label htmlFor="sensitive-pin-confirm">Confirmar PIN</Label>
-                    <Input
-                      id="sensitive-pin-confirm"
-                      type="password"
-                      inputMode="numeric"
-                      value={confirmPin}
-                      onChange={(event) => onConfirmPinChange(event.target.value.replace(/\D/g, "").slice(0, 8))}
-                      placeholder="Repita o PIN"
-                      autoComplete="new-password"
-                    />
-                  </div>
-                )}
-
                 {error && <p className="text-sm text-red-600">{error}</p>}
               </form>
             ) : (
               <div className="mt-5 space-y-4">
-                <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-800">
-                  Você já está neste perfil. Use o botão abaixo para continuar sem trocar a conta atual.
-                </div>
+                {selectedProfile && !selectedProfile.pin_configured ? (
+                  <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-800">
+                    Este perfil não exige PIN. Clique abaixo para continuar.
+                  </div>
+                ) : (
+                  <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-800">
+                    Você já está neste perfil. Use o botão abaixo para continuar sem trocar a conta atual.
+                  </div>
+                )}
                 {error && <p className="text-sm text-red-600">{error}</p>}
               </div>
             )}
@@ -316,7 +270,7 @@ export function ProfileSessionDialog({
         </div>
 
         <DialogFooter className="border-t bg-background px-6 py-4">
-          {mode === "startup" && onForgotPassword && (
+          {onForgotPassword && (
             <Button
               variant="link"
               type="button"

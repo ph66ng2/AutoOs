@@ -465,6 +465,28 @@ export const db = {
     }
   },
 
+  /** Exclui um perfil permanentemente com verificação dupla → Rust: deletar_perfil */
+  async deletarPerfil(
+    profileId: number,
+    adminPin: string,
+    dbCreds: DatabaseConnectionConfig
+  ): Promise<{ success: boolean; error?: string }> {
+    try {
+      const success = await invoke<boolean>("deletar_perfil", {
+        profileId,
+        adminPin,
+        dbUsername: dbCreds.username,
+        dbPassword: dbCreds.password,
+        dbHost: dbCreds.host,
+        dbPort: dbCreds.port,
+        dbName: dbCreds.database,
+      });
+      return { success };
+    } catch (e) {
+      return { success: false, error: String(e) };
+    }
+  },
+
   /** Redefine PIN de um perfil via credenciais do banco → Rust: redefinir_pin_via_db */
   async redefinirPinViaDb(
     creds: DatabaseConnectionConfig,

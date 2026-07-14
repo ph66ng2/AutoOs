@@ -93,7 +93,6 @@ export function SensitiveAccessProvider({ children }: { children: ReactNode }) {
   const [promptOptions, setPromptOptions] = useState<SensitiveAccessPromptOptions>(defaultPrompt);
   const [recoveryOpen, setRecoveryOpen] = useState(false);
   const [pin, setPin] = useState("");
-  const [confirmPin, setConfirmPin] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [selectedProfileId, setSelectedProfileId] = useState<string>("");
@@ -143,7 +142,6 @@ export function SensitiveAccessProvider({ children }: { children: ReactNode }) {
         });
         setDialogMandatory(true);
         setPin("");
-        setConfirmPin("");
         setError(null);
         setBusy(false);
         setDialogOpen(true);
@@ -179,7 +177,6 @@ export function SensitiveAccessProvider({ children }: { children: ReactNode }) {
 
   const resetDialogState = useCallback(() => {
     setPin("");
-    setConfirmPin("");
     setError(null);
     setBusy(false);
     setSelectedProfileId(status?.active_profile_id ? String(status.active_profile_id) : "");
@@ -216,7 +213,6 @@ export function SensitiveAccessProvider({ children }: { children: ReactNode }) {
       });
       setError(null);
       setPin("");
-      setConfirmPin("");
       if (currentStatus?.unlocked && !profileHasPermission(currentStatus, options?.permission)) {
         setError(`O perfil ativo não possui permissão para ${permissionDescription(options?.permission)}. Troque o perfil para continuar.`);
       }
@@ -242,7 +238,6 @@ export function SensitiveAccessProvider({ children }: { children: ReactNode }) {
         description: options?.description || "Veja as contas locais disponíveis e decida se quer continuar no perfil atual ou trocar de perfil.",
       });
       setPin("");
-      setConfirmPin("");
       setError(null);
       setBusy(false);
       setDialogOpen(true);
@@ -322,48 +317,7 @@ export function SensitiveAccessProvider({ children }: { children: ReactNode }) {
       setError(submitError?.message || submitError?.toString() || "Falha ao validar o acesso sensível.");
       setBusy(false);
     }
-  }, [closeDialog, confirmPin, pin, promptOptions.permission, selectedProfileId, status]);
-
-  const quickLoginNoPin = useCallback(async (profileId: string) => {
-    setBusy(true);
-    setError(null);
-
-    try {
-      const targetProfileId = Number(profileId);
-      if (!targetProfileId) {
-        setError("Perfil inválido.");
-        setBusy(false);
-        return;
-      }
-
-      let workingStatus = status;
-
-      if (targetProfileId !== status?.active_profile_id) {
-        workingStatus = await SensitiveAccessService.setActiveProfile(targetProfileId);
-        setStatus(workingStatus);
-      }
-
-      const nextStatus = await SensitiveAccessService.unlockWithoutPin();
-
-      if (promptOptions.permission && !profileHasPermission(nextStatus, promptOptions.permission)) {
-        setStatus(nextStatus);
-        setError(`O perfil ativo não possui permissão para ${permissionDescription(promptOptions.permission)}.`);
-        setBusy(false);
-        return;
-      }
-
-      setStatus(nextStatus);
-
-      try {
-        localStorage.setItem("autoos_last_profile_id", String(targetProfileId));
-      } catch {}
-
-      closeDialog(true);
-    } catch (loginError: any) {
-      setError(loginError?.message || loginError?.toString() || "Falha no login rápido.");
-      setBusy(false);
-    }
-  }, [closeDialog, promptOptions.permission, status]);
+  }, [closeDialog, pin, promptOptions.permission, selectedProfileId, status, dialogMode]);
 
   const value = useMemo<SensitiveAccessContextValue>(() => ({
     status,
@@ -396,7 +350,6 @@ export function SensitiveAccessProvider({ children }: { children: ReactNode }) {
         selectedProfileId={selectedProfileId}
         selectedProfile={selectedProfile}
         pin={pin}
-        confirmPin={confirmPin}
         busy={busy}
         error={error}
         onClose={() => closeDialog(false)}
@@ -405,9 +358,7 @@ export function SensitiveAccessProvider({ children }: { children: ReactNode }) {
           setError(null);
         }}
         onPinChange={setPin}
-        onConfirmPinChange={setConfirmPin}
         onSubmit={() => void submitSensitiveAccess()}
-        onQuickLoginNoPin={(profileId) => void quickLoginNoPin(profileId)}
         onForgotPassword={() => setRecoveryOpen(true)}
       />
 

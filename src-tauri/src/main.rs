@@ -115,6 +115,7 @@ fn main() {
             commands::auth::list_security_profiles,
             commands::auth::deactivate_security_profile,
             commands::auth::reactivate_security_profile,
+            commands::auth::deletar_perfil,
             commands::auth::register_security_audit_export,
             commands::auth::list_security_audit_events,
             commands::auth::verificar_config_inatividade,
