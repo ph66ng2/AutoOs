@@ -1009,8 +1009,19 @@ pub async fn create_security_profile(input: SecurityProfileInput, pin: String) -
 
 #[tauri::command]
 #[instrument(skip_all)]
-pub async fn update_security_profile(profile_id: i32, input: SecurityProfileInput) -> Result<SensitiveAccessStatus, String> {
+pub async fn update_security_profile(profile_id: i32, input: SecurityProfileInput, admin_pin: String) -> Result<SensitiveAccessStatus, String> {
     let actor = require_permission(PERMISSION_MANAGE_PROFILES)?;
+
+    let stored = load_profile_pin(actor.id)?;
+    if let Some(ref stored_pin) = stored {
+        if !verify_pin(admin_pin.trim(), stored_pin) {
+            spawn_security_event("PROFILE_UPDATE_FAILED", Some(actor.clone()), "PIN do administrador inválido".to_string(), false);
+            return Err("PIN do administrador inválido".to_string());
+        }
+    } else {
+        return Err("Seu perfil não possui PIN configurado".to_string());
+    }
+
     let current = to_profile_summary(fetch_profile_record_by_id(profile_id).await?)?;
     let nome = input.nome.trim();
     if nome.len() < 3 {
@@ -1060,8 +1071,19 @@ pub async fn update_security_profile(profile_id: i32, input: SecurityProfileInpu
 
 #[tauri::command]
 #[instrument(skip_all)]
-pub async fn reset_security_profile_pin(profile_id: i32, new_pin: String) -> Result<SensitiveAccessStatus, String> {
+pub async fn reset_security_profile_pin(profile_id: i32, new_pin: String, admin_pin: String) -> Result<SensitiveAccessStatus, String> {
     let actor = require_permission(PERMISSION_MANAGE_PROFILES)?;
+
+    let stored = load_profile_pin(actor.id)?;
+    if let Some(ref stored_pin) = stored {
+        if !verify_pin(admin_pin.trim(), stored_pin) {
+            spawn_security_event("PIN_RESET_FAILED", Some(actor.clone()), "PIN do administrador inválido".to_string(), false);
+            return Err("PIN do administrador inválido".to_string());
+        }
+    } else {
+        return Err("Seu perfil não possui PIN configurado".to_string());
+    }
+
     validate_pin_format(&new_pin)?;
     let profile = to_profile_summary(fetch_profile_record_by_id(profile_id).await?)?;
     store_profile_pin(profile_id, &new_pin)?;
@@ -1295,6 +1317,95 @@ pub async fn reactivate_security_profile(profile_id: i32) -> Result<SensitiveAcc
     )
     .await;
     status_snapshot().await
+}
+
+#[tauri::command]
+#[instrument(skip_all)]
+pub async fn deletar_perfil(
+    profile_id: i32,
+    admin_pin: String,
+    db_username: String,
+    db_password: String,
+    db_host: String,
+    db_port: u16,
+    db_name: String,
+) -> Result<bool, String> {
+    let actor = require_permission(PERMISSION_MANAGE_PROFILES)?;
+
+    let stored = load_profile_pin(actor.id)?;
+    if let Some(ref stored_pin) = stored {
+        if !verify_pin(admin_pin.trim(), stored_pin) {
+            spawn_security_event(
+                "PROFILE_DELETE_FAILED",
+                Some(actor.clone()),
+                "PIN do administrador inválido".to_string(),
+                false,
+            );
+            return Err("PIN do administrador inválido".to_string());
+        }
+    } else {
+        return Err("O perfil administrador não possui PIN configurado".to_string());
+    }
+
+    let conn_str = format!(
+        "host={} port={} dbname={} user={} password={}",
+        db_host, db_port, db_name, db_username, db_password
+    );
+
+    let client = match try_connect_pg(&conn_str, true).await {
+        Ok(client) => client,
+        Err(_) => {
+            match try_connect_pg(&conn_str, false).await {
+                Ok(client) => client,
+                Err(_) => {
+                    spawn_security_event(
+                        "PROFILE_DELETE_FAILED",
+                        Some(actor.clone()),
+                        "Credenciais do PostgreSQL inválidas".to_string(),
+                        false,
+                    );
+                    return Err("Credenciais do PostgreSQL inválidas".to_string());
+                }
+            }
+        }
+    };
+
+    drop(client);
+
+    let profile = to_profile_summary(fetch_profile_record_by_id_any(profile_id).await?)?;
+
+    let active = fetch_active_profile_record().await?;
+    if active.id == profile_id {
+        return Err("Não é possível excluir o perfil atualmente ativo. Troque de perfil primeiro.".to_string());
+    }
+
+    if count_active_profiles_excluding(profile_id).await? == 0 {
+        return Err("Deve permanecer pelo menos um perfil ativo no sistema".to_string());
+    }
+
+    let pool = get_pool().await.map_err(|e| e.to_string())?;
+    sqlx::query("DELETE FROM security_profiles WHERE id = $1")
+        .bind(profile_id)
+        .execute(&pool)
+        .await
+        .map_err(|e| {
+            error!("Erro ao excluir perfil de segurança {}: {}", profile_id, e);
+            e.to_string()
+        })?;
+
+    if let Ok(entry) = get_keyring_entry(&profile_keyring_user(profile_id)) {
+        let _ = entry.delete_password();
+    }
+
+    record_security_event(
+        "PROFILE_DELETED",
+        Some(&actor),
+        format!("Perfil {} excluído permanentemente", profile.nome),
+        true,
+    )
+    .await;
+
+    Ok(true)
 }
 
 #[tauri::command]

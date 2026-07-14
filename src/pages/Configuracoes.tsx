@@ -74,12 +74,14 @@ export default function Configuracoes() {
   const [editPermissions, setEditPermissions] = useState<SensitivePermission[]>([]);
   const [resetPin, setResetPin] = useState("");
   const [resetPinConfirm, setResetPinConfirm] = useState("");
+  const [adminPinVerify, setAdminPinVerify] = useState("");
   const [newProfileName, setNewProfileName] = useState("");
   const [newProfileRole, setNewProfileRole] = useState("CUSTOM");
   const [newProfilePermissions, setNewProfilePermissions] = useState<SensitivePermission[]>([]);
   const [newProfilePin, setNewProfilePin] = useState("");
   const [newProfilePinConfirm, setNewProfilePinConfirm] = useState("");
   const [newProfileNoPin, setNewProfileNoPin] = useState(false);
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [auditSearch, setAuditSearch] = useState("");
   const [auditOutcomeFilter, setAuditOutcomeFilter] = useState("ALL");
   const [auditProfileFilter, setAuditProfileFilter] = useState("ALL");
@@ -625,7 +627,8 @@ export default function Configuracoes() {
         nome: editProfileName.trim(),
         role: editProfileRole,
         permissions,
-      });
+      }, adminPinVerify);
+      setAdminPinVerify("");
       setSecurityMessage("Perfil atualizado com sucesso.");
       await atualizarEstadoSeguranca();
     } catch (error: any) {
@@ -641,7 +644,7 @@ export default function Configuracoes() {
       return;
     }
 
-    const skipPin = newProfileRole === "CUSTOM" && newProfileNoPin;
+    const skipPin = newProfileNoPin;
 
     if (!skipPin && newProfilePin.length < 4) {
       setSecurityMessage("O PIN inicial do novo perfil deve ter entre 4 e 8 dígitos.");
@@ -702,9 +705,10 @@ export default function Configuracoes() {
     setSecurityBusy(true);
     setSecurityMessage(null);
     try {
-      await SensitiveAccessService.resetProfilePin(managedProfileId, resetPin);
+      await SensitiveAccessService.resetProfilePin(managedProfileId, resetPin, adminPinVerify);
       setResetPin("");
       setResetPinConfirm("");
+      setAdminPinVerify("");
       setSecurityMessage("PIN do perfil selecionado redefinido com sucesso.");
       await atualizarEstadoSeguranca();
     } catch (error: any) {
@@ -846,6 +850,11 @@ export default function Configuracoes() {
     }
   }
 
+  async function handleDeleteSuccess() {
+    setSecurityMessage("Perfil excluído permanentemente.");
+    await atualizarEstadoSeguranca();
+  }
+
   if ((canConfigureSmtp && loading) || (canConfigureWhatsapp && whatsappLoading)) {
     return (
       <div className="flex items-center justify-center h-64">
@@ -985,6 +994,11 @@ export default function Configuracoes() {
           securityMessage={securityMessage}
           inactivityLockEnabled={inactivityLockEnabled}
           onToggleInactivityLock={handleInactivityToggle}
+          deleteDialogOpen={deleteDialogOpen}
+          onDeleteDialogOpenChange={setDeleteDialogOpen}
+          onDeleteSuccess={handleDeleteSuccess}
+          adminPinVerify={adminPinVerify}
+          setAdminPinVerify={setAdminPinVerify}
         />
 
       </Tabs>

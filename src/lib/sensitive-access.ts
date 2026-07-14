@@ -38,12 +38,12 @@ export const SensitiveAccessService = {
     return invoke<SensitiveAccessStatus>("create_security_profile", { input, pin });
   },
 
-  async updateProfile(profileId: number, input: SecurityProfileInput): Promise<SensitiveAccessStatus> {
-    return invoke<SensitiveAccessStatus>("update_security_profile", { profileId, input });
+  async updateProfile(profileId: number, input: SecurityProfileInput, adminPin: string): Promise<SensitiveAccessStatus> {
+    return invoke<SensitiveAccessStatus>("update_security_profile", { profileId, input, adminPin });
   },
 
-  async resetProfilePin(profileId: number, newPin: string): Promise<SensitiveAccessStatus> {
-    return invoke<SensitiveAccessStatus>("reset_security_profile_pin", { profileId, newPin });
+  async resetProfilePin(profileId: number, newPin: string, adminPin: string): Promise<SensitiveAccessStatus> {
+    return invoke<SensitiveAccessStatus>("reset_security_profile_pin", { profileId, newPin, adminPin });
   },
 
   async listProfiles(includeInactive = false): Promise<SecurityProfile[]> {
@@ -56,6 +56,18 @@ export const SensitiveAccessService = {
 
   async reactivateProfile(profileId: number): Promise<SensitiveAccessStatus> {
     return invoke<SensitiveAccessStatus>("reactivate_security_profile", { profileId });
+  },
+
+  async deletarPerfil(profileId: number, adminPin: string, dbCreds: { host: string; port: number; database: string; username: string; password: string }): Promise<boolean> {
+    return invoke<boolean>("deletar_perfil", {
+      profileId,
+      adminPin,
+      dbUsername: dbCreds.username,
+      dbPassword: dbCreds.password,
+      dbHost: dbCreds.host,
+      dbPort: dbCreds.port,
+      dbName: dbCreds.database,
+    });
   },
 
   async registerAuditExport(params: {
