@@ -595,8 +595,7 @@ O equipamento foi reparado e testado com sucesso.
 
 PARA RETIRADA:
 ━━━━━━━━━━━━━━━━━━━━━━━━━━
-Horário: Segunda a Sexta, 8h às 18h
-         Sábado, 8h às 12h
+Horário: Segunda a Sexta, 8h às 17h
 
 Por favor, traga a OS do seu equipamento para retirada.
 ${valor ? `\nValor a pagar: ${formatarMoeda(valor)}` : ""}
@@ -624,7 +623,7 @@ function gerarCorpoEquipamentoProntoHtml(equipamento: Equipamento, emailTecnico?
           ${valor ? `<tr><td style="padding:6px 0;font-weight:600;">Valor a pagar</td><td style="padding:6px 0;">${escapeHtml(formatarMoeda(valor))}</td></tr>` : ""}
         </tbody>
       </table>
-      <p>Horário de retirada: Segunda a Sexta, 8h às 18h, e Sábado, 8h às 12h.</p>
+      <p>Horário de retirada: Segunda a Sexta, 8h às 17h.</p>
       <p>Por favor, traga um documento com foto para retirada.</p>
       <p>${fraseContatoTecnicoHtml(emailTecnico)}</p>
       <p>Atenciosamente,<br />Equipe Técnica BMITAG</p>
