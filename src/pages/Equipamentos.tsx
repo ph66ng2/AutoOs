@@ -119,7 +119,6 @@ import { HistoricoComunicacoes } from "@/components/equipamentos/HistoricoComuni
 import { ClienteSelector } from "@/components/equipamentos/ClienteSelector";
 import { PhotoUploadDialog } from "@/components/equipamentos/PhotoUploadDialog";
 import { DocumentosEquipamento } from "@/components/equipamentos/DocumentosEquipamento";
-import { OrcamentoRapidoDialog } from "@/components/equipamentos/OrcamentoRapidoDialog";
 import { AjusteOrcamentoServicos } from "@/components/equipamentos/AjusteOrcamentoServicos";
 import { ActionPriorityRow, type PriorityAction } from "@/components/ui/action-priority-row";
 import {
@@ -204,8 +203,6 @@ export default function Equipamentos() {
   const [photoUploadOpen, setPhotoUploadOpen] = useState(false);
   const [photoUploadCategoria, setPhotoUploadCategoria] = useState<"ENTRADA" | "SAIDA">("ENTRADA");
   const [photoUploadNewEquip, setPhotoUploadNewEquip] = useState(false);
-
-  const [orcamentoRapidoOpen, setOrcamentoRapidoOpen] = useState(false);
 
   // Cliente vinculado ao equipamento (gerenciado pelo ClienteSelector)
   const [clienteVinculado, setClienteVinculado] = useState<Cliente | null>(null);
@@ -1617,10 +1614,6 @@ export default function Equipamentos() {
           <p className="text-muted-foreground">Gerencie equipamentos, verificações e orçamentos</p>
         </div>
         <div className="flex items-center gap-2">
-          <Button variant="outline" onClick={() => setOrcamentoRapidoOpen(true)}>
-            <FileText className="h-4 w-4 mr-2" />
-            Orçamento Rápido
-          </Button>
           <Button onClick={abrirNovo}><Plus className="h-4 w-4 mr-2" />Novo Equipamento</Button>
         </div>
       </div>
@@ -1988,15 +1981,6 @@ export default function Equipamentos() {
           </form>
         </DialogContent>
       </Dialog>
-
-      {/* ═══ Dialog Orçamento Rápido ═══ */}
-      <OrcamentoRapidoDialog
-        open={orcamentoRapidoOpen}
-        onOpenChange={setOrcamentoRapidoOpen}
-        onSuccess={() => {
-          void recarregar();
-        }}
-      />
 
       {/* ═══ Dialog Detalhes com Abas ═══ */}
       <Dialog open={detalhesDialogOpen} onOpenChange={setDetalhesDialogOpen}>
