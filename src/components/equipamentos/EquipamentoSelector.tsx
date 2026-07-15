@@ -3,7 +3,7 @@
  * ║  EquipamentoSelector.tsx — Seletor de Equipamento com Busca ║
  * ╠══════════════════════════════════════════════════════════════╣
  * ║  Componente para buscar e selecionar equipamento no         ║
- * ║  formulário de orçamento rápido.                            ║
+ * ║  componentes do sistema.                                     ║
  * ║                                                              ║
  * ║  MODOS DE OPERAÇÃO (type Modo):                              ║
  * ║  - "busca": campo de busca com dropdown de resultados       ║
@@ -12,9 +12,6 @@
  * ║  DEPENDE DE:                                                 ║
  * ║  - lib/db.ts (listarEquipamentos)                           ║
  * ║  - types/index.ts (Equipamento)                             ║
- * ║                                                              ║
- * ║  USADO POR:                                                  ║
- * ║  - components/equipamentos/OrcamentoRapidoDialog.tsx        ║
  * ╚══════════════════════════════════════════════════════════════╝
  */
 import { useState, useEffect, useRef } from "react";

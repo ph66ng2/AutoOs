@@ -97,6 +97,14 @@ fn concurrency_conflict_message(entity_label: &str) -> String {
     )
 }
 
+fn duplicate_client_document_message(error: &sqlx::Error) -> Option<String> {
+    let lower = error.to_string().to_lowercase();
+    if lower.contains("clientes_documento_key") {
+        return Some("Já existe um cliente cadastrado com este CPF/CNPJ.".to_string());
+    }
+    None
+}
+
 /// Listar clientes com paginação.
 #[tauri::command]
 #[instrument(skip_all, fields(page = page))]
@@ -245,7 +253,7 @@ pub async fn criar_cliente(input: ClienteInput) -> Result<ClienteRow, String> {
     .await
     .map_err(|e| {
         error!("Erro ao criar cliente: {}", e);
-        e.to_string()
+        duplicate_client_document_message(&e).unwrap_or_else(|| e.to_string())
     })?;
 
     let id: i32 = row.get("id");
@@ -328,7 +336,7 @@ pub async fn atualizar_cliente(id: i32, input: ClienteInput) -> Result<ClienteRo
     .await
     .map_err(|e| {
         error!("Erro ao atualizar cliente {}: {}", id, e);
-        e.to_string()
+        duplicate_client_document_message(&e).unwrap_or_else(|| e.to_string())
     })?
     .rows_affected();
 
