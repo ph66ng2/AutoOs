@@ -29,11 +29,13 @@ interface ProfileSessionDialogProps {
   selectedProfileId: string;
   selectedProfile: SecurityProfile | null;
   pin: string;
+  confirmPin: string;
   busy: boolean;
   error: string | null;
   onClose: () => void;
   onSelectProfile: (profileId: string) => void;
   onPinChange: (value: string) => void;
+  onConfirmPinChange: (value: string) => void;
   onSubmit: () => void;
   onForgotPassword?: () => void;
 }
@@ -50,22 +52,29 @@ export function ProfileSessionDialog({
   selectedProfileId,
   selectedProfile,
   pin,
+  confirmPin,
   busy,
   error,
   onClose,
   onSelectProfile,
   onPinChange,
+  onConfirmPinChange,
   onSubmit,
   onForgotPassword,
 }: ProfileSessionDialogProps) {
   const isSelectorMode = mode === "selector";
   const isCurrentProfileSelected = !!selectedProfile && selectedProfile.id === activeProfileId;
-  const shouldAskForPin = Boolean(selectedProfile?.pin_configured) && (!isSelectorMode || !isCurrentProfileSelected);
+  const isAdminWithoutPin = selectedProfile?.role === "ADMIN" && !selectedProfile?.pin_configured;
+  const shouldAskForPin = isAdminWithoutPin || (Boolean(selectedProfile?.pin_configured) && (!isSelectorMode || !isCurrentProfileSelected));
   const permissionPreview = selectedProfile?.permissions.slice(0, 3) ?? [];
 
   const primaryActionLabel = (() => {
     if (!selectedProfile) {
       return "Selecione um perfil";
+    }
+
+    if (isAdminWithoutPin) {
+      return "Configurar PIN e continuar";
     }
 
     if (mode === "startup") {
@@ -88,7 +97,8 @@ export function ProfileSessionDialog({
   const primaryDisabled =
     !selectedProfile ||
     busy ||
-    (shouldAskForPin && pin.length < 4);
+    (shouldAskForPin && pin.length < 4) ||
+    (isAdminWithoutPin && confirmPin.length < 4);
 
   const handlePrimaryAction = () => {
     if (primaryDisabled) return;
@@ -98,6 +108,10 @@ export function ProfileSessionDialog({
   const helperText = (() => {
     if (!selectedProfile) {
       return "Selecione um perfil para visualizar o contexto da sessão.";
+    }
+
+    if (isAdminWithoutPin) {
+      return "Seu perfil de administrador exige um PIN. Defina um PIN de 4 a 8 dígitos para continuar.";
     }
 
     if (mode === "startup") {
@@ -237,7 +251,9 @@ export function ProfileSessionDialog({
                 }}
               >
                 <div className="space-y-2">
-                  <Label htmlFor="sensitive-pin">PIN do perfil</Label>
+                  <Label htmlFor="sensitive-pin">
+                    {isAdminWithoutPin ? "Novo PIN" : "PIN do perfil"}
+                  </Label>
                   <Input
                     id="sensitive-pin"
                     type="password"
@@ -249,6 +265,21 @@ export function ProfileSessionDialog({
                     autoFocus
                   />
                 </div>
+
+                {isAdminWithoutPin && (
+                  <div className="space-y-2">
+                    <Label htmlFor="sensitive-pin-confirm">Confirmar PIN</Label>
+                    <Input
+                      id="sensitive-pin-confirm"
+                      type="password"
+                      inputMode="numeric"
+                      value={confirmPin}
+                      onChange={(event) => onConfirmPinChange(event.target.value.replace(/\D/g, "").slice(0, 8))}
+                      placeholder="Repita o PIN"
+                      autoComplete="current-password"
+                    />
+                  </div>
+                )}
 
                 {error && <p className="text-sm text-red-600">{error}</p>}
               </form>

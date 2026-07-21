@@ -149,18 +149,18 @@ export function ConfiguracoesTabSeguranca({
         <CardContent className="space-y-3">
           <div className="space-y-2">
             <Label htmlFor="current-pin">PIN atual</Label>
-            <Input id="current-pin" type="password" inputMode="numeric" value={currentPin} onChange={(event) => setCurrentPin(event.target.value.replace(/\D/g, "").slice(0, 8))} disabled={!securityAdminUnlocked || securityBusy} />
+            <Input id="current-pin" type="password" inputMode="numeric" value={currentPin} onChange={(event) => setCurrentPin(event.target.value.replace(/\D/g, "").slice(0, 8))} disabled={securityBusy} />
           </div>
           <div className="space-y-2">
             <Label htmlFor="new-pin">Novo PIN</Label>
-            <Input id="new-pin" type="password" inputMode="numeric" value={newPin} onChange={(event) => setNewPin(event.target.value.replace(/\D/g, "").slice(0, 8))} disabled={!securityAdminUnlocked || securityBusy} />
+            <Input id="new-pin" type="password" inputMode="numeric" value={newPin} onChange={(event) => setNewPin(event.target.value.replace(/\D/g, "").slice(0, 8))} disabled={securityBusy} />
           </div>
           <div className="space-y-2">
             <Label htmlFor="confirm-new-pin">Confirmar novo PIN</Label>
-            <Input id="confirm-new-pin" type="password" inputMode="numeric" value={confirmPin} onChange={(event) => setConfirmPin(event.target.value.replace(/\D/g, "").slice(0, 8))} disabled={!securityAdminUnlocked || securityBusy} />
+            <Input id="confirm-new-pin" type="password" inputMode="numeric" value={confirmPin} onChange={(event) => setConfirmPin(event.target.value.replace(/\D/g, "").slice(0, 8))} disabled={securityBusy} />
           </div>
           <div className="flex justify-end">
-            <Button type="button" onClick={() => void trocarMeuPin()} disabled={securityBusy || !securityAdminUnlocked}>
+            <Button type="button" onClick={() => void trocarMeuPin()} disabled={securityBusy}>
               {securityBusy ? "Processando..." : "Trocar meu PIN"}
             </Button>
           </div>
@@ -316,6 +316,19 @@ export function ConfiguracoesTabSeguranca({
                 ))}
               </div>
 
+              <div className="space-y-2">
+                <Label htmlFor="admin-pin-edit">Seu PIN de administrador</Label>
+                <Input
+                  id="admin-pin-edit"
+                  type="password"
+                  inputMode="numeric"
+                  value={adminPinVerify}
+                  onChange={(event) => setAdminPinVerify(event.target.value.replace(/\D/g, "").slice(0, 8))}
+                  disabled={!securityAdminUnlocked || securityBusy || !managedProfile?.ativo}
+                  placeholder="Digite seu PIN para autorizar"
+                />
+              </div>
+
               <div className="flex flex-col gap-3 md:flex-row md:justify-between md:items-center">
                 {managedProfile?.ativo ? (
                   <Button
@@ -426,10 +439,17 @@ export function ConfiguracoesTabSeguranca({
                   id="new-profile-no-pin"
                   checked={newProfileNoPin}
                   onCheckedChange={(value) => setNewProfileNoPin(!!value)}
-                  disabled={!securityAdminUnlocked || securityBusy}
+                  disabled={!securityAdminUnlocked || securityBusy || newProfileRole === "ADMIN"}
                 />
                 <Label htmlFor="new-profile-no-pin" className="text-sm font-normal cursor-pointer">
-                  Este perfil não terá PIN (login por nome apenas)
+                  <span className={newProfileRole === "ADMIN" ? "text-muted-foreground" : ""}>
+                    Este perfil não terá PIN (login por nome apenas)
+                  </span>
+                  {newProfileRole === "ADMIN" && (
+                    <p className="text-xs text-muted-foreground mt-1">
+                      Perfis ADMIN exigem PIN obrigatoriamente
+                    </p>
+                  )}
                 </Label>
               </div>
 

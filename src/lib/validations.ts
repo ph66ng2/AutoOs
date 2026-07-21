@@ -251,15 +251,7 @@ uf: z.string().max(2).optional().or(z.literal("")),
      }
    }
 
-   const telDigitos = (data.telefone || "").replace(/\D/g, "");
-   if (telDigitos.length < 10) {
-     ctx.addIssue({
-       code: z.ZodIssueCode.custom,
-       message: "Telefone é obrigatório (DDD + número, no mínimo 10 dígitos)",
-       path: ["telefone"],
-     });
-   }
- });
+  });
 
 export type ClienteFormData = z.infer<typeof clienteSchema>;
 

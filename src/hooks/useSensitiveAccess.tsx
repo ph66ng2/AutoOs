@@ -93,6 +93,7 @@ export function SensitiveAccessProvider({ children }: { children: ReactNode }) {
   const [promptOptions, setPromptOptions] = useState<SensitiveAccessPromptOptions>(defaultPrompt);
   const [recoveryOpen, setRecoveryOpen] = useState(false);
   const [pin, setPin] = useState("");
+  const [confirmPin, setConfirmPin] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [selectedProfileId, setSelectedProfileId] = useState<string>("");
@@ -177,6 +178,7 @@ export function SensitiveAccessProvider({ children }: { children: ReactNode }) {
 
   const resetDialogState = useCallback(() => {
     setPin("");
+    setConfirmPin("");
     setError(null);
     setBusy(false);
     setSelectedProfileId(status?.active_profile_id ? String(status.active_profile_id) : "");
@@ -291,6 +293,37 @@ export function SensitiveAccessProvider({ children }: { children: ReactNode }) {
       }
 
       const activeProfile = workingStatus?.profiles.find((profile) => profile.id === (workingStatus.active_profile_id ?? targetProfileId)) ?? null;
+
+      // Admin sem PIN: forçar configuração de PIN no primeiro acesso
+      if (activeProfile?.role === "ADMIN" && !activeProfile?.pin_configured) {
+        if (pin !== confirmPin) {
+          setError("Os PINs não conferem.");
+          setBusy(false);
+          return;
+        }
+        if (pin.length < 4) {
+          setError("O PIN deve ter entre 4 e 8 dígitos.");
+          setBusy(false);
+          return;
+        }
+        await SensitiveAccessService.unlockWithoutPin();
+        const nextStatus = await SensitiveAccessService.configurePin(pin);
+        setStatus(nextStatus);
+
+        if (!profileHasPermission(nextStatus, promptOptions.permission)) {
+          setError(`O perfil ativo não possui permissão para ${permissionDescription(promptOptions.permission)}.`);
+          setBusy(false);
+          return;
+        }
+
+        try {
+          localStorage.setItem("autoos_last_profile_id", String(workingStatus!.active_profile_id!));
+        } catch { /* localStorage pode estar indisponível */ }
+
+        closeDialog(true);
+        return;
+      }
+
       let nextStatus: SensitiveAccessStatus;
       if (activeProfile?.pin_configured) {
         nextStatus = await SensitiveAccessService.unlock(pin);
@@ -317,7 +350,7 @@ export function SensitiveAccessProvider({ children }: { children: ReactNode }) {
       setError(submitError?.message || submitError?.toString() || "Falha ao validar o acesso sensível.");
       setBusy(false);
     }
-  }, [closeDialog, pin, promptOptions.permission, selectedProfileId, status, dialogMode]);
+  }, [closeDialog, pin, confirmPin, promptOptions.permission, selectedProfileId, status, dialogMode]);
 
   const value = useMemo<SensitiveAccessContextValue>(() => ({
     status,
@@ -350,6 +383,7 @@ export function SensitiveAccessProvider({ children }: { children: ReactNode }) {
         selectedProfileId={selectedProfileId}
         selectedProfile={selectedProfile}
         pin={pin}
+        confirmPin={confirmPin}
         busy={busy}
         error={error}
         onClose={() => closeDialog(false)}
@@ -358,6 +392,7 @@ export function SensitiveAccessProvider({ children }: { children: ReactNode }) {
           setError(null);
         }}
         onPinChange={setPin}
+        onConfirmPinChange={setConfirmPin}
         onSubmit={() => void submitSensitiveAccess()}
         onForgotPassword={() => setRecoveryOpen(true)}
       />
