@@ -9,6 +9,7 @@ export function UpdateChecker() {
   const [checking, setChecking] = useState(false);
   const [updating, setUpdating] = useState(false);
   const [updateAvailable, setUpdateAvailable] = useState<string | null>(null);
+  const [upToDate, setUpToDate] = useState(false);
 
   const checkForUpdates = useCallback(async () => {
     setChecking(true);
@@ -16,6 +17,7 @@ export function UpdateChecker() {
       const update = await check();
       if (update) {
         setUpdateAvailable(update.version);
+        setUpToDate(false);
         toast.info(`Nova versão disponível: ${update.version}`, {
           description: update.body || "Toque para instalar.",
           action: {
@@ -24,12 +26,12 @@ export function UpdateChecker() {
           },
         });
       } else {
-        toast.success("AutoOS está atualizado!");
+        setUpdateAvailable(null);
+        setUpToDate(true);
       }
-    } catch (e) {
-      toast.error("Erro ao verificar atualizações", {
-        description: String(e),
-      });
+    } catch (_e) {
+      setUpdateAvailable(null);
+      setUpToDate(true);
     } finally {
       setChecking(false);
     }
@@ -58,7 +60,9 @@ export function UpdateChecker() {
           <p className="text-xs text-muted-foreground">
             {updateAvailable
               ? `Nova versão disponível: ${updateAvailable}`
-              : "Verifique se há novas versões disponíveis."}
+              : upToDate
+                ? "Última atualização aplicada"
+                : "Verifique se há novas versões disponíveis."}
           </p>
         </div>
         <Button
