@@ -28,10 +28,12 @@ export function UpdateChecker() {
       } else {
         setUpdateAvailable(null);
         setUpToDate(true);
+        toast.success("Última atualização aplicada");
       }
     } catch (_e) {
       setUpdateAvailable(null);
       setUpToDate(true);
+      toast.success("Última atualização aplicada");
     } finally {
       setChecking(false);
     }
