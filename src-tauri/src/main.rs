@@ -86,6 +86,7 @@ fn main() {
     }
 
     tauri::Builder::default()
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .setup(|_app| {
             info!("Inicializando banco de dados...");
             match tauri::async_runtime::block_on(db::init_database()) {

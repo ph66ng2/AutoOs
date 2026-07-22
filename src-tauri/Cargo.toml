@@ -76,3 +76,4 @@ uuid = { version = "1", features = ["v4"] }
 tokio-postgres = "0.7"
 native-tls = "0.2"
 postgres-native-tls = "0.5"
+tauri-plugin-updater = "2"

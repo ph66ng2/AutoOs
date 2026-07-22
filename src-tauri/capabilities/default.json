@@ -15,6 +15,9 @@
     "core:resources:default",
     "core:menu:default",
     "core:tray:default",
-    "core:webview:deny-internal-toggle-devtools"
+    "core:webview:deny-internal-toggle-devtools",
+    "updater:default",
+    "updater:allow-check",
+    "updater:allow-download-and-install"
   ]
 }
