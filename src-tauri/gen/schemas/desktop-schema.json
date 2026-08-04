@@ -2193,6 +2193,36 @@
           "markdownDescription": "Denies the unminimize command without any pre-configured scope."
         },
         {
+          "description": "The PowerSync SDK does not use Tauri permissions.\n#### This default permission set includes:\n\n- `allow-powersync`",
+          "type": "string",
+          "const": "powersync:default",
+          "markdownDescription": "The PowerSync SDK does not use Tauri permissions.\n#### This default permission set includes:\n\n- `allow-powersync`"
+        },
+        {
+          "description": "Enables the powersync command without any pre-configured scope.",
+          "type": "string",
+          "const": "powersync:allow-powersync",
+          "markdownDescription": "Enables the powersync command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the powersync_command command without any pre-configured scope.",
+          "type": "string",
+          "const": "powersync:allow-powersync-command",
+          "markdownDescription": "Enables the powersync_command command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the powersync command without any pre-configured scope.",
+          "type": "string",
+          "const": "powersync:deny-powersync",
+          "markdownDescription": "Denies the powersync command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the powersync_command command without any pre-configured scope.",
+          "type": "string",
+          "const": "powersync:deny-powersync-command",
+          "markdownDescription": "Denies the powersync_command command without any pre-configured scope."
+        },
+        {
           "description": "This permission set configures which kind of\nupdater functions are exposed to the frontend.\n\n#### Granted Permissions\n\nThe full workflow from checking for updates to installing them\nis enabled.\n\n\n#### This default permission set includes:\n\n- `allow-check`\n- `allow-download`\n- `allow-install`\n- `allow-download-and-install`",
           "type": "string",
           "const": "updater:default",

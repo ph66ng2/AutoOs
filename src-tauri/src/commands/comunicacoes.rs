@@ -52,7 +52,7 @@ pub async fn registrar_comunicacao(input: ComunicacaoInput) -> Result<Comunicaca
     
     // Buscar a comunicação recém criada
     let query = format!("{} WHERE id = $1", COMUNICACAO_SELECT);
-    let com = sqlx::query_as::<_, ComunicacaoRow>(&query)
+    let com = sqlx::query_as::<_, ComunicacaoRow>(sqlx::AssertSqlSafe(&*query))
         .bind(id)
         .fetch_one(&pool)
         .await
@@ -76,7 +76,7 @@ pub async fn listar_comunicacoes(equipamento_id: i32) -> Result<Vec<ComunicacaoR
         COMUNICACAO_SELECT
     );
 
-    let rows = sqlx::query_as::<_, ComunicacaoRow>(&query)
+    let rows = sqlx::query_as::<_, ComunicacaoRow>(sqlx::AssertSqlSafe(&*query))
         .bind(equipamento_id)
         .fetch_all(&pool)
         .await

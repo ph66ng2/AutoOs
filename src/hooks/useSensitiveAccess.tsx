@@ -13,6 +13,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { ProfileSessionDialog } from "@/components/ProfileSessionDialog";
 import { PasswordRecoveryDialog } from "@/components/PasswordRecoveryDialog";
+import { toast } from "sonner";
 import { SensitiveAccessService } from "@/lib/sensitive-access";
 import {
   SENSITIVE_PERMISSION_LABELS,
@@ -169,6 +170,24 @@ export function SensitiveAccessProvider({ children }: { children: ReactNode }) {
     return () => window.clearInterval(intervalId);
   }, [refreshStatus]);
 
+  // Abre o dialog de startup somente quando perfis ficam disponíveis E já existe sessão ativa
+  // Evita conflito com AuthDialog (multi-tenant) que deve aparecer primeiro
+  useEffect(() => {
+    if (status && status.profiles.length > 0 && !startupPromptedRef.current && !loading && status.active_profile_id) {
+      startupPromptedRef.current = true;
+      setDialogMode("startup");
+      setPromptOptions({
+        title: "Selecionar perfil da sessão",
+        description: "Escolha com clareza qual perfil local vai abrir esta sessão e confirme o PIN antes de entrar no AutoOS.",
+      });
+      setDialogMandatory(true);
+      setPin("");
+      setError(null);
+      setBusy(false);
+      setDialogOpen(true);
+    }
+  }, [status, loading]);
+
   const resolvePending = useCallback((value: boolean) => {
     if (resolverRef.current) {
       resolverRef.current(value);
@@ -225,6 +244,7 @@ export function SensitiveAccessProvider({ children }: { children: ReactNode }) {
   const openProfileSelector = useCallback(async (options?: ProfileSelectorOptions) => {
     const currentStatus = await SensitiveAccessService.status().catch(() => status);
     if (!currentStatus || currentStatus.profiles.length === 0) {
+      toast.error("Nenhum perfil encontrado. Crie um perfil em Configurações > Segurança.");
       return false;
     }
 
@@ -502,8 +522,13 @@ export function SensitiveRoute({
 export function SensitiveAccessBadge() {
   const { status } = useSensitiveAccess();
 
-  if (!status) {
-    return null;
+  if (!status || !status.active_profile_id) {
+    return (
+      <span className="inline-flex items-center gap-1 rounded-md border border-slate-200 bg-slate-50 px-2.5 py-1 text-xs font-medium text-slate-700">
+        <ShieldAlert className="h-3.5 w-3.5" />
+        Nenhum perfil configurado
+      </span>
+    );
   }
 
   const profileName = status.active_profile_name || "Perfil ativo";

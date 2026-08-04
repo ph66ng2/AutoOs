@@ -1137,7 +1137,7 @@ export default function Equipamentos() {
   async function exportarImagemEquipamento(imagem: EquipamentoImagemDraft) {
     try {
       const caminho = await invoke<string>("salvar_imagem_equipamento", {
-        bytes: imagem.bytes,
+        storagePath: imagem.storage_path,
         fileName: imagem.filename,
         mimeType: imagem.mime_type,
       });
@@ -2481,9 +2481,9 @@ export default function Equipamentos() {
             categoria: data.categoria as EquipamentoImagemCategoria,
             filename: data.filename,
             mime_type: data.mime_type,
-            tamanho_bytes: data.bytes.length,
+            tamanho_bytes: previewUrl.length,
             ordem: nextOrdem,
-            bytes: data.bytes,
+            storage_path: previewUrl,
             preview_url: previewUrl,
           };
           setImagensFormulario((prev) => [...prev, draft]);

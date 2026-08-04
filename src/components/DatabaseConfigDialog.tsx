@@ -1,9 +1,8 @@
-import { useState } from "react";
-import { Database, TestTube, Save, AlertCircle, Loader2 } from "lucide-react";
+import { useState, useCallback } from "react";
+import { Database, ArrowRight, AlertCircle, Loader2, CheckCircle2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { DatabaseConfigService } from "@/lib/db-config";
 import type { DatabaseConnectionConfig } from "@/types";
 
@@ -11,174 +10,140 @@ interface DatabaseConfigDialogProps {
   onConfigured: () => void;
 }
 
+/** Parseia uma connection string postgresql://user:pass@host:port/database para componentes */
+function parseConnectionString(url: string): DatabaseConnectionConfig | null {
+  try {
+    const regex = /^postgresql:\/\/([^:]+):([^@]+)@([^:]+):(\d+)\/(.+)$/;
+    const match = url.match(regex);
+    if (!match) return null;
+    return {
+      host: match[3],
+      port: parseInt(match[4], 10),
+      database: match[5],
+      username: match[1],
+      password: match[2],
+    };
+  } catch {
+    return null;
+  }
+}
+
 export function DatabaseConfigDialog({ onConfigured }: DatabaseConfigDialogProps) {
-  const [config, setConfig] = useState<DatabaseConnectionConfig>({
-    host: "localhost",
-    port: 5432,
-    database: "autoos",
-    username: "autoos_user",
-    password: "",
-  });
-  const [testing, setTesting] = useState(false);
-  const [saving, setSaving] = useState(false);
+  const [connectionUrl, setConnectionUrl] = useState("");
+  const [connecting, setConnecting] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [testSuccess, setTestSuccess] = useState(false);
+  const [success, setSuccess] = useState(false);
 
-  const updateField = (field: keyof DatabaseConnectionConfig, value: string | number) => {
-    setConfig((prev) => ({ ...prev, [field]: value }));
+  const handleConnect = useCallback(async () => {
     setError(null);
-    setTestSuccess(false);
-  };
+    setSuccess(false);
 
-  const handleTest = async () => {
-    setTesting(true);
-    setError(null);
-    setTestSuccess(false);
+    const config = parseConnectionString(connectionUrl.trim());
+    if (!config) {
+      setError("Formato inválido. Use: postgresql://usuario:senha@host:5432/banco");
+      return;
+    }
+
+    setConnecting(true);
     try {
       const ok = await DatabaseConfigService.test(config);
-      if (ok) {
-        setTestSuccess(true);
-      } else {
-        setError("Não foi possível conectar ao banco de dados.");
+      if (!ok) {
+        setError("Não foi possível conectar. Verifique a URL e tente novamente.");
+        setConnecting(false);
+        return;
       }
-    } catch (e: any) {
-      setError(e?.message || e?.toString() || "Erro ao testar conexão");
-    } finally {
-      setTesting(false);
-    }
-  };
 
-  const handleSave = async () => {
-    setSaving(true);
-    setError(null);
-    try {
       await DatabaseConfigService.save(config);
       const restarted = await DatabaseConfigService.restartWithConfig(config);
       if (restarted) {
-        onConfigured();
+        setSuccess(true);
+        setTimeout(() => onConfigured(), 600);
       } else {
-        setError("Configuração salva, mas não foi possível reiniciar a conexão.");
+        setError("Conexão OK, mas não foi possível reiniciar o app.");
       }
     } catch (e: any) {
-      setError(e?.message || e?.toString() || "Erro ao salvar configuração");
+      setError(e?.message || "Erro ao conectar ao banco de dados.");
     } finally {
-      setSaving(false);
+      setConnecting(false);
     }
-  };
+  }, [connectionUrl, onConfigured]);
 
   return (
-    <div className="fixed inset-0 z-[9998] flex items-center justify-center bg-[#050608] px-4">
-      <Card className="w-full max-w-md border-white/10 bg-[#0a0c10]">
-        <CardHeader className="space-y-2">
-          <div className="flex items-center gap-2">
-            <Database className="h-5 w-5 text-cyan-400" />
-            <CardTitle className="text-white">Configurar Conexão PostgreSQL</CardTitle>
+    <div className="fixed inset-0 z-[9998] flex items-center justify-center bg-gradient-to-br from-slate-950 via-slate-900 to-slate-800 px-4">
+      <div className="w-full max-w-md space-y-6">
+        {/* Logo / Brand */}
+        <div className="text-center space-y-2">
+          <div className="inline-flex h-14 w-14 items-center justify-center rounded-2xl bg-cyan-500/10 border border-cyan-500/20">
+            <Database className="h-7 w-7 text-cyan-400" />
           </div>
-          <CardDescription className="text-[#5a7490]">
-            Informe os dados do servidor PostgreSQL para conectar o AutoOS.
-            <br />
-            <span className="text-xs">
-              Dica: em VM VirtualBox com NAT, use <strong>10.0.2.2</strong> como host.
-            </span>
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="grid grid-cols-3 gap-3">
-            <div className="col-span-2 space-y-1.5">
-              <Label htmlFor="db-host" className="text-[#7a94b0]">Host</Label>
-              <Input
-                id="db-host"
-                value={config.host}
-                onChange={(e) => updateField("host", e.target.value)}
-                placeholder="localhost ou 10.0.2.2"
-                className="border-white/10 bg-white/5 text-white placeholder:text-white/20"
-              />
-            </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="db-port" className="text-[#7a94b0]">Porta</Label>
-              <Input
-                id="db-port"
-                type="number"
-                value={config.port}
-                onChange={(e) => updateField("port", Number(e.target.value))}
-                className="border-white/10 bg-white/5 text-white"
-              />
-            </div>
-          </div>
+          <h1 className="text-2xl font-bold text-white tracking-tight">Bem-vindo ao AutoOS</h1>
+          <p className="text-sm text-slate-400">
+            Conecte ao seu banco de dados PostgreSQL para começar.
+          </p>
+        </div>
 
-          <div className="space-y-1.5">
-            <Label htmlFor="db-database" className="text-[#7a94b0]">Banco de Dados</Label>
+        {/* Card de conexão */}
+        <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-6 backdrop-blur-sm space-y-5">
+          <div className="space-y-2">
+            <Label htmlFor="db-url" className="text-sm font-medium text-slate-300">
+              URL de Conexão PostgreSQL
+            </Label>
             <Input
-              id="db-database"
-              value={config.database}
-              onChange={(e) => updateField("database", e.target.value)}
-              className="border-white/10 bg-white/5 text-white"
+              id="db-url"
+              value={connectionUrl}
+              onChange={(e) => {
+                setConnectionUrl(e.target.value);
+                setError(null);
+              }}
+              placeholder="postgresql://usuario:senha@host:5432/banco"
+              className="h-11 border-white/10 bg-white/5 text-white placeholder:text-white/20 focus-visible:ring-cyan-500/50"
+              onKeyDown={(e) => e.key === "Enter" && handleConnect()}
+              autoFocus
             />
-          </div>
-
-          <div className="space-y-1.5">
-            <Label htmlFor="db-username" className="text-[#7a94b0]">Usuário</Label>
-            <Input
-              id="db-username"
-              value={config.username}
-              onChange={(e) => updateField("username", e.target.value)}
-              className="border-white/10 bg-white/5 text-white"
-            />
-          </div>
-
-          <div className="space-y-1.5">
-            <Label htmlFor="db-password" className="text-[#7a94b0]">Senha</Label>
-            <Input
-              id="db-password"
-              type="password"
-              value={config.password}
-              onChange={(e) => updateField("password", e.target.value)}
-              className="border-white/10 bg-white/5 text-white"
-            />
+            <p className="text-xs text-slate-500">
+              Exemplo: postgresql://postgres:senha@db.supabase.co:5432/postgres
+            </p>
           </div>
 
           {error && (
-            <div className="flex items-start gap-2 rounded-lg border border-red-500/20 bg-red-500/10 p-3 text-sm text-red-300">
+            <div className="flex items-start gap-2 rounded-xl border border-red-500/20 bg-red-500/10 p-3 text-sm text-red-300">
               <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
               <span>{error}</span>
             </div>
           )}
 
-          {testSuccess && (
-            <div className="rounded-lg border border-emerald-500/20 bg-emerald-500/10 p-3 text-sm text-emerald-300">
-              Conexão testada com sucesso!
+          {success && (
+            <div className="flex items-center gap-2 rounded-xl border border-emerald-500/20 bg-emerald-500/10 p-3 text-sm text-emerald-300">
+              <CheckCircle2 className="h-4 w-4" />
+              <span>Conectado com sucesso! Abrindo o app...</span>
             </div>
           )}
 
-          <div className="flex gap-2 pt-2">
-            <Button
-              variant="outline"
-              className="flex-1 border-white/10 bg-white/10 text-white hover:bg-white/20"
-              onClick={() => void handleTest()}
-              disabled={testing || saving}
-            >
-              {testing ? (
+          <Button
+            size="lg"
+            className="w-full bg-cyan-500 text-slate-950 hover:bg-cyan-400 font-semibold h-11"
+            onClick={() => void handleConnect()}
+            disabled={connecting || !connectionUrl.trim() || success}
+          >
+            {connecting ? (
+              <>
                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-              ) : (
-                <TestTube className="mr-2 h-4 w-4" />
-              )}
-              Testar
-            </Button>
-            <Button
-              className="flex-1 bg-cyan-500 text-black hover:bg-cyan-400"
-              onClick={() => void handleSave()}
-              disabled={saving || testing}
-            >
-              {saving ? (
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-              ) : (
-                <Save className="mr-2 h-4 w-4" />
-              )}
-              Salvar e Continuar
-            </Button>
-          </div>
-        </CardContent>
-      </Card>
+                Conectando...
+              </>
+            ) : (
+              <>
+                <ArrowRight className="mr-2 h-4 w-4" />
+                Conectar ao Banco
+              </>
+            )}
+          </Button>
+        </div>
+
+        {/* Footer */}
+        <p className="text-center text-xs text-slate-600">
+          O banco de dados será inicializado automaticamente na primeira conexão.
+        </p>
+      </div>
     </div>
   );
 }

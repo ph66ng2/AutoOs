@@ -1,4 +1,4 @@
-import { UserRound } from "lucide-react";
+import { UserRound, Shield, Sparkles, Lock, ArrowRight } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -129,6 +129,8 @@ export function ProfileSessionDialog({
     return "Informe o PIN do perfil selecionado para confirmar a sessão.";
   })();
 
+  const isFirstAccess = mode === "startup" && profiles.length === 1;
+
   return (
     <Dialog
       open={open}
@@ -139,58 +141,160 @@ export function ProfileSessionDialog({
       }}
     >
       <DialogContent className={cn("max-w-5xl gap-0 overflow-hidden p-0", mandatory && "[&>button]:hidden")}>
-        <div className="grid max-h-[85vh] lg:grid-cols-[1.15fr,0.85fr]">
-          <div className="border-b bg-slate-50/80 p-6 lg:border-b-0 lg:border-r overflow-y-auto">
-            <DialogHeader className="text-left">
-              <div className="inline-flex w-fit items-center rounded-full border bg-white px-3 py-1 text-xs font-medium text-slate-600">
-                {mode === "startup" ? "Entrada do aplicativo" : mode === "selector" ? "Perfis da sessão" : "Acesso sensível"}
+        {isFirstAccess ? (
+          <div className="flex flex-col items-center justify-center p-8 lg:p-12 max-h-[85vh] overflow-y-auto">
+            <div className="w-full max-w-md space-y-8">
+              {/* Header */}
+              <div className="text-center space-y-3">
+                <div className="inline-flex h-16 w-16 items-center justify-center rounded-2xl bg-cyan-500/10 border border-cyan-500/20">
+                  <Sparkles className="h-8 w-8 text-cyan-500" />
+                </div>
+                <div>
+                  <h1 className="text-2xl font-bold text-slate-900">Bem-vindo ao AutoOS</h1>
+                  <p className="text-sm text-slate-500 mt-1">
+                    Configure seu acesso de administrador para começar.
+                  </p>
+                </div>
               </div>
-              <DialogTitle className="text-2xl">{title}</DialogTitle>
-              <DialogDescription className="max-w-xl">{description}</DialogDescription>
-            </DialogHeader>
 
-            <div className="mt-6 grid gap-3">
-              {profiles.map((profile) => {
-                const isSelected = String(profile.id) === selectedProfileId;
-                const isCurrent = profile.id === activeProfileId;
+              {/* Profile Card */}
+              <div className="rounded-2xl border border-slate-200 bg-white p-5 space-y-4">
+                <div className="flex items-center gap-3">
+                  <div className="flex h-11 w-11 items-center justify-center rounded-full bg-cyan-500/10 text-cyan-600">
+                    <Shield className="h-5 w-5" />
+                  </div>
+                  <div>
+                    <div className="font-semibold text-slate-900">{selectedProfile?.nome}</div>
+                    <div className="text-xs text-slate-500">{selectedProfile?.role}</div>
+                  </div>
+                </div>
 
-                return (
-                  <button
-                    key={profile.id}
-                    type="button"
-                    onClick={() => onSelectProfile(String(profile.id))}
-                    className={cn(
-                      "rounded-2xl border p-4 text-left transition-all",
-                      isSelected
-                        ? "border-slate-900 bg-white shadow-sm"
-                        : "border-slate-200 bg-white/70 hover:border-slate-300 hover:bg-white"
-                    )}
+                <div className="rounded-xl bg-slate-50 p-4 space-y-3">
+                  <div className="flex items-center gap-2 text-sm text-slate-600">
+                    <Lock className="h-4 w-4 text-cyan-500" />
+                    <span className="font-medium">Defina seu PIN de acesso</span>
+                  </div>
+                  <p className="text-xs text-slate-500">
+                    O PIN protege as configurações sensíveis do sistema. Use 4 a 8 dígitos numéricos.
+                  </p>
+
+                  <form
+                    id="profile-session-pin-form"
+                    className="space-y-3"
+                    onSubmit={(event) => {
+                      event.preventDefault();
+                      handlePrimaryAction();
+                    }}
                   >
-                    <div className="flex items-start justify-between gap-3">
-                      <div>
-                        <div className="font-semibold text-slate-900">{profile.nome}</div>
-                        <div className="text-xs text-slate-500">{profile.role}</div>
-                      </div>
-                      <div className="flex flex-wrap justify-end gap-2">
-                        {isCurrent && <Badge variant="secondary">Perfil atual</Badge>}
-                        {profile.pin_configured ? (
-                          <Badge variant="outline">PIN ativo</Badge>
-                        ) : (
-                          <Badge variant="outline">Sem PIN</Badge>
-                        )}
-                      </div>
+                    <div className="space-y-1.5">
+                      <Label htmlFor="sensitive-pin" className="text-xs font-medium text-slate-700">
+                        Criar PIN
+                      </Label>
+                      <Input
+                        id="sensitive-pin"
+                        type="password"
+                        inputMode="numeric"
+                        value={pin}
+                        onChange={(event) => onPinChange(event.target.value.replace(/\D/g, "").slice(0, 8))}
+                        placeholder="••••"
+                        className="h-11 text-center text-lg tracking-[0.3em] font-semibold"
+                        autoFocus
+                      />
                     </div>
 
-                    <div className="mt-3 text-xs text-slate-500">
-                      {profile.permissions.length} permiss{profile.permissions.length === 1 ? "ão" : "ões"} configuradas
+                    <div className="space-y-1.5">
+                      <Label htmlFor="sensitive-pin-confirm" className="text-xs font-medium text-slate-700">
+                        Confirmar PIN
+                      </Label>
+                      <Input
+                        id="sensitive-pin-confirm"
+                        type="password"
+                        inputMode="numeric"
+                        value={confirmPin}
+                        onChange={(event) => onConfirmPinChange(event.target.value.replace(/\D/g, "").slice(0, 8))}
+                        placeholder="••••"
+                        className="h-11 text-center text-lg tracking-[0.3em] font-semibold"
+                      />
                     </div>
-                  </button>
-                );
-              })}
+
+                    {error && (
+                      <p className="text-sm text-red-600 bg-red-50 rounded-lg p-2">{error}</p>
+                    )}
+                  </form>
+                </div>
+
+                <Button
+                  size="lg"
+                  type="submit"
+                  form="profile-session-pin-form"
+                  disabled={primaryDisabled || busy}
+                  className="w-full h-11 font-semibold"
+                >
+                  {busy ? (
+                    <span>Validando...</span>
+                  ) : (
+                    <>
+                      <ArrowRight className="mr-2 h-4 w-4" />
+                      Criar meu acesso e entrar
+                    </>
+                  )}
+                </Button>
+              </div>
             </div>
           </div>
+        ) : (
+          <div className="grid max-h-[85vh] lg:grid-cols-[1.15fr,0.85fr]">
+            <div className="border-b bg-slate-50/80 p-6 lg:border-b-0 lg:border-r overflow-y-auto">
+              <DialogHeader className="text-left">
+                <div className="inline-flex w-fit items-center rounded-full border bg-white px-3 py-1 text-xs font-medium text-slate-600">
+                  {mode === "startup" ? "Entrada do aplicativo" : mode === "selector" ? "Perfis da sessão" : "Acesso sensível"}
+                </div>
+                <DialogTitle className="text-2xl">{title}</DialogTitle>
+                <DialogDescription className="max-w-xl">{description}</DialogDescription>
+              </DialogHeader>
 
-          <div className="p-6 overflow-y-auto">
+              <div className="mt-6 grid gap-3">
+                {profiles.map((profile) => {
+                  const isSelected = String(profile.id) === selectedProfileId;
+                  const isCurrent = profile.id === activeProfileId;
+
+                  return (
+                    <button
+                      key={profile.id}
+                      type="button"
+                      onClick={() => onSelectProfile(String(profile.id))}
+                      className={cn(
+                        "rounded-2xl border p-4 text-left transition-all",
+                        isSelected
+                          ? "border-slate-900 bg-white shadow-sm"
+                          : "border-slate-200 bg-white/70 hover:border-slate-300 hover:bg-white"
+                      )}
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <div>
+                          <div className="font-semibold text-slate-900">{profile.nome}</div>
+                          <div className="text-xs text-slate-500">{profile.role}</div>
+                        </div>
+                        <div className="flex flex-wrap justify-end gap-2">
+                          {isCurrent && <Badge variant="secondary">Perfil atual</Badge>}
+                          {profile.pin_configured ? (
+                            <Badge variant="outline">PIN ativo</Badge>
+                          ) : (
+                            <Badge variant="outline">Sem PIN</Badge>
+                          )}
+                        </div>
+                      </div>
+
+                      <div className="mt-3 text-xs text-slate-500">
+                        {profile.permissions.length} permiss{profile.permissions.length === 1 ? "ão" : "ões"} configuradas
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            <div className="p-6 overflow-y-auto">
             {selectedProfile ? (
               <Card className="shadow-none">
                 <CardHeader>
@@ -298,33 +402,34 @@ export function ProfileSessionDialog({
               </div>
             )}
           </div>
-        </div>
 
-        <DialogFooter className="border-t bg-background px-6 py-4">
-          {onForgotPassword && (
+          <DialogFooter className="border-t bg-background px-6 py-4">
+            {onForgotPassword && (
+              <Button
+                variant="link"
+                type="button"
+                onClick={onForgotPassword}
+                className="mr-auto text-cyan-600 hover:text-cyan-500 px-0"
+              >
+                Esqueci minha senha
+              </Button>
+            )}
+            {!mandatory && (
+              <Button variant="outline" type="button" onClick={onClose} disabled={busy}>
+                Fechar
+              </Button>
+            )}
             <Button
-              variant="link"
-              type="button"
-              onClick={onForgotPassword}
-              className="mr-auto text-cyan-600 hover:text-cyan-500 px-0"
+              type={shouldAskForPin ? "submit" : "button"}
+              form={shouldAskForPin ? "profile-session-pin-form" : undefined}
+              onClick={shouldAskForPin ? undefined : handlePrimaryAction}
+              disabled={primaryDisabled}
             >
-              Esqueci minha senha
+              {busy ? "Validando..." : primaryActionLabel}
             </Button>
-          )}
-          {!mandatory && (
-            <Button variant="outline" type="button" onClick={onClose} disabled={busy}>
-              Fechar
-            </Button>
-          )}
-          <Button
-            type={shouldAskForPin ? "submit" : "button"}
-            form={shouldAskForPin ? "profile-session-pin-form" : undefined}
-            onClick={shouldAskForPin ? undefined : handlePrimaryAction}
-            disabled={primaryDisabled}
-          >
-            {busy ? "Validando..." : primaryActionLabel}
-          </Button>
-        </DialogFooter>
+          </DialogFooter>
+        </div>
+        )}
       </DialogContent>
     </Dialog>
   );

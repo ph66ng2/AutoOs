@@ -22,6 +22,7 @@ use tower_http::cors::{Any, CorsLayer};
 use tracing::{error, info, warn};
 
 use crate::commands::equipamento_imagens::{adicionar_imagem_equipamento_raw, MAX_IMAGE_BYTES};
+use base64::Engine;
 
 const HTML_UPLOAD_PAGE: &str = r#"<!DOCTYPE html>
 <html lang="pt-BR">
@@ -653,12 +654,20 @@ async fn upload_handler(
     let mut imagem_ids = Vec::new();
 
     for (encoded, final_mime, filename) in images {
+        let storage_path = format!(
+            "data:{};base64,{}",
+            final_mime,
+            base64::engine::general_purpose::STANDARD.encode(&encoded)
+        );
+        let tamanho_bytes = i32::try_from(encoded.len()).unwrap_or(0);
+
         match adicionar_imagem_equipamento_raw(
             token_data.equipamento_id,
             token_data.categoria.clone(),
             filename,
             final_mime,
-            encoded,
+            storage_path,
+            tamanho_bytes,
             None,
         )
         .await

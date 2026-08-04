@@ -1,0 +1,19 @@
+config:
+  edition: 3
+
+streams:
+  autoos_data:
+    auto_subscribe: true
+    queries:
+      - SELECT * FROM clientes
+      - SELECT * FROM equipamentos
+      - SELECT * FROM produtos
+      - SELECT * FROM movimentacoes_estoque
+      - SELECT * FROM verificacoes
+      - SELECT * FROM comunicacoes
+      - SELECT * FROM security_profiles
+      - SELECT * FROM equipamento_imagens
+      - SELECT * FROM servicos_catalogo
+      - SELECT * FROM gastos_fixos
+      - SELECT * FROM gastos_variaveis
+      - SELECT * FROM configuracoes_sistema

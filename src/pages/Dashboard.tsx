@@ -217,10 +217,9 @@ export default function Dashboard() {
           <Button onClick={() => navigate("/equipamentos")} size="sm">
             <Plus className="h-4 w-4 mr-1" />Novo Equipamento
           </Button>
-          {/* [BLOQUEIO-TEMPORARIO-INSUMOS] descomente o botão abaixo para restaurar */}
-          {/* <Button onClick={() => navigate("/insumos")} variant="outline" size="sm">
+          <Button onClick={() => navigate("/insumos")} variant="outline" size="sm">
             <Package className="h-4 w-4 mr-1" />Novo Insumo/Peça
-          </Button> */}
+          </Button>
         </div>
       </div>
 
@@ -259,10 +258,9 @@ export default function Dashboard() {
           </CardContent>
         </Card>
 
-        {/* [BLOQUEIO-TEMPORARIO-INSUMOS] remova as 2 linhas de bloqueio e descomente o onClick */}
         <Card
-          className={`hover:shadow-md transition-shadow ${metrics.estoqueBaixo > 0 ? "border-red-200 bg-red-50/50" : ""}`}
-          // onClick={() => navigate("/insumos")}
+          className={`cursor-pointer hover:shadow-md transition-shadow ${metrics.estoqueBaixo > 0 ? "border-red-200 bg-red-50/50" : ""}`}
+          onClick={() => navigate("/insumos")}
         >
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Estoque Baixo</CardTitle>
@@ -369,10 +367,9 @@ export default function Dashboard() {
                 Alertas de Estoque
                 {metrics.estoqueBaixo > 0 && <Badge variant="destructive" className="ml-2">{metrics.estoqueBaixo}</Badge>}
               </CardTitle>
-              {/* [BLOQUEIO-TEMPORARIO-INSUMOS] descomente o botão abaixo para restaurar */}
-              {/* <Button variant="ghost" size="sm" onClick={() => navigate("/insumos")}>
+              <Button variant="ghost" size="sm" onClick={() => navigate("/insumos")}>
                 Ver todos<ArrowRight className="h-4 w-4 ml-1" />
-              </Button> */}
+              </Button>
             </div>
           </CardHeader>
           <CardContent>
