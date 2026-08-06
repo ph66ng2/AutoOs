@@ -143,7 +143,7 @@ export interface EquipamentoImagem {
   altura?: number;
   ordem: number;
   observacao?: string;
-  bytes: number[];
+  storage_path: string;
   criado_em?: string;
   atualizado_em?: string;
 }
@@ -157,7 +157,7 @@ export interface EquipamentoImagemInput {
   altura?: number;
   ordem: number;
   observacao?: string;
-  bytes: number[];
+  storage_path: string;
 }
 
 /**
@@ -661,6 +661,18 @@ export interface ConfigInatividade {
 export interface ResultadoVerificacaoCredenciais {
   success: boolean;
   error?: string;
+}
+
+export interface SupabaseStorageConfig {
+  supabase_url: string;
+  supabase_service_key: string;
+  empresa_id?: string;
+}
+
+export interface ImageMigrationResult {
+  migrated: number;
+  skipped: number;
+  errors: string[];
 }
 
 /**

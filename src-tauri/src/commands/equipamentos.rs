@@ -247,7 +247,7 @@ pub async fn buscar_equipamento(id: i32) -> Result<EquipamentoRow, String> {
     let pool = get_pool().await.map_err(|e| e.to_string())?;
 
     let query = format!("{} WHERE id = $1", EQUIPAMENTO_SELECT);
-    let row = sqlx::query_as::<_, EquipamentoRow>(&query)
+    let row = sqlx::query_as::<_, EquipamentoRow>(sqlx::AssertSqlSafe(&*query))
         .bind(id)
         .fetch_one(&pool)
         .await
@@ -268,7 +268,7 @@ pub async fn buscar_equipamentos_por_serial(serial: String) -> Result<Vec<Equipa
     debug!("Buscando equipamentos por serial: {}", serial);
     let pool = get_pool().await.map_err(|e| e.to_string())?;
     let query = format!("{} WHERE LOWER(serial_number) = LOWER($1) ORDER BY id DESC", EQUIPAMENTO_SELECT);
-    let rows = sqlx::query_as::<_, EquipamentoRow>(&query)
+    let rows = sqlx::query_as::<_, EquipamentoRow>(sqlx::AssertSqlSafe(&*query))
         .bind(serial.trim())
         .fetch_all(&pool)
         .await
@@ -530,7 +530,7 @@ pub async fn atualizar_status_equipamento(
         "UPDATE equipamentos SET status = $1, valor_orcamento = COALESCE($2, valor_orcamento), prazo_aprovacao = COALESCE($3, prazo_aprovacao), valor_final = COALESCE($4, valor_final), atualizado_em = NOW() WHERE id = $5 AND atualizado_em = $6::TIMESTAMPTZ".to_string()
     };
 
-    let updated_rows = sqlx::query(&query)
+    let updated_rows = sqlx::query(sqlx::AssertSqlSafe(&*query))
         .bind(&normalized_status)
         .bind(valor_orcamento)
         .bind(prazo_aprovacao_value.clone())

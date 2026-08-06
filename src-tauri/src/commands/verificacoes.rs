@@ -164,7 +164,7 @@ pub async fn buscar_verificacao_tecnica(equipamento_id: i32) -> Result<Verificac
     let pool = get_pool().await.map_err(|e| e.to_string())?;
 
     let query = format!("{} WHERE equipamento_id = $1", VERIFICACAO_SELECT);
-    let row = sqlx::query_as::<_, VerificacaoRow>(&query)
+    let row = sqlx::query_as::<_, VerificacaoRow>(sqlx::AssertSqlSafe(&*query))
         .bind(equipamento_id)
         .fetch_one(&pool)
         .await

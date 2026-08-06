@@ -56,3 +56,13 @@ jobs:
             Veja os assets abaixo para baixar o instalador Windows (.exe).
           releaseDraft: false    # false = release público imediatamente
           prerelease: false
+
+      - name: Generate update manifest
+        env:
+          TAURI_SIGNING_KEY: ${{ secrets.TAURI_SIGNING_KEY }}
+        run: node scripts/generate-update-manifest.mjs
+
+      - name: Upload update manifest
+        uses: softprops/action-gh-release@v2
+        with:
+          files: latest.json

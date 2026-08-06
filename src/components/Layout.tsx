@@ -16,7 +16,7 @@ import { NavLink, Outlet } from "react-router-dom";
 import {
   LayoutDashboard,
   Printer,
-  // Package, // [BLOQUEIO-TEMPORARIO-INSUMOS] descomente ao restaurar Insumos na sidebar
+  Package,
   Receipt,
   Wrench,
   Users,
@@ -42,8 +42,7 @@ const navItems: {
   { label: "Dashboard", path: "/", icon: LayoutDashboard },
   { label: "Equipamentos", path: "/equipamentos", icon: Printer },
   { label: "Clientes", path: "/clientes", icon: Users },
-  // [BLOQUEIO-TEMPORARIO-INSUMOS] descomente a linha abaixo para restaurar Insumos na sidebar
-  // { label: "Insumos/Peças", path: "/insumos", icon: Package },
+  { label: "Insumos/Peças", path: "/insumos", icon: Package },
   { label: "Servicos", path: "/servicos", icon: Wrench },
   { label: "Gastos", path: "/gastos", icon: Receipt, permission: SENSITIVE_PERMISSIONS.VIEW_EXPENSES },
   { label: "Configuracoes", path: "/configuracoes", icon: Settings },

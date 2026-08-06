@@ -168,7 +168,7 @@ pub async fn buscar_cliente(id: i32) -> Result<ClienteRow, String> {
     let pool = get_pool().await.map_err(|e| e.to_string())?;
 
     let query = format!("{} WHERE id = $1", CLIENTE_SELECT);
-    let row = sqlx::query_as::<_, ClienteRow>(&query)
+    let row = sqlx::query_as::<_, ClienteRow>(sqlx::AssertSqlSafe(&*query))
         .bind(id)
         .fetch_one(&pool)
         .await

@@ -56,7 +56,7 @@ pub struct EquipamentoImagemInput {
     pub altura: Option<i32>,
     pub ordem: Option<i32>,
     pub observacao: Option<String>,
-    pub bytes: Vec<u8>,
+    pub storage_path: String,
 }
 
 /// Input para criar/atualizar cliente (PF ou PJ).
@@ -311,7 +311,7 @@ pub struct EquipamentoImagemRow {
     pub altura: Option<i32>,
     pub ordem: i32,
     pub observacao: Option<String>,
-    pub bytes: Vec<u8>,
+    pub storage_path: String,
     pub criado_em: Option<String>,
     pub atualizado_em: Option<String>,
 }
@@ -424,6 +424,22 @@ pub struct ComunicacaoRow {
     pub criado_em: Option<String>,
 }
 
+/// Resultado do registro de uma nova empresa (multi-tenant).
+#[derive(Debug, Serialize)]
+pub struct RegistroEmpresaResult {
+    pub empresa_id: i32,
+    pub status: String,
+    pub mensagem: String,
+}
+
+/// Resultado do login de empresa (multi-tenant).
+#[derive(Debug, Serialize)]
+pub struct LoginEmpresaResult {
+    pub empresa_id: i32,
+    pub nome: String,
+    pub status: String,
+}
+
 // ═══════════════════════════════════════════════════════════
 // SQL SELECT base para cada entidade (com casts de tipo)
 // ═══════════════════════════════════════════════════════════
@@ -442,7 +458,7 @@ pub const EQUIPAMENTO_SELECT: &str = "
 
     pub const EQUIPAMENTO_IMAGEM_SELECT: &str = "
         SELECT id, equipamento_id, categoria, filename, mime_type,
-            tamanho_bytes, largura, altura, ordem, observacao, bytes,
+            tamanho_bytes, largura, altura, ordem, observacao, storage_path,
             criado_em::TEXT as criado_em, atualizado_em::TEXT as atualizado_em
         FROM equipamento_imagens";
 

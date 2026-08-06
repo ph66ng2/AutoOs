@@ -38,6 +38,7 @@ import type {
   GastoResumoMensal,
   GastoVariavel,
   GastoVariavelInput,
+  ImageMigrationResult,
   LocalSupportBundleResult,
   LocalSupportStatus,
   PostgresBackupResult,
@@ -46,6 +47,7 @@ import type {
   Produto,
   ResultadoVerificacaoCredenciais,
   ServicoCatalogo,
+  SupabaseStorageConfig,
   Verificacao,
 } from "@/types";
 
@@ -532,5 +534,39 @@ export const db = {
   /** Lista serviços ativos do catálogo (apenas leitura) → Rust: listar_servicos_catalogo_ativos */
   async listarServicosCatalogoAtivos(): Promise<ServicoCatalogo[]> {
     return invoke<ServicoCatalogo[]>("listar_servicos_catalogo_ativos");
+  },
+
+  // ─── Supabase / Storage Config ──────────────────────
+
+  async salvarConfigStorage(config: SupabaseStorageConfig): Promise<boolean> {
+    return invoke<boolean>("salvar_config_storage", { config });
+  },
+
+  async carregarConfigStorage(): Promise<SupabaseStorageConfig | null> {
+    return invoke<SupabaseStorageConfig | null>("carregar_config_storage");
+  },
+
+  async migrateImagesToStorage(): Promise<ImageMigrationResult> {
+    return invoke<ImageMigrationResult>("migrate_images_to_storage");
+  },
+
+  async generateEnrollmentCode(): Promise<string> {
+    return invoke<string>("generate_enrollment_code");
+  },
+
+  async validateEnrollmentCode(code: string): Promise<{ enrollment_id: number; empresa_id: number }> {
+    return invoke<{ enrollment_id: number; empresa_id: number }>("validate_enrollment_code", { code });
+  },
+
+  async provisionPinWithEnrollment(params: {
+    enrollmentCode: string;
+    pin: string;
+    profileName: string;
+  }): Promise<{ success: boolean; profileId: number }> {
+    return invoke<{ success: boolean; profileId: number }>("provision_pin_with_enrollment", {
+      enrollmentCode: params.enrollmentCode,
+      pin: params.pin,
+      profileName: params.profileName,
+    });
   },
 };

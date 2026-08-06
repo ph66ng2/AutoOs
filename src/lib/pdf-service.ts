@@ -34,7 +34,6 @@ import type {
   ServicoNecessario,
   PecaNecessaria,
 } from "@/types";
-import { bytesParaDataUrl } from "./equipamento-imagem-utils";
 import { LOGO_BMITAG_BASE64 } from "./logo-base64";
 
 // ─── Constantes de layout ───────────────────────────────
@@ -289,12 +288,10 @@ async function adicionarRegistroFotografico(
     return;
   }
 
-  const imagensPreparadas = await Promise.all(
-    imagens.map(async (imagem) => ({
-      ...imagem,
-      dataUrl: await bytesParaDataUrl(imagem.bytes, imagem.mime_type),
-    }))
-  );
+  const imagensPreparadas = imagens.map((imagem) => ({
+    ...imagem,
+    dataUrl: imagem.storage_path,
+  }));
 
   for (let inicio = 0; inicio < imagensPreparadas.length; inicio += 2) {
     const lote = imagensPreparadas.slice(inicio, inicio + 2);

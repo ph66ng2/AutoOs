@@ -9,6 +9,7 @@ use crate::commands::auth::{
     record_security_event, require_permission, PERMISSION_CONFIG_SMTP, PERMISSION_MANAGE_PROFILES,
 };
 use crate::db::{get_pool, known_migrations, run_pending_migrations};
+use base64::Engine;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use sqlx::FromRow;
@@ -925,13 +926,23 @@ pub async fn abrir_url(url: String) -> Result<(), String> {
 
 /// Salva imagem de equipamento em Documents/Imagens Equipamentos
 /// e tenta abrir o gerenciador de arquivos com o arquivo selecionado.
+/// Aceita storage_path como data URL (base64) ou caminho de arquivo.
 #[tauri::command]
-#[instrument(skip_all, fields(bytes_len = bytes.len()))]
+#[instrument(skip_all)]
 pub async fn salvar_imagem_equipamento(
-    bytes: Vec<u8>,
+    storage_path: String,
     file_name: Option<String>,
     mime_type: Option<String>,
 ) -> Result<String, String> {
+    let bytes = if storage_path.starts_with("data:") {
+        let base64_part = storage_path.split(',').last()
+            .ok_or("Data URL inválido: sem conteúdo base64")?;
+        base64::engine::general_purpose::STANDARD.decode(base64_part)
+            .map_err(|e| format!("Erro ao decodificar base64: {}", e))?
+    } else {
+        return Err("Formato de storage_path não suportado para exportação".to_string());
+    };
+
     debug!("Salvando imagem de equipamento ({} bytes)", bytes.len());
 
     let base_name = sanitize_filename_component(file_name.as_deref().unwrap_or("imagem_equipamento"));

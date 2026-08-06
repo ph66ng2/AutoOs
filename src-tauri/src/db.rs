@@ -165,18 +165,20 @@ pub async fn init_database_with_url(database_url: &str) -> Result<PgPool, sqlx::
 async fn connect_and_setup_pool(database_url: &str) -> Result<PgPool, sqlx::Error> {
     let pool = PgPool::connect(database_url).await?;
 
-    // Tenta rodar migrações; se falhar, trunca _sqlx_migrations e tenta novamente
+    // Tenta rodar migrações; se falhar por checksum mismatch ou constraints existentes,
+    // registra o warning e continua — o banco já está no schema esperado.
     if let Err(e) = MIGRATOR.run(&pool).await {
-        warn!("Migração falhou na primeira tentativa: {}. Truncando _sqlx_migrations e tentando novamente...", e);
-
-        let _ = sqlx::query("TRUNCATE TABLE _sqlx_migrations")
-            .execute(&pool)
-            .await;
-
-        if let Err(e2) = MIGRATOR.run(&pool).await {
-            warn!("Migração falhou mesmo após truncar _sqlx_migrations: {}. Continuando com o banco existente.", e2);
+        let err_msg = e.to_string();
+        if err_msg.contains("already exists") || err_msg.contains("previously applied but has been modified") {
+            warn!("Migração detectou schema existente (checksum ou constraint). Continuando com o banco atual.");
         } else {
-            info!("Migrações reaplicadas com sucesso após truncar _sqlx_migrations.");
+            warn!("Migração falhou: {}. Tentando reaplicar...", e);
+            let _ = sqlx::query("TRUNCATE TABLE _sqlx_migrations")
+                .execute(&pool)
+                .await;
+            if let Err(e2) = MIGRATOR.run(&pool).await {
+                warn!("Reaplicação também falhou: {}. Continuando com o banco existente.", e2);
+            }
         }
     }
 

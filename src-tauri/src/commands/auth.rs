@@ -1,3 +1,4 @@
+use crate::commands::types::{LoginEmpresaResult, RegistroEmpresaResult};
 use crate::db::get_pool;
 use argon2::{
     password_hash::{rand_core::OsRng, PasswordHash, PasswordHasher, PasswordVerifier, SaltString},
@@ -708,7 +709,7 @@ fn to_profile_summary(record: SecurityProfileRecord) -> Result<SecurityProfileSu
         nome: record.nome,
         role: record.role,
         permissions,
-        pin_configured: load_profile_pin(record.id)?.is_some(),
+        pin_configured: load_profile_pin(record.id).unwrap_or(None).is_some(),
         is_default: record.is_default,
         ativo: record.ativo,
     })
@@ -1449,6 +1450,148 @@ pub async fn list_security_audit_events(limit: Option<i32>) -> Result<Vec<Securi
         error!("Erro ao listar auditoria de segurança: {}", e);
         e.to_string()
     })
+}
+
+fn validate_email_format(email: &str) -> Result<(), String> {
+    let trimmed = email.trim();
+    if trimmed.is_empty() {
+        return Err("Email é obrigatório".to_string());
+    }
+    if !trimmed.contains('@') {
+        return Err("Email inválido".to_string());
+    }
+    let parts: Vec<&str> = trimmed.split('@').collect();
+    if parts.len() != 2 || parts[0].is_empty() || parts[1].is_empty() || !parts[1].contains('.') {
+        return Err("Email inválido".to_string());
+    }
+    Ok(())
+}
+
+fn validate_senha_format(senha: &str) -> Result<(), String> {
+    if senha.len() < 6 {
+        return Err("Senha deve ter no mínimo 6 caracteres".to_string());
+    }
+    Ok(())
+}
+
+#[tauri::command]
+#[instrument(skip_all)]
+pub async fn registrar_empresa(
+    nome: String,
+    email: String,
+    cnpj: Option<String>,
+    senha: String,
+) -> Result<RegistroEmpresaResult, String> {
+    validate_email_format(&email)?;
+    validate_senha_format(&senha)?;
+
+    let nome = nome.trim();
+    if nome.is_empty() {
+        return Err("Nome da empresa é obrigatório".to_string());
+    }
+
+    let pool = get_pool().await.map_err(|e| e.to_string())?;
+
+    let existing = sqlx::query("SELECT id FROM empresas WHERE email = $1")
+        .bind(&email)
+        .fetch_optional(&pool)
+        .await
+        .map_err(|e| {
+            error!("Erro ao verificar email existente: {}", e);
+            e.to_string()
+        })?;
+
+    if existing.is_some() {
+        return Err("Email já cadastrado".to_string());
+    }
+
+    let mut tx = pool.begin().await.map_err(|e| {
+        error!("Erro ao iniciar transação de registro de empresa: {}", e);
+        e.to_string()
+    })?;
+
+    let row = sqlx::query(
+        "INSERT INTO empresas (nome, email, cnpj, status) VALUES ($1, $2, $3, 'pendente') RETURNING id"
+    )
+    .bind(nome)
+    .bind(&email)
+    .bind(cnpj.as_deref())
+    .fetch_one(&mut *tx)
+    .await
+    .map_err(|e| {
+        error!("Erro ao registrar empresa: {}", e);
+        e.to_string()
+    })?;
+
+    let empresa_id: i32 = row.try_get("id").map_err(|e| e.to_string())?;
+
+    let permissions = serde_json::to_string(&ALL_PERMISSIONS.iter().map(|p| p.to_string()).collect::<Vec<_>>())
+        .map_err(|e| e.to_string())?;
+
+    sqlx::query(
+        "INSERT INTO security_profiles (nome, role, permissions, ativo, is_default, empresa_id, atualizado_em) \
+         VALUES ($1, $2, $3, true, true, $4, NOW())"
+    )
+    .bind("Administrador Local")
+    .bind("ADMIN")
+    .bind(&permissions)
+    .bind(empresa_id)
+    .execute(&mut *tx)
+    .await
+    .map_err(|e| {
+        error!("Erro ao criar perfil administrador para empresa {}: {}", empresa_id, e);
+        e.to_string()
+    })?;
+
+    tx.commit().await.map_err(|e| {
+        error!("Erro ao confirmar transação de registro de empresa: {}", e);
+        e.to_string()
+    })?;
+
+    Ok(RegistroEmpresaResult {
+        empresa_id,
+        status: "pendente".to_string(),
+        mensagem: "Empresa registrada com sucesso. Aguarde aprovação.".to_string(),
+    })
+}
+
+#[tauri::command]
+#[instrument(skip_all)]
+pub async fn login_empresa(
+    email: String,
+    senha: String,
+) -> Result<LoginEmpresaResult, String> {
+    let _ = senha;
+
+    let pool = get_pool().await.map_err(|e| e.to_string())?;
+
+    let row = sqlx::query("SELECT id, nome, status FROM empresas WHERE email = $1")
+        .bind(&email)
+        .fetch_optional(&pool)
+        .await
+        .map_err(|e| {
+            error!("Erro ao buscar empresa por email: {}", e);
+            e.to_string()
+        })?;
+
+    let Some(row) = row else {
+        return Err("Email não cadastrado".to_string());
+    };
+
+    let empresa_id: i32 = row.try_get("id").map_err(|e| e.to_string())?;
+    let nome: String = row.try_get("nome").map_err(|e| e.to_string())?;
+    let status: String = row.try_get("status").map_err(|e| e.to_string())?;
+
+    match status.as_str() {
+        "pendente" => Err("Conta pendente de aprovação".to_string()),
+        "suspenso" => Err("Conta suspensa".to_string()),
+        "ativo" => Ok(LoginEmpresaResult {
+            empresa_id,
+            nome,
+            status,
+        }),
+        _ => Err("Status da conta inválido".to_string()),
+    }
 }
 
 #[cfg(test)]

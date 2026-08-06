@@ -94,7 +94,7 @@ pub async fn listar_imagens_equipamento(
         EQUIPAMENTO_IMAGEM_SELECT
     );
 
-    sqlx::query_as::<_, EquipamentoImagemRow>(&query)
+    sqlx::query_as::<_, EquipamentoImagemRow>(sqlx::AssertSqlSafe(&*query))
         .bind(equipamento_id)
         .fetch_all(&pool)
         .await
@@ -138,15 +138,8 @@ pub async fn substituir_imagens_equipamento(
         })?;
 
     for (index, imagem) in imagens.into_iter().enumerate() {
-        if imagem.bytes.is_empty() {
-            return Err("Imagem sem conteúdo informado".to_string());
-        }
-
-        if imagem.bytes.len() > MAX_IMAGE_BYTES {
-            return Err(format!(
-                "Uma das imagens excede o limite de {} MB após compressão",
-                MAX_IMAGE_BYTES / 1024 / 1024
-            ));
+        if imagem.storage_path.is_empty() {
+            return Err("Imagem sem storage_path informado".to_string());
         }
 
         let categoria = normalize_category(&imagem.categoria)?;
@@ -155,15 +148,14 @@ pub async fn substituir_imagens_equipamento(
         let largura = validate_dimension(imagem.largura, "Largura da imagem")?;
         let altura = validate_dimension(imagem.altura, "Altura da imagem")?;
         let observacao = normalize_optional_text(imagem.observacao.as_deref());
-        let tamanho_bytes = i32::try_from(imagem.bytes.len())
-            .map_err(|_| "Tamanho da imagem excede o limite suportado".to_string())?;
+        let tamanho_bytes = imagem.tamanho_bytes.unwrap_or(0);
         let ordem = i32::try_from(index).map_err(|_| "Ordem de imagem inválida".to_string())?;
 
         sqlx::query(
             r#"
             INSERT INTO equipamento_imagens (
                 equipamento_id, categoria, filename, mime_type,
-                tamanho_bytes, largura, altura, ordem, observacao, bytes
+                tamanho_bytes, largura, altura, ordem, observacao, storage_path
             ) VALUES (
                 $1, $2, $3, $4, $5, $6, $7, $8, $9, $10
             )
@@ -178,7 +170,7 @@ pub async fn substituir_imagens_equipamento(
         .bind(altura)
         .bind(ordem)
         .bind(observacao)
-        .bind(imagem.bytes)
+        .bind(imagem.storage_path)
         .execute(&mut *tx)
         .await
         .map_err(|e| {
@@ -204,18 +196,12 @@ pub async fn adicionar_imagem_equipamento_raw(
     categoria: String,
     filename: String,
     mime_type: String,
-    bytes: Vec<u8>,
+    storage_path: String,
+    tamanho_bytes: i32,
     observacao: Option<String>,
 ) -> Result<EquipamentoImagemRow, String> {
-    if bytes.is_empty() {
-        return Err("Imagem sem conteúdo informado".to_string());
-    }
-
-    if bytes.len() > MAX_IMAGE_BYTES {
-        return Err(format!(
-            "Imagem excede o limite de {} MB",
-            MAX_IMAGE_BYTES / 1024 / 1024
-        ));
+    if storage_path.is_empty() {
+        return Err("Imagem sem storage_path informado".to_string());
     }
 
     ensure_equipment_exists(equipamento_id).await?;
@@ -243,8 +229,6 @@ pub async fn adicionar_imagem_equipamento_raw(
     let categoria = normalize_category(&categoria)?;
     let filename = sanitize_filename(&filename)?;
     let mime_type = normalize_mime_type(&mime_type)?;
-    let tamanho_bytes = i32::try_from(bytes.len())
-        .map_err(|_| "Tamanho da imagem excede o limite suportado".to_string())?;
     let ordem = i32::try_from(count.0).map_err(|_| "Ordem de imagem inválida".to_string())?;
     let observacao = normalize_optional_text(observacao.as_deref());
 
@@ -252,13 +236,13 @@ pub async fn adicionar_imagem_equipamento_raw(
         r#"
         INSERT INTO equipamento_imagens (
             equipamento_id, categoria, filename, mime_type,
-            tamanho_bytes, largura, altura, ordem, observacao, bytes
+            tamanho_bytes, largura, altura, ordem, observacao, storage_path
         ) VALUES (
             $1, $2, $3, $4, $5, $6, $7, $8, $9, $10
         )
         RETURNING
             id, equipamento_id, categoria, filename, mime_type,
-            tamanho_bytes, largura, altura, ordem, observacao, bytes,
+            tamanho_bytes, largura, altura, ordem, observacao, storage_path,
             criado_em::TEXT as criado_em, atualizado_em::TEXT as atualizado_em
         "#,
     )
@@ -271,7 +255,7 @@ pub async fn adicionar_imagem_equipamento_raw(
     .bind(None::<i32>)
     .bind(ordem)
     .bind(observacao)
-    .bind(bytes)
+    .bind(storage_path)
     .fetch_one(&pool)
     .await
     .map_err(|e| {
@@ -338,15 +322,8 @@ pub async fn adicionar_imagem_equipamento(
         ));
     }
 
-    if imagem.bytes.is_empty() {
-        return Err("Imagem sem conteúdo informado".to_string());
-    }
-
-    if imagem.bytes.len() > MAX_IMAGE_BYTES {
-        return Err(format!(
-            "Imagem excede o limite de {} MB",
-            MAX_IMAGE_BYTES / 1024 / 1024
-        ));
+    if imagem.storage_path.is_empty() {
+        return Err("Imagem sem storage_path informado".to_string());
     }
 
     let categoria = normalize_category(&imagem.categoria)?;
@@ -355,8 +332,7 @@ pub async fn adicionar_imagem_equipamento(
     let largura = validate_dimension(imagem.largura, "Largura da imagem")?;
     let altura = validate_dimension(imagem.altura, "Altura da imagem")?;
     let observacao = normalize_optional_text(imagem.observacao.as_deref());
-    let tamanho_bytes = i32::try_from(imagem.bytes.len())
-        .map_err(|_| "Tamanho da imagem excede o limite suportado".to_string())?;
+    let tamanho_bytes = imagem.tamanho_bytes.unwrap_or(0);
     let ordem = imagem
         .ordem
         .unwrap_or(count.0 as i32);
@@ -364,13 +340,13 @@ pub async fn adicionar_imagem_equipamento(
     let insert_query = format!(
         "INSERT INTO equipamento_imagens (
             equipamento_id, categoria, filename, mime_type,
-            tamanho_bytes, largura, altura, ordem, observacao, bytes
+            tamanho_bytes, largura, altura, ordem, observacao, storage_path
         ) VALUES (
             $1, $2, $3, $4, $5, $6, $7, $8, $9, $10
         ) RETURNING id"
     );
 
-    let inserted_id: (i32,) = sqlx::query_as(&insert_query)
+    let inserted_id: (i32,) = sqlx::query_as(sqlx::AssertSqlSafe(&*insert_query))
         .bind(equipamento_id)
         .bind(&categoria)
         .bind(&filename)
@@ -380,7 +356,7 @@ pub async fn adicionar_imagem_equipamento(
         .bind(altura)
         .bind(ordem)
         .bind(observacao)
-        .bind(&imagem.bytes)
+        .bind(&imagem.storage_path)
         .fetch_one(&pool)
         .await
         .map_err(|e| {
@@ -396,7 +372,7 @@ pub async fn adicionar_imagem_equipamento(
         EQUIPAMENTO_IMAGEM_SELECT
     );
 
-    sqlx::query_as::<_, EquipamentoImagemRow>(&select_query)
+    sqlx::query_as::<_, EquipamentoImagemRow>(sqlx::AssertSqlSafe(&*select_query))
         .bind(inserted_id.0)
         .fetch_one(&pool)
         .await

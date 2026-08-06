@@ -105,8 +105,8 @@ export async function imagemPersistidaParaDraft(
     altura: imagem.altura,
     ordem: imagem.ordem,
     observacao: imagem.observacao,
-    bytes: imagem.bytes,
-    preview_url: await bytesParaDataUrl(imagem.bytes, imagem.mime_type),
+    storage_path: imagem.storage_path,
+    preview_url: imagem.storage_path,
   };
 }
 
@@ -137,22 +137,18 @@ export async function arquivoParaImagemEquipamento(
   ctx.drawImage(imagem, 0, 0, canvas.width, canvas.height);
 
   const previewUrl = canvas.toDataURL("image/jpeg", QUALIDADE_JPEG);
-  // Converte data URL para bytes sem usar fetch (fetch bloqueado no WebView2 do Windows)
-  const base64Data = previewUrl.split(",")[1];
-  const binaryString = atob(base64Data);
-  const bytes = Array.from(new Uint8Array(binaryString.length).map((_, index) => binaryString.charCodeAt(index)));
 
   return {
     local_id: gerarIdLocalImagem(),
     categoria,
     filename: normalizarNomeArquivo(file.name),
     mime_type: "image/jpeg",
-    tamanho_bytes: bytes.length,
+    tamanho_bytes: previewUrl.length,
     largura: canvas.width,
     altura: canvas.height,
     ordem,
     observacao: undefined,
-    bytes,
+    storage_path: previewUrl,
     preview_url: previewUrl,
   };
 }

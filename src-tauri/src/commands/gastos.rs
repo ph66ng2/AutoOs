@@ -72,7 +72,7 @@ pub async fn listar_gastos_fixos() -> Result<Vec<GastoFixoRow>, String> {
         "{} WHERE ativo = true ORDER BY categoria ASC, nome ASC",
         GASTO_FIXO_SELECT,
     );
-    let rows = sqlx::query_as::<_, GastoFixoRow>(&query)
+    let rows = sqlx::query_as::<_, GastoFixoRow>(sqlx::AssertSqlSafe(&*query))
         .fetch_all(&pool)
         .await
         .map_err(|e| {
@@ -212,7 +212,7 @@ pub async fn atualizar_gasto_fixo(id: i32, input: GastoFixoInput) -> Result<Gast
 async fn buscar_gasto_fixo(id: i32) -> Result<GastoFixoRow, String> {
     let pool = get_pool().await.map_err(|e| e.to_string())?;
     let query = format!("{} WHERE id = $1", GASTO_FIXO_SELECT);
-    let row = sqlx::query_as::<_, GastoFixoRow>(&query)
+    let row = sqlx::query_as::<_, GastoFixoRow>(sqlx::AssertSqlSafe(&*query))
         .bind(id)
         .fetch_one(&pool)
         .await
@@ -238,7 +238,7 @@ pub async fn listar_gastos_variaveis(mes: i32, ano: i32) -> Result<Vec<GastoVari
         "{} WHERE DATE_TRUNC('month', data) = DATE_TRUNC('month', make_date($2, $1, 1)) ORDER BY data DESC",
         GASTO_VARIAVEL_SELECT,
     );
-    let rows = sqlx::query_as::<_, GastoVariavelRow>(&query)
+    let rows = sqlx::query_as::<_, GastoVariavelRow>(sqlx::AssertSqlSafe(&*query))
         .bind(mes)
         .bind(ano)
         .fetch_all(&pool)
@@ -301,7 +301,7 @@ pub async fn criar_gasto_variavel(input: GastoVariavelInput) -> Result<GastoVari
 async fn buscar_gasto_variavel(id: i32) -> Result<GastoVariavelRow, String> {
     let pool = get_pool().await.map_err(|e| e.to_string())?;
     let query = format!("{} WHERE id = $1", GASTO_VARIAVEL_SELECT);
-    let row = sqlx::query_as::<_, GastoVariavelRow>(&query)
+    let row = sqlx::query_as::<_, GastoVariavelRow>(sqlx::AssertSqlSafe(&*query))
         .bind(id)
         .fetch_one(&pool)
         .await

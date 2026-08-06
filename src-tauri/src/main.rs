@@ -86,6 +86,7 @@ fn main() {
     }
 
     tauri::Builder::default()
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .setup(|_app| {
             info!("Inicializando banco de dados...");
             match tauri::async_runtime::block_on(db::init_database()) {
@@ -120,6 +121,8 @@ fn main() {
             commands::auth::list_security_audit_events,
             commands::auth::verificar_config_inatividade,
             commands::auth::salvar_config_inatividade,
+            commands::auth::registrar_empresa,
+            commands::auth::login_empresa,
             // Util
             commands::util::salvar_arquivo_temp,
             commands::util::copiar_anexo_email_para_temp,

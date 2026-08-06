@@ -4,6 +4,7 @@ import { ErrorAlert } from "@/components/ui/error-alert";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { TabsContent } from "@/components/ui/tabs";
+import { UpdateChecker } from "@/components/UpdateChecker";
 import type { DatabaseSchemaStatus, PostgresBackupToolsStatus } from "@/types";
 import type { RestoreMode } from "./detect-restore-mode";
 
@@ -119,6 +120,10 @@ export function ConfiguracoesTabInfra({
             <Button type="button" variant="outline" onClick={() => void loadSchemaStatus()} disabled={schemaLoading}>
               {schemaLoading ? "Atualizando..." : "Atualizar status do schema"}
             </Button>
+          </div>
+
+          <div className="mt-4 pt-4 border-t">
+            <UpdateChecker />
           </div>
         </CardContent>
       </Card>

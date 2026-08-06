@@ -53,6 +53,11 @@ backups/
 # Tauri
 src-tauri/target
 
+# Tauri updater signing keys (NEVER commit private keys)
+.tauri/
+*.key
+*.key.pub
+
 # Database
 *.db
 *.db-wal

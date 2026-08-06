@@ -13,13 +13,16 @@ import React from "react";
 import ReactDOM from "react-dom/client";
 import App from "./App";
 import { SensitiveAccessProvider } from "@/hooks/useSensitiveAccess";
+import { ErrorBoundary } from "@/components/ErrorBoundary";
 import "./index.css";
 
 /** Renderiza o app com StrictMode para detectar problemas em desenvolvimento */
 ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
-    <SensitiveAccessProvider>
-      <App />
-    </SensitiveAccessProvider>
+    <ErrorBoundary>
+      <SensitiveAccessProvider>
+        <App />
+      </SensitiveAccessProvider>
+    </ErrorBoundary>
   </React.StrictMode>,
 );
