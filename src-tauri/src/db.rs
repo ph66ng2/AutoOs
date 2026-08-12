@@ -146,6 +146,13 @@ fn resolve_database_url() -> Result<String, sqlx::Error> {
         }
     }
 
+    // Compile-time embedded URL (from build.rs) — always available in bundled builds
+    if let Some(database_url) = option_env!("COMPILE_TIME_DATABASE_URL") {
+        if !database_url.is_empty() {
+            return Ok(database_url.to_string());
+        }
+    }
+
     if let Some(database_url) = resolve_database_url_from_config_file() {
         return Ok(database_url);
     }
