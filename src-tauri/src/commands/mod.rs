@@ -27,3 +27,6 @@ pub mod whatsapp;
 pub mod util;
 pub mod gastos;
 pub mod qr_code;
+pub mod storage_config;
+pub mod enrollment;
+pub mod image_migration;
