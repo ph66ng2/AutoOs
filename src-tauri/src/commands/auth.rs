@@ -1594,6 +1594,79 @@ pub async fn login_empresa(
     }
 }
 
+/// Provisions a PIN for a new machine using an enrollment code.
+///
+/// Flow: validate enrollment code → create security profile (TECNICO role) → store PIN in keyring.
+/// Called from the EnrollmentDialog when a new machine enters a code + sets a PIN.
+#[tauri::command]
+#[instrument(skip_all)]
+pub async fn provision_pin_with_enrollment(
+    enrollment_code: String,
+    pin: String,
+    profile_name: String,
+) -> Result<serde_json::Value, String> {
+    use crate::commands::enrollment::validate_enrollment_code;
+
+    validate_pin_format(&pin)?;
+
+    let nome = profile_name.trim();
+    if nome.len() < 3 {
+        return Err("Nome do perfil deve ter no mínimo 3 caracteres".to_string());
+    }
+
+    // Validate the enrollment code (marks it as used in Supabase)
+    let validation = validate_enrollment_code(enrollment_code).await?;
+    let empresa_id = validation["empresa_id"]
+        .as_str()
+        .unwrap_or("00000000-0000-0000-0000-000000000001");
+
+    // Create a new security profile with TECNICO role (default for enrolled machines)
+    let role = "TECNICO";
+    let permissions: Vec<String> = Vec::new();
+    let permissions_json = serde_json::to_string(&permissions).map_err(|e| e.to_string())?;
+
+    let pool = get_pool().await.map_err(|e| e.to_string())?;
+    let row = sqlx::query(
+        "INSERT INTO security_profiles (nome, role, permissions, ativo, is_default, atualizado_em)
+         VALUES ($1, $2, $3, true, false, NOW()) RETURNING id",
+    )
+    .bind(nome)
+    .bind(role)
+    .bind(&permissions_json)
+    .fetch_one(&pool)
+    .await
+    .map_err(|e| {
+        error!("Erro ao criar perfil via enrollment: {}", e);
+        e.to_string()
+    })?;
+
+    let profile_id: i32 = row.try_get("id").map_err(|e| e.to_string())?;
+
+    // Store PIN in keyring
+    store_profile_pin(profile_id, &pin)?;
+
+    // Audit event (fire-and-forget)
+    spawn_security_event(
+        "ENROLLMENT_PROVISIONED",
+        None,
+        format!(
+            "Perfil '{}' (id={}) provisionado via enrollment code para empresa {}",
+            nome, profile_id, empresa_id
+        ),
+        true,
+    );
+
+    debug!(
+        "Perfil {} provisionado via enrollment (profile_id={}, empresa_id={})",
+        nome, profile_id, empresa_id
+    );
+
+    Ok(serde_json::json!({
+        "success": true,
+        "profile_id": profile_id,
+    }))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

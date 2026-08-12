@@ -251,6 +251,16 @@ pub struct WhatsappConfigStored {
     pub token: String,
 }
 
+/// Configuração do Supabase armazenada no keyring.
+/// Espelha `SupabaseStorageConfig` do frontend (types/index.ts:666).
+#[derive(Debug, Serialize, Deserialize)]
+pub struct SupabaseStorageConfig {
+    pub supabase_url: String,
+    pub supabase_service_key: String,
+    #[serde(default)]
+    pub empresa_id: Option<String>,
+}
+
 /// Input para envio de mensagem de WhatsApp via provider HTTP.
 #[derive(Debug, Deserialize)]
 pub struct WhatsappSendInput {
