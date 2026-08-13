@@ -122,6 +122,7 @@ struct SecurityProfileRecord {
     permissions: String,
     ativo: bool,
     is_default: bool,
+    criado_em: chrono::NaiveDateTime,
 }
 
 pub(crate) fn session_state() -> &'static Mutex<SensitiveSession> {
@@ -310,6 +311,36 @@ fn load_stored_pin_by_user(user: &str) -> Result<Option<StoredSensitivePin>, Str
 
 pub(crate) fn load_profile_pin(profile_id: i32) -> Result<Option<StoredSensitivePin>, String> {
     load_stored_pin_by_user(&profile_keyring_user(profile_id))
+}
+
+/// Os IDs locais de perfil podem ser reutilizados após um restore ou uma
+/// reinstalação. Um segredo criado antes do perfil atual pertence à instalação
+/// anterior e não pode ser usado para bloquear o novo perfil.
+fn load_profile_pin_for_record(profile: &SecurityProfileRecord) -> Result<Option<StoredSensitivePin>, String> {
+    let Some(stored) = load_profile_pin(profile.id)? else {
+        return Ok(None);
+    };
+
+    if pin_record_is_older_than_profile(&stored, profile) {
+        warn!(profile_id = profile.id, "PIN órfão removido do keyring");
+        let entry = get_keyring_entry(&profile_keyring_user(profile.id))?;
+        entry.delete_password().map_err(|error| {
+            error!("Erro ao remover PIN órfão do keyring: {}", error);
+            "Não foi possível remover o PIN local antigo. Use a recuperação de PIN.".to_string()
+        })?;
+        return Ok(None);
+    }
+
+    Ok(Some(stored))
+}
+
+fn pin_record_is_older_than_profile(stored: &StoredSensitivePin, profile: &SecurityProfileRecord) -> bool {
+    let Ok(stored_created_at) = DateTime::parse_from_rfc3339(&stored.created_at) else {
+        // Não apagamos registros legados sem data confiável automaticamente.
+        return false;
+    };
+    let profile_created_at = DateTime::<Utc>::from_naive_utc_and_offset(profile.criado_em, Utc);
+    stored_created_at.with_timezone(&Utc) < profile_created_at
 }
 
 fn load_legacy_pin() -> Result<Option<StoredSensitivePin>, String> {
@@ -622,7 +653,7 @@ async fn fetch_profile_records_with_scope(include_inactive: bool) -> Result<Vec<
     ensure_default_profile_exists().await?;
     let pool = get_pool().await.map_err(|e| e.to_string())?;
     let mut query_builder = sqlx::QueryBuilder::<sqlx::Postgres>::new(
-        "SELECT id, nome, role, permissions, ativo, is_default FROM security_profiles",
+        "SELECT id, nome, role, permissions, ativo, is_default, criado_em FROM security_profiles",
     );
 
     if !include_inactive {
@@ -658,7 +689,7 @@ async fn fetch_active_profile_record() -> Result<SecurityProfileRecord, String> 
 async fn fetch_profile_record_by_id(profile_id: i32) -> Result<SecurityProfileRecord, String> {
     let pool = get_pool().await.map_err(|e| e.to_string())?;
     sqlx::query_as::<_, SecurityProfileRecord>(
-        "SELECT id, nome, role, permissions, ativo, is_default
+        "SELECT id, nome, role, permissions, ativo, is_default, criado_em
          FROM security_profiles
          WHERE id = $1 AND ativo = true"
     )
@@ -675,7 +706,7 @@ async fn fetch_profile_record_by_id(profile_id: i32) -> Result<SecurityProfileRe
 async fn fetch_profile_record_by_id_any(profile_id: i32) -> Result<SecurityProfileRecord, String> {
     let pool = get_pool().await.map_err(|e| e.to_string())?;
     sqlx::query_as::<_, SecurityProfileRecord>(
-        "SELECT id, nome, role, permissions, ativo, is_default
+        "SELECT id, nome, role, permissions, ativo, is_default, criado_em
          FROM security_profiles
          WHERE id = $1"
     )
@@ -704,12 +735,13 @@ async fn ensure_legacy_pin_migrated(profile_id: i32) -> Result<(), String> {
 fn to_profile_summary(record: SecurityProfileRecord) -> Result<SecurityProfileSummary, String> {
     let parsed_permissions = parse_permissions(&record.permissions)?;
     let permissions = normalize_permissions(&record.role, &parsed_permissions)?;
+    let pin_configured = load_profile_pin_for_record(&record)?.is_some();
     Ok(SecurityProfileSummary {
         id: record.id,
         nome: record.nome,
         role: record.role,
         permissions,
-        pin_configured: load_profile_pin(record.id).unwrap_or(None).is_some(),
+        pin_configured,
         is_default: record.is_default,
         ativo: record.ativo,
     })
@@ -843,13 +875,17 @@ pub async fn get_sensitive_access_status() -> Result<SensitiveAccessStatus, Stri
 pub async fn configure_sensitive_pin(pin: String, current_pin: Option<String>) -> Result<SensitiveAccessStatus, String> {
     validate_pin_format(&pin)?;
 
-    let active_profile = to_profile_summary(fetch_active_profile_record().await?)?;
-    if let Some(stored) = load_profile_pin(active_profile.id)? {
+    let active_record = fetch_active_profile_record().await?;
+    let active_profile = to_profile_summary(active_record.clone())?;
+    if let Some(stored) = load_profile_pin_for_record(&active_record)? {
         let provided_pin = current_pin.ok_or_else(|| "Informe o PIN atual para alterar o acesso sensível.".to_string())?;
         if !verify_pin(provided_pin.trim(), &stored) {
             warn!("Tentativa de alteração de PIN com credencial inválida");
             record_security_event("PIN_CHANGE_FAILED", Some(&active_profile), "PIN atual inválido", false).await;
-            return Err("PIN atual inválido".to_string());
+            return Err(format!(
+                "Não foi possível criar um PIN novo porque o perfil \"{}\" (ID {}) já possui um PIN local configurado. O PIN atual informado não confere. Use \"Esqueci minha senha\" para redefini-lo ou remova o PIN pelo administrador.",
+                active_profile.nome, active_profile.id
+            ));
         }
     } else if any_profile_has_pin().await? {
         require_permission(PERMISSION_MANAGE_PROFILES)?;
@@ -866,16 +902,22 @@ pub async fn configure_sensitive_pin(pin: String, current_pin: Option<String>) -
 #[instrument(skip_all)]
 pub async fn unlock_sensitive_access(pin: String) -> Result<SensitiveAccessStatus, String> {
     validate_pin_format(&pin)?;
-    let active_profile = to_profile_summary(fetch_active_profile_record().await?)?;
+    let active_record = fetch_active_profile_record().await?;
+    let active_profile = to_profile_summary(active_record.clone())?;
     check_unlock_lockout(active_profile.id)?;
-    let stored = load_profile_pin(active_profile.id)?
-        .ok_or_else(|| "PIN sensível ainda não configurado para o perfil ativo".to_string())?;
+    let stored = load_profile_pin_for_record(&active_record)?.ok_or_else(|| format!(
+        "O perfil \"{}\" (ID {}) não possui PIN local configurado. Esta tela está tentando desbloquear um PIN inexistente; feche e abra o AutoOS novamente para iniciar a criação do PIN.",
+        active_profile.nome, active_profile.id
+    ))?;
 
     if !verify_pin(pin.trim(), &stored) {
         record_unlock_failure(active_profile.id);
         warn!("Tentativa de desbloqueio sensível com PIN inválido");
         record_security_event("UNLOCK_FAILED", Some(&active_profile), "PIN inválido", false).await;
-        return Err("PIN inválido".to_string());
+        return Err(format!(
+            "O PIN informado não corresponde ao PIN já configurado para o perfil \"{}\" (ID {}). Esta ação é um desbloqueio, não a criação de um PIN novo. Se você não reconhece esse PIN, use \"Esqueci minha senha\" para redefini-lo.",
+            active_profile.nome, active_profile.id
+        ));
     }
 
     upgrade_pin_hash_if_legacy(active_profile.id, pin.trim(), &stored)?;
@@ -889,10 +931,14 @@ pub async fn unlock_sensitive_access(pin: String) -> Result<SensitiveAccessStatu
 #[tauri::command]
 #[instrument(skip_all)]
 pub async fn unlock_session_without_pin() -> Result<SensitiveAccessStatus, String> {
-    let active_profile = to_profile_summary(fetch_active_profile_record().await?)?;
-    let stored = load_profile_pin(active_profile.id)?;
+    let active_record = fetch_active_profile_record().await?;
+    let active_profile = to_profile_summary(active_record.clone())?;
+    let stored = load_profile_pin_for_record(&active_record)?;
     if stored.is_some() {
-        return Err("Este perfil possui PIN configurado. Informe o PIN para continuar.".to_string());
+        return Err(format!(
+            "O perfil \"{}\" (ID {}) possui um PIN local configurado. Informe esse PIN para desbloquear ou use \"Esqueci minha senha\" para redefini-lo.",
+            active_profile.nome, active_profile.id
+        ));
     }
     unlock_session(active_profile.clone())?;
     record_security_event("SESSION_UNLOCKED_NO_PIN", Some(&active_profile), "Sessão desbloqueada sem PIN", true).await;
@@ -1474,6 +1520,24 @@ fn validate_senha_format(senha: &str) -> Result<(), String> {
     Ok(())
 }
 
+fn hash_company_password(password: &str) -> Result<String, String> {
+    let salt = SaltString::generate(&mut OsRng);
+    Argon2::default()
+        .hash_password(password.as_bytes(), &salt)
+        .map(|hash| hash.to_string())
+        .map_err(|error| {
+            error!("Erro ao gerar hash da senha da empresa: {}", error);
+            "Não foi possível proteger a senha da empresa".to_string()
+        })
+}
+
+fn verify_company_password(password: &str, password_hash: &str) -> bool {
+    PasswordHash::new(password_hash)
+        .ok()
+        .and_then(|parsed| Argon2::default().verify_password(password.as_bytes(), &parsed).ok())
+        .is_some()
+}
+
 #[tauri::command]
 #[instrument(skip_all)]
 pub async fn registrar_empresa(
@@ -1489,6 +1553,7 @@ pub async fn registrar_empresa(
     if nome.is_empty() {
         return Err("Nome da empresa é obrigatório".to_string());
     }
+    let senha_hash = hash_company_password(&senha)?;
 
     let pool = get_pool().await.map_err(|e| e.to_string())?;
 
@@ -1511,11 +1576,12 @@ pub async fn registrar_empresa(
     })?;
 
     let row = sqlx::query(
-        "INSERT INTO empresas (nome, email, cnpj, status) VALUES ($1, $2, $3, 'pendente') RETURNING id"
+        "INSERT INTO empresas (nome, email, cnpj, status, senha_hash) VALUES ($1, $2, $3, 'pendente', $4) RETURNING id"
     )
     .bind(nome)
     .bind(&email)
     .bind(cnpj.as_deref())
+    .bind(&senha_hash)
     .fetch_one(&mut *tx)
     .await
     .map_err(|e| {
@@ -1561,11 +1627,12 @@ pub async fn login_empresa(
     email: String,
     senha: String,
 ) -> Result<LoginEmpresaResult, String> {
-    let _ = senha;
+    validate_email_format(&email)?;
+    validate_senha_format(&senha)?;
 
     let pool = get_pool().await.map_err(|e| e.to_string())?;
 
-    let row = sqlx::query("SELECT id, nome, status FROM empresas WHERE email = $1")
+    let row = sqlx::query("SELECT id, nome, status, senha_hash FROM empresas WHERE email = $1")
         .bind(&email)
         .fetch_optional(&pool)
         .await
@@ -1581,6 +1648,16 @@ pub async fn login_empresa(
     let empresa_id: i32 = row.try_get("id").map_err(|e| e.to_string())?;
     let nome: String = row.try_get("nome").map_err(|e| e.to_string())?;
     let status: String = row.try_get("status").map_err(|e| e.to_string())?;
+    let senha_hash: Option<String> = row.try_get("senha_hash").map_err(|e| e.to_string())?;
+
+    let Some(senha_hash) = senha_hash else {
+        warn!(email = %email, "Login negado: empresa sem credencial central configurada");
+        return Err("Esta conta ainda não possui uma senha central configurada. Solicite a recuperação de acesso.".to_string());
+    };
+    if !verify_company_password(&senha, &senha_hash) {
+        warn!(email = %email, "Login de empresa com senha inválida");
+        return Err("Email ou senha inválidos".to_string());
+    }
 
     match status.as_str() {
         "pendente" => Err("Conta pendente de aprovação".to_string()),
@@ -1670,6 +1747,40 @@ pub async fn provision_pin_with_enrollment(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn company_password_hash_requires_the_original_password() {
+        let hash = hash_company_password("senha-segura-123").expect("hash deve ser criado");
+        assert!(verify_company_password("senha-segura-123", &hash));
+        assert!(!verify_company_password("senha-incorreta", &hash));
+    }
+
+    #[test]
+    fn stale_keyring_pin_is_detected_when_profile_id_is_reused() {
+        let profile = SecurityProfileRecord {
+            id: 1,
+            nome: "Administrador Local".to_string(),
+            role: "ADMIN".to_string(),
+            permissions: "[]".to_string(),
+            ativo: true,
+            is_default: true,
+            criado_em: chrono::NaiveDate::from_ymd_opt(2026, 8, 13)
+                .expect("data válida")
+                .and_hms_opt(12, 0, 0)
+                .expect("hora válida"),
+        };
+        let stale = StoredSensitivePin {
+            pin_hash: "$argon2id$placeholder".to_string(),
+            created_at: "2026-08-12T12:00:00Z".to_string(),
+        };
+        let current = StoredSensitivePin {
+            pin_hash: "$argon2id$placeholder".to_string(),
+            created_at: "2026-08-13T12:00:01Z".to_string(),
+        };
+
+        assert!(pin_record_is_older_than_profile(&stale, &profile));
+        assert!(!pin_record_is_older_than_profile(&current, &profile));
+    }
 
     fn build_profile(role: &str, permissions: &[&str]) -> SecurityProfileSummary {
         SecurityProfileSummary {

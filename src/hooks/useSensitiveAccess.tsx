@@ -305,14 +305,41 @@ export function SensitiveAccessProvider({ children }: { children: ReactNode }) {
         return;
       }
 
-      let workingStatus = status;
+      // O status exibido pode ter sido obtido antes de uma limpeza/redefinição
+      // do keyring. Reconsulta antes de escolher entre criar e desbloquear PIN.
+      let workingStatus = await SensitiveAccessService.status();
+      setStatus(workingStatus);
+      if (!workingStatus.active_profile_id) {
+        setError("Não foi possível determinar o perfil ativo. Feche e abra o AutoOS novamente.");
+        setBusy(false);
+        return;
+      }
 
-      if (targetProfileId && targetProfileId !== status?.active_profile_id) {
+      if (targetProfileId && targetProfileId !== workingStatus.active_profile_id) {
         workingStatus = await SensitiveAccessService.setActiveProfile(targetProfileId);
         setStatus(workingStatus);
       }
 
       const activeProfile = workingStatus?.profiles.find((profile) => profile.id === (workingStatus.active_profile_id ?? targetProfileId)) ?? null;
+      const displayedProfile = status?.profiles.find((profile) => profile.id === targetProfileId) ?? null;
+
+      // A tela pode ter sido aberta antes de outra tentativa configurar o PIN.
+      // Nunca use o PIN recém-digitado como se fosse o PIN antigo nesse caso.
+      // Atualizamos a UI para o fluxo de desbloqueio e deixamos claro o motivo.
+      if (
+        displayedProfile?.role === "ADMIN" &&
+        !displayedProfile.pin_configured &&
+        activeProfile?.pin_configured
+      ) {
+        setPin("");
+        setConfirmPin("");
+        setError(
+          `O PIN do perfil "${activeProfile.nome}" já foi configurado desde que esta tela foi aberta. ` +
+          "A tela foi atualizada para desbloqueio: informe o PIN já criado ou use \"Esqueci minha senha\" para redefini-lo."
+        );
+        setBusy(false);
+        return;
+      }
 
       // Admin sem PIN: forçar configuração de PIN no primeiro acesso
       if (activeProfile?.role === "ADMIN" && !activeProfile?.pin_configured) {
