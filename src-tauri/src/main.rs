@@ -204,6 +204,15 @@ fn main() {
             commands::whatsapp::salvar_config_whatsapp,
             commands::whatsapp::carregar_config_whatsapp,
             commands::whatsapp::enviar_whatsapp,
+            // Storage Config (Supabase)
+            commands::storage_config::salvar_config_storage,
+            commands::storage_config::carregar_config_storage,
+            // Enrollment
+            commands::enrollment::generate_enrollment_code,
+            commands::enrollment::validate_enrollment_code,
+            commands::auth::provision_pin_with_enrollment,
+            // Image Migration
+            commands::image_migration::migrate_images_to_storage,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

@@ -491,7 +491,7 @@ checksum = "c08606f8c3cbf4ce6ec8e28fb0014a2c086708fe954eaa885384a6165172e7e8"
 
 [[package]]
 name = "autoos"
-version = "0.2.5"
+version = "0.3.4"
 dependencies = [
  "anyhow",
  "argon2",
@@ -506,6 +506,7 @@ dependencies = [
  "native-tls",
  "postgres-native-tls",
  "qrcode",
+ "rand 0.8.5",
  "reqwest 0.12.28",
  "serde",
  "serde_json",
