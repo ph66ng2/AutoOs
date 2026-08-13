@@ -3,7 +3,144 @@ use crate::commands::types::{
     EquipamentoImagemInput, EquipamentoImagemRow, EQUIPAMENTO_IMAGEM_SELECT,
 };
 use crate::db::get_pool;
+use keyring::Entry;
+use reqwest::Client;
 use tracing::{debug, error, info, instrument};
+
+// Re-export for image_migration.rs
+pub use crate::commands::types::SupabaseStorageConfig;
+
+const KEYRING_SERVICE: &str = "autoos";
+const KEYRING_USER: &str = "storage_config";
+
+// ═══════════════════════════════════════════════════════════
+// Storage helpers (used by image_migration.rs and photo_server.rs)
+// ═══════════════════════════════════════════════════════════
+
+/// Loads SupabaseStorageConfig from keyring. Returns None if not configured.
+pub fn load_storage_config() -> Result<Option<SupabaseStorageConfig>, String> {
+    let entry = Entry::new(KEYRING_SERVICE, KEYRING_USER).map_err(|e| {
+        error!("Erro ao acessar keyring de storage config: {}", e);
+        e.to_string()
+    })?;
+
+    let json = match entry.get_password() {
+        Ok(password) => password,
+        Err(_) => return Ok(None),
+    };
+
+    let config: SupabaseStorageConfig = serde_json::from_str(&json).map_err(|e| {
+        error!("Erro ao deserializar config de storage: {}", e);
+        format!("Configuração do Supabase inválida: {}", e)
+    })?;
+
+    Ok(Some(config))
+}
+
+/// Builds the storage path for an equipment image.
+/// Format: `equipamento-imagens/{empresa_id}/{equipamento_id}/{image_id}.{ext}`
+pub fn build_storage_path(
+    config: &SupabaseStorageConfig,
+    equipamento_id: i32,
+    image_id: i32,
+    mime_type: &str,
+) -> String {
+    let empresa_id = config
+        .empresa_id
+        .as_deref()
+        .unwrap_or("00000000-0000-0000-0000-000000000001");
+    let ext = match mime_type {
+        "image/png" => "png",
+        _ => "jpg",
+    };
+    format!(
+        "equipamento-imagens/{}/{}/{}.{}",
+        empresa_id, equipamento_id, image_id, ext
+    )
+}
+
+/// Uploads image bytes to Supabase Storage. Returns the public URL.
+pub async fn upload_to_storage(
+    config: &SupabaseStorageConfig,
+    storage_path: &str,
+    bytes: &[u8],
+    mime_type: &str,
+) -> Result<String, String> {
+    let url = format!(
+        "{}/storage/v1/object/{}",
+        config.supabase_url.trim_end_matches('/'),
+        storage_path
+    );
+
+    let client = Client::new();
+    let response = client
+        .post(&url)
+        .header("apikey", &config.supabase_service_key)
+        .header(
+            "Authorization",
+            format!("Bearer {}", config.supabase_service_key),
+        )
+        .header("Content-Type", mime_type)
+        .header("x-upsert", "true")
+        .body(bytes.to_vec())
+        .send()
+        .await
+        .map_err(|e| {
+            error!("Erro ao enviar imagem para Storage: {}", e);
+            format!("Erro de conexão com Storage: {}", e)
+        })?;
+
+    if !response.status().is_success() {
+        let status = response.status();
+        let body = response.text().await.unwrap_or_default();
+        error!("Storage retornou {}: {}", status, body);
+        return Err(format!("Storage retornou {}: {}", status, body));
+    }
+
+    let public_url = format!(
+        "{}/storage/v1/object/public/{}",
+        config.supabase_url.trim_end_matches('/'),
+        storage_path
+    );
+
+    Ok(public_url)
+}
+
+/// Deletes an object from Supabase Storage.
+pub async fn delete_from_storage(
+    config: &SupabaseStorageConfig,
+    storage_path: &str,
+) -> Result<(), String> {
+    let url = format!(
+        "{}/storage/v1/object/{}",
+        config.supabase_url.trim_end_matches('/'),
+        storage_path
+    );
+
+    let client = Client::new();
+    let response = client
+        .delete(&url)
+        .header("apikey", &config.supabase_service_key)
+        .header(
+            "Authorization",
+            format!("Bearer {}", config.supabase_service_key),
+        )
+        .send()
+        .await
+        .map_err(|e| {
+            error!("Erro ao deletar objeto do Storage: {}", e);
+            format!("Erro de conexão com Storage: {}", e)
+        })?;
+
+    if !response.status().is_success() {
+        let status = response.status();
+        let body = response.text().await.unwrap_or_default();
+        error!("Storage DELETE retornou {}: {}", status, body);
+        return Err(format!("Storage DELETE retornou {}: {}", status, body));
+    }
+
+    Ok(())
+}
 
 const MAX_IMAGES_PER_EQUIPMENT: usize = 6;
 pub const MAX_IMAGE_BYTES: usize = 3 * 1024 * 1024;

@@ -3,6 +3,7 @@ use crate::commands::equipamento_imagens::{
     build_storage_path, load_storage_config, upload_to_storage, SupabaseStorageConfig,
 };
 use crate::db::get_pool;
+use sqlx::FromRow;
 use tracing::{debug, error, info, instrument};
 
 #[derive(Debug, serde::Serialize)]
@@ -12,6 +13,7 @@ pub struct ImageMigrationResult {
     pub errors: Vec<String>,
 }
 
+#[derive(FromRow)]
 struct ImageRow {
     id: i32,
     equipamento_id: i32,

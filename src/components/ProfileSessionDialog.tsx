@@ -129,7 +129,10 @@ export function ProfileSessionDialog({
     return "Informe o PIN do perfil selecionado para confirmar a sessão.";
   })();
 
-  const isFirstAccess = mode === "startup" && profiles.length === 1;
+  // Ter apenas um perfil não significa, por si só, primeiro acesso: uma instalação
+  // já usada pode continuar com apenas o administrador e um PIN já configurado.
+  // A tela de criação só pode ser exibida quando o PIN está realmente pendente.
+  const isFirstAccess = mode === "startup" && profiles.length === 1 && !selectedProfile?.pin_configured;
 
   return (
     <Dialog

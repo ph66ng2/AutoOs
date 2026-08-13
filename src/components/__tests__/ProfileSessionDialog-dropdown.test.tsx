@@ -109,6 +109,18 @@ describe("ProfileSessionDialog dropdown login sem PIN", () => {
     expect(screen.getByLabelText(/pin do perfil/i)).toBeInTheDocument();
   });
 
+  it("não exibe criação de PIN para o único perfil quando ele já possui PIN", () => {
+    renderDialog({
+      profiles: [baseProfile],
+      activeProfileId: 1,
+      selectedProfileId: "1",
+      selectedProfile: baseProfile,
+    });
+
+    expect(screen.getByLabelText(/pin do perfil/i)).toBeInTheDocument();
+    expect(screen.queryByLabelText(/^criar pin$/i)).not.toBeInTheDocument();
+  });
+
   it("ao selecionar perfil sem PIN pela lista normal, ainda exibe campo de PIN (para configuração)", () => {
     renderDialog({
       selectedProfileId: "2",
