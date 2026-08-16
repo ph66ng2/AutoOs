@@ -192,3 +192,13 @@ npm run bundle:prep:windows:sign # Injects certThumbprint from env into tauri.co
 - **Restore path restriction**: restore only accepts files inside `~/AutoOS/backups` (Linux) or `%USERPROFILE%\Documents\AutoOS\backups` (Windows).
 - **CSP in tauri.conf.json** allows `https://viacep.com.br` (Brazilian ZIP code lookup API).
 - **Version alignment**: `package.json` (0.2.0), `Cargo.toml` (0.2.0), `tauri.conf.json` (0.2.0) should match `docs/RELEASE.md` checklist.
+
+## TICKETS E ONDAS
+
+- O catálogo local fica em `.workflow/workflow.json`; ele é a fonte de verdade para tickets, estado e dependências (`blockedBy`).
+- Antes de implementar uma feature, transforme-a em tickets autocontidos com contexto, escopo, critérios de aceite, testes e dependências explícitas. Não infira dependências pelos títulos.
+- Só implemente tickets que estejam liberados pelo comando `.workflow/scripts/waves.sh plan .workflow/workflow.json`.
+- Cada ticket deve usar uma worktree e branch próprias, sempre criadas a partir de `origin/master` com `.workflow/scripts/waves.sh spawn .workflow/workflow.json <ID>`.
+- Um agente implementa somente o ticket que recebeu; não inicia tickets bloqueados, não altera tickets vizinhos e não faz merge.
+- Antes de entregar, execute os checks relevantes definidos neste documento. O resultado deve ficar pronto para revisão humana; somente um humano faz merge.
+- Depois de um merge, atualize o ticket para `merged` e recalcule as ondas antes de iniciar dependentes.

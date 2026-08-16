@@ -1,0 +1,695 @@
+{
+  "project": "AutoOS SaaS — planos Online e Offline com PowerSync",
+  "baseBranch": "origin/feature",
+  "architectureDecisions": [
+    "Manter um único aplicativo e uma única base de código para todos os planos.",
+    "O plano Online usa Supabase com autenticação e RLS, sem PowerSync e sem credenciais privilegiadas no cliente.",
+    "O plano Offline adiciona PowerSync e só inicializa o sync quando o entitlement assinado permitir.",
+    "Assinatura e capacidades são autoritativas no servidor; flags locais servem apenas como cache temporário.",
+    "O provedor de cobrança será decidido em AO-SUB-001 e não fica implicitamente fixado como Stripe.",
+    "A master interna da BMITAG permanece congelada até o Go/No-Go final."
+  ],
+  "tickets": [
+    {
+      "id": "AO-PS-001",
+      "title": "Confirmar baseline interno Supabase",
+      "status": "review",
+      "blockedBy": [],
+      "completedAt": "2026-08-13",
+      "evidence": ".sisyphus/evidence/wave-b0-baseline-2026-08-13.md",
+      "objective": "Confirmar que o baseline interno Supabase cloud segue funcional antes de iniciar o staging PowerSync.",
+      "context": "A branch master/linha interna usa Supabase Postgres via Tauri invoke -> Rust/sqlx, sem PowerSync. Este ticket cria a evidência mínima de que essa linha continua operacional para a BMITAG.",
+      "expectedBehavior": "A operação interna permanece estável e independente dos experimentos SaaS, de assinatura e de sincronização offline.",
+      "scope": [
+        "Rodar smoke UI nas cinco páginas principais: clientes, servicos, equipamentos, insumos e gastos.",
+        "Confirmar login com PIN no ambiente interno.",
+        "Executar CRUD mínimo em clientes contra o Supabase interno.",
+        "Registrar evidência local do smoke e do CRUD mínimo."
+      ],
+      "outOfScope": [
+        "Configurar PowerSync.",
+        "Alterar schema ou migrations.",
+        "Refatorar hooks, db.ts ou comandos Rust.",
+        "Criar staging."
+      ],
+      "acceptanceCriteria": [
+        "O app abre no ambiente interno sem crash.",
+        "O login com PIN funciona.",
+        "As páginas clientes, servicos, equipamentos, insumos e gastos carregam.",
+        "Um cliente de teste pode ser criado, editado e removido, ou o teste registra claramente o cleanup aplicado.",
+        "A evidência deixa explícito que esta linha é Supabase cloud sem PowerSync e não é build SaaS externo."
+      ],
+      "tests": [
+        "Smoke UI manual ou Playwright cobrindo navegação pelas cinco páginas.",
+        "CRUD mínimo em clientes no Supabase interno.",
+        "npm run lint."
+      ],
+      "likelyFiles": [
+        ".sisyphus/evidence/*",
+        "docs/*",
+        "Nenhum código obrigatório"
+      ],
+      "risks": [
+        "Confundir o baseline interno com o futuro plano Online SaaS.",
+        "Usar smoke com mocks como prova de persistência real sem executar o CRUD no Supabase interno."
+      ]
+    },
+    {
+      "id": "AO-PS-002",
+      "title": "Isolar staging SaaS e PowerSync",
+      "status": "blocked",
+      "blockedBy": [
+        "AO-PS-001"
+      ],
+      "executionOverride": "Iniciado na branch feature por autorização explícita do usuário, sem merge de AO-PS-001.",
+      "blockerReason": "Aguardando criação ou confirmação de um projeto Supabase e uma instância PowerSync distintos do ambiente interno; nenhuma credencial de staging foi fornecida ou criada nesta wave.",
+      "objective": "Preparar um ambiente descartável para os planos SaaS Online e Offline sem afetar a operação interna da BMITAG.",
+      "context": "Toda prova SaaS e PowerSync deve acontecer fora da master/baseline interno. O mesmo Supabase staging atenderá os dois planos; apenas o plano Offline terá uma instância PowerSync associada.",
+      "expectedBehavior": "Os dois planos usam dados sintéticos no mesmo Supabase staging, enquanto o PowerSync fica isolado como capacidade adicional e nenhuma credencial interna é reutilizada.",
+      "scope": [
+        "Criar ou documentar a linha de trabalho staging/powersync a partir de origin/feature.",
+        "Criar ou documentar Supabase staging separado do projeto interno.",
+        "Reservar o mesmo Supabase staging para validar o plano Online e conectar uma instância PowerSync exclusiva para o plano Offline.",
+        "Garantir que env vars, dumps, seeds e credenciais não carreguem dados reais da BMITAG.",
+        "Registrar checklist de isolamento do staging."
+      ],
+      "outOfScope": [
+        "Implementar PowerSync.",
+        "Migrar hooks React.",
+        "Alterar schema da master ou do Supabase interno.",
+        "Copiar dados reais de produção."
+      ],
+      "acceptanceCriteria": [
+        "Existe um ambiente staging acessível e descartável.",
+        "As credenciais staging são separadas das credenciais internas.",
+        "Nenhum dado real ou secret de produção é usado na POC.",
+        "A documentação de setup permite repetir o staging sem decisões adicionais."
+      ],
+      "tests": [
+        "Validar conexão com Supabase staging.",
+        "Executar checklist de isolamento de dados e secrets.",
+        "Verificar que arquivos versionados não contêm credenciais."
+      ],
+      "likelyFiles": [
+        ".env.example",
+        "docs/*",
+        "supabase/seed.sql",
+        "Config local nao versionada"
+      ],
+      "risks": [
+        "Apontar staging para o projeto interno por engano.",
+        "Versionar novamente credenciais reais ou reutilizar secrets que já apareceram no histórico Git.",
+        "Criar ambientes distintos por plano e gerar divergência de dados ou schema."
+      ]
+    },
+    {
+      "id": "AO-PS-003",
+      "title": "Alinhar schema e IDs do staging",
+      "status": "ready",
+      "blockedBy": [
+        "AO-PS-002"
+      ],
+      "objective": "Definir e aplicar no staging o modelo de IDs compatível com PowerSync offline.",
+      "context": "O baseline interno usa IDs integer, mas o plano v2.1 recomenda UUID/text para o staging PowerSync. Sequential-id mapping só deve ser escolhido se houver justificativa explícita.",
+      "expectedBehavior": "Os planos Online e Offline compartilham o mesmo schema UUID/text e as mesmas relações tenant-safe; PowerSync não cria um modelo de dados paralelo.",
+      "scope": [
+        "Registrar decisão formal: UUID/text nativo como padrão para tabelas sincronizadas, ou sequential-id mapping com justificativa.",
+        "Criar ou ajustar schema staging com id text/UUID nas tabelas sincronizadas.",
+        "Validar FKs e empresa_id no schema staging.",
+        "Corrigir o risco de scripts adicionarem empresa_id duplicado quando a coluna já existir."
+      ],
+      "outOfScope": [
+        "Configurar PowerSync Cloud.",
+        "Migrar hooks React.",
+        "Alterar produção/master.",
+        "Aplicar migração irreversível no Supabase interno."
+      ],
+      "acceptanceCriteria": [
+        "O schema staging tem PK id text/UUID para tabelas sincronizadas, ou há decisão explícita de mapping.",
+        "As FKs relevantes apontam para o tipo correto.",
+        "empresa_id está presente e consistente nas tabelas sincronizadas.",
+        "O dry-run de migração não duplica empresa_id nem gera mismatch de colunas.",
+        "A decisão de IDs fica documentada para os tickets dependentes."
+      ],
+      "tests": [
+        "Validação SQL do schema staging.",
+        "Checagem de integridade de FKs.",
+        "Dry-run do script de migração com dados de amostra.",
+        "Supabase advisors quando aplicável."
+      ],
+      "likelyFiles": [
+        "supabase/schema.sql",
+        "supabase/rls.sql",
+        "scripts/migrate_serial_to_uuid.py",
+        "docs/*"
+      ],
+      "risks": [
+        "Divergência entre o schema usado pelo acesso Online e o schema esperado pelo PowerSync.",
+        "Conversão incompleta de PKs/FKs ou duplicação de empresa_id pelo script de migração."
+      ]
+    },
+    {
+      "id": "AO-PS-004",
+      "title": "Definir segurança SaaS e RLS",
+      "status": "ready",
+      "blockedBy": [
+        "AO-PS-002"
+      ],
+      "objective": "Definir autenticação, autorização e RLS compartilhadas pelos planos Online e Offline, sem credenciais privilegiadas no cliente.",
+      "context": "Para vender o AutoOS, o app distribuído não pode carregar service_role, secret key ou senha Postgres. O plano Online precisa acessar o Supabase com usuário autenticado e RLS; o plano Offline precisa receber token PowerSync tenant-safe.",
+      "expectedBehavior": "O mesmo usuário e tenant acessam apenas os próprios dados nos dois planos; o backend emite tokens apropriados sem entregar privilégios administrativos ao desktop.",
+      "scope": [
+        "Definir JWT/claims para empresa_id ou tenant.",
+        "Definir autenticação do plano Online com chave publicável e JWT de usuário.",
+        "Desenhar token issuer/auth backend para PowerSync e para capacidades assinadas.",
+        "Revisar RLS com USING e WITH CHECK para escrita.",
+        "Remover policies permissivas baseadas em empresa_id IS NULL no staging.",
+        "Revisar grants/Data API exposure no staging."
+      ],
+      "outOfScope": [
+        "Criar UI de login nova.",
+        "Implementar Supabase Auth completo se nao for necessário para o staging.",
+        "Adicionar regras de negócio fora de autorização/tenant.",
+        "Modificar a master interna."
+      ],
+      "acceptanceCriteria": [
+        "Tenant A e tenant B ficam isolados usando chave ou papel não privilegiado.",
+        "Inserts e updates fora do tenant são negados.",
+        "Nenhum fluxo de cliente distribuído depende de service_role.",
+        "RLS tem WITH CHECK nas tabelas onde há escrita.",
+        "Data API grants estão documentados e coerentes com RLS."
+      ],
+      "tests": [
+        "SQL/API com dois tenants usando credenciais não privilegiadas.",
+        "Teste de insert/update negado fora do tenant.",
+        "Supabase advisors.",
+        "Inspeção de arquivos versionados para ausência de service_role."
+      ],
+      "likelyFiles": [
+        "supabase/rls.sql",
+        "docs/*",
+        "src-tauri/src/commands/*",
+        "Possivel modulo/backend de token issuer"
+      ],
+      "risks": [
+        "RLS permitir BOLA/IDOR entre tenants.",
+        "Usar user_metadata editável como fonte de autorização.",
+        "Tratar chave publicável como autorização sem validar usuário e tenant."
+      ]
+    },
+    {
+      "id": "AO-PS-005",
+      "title": "Configurar PowerSync Cloud e Sync Streams",
+      "status": "ready",
+      "blockedBy": [
+        "AO-PS-003",
+        "AO-PS-004"
+      ],
+      "objective": "Conectar PowerSync Cloud ao Supabase staging com streams filtradas por tenant.",
+      "context": "O arquivo legado powersync-sync-rules.yaml usa SELECT * global e não é seguro para SaaS. O staging deve usar Sync Streams edition 3 com filtro por claims/JWT.",
+      "expectedBehavior": "Somente assinaturas com capacidade offline recebem streams PowerSync, e cada conexão baixa exclusivamente as linhas do tenant autenticado.",
+      "scope": [
+        "Criar instância PowerSync Cloud para staging.",
+        "Conectar PowerSync ao Postgres do Supabase staging.",
+        "Criar Sync Streams config edition 3 com auto_subscribe para dados offline necessários.",
+        "Filtrar dados por tenant usando claims/JWT.",
+        "Validar streams no dashboard ou CLI."
+      ],
+      "outOfScope": [
+        "Integrar app Tauri.",
+        "Migrar hooks React.",
+        "Alterar produção ou master.",
+        "Implementar UI de status final."
+      ],
+      "acceptanceCriteria": [
+        "PowerSync dashboard mostra conexão ativa ao Supabase staging.",
+        "Sync Streams validam sem erro.",
+        "As streams não usam SELECT * global inseguro.",
+        "Dados de tenant A não são disponibilizados para tenant B.",
+        "Há evidência de inserção staging aparecendo em logs ou diagnóstico PowerSync."
+      ],
+      "tests": [
+        "Validação de Sync Streams.",
+        "Inserção de linha no Supabase staging e inspeção de logs/diagnóstico PowerSync.",
+        "Teste A/B de download ou disponibilidade por tenant.",
+        "Checklist de ausência de SELECT * global inseguro."
+      ],
+      "likelyFiles": [
+        "supabase/powersync-sync-rules.yaml",
+        "supabase/*powersync*",
+        "docs/*"
+      ],
+      "risks": [
+        "Uma stream global expor dados de todos os tenants.",
+        "A conexão PowerSync ficar operacional antes de o token tenant-safe estar validado."
+      ]
+    },
+    {
+      "id": "AO-PS-006",
+      "title": "Integrar PowerSync Tauri via connector Rust",
+      "status": "ready",
+      "blockedBy": [
+        "AO-PS-005",
+        "AO-SUB-003"
+      ],
+      "objective": "Substituir a POC web por integração PowerSync Tauri correta no staging.",
+      "context": "A arquitetura alvo para o plano Offline deve usar tauri-plugin-powersync e connector Rust, não connector JS @powersync/web como solução final. A conexão depende do entitlement server-side e do token definido para a assinatura.",
+      "expectedBehavior": "O conector só estabelece sync com token válido para o tenant e para a capacidade offline; falha de entitlement ou credencial não derruba o modo Online.",
+      "scope": [
+        "Registrar tauri_plugin_powersync::init() no app Tauri staging.",
+        "Usar PowerSyncTauriDatabase no frontend staging.",
+        "Implementar comando Rust de conexão via handle.",
+        "Implementar connector Rust com fetch_credentials e upload_data.",
+        "Garantir que credenciais venham do modelo seguro definido no ticket AO-PS-004."
+      ],
+      "outOfScope": [
+        "Migrar todos os hooks.",
+        "Criar FSM em TypeScript.",
+        "Finalizar SyncStatusBadge.",
+        "Usar service_role no cliente como atalho."
+      ],
+      "acceptanceCriteria": [
+        "O app staging conecta ao PowerSync Service sem crash.",
+        "Falha de credencial é tratada sem bloquear o app de forma irrecuperável.",
+        "O upload path não usa service_role no cliente.",
+        "A integração usa plugin Tauri e connector Rust.",
+        "A POC web permanece apenas referência, não caminho de produção."
+      ],
+      "tests": [
+        "cargo check.",
+        "npm run lint.",
+        "Teste de conexão staging com PowerSync.",
+        "Teste de falha de credencial ou endpoint inválido sem crash."
+      ],
+      "likelyFiles": [
+        "src-tauri/src/main.rs",
+        "src-tauri/src/commands/*",
+        "src/lib/powersync/*",
+        "src/poc/*"
+      ],
+      "risks": [
+        "Inicializar PowerSync para assinantes do plano Online.",
+        "Acoplar o boot do aplicativo à disponibilidade do serviço PowerSync.",
+        "Reintroduzir service_role ou token estático no desktop."
+      ]
+    },
+    {
+      "id": "AO-PS-007",
+      "title": "Migrar hook piloto useClientes para offline",
+      "status": "ready",
+      "blockedBy": [
+        "AO-SUB-004"
+      ],
+      "objective": "Provar CRUD offline real com clientes como entidade piloto de baixo risco.",
+      "context": "A migração completa de hooks só deve acontecer depois de uma prova pequena. Clientes é o primeiro hook para validar leitura local, escrita offline, reconexão e download.",
+      "expectedBehavior": "No plano Offline, clientes usa a base PowerSync local e sincroniza ao reconectar; no plano Online, o mesmo domínio continua usando o adapter remoto sem criar duas interfaces de UI.",
+      "scope": [
+        "Migrar apenas useClientes para SQLite local via PowerSync no staging.",
+        "Ler clientes do banco local PowerSync.",
+        "Criar e editar cliente offline.",
+        "Sincronizar alterações ao reconectar.",
+        "Validar download Supabase staging para SQLite local."
+      ],
+      "outOfScope": [
+        "Migrar useServicos, useEquipamentos, useInsumos ou useGastos.",
+        "Criar FSM em TypeScript.",
+        "Migrar imagens.",
+        "Construir UI final de status de sync."
+      ],
+      "acceptanceCriteria": [
+        "CRUD clientes funciona online no staging.",
+        "Create/edit offline são persistidos localmente.",
+        "Ao reconectar, alterações sobem ao Supabase staging.",
+        "Inserções feitas no Supabase staging descem para SQLite local.",
+        "Conflito básico segue LWW e não quebra a UI.",
+        "A UI não quebra quando PowerSync está reconectando."
+      ],
+      "tests": [
+        "Vitest do hook useClientes.",
+        "Smoke UI de clientes.",
+        "Teste offline -> online -> Supabase staging.",
+        "Verificação Supabase staging -> SQLite local.",
+        "Teste básico de conflito LWW."
+      ],
+      "likelyFiles": [
+        "src/hooks/useClientes.ts",
+        "src/lib/powersync/*",
+        "src/test/*",
+        "src/pages/Clientes.tsx"
+      ],
+      "risks": [
+        "Duplicar regras de negócio entre adapters Online e Offline.",
+        "Misturar IDs integer do baseline interno com UUID/text do staging.",
+        "Exibir dados locais após perda de entitlement offline sem política definida."
+      ]
+    },
+    {
+      "id": "AO-SUB-001",
+      "title": "Definir planos e contrato de entitlement",
+      "status": "ready",
+      "blockedBy": [
+        "AO-PS-001"
+      ],
+      "objective": "Transformar a ideia de assinatura em uma matriz de capacidades e um contrato técnico verificável pelo servidor.",
+      "context": "O mesmo AutoOS oferecerá um plano Online sem PowerSync e um plano Offline com PowerSync. Nomes comerciais, preços e provedor de cobrança ainda não estão congelados, mas o código precisa de capacidades estáveis e independentes do provedor.",
+      "expectedBehavior": "O backend retorna um entitlement assinado por empresa com capacidades explícitas, incluindo offline_sync, e o desktop não consegue elevar o próprio plano alterando estado local.",
+      "scope": [
+        "Definir a matriz funcional dos planos Online e Offline.",
+        "Definir estados de assinatura: trial, active, past_due, grace, canceled e expired.",
+        "Definir contrato versionado de entitlement e TTL do cache local.",
+        "Decidir o provedor de cobrança ou formalizar uma interface provider-agnostic para a primeira entrega.",
+        "Decidir política de downgrade, período de carência, uploads pendentes e retenção dos dados locais.",
+        "Documentar quais controles são server-side e quais são apenas UX no cliente."
+      ],
+      "outOfScope": [
+        "Implementar checkout ou webhook.",
+        "Criar telas de planos.",
+        "Inicializar PowerSync.",
+        "Fixar preços sem decisão comercial do usuário."
+      ],
+      "acceptanceCriteria": [
+        "Existe uma matriz inequívoca de capacidades por plano.",
+        "O contrato de entitlement tem versão, empresa_id, plano, capacidades, expiração e assinatura/verificação.",
+        "A política de trial, inadimplência, downgrade e cancelamento está documentada.",
+        "A decisão do provedor de cobrança está registrada sem acoplar o domínio do app ao fornecedor.",
+        "Nenhuma capacidade paga depende exclusivamente de flag local."
+      ],
+      "tests": [
+        "Revisão de cenários de estado da assinatura.",
+        "Tabela de decisão para Online, Offline, grace, canceled e entitlement expirado.",
+        "Revisão de ameaça: alteração local de plano não concede offline_sync."
+      ],
+      "likelyFiles": [
+        "docs/*subscription*",
+        "docs/*entitlement*",
+        "src/types/*"
+      ],
+      "risks": [
+        "Misturar nome comercial do plano com regras técnicas difíceis de evoluir.",
+        "Não definir downgrade antes de armazenar dados offline.",
+        "Permitir funcionamento indefinido com entitlement expirado."
+      ]
+    },
+    {
+      "id": "AO-SUB-002",
+      "title": "Implementar acesso SaaS Online sem PowerSync",
+      "status": "ready",
+      "blockedBy": [
+        "AO-PS-003",
+        "AO-PS-004",
+        "AO-SUB-001"
+      ],
+      "objective": "Criar o caminho de dados do plano Online usando autenticação e RLS, sem PowerSync, senha PostgreSQL ou service_role no desktop.",
+      "context": "O acesso atual Tauri/Rust/sqlx usa uma DATABASE_URL e serve ao baseline interno, mas não é aceitável para distribuição SaaS. O plano Online precisa de um adapter remoto autenticado que preserve a interface dos hooks.",
+      "expectedBehavior": "Um usuário autenticado executa CRUD de clientes apenas no próprio tenant enquanto conectado; ao ficar offline, a UI informa indisponibilidade e não simula sincronização local.",
+      "scope": [
+        "Definir interface única de repositório/adapters para os domínios do app.",
+        "Implementar adapter Online piloto para clientes com chave publicável e JWT de usuário.",
+        "Aplicar empresa_id exclusivamente a partir da identidade autorizada, não de input livre do cliente.",
+        "Tratar sessão expirada, ausência de rede e respostas negadas por RLS.",
+        "Manter o adapter sqlx interno fora do caminho distribuído SaaS."
+      ],
+      "outOfScope": [
+        "Implementar PowerSync.",
+        "Migrar todos os hooks.",
+        "Implementar cobrança ou checkout.",
+        "Distribuir senha Postgres ou service_role como atalho."
+      ],
+      "acceptanceCriteria": [
+        "CRUD piloto de clientes funciona no plano Online com usuário autenticado.",
+        "Tenant A não lê nem escreve dados do tenant B.",
+        "O desktop SaaS não recebe DATABASE_URL, senha Postgres, secret key ou service_role.",
+        "Sem rede, o plano Online apresenta estado recuperável e não perde formulário silenciosamente.",
+        "A interface do domínio permite trocar de adapter sem duplicar a página Clientes."
+      ],
+      "tests": [
+        "Vitest do adapter Online e do hook piloto.",
+        "Teste API/RLS com tenants A e B.",
+        "Teste de JWT expirado e rede indisponível.",
+        "Scan do bundle e dos arquivos versionados por credenciais privilegiadas.",
+        "npm run lint."
+      ],
+      "likelyFiles": [
+        "src/lib/data/*",
+        "src/hooks/useClientes.ts",
+        "src/lib/db.ts",
+        "src/types/*",
+        "src/test/*"
+      ],
+      "risks": [
+        "Transformar chave publicável em falsa sensação de segurança sem RLS correta.",
+        "Duplicar hooks completos por plano.",
+        "Vazar empresa_id controlável pelo cliente em inserts ou updates."
+      ]
+    },
+    {
+      "id": "AO-SUB-003",
+      "title": "Implementar assinatura e entitlement server-side",
+      "status": "ready",
+      "blockedBy": [
+        "AO-PS-004",
+        "AO-SUB-001"
+      ],
+      "objective": "Criar a fonte autoritativa de assinatura e capacidades, desacoplada do desktop e do provedor de cobrança.",
+      "context": "Online e Offline compartilham autenticação e dados, mas apenas Offline pode obter token PowerSync. Webhooks e alterações administrativas precisam atualizar o entitlement de forma idempotente e auditável.",
+      "expectedBehavior": "O servidor deriva capacidades do estado persistido da assinatura, emite entitlements curtos e só emite credenciais PowerSync quando offline_sync estiver ativa.",
+      "scope": [
+        "Criar modelo de dados de produtos, assinaturas e eventos de cobrança por empresa.",
+        "Implementar adapter do provedor escolhido ou provider fake para staging conforme decisão AO-SUB-001.",
+        "Processar webhooks de forma idempotente, autenticada e auditável.",
+        "Expor endpoint autenticado de entitlement versionado.",
+        "Vincular emissão de token PowerSync à capacidade offline_sync.",
+        "Impedir que app_metadata ou claims antigas concedam acesso após expiração além da carência definida."
+      ],
+      "outOfScope": [
+        "Construir UI comercial completa.",
+        "Migrar hooks.",
+        "Armazenar segredo do provedor no desktop.",
+        "Conceder service_role ao cliente."
+      ],
+      "acceptanceCriteria": [
+        "Assinatura é vinculada a empresa_id e possui trilha de eventos.",
+        "Reprocessar o mesmo webhook não duplica nem corrompe estado.",
+        "Plano Online recebe offline_sync=false e não recebe token PowerSync.",
+        "Plano Offline ativo recebe offline_sync=true e pode solicitar token PowerSync tenant-safe.",
+        "Cancelamento, past_due e grace seguem exatamente a decisão de AO-SUB-001."
+      ],
+      "tests": [
+        "Testes de transição de estados da assinatura.",
+        "Teste de idempotência e assinatura de webhook.",
+        "Teste de emissão negada de token PowerSync no plano Online.",
+        "Teste de entitlement expirado e revogado.",
+        "Supabase advisors e testes RLS quando aplicável."
+      ],
+      "likelyFiles": [
+        "supabase/*",
+        "src-tauri/src/commands/*",
+        "backend/*",
+        "docs/*subscription*"
+      ],
+      "risks": [
+        "Webhook forjado ou repetido alterar o plano de uma empresa.",
+        "JWT/entitlement permanecer válido por tempo excessivo após cancelamento.",
+        "Acoplamento direto ao formato do provedor de cobrança."
+      ]
+    },
+    {
+      "id": "AO-SUB-004",
+      "title": "Unificar runtime por capacidade de assinatura",
+      "status": "ready",
+      "blockedBy": [
+        "AO-SUB-002",
+        "AO-SUB-003",
+        "AO-PS-006"
+      ],
+      "objective": "Fazer o mesmo aplicativo selecionar com segurança o adapter Online ou Offline a partir do entitlement server-side.",
+      "context": "Builds ou branches diferentes por plano criariam divergência. O bootstrap precisa autenticar, obter capacidades e inicializar PowerSync somente quando permitido, preservando um único conjunto de páginas e regras de domínio.",
+      "expectedBehavior": "Online inicia sem PowerSync e usa o adapter remoto; Offline inicia PowerSync e usa o adapter local sincronizado; entitlement indisponível degrada para o comportamento seguro definido.",
+      "scope": [
+        "Criar serviço de capacidades com cache local de TTL limitado.",
+        "Criar seleção de adapter sem bifurcar páginas ou componentes de domínio.",
+        "Inicializar e encerrar PowerSync conforme offline_sync.",
+        "Exibir estado de plano, expiração e sincronização sem expor secrets.",
+        "Tratar troca de plano, logout, sessão expirada e endpoint indisponível."
+      ],
+      "outOfScope": [
+        "Migrar todos os hooks.",
+        "Implementar checkout.",
+        "Apagar dados locais no mesmo momento do downgrade.",
+        "Criar builds separados por plano."
+      ],
+      "acceptanceCriteria": [
+        "O mesmo binário executa os modos Online e Offline conforme entitlement válido.",
+        "Plano Online não abre banco PowerSync nem solicita token PowerSync.",
+        "Plano Offline conecta pelo connector Rust e mantém fallback definido.",
+        "Alterar flag local não concede capacidade paga.",
+        "Logout limpa sessão e desconecta o adapter ativo."
+      ],
+      "tests": [
+        "Testes de bootstrap para Online, Offline, entitlement expirado e endpoint indisponível.",
+        "Teste de tentativa de adulteração do cache local.",
+        "Teste de troca de plano em staging.",
+        "npm run lint.",
+        "cargo check."
+      ],
+      "likelyFiles": [
+        "src/App.tsx",
+        "src/hooks/*",
+        "src/lib/data/*",
+        "src/lib/powersync/*",
+        "src-tauri/src/commands/*"
+      ],
+      "risks": [
+        "Condição de corrida no boot escolher adapter incorreto.",
+        "Cache local adulterado liberar PowerSync.",
+        "Troca de plano deixar duas conexões ou duas fontes de verdade ativas."
+      ]
+    },
+    {
+      "id": "AO-SUB-005",
+      "title": "Implementar downgrade e ciclo de vida offline",
+      "status": "ready",
+      "blockedBy": [
+        "AO-SUB-004",
+        "AO-PS-007"
+      ],
+      "objective": "Aplicar a política de downgrade sem perda silenciosa, vazamento de dados locais ou uso indefinido do PowerSync.",
+      "context": "O plano Offline mantém dados e operações pendentes no dispositivo. Cancelamento ou downgrade exige período de carência, tentativa de upload, bloqueio e retenção/remoção conforme a decisão comercial e de segurança.",
+      "expectedBehavior": "Durante a carência, o usuário entende o estado e pode sincronizar pendências; ao final, PowerSync é desconectado e os dados locais seguem a política documentada sem conceder acesso pago.",
+      "scope": [
+        "Implementar estados de grace, downgrade_pending, online_only e expired no cliente.",
+        "Exibir quantidade de uploads pendentes antes do downgrade.",
+        "Tentar sincronização final segura quando permitido.",
+        "Aplicar política de bloqueio, retenção, exportação ou limpeza definida em AO-SUB-001.",
+        "Registrar auditoria local e server-side da transição."
+      ],
+      "outOfScope": [
+        "Alterar unilateralmente a política definida em AO-SUB-001.",
+        "Fazer cobrança manual.",
+        "Migrar outros módulos além do piloto.",
+        "Apagar dados sem confirmação/política recuperável."
+      ],
+      "acceptanceCriteria": [
+        "Uploads pendentes são visíveis e tratados antes do encerramento do modo Offline.",
+        "Após expiração, o app não continua sincronizando nem exibindo capacidade offline indevida.",
+        "Upgrade reativa o modo Offline sem duplicar dados.",
+        "Downgrade para Online preserva acesso remoto autorizado ao tenant.",
+        "A política de dados locais é testada e auditável."
+      ],
+      "tests": [
+        "Teste Offline ativo -> grace -> Online.",
+        "Teste downgrade com uploads pendentes e rede indisponível.",
+        "Teste downgrade seguido de upgrade.",
+        "Teste de isolamento de dados locais após logout/troca de empresa.",
+        "Teste da política de retenção ou limpeza escolhida."
+      ],
+      "likelyFiles": [
+        "src/hooks/*",
+        "src/lib/powersync/*",
+        "src/components/*",
+        "src-tauri/src/commands/*",
+        "docs/*subscription*"
+      ],
+      "risks": [
+        "Perder alterações ainda não sincronizadas.",
+        "Manter dados de um tenant acessíveis após logout ou troca de empresa.",
+        "Reativação criar registros duplicados ou conflito de identidade local."
+      ]
+    },
+    {
+      "id": "AO-UX-001",
+      "title": "Padronizar seleção de dados no cadastro de equipamentos",
+      "status": "ready",
+      "blockedBy": [],
+      "objective": "Substituir os campos livres de marca e modelo por seletores, mantendo entrada manual somente para a opção Outro.",
+      "context": "O cadastro já usa Select para tipo, mas marca e modelo ainda aceitam qualquer valor diretamente. O valor persistido precisa continuar sendo o nome efetivo, para que backend, busca, comunicações e PDFs permaneçam compatíveis.",
+      "scope": [
+        "Adicionar catálogos de marca e modelo usados pela operação, ambos com a opção Outro.",
+        "Exibir o campo de texto apenas quando Outro for escolhido e persistir o texto informado, nunca o marcador Outro.",
+        "Preservar valores antigos fora do catálogo ao editar um equipamento.",
+        "Validar o fluxo no frontend e confirmar que o contrato Rust e as saídas PDF continuam usando os mesmos campos marca/modelo."
+      ],
+      "outOfScope": [
+        "Alterar schema, migrations, comandos Rust ou o layout/conteúdo do PDF.",
+        "Modificar o envio de fotos por rede ou o fluxo de arquivo local."
+      ],
+      "acceptanceCriteria": [
+        "Marca e modelo são escolhidos por menu suspenso.",
+        "Outro revela um campo de texto para o respectivo valor.",
+        "O cadastro e a edição enviam marca e modelo preenchidos ao backend.",
+        "Valores legados não são apagados ao abrir a edição.",
+        "Nenhuma alteração é feita no serviço de PDF ou no upload de fotos."
+      ],
+      "tests": [
+        "npm run lint.",
+        "npm run test:run.",
+        "cd src-tauri && cargo check."
+      ],
+      "likelyFiles": [
+        "src/pages/Equipamentos.tsx",
+        "src/pages/equipamentos/equipamentos-page-constants.ts"
+      ],
+      "risks": [
+        "Salvar literalmente Outro e degradar a busca ou os documentos.",
+        "Perder marca/modelo legados fora do catálogo na edição."
+      ]
+    },
+    {
+      "id": "AO-PS-008",
+      "title": "Go/No-Go SaaS por planos Online e Offline",
+      "status": "ready",
+      "blockedBy": [
+        "AO-SUB-005"
+      ],
+      "objective": "Decidir se os dois planos podem avançar para expansão dos demais módulos e preparação comercial.",
+      "context": "A decisão final precisa comparar segurança, disponibilidade, comportamento de downgrade, custo e experiência dos planos Online e Offline, não apenas provar que PowerSync conecta.",
+      "expectedBehavior": "O relatório separa a viabilidade do plano Online da viabilidade do add-on Offline e pode aprovar, pausar ou limitar cada um independentemente.",
+      "scope": [
+        "Testar multi-tenant A/B de ponta a ponta.",
+        "Validar LWW básico.",
+        "Testar falhas e retry de upload.",
+        "Testar falha de rede e reconexão.",
+        "Executar matriz de assinatura, entitlement, upgrade, downgrade e cancelamento.",
+        "Comparar o mesmo CRUD piloto nos adapters Online e Offline.",
+        "Documentar custos e limites PowerSync + Supabase.",
+        "Produzir relatório final de decisão."
+      ],
+      "outOfScope": [
+        "Implementar os demais hooks.",
+        "Migrar imagens.",
+        "Fazer rollout para cliente externo.",
+        "Alterar a master interna."
+      ],
+      "acceptanceCriteria": [
+        "O relatório documenta evidências, riscos, custos e decisão explícita por plano.",
+        "Tenant A não baixa dados do tenant B.",
+        "Falhas de rede e reconexão têm comportamento conhecido.",
+        "Retries de upload são observados ou documentados.",
+        "Plano Online funciona sem inicializar PowerSync ou receber credenciais privilegiadas.",
+        "Downgrade do Offline para Online segue a política sem perda silenciosa.",
+        "Nenhum bloqueador crítico fica sem dono ou decisão."
+      ],
+      "tests": [
+        "Suite real offline/sync.",
+        "Teste de isolamento multi-tenant A/B.",
+        "Teste de falha de rede e reconexão.",
+        "Suite de entitlement e ciclo de assinatura.",
+        "Teste comparativo do adapter Online e do adapter Offline.",
+        "npm run lint.",
+        "npm run test:run.",
+        "cargo check."
+      ],
+      "likelyFiles": [
+        "docs/*",
+        ".sisyphus/evidence/*",
+        "src/test/*",
+        "src-tauri/src/bin/*"
+      ],
+      "risks": [
+        "Aprovar o plano Offline com custo ou comportamento de downgrade ainda desconhecido.",
+        "Avaliar apenas o caminho feliz e ignorar expiração de sessão ou indisponibilidade externa.",
+        "Expandir hooks antes de estabilizar a interface comum de adapters."
+      ]
+    }
+  ]
+}
