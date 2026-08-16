@@ -1,17 +1,17 @@
 -- ═══════════════════════════════════════════════════════════════════════════════
 -- supabase/seed.sql — Dados iniciais para AutoOS no Supabase
 -- ═══════════════════════════════════════════════════════════════════════════════
--- 1. Empresa padrão (BMITAG)
+-- 1. Empresa sintética de staging
 -- 2. Configurações de sistema (singleton)
 -- 3. Perfil de segurança Administrador
 -- 4. Categorias de referência para gastos_fixos
 -- ═══════════════════════════════════════════════════════════════════════════════
 
--- ─── 1. Empresa padrão ─────────────────────────────────────────────────────────
+-- ─── 1. Empresa sintética de staging ───────────────────────────────────────────
 INSERT INTO empresas (id, nome, cnpj, ativo)
 VALUES (
     '00000000-0000-0000-0000-000000000001'::uuid,
-    'BMITAG',
+    'AutoOS Staging',
     NULL,
     true
 )
