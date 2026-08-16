@@ -131,6 +131,8 @@ import {
 } from "@/lib/equipamento-imagem-utils";
 import {
   EMAIL_POR_TECNICO,
+  MARCA_EQUIPAMENTO_OPTIONS,
+  MODELO_EQUIPAMENTO_OPTIONS,
   STATUS_OPTIONS,
   TECNICOS_DISPONIVEIS,
   TIPO_OPTIONS,
@@ -309,6 +311,11 @@ export default function Equipamentos() {
       },
   });
 
+  // Os seletores são apenas uma ajuda de preenchimento: marca e modelo seguem
+  // sendo gravados como texto para preservar o contrato com backend, busca e PDF.
+  const [marcaSelecionada, setMarcaSelecionada] = useState("");
+  const [modeloSelecionado, setModeloSelecionado] = useState("");
+
   // ─── Handlers ─────────────────────────────────────────
 
   /** Abre dialog para criar novo equipamento. Reseta form e limpa cliente */
@@ -322,6 +329,8 @@ export default function Equipamentos() {
     setTecnicoNovoEquipamento("Ivan");
     setRegistrosAnteriores([]);
     setConfirmouNovoCiclo(false);
+    setMarcaSelecionada("");
+    setModeloSelecionado("");
     form.reset({
       serial_number: "", patrimonio: "", marca: "", modelo: "", tipo: "", status: "RECEBIDO",
       defeito_relatado: "", acessorios: [], acessorios_outros: "",
@@ -381,6 +390,12 @@ export default function Equipamentos() {
       tipo: eq.tipo, status: eq.status, defeito_relatado: eq.defeito_relatado || "",
       acessorios: eq.acessorios ? eq.acessorios.split(", ").filter(Boolean) : [], acessorios_outros: eq.acessorios_outros || "", observacoes: removerTecnicoInicialDasObservacoes(eq.observacoes || ""),
     });
+    setMarcaSelecionada(
+      MARCA_EQUIPAMENTO_OPTIONS.includes(eq.marca) ? eq.marca : "Outro",
+    );
+    setModeloSelecionado(
+      MODELO_EQUIPAMENTO_OPTIONS.includes(eq.modelo) ? eq.modelo : "Outro",
+    );
     setDialogOpen(true);
   }
 
@@ -1809,12 +1824,57 @@ export default function Equipamentos() {
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label>Marca *</Label>
-                  <Input {...form.register("marca")} placeholder="Zebra, Datacard" />
+                  <Select
+                    value={marcaSelecionada}
+                    onValueChange={(value) => {
+                      setMarcaSelecionada(value);
+                      form.setValue("marca", value === "Outro" ? "" : value, {
+                        shouldDirty: true,
+                        shouldValidate: true,
+                      });
+                    }}
+                  >
+                    <SelectTrigger><SelectValue placeholder="Selecione..." /></SelectTrigger>
+                    <SelectContent>
+                      {MARCA_EQUIPAMENTO_OPTIONS.map((marca) => (
+                        <SelectItem key={marca} value={marca}>{marca}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  {marcaSelecionada === "Outro" && (
+                    <Input
+                      {...form.register("marca")}
+                      autoFocus
+                      placeholder="Informe a marca"
+                    />
+                  )}
                   <FormValidationError message={form.formState.errors.marca?.message} />
                 </div>
                 <div className="space-y-2">
-                  <Label>Modelo do equipamento</Label>
-                  <Input {...form.register("modelo")} placeholder="ZD421, GC420T" />
+                  <Label>Modelo do equipamento *</Label>
+                  <Select
+                    value={modeloSelecionado}
+                    onValueChange={(value) => {
+                      setModeloSelecionado(value);
+                      form.setValue("modelo", value === "Outro" ? "" : value, {
+                        shouldDirty: true,
+                        shouldValidate: true,
+                      });
+                    }}
+                  >
+                    <SelectTrigger><SelectValue placeholder="Selecione..." /></SelectTrigger>
+                    <SelectContent>
+                      {MODELO_EQUIPAMENTO_OPTIONS.map((modelo) => (
+                        <SelectItem key={modelo} value={modelo}>{modelo}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  {modeloSelecionado === "Outro" && (
+                    <Input
+                      {...form.register("modelo")}
+                      placeholder="Informe o modelo"
+                    />
+                  )}
                   <FormValidationError message={form.formState.errors.modelo?.message} />
                 </div>
               </div>
