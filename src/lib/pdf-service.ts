@@ -52,6 +52,7 @@ const COR_FUNDO_HEADER: [number, number, number] = [30, 30, 30];
 const COR_TEXTO_BRANCO: [number, number, number] = [255, 255, 255];
 const COR_CINZA_MEDIO: [number, number, number] = [80, 80, 80];
 const COR_FUNDO_TOTAL: [number, number, number] = [240, 240, 240];
+const COR_VERMELHA: [number, number, number] = [180, 0, 0];
 const CABECALHO_EMPRESA = {
   nome: "BMITAG TECNOLOGIA QRCODE E RFID",
   descricao: "Vendas e Manutenções de Equipamentos ZEBRA",
@@ -371,6 +372,194 @@ async function adicionarRegistroFotografico(
   }
 }
 
+/**
+ * Verifica se é necessário adicionar uma nova página antes de renderizar
+ * um bloco de texto. Se o conteúdo estimado não couber, insere page break.
+ */
+function garantirEspacoVertical(doc: jsPDF, y: number, alturaEstimada: number): number {
+  const pageHeight = doc.internal.pageSize.getHeight();
+  const margemInferior = 20;
+  if (y + alturaEstimada > pageHeight - margemInferior) {
+    doc.addPage();
+    return 20;
+  }
+  return y;
+}
+
+/**
+ * Renderiza os termos comerciais no padrão da imagem anexada ao orçamento.
+ * Inclui prazo, faturamento, garantia, validade, taxa de diagnóstico e assinatura.
+ */
+function renderizarCondicoesComerciais(
+  doc: jsPDF,
+  y: number,
+  tecnicoNome: string,
+  emailTecnico: string
+): number {
+  const centerX = PAGE_WIDTH / 2;
+  const espacoTitulo = 6;
+  const espacoParagrafo = 5;
+  const espacoSecao = 10;
+
+  // ─── Prazo de Execução ────────────────────────────────────
+  y = garantirEspacoVertical(doc, y, 20);
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(10);
+  doc.setTextColor(...COR_VERMELHA);
+  doc.text("Prazo de Execução:", centerX, y, { align: "center" });
+  y += espacoTitulo;
+
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(9);
+  const prazoLinhas = doc.splitTextToSize(
+    "Após a aprovação da proposta, o prazo estimado para a realização do serviço é de 02 a 04 dias úteis (Podendo aumentar caso seja necessário troca de peças).",
+    CONTENT_WIDTH
+  );
+  prazoLinhas.forEach((linha: string) => {
+    doc.text(linha, centerX, y, { align: "center" });
+    y += espacoParagrafo;
+  });
+  y += 3;
+
+  // ─── Faturamento ──────────────────────────────────────────
+  y = garantirEspacoVertical(doc, y, 16);
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(10);
+  doc.setTextColor(...COR_PRETA);
+  doc.text("Faturamento:", centerX, y, { align: "center" });
+  y += espacoTitulo;
+
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(9);
+  doc.text(
+    "O faturamento será realizado somente após a aprovação do orçamento.",
+    centerX,
+    y,
+    { align: "center" }
+  );
+  y += espacoSecao;
+
+  // ─── Garantia ─────────────────────────────────────────────
+  y = garantirEspacoVertical(doc, y, 45);
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(10);
+  doc.setTextColor(...COR_PRETA);
+  doc.text("Garantia:", centerX, y, { align: "center" });
+  y += espacoTitulo;
+
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(9);
+  const garantiaItens = [
+    "O equipamento terá garantia em bancada na nossa assistência técnica.",
+    "Caso seja necessário o envio, os custos de frete (ida e volta) serão de responsabilidade do cliente.",
+    "Os serviços aprovados terão garantia de 90 dias, contados a partir da disponibilidade do equipamento para retirada em nosso laboratório.",
+  ];
+  const bulletIndent = MARGIN_LEFT + 4;
+  const textIndent = bulletIndent + 4;
+  garantiaItens.forEach((item) => {
+    const linhas = doc.splitTextToSize(item, CONTENT_WIDTH - (textIndent - MARGIN_LEFT) - 4);
+    doc.text("•", bulletIndent, y);
+    linhas.forEach((linha: string, idx: number) => {
+      doc.text(linha, textIndent, y + idx * espacoParagrafo);
+    });
+    y += linhas.length * espacoParagrafo + 2;
+  });
+  y += 3;
+
+  // ─── Validade do Orçamento ────────────────────────────────
+  y = garantirEspacoVertical(doc, y, 16);
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(10);
+  doc.setTextColor(...COR_VERMELHA);
+  doc.text("Validade do Orçamento:", centerX, y, { align: "center" });
+  y += espacoTitulo;
+
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(9);
+  doc.setTextColor(...COR_VERMELHA);
+  doc.text("05 dias a partir da data de emissão.", centerX, y, { align: "center" });
+  y += espacoSecao;
+
+  // ─── Taxa de Diagnóstico Técnico ──────────────────────────
+  y = garantirEspacoVertical(doc, y, 75);
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(10);
+  doc.setTextColor(...COR_PRETA);
+  doc.text("Taxa de Diagnóstico Técnico (em caso de reprovação do orçamento)", centerX, y, {
+    align: "center",
+  });
+  y += espacoTitulo + 2;
+
+  // Caixa delimitadora
+  const boxPadding = 5;
+  const boxX = MARGIN_LEFT;
+  const boxWidth = CONTENT_WIDTH;
+  const introText =
+    "Caso o orçamento não seja aprovado, será cobrada uma taxa de diagnóstico técnico conforme a categoria do equipamento:";
+  const introLinhas = doc.splitTextToSize(introText, boxWidth - boxPadding * 2);
+
+  const categorias = [
+    "Impressoras de etiquetas de pequeno porte (TLP2844, GC420t, ZD Series, GT800, GK420, HC100, ZD510, Argox): R$ 130,00",
+    "Impressoras de médio ou grande porte (ZT230, ZT410, ZT411, ZT420, ZT231, ZT500, ZT600, XI3, XI4, ZM400, S4M, Z4M) e leitores e coletores de qualquer marca: R$ 180,00",
+    "Impressoras de cartão PVC (P330, ZXP3, ZXPI, ZC100, ZC300 e Datacard): R$ 200,00",
+  ];
+
+  let boxHeight = boxPadding * 2 + introLinhas.length * espacoParagrafo + 6;
+  categorias.forEach((cat) => {
+    const linhas = doc.splitTextToSize(cat, boxWidth - boxPadding * 2 - (textIndent - boxX) - 2);
+    boxHeight += linhas.length * espacoParagrafo + 2;
+  });
+  boxHeight += 4;
+
+  doc.setDrawColor(...COR_CINZA_CLARO);
+  doc.setFillColor(255, 255, 255);
+  doc.roundedRect(boxX, y, boxWidth, boxHeight, 2, 2, "FD");
+
+  let boxY = y + boxPadding + 3;
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(9);
+  doc.setTextColor(...COR_PRETA);
+  introLinhas.forEach((linha: string) => {
+    doc.text(linha, boxX + boxPadding, boxY);
+    boxY += espacoParagrafo;
+  });
+  boxY += 3;
+
+  categorias.forEach((cat) => {
+    const linhas = doc.splitTextToSize(cat, boxWidth - boxPadding * 2 - (textIndent - boxX) - 2);
+    doc.text("•", boxX + boxPadding + 4, boxY);
+    linhas.forEach((linha: string, idx: number) => {
+      doc.text(linha, textIndent, boxY + idx * espacoParagrafo);
+    });
+    boxY += linhas.length * espacoParagrafo + 2;
+  });
+
+  y += boxHeight + espacoSecao;
+
+  // ─── Assinatura ───────────────────────────────────────────
+  y = garantirEspacoVertical(doc, y, 25);
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(9);
+  doc.setTextColor(...COR_PRETA);
+  doc.text("Atenciosamente;", MARGIN_LEFT, y);
+  y += espacoParagrafo + 2;
+
+  doc.setFont("helvetica", "bold");
+  doc.text(tecnicoNome || "—", MARGIN_LEFT, y);
+  y += espacoParagrafo;
+
+  doc.setFont("helvetica", "normal");
+  const emailLabel = "E-mail: ";
+  doc.text(emailLabel, MARGIN_LEFT, y);
+  const emailOffset = doc.getTextWidth(emailLabel);
+  doc.setTextColor(0, 0, 255);
+  doc.text(emailTecnico || "—", MARGIN_LEFT + emailOffset, y);
+  doc.setTextColor(...COR_PRETA);
+  y += espacoSecao;
+
+  return y;
+}
+
 // ─── Serviço principal ──────────────────────────────────
 
 export const PdfService = {
@@ -584,49 +773,15 @@ export const PdfService = {
       y += 8;
 
       // ═══════════════════════════════════════════════════
-      // 6. CONDIÇÕES COMERCIAIS (somente com bloco financeiro)
+      // 6. CONDIÇÕES COMERCIAIS
       // ═══════════════════════════════════════════════════
       if (exibirBlocosFinanceiros) {
-        doc.setFontSize(9);
-        doc.setFont("helvetica", "bold");
-        doc.setTextColor(...COR_PRETA);
-
-        const condicoes = [
-          "• Forma de Pagamento: 5% desconto Pix",
-          "• Obs.: A opção de boleto bancário está sujeita à aprovação do sistema.",
-        ];
-
-        condicoes.forEach((linha) => {
-          doc.text(linha, MARGIN_LEFT, y);
-          y += 5;
-        });
-
-        y += 3;
-
-        // Prazos e garantias
-        doc.setFont("helvetica", "bold");
-        doc.setFontSize(10);
-        doc.text("Prazo de Execução:", MARGIN_LEFT, y);
-        doc.setFont("helvetica", "normal");
-        doc.text(
-          verificacao.tempo_estimado
-            ? `${verificacao.tempo_estimado} horas (após aprovação)`
-            : "10 dias úteis (após aprovação)",
-          MARGIN_LEFT + 40, y
+        y = renderizarCondicoesComerciais(
+          doc,
+          y,
+          tecnicoResponsavelOrcamento,
+          emailTecnicoOrcamento
         );
-        y += 6;
-
-        doc.setFont("helvetica", "bold");
-        doc.text("Garantia:", MARGIN_LEFT, y);
-        doc.setFont("helvetica", "normal");
-        doc.text("90 dias para serviços executados", MARGIN_LEFT + 40, y);
-        y += 6;
-
-        doc.setFont("helvetica", "bold");
-        doc.text("Validade:", MARGIN_LEFT, y);
-        doc.setFont("helvetica", "normal");
-        doc.text("05 dias úteis", MARGIN_LEFT + 40, y);
-        y += 10;
       }
 
       // ═══════════════════════════════════════════════════
@@ -888,45 +1043,12 @@ export const PdfService = {
       y += 8;
 
       if (exibirBlocosFinanceiros) {
-        doc.setFontSize(9);
-        doc.setFont("helvetica", "bold");
-        doc.setTextColor(...COR_PRETA);
-
-        const condicoes = [
-          "• Forma de Pagamento: 5% desconto Pix",
-          "• Obs.: A opção de boleto bancário está sujeita à aprovação do sistema.",
-        ];
-
-        condicoes.forEach((linha) => {
-          doc.text(linha, MARGIN_LEFT, y);
-          y += 5;
-        });
-
-        y += 3;
-
-        doc.setFont("helvetica", "bold");
-        doc.setFontSize(10);
-        doc.text("Prazo de Execução:", MARGIN_LEFT, y);
-        doc.setFont("helvetica", "normal");
-        doc.text(
-          verificacao.tempo_estimado
-            ? `${verificacao.tempo_estimado} horas (após aprovação)`
-            : "10 dias úteis (após aprovação)",
-          MARGIN_LEFT + 40, y
+        y = renderizarCondicoesComerciais(
+          doc,
+          y,
+          tecnicoResponsavelOrcamento,
+          emailTecnicoOrcamento
         );
-        y += 6;
-
-        doc.setFont("helvetica", "bold");
-        doc.text("Garantia:", MARGIN_LEFT, y);
-        doc.setFont("helvetica", "normal");
-        doc.text("90 dias para serviços executados", MARGIN_LEFT + 40, y);
-        y += 6;
-
-        doc.setFont("helvetica", "bold");
-        doc.text("Validade:", MARGIN_LEFT, y);
-        doc.setFont("helvetica", "normal");
-        doc.text("05 dias úteis", MARGIN_LEFT + 40, y);
-        y += 10;
       }
 
       if (verificacao.diagnostico) {

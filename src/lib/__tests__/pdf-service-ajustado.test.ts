@@ -23,6 +23,7 @@ const mockSetFont = vi.hoisted(() => vi.fn());
 const mockSetFontSize = vi.hoisted(() => vi.fn());
 const mockSetTextColor = vi.hoisted(() => vi.fn());
 const mockSetFillColor = vi.hoisted(() => vi.fn());
+const mockSetDrawColor = vi.hoisted(() => vi.fn());
 const mockRect = vi.hoisted(() => vi.fn());
 const mockRoundedRect = vi.hoisted(() => vi.fn());
 const mockAddImage = vi.hoisted(() => vi.fn());
@@ -31,6 +32,7 @@ const mockGetNumberOfPages = vi.hoisted(() => vi.fn().mockReturnValue(1));
 const mockSetPage = vi.hoisted(() => vi.fn());
 const mockAddPage = vi.hoisted(() => vi.fn());
 const mockSplitTextToSize = vi.hoisted(() => vi.fn().mockReturnValue([""]));
+const mockGetTextWidth = vi.hoisted(() => vi.fn().mockReturnValue(20));
 
 const mockJsPDF = vi.hoisted(() =>
   vi.fn(function () {
@@ -40,6 +42,7 @@ const mockJsPDF = vi.hoisted(() =>
       setFontSize: mockSetFontSize,
       setTextColor: mockSetTextColor,
       setFillColor: mockSetFillColor,
+      setDrawColor: mockSetDrawColor,
       rect: mockRect,
       roundedRect: mockRoundedRect,
       addImage: mockAddImage,
@@ -48,6 +51,7 @@ const mockJsPDF = vi.hoisted(() =>
       setPage: mockSetPage,
       addPage: mockAddPage,
       splitTextToSize: mockSplitTextToSize,
+      getTextWidth: mockGetTextWidth,
       internal: {
         pageSize: {
           getHeight: () => 297,
