@@ -26,7 +26,6 @@ e2e/results/
 .env
 .env.*
 !.env.example
-!src-tauri/.env
 
 # Backups e exports locais
 backup/
