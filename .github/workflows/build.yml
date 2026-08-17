@@ -48,6 +48,9 @@ jobs:
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Compatível com o segredo atual e com o nome recomendado pelo Tauri.
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY || secrets.TAURI_SIGNING_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
           # O nome da tag vira o nome do release (ex: v1.0.0 → "Release v1.0.0")
           tagName: ${{ github.ref_name }}
@@ -58,8 +61,6 @@ jobs:
           prerelease: false
 
       - name: Generate update manifest
-        env:
-          TAURI_SIGNING_KEY: ${{ secrets.TAURI_SIGNING_KEY }}
         run: node scripts/generate-update-manifest.mjs
 
       - name: Upload update manifest

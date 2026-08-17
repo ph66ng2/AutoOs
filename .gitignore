@@ -18,7 +18,10 @@ coverage
 e2e/
 playwright-report/
 test-results/
-src/test/
+# A infraestrutura de sincronização abaixo é local, mas o setup global do
+# Vitest faz parte da configuração de testes e precisa acompanhar o código.
+src/test/*
+!src/test/setup.ts
 e2e/report/
 e2e/results/
 
