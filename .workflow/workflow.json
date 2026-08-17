@@ -1,14 +1,36 @@
 {
   "project": "AutoOS SaaS — planos Online e Offline com PowerSync",
   "baseBranch": "origin/feature",
+  "promotionTarget": "origin/master",
   "architectureDecisions": [
     "Manter um único aplicativo e uma única base de código para todos os planos.",
     "O plano Online usa Supabase com autenticação e RLS, sem PowerSync e sem credenciais privilegiadas no cliente.",
     "O plano Offline adiciona PowerSync e só inicializa o sync quando o entitlement assinado permitir.",
     "Assinatura e capacidades são autoritativas no servidor; flags locais servem apenas como cache temporário.",
     "O provedor de cobrança será decidido em AO-SUB-001 e não fica implicitamente fixado como Stripe.",
+    "Toda worktree parte exclusivamente de origin/feature; master só recebe promoção humana após validação e representa a linha usada em produção.",
     "A master interna da BMITAG permanece congelada até o Go/No-Go final."
   ],
+  "ticketTestProtocol": {
+    "requiredForNewOrModifiedTickets": true,
+    "field": "testInstructions",
+    "requirements": [
+      "Pré-requisitos e ambiente permitido, incluindo branch/worktree e dependências externas.",
+      "Passos executáveis em ordem, com comandos ou ações manuais quando aplicável.",
+      "Resultado esperado e evidência a registrar para cada cenário relevante.",
+      "Classificação do impacto em dados: somente leitura, cria dados temporários, altera dados existentes ou destrutivo.",
+      "Procedimento de limpeza, rollback ou confirmação explícita quando o teste criar ou alterar dados.",
+      "Proibição de usar dados reais, credenciais reais ou ambientes internos quando o ticket exigir staging."
+    ],
+    "schema": {
+      "prerequisites": "Lista não vazia de pré-requisitos e ambientes permitidos.",
+      "steps": "Lista não vazia de passos reproduzíveis.",
+      "expectedResultAndEvidence": "Lista não vazia de resultados esperados e evidências.",
+      "dataImpact": "Classificação textual do impacto nos dados.",
+      "cleanupAndRollback": "Lista não vazia de limpeza, rollback e confirmações.",
+      "stagingRestrictions": "Proibição explícita de dados e credenciais internas em staging."
+    }
+  },
   "tickets": [
     {
       "id": "AO-PS-001",
@@ -44,6 +66,27 @@
         "CRUD mínimo em clientes no Supabase interno.",
         "npm run lint."
       ],
+      "testInstructions": {
+        "prerequisites": [
+          "Usar worktree criada de origin/feature; qualquer acesso ao banco operacional exige autorização explícita.",
+          "Preparar um cliente temporário identificável, com nome prefixado por TESTE-WORKFLOW e sem dados pessoais reais."
+        ],
+        "steps": [
+          "Executar npm run lint.",
+          "Abrir o app e navegar por clientes, servicos, equipamentos, insumos e gastos sem alterar dados.",
+          "Somente se autorizado, criar, editar e remover o cliente temporário; não executar smoke de estoque ou perfis."
+        ],
+        "expectedResultAndEvidence": [
+          "Registrar lint aprovado e evidência de carregamento das cinco páginas.",
+          "Quando autorizado, registrar IDs e horários do CRUD temporário e confirmar a remoção."
+        ],
+        "dataImpact": "Somente leitura por padrão; com autorização, cria, altera e remove um único cliente temporário identificável.",
+        "cleanupAndRollback": [
+          "Remover o cliente temporário e verificar que não restaram registros relacionados.",
+          "Interromper e pedir confirmação antes de qualquer escrita persistente fora desse cliente."
+        ],
+        "stagingRestrictions": "Se qualquer parte for repetida em staging, não copiar dados, dumps ou credenciais internas da BMITAG."
+      },
       "likelyFiles": [
         ".sisyphus/evidence/*",
         "docs/*",
@@ -90,6 +133,27 @@
         "Executar checklist de isolamento de dados e secrets.",
         "Verificar que arquivos versionados não contêm credenciais."
       ],
+      "testInstructions": {
+        "prerequisites": [
+          "Usar worktree criada de origin/feature e projeto Supabase staging separado do ambiente interno.",
+          "Carregar credenciais de staging apenas por configuração local não versionada e usar seed sintético."
+        ],
+        "steps": [
+          "Executar scripts/verify-staging-isolation.sh sem variáveis e confirmar a recusa segura.",
+          "Executar o validador apontando para o ambiente interno e confirmar a recusa.",
+          "Executar o checklist com endpoints de staging e validar conexão e ausência de secrets versionados."
+        ],
+        "expectedResultAndEvidence": [
+          "Guardar a saída do validador para os dois casos recusados e para o staging aceito.",
+          "Registrar identificadores não secretos dos ambientes separados."
+        ],
+        "dataImpact": "Somente leitura durante a validação de conexão; seeds, quando usados, criam apenas dados sintéticos descartáveis em staging.",
+        "cleanupAndRollback": [
+          "Remover seeds temporários e revogar credenciais temporárias criadas para o teste.",
+          "Pedir confirmação antes de provisionar ou excluir qualquer recurso externo persistente."
+        ],
+        "stagingRestrictions": "É proibido usar dados reais, dumps, secrets ou credenciais do ambiente interno no staging."
+      },
       "likelyFiles": [
         ".env.example",
         "docs/*",
@@ -137,6 +201,27 @@
         "Dry-run do script de migração com dados de amostra.",
         "Supabase advisors quando aplicável."
       ],
+      "testInstructions": {
+        "prerequisites": [
+          "Usar worktree criada de origin/feature e somente o Supabase staging descartável.",
+          "Preparar dados sintéticos cobrindo PKs, FKs e empresa_id; nunca importar dump interno."
+        ],
+        "steps": [
+          "Executar validações SQL de tipos, PKs, FKs e empresa_id.",
+          "Executar o script de migração em dry-run com a amostra sintética.",
+          "Rodar advisors e aplicar mudanças persistentes somente após revisar o plano SQL."
+        ],
+        "expectedResultAndEvidence": [
+          "Guardar relatório do schema, integridade das FKs, dry-run e advisors.",
+          "Registrar a decisão UUID/text ou mapping e qualquer SQL aprovado para aplicação."
+        ],
+        "dataImpact": "O dry-run é reversível; a aplicação confirmada altera schema e dados exclusivamente em staging.",
+        "cleanupAndRollback": [
+          "Executar dry-run dentro de transação com rollback quando possível.",
+          "Antes de migration persistente, registrar backup/restore de staging e obter confirmação explícita."
+        ],
+        "stagingRestrictions": "Não usar dados, credenciais, dumps nem conexões do Supabase interno."
+      },
       "likelyFiles": [
         "supabase/schema.sql",
         "supabase/rls.sql",
@@ -185,6 +270,27 @@
         "Supabase advisors.",
         "Inspeção de arquivos versionados para ausência de service_role."
       ],
+      "testInstructions": {
+        "prerequisites": [
+          "Usar worktree criada de origin/feature, Supabase staging e dois tenants sintéticos A e B.",
+          "Usar usuários/chaves não privilegiados; service_role só pode existir no setup administrativo fora do cliente."
+        ],
+        "steps": [
+          "Criar registros sintéticos identificáveis para A e B.",
+          "Testar leitura, insert e update dentro do tenant e tentativas equivalentes fora dele.",
+          "Executar advisors e scan de arquivos por credenciais privilegiadas."
+        ],
+        "expectedResultAndEvidence": [
+          "Guardar respostas permitidas e negadas com tenant, operação e horário, sem registrar tokens.",
+          "Registrar advisors e evidência de ausência de service_role no cliente."
+        ],
+        "dataImpact": "Cria e altera somente registros sintéticos temporários nos tenants de staging.",
+        "cleanupAndRollback": [
+          "Excluir registros e identidades temporárias após os testes.",
+          "Reverter policies em staging se qualquer teste revelar acesso cruzado e bloquear tickets dependentes."
+        ],
+        "stagingRestrictions": "Não usar usuários, empresas, dados ou credenciais internas; tokens nunca devem entrar na evidência."
+      },
       "likelyFiles": [
         "supabase/rls.sql",
         "docs/*",
@@ -234,6 +340,27 @@
         "Teste A/B de download ou disponibilidade por tenant.",
         "Checklist de ausência de SELECT * global inseguro."
       ],
+      "testInstructions": {
+        "prerequisites": [
+          "Usar worktree criada de origin/feature, Supabase staging e instância PowerSync exclusiva de staging.",
+          "Preparar tenants A/B e registros sintéticos prefixados por TESTE-POWERSYNC."
+        ],
+        "steps": [
+          "Validar a configuração Sync Streams antes do deploy.",
+          "Inserir um registro temporário por tenant e observar diagnóstico e download autorizado.",
+          "Tentar acesso cruzado A/B e inspecionar a configuração por SELECT global inseguro."
+        ],
+        "expectedResultAndEvidence": [
+          "Guardar validação das streams, IDs sintéticos e logs sem secrets.",
+          "Registrar que cada tenant recebe apenas seu registro e que o acesso cruzado falha."
+        ],
+        "dataImpact": "Cria registros sintéticos temporários e pode publicar configuração persistente apenas na instância PowerSync de staging.",
+        "cleanupAndRollback": [
+          "Excluir os registros temporários e remover assinaturas locais de teste.",
+          "Guardar a configuração anterior e exigir confirmação antes de publicar ou substituir streams persistentes."
+        ],
+        "stagingRestrictions": "Nunca conectar a instância de staging ao banco interno nem reutilizar seus dados ou credenciais."
+      },
       "likelyFiles": [
         "supabase/powersync-sync-rules.yaml",
         "supabase/*powersync*",
@@ -281,6 +408,27 @@
         "Teste de conexão staging com PowerSync.",
         "Teste de falha de credencial ou endpoint inválido sem crash."
       ],
+      "testInstructions": {
+        "prerequisites": [
+          "Usar worktree criada de origin/feature, endpoints de staging e entitlement sintético autorizado.",
+          "Manter credenciais apenas em configuração local não versionada."
+        ],
+        "steps": [
+          "Executar cargo check e npm run lint.",
+          "Iniciar o app contra staging e validar conexão pelo connector Rust.",
+          "Repetir com endpoint ou token inválido e observar tratamento recuperável."
+        ],
+        "expectedResultAndEvidence": [
+          "Guardar saídas dos checks e logs sanitizados de conexão e falha controlada.",
+          "Confirmar por inspeção que o upload path não contém service_role."
+        ],
+        "dataImpact": "Pode criar cache SQLite e sessões temporárias locais; não deve alterar dados de negócio no servidor.",
+        "cleanupAndRollback": [
+          "Encerrar sessões, desconectar PowerSync e remover cache local de teste quando seguro.",
+          "Não registrar tokens; revogar qualquer credencial temporária exposta em logs."
+        ],
+        "stagingRestrictions": "Somente endpoints e credenciais de staging; é proibido apontar o connector para o ambiente interno."
+      },
       "likelyFiles": [
         "src-tauri/src/main.rs",
         "src-tauri/src/commands/*",
@@ -331,6 +479,27 @@
         "Verificação Supabase staging -> SQLite local.",
         "Teste básico de conflito LWW."
       ],
+      "testInstructions": {
+        "prerequisites": [
+          "Usar worktree criada de origin/feature, Supabase/PowerSync staging e tenant sintético.",
+          "Preparar clientes temporários com prefixo TESTE-OFFLINE e rede controlável."
+        ],
+        "steps": [
+          "Executar Vitest do hook e smoke da tela de clientes.",
+          "Criar e editar cliente offline, reconectar e verificar upload no staging.",
+          "Inserir cliente no staging, verificar download local e executar conflito LWW controlado."
+        ],
+        "expectedResultAndEvidence": [
+          "Guardar resultados dos testes, IDs temporários e sequência temporal offline/reconexão.",
+          "Registrar estado final no Supabase e SQLite sem incluir credenciais."
+        ],
+        "dataImpact": "Cria e altera clientes sintéticos temporários no SQLite local e no Supabase staging.",
+        "cleanupAndRollback": [
+          "Reconectar antes da limpeza, excluir clientes temporários e confirmar propagação da exclusão.",
+          "Remover o banco local de teste somente após confirmar que não há uploads pendentes."
+        ],
+        "stagingRestrictions": "Não usar clientes reais, tenant interno, dumps ou credenciais internas."
+      },
       "likelyFiles": [
         "src/hooks/useClientes.ts",
         "src/lib/powersync/*",
@@ -379,6 +548,27 @@
         "Tabela de decisão para Online, Offline, grace, canceled e entitlement expirado.",
         "Revisão de ameaça: alteração local de plano não concede offline_sync."
       ],
+      "testInstructions": {
+        "prerequisites": [
+          "Usar worktree criada de origin/feature; este ticket é documental e não requer conexão com ambientes externos.",
+          "Usar somente cenários e empresas fictícias na matriz de decisão."
+        ],
+        "steps": [
+          "Revisar todos os estados e transições de assinatura definidos no escopo.",
+          "Montar a tabela Online/Offline por estado e conferir o contrato versionado de entitlement.",
+          "Executar revisão de ameaça tentando conceder offline_sync apenas por alteração local."
+        ],
+        "expectedResultAndEvidence": [
+          "Guardar a matriz aprovada, o contrato de entitlement e a decisão do provedor ou interface.",
+          "Registrar decisões pendentes com responsável; nenhuma flag local pode conceder capacidade paga."
+        ],
+        "dataImpact": "Somente documentação; não lê nem altera dados de ambientes operacionais.",
+        "cleanupAndRollback": [
+          "Reverter somente o documento se a revisão humana rejeitar uma decisão.",
+          "Pedir confirmação antes de transformar qualquer decisão documental em configuração persistente externa."
+        ],
+        "stagingRestrictions": "Exemplos e evidências não podem conter dados, identificadores ou credenciais internas."
+      },
       "likelyFiles": [
         "docs/*subscription*",
         "docs/*entitlement*",
@@ -429,6 +619,27 @@
         "Scan do bundle e dos arquivos versionados por credenciais privilegiadas.",
         "npm run lint."
       ],
+      "testInstructions": {
+        "prerequisites": [
+          "Usar worktree criada de origin/feature, Supabase staging e tenants sintéticos A/B.",
+          "Usar JWTs de teste não privilegiados e clientes temporários identificáveis."
+        ],
+        "steps": [
+          "Executar Vitest do adapter/hook e npm run lint.",
+          "Executar CRUD piloto por tenant e tentativas de acesso cruzado via API/RLS.",
+          "Testar JWT expirado, rede indisponível e scan do bundle por secrets."
+        ],
+        "expectedResultAndEvidence": [
+          "Guardar saídas dos testes, respostas permitidas/negadas e relatório do scan sem tokens.",
+          "Registrar que o plano Online não inicializa PowerSync e se recupera de falha de rede."
+        ],
+        "dataImpact": "Cria, altera e remove apenas clientes sintéticos temporários no Supabase staging.",
+        "cleanupAndRollback": [
+          "Excluir clientes e usuários temporários e confirmar ausência de registros residuais.",
+          "Interromper os testes se houver acesso cruzado ou credencial privilegiada no bundle."
+        ],
+        "stagingRestrictions": "Não usar empresas, clientes, JWTs ou credenciais do ambiente interno."
+      },
       "likelyFiles": [
         "src/lib/data/*",
         "src/hooks/useClientes.ts",
@@ -481,6 +692,27 @@
         "Teste de entitlement expirado e revogado.",
         "Supabase advisors e testes RLS quando aplicável."
       ],
+      "testInstructions": {
+        "prerequisites": [
+          "Usar worktree criada de origin/feature, ambiente de cobrança sandbox e Supabase staging.",
+          "Criar empresas e assinaturas sintéticas; usar secrets exclusivos de teste fora do Git."
+        ],
+        "steps": [
+          "Executar transições de assinatura e reenviar o mesmo webhook para validar idempotência.",
+          "Solicitar entitlements Online/Offline, expirados e revogados.",
+          "Validar negação de token PowerSync no plano Online e executar advisors/RLS."
+        ],
+        "expectedResultAndEvidence": [
+          "Guardar IDs sandbox, estados finais, respostas sanitizadas e advisors.",
+          "Registrar que eventos duplicados não alteram o resultado e que tokens seguem o entitlement."
+        ],
+        "dataImpact": "Cria e altera assinaturas, eventos e entitlements sintéticos exclusivamente em sandbox/staging.",
+        "cleanupAndRollback": [
+          "Cancelar assinaturas sandbox, excluir fixtures e revogar secrets temporários.",
+          "Exigir confirmação antes de configurar webhook ou provedor persistente fora do sandbox."
+        ],
+        "stagingRestrictions": "Não usar clientes de cobrança, empresas, webhooks, dados ou credenciais internas."
+      },
       "likelyFiles": [
         "supabase/*",
         "src-tauri/src/commands/*",
@@ -532,6 +764,27 @@
         "npm run lint.",
         "cargo check."
       ],
+      "testInstructions": {
+        "prerequisites": [
+          "Usar worktree criada de origin/feature e entitlements sintéticos no staging.",
+          "Preparar perfis Online, Offline e expirado sem qualquer usuário interno."
+        ],
+        "steps": [
+          "Executar npm run lint e cargo check.",
+          "Testar bootstrap nos três estados e com endpoint indisponível.",
+          "Adulterar somente o cache local de teste e executar troca de plano controlada."
+        ],
+        "expectedResultAndEvidence": [
+          "Guardar saídas dos checks e logs sanitizados de seleção do adapter.",
+          "Registrar que Online não abre PowerSync e que cache adulterado não concede offline_sync."
+        ],
+        "dataImpact": "Altera apenas cache e sessões locais temporários; a troca de plano usa entitlements sintéticos em staging.",
+        "cleanupAndRollback": [
+          "Fazer logout, desconectar adapters e limpar cache/sessão de teste.",
+          "Restaurar o entitlement sintético inicial e confirmar que não há sync pendente."
+        ],
+        "stagingRestrictions": "Não usar contas, tokens, endpoints ou dados internos durante bootstrap e troca de plano."
+      },
       "likelyFiles": [
         "src/App.tsx",
         "src/hooks/*",
@@ -583,6 +836,27 @@
         "Teste de isolamento de dados locais após logout/troca de empresa.",
         "Teste da política de retenção ou limpeza escolhida."
       ],
+      "testInstructions": {
+        "prerequisites": [
+          "Usar worktree criada de origin/feature, staging e empresas/assinaturas sintéticas.",
+          "Criar alterações offline identificáveis e manter cópia descartável do banco local de teste."
+        ],
+        "steps": [
+          "Executar a sequência Offline ativo, grace e Online com rede disponível.",
+          "Repetir o downgrade com upload pendente e rede indisponível.",
+          "Executar upgrade, logout, troca de empresa e política de retenção/limpeza."
+        ],
+        "expectedResultAndEvidence": [
+          "Guardar linha do tempo dos estados, uploads e decisões de retenção sem dados sensíveis.",
+          "Registrar que não há sync indevido, perda silenciosa ou exposição entre empresas."
+        ],
+        "dataImpact": "Cria alterações sintéticas temporárias no banco local e no Supabase staging; pode apagar o cache local de teste.",
+        "cleanupAndRollback": [
+          "Sincronizar ou descartar conscientemente uploads temporários conforme a política testada.",
+          "Excluir dados sintéticos e caches após confirmar ausência de pendências; pedir confirmação antes de qualquer exclusão persistente."
+        ],
+        "stagingRestrictions": "Nunca testar downgrade com empresa, assinatura, dados ou credenciais internas."
+      },
       "likelyFiles": [
         "src/hooks/*",
         "src/lib/powersync/*",
@@ -603,6 +877,7 @@
       "blockedBy": [],
       "objective": "Substituir os campos livres de marca e modelo por seletores, mantendo entrada manual somente para a opção Outro.",
       "context": "O cadastro já usa Select para tipo, mas marca e modelo ainda aceitam qualquer valor diretamente. O valor persistido precisa continuar sendo o nome efetivo, para que backend, busca, comunicações e PDFs permaneçam compatíveis.",
+      "expectedBehavior": "Marca e modelo usam opções controladas sem perder valores legados, e a opção Outro persiste o texto efetivamente informado pelo usuário.",
       "scope": [
         "Adicionar catálogos de marca e modelo usados pela operação, ambos com a opção Outro.",
         "Exibir o campo de texto apenas quando Outro for escolhido e persistir o texto informado, nunca o marcador Outro.",
@@ -625,6 +900,27 @@
         "npm run test:run.",
         "cd src-tauri && cargo check."
       ],
+      "testInstructions": {
+        "prerequisites": [
+          "Usar worktree criada de origin/feature com dependências locais instaladas.",
+          "Usar mocks ou fixtures sintéticas; nenhum banco operacional é necessário."
+        ],
+        "steps": [
+          "Executar npm run lint e npm run test:run.",
+          "Executar cargo check em src-tauri.",
+          "Validar por teste de UI cadastro, edição, opção Outro e preservação de valor legado."
+        ],
+        "expectedResultAndEvidence": [
+          "Guardar saídas dos três checks e resultado dos cenários de UI.",
+          "Confirmar que o backend recebe o valor efetivo e que PDF/fotos não foram alterados."
+        ],
+        "dataImpact": "Somente mocks e estado local temporário; não deve ler nem alterar banco operacional.",
+        "cleanupAndRollback": [
+          "Descartar fixtures e arquivos temporários gerados pelos testes.",
+          "Se um teste manual exigir persistência, parar e pedir autorização antes de salvar."
+        ],
+        "stagingRestrictions": "Se staging for usado excepcionalmente, empregar apenas equipamentos sintéticos e credenciais próprias de staging."
+      },
       "likelyFiles": [
         "src/pages/Equipamentos.tsx",
         "src/pages/equipamentos/equipamentos-page-constants.ts"
@@ -679,6 +975,28 @@
         "npm run test:run.",
         "cargo check."
       ],
+      "testInstructions": {
+        "prerequisites": [
+          "Usar worktree criada de origin/feature e toda a pilha staging aprovada nos tickets anteriores.",
+          "Preparar tenants, assinaturas, clientes e alterações offline totalmente sintéticos e identificáveis."
+        ],
+        "steps": [
+          "Executar lint, testes frontend e cargo check.",
+          "Executar a matriz Online/Offline, isolamento A/B, falha de rede, reconexão, retry e LWW.",
+          "Executar upgrade/downgrade/cancelamento e comparar o CRUD piloto nos dois adapters.",
+          "Consolidar evidências, custos, riscos e decisão independente por plano."
+        ],
+        "expectedResultAndEvidence": [
+          "Guardar relatório com comandos, horários, IDs sintéticos, resultados e logs sanitizados.",
+          "Emitir decisão Go/No-Go separada para Online e Offline, com bloqueadores e responsáveis."
+        ],
+        "dataImpact": "Cria, altera, sincroniza e remove dados sintéticos em staging e caches locais descartáveis.",
+        "cleanupAndRollback": [
+          "Excluir fixtures, assinaturas, usuários, dados e caches temporários após confirmar que não há uploads pendentes.",
+          "Não promover para master nem alterar recursos persistentes externos sem decisão humana explícita."
+        ],
+        "stagingRestrictions": "A suíte é proibida em ambientes internos ou de produção e não pode usar dados ou credenciais reais."
+      },
       "likelyFiles": [
         "docs/*",
         ".sisyphus/evidence/*",

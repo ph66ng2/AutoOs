@@ -10,7 +10,46 @@ usage() {
 command="$1"
 workflow="$2"
 [[ -f "$workflow" ]] || { printf 'Arquivo não encontrado: %s\n' "$workflow" >&2; exit 66; }
-jq -e '.tickets | type == "array"' "$workflow" >/dev/null || { printf 'workflow.json inválido: tickets deve ser um array.\n' >&2; exit 65; }
+jq -e '
+  def nonempty_string: type == "string" and length > 0;
+  def nonempty_strings: type == "array" and length > 0 and all(.[]; nonempty_string);
+  (.baseBranch == "origin/feature") and
+  (.promotionTarget == "origin/master") and
+  (.tickets | type == "array") and
+  (([.tickets[].id] | length) == ([.tickets[].id] | unique | length)) and
+  all(.tickets[];
+    (.id | nonempty_string) and
+    (.title | nonempty_string) and
+    (.status | IN("ready", "in_progress", "review", "merged", "blocked")) and
+    (.blockedBy | type == "array") and
+    (.context | nonempty_string) and
+    (.scope | nonempty_strings) and
+    (.outOfScope | nonempty_strings) and
+    (.expectedBehavior | nonempty_string) and
+    (.acceptanceCriteria | nonempty_strings) and
+    (.tests | nonempty_strings) and
+    (.likelyFiles | nonempty_strings) and
+    (.risks | nonempty_strings) and
+    (.testInstructions | type == "object") and
+    (.testInstructions.prerequisites | nonempty_strings) and
+    (.testInstructions.steps | nonempty_strings) and
+    (.testInstructions.expectedResultAndEvidence | nonempty_strings) and
+    (.testInstructions.dataImpact | nonempty_string) and
+    (.testInstructions.cleanupAndRollback | nonempty_strings) and
+    (.testInstructions.stagingRestrictions | nonempty_string)
+  )
+' "$workflow" >/dev/null || {
+  printf 'workflow.json inválido: use origin/feature, promotionTarget origin/master e complete todos os campos obrigatórios, incluindo testInstructions.\n' >&2
+  exit 65
+}
+
+jq -e '
+  .tickets as $tickets |
+  all($tickets[]; all(.blockedBy[]?; . as $dependency | any($tickets[]; .id == $dependency)))
+' "$workflow" >/dev/null || {
+  printf 'workflow.json inválido: existe blockedBy apontando para ticket ausente.\n' >&2
+  exit 65
+}
 
 case "$command" in
   plan)
@@ -49,13 +88,13 @@ case "$command" in
     safe_id=$(tr '[:upper:]' '[:lower:]' <<<"$ticket_id" | tr -cs 'a-z0-9' '-')
     branch="agent/$safe_id"
     target="$repo_root/../$(basename "$repo_root")-$safe_id"
-    base_branch=$(jq -r '.baseBranch // "origin/master"' "$workflow")
-    remote_name=${base_branch%%/*}
-    remote_branch=${base_branch#*/}
-    [[ "$remote_name" != "$base_branch" && -n "$remote_branch" ]] || {
-      printf 'baseBranch deve ter formato remoto/branch, por exemplo origin/master.\n' >&2
+    base_branch=$(jq -r '.baseBranch' "$workflow")
+    [[ "$base_branch" == "origin/feature" ]] || {
+      printf 'Worktrees do AutoOS devem partir exclusivamente de origin/feature.\n' >&2
       exit 65
     }
+    remote_name="origin"
+    remote_branch="feature"
     git fetch "$remote_name" "$remote_branch"
     git worktree add -b "$branch" "$target" "$base_branch"
     printf 'Worktree criada: %s\nBranch: %s\n' "$target" "$branch"
