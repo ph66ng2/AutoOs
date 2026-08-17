@@ -35,7 +35,7 @@
     {
       "id": "AO-PS-001",
       "title": "Confirmar baseline interno Supabase",
-      "status": "review",
+      "status": "merged",
       "blockedBy": [],
       "completedAt": "2026-08-13",
       "evidence": ".sisyphus/evidence/wave-b0-baseline-2026-08-13.md",
