@@ -515,7 +515,7 @@
     {
       "id": "AO-SUB-001",
       "title": "Definir planos e contrato de entitlement",
-      "status": "ready",
+      "status": "review",
       "blockedBy": [
         "AO-PS-001"
       ],
