@@ -797,20 +797,27 @@ async fn count_active_profiles_excluding(profile_id: i32) -> Result<i64, String>
 }
 
 async fn status_snapshot() -> Result<SensitiveAccessStatus, String> {
-    let active_profile = fetch_active_profile_record().await?;
-    ensure_legacy_pin_migrated(active_profile.id).await?;
+    // Busca os perfis uma única vez. Antes, o snapshot consultava a mesma lista
+    // duas vezes (uma para achar o ativo e outra para montar a resposta), o que
+    // aumentava a disputa por conexões justamente durante a abertura do app.
+    let profile_records = fetch_profile_records().await?;
+    let active_record = profile_records
+        .iter()
+        .find(|profile| profile.is_default)
+        .cloned()
+        .or_else(|| profile_records.first().cloned())
+        .ok_or_else(|| "Nenhum perfil de segurança ativo encontrado".to_string())?;
+
+    ensure_legacy_pin_migrated(active_record.id).await?;
 
     let mut profiles = Vec::new();
-    for profile in fetch_profile_records().await? {
-        if profile.id == active_profile.id {
-            ensure_legacy_pin_migrated(profile.id).await?;
-        }
+    for profile in profile_records {
         profiles.push(to_profile_summary(profile)?);
     }
 
     let active_summary = profiles
         .iter()
-        .find(|profile| profile.id == active_profile.id)
+        .find(|profile| profile.id == active_record.id)
         .cloned()
         .ok_or_else(|| "Perfil ativo indisponível".to_string())?;
 

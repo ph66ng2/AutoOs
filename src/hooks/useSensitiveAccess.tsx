@@ -82,6 +82,15 @@ function permissionDescription(permission?: SensitivePermission) {
   return permission ? SENSITIVE_PERMISSION_LABELS[permission] : "executar esta ação";
 }
 
+function mensagemErroAcessoSensivel(error: unknown): string {
+  const mensagem = error instanceof Error ? error.message : String(error || "");
+  if (mensagem.toLowerCase().includes("pool timed out while waiting for an open connection")) {
+    return "O banco ainda está concluindo a conexão inicial e todas as conexões disponíveis estão ocupadas. Aguarde alguns segundos e tente novamente. Se continuar acontecendo, verifique a conexão com o PostgreSQL/Supabase e o limite de conexões do banco.";
+  }
+
+  return mensagem || "Falha ao validar o acesso sensível.";
+}
+
 const SensitiveAccessContext = createContext<SensitiveAccessContextValue | null>(null);
 
 export function SensitiveAccessProvider({ children }: { children: ReactNode }) {
@@ -305,9 +314,10 @@ export function SensitiveAccessProvider({ children }: { children: ReactNode }) {
         return;
       }
 
-      // O status exibido pode ter sido obtido antes de uma limpeza/redefinição
-      // do keyring. Reconsulta antes de escolher entre criar e desbloquear PIN.
-      let workingStatus = await SensitiveAccessService.status();
+      // O dialog só abre depois do snapshot inicial. Reutilizá-lo evita uma
+      // segunda rajada de consultas ao banco no primeiro PIN do app. Se o
+      // operador trocar de perfil, setActiveProfile já devolve um snapshot novo.
+      let workingStatus = status ?? await SensitiveAccessService.status();
       setStatus(workingStatus);
       if (!workingStatus.active_profile_id) {
         setError("Não foi possível determinar o perfil ativo. Feche e abra o AutoOS novamente.");
@@ -394,7 +404,7 @@ export function SensitiveAccessProvider({ children }: { children: ReactNode }) {
 
       closeDialog(true);
     } catch (submitError: any) {
-      setError(submitError?.message || submitError?.toString() || "Falha ao validar o acesso sensível.");
+      setError(mensagemErroAcessoSensivel(submitError));
       setBusy(false);
     }
   }, [closeDialog, pin, confirmPin, promptOptions.permission, selectedProfileId, status, dialogMode]);
