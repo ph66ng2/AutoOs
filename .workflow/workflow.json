@@ -931,6 +931,274 @@
       ]
     },
     {
+      "id": "AO-PHOTO-001",
+      "title": "Criar sessões seguras para upload de fotos pelo celular",
+      "status": "ready",
+      "blockedBy": [],
+      "objective": "Estabelecer o contrato seguro de sessões temporárias que substitui a dependência de IP e porta da rede local para iniciar o envio de fotos pelo celular.",
+      "context": "O servidor LAN atual depende de descoberta de IP, portas e regras de firewall que variam entre redes. O novo fluxo precisa aceitar equipamentos já salvos e rascunhos de equipamentos, sem expor credenciais privilegiadas nem gravar o token puro no banco.",
+      "expectedBehavior": "O desktop cria, consulta e revoga uma sessão de QR com validade máxima de 10 minutos, associada ao perfil/tenant ativo e a um equipamento existente ou rascunho. Apenas o hash do token é persistido; o token puro existe somente para compor o QR e a URL móvel.",
+      "scope": [
+        "Criar migration sequencial para sessões e itens temporários de upload, com expiração, vínculo de tenant/perfil, equipamento opcional, índices e limpeza segura.",
+        "Adicionar tipos e comandos Tauri para criar, consultar status e cancelar sessões, derivando identidade e escopo da sessão ativa no backend.",
+        "Gerar token criptograficamente aleatório, persistir somente seu hash e impedir uso após expiração ou cancelamento.",
+        "Definir a configuração validada da URL pública do uploader móvel, sem incluir segredo de Supabase, Vercel ou service role no cliente.",
+        "Cobrir criação para equipamento novo e existente com testes de contrato e de isolamento de perfil/tenant."
+      ],
+      "outOfScope": [
+        "Receber bytes de imagem ou emitir signed URLs de Storage.",
+        "Criar ou publicar a página móvel Vercel e a Edge Function.",
+        "Alterar PhotoUploadDialog, PDF ou remover o servidor LAN.",
+        "Criar buckets, chaves ou recursos de produção sem autorização humana explícita."
+      ],
+      "acceptanceCriteria": [
+        "Uma sessão expira em no máximo 10 minutos e seu cancelamento é idempotente.",
+        "O banco nunca armazena ou retorna o token bruto.",
+        "Uma sessão não pode ser consultada ou usada fora do tenant/perfil que a criou.",
+        "O contrato representa equipamento salvo e rascunho sem inventar um equipamento persistente.",
+        "Nenhuma alteração é feita no upload por rede, na seleção por arquivo ou na geração do PDF."
+      ],
+      "tests": [
+        "npm run lint.",
+        "cd src-tauri && cargo check.",
+        "Teste de integração contra banco temporário para expiração, cancelamento, token inválido, equipamento salvo e rascunho.",
+        "Revisão de que logs, respostas IPC e schema não expõem token puro."
+      ],
+      "testInstructions": {
+        "prerequisites": [
+          "Usar exclusivamente a worktree agent/ao-photo-001 criada de origin/feature e um banco local ou staging descartável autorizado.",
+          "Usar apenas perfis, tenants, equipamentos e tokens sintéticos; nenhum dado, dump ou credencial interna é permitido."
+        ],
+        "steps": [
+          "Executar npm run lint e cargo check em src-tauri.",
+          "Criar sessões sintéticas para equipamento salvo e rascunho, consultar o status e cancelar cada uma.",
+          "Validar token expirado, token inválido e tentativa de acesso por outro perfil/tenant.",
+          "Inspecionar respostas e logs sanitizados para confirmar que apenas hashes são persistidos ou registrados."
+        ],
+        "expectedResultAndEvidence": [
+          "Registrar saída dos checks, IDs sintéticos, horários de expiração e resultado de cada cenário negativo.",
+          "Registrar evidência de que o token puro não aparece em banco, logs ou respostas de status."
+        ],
+        "dataImpact": "Cria e remove apenas sessões, itens e perfis sintéticos em banco local ou staging descartável; não altera dados operacionais.",
+        "cleanupAndRollback": [
+          "Revogar sessões sintéticas, remover seus itens e excluir fixtures de teste após a execução.",
+          "Reverter a migration somente em banco descartável; não executar rollback em ambiente compartilhado sem confirmação explícita."
+        ],
+        "stagingRestrictions": "É proibido usar dados, credenciais, URLs de service role ou ambiente interno/produção; staging deve usar projeto e segredos próprios."
+      },
+      "likelyFiles": [
+        "src-tauri/migrations/0018_photo_upload_sessions.sql",
+        "src-tauri/src/commands/photo_upload_sessions.rs",
+        "src-tauri/src/commands/types.rs",
+        "src-tauri/src/commands/mod.rs",
+        "src-tauri/src/main.rs",
+        "src/lib/db.ts"
+      ],
+      "risks": [
+        "Vazar token de QR em logs, IPC ou banco.",
+        "Confundir rascunho com equipamento persistente e criar registros indevidos.",
+        "Acoplar o contrato de sessão ao servidor LAN antes de o fluxo cloud estar validado."
+      ]
+    },
+    {
+      "id": "AO-PHOTO-002",
+      "title": "Criar função de upload e página móvel HTTPS",
+      "status": "ready",
+      "blockedBy": [
+        "AO-PHOTO-001"
+      ],
+      "objective": "Disponibilizar a página móvel hospedada em HTTPS e a função Supabase que valida uma sessão e entrega uploads temporários em Storage privado.",
+      "context": "A página não pode depender de a LAN permitir conexões de entrada. Ela usa o token efêmero do QR para conversar com uma função backend, que valida a sessão e emite permissões limitadas para o staging privado.",
+      "expectedBehavior": "Celulares Android e iPhone abrem uma página Vercel pelo QR, enviam até seis imagens em sessão válida e veem retorno compreensível para expiração, limite, formato ou falha de rede.",
+      "scope": [
+        "Criar Edge Function com autenticação própria do token efêmero, validação de tenant/sessão e signed URLs limitadas para bucket privado de staging.",
+        "Criar página móvel estática preparada para Vercel, sem service role, com captura/seleção de imagem, progresso e tratamento de erro.",
+        "Limitar formatos, tamanho e total de seis imagens por sessão e registrar itens recebidos sem expor URLs permanentes.",
+        "Documentar variáveis de ambiente, bucket privado e deploy de staging sem publicar ou alterar recursos externos sem autorização."
+      ],
+      "outOfScope": [
+        "Consumir as imagens no desktop, no equipamento ou no PDF.",
+        "Remover o fluxo LAN ou o fallback por arquivo local.",
+        "Usar service role no navegador ou deixar bucket de staging público."
+      ],
+      "acceptanceCriteria": [
+        "A função aceita somente sessão válida, não expirada e não cancelada.",
+        "O navegador nunca recebe segredo administrativo.",
+        "Imagens ficam em staging privado e respeitam limite de quantidade, tipo e tamanho.",
+        "A página mostra erro acionável em vez de falha silenciosa."
+      ],
+      "tests": [
+        "Testes da Edge Function com token válido, inválido, expirado e cancelado.",
+        "Teste manual em Android e iPhone com imagens sintéticas em staging.",
+        "npm run lint e build da página móvel."
+      ],
+      "testInstructions": {
+        "prerequisites": [
+          "Aguardar AO-PHOTO-001 mesclado e usar a worktree criada da branch atualizada.",
+          "Usar projeto Supabase e Vercel de staging, bucket privado e segredos exclusivos de staging."
+        ],
+        "steps": [
+          "Executar lint e build da página móvel.",
+          "Testar sessão válida, inválida, expirada e cancelada contra a Edge Function de staging.",
+          "Em Android e iPhone, enviar imagens sintéticas e validar progresso, limites e mensagens de erro."
+        ],
+        "expectedResultAndEvidence": [
+          "Guardar logs sanitizados, respostas HTTP e capturas da página móvel para cada cenário.",
+          "Confirmar que uploads ficaram apenas no bucket privado de staging e que o navegador não recebeu secrets."
+        ],
+        "dataImpact": "Cria objetos e registros sintéticos no staging privado; não altera dados operacionais.",
+        "cleanupAndRollback": [
+          "Revogar sessões de teste e apagar objetos e registros sintéticos do staging após evidência.",
+          "Não executar deploy, criar bucket ou cadastrar segredo externo sem aprovação humana explícita."
+        ],
+        "stagingRestrictions": "Nunca usar credenciais, dados, dispositivos ou URLs de produção/internos; todo teste deve usar tenant e imagens sintéticos de staging."
+      },
+      "likelyFiles": [
+        "supabase/functions/photo-upload/*",
+        "mobile-photo-uploader/*",
+        "supabase/storage/*",
+        "docs/*"
+      ],
+      "risks": [
+        "Expor service role ou tornar staging público.",
+        "Permitir replay de token ou upload fora da sessão.",
+        "Assumir que deploy externo está autorizado sem confirmação."
+      ]
+    },
+    {
+      "id": "AO-PHOTO-003",
+      "title": "Integrar QR cloud ao equipamento e preservar fallback local",
+      "status": "ready",
+      "blockedBy": [
+        "AO-PHOTO-001",
+        "AO-PHOTO-002"
+      ],
+      "objective": "Conectar o QR cloud ao diálogo de fotos do AutoOS, importando as imagens recebidas para o formato já consumido pelo equipamento e mantendo seleção por arquivo local.",
+      "context": "O fluxo deve funcionar tanto antes de salvar um equipamento quanto para um equipamento existente, sem quebrar a interface atual ou a compatibilidade de imagens do PDF.",
+      "expectedBehavior": "O operador abre QR cloud, acompanha o status e incorpora as imagens à lista do equipamento/raccunho; se o celular falhar, pode selecionar arquivos locais como hoje.",
+      "scope": [
+        "Refatorar o diálogo de upload para criar, acompanhar, consumir e cancelar sessões cloud.",
+        "Associar itens de staging a equipamento salvo ou estado de rascunho e convertê-los ao formato de imagem já aceito pela persistência existente.",
+        "Preservar o limite de seis imagens e a seleção por arquivo local.",
+        "Adicionar mensagens compreensíveis para expiração, conexão, upload parcial e consumo de imagem."
+      ],
+      "outOfScope": [
+        "Remover o servidor LAN existente.",
+        "Alterar layout ou conteúdo do PDF além de compatibilidade necessária.",
+        "Modificar a função/página móvel fora de correções estritamente bloqueantes."
+      ],
+      "acceptanceCriteria": [
+        "QR cloud funciona em equipamento novo e existente.",
+        "Arquivo local continua funcionando como fallback.",
+        "Nenhuma imagem de outra sessão/tenant é incorporada.",
+        "A tela trata upload parcial e expiração com mensagem acionável.",
+        "As imagens resultantes permanecem compatíveis com a persistência existente."
+      ],
+      "tests": [
+        "npm run lint, npm run test:run e cd src-tauri && cargo check.",
+        "Teste manual QR em Android/iPhone para equipamento novo e existente.",
+        "Teste de fallback por arquivo local e de upload parcial/expirado."
+      ],
+      "testInstructions": {
+        "prerequisites": [
+          "Aguardar AO-PHOTO-001 e AO-PHOTO-002 mesclados; usar staging autorizado e imagens sintéticas.",
+          "Manter backup ou fixture descartável para qualquer equipamento usado nos testes."
+        ],
+        "steps": [
+          "Executar lint, testes frontend e cargo check.",
+          "Validar QR em Android e iPhone para um rascunho e um equipamento sintético existente.",
+          "Forçar expiração e upload parcial; em seguida validar seleção de arquivo local no mesmo diálogo."
+        ],
+        "expectedResultAndEvidence": [
+          "Registrar capturas do QR/status, IDs sintéticos e resultado de cada fluxo.",
+          "Confirmar que o fallback local e os limites de imagem permanecem operacionais."
+        ],
+        "dataImpact": "Cria e remove equipamentos, sessões e imagens sintéticos somente em staging ou banco local descartável.",
+        "cleanupAndRollback": [
+          "Excluir imagens, sessões e equipamentos sintéticos e confirmar que o staging está limpo.",
+          "Parar antes de testar em dados operacionais ou de remover o fallback local."
+        ],
+        "stagingRestrictions": "É proibido usar equipamentos, clientes, fotos ou credenciais reais; os celulares devem acessar apenas ambientes de teste."
+      },
+      "likelyFiles": [
+        "src/pages/Equipamentos.tsx",
+        "src/components/equipamentos/PhotoUploadDialog.tsx",
+        "src/lib/db.ts",
+        "src-tauri/src/commands/equipamentos.rs"
+      ],
+      "risks": [
+        "Quebrar rascunhos antes do equipamento ser salvo.",
+        "Perder o fallback local durante a migração.",
+        "Importar imagem parcialmente enviada ou de outra sessão."
+      ]
+    },
+    {
+      "id": "AO-PHOTO-004",
+      "title": "Validar PDF com fotos cloud e retirar fluxo LAN",
+      "status": "ready",
+      "blockedBy": [
+        "AO-PHOTO-003"
+      ],
+      "objective": "Confirmar que fotos cloud aparecem corretamente no PDF e remover o servidor LAN somente após validação completa do novo fluxo e do fallback local.",
+      "context": "O PDF é parte crítica do processo. A retirada do fluxo LAN é irreversível para o uso diário se feita antes de validar uploads mobile, equipamentos novos/existentes e seleção local.",
+      "expectedBehavior": "O PDF pré-valida as imagens incorporadas, informa falhas de forma explícita e o código LAN é removido apenas quando os cenários aprovados estiverem evidenciados.",
+      "scope": [
+        "Adicionar preflight de imagens no caminho de geração do PDF e mensagens claras para imagem ausente ou inválida.",
+        "Executar e registrar matriz QR Android/iPhone, equipamento novo/existente, fallback local e PDF.",
+        "Após aprovação dos cenários, remover comandos, dependências e UI exclusivos do servidor LAN e atualizar documentação."
+      ],
+      "outOfScope": [
+        "Alterar o desenho visual do PDF sem necessidade de compatibilidade.",
+        "Remover seleção por arquivo local.",
+        "Promover para master ou produção sem merge humano."
+      ],
+      "acceptanceCriteria": [
+        "PDF inclui fotos recebidas pelo QR para equipamento novo e existente.",
+        "Falha de imagem é comunicada antes de gerar documento incompleto silenciosamente.",
+        "Fallback por arquivo local permanece funcional.",
+        "Servidor LAN é removido somente após evidência da matriz completa."
+      ],
+      "tests": [
+        "npm run lint, npm run test:run e cd src-tauri && cargo check.",
+        "Geração e inspeção visual de PDF com imagens cloud e locais sintéticas.",
+        "Matriz manual QR Android/iPhone, novo/existente e fallback local antes e após remoção LAN."
+      ],
+      "testInstructions": {
+        "prerequisites": [
+          "Aguardar AO-PHOTO-003 mesclado e obter aprovação humana explícita antes de remover o servidor LAN.",
+          "Usar apenas staging/local e imagens sintéticas para os PDFs de validação."
+        ],
+        "steps": [
+          "Executar lint, testes frontend e cargo check.",
+          "Gerar PDFs para fotos QR e locais em equipamento novo e existente, renderizando-os para inspeção visual.",
+          "Executar a matriz em Android e iPhone e registrar evidências; somente então remover o fluxo LAN se houver autorização."
+        ],
+        "expectedResultAndEvidence": [
+          "Guardar PDFs sintéticos renderizados, saídas dos checks e checklist assinado da matriz.",
+          "Confirmar mensagem explícita ao simular uma imagem inválida ou indisponível."
+        ],
+        "dataImpact": "Cria PDFs, sessões, objetos e equipamentos sintéticos descartáveis; a remoção de código não altera dados persistentes.",
+        "cleanupAndRollback": [
+          "Excluir PDFs e fixtures sintéticos e reter apenas evidência sanitizada.",
+          "Se qualquer cenário falhar, não remover LAN e restaurar o código de preflight incompleto antes de nova tentativa."
+        ],
+        "stagingRestrictions": "Não usar PDFs, fotos, clientes, equipamentos ou credenciais reais; não fazer deploy ou promoção sem aprovação humana."
+      },
+      "likelyFiles": [
+        "src/lib/pdf-service.ts",
+        "src/pages/Equipamentos.tsx",
+        "src/components/equipamentos/PhotoUploadDialog.tsx",
+        "src-tauri/src/commands/photo_server.rs",
+        "src-tauri/src/main.rs",
+        "docs/*"
+      ],
+      "risks": [
+        "Gerar PDF incompleto sem sinalização.",
+        "Remover LAN antes de o cloud/fallback estar comprovado.",
+        "Confundir renderização em teste com compatibilidade no aplicativo desktop."
+      ]
+    },
+    {
       "id": "AO-PS-008",
       "title": "Go/No-Go SaaS por planos Online e Offline",
       "status": "ready",
