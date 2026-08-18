@@ -111,6 +111,39 @@ requestCancellation(subscriptionId) -> SubscriptionSnapshot
 
 `BillingEvent` é idempotente por fornecedor + `provider_event_id` e guarda tipo normalizado, empresa, momento e payload sanitizado para auditoria. O serviço de entitlement lê o estado normalizado da assinatura, não payloads nem SDKs do provedor. Trocar Stripe, Mercado Pago ou outro fornecedor muda somente o adapter server-side. Segredos de webhook e cobrança nunca entram no Git ou desktop.
 
+## Concorrência e experiência de sincronização
+
+Sincronização não deve escolher silenciosamente qual pessoa “vence”. O padrão de última escrita recebida pelo servidor só é aceitável para campos simples e explicitamente classificados como baixa criticidade. Estoque, gastos, valores, fluxos de status, exclusões e informações operacionais exigem resolução pelo servidor.
+
+### Regra por tipo de alteração
+
+- **Cadastro comum**: cada registro sincronizável possui `revision`, `updated_at` e `updated_by` definidos pelo servidor. Uma alteração offline carrega a `base_revision`. O servidor aplica o patch apenas se a revisão atual ainda for a mesma; caso contrário, cria um conflito e não sobrescreve nenhuma versão.
+- **Estoque, gastos e histórico financeiro**: não há edição direta do saldo ou total. Cada ação cria um evento imutável com UUID de operação; o servidor o deduplica e calcula o resultado em transação. Duas baixas offline são dois movimentos, não uma substituição de quantidade.
+- **Status de equipamentos e fluxos operacionais**: o servidor valida a transição contra o estado atual. Uma transição inválida ou baseada em revisão antiga é rejeitada e apresentada para decisão humana.
+- **Exclusão**: usar exclusão lógica e registrar conflito quando houver edição concorrente. Uma exclusão não deve apagar automaticamente alteração válida de outro usuário.
+
+Cada operação enviada pelo Offline inclui ao menos `client_operation_id`, ID do registro, `base_revision`, campos alterados e contexto de tenant. O backend deduplica por `client_operation_id`, valida RLS e aplica a alteração de modo atômico. Timestamps do computador não decidem a precedência.
+
+### Fluxo e visibilidade
+
+1. Offline, a alteração é confirmada localmente como **pendente**.
+2. Ao reconectar, a barra global exibe **Sincronizando N alterações** sem bloquear a pessoa que está trabalhando.
+3. Quando o servidor aceita a operação, ele incrementa a revisão e publica a mudança para os membros autorizados da empresa.
+4. O cliente Online recebe o evento via Realtime, invalida/recarrega o registro ou mostra que há uma versão nova. Se houver formulário com alterações locais, os campos não são trocados automaticamente.
+5. Em conflito, a operação fica bloqueada com as versões local e remota; nada é descartado. A resolução cria uma nova operação auditável.
+
+O indicador global tem quatro estados: **Online**, **Sincronizando**, **Offline — N pendências** e **Atenção — N conflitos**. Ao clicar, abre um painel com fila, última sincronização, erros e conflitos. Modal é reservado ao momento em que uma pessoa escolhe resolver um conflito, mostrando “sua alteração” e “versão atual”; não deve aparecer a cada atualização remota.
+
+Presence pode avisar “outra pessoa está editando este registro”, mas é apenas orientação visual: não cria lock, pois uma máquina offline não pode depender de um bloqueio em tempo real.
+
+### Resultado esperado em conflito
+
+- Em cadastro comum, a pessoa compara valores e escolhe manter a versão remota, reaplicar a própria alteração quando ainda válida, ou combinar campos.
+- Em estoque e financeiro, a tela orienta criar/ajustar um movimento; nunca pede que a pessoa escolha manualmente um saldo final.
+- Em status, a tela explica a transição rejeitada e pede atualização do registro antes de uma nova ação.
+
+O schema, endpoint de upload, tabela de conflitos, publicação Realtime e UI descritos aqui serão implementados somente nos tickets dependentes. Esta seção é a regra de produto e segurança que eles devem obedecer.
+
 ## Revisão e evidências do ticket
 
 | Cenário | Resultado esperado |
