@@ -137,7 +137,7 @@ CREATE TABLE IF NOT EXISTS equipamentos (
 CREATE TABLE IF NOT EXISTS produtos (
     id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
     empresa_id uuid NOT NULL DEFAULT '00000000-0000-0000-0000-000000000001'::uuid,
-    codigo TEXT UNIQUE NOT NULL,
+    codigo TEXT NOT NULL,
     nome TEXT NOT NULL,
     descricao TEXT,
     categoria TEXT NOT NULL,
@@ -385,7 +385,7 @@ CREATE TABLE IF NOT EXISTS servicos_catalogo (
 CREATE TABLE IF NOT EXISTS gastos_fixos (
     id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
     empresa_id uuid NOT NULL DEFAULT '00000000-0000-0000-0000-000000000001'::uuid,
-    nome TEXT NOT NULL UNIQUE,
+    nome TEXT NOT NULL,
     valor NUMERIC(15,2) NOT NULL DEFAULT 0,
     vencimento_dia INTEGER,
     categoria TEXT NOT NULL,
@@ -536,6 +536,15 @@ CREATE UNIQUE INDEX IF NOT EXISTS ux_servicos_catalogo_nome_ativo
 
 CREATE INDEX IF NOT EXISTS idx_servicos_catalogo_ativos_nome
     ON servicos_catalogo (ativo, nome);
+
+-- produtos e gastos_fixos: exclusão lógica não deve reter o identificador
+CREATE UNIQUE INDEX IF NOT EXISTS ux_produtos_codigo_ativo
+    ON produtos (codigo)
+    WHERE ativo = true;
+
+CREATE UNIQUE INDEX IF NOT EXISTS ux_gastos_fixos_nome_ativo
+    ON gastos_fixos (nome)
+    WHERE ativo = true;
 
 -- gastos_variaveis
 CREATE INDEX IF NOT EXISTS idx_gastos_variaveis_data

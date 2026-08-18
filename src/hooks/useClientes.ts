@@ -115,7 +115,7 @@ export function useClientes(params?: UseClientesParams) {
   /**
    * Remove um cliente do banco de dados.
    *
-   * Fluxo: `db.deletarCliente` → Rust `deletar_cliente` (DELETE no PostgreSQL).
+   * Fluxo: `db.deletarCliente` → Rust `deletar_cliente` (exclusão lógica no PostgreSQL).
    * Após a exclusão, recarrega a lista automaticamente.
    *
    * @param id — ID do cliente a ser removido.
