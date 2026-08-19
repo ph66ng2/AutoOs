@@ -933,7 +933,7 @@
     {
       "id": "AO-PHOTO-001",
       "title": "Criar sessões seguras para upload de fotos pelo celular",
-      "status": "ready",
+      "status": "review",
       "blockedBy": [],
       "objective": "Estabelecer o contrato seguro de sessões temporárias que substitui a dependência de IP e porta da rede local para iniciar o envio de fotos pelo celular.",
       "context": "O servidor LAN atual depende de descoberta de IP, portas e regras de firewall que variam entre redes. O novo fluxo precisa aceitar equipamentos já salvos e rascunhos de equipamentos, sem expor credenciais privilegiadas nem gravar o token puro no banco.",
