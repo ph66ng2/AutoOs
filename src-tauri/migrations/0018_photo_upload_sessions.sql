@@ -43,6 +43,8 @@ CREATE TABLE IF NOT EXISTS photo_upload_session_items (
     CONSTRAINT chk_photo_upload_session_items_position CHECK (position BETWEEN 0 AND 5) NOT VALID,
     CONSTRAINT chk_photo_upload_session_items_filename CHECK (BTRIM(filename) <> '') NOT VALID,
     CONSTRAINT chk_photo_upload_session_items_storage_path CHECK (BTRIM(storage_path) <> '') NOT VALID,
+    CONSTRAINT chk_photo_upload_session_items_storage_object_path
+        CHECK (BTRIM(storage_path) !~* '^data:') NOT VALID,
     CONSTRAINT chk_photo_upload_session_items_mime_type
         CHECK (mime_type IN ('image/jpeg', 'image/png')) NOT VALID,
     CONSTRAINT chk_photo_upload_session_items_size CHECK (tamanho_bytes IS NULL OR tamanho_bytes > 0) NOT VALID,
