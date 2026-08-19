@@ -44,6 +44,9 @@ import type {
   PostgresBackupResult,
   PostgresRestoreResult,
   PostgresBackupToolsStatus,
+  PhotoUploadSessionCreated,
+  PhotoUploadSessionInput,
+  PhotoUploadSessionStatus,
   Produto,
   ResultadoVerificacaoCredenciais,
   ServicoCatalogo,
@@ -568,5 +571,19 @@ export const db = {
       pin: params.pin,
       profileName: params.profileName,
     });
+  },
+
+  // ─── Sessões de fotos pelo celular ───────────────────
+
+  async criarSessaoUploadFotos(input: PhotoUploadSessionInput): Promise<PhotoUploadSessionCreated> {
+    return invoke<PhotoUploadSessionCreated>("criar_sessao_upload_fotos", { input });
+  },
+
+  async consultarSessaoUploadFotos(sessionId: string): Promise<PhotoUploadSessionStatus> {
+    return invoke<PhotoUploadSessionStatus>("consultar_sessao_upload_fotos", { sessionId });
+  },
+
+  async cancelarSessaoUploadFotos(sessionId: string): Promise<PhotoUploadSessionStatus> {
+    return invoke<PhotoUploadSessionStatus>("cancelar_sessao_upload_fotos", { sessionId });
   },
 };

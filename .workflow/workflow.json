@@ -933,7 +933,7 @@
     {
       "id": "AO-PHOTO-001",
       "title": "Criar sessões seguras para upload de fotos pelo celular",
-      "status": "ready",
+      "status": "review",
       "blockedBy": [],
       "objective": "Estabelecer o contrato seguro de sessões temporárias que substitui a dependência de IP e porta da rede local para iniciar o envio de fotos pelo celular.",
       "context": "O servidor LAN atual depende de descoberta de IP, portas e regras de firewall que variam entre redes. O novo fluxo precisa aceitar equipamentos já salvos e rascunhos de equipamentos, sem expor credenciais privilegiadas nem gravar o token puro no banco.",
@@ -954,6 +954,7 @@
       "acceptanceCriteria": [
         "Uma sessão expira em no máximo 10 minutos e seu cancelamento é idempotente.",
         "O banco nunca armazena ou retorna o token bruto.",
+        "Itens temporários aceitam somente caminhos de objetos no Storage; conteúdo data:/Base64 é rejeitado.",
         "Uma sessão não pode ser consultada ou usada fora do tenant/perfil que a criou.",
         "O contrato representa equipamento salvo e rascunho sem inventar um equipamento persistente.",
         "Nenhuma alteração é feita no upload por rede, na seleção por arquivo ou na geração do PDF."
