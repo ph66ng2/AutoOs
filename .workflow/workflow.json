@@ -1004,7 +1004,7 @@
     {
       "id": "AO-PHOTO-002",
       "title": "Criar função de upload e página móvel HTTPS",
-      "status": "review",
+      "status": "merged",
       "blockedBy": [
         "AO-PHOTO-001"
       ],
