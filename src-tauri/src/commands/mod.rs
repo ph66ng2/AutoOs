@@ -17,6 +17,7 @@ pub mod auth;
 pub mod equipamentos;
 pub mod equipamento_imagens;
 pub mod photo_server;
+pub mod photo_upload_sessions;
 pub mod clientes;
 pub mod produtos;
 pub mod servicos;

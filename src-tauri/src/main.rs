@@ -162,6 +162,9 @@ fn main() {
             commands::photo_server::stop_photo_server,
             commands::photo_server::generate_upload_token,
             commands::qr_code::gerar_qr_upload,
+            commands::photo_upload_sessions::criar_sessao_upload_fotos,
+            commands::photo_upload_sessions::consultar_sessao_upload_fotos,
+            commands::photo_upload_sessions::cancelar_sessao_upload_fotos,
             // Clientes
             commands::clientes::listar_clientes,
             commands::clientes::buscar_cliente,
