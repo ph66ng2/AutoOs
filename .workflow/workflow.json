@@ -100,12 +100,10 @@
     {
       "id": "AO-PS-002",
       "title": "Isolar staging SaaS e PowerSync",
-      "status": "blocked",
+      "status": "review",
       "blockedBy": [
         "AO-PS-001"
       ],
-      "executionOverride": "Iniciado na branch feature por autorização explícita do usuário, sem merge de AO-PS-001.",
-      "blockerReason": "Aguardando criação ou confirmação de um projeto Supabase e uma instância PowerSync distintos do ambiente interno; nenhuma credencial de staging foi fornecida ou criada nesta wave.",
       "objective": "Preparar um ambiente descartável para os planos SaaS Online e Offline sem afetar a operação interna da BMITAG.",
       "context": "Toda prova SaaS e PowerSync deve acontecer fora da master/baseline interno. O mesmo Supabase staging atenderá os dois planos; apenas o plano Offline terá uma instância PowerSync associada.",
       "expectedBehavior": "Os dois planos usam dados sintéticos no mesmo Supabase staging, enquanto o PowerSync fica isolado como capacidade adicional e nenhuma credencial interna é reutilizada.",

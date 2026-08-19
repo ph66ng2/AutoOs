@@ -21,8 +21,8 @@ if [[ ! "$SUPABASE_STAGING_URL" =~ ^https://[^/]+\.supabase\.co/?$ ]]; then
   exit 65
 fi
 
-if [[ ! "$POWERSYNC_STAGING_URL" =~ ^wss:// ]]; then
-  printf 'POWERSYNC_STAGING_URL must use wss://.\n' >&2
+if [[ ! "$POWERSYNC_STAGING_URL" =~ ^https://[A-Za-z0-9-]+\.powersync\.journeyapps\.com/?$ ]]; then
+  printf 'POWERSYNC_STAGING_URL must be an https://<instance-id>.powersync.journeyapps.com URL.\n' >&2
   exit 65
 fi
 
