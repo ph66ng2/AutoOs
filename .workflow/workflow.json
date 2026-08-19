@@ -100,7 +100,7 @@
     {
       "id": "AO-PS-002",
       "title": "Isolar staging SaaS e PowerSync",
-      "status": "review",
+      "status": "merged",
       "blockedBy": [
         "AO-PS-001"
       ],
