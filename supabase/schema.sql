@@ -462,6 +462,59 @@ CREATE TABLE IF NOT EXISTS os_status_publico (
 );
 
 -- ═══════════════════════════════════════════════════════════════════════════════
+-- 17. photo_upload_sessions e photo_upload_session_items (staging privado)
+-- ═══════════════════════════════════════════════════════════════════════════════
+CREATE TABLE IF NOT EXISTS photo_upload_sessions (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    empresa_id uuid NOT NULL REFERENCES empresas(id) ON DELETE RESTRICT,
+    profile_id uuid NOT NULL REFERENCES security_profiles(id) ON DELETE RESTRICT,
+    equipamento_id uuid REFERENCES equipamentos(id) ON DELETE CASCADE,
+    categoria TEXT NOT NULL DEFAULT 'ENTRADA',
+    token_hash CHAR(64) NOT NULL UNIQUE,
+    status TEXT NOT NULL DEFAULT 'PENDING',
+    expires_at TIMESTAMP NOT NULL,
+    cancelled_at TIMESTAMP,
+    consumed_at TIMESTAMP,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT chk_photo_upload_sessions_categoria
+        CHECK (categoria IN ('ENTRADA', 'SAIDA', 'VERIFICACAO')) NOT VALID,
+    CONSTRAINT chk_photo_upload_sessions_status
+        CHECK (status IN ('PENDING', 'CANCELLED', 'EXPIRED', 'CONSUMED')) NOT VALID,
+    CONSTRAINT chk_photo_upload_sessions_token_hash
+        CHECK (token_hash ~ '^[0-9a-f]{64}$') NOT VALID,
+    CONSTRAINT chk_photo_upload_sessions_expiry
+        CHECK (expires_at > created_at) NOT VALID
+);
+
+CREATE TABLE IF NOT EXISTS photo_upload_session_items (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    session_id uuid NOT NULL REFERENCES photo_upload_sessions(id) ON DELETE CASCADE,
+    position SMALLINT NOT NULL,
+    storage_path TEXT NOT NULL,
+    filename TEXT NOT NULL,
+    mime_type TEXT NOT NULL,
+    tamanho_bytes INTEGER,
+    status TEXT NOT NULL DEFAULT 'UPLOADED',
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT uq_photo_upload_session_items_position UNIQUE (session_id, position),
+    CONSTRAINT chk_photo_upload_session_items_position CHECK (position BETWEEN 0 AND 5) NOT VALID,
+    CONSTRAINT chk_photo_upload_session_items_filename CHECK (BTRIM(filename) <> '') NOT VALID,
+    CONSTRAINT chk_photo_upload_session_items_storage_path CHECK (BTRIM(storage_path) <> '') NOT VALID,
+    CONSTRAINT chk_photo_upload_session_items_storage_object_path
+        CHECK (BTRIM(storage_path) !~* '^data:') NOT VALID,
+    CONSTRAINT chk_photo_upload_session_items_mime_type
+        CHECK (mime_type IN ('image/jpeg', 'image/png')) NOT VALID,
+    CONSTRAINT chk_photo_upload_session_items_size CHECK (tamanho_bytes IS NULL OR tamanho_bytes > 0) NOT VALID,
+    CONSTRAINT chk_photo_upload_session_items_status
+        CHECK (status IN ('UPLOADED', 'REJECTED', 'CONSUMED')) NOT VALID
+);
+
+ALTER TABLE photo_upload_sessions ENABLE ROW LEVEL SECURITY;
+ALTER TABLE photo_upload_session_items ENABLE ROW LEVEL SECURITY;
+REVOKE ALL ON TABLE photo_upload_sessions, photo_upload_session_items FROM PUBLIC, anon, authenticated;
+
+-- ═══════════════════════════════════════════════════════════════════════════════
 -- ÍNDICES
 -- ═══════════════════════════════════════════════════════════════════════════════
 
@@ -528,6 +581,18 @@ CREATE INDEX IF NOT EXISTS idx_security_audit_profile_created_at_desc
 -- equipamento_imagens
 CREATE INDEX IF NOT EXISTS idx_equipamento_imagens_equipamento
     ON equipamento_imagens (equipamento_id, categoria, ordem, id);
+
+-- photo_upload_sessions
+CREATE INDEX IF NOT EXISTS idx_photo_upload_sessions_active_token
+    ON photo_upload_sessions (token_hash)
+    WHERE status = 'PENDING';
+
+CREATE INDEX IF NOT EXISTS idx_photo_upload_sessions_owner_expiry
+    ON photo_upload_sessions (empresa_id, profile_id, expires_at)
+    WHERE status = 'PENDING';
+
+CREATE INDEX IF NOT EXISTS idx_photo_upload_session_items_session
+    ON photo_upload_session_items (session_id, position);
 
 -- servicos_catalogo
 CREATE UNIQUE INDEX IF NOT EXISTS ux_servicos_catalogo_nome_ativo

@@ -261,6 +261,37 @@ pub struct SupabaseStorageConfig {
     pub empresa_id: Option<String>,
 }
 
+/// Solicitação para abrir uma sessão temporária de envio de fotos pelo celular.
+/// `equipamento_id = None` representa o rascunho de um equipamento ainda não salvo.
+#[derive(Debug, Deserialize, Default)]
+#[serde(default)]
+pub struct PhotoUploadSessionInput {
+    pub equipamento_id: Option<i32>,
+    pub categoria: Option<String>,
+}
+
+/// Dados devolvidos uma única vez ao criar uma sessão.
+/// A URL pode conter o token efêmero para compor o QR, mas o token nunca é
+/// retornado isoladamente nem persistido no banco.
+#[derive(Debug, Serialize)]
+pub struct PhotoUploadSessionCreated {
+    pub session_id: String,
+    pub expires_at: String,
+    pub mobile_upload_url: Option<String>,
+}
+
+/// Estado seguro de uma sessão: não inclui token nem hash.
+#[derive(Debug, Serialize)]
+pub struct PhotoUploadSessionStatus {
+    pub session_id: String,
+    pub equipamento_id: Option<i32>,
+    pub categoria: String,
+    pub status: String,
+    pub expires_at: String,
+    pub cancelled_at: Option<String>,
+    pub consumed_at: Option<String>,
+}
+
 /// Input para envio de mensagem de WhatsApp via provider HTTP.
 #[derive(Debug, Deserialize)]
 pub struct WhatsappSendInput {

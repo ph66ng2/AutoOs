@@ -669,6 +669,29 @@ export interface SupabaseStorageConfig {
   empresa_id?: string;
 }
 
+/** Contrato da sessão efêmera usada pelo QR de fotos cloud. */
+export interface PhotoUploadSessionInput {
+  equipamento_id?: number;
+  categoria?: "ENTRADA" | "SAIDA" | "VERIFICACAO";
+}
+
+export interface PhotoUploadSessionCreated {
+  session_id: string;
+  expires_at: string;
+  /** URL efêmera para gerar o QR; nunca persista ou registre este valor. */
+  mobile_upload_url: string | null;
+}
+
+export interface PhotoUploadSessionStatus {
+  session_id: string;
+  equipamento_id: number | null;
+  categoria: string;
+  status: "PENDING" | "CANCELLED" | "EXPIRED" | "CONSUMED";
+  expires_at: string;
+  cancelled_at: string | null;
+  consumed_at: string | null;
+}
+
 export interface ImageMigrationResult {
   migrated: number;
   skipped: number;
