@@ -2,7 +2,7 @@
 //! ║  storage_config.rs — Configuração do Supabase Storage       ║
 //! ╠══════════════════════════════════════════════════════════════╣
 //! ║  Comandos Tauri para salvar/carregar configuração do         ║
-//! ║  Supabase (URL, service_role key, empresa_id) no keyring.   ║
+//! ║  Supabase (URL, chave publicável, JWT, empresa_id) no keyring║
 //! ║                                                              ║
 //! ║  Comandos:                                                   ║
 //! ║  - salvar_config_storage: Salva config no keyring            ║
@@ -25,8 +25,8 @@ fn get_keyring_entry() -> Result<Entry, String> {
 
 /// Salva a configuração do Supabase no keyring do sistema.
 ///
-/// A service_role key é armazenada no keyring (nunca em arquivo plaintext).
-/// O `empresa_id` é opcional — default para empresa BMITAG se ausente.
+/// Armazena somente uma chave publicável e o JWT da sessão do usuário.
+/// Chaves administrativas e senhas PostgreSQL não fazem parte deste contrato.
 #[tauri::command]
 pub async fn salvar_config_storage(config: SupabaseStorageConfig) -> Result<bool, String> {
     let json = serde_json::to_string(&config).map_err(|e| {
