@@ -3,8 +3,8 @@
 -- ═══════════════════════════════════════════════════════════════════════════════
 -- Fonte de verdade: src-tauri/migrations/0001_initial_schema.sql … 0011_telefone_opcional.sql
 -- Adaptações para Supabase:
---   • Todos os PKs são uuid (gen_random_uuid) exceto configuracoes_sistema (UUID fixo)
---   • empresa_id uuid NOT NULL DEFAULT '00000000-0000-0000-0000-000000000001' em TODAS as tabelas
+--   • Todos os PKs são uuid (gen_random_uuid)
+--   • empresa_id uuid NOT NULL em todas as tabelas sincronizáveis
 --   • Todas as FKs de INTEGER → uuid REFERENCES
 --   • equipamento_imagens: bytes BYTEA → storage_path TEXT
 --   • CHECK constraints preservados (NOT VALID)
@@ -33,7 +33,7 @@ CREATE TABLE IF NOT EXISTS empresas (
 -- ═══════════════════════════════════════════════════════════════════════════════
 CREATE TABLE IF NOT EXISTS clientes (
     id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-    empresa_id uuid NOT NULL DEFAULT '00000000-0000-0000-0000-000000000001'::uuid,
+    empresa_id uuid NOT NULL,
     nome TEXT,
     tipo_pessoa TEXT DEFAULT 'PF',
     documento TEXT UNIQUE,
@@ -68,7 +68,7 @@ CREATE TABLE IF NOT EXISTS clientes (
 -- ═══════════════════════════════════════════════════════════════════════════════
 CREATE TABLE IF NOT EXISTS equipamentos (
     id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-    empresa_id uuid NOT NULL DEFAULT '00000000-0000-0000-0000-000000000001'::uuid,
+    empresa_id uuid NOT NULL,
     serial_number TEXT NOT NULL,
     patrimonio TEXT,
     marca TEXT NOT NULL,
@@ -136,7 +136,7 @@ CREATE TABLE IF NOT EXISTS equipamentos (
 -- ═══════════════════════════════════════════════════════════════════════════════
 CREATE TABLE IF NOT EXISTS produtos (
     id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-    empresa_id uuid NOT NULL DEFAULT '00000000-0000-0000-0000-000000000001'::uuid,
+    empresa_id uuid NOT NULL,
     codigo TEXT NOT NULL,
     nome TEXT NOT NULL,
     descricao TEXT,
@@ -187,7 +187,7 @@ CREATE TABLE IF NOT EXISTS produtos (
 -- ═══════════════════════════════════════════════════════════════════════════════
 CREATE TABLE IF NOT EXISTS movimentacoes_estoque (
     id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-    empresa_id uuid NOT NULL DEFAULT '00000000-0000-0000-0000-000000000001'::uuid,
+    empresa_id uuid NOT NULL,
     produto_id uuid NOT NULL,
     tipo TEXT NOT NULL,
     quantidade INTEGER NOT NULL,
@@ -218,7 +218,7 @@ CREATE TABLE IF NOT EXISTS movimentacoes_estoque (
 -- ═══════════════════════════════════════════════════════════════════════════════
 CREATE TABLE IF NOT EXISTS security_profiles (
     id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-    empresa_id uuid NOT NULL DEFAULT '00000000-0000-0000-0000-000000000001'::uuid,
+    empresa_id uuid NOT NULL,
     nome TEXT NOT NULL UNIQUE,
     role TEXT NOT NULL,
     permissions TEXT NOT NULL,
@@ -239,7 +239,7 @@ CREATE TABLE IF NOT EXISTS security_profiles (
 -- ═══════════════════════════════════════════════════════════════════════════════
 CREATE TABLE IF NOT EXISTS verificacoes (
     id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-    empresa_id uuid NOT NULL DEFAULT '00000000-0000-0000-0000-000000000001'::uuid,
+    empresa_id uuid NOT NULL,
     equipamento_id uuid NOT NULL,
     tecnico_nome TEXT NOT NULL,
     data_inicio TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -280,7 +280,7 @@ CREATE TABLE IF NOT EXISTS verificacoes (
 -- ═══════════════════════════════════════════════════════════════════════════════
 CREATE TABLE IF NOT EXISTS comunicacoes (
     id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-    empresa_id uuid NOT NULL DEFAULT '00000000-0000-0000-0000-000000000001'::uuid,
+    empresa_id uuid NOT NULL,
     equipamento_id uuid NOT NULL,
     tipo TEXT NOT NULL,
     canal TEXT NOT NULL,
@@ -312,7 +312,7 @@ CREATE TABLE IF NOT EXISTS comunicacoes (
 -- ═══════════════════════════════════════════════════════════════════════════════
 CREATE TABLE IF NOT EXISTS security_audit_log (
     id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-    empresa_id uuid NOT NULL DEFAULT '00000000-0000-0000-0000-000000000001'::uuid,
+    empresa_id uuid NOT NULL,
     event_type TEXT NOT NULL,
     profile_id uuid,
     profile_name TEXT,
@@ -330,7 +330,7 @@ CREATE TABLE IF NOT EXISTS security_audit_log (
 -- ═══════════════════════════════════════════════════════════════════════════════
 CREATE TABLE IF NOT EXISTS equipamento_imagens (
     id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-    empresa_id uuid NOT NULL DEFAULT '00000000-0000-0000-0000-000000000001'::uuid,
+    empresa_id uuid NOT NULL,
     equipamento_id uuid NOT NULL,
     categoria TEXT NOT NULL DEFAULT 'ENTRADA',
     filename TEXT NOT NULL,
@@ -366,7 +366,7 @@ CREATE TABLE IF NOT EXISTS equipamento_imagens (
 -- ═══════════════════════════════════════════════════════════════════════════════
 CREATE TABLE IF NOT EXISTS servicos_catalogo (
     id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-    empresa_id uuid NOT NULL DEFAULT '00000000-0000-0000-0000-000000000001'::uuid,
+    empresa_id uuid NOT NULL,
     nome TEXT NOT NULL,
     descricao TEXT,
     preco_padrao NUMERIC NOT NULL,
@@ -384,7 +384,7 @@ CREATE TABLE IF NOT EXISTS servicos_catalogo (
 -- ═══════════════════════════════════════════════════════════════════════════════
 CREATE TABLE IF NOT EXISTS gastos_fixos (
     id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-    empresa_id uuid NOT NULL DEFAULT '00000000-0000-0000-0000-000000000001'::uuid,
+    empresa_id uuid NOT NULL,
     nome TEXT NOT NULL,
     valor NUMERIC(15,2) NOT NULL DEFAULT 0,
     vencimento_dia INTEGER,
@@ -403,7 +403,7 @@ CREATE TABLE IF NOT EXISTS gastos_fixos (
 -- ═══════════════════════════════════════════════════════════════════════════════
 CREATE TABLE IF NOT EXISTS gastos_variaveis (
     id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-    empresa_id uuid NOT NULL DEFAULT '00000000-0000-0000-0000-000000000001'::uuid,
+    empresa_id uuid NOT NULL,
     descricao TEXT NOT NULL,
     valor NUMERIC(15,2) NOT NULL,
     data DATE NOT NULL,
@@ -421,12 +421,11 @@ CREATE TABLE IF NOT EXISTS gastos_variaveis (
 );
 
 -- ═══════════════════════════════════════════════════════════════════════════════
--- 14. configuracoes_sistema (singleton — UUID fixo)
+-- 14. configuracoes_sistema (uma linha por empresa)
 -- ═══════════════════════════════════════════════════════════════════════════════
 CREATE TABLE IF NOT EXISTS configuracoes_sistema (
-    id uuid PRIMARY KEY DEFAULT '00000000-0000-0000-0000-000000000002'::uuid
-        CHECK (id = '00000000-0000-0000-0000-000000000002'::uuid),
-    empresa_id uuid NOT NULL DEFAULT '00000000-0000-0000-0000-000000000001'::uuid,
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    empresa_id uuid NOT NULL,
     inactivity_lock_enabled BOOLEAN DEFAULT false,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
@@ -617,3 +616,141 @@ CREATE INDEX IF NOT EXISTS idx_gastos_variaveis_data
 
 CREATE INDEX IF NOT EXISTS idx_gastos_variaveis_categoria_data
     ON gastos_variaveis (categoria, data);
+
+-- ═══════════════════════════════════════════════════════════════════════════════
+-- 18. Integridade multi-tenant para o schema SaaS
+-- ═══════════════════════════════════════════════════════════════════════════════
+-- O staging é multi-tenant desde a origem. UUID é o identificador canônico: não
+-- existe mapeamento sequencial no runtime SaaS. Estas restrições também impedem
+-- que uma FK aponte, por engano, para uma linha de outra empresa.
+
+ALTER TABLE configuracoes_sistema
+    DROP CONSTRAINT IF EXISTS configuracoes_sistema_id_check;
+ALTER TABLE configuracoes_sistema
+    ALTER COLUMN id SET DEFAULT gen_random_uuid();
+
+ALTER TABLE clientes DROP CONSTRAINT IF EXISTS clientes_documento_key;
+ALTER TABLE clientes DROP CONSTRAINT IF EXISTS clientes_cpf_cnpj_key;
+ALTER TABLE security_profiles DROP CONSTRAINT IF EXISTS security_profiles_nome_key;
+
+ALTER TABLE clientes ADD CONSTRAINT uq_clientes_empresa_id UNIQUE (empresa_id, id);
+ALTER TABLE equipamentos ADD CONSTRAINT uq_equipamentos_empresa_id UNIQUE (empresa_id, id);
+ALTER TABLE produtos ADD CONSTRAINT uq_produtos_empresa_id UNIQUE (empresa_id, id);
+ALTER TABLE security_profiles ADD CONSTRAINT uq_security_profiles_empresa_id UNIQUE (empresa_id, id);
+ALTER TABLE gastos_fixos ADD CONSTRAINT uq_gastos_fixos_empresa_id UNIQUE (empresa_id, id);
+
+ALTER TABLE clientes ADD CONSTRAINT fk_clientes_empresa
+    FOREIGN KEY (empresa_id) REFERENCES empresas(id) ON DELETE CASCADE;
+ALTER TABLE equipamentos ADD CONSTRAINT fk_equipamentos_empresa
+    FOREIGN KEY (empresa_id) REFERENCES empresas(id) ON DELETE CASCADE;
+ALTER TABLE produtos ADD CONSTRAINT fk_produtos_empresa
+    FOREIGN KEY (empresa_id) REFERENCES empresas(id) ON DELETE CASCADE;
+ALTER TABLE movimentacoes_estoque ADD CONSTRAINT fk_movimentacoes_empresa
+    FOREIGN KEY (empresa_id) REFERENCES empresas(id) ON DELETE CASCADE;
+ALTER TABLE security_profiles ADD CONSTRAINT fk_security_profiles_empresa
+    FOREIGN KEY (empresa_id) REFERENCES empresas(id) ON DELETE CASCADE;
+ALTER TABLE verificacoes ADD CONSTRAINT fk_verificacoes_empresa
+    FOREIGN KEY (empresa_id) REFERENCES empresas(id) ON DELETE CASCADE;
+ALTER TABLE comunicacoes ADD CONSTRAINT fk_comunicacoes_empresa
+    FOREIGN KEY (empresa_id) REFERENCES empresas(id) ON DELETE CASCADE;
+ALTER TABLE security_audit_log ADD CONSTRAINT fk_security_audit_empresa
+    FOREIGN KEY (empresa_id) REFERENCES empresas(id) ON DELETE CASCADE;
+ALTER TABLE equipamento_imagens ADD CONSTRAINT fk_equipamento_imagens_empresa
+    FOREIGN KEY (empresa_id) REFERENCES empresas(id) ON DELETE CASCADE;
+ALTER TABLE servicos_catalogo ADD CONSTRAINT fk_servicos_catalogo_empresa
+    FOREIGN KEY (empresa_id) REFERENCES empresas(id) ON DELETE CASCADE;
+ALTER TABLE gastos_fixos ADD CONSTRAINT fk_gastos_fixos_empresa
+    FOREIGN KEY (empresa_id) REFERENCES empresas(id) ON DELETE CASCADE;
+ALTER TABLE gastos_variaveis ADD CONSTRAINT fk_gastos_variaveis_empresa
+    FOREIGN KEY (empresa_id) REFERENCES empresas(id) ON DELETE CASCADE;
+ALTER TABLE configuracoes_sistema ADD CONSTRAINT fk_configuracoes_sistema_empresa
+    FOREIGN KEY (empresa_id) REFERENCES empresas(id) ON DELETE CASCADE;
+
+ALTER TABLE equipamentos DROP CONSTRAINT IF EXISTS fk_equipamentos_cliente;
+ALTER TABLE equipamentos ADD CONSTRAINT fk_equipamentos_cliente_empresa
+    FOREIGN KEY (empresa_id, cliente_id) REFERENCES clientes(empresa_id, id) ON DELETE RESTRICT;
+ALTER TABLE movimentacoes_estoque DROP CONSTRAINT IF EXISTS fk_movimentacoes_produto;
+ALTER TABLE movimentacoes_estoque ADD CONSTRAINT fk_movimentacoes_produto_empresa
+    FOREIGN KEY (empresa_id, produto_id) REFERENCES produtos(empresa_id, id) ON DELETE RESTRICT;
+ALTER TABLE verificacoes DROP CONSTRAINT IF EXISTS fk_verificacoes_equipamento;
+ALTER TABLE verificacoes ADD CONSTRAINT fk_verificacoes_equipamento_empresa
+    FOREIGN KEY (empresa_id, equipamento_id) REFERENCES equipamentos(empresa_id, id) ON DELETE RESTRICT;
+ALTER TABLE verificacoes DROP CONSTRAINT IF EXISTS fk_verificacoes_adjusted_by_profile;
+ALTER TABLE verificacoes ADD CONSTRAINT fk_verificacoes_profile_empresa
+    FOREIGN KEY (empresa_id, adjusted_by_profile_id) REFERENCES security_profiles(empresa_id, id) ON DELETE RESTRICT;
+ALTER TABLE comunicacoes DROP CONSTRAINT IF EXISTS fk_comunicacoes_equipamento;
+ALTER TABLE comunicacoes ADD CONSTRAINT fk_comunicacoes_equipamento_empresa
+    FOREIGN KEY (empresa_id, equipamento_id) REFERENCES equipamentos(empresa_id, id) ON DELETE RESTRICT;
+ALTER TABLE security_audit_log DROP CONSTRAINT IF EXISTS fk_audit_profile;
+ALTER TABLE security_audit_log ADD CONSTRAINT fk_audit_profile_empresa
+    FOREIGN KEY (empresa_id, profile_id) REFERENCES security_profiles(empresa_id, id) ON DELETE RESTRICT;
+ALTER TABLE equipamento_imagens DROP CONSTRAINT IF EXISTS fk_equipamento_imagens_equipamento;
+ALTER TABLE equipamento_imagens ADD CONSTRAINT fk_equipamento_imagens_equipamento_empresa
+    FOREIGN KEY (empresa_id, equipamento_id) REFERENCES equipamentos(empresa_id, id) ON DELETE RESTRICT;
+ALTER TABLE gastos_variaveis DROP CONSTRAINT IF EXISTS fk_gastos_variaveis_referencia;
+ALTER TABLE gastos_variaveis ADD CONSTRAINT fk_gastos_variaveis_referencia_empresa
+    FOREIGN KEY (empresa_id, referencia_id) REFERENCES gastos_fixos(empresa_id, id) ON DELETE RESTRICT;
+ALTER TABLE os_status_publico DROP CONSTRAINT IF EXISTS fk_os_status_publico_equipamento;
+ALTER TABLE os_status_publico ADD CONSTRAINT fk_os_status_publico_equipamento_empresa
+    FOREIGN KEY (empresa_id, equipamento) REFERENCES equipamentos(empresa_id, id) ON DELETE RESTRICT;
+
+ALTER TABLE photo_upload_sessions DROP CONSTRAINT IF EXISTS photo_upload_sessions_profile_id_fkey;
+ALTER TABLE photo_upload_sessions ADD CONSTRAINT fk_photo_upload_sessions_profile_empresa
+    FOREIGN KEY (empresa_id, profile_id) REFERENCES security_profiles(empresa_id, id) ON DELETE RESTRICT;
+ALTER TABLE photo_upload_sessions DROP CONSTRAINT IF EXISTS photo_upload_sessions_equipamento_id_fkey;
+ALTER TABLE photo_upload_sessions ADD CONSTRAINT fk_photo_upload_sessions_equipamento_empresa
+    FOREIGN KEY (empresa_id, equipamento_id) REFERENCES equipamentos(empresa_id, id) ON DELETE RESTRICT;
+
+ALTER TABLE clientes ADD CONSTRAINT uq_clientes_empresa_documento UNIQUE (empresa_id, documento);
+ALTER TABLE clientes ADD CONSTRAINT uq_clientes_empresa_cpf_cnpj UNIQUE (empresa_id, cpf_cnpj);
+ALTER TABLE security_profiles ADD CONSTRAINT uq_security_profiles_empresa_nome UNIQUE (empresa_id, nome);
+ALTER TABLE configuracoes_sistema ADD CONSTRAINT uq_configuracoes_sistema_empresa UNIQUE (empresa_id);
+
+ALTER TABLE clientes ALTER COLUMN empresa_id DROP DEFAULT;
+ALTER TABLE equipamentos ALTER COLUMN empresa_id DROP DEFAULT;
+ALTER TABLE produtos ALTER COLUMN empresa_id DROP DEFAULT;
+ALTER TABLE movimentacoes_estoque ALTER COLUMN empresa_id DROP DEFAULT;
+ALTER TABLE security_profiles ALTER COLUMN empresa_id DROP DEFAULT;
+ALTER TABLE verificacoes ALTER COLUMN empresa_id DROP DEFAULT;
+ALTER TABLE comunicacoes ALTER COLUMN empresa_id DROP DEFAULT;
+ALTER TABLE security_audit_log ALTER COLUMN empresa_id DROP DEFAULT;
+ALTER TABLE equipamento_imagens ALTER COLUMN empresa_id DROP DEFAULT;
+ALTER TABLE servicos_catalogo ALTER COLUMN empresa_id DROP DEFAULT;
+ALTER TABLE gastos_fixos ALTER COLUMN empresa_id DROP DEFAULT;
+ALTER TABLE gastos_variaveis ALTER COLUMN empresa_id DROP DEFAULT;
+ALTER TABLE configuracoes_sistema ALTER COLUMN empresa_id DROP DEFAULT;
+
+DROP INDEX IF EXISTS ux_equipamentos_patrimonio_when_present;
+CREATE UNIQUE INDEX ux_equipamentos_patrimonio_when_present
+    ON equipamentos (empresa_id, (LOWER(BTRIM(patrimonio))))
+    WHERE NULLIF(BTRIM(patrimonio), '') IS NOT NULL;
+DROP INDEX IF EXISTS ux_security_profiles_single_default_active;
+CREATE UNIQUE INDEX ux_security_profiles_single_default_active
+    ON security_profiles (empresa_id)
+    WHERE ativo = true AND is_default = true;
+DROP INDEX IF EXISTS ux_servicos_catalogo_nome_ativo;
+CREATE UNIQUE INDEX ux_servicos_catalogo_nome_ativo
+    ON servicos_catalogo (empresa_id, LOWER(BTRIM(nome)))
+    WHERE ativo = true;
+DROP INDEX IF EXISTS ux_produtos_codigo_ativo;
+CREATE UNIQUE INDEX ux_produtos_codigo_ativo
+    ON produtos (empresa_id, codigo)
+    WHERE ativo = true;
+DROP INDEX IF EXISTS ux_gastos_fixos_nome_ativo;
+CREATE UNIQUE INDEX ux_gastos_fixos_nome_ativo
+    ON gastos_fixos (empresa_id, LOWER(BTRIM(nome)))
+    WHERE ativo = true;
+
+CREATE INDEX IF NOT EXISTS idx_clientes_empresa ON clientes (empresa_id);
+CREATE INDEX IF NOT EXISTS idx_equipamentos_empresa ON equipamentos (empresa_id);
+CREATE INDEX IF NOT EXISTS idx_produtos_empresa ON produtos (empresa_id);
+CREATE INDEX IF NOT EXISTS idx_movimentacoes_estoque_empresa ON movimentacoes_estoque (empresa_id);
+CREATE INDEX IF NOT EXISTS idx_security_profiles_empresa ON security_profiles (empresa_id);
+CREATE INDEX IF NOT EXISTS idx_verificacoes_empresa ON verificacoes (empresa_id);
+CREATE INDEX IF NOT EXISTS idx_comunicacoes_empresa ON comunicacoes (empresa_id);
+CREATE INDEX IF NOT EXISTS idx_security_audit_log_empresa ON security_audit_log (empresa_id);
+CREATE INDEX IF NOT EXISTS idx_equipamento_imagens_empresa ON equipamento_imagens (empresa_id);
+CREATE INDEX IF NOT EXISTS idx_servicos_catalogo_empresa ON servicos_catalogo (empresa_id);
+CREATE INDEX IF NOT EXISTS idx_gastos_fixos_empresa ON gastos_fixos (empresa_id);
+CREATE INDEX IF NOT EXISTS idx_gastos_variaveis_empresa ON gastos_variaveis (empresa_id);
+CREATE INDEX IF NOT EXISTS idx_configuracoes_sistema_empresa ON configuracoes_sistema (empresa_id);
