@@ -1,109 +1,112 @@
--- ═══════════════════════════════════════════════════════════════════════════════
--- supabase/rls.sql — Row Level Security (RLS) para todas as tabelas AutoOS
--- ═══════════════════════════════════════════════════════════════════════════════
--- Políticas:
---   • service_role: bypass automático de RLS (comportamento built-in do Supabase)
---   • anon key: filtra por empresa_id usando current_setting('app.empresa_id')
--- ═══════════════════════════════════════════════════════════════════════════════
+-- RLS do AutoOS SaaS para o Supabase staging.
+--
+-- Contrato de autenticação:
+--   * somente JWTs de usuários autenticados chegam às tabelas de negócio;
+--   * o servidor grava o company_id em auth.users.raw_app_meta_data;
+--   * user_metadata nunca participa de autorização;
+--   * service_role continua server-side e bypassa RLS pelo comportamento nativo;
+--   * anon não recebe grants nem policies.
 
--- ─── Habilitar RLS em todas as tabelas ─────────────────────────────────────────
-ALTER TABLE empresas ENABLE ROW LEVEL SECURITY;
-ALTER TABLE clientes ENABLE ROW LEVEL SECURITY;
-ALTER TABLE equipamentos ENABLE ROW LEVEL SECURITY;
-ALTER TABLE produtos ENABLE ROW LEVEL SECURITY;
-ALTER TABLE movimentacoes_estoque ENABLE ROW LEVEL SECURITY;
-ALTER TABLE security_profiles ENABLE ROW LEVEL SECURITY;
-ALTER TABLE verificacoes ENABLE ROW LEVEL SECURITY;
-ALTER TABLE comunicacoes ENABLE ROW LEVEL SECURITY;
-ALTER TABLE security_audit_log ENABLE ROW LEVEL SECURITY;
-ALTER TABLE equipamento_imagens ENABLE ROW LEVEL SECURITY;
-ALTER TABLE servicos_catalogo ENABLE ROW LEVEL SECURITY;
-ALTER TABLE gastos_fixos ENABLE ROW LEVEL SECURITY;
-ALTER TABLE gastos_variaveis ENABLE ROW LEVEL SECURITY;
-ALTER TABLE configuracoes_sistema ENABLE ROW LEVEL SECURITY;
-ALTER TABLE enrollment_codes ENABLE ROW LEVEL SECURITY;
-ALTER TABLE os_status_publico ENABLE ROW LEVEL SECURITY;
+CREATE OR REPLACE FUNCTION public.current_company_id()
+RETURNS uuid
+LANGUAGE sql
+STABLE
+AS $$
+    SELECT CASE
+        WHEN (auth.jwt() -> 'app_metadata' ->> 'company_id') ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$'
+        THEN (auth.jwt() -> 'app_metadata' ->> 'company_id')::uuid
+        ELSE NULL
+    END;
+$$;
 
--- ─── Política padrão para anon (filtra por empresa_id) ─────────────────────────
--- A política é aplicada a todas as operações (SELECT, INSERT, UPDATE, DELETE).
--- O app define app.empresa_id via SET LOCAL antes de cada transação.
+REVOKE ALL ON FUNCTION public.current_company_id() FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.current_company_id() TO authenticated;
 
-CREATE POLICY anon_filter_empresa_id ON empresas
-    FOR ALL TO anon
-    USING (id = current_setting('app.empresa_id', true)::uuid)
-    WITH CHECK (id = current_setting('app.empresa_id', true)::uuid);
+-- Todas as tabelas públicas ficam fechadas para os papéis de cliente antes de
+-- receberem somente os grants/policies abaixo. A configuração Data API deve
+-- continuar com exposição automática desativada.
+DO $$
+DECLARE
+    table_name text;
+BEGIN
+    FOREACH table_name IN ARRAY ARRAY[
+        'empresas', 'clientes', 'equipamentos', 'produtos',
+        'movimentacoes_estoque', 'security_profiles', 'verificacoes',
+        'comunicacoes', 'security_audit_log', 'equipamento_imagens',
+        'servicos_catalogo', 'gastos_fixos', 'gastos_variaveis',
+        'configuracoes_sistema', 'enrollment_codes', 'os_status_publico',
+        'photo_upload_sessions', 'photo_upload_session_items'
+    ] LOOP
+        EXECUTE format('ALTER TABLE public.%I ENABLE ROW LEVEL SECURITY', table_name);
+        EXECUTE format('REVOKE ALL ON TABLE public.%I FROM anon, authenticated', table_name);
+        EXECUTE format('DROP POLICY IF EXISTS anon_filter_empresa_id ON public.%I', table_name);
+    END LOOP;
+END;
+$$;
 
-CREATE POLICY anon_filter_empresa_id ON clientes
-    FOR ALL TO anon
-    USING (empresa_id = current_setting('app.empresa_id', true)::uuid)
-    WITH CHECK (empresa_id = current_setting('app.empresa_id', true)::uuid);
+-- A empresa é provisionada pelo backend; usuários autenticados podem apenas
+-- consultar a própria empresa.
+DROP POLICY IF EXISTS company_select ON public.empresas;
+DROP POLICY IF EXISTS anon_filter_empresa_id ON public.empresas;
+CREATE POLICY company_select ON public.empresas
+    FOR SELECT TO authenticated
+    USING (id = (select public.current_company_id()));
+GRANT SELECT ON TABLE public.empresas TO authenticated;
 
-CREATE POLICY anon_filter_empresa_id ON equipamentos
-    FOR ALL TO anon
-    USING (empresa_id = current_setting('app.empresa_id', true)::uuid)
-    WITH CHECK (empresa_id = current_setting('app.empresa_id', true)::uuid);
+-- Tabelas de negócio acessíveis pelo plano Online e pelo backend do Offline.
+-- Cada operação explicita o papel e o predicado de tenant.
+DO $$
+DECLARE
+    table_name text;
+BEGIN
+    FOREACH table_name IN ARRAY ARRAY[
+        'clientes', 'equipamentos', 'produtos', 'movimentacoes_estoque',
+        'security_profiles', 'verificacoes', 'comunicacoes',
+        'equipamento_imagens', 'servicos_catalogo', 'gastos_fixos',
+        'gastos_variaveis', 'configuracoes_sistema'
+    ] LOOP
+        EXECUTE format('GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public.%I TO authenticated', table_name);
 
-CREATE POLICY anon_filter_empresa_id ON produtos
-    FOR ALL TO anon
-    USING (empresa_id = current_setting('app.empresa_id', true)::uuid)
-    WITH CHECK (empresa_id = current_setting('app.empresa_id', true)::uuid);
+        EXECUTE format('DROP POLICY IF EXISTS company_select ON public.%I', table_name);
+        EXECUTE format('DROP POLICY IF EXISTS company_insert ON public.%I', table_name);
+        EXECUTE format('DROP POLICY IF EXISTS company_update ON public.%I', table_name);
+        EXECUTE format('DROP POLICY IF EXISTS company_delete ON public.%I', table_name);
+        EXECUTE format('DROP POLICY IF EXISTS anon_filter_empresa_id ON public.%I', table_name);
 
-CREATE POLICY anon_filter_empresa_id ON movimentacoes_estoque
-    FOR ALL TO anon
-    USING (empresa_id = current_setting('app.empresa_id', true)::uuid)
-    WITH CHECK (empresa_id = current_setting('app.empresa_id', true)::uuid);
+        EXECUTE format(
+            'CREATE POLICY company_select ON public.%I FOR SELECT TO authenticated USING (empresa_id = (select public.current_company_id()))',
+            table_name
+        );
+        EXECUTE format(
+            'CREATE POLICY company_insert ON public.%I FOR INSERT TO authenticated WITH CHECK (empresa_id = (select public.current_company_id()))',
+            table_name
+        );
+        EXECUTE format(
+            'CREATE POLICY company_update ON public.%I FOR UPDATE TO authenticated USING (empresa_id = (select public.current_company_id())) WITH CHECK (empresa_id = (select public.current_company_id()))',
+            table_name
+        );
+        EXECUTE format(
+            'CREATE POLICY company_delete ON public.%I FOR DELETE TO authenticated USING (empresa_id = (select public.current_company_id()))',
+            table_name
+        );
+    END LOOP;
+END;
+$$;
 
-CREATE POLICY anon_filter_empresa_id ON security_profiles
-    FOR ALL TO anon
-    USING (empresa_id = current_setting('app.empresa_id', true)::uuid)
-    WITH CHECK (empresa_id = current_setting('app.empresa_id', true)::uuid);
+-- Auditoria é legível pelo tenant, mas eventos são gravados por comandos
+-- server-side; o cliente não pode fabricar ou apagar trilha de segurança.
+GRANT SELECT ON TABLE public.security_audit_log TO authenticated;
+DROP POLICY IF EXISTS company_select ON public.security_audit_log;
+DROP POLICY IF EXISTS company_insert ON public.security_audit_log;
+DROP POLICY IF EXISTS company_update ON public.security_audit_log;
+DROP POLICY IF EXISTS company_delete ON public.security_audit_log;
+DROP POLICY IF EXISTS anon_filter_empresa_id ON public.security_audit_log;
+CREATE POLICY company_select ON public.security_audit_log
+    FOR SELECT TO authenticated
+    USING (empresa_id = (select public.current_company_id()));
 
-CREATE POLICY anon_filter_empresa_id ON verificacoes
-    FOR ALL TO anon
-    USING (empresa_id = current_setting('app.empresa_id', true)::uuid)
-    WITH CHECK (empresa_id = current_setting('app.empresa_id', true)::uuid);
-
-CREATE POLICY anon_filter_empresa_id ON comunicacoes
-    FOR ALL TO anon
-    USING (empresa_id = current_setting('app.empresa_id', true)::uuid)
-    WITH CHECK (empresa_id = current_setting('app.empresa_id', true)::uuid);
-
-CREATE POLICY anon_filter_empresa_id ON security_audit_log
-    FOR ALL TO anon
-    USING (empresa_id = current_setting('app.empresa_id', true)::uuid)
-    WITH CHECK (empresa_id = current_setting('app.empresa_id', true)::uuid);
-
-CREATE POLICY anon_filter_empresa_id ON equipamento_imagens
-    FOR ALL TO anon
-    USING (empresa_id = current_setting('app.empresa_id', true)::uuid)
-    WITH CHECK (empresa_id = current_setting('app.empresa_id', true)::uuid);
-
-CREATE POLICY anon_filter_empresa_id ON servicos_catalogo
-    FOR ALL TO anon
-    USING (empresa_id = current_setting('app.empresa_id', true)::uuid)
-    WITH CHECK (empresa_id = current_setting('app.empresa_id', true)::uuid);
-
-CREATE POLICY anon_filter_empresa_id ON gastos_fixos
-    FOR ALL TO anon
-    USING (empresa_id = current_setting('app.empresa_id', true)::uuid)
-    WITH CHECK (empresa_id = current_setting('app.empresa_id', true)::uuid);
-
-CREATE POLICY anon_filter_empresa_id ON gastos_variaveis
-    FOR ALL TO anon
-    USING (empresa_id = current_setting('app.empresa_id', true)::uuid)
-    WITH CHECK (empresa_id = current_setting('app.empresa_id', true)::uuid);
-
-CREATE POLICY anon_filter_empresa_id ON configuracoes_sistema
-    FOR ALL TO anon
-    USING (empresa_id = current_setting('app.empresa_id', true)::uuid)
-    WITH CHECK (empresa_id = current_setting('app.empresa_id', true)::uuid);
-
-CREATE POLICY anon_filter_empresa_id ON enrollment_codes
-    FOR ALL TO anon
-    USING (empresa_id = current_setting('app.empresa_id', true)::uuid)
-    WITH CHECK (empresa_id = current_setting('app.empresa_id', true)::uuid);
-
-CREATE POLICY anon_filter_empresa_id ON os_status_publico
-    FOR ALL TO anon
-    USING (empresa_id = current_setting('app.empresa_id', true)::uuid)
-    WITH CHECK (empresa_id = current_setting('app.empresa_id', true)::uuid);
+-- Enrollment, status público, sessões de upload e itens de sessão ficam atrás
+-- de Edge Functions/backend. Não são expostos à Data API por chave de cliente.
+REVOKE ALL ON TABLE public.enrollment_codes, public.os_status_publico,
+    public.photo_upload_sessions, public.photo_upload_session_items
+    FROM PUBLIC, anon, authenticated;

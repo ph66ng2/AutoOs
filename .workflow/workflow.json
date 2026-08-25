@@ -400,7 +400,7 @@
     {
       "id": "AO-PS-004",
       "title": "Definir segurança SaaS e RLS",
-      "status": "ready",
+      "status": "review",
       "blockedBy": [
         "AO-PS-002"
       ],

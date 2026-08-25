@@ -665,7 +665,10 @@ export interface ResultadoVerificacaoCredenciais {
 
 export interface SupabaseStorageConfig {
   supabase_url: string;
-  supabase_service_key: string;
+  /** Chave publicável, sem privilégios administrativos. */
+  supabase_publishable_key: string;
+  /** JWT da sessão do usuário, nunca uma chave administrativa. */
+  access_token: string;
   empresa_id?: string;
 }
 
