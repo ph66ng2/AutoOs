@@ -167,7 +167,7 @@
     {
       "id": "AO-PS-003",
       "title": "Alinhar schema e IDs do staging",
-      "status": "review",
+      "status": "merged",
       "blockedBy": [
         "AO-PS-002"
       ],
