@@ -45,7 +45,7 @@ VALUES (
     true,
     true
 )
-ON CONFLICT (nome) DO NOTHING;
+ON CONFLICT (empresa_id, nome) DO NOTHING;
 
 -- ─── 4. Categorias de referência para gastos_fixos ─────────────────────────────
 -- Categorias padrão como linhas inativas com valor zero,
