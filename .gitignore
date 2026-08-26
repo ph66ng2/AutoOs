@@ -19,6 +19,9 @@ e2e/
 playwright-report/
 test-results/
 src/test/
+!src/test/
+src/test/*
+!src/test/setup.ts
 e2e/report/
 e2e/results/
 

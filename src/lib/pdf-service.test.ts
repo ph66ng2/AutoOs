@@ -1,39 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import type { Equipamento, Verificacao } from "@/types";
 
-/** svgToPng usa `Image` + canvas; stubs evitam travamento sob jsdom. */
-class MockImageForPdf {
-  onload?: (ev: unknown) => void;
-  #src = "";
-  get src() {
-    return this.#src;
-  }
-  set src(value: string) {
-    this.#src = value;
-    queueMicrotask(() => this.onload?.({}));
-  }
-}
-vi.stubGlobal("Image", MockImageForPdf as unknown as typeof Image);
-
-const tinyPng =
-  "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==";
-
-const canvasProto = HTMLCanvasElement.prototype;
-const origGetContext = canvasProto.getContext.bind(canvasProto);
-vi.spyOn(canvasProto, "getContext").mockImplementation(function (
-  contextId: string,
-  ...rest: unknown[]
-) {
-  if (contextId === "2d") {
-    return {
-      drawImage: vi.fn(),
-      scale: vi.fn(),
-    } as unknown as CanvasRenderingContext2D;
-  }
-  return origGetContext(contextId as "2d", ...(rest as never[]));
-});
-vi.spyOn(canvasProto, "toDataURL").mockReturnValue(tinyPng);
-
 const mockInvoke = vi.hoisted(() => vi.fn());
 const mockListarImagens = vi.hoisted(() => vi.fn());
 
@@ -44,6 +11,7 @@ vi.mock("@tauri-apps/api/core", () => ({
 vi.mock("@/lib/db", () => ({
   db: {
     listarImagensEquipamento: (...args: unknown[]) => mockListarImagens(...args),
+    buscarVerificacao: vi.fn().mockResolvedValue(null),
   },
 }));
 

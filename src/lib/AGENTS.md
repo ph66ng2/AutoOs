@@ -39,10 +39,10 @@ lib/
 - All Tauri calls via `db.ts` wrapper functions
 - Export types in `src/types/index.ts`
 - Zod schemas for form validation
-- PDF uses logo from `logo-base64.ts` (281k!)
+- PDF uses the embedded monochrome logo from `logo-monochrome-base64.ts` (transparent PNG with QR preserved)
 
 ## ANTI-PATTERNS (THIS LIB)
 
 - Don't use fetch/axios for Tauri commands (use invoke)
 - Don't hardcode credentials (use Configuracoes)
-- Don't bundle large assets (logo is 281k base64)
+- Keep the embedded PDF logo compact and do not transform the QR destructively at runtime
