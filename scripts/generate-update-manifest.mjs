@@ -1,20 +1,37 @@
-import { readFileSync, writeFileSync } from "fs";
-import { createSign } from "crypto";
+import { readdirSync, readFileSync, writeFileSync } from "fs";
+import path from "path";
 
 const version = process.env.GITHUB_REF_NAME?.replace("v", "") || "0.0.0";
 const tag = process.env.GITHUB_REF_NAME || "v0.0.0";
-const privateKeyPath = process.env.TAURI_SIGNING_KEY || "~/.tauri/autoos.key";
 const repo = "ph66ng2/AutoOS";
 
-// Build the release URL
-const url = `https://github.com/${repo}/releases/download/${tag}/AutoOS_${version}_x64_pt-BR.msi`;
+const bundleDirectory = path.resolve("src-tauri/target/release/bundle");
 
-// Read the private key and sign
-const privateKey = readFileSync(privateKeyPath.replace("~", process.env.HOME), "utf8");
-const sign = createSign("sha256");
-sign.update(url);
-sign.end();
-const signature = sign.sign(privateKey, "base64");
+function findFiles(directory) {
+  return readdirSync(directory, { withFileTypes: true }).flatMap((entry) => {
+    const entryPath = path.join(directory, entry.name);
+    return entry.isDirectory() ? findFiles(entryPath) : [entryPath];
+  });
+}
+
+const files = findFiles(bundleDirectory);
+const installerPath = files.find((file) => file.endsWith(".msi"));
+
+if (!installerPath) {
+  throw new Error(`Nenhum instalador MSI foi encontrado em ${bundleDirectory}.`);
+}
+
+const signaturePath = `${installerPath}.sig`;
+if (!files.includes(signaturePath)) {
+  throw new Error(
+    `Assinatura do updater não encontrada: ${signaturePath}. ` +
+      "Confirme que TAURI_SIGNING_PRIVATE_KEY está configurada e createUpdaterArtifacts está ativado.",
+  );
+}
+
+const artifactName = path.basename(installerPath);
+const url = `https://github.com/${repo}/releases/download/${tag}/${encodeURIComponent(artifactName)}`;
+const signature = readFileSync(signaturePath, "utf8").trim();
 
 const manifest = {
   version,
@@ -25,12 +42,8 @@ const manifest = {
       signature,
       url,
     },
-    "linux-x86_64": {
-      signature,
-      url: url.replace(".msi", ".deb"),
-    },
   },
 };
 
 writeFileSync("latest.json", JSON.stringify(manifest, null, 2));
-console.log(`Manifesto gerado para v${version}`);
+console.log(`Manifesto gerado para v${version} usando ${artifactName}`);
