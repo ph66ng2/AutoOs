@@ -5,17 +5,17 @@
 BEGIN;
 
 INSERT INTO empresas (id, nome) VALUES
-    ('33333333-3333-3333-3333-333333333331', 'RLS test A'),
-    ('44444444-4444-4444-4444-444444444441', 'RLS test B');
+    ('33333333-3333-4333-8333-333333333331', 'RLS test A'),
+    ('44444444-4444-4444-8444-444444444441', 'RLS test B');
 
 INSERT INTO clientes (id, empresa_id, nome) VALUES
-    ('33333333-3333-3333-3333-333333333332', '33333333-3333-3333-3333-333333333331', 'RLS Cliente A'),
-    ('44444444-4444-4444-4444-444444444442', '44444444-4444-4444-4444-444444444441', 'RLS Cliente B');
+    ('33333333-3333-4333-8333-333333333332', '33333333-3333-4333-8333-333333333331', 'RLS Cliente A'),
+    ('44444444-4444-4444-8444-444444444442', '44444444-4444-4444-8444-444444444441', 'RLS Cliente B');
 
 SET LOCAL ROLE authenticated;
 SELECT set_config(
     'request.jwt.claims',
-    '{"sub":"55555555-5555-5555-5555-555555555551","app_metadata":{"company_id":"33333333-3333-3333-3333-333333333331"}}',
+    '{"sub":"55555555-5555-4555-8555-555555555551","app_metadata":{"company_id":"33333333-3333-4333-8333-333333333331"}}',
     true
 );
 
@@ -30,7 +30,7 @@ BEGIN
     END IF;
 
     INSERT INTO clientes (id, empresa_id, nome)
-    VALUES ('33333333-3333-3333-3333-333333333334', '33333333-3333-3333-3333-333333333331', 'RLS Cliente A novo');
+    VALUES ('33333333-3333-4333-8333-333333333334', '33333333-3333-4333-8333-333333333331', 'RLS Cliente A novo');
 
     SELECT count(*) INTO visible_rows FROM clientes;
     IF visible_rows <> 2 THEN
@@ -38,8 +38,8 @@ BEGIN
     END IF;
 
     UPDATE clientes
-       SET nome = 'cross-tenant update'
-     WHERE id = '44444444-4444-4444-4444-444444444442';
+     SET nome = 'cross-tenant update'
+     WHERE id = '44444444-4444-4444-8444-444444444442';
     GET DIAGNOSTICS changed_rows = ROW_COUNT;
     IF changed_rows <> 0 THEN
         RAISE EXCEPTION 'tenant A updated tenant B data';
@@ -47,7 +47,7 @@ BEGIN
 
     BEGIN
         INSERT INTO clientes (id, empresa_id, nome)
-        VALUES ('33333333-3333-3333-3333-333333333333', '44444444-4444-4444-4444-444444444441', 'forbidden');
+        VALUES ('33333333-3333-4333-8333-333333333333', '44444444-4444-4444-8444-444444444441', 'forbidden');
         RAISE EXCEPTION 'tenant A inserted data for tenant B';
     EXCEPTION WHEN insufficient_privilege THEN
         NULL;
@@ -57,7 +57,7 @@ $$;
 
 SELECT set_config(
     'request.jwt.claims',
-    '{"sub":"66666666-6666-6666-6666-666666666661","app_metadata":{"company_id":"44444444-4444-4444-4444-444444444441"}}',
+    '{"sub":"66666666-6666-4666-8666-666666666661","app_metadata":{"company_id":"44444444-4444-4444-8444-444444444441"}}',
     true
 );
 
