@@ -35,8 +35,9 @@
     {
       "id": "AO-PDF-001",
       "title": "Padronizar PDFs monocromáticos do AutoOS",
-      "status": "review",
+      "status": "merged",
       "blockedBy": [],
+      "completedAt": "2026-08-26",
       "objective": "Redesenhar os quatro PDFs operacionais com um padrão monocromático econômico, mantendo conteúdo, anexos e contratos atuais.",
       "context": "Os PDFs de orçamento técnico, orçamento ajustado, ordem de serviço e relatório de status compartilham cabeçalho e rodapé, mas hoje usam preenchimentos escuros, cores divergentes e dependência de asset público para partes do documento.",
       "expectedBehavior": "Os quatro geradores usam o mesmo cabeçalho branco de três áreas, estilos centralizados em preto/cinza, logo monocromática embutida, rodapé textual com paginação e preservam todos os dados e anexos atuais.",
