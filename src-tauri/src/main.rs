@@ -168,6 +168,7 @@ fn main() {
             commands::clientes::criar_cliente,
             commands::clientes::atualizar_cliente,
             commands::clientes::deletar_cliente,
+            commands::cnpj::consultar_cnpj,
             // Produtos
             commands::produtos::listar_produtos,
             commands::produtos::buscar_produto,
