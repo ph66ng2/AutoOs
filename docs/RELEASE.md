@@ -43,6 +43,17 @@ Depois do bump: executar `npm install` uma vez para alinhar metadados de `packag
 - `DATABASE_URL` válido (ex.: `.env` em `src-tauri/` ou variável exportada).
 - **Keyring do SO** disponível (`configure_sensitive_pin` / credenciais de canal gravam secrets). runners Linux headless costumam falhar até haver dbus/secret compatível ou runner self-hosted onde o comando já passe.
 
+### Conexão do aplicativo distribuído
+
+- O instalador não deve conter nem empacotar `src-tauri/.env`.
+- Nenhuma senha PostgreSQL, `service_role` ou token administrativo pode ser
+  versionado ou incluído nos recursos do Tauri.
+- A conexão é configurada na máquina pela tela de configuração do AutoOS.
+- Para Supabase em redes IPv4, usar o **Supavisor Session mode** na porta `5432`;
+  o endpoint direto do projeto usa IPv6 por padrão.
+- Antes do próximo release, rotacionar todas as credenciais presentes no
+  histórico/tag `v0.3.4` e validar a nova configuração em uma máquina limpa.
+
 ## Windows (distribuição assistida)
 
 1. Thumbprint só no build: ver [WINDOWS_CODE_SIGNING.md](./WINDOWS_CODE_SIGNING.md).

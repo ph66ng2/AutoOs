@@ -1412,9 +1412,11 @@ pub async fn reiniciar_banco_com_config(config: DatabaseConnectionConfig) -> Res
 #[instrument(skip_all)]
 pub async fn testar_config_banco(config: DatabaseConnectionConfig) -> Result<bool, String> {
     use sqlx::postgres::PgPoolOptions;
+    use std::time::Duration;
     let database_url = config.to_database_url();
     let pool = PgPoolOptions::new()
         .max_connections(1)
+        .acquire_timeout(Duration::from_secs(12))
         .connect(&database_url)
         .await
         .map_err(|e| format!("Falha ao conectar ao banco: {}", e))?;

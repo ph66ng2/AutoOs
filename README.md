@@ -42,7 +42,8 @@ O projeto não está mais em fase de scaffold. O estado atual é um app Tauri + 
 npm install
 ```
 
-2. Configure `src-tauri/.env` com a conexão PostgreSQL:
+2. Em desenvolvimento, configure `DATABASE_URL` no ambiente ou em um
+   `src-tauri/.env` local e nunca versionado:
 
 ```env
 DATABASE_URL=postgres://autoos_user:SUA_SENHA@localhost:5432/autoos
@@ -54,7 +55,15 @@ DATABASE_URL=postgres://autoos_user:SUA_SENHA@localhost:5432/autoos
 npm run tauri dev
 ```
 
-O backend tenta resolver `DATABASE_URL` a partir do ambiente atual e de `src-tauri/.env`. Na inicialização, ele abre a pool PostgreSQL, aplica migrações pendentes e só então libera os comandos IPC do app.
+O backend tenta resolver `DATABASE_URL` a partir do ambiente atual, de um
+`src-tauri/.env` local ou da configuração salva pelo próprio aplicativo. O
+release não contém `.env` nem credenciais de banco. Sem uma conexão válida, a
+janela abre em modo de configuração.
+
+Para máquinas Windows em redes IPv4 conectando ao Supabase, use o **Supavisor
+Session mode** na porta `5432`, obtido em **Connect → Session pooler** no painel
+do projeto. O endpoint direto `db.<ref>.supabase.co:5432` usa IPv6 por padrão e
+pode ficar inacessível em algumas redes.
 
 ## Validação recomendada
 
