@@ -17,12 +17,15 @@
 //! ╚══════════════════════════════════════════════════════════════╝
 
 use crate::commands::util::{local_app_data_dir, DATABASE_CONFIG_FILE};
-use sqlx::{migrate::Migrator, postgres::PgPool};
+use sqlx::{
+    migrate::Migrator,
+    postgres::{PgPool, PgPoolOptions},
+};
 use std::env;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
-use tracing::{warn, info};
+use std::time::Duration;
 
 static MIGRATOR: Migrator = sqlx::migrate!("./migrations");
 
@@ -35,11 +38,20 @@ pub struct KnownMigration {
 static POOL: Mutex<Option<PgPool>> = Mutex::new(None);
 static INIT_ERROR: Mutex<Option<String>> = Mutex::new(None);
 
+const DATABASE_ACQUIRE_TIMEOUT: Duration = Duration::from_secs(12);
+const DATABASE_MAX_CONNECTIONS: u32 = 5;
+
 pub async fn get_pool() -> Result<PgPool, String> {
-    let guard = POOL.lock().map_err(|e| format!("Lock do pool corrompido: {}", e))?;
+    let guard = POOL
+        .lock()
+        .map_err(|e| format!("Lock do pool corrompido: {}", e))?;
     guard.clone().ok_or_else(|| {
-        let err_guard = INIT_ERROR.lock().unwrap_or_else(|e| panic!("Lock de erro corrompido: {}", e));
-        err_guard.clone().unwrap_or_else(|| "Pool de conexões não inicializado".to_string())
+        let err_guard = INIT_ERROR
+            .lock()
+            .unwrap_or_else(|e| panic!("Lock de erro corrompido: {}", e));
+        err_guard
+            .clone()
+            .unwrap_or_else(|| "Pool de conexões não inicializado".to_string())
     })
 }
 
@@ -57,6 +69,12 @@ pub fn clear_database_init_error() {
     }
 }
 
+fn set_database_init_error(message: impl Into<String>) {
+    if let Ok(mut guard) = INIT_ERROR.lock() {
+        *guard = Some(message.into());
+    }
+}
+
 pub fn known_migrations() -> Vec<KnownMigration> {
     MIGRATOR
         .iter()
@@ -69,13 +87,13 @@ pub fn known_migrations() -> Vec<KnownMigration> {
 
 pub async fn run_pending_migrations() -> Result<(), String> {
     let pool = get_pool().await?;
-    MIGRATOR.run(&pool).await.map_err(|e| e.to_string())
+    MIGRATOR.run(&pool).await.map_err(|error| error.to_string())
 }
 
 fn database_url_missing_error() -> sqlx::Error {
     sqlx::Error::Configuration(Box::new(std::io::Error::new(
         std::io::ErrorKind::NotFound,
-        "DATABASE_URL não configurada. Defina a conexão em src-tauri/.env ou nas variáveis de ambiente.",
+        "DATABASE_URL não configurada. Defina a conexão nas variáveis de ambiente ou pela tela de configuração.",
     )))
 }
 
@@ -108,9 +126,7 @@ fn collect_env_candidates() -> Vec<PathBuf> {
 }
 
 fn resolve_database_url_from_config_file() -> Option<String> {
-    let config_path = local_app_data_dir()
-        .ok()?
-        .join(DATABASE_CONFIG_FILE);
+    let config_path = local_app_data_dir().ok()?.join(DATABASE_CONFIG_FILE);
     if !config_path.is_file() {
         return None;
     }
@@ -146,13 +162,6 @@ fn resolve_database_url() -> Result<String, sqlx::Error> {
         }
     }
 
-    // Compile-time embedded URL (from build.rs) — always available in bundled builds
-    if let Some(database_url) = option_env!("COMPILE_TIME_DATABASE_URL") {
-        if !database_url.is_empty() {
-            return Ok(database_url.to_string());
-        }
-    }
-
     if let Some(database_url) = resolve_database_url_from_config_file() {
         return Ok(database_url);
     }
@@ -161,33 +170,40 @@ fn resolve_database_url() -> Result<String, sqlx::Error> {
 }
 
 pub async fn init_database() -> Result<PgPool, sqlx::Error> {
-    let database_url = resolve_database_url()?;
-    connect_and_setup_pool(&database_url).await
+    let result = async {
+        let database_url = resolve_database_url()?;
+        connect_and_setup_pool(&database_url).await
+    }
+    .await;
+
+    if let Err(error) = &result {
+        set_database_init_error(error.to_string());
+    }
+    result
 }
 
 pub async fn init_database_with_url(database_url: &str) -> Result<PgPool, sqlx::Error> {
-    connect_and_setup_pool(database_url).await
+    let result = connect_and_setup_pool(database_url).await;
+    if let Err(error) = &result {
+        set_database_init_error(error.to_string());
+    }
+    result
 }
 
 async fn connect_and_setup_pool(database_url: &str) -> Result<PgPool, sqlx::Error> {
-    let pool = PgPool::connect(database_url).await?;
+    let pool = PgPoolOptions::new()
+        .max_connections(DATABASE_MAX_CONNECTIONS)
+        .min_connections(0)
+        .acquire_timeout(DATABASE_ACQUIRE_TIMEOUT)
+        .idle_timeout(Duration::from_secs(5 * 60))
+        .max_lifetime(Duration::from_secs(30 * 60))
+        .connect(database_url)
+        .await?;
 
-    // Tenta rodar migrações; se falhar por checksum mismatch ou constraints existentes,
-    // registra o warning e continua — o banco já está no schema esperado.
-    if let Err(e) = MIGRATOR.run(&pool).await {
-        let err_msg = e.to_string();
-        if err_msg.contains("already exists") || err_msg.contains("previously applied but has been modified") {
-            warn!("Migração detectou schema existente (checksum ou constraint). Continuando com o banco atual.");
-        } else {
-            warn!("Migração falhou: {}. Tentando reaplicar...", e);
-            let _ = sqlx::query("TRUNCATE TABLE _sqlx_migrations")
-                .execute(&pool)
-                .await;
-            if let Err(e2) = MIGRATOR.run(&pool).await {
-                warn!("Reaplicação também falhou: {}. Continuando com o banco existente.", e2);
-            }
-        }
-    }
+    MIGRATOR
+        .run(&pool)
+        .await
+        .map_err(|error| sqlx::Error::Migrate(Box::new(error)))?;
 
     if let Ok(mut guard) = POOL.lock() {
         *guard = Some(pool.clone());
