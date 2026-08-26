@@ -75,10 +75,10 @@ pub async fn upload_to_storage(
     let client = Client::new();
     let response = client
         .post(&url)
-        .header("apikey", &config.supabase_service_key)
+        .header("apikey", &config.supabase_publishable_key)
         .header(
             "Authorization",
-            format!("Bearer {}", config.supabase_service_key),
+            format!("Bearer {}", config.access_token),
         )
         .header("Content-Type", mime_type)
         .header("x-upsert", "true")
@@ -120,10 +120,10 @@ pub async fn delete_from_storage(
     let client = Client::new();
     let response = client
         .delete(&url)
-        .header("apikey", &config.supabase_service_key)
+        .header("apikey", &config.supabase_publishable_key)
         .header(
             "Authorization",
-            format!("Bearer {}", config.supabase_service_key),
+            format!("Bearer {}", config.access_token),
         )
         .send()
         .await
