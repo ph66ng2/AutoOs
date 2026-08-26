@@ -24,10 +24,10 @@ export function powerSyncDb(): PowerSyncDatabase {
 export class SupabaseConnector implements PowerSyncBackendConnector {
   async fetchCredentials(): Promise<PowerSyncCredentials | null> {
     const config = await tauriDb.carregarConfigStorage();
-    if (config?.supabase_url && config?.supabase_service_key) {
+    if (config?.supabase_url && config?.access_token) {
       return {
         endpoint: `${config.supabase_url}/rest/v1`,
-        token: config.supabase_service_key,
+        token: config.access_token,
       };
     }
 
@@ -42,10 +42,11 @@ export class SupabaseConnector implements PowerSyncBackendConnector {
 
     const config = await tauriDb.carregarConfigStorage();
     const supabaseUrl = config?.supabase_url;
-    const supabaseKey = config?.supabase_service_key;
+    const supabaseKey = config?.supabase_publishable_key;
+    const accessToken = config?.access_token;
 
-    if (!supabaseUrl || !supabaseKey) {
-      throw new Error("Supabase credentials not configured");
+    if (!supabaseUrl || !supabaseKey || !accessToken) {
+      throw new Error("Supabase session credentials not configured");
     }
 
     try {
@@ -61,7 +62,7 @@ export class SupabaseConnector implements PowerSyncBackendConnector {
             method: "PATCH",
             headers: {
               apikey: supabaseKey,
-              Authorization: `Bearer ${supabaseKey}`,
+              Authorization: `Bearer ${accessToken}`,
               "Content-Type": "application/json",
               Prefer: "resolution=merge-duplicates",
             },
@@ -72,7 +73,7 @@ export class SupabaseConnector implements PowerSyncBackendConnector {
             method: "DELETE",
             headers: {
               apikey: supabaseKey,
-              Authorization: `Bearer ${supabaseKey}`,
+              Authorization: `Bearer ${accessToken}`,
             },
           });
         }
