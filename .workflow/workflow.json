@@ -33,6 +33,90 @@
   },
   "tickets": [
     {
+      "id": "AO-CNPJ-001",
+      "title": "Autofill de cadastro por CNPJ via BrasilAPI",
+      "status": "merged",
+      "blockedBy": [],
+      "objective": "Adicionar consulta manual e segura de dados de pessoa jurídica no formulário compartilhado de clientes, preservando o cadastro manual e sem alterar a persistência.",
+      "context": "Os fluxos de novo cliente, edição de cliente e novo cliente dentro do cadastro de equipamento compartilham ClienteFormularioCampos. O operador precisa de uma consulta auxiliar por CNPJ completo e válido para reduzir digitação, sem sobrescrever dados já informados ou salvar automaticamente.",
+      "expectedBehavior": "Ao clicar na lupa ao lado de CPF/CNPJ com um CNPJ matematicamente válido, o app consulta a BrasilAPI com timeout, cache de sessão e tratamento de falhas, preenche apenas campos vazios, informa a situação cadastral e mantém o formulário editável para revisão e salvamento manual.",
+      "scope": [
+        "Criar serviço tipado e substituível em torno de GET https://brasilapi.com.br/api/cnpj/v1/{cnpj}, com DTO bruto privado e resultado normalizado.",
+        "Validar localmente CNPJ e dígitos verificadores antes da chamada, aplicar timeout aproximado de oito segundos, impedir chamadas simultâneas e manter cache em memória por CNPJ na sessão.",
+        "Adicionar lupa acessível e spinner no campo CPF/CNPJ do ClienteFormularioCampos, habilitada somente para CNPJ válido e integrada automaticamente aos três fluxos compartilhados.",
+        "Preencher somente controles vazios, ignorar valores ausentes, aplicar máscaras atuais de telefone e CEP, marcar campos como alterados e disparar validação.",
+        "Exibir confirmação acessível da situação cadastral, com sucesso para ativa e aviso para demais situações, sem bloquear o salvamento manual.",
+        "Preservar valores digitados em falhas/offline, limpar o resultado ao alterar o CNPJ, corrigir a duplicação visual de Complemento e liberar o domínio da BrasilAPI na CSP do Tauri.",
+        "Adicionar testes unitários do serviço e do formulário compartilhado, sem alterar banco, schema, payload de persistência ou fluxo offline."
+      ],
+      "outOfScope": [
+        "Consulta automática ao digitar, sair do campo ou pressionar Enter.",
+        "Consulta de CPF, preenchimento de inscrição estadual ou armazenamento da situação cadastral no banco.",
+        "Salvar automaticamente o cliente ou sobrescrever qualquer valor digitado pelo operador.",
+        "Credenciais, segredo embarcado, proxy próprio ou troca futura de provedor.",
+        "Alterações de migrations, comandos Rust, schema de clientes ou payloads de persistência."
+      ],
+      "acceptanceCriteria": [
+        "A lupa é acessível, tem tooltip/nome Buscar dados do CNPJ, mantém suas dimensões durante o spinner e fica indisponível para CPF ou CNPJ inválido.",
+        "Uma consulta válida normaliza razão social, nome fantasia, telefone, e-mail, CEP, logradouro, número, complemento, bairro, cidade, UF e situação cadastral.",
+        "Campos não vazios são preservados; campos vazios retornados são preenchidos com máscaras de telefone/CEP, ficam marcados como alterados e passam por validação.",
+        "Chamadas inválidas não chegam à rede; chamadas simultâneas são bloqueadas; uma mesma consulta é atendida pelo cache em memória da sessão.",
+        "Respostas 400, 404, 429, 5xx, timeout e erro de rede são mapeadas para códigos conhecidos e deixam o formulário manualmente editável.",
+        "A situação ativa aparece como sucesso; baixada, inapta, suspensa ou outra aparece como aviso; nenhuma delas impede o salvamento manual.",
+        "Alterar o CNPJ remove a situação/resultado anterior e a consulta nunca dispara salvamento.",
+        "O cadastro novo, a edição e o cadastro rápido em equipamento usam o mesmo comportamento por meio de ClienteFormularioCampos, com apenas um controle de Complemento.",
+        "A CSP do Tauri permite conexão com https://brasilapi.com.br e os checks direcionados, lint e suíte frontend passam."
+      ],
+      "tests": [
+        "Testes do serviço com fetch simulado: normalização completa, campos opcionais ausentes, CNPJ inválido sem HTTP, 400/404/429/5xx, timeout, rede e cache.",
+        "Testes do ClienteFormularioCampos: habilitação, spinner/bloqueio, preenchimento seletivo, máscaras, situação não ativa, falha, limpeza ao alterar CNPJ e ausência de salvamento.",
+        "npm run lint.",
+        "npm run test:run.",
+        "Verificação manual dos três contextos com CNPJ público de exemplo da documentação, sem concluir nem persistir o cadastro."
+      ],
+      "testInstructions": {
+        "prerequisites": [
+          "Usar a worktree própria criada de origin/feature para AO-CNPJ-001, com Node/npm e dependências do package-lock disponíveis.",
+          "Usar fetch, timers e Tauri mockados nos testes automatizados; não exigir PostgreSQL nem credenciais externas.",
+          "Para a verificação manual, usar somente um CNPJ público de exemplo da documentação da BrasilAPI e iniciar o app em ambiente local de desenvolvimento."
+        ],
+        "steps": [
+          "Executar npx vitest run nos testes direcionados do serviço e de ClienteFormularioCampos.",
+          "Executar npm run lint e npm run test:run.",
+          "Iniciar o app localmente, abrir novo cliente, edição de cliente e novo cliente dentro de equipamento; confirmar lupa, consulta manual, preenchimento e mensagens sem submeter os formulários.",
+          "Nos testes manuais, preencher previamente alguns campos, consultar o CNPJ de exemplo, alterar o CNPJ depois da resposta e simular falha/offline para conferir preservação e limpeza."
+        ],
+        "expectedResultAndEvidence": [
+          "Os testes comprovam ausência de HTTP para CNPJ inválido, cache, timeout/erros, bloqueio de concorrência e mapeamento dos campos normalizados.",
+          "Lint e suíte passam sem migrations, banco ou comandos Rust alterados.",
+          "Capturas ou registro sanitizado mostram o mesmo controle nos três contextos, preenchimento apenas de vazios, máscaras, situação ativa/não ativa e formulário ainda editável.",
+          "A evidência confirma que nenhuma consulta chamou a rotina de salvar e que um único campo Complemento é renderizado."
+        ],
+        "dataImpact": "Somente leitura no código e consulta a endpoint público; testes automatizados usam mocks e a verificação manual não deve persistir cliente, equipamento ou qualquer outro dado.",
+        "cleanupAndRollback": [
+          "Cancelar os três formulários manuais sem salvar e remover apenas artefatos temporários de teste local.",
+          "Não executar comandos de banco, criar dados operacionais, registrar credenciais ou fazer deploy/promoção durante a validação.",
+          "Se houver falha, reverter somente os arquivos do ticket na worktree própria, preservando alterações de outros tickets ou do usuário."
+        ],
+        "stagingRestrictions": "É proibido usar dados reais, credenciais internas, clientes/equipamentos operacionais ou endpoints de produção; qualquer validação externa deve usar somente o endpoint público e dados sintéticos de staging."
+      },
+      "likelyFiles": [
+        "src/lib/cnpj-service.ts",
+        "src/lib/cnpj-service.test.ts",
+        "src/components/clientes/ClienteFormularioCampos.tsx",
+        "src/components/clientes/ClienteFormularioCampos.test.tsx",
+        "src/lib/validations.ts",
+        "src-tauri/tauri.conf.json"
+      ],
+      "risks": [
+        "Mapear campos da BrasilAPI de forma incorreta ou apagar dados digitados.",
+        "Aceitar CNPJ inválido, disparar consultas duplicadas ou deixar uma resposta antiga aparecer após a troca do documento.",
+        "Quebrar a integração dos três fluxos compartilhados, máscaras, dirty state ou validação do React Hook Form.",
+        "Permitir que timeout, offline ou limite do provedor bloqueie o cadastro manual.",
+        "Liberar a origem na CSP de forma ampla ou introduzir dependência de credenciais no cliente."
+      ]
+    },
+    {
       "id": "AO-PDF-001",
       "title": "Padronizar PDFs monocromáticos do AutoOS",
       "status": "merged",
