@@ -1364,6 +1364,88 @@
       ]
     },
     {
+      "id": "AO-HOTFIX-001",
+      "title": "Restaurar inicialização do release com Supabase",
+      "status": "merged",
+      "blockedBy": [],
+      "objective": "Eliminar o bloqueio de inicialização do AutoOS 0.3.4 em redes IPv4 e impedir reaplicações concorrentes de migrações sobre o schema Supabase existente.",
+      "context": "O release usa o endpoint PostgreSQL direto do Supabase, disponível por IPv6, e bloqueia o setup da janela enquanto conecta. O projeto de produção também possui o schema completo com public._sqlx_migrations vazio; cada abertura tenta reaplicar migrações, encontra constraints existentes e disputa o advisory lock do sqlx. O release ainda empacota um .env versionado com credenciais sensíveis.",
+      "expectedBehavior": "O app limita o tempo de conexão, abre em modo de configuração quando o banco está indisponível, não reaplica nem trunca migrações em um schema legado reconhecido e o pipeline de release usa uma URL de pooler de sessão fornecida por secret sem versionar ou empacotar o .env.",
+      "scope": [
+        "Adicionar timeout explícito e pool PostgreSQL dimensionado para cliente desktop, preservando TLS e erro acionável.",
+        "Detectar de forma somente leitura o schema legado completo com histórico sqlx vazio e pular a reaplicação automática nesse caso.",
+        "Remover o TRUNCATE automático de public._sqlx_migrations e nunca continuar silenciosamente após erro de migração em banco parcialmente inicializado.",
+        "Garantir que falha de conexão/migração libere a janela em modo de configuração com mensagem clara.",
+        "Remover src-tauri/.env do versionamento e do bundle, impedir secrets no artefato de recursos e receber a URL runtime do pooler de sessão por secret no build de release.",
+        "Adicionar testes Rust direcionados para banco novo, schema legado reconhecido, schema parcial e falha/timeout de conexão, usando apenas PostgreSQL descartável.",
+        "Atualizar documentação operacional e de release com Supavisor session mode para redes IPv4 e rotação obrigatória das credenciais expostas no 0.3.4."
+      ],
+      "outOfScope": [
+        "Rotacionar automaticamente senha, service role, JWT secret ou token PowerSync em produção.",
+        "Alterar dados operacionais, RLS, tabelas de domínio ou constraints existentes.",
+        "Migrar o aplicativo inteiro para Data API/SDK Supabase neste hotfix.",
+        "Promover para master, criar release ou alterar o banco de produção sem decisão humana."
+      ],
+      "acceptanceCriteria": [
+        "Uma conexão inalcançável retorna dentro do timeout configurado e o frontend pode abrir em modo de configuração.",
+        "Schema vazio executa as migrações normalmente; schema legado completo com histórico vazio inicia sem executar DDL nem adquirir repetidamente o lock de migração.",
+        "Schema parcial ou erro real de migração é reportado e nunca provoca TRUNCATE de public._sqlx_migrations.",
+        "src-tauri/.env deixa de ser rastreado e empacotado, e o workflow exige uma DATABASE_URL de release fornecida por secret.",
+        "A documentação exige Supavisor session mode na porta 5432 para clientes persistentes em redes IPv4.",
+        "cargo check, clippy e os testes direcionados passam em banco PostgreSQL descartável, sem tocar produção."
+      ],
+      "tests": [
+        "cargo check --manifest-path src-tauri/Cargo.toml.",
+        "cargo clippy --manifest-path src-tauri/Cargo.toml -- -W warnings.",
+        "Testes Rust direcionados de resolução de configuração, timeout e decisão de migração contra PostgreSQL descartável.",
+        "npm run lint.",
+        "Inspeção do bundle/config para confirmar ausência de src-tauri/.env e de valores de secret versionados."
+      ],
+      "testInstructions": {
+        "prerequisites": [
+          "Usar worktree exclusiva criada de origin/feature para AO-HOTFIX-001.",
+          "Usar PostgreSQL local ou staging descartável sem dados reais; não executar testes destrutivos no projeto Supabase autoos.",
+          "Usar URLs e credenciais sintéticas nos testes e mascarar qualquer endpoint operacional em evidências."
+        ],
+        "steps": [
+          "Executar os testes direcionados com banco vazio e confirmar aplicação normal das migrações.",
+          "Criar schema legado sintético com histórico vazio e confirmar startup sem DDL; criar schema parcial e confirmar erro explícito sem TRUNCATE.",
+          "Simular host inalcançável e verificar retorno dentro do timeout e disponibilidade do modo de configuração.",
+          "Executar cargo check, clippy, npm run lint e verificar arquivos rastreados/configuração de bundle e workflow."
+        ],
+        "expectedResultAndEvidence": [
+          "Registrar tempos de conexão, decisões de migração e erros sanitizados para os três estados de schema.",
+          "Registrar que nenhum teste acessou ou alterou o Supabase autoos de produção.",
+          "Guardar saídas dos checks e lista sanitizada dos recursos do bundle sem .env."
+        ],
+        "dataImpact": "Somente leitura no Supabase de produção; testes criam e removem apenas schemas ou bancos sintéticos descartáveis locais/staging.",
+        "cleanupAndRollback": [
+          "Remover bancos, schemas e credenciais sintéticos de teste.",
+          "Não apagar nem preencher public._sqlx_migrations em produção durante este ticket.",
+          "Reverter apenas os arquivos do ticket na worktree se qualquer cenário de segurança ou startup falhar."
+        ],
+        "stagingRestrictions": "É proibido usar dados, dumps, senhas, service role, tokens ou endpoints internos reais nos testes; produção permanece somente leitura."
+      },
+      "likelyFiles": [
+        "src-tauri/src/db.rs",
+        "src-tauri/src/main.rs",
+        "src-tauri/build.rs",
+        "src-tauri/tauri.conf.json",
+        ".github/workflows/build.yml",
+        ".gitignore",
+        "README.md",
+        "docs/RELEASE.md",
+        "src-tauri/src/bin/*"
+      ],
+      "risks": [
+        "Classificar um schema parcial como legado completo e ocultar uma migração necessária.",
+        "Quebrar bancos novos ao pular migrações indevidamente.",
+        "Gerar release sem a secret da URL do pooler ou com endpoint direto IPv6.",
+        "Rotacionar credenciais sem coordenar e interromper máquinas ainda instaladas.",
+        "Manter credenciais privilegiadas extraíveis do binário mesmo após removê-las do repositório."
+      ]
+    },
+    {
       "id": "AO-PS-008",
       "title": "Go/No-Go SaaS por planos Online e Offline",
       "status": "ready",
