@@ -33,6 +33,87 @@
   },
   "tickets": [
     {
+      "id": "AO-PDF-001",
+      "title": "Padronizar PDFs monocromáticos do AutoOS",
+      "status": "review",
+      "blockedBy": [],
+      "objective": "Redesenhar os quatro PDFs operacionais com um padrão monocromático econômico, mantendo conteúdo, anexos e contratos atuais.",
+      "context": "Os PDFs de orçamento técnico, orçamento ajustado, ordem de serviço e relatório de status compartilham cabeçalho e rodapé, mas hoje usam preenchimentos escuros, cores divergentes e dependência de asset público para partes do documento.",
+      "expectedBehavior": "Os quatro geradores usam o mesmo cabeçalho branco de três áreas, estilos centralizados em preto/cinza, logo monocromática embutida, rodapé textual com paginação e preservam todos os dados e anexos atuais.",
+      "scope": [
+        "Evoluir o helper de cabeçalho para título, número da OS, rótulo da data e data formatada.",
+        "Aplicar o novo cabeçalho aos quatro geradores, usando Emissão nos orçamentos e Entrada na OS/relatório.",
+        "Centralizar estilos monocromáticos para tabelas, títulos, totais, condições comerciais e rodapé.",
+        "Adicionar uma versão preta da logo com transparência, assinatura e QR legíveis, compatível com o build Tauri sem depender de URL pública.",
+        "Manter conteúdo comercial, versão ajustada, histórico, observações, técnico, anexos fotográficos e assinaturas públicas.",
+        "Atualizar testes unitários e gerar amostras sintéticas renderizadas para verificação visual."
+      ],
+      "outOfScope": [
+        "Autofill ou alteração de CNPJ.",
+        "Alteração de banco, migrations, comandos Rust de salvamento ou nomes padrão de arquivos.",
+        "Inclusão de prioridade, forma de pagamento ou novos campos de negócio.",
+        "Alteração do fluxo de upload, armazenamento ou categorias de fotografias."
+      ],
+      "acceptanceCriteria": [
+        "Os quatro PDFs compartilham o mesmo padrão visual branco, preto/cinza e sem blocos escuros preenchidos.",
+        "O cabeçalho mostra logo à esquerda, dados da empresa ao centro e tipo, OS e data à direita, sem duplicar OS/data no corpo.",
+        "Orçamentos exibem Emissão; ordem de serviço e relatório exibem Entrada.",
+        "O rodapé textual contém AutoOS, data/hora de geração, número da OS e Página X/Y em todas as páginas.",
+        "As tabelas, totais, condições comerciais e textos vermelhos permanecem legíveis em monocromático.",
+        "Anexos fotográficos continuam em páginas próprias, até duas imagens por página, sem deformação, com categoria, nome e legenda.",
+        "Testes unitários cobrem os quatro geradores, preservação de conteúdo, ausência de prioridade/forma de pagamento, remoção de duplicatas, rodapé e anexos.",
+        "Amostras sintéticas são geradas em /tmp, renderizadas e inspecionadas sem dados operacionais."
+      ],
+      "tests": [
+        "npm run lint.",
+        "Testes direcionados de src/lib/pdf-service.test.ts e src/lib/__tests__/pdf-service-ajustado.test.ts.",
+        "npm run test:run.",
+        "Gerar amostras sintéticas dos quatro documentos, incluindo textos longos, muitas linhas, versão ajustada, fotografias e múltiplas páginas.",
+        "Renderizar as amostras com Poppler e inspecionar cabeçalho, tabelas, rodapé, paginação, logo, QR e fotografias."
+      ],
+      "testInstructions": {
+        "prerequisites": [
+          "Usar worktree criada de origin/feature para o ticket AO-PDF-001.",
+          "Usar Node/npm instalados e dependências do package-lock disponíveis; não exigir PostgreSQL ou dados operacionais.",
+          "Usar somente equipamentos, textos, imagens e datas sintéticos nos testes de PDF."
+        ],
+        "steps": [
+          "Executar npm run lint.",
+          "Executar npx vitest run src/lib/pdf-service.test.ts src/lib/__tests__/pdf-service-ajustado.test.ts.",
+          "Executar npm run test:run.",
+          "Gerar os cenários sintéticos em /tmp/pdfs e executar pdftoppm -png nos PDFs produzidos.",
+          "Inspecionar visualmente as páginas renderizadas e registrar evidência dos quatro geradores, dos anexos e da paginação."
+        ],
+        "expectedResultAndEvidence": [
+          "Lint e testes passam sem alterar banco nem comandos Rust.",
+          "Asserções comprovam cabeçalho, datas, OS, conteúdo atual, ausência de prioridade/forma de pagamento, rodapé em todas as páginas e anexos com legenda.",
+          "As imagens renderizadas mostram fundo branco, ausência de preenchimentos escuros, logo preta legível, QR preservado, alinhamento sem cortes e fotografias sem deformação.",
+          "Guardar apenas evidência sanitizada e caminhos temporários locais; não incluir dados operacionais."
+        ],
+        "dataImpact": "Somente leitura no código e criação de PDFs/fixtures sintéticos temporários em /tmp; nenhum dado persistente é alterado.",
+        "cleanupAndRollback": [
+          "Remover ou deixar expirar somente os PDFs e PNGs sintéticos em /tmp/pdfs após a inspeção.",
+          "Não executar comandos de banco, salvamento operacional ou promoção/merge durante a validação.",
+          "Reverter apenas os arquivos do ticket se os checks ou a inspeção visual falharem."
+        ],
+        "stagingRestrictions": "É proibido usar dados reais, credenciais internas, clientes, equipamentos ou imagens operacionais; a validação deve permanecer local e sintética."
+      },
+      "likelyFiles": [
+        "src/lib/pdf-service.ts",
+        "src/lib/pdf-service.test.ts",
+        "src/lib/__tests__/pdf-service-ajustado.test.ts",
+        "src/lib/logo-monochrome-base64.ts",
+        "src/test/setup.ts",
+        "/tmp/pdfs/*"
+      ],
+      "risks": [
+        "Remover número/data do corpo sem transferir algum significado atual para o cabeçalho.",
+        "Aplicar monocromatização destrutiva e perder transparência, assinatura ou legibilidade do QR.",
+        "Rodapé ou anexos serem omitidos em páginas criadas por autoTable ou por fotos.",
+        "Textos longos ou tabelas extensas sobreporem o rodapé ou quebrarem a paginação."
+      ]
+    },
+    {
       "id": "AO-PS-001",
       "title": "Confirmar baseline interno Supabase",
       "status": "merged",
