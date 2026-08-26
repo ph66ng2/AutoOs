@@ -18,6 +18,7 @@ pub mod equipamentos;
 pub mod equipamento_imagens;
 pub mod photo_server;
 pub mod clientes;
+pub mod cnpj;
 pub mod produtos;
 pub mod servicos;
 pub mod verificacoes;
