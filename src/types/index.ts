@@ -97,6 +97,9 @@ export const STATUS_COLORS: Record<StatusEquipamento, string> = {
 
 // ─── Interfaces ─────────────────────────────────────────
 
+/** O baseline interno usa serial numérico; o SaaS usa UUID. */
+export type ClienteId = number | string;
+
 /**
  * Equipamento em manutenção. Espelha a struct Rust `Equipamento` em commands.rs
  * e a tabela PostgreSQL `equipamentos` (migrações em src-tauri/migrations).
@@ -125,7 +128,7 @@ export interface Equipamento {
   preco_venda?: number;
   observacoes?: string;
   // Dados do cliente
-  cliente_id?: number;
+  cliente_id?: ClienteId;
   cliente_nome?: string;
   cliente_documento?: string;
   cliente_telefone?: string;
@@ -206,8 +209,8 @@ export interface EquipamentoImagemInput {
  * Usado por: useClientes hook, Clientes.tsx, ClienteSelector.tsx, Equipamentos.tsx
  */
 export interface Cliente {
-  id?: number;
-  empresa_id?: number;
+  id?: ClienteId;
+  empresa_id?: number | string;
   nome?: string;
   tipo_pessoa?: string;        // PF ou PJ
   documento?: string;          // CPF ou CNPJ (sem máscara)

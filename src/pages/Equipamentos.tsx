@@ -376,7 +376,7 @@ export default function Equipamentos() {
     setResponsavelVinculado(eq.responsavel_contato_id ? {
       id: eq.responsavel_contato_id,
       empresa_id: eq.empresa_id || 0,
-      cliente_id: eq.cliente_id || 0,
+      cliente_id: typeof eq.cliente_id === "number" ? eq.cliente_id : 0,
       nome: eq.responsavel_nome || "Responsável pelo equipamento",
       email: eq.responsavel_email,
       telefone: eq.responsavel_telefone,
@@ -1942,7 +1942,7 @@ export default function Equipamentos() {
               />
               <ContatoResponsavelSelector
                 cliente={clienteVinculado}
-                empresaId={clienteVinculado?.empresa_id || editando?.empresa_id}
+                empresaId={typeof clienteVinculado?.empresa_id === "number" ? clienteVinculado.empresa_id : editando?.empresa_id}
                 value={responsavelVinculado}
                 onChange={setResponsavelVinculado}
                 disabled={salvando}
