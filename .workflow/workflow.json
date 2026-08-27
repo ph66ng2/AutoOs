@@ -1233,7 +1233,7 @@
     {
       "id": "AO-PHOTO-003",
       "title": "Integrar QR cloud ao equipamento e preservar fallback local",
-      "status": "ready",
+      "status": "in_progress",
       "blockedBy": [
         "AO-PHOTO-001",
         "AO-PHOTO-002"
@@ -1299,69 +1299,193 @@
     },
     {
       "id": "AO-PHOTO-004",
-      "title": "Validar PDF com fotos cloud e retirar fluxo LAN",
+      "title": "Unificar compressão e normalização de fotos",
       "status": "ready",
       "blockedBy": [
         "AO-PHOTO-003"
       ],
-      "objective": "Confirmar que fotos cloud aparecem corretamente no PDF e remover o servidor LAN somente após validação completa do novo fluxo e do fallback local.",
-      "context": "O PDF é parte crítica do processo. A retirada do fluxo LAN é irreversível para o uso diário se feita antes de validar uploads mobile, equipamentos novos/existentes e seleção local.",
-      "expectedBehavior": "O PDF pré-valida as imagens incorporadas, informa falhas de forma explícita e o código LAN é removido apenas quando os cenários aprovados estiverem evidenciados.",
+      "objective": "Aplicar a mesma política de otimização a fotos do celular e arquivos locais antes de qualquer persistência ou upload.",
+      "context": "O plano Free não oferece Image Transformations e possui quota limitada. O original da câmera não deve ser armazenado; toda entrada precisa ser normalizada no AutoOS para reduzir banco, Storage e egress sem perder legibilidade de etiquetas e defeitos.",
+      "expectedBehavior": "JPEG, PNG e fotos com orientação EXIF produzem JPEG sem metadados, corretamente orientado, com maior lado de até 1600 px, alvo de 300–350 KB e limite absoluto de 600 KB.",
       "scope": [
-        "Adicionar preflight de imagens no caminho de geração do PDF e mensagens claras para imagem ausente ou inválida.",
-        "Executar e registrar matriz QR Android/iPhone, equipamento novo/existente, fallback local e PDF.",
-        "Após aprovação dos cenários, remover comandos, dependências e UI exclusivos do servidor LAN e atualizar documentação."
+        "Criar rotina compartilhada de normalização usada pelo upload móvel e pelo seletor de arquivos do desktop.",
+        "Corrigir orientação EXIF, remover metadados, aplicar fundo branco a PNG transparente e gerar JPEG.",
+        "Redimensionar o maior lado para no máximo 1600 px e reduzir qualidade de 78% até 65% quando necessário.",
+        "Buscar 300–350 KB, rejeitar resultado acima de 600 KB e calcular tamanho por Blob.size.",
+        "Enviar ao staging somente a versão otimizada e manter o limite de seis fotos.",
+        "Após validação, reduzir o limite do bucket temporário para 1 MB."
       ],
       "outOfScope": [
-        "Alterar o desenho visual do PDF sem necessidade de compatibilidade.",
-        "Remover seleção por arquivo local.",
-        "Promover para master ou produção sem merge humano."
+        "Criar o bucket definitivo ou alterar storage_path.",
+        "Migrar fotos existentes.",
+        "Alterar PDF, cache offline ou remover o servidor LAN."
       ],
       "acceptanceCriteria": [
-        "PDF inclui fotos recebidas pelo QR para equipamento novo e existente.",
-        "Falha de imagem é comunicada antes de gerar documento incompleto silenciosamente.",
-        "Fallback por arquivo local permanece funcional.",
-        "Servidor LAN é removido somente após evidência da matriz completa."
+        "Celular e arquivo local produzem resultados equivalentes pela mesma política.",
+        "Orientação e transparência são corrigidas e EXIF não permanece no JPEG final.",
+        "Nenhuma imagem otimizada ultrapassa 600 KB e etiquetas/defeitos continuam legíveis.",
+        "tamanho_bytes corresponde ao Blob real e o original nunca chega ao Storage."
       ],
       "tests": [
         "npm run lint, npm run test:run e cd src-tauri && cargo check.",
-        "Geração e inspeção visual de PDF com imagens cloud e locais sintéticas.",
-        "Matriz manual QR Android/iPhone, novo/existente e fallback local antes e após remoção LAN."
+        "JPEG horizontal, vertical e com orientação EXIF; PNG transparente; foto de etiqueta e defeito detalhado.",
+        "Comparação entre upload móvel e arquivo desktop e asserções de dimensões, MIME e tamanho."
       ],
       "testInstructions": {
         "prerequisites": [
-          "Aguardar AO-PHOTO-003 mesclado e obter aprovação humana explícita antes de remover o servidor LAN.",
-          "Usar apenas staging/local e imagens sintéticas para os PDFs de validação."
+          "Aguardar AO-PHOTO-003 mesclado e usar somente imagens sintéticas sem dados reais.",
+          "Usar Supabase staging para validar o objeto enviado; nunca produção."
         ],
         "steps": [
-          "Executar lint, testes frontend e cargo check.",
-          "Gerar PDFs para fotos QR e locais em equipamento novo e existente, renderizando-os para inspeção visual.",
-          "Executar a matriz em Android e iPhone e registrar evidências; somente então remover o fluxo LAN se houver autorização."
+          "Executar os checks automatizados e a matriz de formatos/orientações.",
+          "Enviar a mesma imagem pelo celular e pelo desktop e comparar metadados e aparência.",
+          "Confirmar no staging que apenas JPEG otimizado foi armazenado e então aplicar limite de 1 MB ao bucket temporário."
         ],
         "expectedResultAndEvidence": [
-          "Guardar PDFs sintéticos renderizados, saídas dos checks e checklist assinado da matriz.",
-          "Confirmar mensagem explícita ao simular uma imagem inválida ou indisponível."
+          "Registrar dimensões, Blob.size, qualidade final e redução obtida por arquivo.",
+          "Guardar amostras sintéticas antes/depois e evidência de ausência do original no staging."
         ],
-        "dataImpact": "Cria PDFs, sessões, objetos e equipamentos sintéticos descartáveis; a remoção de código não altera dados persistentes.",
+        "dataImpact": "Cria somente objetos temporários sintéticos no staging, removidos após os testes.",
         "cleanupAndRollback": [
-          "Excluir PDFs e fixtures sintéticos e reter apenas evidência sanitizada.",
-          "Se qualquer cenário falhar, não remover LAN e restaurar o código de preflight incompleto antes de nova tentativa."
+          "Apagar objetos e sessões sintéticos depois de registrar as evidências.",
+          "Não reduzir o limite do bucket se qualquer cliente ainda produzir arquivo acima de 600 KB."
         ],
-        "stagingRestrictions": "Não usar PDFs, fotos, clientes, equipamentos ou credenciais reais; não fazer deploy ou promoção sem aprovação humana."
+        "stagingRestrictions": "Somente projeto e credenciais de staging; nenhuma foto, empresa ou equipamento real."
       },
       "likelyFiles": [
-        "src/lib/pdf-service.ts",
+        "src/lib/image-processing.ts",
         "src/pages/Equipamentos.tsx",
         "src/components/equipamentos/PhotoUploadDialog.tsx",
-        "src-tauri/src/commands/photo_server.rs",
-        "src-tauri/src/main.rs",
-        "docs/*"
+        "mobile-photo-uploader/*",
+        "supabase/functions/photo-upload/*"
       ],
       "risks": [
-        "Gerar PDF incompleto sem sinalização.",
-        "Remover LAN antes de o cloud/fallback estar comprovado.",
-        "Confundir renderização em teste com compatibilidade no aplicativo desktop."
+        "Perder legibilidade ao comprimir etiquetas pequenas.",
+        "Aplicar orientação EXIF duas vezes ou gerar fundo preto em PNG transparente.",
+        "Ter políticas diferentes entre celular e desktop."
       ]
+    },
+    {
+      "id": "AO-PHOTO-005",
+      "title": "Promover fotos para Storage definitivo sem Base64",
+      "status": "ready",
+      "blockedBy": [
+        "AO-PHOTO-004",
+        "AO-PS-004"
+      ],
+      "objective": "Guardar fotos definitivas exclusivamente em Storage privado e persistir no PostgreSQL apenas metadados e chaves imutáveis.",
+      "context": "O fluxo provisório devolve bytes ao frontend e admite Data URL em storage_path. A persistência definitiva precisa ser tenant-safe, idempotente e não distribuir service_role ao desktop, QR ou Vercel.",
+      "expectedBehavior": "Cada equipamento_imagens aponta para exatamente um objeto privado em equipment-photos; finalizações repetidas não duplicam registros e nenhuma Data URL é aceita.",
+      "scope": [
+        "Criar bucket privado equipment-photos e migration sequencial com checksum_sha256 e constraint contra data:.",
+        "Definir caminhos imutáveis empresa/equipamento/categoria/uuid.jpg e metadados do JPEG otimizado.",
+        "Separar token de upload enviado ao celular do token de finalização mantido apenas no desktop.",
+        "Promover objetos temporários server-side via Edge Function após validar sessão, tenant, equipamento e categoria.",
+        "Manter rascunhos em UPLOADED até existir equipamento_id e finalizar existentes imediatamente.",
+        "Redesenhar substituir_imagens_equipamento para preservar existentes, inserir novas e enfileirar removidas."
+      ],
+      "outOfScope": [
+        "Cache offline, resolução para PDF e limpeza periódica.",
+        "Migração dos registros Base64 existentes.",
+        "Expor bucket, signed URL permanente ou service_role no cliente."
+      ],
+      "acceptanceCriteria": [
+        "storage_path contém somente chave de objeto privado e rejeita data:/URL pública.",
+        "Finalização é idempotente e checksum evita duplicação da mesma operação.",
+        "Equipamento novo e existente promovem fotos sem perder associação ou categoria.",
+        "Nenhuma credencial privilegiada aparece no desktop, uploader, logs ou respostas."
+      ],
+      "tests": [
+        "npm run lint, npm run test:run e cd src-tauri && cargo check.",
+        "Integração staging para novo/existente, retry, tenant cruzado e finalização idempotente.",
+        "Varredura de banco, bundle e logs contra data: e service_role."
+      ],
+      "testInstructions": {
+        "prerequisites": ["AO-PHOTO-004 e AO-PS-004 mesclados; bucket e credenciais exclusivos de staging."],
+        "steps": ["Testar promoção imediata e pós-cadastro, retries e tentativa entre tenants.", "Consultar equipamento_imagens e Storage para comparar cardinalidade, checksum e caminhos."],
+        "expectedResultAndEvidence": ["Registrar IDs sintéticos, respostas idempotentes e prova de um registro para um objeto.", "Confirmar ausência de Base64, URLs públicas e segredos."],
+        "dataImpact": "Cria objetos, sessões e equipamentos sintéticos somente no staging.",
+        "cleanupAndRollback": ["Apagar fixtures pela API do Storage e migrations apenas em ambiente descartável.", "Não alterar registros operacionais nem executar backfill."],
+        "stagingRestrictions": "Nunca usar produção, dados reais ou segredo fora da Edge Function."
+      },
+      "likelyFiles": ["src-tauri/migrations/*", "src-tauri/src/commands/equipamento_imagens.rs", "src-tauri/src/commands/photo_upload_sessions.rs", "supabase/functions/photo-upload/*", "supabase/storage/*"],
+      "risks": ["Perder foto ao promover antes de criar equipamento.", "Duplicar objetos em retry.", "Vazar service_role ou permitir acesso entre tenants."]
+    },
+    {
+      "id": "AO-PHOTO-006",
+      "title": "Resolver fotos privadas, PDF, offline e limpeza",
+      "status": "ready",
+      "blockedBy": ["AO-PHOTO-005"],
+      "objective": "Unificar leitura privada para preview, exportação e PDF, com cache offline e limpeza segura de temporários e exclusões.",
+      "context": "Após remover Base64 do banco, todos os consumidores precisam resolver bytes em memória sem quebrar o PDF ou o uso offline, enquanto temporários e objetos removidos devem liberar espaço.",
+      "expectedBehavior": "Preview, exportação e PDF usam storage_path+checksum; online baixam com acesso tenant-safe, offline usam cache LRU de até 250 MB e falham de modo explícito quando não há cache.",
+      "scope": [
+        "Criar resolvedor compartilhado para preview, exportação e PDF sem persistir Base64.",
+        "Implementar cache local LRU de até 250 MB por storage_path+checksum.",
+        "Apagar temporário após promoção e limpar expirada/cancelada, não finalizada após uma hora e órfãos via Cron/Edge Function.",
+        "Remover metadados de sessões concluídas após sete dias.",
+        "Criar fila idempotente de exclusão definitiva e usar apenas a API do Storage.",
+        "Validar PDF cloud/local e somente após a matriz aprovada retirar o servidor LAN, preservando arquivo local."
+      ],
+      "outOfScope": ["Migrar fotos antigas em Base64.", "Apagar fotos definitivas ainda vinculadas.", "Alterar o layout visual do PDF sem necessidade de compatibilidade."],
+      "acceptanceCriteria": ["Preview, exportação e PDF funcionam online com objetos privados.", "Foto em cache funciona offline e ausência de cache gera aviso acionável.", "Temporários/órfãos e exclusões confirmadas liberam espaço de forma idempotente.", "LAN só é removida após evidência completa; seleção local permanece."],
+      "tests": ["npm run lint, npm run test:run e cd src-tauri && cargo check.", "PDF renderizado online/offline com e sem cache.", "Sessões expiradas, órfãos e retries de exclusão no staging.", "Matriz Android/iPhone, novo/existente e fallback local antes da retirada LAN."],
+      "testInstructions": {
+        "prerequisites": ["AO-PHOTO-005 mesclado; staging com Cron/Edge Function e imagens sintéticas."],
+        "steps": ["Popular cache online, desconectar e testar preview/PDF; repetir sem cache.", "Criar temporários/órfãos sintéticos, executar limpeza e repetir.", "Concluir matriz mobile/local/PDF antes de remover LAN."],
+        "expectedResultAndEvidence": ["Guardar PDFs sintéticos renderizados, métricas do cache e resultados da limpeza.", "Provar que definitivos vinculados permanecem e temporários elegíveis somem."],
+        "dataImpact": "Cria cache local e objetos/sessões sintéticos descartáveis no staging.",
+        "cleanupAndRollback": ["Excluir fixtures e cache de teste; desabilitar job de staging se houver falha.", "Não remover LAN quando qualquer cenário falhar."],
+        "stagingRestrictions": "Somente staging; nenhuma foto, PDF, cliente ou equipamento real."
+      },
+      "likelyFiles": ["src/lib/pdf-service.ts", "src/lib/photo-resolver.ts", "src-tauri/src/commands/equipamento_imagens.rs", "src-tauri/src/commands/photo_server.rs", "supabase/functions/*", "docs/*"],
+      "risks": ["PDF incompleto offline.", "Limpeza apagar objeto válido.", "Cache ultrapassar limite ou misturar tenants.", "Remover LAN cedo demais."]
+    },
+    {
+      "id": "AO-PHOTO-007",
+      "title": "Migrar fotos Base64 existentes para Storage",
+      "status": "ready",
+      "blockedBy": ["AO-PHOTO-005", "AO-PHOTO-006"],
+      "objective": "Migrar fotos legadas para objetos privados otimizados com dry-run, retomada e rollback seguros.",
+      "context": "Registros antigos podem conter Data URL e consumir PostgreSQL. A remoção só pode ocorrer depois de confirmar upload, checksum, leitura e compatibilidade do PDF.",
+      "expectedBehavior": "A ferramenta inventaria, simula, migra em lotes retomáveis e relata resultados; falhas preservam o Base64 original até confirmação completa.",
+      "scope": ["Inventariar data: por empresa, quantidade e bytes.", "Implementar dry-run sem escrita e execução real com backup/confirmacão.", "Decodificar, otimizar, enviar, validar checksum/abertura e atualizar em lotes pequenos.", "Permitir retomada sem repetir objetos e gerar relatório anterior/final/falhas.", "Documentar recuperação física do PostgreSQL como janela separada, sem executá-la."],
+      "outOfScope": ["Executar migração de produção automaticamente.", "Remover Base64 antes da validação completa.", "Executar VACUUM FULL ou outra operação bloqueante."],
+      "acceptanceCriteria": ["Dry-run não altera banco nem Storage.", "Execução interrompida retoma sem duplicar ou perder fotos.", "Após validação não restam data: no escopo migrado e fotos/PDFs continuam abrindo.", "Relatório apresenta migrados, falhos e bytes antes/depois."],
+      "tests": ["Dry-run, falha intermediária, retomada e rollback no staging.", "Comparação de checksum, abertura e PDF antes/depois.", "npm run lint, npm run test:run e cargo check."],
+      "testInstructions": {
+        "prerequisites": ["AO-PHOTO-005/006 mesclados; backup de staging e fixtures Base64 sintéticas."],
+        "steps": ["Executar inventário e dry-run; conferir impacto zero.", "Migrar lote, interromper, retomar e validar relatório/fotos/PDF."],
+        "expectedResultAndEvidence": ["Guardar relatório sanitizado, contagens e bytes comparativos.", "Confirmar que falhas mantêm Base64 e sucessos apontam para objeto válido."],
+        "dataImpact": "Altera apenas fixtures sintéticas no staging até autorização separada para produção.",
+        "cleanupAndRollback": ["Restaurar fixtures do backup de staging e apagar objetos de teste.", "Não executar recuperação física do espaço nesta etapa."],
+        "stagingRestrictions": "Nunca copiar dados ou credenciais internas para staging."
+      },
+      "likelyFiles": ["src-tauri/src/bin/*", "src-tauri/src/commands/equipamento_imagens.rs", "scripts/*", "docs/*"],
+      "risks": ["Perder evidência antiga.", "Duplicar objetos em retomada.", "Confundir economia lógica com espaço físico recuperado."]
+    },
+    {
+      "id": "AO-PHOTO-008",
+      "title": "Medir capacidade e decidir Go/No-Go",
+      "status": "ready",
+      "blockedBy": ["AO-PHOTO-006", "AO-PHOTO-007"],
+      "objective": "Medir consumo, isolamento e confiabilidade para decidir operação no plano atual e o momento de upgrade.",
+      "context": "Com meta de 250 KB e seis fotos, a estimativa é 1,5 MB por OS; quotas e egress precisam de métricas reais e alertas antes do lançamento amplo.",
+      "expectedBehavior": "Painel/relatório por empresa mostra capacidade e falhas, alerta em 70/85/95% e bloqueia Go quando isolamento, órfãos ou segredos não atendem aos critérios.",
+      "scope": ["Registrar quantidade, média/máximo, bytes temporários/definitivos, compressão, órfãos, falhas e egress.", "Criar alertas em 70%, 85% e 95% da quota.", "Auditar metadados versus objetos e isolamento entre tenants.", "Varrer bundles e configuração contra service_role.", "Documentar upgrade antes de 85% e decisão Go/No-Go baseada em evidências."],
+      "outOfScope": ["Comprar ou promover plano automaticamente.", "Alterar dados para melhorar métricas.", "Executar rollout em produção."],
+      "acceptanceCriteria": ["Métricas e alertas cobrem Storage, banco e egress por empresa.", "Auditoria identifica órfãos e divergências.", "Tenant A não acessa fotos de B e service_role não aparece nos clientes.", "Go/No-Go e ponto de upgrade ficam documentados."],
+      "tests": ["Cenários sintéticos nos limiares 70/85/95%.", "Teste de isolamento tenant A/B e varredura de bundles.", "Auditoria com objeto e metadado órfãos.", "npm run lint, npm run test:run e cargo check."],
+      "testInstructions": {
+        "prerequisites": ["AO-PHOTO-006/007 mesclados e métricas somente do staging."],
+        "steps": ["Gerar carga sintética, validar alertas e auditoria.", "Executar isolamento e varredura de segredos; produzir relatório Go/No-Go."],
+        "expectedResultAndEvidence": ["Registrar métricas, alertas disparados e divergências detectadas.", "Entregar decisão e capacidade estimada sem dados reais."],
+        "dataImpact": "Somente métricas e objetos sintéticos descartáveis no staging.",
+        "cleanupAndRollback": ["Apagar carga sintética e manter apenas relatório sanitizado.", "Desabilitar alertas de teste após validação."],
+        "stagingRestrictions": "Nenhuma coleta ou carga em produção sem autorização separada."
+      },
+      "likelyFiles": ["supabase/functions/*", "src-tauri/src/commands/*", "docs/*"],
+      "risks": ["Estimar capacidade com amostra pouco representativa.", "Alertas não considerar egress.", "Declarar Go sem isolamento comprovado."]
     },
     {
       "id": "AO-HOTFIX-001",
