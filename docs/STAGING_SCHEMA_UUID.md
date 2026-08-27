@@ -20,9 +20,17 @@ O comando cria o schema e roda os testes na mesma transação, que sempre termin
 
 ```bash
 psql "$SUPABASE_STAGING_DATABASE_URL" --set ON_ERROR_STOP=on --file supabase/schema.sql
+psql "$SUPABASE_STAGING_DATABASE_URL" --set ON_ERROR_STOP=on \
+  --file supabase/migrations/20260827180517_provision_saas_admin_identity.sql
 psql "$SUPABASE_STAGING_DATABASE_URL" --set ON_ERROR_STOP=on --file supabase/seed.sql
+psql "$SUPABASE_STAGING_DATABASE_URL" --set ON_ERROR_STOP=on --file supabase/rls.sql
 ./scripts/validate-staging-schema.sh
 ```
+
+Depois da aplicação, habilite o Custom Access Token Hook e mantenha signup
+público desabilitado conforme `docs/SAAS_AUTH_RLS_CONTRACT.md`. A validação de
+autenticação real é separada porque cria e remove usuários sintéticos pela Auth
+Admin API: `npm run qa:staging:auth`.
 
 O validador abre uma transação, cria duas empresas sintéticas e confirma que relações cruzadas são rejeitadas; ele sempre termina com `ROLLBACK`, portanto não mantém esses registros.
 

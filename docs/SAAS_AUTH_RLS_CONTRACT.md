@@ -3,21 +3,30 @@
 ## Claims autoritativas
 
 O servidor de autenticação é o único componente que associa um usuário a uma
-empresa. Depois de autenticar, ele atualiza `auth.users.raw_app_meta_data` e
-emite um JWT com:
+empresa. `public.company_admin_identities` mantém o vínculo entre `auth.users`,
+uma empresa e um perfil `ADMIN` ativo. A tabela não tem grants para `anon` ou
+`authenticated`.
+
+O Custom Access Token Hook `public.autoos_custom_access_token_hook(jsonb)` lê
+esse vínculo como `supabase_auth_admin`, rejeita identidades ausentes ou
+suspensas e substitui qualquer valor enviado pelo usuário. O JWT emitido contém:
 
 ```json
 {
   "sub": "<user-uuid>",
   "app_metadata": {
-    "company_id": "<empresa-uuid>"
+    "company_id": "<empresa-uuid>",
+    "profile_id": "<security-profile-uuid>",
+    "profile_role": "ADMIN"
   }
 }
 ```
 
 `user_metadata` é editável pelo usuário e nunca participa de autorização. O
-helper `public.current_company_id()` aceita apenas um UUID válido em
-`app_metadata.company_id`; claim ausente ou inválido resulta em nenhum tenant.
+helper `public.current_company_id()` exige UUIDs válidos nas duas claims e
+revalida `auth.uid()`, empresa, perfil e vínculo ativos. Claim ausente, inválida,
+incompatível ou suspensa resulta em nenhum tenant, inclusive para um token ainda
+não expirado.
 
 O Online usa o JWT de usuário com a chave publicável do Supabase. O desktop não
 recebe `service_role`, secret key, senha PostgreSQL ou chave privada de assinatura.
@@ -52,13 +61,64 @@ administrativa.
 Aplicação no staging:
 
 ```bash
-psql "$SUPABASE_STAGING_DATABASE_URL" --set ON_ERROR_STOP=on --file supabase/rls.sql
 psql "$SUPABASE_STAGING_DATABASE_URL" --set ON_ERROR_STOP=on \
-  --file supabase/tests/rls-tenant-isolation.sql
+  --file supabase/migrations/20260827180517_provision_saas_admin_identity.sql
+psql "$SUPABASE_STAGING_DATABASE_URL" --set ON_ERROR_STOP=on --file supabase/rls.sql
 ```
 
-O teste cria dois tenants sintéticos, simula um JWT de tenant A, verifica que
-tenant B não é visível nem gravável e termina com `ROLLBACK`.
+Em seguida, habilite o hook em **Authentication > Hooks > Custom Access Token**
+apontando para `public.autoos_custom_access_token_hook`. O arquivo
+`supabase/config.toml` mantém a configuração equivalente para ambientes geridos
+pela CLI e desabilita novos cadastros por email. Confirme também no Dashboard que
+o cadastro público está desligado; a criação inicial é exclusivamente administrativa.
+
+## Provisionamento e suspensão
+
+Use somente um terminal de operações. Senha, URL PostgreSQL, secret key ou
+`service_role` entram por variáveis de ambiente e não por argumentos, arquivos
+versionados ou logs. A empresa e o perfil `ADMIN` precisam existir e estar ativos.
+
+```bash
+export AUTOOS_CONFIRM_STAGING='AutoOS Staging'
+export SUPABASE_STAGING_URL='https://<project-ref>.supabase.co'
+export SUPABASE_STAGING_ADMIN_KEY='<secret-key-ou-service-role>'
+export SUPABASE_STAGING_DATABASE_URL='<postgres-connection-string>'
+export AUTOOS_ADMIN_EMAIL='<email-inicial>'
+export AUTOOS_ADMIN_PASSWORD='<senha-forte>'
+export AUTOOS_EMPRESA_ID='<empresa-uuid>'
+export AUTOOS_PROFILE_ID='<perfil-admin-uuid>'
+node scripts/manage-staging-saas-admin.mjs provision
+```
+
+Se o vínculo no banco falhar, o comando tenta remover imediatamente o usuário
+Auth recém-criado. Para suspender ou reativar, mantenha somente as variáveis de
+staging, defina `AUTOOS_AUTH_USER_ID` e execute `suspend` ou `reactivate`. Ambos
+registram um evento em `security_audit_log`.
+
+## Validação reproduzível em staging
+
+O teste ponta a ponta cria duas empresas, dois perfis e dois usuários estritamente
+sintéticos com UUIDs/nome reservados `AO-AUTH-TEST-*`; verifica login real, claims,
+isolamento A/B, spoofing, ausência de vínculo, suspensão com token antigo e
+reativação. O bloco `finally` remove os usuários Auth e as empresas de teste.
+
+Além das variáveis de staging acima, defina uma chave publicável e duas
+credenciais sintéticas distintas (nunca dados da BMITAG):
+
+```bash
+export SUPABASE_STAGING_PUBLISHABLE_KEY='<publishable-ou-anon-key>'
+export AUTOOS_TEST_ADMIN_A_EMAIL='<email-sintetico-a>'
+export AUTOOS_TEST_ADMIN_A_PASSWORD='<senha-sintetica-a>'
+export AUTOOS_TEST_ADMIN_B_EMAIL='<email-sintetico-b>'
+export AUTOOS_TEST_ADMIN_B_PASSWORD='<senha-sintetica-b>'
+npm run qa:staging:auth
+```
+
+Se uma interrupção externa impedir o `finally`, remova cada usuário com
+`AUTOOS_AUTH_USER_ID=<uuid> node scripts/manage-staging-saas-admin.mjs cleanup`
+e execute `supabase/operations/delete-auth-test-tenants.sql`. A exclusão do
+usuário Auth remove o vínculo por `ON DELETE CASCADE`; tokens já emitidos deixam
+de passar na revalidação RLS.
 
 ## Entitlement e token PowerSync
 
