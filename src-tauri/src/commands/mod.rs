@@ -32,3 +32,4 @@ pub mod qr_code;
 pub mod storage_config;
 pub mod enrollment;
 pub mod image_migration;
+pub mod saas_auth;
