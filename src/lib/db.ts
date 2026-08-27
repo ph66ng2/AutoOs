@@ -160,6 +160,11 @@ export const db = {
     return invoke<void>("deletar_cliente", { id });
   },
 
+  /** Consulta dados públicos do CNPJ no backend, sem depender das regras de rede do WebView. */
+  async consultarCnpj(cnpj: string): Promise<unknown> {
+    return invoke<unknown>("consultar_cnpj", { cnpj });
+  },
+
   // ─── Verificações ─────────────────────────────────────
 
   /** Salva resultado da verificação técnica → Rust: salvar_verificacao_tecnica */

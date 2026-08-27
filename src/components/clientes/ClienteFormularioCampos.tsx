@@ -8,15 +8,35 @@ import {
   Building2,
   MapPin,
   Loader2,
+  Search,
 } from "lucide-react";
+import { useEffect, useState } from "react";
 import type { UseFormReturn } from "react-hook-form";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { FormValidationError } from "@/components/ui/form-validation-error";
+import { ErrorAlert } from "@/components/ui/error-alert";
 import type { ClienteFormData } from "@/lib/validations";
-import { formatarCEP, formatarDocumento, formatarTelefone } from "@/lib/validations";
+import {
+  formatarCEP,
+  formatarDocumento,
+  formatarTelefone,
+  validarCNPJ,
+} from "@/lib/validations";
+import {
+  consultarCnpj,
+  CnpjLookupError,
+  type CnpjLookupResult,
+} from "@/lib/cnpj-service";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 
 export interface ClienteFormularioCamposProps {
   form: UseFormReturn<ClienteFormData>;
@@ -25,29 +45,171 @@ export interface ClienteFormularioCamposProps {
   buscandoCep: boolean;
 }
 
+type CnpjFormField =
+  | "razao_social"
+  | "nome_fantasia"
+  | "telefone"
+  | "email"
+  | "cep"
+  | "endereco"
+  | "numero"
+  | "complemento"
+  | "bairro"
+  | "cidade"
+  | "uf";
+
+const CNPJ_FIELD_VALUES: Record<CnpjFormField, (result: CnpjLookupResult) => string> = {
+  razao_social: (result) => result.razao_social,
+  nome_fantasia: (result) => result.nome_fantasia,
+  telefone: (result) => formatarTelefone(result.telefone),
+  email: (result) => result.email,
+  cep: (result) => formatarCEP(result.cep),
+  endereco: (result) => result.endereco,
+  numero: (result) => result.numero,
+  complemento: (result) => result.complemento,
+  bairro: (result) => result.bairro,
+  cidade: (result) => result.cidade,
+  uf: (result) => result.uf.toUpperCase(),
+};
+
+interface CnpjFeedback {
+  kind: "success" | "warning" | "error";
+  message: string;
+  technicalDetails?: string;
+}
+
 export function ClienteFormularioCampos({
   form,
   tipoPessoa,
   buscarCep,
   buscandoCep,
 }: ClienteFormularioCamposProps) {
+  const documento = form.watch("documento") || "";
+  const cnpjNumeros = documento.replace(/\D/g, "");
+  const cnpjValido = validarCNPJ(cnpjNumeros);
+  const [consultandoCnpj, setConsultandoCnpj] = useState(false);
+  const [cnpjFeedback, setCnpjFeedback] = useState<CnpjFeedback | null>(null);
+  const [feedbackCnpj, setFeedbackCnpj] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (feedbackCnpj && feedbackCnpj !== cnpjNumeros) {
+      setCnpjFeedback(null);
+      setFeedbackCnpj(null);
+    }
+  }, [cnpjNumeros, feedbackCnpj]);
+
+  async function buscarDadosCnpj() {
+    if (!cnpjValido || consultandoCnpj) return;
+
+    const cnpjConsultado = cnpjNumeros;
+    const startedAt = performance.now();
+    setConsultandoCnpj(true);
+    setCnpjFeedback(null);
+    setFeedbackCnpj(cnpjConsultado);
+
+    try {
+      const result = await consultarCnpj(cnpjConsultado);
+      const documentoAtual = (form.getValues("documento") || "").replace(/\D/g, "");
+      if (documentoAtual !== cnpjConsultado) return;
+
+      for (const [field, getValue] of Object.entries(CNPJ_FIELD_VALUES) as [CnpjFormField, (result: CnpjLookupResult) => string][]) {
+        const currentValue = form.getValues(field);
+        if (typeof currentValue === "string" && currentValue.trim()) continue;
+
+        const value = getValue(result).trim();
+        if (!value) continue;
+
+        form.setValue(field, value, {
+          shouldDirty: true,
+          shouldTouch: true,
+          shouldValidate: false,
+        });
+      }
+
+      await form.trigger();
+      const situacao = result.situacao_cadastral.trim() || "não informada";
+      const ativa = situacao.toUpperCase() === "ATIVA";
+      const durationMs = Math.round(performance.now() - startedAt);
+      console.info("[Consulta CNPJ] sucesso", {
+        cnpj: cnpjConsultado,
+        durationMs,
+        situacao,
+        fonte: result.fonte,
+      });
+      setCnpjFeedback({
+        kind: ativa ? "success" : "warning",
+        message: "Dados do CNPJ foram preenchidos. Revise as informações antes de salvar.",
+      });
+    } catch (error: unknown) {
+      const documentoAtual = (form.getValues("documento") || "").replace(/\D/g, "");
+      if (documentoAtual !== cnpjConsultado) return;
+
+      const code = error instanceof CnpjLookupError ? error.code : "unavailable";
+      const durationMs = Math.round(performance.now() - startedAt);
+      const errorMessage = error instanceof Error ? error.message : "Erro desconhecido";
+      const log = `Falha após ${durationMs} ms. Código: ${code}. Detalhe: ${errorMessage}`;
+      console.error("[Consulta CNPJ] falha", {
+        cnpj: cnpjConsultado,
+        durationMs,
+        code,
+        error,
+      });
+      setCnpjFeedback({
+        kind: "error",
+        message: "Não foi possível consultar o CNPJ agora. Você pode preencher os dados manualmente.",
+        technicalDetails: log,
+      });
+    } finally {
+      setConsultandoCnpj(false);
+    }
+  }
+
   return (
     <div className="space-y-5">
       <div className="space-y-2">
-        <Label>CPF ou CNPJ *</Label>
+        <Label htmlFor="cliente-documento">CPF ou CNPJ *</Label>
         <div className="flex gap-3 items-start">
           <div className="flex-1 space-y-1">
             <Input
+              id="cliente-documento"
               value={form.watch("documento")}
               onChange={(e) => {
                 const formatted = formatarDocumento(e.target.value);
-                form.setValue("documento", formatted, { shouldValidate: false });
+                form.setValue("documento", formatted, {
+                  shouldDirty: true,
+                  shouldValidate: false,
+                });
               }}
               placeholder="Digite CPF ou CNPJ"
               maxLength={18}
             />
             <FormValidationError message={form.formState.errors.documento?.message} />
           </div>
+          <TooltipProvider delayDuration={300}>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="icon"
+                  className="h-9 w-9 shrink-0"
+                  onClick={() => void buscarDadosCnpj()}
+                  disabled={!cnpjValido || consultandoCnpj}
+                  aria-label="Buscar dados do CNPJ"
+                >
+                  {consultandoCnpj ? (
+                    <>
+                      <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
+                      <span className="sr-only">Consultando dados do CNPJ</span>
+                    </>
+                  ) : (
+                    <Search className="h-4 w-4" aria-hidden="true" />
+                  )}
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>Buscar dados do CNPJ</TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
           {tipoPessoa && (
             <div className="pt-1">
               {tipoPessoa === "PF" ? (
@@ -64,6 +226,15 @@ export function ClienteFormularioCampos({
             </div>
           )}
         </div>
+        {cnpjFeedback && (
+          <ErrorAlert
+            variant={cnpjFeedback.kind}
+            context="Consulta de CNPJ"
+            action={cnpjFeedback.kind === "error" ? "Não concluída" : "Concluída"}
+            message={cnpjFeedback.message}
+            technicalDetails={cnpjFeedback.technicalDetails}
+          />
+        )}
       </div>
 
       {tipoPessoa === "PF" && (
@@ -185,11 +356,6 @@ export function ClienteFormularioCampos({
           </div>
         </div>
       </div>
-
-<div className="space-y-2">
-          <Label>Complemento de Endereço</Label>
-          <Input {...form.register("complemento")} placeholder="Apto, sala, ponto de referência..." />
-        </div>
 
         <div className="space-y-2">
           <Label>Observações</Label>
