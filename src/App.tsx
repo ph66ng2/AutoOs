@@ -42,6 +42,8 @@ import { CounterLayout } from "@/components/CounterLayout";
 import { CounterSessionGate } from "@/components/CounterSessionGate";
 import { getAppMode, setAppMode, type AppMode } from "@/lib/app-mode";
 import Balcao from "@/pages/Balcao";
+import { SaasApp } from "@/components/SaasApp";
+import { IS_SAAS_BUILD } from "@/lib/runtime-mode";
 
 /** Exibição mínima do boot (IPC em dev pode resolver em poucos ms). Prod fica igual ou mais pesado só se o Rust/DB demorar. */
 const MIN_BOOT_SPLASH_MS = 1_100;
@@ -153,7 +155,7 @@ function AppModeRedirect({ mode, ready }: { mode: AppMode | null; ready: boolean
   return null;
 }
 
-function App() {
+function InternalApp() {
   const [dbReady, setDbReady] = useState<boolean | null>(null);
 
   useEffect(() => {
@@ -194,6 +196,21 @@ function App() {
       </ErrorBoundary>
     </>
   );
+}
+
+function App() {
+  if (IS_SAAS_BUILD) {
+    return (
+      <>
+        <Toaster position="top-right" visibleToasts={3} richColors closeButton duration={5000} />
+        <ErrorBoundary>
+          <SaasApp />
+        </ErrorBoundary>
+      </>
+    );
+  }
+
+  return <InternalApp />;
 }
 
 export default App;
