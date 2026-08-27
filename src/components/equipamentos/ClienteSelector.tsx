@@ -25,7 +25,7 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { db } from "@/lib/db";
-import type { Cliente, Equipamento } from "@/types";
+import type { Cliente, ClienteId, Equipamento } from "@/types";
 import {
   clienteSchema,
   type ClienteFormData,
@@ -42,7 +42,7 @@ interface ClienteSelectorProps {
   /** Cliente já selecionado (para edição) */
   clienteInicial?: Cliente | null;
   /** Cliente ID inicial (para carregar do DB) */
-  clienteIdInicial?: number | null;
+  clienteIdInicial?: ClienteId | null;
   /** Callback quando um cliente é selecionado ou criado */
   onClienteSelecionado: (cliente: Cliente) => void;
   /** Callback quando o cliente é removido */
