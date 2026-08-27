@@ -43,6 +43,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   Table,
   TableBody,
@@ -71,6 +72,7 @@ import { useSensitiveAccess } from "@/hooks/useSensitiveAccess";
 import { ErrorAlert } from "@/components/ui/error-alert";
 import { nomeExibicaoCliente, documentoExibicaoCliente } from "@/components/clientes/cliente-display-utils";
 import { ClientesStatusBadge } from "@/pages/clientes/ClientesStatusBadge";
+import { clientesDaAba, totalAbasClientes } from "@/pages/clientes/clientes-pagination";
 import {
   ClientesDeleteDialog,
   ClientesEquipamentosModal,
@@ -81,6 +83,7 @@ import { ActionPriorityRow } from "@/components/ui/action-priority-row";
 export default function Clientes() {
   const LIMITE_EQUIPAMENTOS_EXPANDIDOS = 5;
   const [busca, setBusca] = useState("");
+  const [abaAtual, setAbaAtual] = useState(1);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [editando, setEditando] = useState<Cliente | null>(null);
@@ -100,6 +103,17 @@ export default function Clientes() {
     useClientes({ busca: busca || undefined });
   const { ensureSensitiveAccess } = useSensitiveAccess();
   const { error: showError } = useNotification();
+  const totalAbas = totalAbasClientes(clientes.length);
+  const abaExibida = Math.min(abaAtual, totalAbas);
+  const clientesExibidos = clientesDaAba(clientes, abaExibida);
+
+  useEffect(() => {
+    setAbaAtual(1);
+  }, [busca]);
+
+  useEffect(() => {
+    setAbaAtual((aba) => Math.min(aba, totalAbas));
+  }, [totalAbas]);
 
   const form = useForm<ClienteFormData>({
     resolver: zodResolver(clienteSchema),
@@ -354,8 +368,24 @@ export default function Clientes() {
               <p className="text-sm">{busca ? "Tente ajustar a busca" : "Clique em \"Novo Cliente\" para cadastrar"}</p>
             </div>
           ) : (
-            <div className="rounded-md border">
-              <Table>
+            <>
+              {totalAbas > 1 && (
+                <Tabs
+                  value={String(abaExibida)}
+                  onValueChange={(aba) => setAbaAtual(Number(aba))}
+                  aria-label="Abas de clientes"
+                >
+                  <TabsList className="max-w-full overflow-x-auto">
+                    {Array.from({ length: totalAbas }, (_, indice) => indice + 1).map((aba) => (
+                      <TabsTrigger key={aba} value={String(aba)}>
+                        Aba {aba}
+                      </TabsTrigger>
+                    ))}
+                  </TabsList>
+                </Tabs>
+              )}
+              <div className="rounded-md border">
+                <Table>
                 <TableHeader>
                   <TableRow>
                     <TableHead className="w-10"></TableHead>
@@ -369,7 +399,7 @@ export default function Clientes() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {clientes.map(c => (
+                  {clientesExibidos.map(c => (
                     <Fragment key={c.id}>
                       <TableRow key={c.id}>
                         <TableCell>
@@ -516,8 +546,9 @@ export default function Clientes() {
                     </Fragment>
                   ))}
                 </TableBody>
-              </Table>
-            </div>
+                </Table>
+              </div>
+            </>
           )}
         </CardContent>
       </Card>
