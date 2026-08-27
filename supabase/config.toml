@@ -1,0 +1,11 @@
+project_id = "autoos-saas-staging"
+
+[auth]
+enable_signup = false
+
+[auth.email]
+enable_signup = false
+
+[auth.hook.custom_access_token]
+enabled = true
+uri = "pg-functions://postgres/public/autoos_custom_access_token_hook"

@@ -12,6 +12,7 @@ psql "${SUPABASE_STAGING_DATABASE_URL}" \
   --set ON_ERROR_STOP=on \
   --command 'BEGIN;' \
   --file "${project_dir}/supabase/schema.sql" \
+  --file "${project_dir}/supabase/migrations/20260827180517_provision_saas_admin_identity.sql" \
   --file "${project_dir}/supabase/tests/staging-schema-integrity.sql"
 
 printf 'Staging schema dry-run passed and was rolled back.\n'
