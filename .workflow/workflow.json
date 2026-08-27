@@ -1233,10 +1233,11 @@
     {
       "id": "AO-PHOTO-003",
       "title": "Integrar QR cloud ao equipamento e preservar fallback local",
-      "status": "in_progress",
+      "status": "blocked",
       "blockedBy": [
         "AO-PHOTO-001",
-        "AO-PHOTO-002"
+        "AO-PHOTO-002",
+        "AO-PHOTO-009"
       ],
       "objective": "Conectar o QR cloud ao diálogo de fotos do AutoOS, importando as imagens recebidas para o formato já consumido pelo equipamento e mantendo seleção por arquivo local.",
       "context": "O fluxo deve funcionar tanto antes de salvar um equipamento quanto para um equipamento existente, sem quebrar a interface atual ou a compatibilidade de imagens do PDF.",
@@ -1295,6 +1296,78 @@
         "Quebrar rascunhos antes do equipamento ser salvo.",
         "Perder o fallback local durante a migração.",
         "Importar imagem parcialmente enviada ou de outra sessão."
+      ]
+    },
+    {
+      "id": "AO-PHOTO-009",
+      "title": "Vincular identidade SaaS UUID às sessões cloud de fotos",
+      "status": "ready",
+      "blockedBy": [
+        "AO-SUB-002",
+        "AO-PS-004"
+      ],
+      "objective": "Permitir que o desktop autenticado crie e consuma sessões de fotos no staging SaaS sem usar IDs locais numéricos, DATABASE_URL ou credenciais privilegiadas.",
+      "context": "O staging SaaS usa UUID para empresa, perfil, equipamento e sessão, enquanto a linha interna ainda usa IDs numéricos via sqlx. O upload privado exige uma Edge Function mediadora e uma sessão SaaS autenticada no desktop.",
+      "expectedBehavior": "Depois do login SaaS, o desktop envia somente o JWT do usuário à função de fotos; a função deriva empresa e perfil dos claims autorizados, emite operações limitadas à sessão e nunca entrega service_role, senha PostgreSQL ou objeto privado permanente ao cliente.",
+      "scope": [
+        "Consumir a identidade e o JWT do adapter Online, preservados no keyring, sem converter IDs internos em UUIDs inventados.",
+        "Estender a Edge Function para criar, consultar, cancelar e preparar o consumo de sessões por um usuário autenticado e pelo token efêmero do QR.",
+        "Validar empresa, perfil, equipamento e categoria no servidor antes de qualquer operação de Storage.",
+        "Entregar ao desktop apenas URLs assinadas de curta duração ou bytes transitórios, sem abrir o bucket e sem expor service_role.",
+        "Documentar variáveis de staging, fluxo de deploy e os limites de sessão para a integração do diálogo no AO-PHOTO-003."
+      ],
+      "outOfScope": [
+        "Alterar o CRUD interno sqlx para UUID ou migrar o banco operacional.",
+        "Integrar o diálogo PhotoUploadDialog, PDF ou persistência definitiva de equipamento.",
+        "Remover LAN, seleção de arquivo local ou promover mudanças para produção.",
+        "Criar uma tela de login fora do adapter Online."
+      ],
+      "acceptanceCriteria": [
+        "O desktop autenticado cria uma sessão UUID associada somente ao tenant e perfil dos claims SaaS.",
+        "Tentativas entre tenants, sessão expirada, cancelada ou token QR inválido são negadas pela função.",
+        "O bucket staging permanece privado e nenhum segredo administrativo chega ao desktop, QR, navegador, logs ou respostas.",
+        "O contrato de consumo permite ao AO-PHOTO-003 importar imagens sem acesso direto do desktop ao Storage.",
+        "A função e o contrato são testados com identidades e imagens sintéticas no staging."
+      ],
+      "tests": [
+        "npm run lint, npm run test:run e cd src-tauri && cargo check.",
+        "Testes da Edge Function para dois tenants, token QR válido/inválido, expiração, cancelamento e URLs de consumo curtas.",
+        "Teste manual em staging com um JWT sintético do adapter Online e varredura contra service_role, DATABASE_URL e senha PostgreSQL no desktop."
+      ],
+      "testInstructions": {
+        "prerequisites": [
+          "Aguardar AO-SUB-002 e AO-PS-004 mesclados; usar exclusivamente o Supabase staging e dois tenants sintéticos.",
+          "Usar JWTs de teste não privilegiados e nunca registrar tokens, URLs assinadas completas ou segredos nas evidências."
+        ],
+        "steps": [
+          "Executar checks de frontend e Rust e os testes unitários da função.",
+          "Criar e consumir uma sessão sintética no tenant A; repetir tentativas equivalentes com o tenant B e com token inválido, expirado e cancelado.",
+          "Inspecionar bucket, logs sanitizados, bundle e keyring para confirmar mediação e ausência de credenciais privilegiadas."
+        ],
+        "expectedResultAndEvidence": [
+          "Registrar IDs sintéticos, horários e respostas permitidas/negadas, sem valores de token ou URL assinada.",
+          "Confirmar que os objetos permanecem privados e que o desktop só recebeu o material transitório permitido."
+        ],
+        "dataImpact": "Cria e remove apenas usuários, tenants, sessões e objetos sintéticos no staging; não altera banco operacional ou produção.",
+        "cleanupAndRollback": [
+          "Revogar JWTs de teste, cancelar sessões, apagar objetos e remover fixtures sintéticas após a evidência.",
+          "Interromper o ticket se qualquer teste revelar acesso cruzado, bucket público ou segredo no cliente; não tentar contornar com service_role."
+        ],
+        "stagingRestrictions": "É proibido usar dados, credenciais, empresas, equipamentos, fotos ou URLs de produção/internos; toda operação externa é somente no staging autorizado."
+      },
+      "likelyFiles": [
+        "supabase/functions/photo-upload/*",
+        "src-tauri/src/commands/enrollment.rs",
+        "src-tauri/src/commands/photo_upload_sessions.rs",
+        "src-tauri/src/commands/types.rs",
+        "src/lib/data/*",
+        "docs/*"
+      ],
+      "risks": [
+        "Usar ID local como se fosse UUID SaaS e criar acesso fora do tenant.",
+        "Expor service_role, senha PostgreSQL, JWT ou URL assinada em logs ou no frontend.",
+        "Liberar leitura direta do bucket privado em vez de mediar o consumo pela função.",
+        "Acoplar o fluxo SaaS ao servidor LAN ou ao banco operacional interno."
       ]
     },
     {
