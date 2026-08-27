@@ -1,10 +1,10 @@
 /**
  * ╔══════════════════════════════════════════════════════════════╗
- * ║  lib/pdf-service.ts — Serviço de Geração de Orçamento PDF   ║
+ * ║  lib/pdf-service.ts — Serviço de Geração de PDFs do AutoOS ║
  * ╠══════════════════════════════════════════════════════════════╣
  * ║  Gera documentos PDF de orçamento preenchidos com dados     ║
  * ║  reais do equipamento, verificação e cliente.                ║
- * ║  Layout replica o modelo "Orçamento Editável TAG" da BMITAG.║
+ * ║  Layout monocromático inspirado no modelo visual da BMITAG. ║
  * ║                                                              ║
  * ║  FLUXO:                                                      ║
  * ║  1. Coleta dados do equipamento + verificação                ║
@@ -34,7 +34,7 @@ import type {
   ServicoNecessario,
   PecaNecessaria,
 } from "@/types";
-import { LOGO_BMITAG_BASE64 } from "./logo-base64";
+import { LOGO_BMITAG_MONOCHROME_PNG_BASE64 } from "./logo-monochrome-base64";
 
 // ─── Constantes de layout ───────────────────────────────
 
@@ -44,14 +44,17 @@ const MARGIN_LEFT = 15;
 const MARGIN_RIGHT = 15;
 const CONTENT_WIDTH = PAGE_WIDTH - MARGIN_LEFT - MARGIN_RIGHT;
 
-/** Cores da identidade visual BMITAG (tuplas RGB) */
-const COR_PRETA: [number, number, number] = [0, 0, 0];
-const COR_CINZA_ESCURO: [number, number, number] = [51, 51, 51];
-const COR_CINZA_CLARO: [number, number, number] = [200, 200, 200];
-const COR_FUNDO_HEADER: [number, number, number] = [30, 30, 30];
-const COR_TEXTO_BRANCO: [number, number, number] = [255, 255, 255];
-const COR_CINZA_MEDIO: [number, number, number] = [80, 80, 80];
-const COR_FUNDO_TOTAL: [number, number, number] = [240, 240, 240];
+type CorPdf = [number, number, number];
+
+/** Paleta única dos quatro PDFs: branco, preto e cinzas econômicos. */
+const CORES_PDF = {
+  preto: [0, 0, 0] as CorPdf,
+  texto: [35, 35, 35] as CorPdf,
+  textoSecundario: [85, 85, 85] as CorPdf,
+  borda: [185, 185, 185] as CorPdf,
+  bordaForte: [95, 95, 95] as CorPdf,
+  branco: [255, 255, 255] as CorPdf,
+};
 const CABECALHO_EMPRESA = {
   nome: "BMITAG TECNOLOGIA QRCODE E RFID",
   descricao: "Vendas e Manutenções de Equipamentos ZEBRA",
@@ -59,88 +62,8 @@ const CABECALHO_EMPRESA = {
   contato: "E-mail: bmitag@bmitag.com.br | bmitag.com.br",
   cnpj: "CNPJ: 57.522.734/0001-58",
 };
-const LOGO_TOPO_URL = "/logo-bmitag.png";
-const ICONE_RODAPE_URL = "/src-tauri/icons/icon.png";
-let logoTopoCache: Promise<string | null> | null = null;
-let iconeRodapeCache: Promise<string | null> | null = null;
-
-// ─── Utilitários de formatação ──────────────────────────
-
-/**
- * Converte SVG base64 para PNG base64 usando canvas
- */
-async function svgToPng(svgBase64: string, width: number, height: number): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const img = new Image();
-    img.onload = () => {
-      const canvas = document.createElement("canvas");
-      canvas.width = width;
-      canvas.height = height;
-      const ctx = canvas.getContext("2d");
-      if (!ctx) {
-        reject(new Error("Canvas context not available"));
-        return;
-      }
-      ctx.drawImage(img, 0, 0, width, height);
-      const pngBase64 = canvas.toDataURL("image/png").replace("data:image/png;base64,", "");
-      resolve(pngBase64);
-    };
-    img.onerror = () => reject(new Error("Failed to load SVG"));
-    img.src = `data:image/svg+xml;base64,${svgBase64}`;
-  });
-}
-
-function urlImagemParaDataUrl(url: string): Promise<string> {
-  return fetch(url)
-    .then((response) => {
-      if (!response.ok) {
-        throw new Error(`Falha ao carregar imagem: ${url}`);
-      }
-      return response.blob();
-    })
-    .then(
-      (blob) =>
-        new Promise<string>((resolve, reject) => {
-          const reader = new FileReader();
-          reader.onload = () => resolve(String(reader.result || ""));
-          reader.onerror = () => reject(new Error(`Falha ao converter imagem para data URL: ${url}`));
-          reader.readAsDataURL(blob);
-        })
-    );
-}
-
-async function obterLogoTopoDataUrl(): Promise<string | null> {
-  if (!logoTopoCache) {
-    logoTopoCache = (async () => {
-      // Primary: SVG→PNG (embedded, always available)
-      try {
-        const logoPngBase64 = await svgToPng(LOGO_BMITAG_BASE64, 200, 200);
-        return `data:image/png;base64,${logoPngBase64}`;
-      } catch {
-        // Fallback: fetch PNG file (works on Vite dev, may fail on Tauri EXE)
-        try {
-          return await urlImagemParaDataUrl(LOGO_TOPO_URL);
-        } catch {
-          return null;
-        }
-      }
-    })();
-  }
-  return logoTopoCache;
-}
-
-async function obterIconeRodapeDataUrl(): Promise<string | null> {
-  if (!iconeRodapeCache) {
-    iconeRodapeCache = (async () => {
-      try {
-        return await urlImagemParaDataUrl(ICONE_RODAPE_URL);
-      } catch {
-        return null;
-      }
-    })();
-  }
-  return iconeRodapeCache;
-}
+const LOGO_MONOCHROME_DATA_URL =
+  `data:image/png;base64,${LOGO_BMITAG_MONOCHROME_PNG_BASE64}`;
 
 // ─── Utilitários de formatação ──────────────────────────
 
@@ -155,10 +78,27 @@ const MESES_PT = [
  * Ex: "11 de fevereiro de 2026"
  */
 function formatarDataExtenso(data: Date): string {
+  if (Number.isNaN(data.getTime())) {
+    return "—";
+  }
   const dia = String(data.getDate()).padStart(2, "0");
   const mes = MESES_PT[data.getMonth()];
   const ano = data.getFullYear();
   return `${dia} de ${mes} de ${ano}`;
+}
+
+function converterDataDocumento(data?: string): Date {
+  if (!data) {
+    return new Date();
+  }
+
+  // Datas sem horário devem ser interpretadas no meio do dia local para não
+  // retroceder um dia em fusos negativos, como o de Salvador.
+  if (/^\d{4}-\d{2}-\d{2}$/.test(data)) {
+    return new Date(`${data}T12:00:00`);
+  }
+
+  return new Date(data);
 }
 
 /**
@@ -219,63 +159,205 @@ function limparObservacoesParaDocumento(observacoes?: string | null) {
     .trim();
 }
 
-async function aplicarCabecalhoPadrao(doc: jsPDF, y: number, subtitulo: string) {
-  const alturaHeader = 35;
-  doc.setFillColor(...COR_FUNDO_HEADER);
-  doc.rect(MARGIN_LEFT, y, CONTENT_WIDTH, alturaHeader, "F");
-
-  const logoSize = 25;
-  const logoX = MARGIN_LEFT + 5;
-  const logoY = y + (alturaHeader - logoSize) / 2;
-  const logoTopoDataUrl = await obterLogoTopoDataUrl();
-  if (logoTopoDataUrl) {
-    try {
-      doc.addImage(logoTopoDataUrl, "PNG", logoX, logoY, logoSize, logoSize);
-    } catch (err) {
-      console.error("Falha ao adicionar logo no cabeçalho PDF:", err);
-    }
-  }
-
-  const textoInicioX = MARGIN_LEFT + logoSize + 10;
-  const textoLargura = CONTENT_WIDTH - logoSize - 15;
-  const centroTexto = textoInicioX + textoLargura / 2;
-  doc.setTextColor(...COR_TEXTO_BRANCO);
-  doc.setFontSize(11);
-  doc.setFont("helvetica", "bold");
-  doc.text(CABECALHO_EMPRESA.nome, centroTexto, y + 8, { align: "center" });
-  doc.setFontSize(7);
-  doc.setFont("helvetica", "normal");
-  doc.text(CABECALHO_EMPRESA.descricao, centroTexto, y + 13, { align: "center" });
-  doc.text(CABECALHO_EMPRESA.telefone, centroTexto, y + 18, { align: "center" });
-  doc.text(CABECALHO_EMPRESA.contato, centroTexto, y + 23, { align: "center" });
-  doc.text(CABECALHO_EMPRESA.cnpj, centroTexto, y + 28, { align: "center" });
-  doc.setFontSize(8);
-  doc.setFont("helvetica", "bold");
-  doc.text(subtitulo, centroTexto, y + 33, { align: "center" });
-
-  return y + alturaHeader + 7;
+interface CabecalhoPdf {
+  titulo: string;
+  numeroOS: string;
+  rotuloData: "Emissão" | "Entrada";
+  dataFormatada: string;
 }
 
-async function aplicarRodape(doc: jsPDF, numeroOS: string) {
-  const pageHeight = doc.internal.pageSize.getHeight();
-  const iconeRodapeDataUrl = await obterIconeRodapeDataUrl();
-  if (iconeRodapeDataUrl) {
-    const iconSize = 6;
-    const iconY = pageHeight - 13;
-    try {
-      doc.addImage(iconeRodapeDataUrl, "PNG", MARGIN_LEFT, iconY, iconSize, iconSize);
-    } catch (err) {
-      console.error("Falha ao adicionar ícone no rodapé PDF:", err);
-    }
+function aplicarCabecalhoPadrao(doc: jsPDF, y: number, cabecalho: CabecalhoPdf) {
+  const alturaHeader = 43;
+  const larguraLogo = 45;
+  const larguraDocumento = 47;
+  const separadorLogo = MARGIN_LEFT + larguraLogo;
+  const separadorDocumento = PAGE_WIDTH - MARGIN_RIGHT - larguraDocumento;
+  const centroEmpresa = (separadorLogo + separadorDocumento) / 2;
+  const centroDocumento = separadorDocumento + larguraDocumento / 2;
+
+  doc.setDrawColor(...CORES_PDF.bordaForte);
+  doc.setLineWidth(0.45);
+  doc.rect(MARGIN_LEFT, y, CONTENT_WIDTH, alturaHeader, "S");
+  doc.setLineWidth(0.3);
+  doc.line(separadorLogo, y, separadorLogo, y + alturaHeader);
+  doc.line(separadorDocumento, y, separadorDocumento, y + alturaHeader);
+
+  try {
+    const logoSize = 34;
+    doc.addImage(
+      LOGO_MONOCHROME_DATA_URL,
+      "PNG",
+      MARGIN_LEFT + (larguraLogo - logoSize) / 2,
+      y + (alturaHeader - logoSize) / 2,
+      logoSize,
+      logoSize,
+    );
+  } catch (err) {
+    console.error("Falha ao adicionar logo no cabeçalho PDF:", err);
   }
+
+  doc.setTextColor(...CORES_PDF.preto);
+  doc.setFontSize(10);
+  doc.setFont("helvetica", "bold");
+  doc.text(CABECALHO_EMPRESA.nome, centroEmpresa, y + 9, { align: "center" });
   doc.setFontSize(7);
-  doc.setTextColor(150, 150, 150);
+  doc.setFont("helvetica", "normal");
+  doc.text(CABECALHO_EMPRESA.descricao, centroEmpresa, y + 15, { align: "center" });
+  doc.text(CABECALHO_EMPRESA.telefone, centroEmpresa, y + 21, { align: "center" });
+  doc.text(CABECALHO_EMPRESA.contato, centroEmpresa, y + 27, { align: "center" });
+  doc.text(CABECALHO_EMPRESA.cnpj, centroEmpresa, y + 33, { align: "center" });
+
+  doc.setTextColor(...CORES_PDF.preto);
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(8);
+  doc.text(cabecalho.titulo, centroDocumento, y + 9, { align: "center" });
+  doc.setFontSize(6.5);
+  doc.text("Número da OS", centroDocumento, y + 17, { align: "center" });
+  doc.setFontSize(9);
+  doc.text(cabecalho.numeroOS, centroDocumento, y + 24, { align: "center" });
+  doc.setFontSize(6.5);
+  doc.text(cabecalho.rotuloData, centroDocumento, y + 31, { align: "center" });
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(6.5);
+  const dataLinhas = doc.splitTextToSize(cabecalho.dataFormatada, larguraDocumento - 5);
+  doc.text(dataLinhas.slice(0, 2), centroDocumento, y + 37, { align: "center" });
+
+  return y + alturaHeader + 8;
+}
+
+function aplicarRodape(
+  doc: jsPDF,
+  numeroOS: string,
+  pagina: number,
+  totalPaginas: number,
+  dataGeracao: Date,
+  linhaSecundaria?: string,
+) {
+  const pageHeight = doc.internal.pageSize.getHeight();
+  const rodapeY = pageHeight - 9;
+  doc.setDrawColor(...CORES_PDF.borda);
+  doc.setLineWidth(0.3);
+  doc.line(MARGIN_LEFT, pageHeight - 17, PAGE_WIDTH - MARGIN_RIGHT, pageHeight - 17);
+  doc.setFontSize(7);
+  doc.setTextColor(...CORES_PDF.textoSecundario);
+  doc.setFont("helvetica", "normal");
+  if (linhaSecundaria) {
+    doc.text(linhaSecundaria, PAGE_WIDTH / 2, pageHeight - 13, { align: "center" });
+  }
   doc.text(
-    `AutoOS — Gerado em ${new Date().toLocaleString("pt-BR")} — ${numeroOS}`,
+    `AutoOS | ${dataGeracao.toLocaleString("pt-BR")} | ${numeroOS} | Página ${pagina}/${totalPaginas}`,
     PAGE_WIDTH / 2,
-    pageHeight - 10,
+    rodapeY,
     { align: "center" }
   );
+}
+
+function opcoesTabelaMonocromatica() {
+  return {
+    margin: { left: MARGIN_LEFT, right: MARGIN_RIGHT },
+    theme: "grid" as const,
+    styles: {
+      fontSize: 9,
+      cellPadding: 3,
+      lineColor: CORES_PDF.borda,
+      lineWidth: 0.3,
+      textColor: CORES_PDF.texto,
+      fillColor: CORES_PDF.branco,
+    },
+    headStyles: {
+      fillColor: CORES_PDF.branco,
+      textColor: CORES_PDF.preto,
+      fontStyle: "bold" as const,
+    },
+  };
+}
+
+function renderizarTabelaFormulario(
+  doc: jsPDF,
+  y: number,
+  cabecalho: string[],
+  corpo: string[][],
+  larguras?: number[],
+): number {
+  const opcoes = opcoesTabelaMonocromatica();
+  const columnStyles = larguras?.reduce<Record<number, { cellWidth: number }>>(
+    (estilos, largura, indice) => {
+      estilos[indice] = { cellWidth: largura };
+      return estilos;
+    },
+    {},
+  );
+
+  autoTable(doc, {
+    ...opcoes,
+    startY: y,
+    styles: {
+      ...opcoes.styles,
+      font: "helvetica",
+      fontSize: 8.5,
+      cellPadding: 2.2,
+      fontStyle: "bold",
+      valign: "top",
+    },
+    headStyles: {
+      ...opcoes.headStyles,
+      font: "courier",
+      fontSize: 7,
+      halign: "left",
+    },
+    ...(columnStyles ? { columnStyles } : {}),
+    head: [cabecalho],
+    body: corpo,
+  });
+
+  return (doc as unknown as { lastAutoTable: { finalY: number } }).lastAutoTable.finalY + 2;
+}
+
+function renderizarTituloSecao(doc: jsPDF, y: number, titulo: string): number {
+  doc.setTextColor(...CORES_PDF.preto);
+  doc.setFontSize(9);
+  doc.setFont("helvetica", "bold");
+  doc.text(titulo, PAGE_WIDTH / 2, y + 4, { align: "center" });
+  doc.setDrawColor(...CORES_PDF.borda);
+  doc.setLineWidth(0.35);
+  doc.line(MARGIN_LEFT, y + 7, PAGE_WIDTH - MARGIN_RIGHT, y + 7);
+  return y + 10;
+}
+
+function renderizarParagrafo(
+  doc: jsPDF,
+  texto: string,
+  x: number,
+  y: number,
+  largura: number,
+  alturaLinha = 4,
+): number {
+  const linhas = doc.splitTextToSize(texto, largura) as string[];
+  let indice = 0;
+  let cursorY = y;
+  const margemInferior = 22;
+
+  while (indice < linhas.length) {
+    const alturaDisponivel = doc.internal.pageSize.getHeight() - margemInferior - cursorY;
+    if (alturaDisponivel < alturaLinha) {
+      doc.addPage();
+      cursorY = 20;
+      continue;
+    }
+
+    const linhasNaPagina = Math.max(1, Math.floor(alturaDisponivel / alturaLinha));
+    const lote = linhas.slice(indice, indice + linhasNaPagina);
+    doc.text(lote, x, cursorY);
+    indice += lote.length;
+    cursorY += lote.length * alturaLinha;
+
+    if (indice < linhas.length) {
+      doc.addPage();
+      cursorY = 20;
+    }
+  }
+
+  return cursorY + 5;
 }
 
 async function adicionarRegistroFotografico(
@@ -298,13 +380,13 @@ async function adicionarRegistroFotografico(
     doc.addPage();
 
     let pageY = 18;
-    doc.setTextColor(...COR_PRETA);
+    doc.setTextColor(...CORES_PDF.preto);
     doc.setFont("helvetica", "bold");
     doc.setFontSize(12);
     doc.text(titulo, PAGE_WIDTH / 2, pageY, { align: "center" });
     pageY += 7;
 
-    doc.setTextColor(...COR_CINZA_MEDIO);
+    doc.setTextColor(...CORES_PDF.textoSecundario);
     doc.setFont("helvetica", "normal");
     doc.setFontSize(8);
     doc.text(descricao, PAGE_WIDTH / 2, pageY, { align: "center" });
@@ -317,17 +399,17 @@ async function adicionarRegistroFotografico(
       const cardWidth = CONTENT_WIDTH;
       const cardHeight = 118;
 
-      doc.setDrawColor(...COR_CINZA_CLARO);
+      doc.setDrawColor(...CORES_PDF.borda);
       doc.roundedRect(cardX, cardY, cardWidth, cardHeight, 2, 2);
 
       doc.setFont("helvetica", "bold");
       doc.setFontSize(9);
-      doc.setTextColor(...COR_PRETA);
+      doc.setTextColor(...CORES_PDF.preto);
       doc.text(`Imagem ${indiceImagem}`, cardX + 4, cardY + 7);
 
       doc.setFont("helvetica", "normal");
       doc.setFontSize(7);
-      doc.setTextColor(...COR_CINZA_MEDIO);
+      doc.setTextColor(...CORES_PDF.textoSecundario);
       const nomeArquivo = doc.splitTextToSize(imagem.filename, cardWidth - 8);
       doc.text(nomeArquivo[0], cardX + 4, cardY + 12);
 
@@ -371,6 +453,193 @@ async function adicionarRegistroFotografico(
   }
 }
 
+/**
+ * Verifica se é necessário adicionar uma nova página antes de renderizar
+ * um bloco de texto. Se o conteúdo estimado não couber, insere page break.
+ */
+function garantirEspacoVertical(doc: jsPDF, y: number, alturaEstimada: number): number {
+  const pageHeight = doc.internal.pageSize.getHeight();
+  const margemInferior = 20;
+  if (y + alturaEstimada > pageHeight - margemInferior) {
+    doc.addPage();
+    return 20;
+  }
+  return y;
+}
+
+/**
+ * Renderiza os termos comerciais no padrão da imagem anexada ao orçamento.
+ * Inclui prazo, faturamento, garantia, validade, taxa de diagnóstico e assinatura.
+ */
+function renderizarCondicoesComerciais(
+  doc: jsPDF,
+  y: number,
+  tecnicoNome: string,
+  emailTecnico: string
+): number {
+  const centerX = PAGE_WIDTH / 2;
+  const espacoTitulo = 6;
+  const espacoParagrafo = 5;
+  const espacoSecao = 10;
+
+  // ─── Prazo de Execução ────────────────────────────────────
+  y = garantirEspacoVertical(doc, y, 20);
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(10);
+  doc.setTextColor(...CORES_PDF.preto);
+  doc.text("Prazo de Execução:", centerX, y, { align: "center" });
+  y += espacoTitulo;
+
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(9);
+  const prazoLinhas = doc.splitTextToSize(
+    "Após a aprovação da proposta, o prazo estimado para a realização do serviço é de 02 a 04 dias úteis (Podendo aumentar caso seja necessário troca de peças).",
+    CONTENT_WIDTH
+  );
+  prazoLinhas.forEach((linha: string) => {
+    doc.text(linha, centerX, y, { align: "center" });
+    y += espacoParagrafo;
+  });
+  y += 3;
+
+  // ─── Faturamento ──────────────────────────────────────────
+  y = garantirEspacoVertical(doc, y, 16);
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(10);
+  doc.setTextColor(...CORES_PDF.preto);
+  doc.text("Faturamento:", centerX, y, { align: "center" });
+  y += espacoTitulo;
+
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(9);
+  doc.text(
+    "O faturamento será realizado somente após a aprovação do orçamento.",
+    centerX,
+    y,
+    { align: "center" }
+  );
+  y += espacoSecao;
+
+  // ─── Garantia ─────────────────────────────────────────────
+  y = garantirEspacoVertical(doc, y, 45);
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(10);
+  doc.setTextColor(...CORES_PDF.preto);
+  doc.text("Garantia:", centerX, y, { align: "center" });
+  y += espacoTitulo;
+
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(9);
+  const garantiaItens = [
+    "O equipamento terá garantia em bancada na nossa assistência técnica.",
+    "Caso seja necessário o envio, os custos de frete (ida e volta) serão de responsabilidade do cliente.",
+    "Os serviços aprovados terão garantia de 90 dias, contados a partir da disponibilidade do equipamento para retirada em nosso laboratório.",
+  ];
+  const bulletIndent = MARGIN_LEFT + 4;
+  const textIndent = bulletIndent + 4;
+  garantiaItens.forEach((item) => {
+    const linhas = doc.splitTextToSize(item, CONTENT_WIDTH - (textIndent - MARGIN_LEFT) - 4);
+    doc.text("•", bulletIndent, y);
+    linhas.forEach((linha: string, idx: number) => {
+      doc.text(linha, textIndent, y + idx * espacoParagrafo);
+    });
+    y += linhas.length * espacoParagrafo + 2;
+  });
+  y += 3;
+
+  // ─── Validade do Orçamento ────────────────────────────────
+  y = garantirEspacoVertical(doc, y, 16);
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(10);
+  doc.setTextColor(...CORES_PDF.preto);
+  doc.text("Validade do Orçamento:", centerX, y, { align: "center" });
+  y += espacoTitulo;
+
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(9);
+  doc.setTextColor(...CORES_PDF.preto);
+  doc.text("05 dias a partir da data de emissão.", centerX, y, { align: "center" });
+  y += espacoSecao;
+
+  // ─── Taxa de Diagnóstico Técnico ──────────────────────────
+  y = garantirEspacoVertical(doc, y, 75);
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(10);
+  doc.setTextColor(...CORES_PDF.preto);
+  doc.text("Taxa de Diagnóstico Técnico (em caso de reprovação do orçamento)", centerX, y, {
+    align: "center",
+  });
+  y += espacoTitulo + 2;
+
+  // Caixa delimitadora
+  const boxPadding = 5;
+  const boxX = MARGIN_LEFT;
+  const boxWidth = CONTENT_WIDTH;
+  const introText =
+    "Caso o orçamento não seja aprovado, será cobrada uma taxa de diagnóstico técnico conforme a categoria do equipamento:";
+  const introLinhas = doc.splitTextToSize(introText, boxWidth - boxPadding * 2);
+
+  const categorias = [
+    "Impressoras de etiquetas de pequeno porte (TLP2844, GC420t, ZD Series, GT800, GK420, HC100, ZD510, Argox): R$ 130,00",
+    "Impressoras de médio ou grande porte (ZT230, ZT410, ZT411, ZT420, ZT231, ZT500, ZT600, XI3, XI4, ZM400, S4M, Z4M) e leitores e coletores de qualquer marca: R$ 180,00",
+    "Impressoras de cartão PVC (P330, ZXP3, ZXPI, ZC100, ZC300 e Datacard): R$ 200,00",
+  ];
+
+  let boxHeight = boxPadding * 2 + introLinhas.length * espacoParagrafo + 6;
+  categorias.forEach((cat) => {
+    const linhas = doc.splitTextToSize(cat, boxWidth - boxPadding * 2 - (textIndent - boxX) - 2);
+    boxHeight += linhas.length * espacoParagrafo + 2;
+  });
+  boxHeight += 4;
+
+  doc.setDrawColor(...CORES_PDF.borda);
+  doc.roundedRect(boxX, y, boxWidth, boxHeight, 2, 2, "S");
+
+  let boxY = y + boxPadding + 3;
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(9);
+  doc.setTextColor(...CORES_PDF.preto);
+  introLinhas.forEach((linha: string) => {
+    doc.text(linha, boxX + boxPadding, boxY);
+    boxY += espacoParagrafo;
+  });
+  boxY += 3;
+
+  categorias.forEach((cat) => {
+    const linhas = doc.splitTextToSize(cat, boxWidth - boxPadding * 2 - (textIndent - boxX) - 2);
+    doc.text("•", boxX + boxPadding + 4, boxY);
+    linhas.forEach((linha: string, idx: number) => {
+      doc.text(linha, textIndent, boxY + idx * espacoParagrafo);
+    });
+    boxY += linhas.length * espacoParagrafo + 2;
+  });
+
+  y += boxHeight + espacoSecao;
+
+  // ─── Assinatura ───────────────────────────────────────────
+  y = garantirEspacoVertical(doc, y, 25);
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(9);
+  doc.setTextColor(...CORES_PDF.preto);
+  doc.text("Atenciosamente;", MARGIN_LEFT, y);
+  y += espacoParagrafo + 2;
+
+  doc.setFont("helvetica", "bold");
+  doc.text(tecnicoNome || "—", MARGIN_LEFT, y);
+  y += espacoParagrafo;
+
+  doc.setFont("helvetica", "normal");
+  const emailLabel = "E-mail: ";
+  doc.text(emailLabel, MARGIN_LEFT, y);
+  const emailOffset = doc.getTextWidth(emailLabel);
+  doc.setTextColor(...CORES_PDF.preto);
+  doc.text(emailTecnico || "—", MARGIN_LEFT + emailOffset, y);
+  doc.setTextColor(...CORES_PDF.preto);
+  y += espacoSecao;
+
+  return y;
+}
+
 // ─── Serviço principal ──────────────────────────────────
 
 export const PdfService = {
@@ -378,12 +647,11 @@ export const PdfService = {
    * Gera PDF de orçamento profissional no padrão BMITAG.
    *
    * Layout do documento:
-   * 1. Cabeçalho com dados da empresa (BMITAG, telefone, email, CNPJ)
-   * 2. Número da OS e data
-   * 3. Dados do cliente (Empresa, Responsável, Tipo de Orçamento)
+   * 1. Cabeçalho monocromático com empresa, tipo, OS e emissão
+   * 2. Dados do cliente (Empresa, Responsável, Tipo de Orçamento)
    * 4. Planilha de valores (tabela com serviços e peças)
    * 5. Número de série do equipamento
-   * 6. Condições (pagamento, prazo, garantia, validade)
+   * 5. Condições comerciais atuais (faturamento, prazo, garantia, validade)
    * 7. Valor total
    *
    * @param equipamento - Dados do equipamento (marca, modelo, serial, cliente)
@@ -403,24 +671,14 @@ export const PdfService = {
       // 1. CABEÇALHO DA EMPRESA (com logo à esquerda)
       // ═══════════════════════════════════════════════════
 
-      y = await aplicarCabecalhoPadrao(doc, y, "ORÇAMENTO TÉCNICO");
-
-      // ═══════════════════════════════════════════════════
-      // 2. NÚMERO DA OS E DATA
-      // ═══════════════════════════════════════════════════
-
-      doc.setTextColor(...COR_PRETA);
-      doc.setFontSize(11);
-      doc.setFont("helvetica", "bold");
       const numeroOS = gerarNumeroOS(equipamento.id);
-      doc.text(`Nº ${numeroOS}`, PAGE_WIDTH / 2, y, { align: "center" });
-      y += 8;
-
-      doc.setFontSize(10);
-      doc.setFont("helvetica", "normal");
-      const dataExtenso = formatarDataExtenso(new Date());
-      doc.text(`Salvador, ${dataExtenso}`, PAGE_WIDTH - MARGIN_RIGHT, y, { align: "right" });
-      y += 10;
+      const dataGeracao = new Date();
+      y = aplicarCabecalhoPadrao(doc, y, {
+        titulo: "ORÇAMENTO TÉCNICO",
+        numeroOS,
+        rotuloData: "Emissão",
+        dataFormatada: formatarDataExtenso(dataGeracao),
+      });
 
       // ═══════════════════════════════════════════════════
       // 3. DADOS DO CLIENTE
@@ -436,20 +694,16 @@ export const PdfService = {
         : tecnicoResponsavelOrcamento;
 
       autoTable(doc, {
+        ...opcoesTabelaMonocromatica(),
         startY: y,
-        margin: { left: MARGIN_LEFT, right: MARGIN_RIGHT },
-        theme: "grid",
-        styles: {
-          fontSize: 9,
-          cellPadding: 3,
-          lineColor: COR_CINZA_CLARO,
-          lineWidth: 0.3,
-        },
         headStyles: {
-          fillColor: COR_FUNDO_HEADER,
-          textColor: COR_TEXTO_BRANCO,
-          fontStyle: "bold",
+          ...opcoesTabelaMonocromatica().headStyles,
           halign: "center",
+        },
+        columnStyles: {
+          0: { cellWidth: 55 },
+          1: { cellWidth: 55 },
+          2: { cellWidth: 60 },
         },
         head: [["EMPRESA", "RESPONSÁVEL", "TIPO DE ORÇAMENTO"]],
         body: [[
@@ -510,36 +764,21 @@ export const PdfService = {
           linhasTabela.push(["Serviços técnicos", `${equipamento.marca} ${equipamento.modelo}`, "01", formatarMoeda(custoTotal), formatarMoeda(custoTotal)]);
         }
 
-        // Título da seção
-        doc.setFillColor(...COR_FUNDO_HEADER);
-        doc.rect(MARGIN_LEFT, y, CONTENT_WIDTH, 7, "F");
-        doc.setTextColor(...COR_TEXTO_BRANCO);
-        doc.setFontSize(9);
-        doc.setFont("helvetica", "bold");
-        doc.text("PLANILHA DE VALORES", PAGE_WIDTH / 2, y + 5, { align: "center" });
-        y += 7;
+        // Título da seção sem faixa preenchida.
+        y = renderizarTituloSecao(doc, y, "PLANILHA DE VALORES");
 
         // Tabela de valores
         autoTable(doc, {
+          ...opcoesTabelaMonocromatica(),
           startY: y,
-          margin: { left: MARGIN_LEFT, right: MARGIN_RIGHT },
-          theme: "grid",
           styles: {
-            fontSize: 9,
-            cellPadding: 3,
-            lineColor: COR_CINZA_CLARO,
-            lineWidth: 0.3,
+            ...opcoesTabelaMonocromatica().styles,
             halign: "center",
           },
-          headStyles: {
-            fillColor: COR_CINZA_MEDIO,
-            textColor: COR_TEXTO_BRANCO,
-            fontStyle: "bold",
-          },
           columnStyles: {
-            0: { halign: "left", cellWidth: 55 },  // Descrição
-            1: { halign: "center", cellWidth: 35 }, // Modelo
-            2: { halign: "center", cellWidth: 15 }, // Qtd
+            0: { halign: "left", cellWidth: 50 },  // Descrição
+            1: { halign: "center", cellWidth: 28 }, // Modelo
+            2: { halign: "center", cellWidth: 14 }, // Qtd
             3: { halign: "right", cellWidth: 35 },  // Valor Unitário
             4: { halign: "right", cellWidth: 35 },  // Valor Total
           },
@@ -551,19 +790,16 @@ export const PdfService = {
 
         // Linha de total
         autoTable(doc, {
+          ...opcoesTabelaMonocromatica(),
           startY: y,
-          margin: { left: MARGIN_LEFT, right: MARGIN_RIGHT },
-          theme: "grid",
           styles: {
+            ...opcoesTabelaMonocromatica().styles,
             fontSize: 10,
-            cellPadding: 3,
-            lineColor: COR_CINZA_CLARO,
-            lineWidth: 0.3,
             fontStyle: "bold",
           },
           columnStyles: {
             0: { halign: "right", cellWidth: CONTENT_WIDTH * 0.6 },
-            1: { halign: "right", cellWidth: CONTENT_WIDTH * 0.4, fillColor: COR_FUNDO_TOTAL },
+            1: { halign: "right", cellWidth: CONTENT_WIDTH * 0.4 },
           },
           body: [["VALOR TOTAL:", formatarMoeda(custoTotal)]],
         });
@@ -575,7 +811,7 @@ export const PdfService = {
       // 5. NÚMERO DE SÉRIE
       // ═══════════════════════════════════════════════════
 
-      doc.setTextColor(...COR_CINZA_ESCURO);
+      doc.setTextColor(...CORES_PDF.textoSecundario);
       doc.setFontSize(9);
       doc.setFont("helvetica", "bold");
       doc.text("Número de Série do Equipamento: ", MARGIN_LEFT, y);
@@ -584,49 +820,15 @@ export const PdfService = {
       y += 8;
 
       // ═══════════════════════════════════════════════════
-      // 6. CONDIÇÕES COMERCIAIS (somente com bloco financeiro)
+      // 6. CONDIÇÕES COMERCIAIS
       // ═══════════════════════════════════════════════════
       if (exibirBlocosFinanceiros) {
-        doc.setFontSize(9);
-        doc.setFont("helvetica", "bold");
-        doc.setTextColor(...COR_PRETA);
-
-        const condicoes = [
-          "• Forma de Pagamento: 5% desconto Pix",
-          "• Obs.: A opção de boleto bancário está sujeita à aprovação do sistema.",
-        ];
-
-        condicoes.forEach((linha) => {
-          doc.text(linha, MARGIN_LEFT, y);
-          y += 5;
-        });
-
-        y += 3;
-
-        // Prazos e garantias
-        doc.setFont("helvetica", "bold");
-        doc.setFontSize(10);
-        doc.text("Prazo de Execução:", MARGIN_LEFT, y);
-        doc.setFont("helvetica", "normal");
-        doc.text(
-          verificacao.tempo_estimado
-            ? `${verificacao.tempo_estimado} horas (após aprovação)`
-            : "10 dias úteis (após aprovação)",
-          MARGIN_LEFT + 40, y
+        y = renderizarCondicoesComerciais(
+          doc,
+          y,
+          tecnicoResponsavelOrcamento,
+          emailTecnicoOrcamento
         );
-        y += 6;
-
-        doc.setFont("helvetica", "bold");
-        doc.text("Garantia:", MARGIN_LEFT, y);
-        doc.setFont("helvetica", "normal");
-        doc.text("90 dias para serviços executados", MARGIN_LEFT + 40, y);
-        y += 6;
-
-        doc.setFont("helvetica", "bold");
-        doc.text("Validade:", MARGIN_LEFT, y);
-        doc.setFont("helvetica", "normal");
-        doc.text("05 dias úteis", MARGIN_LEFT + 40, y);
-        y += 10;
       }
 
       // ═══════════════════════════════════════════════════
@@ -636,13 +838,12 @@ export const PdfService = {
       if (verificacao.diagnostico) {
         doc.setFontSize(9);
         doc.setFont("helvetica", "bold");
-        doc.setTextColor(...COR_CINZA_ESCURO);
+        doc.setTextColor(...CORES_PDF.textoSecundario);
+        y = garantirEspacoVertical(doc, y, 9);
         doc.text("Diagnóstico:", MARGIN_LEFT, y);
         y += 5;
         doc.setFont("helvetica", "normal");
-        const linhasDiag = doc.splitTextToSize(verificacao.diagnostico, CONTENT_WIDTH);
-        doc.text(linhasDiag, MARGIN_LEFT, y);
-        y += linhasDiag.length * 4 + 5;
+        y = renderizarParagrafo(doc, verificacao.diagnostico, MARGIN_LEFT, y, CONTENT_WIDTH);
       }
 
       const imagensEquipamento = equipamento.id
@@ -677,7 +878,7 @@ export const PdfService = {
       const totalPages = doc.getNumberOfPages();
       for (let page = 1; page <= totalPages; page += 1) {
         doc.setPage(page);
-        await aplicarRodape(doc, numeroOS);
+        aplicarRodape(doc, numeroOS, page, totalPages, dataGeracao);
       }
 
       // ═══════════════════════════════════════════════════
@@ -734,28 +935,20 @@ export const PdfService = {
       const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
       let y = 15;
 
-      const yAfterHeader = await aplicarCabecalhoPadrao(doc, y, "ORÇAMENTO TÉCNICO");
-
-      doc.setFont("helvetica", "bold");
-      doc.setFontSize(10);
-      doc.setTextColor(200, 0, 0);
-      doc.text("VERSÃO AJUSTADA", PAGE_WIDTH / 2, 52, { align: "center" });
-      doc.setTextColor(...COR_PRETA);
-
-      y = yAfterHeader;
-
-      doc.setTextColor(...COR_PRETA);
-      doc.setFontSize(11);
-      doc.setFont("helvetica", "bold");
       const numeroOS = gerarNumeroOS(equipamento.id);
-      doc.text(`Nº ${numeroOS}`, PAGE_WIDTH / 2, y, { align: "center" });
-      y += 8;
+      const dataGeracao = new Date();
+      y = aplicarCabecalhoPadrao(doc, y, {
+        titulo: "ORÇAMENTO AJUSTADO",
+        numeroOS,
+        rotuloData: "Emissão",
+        dataFormatada: formatarDataExtenso(dataGeracao),
+      });
 
+      doc.setFont("helvetica", "bold");
       doc.setFontSize(10);
-      doc.setFont("helvetica", "normal");
-      const dataExtenso = formatarDataExtenso(new Date());
-      doc.text(`Salvador, ${dataExtenso}`, PAGE_WIDTH - MARGIN_RIGHT, y, { align: "right" });
-      y += 10;
+      doc.setTextColor(...CORES_PDF.preto);
+      doc.text("VERSÃO AJUSTADA", PAGE_WIDTH / 2, y, { align: "center" });
+      y += 7;
 
       const tecnicoResponsavelOrcamento =
         verificacao.tecnico_nome?.trim() ||
@@ -767,20 +960,16 @@ export const PdfService = {
         : tecnicoResponsavelOrcamento;
 
       autoTable(doc, {
+        ...opcoesTabelaMonocromatica(),
         startY: y,
-        margin: { left: MARGIN_LEFT, right: MARGIN_RIGHT },
-        theme: "grid",
-        styles: {
-          fontSize: 9,
-          cellPadding: 3,
-          lineColor: COR_CINZA_CLARO,
-          lineWidth: 0.3,
-        },
         headStyles: {
-          fillColor: COR_FUNDO_HEADER,
-          textColor: COR_TEXTO_BRANCO,
-          fontStyle: "bold",
+          ...opcoesTabelaMonocromatica().headStyles,
           halign: "center",
+        },
+        columnStyles: {
+          0: { cellWidth: 55 },
+          1: { cellWidth: 55 },
+          2: { cellWidth: 60 },
         },
         head: [["EMPRESA", "RESPONSÁVEL", "TIPO DE ORÇAMENTO"]],
         body: [[
@@ -821,34 +1010,19 @@ export const PdfService = {
           linhasTabela.push(["Serviços técnicos", `${equipamento.marca} ${equipamento.modelo}`, "01", formatarMoeda(custoTotal), formatarMoeda(custoTotal)]);
         }
 
-        doc.setFillColor(...COR_FUNDO_HEADER);
-        doc.rect(MARGIN_LEFT, y, CONTENT_WIDTH, 7, "F");
-        doc.setTextColor(...COR_TEXTO_BRANCO);
-        doc.setFontSize(9);
-        doc.setFont("helvetica", "bold");
-        doc.text("PLANILHA DE VALORES", PAGE_WIDTH / 2, y + 5, { align: "center" });
-        y += 7;
+        y = renderizarTituloSecao(doc, y, "PLANILHA DE VALORES");
 
         autoTable(doc, {
+          ...opcoesTabelaMonocromatica(),
           startY: y,
-          margin: { left: MARGIN_LEFT, right: MARGIN_RIGHT },
-          theme: "grid",
           styles: {
-            fontSize: 9,
-            cellPadding: 3,
-            lineColor: COR_CINZA_CLARO,
-            lineWidth: 0.3,
+            ...opcoesTabelaMonocromatica().styles,
             halign: "center",
           },
-          headStyles: {
-            fillColor: COR_CINZA_MEDIO,
-            textColor: COR_TEXTO_BRANCO,
-            fontStyle: "bold",
-          },
           columnStyles: {
-            0: { halign: "left", cellWidth: 55 },
-            1: { halign: "center", cellWidth: 35 },
-            2: { halign: "center", cellWidth: 15 },
+            0: { halign: "left", cellWidth: 50 },
+            1: { halign: "center", cellWidth: 28 },
+            2: { halign: "center", cellWidth: 14 },
             3: { halign: "right", cellWidth: 35 },
             4: { halign: "right", cellWidth: 35 },
           },
@@ -859,19 +1033,16 @@ export const PdfService = {
         y = (doc as unknown as { lastAutoTable: { finalY: number } }).lastAutoTable.finalY + 2;
 
         autoTable(doc, {
+          ...opcoesTabelaMonocromatica(),
           startY: y,
-          margin: { left: MARGIN_LEFT, right: MARGIN_RIGHT },
-          theme: "grid",
           styles: {
+            ...opcoesTabelaMonocromatica().styles,
             fontSize: 10,
-            cellPadding: 3,
-            lineColor: COR_CINZA_CLARO,
-            lineWidth: 0.3,
             fontStyle: "bold",
           },
           columnStyles: {
             0: { halign: "right", cellWidth: CONTENT_WIDTH * 0.6 },
-            1: { halign: "right", cellWidth: CONTENT_WIDTH * 0.4, fillColor: COR_FUNDO_TOTAL },
+            1: { halign: "right", cellWidth: CONTENT_WIDTH * 0.4 },
           },
           body: [["VALOR TOTAL:", formatarMoeda(custoTotal)]],
         });
@@ -879,7 +1050,7 @@ export const PdfService = {
         y = (doc as unknown as { lastAutoTable: { finalY: number } }).lastAutoTable.finalY + 8;
       }
 
-      doc.setTextColor(...COR_CINZA_ESCURO);
+      doc.setTextColor(...CORES_PDF.textoSecundario);
       doc.setFontSize(9);
       doc.setFont("helvetica", "bold");
       doc.text("Número de Série do Equipamento: ", MARGIN_LEFT, y);
@@ -888,57 +1059,23 @@ export const PdfService = {
       y += 8;
 
       if (exibirBlocosFinanceiros) {
-        doc.setFontSize(9);
-        doc.setFont("helvetica", "bold");
-        doc.setTextColor(...COR_PRETA);
-
-        const condicoes = [
-          "• Forma de Pagamento: 5% desconto Pix",
-          "• Obs.: A opção de boleto bancário está sujeita à aprovação do sistema.",
-        ];
-
-        condicoes.forEach((linha) => {
-          doc.text(linha, MARGIN_LEFT, y);
-          y += 5;
-        });
-
-        y += 3;
-
-        doc.setFont("helvetica", "bold");
-        doc.setFontSize(10);
-        doc.text("Prazo de Execução:", MARGIN_LEFT, y);
-        doc.setFont("helvetica", "normal");
-        doc.text(
-          verificacao.tempo_estimado
-            ? `${verificacao.tempo_estimado} horas (após aprovação)`
-            : "10 dias úteis (após aprovação)",
-          MARGIN_LEFT + 40, y
+        y = renderizarCondicoesComerciais(
+          doc,
+          y,
+          tecnicoResponsavelOrcamento,
+          emailTecnicoOrcamento
         );
-        y += 6;
-
-        doc.setFont("helvetica", "bold");
-        doc.text("Garantia:", MARGIN_LEFT, y);
-        doc.setFont("helvetica", "normal");
-        doc.text("90 dias para serviços executados", MARGIN_LEFT + 40, y);
-        y += 6;
-
-        doc.setFont("helvetica", "bold");
-        doc.text("Validade:", MARGIN_LEFT, y);
-        doc.setFont("helvetica", "normal");
-        doc.text("05 dias úteis", MARGIN_LEFT + 40, y);
-        y += 10;
       }
 
       if (verificacao.diagnostico) {
         doc.setFontSize(9);
         doc.setFont("helvetica", "bold");
-        doc.setTextColor(...COR_CINZA_ESCURO);
+        doc.setTextColor(...CORES_PDF.textoSecundario);
+        y = garantirEspacoVertical(doc, y, 9);
         doc.text("Diagnóstico:", MARGIN_LEFT, y);
         y += 5;
         doc.setFont("helvetica", "normal");
-        const linhasDiag = doc.splitTextToSize(verificacao.diagnostico, CONTENT_WIDTH);
-        doc.text(linhasDiag, MARGIN_LEFT, y);
-        y += linhasDiag.length * 4 + 5;
+        y = renderizarParagrafo(doc, verificacao.diagnostico, MARGIN_LEFT, y, CONTENT_WIDTH);
       }
 
       const imagensEquipamento = equipamento.id
@@ -966,7 +1103,7 @@ export const PdfService = {
         "Imagens anexadas para comparar o estado final do equipamento após o serviço.",
       );
 
-      const dataAjuste = new Date(verificacao.adjusted_at);
+      const dataAjuste = converterDataDocumento(verificacao.adjusted_at);
       const dia = String(dataAjuste.getDate()).padStart(2, "0");
       const mes = String(dataAjuste.getMonth() + 1).padStart(2, "0");
       const ano = dataAjuste.getFullYear();
@@ -977,15 +1114,13 @@ export const PdfService = {
       const totalPages = doc.getNumberOfPages();
       for (let page = 1; page <= totalPages; page += 1) {
         doc.setPage(page);
-        await aplicarRodape(doc, numeroOS);
-        doc.setFontSize(7);
-        doc.setTextColor(150, 150, 150);
-        const pageHeight = doc.internal.pageSize.getHeight();
-        doc.text(
+        aplicarRodape(
+          doc,
+          numeroOS,
+          page,
+          totalPages,
+          dataGeracao,
           `Versão Ajustada em ${dataAjusteFormatada}`,
-          PAGE_WIDTH / 2,
-          pageHeight - 14,
-          { align: "center" }
         );
       }
 
@@ -1015,27 +1150,15 @@ export const PdfService = {
       const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
       let y = 15;
 
-      y = await aplicarCabecalhoPadrao(doc, y, "ORDEM DE SERVIÇO");
-
-      const numeroOS = `OS-${String(equipamento.id ?? 0).padStart(5, "0")}`;
-      const dataRegistro = equipamento.data_entrada
-        ? new Date(equipamento.data_entrada)
-        : new Date();
-
-      autoTable(doc, {
-        startY: y,
-        margin: { left: MARGIN_LEFT, right: MARGIN_RIGHT },
-        theme: "grid",
-        styles: { fontSize: 9, cellPadding: 3, lineColor: COR_CINZA_CLARO, lineWidth: 0.3 },
-        headStyles: { fillColor: COR_CINZA_MEDIO, textColor: COR_TEXTO_BRANCO, fontStyle: "bold" },
-        body: [
-          ["Ordem", numeroOS],
-          ["Data de entrada", dataRegistro.toLocaleDateString("pt-BR")],
-          ["Status atual", STATUS_LABELS[equipamento.status as keyof typeof STATUS_LABELS] || equipamento.status],
-        ],
+      const numeroOS = gerarNumeroOS(equipamento.id);
+      const dataRegistro = converterDataDocumento(equipamento.data_entrada);
+      const dataGeracao = new Date();
+      y = aplicarCabecalhoPadrao(doc, y, {
+        titulo: "ORDEM DE SERVIÇO",
+        numeroOS,
+        rotuloData: "Entrada",
+        dataFormatada: formatarDataExtenso(dataRegistro),
       });
-
-      y = (doc as unknown as { lastAutoTable: { finalY: number } }).lastAutoTable.finalY + 6;
 
       let verificacao = null;
       if (equipamento.id) {
@@ -1050,33 +1173,94 @@ export const PdfService = {
       const emailTecnico = emailTecnicoPorNome(tecnicoResponsavel);
       const observacoesDocumento = limparObservacoesParaDocumento(equipamento.observacoes);
 
-      const linhasDados: string[][] = [
-        ["Nº de Série", equipamento.serial_number || "—"],
-        ["Patrimônio", equipamento.patrimonio || "—"],
-        ["Marca", equipamento.marca || "—"],
-        ["Modelo", equipamento.modelo || "—"],
-        ["Tipo", equipamento.tipo || "—"],
-        ["Técnico responsável", tecnicoResponsavel || "—"],
-        ["E-mail técnico", emailTecnico || "—"],
-        ["Defeito relatado", equipamento.defeito_relatado || "—"],
-        ["Acessórios", equipamento.acessorios || "—"],
-        ["Outros acessórios", equipamento.acessorios_outros || "—"],
-        ["Observações", observacoesDocumento || "—"],
-      ];
+      const statusAtual = STATUS_LABELS[equipamento.status as keyof typeof STATUS_LABELS] || equipamento.status;
+      const defeitoInformado = equipamento.defeito_relatado || verificacao?.problema_relatado || "—";
+      const diagnosticoTecnico = verificacao?.diagnostico || "—";
+      const especificacoes = [
+        `Nº de série: ${equipamento.serial_number || "—"}`,
+        `Marca: ${equipamento.marca || "—"}`,
+        `Modelo: ${equipamento.modelo || "—"}`,
+        `Tipo: ${equipamento.tipo || "—"}`,
+        `Patrimônio: ${equipamento.patrimonio || "—"}`,
+        equipamento.tecnologia ? `Tecnologia: ${equipamento.tecnologia}` : "",
+        equipamento.conectividade ? `Conectividade: ${equipamento.conectividade}` : "",
+        equipamento.paginas_impressas !== undefined
+          ? `Páginas impressas: ${equipamento.paginas_impressas}`
+          : "",
+      ].filter(Boolean).join("; ");
 
-      autoTable(doc, {
-        startY: y,
-        margin: { left: MARGIN_LEFT, right: MARGIN_RIGHT },
-        theme: "grid",
-        styles: { fontSize: 9, cellPadding: 3, lineColor: COR_CINZA_CLARO, lineWidth: 0.3 },
-        headStyles: { fillColor: COR_CINZA_MEDIO, textColor: COR_TEXTO_BRANCO, fontStyle: "bold" },
-        columnStyles: {
-          0: { cellWidth: 48, fontStyle: "bold" },
-          1: { cellWidth: CONTENT_WIDTH - 48 },
-        },
-        head: [["Campo", "Valor informado"]],
-        body: linhasDados,
-      });
+      // Corpo em formato de ficha: os rótulos permanecem visíveis, mas todos
+      // os preenchimentos são brancos para manter a impressão econômica.
+      y = renderizarTabelaFormulario(
+        doc,
+        y,
+        ["STATUS ATUAL", "TÉCNICO RESPONSÁVEL"],
+        [[statusAtual, tecnicoResponsavel || "—"]],
+        [90, 90],
+      );
+      y = renderizarTabelaFormulario(
+        doc,
+        y,
+        ["CLIENTE"],
+        [[equipamento.cliente_nome || equipamento.proprietario || "—"]],
+        [CONTENT_WIDTH],
+      );
+      y = renderizarTabelaFormulario(
+        doc,
+        y,
+        ["TELEFONE", "E-MAIL"],
+        [[equipamento.cliente_telefone || "—", equipamento.cliente_email || "—"]],
+        [90, 90],
+      );
+      y = renderizarTabelaFormulario(
+        doc,
+        y,
+        ["EQUIPAMENTO", "TIPO"],
+        [[`${equipamento.marca || "—"} ${equipamento.modelo || ""}`.trim(), equipamento.tipo || "—"]],
+        [110, 70],
+      );
+      y = renderizarTabelaFormulario(
+        doc,
+        y,
+        ["Nº DE SÉRIE", "PATRIMÔNIO", "E-MAIL DO TÉCNICO"],
+        [[equipamento.serial_number || "—", equipamento.patrimonio || "—", emailTecnico || "—"]],
+        [65, 45, 70],
+      );
+      y = renderizarTabelaFormulario(
+        doc,
+        y,
+        ["ESPECIFICAÇÕES"],
+        [[especificacoes]],
+        [CONTENT_WIDTH],
+      );
+      y = renderizarTabelaFormulario(
+        doc,
+        y,
+        ["DEFEITO INFORMADO"],
+        [[defeitoInformado]],
+        [CONTENT_WIDTH],
+      );
+      y = renderizarTabelaFormulario(
+        doc,
+        y,
+        ["LAUDO TÉCNICO"],
+        [[diagnosticoTecnico]],
+        [CONTENT_WIDTH],
+      );
+      y = renderizarTabelaFormulario(
+        doc,
+        y,
+        ["ACESSÓRIOS", "OUTROS ACESSÓRIOS"],
+        [[equipamento.acessorios || "—", equipamento.acessorios_outros || "—"]],
+        [90, 90],
+      );
+      y = renderizarTabelaFormulario(
+        doc,
+        y,
+        ["OBSERVAÇÕES"],
+        [[observacoesDocumento || "—"]],
+        [CONTENT_WIDTH],
+      );
 
       const imagensEquipamento = equipamento.id
         ? await db.listarImagensEquipamento(equipamento.id)
@@ -1099,7 +1283,7 @@ export const PdfService = {
       const totalPages = doc.getNumberOfPages();
       for (let page = 1; page <= totalPages; page += 1) {
         doc.setPage(page);
-        await aplicarRodape(doc, numeroOS);
+        aplicarRodape(doc, numeroOS, page, totalPages, dataGeracao);
       }
 
       const pdfBytes = doc.output("arraybuffer");
@@ -1126,24 +1310,23 @@ export const PdfService = {
       const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
       let y = 15;
 
-      y = await aplicarCabecalhoPadrao(doc, y, "RELATÓRIO DE STATUS");
       const numeroOS = gerarNumeroOS(equipamento.id);
-      const dataRegistro = equipamento.data_entrada
-        ? new Date(equipamento.data_entrada)
-        : new Date();
+      const dataRegistro = converterDataDocumento(equipamento.data_entrada);
+      const dataGeracao = new Date();
+      y = aplicarCabecalhoPadrao(doc, y, {
+        titulo: "RELATÓRIO DE STATUS",
+        numeroOS,
+        rotuloData: "Entrada",
+        dataFormatada: formatarDataExtenso(dataRegistro),
+      });
 
       autoTable(doc, {
+        ...opcoesTabelaMonocromatica(),
         startY: y,
-        margin: { left: MARGIN_LEFT, right: MARGIN_RIGHT },
-        theme: "grid",
-        styles: { fontSize: 9, cellPadding: 3, lineColor: COR_CINZA_CLARO, lineWidth: 0.3 },
-        headStyles: { fillColor: COR_CINZA_MEDIO, textColor: COR_TEXTO_BRANCO, fontStyle: "bold" },
         body: [
-          ["Ordem", numeroOS],
           ["Equipamento", `${equipamento.marca || "—"} ${equipamento.modelo || ""}`.trim()],
           ["Nº de Série", equipamento.serial_number || "—"],
           ["Cliente", equipamento.cliente_nome || "—"],
-          ["Data de entrada", dataRegistro.toLocaleDateString("pt-BR")],
           ["Status atual", STATUS_LABELS[equipamento.status as keyof typeof STATUS_LABELS] || equipamento.status],
         ],
       });
@@ -1157,25 +1340,22 @@ export const PdfService = {
       if (equipamento.data_reprovacao) eventos.push({ label: "Reprovado", data: equipamento.data_reprovacao, status: "REPROVADO" });
       if (equipamento.data_pronto) eventos.push({ label: "Pronto", data: equipamento.data_pronto, status: "PRONTO" });
       if (equipamento.data_saida) eventos.push({ label: "Entregue", data: equipamento.data_saida, status: "ENTREGUE" });
-      eventos.sort((a, b) => new Date(a.data).getTime() - new Date(b.data).getTime());
+      eventos.sort((a, b) => converterDataDocumento(a.data).getTime() - converterDataDocumento(b.data).getTime());
 
       if (eventos.length === 0) {
         doc.setFont("helvetica", "italic");
         doc.setFontSize(10);
-        doc.setTextColor(...COR_CINZA_MEDIO);
+        doc.setTextColor(...CORES_PDF.textoSecundario);
         doc.text("Não há eventos de histórico registrados para este equipamento.", MARGIN_LEFT, y);
       } else {
         autoTable(doc, {
+          ...opcoesTabelaMonocromatica(),
           startY: y,
-          margin: { left: MARGIN_LEFT, right: MARGIN_RIGHT },
-          theme: "grid",
-          styles: { fontSize: 9, cellPadding: 3, lineColor: COR_CINZA_CLARO, lineWidth: 0.3 },
-          headStyles: { fillColor: COR_FUNDO_HEADER, textColor: COR_TEXTO_BRANCO, fontStyle: "bold" },
           head: [["Etapa", "Status", "Data"]],
           body: eventos.map((evento) => [
             evento.label,
             STATUS_LABELS[evento.status as keyof typeof STATUS_LABELS] || evento.status,
-            new Date(evento.data).toLocaleDateString("pt-BR"),
+            converterDataDocumento(evento.data).toLocaleDateString("pt-BR"),
           ]),
         });
       }
@@ -1183,7 +1363,7 @@ export const PdfService = {
       const totalPages = doc.getNumberOfPages();
       for (let page = 1; page <= totalPages; page += 1) {
         doc.setPage(page);
-        await aplicarRodape(doc, numeroOS);
+        aplicarRodape(doc, numeroOS, page, totalPages, dataGeracao);
       }
 
       const pdfBytes = doc.output("arraybuffer");
