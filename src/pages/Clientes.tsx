@@ -43,7 +43,6 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   Table,
   TableBody,
@@ -72,7 +71,11 @@ import { useSensitiveAccess } from "@/hooks/useSensitiveAccess";
 import { ErrorAlert } from "@/components/ui/error-alert";
 import { nomeExibicaoCliente, documentoExibicaoCliente } from "@/components/clientes/cliente-display-utils";
 import { ClientesStatusBadge } from "@/pages/clientes/ClientesStatusBadge";
-import { clientesDaAba, totalAbasClientes } from "@/pages/clientes/clientes-pagination";
+import {
+  clientesDaAba,
+  itensPaginacao,
+  totalAbasClientes,
+} from "@/pages/clientes/clientes-pagination";
 import {
   ClientesDeleteDialog,
   ClientesEquipamentosModal,
@@ -106,6 +109,7 @@ export default function Clientes() {
   const totalAbas = totalAbasClientes(clientes.length);
   const abaExibida = Math.min(abaAtual, totalAbas);
   const clientesExibidos = clientesDaAba(clientes, abaExibida);
+  const paginasVisiveis = itensPaginacao(totalAbas, abaExibida);
 
   useEffect(() => {
     setAbaAtual(1);
@@ -370,19 +374,40 @@ export default function Clientes() {
           ) : (
             <>
               {totalAbas > 1 && (
-                <Tabs
-                  value={String(abaExibida)}
-                  onValueChange={(aba) => setAbaAtual(Number(aba))}
-                  aria-label="Abas de clientes"
+                <nav
+                  className="flex justify-end pb-3"
+                  aria-label="Paginação de clientes"
                 >
-                  <TabsList className="max-w-full overflow-x-auto">
-                    {Array.from({ length: totalAbas }, (_, indice) => indice + 1).map((aba) => (
-                      <TabsTrigger key={aba} value={String(aba)}>
-                        Aba {aba}
-                      </TabsTrigger>
-                    ))}
-                  </TabsList>
-                </Tabs>
+                  <div className="flex h-8 items-center gap-1">
+                    {paginasVisiveis.map((item) =>
+                      typeof item === "number" ? (
+                        <Button
+                          key={item}
+                          type="button"
+                          variant={item === abaExibida ? "secondary" : "ghost"}
+                          className="h-8 min-w-8 px-2 text-xs tabular-nums"
+                          aria-label={
+                            item === abaExibida
+                              ? `Página ${item}, atual`
+                              : `Ir para página ${item}`
+                          }
+                          aria-current={item === abaExibida ? "page" : undefined}
+                          onClick={() => setAbaAtual(item)}
+                        >
+                          {item}
+                        </Button>
+                      ) : (
+                        <span
+                          key={item}
+                          className="flex h-8 w-5 items-center justify-center text-xs text-muted-foreground"
+                          aria-hidden="true"
+                        >
+                          ...
+                        </span>
+                      ),
+                    )}
+                  </div>
+                </nav>
               )}
               <div className="rounded-md border">
                 <Table>
