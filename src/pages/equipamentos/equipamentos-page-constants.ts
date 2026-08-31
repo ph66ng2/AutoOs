@@ -49,8 +49,8 @@ export const STATUS_BADGE_LABELS_PADRAO: Partial<Record<StatusEquipamento, strin
 };
 
 export const EMAIL_POR_TECNICO: Record<string, string> = {
-  Ivan: "ivan@bmicode.com",
-  Isaias: "isaias@bmicode.com",
+  Ivan: "ivan@bmitag.com.br",
+  Isaias: "isaias@bmitag.com.br",
 };
 
 export const TECNICOS_DISPONIVEIS: TecnicoDisponivel[] = ["Ivan", "Isaias"];
