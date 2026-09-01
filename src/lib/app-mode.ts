@@ -17,4 +17,5 @@ export function setAppMode(mode: AppMode): void {
   } catch {
     // A aplicação continua utilizável em WebViews onde o armazenamento local falhar.
   }
+  window.dispatchEvent(new CustomEvent<AppMode>("autoos:app-mode", { detail: mode }));
 }

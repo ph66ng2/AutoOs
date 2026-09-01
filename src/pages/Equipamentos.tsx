@@ -131,6 +131,7 @@ import {
 } from "@/lib/equipamento-imagem-utils";
 import {
   EMAIL_POR_TECNICO,
+  MARCA_EQUIPAMENTO_OPTIONS,
   STATUS_OPTIONS,
   TECNICOS_DISPONIVEIS,
   TIPO_OPTIONS,
@@ -195,6 +196,8 @@ export default function Equipamentos() {
   const [valorFinalSugerido, setValorFinalSugerido] = useState<number | null>(null);
   const [acordoExcecaoEntrega, setAcordoExcecaoEntrega] = useState(false);
   const [tecnicoNovoEquipamento, setTecnicoNovoEquipamento] = useState<TecnicoDisponivel>("Ivan");
+  const [marcaOutroOpen, setMarcaOutroOpen] = useState(false);
+  const [tipoOutroOpen, setTipoOutroOpen] = useState(false);
   const [imagensSaidaEntrega, setImagensSaidaEntrega] = useState<EquipamentoImagemDraft[]>([]);
   const [erroImagensSaidaEntrega, setErroImagensSaidaEntrega] = useState<string | null>(null);
   const [carregandoImagensSaidaEntrega, setCarregandoImagensSaidaEntrega] = useState(false);
@@ -1809,7 +1812,16 @@ export default function Equipamentos() {
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label>Marca *</Label>
-                  <Input {...form.register("marca")} placeholder="Zebra, Datacard" />
+                  <Select
+                    value={MARCA_EQUIPAMENTO_OPTIONS.includes(form.watch("marca")) ? form.watch("marca") : form.watch("marca") ? "Outro" : ""}
+                    onValueChange={(value) => {
+                      if (value === "Outro") { setMarcaOutroOpen(true); return; }
+                      form.setValue("marca", value, { shouldDirty: true, shouldValidate: true });
+                    }}
+                  >
+                    <SelectTrigger><SelectValue placeholder="Selecione..." /></SelectTrigger>
+                    <SelectContent>{MARCA_EQUIPAMENTO_OPTIONS.map((marca) => <SelectItem key={marca} value={marca}>{marca}</SelectItem>)}</SelectContent>
+                  </Select>
                   <FormValidationError message={form.formState.errors.marca?.message} />
                 </div>
                 <div className="space-y-2">
@@ -1822,7 +1834,10 @@ export default function Equipamentos() {
                 <div className="space-y-2">
                   <Label>Tipo *</Label>
                   <Controller control={form.control} name="tipo" render={({ field }) => (
-                    <Select value={field.value} onValueChange={field.onChange}>
+                    <Select value={TIPO_OPTIONS.includes(field.value) ? field.value : field.value ? "Outro" : ""} onValueChange={(value) => {
+                      if (value === "Outro") { setTipoOutroOpen(true); return; }
+                      field.onChange(value);
+                    }}>
                       <SelectTrigger><SelectValue placeholder="Selecione..." /></SelectTrigger>
                       <SelectContent>{TIPO_OPTIONS.map(t => <SelectItem key={t} value={t}>{t}</SelectItem>)}</SelectContent>
                     </Select>
@@ -2458,6 +2473,24 @@ export default function Equipamentos() {
         label={inputProps.label}
         placeholder={inputProps.placeholder}
         onConfirm={inputProps.onConfirm}
+      />
+      <InputDialog
+        open={marcaOutroOpen}
+        onOpenChange={setMarcaOutroOpen}
+        title="Informar outra marca"
+        label="Marca do equipamento"
+        placeholder="Ex.: Honeywell"
+        onConfirm={(value) => form.setValue("marca", value.trim(), { shouldDirty: true, shouldValidate: true })}
+        validate={(value) => value.trim().length >= 2 ? null : "Informe a marca do equipamento."}
+      />
+      <InputDialog
+        open={tipoOutroOpen}
+        onOpenChange={setTipoOutroOpen}
+        title="Informar outro tipo"
+        label="Tipo do equipamento"
+        placeholder="Ex.: Terminal móvel"
+        onConfirm={(value) => form.setValue("tipo", value.trim(), { shouldDirty: true, shouldValidate: true })}
+        validate={(value) => value.trim().length >= 2 ? null : "Informe o tipo do equipamento."}
       />
 
       <PhotoUploadDialog

@@ -11,12 +11,15 @@ export const STATUS_OPTIONS = [
 ];
 
 export const TIPO_OPTIONS = [
-  "Impressora Térmico Direta",
+  "Impressora de Código de Barra",
   "Coletor de Dados",
   "Leitor de Dados",
   "Impressora de Cartão",
   "Outro",
 ];
+
+/** Valores mais recorrentes no recebimento técnico. */
+export const MARCA_EQUIPAMENTO_OPTIONS = ["Zebra", "Argox", "Datacard", "Outro"];
 
 export const STATUS_SENSIVEIS = new Set([
   "AGUARDANDO_APROVACAO",
