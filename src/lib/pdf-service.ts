@@ -1187,7 +1187,7 @@ export const PdfService = {
       const especificacoes = [
         equipamento.tecnologia ? `Tecnologia: ${equipamento.tecnologia}` : "",
         equipamento.conectividade ? `Conectividade: ${equipamento.conectividade}` : "",
-        equipamento.paginas_impressas !== undefined
+        typeof equipamento.paginas_impressas === "number" && Number.isFinite(equipamento.paginas_impressas)
           ? `Páginas impressas: ${equipamento.paginas_impressas}`
           : "",
       ].filter(Boolean).join("; ") || "—";
