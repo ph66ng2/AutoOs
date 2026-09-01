@@ -7,7 +7,7 @@ import { CounterLayout } from "@/components/CounterLayout";
 
 const db = vi.hoisted(() => ({
   buscarEquipamentosPorSerial: vi.fn(), criarEquipamento: vi.fn(), listarEquipamentos: vi.fn(),
-  listarClientes: vi.fn(), atualizarStatusEquipamento: vi.fn(), buscarEquipamento: vi.fn(),
+  listarClientes: vi.fn(), atualizarStatusEquipamento: vi.fn(), buscarEquipamento: vi.fn(), salvarVerificacao: vi.fn(), abrirPainelImpressorasWindows: vi.fn(),
 }));
 const ensureSensitiveAccess = vi.hoisted(() => vi.fn());
 
@@ -48,6 +48,7 @@ describe("Modo Balcão", () => {
     await user.click(screen.getAllByRole("combobox")[1]!);
     await user.click(await screen.findByRole("option", { name: /código de barra/i }));
     await user.type(fields[3]!, "Não imprime etiquetas");
+    await user.click(screen.getByRole("button", { name: /continuar para o laudo/i }));
     await user.click(screen.getByRole("button", { name: /recapitular/i }));
   }
 
@@ -97,5 +98,34 @@ describe("Modo Balcão", () => {
     await user.click(screen.getByText(/atendimento #7/i));
     expect(screen.getByRole("button", { name: /marcar como entregue/i })).toBeDisabled();
     expect(screen.getByText(/só é permitida em um status compatível/i)).toBeInTheDocument();
+  });
+
+  it("registra o laudo imediato e abre o painel de impressoras do Windows", async () => {
+    db.abrirPainelImpressorasWindows.mockResolvedValue(undefined);
+    db.salvarVerificacao.mockResolvedValue({ id: 3 });
+    const user = userEvent.setup(); renderCounter();
+    await user.click(screen.getByRole("button", { name: /nova entrada/i }));
+    await user.click(screen.getByRole("button", { name: /selecionar cliente/i }));
+    await user.click(screen.getByRole("button", { name: /continuar/i }));
+    const fields = screen.getAllByRole("textbox");
+    await user.type(fields[0]!, "SN-42");
+    await user.click(screen.getAllByRole("combobox")[0]!);
+    await user.click(await screen.findByRole("option", { name: "Zebra" }));
+    await user.type(fields[1]!, "ZD220");
+    await user.click(screen.getAllByRole("combobox")[1]!);
+    await user.click(await screen.findByRole("option", { name: /código de barra/i }));
+    await user.type(fields[3]!, "Não imprime etiquetas");
+    await user.click(screen.getByRole("button", { name: /continuar para o laudo/i }));
+    await user.click(screen.getByRole("button", { name: /abrir painel de controle/i }));
+    expect(db.abrirPainelImpressorasWindows).toHaveBeenCalledOnce();
+    await user.click(screen.getByRole("combobox"));
+    await user.click(await screen.findByRole("option", { name: /impresso corretamente/i }));
+    await user.type(screen.getByRole("textbox"), "Etiqueta de teste legível.");
+    await user.click(screen.getByRole("button", { name: /recapitular/i }));
+    await user.click(screen.getByRole("button", { name: /salvar como recebido/i }));
+    await waitFor(() => expect(db.salvarVerificacao).toHaveBeenCalledWith(expect.objectContaining({
+      diagnostico: expect.stringContaining("Etiqueta de teste legível."),
+      observacoes: expect.stringContaining("Impresso corretamente"),
+    })));
   });
 });
