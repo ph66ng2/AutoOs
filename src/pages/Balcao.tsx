@@ -17,9 +17,13 @@ import { useSensitiveAccess } from "@/hooks/useSensitiveAccess";
 import { db } from "@/lib/db";
 import { PdfService, type PdfArtifact } from "@/lib/pdf-service";
 import { PdfPreviewDialog } from "@/components/equipamentos/PdfPreviewDialog";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { InputDialog } from "@/components/ui/input-dialog";
 import { afterCounterRegistration } from "@/lib/counter-registration";
+import { EmailService } from "@/lib/email-service";
 import { equipamentoSchema } from "@/lib/validations";
 import { EMAIL_POR_TECNICO, MARCA_EQUIPAMENTO_OPTIONS, TECNICOS_DISPONIVEIS, TIPO_OPTIONS } from "@/pages/equipamentos/equipamentos-page-constants";
+import { emailValido } from "@/pages/equipamentos/equipamentos-page-utils";
 import type { TecnicoDisponivel } from "@/components/equipamentos/VerificacaoTecnica";
 import { canTransition, getTransitionError } from "@/lib/status-fsm";
 import { STATUS_LABELS, SENSITIVE_PERMISSIONS, type Cliente, type Equipamento } from "@/types";
@@ -48,13 +52,23 @@ function Action({ icon, title, description, onClick }: { icon: React.ReactNode; 
 function Back({ onBack }: { onBack: () => void }) { return <Button variant="ghost" className="min-h-12 gap-2 text-base" onClick={onBack}><ChevronLeft /> Voltar</Button>; }
 
 function QuickEntry({ onBack }: { onBack: () => void }) {
+  const { ensureSensitiveAccess } = useSensitiveAccess();
   const [step, setStep] = useState(1); const [client, setClient] = useState<Cliente | null>(null); const [history, setHistory] = useState<Equipamento[]>([]); const [confirmedCycle, setConfirmedCycle] = useState(false); const [saving, setSaving] = useState(false); const [created, setCreated] = useState<Equipamento | null>(null); const [error, setError] = useState<string | null>(null); const [preview, setPreview] = useState<PdfArtifact | null>(null);
   const [data, setData] = useState({ serial_number: "", marca: "", modelo: "", tipo: "", defeito_relatado: "", patrimonio: "", acessorios: [] as string[], acessorios_outros: "", laudo_tecnico: "", observacoes: "" });
-  const [tecnico, setTecnico] = useState<TecnicoDisponivel>("Ivan");
+  const [tecnico, setTecnico] = useState<TecnicoDisponivel>("Ivan"); const [emailPromptOpen, setEmailPromptOpen] = useState(false); const [emailInputOpen, setEmailInputOpen] = useState(false); const [emailFeedback, setEmailFeedback] = useState<string | null>(null);
   const [otherField, setOtherField] = useState<"marca" | "tipo" | null>(null);
   const [otherValue, setOtherValue] = useState("");
   const update = (key: keyof typeof data) => (event: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => setData((value) => ({ ...value, [key]: event.target.value }));
   useEffect(() => { const serial = data.serial_number.trim(); if (serial.length < 3) { setHistory([]); return; } const timer = window.setTimeout(() => void db.buscarEquipamentosPorSerial(serial).then((rows) => { setHistory(rows); const newest = rows[0]; if (newest) setData((current) => ({ ...current, marca: current.marca || newest.marca, modelo: current.modelo || newest.modelo, tipo: current.tipo || newest.tipo })); }).catch(() => setHistory([])), 250); return () => window.clearTimeout(timer); }, [data.serial_number]);
+  async function solicitarEnvioAutomatico() {
+    const permitted = await ensureSensitiveAccess({ title: "Enviar ordem de entrada", description: "Informe o PIN para enviar a ordem de entrada por e-mail ao cliente.", permission: SENSITIVE_PERMISSIONS.FINANCIAL_ACTIONS });
+    if (permitted) setEmailPromptOpen(true);
+  }
+  async function enviarOrdemEntrada(equipment: Equipamento, email: string) {
+    setEmailFeedback(null);
+    const result = await EmailService.enviarOrdemEntrada({ ...equipment, cliente_email: email });
+    setEmailFeedback(result.sucesso ? "E-mail da ordem de entrada enviado com sucesso." : `A entrada foi salva, mas o e-mail não foi enviado: ${result.erro || "falha desconhecida"}.`);
+  }
   async function save() {
     if (!client?.id) return setError("Selecione ou cadastre o cliente antes de salvar.");
     const validation = equipamentoSchema.safeParse({ ...data, acessorios: data.acessorios, status: "RECEBIDO" });
@@ -81,13 +95,14 @@ function QuickEntry({ onBack }: { onBack: () => void }) {
       // A entrada já foi persistida. Se o laudo falhar, exibimos o detalhe
       // salvo com o erro, evitando que o atendente crie um ciclo duplicado.
       setCreated(equipment);
+      void solicitarEnvioAutomatico();
       if (data.laudo_tecnico.trim()) {
         await db.salvarVerificacao({ equipamento_id: equipment.id!, tecnico_nome: tecnico, problema_relatado: data.defeito_relatado, diagnostico: data.laudo_tecnico.trim(), itens_verificados: "[]", servicos_necessarios: "[]", pecas_necessarias: "[]", concluida: false });
       }
       void Promise.resolve(afterCounterRegistration(equipment)).catch((cause: unknown) => console.warn("[Balcao] extensão pós-cadastro indisponível", cause));
     } catch (cause) { setError(String(cause)); } finally { setSaving(false); }
   }
-  if (created) return <section><h1 className="text-3xl font-bold">Entrada registrada</h1><p className="mt-2 text-lg">O atendimento foi criado como Recebido.</p><div className="mt-6 flex flex-wrap gap-3"><Button className="min-h-12 text-base" onClick={() => void PdfService.construirOrdemServico(created).then(setPreview).catch((cause) => setError(String(cause)))}><FileText /> Visualizar / imprimir ordem</Button><Button className="min-h-12 text-base" variant="outline" onClick={() => document.getElementById("registro-completo")?.scrollIntoView({ behavior: "smooth" })}>Ver os dados recém-registrados</Button><Button className="min-h-12 text-base" variant="outline" onClick={() => { setCreated(null); setStep(1); setClient(null); }}>Iniciar outro atendimento</Button></div>{error && <p role="alert" className="mt-4 text-red-700">{error}</p>}<PdfPreviewDialog artifact={preview} onOpenChange={(open) => { if (!open) setPreview(null); }} /><div id="registro-completo" className="mt-6"><EquipmentDetail equipamento={created} /></div><p className="mt-4 text-sm text-muted-foreground">Este botão apenas desce para o detalhe da entrada criada nesta tela; não abre uma tela administrativa diferente.</p></section>;
+  if (created) return <section><h1 className="text-3xl font-bold">Entrada registrada</h1><p className="mt-2 text-lg">O atendimento foi criado como Recebido.</p><div className="mt-6 flex flex-wrap gap-3"><Button className="min-h-12 text-base" onClick={() => void PdfService.construirOrdemServico(created).then(setPreview).catch((cause) => setError(String(cause)))}><FileText /> Visualizar / imprimir ordem</Button><Button className="min-h-12 text-base" variant="outline" onClick={() => document.getElementById("registro-completo")?.scrollIntoView({ behavior: "smooth" })}>Ver os dados recém-registrados</Button><Button className="min-h-12 text-base" variant="outline" onClick={() => { setCreated(null); setStep(1); setClient(null); }}>Iniciar outro atendimento</Button></div>{error && <p role="alert" className="mt-4 text-red-700">{error}</p>}{emailFeedback && <p role="status" className="mt-4 text-base">{emailFeedback}</p>}<PdfPreviewDialog artifact={preview} onOpenChange={(open) => { if (!open) setPreview(null); }} /><ConfirmDialog open={emailPromptOpen} onOpenChange={setEmailPromptOpen} title="Envio por e-mail" description="Quer enviar a ordem de entrada automaticamente por e-mail?" onConfirm={() => { setEmailPromptOpen(false); if (created.cliente_email?.trim()) void enviarOrdemEntrada(created, created.cliente_email.trim()); else setEmailInputOpen(true); }} /><InputDialog open={emailInputOpen} onOpenChange={setEmailInputOpen} title="Envio por e-mail" description="Este cliente não possui e-mail cadastrado. Informe um endereço para enviar a ordem de entrada." label="E-mail" placeholder="email@exemplo.com" validate={(value) => emailValido(value) ? null : "Informe um e-mail válido."} onConfirm={(value) => void enviarOrdemEntrada(created, value.trim())} /><div id="registro-completo" className="mt-6"><EquipmentDetail equipamento={created} /></div><p className="mt-4 text-sm text-muted-foreground">Este botão apenas desce para o detalhe da entrada criada nesta tela; não abre uma tela administrativa diferente.</p></section>;
   const selectValue = (value: string, options: readonly string[]) => options.includes(value) ? value : value ? "Outro" : "";
   const choose = (field: "marca" | "tipo", value: string) => {
     if (value === "Outro") { setOtherField(field); setOtherValue(""); return; }
