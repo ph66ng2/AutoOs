@@ -3,7 +3,8 @@ import { FileText, FileDown, Loader2 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { db } from "@/lib/db";
-import { PdfService } from "@/lib/pdf-service";
+import { PdfService, type PdfArtifact } from "@/lib/pdf-service";
+import { PdfPreviewDialog } from "@/components/equipamentos/PdfPreviewDialog";
 import type { Equipamento } from "@/types";
 
 interface DocumentosEquipamentoProps {
@@ -26,6 +27,7 @@ interface DocumentoItem {
 
 export function DocumentosEquipamento({ equipamento }: DocumentosEquipamentoProps) {
   const [gerando, setGerando] = useState<string | null>(null);
+  const [preview, setPreview] = useState<{ artifact: PdfArtifact; documento: DocumentoItem } | null>(null);
 
   const documentos: DocumentoItem[] = [
     {
@@ -54,27 +56,15 @@ export function DocumentosEquipamento({ equipamento }: DocumentosEquipamentoProp
     setGerando(doc.id);
 
     try {
-      const existe = await db.verificarDocumentoExiste(nomeArquivo);
-
-      if (existe) {
-        await db.abrirDocumento(nomeArquivo);
-      } else {
-        let caminho: string | null = null;
-        if (doc.tipo === "OrdemServico") {
-          caminho = await PdfService.gerarOrdemServico(equipamento, nomeArquivo);
-        } else if (doc.tipo === "Orcamento") {
-          const verificacao = await db.buscarVerificacao(equipamento.id!);
-          if (!verificacao) {
-            console.warn("[DocumentosEquipamento] Nenhuma verificação encontrada para gerar orçamento.");
-            setGerando(null);
-            return;
-          }
-          caminho = await PdfService.gerarOrcamento(equipamento, verificacao, nomeArquivo);
+      if (doc.tipo === "OrdemServico") {
+        setPreview({ artifact: await PdfService.construirOrdemServico(equipamento, nomeArquivo), documento: doc });
+      } else if (doc.tipo === "Orcamento") {
+        const verificacao = await db.buscarVerificacao(equipamento.id!);
+        if (!verificacao) {
+          console.warn("[DocumentosEquipamento] Nenhuma verificação encontrada para gerar orçamento.");
+          return;
         }
-
-        if (caminho) {
-          await db.abrirDocumento(nomeArquivo);
-        }
+        setPreview({ artifact: await PdfService.construirOrcamento(equipamento, verificacao, nomeArquivo), documento: doc });
       }
     } catch (err) {
       console.error(`[DocumentosEquipamento] Erro ao processar documento ${doc.nome}:`, err);
@@ -84,6 +74,7 @@ export function DocumentosEquipamento({ equipamento }: DocumentosEquipamentoProp
   }
 
   return (
+    <>
     <Card>
       <CardHeader className="py-3">
         <CardTitle className="text-sm flex items-center gap-1">
@@ -119,7 +110,7 @@ export function DocumentosEquipamento({ equipamento }: DocumentosEquipamentoProp
                 ) : (
                   <>
                     <FileDown className="h-3 w-3" />
-                    Gerar / Abrir
+                    Visualizar PDF
                   </>
                 )}
               </Button>
@@ -133,5 +124,19 @@ export function DocumentosEquipamento({ equipamento }: DocumentosEquipamentoProp
         )}
       </CardContent>
     </Card>
+    <PdfPreviewDialog
+      artifact={preview?.artifact || null}
+      onOpenChange={(open) => { if (!open) setPreview(null); }}
+      onDownload={async (artifact) => {
+        if (!preview) return;
+        const nomeArquivo = buildDocumentName(preview.documento.tipo, equipamento);
+        if (preview.documento.tipo === "OrdemServico") {
+          await PdfService.salvarOrdemServico(artifact, equipamento, nomeArquivo);
+        } else {
+          await PdfService.salvarOrcamento(artifact, equipamento, nomeArquivo);
+        }
+      }}
+    />
+    </>
   );
 }

@@ -88,4 +88,15 @@ describe("PdfService — orçamento/OS", () => {
     expect(artifact.bytes.byteLength).toBeGreaterThan(500);
     expect(mockInvoke).not.toHaveBeenCalled();
   });
+
+  it("constrói orçamento e relatório em memória para prévia sem persistir", async () => {
+    const [orcamento, relatorio] = await Promise.all([
+      PdfService.construirOrcamento(equipamento, verificacao),
+      PdfService.construirRelatorioStatus(equipamento),
+    ]);
+
+    expect(orcamento.bytes.byteLength).toBeGreaterThan(1_000);
+    expect(relatorio.bytes.byteLength).toBeGreaterThan(500);
+    expect(mockInvoke).not.toHaveBeenCalled();
+  });
 });
