@@ -46,6 +46,13 @@ const CONTENT_WIDTH = PAGE_WIDTH - MARGIN_LEFT - MARGIN_RIGHT;
 
 type CorPdf = [number, number, number];
 
+/** Documento construído em memória. A persistência é intencionalmente separada para permitir prévia no balcão. */
+export interface PdfArtifact {
+  filename: string;
+  bytes: Uint8Array;
+  mimeType: "application/pdf";
+}
+
 /** Paleta única dos quatro PDFs: branco, preto e cinzas econômicos. */
 const CORES_PDF = {
   preto: [0, 0, 0] as CorPdf,
@@ -1145,7 +1152,7 @@ export const PdfService = {
    * Gera PDF de ordem de serviço para recebimento técnico.
    * Lista os campos preenchidos na seção "Dados do Equipamento".
    */
-  async gerarOrdemServico(equipamento: Equipamento, nomeArquivo?: string): Promise<string | null> {
+  async construirOrdemServico(equipamento: Equipamento, nomeArquivo?: string): Promise<PdfArtifact> {
     try {
       const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
       let y = 15;
@@ -1286,20 +1293,27 @@ export const PdfService = {
         aplicarRodape(doc, numeroOS, page, totalPages, dataGeracao);
       }
 
-      const pdfBytes = doc.output("arraybuffer");
-      const uint8 = new Uint8Array(pdfBytes);
-      const caminho = await invoke<string>("salvar_ordem_servico_pdf", {
-        bytes: Array.from(uint8),
-        empresaNome: equipamento.cliente_nome || equipamento.proprietario || "Empresa",
-        nomeArquivo: nomeArquivo || null,
-      });
-
-      console.info(`[PdfService] Ordem de serviço PDF gerada: ${caminho}`);
-      return caminho;
+      return {
+        filename: nomeArquivo || `OrdemServico_${equipamento.id || "novo"}.pdf`,
+        bytes: new Uint8Array(doc.output("arraybuffer")),
+        mimeType: "application/pdf",
+      };
     } catch (error) {
-      console.error("[PdfService] Erro ao gerar ordem de serviço PDF:", error);
+      console.error("[PdfService] Erro ao construir ordem de serviço PDF:", error);
       throw error;
     }
+  },
+
+  /** Mantém o comportamento existente: constrói em memória e persiste no backend. */
+  async gerarOrdemServico(equipamento: Equipamento, nomeArquivo?: string): Promise<string | null> {
+    const artifact = await PdfService.construirOrdemServico(equipamento, nomeArquivo);
+    const caminho = await invoke<string>("salvar_ordem_servico_pdf", {
+      bytes: Array.from(artifact.bytes),
+      empresaNome: equipamento.cliente_nome || equipamento.proprietario || "Empresa",
+      nomeArquivo: nomeArquivo || null,
+    });
+    console.info(`[PdfService] Ordem de serviço PDF gerada: ${caminho}`);
+    return caminho;
   },
 
   /**
