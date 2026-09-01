@@ -15,7 +15,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { nomeExibicaoCliente } from "@/components/clientes/cliente-display-utils";
 import type { Cliente, Equipamento } from "@/types";
 import { formatarDocumento, formatarTelefone } from "@/lib/validations";
-import { useNavigate } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 
 export function ClienteSelectorClienteCard({
   cliente,
@@ -23,14 +23,17 @@ export function ClienteSelectorClienteCard({
   carregandoEquip,
   readOnly,
   onRemover,
+  onEquipamentoSelecionado,
 }: {
   cliente: Cliente;
   equipamentosCliente: Equipamento[];
   carregandoEquip: boolean;
   readOnly: boolean;
   onRemover: () => void;
+  onEquipamentoSelecionado?: (equipamento: Equipamento) => void;
 }) {
   const navigate = useNavigate();
+  const location = useLocation();
   const c = cliente;
   return (
     <Card className="border-green-200 bg-green-50/30">
@@ -103,8 +106,8 @@ export function ClienteSelectorClienteCard({
             </p>
             <div className="space-y-1 max-h-32 overflow-y-auto">
               {equipamentosCliente.map((eq) => (
-                <button key={eq.id} type="button" onClick={() => navigate("/equipamentos", { state: { equipamentoId: eq.id } })} className="flex w-full items-center justify-between rounded border bg-white/50 p-2 text-left text-xs hover:border-cyan-600 hover:bg-cyan-50">
-                  <span className="font-medium">{eq.marca} {eq.modelo}</span>
+                <button key={eq.id} type="button" onClick={() => onEquipamentoSelecionado ? onEquipamentoSelecionado(eq) : navigate(location.pathname.startsWith("/balcao") ? "/balcao" : "/equipamentos", { state: location.pathname.startsWith("/balcao") ? { counterEquipmentId: eq.id } : { equipamentoId: eq.id } })} className="flex w-full items-center justify-between rounded border bg-white/50 p-2 text-left text-xs hover:border-cyan-600 hover:bg-cyan-50">
+                  <span className="font-medium">{eq.marca} {eq.modelo} <span className="font-mono text-muted-foreground">• SN …{eq.serial_number.slice(-4)}</span></span>
                   <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-medium ${
                     (eq.status === "ENTREGUE" || eq.status === "PRONTO") ? "bg-green-100 text-green-700" :
                     eq.status === "EM_MANUTENCAO" ? "bg-indigo-100 text-indigo-700" :

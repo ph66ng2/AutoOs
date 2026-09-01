@@ -39,8 +39,15 @@ export default function Balcao() {
   const { resetKey } = useCounterSession();
   const location = useLocation();
   const [view, setView] = useState<"home" | "entry" | "equipment" | "client" | "panel">("home");
-  useEffect(() => setView("home"), [resetKey]);
+  const [counterEquipment, setCounterEquipment] = useState<Equipamento | null>(null);
+  useEffect(() => { setView("home"); setCounterEquipment(null); }, [resetKey]);
   useEffect(() => { if (location.pathname === "/balcao/painel") setView("panel"); }, [location.pathname]);
+  useEffect(() => {
+    const equipmentId = (location.state as { counterEquipmentId?: number } | null)?.counterEquipmentId;
+    if (!equipmentId) return;
+    void db.buscarEquipamento(equipmentId).then(setCounterEquipment).catch(() => setCounterEquipment(null));
+  }, [location.state]);
+  if (counterEquipment) return <section><Back onBack={() => setCounterEquipment(null)} /><EquipmentDetail equipamento={counterEquipment} /></section>;
   if (view === "entry") return <QuickEntry onBack={() => setView("home")} />;
   if (view === "equipment") return <EquipmentSearch onBack={() => setView("home")} />;
   if (view === "client") return <ClientSearch onBack={() => setView("home")} />;
