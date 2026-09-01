@@ -27,6 +27,10 @@ function renderCounter() {
 
 describe("Modo Balcão", () => {
   beforeEach(() => {
+    Object.defineProperty(HTMLElement.prototype, "hasPointerCapture", { configurable: true, value: () => false });
+    Object.defineProperty(HTMLElement.prototype, "setPointerCapture", { configurable: true, value: () => undefined });
+    Object.defineProperty(HTMLElement.prototype, "releasePointerCapture", { configurable: true, value: () => undefined });
+    Object.defineProperty(HTMLElement.prototype, "scrollIntoView", { configurable: true, value: () => undefined });
     vi.clearAllMocks();
     db.buscarEquipamentosPorSerial.mockResolvedValue([]);
     db.criarEquipamento.mockResolvedValue({ id: 42, serial_number: "SN-42", marca: "Zebra", modelo: "ZD220", tipo: "Impressora", status: "RECEBIDO", data_entrada: "2026-09-01" });
@@ -37,9 +41,14 @@ describe("Modo Balcão", () => {
     await user.click(screen.getByRole("button", { name: /selecionar cliente/i }));
     await user.click(screen.getByRole("button", { name: /continuar/i }));
     const fields = screen.getAllByRole("textbox");
-    await user.type(fields[0]!, "SN-42"); await user.type(fields[1]!, "Zebra"); await user.type(fields[2]!, "ZD220"); await user.type(fields[3]!, "Impressora");
-    await user.type(fields[6]!, "Não imprime etiquetas");
-    await user.click(screen.getByRole("button", { name: /conferir/i }));
+    await user.type(fields[0]!, "SN-42");
+    await user.click(screen.getAllByRole("combobox")[0]!);
+    await user.click(await screen.findByRole("option", { name: "Zebra" }));
+    await user.type(fields[1]!, "ZD220");
+    await user.click(screen.getAllByRole("combobox")[1]!);
+    await user.click(await screen.findByRole("option", { name: /código de barra/i }));
+    await user.type(fields[3]!, "Não imprime etiquetas");
+    await user.click(screen.getByRole("button", { name: /recapitular/i }));
   }
 
   it("cria uma entrada recebida depois da conferência", async () => {
@@ -62,7 +71,7 @@ describe("Modo Balcão", () => {
     const user = userEvent.setup(); renderCounter(); await reachReview(user);
     await user.click(screen.getByRole("button", { name: /salvar como recebido/i }));
     expect(await screen.findByRole("alert")).toHaveTextContent("Banco indisponível");
-    expect(screen.getByText("Conferência")).toBeInTheDocument();
+    expect(screen.getByText("Recapitulação")).toBeInTheDocument();
   });
 
   it("não entrega quando o PIN é negado e mantém o detalhe aberto", async () => {

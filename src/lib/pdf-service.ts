@@ -148,8 +148,8 @@ function formatoImagemPdf(mimeType: string): "PNG" | "JPEG" {
 }
 
 function emailTecnicoPorNome(tecnicoNome?: string) {
-  if (tecnicoNome === "Ivan") return "ivan@bmitag.com.br";
-  if (tecnicoNome === "Isaias") return "isaias@bmitag.com.br";
+  if (tecnicoNome === "Ivan") return "ivan@bmicode.com";
+  if (tecnicoNome === "Isaias") return "isaias@bmicode.com";
   return "";
 }
 
@@ -163,6 +163,7 @@ function limparObservacoesParaDocumento(observacoes?: string | null) {
   if (!observacoes) return "";
   return observacoes
     .replace(/^Técnico inicial:.*(?:\r?\n)?/m, "")
+    .replace(/^Laudo técnico:.*(?:\r?\n)?/m, "")
     .trim();
 }
 
@@ -1184,17 +1185,12 @@ export const PdfService = {
       const defeitoInformado = equipamento.defeito_relatado || verificacao?.problema_relatado || "—";
       const diagnosticoTecnico = verificacao?.diagnostico || "—";
       const especificacoes = [
-        `Nº de série: ${equipamento.serial_number || "—"}`,
-        `Marca: ${equipamento.marca || "—"}`,
-        `Modelo: ${equipamento.modelo || "—"}`,
-        `Tipo: ${equipamento.tipo || "—"}`,
-        `Patrimônio: ${equipamento.patrimonio || "—"}`,
         equipamento.tecnologia ? `Tecnologia: ${equipamento.tecnologia}` : "",
         equipamento.conectividade ? `Conectividade: ${equipamento.conectividade}` : "",
         equipamento.paginas_impressas !== undefined
           ? `Páginas impressas: ${equipamento.paginas_impressas}`
           : "",
-      ].filter(Boolean).join("; ");
+      ].filter(Boolean).join("; ") || "—";
 
       // Corpo em formato de ficha: os rótulos permanecem visíveis, mas todos
       // os preenchimentos são brancos para manter a impressão econômica.

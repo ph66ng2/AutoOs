@@ -61,6 +61,12 @@ function AppContent() {
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
+    const syncAppMode = (event: Event) => setCurrentAppMode((event as CustomEvent<AppMode>).detail);
+    window.addEventListener("autoos:app-mode", syncAppMode);
+    return () => window.removeEventListener("autoos:app-mode", syncAppMode);
+  }, []);
+
+  useEffect(() => {
     const t = window.setTimeout(() => setMinSplashElapsed(true), MIN_BOOT_SPLASH_MS);
     return () => window.clearTimeout(t);
   }, []);
