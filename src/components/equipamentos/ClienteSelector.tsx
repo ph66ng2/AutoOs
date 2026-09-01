@@ -49,6 +49,8 @@ interface ClienteSelectorProps {
   onClienteRemovido: () => void;
   /** Modo somente leitura */
   readOnly?: boolean;
+  /** Layout ampliado para atendimento touchscreen. */
+  touchMode?: boolean;
 }
 
 type Modo = "busca" | "selecionado" | "novo";
@@ -63,6 +65,7 @@ export function ClienteSelector({
   onClienteSelecionado,
   onClienteRemovido,
   readOnly = false,
+  touchMode = true,
 }: ClienteSelectorProps) {
   const [modo, setModo] = useState<Modo>(clienteInicial || clienteIdInicial ? "selecionado" : "busca");
   const [clienteSelecionado, setClienteSelecionado] = useState<Cliente | null>(clienteInicial || null);
@@ -277,6 +280,7 @@ export function ClienteSelector({
         salvandoNovo={salvandoNovo}
         onVoltarBusca={() => setModo("busca")}
         onSalvar={() => void formNovoCliente.handleSubmit(salvarNovoCliente)()}
+        touchMode={touchMode}
       />
     );
   }
