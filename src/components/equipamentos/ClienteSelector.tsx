@@ -51,6 +51,8 @@ interface ClienteSelectorProps {
   readOnly?: boolean;
   /** Layout ampliado para atendimento touchscreen. */
   touchMode?: boolean;
+  /** Abre um equipamento anterior sem sair do contexto atual. */
+  onEquipamentoSelecionado?: (equipamento: Equipamento) => void;
 }
 
 type Modo = "busca" | "selecionado" | "novo";
@@ -66,6 +68,7 @@ export function ClienteSelector({
   onClienteRemovido,
   readOnly = false,
   touchMode = true,
+  onEquipamentoSelecionado,
 }: ClienteSelectorProps) {
   const [modo, setModo] = useState<Modo>(clienteInicial || clienteIdInicial ? "selecionado" : "busca");
   const [clienteSelecionado, setClienteSelecionado] = useState<Cliente | null>(clienteInicial || null);
@@ -266,6 +269,7 @@ export function ClienteSelector({
         carregandoEquip={carregandoEquip}
         readOnly={readOnly}
         onRemover={removerCliente}
+        onEquipamentoSelecionado={onEquipamentoSelecionado}
       />
     );
   }
