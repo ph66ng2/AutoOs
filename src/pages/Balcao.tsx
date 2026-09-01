@@ -36,7 +36,7 @@ import { ClienteSelector } from "@/components/equipamentos/ClienteSelector";
 import { DocumentosEquipamento } from "@/components/equipamentos/DocumentosEquipamento";
 import { useCounterSession } from "@/components/CounterLayout";
 import { useSensitiveAccess } from "@/hooks/useSensitiveAccess";
-import { db } from "@/lib/db";
+import { db, type ImpressoraWindows } from "@/lib/db";
 import { PdfService, type PdfArtifact } from "@/lib/pdf-service";
 import { PdfPreviewDialog } from "@/components/equipamentos/PdfPreviewDialog";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
@@ -51,6 +51,7 @@ import {
   TIPO_OPTIONS,
 } from "@/pages/equipamentos/equipamentos-page-constants";
 import { emailValido } from "@/pages/equipamentos/equipamentos-page-utils";
+import { LOGO_BMITAG_MONOCHROME_PNG_BASE64 } from "@/lib/logo-monochrome-base64";
 import type { TecnicoDisponivel } from "@/components/equipamentos/VerificacaoTecnica";
 import { canTransition, getTransitionError } from "@/lib/status-fsm";
 import {
@@ -89,6 +90,11 @@ function rotuloResultadoTeste(resultado: string) {
     RESULTADOS_TESTE_IMPRESSAO.find((item) => item.value === resultado)
       ?.label || "Não realizado"
   );
+}
+
+function base64ParaBytes(base64: string): number[] {
+  const binario = window.atob(base64);
+  return Array.from(binario, (caractere) => caractere.charCodeAt(0));
 }
 
 function equipmentTitle(eq: Equipamento) {
@@ -240,6 +246,12 @@ function QuickEntry({ onBack }: { onBack: () => void }) {
   );
   const [abrindoPainelImpressoras, setAbrindoPainelImpressoras] =
     useState(false);
+  const [impressoras, setImpressoras] = useState<ImpressoraWindows[]>([]);
+  const [impressoraSelecionada, setImpressoraSelecionada] = useState("");
+  const [carregandoImpressoras, setCarregandoImpressoras] = useState(false);
+  const [impressorasCarregadas, setImpressorasCarregadas] = useState(false);
+  const [enviandoTeste, setEnviandoTeste] = useState(false);
+  const [testeEnviado, setTesteEnviado] = useState(false);
   const [otherField, setOtherField] = useState<"marca" | "tipo" | null>(null);
   const [otherValue, setOtherValue] = useState("");
   const update =
@@ -272,6 +284,25 @@ function QuickEntry({ onBack }: { onBack: () => void }) {
     );
     return () => window.clearTimeout(timer);
   }, [data.serial_number]);
+  useEffect(() => {
+    if (step !== 3 || impressorasCarregadas || carregandoImpressoras) return;
+    setCarregandoImpressoras(true);
+    void db
+      .listarImpressorasWindows()
+      .then((items) => {
+        setImpressoras(items);
+        setImpressoraSelecionada(
+          items.find((impressora) => impressora.padrao)?.nome ||
+            items[0]?.nome ||
+            "",
+        );
+      })
+      .catch((cause) => setError(String(cause)))
+      .finally(() => {
+        setCarregandoImpressoras(false);
+        setImpressorasCarregadas(true);
+      });
+  }, [carregandoImpressoras, impressorasCarregadas, step]);
   async function solicitarEnvioAutomatico() {
     const permitted = await ensureSensitiveAccess({
       title: "Enviar ordem de entrada",
@@ -302,6 +333,29 @@ function QuickEntry({ onBack }: { onBack: () => void }) {
       setError(String(cause));
     } finally {
       setAbrindoPainelImpressoras(false);
+    }
+  }
+  async function imprimirTesteBmitag() {
+    if (!impressoraSelecionada) {
+      setError("Selecione uma impressora para enviar o teste BMITAG.");
+      return;
+    }
+    setEnviandoTeste(true);
+    setError(null);
+    setTesteEnviado(false);
+    try {
+      await db.imprimirTesteBmitag({
+        impressora: impressoraSelecionada,
+        logo_png: base64ParaBytes(LOGO_BMITAG_MONOCHROME_PNG_BASE64),
+        equipamento: `${data.marca} ${data.modelo}`.trim(),
+        serial: data.serial_number.trim(),
+        tecnico,
+      });
+      setTesteEnviado(true);
+    } catch (cause) {
+      setError(String(cause));
+    } finally {
+      setEnviandoTeste(false);
     }
   }
   async function save() {
@@ -682,6 +736,46 @@ function QuickEntry({ onBack }: { onBack: () => void }) {
               {abrindoPainelImpressoras && <Loader2 className="animate-spin" />}
               Abrir Painel de Controle — Impressoras
             </Button>
+          </div>
+          <div className="space-y-2">
+            <Label className="text-base">Impressora para o teste BMITAG</Label>
+            <Select
+              value={impressoraSelecionada}
+              onValueChange={setImpressoraSelecionada}
+              disabled={carregandoImpressoras || impressoras.length === 0}
+            >
+              <SelectTrigger className={inputClass}>
+                <SelectValue
+                  placeholder={
+                    carregandoImpressoras
+                      ? "Carregando impressoras..."
+                      : "Nenhuma impressora encontrada"
+                  }
+                />
+              </SelectTrigger>
+              <SelectContent>
+                {impressoras.map((impressora) => (
+                  <SelectItem key={impressora.nome} value={impressora.nome}>
+                    {impressora.nome}
+                    {impressora.padrao ? " (padrão)" : ""}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Button
+              className="min-h-12 text-base"
+              disabled={!impressoraSelecionada || enviandoTeste}
+              onClick={() => void imprimirTesteBmitag()}
+            >
+              {enviandoTeste && <Loader2 className="animate-spin" />}
+              Imprimir teste BMITAG
+            </Button>
+            {testeEnviado && (
+              <p role="status" className="text-sm text-emerald-700">
+                Teste enviado à fila de impressão. Confira a impressão física e
+                registre o resultado abaixo.
+              </p>
+            )}
           </div>
           <div className="space-y-2">
             <Label className="text-base">Resultado do teste de impressão</Label>

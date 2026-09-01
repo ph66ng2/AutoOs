@@ -7,7 +7,7 @@ import { CounterLayout } from "@/components/CounterLayout";
 
 const db = vi.hoisted(() => ({
   buscarEquipamentosPorSerial: vi.fn(), criarEquipamento: vi.fn(), listarEquipamentos: vi.fn(),
-  listarClientes: vi.fn(), atualizarStatusEquipamento: vi.fn(), buscarEquipamento: vi.fn(), salvarVerificacao: vi.fn(), abrirPainelImpressorasWindows: vi.fn(),
+  listarClientes: vi.fn(), atualizarStatusEquipamento: vi.fn(), buscarEquipamento: vi.fn(), salvarVerificacao: vi.fn(), abrirPainelImpressorasWindows: vi.fn(), listarImpressorasWindows: vi.fn(), imprimirTesteBmitag: vi.fn(),
 }));
 const ensureSensitiveAccess = vi.hoisted(() => vi.fn());
 
@@ -33,6 +33,7 @@ describe("Modo Balcão", () => {
     Object.defineProperty(HTMLElement.prototype, "scrollIntoView", { configurable: true, value: () => undefined });
     vi.clearAllMocks();
     db.buscarEquipamentosPorSerial.mockResolvedValue([]);
+    db.listarImpressorasWindows.mockResolvedValue([{ nome: "Zebra ZD220", padrao: true }]);
     db.criarEquipamento.mockResolvedValue({ id: 42, serial_number: "SN-42", marca: "Zebra", modelo: "ZD220", tipo: "Impressora", status: "RECEBIDO", data_entrada: "2026-09-01" });
   });
 
@@ -118,7 +119,7 @@ describe("Modo Balcão", () => {
     await user.click(screen.getByRole("button", { name: /continuar para o laudo/i }));
     await user.click(screen.getByRole("button", { name: /abrir painel de controle/i }));
     expect(db.abrirPainelImpressorasWindows).toHaveBeenCalledOnce();
-    await user.click(screen.getByRole("combobox"));
+    await user.click(screen.getAllByRole("combobox")[1]!);
     await user.click(await screen.findByRole("option", { name: /impresso corretamente/i }));
     await user.type(screen.getByRole("textbox"), "Etiqueta de teste legível.");
     await user.click(screen.getByRole("button", { name: /recapitular/i }));
@@ -127,5 +128,31 @@ describe("Modo Balcão", () => {
       diagnostico: expect.stringContaining("Etiqueta de teste legível."),
       observacoes: expect.stringContaining("Impresso corretamente"),
     })));
+    expect(db.imprimirTesteBmitag).not.toHaveBeenCalled();
+  });
+
+  it("envia a página BMITAG com logo para a impressora escolhida", async () => {
+    db.imprimirTesteBmitag.mockResolvedValue(undefined);
+    const user = userEvent.setup(); renderCounter();
+    await user.click(screen.getByRole("button", { name: /nova entrada/i }));
+    await user.click(screen.getByRole("button", { name: /selecionar cliente/i }));
+    await user.click(screen.getByRole("button", { name: /continuar/i }));
+    const fields = screen.getAllByRole("textbox");
+    await user.type(fields[0]!, "SN-42");
+    await user.click(screen.getAllByRole("combobox")[0]!);
+    await user.click(await screen.findByRole("option", { name: "Zebra" }));
+    await user.type(fields[1]!, "ZD220");
+    await user.click(screen.getAllByRole("combobox")[1]!);
+    await user.click(await screen.findByRole("option", { name: /código de barra/i }));
+    await user.type(fields[3]!, "Não imprime etiquetas");
+    await user.click(screen.getByRole("button", { name: /continuar para o laudo/i }));
+    expect(await screen.findByRole("button", { name: /imprimir teste bmitag/i })).toBeEnabled();
+    await user.click(screen.getByRole("button", { name: /imprimir teste bmitag/i }));
+    await waitFor(() => expect(db.imprimirTesteBmitag).toHaveBeenCalledWith(expect.objectContaining({
+      impressora: "Zebra ZD220",
+      serial: "SN-42",
+      logo_png: expect.any(Array),
+    })));
+    expect(await screen.findByText(/teste enviado à fila/i)).toBeInTheDocument();
   });
 });
