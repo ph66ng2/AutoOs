@@ -894,6 +894,23 @@ pub async fn abrir_documento(nome_arquivo: String) -> Result<String, String> {
     Ok(path.to_string_lossy().to_string())
 }
 
+/// Abre a página clássica de Impressoras e Faxes do Painel de Controle.
+/// Não abre preferências de driver nem altera qualquer configuração da máquina.
+#[tauri::command]
+pub async fn abrir_painel_impressoras_windows() -> Result<(), String> {
+    #[cfg(target_os = "windows")]
+    {
+        Command::new("control.exe")
+            .arg("printers")
+            .spawn()
+            .map_err(|e| format!("Não foi possível abrir o Painel de Controle de impressoras: {}", e))?;
+        return Ok(());
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    Err("O Painel de Controle de impressoras está disponível somente no Windows.".to_string())
+}
+
 #[tauri::command]
 pub async fn abrir_url(url: String) -> Result<(), String> {
     let url_trimmed = url.trim().to_string();

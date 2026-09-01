@@ -433,6 +433,11 @@ export const db = {
     return invoke<string>("abrir_documento", { nomeArquivo });
   },
 
+  /** Abre a página clássica de Impressoras e Faxes do Painel de Controle no Windows. */
+  async abrirPainelImpressorasWindows(): Promise<void> {
+    return invoke<void>("abrir_painel_impressoras_windows");
+  },
+
   /** Abre URL no navegador padrão do sistema → Rust: abrir_url */
   async abrirUrl(url: string): Promise<void> {
     return invoke<void>("abrir_url", { url });
