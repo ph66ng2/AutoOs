@@ -54,6 +54,11 @@ import type {
   Verificacao,
 } from "@/types";
 
+export interface ImpressoraWindows {
+  nome: string;
+  padrao: boolean;
+}
+
 /** Payload esperado pelo Rust em `criar_cliente` / `atualizar_cliente` (parâmetro `input`). */
 function clientePersistenciaParaInput(cliente: Omit<Cliente, "id">) {
   return {
@@ -434,6 +439,26 @@ export const db = {
    */
   async abrirDocumento(nomeArquivo: string): Promise<string> {
     return invoke<string>("abrir_documento", { nomeArquivo });
+  },
+
+  /** Abre a página clássica de Impressoras e Faxes do Painel de Controle no Windows. */
+  async abrirPainelImpressorasWindows(): Promise<void> {
+    return invoke<void>("abrir_painel_impressoras_windows");
+  },
+
+  async listarImpressorasWindows(): Promise<ImpressoraWindows[]> {
+    return invoke<ImpressoraWindows[]>("listar_impressoras_windows");
+  },
+
+  async imprimirTesteBmitag(input: {
+    impressora: string;
+    logo_png: number[];
+    atendimento?: number;
+    equipamento: string;
+    serial: string;
+    tecnico: string;
+  }): Promise<void> {
+    return invoke<void>("imprimir_teste_bmitag", { input });
   },
 
   /** Abre URL no navegador padrão do sistema → Rust: abrir_url */

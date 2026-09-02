@@ -18,7 +18,7 @@
  * ╚══════════════════════════════════════════════════════════════╝
  */
 import { useEffect, useState } from "react";
-import { BrowserRouter, Routes, Route } from "react-router-dom";
+import { BrowserRouter, Routes, Route, useLocation, useNavigate } from "react-router-dom";
 import { Toaster } from "sonner";
 import { BootSplash } from "@/components/BootSplash";
 import { DatabaseConfigDialog } from "@/components/DatabaseConfigDialog";
@@ -37,12 +37,18 @@ import Configuracoes from "@/pages/Configuracoes";
 import Perfil from "@/pages/Perfil";
 import PowerSyncPOC from "@/poc/PowerSyncPOC";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
+import { AppModeSelector } from "@/components/AppModeSelector";
+import { CounterLayout } from "@/components/CounterLayout";
+import { CounterSessionGate } from "@/components/CounterSessionGate";
+import { getAppMode, setAppMode, type AppMode } from "@/lib/app-mode";
+import Balcao from "@/pages/Balcao";
 
 /** Exibição mínima do boot (IPC em dev pode resolver em poucos ms). Prod fica igual ou mais pesado só se o Rust/DB demorar. */
 const MIN_BOOT_SPLASH_MS = 1_100;
 
 function AppContent() {
   const { loading, bootProgress, status, refreshStatus } = useSensitiveAccess();
+  const [appMode, setCurrentAppMode] = useState<AppMode | null>(() => getAppMode());
   const [splashVisible, setSplashVisible] = useState(true);
   const [minSplashElapsed, setMinSplashElapsed] = useState(false);
 
@@ -53,6 +59,12 @@ function AppContent() {
       refreshStatus();
     }
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    const syncAppMode = (event: Event) => setCurrentAppMode((event as CustomEvent<AppMode>).detail);
+    window.addEventListener("autoos:app-mode", syncAppMode);
+    return () => window.removeEventListener("autoos:app-mode", syncAppMode);
+  }, []);
 
   useEffect(() => {
     const t = window.setTimeout(() => setMinSplashElapsed(true), MIN_BOOT_SPLASH_MS);
@@ -71,6 +83,11 @@ function AppContent() {
   return (
     <>
       <BrowserRouter>
+        <AppModeChoice
+          visible={!loading && Boolean(status?.active_profile_id && status.unlocked) && appMode === null}
+          onSelect={setCurrentAppMode}
+        />
+        <AppModeRedirect mode={appMode} ready={!loading && Boolean(status?.active_profile_id && status.unlocked)} />
         <Routes>
           <Route element={<Layout />}>
             <Route path="/" element={<Dashboard />} />
@@ -105,6 +122,10 @@ function AppContent() {
               }
             />
           </Route>
+          <Route element={<CounterSessionGate><CounterLayout onChangeMode={setCurrentAppMode} /></CounterSessionGate>}>
+            <Route path="/balcao" element={<Balcao />} />
+            <Route path="/balcao/painel" element={<Balcao />} />
+          </Route>
         </Routes>
       </BrowserRouter>
       {splashVisible && (
@@ -112,6 +133,24 @@ function AppContent() {
       )}
     </>
   );
+}
+
+function AppModeChoice({ visible, onSelect }: { visible: boolean; onSelect: (mode: AppMode) => void }) {
+  const navigate = useNavigate();
+  if (!visible) return null;
+  return <AppModeSelector onSelect={(mode) => { setAppMode(mode); onSelect(mode); navigate(mode === "counter" ? "/balcao" : "/"); }} />;
+}
+
+function AppModeRedirect({ mode, ready }: { mode: AppMode | null; ready: boolean }) {
+  const navigate = useNavigate();
+  const location = useLocation();
+  useEffect(() => {
+    if (!ready || !mode) return;
+    const isCounterRoute = location.pathname.startsWith("/balcao");
+    if (mode === "counter" && !isCounterRoute) navigate("/balcao", { replace: true });
+    if (mode === "standard" && isCounterRoute) navigate("/", { replace: true });
+  }, [location.pathname, mode, navigate, ready]);
+  return null;
 }
 
 function App() {
