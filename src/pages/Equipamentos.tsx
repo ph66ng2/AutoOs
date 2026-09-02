@@ -90,7 +90,7 @@ import { useStatusEquipamento } from "@/hooks/useStatusEquipamento";
 import { useSensitiveAccess } from "@/hooks/useSensitiveAccess";
 import { WhatsAppService } from "@/lib/whatsapp-service";
 import { EmailService } from "@/lib/email-service";
-import { PdfService } from "@/lib/pdf-service";
+import { PdfService, type PdfArtifact } from "@/lib/pdf-service";
 import { FormValidationError } from "@/components/ui/form-validation-error";
 import { db } from "@/lib/db";
 import {
@@ -119,6 +119,7 @@ import { HistoricoComunicacoes } from "@/components/equipamentos/HistoricoComuni
 import { ClienteSelector } from "@/components/equipamentos/ClienteSelector";
 import { PhotoUploadDialog } from "@/components/equipamentos/PhotoUploadDialog";
 import { DocumentosEquipamento } from "@/components/equipamentos/DocumentosEquipamento";
+import { PdfPreviewDialog } from "@/components/equipamentos/PdfPreviewDialog";
 import { AjusteOrcamentoServicos } from "@/components/equipamentos/AjusteOrcamentoServicos";
 import { ActionPriorityRow, type PriorityAction } from "@/components/ui/action-priority-row";
 import {
@@ -168,6 +169,11 @@ export default function Equipamentos() {
   const selecionadoIdRef = useRef<number | undefined>();
   selecionadoIdRef.current = selecionado?.id;
   const [salvando, setSalvando] = useState(false);
+  const [pdfPreview, setPdfPreview] = useState<{
+    artifact: PdfArtifact;
+    tipo: "orcamento" | "ordem" | "relatorio";
+    equipamento: Equipamento;
+  } | null>(null);
 
   // Duplicidade de serial (múltiplos ciclos de manutenção)
   const [registrosAnteriores, setRegistrosAnteriores] = useState<Equipamento[]>([]);
@@ -197,6 +203,8 @@ export default function Equipamentos() {
   const [valorFinalSugerido, setValorFinalSugerido] = useState<number | null>(null);
   const [acordoExcecaoEntrega, setAcordoExcecaoEntrega] = useState(false);
   const [tecnicoNovoEquipamento, setTecnicoNovoEquipamento] = useState<TecnicoDisponivel>("Ivan");
+  const [marcaOutroOpen, setMarcaOutroOpen] = useState(false);
+  const [tipoOutroOpen, setTipoOutroOpen] = useState(false);
   const [imagensSaidaEntrega, setImagensSaidaEntrega] = useState<EquipamentoImagemDraft[]>([]);
   const [erroImagensSaidaEntrega, setErroImagensSaidaEntrega] = useState<string | null>(null);
   const [carregandoImagensSaidaEntrega, setCarregandoImagensSaidaEntrega] = useState(false);
@@ -1184,17 +1192,13 @@ export default function Equipamentos() {
     }
   }
 
-  /** Gera DOCX de orçamento preenchido e abre no Word */
-  /** Gera PDF de orçamento preenchido e abre no leitor padrão */
+  /** Constrói o orçamento para inspeção sem persistir o arquivo. */
   async function gerarOrcamentoPdf(eq: Equipamento) {
     try {
       setSalvando(true);
       const verif = await db.buscarVerificacao(eq.id!);
       if (!verif) { warning("Equipamentos", "Nenhuma verificação técnica encontrada para este equipamento."); return; }
-      const caminho = await PdfService.gerarOrcamento(eq, verif);
-      if (caminho) {
-        success("Equipamentos", `Orçamento PDF gerado com sucesso. Arquivo: ${caminho}`, "Gerar PDF");
-      }
+      setPdfPreview({ artifact: await PdfService.construirOrcamento(eq, verif), tipo: "orcamento", equipamento: eq });
     } catch (err) {
       console.error("Erro ao gerar orçamento PDF:", err);
       showError("Equipamentos", "Gerar orçamento PDF", err);
@@ -1203,14 +1207,11 @@ export default function Equipamentos() {
     }
   }
 
-  /** Gera PDF da ordem de serviço para envio manual antes da verificação */
+  /** Constrói a ordem de serviço para inspeção sem persistir o arquivo. */
   async function gerarOrdemServicoPdf(eq: Equipamento) {
     try {
       setSalvando(true);
-      const caminho = await PdfService.gerarOrdemServico(eq);
-      if (caminho) {
-        success("Equipamentos", `Ordem de Serviço PDF gerada com sucesso. Arquivo: ${caminho}`, "Gerar PDF");
-      }
+      setPdfPreview({ artifact: await PdfService.construirOrdemServico(eq), tipo: "ordem", equipamento: eq });
     } catch (err) {
       console.error("Erro ao gerar Ordem de Serviço PDF:", err);
       showError("Equipamentos", "Gerar Ordem de Serviço PDF", err);
@@ -1222,10 +1223,7 @@ export default function Equipamentos() {
   async function gerarRelatorioStatusPdf(eq: Equipamento) {
     try {
       setSalvando(true);
-      const caminho = await PdfService.gerarRelatorioStatus(eq);
-      if (caminho) {
-        success("Equipamentos", `Relatório de Status gerado com sucesso. Arquivo: ${caminho}`, "Gerar PDF");
-      }
+      setPdfPreview({ artifact: await PdfService.construirRelatorioStatus(eq), tipo: "relatorio", equipamento: eq });
     } catch (err) {
       console.error("Erro ao gerar Relatório de Status PDF:", err);
       showError("Equipamentos", "Gerar Relatório de Status PDF", err);
@@ -1882,7 +1880,10 @@ export default function Equipamentos() {
                 <div className="space-y-2">
                   <Label>Tipo *</Label>
                   <Controller control={form.control} name="tipo" render={({ field }) => (
-                    <Select value={field.value} onValueChange={field.onChange}>
+                    <Select value={TIPO_OPTIONS.includes(field.value) ? field.value : field.value ? "Outro" : ""} onValueChange={(value) => {
+                      if (value === "Outro") { setTipoOutroOpen(true); return; }
+                      field.onChange(value);
+                    }}>
                       <SelectTrigger><SelectValue placeholder="Selecione..." /></SelectTrigger>
                       <SelectContent>{TIPO_OPTIONS.map(t => <SelectItem key={t} value={t}>{t}</SelectItem>)}</SelectContent>
                     </Select>
@@ -2519,6 +2520,24 @@ export default function Equipamentos() {
         placeholder={inputProps.placeholder}
         onConfirm={inputProps.onConfirm}
       />
+      <InputDialog
+        open={marcaOutroOpen}
+        onOpenChange={setMarcaOutroOpen}
+        title="Informar outra marca"
+        label="Marca do equipamento"
+        placeholder="Ex.: Honeywell"
+        onConfirm={(value) => form.setValue("marca", value.trim(), { shouldDirty: true, shouldValidate: true })}
+        validate={(value) => value.trim().length >= 2 ? null : "Informe a marca do equipamento."}
+      />
+      <InputDialog
+        open={tipoOutroOpen}
+        onOpenChange={setTipoOutroOpen}
+        title="Informar outro tipo"
+        label="Tipo do equipamento"
+        placeholder="Ex.: Terminal móvel"
+        onConfirm={(value) => form.setValue("tipo", value.trim(), { shouldDirty: true, shouldValidate: true })}
+        validate={(value) => value.trim().length >= 2 ? null : "Informe o tipo do equipamento."}
+      />
 
       <PhotoUploadDialog
         equipamentoId={photoUploadNewEquip ? 0 : (selecionado?.id ?? 0)}
@@ -2548,6 +2567,22 @@ export default function Equipamentos() {
           };
           setImagensFormulario((prev) => [...prev, draft]);
         } : undefined}
+      />
+
+      <PdfPreviewDialog
+        artifact={pdfPreview?.artifact || null}
+        onOpenChange={(open) => { if (!open) setPdfPreview(null); }}
+        onDownload={async (artifact) => {
+          if (!pdfPreview) return;
+          const { equipamento, tipo } = pdfPreview;
+          if (tipo === "orcamento") {
+            await PdfService.salvarOrcamento(artifact, equipamento);
+          } else if (tipo === "ordem") {
+            await PdfService.salvarOrdemServico(artifact, equipamento);
+          } else {
+            await PdfService.salvarRelatorioStatus(artifact, equipamento);
+          }
+        }}
       />
     </div>
   );

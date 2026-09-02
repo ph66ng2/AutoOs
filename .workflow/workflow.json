@@ -9,7 +9,12 @@
     "Assinatura e capacidades são autoritativas no servidor; flags locais servem apenas como cache temporário.",
     "O provedor de cobrança será decidido em AO-SUB-001 e não fica implicitamente fixado como Stripe.",
     "Toda worktree parte exclusivamente de origin/feature; master só recebe promoção humana após validação e representa a linha usada em produção.",
-    "A master interna da BMITAG permanece congelada até o Go/No-Go final."
+    "A master interna da BMITAG permanece congelada até o Go/No-Go final.",
+    "No modo SaaS, somente o administrador autentica a empresa com email e senha pelo Supabase Auth; não existe cadastro público de empresas no MVP.",
+    "Funcionários usam perfis UUID autoritativos na nuvem e PIN local por dispositivo; o PIN nunca autentica no Supabase, escolhe tenant ou concede capacidade cloud.",
+    "A sessão Supabase é mantida no keyring e renovada automaticamente; senha, service_role, senha PostgreSQL e credenciais internas nunca são persistidas ou distribuídas no cliente.",
+    "O build SaaS é explícito e não selecionável pelo usuário; nesse modo o AutoOS não inicializa o PostgreSQL legado nem exibe configuração de banco.",
+    "No MVP, o perfil local identifica o operador para o fluxo e a auditoria operacional, mas não constitui identidade cloud individual forte e incontestável."
   ],
   "ticketTestProtocol": {
     "requiredForNewOrModifiedTickets": true,
@@ -32,6 +37,97 @@
     }
   },
   "tickets": [
+    {
+      "id": "AO-INT-001",
+      "title": "Sincronizar master v0.4.1 com feature",
+      "status": "review",
+      "blockedBy": [],
+      "objective": "Incorporar na feature todo o Modo Balcao e as correcoes publicadas na master v0.4.1, preservando o trabalho SaaS, Auth, fotos, staging e PowerSync.",
+      "context": "Master e feature divergiram depois que o Modo Balcao foi desenvolvido diretamente na linha de producao. A reconciliacao deve acontecer em branch propria criada de origin/feature, sem alterar master, sem rebase e sem promover trabalho incompleto de agentes.",
+      "expectedBehavior": "Ao final, origin/master e ancestral da feature integrada, o Modo Balcao mantem o comportamento publicado, os recursos SaaS continuam presentes e as proximas worktrees podem voltar a partir de uma unica base coerente.",
+      "scope": [
+        "Criar branch e worktree de integracao a partir de origin/feature e mesclar origin/master com merge commit explicito.",
+        "Resolver conflitos de build, manifests, Tauri, PDF, clientes e equipamentos conforme a autoridade funcional de cada branch.",
+        "Preservar a remocao de arquivos de ambiente versionados e verificar ausencia de credenciais no conteudo rastreado.",
+        "Executar validacoes estaticas, testes frontend, cargo check e testes direcionados do Modo Balcao, PDF, CNPJ e paginacao.",
+        "Publicar a branch de integracao e abrir PR somente para origin/feature, mantendo origin/master inalterada.",
+        "Reconciliar no workflow o estado de tickets cujo codigo ja foi promovido para master ou feature."
+      ],
+      "outOfScope": [
+        "Promover feature para master ou criar novo release.",
+        "Concluir tickets SaaS, PowerSync, Auth ou fotos ainda em desenvolvimento.",
+        "Alterar schema, dados ou configuracoes persistentes de Supabase interno, staging ou producao.",
+        "Reescrever historico, fazer force-push ou mesclar branches antigas de agentes diretamente em master."
+      ],
+      "acceptanceCriteria": [
+        "O merge de origin/master em uma branch baseada em origin/feature e concluido sem marcadores de conflito.",
+        "A configuracao final preserva a versao 0.4.1, updater, assinatura e fluxo de release da master.",
+        "Modo Balcao, PDF, CNPJ e paginacao permanecem presentes junto dos artefatos SaaS, Auth, fotos e PowerSync da feature.",
+        "src-tauri/.env nao esta rastreado e nenhuma credencial real e introduzida no diff ou nos artefatos verificados.",
+        "Lint, suite frontend, cargo check e testes direcionados passam, ou qualquer falha preexistente fica comprovada e documentada sem regressao nova.",
+        "A branch e publicada e o PR tem feature como base; master permanece no mesmo SHA durante toda a sincronizacao.",
+        "O planejador do workflow valida o JSON e continua sem dependencias ausentes."
+      ],
+      "tests": [
+        "Validacao de JSON e .workflow/scripts/waves.sh plan .workflow/workflow.json.",
+        "Busca por marcadores de conflito e secrets em arquivos rastreados.",
+        "npm run lint.",
+        "npm run test:run.",
+        "cd src-tauri && cargo check.",
+        "Playwright direcionado ao Modo Balcao quando o ambiente local permitir.",
+        "Revisao do grafo Git confirmando origin/master como ancestral da branch integrada."
+      ],
+      "testInstructions": {
+        "prerequisites": [
+          "Usar worktree exclusiva criada de origin/feature atualizado e registrar os SHAs de origin/feature e origin/master antes do merge.",
+          "Nao utilizar banco interno, producao, credenciais reais ou dados operacionais durante a validacao.",
+          "Manter master congelada e nao iniciar novas worktrees sobre a feature antiga ate a conclusao da integracao."
+        ],
+        "steps": [
+          "Aplicar na worktree as alteracoes locais pendentes do workflow e executar o planejador antes do merge.",
+          "Mesclar origin/master sem rebase, resolver individualmente os conflitos e inspecionar o diff combinado.",
+          "Validar manifests e lockfiles, executar npm run lint, npm run test:run e cargo check em src-tauri.",
+          "Executar testes direcionados de paginacao, CNPJ, PDF e Modo Balcao usando mocks e dados sinteticos.",
+          "Verificar ausencia de src-tauri/.env rastreado, marcadores de conflito e valores sensiveis introduzidos no diff.",
+          "Publicar a branch e abrir PR para feature, registrando resultados, limitacoes e confirmacao de que master nao mudou."
+        ],
+        "expectedResultAndEvidence": [
+          "O grafo Git mostra um merge nao destrutivo contendo origin/feature e origin/master como ancestrais.",
+          "Os comandos de verificacao passam e seus resumos ficam registrados no PR sem tokens, senhas ou dados reais.",
+          "A revisao funcional confirma a coexistencia do Modo Balcao com os componentes SaaS da feature.",
+          "O workflow e validado e os tickets ja entregues em master ou feature recebem estado coerente."
+        ],
+        "dataImpact": "Somente codigo, configuracao e documentacao Git na branch de integracao; nenhum banco, registro operacional ou ambiente remoto de dados e alterado.",
+        "cleanupAndRollback": [
+          "Antes do merge do PR, descartar a branch de integracao e sua worktree se houver regressao sem solucao segura; feature e master permanecem intactas.",
+          "Depois do merge, reverter o merge commit completo se uma regressao critica for descoberta antes de qualquer promocao para master.",
+          "Nao editar migrations ja aplicadas; qualquer correcao futura de banco deve ser aditiva e aprovada separadamente."
+        ],
+        "stagingRestrictions": "E proibido usar dados, contas, emails, tokens, service_role, senhas PostgreSQL, dumps ou credenciais internas/produção; qualquer teste externo deve usar apenas staging e identidades sinteticas autorizadas."
+      },
+      "likelyFiles": [
+        ".github/workflows/build.yml",
+        ".gitignore",
+        "package.json",
+        "package-lock.json",
+        "src-tauri/Cargo.toml",
+        "src-tauri/Cargo.lock",
+        "src-tauri/tauri.conf.json",
+        "src-tauri/src/main.rs",
+        "src/lib/pdf-service.ts",
+        "src/pages/Clientes.tsx",
+        "src/pages/Equipamentos.tsx",
+        "src/pages/equipamentos/equipamentos-page-constants.ts",
+        ".workflow/workflow.json"
+      ],
+      "risks": [
+        "Resolver manifests ou lockfiles por um unico lado e remover dependencias necessarias ao Modo Balcao ou ao SaaS.",
+        "Restaurar credencial versionada ou embutir segredo em configuracao de build.",
+        "Perder comportamentos de PDF, impressao, busca ou cadastro rapido publicados na master.",
+        "Tratar ticket em revisao como concluido sem confirmar que seu commit esta no historico integrado.",
+        "Retomar agentes em worktrees antigas e reintroduzir a divergencia logo apos a sincronizacao."
+      ]
+    },
     {
       "id": "AO-CNPJ-001",
       "title": "Autofill de cadastro por CNPJ via BrasilAPI",
@@ -468,12 +564,414 @@
       ]
     },
     {
+      "id": "AO-AUTH-001",
+      "title": "Provisionar identidade SaaS do administrador",
+      "status": "merged",
+      "blockedBy": [
+        "AO-PS-004"
+      ],
+      "objective": "Criar o vínculo autoritativo entre a identidade Supabase do administrador, a empresa UUID e o perfil administrador UUID, sem cadastro público nem atributos de autorização controlados pelo cliente.",
+      "context": "AO-PS-004 definiu o isolamento por tenant e a RLS, mas o MVP ainda precisa de um fluxo server-side que provisione o único usuário cloud da empresa. Funcionários continuam sendo perfis operacionais, sem senha SaaS própria, e nenhum empresa_id informado pelo desktop pode determinar autorização.",
+      "expectedBehavior": "Uma operação administrativa fora do cliente cria o usuário Supabase e vincula auth.users.id, empresa e perfil administrador; app_metadata.company_id é gravado somente no servidor, e login ou acesso é negado quando o vínculo/claim falta, o usuário está suspenso ou há tentativa de spoofing.",
+      "scope": [
+        "Definir e implementar o vínculo consistente entre auth.users.id, empresa UUID e perfil administrador UUID, com unicidade, estado ativo e trilha de provisionamento.",
+        "Definir app_metadata.company_id somente por operação server-side e garantir que user_metadata, empresa_id do payload ou valores locais nunca participem da decisão de autorização.",
+        "Provisionar administradores sintéticos de tenants A e B exclusivamente no staging por API administrativa ou automação server-side, sem habilitar signup público no desktop ou na web.",
+        "Fazer o token emitido carregar a identidade necessária ao tenant e validar no servidor a correspondência entre usuário, empresa ativa e perfil administrador ativo.",
+        "Definir suspensão e reativação de usuário/empresa de forma que novas sessões e operações protegidas sejam negadas, considerando que claims antigas exigem renovação ou validação server-side.",
+        "Documentar o procedimento operacional de provisionamento, rotação e suspensão sem registrar senha, token ou chave administrativa em arquivos ou logs.",
+        "Adicionar testes automatizados e de integração para tenants A/B, claim ausente, usuário suspenso, user_metadata adulterado e empresa_id enviado pelo cliente."
+      ],
+      "outOfScope": [
+        "Criar cadastro público, onboarding self-service, convite de funcionários ou UI comercial de empresas.",
+        "Implementar a tela de login, persistência de sessão no keyring, registro de dispositivo ou PIN local.",
+        "Criar uma identidade Supabase individual para cada funcionário no MVP.",
+        "Usar service_role, secret key ou credencial administrativa no desktop como atalho.",
+        "Alterar o ambiente interno, produção, master ou dados reais da BMITAG."
+      ],
+      "acceptanceCriteria": [
+        "Cada administrador sintético possui um auth.users.id vinculado exatamente a uma empresa UUID e a um perfil administrador UUID ativo.",
+        "app_metadata.company_id só pode ser criado ou alterado por caminho server-side; user_metadata e empresa_id enviado pelo cliente são ignorados para autorização.",
+        "O tenant A não lê, altera ou provisiona dados do tenant B usando chave publicável e JWT de usuário.",
+        "Claim ausente, vínculo inconsistente, usuário/empresa/perfil suspenso e tentativa de spoofing são negados com resposta sanitizada e auditável.",
+        "O staging possui usuários sintéticos reproduzíveis sem signup público habilitado.",
+        "Nenhuma senha, token, service_role, senha PostgreSQL ou credencial interna aparece no repositório, bundle, evidências ou logs.",
+        "Os checks de frontend e Rust e os testes direcionados passam na worktree do ticket."
+      ],
+      "tests": [
+        "Testes server-side do vínculo auth.users/empresa/perfil e da escrita restrita de app_metadata.company_id.",
+        "Integração no Supabase staging com administradores sintéticos dos tenants A e B.",
+        "Cenários negativos de claim ausente, usuário suspenso, user_metadata adulterado e empresa_id forjado no payload.",
+        "Varredura de arquivos, bundle e logs por senha, PIN, service_role, senha PostgreSQL, access token e refresh token.",
+        "npm run lint.",
+        "npm run test:run.",
+        "cd src-tauri && cargo check."
+      ],
+      "testInstructions": {
+        "prerequisites": [
+          "Usar worktree exclusiva criada de origin/feature após AO-PS-004 estar merged e somente o projeto Supabase staging autorizado.",
+          "Usar duas empresas, dois perfis administradores e dois usuários sintéticos identificáveis para tenants A e B; signup público deve permanecer desabilitado.",
+          "Manter qualquer chave administrativa somente no executor server-side/secret store de staging, nunca no desktop, Git ou evidência."
+        ],
+        "steps": [
+          "Executar npm run lint, npm run test:run e cargo check em src-tauri.",
+          "Provisionar os administradores sintéticos A e B pelo caminho server-side e verificar os vínculos auth.users.id, company UUID, profile UUID e app_metadata.company_id.",
+          "Autenticar cada usuário sintético e testar operações permitidas no próprio tenant e negadas no tenant oposto.",
+          "Repetir os testes com company_id ausente, user_metadata adulterado, empresa_id forjado no payload e usuário/empresa/perfil suspenso.",
+          "Executar a varredura de secrets em arquivos, bundle e logs sanitizados e registrar somente hashes/identificadores não sensíveis quando necessário."
+        ],
+        "expectedResultAndEvidence": [
+          "Os checks passam e a evidência relaciona apenas UUIDs sintéticos sanitizados, sem senha ou token.",
+          "Tenant A/B permanecem isolados e todos os cenários de claim ausente, suspensão e spoofing retornam negação consistente.",
+          "A inspeção confirma signup público desabilitado, app_metadata gravado apenas server-side e nenhuma credencial privilegiada no cliente.",
+          "A varredura confirma ausência de senha, PIN, service_role, senha PostgreSQL, access token, refresh token e credenciais internas nos artefatos."
+        ],
+        "dataImpact": "Cria, atualiza, suspende e remove somente empresas, perfis e usuários sintéticos no Supabase staging; não altera ambiente interno, produção ou dados reais.",
+        "cleanupAndRollback": [
+          "Revogar as sessões sintéticas antes de excluir usuários, perfis e empresas de teste; remover eventuais fixtures e secrets temporários do staging.",
+          "Restaurar a configuração anterior de Auth/RLS no staging se houver regressão e bloquear os tickets dependentes até nova validação.",
+          "Não aplicar migrations, publicar funções ou alterar configurações persistentes fora do staging sem aprovação humana explícita."
+        ],
+        "stagingRestrictions": "É proibido usar empresas, pessoas, emails, senhas, dados, dumps, service_role ou credenciais do ambiente interno/produção; todos os logins reais devem usar exclusivamente usuários sintéticos de staging."
+      },
+      "likelyFiles": [
+        "supabase/migrations/*auth*",
+        "supabase/functions/admin-provisioning/*",
+        "supabase/config.toml",
+        "supabase/tests/*auth*",
+        "docs/*auth*"
+      ],
+      "risks": [
+        "Aceitar user_metadata ou empresa_id do cliente e abrir BOLA/IDOR entre tenants.",
+        "Criar vínculo parcial entre usuário, empresa e perfil e emitir JWT sem tenant confiável.",
+        "Claims permanecerem válidas durante uma janela após suspensão sem validação server-side para operações sensíveis.",
+        "Expor service_role ou senha sintética em script, log, fixture ou evidência.",
+        "Habilitar signup público acidentalmente ao preparar usuários de staging."
+      ]
+    },
+    {
+      "id": "AO-AUTH-002",
+      "title": "Implementar login e sessão Supabase",
+      "status": "review",
+      "blockedBy": [
+        "AO-AUTH-001"
+      ],
+      "objective": "Implementar login administrativo por email e senha, sessão Supabase segura no keyring e boot SaaS independente do PostgreSQL legado.",
+      "context": "AuthDialog hoje chama login_empresa e registrar_empresa, que consultam o PostgreSQL legado e não criam sessão Supabase. App.tsx também verifica o banco antes de renderizar e exibe DatabaseConfigDialog. O modo SaaS precisa reaproveitar a UI útil sem manter duas telas concorrentes nem permitir que o usuário escolha o runtime.",
+      "expectedBehavior": "Em build SaaS explícito, o AutoOS abre SaasLoginScreen quando não há sessão válida, autentica com email/senha e chave publicável, salva apenas a sessão no keyring, restaura/renova no boot e nunca inicializa nem solicita configuração do PostgreSQL legado.",
+      "scope": [
+        "Definir os contratos tipados SaasIdentity, SaasSession e SaasAuthService, incluindo estados de boot, autenticado, bloqueado, expirado, offline recuperável e signed out.",
+        "Transformar AuthDialog em SaasLoginScreen, reaproveitando validações, mensagens, acessibilidade, loading e componentes úteis, removendo o cadastro público e evitando duas telas de login concorrentes.",
+        "Autenticar por email/senha com Supabase Auth e chave publicável; validar user UUID, company UUID, profile UUID, email, estado ativo e claims produzidas por AO-AUTH-001.",
+        "Criar um modo SaaS explícito de build/configuração, não selecionável pelo usuário, que ignore login_empresa/registrar_empresa e preserve esses comandos apenas para consumidores do runtime interno enquanto existirem.",
+        "No modo SaaS, impedir a inicialização do pool PostgreSQL legado, a verificação de DATABASE_URL e a renderização de DatabaseConfigDialog.",
+        "Persistir no keyring access token, refresh token, expiração, user UUID, company UUID, profile UUID e email; nunca persistir a senha nem usar localStorage para tokens.",
+        "Restaurar a sessão no boot, renovar antes/depois da expiração conforme o SDK e atualizar atomicamente o par de tokens rotacionado, com tratamento para rede indisponível e refresh inválido.",
+        "Implementar Bloquear e Sair da conta como ações distintas: Bloquear limpa apenas o acesso operacional em memória e conserva a sessão; Sair usa revogação local da sessão Supabase e remove seus tokens do keyring.",
+        "Implementar sessão expirada e Esqueci a senha pelo fluxo oficial resetPasswordForEmail com redirect exato para uma página HTTPS de recuperação autenticada, sem solicitar ou validar senha PostgreSQL.",
+        "Adicionar testes de UI, serviço, keyring e boot para sucesso, senha incorreta, conta suspensa, token expirado, renovação, rede indisponível, bloqueio, saída e recuperação."
+      ],
+      "outOfScope": [
+        "Permitir cadastro público de empresa ou reaproveitar login_empresa/registrar_empresa no modo SaaS.",
+        "Registrar/revogar dispositivos, criar PIN local ou sincronizar perfis de funcionários.",
+        "Migrar o adapter de clientes do AO-SUB-002, integrar PowerSync ou emitir entitlement.",
+        "Excluir os comandos PostgreSQL legados antes de remover todos os consumidores internos.",
+        "Armazenar senha, token em localStorage, service_role, secret key, DATABASE_URL ou senha PostgreSQL no desktop."
+      ],
+      "acceptanceCriteria": [
+        "SaasIdentity, SaasSession e SaasAuthService têm contratos tipados e são a única porta de autenticação do build SaaS.",
+        "SaasLoginScreen substitui o AuthDialog no modo SaaS, preserva acessibilidade/feedback útil e não oferece cadastro público.",
+        "Login com usuário sintético ativo do staging produz sessão e identidade do tenant correto; senha incorreta, conta suspensa e claim inválida não liberam o app.",
+        "O keyring contém somente os campos de sessão definidos e nunca contém a senha; tokens não aparecem em localStorage, arquivos, bundle ou logs.",
+        "O boot restaura e renova uma sessão válida e apresenta estado recuperável quando a rede está indisponível sem descartar silenciosamente um refresh token utilizável.",
+        "Bloquear conserva a sessão no keyring e encerra o acesso operacional em memória; Sair revoga somente a sessão atual, remove tokens e exige email/senha no próximo acesso.",
+        "Sessão expirada retorna à autenticação com mensagem clara, e Esqueci a senha conclui em página HTTPS allowlisted pelo Supabase.",
+        "O build SaaS não chama check_database_status/init_database legado, não mostra DatabaseConfigDialog e não depende de DATABASE_URL.",
+        "login_empresa e registrar_empresa permanecem disponíveis apenas ao runtime interno enquanto tiverem consumidores.",
+        "Os checks de frontend/Rust e a suíte direcionada passam sem credenciais ou dados reais."
+      ],
+      "tests": [
+        "Vitest de SaasAuthService e SaasLoginScreen com storage/keyring e Supabase mockados.",
+        "Integração real exclusivamente no staging com usuário sintético para login, restauração, refresh, signOut local e recuperação por HTTPS.",
+        "Cenários de senha incorreta, conta suspensa, token expirado/refresh inválido e rede indisponível.",
+        "Testes de boot provando que o modo SaaS não inicializa PostgreSQL legado nem mostra DatabaseConfigDialog.",
+        "Varredura de keyring, arquivos, bundle e logs por senha, PIN, service_role, senha PostgreSQL e tokens expostos.",
+        "npm run lint.",
+        "npm run test:run.",
+        "cd src-tauri && cargo check."
+      ],
+      "testInstructions": {
+        "prerequisites": [
+          "Usar worktree exclusiva criada de origin/feature após AO-AUTH-001 estar merged, build SaaS de staging e usuário administrador sintético ativo.",
+          "Configurar URL Supabase e chave publicável de staging por mecanismo de build não secreto; manter redirect HTTPS de recuperação exatamente allowlisted.",
+          "Usar keyring isolado de teste e mocks para a maior parte da suíte; nenhum DATABASE_URL ou banco interno deve estar disponível ao build SaaS."
+        ],
+        "steps": [
+          "Executar npm run lint, npm run test:run e cargo check em src-tauri.",
+          "Em testes automatizados, validar persistência/restauração/rotação atômica da sessão, ausência de senha, estados de boot e separação entre Bloquear e Sair.",
+          "Executar login real no staging somente com usuário sintético; reiniciar o app para restaurar a sessão e forçar renovação/expiração controlada.",
+          "Repetir com senha incorreta, conta suspensa, refresh inválido e rede indisponível, registrando mensagens e possibilidade de recuperação.",
+          "Solicitar recuperação de senha e concluir a troca na página HTTPS allowlisted; depois confirmar login com a nova senha sintética.",
+          "Executar build/boot SaaS sem DATABASE_URL e inspecionar chamadas/UI para confirmar ausência de inicialização PostgreSQL e DatabaseConfigDialog.",
+          "Executar varredura sanitizada no keyring de teste, arquivos, bundle e logs sem imprimir os valores dos tokens."
+        ],
+        "expectedResultAndEvidence": [
+          "Os três checks passam e as evidências mostram estados e identificadores sanitizados, nunca senha ou token.",
+          "Login, restauração e renovação funcionam com o usuário sintético; erros de senha, suspensão, expiração e rede não liberam tenant incorreto nem causam perda silenciosa de sessão renovável.",
+          "Bloquear mantém material de sessão no keyring, Sair revoga/remove apenas a sessão atual e ambos exibem o próximo gate esperado.",
+          "O fluxo de recuperação termina na página HTTPS autorizada e não solicita senha PostgreSQL.",
+          "O trace de boot e a UI confirmam que o build SaaS não inicializa o banco legado nem renderiza DatabaseConfigDialog.",
+          "A varredura confirma ausência de senha, PIN, service_role, senha PostgreSQL, DATABASE_URL e valores de token em arquivos, bundle e logs."
+        ],
+        "dataImpact": "Cria e revoga sessões e altera somente a senha de um usuário sintético no Supabase staging; grava e remove entradas temporárias em keyring isolado, sem tocar dados de negócio ou ambientes internos.",
+        "cleanupAndRollback": [
+          "Encerrar a sessão sintética com scope local, remover entradas do keyring de teste e restaurar a senha/usuário sintético conforme a fixture do staging.",
+          "Remover apenas configurações e artefatos temporários do build SaaS; preservar comandos e runtime PostgreSQL internos.",
+          "Se o refresh ou logout expuser token, revogar imediatamente a sessão sintética, sanitizar a evidência e bloquear tickets dependentes."
+        ],
+        "stagingRestrictions": "É proibido usar contas, emails, senhas, bancos, DATABASE_URL, dados ou credenciais internas/produção; login real e recuperação só podem usar usuários sintéticos e página HTTPS do staging."
+      },
+      "likelyFiles": [
+        "src/components/AuthDialog.tsx",
+        "src/components/SaasLoginScreen.tsx",
+        "src/App.tsx",
+        "src/main.tsx",
+        "src/lib/saas-auth.ts",
+        "src/types/*",
+        "src-tauri/src/commands/saas_auth.rs",
+        "src-tauri/src/commands/mod.rs",
+        "src-tauri/src/main.rs",
+        "src-tauri/Cargo.toml",
+        "package.json",
+        "package-lock.json",
+        "supabase/functions/*password-recovery*",
+        "docs/*auth*"
+      ],
+      "risks": [
+        "Manter duas telas de login concorrentes ou chamar comandos PostgreSQL no build SaaS.",
+        "Persistir senha/tokens fora do keyring ou registrar credenciais em logs de erro.",
+        "Sobrescrever um refresh token rotacionado e perder uma sessão válida após crash.",
+        "Usar signOut global por engano e desconectar as outras máquinas da empresa.",
+        "Abrir recuperação em redirect não allowlisted, inseguro ou controlável pelo usuário.",
+        "Acoplar o boot SaaS à disponibilidade do PostgreSQL legado ou da rede."
+      ]
+    },
+    {
+      "id": "AO-AUTH-003",
+      "title": "Registrar, reinstalar e revogar dispositivos",
+      "status": "ready",
+      "blockedBy": [
+        "AO-AUTH-002"
+      ],
+      "objective": "Vincular cada instalação autenticada a um dispositivo UUID e a uma sessão Supabase revogável, com semântica segura para primeira instalação, reinstalação, segunda máquina e remoção.",
+      "context": "Uma sessão Supabase possui session_id e refresh token próprios, mas o AutoOS também precisa saber qual instalação pode receber entitlement, token PowerSync e sessão cloud de fotos. Restos de keyring após reinstalação não podem reativar silenciosamente uma máquina sem seu marcador local.",
+      "expectedBehavior": "Após login administrativo, a instalação recebe device_id UUID e registra o vínculo com a sessão atual; uma máquina revogada perde novas capacidades cloud, reinstalação exige nova senha quando o marcador falta, e Bloquear, Sair da conta e Remover esta máquina têm efeitos diferentes e auditáveis.",
+      "scope": [
+        "Gerar device_id UUID na primeira instalação e manter um marcador local não secreto, separado dos tokens do keyring, além de um registro server-side por empresa/dispositivo.",
+        "Vincular o dispositivo ao session_id da sessão Supabase validada e documentar o mecanismo oficial adotado, sem criar autenticação paralela ou expor auth.sessions ao cliente.",
+        "Registrar metadados mínimos de instalação, estado ativo/revogado, sessão vinculada, datas e auditoria; derivar company_id e user_id da sessão validada, nunca do payload livre.",
+        "Na reinstalação em que o keyring antigo sobrevive mas o marcador local não, ignorar a sessão residual, exigir email/senha administrativa, criar nova sessão e rotacionar o vínculo/credencial do dispositivo.",
+        "Distinguir Bloquear, Sair da conta e Remover esta máquina: Bloquear só fecha o acesso operacional; Sair revoga a sessão atual e apaga tokens, preservando device_id/PINs/cache; Remover revoga o dispositivo e sessão e apaga tokens, PINs, marcador e cache após confirmação explícita.",
+        "Impedir no servidor que dispositivo revogado receba novo entitlement, token PowerSync ou criação/consumo de sessão cloud de fotos, mesmo com claim de tenant válida.",
+        "Tratar falha parcial de remoção de forma recuperável, priorizando revogação server-side antes da limpeza local e registrando pendência segura quando offline.",
+        "Documentar a janela residual do access token já emitido até exp e exigir validação de session_id/dispositivo ativo nas operações sensíveis que precisam de revogação imediata.",
+        "Adicionar testes para primeira instalação, reinstalação, segunda máquina, revogação, remoção offline/parcial e efeitos distintos das três ações."
+      ],
+      "outOfScope": [
+        "Criar PIN, sincronizar perfis ou implementar permissões operacionais do AO-AUTH-004.",
+        "Implementar entitlement, connector PowerSync ou fluxo de fotos além dos gates de dispositivo exigidos.",
+        "Usar hardware fingerprint invasivo, endereço MAC, serial físico ou device_id fornecido pelo usuário como identidade confiável.",
+        "Prometer invalidação instantânea do access token já emitido sem validação server-side adicional.",
+        "Alterar produção, ambiente interno, master ou máquinas reais durante os testes."
+      ],
+      "acceptanceCriteria": [
+        "Primeira instalação cria device_id UUID, marcador local e registro server-side vinculados à empresa, usuário e session_id autenticados.",
+        "Uma segunda máquina recebe device_id e sessão independentes sem revogar a primeira.",
+        "Keyring residual sem marcador de instalação nunca restaura o acesso; email/senha são exigidos e a sessão/vínculo anterior são rotacionados.",
+        "Bloquear mantém sessão, device_id, PINs e cache; Sair revoga/remove a sessão atual e seus tokens, mas preserva instalação/PINs/cache; Remover exige confirmação e elimina registro ativo, sessão, tokens, PINs, marcador e cache.",
+        "Dispositivo revogado não obtém novo entitlement, token PowerSync nem sessão cloud de fotos.",
+        "Operações sensíveis validam session_id e estado do dispositivo quando a revogação não pode esperar o exp do access token.",
+        "A documentação informa explicitamente que access tokens revogados podem permanecer aceitos até a expiração quando o consumidor validar apenas o JWT.",
+        "Nenhuma credencial, token ou dado real aparece nos artefatos de teste, e os checks exigidos passam."
+      ],
+      "tests": [
+        "Testes unitários do ciclo de vida do marcador/device_id e da máquina de estados de instalação.",
+        "Integração no staging para primeira instalação, segunda máquina, reinstalação com keyring residual e revogação.",
+        "Testes comparativos de Bloquear, Sair da conta e Remover esta máquina, incluindo confirmação e falha de rede.",
+        "Testes server-side negando entitlement, token PowerSync e sessão cloud de fotos a dispositivo revogado.",
+        "Teste de access token residual antes/depois de exp e de validação reforçada por session_id/dispositivo.",
+        "Varredura de keyring, marcador, cache, arquivos e logs por senha, PIN, service_role, senha PostgreSQL e token exposto.",
+        "npm run lint.",
+        "npm run test:run.",
+        "cd src-tauri && cargo check."
+      ],
+      "testInstructions": {
+        "prerequisites": [
+          "Usar worktree exclusiva criada de origin/feature após AO-AUTH-002 estar merged, Supabase staging e duas instalações isoladas/VMs com keyrings de teste.",
+          "Usar uma empresa, um administrador e dispositivos sintéticos; preparar stubs de entitlement, PowerSync e fotos que validem o gate sem conceder capacidade real.",
+          "Registrar o TTL de access token configurado no staging e não reduzir/alterar configuração externa sem aprovação humana."
+        ],
+        "steps": [
+          "Executar npm run lint, npm run test:run e cargo check em src-tauri.",
+          "Fazer a primeira instalação e uma segunda máquina, registrando UUIDs/session_ids sanitizados e confirmando independência.",
+          "Simular reinstalação removendo somente o marcador local e preservando o keyring de teste; confirmar exigência de email/senha e rotação da sessão/vínculo.",
+          "Executar Bloquear, Sair e Remover em fixtures separadas, comparar keyring, marcador, PINs/cache sintéticos e registro server-side antes/depois.",
+          "Revogar um dispositivo e solicitar entitlement, token PowerSync e sessão de fotos pelos stubs; testar também access token ainda não expirado contra endpoint com validação reforçada.",
+          "Simular rede indisponível durante Remover e confirmar estado pendente seguro, sem conceder novas capacidades, antes de concluir cleanup online.",
+          "Executar varredura sanitizada dos armazenamentos e logs sem imprimir tokens."
+        ],
+        "expectedResultAndEvidence": [
+          "Os checks passam e a evidência demonstra UUIDs independentes para primeira/segunda máquina e nova autenticação na reinstalação.",
+          "A matriz antes/depois comprova os efeitos distintos de Bloquear, Sair e Remover, inclusive limpeza completa somente na remoção confirmada.",
+          "As três capacidades cloud são negadas após revogação, e operações sensíveis rejeitam session_id/dispositivo inativo mesmo durante a janela residual do access token.",
+          "A documentação registra TTL/exp e a limitação de revogação sem afirmar invalidação instantânea do JWT.",
+          "A varredura confirma ausência de senha, PIN, service_role, senha PostgreSQL e valores de token em arquivos e logs."
+        ],
+        "dataImpact": "Cria, atualiza, revoga e remove somente dispositivos e sessões sintéticos no staging; grava e limpa keyrings, marcadores e caches isolados nas instalações de teste.",
+        "cleanupAndRollback": [
+          "Revogar todas as sessões/dispositivos sintéticos, concluir remoções pendentes e apagar marcadores, keyrings e caches de teste.",
+          "Remover fixtures dos stubs e confirmar que nenhum dispositivo sintético permanece autorizado no staging.",
+          "Se a revogação falhar aberta, bloquear os tickets dependentes e restaurar a implementação anterior apenas na worktree; não limpar localmente antes de preservar evidência suficiente para revogar no servidor."
+        ],
+        "stagingRestrictions": "É proibido registrar máquinas, contas, emails, senhas, tokens, tenants ou dados internos/produção; usar somente VMs/instalações e identidades sintéticas de staging."
+      },
+      "likelyFiles": [
+        "supabase/migrations/*devices*",
+        "supabase/functions/device-registration/*",
+        "supabase/functions/entitlement/*",
+        "src-tauri/src/commands/device.rs",
+        "src-tauri/src/commands/saas_auth.rs",
+        "src-tauri/src/commands/mod.rs",
+        "src-tauri/src/main.rs",
+        "src/lib/saas-auth.ts",
+        "src/lib/device-service.ts",
+        "src/components/*Account*",
+        "docs/*device*"
+      ],
+      "risks": [
+        "Confiar em device_id informado pelo cliente sem cruzar sessão, empresa e registro ativo.",
+        "Apagar o estado local antes de revogar o servidor e deixar um dispositivo órfão ainda autorizado.",
+        "Confundir signOut local com global e revogar sessões de outras máquinas.",
+        "Restaurar silenciosamente refresh token antigo após reinstalação sem marcador.",
+        "Prometer revogação imediata apesar da validade residual do access token.",
+        "Guardar fingerprint invasivo ou segredo de dispositivo em arquivo comum/log."
+      ]
+    },
+    {
+      "id": "AO-AUTH-004",
+      "title": "Integrar perfis SaaS e PIN local",
+      "status": "ready",
+      "blockedBy": [
+        "AO-AUTH-003"
+      ],
+      "objective": "Usar perfis UUID autoritativos na nuvem com seleção operacional e PIN local por dispositivo, preservando autorização server-side e uma experiência segura de primeiro acesso.",
+      "context": "O acesso sensível atual já possui UI de seleção, Argon2 e keyring, mas usa profile_id inteiro, PIN de 4 a 8 dígitos, bloqueio em memória e recuperação por credenciais PostgreSQL. No SaaS, perfis/funções/permissões/estado ativo vêm da nuvem, PINs nunca sincronizam e a senha administrativa é o único fator cloud de recuperação.",
+      "expectedBehavior": "Depois do primeiro login administrativo, o app cria um PIN de seis dígitos sem pedir novamente email/senha; boots seguintes restauram a sessão SaaS, sincronizam perfis autorizados e mostram seleção/PIN, enquanto o servidor valida company_id, profile_id ativo e permissões em cada ação.",
+      "scope": [
+        "Sincronizar para a instalação os perfis UUID ativos, funções e permissões autoritativos da empresa, mantendo cache local apenas como suporte temporário e removendo acesso quando a nuvem marcar um perfil inativo.",
+        "Adaptar SensitiveAccessProvider, ProfileSessionDialog e serviços backend para UUIDs SaaS sem manter uma segunda seleção de perfil concorrente.",
+        "No primeiro login administrativo, encaminhar diretamente para criação e confirmação de PIN exatamente com seis dígitos, usando a sessão recém-autenticada sem pedir novamente email/senha.",
+        "Persistir somente o verificador Argon2 no keyring com chave vinculada a device_id + profile_id; nunca armazenar PIN puro, sincronizar PIN ou reutilizar verificador entre máquinas.",
+        "Permitir PIN por perfil autorizado na máquina e restaurar a sessão Supabase antes de oferecer seleção/PIN nos boots seguintes.",
+        "Implementar cinco tentativas e espera progressiva persistida localmente por device_id + profile_id, resistente a reinício do app e sem revelar se outro tenant/perfil existe.",
+        "Substituir Esqueci o PIN no modo SaaS por reautenticação administrativa com email/senha Supabase e criação de novo PIN; não usar redefinir_pin_via_db ou senha PostgreSQL.",
+        "Ao sincronizar perfil inativo/removido, bloquear entrada e remover imediatamente seu verificador e estado de tentativas local naquela máquina.",
+        "Fazer ações operacionais carregarem profile_id e exigir validação server-side de empresa, perfil ativo, função e permissão; nunca transformar o PIN em JWT, tenant selector ou entitlement.",
+        "Auditar seleção/troca de perfil e ações sensíveis com a ressalva explícita de que o perfil local é identidade operacional, não identidade cloud individual forte e incontestável no MVP.",
+        "Adicionar testes de primeiro acesso, boots posteriores, PIN correto/incorreto, lockout progressivo persistido, recuperação, segunda máquina e perfil desativado."
+      ],
+      "outOfScope": [
+        "Criar contas Supabase individuais, MFA ou prova cloud incontestável para funcionários no MVP.",
+        "Permitir que PIN autentique no Supabase, escolha empresa, renove sessão cloud ou conceda entitlement/PowerSync/fotos.",
+        "Sincronizar PIN ou verificador Argon2 entre dispositivos.",
+        "Reutilizar recuperação por senha PostgreSQL ou manter PIN SaaS com profile_id inteiro legado.",
+        "Migrar todos os domínios de dados, PowerSync ou fotos além de propagar/validar profile_id."
+      ],
+      "acceptanceCriteria": [
+        "O primeiro login administrativo ativo solicita uma única criação/confirmação de PIN de seis dígitos sem repetir email/senha.",
+        "Nos boots seguintes, a sessão Supabase é restaurada/renovada antes da sincronização e seleção de perfis/PIN.",
+        "Cada verificador Argon2 é armazenado somente no keyring sob device_id + profile_id e não funciona em outra máquina ou perfil.",
+        "Exatamente cinco tentativas inválidas acionam espera progressiva persistida; reiniciar o app não zera o bloqueio e PIN correto limpa o contador conforme a política definida.",
+        "PIN esquecido exige reautenticação administrativa Supabase antes de substituir o verificador local.",
+        "Perfil inativo não entra, desaparece da seleção após sincronização e tem verificador/tentativas removidos da máquina.",
+        "Toda ação SaaS relevante inclui profile_id UUID, e o servidor nega tenant divergente, perfil ausente/inativo ou permissão insuficiente.",
+        "Nenhum PIN ou verificador é sincronizado; o PIN nunca gera sessão Supabase, seleciona tenant ou concede capacidade cloud.",
+        "A UI e a documentação informam que o perfil/PIN é controle operacional local e não identidade cloud individual forte.",
+        "Senha, PIN, service_role, senha PostgreSQL, tokens e credenciais internas não aparecem em arquivos/logs, e os checks obrigatórios passam."
+      ],
+      "tests": [
+        "Vitest de SensitiveAccessProvider/ProfileSessionDialog para primeiro acesso, seleção, PIN correto/incorreto, recuperação e perfil desativado.",
+        "Testes Rust do keyring Argon2 por device_id + profile_id e do lockout progressivo persistido através de reinício.",
+        "Integração staging de sincronização de perfis/funções/permissões e negação server-side por tenant, perfil inativo e permissão.",
+        "Cenários de primeira instalação, boot posterior, segunda máquina e PINs distintos/não sincronizados.",
+        "Varredura de keyring, cache, arquivos, bundle e logs por senha, PIN puro, service_role, senha PostgreSQL e tokens expostos.",
+        "npm run lint.",
+        "npm run test:run.",
+        "cd src-tauri && cargo check."
+      ],
+      "testInstructions": {
+        "prerequisites": [
+          "Usar worktree exclusiva criada de origin/feature após AO-AUTH-003 estar merged, Supabase staging e duas instalações/keyrings isolados.",
+          "Usar empresa, administrador e funcionários sintéticos com perfis UUID, funções/permissões variadas e um perfil preparado para desativação.",
+          "Usar relógio controlado nos testes automatizados do bloqueio progressivo; não esperar janelas reais nem alterar relógio de máquina operacional."
+        ],
+        "steps": [
+          "Executar npm run lint, npm run test:run e cargo check em src-tauri.",
+          "Na primeira instalação, autenticar o administrador sintético, criar/confirmar PIN de seis dígitos e verificar que a credencial SaaS não é solicitada novamente nesse fluxo.",
+          "Reiniciar o app, confirmar restauração/renovação da sessão, sincronização dos perfis e entrada com PIN correto para administrador e funcionário autorizados.",
+          "Executar cinco PINs incorretos, avançar o relógio controlado e reiniciar o app para validar espera progressiva persistida e posterior reset por sucesso.",
+          "Executar Esqueci o PIN, reautenticar com email/senha administrativa sintética e criar novo verificador sem usar credenciais PostgreSQL.",
+          "Configurar PIN diferente na segunda máquina, comprovar ausência de sincronização e negar uso cruzado do verificador.",
+          "Desativar um perfil sintético na nuvem, sincronizar e confirmar bloqueio, remoção do verificador/tentativas e negação server-side de ação com seu profile_id.",
+          "Testar ações com profile_id de outro tenant, inativo e sem permissão e executar varredura sanitizada de secrets/PII."
+        ],
+        "expectedResultAndEvidence": [
+          "Os checks passam e a evidência mostra somente UUIDs sintéticos e estados, sem senha, PIN ou token.",
+          "Primeiro acesso não repete email/senha; boots posteriores sempre restauram a sessão cloud antes do gate local.",
+          "Lockout progressivo sobrevive ao reinício e é independente por dispositivo/perfil; PINs de máquinas distintas não se cruzam.",
+          "Recuperação exige autenticação administrativa Supabase e perfil desativado perde imediatamente o acesso/verificador após sincronização.",
+          "O servidor nega tenant/perfil/permissão inválidos mesmo quando o gate de PIN local foi satisfeito.",
+          "A varredura confirma ausência de senha, PIN puro, service_role, senha PostgreSQL e valores de token em arquivos, bundle, cache e logs."
+        ],
+        "dataImpact": "Cria, atualiza e desativa somente perfis sintéticos no Supabase staging e grava/remove verificadores e contadores em keyrings/caches isolados de teste.",
+        "cleanupAndRollback": [
+          "Reativar ou remover perfis sintéticos conforme a fixture, revogar sessões de teste e apagar verificadores/contadores dos dois keyrings isolados.",
+          "Remover caches de perfis e evidências temporárias sem tocar PINs, perfis ou dados de máquinas reais.",
+          "Se o servidor aceitar profile_id inválido/inativo ou houver sincronização de PIN, bloquear tickets dependentes e revogar imediatamente as sessões/dispositivos sintéticos."
+        ],
+        "stagingRestrictions": "É proibido usar funcionários, administradores, empresas, emails, senhas, PINs, dispositivos, dados ou credenciais internos/produção; todos os perfis e logins devem ser sintéticos de staging."
+      },
+      "likelyFiles": [
+        "src/hooks/useSensitiveAccess.tsx",
+        "src/components/ProfileSessionDialog.tsx",
+        "src/components/PasswordRecoveryDialog.tsx",
+        "src/lib/sensitive-access.ts",
+        "src/lib/saas-auth.ts",
+        "src/types/index.ts",
+        "src-tauri/src/commands/auth.rs",
+        "src-tauri/src/commands/saas_auth.rs",
+        "src-tauri/src/commands/types.rs",
+        "supabase/functions/*profile*",
+        "supabase/tests/*profile*",
+        "docs/*auth*"
+      ],
+      "risks": [
+        "Tratar PIN como autenticação cloud ou permissão suficiente sem validação server-side.",
+        "Usar profile_id local inteiro e associar verificador ao funcionário errado após sincronização.",
+        "Persistir bloqueio apenas em memória e permitir reset por reinício do app.",
+        "Manter verificador de perfil inativo ou sincronizar hash entre máquinas.",
+        "Pedir novamente a senha no primeiro acesso e criar fluxo redundante/confuso.",
+        "Auditoria sugerir identidade individual forte que o MVP não consegue provar."
+      ]
+    },
+    {
       "id": "AO-PS-005",
       "title": "Configurar PowerSync Cloud e Sync Streams",
       "status": "ready",
       "blockedBy": [
         "AO-PS-003",
-        "AO-PS-004"
+        "AO-PS-004",
+        "AO-INT-001"
       ],
       "objective": "Conectar PowerSync Cloud ao Supabase staging com streams filtradas por tenant.",
       "context": "O arquivo legado powersync-sync-rules.yaml usa SELECT * global e não é seguro para SaaS. O staging deve usar Sync Streams edition 3 com filtro por claims/JWT.",
@@ -541,7 +1039,8 @@
       "status": "ready",
       "blockedBy": [
         "AO-PS-005",
-        "AO-SUB-003"
+        "AO-SUB-003",
+        "AO-AUTH-002"
       ],
       "objective": "Substituir a POC web por integração PowerSync Tauri correta no staging.",
       "context": "A arquitetura alvo para o plano Offline deve usar tauri-plugin-powersync e connector Rust, não connector JS @powersync/web como solução final. A conexão depende do entitlement server-side e do token definido para a assinatura.",
@@ -751,7 +1250,8 @@
       "blockedBy": [
         "AO-PS-003",
         "AO-PS-004",
-        "AO-SUB-001"
+        "AO-SUB-001",
+        "AO-AUTH-002"
       ],
       "objective": "Criar o caminho de dados do plano Online usando autenticação e RLS, sem PowerSync, senha PostgreSQL ou service_role no desktop.",
       "context": "O acesso atual Tauri/Rust/sqlx usa uma DATABASE_URL e serve ao baseline interno, mas não é aceitável para distribuição SaaS. O plano Online precisa de um adapter remoto autenticado que preserve a interface dos hooks.",
@@ -823,7 +1323,9 @@
       "status": "ready",
       "blockedBy": [
         "AO-PS-004",
-        "AO-SUB-001"
+        "AO-SUB-001",
+        "AO-AUTH-001",
+        "AO-INT-001"
       ],
       "objective": "Criar a fonte autoritativa de assinatura e capacidades, desacoplada do desktop e do provedor de cobrança.",
       "context": "Online e Offline compartilham autenticação e dados, mas apenas Offline pode obter token PowerSync. Webhooks e alterações administrativas precisam atualizar o entitlement de forma idempotente e auditável.",
@@ -1035,10 +1537,77 @@
       ]
     },
     {
+      "id": "AO-CLI-001",
+      "title": "Paginar clientes em abas de dez registros",
+      "status": "merged",
+      "blockedBy": [],
+      "objective": "Limitar a tabela de clientes a dez registros por aba, criando abas adicionais conforme a quantidade de resultados.",
+      "context": "A página Clientes atualmente renderiza toda a lista retornada pelo hook em um único scroll. Com muitos registros, a navegação e a localização visual de um cliente ficam difíceis.",
+      "expectedBehavior": "A tabela mostra no máximo dez clientes por aba. As abas são numeradas e aparecem somente quando há mais de dez resultados; busca, recarga e alterações no conjunto retornam à primeira aba, sem mudar o contrato de dados com o backend.",
+      "scope": [
+        "Adicionar paginação local de dez clientes por aba na página Clientes.",
+        "Exibir navegação acessível por abas numeradas apenas quando existir mais de uma página.",
+        "Manter expansão de equipamentos, edição, exclusão e busca funcionando sobre os clientes exibidos.",
+        "Reiniciar a aba selecionada ao alterar a busca ou quando uma atualização reduzir o total de páginas."
+      ],
+      "outOfScope": [
+        "Alterar comandos Rust, banco, migrations ou o contrato de listar clientes.",
+        "Implementar paginação remota, carregamento incremental ou modificar o seletor de clientes em equipamentos.",
+        "Alterar os critérios e a ordenação atuais da busca."
+      ],
+      "acceptanceCriteria": [
+        "Cada aba mostra no máximo dez linhas de clientes.",
+        "Com onze ou mais resultados, uma segunda aba e as subsequentes necessárias ficam disponíveis e alternam corretamente o conteúdo da tabela.",
+        "Com até dez resultados, a navegação por abas não é exibida.",
+        "Ao buscar, recarregar, criar, editar ou excluir, a aba ativa permanece válida e a busca inicia na primeira aba.",
+        "Os controles de equipamentos, editar e excluir continuam atuando no cliente correto em qualquer aba."
+      ],
+      "tests": [
+        "Teste unitário da regra de paginação cobrindo divisão em abas e ajuste após redução de resultados.",
+        "npm run lint.",
+        "npm run test:run."
+      ],
+      "testInstructions": {
+        "prerequisites": [
+          "Usar worktree exclusiva criada de origin/feature para AO-CLI-001, com dependências do package-lock disponíveis.",
+          "Usar mocks de db e clientes sintéticos; não exigir PostgreSQL, Tauri nem credenciais externas."
+        ],
+        "steps": [
+          "Executar o teste direcionado da regra de paginação com listas sintéticas de 10, 11 e mais de 20 clientes.",
+          "Verificar as fatias de cada aba e o ajuste para uma aba válida quando a lista diminui.",
+          "Executar npm run lint e npm run test:run."
+        ],
+        "expectedResultAndEvidence": [
+          "Os testes demonstram no máximo dez clientes renderizados por aba e a disponibilidade exata das abas necessárias.",
+          "A revisão do componente confirma que a busca volta à primeira aba e que o estado da aba ativa permanece válido, sem chamar APIs novas.",
+          "Lint e a suíte frontend passam sem mudanças no backend ou no schema."
+        ],
+        "dataImpact": "Somente leitura de código e uso de fixtures/mocks sintéticos temporários; nenhum dado persistente é criado, alterado ou removido.",
+        "cleanupAndRollback": [
+          "Descartar fixtures e artefatos temporários de teste ao final.",
+          "Não executar comandos de banco, salvar dados operacionais, fazer merge ou promoção durante a validação.",
+          "Se a validação falhar, reverter somente os arquivos alterados por este ticket na worktree própria."
+        ],
+        "stagingRestrictions": "É proibido usar clientes, credenciais ou bancos internos/reais; a validação deve permanecer local com mocks e dados sintéticos."
+      },
+      "likelyFiles": [
+        "src/pages/Clientes.tsx",
+        "src/pages/clientes/clientes-pagination.ts",
+        "src/pages/clientes/clientes-pagination.test.ts"
+      ],
+      "risks": [
+        "Exibir uma aba inválida após busca, exclusão ou recarga.",
+        "Perder o estado de expansão ou direcionar uma ação ao cliente errado ao trocar de aba.",
+        "Criar uma paginação visual que altere a consulta ou o contrato atual do backend."
+      ]
+    },
+    {
       "id": "AO-UX-001",
       "title": "Padronizar seleção de dados no cadastro de equipamentos",
       "status": "ready",
-      "blockedBy": [],
+      "blockedBy": [
+        "AO-INT-001"
+      ],
       "objective": "Substituir os campos livres de marca e modelo por seletores, mantendo entrada manual somente para a opção Outro.",
       "context": "O cadastro já usa Select para tipo, mas marca e modelo ainda aceitam qualquer valor diretamente. O valor persistido precisa continuar sendo o nome efetivo, para que backend, busca, comunicações e PDFs permaneçam compatíveis.",
       "expectedBehavior": "Marca e modelo usam opções controladas sem perder valores legados, e a opção Outro persiste o texto efetivamente informado pelo usuário.",
@@ -1304,7 +1873,8 @@
       "status": "ready",
       "blockedBy": [
         "AO-SUB-002",
-        "AO-PS-004"
+        "AO-PS-004",
+        "AO-AUTH-004"
       ],
       "objective": "Permitir que o desktop autenticado crie e consuma sessões de fotos no staging SaaS sem usar IDs locais numéricos, DATABASE_URL ou credenciais privilegiadas.",
       "context": "O staging SaaS usa UUID para empresa, perfil, equipamento e sessão, enquanto a linha interna ainda usa IDs numéricos via sqlx. O upload privado exige uma Edge Function mediadora e uma sessão SaaS autenticada no desktop.",
@@ -1719,6 +2289,140 @@
         "Aprovar o plano Offline com custo ou comportamento de downgrade ainda desconhecido.",
         "Avaliar apenas o caminho feliz e ignorar expiração de sessão ou indisponibilidade externa.",
         "Expandir hooks antes de estabilizar a interface comum de adapters."
+      ]
+    },
+    {
+      "id": "AO-CLI-002",
+      "title": "Refinar o controle visual da paginação de clientes",
+      "status": "merged",
+      "blockedBy": [
+        "AO-CLI-001"
+      ],
+      "objective": "Substituir as abas largas da paginação de Clientes por um controle numérico compacto, discreto e alinhado à direita.",
+      "context": "A paginação entregue em AO-CLI-001 usa Tabs com rótulos como 'Aba 1', ocupa espaço excessivo e fica alinhada à esquerda. O controle deve comunicar troca de página sem competir visualmente com a tabela.",
+      "expectedBehavior": "Acima da tabela, no canto direito, a interface exibe somente números de página em controles pequenos e estáveis. Em listas com muitas páginas, uma janela curta com reticências evita que o controle ocupe toda a largura.",
+      "scope": [
+        "Trocar Tabs por navegação numérica compacta e semanticamente adequada para paginação.",
+        "Alinhar o controle à direita e reduzir altura, largura e espaçamento.",
+        "Destacar de forma clara a página atual.",
+        "Limitar a quantidade de números visíveis e usar reticências quando houver muitas páginas.",
+        "Preservar teclado, foco visível e rótulos acessíveis para leitores de tela."
+      ],
+      "outOfScope": [
+        "Alterar o limite de dez clientes por página.",
+        "Modificar busca, ordenação, CRUD, backend, banco ou contratos de dados.",
+        "Adicionar paginação remota ou alterar outras telas."
+      ],
+      "acceptanceCriteria": [
+        "A paginação aparece no canto direito imediatamente acima da tabela.",
+        "Cada página é representada apenas pelo número, sem o prefixo 'Aba'.",
+        "Os controles têm dimensões compactas e estáveis, sem ocupar toda a largura com seis ou mais páginas.",
+        "Com muitas páginas, o controle exibe primeira, última e uma janela próxima da página ativa, usando reticências para lacunas.",
+        "A página atual possui indicação visual e aria-current; cada número possui nome acessível.",
+        "A troca de página continua exibindo os dez clientes corretos e não altera dados persistidos."
+      ],
+      "tests": [
+        "Teste unitário da janela de páginas visíveis, incluindo início, meio, fim e reticências.",
+        "Teste de componente ou revisão direcionada dos atributos acessíveis e seleção da página.",
+        "npm run lint.",
+        "npm run test:run -- src/pages/clientes/clientes-pagination.test.ts."
+      ],
+      "testInstructions": {
+        "prerequisites": [
+          "Usar worktree exclusiva criada de origin/feature para AO-CLI-002, com dependências do package-lock disponíveis.",
+          "Usar somente listas sintéticas de clientes; não exigir PostgreSQL, Tauri, Supabase ou credenciais externas."
+        ],
+        "steps": [
+          "Executar os testes da regra de paginação para totais pequenos e para listas com seis ou mais páginas.",
+          "Validar início, meio e fim da janela numérica, incluindo posição das reticências.",
+          "Revisar no componente o alinhamento à direita, dimensões compactas, aria-label e aria-current.",
+          "Executar npm run lint e o teste direcionado da paginação."
+        ],
+        "expectedResultAndEvidence": [
+          "Os testes demonstram que a quantidade de controles visíveis permanece limitada e que a página ativa sempre está alcançável.",
+          "A revisão visual confirma números compactos à direita, sem o texto 'Aba' e sem expansão desnecessária da largura.",
+          "Lint e teste direcionado passam sem alterações de backend ou persistência."
+        ],
+        "dataImpact": "Somente código de apresentação e fixtures sintéticas em memória; nenhum dado persistente é criado, alterado ou removido.",
+        "cleanupAndRollback": [
+          "Não salvar, excluir ou modificar clientes durante a validação visual.",
+          "Descartar apenas artefatos temporários gerados pelos testes.",
+          "Se a validação falhar, reverter somente os arquivos deste ticket na worktree exclusiva."
+        ],
+        "stagingRestrictions": "É proibido usar dados, endpoints ou credenciais internas; a validação deve ser local e baseada em dados sintéticos."
+      },
+      "likelyFiles": [
+        "src/pages/Clientes.tsx",
+        "src/pages/clientes/clientes-pagination.ts",
+        "src/pages/clientes/clientes-pagination.test.ts"
+      ],
+      "risks": [
+        "Esconder a página ativa ao reduzir a janela numérica.",
+        "Criar controles pequenos demais para uso confortável ou sem foco visível.",
+        "Introduzir navegação visual que não exponha corretamente o estado atual a tecnologias assistivas."
+      ]
+    },
+    {
+      "id": "AO-EMAIL-001",
+      "title": "Atualizar domínio dos e-mails técnicos para BMITAG",
+      "status": "review",
+      "blockedBy": [],
+      "objective": "Substituir os endereços técnicos com domínio @bmicode.com por @bmitag.com.br em todo o conteúdo rastreado do AutoOS.",
+      "context": "O domínio corporativo dos técnicos Ivan e Isaias mudou de bmicode.com para bmitag.com.br. Referências antigas em e-mail, PDF, tela de equipamentos, scripts, testes e documentação não devem permanecer.",
+      "expectedBehavior": "Ivan e Isaias usam endereços @bmitag.com.br em mensagens enviadas, PDFs e dados de apresentação; nenhuma ocorrência rastreada de bmicode permanece.",
+      "scope": [
+        "Atualizar referências rastreadas de Ivan e Isaias com o domínio novo.",
+        "Atualizar expectativas e fixtures dos testes afetados.",
+        "Atualizar documentação e scripts de exemplo que exponham o domínio antigo."
+      ],
+      "outOfScope": [
+        "Alterar nomes, destinatários, regras de CC, SMTP, credenciais ou integrações externas.",
+        "Alterar banco, migrations, Supabase, PowerSync ou telas além dos textos e mapeamentos de e-mail.",
+        "Enviar e-mails reais durante a validação."
+      ],
+      "acceptanceCriteria": [
+        "Não há ocorrências rastreadas de bmicode no repositório fora de histórico Git e dependências.",
+        "Os mapeamentos de Ivan e Isaias retornam endereços @bmitag.com.br nos fluxos de e-mail, PDF e equipamentos.",
+        "Os testes atualizados passam sem disparar integração SMTP real."
+      ],
+      "tests": [
+        "rg -n -i bmicode em arquivos rastreados não retorna resultados.",
+        "npx vitest run src/lib/email-service.test.ts.",
+        "npm run lint."
+      ],
+      "testInstructions": {
+        "prerequisites": [
+          "Usar worktree exclusiva baseada na linha de promoção e dependências já instaladas.",
+          "Não configurar SMTP real nem fornecer credenciais ou destinatários internos adicionais."
+        ],
+        "steps": [
+          "Substituir somente o domínio nos mapeamentos, fixtures, scripts e documentação rastreada.",
+          "Executar a busca rastreada por bmicode e confirmar ausência de resultados.",
+          "Executar o teste unitário de email-service e npm run lint."
+        ],
+        "expectedResultAndEvidence": [
+          "A busca não encontra o domínio antigo em conteúdo rastreado.",
+          "O teste confirma os destinatários técnicos no domínio novo sem comunicação externa.",
+          "Lint passa."
+        ],
+        "dataImpact": "Somente arquivos de código, testes, script e documentação; não cria, altera ou remove dados persistentes.",
+        "cleanupAndRollback": [
+          "Não enviar e-mails nem alterar configurações SMTP.",
+          "Se a validação falhar, reverter somente os arquivos deste ticket na worktree exclusiva."
+        ],
+        "stagingRestrictions": "É proibido usar credenciais, dados ou destinatários internos reais em staging; os testes devem permanecer unitários e locais."
+      },
+      "likelyFiles": [
+        "src/lib/email-service.ts",
+        "src/lib/pdf-service.ts",
+        "src/pages/equipamentos/equipamentos-page-constants.ts",
+        "src/lib/email-service.test.ts",
+        "scripts/gerar-pdf-exemplo.mjs",
+        "AGENTS.md"
+      ],
+      "risks": [
+        "Atualizar apenas um dos mapeamentos e manter e-mail ou PDF com domínio antigo.",
+        "Alterar involuntariamente destinatários ou comportamento SMTP ao trocar textos."
       ]
     }
   ]

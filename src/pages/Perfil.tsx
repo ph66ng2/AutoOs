@@ -3,9 +3,12 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { useSensitiveAccess } from "@/hooks/useSensitiveAccess";
+import { setAppMode } from "@/lib/app-mode";
+import { useNavigate } from "react-router-dom";
 
 export default function Perfil() {
   const { status: accessStatus, openProfileSelector } = useSensitiveAccess();
+  const navigate = useNavigate();
 
   return (
     <div className="space-y-6">
@@ -77,6 +80,15 @@ export default function Perfil() {
               >
                 <ArrowRightLeft className="mr-2 h-4 w-4" />
                 Ver perfis e decidir
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                className="mt-3 w-full border-white/30 bg-transparent text-white hover:bg-white/10 hover:text-white"
+                onClick={() => { setAppMode("counter"); navigate("/balcao"); }}
+              >
+                <ArrowRightLeft className="mr-2 h-4 w-4" />
+                Abrir Modo Balcão
               </Button>
             </div>
           </div>

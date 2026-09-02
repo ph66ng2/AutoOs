@@ -136,10 +136,10 @@ describe("EmailService", () => {
     });
 
     const [, args] = mockInvoke.mock.calls[0]!;
-    expect(args.input.cc).toEqual(["medeiros@bmitag.com.br", "ivan@bmicode.com"]);
+    expect(args.input.cc).toEqual(["medeiros@bmitag.com.br", "ivan@bmitag.com.br"]);
     // Frase orienta o cliente a falar diretamente com o técnico
-    expect(args.input.corpo).toContain("ivan@bmicode.com");
-    expect(args.input.corpo_html).toContain("ivan@bmicode.com");
+    expect(args.input.corpo).toContain("ivan@bmitag.com.br");
+    expect(args.input.corpo_html).toContain("ivan@bmitag.com.br");
   });
 
   it("enviarOrcamento adiciona Isaías em cópia mesmo quando o nome tem acento", async () => {
@@ -149,8 +149,8 @@ describe("EmailService", () => {
     });
 
     const [, args] = mockInvoke.mock.calls[0]!;
-    expect(args.input.cc).toEqual(["medeiros@bmitag.com.br", "isaias@bmicode.com"]);
-    expect(args.input.corpo).toContain("isaias@bmicode.com");
+    expect(args.input.cc).toEqual(["medeiros@bmitag.com.br", "isaias@bmitag.com.br"]);
+    expect(args.input.corpo).toContain("isaias@bmitag.com.br");
   });
 
   it("enviarOrcamento sempre coloca a gerência em cópia mesmo sem técnico identificado", async () => {
@@ -172,18 +172,18 @@ describe("EmailService", () => {
     const res = await EmailService.enviarOrdemEntrada({
       ...equipamentoBase,
       status: "RECEBIDO",
-      observacoes: "Técnico inicial: Ivan (ivan@bmicode.com)\nObservação do cliente",
+      observacoes: "Técnico inicial: Ivan (ivan@bmitag.com.br)\nObservação do cliente",
     });
 
     expect(res).toEqual({ sucesso: true });
     const [cmd, args] = mockInvoke.mock.calls[0]!;
     expect(cmd).toBe("enviar_email");
-    expect(args.input.cc).toEqual(["medeiros@bmitag.com.br", "ivan@bmicode.com"]);
+    expect(args.input.cc).toEqual(["medeiros@bmitag.com.br", "ivan@bmitag.com.br"]);
     expect(args.input.anexos?.[0]?.path).toBe("/tmp/autoos/ordem_test.pdf");
     // Avisos novos
     expect(args.input.corpo).toContain("troca de peças");
     expect(args.input.corpo_html).toContain("troca de peças");
-    expect(args.input.corpo).toContain("ivan@bmicode.com");
+    expect(args.input.corpo).toContain("ivan@bmitag.com.br");
   });
 
   it("enviarOrdemEntrada adiciona Isaías em cópia quando ele é o técnico inicial", async () => {
@@ -192,11 +192,11 @@ describe("EmailService", () => {
     await EmailService.enviarOrdemEntrada({
       ...equipamentoBase,
       status: "RECEBIDO",
-      observacoes: "Técnico inicial: Isaias (isaias@bmicode.com)",
+      observacoes: "Técnico inicial: Isaias (isaias@bmitag.com.br)",
     });
 
     const [, args] = mockInvoke.mock.calls[0]!;
-    expect(args.input.cc).toEqual(["medeiros@bmitag.com.br", "isaias@bmicode.com"]);
+    expect(args.input.cc).toEqual(["medeiros@bmitag.com.br", "isaias@bmitag.com.br"]);
   });
 
   it("enviarOrcamento registra falha quando invoke rejeita", async () => {
@@ -228,8 +228,8 @@ describe("EmailService", () => {
     expect(cmd).toBe("enviar_email");
     expect(args.input.email).toBe("fulano@example.com");
     expect(args.input.corpo).toContain("pronto para retirada");
-    expect(args.input.cc).toEqual(["medeiros@bmitag.com.br", "ivan@bmicode.com"]);
-    expect(args.input.corpo).toContain("ivan@bmicode.com");
+    expect(args.input.cc).toEqual(["medeiros@bmitag.com.br", "ivan@bmitag.com.br"]);
+    expect(args.input.corpo).toContain("ivan@bmitag.com.br");
     // Não faz sentido falar de troca de peças num email de equipamento já pronto
     expect(args.input.corpo).not.toMatch(/troca de peças/i);
     expect(args.input.corpo_html).not.toMatch(/troca de peças/i);

@@ -12,6 +12,8 @@ use crate::db::{get_pool, known_migrations, run_pending_migrations};
 use base64::Engine;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
+#[cfg(target_os = "windows")]
+use serde_json::json;
 use sqlx::FromRow;
 use std::collections::BTreeMap;
 use std::env;
@@ -34,6 +36,22 @@ const AUTOOS_SUPPORT_DIR: &str = "support";
 const LOCAL_TEMP_RETENTION_DAYS: u64 = 7;
 const LOCAL_LOG_RETENTION_DAYS: u64 = 14;
 const LOCAL_SUPPORT_RETENTION_DAYS: u64 = 30;
+
+#[derive(Debug, Deserialize, Serialize)]
+pub struct ImpressoraWindows {
+    pub nome: String,
+    pub padrao: bool,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct TesteImpressaoBmitagInput {
+    pub impressora: String,
+    pub logo_png: Vec<u8>,
+    pub atendimento: Option<i32>,
+    pub equipamento: String,
+    pub serial: String,
+    pub tecnico: String,
+}
 
 #[derive(Debug, Serialize, FromRow)]
 struct DatabaseIdentityRow {
@@ -892,6 +910,157 @@ pub async fn abrir_documento(nome_arquivo: String) -> Result<String, String> {
     }
     reveal_file_in_manager(&path).map_err(|e| e.to_string())?;
     Ok(path.to_string_lossy().to_string())
+}
+
+/// Abre a página clássica de Impressoras e Faxes do Painel de Controle.
+/// Não abre preferências de driver nem altera qualquer configuração da máquina.
+#[tauri::command]
+pub async fn abrir_painel_impressoras_windows() -> Result<(), String> {
+    #[cfg(target_os = "windows")]
+    {
+        Command::new("control.exe")
+            .arg("printers")
+            .spawn()
+            .map_err(|e| format!("Não foi possível abrir o Painel de Controle de impressoras: {}", e))?;
+        return Ok(());
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    Err("O Painel de Controle de impressoras está disponível somente no Windows.".to_string())
+}
+
+#[tauri::command]
+pub async fn listar_impressoras_windows() -> Result<Vec<ImpressoraWindows>, String> {
+    #[cfg(target_os = "windows")]
+    {
+        let output = tokio::task::spawn_blocking(|| {
+            Command::new("powershell.exe")
+                .args([
+                    "-NoProfile",
+                    "-NonInteractive",
+                    "-Command",
+                    "@((Get-CimInstance -ClassName Win32_Printer | Select-Object @{n='nome';e={$_.Name}}, @{n='padrao';e={$_.Default}}) | ConvertTo-Json -Compress)",
+                ])
+                .output()
+        })
+        .await
+        .map_err(|e| format!("Falha ao consultar as impressoras instaladas: {}", e))?
+        .map_err(|e| format!("Não foi possível executar o PowerShell: {}", e))?;
+
+        if !output.status.success() {
+            return Err(format!(
+                "Não foi possível listar as impressoras: {}",
+                String::from_utf8_lossy(&output.stderr).trim()
+            ));
+        }
+
+        let json = String::from_utf8_lossy(&output.stdout);
+        if json.trim().is_empty() {
+            return Ok(Vec::new());
+        }
+        serde_json::from_str(json.trim())
+            .map_err(|e| format!("Resposta inválida ao listar as impressoras: {}", e))
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    Err("A listagem de impressoras está disponível somente no Windows.".to_string())
+}
+
+#[tauri::command]
+pub async fn imprimir_teste_bmitag(input: TesteImpressaoBmitagInput) -> Result<(), String> {
+    #[cfg(target_os = "windows")]
+    {
+        if input.impressora.trim().is_empty() {
+            return Err("Selecione uma impressora antes de enviar o teste.".to_string());
+        }
+        if input.logo_png.len() < 8 || input.logo_png.len() > 2_000_000 {
+            return Err("A logo usada no teste de impressão é inválida.".to_string());
+        }
+
+        let image_path = autoos_temp_dir()?.join(format!("teste-bmitag-{}.png", uuid::Uuid::new_v4()));
+        fs::write(&image_path, &input.logo_png)
+            .map_err(|e| format!("Não foi possível preparar a logo para impressão: {}", e))?;
+
+        let payload = json!({
+            "impressora": input.impressora.trim(),
+            "imagem": image_path.to_string_lossy(),
+            "atendimento": input.atendimento.map(|value| value.to_string()).unwrap_or_else(|| "—".to_string()),
+            "equipamento": input.equipamento.trim(),
+            "serial": input.serial.trim(),
+            "tecnico": input.tecnico.trim(),
+        });
+        let payload_base64 = base64::engine::general_purpose::STANDARD
+            .encode(serde_json::to_vec(&payload).map_err(|e| e.to_string())?);
+        let script = format!(r#"
+Add-Type -AssemblyName System.Drawing
+$data = [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('{payload_base64}')) | ConvertFrom-Json
+$documento = New-Object System.Drawing.Printing.PrintDocument
+$documento.DocumentName = 'Teste BMITAG'
+$documento.PrinterSettings.PrinterName = [string]$data.impressora
+if (-not $documento.PrinterSettings.IsValid) {{ throw "Impressora não encontrada: $($data.impressora)" }}
+$logo = [System.Drawing.Image]::FromFile([string]$data.imagem)
+$documento.add_PrintPage({{
+  param($sender, $evento)
+  $g = $evento.Graphics
+  $x = $evento.MarginBounds.Left
+  $y = $evento.MarginBounds.Top
+  $g.DrawImage($logo, $x, $y, 180, 180)
+  $titulo = New-Object System.Drawing.Font('Arial', 18, [System.Drawing.FontStyle]::Bold)
+  $texto = New-Object System.Drawing.Font('Arial', 11)
+  $g.DrawString('TESTE DE IMPRESSÃO BMITAG', $titulo, [System.Drawing.Brushes]::Black, $x, $y + 200)
+  $linhas = @(
+    "Atendimento: $($data.atendimento)",
+    "Equipamento: $($data.equipamento)",
+    "Serial: $($data.serial)",
+    "Técnico: $($data.tecnico)",
+    "Enviado em: $(Get-Date -Format 'dd/MM/yyyy HH:mm')"
+  )
+  $linhaY = $y + 240
+  foreach ($linha in $linhas) {{ $g.DrawString($linha, $texto, [System.Drawing.Brushes]::Black, $x, $linhaY); $linhaY += 24 }}
+  $g.DrawLine([System.Drawing.Pens]::Black, $x, $linhaY + 12, $x + 500, $linhaY + 12)
+  $g.DrawString('Confirme visualmente o resultado no AutoOS.', $texto, [System.Drawing.Brushes]::Black, $x, $linhaY + 28)
+  $titulo.Dispose(); $texto.Dispose()
+}})
+$documento.Print()
+$logo.Dispose()
+"#);
+        let encoded_command = base64::engine::general_purpose::STANDARD.encode(
+            script
+                .encode_utf16()
+                .flat_map(|unit| unit.to_le_bytes())
+                .collect::<Vec<u8>>(),
+        );
+        let output = tokio::task::spawn_blocking(move || {
+            Command::new("powershell.exe")
+                .args(["-NoProfile", "-NonInteractive", "-EncodedCommand", &encoded_command])
+                .output()
+        })
+        .await
+        .map_err(|e| format!("Falha ao enviar o teste para a fila de impressão: {}", e))?
+        .map_err(|e| format!("Não foi possível executar o PowerShell: {}", e));
+        let _ = fs::remove_file(&image_path);
+        let output = output?;
+        if !output.status.success() {
+            return Err(format!(
+                "Não foi possível enviar o teste à fila: {}",
+                String::from_utf8_lossy(&output.stderr).trim()
+            ));
+        }
+        Ok(())
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    {
+        let _ = (
+            input.impressora,
+            input.logo_png,
+            input.atendimento,
+            input.equipamento,
+            input.serial,
+            input.tecnico,
+        );
+        Err("O teste BMITAG está disponível somente no Windows.".to_string())
+    }
 }
 
 #[tauri::command]

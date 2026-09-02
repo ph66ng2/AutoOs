@@ -48,8 +48,8 @@ function emailTecnicoPorNome(tecnicoNome?: string) {
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "")
     .toLowerCase();
-  if (normalizado === "ivan") return "ivan@bmicode.com";
-  if (normalizado === "isaias") return "isaias@bmicode.com";
+  if (normalizado === "ivan") return "ivan@bmitag.com.br";
+  if (normalizado === "isaias") return "isaias@bmitag.com.br";
   return "";
 }
 

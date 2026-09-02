@@ -179,7 +179,7 @@ npm run bundle:prep:windows:sign # Injects certThumbprint from env into tauri.co
 - **tsconfig excludes test files** — `"exclude": ["**/*.test.ts", "**/*.test.tsx", "**/*.spec.ts", "**/*.spec.tsx"]` means `tsc --noEmit` does not check tests.
 - **Vitest Windows stability** — `pool: 'threads'`, `fileParallelism: false`, `maxWorkers: 1` to avoid fork/AV issues on Windows.
 - **Playwright mock mode** — E2E tests run with `VITE_E2E_MOCK=1` which aliases `@tauri-apps/api/core` to `e2e/mocks/tauri-core.ts`. This validates UI flows with in-memory mock data, **not** real Tauri + PostgreSQL.
-- **Email CC hardcoded** — `email-service.ts` always CCs `medeiros@bmitag.com.br`. Technician emails mapped by name (`ivan` → `ivan@bmicode.com`).
+- **Email CC hardcoded** — `email-service.ts` always CCs `medeiros@bmitag.com.br`. Technician emails mapped by name (`ivan` → `ivan@bmitag.com.br`).
 - **Windows code signing** — `certificateThumbprint` is `null` in `tauri.conf.json`. Build-time script `scripts/apply-windows-bundle-signing.mjs` injects it from env var for CI/release builds.
 
 ## NOTES
