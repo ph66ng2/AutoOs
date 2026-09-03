@@ -63,8 +63,8 @@ function garantirEspacoVertical(doc, y, alturaEstimada) {
 }
 
 function emailTecnicoPorNome(tecnicoNome) {
-  if (tecnicoNome === "Ivan") return "ivan@bmicode.com";
-  if (tecnicoNome === "Isaias") return "isaias@bmicode.com";
+  if (tecnicoNome === "Ivan") return "ivan@bmitag.com.br";
+  if (tecnicoNome === "Isaias") return "isaias@bmitag.com.br";
   return "";
 }
 
