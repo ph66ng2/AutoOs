@@ -1,7 +1,7 @@
 # ╔══════════════════════════════════════════════════════════════╗
 # ║  CI/CD — Build, Lint e Testes                                  ║
 # ╠══════════════════════════════════════════════════════════════╣
-# ║  Executa em: push e PR para master                           ║
+# ║  Executa em: push para master e PRs para master/feature      ║
 # ║  Jobs: lint, test-frontend, test-rust, qa-real, build-tauri     ║
 # ╚══════════════════════════════════════════════════════════════╝
 
@@ -11,7 +11,7 @@ on:
   push:
     branches: [master]
   pull_request:
-    branches: [master]
+    branches: [master, feature]
 
 env:
   CARGO_TERM_COLOR: always
@@ -31,7 +31,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '22'
           cache: 'npm'
 
       - name: Install dependencies
@@ -53,7 +53,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '22'
           cache: 'npm'
 
       - name: Install dependencies
@@ -121,7 +121,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '22'
           cache: 'npm'
 
       - name: Setup Rust
@@ -135,7 +135,7 @@ jobs:
       - name: Install Linux dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf libsecret-1-dev
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf libsecret-1-dev gnome-keyring dbus-x11
 
       - name: Install dependencies
         run: npm ci
@@ -144,7 +144,11 @@ jobs:
         run: npx playwright install --with-deps chromium
 
       - name: Run real QA journey
-        run: npm run e2e:real
+        run: |
+          dbus-run-session -- bash -euo pipefail -c '
+            eval "$(printf "%s\n" "autoos-ci-keyring" | gnome-keyring-daemon --unlock --components=secrets)"
+            npm run e2e:real
+          '
 
   # ═══════════════════════════════════════════════════════════
   # Build Tauri (apenas em push para master)
@@ -168,7 +172,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '22'
           cache: 'npm'
 
       - name: Setup Rust
