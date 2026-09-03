@@ -14,15 +14,17 @@ import ReactDOM from "react-dom/client";
 import App from "./App";
 import { SensitiveAccessProvider } from "@/hooks/useSensitiveAccess";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
+import { SaasAuthProvider } from "@/hooks/useSaasAuth";
+import { IS_SAAS_BUILD } from "@/lib/runtime-mode";
 import "./index.css";
 
 /** Renderiza o app com StrictMode para detectar problemas em desenvolvimento */
+const application = IS_SAAS_BUILD ? (
+  <SaasAuthProvider><App /></SaasAuthProvider>
+) : (
+  <SensitiveAccessProvider><App /></SensitiveAccessProvider>
+);
+
 ReactDOM.createRoot(document.getElementById("root")!).render(
-  <React.StrictMode>
-    <ErrorBoundary>
-      <SensitiveAccessProvider>
-        <App />
-      </SensitiveAccessProvider>
-    </ErrorBoundary>
-  </React.StrictMode>,
+  <React.StrictMode><ErrorBoundary>{application}</ErrorBoundary></React.StrictMode>,
 );

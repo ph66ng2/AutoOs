@@ -49,7 +49,7 @@
       ],
       "csp": {
         "default-src": "'self' asset: http://asset.localhost",
-        "connect-src": "'self' ipc: http://ipc.localhost https://ipc.localhost http://localhost:1420 ws://localhost:1420 https://viacep.com.br https://brasilapi.com.br https://github.com",
+        "connect-src": "'self' ipc: http://ipc.localhost https://ipc.localhost http://localhost:1420 ws://localhost:1420 https://viacep.com.br https://brasilapi.com.br https://github.com https://*.supabase.co wss://*.supabase.co",
         "img-src": "'self' asset: http://asset.localhost blob: data:",
         "style-src": "'self' 'unsafe-inline'",
         "font-src": "'self' data:",

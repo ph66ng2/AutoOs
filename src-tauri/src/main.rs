@@ -22,8 +22,9 @@
 //! ║  4. Registra todos os comandos IPC usados pelo frontend     ║
 //! ╚══════════════════════════════════════════════════════════════╝
 
-mod db;
 mod commands;
+mod db;
+mod runtime_mode;
 
 use std::sync::OnceLock;
 use tracing::{info, Level};
@@ -85,142 +86,157 @@ fn main() {
         Err(error) => info!("Housekeeping local não pôde ser concluído: {}", error),
     }
 
-    tauri::Builder::default()
+    let builder = tauri::Builder::default()
         .plugin(tauri_plugin_updater::Builder::new().build())
         .setup(|_app| {
-            info!("Inicializando banco de dados...");
-            match tauri::async_runtime::block_on(db::init_database()) {
-                Ok(_pool) => {
-                    info!("Banco de dados inicializado com sucesso");
+            if runtime_mode::should_initialize_legacy_database() {
+                info!("Inicializando banco de dados...");
+                match tauri::async_runtime::block_on(db::init_database()) {
+                    Ok(_pool) => {
+                        info!("Banco de dados inicializado com sucesso");
+                    }
+                    Err(e) => {
+                        let msg = format!("Banco de dados não configurado ou indisponível: {}. O app continuará no modo de configuração.", e);
+                        info!("{}", msg);
+                    }
                 }
-                Err(e) => {
-                    let msg = format!("Banco de dados não configurado ou indisponível: {}. O app continuará no modo de configuração.", e);
-                    info!("{}", msg);
-                }
+            } else {
+                info!("Build SaaS detectado: inicialização PostgreSQL local ignorada");
             }
             Ok(())
-        })
-        .invoke_handler(tauri::generate_handler![
-            // Auth sensível
-            commands::auth::get_sensitive_access_status,
-            commands::auth::configure_sensitive_pin,
-            commands::auth::unlock_sensitive_access,
-            commands::auth::unlock_session_without_pin,
-            commands::auth::lock_sensitive_access,
-            commands::auth::set_active_security_profile,
-            commands::auth::create_security_profile,
-            commands::auth::update_security_profile,
-            commands::auth::reset_security_profile_pin,
-            commands::auth::verificar_credenciais_banco,
-            commands::auth::redefinir_pin_via_db,
-            commands::auth::list_security_profiles,
-            commands::auth::deactivate_security_profile,
-            commands::auth::reactivate_security_profile,
-            commands::auth::deletar_perfil,
-            commands::auth::register_security_audit_export,
-            commands::auth::list_security_audit_events,
-            commands::auth::verificar_config_inatividade,
-            commands::auth::salvar_config_inatividade,
-            commands::auth::registrar_empresa,
-            commands::auth::login_empresa,
-            // Util
-            commands::util::salvar_arquivo_temp,
-            commands::util::copiar_anexo_email_para_temp,
-            commands::util::remover_anexo_email_temp,
-            commands::util::salvar_ordem_servico_pdf,
-            commands::util::salvar_orcamento_pdf,
-            commands::util::verificar_documento_existe,
-            commands::util::abrir_documento,
-            commands::util::abrir_painel_impressoras_windows,
-            commands::util::listar_impressoras_windows,
-            commands::util::imprimir_teste_bmitag,
-            commands::util::abrir_url,
-            commands::util::salvar_imagem_equipamento,
-            commands::util::salvar_relatorio_status_pdf,
-            commands::util::obter_status_schema_banco,
-            commands::util::obter_status_ferramentas_backup_postgres,
-            commands::util::gerar_backup_postgres,
-            commands::util::restaurar_backup_postgres,
-            commands::util::obter_diagnostico_suporte_local,
-            commands::util::exportar_pacote_suporte_local,
-            commands::util::carregar_config_banco,
-            commands::util::obter_config_banco_atual,
-            commands::util::salvar_config_banco,
-            commands::util::testar_config_banco,
-            commands::util::verificar_status_banco,
-            commands::util::reiniciar_banco_com_config,
-            // Equipamentos
-            commands::equipamentos::listar_equipamentos,
-            commands::equipamentos::buscar_equipamento,
-            commands::equipamentos::buscar_equipamentos_por_serial,
-            commands::equipamentos::criar_equipamento,
-            commands::equipamentos::atualizar_equipamento,
-            commands::equipamentos::deletar_equipamento,
-            commands::equipamentos::atualizar_status_equipamento,
-            commands::equipamento_imagens::listar_imagens_equipamento,
-            commands::equipamento_imagens::substituir_imagens_equipamento,
-            commands::equipamento_imagens::adicionar_imagem_equipamento,
-            commands::equipamento_imagens::remover_imagem_equipamento,
-            commands::photo_server::start_photo_server,
-            commands::photo_server::stop_photo_server,
-            commands::photo_server::generate_upload_token,
-            commands::qr_code::gerar_qr_upload,
-            commands::photo_upload_sessions::criar_sessao_upload_fotos,
-            commands::photo_upload_sessions::consultar_sessao_upload_fotos,
-            commands::photo_upload_sessions::cancelar_sessao_upload_fotos,
-            // Clientes
-            commands::clientes::listar_clientes,
-            commands::clientes::buscar_cliente,
-            commands::clientes::criar_cliente,
-            commands::clientes::atualizar_cliente,
-            commands::clientes::deletar_cliente,
-            commands::cnpj::consultar_cnpj,
-            // Produtos
-            commands::produtos::listar_produtos,
-            commands::produtos::buscar_produto,
-            commands::produtos::criar_produto,
-            commands::produtos::atualizar_produto,
-            commands::produtos::deletar_produto,
-            commands::produtos::registrar_movimentacao_estoque,
-            // Gastos
-            commands::gastos::listar_gastos_fixos,
-            commands::gastos::criar_gasto_fixo,
-            commands::gastos::atualizar_gasto_fixo,
-            commands::gastos::listar_gastos_variaveis,
-            commands::gastos::criar_gasto_variavel,
-            commands::gastos::resumo_mensal,
-            // Serviços (catálogo)
-            commands::servicos::listar_servicos,
-            commands::servicos::listar_servicos_catalogo_ativos,
-            commands::servicos::buscar_servico,
-            commands::servicos::criar_servico,
-            commands::servicos::atualizar_servico,
-            commands::servicos::deletar_servico,
-            // Verificações
-            commands::verificacoes::salvar_verificacao_tecnica,
-            commands::verificacoes::buscar_verificacao_tecnica,
-            commands::verificacoes::atualizar_servicos_verificacao,
-            // Comunicações
-            commands::comunicacoes::registrar_comunicacao,
-            commands::comunicacoes::listar_comunicacoes,
-            // SMTP
-            commands::smtp::salvar_config_smtp,
-            commands::smtp::carregar_config_smtp,
-            commands::smtp::enviar_email,
-            // WhatsApp
-            commands::whatsapp::salvar_config_whatsapp,
-            commands::whatsapp::carregar_config_whatsapp,
-            commands::whatsapp::enviar_whatsapp,
-            // Storage Config (Supabase)
-            commands::storage_config::salvar_config_storage,
-            commands::storage_config::carregar_config_storage,
-            // Enrollment
-            commands::enrollment::generate_enrollment_code,
-            commands::enrollment::validate_enrollment_code,
-            commands::auth::provision_pin_with_enrollment,
-            // Image Migration
-            commands::image_migration::migrate_images_to_storage,
-        ])
+        });
+
+    #[cfg(feature = "saas")]
+    let builder = builder.invoke_handler(tauri::generate_handler![
+        commands::saas_auth::salvar_sessao_saas,
+        commands::saas_auth::carregar_sessao_saas,
+        commands::saas_auth::remover_sessao_saas,
+    ]);
+
+    #[cfg(not(feature = "saas"))]
+    let builder = builder.invoke_handler(tauri::generate_handler![
+        // Auth sensível
+        commands::auth::get_sensitive_access_status,
+        commands::auth::configure_sensitive_pin,
+        commands::auth::unlock_sensitive_access,
+        commands::auth::unlock_session_without_pin,
+        commands::auth::lock_sensitive_access,
+        commands::auth::set_active_security_profile,
+        commands::auth::create_security_profile,
+        commands::auth::update_security_profile,
+        commands::auth::reset_security_profile_pin,
+        commands::auth::verificar_credenciais_banco,
+        commands::auth::redefinir_pin_via_db,
+        commands::auth::list_security_profiles,
+        commands::auth::deactivate_security_profile,
+        commands::auth::reactivate_security_profile,
+        commands::auth::deletar_perfil,
+        commands::auth::register_security_audit_export,
+        commands::auth::list_security_audit_events,
+        commands::auth::verificar_config_inatividade,
+        commands::auth::salvar_config_inatividade,
+        commands::auth::registrar_empresa,
+        commands::auth::login_empresa,
+        // Util
+        commands::util::salvar_arquivo_temp,
+        commands::util::copiar_anexo_email_para_temp,
+        commands::util::remover_anexo_email_temp,
+        commands::util::salvar_ordem_servico_pdf,
+        commands::util::salvar_orcamento_pdf,
+        commands::util::verificar_documento_existe,
+        commands::util::abrir_documento,
+        commands::util::abrir_painel_impressoras_windows,
+        commands::util::listar_impressoras_windows,
+        commands::util::imprimir_teste_bmitag,
+        commands::util::abrir_url,
+        commands::util::salvar_imagem_equipamento,
+        commands::util::salvar_relatorio_status_pdf,
+        commands::util::obter_status_schema_banco,
+        commands::util::obter_status_ferramentas_backup_postgres,
+        commands::util::gerar_backup_postgres,
+        commands::util::restaurar_backup_postgres,
+        commands::util::obter_diagnostico_suporte_local,
+        commands::util::exportar_pacote_suporte_local,
+        commands::util::carregar_config_banco,
+        commands::util::obter_config_banco_atual,
+        commands::util::salvar_config_banco,
+        commands::util::testar_config_banco,
+        commands::util::verificar_status_banco,
+        commands::util::reiniciar_banco_com_config,
+        // Equipamentos
+        commands::equipamentos::listar_equipamentos,
+        commands::equipamentos::buscar_equipamento,
+        commands::equipamentos::buscar_equipamentos_por_serial,
+        commands::equipamentos::criar_equipamento,
+        commands::equipamentos::atualizar_equipamento,
+        commands::equipamentos::deletar_equipamento,
+        commands::equipamentos::atualizar_status_equipamento,
+        commands::equipamento_imagens::listar_imagens_equipamento,
+        commands::equipamento_imagens::substituir_imagens_equipamento,
+        commands::equipamento_imagens::adicionar_imagem_equipamento,
+        commands::equipamento_imagens::remover_imagem_equipamento,
+        commands::photo_server::start_photo_server,
+        commands::photo_server::stop_photo_server,
+        commands::photo_server::generate_upload_token,
+        commands::qr_code::gerar_qr_upload,
+        commands::photo_upload_sessions::criar_sessao_upload_fotos,
+        commands::photo_upload_sessions::consultar_sessao_upload_fotos,
+        commands::photo_upload_sessions::cancelar_sessao_upload_fotos,
+        // Clientes
+        commands::clientes::listar_clientes,
+        commands::clientes::buscar_cliente,
+        commands::clientes::criar_cliente,
+        commands::clientes::atualizar_cliente,
+        commands::clientes::deletar_cliente,
+        commands::cnpj::consultar_cnpj,
+        // Produtos
+        commands::produtos::listar_produtos,
+        commands::produtos::buscar_produto,
+        commands::produtos::criar_produto,
+        commands::produtos::atualizar_produto,
+        commands::produtos::deletar_produto,
+        commands::produtos::registrar_movimentacao_estoque,
+        // Gastos
+        commands::gastos::listar_gastos_fixos,
+        commands::gastos::criar_gasto_fixo,
+        commands::gastos::atualizar_gasto_fixo,
+        commands::gastos::listar_gastos_variaveis,
+        commands::gastos::criar_gasto_variavel,
+        commands::gastos::resumo_mensal,
+        // Serviços (catálogo)
+        commands::servicos::listar_servicos,
+        commands::servicos::listar_servicos_catalogo_ativos,
+        commands::servicos::buscar_servico,
+        commands::servicos::criar_servico,
+        commands::servicos::atualizar_servico,
+        commands::servicos::deletar_servico,
+        // Verificações
+        commands::verificacoes::salvar_verificacao_tecnica,
+        commands::verificacoes::buscar_verificacao_tecnica,
+        commands::verificacoes::atualizar_servicos_verificacao,
+        // Comunicações
+        commands::comunicacoes::registrar_comunicacao,
+        commands::comunicacoes::listar_comunicacoes,
+        // SMTP
+        commands::smtp::salvar_config_smtp,
+        commands::smtp::carregar_config_smtp,
+        commands::smtp::enviar_email,
+        // WhatsApp
+        commands::whatsapp::salvar_config_whatsapp,
+        commands::whatsapp::carregar_config_whatsapp,
+        commands::whatsapp::enviar_whatsapp,
+        // Storage Config (Supabase)
+        commands::storage_config::salvar_config_storage,
+        commands::storage_config::carregar_config_storage,
+        // Enrollment
+        commands::enrollment::generate_enrollment_code,
+        commands::enrollment::validate_enrollment_code,
+        commands::auth::provision_pin_with_enrollment,
+        // Image Migration
+        commands::image_migration::migrate_images_to_storage,
+    ]);
+
+    builder
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
