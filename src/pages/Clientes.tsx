@@ -21,6 +21,7 @@
  * ╚══════════════════════════════════════════════════════════════╝
  */
 import { Fragment, useState, useEffect, useCallback } from "react";
+import { useNavigate } from "react-router-dom";
 import {
   Users,
   Search,
@@ -84,6 +85,7 @@ import {
 import { ActionPriorityRow } from "@/components/ui/action-priority-row";
 
 export default function Clientes() {
+  const navigate = useNavigate();
   const LIMITE_EQUIPAMENTOS_EXPANDIDOS = 5;
   const [busca, setBusca] = useState("");
   const [abaAtual, setAbaAtual] = useState(1);
@@ -534,7 +536,7 @@ export default function Clientes() {
                                     {equipamentosCliente.length} equipamento(s) vinculado(s)
                                   </p>
                                   {equipamentosCliente.slice(0, LIMITE_EQUIPAMENTOS_EXPANDIDOS).map(eq => (
-                                    <div key={eq.id} className="flex items-center justify-between p-2 rounded border bg-background">
+                                    <button key={eq.id} type="button" onClick={() => navigate("/equipamentos", { state: { equipamentoId: eq.id } })} className="flex w-full items-center justify-between rounded border bg-background p-2 text-left hover:border-cyan-600 hover:bg-cyan-50">
                                       <div className="flex items-center gap-3">
                                         <Printer className="h-4 w-4 text-muted-foreground" />
                                         <div>
@@ -548,7 +550,7 @@ export default function Clientes() {
                                           {eq.data_entrada ? new Date(eq.data_entrada).toLocaleDateString("pt-BR") : ""}
                                         </span>
                                       </div>
-                                    </div>
+                                    </button>
                                   ))}
                                   {equipamentosCliente.length > LIMITE_EQUIPAMENTOS_EXPANDIDOS && (
                                     <div className="flex justify-end pt-1">
