@@ -40,7 +40,7 @@
     {
       "id": "AO-INT-001",
       "title": "Sincronizar master v0.4.1 com feature",
-      "status": "review",
+      "status": "merged",
       "blockedBy": [],
       "objective": "Incorporar na feature todo o Modo Balcao e as correcoes publicadas na master v0.4.1, preservando o trabalho SaaS, Auth, fotos, staging e PowerSync.",
       "context": "Master e feature divergiram depois que o Modo Balcao foi desenvolvido diretamente na linha de producao. A reconciliacao deve acontecer em branch propria criada de origin/feature, sem alterar master, sem rebase e sem promover trabalho incompleto de agentes.",
@@ -2365,11 +2365,11 @@
     {
       "id": "AO-EMAIL-001",
       "title": "Atualizar domínio dos e-mails técnicos para BMITAG",
-      "status": "review",
+      "status": "merged",
       "blockedBy": [],
-      "objective": "Substituir os endereços técnicos com domínio @bmicode.com por @bmitag.com.br em todo o conteúdo rastreado do AutoOS.",
-      "context": "O domínio corporativo dos técnicos Ivan e Isaias mudou de bmicode.com para bmitag.com.br. Referências antigas em e-mail, PDF, tela de equipamentos, scripts, testes e documentação não devem permanecer.",
-      "expectedBehavior": "Ivan e Isaias usam endereços @bmitag.com.br em mensagens enviadas, PDFs e dados de apresentação; nenhuma ocorrência rastreada de bmicode permanece.",
+      "objective": "Substituir os endereços técnicos do domínio anterior por @bmitag.com.br em todo o conteúdo rastreado do AutoOS.",
+      "context": "O domínio corporativo dos técnicos Ivan e Isaias mudou para bmitag.com.br. Referências antigas em e-mail, PDF, tela de equipamentos, scripts, testes e documentação não devem permanecer.",
+      "expectedBehavior": "Ivan e Isaias usam endereços @bmitag.com.br em mensagens enviadas, PDFs e dados de apresentação; nenhuma ocorrência rastreada do domínio anterior permanece.",
       "scope": [
         "Atualizar referências rastreadas de Ivan e Isaias com o domínio novo.",
         "Atualizar expectativas e fixtures dos testes afetados.",
@@ -2381,12 +2381,12 @@
         "Enviar e-mails reais durante a validação."
       ],
       "acceptanceCriteria": [
-        "Não há ocorrências rastreadas de bmicode no repositório fora de histórico Git e dependências.",
+        "Não há ocorrências rastreadas do domínio técnico anterior no repositório fora de histórico Git e dependências.",
         "Os mapeamentos de Ivan e Isaias retornam endereços @bmitag.com.br nos fluxos de e-mail, PDF e equipamentos.",
         "Os testes atualizados passam sem disparar integração SMTP real."
       ],
       "tests": [
-        "rg -n -i bmicode em arquivos rastreados não retorna resultados.",
+        "A busca pelo domínio técnico anterior em arquivos rastreados não retorna resultados.",
         "npx vitest run src/lib/email-service.test.ts.",
         "npm run lint."
       ],
@@ -2397,7 +2397,7 @@
         ],
         "steps": [
           "Substituir somente o domínio nos mapeamentos, fixtures, scripts e documentação rastreada.",
-          "Executar a busca rastreada por bmicode e confirmar ausência de resultados.",
+          "Executar a busca rastreada pelo domínio técnico anterior e confirmar ausência de resultados.",
           "Executar o teste unitário de email-service e npm run lint."
         ],
         "expectedResultAndEvidence": [
