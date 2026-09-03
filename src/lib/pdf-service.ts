@@ -46,6 +46,13 @@ const CONTENT_WIDTH = PAGE_WIDTH - MARGIN_LEFT - MARGIN_RIGHT;
 
 type CorPdf = [number, number, number];
 
+/** Documento construído em memória. A persistência é intencionalmente separada para permitir prévia no balcão. */
+export interface PdfArtifact {
+  filename: string;
+  bytes: Uint8Array;
+  mimeType: "application/pdf";
+}
+
 /** Paleta única dos quatro PDFs: branco, preto e cinzas econômicos. */
 const CORES_PDF = {
   preto: [0, 0, 0] as CorPdf,
@@ -156,6 +163,7 @@ function limparObservacoesParaDocumento(observacoes?: string | null) {
   if (!observacoes) return "";
   return observacoes
     .replace(/^Técnico inicial:.*(?:\r?\n)?/m, "")
+    .replace(/^Laudo técnico:.*(?:\r?\n)?/m, "")
     .trim();
 }
 
@@ -656,13 +664,13 @@ export const PdfService = {
    *
    * @param equipamento - Dados do equipamento (marca, modelo, serial, cliente)
    * @param verificacao - Verificação técnica com serviços, peças e custos
-   * @returns Caminho do arquivo PDF salvo, ou null em caso de erro
+   * @returns Documento em memória para prévia ou persistência explícita
    */
-  async gerarOrcamento(
+  async construirOrcamento(
     equipamento: Equipamento,
     verificacao: Verificacao,
     nomeArquivo?: string
-  ): Promise<string | null> {
+  ): Promise<PdfArtifact> {
     try {
       const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
       let y = 15; // posição vertical atual
@@ -881,36 +889,34 @@ export const PdfService = {
         aplicarRodape(doc, numeroOS, page, totalPages, dataGeracao);
       }
 
-      // ═══════════════════════════════════════════════════
-      // 9. SALVAR E ABRIR
-      // ═══════════════════════════════════════════════════
-
-      // Gerar bytes do PDF
-      const pdfBytes = doc.output("arraybuffer");
-      const uint8 = new Uint8Array(pdfBytes);
-
-      // Enviar para Rust salvar em Documents/Orcamentos e revelar o arquivo
-      const caminho = await invoke<string>("salvar_orcamento_pdf", {
-        bytes: Array.from(uint8),
-        empresaNome: equipamento.cliente_nome || equipamento.proprietario || "Cliente",
-        nomeArquivo: nomeArquivo || null,
-      });
-
-      console.info(`[PdfService] Orçamento PDF gerado: ${caminho}`);
-      return caminho;
+      return {
+        filename: nomeArquivo || `Orcamento_${equipamento.id || "novo"}.pdf`,
+        bytes: new Uint8Array(doc.output("arraybuffer")),
+        mimeType: "application/pdf",
+      };
     } catch (error) {
       console.error("[PdfService] Erro ao gerar orçamento PDF:", error);
       throw error;
     }
   },
 
-  async gerarOrcamentoAjustado(
+  /** Mantém o fluxo legado para anexos e automações que precisam de um arquivo persistido. */
+  async gerarOrcamento(
     equipamento: Equipamento,
     verificacao: Verificacao,
     nomeArquivo?: string
   ): Promise<string | null> {
+    const artifact = await PdfService.construirOrcamento(equipamento, verificacao, nomeArquivo);
+    return PdfService.salvarOrcamento(artifact, equipamento, nomeArquivo);
+  },
+
+  async construirOrcamentoAjustado(
+    equipamento: Equipamento,
+    verificacao: Verificacao,
+    nomeArquivo?: string
+  ): Promise<PdfArtifact | null> {
     if (!verificacao.adjusted_at) {
-      return PdfService.gerarOrcamento(equipamento, verificacao, nomeArquivo);
+      return PdfService.construirOrcamento(equipamento, verificacao, nomeArquivo);
     }
 
     const servicos: ServicoNecessario[] = verificacao.servicos_necessarios
@@ -1124,28 +1130,32 @@ export const PdfService = {
         );
       }
 
-      const pdfBytes = doc.output("arraybuffer");
-      const uint8 = new Uint8Array(pdfBytes);
-
-      const caminho = await invoke<string>("salvar_orcamento_pdf", {
-        bytes: Array.from(uint8),
-        empresaNome: equipamento.cliente_nome || equipamento.proprietario || "Cliente",
-        nomeArquivo: nomeArquivo || null,
-      });
-
-      console.info(`[PdfService] Orçamento ajustado PDF gerado: ${caminho}`);
-      return caminho;
+      return {
+        filename: nomeArquivo || `OrcamentoAjustado_${equipamento.id || "novo"}.pdf`,
+        bytes: new Uint8Array(doc.output("arraybuffer")),
+        mimeType: "application/pdf",
+      };
     } catch (error) {
       console.error("[PdfService] Erro ao gerar orçamento ajustado PDF:", error);
       throw error;
     }
   },
 
+  async gerarOrcamentoAjustado(
+    equipamento: Equipamento,
+    verificacao: Verificacao,
+    nomeArquivo?: string
+  ): Promise<string | null> {
+    const artifact = await PdfService.construirOrcamentoAjustado(equipamento, verificacao, nomeArquivo);
+    if (!artifact) return null;
+    return PdfService.salvarOrcamento(artifact, equipamento, nomeArquivo);
+  },
+
   /**
    * Gera PDF de ordem de serviço para recebimento técnico.
    * Lista os campos preenchidos na seção "Dados do Equipamento".
    */
-  async gerarOrdemServico(equipamento: Equipamento, nomeArquivo?: string): Promise<string | null> {
+  async construirOrdemServico(equipamento: Equipamento, nomeArquivo?: string): Promise<PdfArtifact> {
     try {
       const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
       let y = 15;
@@ -1177,17 +1187,12 @@ export const PdfService = {
       const defeitoInformado = equipamento.defeito_relatado || verificacao?.problema_relatado || "—";
       const diagnosticoTecnico = verificacao?.diagnostico || "—";
       const especificacoes = [
-        `Nº de série: ${equipamento.serial_number || "—"}`,
-        `Marca: ${equipamento.marca || "—"}`,
-        `Modelo: ${equipamento.modelo || "—"}`,
-        `Tipo: ${equipamento.tipo || "—"}`,
-        `Patrimônio: ${equipamento.patrimonio || "—"}`,
         equipamento.tecnologia ? `Tecnologia: ${equipamento.tecnologia}` : "",
         equipamento.conectividade ? `Conectividade: ${equipamento.conectividade}` : "",
-        equipamento.paginas_impressas !== undefined
+        typeof equipamento.paginas_impressas === "number" && Number.isFinite(equipamento.paginas_impressas)
           ? `Páginas impressas: ${equipamento.paginas_impressas}`
           : "",
-      ].filter(Boolean).join("; ");
+      ].filter(Boolean).join("; ") || "—";
 
       // Corpo em formato de ficha: os rótulos permanecem visíveis, mas todos
       // os preenchimentos são brancos para manter a impressão econômica.
@@ -1286,26 +1291,47 @@ export const PdfService = {
         aplicarRodape(doc, numeroOS, page, totalPages, dataGeracao);
       }
 
-      const pdfBytes = doc.output("arraybuffer");
-      const uint8 = new Uint8Array(pdfBytes);
-      const caminho = await invoke<string>("salvar_ordem_servico_pdf", {
-        bytes: Array.from(uint8),
-        empresaNome: equipamento.cliente_nome || equipamento.proprietario || "Empresa",
-        nomeArquivo: nomeArquivo || null,
-      });
-
-      console.info(`[PdfService] Ordem de serviço PDF gerada: ${caminho}`);
-      return caminho;
+      return {
+        filename: nomeArquivo || `OrdemServico_${equipamento.id || "novo"}.pdf`,
+        bytes: new Uint8Array(doc.output("arraybuffer")),
+        mimeType: "application/pdf",
+      };
     } catch (error) {
-      console.error("[PdfService] Erro ao gerar ordem de serviço PDF:", error);
+      console.error("[PdfService] Erro ao construir ordem de serviço PDF:", error);
       throw error;
     }
+  },
+
+  /** Mantém o comportamento existente: constrói em memória e persiste no backend. */
+  async gerarOrdemServico(equipamento: Equipamento, nomeArquivo?: string): Promise<string | null> {
+    const artifact = await PdfService.construirOrdemServico(equipamento, nomeArquivo);
+    return PdfService.salvarOrdemServico(artifact, equipamento, nomeArquivo);
+  },
+
+  async salvarOrcamento(artifact: PdfArtifact, equipamento: Equipamento, nomeArquivo?: string): Promise<string> {
+    const caminho = await invoke<string>("salvar_orcamento_pdf", {
+      bytes: Array.from(artifact.bytes),
+      empresaNome: equipamento.cliente_nome || equipamento.proprietario || "Cliente",
+      nomeArquivo: nomeArquivo || null,
+    });
+    console.info(`[PdfService] Orçamento PDF salvo: ${caminho}`);
+    return caminho;
+  },
+
+  async salvarOrdemServico(artifact: PdfArtifact, equipamento: Equipamento, nomeArquivo?: string): Promise<string> {
+    const caminho = await invoke<string>("salvar_ordem_servico_pdf", {
+      bytes: Array.from(artifact.bytes),
+      empresaNome: equipamento.cliente_nome || equipamento.proprietario || "Empresa",
+      nomeArquivo: nomeArquivo || null,
+    });
+    console.info(`[PdfService] Ordem de serviço PDF gerada: ${caminho}`);
+    return caminho;
   },
 
   /**
    * Gera PDF com histórico/status completo do equipamento.
    */
-  async gerarRelatorioStatus(equipamento: Equipamento): Promise<string | null> {
+  async construirRelatorioStatus(equipamento: Equipamento): Promise<PdfArtifact> {
     try {
       const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
       let y = 15;
@@ -1366,19 +1392,29 @@ export const PdfService = {
         aplicarRodape(doc, numeroOS, page, totalPages, dataGeracao);
       }
 
-      const pdfBytes = doc.output("arraybuffer");
-      const uint8 = new Uint8Array(pdfBytes);
-      const caminho = await invoke<string>("salvar_relatorio_status_pdf", {
-        bytes: Array.from(uint8),
-        empresaNome: equipamento.cliente_nome || equipamento.proprietario || "Cliente",
-      });
-
-      console.info(`[PdfService] Relatório de status PDF gerado: ${caminho}`);
-      return caminho;
+      return {
+        filename: `RelatorioStatus_${equipamento.id || "novo"}.pdf`,
+        bytes: new Uint8Array(doc.output("arraybuffer")),
+        mimeType: "application/pdf",
+      };
     } catch (error) {
       console.error("[PdfService] Erro ao gerar relatório de status PDF:", error);
       throw error;
     }
+  },
+
+  async gerarRelatorioStatus(equipamento: Equipamento): Promise<string | null> {
+    const artifact = await PdfService.construirRelatorioStatus(equipamento);
+    return PdfService.salvarRelatorioStatus(artifact, equipamento);
+  },
+
+  async salvarRelatorioStatus(artifact: PdfArtifact, equipamento: Equipamento): Promise<string> {
+    const caminho = await invoke<string>("salvar_relatorio_status_pdf", {
+      bytes: Array.from(artifact.bytes),
+      empresaNome: equipamento.cliente_nome || equipamento.proprietario || "Cliente",
+    });
+    console.info(`[PdfService] Relatório de status PDF salvo: ${caminho}`);
+    return caminho;
   },
 
   /** Verifica se o serviço de geração PDF está disponível */

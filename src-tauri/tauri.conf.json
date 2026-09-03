@@ -1,6 +1,6 @@
 {
   "productName": "AutoOS",
-  "version": "0.3.5",
+  "version": "0.4.1",
   "identifier": "com.bmitag.autoos",
   "build": {
     "beforeDevCommand": "npm run dev",
@@ -30,7 +30,7 @@
       "endpoints": [
         "https://github.com/ph66ng2/AutoOs/releases/latest/download/latest.json"
       ],
-      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEUzNDNDRTM3NTlEM0QzQkIKUldTNzA5TlpOODVENDMrcVk5WS9yUzhCMDQ3cjRhcjg2aklNdFZOYVdCNzFyZDh1SGtLM1pIYmYK"
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDE3NUIyNjQyODA3Mzk5ODUKUldTRm1YT0FRaVpiRnlEc2QvS01tYWlNSEkzT3g2SGZRQ1p3dUhRNUFxNWtNV05oWlcxV1BJQ0EK"
     }
   },
   "app": {
