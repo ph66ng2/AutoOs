@@ -652,7 +652,7 @@
     {
       "id": "AO-AUTH-002",
       "title": "Implementar login e sessão Supabase",
-      "status": "review",
+      "status": "merged",
       "blockedBy": [
         "AO-AUTH-001"
       ],
