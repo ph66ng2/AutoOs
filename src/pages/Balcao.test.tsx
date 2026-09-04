@@ -98,7 +98,7 @@ describe("Modo Balcão", () => {
     await waitFor(() => expect(screen.getByText(/atendimento #7/i)).toBeInTheDocument());
     await user.click(screen.getByText(/atendimento #7/i));
     expect(screen.getByRole("button", { name: /marcar como entregue/i })).toBeDisabled();
-    expect(screen.getByText(/só é permitida em um status compatível/i)).toBeInTheDocument();
+    expect(screen.getByText(/ainda não dá para registrar a entrega/i)).toBeInTheDocument();
   });
 
   it("registra o laudo imediato e abre o painel de impressoras do Windows", async () => {
