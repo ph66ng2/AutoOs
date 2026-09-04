@@ -1,6 +1,6 @@
 {
   "productName": "AutoOS",
-  "version": "0.4.1",
+  "version": "0.4.2",
   "identifier": "com.bmitag.autoos",
   "build": {
     "beforeDevCommand": "npm run dev",
@@ -53,7 +53,8 @@
         "img-src": "'self' asset: http://asset.localhost blob: data:",
         "style-src": "'self' 'unsafe-inline'",
         "font-src": "'self' data:",
-        "object-src": "'none'",
+        "frame-src": "'self' blob:",
+        "object-src": "'self' blob:",
         "base-uri": "'self'",
         "form-action": "'self'",
         "frame-ancestors": "'none'"

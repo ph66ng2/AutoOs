@@ -1230,7 +1230,7 @@ function EquipmentDetail({ equipamento }: { equipamento: Equipamento }) {
           </Button>
           {!canDeliver && (
             <span className="self-center text-muted-foreground">
-              A retirada só é permitida em um status compatível com a FSM.
+              Ainda não dá para registrar a entrega. Conclua as etapas do atendimento até o equipamento ficar pronto para retirada.
             </span>
           )}
         </div>
