@@ -56,7 +56,8 @@
         "img-src": "'self' asset: http://asset.localhost blob: data:",
         "style-src": "'self' 'unsafe-inline'",
         "font-src": "'self' data:",
-        "object-src": "'none'",
+        "frame-src": "'self' blob:",
+        "object-src": "'self' blob:",
         "base-uri": "'self'",
         "form-action": "'self'",
         "frame-ancestors": "'none'"
