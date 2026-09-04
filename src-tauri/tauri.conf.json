@@ -1,6 +1,6 @@
 {
   "productName": "AutoOS",
-  "version": "0.4.1",
+  "version": "0.4.2",
   "identifier": "com.bmitag.autoos",
   "build": {
     "beforeDevCommand": "npm run dev",
