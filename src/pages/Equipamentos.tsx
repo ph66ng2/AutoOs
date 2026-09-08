@@ -162,6 +162,7 @@ export default function Equipamentos() {
   const [detalhesDialogOpen, setDetalhesDialogOpen] = useState(false);
   const [verificacaoDialogOpen, setVerificacaoDialogOpen] = useState(false);
   const [statusDialogOpen, setStatusDialogOpen] = useState(false);
+  const [ajusteOrcamentoSemMudancaStatus, setAjusteOrcamentoSemMudancaStatus] = useState(false);
   const [editando, setEditando] = useState<Equipamento | null>(null);
   const [deletando, setDeletando] = useState<Equipamento | null>(null);
   const [selecionado, setSelecionado] = useState<Equipamento | null>(null);
@@ -609,6 +610,7 @@ export default function Equipamentos() {
     });
     if (!liberado) return;
 
+    setAjusteOrcamentoSemMudancaStatus(false);
     setSelecionado(eq);
     setNovoStatus(statusPreSelecionado || "");
     setValorOrcamento(eq.valor_orcamento ?? 0);
@@ -640,6 +642,24 @@ export default function Equipamentos() {
     if ((statusPreSelecionado || "") === "AGUARDANDO_APROVACAO") {
       await prepararAjusteOrcamentoPadrao(eq);
     }
+    setStatusDialogOpen(true);
+  }
+
+  async function abrirAjusteOrcamentoManutencao(eq: Equipamento) {
+    const liberado = await ensureSensitiveAccess({
+      title: "Ajustar orçamento da manutenção",
+      description: "Informe o PIN para editar serviços e valor sem alterar o status do equipamento.",
+      permission: SENSITIVE_PERMISSIONS.FINANCIAL_ACTIONS,
+    });
+    if (!liberado) return;
+
+    setSelecionado(eq);
+    setNovoStatus("");
+    setAjusteOrcamentoSemMudancaStatus(true);
+    setValorFinal(0);
+    setValorFinalSugerido(null);
+    setAcordoExcecaoEntrega(false);
+    await prepararAjusteOrcamentoPadrao(eq);
     setStatusDialogOpen(true);
   }
 
@@ -926,7 +946,7 @@ export default function Equipamentos() {
   }
 
   function iniciarConfirmacaoStatus() {
-    if (novoStatus === "AGUARDANDO_APROVACAO" && verificacaoAjusteOrcamento) {
+    if ((novoStatus === "AGUARDANDO_APROVACAO" || ajusteOrcamentoSemMudancaStatus) && verificacaoAjusteOrcamento) {
       const servicosOriginal: ServicoNecessario[] = [];
       try {
         servicosOriginal.push(...JSON.parse(verificacaoAjusteOrcamento.servicos_necessarios || "[]") as ServicoNecessario[]);
@@ -988,7 +1008,7 @@ export default function Equipamentos() {
   }
 
   async function confirmarMudancaStatus(divergencia = false) {
-    if (!selecionado || !novoStatus) return;
+    if (!selecionado || (!novoStatus && !ajusteOrcamentoSemMudancaStatus)) return;
     const totalAtual = valorOrcamentoRef.current;
     const precisaLiberacao = statusExigeAcessoSensivel(
       novoStatus,
@@ -1021,7 +1041,11 @@ export default function Equipamentos() {
         ]);
       }
 
-      if (novoStatus === "AGUARDANDO_APROVACAO" && verificacaoAjusteOrcamento && sensitiveStatus?.active_profile_id) {
+      if ((novoStatus === "AGUARDANDO_APROVACAO" || ajusteOrcamentoSemMudancaStatus) && verificacaoAjusteOrcamento) {
+        const profileId = sensitiveStatus?.active_profile_id;
+        if (!profileId) {
+          throw new Error("Perfil autorizado não encontrado para ajustar o orçamento.");
+        }
         let pecas: PecaNecessaria[] = [];
         try {
           pecas = JSON.parse(verificacaoAjusteOrcamento.pecas_necessarias || "[]") as PecaNecessaria[];
@@ -1034,8 +1058,16 @@ export default function Equipamentos() {
             custo_total: totalAtual,
             divergence: divergencia,
           },
-          sensitiveStatus.active_profile_id,
+          profileId,
         );
+      }
+
+      if (ajusteOrcamentoSemMudancaStatus) {
+        await recarregar();
+        setStatusDialogOpen(false);
+        setAjusteOrcamentoSemMudancaStatus(false);
+        success("Equipamentos", "Orçamento da manutenção atualizado.", "Ajustar orçamento");
+        return;
       }
 
       const resultado = await atualizarStatus(
@@ -1405,8 +1437,14 @@ export default function Equipamentos() {
           onClick: () => void handleMarcarPronto(eq),
           disabled: salvando || loadingAutomacao,
         };
-        secondary = acaoStatus;
-        overflow.push(acaoEditar, acaoExcluir);
+        secondary = {
+          id: "ajustar_orcamento_manutencao",
+          label: "Ajustar Orçamento",
+          icon: <RefreshCw className="h-3.5 w-3.5" />,
+          variant: "outline",
+          onClick: () => void abrirAjusteOrcamentoManutencao(eq),
+        };
+        overflow.push(acaoStatus, acaoEditar, acaoExcluir);
         break;
       case "AGUARDANDO_PECA":
         primary = {
@@ -2155,41 +2193,53 @@ export default function Equipamentos() {
       />
 
       {/* ═══ Dialog Mudar Status ═══ */}
-      <Dialog open={statusDialogOpen} onOpenChange={setStatusDialogOpen}>
+      <Dialog
+        open={statusDialogOpen}
+        onOpenChange={(open) => {
+          setStatusDialogOpen(open);
+          if (!open) setAjusteOrcamentoSemMudancaStatus(false);
+        }}
+      >
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle>
-              {novoStatus === "AGUARDANDO_APROVACAO" ? "Ajuste de Orçamento" : "Alterar Status"}
+              {novoStatus === "AGUARDANDO_APROVACAO" || ajusteOrcamentoSemMudancaStatus ? "Ajuste de Orçamento" : "Alterar Status"}
             </DialogTitle>
           </DialogHeader>
           {selecionado && (
             <div className="space-y-4">
-              <div className="flex items-center gap-2">
-                <span className="text-sm text-muted-foreground">Atual:</span>
-                <StatusBadge status={selecionado.status} />
-              </div>
-              {novoStatus ? (
-                <div className="flex items-center gap-2">
-                  <span className="text-sm text-muted-foreground">Novo:</span>
-                  <StatusBadge status={novoStatus} />
-                </div>
-              ) : (
-                <div className="space-y-2">
-                  <Label>Novo Status *</Label>
-                  <Select value={novoStatus} onValueChange={handleNovoStatusChange}>
-                    <SelectTrigger><SelectValue placeholder="Selecione..." /></SelectTrigger>
-                    <SelectContent>
-                      {getProximosStatus(selecionado.status).map(s => (
-                        <SelectItem key={s} value={s}>{STATUS_LABELS[s as StatusEquipamento] || s}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
+              {!ajusteOrcamentoSemMudancaStatus && (
+                <>
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm text-muted-foreground">Atual:</span>
+                    <StatusBadge status={selecionado.status} />
+                  </div>
+                  {novoStatus ? (
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm text-muted-foreground">Novo:</span>
+                      <StatusBadge status={novoStatus} />
+                    </div>
+                  ) : (
+                    <div className="space-y-2">
+                      <Label>Novo Status *</Label>
+                      <Select value={novoStatus} onValueChange={handleNovoStatusChange}>
+                        <SelectTrigger><SelectValue placeholder="Selecione..." /></SelectTrigger>
+                        <SelectContent>
+                          {getProximosStatus(selecionado.status).map(s => (
+                            <SelectItem key={s} value={s}>{STATUS_LABELS[s as StatusEquipamento] || s}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  )}
+                </>
               )}
-              {novoStatus === "AGUARDANDO_APROVACAO" && (
+              {(novoStatus === "AGUARDANDO_APROVACAO" || ajusteOrcamentoSemMudancaStatus) && (
                 <>
                   <div className="rounded-md border bg-amber-50 px-3 py-2 text-sm text-amber-900">
-                    Revise o valor e o prazo para reenviar o orçamento atualizado ao cliente.
+                    {ajusteOrcamentoSemMudancaStatus
+                      ? "Edite o orçamento da manutenção. O status atual do equipamento será mantido."
+                      : "Revise o valor e o prazo para reenviar o orçamento atualizado ao cliente."}
                   </div>
                   {verificacaoAjusteOrcamento?.adjusted_at && (
                     <div className="rounded-md border bg-blue-50 px-3 py-2 text-sm text-blue-900 flex items-center gap-2">
@@ -2399,7 +2449,7 @@ export default function Equipamentos() {
               )}
               <DialogFooter>
                 <DialogClose asChild><Button variant="outline">Cancelar</Button></DialogClose>
-                <Button onClick={iniciarConfirmacaoStatus} disabled={salvando || !novoStatus}>
+                <Button onClick={iniciarConfirmacaoStatus} disabled={salvando || (!novoStatus && !ajusteOrcamentoSemMudancaStatus)}>
                   {salvando ? "Salvando..." : "Confirmar"}
                 </Button>
               </DialogFooter>
