@@ -148,8 +148,8 @@ function formatoImagemPdf(mimeType: string): "PNG" | "JPEG" {
 }
 
 function emailTecnicoPorNome(tecnicoNome?: string) {
-  if (tecnicoNome === "Ivan") return "ivan@bmicode.com";
-  if (tecnicoNome === "Isaias") return "isaias@bmicode.com";
+  if (tecnicoNome === "Ivan") return "ivan@bmitag.com.br";
+  if (tecnicoNome === "Isaias") return "isaias@bmitag.com.br";
   return "";
 }
 
