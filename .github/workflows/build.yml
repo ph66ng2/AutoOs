@@ -44,6 +44,21 @@ jobs:
       - name: Instalar dependências do frontend
         run: npm install
 
+      - name: Validar conexão PostgreSQL do release
+        shell: pwsh
+        env:
+          AUTOOS_DATABASE_URL: ${{ secrets.AUTOOS_DATABASE_URL }}
+        run: |
+          if ([string]::IsNullOrWhiteSpace($env:AUTOOS_DATABASE_URL)) {
+            throw "Configure o secret AUTOOS_DATABASE_URL com a URL Supavisor Session antes do release."
+          }
+          if ($env:AUTOOS_DATABASE_URL -notmatch '^postgres(ql)?://.+@[^/]*\.pooler\.supabase\.com:5432/[^?]+(?:\?.*)?$') {
+            throw "AUTOOS_DATABASE_URL deve ser uma URL Supavisor Session na porta 5432."
+          }
+          if ($env:AUTOOS_DATABASE_URL -notmatch '[?&]sslmode=require(?:&|$)') {
+            throw "AUTOOS_DATABASE_URL deve exigir TLS com sslmode=require."
+          }
+
       - name: Build e criar Release
         uses: tauri-apps/tauri-action@v0
         env:
@@ -51,6 +66,7 @@ jobs:
           # Compatível com o segredo atual e com o nome recomendado pelo Tauri.
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY || secrets.TAURI_SIGNING_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+          AUTOOS_DATABASE_URL: ${{ secrets.AUTOOS_DATABASE_URL }}
         with:
           # O nome da tag vira o nome do release (ex: v1.0.0 → "Release v1.0.0")
           tagName: ${{ github.ref_name }}
