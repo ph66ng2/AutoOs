@@ -24,6 +24,7 @@ const mockListarServicosCatalogoAtivos = vi.hoisted(() => vi.fn());
 const mockListarImagensEquipamento = vi.hoisted(() => vi.fn());
 const mockBuscarEquipamentosPorSerial = vi.hoisted(() => vi.fn());
 const mockBuscarCliente = vi.hoisted(() => vi.fn());
+const mockRecarregar = vi.hoisted(() => vi.fn());
 
 vi.mock("@tauri-apps/api/core", () => ({
   invoke: (...args: unknown[]) => mockInvoke(...args),
@@ -46,7 +47,7 @@ vi.mock("@/hooks/useEquipamentos", () => ({
     atualizar: vi.fn(),
     deletar: vi.fn(),
     atualizarStatus: mockAtualizarStatusEquipamento,
-    recarregar: vi.fn(),
+    recarregar: mockRecarregar,
   }),
 }));
 
@@ -249,6 +250,7 @@ import Equipamentos from "../../Equipamentos";
 describe("Equipamentos — Budget Divergence & Audit", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    equipamentoVerificado.status = "VERIFICADO";
     mockListarImagensEquipamento.mockResolvedValue([]);
     mockBuscarEquipamentosPorSerial.mockResolvedValue([]);
     mockBuscarCliente.mockRejectedValue(new Error("no client"));
@@ -479,5 +481,33 @@ describe("Equipamentos — Budget Divergence & Audit", () => {
       expect(screen.getByTestId("confirm-title")).toHaveTextContent(/Divergência detectada/i);
     });
     expect(screen.getByTestId("confirm-description")).toHaveTextContent(/R\$ 100\.00.*R\$ 250\.00/);
+  });
+
+  it("ajusta o orçamento durante a manutenção sem mudar o status", async () => {
+    equipamentoVerificado.status = "EM_MANUTENCAO";
+    mockBuscarVerificacao.mockResolvedValue(makeVerificacao());
+    render(<Equipamentos />);
+
+    await waitFor(() => {
+      expect(screen.getByTestId("action-ajustar_orcamento_manutencao")).toBeInTheDocument();
+    });
+    await act(async () => {
+      fireEvent.click(screen.getByTestId("action-ajustar_orcamento_manutencao"));
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText(/O status atual do equipamento será mantido/i)).toBeInTheDocument();
+    });
+    await clicarConfirmarStatus();
+    await act(async () => {
+      fireEvent.click(screen.getByTestId("confirm-action"));
+    });
+
+    await waitFor(() => {
+      expect(mockAtualizarServicosVerificacao).toHaveBeenCalled();
+      expect(mockRecarregar).toHaveBeenCalled();
+    });
+    expect(mockAtualizarStatusEquipamento).not.toHaveBeenCalled();
+    expect(equipamentoVerificado.status).toBe("EM_MANUTENCAO");
   });
 });
