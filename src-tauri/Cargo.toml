@@ -26,6 +26,10 @@ name = "release_database_check"
 path = "src/bin/release_database_check.rs"
 
 [[bin]]
+name = "ci_migrate"
+path = "src/bin/ci_migrate.rs"
+
+[[bin]]
 name = "p1_critical_integration"
 path = "src/bin/p1_critical_integration.rs"
 
