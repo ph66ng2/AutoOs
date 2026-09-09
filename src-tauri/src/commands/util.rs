@@ -8,7 +8,7 @@
 use crate::commands::auth::{
     record_security_event, require_permission, PERMISSION_CONFIG_SMTP, PERMISSION_MANAGE_PROFILES,
 };
-use crate::db::{get_pool, known_migrations, run_pending_migrations};
+use crate::db::{get_pool, known_migrations, validate_connected_migration_history};
 use base64::Engine;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
@@ -1316,15 +1316,15 @@ pub async fn restaurar_backup_postgres(file_path: String) -> Result<PostgresRest
         return Err(format!("Falha ao restaurar backup PostgreSQL: {}", stderr));
     }
 
-    if let Err(error_value) = run_pending_migrations().await {
+    if let Err(error_value) = validate_connected_migration_history().await {
         let details = format!(
-            "Restore concluído, mas falhou ao reaplicar migrações pendentes em {}: {}",
+            "Restore concluído, mas o schema restaurado é incompatível em {}: {}",
             parsed.database_name,
             error_value
         );
         record_security_event("BACKUP_RESTORE_FAILED", Some(&actor), details, false).await;
         return Err(format!(
-            "Restore concluído, mas houve falha ao conferir/aplicar migrações pendentes: {}",
+            "Restore concluído, mas o schema restaurado é incompatível: {}",
             error_value
         ));
     }
@@ -1513,14 +1513,38 @@ pub struct DatabaseConnectionConfig {
     pub database: String,
     pub username: String,
     pub password: String,
+    #[serde(default)]
+    pub connection_url: Option<String>,
 }
 
 impl DatabaseConnectionConfig {
-    pub fn to_database_url(&self) -> String {
-        format!(
-            "postgres://{}:{}@{}:{}/{}",
-            self.username, self.password, self.host, self.port, self.database
-        )
+    pub fn to_database_url(&self) -> Result<String, String> {
+        if let Some(connection_url) = self
+            .connection_url
+            .as_deref()
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+        {
+            let parsed = Url::parse(connection_url)
+                .map_err(|_| "URL de conexão PostgreSQL inválida".to_string())?;
+            if !matches!(parsed.scheme(), "postgres" | "postgresql") {
+                return Err("URL deve usar postgres:// ou postgresql://".to_string());
+            }
+            return Ok(parsed.to_string());
+        }
+
+        let mut url = Url::parse("postgresql://localhost/postgres")
+            .map_err(|e| format!("Falha ao preparar URL PostgreSQL: {}", e))?;
+        url.set_username(&self.username)
+            .map_err(|_| "Usuário PostgreSQL inválido".to_string())?;
+        url.set_password(Some(&self.password))
+            .map_err(|_| "Senha PostgreSQL inválida".to_string())?;
+        url.set_host(Some(&self.host))
+            .map_err(|_| "Host PostgreSQL inválido".to_string())?;
+        url.set_port(Some(self.port))
+            .map_err(|_| "Porta PostgreSQL inválida".to_string())?;
+        url.set_path(&format!("/{}", self.database.trim_start_matches('/')));
+        Ok(url.to_string())
     }
 }
 
@@ -1569,11 +1593,18 @@ pub async fn verificar_status_banco() -> Result<bool, String> {
 
 #[tauri::command]
 #[instrument(skip_all)]
+pub async fn obter_erro_inicializacao_banco() -> Result<Option<String>, String> {
+    Ok(crate::db::database_init_error())
+}
+
+#[tauri::command]
+#[instrument(skip_all)]
 pub async fn reiniciar_banco_com_config(config: DatabaseConnectionConfig) -> Result<bool, String> {
-    let database_url = config.to_database_url();
+    let database_url = config.to_database_url()?;
     crate::db::init_database_with_url(&database_url)
         .await
-        .map_err(|e| format!("Falha ao conectar com nova configuração: {}", e))?;
+        .map_err(|error| crate::db::database_error_message(&error))?;
+    salvar_config_banco(config).await?;
     Ok(true)
 }
 
@@ -1582,14 +1613,14 @@ pub async fn reiniciar_banco_com_config(config: DatabaseConnectionConfig) -> Res
 pub async fn testar_config_banco(config: DatabaseConnectionConfig) -> Result<bool, String> {
     use sqlx::postgres::PgPoolOptions;
     use std::time::Duration;
-    let database_url = config.to_database_url();
+    let database_url = config.to_database_url()?;
     let pool = PgPoolOptions::new()
         .max_connections(1)
-        .acquire_timeout(Duration::from_secs(12))
+        .acquire_timeout(Duration::from_secs(6))
         .connect(&database_url)
         .await
-        .map_err(|e| format!("Falha ao conectar ao banco: {}", e))?;
-    let _ = sqlx::query("SELECT 1").fetch_one(&pool).await.map_err(|e| format!("Falha ao executar query de teste: {}", e))?;
+        .map_err(|error| crate::db::database_error_message(&error))?;
+    let _ = sqlx::query("SELECT 1").fetch_one(&pool).await.map_err(|error| crate::db::database_error_message(&error))?;
     pool.close().await;
     Ok(true)
 }
@@ -1608,6 +1639,7 @@ pub async fn obter_config_banco_atual() -> Result<DatabaseConnectionConfig, Stri
             format!("Erro ao parsear configuração de banco: {}", e)
         })?;
         config.password = String::new();
+        config.connection_url = None;
         return Ok(config);
     }
 
@@ -1651,6 +1683,7 @@ pub async fn obter_config_banco_atual() -> Result<DatabaseConnectionConfig, Stri
         database,
         username,
         password: String::new(),
+        connection_url: None,
     })
 }
 
