@@ -155,4 +155,25 @@ describe("Modo Balcão", () => {
     })));
     expect(await screen.findByText(/teste enviado à fila/i)).toBeInTheDocument();
   });
+
+  it("atualiza a lista de impressoras no laudo imediato", async () => {
+    const user = userEvent.setup(); renderCounter();
+    await user.click(screen.getByRole("button", { name: /nova entrada/i }));
+    await user.click(screen.getByRole("button", { name: /selecionar cliente/i }));
+    await user.click(screen.getByRole("button", { name: /continuar/i }));
+    const fields = screen.getAllByRole("textbox");
+    await user.type(fields[0]!, "SN-42");
+    await user.click(screen.getAllByRole("combobox")[0]!);
+    await user.click(await screen.findByRole("option", { name: "Zebra" }));
+    await user.type(fields[1]!, "ZD220");
+    await user.click(screen.getAllByRole("combobox")[1]!);
+    await user.click(await screen.findByRole("option", { name: /código de barra/i }));
+    await user.type(fields[3]!, "Não imprime etiquetas");
+    await user.click(screen.getByRole("button", { name: /continuar para o laudo/i }));
+    await screen.findByRole("button", { name: /atualizar lista/i });
+    await waitFor(() => expect(db.listarImpressorasWindows).toHaveBeenCalledTimes(1));
+
+    await user.click(screen.getByRole("button", { name: /atualizar lista/i }));
+    await waitFor(() => expect(db.listarImpressorasWindows).toHaveBeenCalledTimes(2));
+  });
 });
