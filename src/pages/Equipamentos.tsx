@@ -52,6 +52,7 @@ import {
   Eye,
   Download,
   Smartphone,
+  DollarSign,
 } from "lucide-react";
 import { useForm, Controller } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -645,9 +646,9 @@ export default function Equipamentos() {
     setStatusDialogOpen(true);
   }
 
-  async function abrirAjusteOrcamentoManutencao(eq: Equipamento) {
+  async function abrirAlterarOrcamento(eq: Equipamento) {
     const liberado = await ensureSensitiveAccess({
-      title: "Ajustar orçamento da manutenção",
+      title: "Alterar orçamento",
       description: "Informe o PIN para editar serviços e valor sem alterar o status do equipamento.",
       permission: SENSITIVE_PERMISSIONS.FINANCIAL_ACTIONS,
     });
@@ -1066,7 +1067,7 @@ export default function Equipamentos() {
         await recarregar();
         setStatusDialogOpen(false);
         setAjusteOrcamentoSemMudancaStatus(false);
-        success("Equipamentos", "Orçamento da manutenção atualizado.", "Ajustar orçamento");
+        success("Equipamentos", "Orçamento atualizado.", "Alterar orçamento");
         return;
       }
 
@@ -1291,10 +1292,17 @@ export default function Equipamentos() {
     };
     const acaoEditar: PriorityAction = {
       id: "editar",
-      label: "Editar",
+      label: "Editar Equipamento",
       icon: <Edit className="h-3.5 w-3.5" />,
       variant: "outline",
       onClick: () => abrirEditar(eq),
+    };
+    const acaoAlterarOrcamento: PriorityAction = {
+      id: "alterar_orcamento",
+      label: "Alterar Orçamento",
+      icon: <DollarSign className="h-3.5 w-3.5" />,
+      variant: "outline",
+      onClick: () => void abrirAlterarOrcamento(eq),
     };
     const acaoExcluir: PriorityAction = {
       id: "excluir",
@@ -1381,21 +1389,15 @@ export default function Equipamentos() {
           disabled: salvando,
         };
         secondary = {
-          id: "ajustar_orcamento",
-          label: "Ajustar Orçamento",
-          icon: <RefreshCw className="h-3.5 w-3.5" />,
+          id: "reprovar",
+          label: "Reprovar",
+          icon: <XCircle className="h-3.5 w-3.5" />,
           variant: "outline",
-          onClick: () => void abrirMudarStatus(eq, "AGUARDANDO_APROVACAO"),
+          className: "border-red-200 text-red-600 hover:bg-red-50 hover:text-red-700",
+          onClick: () => void acaoRapida(eq, "REPROVADO"),
+          disabled: salvando,
         };
         overflow.push(
-          {
-            id: "reprovar",
-            label: "Reprovar",
-            icon: <XCircle className="h-3.5 w-3.5" />,
-            className: "text-red-600",
-            onClick: () => void acaoRapida(eq, "REPROVADO"),
-            disabled: salvando,
-          },
           {
             id: "orcamento_pdf",
             label: "Orçamento PDF",
@@ -1437,14 +1439,8 @@ export default function Equipamentos() {
           onClick: () => void handleMarcarPronto(eq),
           disabled: salvando || loadingAutomacao,
         };
-        secondary = {
-          id: "ajustar_orcamento_manutencao",
-          label: "Ajustar Orçamento",
-          icon: <RefreshCw className="h-3.5 w-3.5" />,
-          variant: "outline",
-          onClick: () => void abrirAjusteOrcamentoManutencao(eq),
-        };
-        overflow.push(acaoStatus, acaoEditar, acaoExcluir);
+        secondary = acaoStatus;
+        overflow.push(acaoEditar, acaoExcluir);
         break;
       case "AGUARDANDO_PECA":
         primary = {
@@ -1511,6 +1507,23 @@ export default function Equipamentos() {
         }
         overflow.push(acaoEditar, acaoExcluir);
         break;
+    }
+
+    const fasesComOrcamento = [
+      "VERIFICADO",
+      "AGUARDANDO_APROVACAO",
+      "APROVADO",
+      "REPROVADO",
+      "EM_MANUTENCAO",
+      "AGUARDANDO_PECA",
+      "PRONTO",
+      "ENTREGUE",
+      "ORCAMENTO_VENCIDO",
+      "ABANDONADO",
+    ];
+    if (fasesComOrcamento.includes(eq.status)) {
+      const editarIndex = overflow.findIndex((acao) => acao.id === acaoEditar.id);
+      overflow.splice(editarIndex >= 0 ? editarIndex : overflow.length, 0, acaoAlterarOrcamento);
     }
 
     return primary
@@ -2238,7 +2251,7 @@ export default function Equipamentos() {
                 <>
                   <div className="rounded-md border bg-amber-50 px-3 py-2 text-sm text-amber-900">
                     {ajusteOrcamentoSemMudancaStatus
-                      ? "Edite o orçamento da manutenção. O status atual do equipamento será mantido."
+                      ? "Edite o orçamento. O status atual do equipamento será mantido."
                       : "Revise o valor e o prazo para reenviar o orçamento atualizado ao cliente."}
                   </div>
                   {verificacaoAjusteOrcamento?.adjusted_at && (
