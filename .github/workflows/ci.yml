@@ -140,6 +140,11 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Apply migrations to disposable test database
+        env:
+          AUTOOS_MIGRATION_MODE: ci
+        run: cargo run --manifest-path src-tauri/Cargo.toml --locked --quiet --bin ci_migrate
+
       - name: Install Playwright browser
         run: npx playwright install --with-deps chromium
 
