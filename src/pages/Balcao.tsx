@@ -7,6 +7,7 @@ import {
   Loader2,
   PackageSearch,
   Plus,
+  RefreshCw,
   Search,
   UserSearch,
 } from "lucide-react";
@@ -284,17 +285,19 @@ function QuickEntry({ onBack }: { onBack: () => void }) {
     );
     return () => window.clearTimeout(timer);
   }, [data.serial_number]);
-  useEffect(() => {
-    if (step !== 3 || impressorasCarregadas || carregandoImpressoras) return;
+  async function carregarImpressoras() {
     setCarregandoImpressoras(true);
+    setError(null);
     void db
       .listarImpressorasWindows()
       .then((items) => {
         setImpressoras(items);
-        setImpressoraSelecionada(
-          items.find((impressora) => impressora.padrao)?.nome ||
-            items[0]?.nome ||
-            "",
+        setImpressoraSelecionada((atual) =>
+          items.some((impressora) => impressora.nome === atual)
+            ? atual
+            : items.find((impressora) => impressora.padrao)?.nome ||
+              items[0]?.nome ||
+              "",
         );
       })
       .catch((cause) => setError(String(cause)))
@@ -302,6 +305,10 @@ function QuickEntry({ onBack }: { onBack: () => void }) {
         setCarregandoImpressoras(false);
         setImpressorasCarregadas(true);
       });
+  }
+  useEffect(() => {
+    if (step !== 3 || impressorasCarregadas || carregandoImpressoras) return;
+    void carregarImpressoras();
   }, [carregandoImpressoras, impressorasCarregadas, step]);
   async function solicitarEnvioAutomatico() {
     const permitted = await ensureSensitiveAccess({
@@ -738,7 +745,20 @@ function QuickEntry({ onBack }: { onBack: () => void }) {
             </Button>
           </div>
           <div className="space-y-2">
-            <Label className="text-base">Impressora para o teste BMITAG</Label>
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <Label className="text-base">Impressora para o teste BMITAG</Label>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="min-h-10 gap-2"
+                disabled={carregandoImpressoras}
+                onClick={() => void carregarImpressoras()}
+              >
+                <RefreshCw className={carregandoImpressoras ? "animate-spin" : undefined} />
+                Atualizar lista
+              </Button>
+            </div>
             <Select
               value={impressoraSelecionada}
               onValueChange={setImpressoraSelecionada}
