@@ -1,8 +1,8 @@
 //! ╔══════════════════════════════════════════════════════════════╗
 //! ║  db.rs — Inicialização do Banco PostgreSQL e Migrações     ║
 //! ╠══════════════════════════════════════════════════════════════╣
-//! ║  Cria as 6 tabelas do sistema e executa migrações seguras   ║
-//! ║  com PostgreSQL e sqlx.                                      ║
+//! ║  Conecta ao PostgreSQL e valida o schema sem alterá-lo.     ║
+//! ║  Migrações são responsabilidade exclusiva do pipeline.      ║
 //! ║                                                              ║
 //! ║  TABELAS:                                                    ║
 //! ║  1. clientes — PF/PJ com endereço completo                  ║
@@ -18,7 +18,7 @@
 
 use crate::commands::util::{local_app_data_dir, DatabaseConnectionConfig, DATABASE_CONFIG_FILE};
 use sqlx::{
-    migrate::{MigrateError, Migrator},
+    migrate::Migrator,
     postgres::{PgPool, PgPoolOptions},
 };
 use std::env;
@@ -40,6 +40,7 @@ static POOL: Mutex<Option<PgPool>> = Mutex::new(None);
 static INIT_ERROR: Mutex<Option<String>> = Mutex::new(None);
 
 const DATABASE_ACQUIRE_TIMEOUT: Duration = Duration::from_secs(6);
+const DATABASE_SCHEMA_TIMEOUT: Duration = Duration::from_secs(6);
 const DATABASE_MAX_CONNECTIONS: u32 = 5;
 const STARTUP_CONNECT_ATTEMPTS: usize = 2;
 const STARTUP_RETRY_DELAY: Duration = Duration::from_millis(750);
@@ -104,7 +105,8 @@ pub fn database_error_message(error: &sqlx::Error) -> String {
             "O servidor PostgreSQL recusou a conexão ou a operação de inicialização.".to_string()
         }
         sqlx::Error::Migrate(_) => {
-            "A conexão foi aberta, mas a atualização do schema falhou.".to_string()
+            "A conexão foi aberta, mas o schema do banco é incompatível com esta versão."
+                .to_string()
         }
         _ => "Não foi possível inicializar o banco de dados.".to_string(),
     }
@@ -124,9 +126,20 @@ pub fn known_migrations() -> Vec<KnownMigration> {
         .collect()
 }
 
-pub async fn run_pending_migrations() -> Result<(), String> {
+pub async fn validate_connected_migration_history() -> Result<(), String> {
     let pool = get_pool().await?;
-    MIGRATOR.run(&pool).await.map_err(|e| e.to_string())
+    tokio::time::timeout(
+        DATABASE_SCHEMA_TIMEOUT,
+        validate_migration_history_on_pool(&pool),
+    )
+    .await
+    .map_err(|_| {
+        format!(
+            "A validação do schema excedeu {} segundos.",
+            DATABASE_SCHEMA_TIMEOUT.as_secs()
+        )
+    })??;
+    Ok(())
 }
 
 /// Valida, sem aplicar ou reparar nada, se o banco possui exatamente o
@@ -141,10 +154,16 @@ pub async fn validate_migration_history(database_url: &str) -> Result<usize, Str
         .await
         .map_err(|error| database_error_message(&error))?;
 
+    let result = validate_migration_history_on_pool(&pool).await;
+    pool.close().await;
+    result
+}
+
+async fn validate_migration_history_on_pool(pool: &PgPool) -> Result<usize, String> {
     let applied = sqlx::query_as::<_, (i64, bool, Vec<u8>)>(
         "SELECT version, success, checksum FROM _sqlx_migrations ORDER BY version",
     )
-    .fetch_all(&pool)
+    .fetch_all(pool)
     .await
     .map_err(|error| format!("Não foi possível ler o histórico de migrations: {error}"))?;
 
@@ -178,8 +197,13 @@ pub async fn validate_migration_history(database_url: &str) -> Result<usize, Str
         }
     }
 
-    pool.close().await;
     Ok(known.len())
+}
+
+fn schema_validation_error(message: String) -> sqlx::Error {
+    sqlx::Error::Migrate(Box::new(sqlx::migrate::MigrateError::Source(Box::new(
+        std::io::Error::new(std::io::ErrorKind::InvalidData, message),
+    ))))
 }
 
 fn database_url_missing_error() -> sqlx::Error {
@@ -321,18 +345,23 @@ async fn connect_and_setup_pool(database_url: &str) -> Result<PgPool, sqlx::Erro
         .connect(database_url)
         .await?;
 
-    // O banco de produção possui um checksum legado na migração inicial. Ele só
-    // pode ser tolerado quando todas as versões conhecidas já estão aplicadas;
-    // migração pendente ou qualquer outro erro continua sendo fatal. Nunca
-    // altere ou trunque o histórico para mascarar incompatibilidade.
-    if let Err(error) = MIGRATOR.run(&pool).await {
-        let can_use_legacy_schema = matches!(&error, MigrateError::VersionMismatch(_))
-            && all_known_migrations_are_applied(&pool).await?;
-        if can_use_legacy_schema {
-            warn!("Checksum legado detectado com todas as migrações aplicadas; mantendo histórico intacto");
-        } else {
-            return Err(sqlx::Error::Migrate(Box::new(error)));
-        }
+    // O aplicativo distribuído nunca aplica migrations no startup. A validação
+    // é somente leitura, limitada por tempo e não adquire advisory locks. Assim,
+    // uma máquina não consegue bloquear a inicialização das demais.
+    let schema_result = tokio::time::timeout(
+        DATABASE_SCHEMA_TIMEOUT,
+        validate_migration_history_on_pool(&pool),
+    )
+    .await;
+    if let Err(message) = match schema_result {
+        Ok(result) => result,
+        Err(_) => Err(format!(
+            "A validação do schema excedeu {} segundos.",
+            DATABASE_SCHEMA_TIMEOUT.as_secs()
+        )),
+    } {
+        pool.close().await;
+        return Err(schema_validation_error(message));
     }
 
     if let Ok(mut guard) = POOL.lock() {
@@ -342,20 +371,6 @@ async fn connect_and_setup_pool(database_url: &str) -> Result<PgPool, sqlx::Erro
         *guard = None;
     }
     Ok(pool)
-}
-
-async fn all_known_migrations_are_applied(pool: &PgPool) -> Result<bool, sqlx::Error> {
-    let applied = sqlx::query_as::<_, (i64, bool)>(
-        "SELECT version, success FROM _sqlx_migrations ORDER BY version",
-    )
-    .fetch_all(pool)
-    .await?;
-
-    Ok(MIGRATOR.iter().all(|known| {
-        applied
-            .iter()
-            .any(|(version, success)| *version == known.version && *success)
-    }))
 }
 
 #[cfg(test)]
@@ -368,6 +383,13 @@ mod tests {
         let message = database_error_message(&sqlx::Error::PoolTimedOut);
         assert!(message.contains("6 segundos"));
         assert!(!message.contains("postgres"));
+    }
+
+    #[test]
+    fn reports_schema_validation_without_claiming_to_update_it() {
+        let message = database_error_message(&schema_validation_error("incompatível".to_string()));
+        assert!(message.contains("schema do banco é incompatível"));
+        assert!(!message.contains("atualização"));
     }
 
     #[test]

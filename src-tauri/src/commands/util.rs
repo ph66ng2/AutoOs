@@ -8,7 +8,7 @@
 use crate::commands::auth::{
     record_security_event, require_permission, PERMISSION_CONFIG_SMTP, PERMISSION_MANAGE_PROFILES,
 };
-use crate::db::{get_pool, known_migrations, run_pending_migrations};
+use crate::db::{get_pool, known_migrations, validate_connected_migration_history};
 use base64::Engine;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
@@ -1316,15 +1316,15 @@ pub async fn restaurar_backup_postgres(file_path: String) -> Result<PostgresRest
         return Err(format!("Falha ao restaurar backup PostgreSQL: {}", stderr));
     }
 
-    if let Err(error_value) = run_pending_migrations().await {
+    if let Err(error_value) = validate_connected_migration_history().await {
         let details = format!(
-            "Restore concluído, mas falhou ao reaplicar migrações pendentes em {}: {}",
+            "Restore concluído, mas o schema restaurado é incompatível em {}: {}",
             parsed.database_name,
             error_value
         );
         record_security_event("BACKUP_RESTORE_FAILED", Some(&actor), details, false).await;
         return Err(format!(
-            "Restore concluído, mas houve falha ao conferir/aplicar migrações pendentes: {}",
+            "Restore concluído, mas o schema restaurado é incompatível: {}",
             error_value
         ));
     }
