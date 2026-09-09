@@ -1,6 +1,6 @@
 [package]
 name = "autoos"
-version = "0.4.2"
+version = "0.4.5"
 description = "Sistema de Gestão de Impressoras e Estoque de Insumos"
 authors = ["BMITAG"]
 edition = "2021"
@@ -24,6 +24,10 @@ path = "src/bin/p1_concurrency_integration.rs"
 [[bin]]
 name = "p1_windows_support_check"
 path = "src/bin/p1_windows_support_check.rs"
+
+[[bin]]
+name = "release_database_check"
+path = "src/bin/release_database_check.rs"
 
 [[bin]]
 name = "p1_critical_integration"

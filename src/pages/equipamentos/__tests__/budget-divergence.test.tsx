@@ -24,6 +24,7 @@ const mockListarServicosCatalogoAtivos = vi.hoisted(() => vi.fn());
 const mockListarImagensEquipamento = vi.hoisted(() => vi.fn());
 const mockBuscarEquipamentosPorSerial = vi.hoisted(() => vi.fn());
 const mockBuscarCliente = vi.hoisted(() => vi.fn());
+const mockRecarregar = vi.hoisted(() => vi.fn());
 
 vi.mock("@tauri-apps/api/core", () => ({
   invoke: (...args: unknown[]) => mockInvoke(...args),
@@ -46,7 +47,7 @@ vi.mock("@/hooks/useEquipamentos", () => ({
     atualizar: vi.fn(),
     deletar: vi.fn(),
     atualizarStatus: mockAtualizarStatusEquipamento,
-    recarregar: vi.fn(),
+    recarregar: mockRecarregar,
   }),
 }));
 
@@ -249,6 +250,7 @@ import Equipamentos from "../../Equipamentos";
 describe("Equipamentos — Budget Divergence & Audit", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    equipamentoVerificado.status = "VERIFICADO";
     mockListarImagensEquipamento.mockResolvedValue([]);
     mockBuscarEquipamentosPorSerial.mockResolvedValue([]);
     mockBuscarCliente.mockRejectedValue(new Error("no client"));
@@ -479,5 +481,71 @@ describe("Equipamentos — Budget Divergence & Audit", () => {
       expect(screen.getByTestId("confirm-title")).toHaveTextContent(/Divergência detectada/i);
     });
     expect(screen.getByTestId("confirm-description")).toHaveTextContent(/R\$ 100\.00.*R\$ 250\.00/);
+  });
+
+  it("ajusta o orçamento durante a manutenção sem mudar o status", async () => {
+    equipamentoVerificado.status = "EM_MANUTENCAO";
+    mockBuscarVerificacao.mockResolvedValue(makeVerificacao());
+    render(<Equipamentos />);
+
+    await waitFor(() => {
+      expect(screen.getByTestId("action-alterar_orcamento")).toBeInTheDocument();
+    });
+    await act(async () => {
+      fireEvent.click(screen.getByTestId("action-alterar_orcamento"));
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText(/O status atual do equipamento será mantido/i)).toBeInTheDocument();
+    });
+    expect(screen.queryByText("Prazo Aprovação")).not.toBeInTheDocument();
+    await clicarConfirmarStatus();
+    await act(async () => {
+      fireEvent.click(screen.getByTestId("confirm-action"));
+    });
+
+    await waitFor(() => {
+      expect(mockAtualizarServicosVerificacao).toHaveBeenCalled();
+      expect(mockRecarregar).toHaveBeenCalled();
+    });
+    expect(mockAtualizarStatusEquipamento).not.toHaveBeenCalled();
+    expect(equipamentoVerificado.status).toBe("EM_MANUTENCAO");
+  });
+
+  it("mantém Aprovar e Reprovar visíveis e move Alterar Orçamento para o menu", async () => {
+    equipamentoVerificado.status = "AGUARDANDO_APROVACAO";
+    render(<Equipamentos />);
+
+    expect(screen.getByTestId("action-aprovar")).toHaveTextContent("Aprovar");
+    expect(screen.getByTestId("action-reprovar")).toHaveTextContent("Reprovar");
+    expect(screen.getByTestId("action-alterar_orcamento")).toHaveTextContent("Alterar Orçamento");
+    expect(screen.getByTestId("action-editar")).toHaveTextContent("Editar Equipamento");
+  });
+
+  it("oferece Alterar Orçamento no menu em todas as fases após a verificação", () => {
+    const fases = [
+      "VERIFICADO",
+      "AGUARDANDO_APROVACAO",
+      "APROVADO",
+      "REPROVADO",
+      "EM_MANUTENCAO",
+      "AGUARDANDO_PECA",
+      "PRONTO",
+      "ENTREGUE",
+      "ORCAMENTO_VENCIDO",
+      "ABANDONADO",
+    ];
+
+    for (const fase of fases) {
+      equipamentoVerificado.status = fase;
+      const view = render(<Equipamentos />);
+      expect(screen.getByTestId("action-alterar_orcamento")).toBeInTheDocument();
+      view.unmount();
+    }
+
+    equipamentoVerificado.status = "EM_VERIFICACAO";
+    const view = render(<Equipamentos />);
+    expect(screen.queryByTestId("action-alterar_orcamento")).not.toBeInTheDocument();
+    view.unmount();
   });
 });

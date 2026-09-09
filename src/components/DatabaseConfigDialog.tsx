@@ -1,31 +1,12 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import { Database, ArrowRight, AlertCircle, Loader2, CheckCircle2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { DatabaseConfigService } from "@/lib/db-config";
-import type { DatabaseConnectionConfig } from "@/types";
+import { DatabaseConfigService, parsePostgresConnectionUrl } from "@/lib/db-config";
 
 interface DatabaseConfigDialogProps {
   onConfigured: () => void;
-}
-
-/** Parseia uma connection string postgresql://user:pass@host:port/database para componentes */
-function parseConnectionString(url: string): DatabaseConnectionConfig | null {
-  try {
-    const regex = /^postgresql:\/\/([^:]+):([^@]+)@([^:]+):(\d+)\/(.+)$/;
-    const match = url.match(regex);
-    if (!match) return null;
-    return {
-      host: match[3],
-      port: parseInt(match[4], 10),
-      database: match[5],
-      username: match[1],
-      password: match[2],
-    };
-  } catch {
-    return null;
-  }
 }
 
 export function DatabaseConfigDialog({ onConfigured }: DatabaseConfigDialogProps) {
@@ -34,26 +15,26 @@ export function DatabaseConfigDialog({ onConfigured }: DatabaseConfigDialogProps
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
 
+  useEffect(() => {
+    void DatabaseConfigService.getInitializationError()
+      .then((initializationError) => {
+        if (initializationError) setError(initializationError);
+      })
+      .catch(() => undefined);
+  }, []);
+
   const handleConnect = useCallback(async () => {
     setError(null);
     setSuccess(false);
 
-    const config = parseConnectionString(connectionUrl.trim());
+    const config = parsePostgresConnectionUrl(connectionUrl);
     if (!config) {
-      setError("Formato inválido. Use: postgresql://usuario:senha@host:5432/banco");
+      setError("Formato inválido. Cole uma URL postgres:// ou postgresql:// completa.");
       return;
     }
 
     setConnecting(true);
     try {
-      const ok = await DatabaseConfigService.test(config);
-      if (!ok) {
-        setError("Não foi possível conectar. Verifique a URL e tente novamente.");
-        setConnecting(false);
-        return;
-      }
-
-      await DatabaseConfigService.save(config);
       const restarted = await DatabaseConfigService.restartWithConfig(config);
       if (restarted) {
         setSuccess(true);
@@ -61,8 +42,8 @@ export function DatabaseConfigDialog({ onConfigured }: DatabaseConfigDialogProps
       } else {
         setError("Conexão OK, mas não foi possível reiniciar o app.");
       }
-    } catch (e: any) {
-      setError(e?.message || "Erro ao conectar ao banco de dados.");
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : String(e || "Erro ao conectar ao banco de dados."));
     } finally {
       setConnecting(false);
     }
@@ -101,7 +82,7 @@ export function DatabaseConfigDialog({ onConfigured }: DatabaseConfigDialogProps
               autoFocus
             />
             <p className="text-xs text-slate-500">
-              Exemplo: postgresql://postgres:senha@db.supabase.co:5432/postgres
+              Para Supabase, prefira a URL do Session pooler (porta 5432).
             </p>
           </div>
 
