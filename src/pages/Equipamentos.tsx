@@ -2269,7 +2269,9 @@ export default function Equipamentos() {
                     </div>
                   )}
                   <div className="space-y-2"><Label>Valor Orçamento (R$)</Label><Input data-testid="valor-orcamento-input" type="number" step="0.01" value={valorOrcamento || ""} onChange={e => setValorOrcamento(Number(e.target.value))} /></div>
-                  <div className="space-y-2"><Label>Prazo Aprovação</Label><Input type="date" value={prazoAprovacao} onChange={e => setPrazoAprovacao(e.target.value)} /></div>
+                  {!ajusteOrcamentoSemMudancaStatus && (
+                    <div className="space-y-2"><Label>Prazo Aprovação</Label><Input type="date" value={prazoAprovacao} onChange={e => setPrazoAprovacao(e.target.value)} /></div>
+                  )}
                   {valorOrcamentoAnterior != null && valorOrcamento !== valorOrcamentoAnterior && (
                     <p className="text-xs text-amber-700">
                       Novo valor em negociação: R$ {valorOrcamento.toFixed(2)} (antes: R$ {valorOrcamentoAnterior.toFixed(2)}).
