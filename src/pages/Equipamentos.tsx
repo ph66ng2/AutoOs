@@ -1392,8 +1392,8 @@ export default function Equipamentos() {
           id: "reprovar",
           label: "Reprovar",
           icon: <XCircle className="h-3.5 w-3.5" />,
-          variant: "outline",
-          className: "border-red-200 text-red-600 hover:bg-red-50 hover:text-red-700",
+          variant: "default",
+          className: "bg-red-600 text-white hover:bg-red-700",
           onClick: () => void acaoRapida(eq, "REPROVADO"),
           disabled: salvando,
         };
