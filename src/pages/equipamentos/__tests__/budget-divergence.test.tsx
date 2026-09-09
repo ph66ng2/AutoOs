@@ -489,10 +489,10 @@ describe("Equipamentos — Budget Divergence & Audit", () => {
     render(<Equipamentos />);
 
     await waitFor(() => {
-      expect(screen.getByTestId("action-ajustar_orcamento_manutencao")).toBeInTheDocument();
+      expect(screen.getByTestId("action-alterar_orcamento")).toBeInTheDocument();
     });
     await act(async () => {
-      fireEvent.click(screen.getByTestId("action-ajustar_orcamento_manutencao"));
+      fireEvent.click(screen.getByTestId("action-alterar_orcamento"));
     });
 
     await waitFor(() => {
@@ -510,5 +510,42 @@ describe("Equipamentos — Budget Divergence & Audit", () => {
     });
     expect(mockAtualizarStatusEquipamento).not.toHaveBeenCalled();
     expect(equipamentoVerificado.status).toBe("EM_MANUTENCAO");
+  });
+
+  it("mantém Aprovar e Reprovar visíveis e move Alterar Orçamento para o menu", async () => {
+    equipamentoVerificado.status = "AGUARDANDO_APROVACAO";
+    render(<Equipamentos />);
+
+    expect(screen.getByTestId("action-aprovar")).toHaveTextContent("Aprovar");
+    expect(screen.getByTestId("action-reprovar")).toHaveTextContent("Reprovar");
+    expect(screen.getByTestId("action-alterar_orcamento")).toHaveTextContent("Alterar Orçamento");
+    expect(screen.getByTestId("action-editar")).toHaveTextContent("Editar Equipamento");
+  });
+
+  it("oferece Alterar Orçamento no menu em todas as fases após a verificação", () => {
+    const fases = [
+      "VERIFICADO",
+      "AGUARDANDO_APROVACAO",
+      "APROVADO",
+      "REPROVADO",
+      "EM_MANUTENCAO",
+      "AGUARDANDO_PECA",
+      "PRONTO",
+      "ENTREGUE",
+      "ORCAMENTO_VENCIDO",
+      "ABANDONADO",
+    ];
+
+    for (const fase of fases) {
+      equipamentoVerificado.status = fase;
+      const view = render(<Equipamentos />);
+      expect(screen.getByTestId("action-alterar_orcamento")).toBeInTheDocument();
+      view.unmount();
+    }
+
+    equipamentoVerificado.status = "EM_VERIFICACAO";
+    const view = render(<Equipamentos />);
+    expect(screen.queryByTestId("action-alterar_orcamento")).not.toBeInTheDocument();
+    view.unmount();
   });
 });
