@@ -227,53 +227,28 @@ fn resolve_database_url_from_config_file() -> Option<String> {
     config.to_database_url().ok()
 }
 
-fn should_replace_legacy_direct_config(config_url: &str, release_url: &str) -> bool {
-    let Ok(config) = url::Url::parse(config_url) else {
-        return false;
-    };
-    let Ok(release) = url::Url::parse(release_url) else {
-        return false;
-    };
-    let Some(config_host) = config.host_str() else {
-        return false;
-    };
-    let Some(project_ref) = config_host
-        .strip_prefix("db.")
-        .and_then(|host| host.strip_suffix(".supabase.co"))
-    else {
-        return false;
-    };
-
-    release
-        .host_str()
-        .is_some_and(|host| host.ends_with(".pooler.supabase.com"))
-        && release.username().strip_prefix("postgres.") == Some(project_ref)
+fn select_primary_database_url(
+    process_url: Option<String>,
+    bundled_url: Option<&str>,
+    saved_url: Option<String>,
+) -> Option<String> {
+    process_url.or_else(|| {
+        bundled_url
+            .filter(|database_url| !database_url.is_empty())
+            .map(str::to_owned)
+            .or(saved_url)
+    })
 }
 
 fn resolve_database_url() -> Result<String, sqlx::Error> {
-    // Uma variável definida explicitamente pelo processo continua sendo a maior prioridade.
-    if let Ok(database_url) = env::var("DATABASE_URL") {
+    // Ordem: variável explícita do processo, endereço embutido no release e, por
+    // último, configuração salva pelo fallback.
+    if let Some(database_url) = select_primary_database_url(
+        env::var("DATABASE_URL").ok(),
+        option_env!("COMPILE_TIME_DATABASE_URL"),
+        resolve_database_url_from_config_file(),
+    ) {
         return Ok(database_url);
-    }
-
-    // A escolha feita no fallback deve sobreviver aos próximos boots e substituir
-    // o endereço padrão compilado no release.
-    if let Some(database_url) = resolve_database_url_from_config_file() {
-        if let Some(release_url) = option_env!("COMPILE_TIME_DATABASE_URL") {
-            if should_replace_legacy_direct_config(&database_url, release_url) {
-                warn!("Configuração direta Supabase antiga substituída pelo Session pooler do release");
-                return Ok(release_url.to_string());
-            }
-        }
-        return Ok(database_url);
-    }
-
-    // No executável distribuído, o endereço validado no pipeline deve prevalecer
-    // inclusive sobre um recurso .env deixado por uma instalação antiga.
-    if let Some(database_url) = option_env!("COMPILE_TIME_DATABASE_URL") {
-        if !database_url.is_empty() {
-            return Ok(database_url.to_string());
-        }
     }
 
     for env_path in collect_env_candidates() {
@@ -398,24 +373,41 @@ mod tests {
     #[test]
     fn retries_only_transient_network_errors() {
         assert!(is_transient_connect_error(&sqlx::Error::PoolTimedOut));
-        assert!(is_transient_connect_error(&sqlx::Error::Io(io::Error::new(
-            io::ErrorKind::TimedOut,
-            "offline",
-        ))));
+        assert!(is_transient_connect_error(&sqlx::Error::Io(
+            io::Error::new(io::ErrorKind::TimedOut, "offline",)
+        )));
         assert!(!is_transient_connect_error(&sqlx::Error::InvalidArgument(
             "invalid".to_string(),
         )));
     }
 
     #[test]
-    fn replaces_legacy_direct_supabase_url_for_the_same_project() {
-        let direct = "postgresql://postgres:secret@db.projectref.supabase.co:5432/postgres";
-        let pooler = "postgresql://postgres.projectref:secret@aws-0-sa-east-1.pooler.supabase.com:5432/postgres?sslmode=require";
+    fn bundled_release_url_wins_over_saved_fallback() {
+        let selected = select_primary_database_url(
+            None,
+            Some("postgresql://release"),
+            Some("postgresql://saved".to_string()),
+        );
 
-        assert!(should_replace_legacy_direct_config(direct, pooler));
-        assert!(!should_replace_legacy_direct_config(
-            direct,
-            "postgresql://postgres.other:secret@aws-0-sa-east-1.pooler.supabase.com:5432/postgres",
-        ));
+        assert_eq!(selected.as_deref(), Some("postgresql://release"));
+    }
+
+    #[test]
+    fn saved_url_is_used_when_build_has_no_embedded_database() {
+        let selected =
+            select_primary_database_url(None, None, Some("postgresql://saved".to_string()));
+
+        assert_eq!(selected.as_deref(), Some("postgresql://saved"));
+    }
+
+    #[test]
+    fn explicit_process_url_keeps_highest_priority() {
+        let selected = select_primary_database_url(
+            Some("postgresql://process".to_string()),
+            Some("postgresql://release"),
+            Some("postgresql://saved".to_string()),
+        );
+
+        assert_eq!(selected.as_deref(), Some("postgresql://process"));
     }
 }
