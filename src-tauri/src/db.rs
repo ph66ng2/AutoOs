@@ -129,6 +129,59 @@ pub async fn run_pending_migrations() -> Result<(), String> {
     MIGRATOR.run(&pool).await.map_err(|e| e.to_string())
 }
 
+/// Valida, sem aplicar ou reparar nada, se o banco possui exatamente o
+/// histórico de migrations embutido neste build. Usado como barreira antes de
+/// gerar instaladores para impedir que um release incompatível seja publicado.
+pub async fn validate_migration_history(database_url: &str) -> Result<usize, String> {
+    let pool = PgPoolOptions::new()
+        .max_connections(1)
+        .min_connections(0)
+        .acquire_timeout(DATABASE_ACQUIRE_TIMEOUT)
+        .connect(database_url)
+        .await
+        .map_err(|error| database_error_message(&error))?;
+
+    let applied = sqlx::query_as::<_, (i64, bool, Vec<u8>)>(
+        "SELECT version, success, checksum FROM _sqlx_migrations ORDER BY version",
+    )
+    .fetch_all(&pool)
+    .await
+    .map_err(|error| format!("Não foi possível ler o histórico de migrations: {error}"))?;
+
+    let known = MIGRATOR.iter().collect::<Vec<_>>();
+    if applied.len() != known.len() {
+        return Err(format!(
+            "Histórico incompatível: o build espera {} migrations, mas o banco registra {}.",
+            known.len(),
+            applied.len()
+        ));
+    }
+
+    for migration in &known {
+        let Some((_, success, checksum)) = applied
+            .iter()
+            .find(|(version, _, _)| *version == migration.version)
+        else {
+            return Err(format!("Migration {} ausente no banco.", migration.version));
+        };
+        if !success {
+            return Err(format!(
+                "Migration {} está registrada como falha.",
+                migration.version
+            ));
+        }
+        if checksum.as_slice() != migration.checksum.as_ref() {
+            return Err(format!(
+                "Checksum divergente na migration {}.",
+                migration.version
+            ));
+        }
+    }
+
+    pool.close().await;
+    Ok(known.len())
+}
+
 fn database_url_missing_error() -> sqlx::Error {
     sqlx::Error::Configuration(Box::new(std::io::Error::new(
         std::io::ErrorKind::NotFound,

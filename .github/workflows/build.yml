@@ -59,6 +59,11 @@ jobs:
             throw "AUTOOS_DATABASE_URL deve exigir TLS com sslmode=require."
           }
 
+      - name: Validar histórico real de migrations
+        env:
+          AUTOOS_DATABASE_URL: ${{ secrets.AUTOOS_DATABASE_URL }}
+        run: cargo run --manifest-path src-tauri/Cargo.toml --locked --quiet --bin release_database_check
+
       - name: Build e criar Release
         uses: tauri-apps/tauri-action@v0
         env:

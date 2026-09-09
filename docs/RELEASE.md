@@ -48,7 +48,7 @@ Depois do bump: executar `npm install` uma vez para alinhar metadados de `packag
 - Cadastre `AUTOOS_DATABASE_URL` nos GitHub Actions secrets com a URL **Supavisor Session**, porta `5432`, copiada do painel Supabase.
 - Não use o endpoint direto `db.<project-ref>.supabase.co` no release distribuído: ele depende de IPv6 e não é uniforme nas redes Windows atendidas.
 - Mantenha `sslmode=require` na URL do release.
-- O workflow interrompe o build antes de publicar quando o secret está ausente ou não aponta para um Session pooler.
+- O workflow interrompe o build antes de publicar quando o secret está ausente, não aponta para um Session pooler ou o histórico real de migrations diverge do build.
 - `src-tauri/.env` é apenas configuração local ignorada pelo Git; não deve ser versionado nem incluído no bundle.
 
 ## Windows (distribuição assistida)
