@@ -498,6 +498,7 @@ describe("Equipamentos — Budget Divergence & Audit", () => {
     await waitFor(() => {
       expect(screen.getByText(/O status atual do equipamento será mantido/i)).toBeInTheDocument();
     });
+    expect(screen.queryByText("Prazo Aprovação")).not.toBeInTheDocument();
     await clicarConfirmarStatus();
     await act(async () => {
       fireEvent.click(screen.getByTestId("confirm-action"));
