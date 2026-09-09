@@ -54,7 +54,7 @@ DATABASE_URL=postgres://autoos_user:SUA_SENHA@localhost:5432/autoos
 npm run tauri dev
 ```
 
-O backend tenta resolver `DATABASE_URL` a partir do ambiente atual e de `src-tauri/.env`. Na inicialização, ele abre a pool PostgreSQL, aplica migrações pendentes e só então libera os comandos IPC do app.
+O backend tenta resolver `DATABASE_URL` a partir do ambiente atual e de `src-tauri/.env`. Na inicialização, ele abre a pool PostgreSQL e valida o histórico do schema somente para leitura. O aplicativo desktop não aplica migrations; essa operação pertence ao processo controlado de implantação.
 
 ## Validação recomendada
 
@@ -131,7 +131,7 @@ As migrações versionadas vivem em `src-tauri/migrations` e são a fonte de ver
 
 ### Nunca edite uma migration já existente
 
-O sqlx guarda o checksum SHA-256 de cada migration na tabela `_sqlx_migrations`. Se você editar um arquivo `.sql` que já foi aplicado em algum banco, o checksum do arquivo não bate com o do banco e o app falha com:
+O sqlx guarda o checksum SHA-384 de cada migration na tabela `_sqlx_migrations`. Se você editar um arquivo `.sql` que já foi aplicado em algum banco, o checksum do arquivo não bate com o do banco e o app falha com:
 
 ```
 migration N was previously applied but has been modified
@@ -153,39 +153,20 @@ src-tauri/migrations/
 
 Use `CREATE TABLE IF NOT EXISTS`, `CREATE INDEX IF NOT EXISTS`, `ALTER TABLE ... ADD COLUMN IF NOT EXISTS` e equivalentes sempre que possível.
 
-### Como corrigir manualmente um VersionMismatch em ambiente de teste
+### Como corrigir um VersionMismatch em ambiente de teste
 
-Se você precisar testar uma migration editada (apenas em desenvolvimento, nunca em produção):
+Não altere nem apague registros individuais de `_sqlx_migrations`. Em um banco local descartável, recrie o banco inteiro e aplique as migrations por uma ferramenta administrativa controlada antes de iniciar o app.
 
-1. Conecte-se ao banco:
-   ```bash
-   psql -h SEU_HOST -U SEU_USUARIO -d SEU_BANCO
-   ```
-
-2. Delete o registro da migration problemática:
-   ```sql
-   DELETE FROM _sqlx_migrations WHERE version = N;
-   ```
-
-3. Recrie o banco do zero (mais seguro):
-   ```sql
-   DROP TABLE IF EXISTS _sqlx_migrations CASCADE;
-   -- ou recrie todo o banco
-   DROP DATABASE autoos;
-   CREATE DATABASE autoos;
-   ```
-
-4. Reexecute o app — ele aplicará todas as migrations do zero com os arquivos atuais.
-
-> **Atenção:** Em produção/shared, nunca edite `_sqlx_migrations` manualmente. A solução correta é garantir que os arquivos de migration nunca mudem e, se necessário, criar uma nova migration para corrigir o schema.
+> **Atenção:** em produção ou ambientes compartilhados, um VersionMismatch bloqueia o release. Faça backup, audite o schema e corrija o processo de implantação; nunca use o desktop para reparar ou reaplicar migrations.
 
 ### Idempotência no build
 
-O `cargo tauri build` embute as migrations no binário. Para que o `.exe` funcione tanto em bancos novos quanto já existentes:
+O `cargo tauri build` embute os metadados das migrations no binário para validar compatibilidade. Antes de distribuir o `.exe`:
 
 - Use `IF NOT EXISTS`/`IF EXISTS` em toda migration
 - Para `ALTER TABLE ... ADD CONSTRAINT` (que não tem IF NOT EXISTS no PostgreSQL), use o padrão `DO $$ ... EXCEPTION WHEN duplicate_object THEN ... END $$;`
-- Se um banco já foi populado com uma versão anterior do `.exe`, a única solução segura é recriar o banco ou usar a nova migration de correção (ex: `0009_idempotencia_final.sql`)
+- Aplique migrations novas pelo processo administrativo de implantação e execute o preflight real do banco
+- Nunca execute migrations automaticamente durante a inicialização de cada estação
 
 ## Licença
 
