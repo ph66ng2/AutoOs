@@ -1,0 +1,3 @@
+# Os checksums do sqlx são calculados sobre os bytes exatos das migrations.
+# Preserve LF em todos os sistemas para que Linux e Windows gerem o mesmo hash.
+src-tauri/migrations/*.sql text eol=lf

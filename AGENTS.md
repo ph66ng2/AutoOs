@@ -38,7 +38,7 @@ Desktop app for printer management, technical reception, operational communicati
 │   ├── Cargo.toml                # 10 [[bin]] entries for integration tests
 │   ├── build.rs                  # Standard tauri_build::build()
 │   ├── tauri.conf.json           # Windows signing timestampUrl (DigiCert); certThumbprint = null
-│   └── .env                      # DATABASE_URL (also searched in exe parent dirs)
+│   └── .env.example              # Template local; .env real nunca é versionado/bundled
 ├── .github/
 │   ├── copilot-instructions.md   # Main guidance (ALWAYS read first)
 │   └── workflows/
@@ -117,10 +117,10 @@ npm run bundle:prep:windows:sign # Injects certThumbprint from env into tauri.co
 ### Backend (Rust)
 
 - **PostgreSQL ONLY** — never reintroduce SQLite references in code, docs, or comments.
-- **`.env` at `src-tauri/.env`** for `DATABASE_URL`. Also searched in executable parent directories (up to 3 levels up) and fallback `database-config.json` in app data dir.
+- **Conexão do release Windows** — `AUTOOS_DATABASE_URL` vem de GitHub Secret e deve usar Supavisor Session na porta 5432. `src-tauri/.env` é apenas local, ignorado pelo Git e nunca incluído no bundle.
 - **Migrations** are sequential in `src-tauri/migrations/`. New schema changes always get a new file (`0011_...`, `0012_...`).
 - **sqlx uses runtime queries only** — `sqlx::query("...")`, `sqlx::query_as::<_, RowType>("...")`, `sqlx::QueryBuilder`. **No `query!` / `query_as!` macros, no `.sqlx/` offline mode.** SQL errors are only caught at runtime, not by `cargo check`.
-- **Database init blocks Tauri startup** — `main.rs` calls `tauri::async_runtime::block_on(db::init_database())` in `.setup()`. If it fails, the app continues in "configuration mode" (frontend shows DB config dialog).
+- **Database init is bounded** — `main.rs` calls `tauri::async_runtime::block_on(db::init_database())` in `.setup()`, but sqlx uses an explicit 6s acquire timeout and at most one retry for transient network errors. If it fails, the app continues in configuration mode with a sanitized cause.
 - **Global singleton pool** — `static POOL: Mutex<Option<PgPool>>`. Not injected via Tauri State.
 - **Concurrency control** — optimistic locking via `atualizado_em` timestamp. UPDATE includes `WHERE atualizado_em = $token`. If no rows affected → "Conflito de concorrência".
 - **Financial permission gating** — `require_permission(PERMISSION_FINANCIAL_ACTIONS)` required for: status changes to APROVADO/REPROVADO/ENTREGUE/ORCAMENTO_VENCIDO, any `valor_orcamento`/`prazo_aprovacao`/`valor_final` changes, verification cost fields.
@@ -184,7 +184,7 @@ npm run bundle:prep:windows:sign # Injects certThumbprint from env into tauri.co
 
 ## NOTES
 
-- **DATABASE_URL resolution chain** (highest to lowest priority): `env var` → `src-tauri/.env` (via dotenv) → executable directory + up to 3 parent dirs (searched for `.env`) → `database-config.json` in local app data dir (`~/.local/share/AutoOS/database-config.json` on Linux). The frontend can write DB connection to this JSON file for runtime switching.
+- **DATABASE_URL resolution chain** (highest to lowest priority): process `DATABASE_URL` → persisted `database-config.json` → build fallback `AUTOOS_DATABASE_URL` → local `.env` candidates. A legacy direct Supabase config for the same project is replaced by the release pooler, and an `.env` left by an older installer cannot override the validated release endpoint.
 - **Required in PATH for full backup/restore**: `pg_dump`, `pg_restore`, `psql`. Backup uses `--format=custom`. Restore runs `run_pending_migrations()` afterward to bridge schema gaps.
 - **Logs**: `~/.local/share/AutoOS/logs/autoos.log.YYYY-MM-DD` (Linux), `%LOCALAPPDATA%\AutoOS\logs` (Windows). Daily rolling via `tracing-appender`.
 - **Support packages**: `~/.local/share/AutoOS/support` (Linux), `%LOCALAPPDATA%\AutoOS\support` (Windows). JSON snapshots exported from `Configurações > Segurança`.

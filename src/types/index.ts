@@ -650,6 +650,7 @@ export interface DatabaseConnectionConfig {
   database: string;
   username: string;
   password: string;
+  connection_url?: string;
 }
 
 /** Configuração de bloqueio por inatividade. Espelha a struct/config do backend. */

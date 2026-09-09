@@ -99,4 +99,30 @@ describe("PdfService — orçamento/OS", () => {
     expect(relatorio.bytes.byteLength).toBeGreaterThan(500);
     expect(mockInvoke).not.toHaveBeenCalled();
   });
+
+  it("usa no PDF o valor atualizado durante a manutenção", async () => {
+    const equipamentoEmManutencao: Equipamento = {
+      ...equipamento,
+      status: "EM_MANUTENCAO",
+      valor_orcamento: 275,
+    };
+    const verificacaoAtualizada: Verificacao = {
+      ...verificacao,
+      servicos_necessarios: JSON.stringify([
+        { descricao: "Manutenção ajustada", valor: 275 },
+      ]),
+      pecas_necessarias: JSON.stringify([]),
+      custo_total: 275,
+      adjusted_at: "2026-09-08T11:45:00-03:00",
+    };
+
+    const artifact = await PdfService.construirOrcamento(
+      equipamentoEmManutencao,
+      verificacaoAtualizada,
+    );
+    const pdfSource = new TextDecoder("latin1").decode(artifact.bytes);
+
+    expect(pdfSource).toContain("(VALOR TOTAL:) Tj");
+    expect(pdfSource).toMatch(/\(R\$\s+275,00\) Tj/);
+  });
 });

@@ -162,6 +162,7 @@ fn main() {
         commands::util::salvar_config_banco,
         commands::util::testar_config_banco,
         commands::util::verificar_status_banco,
+        commands::util::obter_erro_inicializacao_banco,
         commands::util::reiniciar_banco_com_config,
         // Equipamentos
         commands::equipamentos::listar_equipamentos,

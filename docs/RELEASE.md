@@ -43,16 +43,14 @@ Depois do bump: executar `npm install` uma vez para alinhar metadados de `packag
 - `DATABASE_URL` válido (ex.: `.env` em `src-tauri/` ou variável exportada).
 - **Keyring do SO** disponível (`configure_sensitive_pin` / credenciais de canal gravam secrets). runners Linux headless costumam falhar até haver dbus/secret compatível ou runner self-hosted onde o comando já passe.
 
-### Conexão do aplicativo distribuído
+### Conexão do release Windows
 
-- O instalador não deve conter nem empacotar `src-tauri/.env`.
-- Nenhuma senha PostgreSQL, `service_role` ou token administrativo pode ser
-  versionado ou incluído nos recursos do Tauri.
-- A conexão é configurada na máquina pela tela de configuração do AutoOS.
-- Para Supabase em redes IPv4, usar o **Supavisor Session mode** na porta `5432`;
-  o endpoint direto do projeto usa IPv6 por padrão.
-- Antes do próximo release, rotacionar todas as credenciais presentes no
-  histórico/tag `v0.3.4` e validar a nova configuração em uma máquina limpa.
+- Cadastre `AUTOOS_DATABASE_URL` nos GitHub Actions secrets com a URL **Supavisor Session**, porta `5432`, copiada do painel Supabase.
+- Não use o endpoint direto `db.<project-ref>.supabase.co` no release distribuído: ele depende de IPv6 e não é uniforme nas redes Windows atendidas.
+- Mantenha `sslmode=require` na URL do release.
+- O workflow interrompe o build antes de publicar quando o secret está ausente, não aponta para um Session pooler ou o histórico real de migrations diverge do build.
+- O aplicativo desktop apenas valida esse histórico, com timeout e sem advisory lock; migrations devem estar aplicadas antes do build.
+- `src-tauri/.env` é apenas configuração local ignorada pelo Git; não deve ser versionado nem incluído no bundle.
 
 ## Windows (distribuição assistida)
 
