@@ -18,6 +18,7 @@
  */
 
 import { invoke } from "@tauri-apps/api/core";
+import { formatDatePtBr } from "@/lib/date-utils";
 import { db } from "@/lib/db";
 import type {
   Comunicacao,
@@ -102,7 +103,7 @@ Peças: R$ ${(verificacao.custo_estimado_pecas || 0).toFixed(2)}
 *TOTAL: R$ ${(verificacao.custo_total || 0).toFixed(2)}*
 
 ⏱️ Tempo estimado: ${verificacao.tempo_estimado || 0}h
-${equipamento.prazo_aprovacao ? `📅 Prazo para aprovação: ${new Date(equipamento.prazo_aprovacao).toLocaleDateString("pt-BR")}` : ""}
+${equipamento.prazo_aprovacao ? `📅 Prazo para aprovação: ${formatDatePtBr(equipamento.prazo_aprovacao)}` : ""}
 
 Para aprovar, responda *APROVADO*.
 Para dúvidas, estamos à disposição! 😊`;

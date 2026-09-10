@@ -332,6 +332,45 @@ function renderizarTituloSecao(doc: jsPDF, y: number, titulo: string): number {
   return y + 10;
 }
 
+/** Mantém identificação e planilha visualmente agrupadas no orçamento. */
+function renderizarIdentificacaoOrcamento(
+  doc: jsPDF,
+  y: number,
+  equipamento: Equipamento,
+  responsavel: string,
+  incluirPlanilha = true,
+): number {
+  const opcoes = opcoesTabelaMonocromatica();
+  autoTable(doc, {
+    ...opcoes,
+    startY: y,
+    headStyles: { ...opcoes.headStyles, halign: "center", font: "helvetica", fontSize: 8 },
+    columnStyles: { 0: { cellWidth: 55 }, 1: { cellWidth: 55 }, 2: { cellWidth: 60 } },
+    head: [["EMPRESA", "RESPONSÁVEL", "TIPO DE ORÇAMENTO"]],
+    body: [[equipamento.cliente_nome || "—", responsavel, "Serviços"]],
+  });
+
+  y = (doc as unknown as { lastAutoTable: { finalY: number } }).lastAutoTable.finalY;
+  const temPatrimonio = Boolean(equipamento.patrimonio?.trim());
+  autoTable(doc, {
+    ...opcoes,
+    startY: y,
+    headStyles: { ...opcoes.headStyles, halign: "center", font: "helvetica", fontSize: 8 },
+    columnStyles: temPatrimonio
+      ? { 0: { cellWidth: 70 }, 1: { cellWidth: 50 }, 2: { cellWidth: 50 } }
+      : { 0: { cellWidth: 105 }, 1: { cellWidth: 65 } },
+    head: [temPatrimonio ? ["EQUIPAMENTO", "Nº DE SÉRIE", "PATRIM."] : ["EQUIPAMENTO", "Nº DE SÉRIE"]],
+    body: [[
+      `${equipamento.marca || "—"} ${equipamento.modelo || ""}`.trim(),
+      equipamento.serial_number || "—",
+      ...(temPatrimonio ? [equipamento.patrimonio!.trim()] : []),
+    ]],
+  });
+
+  y = (doc as unknown as { lastAutoTable: { finalY: number } }).lastAutoTable.finalY;
+  return incluirPlanilha ? renderizarTituloSecao(doc, y, "PLANILHA DE VALORES") : y + 5;
+}
+
 function renderizarParagrafo(
   doc: jsPDF,
   texto: string,
@@ -701,28 +740,6 @@ export const PdfService = {
         ? `${tecnicoResponsavelOrcamento} (${emailTecnicoOrcamento})`
         : tecnicoResponsavelOrcamento;
 
-      autoTable(doc, {
-        ...opcoesTabelaMonocromatica(),
-        startY: y,
-        headStyles: {
-          ...opcoesTabelaMonocromatica().headStyles,
-          halign: "center",
-        },
-        columnStyles: {
-          0: { cellWidth: 55 },
-          1: { cellWidth: 55 },
-          2: { cellWidth: 60 },
-        },
-        head: [["EMPRESA", "RESPONSÁVEL", "TIPO DE ORÇAMENTO"]],
-        body: [[
-          equipamento.cliente_nome || "—",
-          responsavelCabecalho,
-          "Serviços",
-        ]],
-      });
-
-      y = (doc as unknown as { lastAutoTable: { finalY: number } }).lastAutoTable.finalY + 5;
-
       // ═══════════════════════════════════════════════════
       // 4. PLANILHA DE VALORES (somente quando houver valores)
       // ═══════════════════════════════════════════════════
@@ -772,8 +789,8 @@ export const PdfService = {
           linhasTabela.push(["Serviços técnicos", `${equipamento.marca} ${equipamento.modelo}`, "01", formatarMoeda(custoTotal), formatarMoeda(custoTotal)]);
         }
 
-        // Título da seção sem faixa preenchida.
-        y = renderizarTituloSecao(doc, y, "PLANILHA DE VALORES");
+        // Identificação e planilha formam um único bloco visual, sem alterar o cabeçalho.
+        y = renderizarIdentificacaoOrcamento(doc, y, equipamento, responsavelCabecalho);
 
         // Tabela de valores
         autoTable(doc, {
@@ -813,19 +830,9 @@ export const PdfService = {
         });
 
         y = (doc as unknown as { lastAutoTable: { finalY: number } }).lastAutoTable.finalY + 8;
+      } else {
+        y = renderizarIdentificacaoOrcamento(doc, y, equipamento, responsavelCabecalho, false);
       }
-
-      // ═══════════════════════════════════════════════════
-      // 5. NÚMERO DE SÉRIE
-      // ═══════════════════════════════════════════════════
-
-      doc.setTextColor(...CORES_PDF.textoSecundario);
-      doc.setFontSize(9);
-      doc.setFont("helvetica", "bold");
-      doc.text("Número de Série do Equipamento: ", MARGIN_LEFT, y);
-      doc.setFont("helvetica", "normal");
-      doc.text(equipamento.serial_number, MARGIN_LEFT + 55, y);
-      y += 8;
 
       // ═══════════════════════════════════════════════════
       // 6. CONDIÇÕES COMERCIAIS
@@ -965,28 +972,6 @@ export const PdfService = {
         ? `${tecnicoResponsavelOrcamento} (${emailTecnicoOrcamento})`
         : tecnicoResponsavelOrcamento;
 
-      autoTable(doc, {
-        ...opcoesTabelaMonocromatica(),
-        startY: y,
-        headStyles: {
-          ...opcoesTabelaMonocromatica().headStyles,
-          halign: "center",
-        },
-        columnStyles: {
-          0: { cellWidth: 55 },
-          1: { cellWidth: 55 },
-          2: { cellWidth: 60 },
-        },
-        head: [["EMPRESA", "RESPONSÁVEL", "TIPO DE ORÇAMENTO"]],
-        body: [[
-          equipamento.cliente_nome || "—",
-          responsavelCabecalho,
-          "Serviços",
-        ]],
-      });
-
-      y = (doc as unknown as { lastAutoTable: { finalY: number } }).lastAutoTable.finalY + 5;
-
       const linhasTabela: string[][] = [];
 
       servicos.forEach((s) => {
@@ -1016,7 +1001,7 @@ export const PdfService = {
           linhasTabela.push(["Serviços técnicos", `${equipamento.marca} ${equipamento.modelo}`, "01", formatarMoeda(custoTotal), formatarMoeda(custoTotal)]);
         }
 
-        y = renderizarTituloSecao(doc, y, "PLANILHA DE VALORES");
+        y = renderizarIdentificacaoOrcamento(doc, y, equipamento, responsavelCabecalho);
 
         autoTable(doc, {
           ...opcoesTabelaMonocromatica(),
@@ -1054,15 +1039,9 @@ export const PdfService = {
         });
 
         y = (doc as unknown as { lastAutoTable: { finalY: number } }).lastAutoTable.finalY + 8;
+      } else {
+        y = renderizarIdentificacaoOrcamento(doc, y, equipamento, responsavelCabecalho, false);
       }
-
-      doc.setTextColor(...CORES_PDF.textoSecundario);
-      doc.setFontSize(9);
-      doc.setFont("helvetica", "bold");
-      doc.text("Número de Série do Equipamento: ", MARGIN_LEFT, y);
-      doc.setFont("helvetica", "normal");
-      doc.text(equipamento.serial_number, MARGIN_LEFT + 55, y);
-      y += 8;
 
       if (exibirBlocosFinanceiros) {
         y = renderizarCondicoesComerciais(

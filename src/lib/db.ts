@@ -126,7 +126,8 @@ export const db = {
     valorOrcamento?: number,
     prazoAprovacao?: string,
     valorFinal?: number,
-    expectedUpdatedEm?: string
+    expectedUpdatedEm?: string,
+    motivoCorrecao?: string,
   ): Promise<void> {
     return invoke<void>("atualizar_status_equipamento", {
       id,
@@ -135,6 +136,7 @@ export const db = {
       prazoAprovacao: prazoAprovacao ?? null,
       valorFinal: valorFinal ?? null,
       expectedUpdatedEm: expectedUpdatedEm ?? null,
+      motivoCorrecao: motivoCorrecao ?? null,
     });
   },
 
