@@ -12,6 +12,7 @@ import {
 import { ClienteFormularioCampos } from "@/components/clientes/ClienteFormularioCampos";
 import { nomeExibicaoCliente } from "@/components/clientes/cliente-display-utils";
 import type { ClienteFormData } from "@/lib/validations";
+import { formatDatePtBr } from "@/lib/date-utils";
 import type { Cliente, Equipamento } from "@/types";
 import { ClientesStatusBadge } from "./ClientesStatusBadge";
 
@@ -125,7 +126,7 @@ export function ClientesEquipamentosModal({
                 <div className="flex items-center gap-3">
                   <ClientesStatusBadge status={eq.status} />
                   <span className="text-xs text-muted-foreground">
-                    {eq.data_entrada ? new Date(eq.data_entrada).toLocaleDateString("pt-BR") : ""}
+                    {formatDatePtBr(eq.data_entrada, "")}
                   </span>
                 </div>
               </div>

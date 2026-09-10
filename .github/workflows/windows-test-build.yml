@@ -50,6 +50,15 @@ jobs:
       - name: Instalar dependências
         run: npm ci
 
+      - name: Impedir empacotamento de arquivos de ambiente
+        shell: pwsh
+        run: |
+          $config = Get-Content "src-tauri/tauri.conf.json" -Raw | ConvertFrom-Json
+          $resources = @($config.bundle.resources)
+          if ($resources | Where-Object { $_ -match '(^|[\\/])\.env$' }) {
+            throw "tauri.conf.json não pode empacotar .env no instalador."
+          }
+
       - name: Validar conexão PostgreSQL de teste
         shell: pwsh
         env:
@@ -58,14 +67,14 @@ jobs:
           if ([string]::IsNullOrWhiteSpace($env:AUTOOS_DATABASE_URL)) {
             throw "Configure o secret AUTOOS_DATABASE_URL antes de gerar o instalador de teste."
           }
-          if ($env:AUTOOS_DATABASE_URL -notmatch '^postgres(ql)?://.+@[^/]*\.pooler\.supabase\.com:5432/[^?]+(?:\?.*)?$') {
-            throw "AUTOOS_DATABASE_URL deve usar o Supavisor Session pooler na porta 5432."
+          if ($env:AUTOOS_DATABASE_URL -notmatch '^postgres(ql)?://.+@[^/]*\.pooler\.supabase\.com:5432/postgres(?:\?.*)?$') {
+            throw "AUTOOS_DATABASE_URL deve usar o Supavisor Session pooler na porta 5432 e o banco /postgres."
           }
           if ($env:AUTOOS_DATABASE_URL -notmatch '[?&]sslmode=require(?:&|$)') {
             throw "AUTOOS_DATABASE_URL deve exigir TLS com sslmode=require."
           }
 
-      - name: Validar histórico real de migrations
+      - name: Validar estruturas reais do banco
         env:
           AUTOOS_DATABASE_URL: ${{ secrets.AUTOOS_DATABASE_URL }}
         run: cargo run --manifest-path src-tauri/Cargo.toml --locked --quiet --bin release_database_check

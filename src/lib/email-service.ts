@@ -21,6 +21,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { db } from "@/lib/db";
 import { PdfService } from "@/lib/pdf-service";
+import { formatDatePtBr } from "@/lib/date-utils";
 import type {
   EmailAttachment,
   EmailSendRequest,
@@ -402,7 +403,7 @@ function formatarMoeda(valor?: number) {
 }
 
 function formatarData(data?: string) {
-  return data ? new Date(data).toLocaleDateString("pt-BR") : "—";
+  return formatDatePtBr(data);
 }
 
 function escapeHtml(value: string) {

@@ -22,6 +22,7 @@
  */
 import { Fragment, useState, useEffect, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
+import { formatDatePtBr } from "@/lib/date-utils";
 import {
   Users,
   Search,
@@ -547,7 +548,7 @@ export default function Clientes() {
                                       <div className="flex items-center gap-3">
                                         <ClientesStatusBadge status={eq.status} />
                                         <span className="text-xs text-muted-foreground">
-                                          {eq.data_entrada ? new Date(eq.data_entrada).toLocaleDateString("pt-BR") : ""}
+                                          {formatDatePtBr(eq.data_entrada, "")}
                                         </span>
                                       </div>
                                     </button>

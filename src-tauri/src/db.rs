@@ -99,13 +99,13 @@ pub fn database_error_message(error: &sqlx::Error) -> String {
             "Usuário ou senha do banco inválidos.".to_string()
         }
         sqlx::Error::Database(database_error) if database_error.code().as_deref() == Some("3D000") => {
-            "O banco de dados informado não existe.".to_string()
+            "O banco de dados informado não existe. No Supabase, use a URL do Session pooler completa e confirme que ela termina em /postgres?sslmode=require.".to_string()
         }
         sqlx::Error::Database(_) => {
             "O servidor PostgreSQL recusou a conexão ou a operação de inicialização.".to_string()
         }
         sqlx::Error::Migrate(_) => {
-            "A conexão foi aberta, mas o schema do banco é incompatível com esta versão."
+            "A conexão foi aberta, mas a URL não aponta para o banco de produção compatível com o AutoOS."
                 .to_string()
         }
         _ => "Não foi possível inicializar o banco de dados.".to_string(),
@@ -130,7 +130,7 @@ pub async fn validate_connected_migration_history() -> Result<(), String> {
     let pool = get_pool().await?;
     tokio::time::timeout(
         DATABASE_SCHEMA_TIMEOUT,
-        validate_migration_history_on_pool(&pool),
+        validate_runtime_schema_on_pool(&pool),
     )
     .await
     .map_err(|_| {
@@ -142,9 +142,10 @@ pub async fn validate_connected_migration_history() -> Result<(), String> {
     Ok(())
 }
 
-/// Valida, sem aplicar ou reparar nada, se o banco possui exatamente o
-/// histórico de migrations embutido neste build. Usado como barreira antes de
-/// gerar instaladores para impedir que um release incompatível seja publicado.
+/// Valida a compatibilidade real do schema sem confiar no histórico de migrations.
+/// Versões antigas do AutoOS podiam reconstruir `_sqlx_migrations`, embora as
+/// tabelas permanecessem utilizáveis. O release deve verificar capacidades, não
+/// checksums administrativos que não alteram o contrato do aplicativo.
 pub async fn validate_migration_history(database_url: &str) -> Result<usize, String> {
     let pool = PgPoolOptions::new()
         .max_connections(1)
@@ -154,9 +155,132 @@ pub async fn validate_migration_history(database_url: &str) -> Result<usize, Str
         .await
         .map_err(|error| database_error_message(&error))?;
 
-    let result = validate_migration_history_on_pool(&pool).await;
+    let result = validate_runtime_schema_on_pool(&pool).await;
     pool.close().await;
     result
+}
+
+const REQUIRED_RUNTIME_TABLES: &[&str] = &[
+    "clientes",
+    "equipamentos",
+    "verificacoes",
+    "comunicacoes",
+    "equipamento_imagens",
+    "servicos_catalogo",
+    "security_profiles",
+    "security_audit_log",
+];
+
+const REQUIRED_RUNTIME_COLUMNS: &[(&str, &str)] = &[
+    ("clientes", "id"),
+    ("equipamentos", "id"),
+    ("equipamentos", "serial_number"),
+    ("equipamentos", "patrimonio"),
+    ("equipamentos", "status"),
+    ("equipamentos", "data_entrada"),
+    ("equipamentos", "atualizado_em"),
+    ("verificacoes", "equipamento_id"),
+    ("verificacoes", "adjusted_at"),
+    ("equipamento_imagens", "storage_path"),
+    ("security_profiles", "permissions"),
+];
+
+const REQUIRED_RUNTIME_COLUMN_TYPES: &[(&str, &str, &str)] = &[
+    ("equipamentos", "id", "int4"),
+    ("security_profiles", "id", "int4"),
+    ("security_profiles", "permissions", "text"),
+    ("security_audit_log", "profile_id", "int4"),
+    ("verificacoes", "adjusted_by_profile_id", "int4"),
+];
+
+async fn validate_runtime_schema_on_pool(pool: &PgPool) -> Result<usize, String> {
+    let table_names = REQUIRED_RUNTIME_TABLES
+        .iter()
+        .map(|value| value.to_string())
+        .collect::<Vec<_>>();
+    let missing_tables = sqlx::query_scalar::<_, String>(
+        "SELECT required_name
+         FROM unnest($1::text[]) AS required(required_name)
+         WHERE to_regclass(format('public.%I', required_name)) IS NULL
+         ORDER BY required_name",
+    )
+    .bind(table_names)
+    .fetch_all(pool)
+    .await
+    .map_err(|error| format!("Não foi possível verificar as tabelas do AutoOS: {error}"))?;
+
+    let column_tables = REQUIRED_RUNTIME_COLUMNS
+        .iter()
+        .map(|(table, _)| table.to_string())
+        .collect::<Vec<_>>();
+    let column_names = REQUIRED_RUNTIME_COLUMNS
+        .iter()
+        .map(|(_, column)| column.to_string())
+        .collect::<Vec<_>>();
+    let missing_columns = sqlx::query_scalar::<_, String>(
+        "SELECT required_table || '.' || required_column
+         FROM unnest($1::text[], $2::text[]) AS required(required_table, required_column)
+         WHERE NOT EXISTS (
+           SELECT 1 FROM information_schema.columns c
+           WHERE c.table_schema = 'public'
+             AND c.table_name = required.required_table
+             AND c.column_name = required.required_column
+         )
+         ORDER BY 1",
+    )
+    .bind(column_tables)
+    .bind(column_names)
+    .fetch_all(pool)
+    .await
+    .map_err(|error| format!("Não foi possível verificar as colunas do AutoOS: {error}"))?;
+
+    let typed_tables = REQUIRED_RUNTIME_COLUMN_TYPES
+        .iter()
+        .map(|(table, _, _)| table.to_string())
+        .collect::<Vec<_>>();
+    let typed_columns = REQUIRED_RUNTIME_COLUMN_TYPES
+        .iter()
+        .map(|(_, column, _)| column.to_string())
+        .collect::<Vec<_>>();
+    let expected_types = REQUIRED_RUNTIME_COLUMN_TYPES
+        .iter()
+        .map(|(_, _, expected_type)| expected_type.to_string())
+        .collect::<Vec<_>>();
+    let incompatible_columns = sqlx::query_scalar::<_, String>(
+        "SELECT required_table || '.' || required_column || ' esperado=' || expected_type ||
+                ' encontrado=' || COALESCE(c.udt_name, 'ausente')
+         FROM unnest($1::text[], $2::text[], $3::text[])
+              AS required(required_table, required_column, expected_type)
+         LEFT JOIN information_schema.columns c
+           ON c.table_schema = 'public'
+          AND c.table_name = required.required_table
+          AND c.column_name = required.required_column
+         WHERE c.udt_name IS DISTINCT FROM expected_type
+         ORDER BY 1",
+    )
+    .bind(typed_tables)
+    .bind(typed_columns)
+    .bind(expected_types)
+    .fetch_all(pool)
+    .await
+    .map_err(|error| format!("Não foi possível verificar os tipos do AutoOS: {error}"))?;
+
+    if !missing_tables.is_empty()
+        || !missing_columns.is_empty()
+        || !incompatible_columns.is_empty()
+    {
+        let mut missing = missing_tables;
+        missing.extend(missing_columns);
+        missing.extend(incompatible_columns);
+        return Err(format!(
+            "Estruturas obrigatórias ausentes: {}.",
+            missing.join(", ")
+        ));
+    }
+
+    Ok(REQUIRED_RUNTIME_TABLES.len()
+        + REQUIRED_RUNTIME_COLUMNS.len()
+        + REQUIRED_RUNTIME_COLUMN_TYPES.len())
 }
 
 async fn validate_migration_history_on_pool(pool: &PgPool) -> Result<usize, String> {
@@ -345,21 +469,21 @@ async fn connect_and_setup_pool(database_url: &str) -> Result<PgPool, sqlx::Erro
         .connect(database_url)
         .await?;
 
-    // O aplicativo distribuído nunca aplica migrations no startup. A validação
-    // é somente leitura, limitada por tempo e não adquire advisory locks. Assim,
-    // uma máquina não consegue bloquear a inicialização das demais.
+    // A validação é somente leitura e verifica o contrato real usado pelo app.
+    // Ela não consulta `_sqlx_migrations` e não executa migrations, portanto não
+    // disputa DDL/locks com outras máquinas e aceita históricos legados válidos.
     let schema_result = tokio::time::timeout(
         DATABASE_SCHEMA_TIMEOUT,
-        validate_migration_history_on_pool(&pool),
+        validate_runtime_schema_on_pool(&pool),
     )
-    .await;
-    if let Err(message) = match schema_result {
-        Ok(result) => result,
-        Err(_) => Err(format!(
-            "A validação do schema excedeu {} segundos.",
+    .await
+    .map_err(|_| {
+        schema_validation_error(format!(
+            "A validação estrutural excedeu {} segundos.",
             DATABASE_SCHEMA_TIMEOUT.as_secs()
-        )),
-    } {
+        ))
+    })?;
+    if let Err(message) = schema_result {
         pool.close().await;
         return Err(schema_validation_error(message));
     }
@@ -388,8 +512,47 @@ mod tests {
     #[test]
     fn reports_schema_validation_without_claiming_to_update_it() {
         let message = database_error_message(&schema_validation_error("incompatível".to_string()));
-        assert!(message.contains("schema do banco é incompatível"));
+        assert!(message.contains("não aponta para o banco de produção"));
         assert!(!message.contains("atualização"));
+    }
+
+    #[test]
+    fn explains_the_supabase_database_name_for_3d000() {
+        struct MissingDatabase;
+        impl std::fmt::Debug for MissingDatabase {
+            fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                formatter.write_str("MissingDatabase")
+            }
+        }
+        impl std::fmt::Display for MissingDatabase {
+            fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                formatter.write_str("database missing")
+            }
+        }
+        impl std::error::Error for MissingDatabase {}
+        impl sqlx::error::DatabaseError for MissingDatabase {
+            fn message(&self) -> &str {
+                "database missing"
+            }
+            fn code(&self) -> Option<std::borrow::Cow<'_, str>> {
+                Some("3D000".into())
+            }
+            fn as_error(&self) -> &(dyn std::error::Error + Send + Sync + 'static) {
+                self
+            }
+            fn as_error_mut(&mut self) -> &mut (dyn std::error::Error + Send + Sync + 'static) {
+                self
+            }
+            fn into_error(self: Box<Self>) -> Box<dyn std::error::Error + Send + Sync + 'static> {
+                self
+            }
+            fn kind(&self) -> sqlx::error::ErrorKind {
+                sqlx::error::ErrorKind::Other
+            }
+        }
+
+        let message = database_error_message(&sqlx::Error::Database(Box::new(MissingDatabase)));
+        assert!(message.contains("/postgres?sslmode=require"));
     }
 
     #[test]

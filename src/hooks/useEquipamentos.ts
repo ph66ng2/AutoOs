@@ -130,7 +130,8 @@ export function useEquipamentos(params?: UseEquipamentosParams) {
     valorOrcamento?: number,
     prazoAprovacao?: string,
     valorFinal?: number,
-    expectedUpdatedEm?: string
+    expectedUpdatedEm?: string,
+    motivoCorrecao?: string,
   ) => {
     try {
       await db.atualizarStatusEquipamento(
@@ -139,7 +140,8 @@ export function useEquipamentos(params?: UseEquipamentosParams) {
         valorOrcamento,
         prazoAprovacao,
         valorFinal,
-        expectedUpdatedEm
+        expectedUpdatedEm,
+        motivoCorrecao,
       );
       await carregar();
       return { sucesso: true };

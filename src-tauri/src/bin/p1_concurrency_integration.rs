@@ -436,6 +436,7 @@ async fn run_equipment_status_concurrency(
                 None,
                 None,
                 token,
+                None,
             )
             .await
         })
@@ -452,6 +453,7 @@ async fn run_equipment_status_concurrency(
                 None,
                 None,
                 token,
+                None,
             )
             .await
         })
