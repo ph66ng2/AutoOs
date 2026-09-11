@@ -119,11 +119,10 @@ async fn main() -> Result<()> {
     ])
     .context("serialize restricted permissions failed")?;
     let restricted_profile_id: i32 = sqlx::query_scalar(
-        "INSERT INTO security_profiles (nome, role, permissions, ativo, is_default, empresa_id, atualizado_em) VALUES ($1, 'OPERADOR', $2, true, false, $3, NOW()) RETURNING id",
+        "INSERT INTO security_profiles (nome, role, permissions, ativo, is_default, empresa_id, atualizado_em) VALUES ($1, 'OPERADOR', $2, true, false, NULL, NOW()) RETURNING id",
     )
     .bind(format!("{} Restricted", prefix))
     .bind(restricted_profile_permissions)
-    .bind(empresa_id)
     .fetch_one(&pool)
     .await
     .context("create restricted profile failed")?;
@@ -139,6 +138,50 @@ async fn main() -> Result<()> {
     auth::configure_sensitive_pin("2468".to_string(), None)
         .await
         .map_err(|error| anyhow!(error))?;
+
+    let company_preview = legacy_regularization::previsualizar_vinculo_empresa_perfil()
+        .await
+        .map_err(|error| anyhow!(error))?;
+    if !company_preview
+        .empresas_ativas
+        .iter()
+        .any(|item| item.id == empresa_id)
+    {
+        return Err(anyhow!("company bootstrap preview omitted active company"));
+    }
+    let company_input = legacy_regularization::VinculoEmpresaPerfilInput {
+        empresa_id: Some(empresa_id),
+        ..Default::default()
+    };
+    if legacy_regularization::vincular_perfil_ativo_empresa(company_input.clone(), "0000".into())
+        .await
+        .is_ok()
+    {
+        return Err(anyhow!("company bootstrap accepted invalid explicit PIN"));
+    }
+    let company_before: Option<i32> =
+        sqlx::query_scalar("SELECT empresa_id FROM security_profiles WHERE id = $1")
+            .bind(restricted_profile_id)
+            .fetch_one(&pool)
+            .await?;
+    if company_before.is_some() {
+        return Err(anyhow!(
+            "failed company bootstrap changed profile ownership"
+        ));
+    }
+    let company_result =
+        legacy_regularization::vincular_perfil_ativo_empresa(company_input.clone(), "2468".into())
+            .await
+            .map_err(|error| anyhow!(error))?;
+    if company_result.empresa_id != empresa_id || company_result.empresa_criada {
+        return Err(anyhow!("company bootstrap returned unexpected company"));
+    }
+    if legacy_regularization::vincular_perfil_ativo_empresa(company_input, "2468".into())
+        .await
+        .is_ok()
+    {
+        return Err(anyhow!("company bootstrap overwrote an existing link"));
+    }
 
     // Regularização em lote: prévia/token, invalidação por concorrência e cadeia conflitante.
     let legacy_client_id: i32 = sqlx::query_scalar(
@@ -486,6 +529,7 @@ async fn main() -> Result<()> {
     println!("P1_INTEGRATION_CONTACT_SNAPSHOT=ok");
     println!("P1_INTEGRATION_LEGACY_NULLS=ok");
     println!("P1_INTEGRATION_LEGACY_REGULARIZATION=ok");
+    println!("P1_INTEGRATION_LEGACY_PROFILE_COMPANY_BOOTSTRAP=ok");
     println!("P1_INTEGRATION_BUDGET_DESCRIPTION=ok");
     println!("P1_INTEGRATION_STOCK_OK=ok:saldo_final={}", saldo);
     println!(

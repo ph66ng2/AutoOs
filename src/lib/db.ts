@@ -32,6 +32,9 @@ import type {
   ClienteContatoInput,
   RegularizacaoLegadoPrevia,
   RegularizacaoLegadoResultado,
+  VinculoEmpresaPerfilInput,
+  VinculoEmpresaPerfilPrevia,
+  VinculoEmpresaPerfilResultado,
   Comunicacao,
   ConfigInatividade,
   DatabaseConnectionConfig,
@@ -176,6 +179,14 @@ export const db = {
   /** Gera uma prévia imutável dos cadastros legados elegíveis e conflitos. */
   async previsualizarRegularizacaoLegados(): Promise<RegularizacaoLegadoPrevia> {
     return invoke<RegularizacaoLegadoPrevia>("previsualizar_regularizacao_legados");
+  },
+
+  async previsualizarVinculoEmpresaPerfil(): Promise<VinculoEmpresaPerfilPrevia> {
+    return invoke<VinculoEmpresaPerfilPrevia>("previsualizar_vinculo_empresa_perfil");
+  },
+
+  async vincularPerfilAtivoEmpresa(input: VinculoEmpresaPerfilInput, pinAdministrativo: string): Promise<VinculoEmpresaPerfilResultado> {
+    return invoke<VinculoEmpresaPerfilResultado>("vincular_perfil_ativo_empresa", { input, pinAdministrativo });
   },
 
   async executarRegularizacaoLegados(tokenDaPrevia: string, pinAdministrativo: string): Promise<RegularizacaoLegadoResultado> {
