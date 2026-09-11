@@ -444,7 +444,7 @@ export default function Clientes() {
                     <TableHead>Telefone</TableHead>
                     <TableHead>Email</TableHead>
                     <TableHead>Cidade/UF</TableHead>
-                    <TableHead className="text-right">Ações</TableHead>
+                    <TableHead className="sticky right-0 z-20 bg-background text-right shadow-[-5px_0_8px_-6px_hsl(var(--foreground))]">Ações</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -507,7 +507,7 @@ export default function Clientes() {
                         <TableCell className="text-sm">
                           {c.cidade && c.uf ? `${c.cidade}/${c.uf}` : c.cidade || c.uf || "—"}
                         </TableCell>
-                        <TableCell className="text-right">
+                        <TableCell className="sticky right-0 z-10 bg-background text-right shadow-[-5px_0_8px_-6px_hsl(var(--foreground))]">
                           <div className="flex justify-end gap-1">
                             <ActionPriorityRow
                               primary={{
