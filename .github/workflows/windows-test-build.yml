@@ -10,6 +10,10 @@ on:
         required: true
         default: integration/ao-cont-orc-pdf-qa
         type: string
+      confirmacao_producao:
+        description: Digite PRODUCAO para gerar um EXE conectado ao banco real
+        required: true
+        type: string
 
 permissions:
   contents: read
@@ -59,12 +63,37 @@ jobs:
             throw "tauri.conf.json não pode empacotar .env no instalador."
           }
 
-      - name: Compilar instalador Windows de teste sem banco ou release
+      - name: Confirmar build conectado à produção
+        shell: pwsh
+        env:
+          CONFIRMACAO_PRODUCAO: ${{ inputs.confirmacao_producao }}
+          AUTOOS_DATABASE_URL: ${{ secrets.AUTOOS_DATABASE_URL }}
+        run: |
+          if ($env:CONFIRMACAO_PRODUCAO -cne "PRODUCAO") {
+            throw "Confirmação inválida. Digite PRODUCAO para continuar."
+          }
+          if ([string]::IsNullOrWhiteSpace($env:AUTOOS_DATABASE_URL)) {
+            throw "Configure o secret AUTOOS_DATABASE_URL antes de gerar o instalador."
+          }
+          if ($env:AUTOOS_DATABASE_URL -notmatch '^postgres(ql)?://.+@[^/]*\.pooler\.supabase\.com:5432/postgres(?:\?.*)?$') {
+            throw "AUTOOS_DATABASE_URL deve usar o Supavisor Session pooler na porta 5432 e o banco /postgres."
+          }
+          if ($env:AUTOOS_DATABASE_URL -notmatch '[?&]sslmode=require(?:&|$)') {
+            throw "AUTOOS_DATABASE_URL deve exigir TLS com sslmode=require."
+          }
+
+      - name: Validar schema da produção em modo somente leitura
+        env:
+          AUTOOS_DATABASE_URL: ${{ secrets.AUTOOS_DATABASE_URL }}
+        run: cargo run --manifest-path src-tauri/Cargo.toml --locked --quiet --bin release_database_check
+
+      - name: Compilar instalador Windows conectado à produção sem publicar release
         uses: tauri-apps/tauri-action@v0
         env:
-          # O aplicativo recebe a conexão em runtime; o build de teste não
-          # deve acessar banco operacional nem depender de secrets de produção.
           CI: true
+          COMPILE_TIME_DATABASE_URL: ${{ secrets.AUTOOS_DATABASE_URL }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY || secrets.TAURI_SIGNING_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
           args: --bundles nsis
 
@@ -97,5 +126,6 @@ jobs:
           "## Instalador de teste pronto" >> $env:GITHUB_STEP_SUMMARY
           "- Origem solicitada: ``${{ inputs.ref }}``" >> $env:GITHUB_STEP_SUMMARY
           "- Commit compilado: ``${{ steps.source.outputs.sha }}``" >> $env:GITHUB_STEP_SUMMARY
-          "- O build não acessa banco e não usa credenciais de produção." >> $env:GITHUB_STEP_SUMMARY
+          "- Este instalador abre conectado ao banco de produção." >> $env:GITHUB_STEP_SUMMARY
+          "- A execução no Windows pode alterar dados reais conforme as ações do usuário." >> $env:GITHUB_STEP_SUMMARY
           "- O artefato expira em 3 dias e não cria tag nem GitHub Release." >> $env:GITHUB_STEP_SUMMARY
