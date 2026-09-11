@@ -30,6 +30,11 @@ import type {
   Cliente,
   ClienteContato,
   ClienteContatoInput,
+  RegularizacaoLegadoPrevia,
+  RegularizacaoLegadoResultado,
+  VinculoEmpresaPerfilInput,
+  VinculoEmpresaPerfilPrevia,
+  VinculoEmpresaPerfilResultado,
   Comunicacao,
   ConfigInatividade,
   DatabaseConnectionConfig,
@@ -169,6 +174,23 @@ export const db = {
   /** Deleta cliente → Rust: deletar_cliente */
   async deletarCliente(id: number): Promise<void> {
     return invoke<void>("deletar_cliente", { id });
+  },
+
+  /** Gera uma prévia imutável dos cadastros legados elegíveis e conflitos. */
+  async previsualizarRegularizacaoLegados(): Promise<RegularizacaoLegadoPrevia> {
+    return invoke<RegularizacaoLegadoPrevia>("previsualizar_regularizacao_legados");
+  },
+
+  async previsualizarVinculoEmpresaPerfil(): Promise<VinculoEmpresaPerfilPrevia> {
+    return invoke<VinculoEmpresaPerfilPrevia>("previsualizar_vinculo_empresa_perfil");
+  },
+
+  async vincularPerfilAtivoEmpresa(input: VinculoEmpresaPerfilInput, pinAdministrativo: string): Promise<VinculoEmpresaPerfilResultado> {
+    return invoke<VinculoEmpresaPerfilResultado>("vincular_perfil_ativo_empresa", { input, pinAdministrativo });
+  },
+
+  async executarRegularizacaoLegados(tokenDaPrevia: string, pinAdministrativo: string): Promise<RegularizacaoLegadoResultado> {
+    return invoke<RegularizacaoLegadoResultado>("executar_regularizacao_legados", { tokenDaPrevia, pinAdministrativo });
   },
 
   /** Consulta dados públicos do CNPJ no backend, sem depender das regras de rede do WebView. */

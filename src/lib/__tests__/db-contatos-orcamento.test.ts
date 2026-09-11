@@ -93,4 +93,42 @@ describe("db — contatos e contratos de orçamento", () => {
 
     expect(mockInvoke).toHaveBeenCalledWith("aprovar_orcamento", { input });
   });
+
+  it("gera a prévia sem aceitar empresa enviada pela tela", async () => {
+    mockInvoke.mockResolvedValue({ empresa_id: 7, token: "opaque", clientes: 2 });
+
+    await db.previsualizarRegularizacaoLegados();
+
+    expect(mockInvoke).toHaveBeenCalledWith("previsualizar_regularizacao_legados");
+  });
+
+  it("envia token e PIN explicitamente ao executar a regularização", async () => {
+    mockInvoke.mockResolvedValue({ empresa_id: 7, clientes: 2, equipamentos: 3 });
+
+    await db.executarRegularizacaoLegados("token-opaco", "2468");
+
+    expect(mockInvoke).toHaveBeenCalledWith("executar_regularizacao_legados", {
+      tokenDaPrevia: "token-opaco",
+      pinAdministrativo: "2468",
+    });
+  });
+
+  it("lista empresas de vínculo sem receber identidade ou empresa da tela", async () => {
+    mockInvoke.mockResolvedValue({ perfil_id: 1, perfil_nome: "Administrador Local", empresas_ativas: [] });
+
+    await db.previsualizarVinculoEmpresaPerfil();
+
+    expect(mockInvoke).toHaveBeenCalledWith("previsualizar_vinculo_empresa_perfil");
+  });
+
+  it("envia empresa escolhida e PIN explícito no bootstrap do perfil", async () => {
+    mockInvoke.mockResolvedValue({ empresa_id: 7, empresa_nome: "AutoOS", empresa_criada: false });
+
+    await db.vincularPerfilAtivoEmpresa({ empresa_id: 7 }, "2468");
+
+    expect(mockInvoke).toHaveBeenCalledWith("vincular_perfil_ativo_empresa", {
+      input: { empresa_id: 7 },
+      pinAdministrativo: "2468",
+    });
+  });
 });

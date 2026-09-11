@@ -345,6 +345,62 @@ export interface ClienteContato {
   atualizado_em?: string;
 }
 
+export interface RegularizacaoConflito {
+  cliente_id?: number;
+  equipamento_id?: number;
+  tipo: string;
+}
+
+export interface RegularizacaoLegadoPrevia {
+  empresa_id: number;
+  empresa_nome: string;
+  token: string;
+  expira_em: string;
+  rules_version: number;
+  clientes: number;
+  equipamentos: number;
+  verificacoes: number;
+  imagens: number;
+  comunicacoes: number;
+  equipamentos_sem_cliente: number[];
+  contatos_irregulares: number;
+  conflitos: RegularizacaoConflito[];
+}
+
+export interface RegularizacaoLegadoResultado {
+  empresa_id: number;
+  clientes: number;
+  equipamentos: number;
+  verificacoes: number;
+  imagens: number;
+  comunicacoes: number;
+}
+
+export interface EmpresaVinculoCandidata {
+  id: number;
+  nome: string;
+  email: string;
+}
+
+export interface VinculoEmpresaPerfilPrevia {
+  perfil_id: number;
+  perfil_nome: string;
+  empresas_ativas: EmpresaVinculoCandidata[];
+}
+
+export interface VinculoEmpresaPerfilInput {
+  empresa_id?: number;
+  nova_empresa_nome?: string;
+  nova_empresa_email?: string;
+  nova_empresa_cnpj?: string;
+}
+
+export interface VinculoEmpresaPerfilResultado {
+  empresa_id: number;
+  empresa_nome: string;
+  empresa_criada: boolean;
+}
+
 export type ClienteContatoInput = Omit<ClienteContato, "id" | "ativo" | "criado_em" | "atualizado_em"> & {
   atualizado_em?: string;
 };
@@ -362,6 +418,7 @@ export type ClienteContatoInput = Omit<ClienteContato, "id" | "ativo" | "criado_
  */
 export interface Comunicacao {
   id?: number;
+  empresa_id?: number;
   equipamento_id: number;
   tipo: string;    // ORCAMENTO, PRONTO, LEMBRETE, MANUAL
   canal: string;   // EMAIL, WHATSAPP

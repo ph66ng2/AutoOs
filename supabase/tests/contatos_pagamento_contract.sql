@@ -6,14 +6,14 @@ BEGIN;
 
 DO $$
 DECLARE
-    tenant_a UUID := gen_random_uuid();
-    tenant_b UUID := gen_random_uuid();
-    client_a UUID := gen_random_uuid();
-    client_b UUID := gen_random_uuid();
-    contact_a UUID := gen_random_uuid();
-    contact_b UUID := gen_random_uuid();
-    equipment_a UUID := gen_random_uuid();
-    verification_a UUID := gen_random_uuid();
+    tenant_a UUID := '10000000-0000-0000-0000-000000000001';
+    tenant_b UUID := '10000000-0000-0000-0000-000000000002';
+    client_a UUID := '20000000-0000-0000-0000-000000000001';
+    client_b UUID := '20000000-0000-0000-0000-000000000002';
+    contact_a UUID := '30000000-0000-0000-0000-000000000001';
+    contact_b UUID := '30000000-0000-0000-0000-000000000002';
+    equipment_a UUID := '40000000-0000-0000-0000-000000000001';
+    verification_a UUID := '50000000-0000-0000-0000-000000000001';
     snapshot_name TEXT;
     snapshot_email TEXT;
     snapshot_phone TEXT;
@@ -139,5 +139,42 @@ BEGIN
         RAISE EXCEPTION 'política RLS tenant-safe de cliente_contatos ausente';
     END IF;
 END $$;
+
+-- Exercita a política como ela será aplicada pela Data API, não como owner.
+SET LOCAL ROLE anon;
+SELECT set_config('app.empresa_id', '10000000-0000-0000-0000-000000000001', true);
+
+DO $$
+BEGIN
+    IF (SELECT COUNT(*) FROM cliente_contatos) <> 1 THEN
+        RAISE EXCEPTION 'RLS anon expôs contato de outro tenant';
+    END IF;
+
+    UPDATE cliente_contatos
+       SET telefone = '71933333333'
+     WHERE id = '30000000-0000-0000-0000-000000000001';
+    IF NOT EXISTS (
+        SELECT 1 FROM cliente_contatos
+         WHERE id = '30000000-0000-0000-0000-000000000001'
+           AND telefone = '71933333333'
+    ) THEN
+        RAISE EXCEPTION 'RLS anon bloqueou atualização válida do próprio tenant';
+    END IF;
+
+    BEGIN
+        INSERT INTO cliente_contatos (id, empresa_id, cliente_id, nome)
+        VALUES (
+            '30000000-0000-0000-0000-000000000003',
+            '10000000-0000-0000-0000-000000000002',
+            '20000000-0000-0000-0000-000000000002',
+            'TESTE-CONTATO invasão cross-tenant'
+        );
+        RAISE EXCEPTION 'RLS anon aceitou contato de outro tenant';
+    EXCEPTION WHEN insufficient_privilege THEN
+        NULL;
+    END;
+END $$;
+
+RESET ROLE;
 
 ROLLBACK;

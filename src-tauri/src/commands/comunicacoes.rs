@@ -18,18 +18,28 @@ pub async fn registrar_comunicacao(input: ComunicacaoInput) -> Result<Comunicaca
            input.tipo, input.canal, input.equipamento_id);
     let pool = get_pool().await.map_err(|e| e.to_string())?;
 
+    let empresa_id: i32 = sqlx::query_scalar(
+        "SELECT empresa_id FROM equipamentos WHERE id = $1 AND empresa_id IS NOT NULL",
+    )
+    .bind(input.equipamento_id)
+    .fetch_optional(&pool)
+    .await
+    .map_err(|e| e.to_string())?
+    .ok_or_else(|| "O equipamento precisa estar vinculado à empresa antes de registrar uma comunicação.".to_string())?;
+
     let row = sqlx::query(
         r#"
         INSERT INTO comunicacoes (
-            equipamento_id, tipo, canal, destinatario, contato,
+            empresa_id, equipamento_id, tipo, canal, destinatario, contato,
             assunto, mensagem, anexos, enviado, data_envio, erro
         ) VALUES (
-            $1, $2, $3, $4, $5, $6, $7, $8, $9,
-            CASE WHEN $9 = true THEN NOW() ELSE NULL END,
-            $10
+            $1, $2, $3, $4, $5, $6, $7, $8, $9, $10,
+            CASE WHEN $10 = true THEN NOW() ELSE NULL END,
+            $11
         ) RETURNING id
         "#,
     )
+    .bind(empresa_id)
     .bind(input.equipamento_id)
     .bind(&input.tipo)
     .bind(&input.canal)

@@ -155,7 +155,10 @@ export function ClientesContatosModal({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-2xl max-h-[85vh] overflow-y-auto">
         {cliente && (
-          <ClienteContatosPanel cliente={cliente} empresaId={cliente.empresa_id} />
+          <ClienteContatosPanel
+            cliente={cliente}
+            empresaId={cliente.empresa_id}
+          />
         )}
         <DialogFooter>
           <DialogClose asChild><Button variant="outline">Fechar</Button></DialogClose>

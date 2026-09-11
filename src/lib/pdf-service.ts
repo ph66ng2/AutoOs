@@ -475,6 +475,7 @@ function renderizarAssinaturaTecnica(
   const nome = tecnicoNome.trim();
   if (!nome) return y;
 
+  y += 4;
   y = garantirEspacoVertical(doc, y, emailTecnico ? 28 : 23);
   doc.setTextColor(...CORES_PDF.preto);
   doc.setFont("helvetica", "normal");
@@ -616,7 +617,7 @@ function renderizarCondicoesComerciais(
   const espacoSecao = 10;
 
   // ─── Prazo de Execução ────────────────────────────────────
-  y = garantirEspacoVertical(doc, y, 20);
+  y = garantirEspacoVertical(doc, y + 5, 20);
   doc.setFont("helvetica", "bold");
   doc.setFontSize(10);
   doc.setTextColor(...CORES_PDF.preto);
@@ -1491,7 +1492,8 @@ export const PdfService = {
 
       autoTable(doc, {
         ...opcoesTabelaMonocromatica(),
-        startY: y,
+        // Reserva integralmente a altura do cabeçalho antes da ficha.
+        startY: Math.max(y, 66),
         body: [
           ["Equipamento", `${equipamento.marca || "—"} ${equipamento.modelo || ""}`.trim()],
           ["Nº de Série", equipamento.serial_number || "—"],

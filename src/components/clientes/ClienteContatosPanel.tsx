@@ -128,8 +128,8 @@ export function ClienteContatosPanel({ cliente, empresaId }: ClienteContatosPane
 
   return (
     <section className="space-y-4" aria-label={`Contatos de ${nomeExibicaoCliente(cliente)}`}>
-      <div className="flex items-start justify-between gap-3">
-        <div>
+      <div className="space-y-3">
+        <div className="pr-10">
           <h3 className="flex items-center gap-2 text-base font-semibold">
             <UserRound className="h-4 w-4" /> Contatos do cliente
           </h3>
@@ -137,12 +137,12 @@ export function ClienteContatosPanel({ cliente, empresaId }: ClienteContatosPane
             Empresa/cliente vinculado: <strong>{nomeExibicaoCliente(cliente)}</strong>
           </p>
         </div>
-        <Button type="button" size="sm" onClick={abrirNovo} disabled={!empresaId || !cliente.id}>
+        <Button type="button" size="sm" onClick={abrirNovo} disabled={!cliente.id || !empresaId}>
           <Plus className="mr-1 h-4 w-4" /> Novo contato
         </Button>
       </div>
 
-      {erro && <ErrorAlert variant="error" context="Clientes" message={erro} action="Carregar contatos" />}
+      {erro && <ErrorAlert variant="error" context="Clientes" message={erro} action={empresaId ? "Carregar contatos" : "Use “Regularizar antigos” na tela de clientes"} />}
       {carregando ? (
         <div className="flex items-center justify-center py-8 text-sm text-muted-foreground">Carregando contatos...</div>
       ) : contatos.length === 0 ? (
