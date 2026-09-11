@@ -112,4 +112,23 @@ describe("db — contatos e contratos de orçamento", () => {
       pinAdministrativo: "2468",
     });
   });
+
+  it("lista empresas de vínculo sem receber identidade ou empresa da tela", async () => {
+    mockInvoke.mockResolvedValue({ perfil_id: 1, perfil_nome: "Administrador Local", empresas_ativas: [] });
+
+    await db.previsualizarVinculoEmpresaPerfil();
+
+    expect(mockInvoke).toHaveBeenCalledWith("previsualizar_vinculo_empresa_perfil");
+  });
+
+  it("envia empresa escolhida e PIN explícito no bootstrap do perfil", async () => {
+    mockInvoke.mockResolvedValue({ empresa_id: 7, empresa_nome: "AutoOS", empresa_criada: false });
+
+    await db.vincularPerfilAtivoEmpresa({ empresa_id: 7 }, "2468");
+
+    expect(mockInvoke).toHaveBeenCalledWith("vincular_perfil_ativo_empresa", {
+      input: { empresa_id: 7 },
+      pinAdministrativo: "2468",
+    });
+  });
 });

@@ -70,6 +70,8 @@ import {
   type Cliente,
   type Equipamento,
   type RegularizacaoLegadoPrevia,
+  type VinculoEmpresaPerfilInput,
+  type VinculoEmpresaPerfilPrevia,
 } from "@/types";
 import { useSensitiveAccess } from "@/hooks/useSensitiveAccess";
 import { ErrorAlert } from "@/components/ui/error-alert";
@@ -88,6 +90,7 @@ import {
 } from "@/pages/clientes/ClientesDialogs";
 import { ActionPriorityRow } from "@/components/ui/action-priority-row";
 import { RegularizacaoLegadosDialog } from "@/components/clientes/RegularizacaoLegadosDialog";
+import { VinculoEmpresaPerfilDialog } from "@/components/clientes/VinculoEmpresaPerfilDialog";
 
 export default function Clientes() {
   const navigate = useNavigate();
@@ -110,6 +113,7 @@ export default function Clientes() {
   const [clienteEquipamentosSelecionado, setClienteEquipamentosSelecionado] = useState<Cliente | null>(null);
   const [contatosClienteSelecionado, setContatosClienteSelecionado] = useState<Cliente | null>(null);
   const [previaRegularizacao, setPreviaRegularizacao] = useState<RegularizacaoLegadoPrevia | null>(null);
+  const [previaVinculoEmpresa, setPreviaVinculoEmpresa] = useState<VinculoEmpresaPerfilPrevia | null>(null);
   const [regularizando, setRegularizando] = useState(false);
 
   const { clientes, loading, error, criar, atualizar, deletar, recarregar } =
@@ -350,7 +354,30 @@ export default function Clientes() {
     try {
       setPreviaRegularizacao(await db.previsualizarRegularizacaoLegados());
     } catch (cause) {
+      if (String(cause).includes("não está vinculado a uma empresa ativa")) {
+        try {
+          setPreviaVinculoEmpresa(await db.previsualizarVinculoEmpresaPerfil());
+          return;
+        } catch (vinculoCause) {
+          showError("Clientes", "Preparar vínculo da empresa interna", vinculoCause);
+          return;
+        }
+      }
       showError("Clientes", "Gerar prévia da regularização", cause);
+    }
+  }
+
+  async function vincularPerfilEmpresa(input: VinculoEmpresaPerfilInput, pin: string) {
+    setRegularizando(true);
+    try {
+      const resultado = await db.vincularPerfilAtivoEmpresa(input, pin);
+      setPreviaVinculoEmpresa(null);
+      success("Clientes", `Perfil vinculado à empresa ${resultado.empresa_nome}.`, "Vínculo concluído");
+      setPreviaRegularizacao(await db.previsualizarRegularizacaoLegados());
+    } catch (cause) {
+      showError("Clientes", "Vincular perfil à empresa interna", cause);
+    } finally {
+      setRegularizando(false);
     }
   }
 
@@ -668,6 +695,14 @@ export default function Clientes() {
         loading={regularizando}
         onOpenChange={(open) => { if (!open) setPreviaRegularizacao(null); }}
         onConfirm={executarRegularizacaoLegados}
+      />
+
+      <VinculoEmpresaPerfilDialog
+        open={Boolean(previaVinculoEmpresa)}
+        previa={previaVinculoEmpresa}
+        loading={regularizando}
+        onOpenChange={(open) => { if (!open) setPreviaVinculoEmpresa(null); }}
+        onConfirm={vincularPerfilEmpresa}
       />
     </div>
   );
