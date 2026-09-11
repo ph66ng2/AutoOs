@@ -9,12 +9,15 @@ use anyhow::{anyhow, Context, Result};
 use chrono::Utc;
 use commands::auth;
 use commands::clientes;
+use commands::comunicacoes;
 use commands::contatos;
 use commands::equipamentos;
+use commands::legacy_regularization;
 use commands::produtos;
 use commands::types::{
-    AprovarOrcamentoInput, ClienteContatoInput, ClienteInput, EquipamentoInput, FormaPagamento,
-    FormaPagamentoCodigo, MovimentacaoEstoqueInput, ProdutoInput, VerificacaoInput,
+    AprovarOrcamentoInput, ClienteContatoInput, ClienteInput, ComunicacaoInput, EquipamentoInput,
+    FormaPagamento, FormaPagamentoCodigo, MovimentacaoEstoqueInput, ProdutoInput,
+    VerificacaoInput,
 };
 use commands::verificacoes;
 
@@ -116,10 +119,11 @@ async fn main() -> Result<()> {
     ])
     .context("serialize restricted permissions failed")?;
     let restricted_profile_id: i32 = sqlx::query_scalar(
-        "INSERT INTO security_profiles (nome, role, permissions, ativo, is_default, atualizado_em) VALUES ($1, 'OPERADOR', $2, true, false, NOW()) RETURNING id",
+        "INSERT INTO security_profiles (nome, role, permissions, ativo, is_default, empresa_id, atualizado_em) VALUES ($1, 'OPERADOR', $2, true, false, $3, NOW()) RETURNING id",
     )
     .bind(format!("{} Restricted", prefix))
     .bind(restricted_profile_permissions)
+    .bind(empresa_id)
     .fetch_one(&pool)
     .await
     .context("create restricted profile failed")?;
@@ -135,6 +139,137 @@ async fn main() -> Result<()> {
     auth::configure_sensitive_pin("2468".to_string(), None)
         .await
         .map_err(|error| anyhow!(error))?;
+
+    // Regularização em lote: prévia/token, invalidação por concorrência e cadeia conflitante.
+    let legacy_client_id: i32 = sqlx::query_scalar(
+        "INSERT INTO clientes (nome, tipo_pessoa, documento, cpf_cnpj, telefone, ativo) VALUES ($1, 'PJ', $2, $2, '11999990000', true) RETURNING id",
+    ).bind(format!("{} Legado", prefix)).bind(format!("{:014}", Utc::now().timestamp_millis().rem_euclid(100_000_000_000_000))).fetch_one(&pool).await?;
+    let legacy_chain_equipment_id: i32 = sqlx::query_scalar(
+        "INSERT INTO equipamentos (serial_number, marca, modelo, tipo, status, defeito_relatado, data_entrada, cliente_id, cliente_nome) VALUES ($1, 'TESTE', 'LEGADO', 'IMPRESSORA', 'RECEBIDO', $2, CURRENT_DATE, $3, $4) RETURNING id",
+    ).bind(format!("{}-REG", prefix)).bind(format!("{} Defeito legado", prefix)).bind(legacy_client_id).bind(format!("{} Legado", prefix)).fetch_one(&pool).await?;
+    sqlx::query("INSERT INTO verificacoes (equipamento_id, tecnico_nome, problema_relatado) VALUES ($1, $2, $3)")
+        .bind(legacy_chain_equipment_id).bind(format!("{} Técnico", prefix)).bind(format!("{} Teste", prefix)).execute(&pool).await?;
+    sqlx::query("INSERT INTO equipamento_imagens (equipamento_id, categoria, filename, mime_type, tamanho_bytes, ordem, storage_path) VALUES ($1, 'ENTRADA', $2, 'image/jpeg', 1, 0, $3)")
+        .bind(legacy_chain_equipment_id).bind(format!("{}-foto.jpg", prefix)).bind(format!("teste/{}/foto.jpg", prefix)).execute(&pool).await?;
+    sqlx::query("INSERT INTO comunicacoes (equipamento_id, tipo, canal, destinatario, contato, mensagem) VALUES ($1, 'ORCAMENTO', 'EMAIL', $2, $3, $4)")
+        .bind(legacy_chain_equipment_id).bind(format!("{} Destinatário", prefix)).bind("teste@example.test").bind(format!("{} Mensagem", prefix)).execute(&pool).await?;
+
+    let conflicting_company_id: i32 = sqlx::query_scalar(
+        "INSERT INTO empresas (nome, email, status) VALUES ($1, $2, 'ativo') RETURNING id",
+    )
+    .bind(format!("{} Empresa Conflitante", prefix))
+    .bind(format!("{}-conflito@example.test", prefix.to_lowercase()))
+    .fetch_one(&pool)
+    .await?;
+    let conflicting_client_id: i32 = sqlx::query_scalar(
+        "INSERT INTO clientes (nome, tipo_pessoa, documento, cpf_cnpj, telefone, ativo) VALUES ($1, 'PJ', $2, $2, '11999990002', true) RETURNING id",
+    )
+    .bind(format!("{} Cliente Conflitante", prefix))
+    .bind(format!(
+        "{:014}",
+        (Utc::now().timestamp_millis() + 2).rem_euclid(100_000_000_000_000)
+    ))
+    .fetch_one(&pool)
+    .await?;
+    let conflicting_equipment_id: i32 = sqlx::query_scalar(
+        "INSERT INTO equipamentos (empresa_id, serial_number, marca, modelo, tipo, status, defeito_relatado, data_entrada, cliente_id, cliente_nome) VALUES ($1, $2, 'TESTE', 'CONFLITO', 'IMPRESSORA', 'RECEBIDO', $3, CURRENT_DATE, $4, $5) RETURNING id",
+    )
+    .bind(conflicting_company_id)
+    .bind(format!("{}-CONFLITO", prefix))
+    .bind(format!("{} Defeito conflitante", prefix))
+    .bind(conflicting_client_id)
+    .bind(format!("{} Cliente Conflitante", prefix))
+    .fetch_one(&pool)
+    .await?;
+    sqlx::query("INSERT INTO verificacoes (equipamento_id, tecnico_nome, problema_relatado) VALUES ($1, $2, $3)")
+        .bind(conflicting_equipment_id)
+        .bind(format!("{} Técnico conflito", prefix))
+        .bind(format!("{} Teste conflito", prefix))
+        .execute(&pool)
+        .await?;
+
+    let stale_preview = legacy_regularization::previsualizar_regularizacao_legados()
+        .await
+        .map_err(|e| anyhow!(e))?;
+    let late_client_id: i32 = sqlx::query_scalar(
+        "INSERT INTO clientes (nome, tipo_pessoa, documento, cpf_cnpj, telefone, ativo) VALUES ($1, 'PF', $2, $2, '11999990001', true) RETURNING id",
+    ).bind(format!("{} Tardio", prefix)).bind(format!("{:011}", (Utc::now().timestamp_millis() + 1).rem_euclid(100_000_000_000))).fetch_one(&pool).await?;
+    let stale_result =
+        legacy_regularization::executar_regularizacao_legados(stale_preview.token, "2468".into())
+            .await;
+    if stale_result.is_ok() {
+        return Err(anyhow!(
+            "preview token should be invalidated after data change"
+        ));
+    }
+    let still_null: Option<i32> = sqlx::query_scalar("SELECT empresa_id FROM clientes WHERE id=$1")
+        .bind(legacy_client_id)
+        .fetch_one(&pool)
+        .await?;
+    if still_null.is_some() {
+        return Err(anyhow!("stale preview produced a partial update"));
+    }
+
+    let preview = legacy_regularization::previsualizar_regularizacao_legados()
+        .await
+        .map_err(|e| anyhow!(e))?;
+    if preview.comunicacoes == 0 || preview.imagens == 0 || preview.verificacoes == 0 {
+        return Err(anyhow!("preview omitted legacy dependencies"));
+    }
+    if !preview
+        .conflitos
+        .iter()
+        .any(|item| item.cliente_id == Some(conflicting_client_id))
+    {
+        return Err(anyhow!("preview omitted conflicting ownership chain"));
+    }
+    let invalid_pin =
+        legacy_regularization::executar_regularizacao_legados(preview.token.clone(), "0000".into())
+            .await;
+    if invalid_pin.is_ok() {
+        return Err(anyhow!("regularization accepted an invalid explicit PIN"));
+    }
+    let result =
+        legacy_regularization::executar_regularizacao_legados(preview.token, "2468".into())
+            .await
+            .map_err(|e| anyhow!(e))?;
+    if result.clientes < 2 || result.equipamentos == 0 || result.comunicacoes == 0 {
+        return Err(anyhow!("regularization did not update the complete chain"));
+    }
+    let chain: (Option<i32>, Option<i32>, Option<i32>, Option<i32>) = sqlx::query_as(
+        "SELECT e.empresa_id, v.empresa_id, i.empresa_id, m.empresa_id FROM equipamentos e JOIN verificacoes v ON v.equipamento_id=e.id JOIN equipamento_imagens i ON i.equipamento_id=e.id JOIN comunicacoes m ON m.equipamento_id=e.id WHERE e.id=$1",
+    ).bind(legacy_chain_equipment_id).fetch_one(&pool).await?;
+    if chain
+        != (
+            Some(empresa_id),
+            Some(empresa_id),
+            Some(empresa_id),
+            Some(empresa_id),
+        )
+    {
+        return Err(anyhow!("legacy dependency chain remained inconsistent"));
+    }
+    let tenant_communication = comunicacoes::registrar_comunicacao(ComunicacaoInput {
+        equipamento_id: legacy_chain_equipment_id,
+        tipo: "MANUAL".to_string(),
+        canal: "EMAIL".to_string(),
+        destinatario: format!("{} Destinatário tenant", prefix),
+        contato: "tenant@example.test".to_string(),
+        mensagem: format!("{} Comunicação tenant", prefix),
+        enviado: Some(false),
+        ..ComunicacaoInput::default()
+    })
+    .await
+    .map_err(|e| anyhow!(e))?;
+    if tenant_communication.empresa_id != Some(empresa_id) {
+        return Err(anyhow!("new communication did not inherit equipment company"));
+    }
+    let conflicting_chain: (Option<i32>, Option<i32>) = sqlx::query_as(
+        "SELECT c.empresa_id, v.empresa_id FROM clientes c JOIN equipamentos e ON e.cliente_id=c.id JOIN verificacoes v ON v.equipamento_id=e.id WHERE c.id=$1",
+    ).bind(conflicting_client_id).fetch_one(&pool).await?;
+    if conflicting_chain != (None, None) {
+        return Err(anyhow!("conflicting chain was partially regularized"));
+    }
 
     let denied = equipamentos::aprovar_orcamento(AprovarOrcamentoInput {
         empresa_id,
@@ -350,6 +485,7 @@ async fn main() -> Result<()> {
     println!("P1_INTEGRATION_PAYMENT_APPROVAL=ok");
     println!("P1_INTEGRATION_CONTACT_SNAPSHOT=ok");
     println!("P1_INTEGRATION_LEGACY_NULLS=ok");
+    println!("P1_INTEGRATION_LEGACY_REGULARIZATION=ok");
     println!("P1_INTEGRATION_BUDGET_DESCRIPTION=ok");
     println!("P1_INTEGRATION_STOCK_OK=ok:saldo_final={}", saldo);
     println!(
@@ -369,12 +505,22 @@ async fn main() -> Result<()> {
         .await
         .context("cleanup product failed")?;
     sqlx::query("DELETE FROM verificacoes WHERE equipamento_id = ANY($1)")
-        .bind(vec![equipamento.id, legacy_equipment_id])
+        .bind(vec![
+            equipamento.id,
+            legacy_equipment_id,
+            legacy_chain_equipment_id,
+            conflicting_equipment_id,
+        ])
         .execute(&pool)
         .await
         .context("cleanup verifications failed")?;
     sqlx::query("DELETE FROM equipamentos WHERE id = ANY($1)")
-        .bind(vec![equipamento.id, legacy_equipment_id])
+        .bind(vec![
+            equipamento.id,
+            legacy_equipment_id,
+            legacy_chain_equipment_id,
+            conflicting_equipment_id,
+        ])
         .execute(&pool)
         .await
         .context("cleanup equipment failed")?;
@@ -383,8 +529,13 @@ async fn main() -> Result<()> {
         .execute(&pool)
         .await
         .context("cleanup contact failed")?;
-    sqlx::query("DELETE FROM clientes WHERE id = $1")
-        .bind(cliente.id)
+    sqlx::query("DELETE FROM clientes WHERE id = ANY($1)")
+        .bind(vec![
+            cliente.id,
+            legacy_client_id,
+            late_client_id,
+            conflicting_client_id,
+        ])
         .execute(&pool)
         .await
         .context("cleanup client failed")?;
@@ -408,6 +559,11 @@ async fn main() -> Result<()> {
         .execute(&pool)
         .await
         .context("cleanup company failed")?;
+    sqlx::query("DELETE FROM empresas WHERE id = $1")
+        .bind(conflicting_company_id)
+        .execute(&pool)
+        .await
+        .context("cleanup conflicting company failed")?;
 
     Ok(())
 }

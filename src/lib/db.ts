@@ -30,7 +30,8 @@ import type {
   Cliente,
   ClienteContato,
   ClienteContatoInput,
-  VinculoClienteLegadoResultado,
+  RegularizacaoLegadoPrevia,
+  RegularizacaoLegadoResultado,
   Comunicacao,
   ConfigInatividade,
   DatabaseConnectionConfig,
@@ -172,9 +173,13 @@ export const db = {
     return invoke<void>("deletar_cliente", { id });
   },
 
-  /** Vincula um cliente legado sem tenant à empresa do administrador atual. */
-  async vincularClienteLegadoEmpresa(id: number): Promise<VinculoClienteLegadoResultado> {
-    return invoke<VinculoClienteLegadoResultado>("vincular_cliente_legado_empresa", { id });
+  /** Gera uma prévia imutável dos cadastros legados elegíveis e conflitos. */
+  async previsualizarRegularizacaoLegados(): Promise<RegularizacaoLegadoPrevia> {
+    return invoke<RegularizacaoLegadoPrevia>("previsualizar_regularizacao_legados");
+  },
+
+  async executarRegularizacaoLegados(tokenDaPrevia: string, pinAdministrativo: string): Promise<RegularizacaoLegadoResultado> {
+    return invoke<RegularizacaoLegadoResultado>("executar_regularizacao_legados", { tokenDaPrevia, pinAdministrativo });
   },
 
   /** Consulta dados públicos do CNPJ no backend, sem depender das regras de rede do WebView. */

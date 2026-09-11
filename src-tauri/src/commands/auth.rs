@@ -928,6 +928,37 @@ pub async fn unlock_sensitive_access(pin: String) -> Result<SensitiveAccessStatu
     status_snapshot().await
 }
 
+/// Confirma novamente o PIN do perfil que já está autenticado, sem trocar a
+/// identidade da sessão. Operações persistentes em lote usam esta etapa para
+/// exigir presença administrativa e manter o mesmo controle de tentativas.
+pub(crate) async fn confirm_authenticated_profile_pin(
+    profile: &SecurityProfileSummary,
+    pin: &str,
+) -> Result<(), String> {
+    validate_pin_format(pin)?;
+    check_unlock_lockout(profile.id)?;
+    let record = fetch_profile_record_by_id(profile.id).await?;
+    let stored = load_profile_pin_for_record(&record)?
+        .ok_or_else(|| "O perfil administrador não possui PIN configurado.".to_string())?;
+
+    if !verify_pin(pin.trim(), &stored) {
+        record_unlock_failure(profile.id);
+        warn!("Confirmação administrativa em lote com PIN inválido");
+        record_security_event(
+            "ADMIN_CONFIRMATION_FAILED",
+            Some(profile),
+            "PIN inválido em operação persistente em lote",
+            false,
+        )
+        .await;
+        return Err("PIN do administrador inválido.".to_string());
+    }
+
+    upgrade_pin_hash_if_legacy(profile.id, pin.trim(), &stored)?;
+    reset_unlock_attempts(profile.id);
+    Ok(())
+}
+
 #[tauri::command]
 #[instrument(skip_all)]
 pub async fn unlock_session_without_pin() -> Result<SensitiveAccessStatus, String> {

@@ -69,6 +69,7 @@ import {
   SENSITIVE_PERMISSIONS,
   type Cliente,
   type Equipamento,
+  type RegularizacaoLegadoPrevia,
 } from "@/types";
 import { useSensitiveAccess } from "@/hooks/useSensitiveAccess";
 import { ErrorAlert } from "@/components/ui/error-alert";
@@ -86,6 +87,7 @@ import {
   ClientesFormDialog,
 } from "@/pages/clientes/ClientesDialogs";
 import { ActionPriorityRow } from "@/components/ui/action-priority-row";
+import { RegularizacaoLegadosDialog } from "@/components/clientes/RegularizacaoLegadosDialog";
 
 export default function Clientes() {
   const navigate = useNavigate();
@@ -107,6 +109,8 @@ export default function Clientes() {
   const [modalEquipamentosOpen, setModalEquipamentosOpen] = useState(false);
   const [clienteEquipamentosSelecionado, setClienteEquipamentosSelecionado] = useState<Cliente | null>(null);
   const [contatosClienteSelecionado, setContatosClienteSelecionado] = useState<Cliente | null>(null);
+  const [previaRegularizacao, setPreviaRegularizacao] = useState<RegularizacaoLegadoPrevia | null>(null);
+  const [regularizando, setRegularizando] = useState(false);
 
   const { clientes, loading, error, criar, atualizar, deletar, recarregar } =
     useClientes({ busca: busca || undefined });
@@ -336,36 +340,53 @@ export default function Clientes() {
     setDeleteDialogOpen(true);
   }
 
-  async function vincularClienteLegado(cliente: Cliente) {
+  async function abrirRegularizacaoLegados() {
     const liberado = await ensureSensitiveAccess({
-      title: "Vincular cadastro legado",
-      description: "Confirme com o PIN. O cliente e seus equipamentos sem empresa serão vinculados à empresa do seu perfil; vínculos existentes não serão alterados.",
+      title: "Regularizar cadastros antigos",
+      description: "A prévia identifica registros antigos e conflitos. Nenhum dado será alterado nesta etapa.",
       permission: SENSITIVE_PERMISSIONS.MANAGE_PROFILES,
     });
-    if (!liberado || !cliente.id) return;
+    if (!liberado) return;
     try {
-      const resultado = await db.vincularClienteLegadoEmpresa(cliente.id);
-      const atualizado = { ...cliente, empresa_id: resultado.empresa_id };
-      setContatosClienteSelecionado(atualizado);
-      await recarregar();
-      success("Clientes", `Cadastro legado vinculado. ${resultado.equipamentos_vinculados} equipamento(s) atualizado(s).`, "Vínculo de empresa");
+      setPreviaRegularizacao(await db.previsualizarRegularizacaoLegados());
     } catch (cause) {
-      showError("Clientes", "Vincular cadastro legado", cause);
+      showError("Clientes", "Gerar prévia da regularização", cause);
+    }
+  }
+
+  async function executarRegularizacaoLegados(pin: string) {
+    if (!previaRegularizacao) return;
+    setRegularizando(true);
+    try {
+      const resultado = await db.executarRegularizacaoLegados(previaRegularizacao.token, pin);
+      setPreviaRegularizacao(null);
+      await recarregar();
+      success("Clientes", `${resultado.clientes} cliente(s) e ${resultado.equipamentos} equipamento(s) regularizados.`, "Regularização concluída");
+    } catch (cause) {
+      showError("Clientes", "Executar regularização", cause);
+      setPreviaRegularizacao(null);
+    } finally {
+      setRegularizando(false);
     }
   }
 
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="text-3xl font-bold tracking-tight">Clientes</h1>
           <p className="text-muted-foreground">Gerencie clientes PF e PJ e seus equipamentos vinculados</p>
         </div>
-        <Button onClick={abrirNovo}>
-          <Plus className="h-4 w-4 mr-2" />
-          Novo Cliente
-        </Button>
+        <div className="flex flex-wrap gap-2">
+          <Button variant="outline" onClick={() => void abrirRegularizacaoLegados()}>
+            Regularizar antigos
+          </Button>
+          <Button onClick={abrirNovo}>
+            <Plus className="h-4 w-4 mr-2" />
+            Novo Cliente
+          </Button>
+        </div>
       </div>
 
       {/* Filtros */}
@@ -639,7 +660,14 @@ export default function Clientes() {
         open={Boolean(contatosClienteSelecionado)}
         onOpenChange={(open) => { if (!open) setContatosClienteSelecionado(null); }}
         cliente={contatosClienteSelecionado}
-        onVincularLegado={vincularClienteLegado}
+      />
+
+      <RegularizacaoLegadosDialog
+        open={Boolean(previaRegularizacao)}
+        previa={previaRegularizacao}
+        loading={regularizando}
+        onOpenChange={(open) => { if (!open) setPreviaRegularizacao(null); }}
+        onConfirm={executarRegularizacaoLegados}
       />
     </div>
   );

@@ -534,20 +534,11 @@ pub struct ClienteContato {
     pub atualizado_em: String,
 }
 
-/// Resumo da vinculação explícita de um cadastro legado ao tenant do administrador.
-#[derive(Debug, Serialize)]
-pub struct VinculoClienteLegadoResultado {
-    pub empresa_id: i32,
-    pub cliente_id: i32,
-    pub equipamentos_vinculados: u64,
-    pub verificacoes_vinculadas: u64,
-    pub imagens_vinculadas: u64,
-}
-
 /// Comunicação completa retornada ao frontend.
 #[derive(Debug, Serialize, FromRow)]
 pub struct ComunicacaoRow {
     pub id: i32,
+    pub empresa_id: Option<i32>,
     pub equipamento_id: i32,
     pub tipo: String,
     pub canal: String,
@@ -738,7 +729,7 @@ pub const CLIENTE_CONTATO_SELECT: &str = "
     FROM cliente_contatos";
 
 pub const COMUNICACAO_SELECT: &str = "
-    SELECT id, equipamento_id, tipo, canal, destinatario, contato,
+    SELECT id, empresa_id, equipamento_id, tipo, canal, destinatario, contato,
            assunto, mensagem, anexos, enviado,
            data_envio::TEXT as data_envio, erro,
            criado_em::TEXT as criado_em
