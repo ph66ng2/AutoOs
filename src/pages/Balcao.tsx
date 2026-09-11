@@ -60,6 +60,7 @@ import {
   SENSITIVE_PERMISSIONS,
   type Cliente,
   type Equipamento,
+  type Produto,
 } from "@/types";
 
 const inputClass = "min-h-12 text-base";
@@ -106,7 +107,7 @@ export default function Balcao() {
   const { resetKey } = useCounterSession();
   const location = useLocation();
   const [view, setView] = useState<
-    "home" | "entry" | "equipment" | "client" | "panel"
+    "home" | "entry" | "equipment" | "client" | "panel" | "stock"
   >("home");
   const [counterEquipment, setCounterEquipment] = useState<Equipamento | null>(
     null,
@@ -141,13 +142,14 @@ export default function Balcao() {
   if (view === "client") return <ClientSearch onBack={() => setView("home")} />;
   if (view === "panel")
     return <OperationalPanel onBack={() => setView("home")} />;
+  if (view === "stock") return <CounterStock onBack={() => setView("home")} />;
   return (
     <div className="mx-auto max-w-6xl py-8">
       <h1 className="text-3xl font-bold">Atendimento de balcão</h1>
       <p className="mt-2 text-lg text-muted-foreground">
         Escolha a próxima ação.
       </p>
-      <div className="mt-10 grid gap-6 md:grid-cols-3">
+      <div className="mt-10 grid gap-6 md:grid-cols-2 xl:grid-cols-4">
         <Action
           icon={<Plus className="h-14 w-14" />}
           title="Nova entrada"
@@ -165,6 +167,12 @@ export default function Balcao() {
           title="Buscar cliente"
           description="Ver dados e ciclos vinculados"
           onClick={() => setView("client")}
+        />
+        <Action
+          icon={<PackageSearch className="h-14 w-14" />}
+          title="Consultar estoque"
+          description="Ver insumos, saldo e preço"
+          onClick={() => setView("stock")}
         />
       </div>
       <Button
@@ -213,6 +221,124 @@ function Back({ onBack }: { onBack: () => void }) {
     >
       <ChevronLeft /> Voltar
     </Button>
+  );
+}
+
+function formatarPreco(valor: number) {
+  return valor.toLocaleString("pt-BR", {
+    style: "currency",
+    currency: "BRL",
+  });
+}
+
+function CounterStock({ onBack }: { onBack: () => void }) {
+  const [busca, setBusca] = useState("");
+  const [produtos, setProdutos] = useState<Produto[]>([]);
+  const [carregando, setCarregando] = useState(true);
+  const [erro, setErro] = useState<string | null>(null);
+
+  async function carregarProdutos(termo = busca) {
+    setCarregando(true);
+    setErro(null);
+    try {
+      setProdutos(await db.listarProdutos(termo.trim() || undefined));
+    } catch (cause) {
+      setErro("Não foi possível consultar o estoque agora.");
+      console.error("Erro ao consultar estoque no balcão:", cause);
+    } finally {
+      setCarregando(false);
+    }
+  }
+
+  useEffect(() => {
+    void carregarProdutos("");
+  }, []);
+
+  return (
+    <section className="mx-auto max-w-6xl">
+      <Back onBack={onBack} />
+      <div className="mt-3 flex flex-wrap items-end justify-between gap-4">
+        <div>
+          <h1 className="text-3xl font-bold">Estoque e preços</h1>
+          <p className="mt-2 text-lg text-muted-foreground">
+            Consulte os insumos disponíveis e o preço de venda ao cliente.
+          </p>
+        </div>
+        <Button
+          type="button"
+          variant="outline"
+          className="min-h-12 gap-2 text-base"
+          disabled={carregando}
+          onClick={() => void carregarProdutos()}
+        >
+          <RefreshCw className={carregando ? "animate-spin" : undefined} />
+          Atualizar estoque
+        </Button>
+      </div>
+
+      <form
+        className="mt-6 flex flex-col gap-3 sm:flex-row"
+        onSubmit={(event) => {
+          event.preventDefault();
+          void carregarProdutos();
+        }}
+      >
+        <div className="relative flex-1">
+          <Search className="absolute left-3 top-1/2 h-5 w-5 -translate-y-1/2 text-muted-foreground" />
+          <Input
+            value={busca}
+            onChange={(event) => setBusca(event.target.value)}
+            className="min-h-12 pl-10 text-base"
+            placeholder="Buscar por nome ou código do insumo"
+          />
+        </div>
+        <Button type="submit" className="min-h-12 gap-2 text-base" disabled={carregando}>
+          <Search /> Buscar
+        </Button>
+      </form>
+
+      {erro && <p role="alert" className="mt-4 text-red-700">{erro}</p>}
+      {carregando ? (
+        <div className="mt-8 flex min-h-40 items-center justify-center gap-3 text-lg text-muted-foreground">
+          <Loader2 className="animate-spin" /> Carregando estoque...
+        </div>
+      ) : produtos.length === 0 ? (
+        <p className="mt-8 rounded-xl border bg-white p-6 text-lg text-muted-foreground">
+          Nenhum insumo encontrado.
+        </p>
+      ) : (
+        <div className="mt-6 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+          {produtos.map((produto) => {
+            const estoqueBaixo = produto.quantidade_estoque < produto.quantidade_minima;
+            return (
+              <Card key={produto.id ?? produto.codigo} className="border-2">
+                <CardContent className="space-y-4 p-5">
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <h2 className="text-xl font-semibold">{produto.nome}</h2>
+                      <p className="mt-1 text-sm text-muted-foreground">
+                        Código: {produto.codigo} · {produto.categoria}
+                      </p>
+                    </div>
+                    {estoqueBaixo && <Badge variant="destructive">Estoque baixo</Badge>}
+                  </div>
+                  <div className="grid grid-cols-2 gap-3 text-base">
+                    <div className="rounded-lg bg-slate-100 p-3">
+                      <p className="text-sm text-muted-foreground">Disponível</p>
+                      <p className="mt-1 text-2xl font-bold">{produto.quantidade_estoque}</p>
+                    </div>
+                    <div className="rounded-lg bg-cyan-50 p-3">
+                      <p className="text-sm text-muted-foreground">Preço de venda</p>
+                      <p className="mt-1 text-2xl font-bold text-cyan-800">{formatarPreco(produto.preco_venda)}</p>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            );
+          })}
+        </div>
+      )}
+    </section>
   );
 }
 
