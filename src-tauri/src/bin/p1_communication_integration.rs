@@ -4,7 +4,7 @@
 mod db;
 #[path = "../commands/mod.rs"]
 mod commands;
-#[path = "support/memory_keyring.rs"]
+#[path = "../test_support/memory_keyring.rs"]
 mod memory_keyring;
 
 use anyhow::{anyhow, Context, Result};
