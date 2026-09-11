@@ -28,6 +28,7 @@ import type {
   Verificacao,
   WhatsappSendRequest,
 } from "@/types";
+import { resolveRecipient } from "@/lib/recipient-resolver";
 
 async function registrarComunicacaoSegura(comunicacao: Omit<Comunicacao, "id">) {
   try {
@@ -68,7 +69,13 @@ export const WhatsAppService = {
    * Conecta-se a: db.registrarComunicacao, backend enviar_whatsapp
    */
   async enviarOrcamento(equipamento: Equipamento, verificacao: Verificacao) {
-    if (!equipamento.cliente_telefone) {
+    const recipient = resolveRecipient(equipamento, "telefone");
+    const equipamentoComDestinatario = {
+      ...equipamento,
+      cliente_telefone: recipient.endereco || undefined,
+      cliente_nome: recipient.nome,
+    };
+    if (!equipamentoComDestinatario.cliente_telefone) {
       return { sucesso: false, erro: "Cliente não possui telefone cadastrado" };
     }
 
@@ -87,7 +94,7 @@ export const WhatsAppService = {
         pecas.map((p: any) => `• ${p.nome} (x${p.quantidade}): R$ ${p.valorTotal.toFixed(2)}`).join("\n");
     }
 
-    const mensagem = `🔧 *Olá, ${equipamento.cliente_nome}!*
+    const mensagem = `🔧 *Olá, ${equipamentoComDestinatario.cliente_nome}!*
 
 Seu equipamento foi verificado e elaboramos o orçamento:
 
@@ -108,10 +115,10 @@ ${equipamento.prazo_aprovacao ? `📅 Prazo para aprovação: ${formatDatePtBr(e
 Para aprovar, responda *APROVADO*.
 Para dúvidas, estamos à disposição! 😊`;
 
-    let telefone = equipamento.cliente_telefone;
+    let telefone = equipamentoComDestinatario.cliente_telefone;
 
     try {
-      telefone = formatarTelefone(equipamento.cliente_telefone);
+      telefone = formatarTelefone(equipamentoComDestinatario.cliente_telefone);
 
       const request: WhatsappSendRequest = {
         contato: telefone,
@@ -123,7 +130,7 @@ Para dúvidas, estamos à disposição! 😊`;
         equipamento_id: equipamento.id!,
         tipo: "ORCAMENTO",
         canal: "WHATSAPP",
-        destinatario: equipamento.cliente_nome || "",
+        destinatario: equipamentoComDestinatario.cliente_nome || "",
         contato: telefone,
         mensagem,
         enviado: true,
@@ -138,7 +145,7 @@ Para dúvidas, estamos à disposição! 😊`;
         equipamento_id: equipamento.id!,
         tipo: "ORCAMENTO",
         canal: "WHATSAPP",
-        destinatario: equipamento.cliente_nome || "",
+        destinatario: equipamentoComDestinatario.cliente_nome || "",
         contato: telefone,
         mensagem,
         enviado: false,
@@ -156,13 +163,19 @@ Para dúvidas, estamos à disposição! 😊`;
    * Conecta-se a: db.registrarComunicacao, backend enviar_whatsapp
    */
   async enviarEquipamentoPronto(equipamento: Equipamento) {
-    if (!equipamento.cliente_telefone) {
+    const recipient = resolveRecipient(equipamento, "telefone");
+    const equipamentoComDestinatario = {
+      ...equipamento,
+      cliente_telefone: recipient.endereco || undefined,
+      cliente_nome: recipient.nome,
+    };
+    if (!equipamentoComDestinatario.cliente_telefone) {
       return { sucesso: false, erro: "Cliente não possui telefone cadastrado" };
     }
 
     const valor = equipamento.valor_final || equipamento.valor_orcamento;
 
-    const mensagem = `🎉 *Ótimas notícias, ${equipamento.cliente_nome}!*
+    const mensagem = `🎉 *Ótimas notícias, ${equipamentoComDestinatario.cliente_nome}!*
 
 Seu equipamento está *PRONTO* para retirada! ✅
 
@@ -175,10 +188,10 @@ Traga documento com foto para retirada.
 
 Aguardamos você! 😊`;
 
-    let telefone = equipamento.cliente_telefone;
+    let telefone = equipamentoComDestinatario.cliente_telefone;
 
     try {
-      telefone = formatarTelefone(equipamento.cliente_telefone);
+      telefone = formatarTelefone(equipamentoComDestinatario.cliente_telefone);
 
       const request: WhatsappSendRequest = {
         contato: telefone,
@@ -190,7 +203,7 @@ Aguardamos você! 😊`;
         equipamento_id: equipamento.id!,
         tipo: "PRONTO",
         canal: "WHATSAPP",
-        destinatario: equipamento.cliente_nome || "",
+        destinatario: equipamentoComDestinatario.cliente_nome || "",
         contato: telefone,
         mensagem,
         enviado: true,
@@ -205,7 +218,7 @@ Aguardamos você! 😊`;
         equipamento_id: equipamento.id!,
         tipo: "PRONTO",
         canal: "WHATSAPP",
-        destinatario: equipamento.cliente_nome || "",
+        destinatario: equipamentoComDestinatario.cliente_nome || "",
         contato: telefone,
         mensagem,
         enviado: false,

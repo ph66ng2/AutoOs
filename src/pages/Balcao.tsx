@@ -34,14 +34,14 @@ import {
 } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { ClienteSelector } from "@/components/equipamentos/ClienteSelector";
+import { ContatoResponsavelSelector } from "@/components/equipamentos/ContatoResponsavelSelector";
 import { DocumentosEquipamento } from "@/components/equipamentos/DocumentosEquipamento";
 import { useCounterSession } from "@/components/CounterLayout";
 import { useSensitiveAccess } from "@/hooks/useSensitiveAccess";
 import { db, type ImpressoraWindows } from "@/lib/db";
 import { PdfService, type PdfArtifact } from "@/lib/pdf-service";
 import { PdfPreviewDialog } from "@/components/equipamentos/PdfPreviewDialog";
-import { ConfirmDialog } from "@/components/ui/confirm-dialog";
-import { InputDialog } from "@/components/ui/input-dialog";
+import { CommunicationEmailDialog } from "@/components/equipamentos/CommunicationEmailDialog";
 import { afterCounterRegistration } from "@/lib/counter-registration";
 import { EmailService } from "@/lib/email-service";
 import { equipamentoSchema } from "@/lib/validations";
@@ -51,7 +51,8 @@ import {
   TECNICOS_DISPONIVEIS,
   TIPO_OPTIONS,
 } from "@/pages/equipamentos/equipamentos-page-constants";
-import { emailValido } from "@/pages/equipamentos/equipamentos-page-utils";
+import { resolveRecipient, type ResolvedRecipient } from "@/lib/recipient-resolver";
+import { saveRecipientAddress } from "@/lib/recipient-persistence";
 import { LOGO_BMITAG_MONOCHROME_PNG_BASE64 } from "@/lib/logo-monochrome-base64";
 import type { TecnicoDisponivel } from "@/components/equipamentos/VerificacaoTecnica";
 import { canTransition, getTransitionError } from "@/lib/status-fsm";
@@ -59,6 +60,7 @@ import {
   STATUS_LABELS,
   SENSITIVE_PERMISSIONS,
   type Cliente,
+  type ClienteContato,
   type Equipamento,
   type Produto,
 } from "@/types";
@@ -346,6 +348,7 @@ function QuickEntry({ onBack }: { onBack: () => void }) {
   const { ensureSensitiveAccess } = useSensitiveAccess();
   const [step, setStep] = useState(1);
   const [client, setClient] = useState<Cliente | null>(null);
+  const [responsavel, setResponsavel] = useState<ClienteContato | null>(null);
   const [history, setHistory] = useState<Equipamento[]>([]);
   const [confirmedCycle, setConfirmedCycle] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -366,7 +369,7 @@ function QuickEntry({ onBack }: { onBack: () => void }) {
   });
   const [tecnico, setTecnico] = useState<TecnicoDisponivel>("Ivan");
   const [emailPromptOpen, setEmailPromptOpen] = useState(false);
-  const [emailInputOpen, setEmailInputOpen] = useState(false);
+  const [emailRecipient, setEmailRecipient] = useState<ResolvedRecipient | null>(null);
   const [emailFeedback, setEmailFeedback] = useState<string | null>(null);
   const [resultadoTesteImpressao, setResultadoTesteImpressao] = useState(
     "NAO_REALIZADO",
@@ -436,14 +439,17 @@ function QuickEntry({ onBack }: { onBack: () => void }) {
     if (step !== 3 || impressorasCarregadas || carregandoImpressoras) return;
     void carregarImpressoras();
   }, [carregandoImpressoras, impressorasCarregadas, step]);
-  async function solicitarEnvioAutomatico() {
+  async function solicitarEnvioAutomatico(equipment: Equipamento) {
     const permitted = await ensureSensitiveAccess({
       title: "Enviar ordem de entrada",
       description:
         "Informe o PIN para enviar a ordem de entrada por e-mail ao cliente.",
       permission: SENSITIVE_PERMISSIONS.FINANCIAL_ACTIONS,
     });
-    if (permitted) setEmailPromptOpen(true);
+    if (permitted) {
+      setEmailRecipient(resolveRecipient(equipment, "email"));
+      setEmailPromptOpen(true);
+    }
   }
   async function enviarOrdemEntrada(equipment: Equipamento, email: string) {
     setEmailFeedback(null);
@@ -520,17 +526,22 @@ function QuickEntry({ onBack }: { onBack: () => void }) {
         ...validation.data,
         acessorios: validation.data.acessorios?.join(", "),
         cliente_id: client.id,
+        empresa_id: client.empresa_id || undefined,
         cliente_nome:
           client.nome || client.nome_fantasia || client.razao_social,
         cliente_telefone: client.telefone,
         cliente_email: client.email,
+        responsavel_contato_id: responsavel?.id || undefined,
+        responsavel_nome: responsavel?.nome || undefined,
+        responsavel_email: responsavel?.email || undefined,
+        responsavel_telefone: responsavel?.telefone || undefined,
         data_entrada: today(),
         observacoes,
       });
       // A entrada já foi persistida. Se o laudo falhar, exibimos o detalhe
       // salvo com o erro, evitando que o atendente crie um ciclo duplicado.
       setCreated(equipment);
-      void solicitarEnvioAutomatico();
+      void solicitarEnvioAutomatico(equipment);
       await db.salvarVerificacao({
         equipamento_id: equipment.id!,
         tecnico_nome: tecnico,
@@ -591,6 +602,7 @@ function QuickEntry({ onBack }: { onBack: () => void }) {
               setCreated(null);
               setStep(1);
               setClient(null);
+              setResponsavel(null);
             }}
           >
             Iniciar outro atendimento
@@ -615,29 +627,25 @@ function QuickEntry({ onBack }: { onBack: () => void }) {
             await PdfService.salvarOrdemServico(artifact, created);
           }}
         />
-        <ConfirmDialog
+        <CommunicationEmailDialog
           open={emailPromptOpen}
-          onOpenChange={setEmailPromptOpen}
-          title="Envio por e-mail"
-          description="Quer enviar a ordem de entrada automaticamente por e-mail?"
-          onConfirm={() => {
-            setEmailPromptOpen(false);
-            if (created.cliente_email?.trim())
-              void enviarOrdemEntrada(created, created.cliente_email.trim());
-            else setEmailInputOpen(true);
+          recipient={emailRecipient}
+          onOpenChange={(open) => {
+            setEmailPromptOpen(open);
+            if (!open) setEmailRecipient(null);
           }}
-        />
-        <InputDialog
-          open={emailInputOpen}
-          onOpenChange={setEmailInputOpen}
-          title="Envio por e-mail"
-          description="Este cliente não possui e-mail cadastrado. Informe um endereço para enviar a ordem de entrada."
-          label="E-mail"
-          placeholder="email@exemplo.com"
-          validate={(value) =>
-            emailValido(value) ? null : "Informe um e-mail válido."
-          }
-          onConfirm={(value) => void enviarOrdemEntrada(created, value.trim())}
+          onConfirm={async (email, salvar) => {
+            if (salvar) {
+              try {
+                await saveRecipientAddress(created, "email", email);
+              } catch (cause) {
+                setError(String(cause));
+                return false;
+              }
+            }
+            await enviarOrdemEntrada(created, email);
+          }}
+          onSkip={() => undefined}
         />
         <div id="registro-completo" className="mt-6">
           <EquipmentDetail equipamento={created} />
@@ -675,16 +683,30 @@ function QuickEntry({ onBack }: { onBack: () => void }) {
       {step === 1 && (
         <div className="rounded-xl border bg-white p-6 [&_button]:min-h-12 [&_button]:text-base [&_input]:min-h-12 [&_input]:text-base">
           <ClienteSelector
-            onClienteSelecionado={setClient}
-            onClienteRemovido={() => setClient(null)}
+            onClienteSelecionado={(selectedClient) => {
+              setClient(selectedClient);
+              setResponsavel(null);
+            }}
+            onClienteRemovido={() => {
+              setClient(null);
+              setResponsavel(null);
+            }}
           />
           {client && (
-            <Button
-              className="mt-6 min-h-12 text-base"
-              onClick={() => setStep(2)}
-            >
-              Continuar <ChevronRight />
-            </Button>
+            <>
+              <ContatoResponsavelSelector
+                cliente={client}
+                empresaId={client.empresa_id}
+                value={responsavel}
+                onChange={setResponsavel}
+              />
+              <Button
+                className="mt-6 min-h-12 text-base"
+                onClick={() => setStep(2)}
+              >
+                Continuar <ChevronRight />
+              </Button>
+            </>
           )}
         </div>
       )}

@@ -8,6 +8,7 @@ import { CounterLayout } from "@/components/CounterLayout";
 const db = vi.hoisted(() => ({
   buscarEquipamentosPorSerial: vi.fn(), criarEquipamento: vi.fn(), listarEquipamentos: vi.fn(),
   listarClientes: vi.fn(), listarProdutos: vi.fn(), atualizarStatusEquipamento: vi.fn(), buscarEquipamento: vi.fn(), salvarVerificacao: vi.fn(), abrirPainelImpressorasWindows: vi.fn(), listarImpressorasWindows: vi.fn(), imprimirTesteBmitag: vi.fn(),
+  listarClienteContatos: vi.fn(), criarClienteContato: vi.fn(),
 }));
 const ensureSensitiveAccess = vi.hoisted(() => vi.fn());
 
@@ -16,7 +17,7 @@ vi.mock("@/hooks/useSensitiveAccess", () => ({
   useSensitiveAccess: () => ({ status: { active_profile_name: "Atendente", unlocked: true }, ensureSensitiveAccess, lockSensitiveAccess: vi.fn(), openProfileSelector: vi.fn() }),
 }));
 vi.mock("@/components/equipamentos/ClienteSelector", () => ({
-  ClienteSelector: ({ onClienteSelecionado }: { onClienteSelecionado: (client: unknown) => void }) => <button onClick={() => onClienteSelecionado({ id: 9, nome: "Cliente balcão", telefone: "71999999999" })}>Selecionar cliente de teste</button>,
+  ClienteSelector: ({ onClienteSelecionado }: { onClienteSelecionado: (client: unknown) => void }) => <button onClick={() => onClienteSelecionado({ id: 9, empresa_id: 7, nome: "Cliente balcão", telefone: "71999999999" })}>Selecionar cliente de teste</button>,
 }));
 vi.mock("@/components/equipamentos/DocumentosEquipamento", () => ({ DocumentosEquipamento: () => <div>Documentos</div> }));
 vi.mock("@/components/equipamentos/PdfPreviewDialog", () => ({ PdfPreviewDialog: () => null }));
@@ -33,6 +34,7 @@ describe("Modo Balcão", () => {
     Object.defineProperty(HTMLElement.prototype, "scrollIntoView", { configurable: true, value: () => undefined });
     vi.clearAllMocks();
     db.buscarEquipamentosPorSerial.mockResolvedValue([]);
+    db.listarClienteContatos.mockResolvedValue([]);
     db.listarImpressorasWindows.mockResolvedValue([{ nome: "Zebra ZD220", padrao: true }]);
     db.listarProdutos.mockResolvedValue([{ id: 12, codigo: "RIB-110", nome: "Ribbon Preto", categoria: "RIBBON", quantidade_estoque: 8, quantidade_minima: 2, preco_custo: 20, preco_venda: 45 }]);
     db.criarEquipamento.mockResolvedValue({ id: 42, serial_number: "SN-42", marca: "Zebra", modelo: "ZD220", tipo: "Impressora", status: "RECEBIDO", data_entrada: "2026-09-01" });
