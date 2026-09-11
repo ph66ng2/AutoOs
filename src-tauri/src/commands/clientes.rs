@@ -219,16 +219,17 @@ pub async fn criar_cliente(input: ClienteInput) -> Result<ClienteRow, String> {
     let row = sqlx::query(
         r#"
         INSERT INTO clientes (
-            nome, tipo_pessoa, documento, razao_social, nome_fantasia,
+            empresa_id, nome, tipo_pessoa, documento, razao_social, nome_fantasia,
             inscricao_estadual, cpf_cnpj, telefone, telefone_secundario, email,
             cep, endereco, numero, complemento, bairro, cidade, uf,
             receber_email, receber_whatsapp, observacoes
         ) VALUES (
-            $1, $2, $3, $4, $5, $6, $7, $8, $9, $10,
-            $11, $12, $13, $14, $15, $16, $17, $18, $19, $20
+            $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11,
+            $12, $13, $14, $15, $16, $17, $18, $19, $20, $21
         ) RETURNING id
         "#,
     )
+    .bind(input.empresa_id)
     .bind(Some(nome_exibicao))
     .bind(tipo_pessoa)
     .bind(Some(document_digits.clone()))
@@ -308,6 +309,7 @@ pub async fn atualizar_cliente(id: i32, input: ClienteInput) -> Result<ClienteRo
             receber_email = $18, receber_whatsapp = $19, observacoes = $20,
             atualizado_em = NOW()
         WHERE id = $21 AND atualizado_em = $22::TIMESTAMPTZ
+          AND ($23::INTEGER IS NULL OR empresa_id = $23)
         "#,
     )
     .bind(Some(nome_exibicao))
@@ -332,6 +334,7 @@ pub async fn atualizar_cliente(id: i32, input: ClienteInput) -> Result<ClienteRo
     .bind(optional_text(input.observacoes.as_deref()))
     .bind(id)
     .bind(concurrency_token)
+    .bind(input.empresa_id)
     .execute(&pool)
     .await
     .map_err(|e| {
