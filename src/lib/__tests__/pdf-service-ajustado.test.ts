@@ -261,6 +261,25 @@ describe("PdfService.gerarOrcamentoAjustado", () => {
     expect(textos.some((texto) => texto.includes("Página 1/1"))).toBe(true);
   });
 
+  it("mantém tabelas e textos abaixo dos blocos anteriores", async () => {
+    await PdfService.gerarRelatorioStatus(equipamentoBase);
+    const primeiraTabelaRelatorio = mockAutoTable.mock.calls[0]?.[1] as { startY: number };
+    expect(primeiraTabelaRelatorio.startY).toBeGreaterThanOrEqual(66);
+
+    mockText.mockReset();
+    mockAutoTable.mockReset();
+    await PdfService.gerarOrcamento(equipamentoBase, verificacaoBase);
+    const prazo = mockText.mock.calls.find(([texto]) => texto === "Prazo de Execução:");
+    expect(prazo?.[2]).toBeGreaterThanOrEqual(107);
+
+    mockText.mockReset();
+    mockAutoTable.mockReset();
+    mockBuscarVerificacao.mockResolvedValue(verificacaoBase);
+    await PdfService.gerarOrdemServico(equipamentoBase);
+    const assinatura = mockText.mock.calls.find(([texto]) => texto === "Atenciosamente,");
+    expect(assinatura?.[2]).toBeGreaterThanOrEqual(106);
+  });
+
   it("usa cabeçalhos e estilos sem preenchimento escuro", async () => {
     await PdfService.gerarOrcamento(equipamentoBase, verificacaoBase);
 
