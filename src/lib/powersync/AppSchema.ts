@@ -43,6 +43,26 @@ export const clientes = new Table(
   { indexes: { idx_clientes_empresa: ["empresa_id"] } }
 );
 
+export const cliente_contatos = new Table(
+  {
+    empresa_id: column.text,
+    cliente_id: column.text,
+    nome: column.text,
+    email: column.text,
+    telefone: column.text,
+    ativo: column.integer,
+    criado_em: column.text,
+    atualizado_em: column.text,
+  },
+  {
+    indexes: {
+      idx_cliente_contatos_empresa: ["empresa_id"],
+      idx_cliente_contatos_cliente: ["cliente_id"],
+      idx_cliente_contatos_ativos: ["cliente_id", "ativo"],
+    },
+  }
+);
+
 export const equipamentos = new Table(
   {
     empresa_id: column.text,
@@ -64,6 +84,10 @@ export const equipamentos = new Table(
     cliente_nome: column.text,
     cliente_telefone: column.text,
     cliente_email: column.text,
+    responsavel_contato_id: column.text,
+    responsavel_nome: column.text,
+    responsavel_email: column.text,
+    responsavel_telefone: column.text,
     prazo_aprovacao: column.text,
     data_aprovacao: column.text,
     data_reprovacao: column.text,
@@ -159,6 +183,8 @@ export const verificacoes = new Table(
     tempo_estimado: column.integer,
     concluida: column.integer,
     observacoes: column.text,
+    forma_pagamento_codigo: column.text,
+    forma_pagamento_detalhe: column.text,
     adjusted_at: column.text,
     adjusted_by_profile_id: column.text,
   },
@@ -269,6 +295,7 @@ export const configuracoes_sistema = new Table(
 
 export const AppSchema = new Schema({
   clientes,
+  cliente_contatos,
   equipamentos,
   produtos,
   movimentacoes_estoque,
@@ -284,6 +311,7 @@ export const AppSchema = new Schema({
 });
 
 export type ClienteRow = typeof AppSchema.types.clientes;
+export type ClienteContatoRow = typeof AppSchema.types.cliente_contatos;
 export type EquipamentoRow = typeof AppSchema.types.equipamentos;
 export type ProdutoRow = typeof AppSchema.types.produtos;
 export type MovimentacaoEstoqueRow = typeof AppSchema.types.movimentacoes_estoque;

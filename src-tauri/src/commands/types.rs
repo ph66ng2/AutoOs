@@ -10,6 +10,71 @@
 use serde::{Deserialize, Serialize};
 use sqlx::FromRow;
 
+/// Códigos estáveis usados para persistir a forma de pagamento do orçamento.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
+pub enum FormaPagamentoCodigo {
+    Pix,
+    Boleto,
+    CartaoCredito,
+    CartaoDebito,
+    Dinheiro,
+    Transferencia,
+    ACombinar,
+    Outro,
+}
+
+impl FormaPagamentoCodigo {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Pix => "PIX",
+            Self::Boleto => "BOLETO",
+            Self::CartaoCredito => "CARTAO_CREDITO",
+            Self::CartaoDebito => "CARTAO_DEBITO",
+            Self::Dinheiro => "DINHEIRO",
+            Self::Transferencia => "TRANSFERENCIA",
+            Self::ACombinar => "A_COMBINAR",
+            Self::Outro => "OUTRO",
+        }
+    }
+
+    fn exige_detalhe(self) -> bool {
+        matches!(self, Self::Outro)
+    }
+}
+
+/// Forma de pagamento associada a um orçamento.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct FormaPagamento {
+    pub codigo: FormaPagamentoCodigo,
+    #[serde(default)]
+    pub detalhe: Option<String>,
+}
+
+/// Normaliza e valida os campos opcionais de pagamento usados em verificações.
+pub fn normalize_forma_pagamento(
+    codigo: Option<&FormaPagamentoCodigo>,
+    detalhe: Option<&str>,
+) -> Result<(Option<String>, Option<String>), String> {
+    let detalhe = detalhe
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(str::to_string);
+
+    let Some(codigo) = codigo else {
+        if detalhe.is_some() {
+            return Err("Código da forma de pagamento é obrigatório quando há detalhe.".to_string());
+        }
+        return Ok((None, None));
+    };
+
+    if codigo.exige_detalhe() && detalhe.is_none() {
+        return Err("A forma de pagamento OUTRO exige um detalhe não vazio.".to_string());
+    }
+
+    Ok((Some(codigo.as_str().to_string()), detalhe))
+}
+
 // ═══════════════════════════════════════════════════════════
 // Structs de Entrada (Deserialize — recebidas do frontend)
 // ═══════════════════════════════════════════════════════════
@@ -40,6 +105,11 @@ pub struct EquipamentoInput {
     pub cliente_nome: Option<String>,
     pub cliente_telefone: Option<String>,
     pub cliente_email: Option<String>,
+    pub empresa_id: Option<i32>,
+    pub responsavel_contato_id: Option<i32>,
+    pub responsavel_nome: Option<String>,
+    pub responsavel_email: Option<String>,
+    pub responsavel_telefone: Option<String>,
     pub prazo_aprovacao: Option<String>,
     pub valor_orcamento: Option<f64>,
     pub atualizado_em: Option<String>,
@@ -63,6 +133,7 @@ pub struct EquipamentoImagemInput {
 #[derive(Debug, Deserialize, Default)]
 #[serde(default)]
 pub struct ClienteInput {
+    pub empresa_id: Option<i32>,
     pub nome: Option<String>,
     pub tipo_pessoa: Option<String>,
     pub documento: Option<String>,
@@ -137,6 +208,7 @@ pub struct MovimentacaoEstoqueInput {
 #[serde(default)]
 pub struct VerificacaoInput {
     pub equipamento_id: i32,
+    pub empresa_id: Option<i32>,
     pub tecnico_nome: String,
     pub problema_relatado: String,
     pub diagnostico: Option<String>,
@@ -149,6 +221,29 @@ pub struct VerificacaoInput {
     pub tempo_estimado: Option<i32>,
     pub concluida: Option<bool>,
     pub observacoes: Option<String>,
+    pub forma_pagamento_codigo: Option<FormaPagamentoCodigo>,
+    pub forma_pagamento_detalhe: Option<String>,
+}
+
+/// Input para cadastro e edição de contato de cliente.
+#[derive(Debug, Deserialize, Default, Clone)]
+#[serde(default)]
+pub struct ClienteContatoInput {
+    pub empresa_id: i32,
+    pub cliente_id: i32,
+    pub nome: String,
+    pub email: Option<String>,
+    pub telefone: Option<String>,
+    pub atualizado_em: Option<String>,
+}
+
+/// Input da aprovação transacional de um orçamento.
+#[derive(Debug, Deserialize, Clone)]
+pub struct AprovarOrcamentoInput {
+    pub empresa_id: i32,
+    pub equipamento_id: i32,
+    pub expected_updated_em: String,
+    pub pagamento: FormaPagamento,
 }
 
 /// Input para registrar comunicação (email/WhatsApp).
@@ -276,6 +371,7 @@ pub struct WhatsappSendInput {
 #[derive(Debug, Serialize, FromRow)]
 pub struct EquipamentoRow {
     pub id: i32,
+    pub empresa_id: Option<i32>,
     pub serial_number: String,
     pub patrimonio: Option<String>,
     pub marca: String,
@@ -297,6 +393,10 @@ pub struct EquipamentoRow {
     pub cliente_nome: Option<String>,
     pub cliente_telefone: Option<String>,
     pub cliente_email: Option<String>,
+    pub responsavel_contato_id: Option<i32>,
+    pub responsavel_nome: Option<String>,
+    pub responsavel_email: Option<String>,
+    pub responsavel_telefone: Option<String>,
     pub prazo_aprovacao: Option<String>,
     pub data_aprovacao: Option<String>,
     pub data_reprovacao: Option<String>,
@@ -330,6 +430,7 @@ pub struct EquipamentoImagemRow {
 #[derive(Debug, Serialize, FromRow)]
 pub struct ClienteRow {
     pub id: i32,
+    pub empresa_id: Option<i32>,
     pub nome: Option<String>,
     pub tipo_pessoa: Option<String>,
     pub documento: Option<String>,
@@ -400,6 +501,7 @@ pub struct ServicoCatalogoRow {
 pub struct VerificacaoRow {
     pub id: i32,
     pub equipamento_id: i32,
+    pub empresa_id: Option<i32>,
     pub tecnico_nome: String,
     pub data_inicio: Option<String>,
     pub data_fim: Option<String>,
@@ -414,6 +516,22 @@ pub struct VerificacaoRow {
     pub tempo_estimado: Option<i32>,
     pub concluida: Option<bool>,
     pub observacoes: Option<String>,
+    pub forma_pagamento_codigo: Option<String>,
+    pub forma_pagamento_detalhe: Option<String>,
+}
+
+/// Contato ativo/inativo pertencente a um cliente e empresa.
+#[derive(Debug, Serialize, FromRow, Clone)]
+pub struct ClienteContato {
+    pub id: i32,
+    pub empresa_id: i32,
+    pub cliente_id: i32,
+    pub nome: String,
+    pub email: Option<String>,
+    pub telefone: Option<String>,
+    pub ativo: bool,
+    pub criado_em: String,
+    pub atualizado_em: String,
 }
 
 /// Comunicação completa retornada ao frontend.
@@ -455,11 +573,12 @@ pub struct LoginEmpresaResult {
 // ═══════════════════════════════════════════════════════════
 
 pub const EQUIPAMENTO_SELECT: &str = "
-    SELECT id, serial_number, patrimonio, marca, modelo, tipo, status,
+    SELECT id, empresa_id, serial_number, patrimonio, marca, modelo, tipo, status,
            defeito_relatado, acessorios, acessorios_outros,
            paginas_impressas, tecnologia, conectividade, data_entrada, proprietario,
            preco_compra::FLOAT8 as preco_compra, preco_venda::FLOAT8 as preco_venda,
            observacoes, cliente_id, cliente_nome, cliente_telefone, cliente_email,
+           responsavel_contato_id, responsavel_nome, responsavel_email, responsavel_telefone,
            prazo_aprovacao, data_aprovacao, data_reprovacao, data_verificacao,
            data_pronto, data_saida,
            COALESCE(
@@ -568,7 +687,7 @@ pub const GASTO_VARIAVEL_SELECT: &str = "
     FROM gastos_variaveis";
 
 pub const CLIENTE_SELECT: &str = "
-    SELECT id, nome, tipo_pessoa, documento, razao_social, nome_fantasia,
+    SELECT id, empresa_id, nome, tipo_pessoa, documento, razao_social, nome_fantasia,
            inscricao_estadual, cpf_cnpj, telefone, telefone_secundario, email,
            cep, endereco, numero, complemento, bairro, cidade, uf,
            receber_email, receber_whatsapp, observacoes, ativo,
@@ -592,15 +711,21 @@ pub const SERVICO_CATALOGO_SELECT: &str = "
     FROM servicos_catalogo";
 
 pub const VERIFICACAO_SELECT: &str = "
-    SELECT id, equipamento_id, tecnico_nome,
+    SELECT id, equipamento_id, empresa_id, tecnico_nome,
            data_inicio::TEXT as data_inicio, data_fim::TEXT as data_fim,
            problema_relatado, diagnostico,
            itens_verificados, servicos_necessarios, pecas_necessarias,
            custo_estimado_mao_obra::FLOAT8 as custo_estimado_mao_obra,
            custo_estimado_pecas::FLOAT8 as custo_estimado_pecas,
            custo_total::FLOAT8 as custo_total,
-           tempo_estimado, concluida, observacoes
+           tempo_estimado, concluida, observacoes,
+           forma_pagamento_codigo, forma_pagamento_detalhe
     FROM verificacoes";
+
+pub const CLIENTE_CONTATO_SELECT: &str = "
+    SELECT id, empresa_id, cliente_id, nome, email, telefone, ativo,
+           criado_em::TEXT as criado_em, atualizado_em::TEXT as atualizado_em
+    FROM cliente_contatos";
 
 pub const COMUNICACAO_SELECT: &str = "
     SELECT id, equipamento_id, tipo, canal, destinatario, contato,
@@ -608,3 +733,36 @@ pub const COMUNICACAO_SELECT: &str = "
            data_envio::TEXT as data_envio, erro,
            criado_em::TEXT as criado_em
     FROM comunicacoes";
+
+#[cfg(test)]
+mod tests {
+    use super::{normalize_forma_pagamento, FormaPagamentoCodigo};
+
+    #[test]
+    fn normalizes_supported_payment_codes() {
+        let (codigo, detalhe) = normalize_forma_pagamento(
+            Some(&FormaPagamentoCodigo::CartaoCredito),
+            Some("  "),
+        )
+        .expect("código conhecido deve ser aceito");
+
+        assert_eq!(codigo.as_deref(), Some("CARTAO_CREDITO"));
+        assert_eq!(detalhe, None);
+    }
+
+    #[test]
+    fn requires_non_blank_detail_for_outro() {
+        assert!(normalize_forma_pagamento(Some(&FormaPagamentoCodigo::Outro), Some("  ")).is_err());
+        assert_eq!(
+            normalize_forma_pagamento(Some(&FormaPagamentoCodigo::Outro), Some("  Contrato  "))
+                .expect("detalhe preenchido deve ser aceito"),
+            (Some("OUTRO".to_string()), Some("Contrato".to_string()))
+        );
+    }
+
+    #[test]
+    fn rejects_detail_without_payment_code() {
+        assert!(normalize_forma_pagamento(None, Some("sem código")).is_err());
+        assert_eq!(normalize_forma_pagamento(None, None).unwrap(), (None, None));
+    }
+}

@@ -9,6 +9,7 @@
 -- ─── Habilitar RLS em todas as tabelas ─────────────────────────────────────────
 ALTER TABLE empresas ENABLE ROW LEVEL SECURITY;
 ALTER TABLE clientes ENABLE ROW LEVEL SECURITY;
+ALTER TABLE cliente_contatos ENABLE ROW LEVEL SECURITY;
 ALTER TABLE equipamentos ENABLE ROW LEVEL SECURITY;
 ALTER TABLE produtos ENABLE ROW LEVEL SECURITY;
 ALTER TABLE movimentacoes_estoque ENABLE ROW LEVEL SECURITY;
@@ -34,6 +35,11 @@ CREATE POLICY anon_filter_empresa_id ON empresas
     WITH CHECK (id = current_setting('app.empresa_id', true)::uuid);
 
 CREATE POLICY anon_filter_empresa_id ON clientes
+    FOR ALL TO anon
+    USING (empresa_id = current_setting('app.empresa_id', true)::uuid)
+    WITH CHECK (empresa_id = current_setting('app.empresa_id', true)::uuid);
+
+CREATE POLICY anon_filter_empresa_id ON cliente_contatos
     FOR ALL TO anon
     USING (empresa_id = current_setting('app.empresa_id', true)::uuid)
     WITH CHECK (empresa_id = current_setting('app.empresa_id', true)::uuid);
