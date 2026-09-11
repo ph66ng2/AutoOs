@@ -28,10 +28,9 @@ import type { Cliente, ClienteContato, ClienteContatoInput } from "@/types";
 interface ClienteContatosPanelProps {
   cliente: Cliente;
   empresaId?: number;
-  onVincularLegado?: () => void | Promise<void>;
 }
 
-export function ClienteContatosPanel({ cliente, empresaId, onVincularLegado }: ClienteContatosPanelProps) {
+export function ClienteContatosPanel({ cliente, empresaId }: ClienteContatosPanelProps) {
   const [contatos, setContatos] = useState<ClienteContato[]>([]);
   const [carregando, setCarregando] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
@@ -138,18 +137,12 @@ export function ClienteContatosPanel({ cliente, empresaId, onVincularLegado }: C
             Empresa/cliente vinculado: <strong>{nomeExibicaoCliente(cliente)}</strong>
           </p>
         </div>
-        {!empresaId && onVincularLegado ? (
-          <Button type="button" size="sm" variant="outline" onClick={() => void onVincularLegado()}>
-            Vincular cadastro legado
-          </Button>
-        ) : (
-          <Button type="button" size="sm" onClick={abrirNovo} disabled={!cliente.id}>
+        <Button type="button" size="sm" onClick={abrirNovo} disabled={!cliente.id || !empresaId}>
           <Plus className="mr-1 h-4 w-4" /> Novo contato
-          </Button>
-        )}
+        </Button>
       </div>
 
-      {erro && <ErrorAlert variant="error" context="Clientes" message={erro} action={empresaId ? "Carregar contatos" : "Vincular cadastro legado"} />}
+      {erro && <ErrorAlert variant="error" context="Clientes" message={erro} action={empresaId ? "Carregar contatos" : "Use “Regularizar antigos” na tela de clientes"} />}
       {carregando ? (
         <div className="flex items-center justify-center py-8 text-sm text-muted-foreground">Carregando contatos...</div>
       ) : contatos.length === 0 ? (

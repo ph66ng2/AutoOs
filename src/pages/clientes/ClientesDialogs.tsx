@@ -146,12 +146,10 @@ export function ClientesContatosModal({
   open,
   onOpenChange,
   cliente,
-  onVincularLegado,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   cliente: Cliente | null;
-  onVincularLegado: (cliente: Cliente) => void | Promise<void>;
 }) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -160,7 +158,6 @@ export function ClientesContatosModal({
           <ClienteContatosPanel
             cliente={cliente}
             empresaId={cliente.empresa_id}
-            onVincularLegado={() => onVincularLegado(cliente)}
           />
         )}
         <DialogFooter>

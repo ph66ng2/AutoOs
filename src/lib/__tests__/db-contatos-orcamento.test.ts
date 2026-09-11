@@ -93,4 +93,23 @@ describe("db — contatos e contratos de orçamento", () => {
 
     expect(mockInvoke).toHaveBeenCalledWith("aprovar_orcamento", { input });
   });
+
+  it("gera a prévia sem aceitar empresa enviada pela tela", async () => {
+    mockInvoke.mockResolvedValue({ empresa_id: 7, token: "opaque", clientes: 2 });
+
+    await db.previsualizarRegularizacaoLegados();
+
+    expect(mockInvoke).toHaveBeenCalledWith("previsualizar_regularizacao_legados");
+  });
+
+  it("envia token e PIN explicitamente ao executar a regularização", async () => {
+    mockInvoke.mockResolvedValue({ empresa_id: 7, clientes: 2, equipamentos: 3 });
+
+    await db.executarRegularizacaoLegados("token-opaco", "2468");
+
+    expect(mockInvoke).toHaveBeenCalledWith("executar_regularizacao_legados", {
+      tokenDaPrevia: "token-opaco",
+      pinAdministrativo: "2468",
+    });
+  });
 });

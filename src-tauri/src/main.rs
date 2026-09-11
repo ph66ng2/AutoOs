@@ -171,7 +171,8 @@ fn main() {
             commands::clientes::buscar_cliente,
             commands::clientes::criar_cliente,
             commands::clientes::atualizar_cliente,
-            commands::clientes::vincular_cliente_legado_empresa,
+            commands::legacy_regularization::previsualizar_regularizacao_legados,
+            commands::legacy_regularization::executar_regularizacao_legados,
             commands::clientes::deletar_cliente,
             commands::cnpj::consultar_cnpj,
             // Contatos de cliente
