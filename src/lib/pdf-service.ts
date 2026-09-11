@@ -167,6 +167,62 @@ function limparObservacoesParaDocumento(observacoes?: string | null) {
     .trim();
 }
 
+interface IdentificacaoResponsavel {
+  empresa: string;
+  responsavel: string;
+  contato: string;
+}
+
+function obterIdentificacaoResponsavel(equipamento: Equipamento): IdentificacaoResponsavel {
+  const responsavel = equipamento.responsavel_nome?.trim() || "";
+  if (!responsavel) {
+    return { empresa: equipamento.cliente_nome?.trim() || "", responsavel: "", contato: "" };
+  }
+
+  return {
+    empresa: equipamento.cliente_nome?.trim() || "",
+    responsavel,
+    contato: [equipamento.responsavel_email?.trim(), equipamento.responsavel_telefone?.trim()]
+      .filter(Boolean)
+      .join("\n"),
+  };
+}
+
+function obterTecnicoResponsavel(
+  equipamento: Equipamento,
+  verificacao?: Verificacao | null,
+): string {
+  return verificacao?.tecnico_nome?.trim()
+    || extrairTecnicoInicialDeObservacoes(equipamento.observacoes)
+    || "";
+}
+
+const ROTULOS_PAGAMENTO: Record<string, string> = {
+  PIX: "Pix",
+  BOLETO: "Boleto bancário",
+  CARTAO_CREDITO: "Cartão de crédito",
+  CARTAO_DEBITO: "Cartão de débito",
+  DINHEIRO: "Dinheiro",
+  TRANSFERENCIA: "Transferência bancária",
+  A_COMBINAR: "A combinar",
+  OUTRO: "Outro",
+};
+
+function obterFormaPagamento(
+  equipamento: Equipamento,
+  verificacao: Verificacao,
+): string {
+  const codigo = verificacao.forma_pagamento_codigo?.trim().toUpperCase();
+  const detalhe = verificacao.forma_pagamento_detalhe?.trim();
+  if (codigo) {
+    const rotulo = ROTULOS_PAGAMENTO[codigo] || codigo;
+    return codigo === "OUTRO" && detalhe ? `${rotulo}: ${detalhe}` : rotulo;
+  }
+
+  const aprovado = equipamento.status === "APROVADO" || Boolean(equipamento.data_aprovacao);
+  return aprovado ? "Não informada." : "Definida no momento da aprovação.";
+}
+
 interface CabecalhoPdf {
   titulo: string;
   numeroOS: string;
@@ -340,7 +396,10 @@ function renderizarParagrafo(
   largura: number,
   alturaLinha = 4,
 ): number {
-  const linhas = doc.splitTextToSize(texto, largura) as string[];
+  const linhas = texto.split(/\r?\n/).flatMap((linha) => {
+    if (!linha) return [""];
+    return doc.splitTextToSize(linha, largura) as string[];
+  });
   let indice = 0;
   let cursorY = y;
   const margemInferior = 22;
@@ -355,7 +414,9 @@ function renderizarParagrafo(
 
     const linhasNaPagina = Math.max(1, Math.floor(alturaDisponivel / alturaLinha));
     const lote = linhas.slice(indice, indice + linhasNaPagina);
-    doc.text(lote, x, cursorY);
+    lote.forEach((linha, indiceLinha) => {
+      if (linha) doc.text(linha, x, cursorY + indiceLinha * alturaLinha);
+    });
     indice += lote.length;
     cursorY += lote.length * alturaLinha;
 
@@ -366,6 +427,71 @@ function renderizarParagrafo(
   }
 
   return cursorY + 5;
+}
+
+function renderizarDescricaoServico(
+  doc: jsPDF,
+  y: number,
+  observacoes?: string | null,
+): number {
+  const descricao = observacoes?.trim();
+  if (!descricao) return y;
+
+  y = garantirEspacoVertical(doc, y, 18);
+  y = renderizarTituloSecao(doc, y, "DESCRIÇÃO DO SERVIÇO TÉCNICO");
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(9);
+  doc.setTextColor(...CORES_PDF.texto);
+  return renderizarParagrafo(doc, descricao, MARGIN_LEFT, y, CONTENT_WIDTH, 4.5);
+}
+
+function renderizarIdentificacaoEquipamento(doc: jsPDF, y: number, equipamento: Equipamento): number {
+  const patrimonio = equipamento.patrimonio?.trim();
+  if (patrimonio) {
+    return renderizarTabelaFormulario(
+      doc,
+      y,
+      ["NÚMERO DE SÉRIE", "PATRIMÔNIO"],
+      [[equipamento.serial_number || "—", patrimonio]],
+      [100, 80],
+    );
+  }
+
+  return renderizarTabelaFormulario(
+    doc,
+    y,
+    ["NÚMERO DE SÉRIE"],
+    [[equipamento.serial_number || "—"]],
+    [CONTENT_WIDTH],
+  );
+}
+
+function renderizarAssinaturaTecnica(
+  doc: jsPDF,
+  y: number,
+  tecnicoNome: string,
+  emailTecnico: string,
+): number {
+  const nome = tecnicoNome.trim();
+  if (!nome) return y;
+
+  y = garantirEspacoVertical(doc, y, emailTecnico ? 28 : 23);
+  doc.setTextColor(...CORES_PDF.preto);
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(9);
+  doc.text("Atenciosamente,", MARGIN_LEFT, y);
+  y += 6;
+  doc.setFont("helvetica", "bold");
+  doc.text(`Técnico responsável: ${nome}`, MARGIN_LEFT, y);
+  y += 5;
+
+  if (emailTecnico.trim()) {
+    doc.setFont("helvetica", "normal");
+    doc.text(`E-mail: ${emailTecnico.trim()}`, MARGIN_LEFT, y);
+    y += 5;
+  }
+
+  return y + 5;
 }
 
 async function adicionarRegistroFotografico(
@@ -482,8 +608,7 @@ function garantirEspacoVertical(doc: jsPDF, y: number, alturaEstimada: number): 
 function renderizarCondicoesComerciais(
   doc: jsPDF,
   y: number,
-  tecnicoNome: string,
-  emailTecnico: string
+  formaPagamento: string,
 ): number {
   const centerX = PAGE_WIDTH / 2;
   const espacoTitulo = 6;
@@ -526,6 +651,23 @@ function renderizarCondicoesComerciais(
     y,
     { align: "center" }
   );
+  y += espacoSecao;
+
+  // ─── Forma de pagamento ──────────────────────────────────
+  y = garantirEspacoVertical(doc, y, 18);
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(10);
+  doc.setTextColor(...CORES_PDF.preto);
+  doc.text("FORMA DE PAGAMENTO APÓS A APROVAÇÃO", centerX, y, { align: "center" });
+  y += espacoTitulo;
+
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(9);
+  const pagamentoLinhas = doc.splitTextToSize(formaPagamento, CONTENT_WIDTH);
+  pagamentoLinhas.forEach((linha: string) => {
+    doc.text(linha, centerX, y, { align: "center" });
+    y += espacoParagrafo;
+  });
   y += espacoSecao;
 
   // ─── Garantia ─────────────────────────────────────────────
@@ -624,27 +766,6 @@ function renderizarCondicoesComerciais(
 
   y += boxHeight + espacoSecao;
 
-  // ─── Assinatura ───────────────────────────────────────────
-  y = garantirEspacoVertical(doc, y, 25);
-  doc.setFont("helvetica", "normal");
-  doc.setFontSize(9);
-  doc.setTextColor(...CORES_PDF.preto);
-  doc.text("Atenciosamente;", MARGIN_LEFT, y);
-  y += espacoParagrafo + 2;
-
-  doc.setFont("helvetica", "bold");
-  doc.text(tecnicoNome || "—", MARGIN_LEFT, y);
-  y += espacoParagrafo;
-
-  doc.setFont("helvetica", "normal");
-  const emailLabel = "E-mail: ";
-  doc.text(emailLabel, MARGIN_LEFT, y);
-  const emailOffset = doc.getTextWidth(emailLabel);
-  doc.setTextColor(...CORES_PDF.preto);
-  doc.text(emailTecnico || "—", MARGIN_LEFT + emailOffset, y);
-  doc.setTextColor(...CORES_PDF.preto);
-  y += espacoSecao;
-
   return y;
 }
 
@@ -692,14 +813,7 @@ export const PdfService = {
       // 3. DADOS DO CLIENTE
       // ═══════════════════════════════════════════════════
 
-      const tecnicoResponsavelOrcamento =
-        verificacao.tecnico_nome?.trim() ||
-        extrairTecnicoInicialDeObservacoes(equipamento.observacoes) ||
-        "—";
-      const emailTecnicoOrcamento = emailTecnicoPorNome(tecnicoResponsavelOrcamento);
-      const responsavelCabecalho = emailTecnicoOrcamento
-        ? `${tecnicoResponsavelOrcamento} (${emailTecnicoOrcamento})`
-        : tecnicoResponsavelOrcamento;
+      const identificacaoResponsavel = obterIdentificacaoResponsavel(equipamento);
 
       autoTable(doc, {
         ...opcoesTabelaMonocromatica(),
@@ -709,15 +823,15 @@ export const PdfService = {
           halign: "center",
         },
         columnStyles: {
-          0: { cellWidth: 55 },
-          1: { cellWidth: 55 },
-          2: { cellWidth: 60 },
+          0: { cellWidth: 45 },
+          1: { cellWidth: 80 },
+          2: { cellWidth: 55 },
         },
-        head: [["EMPRESA", "RESPONSÁVEL", "TIPO DE ORÇAMENTO"]],
+        head: [["EMPRESA", "RESPONSÁVEL PELO EQUIPAMENTO", "CONTATO"]],
         body: [[
-          equipamento.cliente_nome || "—",
-          responsavelCabecalho,
-          "Serviços",
+          identificacaoResponsavel.empresa,
+          identificacaoResponsavel.responsavel,
+          identificacaoResponsavel.contato,
         ]],
       });
 
@@ -788,7 +902,7 @@ export const PdfService = {
             1: { halign: "center", cellWidth: 28 }, // Modelo
             2: { halign: "center", cellWidth: 14 }, // Qtd
             3: { halign: "right", cellWidth: 35 },  // Valor Unitário
-            4: { halign: "right", cellWidth: 35 },  // Valor Total
+            4: { halign: "right", cellWidth: 53 },  // Valor Total
           },
           head: [["Descrição", "Modelo", "Qtd", "Valor Unitário", "Valor Total"]],
           body: linhasTabela,
@@ -815,17 +929,13 @@ export const PdfService = {
         y = (doc as unknown as { lastAutoTable: { finalY: number } }).lastAutoTable.finalY + 8;
       }
 
+      y = renderizarDescricaoServico(doc, y, verificacao.observacoes);
+
       // ═══════════════════════════════════════════════════
       // 5. NÚMERO DE SÉRIE
       // ═══════════════════════════════════════════════════
 
-      doc.setTextColor(...CORES_PDF.textoSecundario);
-      doc.setFontSize(9);
-      doc.setFont("helvetica", "bold");
-      doc.text("Número de Série do Equipamento: ", MARGIN_LEFT, y);
-      doc.setFont("helvetica", "normal");
-      doc.text(equipamento.serial_number, MARGIN_LEFT + 55, y);
-      y += 8;
+      y = renderizarIdentificacaoEquipamento(doc, y, equipamento);
 
       // ═══════════════════════════════════════════════════
       // 6. CONDIÇÕES COMERCIAIS
@@ -834,8 +944,7 @@ export const PdfService = {
         y = renderizarCondicoesComerciais(
           doc,
           y,
-          tecnicoResponsavelOrcamento,
-          emailTecnicoOrcamento
+          obterFormaPagamento(equipamento, verificacao),
         );
       }
 
@@ -877,6 +986,19 @@ export const PdfService = {
         imagensSaida,
         "Registro Fotográfico de Saída",
         "Imagens anexadas para comparar o estado final do equipamento após o serviço.",
+      );
+
+      const tecnicoResponsavelOrcamento = obterTecnicoResponsavel(equipamento, verificacao);
+      const emailTecnicoOrcamento = emailTecnicoPorNome(tecnicoResponsavelOrcamento);
+      if (tecnicoResponsavelOrcamento && imagensEquipamento.length > 0) {
+        doc.addPage();
+        y = 20;
+      }
+      y = renderizarAssinaturaTecnica(
+        doc,
+        y,
+        tecnicoResponsavelOrcamento,
+        emailTecnicoOrcamento,
       );
 
       // ═══════════════════════════════════════════════════
@@ -956,14 +1078,7 @@ export const PdfService = {
       doc.text("VERSÃO AJUSTADA", PAGE_WIDTH / 2, y, { align: "center" });
       y += 7;
 
-      const tecnicoResponsavelOrcamento =
-        verificacao.tecnico_nome?.trim() ||
-        extrairTecnicoInicialDeObservacoes(equipamento.observacoes) ||
-        "—";
-      const emailTecnicoOrcamento = emailTecnicoPorNome(tecnicoResponsavelOrcamento);
-      const responsavelCabecalho = emailTecnicoOrcamento
-        ? `${tecnicoResponsavelOrcamento} (${emailTecnicoOrcamento})`
-        : tecnicoResponsavelOrcamento;
+      const identificacaoResponsavel = obterIdentificacaoResponsavel(equipamento);
 
       autoTable(doc, {
         ...opcoesTabelaMonocromatica(),
@@ -973,15 +1088,15 @@ export const PdfService = {
           halign: "center",
         },
         columnStyles: {
-          0: { cellWidth: 55 },
-          1: { cellWidth: 55 },
-          2: { cellWidth: 60 },
+          0: { cellWidth: 45 },
+          1: { cellWidth: 80 },
+          2: { cellWidth: 55 },
         },
-        head: [["EMPRESA", "RESPONSÁVEL", "TIPO DE ORÇAMENTO"]],
+        head: [["EMPRESA", "RESPONSÁVEL PELO EQUIPAMENTO", "CONTATO"]],
         body: [[
-          equipamento.cliente_nome || "—",
-          responsavelCabecalho,
-          "Serviços",
+          identificacaoResponsavel.empresa,
+          identificacaoResponsavel.responsavel,
+          identificacaoResponsavel.contato,
         ]],
       });
 
@@ -1030,7 +1145,7 @@ export const PdfService = {
             1: { halign: "center", cellWidth: 28 },
             2: { halign: "center", cellWidth: 14 },
             3: { halign: "right", cellWidth: 35 },
-            4: { halign: "right", cellWidth: 35 },
+            4: { halign: "right", cellWidth: 53 },
           },
           head: [["Descrição", "Modelo", "Qtd", "Valor Unitário", "Valor Total"]],
           body: linhasTabela,
@@ -1056,20 +1171,15 @@ export const PdfService = {
         y = (doc as unknown as { lastAutoTable: { finalY: number } }).lastAutoTable.finalY + 8;
       }
 
-      doc.setTextColor(...CORES_PDF.textoSecundario);
-      doc.setFontSize(9);
-      doc.setFont("helvetica", "bold");
-      doc.text("Número de Série do Equipamento: ", MARGIN_LEFT, y);
-      doc.setFont("helvetica", "normal");
-      doc.text(equipamento.serial_number, MARGIN_LEFT + 55, y);
-      y += 8;
+      y = renderizarDescricaoServico(doc, y, verificacao.observacoes);
+
+      y = renderizarIdentificacaoEquipamento(doc, y, equipamento);
 
       if (exibirBlocosFinanceiros) {
         y = renderizarCondicoesComerciais(
           doc,
           y,
-          tecnicoResponsavelOrcamento,
-          emailTecnicoOrcamento
+          obterFormaPagamento(equipamento, verificacao),
         );
       }
 
@@ -1107,6 +1217,19 @@ export const PdfService = {
         imagensSaida,
         "Registro Fotográfico de Saída",
         "Imagens anexadas para comparar o estado final do equipamento após o serviço.",
+      );
+
+      const tecnicoResponsavelOrcamento = obterTecnicoResponsavel(equipamento, verificacao);
+      const emailTecnicoOrcamento = emailTecnicoPorNome(tecnicoResponsavelOrcamento);
+      if (tecnicoResponsavelOrcamento && imagensEquipamento.length > 0) {
+        doc.addPage();
+        y = 20;
+      }
+      y = renderizarAssinaturaTecnica(
+        doc,
+        y,
+        tecnicoResponsavelOrcamento,
+        emailTecnicoOrcamento,
       );
 
       const dataAjuste = converterDataDocumento(verificacao.adjusted_at);
@@ -1178,9 +1301,7 @@ export const PdfService = {
           console.warn("[PdfService] Verificação não encontrada para a OS, seguindo sem dados de técnico.", error);
         }
       }
-      const tecnicoInicial = extrairTecnicoInicialDeObservacoes(equipamento.observacoes);
-      const tecnicoResponsavel = verificacao?.tecnico_nome?.trim() || tecnicoInicial || "";
-      const emailTecnico = emailTecnicoPorNome(tecnicoResponsavel);
+      const identificacaoResponsavel = obterIdentificacaoResponsavel(equipamento);
       const observacoesDocumento = limparObservacoesParaDocumento(equipamento.observacoes);
 
       const statusAtual = STATUS_LABELS[equipamento.status as keyof typeof STATUS_LABELS] || equipamento.status;
@@ -1199,23 +1320,23 @@ export const PdfService = {
       y = renderizarTabelaFormulario(
         doc,
         y,
-        ["STATUS ATUAL", "TÉCNICO RESPONSÁVEL"],
-        [[statusAtual, tecnicoResponsavel || "—"]],
-        [90, 90],
-      );
-      y = renderizarTabelaFormulario(
-        doc,
-        y,
-        ["CLIENTE"],
-        [[equipamento.cliente_nome || equipamento.proprietario || "—"]],
+        ["STATUS ATUAL"],
+        [[statusAtual]],
         [CONTENT_WIDTH],
       );
       y = renderizarTabelaFormulario(
         doc,
         y,
-        ["TELEFONE", "E-MAIL"],
-        [[equipamento.cliente_telefone || "—", equipamento.cliente_email || "—"]],
+        ["EMPRESA", "RESPONSÁVEL PELO EQUIPAMENTO"],
+        [[identificacaoResponsavel.empresa, identificacaoResponsavel.responsavel]],
         [90, 90],
+      );
+      y = renderizarTabelaFormulario(
+        doc,
+        y,
+        ["CONTATO"],
+        [[identificacaoResponsavel.contato]],
+        [CONTENT_WIDTH],
       );
       y = renderizarTabelaFormulario(
         doc,
@@ -1227,9 +1348,9 @@ export const PdfService = {
       y = renderizarTabelaFormulario(
         doc,
         y,
-        ["Nº DE SÉRIE", "PATRIMÔNIO", "E-MAIL DO TÉCNICO"],
-        [[equipamento.serial_number || "—", equipamento.patrimonio || "—", emailTecnico || "—"]],
-        [65, 45, 70],
+        ["Nº DE SÉRIE", "PATRIMÔNIO"],
+        [[equipamento.serial_number || "—", equipamento.patrimonio?.trim() || "—"]],
+        [100, 80],
       );
       y = renderizarTabelaFormulario(
         doc,
@@ -1283,6 +1404,18 @@ export const PdfService = {
         imagensVerificacao,
         "Registro Fotográfico de Verificação",
         "Imagens anexadas durante a verificação técnica do equipamento.",
+      );
+
+      const tecnicoResponsavel = obterTecnicoResponsavel(equipamento, verificacao);
+      if (tecnicoResponsavel && imagensEquipamento.length > 0) {
+        doc.addPage();
+        y = 20;
+      }
+      y = renderizarAssinaturaTecnica(
+        doc,
+        y,
+        tecnicoResponsavel,
+        emailTecnicoPorNome(tecnicoResponsavel),
       );
 
       const totalPages = doc.getNumberOfPages();
@@ -1346,13 +1479,25 @@ export const PdfService = {
         dataFormatada: formatarDataExtenso(dataRegistro),
       });
 
+      let verificacao: Verificacao | null = null;
+      if (equipamento.id) {
+        try {
+          verificacao = await db.buscarVerificacao(equipamento.id);
+        } catch (error) {
+          console.warn("[PdfService] Verificação não encontrada para o relatório de status.", error);
+        }
+      }
+      const identificacaoResponsavel = obterIdentificacaoResponsavel(equipamento);
+
       autoTable(doc, {
         ...opcoesTabelaMonocromatica(),
         startY: y,
         body: [
           ["Equipamento", `${equipamento.marca || "—"} ${equipamento.modelo || ""}`.trim()],
           ["Nº de Série", equipamento.serial_number || "—"],
-          ["Cliente", equipamento.cliente_nome || "—"],
+          ["Empresa", identificacaoResponsavel.empresa],
+          ["Responsável pelo equipamento", identificacaoResponsavel.responsavel],
+          ["Contato", identificacaoResponsavel.contato],
           ["Status atual", STATUS_LABELS[equipamento.status as keyof typeof STATUS_LABELS] || equipamento.status],
         ],
       });
@@ -1373,6 +1518,7 @@ export const PdfService = {
         doc.setFontSize(10);
         doc.setTextColor(...CORES_PDF.textoSecundario);
         doc.text("Não há eventos de histórico registrados para este equipamento.", MARGIN_LEFT, y);
+        y += 10;
       } else {
         autoTable(doc, {
           ...opcoesTabelaMonocromatica(),
@@ -1384,7 +1530,16 @@ export const PdfService = {
             converterDataDocumento(evento.data).toLocaleDateString("pt-BR"),
           ]),
         });
+        y = (doc as unknown as { lastAutoTable: { finalY: number } }).lastAutoTable.finalY + 8;
       }
+
+      const tecnicoResponsavel = obterTecnicoResponsavel(equipamento, verificacao);
+      y = renderizarAssinaturaTecnica(
+        doc,
+        y,
+        tecnicoResponsavel,
+        emailTecnicoPorNome(tecnicoResponsavel),
+      );
 
       const totalPages = doc.getNumberOfPages();
       for (let page = 1; page <= totalPages; page += 1) {
