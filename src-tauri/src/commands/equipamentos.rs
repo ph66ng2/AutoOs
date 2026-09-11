@@ -9,13 +9,16 @@
 //! ║  - atualizar_status_equipamento: Atualiza status + datas     ║
 //! ╚══════════════════════════════════════════════════════════════╝
 
-use crate::commands::types::{EquipamentoInput, EquipamentoRow, EQUIPAMENTO_SELECT};
+use crate::commands::types::{
+    normalize_forma_pagamento, AprovarOrcamentoInput, EquipamentoInput, EquipamentoRow,
+    EQUIPAMENTO_SELECT,
+};
 use crate::commands::auth::{
     record_security_event, require_permission, SecurityProfileSummary, PERMISSION_DELETE_RECORDS,
     PERMISSION_FINANCIAL_ACTIONS,
 };
 use crate::db::get_pool;
-use sqlx::Row;
+use sqlx::{PgPool, Row};
 use tracing::{debug, error, info, instrument};
 
 /// Limite padrão de itens por página.
@@ -136,6 +139,52 @@ fn concurrency_conflict_message(entity_label: &str) -> String {
         "Conflito de concorrência: {} foi alterado por outro técnico. Recarregue os dados antes de tentar novamente.",
         entity_label
     )
+}
+
+fn reject_direct_approval(status: &str) -> Result<(), String> {
+    if normalize_status_key(status) == "APROVADO" {
+        return Err("A aprovação deve usar a operação aprovar_orcamento com pagamento válido.".to_string());
+    }
+    Ok(())
+}
+
+async fn resolve_responsavel_snapshot(
+    pool: &PgPool,
+    input: &EquipamentoInput,
+) -> Result<(Option<i32>, Option<String>, Option<String>, Option<String>), String> {
+    let Some(contact_id) = input.responsavel_contato_id else {
+        return Ok((
+            None,
+            optional_text(input.responsavel_nome.as_deref()),
+            optional_text(input.responsavel_email.as_deref()),
+            optional_text(input.responsavel_telefone.as_deref()),
+        ));
+    };
+
+    let empresa_id = input
+        .empresa_id
+        .ok_or_else(|| "empresa_id é obrigatório ao associar um contato responsável.".to_string())?;
+    let cliente_id = input
+        .cliente_id
+        .ok_or_else(|| "cliente_id é obrigatório ao associar um contato responsável.".to_string())?;
+
+    let snapshot: Option<(String, Option<String>, Option<String>)> = sqlx::query_as(
+        "SELECT nome, email, telefone
+         FROM cliente_contatos
+         WHERE id = $1 AND empresa_id = $2 AND cliente_id = $3 AND ativo = true",
+    )
+    .bind(contact_id)
+    .bind(empresa_id)
+    .bind(cliente_id)
+    .fetch_optional(pool)
+    .await
+    .map_err(|error| format!("Erro ao validar contato responsável: {}", error))?;
+
+    let Some((nome, email, telefone)) = snapshot else {
+        return Err("Contato responsável não encontrado, inativo ou incompatível com o cliente/empresa.".to_string());
+    };
+
+    Ok((Some(contact_id), Some(nome), email, telefone))
 }
 
     fn equipment_has_sensitive_financial_input(input: &EquipamentoInput) -> bool {
@@ -325,12 +374,14 @@ pub async fn criar_equipamento(input: EquipamentoInput) -> Result<EquipamentoRow
     let modelo = required_text(&input.modelo, "Modelo")?;
     let tipo = required_text(&input.tipo, "Tipo")?;
     let status = required_text(&normalize_status_key(&input.status), "Status")?;
+    reject_direct_approval(&status)?;
     let data_entrada = required_text(&input.data_entrada, "Data de entrada")?;
 
     validate_non_negative_i32(input.paginas_impressas, "Páginas impressas")?;
     validate_non_negative_f64(input.preco_compra, "Preço de compra")?;
     validate_non_negative_f64(input.preco_venda, "Preço de venda")?;
     validate_non_negative_f64(input.valor_orcamento, "Valor do orçamento")?;
+    let responsavel = resolve_responsavel_snapshot(&pool, &input).await?;
 
     let row = sqlx::query(
         r#"
@@ -339,11 +390,13 @@ pub async fn criar_equipamento(input: EquipamentoInput) -> Result<EquipamentoRow
             defeito_relatado, acessorios, acessorios_outros,
             paginas_impressas, tecnologia, conectividade, data_entrada, proprietario,
             preco_compra, preco_venda, observacoes, cliente_id, cliente_nome,
-            cliente_telefone, cliente_email, prazo_aprovacao, valor_orcamento
+            cliente_telefone, cliente_email, prazo_aprovacao, valor_orcamento,
+            empresa_id, responsavel_contato_id, responsavel_nome, responsavel_email,
+            responsavel_telefone
         ) VALUES (
             $1, $2, $3, $4, $5, $6, $7, $8, $9, $10,
             $11, $12, $13, $14, $15, $16, $17, $18, $19,
-            $20, $21, $22, $23
+            $20, $21, $22, $23, $24, $25, $26, $27, $28
         ) RETURNING id
         "#,
     )
@@ -370,6 +423,11 @@ pub async fn criar_equipamento(input: EquipamentoInput) -> Result<EquipamentoRow
     .bind(optional_text(input.cliente_email.as_deref()))
     .bind(optional_text(input.prazo_aprovacao.as_deref()))
     .bind(input.valor_orcamento)
+    .bind(input.empresa_id)
+    .bind(responsavel.0)
+    .bind(responsavel.1)
+    .bind(responsavel.2)
+    .bind(responsavel.3)
     .fetch_one(&pool)
     .await
     .map_err(|e| {
@@ -405,12 +463,14 @@ pub async fn atualizar_equipamento(id: i32, input: EquipamentoInput) -> Result<E
     let modelo = required_text(&input.modelo, "Modelo")?;
     let tipo = required_text(&input.tipo, "Tipo")?;
     let status = required_text(&normalize_status_key(&input.status), "Status")?;
+    reject_direct_approval(&status)?;
     let data_entrada = required_text(&input.data_entrada, "Data de entrada")?;
 
     validate_non_negative_i32(input.paginas_impressas, "Páginas impressas")?;
     validate_non_negative_f64(input.preco_compra, "Preço de compra")?;
     validate_non_negative_f64(input.preco_venda, "Preço de venda")?;
     validate_non_negative_f64(input.valor_orcamento, "Valor do orçamento")?;
+    let responsavel = resolve_responsavel_snapshot(&pool, &input).await?;
 
     let updated_rows = sqlx::query(
         r#"
@@ -420,8 +480,12 @@ pub async fn atualizar_equipamento(id: i32, input: EquipamentoInput) -> Result<E
             paginas_impressas = $10, tecnologia = $11, conectividade = $12, data_entrada = $13,
             proprietario = $14, preco_compra = $15, preco_venda = $16, observacoes = $17,
             cliente_id = $18, cliente_nome = $19, cliente_telefone = $20, cliente_email = $21,
-            prazo_aprovacao = $22, valor_orcamento = $23, atualizado_em = NOW()
-        WHERE id = $24 AND atualizado_em = $25::TIMESTAMPTZ
+            prazo_aprovacao = $22, valor_orcamento = $23,
+            responsavel_contato_id = $24, responsavel_nome = $25,
+            responsavel_email = $26, responsavel_telefone = $27,
+            atualizado_em = NOW()
+        WHERE id = $28 AND atualizado_em = $29::TIMESTAMPTZ
+          AND ($30::INTEGER IS NULL OR empresa_id = $30)
         "#,
     )
     .bind(serial_number)
@@ -447,8 +511,13 @@ pub async fn atualizar_equipamento(id: i32, input: EquipamentoInput) -> Result<E
     .bind(optional_text(input.cliente_email.as_deref()))
     .bind(optional_text(input.prazo_aprovacao.as_deref()))
     .bind(input.valor_orcamento)
+    .bind(responsavel.0)
+    .bind(responsavel.1)
+    .bind(responsavel.2)
+    .bind(responsavel.3)
     .bind(id)
     .bind(concurrency_token)
+    .bind(input.empresa_id)
     .execute(&pool)
     .await
     .map_err(|e| {
@@ -525,6 +594,7 @@ pub async fn atualizar_status_equipamento(
     validate_non_negative_f64(valor_final, "Valor final")?;
     let concurrency_token = required_concurrency_token(expected_updated_em.as_deref(), "equipamento")?;
     let normalized_status = normalize_status_key(&novo_status);
+    reject_direct_approval(&normalized_status)?;
     let prazo_aprovacao_value = prazo_aprovacao
         .as_deref()
         .map(str::trim)
@@ -620,6 +690,129 @@ pub async fn atualizar_status_equipamento(
     buscar_equipamento(id).await
 }
 
+/// Aprova um orçamento atualizando pagamento, status e data de aprovação na
+/// mesma transação. A verificação e o equipamento são sempre conferidos no
+/// mesmo tenant; falhas de concorrência deixam ambos inalterados.
+#[tauri::command]
+#[instrument(skip_all, fields(empresa_id = input.empresa_id, equipamento_id = input.equipamento_id))]
+pub async fn aprovar_orcamento(input: AprovarOrcamentoInput) -> Result<EquipamentoRow, String> {
+    if input.empresa_id <= 0 {
+        return Err("Empresa inválida".to_string());
+    }
+    if input.equipamento_id <= 0 {
+        return Err("Equipamento inválido".to_string());
+    }
+    let concurrency_token = required_concurrency_token(
+        Some(input.expected_updated_em.as_str()),
+        "equipamento",
+    )?;
+    let (payment_code, payment_detail) = normalize_forma_pagamento(
+        Some(&input.pagamento.codigo),
+        input.pagamento.detalhe.as_deref(),
+    )?;
+    let actor = require_permission(PERMISSION_FINANCIAL_ACTIONS)?;
+    let pool = get_pool().await.map_err(|error| error.to_string())?;
+    let mut tx = pool.begin().await.map_err(|error| {
+        error!("Erro ao iniciar transação de aprovação do equipamento {}: {}", input.equipamento_id, error);
+        error.to_string()
+    })?;
+
+    let equipment: Option<(String, String)> = sqlx::query_as(
+        "SELECT COALESCE(status, ''), atualizado_em::TEXT
+         FROM equipamentos
+         WHERE id = $1 AND empresa_id = $2
+         FOR UPDATE",
+    )
+    .bind(input.equipamento_id)
+    .bind(input.empresa_id)
+    .fetch_optional(&mut *tx)
+    .await
+    .map_err(|error| format!("Erro ao validar equipamento para aprovação: {}", error))?;
+
+    let Some((current_status, _current_updated_em)) = equipment else {
+        return Err("Equipamento não encontrado na empresa informada.".to_string());
+    };
+    if normalize_status_key(&current_status) != "AGUARDANDO_APROVACAO" {
+        return Err("Somente orçamentos aguardando aprovação podem ser aprovados.".to_string());
+    }
+
+    let verification_id: Option<i32> = sqlx::query_scalar(
+        "SELECT id
+         FROM verificacoes
+         WHERE equipamento_id = $1 AND empresa_id = $2
+         ORDER BY id DESC
+         LIMIT 1
+         FOR UPDATE",
+    )
+    .bind(input.equipamento_id)
+    .bind(input.empresa_id)
+    .fetch_optional(&mut *tx)
+    .await
+    .map_err(|error| format!("Erro ao validar verificação para aprovação: {}", error))?;
+
+    let Some(verification_id) = verification_id else {
+        return Err("Não é possível aprovar sem uma verificação técnica.".to_string());
+    };
+
+    sqlx::query(
+        "UPDATE verificacoes
+         SET forma_pagamento_codigo = $1, forma_pagamento_detalhe = $2
+         WHERE id = $3 AND equipamento_id = $4 AND empresa_id = $5",
+    )
+    .bind(payment_code.as_deref())
+    .bind(payment_detail.as_deref())
+    .bind(verification_id)
+    .bind(input.equipamento_id)
+    .bind(input.empresa_id)
+    .execute(&mut *tx)
+    .await
+    .map_err(|error| format!("Erro ao salvar pagamento do orçamento: {}", error))?;
+
+    let updated_rows = sqlx::query(
+        "UPDATE equipamentos
+         SET status = 'APROVADO', data_aprovacao = NOW(), atualizado_em = NOW()
+         WHERE id = $1 AND empresa_id = $2 AND atualizado_em = $3::TIMESTAMPTZ",
+    )
+    .bind(input.equipamento_id)
+    .bind(input.empresa_id)
+    .bind(&concurrency_token)
+    .execute(&mut *tx)
+    .await
+    .map_err(|error| format!("Erro ao aprovar orçamento: {}", error))?
+    .rows_affected();
+
+    if updated_rows == 0 {
+        return Err(concurrency_conflict_message("o orçamento"));
+    }
+
+    tx.commit().await.map_err(|error| {
+        error!("Erro ao confirmar aprovação do equipamento {}: {}", input.equipamento_id, error);
+        error.to_string()
+    })?;
+
+    record_security_event(
+        "BUDGET_APPROVED",
+        Some(&actor),
+        format!(
+            "empresa_id={}; equipamento_id={}; verificacao_id={}; pagamento_codigo={}",
+            input.empresa_id,
+            input.equipamento_id,
+            verification_id,
+            payment_code.as_deref().unwrap_or(""),
+        ),
+        true,
+    )
+    .await;
+
+    let query = format!("{} WHERE id = $1 AND empresa_id = $2", EQUIPAMENTO_SELECT);
+    sqlx::query_as::<_, EquipamentoRow>(sqlx::AssertSqlSafe(query))
+        .bind(input.equipamento_id)
+        .bind(input.empresa_id)
+        .fetch_one(&pool)
+        .await
+        .map_err(|error| format!("Erro ao carregar equipamento aprovado: {}", error))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -678,5 +871,11 @@ mod tests {
             .unwrap_err()
             .contains("negativo"));
         assert!(validate_non_negative_f64(Some(0.0), "Valor do orçamento").is_ok());
+    }
+
+    #[test]
+    fn direct_approval_is_rejected_without_payment_transaction() {
+        assert!(reject_direct_approval("APROVADO").is_err());
+        assert!(reject_direct_approval("AGUARDANDO_APROVACAO").is_ok());
     }
 }

@@ -232,6 +232,7 @@ async fn run_client_concurrency(cliente_id: i32, cliente: &commands::types::Clie
     let base_token = cliente.atualizado_em.clone();
 
     let update_a = ClienteInput {
+        empresa_id: cliente.empresa_id,
         nome: Some(format!("Cliente A {}", suffix)),
         tipo_pessoa: cliente.tipo_pessoa.clone(),
         documento: cliente.documento.clone(),
@@ -256,6 +257,7 @@ async fn run_client_concurrency(cliente_id: i32, cliente: &commands::types::Clie
     };
 
     let update_b = ClienteInput {
+        empresa_id: cliente.empresa_id,
         nome: Some(format!("Cliente B {}", suffix)),
         tipo_pessoa: cliente.tipo_pessoa.clone(),
         documento: cliente.documento.clone(),
@@ -325,6 +327,7 @@ async fn run_equipment_edit_concurrency(
     let base_token = equipamento.atualizado_em.clone();
 
     let update_a = EquipamentoInput {
+        empresa_id: equipamento.empresa_id,
         serial_number: equipamento.serial_number.clone(),
         patrimonio: equipamento.patrimonio.clone(),
         marca: equipamento.marca.clone(),
@@ -346,12 +349,17 @@ async fn run_equipment_edit_concurrency(
         cliente_nome: equipamento.cliente_nome.clone(),
         cliente_telefone: equipamento.cliente_telefone.clone(),
         cliente_email: equipamento.cliente_email.clone(),
+        responsavel_contato_id: equipamento.responsavel_contato_id,
+        responsavel_nome: equipamento.responsavel_nome.clone(),
+        responsavel_email: equipamento.responsavel_email.clone(),
+        responsavel_telefone: equipamento.responsavel_telefone.clone(),
         prazo_aprovacao: equipamento.prazo_aprovacao.clone(),
         valor_orcamento: equipamento.valor_orcamento,
         atualizado_em: base_token.clone(),
     };
 
     let update_b = EquipamentoInput {
+        empresa_id: equipamento.empresa_id,
         serial_number: equipamento.serial_number.clone(),
         patrimonio: equipamento.patrimonio.clone(),
         marca: "BMITAG-ALT".to_string(),
@@ -373,6 +381,10 @@ async fn run_equipment_edit_concurrency(
         cliente_nome: equipamento.cliente_nome.clone(),
         cliente_telefone: equipamento.cliente_telefone.clone(),
         cliente_email: Some(format!("equipamento-b.{}@autoos.local", suffix)),
+        responsavel_contato_id: equipamento.responsavel_contato_id,
+        responsavel_nome: equipamento.responsavel_nome.clone(),
+        responsavel_email: equipamento.responsavel_email.clone(),
+        responsavel_telefone: equipamento.responsavel_telefone.clone(),
         prazo_aprovacao: equipamento.prazo_aprovacao.clone(),
         valor_orcamento: equipamento.valor_orcamento,
         atualizado_em: base_token,

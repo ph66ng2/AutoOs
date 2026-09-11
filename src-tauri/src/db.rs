@@ -162,6 +162,7 @@ pub async fn validate_migration_history(database_url: &str) -> Result<usize, Str
 
 const REQUIRED_RUNTIME_TABLES: &[&str] = &[
     "clientes",
+    "cliente_contatos",
     "equipamentos",
     "verificacoes",
     "comunicacoes",
@@ -173,6 +174,10 @@ const REQUIRED_RUNTIME_TABLES: &[&str] = &[
 
 const REQUIRED_RUNTIME_COLUMNS: &[(&str, &str)] = &[
     ("clientes", "id"),
+    ("cliente_contatos", "empresa_id"),
+    ("cliente_contatos", "cliente_id"),
+    ("cliente_contatos", "nome"),
+    ("cliente_contatos", "ativo"),
     ("equipamentos", "id"),
     ("equipamentos", "serial_number"),
     ("equipamentos", "patrimonio"),
@@ -180,6 +185,12 @@ const REQUIRED_RUNTIME_COLUMNS: &[(&str, &str)] = &[
     ("equipamentos", "data_entrada"),
     ("equipamentos", "atualizado_em"),
     ("verificacoes", "equipamento_id"),
+    ("verificacoes", "forma_pagamento_codigo"),
+    ("verificacoes", "forma_pagamento_detalhe"),
+    ("equipamentos", "responsavel_contato_id"),
+    ("equipamentos", "responsavel_nome"),
+    ("equipamentos", "responsavel_email"),
+    ("equipamentos", "responsavel_telefone"),
     ("verificacoes", "adjusted_at"),
     ("equipamento_imagens", "storage_path"),
     ("security_profiles", "permissions"),
@@ -187,6 +198,10 @@ const REQUIRED_RUNTIME_COLUMNS: &[(&str, &str)] = &[
 
 const REQUIRED_RUNTIME_COLUMN_TYPES: &[(&str, &str, &str)] = &[
     ("equipamentos", "id", "int4"),
+    ("cliente_contatos", "empresa_id", "int4"),
+    ("cliente_contatos", "cliente_id", "int4"),
+    ("cliente_contatos", "ativo", "bool"),
+    ("equipamentos", "responsavel_contato_id", "int4"),
     ("security_profiles", "id", "int4"),
     ("security_profiles", "permissions", "text"),
     ("security_audit_log", "profile_id", "int4"),
