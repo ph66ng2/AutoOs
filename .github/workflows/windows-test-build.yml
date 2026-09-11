@@ -8,7 +8,7 @@ on:
       ref:
         description: Branch, tag ou commit que será compilado
         required: true
-        default: master
+        default: integration/ao-cont-orc-pdf-qa
         type: string
 
 permissions:
@@ -59,44 +59,34 @@ jobs:
             throw "tauri.conf.json não pode empacotar .env no instalador."
           }
 
-      - name: Validar conexão PostgreSQL de teste
-        shell: pwsh
-        env:
-          AUTOOS_DATABASE_URL: ${{ secrets.AUTOOS_DATABASE_URL }}
-        run: |
-          if ([string]::IsNullOrWhiteSpace($env:AUTOOS_DATABASE_URL)) {
-            throw "Configure o secret AUTOOS_DATABASE_URL antes de gerar o instalador de teste."
-          }
-          if ($env:AUTOOS_DATABASE_URL -notmatch '^postgres(ql)?://.+@[^/]*\.pooler\.supabase\.com:5432/postgres(?:\?.*)?$') {
-            throw "AUTOOS_DATABASE_URL deve usar o Supavisor Session pooler na porta 5432 e o banco /postgres."
-          }
-          if ($env:AUTOOS_DATABASE_URL -notmatch '[?&]sslmode=require(?:&|$)') {
-            throw "AUTOOS_DATABASE_URL deve exigir TLS com sslmode=require."
-          }
-
-      - name: Validar estruturas reais do banco
-        env:
-          AUTOOS_DATABASE_URL: ${{ secrets.AUTOOS_DATABASE_URL }}
-        run: cargo run --manifest-path src-tauri/Cargo.toml --locked --quiet --bin release_database_check
-
-      - name: Compilar instalador Windows sem publicar release
+      - name: Compilar instalador Windows de teste sem banco ou release
         uses: tauri-apps/tauri-action@v0
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY || secrets.TAURI_SIGNING_KEY }}
-          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
-          AUTOOS_DATABASE_URL: ${{ secrets.AUTOOS_DATABASE_URL }}
+          # O aplicativo recebe a conexão em runtime; o build de teste não
+          # deve acessar banco operacional nem depender de secrets de produção.
+          CI: true
         with:
           args: --bundles nsis
+
+      - name: Calcular checksums do instalador
+        shell: pwsh
+        run: |
+          $installers = Get-ChildItem "src-tauri/target/release/bundle/nsis/*.exe"
+          if ($installers.Count -eq 0) {
+            throw "Nenhum instalador NSIS foi gerado."
+          }
+          foreach ($installer in $installers) {
+            $hash = (Get-FileHash $installer.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+            "$hash  $($installer.Name)" | Out-File "$($installer.FullName).sha256" -Encoding ascii
+          }
 
       - name: Publicar artefato temporário
         uses: actions/upload-artifact@v4
         with:
           name: AutoOS-Windows-Test-${{ github.run_number }}
           path: |
-            src-tauri/target/release/autoos.exe
             src-tauri/target/release/bundle/nsis/*.exe
-            src-tauri/target/release/bundle/nsis/*.sig
+            src-tauri/target/release/bundle/nsis/*.sha256
           if-no-files-found: error
           retention-days: 3
           compression-level: 0
@@ -107,4 +97,5 @@ jobs:
           "## Instalador de teste pronto" >> $env:GITHUB_STEP_SUMMARY
           "- Origem solicitada: ``${{ inputs.ref }}``" >> $env:GITHUB_STEP_SUMMARY
           "- Commit compilado: ``${{ steps.source.outputs.sha }}``" >> $env:GITHUB_STEP_SUMMARY
+          "- O build não acessa banco e não usa credenciais de produção." >> $env:GITHUB_STEP_SUMMARY
           "- O artefato expira em 3 dias e não cria tag nem GitHub Release." >> $env:GITHUB_STEP_SUMMARY
