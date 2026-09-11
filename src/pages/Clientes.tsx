@@ -38,6 +38,7 @@ import {
   Building2,
   User,
   Eye,
+  ContactRound,
 } from "lucide-react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -80,6 +81,7 @@ import {
 } from "@/pages/clientes/clientes-pagination";
 import {
   ClientesDeleteDialog,
+  ClientesContatosModal,
   ClientesEquipamentosModal,
   ClientesFormDialog,
 } from "@/pages/clientes/ClientesDialogs";
@@ -104,6 +106,7 @@ export default function Clientes() {
   const [carregandoEquip, setCarregandoEquip] = useState(false);
   const [modalEquipamentosOpen, setModalEquipamentosOpen] = useState(false);
   const [clienteEquipamentosSelecionado, setClienteEquipamentosSelecionado] = useState<Cliente | null>(null);
+  const [contatosClienteSelecionado, setContatosClienteSelecionado] = useState<Cliente | null>(null);
 
   const { clientes, loading, error, criar, atualizar, deletar, recarregar } =
     useClientes({ busca: busca || undefined });
@@ -505,6 +508,12 @@ export default function Clientes() {
                               }}
                               overflow={[
                                 {
+                                  id: `contatos-${c.id}`,
+                                  label: "Contatos",
+                                  icon: <ContactRound className="h-4 w-4" />,
+                                  onClick: () => setContatosClienteSelecionado(c),
+                                },
+                                {
                                   id: `excluir-${c.id}`,
                                   label: "Excluir",
                                   icon: <Trash2 className="h-4 w-4" />,
@@ -606,6 +615,12 @@ export default function Clientes() {
         onOpenChange={setModalEquipamentosOpen}
         cliente={clienteEquipamentosSelecionado}
         equipamentos={equipamentosCliente}
+      />
+
+      <ClientesContatosModal
+        open={Boolean(contatosClienteSelecionado)}
+        onOpenChange={(open) => { if (!open) setContatosClienteSelecionado(null); }}
+        cliente={contatosClienteSelecionado}
       />
     </div>
   );
