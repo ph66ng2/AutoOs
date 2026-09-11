@@ -256,6 +256,25 @@ uf: z.string().max(2).optional().or(z.literal("")),
 export type ClienteFormData = z.infer<typeof clienteSchema>;
 
 /**
+ * Validação de contato operacional do cliente.
+ * Nome é obrigatório; email e telefone só são validados quando preenchidos.
+ */
+export const clienteContatoSchema = z.object({
+  nome: z.string().trim().min(1, "Nome é obrigatório").max(160, "Nome muito longo"),
+  email: z.union([z.literal(""), z.string().email("Email inválido")]),
+  telefone: z.string().refine(
+    (value) => {
+      if (!value.trim()) return true;
+      const digits = value.replace(/\D/g, "");
+      return digits.length === 10 || digits.length === 11;
+    },
+    "Telefone inválido",
+  ),
+});
+
+export type ClienteContatoFormData = z.infer<typeof clienteContatoSchema>;
+
+/**
  * Schema Zod para formulário de produto (insumo de estoque).
  * Campos numéricos usam z.coerce para converter string → number.
  * Conecta-se a: Insumos.tsx (useForm com zodResolver)
