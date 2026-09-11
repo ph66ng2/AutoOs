@@ -87,6 +87,18 @@ export function ClienteSelector({
   const [salvandoNovo, setSalvandoNovo] = useState(false);
   const { warning, error: showError } = useNotification();
 
+  useEffect(() => {
+    if (clienteInicial) {
+      setClienteSelecionado(clienteInicial);
+      setModo("selecionado");
+      return;
+    }
+    if (!clienteIdInicial) {
+      setClienteSelecionado(null);
+      setModo("busca");
+    }
+  }, [clienteInicial, clienteIdInicial]);
+
   const formNovoCliente = useForm<ClienteFormData>({
     resolver: zodResolver(clienteSchema),
     defaultValues: {

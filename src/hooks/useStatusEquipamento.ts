@@ -23,6 +23,7 @@ import { WhatsAppService } from "@/lib/whatsapp-service";
 import { EmailService } from "@/lib/email-service";
 import type { Equipamento, ResultadoAutomacao } from "@/types";
 import type { DadosVerificacao } from "@/components/equipamentos/VerificacaoTecnica";
+import { resolveRecipient } from "@/lib/recipient-resolver";
 
 /**
  * Hook que gerencia transições de status com automação de comunicações.
@@ -43,7 +44,8 @@ export function useStatusEquipamento() {
   async function finalizarVerificacao(
     equipamento: Equipamento,
     dadosVerificacao: DadosVerificacao,
-    emailContatoFallback?: string
+    emailContato?: string,
+    emailDestinatario?: string,
   ): Promise<ResultadoAutomacao> {
     setLoading(true);
     try {
@@ -91,19 +93,28 @@ export function useStatusEquipamento() {
 
       let resultadoWhatsApp: { sucesso: boolean; erro?: string };
       try {
-        resultadoWhatsApp = await WhatsAppService.enviarOrcamento(eqAtualizado, verificacao);
+        const telefone = resolveRecipient(eqAtualizado, "telefone");
+        resultadoWhatsApp = await WhatsAppService.enviarOrcamento(
+          { ...eqAtualizado, cliente_telefone: telefone.endereco || undefined, cliente_nome: telefone.nome },
+          verificacao,
+        );
       } catch (error: any) {
         resultadoWhatsApp = { sucesso: false, erro: error?.message || String(error) };
       }
 
       let resultadoEmail: { sucesso: boolean; erro?: string };
       try {
-        const emailContato = (eqAtualizado.cliente_email || emailContatoFallback || "").trim();
-        if (!emailContato) {
+        // A ausência do terceiro argumento preserva o contrato legado para
+        // consumidores diretos do hook; a UI passa "" quando o operador
+        // escolhe seguir sem envio.
+        const emailContatoResolvido = emailContato === undefined
+          ? (eqAtualizado.cliente_email || "").trim()
+          : emailContato.trim();
+        if (!emailContatoResolvido) {
           resultadoEmail = { sucesso: false, erro: "Cliente sem email cadastrado" };
         } else {
           resultadoEmail = await EmailService.enviarOrcamento(
-            { ...eqAtualizado, cliente_email: emailContato },
+            { ...eqAtualizado, cliente_email: emailContatoResolvido, cliente_nome: emailDestinatario || eqAtualizado.cliente_nome },
             verificacao
           );
         }
@@ -131,7 +142,8 @@ export function useStatusEquipamento() {
    */
   async function marcarComoPronto(
     equipamento: Equipamento,
-    emailContatoFallback?: string
+    emailContato?: string,
+    emailDestinatario?: string,
   ): Promise<ResultadoAutomacao> {
     setLoading(true);
     try {
@@ -150,19 +162,26 @@ export function useStatusEquipamento() {
 
       let resultadoWhatsApp: { sucesso: boolean; erro?: string };
       try {
-        resultadoWhatsApp = await WhatsAppService.enviarEquipamentoPronto(eqAtualizado);
+        const telefone = resolveRecipient(eqAtualizado, "telefone");
+        resultadoWhatsApp = await WhatsAppService.enviarEquipamentoPronto({
+          ...eqAtualizado,
+          cliente_telefone: telefone.endereco || undefined,
+          cliente_nome: telefone.nome,
+        });
       } catch (error: any) {
         resultadoWhatsApp = { sucesso: false, erro: error?.message || String(error) };
       }
 
       let resultadoEmail: { sucesso: boolean; erro?: string };
       try {
-        const emailContato = (eqAtualizado.cliente_email || emailContatoFallback || "").trim();
-        if (!emailContato) {
+        const emailContatoResolvido = emailContato === undefined
+          ? (eqAtualizado.cliente_email || "").trim()
+          : emailContato.trim();
+        if (!emailContatoResolvido) {
           resultadoEmail = { sucesso: false, erro: "Cliente sem email cadastrado" };
         } else {
           resultadoEmail = await EmailService.enviarEquipamentoPronto(
-            { ...eqAtualizado, cliente_email: emailContato }
+            { ...eqAtualizado, cliente_email: emailContatoResolvido, cliente_nome: emailDestinatario || eqAtualizado.cliente_nome }
           );
         }
       } catch (error: any) {

@@ -15,6 +15,7 @@ import type { ClienteFormData } from "@/lib/validations";
 import { formatDatePtBr } from "@/lib/date-utils";
 import type { Cliente, Equipamento } from "@/types";
 import { ClientesStatusBadge } from "./ClientesStatusBadge";
+import { ClienteContatosPanel } from "@/components/clientes/ClienteContatosPanel";
 
 export function ClientesFormDialog({
   open,
@@ -132,6 +133,29 @@ export function ClientesEquipamentosModal({
               </div>
             ))}
           </div>
+        )}
+        <DialogFooter>
+          <DialogClose asChild><Button variant="outline">Fechar</Button></DialogClose>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+export function ClientesContatosModal({
+  open,
+  onOpenChange,
+  cliente,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  cliente: Cliente | null;
+}) {
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-2xl max-h-[85vh] overflow-y-auto">
+        {cliente && (
+          <ClienteContatosPanel cliente={cliente} empresaId={cliente.empresa_id} />
         )}
         <DialogFooter>
           <DialogClose asChild><Button variant="outline">Fechar</Button></DialogClose>
