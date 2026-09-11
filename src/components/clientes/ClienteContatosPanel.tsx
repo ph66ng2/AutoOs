@@ -28,9 +28,10 @@ import type { Cliente, ClienteContato, ClienteContatoInput } from "@/types";
 interface ClienteContatosPanelProps {
   cliente: Cliente;
   empresaId?: number;
+  onVincularLegado?: () => void | Promise<void>;
 }
 
-export function ClienteContatosPanel({ cliente, empresaId }: ClienteContatosPanelProps) {
+export function ClienteContatosPanel({ cliente, empresaId, onVincularLegado }: ClienteContatosPanelProps) {
   const [contatos, setContatos] = useState<ClienteContato[]>([]);
   const [carregando, setCarregando] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
@@ -128,8 +129,8 @@ export function ClienteContatosPanel({ cliente, empresaId }: ClienteContatosPane
 
   return (
     <section className="space-y-4" aria-label={`Contatos de ${nomeExibicaoCliente(cliente)}`}>
-      <div className="flex items-start justify-between gap-3">
-        <div>
+      <div className="space-y-3">
+        <div className="pr-10">
           <h3 className="flex items-center gap-2 text-base font-semibold">
             <UserRound className="h-4 w-4" /> Contatos do cliente
           </h3>
@@ -137,12 +138,18 @@ export function ClienteContatosPanel({ cliente, empresaId }: ClienteContatosPane
             Empresa/cliente vinculado: <strong>{nomeExibicaoCliente(cliente)}</strong>
           </p>
         </div>
-        <Button type="button" size="sm" onClick={abrirNovo} disabled={!empresaId || !cliente.id}>
+        {!empresaId && onVincularLegado ? (
+          <Button type="button" size="sm" variant="outline" onClick={() => void onVincularLegado()}>
+            Vincular cadastro legado
+          </Button>
+        ) : (
+          <Button type="button" size="sm" onClick={abrirNovo} disabled={!cliente.id}>
           <Plus className="mr-1 h-4 w-4" /> Novo contato
-        </Button>
+          </Button>
+        )}
       </div>
 
-      {erro && <ErrorAlert variant="error" context="Clientes" message={erro} action="Carregar contatos" />}
+      {erro && <ErrorAlert variant="error" context="Clientes" message={erro} action={empresaId ? "Carregar contatos" : "Vincular cadastro legado"} />}
       {carregando ? (
         <div className="flex items-center justify-center py-8 text-sm text-muted-foreground">Carregando contatos...</div>
       ) : contatos.length === 0 ? (

@@ -345,6 +345,14 @@ export interface ClienteContato {
   atualizado_em?: string;
 }
 
+export interface VinculoClienteLegadoResultado {
+  empresa_id: number;
+  cliente_id: number;
+  equipamentos_vinculados: number;
+  verificacoes_vinculadas: number;
+  imagens_vinculadas: number;
+}
+
 export type ClienteContatoInput = Omit<ClienteContato, "id" | "ativo" | "criado_em" | "atualizado_em"> & {
   atualizado_em?: string;
 };

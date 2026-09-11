@@ -171,6 +171,7 @@ fn main() {
             commands::clientes::buscar_cliente,
             commands::clientes::criar_cliente,
             commands::clientes::atualizar_cliente,
+            commands::clientes::vincular_cliente_legado_empresa,
             commands::clientes::deletar_cliente,
             commands::cnpj::consultar_cnpj,
             // Contatos de cliente

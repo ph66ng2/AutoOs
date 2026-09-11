@@ -146,16 +146,22 @@ export function ClientesContatosModal({
   open,
   onOpenChange,
   cliente,
+  onVincularLegado,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   cliente: Cliente | null;
+  onVincularLegado: (cliente: Cliente) => void | Promise<void>;
 }) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-2xl max-h-[85vh] overflow-y-auto">
         {cliente && (
-          <ClienteContatosPanel cliente={cliente} empresaId={cliente.empresa_id} />
+          <ClienteContatosPanel
+            cliente={cliente}
+            empresaId={cliente.empresa_id}
+            onVincularLegado={() => onVincularLegado(cliente)}
+          />
         )}
         <DialogFooter>
           <DialogClose asChild><Button variant="outline">Fechar</Button></DialogClose>

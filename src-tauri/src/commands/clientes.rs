@@ -8,8 +8,8 @@
 //! ║  - deletar_cliente: DELETE por ID                            ║
 //! ╚══════════════════════════════════════════════════════════════╝
 
-use crate::commands::types::{ClienteInput, ClienteRow, CLIENTE_SELECT};
-use crate::commands::auth::{record_security_event, require_permission, PERMISSION_DELETE_RECORDS};
+use crate::commands::types::{ClienteInput, ClienteRow, VinculoClienteLegadoResultado, CLIENTE_SELECT};
+use crate::commands::auth::{record_security_event, require_permission, PERMISSION_DELETE_RECORDS, PERMISSION_MANAGE_PROFILES};
 use crate::db::get_pool;
 use sqlx::Row;
 use tracing::{debug, error, info, instrument};
@@ -349,6 +349,72 @@ pub async fn atualizar_cliente(id: i32, input: ClienteInput) -> Result<ClienteRo
 
     info!("Cliente {} atualizado", id);
     buscar_cliente(id).await
+}
+
+/// Vincula explicitamente um cliente legado e seus registros operacionais sem tenant
+/// à empresa do administrador atual. Nunca sobrescreve vínculos existentes.
+#[tauri::command]
+#[instrument(skip_all, fields(cliente_id = id))]
+pub async fn vincular_cliente_legado_empresa(id: i32) -> Result<VinculoClienteLegadoResultado, String> {
+    if id <= 0 {
+        return Err("Cliente inválido".to_string());
+    }
+    let actor = require_permission(PERMISSION_MANAGE_PROFILES)?;
+    let pool = get_pool().await.map_err(|e| e.to_string())?;
+    let empresa_id: Option<i32> = sqlx::query_scalar(
+        "SELECT empresa_id FROM security_profiles WHERE id = $1 AND ativo = true",
+    )
+    .bind(actor.id)
+    .fetch_optional(&pool)
+    .await
+    .map_err(|e| e.to_string())?
+    .flatten();
+    let empresa_id = empresa_id.ok_or_else(|| "O perfil administrador não está vinculado a uma empresa ativa.".to_string())?;
+
+    let mut tx = pool.begin().await.map_err(|e| e.to_string())?;
+    let cliente_atualizado = sqlx::query(
+        "UPDATE clientes SET empresa_id = $1, atualizado_em = NOW() WHERE id = $2 AND empresa_id IS NULL",
+    )
+    .bind(empresa_id)
+    .bind(id)
+    .execute(&mut *tx)
+    .await
+    .map_err(|e| e.to_string())?
+    .rows_affected();
+    if cliente_atualizado != 1 {
+        return Err("Este cliente já possui empresa vinculada ou não foi encontrado.".to_string());
+    }
+
+    let conflito: Option<i32> = sqlx::query_scalar(
+        "SELECT id FROM equipamentos WHERE cliente_id = $1 AND empresa_id IS NOT NULL AND empresa_id <> $2 LIMIT 1",
+    )
+    .bind(id)
+    .bind(empresa_id)
+    .fetch_optional(&mut *tx)
+    .await
+    .map_err(|e| e.to_string())?;
+    if conflito.is_some() {
+        return Err("Há equipamento desse cliente vinculado a outra empresa; nenhuma alteração foi realizada.".to_string());
+    }
+
+    let verificacoes_vinculadas = sqlx::query(
+        "UPDATE verificacoes SET empresa_id = $1 WHERE empresa_id IS NULL AND equipamento_id IN (SELECT id FROM equipamentos WHERE cliente_id = $2)",
+    ).bind(empresa_id).bind(id).execute(&mut *tx).await.map_err(|e| e.to_string())?.rows_affected();
+    let imagens_vinculadas = sqlx::query(
+        "UPDATE equipamento_imagens SET empresa_id = $1 WHERE empresa_id IS NULL AND equipamento_id IN (SELECT id FROM equipamentos WHERE cliente_id = $2)",
+    ).bind(empresa_id).bind(id).execute(&mut *tx).await.map_err(|e| e.to_string())?.rows_affected();
+    let equipamentos_vinculados = sqlx::query(
+        "UPDATE equipamentos SET empresa_id = $1, atualizado_em = NOW() WHERE cliente_id = $2 AND empresa_id IS NULL",
+    ).bind(empresa_id).bind(id).execute(&mut *tx).await.map_err(|e| e.to_string())?.rows_affected();
+    tx.commit().await.map_err(|e| e.to_string())?;
+
+    record_security_event(
+        "LEGACY_CLIENT_TENANT_LINKED",
+        Some(&actor),
+        format!("empresa_id={}; cliente_id={}; equipamentos={}; verificacoes={}; imagens={}", empresa_id, id, equipamentos_vinculados, verificacoes_vinculadas, imagens_vinculadas),
+        true,
+    ).await;
+    Ok(VinculoClienteLegadoResultado { empresa_id, cliente_id: id, equipamentos_vinculados, verificacoes_vinculadas, imagens_vinculadas })
 }
 
 /// Deletar cliente por ID (soft delete - marca como inativo).

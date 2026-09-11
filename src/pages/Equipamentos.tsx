@@ -1076,8 +1076,16 @@ export default function Equipamentos() {
   }
 
   async function confirmarAprovacao(pagamento: FormaPagamento): Promise<boolean> {
-    if (!selecionado?.id || !selecionado.empresa_id || !selecionado.atualizado_em) {
-      setPagamentoAprovacaoError("Não foi possível identificar a empresa ou a versão atual do orçamento.");
+    if (!selecionado?.id) {
+      setPagamentoAprovacaoError("Não foi possível identificar o equipamento selecionado.");
+      return false;
+    }
+    if (!selecionado.empresa_id) {
+      setPagamentoAprovacaoError("Este equipamento é um cadastro legado sem empresa vinculada. Vincule o cliente à empresa antes de aprovar o orçamento.");
+      return false;
+    }
+    if (!selecionado.atualizado_em) {
+      setPagamentoAprovacaoError("A versão atual do orçamento não está disponível. Feche, atualize a lista e tente novamente.");
       return false;
     }
     setPagamentoAprovacaoLoading(true);
@@ -2354,14 +2362,14 @@ export default function Equipamentos() {
           }
         }}
       >
-        <DialogContent className="sm:max-w-md">
+        <DialogContent className="flex max-h-[calc(100vh-2rem)] flex-col overflow-hidden sm:max-w-md">
           <DialogHeader>
             <DialogTitle>
               {novoStatus === "AGUARDANDO_APROVACAO" || ajusteOrcamentoSemMudancaStatus ? "Ajuste de Orçamento" : correcaoStatus ? "Corrigir Status" : "Alterar Status"}
             </DialogTitle>
           </DialogHeader>
           {selecionado && (
-            <div className="space-y-4">
+            <div className="min-h-0 space-y-4 overflow-y-auto pr-1">
               {!ajusteOrcamentoSemMudancaStatus && (
                 <>
                   <div className="flex items-center gap-2">
@@ -2639,7 +2647,7 @@ export default function Equipamentos() {
                   </div>
                 </div>
               )}
-              <DialogFooter>
+              <DialogFooter className="sticky bottom-0 bg-background pt-3">
                 <DialogClose asChild><Button variant="outline">Cancelar</Button></DialogClose>
                 <Button onClick={iniciarConfirmacaoStatus} disabled={salvando || (!novoStatus && !ajusteOrcamentoSemMudancaStatus)}>
                   {salvando ? "Salvando..." : correcaoStatus ? "Corrigir status" : "Confirmar"}
