@@ -91,6 +91,38 @@ fn status_change_requires_sensitive_access(
         )
 }
 
+fn is_regular_status_transition(from: &str, to: &str) -> bool {
+    from == to
+        || matches!(
+            (from, to),
+            ("RECEBIDO", "EM_VERIFICACAO")
+                | ("EM_VERIFICACAO", "VERIFICADO")
+                | ("VERIFICADO", "AGUARDANDO_APROVACAO")
+                | ("AGUARDANDO_APROVACAO", "APROVADO" | "REPROVADO" | "ORCAMENTO_VENCIDO")
+                | ("APROVADO", "EM_MANUTENCAO")
+                | ("EM_MANUTENCAO", "AGUARDANDO_PECA" | "PRONTO")
+                | ("AGUARDANDO_PECA", "EM_MANUTENCAO")
+                | ("PRONTO", "ENTREGUE")
+                | ("REPROVADO", "ENTREGUE" | "ABANDONADO")
+                | ("ORCAMENTO_VENCIDO", "ABANDONADO" | "AGUARDANDO_APROVACAO")
+        )
+}
+
+fn is_status_correction(from: &str, to: &str) -> bool {
+    matches!(
+        (from, to),
+        ("EM_VERIFICACAO", "RECEBIDO")
+            | ("VERIFICADO", "EM_VERIFICACAO")
+            | ("AGUARDANDO_APROVACAO", "VERIFICADO")
+            | ("APROVADO", "AGUARDANDO_APROVACAO")
+            | ("EM_MANUTENCAO", "APROVADO" | "AGUARDANDO_APROVACAO")
+            | ("AGUARDANDO_PECA", "EM_MANUTENCAO" | "AGUARDANDO_APROVACAO")
+            | ("PRONTO", "EM_MANUTENCAO" | "AGUARDANDO_PECA" | "AGUARDANDO_APROVACAO")
+            | ("REPROVADO", "AGUARDANDO_APROVACAO")
+            | ("ORCAMENTO_VENCIDO", "AGUARDANDO_APROVACAO")
+    )
+}
+
 fn required_concurrency_token(token: Option<&str>, entity_label: &str) -> Result<String, String> {
     token
         .map(str::trim)
@@ -487,6 +519,7 @@ pub async fn atualizar_status_equipamento(
     prazo_aprovacao: Option<String>,
     valor_final: Option<f64>,
     expected_updated_em: Option<String>,
+    motivo_correcao: Option<String>,
 ) -> Result<EquipamentoRow, String> {
     validate_non_negative_f64(valor_orcamento, "Valor do orçamento")?;
     validate_non_negative_f64(valor_final, "Valor final")?;
@@ -497,7 +530,23 @@ pub async fn atualizar_status_equipamento(
         .map(str::trim)
         .filter(|value| !value.is_empty())
         .map(|value| value.to_string());
-    let financial_actor = if status_change_requires_sensitive_access(
+    let motivo_correcao_value = optional_text(motivo_correcao.as_deref());
+    let pool = get_pool().await.map_err(|e| e.to_string())?;
+    let current_status: Option<String> = sqlx::query_scalar("SELECT status FROM equipamentos WHERE id = $1")
+        .bind(id)
+        .fetch_optional(&pool)
+        .await
+        .map_err(|e| e.to_string())?;
+    let current_status = current_status.ok_or_else(|| "Equipamento não encontrado.".to_string())?;
+    let normalized_current_status = normalize_status_key(&current_status);
+    let is_correction = is_status_correction(&normalized_current_status, &normalized_status);
+    if !is_regular_status_transition(&normalized_current_status, &normalized_status) && !is_correction {
+        return Err("Transição de status inválida para este equipamento.".to_string());
+    }
+    if is_correction && motivo_correcao_value.is_none() {
+        return Err("Informe o motivo da correção de status.".to_string());
+    }
+    let financial_actor = if is_correction || status_change_requires_sensitive_access(
         &normalized_status,
         valor_orcamento,
         prazo_aprovacao_value.as_deref(),
@@ -509,8 +558,6 @@ pub async fn atualizar_status_equipamento(
     };
 
     debug!("Atualizando status do equipamento {} para {}", id, normalized_status);
-    let pool = get_pool().await.map_err(|e| e.to_string())?;
-
     // Determinar qual campo de data atualizar baseado no novo status
     let date_field = match normalized_status.as_str() {
         "APROVADO" => "data_aprovacao",
@@ -551,12 +598,15 @@ pub async fn atualizar_status_equipamento(
 
     if let Some(actor) = financial_actor.as_ref() {
         record_security_event(
-            "EQUIPMENT_STATUS_UPDATED",
+            if is_correction { "EQUIPMENT_STATUS_CORRECTED" } else { "EQUIPMENT_STATUS_UPDATED" },
             Some(actor),
             format!(
-                "equipamento_id={}; status={}; valor_orcamento={}; prazo_aprovacao={}; valor_final={}",
+                "equipamento_id={}; status_anterior={}; status={}; correcao={}; motivo={}; valor_orcamento={}; prazo_aprovacao={}; valor_final={}",
                 id,
+                normalized_current_status,
                 normalized_status,
+                is_correction,
+                motivo_correcao_value.as_deref().unwrap_or(""),
                 valor_orcamento.is_some(),
                 prazo_aprovacao_value.is_some(),
                 valor_final.is_some(),
@@ -578,6 +628,13 @@ mod tests {
     fn p0_sensitive_status_gate_flags_status_only_changes_on_update() {
         assert!(status_change_requires_sensitive_access("ENTREGUE", None, None, None));
         assert!(!status_change_requires_sensitive_access("EM_VERIFICACAO", None, None, None));
+    }
+
+    #[test]
+    fn status_correction_is_limited_to_the_rework_paths() {
+        assert!(is_status_correction("PRONTO", "AGUARDANDO_APROVACAO"));
+        assert!(is_regular_status_transition("PRONTO", "ENTREGUE"));
+        assert!(!is_status_correction("ENTREGUE", "PRONTO"));
     }
 
     #[test]

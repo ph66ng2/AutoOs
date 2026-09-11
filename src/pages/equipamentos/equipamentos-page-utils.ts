@@ -8,6 +8,7 @@ import type {
   ResultadoAutomacao,
 } from "@/types";
 import { STATUS_SENSIVEIS } from "./equipamentos-page-constants";
+import { getCorrectionStates } from "@/lib/status-fsm";
 
 export function extrairTecnicoInicialDeObservacoes(observacoes?: string | null): TecnicoDisponivel | null {
   if (!observacoes) return null;
@@ -134,4 +135,8 @@ export function getProximosStatus(statusAtual: string): string[] {
     ABANDONADO: [],
   };
   return transicoes[statusAtual] || [];
+}
+
+export function getStatusCorrecao(statusAtual: string): string[] {
+  return getCorrectionStates(statusAtual);
 }

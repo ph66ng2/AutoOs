@@ -82,6 +82,7 @@ async fn main() -> Result<()> {
         None,
         None,
         equipamento.atualizado_em.clone(),
+        None,
     )
     .await;
     if denied.is_ok() {
@@ -120,6 +121,7 @@ async fn main() -> Result<()> {
         None,
         None,
         equipamento.atualizado_em.clone(),
+        None,
     )
         .await
         .map_err(|e| anyhow!(e))?;

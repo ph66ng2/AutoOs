@@ -153,6 +153,7 @@ async fn main() -> Result<()> {
         None,
         None,
         equipamento_atualizado.atualizado_em.clone(),
+        None,
     )
     .await, "Falha ao alterar status real do equipamento")?;
 
