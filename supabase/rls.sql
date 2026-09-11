@@ -25,6 +25,11 @@ ALTER TABLE configuracoes_sistema ENABLE ROW LEVEL SECURITY;
 ALTER TABLE enrollment_codes ENABLE ROW LEVEL SECURITY;
 ALTER TABLE os_status_publico ENABLE ROW LEVEL SECURITY;
 
+-- Novos projetos Supabase não expõem tabelas automaticamente pela Data API.
+-- Contatos usam inativação, portanto o papel público não recebe DELETE.
+GRANT USAGE ON SCHEMA public TO anon;
+GRANT SELECT, INSERT, UPDATE ON TABLE cliente_contatos TO anon;
+
 -- ─── Política padrão para anon (filtra por empresa_id) ─────────────────────────
 -- A política é aplicada a todas as operações (SELECT, INSERT, UPDATE, DELETE).
 -- O app define app.empresa_id via SET LOCAL antes de cada transação.

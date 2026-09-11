@@ -4,6 +4,8 @@
 mod db;
 #[path = "../commands/mod.rs"]
 mod commands;
+#[path = "support/memory_keyring.rs"]
+mod memory_keyring;
 
 use anyhow::{anyhow, Context, Result};
 use chrono::Utc;
@@ -51,6 +53,7 @@ struct SmtpCapture {
 
 #[tokio::main]
 async fn main() -> Result<()> {
+    memory_keyring::install();
     let pool = db::init_database()
         .await
         .context("failed to init database for communication integration")?;
