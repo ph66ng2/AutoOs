@@ -94,6 +94,7 @@ import { EmailService } from "@/lib/email-service";
 import { PdfService, type PdfArtifact } from "@/lib/pdf-service";
 import { FormValidationError } from "@/components/ui/form-validation-error";
 import { db } from "@/lib/db";
+import { formatDatePtBr, todayLocalIsoDate } from "@/lib/date-utils";
 import {
   STATUS_LABELS,
   SENSITIVE_PERMISSIONS,
@@ -144,6 +145,7 @@ import {
   emailValido,
   extrairTecnicoInicialDeObservacoes,
   filtrarImagensPorCategoria,
+  getStatusCorrecao,
   getProximosStatus,
   mensagemResultadoCanais,
   removerTecnicoInicialDasObservacoes,
@@ -164,6 +166,8 @@ export default function Equipamentos() {
   const [verificacaoDialogOpen, setVerificacaoDialogOpen] = useState(false);
   const [statusDialogOpen, setStatusDialogOpen] = useState(false);
   const [ajusteOrcamentoSemMudancaStatus, setAjusteOrcamentoSemMudancaStatus] = useState(false);
+  const [correcaoStatus, setCorrecaoStatus] = useState(false);
+  const [motivoCorrecaoStatus, setMotivoCorrecaoStatus] = useState("");
   const [editando, setEditando] = useState<Equipamento | null>(null);
   const [deletando, setDeletando] = useState<Equipamento | null>(null);
   const [selecionado, setSelecionado] = useState<Equipamento | null>(null);
@@ -612,6 +616,8 @@ export default function Equipamentos() {
     if (!liberado) return;
 
     setAjusteOrcamentoSemMudancaStatus(false);
+    setCorrecaoStatus(false);
+    setMotivoCorrecaoStatus("");
     setSelecionado(eq);
     setNovoStatus(statusPreSelecionado || "");
     setValorOrcamento(eq.valor_orcamento ?? 0);
@@ -646,6 +652,25 @@ export default function Equipamentos() {
     setStatusDialogOpen(true);
   }
 
+  async function abrirCorrecaoStatus(eq: Equipamento) {
+    const liberado = await ensureSensitiveAccess({
+      title: "Corrigir status",
+      description: "Informe o PIN para corrigir um status lançado por engano. A correção ficará registrada na auditoria.",
+      permission: SENSITIVE_PERMISSIONS.FINANCIAL_ACTIONS,
+    });
+    if (!liberado) return;
+
+    setSelecionado(eq);
+    setAjusteOrcamentoSemMudancaStatus(false);
+    setCorrecaoStatus(true);
+    setMotivoCorrecaoStatus("");
+    setNovoStatus("");
+    setValorOrcamento(eq.valor_orcamento ?? 0);
+    setPrazoAprovacao(eq.prazo_aprovacao || "");
+    setValorFinal(0);
+    setStatusDialogOpen(true);
+  }
+
   async function abrirAlterarOrcamento(eq: Equipamento) {
     const liberado = await ensureSensitiveAccess({
       title: "Alterar orçamento",
@@ -657,6 +682,8 @@ export default function Equipamentos() {
     setSelecionado(eq);
     setNovoStatus("");
     setAjusteOrcamentoSemMudancaStatus(true);
+    setCorrecaoStatus(false);
+    setMotivoCorrecaoStatus("");
     setValorFinal(0);
     setValorFinalSugerido(null);
     setAcordoExcecaoEntrega(false);
@@ -698,7 +725,7 @@ export default function Equipamentos() {
         defeito_relatado: data.defeito_relatado,
         acessorios: acessoriosTexto || null,
         acessorios_outros: data.acessorios_outros || null,
-        data_entrada: editando?.data_entrada || new Date().toISOString().split("T")[0],
+        data_entrada: editando?.data_entrada || todayLocalIsoDate(),
         observacoes: observacoesComTecnico || null,
         // Vínculo real com o cliente
         cliente_id: clienteVinculado.id || null,
@@ -1011,7 +1038,11 @@ export default function Equipamentos() {
   async function confirmarMudancaStatus(divergencia = false) {
     if (!selecionado || (!novoStatus && !ajusteOrcamentoSemMudancaStatus)) return;
     const totalAtual = valorOrcamentoRef.current;
-    const precisaLiberacao = statusExigeAcessoSensivel(
+    if (correcaoStatus && !motivoCorrecaoStatus.trim()) {
+      warning("Equipamentos", "Informe o motivo da correção antes de continuar.");
+      return;
+    }
+    const precisaLiberacao = correcaoStatus || statusExigeAcessoSensivel(
       novoStatus,
       totalAtual || undefined,
       prazoAprovacao || undefined,
@@ -1077,7 +1108,8 @@ export default function Equipamentos() {
         totalAtual || undefined,
         prazoAprovacao || undefined,
         valorFinal || undefined,
-        selecionado.atualizado_em
+        selecionado.atualizado_em,
+        correcaoStatus ? motivoCorrecaoStatus.trim() : undefined,
       );
       if (!resultado.sucesso) {
         throw new Error(resultado.erro || "Não foi possível alterar o status.");
@@ -1304,6 +1336,13 @@ export default function Equipamentos() {
       variant: "outline",
       onClick: () => void abrirAlterarOrcamento(eq),
     };
+    const acaoCorrigirStatus: PriorityAction = {
+      id: "corrigir_status",
+      label: "Corrigir Status",
+      icon: <RefreshCw className="h-3.5 w-3.5" />,
+      variant: "outline",
+      onClick: () => void abrirCorrecaoStatus(eq),
+    };
     const acaoExcluir: PriorityAction = {
       id: "excluir",
       label: "Excluir",
@@ -1525,6 +1564,10 @@ export default function Equipamentos() {
       const editarIndex = overflow.findIndex((acao) => acao.id === acaoEditar.id);
       overflow.splice(editarIndex >= 0 ? editarIndex : overflow.length, 0, acaoAlterarOrcamento);
     }
+    if (getStatusCorrecao(eq.status).length > 0) {
+      const editarIndex = overflow.findIndex((acao) => acao.id === acaoEditar.id);
+      overflow.splice(editarIndex >= 0 ? editarIndex : overflow.length, 0, acaoCorrigirStatus);
+    }
 
     return primary
       ? (
@@ -1743,7 +1786,7 @@ export default function Equipamentos() {
                         </div>
                       </TableCell>
                       <TableCell className="text-sm text-muted-foreground">
-                        {eq.data_entrada ? new Date(eq.data_entrada).toLocaleDateString("pt-BR") : "—"}
+                        {formatDatePtBr(eq.data_entrada)}
                       </TableCell>
                       <TableCell className="text-right">
                         <div className="flex justify-end">
@@ -1828,7 +1871,7 @@ export default function Equipamentos() {
                           <li key={r.id} className="text-xs text-amber-800 flex items-center gap-1 flex-wrap">
                             <span>• #{r.id}</span>
                             <StatusBadge status={r.status} />
-                            <span>— Entrada: {r.data_entrada ? new Date(r.data_entrada).toLocaleDateString("pt-BR") : "—"}</span>
+                            <span>— Entrada: {formatDatePtBr(r.data_entrada)}</span>
                             {r.data_saida && (
                               <span>| Saída: {new Date(r.data_saida).toLocaleDateString("pt-BR")}</span>
                             )}
@@ -2069,7 +2112,7 @@ export default function Equipamentos() {
                 <TabsContent value="info" className="space-y-4 mt-4">
                   <div className="grid grid-cols-2 gap-4 text-sm">
                     <div><span className="text-muted-foreground">Tipo:</span> <span className="ml-1 font-medium">{selecionado.tipo}</span></div>
-                    <div><span className="text-muted-foreground">Entrada:</span> <span className="ml-1 font-medium">{selecionado.data_entrada ? new Date(selecionado.data_entrada).toLocaleDateString("pt-BR") : "—"}</span></div>
+                    <div><span className="text-muted-foreground">Entrada:</span> <span className="ml-1 font-medium">{formatDatePtBr(selecionado.data_entrada)}</span></div>
                     <div><span className="text-muted-foreground">Patrimônio:</span> <span className="ml-1 font-medium">{selecionado.patrimonio || "—"}</span></div>
                     <div><span className="text-muted-foreground">Nº Série:</span> <span className="ml-1 font-medium font-mono">{selecionado.serial_number}</span></div>
                   </div>
@@ -2210,13 +2253,17 @@ export default function Equipamentos() {
         open={statusDialogOpen}
         onOpenChange={(open) => {
           setStatusDialogOpen(open);
-          if (!open) setAjusteOrcamentoSemMudancaStatus(false);
+          if (!open) {
+            setAjusteOrcamentoSemMudancaStatus(false);
+            setCorrecaoStatus(false);
+            setMotivoCorrecaoStatus("");
+          }
         }}
       >
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle>
-              {novoStatus === "AGUARDANDO_APROVACAO" || ajusteOrcamentoSemMudancaStatus ? "Ajuste de Orçamento" : "Alterar Status"}
+              {novoStatus === "AGUARDANDO_APROVACAO" || ajusteOrcamentoSemMudancaStatus ? "Ajuste de Orçamento" : correcaoStatus ? "Corrigir Status" : "Alterar Status"}
             </DialogTitle>
           </DialogHeader>
           {selecionado && (
@@ -2238,11 +2285,23 @@ export default function Equipamentos() {
                       <Select value={novoStatus} onValueChange={handleNovoStatusChange}>
                         <SelectTrigger><SelectValue placeholder="Selecione..." /></SelectTrigger>
                         <SelectContent>
-                          {getProximosStatus(selecionado.status).map(s => (
+                          {(correcaoStatus ? getStatusCorrecao(selecionado.status) : getProximosStatus(selecionado.status)).map(s => (
                             <SelectItem key={s} value={s}>{STATUS_LABELS[s as StatusEquipamento] || s}</SelectItem>
                           ))}
                         </SelectContent>
                       </Select>
+                    </div>
+                  )}
+                  {correcaoStatus && (
+                    <div className="space-y-2">
+                      <Label htmlFor="motivo-correcao-status">Motivo da correção *</Label>
+                      <Textarea
+                        id="motivo-correcao-status"
+                        value={motivoCorrecaoStatus}
+                        onChange={(event) => setMotivoCorrecaoStatus(event.target.value)}
+                        placeholder="Ex.: status alterado por clique indevido"
+                      />
+                      <p className="text-xs text-muted-foreground">A correção e o motivo serão registrados para auditoria.</p>
                     </div>
                   )}
                 </>
@@ -2465,7 +2524,7 @@ export default function Equipamentos() {
               <DialogFooter>
                 <DialogClose asChild><Button variant="outline">Cancelar</Button></DialogClose>
                 <Button onClick={iniciarConfirmacaoStatus} disabled={salvando || (!novoStatus && !ajusteOrcamentoSemMudancaStatus)}>
-                  {salvando ? "Salvando..." : "Confirmar"}
+                  {salvando ? "Salvando..." : correcaoStatus ? "Corrigir status" : "Confirmar"}
                 </Button>
               </DialogFooter>
             </div>

@@ -462,7 +462,17 @@ pub const EQUIPAMENTO_SELECT: &str = "
            observacoes, cliente_id, cliente_nome, cliente_telefone, cliente_email,
            prazo_aprovacao, data_aprovacao, data_reprovacao, data_verificacao,
            data_pronto, data_saida,
-           valor_orcamento::FLOAT8 as valor_orcamento, valor_final::FLOAT8 as valor_final,
+           COALESCE(
+               valor_orcamento,
+               (
+                   SELECT v.custo_total
+                   FROM verificacoes v
+                   WHERE v.equipamento_id = equipamentos.id
+                   ORDER BY v.id DESC
+                   LIMIT 1
+               )
+           )::FLOAT8 as valor_orcamento,
+           valor_final::FLOAT8 as valor_final,
            criado_em::TEXT as criado_em, atualizado_em::TEXT as atualizado_em
     FROM equipamentos";
 
