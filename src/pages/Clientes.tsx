@@ -111,7 +111,7 @@ export default function Clientes() {
   const { clientes, loading, error, criar, atualizar, deletar, recarregar } =
     useClientes({ busca: busca || undefined });
   const { ensureSensitiveAccess } = useSensitiveAccess();
-  const { error: showError } = useNotification();
+  const { error: showError, success } = useNotification();
   const totalAbas = totalAbasClientes(clientes.length);
   const abaExibida = Math.min(abaAtual, totalAbas);
   const clientesExibidos = clientesDaAba(clientes, abaExibida);
@@ -334,6 +334,24 @@ export default function Clientes() {
 
     setDeletando(cliente);
     setDeleteDialogOpen(true);
+  }
+
+  async function vincularClienteLegado(cliente: Cliente) {
+    const liberado = await ensureSensitiveAccess({
+      title: "Vincular cadastro legado",
+      description: "Confirme com o PIN. O cliente e seus equipamentos sem empresa serão vinculados à empresa do seu perfil; vínculos existentes não serão alterados.",
+      permission: SENSITIVE_PERMISSIONS.MANAGE_PROFILES,
+    });
+    if (!liberado || !cliente.id) return;
+    try {
+      const resultado = await db.vincularClienteLegadoEmpresa(cliente.id);
+      const atualizado = { ...cliente, empresa_id: resultado.empresa_id };
+      setContatosClienteSelecionado(atualizado);
+      await recarregar();
+      success("Clientes", `Cadastro legado vinculado. ${resultado.equipamentos_vinculados} equipamento(s) atualizado(s).`, "Vínculo de empresa");
+    } catch (cause) {
+      showError("Clientes", "Vincular cadastro legado", cause);
+    }
   }
 
   return (
@@ -621,6 +639,7 @@ export default function Clientes() {
         open={Boolean(contatosClienteSelecionado)}
         onOpenChange={(open) => { if (!open) setContatosClienteSelecionado(null); }}
         cliente={contatosClienteSelecionado}
+        onVincularLegado={vincularClienteLegado}
       />
     </div>
   );

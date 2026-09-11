@@ -30,6 +30,7 @@ import type {
   Cliente,
   ClienteContato,
   ClienteContatoInput,
+  VinculoClienteLegadoResultado,
   Comunicacao,
   ConfigInatividade,
   DatabaseConnectionConfig,
@@ -169,6 +170,11 @@ export const db = {
   /** Deleta cliente → Rust: deletar_cliente */
   async deletarCliente(id: number): Promise<void> {
     return invoke<void>("deletar_cliente", { id });
+  },
+
+  /** Vincula um cliente legado sem tenant à empresa do administrador atual. */
+  async vincularClienteLegadoEmpresa(id: number): Promise<VinculoClienteLegadoResultado> {
+    return invoke<VinculoClienteLegadoResultado>("vincular_cliente_legado_empresa", { id });
   },
 
   /** Consulta dados públicos do CNPJ no backend, sem depender das regras de rede do WebView. */
