@@ -173,6 +173,11 @@ fn main() {
             commands::clientes::atualizar_cliente,
             commands::clientes::deletar_cliente,
             commands::cnpj::consultar_cnpj,
+            // Contatos de cliente
+            commands::contatos::listar_cliente_contatos,
+            commands::contatos::criar_cliente_contato,
+            commands::contatos::atualizar_cliente_contato,
+            commands::contatos::inativar_cliente_contato,
             // Produtos
             commands::produtos::listar_produtos,
             commands::produtos::buscar_produto,
@@ -198,6 +203,7 @@ fn main() {
             commands::verificacoes::salvar_verificacao_tecnica,
             commands::verificacoes::buscar_verificacao_tecnica,
             commands::verificacoes::atualizar_servicos_verificacao,
+            commands::equipamentos::aprovar_orcamento,
             // Comunicações
             commands::comunicacoes::registrar_comunicacao,
             commands::comunicacoes::listar_comunicacoes,

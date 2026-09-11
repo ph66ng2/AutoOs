@@ -1,7 +1,7 @@
 -- ═══════════════════════════════════════════════════════════════════════════════
 -- supabase/schema.sql — Schema AutoOS para Supabase (PostgreSQL 15+)
 -- ═══════════════════════════════════════════════════════════════════════════════
--- Fonte de verdade: src-tauri/migrations/0001_initial_schema.sql … 0011_telefone_opcional.sql
+-- Fonte de verdade: src-tauri/migrations/0001_initial_schema.sql … 0017_contatos_pagamento_orcamento.sql
 -- Adaptações para Supabase:
 --   • Todos os PKs são uuid (gen_random_uuid) exceto configuracoes_sistema (UUID fixo)
 --   • empresa_id uuid NOT NULL DEFAULT '00000000-0000-0000-0000-000000000001' em TODAS as tabelas
@@ -64,6 +64,28 @@ CREATE TABLE IF NOT EXISTS clientes (
 );
 
 -- ═══════════════════════════════════════════════════════════════════════════════
+-- 2b. cliente_contatos
+-- ═══════════════════════════════════════════════════════════════════════════════
+-- Contatos são inativados; não há dados históricos inferidos automaticamente.
+CREATE TABLE IF NOT EXISTS cliente_contatos (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    empresa_id uuid NOT NULL DEFAULT '00000000-0000-0000-0000-000000000001'::uuid,
+    cliente_id uuid NOT NULL,
+    nome TEXT NOT NULL,
+    email TEXT,
+    telefone TEXT,
+    ativo BOOLEAN NOT NULL DEFAULT true,
+    criado_em TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    atualizado_em TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT fk_cliente_contatos_empresa
+        FOREIGN KEY (empresa_id) REFERENCES empresas(id) ON DELETE CASCADE,
+    CONSTRAINT fk_cliente_contatos_cliente
+        FOREIGN KEY (cliente_id) REFERENCES clientes(id) ON DELETE RESTRICT,
+    CONSTRAINT chk_cliente_contatos_nome_not_blank
+        CHECK (BTRIM(nome) <> '') NOT VALID
+);
+
+-- ═══════════════════════════════════════════════════════════════════════════════
 -- 3. equipamentos
 -- ═══════════════════════════════════════════════════════════════════════════════
 CREATE TABLE IF NOT EXISTS equipamentos (
@@ -87,6 +109,10 @@ CREATE TABLE IF NOT EXISTS equipamentos (
     cliente_nome TEXT,
     cliente_telefone TEXT,
     cliente_email TEXT,
+    responsavel_contato_id uuid,
+    responsavel_nome TEXT,
+    responsavel_email TEXT,
+    responsavel_telefone TEXT,
     prazo_aprovacao TEXT,
     data_aprovacao TEXT,
     data_reprovacao TEXT,
@@ -102,6 +128,8 @@ CREATE TABLE IF NOT EXISTS equipamentos (
     atualizado_em TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     CONSTRAINT fk_equipamentos_cliente
         FOREIGN KEY (cliente_id) REFERENCES clientes(id) ON DELETE SET NULL,
+    CONSTRAINT fk_equipamentos_responsavel_contato
+        FOREIGN KEY (responsavel_contato_id) REFERENCES cliente_contatos(id) ON DELETE SET NULL,
     CONSTRAINT chk_equipamentos_serial_number_not_blank
         CHECK (BTRIM(serial_number) <> '') NOT VALID,
     CONSTRAINT chk_equipamentos_marca_not_blank
@@ -255,6 +283,8 @@ CREATE TABLE IF NOT EXISTS verificacoes (
     tempo_estimado INTEGER,
     concluida BOOLEAN DEFAULT false,
     observacoes TEXT,
+    forma_pagamento_codigo TEXT,
+    forma_pagamento_detalhe TEXT,
     adjusted_at TIMESTAMP,
     adjusted_by_profile_id uuid,
     CONSTRAINT fk_verificacoes_equipamento
@@ -272,7 +302,20 @@ CREATE TABLE IF NOT EXISTS verificacoes (
             AND (custo_total IS NULL OR custo_total >= 0)
         ) NOT VALID,
     CONSTRAINT chk_verificacoes_tempo_non_negative
-        CHECK (tempo_estimado IS NULL OR tempo_estimado >= 0) NOT VALID
+        CHECK (tempo_estimado IS NULL OR tempo_estimado >= 0) NOT VALID,
+    CONSTRAINT chk_verificacoes_forma_pagamento_codigo
+        CHECK (
+            forma_pagamento_codigo IS NULL
+            OR forma_pagamento_codigo IN (
+                'PIX', 'BOLETO', 'CARTAO_CREDITO', 'CARTAO_DEBITO',
+                'DINHEIRO', 'TRANSFERENCIA', 'A_COMBINAR', 'OUTRO'
+            )
+        ) NOT VALID,
+    CONSTRAINT chk_verificacoes_forma_pagamento_outro_detalhe
+        CHECK (
+            forma_pagamento_codigo IS DISTINCT FROM 'OUTRO'
+            OR NULLIF(BTRIM(forma_pagamento_detalhe), '') IS NOT NULL
+        ) NOT VALID
 );
 
 -- ═══════════════════════════════════════════════════════════════════════════════
@@ -477,6 +520,10 @@ CREATE INDEX IF NOT EXISTS idx_equipamentos_status_id_desc
 CREATE INDEX IF NOT EXISTS idx_equipamentos_cliente_id
     ON equipamentos (cliente_id);
 
+CREATE INDEX IF NOT EXISTS idx_equipamentos_responsavel_contato
+    ON equipamentos (responsavel_contato_id)
+    WHERE responsavel_contato_id IS NOT NULL;
+
 CREATE UNIQUE INDEX IF NOT EXISTS ux_equipamentos_patrimonio_when_present
     ON equipamentos ((LOWER(BTRIM(patrimonio))))
     WHERE NULLIF(BTRIM(patrimonio), '') IS NOT NULL;
@@ -505,6 +552,17 @@ CREATE INDEX IF NOT EXISTS idx_movimentacoes_produto_data_hora_desc
 -- verificacoes
 CREATE INDEX IF NOT EXISTS idx_verificacoes_equipamento_data_inicio_desc
     ON verificacoes (equipamento_id, data_inicio DESC);
+
+-- cliente_contatos
+CREATE INDEX IF NOT EXISTS idx_cliente_contatos_empresa
+    ON cliente_contatos (empresa_id);
+
+CREATE INDEX IF NOT EXISTS idx_cliente_contatos_cliente
+    ON cliente_contatos (cliente_id);
+
+CREATE INDEX IF NOT EXISTS idx_cliente_contatos_ativos
+    ON cliente_contatos (empresa_id, cliente_id, nome)
+    WHERE ativo = true;
 
 -- comunicacoes
 CREATE INDEX IF NOT EXISTS idx_comunicacoes_equipamento_criado_em_desc
