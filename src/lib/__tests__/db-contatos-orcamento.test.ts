@@ -8,6 +8,7 @@ vi.mock("@tauri-apps/api/core", () => ({
 }));
 
 import { db } from "@/lib/db";
+import { registerSensitiveAccessPrompt } from "@/lib/sensitive-action-retry";
 
 describe("db — contatos e contratos de orçamento", () => {
   beforeEach(() => {
@@ -92,6 +93,29 @@ describe("db — contatos e contratos de orçamento", () => {
     await db.aprovarOrcamento(input);
 
     expect(mockInvoke).toHaveBeenCalledWith("aprovar_orcamento", { input });
+  });
+
+  it("solicita PIN e repete a aprovação quando a sessão expirou", async () => {
+    const input: AprovarOrcamentoInput = {
+      empresa_id: 7,
+      equipamento_id: 20,
+      expected_updated_em: "2026-09-10T12:00:00",
+      pagamento: { codigo: "PIX", detalhe: null },
+    };
+    const prompt = vi.fn().mockResolvedValue(true);
+    const unregister = registerSensitiveAccessPrompt(prompt);
+    mockInvoke
+      .mockRejectedValueOnce("Acesso sensível bloqueado. Informe o PIN para continuar.")
+      .mockResolvedValueOnce({ id: 20, status: "APROVADO" });
+
+    try {
+      await expect(db.aprovarOrcamento(input)).resolves.toMatchObject({ status: "APROVADO" });
+      expect(prompt).toHaveBeenCalledTimes(1);
+      expect(mockInvoke).toHaveBeenCalledTimes(2);
+      expect(mockInvoke).toHaveBeenNthCalledWith(2, "aprovar_orcamento", { input });
+    } finally {
+      unregister();
+    }
   });
 
   it("lista o histórico sem aceitar empresa enviada pela tela", async () => {

@@ -23,7 +23,8 @@
  * ╚══════════════════════════════════════════════════════════════╝
  */
 
-import { invoke } from "@tauri-apps/api/core";
+import { invoke as tauriInvoke } from "@tauri-apps/api/core";
+import { withSensitiveAccessRetry } from "@/lib/sensitive-action-retry";
 import type {
   AjusteOrcamentoInput,
   AprovarOrcamentoInput,
@@ -64,6 +65,11 @@ export interface ImpressoraWindows {
   nome: string;
   padrao: boolean;
 }
+
+const invoke = <T>(command: string, args?: Record<string, unknown>): Promise<T> =>
+  withSensitiveAccessRetry(() => args === undefined
+    ? tauriInvoke<T>(command)
+    : tauriInvoke<T>(command, args));
 
 /** Payload esperado pelo Rust em `criar_cliente` / `atualizar_cliente` (parâmetro `input`). */
 function clientePersistenciaParaInput(cliente: Omit<Cliente, "id">) {
