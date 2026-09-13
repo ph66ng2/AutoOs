@@ -99,6 +99,7 @@ import {
   STATUS_LABELS,
   SENSITIVE_PERMISSIONS,
   type Equipamento,
+  type EquipamentoHistoricoEvento,
   type EquipamentoImagemCategoria,
   type EquipamentoImagemInput,
   type Cliente,
@@ -202,6 +203,7 @@ export default function Equipamentos() {
   const [verificacaoDetalhes, setVerificacaoDetalhes] = useState<Verificacao | null>(null);
   const [comunicacoes, setComunicacoes] = useState<Comunicacao[]>([]);
   const [imagensDetalhes, setImagensDetalhes] = useState<EquipamentoImagemDraft[]>([]);
+  const [historicoDetalhes, setHistoricoDetalhes] = useState<EquipamentoHistoricoEvento[]>([]);
   const [carregandoDetalhes, setCarregandoDetalhes] = useState(false);
 
   // Mudança de status
@@ -569,15 +571,18 @@ export default function Equipamentos() {
     setVerificacaoDetalhes(null);
     setComunicacoes([]);
     setImagensDetalhes([]);
+    setHistoricoDetalhes([]);
     try {
-      const [verif, comms, imagens] = await Promise.allSettled([
+      const [verif, comms, imagens, historico] = await Promise.allSettled([
         db.buscarVerificacao(eq.id!),
         db.listarComunicacoes(eq.id!),
         carregarImagensComPreview(eq.id!),
+        db.listarHistoricoEquipamento(eq.id!),
       ]);
       setVerificacaoDetalhes(verif.status === "fulfilled" ? verif.value : null);
       setComunicacoes(comms.status === "fulfilled" ? comms.value : []);
       setImagensDetalhes(imagens.status === "fulfilled" ? imagens.value : []);
+      setHistoricoDetalhes(historico.status === "fulfilled" ? historico.value : []);
     } catch (err) {
       console.error("Erro ao carregar detalhes:", err);
     } finally {
@@ -1367,7 +1372,14 @@ export default function Equipamentos() {
   async function gerarRelatorioStatusPdf(eq: Equipamento) {
     try {
       setSalvando(true);
-      setPdfPreview({ artifact: await PdfService.construirRelatorioStatus(eq), tipo: "relatorio", equipamento: eq });
+      setPdfPreview({
+        artifact: await PdfService.construirRelatorioStatus(
+          eq,
+          eq.id === selecionado?.id ? historicoDetalhes : undefined,
+        ),
+        tipo: "relatorio",
+        equipamento: eq,
+      });
     } catch (err) {
       console.error("Erro ao gerar Relatório de Status PDF:", err);
       showError("Equipamentos", "Gerar Relatório de Status PDF", err);
@@ -1742,14 +1754,7 @@ export default function Equipamentos() {
   function renderHistoricoTab() {
     if (!selecionado) return null;
     const eq = selecionado;
-    const eventos: { label: string; data: string; status: string }[] = [];
-    if (eq.data_entrada) eventos.push({ label: "Recebido", data: eq.data_entrada, status: "RECEBIDO" });
-    if (eq.data_verificacao) eventos.push({ label: "Verificado", data: eq.data_verificacao, status: "VERIFICADO" });
-    if (eq.data_aprovacao) eventos.push({ label: "Aprovado", data: eq.data_aprovacao, status: "APROVADO" });
-    if (eq.data_reprovacao) eventos.push({ label: "Reprovado", data: eq.data_reprovacao, status: "REPROVADO" });
-    if (eq.data_pronto) eventos.push({ label: "Pronto", data: eq.data_pronto, status: "PRONTO" });
-    if (eq.data_saida) eventos.push({ label: "Entregue", data: eq.data_saida, status: "ENTREGUE" });
-    eventos.sort((a, b) => new Date(a.data).getTime() - new Date(b.data).getTime());
+    const eventos = historicoDetalhes;
 
     if (eventos.length === 0) return <div className="text-center py-8 text-muted-foreground"><History className="h-10 w-10 mx-auto mb-2 opacity-20" /><p>Nenhum registro de histórico</p></div>;
 
@@ -1769,16 +1774,20 @@ export default function Equipamentos() {
         </div>
         <div className="space-y-0">
         {eventos.map((ev, idx) => (
-          <div key={ev.label} className="flex items-start gap-3 pb-4">
+          <div key={`${ev.data}-${ev.status}-${idx}`} className="flex items-start gap-3 pb-4">
             <div className="flex flex-col items-center">
               <div className={`w-3 h-3 rounded-full mt-1 ${idx === eventos.length - 1 ? "bg-blue-500 ring-2 ring-blue-200" : "bg-gray-300"}`} />
               {idx < eventos.length - 1 && <div className="w-0.5 flex-1 bg-gray-200 mt-1 min-h-[16px]" />}
             </div>
             <div className="flex-1">
-              <div className="flex items-center gap-2">
+              <div className="flex flex-wrap items-center gap-2">
+                {ev.status_anterior && <><StatusBadge status={ev.status_anterior} /><span className="text-muted-foreground">→</span></>}
                 <StatusBadge status={ev.status} />
-                <span className="text-xs text-muted-foreground">{new Date(ev.data).toLocaleDateString("pt-BR")}</span>
+                {ev.tipo === "CORRECAO_STATUS" && <span className="text-xs font-medium text-amber-700">Correção</span>}
+                <span className="text-xs text-muted-foreground">{new Date(ev.data).toLocaleString("pt-BR")}</span>
               </div>
+              <p className="mt-1 text-sm">{ev.motivo}</p>
+              {ev.autor && <p className="text-xs text-muted-foreground">Registrado por {ev.autor}</p>}
             </div>
           </div>
         ))}
@@ -2199,6 +2208,11 @@ export default function Equipamentos() {
                 <div>
                   <h3 className="text-lg font-bold">{selecionado.marca} {selecionado.modelo}</h3>
                   <p className="text-sm text-muted-foreground font-mono">{selecionado.serial_number}</p>
+                  {selecionado.responsavel_nome && (
+                    <p className="mt-1 text-sm text-muted-foreground">
+                      Contato responsável: <span className="font-medium text-foreground">{selecionado.responsavel_nome}</span>
+                    </p>
+                  )}
                 </div>
                 <StatusBadge status={selecionado.status} />
               </div>
@@ -2309,9 +2323,6 @@ export default function Equipamentos() {
                         <p>Valor: <strong>R$ {selecionado.valor_orcamento?.toFixed(2)}</strong></p>
                         {selecionado.prazo_aprovacao && <p>Prazo: {new Date(selecionado.prazo_aprovacao).toLocaleDateString("pt-BR")}</p>}
                         {selecionado.valor_final != null && <p>Valor final: <strong>R$ {selecionado.valor_final.toFixed(2)}</strong></p>}
-                        <Button variant="outline" size="sm" className="mt-2 gap-1" onClick={() => gerarOrcamentoPdf(selecionado)} disabled={salvando}>
-                          <FileDown className="h-3.5 w-3.5" />Gerar Orçamento PDF
-                        </Button>
                       </CardContent>
                     </Card>
                   )}

@@ -40,6 +40,7 @@ import type {
   DatabaseConnectionConfig,
   DatabaseSchemaStatus,
   Equipamento,
+  EquipamentoHistoricoEvento,
   EquipamentoImagem,
   EquipamentoImagemInput,
   GastoFixo,
@@ -233,6 +234,11 @@ export const db = {
       equipamentoId,
       ...(empresaId === undefined ? {} : { empresaId }),
     });
+  },
+
+  /** Lista etapas e mudanças de status auditadas no tenant do perfil ativo. */
+  async listarHistoricoEquipamento(equipamentoId: number): Promise<EquipamentoHistoricoEvento[]> {
+    return invoke<EquipamentoHistoricoEvento[]>("listar_historico_equipamento", { equipamentoId });
   },
 
   /** Lista imagens vinculadas a um equipamento → Rust: listar_imagens_equipamento */

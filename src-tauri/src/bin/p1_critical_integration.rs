@@ -331,6 +331,14 @@ async fn main() -> Result<()> {
     }
     assert_approval_state(&pool, equipamento.id, "AGUARDANDO_APROVACAO", None).await?;
 
+    // Simula a inconsistência observada em produção: equipamento já regularizado,
+    // mas verificação técnica antiga ainda sem tenant.
+    sqlx::query("UPDATE verificacoes SET empresa_id = NULL WHERE equipamento_id = $1")
+        .bind(equipamento.id)
+        .execute(&pool)
+        .await
+        .context("prepare legacy verification tenant gap failed")?;
+
     let privileged_permissions = serde_json::to_string(&vec![
         auth::PERMISSION_FINANCIAL_ACTIONS.to_string(),
         auth::PERMISSION_STOCK_CONTROL.to_string(),
@@ -338,10 +346,11 @@ async fn main() -> Result<()> {
     ])
     .context("serialize privileged permissions failed")?;
     let privileged_profile_id: i32 = sqlx::query_scalar(
-        "INSERT INTO security_profiles (nome, role, permissions, ativo, is_default, atualizado_em) VALUES ($1, 'OPERADOR', $2, true, false, NOW()) RETURNING id",
+        "INSERT INTO security_profiles (nome, role, permissions, ativo, is_default, empresa_id, atualizado_em) VALUES ($1, 'OPERADOR', $2, true, false, $3, NOW()) RETURNING id",
     )
     .bind(format!("{} Privileged", prefix))
     .bind(privileged_permissions)
+    .bind(empresa_id)
     .fetch_one(&pool)
     .await
     .context("create privileged profile failed")?;
@@ -372,6 +381,15 @@ async fn main() -> Result<()> {
         return Err(anyhow!("expected approval concurrency conflict"));
     }
     assert_approval_state(&pool, equipamento.id, "AGUARDANDO_APROVACAO", None).await?;
+    let legacy_after_rollback: (Option<i32>, Option<String>) = sqlx::query_as(
+        "SELECT empresa_id, forma_pagamento_codigo FROM verificacoes WHERE equipamento_id = $1",
+    )
+    .bind(equipamento.id)
+    .fetch_one(&pool)
+    .await?;
+    if legacy_after_rollback != (None, None) {
+        return Err(anyhow!("failed approval partially adopted the legacy verification"));
+    }
 
     let equipamento_aprovado = equipamentos::aprovar_orcamento(AprovarOrcamentoInput {
         empresa_id,
@@ -385,6 +403,28 @@ async fn main() -> Result<()> {
     .await
     .map_err(|error| anyhow!(error))?;
     assert_approval_state(&pool, equipamento.id, "APROVADO", Some("PIX")).await?;
+    let adopted_company: Option<i32> = sqlx::query_scalar(
+        "SELECT empresa_id FROM verificacoes WHERE equipamento_id = $1",
+    )
+    .bind(equipamento.id)
+    .fetch_one(&pool)
+    .await?;
+    if adopted_company != Some(empresa_id) {
+        return Err(anyhow!("successful approval did not adopt the legacy verification tenant"));
+    }
+    let historico = equipamentos::listar_historico_equipamento(equipamento.id)
+        .await
+        .map_err(|error| anyhow!(error))?;
+    if !historico.iter().any(|evento| {
+        evento.status == "APROVADO"
+            && evento.status_anterior.as_deref() == Some("AGUARDANDO_APROVACAO")
+            && evento.motivo == "Orçamento aprovado pelo cliente."
+            && !evento.data.trim().is_empty()
+    }) {
+        return Err(anyhow!("equipment history omitted the audited approval transition"));
+    }
+    println!("P1_INTEGRATION_LEGACY_VERIFICATION_APPROVAL=ok");
+    println!("P1_INTEGRATION_STATUS_HISTORY=ok");
 
     let verificacao_ajustada = verificacoes::atualizar_servicos_verificacao(
         equipamento.id,
@@ -583,6 +623,12 @@ async fn main() -> Result<()> {
         .execute(&pool)
         .await
         .context("cleanup client failed")?;
+    sqlx::query("DELETE FROM security_audit_log WHERE profile_id = $1 OR profile_id = $2")
+        .bind(restricted_profile_id)
+        .bind(privileged_profile_id)
+        .execute(&pool)
+        .await
+        .context("cleanup temporary audit events failed")?;
     sqlx::query("DELETE FROM security_profiles WHERE id = $1 OR id = $2")
         .bind(restricted_profile_id)
         .bind(privileged_profile_id)

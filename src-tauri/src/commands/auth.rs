@@ -757,8 +757,10 @@ pub(crate) async fn record_security_event(
     match get_pool().await {
         Ok(pool) => {
             let result = sqlx::query(
-                "INSERT INTO security_audit_log (event_type, profile_id, profile_name, details, success)
-                 VALUES ($1, $2, $3, $4, $5)"
+                "INSERT INTO security_audit_log
+                    (event_type, profile_id, profile_name, details, success, empresa_id)
+                 VALUES ($1, $2, $3, $4, $5,
+                    (SELECT empresa_id FROM security_profiles WHERE id = $2))"
             )
             .bind(event_type)
             .bind(profile.map(|value| value.id))

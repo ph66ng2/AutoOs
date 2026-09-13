@@ -127,6 +127,7 @@ export interface Equipamento {
   // Dados do cliente
   cliente_id?: number;
   cliente_nome?: string;
+  cliente_documento?: string;
   cliente_telefone?: string;
   cliente_email?: string;
   responsavel_contato_id?: number;
@@ -145,6 +146,16 @@ export interface Equipamento {
   // Auditoria
   criado_em?: string;
   atualizado_em?: string;
+}
+
+/** Evento cronológico exibido no histórico operacional do equipamento. */
+export interface EquipamentoHistoricoEvento {
+  tipo: "ETAPA" | "MUDANCA_STATUS" | "CORRECAO_STATUS";
+  data: string;
+  status_anterior?: string;
+  status: string;
+  motivo: string;
+  autor?: string;
 }
 
 export const CATEGORIAS_IMAGEM_EQUIPAMENTO = {
