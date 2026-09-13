@@ -153,6 +153,7 @@ fn main() {
             // Equipamentos
             commands::equipamentos::listar_equipamentos,
             commands::equipamentos::buscar_equipamento,
+            commands::equipamentos::listar_historico_equipamento,
             commands::equipamentos::buscar_equipamentos_por_serial,
             commands::equipamentos::criar_equipamento,
             commands::equipamentos::atualizar_equipamento,

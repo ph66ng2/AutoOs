@@ -3,6 +3,7 @@ import type { Equipamento, Verificacao } from "@/types";
 
 const mockInvoke = vi.hoisted(() => vi.fn());
 const mockListarImagens = vi.hoisted(() => vi.fn());
+const mockListarHistorico = vi.hoisted(() => vi.fn());
 
 vi.mock("@tauri-apps/api/core", () => ({
   invoke: (...args: unknown[]) => mockInvoke(...args),
@@ -11,6 +12,7 @@ vi.mock("@tauri-apps/api/core", () => ({
 vi.mock("@/lib/db", () => ({
   db: {
     listarImagensEquipamento: (...args: unknown[]) => mockListarImagens(...args),
+    listarHistoricoEquipamento: (...args: unknown[]) => mockListarHistorico(...args),
     buscarVerificacao: vi.fn().mockResolvedValue(null),
   },
 }));
@@ -49,6 +51,7 @@ describe("PdfService — orçamento/OS", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockListarImagens.mockResolvedValue([]);
+    mockListarHistorico.mockResolvedValue([]);
     mockInvoke.mockResolvedValue("/fake/temp/Orcamento_SN-PDF-1_test.pdf");
   });
 

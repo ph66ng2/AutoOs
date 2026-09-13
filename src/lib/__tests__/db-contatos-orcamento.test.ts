@@ -94,6 +94,16 @@ describe("db — contatos e contratos de orçamento", () => {
     expect(mockInvoke).toHaveBeenCalledWith("aprovar_orcamento", { input });
   });
 
+  it("lista o histórico sem aceitar empresa enviada pela tela", async () => {
+    mockInvoke.mockResolvedValue([]);
+
+    await db.listarHistoricoEquipamento(20);
+
+    expect(mockInvoke).toHaveBeenCalledWith("listar_historico_equipamento", {
+      equipamentoId: 20,
+    });
+  });
+
   it("gera a prévia sem aceitar empresa enviada pela tela", async () => {
     mockInvoke.mockResolvedValue({ empresa_id: 7, token: "opaque", clientes: 2 });
 
