@@ -18,6 +18,7 @@ use crate::commands::auth::{
     SecurityProfileSummary, PERMISSION_DELETE_RECORDS, PERMISSION_FINANCIAL_ACTIONS,
 };
 use crate::db::get_pool;
+use chrono::NaiveDateTime;
 use sqlx::{PgPool, Row};
 use std::collections::HashSet;
 use tracing::{debug, error, info, instrument};
@@ -135,6 +136,29 @@ fn status_date_field(status: &str) -> Option<&'static str> {
         "PRONTO" => Some("data_pronto"),
         "ENTREGUE" => Some("data_saida"),
         _ => None,
+    }
+}
+
+fn parse_history_timestamp(value: &str) -> Option<NaiveDateTime> {
+    let value = value.trim().trim_end_matches('Z');
+    ["%Y-%m-%dT%H:%M:%S%.f", "%Y-%m-%d %H:%M:%S%.f", "%Y-%m-%dT%H:%M:%S", "%Y-%m-%d %H:%M:%S"]
+        .iter()
+        .find_map(|format| NaiveDateTime::parse_from_str(value, format).ok())
+}
+
+/// Mantém a etapa legada, mas não apresenta como verdadeiro um horário que
+/// antecede o próprio cadastro do equipamento.
+fn sanitize_legacy_event_date(candidate: Option<String>, received_at: Option<&str>) -> Option<(String, bool)> {
+    let candidate = candidate.filter(|value| !value.trim().is_empty())?;
+    let is_before_receipt = received_at
+        .and_then(parse_history_timestamp)
+        .zip(parse_history_timestamp(&candidate))
+        .is_some_and(|(received, event)| event < received);
+
+    if is_before_receipt {
+        received_at.map(|value| (value.to_string(), false))
+    } else {
+        Some((candidate, true))
     }
 }
 
@@ -387,11 +411,12 @@ pub async fn listar_historico_equipamento(
 
     let equipamento: Option<(
         Option<String>, String, Option<String>, Option<String>, Option<String>, Option<String>,
-        Option<String>, Option<String>, Option<String>,
+        Option<String>, Option<String>,
     )> = sqlx::query_as(
-        "SELECT e.criado_em::TEXT, e.data_entrada, e.data_verificacao, e.data_aprovacao,
+        "SELECT to_char(e.criado_em, 'YYYY-MM-DD\"T\"HH24:MI:SS.US\"Z\"'), e.data_entrada, e.data_aprovacao,
                 e.data_reprovacao, e.data_pronto, e.data_saida,
-                v.data_inicio::TEXT, v.data_fim::TEXT
+                to_char(v.data_inicio, 'YYYY-MM-DD\"T\"HH24:MI:SS.US\"Z\"'),
+                to_char(v.data_fim, 'YYYY-MM-DD\"T\"HH24:MI:SS.US\"Z\"')
          FROM equipamentos e
          LEFT JOIN LATERAL (
              SELECT data_inicio, data_fim
@@ -408,12 +433,13 @@ pub async fn listar_historico_equipamento(
     .fetch_optional(&pool)
     .await
     .map_err(|error| format!("Erro ao carregar histórico do equipamento: {}", error))?;
-    let Some((criado_em, data_entrada, data_verificacao, data_aprovacao, data_reprovacao, data_pronto, data_saida, verificacao_inicio, verificacao_fim)) = equipamento else {
+    let Some((criado_em, data_entrada, data_aprovacao, data_reprovacao, data_pronto, data_saida, verificacao_inicio, verificacao_fim)) = equipamento else {
         return Err("Equipamento não encontrado na empresa do perfil ativo.".to_string());
     };
 
     let audit_rows: Vec<(String, Option<String>, Option<String>, String)> = sqlx::query_as(
-        "SELECT event_type, profile_name, details, created_at::TEXT
+        "SELECT event_type, profile_name, details,
+                to_char(created_at, 'YYYY-MM-DD\"T\"HH24:MI:SS.US\"Z\"')
          FROM security_audit_log
          WHERE success = true
            AND event_type IN ('EQUIPMENT_STATUS_UPDATED', 'EQUIPMENT_STATUS_CORRECTED', 'BUDGET_APPROVED')
@@ -450,6 +476,7 @@ pub async fn listar_historico_equipamento(
                 "MUDANCA_STATUS".to_string()
             },
             data: created_at,
+            data_confiavel: true,
             status_anterior,
             status,
             motivo,
@@ -457,12 +484,15 @@ pub async fn listar_historico_equipamento(
         });
     }
 
-    let mut adicionar_legado = |status: &str, data: Option<String>, motivo: &str| {
-        if let Some(data) = data.filter(|value| !value.trim().is_empty()) {
+    let recebido_em = criado_em.or(Some(data_entrada));
+    let recebido_referencia = recebido_em.clone();
+    let mut adicionar_legado = |status: &str, data: Option<(String, bool)>, motivo: &str| {
+        if let Some((data, data_confiavel)) = data {
             if !statuses_auditados.contains(status) {
                 eventos.push(EquipamentoHistoricoEvento {
                     tipo: "ETAPA".to_string(),
                     data,
+                    data_confiavel,
                     status_anterior: None,
                     status: status.to_string(),
                     motivo: motivo.to_string(),
@@ -471,17 +501,17 @@ pub async fn listar_historico_equipamento(
             }
         }
     };
-    adicionar_legado("RECEBIDO", criado_em.or(Some(data_entrada)), "Equipamento recebido e cadastrado.");
-    adicionar_legado("VERIFICADO", verificacao_fim, "Verificação técnica registrada.");
+    adicionar_legado("RECEBIDO", recebido_em.map(|data| (data, true)), "Equipamento recebido e cadastrado.");
+    adicionar_legado("VERIFICADO", sanitize_legacy_event_date(verificacao_fim, recebido_referencia.as_deref()), "Verificação técnica registrada.");
     adicionar_legado(
         "EM_VERIFICACAO",
-        data_verificacao.or(verificacao_inicio),
+        sanitize_legacy_event_date(verificacao_inicio, recebido_referencia.as_deref()),
         "Verificação técnica iniciada.",
     );
-    adicionar_legado("APROVADO", data_aprovacao, "Orçamento aprovado pelo cliente.");
-    adicionar_legado("REPROVADO", data_reprovacao, "Orçamento reprovado pelo cliente.");
-    adicionar_legado("PRONTO", data_pronto, "Serviço concluído; equipamento pronto.");
-    adicionar_legado("ENTREGUE", data_saida, "Equipamento entregue ao cliente.");
+    adicionar_legado("APROVADO", sanitize_legacy_event_date(data_aprovacao, recebido_referencia.as_deref()), "Orçamento aprovado pelo cliente.");
+    adicionar_legado("REPROVADO", sanitize_legacy_event_date(data_reprovacao, recebido_referencia.as_deref()), "Orçamento reprovado pelo cliente.");
+    adicionar_legado("PRONTO", sanitize_legacy_event_date(data_pronto, recebido_referencia.as_deref()), "Serviço concluído; equipamento pronto.");
+    adicionar_legado("ENTREGUE", sanitize_legacy_event_date(data_saida, recebido_referencia.as_deref()), "Equipamento entregue ao cliente.");
     eventos.sort_by(|left, right| left.data.cmp(&right.data));
     Ok(eventos)
 }
@@ -1038,6 +1068,28 @@ mod tests {
         assert_eq!(status_date_field("VERIFICADO"), Some("data_verificacao"));
         assert_eq!(status_date_field("EM_VERIFICACAO"), None);
         assert_eq!(status_date_field("EM_MANUTENCAO"), None);
+    }
+
+    #[test]
+    fn legacy_history_does_not_display_an_event_before_receipt() {
+        let received = "2026-09-10T15:32:51.000000Z";
+        let sanitized = sanitize_legacy_event_date(
+            Some("2026-09-10T14:13:22.000000Z".to_string()),
+            Some(received),
+        );
+
+        assert_eq!(sanitized, Some((received.to_string(), false)));
+    }
+
+    #[test]
+    fn valid_history_timestamp_is_preserved() {
+        let event = "2026-09-10T16:13:22.000000Z";
+        let sanitized = sanitize_legacy_event_date(
+            Some(event.to_string()),
+            Some("2026-09-10T15:32:51.000000Z"),
+        );
+
+        assert_eq!(sanitized, Some((event.to_string(), true)));
     }
 
     #[test]
