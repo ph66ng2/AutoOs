@@ -94,7 +94,7 @@ import { EmailService } from "@/lib/email-service";
 import { PdfService, type PdfArtifact } from "@/lib/pdf-service";
 import { FormValidationError } from "@/components/ui/form-validation-error";
 import { db } from "@/lib/db";
-import { formatDatePtBr, todayLocalIsoDate } from "@/lib/date-utils";
+import { formatDatePtBr, formatDateTimeSalvador, todayLocalIsoDate } from "@/lib/date-utils";
 import {
   STATUS_LABELS,
   SENSITIVE_PERMISSIONS,
@@ -1784,7 +1784,7 @@ export default function Equipamentos() {
                 {ev.status_anterior && <><StatusBadge status={ev.status_anterior} /><span className="text-muted-foreground">→</span></>}
                 <StatusBadge status={ev.status} />
                 {ev.tipo === "CORRECAO_STATUS" && <span className="text-xs font-medium text-amber-700">Correção</span>}
-                <span className="text-xs text-muted-foreground">{new Date(ev.data).toLocaleString("pt-BR")}</span>
+                <span className="text-xs text-muted-foreground">{formatDateTimeSalvador(ev.data)}</span>
               </div>
               <p className="mt-1 text-sm">{ev.motivo}</p>
               {ev.autor && <p className="text-xs text-muted-foreground">Registrado por {ev.autor}</p>}
