@@ -1,0 +1,66 @@
+name: Publicar painel do workflow
+
+on:
+  push:
+    branches: [feature]
+    paths:
+      - ".workflow/workflow.json"
+      - "workflow-dashboard/**"
+      - "scripts/workflow-dashboard.mjs"
+      - "scripts/workflow-report.mjs"
+      - "scripts/prepare-workflow-dashboard.mjs"
+      - ".github/workflows/workflow-dashboard.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: workflow-dashboard-pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Preparar painel
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configurar Pages
+        uses: actions/configure-pages@v5
+
+      - name: Configurar Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Testar armazenamento do workflow
+        run: npm run test:workflow
+
+      - name: Montar artefato estático
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: node scripts/prepare-workflow-dashboard.mjs _site
+
+      - name: Publicar artefato
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+
+  deploy:
+    name: Publicar no GitHub Pages
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy
+        id: deployment
+        uses: actions/deploy-pages@v4

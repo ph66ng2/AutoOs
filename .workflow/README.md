@@ -43,6 +43,21 @@ O campo deve usar as chaves `prerequisites`, `steps`, `expectedResultAndEvidence
 
 `baseBranch` deve permanecer `origin/feature` e `promotionTarget` deve permanecer `origin/master`. O script recusa outra configuração; `master` só recebe mudanças por promoção humana depois dos testes e da revisão.
 
+## Registro de progresso
+
+Todo agente deve registrar o ciclo do ticket no workflow compartilhado. O comando encontra a worktree principal automaticamente, grava branch e commit atuais e usa lock para permitir agentes simultâneos:
+
+```bash
+npm run workflow:report -- start AO-101 "Iniciei o trabalho"
+npm run workflow:report -- progress AO-101 "Implementação em andamento"
+npm run workflow:report -- test AO-101 "Teste direcionado passou"
+npm run workflow:report -- review AO-101 "PR pronto para revisão"
+npm run workflow:report -- block AO-101 "Motivo exato do bloqueio"
+npm run workflow:report -- merged AO-101 "Merge humano confirmado"
+```
+
+Use somente o comando correspondente ao evento real. O agente deve registrar `start` ao começar, `test` após os checks, `review` ao abrir o PR, `block` quando não puder avançar e `merged` somente depois da confirmação humana. O título ou corpo do PR deve conter o ID do ticket para a linha do tempo do GitHub conseguir relacioná-lo. Não inclua credenciais, dados internos ou tokens nos resumos e evidências.
+
 ## Prompts úteis
 
 Para criar tickets:

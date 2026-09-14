@@ -1,0 +1,99 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#0b1118" />
+    <title>AutoOS Workflow</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <div class="shell">
+      <header class="topbar">
+        <a class="brand" href="./" aria-label="AutoOS Workflow">
+          <span class="brand-mark">AO</span>
+          <span>
+            <span class="brand-kicker">BMITAG / DELIVERY CONTROL</span>
+            <strong>AutoOS Workflow</strong>
+          </span>
+        </a>
+        <div class="topbar-actions">
+          <span id="mode-badge" class="mode-badge">Carregando</span>
+          <button id="refresh-button" class="button button-quiet" type="button">Atualizar</button>
+        </div>
+      </header>
+
+      <main>
+        <section class="intro-row" aria-labelledby="page-title">
+          <div>
+            <p class="eyebrow">MAPA DO PROJETO</p>
+            <h1 id="page-title">Tudo que move o AutoOS.</h1>
+            <p id="subtitle" class="lede">Dependências, trabalho atual e histórico em um só lugar.</p>
+          </div>
+          <div class="sync-block">
+            <span class="sync-dot"></span>
+            <span>Última leitura</span>
+            <strong id="last-read">--</strong>
+          </div>
+        </section>
+
+        <section id="quality-alert" class="quality-alert hidden" aria-live="polite"></section>
+
+        <section class="metrics" aria-label="Resumo do workflow">
+          <article class="metric metric-dark"><span>Total de tickets</span><strong id="metric-total">--</strong><small>no mapa atual</small></article>
+          <article class="metric metric-blue"><span>Liberados agora</span><strong id="metric-ready">--</strong><small>sem dependência pendente</small></article>
+          <article class="metric metric-amber"><span>Em revisão</span><strong id="metric-review">--</strong><small>aguardando validação</small></article>
+          <article class="metric metric-green"><span>Concluídos</span><strong id="metric-merged">--</strong><small>promovidos no workflow</small></article>
+        </section>
+
+        <section class="toolbar" aria-label="Filtros do painel">
+          <label class="search-box">
+            <span class="sr-only">Buscar tickets</span>
+            <input id="search-input" type="search" placeholder="Buscar ticket, área ou descrição" autocomplete="off" />
+          </label>
+          <div id="area-filters" class="filter-list" role="list"></div>
+          <div class="view-switcher" role="tablist" aria-label="Visualização">
+            <button class="view-button active" data-view="board" type="button">Quadro</button>
+            <button class="view-button" data-view="timeline" type="button">Linha do tempo</button>
+          </div>
+        </section>
+
+        <section id="board-view" class="board-view" aria-label="Quadro de tickets"></section>
+
+        <section id="timeline-view" class="timeline-view hidden" aria-label="Linha do tempo">
+          <div class="section-heading">
+            <div><p class="eyebrow">HISTÓRICO</p><h2>O projeto em movimento</h2></div>
+            <span id="event-count" class="section-count">-- eventos</span>
+          </div>
+          <div id="timeline-list" class="timeline-list"></div>
+        </section>
+
+        <section class="lower-grid">
+          <section class="panel dependency-panel" aria-labelledby="dependency-title">
+            <div class="section-heading">
+              <div><p class="eyebrow">DEPENDÊNCIAS</p><h2 id="dependency-title">Caminhos de entrega</h2></div>
+              <span class="section-count">grafo por ondas</span>
+            </div>
+            <div id="dependency-graph" class="dependency-graph"></div>
+          </section>
+          <section class="panel focus-panel" aria-labelledby="focus-title">
+            <div class="section-heading">
+              <div><p class="eyebrow">PRÓXIMA DECISÃO</p><h2 id="focus-title">Foco recomendado</h2></div>
+            </div>
+            <div id="focus-content" class="focus-content"></div>
+          </section>
+        </section>
+      </main>
+    </div>
+
+    <div id="ticket-dialog" class="dialog-backdrop hidden" role="presentation">
+      <section class="ticket-dialog" role="dialog" aria-modal="true" aria-labelledby="dialog-title">
+        <button id="dialog-close" class="dialog-close" type="button" aria-label="Fechar">Fechar</button>
+        <div id="dialog-content"></div>
+      </section>
+    </div>
+
+    <div id="toast" class="toast" role="status" aria-live="polite"></div>
+    <script type="module" src="./app.js"></script>
+  </body>
+</html>
