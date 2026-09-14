@@ -19,7 +19,13 @@ vi.mock("@/hooks/useNotification", () => ({
 
 import { ContatoResponsavelSelector } from "@/components/equipamentos/ContatoResponsavelSelector";
 
-const clienteA = { id: 11, empresa_id: 7, nome: "Empresa A" } as Cliente;
+const clienteA = {
+  id: 11,
+  empresa_id: 7,
+  tipo_pessoa: "PF",
+  documento: "12345678909",
+  nome: "Ana Pessoa Física",
+} as Cliente;
 const clienteB = { id: 12, empresa_id: 7, nome: "Empresa B" } as Cliente;
 const contatoA: ClienteContato = {
   id: 20,
@@ -44,7 +50,7 @@ describe("ContatoResponsavelSelector", () => {
     });
   });
 
-  it("cadastra rapidamente e seleciona o novo contato", async () => {
+  it("inclui cliente PF/CPF na mesma lógica de contatos", async () => {
     const onChange = vi.fn();
     const user = userEvent.setup();
     render(<ContatoResponsavelSelector cliente={clienteA} empresaId={7} value={null} onChange={onChange} />);
