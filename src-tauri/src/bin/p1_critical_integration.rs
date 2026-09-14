@@ -46,12 +46,17 @@ async fn main() -> Result<()> {
     .await
     .context("create synthetic company failed")?;
 
+    let bootstrap_profile_permissions = serde_json::to_string(&vec![
+        auth::PERMISSION_STOCK_CONTROL.to_string(),
+    ])
+    .context("serialize bootstrap profile permissions failed")?;
     let bootstrap_profile_id: i32 = sqlx::query_scalar(
         "INSERT INTO security_profiles (nome, role, permissions, ativo, is_default, empresa_id, atualizado_em)
-         VALUES ($1, 'OPERADOR', '[]', true, false, $2, NOW())
+         VALUES ($1, 'OPERADOR', $2, true, false, $3, NOW())
          RETURNING id",
     )
     .bind(format!("{} Bootstrap", prefix))
+    .bind(bootstrap_profile_permissions)
     .bind(empresa_id)
     .fetch_one(&pool)
     .await
