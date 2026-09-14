@@ -127,6 +127,17 @@ fn is_status_correction(from: &str, to: &str) -> bool {
     )
 }
 
+fn status_date_field(status: &str) -> Option<&'static str> {
+    match status {
+        "VERIFICADO" => Some("data_verificacao"),
+        "APROVADO" => Some("data_aprovacao"),
+        "REPROVADO" => Some("data_reprovacao"),
+        "PRONTO" => Some("data_pronto"),
+        "ENTREGUE" => Some("data_saida"),
+        _ => None,
+    }
+}
+
 fn required_concurrency_token(token: Option<&str>, entity_label: &str) -> Result<String, String> {
     token
         .map(str::trim)
@@ -376,19 +387,28 @@ pub async fn listar_historico_equipamento(
 
     let equipamento: Option<(
         Option<String>, String, Option<String>, Option<String>, Option<String>, Option<String>,
-        Option<String>,
+        Option<String>, Option<String>, Option<String>,
     )> = sqlx::query_as(
-        "SELECT criado_em::TEXT, data_entrada, data_verificacao, data_aprovacao,
-                data_reprovacao, data_pronto, data_saida
-         FROM equipamentos
-         WHERE id = $1 AND empresa_id = $2",
+        "SELECT e.criado_em::TEXT, e.data_entrada, e.data_verificacao, e.data_aprovacao,
+                e.data_reprovacao, e.data_pronto, e.data_saida,
+                v.data_inicio::TEXT, v.data_fim::TEXT
+         FROM equipamentos e
+         LEFT JOIN LATERAL (
+             SELECT data_inicio, data_fim
+             FROM verificacoes
+             WHERE equipamento_id = e.id
+               AND (empresa_id = e.empresa_id OR empresa_id IS NULL)
+             ORDER BY COALESCE(data_fim, data_inicio) DESC, id DESC
+             LIMIT 1
+         ) v ON true
+         WHERE e.id = $1 AND e.empresa_id = $2",
     )
     .bind(equipamento_id)
     .bind(empresa_id)
     .fetch_optional(&pool)
     .await
     .map_err(|error| format!("Erro ao carregar histórico do equipamento: {}", error))?;
-    let Some((criado_em, data_entrada, data_verificacao, data_aprovacao, data_reprovacao, data_pronto, data_saida)) = equipamento else {
+    let Some((criado_em, data_entrada, data_verificacao, data_aprovacao, data_reprovacao, data_pronto, data_saida, verificacao_inicio, verificacao_fim)) = equipamento else {
         return Err("Equipamento não encontrado na empresa do perfil ativo.".to_string());
     };
 
@@ -452,7 +472,12 @@ pub async fn listar_historico_equipamento(
         }
     };
     adicionar_legado("RECEBIDO", criado_em.or(Some(data_entrada)), "Equipamento recebido e cadastrado.");
-    adicionar_legado("VERIFICADO", data_verificacao, "Verificação técnica registrada.");
+    adicionar_legado("VERIFICADO", verificacao_fim, "Verificação técnica registrada.");
+    adicionar_legado(
+        "EM_VERIFICACAO",
+        data_verificacao.or(verificacao_inicio),
+        "Verificação técnica iniciada.",
+    );
     adicionar_legado("APROVADO", data_aprovacao, "Orçamento aprovado pelo cliente.");
     adicionar_legado("REPROVADO", data_reprovacao, "Orçamento reprovado pelo cliente.");
     adicionar_legado("PRONTO", data_pronto, "Serviço concluído; equipamento pronto.");
@@ -749,16 +774,9 @@ pub async fn atualizar_status_equipamento(
 
     debug!("Atualizando status do equipamento {} para {}", id, normalized_status);
     // Determinar qual campo de data atualizar baseado no novo status
-    let date_field = match normalized_status.as_str() {
-        "APROVADO" => "data_aprovacao",
-        "REPROVADO" => "data_reprovacao",
-        "EM_VERIFICACAO" | "EM_MANUTENCAO" => "data_verificacao",
-        "PRONTO" => "data_pronto",
-        "ENTREGUE" => "data_saida",
-        _ => "",
-    };
+    let date_field = status_date_field(&normalized_status);
 
-    let query = if !date_field.is_empty() {
+    let query = if let Some(date_field) = date_field {
         format!(
             "UPDATE equipamentos SET status = $1, {} = NOW(), valor_orcamento = COALESCE($2, valor_orcamento), prazo_aprovacao = COALESCE($3, prazo_aprovacao), valor_final = COALESCE($4, valor_final), atualizado_em = NOW() WHERE id = $5 AND atualizado_em = $6::TIMESTAMPTZ",
             date_field
@@ -1013,6 +1031,13 @@ mod tests {
         assert_eq!(normalize_status_key("Recebido"), "RECEBIDO");
         assert_eq!(normalize_status_key("Em Verificação"), "EM_VERIFICACAO");
         assert_eq!(normalize_status_key("Orçamento Vencido"), "ORCAMENTO_VENCIDO");
+    }
+
+    #[test]
+    fn verification_timestamp_is_only_recorded_when_verification_is_finished() {
+        assert_eq!(status_date_field("VERIFICADO"), Some("data_verificacao"));
+        assert_eq!(status_date_field("EM_VERIFICACAO"), None);
+        assert_eq!(status_date_field("EM_MANUTENCAO"), None);
     }
 
     #[test]

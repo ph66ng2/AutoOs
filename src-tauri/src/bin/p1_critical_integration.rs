@@ -46,6 +46,24 @@ async fn main() -> Result<()> {
     .await
     .context("create synthetic company failed")?;
 
+    let bootstrap_profile_id: i32 = sqlx::query_scalar(
+        "INSERT INTO security_profiles (nome, role, permissions, ativo, is_default, empresa_id, atualizado_em)
+         VALUES ($1, 'OPERADOR', '[]', true, false, $2, NOW())
+         RETURNING id",
+    )
+    .bind(format!("{} Bootstrap", prefix))
+    .bind(empresa_id)
+    .fetch_one(&pool)
+    .await
+    .context("create company-bound bootstrap profile failed")?;
+    sqlx::query(
+        "UPDATE security_profiles SET is_default = (id = $1), atualizado_em = NOW() WHERE ativo = true",
+    )
+    .bind(bootstrap_profile_id)
+    .execute(&pool)
+    .await
+    .context("set company-bound bootstrap profile default failed")?;
+
     let cliente = clientes::criar_cliente(ClienteInput {
         empresa_id: Some(empresa_id),
         nome: Some(format!("{} Cliente", prefix)),
@@ -623,15 +641,13 @@ async fn main() -> Result<()> {
         .execute(&pool)
         .await
         .context("cleanup client failed")?;
-    sqlx::query("DELETE FROM security_audit_log WHERE profile_id = $1 OR profile_id = $2")
-        .bind(restricted_profile_id)
-        .bind(privileged_profile_id)
+    sqlx::query("DELETE FROM security_audit_log WHERE profile_id = ANY($1)")
+        .bind(vec![bootstrap_profile_id, restricted_profile_id, privileged_profile_id])
         .execute(&pool)
         .await
         .context("cleanup temporary audit events failed")?;
-    sqlx::query("DELETE FROM security_profiles WHERE id = $1 OR id = $2")
-        .bind(restricted_profile_id)
-        .bind(privileged_profile_id)
+    sqlx::query("DELETE FROM security_profiles WHERE id = ANY($1)")
+        .bind(vec![bootstrap_profile_id, restricted_profile_id, privileged_profile_id])
         .execute(&pool)
         .await
         .context("cleanup temporary profiles failed")?;
