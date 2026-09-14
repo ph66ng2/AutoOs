@@ -26,6 +26,7 @@ import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
 import { invoke } from "@tauri-apps/api/core";
 import { db } from "@/lib/db";
+import { formatDateTimeSalvador } from "@/lib/date-utils";
 import { STATUS_LABELS } from "@/types";
 import type {
   Equipamento,
@@ -1564,7 +1565,7 @@ export const PdfService = {
               ? STATUS_LABELS[evento.status_anterior as keyof typeof STATUS_LABELS] || evento.status_anterior
               : "—",
             STATUS_LABELS[evento.status as keyof typeof STATUS_LABELS] || evento.status,
-            converterDataDocumento(evento.data).toLocaleString("pt-BR"),
+            formatDateTimeSalvador(converterDataDocumento(evento.data)),
             [evento.motivo, evento.autor ? `Registrado por ${evento.autor}` : ""].filter(Boolean).join("\n"),
           ]),
           columnStyles: {
