@@ -1,0 +1,74 @@
+name: Processar mudança de status do workflow
+
+on:
+  issues:
+    types: [opened]
+
+permissions:
+  contents: write
+  issues: write
+  pull-requests: write
+
+concurrency:
+  group: workflow-status-request
+  cancel-in-progress: false
+
+jobs:
+  request:
+    if: contains(github.event.issue.body, '<!-- autoos-workflow-status-request -->')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout da feature
+        uses: actions/checkout@v4
+        with:
+          ref: feature
+          fetch-depth: 0
+
+      - name: Configurar identidade do bot
+        run: |
+          git config user.name "autoos-workflow[bot]"
+          git config user.email "autoos-workflow[bot]@users.noreply.github.com"
+
+      - name: Validar e aplicar status
+        env:
+          GITHUB_EVENT_PATH: ${{ github.event_path }}
+        run: node scripts/workflow-status-request.mjs
+
+      - name: Criar branch de automação
+        id: branch
+        run: |
+          branch="automation/workflow-status-${{ github.event.issue.number }}"
+          git switch --create "$branch"
+          git add .workflow/workflow.json
+          if git diff --cached --quiet; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          git commit -m "chore(workflow): atualizar status pelo Issue #${{ github.event.issue.number }}"
+          git push --set-upstream origin "$branch"
+          echo "changed=true" >> "$GITHUB_OUTPUT"
+          echo "branch=$branch" >> "$GITHUB_OUTPUT"
+
+      - name: Abrir PR para feature
+        if: steps.branch.outputs.changed == 'true'
+        id: pr
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          url=$(gh pr create \
+            --base feature \
+            --head "${{ steps.branch.outputs.branch }}" \
+            --title "chore(workflow): status do ${{ github.event.issue.number }}" \
+            --body "Atualização solicitada pelo Issue #${{ github.event.issue.number }}.\n\nMerge humano obrigatório em feature.")
+          echo "url=$url" >> "$GITHUB_OUTPUT"
+
+      - name: Responder no Issue
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if [ "${{ steps.branch.outputs.changed }}" = "true" ]; then
+            gh issue comment "${{ github.event.issue.number }}" --body "Solicitação validada. PR criado para revisão humana: ${{ steps.pr.outputs.url }}"
+          else
+            gh issue comment "${{ github.event.issue.number }}" --body "A solicitação foi validada, mas não produziu mudança no workflow."
+          fi
