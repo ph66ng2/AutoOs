@@ -152,6 +152,7 @@ export interface Equipamento {
 export interface EquipamentoHistoricoEvento {
   tipo: "ETAPA" | "MUDANCA_STATUS" | "CORRECAO_STATUS";
   data: string;
+  data_confiavel?: boolean;
   status_anterior?: string;
   status: string;
   motivo: string;

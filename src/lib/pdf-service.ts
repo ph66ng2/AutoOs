@@ -1565,7 +1565,9 @@ export const PdfService = {
               ? STATUS_LABELS[evento.status_anterior as keyof typeof STATUS_LABELS] || evento.status_anterior
               : "—",
             STATUS_LABELS[evento.status as keyof typeof STATUS_LABELS] || evento.status,
-            formatDateTimeSalvador(converterDataDocumento(evento.data)),
+            evento.data_confiavel !== false
+              ? formatDateTimeSalvador(converterDataDocumento(evento.data))
+              : "Horário legado inconsistente",
             [evento.motivo, evento.autor ? `Registrado por ${evento.autor}` : ""].filter(Boolean).join("\n"),
           ]),
           columnStyles: {

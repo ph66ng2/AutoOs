@@ -119,6 +119,7 @@ pub struct EquipamentoInput {
 pub struct EquipamentoHistoricoEvento {
     pub tipo: String,
     pub data: String,
+    pub data_confiavel: bool,
     pub status_anterior: Option<String>,
     pub status: String,
     pub motivo: String,

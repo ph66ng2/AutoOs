@@ -460,14 +460,26 @@ describe("PdfService.gerarOrcamentoAjustado", () => {
   });
 
   it("inclui horário, mudança de status e razão no PDF de histórico", async () => {
-    const historico = [{
-      tipo: "CORRECAO_STATUS",
-      data: "2026-09-13T14:35:00-03:00",
-      status_anterior: "PRONTO",
-      status: "EM_MANUTENCAO",
-      motivo: "Peça apresentou falha no teste final.",
-      autor: "Administrador Local",
-    }] as const;
+    const historico = [
+      {
+        tipo: "CORRECAO_STATUS",
+        data: "2026-09-13T14:35:00-03:00",
+        data_confiavel: true,
+        status_anterior: "PRONTO",
+        status: "EM_MANUTENCAO",
+        motivo: "Peça apresentou falha no teste final.",
+        autor: "Administrador Local",
+      },
+      {
+        tipo: "ETAPA",
+        data: "2026-09-13T14:35:00-03:00",
+        data_confiavel: false,
+        status_anterior: undefined,
+        status: "EM_VERIFICACAO",
+        motivo: "Verificação técnica iniciada.",
+        autor: undefined,
+      },
+    ] as const;
 
     await PdfService.construirRelatorioStatus(equipamentoBase, [...historico]);
 
@@ -483,6 +495,7 @@ describe("PdfService.gerarOrcamentoAjustado", () => {
     expect(JSON.stringify(tabelaHistorico?.body)).toContain("Peça apresentou falha no teste final.");
     expect(JSON.stringify(tabelaHistorico?.body)).toContain("Administrador Local");
     expect(JSON.stringify(tabelaHistorico?.body)).toContain("13/09/2026");
+    expect(JSON.stringify(tabelaHistorico?.body)).toContain("Horário legado inconsistente");
   });
 
   it("renderiza responsável completo, contato em linhas separadas e técnico somente no final", async () => {
