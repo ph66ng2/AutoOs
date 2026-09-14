@@ -203,3 +203,4 @@ npm run bundle:prep:windows:sign # Injects certThumbprint from env into tauri.co
 - Um agente implementa somente o ticket que recebeu; não inicia tickets bloqueados, não altera tickets vizinhos e não faz merge.
 - Antes de entregar, execute os checks relevantes definidos neste documento. O resultado deve ficar pronto para revisão humana; somente um humano faz merge.
 - Depois de um merge, atualize o ticket para `merged` e recalcule as ondas antes de iniciar dependentes.
+- Registre o andamento do ticket compartilhado com `npm run workflow:report -- start|progress|test|review|block|ready|merged <ID> "resumo"`; use `review` ao abrir o PR e `merged` somente após confirmação humana.
