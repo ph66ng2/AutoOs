@@ -31,7 +31,11 @@
     "qa:tier:jornada-real": "npm run lint && npm run test:run && npm run e2e:real",
     "qa:integration:local": "npx tsc --noEmit && cd src-tauri && cargo test",
     "e2e:ui": "playwright test --ui",
-    "e2e:headed": "playwright test --headed"
+    "e2e:headed": "playwright test --headed",
+    "workflow:dashboard": "node scripts/workflow-dashboard.mjs",
+    "workflow:report": "node scripts/workflow-report.mjs",
+    "workflow:dashboard:prepare": "node scripts/prepare-workflow-dashboard.mjs",
+    "test:workflow": "node --test workflow-dashboard/storage.test.mjs"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.9.0",
