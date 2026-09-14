@@ -31,4 +31,6 @@ O relatório encontra a worktree principal automaticamente, registra branch e co
 
 O workflow `.github/workflows/workflow-dashboard.yml` copia o JSON e os eventos para um artefato estático e publica a visão no GitHub Pages. A página pública não recebe tokens e não grava no repositório.
 
+O endereço público configurado para o painel é `https://workflow.phmedeiros.dev`. Cada artefato inclui o arquivo `CNAME`; no provedor DNS, mantenha um registro `CNAME` para `workflow` apontando para `ph66ng2.github.io` e deixe o proxy desativado para esse registro.
+
 Na versão pública, uma mudança de status abre um Issue pré-preenchido. O workflow `workflow-status-request.yml` valida a solicitação, cria um PR para `feature` e deixa a integração para revisão humana.
