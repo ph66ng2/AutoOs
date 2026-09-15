@@ -120,6 +120,10 @@ async fn main() -> Result<()> {
         Some(150.0),
         restricted_profile_id,
         false,
+        None,
+        None,
+        None,
+        None,
     ).await;
     if denied.is_ok() {
         return Err(anyhow!("expected denied financial transition but it was allowed"));
@@ -156,6 +160,10 @@ async fn main() -> Result<()> {
         Some(225.0),
         privileged_profile_id,
         false,
+        None,
+        None,
+        None,
+        None,
     ).await.map_err(|e| anyhow!(e))?;
 
     if updated.custo_total != Some(225.0) {

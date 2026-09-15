@@ -61,6 +61,84 @@
   }
 }
 
+@keyframes boot-particle-travel {
+  0%, 12% {
+    opacity: 0;
+    transform: translateX(0);
+  }
+  35% {
+    opacity: 1;
+  }
+  78% {
+    opacity: 1;
+    transform: translateX(36px);
+  }
+  100% {
+    opacity: 0;
+    transform: translateX(42px);
+  }
+}
+
+@keyframes boot-orbit-drift {
+  0%, 100% {
+    opacity: 0.25;
+    transform: translateY(0) scale(0.85);
+  }
+  50% {
+    opacity: 1;
+    transform: translateY(-8px) scale(1.15);
+  }
+}
+
+@keyframes boot-brand-fade {
+  0% {
+    opacity: 0;
+    transform: scale(0.97);
+  }
+  28%, 66% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(1.01);
+  }
+}
+
+.boot-particle {
+  animation: boot-particle-travel 1.8s ease-in-out infinite;
+  transform-box: fill-box;
+  transform-origin: center;
+}
+
+.boot-particle-delayed {
+  animation-delay: 0.65s;
+}
+
+.boot-orbit-dot {
+  animation: boot-orbit-drift 2.1s ease-in-out infinite;
+  transform-box: fill-box;
+  transform-origin: center;
+}
+
+.boot-brand-fade {
+  animation: boot-brand-fade 1.35s ease-in-out both;
+  transform-box: fill-box;
+  transform-origin: center;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .boot-particle,
+  .boot-orbit-dot,
+  .boot-brand-fade {
+    animation: none;
+  }
+
+  .boot-brand-fade {
+    opacity: 1;
+  }
+}
+
 @layer base {
   * {
     @apply border-border;

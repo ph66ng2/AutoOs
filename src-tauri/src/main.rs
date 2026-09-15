@@ -167,6 +167,7 @@ fn main() {
         // Equipamentos
         commands::equipamentos::listar_equipamentos,
         commands::equipamentos::buscar_equipamento,
+        commands::equipamentos::listar_historico_equipamento,
         commands::equipamentos::buscar_equipamentos_por_serial,
         commands::equipamentos::criar_equipamento,
         commands::equipamentos::atualizar_equipamento,
@@ -188,8 +189,17 @@ fn main() {
         commands::clientes::buscar_cliente,
         commands::clientes::criar_cliente,
         commands::clientes::atualizar_cliente,
+        commands::legacy_regularization::previsualizar_vinculo_empresa_perfil,
+        commands::legacy_regularization::vincular_perfil_ativo_empresa,
+        commands::legacy_regularization::previsualizar_regularizacao_legados,
+        commands::legacy_regularization::executar_regularizacao_legados,
         commands::clientes::deletar_cliente,
         commands::cnpj::consultar_cnpj,
+        // Contatos de cliente
+        commands::contatos::listar_cliente_contatos,
+        commands::contatos::criar_cliente_contato,
+        commands::contatos::atualizar_cliente_contato,
+        commands::contatos::inativar_cliente_contato,
         // Produtos
         commands::produtos::listar_produtos,
         commands::produtos::buscar_produto,
@@ -215,6 +225,7 @@ fn main() {
         commands::verificacoes::salvar_verificacao_tecnica,
         commands::verificacoes::buscar_verificacao_tecnica,
         commands::verificacoes::atualizar_servicos_verificacao,
+        commands::equipamentos::aprovar_orcamento,
         // Comunicações
         commands::comunicacoes::registrar_comunicacao,
         commands::comunicacoes::listar_comunicacoes,
