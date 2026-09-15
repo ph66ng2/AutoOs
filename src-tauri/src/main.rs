@@ -111,6 +111,9 @@ fn main() {
         commands::saas_auth::salvar_sessao_saas,
         commands::saas_auth::carregar_sessao_saas,
         commands::saas_auth::remover_sessao_saas,
+        commands::saas_device::carregar_marcador_dispositivo_saas,
+        commands::saas_device::criar_marcador_dispositivo_saas,
+        commands::saas_device::remover_marcador_dispositivo_saas,
     ]);
 
     #[cfg(not(feature = "saas"))]
