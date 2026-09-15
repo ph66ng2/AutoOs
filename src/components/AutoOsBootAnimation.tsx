@@ -21,8 +21,8 @@ export function AutoOsBootAnimation({ progress }: AutoOsBootAnimationProps) {
   const receivedProgress = phase(clamped, 44, 62);
   const serviceProgress = phase(clamped, 58, 82);
   const completedProgress = phase(clamped, 78, 92);
-  const brandProgress = phase(clamped, 94, 100);
-  const equipmentOpacity = 1 - brandProgress;
+  const brandVisible = clamped >= 100;
+  const equipmentOpacity = 1 - phase(clamped, 94, 100);
 
   return (
     <div className="relative w-full max-w-[460px]" aria-hidden="true">
@@ -33,26 +33,14 @@ export function AutoOsBootAnimation({ progress }: AutoOsBootAnimationProps) {
       >
         <defs>
           <linearGradient id="boot-line" x1="70" y1="45" x2="350" y2="275" gradientUnits="userSpaceOnUse">
-            <stop stopColor="#67e8f9" />
-            <stop offset="0.5" stopColor="#0ea5e9" />
-            <stop offset="1" stopColor="#2563eb" />
-          </linearGradient>
-          <linearGradient id="boot-brand" x1="105" y1="120" x2="315" y2="180" gradientUnits="userSpaceOnUse">
-            <stop stopColor="#67e8f9" />
-            <stop offset="0.52" stopColor="#38bdf8" />
-            <stop offset="1" stopColor="#3b82f6" />
+            <stop stopColor="#7c9fbd" />
+            <stop offset="0.5" stopColor="#4d83ad" />
+            <stop offset="1" stopColor="#315f8c" />
           </linearGradient>
           <radialGradient id="boot-glow">
-            <stop stopColor="#22d3ee" stopOpacity="0.22" />
-            <stop offset="1" stopColor="#22d3ee" stopOpacity="0" />
+            <stop stopColor="#315f8c" stopOpacity="0.08" />
+            <stop offset="1" stopColor="#315f8c" stopOpacity="0" />
           </radialGradient>
-          <filter id="boot-soft-glow" x="-50%" y="-50%" width="200%" height="200%">
-            <feGaussianBlur stdDeviation="5" result="blur" />
-            <feMerge>
-              <feMergeNode in="blur" />
-              <feMergeNode in="SourceGraphic" />
-            </feMerge>
-          </filter>
         </defs>
 
         <ellipse cx="210" cy="166" rx="176" ry="142" fill="url(#boot-glow)" />
@@ -60,15 +48,15 @@ export function AutoOsBootAnimation({ progress }: AutoOsBootAnimationProps) {
         <g className="motion-reduce:hidden" opacity={equipmentOpacity * 0.8}>
           <path d="M34 112 H76" stroke="#164e63" strokeWidth="1.5" strokeDasharray="3 8" />
           <path d="M344 112 H386" stroke="#164e63" strokeWidth="1.5" strokeDasharray="3 8" />
-          <circle cx="38" cy="112" r="3" fill="#22d3ee" className="boot-particle" />
-          <circle cx="382" cy="112" r="3" fill="#38bdf8" className="boot-particle boot-particle-delayed" />
-          <circle cx="82" cy="64" r="2.5" fill="#22d3ee" className="boot-orbit-dot" />
-          <circle cx="338" cy="252" r="2.5" fill="#60a5fa" className="boot-orbit-dot boot-particle-delayed" />
+          <circle cx="38" cy="112" r="2.5" fill="#5f86a5" className="boot-particle" />
+          <circle cx="382" cy="112" r="2.5" fill="#4d7294" className="boot-particle boot-particle-delayed" />
+          <circle cx="82" cy="64" r="2" fill="#5f86a5" className="boot-orbit-dot" />
+          <circle cx="338" cy="252" r="2" fill="#4d7294" className="boot-orbit-dot boot-particle-delayed" />
         </g>
 
         <g
           style={{ opacity: equipmentOpacity }}
-          className="transition-opacity delay-700 duration-500 ease-out motion-reduce:delay-0"
+          className="transition-opacity duration-300 ease-out motion-reduce:transition-none"
         >
           <path
             data-testid="printer-outline"
@@ -76,13 +64,12 @@ export function AutoOsBootAnimation({ progress }: AutoOsBootAnimationProps) {
             pathLength="100"
             fill="none"
             stroke="url(#boot-line)"
-            strokeWidth="4"
+            strokeWidth="3.5"
             strokeLinecap="round"
             strokeLinejoin="round"
             strokeDasharray="100"
             style={{ strokeDashoffset: 100 - printerDraw * 100 }}
             className="transition-[stroke-dashoffset] duration-700 ease-out motion-reduce:transition-none"
-            filter="url(#boot-soft-glow)"
           />
 
           <path
@@ -101,7 +88,7 @@ export function AutoOsBootAnimation({ progress }: AutoOsBootAnimationProps) {
             cx="296"
             cy="122"
             r="6"
-            fill={clamped >= 38 ? "#22d3ee" : "#164e63"}
+            fill={clamped >= 38 ? "#5f86a5" : "#263c50"}
             className="transition-colors duration-300"
           />
 
@@ -113,9 +100,8 @@ export function AutoOsBootAnimation({ progress }: AutoOsBootAnimationProps) {
             <path
               d="M150 178 Q150 168 160 168 H260 Q270 168 270 178 V286 L258 278 L246 286 L234 278 L222 286 L210 278 L198 286 L186 278 L174 286 L162 278 L150 286 Z"
               fill="#071827"
-              stroke="#38bdf8"
+              stroke="#4d83ad"
               strokeWidth="2.5"
-              filter="url(#boot-soft-glow)"
             />
             <path d="M168 190 H252" stroke="#164e63" strokeWidth="2" strokeLinecap="round" />
 
@@ -149,37 +135,18 @@ export function AutoOsBootAnimation({ progress }: AutoOsBootAnimationProps) {
           </g>
         </g>
 
-        <g
-          style={{ opacity: brandProgress }}
-          className="transition-opacity delay-700 duration-500 ease-out motion-reduce:transition-none"
-          filter="url(#boot-soft-glow)"
-        >
-          <text
-            x="210"
-            y="158"
-            textAnchor="middle"
-            fill="url(#boot-brand)"
-            fontFamily="Inter, Segoe UI, sans-serif"
-            fontSize="50"
-            fontWeight="800"
-            letterSpacing="5"
-          >
-            AUTOOS
-          </text>
-          <path d="M132 178 H288" stroke="#164e63" strokeWidth="1.5" />
-          <text
-            x="210"
-            y="204"
-            textAnchor="middle"
-            fill="#7895ad"
-            fontFamily="Inter, Segoe UI, sans-serif"
-            fontSize="13"
-            fontWeight="600"
-            letterSpacing="4"
-          >
-            BY BMITAG
-          </text>
-        </g>
+        {brandVisible && (
+          <image
+            data-testid="boot-bmitag-logo"
+            href="/logo-bmitag.png"
+            x="120"
+            y="70"
+            width="180"
+            height="180"
+            preserveAspectRatio="xMidYMid meet"
+            className="boot-brand-fade"
+          />
+        )}
       </svg>
     </div>
   );

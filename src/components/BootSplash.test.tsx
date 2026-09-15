@@ -24,6 +24,13 @@ describe("BootSplash vetorial", () => {
     expect(bootStatusLabel(100)).toBe("Tudo pronto");
   });
 
+  it("encerra com a marca BMITAG sem recriar o nome AutoOS em texto", () => {
+    render(<BootSplash progress={100} fadeOut={false} />);
+
+    expect(screen.getByTestId("boot-bmitag-logo")).toBeInTheDocument();
+    expect(screen.queryByText("AUTOOS")).not.toBeInTheDocument();
+  });
+
   it("limita progresso inválido antes de atualizar o desenho", () => {
     const { rerender } = render(<BootSplash progress={-20} fadeOut={false} />);
     expect(screen.getByRole("status")).toHaveAttribute(
