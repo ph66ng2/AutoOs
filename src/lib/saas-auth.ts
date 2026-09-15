@@ -1,5 +1,6 @@
 import { createClient, type Session, type SupabaseClient } from "@supabase/supabase-js";
 import { tauriSaasSessionStore, type SaasSessionStore } from "@/lib/saas-session-store";
+import { tauriSaasDeviceStore, type SaasDeviceStore } from "@/lib/saas-device-store";
 import {
   SaasAuthError,
   type SaasAuthService,
@@ -30,6 +31,8 @@ export interface SaasSupabaseAuthPort {
   getClaims(accessToken: string): Promise<{ claims: Record<string, unknown> | null; error: unknown }>;
   signOutLocal(accessToken: string, refreshToken: string): Promise<{ error: unknown }>;
   resetPasswordForEmail(email: string, redirectTo: string): Promise<{ error: unknown }>;
+  registerDevice(accessToken: string, refreshToken: string, deviceId: string): Promise<{ error: unknown }>;
+  revokeDevice(accessToken: string, refreshToken: string, deviceId: string): Promise<{ error: unknown }>;
 }
 
 type Environment = Record<string, string | boolean | undefined>;
@@ -128,6 +131,22 @@ export class SupabaseSaasAuthPort implements SaasSupabaseAuthPort {
   async resetPasswordForEmail(email: string, redirectTo: string) {
     return createAuthClient(this.config).auth.resetPasswordForEmail(email, { redirectTo });
   }
+
+  async registerDevice(accessToken: string, refreshToken: string, deviceId: string) {
+    const client = createAuthClient(this.config);
+    const restored = await client.auth.setSession({ access_token: accessToken, refresh_token: refreshToken });
+    if (restored.error) return { error: restored.error };
+    const { error } = await client.rpc("register_autoos_device", { p_device_id: deviceId });
+    return { error };
+  }
+
+  async revokeDevice(accessToken: string, refreshToken: string, deviceId: string) {
+    const client = createAuthClient(this.config);
+    const restored = await client.auth.setSession({ access_token: accessToken, refresh_token: refreshToken });
+    if (restored.error) return { error: restored.error };
+    const { error } = await client.rpc("revoke_current_autoos_device", { p_device_id: deviceId });
+    return { error };
+  }
 }
 
 function errorMessage(error: unknown): string {
@@ -219,6 +238,7 @@ export class DefaultSaasAuthService implements SaasAuthService {
     private readonly port: SaasSupabaseAuthPort,
     private readonly store: SaasSessionStore,
     private readonly recoveryRedirect: string,
+    private readonly deviceStore: SaasDeviceStore = tauriSaasDeviceStore,
     private readonly now: () => number = () => Date.now(),
   ) {}
 
@@ -230,6 +250,12 @@ export class DefaultSaasAuthService implements SaasAuthService {
       throw new SaasAuthError("keyring", "Não foi possível proteger a sessão no cofre do sistema.");
     }
     return normalized;
+  }
+
+  private async registerCurrentDevice(session: SaasSession): Promise<void> {
+    const marker = await this.deviceStore.create();
+    const result = await this.port.registerDevice(session.accessToken, session.refreshToken, marker.deviceId);
+    if (result.error) throw new SaasAuthError("account_unavailable", "Não foi possível registrar este dispositivo no AutoOS.");
   }
 
   async login(email: string, password: string): Promise<SaasSession> {
@@ -247,10 +273,27 @@ export class DefaultSaasAuthService implements SaasAuthService {
       }
       throw new SaasAuthError("account_unavailable", "Esta conta não está disponível para acesso ao AutoOS.");
     }
-    return this.persist(result.session);
+    const normalized = await this.persist(result.session);
+    try {
+      await this.registerCurrentDevice(normalized);
+    } catch (error) {
+      await this.clearStoredSession();
+      throw error;
+    }
+    return normalized;
   }
 
   async restoreSession(): Promise<SaasRestoreResult> {
+    let marker;
+    try {
+      marker = await this.deviceStore.load();
+    } catch {
+      throw new SaasAuthError("keyring", "Não foi possível verificar o marcador deste dispositivo.");
+    }
+    if (!marker) {
+      await this.clearStoredSession();
+      return { kind: "signed_out", message: "Esta instalação precisa entrar novamente para restaurar a sessão SaaS." };
+    }
     let stored: SaasSession | null;
     try {
       stored = await this.store.load();
@@ -324,6 +367,24 @@ export class DefaultSaasAuthService implements SaasAuthService {
     return { revoked };
   }
 
+  async removeThisDevice(session?: SaasSession): Promise<SaasSignOutResult> {
+    if (!session) return { revoked: false };
+    let revoked = false;
+    try {
+      const marker = await this.deviceStore.load();
+      if (marker) {
+        const result = await this.port.revokeDevice(session.accessToken, session.refreshToken, marker.deviceId);
+        revoked = !result.error;
+      }
+    } catch {
+      revoked = false;
+    }
+    if (!revoked) return { revoked: false };
+    await this.clearStoredSession();
+    await this.deviceStore.clear();
+    return { revoked: true };
+  }
+
   async requestPasswordRecovery(email: string): Promise<void> {
     try {
       const result = await this.port.resetPasswordForEmail(email.trim().toLowerCase(), this.recoveryRedirect);
@@ -353,5 +414,6 @@ export function createSaasAuthService(environment: Environment = import.meta.env
     new SupabaseSaasAuthPort(config),
     tauriSaasSessionStore,
     config.passwordRecoveryRedirect,
+    tauriSaasDeviceStore,
   );
 }

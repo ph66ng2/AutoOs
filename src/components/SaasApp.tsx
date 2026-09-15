@@ -1,10 +1,16 @@
-import { CloudOff, Loader2, LockKeyhole, LogOut, RefreshCw, ShieldCheck } from "lucide-react";
+import { CloudOff, LaptopMinimal, Loader2, LockKeyhole, LogOut, RefreshCw, ShieldCheck } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { SaasLoginScreen } from "@/components/SaasLoginScreen";
 import { useSaasAuth } from "@/hooks/useSaasAuth";
 
 export function SaasApp() {
-  const { state, retry, lock, signOut } = useSaasAuth();
+  const { state, retry, lock, signOut, removeThisDevice } = useSaasAuth();
+
+  function confirmDeviceRemoval() {
+    if (window.confirm("Remover esta máquina? O dispositivo será revogado no servidor e a sessão local será apagada. Esta ação exige novo login nesta instalação.")) {
+      void removeThisDevice();
+    }
+  }
 
   if (state.kind === "booting") {
     return (
@@ -41,9 +47,15 @@ export function SaasApp() {
         <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-center">
           <div className="flex items-center gap-3"><ShieldCheck className="h-8 w-8 text-emerald-400" /><div><h1 className="text-xl font-semibold">Sessão SaaS autenticada</h1><p className="text-sm text-slate-400">{state.session.identity.email}</p></div></div>
           <div className="flex gap-2">
-            <Button variant="outline" onClick={() => void lock()}><LockKeyhole className="mr-2 h-4 w-4" />Bloquear</Button>
+            <Button variant="outline" className="border-cyan-300/70 bg-cyan-400/15 text-cyan-50 shadow-sm shadow-cyan-950 hover:bg-cyan-400/25 hover:text-white" onClick={() => void lock()}><LockKeyhole className="mr-2 h-4 w-4" />Bloquear</Button>
             <Button variant="destructive" onClick={() => void signOut()}><LogOut className="mr-2 h-4 w-4" />Sair</Button>
           </div>
+        </div>
+        <div className="border-t border-white/10 pt-5">
+          <Button variant="outline" className="border-rose-300/80 bg-rose-500/20 font-medium text-rose-50 shadow-sm shadow-rose-950 hover:bg-rose-500/35 hover:text-white" onClick={confirmDeviceRemoval}>
+            <LaptopMinimal className="mr-2 h-4 w-4" />Remover esta máquina
+          </Button>
+          <p className="mt-2 text-xs text-slate-500">Bloquear mantém a sessão; Sair encerra apenas esta sessão; remover revoga a instalação no servidor e limpa seu acesso local.</p>
         </div>
         <div className="grid gap-3 text-sm sm:grid-cols-2">
           <div className="rounded-xl bg-white/5 p-4"><span className="text-slate-500">Empresa</span><p className="mt-1 break-all font-mono text-xs">{state.session.identity.companyId}</p></div>
