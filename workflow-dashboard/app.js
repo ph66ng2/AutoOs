@@ -40,13 +40,17 @@ const state = {
 
 const elements = {
   modeBadge: document.querySelector("#mode-badge"),
+  sourceLabel: document.querySelector("#source-label"),
+  accessLabel: document.querySelector("#access-label"),
   refreshButton: document.querySelector("#refresh-button"),
   lastRead: document.querySelector("#last-read"),
   qualityAlert: document.querySelector("#quality-alert"),
+  progressPercent: document.querySelector("#progress-percent"),
+  progressBar: document.querySelector("#progress-bar"),
   metricTotal: document.querySelector("#metric-total"),
   metricReady: document.querySelector("#metric-ready"),
-  metricReview: document.querySelector("#metric-review"),
   metricMerged: document.querySelector("#metric-merged"),
+  metricBlocked: document.querySelector("#metric-blocked"),
   searchInput: document.querySelector("#search-input"),
   areaFilters: document.querySelector("#area-filters"),
   boardView: document.querySelector("#board-view"),
@@ -54,7 +58,17 @@ const elements = {
   timelineList: document.querySelector("#timeline-list"),
   eventCount: document.querySelector("#event-count"),
   dependencyGraph: document.querySelector("#dependency-graph"),
-  focusContent: document.querySelector("#focus-content"),
+  focusWave: document.querySelector("#focus-wave"),
+  focusTicketId: document.querySelector("#focus-ticket-id"),
+  focusTitle: document.querySelector("#focus-title"),
+  focusSummary: document.querySelector("#focus-summary"),
+  focusButton: document.querySelector("#focus-button"),
+  activityHistory: document.querySelector("#activity-history"),
+  activityPreview: document.querySelector("#activity-preview"),
+  healthScore: document.querySelector("#health-score"),
+  healthSummary: document.querySelector("#health-summary"),
+  healthSpeed: document.querySelector("#health-speed"),
+  healthBlockers: document.querySelector("#health-blockers"),
   dialog: document.querySelector("#ticket-dialog"),
   dialogContent: document.querySelector("#dialog-content"),
   dialogClose: document.querySelector("#dialog-close"),
@@ -90,6 +104,39 @@ function ticketById(ticketId) {
 
 function pendingBlockers(ticket) {
   return (ticket.blockedBy || []).filter((blockerId) => ticketById(blockerId)?.status !== "merged");
+}
+
+const WAVE_LABELS = ["Fundação", "Base", "Integração", "Runtime", "Decisão"];
+const waveMemo = new Map();
+
+function waveForTicket(ticketId, visiting = new Set()) {
+  if (waveMemo.has(ticketId)) return waveMemo.get(ticketId);
+  if (visiting.has(ticketId)) return 1;
+  const ticket = ticketById(ticketId);
+  if (!ticket) return 1;
+  visiting.add(ticketId);
+  const dependencies = (ticket.blockedBy || []).filter((dependencyId) => ticketById(dependencyId));
+  const depth = dependencies.length === 0
+    ? 1
+    : Math.max(...dependencies.map((dependencyId) => waveForTicket(dependencyId, visiting))) + 1;
+  visiting.delete(ticketId);
+  const wave = Math.min(depth, WAVE_LABELS.length);
+  waveMemo.set(ticketId, wave);
+  return wave;
+}
+
+function waveFor(ticket) {
+  return waveForTicket(ticket.id);
+}
+
+function waveStatusCopy(ticket) {
+  const blockers = pendingBlockers(ticket);
+  if (blockers.length) return `⇢ ${blockers.length} dep.`;
+  if (ticket.status === "merged") return "concluído";
+  if (ticket.status === "in_progress") return "em andamento";
+  if (ticket.status === "review") return "em revisão";
+  if (ticket.status === "blocked") return "bloqueado";
+  return "sem bloqueios";
 }
 
 function filteredTickets() {
@@ -171,18 +218,24 @@ function renderQuality() {
 }
 
 function renderHeader() {
-  elements.modeBadge.textContent = state.editable ? "Edição local" : "Somente leitura";
+  elements.modeBadge.textContent = state.editable ? "Edição local" : "feature / workflow.json";
   elements.modeBadge.classList.toggle("editable", state.editable);
+  elements.sourceLabel.textContent = state.editable ? "feature / workflow.json" : "feature / workflow.json";
+  elements.accessLabel.textContent = state.editable ? "Edição local" : "Somente leitura";
   elements.lastRead.textContent = new Intl.DateTimeFormat("pt-BR", { timeStyle: "short" }).format(new Date());
 }
 
 function renderMetrics() {
   const tickets = allTickets();
   const readyNow = tickets.filter((ticket) => ticket.status === "ready" && pendingBlockers(ticket).length === 0).length;
+  const blocked = tickets.filter((ticket) => pendingBlockers(ticket).length > 0 || ticket.status === "blocked").length;
+  const progress = tickets.length ? Math.round((tickets.filter((ticket) => ticket.status === "merged").length / tickets.length) * 100) : 0;
   elements.metricTotal.textContent = tickets.length;
   elements.metricReady.textContent = readyNow;
-  elements.metricReview.textContent = tickets.filter((ticket) => ticket.status === "review").length;
   elements.metricMerged.textContent = tickets.filter((ticket) => ticket.status === "merged").length;
+  elements.metricBlocked.textContent = blocked;
+  elements.progressPercent.textContent = `${progress}%`;
+  elements.progressBar.style.width = `${progress}%`;
 }
 
 function renderFilters() {
@@ -196,24 +249,23 @@ function renderFilters() {
 }
 
 function ticketCard(ticket) {
-  const blockers = pendingBlockers(ticket);
-  const footer = blockers.length > 0
-    ? `<span class="blocked-copy">aguarda ${escapeHtml(blockers.join(", "))}</span>`
-    : `<span>${ticket.status === "ready" ? "pode começar" : STATUS_LABELS[ticket.status] || ticket.status}</span>`;
+  const footer = waveStatusCopy(ticket);
   return `<button class="ticket-card" data-ticket="${escapeHtml(ticket.id)}" data-area="${areaFor(ticket.id)}" type="button">
     <span class="ticket-id">${escapeHtml(ticket.id)}</span>
     <span class="ticket-title">${escapeHtml(ticket.title)}</span>
-    <span class="ticket-footer">${footer}<span>abrir</span></span>
+    <span class="ticket-footer"><span class="ticket-state state-${escapeHtml(ticket.status)}"><i aria-hidden="true"></i>${escapeHtml(footer)}</span><span>abrir</span></span>
   </button>`;
 }
 
 function renderBoard() {
   const tickets = filteredTickets();
-  elements.boardView.innerHTML = STATUS_ORDER.map((status) => {
-    const columnTickets = tickets.filter((ticket) => ticket.status === status);
-    return `<section class="status-column column-${status.replace("_", "-")}">
-      <div class="column-heading"><h3>${STATUS_LABELS[status]}</h3><span>${columnTickets.length}</span></div>
-      ${columnTickets.length ? columnTickets.map(ticketCard).join("") : `<div class="empty-column">Nenhum ticket</div>`}
+  waveMemo.clear();
+  elements.boardView.innerHTML = WAVE_LABELS.map((label, index) => {
+    const waveNumber = index + 1;
+    const waveTickets = tickets.filter((ticket) => waveFor(ticket) === waveNumber);
+    return `<section class="wave-column">
+      <div class="wave-heading"><div><p>ONDA ${String(waveNumber).padStart(2, "0")}</p><h3>${label}</h3></div><span class="wave-count">${waveTickets.length}</span></div>
+      ${waveTickets.length ? waveTickets.map(ticketCard).join("") : `<div class="empty-column">Nenhum ticket</div>`}
     </section>`;
   }).join("");
   elements.boardView.querySelectorAll("[data-ticket]").forEach((card) => card.addEventListener("click", () => openDialog(card.dataset.ticket)));
@@ -288,21 +340,73 @@ function renderDependencyGraph() {
 }
 
 function renderFocus() {
-  const candidates = allTickets().filter((ticket) => ticket.status === "ready" && pendingBlockers(ticket).length === 0);
-  const ticket = candidates[0];
+  const candidates = allTickets().filter((ticket) => ticket.status === "in_progress" || (ticket.status === "ready" && pendingBlockers(ticket).length === 0));
+  const ticket = candidates[0] || allTickets().find((candidate) => candidate.status === "review" || candidate.status === "blocked");
   if (!ticket) {
-    elements.focusContent.innerHTML = `<div><span class="focus-ticket-id">SEM LIBERAÇÕES</span><h3>O grafo está aguardando dependências.</h3><p>Abra um ticket bloqueado para ver o caminho que precisa ser concluído.</p></div>`;
+    elements.focusWave.textContent = "Onda --";
+    elements.focusTicketId.textContent = "SEM LIBERAÇÕES";
+    elements.focusTitle.textContent = "O grafo está aguardando dependências.";
+    elements.focusSummary.textContent = "Abra um ticket bloqueado para ver o caminho que precisa ser concluído.";
+    elements.focusButton.disabled = true;
     return;
   }
-  elements.focusContent.innerHTML = `<div><span class="focus-ticket-id">${escapeHtml(ticket.id)}</span><h3>${escapeHtml(ticket.title)}</h3><p>${escapeHtml(ticket.objective || ticket.context || "Sem objetivo descrito.")}</p></div>
-    <div><div class="focus-meta"><span>${escapeHtml(AREA_LABELS[areaFor(ticket.id)])}</span><span>liberado agora</span></div><button class="button focus-action" data-ticket="${escapeHtml(ticket.id)}" type="button">Abrir ticket</button></div>`;
-  elements.focusContent.querySelector("[data-ticket]").addEventListener("click", () => openDialog(ticket.id));
+  elements.focusWave.textContent = `Onda ${waveFor(ticket)}`;
+  elements.focusTicketId.textContent = ticket.id;
+  elements.focusTitle.textContent = ticket.title;
+  elements.focusSummary.textContent = ticket.objective || ticket.context || "Sem objetivo descrito.";
+  elements.focusButton.disabled = false;
+  elements.focusButton.onclick = () => openDialog(ticket.id);
+}
+
+function renderActivity() {
+  const events = timelineEvents().slice(0, 4);
+  if (!events.length) {
+    elements.activityPreview.innerHTML = `<div class="empty-column">Nenhuma atividade registrada.</div>`;
+    return;
+  }
+  elements.activityPreview.innerHTML = events.map((event) => {
+    const label = STATUS_EVENT_LABELS[event.type] || event.type || "atividade";
+    const ticketId = event.ticketId || event.ticketIds?.[0] || "PROJETO";
+    const symbol = event.type === "merged" ? "✓" : event.type === "blocked" ? "!" : "→";
+    return `<button class="activity-item" data-ticket="${escapeHtml(event.ticketId || "")}" type="button"><span class="activity-icon" aria-hidden="true">${symbol}</span><span><strong>${escapeHtml(ticketId)} ${escapeHtml(label)}</strong><p>${escapeHtml(event.summary || "Sem resumo")}</p></span><time>${escapeHtml(formatActivityTime(event.timestamp))}</time></button>`;
+  }).join("");
+  elements.activityPreview.querySelectorAll("[data-ticket]").forEach((item) => {
+    if (item.dataset.ticket) item.addEventListener("click", () => openDialog(item.dataset.ticket));
+  });
+}
+
+function formatActivityTime(value) {
+  const date = dateValue(value);
+  if (!date) return "--";
+  const now = Date.now();
+  const diffMinutes = Math.max(0, Math.round((now - date.getTime()) / 60000));
+  if (diffMinutes < 1) return "agora";
+  if (diffMinutes < 60) return `${diffMinutes} min`;
+  if (diffMinutes < 1440) return `${Math.round(diffMinutes / 60)} h`;
+  return `${Math.round(diffMinutes / 1440)} d`;
+}
+
+function renderHealth() {
+  const tickets = allTickets();
+  const blocked = tickets.filter((ticket) => pendingBlockers(ticket).length > 0 || ticket.status === "blocked").length;
+  const review = tickets.filter((ticket) => ticket.status === "review").length;
+  const score = Math.max(0, Math.min(100, 100 - blocked * 7 - review * 2));
+  elements.healthScore.textContent = `${score}/100`;
+  elements.healthSummary.textContent = blocked
+    ? `As dependências estão claras. ${blocked} bloqueio${blocked === 1 ? " merece" : "s merecem"} atenção nesta onda.`
+    : "As dependências estão claras e não há bloqueios ativos no caminho atual.";
+  elements.healthSpeed.textContent = review ? "Em revisão" : "Boa";
+  elements.healthBlockers.textContent = blocked ? `${blocked} ativo${blocked === 1 ? "" : "s"}` : "Nenhum";
 }
 
 function renderViews() {
   elements.boardView.classList.toggle("hidden", state.view !== "board");
   elements.timelineView.classList.toggle("hidden", state.view !== "timeline");
-  document.querySelectorAll(".view-button").forEach((button) => button.classList.toggle("active", button.dataset.view === state.view));
+  document.querySelectorAll(".view-button").forEach((button) => {
+    const active = button.dataset.view === state.view;
+    button.classList.toggle("active", active);
+    button.setAttribute("aria-selected", String(active));
+  });
 }
 
 function render() {
@@ -314,6 +418,8 @@ function render() {
   renderTimeline();
   renderDependencyGraph();
   renderFocus();
+  renderActivity();
+  renderHealth();
   renderViews();
 }
 
@@ -414,8 +520,15 @@ elements.searchInput.addEventListener("input", (event) => {
 });
 document.querySelectorAll(".view-button").forEach((button) => button.addEventListener("click", () => {
   state.view = button.dataset.view;
+  document.querySelectorAll(".view-button").forEach((viewButton) => viewButton.setAttribute("aria-selected", String(viewButton === button)));
   renderViews();
 }));
+elements.activityHistory.addEventListener("click", () => {
+  state.view = "timeline";
+  document.querySelectorAll(".view-button").forEach((button) => button.setAttribute("aria-selected", String(button.dataset.view === "timeline")));
+  renderViews();
+  document.querySelector("#waves")?.scrollIntoView({ behavior: "smooth", block: "start" });
+});
 elements.dialogClose.addEventListener("click", () => elements.dialog.classList.add("hidden"));
 elements.dialog.addEventListener("click", (event) => {
   if (event.target === elements.dialog) elements.dialog.classList.add("hidden");
