@@ -2986,7 +2986,7 @@
       "context": "O workflow Windows existente compila o produto interno e exige DATABASE_URL de produção, portanto não exercita SaasLoginScreen implementada em AO-AUTH-002. A validação visual requer build Tauri com feature Cargo saas e Vite mode saas, sem conexão PostgreSQL.",
       "expectedBehavior": "Um disparo manual gera artefato NSIS temporário do build SaaS; ao abrir, o aplicativo não exibe configuração de banco e apresenta a tela de login administrativa por e-mail e senha.",
       "scope": [
-        "Criar workflow manual Windows separado do release e do teste interno conectado ao banco.",
+        "Estender o workflow Windows Test Build existente com o modo SaaS, separado do release e do teste interno conectado ao banco.",
         "Executar npm run tauri:build:saas com VITE_SUPABASE_URL, chave publicável e redirect HTTPS recebidos como variáveis de Actions.",
         "Validar formato HTTPS da URL, prefixo sb_publishable_ da chave e redirect HTTPS antes do build.",
         "Publicar somente o instalador NSIS e checksum como artefato com retenção curta.",
@@ -3042,7 +3042,7 @@
         "stagingRestrictions": "É proibido usar DATABASE_URL, banco interno/produção, service_role, secret key, senha real, token ou dados de clientes; a validação é exclusivamente de staging com valores públicos de frontend e conta sintética."
       },
       "likelyFiles": [
-        ".github/workflows/windows-saas-login-test.yml",
+        ".github/workflows/windows-test-build.yml",
         ".workflow/workflow.json",
         "docs/SAAS_AUTH.md"
       ],
