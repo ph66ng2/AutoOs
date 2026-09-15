@@ -30,7 +30,7 @@ export function BootSplash({ progress, fadeOut }: BootSplashProps) {
       <div className="flex w-full max-w-xl flex-col items-center">
         <AutoOsBootAnimation progress={clamped} />
         <div className="-mt-2 flex flex-col items-center gap-2 text-center">
-          <p className="text-sm font-medium tracking-[0.16em] text-cyan-100/90">
+          <p className="text-sm font-medium tracking-[0.16em] text-slate-300">
             {statusLabel}
           </p>
           <p className="text-xs tracking-wide text-[#5f7890]">
@@ -42,7 +42,7 @@ export function BootSplash({ progress, fadeOut }: BootSplashProps) {
                 key={threshold}
                 className={cn(
                   "h-1.5 rounded-full transition-all duration-500",
-                  clamped >= threshold ? "w-5 bg-cyan-400" : "w-1.5 bg-slate-700",
+                  clamped >= threshold ? "w-5 bg-sky-700" : "w-1.5 bg-slate-700",
                 )}
               />
             ))}
