@@ -40,6 +40,7 @@ import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { AppModeSelector } from "@/components/AppModeSelector";
 import { CounterLayout } from "@/components/CounterLayout";
 import { CounterSessionGate } from "@/components/CounterSessionGate";
+import { ReleaseHighlightsDialog } from "@/components/ReleaseHighlightsDialog";
 import { getAppMode, setAppMode, type AppMode } from "@/lib/app-mode";
 import Balcao from "@/pages/Balcao";
 
@@ -72,6 +73,7 @@ function AppContent() {
   }, []);
 
   const splashCanFadeOut = !loading && minSplashElapsed;
+  const sessionReady = Boolean(status?.active_profile_id && status.unlocked);
 
   useEffect(() => {
     if (splashVisible && splashCanFadeOut) {
@@ -84,10 +86,13 @@ function AppContent() {
     <>
       <BrowserRouter>
         <AppModeChoice
-          visible={!loading && Boolean(status?.active_profile_id && status.unlocked) && appMode === null}
+          visible={!loading && sessionReady && appMode === null}
           onSelect={setCurrentAppMode}
         />
-        <AppModeRedirect mode={appMode} ready={!loading && Boolean(status?.active_profile_id && status.unlocked)} />
+        <AppModeRedirect mode={appMode} ready={!loading && sessionReady} />
+        <ReleaseHighlightsDialog
+          enabled={!loading && !splashVisible && sessionReady && appMode !== null}
+        />
         <Routes>
           <Route element={<Layout />}>
             <Route path="/" element={<Dashboard />} />
