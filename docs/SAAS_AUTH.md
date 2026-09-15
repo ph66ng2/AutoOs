@@ -57,3 +57,6 @@ Referências oficiais: [login com senha](https://supabase.com/docs/reference/jav
 [validação de claims](https://supabase.com/docs/reference/javascript/auth-getclaims),
 [sign-out](https://supabase.com/docs/reference/javascript/auth-signout) e
 [recuperação de senha](https://supabase.com/docs/reference/javascript/auth-resetpasswordforemail).
+
+Para criar uma conta administrativa logável em staging e conhecer a limitação
+atual de produção, consulte [Provisionamento de administrador SaaS](SAAS_ADMIN_PROVISIONING.md).

@@ -2976,6 +2976,38 @@
         "Uma interrupção deixar instalação parcial ou exigir elevação não prevista no Windows.",
         "Incluir segredo, URL autenticada ou dado interno nas evidências de homologação."
       ]
+    },
+    {
+      "id": "AO-AUTH-005",
+      "title": "Refinar tela de recuperação de senha SaaS",
+      "status": "ready",
+      "blockedBy": ["AO-AUTH-002"],
+      "objective": "Substituir a instrução secundária de recuperação por uma tela dedicada e acessível que solicite somente o e-mail do administrador.",
+      "context": "A recuperação existe em AO-AUTH-002, mas hoje o pedido é contextual ao formulário de login. Um fluxo próprio reduz ambiguidade, oferece feedback claro e mantém a senha fora da jornada de recuperação.",
+      "expectedBehavior": "Ao escolher Esqueci minha senha, o usuário abre uma tela de recuperação com campo de e-mail, envia o link pelo método oficial do Supabase e pode retornar ao login sem perder clareza de estado.",
+      "scope": ["Criar tela ou diálogo dedicado de recuperação com e-mail, validação, loading, retorno e acessibilidade.", "Reutilizar resetPasswordForEmail e o redirect HTTPS configurado no build SaaS.", "Exibir resposta anti-enumeração sem revelar se o e-mail existe.", "Adicionar testes de UI para abertura, envio, erro recuperável e retorno ao login."],
+      "outOfScope": ["Criar cadastro público, alterar a página HTTPS hospedada de redefinição ou aceitar senha PostgreSQL.", "Alterar provisionamento de usuários, dispositivos ou PIN local.", "Enviar e-mails reais fora de conta sintética de staging."],
+      "acceptanceCriteria": ["A tela de recuperação pede apenas e-mail e possui retorno explícito ao login.", "O envio usa exclusivamente o cliente Supabase com chave publicável e redirect allowlisted.", "A resposta não revela existência de conta e não registra senha ou token.", "Os testes e checks SaaS passam."],
+      "tests": ["Testes unitários de SaasLoginScreen/recuperação.", "npm run lint.", "npm run test:run.", "npm run build:saas.", "Validação manual em staging com conta sintética."],
+      "testInstructions": {"prerequisites": ["Usar worktree exclusiva de origin/feature após AO-AUTH-002 merged.", "Usar projeto e conta sintética de staging com redirect HTTPS allowlisted."], "steps": ["Abrir recuperação a partir do login SaaS.", "Validar e-mail, enviar link e conferir resposta genérica.", "Retornar ao login e concluir recuperação somente com conta sintética."], "expectedResultAndEvidence": ["A recuperação é uma jornada separada e acessível.", "Nenhum segredo, senha ou token aparece na evidência."], "dataImpact": "Cria somente e-mails/sessões de recuperação de conta sintética em staging.", "cleanupAndRollback": ["Encerrar a sessão sintética e remover evidências com dados identificáveis.", "Não alterar produção; reverter somente os arquivos do ticket em caso de falha."], "stagingRestrictions": "É proibido usar contas, senhas, banco ou dados reais; não usar service_role ou DATABASE_URL no cliente."},
+      "likelyFiles": ["src/components/SaasLoginScreen.tsx", "src/lib/saas-auth.ts", "src/components/__tests__/*saas*"],
+      "risks": ["Enumerar e-mails por mensagem distinta.", "Misturar recuperação SaaS com PIN ou senha PostgreSQL.", "Usar redirect não allowlisted."]
+    },
+    {
+      "id": "AO-AUTH-OPS-001",
+      "title": "Formalizar provisionamento administrativo SaaS",
+      "status": "review",
+      "blockedBy": ["AO-AUTH-001"],
+      "objective": "Documentar o provisionamento seguro de administrador em staging e registrar que produção requer fluxo aprovado distinto.",
+      "context": "AO-AUTH-001 implementou o caminho de provisionamento de staging, mas operadores precisam de instruções reproduzíveis sem converter segredos em configuração de cliente. O script atual bloqueia uso fora de staging.",
+      "expectedBehavior": "O repositório orienta criação e limpeza de usuário sintético logável em staging e impede que alguém use o mecanismo de staging como procedimento produtivo.",
+      "scope": ["Documentar pré-requisitos, comando de staging, validação de login e limpeza.", "Explicar quais credenciais são administrativas e onde nunca podem ser armazenadas.", "Declarar produção como bloqueada até runbook e operação server-side aprovados."],
+      "outOfScope": ["Executar provisionamento, criar usuário real, alterar Supabase, criar secret ou liberar produção.", "Expor service_role, senha, URL PostgreSQL ou token em documentação."],
+      "acceptanceCriteria": ["O tutorial cria somente conta sintética de staging pelo script existente.", "O guia proíbe explicitamente uso do script staging em produção.", "O documento referencia login SaaS e recuperação sem expor segredo."],
+      "tests": ["Revisão de comandos contra scripts/manage-staging-saas-admin.mjs.", "Busca de secrets no documento.", "Validação de links Markdown."],
+      "testInstructions": {"prerequisites": ["Usar somente arquivos versionados e documentação; não carregar credenciais."], "steps": ["Comparar comandos com o script de provisionamento.", "Executar busca por valores sensíveis no documento e revisar links."], "expectedResultAndEvidence": ["O guia usa apenas placeholders e não habilita produção.", "A documentação aponta a necessidade de autorização para qualquer operação produtiva."], "dataImpact": "Somente documentação e tickets; não cria ou altera dados.", "cleanupAndRollback": ["Reverter somente a documentação se a revisão identificar orientação insegura."], "stagingRestrictions": "Nenhum ambiente é acessado e nenhuma credencial é usada durante este ticket."},
+      "likelyFiles": ["docs/SAAS_ADMIN_PROVISIONING.md", "docs/SAAS_AUTH.md", ".workflow/workflow.json"],
+      "risks": ["Operador confundir staging com produção.", "Vazar segredo em exemplo de shell.", "Criar usuário sem vínculo empresa/perfil."]
     }
   ]
 }
