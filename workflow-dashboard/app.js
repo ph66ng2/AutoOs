@@ -63,6 +63,11 @@ const elements = {
   focusTitle: document.querySelector("#focus-title"),
   focusSummary: document.querySelector("#focus-summary"),
   focusButton: document.querySelector("#focus-button"),
+  mapNextId: document.querySelector("#map-next-id"),
+  mapNextTitle: document.querySelector("#map-next-title"),
+  mapNextReason: document.querySelector("#map-next-reason"),
+  mapNextButton: document.querySelector("#map-next-button"),
+  decisionMapFlow: document.querySelector("#decision-map-flow"),
   activityHistory: document.querySelector("#activity-history"),
   activityPreview: document.querySelector("#activity-preview"),
   healthScore: document.querySelector("#health-score"),
@@ -358,6 +363,77 @@ function renderFocus() {
   elements.focusButton.onclick = () => openDialog(ticket.id);
 }
 
+const DECISION_ROUTES = [
+  { area: "auth", label: "Auth", description: "Identidade e dispositivos" },
+  { area: "subscription", label: "SaaS", description: "Acesso e entitlement" },
+  { area: "powersync", label: "PowerSync", description: "Runtime offline" },
+  { area: "photos", label: "Fotos", description: "Storage e fluxo cloud" },
+];
+
+function focusTicket() {
+  const active = allTickets().find((ticket) => ticket.status === "in_progress");
+  return active || allTickets().find((ticket) => ticket.status === "ready" && pendingBlockers(ticket).length === 0)
+    || allTickets().find((ticket) => ticket.status === "review" || ticket.status === "blocked");
+}
+
+function routeNextTicket(area) {
+  const routeTickets = allTickets().filter((ticket) => areaFor(ticket.id) === area);
+  return routeTickets.find((ticket) => ticket.status === "in_progress")
+    || routeTickets.find((ticket) => ticket.status === "ready" && pendingBlockers(ticket).length === 0)
+    || routeTickets.find((ticket) => ticket.status !== "merged");
+}
+
+function stageLabel(waveNumber, tickets, activeTicket) {
+  if (!tickets.length) return "Sem tickets";
+  if (tickets.every((ticket) => ticket.status === "merged")) return "Concluída";
+  if (activeTicket && waveFor(activeTicket) === waveNumber) return "Agora";
+  if (tickets.some((ticket) => ticket.status === "ready" && pendingBlockers(ticket).length === 0)) return "Liberada";
+  return "Aguardando";
+}
+
+function renderDecisionMap() {
+  const nextTicket = focusTicket();
+  waveMemo.clear();
+  const waveStages = WAVE_LABELS.map((label, index) => {
+    const waveNumber = index + 1;
+    const tickets = allTickets().filter((ticket) => waveFor(ticket) === waveNumber);
+    const stageStatus = stageLabel(waveNumber, tickets, nextTicket);
+    const stateClass = stageStatus === "Concluída" ? "complete" : stageStatus === "Agora" ? "current" : stageStatus === "Liberada" ? "ready" : "waiting";
+    return `<div class="decision-step step-${stateClass}"><span>${String(waveNumber).padStart(2, "0")}</span><strong>${escapeHtml(label)}</strong><small>${escapeHtml(stageStatus)}</small></div>`;
+  }).join('<span class="decision-arrow" aria-hidden="true">→</span>');
+
+  const routeCards = DECISION_ROUTES.map((route) => {
+    const routeTickets = allTickets().filter((ticket) => areaFor(ticket.id) === route.area);
+    const routeTicket = routeNextTicket(route.area);
+    const complete = routeTickets.length > 0 && routeTickets.every((ticket) => ticket.status === "merged");
+    const status = complete ? "concluído" : routeTicket ? waveStatusCopy(routeTicket) : "sem tickets";
+    return `<button class="route-card ${complete ? "route-complete" : ""}" data-ticket="${escapeHtml(routeTicket?.id || "")}" type="button" ${routeTicket ? "" : "disabled"}><span class="route-dot" aria-hidden="true"></span><span><strong>${escapeHtml(route.label)}</strong><small>${escapeHtml(route.description)}</small></span><em>${escapeHtml(status)}</em></button>`;
+  }).join("");
+
+  elements.decisionMapFlow.innerHTML = `<div class="decision-root"><span class="eyebrow">PONTO DE PARTIDA</span><strong>AutoOS SaaS</strong><small>Uma base, vários caminhos.</small></div><span class="decision-arrow decision-root-arrow" aria-hidden="true">→</span><div class="decision-path"><span class="eyebrow">SEQUÊNCIA DO WORKFLOW</span><div class="decision-sequence">${waveStages}</div><div class="route-label"><span class="eyebrow">RAMOS DE TRABALHO</span><small>Os ramos só avançam quando suas dependências estão liberadas.</small></div><div class="route-grid">${routeCards}</div></div>`;
+  elements.decisionMapFlow.querySelectorAll("[data-ticket]").forEach((node) => {
+    if (node.dataset.ticket) node.addEventListener("click", () => openDialog(node.dataset.ticket));
+  });
+
+  if (!nextTicket) {
+    elements.mapNextId.textContent = "SEM PRÓXIMO PASSO";
+    elements.mapNextTitle.textContent = "O mapa está sem tickets disponíveis.";
+    elements.mapNextReason.textContent = "Revise as dependências ou registre a próxima decisão do projeto.";
+    elements.mapNextButton.disabled = true;
+    return;
+  }
+  elements.mapNextId.textContent = nextTicket.id;
+  elements.mapNextTitle.textContent = nextTicket.title;
+  const directUnlocks = allTickets().filter((ticket) => (ticket.blockedBy || []).includes(nextTicket.id)).slice(0, 2).map((ticket) => ticket.id);
+  elements.mapNextReason.textContent = nextTicket.status === "in_progress"
+    ? "Está em andamento. Finalize e valide este ticket antes de abrir outro ramo."
+    : directUnlocks.length
+      ? `Está liberado agora e pode destravar ${directUnlocks.join(" e ")}.`
+      : "Está liberado agora e é o próximo passo recomendado pelo workflow.";
+  elements.mapNextButton.disabled = false;
+  elements.mapNextButton.onclick = () => openDialog(nextTicket.id);
+}
+
 function renderActivity() {
   const events = timelineEvents().slice(0, 4);
   if (!events.length) {
@@ -418,6 +494,7 @@ function render() {
   renderTimeline();
   renderDependencyGraph();
   renderFocus();
+  renderDecisionMap();
   renderActivity();
   renderHealth();
   renderViews();
