@@ -759,7 +759,7 @@
     {
       "id": "AO-AUTH-003",
       "title": "Registrar, reinstalar e revogar dispositivos",
-      "status": "ready",
+      "status": "merged",
       "blockedBy": [
         "AO-AUTH-002"
       ],
