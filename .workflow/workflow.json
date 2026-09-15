@@ -2044,21 +2044,44 @@
         "Varredura de banco, bundle e logs contra data: e service_role."
       ],
       "testInstructions": {
-        "prerequisites": ["AO-PHOTO-004 e AO-PS-004 mesclados; bucket e credenciais exclusivos de staging."],
-        "steps": ["Testar promoção imediata e pós-cadastro, retries e tentativa entre tenants.", "Consultar equipamento_imagens e Storage para comparar cardinalidade, checksum e caminhos."],
-        "expectedResultAndEvidence": ["Registrar IDs sintéticos, respostas idempotentes e prova de um registro para um objeto.", "Confirmar ausência de Base64, URLs públicas e segredos."],
+        "prerequisites": [
+          "AO-PHOTO-004 e AO-PS-004 mesclados; bucket e credenciais exclusivos de staging."
+        ],
+        "steps": [
+          "Testar promoção imediata e pós-cadastro, retries e tentativa entre tenants.",
+          "Consultar equipamento_imagens e Storage para comparar cardinalidade, checksum e caminhos."
+        ],
+        "expectedResultAndEvidence": [
+          "Registrar IDs sintéticos, respostas idempotentes e prova de um registro para um objeto.",
+          "Confirmar ausência de Base64, URLs públicas e segredos."
+        ],
         "dataImpact": "Cria objetos, sessões e equipamentos sintéticos somente no staging.",
-        "cleanupAndRollback": ["Apagar fixtures pela API do Storage e migrations apenas em ambiente descartável.", "Não alterar registros operacionais nem executar backfill."],
+        "cleanupAndRollback": [
+          "Apagar fixtures pela API do Storage e migrations apenas em ambiente descartável.",
+          "Não alterar registros operacionais nem executar backfill."
+        ],
         "stagingRestrictions": "Nunca usar produção, dados reais ou segredo fora da Edge Function."
       },
-      "likelyFiles": ["src-tauri/migrations/*", "src-tauri/src/commands/equipamento_imagens.rs", "src-tauri/src/commands/photo_upload_sessions.rs", "supabase/functions/photo-upload/*", "supabase/storage/*"],
-      "risks": ["Perder foto ao promover antes de criar equipamento.", "Duplicar objetos em retry.", "Vazar service_role ou permitir acesso entre tenants."]
+      "likelyFiles": [
+        "src-tauri/migrations/*",
+        "src-tauri/src/commands/equipamento_imagens.rs",
+        "src-tauri/src/commands/photo_upload_sessions.rs",
+        "supabase/functions/photo-upload/*",
+        "supabase/storage/*"
+      ],
+      "risks": [
+        "Perder foto ao promover antes de criar equipamento.",
+        "Duplicar objetos em retry.",
+        "Vazar service_role ou permitir acesso entre tenants."
+      ]
     },
     {
       "id": "AO-PHOTO-006",
       "title": "Resolver fotos privadas, PDF, offline e limpeza",
       "status": "ready",
-      "blockedBy": ["AO-PHOTO-005"],
+      "blockedBy": [
+        "AO-PHOTO-005"
+      ],
       "objective": "Unificar leitura privada para preview, exportação e PDF, com cache offline e limpeza segura de temporários e exclusões.",
       "context": "Após remover Base64 do banco, todos os consumidores precisam resolver bytes em memória sem quebrar o PDF ou o uso offline, enquanto temporários e objetos removidos devem liberar espaço.",
       "expectedBehavior": "Preview, exportação e PDF usam storage_path+checksum; online baixam com acesso tenant-safe, offline usam cache LRU de até 250 MB e falham de modo explícito quando não há cache.",
@@ -2070,65 +2093,187 @@
         "Criar fila idempotente de exclusão definitiva e usar apenas a API do Storage.",
         "Validar PDF cloud/local e somente após a matriz aprovada retirar o servidor LAN, preservando arquivo local."
       ],
-      "outOfScope": ["Migrar fotos antigas em Base64.", "Apagar fotos definitivas ainda vinculadas.", "Alterar o layout visual do PDF sem necessidade de compatibilidade."],
-      "acceptanceCriteria": ["Preview, exportação e PDF funcionam online com objetos privados.", "Foto em cache funciona offline e ausência de cache gera aviso acionável.", "Temporários/órfãos e exclusões confirmadas liberam espaço de forma idempotente.", "LAN só é removida após evidência completa; seleção local permanece."],
-      "tests": ["npm run lint, npm run test:run e cd src-tauri && cargo check.", "PDF renderizado online/offline com e sem cache.", "Sessões expiradas, órfãos e retries de exclusão no staging.", "Matriz Android/iPhone, novo/existente e fallback local antes da retirada LAN."],
+      "outOfScope": [
+        "Migrar fotos antigas em Base64.",
+        "Apagar fotos definitivas ainda vinculadas.",
+        "Alterar o layout visual do PDF sem necessidade de compatibilidade."
+      ],
+      "acceptanceCriteria": [
+        "Preview, exportação e PDF funcionam online com objetos privados.",
+        "Foto em cache funciona offline e ausência de cache gera aviso acionável.",
+        "Temporários/órfãos e exclusões confirmadas liberam espaço de forma idempotente.",
+        "LAN só é removida após evidência completa; seleção local permanece."
+      ],
+      "tests": [
+        "npm run lint, npm run test:run e cd src-tauri && cargo check.",
+        "PDF renderizado online/offline com e sem cache.",
+        "Sessões expiradas, órfãos e retries de exclusão no staging.",
+        "Matriz Android/iPhone, novo/existente e fallback local antes da retirada LAN."
+      ],
       "testInstructions": {
-        "prerequisites": ["AO-PHOTO-005 mesclado; staging com Cron/Edge Function e imagens sintéticas."],
-        "steps": ["Popular cache online, desconectar e testar preview/PDF; repetir sem cache.", "Criar temporários/órfãos sintéticos, executar limpeza e repetir.", "Concluir matriz mobile/local/PDF antes de remover LAN."],
-        "expectedResultAndEvidence": ["Guardar PDFs sintéticos renderizados, métricas do cache e resultados da limpeza.", "Provar que definitivos vinculados permanecem e temporários elegíveis somem."],
+        "prerequisites": [
+          "AO-PHOTO-005 mesclado; staging com Cron/Edge Function e imagens sintéticas."
+        ],
+        "steps": [
+          "Popular cache online, desconectar e testar preview/PDF; repetir sem cache.",
+          "Criar temporários/órfãos sintéticos, executar limpeza e repetir.",
+          "Concluir matriz mobile/local/PDF antes de remover LAN."
+        ],
+        "expectedResultAndEvidence": [
+          "Guardar PDFs sintéticos renderizados, métricas do cache e resultados da limpeza.",
+          "Provar que definitivos vinculados permanecem e temporários elegíveis somem."
+        ],
         "dataImpact": "Cria cache local e objetos/sessões sintéticos descartáveis no staging.",
-        "cleanupAndRollback": ["Excluir fixtures e cache de teste; desabilitar job de staging se houver falha.", "Não remover LAN quando qualquer cenário falhar."],
+        "cleanupAndRollback": [
+          "Excluir fixtures e cache de teste; desabilitar job de staging se houver falha.",
+          "Não remover LAN quando qualquer cenário falhar."
+        ],
         "stagingRestrictions": "Somente staging; nenhuma foto, PDF, cliente ou equipamento real."
       },
-      "likelyFiles": ["src/lib/pdf-service.ts", "src/lib/photo-resolver.ts", "src-tauri/src/commands/equipamento_imagens.rs", "src-tauri/src/commands/photo_server.rs", "supabase/functions/*", "docs/*"],
-      "risks": ["PDF incompleto offline.", "Limpeza apagar objeto válido.", "Cache ultrapassar limite ou misturar tenants.", "Remover LAN cedo demais."]
+      "likelyFiles": [
+        "src/lib/pdf-service.ts",
+        "src/lib/photo-resolver.ts",
+        "src-tauri/src/commands/equipamento_imagens.rs",
+        "src-tauri/src/commands/photo_server.rs",
+        "supabase/functions/*",
+        "docs/*"
+      ],
+      "risks": [
+        "PDF incompleto offline.",
+        "Limpeza apagar objeto válido.",
+        "Cache ultrapassar limite ou misturar tenants.",
+        "Remover LAN cedo demais."
+      ]
     },
     {
       "id": "AO-PHOTO-007",
       "title": "Migrar fotos Base64 existentes para Storage",
       "status": "ready",
-      "blockedBy": ["AO-PHOTO-005", "AO-PHOTO-006"],
+      "blockedBy": [
+        "AO-PHOTO-005",
+        "AO-PHOTO-006"
+      ],
       "objective": "Migrar fotos legadas para objetos privados otimizados com dry-run, retomada e rollback seguros.",
       "context": "Registros antigos podem conter Data URL e consumir PostgreSQL. A remoção só pode ocorrer depois de confirmar upload, checksum, leitura e compatibilidade do PDF.",
       "expectedBehavior": "A ferramenta inventaria, simula, migra em lotes retomáveis e relata resultados; falhas preservam o Base64 original até confirmação completa.",
-      "scope": ["Inventariar data: por empresa, quantidade e bytes.", "Implementar dry-run sem escrita e execução real com backup/confirmacão.", "Decodificar, otimizar, enviar, validar checksum/abertura e atualizar em lotes pequenos.", "Permitir retomada sem repetir objetos e gerar relatório anterior/final/falhas.", "Documentar recuperação física do PostgreSQL como janela separada, sem executá-la."],
-      "outOfScope": ["Executar migração de produção automaticamente.", "Remover Base64 antes da validação completa.", "Executar VACUUM FULL ou outra operação bloqueante."],
-      "acceptanceCriteria": ["Dry-run não altera banco nem Storage.", "Execução interrompida retoma sem duplicar ou perder fotos.", "Após validação não restam data: no escopo migrado e fotos/PDFs continuam abrindo.", "Relatório apresenta migrados, falhos e bytes antes/depois."],
-      "tests": ["Dry-run, falha intermediária, retomada e rollback no staging.", "Comparação de checksum, abertura e PDF antes/depois.", "npm run lint, npm run test:run e cargo check."],
+      "scope": [
+        "Inventariar data: por empresa, quantidade e bytes.",
+        "Implementar dry-run sem escrita e execução real com backup/confirmacão.",
+        "Decodificar, otimizar, enviar, validar checksum/abertura e atualizar em lotes pequenos.",
+        "Permitir retomada sem repetir objetos e gerar relatório anterior/final/falhas.",
+        "Documentar recuperação física do PostgreSQL como janela separada, sem executá-la."
+      ],
+      "outOfScope": [
+        "Executar migração de produção automaticamente.",
+        "Remover Base64 antes da validação completa.",
+        "Executar VACUUM FULL ou outra operação bloqueante."
+      ],
+      "acceptanceCriteria": [
+        "Dry-run não altera banco nem Storage.",
+        "Execução interrompida retoma sem duplicar ou perder fotos.",
+        "Após validação não restam data: no escopo migrado e fotos/PDFs continuam abrindo.",
+        "Relatório apresenta migrados, falhos e bytes antes/depois."
+      ],
+      "tests": [
+        "Dry-run, falha intermediária, retomada e rollback no staging.",
+        "Comparação de checksum, abertura e PDF antes/depois.",
+        "npm run lint, npm run test:run e cargo check."
+      ],
       "testInstructions": {
-        "prerequisites": ["AO-PHOTO-005/006 mesclados; backup de staging e fixtures Base64 sintéticas."],
-        "steps": ["Executar inventário e dry-run; conferir impacto zero.", "Migrar lote, interromper, retomar e validar relatório/fotos/PDF."],
-        "expectedResultAndEvidence": ["Guardar relatório sanitizado, contagens e bytes comparativos.", "Confirmar que falhas mantêm Base64 e sucessos apontam para objeto válido."],
+        "prerequisites": [
+          "AO-PHOTO-005/006 mesclados; backup de staging e fixtures Base64 sintéticas."
+        ],
+        "steps": [
+          "Executar inventário e dry-run; conferir impacto zero.",
+          "Migrar lote, interromper, retomar e validar relatório/fotos/PDF."
+        ],
+        "expectedResultAndEvidence": [
+          "Guardar relatório sanitizado, contagens e bytes comparativos.",
+          "Confirmar que falhas mantêm Base64 e sucessos apontam para objeto válido."
+        ],
         "dataImpact": "Altera apenas fixtures sintéticas no staging até autorização separada para produção.",
-        "cleanupAndRollback": ["Restaurar fixtures do backup de staging e apagar objetos de teste.", "Não executar recuperação física do espaço nesta etapa."],
+        "cleanupAndRollback": [
+          "Restaurar fixtures do backup de staging e apagar objetos de teste.",
+          "Não executar recuperação física do espaço nesta etapa."
+        ],
         "stagingRestrictions": "Nunca copiar dados ou credenciais internas para staging."
       },
-      "likelyFiles": ["src-tauri/src/bin/*", "src-tauri/src/commands/equipamento_imagens.rs", "scripts/*", "docs/*"],
-      "risks": ["Perder evidência antiga.", "Duplicar objetos em retomada.", "Confundir economia lógica com espaço físico recuperado."]
+      "likelyFiles": [
+        "src-tauri/src/bin/*",
+        "src-tauri/src/commands/equipamento_imagens.rs",
+        "scripts/*",
+        "docs/*"
+      ],
+      "risks": [
+        "Perder evidência antiga.",
+        "Duplicar objetos em retomada.",
+        "Confundir economia lógica com espaço físico recuperado."
+      ]
     },
     {
       "id": "AO-PHOTO-008",
       "title": "Medir capacidade e decidir Go/No-Go",
       "status": "ready",
-      "blockedBy": ["AO-PHOTO-006", "AO-PHOTO-007"],
+      "blockedBy": [
+        "AO-PHOTO-006",
+        "AO-PHOTO-007"
+      ],
       "objective": "Medir consumo, isolamento e confiabilidade para decidir operação no plano atual e o momento de upgrade.",
       "context": "Com meta de 250 KB e seis fotos, a estimativa é 1,5 MB por OS; quotas e egress precisam de métricas reais e alertas antes do lançamento amplo.",
       "expectedBehavior": "Painel/relatório por empresa mostra capacidade e falhas, alerta em 70/85/95% e bloqueia Go quando isolamento, órfãos ou segredos não atendem aos critérios.",
-      "scope": ["Registrar quantidade, média/máximo, bytes temporários/definitivos, compressão, órfãos, falhas e egress.", "Criar alertas em 70%, 85% e 95% da quota.", "Auditar metadados versus objetos e isolamento entre tenants.", "Varrer bundles e configuração contra service_role.", "Documentar upgrade antes de 85% e decisão Go/No-Go baseada em evidências."],
-      "outOfScope": ["Comprar ou promover plano automaticamente.", "Alterar dados para melhorar métricas.", "Executar rollout em produção."],
-      "acceptanceCriteria": ["Métricas e alertas cobrem Storage, banco e egress por empresa.", "Auditoria identifica órfãos e divergências.", "Tenant A não acessa fotos de B e service_role não aparece nos clientes.", "Go/No-Go e ponto de upgrade ficam documentados."],
-      "tests": ["Cenários sintéticos nos limiares 70/85/95%.", "Teste de isolamento tenant A/B e varredura de bundles.", "Auditoria com objeto e metadado órfãos.", "npm run lint, npm run test:run e cargo check."],
+      "scope": [
+        "Registrar quantidade, média/máximo, bytes temporários/definitivos, compressão, órfãos, falhas e egress.",
+        "Criar alertas em 70%, 85% e 95% da quota.",
+        "Auditar metadados versus objetos e isolamento entre tenants.",
+        "Varrer bundles e configuração contra service_role.",
+        "Documentar upgrade antes de 85% e decisão Go/No-Go baseada em evidências."
+      ],
+      "outOfScope": [
+        "Comprar ou promover plano automaticamente.",
+        "Alterar dados para melhorar métricas.",
+        "Executar rollout em produção."
+      ],
+      "acceptanceCriteria": [
+        "Métricas e alertas cobrem Storage, banco e egress por empresa.",
+        "Auditoria identifica órfãos e divergências.",
+        "Tenant A não acessa fotos de B e service_role não aparece nos clientes.",
+        "Go/No-Go e ponto de upgrade ficam documentados."
+      ],
+      "tests": [
+        "Cenários sintéticos nos limiares 70/85/95%.",
+        "Teste de isolamento tenant A/B e varredura de bundles.",
+        "Auditoria com objeto e metadado órfãos.",
+        "npm run lint, npm run test:run e cargo check."
+      ],
       "testInstructions": {
-        "prerequisites": ["AO-PHOTO-006/007 mesclados e métricas somente do staging."],
-        "steps": ["Gerar carga sintética, validar alertas e auditoria.", "Executar isolamento e varredura de segredos; produzir relatório Go/No-Go."],
-        "expectedResultAndEvidence": ["Registrar métricas, alertas disparados e divergências detectadas.", "Entregar decisão e capacidade estimada sem dados reais."],
+        "prerequisites": [
+          "AO-PHOTO-006/007 mesclados e métricas somente do staging."
+        ],
+        "steps": [
+          "Gerar carga sintética, validar alertas e auditoria.",
+          "Executar isolamento e varredura de segredos; produzir relatório Go/No-Go."
+        ],
+        "expectedResultAndEvidence": [
+          "Registrar métricas, alertas disparados e divergências detectadas.",
+          "Entregar decisão e capacidade estimada sem dados reais."
+        ],
         "dataImpact": "Somente métricas e objetos sintéticos descartáveis no staging.",
-        "cleanupAndRollback": ["Apagar carga sintética e manter apenas relatório sanitizado.", "Desabilitar alertas de teste após validação."],
+        "cleanupAndRollback": [
+          "Apagar carga sintética e manter apenas relatório sanitizado.",
+          "Desabilitar alertas de teste após validação."
+        ],
         "stagingRestrictions": "Nenhuma coleta ou carga em produção sem autorização separada."
       },
-      "likelyFiles": ["supabase/functions/*", "src-tauri/src/commands/*", "docs/*"],
-      "risks": ["Estimar capacidade com amostra pouco representativa.", "Alertas não considerar egress.", "Declarar Go sem isolamento comprovado."]
+      "likelyFiles": [
+        "supabase/functions/*",
+        "src-tauri/src/commands/*",
+        "docs/*"
+      ],
+      "risks": [
+        "Estimar capacidade com amostra pouco representativa.",
+        "Alertas não considerar egress.",
+        "Declarar Go sem isolamento comprovado."
+      ]
     },
     {
       "id": "AO-HOTFIX-001",
@@ -2423,6 +2568,413 @@
       "risks": [
         "Atualizar apenas um dos mapeamentos e manter e-mail ou PDF com domínio antigo.",
         "Alterar involuntariamente destinatários ou comportamento SMTP ao trocar textos."
+      ]
+    },
+    {
+      "id": "AO-HOTFIX-002",
+      "title": "Estabilizar primeira conexão do release Windows",
+      "status": "merged",
+      "blockedBy": [],
+      "objective": "Tornar a primeira abertura do executável Windows previsível em redes distintas, com conexão PostgreSQL limitada, retentativa controlada e fallback persistente de uma única tentativa.",
+      "context": "O release v0.4.2 inicializa PostgreSQL de forma bloqueante com timeout implícito de 30 segundos e usa o endpoint direto IPv6 do Supabase. Em algumas máquinas o executável demora, cai no fallback ou só abre após novas tentativas. O fallback testa e conecta duas vezes e a URL embutida pode voltar a prevalecer no boot seguinte.",
+      "expectedBehavior": "O release recebe uma URL Supavisor Session por secret de build, responde dentro de um limite conhecido, faz retentativas curtas apenas para falhas transitórias, exibe diagnóstico útil e, quando o operador fornece outra URL válida, conecta uma vez e reutiliza essa configuração nos próximos boots.",
+      "scope": [
+        "Configurar o pool sqlx com limite explícito de conexões e timeout curto, registrando a causa sanitizada de falha.",
+        "Aplicar retentativa limitada com pequeno backoff somente na inicialização, sem bloquear o executável por períodos indefinidos.",
+        "Fazer a configuração persistida pelo operador prevalecer sobre o fallback compilado do release.",
+        "Unificar testar, inicializar, migrar e salvar a configuração em uma única operação backend, persistindo apenas após conexão e migrações bem-sucedidas.",
+        "Substituir a regex do frontend por parsing compatível com URLs postgres/postgresql válidas e preservar parâmetros de conexão.",
+        "Remover src-tauri/.env do bundle e do rastreamento, fornecendo a URL padrão do release por GitHub Secret sem imprimir seu valor.",
+        "Falhar de forma segura em migrações, sem truncar _sqlx_migrations nem continuar com schema inconsistente.",
+        "Adicionar testes unitários direcionados para parsing, persistência, prioridade da configuração e limites de conexão."
+      ],
+      "outOfScope": [
+        "Migrar o runtime interno para Supabase Auth, Data API, PowerSync ou o modo SaaS da feature.",
+        "Alterar schema, migrations, dados de produção ou credenciais diretamente no banco.",
+        "Fazer merge automático, publicar release ou promover mudanças para feature.",
+        "Eliminar neste hotfix a credencial PostgreSQL compilada exigida pela arquitetura interna atual; sua substituição por API autenticada permanece trabalho arquitetural separado."
+      ],
+      "acceptanceCriteria": [
+        "O executável deixa de aguardar o timeout implícito de 30 segundos por tentativa e sempre apresenta UI ou erro acionável dentro do limite configurado.",
+        "A URL padrão do release usa Supavisor Session IPv4 na porta 5432, fornecida por secret e ausente do Git e dos recursos do instalador.",
+        "Uma URL válida informada no fallback produz apenas uma conexão de inicialização e passa a ser usada no boot seguinte.",
+        "URLs postgres:// e postgresql:// com porta opcional, credenciais percent-encoded e parâmetros SSL são aceitas sem parser regex frágil.",
+        "Erros de timeout, DNS/rede, autenticação, TLS e migração chegam à UI em categorias sanitizadas, sem usuário ou senha.",
+        "Falha de migração não altera nem trunca _sqlx_migrations e não marca o banco como pronto.",
+        "src-tauri/.env deixa de ser rastreado e empacotado, e o workflow exige AUTOOS_DATABASE_URL para um release configurado.",
+        "Lint, testes frontend direcionados, suíte frontend e cargo check passam."
+      ],
+      "tests": [
+        "Testes unitários do parser de URL e do DatabaseConfigDialog garantindo uma única chamada de conexão.",
+        "Testes Rust para prioridade de configuração, sanitização de erros e persistência somente após sucesso, sem banco real.",
+        "Teste de build sem AUTOOS_DATABASE_URL confirmando fallback de configuração e sem segredo no bundle.",
+        "Teste de build com placeholder sintético confirmando injeção sem exposição nos logs.",
+        "npm run lint.",
+        "npm run test:run.",
+        "cd src-tauri && cargo check."
+      ],
+      "testInstructions": {
+        "prerequisites": [
+          "Usar worktree exclusiva baseada em origin/master por exceção explícita do proprietário para o hotfix de produção; não usar a worktree feature já modificada.",
+          "Usar somente URLs e credenciais sintéticas nos testes automatizados e nunca conectar ao banco operacional.",
+          "Para o release real, cadastrar AUTOOS_DATABASE_URL como GitHub Secret com a URL Session pooler copiada do painel Supabase."
+        ],
+        "steps": [
+          "Executar os testes frontend direcionados do parser, serviço e diálogo de configuração.",
+          "Executar testes Rust direcionados sem rede e depois npm run lint, npm run test:run e cargo check em src-tauri.",
+          "Gerar build local sem secret e confirmar que abre o fallback dentro do limite, aceita uma URL sintética válida e não contém src-tauri/.env como recurso.",
+          "Inspecionar o workflow com secret ausente e presente usando somente placeholder, confirmando falha/mensagem clara ou injeção sanitizada.",
+          "Após revisão humana, validar manualmente um candidato de release em Windows IPv4-only, dual-stack, offline e com credencial inválida antes de publicar."
+        ],
+        "expectedResultAndEvidence": [
+          "Os checks automatizados passam e registram somente hosts/erros sanitizados, sem credenciais.",
+          "O fallback aparece em tempo limitado quando offline e uma configuração válida dispara uma única inicialização.",
+          "Reabrir o app usa a configuração persistida e não retorna silenciosamente ao fallback compilado.",
+          "A inspeção do bundle confirma ausência do arquivo .env e a matriz Windows comprova comportamento previsível nas quatro condições de rede."
+        ],
+        "dataImpact": "Somente código, configuração de build e arquivos locais temporários; testes automatizados não acessam nem alteram banco, e a validação manual de release executa somente conexão e SELECT/migrações já versionadas após aprovação.",
+        "cleanupAndRollback": [
+          "Remover builds e arquivos de configuração sintéticos gerados durante os testes.",
+          "Não publicar release nem alterar GitHub Secret sem ação humana; em falha, manter o release v0.4.2 disponível e descartar apenas a branch do hotfix.",
+          "Não executar TRUNCATE, restore, migrations novas ou qualquer alteração manual no banco de produção."
+        ],
+        "stagingRestrictions": "É proibido usar ou registrar DATABASE_URL, senha, service_role, token PowerSync ou dados reais nos testes; a URL real do Session pooler deve existir somente no GitHub Secret e na validação operacional autorizada."
+      },
+      "likelyFiles": [
+        "src-tauri/src/db.rs",
+        "src-tauri/src/commands/util.rs",
+        "src-tauri/src/main.rs",
+        "src/components/DatabaseConfigDialog.tsx",
+        "src/lib/db-config.ts",
+        "src-tauri/build.rs",
+        "src-tauri/tauri.conf.json",
+        ".github/workflows/build.yml",
+        "src-tauri/.env"
+      ],
+      "risks": [
+        "Reduzir excessivamente o timeout e rejeitar redes lentas que ainda conseguiriam conectar.",
+        "Retentar erros permanentes de autenticação e aumentar a demora sem benefício.",
+        "Persistir uma configuração antes de as migrações concluírem e quebrar boots futuros.",
+        "Gerar release sem o secret ou com URL direta IPv6 e manter a inconsistência entre máquinas.",
+        "Expor a URL em log, artefato ou diff durante a mudança do pipeline."
+      ]
+    },
+    {
+      "id": "AO-HOTFIX-003",
+      "title": "Permitir ajuste de orçamento durante a manutenção",
+      "status": "merged",
+      "blockedBy": [],
+      "objective": "Permitir editar serviços e valor do orçamento após a verificação enquanto o equipamento estiver em manutenção, sem simular nova entrega nem retroceder o fluxo.",
+      "context": "No master, o diálogo de ajuste só é alcançável em AGUARDANDO_APROVACAO e ORCAMENTO_VENCIDO. Em EM_MANUTENCAO não há ação equivalente, embora o backend já possua atualização auditada da verificação e do valor do orçamento.",
+      "expectedBehavior": "Em EM_MANUTENCAO, o operador com FINANCIAL_ACTIONS abre Ajustar Orçamento, revisa serviços e valor, confirma com PIN e salva o ajuste mantendo o status EM_MANUTENCAO.",
+      "scope": [
+        "Expor Ajustar Orçamento nas ações de EM_MANUTENCAO.",
+        "Reutilizar o formulário e as validações existentes de ajuste.",
+        "Salvar pela operação auditada atualizar_servicos_verificacao sem executar mudança de status.",
+        "Recarregar a lista e fechar o diálogo após sucesso.",
+        "Adicionar teste direcionado para a disponibilidade e preservação de status."
+      ],
+      "outOfScope": [
+        "Editar valor final pago ou regras de entrega.",
+        "Alterar migrations, permissões ou dados de produção.",
+        "Fazer merge ou publicar release automaticamente."
+      ],
+      "acceptanceCriteria": [
+        "EM_MANUTENCAO apresenta a ação Ajustar Orçamento.",
+        "O ajuste exige permissão FINANCIAL_ACTIONS e mantém a auditoria BUDGET_ADJUSTED.",
+        "Confirmar o ajuste não chama atualizar_status_equipamento e não altera EM_MANUTENCAO.",
+        "Serviços, peças e valor permanecem sincronizados entre verificação e equipamento.",
+        "Lint e testes direcionados passam."
+      ],
+      "tests": [
+        "Teste de UI para abrir e confirmar ajuste durante EM_MANUTENCAO.",
+        "npm run lint.",
+        "npm run test:run."
+      ],
+      "testInstructions": {
+        "prerequisites": [
+          "Usar a worktree histórica do ticket ou uma verificação limpa baseada em origin/feature, sem acessar banco operacional.",
+          "Executar o teste de UI com db, permissões e PIN mockados e dados sintéticos."
+        ],
+        "steps": [
+          "Executar o teste direcionado de ajuste de orçamento durante EM_MANUTENCAO.",
+          "Executar npm run lint e npm run test:run.",
+          "Confirmar no histórico integrado que o PR #15 e seu merge estão contidos em origin/feature."
+        ],
+        "expectedResultAndEvidence": [
+          "O teste comprova que o ajuste mantém EM_MANUTENCAO e não chama atualização de status.",
+          "Lint e suíte frontend passam ou qualquer falha preexistente fica registrada.",
+          "O grafo Git confirma o ticket mesclado sem necessidade de nova escrita operacional."
+        ],
+        "dataImpact": "Somente leitura do histórico e testes frontend com mocks; não cria nem altera dados persistentes.",
+        "cleanupAndRollback": [
+          "Limpar apenas artefatos temporários da suíte de testes.",
+          "Não reverter o merge já incorporado nem alterar dados operacionais durante a validação."
+        ],
+        "stagingRestrictions": "É proibido usar clientes, equipamentos, PINs, credenciais ou banco reais; toda verificação funcional deve usar mocks e fixtures sintéticas."
+      },
+      "likelyFiles": [
+        "src/pages/Equipamentos.tsx",
+        "src/pages/equipamentos/__tests__/budget-maintenance-adjustment.test.tsx"
+      ],
+      "risks": [
+        "Reutilizar a mudança para AGUARDANDO_APROVACAO e retroceder indevidamente o status.",
+        "Atualizar somente o valor do equipamento e deixar a verificação divergente.",
+        "Ignorar a permissão financeira ou a trilha de auditoria existente."
+      ]
+    },
+    {
+      "id": "AO-UPD-001",
+      "title": "Estabilizar artefatos assinados do auto-updater",
+      "status": "ready",
+      "blockedBy": [
+        "AO-HOTFIX-002"
+      ],
+      "objective": "Tornar o pipeline de release uma fonte confiável de instalador, assinatura e manifesto para atualizações automáticas do AutoOS no Windows.",
+      "context": "O repositório já registra o tauri-plugin-updater, habilita createUpdaterArtifacts e aponta para latest.json no GitHub Releases, porém o release mais recente pode ser criado sem os assets necessários e o gerador manual de manifesto não valida integralmente versão, arquitetura, chave e publicação atômica. AO-HOTFIX-002 também altera o workflow de release e deve ser incorporado antes desta mudança.",
+      "expectedBehavior": "Ao publicar uma tag SemVer alinhada, o GitHub Actions compila o Windows, assina o artefato do updater com a chave privada configurada, valida os arquivos gerados e publica instalador, assinatura e latest.json no mesmo release; qualquer ausência ou inconsistência falha antes de anunciar uma atualização utilizável.",
+      "scope": [
+        "Revisar o uso do tauri-action e decidir uma única fonte para gerar latest.json, removendo duplicação ou ordem frágil entre action e script próprio.",
+        "Validar no pipeline o alinhamento de versão entre tag, package.json, Cargo.toml e tauri.conf.json.",
+        "Validar a presença e o tamanho não vazio do instalador Windows, do arquivo .sig correspondente e do latest.json antes da conclusão do release.",
+        "Validar schema, SemVer, plataforma windows-x86_64, URL do asset e conteúdo da assinatura no manifesto sem imprimir segredo.",
+        "Garantir que a chave privada e sua senha sejam recebidas exclusivamente por GitHub Secrets e que a chave pública embarcada corresponda à chave de assinatura vigente.",
+        "Impedir que um workflow_dispatch sem tag publique versão 0.0.0 ou substitua silenciosamente o canal latest.",
+        "Adicionar testes locais do gerador/validador de manifesto com diretórios e artefatos sintéticos.",
+        "Documentar a configuração dos secrets e o procedimento de rotação compatível da chave do updater."
+      ],
+      "outOfScope": [
+        "Criar o botão ou alterar estados visuais do frontend.",
+        "Publicar release real, criar tag, alterar GitHub Secrets ou promover código automaticamente.",
+        "Adicionar macOS, Linux, canais beta, servidor próprio de updates ou atualizações diferenciais.",
+        "Alterar a assinatura Authenticode além do necessário para preservar o pipeline Windows existente."
+      ],
+      "acceptanceCriteria": [
+        "Tag, package.json, Cargo.toml e tauri.conf.json precisam conter a mesma versão SemVer para o job prosseguir.",
+        "O pipeline não publica ou conclui um release de atualização sem instalador Windows, assinatura correspondente e latest.json válidos.",
+        "latest.json referencia um asset existente no mesmo release, usa windows-x86_64 e contém exatamente o conteúdo não vazio do .sig gerado para esse asset.",
+        "Execução manual sem uma versão explícita e válida não produz 0.0.0 nem altera o release latest.",
+        "Nenhuma chave privada, senha ou URL PostgreSQL aparece em logs, manifesto, bundle ou diff.",
+        "A documentação explica geração inicial, armazenamento e rotação da chave sem invalidar clientes já instalados.",
+        "Testes direcionados do manifesto, npm run lint e validação sintática do workflow passam."
+      ],
+      "tests": [
+        "Testes Node do gerador/validador com versão válida, divergência de versões, assinatura ausente, asset ausente e workflow_dispatch sem versão.",
+        "npm run lint.",
+        "Validação sintática de .github/workflows/build.yml e inspeção estática contra exposição de secrets.",
+        "Dry-run local com árvore de bundle sintética, sem publicar release."
+      ],
+      "testInstructions": {
+        "prerequisites": [
+          "Usar worktree exclusiva criada de origin/feature somente depois de AO-HOTFIX-002 estar merged.",
+          "Usar chaves, versões, nomes de assets e diretórios temporários sintéticos; não usar a chave privada real do updater.",
+          "Não criar tag, release, upload ou alteração de GitHub Secret durante os testes do ticket."
+        ],
+        "steps": [
+          "Executar os testes Node direcionados do gerador/validador cobrindo sucesso e cada falha prevista.",
+          "Executar o validador contra uma árvore temporária com MSI/EXE e .sig fictícios e confirmar o latest.json produzido.",
+          "Executar npm run lint e validar a sintaxe do workflow com ferramenta local apropriada.",
+          "Inspecionar logs e artefatos sintéticos para confirmar ausência de conteúdo de secrets e URLs de banco."
+        ],
+        "expectedResultAndEvidence": [
+          "Os cenários inválidos encerram com erro acionável antes de qualquer etapa de publicação.",
+          "O cenário válido produz manifesto com versão, plataforma, URL e assinatura correspondentes aos fixtures.",
+          "Lint e validação do workflow passam; registrar saída sanitizada dos comandos e lista dos fixtures temporários.",
+          "A evidência demonstra que nenhuma operação externa de release ou secrets foi executada."
+        ],
+        "dataImpact": "Somente arquivos do repositório e artefatos sintéticos temporários; não altera dados operacionais, banco, releases, tags ou secrets.",
+        "cleanupAndRollback": [
+          "Remover apenas diretórios e artefatos sintéticos criados em área temporária.",
+          "Não apagar releases existentes nem alterar secrets para limpar testes.",
+          "Em falha, reverter somente os arquivos deste ticket na worktree exclusiva."
+        ],
+        "stagingRestrictions": "É proibido usar chave privada real, senha de assinatura, AUTOOS_DATABASE_URL, dados internos ou publicar assets em staging; toda validação deve usar fixtures sintéticos."
+      },
+      "likelyFiles": [
+        ".github/workflows/build.yml",
+        "scripts/generate-update-manifest.mjs",
+        "scripts/__tests__/generate-update-manifest.test.mjs",
+        "src-tauri/tauri.conf.json",
+        "docs/ATUALIZACAO_EXE.md",
+        "docs/RELEASE.md"
+      ],
+      "risks": [
+        "Publicar latest.json antes do asset e oferecer uma atualização quebrada aos clientes.",
+        "Assinar com chave diferente da chave pública embarcada e bloquear todas as instalações existentes.",
+        "Misturar assinatura do updater com Authenticode e diagnosticar incorretamente uma das camadas.",
+        "Uma execução manual sobrescrever o canal latest com versão inválida ou incompleta."
+      ]
+    },
+    {
+      "id": "AO-UPD-002",
+      "title": "Criar experiência confiável de atualização no app",
+      "status": "ready",
+      "blockedBy": [
+        "AO-UPD-001"
+      ],
+      "objective": "Disponibilizar em Configurações um fluxo claro e testável para verificar, baixar e instalar versões assinadas do AutoOS.",
+      "context": "Existe uma implementação inicial de UpdateChecker que consulta o plugin, mas transforma falhas em falso sucesso, não mantém o objeto de atualização em estado tipado e não apresenta progresso ou uma ação persistente de instalação. Com o pipeline estabilizado, a UI deve refletir fielmente cada resultado do updater.",
+      "expectedBehavior": "O operador verifica atualizações manualmente, distingue app atualizado de falha de consulta, vê versão e notas quando houver atualização, inicia a instalação por uma ação explícita, acompanha o progresso e recebe orientação segura para encerramento/reinício no Windows.",
+      "scope": [
+        "Refatorar UpdateChecker com estados discriminados para ocioso, verificando, atualizado, disponível, baixando, instalando e erro.",
+        "Manter o objeto Update tipado enquanto a versão estiver disponível e trocar a ação principal de Verificar para Baixar e instalar.",
+        "Exibir versão instalada, versão disponível, notas sanitizadas e progresso conhecido ou indeterminado do download.",
+        "Diferenciar sem atualização de erros HTTP, offline, manifesto inválido, plataforma ausente e assinatura/instalação rejeitada, sem afirmar sucesso em exceções.",
+        "Impedir verificações e instalações concorrentes e permitir tentar novamente após falha recuperável.",
+        "Tratar explicitamente o comportamento do Windows, no qual o instalador pode encerrar o processo do app, sem depender de relaunch inalcançável.",
+        "Integrar o componente à área apropriada de Configurações e adicionar testes unitários com o plugin completamente mockado.",
+        "Preservar funcionamento do frontend em navegador/testes sem runtime Tauri, apresentando estado indisponível quando aplicável."
+      ],
+      "outOfScope": [
+        "Verificar automaticamente no boot, baixar silenciosamente ou instalar sem confirmação do operador.",
+        "Alterar o workflow, gerar chaves, publicar release ou trocar o endpoint de distribuição.",
+        "Criar canais beta, downgrade, rollout gradual ou telemetria externa.",
+        "Salvar estado do updater no PostgreSQL ou registrar secrets no frontend."
+      ],
+      "acceptanceCriteria": [
+        "Sem atualização, a UI informa que a versão instalada é a mais recente somente após uma consulta bem-sucedida.",
+        "Falha de rede, HTTP, manifesto ou assinatura aparece como erro com tentativa novamente e nunca como atualização aplicada.",
+        "Ao encontrar versão superior, a UI mostra versão e notas e oferece ação explícita Baixar e instalar.",
+        "Download exibe progresso quando o total é conhecido e indicador indeterminado quando não é.",
+        "Cliques repetidos não iniciam consultas ou instalações concorrentes.",
+        "A instalação segue o ciclo suportado pelo Tauri no Windows e não promete reinício que o processo não consiga executar.",
+        "Testes cobrem todos os estados, callbacks de progresso, retry, bloqueio concorrente e ambiente sem Tauri.",
+        "npm run lint e npm run test:run passam."
+      ],
+      "tests": [
+        "Testes do UpdateChecker com check retornando null, Update disponível e rejeições em check/download/install.",
+        "Testes dos callbacks de progresso com tamanho conhecido e desconhecido.",
+        "Teste de cliques repetidos e recuperação por tentar novamente.",
+        "Teste do modo web/mock sem invocar comandos Tauri reais.",
+        "npm run lint.",
+        "npm run test:run."
+      ],
+      "testInstructions": {
+        "prerequisites": [
+          "Usar worktree exclusiva criada de origin/feature após AO-UPD-001 estar merged.",
+          "Executar testes automatizados com @tauri-apps/plugin-updater e plugin-process mockados; não baixar nem instalar executáveis reais.",
+          "Usar versões e notas sintéticas sem dados internos."
+        ],
+        "steps": [
+          "Executar os testes direcionados do UpdateChecker para cada estado e erro do fluxo.",
+          "Simular eventos de download com total conhecido e ausente, confirmando texto, progresso e bloqueio de ações.",
+          "Executar o teste em ambiente web/mock e confirmar que nenhuma chamada nativa real ocorre.",
+          "Executar npm run lint e npm run test:run."
+        ],
+        "expectedResultAndEvidence": [
+          "As asserções distinguem atualizado, disponível e erro sem falsos positivos.",
+          "A UI oferece uma única instalação, apresenta progresso correto e permite retry somente após falha.",
+          "O cenário Windows simulado aceita o encerramento iniciado pelo instalador sem depender de callback posterior.",
+          "Lint e suíte frontend passam; registrar somente saída dos testes e capturas com versões sintéticas."
+        ],
+        "dataImpact": "Somente código e estado efêmero de UI; testes usam mocks e não baixam, instalam ou persistem qualquer artefato.",
+        "cleanupAndRollback": [
+          "Limpar mocks e artefatos temporários gerados pela suíte.",
+          "Não instalar executáveis, alterar registro do Windows ou modificar releases durante este ticket.",
+          "Em falha, reverter somente os arquivos deste ticket na worktree exclusiva."
+        ],
+        "stagingRestrictions": "É proibido usar release de produção, chave privada, credenciais internas ou dados reais; versões, manifests e eventos devem ser inteiramente simulados."
+      },
+      "likelyFiles": [
+        "src/components/UpdateChecker.tsx",
+        "src/components/UpdateChecker.test.tsx",
+        "src/pages/Configuracoes.tsx",
+        "src/test/setup.ts",
+        "e2e/mocks/tauri-core.ts"
+      ],
+      "risks": [
+        "Mascarar indisponibilidade como versão atualizada e deixar máquinas permanentemente desatualizadas.",
+        "Iniciar duas instalações concorrentes por cliques repetidos.",
+        "Usar any ou conservar objeto inválido após nova consulta e quebrar a instalação.",
+        "Assumir que relaunch sempre executa depois que o instalador encerra o app no Windows."
+      ]
+    },
+    {
+      "id": "AO-UPD-003",
+      "title": "Homologar atualização Windows entre versões reais",
+      "status": "ready",
+      "blockedBy": [
+        "AO-UPD-001",
+        "AO-UPD-002"
+      ],
+      "objective": "Comprovar em um canal de homologação que uma instalação Windows existente consegue descobrir, validar e aplicar a versão seguinte sem download manual.",
+      "context": "Testes unitários não exercitam assinatura, GitHub Releases, permissões do Windows, encerramento do processo e substituição do instalador em conjunto. Antes de habilitar o fluxo para produção é necessária uma atualização controlada N para N+1 com evidência e plano de recuperação.",
+      "expectedBehavior": "Uma máquina Windows limpa instala a versão base de homologação, o botão encontra somente a versão superior publicada no canal de teste, baixa e valida o asset assinado, instala a atualização, reabre na versão nova e preserva configurações e dados locais esperados.",
+      "scope": [
+        "Definir um canal/endpoint de homologação que não altere o latest usado pelas instalações de produção.",
+        "Gerar dois builds Windows consecutivos e alinhados, assinados pela mesma chave de updater compatível com a chave pública embarcada.",
+        "Executar a jornada instalar N, verificar, baixar, instalar N+1 e confirmar a versão após reabertura.",
+        "Validar os cenários sem atualização, offline durante consulta, interrupção durante download e assinatura inválida em fixtures controlados.",
+        "Confirmar preservação de database-config.json, keyring esperado, preferências e dados PostgreSQL sem executar mudanças destrutivas.",
+        "Registrar checklist sanitizado, hashes, nomes dos assets, resultado visual e procedimento de rollback operacional.",
+        "Atualizar documentação para declarar o updater homologado e o procedimento oficial de publicação."
+      ],
+      "outOfScope": [
+        "Publicar ou promover o release de produção sem decisão humana explícita.",
+        "Testar com banco, clientes, credenciais ou máquinas operacionais reais.",
+        "Migrar schema, restaurar backup ou alterar dados de produção.",
+        "Adicionar suporte a plataformas além do Windows x86_64."
+      ],
+      "acceptanceCriteria": [
+        "O canal de homologação não modifica nem é selecionado por clientes do canal latest de produção.",
+        "A versão N detecta exclusivamente N+1, valida sua assinatura e conclui a instalação pelo botão do app.",
+        "Após a instalação, o app abre reportando N+1 e uma nova verificação informa corretamente que não há atualização.",
+        "Configuração local sintética, credencial de keyring isolada e acesso ao banco de staging permanecem funcionais após a troca do executável.",
+        "Offline e interrupção de download não removem a versão N funcional nem exibem falso sucesso.",
+        "Artefato com assinatura inválida é rejeitado e não substitui a instalação existente.",
+        "Evidência registra versões, hashes, horários e resultados sem incluir secrets, tokens, URLs com credenciais ou dados reais.",
+        "A documentação e o checklist de release refletem o fluxo efetivamente homologado."
+      ],
+      "tests": [
+        "Jornada manual em VM Windows: instalar N, atualizar para N+1 e verificar versão final.",
+        "Cenários manuais de versão atual, offline, interrupção de download e assinatura inválida em canal isolado.",
+        "npm run lint.",
+        "npm run test:run.",
+        "cd src-tauri && cargo check.",
+        "Inspeção dos assets e hashes publicados no release de homologação."
+      ],
+      "testInstructions": {
+        "prerequisites": [
+          "Usar worktree exclusiva criada de origin/feature depois de AO-UPD-001 e AO-UPD-002 estarem merged.",
+          "Usar VM Windows descartável, repositório/release ou endpoint isolado de homologação e banco staging com dados sintéticos.",
+          "A publicação no canal isolado, se necessária, exige autorização humana explícita e nunca pode alterar o release latest de produção.",
+          "Usar a chave compatível por mecanismo secreto autorizado, sem copiá-la para arquivos, logs ou evidências."
+        ],
+        "steps": [
+          "Executar npm run lint, npm run test:run e cargo check antes dos builds candidatos.",
+          "Preparar e publicar, após autorização, os builds sintéticos N e N+1 no canal isolado com manifests e assets verificáveis.",
+          "Instalar N na VM, criar somente configuração/fixtures sintéticas, acionar o botão e concluir a atualização para N+1.",
+          "Reabrir o app, conferir a versão, a configuração sintética e nova consulta sem atualização.",
+          "Restaurar snapshot da VM e repetir os cenários offline, interrupção e assinatura inválida sem apontar para produção.",
+          "Registrar hashes, nomes de assets, horários, capturas sanitizadas e resultado de cada cenário."
+        ],
+        "expectedResultAndEvidence": [
+          "A jornada N para N+1 completa pelo app e a tela posterior confirma N+1 e estado atualizado.",
+          "A lista de assets e hashes corresponde ao manifesto e à assinatura do canal isolado.",
+          "Os cenários de falha mantêm N executável e mostram mensagem correta, sem instalação parcial observável.",
+          "Evidências sanitizadas confirmam preservação das fixtures e ausência de contato com produção."
+        ],
+        "dataImpact": "Cria releases/artefatos apenas em canal isolado mediante autorização, instala software em VM descartável e cria somente dados sintéticos de staging; não altera produção.",
+        "cleanupAndRollback": [
+          "Restaurar ou destruir a VM descartável e remover credenciais/keyrings isolados após registrar a evidência.",
+          "Remover releases de homologação apenas se autorizado; caso contrário, marcá-los claramente como não produtivos.",
+          "Excluir fixtures sintéticas do staging e confirmar que nenhum dado ou upload pendente permaneceu.",
+          "Em falha, manter o canal de produção inalterado e não promover os builds candidatos."
+        ],
+        "stagingRestrictions": "É proibido usar máquinas operacionais, banco interno, dados reais, release latest de produção ou registrar secrets; todos os testes devem ocorrer em VM e staging isolados com autorização para qualquer publicação externa."
+      },
+      "likelyFiles": [
+        "docs/ATUALIZACAO_EXE.md",
+        "docs/RELEASE.md",
+        ".github/workflows/build.yml",
+        "src-tauri/tauri.conf.json",
+        ".sisyphus/evidence/*"
+      ],
+      "risks": [
+        "Publicar acidentalmente um candidato de homologação no canal latest de produção.",
+        "Usar chave incompatível e obter um falso diagnóstico de falha funcional.",
+        "Uma interrupção deixar instalação parcial ou exigir elevação não prevista no Windows.",
+        "Incluir segredo, URL autenticada ou dado interno nas evidências de homologação."
       ]
     }
   ]
