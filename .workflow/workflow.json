@@ -2976,6 +2976,82 @@
         "Uma interrupção deixar instalação parcial ou exigir elevação não prevista no Windows.",
         "Incluir segredo, URL autenticada ou dado interno nas evidências de homologação."
       ]
+    },
+    {
+      "id": "AO-AUTH-TEST-001",
+      "title": "Gerar instalador Windows para validar login SaaS",
+      "status": "review",
+      "blockedBy": ["AO-AUTH-002"],
+      "objective": "Disponibilizar um instalador Windows temporário que abra diretamente no login SaaS, usando exclusivamente o projeto Supabase de staging.",
+      "context": "O workflow Windows existente compila o produto interno e exige DATABASE_URL de produção, portanto não exercita SaasLoginScreen implementada em AO-AUTH-002. A validação visual requer build Tauri com feature Cargo saas e Vite mode saas, sem conexão PostgreSQL.",
+      "expectedBehavior": "Um disparo manual gera artefato NSIS temporário do build SaaS; ao abrir, o aplicativo não exibe configuração de banco e apresenta a tela de login administrativa por e-mail e senha.",
+      "scope": [
+        "Criar workflow manual Windows separado do release e do teste interno conectado ao banco.",
+        "Executar npm run tauri:build:saas com VITE_SUPABASE_URL, chave publicável e redirect HTTPS recebidos como variáveis de Actions.",
+        "Validar formato HTTPS da URL, prefixo sb_publishable_ da chave e redirect HTTPS antes do build.",
+        "Publicar somente o instalador NSIS e checksum como artefato com retenção curta.",
+        "Documentar que a validação manual usa somente conta sintética de staging."
+      ],
+      "outOfScope": [
+        "Conectar o instalador ao PostgreSQL interno ou de produção.",
+        "Incluir service_role, secret key, senha, access token, refresh token ou DATABASE_URL no workflow, bundle ou logs.",
+        "Criar release, tag, atualização automática ou alterar usuários e dados de produção.",
+        "Implementar registro ou PIN dos tickets AO-AUTH-003 e AO-AUTH-004."
+      ],
+      "acceptanceCriteria": [
+        "O workflow usa o comando tauri:build:saas e não o build interno padrão.",
+        "Nenhuma variável DATABASE_URL é exigida, passada ao build ou incluída no artefato.",
+        "Somente URL HTTPS, chave sb_publishable_ e redirect HTTPS de staging são aceitos como configuração de frontend.",
+        "O artefato expira em até três dias e não publica release.",
+        "Ao abrir no Windows, a aplicação apresenta SaasLoginScreen sem DatabaseConfigDialog.",
+        "Lint, testes, build SaaS e cargo check com feature saas passam antes da PR."
+      ],
+      "tests": [
+        "npm run lint.",
+        "npm run test:run.",
+        "npm run build:saas.",
+        "cargo check --manifest-path src-tauri/Cargo.toml --features saas.",
+        "Disparo manual do workflow e inspeção do resumo sem secrets.",
+        "Teste visual no Windows com conta sintética do Supabase staging."
+      ],
+      "testInstructions": {
+        "prerequisites": [
+          "Usar worktree exclusiva baseada em origin/feature após AO-AUTH-002 estar merged.",
+          "Configurar no GitHub Actions apenas as variáveis públicas de URL, chave publicável e redirect HTTPS do Supabase staging.",
+          "Usar conta administrativa sintética de staging; não usar conta, senha ou dados internos/produção."
+        ],
+        "steps": [
+          "Executar os checks locais de frontend e Rust no modo SaaS.",
+          "Disparar o workflow manual para a branch da PR e confirmar o SHA exibido no resumo.",
+          "Baixar o instalador em uma máquina Windows de teste, instalar e abrir o aplicativo.",
+          "Confirmar visualmente SaasLoginScreen, ausência de DatabaseConfigDialog e login apenas com a conta sintética autorizada.",
+          "Excluir o instalador local e aguardar expiração do artefato após a validação."
+        ],
+        "expectedResultAndEvidence": [
+          "O build gera instalador NSIS e checksum sem criar tag ou release.",
+          "O resumo registra somente branch, SHA, nome do artefato e modo SaaS; não registra valores de configuração.",
+          "A tela inicial é o login SaaS e não depende de PostgreSQL.",
+          "A evidência visual é sanitizada e não contém e-mail real, senha ou tokens."
+        ],
+        "dataImpact": "Somente cria artefato temporário do GitHub Actions e entradas locais de keyring de uma conta sintética; não altera banco, usuários ou dados de produção.",
+        "cleanupAndRollback": [
+          "Remover a sessão sintética local pelo botão Sair após a validação.",
+          "Excluir o instalador baixado e deixar o artefato expirar em até três dias.",
+          "Em falha, não promover a PR, não criar release e remover somente as variáveis públicas de Actions se tiverem sido adicionadas por este ticket."
+        ],
+        "stagingRestrictions": "É proibido usar DATABASE_URL, banco interno/produção, service_role, secret key, senha real, token ou dados de clientes; a validação é exclusivamente de staging com valores públicos de frontend e conta sintética."
+      },
+      "likelyFiles": [
+        ".github/workflows/windows-saas-login-test.yml",
+        ".workflow/workflow.json",
+        "docs/SAAS_AUTH.md"
+      ],
+      "risks": [
+        "Acionar inadvertidamente o workflow interno conectado à produção em vez do build SaaS.",
+        "Inserir uma chave privilegiada no ambiente VITE e expô-la no bundle.",
+        "Misturar URL/redirect de produção e staging e testar a identidade no projeto errado.",
+        "Confundir a página de recuperação com a tela de login do aplicativo."
+      ]
     }
   ]
 }
