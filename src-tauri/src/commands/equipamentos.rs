@@ -9,13 +9,18 @@
 //! ║  - atualizar_status_equipamento: Atualiza status + datas     ║
 //! ╚══════════════════════════════════════════════════════════════╝
 
-use crate::commands::types::{EquipamentoInput, EquipamentoRow, EQUIPAMENTO_SELECT};
+use crate::commands::types::{
+    normalize_forma_pagamento, AprovarOrcamentoInput, EquipamentoHistoricoEvento,
+    EquipamentoInput, EquipamentoRow, EQUIPAMENTO_SELECT,
+};
 use crate::commands::auth::{
-    record_security_event, require_permission, SecurityProfileSummary, PERMISSION_DELETE_RECORDS,
-    PERMISSION_FINANCIAL_ACTIONS,
+    current_session_profile, record_security_event, require_permission, require_sensitive_access,
+    SecurityProfileSummary, PERMISSION_DELETE_RECORDS, PERMISSION_FINANCIAL_ACTIONS,
 };
 use crate::db::get_pool;
-use sqlx::Row;
+use chrono::NaiveDateTime;
+use sqlx::{PgPool, Row};
+use std::collections::HashSet;
 use tracing::{debug, error, info, instrument};
 
 /// Limite padrão de itens por página.
@@ -91,6 +96,72 @@ fn status_change_requires_sensitive_access(
         )
 }
 
+fn is_regular_status_transition(from: &str, to: &str) -> bool {
+    from == to
+        || matches!(
+            (from, to),
+            ("RECEBIDO", "EM_VERIFICACAO")
+                | ("EM_VERIFICACAO", "VERIFICADO")
+                | ("VERIFICADO", "AGUARDANDO_APROVACAO")
+                | ("AGUARDANDO_APROVACAO", "APROVADO" | "REPROVADO" | "ORCAMENTO_VENCIDO")
+                | ("APROVADO", "EM_MANUTENCAO")
+                | ("EM_MANUTENCAO", "AGUARDANDO_PECA" | "PRONTO")
+                | ("AGUARDANDO_PECA", "EM_MANUTENCAO")
+                | ("PRONTO", "ENTREGUE")
+                | ("REPROVADO", "ENTREGUE" | "ABANDONADO")
+                | ("ORCAMENTO_VENCIDO", "ABANDONADO" | "AGUARDANDO_APROVACAO")
+        )
+}
+
+fn is_status_correction(from: &str, to: &str) -> bool {
+    matches!(
+        (from, to),
+        ("EM_VERIFICACAO", "RECEBIDO")
+            | ("VERIFICADO", "EM_VERIFICACAO")
+            | ("AGUARDANDO_APROVACAO", "VERIFICADO")
+            | ("APROVADO", "AGUARDANDO_APROVACAO")
+            | ("EM_MANUTENCAO", "APROVADO" | "AGUARDANDO_APROVACAO")
+            | ("AGUARDANDO_PECA", "EM_MANUTENCAO" | "AGUARDANDO_APROVACAO")
+            | ("PRONTO", "EM_MANUTENCAO" | "AGUARDANDO_PECA" | "AGUARDANDO_APROVACAO")
+            | ("REPROVADO", "AGUARDANDO_APROVACAO")
+            | ("ORCAMENTO_VENCIDO", "AGUARDANDO_APROVACAO")
+    )
+}
+
+fn status_date_field(status: &str) -> Option<&'static str> {
+    match status {
+        "VERIFICADO" => Some("data_verificacao"),
+        "APROVADO" => Some("data_aprovacao"),
+        "REPROVADO" => Some("data_reprovacao"),
+        "PRONTO" => Some("data_pronto"),
+        "ENTREGUE" => Some("data_saida"),
+        _ => None,
+    }
+}
+
+fn parse_history_timestamp(value: &str) -> Option<NaiveDateTime> {
+    let value = value.trim().trim_end_matches('Z');
+    ["%Y-%m-%dT%H:%M:%S%.f", "%Y-%m-%d %H:%M:%S%.f", "%Y-%m-%dT%H:%M:%S", "%Y-%m-%d %H:%M:%S"]
+        .iter()
+        .find_map(|format| NaiveDateTime::parse_from_str(value, format).ok())
+}
+
+/// Mantém a etapa legada, mas não apresenta como verdadeiro um horário que
+/// antecede o próprio cadastro do equipamento.
+fn sanitize_legacy_event_date(candidate: Option<String>, received_at: Option<&str>) -> Option<(String, bool)> {
+    let candidate = candidate.filter(|value| !value.trim().is_empty())?;
+    let is_before_receipt = received_at
+        .and_then(parse_history_timestamp)
+        .zip(parse_history_timestamp(&candidate))
+        .is_some_and(|(received, event)| event < received);
+
+    if is_before_receipt {
+        received_at.map(|value| (value.to_string(), false))
+    } else {
+        Some((candidate, true))
+    }
+}
+
 fn required_concurrency_token(token: Option<&str>, entity_label: &str) -> Result<String, String> {
     token
         .map(str::trim)
@@ -104,6 +175,61 @@ fn concurrency_conflict_message(entity_label: &str) -> String {
         "Conflito de concorrência: {} foi alterado por outro técnico. Recarregue os dados antes de tentar novamente.",
         entity_label
     )
+}
+
+fn reject_direct_approval(status: &str) -> Result<(), String> {
+    if normalize_status_key(status) == "APROVADO" {
+        return Err("A aprovação deve usar a operação aprovar_orcamento com pagamento válido.".to_string());
+    }
+    Ok(())
+}
+
+fn audit_detail(details: &str, key: &str) -> Option<String> {
+    details.split(';').find_map(|part| {
+        let (candidate, value) = part.trim().split_once('=')?;
+        (candidate == key)
+            .then(|| value.trim().to_string())
+            .filter(|value| !value.is_empty())
+    })
+}
+
+async fn resolve_responsavel_snapshot(
+    pool: &PgPool,
+    input: &EquipamentoInput,
+) -> Result<(Option<i32>, Option<String>, Option<String>, Option<String>), String> {
+    let Some(contact_id) = input.responsavel_contato_id else {
+        return Ok((
+            None,
+            optional_text(input.responsavel_nome.as_deref()),
+            optional_text(input.responsavel_email.as_deref()),
+            optional_text(input.responsavel_telefone.as_deref()),
+        ));
+    };
+
+    let empresa_id = input
+        .empresa_id
+        .ok_or_else(|| "empresa_id é obrigatório ao associar um contato responsável.".to_string())?;
+    let cliente_id = input
+        .cliente_id
+        .ok_or_else(|| "cliente_id é obrigatório ao associar um contato responsável.".to_string())?;
+
+    let snapshot: Option<(String, Option<String>, Option<String>)> = sqlx::query_as(
+        "SELECT nome, email, telefone
+         FROM cliente_contatos
+         WHERE id = $1 AND empresa_id = $2 AND cliente_id = $3 AND ativo = true",
+    )
+    .bind(contact_id)
+    .bind(empresa_id)
+    .bind(cliente_id)
+    .fetch_optional(pool)
+    .await
+    .map_err(|error| format!("Erro ao validar contato responsável: {}", error))?;
+
+    let Some((nome, email, telefone)) = snapshot else {
+        return Err("Contato responsável não encontrado, inativo ou incompatível com o cliente/empresa.".to_string());
+    };
+
+    Ok((Some(contact_id), Some(nome), email, telefone))
 }
 
     fn equipment_has_sensitive_financial_input(input: &EquipamentoInput) -> bool {
@@ -260,6 +386,136 @@ pub async fn buscar_equipamento(id: i32) -> Result<EquipamentoRow, String> {
     Ok(row)
 }
 
+/// Retorna a linha do tempo operacional e as mudanças de status auditadas.
+/// O tenant vem exclusivamente do perfil autenticado; a tela não informa empresa_id.
+#[tauri::command]
+#[instrument(skip_all, fields(equipamento_id = equipamento_id))]
+pub async fn listar_historico_equipamento(
+    equipamento_id: i32,
+) -> Result<Vec<EquipamentoHistoricoEvento>, String> {
+    let actor = require_sensitive_access()?;
+    let pool = get_pool().await.map_err(|error| error.to_string())?;
+    let empresa_id: Option<i32> = sqlx::query_scalar(
+        "SELECT p.empresa_id
+         FROM security_profiles p
+         JOIN empresas e ON e.id = p.empresa_id AND LOWER(e.status) = 'ativo'
+         WHERE p.id = $1 AND p.ativo = true",
+    )
+    .bind(actor.id)
+    .fetch_optional(&pool)
+    .await
+    .map_err(|error| format!("Erro ao identificar a empresa do perfil: {}", error))?
+    .flatten();
+    let empresa_id = empresa_id
+        .ok_or_else(|| "O perfil ativo não está vinculado a uma empresa ativa.".to_string())?;
+
+    let equipamento: Option<(
+        Option<String>, String, Option<String>, Option<String>, Option<String>, Option<String>,
+        Option<String>, Option<String>,
+    )> = sqlx::query_as(
+        "SELECT to_char(e.criado_em, 'YYYY-MM-DD\"T\"HH24:MI:SS.US\"Z\"'), e.data_entrada, e.data_aprovacao,
+                e.data_reprovacao, e.data_pronto, e.data_saida,
+                to_char(v.data_inicio, 'YYYY-MM-DD\"T\"HH24:MI:SS.US\"Z\"'),
+                to_char(v.data_fim, 'YYYY-MM-DD\"T\"HH24:MI:SS.US\"Z\"')
+         FROM equipamentos e
+         LEFT JOIN LATERAL (
+             SELECT data_inicio, data_fim
+             FROM verificacoes
+             WHERE equipamento_id = e.id
+               AND (empresa_id = e.empresa_id OR empresa_id IS NULL)
+             ORDER BY COALESCE(data_fim, data_inicio) DESC, id DESC
+             LIMIT 1
+         ) v ON true
+         WHERE e.id = $1 AND e.empresa_id = $2",
+    )
+    .bind(equipamento_id)
+    .bind(empresa_id)
+    .fetch_optional(&pool)
+    .await
+    .map_err(|error| format!("Erro ao carregar histórico do equipamento: {}", error))?;
+    let Some((criado_em, data_entrada, data_aprovacao, data_reprovacao, data_pronto, data_saida, verificacao_inicio, verificacao_fim)) = equipamento else {
+        return Err("Equipamento não encontrado na empresa do perfil ativo.".to_string());
+    };
+
+    let audit_rows: Vec<(String, Option<String>, Option<String>, String)> = sqlx::query_as(
+        "SELECT event_type, profile_name, details,
+                to_char(created_at, 'YYYY-MM-DD\"T\"HH24:MI:SS.US\"Z\"')
+         FROM security_audit_log
+         WHERE success = true
+           AND event_type IN ('EQUIPMENT_STATUS_UPDATED', 'EQUIPMENT_STATUS_CORRECTED', 'BUDGET_APPROVED')
+           AND (empresa_id = $1 OR empresa_id IS NULL)
+           AND split_part(split_part(COALESCE(details, ''), 'equipamento_id=', 2), ';', 1) = $2
+         ORDER BY created_at ASC, id ASC",
+    )
+    .bind(empresa_id)
+    .bind(equipamento_id.to_string())
+    .fetch_all(&pool)
+    .await
+    .map_err(|error| format!("Erro ao carregar auditoria do equipamento: {}", error))?;
+
+    let mut eventos = Vec::new();
+    let mut statuses_auditados = HashSet::new();
+    for (event_type, profile_name, details, created_at) in audit_rows {
+        let details = details.unwrap_or_default();
+        let status = audit_detail(&details, "status").unwrap_or_else(|| "APROVADO".to_string());
+        let status_anterior = audit_detail(&details, "status_anterior").or_else(|| {
+            (event_type == "BUDGET_APPROVED").then(|| "AGUARDANDO_APROVACAO".to_string())
+        });
+        let motivo = audit_detail(&details, "motivo").unwrap_or_else(|| {
+            if event_type == "BUDGET_APPROVED" {
+                "Orçamento aprovado pelo cliente.".to_string()
+            } else {
+                "Transição do fluxo operacional.".to_string()
+            }
+        });
+        statuses_auditados.insert(status.clone());
+        eventos.push(EquipamentoHistoricoEvento {
+            tipo: if event_type == "EQUIPMENT_STATUS_CORRECTED" {
+                "CORRECAO_STATUS".to_string()
+            } else {
+                "MUDANCA_STATUS".to_string()
+            },
+            data: created_at,
+            data_confiavel: true,
+            status_anterior,
+            status,
+            motivo,
+            autor: profile_name,
+        });
+    }
+
+    let recebido_em = criado_em.or(Some(data_entrada));
+    let recebido_referencia = recebido_em.clone();
+    let mut adicionar_legado = |status: &str, data: Option<(String, bool)>, motivo: &str| {
+        if let Some((data, data_confiavel)) = data {
+            if !statuses_auditados.contains(status) {
+                eventos.push(EquipamentoHistoricoEvento {
+                    tipo: "ETAPA".to_string(),
+                    data,
+                    data_confiavel,
+                    status_anterior: None,
+                    status: status.to_string(),
+                    motivo: motivo.to_string(),
+                    autor: None,
+                });
+            }
+        }
+    };
+    adicionar_legado("RECEBIDO", recebido_em.map(|data| (data, true)), "Equipamento recebido e cadastrado.");
+    adicionar_legado("VERIFICADO", sanitize_legacy_event_date(verificacao_fim, recebido_referencia.as_deref()), "Verificação técnica registrada.");
+    adicionar_legado(
+        "EM_VERIFICACAO",
+        sanitize_legacy_event_date(verificacao_inicio, recebido_referencia.as_deref()),
+        "Verificação técnica iniciada.",
+    );
+    adicionar_legado("APROVADO", sanitize_legacy_event_date(data_aprovacao, recebido_referencia.as_deref()), "Orçamento aprovado pelo cliente.");
+    adicionar_legado("REPROVADO", sanitize_legacy_event_date(data_reprovacao, recebido_referencia.as_deref()), "Orçamento reprovado pelo cliente.");
+    adicionar_legado("PRONTO", sanitize_legacy_event_date(data_pronto, recebido_referencia.as_deref()), "Serviço concluído; equipamento pronto.");
+    adicionar_legado("ENTREGUE", sanitize_legacy_event_date(data_saida, recebido_referencia.as_deref()), "Equipamento entregue ao cliente.");
+    eventos.sort_by(|left, right| left.data.cmp(&right.data));
+    Ok(eventos)
+}
+
 /// Buscar equipamentos por número de série (case-insensitive).
 /// Retorna múltiplos registros para o mesmo serial (ciclos de manutenção).
 #[tauri::command]
@@ -293,12 +549,14 @@ pub async fn criar_equipamento(input: EquipamentoInput) -> Result<EquipamentoRow
     let modelo = required_text(&input.modelo, "Modelo")?;
     let tipo = required_text(&input.tipo, "Tipo")?;
     let status = required_text(&normalize_status_key(&input.status), "Status")?;
+    reject_direct_approval(&status)?;
     let data_entrada = required_text(&input.data_entrada, "Data de entrada")?;
 
     validate_non_negative_i32(input.paginas_impressas, "Páginas impressas")?;
     validate_non_negative_f64(input.preco_compra, "Preço de compra")?;
     validate_non_negative_f64(input.preco_venda, "Preço de venda")?;
     validate_non_negative_f64(input.valor_orcamento, "Valor do orçamento")?;
+    let responsavel = resolve_responsavel_snapshot(&pool, &input).await?;
 
     let row = sqlx::query(
         r#"
@@ -307,11 +565,13 @@ pub async fn criar_equipamento(input: EquipamentoInput) -> Result<EquipamentoRow
             defeito_relatado, acessorios, acessorios_outros,
             paginas_impressas, tecnologia, conectividade, data_entrada, proprietario,
             preco_compra, preco_venda, observacoes, cliente_id, cliente_nome,
-            cliente_telefone, cliente_email, prazo_aprovacao, valor_orcamento
+            cliente_telefone, cliente_email, prazo_aprovacao, valor_orcamento,
+            empresa_id, responsavel_contato_id, responsavel_nome, responsavel_email,
+            responsavel_telefone
         ) VALUES (
             $1, $2, $3, $4, $5, $6, $7, $8, $9, $10,
             $11, $12, $13, $14, $15, $16, $17, $18, $19,
-            $20, $21, $22, $23
+            $20, $21, $22, $23, $24, $25, $26, $27, $28
         ) RETURNING id
         "#,
     )
@@ -338,6 +598,11 @@ pub async fn criar_equipamento(input: EquipamentoInput) -> Result<EquipamentoRow
     .bind(optional_text(input.cliente_email.as_deref()))
     .bind(optional_text(input.prazo_aprovacao.as_deref()))
     .bind(input.valor_orcamento)
+    .bind(input.empresa_id)
+    .bind(responsavel.0)
+    .bind(responsavel.1)
+    .bind(responsavel.2)
+    .bind(responsavel.3)
     .fetch_one(&pool)
     .await
     .map_err(|e| {
@@ -373,12 +638,14 @@ pub async fn atualizar_equipamento(id: i32, input: EquipamentoInput) -> Result<E
     let modelo = required_text(&input.modelo, "Modelo")?;
     let tipo = required_text(&input.tipo, "Tipo")?;
     let status = required_text(&normalize_status_key(&input.status), "Status")?;
+    reject_direct_approval(&status)?;
     let data_entrada = required_text(&input.data_entrada, "Data de entrada")?;
 
     validate_non_negative_i32(input.paginas_impressas, "Páginas impressas")?;
     validate_non_negative_f64(input.preco_compra, "Preço de compra")?;
     validate_non_negative_f64(input.preco_venda, "Preço de venda")?;
     validate_non_negative_f64(input.valor_orcamento, "Valor do orçamento")?;
+    let responsavel = resolve_responsavel_snapshot(&pool, &input).await?;
 
     let updated_rows = sqlx::query(
         r#"
@@ -388,8 +655,12 @@ pub async fn atualizar_equipamento(id: i32, input: EquipamentoInput) -> Result<E
             paginas_impressas = $10, tecnologia = $11, conectividade = $12, data_entrada = $13,
             proprietario = $14, preco_compra = $15, preco_venda = $16, observacoes = $17,
             cliente_id = $18, cliente_nome = $19, cliente_telefone = $20, cliente_email = $21,
-            prazo_aprovacao = $22, valor_orcamento = $23, atualizado_em = NOW()
-        WHERE id = $24 AND atualizado_em = $25::TIMESTAMPTZ
+            prazo_aprovacao = $22, valor_orcamento = $23,
+            responsavel_contato_id = $24, responsavel_nome = $25,
+            responsavel_email = $26, responsavel_telefone = $27,
+            atualizado_em = NOW()
+        WHERE id = $28 AND atualizado_em = $29::TIMESTAMPTZ
+          AND ($30::INTEGER IS NULL OR empresa_id = $30)
         "#,
     )
     .bind(serial_number)
@@ -415,8 +686,13 @@ pub async fn atualizar_equipamento(id: i32, input: EquipamentoInput) -> Result<E
     .bind(optional_text(input.cliente_email.as_deref()))
     .bind(optional_text(input.prazo_aprovacao.as_deref()))
     .bind(input.valor_orcamento)
+    .bind(responsavel.0)
+    .bind(responsavel.1)
+    .bind(responsavel.2)
+    .bind(responsavel.3)
     .bind(id)
     .bind(concurrency_token)
+    .bind(input.empresa_id)
     .execute(&pool)
     .await
     .map_err(|e| {
@@ -487,17 +763,35 @@ pub async fn atualizar_status_equipamento(
     prazo_aprovacao: Option<String>,
     valor_final: Option<f64>,
     expected_updated_em: Option<String>,
+    motivo_correcao: Option<String>,
 ) -> Result<EquipamentoRow, String> {
     validate_non_negative_f64(valor_orcamento, "Valor do orçamento")?;
     validate_non_negative_f64(valor_final, "Valor final")?;
     let concurrency_token = required_concurrency_token(expected_updated_em.as_deref(), "equipamento")?;
     let normalized_status = normalize_status_key(&novo_status);
+    reject_direct_approval(&normalized_status)?;
     let prazo_aprovacao_value = prazo_aprovacao
         .as_deref()
         .map(str::trim)
         .filter(|value| !value.is_empty())
         .map(|value| value.to_string());
-    let financial_actor = if status_change_requires_sensitive_access(
+    let motivo_correcao_value = optional_text(motivo_correcao.as_deref());
+    let pool = get_pool().await.map_err(|e| e.to_string())?;
+    let current_status: Option<String> = sqlx::query_scalar("SELECT status FROM equipamentos WHERE id = $1")
+        .bind(id)
+        .fetch_optional(&pool)
+        .await
+        .map_err(|e| e.to_string())?;
+    let current_status = current_status.ok_or_else(|| "Equipamento não encontrado.".to_string())?;
+    let normalized_current_status = normalize_status_key(&current_status);
+    let is_correction = is_status_correction(&normalized_current_status, &normalized_status);
+    if !is_regular_status_transition(&normalized_current_status, &normalized_status) && !is_correction {
+        return Err("Transição de status inválida para este equipamento.".to_string());
+    }
+    if is_correction && motivo_correcao_value.is_none() {
+        return Err("Informe o motivo da correção de status.".to_string());
+    }
+    let financial_actor = if is_correction || status_change_requires_sensitive_access(
         &normalized_status,
         valor_orcamento,
         prazo_aprovacao_value.as_deref(),
@@ -509,19 +803,10 @@ pub async fn atualizar_status_equipamento(
     };
 
     debug!("Atualizando status do equipamento {} para {}", id, normalized_status);
-    let pool = get_pool().await.map_err(|e| e.to_string())?;
-
     // Determinar qual campo de data atualizar baseado no novo status
-    let date_field = match normalized_status.as_str() {
-        "APROVADO" => "data_aprovacao",
-        "REPROVADO" => "data_reprovacao",
-        "EM_VERIFICACAO" | "EM_MANUTENCAO" => "data_verificacao",
-        "PRONTO" => "data_pronto",
-        "ENTREGUE" => "data_saida",
-        _ => "",
-    };
+    let date_field = status_date_field(&normalized_status);
 
-    let query = if !date_field.is_empty() {
+    let query = if let Some(date_field) = date_field {
         format!(
             "UPDATE equipamentos SET status = $1, {} = NOW(), valor_orcamento = COALESCE($2, valor_orcamento), prazo_aprovacao = COALESCE($3, prazo_aprovacao), valor_final = COALESCE($4, valor_final), atualizado_em = NOW() WHERE id = $5 AND atualizado_em = $6::TIMESTAMPTZ",
             date_field
@@ -549,25 +834,184 @@ pub async fn atualizar_status_equipamento(
         return Err(concurrency_conflict_message("o equipamento"));
     }
 
-    if let Some(actor) = financial_actor.as_ref() {
-        record_security_event(
-            "EQUIPMENT_STATUS_UPDATED",
-            Some(actor),
-            format!(
-                "equipamento_id={}; status={}; valor_orcamento={}; prazo_aprovacao={}; valor_final={}",
-                id,
-                normalized_status,
-                valor_orcamento.is_some(),
-                prazo_aprovacao_value.is_some(),
-                valor_final.is_some(),
-            ),
-            true,
-        )
-        .await;
-    }
+    let audit_actor = financial_actor.or_else(|| {
+        current_session_profile()
+            .ok()
+            .flatten()
+            .map(|(_, profile)| profile)
+    });
+    let motivo_auditoria = motivo_correcao_value
+        .as_deref()
+        .unwrap_or("Transição do fluxo operacional.")
+        .replace(';', ",");
+    record_security_event(
+        if is_correction { "EQUIPMENT_STATUS_CORRECTED" } else { "EQUIPMENT_STATUS_UPDATED" },
+        audit_actor.as_ref(),
+        format!(
+            "equipamento_id={}; status_anterior={}; status={}; correcao={}; motivo={}; valor_orcamento={}; prazo_aprovacao={}; valor_final={}",
+            id,
+            normalized_current_status,
+            normalized_status,
+            is_correction,
+            motivo_auditoria,
+            valor_orcamento.is_some(),
+            prazo_aprovacao_value.is_some(),
+            valor_final.is_some(),
+        ),
+        true,
+    )
+    .await;
 
     info!("Status do equipamento {} atualizado para {}", id, normalized_status);
     buscar_equipamento(id).await
+}
+
+/// Aprova um orçamento atualizando pagamento, status e data de aprovação na
+/// mesma transação. A verificação e o equipamento são sempre conferidos no
+/// mesmo tenant; falhas de concorrência deixam ambos inalterados.
+#[tauri::command]
+#[instrument(skip_all, fields(empresa_id = input.empresa_id, equipamento_id = input.equipamento_id))]
+pub async fn aprovar_orcamento(input: AprovarOrcamentoInput) -> Result<EquipamentoRow, String> {
+    if input.empresa_id <= 0 {
+        return Err("Empresa inválida".to_string());
+    }
+    if input.equipamento_id <= 0 {
+        return Err("Equipamento inválido".to_string());
+    }
+    let concurrency_token = required_concurrency_token(
+        Some(input.expected_updated_em.as_str()),
+        "equipamento",
+    )?;
+    let (payment_code, payment_detail) = normalize_forma_pagamento(
+        Some(&input.pagamento.codigo),
+        input.pagamento.detalhe.as_deref(),
+    )?;
+    let actor = require_permission(PERMISSION_FINANCIAL_ACTIONS)?;
+    let pool = get_pool().await.map_err(|error| error.to_string())?;
+    let mut tx = pool.begin().await.map_err(|error| {
+        error!("Erro ao iniciar transação de aprovação do equipamento {}: {}", input.equipamento_id, error);
+        error.to_string()
+    })?;
+
+    let equipment: Option<(String, String)> = sqlx::query_as(
+        "SELECT COALESCE(status, ''), atualizado_em::TEXT
+         FROM equipamentos
+         WHERE id = $1 AND empresa_id = $2
+         FOR UPDATE",
+    )
+    .bind(input.equipamento_id)
+    .bind(input.empresa_id)
+    .fetch_optional(&mut *tx)
+    .await
+    .map_err(|error| format!("Erro ao validar equipamento para aprovação: {}", error))?;
+
+    let Some((current_status, _current_updated_em)) = equipment else {
+        return Err("Equipamento não encontrado na empresa informada.".to_string());
+    };
+    if normalize_status_key(&current_status) != "AGUARDANDO_APROVACAO" {
+        return Err("Somente orçamentos aguardando aprovação podem ser aprovados.".to_string());
+    }
+
+    let conflicting_verification: Option<i32> = sqlx::query_scalar(
+        "SELECT id
+         FROM verificacoes
+         WHERE equipamento_id = $1 AND empresa_id IS NOT NULL AND empresa_id <> $2
+         ORDER BY id DESC
+         LIMIT 1
+         FOR UPDATE",
+    )
+    .bind(input.equipamento_id)
+    .bind(input.empresa_id)
+    .fetch_optional(&mut *tx)
+    .await
+    .map_err(|error| format!("Erro ao validar tenant da verificação: {}", error))?;
+    if conflicting_verification.is_some() {
+        return Err("A verificação técnica pertence a outra empresa e não pode ser usada nesta aprovação.".to_string());
+    }
+
+    let verification: Option<(i32, Option<i32>)> = sqlx::query_as(
+        "SELECT id, empresa_id
+         FROM verificacoes
+         WHERE equipamento_id = $1 AND (empresa_id = $2 OR empresa_id IS NULL)
+         ORDER BY (empresa_id = $2) DESC, id DESC
+         LIMIT 1
+         FOR UPDATE",
+    )
+    .bind(input.equipamento_id)
+    .bind(input.empresa_id)
+    .fetch_optional(&mut *tx)
+    .await
+    .map_err(|error| format!("Erro ao validar verificação para aprovação: {}", error))?;
+
+    let Some((verification_id, verification_empresa_id)) = verification else {
+        return Err("Não é possível aprovar sem uma verificação técnica.".to_string());
+    };
+
+    let payment_updated_rows = sqlx::query(
+        "UPDATE verificacoes
+         SET forma_pagamento_codigo = $1, forma_pagamento_detalhe = $2,
+             empresa_id = COALESCE(empresa_id, $5)
+         WHERE id = $3 AND equipamento_id = $4
+           AND (empresa_id = $5 OR empresa_id IS NULL)",
+    )
+    .bind(payment_code.as_deref())
+    .bind(payment_detail.as_deref())
+    .bind(verification_id)
+    .bind(input.equipamento_id)
+    .bind(input.empresa_id)
+    .execute(&mut *tx)
+    .await
+    .map_err(|error| format!("Erro ao salvar pagamento do orçamento: {}", error))?
+    .rows_affected();
+
+    if payment_updated_rows != 1 {
+        return Err("A verificação técnica mudou durante a aprovação. Recarregue os dados e tente novamente.".to_string());
+    }
+
+    let updated_rows = sqlx::query(
+        "UPDATE equipamentos
+         SET status = 'APROVADO', data_aprovacao = NOW(), atualizado_em = NOW()
+         WHERE id = $1 AND empresa_id = $2 AND atualizado_em = $3::TIMESTAMPTZ",
+    )
+    .bind(input.equipamento_id)
+    .bind(input.empresa_id)
+    .bind(&concurrency_token)
+    .execute(&mut *tx)
+    .await
+    .map_err(|error| format!("Erro ao aprovar orçamento: {}", error))?
+    .rows_affected();
+
+    if updated_rows == 0 {
+        return Err(concurrency_conflict_message("o orçamento"));
+    }
+
+    tx.commit().await.map_err(|error| {
+        error!("Erro ao confirmar aprovação do equipamento {}: {}", input.equipamento_id, error);
+        error.to_string()
+    })?;
+
+    record_security_event(
+        "BUDGET_APPROVED",
+        Some(&actor),
+        format!(
+            "empresa_id={}; equipamento_id={}; verificacao_id={}; pagamento_codigo={}; status_anterior=AGUARDANDO_APROVACAO; status=APROVADO; motivo=Orçamento aprovado pelo cliente.; verificacao_legada_regularizada={}",
+            input.empresa_id,
+            input.equipamento_id,
+            verification_id,
+            payment_code.as_deref().unwrap_or(""),
+            verification_empresa_id.is_none(),
+        ),
+        true,
+    )
+    .await;
+
+    let query = format!("{} WHERE id = $1 AND empresa_id = $2", EQUIPAMENTO_SELECT);
+    sqlx::query_as::<_, EquipamentoRow>(sqlx::AssertSqlSafe(query))
+        .bind(input.equipamento_id)
+        .bind(input.empresa_id)
+        .fetch_one(&pool)
+        .await
+        .map_err(|error| format!("Erro ao carregar equipamento aprovado: {}", error))
 }
 
 #[cfg(test)]
@@ -578,6 +1022,13 @@ mod tests {
     fn p0_sensitive_status_gate_flags_status_only_changes_on_update() {
         assert!(status_change_requires_sensitive_access("ENTREGUE", None, None, None));
         assert!(!status_change_requires_sensitive_access("EM_VERIFICACAO", None, None, None));
+    }
+
+    #[test]
+    fn status_correction_is_limited_to_the_rework_paths() {
+        assert!(is_status_correction("PRONTO", "AGUARDANDO_APROVACAO"));
+        assert!(is_regular_status_transition("PRONTO", "ENTREGUE"));
+        assert!(!is_status_correction("ENTREGUE", "PRONTO"));
     }
 
     #[test]
@@ -613,6 +1064,35 @@ mod tests {
     }
 
     #[test]
+    fn verification_timestamp_is_only_recorded_when_verification_is_finished() {
+        assert_eq!(status_date_field("VERIFICADO"), Some("data_verificacao"));
+        assert_eq!(status_date_field("EM_VERIFICACAO"), None);
+        assert_eq!(status_date_field("EM_MANUTENCAO"), None);
+    }
+
+    #[test]
+    fn legacy_history_does_not_display_an_event_before_receipt() {
+        let received = "2026-09-10T15:32:51.000000Z";
+        let sanitized = sanitize_legacy_event_date(
+            Some("2026-09-10T14:13:22.000000Z".to_string()),
+            Some(received),
+        );
+
+        assert_eq!(sanitized, Some((received.to_string(), false)));
+    }
+
+    #[test]
+    fn valid_history_timestamp_is_preserved() {
+        let event = "2026-09-10T16:13:22.000000Z";
+        let sanitized = sanitize_legacy_event_date(
+            Some(event.to_string()),
+            Some("2026-09-10T15:32:51.000000Z"),
+        );
+
+        assert_eq!(sanitized, Some((event.to_string(), true)));
+    }
+
+    #[test]
     fn p1_equipment_financial_validation_rejects_negative_values() {
         assert!(validate_non_negative_f64(Some(-1.0), "Valor do orçamento")
             .unwrap_err()
@@ -621,5 +1101,19 @@ mod tests {
             .unwrap_err()
             .contains("negativo"));
         assert!(validate_non_negative_f64(Some(0.0), "Valor do orçamento").is_ok());
+    }
+
+    #[test]
+    fn direct_approval_is_rejected_without_payment_transaction() {
+        assert!(reject_direct_approval("APROVADO").is_err());
+        assert!(reject_direct_approval("AGUARDANDO_APROVACAO").is_ok());
+    }
+
+    #[test]
+    fn status_history_extracts_reason_without_exposing_other_fields() {
+        let details = "equipamento_id=42; status_anterior=PRONTO; status=EM_MANUTENCAO; motivo=Falha no teste final; pagamento_codigo=PIX";
+        assert_eq!(audit_detail(details, "status").as_deref(), Some("EM_MANUTENCAO"));
+        assert_eq!(audit_detail(details, "motivo").as_deref(), Some("Falha no teste final"));
+        assert_eq!(audit_detail(details, "destinatario"), None);
     }
 }

@@ -34,14 +34,14 @@ import {
 } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { ClienteSelector } from "@/components/equipamentos/ClienteSelector";
+import { ContatoResponsavelSelector } from "@/components/equipamentos/ContatoResponsavelSelector";
 import { DocumentosEquipamento } from "@/components/equipamentos/DocumentosEquipamento";
 import { useCounterSession } from "@/components/CounterLayout";
 import { useSensitiveAccess } from "@/hooks/useSensitiveAccess";
 import { db, type ImpressoraWindows } from "@/lib/db";
 import { PdfService, type PdfArtifact } from "@/lib/pdf-service";
 import { PdfPreviewDialog } from "@/components/equipamentos/PdfPreviewDialog";
-import { ConfirmDialog } from "@/components/ui/confirm-dialog";
-import { InputDialog } from "@/components/ui/input-dialog";
+import { CommunicationEmailDialog } from "@/components/equipamentos/CommunicationEmailDialog";
 import { afterCounterRegistration } from "@/lib/counter-registration";
 import { EmailService } from "@/lib/email-service";
 import { equipamentoSchema } from "@/lib/validations";
@@ -51,7 +51,8 @@ import {
   TECNICOS_DISPONIVEIS,
   TIPO_OPTIONS,
 } from "@/pages/equipamentos/equipamentos-page-constants";
-import { emailValido } from "@/pages/equipamentos/equipamentos-page-utils";
+import { resolveRecipient, type ResolvedRecipient } from "@/lib/recipient-resolver";
+import { saveRecipientAddress } from "@/lib/recipient-persistence";
 import { LOGO_BMITAG_MONOCHROME_PNG_BASE64 } from "@/lib/logo-monochrome-base64";
 import type { TecnicoDisponivel } from "@/components/equipamentos/VerificacaoTecnica";
 import { canTransition, getTransitionError } from "@/lib/status-fsm";
@@ -59,7 +60,9 @@ import {
   STATUS_LABELS,
   SENSITIVE_PERMISSIONS,
   type Cliente,
+  type ClienteContato,
   type Equipamento,
+  type Produto,
 } from "@/types";
 
 const inputClass = "min-h-12 text-base";
@@ -106,7 +109,7 @@ export default function Balcao() {
   const { resetKey } = useCounterSession();
   const location = useLocation();
   const [view, setView] = useState<
-    "home" | "entry" | "equipment" | "client" | "panel"
+    "home" | "entry" | "equipment" | "client" | "panel" | "stock"
   >("home");
   const [counterEquipment, setCounterEquipment] = useState<Equipamento | null>(
     null,
@@ -141,13 +144,14 @@ export default function Balcao() {
   if (view === "client") return <ClientSearch onBack={() => setView("home")} />;
   if (view === "panel")
     return <OperationalPanel onBack={() => setView("home")} />;
+  if (view === "stock") return <CounterStock onBack={() => setView("home")} />;
   return (
     <div className="mx-auto max-w-6xl py-8">
       <h1 className="text-3xl font-bold">Atendimento de balcão</h1>
       <p className="mt-2 text-lg text-muted-foreground">
         Escolha a próxima ação.
       </p>
-      <div className="mt-10 grid gap-6 md:grid-cols-3">
+      <div className="mt-10 grid gap-6 md:grid-cols-2 xl:grid-cols-4">
         <Action
           icon={<Plus className="h-14 w-14" />}
           title="Nova entrada"
@@ -165,6 +169,12 @@ export default function Balcao() {
           title="Buscar cliente"
           description="Ver dados e ciclos vinculados"
           onClick={() => setView("client")}
+        />
+        <Action
+          icon={<PackageSearch className="h-14 w-14" />}
+          title="Consultar estoque"
+          description="Ver insumos, saldo e preço"
+          onClick={() => setView("stock")}
         />
       </div>
       <Button
@@ -216,10 +226,129 @@ function Back({ onBack }: { onBack: () => void }) {
   );
 }
 
+function formatarPreco(valor: number) {
+  return valor.toLocaleString("pt-BR", {
+    style: "currency",
+    currency: "BRL",
+  });
+}
+
+function CounterStock({ onBack }: { onBack: () => void }) {
+  const [busca, setBusca] = useState("");
+  const [produtos, setProdutos] = useState<Produto[]>([]);
+  const [carregando, setCarregando] = useState(true);
+  const [erro, setErro] = useState<string | null>(null);
+
+  async function carregarProdutos(termo = busca) {
+    setCarregando(true);
+    setErro(null);
+    try {
+      setProdutos(await db.listarProdutos(termo.trim() || undefined));
+    } catch (cause) {
+      setErro("Não foi possível consultar o estoque agora.");
+      console.error("Erro ao consultar estoque no balcão:", cause);
+    } finally {
+      setCarregando(false);
+    }
+  }
+
+  useEffect(() => {
+    void carregarProdutos("");
+  }, []);
+
+  return (
+    <section className="mx-auto max-w-6xl">
+      <Back onBack={onBack} />
+      <div className="mt-3 flex flex-wrap items-end justify-between gap-4">
+        <div>
+          <h1 className="text-3xl font-bold">Estoque e preços</h1>
+          <p className="mt-2 text-lg text-muted-foreground">
+            Consulte os insumos disponíveis e o preço de venda ao cliente.
+          </p>
+        </div>
+        <Button
+          type="button"
+          variant="outline"
+          className="min-h-12 gap-2 text-base"
+          disabled={carregando}
+          onClick={() => void carregarProdutos()}
+        >
+          <RefreshCw className={carregando ? "animate-spin" : undefined} />
+          Atualizar estoque
+        </Button>
+      </div>
+
+      <form
+        className="mt-6 flex flex-col gap-3 sm:flex-row"
+        onSubmit={(event) => {
+          event.preventDefault();
+          void carregarProdutos();
+        }}
+      >
+        <div className="relative flex-1">
+          <Search className="absolute left-3 top-1/2 h-5 w-5 -translate-y-1/2 text-muted-foreground" />
+          <Input
+            value={busca}
+            onChange={(event) => setBusca(event.target.value)}
+            className="min-h-12 pl-10 text-base"
+            placeholder="Buscar por nome ou código do insumo"
+          />
+        </div>
+        <Button type="submit" className="min-h-12 gap-2 text-base" disabled={carregando}>
+          <Search /> Buscar
+        </Button>
+      </form>
+
+      {erro && <p role="alert" className="mt-4 text-red-700">{erro}</p>}
+      {carregando ? (
+        <div className="mt-8 flex min-h-40 items-center justify-center gap-3 text-lg text-muted-foreground">
+          <Loader2 className="animate-spin" /> Carregando estoque...
+        </div>
+      ) : produtos.length === 0 ? (
+        <p className="mt-8 rounded-xl border bg-white p-6 text-lg text-muted-foreground">
+          Nenhum insumo encontrado.
+        </p>
+      ) : (
+        <div className="mt-6 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+          {produtos.map((produto) => {
+            const estoqueBaixo = produto.quantidade_estoque < produto.quantidade_minima;
+            return (
+              <Card key={produto.id ?? produto.codigo} className="border-2">
+                <CardContent className="space-y-4 p-5">
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <h2 className="text-xl font-semibold">{produto.nome}</h2>
+                      <p className="mt-1 text-sm text-muted-foreground">
+                        Código: {produto.codigo} · {produto.categoria}
+                      </p>
+                    </div>
+                    {estoqueBaixo && <Badge variant="destructive">Estoque baixo</Badge>}
+                  </div>
+                  <div className="grid grid-cols-2 gap-3 text-base">
+                    <div className="rounded-lg bg-slate-100 p-3">
+                      <p className="text-sm text-muted-foreground">Disponível</p>
+                      <p className="mt-1 text-2xl font-bold">{produto.quantidade_estoque}</p>
+                    </div>
+                    <div className="rounded-lg bg-cyan-50 p-3">
+                      <p className="text-sm text-muted-foreground">Preço de venda</p>
+                      <p className="mt-1 text-2xl font-bold text-cyan-800">{formatarPreco(produto.preco_venda)}</p>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            );
+          })}
+        </div>
+      )}
+    </section>
+  );
+}
+
 function QuickEntry({ onBack }: { onBack: () => void }) {
   const { ensureSensitiveAccess } = useSensitiveAccess();
   const [step, setStep] = useState(1);
   const [client, setClient] = useState<Cliente | null>(null);
+  const [responsavel, setResponsavel] = useState<ClienteContato | null>(null);
   const [history, setHistory] = useState<Equipamento[]>([]);
   const [confirmedCycle, setConfirmedCycle] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -240,7 +369,7 @@ function QuickEntry({ onBack }: { onBack: () => void }) {
   });
   const [tecnico, setTecnico] = useState<TecnicoDisponivel>("Ivan");
   const [emailPromptOpen, setEmailPromptOpen] = useState(false);
-  const [emailInputOpen, setEmailInputOpen] = useState(false);
+  const [emailRecipient, setEmailRecipient] = useState<ResolvedRecipient | null>(null);
   const [emailFeedback, setEmailFeedback] = useState<string | null>(null);
   const [resultadoTesteImpressao, setResultadoTesteImpressao] = useState(
     "NAO_REALIZADO",
@@ -310,14 +439,17 @@ function QuickEntry({ onBack }: { onBack: () => void }) {
     if (step !== 3 || impressorasCarregadas || carregandoImpressoras) return;
     void carregarImpressoras();
   }, [carregandoImpressoras, impressorasCarregadas, step]);
-  async function solicitarEnvioAutomatico() {
+  async function solicitarEnvioAutomatico(equipment: Equipamento) {
     const permitted = await ensureSensitiveAccess({
       title: "Enviar ordem de entrada",
       description:
         "Informe o PIN para enviar a ordem de entrada por e-mail ao cliente.",
       permission: SENSITIVE_PERMISSIONS.FINANCIAL_ACTIONS,
     });
-    if (permitted) setEmailPromptOpen(true);
+    if (permitted) {
+      setEmailRecipient(resolveRecipient(equipment, "email"));
+      setEmailPromptOpen(true);
+    }
   }
   async function enviarOrdemEntrada(equipment: Equipamento, email: string) {
     setEmailFeedback(null);
@@ -394,17 +526,22 @@ function QuickEntry({ onBack }: { onBack: () => void }) {
         ...validation.data,
         acessorios: validation.data.acessorios?.join(", "),
         cliente_id: client.id,
+        empresa_id: client.empresa_id || undefined,
         cliente_nome:
           client.nome || client.nome_fantasia || client.razao_social,
         cliente_telefone: client.telefone,
         cliente_email: client.email,
+        responsavel_contato_id: responsavel?.id || undefined,
+        responsavel_nome: responsavel?.nome || undefined,
+        responsavel_email: responsavel?.email || undefined,
+        responsavel_telefone: responsavel?.telefone || undefined,
         data_entrada: today(),
         observacoes,
       });
       // A entrada já foi persistida. Se o laudo falhar, exibimos o detalhe
       // salvo com o erro, evitando que o atendente crie um ciclo duplicado.
       setCreated(equipment);
-      void solicitarEnvioAutomatico();
+      void solicitarEnvioAutomatico(equipment);
       await db.salvarVerificacao({
         equipamento_id: equipment.id!,
         tecnico_nome: tecnico,
@@ -465,6 +602,7 @@ function QuickEntry({ onBack }: { onBack: () => void }) {
               setCreated(null);
               setStep(1);
               setClient(null);
+              setResponsavel(null);
             }}
           >
             Iniciar outro atendimento
@@ -489,29 +627,25 @@ function QuickEntry({ onBack }: { onBack: () => void }) {
             await PdfService.salvarOrdemServico(artifact, created);
           }}
         />
-        <ConfirmDialog
+        <CommunicationEmailDialog
           open={emailPromptOpen}
-          onOpenChange={setEmailPromptOpen}
-          title="Envio por e-mail"
-          description="Quer enviar a ordem de entrada automaticamente por e-mail?"
-          onConfirm={() => {
-            setEmailPromptOpen(false);
-            if (created.cliente_email?.trim())
-              void enviarOrdemEntrada(created, created.cliente_email.trim());
-            else setEmailInputOpen(true);
+          recipient={emailRecipient}
+          onOpenChange={(open) => {
+            setEmailPromptOpen(open);
+            if (!open) setEmailRecipient(null);
           }}
-        />
-        <InputDialog
-          open={emailInputOpen}
-          onOpenChange={setEmailInputOpen}
-          title="Envio por e-mail"
-          description="Este cliente não possui e-mail cadastrado. Informe um endereço para enviar a ordem de entrada."
-          label="E-mail"
-          placeholder="email@exemplo.com"
-          validate={(value) =>
-            emailValido(value) ? null : "Informe um e-mail válido."
-          }
-          onConfirm={(value) => void enviarOrdemEntrada(created, value.trim())}
+          onConfirm={async (email, salvar) => {
+            if (salvar) {
+              try {
+                await saveRecipientAddress(created, "email", email);
+              } catch (cause) {
+                setError(String(cause));
+                return false;
+              }
+            }
+            await enviarOrdemEntrada(created, email);
+          }}
+          onSkip={() => undefined}
         />
         <div id="registro-completo" className="mt-6">
           <EquipmentDetail equipamento={created} />
@@ -549,16 +683,30 @@ function QuickEntry({ onBack }: { onBack: () => void }) {
       {step === 1 && (
         <div className="rounded-xl border bg-white p-6 [&_button]:min-h-12 [&_button]:text-base [&_input]:min-h-12 [&_input]:text-base">
           <ClienteSelector
-            onClienteSelecionado={setClient}
-            onClienteRemovido={() => setClient(null)}
+            onClienteSelecionado={(selectedClient) => {
+              setClient(selectedClient);
+              setResponsavel(null);
+            }}
+            onClienteRemovido={() => {
+              setClient(null);
+              setResponsavel(null);
+            }}
           />
           {client && (
-            <Button
-              className="mt-6 min-h-12 text-base"
-              onClick={() => setStep(2)}
-            >
-              Continuar <ChevronRight />
-            </Button>
+            <>
+              <ContatoResponsavelSelector
+                cliente={client}
+                empresaId={client.empresa_id}
+                value={responsavel}
+                onChange={setResponsavel}
+              />
+              <Button
+                className="mt-6 min-h-12 text-base"
+                onClick={() => setStep(2)}
+              >
+                Continuar <ChevronRight />
+              </Button>
+            </>
           )}
         </div>
       )}

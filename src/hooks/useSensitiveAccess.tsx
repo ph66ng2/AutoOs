@@ -15,6 +15,7 @@ import { ProfileSessionDialog } from "@/components/ProfileSessionDialog";
 import { PasswordRecoveryDialog } from "@/components/PasswordRecoveryDialog";
 import { toast } from "sonner";
 import { SensitiveAccessService } from "@/lib/sensitive-access";
+import { registerSensitiveAccessPrompt } from "@/lib/sensitive-action-retry";
 import {
   SENSITIVE_PERMISSION_LABELS,
   SENSITIVE_PERMISSIONS,
@@ -249,6 +250,11 @@ export function SensitiveAccessProvider({ children }: { children: ReactNode }) {
       setDialogOpen(true);
     });
   }, [status]);
+
+  useEffect(() => registerSensitiveAccessPrompt(() => ensureSensitiveAccess({
+    title: "PIN necessário para continuar",
+    description: "Sua sessão de segurança expirou. Informe o PIN e o AutoOS continuará esta ação automaticamente.",
+  })), [ensureSensitiveAccess]);
 
   const openProfileSelector = useCallback(async (options?: ProfileSelectorOptions) => {
     const currentStatus = await SensitiveAccessService.status().catch(() => status);
