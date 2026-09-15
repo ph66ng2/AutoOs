@@ -3,92 +3,126 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="theme-color" content="#0b1118" />
-    <title>AutoOS Workflow</title>
+    <meta name="theme-color" content="#07121b" />
+    <title>AutoOS Workflow | Mapa de execução</title>
     <link rel="stylesheet" href="./styles.css" />
   </head>
   <body>
-    <div class="shell">
-      <header class="topbar">
-        <a class="brand" href="./" aria-label="AutoOS Workflow">
-          <span class="brand-mark">AO</span>
-          <span>
-            <span class="brand-kicker">BMITAG / DELIVERY CONTROL</span>
-            <strong>AutoOS Workflow</strong>
+    <div class="app-shell">
+      <aside class="sidebar" aria-label="Navegação do projeto">
+        <a class="brand" href="#overview" aria-label="AutoOS Workflow, início">
+          <span class="brand-mark">A</span>
+          <span class="brand-copy">
+            <strong>AutoOS</strong>
+            <small>PROJECT OS</small>
           </span>
         </a>
-        <div class="topbar-actions">
-          <span id="mode-badge" class="mode-badge">Carregando</span>
-          <button id="refresh-button" class="button button-quiet" type="button">Atualizar</button>
+
+        <nav class="main-nav" aria-label="Navegação principal">
+          <a class="nav-link active" href="#overview"><span aria-hidden="true">⌁</span> Visão geral</a>
+          <a class="nav-link" href="#waves"><span aria-hidden="true">≋</span> Ondas</a>
+          <a class="nav-link" href="#activity"><span aria-hidden="true">↗</span> Atividade</a>
+        </nav>
+
+        <div class="sidebar-footer">
+          <div class="sync-status"><span class="sync-dot"></span><span>Sincronizado</span></div>
+          <span id="source-label" class="sidebar-meta">feature / workflow.json</span>
+          <div class="sidebar-user"><span class="avatar">PM</span><span><strong>Projeto público</strong><small id="access-label">Somente leitura</small></span></div>
         </div>
-      </header>
+      </aside>
 
-      <main>
-        <section class="intro-row" aria-labelledby="page-title">
-          <div>
-            <p class="eyebrow">MAPA DO PROJETO</p>
-            <h1 id="page-title">Tudo que move o AutoOS.</h1>
-            <p id="subtitle" class="lede">Dependências, trabalho atual e histórico em um só lugar.</p>
-          </div>
-          <div class="sync-block">
-            <span class="sync-dot"></span>
-            <span>Última leitura</span>
-            <strong id="last-read">--</strong>
-          </div>
-        </section>
+      <div class="page-content">
+        <header class="topbar">
+          <div class="mobile-brand"><span class="brand-mark">A</span><strong>AutoOS Workflow</strong></div>
+          <div class="topbar-meta"><span class="status-led"></span><span id="mode-badge">Carregando</span></div>
+        </header>
 
-        <section id="quality-alert" class="quality-alert hidden" aria-live="polite"></section>
-
-        <section class="metrics" aria-label="Resumo do workflow">
-          <article class="metric metric-dark"><span>Total de tickets</span><strong id="metric-total">--</strong><small>no mapa atual</small></article>
-          <article class="metric metric-blue"><span>Liberados agora</span><strong id="metric-ready">--</strong><small>sem dependência pendente</small></article>
-          <article class="metric metric-amber"><span>Em revisão</span><strong id="metric-review">--</strong><small>aguardando validação</small></article>
-          <article class="metric metric-green"><span>Concluídos</span><strong id="metric-merged">--</strong><small>promovidos no workflow</small></article>
-        </section>
-
-        <section class="toolbar" aria-label="Filtros do painel">
-          <label class="search-box">
-            <span class="sr-only">Buscar tickets</span>
-            <input id="search-input" type="search" placeholder="Buscar ticket, área ou descrição" autocomplete="off" />
-          </label>
-          <div id="area-filters" class="filter-list" role="list"></div>
-          <div class="view-switcher" role="tablist" aria-label="Visualização">
-            <button class="view-button active" data-view="board" type="button">Quadro</button>
-            <button class="view-button" data-view="timeline" type="button">Linha do tempo</button>
-          </div>
-        </section>
-
-        <section id="board-view" class="board-view" aria-label="Quadro de tickets"></section>
-
-        <section id="timeline-view" class="timeline-view hidden" aria-label="Linha do tempo">
-          <div class="section-heading">
-            <div><p class="eyebrow">HISTÓRICO</p><h2>O projeto em movimento</h2></div>
-            <span id="event-count" class="section-count">-- eventos</span>
-          </div>
-          <div id="timeline-list" class="timeline-list"></div>
-        </section>
-
-        <section class="lower-grid">
-          <section class="panel dependency-panel" aria-labelledby="dependency-title">
-            <div class="section-heading">
-              <div><p class="eyebrow">DEPENDÊNCIAS</p><h2 id="dependency-title">Caminhos de entrega</h2></div>
-              <span class="section-count">grafo por ondas</span>
+        <main>
+          <section id="overview" class="intro-row" aria-labelledby="page-title">
+            <div>
+              <p class="eyebrow">AUTOOS / WORKFLOW</p>
+              <h1 id="page-title">Mapa de execução</h1>
             </div>
+            <div class="intro-actions">
+              <span class="updated-at">Atualizado <strong id="last-read">--</strong></span>
+              <button id="refresh-button" class="icon-button" type="button" title="Atualizar dados" aria-label="Atualizar dados">↻</button>
+              <a class="external-link" href="https://phmedeiros.dev/workflow/" target="_blank" rel="noreferrer">Ver site atual <span aria-hidden="true">↗</span></a>
+            </div>
+          </section>
+
+          <section id="quality-alert" class="quality-alert hidden" aria-live="polite"></section>
+
+          <section class="overview-grid" aria-label="Resumo do projeto">
+            <article class="overview-card progress-card">
+              <div class="card-heading"><p class="eyebrow">PROGRESSO GERAL</p><span class="card-status">EM MOVIMENTO</span></div>
+              <div class="progress-heading"><h2>O projeto está ganhando forma.</h2><strong id="progress-percent">--%</strong></div>
+              <div class="progress-track"><span id="progress-bar"></span></div>
+              <div class="stats-row">
+                <div><strong id="metric-total">--</strong><span>tickets</span></div>
+                <div><strong id="metric-merged">--</strong><span>concluídos</span></div>
+                <div><strong id="metric-ready">--</strong><span>liberados</span></div>
+                <div><strong id="metric-blocked">--</strong><span>bloqueio crítico</span></div>
+              </div>
+            </article>
+
+            <article class="overview-card focus-card">
+              <div class="card-heading"><p class="eyebrow">FOCO AGORA</p><span id="focus-wave" class="focus-wave">Onda --</span></div>
+              <span id="focus-ticket-id" class="focus-ticket-id">--</span>
+              <h2 id="focus-title">Carregando foco...</h2>
+              <p id="focus-summary">Selecionando o próximo passo do workflow.</p>
+              <button id="focus-button" class="card-action" type="button">Ver detalhes <span aria-hidden="true">→</span></button>
+            </article>
+          </section>
+
+          <section id="waves" class="waves-section" aria-labelledby="waves-title">
+            <div class="section-heading">
+              <div><p class="eyebrow">CAMINHO CRÍTICO</p><h2 id="waves-title">Ondas de execução</h2><p class="section-copy">Leia da esquerda para a direita. Cada onda só avança quando a anterior libera o caminho.</p></div>
+            </div>
+
+            <div class="workflow-toolbar" aria-label="Filtros do painel">
+              <div class="view-switcher" role="tablist" aria-label="Modo de visualização">
+                <button class="view-button active" data-view="board" role="tab" aria-selected="true" type="button">Ondas</button>
+                <button class="view-button" data-view="timeline" role="tab" aria-selected="false" type="button">Lista</button>
+              </div>
+              <label class="search-box">
+                <span class="search-icon" aria-hidden="true">⌕</span>
+                <span class="sr-only">Buscar ticket</span>
+                <input id="search-input" type="search" placeholder="Buscar ticket..." autocomplete="off" />
+              </label>
+              <div id="area-filters" class="filter-list" role="list"></div>
+            </div>
+
+            <section id="board-view" class="wave-board" aria-label="Ondas de tickets"></section>
+
+            <section id="timeline-view" class="timeline-view hidden" aria-label="Linha do tempo">
+              <div class="section-heading compact-heading"><div><p class="eyebrow">HISTÓRICO</p><h2>O projeto em movimento</h2></div><span id="event-count" class="section-count">-- eventos</span></div>
+              <div id="timeline-list" class="timeline-list"></div>
+            </section>
+          </section>
+
+          <section id="activity" class="bottom-grid" aria-label="Saúde e atividade do workflow">
+            <section class="surface-panel activity-panel" aria-labelledby="activity-title">
+              <div class="section-heading compact-heading"><div><p class="eyebrow">ÚLTIMOS MOVIMENTOS</p><h2 id="activity-title">Atividade recente</h2></div><button id="activity-history" class="text-button" type="button">Ver histórico</button></div>
+              <div id="activity-preview" class="activity-list"></div>
+            </section>
+            <section class="surface-panel health-panel" aria-labelledby="health-title">
+              <div class="section-heading compact-heading"><div><p class="eyebrow">SAÚDE DO WORKFLOW</p><h2 id="health-title">Fluxo estável</h2></div><strong id="health-score" class="health-score">--/100</strong></div>
+              <p id="health-summary" class="health-summary">Analisando dependências e próximos passos.</p>
+              <div class="health-bars"><div><span>Velocidade</span><strong id="health-speed">--</strong></div><div><span>Bloqueios</span><strong id="health-blockers">--</strong></div></div>
+            </section>
+          </section>
+
+          <details class="dependency-disclosure">
+            <summary><span><span class="eyebrow">DEPENDÊNCIAS</span><strong>Caminhos de entrega</strong></span><span class="section-count">grafo por ondas</span></summary>
             <div id="dependency-graph" class="dependency-graph"></div>
-          </section>
-          <section class="panel focus-panel" aria-labelledby="focus-title">
-            <div class="section-heading">
-              <div><p class="eyebrow">PRÓXIMA DECISÃO</p><h2 id="focus-title">Foco recomendado</h2></div>
-            </div>
-            <div id="focus-content" class="focus-content"></div>
-          </section>
-        </section>
-      </main>
+          </details>
+        </main>
+      </div>
     </div>
 
     <div id="ticket-dialog" class="dialog-backdrop hidden" role="presentation">
       <section class="ticket-dialog" role="dialog" aria-modal="true" aria-labelledby="dialog-title">
-        <button id="dialog-close" class="dialog-close" type="button" aria-label="Fechar">Fechar</button>
+        <button id="dialog-close" class="dialog-close" type="button" aria-label="Fechar detalhes">×</button>
         <div id="dialog-content"></div>
       </section>
     </div>
