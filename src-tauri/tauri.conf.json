@@ -1,6 +1,6 @@
 {
   "productName": "AutoOS",
-  "version": "0.4.5",
+  "version": "0.5.0",
   "identifier": "com.bmitag.autoos",
   "build": {
     "beforeDevCommand": "npm run dev",
@@ -40,6 +40,7 @@
         "width": 1280,
         "height": 800,
         "resizable": true,
+        "maximized": true,
         "fullscreen": false
       }
     ],

@@ -151,6 +151,10 @@ pub async fn validate_migration_history(database_url: &str) -> Result<usize, Str
         .max_connections(1)
         .min_connections(0)
         .acquire_timeout(DATABASE_ACQUIRE_TIMEOUT)
+        .after_connect(|connection, _metadata| Box::pin(async move {
+            sqlx::query("SET TIME ZONE 'UTC'").execute(connection).await?;
+            Ok(())
+        }))
         .connect(database_url)
         .await
         .map_err(|error| database_error_message(&error))?;
@@ -481,6 +485,12 @@ async fn connect_and_setup_pool(database_url: &str) -> Result<PgPool, sqlx::Erro
         .acquire_timeout(DATABASE_ACQUIRE_TIMEOUT)
         .idle_timeout(Duration::from_secs(5 * 60))
         .max_lifetime(Duration::from_secs(30 * 60))
+        .after_connect(|connection, _metadata| Box::pin(async move {
+            // O schema legado usa TIMESTAMP sem fuso. UTC fixo evita que pools
+            // diferentes gravem relógios locais incompatíveis.
+            sqlx::query("SET TIME ZONE 'UTC'").execute(connection).await?;
+            Ok(())
+        }))
         .connect(database_url)
         .await?;
 

@@ -20,6 +20,7 @@ const mockSplitTextToSize = vi.hoisted(() => vi.fn((texto: string) => [texto]));
 const mockGetTextWidth = vi.hoisted(() => vi.fn().mockReturnValue(20));
 const mockAutoTable = vi.hoisted(() => vi.fn());
 const mockBuscarVerificacao = vi.hoisted(() => vi.fn());
+const mockListarHistorico = vi.hoisted(() => vi.fn());
 
 const mockJsPDF = vi.hoisted(() =>
   vi.fn(function () {
@@ -74,6 +75,7 @@ vi.mock("@/lib/db", () => ({
   db: {
     listarImagensEquipamento: mockListarImagens,
     buscarVerificacao: mockBuscarVerificacao,
+    listarHistoricoEquipamento: mockListarHistorico,
   },
 }));
 
@@ -95,6 +97,7 @@ describe("PdfService.gerarOrcamentoAjustado", () => {
     mockGetNumberOfPages.mockReturnValue(1);
     mockInvoke.mockResolvedValue("/tmp/orcamento.pdf");
     mockBuscarVerificacao.mockResolvedValue(null);
+    mockListarHistorico.mockResolvedValue([]);
     mockAutoTable.mockReset();
     mockSplitTextToSize.mockReset();
     mockSplitTextToSize.mockImplementation((texto: string) => [texto]);
@@ -109,6 +112,7 @@ describe("PdfService.gerarOrcamentoAjustado", () => {
     status: "AGUARDANDO_APROVACAO",
     data_entrada: "2026-06-26",
     cliente_nome: "Cliente Teste",
+    cliente_documento: "57522734000158",
     responsavel_nome: "Maria Responsável",
     responsavel_email: "maria@example.test",
     responsavel_telefone: "+55 71 90000-0000",
@@ -259,6 +263,25 @@ describe("PdfService.gerarOrcamentoAjustado", () => {
     expect(textos).toContain("OS-00001");
     expect(textos).toContain(rotuloData);
     expect(textos.some((texto) => texto.includes("Página 1/1"))).toBe(true);
+  });
+
+  it("mantém tabelas e textos abaixo dos blocos anteriores", async () => {
+    await PdfService.gerarRelatorioStatus(equipamentoBase);
+    const primeiraTabelaRelatorio = mockAutoTable.mock.calls[0]?.[1] as { startY: number };
+    expect(primeiraTabelaRelatorio.startY).toBeGreaterThanOrEqual(66);
+
+    mockText.mockReset();
+    mockAutoTable.mockReset();
+    await PdfService.gerarOrcamento(equipamentoBase, verificacaoBase);
+    const prazo = mockText.mock.calls.find(([texto]) => texto === "Prazo de Execução:");
+    expect(prazo?.[2]).toBeGreaterThanOrEqual(107);
+
+    mockText.mockReset();
+    mockAutoTable.mockReset();
+    mockBuscarVerificacao.mockResolvedValue(verificacaoBase);
+    await PdfService.gerarOrdemServico(equipamentoBase);
+    const assinatura = mockText.mock.calls.find(([texto]) => texto === "Atenciosamente,");
+    expect(assinatura?.[2]).toBeGreaterThanOrEqual(106);
   });
 
   it("usa cabeçalhos e estilos sem preenchimento escuro", async () => {
@@ -416,8 +439,8 @@ describe("PdfService.gerarOrcamentoAjustado", () => {
     const documento = JSON.stringify(mockAutoTable.mock.calls);
     for (const rotulo of [
       "STATUS ATUAL",
-      "EMPRESA",
-      "RESPONSÁVEL PELO EQUIPAMENTO",
+      "EMPRESA CLIENTE (RAZÃO SOCIAL / DOCUMENTO)",
+      "CONTATO RESPONSÁVEL",
       "CONTATO",
       "EQUIPAMENTO",
       "ESPECIFICAÇÕES",
@@ -428,11 +451,51 @@ describe("PdfService.gerarOrcamentoAjustado", () => {
       "maria@example.test",
       "Transferência térmica",
       "Revisão geral e calibração dos sensores.",
+      "CNPJ: 57.522.734/0001-58",
     ]) {
       expect(documento).toContain(rotulo);
     }
     expect(documento).not.toMatch(/prioridade|E-MAIL DO TÉCNICO|TÉCNICO RESPONSÁVEL/);
     expect(documento).not.toContain("cliente@example.com");
+  });
+
+  it("inclui horário, mudança de status e razão no PDF de histórico", async () => {
+    const historico = [
+      {
+        tipo: "CORRECAO_STATUS",
+        data: "2026-09-13T14:35:00-03:00",
+        data_confiavel: true,
+        status_anterior: "PRONTO",
+        status: "EM_MANUTENCAO",
+        motivo: "Peça apresentou falha no teste final.",
+        autor: "Administrador Local",
+      },
+      {
+        tipo: "ETAPA",
+        data: "2026-09-13T14:35:00-03:00",
+        data_confiavel: false,
+        status_anterior: undefined,
+        status: "EM_VERIFICACAO",
+        motivo: "Verificação técnica iniciada.",
+        autor: undefined,
+      },
+    ] as const;
+
+    await PdfService.construirRelatorioStatus(equipamentoBase, [...historico]);
+
+    const tabelaHistorico = mockAutoTable.mock.calls
+      .map((call) => call[1] as { head?: string[][]; body?: string[][] })
+      .find((options) => options.head?.[0]?.includes("Data e hora"));
+    expect(tabelaHistorico?.head).toEqual([[
+      "Status anterior",
+      "Novo status",
+      "Data e hora",
+      "Razão / responsável",
+    ]]);
+    expect(JSON.stringify(tabelaHistorico?.body)).toContain("Peça apresentou falha no teste final.");
+    expect(JSON.stringify(tabelaHistorico?.body)).toContain("Administrador Local");
+    expect(JSON.stringify(tabelaHistorico?.body)).toContain("13/09/2026");
+    expect(JSON.stringify(tabelaHistorico?.body)).toContain("Horário legado inconsistente");
   });
 
   it("renderiza responsável completo, contato em linhas separadas e técnico somente no final", async () => {
@@ -444,7 +507,7 @@ describe("PdfService.gerarOrcamentoAjustado", () => {
     };
     expect(cabecalho.head).toEqual([["EMPRESA", "RESPONSÁVEL PELO EQUIPAMENTO", "CONTATO"]]);
     expect(cabecalho.body).toEqual([[
-      "Cliente Teste",
+      "Cliente Teste - CNPJ: 57.522.734/0001-58",
       "Maria Responsável",
       "maria@example.test\n+55 71 90000-0000",
     ]]);
@@ -473,7 +536,7 @@ describe("PdfService.gerarOrcamentoAjustado", () => {
     };
     await PdfService.construirOrcamento(equipamento, verificacaoBase);
     const cabecalho = mockAutoTable.mock.calls[0]?.[1] as { body: string[][] };
-    expect(cabecalho.body).toEqual([["Cliente Teste", "", ""]]);
+    expect(cabecalho.body).toEqual([["Cliente Teste - CNPJ: 57.522.734/0001-58", "", ""]]);
     expect(JSON.stringify(mockAutoTable.mock.calls)).not.toContain("nao-usar@example.test");
     expect(JSON.stringify(mockAutoTable.mock.calls)).not.toContain("98888-0000");
   });
@@ -590,7 +653,7 @@ describe("PdfService.gerarOrcamentoAjustado", () => {
 
     const cabecalho = mockAutoTable.mock.calls[0]?.[1] as { body: string[][] };
     expect(cabecalho.body[0]).toEqual([
-      "Cliente Teste",
+      "Cliente Teste - CNPJ: 57.522.734/0001-58",
       "Maria Responsável",
       "maria@example.test\n+55 71 90000-0000",
     ]);

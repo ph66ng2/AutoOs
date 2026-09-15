@@ -1,10 +1,16 @@
 import { invoke } from "@tauri-apps/api/core";
+import { withSensitiveAccessRetry } from "@/lib/sensitive-action-retry";
 import type {
   SecurityAuditEvent,
   SecurityProfile,
   SecurityProfileInput,
   SensitiveAccessStatus,
 } from "@/types";
+
+const sensitiveInvoke = <T>(command: string, args?: Record<string, unknown>): Promise<T> =>
+  withSensitiveAccessRetry(() => args === undefined
+    ? invoke<T>(command)
+    : invoke<T>(command, args));
 
 export const SensitiveAccessService = {
   async status(): Promise<SensitiveAccessStatus> {
@@ -35,31 +41,31 @@ export const SensitiveAccessService = {
   },
 
   async createProfile(input: SecurityProfileInput, pin: string): Promise<SensitiveAccessStatus> {
-    return invoke<SensitiveAccessStatus>("create_security_profile", { input, pin });
+    return sensitiveInvoke<SensitiveAccessStatus>("create_security_profile", { input, pin });
   },
 
   async updateProfile(profileId: number, input: SecurityProfileInput, adminPin: string): Promise<SensitiveAccessStatus> {
-    return invoke<SensitiveAccessStatus>("update_security_profile", { profileId, input, adminPin });
+    return sensitiveInvoke<SensitiveAccessStatus>("update_security_profile", { profileId, input, adminPin });
   },
 
   async resetProfilePin(profileId: number, newPin: string, adminPin: string): Promise<SensitiveAccessStatus> {
-    return invoke<SensitiveAccessStatus>("reset_security_profile_pin", { profileId, newPin, adminPin });
+    return sensitiveInvoke<SensitiveAccessStatus>("reset_security_profile_pin", { profileId, newPin, adminPin });
   },
 
   async listProfiles(includeInactive = false): Promise<SecurityProfile[]> {
-    return invoke<SecurityProfile[]>("list_security_profiles", { includeInactive });
+    return sensitiveInvoke<SecurityProfile[]>("list_security_profiles", { includeInactive });
   },
 
   async deactivateProfile(profileId: number): Promise<SensitiveAccessStatus> {
-    return invoke<SensitiveAccessStatus>("deactivate_security_profile", { profileId });
+    return sensitiveInvoke<SensitiveAccessStatus>("deactivate_security_profile", { profileId });
   },
 
   async reactivateProfile(profileId: number): Promise<SensitiveAccessStatus> {
-    return invoke<SensitiveAccessStatus>("reactivate_security_profile", { profileId });
+    return sensitiveInvoke<SensitiveAccessStatus>("reactivate_security_profile", { profileId });
   },
 
   async deletarPerfil(profileId: number, adminPin: string, dbCreds: { host: string; port: number; database: string; username: string; password: string }): Promise<boolean> {
-    return invoke<boolean>("deletar_perfil", {
+    return sensitiveInvoke<boolean>("deletar_perfil", {
       profileId,
       adminPin,
       dbUsername: dbCreds.username,
@@ -76,7 +82,7 @@ export const SensitiveAccessService = {
     profileId?: number;
     exportedCount: number;
   }): Promise<boolean> {
-    return invoke<boolean>("register_security_audit_export", {
+    return sensitiveInvoke<boolean>("register_security_audit_export", {
       search: params.search ?? null,
       outcome: params.outcome ?? null,
       profileId: params.profileId ?? null,
@@ -85,6 +91,6 @@ export const SensitiveAccessService = {
   },
 
   async listAuditEvents(limit = 20): Promise<SecurityAuditEvent[]> {
-    return invoke<SecurityAuditEvent[]>("list_security_audit_events", { limit });
+    return sensitiveInvoke<SecurityAuditEvent[]>("list_security_audit_events", { limit });
   },
 };

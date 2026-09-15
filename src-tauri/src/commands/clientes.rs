@@ -11,7 +11,7 @@
 use crate::commands::types::{ClienteInput, ClienteRow, CLIENTE_SELECT};
 use crate::commands::auth::{record_security_event, require_permission, PERMISSION_DELETE_RECORDS};
 use crate::db::get_pool;
-use sqlx::Row;
+use sqlx::{PgPool, Row};
 use tracing::{debug, error, info, instrument};
 
 use super::equipamentos::PAGE_SIZE;
@@ -105,6 +105,27 @@ fn duplicate_client_document_message(error: &sqlx::Error) -> Option<String> {
     None
 }
 
+/// A empresa de um novo cliente vem sempre do perfil operacional ativo.
+/// O valor eventualmente recebido no payload é deliberadamente ignorado para
+/// não permitir que a tela escolha o tenant de destino.
+async fn active_profile_company_id(pool: &PgPool) -> Result<i32, String> {
+    sqlx::query_scalar(
+        "SELECT e.id
+         FROM security_profiles p
+         JOIN empresas e ON e.id = p.empresa_id AND LOWER(e.status) = 'ativo'
+         WHERE p.ativo = true AND p.is_default = true
+         ORDER BY p.id
+         LIMIT 1",
+    )
+    .fetch_optional(pool)
+    .await
+    .map_err(|error| format!("Erro ao identificar a empresa do perfil ativo: {}", error))?
+    .ok_or_else(|| {
+        "O perfil ativo não está vinculado a uma empresa ativa. Vincule a empresa interna antes de cadastrar clientes."
+            .to_string()
+    })
+}
+
 /// Listar clientes com paginação.
 #[tauri::command]
 #[instrument(skip_all, fields(page = page))]
@@ -187,6 +208,7 @@ pub async fn buscar_cliente(id: i32) -> Result<ClienteRow, String> {
 pub async fn criar_cliente(input: ClienteInput) -> Result<ClienteRow, String> {
     debug!("Criando cliente: {}", input.telefone);
     let pool = get_pool().await.map_err(|e| e.to_string())?;
+    let empresa_id = active_profile_company_id(&pool).await?;
     let tipo_pessoa = normalize_tipo_pessoa(
         input.tipo_pessoa.as_deref(),
         input.documento.as_deref(),
@@ -229,7 +251,7 @@ pub async fn criar_cliente(input: ClienteInput) -> Result<ClienteRow, String> {
         ) RETURNING id
         "#,
     )
-    .bind(input.empresa_id)
+    .bind(empresa_id)
     .bind(Some(nome_exibicao))
     .bind(tipo_pessoa)
     .bind(Some(document_digits.clone()))

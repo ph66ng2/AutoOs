@@ -153,6 +153,7 @@ fn main() {
             // Equipamentos
             commands::equipamentos::listar_equipamentos,
             commands::equipamentos::buscar_equipamento,
+            commands::equipamentos::listar_historico_equipamento,
             commands::equipamentos::buscar_equipamentos_por_serial,
             commands::equipamentos::criar_equipamento,
             commands::equipamentos::atualizar_equipamento,
@@ -171,6 +172,10 @@ fn main() {
             commands::clientes::buscar_cliente,
             commands::clientes::criar_cliente,
             commands::clientes::atualizar_cliente,
+            commands::legacy_regularization::previsualizar_vinculo_empresa_perfil,
+            commands::legacy_regularization::vincular_perfil_ativo_empresa,
+            commands::legacy_regularization::previsualizar_regularizacao_legados,
+            commands::legacy_regularization::executar_regularizacao_legados,
             commands::clientes::deletar_cliente,
             commands::cnpj::consultar_cnpj,
             // Contatos de cliente
