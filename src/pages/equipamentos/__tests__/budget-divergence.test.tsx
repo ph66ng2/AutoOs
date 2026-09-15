@@ -18,6 +18,7 @@ const mockListen = vi.hoisted(() => vi.fn(() => Promise.resolve(vi.fn())));
 const mockNavigate = vi.hoisted(() => vi.fn());
 
 const mockAtualizarServicosVerificacao = vi.hoisted(() => vi.fn());
+const mockAprovarOrcamento = vi.hoisted(() => vi.fn());
 const mockAtualizarStatusEquipamento = vi.hoisted(() => vi.fn());
 const mockBuscarVerificacao = vi.hoisted(() => vi.fn());
 const mockListarServicosCatalogoAtivos = vi.hoisted(() => vi.fn());
@@ -80,6 +81,7 @@ vi.mock("@/lib/db", () => ({
     buscarVerificacao: (...args: unknown[]) => mockBuscarVerificacao(...args),
     listarServicosCatalogoAtivos: (...args: unknown[]) => mockListarServicosCatalogoAtivos(...args),
     atualizarServicosVerificacao: (...args: unknown[]) => mockAtualizarServicosVerificacao(...args),
+    aprovarOrcamento: (...args: unknown[]) => mockAprovarOrcamento(...args),
     atualizarStatusEquipamento: (...args: unknown[]) => mockAtualizarStatusEquipamento(...args),
     listarImagensEquipamento: (...args: unknown[]) => mockListarImagensEquipamento(...args),
     buscarEquipamentosPorSerial: (...args: unknown[]) => mockBuscarEquipamentosPorSerial(...args),
@@ -210,6 +212,7 @@ const equipamentoVerificado = {
   tipo: "Impressora",
   status: "VERIFICADO",
   cliente_id: 1,
+  empresa_id: 7,
   cliente_nome: "Cliente A",
   cliente_telefone: "11999990001",
   cliente_email: "a@ex.com",
@@ -256,6 +259,7 @@ describe("Equipamentos — Budget Divergence & Audit", () => {
     mockBuscarCliente.mockRejectedValue(new Error("no client"));
     mockListarServicosCatalogoAtivos.mockResolvedValue([]);
     mockAtualizarServicosVerificacao.mockResolvedValue(makeVerificacao());
+    mockAprovarOrcamento.mockResolvedValue({ ...equipamentoVerificado, status: "APROVADO" });
     mockAtualizarStatusEquipamento.mockResolvedValue({ sucesso: true });
   });
 
@@ -520,6 +524,44 @@ describe("Equipamentos — Budget Divergence & Audit", () => {
     expect(screen.getByTestId("action-reprovar")).toHaveTextContent("Reprovar");
     expect(screen.getByTestId("action-alterar_orcamento")).toHaveTextContent("Alterar Orçamento");
     expect(screen.getByTestId("action-editar")).toHaveTextContent("Editar Equipamento");
+  });
+
+  it("aprova somente depois de escolher pagamento e usa a operação transacional", async () => {
+    equipamentoVerificado.status = "AGUARDANDO_APROVACAO";
+    mockBuscarVerificacao.mockResolvedValue(makeVerificacao());
+    render(<Equipamentos />);
+
+    fireEvent.click(screen.getByTestId("action-aprovar"));
+    await waitFor(() => expect(screen.getByText(/Forma de pagamento da aprovação/i)).toBeInTheDocument());
+    expect(mockAtualizarStatusEquipamento).not.toHaveBeenCalledWith(10, "APROVADO", expect.anything(), expect.anything(), expect.anything(), expect.anything(), expect.anything());
+
+    fireEvent.change(screen.getByLabelText("Forma de pagamento"), { target: { value: "PIX" } });
+    fireEvent.click(screen.getByRole("button", { name: /confirmar aprovação/i }));
+    await waitFor(() => expect(mockAprovarOrcamento).toHaveBeenCalledWith(expect.objectContaining({
+      empresa_id: 7,
+      equipamento_id: 10,
+      pagamento: { codigo: "PIX", detalhe: null },
+    })));
+  });
+
+  it("permite cancelar a aprovação e mantém o modal após erro do backend", async () => {
+    equipamentoVerificado.status = "AGUARDANDO_APROVACAO";
+    mockBuscarVerificacao.mockResolvedValue(makeVerificacao());
+    mockAprovarOrcamento.mockRejectedValue(new Error("Falha de concorrência"));
+    render(<Equipamentos />);
+
+    fireEvent.click(screen.getByTestId("action-aprovar"));
+    await waitFor(() => expect(screen.getByText(/Forma de pagamento da aprovação/i)).toBeInTheDocument());
+    fireEvent.change(screen.getByLabelText("Forma de pagamento"), { target: { value: "PIX" } });
+    fireEvent.click(screen.getByRole("button", { name: "Cancelar" }));
+    expect(mockAprovarOrcamento).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByTestId("action-aprovar"));
+    await waitFor(() => expect(screen.getByText(/Forma de pagamento da aprovação/i)).toBeInTheDocument());
+    fireEvent.change(screen.getByLabelText("Forma de pagamento"), { target: { value: "PIX" } });
+    fireEvent.click(screen.getByRole("button", { name: /confirmar aprovação/i }));
+    await waitFor(() => expect(screen.getByRole("alert")).toHaveTextContent(/Falha de concorrência/i));
+    expect(screen.getByText(/Forma de pagamento da aprovação/i)).toBeInTheDocument();
   });
 
   it("oferece Alterar Orçamento no menu em todas as fases após a verificação", () => {

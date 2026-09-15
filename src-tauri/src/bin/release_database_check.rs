@@ -1,9 +1,9 @@
 #![allow(dead_code, unused_imports)]
 
-#[path = "../db.rs"]
-mod db;
 #[path = "../commands/mod.rs"]
 mod commands;
+#[path = "../db.rs"]
+mod db;
 
 use anyhow::{Context, Result};
 
@@ -13,11 +13,11 @@ async fn main() -> Result<()> {
         .or_else(|_| std::env::var("DATABASE_URL"))
         .context("AUTOOS_DATABASE_URL não configurada para o preflight")?;
 
-    let migration_count = db::validate_migration_history(&database_url)
+    let schema_object_count = db::validate_migration_history(&database_url)
         .await
         .map_err(anyhow::Error::msg)
         .context("preflight do banco de release recusado")?;
 
-    println!("RELEASE_DATABASE_CHECK_OK migrations={migration_count}");
+    println!("RELEASE_DATABASE_CHECK_OK schema_objects={schema_object_count}");
     Ok(())
 }

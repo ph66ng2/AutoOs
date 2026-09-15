@@ -44,6 +44,25 @@ export const STATUS_EQUIPAMENTO = {
 /** Tipo union de todos os valores de STATUS_EQUIPAMENTO */
 export type StatusEquipamento = (typeof STATUS_EQUIPAMENTO)[keyof typeof STATUS_EQUIPAMENTO];
 
+/** Códigos persistidos de forma de pagamento. Mantidos iguais ao contrato Rust/Supabase. */
+export const FORMA_PAGAMENTO_CODIGOS = [
+  "PIX",
+  "BOLETO",
+  "CARTAO_CREDITO",
+  "CARTAO_DEBITO",
+  "DINHEIRO",
+  "TRANSFERENCIA",
+  "A_COMBINAR",
+  "OUTRO",
+] as const;
+
+export type FormaPagamentoCodigo = (typeof FORMA_PAGAMENTO_CODIGOS)[number];
+
+export interface FormaPagamento {
+  codigo: FormaPagamentoCodigo;
+  detalhe?: string | null;
+}
+
 /** Rótulos legíveis em PT-BR para cada status. Usado em StatusBadge (Equipamentos.tsx, Clientes.tsx) */
 export const STATUS_LABELS: Record<StatusEquipamento, string> = {
   RECEBIDO: "Recebido",
@@ -87,6 +106,7 @@ export const STATUS_COLORS: Record<StatusEquipamento, string> = {
  */
 export interface Equipamento {
   id?: number;
+  empresa_id?: number;
   serial_number: string;
   patrimonio?: string;
   marca: string;
@@ -107,8 +127,13 @@ export interface Equipamento {
   // Dados do cliente
   cliente_id?: number;
   cliente_nome?: string;
+  cliente_documento?: string;
   cliente_telefone?: string;
   cliente_email?: string;
+  responsavel_contato_id?: number;
+  responsavel_nome?: string;
+  responsavel_email?: string;
+  responsavel_telefone?: string;
   // Controle de orçamento e datas
   prazo_aprovacao?: string;
   data_aprovacao?: string;
@@ -121,6 +146,17 @@ export interface Equipamento {
   // Auditoria
   criado_em?: string;
   atualizado_em?: string;
+}
+
+/** Evento cronológico exibido no histórico operacional do equipamento. */
+export interface EquipamentoHistoricoEvento {
+  tipo: "ETAPA" | "MUDANCA_STATUS" | "CORRECAO_STATUS";
+  data: string;
+  data_confiavel?: boolean;
+  status_anterior?: string;
+  status: string;
+  motivo: string;
+  autor?: string;
 }
 
 export const CATEGORIAS_IMAGEM_EQUIPAMENTO = {
@@ -171,6 +207,7 @@ export interface EquipamentoImagemInput {
  */
 export interface Cliente {
   id?: number;
+  empresa_id?: number;
   nome?: string;
   tipo_pessoa?: string;        // PF ou PJ
   documento?: string;          // CPF ou CNPJ (sem máscara)
@@ -287,6 +324,7 @@ export interface PecaNecessaria {
 export interface Verificacao {
   id?: number;
   equipamento_id: number;
+  empresa_id?: number;
   tecnico_nome: string;
   data_inicio?: string;
   data_fim?: string;
@@ -301,8 +339,83 @@ export interface Verificacao {
   tempo_estimado?: number;
   concluida?: boolean;
   observacoes?: string;
+  forma_pagamento_codigo?: FormaPagamentoCodigo;
+  forma_pagamento_detalhe?: string;
   adjusted_at?: string;
 }
+
+/** Contato operacional pertencente a um cliente dentro de uma empresa. */
+export interface ClienteContato {
+  id?: number;
+  empresa_id: number;
+  cliente_id: number;
+  nome: string;
+  email?: string;
+  telefone?: string;
+  ativo: boolean;
+  criado_em?: string;
+  atualizado_em?: string;
+}
+
+export interface RegularizacaoConflito {
+  cliente_id?: number;
+  equipamento_id?: number;
+  tipo: string;
+}
+
+export interface RegularizacaoLegadoPrevia {
+  empresa_id: number;
+  empresa_nome: string;
+  token: string;
+  expira_em: string;
+  rules_version: number;
+  clientes: number;
+  equipamentos: number;
+  verificacoes: number;
+  imagens: number;
+  comunicacoes: number;
+  equipamentos_sem_cliente: number[];
+  contatos_irregulares: number;
+  conflitos: RegularizacaoConflito[];
+}
+
+export interface RegularizacaoLegadoResultado {
+  empresa_id: number;
+  clientes: number;
+  equipamentos: number;
+  verificacoes: number;
+  imagens: number;
+  comunicacoes: number;
+}
+
+export interface EmpresaVinculoCandidata {
+  id: number;
+  nome: string;
+  email: string;
+}
+
+export interface VinculoEmpresaPerfilPrevia {
+  perfil_id: number;
+  perfil_nome: string;
+  empresas_ativas: EmpresaVinculoCandidata[];
+}
+
+export interface VinculoEmpresaPerfilInput {
+  empresa_id?: number;
+  nova_empresa_nome?: string;
+  nova_empresa_email?: string;
+  nova_empresa_cnpj?: string;
+}
+
+export interface VinculoEmpresaPerfilResultado {
+  empresa_id: number;
+  empresa_nome: string;
+  empresa_criada: boolean;
+}
+
+export type ClienteContatoInput = Omit<ClienteContato, "id" | "ativo" | "criado_em" | "atualizado_em"> & {
+  atualizado_em?: string;
+};
 
 // ─── Comunicações ───────────────────────────────────────
 
@@ -317,6 +430,7 @@ export interface Verificacao {
  */
 export interface Comunicacao {
   id?: number;
+  empresa_id?: number;
   equipamento_id: number;
   tipo: string;    // ORCAMENTO, PRONTO, LEMBRETE, MANUAL
   canal: string;   // EMAIL, WHATSAPP
@@ -709,8 +823,20 @@ export interface ImageMigrationResult {
  */
 export interface AjusteOrcamentoInput {
   equipamento_id: number;
+  empresa_id?: number;
   servicos: ServicoNecessario[];
   pecas: PecaNecessaria[];
   custo_total: number;
+  observacoes?: string;
+  forma_pagamento_codigo?: FormaPagamentoCodigo;
+  forma_pagamento_detalhe?: string;
   divergence?: boolean;
+}
+
+/** Payload da operação atômica de aprovação de orçamento. */
+export interface AprovarOrcamentoInput {
+  empresa_id: number;
+  equipamento_id: number;
+  expected_updated_em: string;
+  pagamento: FormaPagamento;
 }

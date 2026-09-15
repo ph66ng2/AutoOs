@@ -20,6 +20,7 @@ const mockSplitTextToSize = vi.hoisted(() => vi.fn((texto: string) => [texto]));
 const mockGetTextWidth = vi.hoisted(() => vi.fn().mockReturnValue(20));
 const mockAutoTable = vi.hoisted(() => vi.fn());
 const mockBuscarVerificacao = vi.hoisted(() => vi.fn());
+const mockListarHistorico = vi.hoisted(() => vi.fn());
 
 const mockJsPDF = vi.hoisted(() =>
   vi.fn(function () {
@@ -74,6 +75,7 @@ vi.mock("@/lib/db", () => ({
   db: {
     listarImagensEquipamento: mockListarImagens,
     buscarVerificacao: mockBuscarVerificacao,
+    listarHistoricoEquipamento: mockListarHistorico,
   },
 }));
 
@@ -95,7 +97,10 @@ describe("PdfService.gerarOrcamentoAjustado", () => {
     mockGetNumberOfPages.mockReturnValue(1);
     mockInvoke.mockResolvedValue("/tmp/orcamento.pdf");
     mockBuscarVerificacao.mockResolvedValue(null);
+    mockListarHistorico.mockResolvedValue([]);
     mockAutoTable.mockReset();
+    mockSplitTextToSize.mockReset();
+    mockSplitTextToSize.mockImplementation((texto: string) => [texto]);
   });
 
   const equipamentoBase: Equipamento = {
@@ -107,6 +112,11 @@ describe("PdfService.gerarOrcamentoAjustado", () => {
     status: "AGUARDANDO_APROVACAO",
     data_entrada: "2026-06-26",
     cliente_nome: "Cliente Teste",
+    cliente_documento: "57522734000158",
+    responsavel_nome: "Maria Responsável",
+    responsavel_email: "maria@example.test",
+    responsavel_telefone: "+55 71 90000-0000",
+    patrimonio: "PAT-SINT-001",
   };
 
   const verificacaoBase: Verificacao = {
@@ -119,6 +129,7 @@ describe("PdfService.gerarOrcamentoAjustado", () => {
     ]),
     pecas_necessarias: JSON.stringify([]),
     custo_total: 100,
+    observacoes: "Substituir o rolete de tração.\nTestar a impressão após a manutenção.",
     adjusted_at: "2026-06-26T10:30:00",
   };
 
@@ -254,6 +265,25 @@ describe("PdfService.gerarOrcamentoAjustado", () => {
     expect(textos.some((texto) => texto.includes("Página 1/1"))).toBe(true);
   });
 
+  it("mantém tabelas e textos abaixo dos blocos anteriores", async () => {
+    await PdfService.gerarRelatorioStatus(equipamentoBase);
+    const primeiraTabelaRelatorio = mockAutoTable.mock.calls[0]?.[1] as { startY: number };
+    expect(primeiraTabelaRelatorio.startY).toBeGreaterThanOrEqual(66);
+
+    mockText.mockReset();
+    mockAutoTable.mockReset();
+    await PdfService.gerarOrcamento(equipamentoBase, verificacaoBase);
+    const prazo = mockText.mock.calls.find(([texto]) => texto === "Prazo de Execução:");
+    expect(prazo?.[2]).toBeGreaterThanOrEqual(107);
+
+    mockText.mockReset();
+    mockAutoTable.mockReset();
+    mockBuscarVerificacao.mockResolvedValue(verificacaoBase);
+    await PdfService.gerarOrdemServico(equipamentoBase);
+    const assinatura = mockText.mock.calls.find(([texto]) => texto === "Atenciosamente,");
+    expect(assinatura?.[2]).toBeGreaterThanOrEqual(106);
+  });
+
   it("usa cabeçalhos e estilos sem preenchimento escuro", async () => {
     await PdfService.gerarOrcamento(equipamentoBase, verificacaoBase);
 
@@ -293,7 +323,7 @@ describe("PdfService.gerarOrcamentoAjustado", () => {
     expect(corpoRelatorio).toContain("Status atual");
   });
 
-  it("mantém os dados comerciais atuais sem prioridade ou forma de pagamento", async () => {
+  it("exibe as condições comerciais e a forma de pagamento sem duplicar no faturamento", async () => {
     await PdfService.gerarOrcamento(equipamentoBase, verificacaoBase);
     const documento = mockText.mock.calls.map(([texto]) => String(texto)).join(" ")
       + JSON.stringify(mockAutoTable.mock.calls);
@@ -302,8 +332,10 @@ describe("PdfService.gerarOrcamentoAjustado", () => {
     expect(documento).toContain("Faturamento:");
     expect(documento).toContain("Garantia:");
     expect(documento).toContain("Validade do Orçamento:");
+    expect(documento).toContain("FORMA DE PAGAMENTO APÓS A APROVAÇÃO");
+    expect(documento).toContain("Definida no momento da aprovação.");
     expect(documento).not.toMatch(/prioridade/i);
-    expect(documento).not.toMatch(/forma de pagamento/i);
+    expect(documento).not.toContain("Faturamento: Pix");
   });
 
   it("aplica o rodapé textual a todas as páginas", async () => {
@@ -407,19 +439,228 @@ describe("PdfService.gerarOrcamentoAjustado", () => {
     const documento = JSON.stringify(mockAutoTable.mock.calls);
     for (const rotulo of [
       "STATUS ATUAL",
-      "CLIENTE",
+      "EMPRESA CLIENTE (RAZÃO SOCIAL / DOCUMENTO)",
+      "CONTATO RESPONSÁVEL",
+      "CONTATO",
       "EQUIPAMENTO",
       "ESPECIFICAÇÕES",
       "DEFEITO INFORMADO",
       "LAUDO TÉCNICO",
       "ACESSÓRIOS",
       "OBSERVAÇÕES",
-      "cliente@example.com",
+      "maria@example.test",
       "Transferência térmica",
       "Revisão geral e calibração dos sensores.",
+      "CNPJ: 57.522.734/0001-58",
     ]) {
       expect(documento).toContain(rotulo);
     }
-    expect(documento).not.toMatch(/prioridade|forma de pagamento/i);
+    expect(documento).not.toMatch(/prioridade|E-MAIL DO TÉCNICO|TÉCNICO RESPONSÁVEL/);
+    expect(documento).not.toContain("cliente@example.com");
+  });
+
+  it("inclui horário, mudança de status e razão no PDF de histórico", async () => {
+    const historico = [
+      {
+        tipo: "CORRECAO_STATUS",
+        data: "2026-09-13T14:35:00-03:00",
+        data_confiavel: true,
+        status_anterior: "PRONTO",
+        status: "EM_MANUTENCAO",
+        motivo: "Peça apresentou falha no teste final.",
+        autor: "Administrador Local",
+      },
+      {
+        tipo: "ETAPA",
+        data: "2026-09-13T14:35:00-03:00",
+        data_confiavel: false,
+        status_anterior: undefined,
+        status: "EM_VERIFICACAO",
+        motivo: "Verificação técnica iniciada.",
+        autor: undefined,
+      },
+    ] as const;
+
+    await PdfService.construirRelatorioStatus(equipamentoBase, [...historico]);
+
+    const tabelaHistorico = mockAutoTable.mock.calls
+      .map((call) => call[1] as { head?: string[][]; body?: string[][] })
+      .find((options) => options.head?.[0]?.includes("Data e hora"));
+    expect(tabelaHistorico?.head).toEqual([[
+      "Status anterior",
+      "Novo status",
+      "Data e hora",
+      "Razão / responsável",
+    ]]);
+    expect(JSON.stringify(tabelaHistorico?.body)).toContain("Peça apresentou falha no teste final.");
+    expect(JSON.stringify(tabelaHistorico?.body)).toContain("Administrador Local");
+    expect(JSON.stringify(tabelaHistorico?.body)).toContain("13/09/2026");
+    expect(JSON.stringify(tabelaHistorico?.body)).toContain("Horário legado inconsistente");
+  });
+
+  it("renderiza responsável completo, contato em linhas separadas e técnico somente no final", async () => {
+    await PdfService.construirOrcamento(equipamentoBase, verificacaoBase);
+
+    const cabecalho = mockAutoTable.mock.calls[0]?.[1] as {
+      head: string[][];
+      body: string[][];
+    };
+    expect(cabecalho.head).toEqual([["EMPRESA", "RESPONSÁVEL PELO EQUIPAMENTO", "CONTATO"]]);
+    expect(cabecalho.body).toEqual([[
+      "Cliente Teste - CNPJ: 57.522.734/0001-58",
+      "Maria Responsável",
+      "maria@example.test\n+55 71 90000-0000",
+    ]]);
+    expect(mockText.mock.calls.map(([texto]) => String(texto))).toContain(
+      "Técnico responsável: Ivan",
+    );
+    expect(JSON.stringify(mockAutoTable.mock.calls)).not.toContain("TÉCNICO RESPONSÁVEL");
+  });
+
+  it.each([
+    ["somente e-mail", { responsavel_email: "maria@example.test", responsavel_telefone: undefined }, "maria@example.test"],
+    ["somente telefone", { responsavel_email: undefined, responsavel_telefone: "+55 71 90000-0000" }, "+55 71 90000-0000"],
+  ])("não inventa canal ausente do %s", async (_caso, canais, contatoEsperado) => {
+    const equipamento = { ...equipamentoBase, ...canais };
+    await PdfService.construirOrcamento(equipamento, verificacaoBase);
+    const cabecalho = mockAutoTable.mock.calls[0]?.[1] as { body: string[][] };
+    expect(cabecalho.body[0]?.[2]).toBe(contatoEsperado);
+  });
+
+  it("deixa responsável e contato vazios quando não há responsável", async () => {
+    const equipamento = {
+      ...equipamentoBase,
+      responsavel_nome: undefined,
+      responsavel_email: "nao-usar@example.test",
+      responsavel_telefone: "+55 71 98888-0000",
+    };
+    await PdfService.construirOrcamento(equipamento, verificacaoBase);
+    const cabecalho = mockAutoTable.mock.calls[0]?.[1] as { body: string[][] };
+    expect(cabecalho.body).toEqual([["Cliente Teste - CNPJ: 57.522.734/0001-58", "", ""]]);
+    expect(JSON.stringify(mockAutoTable.mock.calls)).not.toContain("nao-usar@example.test");
+    expect(JSON.stringify(mockAutoTable.mock.calls)).not.toContain("98888-0000");
+  });
+
+  it("omite descrição vazia e preserva quebras e paginação da descrição longa", async () => {
+    await PdfService.construirOrcamento(
+      equipamentoBase,
+      { ...verificacaoBase, observacoes: "   " },
+    );
+    expect(mockText.mock.calls.map(([texto]) => String(texto))).not.toContain(
+      "DESCRIÇÃO DO SERVIÇO TÉCNICO",
+    );
+
+    mockText.mockReset();
+    mockAutoTable.mockReset();
+    mockAddPage.mockReset();
+    const descricaoLonga = "Linha sintética 01\nLinha sintética 02";
+    mockSplitTextToSize.mockImplementation((texto: string) => {
+      if (texto.startsWith("Linha sintética")) {
+        return Array.from({ length: 80 }, (_, indice) => `Linha longa ${indice + 1}`);
+      }
+      return [texto];
+    });
+    await PdfService.construirOrcamento(
+      equipamentoBase,
+      { ...verificacaoBase, observacoes: descricaoLonga },
+    );
+    const textos = mockText.mock.calls.map(([texto]) => String(texto));
+    expect(textos).toContain("DESCRIÇÃO DO SERVIÇO TÉCNICO");
+    expect(textos).toContain("Linha longa 1");
+    expect(mockAddPage).toHaveBeenCalled();
+  });
+
+  it("usa a observação mais recente ao regenerar o PDF", async () => {
+    await PdfService.construirOrcamento(
+      equipamentoBase,
+      { ...verificacaoBase, observacoes: "Descrição antiga" },
+    );
+    mockText.mockReset();
+    mockAutoTable.mockReset();
+
+    await PdfService.construirOrcamento(
+      equipamentoBase,
+      { ...verificacaoBase, observacoes: "Descrição editada" },
+    );
+    const textos = mockText.mock.calls.map(([texto]) => String(texto)).join(" ");
+    expect(textos).toContain("Descrição editada");
+    expect(textos).not.toContain("Descrição antiga");
+  });
+
+  it("aplica pagamento antes/depois da aprovação e inclui detalhe de OUTRO", async () => {
+    await PdfService.construirOrcamento(equipamentoBase, verificacaoBase);
+    expect(mockText.mock.calls.map(([texto]) => String(texto))).toContain(
+      "Definida no momento da aprovação.",
+    );
+
+    mockText.mockReset();
+    mockAutoTable.mockReset();
+    await PdfService.construirOrcamento(
+      { ...equipamentoBase, status: "APROVADO", data_aprovacao: "2026-06-27" },
+      { ...verificacaoBase, forma_pagamento_codigo: undefined },
+    );
+    expect(mockText.mock.calls.map(([texto]) => String(texto))).toContain("Não informada.");
+
+    mockText.mockReset();
+    mockAutoTable.mockReset();
+    await PdfService.construirOrcamento(
+      equipamentoBase,
+      { ...verificacaoBase, forma_pagamento_codigo: "OUTRO", forma_pagamento_detalhe: "Contrato anual" },
+    );
+    expect(mockText.mock.calls.map(([texto]) => String(texto))).toContain("Outro: Contrato anual");
+  });
+
+  it("não gera bloco técnico quando o técnico está ausente", async () => {
+    await PdfService.construirOrcamento(
+      { ...equipamentoBase, observacoes: undefined },
+      { ...verificacaoBase, tecnico_nome: "" },
+    );
+    const textos = mockText.mock.calls.map(([texto]) => String(texto));
+    expect(textos).not.toContain("Atenciosamente,");
+    expect(textos).not.toContain("Técnico responsável: Ivan");
+  });
+
+  it("exibe Patrimônio no orçamento somente quando preenchido", async () => {
+    await PdfService.construirOrcamento(equipamentoBase, verificacaoBase);
+    const tabelasComPatrimonio = mockAutoTable.mock.calls.filter(([, options]) => {
+      const cabecalho = options as { head?: string[][] };
+      return cabecalho.head?.[0]?.includes("PATRIMÔNIO");
+    });
+    expect(tabelasComPatrimonio).toHaveLength(1);
+    expect(JSON.stringify(tabelasComPatrimonio)).toContain("PAT-SINT-001");
+
+    mockAutoTable.mockReset();
+    await PdfService.construirOrcamento(
+      { ...equipamentoBase, patrimonio: undefined },
+      verificacaoBase,
+    );
+    const tabelasSemPatrimonio = mockAutoTable.mock.calls.filter(([, options]) => {
+      const cabecalho = options as { head?: string[][] };
+      return cabecalho.head?.[0]?.includes("PATRIMÔNIO");
+    });
+    expect(tabelasSemPatrimonio).toHaveLength(0);
+  });
+
+  it("mantém responsável, descrição, pagamento e patrimônio no orçamento ajustado", async () => {
+    await PdfService.construirOrcamentoAjustado(
+      equipamentoBase,
+      {
+        ...verificacaoBase,
+        observacoes: "Descrição ajustada sintética",
+        forma_pagamento_codigo: "PIX",
+      },
+    );
+
+    const cabecalho = mockAutoTable.mock.calls[0]?.[1] as { body: string[][] };
+    expect(cabecalho.body[0]).toEqual([
+      "Cliente Teste - CNPJ: 57.522.734/0001-58",
+      "Maria Responsável",
+      "maria@example.test\n+55 71 90000-0000",
+    ]);
+    const textos = mockText.mock.calls.map(([texto]) => String(texto));
+    expect(textos).toContain("Descrição ajustada sintética");
+    expect(textos).toContain("Pix");
+    expect(textos).toContain("Técnico responsável: Ivan");
+    expect(JSON.stringify(mockAutoTable.mock.calls)).toContain("PAT-SINT-001");
   });
 });
