@@ -72,7 +72,7 @@ interface VerificacaoTecnicaProps {
   equipamento: Equipamento | null;
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  onConcluir: (dados: DadosVerificacao) => Promise<void>;
+  onConcluir: (dados: DadosVerificacao) => Promise<boolean | void>;
   salvando?: boolean;
   tecnicoInicial?: TecnicoDisponivel;
 }
@@ -206,7 +206,8 @@ export function VerificacaoTecnica({
       observacoes: observacoesVerif,
     };
 
-    await onConcluir(dados);
+    const concluida = await onConcluir(dados);
+    if (concluida === false) return;
     onOpenChange(false);
     resetForm();
   }

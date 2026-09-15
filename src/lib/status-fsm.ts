@@ -31,6 +31,19 @@ const VALID_TRANSITIONS: Record<string, string[]> = {
   ABANDONADO: [],
 };
 
+/** Retornos controlados para corrigir um clique ou preenchimento incorreto. */
+const CORRECTION_TRANSITIONS: Record<string, string[]> = {
+  EM_VERIFICACAO: ["RECEBIDO"],
+  VERIFICADO: ["EM_VERIFICACAO"],
+  AGUARDANDO_APROVACAO: ["VERIFICADO"],
+  APROVADO: ["AGUARDANDO_APROVACAO"],
+  EM_MANUTENCAO: ["APROVADO", "AGUARDANDO_APROVACAO"],
+  AGUARDANDO_PECA: ["EM_MANUTENCAO", "AGUARDANDO_APROVACAO"],
+  PRONTO: ["EM_MANUTENCAO", "AGUARDANDO_PECA", "AGUARDANDO_APROVACAO"],
+  REPROVADO: ["AGUARDANDO_APROVACAO"],
+  ORCAMENTO_VENCIDO: ["AGUARDANDO_APROVACAO"],
+};
+
 /**
  * Normaliza um status para a chave canônica em maiúsculas.
  * Suporta tanto rótulos legíveis (ex: "Em Verificação") quanto
@@ -108,6 +121,14 @@ export function canTransition(from: string, to: string): boolean {
 export function getNextStates(current: string): string[] {
   const normalized = normalizeStatusKey(current);
   return [...(VALID_TRANSITIONS[normalized] || [])];
+}
+
+export function getCorrectionStates(current: string): string[] {
+  return [...(CORRECTION_TRANSITIONS[normalizeStatusKey(current)] || [])];
+}
+
+export function canCorrectStatus(from: string, to: string): boolean {
+  return getCorrectionStates(from).includes(normalizeStatusKey(to));
 }
 
 /**

@@ -23,15 +23,25 @@
  * ╚══════════════════════════════════════════════════════════════╝
  */
 
-import { invoke } from "@tauri-apps/api/core";
+import { invoke as tauriInvoke } from "@tauri-apps/api/core";
+import { withSensitiveAccessRetry } from "@/lib/sensitive-action-retry";
 import type {
   AjusteOrcamentoInput,
+  AprovarOrcamentoInput,
   Cliente,
+  ClienteContato,
+  ClienteContatoInput,
+  RegularizacaoLegadoPrevia,
+  RegularizacaoLegadoResultado,
+  VinculoEmpresaPerfilInput,
+  VinculoEmpresaPerfilPrevia,
+  VinculoEmpresaPerfilResultado,
   Comunicacao,
   ConfigInatividade,
   DatabaseConnectionConfig,
   DatabaseSchemaStatus,
   Equipamento,
+  EquipamentoHistoricoEvento,
   EquipamentoImagem,
   EquipamentoImagemInput,
   GastoFixo,
@@ -59,6 +69,11 @@ export interface ImpressoraWindows {
   padrao: boolean;
 }
 
+const invoke = <T>(command: string, args?: Record<string, unknown>): Promise<T> =>
+  withSensitiveAccessRetry(() => args === undefined
+    ? tauriInvoke<T>(command)
+    : tauriInvoke<T>(command, args));
+
 /** Payload esperado pelo Rust em `criar_cliente` / `atualizar_cliente` (parâmetro `input`). */
 function clientePersistenciaParaInput(cliente: Omit<Cliente, "id">) {
   return {
@@ -82,6 +97,7 @@ function clientePersistenciaParaInput(cliente: Omit<Cliente, "id">) {
     receber_email: cliente.receber_email ?? true,
     receber_whatsapp: cliente.receber_whatsapp ?? true,
     observacoes: cliente.observacoes ?? undefined,
+    empresa_id: cliente.empresa_id ?? undefined,
     atualizado_em: cliente.atualizado_em ?? undefined,
   };
 }
@@ -129,7 +145,8 @@ export const db = {
     valorOrcamento?: number,
     prazoAprovacao?: string,
     valorFinal?: number,
-    expectedUpdatedEm?: string
+    expectedUpdatedEm?: string,
+    motivoCorrecao?: string,
   ): Promise<void> {
     return invoke<void>("atualizar_status_equipamento", {
       id,
@@ -138,6 +155,7 @@ export const db = {
       prazoAprovacao: prazoAprovacao ?? null,
       valorFinal: valorFinal ?? null,
       expectedUpdatedEm: expectedUpdatedEm ?? null,
+      motivoCorrecao: motivoCorrecao ?? null,
     });
   },
 
@@ -168,9 +186,48 @@ export const db = {
     return invoke<void>("deletar_cliente", { id });
   },
 
+  /** Gera uma prévia imutável dos cadastros legados elegíveis e conflitos. */
+  async previsualizarRegularizacaoLegados(): Promise<RegularizacaoLegadoPrevia> {
+    return invoke<RegularizacaoLegadoPrevia>("previsualizar_regularizacao_legados");
+  },
+
+  async previsualizarVinculoEmpresaPerfil(): Promise<VinculoEmpresaPerfilPrevia> {
+    return invoke<VinculoEmpresaPerfilPrevia>("previsualizar_vinculo_empresa_perfil");
+  },
+
+  async vincularPerfilAtivoEmpresa(input: VinculoEmpresaPerfilInput, pinAdministrativo: string): Promise<VinculoEmpresaPerfilResultado> {
+    return invoke<VinculoEmpresaPerfilResultado>("vincular_perfil_ativo_empresa", { input, pinAdministrativo });
+  },
+
+  async executarRegularizacaoLegados(tokenDaPrevia: string, pinAdministrativo: string): Promise<RegularizacaoLegadoResultado> {
+    return invoke<RegularizacaoLegadoResultado>("executar_regularizacao_legados", { tokenDaPrevia, pinAdministrativo });
+  },
+
   /** Consulta dados públicos do CNPJ no backend, sem depender das regras de rede do WebView. */
   async consultarCnpj(cnpj: string): Promise<unknown> {
     return invoke<unknown>("consultar_cnpj", { cnpj });
+  },
+
+  // ─── Contatos de cliente ─────────────────────────────
+
+  /** Lista contatos ativos do cliente dentro da empresa informada. */
+  async listarClienteContatos(clienteId: number, empresaId: number): Promise<ClienteContato[]> {
+    return invoke<ClienteContato[]>("listar_cliente_contatos", { clienteId, empresaId });
+  },
+
+  /** Cria um contato explicitamente vinculado a cliente e empresa. */
+  async criarClienteContato(input: ClienteContatoInput): Promise<ClienteContato> {
+    return invoke<ClienteContato>("criar_cliente_contato", { input });
+  },
+
+  /** Atualiza um contato ativo; o backend valida o tenant e o token de concorrência opcional. */
+  async atualizarClienteContato(id: number, input: ClienteContatoInput): Promise<ClienteContato> {
+    return invoke<ClienteContato>("atualizar_cliente_contato", { id, input });
+  },
+
+  /** Inativa um contato sem exclusão física. */
+  async inativarClienteContato(id: number, empresaId: number): Promise<ClienteContato> {
+    return invoke<ClienteContato>("inativar_cliente_contato", { id, empresaId });
   },
 
   // ─── Verificações ─────────────────────────────────────
@@ -181,8 +238,16 @@ export const db = {
   },
 
   /** Busca última verificação de um equipamento → Rust: buscar_verificacao_tecnica */
-  async buscarVerificacao(equipamentoId: number): Promise<Verificacao | null> {
-    return invoke<Verificacao | null>("buscar_verificacao_tecnica", { equipamentoId });
+  async buscarVerificacao(equipamentoId: number, empresaId?: number): Promise<Verificacao | null> {
+    return invoke<Verificacao | null>("buscar_verificacao_tecnica", {
+      equipamentoId,
+      ...(empresaId === undefined ? {} : { empresaId }),
+    });
+  },
+
+  /** Lista etapas e mudanças de status auditadas no tenant do perfil ativo. */
+  async listarHistoricoEquipamento(equipamentoId: number): Promise<EquipamentoHistoricoEvento[]> {
+    return invoke<EquipamentoHistoricoEvento[]>("listar_historico_equipamento", { equipamentoId });
   },
 
   /** Lista imagens vinculadas a um equipamento → Rust: listar_imagens_equipamento */
@@ -554,14 +619,30 @@ export const db = {
     input: AjusteOrcamentoInput,
     profileId: number
   ): Promise<Verificacao> {
-    return invoke<Verificacao>("atualizar_servicos_verificacao", {
+    const payload = {
       equipamentoId: input.equipamento_id,
       servicosJson: JSON.stringify(input.servicos),
       pecasJson: JSON.stringify(input.pecas),
       custoTotal: input.custo_total,
       profileId,
       divergence: input.divergence ?? false,
+      ...(input.observacoes === undefined ? {} : { observacoes: input.observacoes }),
+      ...(input.forma_pagamento_codigo === undefined
+        ? {}
+        : { formaPagamentoCodigo: input.forma_pagamento_codigo }),
+      ...(input.forma_pagamento_detalhe === undefined
+        ? {}
+        : { formaPagamentoDetalhe: input.forma_pagamento_detalhe }),
+      ...(input.empresa_id === undefined ? {} : { empresaId: input.empresa_id }),
+    };
+    return invoke<Verificacao>("atualizar_servicos_verificacao", {
+      ...payload,
     });
+  },
+
+  /** Aprova orçamento, pagamento e status APROVADO atomicamente no backend. */
+  async aprovarOrcamento(input: AprovarOrcamentoInput): Promise<Equipamento> {
+    return invoke<Equipamento>("aprovar_orcamento", { input });
   },
 
   /** Lista serviços ativos do catálogo (apenas leitura) → Rust: listar_servicos_catalogo_ativos */

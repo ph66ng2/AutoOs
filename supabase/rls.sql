@@ -68,7 +68,7 @@ DECLARE
     table_name text;
 BEGIN
     FOREACH table_name IN ARRAY ARRAY[
-        'empresas', 'clientes', 'equipamentos', 'produtos',
+        'empresas', 'clientes', 'cliente_contatos', 'equipamentos', 'produtos',
         'movimentacoes_estoque', 'security_profiles', 'verificacoes',
         'comunicacoes', 'security_audit_log', 'equipamento_imagens',
         'servicos_catalogo', 'gastos_fixos', 'gastos_variaveis',
@@ -121,7 +121,7 @@ DECLARE
     table_name text;
 BEGIN
     FOREACH table_name IN ARRAY ARRAY[
-        'clientes', 'equipamentos', 'produtos', 'movimentacoes_estoque',
+        'clientes', 'cliente_contatos', 'equipamentos', 'produtos', 'movimentacoes_estoque',
         'security_profiles', 'verificacoes', 'comunicacoes',
         'equipamento_imagens', 'servicos_catalogo', 'gastos_fixos',
         'gastos_variaveis', 'configuracoes_sistema'

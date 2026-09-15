@@ -76,13 +76,13 @@ export function DatabaseConfigDialog({ onConfigured }: DatabaseConfigDialogProps
                 setConnectionUrl(e.target.value);
                 setError(null);
               }}
-              placeholder="postgresql://usuario:senha@host:5432/banco"
+              placeholder="postgresql://usuario:senha@host:5432/postgres?sslmode=require"
               className="h-11 border-white/10 bg-white/5 text-white placeholder:text-white/20 focus-visible:ring-cyan-500/50"
               onKeyDown={(e) => e.key === "Enter" && handleConnect()}
               autoFocus
             />
             <p className="text-xs text-slate-500">
-              Para Supabase, prefira a URL do Session pooler (porta 5432).
+              Para Supabase, use a URL do Session pooler (porta 5432), terminando em /postgres?sslmode=require.
             </p>
           </div>
 
@@ -122,7 +122,7 @@ export function DatabaseConfigDialog({ onConfigured }: DatabaseConfigDialogProps
 
         {/* Footer */}
         <p className="text-center text-xs text-slate-600">
-          O banco de dados será inicializado automaticamente na primeira conexão.
+          Esta tela é apenas um fallback. Builds oficiais conectam automaticamente.
         </p>
       </div>
     </div>

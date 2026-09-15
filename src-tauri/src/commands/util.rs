@@ -1543,8 +1543,45 @@ impl DatabaseConnectionConfig {
             .map_err(|_| "Host PostgreSQL inválido".to_string())?;
         url.set_port(Some(self.port))
             .map_err(|_| "Porta PostgreSQL inválida".to_string())?;
-        url.set_path(&format!("/{}", self.database.trim_start_matches('/')));
+        // Versões antigas salvaram `postgres?sslmode=require` inteiro no campo
+        // `database`. Se esse valor for usado como path, `url` escapa o `?` e o
+        // PostgreSQL procura literalmente um database com esse nome (erro 3D000).
+        let raw_database = self.database.trim().trim_start_matches('/');
+        let (database, legacy_query) = raw_database
+            .split_once('?')
+            .map_or((raw_database, None), |(database, query)| {
+                (database, (!query.is_empty()).then_some(query))
+            });
+        if database.is_empty() || database.contains('/') {
+            return Err("Nome do banco de dados PostgreSQL inválido".to_string());
+        }
+        url.set_path(&format!("/{database}"));
+        if let Some(query) = legacy_query {
+            url.set_query(Some(query));
+        }
         Ok(url.to_string())
+    }
+}
+
+#[cfg(test)]
+mod database_connection_config_tests {
+    use super::DatabaseConnectionConfig;
+
+    #[test]
+    fn converts_legacy_database_query_without_encoding_it_as_database_name() {
+        let config = DatabaseConnectionConfig {
+            host: "db.example.supabase.co".to_string(),
+            port: 5432,
+            database: "postgres?sslmode=require".to_string(),
+            username: "postgres".to_string(),
+            password: "secret".to_string(),
+            connection_url: None,
+        };
+
+        let url = config.to_database_url().expect("legacy config should work");
+
+        assert!(url.contains("/postgres?sslmode=require"));
+        assert!(!url.contains("postgres%3Fsslmode"));
     }
 }
 

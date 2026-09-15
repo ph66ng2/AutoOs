@@ -38,6 +38,8 @@ Depois do bump: executar `npm install` uma vez para alinhar metadados de `packag
 
 `npm run qa:tier:jornada-real` faz lint → Vitest → ambos bins de integração → Playwright smoke.
 
+Na CI, o binário `ci_migrate` aplica migrations somente ao PostgreSQL descartável `test_autoos` em localhost antes do QA Real. Ele exige `AUTOOS_MIGRATION_MODE=ci` e recusa hosts externos; não é usado pelo aplicativo, Windows Test ou release.
+
 ### Pré-requisitos das integrações `p1_*`
 
 - `DATABASE_URL` válido (ex.: `.env` em `src-tauri/` ou variável exportada).

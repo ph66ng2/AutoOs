@@ -94,13 +94,18 @@ import { EmailService } from "@/lib/email-service";
 import { PdfService, type PdfArtifact } from "@/lib/pdf-service";
 import { FormValidationError } from "@/components/ui/form-validation-error";
 import { db } from "@/lib/db";
+import { formatDatePtBr, formatDateTimeSalvador, todayLocalIsoDate } from "@/lib/date-utils";
 import {
   STATUS_LABELS,
   SENSITIVE_PERMISSIONS,
   type Equipamento,
+  type EquipamentoHistoricoEvento,
   type EquipamentoImagemCategoria,
   type EquipamentoImagemInput,
   type Cliente,
+  type ClienteContato,
+  type FormaPagamento,
+  type FormaPagamentoCodigo,
   type StatusEquipamento,
   type ItemVerificacao,
   type ServicoNecessario,
@@ -118,6 +123,8 @@ import {
 } from "@/components/equipamentos/VerificacaoTecnica";
 import { HistoricoComunicacoes } from "@/components/equipamentos/HistoricoComunicacoes";
 import { ClienteSelector } from "@/components/equipamentos/ClienteSelector";
+import { ContatoResponsavelSelector } from "@/components/equipamentos/ContatoResponsavelSelector";
+import { CommunicationEmailDialog } from "@/components/equipamentos/CommunicationEmailDialog";
 import { PhotoUploadDialog } from "@/components/equipamentos/PhotoUploadDialog";
 import { DocumentosEquipamento } from "@/components/equipamentos/DocumentosEquipamento";
 import { PdfPreviewDialog } from "@/components/equipamentos/PdfPreviewDialog";
@@ -142,9 +149,9 @@ import {
 import { GaleriaImagensEquipamento } from "@/pages/equipamentos/EquipamentosPageGallery";
 import { StatusBadge } from "@/pages/equipamentos/EquipamentosStatusBadge";
 import {
-  emailValido,
   extrairTecnicoInicialDeObservacoes,
   filtrarImagensPorCategoria,
+  getStatusCorrecao,
   getProximosStatus,
   mensagemResultadoCanais,
   removerTecnicoInicialDasObservacoes,
@@ -155,6 +162,10 @@ import { useNotification } from "@/hooks/useNotification";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { InputDialog } from "@/components/ui/input-dialog";
 import { ErrorAlert } from "@/components/ui/error-alert";
+import { PagamentoOrcamentoDialog } from "@/components/equipamentos/PagamentoOrcamentoDialog";
+import { FormaPagamentoFields } from "@/components/equipamentos/FormaPagamentoFields";
+import { resolveRecipient, type ResolvedRecipient } from "@/lib/recipient-resolver";
+import { saveRecipientAddress } from "@/lib/recipient-persistence";
 
 export default function Equipamentos() {
   const [busca, setBusca] = useState("");
@@ -164,7 +175,13 @@ export default function Equipamentos() {
   const [detalhesDialogOpen, setDetalhesDialogOpen] = useState(false);
   const [verificacaoDialogOpen, setVerificacaoDialogOpen] = useState(false);
   const [statusDialogOpen, setStatusDialogOpen] = useState(false);
+  const [pagamentoDialogOpen, setPagamentoDialogOpen] = useState(false);
+  const [pagamentoAprovacaoLoading, setPagamentoAprovacaoLoading] = useState(false);
+  const [pagamentoAprovacaoError, setPagamentoAprovacaoError] = useState<string | null>(null);
+  const [pagamentoAprovacaoInicial, setPagamentoAprovacaoInicial] = useState<FormaPagamento | null>(null);
   const [ajusteOrcamentoSemMudancaStatus, setAjusteOrcamentoSemMudancaStatus] = useState(false);
+  const [correcaoStatus, setCorrecaoStatus] = useState(false);
+  const [motivoCorrecaoStatus, setMotivoCorrecaoStatus] = useState("");
   const [editando, setEditando] = useState<Equipamento | null>(null);
   const [deletando, setDeletando] = useState<Equipamento | null>(null);
   const [selecionado, setSelecionado] = useState<Equipamento | null>(null);
@@ -187,6 +204,7 @@ export default function Equipamentos() {
   const [verificacaoDetalhes, setVerificacaoDetalhes] = useState<Verificacao | null>(null);
   const [comunicacoes, setComunicacoes] = useState<Comunicacao[]>([]);
   const [imagensDetalhes, setImagensDetalhes] = useState<EquipamentoImagemDraft[]>([]);
+  const [historicoDetalhes, setHistoricoDetalhes] = useState<EquipamentoHistoricoEvento[]>([]);
   const [carregandoDetalhes, setCarregandoDetalhes] = useState(false);
 
   // Mudança de status
@@ -199,6 +217,9 @@ export default function Equipamentos() {
   const [valorOrcamentoAnterior, setValorOrcamentoAnterior] = useState<number | null>(null);
   const [verificacaoAjusteOrcamento, setVerificacaoAjusteOrcamento] = useState<Verificacao | null>(null);
   const [servicosAjuste, setServicosAjuste] = useState<ServicoNecessario[]>([]);
+  const [observacoesAjuste, setObservacoesAjuste] = useState("");
+  const [formaPagamentoAjuste, setFormaPagamentoAjuste] = useState<FormaPagamentoCodigo | "">("");
+  const [detalhePagamentoAjuste, setDetalhePagamentoAjuste] = useState("");
   const [catalogoServicosAjuste, setCatalogoServicosAjuste] = useState<ServicoCatalogo[]>([]);
   const [carregandoCatalogoAjuste, setCarregandoCatalogoAjuste] = useState(false);
   const [valorFinal, setValorFinal] = useState<number>(0);
@@ -218,6 +239,7 @@ export default function Equipamentos() {
 
   // Cliente vinculado ao equipamento (gerenciado pelo ClienteSelector)
   const [clienteVinculado, setClienteVinculado] = useState<Cliente | null>(null);
+  const [responsavelVinculado, setResponsavelVinculado] = useState<ClienteContato | null>(null);
   const [erroCliente, setErroCliente] = useState<string | null>(null);
   const [imagensFormulario, setImagensFormulario] = useState<EquipamentoImagemDraft[]>([]);
   const [erroImagens, setErroImagens] = useState<string | null>(null);
@@ -236,14 +258,12 @@ export default function Equipamentos() {
     onCancel?: () => void;
   }>({ title: "", description: "", onConfirm: () => {} });
 
-  const [inputOpen, setInputOpen] = useState(false);
-  const [inputProps, setInputProps] = useState<{
-    title: string;
-    description?: string;
-    label: string;
-    placeholder?: string;
-    onConfirm: (value: string) => void;
-  }>({ title: "", label: "", onConfirm: () => {} });
+  const [emailFlow, setEmailFlow] = useState<{
+    recipient: ResolvedRecipient;
+    onConfirm: (email: string, salvar: boolean) => void | Promise<boolean | void>;
+    onSkip: () => void | Promise<void>;
+  } | null>(null);
+  const [emailDialogOpen, setEmailDialogOpen] = useState(false);
 
   const { equipamentos, loading, criar, atualizar, deletar, atualizarStatus, recarregar } =
     useEquipamentos({ busca: busca || undefined, status: statusFiltro });
@@ -332,6 +352,7 @@ export default function Equipamentos() {
   function abrirNovo() {
     setEditando(null);
     setClienteVinculado(null);
+    setResponsavelVinculado(null);
     setErroCliente(null);
     setErroImagens(null);
     setImagensFormulario([]);
@@ -352,6 +373,15 @@ export default function Equipamentos() {
   /** Abre dialog para editar equipamento existente. Carrega cliente vinculado do banco */
   function abrirEditar(eq: Equipamento) {
     setEditando(eq);
+    setResponsavelVinculado(eq.responsavel_contato_id ? {
+      id: eq.responsavel_contato_id,
+      empresa_id: eq.empresa_id || 0,
+      cliente_id: eq.cliente_id || 0,
+      nome: eq.responsavel_nome || "Responsável pelo equipamento",
+      email: eq.responsavel_email,
+      telefone: eq.responsavel_telefone,
+      ativo: true,
+    } : null);
     setErroCliente(null);
     setErroImagens(null);
     setImagensFormulario([]);
@@ -370,8 +400,17 @@ export default function Equipamentos() {
       });
     // Se o equipamento tem cliente_id, carregar do banco; senão, montar objeto parcial
     if (eq.cliente_id) {
+      // O fallback imediato mantém a seleção do responsável enquanto o
+      // cadastro completo do cliente é carregado pelo backend.
+      setClienteVinculado({
+        id: eq.cliente_id,
+        empresa_id: eq.empresa_id,
+        nome: eq.cliente_nome,
+        telefone: eq.cliente_telefone || "",
+        email: eq.cliente_email || undefined,
+      });
       db.buscarCliente(eq.cliente_id).then((c) => {
-        setClienteVinculado(c || null);
+        if (c) setClienteVinculado(c);
       }).catch(() => {
         // Fallback: usar dados denormalizados
         if (eq.cliente_nome) {
@@ -546,15 +585,18 @@ export default function Equipamentos() {
     setVerificacaoDetalhes(null);
     setComunicacoes([]);
     setImagensDetalhes([]);
+    setHistoricoDetalhes([]);
     try {
-      const [verif, comms, imagens] = await Promise.allSettled([
+      const [verif, comms, imagens, historico] = await Promise.allSettled([
         db.buscarVerificacao(eq.id!),
         db.listarComunicacoes(eq.id!),
         carregarImagensComPreview(eq.id!),
+        db.listarHistoricoEquipamento(eq.id!),
       ]);
       setVerificacaoDetalhes(verif.status === "fulfilled" ? verif.value : null);
       setComunicacoes(comms.status === "fulfilled" ? comms.value : []);
       setImagensDetalhes(imagens.status === "fulfilled" ? imagens.value : []);
+      setHistoricoDetalhes(historico.status === "fulfilled" ? historico.value : []);
     } catch (err) {
       console.error("Erro ao carregar detalhes:", err);
     } finally {
@@ -587,6 +629,14 @@ export default function Equipamentos() {
     setValorOrcamento(valorBase);
     setPrazoAprovacao(eq.prazo_aprovacao || "");
     setVerificacaoAjusteOrcamento(verificacao);
+    setObservacoesAjuste(verificacao?.observacoes || "");
+    if (eq.status === "APROVADO" && verificacao?.forma_pagamento_codigo) {
+      setFormaPagamentoAjuste(verificacao.forma_pagamento_codigo);
+      setDetalhePagamentoAjuste(verificacao.forma_pagamento_detalhe || "");
+    } else {
+      setFormaPagamentoAjuste("");
+      setDetalhePagamentoAjuste("");
+    }
 
     let servicosIniciais: ServicoNecessario[] = [];
     try {
@@ -626,6 +676,8 @@ export default function Equipamentos() {
     if (!liberado) return;
 
     setAjusteOrcamentoSemMudancaStatus(false);
+    setCorrecaoStatus(false);
+    setMotivoCorrecaoStatus("");
     setSelecionado(eq);
     setNovoStatus(statusPreSelecionado || "");
     setValorOrcamento(eq.valor_orcamento ?? 0);
@@ -634,6 +686,9 @@ export default function Equipamentos() {
     setValorOrcamentoAnterior(null);
     setVerificacaoAjusteOrcamento(null);
     setServicosAjuste([]);
+    setObservacoesAjuste("");
+    setFormaPagamentoAjuste("");
+    setDetalhePagamentoAjuste("");
     setCatalogoServicosAjuste([]);
     setCarregandoCatalogoAjuste(false);
     setValorFinal(0);
@@ -660,6 +715,25 @@ export default function Equipamentos() {
     setStatusDialogOpen(true);
   }
 
+  async function abrirCorrecaoStatus(eq: Equipamento) {
+    const liberado = await ensureSensitiveAccess({
+      title: "Corrigir status",
+      description: "Informe o PIN para corrigir um status lançado por engano. A correção ficará registrada na auditoria.",
+      permission: SENSITIVE_PERMISSIONS.FINANCIAL_ACTIONS,
+    });
+    if (!liberado) return;
+
+    setSelecionado(eq);
+    setAjusteOrcamentoSemMudancaStatus(false);
+    setCorrecaoStatus(true);
+    setMotivoCorrecaoStatus("");
+    setNovoStatus("");
+    setValorOrcamento(eq.valor_orcamento ?? 0);
+    setPrazoAprovacao(eq.prazo_aprovacao || "");
+    setValorFinal(0);
+    setStatusDialogOpen(true);
+  }
+
   async function abrirAlterarOrcamento(eq: Equipamento) {
     const liberado = await ensureSensitiveAccess({
       title: "Alterar orçamento",
@@ -671,6 +745,8 @@ export default function Equipamentos() {
     setSelecionado(eq);
     setNovoStatus("");
     setAjusteOrcamentoSemMudancaStatus(true);
+    setCorrecaoStatus(false);
+    setMotivoCorrecaoStatus("");
     setValorFinal(0);
     setValorFinalSugerido(null);
     setAcordoExcecaoEntrega(false);
@@ -712,14 +788,19 @@ export default function Equipamentos() {
         defeito_relatado: data.defeito_relatado,
         acessorios: acessoriosTexto || null,
         acessorios_outros: data.acessorios_outros || null,
-        data_entrada: editando?.data_entrada || new Date().toISOString().split("T")[0],
+        data_entrada: editando?.data_entrada || todayLocalIsoDate(),
         observacoes: observacoesComTecnico || null,
         // Vínculo real com o cliente
         cliente_id: clienteVinculado.id || null,
+        empresa_id: clienteVinculado.empresa_id || editando?.empresa_id || null,
         // Dados denormalizados para exibição rápida
         cliente_nome: nomeCliente,
         cliente_telefone: clienteVinculado.telefone || null,
         cliente_email: clienteVinculado.email || null,
+        responsavel_contato_id: responsavelVinculado?.id || null,
+        responsavel_nome: responsavelVinculado?.nome || null,
+        responsavel_email: responsavelVinculado?.email || null,
+        responsavel_telefone: responsavelVinculado?.telefone || null,
         atualizado_em: editando?.atualizado_em,
       };
       const imagensPayload: EquipamentoImagemInput[] = normalizarOrdemPorCategoria(imagensFormulario)
@@ -749,15 +830,11 @@ export default function Equipamentos() {
           permission: SENSITIVE_PERMISSIONS.FINANCIAL_ACTIONS,
         });
         if (liberadoEmail) {
-          const equipamentoComEmail = {
-            ...resultado.data,
-            cliente_email: resultado.data.cliente_email || clienteVinculado.email || undefined,
-          };
-          const emailAtual = (equipamentoComEmail.cliente_email || "").trim();
-          async function enviarOrdemEntrada(email: string) {
+          async function enviarOrdemEntrada(email: string, nomeDestinatario: string) {
             const retornoEmailEntrada = await EmailService.enviarOrdemEntrada({
               ...resultado.data,
               cliente_email: email,
+              cliente_nome: nomeDestinatario,
             } as Equipamento);
             if (!retornoEmailEntrada.sucesso) {
               showError("Equipamentos", "Enviar ordem de entrada", new Error(retornoEmailEntrada.erro || "Falha desconhecida."));
@@ -765,32 +842,23 @@ export default function Equipamentos() {
               success("Equipamentos", "Email de ordem de entrada enviado com sucesso.", "Enviar email");
             }
           }
-          setConfirmProps({
-            title: "Envio por email",
-            description: "Quer enviar a ordem de entrada automaticamente por email?",
-            onConfirm: () => {
-              if (emailAtual) {
-                void enviarOrdemEntrada(emailAtual);
-              } else {
-                setInputProps({
-                  title: "Envio por email",
-                  description: "Este cliente não possui e-mail cadastrado. Informe um e-mail para enviar a ordem de entrada:",
-                  label: "Email",
-                  placeholder: "email@exemplo.com",
-                  onConfirm: (value: string) => {
-                    const email = value.trim();
-                    if (!emailValido(email)) {
-                      warning("Equipamentos", "O e-mail informado é inválido. O envio por e-mail será ignorado neste evento.");
-                      return;
-                    }
-                    void enviarOrdemEntrada(email);
-                  },
-                });
-                setInputOpen(true);
+          const recipient = resolveRecipient(resultado.data, "email");
+          setEmailFlow({
+            recipient,
+            onConfirm: async (email, salvar) => {
+              if (salvar) {
+                try {
+                  await saveRecipientAddress(resultado.data, "email", email);
+                } catch (cause) {
+                  showError("Equipamentos", "Salvar destinatário", cause);
+                  return false;
+                }
               }
+              await enviarOrdemEntrada(email, recipient.nome);
             },
+            onSkip: () => undefined,
           });
-          setConfirmOpen(true);
+          setEmailDialogOpen(true);
         }
       }
 
@@ -832,19 +900,19 @@ export default function Equipamentos() {
    * verificação → VERIFICADO → AGUARDANDO_APROVACAO + WhatsApp + Email.
    * Conecta-se a: useStatusEquipamento.finalizarVerificacao
    */
-  async function handleConcluirVerificacao(dados: DadosVerificacao) {
-    if (!selecionado) return;
+  async function handleConcluirVerificacao(dados: DadosVerificacao): Promise<boolean> {
+    if (!selecionado) return false;
     const liberado = await ensureSensitiveAccess({
       title: "Finalizar verificação",
       description: "Informe o PIN para salvar orçamento, prazo de aprovação e disparar comunicações automáticas.",
       permission: SENSITIVE_PERMISSIONS.FINANCIAL_ACTIONS,
     });
-    if (!liberado) return;
+    if (!liberado) return false;
 
-    async function executarComEmail(email: string | undefined) {
+    async function executarComEmail(email: string | undefined, nomeDestinatario?: string): Promise<boolean> {
       setSalvando(true);
       try {
-        const resultado = await finalizarVerificacao(selecionado!, dados, email);
+        const resultado = await finalizarVerificacao(selecionado!, dados, email, nomeDestinatario);
         if (!resultado.sucesso) {
           throw new Error(resultado.erro || "Não foi possível finalizar a verificação.");
         }
@@ -854,44 +922,34 @@ export default function Equipamentos() {
         if (resumoCanais) {
           success("Equipamentos", resumoCanais, "Finalizar verificação");
         }
+        return true;
       } catch (err: any) {
         console.error("Erro ao finalizar verificação:", err);
         showError("Equipamentos", "Finalizar verificação", err);
+        return false;
       } finally {
         setSalvando(false);
       }
     }
 
-    const emailAtual = (selecionado.cliente_email || "").trim();
-    setConfirmProps({
-      title: "Envio por email",
-      description: "Quer enviar o orçamento automaticamente por email?",
-      onConfirm: () => {
-        if (!emailAtual) {
-          setInputProps({
-            title: "Envio por email",
-            description: "Este cliente não possui e-mail cadastrado. Informe um e-mail para finalizar a verificação e enviar o orçamento:",
-            label: "Email",
-            placeholder: "email@exemplo.com",
-            onConfirm: (value: string) => {
-              const email = value.trim();
-              if (!emailValido(email)) {
-                warning("Equipamentos", "O e-mail informado é inválido. O envio por e-mail será ignorado neste evento.");
-                return;
-              }
-              void executarComEmail(email);
-            },
-          });
-          setInputOpen(true);
-        } else {
-          void executarComEmail(emailAtual);
+    const recipient = resolveRecipient(selecionado, "email");
+    setEmailFlow({
+      recipient,
+      onConfirm: async (email, salvar) => {
+        if (salvar) {
+          try {
+            await saveRecipientAddress(selecionado, "email", email);
+          } catch (cause) {
+            showError("Equipamentos", "Salvar destinatário", cause);
+            return false;
+          }
         }
+        await executarComEmail(email, recipient.nome);
       },
-      onCancel: () => {
-        void executarComEmail(undefined);
-      },
+      onSkip: async () => { await executarComEmail(""); },
     });
-    setConfirmOpen(true);
+    setEmailDialogOpen(true);
+    return false;
   }
 
   // ─── Automação: Marcar como Pronto ────────────────────
@@ -908,10 +966,10 @@ export default function Equipamentos() {
     });
     if (!liberado) return;
 
-    async function executarComEmail(email: string | undefined) {
+    async function executarComEmail(email: string | undefined, nomeDestinatario?: string): Promise<boolean> {
       setSalvando(true);
       try {
-        const resultado = await marcarComoPronto(eq, email);
+        const resultado = await marcarComoPronto(eq, email, nomeDestinatario);
         if (!resultado.sucesso) {
           throw new Error(resultado.erro || "Não foi possível marcar o equipamento como pronto.");
         }
@@ -920,44 +978,33 @@ export default function Equipamentos() {
         if (resumoCanais) {
           success("Equipamentos", resumoCanais, "Marcar como pronto");
         }
+        return true;
       } catch (err: any) {
         console.error("Erro ao marcar pronto:", err);
         showError("Equipamentos", "Marcar como pronto", err);
+        return false;
       } finally {
         setSalvando(false);
       }
     }
 
-    const emailAtual = (eq.cliente_email || "").trim();
-    setConfirmProps({
-      title: "Envio por email",
-      description: "Quer avisar o cliente que o equipamento está pronto por email?",
-      onConfirm: () => {
-        if (!emailAtual) {
-          setInputProps({
-            title: "Envio por email",
-            description: "Este cliente não possui e-mail cadastrado. Informe um e-mail para avisar que o equipamento está pronto para retirada:",
-            label: "Email",
-            placeholder: "email@exemplo.com",
-            onConfirm: (value: string) => {
-              const email = value.trim();
-              if (!emailValido(email)) {
-                warning("Equipamentos", "O e-mail informado é inválido. O envio por e-mail será ignorado neste evento.");
-                return;
-              }
-              void executarComEmail(email);
-            },
-          });
-          setInputOpen(true);
-        } else {
-          void executarComEmail(emailAtual);
+    const recipient = resolveRecipient(eq, "email");
+    setEmailFlow({
+      recipient,
+      onConfirm: async (email, salvar) => {
+        if (salvar) {
+          try {
+            await saveRecipientAddress(eq, "email", email);
+          } catch (cause) {
+            showError("Equipamentos", "Salvar destinatário", cause);
+            return false;
+          }
         }
+        await executarComEmail(email, recipient.nome);
       },
-      onCancel: () => {
-        void executarComEmail(undefined);
-      },
+      onSkip: async () => { await executarComEmail(""); },
     });
-    setConfirmOpen(true);
+    setEmailDialogOpen(true);
   }
 
   function iniciarConfirmacaoStatus() {
@@ -1022,10 +1069,82 @@ export default function Equipamentos() {
     void confirmarMudancaStatus(false);
   }
 
+  async function abrirDialogoAprovacao(eq: Equipamento) {
+    const liberado = await ensureSensitiveAccess({
+      title: "Aprovar orçamento",
+      description: "Informe o PIN para aprovar o orçamento com a forma de pagamento escolhida.",
+      permission: SENSITIVE_PERMISSIONS.FINANCIAL_ACTIONS,
+    });
+    if (!liberado) return;
+
+    setSelecionado(eq);
+    setPagamentoAprovacaoError(null);
+    setPagamentoAprovacaoLoading(true);
+    try {
+      const verificacao = await db.buscarVerificacao(eq.id!);
+      setPagamentoAprovacaoInicial(verificacao?.forma_pagamento_codigo ? {
+        codigo: verificacao.forma_pagamento_codigo,
+        detalhe: verificacao.forma_pagamento_detalhe || null,
+      } : null);
+      setPagamentoDialogOpen(true);
+    } catch (cause) {
+      showError("Equipamentos", "Carregar pagamento", cause);
+    } finally {
+      setPagamentoAprovacaoLoading(false);
+    }
+  }
+
+  async function confirmarAprovacao(pagamento: FormaPagamento): Promise<boolean> {
+    if (!selecionado?.id) {
+      setPagamentoAprovacaoError("Não foi possível identificar o equipamento selecionado.");
+      return false;
+    }
+    if (!selecionado.empresa_id) {
+      setPagamentoAprovacaoError("Este equipamento é um cadastro legado sem empresa vinculada. Vincule o cliente à empresa antes de aprovar o orçamento.");
+      return false;
+    }
+    if (!selecionado.atualizado_em) {
+      setPagamentoAprovacaoError("A versão atual do orçamento não está disponível. Feche, atualize a lista e tente novamente.");
+      return false;
+    }
+    setPagamentoAprovacaoLoading(true);
+    try {
+      await db.aprovarOrcamento({
+        empresa_id: selecionado.empresa_id,
+        equipamento_id: selecionado.id,
+        expected_updated_em: selecionado.atualizado_em,
+        pagamento,
+      });
+      await recarregar();
+      setPagamentoAprovacaoError(null);
+      success("Equipamentos", "Orçamento aprovado.", "Aprovação");
+      return true;
+    } catch (cause) {
+      setPagamentoAprovacaoError(String(cause));
+      return false;
+    } finally {
+      setPagamentoAprovacaoLoading(false);
+    }
+  }
+
   async function confirmarMudancaStatus(divergencia = false) {
     if (!selecionado || (!novoStatus && !ajusteOrcamentoSemMudancaStatus)) return;
+    if (ajusteOrcamentoSemMudancaStatus && selecionado.status === "APROVADO") {
+      if (!formaPagamentoAjuste) {
+        warning("Equipamentos", "Escolha a forma de pagamento antes de salvar o orçamento aprovado.");
+        return;
+      }
+      if (formaPagamentoAjuste === "OUTRO" && !detalhePagamentoAjuste.trim()) {
+        warning("Equipamentos", "Descreva a forma de pagamento escolhida em Outro.");
+        return;
+      }
+    }
     const totalAtual = valorOrcamentoRef.current;
-    const precisaLiberacao = statusExigeAcessoSensivel(
+    if (correcaoStatus && !motivoCorrecaoStatus.trim()) {
+      warning("Equipamentos", "Informe o motivo da correção antes de continuar.");
+      return;
+    }
+    const precisaLiberacao = correcaoStatus || statusExigeAcessoSensivel(
       novoStatus,
       totalAtual || undefined,
       prazoAprovacao || undefined,
@@ -1068,9 +1187,17 @@ export default function Equipamentos() {
         await db.atualizarServicosVerificacao(
           {
             equipamento_id: selecionado.id!,
+            empresa_id: selecionado.empresa_id,
             servicos: servicosAjuste,
             pecas,
             custo_total: totalAtual,
+            observacoes: observacoesAjuste,
+            ...(selecionado.status === "APROVADO" && formaPagamentoAjuste
+              ? {
+                forma_pagamento_codigo: formaPagamentoAjuste,
+                forma_pagamento_detalhe: formaPagamentoAjuste === "OUTRO" ? detalhePagamentoAjuste.trim() : undefined,
+              }
+              : {}),
             divergence: divergencia,
           },
           profileId,
@@ -1091,7 +1218,8 @@ export default function Equipamentos() {
         totalAtual || undefined,
         prazoAprovacao || undefined,
         valorFinal || undefined,
-        selecionado.atualizado_em
+        selecionado.atualizado_em,
+        correcaoStatus ? motivoCorrecaoStatus.trim() : undefined,
       );
       if (!resultado.sucesso) {
         throw new Error(resultado.erro || "Não foi possível alterar o status.");
@@ -1215,7 +1343,9 @@ export default function Equipamentos() {
 
     const verif = await db.buscarVerificacao(eq.id!);
     if (!verif) { warning("Equipamentos", "Nenhuma verificação técnica encontrada para este equipamento."); return; }
-    const r = await WhatsAppService.enviarOrcamento(eq, verif);
+    const recipient = resolveRecipient(eq, "telefone");
+    if (!recipient.endereco) { warning("Equipamentos", "Nenhum telefone disponível para este envio."); return; }
+    const r = await WhatsAppService.enviarOrcamento({ ...eq, cliente_telefone: recipient.endereco, cliente_nome: recipient.nome }, verif);
     if (!r.sucesso) {
       if (whatsappNaoConfigurado(r.erro)) {
         console.warn("[WhatsApp] Integração não configurada. Fluxo segue com envio manual de PDF.");
@@ -1256,7 +1386,14 @@ export default function Equipamentos() {
   async function gerarRelatorioStatusPdf(eq: Equipamento) {
     try {
       setSalvando(true);
-      setPdfPreview({ artifact: await PdfService.construirRelatorioStatus(eq), tipo: "relatorio", equipamento: eq });
+      setPdfPreview({
+        artifact: await PdfService.construirRelatorioStatus(
+          eq,
+          eq.id === selecionado?.id ? historicoDetalhes : undefined,
+        ),
+        tipo: "relatorio",
+        equipamento: eq,
+      });
     } catch (err) {
       console.error("Erro ao gerar Relatório de Status PDF:", err);
       showError("Equipamentos", "Gerar Relatório de Status PDF", err);
@@ -1274,7 +1411,9 @@ export default function Equipamentos() {
     });
     if (!liberado) return;
 
-    const r = await WhatsAppService.enviarEquipamentoPronto(eq);
+    const recipient = resolveRecipient(eq, "telefone");
+    if (!recipient.endereco) { warning("Equipamentos", "Nenhum telefone disponível para este envio."); return; }
+    const r = await WhatsAppService.enviarEquipamentoPronto({ ...eq, cliente_telefone: recipient.endereco, cliente_nome: recipient.nome });
     if (!r.sucesso) {
       if (whatsappNaoConfigurado(r.erro)) {
         console.warn("[WhatsApp] Integração não configurada. Fluxo segue sem envio automático.");
@@ -1317,6 +1456,13 @@ export default function Equipamentos() {
       icon: <DollarSign className="h-3.5 w-3.5" />,
       variant: "outline",
       onClick: () => void abrirAlterarOrcamento(eq),
+    };
+    const acaoCorrigirStatus: PriorityAction = {
+      id: "corrigir_status",
+      label: "Corrigir Status",
+      icon: <RefreshCw className="h-3.5 w-3.5" />,
+      variant: "outline",
+      onClick: () => void abrirCorrecaoStatus(eq),
     };
     const acaoExcluir: PriorityAction = {
       id: "excluir",
@@ -1399,7 +1545,7 @@ export default function Equipamentos() {
           icon: <CheckCircle className="h-3.5 w-3.5" />,
           variant: "default",
           className: "bg-green-600 hover:bg-green-700 text-white",
-          onClick: () => void acaoRapida(eq, "APROVADO"),
+          onClick: () => void abrirDialogoAprovacao(eq),
           disabled: salvando,
         };
         secondary = {
@@ -1539,6 +1685,10 @@ export default function Equipamentos() {
       const editarIndex = overflow.findIndex((acao) => acao.id === acaoEditar.id);
       overflow.splice(editarIndex >= 0 ? editarIndex : overflow.length, 0, acaoAlterarOrcamento);
     }
+    if (getStatusCorrecao(eq.status).length > 0) {
+      const editarIndex = overflow.findIndex((acao) => acao.id === acaoEditar.id);
+      overflow.splice(editarIndex >= 0 ? editarIndex : overflow.length, 0, acaoCorrigirStatus);
+    }
 
     return primary
       ? (
@@ -1618,14 +1768,7 @@ export default function Equipamentos() {
   function renderHistoricoTab() {
     if (!selecionado) return null;
     const eq = selecionado;
-    const eventos: { label: string; data: string; status: string }[] = [];
-    if (eq.data_entrada) eventos.push({ label: "Recebido", data: eq.data_entrada, status: "RECEBIDO" });
-    if (eq.data_verificacao) eventos.push({ label: "Verificado", data: eq.data_verificacao, status: "VERIFICADO" });
-    if (eq.data_aprovacao) eventos.push({ label: "Aprovado", data: eq.data_aprovacao, status: "APROVADO" });
-    if (eq.data_reprovacao) eventos.push({ label: "Reprovado", data: eq.data_reprovacao, status: "REPROVADO" });
-    if (eq.data_pronto) eventos.push({ label: "Pronto", data: eq.data_pronto, status: "PRONTO" });
-    if (eq.data_saida) eventos.push({ label: "Entregue", data: eq.data_saida, status: "ENTREGUE" });
-    eventos.sort((a, b) => new Date(a.data).getTime() - new Date(b.data).getTime());
+    const eventos = historicoDetalhes;
 
     if (eventos.length === 0) return <div className="text-center py-8 text-muted-foreground"><History className="h-10 w-10 mx-auto mb-2 opacity-20" /><p>Nenhum registro de histórico</p></div>;
 
@@ -1645,16 +1788,22 @@ export default function Equipamentos() {
         </div>
         <div className="space-y-0">
         {eventos.map((ev, idx) => (
-          <div key={ev.label} className="flex items-start gap-3 pb-4">
+          <div key={`${ev.data}-${ev.status}-${idx}`} className="flex items-start gap-3 pb-4">
             <div className="flex flex-col items-center">
               <div className={`w-3 h-3 rounded-full mt-1 ${idx === eventos.length - 1 ? "bg-blue-500 ring-2 ring-blue-200" : "bg-gray-300"}`} />
               {idx < eventos.length - 1 && <div className="w-0.5 flex-1 bg-gray-200 mt-1 min-h-[16px]" />}
             </div>
             <div className="flex-1">
-              <div className="flex items-center gap-2">
+              <div className="flex flex-wrap items-center gap-2">
+                {ev.status_anterior && <><StatusBadge status={ev.status_anterior} /><span className="text-muted-foreground">→</span></>}
                 <StatusBadge status={ev.status} />
-                <span className="text-xs text-muted-foreground">{new Date(ev.data).toLocaleDateString("pt-BR")}</span>
+                {ev.tipo === "CORRECAO_STATUS" && <span className="text-xs font-medium text-amber-700">Correção</span>}
+                <span className="text-xs text-muted-foreground">
+                  {ev.data_confiavel !== false ? formatDateTimeSalvador(ev.data) : "Horário legado inconsistente"}
+                </span>
               </div>
+              <p className="mt-1 text-sm">{ev.motivo}</p>
+              {ev.autor && <p className="text-xs text-muted-foreground">Registrado por {ev.autor}</p>}
             </div>
           </div>
         ))}
@@ -1757,7 +1906,7 @@ export default function Equipamentos() {
                         </div>
                       </TableCell>
                       <TableCell className="text-sm text-muted-foreground">
-                        {eq.data_entrada ? new Date(eq.data_entrada).toLocaleDateString("pt-BR") : "—"}
+                        {formatDatePtBr(eq.data_entrada)}
                       </TableCell>
                       <TableCell className="text-right">
                         <div className="flex justify-end">
@@ -1787,9 +1936,16 @@ export default function Equipamentos() {
             <div className="space-y-2">
               <ClienteSelector
                 clienteInicial={clienteVinculado}
-                onClienteSelecionado={(c) => { setClienteVinculado(c); setErroCliente(null); }}
-                onClienteRemovido={() => setClienteVinculado(null)}
+                onClienteSelecionado={(c) => { setClienteVinculado(c); setResponsavelVinculado(null); setErroCliente(null); }}
+                onClienteRemovido={() => { setClienteVinculado(null); setResponsavelVinculado(null); }}
                 readOnly={false}
+              />
+              <ContatoResponsavelSelector
+                cliente={clienteVinculado}
+                empresaId={clienteVinculado?.empresa_id || editando?.empresa_id}
+                value={responsavelVinculado}
+                onChange={setResponsavelVinculado}
+                disabled={salvando}
               />
               {erroCliente && (
                 <ErrorAlert variant="error" context="Equipamentos" message={erroCliente} />
@@ -1842,7 +1998,7 @@ export default function Equipamentos() {
                           <li key={r.id} className="text-xs text-amber-800 flex items-center gap-1 flex-wrap">
                             <span>• #{r.id}</span>
                             <StatusBadge status={r.status} />
-                            <span>— Entrada: {r.data_entrada ? new Date(r.data_entrada).toLocaleDateString("pt-BR") : "—"}</span>
+                            <span>— Entrada: {formatDatePtBr(r.data_entrada)}</span>
                             {r.data_saida && (
                               <span>| Saída: {new Date(r.data_saida).toLocaleDateString("pt-BR")}</span>
                             )}
@@ -2104,6 +2260,11 @@ export default function Equipamentos() {
                 <div>
                   <h3 className="text-lg font-bold">{selecionado.marca} {selecionado.modelo}</h3>
                   <p className="text-sm text-muted-foreground font-mono">{selecionado.serial_number}</p>
+                  {selecionado.responsavel_nome && (
+                    <p className="mt-1 text-sm text-muted-foreground">
+                      Contato responsável: <span className="font-medium text-foreground">{selecionado.responsavel_nome}</span>
+                    </p>
+                  )}
                 </div>
                 <StatusBadge status={selecionado.status} />
               </div>
@@ -2119,7 +2280,7 @@ export default function Equipamentos() {
                 <TabsContent value="info" className="space-y-4 mt-4">
                   <div className="grid grid-cols-2 gap-4 text-sm">
                     <div><span className="text-muted-foreground">Tipo:</span> <span className="ml-1 font-medium">{selecionado.tipo}</span></div>
-                    <div><span className="text-muted-foreground">Entrada:</span> <span className="ml-1 font-medium">{selecionado.data_entrada ? new Date(selecionado.data_entrada).toLocaleDateString("pt-BR") : "—"}</span></div>
+                    <div><span className="text-muted-foreground">Entrada:</span> <span className="ml-1 font-medium">{formatDatePtBr(selecionado.data_entrada)}</span></div>
                     <div><span className="text-muted-foreground">Patrimônio:</span> <span className="ml-1 font-medium">{selecionado.patrimonio || "—"}</span></div>
                     <div><span className="text-muted-foreground">Nº Série:</span> <span className="ml-1 font-medium font-mono">{selecionado.serial_number}</span></div>
                   </div>
@@ -2214,9 +2375,6 @@ export default function Equipamentos() {
                         <p>Valor: <strong>R$ {selecionado.valor_orcamento?.toFixed(2)}</strong></p>
                         {selecionado.prazo_aprovacao && <p>Prazo: {new Date(selecionado.prazo_aprovacao).toLocaleDateString("pt-BR")}</p>}
                         {selecionado.valor_final != null && <p>Valor final: <strong>R$ {selecionado.valor_final.toFixed(2)}</strong></p>}
-                        <Button variant="outline" size="sm" className="mt-2 gap-1" onClick={() => gerarOrcamentoPdf(selecionado)} disabled={salvando}>
-                          <FileDown className="h-3.5 w-3.5" />Gerar Orçamento PDF
-                        </Button>
                       </CardContent>
                     </Card>
                   )}
@@ -2260,17 +2418,21 @@ export default function Equipamentos() {
         open={statusDialogOpen}
         onOpenChange={(open) => {
           setStatusDialogOpen(open);
-          if (!open) setAjusteOrcamentoSemMudancaStatus(false);
+          if (!open) {
+            setAjusteOrcamentoSemMudancaStatus(false);
+            setCorrecaoStatus(false);
+            setMotivoCorrecaoStatus("");
+          }
         }}
       >
-        <DialogContent className="sm:max-w-md">
+        <DialogContent className="flex max-h-[calc(100vh-2rem)] flex-col overflow-hidden sm:max-w-md">
           <DialogHeader>
             <DialogTitle>
-              {novoStatus === "AGUARDANDO_APROVACAO" || ajusteOrcamentoSemMudancaStatus ? "Ajuste de Orçamento" : "Alterar Status"}
+              {novoStatus === "AGUARDANDO_APROVACAO" || ajusteOrcamentoSemMudancaStatus ? "Ajuste de Orçamento" : correcaoStatus ? "Corrigir Status" : "Alterar Status"}
             </DialogTitle>
           </DialogHeader>
           {selecionado && (
-            <div className="space-y-4">
+            <div className="min-h-0 space-y-4 overflow-y-auto pr-1">
               {!ajusteOrcamentoSemMudancaStatus && (
                 <>
                   <div className="flex items-center gap-2">
@@ -2288,11 +2450,23 @@ export default function Equipamentos() {
                       <Select value={novoStatus} onValueChange={handleNovoStatusChange}>
                         <SelectTrigger><SelectValue placeholder="Selecione..." /></SelectTrigger>
                         <SelectContent>
-                          {getProximosStatus(selecionado.status).map(s => (
+                          {(correcaoStatus ? getStatusCorrecao(selecionado.status) : getProximosStatus(selecionado.status)).map(s => (
                             <SelectItem key={s} value={s}>{STATUS_LABELS[s as StatusEquipamento] || s}</SelectItem>
                           ))}
                         </SelectContent>
                       </Select>
+                    </div>
+                  )}
+                  {correcaoStatus && (
+                    <div className="space-y-2">
+                      <Label htmlFor="motivo-correcao-status">Motivo da correção *</Label>
+                      <Textarea
+                        id="motivo-correcao-status"
+                        value={motivoCorrecaoStatus}
+                        onChange={(event) => setMotivoCorrecaoStatus(event.target.value)}
+                        placeholder="Ex.: status alterado por clique indevido"
+                      />
+                      <p className="text-xs text-muted-foreground">A correção e o motivo serão registrados para auditoria.</p>
                     </div>
                   )}
                 </>
@@ -2334,6 +2508,30 @@ export default function Equipamentos() {
                   <div className="space-y-2"><Label>Valor Orçamento (R$)</Label><Input data-testid="valor-orcamento-input" type="number" step="0.01" value={valorOrcamento || ""} onChange={e => setValorOrcamento(Number(e.target.value))} /></div>
                   {!ajusteOrcamentoSemMudancaStatus && (
                     <div className="space-y-2"><Label>Prazo Aprovação</Label><Input type="date" value={prazoAprovacao} onChange={e => setPrazoAprovacao(e.target.value)} /></div>
+                  )}
+                  <div className="space-y-2">
+                    <Label htmlFor="descricao-servico-tecnico">Descrição do Serviço Técnico</Label>
+                    <Textarea
+                      id="descricao-servico-tecnico"
+                      value={observacoesAjuste}
+                      onChange={(event) => setObservacoesAjuste(event.target.value)}
+                      placeholder="Descreva o serviço técnico para o orçamento"
+                      rows={3}
+                    />
+                    <p className="text-xs text-muted-foreground">Esta descrição vem das observações da verificação técnica.</p>
+                  </div>
+                  {ajusteOrcamentoSemMudancaStatus && selecionado.status === "APROVADO" ? (
+                    <FormaPagamentoFields
+                      codigo={formaPagamentoAjuste}
+                      detalhe={detalhePagamentoAjuste}
+                      onCodigoChange={setFormaPagamentoAjuste}
+                      onDetalheChange={setDetalhePagamentoAjuste}
+                      required
+                    />
+                  ) : (
+                    <div className="rounded-md border bg-muted/30 px-3 py-2 text-sm text-muted-foreground">
+                      A forma de pagamento será definida durante a aprovação.
+                    </div>
                   )}
                   {valorOrcamentoAnterior != null && valorOrcamento !== valorOrcamentoAnterior && (
                     <p className="text-xs text-amber-700">
@@ -2512,16 +2710,29 @@ export default function Equipamentos() {
                   </div>
                 </div>
               )}
-              <DialogFooter>
+              <DialogFooter className="sticky bottom-0 bg-background pt-3">
                 <DialogClose asChild><Button variant="outline">Cancelar</Button></DialogClose>
                 <Button onClick={iniciarConfirmacaoStatus} disabled={salvando || (!novoStatus && !ajusteOrcamentoSemMudancaStatus)}>
-                  {salvando ? "Salvando..." : "Confirmar"}
+                  {salvando ? "Salvando..." : correcaoStatus ? "Corrigir status" : "Confirmar"}
                 </Button>
               </DialogFooter>
             </div>
           )}
         </DialogContent>
       </Dialog>
+
+      <PagamentoOrcamentoDialog
+        open={pagamentoDialogOpen}
+        loading={pagamentoAprovacaoLoading}
+        error={pagamentoAprovacaoError}
+        initialCodigo={pagamentoAprovacaoInicial?.codigo}
+        initialDetalhe={pagamentoAprovacaoInicial?.detalhe}
+        onOpenChange={(open) => {
+          setPagamentoDialogOpen(open);
+          if (!open) setPagamentoAprovacaoError(null);
+        }}
+        onConfirm={confirmarAprovacao}
+      />
 
       {/* ═══ Dialog Exclusão ═══ */}
       <Dialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
@@ -2576,14 +2787,20 @@ export default function Equipamentos() {
         onCancel={confirmProps.onCancel}
       />
 
-      <InputDialog
-        open={inputOpen}
-        onOpenChange={setInputOpen}
-        title={inputProps.title}
-        description={inputProps.description}
-        label={inputProps.label}
-        placeholder={inputProps.placeholder}
-        onConfirm={inputProps.onConfirm}
+      <CommunicationEmailDialog
+        open={emailDialogOpen}
+        recipient={emailFlow?.recipient || null}
+        onOpenChange={(open) => {
+          setEmailDialogOpen(open);
+          if (!open) setEmailFlow(null);
+        }}
+        onConfirm={async (email, salvar) => {
+          if (!emailFlow) return;
+          return emailFlow.onConfirm(email, salvar);
+        }}
+        onSkip={async () => {
+          await emailFlow?.onSkip();
+        }}
       />
       <InputDialog
         open={marcaOutroOpen}
