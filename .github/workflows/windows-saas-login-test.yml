@@ -1,6 +1,6 @@
 name: Windows SaaS Login Test
 
-run-name: Windows SaaS login test — ${{ inputs.ref }}
+run-name: Windows SaaS login test — ${{ inputs.ref || github.head_ref || github.ref_name }}
 
 on:
   workflow_dispatch:
@@ -10,12 +10,20 @@ on:
         required: true
         default: feature
         type: string
+  pull_request:
+    branches: [feature]
+    paths:
+      - '.github/workflows/windows-saas-login-test.yml'
+      - 'src/**'
+      - 'src-tauri/**'
+      - 'package.json'
+      - 'package-lock.json'
 
 permissions:
   contents: read
 
 concurrency:
-  group: windows-saas-login-test-${{ inputs.ref }}
+  group: windows-saas-login-test-${{ inputs.ref || github.event.pull_request.number || github.ref }}
   cancel-in-progress: false
 
 jobs:
@@ -30,7 +38,7 @@ jobs:
       - name: Checkout da versão escolhida
         uses: actions/checkout@v4
         with:
-          ref: ${{ inputs.ref }}
+          ref: ${{ inputs.ref || github.event.pull_request.head.sha }}
 
       - name: Registrar commit compilado
         id: source
