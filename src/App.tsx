@@ -46,12 +46,14 @@ import Balcao from "@/pages/Balcao";
 
 /** Exibição mínima do boot (IPC em dev pode resolver em poucos ms). Prod fica igual ou mais pesado só se o Rust/DB demorar. */
 const MIN_BOOT_SPLASH_MS = 1_100;
+const BOOT_COMPLETION_ANIMATION_MS = 1_450;
 
 function AppContent() {
   const { loading, bootProgress, status, refreshStatus } = useSensitiveAccess();
   const [appMode, setCurrentAppMode] = useState<AppMode | null>(() => getAppMode());
   const [splashVisible, setSplashVisible] = useState(true);
   const [minSplashElapsed, setMinSplashElapsed] = useState(false);
+  const [completionAnimationElapsed, setCompletionAnimationElapsed] = useState(false);
 
   // Força refresh do status quando o banco fica pronto
   // Resolve race condition onde refreshStatus() falhou antes do banco estar inicializado
@@ -72,7 +74,20 @@ function AppContent() {
     return () => window.clearTimeout(t);
   }, []);
 
-  const splashCanFadeOut = !loading && minSplashElapsed;
+  useEffect(() => {
+    if (loading) {
+      setCompletionAnimationElapsed(false);
+      return;
+    }
+
+    const t = window.setTimeout(
+      () => setCompletionAnimationElapsed(true),
+      BOOT_COMPLETION_ANIMATION_MS,
+    );
+    return () => window.clearTimeout(t);
+  }, [loading]);
+
+  const splashCanFadeOut = !loading && minSplashElapsed && completionAnimationElapsed;
   const sessionReady = Boolean(status?.active_profile_id && status.unlocked);
 
   useEffect(() => {

@@ -1,4 +1,5 @@
 import { cn } from "@/lib/utils";
+import { AutoOsBootAnimation, bootStatusLabel } from "@/components/AutoOsBootAnimation";
 
 interface BootSplashProps {
   /** 0–100 conforme progresso real da inicialização */
@@ -8,11 +9,12 @@ interface BootSplashProps {
 }
 
 /**
- * Splash de arranque: logo BMP + barra proporcional ao `bootProgress`.
+ * Splash de arranque: fluxo vetorial proporcional ao `bootProgress`.
  * Sobreposição fullscreen até o primeiro `refreshStatus` concluir.
  */
 export function BootSplash({ progress, fadeOut }: BootSplashProps) {
   const clamped = Math.min(100, Math.max(0, progress));
+  const statusLabel = bootStatusLabel(clamped);
 
   return (
     <div
@@ -25,24 +27,25 @@ export function BootSplash({ progress, fadeOut }: BootSplashProps) {
         fadeOut ? "opacity-0 pointer-events-none" : "opacity-100",
       )}
     >
-      <div className="flex w-full max-w-md flex-col items-center gap-10">
-        <img
-          src="/logo-bmitag.png"
-          alt="BMITAG"
-          className="w-full max-w-[340px] select-none drop-shadow-[0_0_32px_rgba(26,127,255,0.12)]"
-          draggable={false}
-        />
-
-        <div className="w-full space-y-2">
-          <div className="h-2 w-full overflow-hidden rounded-full bg-white/[0.06] ring-1 ring-white/[0.08]">
-            <div
-              className="h-full rounded-full bg-gradient-to-r from-cyan-400 via-sky-500 to-blue-600 transition-[width] duration-300 ease-out"
-              style={{ width: `${clamped}%` }}
-            />
-          </div>
-          <div className="flex justify-between text-[11px] tracking-wide text-[#5a7490]">
-            <span>Carregando módulos e sessão</span>
-            <span className="tabular-nums text-[#7a94b0]">{Math.round(clamped)}%</span>
+      <div className="flex w-full max-w-xl flex-col items-center">
+        <AutoOsBootAnimation progress={clamped} />
+        <div className="-mt-2 flex flex-col items-center gap-2 text-center">
+          <p className="text-sm font-medium tracking-[0.16em] text-cyan-100/90">
+            {statusLabel}
+          </p>
+          <p className="text-xs tracking-wide text-[#5f7890]">
+            Organizando seu atendimento
+          </p>
+          <div className="mt-2 flex gap-1.5" aria-hidden="true">
+            {[18, 42, 68, 92].map((threshold) => (
+              <span
+                key={threshold}
+                className={cn(
+                  "h-1.5 rounded-full transition-all duration-500",
+                  clamped >= threshold ? "w-5 bg-cyan-400" : "w-1.5 bg-slate-700",
+                )}
+              />
+            ))}
           </div>
         </div>
       </div>
