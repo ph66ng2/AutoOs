@@ -6,6 +6,7 @@ import {
   type SaasSupabaseAuthPort,
 } from "@/lib/saas-auth";
 import type { SaasSessionStore } from "@/lib/saas-session-store";
+import type { SaasDeviceStore } from "@/lib/saas-device-store";
 import { SaasAuthError, type SaasSession } from "@/types/saas-auth";
 
 const USER_ID = "a0000000-0000-4000-8000-000000000001";
@@ -48,16 +49,24 @@ function harness(initial: SaasSession | null = null) {
     }),
     signOutLocal: vi.fn().mockResolvedValue({ error: null }),
     resetPasswordForEmail: vi.fn().mockResolvedValue({ error: null }),
+    registerDevice: vi.fn().mockResolvedValue({ error: null }),
+    revokeDevice: vi.fn().mockResolvedValue({ error: null }),
   };
   const store: SaasSessionStore = {
     load: vi.fn(async () => stored),
     save: vi.fn(async (session) => { stored = session; }),
     clear: vi.fn(async () => { stored = null; }),
   };
+  const deviceStore: SaasDeviceStore = {
+    load: vi.fn(async () => ({ deviceId: "d0000000-0000-4000-8000-000000000001" })),
+    create: vi.fn(async () => ({ deviceId: "d0000000-0000-4000-8000-000000000001" })),
+    clear: vi.fn(async () => undefined),
+  };
   return {
     port,
     store,
-    service: new DefaultSaasAuthService(port, store, "https://app.autoos.com.br/auth/recovery", () => 1_800_000_000_000),
+    deviceStore,
+    service: new DefaultSaasAuthService(port, store, "https://app.autoos.com.br/auth/recovery", deviceStore, () => 1_800_000_000_000),
   };
 }
 
@@ -84,6 +93,7 @@ describe("DefaultSaasAuthService", () => {
     expect(port.getClaims).toHaveBeenCalledWith("access-new");
     expect(session.identity).toEqual({ userId: USER_ID, companyId: COMPANY_ID, profileId: PROFILE_ID, email: "admin@example.com" });
     expect(store.save).toHaveBeenCalledWith(session);
+    expect(port.registerDevice).toHaveBeenCalledWith("access-new", "refresh-new", "d0000000-0000-4000-8000-000000000001");
     expect(JSON.stringify(session)).not.toContain("password-not-persisted");
   });
 
@@ -153,6 +163,22 @@ describe("DefaultSaasAuthService", () => {
     await expect(service.signOut(current)).resolves.toEqual({ revoked: true });
     expect(port.signOutLocal).toHaveBeenCalledWith("access-old", "refresh-old");
     expect(store.clear).toHaveBeenCalledTimes(1);
+  });
+
+  it("não restaura um keyring residual quando o marcador da instalação não existe", async () => {
+    const { service, store, deviceStore } = harness(storedSession());
+    vi.mocked(deviceStore.load).mockResolvedValue(null);
+    await expect(service.restoreSession()).resolves.toMatchObject({ kind: "signed_out" });
+    expect(store.clear).toHaveBeenCalledTimes(1);
+  });
+
+  it("remove a máquina somente depois de a revogação server-side confirmar", async () => {
+    const current = storedSession();
+    const { service, port, store, deviceStore } = harness(current);
+    await expect(service.removeThisDevice(current)).resolves.toEqual({ revoked: true });
+    expect(port.revokeDevice).toHaveBeenCalledWith("access-old", "refresh-old", "d0000000-0000-4000-8000-000000000001");
+    expect(store.clear).toHaveBeenCalledTimes(1);
+    expect(deviceStore.clear).toHaveBeenCalledTimes(1);
   });
 
   it("usa exatamente o redirect HTTPS configurado na recuperação", async () => {

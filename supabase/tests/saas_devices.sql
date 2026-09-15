@@ -1,0 +1,6 @@
+-- Execute apenas com UUIDs e JWTs sintéticos de staging.
+-- O chamador authenticated deve conseguir registrar a própria instalação.
+-- Depois de revoke_current_autoos_device, estas chamadas devem falhar com 42501:
+--   select public.assert_active_autoos_device('<device UUID>');
+--   select * from public.register_autoos_device('<device UUID>', 'AutoOS Desktop');
+-- Nenhum cliente authenticated deve conseguir SELECT direto em public.saas_devices.

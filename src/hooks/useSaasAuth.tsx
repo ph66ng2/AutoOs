@@ -8,6 +8,7 @@ interface SaasAuthContextValue {
   retry(): Promise<void>;
   lock(): Promise<void>;
   signOut(): Promise<void>;
+  removeThisDevice(): Promise<void>;
   requestPasswordRecovery(email: string): Promise<void>;
 }
 
@@ -92,6 +93,18 @@ export function SaasAuthProvider({ children, service }: { children: ReactNode; s
         message: result.revoked
           ? "Sessão encerrada neste dispositivo."
           : "Sessão local removida. Não foi possível avisar o servidor porque ele está indisponível.",
+      });
+    },
+    async removeThisDevice() {
+      const session = state.kind === "authenticated" || state.kind === "offline_recoverable"
+        ? state.session
+        : undefined;
+      const result = await requireService().removeThisDevice(session);
+      setState({
+        kind: "signed_out",
+        message: result.revoked
+          ? "Esta máquina foi removida e a sessão foi encerrada."
+          : "Não foi possível remover esta máquina agora. A sessão e o marcador local foram preservados para evitar uma revogação incompleta.",
       });
     },
     requestPasswordRecovery(email) {

@@ -32,6 +32,7 @@ export interface SaasAuthService {
   refreshSession(session: SaasSession): Promise<SaasRestoreResult>;
   lock(): Promise<void>;
   signOut(session?: SaasSession): Promise<SaasSignOutResult>;
+  removeThisDevice(session?: SaasSession): Promise<SaasSignOutResult>;
   requestPasswordRecovery(email: string): Promise<void>;
 }
 
