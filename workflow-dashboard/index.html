@@ -74,6 +74,22 @@
             </article>
           </section>
 
+          <section id="decision-map" class="decision-section" aria-labelledby="decision-map-title">
+            <div class="section-heading">
+              <div><p class="eyebrow">ORDEM RECOMENDADA</p><h2 id="decision-map-title">Mapa de decisão</h2><p class="section-copy">Use o caminho destacado para escolher o próximo trabalho. Dependências liberadas ficam para trás; o ramo seguinte mostra o que será desbloqueado.</p></div>
+            </div>
+            <div class="decision-map">
+              <div class="decision-guide">
+                <span class="guide-label">PRÓXIMO MOVIMENTO</span>
+                <span id="map-next-id" class="focus-ticket-id">--</span>
+                <h3 id="map-next-title">Calculando caminho...</h3>
+                <p id="map-next-reason">O mapa será montado a partir das dependências atuais.</p>
+                <button id="map-next-button" class="card-action" type="button">Abrir ticket <span aria-hidden="true">→</span></button>
+              </div>
+              <div id="decision-map-flow" class="decision-flow" aria-label="Fluxo de decisão"></div>
+            </div>
+          </section>
+
           <section id="waves" class="waves-section" aria-labelledby="waves-title">
             <div class="section-heading">
               <div><p class="eyebrow">CAMINHO CRÍTICO</p><h2 id="waves-title">Ondas de execução</h2><p class="section-copy">Leia da esquerda para a direita. Cada onda só avança quando a anterior libera o caminho.</p></div>
