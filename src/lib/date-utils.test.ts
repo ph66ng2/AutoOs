@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { dateOnlyToLocalDate, formatDatePtBr, todayLocalIsoDate } from "./date-utils";
+import { dateOnlyToLocalDate, formatDatePtBr, formatDateTimeSalvador, todayLocalIsoDate } from "./date-utils";
 
 describe("date-utils", () => {
   it("formata data sem horário sem retroceder pelo fuso UTC", () => {
@@ -15,5 +15,9 @@ describe("date-utils", () => {
     expect(parsed.getFullYear()).toBe(2026);
     expect(parsed.getMonth()).toBe(8);
     expect(parsed.getDate()).toBe(10);
+  });
+
+  it("exibe data e hora no fuso de Salvador independentemente do computador", () => {
+    expect(formatDateTimeSalvador("2026-09-14T12:34:56.000Z")).toBe("14/09/2026, 09:34:56");
   });
 });

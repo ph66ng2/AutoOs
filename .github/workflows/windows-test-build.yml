@@ -8,7 +8,11 @@ on:
       ref:
         description: Branch, tag ou commit que será compilado
         required: true
-        default: master
+        default: integration/ao-cont-orc-pdf-qa
+        type: string
+      confirmacao_producao:
+        description: Digite PRODUCAO para gerar um EXE conectado ao banco real
+        required: true
         type: string
 
 permissions:
@@ -59,13 +63,17 @@ jobs:
             throw "tauri.conf.json não pode empacotar .env no instalador."
           }
 
-      - name: Validar conexão PostgreSQL de teste
+      - name: Confirmar build conectado à produção
         shell: pwsh
         env:
+          CONFIRMACAO_PRODUCAO: ${{ inputs.confirmacao_producao }}
           AUTOOS_DATABASE_URL: ${{ secrets.AUTOOS_DATABASE_URL }}
         run: |
+          if ($env:CONFIRMACAO_PRODUCAO -cne "PRODUCAO") {
+            throw "Confirmação inválida. Digite PRODUCAO para continuar."
+          }
           if ([string]::IsNullOrWhiteSpace($env:AUTOOS_DATABASE_URL)) {
-            throw "Configure o secret AUTOOS_DATABASE_URL antes de gerar o instalador de teste."
+            throw "Configure o secret AUTOOS_DATABASE_URL antes de gerar o instalador."
           }
           if ($env:AUTOOS_DATABASE_URL -notmatch '^postgres(ql)?://.+@[^/]*\.pooler\.supabase\.com:5432/postgres(?:\?.*)?$') {
             throw "AUTOOS_DATABASE_URL deve usar o Supavisor Session pooler na porta 5432 e o banco /postgres."
@@ -74,29 +82,40 @@ jobs:
             throw "AUTOOS_DATABASE_URL deve exigir TLS com sslmode=require."
           }
 
-      - name: Validar estruturas reais do banco
+      - name: Validar schema da produção em modo somente leitura
         env:
           AUTOOS_DATABASE_URL: ${{ secrets.AUTOOS_DATABASE_URL }}
         run: cargo run --manifest-path src-tauri/Cargo.toml --locked --quiet --bin release_database_check
 
-      - name: Compilar instalador Windows sem publicar release
+      - name: Compilar instalador Windows conectado à produção sem publicar release
         uses: tauri-apps/tauri-action@v0
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          CI: true
+          COMPILE_TIME_DATABASE_URL: ${{ secrets.AUTOOS_DATABASE_URL }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY || secrets.TAURI_SIGNING_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
-          AUTOOS_DATABASE_URL: ${{ secrets.AUTOOS_DATABASE_URL }}
         with:
           args: --bundles nsis
+
+      - name: Calcular checksums do instalador
+        shell: pwsh
+        run: |
+          $installers = Get-ChildItem "src-tauri/target/release/bundle/nsis/*.exe"
+          if ($installers.Count -eq 0) {
+            throw "Nenhum instalador NSIS foi gerado."
+          }
+          foreach ($installer in $installers) {
+            $hash = (Get-FileHash $installer.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+            "$hash  $($installer.Name)" | Out-File "$($installer.FullName).sha256" -Encoding ascii
+          }
 
       - name: Publicar artefato temporário
         uses: actions/upload-artifact@v4
         with:
           name: AutoOS-Windows-Test-${{ github.run_number }}
           path: |
-            src-tauri/target/release/autoos.exe
             src-tauri/target/release/bundle/nsis/*.exe
-            src-tauri/target/release/bundle/nsis/*.sig
+            src-tauri/target/release/bundle/nsis/*.sha256
           if-no-files-found: error
           retention-days: 3
           compression-level: 0
@@ -107,4 +126,6 @@ jobs:
           "## Instalador de teste pronto" >> $env:GITHUB_STEP_SUMMARY
           "- Origem solicitada: ``${{ inputs.ref }}``" >> $env:GITHUB_STEP_SUMMARY
           "- Commit compilado: ``${{ steps.source.outputs.sha }}``" >> $env:GITHUB_STEP_SUMMARY
+          "- Este instalador abre conectado ao banco de produção." >> $env:GITHUB_STEP_SUMMARY
+          "- A execução no Windows pode alterar dados reais conforme as ações do usuário." >> $env:GITHUB_STEP_SUMMARY
           "- O artefato expira em 3 dias e não cria tag nem GitHub Release." >> $env:GITHUB_STEP_SUMMARY

@@ -15,6 +15,21 @@ export function formatDatePtBr(value?: string | null, fallback = "—"): string 
   return Number.isNaN(parsed.getTime()) ? fallback : parsed.toLocaleDateString("pt-BR");
 }
 
+/**
+ * Formata um instante para o fuso operacional da AutoOS (Salvador, Bahia).
+ * O fuso explícito evita que histórico e documentos mudem de horário conforme
+ * a configuração regional do computador que abriu o sistema.
+ */
+export function formatDateTimeSalvador(value?: string | Date | null, fallback = "—"): string {
+  if (!value) return fallback;
+  const parsed = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(parsed.getTime())) return fallback;
+
+  return parsed.toLocaleString("pt-BR", {
+    timeZone: "America/Bahia",
+  });
+}
+
 /** Converte uma data sem horário para meio-dia local, seguro para ordenação. */
 export function dateOnlyToLocalDate(value: string): Date {
   return /^\d{4}-\d{2}-\d{2}$/.test(value) ? new Date(`${value}T12:00:00`) : new Date(value);

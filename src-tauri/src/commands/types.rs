@@ -115,6 +115,17 @@ pub struct EquipamentoInput {
     pub atualizado_em: Option<String>,
 }
 
+#[derive(Debug, Clone, Serialize)]
+pub struct EquipamentoHistoricoEvento {
+    pub tipo: String,
+    pub data: String,
+    pub data_confiavel: bool,
+    pub status_anterior: Option<String>,
+    pub status: String,
+    pub motivo: String,
+    pub autor: Option<String>,
+}
+
 #[derive(Debug, Deserialize, Default, Clone)]
 #[serde(default)]
 pub struct EquipamentoImagemInput {
@@ -391,6 +402,7 @@ pub struct EquipamentoRow {
     pub observacoes: Option<String>,
     pub cliente_id: Option<i32>,
     pub cliente_nome: Option<String>,
+    pub cliente_documento: Option<String>,
     pub cliente_telefone: Option<String>,
     pub cliente_email: Option<String>,
     pub responsavel_contato_id: Option<i32>,
@@ -538,6 +550,7 @@ pub struct ClienteContato {
 #[derive(Debug, Serialize, FromRow)]
 pub struct ComunicacaoRow {
     pub id: i32,
+    pub empresa_id: Option<i32>,
     pub equipamento_id: i32,
     pub tipo: String,
     pub canal: String,
@@ -577,7 +590,12 @@ pub const EQUIPAMENTO_SELECT: &str = "
            defeito_relatado, acessorios, acessorios_outros,
            paginas_impressas, tecnologia, conectividade, data_entrada, proprietario,
            preco_compra::FLOAT8 as preco_compra, preco_venda::FLOAT8 as preco_venda,
-           observacoes, cliente_id, cliente_nome, cliente_telefone, cliente_email,
+           observacoes, cliente_id, cliente_nome,
+           (SELECT COALESCE(c.documento, c.cpf_cnpj)
+              FROM clientes c
+             WHERE c.id = equipamentos.cliente_id
+               AND c.empresa_id IS NOT DISTINCT FROM equipamentos.empresa_id) AS cliente_documento,
+           cliente_telefone, cliente_email,
            responsavel_contato_id, responsavel_nome, responsavel_email, responsavel_telefone,
            prazo_aprovacao, data_aprovacao, data_reprovacao, data_verificacao,
            data_pronto, data_saida,
@@ -728,7 +746,7 @@ pub const CLIENTE_CONTATO_SELECT: &str = "
     FROM cliente_contatos";
 
 pub const COMUNICACAO_SELECT: &str = "
-    SELECT id, equipamento_id, tipo, canal, destinatario, contato,
+    SELECT id, empresa_id, equipamento_id, tipo, canal, destinatario, contato,
            assunto, mensagem, anexos, enviado,
            data_envio::TEXT as data_envio, erro,
            criado_em::TEXT as criado_em

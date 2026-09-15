@@ -69,6 +69,9 @@ import {
   SENSITIVE_PERMISSIONS,
   type Cliente,
   type Equipamento,
+  type RegularizacaoLegadoPrevia,
+  type VinculoEmpresaPerfilInput,
+  type VinculoEmpresaPerfilPrevia,
 } from "@/types";
 import { useSensitiveAccess } from "@/hooks/useSensitiveAccess";
 import { ErrorAlert } from "@/components/ui/error-alert";
@@ -86,6 +89,8 @@ import {
   ClientesFormDialog,
 } from "@/pages/clientes/ClientesDialogs";
 import { ActionPriorityRow } from "@/components/ui/action-priority-row";
+import { RegularizacaoLegadosDialog } from "@/components/clientes/RegularizacaoLegadosDialog";
+import { VinculoEmpresaPerfilDialog } from "@/components/clientes/VinculoEmpresaPerfilDialog";
 
 export default function Clientes() {
   const navigate = useNavigate();
@@ -107,11 +112,14 @@ export default function Clientes() {
   const [modalEquipamentosOpen, setModalEquipamentosOpen] = useState(false);
   const [clienteEquipamentosSelecionado, setClienteEquipamentosSelecionado] = useState<Cliente | null>(null);
   const [contatosClienteSelecionado, setContatosClienteSelecionado] = useState<Cliente | null>(null);
+  const [previaRegularizacao, setPreviaRegularizacao] = useState<RegularizacaoLegadoPrevia | null>(null);
+  const [previaVinculoEmpresa, setPreviaVinculoEmpresa] = useState<VinculoEmpresaPerfilPrevia | null>(null);
+  const [regularizando, setRegularizando] = useState(false);
 
   const { clientes, loading, error, criar, atualizar, deletar, recarregar } =
     useClientes({ busca: busca || undefined });
   const { ensureSensitiveAccess } = useSensitiveAccess();
-  const { error: showError } = useNotification();
+  const { error: showError, success } = useNotification();
   const totalAbas = totalAbasClientes(clientes.length);
   const abaExibida = Math.min(abaAtual, totalAbas);
   const clientesExibidos = clientesDaAba(clientes, abaExibida);
@@ -336,18 +344,76 @@ export default function Clientes() {
     setDeleteDialogOpen(true);
   }
 
+  async function abrirRegularizacaoLegados() {
+    const liberado = await ensureSensitiveAccess({
+      title: "Regularizar cadastros antigos",
+      description: "A prévia identifica registros antigos e conflitos. Nenhum dado será alterado nesta etapa.",
+      permission: SENSITIVE_PERMISSIONS.MANAGE_PROFILES,
+    });
+    if (!liberado) return;
+    try {
+      setPreviaRegularizacao(await db.previsualizarRegularizacaoLegados());
+    } catch (cause) {
+      if (String(cause).includes("não está vinculado a uma empresa ativa")) {
+        try {
+          setPreviaVinculoEmpresa(await db.previsualizarVinculoEmpresaPerfil());
+          return;
+        } catch (vinculoCause) {
+          showError("Clientes", "Preparar vínculo da empresa interna", vinculoCause);
+          return;
+        }
+      }
+      showError("Clientes", "Gerar prévia da regularização", cause);
+    }
+  }
+
+  async function vincularPerfilEmpresa(input: VinculoEmpresaPerfilInput, pin: string) {
+    setRegularizando(true);
+    try {
+      const resultado = await db.vincularPerfilAtivoEmpresa(input, pin);
+      setPreviaVinculoEmpresa(null);
+      success("Clientes", `Perfil vinculado à empresa ${resultado.empresa_nome}.`, "Vínculo concluído");
+      setPreviaRegularizacao(await db.previsualizarRegularizacaoLegados());
+    } catch (cause) {
+      showError("Clientes", "Vincular perfil à empresa interna", cause);
+    } finally {
+      setRegularizando(false);
+    }
+  }
+
+  async function executarRegularizacaoLegados(pin: string) {
+    if (!previaRegularizacao) return;
+    setRegularizando(true);
+    try {
+      const resultado = await db.executarRegularizacaoLegados(previaRegularizacao.token, pin);
+      setPreviaRegularizacao(null);
+      await recarregar();
+      success("Clientes", `${resultado.clientes} cliente(s) e ${resultado.equipamentos} equipamento(s) regularizados.`, "Regularização concluída");
+    } catch (cause) {
+      showError("Clientes", "Executar regularização", cause);
+      setPreviaRegularizacao(null);
+    } finally {
+      setRegularizando(false);
+    }
+  }
+
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="text-3xl font-bold tracking-tight">Clientes</h1>
           <p className="text-muted-foreground">Gerencie clientes PF e PJ e seus equipamentos vinculados</p>
         </div>
-        <Button onClick={abrirNovo}>
-          <Plus className="h-4 w-4 mr-2" />
-          Novo Cliente
-        </Button>
+        <div className="flex flex-wrap gap-2">
+          <Button variant="outline" onClick={() => void abrirRegularizacaoLegados()}>
+            Regularizar antigos
+          </Button>
+          <Button onClick={abrirNovo}>
+            <Plus className="h-4 w-4 mr-2" />
+            Novo Cliente
+          </Button>
+        </div>
       </div>
 
       {/* Filtros */}
@@ -426,7 +492,7 @@ export default function Clientes() {
                     <TableHead>Telefone</TableHead>
                     <TableHead>Email</TableHead>
                     <TableHead>Cidade/UF</TableHead>
-                    <TableHead className="text-right">Ações</TableHead>
+                    <TableHead className="sticky right-0 z-20 bg-background text-right shadow-[-5px_0_8px_-6px_hsl(var(--foreground))]">Ações</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -489,7 +555,7 @@ export default function Clientes() {
                         <TableCell className="text-sm">
                           {c.cidade && c.uf ? `${c.cidade}/${c.uf}` : c.cidade || c.uf || "—"}
                         </TableCell>
-                        <TableCell className="text-right">
+                        <TableCell className="sticky right-0 z-10 bg-background text-right shadow-[-5px_0_8px_-6px_hsl(var(--foreground))]">
                           <div className="flex justify-end gap-1">
                             <ActionPriorityRow
                               primary={{
@@ -621,6 +687,22 @@ export default function Clientes() {
         open={Boolean(contatosClienteSelecionado)}
         onOpenChange={(open) => { if (!open) setContatosClienteSelecionado(null); }}
         cliente={contatosClienteSelecionado}
+      />
+
+      <RegularizacaoLegadosDialog
+        open={Boolean(previaRegularizacao)}
+        previa={previaRegularizacao}
+        loading={regularizando}
+        onOpenChange={(open) => { if (!open) setPreviaRegularizacao(null); }}
+        onConfirm={executarRegularizacaoLegados}
+      />
+
+      <VinculoEmpresaPerfilDialog
+        open={Boolean(previaVinculoEmpresa)}
+        previa={previaVinculoEmpresa}
+        loading={regularizando}
+        onOpenChange={(open) => { if (!open) setPreviaVinculoEmpresa(null); }}
+        onConfirm={vincularPerfilEmpresa}
       />
     </div>
   );

@@ -26,9 +26,11 @@ import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
 import { invoke } from "@tauri-apps/api/core";
 import { db } from "@/lib/db";
+import { formatDateTimeSalvador } from "@/lib/date-utils";
 import { STATUS_LABELS } from "@/types";
 import type {
   Equipamento,
+  EquipamentoHistoricoEvento,
   EquipamentoImagem,
   Verificacao,
   ServicoNecessario,
@@ -173,19 +175,48 @@ interface IdentificacaoResponsavel {
   contato: string;
 }
 
+function formatarDocumentoCliente(documento?: string): string {
+  const digitos = (documento || "").replace(/\D/g, "");
+  if (digitos.length === 14) {
+    return `CNPJ: ${digitos.replace(/^(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})$/, "$1.$2.$3/$4-$5")}`;
+  }
+  if (digitos.length === 11) {
+    return `CPF: ${digitos.replace(/^(\d{3})(\d{3})(\d{3})(\d{2})$/, "$1.$2.$3-$4")}`;
+  }
+  return documento?.trim() ? `Documento: ${documento.trim()}` : "";
+}
+
 function obterIdentificacaoResponsavel(equipamento: Equipamento): IdentificacaoResponsavel {
+  const empresa = [
+    equipamento.cliente_nome?.trim(),
+    formatarDocumentoCliente(equipamento.cliente_documento),
+  ].filter(Boolean).join(" - ");
   const responsavel = equipamento.responsavel_nome?.trim() || "";
   if (!responsavel) {
-    return { empresa: equipamento.cliente_nome?.trim() || "", responsavel: "", contato: "" };
+    return { empresa, responsavel: "", contato: "" };
   }
 
   return {
-    empresa: equipamento.cliente_nome?.trim() || "",
+    empresa,
     responsavel,
     contato: [equipamento.responsavel_email?.trim(), equipamento.responsavel_telefone?.trim()]
       .filter(Boolean)
       .join("\n"),
   };
+}
+
+function montarHistoricoBasico(equipamento: Equipamento): EquipamentoHistoricoEvento[] {
+  const eventos: EquipamentoHistoricoEvento[] = [];
+  const incluir = (status: string, data: string | undefined, motivo: string) => {
+    if (data) eventos.push({ tipo: "ETAPA", data, status, motivo });
+  };
+  incluir("RECEBIDO", equipamento.criado_em || equipamento.data_entrada, "Equipamento recebido e cadastrado.");
+  incluir("VERIFICADO", equipamento.data_verificacao, "Verificação técnica registrada.");
+  incluir("APROVADO", equipamento.data_aprovacao, "Orçamento aprovado pelo cliente.");
+  incluir("REPROVADO", equipamento.data_reprovacao, "Orçamento reprovado pelo cliente.");
+  incluir("PRONTO", equipamento.data_pronto, "Serviço concluído; equipamento pronto.");
+  incluir("ENTREGUE", equipamento.data_saida, "Equipamento entregue ao cliente.");
+  return eventos.sort((a, b) => converterDataDocumento(a.data).getTime() - converterDataDocumento(b.data).getTime());
 }
 
 function obterTecnicoResponsavel(
@@ -475,6 +506,7 @@ function renderizarAssinaturaTecnica(
   const nome = tecnicoNome.trim();
   if (!nome) return y;
 
+  y += 4;
   y = garantirEspacoVertical(doc, y, emailTecnico ? 28 : 23);
   doc.setTextColor(...CORES_PDF.preto);
   doc.setFont("helvetica", "normal");
@@ -616,7 +648,7 @@ function renderizarCondicoesComerciais(
   const espacoSecao = 10;
 
   // ─── Prazo de Execução ────────────────────────────────────
-  y = garantirEspacoVertical(doc, y, 20);
+  y = garantirEspacoVertical(doc, y + 5, 20);
   doc.setFont("helvetica", "bold");
   doc.setFontSize(10);
   doc.setTextColor(...CORES_PDF.preto);
@@ -1327,9 +1359,9 @@ export const PdfService = {
       y = renderizarTabelaFormulario(
         doc,
         y,
-        ["EMPRESA", "RESPONSÁVEL PELO EQUIPAMENTO"],
+        ["EMPRESA CLIENTE (RAZÃO SOCIAL / DOCUMENTO)", "CONTATO RESPONSÁVEL"],
         [[identificacaoResponsavel.empresa, identificacaoResponsavel.responsavel]],
-        [90, 90],
+        [115, 65],
       );
       y = renderizarTabelaFormulario(
         doc,
@@ -1464,7 +1496,10 @@ export const PdfService = {
   /**
    * Gera PDF com histórico/status completo do equipamento.
    */
-  async construirRelatorioStatus(equipamento: Equipamento): Promise<PdfArtifact> {
+  async construirRelatorioStatus(
+    equipamento: Equipamento,
+    historicoInformado?: EquipamentoHistoricoEvento[],
+  ): Promise<PdfArtifact> {
     try {
       const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
       let y = 15;
@@ -1491,7 +1526,8 @@ export const PdfService = {
 
       autoTable(doc, {
         ...opcoesTabelaMonocromatica(),
-        startY: y,
+        // Reserva integralmente a altura do cabeçalho antes da ficha.
+        startY: Math.max(y, 66),
         body: [
           ["Equipamento", `${equipamento.marca || "—"} ${equipamento.modelo || ""}`.trim()],
           ["Nº de Série", equipamento.serial_number || "—"],
@@ -1504,14 +1540,14 @@ export const PdfService = {
 
       y = (doc as unknown as { lastAutoTable: { finalY: number } }).lastAutoTable.finalY + 6;
 
-      const eventos: { label: string; data: string; status: string }[] = [];
-      if (equipamento.data_entrada) eventos.push({ label: "Recebido", data: equipamento.data_entrada, status: "RECEBIDO" });
-      if (equipamento.data_verificacao) eventos.push({ label: "Verificado", data: equipamento.data_verificacao, status: "VERIFICADO" });
-      if (equipamento.data_aprovacao) eventos.push({ label: "Aprovado", data: equipamento.data_aprovacao, status: "APROVADO" });
-      if (equipamento.data_reprovacao) eventos.push({ label: "Reprovado", data: equipamento.data_reprovacao, status: "REPROVADO" });
-      if (equipamento.data_pronto) eventos.push({ label: "Pronto", data: equipamento.data_pronto, status: "PRONTO" });
-      if (equipamento.data_saida) eventos.push({ label: "Entregue", data: equipamento.data_saida, status: "ENTREGUE" });
-      eventos.sort((a, b) => converterDataDocumento(a.data).getTime() - converterDataDocumento(b.data).getTime());
+      let eventos = historicoInformado ?? montarHistoricoBasico(equipamento);
+      if (!historicoInformado && equipamento.id) {
+        try {
+          eventos = await db.listarHistoricoEquipamento(equipamento.id);
+        } catch (error) {
+          console.warn("[PdfService] Histórico auditado indisponível; usando etapas do equipamento.", error);
+        }
+      }
 
       if (eventos.length === 0) {
         doc.setFont("helvetica", "italic");
@@ -1523,12 +1559,23 @@ export const PdfService = {
         autoTable(doc, {
           ...opcoesTabelaMonocromatica(),
           startY: y,
-          head: [["Etapa", "Status", "Data"]],
+          head: [["Status anterior", "Novo status", "Data e hora", "Razão / responsável"]],
           body: eventos.map((evento) => [
-            evento.label,
+            evento.status_anterior
+              ? STATUS_LABELS[evento.status_anterior as keyof typeof STATUS_LABELS] || evento.status_anterior
+              : "—",
             STATUS_LABELS[evento.status as keyof typeof STATUS_LABELS] || evento.status,
-            converterDataDocumento(evento.data).toLocaleDateString("pt-BR"),
+            evento.data_confiavel !== false
+              ? formatDateTimeSalvador(converterDataDocumento(evento.data))
+              : "Horário legado inconsistente",
+            [evento.motivo, evento.autor ? `Registrado por ${evento.autor}` : ""].filter(Boolean).join("\n"),
           ]),
+          columnStyles: {
+            0: { cellWidth: 35 },
+            1: { cellWidth: 35 },
+            2: { cellWidth: 42 },
+            3: { cellWidth: 68 },
+          },
         });
         y = (doc as unknown as { lastAutoTable: { finalY: number } }).lastAutoTable.finalY + 8;
       }

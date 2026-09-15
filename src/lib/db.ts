@@ -23,18 +23,25 @@
  * ╚══════════════════════════════════════════════════════════════╝
  */
 
-import { invoke } from "@tauri-apps/api/core";
+import { invoke as tauriInvoke } from "@tauri-apps/api/core";
+import { withSensitiveAccessRetry } from "@/lib/sensitive-action-retry";
 import type {
   AjusteOrcamentoInput,
   AprovarOrcamentoInput,
   Cliente,
   ClienteContato,
   ClienteContatoInput,
+  RegularizacaoLegadoPrevia,
+  RegularizacaoLegadoResultado,
+  VinculoEmpresaPerfilInput,
+  VinculoEmpresaPerfilPrevia,
+  VinculoEmpresaPerfilResultado,
   Comunicacao,
   ConfigInatividade,
   DatabaseConnectionConfig,
   DatabaseSchemaStatus,
   Equipamento,
+  EquipamentoHistoricoEvento,
   EquipamentoImagem,
   EquipamentoImagemInput,
   GastoFixo,
@@ -58,6 +65,11 @@ export interface ImpressoraWindows {
   nome: string;
   padrao: boolean;
 }
+
+const invoke = <T>(command: string, args?: Record<string, unknown>): Promise<T> =>
+  withSensitiveAccessRetry(() => args === undefined
+    ? tauriInvoke<T>(command)
+    : tauriInvoke<T>(command, args));
 
 /** Payload esperado pelo Rust em `criar_cliente` / `atualizar_cliente` (parâmetro `input`). */
 function clientePersistenciaParaInput(cliente: Omit<Cliente, "id">) {
@@ -171,6 +183,23 @@ export const db = {
     return invoke<void>("deletar_cliente", { id });
   },
 
+  /** Gera uma prévia imutável dos cadastros legados elegíveis e conflitos. */
+  async previsualizarRegularizacaoLegados(): Promise<RegularizacaoLegadoPrevia> {
+    return invoke<RegularizacaoLegadoPrevia>("previsualizar_regularizacao_legados");
+  },
+
+  async previsualizarVinculoEmpresaPerfil(): Promise<VinculoEmpresaPerfilPrevia> {
+    return invoke<VinculoEmpresaPerfilPrevia>("previsualizar_vinculo_empresa_perfil");
+  },
+
+  async vincularPerfilAtivoEmpresa(input: VinculoEmpresaPerfilInput, pinAdministrativo: string): Promise<VinculoEmpresaPerfilResultado> {
+    return invoke<VinculoEmpresaPerfilResultado>("vincular_perfil_ativo_empresa", { input, pinAdministrativo });
+  },
+
+  async executarRegularizacaoLegados(tokenDaPrevia: string, pinAdministrativo: string): Promise<RegularizacaoLegadoResultado> {
+    return invoke<RegularizacaoLegadoResultado>("executar_regularizacao_legados", { tokenDaPrevia, pinAdministrativo });
+  },
+
   /** Consulta dados públicos do CNPJ no backend, sem depender das regras de rede do WebView. */
   async consultarCnpj(cnpj: string): Promise<unknown> {
     return invoke<unknown>("consultar_cnpj", { cnpj });
@@ -211,6 +240,11 @@ export const db = {
       equipamentoId,
       ...(empresaId === undefined ? {} : { empresaId }),
     });
+  },
+
+  /** Lista etapas e mudanças de status auditadas no tenant do perfil ativo. */
+  async listarHistoricoEquipamento(equipamentoId: number): Promise<EquipamentoHistoricoEvento[]> {
+    return invoke<EquipamentoHistoricoEvento[]>("listar_historico_equipamento", { equipamentoId });
   },
 
   /** Lista imagens vinculadas a um equipamento → Rust: listar_imagens_equipamento */
