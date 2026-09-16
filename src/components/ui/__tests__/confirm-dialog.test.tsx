@@ -41,10 +41,10 @@ describe('ConfirmDialog', () => {
       />,
     );
     expect(
-      screen.getByRole('button', { name: 'Confirmar' }),
+      screen.getByRole('button', { name: 'Sim' }),
     ).toBeInTheDocument();
     expect(
-      screen.getByRole('button', { name: 'Cancelar' }),
+      screen.getByRole('button', { name: 'Não' }),
     ).toBeInTheDocument();
   });
 
@@ -92,5 +92,13 @@ describe('ConfirmDialog', () => {
     const confirmButton = screen.getByRole('button', { name: 'Sim' });
     expect(confirmButton).toHaveClass('bg-destructive');
     expect(confirmButton).toHaveClass('text-destructive-foreground');
+  });
+
+  it('pinta o Não de vermelho quando cancelVariant=destructive', () => {
+    render(<ConfirmDialog {...defaultProps} cancelVariant="destructive" />);
+
+    const cancelButton = screen.getByRole('button', { name: 'Não' });
+    expect(cancelButton).toHaveClass('bg-red-600');
+    expect(cancelButton).toHaveClass('text-white');
   });
 });
