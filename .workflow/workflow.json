@@ -2981,7 +2981,9 @@
       "id": "AO-AUTH-TEST-001",
       "title": "Gerar instalador Windows para validar login SaaS",
       "status": "review",
-      "blockedBy": ["AO-AUTH-002"],
+      "blockedBy": [
+        "AO-AUTH-002"
+      ],
       "objective": "Disponibilizar um instalador Windows temporário que abra diretamente no login SaaS, usando exclusivamente o projeto Supabase de staging.",
       "context": "O workflow Windows existente compila o produto interno e exige DATABASE_URL de produção, portanto não exercita SaasLoginScreen implementada em AO-AUTH-002. A validação visual requer build Tauri com feature Cargo saas e Vite mode saas, sem conexão PostgreSQL.",
       "expectedBehavior": "Um disparo manual gera artefato NSIS temporário do build SaaS; ao abrir, o aplicativo não exibe configuração de banco e apresenta a tela de login administrativa por e-mail e senha.",
@@ -3051,6 +3053,1846 @@
         "Inserir uma chave privilegiada no ambiente VITE e expô-la no bundle.",
         "Misturar URL/redirect de produção e staging e testar a identidade no projeto errado.",
         "Confundir a página de recuperação com a tela de login do aplicativo."
+      ]
+    },
+    {
+      "id": "AO-HOTFIX-004",
+      "title": "Impedir novos cadastros sem empresa e expor conflitos legados",
+      "status": "ready",
+      "blockedBy": [],
+      "objective": "Garantir que clientes e equipamentos novos pertençam sempre à empresa da sessão autenticada e que bloqueios de registros legados sejam exibidos como erros acionáveis.",
+      "context": "A regularização em lote do 0.5.0 corrige dados antigos, mas alguns fluxos novos ainda aceitam empresa_id opcional ou enviado pela tela. Isso permite novos registros sem tenant e faz histórico e aprovação parecerem vazios ou inválidos.",
+      "expectedBehavior": "O backend deriva a empresa exclusivamente do perfil ativo autenticado, rejeita relações entre tenants e ausência de empresa, preserva a regularização dos legados e mostra ao operador a causa real quando um registro antigo ainda precisa ser regularizado.",
+      "scope": [
+        "Criar um resolvedor backend comum para a empresa do perfil autenticado ativo.",
+        "Usar a empresa resolvida ao criar clientes e equipamentos, ignorando qualquer tenant fornecido pela interface.",
+        "Validar que cliente, contato responsável, equipamento e verificação pertencem à mesma empresa nos fluxos afetados.",
+        "Aplicar filtros tenant-safe nas leituras e alterações de histórico e aprovação.",
+        "Adicionar migration aditiva que impeça novos clientes e equipamentos com empresa nula sem invalidar legados existentes.",
+        "Alinhar o schema Supabase e manter a regularização do 0.5.0 como caminho para registros antigos.",
+        "Mostrar na interface o erro real de vínculo/legado em vez de estado vazio genérico.",
+        "Adicionar testes backend, SQL e frontend para os cenários de regressão."
+      ],
+      "outOfScope": [
+        "Regularizar automaticamente dados de produção ou remover o botão existente.",
+        "Reabrir políticas RLS para empresa_id nulo.",
+        "Alterar PDFs, fotos, comunicações ou o desenho geral das telas.",
+        "Fazer merge em feature/master ou publicar release automaticamente."
+      ],
+      "acceptanceCriteria": [
+        "Cliente e equipamento novos recebem a empresa do perfil autenticado mesmo se o payload omitir ou falsificar empresa_id.",
+        "Perfil sem empresa não consegue criar ou alterar registros tenant-scoped e recebe mensagem acionável.",
+        "Cliente ou contato de outra empresa é rejeitado sem persistência parcial.",
+        "Histórico e aprovação distinguem registro legado bloqueado de lista vazia ou verificação ausente.",
+        "Registros legados com empresa_id nulo continuam disponíveis para a ferramenta de regularização do 0.5.0.",
+        "Migration funciona em banco vazio e em banco com fixtures legadas.",
+        "Lint, testes frontend, build e cargo check passam."
+      ],
+      "tests": [
+        "Testes Rust para perfil ativo versus perfil default, tenant forjado, perfil sem empresa e relações entre tenants.",
+        "Testes SQL em PostgreSQL descartável para inserts novos, fixtures legadas e rollback.",
+        "Testes frontend para histórico/aprovação exibindo o erro real.",
+        "npm run lint.",
+        "npm run test:run.",
+        "npm run build.",
+        "cargo check --manifest-path src-tauri/Cargo.toml."
+      ],
+      "testInstructions": {
+        "prerequisites": [
+          "Usar worktree exclusiva criada de origin/feature.",
+          "Usar PostgreSQL descartável e fixtures com prefixo TESTE-TENANT; nunca banco operacional."
+        ],
+        "steps": [
+          "Aplicar todas as migrations em banco vazio e depois repetir com clientes/equipamentos legados de empresa nula.",
+          "Executar testes de criação com empresa omitida e falsificada, perfil ativo sem empresa e referências de outro tenant.",
+          "Executar testes de histórico e aprovação para registro válido, legado bloqueado e verificação realmente ausente.",
+          "Executar npm run lint, npm run test:run, npm run build e cargo check --manifest-path src-tauri/Cargo.toml."
+        ],
+        "expectedResultAndEvidence": [
+          "Novos registros recebem somente a empresa da sessão e tentativas cruzadas falham sem escrita parcial.",
+          "Legados permanecem intactos e regularizáveis, enquanto novos registros nulos são rejeitados.",
+          "A interface apresenta a causa real e a ação de regularização quando aplicável.",
+          "Registrar comandos, resultados e contagens sintéticas sem dados pessoais."
+        ],
+        "dataImpact": "Somente banco descartável e fixtures sintéticas; nenhuma migração ou regularização será executada em produção.",
+        "cleanupAndRollback": [
+          "Excluir o banco descartável e quaisquer fixtures TESTE-TENANT ao final.",
+          "Em falha, preservar os legados e reverter somente as mudanças da worktree."
+        ],
+        "stagingRestrictions": "É proibido usar banco, cliente, equipamento, contato, PIN ou credencial real; não disparar comunicações nem alterar produção."
+      },
+      "likelyFiles": [
+        "src-tauri/src/commands/auth.rs",
+        "src-tauri/src/commands/clientes.rs",
+        "src-tauri/src/commands/equipamentos.rs",
+        "src-tauri/src/commands/verificacoes.rs",
+        "src-tauri/src/commands/types.rs",
+        "src-tauri/migrations/*",
+        "supabase/schema.sql",
+        "src/lib/db.ts",
+        "src/pages/Equipamentos.tsx",
+        "src/pages/Clientes.tsx"
+      ],
+      "risks": [
+        "Resolver a empresa pelo perfil default em vez da sessão autenticada.",
+        "Quebrar a ferramenta de regularização ao bloquear legados cedo demais.",
+        "Aplicar filtro apenas na interface e manter escrita cruzada no backend.",
+        "Converter erro de tenant em verificação inexistente e continuar confundindo o operador."
+      ]
+    },
+    {
+      "id": "AO-HOTFIX-005",
+      "title": "Corrigir decode NUMERIC do orçamento e reabrir REPROVADO",
+      "status": "review",
+      "blockedBy": [],
+      "objective": "Corrigir o decode de custo_total no ajuste de orçamento e permitir voltar de REPROVADO para AGUARDANDO_APROVACAO após clique indevido.",
+      "context": "Em produção (master), alterar descrição técnica ou valor do orçamento dispara atualizar_servicos_verificacao. O SELECT de lock lê custo_total como NUMERIC e o Rust espera Option<f64>/FLOAT8. O toast aparece como Alterar status porque o diálogo reusa o mesmo catch. O schema NUMERIC está correto; o SELECT ad hoc ficou sem o cast já usado em VERIFICACAO_SELECT.",
+      "expectedBehavior": "Ajuste de serviços/valor deixa de falhar no sqlx; equipamento recusado pode reabrir orçamento para AGUARDANDO_APROVACAO pelo botão visível ou por Mudar Status, sem migration.",
+      "scope": [
+        "Worktree nova /home/paulo/Projetos/AutoOs-ao-hotfix-005 e branch agent/ao-hotfix-005 criadas a partir de origin/master.",
+        "Castar custo_total::FLOAT8 no SELECT de atualizar_servicos_verificacao.",
+        "Permitir transição regular REPROVADO → AGUARDANDO_APROVACAO no FSM frontend e Rust, com ação Reabrir Orçamento.",
+        "Disparar Windows Test Build contra agent/ao-hotfix-005."
+      ],
+      "outOfScope": [
+        "Mudar colunas NUMERIC para FLOAT8 no banco.",
+        "Refatorar o diálogo para separar o rótulo Alterar status.",
+        "Merge automático para master ou promoção de release.",
+        "Merge de master em feature antes da promoção humana do hotfix."
+      ],
+      "acceptanceCriteria": [
+        "O SELECT de lock decodifica custo_total como FLOAT8 e não emite mismatched types NUMERIC vs Option<f64>.",
+        "Ajuste de descrição de serviço e de valor persistem na verificação e sincronizam equipamentos.valor_orcamento.",
+        "Nenhuma migration ou tipo de coluna é alterado no Supabase.",
+        "cargo check e clippy passam na worktree baseada em origin/master.",
+        "Após checks, o workflow GitHub Windows Test Build é disparado contra a branch do ticket.",
+        "REPROVADO lista AGUARDANDO_APROVACAO em Mudar Status e oferece Reabrir Orçamento.",
+        "A branch agent/ao-hotfix-005 está em review aguardando merge humano para master."
+      ],
+      "tests": [
+        "cargo check --manifest-path src-tauri/Cargo.toml.",
+        "cargo clippy --manifest-path src-tauri/Cargo.toml -- -W warnings, limitado ao arquivo alterado se o ruído preexistente impedir a suíte completa.",
+        "Inspeção estática do SELECT com ::FLOAT8 e da tupla Option<f64>.",
+        "Disparo do workflow Windows Test Build após push da branch."
+      ],
+      "testInstructions": {
+        "prerequisites": [
+          "Usar worktree exclusiva criada a partir de origin/master (exceção autorizada: hotfix de produção), sem misturar mudanças da branch feature.",
+          "Não executar UPDATEs no projeto Supabase autoos de produção durante o diagnóstico.",
+          "O Windows Test Build existente no GitHub (windows-test-build.yml) pode gerar instalador ligado ao banco real; dispará-lo somente após o check local e o push da branch do ticket."
+        ],
+        "steps": [
+          "Confirmar em origin/master o SELECT sem ::FLOAT8 em atualizar_servicos_verificacao.",
+          "Aplicar custo_total::FLOAT8 as custo_total no SELECT com FOR UPDATE.",
+          "Executar cargo check --manifest-path src-tauri/Cargo.toml.",
+          "Executar cargo clippy --manifest-path src-tauri/Cargo.toml -- -W warnings.",
+          "Fazer push da branch do ticket e disparar gh workflow run windows-test-build.yml com ref da branch e confirmacao_producao=PRODUCAO."
+        ],
+        "expectedResultAndEvidence": [
+          "O diff contém apenas o cast FLOAT8 no SELECT de lock.",
+          "cargo check/clippy passam ou falhas preexistentes fora do arquivo ficam registradas.",
+          "A run do Windows Test Build aparece no GitHub Actions apontando para a branch do hotfix."
+        ],
+        "dataImpact": "Alteração somente de código; cargo check é local. O Windows Test Build gera instalador conectado à produção, mas este ticket não executa SQL de escrita no banco.",
+        "cleanupAndRollback": [
+          "Não reverter master. Se o check falhar, corrigir só o SELECT na worktree.",
+          "Não apagar a run do GitHub; o artefato expira em 3 dias.",
+          "Merge para master permanece humano; merge master→feature só após essa promoção."
+        ],
+        "stagingRestrictions": "É proibido usar dumps, senhas, service_role ou alterar dados reais no diagnóstico. O Windows Test Build usa o secret já configurado no GitHub; não copiar a URL para logs."
+      },
+      "likelyFiles": [
+        "src-tauri/src/commands/verificacoes.rs",
+        "src-tauri/src/commands/equipamentos.rs",
+        "src/lib/status-fsm.ts",
+        "src/pages/Equipamentos.tsx",
+        "src/pages/equipamentos/equipamentos-page-utils.ts"
+      ],
+      "risks": [
+        "Corrigir só a cópia da feature e deixar produção quebrada.",
+        "Trocar o tipo da coluna no banco em vez do decode.",
+        "Disparar o Windows Test Build contra a branch errada."
+      ]
+    },
+    {
+      "id": "AO-UI-001",
+      "title": "Decidir e ativar o tema único do AutoOS",
+      "status": "ready",
+      "blockedBy": [],
+      "objective": "Encerrar a ambiguidade entre o tema claro em uso e a paleta escura inerte, deixando um único tema efetivamente aplicado e documentado.",
+      "context": "src/index.css define 26 tokens em .dark e tailwind.config.js usa darkMode: [\"class\"], mas nenhum ponto do app adiciona a classe dark ao documento. A paleta escura nunca é aplicada e, ao mesmo tempo, dezenas de cores fixas nas páginas não a acompanhariam. Este ticket é a fundação dos demais tickets de cor.",
+      "expectedBehavior": "O app passa a ter um tema único e explícito. Se a decisão for manter apenas o tema claro, o bloco .dark e a configuração darkMode deixam de existir e nada no código sugere suporte a tema escuro. Se a decisão for suportar tema escuro, existe um ponto único que aplica a classe no elemento raiz e o tema escolhido é persistido entre execuções.",
+      "scope": [
+        "Registrar a decisão de tema (claro único ou claro e escuro) em architectureDecisions ou em comentário no topo de src/index.css.",
+        "Se o tema único for o claro: remover o bloco .dark de src/index.css e a chave darkMode de tailwind.config.js.",
+        "Se houver suporte a escuro: aplicar a classe de tema no elemento raiz em um único lugar, com persistência e valor inicial determinístico, sem flash de tema errado no primeiro paint.",
+        "Garantir que todos os tokens usados pela aplicação existam no tema que permanecer ativo.",
+        "Deixar a decisão visível para os tickets seguintes de cor, que dependem dela."
+      ],
+      "outOfScope": [
+        "Converter as cores fixas das páginas para tokens; isso pertence aos tickets AO-UI-003 e AO-UI-007.",
+        "Criar interruptor de tema na interface do usuário.",
+        "Alterar valores cromáticos dos tokens existentes do tema claro.",
+        "Alterar backend, banco, migrações ou contratos de IPC."
+      ],
+      "acceptanceCriteria": [
+        "Existe exatamente um tema aplicado em tempo de execução e a decisão está registrada no repositório.",
+        "Não resta configuração de tema sem efeito: se o tema é claro único, não há bloco .dark nem darkMode no Tailwind.",
+        "Se houver suporte a escuro, a classe de tema é aplicada em um único lugar e o tema inicial é resolvido antes do primeiro paint.",
+        "Nenhuma tela apresenta regressão cromática em relação ao comportamento atual do tema claro.",
+        "npm run lint e npm run test:run passam."
+      ],
+      "tests": [
+        "Revisão direcionada de src/index.css e tailwind.config.js confirmando ausência de configuração de tema sem efeito.",
+        "npm run lint.",
+        "npm run test:run.",
+        "npm run e2e para confirmar que as telas principais renderizam sem regressão cromática."
+      ],
+      "testInstructions": {
+        "prerequisites": [
+          "Usar worktree exclusiva criada de origin/feature para este ticket, com dependências do package-lock instaladas.",
+          "Trabalho restrito ao frontend: não exigir PostgreSQL, Tauri em modo real, Supabase, PowerSync ou credenciais externas."
+        ],
+        "steps": [
+          "Registrar a decisão de tema antes de qualquer alteração de código.",
+          "Aplicar a alteração escolhida em src/index.css e tailwind.config.js e, se houver tema escuro, no ponto único de aplicação da classe.",
+          "Executar npm run lint e npm run test:run.",
+          "Executar npm run e2e e percorrer Dashboard, Equipamentos e Clientes comparando com capturas do estado anterior."
+        ],
+        "expectedResultAndEvidence": [
+          "A decisão de tema está escrita no repositório e é rastreável.",
+          "Lint, testes unitários e Playwright em modo mock passam.",
+          "Capturas antes e depois das três telas principais demonstram ausência de mudança cromática indesejada."
+        ],
+        "dataImpact": "Somente código de apresentação e fixtures sintéticas em memória; nenhum dado persistente é criado, alterado ou removido.",
+        "cleanupAndRollback": [
+          "Não criar, alterar ou remover registros de clientes, equipamentos, insumos, perfis ou gastos durante a validação visual.",
+          "Descartar apenas artefatos temporários gerados por lint, testes e Playwright.",
+          "Se a validação falhar, reverter somente os arquivos deste ticket na worktree exclusiva."
+        ],
+        "stagingRestrictions": "É proibido usar dados, endpoints ou credenciais internas; a validação é local, com dados sintéticos ou com o mock de IPC do Playwright (VITE_E2E_MOCK=1)."
+      },
+      "likelyFiles": [
+        "src/index.css",
+        "tailwind.config.js",
+        "src/main.tsx",
+        "docs/",
+        ".workflow/workflow.json"
+      ],
+      "risks": [
+        "Remover tokens ainda referenciados por algum componente e quebrar cores em tempo de execução.",
+        "Introduzir flash de tema incorreto no primeiro paint caso o suporte a escuro seja mantido.",
+        "Bloquear os tickets dependentes de cor por indecisão sobre o tema."
+      ]
+    },
+    {
+      "id": "AO-UI-002",
+      "title": "Unificar o Toaster e remover next-themes sem provider",
+      "status": "ready",
+      "blockedBy": [
+        "AO-UI-001"
+      ],
+      "objective": "Passar a existir um único Toaster configurado, alinhado ao tema decidido, sem dependência de contexto de tema inexistente.",
+      "context": "src/components/ui/sonner.tsx chama useTheme() do next-themes sem nenhum provider montado, caindo no padrão \"system\", o que faria os toasts seguirem a preferência do sistema operacional. Além disso esse wrapper nunca é usado: src/App.tsx importa Toaster diretamente de sonner e monta três instâncias com a mesma configuração repetida (posição, visibleToasts, richColors, closeButton e duração), uma por ramo de inicialização. São quatro definições divergentes e a que tem ícones de loading não renderiza.",
+      "expectedBehavior": "O aplicativo monta um único componente de toast, com tema explícito coerente com AO-UI-001, e a configuração de posição, quantidade visível, duração e ícones vive em um só arquivo. Toasts disparados por qualquer módulo aparecem com a mesma aparência tanto no fluxo normal quanto na tela de configuração de banco.",
+      "scope": [
+        "Escolher entre manter o wrapper src/components/ui/sonner.tsx ou usar Toaster direto, e eliminar a alternativa.",
+        "Remover o uso de useTheme() do next-themes ou montar o provider correspondente, conforme a decisão de AO-UI-001.",
+        "Definir tema do toast de forma explícita, sem depender da preferência do sistema operacional.",
+        "Consolidar posição, visibleToasts, richColors, closeButton, duration e ícones em um único ponto.",
+        "Garantir que o ramo de banco não configurado e o ramo normal do App usem a mesma configuração.",
+        "Remover a dependência next-themes do package.json caso deixe de ser usada.",
+        "Cobrir os três ramos de inicialização do App, incluindo os modos SaaS e balcão, para que nenhum fluxo fique sem toast."
+      ],
+      "outOfScope": [
+        "Alterar mensagens, textos ou gatilhos de toast existentes.",
+        "Trocar a biblioteca de toasts.",
+        "Alterar o TooltipProvider, tratado em AO-UI-014."
+      ],
+      "acceptanceCriteria": [
+        "Existe uma única definição de Toaster no código e um único ponto de configuração.",
+        "Nenhum arquivo chama useTheme() do next-themes sem provider correspondente.",
+        "O tema dos toasts é explícito e não muda conforme a preferência do sistema operacional.",
+        "Toasts de sucesso e de erro aparecem com a mesma aparência no fluxo normal e na tela de configuração de banco.",
+        "npm run lint e npm run test:run passam.",
+        "Os três ramos de inicialização do App exibem toasts com a mesma aparência e sem montar Toasters duplicados."
+      ],
+      "tests": [
+        "Revisão direcionada confirmando um único Toaster e ausência de useTheme sem provider.",
+        "npm run lint.",
+        "npm run test:run.",
+        "npm run e2e cobrindo um fluxo que dispare toast de sucesso e outro de erro."
+      ],
+      "testInstructions": {
+        "prerequisites": [
+          "Usar worktree exclusiva criada de origin/feature para este ticket, com dependências do package-lock instaladas.",
+          "Trabalho restrito ao frontend: não exigir PostgreSQL, Tauri em modo real, Supabase, PowerSync ou credenciais externas."
+        ],
+        "steps": [
+          "Mapear todos os pontos que montam Toaster e todos os que importam toast.",
+          "Consolidar a configuração em um único componente e ajustar o tema de forma explícita.",
+          "Executar npm run lint e npm run test:run.",
+          "Executar npm run e2e e disparar um toast de sucesso e um de erro, capturando ambos.",
+          "Alternar a preferência de tema do sistema operacional e confirmar que a aparência do toast não muda."
+        ],
+        "expectedResultAndEvidence": [
+          "Capturas mostram toast de sucesso e de erro com aparência idêntica nos dois ramos do App.",
+          "A aparência do toast permanece estável com a preferência do sistema operacional alternada.",
+          "Lint, testes e Playwright em modo mock passam."
+        ],
+        "dataImpact": "Somente código de apresentação e fixtures sintéticas em memória; nenhum dado persistente é criado, alterado ou removido.",
+        "cleanupAndRollback": [
+          "Não criar, alterar ou remover registros de clientes, equipamentos, insumos, perfis ou gastos durante a validação visual.",
+          "Descartar apenas artefatos temporários gerados por lint, testes e Playwright.",
+          "Se a validação falhar, reverter somente os arquivos deste ticket na worktree exclusiva."
+        ],
+        "stagingRestrictions": "É proibido usar dados, endpoints ou credenciais internas; a validação é local, com dados sintéticos ou com o mock de IPC do Playwright (VITE_E2E_MOCK=1)."
+      },
+      "likelyFiles": [
+        "src/App.tsx",
+        "src/components/ui/sonner.tsx",
+        "package.json",
+        "src/components/SaasApp.tsx",
+        "src/components/CounterLayout.tsx"
+      ],
+      "risks": [
+        "Perder configurações atuais como richColors, closeButton ou duração ao consolidar.",
+        "Deixar o ramo de banco não configurado sem Toaster e silenciar erros críticos de conexão.",
+        "Remover next-themes do package.json enquanto algum arquivo ainda o importa."
+      ]
+    },
+    {
+      "id": "AO-UI-003",
+      "title": "Tornar a cor de cada status determinística e única",
+      "status": "ready",
+      "blockedBy": [],
+      "objective": "Fazer com que cada status de equipamento tenha uma única cor, igual no badge e no gráfico, estável entre sessões e independente do volume de dados.",
+      "context": "src/types/index.ts define STATUS_COLORS com doze pares Tailwind e src/pages/Dashboard.tsx define STATUS_CHART_COLORS com doze hex sem relação com eles. O gráfico de pizza pinta por índice (STATUS_CHART_COLORS[index % len]) sobre uma lista ordenada por contagem, então a cor de um status muda quando o volume muda e nunca corresponde à cor do badge daquele status.",
+      "expectedBehavior": "Cada status possui uma cor canônica derivada de uma única fonte. O setor do gráfico de pizza de um status tem a mesma cor do badge desse status, e essa cor não se altera quando a quantidade de equipamentos por status muda ou quando um status deixa de existir na base.",
+      "scope": [
+        "Criar um mapa único de cor por status, cobrindo os doze status de STATUS_EQUIPAMENTO, com valor de fundo, de texto e valor utilizável pelo recharts.",
+        "Fazer o gráfico de pizza resolver a cor pela chave do status, nunca pelo índice do array.",
+        "Alinhar os badges de status de equipamentos e de clientes ao mesmo mapa.",
+        "Remover STATUS_CHART_COLORS e qualquer fallback silencioso que produza cor diferente para status conhecido.",
+        "Cobrir com teste unitário que todo status de STATUS_EQUIPAMENTO resolve cor e que a cor não depende da ordem dos dados."
+      ],
+      "outOfScope": [
+        "Redesenhar os gráficos, trocar biblioteca de charts ou alterar as métricas exibidas.",
+        "Alterar rótulos de status, o fluxo de doze status ou regras de transição.",
+        "Converter as demais cores fixas das páginas, tratado em AO-UI-007."
+      ],
+      "acceptanceCriteria": [
+        "Existe uma única fonte de cor por status, e nenhum arquivo define paleta paralela para os mesmos status.",
+        "Para o mesmo status, a cor do setor no gráfico de pizza é igual à cor do badge.",
+        "Reordenar ou reduzir o conjunto de equipamentos não altera a cor associada a um status.",
+        "Todos os doze status resolvem cor sem cair em fallback genérico.",
+        "Teste unitário cobre resolução por chave e estabilidade frente à ordem dos dados.",
+        "npm run lint e npm run test:run passam."
+      ],
+      "tests": [
+        "Teste unitário do mapa de cores: cobertura dos doze status, ausência de fallback e independência da ordem.",
+        "npm run lint.",
+        "npm run test:run.",
+        "Revisão visual do Dashboard comparando cor de setor e cor de badge para o mesmo status."
+      ],
+      "testInstructions": {
+        "prerequisites": [
+          "Usar worktree exclusiva criada de origin/feature para este ticket, com dependências do package-lock instaladas.",
+          "Trabalho restrito ao frontend: não exigir PostgreSQL, Tauri em modo real, Supabase, PowerSync ou credenciais externas."
+        ],
+        "steps": [
+          "Criar o mapa único de cor por status e o teste unitário correspondente.",
+          "Substituir a resolução por índice no gráfico de pizza por resolução por chave de status.",
+          "Executar npm run lint e npm run test:run.",
+          "Executar npm run e2e, abrir o Dashboard com dados sintéticos e capturar gráfico e badges lado a lado.",
+          "Repetir a captura com um conjunto sintético em ordem diferente e confirmar que as cores não mudaram."
+        ],
+        "expectedResultAndEvidence": [
+          "O teste unitário demonstra cobertura dos doze status e independência da ordem.",
+          "As duas capturas do Dashboard, com ordens diferentes, mostram a mesma cor para o mesmo status.",
+          "A cor do setor coincide com a cor do badge do mesmo status na mesma captura."
+        ],
+        "dataImpact": "Somente código de apresentação e fixtures sintéticas em memória; nenhum dado persistente é criado, alterado ou removido.",
+        "cleanupAndRollback": [
+          "Não criar, alterar ou remover registros de clientes, equipamentos, insumos, perfis ou gastos durante a validação visual.",
+          "Descartar apenas artefatos temporários gerados por lint, testes e Playwright.",
+          "Se a validação falhar, reverter somente os arquivos deste ticket na worktree exclusiva."
+        ],
+        "stagingRestrictions": "É proibido usar dados, endpoints ou credenciais internas; a validação é local, com dados sintéticos ou com o mock de IPC do Playwright (VITE_E2E_MOCK=1)."
+      },
+      "likelyFiles": [
+        "src/types/index.ts",
+        "src/pages/Dashboard.tsx",
+        "src/pages/equipamentos/EquipamentosStatusBadge.tsx",
+        "src/pages/clientes/ClientesStatusBadge.tsx",
+        "src/types/status-colors.test.ts"
+      ],
+      "risks": [
+        "Deixar algum status sem cor e cair em cinza genérico depois da refatoração.",
+        "Escolher cores com contraste insuficiente entre setores vizinhos do gráfico.",
+        "Quebrar os badges de Clientes ao alterar o mapa compartilhado."
+      ]
+    },
+    {
+      "id": "AO-UI-004",
+      "title": "Alinhar o chip de acesso sensível ao tratamento da sidebar",
+      "status": "ready",
+      "blockedBy": [],
+      "objective": "Eliminar o único elemento de superfície clara dentro da barra lateral escura, mantendo a leitura de estado desbloqueado.",
+      "context": "src/components/Layout.tsx renderiza, no estado recolhido, um chip com border-emerald-200, bg-emerald-50 e text-emerald-700 sobre a superfície --sidebar, que é escura nos dois temas. Todo o restante da barra usa superfícies translúcidas sobre branco (bg-white/15, text-white/60), então esse chip lê como elemento fora de lugar.",
+      "expectedBehavior": "No estado recolhido, o indicador de acesso sensível desbloqueado aparece com a mesma linguagem translúcida do restante da barra lateral, mantendo o verde como sinal semântico de desbloqueio e preservando contraste legível sobre a superfície escura.",
+      "scope": [
+        "Trocar as cores fixas claras do chip por superfície translúcida coerente com a barra lateral.",
+        "Preservar o verde como indicação semântica de acesso desbloqueado.",
+        "Verificar o contraste do ícone e da borda contra --sidebar.",
+        "Manter o rótulo acessível existente do indicador."
+      ],
+      "outOfScope": [
+        "Alterar a lógica de acesso sensível, permissões, PIN ou bloqueio de sessão.",
+        "Redesenhar a barra lateral, a navegação ou o SensitiveAccessBadge do estado expandido.",
+        "Alterar transições da barra lateral, tratado em AO-UI-009, AO-UI-010 e AO-UI-011."
+      ],
+      "acceptanceCriteria": [
+        "O chip do estado recolhido usa superfície translúcida sobre a barra escura, sem cores de fundo claras fixas.",
+        "O verde permanece perceptível como sinal de acesso desbloqueado.",
+        "O ícone permanece legível sobre a superfície da barra lateral.",
+        "O indicador continua aparecendo apenas quando o PIN está configurado e a sessão está desbloqueada.",
+        "npm run lint e npm run test:run passam."
+      ],
+      "tests": [
+        "Revisão visual da barra lateral recolhida com acesso desbloqueado e com acesso bloqueado.",
+        "npm run lint.",
+        "npm run test:run."
+      ],
+      "testInstructions": {
+        "prerequisites": [
+          "Usar worktree exclusiva criada de origin/feature para este ticket, com dependências do package-lock instaladas.",
+          "Trabalho restrito ao frontend: não exigir PostgreSQL, Tauri em modo real, Supabase, PowerSync ou credenciais externas."
+        ],
+        "steps": [
+          "Ajustar as classes do chip em src/components/Layout.tsx.",
+          "Executar npm run lint e npm run test:run.",
+          "Executar npm run e2e, recolher a barra lateral e capturar o estado desbloqueado e o bloqueado."
+        ],
+        "expectedResultAndEvidence": [
+          "Capturas da barra recolhida mostram o indicador integrado à superfície escura, sem bloco claro.",
+          "O indicador desaparece no estado bloqueado, como antes.",
+          "Lint e testes unitários passam."
+        ],
+        "dataImpact": "Somente código de apresentação e fixtures sintéticas em memória; nenhum dado persistente é criado, alterado ou removido.",
+        "cleanupAndRollback": [
+          "Não alterar PIN, perfis ou estado de sessão sensível durante a validação.",
+          "Descartar apenas artefatos temporários de lint, testes e Playwright.",
+          "Se a validação falhar, reverter somente src/components/Layout.tsx na worktree exclusiva."
+        ],
+        "stagingRestrictions": "É proibido usar dados, endpoints ou credenciais internas; a validação é local, com dados sintéticos ou com o mock de IPC do Playwright (VITE_E2E_MOCK=1)."
+      },
+      "likelyFiles": [
+        "src/components/Layout.tsx"
+      ],
+      "risks": [
+        "Reduzir o contraste a ponto de o indicador deixar de ser percebido.",
+        "Remover involuntariamente a condição que só exibe o chip quando a sessão está desbloqueada."
+      ]
+    },
+    {
+      "id": "AO-UI-005",
+      "title": "Corrigir a borda clara do card escuro do Perfil",
+      "status": "ready",
+      "blockedBy": [],
+      "objective": "Remover o contorno claro em volta da superfície quase preta do card de sessão do Perfil.",
+      "context": "src/pages/Perfil.tsx aplica border-slate-200 a um Card com gradiente de slate-950 até slate-800. Uma borda clara de um pixel em volta de superfície escura lê como sujeito estranho na borda, em vez de comunicar estrutura.",
+      "expectedBehavior": "O card de sessão do Perfil tem contorno coerente com a própria superfície escura, usando branco de baixa opacidade, e mantém a separação visual em relação ao fundo da página sem produzir um anel claro.",
+      "scope": [
+        "Substituir a borda clara fixa por contorno translúcido de baixa opacidade coerente com a superfície escura.",
+        "Conferir a separação do card em relação ao fundo da página no tema ativo.",
+        "Manter o gradiente, a sombra e o conteúdo do card inalterados."
+      ],
+      "outOfScope": [
+        "Redesenhar o card, alterar a hierarquia de informação ou os textos da página.",
+        "Alterar a lógica de perfis, sessão ou o seletor de perfis.",
+        "Alterar o raio das superfícies, tratado em AO-UI-017."
+      ],
+      "acceptanceCriteria": [
+        "O card não apresenta contorno claro perceptível em volta da superfície escura.",
+        "O card permanece visualmente separado do fundo da página.",
+        "Gradiente, sombra, textos e ações do card permanecem iguais.",
+        "npm run lint e npm run test:run passam."
+      ],
+      "tests": [
+        "Revisão visual do card de sessão em src/pages/Perfil.tsx.",
+        "npm run lint.",
+        "npm run test:run."
+      ],
+      "testInstructions": {
+        "prerequisites": [
+          "Usar worktree exclusiva criada de origin/feature para este ticket, com dependências do package-lock instaladas.",
+          "Trabalho restrito ao frontend: não exigir PostgreSQL, Tauri em modo real, Supabase, PowerSync ou credenciais externas."
+        ],
+        "steps": [
+          "Ajustar a classe de borda do Card em src/pages/Perfil.tsx.",
+          "Executar npm run lint e npm run test:run.",
+          "Executar npm run e2e, abrir /perfil e capturar o card antes e depois da alteração."
+        ],
+        "expectedResultAndEvidence": [
+          "As capturas antes e depois mostram a remoção do anel claro sem perda de separação em relação ao fundo.",
+          "Lint e testes unitários passam."
+        ],
+        "dataImpact": "Somente código de apresentação e fixtures sintéticas em memória; nenhum dado persistente é criado, alterado ou removido.",
+        "cleanupAndRollback": [
+          "Não criar, alterar ou remover registros de clientes, equipamentos, insumos, perfis ou gastos durante a validação visual.",
+          "Descartar apenas artefatos temporários gerados por lint, testes e Playwright.",
+          "Se a validação falhar, reverter somente os arquivos deste ticket na worktree exclusiva."
+        ],
+        "stagingRestrictions": "É proibido usar dados, endpoints ou credenciais internas; a validação é local, com dados sintéticos ou com o mock de IPC do Playwright (VITE_E2E_MOCK=1)."
+      },
+      "likelyFiles": [
+        "src/pages/Perfil.tsx"
+      ],
+      "risks": [
+        "Reduzir a opacidade até o card perder a separação em relação ao fundo da página.",
+        "Alterar por engano o gradiente e mudar a identidade visual da tela."
+      ]
+    },
+    {
+      "id": "AO-UI-006",
+      "title": "Criar componente único de carregamento com cor de token",
+      "status": "ready",
+      "blockedBy": [
+        "AO-UI-002"
+      ],
+      "objective": "Substituir as mais de vinte reimplementações inline de spinner por um componente único que usa a cor primária do tema.",
+      "context": "O padrão animate-spin rounded-full border-b-2 border-blue-600 está reescrito inline em Dashboard, Equipamentos, Clientes, Insumos, Servicos, Configuracoes, ConfiguracoesTabInfra, ConfiguracoesTabObservabilidade, GastosChart e GastosTable. src/App.tsx usa a mesma estrutura com border-cyan-400 e os diálogos usam Loader2 do lucide. São três vocabulários de carregamento e nenhum deles usa o token --primary, que vale 220 70% 50%.",
+      "expectedBehavior": "Existe um componente de carregamento único, com tamanhos nomeados, que usa a cor primária do tema. Todos os pontos de carregamento do app passam a usá-lo, com a mesma aparência e a mesma velocidade de rotação, e nenhum ponto define a cor do indicador por literal.",
+      "scope": [
+        "Criar um componente de spinner em src/components/ui com tamanhos nomeados e cor derivada do token primário.",
+        "Substituir todas as reimplementações inline do padrão animate-spin rounded-full border-b-2 pelo componente.",
+        "Unificar também o indicador de carregamento do App e os usos de Loader2 dentro de botões, mantendo alinhamento com o texto do botão.",
+        "Expor rótulo acessível para o indicador quando ele for o único conteúdo da região em carregamento.",
+        "Garantir uma única velocidade de rotação em toda a aplicação.",
+        "Incluir os oito indicadores inline de src/pages/Balcao.tsx e os indicadores das telas SaaS e de contatos introduzidas recentemente."
+      ],
+      "outOfScope": [
+        "Alterar quando o carregamento começa ou termina, ou introduzir skeletons, tratado em AO-UI-020.",
+        "Alterar chamadas de dados, hooks de domínio ou contratos de IPC.",
+        "Alterar o BootSplash, que tem linguagem própria de progresso real."
+      ],
+      "acceptanceCriteria": [
+        "Nenhum arquivo define inline o padrão animate-spin rounded-full border-b-2.",
+        "O indicador não usa cor literal: a cor vem do token primário do tema.",
+        "Todos os indicadores giram na mesma velocidade e têm tamanhos vindos de um conjunto nomeado.",
+        "Indicadores que ocupam a região sozinhos têm rótulo acessível.",
+        "npm run lint e npm run test:run passam."
+      ],
+      "tests": [
+        "Teste de componente do spinner cobrindo tamanhos nomeados e rótulo acessível.",
+        "Busca no repositório confirmando ausência de spinner inline e de border-blue-600 ou border-cyan-400 em indicadores.",
+        "npm run lint.",
+        "npm run test:run.",
+        "npm run e2e cobrindo ao menos duas telas em estado de carregamento."
+      ],
+      "testInstructions": {
+        "prerequisites": [
+          "Usar worktree exclusiva criada de origin/feature para este ticket, com dependências do package-lock instaladas.",
+          "Trabalho restrito ao frontend: não exigir PostgreSQL, Tauri em modo real, Supabase, PowerSync ou credenciais externas."
+        ],
+        "steps": [
+          "Criar o componente de spinner e seu teste.",
+          "Substituir os usos inline, arquivo por arquivo, conferindo tamanho equivalente ao anterior.",
+          "Buscar no repositório por animate-spin, border-blue-600 e border-cyan-400 para confirmar que não restam indicadores fora do componente.",
+          "Executar npm run lint e npm run test:run.",
+          "Executar npm run e2e e capturar o estado de carregamento de duas telas e de um botão em envio."
+        ],
+        "expectedResultAndEvidence": [
+          "A busca no repositório não retorna indicadores inline remanescentes.",
+          "Capturas mostram indicadores idênticos entre telas e dentro de botões.",
+          "O teste do componente cobre tamanhos e rótulo acessível."
+        ],
+        "dataImpact": "Somente código de apresentação e fixtures sintéticas em memória; nenhum dado persistente é criado, alterado ou removido.",
+        "cleanupAndRollback": [
+          "Não criar, alterar ou remover registros de clientes, equipamentos, insumos, perfis ou gastos durante a validação visual.",
+          "Descartar apenas artefatos temporários gerados por lint, testes e Playwright.",
+          "Se a validação falhar, reverter somente os arquivos deste ticket na worktree exclusiva."
+        ],
+        "stagingRestrictions": "É proibido usar dados, endpoints ou credenciais internas; a validação é local, com dados sintéticos ou com o mock de IPC do Playwright (VITE_E2E_MOCK=1)."
+      },
+      "likelyFiles": [
+        "src/components/ui/spinner.tsx",
+        "src/components/ui/__tests__/spinner.test.tsx",
+        "src/App.tsx",
+        "src/pages/Dashboard.tsx",
+        "src/pages/Equipamentos.tsx",
+        "src/pages/Clientes.tsx",
+        "src/pages/Insumos.tsx",
+        "src/pages/Servicos.tsx",
+        "src/pages/Configuracoes.tsx",
+        "src/pages/configuracoes/ConfiguracoesTabInfra.tsx",
+        "src/pages/configuracoes/ConfiguracoesTabObservabilidade.tsx",
+        "src/components/gastos/GastosChart.tsx",
+        "src/components/gastos/GastosTable.tsx",
+        "src/pages/Balcao.tsx",
+        "src/components/SaasLoginScreen.tsx",
+        "src/components/clientes/ClienteContatosPanel.tsx",
+        "src/components/equipamentos/ContatoResponsavelSelector.tsx"
+      ],
+      "risks": [
+        "Trocar o tamanho percebido de indicadores em telas onde o espaço é apertado.",
+        "Alterar dezenas de arquivos e introduzir regressão em uma tela pouco percorrida pelos testes.",
+        "Perder o alinhamento vertical do indicador dentro de botões em envio."
+      ]
+    },
+    {
+      "id": "AO-UI-007",
+      "title": "Substituir os azuis literais remanescentes por tokens do tema",
+      "status": "ready",
+      "blockedBy": [
+        "AO-UI-003",
+        "AO-UI-006"
+      ],
+      "objective": "Fazer com que a cor primária e as cores semânticas de apoio venham dos tokens do tema, não de literais Tailwind ou hex espalhados pelas páginas.",
+      "context": "Depois de AO-UI-003 e AO-UI-006, ainda restam cores literais que competem com os tokens: hex diretos nos gráficos de barras e linha do Dashboard (#3b82f6 e #10b981), classes como text-blue-600, text-orange-600, text-amber-600, text-red-600 e text-emerald-600 em getAcaoPendente e nos cards de métrica, e superfícies como bg-red-50/50 e bg-amber-50/30. O token --primary vale 220 70% 50% e divergo dos literais.",
+      "expectedBehavior": "As cores de marca e as cores semânticas de estado usadas nas páginas passam a vir de tokens. Gráficos, textos de ação pendente, valores de métrica e superfícies de alerta usam a mesma origem de cor que o restante da interface e acompanham automaticamente o tema decidido em AO-UI-001.",
+      "scope": [
+        "Mapear as cores semânticas em uso (sucesso, atenção, alerta, informação) para os tokens existentes (--primary, --destructive, --warning, --info) e criar token apenas quando não houver equivalente.",
+        "Substituir os hex dos gráficos de barras e de linha do Dashboard por valores derivados de token.",
+        "Substituir as classes literais de texto e de superfície nos cards de métrica, nas ações pendentes e nos alertas de estoque.",
+        "Percorrer os demais pontos com cores fixas listados em src/pages, src/components e src/hooks e converter os que representam estado semântico.",
+        "Documentar no repositório qual token representa cada estado semântico.",
+        "Converter as cores fixas da tela de balcão, incluindo as superfícies bg-cyan-50, bg-slate-50, bg-slate-100 e bg-amber-50."
+      ],
+      "outOfScope": [
+        "Redefinir a identidade visual ou alterar os valores cromáticos dos tokens existentes.",
+        "Alterar as cores por status de equipamento, já resolvidas em AO-UI-003.",
+        "Alterar a paleta do BootSplash e do PDF, que têm requisitos próprios de marca."
+      ],
+      "acceptanceCriteria": [
+        "Nenhum gráfico do Dashboard recebe cor por hex literal.",
+        "Textos e superfícies que representam estado semântico usam tokens, não literais Tailwind.",
+        "Existe documentação de qual token corresponde a cada estado semântico.",
+        "As telas mantêm a mesma leitura de severidade: alerta continua lendo como alerta e sucesso como sucesso.",
+        "npm run lint e npm run test:run passam."
+      ],
+      "tests": [
+        "Busca no repositório confirmando ausência de hex de marca e de literais de cor semântica nos arquivos convertidos.",
+        "npm run lint.",
+        "npm run test:run.",
+        "npm run e2e com captura do Dashboard, de Equipamentos e do alerta de estoque baixo."
+      ],
+      "testInstructions": {
+        "prerequisites": [
+          "Usar worktree exclusiva criada de origin/feature para este ticket, com dependências do package-lock instaladas.",
+          "Trabalho restrito ao frontend: não exigir PostgreSQL, Tauri em modo real, Supabase, PowerSync ou credenciais externas."
+        ],
+        "steps": [
+          "Levantar a lista completa de cores literais nos arquivos em escopo e classificar cada uma como semântica ou decorativa.",
+          "Converter as semânticas para token, mantendo severidade equivalente.",
+          "Executar npm run lint e npm run test:run.",
+          "Executar npm run e2e e capturar Dashboard, Equipamentos e o card de estoque baixo com e sem itens abaixo do mínimo."
+        ],
+        "expectedResultAndEvidence": [
+          "Capturas antes e depois demonstram que a leitura de severidade foi preservada.",
+          "A busca no repositório não retorna hex de marca nem literais semânticos nos arquivos convertidos.",
+          "Lint e testes unitários passam."
+        ],
+        "dataImpact": "Somente código de apresentação e fixtures sintéticas em memória; nenhum dado persistente é criado, alterado ou removido.",
+        "cleanupAndRollback": [
+          "Não criar, alterar ou remover registros de clientes, equipamentos, insumos, perfis ou gastos durante a validação visual.",
+          "Descartar apenas artefatos temporários gerados por lint, testes e Playwright.",
+          "Se a validação falhar, reverter somente os arquivos deste ticket na worktree exclusiva."
+        ],
+        "stagingRestrictions": "É proibido usar dados, endpoints ou credenciais internas; a validação é local, com dados sintéticos ou com o mock de IPC do Playwright (VITE_E2E_MOCK=1)."
+      },
+      "likelyFiles": [
+        "src/pages/Dashboard.tsx",
+        "src/pages/Equipamentos.tsx",
+        "src/pages/Clientes.tsx",
+        "src/pages/configuracoes/ConfiguracoesTabSeguranca.tsx",
+        "src/pages/configuracoes/ConfiguracoesTabIntegracoes.tsx",
+        "src/components/ui/error-alert.tsx",
+        "src/hooks/useSensitiveAccess.tsx",
+        "src/index.css",
+        "src/pages/Balcao.tsx",
+        "src/components/SaasLoginScreen.tsx",
+        "src/components/clientes/RegularizacaoLegadosDialog.tsx"
+      ],
+      "risks": [
+        "Achatar a diferença entre atenção e alerta ao mapear ambos para o mesmo token.",
+        "Reduzir contraste de valores numéricos importantes nos cards de métrica.",
+        "Converter cores decorativas e perder intenção visual específica de uma tela."
+      ]
+    },
+    {
+      "id": "AO-UI-008",
+      "title": "Adicionar retorno de pressão aos elementos pressionáveis",
+      "status": "ready",
+      "blockedBy": [],
+      "objective": "Dar retorno tátil ao clique nos componentes pressionáveis, que hoje não têm nenhum estado de pressão em todo o aplicativo.",
+      "context": "Uma busca por active: e :active em src não retorna nenhuma ocorrência. src/components/ui/button.tsx define apenas hover, foco e desabilitado. Sem estado de pressão, o botão não confirma que registrou o clique, e essa é a peça de acabamento com melhor retorno por linha escrita.",
+      "expectedBehavior": "Botões e demais controles pressionáveis reduzem discretamente de escala enquanto pressionados e retornam ao tamanho normal ao soltar. A transição é curta, atinge apenas a propriedade de escala e pode ser desligada por propriedade nos casos em que o movimento distraia.",
+      "scope": [
+        "Adicionar estado de pressão com escala 0,96 ao componente de botão, em todas as variantes e tamanhos.",
+        "Transicionar somente a propriedade de escala, com duração de até 160 ms e curva de saída.",
+        "Expor propriedade para desativar o efeito em contextos onde ele não deva ocorrer.",
+        "Garantir que o estado desabilitado não produza retorno de pressão.",
+        "Cobrir com teste de componente a presença da classe de pressão e o comportamento da propriedade de desativação."
+      ],
+      "outOfScope": [
+        "Aplicar pressão a cards e linhas de tabela clicáveis, que primeiro precisam ser controles reais em AO-UI-023.",
+        "Alterar altura, raio, foco ou cor do botão, tratados em AO-UI-015, AO-UI-016 e AO-UI-017.",
+        "Introduzir biblioteca de animação."
+      ],
+      "acceptanceCriteria": [
+        "Todos os botões reduzem para escala 0,96 enquanto pressionados e voltam ao soltar.",
+        "A transição declara explicitamente a propriedade animada e dura no máximo 160 ms.",
+        "Botões desabilitados não apresentam retorno de pressão.",
+        "A propriedade de desativação suprime o efeito sem afetar as demais variantes.",
+        "npm run lint e npm run test:run passam."
+      ],
+      "tests": [
+        "Teste de componente em src/components/ui/button.test.tsx cobrindo variantes, tamanhos, estado desabilitado e propriedade de desativação.",
+        "npm run lint.",
+        "npm run test:run -- src/components/ui/button.test.tsx.",
+        "Revisão da animação em velocidade reduzida no painel de animações do navegador."
+      ],
+      "testInstructions": {
+        "prerequisites": [
+          "Usar worktree exclusiva criada de origin/feature para este ticket, com dependências do package-lock instaladas.",
+          "Trabalho restrito ao frontend: não exigir PostgreSQL, Tauri em modo real, Supabase, PowerSync ou credenciais externas."
+        ],
+        "steps": [
+          "Adicionar o estado de pressão e a propriedade de desativação ao componente de botão.",
+          "Estender src/components/ui/button.test.tsx para cobrir variantes, desabilitado e desativação do efeito.",
+          "Executar npm run lint e npm run test:run -- src/components/ui/button.test.tsx.",
+          "Executar npm run e2e, pressionar botões primário, secundário, contorno e ícone e reproduzir a animação a dez por cento da velocidade."
+        ],
+        "expectedResultAndEvidence": [
+          "O teste de componente cobre variantes, tamanhos, desabilitado e desativação do efeito.",
+          "A reprodução em velocidade reduzida mostra retorno imediato, sem oscilação ao soltar.",
+          "Botões desabilitados não reagem à pressão."
+        ],
+        "dataImpact": "Somente código de apresentação e fixtures sintéticas em memória; nenhum dado persistente é criado, alterado ou removido.",
+        "cleanupAndRollback": [
+          "Não criar, alterar ou remover registros de clientes, equipamentos, insumos, perfis ou gastos durante a validação visual.",
+          "Descartar apenas artefatos temporários gerados por lint, testes e Playwright.",
+          "Se a validação falhar, reverter somente os arquivos deste ticket na worktree exclusiva."
+        ],
+        "stagingRestrictions": "É proibido usar dados, endpoints ou credenciais internas; a validação é local, com dados sintéticos ou com o mock de IPC do Playwright (VITE_E2E_MOCK=1)."
+      },
+      "likelyFiles": [
+        "src/components/ui/button.tsx",
+        "src/components/ui/button.test.tsx"
+      ],
+      "risks": [
+        "Escolher escala exagerada e fazer o botão parecer instável.",
+        "Aplicar pressão a botões desabilitados e sugerir interatividade inexistente.",
+        "Animar propriedade que force recálculo de layout em listas longas de ações."
+      ]
+    },
+    {
+      "id": "AO-UI-009",
+      "title": "Restringir a transição da barra lateral às propriedades que mudam",
+      "status": "ready",
+      "blockedBy": [
+        "AO-UI-004"
+      ],
+      "objective": "Eliminar a transição genérica da barra lateral e do item de navegação, deixando explícitas apenas as propriedades animadas.",
+      "context": "src/components/Layout.tsx usa transition-all duration-300 na tag aside, animando a largura entre w-16 e w-60, e transition-all duration-200 nos itens de navegação. A forma genérica transiciona cor, borda e sombra sem necessidade, e animar largura força recálculo de layout e pintura em toda a região principal a cada quadro.",
+      "expectedBehavior": "O recolhimento da barra lateral declara explicitamente o que anima e não provoca recálculo de layout da região principal a cada quadro. Os itens de navegação transicionam apenas cor de fundo e cor de texto. A duração percebida do recolhimento permanece equivalente à atual.",
+      "scope": [
+        "Substituir transition-all da barra lateral por transição de propriedades nomeadas.",
+        "Avaliar animar transformação em vez de largura e adotar a alternativa que não recalcule layout do conteúdo principal, desde que o conteúdo não seja encoberto.",
+        "Substituir transition-all dos itens de navegação por transição apenas de cor de fundo e de texto.",
+        "Confirmar que o conteúdo da região principal não apresenta salto perceptível durante o recolhimento."
+      ],
+      "outOfScope": [
+        "Alterar a estrutura de navegação, os itens da barra ou as permissões que os filtram.",
+        "Alterar o comportamento do rótulo durante o recolhimento, tratado em AO-UI-010.",
+        "Alterar a altura do cabeçalho do logo, tratada em AO-UI-011."
+      ],
+      "acceptanceCriteria": [
+        "Nenhuma transição em src/components/Layout.tsx usa a forma genérica.",
+        "O recolhimento e a expansão permanecem suaves e com duração equivalente à atual.",
+        "A região principal não apresenta salto ou reflow perceptível durante a animação.",
+        "Os itens de navegação transicionam somente cor de fundo e cor de texto.",
+        "npm run lint e npm run test:run passam."
+      ],
+      "tests": [
+        "Revisão da animação em velocidade reduzida no painel de animações do navegador.",
+        "Inspeção do painel de desempenho durante o recolhimento, comparando recálculo de layout antes e depois.",
+        "npm run lint.",
+        "npm run test:run."
+      ],
+      "testInstructions": {
+        "prerequisites": [
+          "Usar worktree exclusiva criada de origin/feature para este ticket, com dependências do package-lock instaladas.",
+          "Trabalho restrito ao frontend: não exigir PostgreSQL, Tauri em modo real, Supabase, PowerSync ou credenciais externas."
+        ],
+        "steps": [
+          "Registrar, com o painel de desempenho, o custo do recolhimento no estado atual.",
+          "Aplicar a alteração de transições em src/components/Layout.tsx.",
+          "Registrar novamente o recolhimento e comparar recálculo de layout e pintura.",
+          "Reproduzir a animação a dez por cento da velocidade e observar cor, largura e conteúdo principal.",
+          "Executar npm run lint e npm run test:run."
+        ],
+        "expectedResultAndEvidence": [
+          "As duas medições do painel de desempenho mostram redução ou eliminação do recálculo de layout na região principal.",
+          "A reprodução lenta não revela transição de propriedades não intencionais.",
+          "Lint e testes unitários passam."
+        ],
+        "dataImpact": "Somente código de apresentação e fixtures sintéticas em memória; nenhum dado persistente é criado, alterado ou removido.",
+        "cleanupAndRollback": [
+          "Não criar, alterar ou remover registros de clientes, equipamentos, insumos, perfis ou gastos durante a validação visual.",
+          "Descartar apenas artefatos temporários gerados por lint, testes e Playwright.",
+          "Se a validação falhar, reverter somente os arquivos deste ticket na worktree exclusiva."
+        ],
+        "stagingRestrictions": "É proibido usar dados, endpoints ou credenciais internas; a validação é local, com dados sintéticos ou com o mock de IPC do Playwright (VITE_E2E_MOCK=1)."
+      },
+      "likelyFiles": [
+        "src/components/Layout.tsx"
+      ],
+      "risks": [
+        "Trocar largura por transformação e encobrir o conteúdo principal durante a animação.",
+        "Alterar a duração percebida e fazer a barra parecer mais lenta.",
+        "Perder a transição de cor dos itens de navegação ao nomear as propriedades."
+      ]
+    },
+    {
+      "id": "AO-UI-010",
+      "title": "Sincronizar o rótulo da navegação com o recolhimento da barra",
+      "status": "ready",
+      "blockedBy": [
+        "AO-UI-009"
+      ],
+      "objective": "Fazer o rótulo dos itens de navegação acompanhar a animação de recolhimento, em vez de desaparecer no primeiro quadro.",
+      "context": "Em src/components/Layout.tsx os rótulos são renderizados condicionalmente com a checagem de recolhido, então desmontam instantaneamente enquanto a barra leva trezentos milissegundos para fechar. A animação fica descolada da ação: o texto some antes de haver espaço para isso.",
+      "expectedBehavior": "Ao recolher, o rótulo desaparece acompanhando o fechamento da barra, sem sobrar texto cortado nem sumir antes da animação começar. Ao expandir, o rótulo reaparece de forma coerente com a abertura. O item recolhido continua identificável apenas pelo ícone.",
+      "scope": [
+        "Manter o rótulo no documento durante a animação e ocultá-lo por opacidade ou recorte, em vez de desmontagem imediata.",
+        "Alinhar a duração e a curva do rótulo à animação da barra definida em AO-UI-009.",
+        "Evitar que o texto apareça cortado ou transborde durante a transição.",
+        "Garantir que o item recolhido continue anunciando o destino para tecnologias assistivas.",
+        "Aplicar o mesmo tratamento aos rótulos dos botões de bloqueio e de recolhimento no rodapé da barra."
+      ],
+      "outOfScope": [
+        "Alterar os itens de navegação, as rotas ou as permissões que os filtram.",
+        "Alterar a transição da própria barra, definida em AO-UI-009.",
+        "Alterar a altura do cabeçalho do logo, tratada em AO-UI-011."
+      ],
+      "acceptanceCriteria": [
+        "O rótulo não desaparece no primeiro quadro do recolhimento.",
+        "Durante a transição não aparece texto cortado nem transbordando da barra.",
+        "Ao expandir, o rótulo reaparece de forma coerente com a abertura.",
+        "O destino de cada item permanece identificável por tecnologia assistiva no estado recolhido.",
+        "npm run lint e npm run test:run passam."
+      ],
+      "tests": [
+        "Revisão da animação de recolhimento e de expansão em velocidade reduzida.",
+        "Verificação do nome acessível dos itens no estado recolhido.",
+        "npm run lint.",
+        "npm run test:run."
+      ],
+      "testInstructions": {
+        "prerequisites": [
+          "Usar worktree exclusiva criada de origin/feature para este ticket, com dependências do package-lock instaladas.",
+          "Trabalho restrito ao frontend: não exigir PostgreSQL, Tauri em modo real, Supabase, PowerSync ou credenciais externas."
+        ],
+        "steps": [
+          "Ajustar a renderização dos rótulos em src/components/Layout.tsx.",
+          "Executar npm run lint e npm run test:run.",
+          "Executar npm run e2e, recolher e expandir a barra e reproduzir as duas animações a dez por cento da velocidade.",
+          "Inspecionar a árvore de acessibilidade no estado recolhido e conferir o nome de cada item."
+        ],
+        "expectedResultAndEvidence": [
+          "A reprodução lenta mostra o rótulo saindo junto com o fechamento, sem texto cortado.",
+          "A árvore de acessibilidade mostra nome para todos os itens no estado recolhido.",
+          "Lint e testes unitários passam."
+        ],
+        "dataImpact": "Somente código de apresentação e fixtures sintéticas em memória; nenhum dado persistente é criado, alterado ou removido.",
+        "cleanupAndRollback": [
+          "Não criar, alterar ou remover registros de clientes, equipamentos, insumos, perfis ou gastos durante a validação visual.",
+          "Descartar apenas artefatos temporários gerados por lint, testes e Playwright.",
+          "Se a validação falhar, reverter somente os arquivos deste ticket na worktree exclusiva."
+        ],
+        "stagingRestrictions": "É proibido usar dados, endpoints ou credenciais internas; a validação é local, com dados sintéticos ou com o mock de IPC do Playwright (VITE_E2E_MOCK=1)."
+      },
+      "likelyFiles": [
+        "src/components/Layout.tsx"
+      ],
+      "risks": [
+        "Manter o rótulo no documento e provocar transbordo horizontal durante a transição.",
+        "Perder o nome acessível ao trocar desmontagem por ocultação visual.",
+        "Descompassar a duração do rótulo em relação à da barra e piorar a percepção."
+      ]
+    },
+    {
+      "id": "AO-UI-011",
+      "title": "Ajustar o cabeçalho do logo na barra recolhida",
+      "status": "ready",
+      "blockedBy": [
+        "AO-UI-010"
+      ],
+      "objective": "Eliminar o bloco vazio de cento e cinquenta pixels no topo da barra lateral quando ela está recolhida.",
+      "context": "Em src/components/Layout.tsx o cabeçalho do logo tem altura fixa de cento e cinquenta pixels. Ao recolher, o logo é trocado por um div vazio de trinta e dois pixels, mas a altura do cabeçalho permanece, deixando um bloco vazio no topo da barra.",
+      "expectedBehavior": "No estado recolhido, o topo da barra lateral não apresenta área vazia desproporcional: ou o cabeçalho reduz de altura acompanhando o recolhimento, ou exibe uma marca compacta que ocupa o espaço de forma intencional. A navegação ganha o espaço liberado.",
+      "scope": [
+        "Fazer a altura do cabeçalho acompanhar o estado de recolhimento, ou exibir marca compacta no estado recolhido.",
+        "Alinhar a transição de altura à animação definida em AO-UI-009.",
+        "Remover o div vazio usado hoje como espaçador quando ele deixar de ser necessário.",
+        "Preservar a borda inferior que separa o cabeçalho da navegação."
+      ],
+      "outOfScope": [
+        "Trocar os arquivos de logo ou a identidade visual da marca.",
+        "Alterar itens de navegação, rodapé da barra ou lógica de acesso sensível.",
+        "Alterar o comportamento dos rótulos, definido em AO-UI-010."
+      ],
+      "acceptanceCriteria": [
+        "No estado recolhido não há área vazia desproporcional no topo da barra.",
+        "A transição do cabeçalho acompanha a animação da barra, sem salto.",
+        "No estado expandido o logo permanece com as dimensões atuais.",
+        "A separação entre cabeçalho e navegação permanece visível nos dois estados.",
+        "npm run lint e npm run test:run passam."
+      ],
+      "tests": [
+        "Revisão visual da barra nos estados expandido e recolhido.",
+        "Revisão da transição em velocidade reduzida.",
+        "npm run lint.",
+        "npm run test:run."
+      ],
+      "testInstructions": {
+        "prerequisites": [
+          "Usar worktree exclusiva criada de origin/feature para este ticket, com dependências do package-lock instaladas.",
+          "Trabalho restrito ao frontend: não exigir PostgreSQL, Tauri em modo real, Supabase, PowerSync ou credenciais externas."
+        ],
+        "steps": [
+          "Ajustar o cabeçalho do logo em src/components/Layout.tsx.",
+          "Executar npm run lint e npm run test:run.",
+          "Executar npm run e2e e capturar a barra expandida e recolhida.",
+          "Reproduzir a transição a dez por cento da velocidade observando o topo da barra."
+        ],
+        "expectedResultAndEvidence": [
+          "As capturas mostram o topo da barra recolhida sem bloco vazio e o logo intacto no estado expandido.",
+          "A reprodução lenta não revela salto no cabeçalho durante a transição.",
+          "Lint e testes unitários passam."
+        ],
+        "dataImpact": "Somente código de apresentação e fixtures sintéticas em memória; nenhum dado persistente é criado, alterado ou removido.",
+        "cleanupAndRollback": [
+          "Não criar, alterar ou remover registros de clientes, equipamentos, insumos, perfis ou gastos durante a validação visual.",
+          "Descartar apenas artefatos temporários gerados por lint, testes e Playwright.",
+          "Se a validação falhar, reverter somente os arquivos deste ticket na worktree exclusiva."
+        ],
+        "stagingRestrictions": "É proibido usar dados, endpoints ou credenciais internas; a validação é local, com dados sintéticos ou com o mock de IPC do Playwright (VITE_E2E_MOCK=1)."
+      },
+      "likelyFiles": [
+        "src/components/Layout.tsx"
+      ],
+      "risks": [
+        "Provocar salto de layout na navegação ao animar a altura do cabeçalho.",
+        "Deixar a marca ilegível ao criar variante compacta."
+      ]
+    },
+    {
+      "id": "AO-UI-012",
+      "title": "Remover as transições genéricas remanescentes",
+      "status": "ready",
+      "blockedBy": [],
+      "objective": "Eliminar os últimos usos da transição genérica fora da barra lateral, nomeando as propriedades efetivamente animadas.",
+      "context": "Além de src/components/Layout.tsx, tratado em AO-UI-009, a forma genérica transition-all aparece em src/components/AuthDialog.tsx em dois botões de alternância, em src/components/ui/tabs.tsx no gatilho de aba e em src/components/ProfileSessionDialog.tsx no cartão de perfil selecionável. A forma genérica inclui propriedades não pretendidas e é o caminho mais curto para engasgo de animação.",
+      "expectedBehavior": "Nenhum componente do aplicativo usa transição genérica. Cada transição declara as propriedades que realmente mudam, e o comportamento visual percebido nas abas, no seletor de autenticação e no cartão de perfil permanece equivalente ao atual.",
+      "scope": [
+        "Substituir transition-all por propriedades nomeadas nos três arquivos em escopo.",
+        "Conferir, em cada caso, quais propriedades mudam de fato entre os estados, incluindo sombra e cor de borda.",
+        "Confirmar que o estado ativo da aba e o cartão de perfil selecionado continuam legíveis durante e após a transição.",
+        "Deixar o repositório sem nenhuma ocorrência de transição genérica."
+      ],
+      "outOfScope": [
+        "Redesenhar abas, diálogo de autenticação ou seletor de perfis.",
+        "Alterar a lógica de seleção de perfil, autenticação ou permissões.",
+        "Alterar transições da barra lateral, tratadas em AO-UI-009."
+      ],
+      "acceptanceCriteria": [
+        "Uma busca por transition-all em src não retorna ocorrências, exceto as já tratadas em AO-UI-009.",
+        "Cada transição alterada declara explicitamente as propriedades animadas.",
+        "O comportamento visual percebido nos três componentes permanece equivalente ao atual.",
+        "npm run lint e npm run test:run passam."
+      ],
+      "tests": [
+        "Busca no repositório confirmando ausência de transição genérica.",
+        "Revisão em velocidade reduzida da troca de abas e da seleção de cartão de perfil.",
+        "npm run lint.",
+        "npm run test:run -- src/components/__tests__/ProfileSessionDialog-dropdown.test.tsx."
+      ],
+      "testInstructions": {
+        "prerequisites": [
+          "Usar worktree exclusiva criada de origin/feature para este ticket, com dependências do package-lock instaladas.",
+          "Trabalho restrito ao frontend: não exigir PostgreSQL, Tauri em modo real, Supabase, PowerSync ou credenciais externas."
+        ],
+        "steps": [
+          "Levantar, para cada componente em escopo, as propriedades que mudam entre os estados.",
+          "Substituir a transição genérica por propriedades nomeadas.",
+          "Buscar transition-all no repositório e confirmar que não restam ocorrências.",
+          "Executar npm run lint e o teste direcionado do diálogo de sessão de perfil.",
+          "Executar npm run e2e, trocar de aba e selecionar cartões de perfil, reproduzindo as animações a dez por cento da velocidade."
+        ],
+        "expectedResultAndEvidence": [
+          "A busca no repositório não retorna transição genérica.",
+          "A reprodução lenta mostra transição equivalente à atual, sem propriedades inesperadas.",
+          "Lint e teste direcionado passam."
+        ],
+        "dataImpact": "Somente código de apresentação e fixtures sintéticas em memória; nenhum dado persistente é criado, alterado ou removido.",
+        "cleanupAndRollback": [
+          "Não criar, trocar nem excluir perfis durante a validação do seletor de perfis.",
+          "Descartar apenas artefatos temporários de lint, testes e Playwright.",
+          "Se a validação falhar, reverter somente os arquivos deste ticket na worktree exclusiva."
+        ],
+        "stagingRestrictions": "É proibido usar dados, endpoints ou credenciais internas; a validação é local, com dados sintéticos ou com o mock de IPC do Playwright (VITE_E2E_MOCK=1)."
+      },
+      "likelyFiles": [
+        "src/components/AuthDialog.tsx",
+        "src/components/ui/tabs.tsx",
+        "src/components/ProfileSessionDialog.tsx"
+      ],
+      "risks": [
+        "Esquecer uma propriedade que mudava e perder parte da transição.",
+        "Quebrar a indicação visual do cartão de perfil selecionado."
+      ]
+    },
+    {
+      "id": "AO-UI-013",
+      "title": "Respeitar a preferência de movimento reduzido",
+      "status": "ready",
+      "blockedBy": [
+        "AO-UI-001"
+      ],
+      "objective": "Passar a atender a preferência de movimento reduzido do sistema, hoje ignorada em todo o aplicativo.",
+      "context": "Uma busca por prefers-reduced-motion em src não retorna ocorrências. Desde a entrada da animação de abertura, src/index.css define os keyframes boot-particle-travel, boot-orbit-drift e boot-brand-fade aplicados com repetição infinita, e src/components/AutoOsBootAnimation.tsx os utiliza. Somam-se a isso o BootSplash, as animações de entrada do tailwindcss-animate em diálogos, tooltips e selects, e as transições da barra lateral. Movimento reduzido significa menos movimento e movimento mais suave, não ausência total de animação, mas animação infinita é o caso mais crítico a suprimir.",
+      "expectedBehavior": "Com movimento reduzido ativado no sistema, a interface mantém transições de opacidade e de cor que ajudam a compreender mudanças de estado, e suprime deslocamento, zoom e rotação prolongada. Com a preferência desativada, nada muda em relação ao comportamento atual.",
+      "scope": [
+        "Adicionar bloco de movimento reduzido em src/index.css cobrindo deslocamento, zoom e escala das animações de entrada e saída.",
+        "Preservar transições de opacidade e de cor que comunicam mudança de estado.",
+        "Ajustar o BootSplash para suprimir movimento mantendo a leitura de progresso real.",
+        "Conferir diálogos, tooltips, selects e barra lateral sob a preferência ativa.",
+        "Documentar a política de movimento reduzido adotada.",
+        "Suprimir ou reduzir drasticamente as animações de repetição infinita da abertura (boot-particle-travel, boot-orbit-drift e boot-brand-fade) quando a preferência estiver ativa."
+      ],
+      "outOfScope": [
+        "Remover animações no comportamento padrão, com a preferência desativada.",
+        "Introduzir interruptor de movimento na interface do aplicativo.",
+        "Alterar durações e curvas do comportamento padrão."
+      ],
+      "acceptanceCriteria": [
+        "Com movimento reduzido ativo, diálogos, tooltips e selects abrem sem deslocamento nem zoom, mantendo transição de opacidade.",
+        "Com movimento reduzido ativo, o BootSplash não apresenta movimento além da leitura de progresso.",
+        "Com movimento reduzido ativo, a barra lateral alterna de estado sem animação prolongada de movimento.",
+        "Com a preferência desativada, o comportamento é idêntico ao atual.",
+        "A política adotada está documentada no repositório.",
+        "npm run lint e npm run test:run passam.",
+        "Com movimento reduzido ativo, nenhuma animação de repetição infinita permanece em execução na tela de abertura."
+      ],
+      "tests": [
+        "Revisão com emulação de movimento reduzido ativada no navegador, cobrindo diálogo, tooltip, select, barra lateral e splash.",
+        "Revisão com a preferência desativada confirmando ausência de regressão.",
+        "npm run lint.",
+        "npm run test:run.",
+        "npm run test:run -- src/components/BootSplash.test.tsx."
+      ],
+      "testInstructions": {
+        "prerequisites": [
+          "Usar worktree exclusiva criada de origin/feature para este ticket, com dependências do package-lock instaladas.",
+          "Trabalho restrito ao frontend: não exigir PostgreSQL, Tauri em modo real, Supabase, PowerSync ou credenciais externas."
+        ],
+        "steps": [
+          "Adicionar o bloco de movimento reduzido e ajustar o BootSplash.",
+          "Emular movimento reduzido no navegador e percorrer diálogo, tooltip, select, barra lateral e splash.",
+          "Desativar a emulação e repetir o percurso comparando com o comportamento atual.",
+          "Executar npm run lint e npm run test:run."
+        ],
+        "expectedResultAndEvidence": [
+          "Capturas ou gravações com a preferência ativa mostram ausência de deslocamento e de zoom, com opacidade preservada.",
+          "O percurso com a preferência desativada é idêntico ao comportamento atual.",
+          "Lint e testes unitários passam."
+        ],
+        "dataImpact": "Somente código de apresentação e fixtures sintéticas em memória; nenhum dado persistente é criado, alterado ou removido.",
+        "cleanupAndRollback": [
+          "Não criar, alterar ou remover registros de clientes, equipamentos, insumos, perfis ou gastos durante a validação visual.",
+          "Descartar apenas artefatos temporários gerados por lint, testes e Playwright.",
+          "Se a validação falhar, reverter somente os arquivos deste ticket na worktree exclusiva."
+        ],
+        "stagingRestrictions": "É proibido usar dados, endpoints ou credenciais internas; a validação é local, com dados sintéticos ou com o mock de IPC do Playwright (VITE_E2E_MOCK=1)."
+      },
+      "likelyFiles": [
+        "src/index.css",
+        "src/components/BootSplash.tsx",
+        "docs/",
+        "src/components/AutoOsBootAnimation.tsx",
+        "src/components/BootSplash.test.tsx"
+      ],
+      "risks": [
+        "Zerar todas as animações e perder as transições que comunicam mudança de estado.",
+        "Aplicar a regra de forma tão ampla que afete o indicador de carregamento e o progresso do splash.",
+        "Deixar a regra fora do alcance das classes geradas pelo tailwindcss-animate."
+      ]
+    },
+    {
+      "id": "AO-UI-014",
+      "title": "Centralizar o provedor de tooltip na raiz do aplicativo",
+      "status": "ready",
+      "blockedBy": [
+        "AO-UI-006"
+      ],
+      "objective": "Passar a ter um único provedor de tooltip, habilitando o comportamento de abertura imediata a partir do segundo tooltip.",
+      "context": "src/components/ui/SyncStatusIndicator.tsx monta TooltipProvider com atraso de duzentos milissegundos e src/components/clientes/ClienteFormularioCampos.tsx monta outro com trezentos. Provedores isolados impedem o comportamento de pular o atraso quando já existe um tooltip aberto, que é o que faz uma barra de ícones parecer rápida, e produzem atrasos diferentes na mesma aplicação.",
+      "expectedBehavior": "Existe um único provedor de tooltip na raiz do aplicativo, com um atraso padrão. Ao percorrer gatilhos vizinhos com um tooltip já aberto, os seguintes abrem sem repetir o atraso. Nenhum componente monta provedor próprio, salvo justificativa registrada.",
+      "scope": [
+        "Montar um único provedor de tooltip na raiz, com atraso padrão definido e registrado.",
+        "Remover os provedores locais de SyncStatusIndicator e de ClienteFormularioCampos.",
+        "Confirmar o comportamento de abertura imediata a partir do segundo tooltip em gatilhos vizinhos.",
+        "Confirmar que os tooltips continuam funcionando dentro de diálogos e de conteúdo em portal."
+      ],
+      "outOfScope": [
+        "Redesenhar o componente de tooltip, seus textos ou adicionar novos tooltips.",
+        "Alterar o Toaster, tratado em AO-UI-002.",
+        "Alterar o indicador de sincronização ou o formulário de clientes além da remoção do provedor local."
+      ],
+      "acceptanceCriteria": [
+        "Existe exatamente um TooltipProvider no aplicativo e um único atraso padrão.",
+        "Com um tooltip aberto, gatilhos vizinhos abrem sem repetir o atraso.",
+        "Tooltips continuam aparecendo dentro de diálogos e de conteúdo renderizado em portal.",
+        "npm run lint e npm run test:run passam."
+      ],
+      "tests": [
+        "Busca no repositório confirmando um único TooltipProvider.",
+        "npm run lint.",
+        "npm run test:run -- src/components/clientes/ClienteFormularioCampos.test.tsx.",
+        "npm run e2e cobrindo tooltip no indicador de sincronização e no formulário de clientes."
+      ],
+      "testInstructions": {
+        "prerequisites": [
+          "Usar worktree exclusiva criada de origin/feature para este ticket, com dependências do package-lock instaladas.",
+          "Trabalho restrito ao frontend: não exigir PostgreSQL, Tauri em modo real, Supabase, PowerSync ou credenciais externas."
+        ],
+        "steps": [
+          "Montar o provedor na raiz e remover os provedores locais.",
+          "Buscar TooltipProvider no repositório e confirmar ocorrência única.",
+          "Executar npm run lint e o teste direcionado do formulário de clientes.",
+          "Executar npm run e2e, abrir o tooltip do indicador de sincronização e, sem sair, percorrer gatilhos vizinhos.",
+          "Abrir um diálogo que contenha tooltip e confirmar que ele aparece."
+        ],
+        "expectedResultAndEvidence": [
+          "A busca no repositório retorna um único provedor.",
+          "A gravação mostra o segundo tooltip abrindo sem repetir o atraso.",
+          "O tooltip dentro de diálogo continua funcionando."
+        ],
+        "dataImpact": "Somente código de apresentação e fixtures sintéticas em memória; nenhum dado persistente é criado, alterado ou removido.",
+        "cleanupAndRollback": [
+          "Não criar, alterar ou remover registros de clientes, equipamentos, insumos, perfis ou gastos durante a validação visual.",
+          "Descartar apenas artefatos temporários gerados por lint, testes e Playwright.",
+          "Se a validação falhar, reverter somente os arquivos deste ticket na worktree exclusiva."
+        ],
+        "stagingRestrictions": "É proibido usar dados, endpoints ou credenciais internas; a validação é local, com dados sintéticos ou com o mock de IPC do Playwright (VITE_E2E_MOCK=1)."
+      },
+      "likelyFiles": [
+        "src/App.tsx",
+        "src/components/ui/SyncStatusIndicator.tsx",
+        "src/components/clientes/ClienteFormularioCampos.tsx"
+      ],
+      "risks": [
+        "Perder tooltips renderizados em portal ao mover o provedor para a raiz.",
+        "Escolher atraso único que fique longo demais para barras de ícones ou curto demais para campos de formulário."
+      ]
+    },
+    {
+      "id": "AO-UI-015",
+      "title": "Unificar a altura dos controles de formulário e de ação",
+      "status": "ready",
+      "blockedBy": [
+        "AO-UI-008"
+      ],
+      "objective": "Alinhar a altura de botões, campos e seletores para que controles na mesma linha tenham a mesma altura.",
+      "context": "src/components/ui/button.tsx usa altura dez no tamanho padrão e dez por dez no tamanho de ícone, enquanto src/components/ui/input.tsx e src/components/ui/select.tsx usam altura nove. O desalinhamento fica visível na linha de filtros de src/pages/Equipamentos.tsx, onde o botão de ícone de recarregar fica ao lado de um campo de busca e de um seletor de status mais baixos. A tela de balcão introduziu um terceiro conjunto de alturas, com vinte e sete controles em altura doze e seis em altura quatorze, adequadas a uso por toque, o que reforça a necessidade de uma escala com mais de uma densidade em vez de altura única.",
+      "expectedBehavior": "Existe uma escala única de altura por densidade, aplicada a botões, campos de texto, seletores e área de texto. Controles colocados na mesma linha têm a mesma altura e a mesma linha de base óptica, em todas as barras de filtro e formulários do aplicativo.",
+      "scope": [
+        "Definir a escala de altura por densidade e registrar a decisão.",
+        "Alinhar os tamanhos do botão, do campo de texto, do seletor e da área de texto à escala.",
+        "Manter o botão de tamanho ícone quadrado e coerente com a altura da linha.",
+        "Revisar as barras de filtro de Equipamentos, Clientes, Insumos, Servicos e Gastos e corrigir alturas explícitas remanescentes.",
+        "Conferir a área de toque mínima dos controles após a mudança de altura.",
+        "Definir a escala com duas densidades, padrão e toque, e classificar a tela de balcão na densidade de toque em vez de nivelá-la à densidade padrão."
+      ],
+      "outOfScope": [
+        "Alterar raio, foco, cor ou estado de pressão dos controles, tratados em AO-UI-008, AO-UI-016 e AO-UI-017.",
+        "Redesenhar as barras de filtro ou alterar quais filtros existem.",
+        "Alterar formulários quanto a validação, campos ou envio.",
+        "Reduzir as alturas de toque da tela de balcão para a densidade padrão."
+      ],
+      "acceptanceCriteria": [
+        "Botões, campos de texto e seletores do mesmo nível de densidade têm a mesma altura.",
+        "Na linha de filtros de Equipamentos, o campo de busca, o seletor de status e o botão de recarregar ficam alinhados, sem diferença de altura.",
+        "A escala de altura está registrada e é a única referência para novos controles.",
+        "Nenhum controle fica abaixo da área de toque mínima definida na escala.",
+        "npm run lint e npm run test:run passam.",
+        "A tela de balcão permanece na densidade de toque, com controles alinhados entre si dentro dessa densidade."
+      ],
+      "tests": [
+        "Teste de componente cobrindo as alturas por tamanho de botão, campo e seletor.",
+        "Revisão visual das barras de filtro das cinco páginas de lista.",
+        "npm run lint.",
+        "npm run test:run.",
+        "npm run e2e com captura da linha de filtros de Equipamentos."
+      ],
+      "testInstructions": {
+        "prerequisites": [
+          "Usar worktree exclusiva criada de origin/feature para este ticket, com dependências do package-lock instaladas.",
+          "Trabalho restrito ao frontend: não exigir PostgreSQL, Tauri em modo real, Supabase, PowerSync ou credenciais externas."
+        ],
+        "steps": [
+          "Definir e registrar a escala de altura por densidade.",
+          "Alinhar os componentes de controle e revisar as barras de filtro das páginas de lista.",
+          "Executar npm run lint e npm run test:run.",
+          "Executar npm run e2e e capturar a linha de filtros de Equipamentos, Clientes, Insumos, Servicos e Gastos.",
+          "Medir as alturas nas capturas e confirmar igualdade dentro de cada linha."
+        ],
+        "expectedResultAndEvidence": [
+          "As capturas das cinco barras de filtro mostram controles alinhados, com alturas medidas iguais.",
+          "O teste de componente cobre as alturas por tamanho.",
+          "Lint e testes unitários passam."
+        ],
+        "dataImpact": "Somente código de apresentação e fixtures sintéticas em memória; nenhum dado persistente é criado, alterado ou removido.",
+        "cleanupAndRollback": [
+          "Não criar, alterar ou remover registros de clientes, equipamentos, insumos, perfis ou gastos durante a validação visual.",
+          "Descartar apenas artefatos temporários gerados por lint, testes e Playwright.",
+          "Se a validação falhar, reverter somente os arquivos deste ticket na worktree exclusiva."
+        ],
+        "stagingRestrictions": "É proibido usar dados, endpoints ou credenciais internas; a validação é local, com dados sintéticos ou com o mock de IPC do Playwright (VITE_E2E_MOCK=1)."
+      },
+      "likelyFiles": [
+        "src/components/ui/button.tsx",
+        "src/components/ui/input.tsx",
+        "src/components/ui/select.tsx",
+        "src/components/ui/textarea.tsx",
+        "src/pages/Equipamentos.tsx",
+        "src/pages/Clientes.tsx",
+        "src/pages/Insumos.tsx",
+        "src/pages/Servicos.tsx",
+        "src/pages/Gastos.tsx",
+        "src/pages/Balcao.tsx"
+      ],
+      "risks": [
+        "Aumentar a altura padrão e provocar transbordo em diálogos densos já ajustados.",
+        "Alterar a altura do botão de ícone e quebrar alinhamentos dentro de células de tabela.",
+        "Reduzir a área de toque de controles pequenos abaixo do mínimo utilizável."
+      ]
+    },
+    {
+      "id": "AO-UI-016",
+      "title": "Unificar o anel de foco dos controles",
+      "status": "ready",
+      "blockedBy": [
+        "AO-UI-015"
+      ],
+      "objective": "Deixar uma única linguagem de foco visível em todos os controles interativos.",
+      "context": "src/components/ui/button.tsx usa anel de dois com deslocamento de dois, enquanto src/components/ui/input.tsx e src/components/ui/select.tsx usam anel de um sem deslocamento. Dentro do mesmo formulário a espessura e o afastamento do anel mudam conforme o controle, e o usuário percebe duas linguagens de foco.",
+      "expectedBehavior": "Todos os controles interativos compartilham a mesma definição de foco visível: mesma espessura, mesmo deslocamento, mesma cor de anel vinda do token de anel. Percorrer um formulário por teclado produz um indicador consistente de campo em campo.",
+      "scope": [
+        "Definir a especificação única de foco visível, com espessura, deslocamento e token de cor, e registrá-la.",
+        "Aplicar a especificação ao botão, ao campo de texto, ao seletor, à área de texto e à caixa de seleção.",
+        "Conferir o contraste do anel contra as superfícies de fundo, de card e de diálogo.",
+        "Garantir que o anel apareça na navegação por teclado e não em clique de ponteiro, onde esse já era o comportamento.",
+        "Cobrir os controles das telas de balcão e de login SaaS, que são operadas por toque e por teclado."
+      ],
+      "outOfScope": [
+        "Alterar ordem de tabulação, atalhos de teclado ou semântica dos controles.",
+        "Alterar altura, raio, cor ou estado de pressão, tratados em AO-UI-008, AO-UI-015 e AO-UI-017.",
+        "Adicionar foco a elementos que hoje não são focáveis, tratado em AO-UI-023."
+      ],
+      "acceptanceCriteria": [
+        "Todos os controles interativos usam a mesma espessura, o mesmo deslocamento e a mesma cor de anel.",
+        "O anel permanece perceptível sobre fundo de página, superfície de card e superfície de diálogo.",
+        "Percorrer um formulário por teclado produz indicador consistente em todos os campos.",
+        "A especificação de foco está registrada no repositório.",
+        "npm run lint e npm run test:run passam."
+      ],
+      "tests": [
+        "Teste de componente cobrindo as classes de foco dos controles alterados.",
+        "Percurso por teclado em um formulário com campo de texto, seletor, área de texto, caixa de seleção e botões.",
+        "npm run lint.",
+        "npm run test:run."
+      ],
+      "testInstructions": {
+        "prerequisites": [
+          "Usar worktree exclusiva criada de origin/feature para este ticket, com dependências do package-lock instaladas.",
+          "Trabalho restrito ao frontend: não exigir PostgreSQL, Tauri em modo real, Supabase, PowerSync ou credenciais externas."
+        ],
+        "steps": [
+          "Definir e registrar a especificação de foco visível.",
+          "Aplicar a especificação aos componentes de controle e ajustar os testes.",
+          "Executar npm run lint e npm run test:run.",
+          "Executar npm run e2e, abrir o formulário de novo equipamento e percorrer todos os campos por teclado, capturando o foco em cada tipo de controle.",
+          "Repetir o percurso dentro de um diálogo e sobre card para conferir contraste."
+        ],
+        "expectedResultAndEvidence": [
+          "As capturas mostram anel idêntico em todos os tipos de controle.",
+          "O anel permanece perceptível nas três superfícies avaliadas.",
+          "Lint e testes unitários passam."
+        ],
+        "dataImpact": "Somente código de apresentação e fixtures sintéticas em memória; nenhum dado persistente é criado, alterado ou removido.",
+        "cleanupAndRollback": [
+          "Não salvar o formulário percorrido durante a validação por teclado; fechar o diálogo sem enviar.",
+          "Descartar apenas artefatos temporários de lint, testes e Playwright.",
+          "Se a validação falhar, reverter somente os arquivos deste ticket na worktree exclusiva."
+        ],
+        "stagingRestrictions": "É proibido usar dados, endpoints ou credenciais internas; a validação é local, com dados sintéticos ou com o mock de IPC do Playwright (VITE_E2E_MOCK=1)."
+      },
+      "likelyFiles": [
+        "src/components/ui/button.tsx",
+        "src/components/ui/input.tsx",
+        "src/components/ui/select.tsx",
+        "src/components/ui/textarea.tsx",
+        "src/components/ui/checkbox.tsx",
+        "docs/",
+        "src/pages/Balcao.tsx",
+        "src/components/SaasLoginScreen.tsx"
+      ],
+      "risks": [
+        "Escolher anel com deslocamento que cause sobreposição em controles adjacentes de barras densas.",
+        "Perder visibilidade do foco sobre superfícies escuras como a barra lateral e o card do Perfil.",
+        "Fazer o anel aparecer em clique de ponteiro e poluir a interação com o mouse."
+      ]
+    },
+    {
+      "id": "AO-UI-017",
+      "title": "Estabelecer escala concêntrica de raio derivada do token",
+      "status": "ready",
+      "blockedBy": [
+        "AO-UI-013",
+        "AO-UI-005",
+        "AO-UI-012"
+      ],
+      "objective": "Reduzir as quatro escalas de raio em paralelo a uma única escala derivada do token, com aninhamento concêntrico.",
+      "context": "O token de raio vale meio rem, mas src/components/ui/card.tsx usa raio extragrande por classe fixa, src/components/ui/dialog.tsx usa raio grande, src/pages/Perfil.tsx usa raio de três extragrandes e dois extragrandes, e src/components/ProfileSessionDialog.tsx usa dois extragrandes. Em src/pages/Equipamentos.tsx a tabela usa raio médio dentro de um card de raio extragrande. Raio aninhado desalinhado é o detalhe que mais faz uma interface parecer errada sem que se saiba apontar o motivo.",
+      "expectedBehavior": "Existe uma escala única de raio derivada do token, e cada superfície aninhada usa o raio interno correspondente ao raio externo menos o preenchimento. Cards, diálogos, tabelas dentro de cards, linhas de lista e cartões de perfil passam a ter cantos que acompanham a superfície que os contém.",
+      "scope": [
+        "Definir a escala de raio derivada do token, cobrindo superfície externa, superfície interna e controles.",
+        "Aplicar a escala ao card, ao diálogo e às superfícies aninhadas de Perfil e do diálogo de sessão de perfil.",
+        "Corrigir o aninhamento da tabela dentro do card em Equipamentos e nas demais páginas de lista.",
+        "Substituir os raios fixos fora da escala pelas classes derivadas do token.",
+        "Registrar a regra de raio externo igual a raio interno mais preenchimento.",
+        "Incluir as superfícies da tela de balcão e do layout de balcão, que usam raio extragrande e dois extragrandes fora da escala."
+      ],
+      "outOfScope": [
+        "Alterar valores de preenchimento e espaçamento das superfícies, além do necessário para o aninhamento.",
+        "Redesenhar cards, diálogos ou tabelas.",
+        "Alterar a borda e a sombra do card, tratados em AO-UI-018."
+      ],
+      "acceptanceCriteria": [
+        "Todos os raios de superfície derivam do token, sem classes de raio fixas fora da escala.",
+        "Em cada aninhamento, o raio interno corresponde ao raio externo menos o preenchimento.",
+        "A tabela dentro do card das páginas de lista não apresenta canto desalinhado em relação ao card.",
+        "A regra de aninhamento está registrada no repositório.",
+        "npm run lint e npm run test:run passam."
+      ],
+      "tests": [
+        "Revisão visual com ampliação dos cantos aninhados em Equipamentos, Dashboard, Perfil e diálogo de sessão de perfil.",
+        "Busca no repositório confirmando ausência de raios fixos fora da escala.",
+        "npm run lint.",
+        "npm run test:run."
+      ],
+      "testInstructions": {
+        "prerequisites": [
+          "Usar worktree exclusiva criada de origin/feature para este ticket, com dependências do package-lock instaladas.",
+          "Trabalho restrito ao frontend: não exigir PostgreSQL, Tauri em modo real, Supabase, PowerSync ou credenciais externas."
+        ],
+        "steps": [
+          "Definir e registrar a escala de raio e a regra de aninhamento.",
+          "Aplicar a escala aos componentes e páginas em escopo.",
+          "Buscar classes de raio no repositório e confirmar que todas derivam da escala.",
+          "Executar npm run lint e npm run test:run.",
+          "Executar npm run e2e e capturar, com ampliação, os cantos aninhados em Equipamentos, Dashboard, Perfil e diálogo de sessão de perfil."
+        ],
+        "expectedResultAndEvidence": [
+          "As capturas ampliadas mostram cantos internos concêntricos em relação à superfície externa.",
+          "A busca no repositório não retorna raios fixos fora da escala.",
+          "Lint e testes unitários passam."
+        ],
+        "dataImpact": "Somente código de apresentação e fixtures sintéticas em memória; nenhum dado persistente é criado, alterado ou removido.",
+        "cleanupAndRollback": [
+          "Não criar, alterar ou remover registros de clientes, equipamentos, insumos, perfis ou gastos durante a validação visual.",
+          "Descartar apenas artefatos temporários gerados por lint, testes e Playwright.",
+          "Se a validação falhar, reverter somente os arquivos deste ticket na worktree exclusiva."
+        ],
+        "stagingRestrictions": "É proibido usar dados, endpoints ou credenciais internas; a validação é local, com dados sintéticos ou com o mock de IPC do Playwright (VITE_E2E_MOCK=1)."
+      },
+      "likelyFiles": [
+        "src/index.css",
+        "src/components/ui/card.tsx",
+        "src/components/ui/dialog.tsx",
+        "src/components/ui/alert-dialog.tsx",
+        "src/pages/Perfil.tsx",
+        "src/components/ProfileSessionDialog.tsx",
+        "src/pages/Equipamentos.tsx",
+        "docs/",
+        "src/pages/Balcao.tsx",
+        "src/components/CounterLayout.tsx"
+      ],
+      "risks": [
+        "Reduzir o raio do card e alterar a personalidade visual do produto sem intenção.",
+        "Quebrar o recorte de conteúdo em superfícies que dependem de transbordo oculto.",
+        "Tocar em muitos arquivos e provocar regressão em telas pouco percorridas pelos testes."
+      ]
+    },
+    {
+      "id": "AO-UI-018",
+      "title": "Separar borda de estrutura e sombra de elevação no card",
+      "status": "ready",
+      "blockedBy": [
+        "AO-UI-017"
+      ],
+      "objective": "Deixar de empilhar borda e sombra na mesma superfície, mantendo uma única dica de profundidade por elemento.",
+      "context": "src/components/ui/card.tsx aplica borda e sombra simultaneamente em todos os cards. Duas dicas de profundidade empilhadas achatam a hierarquia entre o card e seu conteúdo, sobretudo nas páginas em que há card dentro de card e tabela dentro de card.",
+      "expectedBehavior": "O card usa sombra em camadas para comunicar elevação e reserva a borda para os casos em que ela comunica estrutura ou estado, como divisores, separadores e seleção. A hierarquia entre página, card e conteúdo do card fica perceptível sem duplicar dicas de profundidade.",
+      "scope": [
+        "Definir quando o card usa sombra, quando usa borda e quando usa as duas, e registrar a regra.",
+        "Ajustar o componente de card à regra, com sombra em camadas de baixa opacidade.",
+        "Revisar as superfícies que dependem hoje da borda do card para comunicar estado, preservando esse sinal.",
+        "Conferir a hierarquia nas telas com card dentro de card e tabela dentro de card."
+      ],
+      "outOfScope": [
+        "Alterar o raio das superfícies, definido em AO-UI-017.",
+        "Alterar espaçamento interno, tipografia ou conteúdo dos cards.",
+        "Redesenhar as páginas que usam cards."
+      ],
+      "acceptanceCriteria": [
+        "O card comunica elevação por sombra e não empilha borda sem função estrutural.",
+        "Bordas que comunicam estado ou estrutura permanecem presentes.",
+        "A hierarquia entre página, card e conteúdo permanece perceptível, inclusive com card dentro de card.",
+        "A regra está registrada no repositório.",
+        "npm run lint e npm run test:run passam."
+      ],
+      "tests": [
+        "Revisão visual comparativa de Dashboard, Equipamentos e Configuracoes antes e depois.",
+        "npm run lint.",
+        "npm run test:run."
+      ],
+      "testInstructions": {
+        "prerequisites": [
+          "Usar worktree exclusiva criada de origin/feature para este ticket, com dependências do package-lock instaladas.",
+          "Trabalho restrito ao frontend: não exigir PostgreSQL, Tauri em modo real, Supabase, PowerSync ou credenciais externas."
+        ],
+        "steps": [
+          "Definir e registrar a regra de borda e sombra.",
+          "Ajustar src/components/ui/card.tsx e revisar as superfícies dependentes.",
+          "Executar npm run lint e npm run test:run.",
+          "Executar npm run e2e e capturar Dashboard, Equipamentos e Configuracoes antes e depois."
+        ],
+        "expectedResultAndEvidence": [
+          "As capturas mostram hierarquia preservada ou melhorada, sem card que desapareça no fundo.",
+          "Superfícies que usam borda como sinal de estado continuam legíveis.",
+          "Lint e testes unitários passam."
+        ],
+        "dataImpact": "Somente código de apresentação e fixtures sintéticas em memória; nenhum dado persistente é criado, alterado ou removido.",
+        "cleanupAndRollback": [
+          "Não criar, alterar ou remover registros de clientes, equipamentos, insumos, perfis ou gastos durante a validação visual.",
+          "Descartar apenas artefatos temporários gerados por lint, testes e Playwright.",
+          "Se a validação falhar, reverter somente os arquivos deste ticket na worktree exclusiva."
+        ],
+        "stagingRestrictions": "É proibido usar dados, endpoints ou credenciais internas; a validação é local, com dados sintéticos ou com o mock de IPC do Playwright (VITE_E2E_MOCK=1)."
+      },
+      "likelyFiles": [
+        "src/components/ui/card.tsx",
+        "src/index.css",
+        "docs/"
+      ],
+      "risks": [
+        "Remover a borda e fazer o card desaparecer no fundo da página em telas claras.",
+        "Escolher sombra pesada e produzir aparência datada.",
+        "Perder o sinal de estado em superfícies que usavam a borda do card para isso."
+      ]
+    },
+    {
+      "id": "AO-UI-019",
+      "title": "Padronizar tamanho e peso de traço dos ícones",
+      "status": "ready",
+      "blockedBy": [],
+      "objective": "Alinhar o peso óptico dos ícones ao texto que acompanham e reduzir a dispersão de tamanhos.",
+      "context": "Os ícones lucide são usados com o traço padrão em tamanhos que vão de três a dezesseis, incluindo três, três e meio, quatro, cinco, sete, doze e dezesseis. Em três, como no indicador de queda de estoque do Dashboard, o traço padrão fica pesado demais para o texto vizinho, enquanto nos ícones grandes de estado vazio ele fica fino.",
+      "expectedBehavior": "Existe uma escala de tamanho de ícone e uma regra de peso de traço por contexto: traço mais leve ao lado de texto regular e traço mais forte ao lado de texto semiforte. Ícones acompanham o peso óptico do texto adjacente e tamanhos fora da escala deixam de existir.",
+      "scope": [
+        "Definir a escala de tamanhos de ícone e a regra de peso de traço por contexto, e registrá-las.",
+        "Aplicar a escala aos ícones em linha com texto, aos ícones de botão, aos ícones de estado vazio e aos ícones de indicador.",
+        "Ajustar o peso de traço dos ícones pequenos usados ao lado de texto regular.",
+        "Remover tamanhos fora da escala nos arquivos em escopo.",
+        "Manter uma única biblioteca de ícones por superfície."
+      ],
+      "outOfScope": [
+        "Trocar a biblioteca de ícones ou substituir ícones por outros símbolos.",
+        "Alterar o significado de qualquer ícone ou adicionar ícones novos.",
+        "Alterar os ícones do PDF e do splash, que seguem requisitos de marca."
+      ],
+      "acceptanceCriteria": [
+        "Todos os tamanhos de ícone em uso pertencem à escala definida.",
+        "Ícones em linha com texto regular usam traço mais leve que os ícones ao lado de texto semiforte.",
+        "Nenhum ícone pequeno apresenta traço visivelmente mais pesado que o texto adjacente.",
+        "A escala e a regra de traço estão registradas no repositório.",
+        "npm run lint e npm run test:run passam."
+      ],
+      "tests": [
+        "Revisão visual ampliada de ícones em linha com texto no Dashboard, em Equipamentos e em Clientes.",
+        "Busca no repositório confirmando ausência de tamanhos fora da escala.",
+        "npm run lint.",
+        "npm run test:run."
+      ],
+      "testInstructions": {
+        "prerequisites": [
+          "Usar worktree exclusiva criada de origin/feature para este ticket, com dependências do package-lock instaladas.",
+          "Trabalho restrito ao frontend: não exigir PostgreSQL, Tauri em modo real, Supabase, PowerSync ou credenciais externas."
+        ],
+        "steps": [
+          "Definir e registrar a escala de tamanho e a regra de peso de traço.",
+          "Aplicar a escala e o peso nos arquivos em escopo.",
+          "Buscar tamanhos de ícone no repositório e confirmar aderência à escala.",
+          "Executar npm run lint e npm run test:run.",
+          "Executar npm run e2e e capturar, com ampliação, ícones em linha com texto no Dashboard, em Equipamentos e em Clientes."
+        ],
+        "expectedResultAndEvidence": [
+          "As capturas ampliadas mostram ícone e texto com peso óptico equivalente.",
+          "A busca no repositório não retorna tamanhos fora da escala.",
+          "Lint e testes unitários passam."
+        ],
+        "dataImpact": "Somente código de apresentação e fixtures sintéticas em memória; nenhum dado persistente é criado, alterado ou removido.",
+        "cleanupAndRollback": [
+          "Não criar, alterar ou remover registros de clientes, equipamentos, insumos, perfis ou gastos durante a validação visual.",
+          "Descartar apenas artefatos temporários gerados por lint, testes e Playwright.",
+          "Se a validação falhar, reverter somente os arquivos deste ticket na worktree exclusiva."
+        ],
+        "stagingRestrictions": "É proibido usar dados, endpoints ou credenciais internas; a validação é local, com dados sintéticos ou com o mock de IPC do Playwright (VITE_E2E_MOCK=1)."
+      },
+      "likelyFiles": [
+        "src/pages/Dashboard.tsx",
+        "src/pages/Equipamentos.tsx",
+        "src/pages/Clientes.tsx",
+        "src/components/Layout.tsx",
+        "src/components/ui/button.tsx",
+        "docs/",
+        "src/pages/Balcao.tsx"
+      ],
+      "risks": [
+        "Deixar ícones pequenos ilegíveis ao reduzir demais o peso do traço.",
+        "Alterar tamanhos e quebrar alinhamento dentro de botões e de células de tabela.",
+        "Tocar em muitos arquivos com ganho pouco perceptível e criar conflito com tickets vizinhos."
+      ]
+    },
+    {
+      "id": "AO-UI-020",
+      "title": "Preservar cabeçalho e filtros durante o carregamento das listas",
+      "status": "ready",
+      "blockedBy": [
+        "AO-UI-007",
+        "AO-UI-006"
+      ],
+      "objective": "Acabar com a troca da página inteira por um indicador de carregamento, mantendo a estrutura estável e carregando apenas a região que muda.",
+      "context": "Dashboard, Equipamentos, Clientes, Insumos, Servicos e Configuracoes retornam um indicador de carregamento no lugar de toda a página enquanto os dados chegam. O título e a barra de filtros piscam a cada navegação. src/components/gastos/GastosSummaryCards.tsx é o único ponto que usa esqueleto na própria região.",
+      "expectedBehavior": "Ao entrar em uma página de lista, o título, a descrição, as ações de cabeçalho e a barra de filtros aparecem imediatamente e permanecem estáveis. Apenas a região de dados exibe estado de carregamento, com esqueleto de dimensão próxima do conteúdo final, sem deslocar o que já estava na tela.",
+      "scope": [
+        "Remover o retorno antecipado que substitui a página inteira pelo indicador nas páginas em escopo.",
+        "Aplicar estado de carregamento apenas à região de dados, com esqueleto de dimensão próxima do conteúdo final.",
+        "Criar componente de esqueleto reutilizável para linhas de tabela e para cards de métrica, seguindo o padrão já usado em GastosSummaryCards.",
+        "Garantir que a barra de filtros permaneça utilizável ou explicitamente desabilitada durante o carregamento, sem sumir.",
+        "Evitar deslocamento de layout entre o estado de carregamento e o estado carregado.",
+        "Aplicar o mesmo tratamento à tela de balcão, preservando cabeçalho e ações durante o carregamento."
+      ],
+      "outOfScope": [
+        "Alterar hooks de domínio, chamadas de dados ou contratos de IPC.",
+        "Introduzir cache, React Query ou qualquer camada nova de dados.",
+        "Alterar o componente de carregamento criado em AO-UI-006.",
+        "Alterar os estados vazios, tratados em AO-UI-021."
+      ],
+      "acceptanceCriteria": [
+        "Em todas as páginas em escopo, título, descrição, ações e filtros aparecem antes dos dados e não piscam.",
+        "Somente a região de dados exibe estado de carregamento.",
+        "O esqueleto tem dimensão próxima do conteúdo final e não há deslocamento perceptível na troca de estado.",
+        "A barra de filtros não desaparece durante o carregamento.",
+        "npm run lint e npm run test:run passam."
+      ],
+      "tests": [
+        "Teste de componente do esqueleto de tabela e de cards de métrica.",
+        "Teste de renderização confirmando presença do cabeçalho e dos filtros durante o carregamento em pelo menos duas páginas.",
+        "npm run lint.",
+        "npm run test:run.",
+        "npm run e2e com captura do estado de carregamento e do estado carregado das páginas em escopo."
+      ],
+      "testInstructions": {
+        "prerequisites": [
+          "Usar worktree exclusiva criada de origin/feature para este ticket, com dependências do package-lock instaladas.",
+          "Trabalho restrito ao frontend: não exigir PostgreSQL, Tauri em modo real, Supabase, PowerSync ou credenciais externas."
+        ],
+        "steps": [
+          "Criar o componente de esqueleto e seus testes.",
+          "Remover os retornos antecipados e aplicar carregamento por região nas páginas em escopo.",
+          "Executar npm run lint e npm run test:run.",
+          "Executar npm run e2e e capturar, para cada página em escopo, o estado de carregamento e o estado carregado.",
+          "Comparar as capturas do mesmo par para confirmar ausência de deslocamento de layout."
+        ],
+        "expectedResultAndEvidence": [
+          "Os pares de captura mostram cabeçalho e filtros estáveis entre carregamento e carregado.",
+          "Nenhum par apresenta deslocamento perceptível de layout.",
+          "Os testes de renderização demonstram cabeçalho e filtros presentes durante o carregamento."
+        ],
+        "dataImpact": "Somente código de apresentação e fixtures sintéticas em memória; nenhum dado persistente é criado, alterado ou removido.",
+        "cleanupAndRollback": [
+          "Não criar, alterar ou remover registros de clientes, equipamentos, insumos, perfis ou gastos durante a validação visual.",
+          "Descartar apenas artefatos temporários gerados por lint, testes e Playwright.",
+          "Se a validação falhar, reverter somente os arquivos deste ticket na worktree exclusiva."
+        ],
+        "stagingRestrictions": "É proibido usar dados, endpoints ou credenciais internas; a validação é local, com dados sintéticos ou com o mock de IPC do Playwright (VITE_E2E_MOCK=1)."
+      },
+      "likelyFiles": [
+        "src/components/ui/skeleton.tsx",
+        "src/components/ui/__tests__/skeleton.test.tsx",
+        "src/pages/Dashboard.tsx",
+        "src/pages/Equipamentos.tsx",
+        "src/pages/Clientes.tsx",
+        "src/pages/Insumos.tsx",
+        "src/pages/Servicos.tsx",
+        "src/pages/Configuracoes.tsx",
+        "src/pages/Balcao.tsx"
+      ],
+      "risks": [
+        "Renderizar cabeçalho com dados ainda indefinidos e provocar erro de execução.",
+        "Manter filtros habilitados durante o carregamento e permitir disparo concorrente de consultas.",
+        "Criar esqueleto de dimensão distante do conteúdo final e trocar um salto por outro."
+      ]
+    },
+    {
+      "id": "AO-UI-021",
+      "title": "Unificar o estado vazio das listas",
+      "status": "ready",
+      "blockedBy": [
+        "AO-UI-020"
+      ],
+      "objective": "Substituir as variações de estado vazio por um componente único, com ícone, título, explicação e ação coerentes.",
+      "context": "src/pages/Dashboard.tsx usa ícone de tamanho doze com vinte por cento de opacidade, enquanto src/pages/Equipamentos.tsx usa tamanho dezesseis com a mesma opacidade, e a estrutura de texto e de ação varia entre páginas. É o mesmo padrão visual com dois tamanhos e três redações.",
+      "expectedBehavior": "Existe um componente único de estado vazio, com ícone, título, explicação opcional e ação opcional. Todas as listas e painéis vazios do aplicativo usam esse componente, com a mesma proporção e a mesma hierarquia de texto, e a redação diferencia lista sem dados de busca sem resultado.",
+      "scope": [
+        "Criar componente de estado vazio com ícone, título, explicação opcional e ação opcional.",
+        "Aplicar o componente aos estados vazios de Dashboard, Equipamentos, Clientes e Insumos.",
+        "Diferenciar a redação de lista sem dados e de filtro ou busca sem resultado, oferecendo ação adequada em cada caso.",
+        "Padronizar tamanho e opacidade do ícone conforme a escala definida em AO-UI-019.",
+        "Garantir que o estado vazio seja anunciado como região de status para tecnologias assistivas."
+      ],
+      "outOfScope": [
+        "Alterar as regras de busca, de filtro ou de consulta de dados.",
+        "Alterar os estados de carregamento, definidos em AO-UI-020.",
+        "Criar ilustrações novas ou trocar a biblioteca de ícones."
+      ],
+      "acceptanceCriteria": [
+        "Todos os estados vazios em escopo usam o mesmo componente, com proporção e hierarquia iguais.",
+        "A redação distingue lista sem dados de busca sem resultado, com ação adequada em cada caso.",
+        "O tamanho e a opacidade do ícone seguem a escala definida.",
+        "O estado vazio é anunciado para tecnologias assistivas.",
+        "npm run lint e npm run test:run passam."
+      ],
+      "tests": [
+        "Teste de componente do estado vazio cobrindo variantes com e sem ação e o rótulo acessível.",
+        "npm run lint.",
+        "npm run test:run.",
+        "npm run e2e cobrindo lista sem dados e busca sem resultado em Equipamentos e em Clientes."
+      ],
+      "testInstructions": {
+        "prerequisites": [
+          "Usar worktree exclusiva criada de origin/feature para este ticket, com dependências do package-lock instaladas.",
+          "Trabalho restrito ao frontend: não exigir PostgreSQL, Tauri em modo real, Supabase, PowerSync ou credenciais externas."
+        ],
+        "steps": [
+          "Criar o componente de estado vazio e seu teste.",
+          "Aplicar o componente nas páginas em escopo, separando lista sem dados de busca sem resultado.",
+          "Executar npm run lint e npm run test:run.",
+          "Executar npm run e2e, provocar lista vazia e busca sem resultado em Equipamentos e em Clientes e capturar os quatro estados.",
+          "Conferir na árvore de acessibilidade que o estado vazio é anunciado."
+        ],
+        "expectedResultAndEvidence": [
+          "As quatro capturas mostram proporção e hierarquia idênticas, com redação adequada a cada caso.",
+          "A árvore de acessibilidade mostra o estado vazio como região de status.",
+          "O teste de componente cobre as variantes e o rótulo acessível."
+        ],
+        "dataImpact": "Somente código de apresentação e fixtures sintéticas em memória; nenhum dado persistente é criado, alterado ou removido.",
+        "cleanupAndRollback": [
+          "Não criar, alterar ou remover registros de clientes, equipamentos, insumos, perfis ou gastos durante a validação visual.",
+          "Descartar apenas artefatos temporários gerados por lint, testes e Playwright.",
+          "Se a validação falhar, reverter somente os arquivos deste ticket na worktree exclusiva."
+        ],
+        "stagingRestrictions": "É proibido usar dados, endpoints ou credenciais internas; a validação é local, com dados sintéticos ou com o mock de IPC do Playwright (VITE_E2E_MOCK=1)."
+      },
+      "likelyFiles": [
+        "src/components/ui/empty-state.tsx",
+        "src/components/ui/__tests__/empty-state.test.tsx",
+        "src/pages/Dashboard.tsx",
+        "src/pages/Equipamentos.tsx",
+        "src/pages/Clientes.tsx",
+        "src/pages/Insumos.tsx",
+        "src/pages/Balcao.tsx"
+      ],
+      "risks": [
+        "Perder a ação de cadastrar o primeiro registro ao unificar as variações.",
+        "Usar a mesma redação para lista vazia e busca sem resultado e confundir o usuário.",
+        "Anunciar o estado vazio de forma repetitiva e poluir a leitura por tecnologia assistiva."
+      ]
+    },
+    {
+      "id": "AO-UI-022",
+      "title": "Definir escala de tamanhos de diálogo",
+      "status": "ready",
+      "blockedBy": [
+        "AO-UI-018"
+      ],
+      "objective": "Substituir as combinações improvisadas de largura e altura máxima dos diálogos por uma escala nomeada.",
+      "context": "Os diálogos combinam larguras máximas grande, dois extragrandes, três extragrandes, quatro extragrandes e cinco extragrandes com alturas máximas de oitenta, oitenta e cinco e noventa por cento da janela, em combinações livres por arquivo. Sem escala, cada diálogo novo escolhe um número diferente.",
+      "expectedBehavior": "O componente de diálogo expõe tamanhos nomeados, com largura e altura máxima associadas, e todos os diálogos do aplicativo usam um desses tamanhos. Diálogos com conteúdo longo continuam roláveis, com cabeçalho e ações visíveis.",
+      "scope": [
+        "Definir a escala de tamanhos de diálogo, com largura e altura máxima por tamanho, e registrá-la.",
+        "Expor os tamanhos no componente de diálogo e no de diálogo de alerta.",
+        "Migrar os diálogos existentes para o tamanho mais próximo do atual, sem redesenhar o conteúdo.",
+        "Garantir rolagem do conteúdo longo mantendo cabeçalho e ações acessíveis.",
+        "Remover as larguras e alturas máximas declaradas por arquivo.",
+        "Incluir os diálogos introduzidos recentemente de pagamento, comunicação por email, pré-visualização de PDF, vínculo de empresa, regularização de legados e destaques de versão."
+      ],
+      "outOfScope": [
+        "Redesenhar o conteúdo, os formulários ou as ações dos diálogos.",
+        "Alterar quais diálogos existem ou quando são abertos.",
+        "Alterar borda, sombra e raio das superfícies, tratados em AO-UI-017 e AO-UI-018."
+      ],
+      "acceptanceCriteria": [
+        "O componente de diálogo expõe tamanhos nomeados e nenhum diálogo declara largura ou altura máxima própria.",
+        "Cada diálogo migrado mantém proporção próxima da atual, sem corte de conteúdo.",
+        "Diálogos de conteúdo longo permanecem roláveis com cabeçalho e ações visíveis.",
+        "A escala está registrada no repositório.",
+        "npm run lint e npm run test:run passam."
+      ],
+      "tests": [
+        "Teste de componente do diálogo cobrindo os tamanhos nomeados.",
+        "Revisão visual dos diálogos de equipamento, verificação técnica, upload de fotos, sessão de perfil, clientes e insumos.",
+        "npm run lint.",
+        "npm run test:run.",
+        "npm run e2e cobrindo abertura de ao menos três diálogos de tamanhos distintos."
+      ],
+      "testInstructions": {
+        "prerequisites": [
+          "Usar worktree exclusiva criada de origin/feature para este ticket, com dependências do package-lock instaladas.",
+          "Trabalho restrito ao frontend: não exigir PostgreSQL, Tauri em modo real, Supabase, PowerSync ou credenciais externas."
+        ],
+        "steps": [
+          "Definir e registrar a escala de tamanhos de diálogo.",
+          "Expor os tamanhos nos componentes e migrar os diálogos existentes.",
+          "Executar npm run lint e npm run test:run.",
+          "Executar npm run e2e, abrir os diálogos de equipamento, de verificação técnica e de sessão de perfil e capturar cada um.",
+          "Reduzir a altura da janela e confirmar que o conteúdo longo rola com cabeçalho e ações visíveis."
+        ],
+        "expectedResultAndEvidence": [
+          "As capturas mostram proporção equivalente à atual para cada diálogo migrado.",
+          "Com janela reduzida, o conteúdo rola e as ações continuam alcançáveis.",
+          "O teste de componente cobre os tamanhos nomeados."
+        ],
+        "dataImpact": "Somente código de apresentação e fixtures sintéticas em memória; nenhum dado persistente é criado, alterado ou removido.",
+        "cleanupAndRollback": [
+          "Fechar todos os diálogos abertos durante a validação sem enviar formulários.",
+          "Não criar, alterar ou excluir equipamentos, clientes, insumos ou perfis.",
+          "Se a validação falhar, reverter somente os arquivos deste ticket na worktree exclusiva."
+        ],
+        "stagingRestrictions": "É proibido usar dados, endpoints ou credenciais internas; a validação é local, com dados sintéticos ou com o mock de IPC do Playwright (VITE_E2E_MOCK=1)."
+      },
+      "likelyFiles": [
+        "src/components/ui/dialog.tsx",
+        "src/components/ui/alert-dialog.tsx",
+        "src/pages/Equipamentos.tsx",
+        "src/components/equipamentos/VerificacaoTecnica.tsx",
+        "src/components/equipamentos/PhotoUploadDialog.tsx",
+        "src/components/ProfileSessionDialog.tsx",
+        "src/pages/clientes/ClientesDialogs.tsx",
+        "src/pages/insumos/InsumosDialogs.tsx",
+        "src/pages/Servicos.tsx",
+        "docs/",
+        "src/components/equipamentos/PagamentoOrcamentoDialog.tsx",
+        "src/components/equipamentos/CommunicationEmailDialog.tsx",
+        "src/components/equipamentos/PdfPreviewDialog.tsx",
+        "src/components/clientes/VinculoEmpresaPerfilDialog.tsx",
+        "src/components/clientes/RegularizacaoLegadosDialog.tsx",
+        "src/components/ReleaseHighlightsDialog.tsx"
+      ],
+      "risks": [
+        "Reduzir a largura de diálogos densos e provocar quebra de layout em formulários longos.",
+        "Perder a rolagem de conteúdo longo ao unificar a altura máxima.",
+        "Alterar o diálogo de sessão de perfil, que tem layout de duas colunas e requisitos próprios."
+      ]
+    },
+    {
+      "id": "AO-UI-023",
+      "title": "Tornar cards e linhas clicáveis do Dashboard acessíveis por teclado",
+      "status": "ready",
+      "blockedBy": [
+        "AO-UI-021"
+      ],
+      "objective": "Transformar as superfícies clicáveis do Dashboard em controles reais, alcançáveis por teclado e anunciados corretamente.",
+      "context": "Em src/pages/Dashboard.tsx os quatro cards de métrica e as linhas de ações pendentes e de equipamentos recentes são elementos de divisão com manipulador de clique, sem papel, sem índice de tabulação e sem manipulador de teclado. Não são alcançáveis por teclado e não são anunciados como navegáveis.",
+      "expectedBehavior": "Cada superfície clicável do Dashboard é um controle real: recebe foco por teclado na ordem visual, é ativada por Enter e por espaço, anuncia destino compreensível e exibe o foco visível definido em AO-UI-016. A navegação por clique permanece idêntica à atual.",
+      "scope": [
+        "Converter os cards de métrica e as linhas clicáveis em controles reais, com semântica adequada ao destino.",
+        "Garantir foco por teclado na ordem visual e ativação por Enter e por espaço.",
+        "Definir nome acessível que descreva o destino, não apenas o número da métrica.",
+        "Aplicar o estado de pressão de AO-UI-008 e o foco visível de AO-UI-016 às novas superfícies pressionáveis.",
+        "Preservar a aparência atual dos cards e das linhas, sem estilo padrão de botão ou de link."
+      ],
+      "outOfScope": [
+        "Alterar as métricas, os cálculos, os destinos de navegação ou o estado passado nas rotas.",
+        "Redesenhar o Dashboard ou reordenar suas seções.",
+        "Corrigir acessibilidade de outras telas, que devem receber tickets próprios."
+      ],
+      "acceptanceCriteria": [
+        "Todos os cards de métrica e todas as linhas clicáveis do Dashboard recebem foco por teclado na ordem visual.",
+        "Enter e espaço ativam a mesma navegação do clique.",
+        "Cada controle tem nome acessível que descreve o destino.",
+        "O foco visível segue a especificação única e é perceptível sobre card e sobre fundo.",
+        "A aparência permanece equivalente à atual e a navegação por clique não muda.",
+        "npm run lint e npm run test:run passam."
+      ],
+      "tests": [
+        "Teste de componente cobrindo foco, ativação por teclado e nome acessível dos controles convertidos.",
+        "Percurso completo do Dashboard por teclado.",
+        "npm run lint.",
+        "npm run test:run.",
+        "npm run e2e cobrindo navegação por teclado de um card de métrica e de uma linha de ação pendente."
+      ],
+      "testInstructions": {
+        "prerequisites": [
+          "Usar worktree exclusiva criada de origin/feature para este ticket, com dependências do package-lock instaladas.",
+          "Trabalho restrito ao frontend: não exigir PostgreSQL, Tauri em modo real, Supabase, PowerSync ou credenciais externas."
+        ],
+        "steps": [
+          "Converter as superfícies clicáveis em controles reais e ajustar a semântica.",
+          "Escrever o teste de componente de foco, ativação por teclado e nome acessível.",
+          "Executar npm run lint e npm run test:run.",
+          "Executar npm run e2e e percorrer o Dashboard inteiro por teclado, capturando o foco em cada tipo de superfície.",
+          "Ativar um card e uma linha por Enter e por espaço e confirmar o mesmo destino do clique.",
+          "Inspecionar a árvore de acessibilidade e conferir o nome de cada controle."
+        ],
+        "expectedResultAndEvidence": [
+          "As capturas mostram foco visível em todos os cards e linhas, na ordem visual.",
+          "Enter e espaço levam ao mesmo destino do clique.",
+          "A árvore de acessibilidade mostra nome descritivo do destino para cada controle."
+        ],
+        "dataImpact": "Somente código de apresentação e fixtures sintéticas em memória; nenhum dado persistente é criado, alterado ou removido.",
+        "cleanupAndRollback": [
+          "Não criar, alterar ou remover registros de clientes, equipamentos, insumos, perfis ou gastos durante a validação visual.",
+          "Descartar apenas artefatos temporários gerados por lint, testes e Playwright.",
+          "Se a validação falhar, reverter somente os arquivos deste ticket na worktree exclusiva."
+        ],
+        "stagingRestrictions": "É proibido usar dados, endpoints ou credenciais internas; a validação é local, com dados sintéticos ou com o mock de IPC do Playwright (VITE_E2E_MOCK=1)."
+      },
+      "likelyFiles": [
+        "src/pages/Dashboard.tsx",
+        "src/pages/__tests__/dashboard-navegacao.test.tsx"
+      ],
+      "risks": [
+        "Introduzir estilo padrão de botão e descaracterizar os cards de métrica.",
+        "Aninhar controles interativos dentro de outros e produzir semântica inválida.",
+        "Criar ordem de tabulação longa e cansativa ao tornar oito linhas focáveis."
       ]
     }
   ]
