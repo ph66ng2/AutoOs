@@ -54,12 +54,14 @@ export function ConfirmDialog({
               if (onCancel) onCancel();
               onOpenChange(false);
             }}
+            className="transition-[transform,background-color,color] duration-150 ease-[cubic-bezier(0.2,0,0,1)] active:scale-[0.96] motion-reduce:active:scale-100"
           >
             {cancelLabel}
           </AlertDialogCancel>
           <AlertDialogAction
             onClick={onConfirm}
             className={cn(
+              "transition-[transform,background-color,color] duration-150 ease-[cubic-bezier(0.2,0,0,1)] active:scale-[0.96] motion-reduce:active:scale-100",
               variant === "destructive" && "bg-destructive text-destructive-foreground hover:bg-destructive/90"
             )}
           >
