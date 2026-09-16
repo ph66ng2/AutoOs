@@ -17,8 +17,12 @@
  *  componentes o utilizem imediatamente após a criação.
  */
 import { useState, useEffect, useCallback } from "react";
-import { db } from "@/lib/db";
-import type { Cliente } from "@/types";
+import {
+  carregarRepositorioClientes,
+  type ClienteInput,
+  type ClientesRepository,
+} from "@/lib/data/clientes-repository";
+import type { Cliente, ClienteId } from "@/types";
 
 /**
  * Parâmetros de pesquisa aceitos pelo hook useClientes.
@@ -28,6 +32,8 @@ import type { Cliente } from "@/types";
  */
 interface UseClientesParams {
   busca?: string;
+  /** Injeção para teste; o runtime seleciona o adapter Online ou interno. */
+  repository?: ClientesRepository;
 }
 
 /**
@@ -56,7 +62,8 @@ export function useClientes(params?: UseClientesParams) {
     setLoading(true);
     setError(null);
     try {
-      const data = await db.listarClientes(params?.busca);
+      const repository = params?.repository ?? await carregarRepositorioClientes();
+      const data = await repository.listar(params?.busca);
       setClientes(data);
     } catch (err: any) {
       setError(err?.toString() || "Erro ao carregar clientes");
@@ -64,7 +71,7 @@ export function useClientes(params?: UseClientesParams) {
     } finally {
       setLoading(false);
     }
-  }, [params?.busca]);
+  }, [params?.busca, params?.repository]);
 
   useEffect(() => {
     carregar();
@@ -82,9 +89,10 @@ export function useClientes(params?: UseClientesParams) {
    *          O `id` retornado é utilizado por ClienteSelector.tsx para
    *          vincular o cliente recém-criado a um equipamento.
    */
-  const criar = async (cliente: Omit<Cliente, "id">) => {
+  const criar = async (cliente: ClienteInput) => {
     try {
-      const criado = await db.criarCliente(cliente);
+      const repository = params?.repository ?? await carregarRepositorioClientes();
+      const criado = await repository.criar(cliente);
       await carregar();
       return { sucesso: true, id: criado.id! };
     } catch (err: any) {
@@ -102,9 +110,10 @@ export function useClientes(params?: UseClientesParams) {
    * @param cliente — Novos dados do cliente (sem o campo `id`).
    * @returns `{ sucesso: true }` ou `{ sucesso: false, erro }` em caso de falha.
    */
-  const atualizar = async (id: number, cliente: Omit<Cliente, "id">) => {
+  const atualizar = async (id: ClienteId, cliente: ClienteInput) => {
     try {
-      await db.atualizarCliente(id, cliente);
+      const repository = params?.repository ?? await carregarRepositorioClientes();
+      await repository.atualizar(id, cliente);
       await carregar();
       return { sucesso: true };
     } catch (err: any) {
@@ -121,9 +130,10 @@ export function useClientes(params?: UseClientesParams) {
    * @param id — ID do cliente a ser removido.
    * @returns `{ sucesso: true }` ou `{ sucesso: false, erro }` em caso de falha.
    */
-  const deletar = async (id: number) => {
+  const deletar = async (id: ClienteId) => {
     try {
-      await db.deletarCliente(id);
+      const repository = params?.repository ?? await carregarRepositorioClientes();
+      await repository.deletar(id);
       await carregar();
       return { sucesso: true };
     } catch (err: any) {

@@ -1246,7 +1246,7 @@
     {
       "id": "AO-SUB-002",
       "title": "Implementar acesso SaaS Online sem PowerSync",
-      "status": "ready",
+      "status": "review",
       "blockedBy": [
         "AO-PS-003",
         "AO-PS-004",

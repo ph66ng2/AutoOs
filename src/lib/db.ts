@@ -31,6 +31,7 @@ import type {
   Cliente,
   ClienteContato,
   ClienteContatoInput,
+  ClienteId,
   RegularizacaoLegadoPrevia,
   RegularizacaoLegadoResultado,
   VinculoEmpresaPerfilInput,
@@ -167,7 +168,7 @@ export const db = {
   },
 
   /** Busca cliente por ID → Rust: buscar_cliente */
-  async buscarCliente(id: number): Promise<Cliente> {
+  async buscarCliente(id: ClienteId): Promise<Cliente> {
     return invoke<Cliente>("buscar_cliente", { id });
   },
 
@@ -177,12 +178,12 @@ export const db = {
   },
 
   /** Atualiza cliente existente → Rust: atualizar_cliente */
-  async atualizarCliente(id: number, cliente: Omit<Cliente, "id">): Promise<void> {
+  async atualizarCliente(id: ClienteId, cliente: Omit<Cliente, "id">): Promise<void> {
     return invoke<void>("atualizar_cliente", { id, input: clientePersistenciaParaInput(cliente) });
   },
 
   /** Deleta cliente → Rust: deletar_cliente */
-  async deletarCliente(id: number): Promise<void> {
+  async deletarCliente(id: ClienteId): Promise<void> {
     return invoke<void>("deletar_cliente", { id });
   },
 
