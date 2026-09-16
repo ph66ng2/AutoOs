@@ -241,7 +241,7 @@ pub async fn atualizar_servicos_verificacao(
     })?;
 
     let existing: Option<(i32, Option<String>, Option<String>, Option<f64>)> = sqlx::query_as(
-        "SELECT id, servicos_necessarios, pecas_necessarias, custo_total
+        "SELECT id, servicos_necessarios, pecas_necessarias, custo_total::FLOAT8 as custo_total
          FROM verificacoes
          WHERE equipamento_id = $1 AND ($2::INTEGER IS NULL OR empresa_id = $2)
          ORDER BY id DESC

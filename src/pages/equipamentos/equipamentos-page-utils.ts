@@ -8,7 +8,7 @@ import type {
   ResultadoAutomacao,
 } from "@/types";
 import { STATUS_SENSIVEIS } from "./equipamentos-page-constants";
-import { getCorrectionStates } from "@/lib/status-fsm";
+import { getCorrectionStates, getNextStates } from "@/lib/status-fsm";
 
 export function extrairTecnicoInicialDeObservacoes(observacoes?: string | null): TecnicoDisponivel | null {
   if (!observacoes) return null;
@@ -120,21 +120,11 @@ export function filtrarImagensPorCategoria(
  * Define o fluxo de transição (máquina de estados).
  */
 export function getProximosStatus(statusAtual: string): string[] {
-  const transicoes: Record<string, string[]> = {
-    RECEBIDO: ["EM_VERIFICACAO"],
-    EM_VERIFICACAO: ["VERIFICADO"],
-    VERIFICADO: ["AGUARDANDO_APROVACAO"],
-    AGUARDANDO_APROVACAO: ["APROVADO", "REPROVADO", "ORCAMENTO_VENCIDO"],
-    APROVADO: ["EM_MANUTENCAO"],
-    EM_MANUTENCAO: ["AGUARDANDO_PECA", "PRONTO"],
-    AGUARDANDO_PECA: ["EM_MANUTENCAO"],
-    PRONTO: ["ENTREGUE"],
-    REPROVADO: ["ENTREGUE", "ABANDONADO"],
-    ORCAMENTO_VENCIDO: ["ABANDONADO", "AGUARDANDO_APROVACAO"],
-    ENTREGUE: [],
-    ABANDONADO: [],
-  };
-  return transicoes[statusAtual] || [];
+  return getNextStates(statusAtual);
+}
+
+export function reabreOrcamentoSemAjuste(statusAtual: string, novoStatus: string) {
+  return statusAtual === "REPROVADO" && novoStatus === "AGUARDANDO_APROVACAO";
 }
 
 export function getStatusCorrecao(statusAtual: string): string[] {

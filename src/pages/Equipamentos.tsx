@@ -153,6 +153,7 @@ import {
   getStatusCorrecao,
   getProximosStatus,
   mensagemResultadoCanais,
+  reabreOrcamentoSemAjuste,
   removerTecnicoInicialDasObservacoes,
   statusExigeAcessoSensivel,
   whatsappNaoConfigurado,
@@ -695,7 +696,7 @@ export default function Equipamentos() {
         setCarregandoImagensSaidaEntrega(false);
       }
     }
-    if ((statusPreSelecionado || "") === "AGUARDANDO_APROVACAO") {
+    if ((statusPreSelecionado || "") === "AGUARDANDO_APROVACAO" && !reabreOrcamentoSemAjuste(eq.status, statusPreSelecionado || "")) {
       await prepararAjusteOrcamentoPadrao(eq);
     }
     setStatusDialogOpen(true);
@@ -1161,7 +1162,7 @@ export default function Equipamentos() {
         ]);
       }
 
-      if ((novoStatus === "AGUARDANDO_APROVACAO" || ajusteOrcamentoSemMudancaStatus) && verificacaoAjusteOrcamento) {
+      if ((novoStatus === "AGUARDANDO_APROVACAO" || ajusteOrcamentoSemMudancaStatus) && verificacaoAjusteOrcamento && !reabreOrcamentoSemAjuste(selecionado.status, novoStatus)) {
         const profileId = sensitiveStatus?.active_profile_id;
         if (!profileId) {
           throw new Error("Perfil autorizado não encontrado para ajustar o orçamento.");
@@ -1619,6 +1620,26 @@ export default function Equipamentos() {
             onClick: () => void enviarWhatsAppPronto(eq),
           });
         }
+        overflow.push(acaoEditar, acaoExcluir);
+        break;
+      case "REPROVADO":
+        primary = {
+          id: "reabrir_orcamento",
+          label: "Reabrir Orçamento",
+          icon: <RefreshCw className="h-3.5 w-3.5" />,
+          variant: "default",
+          className: classeAcaoPrincipal,
+          onClick: () => void abrirMudarStatus(eq, "AGUARDANDO_APROVACAO"),
+          disabled: salvando,
+        };
+        secondary = {
+          id: "mudar_status",
+          label: "Mudar Status",
+          icon: <RefreshCw className="h-3.5 w-3.5" />,
+          variant: "outline",
+          onClick: () => void abrirMudarStatus(eq),
+          disabled: salvando,
+        };
         overflow.push(acaoEditar, acaoExcluir);
         break;
       case "ORCAMENTO_VENCIDO":
@@ -2378,7 +2399,10 @@ export default function Equipamentos() {
         <DialogContent className="flex max-h-[calc(100vh-2rem)] flex-col overflow-hidden sm:max-w-md">
           <DialogHeader>
             <DialogTitle>
-              {novoStatus === "AGUARDANDO_APROVACAO" || ajusteOrcamentoSemMudancaStatus ? "Ajuste de Orçamento" : correcaoStatus ? "Corrigir Status" : "Alterar Status"}
+              {(
+                (novoStatus === "AGUARDANDO_APROVACAO" && selecionado && !reabreOrcamentoSemAjuste(selecionado.status, novoStatus))
+                || ajusteOrcamentoSemMudancaStatus
+              ) ? "Ajuste de Orçamento" : correcaoStatus ? "Corrigir Status" : "Alterar Status"}
             </DialogTitle>
           </DialogHeader>
           {selecionado && (
@@ -2421,7 +2445,7 @@ export default function Equipamentos() {
                   )}
                 </>
               )}
-              {(novoStatus === "AGUARDANDO_APROVACAO" || ajusteOrcamentoSemMudancaStatus) && (
+              {((novoStatus === "AGUARDANDO_APROVACAO" && !reabreOrcamentoSemAjuste(selecionado.status, novoStatus)) || ajusteOrcamentoSemMudancaStatus) && (
                 <>
                   <div className="rounded-md border bg-amber-50 px-3 py-2 text-sm text-amber-900">
                     {ajusteOrcamentoSemMudancaStatus
