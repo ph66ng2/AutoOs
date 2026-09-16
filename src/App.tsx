@@ -87,7 +87,9 @@ function AppContent() {
     return () => window.clearTimeout(t);
   }, [loading]);
 
-  const splashCanFadeOut = !loading && minSplashElapsed && completionAnimationElapsed;
+  const splashCanFadeOut = !loading && minSplashElapsed && completionAnimationElapsed && (
+    Boolean(status?.unlocked) || (status?.profiles.length === 0)
+  );
   const sessionReady = Boolean(status?.active_profile_id && status.unlocked);
 
   useEffect(() => {
