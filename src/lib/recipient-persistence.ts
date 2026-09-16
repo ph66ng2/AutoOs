@@ -11,7 +11,7 @@ export async function saveRecipientAddress(
   const value = endereco.trim();
   if (!value) throw new Error("Informe um endereço válido para salvar.");
 
-  if (equipamento.responsavel_contato_id && equipamento.empresa_id && equipamento.cliente_id) {
+  if (equipamento.responsavel_contato_id && equipamento.empresa_id && typeof equipamento.cliente_id === "number") {
     const input: ClienteContatoInput = {
       empresa_id: equipamento.empresa_id,
       cliente_id: equipamento.cliente_id,

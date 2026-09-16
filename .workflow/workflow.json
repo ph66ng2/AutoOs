@@ -759,7 +759,7 @@
     {
       "id": "AO-AUTH-003",
       "title": "Registrar, reinstalar e revogar dispositivos",
-      "status": "ready",
+      "status": "merged",
       "blockedBy": [
         "AO-AUTH-002"
       ],
@@ -1246,7 +1246,7 @@
     {
       "id": "AO-SUB-002",
       "title": "Implementar acesso SaaS Online sem PowerSync",
-      "status": "ready",
+      "status": "review",
       "blockedBy": [
         "AO-PS-003",
         "AO-PS-004",
@@ -1604,7 +1604,7 @@
     {
       "id": "AO-UX-001",
       "title": "Padronizar seleção de dados no cadastro de equipamentos",
-      "status": "ready",
+      "status": "merged",
       "blockedBy": [
         "AO-INT-001"
       ],

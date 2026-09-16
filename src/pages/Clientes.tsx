@@ -68,6 +68,7 @@ import { db } from "@/lib/db";
 import {
   SENSITIVE_PERMISSIONS,
   type Cliente,
+  type ClienteId,
   type Equipamento,
   type RegularizacaoLegadoPrevia,
   type VinculoEmpresaPerfilInput,
@@ -106,7 +107,7 @@ export default function Clientes() {
   const [buscandoCep, setBuscandoCep] = useState(false);
 
   // Equipamentos vinculados
-  const [expandido, setExpandido] = useState<number | null>(null);
+  const [expandido, setExpandido] = useState<ClienteId | null>(null);
   const [equipamentosCliente, setEquipamentosCliente] = useState<Equipamento[]>([]);
   const [carregandoEquip, setCarregandoEquip] = useState(false);
   const [modalEquipamentosOpen, setModalEquipamentosOpen] = useState(false);
@@ -190,7 +191,7 @@ export default function Clientes() {
    * Busca equipamentos por nome do cliente via db.listarEquipamentos.
    * Conecta-se a: db.listarEquipamentos → Rust listar_equipamentos
    */
-  async function toggleExpandir(clienteId: number) {
+  async function toggleExpandir(clienteId: ClienteId) {
     if (expandido === clienteId) {
       setExpandido(null);
       setEquipamentosCliente([]);

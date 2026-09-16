@@ -24,6 +24,7 @@ function service(overrides: Partial<SaasAuthService> = {}): SaasAuthService {
     refreshSession: vi.fn().mockResolvedValue({ kind: "authenticated", session }),
     lock: vi.fn().mockResolvedValue(undefined),
     signOut: vi.fn().mockResolvedValue({ revoked: true }),
+    removeThisDevice: vi.fn().mockResolvedValue({ revoked: true }),
     requestPasswordRecovery: vi.fn().mockResolvedValue(undefined),
     ...overrides,
   };

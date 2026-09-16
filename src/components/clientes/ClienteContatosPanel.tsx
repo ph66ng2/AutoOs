@@ -45,7 +45,7 @@ export function ClienteContatosPanel({ cliente, empresaId }: ClienteContatosPane
   });
 
   async function carregarContatos() {
-    if (!cliente.id || !empresaId) {
+    if (typeof cliente.id !== "number" || !empresaId) {
       setContatos([]);
       setErro(empresaId ? "Cliente sem identificador para listar contatos." : "Empresa não identificada para listar contatos.");
       return;
@@ -84,7 +84,7 @@ export function ClienteContatosPanel({ cliente, empresaId }: ClienteContatosPane
   }
 
   async function salvarContato(data: ClienteContatoFormData) {
-    if (!cliente.id || !empresaId) return;
+    if (typeof cliente.id !== "number" || !empresaId) return;
     setSalvando(true);
     const input: ClienteContatoInput = {
       empresa_id: empresaId,

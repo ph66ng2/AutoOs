@@ -67,6 +67,7 @@ const elements = {
   mapNextTitle: document.querySelector("#map-next-title"),
   mapNextReason: document.querySelector("#map-next-reason"),
   mapNextButton: document.querySelector("#map-next-button"),
+  decisionAdvice: document.querySelector("#decision-advice"),
   decisionMapFlow: document.querySelector("#decision-map-flow"),
   activityHistory: document.querySelector("#activity-history"),
   activityPreview: document.querySelector("#activity-preview"),
@@ -370,6 +371,14 @@ const DECISION_ROUTES = [
   { area: "photos", label: "Fotos", description: "Storage e fluxo cloud" },
 ];
 
+const DECISION_ADVICE = [
+  { label: "Feche a cadeia Auth", ids: ["AO-AUTH-002", "AO-AUTH-003", "AO-AUTH-004"], copy: "AUTH-002 → 003 → 004" },
+  { label: "Rode SaaS Online em paralelo", ids: ["AO-SUB-002"], copy: "Acesso sem PowerSync" },
+  { label: "Libere a ponte para Photos", ids: ["AO-PHOTO-009"], copy: "Identidade SaaS nas fotos" },
+  { label: "Siga a cadeia de Fotos", ids: ["AO-PHOTO-003", "AO-PHOTO-004", "AO-PHOTO-005", "AO-PHOTO-006", "AO-PHOTO-007", "AO-PHOTO-008"], copy: "QR → compressão → Storage → migração" },
+  { label: "Mantenha PowerSync no ramo paralelo", ids: ["AO-PS-005", "AO-PS-006", "AO-PS-007", "AO-PS-008"], copy: "Cloud → Tauri → offline → Go/No-Go" },
+];
+
 function focusTicket() {
   const active = allTickets().find((ticket) => ticket.status === "in_progress");
   return active || allTickets().find((ticket) => ticket.status === "ready" && pendingBlockers(ticket).length === 0)
@@ -391,9 +400,32 @@ function stageLabel(waveNumber, tickets, activeTicket) {
   return "Aguardando";
 }
 
+function adviceState(ids) {
+  const tickets = ids.map((id) => ticketById(id)).filter(Boolean);
+  if (!tickets.length) return { label: "Sem tickets", ticket: null };
+  if (tickets.every((ticket) => ticket.status === "merged")) return { label: "concluído", ticket: null };
+  const active = tickets.find((ticket) => ticket.status === "in_progress" || ticket.status === "review")
+    || tickets.find((ticket) => ticket.status === "ready" && pendingBlockers(ticket).length === 0);
+  if (active) return { label: `${active.id} · ${STATUS_LABELS[active.status] || active.status}`, ticket: active };
+  const waiting = tickets.find((ticket) => ticket.status !== "merged");
+  return { label: waiting ? `aguarda ${pendingBlockers(waiting).join(", ")}` : "aguardando", ticket: waiting };
+}
+
+function renderDecisionAdvice() {
+  elements.decisionAdvice.innerHTML = DECISION_ADVICE.map((step, index) => {
+    const state = adviceState(step.ids);
+    const ticketId = state.ticket?.id || "";
+    return `<li><button class="advice-item ${state.label === "concluído" ? "advice-complete" : ""}" data-ticket="${escapeHtml(ticketId)}" type="button" ${ticketId ? "" : "disabled"}><span class="advice-number">${index + 1}</span><span><strong>${escapeHtml(step.label)}</strong><small>${escapeHtml(step.copy)} · ${escapeHtml(state.label)}</small></span></button></li>`;
+  }).join("");
+  elements.decisionAdvice.querySelectorAll("[data-ticket]").forEach((node) => {
+    if (node.dataset.ticket) node.addEventListener("click", () => openDialog(node.dataset.ticket));
+  });
+}
+
 function renderDecisionMap() {
   const nextTicket = focusTicket();
   waveMemo.clear();
+  renderDecisionAdvice();
   const waveStages = WAVE_LABELS.map((label, index) => {
     const waveNumber = index + 1;
     const tickets = allTickets().filter((ticket) => waveFor(ticket) === waveNumber);
