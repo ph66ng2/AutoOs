@@ -141,6 +141,7 @@ import {
 import {
   EMAIL_POR_TECNICO,
   MARCA_EQUIPAMENTO_OPTIONS,
+  STATUS_COM_ORCAMENTO,
   STATUS_OPTIONS,
   TECNICOS_DISPONIVEIS,
   TIPO_OPTIONS,
@@ -158,6 +159,7 @@ import {
   statusExigeAcessoSensivel,
   whatsappNaoConfigurado,
 } from "@/pages/equipamentos/equipamentos-page-utils";
+import { formatCurrency } from "@/lib/utils";
 import { useNotification } from "@/hooks/useNotification";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { InputDialog } from "@/components/ui/input-dialog";
@@ -254,8 +256,9 @@ export default function Equipamentos() {
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [confirmProps, setConfirmProps] = useState<{
     title: string;
-    description: string;
+    description?: string;
     variant?: "default" | "destructive";
+    cancelVariant?: "outline" | "destructive";
     confirmLabel?: string;
     cancelLabel?: string;
     onConfirm: () => void;
@@ -1017,15 +1020,12 @@ export default function Equipamentos() {
       const calculado = totalNovo + pecasTotal;
 
       if (Math.abs(calculado - valorOrcamentoRef.current) > 0.001) {
-        const somaFormatada = calculado.toFixed(2);
-        const totalFormatado = valorOrcamentoRef.current.toFixed(2);
-        const origemSoma = pecasTotal > 0 ? "Serviços e peças somam" : "Os serviços somam";
         setConfirmProps({
-          title: "Os valores não batem",
-          description: `${origemSoma} R$ ${somaFormatada}. O total do orçamento está em R$ ${totalFormatado}.`,
-          confirmLabel: "Alterar Valor Total do orçamento",
-          cancelLabel: "Manter Valor Original",
+          title: `Mudar Valor Total do Orçamento para ${formatCurrency(calculado)}?`,
+          confirmLabel: "Sim",
+          cancelLabel: "Não",
           variant: "default",
+          cancelVariant: "destructive",
           onConfirm: () => {
             setValorOrcamento(calculado);
             setConfirmOpen(false);
@@ -1451,6 +1451,13 @@ export default function Equipamentos() {
       variant: "outline",
       onClick: () => abrirEditar(eq),
     };
+    const acaoOrcamentoPdf: PriorityAction = {
+      id: "orcamento_pdf",
+      label: "Orçamento PDF",
+      icon: <FileDown className="h-3.5 w-3.5" />,
+      onClick: () => void gerarOrcamentoPdf(eq),
+      disabled: salvando,
+    };
     const acaoAlterarOrcamento: PriorityAction = {
       id: "alterar_orcamento",
       label: "Alterar Orçamento",
@@ -1520,15 +1527,6 @@ export default function Equipamentos() {
           onClick: () => void abrirMudarStatus(eq, "AGUARDANDO_APROVACAO"),
         };
         secondary = acaoStatus;
-        overflow.push(
-          {
-            id: "orcamento_pdf",
-            label: "Orçamento PDF",
-            icon: <FileDown className="h-3.5 w-3.5" />,
-            onClick: () => void gerarOrcamentoPdf(eq),
-            disabled: salvando,
-          }
-        );
         if (eq.cliente_telefone) {
           overflow.push({
             id: "whatsapp_orcamento",
@@ -1558,15 +1556,6 @@ export default function Equipamentos() {
           onClick: () => void acaoRapida(eq, "REPROVADO"),
           disabled: salvando,
         };
-        overflow.push(
-          {
-            id: "orcamento_pdf",
-            label: "Orçamento PDF",
-            icon: <FileDown className="h-3.5 w-3.5" />,
-            onClick: () => void gerarOrcamentoPdf(eq),
-            disabled: salvando,
-          }
-        );
         if (eq.cliente_telefone) {
           overflow.push({
             id: "whatsapp_orcamento",
@@ -1690,21 +1679,14 @@ export default function Equipamentos() {
         break;
     }
 
-    const fasesComOrcamento = [
-      "VERIFICADO",
-      "AGUARDANDO_APROVACAO",
-      "APROVADO",
-      "REPROVADO",
-      "EM_MANUTENCAO",
-      "AGUARDANDO_PECA",
-      "PRONTO",
-      "ENTREGUE",
-      "ORCAMENTO_VENCIDO",
-      "ABANDONADO",
-    ];
-    if (fasesComOrcamento.includes(eq.status)) {
+    if (STATUS_COM_ORCAMENTO.includes(eq.status)) {
       const editarIndex = overflow.findIndex((acao) => acao.id === acaoEditar.id);
-      overflow.splice(editarIndex >= 0 ? editarIndex : overflow.length, 0, acaoAlterarOrcamento);
+      overflow.splice(
+        editarIndex >= 0 ? editarIndex : overflow.length,
+        0,
+        acaoOrcamentoPdf,
+        acaoAlterarOrcamento,
+      );
     }
     if (getStatusCorrecao(eq.status).length > 0) {
       const editarIndex = overflow.findIndex((acao) => acao.id === acaoEditar.id);
@@ -2766,6 +2748,7 @@ export default function Equipamentos() {
         title={confirmProps.title}
         description={confirmProps.description}
         variant={confirmProps.variant}
+        cancelVariant={confirmProps.cancelVariant}
         confirmLabel={confirmProps.confirmLabel}
         cancelLabel={confirmProps.cancelLabel}
         onConfirm={() => {

@@ -15,10 +15,11 @@ interface ConfirmDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   title: string;
-  description: string;
+  description?: string;
   confirmLabel?: string;
   cancelLabel?: string;
   variant?: "default" | "destructive";
+  cancelVariant?: "outline" | "destructive";
   onConfirm: () => void;
   onCancel?: () => void;
 }
@@ -31,9 +32,13 @@ export function ConfirmDialog({
   confirmLabel = "Sim",
   cancelLabel = "Não",
   variant = "default",
+  cancelVariant = "outline",
   onConfirm,
   onCancel,
 }: ConfirmDialogProps) {
+  const pressClass =
+    "transition-[transform,background-color,color] duration-150 ease-[cubic-bezier(0.2,0,0,1)] active:scale-[0.96] motion-reduce:active:scale-100";
+
   return (
     <AlertDialog open={open} onOpenChange={onOpenChange}>
       <AlertDialogContent className="sm:max-w-md">
@@ -46,7 +51,9 @@ export function ConfirmDialog({
         </button>
         <AlertDialogHeader>
           <AlertDialogTitle>{title}</AlertDialogTitle>
-          <AlertDialogDescription>{description}</AlertDialogDescription>
+          <AlertDialogDescription className={description ? undefined : "sr-only"}>
+            {description || title}
+          </AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter className="gap-2">
           <AlertDialogCancel
@@ -54,14 +61,18 @@ export function ConfirmDialog({
               if (onCancel) onCancel();
               onOpenChange(false);
             }}
-            className="transition-[transform,background-color,color] duration-150 ease-[cubic-bezier(0.2,0,0,1)] active:scale-[0.96] motion-reduce:active:scale-100"
+            className={cn(
+              pressClass,
+              cancelVariant === "destructive" &&
+                "border-transparent bg-red-600 text-white hover:bg-red-700 hover:text-white",
+            )}
           >
             {cancelLabel}
           </AlertDialogCancel>
           <AlertDialogAction
             onClick={onConfirm}
             className={cn(
-              "transition-[transform,background-color,color] duration-150 ease-[cubic-bezier(0.2,0,0,1)] active:scale-[0.96] motion-reduce:active:scale-100",
+              pressClass,
               variant === "destructive" && "bg-destructive text-destructive-foreground hover:bg-destructive/90"
             )}
           >

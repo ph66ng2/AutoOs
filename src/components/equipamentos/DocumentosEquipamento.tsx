@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { db } from "@/lib/db";
 import { PdfService, PRAZO_EXECUCAO_PADRAO, type PdfArtifact } from "@/lib/pdf-service";
 import { PdfPreviewDialog } from "@/components/equipamentos/PdfPreviewDialog";
+import { STATUS_COM_ORCAMENTO } from "@/pages/equipamentos/equipamentos-page-constants";
 import type { Equipamento, Verificacao } from "@/types";
 
 interface DocumentosEquipamentoProps {
@@ -15,8 +16,6 @@ function buildDocumentName(tipo: string, equipamento: Equipamento): string {
   const sn = (equipamento.serial_number || "SN").replace(/[^a-zA-Z0-9]/g, "").slice(0, 8);
   return `${tipo}_${equipamento.id}_${sn}.pdf`;
 }
-
-const STATUS_COM_ORCAMENTO = ["AGUARDANDO_APROVACAO", "APROVADO", "EM_MANUTENCAO", "PRONTO", "ENTREGUE", "ORCAMENTO_VENCIDO"];
 
 interface DocumentoItem {
   id: string;
@@ -46,7 +45,7 @@ export function DocumentosEquipamento({ equipamento }: DocumentosEquipamentoProp
   ];
 
   const deveMostrarOrcamento =
-    equipamento.valor_orcamento != null && equipamento.valor_orcamento > 0 ||
+    (equipamento.valor_orcamento != null && equipamento.valor_orcamento > 0) ||
     STATUS_COM_ORCAMENTO.includes(equipamento.status);
 
   if (deveMostrarOrcamento) {
