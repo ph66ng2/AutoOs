@@ -91,7 +91,7 @@ import { useStatusEquipamento } from "@/hooks/useStatusEquipamento";
 import { useSensitiveAccess } from "@/hooks/useSensitiveAccess";
 import { WhatsAppService } from "@/lib/whatsapp-service";
 import { EmailService } from "@/lib/email-service";
-import { PdfService, type PdfArtifact } from "@/lib/pdf-service";
+import { PdfService, PRAZO_EXECUCAO_PADRAO, type PdfArtifact } from "@/lib/pdf-service";
 import { FormValidationError } from "@/components/ui/form-validation-error";
 import { db } from "@/lib/db";
 import { formatDatePtBr, formatDateTimeSalvador, todayLocalIsoDate } from "@/lib/date-utils";
@@ -192,7 +192,11 @@ export default function Equipamentos() {
     artifact: PdfArtifact;
     tipo: "orcamento" | "ordem" | "relatorio";
     equipamento: Equipamento;
+    verificacao?: Verificacao;
+    prazoMin?: number;
+    prazoMax?: number;
   } | null>(null);
+  const [pdfPrazoUpdating, setPdfPrazoUpdating] = useState(false);
 
   // Duplicidade de serial (múltiplos ciclos de manutenção)
   const [registrosAnteriores, setRegistrosAnteriores] = useState<Equipamento[]>([]);
@@ -1351,7 +1355,14 @@ export default function Equipamentos() {
       setSalvando(true);
       const verif = await db.buscarVerificacao(eq.id!);
       if (!verif) { warning("Equipamentos", "Nenhuma verificação técnica encontrada para este equipamento."); return; }
-      setPdfPreview({ artifact: await PdfService.construirOrcamento(eq, verif), tipo: "orcamento", equipamento: eq });
+      setPdfPreview({
+        artifact: await PdfService.construirOrcamento(eq, verif),
+        tipo: "orcamento",
+        equipamento: eq,
+        verificacao: verif,
+        prazoMin: PRAZO_EXECUCAO_PADRAO.minDiasUteis,
+        prazoMax: PRAZO_EXECUCAO_PADRAO.maxDiasUteis,
+      });
     } catch (err) {
       console.error("Erro ao gerar orçamento PDF:", err);
       showError("Equipamentos", "Gerar orçamento PDF", err);
@@ -2830,7 +2841,35 @@ export default function Equipamentos() {
 
       <PdfPreviewDialog
         artifact={pdfPreview?.artifact || null}
-        onOpenChange={(open) => { if (!open) setPdfPreview(null); }}
+        onOpenChange={(open) => {
+          if (!open) {
+            setPdfPreview(null);
+            setPdfPrazoUpdating(false);
+          }
+        }}
+        prazoExecucao={pdfPreview?.tipo === "orcamento" && pdfPreview.verificacao ? {
+          minDiasUteis: pdfPreview.prazoMin ?? PRAZO_EXECUCAO_PADRAO.minDiasUteis,
+          maxDiasUteis: pdfPreview.prazoMax ?? PRAZO_EXECUCAO_PADRAO.maxDiasUteis,
+          updating: pdfPrazoUpdating,
+          onChange: async (minDiasUteis, maxDiasUteis) => {
+            if (!pdfPreview.verificacao) return;
+            setPdfPrazoUpdating(true);
+            try {
+              const artifact = await PdfService.construirOrcamento(
+                pdfPreview.equipamento,
+                pdfPreview.verificacao,
+                pdfPreview.artifact.filename,
+                { minDiasUteis, maxDiasUteis },
+              );
+              setPdfPreview((atual) => atual && atual.tipo === "orcamento"
+                ? { ...atual, artifact, prazoMin: minDiasUteis, prazoMax: maxDiasUteis }
+                : atual);
+              return artifact;
+            } finally {
+              setPdfPrazoUpdating(false);
+            }
+          },
+        } : undefined}
         onDownload={async (artifact) => {
           if (!pdfPreview) return;
           const { equipamento, tipo } = pdfPreview;
