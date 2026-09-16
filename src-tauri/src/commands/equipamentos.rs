@@ -108,7 +108,7 @@ fn is_regular_status_transition(from: &str, to: &str) -> bool {
                 | ("EM_MANUTENCAO", "AGUARDANDO_PECA" | "PRONTO")
                 | ("AGUARDANDO_PECA", "EM_MANUTENCAO")
                 | ("PRONTO", "ENTREGUE")
-                | ("REPROVADO", "ENTREGUE" | "ABANDONADO")
+                | ("REPROVADO", "AGUARDANDO_APROVACAO" | "ENTREGUE" | "ABANDONADO")
                 | ("ORCAMENTO_VENCIDO", "ABANDONADO" | "AGUARDANDO_APROVACAO")
         )
 }
@@ -784,8 +784,9 @@ pub async fn atualizar_status_equipamento(
         .map_err(|e| e.to_string())?;
     let current_status = current_status.ok_or_else(|| "Equipamento não encontrado.".to_string())?;
     let normalized_current_status = normalize_status_key(&current_status);
-    let is_correction = is_status_correction(&normalized_current_status, &normalized_status);
-    if !is_regular_status_transition(&normalized_current_status, &normalized_status) && !is_correction {
+    let is_regular = is_regular_status_transition(&normalized_current_status, &normalized_status);
+    let is_correction = !is_regular && is_status_correction(&normalized_current_status, &normalized_status);
+    if !is_regular && !is_correction {
         return Err("Transição de status inválida para este equipamento.".to_string());
     }
     if is_correction && motivo_correcao_value.is_none() {
@@ -1028,6 +1029,7 @@ mod tests {
     fn status_correction_is_limited_to_the_rework_paths() {
         assert!(is_status_correction("PRONTO", "AGUARDANDO_APROVACAO"));
         assert!(is_regular_status_transition("PRONTO", "ENTREGUE"));
+        assert!(is_regular_status_transition("REPROVADO", "AGUARDANDO_APROVACAO"));
         assert!(!is_status_correction("ENTREGUE", "PRONTO"));
     }
 
