@@ -498,7 +498,7 @@ function QuickEntry({ onBack }: { onBack: () => void }) {
     }
   }
   async function save() {
-    if (!client?.id)
+    if (typeof client?.id !== "number")
       return setError("Selecione ou cadastre o cliente antes de salvar.");
     const validation = equipamentoSchema.safeParse({
       ...data,
@@ -526,7 +526,7 @@ function QuickEntry({ onBack }: { onBack: () => void }) {
         ...validation.data,
         acessorios: validation.data.acessorios?.join(", "),
         cliente_id: client.id,
-        empresa_id: client.empresa_id || undefined,
+        empresa_id: typeof client.empresa_id === "number" ? client.empresa_id : undefined,
         cliente_nome:
           client.nome || client.nome_fantasia || client.razao_social,
         cliente_telefone: client.telefone,
@@ -696,7 +696,7 @@ function QuickEntry({ onBack }: { onBack: () => void }) {
             <>
               <ContatoResponsavelSelector
                 cliente={client}
-                empresaId={client.empresa_id}
+                empresaId={typeof client.empresa_id === "number" ? client.empresa_id : undefined}
                 value={responsavel}
                 onChange={setResponsavel}
               />

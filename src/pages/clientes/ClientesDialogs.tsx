@@ -157,7 +157,7 @@ export function ClientesContatosModal({
         {cliente && (
           <ClienteContatosPanel
             cliente={cliente}
-            empresaId={cliente.empresa_id}
+            empresaId={typeof cliente.empresa_id === "number" ? cliente.empresa_id : undefined}
           />
         )}
         <DialogFooter>

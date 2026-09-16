@@ -33,16 +33,16 @@ export function ContatoResponsavelSelector({
   const [novo, setNovo] = useState<ClienteContatoFormData>({ nome: "", email: "", telefone: "" });
   const [erroNovo, setErroNovo] = useState<string | null>(null);
   const [salvando, setSalvando] = useState(false);
-  const clienteAnterior = useRef<number | undefined>(cliente?.id);
+  const clienteAnterior = useRef<number | undefined>(typeof cliente?.id === "number" ? cliente.id : undefined);
   const { error: showError } = useNotification();
 
   useEffect(() => {
     if (clienteAnterior.current !== cliente?.id) {
-      clienteAnterior.current = cliente?.id;
+      clienteAnterior.current = typeof cliente?.id === "number" ? cliente.id : undefined;
       onChange(null);
     }
     setBusca("");
-    if (!cliente?.id || !empresaId) {
+    if (typeof cliente?.id !== "number" || !empresaId) {
       setContatos([]);
       setErro(null);
       return;
@@ -69,7 +69,7 @@ export function ContatoResponsavelSelector({
   }
 
   async function cadastrarRapido() {
-    if (!cliente?.id || !empresaId) return;
+    if (typeof cliente?.id !== "number" || !empresaId) return;
     const resultado = clienteContatoSchema.safeParse(novo);
     if (!resultado.success) {
       setErroNovo(resultado.error.issues[0]?.message || "Revise os dados do contato.");
