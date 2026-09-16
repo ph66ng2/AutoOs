@@ -128,4 +128,14 @@ describe("PdfService — orçamento/OS", () => {
     expect(pdfSource).toContain("(VALOR TOTAL:) Tj");
     expect(pdfSource).toMatch(/\(R\$\s+275,00\) Tj/);
   });
+
+  it("não imprime PLANILHA DE VALORES nem o título antigo da descrição", async () => {
+    const artifact = await PdfService.construirOrcamento(equipamento, {
+      ...verificacao,
+      observacoes: "Botão feed ficando desgastado",
+    });
+    const pdfSource = new TextDecoder("latin1").decode(artifact.bytes);
+    expect(pdfSource).not.toContain("PLANILHA DE VALORES");
+    expect(pdfSource).not.toContain("DESCRIÇÃO DO SERVIÇO TÉCNICO");
+  });
 });
