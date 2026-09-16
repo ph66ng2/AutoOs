@@ -1013,20 +1013,23 @@ export default function Equipamentos() {
       const calculado = totalNovo + pecasTotal;
 
       if (Math.abs(calculado - valorOrcamentoRef.current) > 0.001) {
+        const somaFormatada = calculado.toFixed(2);
+        const totalFormatado = valorOrcamentoRef.current.toFixed(2);
+        const origemSoma = pecasTotal > 0 ? "Serviços e peças somam" : "Os serviços somam";
         setConfirmProps({
-          title: "Divergência detectada",
-          description: `Divergência: soma dos serviços (R$ ${calculado.toFixed(2)}) ≠ valor total informado (R$ ${valorOrcamentoRef.current.toFixed(2)})`,
-          confirmLabel: "Continuar assim mesmo",
-          cancelLabel: "Corrigir",
-          variant: "destructive",
+          title: "Os valores não batem",
+          description: `${origemSoma} R$ ${somaFormatada}. O total do orçamento está em R$ ${totalFormatado}.`,
+          confirmLabel: "Alterar Valor Total do orçamento",
+          cancelLabel: "Manter Valor Original",
+          variant: "default",
           onConfirm: () => {
-            setConfirmOpen(false);
-            void confirmarMudancaStatus(true);
-          },
-          onCancel: () => {
             setValorOrcamento(calculado);
             setConfirmOpen(false);
             setTimeout(() => iniciarConfirmacaoStatus(), 0);
+          },
+          onCancel: () => {
+            setConfirmOpen(false);
+            void confirmarMudancaStatus(true);
           },
         });
         setConfirmOpen(true);
