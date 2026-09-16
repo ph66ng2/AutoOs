@@ -35,6 +35,14 @@ fn verification_audit_details(action: &str, input: &VerificacaoInput) -> String 
     )
 }
 
+/// Mesmo tenant, ou verificação legada sem empresa no mesmo equipamento.
+const VERIFICATION_TENANT_MATCH: &str =
+    "($2::INTEGER IS NULL OR empresa_id = $2 OR empresa_id IS NULL)";
+
+fn claimed_tenant_conflicts(claimed: Option<i32>, actual: Option<i32>) -> bool {
+    matches!((claimed, actual), (Some(claimed_id), Some(actual_id)) if claimed_id != actual_id)
+}
+
 fn require_financial_actor_for_verification_write(
     input: &VerificacaoInput,
 ) -> Result<Option<SecurityProfileSummary>, String> {
@@ -61,7 +69,9 @@ pub async fn salvar_verificacao_tecnica(input: VerificacaoInput) -> Result<Verif
     // Verificar se já existe uma verificação para este equipamento
     let existing: Option<(i32,)> = sqlx::query_as(
         "SELECT id FROM verificacoes
-         WHERE equipamento_id = $1 AND ($2::INTEGER IS NULL OR empresa_id = $2)"
+         WHERE equipamento_id = $1 AND ($2::INTEGER IS NULL OR empresa_id = $2 OR empresa_id IS NULL)
+         ORDER BY (empresa_id = $2) DESC NULLS LAST, id DESC
+         LIMIT 1"
     )
     .bind(input.equipamento_id)
     .bind(input.empresa_id)
@@ -83,8 +93,9 @@ pub async fn salvar_verificacao_tecnica(input: VerificacaoInput) -> Result<Verif
                 custo_estimado_mao_obra = $7, custo_estimado_pecas = $8, custo_total = $9,
                 tempo_estimado = $10, concluida = $11, observacoes = $12,
                 forma_pagamento_codigo = $13, forma_pagamento_detalhe = $14,
-                data_fim = CASE WHEN $11 = true THEN NOW() ELSE data_fim END
-            WHERE id = $15 AND ($16::INTEGER IS NULL OR empresa_id = $16)
+                data_fim = CASE WHEN $11 = true THEN NOW() ELSE data_fim END,
+                empresa_id = COALESCE(empresa_id, $16)
+            WHERE id = $15 AND ($16::INTEGER IS NULL OR empresa_id = $16 OR empresa_id IS NULL)
             "#,
         )
         .bind(&input.tecnico_nome)
@@ -185,14 +196,28 @@ pub async fn buscar_verificacao_tecnica(
 ) -> Result<VerificacaoRow, String> {
     debug!("Buscando verificação do equipamento {}", equipamento_id);
     let pool = get_pool().await.map_err(|e| e.to_string())?;
+    let equipment_empresa_id: Option<(Option<i32>,)> = sqlx::query_as(
+        "SELECT empresa_id FROM equipamentos WHERE id = $1",
+    )
+    .bind(equipamento_id)
+    .fetch_optional(&pool)
+    .await
+    .map_err(|e| e.to_string())?;
+    let Some((resolved_empresa_id,)) = equipment_empresa_id else {
+        return Err("Equipamento não encontrado.".to_string());
+    };
+    if claimed_tenant_conflicts(empresa_id, resolved_empresa_id) {
+        return Err("O equipamento não pertence à empresa informada.".to_string());
+    }
 
     let query = format!(
-        "{} WHERE equipamento_id = $1 AND ($2::INTEGER IS NULL OR empresa_id = $2)",
-        VERIFICACAO_SELECT
+        "{} WHERE equipamento_id = $1 AND {} ORDER BY (empresa_id = $2) DESC NULLS LAST, id DESC LIMIT 1",
+        VERIFICACAO_SELECT,
+        VERIFICATION_TENANT_MATCH
     );
     let row = sqlx::query_as::<_, VerificacaoRow>(sqlx::AssertSqlSafe(&*query))
         .bind(equipamento_id)
-        .bind(empresa_id)
+        .bind(resolved_empresa_id)
         .fetch_one(&pool)
         .await
         .map_err(|e| {
@@ -240,16 +265,51 @@ pub async fn atualizar_servicos_verificacao(
         error.to_string()
     })?;
 
+    let equipment: Option<(Option<i32>,)> = sqlx::query_as(
+        "SELECT empresa_id FROM equipamentos WHERE id = $1 FOR UPDATE",
+    )
+    .bind(equipamento_id)
+    .fetch_optional(&mut *tx)
+    .await
+    .map_err(|e| e.to_string())?;
+    let Some((resolved_empresa_id,)) = equipment else {
+        return Err("Equipamento não encontrado.".to_string());
+    };
+    if claimed_tenant_conflicts(empresa_id, resolved_empresa_id) {
+        return Err("O equipamento não pertence à empresa informada.".to_string());
+    }
+
+    if let Some(resolved_id) = resolved_empresa_id {
+        let conflicting_verification: Option<i32> = sqlx::query_scalar(
+            "SELECT id
+             FROM verificacoes
+             WHERE equipamento_id = $1 AND empresa_id IS NOT NULL AND empresa_id <> $2
+             ORDER BY id DESC
+             LIMIT 1
+             FOR UPDATE",
+        )
+        .bind(equipamento_id)
+        .bind(resolved_id)
+        .fetch_optional(&mut *tx)
+        .await
+        .map_err(|e| format!("Erro ao validar tenant da verificação: {}", e))?;
+        if conflicting_verification.is_some() {
+            return Err(
+                "A verificação técnica pertence a outra empresa e não pode ser ajustada.".to_string(),
+            );
+        }
+    }
+
     let existing: Option<(i32, Option<String>, Option<String>, Option<f64>)> = sqlx::query_as(
-        "SELECT id, servicos_necessarios, pecas_necessarias, custo_total
+        "SELECT id, servicos_necessarios, pecas_necessarias, custo_total::FLOAT8 as custo_total
          FROM verificacoes
-         WHERE equipamento_id = $1 AND ($2::INTEGER IS NULL OR empresa_id = $2)
-         ORDER BY id DESC
+         WHERE equipamento_id = $1 AND ($2::INTEGER IS NULL OR empresa_id = $2 OR empresa_id IS NULL)
+         ORDER BY (empresa_id = $2) DESC NULLS LAST, id DESC
          LIMIT 1
          FOR UPDATE"
     )
     .bind(equipamento_id)
-    .bind(empresa_id)
+    .bind(resolved_empresa_id)
     .fetch_optional(&mut *tx)
     .await
     .map_err(|e| {
@@ -278,8 +338,9 @@ pub async fn atualizar_servicos_verificacao(
                 ELSE forma_pagamento_detalhe
             END,
             adjusted_at = NOW(),
-            adjusted_by_profile_id = $7
-        WHERE id = $8 AND ($9::INTEGER IS NULL OR empresa_id = $9)
+            adjusted_by_profile_id = $7,
+            empresa_id = COALESCE(empresa_id, $9)
+        WHERE id = $8 AND ($9::INTEGER IS NULL OR empresa_id = $9 OR empresa_id IS NULL)
         "#,
     )
     .bind(&servicos_json)
@@ -290,7 +351,7 @@ pub async fn atualizar_servicos_verificacao(
     .bind(payment_detail.as_deref())
     .bind(profile_id)
     .bind(verificacao_id)
-    .bind(empresa_id)
+    .bind(resolved_empresa_id)
     .execute(&mut *tx)
     .await
     .map_err(|e| {
@@ -305,7 +366,7 @@ pub async fn atualizar_servicos_verificacao(
     )
         .bind(custo_total)
         .bind(equipamento_id)
-        .bind(empresa_id)
+        .bind(resolved_empresa_id)
         .execute(&mut *tx)
         .await
         .map_err(|e| {
@@ -355,12 +416,20 @@ pub async fn atualizar_servicos_verificacao(
     .await;
 
     info!("Serviços e orçamento atualizados para equipamento {}", equipamento_id);
-    buscar_verificacao_tecnica(equipamento_id, empresa_id).await
+    buscar_verificacao_tecnica(equipamento_id, resolved_empresa_id).await
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn claimed_tenant_is_ignored_when_either_side_is_missing() {
+        assert!(!claimed_tenant_conflicts(None, Some(1)));
+        assert!(!claimed_tenant_conflicts(Some(1), None));
+        assert!(!claimed_tenant_conflicts(Some(1), Some(1)));
+        assert!(claimed_tenant_conflicts(Some(1), Some(2)));
+    }
 
     #[test]
     fn p0_sensitive_verification_write_detects_financial_payload() {

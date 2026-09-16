@@ -1,11 +1,10 @@
 import {
-  Building2,
   CheckCircle2,
-  Clock3,
+  FileDown,
   FileText,
+  RefreshCw,
   ShieldCheck,
   Sparkles,
-  UserRoundCheck,
   X,
 } from "lucide-react";
 import { useState } from "react";
@@ -20,38 +19,38 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 
-export const RELEASE_HIGHLIGHTS_VERSION = "0.5.0";
+export const RELEASE_HIGHLIGHTS_VERSION = "0.5.1";
 export const RELEASE_HIGHLIGHTS_STORAGE_KEY =
   `autoos:release-highlights:${RELEASE_HIGHLIGHTS_VERSION}`;
 
 const highlights = [
   {
-    icon: UserRoundCheck,
-    title: "Contatos e responsáveis",
+    icon: FileText,
+    title: "Prazo na prévia do orçamento",
     description:
-      "Cadastre contatos para clientes PF ou PJ e escolha, quando precisar, o responsável por cada equipamento.",
-    detail: "O responsável fica salvo como retrato daquele atendimento, mesmo após futuras alterações.",
+      "Antes de baixar ou imprimir, ajuste o prazo de execução na própria prévia do PDF.",
+    detail: "O prazo vale só para aquele documento; o cadastro do equipamento não muda.",
+  },
+  {
+    icon: FileDown,
+    title: "PDF em qualquer fase",
+    description:
+      "Depois da verificação, Orçamento PDF fica no menu em todas as fases que já têm orçamento.",
+    detail: "A aba Documentos, no Equipamentos e no Balcão, abre a mesma prévia.",
   },
   {
     icon: ShieldCheck,
-    title: "Orçamentos mais seguros",
+    title: "PIN e verificação estáveis",
     description:
-      "A aprovação agora registra forma de pagamento, status e data juntos, com proteção contra alterações concorrentes.",
-    detail: "A edição também mantém descrição, serviços, peças, custos e pagamento na mesma operação.",
+      "O PIN volta a ser pedido na abertura, e a verificação antiga não some no ajuste de orçamento.",
+    detail: "Valores NUMERIC do PostgreSQL deixam de quebrar o total na tela de ajuste.",
   },
   {
-    icon: FileText,
-    title: "PDFs e comunicação",
+    icon: RefreshCw,
+    title: "Recusado reabre sem drama",
     description:
-      "Descrição revisada, empresa e CNPJ mais claros, destinatário inteligente e responsável nos documentos aplicáveis.",
-    detail: "As imagens vinculadas ao equipamento continuam disponíveis nos PDFs que já ofereciam esse suporte.",
-  },
-  {
-    icon: Clock3,
-    title: "Histórico mais confiável",
-    description:
-      "Eventos exibem horário de Salvador, mudanças de status e seus motivos com uma leitura mais clara.",
-    detail: "Horários antigos impossíveis são identificados, sem inventar uma data que não existe no cadastro.",
+      "Reprovar por engano volta para Aguardando aprovação. Se a soma não bater com o total, a pergunta é Sim ou Não.",
+    detail: "Sim grava o total da soma; Não mantém o valor que já estava no orçamento.",
   },
 ] as const;
 
@@ -117,10 +116,10 @@ export function ReleaseHighlightsDialog({ enabled }: { enabled: boolean }) {
             </div>
             <div>
               <DialogTitle className="text-2xl font-bold leading-tight tracking-tight text-white sm:text-3xl">
-                Um AutoOS mais completo para o atendimento
+                Orçamento mais claro e correções de produção
               </DialogTitle>
               <DialogDescription className="mt-2 max-w-2xl text-sm leading-relaxed text-slate-300 sm:text-base">
-                Contatos, responsáveis, aprovação de orçamento e documentos agora trabalham juntos do cadastro à entrega.
+                Prazo na prévia, PDF em qualquer fase e os ajustes que travavam o orçamento no dia a dia.
               </DialogDescription>
             </div>
           </div>
@@ -152,13 +151,13 @@ export function ReleaseHighlightsDialog({ enabled }: { enabled: boolean }) {
 
           <div className="mt-5 flex flex-wrap gap-2" aria-label="Outras melhorias da versão">
             <Badge variant="secondary" className="gap-1.5 px-3 py-1.5 font-normal">
-              <Building2 className="h-3.5 w-3.5" /> Cadastros antigos regularizáveis
+              <FileText className="h-3.5 w-3.5" /> Layout do PDF colado e observações no lugar
             </Badge>
             <Badge variant="secondary" className="gap-1.5 px-3 py-1.5 font-normal">
-              <ShieldCheck className="h-3.5 w-3.5" /> PIN solicitado no momento certo
+              <ShieldCheck className="h-3.5 w-3.5" /> PIN pedido na abertura
             </Badge>
             <Badge variant="secondary" className="gap-1.5 px-3 py-1.5 font-normal">
-              <Sparkles className="h-3.5 w-3.5" /> Modais e listas refinados
+              <Sparkles className="h-3.5 w-3.5" /> Sim azul, Não vermelho no ajuste de valor
             </Badge>
           </div>
         </div>

@@ -22,7 +22,7 @@ export function BootSplash({ progress, fadeOut }: BootSplashProps) {
       aria-live="polite"
       aria-label={`Carregando aplicativo ${Math.round(clamped)} por cento`}
       className={cn(
-        "fixed inset-0 z-[9999] flex flex-col items-center justify-center px-8 transition-opacity duration-500 ease-out",
+        "fixed inset-0 z-40 flex flex-col items-center justify-center px-8 transition-opacity duration-500 ease-out",
         "bg-[#050608]",
         fadeOut ? "opacity-0 pointer-events-none" : "opacity-100",
       )}

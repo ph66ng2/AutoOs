@@ -128,4 +128,29 @@ describe("PdfService — orçamento/OS", () => {
     expect(pdfSource).toContain("(VALOR TOTAL:) Tj");
     expect(pdfSource).toMatch(/\(R\$\s+275,00\) Tj/);
   });
+
+  it("não imprime PLANILHA DE VALORES nem o título antigo da descrição", async () => {
+    const artifact = await PdfService.construirOrcamento(equipamento, {
+      ...verificacao,
+      observacoes: "Botão feed ficando desgastado",
+    });
+    const pdfSource = new TextDecoder("latin1").decode(artifact.bytes);
+    expect(pdfSource).not.toContain("PLANILHA DE VALORES");
+    expect(pdfSource).not.toContain("DESCRIÇÃO DO SERVIÇO TÉCNICO");
+  });
+
+  it("imprime o prazo de execução informado na prévia", async () => {
+    const padrao = await PdfService.construirOrcamento(equipamento, verificacao);
+    const customizado = await PdfService.construirOrcamento(
+      equipamento,
+      verificacao,
+      undefined,
+      { minDiasUteis: 5, maxDiasUteis: 10 },
+    );
+    const pdfPadrao = new TextDecoder("latin1").decode(padrao.bytes);
+    const pdfCustomizado = new TextDecoder("latin1").decode(customizado.bytes);
+    expect(pdfPadrao).toMatch(/02 a 04 dias/);
+    expect(pdfCustomizado).toMatch(/05 a 10 dias/);
+    expect(pdfCustomizado).not.toMatch(/02 a 04 dias/);
+  });
 });

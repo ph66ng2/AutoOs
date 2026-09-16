@@ -96,6 +96,23 @@ function formatarDataExtenso(data: Date): string {
   return `${dia} de ${mes} de ${ano}`;
 }
 
+export interface PrazoExecucaoPdf {
+  minDiasUteis: number;
+  maxDiasUteis: number;
+}
+
+export const PRAZO_EXECUCAO_PADRAO: PrazoExecucaoPdf = {
+  minDiasUteis: 2,
+  maxDiasUteis: 4,
+};
+
+function formatarTextoPrazoExecucao(prazo?: PrazoExecucaoPdf): string {
+  const minimo = Math.min(90, Math.max(1, Math.round(prazo?.minDiasUteis ?? PRAZO_EXECUCAO_PADRAO.minDiasUteis)));
+  const maximo = Math.min(90, Math.max(minimo, Math.round(prazo?.maxDiasUteis ?? PRAZO_EXECUCAO_PADRAO.maxDiasUteis)));
+  const pad = (dias: number) => String(dias).padStart(2, "0");
+  return `Após a aprovação da proposta, o prazo estimado para a realização do serviço é de ${pad(minimo)} a ${pad(maximo)} dias úteis (Podendo aumentar caso seja necessário troca de peças).`;
+}
+
 function converterDataDocumento(data?: string): Date {
   if (!data) {
     return new Date();
@@ -405,7 +422,11 @@ function renderizarTabelaFormulario(
     body: corpo,
   });
 
-  return (doc as unknown as { lastAutoTable: { finalY: number } }).lastAutoTable.finalY + 2;
+  return yAposUltimaTabela(doc, 2);
+}
+
+function yAposUltimaTabela(doc: jsPDF, extra = 0): number {
+  return (doc as unknown as { lastAutoTable: { finalY: number } }).lastAutoTable.finalY + extra;
 }
 
 function renderizarTituloSecao(doc: jsPDF, y: number, titulo: string): number {
@@ -426,6 +447,7 @@ function renderizarParagrafo(
   y: number,
   largura: number,
   alturaLinha = 4,
+  align: "left" | "center" = "left",
 ): number {
   const linhas = texto.split(/\r?\n/).flatMap((linha) => {
     if (!linha) return [""];
@@ -446,7 +468,9 @@ function renderizarParagrafo(
     const linhasNaPagina = Math.max(1, Math.floor(alturaDisponivel / alturaLinha));
     const lote = linhas.slice(indice, indice + linhasNaPagina);
     lote.forEach((linha, indiceLinha) => {
-      if (linha) doc.text(linha, x, cursorY + indiceLinha * alturaLinha);
+      if (!linha) return;
+      const posX = align === "center" ? PAGE_WIDTH / 2 : x;
+      doc.text(linha, posX, cursorY + indiceLinha * alturaLinha, { align });
     });
     indice += lote.length;
     cursorY += lote.length * alturaLinha;
@@ -468,12 +492,44 @@ function renderizarDescricaoServico(
   const descricao = observacoes?.trim();
   if (!descricao) return y;
 
-  y = garantirEspacoVertical(doc, y, 18);
-  y = renderizarTituloSecao(doc, y, "DESCRIÇÃO DO SERVIÇO TÉCNICO");
+  y += 6;
+  y = garantirEspacoVertical(doc, y, 24);
+  y = renderizarTituloSecao(doc, y, "OBSERVAÇÕES");
+  y += 2;
   doc.setFont("helvetica", "normal");
   doc.setFontSize(9);
   doc.setTextColor(...CORES_PDF.texto);
-  return renderizarParagrafo(doc, descricao, MARGIN_LEFT, y, CONTENT_WIDTH, 4.5);
+  return renderizarParagrafo(doc, descricao, MARGIN_LEFT, y, CONTENT_WIDTH, 4.5, "center");
+}
+
+function renderizarDiagnostico(
+  doc: jsPDF,
+  y: number,
+  diagnostico?: string | null,
+): number {
+  const texto = diagnostico?.trim();
+  if (!texto) return y;
+
+  y += 6;
+  doc.setFontSize(9);
+  doc.setFont("helvetica", "bold");
+  doc.setTextColor(...CORES_PDF.textoSecundario);
+  y = garantirEspacoVertical(doc, y, 14);
+  doc.text("Diagnóstico:", MARGIN_LEFT, y);
+  y += 5;
+  doc.setFont("helvetica", "normal");
+  return renderizarParagrafo(doc, texto, MARGIN_LEFT, y, CONTENT_WIDTH);
+}
+
+function renderizarIdentificacaoENotasOrcamento(
+  doc: jsPDF,
+  y: number,
+  equipamento: Equipamento,
+  verificacao: Verificacao,
+): number {
+  y = renderizarIdentificacaoEquipamento(doc, y, equipamento);
+  y = renderizarDiagnostico(doc, y, verificacao.diagnostico);
+  return renderizarDescricaoServico(doc, y, verificacao.observacoes);
 }
 
 function renderizarIdentificacaoEquipamento(doc: jsPDF, y: number, equipamento: Equipamento): number {
@@ -641,6 +697,7 @@ function renderizarCondicoesComerciais(
   doc: jsPDF,
   y: number,
   formaPagamento: string,
+  prazoExecucao?: PrazoExecucaoPdf,
 ): number {
   const centerX = PAGE_WIDTH / 2;
   const espacoTitulo = 6;
@@ -658,7 +715,7 @@ function renderizarCondicoesComerciais(
   doc.setFont("helvetica", "normal");
   doc.setFontSize(9);
   const prazoLinhas = doc.splitTextToSize(
-    "Após a aprovação da proposta, o prazo estimado para a realização do serviço é de 02 a 04 dias úteis (Podendo aumentar caso seja necessário troca de peças).",
+    formatarTextoPrazoExecucao(prazoExecucao),
     CONTENT_WIDTH
   );
   prazoLinhas.forEach((linha: string) => {
@@ -809,11 +866,9 @@ export const PdfService = {
    *
    * Layout do documento:
    * 1. Cabeçalho monocromático com empresa, tipo, OS e emissão
-   * 2. Dados do cliente (Empresa, Responsável, Tipo de Orçamento)
-   * 4. Planilha de valores (tabela com serviços e peças)
-   * 5. Número de série do equipamento
-   * 5. Condições comerciais atuais (faturamento, prazo, garantia, validade)
-   * 7. Valor total
+   * 2. Dados do cliente colados à planilha de valores e à identificação
+   * 3. Diagnóstico (se houver) e observações abaixo da identificação
+   * 4. Condições comerciais atuais (faturamento, prazo, garantia, validade)
    *
    * @param equipamento - Dados do equipamento (marca, modelo, serial, cliente)
    * @param verificacao - Verificação técnica com serviços, peças e custos
@@ -822,7 +877,8 @@ export const PdfService = {
   async construirOrcamento(
     equipamento: Equipamento,
     verificacao: Verificacao,
-    nomeArquivo?: string
+    nomeArquivo?: string,
+    prazoExecucao?: PrazoExecucaoPdf,
   ): Promise<PdfArtifact> {
     try {
       const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
@@ -867,13 +923,8 @@ export const PdfService = {
         ]],
       });
 
-      y = (doc as unknown as { lastAutoTable: { finalY: number } }).lastAutoTable.finalY + 5;
+      y = yAposUltimaTabela(doc);
 
-      // ═══════════════════════════════════════════════════
-      // 4. PLANILHA DE VALORES (somente quando houver valores)
-      // ═══════════════════════════════════════════════════
-
-      // Parsear serviços e peças da verificação
       const servicos: ServicoNecessario[] = verificacao.servicos_necessarios
         ? JSON.parse(verificacao.servicos_necessarios)
         : [];
@@ -918,10 +969,6 @@ export const PdfService = {
           linhasTabela.push(["Serviços técnicos", `${equipamento.marca} ${equipamento.modelo}`, "01", formatarMoeda(custoTotal), formatarMoeda(custoTotal)]);
         }
 
-        // Título da seção sem faixa preenchida.
-        y = renderizarTituloSecao(doc, y, "PLANILHA DE VALORES");
-
-        // Tabela de valores
         autoTable(doc, {
           ...opcoesTabelaMonocromatica(),
           startY: y,
@@ -940,9 +987,8 @@ export const PdfService = {
           body: linhasTabela,
         });
 
-        y = (doc as unknown as { lastAutoTable: { finalY: number } }).lastAutoTable.finalY + 2;
+        y = yAposUltimaTabela(doc);
 
-        // Linha de total
         autoTable(doc, {
           ...opcoesTabelaMonocromatica(),
           startY: y,
@@ -958,41 +1004,18 @@ export const PdfService = {
           body: [["VALOR TOTAL:", formatarMoeda(custoTotal)]],
         });
 
-        y = (doc as unknown as { lastAutoTable: { finalY: number } }).lastAutoTable.finalY + 8;
+        y = yAposUltimaTabela(doc);
       }
 
-      y = renderizarDescricaoServico(doc, y, verificacao.observacoes);
+      y = renderizarIdentificacaoENotasOrcamento(doc, y, equipamento, verificacao);
 
-      // ═══════════════════════════════════════════════════
-      // 5. NÚMERO DE SÉRIE
-      // ═══════════════════════════════════════════════════
-
-      y = renderizarIdentificacaoEquipamento(doc, y, equipamento);
-
-      // ═══════════════════════════════════════════════════
-      // 6. CONDIÇÕES COMERCIAIS
-      // ═══════════════════════════════════════════════════
       if (exibirBlocosFinanceiros) {
         y = renderizarCondicoesComerciais(
           doc,
           y,
           obterFormaPagamento(equipamento, verificacao),
+          prazoExecucao,
         );
-      }
-
-      // ═══════════════════════════════════════════════════
-      // 7. DIAGNÓSTICO (extra)
-      // ═══════════════════════════════════════════════════
-
-      if (verificacao.diagnostico) {
-        doc.setFontSize(9);
-        doc.setFont("helvetica", "bold");
-        doc.setTextColor(...CORES_PDF.textoSecundario);
-        y = garantirEspacoVertical(doc, y, 9);
-        doc.text("Diagnóstico:", MARGIN_LEFT, y);
-        y += 5;
-        doc.setFont("helvetica", "normal");
-        y = renderizarParagrafo(doc, verificacao.diagnostico, MARGIN_LEFT, y, CONTENT_WIDTH);
       }
 
       const imagensEquipamento = equipamento.id
@@ -1067,10 +1090,11 @@ export const PdfService = {
   async construirOrcamentoAjustado(
     equipamento: Equipamento,
     verificacao: Verificacao,
-    nomeArquivo?: string
+    nomeArquivo?: string,
+    prazoExecucao?: PrazoExecucaoPdf,
   ): Promise<PdfArtifact | null> {
     if (!verificacao.adjusted_at) {
-      return PdfService.construirOrcamento(equipamento, verificacao, nomeArquivo);
+      return PdfService.construirOrcamento(equipamento, verificacao, nomeArquivo, prazoExecucao);
     }
 
     const servicos: ServicoNecessario[] = verificacao.servicos_necessarios
@@ -1132,7 +1156,7 @@ export const PdfService = {
         ]],
       });
 
-      y = (doc as unknown as { lastAutoTable: { finalY: number } }).lastAutoTable.finalY + 5;
+      y = yAposUltimaTabela(doc);
 
       const linhasTabela: string[][] = [];
 
@@ -1163,8 +1187,6 @@ export const PdfService = {
           linhasTabela.push(["Serviços técnicos", `${equipamento.marca} ${equipamento.modelo}`, "01", formatarMoeda(custoTotal), formatarMoeda(custoTotal)]);
         }
 
-        y = renderizarTituloSecao(doc, y, "PLANILHA DE VALORES");
-
         autoTable(doc, {
           ...opcoesTabelaMonocromatica(),
           startY: y,
@@ -1183,7 +1205,7 @@ export const PdfService = {
           body: linhasTabela,
         });
 
-        y = (doc as unknown as { lastAutoTable: { finalY: number } }).lastAutoTable.finalY + 2;
+        y = yAposUltimaTabela(doc);
 
         autoTable(doc, {
           ...opcoesTabelaMonocromatica(),
@@ -1200,30 +1222,18 @@ export const PdfService = {
           body: [["VALOR TOTAL:", formatarMoeda(custoTotal)]],
         });
 
-        y = (doc as unknown as { lastAutoTable: { finalY: number } }).lastAutoTable.finalY + 8;
+        y = yAposUltimaTabela(doc);
       }
 
-      y = renderizarDescricaoServico(doc, y, verificacao.observacoes);
-
-      y = renderizarIdentificacaoEquipamento(doc, y, equipamento);
+      y = renderizarIdentificacaoENotasOrcamento(doc, y, equipamento, verificacao);
 
       if (exibirBlocosFinanceiros) {
         y = renderizarCondicoesComerciais(
           doc,
           y,
           obterFormaPagamento(equipamento, verificacao),
+          prazoExecucao,
         );
-      }
-
-      if (verificacao.diagnostico) {
-        doc.setFontSize(9);
-        doc.setFont("helvetica", "bold");
-        doc.setTextColor(...CORES_PDF.textoSecundario);
-        y = garantirEspacoVertical(doc, y, 9);
-        doc.text("Diagnóstico:", MARGIN_LEFT, y);
-        y += 5;
-        doc.setFont("helvetica", "normal");
-        y = renderizarParagrafo(doc, verificacao.diagnostico, MARGIN_LEFT, y, CONTENT_WIDTH);
       }
 
       const imagensEquipamento = equipamento.id
