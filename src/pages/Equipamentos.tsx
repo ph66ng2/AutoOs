@@ -607,7 +607,7 @@ export default function Equipamentos() {
   }
 
   async function prepararAjusteOrcamentoPadrao(eq: Equipamento) {
-    const verificacao = await db.buscarVerificacao(eq.id!);
+    const verificacao = await db.buscarVerificacao(eq.id!, eq.empresa_id);
     const valorOriginal = verificacao?.custo_total ?? null;
     const valorAnterior = eq.valor_orcamento ?? null;
     const valorBase = eq.valor_orcamento ?? verificacao?.custo_total ?? 0;
