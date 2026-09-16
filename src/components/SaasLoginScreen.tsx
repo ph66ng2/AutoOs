@@ -47,11 +47,11 @@ export function SaasLoginScreen({ initialEmail = "", notice }: { initialEmail?: 
   }
 
   return (
-    <main className="fixed inset-0 flex items-center justify-center bg-gradient-to-br from-slate-950 via-slate-900 to-slate-800 px-4">
+    <main className="fixed inset-0 flex items-center justify-center bg-slate-950 px-4">
       <div className="w-full max-w-md space-y-6">
         <div className="space-y-3 text-center">
-          <div className="inline-flex h-14 w-14 items-center justify-center rounded-2xl border border-cyan-500/20 bg-cyan-500/10">
-            <ShieldCheck className="h-7 w-7 text-cyan-400" />
+          <div className="inline-flex h-14 w-14 items-center justify-center rounded-2xl border border-slate-700 bg-slate-800">
+            <ShieldCheck className="h-7 w-7 text-slate-200" />
           </div>
           <div>
             <h1 className="text-2xl font-bold tracking-tight text-white">AutoOS SaaS</h1>
@@ -63,7 +63,7 @@ export function SaasLoginScreen({ initialEmail = "", notice }: { initialEmail?: 
           className="space-y-5 rounded-2xl border border-white/10 bg-white/[0.03] p-6 backdrop-blur-sm"
           onSubmit={(event) => { event.preventDefault(); void handleLogin(); }}
         >
-          {notice && <div className="rounded-xl border border-cyan-500/20 bg-cyan-500/10 p-3 text-sm text-cyan-100">{notice}</div>}
+          {notice && <div className="rounded-xl border border-slate-700 bg-slate-900 p-3 text-sm text-slate-200">{notice}</div>}
           <div className="space-y-1.5">
             <Label htmlFor="saas-email" className="text-slate-300">Email</Label>
             <Input
@@ -99,17 +99,17 @@ export function SaasLoginScreen({ initialEmail = "", notice }: { initialEmail?: 
             </div>
           )}
           {recoverySent && (
-            <div role="status" className="flex items-start gap-2 rounded-xl border border-emerald-500/20 bg-emerald-500/10 p-3 text-sm text-emerald-200">
+            <div role="status" className="flex items-start gap-2 rounded-xl border border-emerald-900 bg-emerald-950/50 p-3 text-sm text-emerald-100">
               <MailCheck className="mt-0.5 h-4 w-4 shrink-0" />
               <span>Se o email estiver habilitado, você receberá as instruções de recuperação.</span>
             </div>
           )}
 
-          <Button type="submit" size="lg" className="h-11 w-full bg-cyan-500 font-semibold text-slate-950 hover:bg-cyan-400" disabled={submitting || recovering || !email.trim() || !password}>
+          <Button type="submit" size="lg" className="h-11 w-full bg-slate-100 font-semibold text-slate-950 hover:bg-white" disabled={submitting || recovering || !email.trim() || !password}>
             {submitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <ArrowRight className="mr-2 h-4 w-4" />}
             {submitting ? "Entrando..." : "Entrar"}
           </Button>
-          <button type="button" className="flex w-full items-center justify-center gap-2 text-sm text-slate-400 hover:text-cyan-300" onClick={() => void handleRecovery()} disabled={submitting || recovering}>
+          <button type="button" className="flex w-full items-center justify-center gap-2 text-sm text-slate-400 hover:text-slate-200" onClick={() => void handleRecovery()} disabled={submitting || recovering}>
             {recovering ? <Loader2 className="h-4 w-4 animate-spin" /> : <KeyRound className="h-4 w-4" />}
             Esqueci minha senha
           </button>
