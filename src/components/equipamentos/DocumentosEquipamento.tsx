@@ -3,9 +3,9 @@ import { FileText, FileDown, Loader2 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { db } from "@/lib/db";
-import { PdfService, type PdfArtifact } from "@/lib/pdf-service";
+import { PdfService, PRAZO_EXECUCAO_PADRAO, type PdfArtifact } from "@/lib/pdf-service";
 import { PdfPreviewDialog } from "@/components/equipamentos/PdfPreviewDialog";
-import type { Equipamento } from "@/types";
+import type { Equipamento, Verificacao } from "@/types";
 
 interface DocumentosEquipamentoProps {
   equipamento: Equipamento;
@@ -27,7 +27,14 @@ interface DocumentoItem {
 
 export function DocumentosEquipamento({ equipamento }: DocumentosEquipamentoProps) {
   const [gerando, setGerando] = useState<string | null>(null);
-  const [preview, setPreview] = useState<{ artifact: PdfArtifact; documento: DocumentoItem } | null>(null);
+  const [preview, setPreview] = useState<{
+    artifact: PdfArtifact;
+    documento: DocumentoItem;
+    verificacao?: Verificacao;
+    prazoMin?: number;
+    prazoMax?: number;
+  } | null>(null);
+  const [prazoUpdating, setPrazoUpdating] = useState(false);
 
   const documentos: DocumentoItem[] = [
     {
@@ -64,7 +71,13 @@ export function DocumentosEquipamento({ equipamento }: DocumentosEquipamentoProp
           console.warn("[DocumentosEquipamento] Nenhuma verificação encontrada para gerar orçamento.");
           return;
         }
-        setPreview({ artifact: await PdfService.construirOrcamento(equipamento, verificacao, nomeArquivo), documento: doc });
+        setPreview({
+          artifact: await PdfService.construirOrcamento(equipamento, verificacao, nomeArquivo),
+          documento: doc,
+          verificacao,
+          prazoMin: PRAZO_EXECUCAO_PADRAO.minDiasUteis,
+          prazoMax: PRAZO_EXECUCAO_PADRAO.maxDiasUteis,
+        });
       }
     } catch (err) {
       console.error(`[DocumentosEquipamento] Erro ao processar documento ${doc.nome}:`, err);
@@ -126,7 +139,34 @@ export function DocumentosEquipamento({ equipamento }: DocumentosEquipamentoProp
     </Card>
     <PdfPreviewDialog
       artifact={preview?.artifact || null}
-      onOpenChange={(open) => { if (!open) setPreview(null); }}
+      onOpenChange={(open) => {
+        if (!open) {
+          setPreview(null);
+          setPrazoUpdating(false);
+        }
+      }}
+      prazoExecucao={preview?.documento.tipo === "Orcamento" && preview.verificacao ? {
+        minDiasUteis: preview.prazoMin ?? PRAZO_EXECUCAO_PADRAO.minDiasUteis,
+        maxDiasUteis: preview.prazoMax ?? PRAZO_EXECUCAO_PADRAO.maxDiasUteis,
+        updating: prazoUpdating,
+        onChange: async (minDiasUteis, maxDiasUteis) => {
+          if (!preview.verificacao) return;
+          setPrazoUpdating(true);
+          try {
+            const nomeArquivo = buildDocumentName(preview.documento.tipo, equipamento);
+            const artifact = await PdfService.construirOrcamento(
+              equipamento,
+              preview.verificacao,
+              nomeArquivo,
+              { minDiasUteis, maxDiasUteis },
+            );
+            setPreview((atual) => atual ? { ...atual, artifact, prazoMin: minDiasUteis, prazoMax: maxDiasUteis } : atual);
+            return artifact;
+          } finally {
+            setPrazoUpdating(false);
+          }
+        },
+      } : undefined}
       onDownload={async (artifact) => {
         if (!preview) return;
         const nomeArquivo = buildDocumentName(preview.documento.tipo, equipamento);

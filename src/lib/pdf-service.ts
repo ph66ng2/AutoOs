@@ -96,6 +96,23 @@ function formatarDataExtenso(data: Date): string {
   return `${dia} de ${mes} de ${ano}`;
 }
 
+export interface PrazoExecucaoPdf {
+  minDiasUteis: number;
+  maxDiasUteis: number;
+}
+
+export const PRAZO_EXECUCAO_PADRAO: PrazoExecucaoPdf = {
+  minDiasUteis: 2,
+  maxDiasUteis: 4,
+};
+
+function formatarTextoPrazoExecucao(prazo?: PrazoExecucaoPdf): string {
+  const minimo = Math.min(90, Math.max(1, Math.round(prazo?.minDiasUteis ?? PRAZO_EXECUCAO_PADRAO.minDiasUteis)));
+  const maximo = Math.min(90, Math.max(minimo, Math.round(prazo?.maxDiasUteis ?? PRAZO_EXECUCAO_PADRAO.maxDiasUteis)));
+  const pad = (dias: number) => String(dias).padStart(2, "0");
+  return `Após a aprovação da proposta, o prazo estimado para a realização do serviço é de ${pad(minimo)} a ${pad(maximo)} dias úteis (Podendo aumentar caso seja necessário troca de peças).`;
+}
+
 function converterDataDocumento(data?: string): Date {
   if (!data) {
     return new Date();
@@ -680,6 +697,7 @@ function renderizarCondicoesComerciais(
   doc: jsPDF,
   y: number,
   formaPagamento: string,
+  prazoExecucao?: PrazoExecucaoPdf,
 ): number {
   const centerX = PAGE_WIDTH / 2;
   const espacoTitulo = 6;
@@ -697,7 +715,7 @@ function renderizarCondicoesComerciais(
   doc.setFont("helvetica", "normal");
   doc.setFontSize(9);
   const prazoLinhas = doc.splitTextToSize(
-    "Após a aprovação da proposta, o prazo estimado para a realização do serviço é de 02 a 04 dias úteis (Podendo aumentar caso seja necessário troca de peças).",
+    formatarTextoPrazoExecucao(prazoExecucao),
     CONTENT_WIDTH
   );
   prazoLinhas.forEach((linha: string) => {
@@ -859,7 +877,8 @@ export const PdfService = {
   async construirOrcamento(
     equipamento: Equipamento,
     verificacao: Verificacao,
-    nomeArquivo?: string
+    nomeArquivo?: string,
+    prazoExecucao?: PrazoExecucaoPdf,
   ): Promise<PdfArtifact> {
     try {
       const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
@@ -995,6 +1014,7 @@ export const PdfService = {
           doc,
           y,
           obterFormaPagamento(equipamento, verificacao),
+          prazoExecucao,
         );
       }
 
@@ -1070,10 +1090,11 @@ export const PdfService = {
   async construirOrcamentoAjustado(
     equipamento: Equipamento,
     verificacao: Verificacao,
-    nomeArquivo?: string
+    nomeArquivo?: string,
+    prazoExecucao?: PrazoExecucaoPdf,
   ): Promise<PdfArtifact | null> {
     if (!verificacao.adjusted_at) {
-      return PdfService.construirOrcamento(equipamento, verificacao, nomeArquivo);
+      return PdfService.construirOrcamento(equipamento, verificacao, nomeArquivo, prazoExecucao);
     }
 
     const servicos: ServicoNecessario[] = verificacao.servicos_necessarios
@@ -1211,6 +1232,7 @@ export const PdfService = {
           doc,
           y,
           obterFormaPagamento(equipamento, verificacao),
+          prazoExecucao,
         );
       }
 
