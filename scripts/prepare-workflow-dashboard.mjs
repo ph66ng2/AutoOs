@@ -9,7 +9,7 @@ const sourceDirectory = paths.dashboardDir;
 await rm(outputDirectory, { recursive: true, force: true });
 await mkdir(path.join(outputDirectory, "data"), { recursive: true });
 
-for (const filename of ["index.html", "styles.css", "app.js"]) {
+for (const filename of ["index.html", "styles.css", "app.js", "tracks.js"]) {
   await copyFile(path.join(sourceDirectory, filename), path.join(outputDirectory, filename));
 }
 

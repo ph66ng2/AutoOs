@@ -1,11 +1,23 @@
-const STATUS_ORDER = ["ready", "in_progress", "review", "merged", "blocked"];
-const STATUS_LABELS = {
-  ready: "Pronto",
-  in_progress: "Em andamento",
-  review: "Revisão",
-  merged: "Concluído",
-  blocked: "Bloqueado",
-};
+import {
+  AREA_LABELS,
+  BOARD_COLUMNS,
+  STATUS_LABELS,
+  STATUS_ORDER,
+  TRACKS,
+  areaFor,
+  boardColumn,
+  groupedReadyTickets,
+  isSkipped,
+  nextRecommended,
+  pathEntries,
+  pendingBlockers,
+  reasonFor,
+  sortForColumn,
+  ticketsForTrack,
+  trackById,
+  unlocksFrom,
+} from "./tracks.js";
+
 const STATUS_EVENT_LABELS = {
   started: "trabalho iniciado",
   progress: "progresso registrado",
@@ -16,26 +28,23 @@ const STATUS_EVENT_LABELS = {
   merged: "ticket concluído",
   status_changed: "status atualizado",
 };
-const AREA_LABELS = {
-  all: "Todas",
-  product: "Produto",
-  powersync: "PowerSync",
-  auth: "Auth",
-  subscription: "SaaS",
-  photos: "Fotos",
-  hotfix: "Correções",
-};
+
 const AREA_KEYS = Object.keys(AREA_LABELS);
 const GITHUB_REPOSITORY = "ph66ng2/AutoOs";
+const FOCUS_STORAGE_KEY = "autoos-workflow-foco";
+const TRACK_IDS = ["all", ...TRACKS.map((track) => track.id)];
+
 const state = {
   workflow: null,
   events: [],
   editable: false,
   mode: "static",
   view: "board",
+  track: "all",
   area: "all",
   query: "",
   selectedTicketId: null,
+  showDone: false,
 };
 
 const elements = {
@@ -53,22 +62,21 @@ const elements = {
   metricBlocked: document.querySelector("#metric-blocked"),
   searchInput: document.querySelector("#search-input"),
   areaFilters: document.querySelector("#area-filters"),
+  trackFilters: document.querySelector("#track-filters"),
   boardView: document.querySelector("#board-view"),
+  pathView: document.querySelector("#path-view"),
+  pathList: document.querySelector("#path-list"),
+  pathTitle: document.querySelector("#path-title"),
+  pathCount: document.querySelector("#path-count"),
   timelineView: document.querySelector("#timeline-view"),
   timelineList: document.querySelector("#timeline-list"),
   eventCount: document.querySelector("#event-count"),
-  dependencyGraph: document.querySelector("#dependency-graph"),
   focusWave: document.querySelector("#focus-wave"),
   focusTicketId: document.querySelector("#focus-ticket-id"),
   focusTitle: document.querySelector("#focus-title"),
   focusSummary: document.querySelector("#focus-summary"),
+  focusUnlocks: document.querySelector("#focus-unlocks"),
   focusButton: document.querySelector("#focus-button"),
-  mapNextId: document.querySelector("#map-next-id"),
-  mapNextTitle: document.querySelector("#map-next-title"),
-  mapNextReason: document.querySelector("#map-next-reason"),
-  mapNextButton: document.querySelector("#map-next-button"),
-  decisionAdvice: document.querySelector("#decision-advice"),
-  decisionMapFlow: document.querySelector("#decision-map-flow"),
   activityHistory: document.querySelector("#activity-history"),
   activityPreview: document.querySelector("#activity-preview"),
   healthScore: document.querySelector("#health-score"),
@@ -90,16 +98,6 @@ function escapeHtml(value) {
     .replaceAll("'", "&#039;");
 }
 
-function areaFor(ticketId) {
-  if (/^AO-(CNPJ|PDF|CLI|UX|EMAIL)/.test(ticketId)) return "product";
-  if (ticketId.startsWith("AO-PS-")) return "powersync";
-  if (ticketId.startsWith("AO-AUTH-")) return "auth";
-  if (ticketId.startsWith("AO-SUB-")) return "subscription";
-  if (ticketId.startsWith("AO-PHOTO-")) return "photos";
-  if (ticketId.startsWith("AO-HOTFIX-")) return "hotfix";
-  return "product";
-}
-
 function allTickets() {
   return state.workflow?.tickets || [];
 }
@@ -108,46 +106,13 @@ function ticketById(ticketId) {
   return allTickets().find((ticket) => ticket.id === ticketId);
 }
 
-function pendingBlockers(ticket) {
-  return (ticket.blockedBy || []).filter((blockerId) => ticketById(blockerId)?.status !== "merged");
+function currentTrack() {
+  return trackById(state.track);
 }
 
-const WAVE_LABELS = ["Fundação", "Base", "Integração", "Runtime", "Decisão"];
-const waveMemo = new Map();
-
-function waveForTicket(ticketId, visiting = new Set()) {
-  if (waveMemo.has(ticketId)) return waveMemo.get(ticketId);
-  if (visiting.has(ticketId)) return 1;
-  const ticket = ticketById(ticketId);
-  if (!ticket) return 1;
-  visiting.add(ticketId);
-  const dependencies = (ticket.blockedBy || []).filter((dependencyId) => ticketById(dependencyId));
-  const depth = dependencies.length === 0
-    ? 1
-    : Math.max(...dependencies.map((dependencyId) => waveForTicket(dependencyId, visiting))) + 1;
-  visiting.delete(ticketId);
-  const wave = Math.min(depth, WAVE_LABELS.length);
-  waveMemo.set(ticketId, wave);
-  return wave;
-}
-
-function waveFor(ticket) {
-  return waveForTicket(ticket.id);
-}
-
-function waveStatusCopy(ticket) {
-  const blockers = pendingBlockers(ticket);
-  if (blockers.length) return `⇢ ${blockers.length} dep.`;
-  if (ticket.status === "merged") return "concluído";
-  if (ticket.status === "in_progress") return "em andamento";
-  if (ticket.status === "review") return "em revisão";
-  if (ticket.status === "blocked") return "bloqueado";
-  return "sem bloqueios";
-}
-
-function filteredTickets() {
+function scopedTickets() {
   const query = state.query.trim().toLocaleLowerCase("pt-BR");
-  return allTickets().filter((ticket) => {
+  return ticketsForTrack(allTickets(), state.track).filter((ticket) => {
     const areaMatches = state.area === "all" || areaFor(ticket.id) === state.area;
     if (!areaMatches) return false;
     if (!query) return true;
@@ -157,6 +122,31 @@ function filteredTickets() {
       .toLocaleLowerCase("pt-BR")
       .includes(query);
   });
+}
+
+function readStoredTrack() {
+  const fromUrl = new URLSearchParams(window.location.search).get("foco");
+  if (TRACK_IDS.includes(fromUrl)) return fromUrl;
+  try {
+    const stored = window.localStorage.getItem(FOCUS_STORAGE_KEY);
+    if (TRACK_IDS.includes(stored)) return stored;
+  } catch {
+    /* ignore quota / privacy */
+  }
+  return "all";
+}
+
+function persistTrack(trackId) {
+  state.track = trackId;
+  const url = new URL(window.location.href);
+  if (trackId === "all") url.searchParams.delete("foco");
+  else url.searchParams.set("foco", trackId);
+  window.history.replaceState({}, "", url);
+  try {
+    window.localStorage.setItem(FOCUS_STORAGE_KEY, trackId);
+  } catch {
+    /* ignore */
+  }
 }
 
 function dateValue(value) {
@@ -226,26 +216,48 @@ function renderQuality() {
 function renderHeader() {
   elements.modeBadge.textContent = state.editable ? "Edição local" : "feature / workflow.json";
   elements.modeBadge.classList.toggle("editable", state.editable);
-  elements.sourceLabel.textContent = state.editable ? "feature / workflow.json" : "feature / workflow.json";
+  elements.sourceLabel.textContent = "feature / workflow.json";
   elements.accessLabel.textContent = state.editable ? "Edição local" : "Somente leitura";
   elements.lastRead.textContent = new Intl.DateTimeFormat("pt-BR", { timeStyle: "short" }).format(new Date());
 }
 
 function renderMetrics() {
-  const tickets = allTickets();
-  const readyNow = tickets.filter((ticket) => ticket.status === "ready" && pendingBlockers(ticket).length === 0).length;
-  const blocked = tickets.filter((ticket) => pendingBlockers(ticket).length > 0 || ticket.status === "blocked").length;
+  const tickets = scopedTickets();
+  const readyNow = tickets.filter((ticket) => boardColumn(ticket, allTickets()) === "ready").length;
+  const waiting = tickets.filter((ticket) => boardColumn(ticket, allTickets()) === "waiting").length;
   const progress = tickets.length ? Math.round((tickets.filter((ticket) => ticket.status === "merged").length / tickets.length) * 100) : 0;
   elements.metricTotal.textContent = tickets.length;
   elements.metricReady.textContent = readyNow;
   elements.metricMerged.textContent = tickets.filter((ticket) => ticket.status === "merged").length;
-  elements.metricBlocked.textContent = blocked;
+  elements.metricBlocked.textContent = waiting;
   elements.progressPercent.textContent = `${progress}%`;
   elements.progressBar.style.width = `${progress}%`;
 }
 
+function renderTrackFilters() {
+  const options = [
+    { id: "all", label: "Tudo", description: "Todos os focos no mesmo quadro" },
+    ...TRACKS.map((track) => ({ id: track.id, label: track.label, description: track.description })),
+  ];
+  elements.trackFilters.innerHTML = options.map((option) => {
+    const selected = state.track === option.id;
+    return `<button class="track-chip ${selected ? "active" : ""}" data-track="${escapeHtml(option.id)}" type="button" role="tab" aria-selected="${selected}" title="${escapeHtml(option.description)}">${escapeHtml(option.label)}</button>`;
+  }).join("");
+  elements.trackFilters.querySelectorAll("[data-track]").forEach((button) => {
+    button.addEventListener("click", () => {
+      persistTrack(button.dataset.track);
+      if (state.area !== "all" && state.track !== "all" && state.area !== state.track) state.area = "all";
+      render();
+    });
+  });
+}
+
 function renderFilters() {
-  elements.areaFilters.innerHTML = AREA_KEYS.map((area) => `<button class="filter-button ${state.area === area ? "active" : ""}" data-area="${area}" type="button">${AREA_LABELS[area]}</button>`).join("");
+  if (state.track !== "all") {
+    elements.areaFilters.innerHTML = "";
+    return;
+  }
+  elements.areaFilters.innerHTML = AREA_KEYS.map((area) => `<button class="filter-button ${state.area === area ? "active" : ""}" data-area="${area}" type="button">${AREA_LABELS[area] || area}</button>`).join("");
   elements.areaFilters.querySelectorAll("[data-area]").forEach((button) => {
     button.addEventListener("click", () => {
       state.area = button.dataset.area;
@@ -254,27 +266,106 @@ function renderFilters() {
   });
 }
 
-function ticketCard(ticket) {
-  const footer = waveStatusCopy(ticket);
-  return `<button class="ticket-card" data-ticket="${escapeHtml(ticket.id)}" data-area="${areaFor(ticket.id)}" type="button">
-    <span class="ticket-id">${escapeHtml(ticket.id)}</span>
+function cardMeta(ticket) {
+  const track = currentTrack() || TRACKS.find((item) => item.prefixes.some((prefix) => ticket.id.startsWith(prefix)));
+  const unlocks = unlocksFrom(ticket.id, allTickets());
+  const blockers = pendingBlockers(ticket, allTickets());
+  const skipped = track ? isSkipped(track, ticket.id) : false;
+  const why = track ? reasonFor(track, ticket.id) : "";
+  if (skipped) return { line: "Fora da rota. Deixe no catálogo.", kind: "skip" };
+  if (blockers.length) return { line: `Espera ${blockers.slice(0, 2).join(" · ")}`, kind: "wait" };
+  if (unlocks.length) return { line: `Daqui abre ${unlocks.slice(0, 2).join(" · ")}`, kind: "go" };
+  if (why) return { line: why, kind: "why" };
+  return { line: STATUS_LABELS[ticket.status] || ticket.status, kind: "status" };
+}
+
+function ticketCard(ticket, options = {}) {
+  const recommended = nextRecommended(allTickets(), state.track).ticket;
+  const isNext = recommended?.id === ticket.id;
+  const meta = cardMeta(ticket);
+  const groupLabel = options.groupLabel ? `<span class="ticket-track">${escapeHtml(options.groupLabel)}</span>` : "";
+  return `<button class="ticket-card ${isNext ? "is-next" : ""} ${meta.kind === "skip" ? "is-skipped" : ""}" data-ticket="${escapeHtml(ticket.id)}" data-area="${areaFor(ticket.id)}" type="button">
+    <span class="ticket-top">${groupLabel}<span class="ticket-id">${escapeHtml(ticket.id)}</span>${isNext ? `<span class="next-pill">agora</span>` : ""}</span>
     <span class="ticket-title">${escapeHtml(ticket.title)}</span>
-    <span class="ticket-footer"><span class="ticket-state state-${escapeHtml(ticket.status)}"><i aria-hidden="true"></i>${escapeHtml(footer)}</span><span>abrir</span></span>
+    <span class="ticket-footer"><span class="ticket-state state-${escapeHtml(ticket.status)}"><i aria-hidden="true"></i>${escapeHtml(meta.line)}</span></span>
   </button>`;
 }
 
+function renderReadyColumn(tickets) {
+  if (state.track === "all") {
+    const groups = groupedReadyTickets(tickets);
+    if (!groups.length) return `<div class="empty-column">Nada liberado neste filtro.</div>`;
+    return groups.map((group) => `<div class="kanban-group"><p class="kanban-group-label">${escapeHtml(group.track.label)}</p>${group.tickets.map((ticket) => ticketCard(ticket, { groupLabel: group.track.label })).join("")}</div>`).join("");
+  }
+  const ordered = sortForColumn("ready", tickets, allTickets(), state.track);
+  return ordered.length ? ordered.map((ticket) => ticketCard(ticket)).join("") : `<div class="empty-column">Nada liberado neste foco.</div>`;
+}
+
 function renderBoard() {
-  const tickets = filteredTickets();
-  waveMemo.clear();
-  elements.boardView.innerHTML = WAVE_LABELS.map((label, index) => {
-    const waveNumber = index + 1;
-    const waveTickets = tickets.filter((ticket) => waveFor(ticket) === waveNumber);
-    return `<section class="wave-column">
-      <div class="wave-heading"><div><p>ONDA ${String(waveNumber).padStart(2, "0")}</p><h3>${label}</h3></div><span class="wave-count">${waveTickets.length}</span></div>
-      ${waveTickets.length ? waveTickets.map(ticketCard).join("") : `<div class="empty-column">Nenhum ticket</div>`}
+  const tickets = scopedTickets();
+  const nextId = nextRecommended(allTickets(), state.track).ticket?.id;
+  elements.boardView.innerHTML = BOARD_COLUMNS.map((column) => {
+    let columnTickets = tickets.filter((ticket) => boardColumn(ticket, allTickets()) === column.id);
+    if (column.id !== "ready") columnTickets = sortForColumn(column.id, columnTickets, allTickets(), state.track);
+    const collapsed = column.id === "done" && !state.showDone && columnTickets.length > 8;
+    const visible = collapsed ? columnTickets.slice(0, 8) : columnTickets;
+    const body = column.id === "ready"
+      ? renderReadyColumn(columnTickets)
+      : visible.length
+        ? visible.map((ticket) => ticketCard(ticket)).join("")
+        : `<div class="empty-column">Vazio</div>`;
+    const extra = collapsed
+      ? `<button class="show-more" data-expand-done type="button">Ver os ${columnTickets.length - 8} concluídos restantes</button>`
+      : "";
+    return `<section class="kanban-column column-${column.id}">
+      <div class="kanban-heading">
+        <div><p>${escapeHtml(column.hint)}</p><h3>${escapeHtml(column.label)}</h3></div>
+        <span class="wave-count">${columnTickets.length}</span>
+      </div>
+      <div class="kanban-body">${body}${extra}</div>
     </section>`;
   }).join("");
   elements.boardView.querySelectorAll("[data-ticket]").forEach((card) => card.addEventListener("click", () => openDialog(card.dataset.ticket)));
+  elements.boardView.querySelector("[data-expand-done]")?.addEventListener("click", () => {
+    state.showDone = true;
+    renderBoard();
+  });
+  if (nextId) {
+    const nextCard = elements.boardView.querySelector(`[data-ticket="${nextId}"]`);
+    nextCard?.classList.add("is-next");
+  }
+}
+
+function renderPath() {
+  const track = currentTrack();
+  const entries = pathEntries(allTickets(), state.track).filter((entry) => {
+    if (state.area !== "all" && areaFor(entry.ticketId) !== state.area) return false;
+    if (!state.query) return true;
+    return [entry.ticketId, entry.ticket?.title, entry.reason].join(" ").toLocaleLowerCase("pt-BR").includes(state.query.toLocaleLowerCase("pt-BR"));
+  });
+  elements.pathTitle.textContent = track ? `Rota ${track.label}` : "Rotas por foco";
+  elements.pathCount.textContent = `${entries.length} passos`;
+  if (!entries.length) {
+    elements.pathList.innerHTML = `<li class="empty-column">Nenhum passo neste filtro.</li>`;
+    return;
+  }
+  let lastTrack = "";
+  elements.pathList.innerHTML = entries.map((entry, index) => {
+    const heading = entry.trackId !== lastTrack && state.track === "all"
+      ? `<p class="path-track">${escapeHtml(entry.trackLabel)}</p>`
+      : "";
+    lastTrack = entry.trackId;
+    const status = entry.skipped ? "adiado" : entry.ticket ? (BOARD_COLUMNS.find((column) => column.id === entry.column)?.label || entry.column) : "ausente";
+    const stateClass = entry.skipped ? "skipped" : entry.current ? "current" : entry.column;
+    return `<li>${heading}<button class="path-item path-${stateClass}" data-ticket="${escapeHtml(entry.ticketId)}" type="button">
+      <span class="path-index">${String(index + 1).padStart(2, "0")}</span>
+      <span><strong>${escapeHtml(entry.ticketId)}</strong><em>${escapeHtml(entry.ticket?.title || "Ticket não encontrado")}</em><small>${escapeHtml(entry.reason || status)}</small></span>
+      <span class="path-status">${escapeHtml(status)}</span>
+    </button></li>`;
+  }).join("");
+  elements.pathList.querySelectorAll("[data-ticket]").forEach((item) => {
+    if (item.dataset.ticket) item.addEventListener("click", () => openDialog(item.dataset.ticket));
+  });
 }
 
 function derivedEvents() {
@@ -302,9 +393,10 @@ function timelineEvents() {
   return [...byId.values()]
     .filter((event) => {
       const relatedTicketIds = [...new Set([event.ticketId, ...(event.ticketIds || [])].filter(Boolean))];
+      const trackMatches = state.track === "all" || relatedTicketIds.some((ticketId) => ticketsForTrack([{ id: ticketId }], state.track).length);
       const areaMatches = state.area === "all" || relatedTicketIds.some((ticketId) => areaFor(ticketId) === state.area);
       const queryMatches = !state.query || [event.ticketId, event.summary, event.type].join(" ").toLocaleLowerCase("pt-BR").includes(state.query.toLocaleLowerCase("pt-BR"));
-      return areaMatches && queryMatches;
+      return trackMatches && areaMatches && queryMatches;
     })
     .sort((a, b) => String(b.timestamp).localeCompare(String(a.timestamp)));
 }
@@ -330,140 +422,31 @@ function renderTimeline() {
   });
 }
 
-const criticalPaths = [
-  { label: "Auth → fotos cloud", ids: ["AO-AUTH-002", "AO-AUTH-003", "AO-AUTH-004", "AO-PHOTO-009", "AO-PHOTO-003"] },
-  { label: "PowerSync → offline", ids: ["AO-PS-005", "AO-PS-006", "AO-PS-007", "AO-SUB-005", "AO-PS-008"] },
-  { label: "SaaS Online → runtime", ids: ["AO-SUB-002", "AO-SUB-003", "AO-SUB-004"] },
-  { label: "Fotos → Storage", ids: ["AO-PHOTO-004", "AO-PHOTO-005", "AO-PHOTO-006", "AO-PHOTO-007", "AO-PHOTO-008"] },
-];
-
-function renderDependencyGraph() {
-  elements.dependencyGraph.innerHTML = criticalPaths.map((path) => {
-    const nodes = path.ids.map((ticketId) => ticketById(ticketId)).filter(Boolean);
-    return `<div class="dependency-lane"><div class="lane-label">${escapeHtml(path.label)}</div><div class="lane-track">${nodes.map((ticket, index) => `${index ? `<span class="graph-arrow" aria-hidden="true">→</span>` : ""}<button class="graph-node" data-ticket="${escapeHtml(ticket.id)}" type="button"><strong>${escapeHtml(ticket.id)}</strong><span>${escapeHtml(STATUS_LABELS[ticket.status] || ticket.status)}</span></button>`).join("")}</div></div>`;
-  }).join("");
-  elements.dependencyGraph.querySelectorAll("[data-ticket]").forEach((node) => node.addEventListener("click", () => openDialog(node.dataset.ticket)));
-}
-
 function renderFocus() {
-  const candidates = allTickets().filter((ticket) => ticket.status === "in_progress" || (ticket.status === "ready" && pendingBlockers(ticket).length === 0));
-  const ticket = candidates[0] || allTickets().find((candidate) => candidate.status === "review" || candidate.status === "blocked");
+  const result = nextRecommended(allTickets(), state.track);
+  const ticket = result.ticket;
+  const track = currentTrack();
+  elements.focusWave.textContent = track ? `Foco ${track.label}` : "Todos os focos";
   if (!ticket) {
-    elements.focusWave.textContent = "Onda --";
     elements.focusTicketId.textContent = "SEM LIBERAÇÕES";
-    elements.focusTitle.textContent = "O grafo está aguardando dependências.";
-    elements.focusSummary.textContent = "Abra um ticket bloqueado para ver o caminho que precisa ser concluído.";
+    elements.focusTitle.textContent = "Nada liberado neste foco.";
+    elements.focusSummary.textContent = "Mude o foco ou espere um merge para abrir o próximo card.";
+    elements.focusUnlocks.textContent = "";
     elements.focusButton.disabled = true;
     return;
   }
-  elements.focusWave.textContent = `Onda ${waveFor(ticket)}`;
+  const unlocks = unlocksFrom(ticket.id, allTickets());
+  const why = reasonFor(result.track || track, ticket.id);
   elements.focusTicketId.textContent = ticket.id;
   elements.focusTitle.textContent = ticket.title;
-  elements.focusSummary.textContent = ticket.objective || ticket.context || "Sem objetivo descrito.";
+  elements.focusSummary.textContent = why || ticket.objective || ticket.context || "Sem objetivo descrito.";
+  elements.focusUnlocks.textContent = unlocks.length ? `Daqui você segue para ${unlocks.join(", ")}.` : "Este passo não destrava outro ticket diretamente.";
   elements.focusButton.disabled = false;
-  elements.focusButton.onclick = () => openDialog(ticket.id);
-}
-
-const DECISION_ROUTES = [
-  { area: "auth", label: "Auth", description: "Identidade e dispositivos" },
-  { area: "subscription", label: "SaaS", description: "Acesso e entitlement" },
-  { area: "powersync", label: "PowerSync", description: "Runtime offline" },
-  { area: "photos", label: "Fotos", description: "Storage e fluxo cloud" },
-];
-
-const DECISION_ADVICE = [
-  { label: "Feche a cadeia Auth", ids: ["AO-AUTH-002", "AO-AUTH-003", "AO-AUTH-004"], copy: "AUTH-002 → 003 → 004" },
-  { label: "Rode SaaS Online em paralelo", ids: ["AO-SUB-002"], copy: "Acesso sem PowerSync" },
-  { label: "Libere a ponte para Photos", ids: ["AO-PHOTO-009"], copy: "Identidade SaaS nas fotos" },
-  { label: "Siga a cadeia de Fotos", ids: ["AO-PHOTO-003", "AO-PHOTO-004", "AO-PHOTO-005", "AO-PHOTO-006", "AO-PHOTO-007", "AO-PHOTO-008"], copy: "QR → compressão → Storage → migração" },
-  { label: "Mantenha PowerSync no ramo paralelo", ids: ["AO-PS-005", "AO-PS-006", "AO-PS-007", "AO-PS-008"], copy: "Cloud → Tauri → offline → Go/No-Go" },
-];
-
-function focusTicket() {
-  const active = allTickets().find((ticket) => ticket.status === "in_progress");
-  return active || allTickets().find((ticket) => ticket.status === "ready" && pendingBlockers(ticket).length === 0)
-    || allTickets().find((ticket) => ticket.status === "review" || ticket.status === "blocked");
-}
-
-function routeNextTicket(area) {
-  const routeTickets = allTickets().filter((ticket) => areaFor(ticket.id) === area);
-  return routeTickets.find((ticket) => ticket.status === "in_progress")
-    || routeTickets.find((ticket) => ticket.status === "ready" && pendingBlockers(ticket).length === 0)
-    || routeTickets.find((ticket) => ticket.status !== "merged");
-}
-
-function stageLabel(waveNumber, tickets, activeTicket) {
-  if (!tickets.length) return "Sem tickets";
-  if (tickets.every((ticket) => ticket.status === "merged")) return "Concluída";
-  if (activeTicket && waveFor(activeTicket) === waveNumber) return "Agora";
-  if (tickets.some((ticket) => ticket.status === "ready" && pendingBlockers(ticket).length === 0)) return "Liberada";
-  return "Aguardando";
-}
-
-function adviceState(ids) {
-  const tickets = ids.map((id) => ticketById(id)).filter(Boolean);
-  if (!tickets.length) return { label: "Sem tickets", ticket: null };
-  if (tickets.every((ticket) => ticket.status === "merged")) return { label: "concluído", ticket: null };
-  const active = tickets.find((ticket) => ticket.status === "in_progress" || ticket.status === "review")
-    || tickets.find((ticket) => ticket.status === "ready" && pendingBlockers(ticket).length === 0);
-  if (active) return { label: `${active.id} · ${STATUS_LABELS[active.status] || active.status}`, ticket: active };
-  const waiting = tickets.find((ticket) => ticket.status !== "merged");
-  return { label: waiting ? `aguarda ${pendingBlockers(waiting).join(", ")}` : "aguardando", ticket: waiting };
-}
-
-function renderDecisionAdvice() {
-  elements.decisionAdvice.innerHTML = DECISION_ADVICE.map((step, index) => {
-    const state = adviceState(step.ids);
-    const ticketId = state.ticket?.id || "";
-    return `<li><button class="advice-item ${state.label === "concluído" ? "advice-complete" : ""}" data-ticket="${escapeHtml(ticketId)}" type="button" ${ticketId ? "" : "disabled"}><span class="advice-number">${index + 1}</span><span><strong>${escapeHtml(step.label)}</strong><small>${escapeHtml(step.copy)} · ${escapeHtml(state.label)}</small></span></button></li>`;
-  }).join("");
-  elements.decisionAdvice.querySelectorAll("[data-ticket]").forEach((node) => {
-    if (node.dataset.ticket) node.addEventListener("click", () => openDialog(node.dataset.ticket));
-  });
-}
-
-function renderDecisionMap() {
-  const nextTicket = focusTicket();
-  waveMemo.clear();
-  renderDecisionAdvice();
-  const waveStages = WAVE_LABELS.map((label, index) => {
-    const waveNumber = index + 1;
-    const tickets = allTickets().filter((ticket) => waveFor(ticket) === waveNumber);
-    const stageStatus = stageLabel(waveNumber, tickets, nextTicket);
-    const stateClass = stageStatus === "Concluída" ? "complete" : stageStatus === "Agora" ? "current" : stageStatus === "Liberada" ? "ready" : "waiting";
-    return `<div class="decision-step step-${stateClass}"><span>${String(waveNumber).padStart(2, "0")}</span><strong>${escapeHtml(label)}</strong><small>${escapeHtml(stageStatus)}</small></div>`;
-  }).join('<span class="decision-arrow" aria-hidden="true">→</span>');
-
-  const routeCards = DECISION_ROUTES.map((route) => {
-    const routeTickets = allTickets().filter((ticket) => areaFor(ticket.id) === route.area);
-    const routeTicket = routeNextTicket(route.area);
-    const complete = routeTickets.length > 0 && routeTickets.every((ticket) => ticket.status === "merged");
-    const status = complete ? "concluído" : routeTicket ? waveStatusCopy(routeTicket) : "sem tickets";
-    return `<button class="route-card ${complete ? "route-complete" : ""}" data-ticket="${escapeHtml(routeTicket?.id || "")}" type="button" ${routeTicket ? "" : "disabled"}><span class="route-dot" aria-hidden="true"></span><span><strong>${escapeHtml(route.label)}</strong><small>${escapeHtml(route.description)}</small></span><em>${escapeHtml(status)}</em></button>`;
-  }).join("");
-
-  elements.decisionMapFlow.innerHTML = `<div class="decision-root"><span class="eyebrow">PONTO DE PARTIDA</span><strong>AutoOS SaaS</strong><small>Uma base, vários caminhos.</small></div><span class="decision-arrow decision-root-arrow" aria-hidden="true">→</span><div class="decision-path"><span class="eyebrow">SEQUÊNCIA DO WORKFLOW</span><div class="decision-sequence">${waveStages}</div><div class="route-label"><span class="eyebrow">RAMOS DE TRABALHO</span><small>Os ramos só avançam quando suas dependências estão liberadas.</small></div><div class="route-grid">${routeCards}</div></div>`;
-  elements.decisionMapFlow.querySelectorAll("[data-ticket]").forEach((node) => {
-    if (node.dataset.ticket) node.addEventListener("click", () => openDialog(node.dataset.ticket));
-  });
-
-  if (!nextTicket) {
-    elements.mapNextId.textContent = "SEM PRÓXIMO PASSO";
-    elements.mapNextTitle.textContent = "O mapa está sem tickets disponíveis.";
-    elements.mapNextReason.textContent = "Revise as dependências ou registre a próxima decisão do projeto.";
-    elements.mapNextButton.disabled = true;
-    return;
-  }
-  elements.mapNextId.textContent = nextTicket.id;
-  elements.mapNextTitle.textContent = nextTicket.title;
-  const directUnlocks = allTickets().filter((ticket) => (ticket.blockedBy || []).includes(nextTicket.id)).slice(0, 2).map((ticket) => ticket.id);
-  elements.mapNextReason.textContent = nextTicket.status === "in_progress"
-    ? "Está em andamento. Finalize e valide este ticket antes de abrir outro ramo."
-    : directUnlocks.length
-      ? `Está liberado agora e pode destravar ${directUnlocks.join(" e ")}.`
-      : "Está liberado agora e é o próximo passo recomendado pelo workflow.";
-  elements.mapNextButton.disabled = false;
-  elements.mapNextButton.onclick = () => openDialog(nextTicket.id);
+  elements.focusButton.onclick = () => {
+    state.view = "board";
+    openDialog(ticket.id);
+    document.querySelector("#board")?.scrollIntoView({ behavior: "smooth", block: "start" });
+  };
 }
 
 function renderActivity() {
@@ -495,20 +478,21 @@ function formatActivityTime(value) {
 }
 
 function renderHealth() {
-  const tickets = allTickets();
-  const blocked = tickets.filter((ticket) => pendingBlockers(ticket).length > 0 || ticket.status === "blocked").length;
+  const tickets = scopedTickets();
+  const waiting = tickets.filter((ticket) => boardColumn(ticket, allTickets()) === "waiting").length;
   const review = tickets.filter((ticket) => ticket.status === "review").length;
-  const score = Math.max(0, Math.min(100, 100 - blocked * 7 - review * 2));
+  const score = Math.max(0, Math.min(100, 100 - waiting * 4 - review * 2));
   elements.healthScore.textContent = `${score}/100`;
-  elements.healthSummary.textContent = blocked
-    ? `As dependências estão claras. ${blocked} bloqueio${blocked === 1 ? " merece" : "s merecem"} atenção nesta onda.`
-    : "As dependências estão claras e não há bloqueios ativos no caminho atual.";
+  elements.healthSummary.textContent = waiting
+    ? `${waiting} ticket${waiting === 1 ? "" : "s"} na fila deste foco. A coluna da esquerda é o que dá para começar.`
+    : "Neste foco, nada está preso em dependência. Siga o card marcado como agora.";
   elements.healthSpeed.textContent = review ? "Em revisão" : "Boa";
-  elements.healthBlockers.textContent = blocked ? `${blocked} ativo${blocked === 1 ? "" : "s"}` : "Nenhum";
+  elements.healthBlockers.textContent = waiting ? `${waiting} na fila` : "Nenhum";
 }
 
 function renderViews() {
   elements.boardView.classList.toggle("hidden", state.view !== "board");
+  elements.pathView.classList.toggle("hidden", state.view !== "path");
   elements.timelineView.classList.toggle("hidden", state.view !== "timeline");
   document.querySelectorAll(".view-button").forEach((button) => {
     const active = button.dataset.view === state.view;
@@ -517,19 +501,27 @@ function renderViews() {
   });
 }
 
+function renderNav() {
+  const hash = window.location.hash || "#overview";
+  document.querySelectorAll(".nav-link").forEach((link) => {
+    link.classList.toggle("active", link.getAttribute("href") === hash);
+  });
+}
+
 function render() {
   renderHeader();
   renderQuality();
+  renderTrackFilters();
   renderMetrics();
   renderFilters();
   renderBoard();
+  renderPath();
   renderTimeline();
-  renderDependencyGraph();
   renderFocus();
-  renderDecisionMap();
   renderActivity();
   renderHealth();
   renderViews();
+  renderNav();
 }
 
 function dialogBlock(title, content) {
@@ -540,10 +532,16 @@ function openDialog(ticketId) {
   const ticket = ticketById(ticketId);
   if (!ticket) return;
   state.selectedTicketId = ticketId;
-  const blockers = pendingBlockers(ticket);
+  const blockers = pendingBlockers(ticket, allTickets());
+  const unlocks = unlocksFrom(ticket.id, allTickets());
   const ticketEvents = state.events.filter((event) => event.ticketId === ticketId || event.ticketIds?.includes(ticketId)).slice(0, 6);
+  const column = BOARD_COLUMNS.find((item) => item.id === boardColumn(ticket, allTickets()));
   elements.dialogContent.innerHTML = `<div class="dialog-inner">
     <div class="dialog-title-row"><span class="ticket-id">${escapeHtml(ticket.id)}</span><h2 id="dialog-title">${escapeHtml(ticket.title)}</h2><p class="dialog-summary">${escapeHtml(ticket.objective || ticket.context || "Sem objetivo descrito.")}</p></div>
+    <div class="path-callout">
+      <p><strong>${escapeHtml(column?.label || ticket.status)}</strong> · ${escapeHtml(cardMeta(ticket).line)}</p>
+      ${unlocks.length ? `<div class="unlock-row">${unlocks.map((id) => `<button class="unlock-chip" data-ticket="${escapeHtml(id)}" type="button">${escapeHtml(id)}</button>`).join("")}</div>` : ""}
+    </div>
     <div class="detail-grid">
       ${dialogBlock("Escopo", displayList(ticket.scope))}
       ${dialogBlock("Fora do escopo", displayList(ticket.outOfScope))}
@@ -572,7 +570,7 @@ function openDialog(ticketId) {
     void saveStatus(ticket.id);
   });
   elements.dialog.querySelector("#status-select")?.addEventListener("change", (event) => {
-    const pending = event.target.value === "in_progress" ? pendingBlockers(ticket) : [];
+    const pending = event.target.value === "in_progress" ? pendingBlockers(ticket, allTickets()) : [];
     const error = elements.dialog.querySelector("#status-form-error");
     if (pending.length) {
       error.textContent = `Não liberado: ${pending.join(", ")}.`;
@@ -580,6 +578,9 @@ function openDialog(ticketId) {
     } else {
       error.classList.add("hidden");
     }
+  });
+  elements.dialog.querySelectorAll(".unlock-chip").forEach((chip) => {
+    chip.addEventListener("click", () => openDialog(chip.dataset.ticket));
   });
 }
 
@@ -589,7 +590,6 @@ async function saveStatus(ticketId) {
   const errorElement = elements.dialog.querySelector("#status-form-error");
   if (!status) return;
   if (!state.editable) {
-    const ticket = ticketById(ticketId);
     const title = encodeURIComponent(`[Workflow] ${ticketId} → ${STATUS_LABELS[status]}`);
     const body = encodeURIComponent(`<!-- autoos-workflow-status-request -->\nticketId=${ticketId}\nstatus=${status}\nnote=${note || "Solicitação feita pelo painel público."}`);
     window.open(`https://github.com/${GITHUB_REPOSITORY}/issues/new?title=${title}&body=${body}&labels=workflow-status`, "_blank", "noopener");
@@ -620,6 +620,8 @@ function showToast(message) {
   showToast.timer = window.setTimeout(() => elements.toast.classList.remove("visible"), 3200);
 }
 
+state.track = readStoredTrack();
+
 elements.refreshButton.addEventListener("click", () => {
   void loadData().then(() => showToast("Painel atualizado."));
 });
@@ -629,14 +631,12 @@ elements.searchInput.addEventListener("input", (event) => {
 });
 document.querySelectorAll(".view-button").forEach((button) => button.addEventListener("click", () => {
   state.view = button.dataset.view;
-  document.querySelectorAll(".view-button").forEach((viewButton) => viewButton.setAttribute("aria-selected", String(viewButton === button)));
   renderViews();
 }));
 elements.activityHistory.addEventListener("click", () => {
   state.view = "timeline";
-  document.querySelectorAll(".view-button").forEach((button) => button.setAttribute("aria-selected", String(button.dataset.view === "timeline")));
   renderViews();
-  document.querySelector("#waves")?.scrollIntoView({ behavior: "smooth", block: "start" });
+  document.querySelector("#board")?.scrollIntoView({ behavior: "smooth", block: "start" });
 });
 elements.dialogClose.addEventListener("click", () => elements.dialog.classList.add("hidden"));
 elements.dialog.addEventListener("click", (event) => {
@@ -645,6 +645,7 @@ elements.dialog.addEventListener("click", (event) => {
 document.addEventListener("keydown", (event) => {
   if (event.key === "Escape") elements.dialog.classList.add("hidden");
 });
+window.addEventListener("hashchange", renderNav);
 
 void loadData().catch((error) => {
   elements.qualityAlert.classList.remove("hidden");
