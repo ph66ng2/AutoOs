@@ -14,9 +14,9 @@ describe("ReleaseHighlightsDialog", () => {
     render(<ReleaseHighlightsDialog enabled />);
 
     expect(screen.getByRole("dialog")).toBeInTheDocument();
-    expect(screen.getByText("Um AutoOS mais completo para o atendimento")).toBeInTheDocument();
-    expect(screen.getByText("Contatos e responsáveis")).toBeInTheDocument();
-    expect(screen.getByText("Orçamentos mais seguros")).toBeInTheDocument();
+    expect(screen.getByText("Orçamento mais claro e correções de produção")).toBeInTheDocument();
+    expect(screen.getByText("Prazo na prévia do orçamento")).toBeInTheDocument();
+    expect(screen.getByText("PDF em qualquer fase")).toBeInTheDocument();
   });
 
   it("registra a confirmação e não reaparece na mesma versão", () => {

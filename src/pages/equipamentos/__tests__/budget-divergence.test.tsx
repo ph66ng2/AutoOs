@@ -3,7 +3,7 @@
  *
  * Cobre:
  * - Detecção de divergência entre soma de serviços/peças e valor total informado
- * - Diálogo de divergência com opções "Corrigir" e "Continuar assim mesmo"
+ * - Diálogo de divergência com Sim/Não para mudar o total à soma dos itens
  * - Flag divergence passada para db.atualizarServicosVerificacao
  * - Indicador "Histórico de Ajustes" quando adjusted_at está presente
  * - Verificação dos parâmetros do audit (old_total, new_total, services counts)
@@ -93,6 +93,7 @@ vi.mock("@/lib/db", () => ({
 }));
 
 vi.mock("@/lib/pdf-service", () => ({
+  PRAZO_EXECUCAO_PADRAO: { minDiasUteis: 2, maxDiasUteis: 4 },
   PdfService: {
     gerarOrcamento: vi.fn(),
     gerarOrdemServico: vi.fn(),
@@ -329,15 +330,15 @@ describe("Equipamentos — Budget Divergence & Audit", () => {
       expect(screen.getByTestId("confirm-dialog")).toBeInTheDocument();
     });
 
-    expect(screen.getByTestId("confirm-title")).toHaveTextContent(/Divergência detectada/i);
-    expect(screen.getByTestId("confirm-description")).toHaveTextContent(/Divergência: soma dos serviços \(R\$ 150\.00\) ≠ valor total informado \(R\$ 200\.00\)/i);
-    expect(screen.getByTestId("confirm-cancel")).toHaveTextContent(/Corrigir/i);
-    expect(screen.getByTestId("confirm-action")).toHaveTextContent(/Continuar assim mesmo/i);
+    expect(screen.getByTestId("confirm-title")).toHaveTextContent(/Mudar Valor Total do Orçamento para/i);
+    expect(screen.getByTestId("confirm-title")).toHaveTextContent(/150,00/);
+    expect(screen.getByTestId("confirm-cancel")).toHaveTextContent(/^Não$/);
+    expect(screen.getByTestId("confirm-action")).toHaveTextContent(/^Sim$/);
   });
 
   // ─── Test 3: "Corrigir" ajusta o total para a soma ───
 
-  it('"Corrigir" define valorOrcamento = soma e mostra resumo normal', async () => {
+  it('"Sim" define valorOrcamento = soma e mostra resumo normal', async () => {
     mockBuscarVerificacao.mockResolvedValue(makeVerificacao());
     await abrirDialogoAjusteOrcamento();
 
@@ -348,9 +349,8 @@ describe("Equipamentos — Budget Divergence & Audit", () => {
       expect(screen.getByTestId("confirm-dialog")).toBeInTheDocument();
     });
 
-    // Clica em "Corrigir"
     await act(async () => {
-      fireEvent.click(screen.getByTestId("confirm-cancel"));
+      fireEvent.click(screen.getByTestId("confirm-action"));
     });
 
     // O input de valor deve ter sido corrigido para 150
@@ -365,7 +365,7 @@ describe("Equipamentos — Budget Divergence & Audit", () => {
 
   // ─── Test 4: "Continuar" salva com divergence=true ───
 
-  it('"Continuar assim mesmo" chama atualizarServicosVerificacao com divergence=true', async () => {
+  it('"Não" chama atualizarServicosVerificacao com divergence=true', async () => {
     mockBuscarVerificacao.mockResolvedValue(makeVerificacao());
     await abrirDialogoAjusteOrcamento();
 
@@ -376,9 +376,8 @@ describe("Equipamentos — Budget Divergence & Audit", () => {
       expect(screen.getByTestId("confirm-dialog")).toBeInTheDocument();
     });
 
-    // Clica em "Continuar assim mesmo"
     await act(async () => {
-      fireEvent.click(screen.getByTestId("confirm-action"));
+      fireEvent.click(screen.getByTestId("confirm-cancel"));
     });
 
     await waitFor(() => {
@@ -482,9 +481,11 @@ describe("Equipamentos — Budget Divergence & Audit", () => {
     await clicarConfirmarStatus();
 
     await waitFor(() => {
-      expect(screen.getByTestId("confirm-title")).toHaveTextContent(/Divergência detectada/i);
+      expect(screen.getByTestId("confirm-title")).toHaveTextContent(/Mudar Valor Total do Orçamento para/i);
     });
-    expect(screen.getByTestId("confirm-description")).toHaveTextContent(/R\$ 100\.00.*R\$ 250\.00/);
+    expect(screen.getByTestId("confirm-title")).toHaveTextContent(/100,00/);
+    expect(screen.getByTestId("confirm-cancel")).toHaveTextContent(/^Não$/);
+    expect(screen.getByTestId("confirm-action")).toHaveTextContent(/^Sim$/);
   });
 
   it("ajusta o orçamento durante a manutenção sem mudar o status", async () => {
@@ -522,6 +523,7 @@ describe("Equipamentos — Budget Divergence & Audit", () => {
 
     expect(screen.getByTestId("action-aprovar")).toHaveTextContent("Aprovar");
     expect(screen.getByTestId("action-reprovar")).toHaveTextContent("Reprovar");
+    expect(screen.getByTestId("action-orcamento_pdf")).toHaveTextContent("Orçamento PDF");
     expect(screen.getByTestId("action-alterar_orcamento")).toHaveTextContent("Alterar Orçamento");
     expect(screen.getByTestId("action-editar")).toHaveTextContent("Editar Equipamento");
   });
@@ -564,7 +566,7 @@ describe("Equipamentos — Budget Divergence & Audit", () => {
     expect(screen.getByText(/Forma de pagamento da aprovação/i)).toBeInTheDocument();
   });
 
-  it("oferece Alterar Orçamento no menu em todas as fases após a verificação", () => {
+  it("oferece Orçamento PDF e Alterar Orçamento no menu em todas as fases após a verificação", () => {
     const fases = [
       "VERIFICADO",
       "AGUARDANDO_APROVACAO",
@@ -581,12 +583,14 @@ describe("Equipamentos — Budget Divergence & Audit", () => {
     for (const fase of fases) {
       equipamentoVerificado.status = fase;
       const view = render(<Equipamentos />);
+      expect(screen.getByTestId("action-orcamento_pdf")).toHaveTextContent("Orçamento PDF");
       expect(screen.getByTestId("action-alterar_orcamento")).toBeInTheDocument();
       view.unmount();
     }
 
     equipamentoVerificado.status = "EM_VERIFICACAO";
     const view = render(<Equipamentos />);
+    expect(screen.queryByTestId("action-orcamento_pdf")).not.toBeInTheDocument();
     expect(screen.queryByTestId("action-alterar_orcamento")).not.toBeInTheDocument();
     view.unmount();
   });
