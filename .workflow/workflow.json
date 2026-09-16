@@ -1604,7 +1604,7 @@
     {
       "id": "AO-UX-001",
       "title": "Padronizar seleção de dados no cadastro de equipamentos",
-      "status": "ready",
+      "status": "merged",
       "blockedBy": [
         "AO-INT-001"
       ],
