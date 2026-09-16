@@ -1,6 +1,6 @@
 name: Windows Test Build
 
-run-name: Windows test build — ${{ inputs.ref }}
+run-name: Windows test build — ${{ inputs.ref || github.head_ref || github.ref_name }}
 
 on:
   workflow_dispatch:
@@ -8,18 +8,30 @@ on:
       ref:
         description: Branch, tag ou commit que será compilado
         required: true
-        default: integration/ao-cont-orc-pdf-qa
+        default: feature
         type: string
-      confirmacao_producao:
-        description: Digite PRODUCAO para gerar um EXE conectado ao banco real
+      modo:
+        description: Produto a compilar; SaaS não usa PostgreSQL
         required: true
+        default: internal
+        type: choice
+        options:
+          - internal
+          - saas
+      confirmacao_producao:
+        description: Digite PRODUCAO somente para o modo internal conectado ao banco real
+        required: false
         type: string
+  pull_request:
+    branches: [feature]
+    paths:
+      - '.github/workflows/windows-test-build.yml'
 
 permissions:
   contents: read
 
 concurrency:
-  group: windows-test-build-${{ inputs.ref }}
+  group: windows-test-build-${{ inputs.ref || github.event.pull_request.number || github.ref }}
   cancel-in-progress: false
 
 jobs:
@@ -30,7 +42,7 @@ jobs:
       - name: Checkout da versão escolhida
         uses: actions/checkout@v4
         with:
-          ref: ${{ inputs.ref }}
+          ref: ${{ inputs.ref || github.event.pull_request.head.sha }}
 
       - name: Registrar commit compilado
         id: source
@@ -63,7 +75,8 @@ jobs:
             throw "tauri.conf.json não pode empacotar .env no instalador."
           }
 
-      - name: Confirmar build conectado à produção
+      - name: Confirmar build interno conectado à produção
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.modo == 'internal' }}
         shell: pwsh
         env:
           CONFIRMACAO_PRODUCAO: ${{ inputs.confirmacao_producao }}
@@ -83,11 +96,34 @@ jobs:
           }
 
       - name: Validar schema da produção em modo somente leitura
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.modo == 'internal' }}
         env:
           AUTOOS_DATABASE_URL: ${{ secrets.AUTOOS_DATABASE_URL }}
         run: cargo run --manifest-path src-tauri/Cargo.toml --locked --quiet --bin release_database_check
 
-      - name: Compilar instalador Windows conectado à produção sem publicar release
+      - name: Validar configuração pública SaaS de staging
+        if: ${{ github.event_name == 'pull_request' || inputs.modo == 'saas' }}
+        shell: pwsh
+        env:
+          VITE_SUPABASE_URL: ${{ vars.AUTOOS_SAAS_STAGING_URL }}
+          VITE_SUPABASE_PUBLISHABLE_KEY: ${{ vars.AUTOOS_SAAS_STAGING_PUBLISHABLE_KEY }}
+          VITE_SUPABASE_PASSWORD_RECOVERY_REDIRECT: ${{ vars.AUTOOS_SAAS_STAGING_PASSWORD_RECOVERY_REDIRECT }}
+        run: |
+          if ($env:VITE_SUPABASE_URL -notmatch '^https://[^/]+\.supabase\.co$') {
+            throw "AUTOOS_SAAS_STAGING_URL deve ser uma URL HTTPS de projeto Supabase."
+          }
+          if ($env:VITE_SUPABASE_PUBLISHABLE_KEY -notmatch '^sb_publishable_') {
+            throw "AUTOOS_SAAS_STAGING_PUBLISHABLE_KEY deve ser uma chave publicável."
+          }
+          if ($env:VITE_SUPABASE_PASSWORD_RECOVERY_REDIRECT -notmatch '^https://') {
+            throw "AUTOOS_SAAS_STAGING_PASSWORD_RECOVERY_REDIRECT deve usar HTTPS."
+          }
+          if ($env:DATABASE_URL -or $env:AUTOOS_DATABASE_URL) {
+            throw "O build SaaS de teste não aceita configuração PostgreSQL."
+          }
+
+      - name: Compilar instalador Windows interno conectado à produção sem publicar release
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.modo == 'internal' }}
         uses: tauri-apps/tauri-action@v0
         env:
           CI: true
@@ -96,6 +132,16 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
           args: --bundles nsis
+
+      - name: Compilar instalador Windows SaaS sem publicar release
+        if: ${{ github.event_name == 'pull_request' || inputs.modo == 'saas' }}
+        env:
+          VITE_SUPABASE_URL: ${{ vars.AUTOOS_SAAS_STAGING_URL }}
+          VITE_SUPABASE_PUBLISHABLE_KEY: ${{ vars.AUTOOS_SAAS_STAGING_PUBLISHABLE_KEY }}
+          VITE_SUPABASE_PASSWORD_RECOVERY_REDIRECT: ${{ vars.AUTOOS_SAAS_STAGING_PASSWORD_RECOVERY_REDIRECT }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY || secrets.TAURI_SIGNING_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: npm run tauri:build:saas
 
       - name: Calcular checksums do instalador
         shell: pwsh
@@ -124,8 +170,7 @@ jobs:
         shell: pwsh
         run: |
           "## Instalador de teste pronto" >> $env:GITHUB_STEP_SUMMARY
-          "- Origem solicitada: ``${{ inputs.ref }}``" >> $env:GITHUB_STEP_SUMMARY
+          "- Origem solicitada: ``${{ inputs.ref || github.head_ref || github.ref_name }}``" >> $env:GITHUB_STEP_SUMMARY
           "- Commit compilado: ``${{ steps.source.outputs.sha }}``" >> $env:GITHUB_STEP_SUMMARY
-          "- Este instalador abre conectado ao banco de produção." >> $env:GITHUB_STEP_SUMMARY
-          "- A execução no Windows pode alterar dados reais conforme as ações do usuário." >> $env:GITHUB_STEP_SUMMARY
+          "- Modo interno só é conectado à produção com confirmação explícita; modo SaaS usa staging e não inicializa PostgreSQL." >> $env:GITHUB_STEP_SUMMARY
           "- O artefato expira em 3 dias e não cria tag nem GitHub Release." >> $env:GITHUB_STEP_SUMMARY
