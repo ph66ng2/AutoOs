@@ -35,7 +35,7 @@
     "workflow:dashboard": "node scripts/workflow-dashboard.mjs",
     "workflow:report": "node scripts/workflow-report.mjs",
     "workflow:dashboard:prepare": "node scripts/prepare-workflow-dashboard.mjs",
-    "test:workflow": "node --test workflow-dashboard/storage.test.mjs"
+    "test:workflow": "node --test workflow-dashboard/storage.test.mjs workflow-dashboard/tracks.test.mjs"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.9.0",

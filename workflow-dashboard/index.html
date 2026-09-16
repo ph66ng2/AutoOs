@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="theme-color" content="#07121b" />
-    <title>AutoOS Workflow | Mapa de execução</title>
+    <title>AutoOS Workflow | Quadro</title>
     <link rel="stylesheet" href="./styles.css" />
   </head>
   <body>
@@ -20,7 +20,7 @@
 
         <nav class="main-nav" aria-label="Navegação principal">
           <a class="nav-link active" href="#overview"><span aria-hidden="true">⌁</span> Visão geral</a>
-          <a class="nav-link" href="#waves"><span aria-hidden="true">≋</span> Ondas</a>
+          <a class="nav-link" href="#board"><span aria-hidden="true">▣</span> Quadro</a>
           <a class="nav-link" href="#activity"><span aria-hidden="true">↗</span> Atividade</a>
         </nav>
 
@@ -41,7 +41,7 @@
           <section id="overview" class="intro-row" aria-labelledby="page-title">
             <div>
               <p class="eyebrow">AUTOOS / WORKFLOW</p>
-              <h1 id="page-title">Mapa de execução</h1>
+              <h1 id="page-title">Quadro de execução</h1>
             </div>
             <div class="intro-actions">
               <span class="updated-at">Atualizado <strong id="last-read">--</strong></span>
@@ -55,53 +55,42 @@
           <section class="overview-grid" aria-label="Resumo do projeto">
             <article class="overview-card progress-card">
               <div class="card-heading"><p class="eyebrow">PROGRESSO GERAL</p><span class="card-status">EM MOVIMENTO</span></div>
-              <div class="progress-heading"><h2>O projeto está ganhando forma.</h2><strong id="progress-percent">--%</strong></div>
+              <div class="progress-heading"><h2>Escolha um foco e o quadro mostra só o que dá para fazer dali.</h2><strong id="progress-percent">--%</strong></div>
               <div class="progress-track"><span id="progress-bar"></span></div>
               <div class="stats-row">
                 <div><strong id="metric-total">--</strong><span>tickets</span></div>
                 <div><strong id="metric-merged">--</strong><span>concluídos</span></div>
                 <div><strong id="metric-ready">--</strong><span>liberados</span></div>
-                <div><strong id="metric-blocked">--</strong><span>bloqueio crítico</span></div>
+                <div><strong id="metric-blocked">--</strong><span>na fila</span></div>
               </div>
             </article>
 
             <article class="overview-card focus-card">
-              <div class="card-heading"><p class="eyebrow">FOCO AGORA</p><span id="focus-wave" class="focus-wave">Onda --</span></div>
+              <div class="card-heading"><p class="eyebrow">COMECE POR AQUI</p><span id="focus-wave" class="focus-wave">Foco --</span></div>
               <span id="focus-ticket-id" class="focus-ticket-id">--</span>
               <h2 id="focus-title">Carregando foco...</h2>
               <p id="focus-summary">Selecionando o próximo passo do workflow.</p>
-              <button id="focus-button" class="card-action" type="button">Ver detalhes <span aria-hidden="true">→</span></button>
+              <p id="focus-unlocks" class="focus-unlocks"></p>
+              <button id="focus-button" class="card-action" type="button">Abrir no quadro <span aria-hidden="true">→</span></button>
             </article>
           </section>
 
-          <section id="decision-map" class="decision-section" aria-labelledby="decision-map-title">
+          <section id="board" class="waves-section" aria-labelledby="waves-title">
             <div class="section-heading">
-              <div><p class="eyebrow">ORDEM RECOMENDADA</p><h2 id="decision-map-title">Mapa de decisão</h2><p class="section-copy">Use o caminho destacado para escolher o próximo trabalho. Dependências liberadas ficam para trás; o ramo seguinte mostra o que será desbloqueado.</p></div>
-            </div>
-            <div class="decision-map">
-              <div class="decision-guide">
-                <span class="guide-label">PRÓXIMO MOVIMENTO</span>
-                <span id="map-next-id" class="focus-ticket-id">--</span>
-                <h3 id="map-next-title">Calculando caminho...</h3>
-                <p id="map-next-reason">O mapa será montado a partir das dependências atuais.</p>
-                <div class="guide-divider"></div>
-                <span class="guide-label">COMO SEGUIR</span>
-                <ol id="decision-advice" class="advice-list"></ol>
-                <button id="map-next-button" class="card-action" type="button">Abrir ticket <span aria-hidden="true">→</span></button>
+              <div>
+                <p class="eyebrow">KANBAN</p>
+                <h2 id="waves-title">Onde você pode ir agora</h2>
+                <p class="section-copy">A coluna da esquerda é o que está liberado. Em cada card, o que aquele ticket destrava. Mude o foco para ver só a rota que importa.</p>
               </div>
-              <div id="decision-map-flow" class="decision-flow" aria-label="Fluxo de decisão"></div>
             </div>
-          </section>
 
-          <section id="waves" class="waves-section" aria-labelledby="waves-title">
-            <div class="section-heading">
-              <div><p class="eyebrow">CAMINHO CRÍTICO</p><h2 id="waves-title">Ondas de execução</h2><p class="section-copy">Leia da esquerda para a direita. Cada onda só avança quando a anterior libera o caminho.</p></div>
-            </div>
+            <div id="track-filters" class="track-switcher" role="tablist" aria-label="Foco de trabalho"></div>
 
             <div class="workflow-toolbar" aria-label="Filtros do painel">
               <div class="view-switcher" role="tablist" aria-label="Modo de visualização">
-                <button class="view-button active" data-view="board" role="tab" aria-selected="true" type="button">Ondas</button>
-                <button class="view-button" data-view="timeline" role="tab" aria-selected="false" type="button">Lista</button>
+                <button class="view-button active" data-view="board" role="tab" aria-selected="true" type="button">Quadro</button>
+                <button class="view-button" data-view="path" role="tab" aria-selected="false" type="button">Caminho</button>
+                <button class="view-button" data-view="timeline" role="tab" aria-selected="false" type="button">Histórico</button>
               </div>
               <label class="search-box">
                 <span class="search-icon" aria-hidden="true">⌕</span>
@@ -111,7 +100,15 @@
               <div id="area-filters" class="filter-list" role="list"></div>
             </div>
 
-            <section id="board-view" class="wave-board" aria-label="Ondas de tickets"></section>
+            <section id="board-view" class="kanban-board" aria-label="Quadro Kanban"></section>
+
+            <section id="path-view" class="path-view hidden" aria-label="Caminho recomendado">
+              <div class="section-heading compact-heading">
+                <div><p class="eyebrow">ROTA DO FOCO</p><h2 id="path-title">O que fazer, na ordem</h2></div>
+                <span id="path-count" class="section-count">-- passos</span>
+              </div>
+              <ol id="path-list" class="path-list"></ol>
+            </section>
 
             <section id="timeline-view" class="timeline-view hidden" aria-label="Linha do tempo">
               <div class="section-heading compact-heading"><div><p class="eyebrow">HISTÓRICO</p><h2>O projeto em movimento</h2></div><span id="event-count" class="section-count">-- eventos</span></div>
@@ -127,14 +124,9 @@
             <section class="surface-panel health-panel" aria-labelledby="health-title">
               <div class="section-heading compact-heading"><div><p class="eyebrow">SAÚDE DO WORKFLOW</p><h2 id="health-title">Fluxo estável</h2></div><strong id="health-score" class="health-score">--/100</strong></div>
               <p id="health-summary" class="health-summary">Analisando dependências e próximos passos.</p>
-              <div class="health-bars"><div><span>Velocidade</span><strong id="health-speed">--</strong></div><div><span>Bloqueios</span><strong id="health-blockers">--</strong></div></div>
+              <div class="health-bars"><div><span>Velocidade</span><strong id="health-speed">--</strong></div><div><span>Na fila</span><strong id="health-blockers">--</strong></div></div>
             </section>
           </section>
-
-          <details class="dependency-disclosure">
-            <summary><span><span class="eyebrow">DEPENDÊNCIAS</span><strong>Caminhos de entrega</strong></span><span class="section-count">grafo por ondas</span></summary>
-            <div id="dependency-graph" class="dependency-graph"></div>
-          </details>
         </main>
       </div>
     </div>
