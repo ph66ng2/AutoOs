@@ -33,6 +33,12 @@ const AREA_KEYS = Object.keys(AREA_LABELS);
 const GITHUB_REPOSITORY = "ph66ng2/AutoOs";
 const FOCUS_STORAGE_KEY = "autoos-workflow-foco";
 const TRACK_IDS = ["all", ...TRACKS.map((track) => track.id)];
+const PAGE_IDS = ["overview", "board", "activity"];
+const PAGE_META = {
+  overview: { title: "Visão geral", eyebrow: "AUTOOS / WORKFLOW", documentTitle: "AutoOS Workflow | Visão geral" },
+  board: { title: "Kanban", eyebrow: "AUTOOS / QUADRO", documentTitle: "AutoOS Workflow | Kanban" },
+  activity: { title: "Atividade", eyebrow: "AUTOOS / MOVIMENTO", documentTitle: "AutoOS Workflow | Atividade" },
+};
 
 const state = {
   workflow: null,
@@ -54,6 +60,8 @@ const elements = {
   refreshButton: document.querySelector("#refresh-button"),
   lastRead: document.querySelector("#last-read"),
   qualityAlert: document.querySelector("#quality-alert"),
+  pageEyebrow: document.querySelector("#page-eyebrow"),
+  pageTitle: document.querySelector("#page-title"),
   progressPercent: document.querySelector("#progress-percent"),
   progressBar: document.querySelector("#progress-bar"),
   metricTotal: document.querySelector("#metric-total"),
@@ -77,7 +85,6 @@ const elements = {
   focusSummary: document.querySelector("#focus-summary"),
   focusUnlocks: document.querySelector("#focus-unlocks"),
   focusButton: document.querySelector("#focus-button"),
-  activityHistory: document.querySelector("#activity-history"),
   activityPreview: document.querySelector("#activity-preview"),
   healthScore: document.querySelector("#health-score"),
   healthSummary: document.querySelector("#health-summary"),
@@ -147,6 +154,27 @@ function persistTrack(trackId) {
   } catch {
     /* ignore */
   }
+}
+
+function currentPage() {
+  const raw = (window.location.hash || "#overview").replace("#", "");
+  if (raw === "kanban" || raw === "quadro") return "board";
+  return PAGE_IDS.includes(raw) ? raw : "overview";
+}
+
+function bootPage() {
+  if (window.location.hash) return;
+  const foco = new URLSearchParams(window.location.search).get("foco");
+  const page = TRACK_IDS.includes(foco) && foco !== "all" ? "board" : "overview";
+  window.history.replaceState({}, "", `${window.location.pathname}${window.location.search}#${page}`);
+}
+
+function goToPage(page) {
+  if (currentPage() === page) {
+    renderNav();
+    return;
+  }
+  window.location.hash = page;
 }
 
 function dateValue(value) {
@@ -444,8 +472,8 @@ function renderFocus() {
   elements.focusButton.disabled = false;
   elements.focusButton.onclick = () => {
     state.view = "board";
+    goToPage("board");
     openDialog(ticket.id);
-    document.querySelector("#board")?.scrollIntoView({ behavior: "smooth", block: "start" });
   };
 }
 
@@ -491,9 +519,9 @@ function renderHealth() {
 }
 
 function renderViews() {
+  if (state.view === "timeline") state.view = "board";
   elements.boardView.classList.toggle("hidden", state.view !== "board");
   elements.pathView.classList.toggle("hidden", state.view !== "path");
-  elements.timelineView.classList.toggle("hidden", state.view !== "timeline");
   document.querySelectorAll(".view-button").forEach((button) => {
     const active = button.dataset.view === state.view;
     button.classList.toggle("active", active);
@@ -502,10 +530,21 @@ function renderViews() {
 }
 
 function renderNav() {
-  const hash = window.location.hash || "#overview";
-  document.querySelectorAll(".nav-link").forEach((link) => {
-    link.classList.toggle("active", link.getAttribute("href") === hash);
+  const page = currentPage();
+  const meta = PAGE_META[page];
+  document.body.dataset.page = page;
+  document.querySelectorAll(".site-page").forEach((section) => {
+    section.classList.toggle("is-active", section.dataset.page === page);
   });
+  document.querySelectorAll(".nav-link").forEach((link) => {
+    const href = link.getAttribute("href");
+    link.classList.toggle("active", href === `#${page}`);
+  });
+  if (meta) {
+    if (elements.pageTitle) elements.pageTitle.textContent = meta.title;
+    if (elements.pageEyebrow) elements.pageEyebrow.textContent = meta.eyebrow;
+    document.title = meta.documentTitle;
+  }
 }
 
 function render() {
@@ -621,6 +660,7 @@ function showToast(message) {
 }
 
 state.track = readStoredTrack();
+bootPage();
 
 elements.refreshButton.addEventListener("click", () => {
   void loadData().then(() => showToast("Painel atualizado."));
@@ -633,11 +673,6 @@ document.querySelectorAll(".view-button").forEach((button) => button.addEventLis
   state.view = button.dataset.view;
   renderViews();
 }));
-elements.activityHistory.addEventListener("click", () => {
-  state.view = "timeline";
-  renderViews();
-  document.querySelector("#board")?.scrollIntoView({ behavior: "smooth", block: "start" });
-});
 elements.dialogClose.addEventListener("click", () => elements.dialog.classList.add("hidden"));
 elements.dialog.addEventListener("click", (event) => {
   if (event.target === elements.dialog) elements.dialog.classList.add("hidden");
