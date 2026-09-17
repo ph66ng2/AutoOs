@@ -42,6 +42,8 @@ interface SensitiveAccessContextValue {
   loading: boolean;
   /** 0–100 durante o primeiro arranque (conexão com backend / status sensível). */
   bootProgress: number;
+  /** Avança o progresso do boot sem regredir (fases de infraestrutura externas ao refresh). */
+  advanceBootProgress: (value: number) => void;
   refreshStatus: () => Promise<void>;
   ensureSensitiveAccess: (options?: SensitiveAccessPromptOptions) => Promise<boolean>;
   openProfileSelector: (options?: ProfileSelectorOptions) => Promise<boolean>;
@@ -112,19 +114,26 @@ export function SensitiveAccessProvider({ children }: { children: ReactNode }) {
   const startupPromptedRef = useRef(false);
   const bootPhasesTrackedRef = useRef(true);
 
+  const advanceBootProgress = useCallback((value: number) => {
+    if (!bootPhasesTrackedRef.current) return;
+    setBootProgress((p) => Math.max(p, Math.min(100, Math.max(0, value))));
+  }, []);
+
   const refreshStatus = useCallback(async () => {
     if (bootPhasesTrackedRef.current) {
-      setBootProgress((p) => Math.max(p, 14));
+      setBootProgress((p) => Math.max(p, 52));
     }
+    let bootResolved = !bootPhasesTrackedRef.current;
     try {
       if (bootPhasesTrackedRef.current) {
-        setBootProgress((p) => Math.max(p, 38));
+        setBootProgress((p) => Math.max(p, 68));
       }
       const nextStatus = await SensitiveAccessService.status();
       if (bootPhasesTrackedRef.current) {
         setBootProgress((p) => Math.max(p, 86));
       }
       setStatus(nextStatus);
+      bootResolved = true;
 
       // Pré-selecionar o último perfil usado, se ainda existir e estiver ativo
       let lastProfileId: string | null = null;
@@ -161,12 +170,15 @@ export function SensitiveAccessProvider({ children }: { children: ReactNode }) {
     } catch (refreshError: any) {
       setStatus(EMPTY_STATUS);
       setError(refreshError?.message || refreshError?.toString() || "Não foi possível verificar o acesso sensível.");
+      // Falha antes da infraestrutura ficar pronta: mantém loading para o BootSplash continuar funcional.
     } finally {
-      if (bootPhasesTrackedRef.current) {
-        setBootProgress(100);
-        bootPhasesTrackedRef.current = false;
+      if (bootResolved) {
+        if (bootPhasesTrackedRef.current) {
+          setBootProgress(100);
+          bootPhasesTrackedRef.current = false;
+        }
+        setLoading(false);
       }
-      setLoading(false);
     }
   }, []);
 
@@ -419,13 +431,14 @@ export function SensitiveAccessProvider({ children }: { children: ReactNode }) {
     status,
     loading,
     bootProgress,
+    advanceBootProgress,
     refreshStatus,
     ensureSensitiveAccess,
     openProfileSelector,
     lockSensitiveAccess,
     hasPermission,
     setActiveProfile,
-  }), [bootProgress, ensureSensitiveAccess, hasPermission, loading, lockSensitiveAccess, openProfileSelector, refreshStatus, setActiveProfile, status]);
+  }), [advanceBootProgress, bootProgress, ensureSensitiveAccess, hasPermission, loading, lockSensitiveAccess, openProfileSelector, refreshStatus, setActiveProfile, status]);
 
   const activeProfile = status?.profiles.find((profile) => profile.id === status.active_profile_id) ?? null;
   const selectedProfile = status?.profiles.find((profile) => String(profile.id) === selectedProfileId) ?? activeProfile ?? null;

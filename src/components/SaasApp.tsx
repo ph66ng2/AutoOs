@@ -1,10 +1,32 @@
-import { CloudOff, LaptopMinimal, Loader2, LockKeyhole, LogOut, RefreshCw, ShieldCheck } from "lucide-react";
+import { useCallback, useEffect, useState } from "react";
+import { CloudOff, LaptopMinimal, LockKeyhole, LogOut, RefreshCw, ShieldCheck } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { BootSplashGate } from "@/components/BootSplashGate";
 import { SaasLoginScreen } from "@/components/SaasLoginScreen";
 import { useSaasAuth } from "@/hooks/useSaasAuth";
 
 export function SaasApp() {
   const { state, retry, lock, signOut, removeThisDevice } = useSaasAuth();
+  const [bootProgress, setBootProgress] = useState(8);
+
+  useEffect(() => {
+    if (state.kind !== "booting") {
+      setBootProgress(100);
+      return;
+    }
+
+    setBootProgress(12);
+    const timers = [
+      window.setTimeout(() => setBootProgress((p) => Math.max(p, 28)), 180),
+      window.setTimeout(() => setBootProgress((p) => Math.max(p, 52)), 420),
+      window.setTimeout(() => setBootProgress((p) => Math.max(p, 78)), 780),
+    ];
+    return () => timers.forEach((t) => window.clearTimeout(t));
+  }, [state.kind]);
+
+  const finishBootProgress = useCallback(() => {
+    setBootProgress(100);
+  }, []);
 
   function confirmDeviceRemoval() {
     if (window.confirm("Remover esta máquina? O dispositivo será revogado no servidor e a sessão local será apagada. Esta ação exige novo login nesta instalação.")) {
@@ -14,9 +36,10 @@ export function SaasApp() {
 
   if (state.kind === "booting") {
     return (
-      <main role="status" className="fixed inset-0 flex items-center justify-center bg-[#050608] text-slate-300">
-        <div className="flex items-center gap-3"><Loader2 className="h-5 w-5 animate-spin text-slate-300" /> Restaurando sessão segura...</div>
-      </main>
+      <>
+        <main className="fixed inset-0 bg-[#050608]" aria-hidden="true" />
+        <BootSplashGate loading progress={bootProgress} onFinished={finishBootProgress} />
+      </>
     );
   }
 

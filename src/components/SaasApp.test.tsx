@@ -5,13 +5,23 @@ import { SaasApp } from "@/components/SaasApp";
 import { SaasAuthProvider } from "@/hooks/useSaasAuth";
 import type { SaasAuthService, SaasSession } from "@/types/saas-auth";
 
+vi.mock("@/components/BootSplashGate", () => ({
+  BootSplashGate: ({ loading, progress }: { loading: boolean; progress: number }) => (
+    <div role="status" aria-label={`Carregando aplicativo ${Math.round(progress)} por cento`}>
+      {loading ? "Restaurando sessão segura..." : null}
+    </div>
+  ),
+}));
+
+const COMPANY_ID = "b0000000-0000-4000-8000-000000000001";
+
 const session: SaasSession = {
   accessToken: "access",
   refreshToken: "refresh",
   expiresAt: Math.floor(Date.now() / 1_000) + 3_600,
   identity: {
     userId: "a0000000-0000-4000-8000-000000000001",
-    companyId: "b0000000-0000-4000-8000-000000000001",
+    companyId: COMPANY_ID,
     profileId: "c0000000-0000-4000-8000-000000000001",
     email: "admin@example.com",
   },
@@ -89,5 +99,3 @@ describe("SaasApp", () => {
     expect(authService.requestPasswordRecovery).toHaveBeenCalledWith("unknown@example.com");
   });
 });
-
-const COMPANY_ID = session.identity.companyId;
