@@ -4,6 +4,7 @@ import path from "path";
 
 const host = process.env.TAURI_DEV_HOST;
 const isE2eMock = process.env.VITE_E2E_MOCK === "1";
+const isE2eDemo = process.env.VITE_E2E_DEMO === "1";
 
 // https://vitejs.dev/config/
 export default defineConfig(async () => ({
@@ -14,7 +15,18 @@ export default defineConfig(async () => ({
       "@": path.resolve(__dirname, "./src"),
       ...(isE2eMock
         ? {
-            "@tauri-apps/api/core": path.resolve(__dirname, "./e2e/mocks/tauri-core.ts"),
+            "@tauri-apps/api/core": path.resolve(
+              __dirname,
+              isE2eDemo ? "./e2e/mocks/tauri-core-demo.ts" : "./e2e/mocks/tauri-core.ts",
+            ),
+            ...(isE2eDemo
+              ? {
+                  "@tauri-apps/api/event": path.resolve(
+                    __dirname,
+                    "./e2e/mocks/tauri-event-demo.ts",
+                  ),
+                }
+              : {}),
           }
         : {}),
     },
