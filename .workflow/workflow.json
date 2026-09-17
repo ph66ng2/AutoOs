@@ -3143,7 +3143,7 @@
     {
       "id": "AO-HOTFIX-005",
       "title": "Corrigir decode NUMERIC do orçamento e reabrir REPROVADO",
-      "status": "review",
+      "status": "merged",
       "blockedBy": [],
       "objective": "Corrigir o decode de custo_total no ajuste de orçamento e permitir voltar de REPROVADO para AGUARDANDO_APROVACAO após clique indevido.",
       "context": "Em produção (master), alterar descrição técnica ou valor do orçamento dispara atualizar_servicos_verificacao. O SELECT de lock lê custo_total como NUMERIC e o Rust espera Option<f64>/FLOAT8. O toast aparece como Alterar status porque o diálogo reusa o mesmo catch. O schema NUMERIC está correto; o SELECT ad hoc ficou sem o cast já usado em VERIFICACAO_SELECT.",
@@ -3212,7 +3212,8 @@
         "Corrigir só a cópia da feature e deixar produção quebrada.",
         "Trocar o tipo da coluna no banco em vez do decode.",
         "Disparar o Windows Test Build contra a branch errada."
-      ]
+      ],
+      "completedAt": "2026-09-17"
     },
     {
       "id": "AO-UI-001",
