@@ -4900,7 +4900,7 @@
     {
       "id": "AO-BOOT-001",
       "title": "Tornar a tela de carregamento funcional com animação stamp",
-      "status": "in_progress",
+      "status": "review",
       "blockedBy": [],
       "objective": "Unificar o arranque do AutoOS sob o BootSplash com progresso real e substituir a animação vetorial atual pela animação stamp (carimbo BMITAG), usando o repositório ph66ng2/stamp como fonte quando disponível.",
       "context": "Hoje o BootSplash só aparece depois do DatabaseConfigService.checkStatus em InternalApp; enquanto o banco é verificado, App.tsx mostra um spinner cyan inline. O modo SaaS (SaasApp) usa outro Loader2 em state.kind === \"booting\". O progresso em useSensitiveAccess salta 6→14→38→86→100 sem refletir a checagem de banco. A animação atual (impressora SVG) deve ceder lugar à linguagem stamp de https://github.com/ph66ng2/stamp; se o repositório estiver inacessível, vender assets locais de carimbo BMITAG no mesmo contrato visual e deixar o ponto de integração preparado para troca.",
