@@ -328,7 +328,11 @@ pub async fn atualizar_servicos_verificacao(
             servicos_necessarios = $1,
             pecas_necessarias = $2,
             custo_total = $3,
-            observacoes = COALESCE($4, observacoes),
+            observacoes = CASE
+                WHEN $4::TEXT IS NULL THEN observacoes
+                WHEN btrim($4) = '' THEN NULL
+                ELSE btrim($4)
+            END,
             forma_pagamento_codigo = CASE
                 WHEN $5::TEXT IS NOT NULL THEN $5
                 ELSE forma_pagamento_codigo
@@ -346,7 +350,7 @@ pub async fn atualizar_servicos_verificacao(
     .bind(&servicos_json)
     .bind(&pecas_json)
     .bind(custo_total)
-    .bind(observacoes.as_deref().map(str::trim).filter(|value| !value.is_empty()))
+    .bind(observacoes.as_deref())
     .bind(payment_code.as_deref())
     .bind(payment_detail.as_deref())
     .bind(profile_id)

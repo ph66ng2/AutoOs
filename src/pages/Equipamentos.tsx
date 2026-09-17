@@ -2480,15 +2480,14 @@ export default function Equipamentos() {
                     <div className="space-y-2"><Label>Prazo Aprovação</Label><Input type="date" value={prazoAprovacao} onChange={e => setPrazoAprovacao(e.target.value)} /></div>
                   )}
                   <div className="space-y-2">
-                    <Label htmlFor="descricao-servico-tecnico">Descrição do Serviço Técnico</Label>
+                    <Label htmlFor="observacoes-ajuste">Observações</Label>
                     <Textarea
-                      id="descricao-servico-tecnico"
+                      id="observacoes-ajuste"
                       value={observacoesAjuste}
                       onChange={(event) => setObservacoesAjuste(event.target.value)}
-                      placeholder="Descreva o serviço técnico para o orçamento"
+                      placeholder="Observações do orçamento"
                       rows={3}
                     />
-                    <p className="text-xs text-muted-foreground">Esta descrição vem das observações da verificação técnica.</p>
                   </div>
                   {ajusteOrcamentoSemMudancaStatus && selecionado.status === "APROVADO" ? (
                     <FormaPagamentoFields
