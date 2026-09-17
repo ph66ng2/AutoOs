@@ -21,6 +21,7 @@ import { useEffect, useState } from "react";
 import { BrowserRouter, Routes, Route, useLocation, useNavigate } from "react-router-dom";
 import { Toaster } from "sonner";
 import { BootSplashGate } from "@/components/BootSplashGate";
+import { useBootUi } from "@/components/BootUi";
 import { DatabaseConfigDialog } from "@/components/DatabaseConfigDialog";
 import { SensitiveRoute, useSensitiveAccess } from "@/hooks/useSensitiveAccess";
 import { SENSITIVE_PERMISSIONS } from "@/types";
@@ -65,16 +66,18 @@ function AppContent({ splashActive }: { splashActive: boolean }) {
   }, []);
 
   const sessionReady = Boolean(status?.active_profile_id && status.unlocked);
+  // Login/PIN/modo só depois da abertura (stamp) terminar.
+  const postOpening = !splashActive && !loading;
 
   return (
     <BrowserRouter>
       <AppModeChoice
-        visible={!loading && sessionReady && appMode === null}
+        visible={postOpening && sessionReady && appMode === null}
         onSelect={setCurrentAppMode}
       />
-      <AppModeRedirect mode={appMode} ready={!loading && sessionReady} />
+      <AppModeRedirect mode={appMode} ready={postOpening && sessionReady} />
       <ReleaseHighlightsDialog
-        enabled={!loading && !splashActive && sessionReady && appMode !== null}
+        enabled={postOpening && sessionReady && appMode !== null}
       />
       <Routes>
         <Route element={<Layout />}>
@@ -139,6 +142,7 @@ function AppModeRedirect({ mode, ready }: { mode: AppMode | null; ready: boolean
 
 function InternalApp() {
   const { loading, bootProgress, advanceBootProgress, refreshStatus } = useSensitiveAccess();
+  const { completeOpening } = useBootUi();
   const [dbReady, setDbReady] = useState<boolean | null>(null);
   const [splashActive, setSplashActive] = useState(true);
 
@@ -195,7 +199,10 @@ function InternalApp() {
       <BootSplashGate
         loading={bootLoading}
         progress={displayProgress}
-        onFinished={() => setSplashActive(false)}
+        onFinished={() => {
+          setSplashActive(false);
+          completeOpening();
+        }}
       />
     </>
   );

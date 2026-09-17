@@ -2,15 +2,29 @@ import { describe, expect, it, vi } from "vitest";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { SaasApp } from "@/components/SaasApp";
+import { BootUiProvider } from "@/components/BootUi";
 import { SaasAuthProvider } from "@/hooks/useSaasAuth";
 import type { SaasAuthService, SaasSession } from "@/types/saas-auth";
 
 vi.mock("@/components/BootSplashGate", () => ({
-  BootSplashGate: ({ loading, progress }: { loading: boolean; progress: number }) => (
-    <div role="status" aria-label={`Carregando aplicativo ${Math.round(progress)} por cento`}>
-      {loading ? "Restaurando sessão segura..." : null}
-    </div>
-  ),
+  BootSplashGate: ({
+    loading,
+    progress,
+    onFinished,
+  }: {
+    loading: boolean;
+    progress: number;
+    onFinished?: () => void;
+  }) => {
+    if (!loading) {
+      queueMicrotask(() => onFinished?.());
+    }
+    return (
+      <div role="status" aria-label={`Carregando aplicativo ${Math.round(progress)} por cento`}>
+        {loading ? "Restaurando sessão segura..." : "Abrindo AutoOS..."}
+      </div>
+    );
+  },
 }));
 
 const COMPANY_ID = "b0000000-0000-4000-8000-000000000001";
@@ -41,11 +55,17 @@ function service(overrides: Partial<SaasAuthService> = {}): SaasAuthService {
 }
 
 function renderApp(authService: SaasAuthService) {
-  return render(<SaasAuthProvider service={authService}><SaasApp /></SaasAuthProvider>);
+  return render(
+    <BootUiProvider>
+      <SaasAuthProvider service={authService}>
+        <SaasApp />
+      </SaasAuthProvider>
+    </BootUiProvider>,
+  );
 }
 
 describe("SaasApp", () => {
-  it("restaura o boot SaaS e oferece somente login, sem cadastro", async () => {
+  it("mostra a abertura antes do login e só então revela a tela de entrada", async () => {
     renderApp(service());
     expect(screen.getByText("Restaurando sessão segura...")).toBeInTheDocument();
     expect(await screen.findByRole("heading", { name: "AutoOS SaaS" })).toBeInTheDocument();

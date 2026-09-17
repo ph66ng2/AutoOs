@@ -2,11 +2,14 @@ import { useCallback, useEffect, useState } from "react";
 import { CloudOff, LaptopMinimal, LockKeyhole, LogOut, RefreshCw, ShieldCheck } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { BootSplashGate } from "@/components/BootSplashGate";
+import { useBootUi } from "@/components/BootUi";
 import { SaasLoginScreen } from "@/components/SaasLoginScreen";
 import { useSaasAuth } from "@/hooks/useSaasAuth";
+import type { SaasAuthState } from "@/types/saas-auth";
 
 export function SaasApp() {
   const { state, retry, lock, signOut, removeThisDevice } = useSaasAuth();
+  const { openingComplete, completeOpening } = useBootUi();
   const [bootProgress, setBootProgress] = useState(8);
 
   useEffect(() => {
@@ -24,9 +27,9 @@ export function SaasApp() {
     return () => timers.forEach((t) => window.clearTimeout(t));
   }, [state.kind]);
 
-  const finishBootProgress = useCallback(() => {
-    setBootProgress(100);
-  }, []);
+  const onSplashFinished = useCallback(() => {
+    completeOpening();
+  }, [completeOpening]);
 
   function confirmDeviceRemoval() {
     if (window.confirm("Remover esta máquina? O dispositivo será revogado no servidor e a sessão local será apagada. Esta ação exige novo login nesta instalação.")) {
@@ -34,12 +37,49 @@ export function SaasApp() {
     }
   }
 
-  if (state.kind === "booting") {
+  // Abertura (stamp) sempre até o fim; login/sessão só depois.
+  if (!openingComplete) {
     return (
       <>
         <main className="fixed inset-0 bg-[#050608]" aria-hidden="true" />
-        <BootSplashGate loading progress={bootProgress} onFinished={finishBootProgress} />
+        <BootSplashGate
+          loading={state.kind === "booting"}
+          progress={bootProgress}
+          onFinished={onSplashFinished}
+        />
       </>
+    );
+  }
+
+  return (
+    <SaasAppBody
+      state={state}
+      retry={retry}
+      lock={lock}
+      signOut={signOut}
+      confirmDeviceRemoval={confirmDeviceRemoval}
+    />
+  );
+}
+
+function SaasAppBody({
+  state,
+  retry,
+  lock,
+  signOut,
+  confirmDeviceRemoval,
+}: {
+  state: SaasAuthState;
+  retry: () => Promise<void>;
+  lock: () => Promise<void>;
+  signOut: () => Promise<void>;
+  confirmDeviceRemoval: () => void;
+}) {
+  if (state.kind === "booting") {
+    return (
+      <main role="status" className="fixed inset-0 flex items-center justify-center bg-[#050608] text-slate-300">
+        Preparando sessão…
+      </main>
     );
   }
 

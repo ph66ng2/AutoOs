@@ -1,12 +1,19 @@
 import { useEffect, useState } from "react";
 import { BootSplash } from "@/components/BootSplash";
 
-/** Exibição mínima do boot (IPC em dev pode resolver em poucos ms). */
-export const MIN_BOOT_SPLASH_MS = 1_100;
+/**
+ * Tempo mínimo de abertura quando o backend responde rápido.
+ * ~2.2s deixa o stamp respirar sem prender o operador.
+ */
+export const MIN_BOOT_SPLASH_MS =
+  import.meta.env.VITE_E2E_MOCK === "1" ? 200 : 2_200;
 const BOOT_FADE_MS = 540;
-/** Fallback se a animação stamp não sinalizar conclusão (ex.: reduced-motion / falha). */
+/**
+ * Fallback após o boot real concluir, se o stamp não sinalizar "done".
+ * A sequência cinematic do stamp costuma fechar perto de 2–2.5s.
+ */
 const STAMP_COMPLETION_FALLBACK_MS =
-  import.meta.env.VITE_E2E_MOCK === "1" ? 800 : 4_500;
+  import.meta.env.VITE_E2E_MOCK === "1" ? 400 : 2_800;
 
 interface BootSplashGateProps {
   /** true enquanto a infraestrutura/sessão ainda não terminou de carregar */

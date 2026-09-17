@@ -15,6 +15,7 @@ import { ProfileSessionDialog } from "@/components/ProfileSessionDialog";
 import { PasswordRecoveryDialog } from "@/components/PasswordRecoveryDialog";
 import { toast } from "sonner";
 import { SensitiveAccessService } from "@/lib/sensitive-access";
+import { useBootUi } from "@/components/BootUi";
 import { registerSensitiveAccessPrompt } from "@/lib/sensitive-action-retry";
 import {
   SENSITIVE_PERMISSION_LABELS,
@@ -97,6 +98,7 @@ function mensagemErroAcessoSensivel(error: unknown): string {
 const SensitiveAccessContext = createContext<SensitiveAccessContextValue | null>(null);
 
 export function SensitiveAccessProvider({ children }: { children: ReactNode }) {
+  const { openingComplete } = useBootUi();
   const [status, setStatus] = useState<SensitiveAccessStatus | null>(null);
   const [loading, setLoading] = useState(true);
   const [bootProgress, setBootProgress] = useState(6);
@@ -448,7 +450,7 @@ export function SensitiveAccessProvider({ children }: { children: ReactNode }) {
       {children}
 
       <ProfileSessionDialog
-        open={dialogOpen}
+        open={dialogOpen && openingComplete}
         mandatory={dialogMandatory}
         mode={dialogMode}
         title={promptOptions.title || defaultPrompt.title || "Perfis"}
