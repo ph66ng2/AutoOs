@@ -225,7 +225,7 @@ const equipamentoVerificado = {
 
 const mockEquipamentos = [equipamentoVerificado];
 
-function makeVerificacao(opts?: { adjusted_at?: string; servicos?: any[]; pecas?: any[]; custo_total?: number }) {
+function makeVerificacao(opts?: { adjusted_at?: string; servicos?: any[]; pecas?: any[]; custo_total?: number; observacoes?: string }) {
   return {
     id: 100,
     equipamento_id: 10,
@@ -241,7 +241,7 @@ function makeVerificacao(opts?: { adjusted_at?: string; servicos?: any[]; pecas?
     custo_total: opts?.custo_total ?? 150,
     tempo_estimado: 2,
     concluida: true,
-    observacoes: "",
+    observacoes: opts?.observacoes ?? "",
     adjusted_at: opts?.adjusted_at ?? null,
     adjusted_by_profile_id: opts?.adjusted_at ? 1 : null,
   };
@@ -434,6 +434,33 @@ describe("Equipamentos — Budget Divergence & Audit", () => {
     await abrirDialogoAjusteOrcamento();
 
     expect(screen.queryByText(/Histórico de Ajustes/i)).not.toBeInTheDocument();
+  });
+
+  it("exibe Observações e envia texto vazio quando o campo é apagado", async () => {
+    mockBuscarVerificacao.mockResolvedValue(makeVerificacao({ observacoes: "oii" }));
+    await abrirDialogoAjusteOrcamento();
+
+    expect(screen.queryByText(/Descrição do Serviço Técnico/i)).not.toBeInTheDocument();
+    const campo = screen.getByLabelText(/^Observações$/i) as HTMLTextAreaElement;
+    expect(campo).toHaveValue("oii");
+
+    await act(async () => {
+      fireEvent.change(campo, { target: { value: "" } });
+    });
+    expect(campo).toHaveValue("");
+
+    await clicarConfirmarStatus();
+    await waitFor(() => {
+      expect(screen.getByTestId("confirm-dialog")).toBeInTheDocument();
+    });
+    await act(async () => {
+      fireEvent.click(screen.getByTestId("confirm-action"));
+    });
+
+    await waitFor(() => {
+      expect(mockAtualizarServicosVerificacao).toHaveBeenCalled();
+    });
+    expect(mockAtualizarServicosVerificacao.mock.calls[0][0].observacoes).toBe("");
   });
 
   // ─── Test 7: Audit params verification ───────────────

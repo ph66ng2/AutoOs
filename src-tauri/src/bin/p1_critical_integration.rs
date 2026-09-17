@@ -474,6 +474,28 @@ async fn main() -> Result<()> {
         ));
     }
 
+    let verificacao_sem_observacoes = verificacoes::atualizar_servicos_verificacao(
+        equipamento.id,
+        Some(r#"[{"descricao":"Limpeza técnica completa","valor":120.0}]"#.to_string()),
+        Some(r#"[{"descricao":"Kit de manutenção","valor":79.0}]"#.to_string()),
+        Some(199.0),
+        privileged_profile_id,
+        false,
+        Some(String::new()),
+        Some(FormaPagamentoCodigo::Outro),
+        Some("Faturamento corporativo em 15 dias".to_string()),
+        Some(empresa_id),
+    )
+    .await
+    .map_err(|error| anyhow!(error))?;
+    if verificacao_sem_observacoes
+        .observacoes
+        .as_deref()
+        .is_some_and(|value| !value.trim().is_empty())
+    {
+        return Err(anyhow!("budget adjustment did not clear observations"));
+    }
+
     contatos::atualizar_cliente_contato(
         contato.id,
         ClienteContatoInput {

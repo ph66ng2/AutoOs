@@ -81,6 +81,31 @@ describe("db — contatos e contratos de orçamento", () => {
     });
   });
 
+  it("envia observações vazias no ajuste para permitir limpar o campo", async () => {
+    const input: AjusteOrcamentoInput = {
+      empresa_id: 7,
+      equipamento_id: 20,
+      servicos: [],
+      pecas: [],
+      custo_total: 125,
+      observacoes: "",
+    };
+    mockInvoke.mockResolvedValue({ id: 8, equipamento_id: 20 });
+
+    await db.atualizarServicosVerificacao(input, 3);
+
+    expect(mockInvoke).toHaveBeenCalledWith("atualizar_servicos_verificacao", {
+      equipamentoId: 20,
+      servicosJson: "[]",
+      pecasJson: "[]",
+      custoTotal: 125,
+      profileId: 3,
+      divergence: false,
+      observacoes: "",
+      empresaId: 7,
+    });
+  });
+
   it("envia aprovação como uma única operação com token e pagamento", async () => {
     const input: AprovarOrcamentoInput = {
       empresa_id: 7,
