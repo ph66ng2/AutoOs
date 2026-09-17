@@ -1,6 +1,7 @@
 name: Windows Test Build
 
 # Instalador temporário de teste (NSIS). Disparo: workflow_dispatch ou PR que toque neste arquivo.
+# AO-BOOT-001: validar splash stamp no instalador SaaS de staging antes do merge.
 run-name: Windows test build — ${{ inputs.ref || github.head_ref || github.ref_name }}
 
 on:
