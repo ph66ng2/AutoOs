@@ -15,7 +15,8 @@ import {
 const tickets = [
   { id: "AO-AUTH-004", status: "ready", blockedBy: ["AO-AUTH-003"] },
   { id: "AO-AUTH-003", status: "merged", blockedBy: [] },
-  { id: "AO-SUB-002", status: "review", blockedBy: [] },
+  { id: "AO-SUB-002", status: "merged", blockedBy: [] },
+  { id: "AO-AUTH-TEST-001", status: "review", blockedBy: ["AO-AUTH-002"] },
   { id: "AO-UI-003", status: "ready", blockedBy: [] },
   { id: "AO-UI-001", status: "ready", blockedBy: [] },
   { id: "AO-UI-002", status: "ready", blockedBy: ["AO-UI-001"] },
@@ -35,7 +36,8 @@ describe("workflow tracks", () => {
   it("coloca no quadro o que está liberado, o que espera e o que destrava", () => {
     assert.equal(boardColumn(tickets.find((ticket) => ticket.id === "AO-UI-003"), tickets), "ready");
     assert.equal(boardColumn(tickets.find((ticket) => ticket.id === "AO-UI-002"), tickets), "waiting");
-    assert.equal(boardColumn(tickets.find((ticket) => ticket.id === "AO-SUB-002"), tickets), "review");
+    assert.equal(boardColumn(tickets.find((ticket) => ticket.id === "AO-SUB-002"), tickets), "done");
+    assert.equal(boardColumn(tickets.find((ticket) => ticket.id === "AO-AUTH-TEST-001"), tickets), "review");
     assert.deepEqual(pendingBlockers(tickets.find((ticket) => ticket.id === "AO-UI-002"), tickets), ["AO-UI-001"]);
     assert.deepEqual(unlocksFrom("AO-UI-001", tickets), ["AO-UI-002"]);
   });

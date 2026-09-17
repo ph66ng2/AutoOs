@@ -55,9 +55,9 @@ export const TRACKS = [
     skip: [],
     why: {
       "AO-AUTH-004": "Fecha Auth e destrava a ponte das fotos.",
-      "AO-SUB-002": "Acesso Online sem PowerSync; já está em revisão.",
+      "AO-SUB-002": "Concluído na feature (#34). CRUD Online de clientes sem PowerSync.",
       "AO-SUB-003": "Entitlement no servidor, em paralelo com Auth.",
-      "AO-PHOTO-009": "Só sobe depois de AUTH-004 e SUB-002.",
+      "AO-PHOTO-009": "AUTH-004 destrava; SUB-002 já está na feature.",
       "AO-PS-005": "Ramo paralelo de PowerSync; não bloqueia o Online.",
     },
   },
