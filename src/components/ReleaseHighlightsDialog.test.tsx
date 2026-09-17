@@ -15,6 +15,7 @@ describe("ReleaseHighlightsDialog", () => {
 
     expect(screen.getByRole("dialog")).toBeInTheDocument();
     expect(screen.getByText("Orçamento mais claro e correções de produção")).toBeInTheDocument();
+    expect(screen.getByText("Observações no ajuste de orçamento")).toBeInTheDocument();
     expect(screen.getByText("Prazo na prévia do orçamento")).toBeInTheDocument();
     expect(screen.getByText("PDF em qualquer fase")).toBeInTheDocument();
   });

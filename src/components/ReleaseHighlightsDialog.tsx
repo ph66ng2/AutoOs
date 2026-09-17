@@ -19,11 +19,18 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 
-export const RELEASE_HIGHLIGHTS_VERSION = "0.5.1";
+export const RELEASE_HIGHLIGHTS_VERSION = "0.5.2";
 export const RELEASE_HIGHLIGHTS_STORAGE_KEY =
   `autoos:release-highlights:${RELEASE_HIGHLIGHTS_VERSION}`;
 
 const highlights = [
+  {
+    icon: FileText,
+    title: "Observações no ajuste de orçamento",
+    description:
+      "O campo passou a se chamar Observações, e apagar o texto grava de verdade.",
+    detail: "Antes o valor antigo voltava se o campo ficasse em branco.",
+  },
   {
     icon: FileText,
     title: "Prazo na prévia do orçamento",
@@ -119,7 +126,7 @@ export function ReleaseHighlightsDialog({ enabled }: { enabled: boolean }) {
                 Orçamento mais claro e correções de produção
               </DialogTitle>
               <DialogDescription className="mt-2 max-w-2xl text-sm leading-relaxed text-slate-300 sm:text-base">
-                Prazo na prévia, PDF em qualquer fase e os ajustes que travavam o orçamento no dia a dia.
+                Hotfix da 0.5.1: observações do orçamento editáveis, prazo na prévia e PDF em qualquer fase.
               </DialogDescription>
             </div>
           </div>
@@ -150,6 +157,9 @@ export function ReleaseHighlightsDialog({ enabled }: { enabled: boolean }) {
           </div>
 
           <div className="mt-5 flex flex-wrap gap-2" aria-label="Outras melhorias da versão">
+            <Badge variant="secondary" className="gap-1.5 px-3 py-1.5 font-normal">
+              <FileText className="h-3.5 w-3.5" /> Observações apagadas no ajuste agora somem de verdade
+            </Badge>
             <Badge variant="secondary" className="gap-1.5 px-3 py-1.5 font-normal">
               <FileText className="h-3.5 w-3.5" /> Layout do PDF colado e observações no lugar
             </Badge>
