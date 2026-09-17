@@ -1,9 +1,11 @@
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { SaasApp } from "@/components/SaasApp";
 import { BootUiProvider } from "@/components/BootUi";
 import { SaasAuthProvider } from "@/hooks/useSaasAuth";
+import { DAILY_BOOT_OPENING_STORAGE_KEY } from "@/lib/daily-boot-opening";
+import { todayLocalIsoDate } from "@/lib/date-utils";
 import type { SaasAuthService, SaasSession } from "@/types/saas-auth";
 
 vi.mock("@/components/BootSplashGate", () => ({
@@ -65,12 +67,34 @@ function renderApp(authService: SaasAuthService) {
 }
 
 describe("SaasApp", () => {
+  beforeEach(() => {
+    window.localStorage.clear();
+  });
+
   it("mostra a abertura antes do login e só então revela a tela de entrada", async () => {
     renderApp(service());
     expect(screen.getByText("Restaurando sessão segura...")).toBeInTheDocument();
     expect(await screen.findByRole("heading", { name: "AutoOS SaaS" })).toBeInTheDocument();
     expect(screen.queryByText(/cadastrar/i)).not.toBeInTheDocument();
     expect(screen.getByText(/cadastro de empresas é feito somente pelo suporte/i)).toBeInTheDocument();
+    expect(window.localStorage.getItem(DAILY_BOOT_OPENING_STORAGE_KEY)).toBe(todayLocalIsoDate());
+  });
+
+  it("pula a abertura nos boots seguintes do mesmo dia e vai direto ao login", async () => {
+    window.localStorage.setItem(DAILY_BOOT_OPENING_STORAGE_KEY, todayLocalIsoDate());
+    renderApp(service());
+    expect(screen.queryByText("Restaurando sessão segura...")).not.toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "AutoOS SaaS" })).toBeInTheDocument();
+  });
+
+  it("nos boots seguintes espera a sessão sem repetir o stamp", async () => {
+    window.localStorage.setItem(DAILY_BOOT_OPENING_STORAGE_KEY, todayLocalIsoDate());
+    renderApp(service({
+      restoreSession: vi.fn().mockImplementation(() => new Promise(() => {})),
+    }));
+    expect(screen.queryByText("Restaurando sessão segura...")).not.toBeInTheDocument();
+    expect(await screen.findByText("Preparando sessão…")).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "AutoOS SaaS" })).not.toBeInTheDocument();
   });
 
   it("faz login e bloqueia removendo a identidade da tela", async () => {

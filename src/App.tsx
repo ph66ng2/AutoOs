@@ -142,9 +142,9 @@ function AppModeRedirect({ mode, ready }: { mode: AppMode | null; ready: boolean
 
 function InternalApp() {
   const { loading, bootProgress, advanceBootProgress, refreshStatus } = useSensitiveAccess();
-  const { completeOpening } = useBootUi();
+  const { openingComplete, completeOpening } = useBootUi();
   const [dbReady, setDbReady] = useState<boolean | null>(null);
-  const [splashActive, setSplashActive] = useState(true);
+  const [splashActive, setSplashActive] = useState(!openingComplete);
 
   useEffect(() => {
     let cancelled = false;
@@ -181,7 +181,7 @@ function InternalApp() {
           <DatabaseConfigDialog
             onConfigured={() => {
               setDbReady(true);
-              setSplashActive(true);
+              if (!openingComplete) setSplashActive(true);
               void refreshStatus();
             }}
           />
@@ -196,14 +196,22 @@ function InternalApp() {
       <ErrorBoundary>
         {dbReady === true ? <AppContent splashActive={splashActive} /> : null}
       </ErrorBoundary>
-      <BootSplashGate
-        loading={bootLoading}
-        progress={displayProgress}
-        onFinished={() => {
-          setSplashActive(false);
-          completeOpening();
-        }}
-      />
+      {splashActive ? (
+        <BootSplashGate
+          loading={bootLoading}
+          progress={displayProgress}
+          onFinished={() => {
+            setSplashActive(false);
+            completeOpening();
+          }}
+        />
+      ) : bootLoading ? (
+        <div
+          role="status"
+          aria-label="Preparando aplicativo"
+          className="fixed inset-0 z-[9999] bg-[#050608]"
+        />
+      ) : null}
     </>
   );
 }

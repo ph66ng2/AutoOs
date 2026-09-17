@@ -1,4 +1,5 @@
 import { createContext, useCallback, useContext, useMemo, useState, type ReactNode } from "react";
+import { markDailyBootOpeningPlayed, shouldPlayDailyBootOpening } from "@/lib/daily-boot-opening";
 
 interface BootUiContextValue {
   /** false enquanto a abertura (stamp) ainda está na tela */
@@ -13,8 +14,11 @@ const BootUiContext = createContext<BootUiContextValue>({
 });
 
 export function BootUiProvider({ children }: { children: ReactNode }) {
-  const [openingComplete, setOpeningComplete] = useState(false);
-  const completeOpening = useCallback(() => setOpeningComplete(true), []);
+  const [openingComplete, setOpeningComplete] = useState(() => !shouldPlayDailyBootOpening());
+  const completeOpening = useCallback(() => {
+    markDailyBootOpeningPlayed();
+    setOpeningComplete(true);
+  }, []);
   const value = useMemo(
     () => ({ openingComplete, completeOpening }),
     [openingComplete, completeOpening],

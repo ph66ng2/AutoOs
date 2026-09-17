@@ -37,7 +37,7 @@ export function SaasApp() {
     }
   }
 
-  // Abertura (stamp) sempre até o fim; login/sessão só depois.
+  // Primeiro boot do dia: stamp até o fim, depois login. Nos outros, login direto.
   if (!openingComplete) {
     return (
       <>
