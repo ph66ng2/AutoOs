@@ -21,7 +21,7 @@ const tickets = [
   { id: "AO-UI-002", status: "ready", blockedBy: ["AO-UI-001"] },
   { id: "AO-UI-019", status: "ready", blockedBy: [] },
   { id: "AO-HOTFIX-004", status: "ready", blockedBy: [] },
-  { id: "AO-HOTFIX-005", status: "review", blockedBy: [] },
+  { id: "AO-HOTFIX-005", status: "merged", blockedBy: [] },
   { id: "AO-UPD-001", status: "ready", blockedBy: [] },
 ];
 
@@ -43,7 +43,7 @@ describe("workflow tracks", () => {
   it("recomenda 003 na interface e AUTH-004 no SaaS", () => {
     assert.equal(nextRecommended(tickets, "interface").ticket.id, "AO-UI-003");
     assert.equal(nextRecommended(tickets, "saas").ticket.id, "AO-AUTH-004");
-    assert.equal(nextRecommended(tickets, "hotfix").ticket.id, "AO-HOTFIX-005");
+    assert.equal(nextRecommended(tickets, "hotfix").ticket.id, "AO-HOTFIX-004");
   });
 
   it("na visão completa, o SaaS em andamento de negócio vem antes do acabamento", () => {

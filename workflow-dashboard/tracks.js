@@ -113,11 +113,11 @@ export const TRACKS = [
     label: "Correções",
     description: "Buracos de produção. Entram na frente do acabamento.",
     prefixes: ["AO-HOTFIX-"],
-    recommended: ["AO-HOTFIX-005", "AO-HOTFIX-004"],
+    recommended: ["AO-HOTFIX-004", "AO-HOTFIX-005"],
     skip: [],
     why: {
-      "AO-HOTFIX-005": "Já está em revisão. Feche o merge antes de abrir outro hotfix.",
       "AO-HOTFIX-004": "Impede cadastro sem empresa. Liberado para começar.",
+      "AO-HOTFIX-005": "Concluído na master 0.5.2. Observações do orçamento e decode NUMERIC.",
     },
   },
   {
