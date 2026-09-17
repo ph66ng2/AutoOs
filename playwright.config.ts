@@ -12,6 +12,7 @@
  * ╚══════════════════════════════════════════════════════════════╝
  */
 import { defineConfig, devices } from '@playwright/test';
+import { RELEASE_HIGHLIGHTS_STORAGE_KEY } from './src/components/ReleaseHighlightsDialog';
 
 export default defineConfig({
   // Diretório dos testes E2E
@@ -50,6 +51,17 @@ export default defineConfig({
     
     // Trace para debugging
     trace: 'on-first-retry',
+
+    // Dialog de novidades não deve interceptar fluxos E2E de balcão/navegação.
+    storageState: {
+      cookies: [],
+      origins: [
+        {
+          origin: 'http://localhost:1420',
+          localStorage: [{ name: RELEASE_HIGHLIGHTS_STORAGE_KEY, value: 'seen' }],
+        },
+      ],
+    },
   },
   
   // Projetos (navegadores) - apenas Chromium para velocidade

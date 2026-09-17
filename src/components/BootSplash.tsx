@@ -4,6 +4,8 @@ import { bootStatusLabel } from "@/components/AutoOsBootAnimation";
 import "@/components/stamp/stamp.css";
 import "@/components/stamp/stamp-boot-shell.css";
 
+const IS_E2E_MOCK = import.meta.env.VITE_E2E_MOCK === "1";
+
 interface BootSplashProps {
   /** 0–100 conforme progresso real da inicialização */
   progress: number;
@@ -34,8 +36,8 @@ export function BootSplash({ progress, fadeOut, onStampComplete }: BootSplashPro
         <div className="stamp-solo">
           <StampDemo
             mode="loading"
-            motion="cinematic"
-            sound
+            motion={IS_E2E_MOCK ? "quick" : "cinematic"}
+            sound={!IS_E2E_MOCK}
             progress={clamped}
             onComplete={onStampComplete}
           />

@@ -5,7 +5,8 @@ import { BootSplash } from "@/components/BootSplash";
 export const MIN_BOOT_SPLASH_MS = 1_100;
 const BOOT_FADE_MS = 540;
 /** Fallback se a animação stamp não sinalizar conclusão (ex.: reduced-motion / falha). */
-const STAMP_COMPLETION_FALLBACK_MS = 4_500;
+const STAMP_COMPLETION_FALLBACK_MS =
+  import.meta.env.VITE_E2E_MOCK === "1" ? 800 : 4_500;
 
 interface BootSplashGateProps {
   /** true enquanto a infraestrutura/sessão ainda não terminou de carregar */
