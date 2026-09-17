@@ -1,0 +1,31 @@
+{
+  "project": "Nome do projeto",
+  "baseBranch": "origin/feature",
+  "promotionTarget": "origin/master",
+  "architectureDecisions": [
+    "Toda worktree parte exclusivamente de baseBranch.",
+    "promotionTarget só recebe promoção humana após testes, revisão e merge humano.",
+    "Não incluir credenciais, dados internos ou tokens em tickets, resumos, evidências ou PRs."
+  ],
+  "ticketTestProtocol": {
+    "requiredForNewOrModifiedTickets": true,
+    "field": "testInstructions",
+    "requirements": [
+      "Pré-requisitos e ambiente permitido, incluindo branch/worktree e dependências externas.",
+      "Passos executáveis em ordem, com comandos ou ações manuais quando aplicável.",
+      "Resultado esperado e evidência a registrar para cada cenário relevante.",
+      "Classificação do impacto em dados: somente leitura, cria dados temporários, altera dados existentes ou destrutivo.",
+      "Procedimento de limpeza, rollback ou confirmação explícita quando o teste criar ou alterar dados.",
+      "Proibição de usar dados reais, credenciais reais ou ambientes internos quando o ticket exigir staging."
+    ],
+    "schema": {
+      "prerequisites": "Lista não vazia de pré-requisitos e ambientes permitidos.",
+      "steps": "Lista não vazia de passos reproduzíveis.",
+      "expectedResultAndEvidence": "Lista não vazia de resultados esperados e evidências.",
+      "dataImpact": "Classificação textual do impacto nos dados.",
+      "cleanupAndRollback": "Lista não vazia de limpeza, rollback e confirmações.",
+      "stagingRestrictions": "Proibição explícita de dados e credenciais internas em staging."
+    }
+  },
+  "tickets": []
+}

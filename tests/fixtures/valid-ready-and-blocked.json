@@ -1,0 +1,65 @@
+{
+  "project": "fixture-valida",
+  "baseBranch": "origin/feature",
+  "promotionTarget": "origin/master",
+  "architectureDecisions": ["Worktrees partem de baseBranch."],
+  "ticketTestProtocol": {
+    "requiredForNewOrModifiedTickets": true,
+    "field": "testInstructions",
+    "requirements": ["Roteiro reproduzível."],
+    "schema": {
+      "prerequisites": "Lista não vazia.",
+      "steps": "Lista não vazia.",
+      "expectedResultAndEvidence": "Lista não vazia.",
+      "dataImpact": "Classificação textual.",
+      "cleanupAndRollback": "Lista não vazia.",
+      "stagingRestrictions": "Proibição de dados reais."
+    }
+  },
+  "tickets": [
+    {
+      "id": "PROJ-001",
+      "title": "Ticket raiz",
+      "status": "ready",
+      "blockedBy": [],
+      "context": "Fixture do kit de regras. Não é ticket de produto.",
+      "expectedBehavior": "O planejador lista este ticket como PRONTA.",
+      "scope": ["Servir de exemplo válido para o contrato."],
+      "outOfScope": ["Qualquer código de aplicação."],
+      "acceptanceCriteria": ["plan imprime PRONTA para PROJ-001."],
+      "tests": [".workflow/scripts/waves.sh plan .workflow/workflow.json"],
+      "testInstructions": {
+        "prerequisites": ["jq instalado.", "Arquivo de fixture presente."],
+        "steps": ["Executar waves.sh plan no arquivo de fixture."],
+        "expectedResultAndEvidence": ["Linha PRONTA para PROJ-001."],
+        "dataImpact": "somente leitura",
+        "cleanupAndRollback": ["Nenhuma alteração persistente."],
+        "stagingRestrictions": "Proibido usar dados, contas ou credenciais reais."
+      },
+      "likelyFiles": [".workflow/scripts/waves.sh"],
+      "risks": ["Alterar o contrato sem atualizar as fixtures."]
+    },
+    {
+      "id": "PROJ-002",
+      "title": "Ticket dependente",
+      "status": "ready",
+      "blockedBy": ["PROJ-001"],
+      "context": "Depende de PROJ-001, que ainda não está merged.",
+      "expectedBehavior": "O planejador lista este ticket como BLOQUEADA.",
+      "scope": ["Servir de exemplo de bloqueio."],
+      "outOfScope": ["Implementar PROJ-001."],
+      "acceptanceCriteria": ["plan imprime BLOQUEADA para PROJ-002."],
+      "tests": [".workflow/scripts/waves.sh plan .workflow/workflow.json"],
+      "testInstructions": {
+        "prerequisites": ["jq instalado.", "PROJ-001 presente e não merged."],
+        "steps": ["Executar waves.sh plan no arquivo de fixture."],
+        "expectedResultAndEvidence": ["Linha BLOQUEADA para PROJ-002 citando PROJ-001."],
+        "dataImpact": "somente leitura",
+        "cleanupAndRollback": ["Nenhuma alteração persistente."],
+        "stagingRestrictions": "Proibido usar dados, contas ou credenciais reais."
+      },
+      "likelyFiles": [".workflow/scripts/waves.sh"],
+      "risks": ["Marcar PROJ-001 como merged na fixture e perder o caso de bloqueio."]
+    }
+  ]
+}

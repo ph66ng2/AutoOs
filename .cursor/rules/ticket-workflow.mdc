@@ -1,0 +1,49 @@
+---
+description: Regras de tickets e ondas — planejar antes de implementar, worktree por ticket, merge humano.
+alwaysApply: true
+---
+
+# Ticket workflow
+
+Siga o contrato em `.workflow/README.md` e o JSON em `.workflow/workflow.json`.
+
+## Obrigatório
+
+1. Transforme a feature em tickets no `workflow.json` antes de implementar.
+2. Implemente somente tickets que o planejador lista como `PRONTA`.
+3. Cada ticket usa worktree e branch próprias, criadas a partir de `baseBranch` com `.workflow/scripts/waves.sh spawn`.
+4. Execute os testes do ticket e deixe o PR pronto. Não faça merge.
+5. `promotionTarget` só recebe promoção humana após validação.
+6. Depois do merge humano, marque o ticket como `merged` e rode o plano de novo.
+
+## Contrato do ticket
+
+Todo ticket precisa de `id`, `title`, `status`, `blockedBy`, `context`, `scope`, `outOfScope`, `expectedBehavior`, `acceptanceCriteria`, `tests`, `testInstructions`, `likelyFiles` e `risks`.
+
+Não aceite tickets vagos. Defina o que entra e o que fica fora antes de escrever código.
+
+Status: `ready`, `in_progress`, `review`, `merged`, `blocked`.
+
+`testInstructions` é obrigatório, com `prerequisites`, `steps`, `expectedResultAndEvidence`, `dataImpact`, `cleanupAndRollback` e `stagingRestrictions`.
+
+Em staging, nunca use dados reais nem credenciais internas.
+
+## Registro
+
+Registre `start`, `progress`, `test`, `review`, `block` ou `merged` conforme o evento real. O PR deve citar o ID do ticket. Sem credenciais, dados internos ou tokens em resumos e evidências.
+
+## Prompts
+
+Criar tickets:
+
+```text
+Transforme este plano em tickets no arquivo .workflow/workflow.json.
+Defina escopo, critérios de aceite, testes, testInstructions reproduzíveis, riscos e blockedBy. Não implemente nada ainda.
+```
+
+Executar um ticket:
+
+```text
+Implemente o ticket PROJ-101 seguindo .workflow/workflow.json e as instruções do repositório.
+Trabalhe somente nesse escopo, rode os testes relevantes e não faça merge.
+```

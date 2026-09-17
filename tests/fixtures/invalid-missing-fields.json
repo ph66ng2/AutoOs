@@ -1,0 +1,13 @@
+{
+  "project": "incompleto",
+  "baseBranch": "origin/feature",
+  "promotionTarget": "origin/master",
+  "tickets": [
+    {
+      "id": "PROJ-000",
+      "title": "Incompleto",
+      "status": "ready",
+      "blockedBy": []
+    }
+  ]
+}

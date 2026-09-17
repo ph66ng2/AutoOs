@@ -1,0 +1,43 @@
+{
+  "project": "dependencia-ausente",
+  "baseBranch": "origin/feature",
+  "promotionTarget": "origin/master",
+  "architectureDecisions": ["processo"],
+  "ticketTestProtocol": {
+    "requiredForNewOrModifiedTickets": true,
+    "field": "testInstructions",
+    "requirements": ["x"],
+    "schema": {
+      "prerequisites": "x",
+      "steps": "x",
+      "expectedResultAndEvidence": "x",
+      "dataImpact": "x",
+      "cleanupAndRollback": "x",
+      "stagingRestrictions": "x"
+    }
+  },
+  "tickets": [
+    {
+      "id": "PROJ-001",
+      "title": "Aponta para ticket que não existe",
+      "status": "ready",
+      "blockedBy": ["PROJ-MISSING"],
+      "context": "Fixture de validação.",
+      "expectedBehavior": "O planejador recusa o arquivo.",
+      "scope": ["Validar dependência."],
+      "outOfScope": ["Implementar produto."],
+      "acceptanceCriteria": ["O script sai com erro."],
+      "tests": ["waves.sh plan"],
+      "testInstructions": {
+        "prerequisites": ["jq instalado."],
+        "steps": ["Rodar o plan."],
+        "expectedResultAndEvidence": ["Saída de erro."],
+        "dataImpact": "somente leitura",
+        "cleanupAndRollback": ["Nada a limpar."],
+        "stagingRestrictions": "Sem dados reais."
+      },
+      "likelyFiles": [".workflow/workflow.json"],
+      "risks": ["Falso positivo se a validação for pulada."]
+    }
+  ]
+}
