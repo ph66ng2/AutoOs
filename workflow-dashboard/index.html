@@ -20,7 +20,7 @@
 
         <nav class="main-nav" aria-label="Navegação principal">
           <a class="nav-link active" href="#overview"><span aria-hidden="true">⌁</span> Visão geral</a>
-          <a class="nav-link" href="#board"><span aria-hidden="true">▣</span> Quadro</a>
+          <a class="nav-link" href="#board"><span aria-hidden="true">▣</span> Kanban</a>
           <a class="nav-link" href="#activity"><span aria-hidden="true">↗</span> Atividade</a>
         </nav>
 
@@ -38,10 +38,10 @@
         </header>
 
         <main>
-          <section id="overview" class="intro-row" aria-labelledby="page-title">
+          <section class="intro-row" aria-labelledby="page-title">
             <div>
-              <p class="eyebrow">AUTOOS / WORKFLOW</p>
-              <h1 id="page-title">Quadro de execução</h1>
+              <p class="eyebrow" id="page-eyebrow">AUTOOS / WORKFLOW</p>
+              <h1 id="page-title">Visão geral</h1>
             </div>
             <div class="intro-actions">
               <span class="updated-at">Atualizado <strong id="last-read">--</strong></span>
@@ -50,32 +50,35 @@
             </div>
           </section>
 
+          <div id="track-filters" class="track-switcher" role="tablist" aria-label="Foco de trabalho"></div>
           <section id="quality-alert" class="quality-alert hidden" aria-live="polite"></section>
 
-          <section class="overview-grid" aria-label="Resumo do projeto">
-            <article class="overview-card progress-card">
-              <div class="card-heading"><p class="eyebrow">PROGRESSO GERAL</p><span class="card-status">EM MOVIMENTO</span></div>
-              <div class="progress-heading"><h2>Escolha um foco e o quadro mostra só o que dá para fazer dali.</h2><strong id="progress-percent">--%</strong></div>
-              <div class="progress-track"><span id="progress-bar"></span></div>
-              <div class="stats-row">
-                <div><strong id="metric-total">--</strong><span>tickets</span></div>
-                <div><strong id="metric-merged">--</strong><span>concluídos</span></div>
-                <div><strong id="metric-ready">--</strong><span>liberados</span></div>
-                <div><strong id="metric-blocked">--</strong><span>na fila</span></div>
-              </div>
-            </article>
+          <section id="overview" class="site-page is-active" data-page="overview" aria-label="Resumo do projeto">
+            <section class="overview-grid">
+              <article class="overview-card progress-card">
+                <div class="card-heading"><p class="eyebrow">PROGRESSO GERAL</p><span class="card-status">EM MOVIMENTO</span></div>
+                <div class="progress-heading"><h2>Escolha um foco e abra o Kanban para ver o que dá para fazer dali.</h2><strong id="progress-percent">--%</strong></div>
+                <div class="progress-track"><span id="progress-bar"></span></div>
+                <div class="stats-row">
+                  <div><strong id="metric-total">--</strong><span>tickets</span></div>
+                  <div><strong id="metric-merged">--</strong><span>concluídos</span></div>
+                  <div><strong id="metric-ready">--</strong><span>liberados</span></div>
+                  <div><strong id="metric-blocked">--</strong><span>na fila</span></div>
+                </div>
+              </article>
 
-            <article class="overview-card focus-card">
-              <div class="card-heading"><p class="eyebrow">COMECE POR AQUI</p><span id="focus-wave" class="focus-wave">Foco --</span></div>
-              <span id="focus-ticket-id" class="focus-ticket-id">--</span>
-              <h2 id="focus-title">Carregando foco...</h2>
-              <p id="focus-summary">Selecionando o próximo passo do workflow.</p>
-              <p id="focus-unlocks" class="focus-unlocks"></p>
-              <button id="focus-button" class="card-action" type="button">Abrir no quadro <span aria-hidden="true">→</span></button>
-            </article>
+              <article class="overview-card focus-card">
+                <div class="card-heading"><p class="eyebrow">COMECE POR AQUI</p><span id="focus-wave" class="focus-wave">Foco --</span></div>
+                <span id="focus-ticket-id" class="focus-ticket-id">--</span>
+                <h2 id="focus-title">Carregando foco...</h2>
+                <p id="focus-summary">Selecionando o próximo passo do workflow.</p>
+                <p id="focus-unlocks" class="focus-unlocks"></p>
+                <button id="focus-button" class="card-action" type="button">Abrir no Kanban <span aria-hidden="true">→</span></button>
+              </article>
+            </section>
           </section>
 
-          <section id="board" class="waves-section" aria-labelledby="waves-title">
+          <section id="board" class="site-page site-page-board" data-page="board" aria-labelledby="waves-title">
             <div class="section-heading">
               <div>
                 <p class="eyebrow">KANBAN</p>
@@ -84,13 +87,10 @@
               </div>
             </div>
 
-            <div id="track-filters" class="track-switcher" role="tablist" aria-label="Foco de trabalho"></div>
-
             <div class="workflow-toolbar" aria-label="Filtros do painel">
               <div class="view-switcher" role="tablist" aria-label="Modo de visualização">
                 <button class="view-button active" data-view="board" role="tab" aria-selected="true" type="button">Quadro</button>
                 <button class="view-button" data-view="path" role="tab" aria-selected="false" type="button">Caminho</button>
-                <button class="view-button" data-view="timeline" role="tab" aria-selected="false" type="button">Histórico</button>
               </div>
               <label class="search-box">
                 <span class="search-icon" aria-hidden="true">⌕</span>
@@ -109,22 +109,23 @@
               </div>
               <ol id="path-list" class="path-list"></ol>
             </section>
-
-            <section id="timeline-view" class="timeline-view hidden" aria-label="Linha do tempo">
-              <div class="section-heading compact-heading"><div><p class="eyebrow">HISTÓRICO</p><h2>O projeto em movimento</h2></div><span id="event-count" class="section-count">-- eventos</span></div>
-              <div id="timeline-list" class="timeline-list"></div>
-            </section>
           </section>
 
-          <section id="activity" class="bottom-grid" aria-label="Saúde e atividade do workflow">
-            <section class="surface-panel activity-panel" aria-labelledby="activity-title">
-              <div class="section-heading compact-heading"><div><p class="eyebrow">ÚLTIMOS MOVIMENTOS</p><h2 id="activity-title">Atividade recente</h2></div><button id="activity-history" class="text-button" type="button">Ver histórico</button></div>
-              <div id="activity-preview" class="activity-list"></div>
+          <section id="activity" class="site-page site-page-activity" data-page="activity" aria-label="Saúde e atividade do workflow">
+            <section class="bottom-grid">
+              <section class="surface-panel activity-panel" aria-labelledby="activity-title">
+                <div class="section-heading compact-heading"><div><p class="eyebrow">ÚLTIMOS MOVIMENTOS</p><h2 id="activity-title">Atividade recente</h2></div></div>
+                <div id="activity-preview" class="activity-list"></div>
+              </section>
+              <section class="surface-panel health-panel" aria-labelledby="health-title">
+                <div class="section-heading compact-heading"><div><p class="eyebrow">SAÚDE DO WORKFLOW</p><h2 id="health-title">Fluxo estável</h2></div><strong id="health-score" class="health-score">--/100</strong></div>
+                <p id="health-summary" class="health-summary">Analisando dependências e próximos passos.</p>
+                <div class="health-bars"><div><span>Velocidade</span><strong id="health-speed">--</strong></div><div><span>Na fila</span><strong id="health-blockers">--</strong></div></div>
+              </section>
             </section>
-            <section class="surface-panel health-panel" aria-labelledby="health-title">
-              <div class="section-heading compact-heading"><div><p class="eyebrow">SAÚDE DO WORKFLOW</p><h2 id="health-title">Fluxo estável</h2></div><strong id="health-score" class="health-score">--/100</strong></div>
-              <p id="health-summary" class="health-summary">Analisando dependências e próximos passos.</p>
-              <div class="health-bars"><div><span>Velocidade</span><strong id="health-speed">--</strong></div><div><span>Na fila</span><strong id="health-blockers">--</strong></div></div>
+            <section id="timeline-view" class="timeline-view" aria-label="Linha do tempo">
+              <div class="section-heading compact-heading"><div><p class="eyebrow">HISTÓRICO</p><h2>O projeto em movimento</h2></div><span id="event-count" class="section-count">-- eventos</span></div>
+              <div id="timeline-list" class="timeline-list"></div>
             </section>
           </section>
         </main>

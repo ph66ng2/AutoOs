@@ -14,7 +14,7 @@ Abra `http://127.0.0.1:4173`. Nesse modo, o painel lê o `workflow.json` da work
 
 O servidor escuta somente em `127.0.0.1`. A atualização grava o JSON com lock e troca atômica; não executa merge, push ou alteração no banco.
 
-O quadro é um Kanban por estado (`Pode começar`, `Em curso`, `Revisão`, `Na fila`, `Feito`). Os chips de foco (SaaS, Interface, Correções, Atualização) filtram a rota. A aba **Caminho** mostra a ordem recomendada daquele foco. Use `?foco=interface` para abrir direto na rota de telas.
+O site tem três páginas: **Visão geral** (`#overview`), **Kanban** (`#board`) e **Atividade** (`#activity`). O quadro é um Kanban por estado (`Pode começar`, `Em curso`, `Revisão`, `Na fila`, `Feito`). Os chips de foco (SaaS, Interface, Correções, Atualização) filtram a rota. No Kanban, a aba **Caminho** mostra a ordem recomendada daquele foco. `?foco=interface` abre direto na página do Kanban.
 
 ## Relatar progresso como agente
 
