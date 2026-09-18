@@ -4896,6 +4896,84 @@
         "Aninhar controles interativos dentro de outros e produzir semântica inválida.",
         "Criar ordem de tabulação longa e cansativa ao tornar oito linhas focáveis."
       ]
+    },
+    {
+      "id": "AO-BOOT-001",
+      "title": "Tornar a tela de carregamento funcional com animação stamp",
+      "status": "review",
+      "blockedBy": [],
+      "objective": "Unificar o arranque do AutoOS sob o BootSplash com progresso real e substituir a animação vetorial atual pela animação stamp (carimbo BMITAG), usando o repositório ph66ng2/stamp como fonte quando disponível.",
+      "context": "Hoje o BootSplash só aparece depois do DatabaseConfigService.checkStatus em InternalApp; enquanto o banco é verificado, App.tsx mostra um spinner cyan inline. O modo SaaS (SaasApp) usa outro Loader2 em state.kind === \"booting\". O progresso em useSensitiveAccess salta 6→14→38→86→100 sem refletir a checagem de banco. A animação atual (impressora SVG) deve ceder lugar à linguagem stamp de https://github.com/ph66ng2/stamp; se o repositório estiver inacessível, vender assets locais de carimbo BMITAG no mesmo contrato visual e deixar o ponto de integração preparado para troca.",
+      "expectedBehavior": "Desde o primeiro paint até a sessão pronta, o usuário vê apenas o BootSplash fullscreen com progresso coerente às fases reais (iniciar → verificar infraestrutura/sessão → preparar acesso → finalizar). Ao concluir, a animação stamp/carimbo encerra e o splash faz fade-out. Não há spinner cyan nem Loader2 de boot paralelo. Labels acessíveis acompanham o progresso. Preferência prefers-reduced-motion reduz movimento sem esconder o estado.",
+      "scope": [
+        "Expor progresso de boot desde InternalApp (checagem de banco) e SaasApp (restauração de sessão), não só após SensitiveAccessProvider.",
+        "Renderizar BootSplash no caminho legado e no caminho SaaS durante o carregamento inicial, eliminando o spinner cyan de App.tsx e o Loader2 de booting em SaasApp.",
+        "Avançar bootProgress por fases reais: montagem, verificação de infraestrutura/sessão, carregamento de acesso sensível/perfis, conclusão.",
+        "Substituir AutoOsBootAnimation (impressora SVG) pela animação stamp/carimbo alinhada a ph66ng2/stamp; se o repositório retornar 404, implementar carimbo BMITAG local equivalente e documentar a dependência no PR.",
+        "Atualizar testes de BootSplash/AutoOsBootAnimation e cobrir o contrato de progresso/rótulos.",
+        "Manter MIN_BOOT_SPLASH_MS e fade-out; respeitar prefers-reduced-motion."
+      ],
+      "outOfScope": [
+        "Alterar autenticação, PIN, permissões, IPC ou schema de banco.",
+        "Substituir spinners de listas/páginas (AO-UI-006).",
+        "Redesenhar o seletor de perfil pós-boot ou AuthDialog.",
+        "Publicar ou criar o repositório ph66ng2/stamp no GitHub.",
+        "Alterar tema global, tokens de cor das páginas ou sidebar."
+      ],
+      "acceptanceCriteria": [
+        "InternalApp não renderiza mais o spinner cyan durante dbReady === null; usa BootSplash com progresso.",
+        "SaasApp em state.kind === \"booting\" usa o mesmo BootSplash (ou wrapper compartilhado), sem Loader2 de arranque.",
+        "bootProgress reflete fases reais e chega a 100 só quando o carregamento inicial conclui.",
+        "A animação de boot é stamp/carimbo (não a impressora SVG anterior); marca BMITAG permanece no encerramento.",
+        "Testes unitários do splash passam; npm run lint e npm run test:run passam no escopo afetado."
+      ],
+      "tests": [
+        "Testes de BootSplash/AutoOsBootAnimation cobrindo progresso, rótulos, fade-out e presença do carimbo/marca.",
+        "Revisão direcionada de App.tsx e SaasApp.tsx confirmando ausência de spinner de boot paralelo.",
+        "npm run lint.",
+        "npm run test:run -- src/components/BootSplash.test.tsx (e testes novos da animação)."
+      ],
+      "testInstructions": {
+        "prerequisites": [
+          "Worktree/branch exclusiva a partir de origin/feature para AO-BOOT-001, com npm ci ou dependências do package-lock.",
+          "Frontend apenas: não exige PostgreSQL, Tauri real, Supabase, PowerSync nem credenciais.",
+          "Tentativa de leitura de https://github.com/ph66ng2/stamp; se 404, usar assets locais documentados."
+        ],
+        "steps": [
+          "Registrar start do ticket via npm run workflow:report -- start AO-BOOT-001.",
+          "Unificar BootSplash nos caminhos InternalApp e SaasApp e ligar progresso às fases reais.",
+          "Substituir a animação vetorial pela stamp/carimbo e atualizar testes.",
+          "Executar npm run lint.",
+          "Executar npm run test:run -- src/components/BootSplash.test.tsx e demais testes da animação.",
+          "Abrir o app em npm run dev, observar o splash do primeiro paint ao fade-out, e capturar evidência visual se possível."
+        ],
+        "expectedResultAndEvidence": [
+          "Lint e testes direcionados passam.",
+          "Nenhum spinner cyan/Loader2 de boot permanece em App.tsx/SaasApp.",
+          "Evidência: saída dos testes e, se disponível, screenshot/gravação do splash com carimbo e progresso."
+        ],
+        "dataImpact": "Somente leitura — sem alteração de banco, perfis, estoque ou credenciais.",
+        "cleanupAndRollback": [
+          "Nenhuma limpeza de dados necessária.",
+          "Reverter o commit/PR se o splash regredir o arranque."
+        ],
+        "stagingRestrictions": "Não usar dados reais de clientes nem credenciais internas; validação visual apenas em ambiente local/mock."
+      },
+      "likelyFiles": [
+        "src/App.tsx",
+        "src/components/BootSplash.tsx",
+        "src/components/AutoOsBootAnimation.tsx",
+        "src/components/BootSplash.test.tsx",
+        "src/components/SaasApp.tsx",
+        "src/hooks/useSensitiveAccess.tsx",
+        "src/index.css",
+        ".workflow/workflow.json"
+      ],
+      "risks": [
+        "Repositório ph66ng2/stamp inacessível (404/privado) força fallback local e pode divergir do design original.",
+        "Exibir BootSplash antes do SensitiveAccessProvider exige elevar estado de progresso sem criar flash ou race no fade-out.",
+        "Tempo mínimo de splash + animação de conclusão pode parecer lento se as fases avançarem rápido demais em dev."
+      ]
     }
   ]
 }

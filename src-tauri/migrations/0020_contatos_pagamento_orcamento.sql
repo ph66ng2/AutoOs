@@ -1,4 +1,4 @@
--- 0017: contatos de cliente, snapshots do responsável e forma de pagamento.
+-- 0020: contatos de cliente, snapshots do responsável e forma de pagamento.
 -- Não há backfill: contatos antigos não são inferidos de observações ou nomes.
 
 CREATE TABLE IF NOT EXISTS cliente_contatos (

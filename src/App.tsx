@@ -20,7 +20,8 @@
 import { useEffect, useState } from "react";
 import { BrowserRouter, Routes, Route, useLocation, useNavigate } from "react-router-dom";
 import { Toaster } from "sonner";
-import { BootSplash } from "@/components/BootSplash";
+import { BootSplashGate } from "@/components/BootSplashGate";
+import { useBootUi } from "@/components/BootUi";
 import { DatabaseConfigDialog } from "@/components/DatabaseConfigDialog";
 import { SensitiveRoute, useSensitiveAccess } from "@/hooks/useSensitiveAccess";
 import { SENSITIVE_PERMISSIONS } from "@/types";
@@ -46,22 +47,15 @@ import Balcao from "@/pages/Balcao";
 import { SaasApp } from "@/components/SaasApp";
 import { IS_SAAS_BUILD } from "@/lib/runtime-mode";
 
-/** Exibição mínima do boot (IPC em dev pode resolver em poucos ms). Prod fica igual ou mais pesado só se o Rust/DB demorar. */
-const MIN_BOOT_SPLASH_MS = 1_100;
-const BOOT_COMPLETION_ANIMATION_MS = 1_450;
-
-function AppContent() {
-  const { loading, bootProgress, status, refreshStatus } = useSensitiveAccess();
+function AppContent({ splashActive }: { splashActive: boolean }) {
+  const { loading, status, refreshStatus } = useSensitiveAccess();
   const [appMode, setCurrentAppMode] = useState<AppMode | null>(() => getAppMode());
-  const [splashVisible, setSplashVisible] = useState(true);
-  const [minSplashElapsed, setMinSplashElapsed] = useState(false);
-  const [completionAnimationElapsed, setCompletionAnimationElapsed] = useState(false);
 
   // Força refresh do status quando o banco fica pronto
   // Resolve race condition onde refreshStatus() falhou antes do banco estar inicializado
   useEffect(() => {
     if (status?.profiles.length === 0) {
-      refreshStatus();
+      void refreshStatus();
     }
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -71,89 +65,60 @@ function AppContent() {
     return () => window.removeEventListener("autoos:app-mode", syncAppMode);
   }, []);
 
-  useEffect(() => {
-    const t = window.setTimeout(() => setMinSplashElapsed(true), MIN_BOOT_SPLASH_MS);
-    return () => window.clearTimeout(t);
-  }, []);
-
-  useEffect(() => {
-    if (loading) {
-      setCompletionAnimationElapsed(false);
-      return;
-    }
-
-    const t = window.setTimeout(
-      () => setCompletionAnimationElapsed(true),
-      BOOT_COMPLETION_ANIMATION_MS,
-    );
-    return () => window.clearTimeout(t);
-  }, [loading]);
-
-  const splashCanFadeOut = !loading && minSplashElapsed && completionAnimationElapsed;
   const sessionReady = Boolean(status?.active_profile_id && status.unlocked);
-
-  useEffect(() => {
-    if (splashVisible && splashCanFadeOut) {
-      const t = window.setTimeout(() => setSplashVisible(false), 540);
-      return () => window.clearTimeout(t);
-    }
-  }, [splashVisible, splashCanFadeOut]);
+  // Login/PIN/modo só depois da abertura (stamp) terminar.
+  const postOpening = !splashActive && !loading;
 
   return (
-    <>
-      <BrowserRouter>
-        <AppModeChoice
-          visible={!loading && sessionReady && appMode === null}
-          onSelect={setCurrentAppMode}
-        />
-        <AppModeRedirect mode={appMode} ready={!loading && sessionReady} />
-        <ReleaseHighlightsDialog
-          enabled={!loading && !splashVisible && sessionReady && appMode !== null}
-        />
-        <Routes>
-          <Route element={<Layout />}>
-            <Route path="/" element={<Dashboard />} />
-            <Route path="/perfil" element={<Perfil />} />
-            <Route path="/equipamentos" element={<Equipamentos />} />
-            <Route path="/clientes" element={<Clientes />} />
-            <Route path="/insumos" element={<Insumos />} />
-            <Route path="/servicos" element={<Servicos />} />
-            <Route path="/poc" element={<PowerSyncPOC />} />
-            <Route
-              path="/gastos"
-              element={
-                <SensitiveRoute
-                  title="Gastos e despesas protegidos"
-                  description="Desbloqueie o acesso sensível para visualizar gastos e despesas do sistema."
-                  permission={SENSITIVE_PERMISSIONS.VIEW_EXPENSES}
-                >
-                  <Gastos />
-                </SensitiveRoute>
-              }
-            />
-            <Route
-              path="/configuracoes"
-              element={
-                <SensitiveRoute
-                  title="Configurações SMTP protegidas"
-                  description="Desbloqueie o acesso sensível para visualizar ou alterar credenciais e envios SMTP."
-                  permission={SENSITIVE_PERMISSIONS.MANAGE_PROFILES}
-                >
-                  <Configuracoes />
-                </SensitiveRoute>
-              }
-            />
-          </Route>
-          <Route element={<CounterSessionGate><CounterLayout onChangeMode={setCurrentAppMode} /></CounterSessionGate>}>
-            <Route path="/balcao" element={<Balcao />} />
-            <Route path="/balcao/painel" element={<Balcao />} />
-          </Route>
-        </Routes>
-      </BrowserRouter>
-      {splashVisible && (
-        <BootSplash progress={loading ? bootProgress : 100} fadeOut={splashCanFadeOut} />
-      )}
-    </>
+    <BrowserRouter>
+      <AppModeChoice
+        visible={postOpening && sessionReady && appMode === null}
+        onSelect={setCurrentAppMode}
+      />
+      <AppModeRedirect mode={appMode} ready={postOpening && sessionReady} />
+      <ReleaseHighlightsDialog
+        enabled={postOpening && sessionReady && appMode !== null}
+      />
+      <Routes>
+        <Route element={<Layout />}>
+          <Route path="/" element={<Dashboard />} />
+          <Route path="/perfil" element={<Perfil />} />
+          <Route path="/equipamentos" element={<Equipamentos />} />
+          <Route path="/clientes" element={<Clientes />} />
+          <Route path="/insumos" element={<Insumos />} />
+          <Route path="/servicos" element={<Servicos />} />
+          <Route path="/poc" element={<PowerSyncPOC />} />
+          <Route
+            path="/gastos"
+            element={
+              <SensitiveRoute
+                title="Gastos e despesas protegidos"
+                description="Desbloqueie o acesso sensível para visualizar gastos e despesas do sistema."
+                permission={SENSITIVE_PERMISSIONS.VIEW_EXPENSES}
+              >
+                <Gastos />
+              </SensitiveRoute>
+            }
+          />
+          <Route
+            path="/configuracoes"
+            element={
+              <SensitiveRoute
+                title="Configurações SMTP protegidas"
+                description="Desbloqueie o acesso sensível para visualizar ou alterar credenciais e envios SMTP."
+                permission={SENSITIVE_PERMISSIONS.MANAGE_PROFILES}
+              >
+                <Configuracoes />
+              </SensitiveRoute>
+            }
+          />
+        </Route>
+        <Route element={<CounterSessionGate><CounterLayout onChangeMode={setCurrentAppMode} /></CounterSessionGate>}>
+          <Route path="/balcao" element={<Balcao />} />
+          <Route path="/balcao/painel" element={<Balcao />} />
+        </Route>
+      </Routes>
+    </BrowserRouter>
   );
 }
 
@@ -176,33 +141,50 @@ function AppModeRedirect({ mode, ready }: { mode: AppMode | null; ready: boolean
 }
 
 function InternalApp() {
+  const { loading, bootProgress, advanceBootProgress, refreshStatus } = useSensitiveAccess();
+  const { openingComplete, completeOpening } = useBootUi();
   const [dbReady, setDbReady] = useState<boolean | null>(null);
+  const [splashActive, setSplashActive] = useState(!openingComplete);
 
   useEffect(() => {
+    let cancelled = false;
     void (async () => {
+      advanceBootProgress(14);
       try {
+        advanceBootProgress(28);
         const status = await DatabaseConfigService.checkStatus();
+        if (cancelled) return;
+        advanceBootProgress(48);
         setDbReady(status);
+        if (status) {
+          await refreshStatus();
+        }
       } catch {
-        setDbReady(false);
+        if (!cancelled) setDbReady(false);
       }
     })();
-  }, []);
+    return () => {
+      cancelled = true;
+    };
+  }, [advanceBootProgress, refreshStatus]);
 
-  if (dbReady === null) {
-    return (
-      <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-[#050608]">
-        <div className="h-8 w-8 animate-spin rounded-full border-b-2 border-cyan-400" />
-      </div>
-    );
-  }
+  const bootLoading = dbReady === null || (dbReady === true && loading);
+  const displayProgress = dbReady === null
+    ? Math.max(bootProgress, 28)
+    : bootProgress;
 
-  if (!dbReady) {
+  if (dbReady === false) {
     return (
       <>
         <Toaster position="top-right" visibleToasts={3} richColors closeButton duration={5000} />
         <ErrorBoundary>
-          <DatabaseConfigDialog onConfigured={() => setDbReady(true)} />
+          <DatabaseConfigDialog
+            onConfigured={() => {
+              setDbReady(true);
+              if (!openingComplete) setSplashActive(true);
+              void refreshStatus();
+            }}
+          />
         </ErrorBoundary>
       </>
     );
@@ -212,8 +194,24 @@ function InternalApp() {
     <>
       <Toaster position="top-right" visibleToasts={3} richColors closeButton duration={5000} />
       <ErrorBoundary>
-        <AppContent />
+        {dbReady === true ? <AppContent splashActive={splashActive} /> : null}
       </ErrorBoundary>
+      {splashActive ? (
+        <BootSplashGate
+          loading={bootLoading}
+          progress={displayProgress}
+          onFinished={() => {
+            setSplashActive(false);
+            completeOpening();
+          }}
+        />
+      ) : bootLoading ? (
+        <div
+          role="status"
+          aria-label="Preparando aplicativo"
+          className="fixed inset-0 z-[9999] bg-slate-950"
+        />
+      ) : null}
     </>
   );
 }

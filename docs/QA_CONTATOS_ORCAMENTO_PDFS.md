@@ -14,7 +14,7 @@ Base: `origin/master` em `0a11686`
 
 ## Contratos entregues
 
-- Migration: `src-tauri/migrations/0017_contatos_pagamento_orcamento.sql`.
+- Migration: `src-tauri/migrations/0020_contatos_pagamento_orcamento.sql`.
 - Tipos públicos: `ClienteContato`, `FormaPagamentoCodigo` e `FormaPagamento`.
 - Métodos públicos adicionados a `src/lib/db.ts`:
   - `listarClienteContatos(clienteId, empresaId)`;
