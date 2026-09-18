@@ -6,6 +6,7 @@ import {
   Save,
   Sparkles,
   Tags,
+  Wrench,
   X,
 } from "lucide-react";
 import { useState } from "react";
@@ -22,7 +23,7 @@ import {
 
 export const RELEASE_HIGHLIGHTS_VERSION = "0.5.3";
 export const RELEASE_HIGHLIGHTS_STORAGE_KEY =
-  `autoos:release-highlights:${RELEASE_HIGHLIGHTS_VERSION}`;
+  `autoos:release-highlights:${RELEASE_HIGHLIGHTS_VERSION}:garantia`;
 
 const highlights = [
   {
@@ -59,6 +60,13 @@ const highlights = [
     description:
       "Ribbon e Etiqueta saíram das opções extras; vale o que já existia no cadastro.",
     detail: "Cartucho, Rolo e as demais categorias de sempre continuam no seletor.",
+  },
+  {
+    icon: Wrench,
+    title: "Serviço em garantia a R$ 0,00",
+    description:
+      "O catálogo de Serviços e a verificação técnica aceitam preço zero para garantia.",
+    detail: "Valores negativos continuam bloqueados. Não há mudança de banco.",
   },
 ] as const;
 
@@ -127,7 +135,7 @@ export function ReleaseHighlightsDialog({ enabled }: { enabled: boolean }) {
                 Estoque de insumos e salvamento corrigido
               </DialogTitle>
               <DialogDescription className="mt-2 max-w-2xl text-sm leading-relaxed text-slate-300 sm:text-base">
-                AutoOS 0.5.3: ribbons e etiquetas BOPP no estoque, categorias alinhadas ao filtro e correção ao salvar produto.
+                AutoOS 0.5.3: ribbons e etiquetas BOPP no estoque, categorias alinhadas ao filtro, correção ao salvar produto e serviços de garantia a R$ 0,00.
               </DialogDescription>
             </div>
           </div>

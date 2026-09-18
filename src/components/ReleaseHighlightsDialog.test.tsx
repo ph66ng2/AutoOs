@@ -18,6 +18,7 @@ describe("ReleaseHighlightsDialog", () => {
     expect(screen.getByText("Estoque de ribbons e etiquetas")).toBeInTheDocument();
     expect(screen.getByText("Categorias no filtro certo")).toBeInTheDocument();
     expect(screen.getByText("Salvar produto de verdade")).toBeInTheDocument();
+    expect(screen.getByText("Serviço em garantia a R$ 0,00")).toBeInTheDocument();
   });
 
   it("registra a confirmação e não reaparece na mesma versão", () => {

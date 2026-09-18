@@ -22,10 +22,10 @@ A versão **1.0** será marcada **apenas quando o AutoOS estiver pronto para uso
 
 ### Versão atual
 
-A base atual de desenvolvimento é **0.1.3**. Todas as próximas tags devem partir deste ponto:
+A base atual de distribuição é **0.5.3**. Todas as próximas tags devem partir deste ponto:
 
-- Correções: `0.1.4`, `0.1.5`...
-- Novas features: `0.2.0`, `0.3.0`...
+- Correções: `0.5.4`, `0.5.5`...
+- Novas features: `0.6.0`, `0.7.0`...
 
 ### Tags para release Windows
 
@@ -54,9 +54,9 @@ Sempre que alterar a versão, atualize **os três arquivos** abaixo para manter 
 
 | Arquivo | Formato | Exemplo |
 |---------|---------|---------|
-| `package.json` | `"version": "0.1.3"` | Frontend e build scripts |
-| `src-tauri/Cargo.toml` | `version = "0.1.3"` | Backend Rust |
-| `src-tauri/tauri.conf.json` | `"version": "0.1.3"` | Bundle do instalador Windows |
+| `package.json` | `"version": "0.5.3"` | Frontend e build scripts |
+| `src-tauri/Cargo.toml` | `version = "0.5.3"` | Backend Rust (CARGO_PKG_VERSION no executável) |
+| `src-tauri/tauri.conf.json` | `"version": "0.5.3"` | Bundle do instalador Windows |
 
 ## Checklist antes de criar uma tag
 

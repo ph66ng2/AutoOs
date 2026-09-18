@@ -257,7 +257,8 @@ export default function Servicos() {
             </div>
             <div className="space-y-2">
               <Label>Preço padrão *</Label>
-              <Input type="number" step="0.01" min={0.01} {...form.register("preco_padrao")} />
+              <Input type="number" step="0.01" min={0} {...form.register("preco_padrao")} />
+              <p className="text-xs text-muted-foreground">Use 0,00 para serviços em garantia.</p>
               <FormValidationError message={form.formState.errors.preco_padrao?.message} />
             </div>
             <div className="space-y-2">

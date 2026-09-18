@@ -297,7 +297,9 @@ export type ProdutoFormData = z.infer<typeof produtoSchema>;
 export const servicoCatalogoSchema = z.object({
   nome: z.string().min(2, "Nome do serviço é obrigatório"),
   descricao: z.string().optional().or(z.literal("")),
-  preco_padrao: z.coerce.number().positive("Preço deve ser maior que zero"),
+  preco_padrao: z.coerce
+    .number()
+    .min(0, "Preço não pode ser negativo. Use 0,00 para garantia."),
 });
 
 export type ServicoCatalogoFormData = z.infer<typeof servicoCatalogoSchema>;
