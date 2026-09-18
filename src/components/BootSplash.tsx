@@ -28,7 +28,7 @@ export function BootSplash({ progress, fadeOut, onStampComplete }: BootSplashPro
       aria-live="polite"
       aria-label={`Carregando aplicativo ${Math.round(clamped)} por cento. ${statusLabel}`}
       className={cn(
-        "fixed inset-0 z-[9999] transition-opacity duration-500 ease-out",
+        "fixed inset-0 z-[9999] bg-slate-950 transition-opacity duration-500 ease-out",
         fadeOut ? "opacity-0 pointer-events-none" : "opacity-100",
       )}
     >

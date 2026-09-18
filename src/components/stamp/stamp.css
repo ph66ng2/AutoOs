@@ -6,7 +6,7 @@
 
 .stp.is-loading {
   --product: #2b6ce8;
-  background: color-mix(in srgb, var(--product) 12%, #080a10);
+  background: #020617;
 }
 
 .stp.is-loading .stp-stage {
@@ -18,13 +18,7 @@
 }
 
 .stp.is-loading .stp-desk {
-  background:
-    radial-gradient(
-      ellipse at 50% 42%,
-      color-mix(in srgb, var(--product) 26%, #0b1018) 0%,
-      color-mix(in srgb, var(--product) 10%, #080a10) 52%,
-      #080a10 100%
-    );
+  background: #020617;
 }
 
 .stp.is-loading .stp-halo {
@@ -1115,13 +1109,7 @@ html[data-theme="dark"] .stp-desk {
 }
 
 html[data-theme="dark"] .stp.is-loading .stp-desk {
-  background:
-    radial-gradient(
-      ellipse at 50% 42%,
-      color-mix(in srgb, var(--product) 26%, #0b1018) 0%,
-      color-mix(in srgb, var(--product) 10%, #080a10) 52%,
-      #080a10 100%
-    );
+  background: #020617;
 }
 
 html[data-theme="dark"] .stp-halo {

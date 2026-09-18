@@ -209,7 +209,7 @@ function InternalApp() {
         <div
           role="status"
           aria-label="Preparando aplicativo"
-          className="fixed inset-0 z-[9999] bg-[#050608]"
+          className="fixed inset-0 z-[9999] bg-slate-950"
         />
       ) : null}
     </>

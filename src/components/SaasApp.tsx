@@ -41,7 +41,7 @@ export function SaasApp() {
   if (!openingComplete) {
     return (
       <>
-        <main className="fixed inset-0 bg-[#050608]" aria-hidden="true" />
+        <main className="fixed inset-0 bg-slate-950" aria-hidden="true" />
         <BootSplashGate
           loading={state.kind === "booting"}
           progress={bootProgress}
@@ -77,7 +77,7 @@ function SaasAppBody({
 }) {
   if (state.kind === "booting") {
     return (
-      <main role="status" className="fixed inset-0 flex items-center justify-center bg-[#050608] text-slate-300">
+      <main role="status" className="fixed inset-0 flex items-center justify-center bg-slate-950 text-slate-300">
         Preparando sessão…
       </main>
     );

@@ -1063,10 +1063,6 @@ export function StampDemo({
       </div>
       {mode === "loading" ? (
         <>
-          <div className="stp-boot">
-            <p className="stp-boot-mark">BMI TAG</p>
-            <p className="stp-boot-sub">Gestão de equipamentos</p>
-          </div>
           <div className={phase === "done" ? "stp-hud is-complete" : "stp-hud"}>
             <p className="stp-hud-status">{loadLabel}</p>
             <div className="stp-hud-row">

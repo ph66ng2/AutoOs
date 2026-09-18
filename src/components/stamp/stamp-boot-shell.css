@@ -1,3 +1,4 @@
+/* Mesmo slate-950 da tela de login SaaS — sem tom azul extra no boot. */
 .page-solo {
   display: grid;
   place-items: center;
@@ -5,13 +6,13 @@
   width: 100%;
   margin: 0;
   padding: 0;
-  background: #080a10;
+  background: #020617;
 }
 
 .page-solo.is-boot {
   display: block;
   --product: #2b6ce8;
-  background: color-mix(in srgb, var(--product) 12%, #080a10);
+  background: #020617;
 }
 
 .page-solo.is-boot .stamp-solo {
