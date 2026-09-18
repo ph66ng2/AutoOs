@@ -217,38 +217,8 @@
   transition-delay: 480ms;
 }
 
-.stp-boot {
-  position: absolute;
-  left: 28px;
-  top: 28px;
-  z-index: 6;
-  pointer-events: none;
-  animation: stp-boot-in 300ms cubic-bezier(0.23, 1, 0.32, 1) both;
-}
-
-.stp-boot-mark,
-.stp-boot-sub,
 .stp-hud-status {
   margin: 0;
-}
-
-.stp-boot-mark {
-  font-size: 13px;
-  font-weight: 650;
-  letter-spacing: 0.16em;
-  text-transform: uppercase;
-  color: #eef2f8;
-}
-
-.stp-boot-sub {
-  margin-top: 4px;
-  font-size: 13px;
-  font-weight: 500;
-  letter-spacing: -0.01em;
-  color: #8b97ab;
-}
-
-.stp-hud-status {
   font-size: 13px;
   font-weight: 500;
   letter-spacing: -0.01em;
@@ -367,7 +337,6 @@
     will-change: auto;
   }
 
-  .stp-boot,
   .stp-hud-status,
   .stp-hud-row {
     animation: none;
