@@ -191,4 +191,4 @@ npm run bundle:prep:windows:sign # Injects certThumbprint from env into tauri.co
 - **Temp files**: `/tmp/autoos` (Linux), `%TEMP%\autoos` (Windows). Pruned by housekeeping on startup.
 - **Restore path restriction**: restore only accepts files inside `~/AutoOS/backups` (Linux) or `%USERPROFILE%\Documents\AutoOS\backups` (Windows).
 - **CSP in tauri.conf.json** allows `https://viacep.com.br` (Brazilian ZIP code lookup API).
-- **Version alignment**: `package.json` (0.2.0), `Cargo.toml` (0.2.0), `tauri.conf.json` (0.2.0) should match `docs/RELEASE.md` checklist.
+- **Version alignment**: `package.json` (0.5.3), `Cargo.toml` (0.5.3), `tauri.conf.json` (0.5.3) should match `docs/RELEASE.md` checklist.
