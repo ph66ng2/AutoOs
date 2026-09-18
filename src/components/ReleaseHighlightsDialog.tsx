@@ -1,10 +1,11 @@
 import {
   CheckCircle2,
-  FileDown,
-  FileText,
-  RefreshCw,
-  ShieldCheck,
+  CircleDollarSign,
+  Filter,
+  Package,
+  Save,
   Sparkles,
+  Tags,
   X,
 } from "lucide-react";
 import { useState } from "react";
@@ -19,45 +20,45 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 
-export const RELEASE_HIGHLIGHTS_VERSION = "0.5.2";
+export const RELEASE_HIGHLIGHTS_VERSION = "0.5.3";
 export const RELEASE_HIGHLIGHTS_STORAGE_KEY =
   `autoos:release-highlights:${RELEASE_HIGHLIGHTS_VERSION}`;
 
 const highlights = [
   {
-    icon: FileText,
-    title: "Observações no ajuste de orçamento",
+    icon: Package,
+    title: "Estoque de ribbons e etiquetas",
     description:
-      "O campo passou a se chamar Observações, e apagar o texto grava de verdade.",
-    detail: "Antes o valor antigo voltava se o campo ficasse em branco.",
+      "O cadastro de insumos ganhou os ribbons e as etiquetas BOPP da planilha, com quantidade e preço.",
+    detail: "Os itens já estão no banco de produção e aparecem em Insumos/Peças e no Balcão.",
   },
   {
-    icon: FileText,
-    title: "Prazo na prévia do orçamento",
+    icon: Tags,
+    title: "Categorias no filtro certo",
     description:
-      "Antes de baixar ou imprimir, ajuste o prazo de execução na própria prévia do PDF.",
-    detail: "O prazo vale só para aquele documento; o cadastro do equipamento não muda.",
+      "Ribbon entra como Cartucho e etiqueta BOPP como Rolo, iguais às opções do filtro.",
+    detail: "A tabela, o Balcão e o Dashboard mostram o mesmo rótulo do seletor.",
   },
   {
-    icon: FileDown,
-    title: "PDF em qualquer fase",
+    icon: Save,
+    title: "Salvar produto de verdade",
     description:
-      "Depois da verificação, Orçamento PDF fica no menu em todas as fases que já têm orçamento.",
-    detail: "A aba Documentos, no Equipamentos e no Balcão, abre a mesma prévia.",
+      "Editar e criar insumo deixou de falhar com missing required key input.",
+    detail: "O app agora envia os dados no formato que o backend espera.",
   },
   {
-    icon: ShieldCheck,
-    title: "PIN e verificação estáveis",
+    icon: CircleDollarSign,
+    title: "Preço na tabela de estoque",
     description:
-      "O PIN volta a ser pedido na abertura, e a verificação antiga não some no ajuste de orçamento.",
-    detail: "Valores NUMERIC do PostgreSQL deixam de quebrar o total na tela de ajuste.",
+      "A lista de Insumos/Peças passou a mostrar o preço de venda de cada item.",
+    detail: "O mesmo valor continua no card de Estoque e preços do Balcão.",
   },
   {
-    icon: RefreshCw,
-    title: "Recusado reabre sem drama",
+    icon: Filter,
+    title: "Filtro sem categoria fantasma",
     description:
-      "Reprovar por engano volta para Aguardando aprovação. Se a soma não bater com o total, a pergunta é Sim ou Não.",
-    detail: "Sim grava o total da soma; Não mantém o valor que já estava no orçamento.",
+      "Ribbon e Etiqueta saíram das opções extras; vale o que já existia no cadastro.",
+    detail: "Cartucho, Rolo e as demais categorias de sempre continuam no seletor.",
   },
 ] as const;
 
@@ -123,10 +124,10 @@ export function ReleaseHighlightsDialog({ enabled }: { enabled: boolean }) {
             </div>
             <div>
               <DialogTitle className="text-2xl font-bold leading-tight tracking-tight text-white sm:text-3xl">
-                Orçamento mais claro e correções de produção
+                Estoque de insumos e salvamento corrigido
               </DialogTitle>
               <DialogDescription className="mt-2 max-w-2xl text-sm leading-relaxed text-slate-300 sm:text-base">
-                Hotfix da 0.5.1: observações do orçamento editáveis, prazo na prévia e PDF em qualquer fase.
+                AutoOS 0.5.3: ribbons e etiquetas BOPP no estoque, categorias alinhadas ao filtro e correção ao salvar produto.
               </DialogDescription>
             </div>
           </div>
@@ -158,16 +159,16 @@ export function ReleaseHighlightsDialog({ enabled }: { enabled: boolean }) {
 
           <div className="mt-5 flex flex-wrap gap-2" aria-label="Outras melhorias da versão">
             <Badge variant="secondary" className="gap-1.5 px-3 py-1.5 font-normal">
-              <FileText className="h-3.5 w-3.5" /> Observações apagadas no ajuste agora somem de verdade
+              <Package className="h-3.5 w-3.5" /> 17 itens ativos no estoque de produção
             </Badge>
             <Badge variant="secondary" className="gap-1.5 px-3 py-1.5 font-normal">
-              <FileText className="h-3.5 w-3.5" /> Layout do PDF colado e observações no lugar
+              <Tags className="h-3.5 w-3.5" /> Cartucho para ribbon, Rolo para BOPP
             </Badge>
             <Badge variant="secondary" className="gap-1.5 px-3 py-1.5 font-normal">
-              <ShieldCheck className="h-3.5 w-3.5" /> PIN pedido na abertura
+              <Save className="h-3.5 w-3.5" /> Salvar insumo com contrato Tauri correto
             </Badge>
             <Badge variant="secondary" className="gap-1.5 px-3 py-1.5 font-normal">
-              <Sparkles className="h-3.5 w-3.5" /> Sim azul, Não vermelho no ajuste de valor
+              <CircleDollarSign className="h-3.5 w-3.5" /> Preço de venda visível na tabela
             </Badge>
           </div>
         </div>

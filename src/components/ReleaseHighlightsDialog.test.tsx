@@ -14,10 +14,10 @@ describe("ReleaseHighlightsDialog", () => {
     render(<ReleaseHighlightsDialog enabled />);
 
     expect(screen.getByRole("dialog")).toBeInTheDocument();
-    expect(screen.getByText("Orçamento mais claro e correções de produção")).toBeInTheDocument();
-    expect(screen.getByText("Observações no ajuste de orçamento")).toBeInTheDocument();
-    expect(screen.getByText("Prazo na prévia do orçamento")).toBeInTheDocument();
-    expect(screen.getByText("PDF em qualquer fase")).toBeInTheDocument();
+    expect(screen.getByText("Estoque de insumos e salvamento corrigido")).toBeInTheDocument();
+    expect(screen.getByText("Estoque de ribbons e etiquetas")).toBeInTheDocument();
+    expect(screen.getByText("Categorias no filtro certo")).toBeInTheDocument();
+    expect(screen.getByText("Salvar produto de verdade")).toBeInTheDocument();
   });
 
   it("registra a confirmação e não reaparece na mesma versão", () => {
