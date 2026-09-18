@@ -64,6 +64,7 @@ import { useSensitiveAccess } from "@/hooks/useSensitiveAccess";
 import { ErrorAlert } from "@/components/ui/error-alert";
 import { SENSITIVE_PERMISSIONS, type Produto } from "@/types";
 import { ActionPriorityRow } from "@/components/ui/action-priority-row";
+import { formatCurrency } from "@/lib/utils";
 import { CATEGORIA_OPTIONS } from "@/pages/insumos/insumos-page-constants";
 import {
   InsumosDeleteDialog,
@@ -372,6 +373,7 @@ export default function Insumos() {
                     <TableHead>Descrição</TableHead>
                     <TableHead className="text-center">Estoque</TableHead>
                     <TableHead className="text-center">Mínimo</TableHead>
+                    <TableHead className="text-right">Preço</TableHead>
                     <TableHead className="text-right">Ações</TableHead>
                   </TableRow>
                 </TableHeader>
@@ -414,6 +416,9 @@ export default function Insumos() {
                         </TableCell>
                         <TableCell className="text-center text-muted-foreground">
                           {p.quantidade_minima}
+                        </TableCell>
+                        <TableCell className="text-right font-medium whitespace-nowrap">
+                          {formatCurrency(p.preco_venda)}
                         </TableCell>
                         <TableCell className="text-right">
                           <div className="flex justify-end gap-1">

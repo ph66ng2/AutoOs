@@ -6,5 +6,7 @@ export const CATEGORIA_OPTIONS = [
   { value: "FUSOR", label: "Fusor" },
   { value: "ROLO", label: "Rolo" },
   { value: "PEÇA", label: "Peça" },
+  { value: "RIBBON", label: "Ribbon" },
+  { value: "ETIQUETA", label: "Etiqueta" },
   { value: "OUTRO", label: "Outro" },
 ];
