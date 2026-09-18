@@ -51,6 +51,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { db } from "@/lib/db";
 import { STATUS_LABELS, STATUS_COLORS, type Equipamento, type Produto, type StatusEquipamento } from "@/types";
+import { categoriaProdutoLabel } from "@/pages/insumos/insumos-page-constants";
 
 function StatusBadge({ status }: { status: string }) {
   const label = STATUS_LABELS[status as StatusEquipamento] || status;
@@ -384,7 +385,7 @@ export default function Dashboard() {
                   <div key={p.id} className="flex items-center justify-between p-3 rounded-lg border border-red-100 bg-red-50/30">
                     <div className="space-y-1">
                       <p className="font-medium text-sm">{p.nome}</p>
-                      <p className="text-xs text-muted-foreground">{p.categoria}</p>
+                      <p className="text-xs text-muted-foreground">{categoriaProdutoLabel(p.categoria)}</p>
                     </div>
                     <div className="text-right">
                       <div className="flex items-center gap-1">

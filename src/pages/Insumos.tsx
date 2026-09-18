@@ -65,7 +65,7 @@ import { ErrorAlert } from "@/components/ui/error-alert";
 import { SENSITIVE_PERMISSIONS, type Produto } from "@/types";
 import { ActionPriorityRow } from "@/components/ui/action-priority-row";
 import { formatCurrency } from "@/lib/utils";
-import { CATEGORIA_OPTIONS } from "@/pages/insumos/insumos-page-constants";
+import { CATEGORIA_OPTIONS, categoriaProdutoLabel } from "@/pages/insumos/insumos-page-constants";
 import {
   InsumosDeleteDialog,
   InsumosMovimentacaoDialog,
@@ -397,7 +397,7 @@ export default function Insumos() {
                           {p.codigo || "—"}
                         </TableCell>
                         <TableCell>
-                          <Badge variant="outline">{p.categoria}</Badge>
+                          <Badge variant="outline">{categoriaProdutoLabel(p.categoria)}</Badge>
                         </TableCell>
                         <TableCell className="text-sm text-muted-foreground">
                           {p.descricao || "—"}
