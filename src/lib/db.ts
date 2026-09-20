@@ -311,13 +311,13 @@ export const db = {
   },
 
   /** Cria novo produto → Rust: criar_produto */
-  async criarProduto(produto: Omit<Produto, "id">): Promise<number> {
-    return invoke<number>("criar_produto", { produto });
+  async criarProduto(produto: Omit<Produto, "id">): Promise<Produto> {
+    return invoke<Produto>("criar_produto", { input: produto });
   },
 
   /** Atualiza produto → Rust: atualizar_produto */
-  async atualizarProduto(id: number, produto: Omit<Produto, "id">): Promise<void> {
-    return invoke<void>("atualizar_produto", { id, produto });
+  async atualizarProduto(id: number, produto: Omit<Produto, "id">): Promise<Produto> {
+    return invoke<Produto>("atualizar_produto", { id, input: produto });
   },
 
   /** Soft delete de produto (ativo = 0) → Rust: deletar_produto */

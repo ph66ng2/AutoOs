@@ -48,6 +48,13 @@ fn duplicate_service_name_message(error: &sqlx::Error) -> Option<String> {
     None
 }
 
+fn validate_preco_padrao(preco: f64) -> Result<(), String> {
+    if !preco.is_finite() || preco < 0.0 {
+        return Err("Preço padrão não pode ser negativo. Use 0,00 para garantia.".to_string());
+    }
+    Ok(())
+}
+
 #[tauri::command]
 #[instrument(skip_all, fields(page = page))]
 pub async fn listar_servicos(
@@ -125,9 +132,7 @@ pub async fn criar_servico(input: ServicoCatalogoInput) -> Result<ServicoCatalog
     let nome = required_text(&input.nome, "Nome do serviço")?;
     let descricao = optional_text(input.descricao.as_deref());
 
-    if input.preco_padrao <= 0.0 {
-        return Err("Preço padrão deve ser maior que zero.".to_string());
-    }
+    validate_preco_padrao(input.preco_padrao)?;
 
     let row = sqlx::query_scalar::<_, i32>(
         r#"
@@ -169,9 +174,7 @@ pub async fn atualizar_servico(id: i32, input: ServicoCatalogoInput) -> Result<S
     let descricao = optional_text(input.descricao.as_deref());
     let concurrency_token = required_concurrency_token(input.atualizado_em.as_deref())?;
 
-    if input.preco_padrao <= 0.0 {
-        return Err("Preço padrão deve ser maior que zero.".to_string());
-    }
+    validate_preco_padrao(input.preco_padrao)?;
 
     let updated_rows = sqlx::query(
         r#"
@@ -239,4 +242,25 @@ pub async fn deletar_servico(id: i32) -> Result<bool, String> {
     )
     .await;
     Ok(deleted)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::validate_preco_padrao;
+
+    #[test]
+    fn aceita_preco_zero_de_garantia() {
+        assert!(validate_preco_padrao(0.0).is_ok());
+    }
+
+    #[test]
+    fn aceita_preco_positivo() {
+        assert!(validate_preco_padrao(150.5).is_ok());
+    }
+
+    #[test]
+    fn rejeita_preco_negativo() {
+        let erro = validate_preco_padrao(-0.01).expect_err("preço negativo deve falhar");
+        assert!(erro.contains("não pode ser negativo"));
+    }
 }

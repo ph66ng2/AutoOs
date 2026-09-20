@@ -91,7 +91,7 @@ import { useStatusEquipamento } from "@/hooks/useStatusEquipamento";
 import { useSensitiveAccess } from "@/hooks/useSensitiveAccess";
 import { WhatsAppService } from "@/lib/whatsapp-service";
 import { EmailService } from "@/lib/email-service";
-import { PdfService, type PdfArtifact } from "@/lib/pdf-service";
+import { PdfService, PRAZO_EXECUCAO_PADRAO, type PdfArtifact } from "@/lib/pdf-service";
 import { FormValidationError } from "@/components/ui/form-validation-error";
 import { db } from "@/lib/db";
 import { formatDatePtBr, formatDateTimeSalvador, todayLocalIsoDate } from "@/lib/date-utils";
@@ -142,6 +142,7 @@ import {
   EMAIL_POR_TECNICO,
   MARCA_EQUIPAMENTO_OPTIONS,
   MODELO_EQUIPAMENTO_OPTIONS,
+  STATUS_COM_ORCAMENTO,
   STATUS_OPTIONS,
   TECNICOS_DISPONIVEIS,
   TIPO_OPTIONS,
@@ -154,10 +155,12 @@ import {
   getStatusCorrecao,
   getProximosStatus,
   mensagemResultadoCanais,
+  reabreOrcamentoSemAjuste,
   removerTecnicoInicialDasObservacoes,
   statusExigeAcessoSensivel,
   whatsappNaoConfigurado,
 } from "@/pages/equipamentos/equipamentos-page-utils";
+import { formatCurrency } from "@/lib/utils";
 import { useNotification } from "@/hooks/useNotification";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { InputDialog } from "@/components/ui/input-dialog";
@@ -192,7 +195,11 @@ export default function Equipamentos() {
     artifact: PdfArtifact;
     tipo: "orcamento" | "ordem" | "relatorio";
     equipamento: Equipamento;
+    verificacao?: Verificacao;
+    prazoMin?: number;
+    prazoMax?: number;
   } | null>(null);
+  const [pdfPrazoUpdating, setPdfPrazoUpdating] = useState(false);
 
   // Duplicidade de serial (múltiplos ciclos de manutenção)
   const [registrosAnteriores, setRegistrosAnteriores] = useState<Equipamento[]>([]);
@@ -250,8 +257,9 @@ export default function Equipamentos() {
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [confirmProps, setConfirmProps] = useState<{
     title: string;
-    description: string;
+    description?: string;
     variant?: "default" | "destructive";
+    cancelVariant?: "outline" | "destructive";
     confirmLabel?: string;
     cancelLabel?: string;
     onConfirm: () => void;
@@ -620,7 +628,7 @@ export default function Equipamentos() {
   }
 
   async function prepararAjusteOrcamentoPadrao(eq: Equipamento) {
-    const verificacao = await db.buscarVerificacao(eq.id!);
+    const verificacao = await db.buscarVerificacao(eq.id!, eq.empresa_id);
     const valorOriginal = verificacao?.custo_total ?? null;
     const valorAnterior = eq.valor_orcamento ?? null;
     const valorBase = eq.valor_orcamento ?? verificacao?.custo_total ?? 0;
@@ -709,7 +717,7 @@ export default function Equipamentos() {
         setCarregandoImagensSaidaEntrega(false);
       }
     }
-    if ((statusPreSelecionado || "") === "AGUARDANDO_APROVACAO") {
+    if ((statusPreSelecionado || "") === "AGUARDANDO_APROVACAO" && !reabreOrcamentoSemAjuste(eq.status, statusPreSelecionado || "")) {
       await prepararAjusteOrcamentoPadrao(eq);
     }
     setStatusDialogOpen(true);
@@ -1027,19 +1035,19 @@ export default function Equipamentos() {
 
       if (Math.abs(calculado - valorOrcamentoRef.current) > 0.001) {
         setConfirmProps({
-          title: "Divergência detectada",
-          description: `Divergência: soma dos serviços (R$ ${calculado.toFixed(2)}) ≠ valor total informado (R$ ${valorOrcamentoRef.current.toFixed(2)})`,
-          confirmLabel: "Continuar assim mesmo",
-          cancelLabel: "Corrigir",
-          variant: "destructive",
+          title: `Mudar Valor Total do Orçamento para ${formatCurrency(calculado)}?`,
+          confirmLabel: "Sim",
+          cancelLabel: "Não",
+          variant: "default",
+          cancelVariant: "destructive",
           onConfirm: () => {
-            setConfirmOpen(false);
-            void confirmarMudancaStatus(true);
-          },
-          onCancel: () => {
             setValorOrcamento(calculado);
             setConfirmOpen(false);
             setTimeout(() => iniciarConfirmacaoStatus(), 0);
+          },
+          onCancel: () => {
+            setConfirmOpen(false);
+            void confirmarMudancaStatus(true);
           },
         });
         setConfirmOpen(true);
@@ -1175,7 +1183,7 @@ export default function Equipamentos() {
         ]);
       }
 
-      if ((novoStatus === "AGUARDANDO_APROVACAO" || ajusteOrcamentoSemMudancaStatus) && verificacaoAjusteOrcamento) {
+      if ((novoStatus === "AGUARDANDO_APROVACAO" || ajusteOrcamentoSemMudancaStatus) && verificacaoAjusteOrcamento && !reabreOrcamentoSemAjuste(selecionado.status, novoStatus)) {
         const profileId = sensitiveStatus?.active_profile_id;
         if (!profileId) {
           throw new Error("Perfil autorizado não encontrado para ajustar o orçamento.");
@@ -1361,7 +1369,14 @@ export default function Equipamentos() {
       setSalvando(true);
       const verif = await db.buscarVerificacao(eq.id!);
       if (!verif) { warning("Equipamentos", "Nenhuma verificação técnica encontrada para este equipamento."); return; }
-      setPdfPreview({ artifact: await PdfService.construirOrcamento(eq, verif), tipo: "orcamento", equipamento: eq });
+      setPdfPreview({
+        artifact: await PdfService.construirOrcamento(eq, verif),
+        tipo: "orcamento",
+        equipamento: eq,
+        verificacao: verif,
+        prazoMin: PRAZO_EXECUCAO_PADRAO.minDiasUteis,
+        prazoMax: PRAZO_EXECUCAO_PADRAO.maxDiasUteis,
+      });
     } catch (err) {
       console.error("Erro ao gerar orçamento PDF:", err);
       showError("Equipamentos", "Gerar orçamento PDF", err);
@@ -1450,6 +1465,13 @@ export default function Equipamentos() {
       variant: "outline",
       onClick: () => abrirEditar(eq),
     };
+    const acaoOrcamentoPdf: PriorityAction = {
+      id: "orcamento_pdf",
+      label: "Orçamento PDF",
+      icon: <FileDown className="h-3.5 w-3.5" />,
+      onClick: () => void gerarOrcamentoPdf(eq),
+      disabled: salvando,
+    };
     const acaoAlterarOrcamento: PriorityAction = {
       id: "alterar_orcamento",
       label: "Alterar Orçamento",
@@ -1519,15 +1541,6 @@ export default function Equipamentos() {
           onClick: () => void abrirMudarStatus(eq, "AGUARDANDO_APROVACAO"),
         };
         secondary = acaoStatus;
-        overflow.push(
-          {
-            id: "orcamento_pdf",
-            label: "Orçamento PDF",
-            icon: <FileDown className="h-3.5 w-3.5" />,
-            onClick: () => void gerarOrcamentoPdf(eq),
-            disabled: salvando,
-          }
-        );
         if (eq.cliente_telefone) {
           overflow.push({
             id: "whatsapp_orcamento",
@@ -1557,15 +1570,6 @@ export default function Equipamentos() {
           onClick: () => void acaoRapida(eq, "REPROVADO"),
           disabled: salvando,
         };
-        overflow.push(
-          {
-            id: "orcamento_pdf",
-            label: "Orçamento PDF",
-            icon: <FileDown className="h-3.5 w-3.5" />,
-            onClick: () => void gerarOrcamentoPdf(eq),
-            disabled: salvando,
-          }
-        );
         if (eq.cliente_telefone) {
           overflow.push({
             id: "whatsapp_orcamento",
@@ -1635,6 +1639,26 @@ export default function Equipamentos() {
         }
         overflow.push(acaoEditar, acaoExcluir);
         break;
+      case "REPROVADO":
+        primary = {
+          id: "reabrir_orcamento",
+          label: "Reabrir Orçamento",
+          icon: <RefreshCw className="h-3.5 w-3.5" />,
+          variant: "default",
+          className: classeAcaoPrincipal,
+          onClick: () => void abrirMudarStatus(eq, "AGUARDANDO_APROVACAO"),
+          disabled: salvando,
+        };
+        secondary = {
+          id: "mudar_status",
+          label: "Mudar Status",
+          icon: <RefreshCw className="h-3.5 w-3.5" />,
+          variant: "outline",
+          onClick: () => void abrirMudarStatus(eq),
+          disabled: salvando,
+        };
+        overflow.push(acaoEditar, acaoExcluir);
+        break;
       case "ORCAMENTO_VENCIDO":
         primary = {
           id: "ajustar_orcamento_vencido",
@@ -1669,21 +1693,14 @@ export default function Equipamentos() {
         break;
     }
 
-    const fasesComOrcamento = [
-      "VERIFICADO",
-      "AGUARDANDO_APROVACAO",
-      "APROVADO",
-      "REPROVADO",
-      "EM_MANUTENCAO",
-      "AGUARDANDO_PECA",
-      "PRONTO",
-      "ENTREGUE",
-      "ORCAMENTO_VENCIDO",
-      "ABANDONADO",
-    ];
-    if (fasesComOrcamento.includes(eq.status)) {
+    if (STATUS_COM_ORCAMENTO.includes(eq.status)) {
       const editarIndex = overflow.findIndex((acao) => acao.id === acaoEditar.id);
-      overflow.splice(editarIndex >= 0 ? editarIndex : overflow.length, 0, acaoAlterarOrcamento);
+      overflow.splice(
+        editarIndex >= 0 ? editarIndex : overflow.length,
+        0,
+        acaoOrcamentoPdf,
+        acaoAlterarOrcamento,
+      );
     }
     if (getStatusCorrecao(eq.status).length > 0) {
       const editarIndex = overflow.findIndex((acao) => acao.id === acaoEditar.id);
@@ -2428,7 +2445,10 @@ export default function Equipamentos() {
         <DialogContent className="flex max-h-[calc(100vh-2rem)] flex-col overflow-hidden sm:max-w-md">
           <DialogHeader>
             <DialogTitle>
-              {novoStatus === "AGUARDANDO_APROVACAO" || ajusteOrcamentoSemMudancaStatus ? "Ajuste de Orçamento" : correcaoStatus ? "Corrigir Status" : "Alterar Status"}
+              {(
+                (novoStatus === "AGUARDANDO_APROVACAO" && selecionado && !reabreOrcamentoSemAjuste(selecionado.status, novoStatus))
+                || ajusteOrcamentoSemMudancaStatus
+              ) ? "Ajuste de Orçamento" : correcaoStatus ? "Corrigir Status" : "Alterar Status"}
             </DialogTitle>
           </DialogHeader>
           {selecionado && (
@@ -2471,7 +2491,7 @@ export default function Equipamentos() {
                   )}
                 </>
               )}
-              {(novoStatus === "AGUARDANDO_APROVACAO" || ajusteOrcamentoSemMudancaStatus) && (
+              {((novoStatus === "AGUARDANDO_APROVACAO" && !reabreOrcamentoSemAjuste(selecionado.status, novoStatus)) || ajusteOrcamentoSemMudancaStatus) && (
                 <>
                   <div className="rounded-md border bg-amber-50 px-3 py-2 text-sm text-amber-900">
                     {ajusteOrcamentoSemMudancaStatus
@@ -2510,15 +2530,14 @@ export default function Equipamentos() {
                     <div className="space-y-2"><Label>Prazo Aprovação</Label><Input type="date" value={prazoAprovacao} onChange={e => setPrazoAprovacao(e.target.value)} /></div>
                   )}
                   <div className="space-y-2">
-                    <Label htmlFor="descricao-servico-tecnico">Descrição do Serviço Técnico</Label>
+                    <Label htmlFor="observacoes-ajuste">Observações</Label>
                     <Textarea
-                      id="descricao-servico-tecnico"
+                      id="observacoes-ajuste"
                       value={observacoesAjuste}
                       onChange={(event) => setObservacoesAjuste(event.target.value)}
-                      placeholder="Descreva o serviço técnico para o orçamento"
+                      placeholder="Observações do orçamento"
                       rows={3}
                     />
-                    <p className="text-xs text-muted-foreground">Esta descrição vem das observações da verificação técnica.</p>
                   </div>
                   {ajusteOrcamentoSemMudancaStatus && selecionado.status === "APROVADO" ? (
                     <FormaPagamentoFields
@@ -2778,6 +2797,7 @@ export default function Equipamentos() {
         title={confirmProps.title}
         description={confirmProps.description}
         variant={confirmProps.variant}
+        cancelVariant={confirmProps.cancelVariant}
         confirmLabel={confirmProps.confirmLabel}
         cancelLabel={confirmProps.cancelLabel}
         onConfirm={() => {
@@ -2853,7 +2873,35 @@ export default function Equipamentos() {
 
       <PdfPreviewDialog
         artifact={pdfPreview?.artifact || null}
-        onOpenChange={(open) => { if (!open) setPdfPreview(null); }}
+        onOpenChange={(open) => {
+          if (!open) {
+            setPdfPreview(null);
+            setPdfPrazoUpdating(false);
+          }
+        }}
+        prazoExecucao={pdfPreview?.tipo === "orcamento" && pdfPreview.verificacao ? {
+          minDiasUteis: pdfPreview.prazoMin ?? PRAZO_EXECUCAO_PADRAO.minDiasUteis,
+          maxDiasUteis: pdfPreview.prazoMax ?? PRAZO_EXECUCAO_PADRAO.maxDiasUteis,
+          updating: pdfPrazoUpdating,
+          onChange: async (minDiasUteis, maxDiasUteis) => {
+            if (!pdfPreview.verificacao) return;
+            setPdfPrazoUpdating(true);
+            try {
+              const artifact = await PdfService.construirOrcamento(
+                pdfPreview.equipamento,
+                pdfPreview.verificacao,
+                pdfPreview.artifact.filename,
+                { minDiasUteis, maxDiasUteis },
+              );
+              setPdfPreview((atual) => atual && atual.tipo === "orcamento"
+                ? { ...atual, artifact, prazoMin: minDiasUteis, prazoMax: maxDiasUteis }
+                : atual);
+              return artifact;
+            } finally {
+              setPdfPrazoUpdating(false);
+            }
+          },
+        } : undefined}
         onDownload={async (artifact) => {
           if (!pdfPreview) return;
           const { equipamento, tipo } = pdfPreview;

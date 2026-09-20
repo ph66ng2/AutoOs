@@ -547,6 +547,12 @@ describe("PdfService.gerarOrcamentoAjustado", () => {
       { ...verificacaoBase, observacoes: "   " },
     );
     expect(mockText.mock.calls.map(([texto]) => String(texto))).not.toContain(
+      "OBSERVAÇÕES",
+    );
+    expect(mockText.mock.calls.map(([texto]) => String(texto))).not.toContain(
+      "PLANILHA DE VALORES",
+    );
+    expect(mockText.mock.calls.map(([texto]) => String(texto))).not.toContain(
       "DESCRIÇÃO DO SERVIÇO TÉCNICO",
     );
 
@@ -565,9 +571,30 @@ describe("PdfService.gerarOrcamentoAjustado", () => {
       { ...verificacaoBase, observacoes: descricaoLonga },
     );
     const textos = mockText.mock.calls.map(([texto]) => String(texto));
-    expect(textos).toContain("DESCRIÇÃO DO SERVIÇO TÉCNICO");
+    expect(textos).toContain("OBSERVAÇÕES");
+    expect(textos).not.toContain("DESCRIÇÃO DO SERVIÇO TÉCNICO");
+    expect(textos).not.toContain("PLANILHA DE VALORES");
     expect(textos).toContain("Linha longa 1");
     expect(mockAddPage).toHaveBeenCalled();
+  });
+
+  it("renderiza diagnóstico acima das observações e omite o título da planilha", async () => {
+    await PdfService.construirOrcamento(
+      equipamentoBase,
+      {
+        ...verificacaoBase,
+        diagnostico: "Sensor do ribbon desalinhado",
+        observacoes: "Botão feed ficando desgastado",
+      },
+    );
+    const textos = mockText.mock.calls.map(([texto]) => String(texto));
+    const indiceDiagnostico = textos.indexOf("Diagnóstico:");
+    const indiceObservacoes = textos.indexOf("OBSERVAÇÕES");
+    expect(indiceDiagnostico).toBeGreaterThan(-1);
+    expect(indiceObservacoes).toBeGreaterThan(-1);
+    expect(indiceDiagnostico).toBeLessThan(indiceObservacoes);
+    expect(textos).not.toContain("PLANILHA DE VALORES");
+    expect(textos).not.toContain("DESCRIÇÃO DO SERVIÇO TÉCNICO");
   });
 
   it("usa a observação mais recente ao regenerar o PDF", async () => {
