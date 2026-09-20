@@ -51,6 +51,20 @@ export const STATUS_SENSIVEIS = new Set([
   "ABANDONADO",
 ]);
 
+/** Fases em que o orçamento já existe: PDF e alteração de valor ficam no menu. */
+export const STATUS_COM_ORCAMENTO = [
+  "VERIFICADO",
+  "AGUARDANDO_APROVACAO",
+  "APROVADO",
+  "REPROVADO",
+  "EM_MANUTENCAO",
+  "AGUARDANDO_PECA",
+  "PRONTO",
+  "ENTREGUE",
+  "ORCAMENTO_VENCIDO",
+  "ABANDONADO",
+];
+
 export const CATEGORIA_IMAGEM_LABELS: Record<EquipamentoImagemCategoria, string> = {
   ENTRADA: "entrada",
   SAIDA: "saída",

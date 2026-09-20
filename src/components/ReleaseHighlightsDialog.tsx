@@ -1,11 +1,12 @@
 import {
-  Building2,
   CheckCircle2,
-  Clock3,
-  FileText,
-  ShieldCheck,
+  CircleDollarSign,
+  Filter,
+  Package,
+  Save,
   Sparkles,
-  UserRoundCheck,
+  Tags,
+  Wrench,
   X,
 } from "lucide-react";
 import { useState } from "react";
@@ -20,38 +21,52 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 
-export const RELEASE_HIGHLIGHTS_VERSION = "0.5.0";
+export const RELEASE_HIGHLIGHTS_VERSION = "0.5.3";
 export const RELEASE_HIGHLIGHTS_STORAGE_KEY =
-  `autoos:release-highlights:${RELEASE_HIGHLIGHTS_VERSION}`;
+  `autoos:release-highlights:${RELEASE_HIGHLIGHTS_VERSION}:garantia`;
 
 const highlights = [
   {
-    icon: UserRoundCheck,
-    title: "Contatos e responsáveis",
+    icon: Package,
+    title: "Estoque de ribbons e etiquetas",
     description:
-      "Cadastre contatos para clientes PF ou PJ e escolha, quando precisar, o responsável por cada equipamento.",
-    detail: "O responsável fica salvo como retrato daquele atendimento, mesmo após futuras alterações.",
+      "O cadastro de insumos ganhou os ribbons e as etiquetas BOPP da planilha, com quantidade e preço.",
+    detail: "Os itens já estão no banco de produção e aparecem em Insumos/Peças e no Balcão.",
   },
   {
-    icon: ShieldCheck,
-    title: "Orçamentos mais seguros",
+    icon: Tags,
+    title: "Categorias no filtro certo",
     description:
-      "A aprovação agora registra forma de pagamento, status e data juntos, com proteção contra alterações concorrentes.",
-    detail: "A edição também mantém descrição, serviços, peças, custos e pagamento na mesma operação.",
+      "Ribbon entra como Cartucho e etiqueta BOPP como Rolo, iguais às opções do filtro.",
+    detail: "A tabela, o Balcão e o Dashboard mostram o mesmo rótulo do seletor.",
   },
   {
-    icon: FileText,
-    title: "PDFs e comunicação",
+    icon: Save,
+    title: "Salvar produto de verdade",
     description:
-      "Descrição revisada, empresa e CNPJ mais claros, destinatário inteligente e responsável nos documentos aplicáveis.",
-    detail: "As imagens vinculadas ao equipamento continuam disponíveis nos PDFs que já ofereciam esse suporte.",
+      "Editar e criar insumo deixou de falhar com missing required key input.",
+    detail: "O app agora envia os dados no formato que o backend espera.",
   },
   {
-    icon: Clock3,
-    title: "Histórico mais confiável",
+    icon: CircleDollarSign,
+    title: "Preço na tabela de estoque",
     description:
-      "Eventos exibem horário de Salvador, mudanças de status e seus motivos com uma leitura mais clara.",
-    detail: "Horários antigos impossíveis são identificados, sem inventar uma data que não existe no cadastro.",
+      "A lista de Insumos/Peças passou a mostrar o preço de venda de cada item.",
+    detail: "O mesmo valor continua no card de Estoque e preços do Balcão.",
+  },
+  {
+    icon: Filter,
+    title: "Filtro sem categoria fantasma",
+    description:
+      "Ribbon e Etiqueta saíram das opções extras; vale o que já existia no cadastro.",
+    detail: "Cartucho, Rolo e as demais categorias de sempre continuam no seletor.",
+  },
+  {
+    icon: Wrench,
+    title: "Serviço em garantia a R$ 0,00",
+    description:
+      "O catálogo de Serviços e a verificação técnica aceitam preço zero para garantia.",
+    detail: "Valores negativos continuam bloqueados. Não há mudança de banco.",
   },
 ] as const;
 
@@ -117,10 +132,10 @@ export function ReleaseHighlightsDialog({ enabled }: { enabled: boolean }) {
             </div>
             <div>
               <DialogTitle className="text-2xl font-bold leading-tight tracking-tight text-white sm:text-3xl">
-                Um AutoOS mais completo para o atendimento
+                Estoque de insumos e salvamento corrigido
               </DialogTitle>
               <DialogDescription className="mt-2 max-w-2xl text-sm leading-relaxed text-slate-300 sm:text-base">
-                Contatos, responsáveis, aprovação de orçamento e documentos agora trabalham juntos do cadastro à entrega.
+                AutoOS 0.5.3: ribbons e etiquetas BOPP no estoque, categorias alinhadas ao filtro, correção ao salvar produto e serviços de garantia a R$ 0,00.
               </DialogDescription>
             </div>
           </div>
@@ -152,13 +167,16 @@ export function ReleaseHighlightsDialog({ enabled }: { enabled: boolean }) {
 
           <div className="mt-5 flex flex-wrap gap-2" aria-label="Outras melhorias da versão">
             <Badge variant="secondary" className="gap-1.5 px-3 py-1.5 font-normal">
-              <Building2 className="h-3.5 w-3.5" /> Cadastros antigos regularizáveis
+              <Package className="h-3.5 w-3.5" /> 17 itens ativos no estoque de produção
             </Badge>
             <Badge variant="secondary" className="gap-1.5 px-3 py-1.5 font-normal">
-              <ShieldCheck className="h-3.5 w-3.5" /> PIN solicitado no momento certo
+              <Tags className="h-3.5 w-3.5" /> Cartucho para ribbon, Rolo para BOPP
             </Badge>
             <Badge variant="secondary" className="gap-1.5 px-3 py-1.5 font-normal">
-              <Sparkles className="h-3.5 w-3.5" /> Modais e listas refinados
+              <Save className="h-3.5 w-3.5" /> Salvar insumo com contrato Tauri correto
+            </Badge>
+            <Badge variant="secondary" className="gap-1.5 px-3 py-1.5 font-normal">
+              <CircleDollarSign className="h-3.5 w-3.5" /> Preço de venda visível na tabela
             </Badge>
           </div>
         </div>

@@ -115,7 +115,7 @@ export function AjusteOrcamentoServicos({
             </div>
             <Input
               type="number"
-              min={0.01}
+              min={0}
               step="0.01"
               placeholder="Valor"
               value={Number.isFinite(Number(s.valor)) ? Number(s.valor) : ""}

@@ -51,6 +51,7 @@ import {
   TECNICOS_DISPONIVEIS,
   TIPO_OPTIONS,
 } from "@/pages/equipamentos/equipamentos-page-constants";
+import { categoriaProdutoLabel } from "@/pages/insumos/insumos-page-constants";
 import { resolveRecipient, type ResolvedRecipient } from "@/lib/recipient-resolver";
 import { saveRecipientAddress } from "@/lib/recipient-persistence";
 import { LOGO_BMITAG_MONOCHROME_PNG_BASE64 } from "@/lib/logo-monochrome-base64";
@@ -319,7 +320,7 @@ function CounterStock({ onBack }: { onBack: () => void }) {
                     <div>
                       <h2 className="text-xl font-semibold">{produto.nome}</h2>
                       <p className="mt-1 text-sm text-muted-foreground">
-                        Código: {produto.codigo} · {produto.categoria}
+                        Código: {produto.codigo} · {categoriaProdutoLabel(produto.categoria)}
                       </p>
                     </div>
                     {estoqueBaixo && <Badge variant="destructive">Estoque baixo</Badge>}

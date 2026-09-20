@@ -162,4 +162,11 @@ describe("AjusteOrcamentoServicos", () => {
       expect(screen.getByText(/Nenhum serviço pré-cadastrado encontrado/i)).toBeInTheDocument();
     });
   });
+
+  it("permite valor 0 no campo de preço (garantia)", () => {
+    render(<Wrapper {...defaultProps} servicos={[{ id: "s1", descricao: "Garantia", valor: 0 }]} />);
+    const valorInput = screen.getByPlaceholderText(/Valor/i);
+    expect(valorInput).toHaveAttribute("min", "0");
+    expect(valorInput).toHaveValue(0);
+  });
 });

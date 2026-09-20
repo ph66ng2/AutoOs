@@ -174,10 +174,11 @@ export function VerificacaoTecnica({
   async function handleConcluir() {
     if (!equipamento) return;
     const servicosInvalidos = servicos.some(
-      (servico) => !servico.descricao.trim() || Number(servico.valor) <= 0 || Number.isNaN(Number(servico.valor)),
+      (servico) =>
+        !servico.descricao.trim() || Number(servico.valor) < 0 || Number.isNaN(Number(servico.valor)),
     );
     if (servicosInvalidos) {
-      warning("Verificação", "Cada serviço precisa ter descrição e valor maior que zero.");
+      warning("Verificação", "Cada serviço precisa ter descrição e valor igual ou maior que zero (0,00 para garantia).");
       return;
     }
 
@@ -341,7 +342,7 @@ export function VerificacaoTecnica({
                       </div>
                       <Input
                         type="number"
-                        min={0.01}
+                        min={0}
                         step="0.01"
                         placeholder="Valor"
                         value={Number.isFinite(Number(s.valor)) ? Number(s.valor) : ""}
@@ -418,7 +419,7 @@ export function VerificacaoTecnica({
               </DialogClose>
               <Button
                 onClick={handleConcluir}
-                disabled={salvando || servicos.some((s) => !s.descricao.trim() || Number(s.valor) <= 0)}
+                disabled={salvando || servicos.some((s) => !s.descricao.trim() || Number(s.valor) < 0)}
                 className="bg-green-600 hover:bg-green-700"
               >
                 <Check className="mr-2 h-4 w-4" />

@@ -8,3 +8,9 @@ export const CATEGORIA_OPTIONS = [
   { value: "PEÇA", label: "Peça" },
   { value: "OUTRO", label: "Outro" },
 ];
+
+export function categoriaProdutoLabel(value?: string | null): string {
+  const trimmed = value?.trim();
+  if (!trimmed) return "—";
+  return CATEGORIA_OPTIONS.find((option) => option.value === trimmed)?.label ?? trimmed;
+}
