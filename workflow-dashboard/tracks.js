@@ -277,12 +277,12 @@ export function pathEntries(tickets, trackId) {
   });
 }
 
-export function groupedReadyTickets(tickets) {
+export function groupedReadyTickets(tickets, workflowTickets = tickets) {
   return TRACKS.map((track) => {
     const trackTickets = sortForColumn(
       "ready",
-      tickets.filter((ticket) => ticketMatchesTrack(ticket.id, track) && boardColumn(ticket, tickets) === "ready"),
-      tickets,
+      tickets.filter((ticket) => ticketMatchesTrack(ticket.id, track) && boardColumn(ticket, workflowTickets) === "ready"),
+      workflowTickets,
       track.id,
     );
     return { track, tickets: trackTickets };

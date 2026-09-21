@@ -60,6 +60,13 @@ describe("workflow tracks", () => {
     assert.equal(ordered.at(-1), "AO-UI-019");
   });
 
+  it("mantém pronto quando a dependência mesclada não está no filtro", () => {
+    const filtered = [tickets.find((ticket) => ticket.id === "AO-AUTH-004")];
+    const groups = groupedReadyTickets(filtered, tickets);
+    const saasGroup = groups.find((group) => group.track.id === "saas");
+    assert.deepEqual(saasGroup.tickets.map((ticket) => ticket.id), ["AO-AUTH-004"]);
+  });
+
   it("a linha do tempo da interface marca o atual e o adiado", () => {
     const entries = pathEntries(tickets, "interface");
     assert.equal(entries[0].ticketId, "AO-UI-003");

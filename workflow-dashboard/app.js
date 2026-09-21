@@ -321,7 +321,7 @@ function ticketCard(ticket, options = {}) {
 
 function renderReadyColumn(tickets) {
   if (state.track === "all") {
-    const groups = groupedReadyTickets(tickets);
+    const groups = groupedReadyTickets(tickets, allTickets());
     if (!groups.length) return `<div class="empty-column">Nada liberado neste filtro.</div>`;
     return groups.map((group) => `<div class="kanban-group"><p class="kanban-group-label">${escapeHtml(group.track.label)}</p>${group.tickets.map((ticket) => ticketCard(ticket, { groupLabel: group.track.label })).join("")}</div>`).join("");
   }
