@@ -114,10 +114,25 @@ SELECT set_config('request.jwt.claims', current_setting('autoos.test.jwt_a'), tr
 DO $$
 DECLARE
     visible_rows integer;
+    visible_profiles integer;
 BEGIN
     SELECT count(*) INTO visible_rows FROM public.clientes;
     IF visible_rows <> 1 THEN
         RAISE EXCEPTION 'tenant A sees % rows, expected exactly one', visible_rows;
+    END IF;
+
+    SELECT count(*) INTO visible_profiles
+    FROM public.list_active_saas_operational_profiles()
+    WHERE profile_id = 'a0000000-0000-4000-8000-000000000011';
+    IF visible_profiles <> 1 THEN
+        RAISE EXCEPTION 'tenant A cannot read its active operational profile';
+    END IF;
+
+    IF EXISTS (
+        SELECT 1 FROM public.list_active_saas_operational_profiles()
+        WHERE profile_id = 'b0000000-0000-4000-8000-000000000011'
+    ) THEN
+        RAISE EXCEPTION 'operational profile RPC leaked a profile from tenant B';
     END IF;
 END;
 $$;

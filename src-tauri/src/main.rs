@@ -114,6 +114,11 @@ fn main() {
         commands::saas_device::carregar_marcador_dispositivo_saas,
         commands::saas_device::criar_marcador_dispositivo_saas,
         commands::saas_device::remover_marcador_dispositivo_saas,
+        commands::saas_profile_pin::status_pin_perfil_saas,
+        commands::saas_profile_pin::configurar_pin_perfil_saas,
+        commands::saas_profile_pin::desbloquear_pin_perfil_saas,
+        commands::saas_profile_pin::remover_pin_perfil_saas,
+        commands::saas_profile_pin::sincronizar_pins_perfis_saas,
     ]);
 
     #[cfg(not(feature = "saas"))]

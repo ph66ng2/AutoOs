@@ -46,8 +46,11 @@ pub async fn criar_marcador_dispositivo_saas() -> Result<SaasDeviceMarker, Strin
     if let Some(marker) = carregar_marcador_dispositivo_saas().await? {
         return Ok(marker);
     }
-    let marker = SaasDeviceMarker { device_id: Uuid::new_v4().to_string() };
-    let payload = serde_json::to_vec(&marker).map_err(|_| "Não foi possível preparar o marcador local.".to_string())?;
+    let marker = SaasDeviceMarker {
+        device_id: Uuid::new_v4().to_string(),
+    };
+    let payload = serde_json::to_vec(&marker)
+        .map_err(|_| "Não foi possível preparar o marcador local.".to_string())?;
     let path = marker_path()?;
     let temporary = path.with_extension("tmp");
     fs::write(&temporary, payload).map_err(|error| {
@@ -64,6 +67,12 @@ pub async fn criar_marcador_dispositivo_saas() -> Result<SaasDeviceMarker, Strin
 
 #[tauri::command]
 pub async fn remover_marcador_dispositivo_saas() -> Result<(), String> {
+    if let Some(marker) = carregar_marcador_dispositivo_saas().await? {
+        crate::commands::saas_profile_pin::remover_todos_pins_saas_do_dispositivo(
+            &marker.device_id,
+        )
+        .await?;
+    }
     let path = marker_path()?;
     match fs::remove_file(path) {
         Ok(()) => {
@@ -89,7 +98,11 @@ mod tests {
     fn only_accepts_uuid_device_markers() {
         assert!(validate_marker(&SaasDeviceMarker {
             device_id: "a0000000-0000-4000-8000-000000000001".into(),
-        }).is_ok());
-        assert!(validate_marker(&SaasDeviceMarker { device_id: "not-a-device".into() }).is_err());
+        })
+        .is_ok());
+        assert!(validate_marker(&SaasDeviceMarker {
+            device_id: "not-a-device".into()
+        })
+        .is_err());
     }
 }
