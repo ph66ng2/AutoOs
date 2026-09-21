@@ -37,6 +37,11 @@ a { color: inherit; }
 .brand-copy strong, .brand-copy small { display: block; }
 .brand-copy strong { font-size: 15px; line-height: 1; }
 .brand-copy small { margin-top: 6px; color: var(--subtle); font-size: 9px; font-weight: 700; letter-spacing: .12em; }
+.project-switcher { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 3px; margin-top: 28px; padding: 3px; border: 1px solid var(--line); border-radius: 7px; background: rgba(11, 23, 33, .82); }
+.project-tab { min-width: 0; height: 31px; border: 1px solid transparent; border-radius: 4px; color: var(--muted); background: transparent; font-size: 10px; font-weight: 700; letter-spacing: .02em; }
+.project-tab:hover { color: var(--ink); }
+.project-tab.active { border-color: rgba(98, 226, 220, .24); color: var(--cyan); background: rgba(98, 226, 220, .08); }
+.project-tab:active { scale: .96; }
 .main-nav { display: grid; gap: 8px; margin-top: 65px; }
 .nav-link { display: flex; align-items: center; gap: 10px; min-height: 43px; padding: 0 13px; border: 1px solid transparent; border-radius: 7px; color: var(--muted); font-size: 12px; font-weight: 620; text-decoration: none; }
 .nav-link span { width: 14px; color: var(--subtle); font-size: 17px; line-height: 1; text-align: center; }
@@ -327,6 +332,7 @@ body[data-page="activity"] .intro-row { padding: 28px 0 16px; }
   .app-shell { display: block; }
   .sidebar { position: static; display: block; height: auto; padding: 17px 16px 0; border-right: 0; }
   .sidebar .brand { display: none; }
+  .project-switcher { margin-top: 0; margin-bottom: 8px; }
   .main-nav { display: flex; gap: 4px; margin-top: 0; }
   .nav-link { flex: 1; justify-content: center; min-height: 37px; padding-inline: 7px; font-size: 10px; }
   .sidebar-footer { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: 13px; padding-bottom: 13px; }

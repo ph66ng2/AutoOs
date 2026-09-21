@@ -1,0 +1,619 @@
+{
+  "project": "AutoBO — convergência com AutoOS e evolução financeiro-fiscal",
+  "baseBranch": "origin/main",
+  "promotionTarget": "origin/main",
+  "executionBlockedReason": "O diretório ainda não é um repositório Git. BO-GOV-001 deve ser concluído antes de spawn, PR ou merge.",
+  "tickets": [
+    {
+      "id": "BO-GOV-001",
+      "title": "Versionar o AutoBO e adotar workflow por tickets",
+      "status": "ready",
+      "blockedBy": [],
+      "context": "O AutoBO possui código e plano executado, mas o diretório atual não tem repositório Git nem workflow executável. Continuar sem histórico torna qualquer integração financeira difícil de revisar e reverter.",
+      "objective": "Criar uma linha principal versionada e preservar o estado atual antes de iniciar a convergência com o AutoOS.",
+      "scope": [
+        "Inicializar ou conectar o repositório Git correto sem publicar automaticamente.",
+        "Criar primeiro commit revisável do estado atual, excluindo .env, target, node_modules, dist, tmp e segredos.",
+        "Adotar .workflow/workflow.json como fonte de verdade e instalar um planejador de ondas compatível.",
+        "Documentar checks mínimos de frontend, Rust e banco."
+      ],
+      "outOfScope": [
+        "Criar repositório remoto ou torná-lo público sem autorização explícita.",
+        "Alterar regras financeiras, banco de produção ou credenciais.",
+        "Fazer merge ou release automático."
+      ],
+      "expectedBehavior": "O projeto possui histórico local limpo, branch principal definida, segredos ausentes do índice e tickets planejáveis antes de qualquer implementação nova.",
+      "acceptanceCriteria": [
+        "git status não inclui .env, target, node_modules, dist, tmp ou artefatos sensíveis.",
+        "Branch principal e política de PR estão documentadas.",
+        "O planejador valida este workflow e lista as ondas.",
+        "Build e testes de baseline têm resultados registrados."
+      ],
+      "tests": [
+        "npm run build e npm test.",
+        "cargo check e cargo test em src-tauri.",
+        "Varredura por segredos antes do primeiro commit."
+      ],
+      "likelyFiles": [
+        ".gitignore",
+        ".workflow/workflow.json",
+        ".workflow/scripts/",
+        "AGENTS.md",
+        "README.md"
+      ],
+      "risks": [
+        "Versionar src-tauri/.env ou segredos bancários.",
+        "Apontar para remoto incorreto.",
+        "Perder o estado atual ao tentar reconstruir histórico."
+      ]
+    },
+    {
+      "id": "BO-QA-001",
+      "title": "Fechar E2E do boleto manual",
+      "status": "ready",
+      "blockedBy": [
+        "BO-GOV-001"
+      ],
+      "context": "O plano PRD v2 concluiu as tarefas funcionais 0 a 14, mas deixou pendente o teste E2E do fluxo manual.",
+      "objective": "Fixar um baseline confiável do AutoBO antes de introduzir identidade e eventos da suíte.",
+      "scope": [
+        "Cobrir entrada manual, revisão, persistência e resultado financeiro sem provider real.",
+        "Usar fixtures sintéticas e registrar evidência reproduzível.",
+        "Cobrir validações de documento, valor e vencimento."
+      ],
+      "outOfScope": [
+        "Chamar Sicredi de produção.",
+        "Alterar contrato da integração AutoOS.",
+        "Emitir nota fiscal."
+      ],
+      "expectedBehavior": "O fluxo manual completo passa de forma determinística e não depende de dados reais.",
+      "acceptanceCriteria": [
+        "E2E cria e consulta um boleto/rascunho manual sintético.",
+        "Erros de validação são acionáveis.",
+        "Repetição do teste não deixa dados conflitantes."
+      ],
+      "tests": [
+        "Vitest dos mappers e validações.",
+        "E2E do fluxo manual.",
+        "cargo test dos comandos envolvidos."
+      ],
+      "likelyFiles": [
+        "e2e/",
+        "src/pages/NovoBoleto.tsx",
+        "src/components/boleto/",
+        "src-tauri/src/commands/boleto.rs"
+      ],
+      "risks": [
+        "Teste verde usando apenas mock incompatível com Tauri real.",
+        "Fixtures colidirem por documento ou identificador."
+      ]
+    },
+    {
+      "id": "BO-QA-002",
+      "title": "Fechar E2E da importação NF-e para boleto",
+      "status": "ready",
+      "blockedBy": [
+        "BO-GOV-001"
+      ],
+      "context": "A importação XML/PDF já existe, mas o plano PRD v2 deixou pendente a jornada E2E que prova parse, revisão e criação financeira.",
+      "objective": "Garantir que a base atual continue estável enquanto a origem futura passa a incluir FatoComercial do AutoOS.",
+      "scope": [
+        "Cobrir importação de XML sintético válido, revisão e criação de boleto/rascunho.",
+        "Cobrir XML inválido, duplicado e com total inconsistente.",
+        "Registrar evidência reexecutável."
+      ],
+      "outOfScope": [
+        "Consultar SEFAZ.",
+        "Emitir nova NF-e ou NFS-e.",
+        "Usar documento fiscal real."
+      ],
+      "expectedBehavior": "Uma NF-e sintética válida preenche o fluxo financeiro e entradas inválidas falham sem persistência parcial.",
+      "acceptanceCriteria": [
+        "E2E valida importação, revisão e persistência.",
+        "Duplicidade de chave é rejeitada.",
+        "Falha de parser não cria pagador, nota ou boleto parcial."
+      ],
+      "tests": [
+        "cargo test nfe_parser.",
+        "Vitest do frontend de importação.",
+        "E2E XML para boleto."
+      ],
+      "likelyFiles": [
+        "e2e/",
+        "src/components/nfe/",
+        "src-tauri/src/services/nfe_parser.rs",
+        "src-tauri/src/commands/nfe.rs"
+      ],
+      "risks": [
+        "Fixture não representar namespace real.",
+        "Teste depender de arquivo fiscal sensível."
+      ]
+    },
+    {
+      "id": "BO-SUITE-001",
+      "title": "Adotar FatoComercial v1 sem substituir origens atuais",
+      "status": "ready",
+      "blockedBy": [
+        "BO-QA-001",
+        "BO-QA-002"
+      ],
+      "context": "O AutoBO já aceita entrada manual e NF-e importada. A suíte adicionará AUTOOS como terceira origem, preservando os fluxos existentes.",
+      "objective": "Versionar o mesmo schema usado pelo AutoOS e mapear FatoComercial v1 para o domínio financeiro sem acesso às tabelas operacionais.",
+      "scope": [
+        "Adicionar schema e fixtures idênticos aos do AutoOS.",
+        "Definir origem AUTOOS e mapper para pagador snapshot, itens, serviços, total e vencimento.",
+        "Definir correlação por company_id, event_id, os_id e os_version.",
+        "Preservar origens MANUAL e NFE."
+      ],
+      "outOfScope": [
+        "Consumir eventos reais.",
+        "Criar cobrança Sicredi automaticamente.",
+        "Ler estoque ou clientes do AutoOS."
+      ],
+      "expectedBehavior": "O mesmo payload v1 validado no AutoOS é aceito e convertido para um comando financeiro interno sem efeitos externos.",
+      "acceptanceCriteria": [
+        "Hashes ou versões do schema coincidem nos dois projetos.",
+        "Mapper é puro e testado.",
+        "Nenhum JOIN ou acesso direto ao banco do AutoOS é introduzido.",
+        "Fluxos MANUAL e NFE continuam passando."
+      ],
+      "tests": [
+        "Contract tests com fixtures compartilhadas.",
+        "Testes do mapper para valores e documentos.",
+        "Regressão BO-QA-001 e BO-QA-002."
+      ],
+      "likelyFiles": [
+        "docs/contracts/",
+        "src-tauri/src/services/",
+        "src-tauri/src/commands/types.rs",
+        "src/types/index.ts"
+      ],
+      "risks": [
+        "Transformar snapshot em referência mutável.",
+        "Quebrar importação manual/NF-e existente.",
+        "Confundir NF-e importada com documento fiscal a emitir."
+      ]
+    },
+    {
+      "id": "BO-SUITE-002",
+      "title": "Adotar identidade tenant-safe da suíte",
+      "status": "ready",
+      "blockedBy": [
+        "BO-SUITE-001"
+      ],
+      "context": "Receber eventos do AutoOS exige que o AutoBO reconheça a mesma empresa sem compartilhar senha, service_role ou sessão por arquivo.",
+      "objective": "Autenticar o AutoBO no mesmo domínio de identidade e vincular cada operação financeira à empresa derivada da sessão.",
+      "scope": [
+        "Definir login/enrollment do AutoBO usando Supabase Auth e company_id autoritativo.",
+        "Persistir sessão em keyring separado e restaurá-la com segurança.",
+        "Propagar profile_id para auditoria operacional sem tratá-lo como identidade cloud forte.",
+        "Aplicar isolamento e testes tenant A/B nas novas tabelas de integração."
+      ],
+      "outOfScope": [
+        "Compartilhar tokens pelo filesystem com o AutoOS.",
+        "Migrar todo o banco financeiro para Supabase nesta etapa.",
+        "Usar user_metadata para autorização."
+      ],
+      "expectedBehavior": "O AutoBO identifica a empresa autenticada, não aceita tenant arbitrário do payload e não expõe credenciais privilegiadas.",
+      "acceptanceCriteria": [
+        "Empresa vem de claim/registro autoritativo, não de campo livre.",
+        "Tenant A não consome nem publica estado de B.",
+        "Tokens ficam no keyring e segredos não aparecem em logs.",
+        "Sessão expirada falha de forma recuperável."
+      ],
+      "tests": [
+        "Testes de sessão restaurada, expirada e revogada.",
+        "Testes multi-tenant A/B.",
+        "Varredura de secrets em logs e bundle."
+      ],
+      "likelyFiles": [
+        "src-tauri/src/services/auth.rs",
+        "src-tauri/src/services/secrets.rs",
+        "src-tauri/src/commands/",
+        "src/"
+      ],
+      "risks": [
+        "Duplicar de forma divergente o Auth do AutoOS.",
+        "Aceitar company_id vindo do evento sem validar sessão.",
+        "Colocar service_role no cliente Tauri."
+      ]
+    },
+    {
+      "id": "BO-SUITE-003",
+      "title": "Consumir fatos comerciais idempotentemente",
+      "status": "ready",
+      "blockedBy": [
+        "BO-SUITE-002"
+      ],
+      "context": "Este é o primeiro comportamento conjunto real: o AutoBO transforma uma intenção operacional em recebível interno, ainda usando provider fake em staging.",
+      "objective": "Consumir cada FatoComercial v1 uma única vez e criar uma intenção financeira correlacionada sem acionar banco ou fiscal automaticamente.",
+      "scope": [
+        "Buscar ou receber eventos pendentes pelo canal da suíte.",
+        "Persistir inbox idempotente por company_id + event_id.",
+        "Criar recebível/intenção financeira e snapshot imutável.",
+        "Tratar retry, resposta perdida, versão repetida e versão posterior.",
+        "Auditar resultado sem conteúdo sensível."
+      ],
+      "outOfScope": [
+        "Emitir boleto Sicredi automaticamente.",
+        "Emitir NFS-e ou NF-e.",
+        "Alterar a OS ou o estoque no AutoOS."
+      ],
+      "expectedBehavior": "Uma versão de OS produz exatamente uma intenção financeira; retries devolvem o mesmo recurso e uma nova versão segue política explícita de revisão.",
+      "acceptanceCriteria": [
+        "event_id repetido não cria duplicidade.",
+        "Totais e snapshots persistem conforme o contrato.",
+        "Evento de outro tenant é negado.",
+        "Falha parcial é reconciliável e auditável."
+      ],
+      "tests": [
+        "Teste concorrente de idempotência.",
+        "Teste de crash entre inbox e criação financeira.",
+        "Teste de nova os_version.",
+        "Teste multi-tenant."
+      ],
+      "likelyFiles": [
+        "src-tauri/migrations/",
+        "src-tauri/src/services/suite_inbox.rs",
+        "src-tauri/src/commands/",
+        "src-tauri/src/db.rs"
+      ],
+      "risks": [
+        "Criar cobrança externa durante ingestão.",
+        "Duplicar recebível em timeout.",
+        "Aceitar alteração retroativa sem revisão."
+      ]
+    },
+    {
+      "id": "BO-SUITE-004",
+      "title": "Publicar estado financeiro v1 para o AutoOS",
+      "status": "ready",
+      "blockedBy": [
+        "BO-SUITE-003"
+      ],
+      "context": "A convergência só fecha quando o AutoOS recebe uma projeção financeira ordenada e consegue correlacioná-la à OS original.",
+      "objective": "Publicar estados versionados de recebimento, processamento, cobrança, pagamento, cancelamento e falha sem expor detalhes bancários.",
+      "scope": [
+        "Mapear estados internos para o contrato público v1.",
+        "Publicar sequência monotônica por event_id.",
+        "Oferecer consulta/reconciliação por event_id e referência da OS.",
+        "Sanitizar erros e preservar request_id útil para suporte."
+      ],
+      "outOfScope": [
+        "Permitir mutações financeiras pelo AutoOS.",
+        "Expor linha digitável, tokens ou credenciais no canal de status.",
+        "Usar webhook público no desktop Tauri."
+      ],
+      "expectedBehavior": "O AutoOS consulta ou recebe o estado mais novo, e mensagens repetidas ou fora de ordem não fazem a projeção regredir.",
+      "acceptanceCriteria": [
+        "Estados têm versão/sequência monotônica.",
+        "Consulta é tenant-safe e idempotente.",
+        "Erros públicos não vazam payload bancário ou segredo.",
+        "Indisponibilidade não corrompe o estado financeiro."
+      ],
+      "tests": [
+        "Teste de estados repetidos e fora de ordem.",
+        "Teste de autorização A/B.",
+        "Contract test com consumidor fake do AutoOS."
+      ],
+      "likelyFiles": [
+        "src-tauri/src/services/suite_status.rs",
+        "src-tauri/src/commands/",
+        "src-tauri/migrations/",
+        "docs/contracts/"
+      ],
+      "risks": [
+        "Publicar estado mais novo antes da transação local confirmar.",
+        "Vazar dados financeiros desnecessários.",
+        "Acoplar o contrato público aos enums Sicredi."
+      ]
+    },
+    {
+      "id": "BO-SUITE-EXT-001",
+      "title": "Confirmar AutoOS publicando e consumindo contrato v1",
+      "status": "blocked",
+      "blockedBy": [
+        "BO-SUITE-001"
+      ],
+      "context": "Ticket espelho da dependência externa. Só deve ser encerrado após AO-SUITE-003 e AO-SUITE-004 estarem homologados.",
+      "objective": "Registrar evidência de compatibilidade do AutoOS sem implementar código operacional dentro do AutoBO.",
+      "scope": [
+        "Comparar versão/hash do contrato.",
+        "Revisar evidência de publicação e consumo de status.",
+        "Registrar ambiente e versões homologados."
+      ],
+      "outOfScope": [
+        "Modificar o AutoOS neste projeto.",
+        "Fazer merge ou deploy automático.",
+        "Encerrar sem confirmação humana."
+      ],
+      "expectedBehavior": "O ticket permanece blocked até existir evidência externa suficiente e então é marcado merged manualmente.",
+      "acceptanceCriteria": [
+        "AO-SUITE-003 publica o contrato v1.",
+        "AO-SUITE-004 consome os estados v1.",
+        "Evidência e versões estão registradas."
+      ],
+      "tests": [
+        "Comparação dos schemas.",
+        "Revisão do relatório de staging do AutoOS."
+      ],
+      "likelyFiles": [
+        "docs/contracts/",
+        ".workflow/workflow.json"
+      ],
+      "risks": [
+        "Declarar compatibilidade com versões diferentes.",
+        "Encerrar por evidência apenas documental."
+      ]
+    },
+    {
+      "id": "BO-SUITE-GATE-001",
+      "title": "Homologar marco Produto em Sincronia",
+      "status": "ready",
+      "blockedBy": [
+        "BO-SUITE-004",
+        "BO-SUITE-EXT-001"
+      ],
+      "context": "Este gate encerra a fase de convergência. Após ele, AutoBO pode focar Sicredi e fiscal enquanto AutoOS segue para PowerSync usando o mesmo contrato v1.",
+      "objective": "Provar AutoOS -> AutoBO -> AutoOS com idempotência, isolamento e tolerância a indisponibilidade.",
+      "scope": [
+        "Executar jornada nominal com provider fake.",
+        "Testar duplicidade, timeout, resposta perdida e estados fora de ordem.",
+        "Testar duas empresas sintéticas.",
+        "Congelar contrato v1 e emitir Go/No-Go."
+      ],
+      "outOfScope": [
+        "Emitir boleto ou nota real.",
+        "Exigir PowerSync.",
+        "Promover automaticamente para produção."
+      ],
+      "expectedBehavior": "Uma OS gera uma intenção financeira e o estado converge no AutoOS; falha do AutoBO não paralisa a operação.",
+      "acceptanceCriteria": [
+        "Exatamente uma intenção por event_id.",
+        "Nenhum vazamento entre tenants.",
+        "Status final converge sem regressão.",
+        "Relatório libera explicitamente os backlogs pós-gate."
+      ],
+      "tests": [
+        "E2E conjunto em staging.",
+        "Teste de caos leve e idempotência.",
+        "Regressão dos fluxos MANUAL e NFE."
+      ],
+      "likelyFiles": [
+        "e2e/",
+        "docs/reports/",
+        "docs/contracts/"
+      ],
+      "risks": [
+        "Aprovar apenas o caminho feliz.",
+        "Confundir intenção financeira com cobrança emitida.",
+        "Fazer o gate depender de um provider externo."
+      ]
+    },
+    {
+      "id": "BO-SIC-GO-001",
+      "title": "Homologar Sicredi sobre a intenção financeira integrada",
+      "status": "ready",
+      "blockedBy": [
+        "BO-SUITE-GATE-001"
+      ],
+      "context": "Depois do gate, o AutoBO volta a evoluir como motor financeiro. O código Sicredi já contém adapter, estados e reconciliação, mas ainda precisa auditoria final e homologação controlada.",
+      "objective": "Provar cadastro, PDF, baixa e liquidação sem duplicidade usando a mesma intenção criada pela suíte.",
+      "scope": [
+        "Auditar contrato atual contra o manual Sicredi 3.9.1.",
+        "Executar sandbox e piloto de valor mínimo autorizado.",
+        "Validar REGISTRO_INDETERMINADO, PDF_PENDENTE, BAIXA_SOLICITADA e reconciliação.",
+        "Confirmar política explícita de juros, multa e espécie documental."
+      ],
+      "outOfScope": [
+        "Generalizar para outros bancos.",
+        "Emitir nota fiscal.",
+        "Alterar o contrato FatoComercial v1."
+      ],
+      "expectedBehavior": "A intenção integrada pode gerar e reconciliar um boleto Sicredi sem duplicidade e com recuperação de falhas ambíguas.",
+      "acceptanceCriteria": [
+        "Retry não cria segundo título.",
+        "PDF falho não apaga registro confirmado.",
+        "Baixa só conclui após confirmação.",
+        "Liquidação perdida durante app fechado é recuperada."
+      ],
+      "tests": [
+        "Testes contratuais com mock.",
+        "Sandbox Sicredi.",
+        "Piloto controlado somente com autorização humana."
+      ],
+      "likelyFiles": [
+        "src-tauri/src/services/sicredi.rs",
+        "src-tauri/src/services/boleto_sicredi_flow.rs",
+        "src-tauri/src/services/sicredi_reconcile.rs",
+        "src-tauri/src/services/sicredi_adapter.rs"
+      ],
+      "risks": [
+        "Cobrança duplicada após timeout.",
+        "Aplicar juros ou multa não escolhidos.",
+        "Confundir baixa solicitada com cancelamento concluído."
+      ]
+    },
+    {
+      "id": "BO-FISC-ADR-001",
+      "title": "Definir arquitetura e cobertura fiscal do AutoBO",
+      "status": "ready",
+      "blockedBy": [
+        "BO-SUITE-GATE-001"
+      ],
+      "context": "O AutoBO hoje importa NF-e em autobo_nfes, mas ainda não possui domínio próprio de emissão fiscal. Antes de escolher APIs, é preciso separar NFS-e de serviços, NF-e modelo 55 de mercadorias e ordens mistas, além de decidir a origem dos dados tributários.",
+      "objective": "Registrar uma decisão arquitetural que defina documentos suportados, momento da emissão, responsabilidades entre AutoOS e AutoBO e critérios para seleção de providers.",
+      "scope": [
+        "Mapear NFS-e, NF-e modelo 55 e tratamento de OS mista.",
+        "Decidir se a emissão ocorre na conclusão, no faturamento ou após pagamento.",
+        "Definir quem mantém NCM, CFOP, CST/CSOSN, origem, unidade, CNAE e demais dados fiscais.",
+        "Definir política para cancelamento, substituição, contingência e estado indeterminado.",
+        "Criar matriz de capacidades obrigatórias para providers de NFS-e e NF-e."
+      ],
+      "outOfScope": [
+        "Contratar provider.",
+        "Chamar API fiscal externa.",
+        "Emitir documento real."
+      ],
+      "expectedBehavior": "A implementação fiscal começa com limites claros e não pressupõe que um provider de NFS-e também cubra NF-e de peças.",
+      "acceptanceCriteria": [
+        "ADR aprovada para serviços, mercadorias e OS mista.",
+        "Momento e autorização da emissão estão explícitos.",
+        "Fonte de cada dado tributário está definida.",
+        "Matriz de providers distingue obrigatórios, desejáveis e bloqueadores.",
+        "Eventuais mudanças necessárias no AutoOS viram tickets espelho antes da implementação."
+      ],
+      "tests": [
+        "Revisão da ADR com cenários de serviço, peça e OS mista.",
+        "Walkthrough de emissão, rejeição, timeout, cancelamento e substituição."
+      ],
+      "likelyFiles": [
+        "docs/adr/",
+        "docs/providers/",
+        ".workflow/workflow.json"
+      ],
+      "risks": [
+        "Escolher API antes de entender o documento fiscal necessário.",
+        "Duplicar cadastro tributário sem definir fonte de verdade.",
+        "Acoplar a sincronização do produto à disponibilidade fiscal."
+      ]
+    },
+    {
+      "id": "BO-FISC-CORE-001",
+      "title": "Criar registro fiscal e máquina de estados independentes de provider",
+      "status": "ready",
+      "blockedBy": [
+        "BO-FISC-ADR-001"
+      ],
+      "context": "A tabela autobo_nfes representa documentos importados e não deve ser sobrecarregada como controle de emissão. O AutoBO precisa de um registro fiscal próprio, auditável e ligado à intenção comercial antes de integrar qualquer API.",
+      "objective": "Implementar o núcleo fiscal provider-neutral para registrar solicitações, tentativas, documentos emitidos, falhas e eventos de cancelamento sem fazer chamadas externas.",
+      "scope": [
+        "Criar registro de documentos fiscais emitidos separado de autobo_nfes.",
+        "Relacionar company_id, event_id, receivable_id, tipo do documento, provider e referência idempotente.",
+        "Modelar estados de rascunho, solicitação, processamento, emitida, falha, indeterminada, cancelamento solicitado e cancelada.",
+        "Persistir identificadores externos, chave, referências de PDF/XML, rejeições e histórico de eventos.",
+        "Expor portas de provider separadas para NFS-e e NF-e."
+      ],
+      "outOfScope": [
+        "Implementar adapter Ext ou outro provider.",
+        "Migrar automaticamente NF-e importada para emissão.",
+        "Emitir documento fiscal real."
+      ],
+      "expectedBehavior": "Uma intenção fiscal possui identidade e histórico próprios; retries são idempotentes e um timeout permanece indeterminado até reconciliação.",
+      "acceptanceCriteria": [
+        "Migração preserva integralmente autobo_nfes e cria estrutura separada para emissão.",
+        "Uma referência idempotente não cria dois documentos para a mesma empresa.",
+        "Transições inválidas e regressões de estado são rejeitadas.",
+        "company_id participa de constraints e consultas.",
+        "Nenhum código do domínio depende de payload específico de provider."
+      ],
+      "tests": [
+        "Testes de migração e rollback compatível.",
+        "Testes unitários da máquina de estados.",
+        "Concorrência, retry e isolamento entre tenants.",
+        "Provider fake para caminhos issued, failed e indeterminate."
+      ],
+      "likelyFiles": [
+        "src-tauri/migrations/",
+        "src-tauri/src/models/",
+        "src-tauri/src/repositories/",
+        "src-tauri/src/services/fiscal/"
+      ],
+      "risks": [
+        "Reaproveitar autobo_nfes e misturar importação com emissão.",
+        "Perder auditabilidade ao sobrescrever erros e estados.",
+        "Não incluir tenant na idempotência."
+      ]
+    },
+    {
+      "id": "BO-FISC-EXT-001",
+      "title": "Validar adapter NFS-e da Ext em modo teste",
+      "status": "ready",
+      "blockedBy": [
+        "BO-FISC-CORE-001"
+      ],
+      "context": "Após a convergência, o AutoBO pode evoluir fiscalmente sem bloquear PowerSync. A Ext é candidata forte para NFS-e de clientes que já usam sua contabilidade.",
+      "objective": "Validar emissão, consulta, cancelamento, PDF/XML e estados indeterminados da Ext sem tratar o provider como solução universal de NF-e.",
+      "scope": [
+        "Confirmar acesso do plano e usar exclusivamente chave de teste.",
+        "Implementar ServiceInvoiceProvider estreito.",
+        "Tratar 202, polling, failed e indeterminate.",
+        "Validar atividades/CNAE, PDF, XML e cancelamento."
+      ],
+      "outOfScope": [
+        "NF-e modelo 55 de peças.",
+        "MEI ou ISS retido não suportados pelo provider.",
+        "Chave live ou documento fiscal real."
+      ],
+      "expectedBehavior": "Uma intenção com serviços pode emitir NFS-e de teste e reconciliar seu estado sem reemissão automática em indeterminate.",
+      "acceptanceCriteria": [
+        "Idempotência por reference/event_id comprovada.",
+        "PDF e XML são obtidos apenas após issued.",
+        "indeterminate nunca dispara reemissão automática.",
+        "Capacidades e limitações ficam visíveis na matriz de providers."
+      ],
+      "tests": [
+        "Contract tests contra fixtures da OpenAPI.",
+        "Chave de teste da Ext.",
+        "Casos failed, indeterminate e cancelamento fora da janela."
+      ],
+      "likelyFiles": [
+        "src-tauri/src/services/fiscal/",
+        "src-tauri/migrations/",
+        "src/pages/",
+        "docs/providers/"
+      ],
+      "risks": [
+        "Tratar NFS-e como cobertura de NF-e de mercadoria.",
+        "Acoplar domínio fiscal ao formato da Ext.",
+        "Emitir em produção durante homologação."
+      ]
+    },
+    {
+      "id": "BO-FISC-NFE-001",
+      "title": "Selecionar e validar provider de NF-e de mercadorias",
+      "status": "ready",
+      "blockedBy": [
+        "BO-FISC-CORE-001"
+      ],
+      "context": "A emissão de NFS-e não cobre as peças vendidas em uma ordem de serviço. A NF-e modelo 55 precisa de provider, sandbox e dados tributários específicos definidos pela ADR fiscal.",
+      "objective": "Escolher e homologar um adapter de NF-e modelo 55 para mercadorias usando o núcleo fiscal comum do AutoBO.",
+      "scope": [
+        "Avaliar providers contra a matriz aprovada.",
+        "Validar autorização, rejeição, consulta, cancelamento, inutilização e contingência quando aplicável.",
+        "Comprovar geração e recuperação de XML e representação auxiliar.",
+        "Validar uma OS com peças e o cenário misto definido na ADR."
+      ],
+      "outOfScope": [
+        "NFS-e de serviços.",
+        "Alterar o contrato comercial v1 sem ticket de versão.",
+        "Emitir documento real sem autorização humana e plano de rollback."
+      ],
+      "expectedBehavior": "Uma intenção de mercadoria é emitida ou reconciliada sem duplicidade e mantém rastreabilidade até a OS de origem.",
+      "acceptanceCriteria": [
+        "Provider escolhido atende aos bloqueadores da matriz.",
+        "Retry e timeout não geram segunda NF-e.",
+        "XML, chave e eventos ficam ligados ao registro fiscal interno.",
+        "Rejeições apresentam motivo acionável sem corromper a intenção.",
+        "Cenário de OS mista segue a decisão da ADR."
+      ],
+      "tests": [
+        "Contract tests com fixtures do provider.",
+        "Sandbox para autorização, rejeição, consulta e cancelamento.",
+        "Teste de timeout com reconciliação posterior.",
+        "Teste de isolamento entre empresas."
+      ],
+      "likelyFiles": [
+        "src-tauri/src/services/fiscal/",
+        "src-tauri/src/adapters/",
+        "src-tauri/migrations/",
+        "docs/providers/"
+      ],
+      "risks": [
+        "Tentar usar o adapter de NFS-e para mercadorias.",
+        "Provider não cobrir UF, regime ou contingência necessários.",
+        "Dados tributários incompletos no AutoOS ou AutoBO."
+      ]
+    }
+  ]
+}

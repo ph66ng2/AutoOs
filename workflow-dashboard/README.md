@@ -2,6 +2,18 @@
 
 Painel visual local e publicação estática do `.workflow/workflow.json`.
 
+## Projetos no mesmo painel
+
+As abas `AutoOS` e `AutoBO` usam o mesmo painel, mas nunca misturam tickets ou dependências. O AutoOS continua lendo a fonte local e pode ser editado no modo local. O AutoBO aparece como um snapshot somente leitura porque ainda não possui repositório Git.
+
+Para atualizar o snapshot público do AutoBO a partir da pasta local, execute na raiz do AutoOS:
+
+```bash
+npm run workflow:dashboard:sync-autobo
+```
+
+O comando valida o formato e recusa campos cujo nome pareça conter segredo. Ele só atualiza `workflow-dashboard/data/autobo-workflow.json`; a publicação acontece quando essa alteração entra na `feature`. Para usar outro caminho local, defina `AUTOBO_WORKFLOW_SOURCE` com o caminho absoluto do `workflow.json`.
+
 ## Abrir para acompanhar e editar
 
 Na raiz do AutoOS:
