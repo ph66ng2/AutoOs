@@ -8,6 +8,21 @@ import { DAILY_BOOT_OPENING_STORAGE_KEY } from "@/lib/daily-boot-opening";
 import { todayLocalIsoDate } from "@/lib/date-utils";
 import type { SaasAuthService, SaasSession } from "@/types/saas-auth";
 
+const { invokeMock } = vi.hoisted(() => ({ invokeMock: vi.fn() }));
+
+vi.mock("@tauri-apps/api/core", () => ({ invoke: invokeMock }));
+
+vi.mock("@/lib/saas-auth", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/saas-auth")>()),
+  listSaasOperationalProfiles: vi.fn().mockResolvedValue([{
+    id: "c0000000-0000-4000-8000-000000000001",
+    name: "Admin operacional",
+    role: "ADMIN",
+    permissions: [],
+  }]),
+  auditSaasOperationalProfileSelection: vi.fn().mockResolvedValue(undefined),
+}));
+
 vi.mock("@/components/BootSplashGate", () => ({
   BootSplashGate: ({
     loading,
@@ -69,6 +84,10 @@ function renderApp(authService: SaasAuthService) {
 describe("SaasApp", () => {
   beforeEach(() => {
     window.localStorage.clear();
+    invokeMock.mockReset();
+    invokeMock.mockImplementation((command: string) => command === "status_pin_perfil_saas"
+      ? Promise.resolve({ configured: false, lockedUntil: null })
+      : Promise.resolve(undefined));
   });
 
   it("mostra a abertura antes do login e só então revela a tela de entrada", async () => {
@@ -104,6 +123,9 @@ describe("SaasApp", () => {
     await user.type(await screen.findByLabelText("Email"), "admin@example.com");
     await user.type(screen.getByLabelText("Senha"), "secret-password");
     await user.click(screen.getByRole("button", { name: "Entrar" }));
+    await user.type(await screen.findByLabelText("PIN de seis dígitos"), "123456");
+    await user.type(screen.getByLabelText("Confirmar PIN"), "123456");
+    await user.click(screen.getByRole("button", { name: "Salvar PIN e continuar" }));
     expect(await screen.findByText("Sessão SaaS autenticada")).toBeInTheDocument();
     expect(screen.getByText("admin@example.com")).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "Bloquear" }));

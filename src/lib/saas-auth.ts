@@ -5,6 +5,7 @@ import {
   SaasAuthError,
   type SaasAuthService,
   type SaasIdentity,
+  type SaasOperationalProfile,
   type SaasRestoreResult,
   type SaasSession,
   type SaasSignOutResult,
@@ -416,4 +417,59 @@ export function createSaasAuthService(environment: Environment = import.meta.env
     config.passwordRecoveryRedirect,
     tauriSaasDeviceStore,
   );
+}
+
+/**
+ * Confirma a senha da identidade cloud antes de permitir a troca de um PIN local.
+ * O resultado não substitui a sessão protegida já armazenada no dispositivo.
+ */
+export async function reauthenticateSaasIdentity(
+  session: SaasSession,
+  email: string,
+  password: string,
+  environment: Environment = import.meta.env,
+): Promise<void> {
+  const port = new SupabaseSaasAuthPort(loadSaasAuthConfiguration(environment));
+  const result = await port.signInWithPassword(email.trim().toLowerCase(), password);
+  if (result.error || !result.session) {
+    if (isNetworkError(result.error)) throw new SaasAuthError("network", "Sem conexão para confirmar sua senha.");
+    throw new SaasAuthError("invalid_credentials", "Email ou senha inválidos.");
+  }
+  const confirmed = await normalizeSession(port, result.session);
+  if (confirmed.identity.userId !== session.identity.userId || confirmed.identity.companyId !== session.identity.companyId) {
+    throw new SaasAuthError("invalid_claims", "A confirmação deve usar a mesma conta SaaS desta sessão.");
+  }
+}
+
+/** Lê somente perfis ativos do tenant confirmado no JWT da sessão atual. */
+export async function listSaasOperationalProfiles(
+  session: SaasSession,
+  environment: Environment = import.meta.env,
+): Promise<SaasOperationalProfile[]> {
+  const client = createAuthClient(loadSaasAuthConfiguration(environment));
+  const restored = await client.auth.setSession({ access_token: session.accessToken, refresh_token: session.refreshToken });
+  if (restored.error) throw new SaasAuthError("expired", "Não foi possível restaurar a sessão para sincronizar perfis.");
+  const { data, error } = await client.rpc("list_active_saas_operational_profiles");
+  if (error) throw new SaasAuthError("account_unavailable", "Não foi possível sincronizar os perfis autorizados.");
+  return (data ?? []).flatMap((row: Record<string, unknown>) => {
+    if (typeof row.profile_id !== "string" || typeof row.nome !== "string" || typeof row.role !== "string") return [];
+    try {
+      const parsed = typeof row.permissions === "string" ? JSON.parse(row.permissions) : row.permissions;
+      return [{ id: requireUuid(row.profile_id, "UUID de perfil"), name: row.nome, role: row.role, permissions: Array.isArray(parsed) ? parsed.filter((value): value is string => typeof value === "string") : [] }];
+    } catch { return []; }
+  });
+}
+
+/** Registra no servidor a escolha local, sem confundi-la com identidade individual. */
+export async function auditSaasOperationalProfileSelection(
+  session: SaasSession,
+  profileId: string,
+  environment: Environment = import.meta.env,
+): Promise<void> {
+  requireUuid(profileId, "UUID de perfil");
+  const client = createAuthClient(loadSaasAuthConfiguration(environment));
+  const restored = await client.auth.setSession({ access_token: session.accessToken, refresh_token: session.refreshToken });
+  if (restored.error) throw new SaasAuthError("expired", "Não foi possível restaurar a sessão para registrar o perfil.");
+  const { error } = await client.rpc("audit_saas_operational_profile_selection", { p_profile_id: profileId });
+  if (error) throw new SaasAuthError("account_unavailable", "Não foi possível confirmar o perfil operacional autorizado.");
 }

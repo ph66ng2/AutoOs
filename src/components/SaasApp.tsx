@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { BootSplashGate } from "@/components/BootSplashGate";
 import { useBootUi } from "@/components/BootUi";
 import { SaasLoginScreen } from "@/components/SaasLoginScreen";
+import { SaasProfileSelector } from "@/components/SaasProfileSelector";
 import { useSaasAuth } from "@/hooks/useSaasAuth";
 import type { SaasAuthState } from "@/types/saas-auth";
 
@@ -75,6 +76,10 @@ function SaasAppBody({
   signOut: () => Promise<void>;
   confirmDeviceRemoval: () => void;
 }) {
+  const [profileUnlocked, setProfileUnlocked] = useState(false);
+  useEffect(() => {
+    setProfileUnlocked(false);
+  }, [state.kind === "authenticated" ? state.session.identity.profileId : null]);
   if (state.kind === "booting") {
     return (
       <main role="status" className="fixed inset-0 flex items-center justify-center bg-slate-950 text-slate-300">
@@ -102,6 +107,10 @@ function SaasAppBody({
         </section>
       </main>
     );
+  }
+
+  if (!profileUnlocked) {
+    return <SaasProfileSelector session={state.session} onUnlocked={() => setProfileUnlocked(true)} />;
   }
 
   return (

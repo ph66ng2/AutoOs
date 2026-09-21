@@ -12,6 +12,14 @@ export interface SaasSession {
   identity: SaasIdentity;
 }
 
+/** Perfil operacional autorizado pela nuvem; não é uma segunda identidade cloud. */
+export interface SaasOperationalProfile {
+  id: string;
+  name: string;
+  role: string;
+  permissions: string[];
+}
+
 export type SaasAuthState =
   | { kind: "booting" }
   | { kind: "authenticated"; session: SaasSession }
