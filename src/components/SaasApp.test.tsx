@@ -123,8 +123,8 @@ describe("SaasApp", () => {
     await user.type(await screen.findByLabelText("Email"), "admin@example.com");
     await user.type(screen.getByLabelText("Senha"), "secret-password");
     await user.click(screen.getByRole("button", { name: "Entrar" }));
-    await user.type(await screen.findByLabelText("PIN de seis dígitos"), "123456");
-    await user.type(screen.getByLabelText("Confirmar PIN"), "123456");
+    await user.type(await screen.findByLabelText("PIN de quatro dígitos"), "1234");
+    await user.type(screen.getByLabelText("Confirmar PIN"), "1234");
     await user.click(screen.getByRole("button", { name: "Salvar PIN e continuar" }));
     expect(await screen.findByText("Sessão SaaS autenticada")).toBeInTheDocument();
     expect(screen.getByText("admin@example.com")).toBeInTheDocument();
@@ -155,13 +155,18 @@ describe("SaasApp", () => {
     await waitFor(() => expect(authService.refreshSession).toHaveBeenCalledWith(expiring));
   });
 
-  it("solicita recuperação sem revelar se o email existe", async () => {
+  it("abre uma tela própria de recuperação sem revelar se o email existe", async () => {
     const authService = service();
     const user = userEvent.setup();
     renderApp(authService);
     await user.type(await screen.findByLabelText("Email"), "unknown@example.com");
     await user.click(screen.getByRole("button", { name: "Esqueci minha senha" }));
+    expect(await screen.findByRole("heading", { name: "Recuperar senha" })).toBeInTheDocument();
+    expect(screen.getByLabelText("Email da Conta")).toHaveValue("unknown@example.com");
+    await user.click(screen.getByRole("button", { name: "Enviar link de recuperação" }));
     expect(await screen.findByText(/Se o email estiver habilitado/)).toBeInTheDocument();
     expect(authService.requestPasswordRecovery).toHaveBeenCalledWith("unknown@example.com");
+    await user.click(screen.getByRole("button", { name: "Voltar para entrar" }));
+    expect(await screen.findByRole("heading", { name: "AutoOS SaaS" })).toBeInTheDocument();
   });
 });

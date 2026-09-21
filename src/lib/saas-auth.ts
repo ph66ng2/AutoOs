@@ -167,6 +167,13 @@ function isNetworkError(error: unknown): boolean {
   return error instanceof TypeError || /failed to fetch|network|offline|load failed|connection|timeout/.test(message);
 }
 
+function isEmailRateLimitError(error: unknown): boolean {
+  const code = typeof error === "object" && error !== null && "code" in error
+    ? String(error.code)
+    : "";
+  return errorStatus(error) === 429 || code === "over_email_send_rate_limit";
+}
+
 function isInvalidCredentialError(error: unknown): boolean {
   const status = errorStatus(error);
   const message = errorMessage(error).toLowerCase();
@@ -391,6 +398,9 @@ export class DefaultSaasAuthService implements SaasAuthService {
       const result = await this.port.resetPasswordForEmail(email.trim().toLowerCase(), this.recoveryRedirect);
       if (result.error && isNetworkError(result.error)) {
         throw new SaasAuthError("network", "Sem conexão para solicitar a redefinição de senha.");
+      }
+      if (result.error && isEmailRateLimitError(result.error)) {
+        throw new SaasAuthError("account_unavailable", "Limite de e-mails atingido. Aguarde antes de solicitar uma nova recuperação.");
       }
       if (result.error) throw new SaasAuthError("account_unavailable", "Não foi possível enviar a recuperação agora.");
     } catch (error) {

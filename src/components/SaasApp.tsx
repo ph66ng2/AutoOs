@@ -90,9 +90,7 @@ function SaasAppBody({
 
   if (state.kind === "signed_out") return <SaasLoginScreen notice={state.message} />;
   if (state.kind === "expired") return <SaasLoginScreen initialEmail={state.email} notice={state.message} />;
-  if (state.kind === "locked") {
-    return <SaasLoginScreen notice="Aplicativo bloqueado. Entre novamente para continuar; sua sessão protegida foi preservada." />;
-  }
+  if (state.kind === "locked") return <SaasLoginScreen notice="Aplicativo bloqueado. O painel foi ocultado e sua sessão protegida permanece somente no cofre desta máquina." />;
 
   if (state.kind === "offline_recoverable") {
     return (
@@ -127,7 +125,7 @@ function SaasAppBody({
           <Button variant="outline" className="border-rose-800 bg-rose-950/60 font-medium text-rose-100 hover:bg-rose-900 hover:text-white" onClick={confirmDeviceRemoval}>
             <LaptopMinimal className="mr-2 h-4 w-4" />Remover esta máquina
           </Button>
-          <p className="mt-2 text-xs text-slate-500">Bloquear mantém a sessão; Sair encerra apenas esta sessão; remover revoga a instalação no servidor e limpa seu acesso local.</p>
+          <p className="mt-2 text-xs text-slate-500">Bloquear oculta o painel e preserva a sessão protegida no cofre local. Sair encerra apenas esta sessão; remover revoga a instalação no servidor e limpa seu acesso local.</p>
         </div>
         <div className="grid gap-3 text-sm sm:grid-cols-2">
           <div className="rounded-xl bg-white/5 p-4"><span className="text-slate-500">Empresa</span><p className="mt-1 break-all font-mono text-xs">{state.session.identity.companyId}</p></div>
