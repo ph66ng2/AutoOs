@@ -177,6 +177,18 @@ fn concurrency_conflict_message(entity_label: &str) -> String {
     )
 }
 
+fn duplicate_equipment_patrimonio_message(error: &sqlx::Error) -> Option<String> {
+    let lower = error.to_string().to_lowercase();
+    if lower.contains("autoos_patrimonio_serial_conflict")
+        || lower.contains("ux_equipamentos_patrimonio_when_present")
+    {
+        return Some(
+            "Este patrimônio já está associado a outro número de série. Para registrar outro ciclo de manutenção, use o mesmo número de série do equipamento.".to_string(),
+        );
+    }
+    None
+}
+
 fn reject_direct_approval(status: &str) -> Result<(), String> {
     if normalize_status_key(status) == "APROVADO" {
         return Err("A aprovação deve usar a operação aprovar_orcamento com pagamento válido.".to_string());
@@ -607,7 +619,7 @@ pub async fn criar_equipamento(input: EquipamentoInput) -> Result<EquipamentoRow
     .await
     .map_err(|e| {
         error!("Erro ao criar equipamento: {}", e);
-        e.to_string()
+        duplicate_equipment_patrimonio_message(&e).unwrap_or_else(|| e.to_string())
     })?;
 
     let id: i32 = row.get("id");
@@ -697,7 +709,7 @@ pub async fn atualizar_equipamento(id: i32, input: EquipamentoInput) -> Result<E
     .await
     .map_err(|e| {
         error!("Erro ao atualizar equipamento {}: {}", id, e);
-        e.to_string()
+        duplicate_equipment_patrimonio_message(&e).unwrap_or_else(|| e.to_string())
     })?
     .rows_affected();
 
@@ -1117,5 +1129,16 @@ mod tests {
         assert_eq!(audit_detail(details, "status").as_deref(), Some("EM_MANUTENCAO"));
         assert_eq!(audit_detail(details, "motivo").as_deref(), Some("Falha no teste final"));
         assert_eq!(audit_detail(details, "destinatario"), None);
+    }
+
+    #[test]
+    fn duplicate_patrimonio_is_mapped_to_a_functional_message() {
+        let error = sqlx::Error::Protocol(
+            "AUTOOS_PATRIMONIO_SERIAL_CONFLICT: patrimônio já associado".to_string(),
+        );
+
+        let message = duplicate_equipment_patrimonio_message(&error)
+            .expect("conflito de patrimônio deve ser reconhecido");
+        assert!(message.contains("outro número de série"));
     }
 }
