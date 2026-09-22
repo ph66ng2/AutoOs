@@ -12,6 +12,16 @@ const { invokeMock } = vi.hoisted(() => ({ invokeMock: vi.fn() }));
 
 vi.mock("@tauri-apps/api/core", () => ({ invoke: invokeMock }));
 
+vi.mock("@/components/SaasOperationalShell", () => ({
+  SaasOperationalShell: ({ session, onLock }: { session: SaasSession; onLock: () => void }) => (
+    <section>
+      <p>Shell SaaS Clientes</p>
+      <p>{session.identity.email}</p>
+      <button onClick={onLock}>Bloquear</button>
+    </section>
+  ),
+}));
+
 vi.mock("@/lib/saas-auth", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/lib/saas-auth")>()),
   listSaasOperationalProfiles: vi.fn().mockResolvedValue([{
@@ -126,7 +136,7 @@ describe("SaasApp", () => {
     await user.type(await screen.findByLabelText("PIN de quatro dígitos"), "1234");
     await user.type(screen.getByLabelText("Confirmar PIN"), "1234");
     await user.click(screen.getByRole("button", { name: "Salvar PIN e continuar" }));
-    expect(await screen.findByText("Sessão SaaS autenticada")).toBeInTheDocument();
+    expect(await screen.findByText("Shell SaaS Clientes")).toBeInTheDocument();
     expect(screen.getByText("admin@example.com")).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "Bloquear" }));
     expect(await screen.findByText(/Aplicativo bloqueado/)).toBeInTheDocument();

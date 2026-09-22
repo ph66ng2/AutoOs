@@ -3364,6 +3364,20 @@
         "Fazer Bloquear parecer logout definitivo."
       ],
       "completedAt": "2026-09-22"
+    },
+    {
+      "id": "AO-SHELL-001",
+      "title": "Abrir o shell SaaS após autenticação e PIN",
+      "status": "in_progress",
+      "blockedBy": ["AO-AUTH-005", "AO-SUB-002"],
+      "objective": "Substituir o painel de sessão SaaS por um shell operacional seguro que leve o usuário autenticado ao piloto Online de Clientes.",
+      "expectedBehavior": "Após login, perfil e PIN, o build SaaS abre Clientes; rotas internas ainda não migradas não são renderizadas.",
+      "scope": ["Criar shell e rota SaaS para Clientes.", "Preservar Bloquear, Sair e Remover esta máquina.", "Bloquear rotas e adaptadores internos no runtime SaaS."],
+      "outOfScope": ["Migrar outros módulos.", "Implementar assinatura, PowerSync ou Offline.", "Alterar RLS ou usar credenciais privilegiadas."],
+      "acceptanceCriteria": ["Login e PIN abrem Clientes.", "Somente Clientes fica disponível no shell SaaS.", "Bloquear, Sair, expiração e offline removem o shell.", "A versão interna não muda."],
+      "tests": ["Testes de rota e guarda SaaS.", "npm run lint, npm run test:run, npm run build:saas e cargo check SaaS."],
+      "likelyFiles": ["src/components/SaasApp.tsx", "src/components/SaasOperationalShell.tsx", "src/components/SaasApp.test.tsx"],
+      "risks": ["Expor página interna em runtime SaaS.", "Inicializar PostgreSQL pelo shell SaaS."]
     }
   ]
 }
