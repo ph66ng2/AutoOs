@@ -23,10 +23,36 @@ fn map_status(status: StatusCode) -> String {
             "rate_limited",
             "O limite de consultas foi atingido. Tente novamente mais tarde.",
         ),
+        StatusCode::REQUEST_TIMEOUT => {
+            lookup_error("timeout", "A consulta demorou mais que o esperado.")
+        }
         _ => lookup_error(
             "unavailable",
             "O serviço de consulta está indisponível no momento.",
         ),
+    }
+}
+
+fn should_try_fallback(status: StatusCode) -> bool {
+    status == StatusCode::TOO_MANY_REQUESTS
+        || status == StatusCode::REQUEST_TIMEOUT
+        || status.is_server_error()
+}
+
+async fn fallback_or_primary_error(
+    client: &Client,
+    digits: &str,
+    primary_error: String,
+) -> Result<Value, String> {
+    match consultar_cnpj_ws(client, digits).await {
+        Ok(payload) => {
+            info!("Consulta de CNPJ concluída via fallback CNPJ.ws");
+            Ok(payload)
+        }
+        Err(fallback_error) => {
+            warn!(error = %fallback_error, "BrasilAPI e CNPJ.ws não concluíram a consulta");
+            Err(primary_error)
+        }
     }
 }
 
@@ -91,27 +117,38 @@ pub async fn consultar_cnpj(cnpj: String) -> Result<Value, String> {
             )
         })?;
 
-    let response = client
+    let response = match client
         .get(format!("{}/{}", BRASIL_API_CNPJ_URL, digits))
         .header("Accept", "application/json")
         .send()
         .await
-        .map_err(|error| {
+    {
+        Ok(response) => response,
+        Err(error) => {
             if error.is_timeout() {
                 warn!(%error, "Consulta de CNPJ expirou");
-                lookup_error("timeout", "A consulta demorou mais que o esperado.")
+                return fallback_or_primary_error(
+                    &client,
+                    &digits,
+                    lookup_error("timeout", "A consulta demorou mais que o esperado."),
+                )
+                .await;
             } else {
                 error!(%error, "Falha de rede ao consultar CNPJ");
-                lookup_error("offline", "Não foi possível conectar à consulta.")
+                return fallback_or_primary_error(
+                    &client,
+                    &digits,
+                    lookup_error("offline", "Não foi possível conectar à consulta."),
+                )
+                .await;
             }
-        })?;
+        }
+    };
 
     let status = response.status();
-    if status == StatusCode::TOO_MANY_REQUESTS {
-        warn!("BrasilAPI atingiu o limite; tentando fallback CNPJ.ws");
-        let payload = consultar_cnpj_ws(&client, &digits).await?;
-        info!("Consulta de CNPJ concluída via fallback CNPJ.ws");
-        return Ok(payload);
+    if should_try_fallback(status) {
+        warn!(%status, "BrasilAPI indisponível; tentando fallback CNPJ.ws");
+        return fallback_or_primary_error(&client, &digits, map_status(status)).await;
     }
 
     if !status.is_success() {
