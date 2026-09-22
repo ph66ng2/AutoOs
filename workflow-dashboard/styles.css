@@ -170,7 +170,6 @@ body[data-page="activity"] .intro-row { padding: 28px 0 16px; }
 .ticket-card[data-area="auth"] .ticket-id { color: var(--blue); }
 .ticket-card[data-area="subscription"] .ticket-id { color: var(--amber); }
 .ticket-card[data-area="hotfix"] .ticket-id { color: var(--red); }
-.ticket-card[data-area="interface"] .ticket-id { color: var(--cyan); }
 .ticket-card[data-area="updater"] .ticket-id { color: #d7b4ff; }
 .empty-column { display: grid; min-height: 92px; place-items: center; border: 1px dashed rgba(152, 188, 202, .15); color: var(--subtle); font-size: 10px; }
 .show-more { width: 100%; height: 32px; border: 1px dashed rgba(152, 188, 202, .2); border-radius: 5px; color: var(--muted); background: transparent; font-size: 10px; }
