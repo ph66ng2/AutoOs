@@ -30,8 +30,39 @@ const STATUS_EVENT_LABELS = {
 };
 
 const AREA_KEYS = Object.keys(AREA_LABELS);
-const GITHUB_REPOSITORY = "ph66ng2/AutoOs";
 const FOCUS_STORAGE_KEY = "autoos-workflow-foco";
+const PROJECT_STORAGE_KEY = "autoos-workflow-projeto";
+const PROJECTS = [
+  {
+    id: "autoos",
+    label: "AutoOS",
+    subtitle: "PROJECT OS",
+    workflowUrl: "./data/workflow.json",
+    eventsUrl: "./data/events.json",
+    sourceLabel: "feature / workflow.json",
+    staticModeLabel: "feature / workflow.json",
+    expectedBaseBranch: "origin/feature",
+    expectedPromotionTarget: "origin/master",
+    repository: "ph66ng2/AutoOs",
+    supportsTracks: true,
+    supportsStatusRequests: true,
+  },
+  {
+    id: "autobo",
+    label: "AutoBO",
+    subtitle: "FINANCEIRO-FISCAL",
+    workflowUrl: "./data/autobo-workflow.json",
+    eventsUrl: "./data/autobo-events.json",
+    sourceLabel: "AutoBO / workflow.json privado",
+    staticModeLabel: "Espelho publicado",
+    expectedBaseBranch: "origin/main",
+    expectedPromotionTarget: "origin/main",
+    repository: null,
+    supportsTracks: false,
+    supportsStatusRequests: false,
+  },
+];
+const PROJECT_IDS = PROJECTS.map((project) => project.id);
 const TRACK_IDS = ["all", ...TRACKS.map((track) => track.id)];
 const PAGE_IDS = ["overview", "board", "activity"];
 const PAGE_META = {
@@ -41,6 +72,7 @@ const PAGE_META = {
 };
 
 const state = {
+  project: "autoos",
   workflow: null,
   events: [],
   editable: false,
@@ -54,6 +86,10 @@ const state = {
 };
 
 const elements = {
+  projectSwitcher: document.querySelector("#project-switcher"),
+  brandName: document.querySelector("#brand-name"),
+  brandSubtitle: document.querySelector("#brand-subtitle"),
+  mobileBrandName: document.querySelector("#mobile-brand-name"),
   modeBadge: document.querySelector("#mode-badge"),
   sourceLabel: document.querySelector("#source-label"),
   accessLabel: document.querySelector("#access-label"),
@@ -113,6 +149,14 @@ function ticketById(ticketId) {
   return allTickets().find((ticket) => ticket.id === ticketId);
 }
 
+function projectById(projectId) {
+  return PROJECTS.find((project) => project.id === projectId) || PROJECTS[0];
+}
+
+function currentProject() {
+  return projectById(state.project);
+}
+
 function currentTrack() {
   return trackById(state.track);
 }
@@ -132,10 +176,11 @@ function scopedTickets() {
 }
 
 function readStoredTrack() {
+  if (!currentProject().supportsTracks) return "all";
   const fromUrl = new URLSearchParams(window.location.search).get("foco");
   if (TRACK_IDS.includes(fromUrl)) return fromUrl;
   try {
-    const stored = window.localStorage.getItem(FOCUS_STORAGE_KEY);
+    const stored = window.localStorage.getItem(`${FOCUS_STORAGE_KEY}-${state.project}`);
     if (TRACK_IDS.includes(stored)) return stored;
   } catch {
     /* ignore quota / privacy */
@@ -144,16 +189,50 @@ function readStoredTrack() {
 }
 
 function persistTrack(trackId) {
+  if (!currentProject().supportsTracks) return;
   state.track = trackId;
   const url = new URL(window.location.href);
   if (trackId === "all") url.searchParams.delete("foco");
   else url.searchParams.set("foco", trackId);
   window.history.replaceState({}, "", url);
   try {
-    window.localStorage.setItem(FOCUS_STORAGE_KEY, trackId);
+    window.localStorage.setItem(`${FOCUS_STORAGE_KEY}-${state.project}`, trackId);
   } catch {
     /* ignore */
   }
+}
+
+function readStoredProject() {
+  const fromUrl = new URLSearchParams(window.location.search).get("projeto");
+  if (PROJECT_IDS.includes(fromUrl)) return fromUrl;
+  try {
+    const stored = window.localStorage.getItem(PROJECT_STORAGE_KEY);
+    if (PROJECT_IDS.includes(stored)) return stored;
+  } catch {
+    /* ignore quota / privacy */
+  }
+  return "autoos";
+}
+
+function persistProject(projectId) {
+  if (!PROJECT_IDS.includes(projectId) || state.project === projectId) return;
+  state.project = projectId;
+  state.track = "all";
+  state.area = "all";
+  state.query = "";
+  state.showDone = false;
+  elements.searchInput.value = "";
+  const url = new URL(window.location.href);
+  if (projectId === "autoos") url.searchParams.delete("projeto");
+  else url.searchParams.set("projeto", projectId);
+  url.searchParams.delete("foco");
+  window.history.replaceState({}, "", url);
+  try {
+    window.localStorage.setItem(PROJECT_STORAGE_KEY, projectId);
+  } catch {
+    /* ignore quota / privacy */
+  }
+  void loadData();
 }
 
 function currentPage() {
@@ -202,16 +281,24 @@ async function fetchJson(url) {
 }
 
 async function loadData() {
+  const project = currentProject();
   let workflowPayload;
   let eventsPayload;
-  try {
-    workflowPayload = await fetchJson("./api/workflow");
-    eventsPayload = await fetchJson("./api/events");
-    state.editable = Boolean(workflowPayload.editable);
-    state.mode = "local";
-  } catch {
-    workflowPayload = await fetchJson("./data/workflow.json").catch(async () => fetchJson("../.workflow/workflow.json"));
-    eventsPayload = await fetchJson("./data/events.json").catch(() => []);
+  if (project.id === "autoos") {
+    try {
+      workflowPayload = await fetchJson("./api/workflow");
+      eventsPayload = await fetchJson("./api/events");
+      state.editable = Boolean(workflowPayload.editable);
+      state.mode = "local";
+    } catch {
+      workflowPayload = await fetchJson(project.workflowUrl).catch(async () => fetchJson("../.workflow/workflow.json"));
+      eventsPayload = await fetchJson(project.eventsUrl).catch(() => []);
+      state.editable = false;
+      state.mode = "static";
+    }
+  } else {
+    workflowPayload = await fetchJson(project.workflowUrl);
+    eventsPayload = await fetchJson(project.eventsUrl).catch(() => []);
     state.editable = false;
     state.mode = "static";
   }
@@ -221,9 +308,10 @@ async function loadData() {
 }
 
 function validateWorkflow() {
+  const project = currentProject();
   const issues = [];
-  if (state.workflow?.baseBranch !== "origin/feature") issues.push("baseBranch diferente de origin/feature");
-  if (state.workflow?.promotionTarget !== "origin/master") issues.push("promotionTarget diferente de origin/master");
+  if (state.workflow?.baseBranch !== project.expectedBaseBranch) issues.push(`baseBranch diferente de ${project.expectedBaseBranch}`);
+  if (state.workflow?.promotionTarget !== project.expectedPromotionTarget) issues.push(`promotionTarget diferente de ${project.expectedPromotionTarget}`);
   for (const ticket of allTickets()) {
     if (!ticket.testInstructions) issues.push(`${ticket.id} sem testInstructions`);
   }
@@ -242,11 +330,25 @@ function renderQuality() {
 }
 
 function renderHeader() {
-  elements.modeBadge.textContent = state.editable ? "Edição local" : "feature / workflow.json";
+  const project = currentProject();
+  elements.modeBadge.textContent = state.editable ? "Edição local" : project.staticModeLabel;
   elements.modeBadge.classList.toggle("editable", state.editable);
-  elements.sourceLabel.textContent = "feature / workflow.json";
-  elements.accessLabel.textContent = state.editable ? "Edição local" : "Somente leitura";
+  elements.sourceLabel.textContent = state.editable ? "feature / workflow.json" : project.sourceLabel;
+  elements.accessLabel.textContent = state.editable ? "Edição local" : project.id === "autobo" ? "Snapshot somente leitura" : "Somente leitura";
+  elements.brandName.textContent = project.label;
+  elements.brandSubtitle.textContent = project.subtitle;
+  elements.mobileBrandName.textContent = `${project.label} Workflow`;
   elements.lastRead.textContent = new Intl.DateTimeFormat("pt-BR", { timeStyle: "short" }).format(new Date());
+}
+
+function renderProjectSwitcher() {
+  elements.projectSwitcher.innerHTML = PROJECTS.map((project) => {
+    const selected = project.id === state.project;
+    return `<button class="project-tab ${selected ? "active" : ""}" data-project="${escapeHtml(project.id)}" type="button" role="tab" aria-selected="${selected}">${escapeHtml(project.label)}</button>`;
+  }).join("");
+  elements.projectSwitcher.querySelectorAll("[data-project]").forEach((button) => {
+    button.addEventListener("click", () => persistProject(button.dataset.project));
+  });
 }
 
 function renderMetrics() {
@@ -263,6 +365,12 @@ function renderMetrics() {
 }
 
 function renderTrackFilters() {
+  if (!currentProject().supportsTracks) {
+    elements.trackFilters.classList.add("hidden");
+    elements.trackFilters.innerHTML = "";
+    return;
+  }
+  elements.trackFilters.classList.remove("hidden");
   const options = [
     { id: "all", label: "Tudo", description: "Todos os focos no mesmo quadro" },
     ...TRACKS.map((track) => ({ id: track.id, label: track.label, description: track.description })),
@@ -281,7 +389,7 @@ function renderTrackFilters() {
 }
 
 function renderFilters() {
-  if (state.track !== "all") {
+  if (!currentProject().supportsTracks || state.track !== "all") {
     elements.areaFilters.innerHTML = "";
     return;
   }
@@ -366,12 +474,13 @@ function renderBoard() {
 
 function renderPath() {
   const track = currentTrack();
-  const entries = pathEntries(allTickets(), state.track).filter((entry) => {
+  const allEntries = currentProject().supportsTracks ? pathEntries(allTickets(), state.track) : genericPathEntries();
+  const entries = allEntries.filter((entry) => {
     if (state.area !== "all" && areaFor(entry.ticketId) !== state.area) return false;
     if (!state.query) return true;
     return [entry.ticketId, entry.ticket?.title, entry.reason].join(" ").toLocaleLowerCase("pt-BR").includes(state.query.toLocaleLowerCase("pt-BR"));
   });
-  elements.pathTitle.textContent = track ? `Rota ${track.label}` : "Rotas por foco";
+  elements.pathTitle.textContent = track ? `Rota ${track.label}` : currentProject().supportsTracks ? "Rotas por foco" : "Ordem das dependências";
   elements.pathCount.textContent = `${entries.length} passos`;
   if (!entries.length) {
     elements.pathList.innerHTML = `<li class="empty-column">Nenhum passo neste filtro.</li>`;
@@ -394,6 +503,27 @@ function renderPath() {
   elements.pathList.querySelectorAll("[data-ticket]").forEach((item) => {
     if (item.dataset.ticket) item.addEventListener("click", () => openDialog(item.dataset.ticket));
   });
+}
+
+function genericPathEntries() {
+  const byId = new Map(allTickets().map((ticket) => [ticket.id, ticket]));
+  const visited = new Set();
+  const ordered = [];
+  function visit(ticket) {
+    if (!ticket || visited.has(ticket.id)) return;
+    visited.add(ticket.id);
+    (ticket.blockedBy || []).forEach((blockerId) => visit(byId.get(blockerId)));
+    ordered.push(ticket);
+  }
+  allTickets().forEach(visit);
+  return ordered.map((ticket) => ({
+    ticketId: ticket.id,
+    ticket,
+    column: boardColumn(ticket, allTickets()),
+    skipped: false,
+    reason: pendingBlockers(ticket, allTickets()).length ? `Depende de ${pendingBlockers(ticket, allTickets()).join(", ")}.` : ticket.objective || "Liberado pela ordem atual.",
+    current: nextRecommended(allTickets()).ticket?.id === ticket.id,
+  }));
 }
 
 function derivedEvents() {
@@ -532,6 +662,7 @@ function renderViews() {
 function renderNav() {
   const page = currentPage();
   const meta = PAGE_META[page];
+  const project = currentProject();
   document.body.dataset.page = page;
   document.querySelectorAll(".site-page").forEach((section) => {
     section.classList.toggle("is-active", section.dataset.page === page);
@@ -542,13 +673,14 @@ function renderNav() {
   });
   if (meta) {
     if (elements.pageTitle) elements.pageTitle.textContent = meta.title;
-    if (elements.pageEyebrow) elements.pageEyebrow.textContent = meta.eyebrow;
-    document.title = meta.documentTitle;
+    if (elements.pageEyebrow) elements.pageEyebrow.textContent = `${project.label.toUpperCase()} / ${meta.eyebrow.split("/").at(-1).trim()}`;
+    document.title = `${project.label} Workflow | ${meta.title}`;
   }
 }
 
 function render() {
   renderHeader();
+  renderProjectSwitcher();
   renderQuality();
   renderTrackFilters();
   renderMetrics();
@@ -575,6 +707,10 @@ function openDialog(ticketId) {
   const unlocks = unlocksFrom(ticket.id, allTickets());
   const ticketEvents = state.events.filter((event) => event.ticketId === ticketId || event.ticketIds?.includes(ticketId)).slice(0, 6);
   const column = BOARD_COLUMNS.find((item) => item.id === boardColumn(ticket, allTickets()));
+  const project = currentProject();
+  const statusControls = project.supportsStatusRequests
+    ? `<form id="status-form" class="status-editor"><label>Status<select id="status-select">${STATUS_ORDER.map((status) => `<option value="${status}" ${ticket.status === status ? "selected" : ""}>${STATUS_LABELS[status]}</option>`).join("")}</select></label><button class="button status-save" type="submit">${state.editable ? "Salvar status" : "Solicitar no GitHub"}</button></form><textarea id="status-note" class="dialog-note" placeholder="Nota opcional para a linha do tempo"></textarea><p id="status-form-error" class="dialog-error hidden"></p>${state.editable ? "" : `<p class="dialog-readonly">A solicitação abrirá um Issue pré-preenchido. A Action valida a mudança e cria um PR para <strong>feature</strong>.</p>`}`
+    : `<p class="dialog-readonly"><strong>AutoBO está em consulta.</strong> A fonte oficial permanece no repositório privado AutoBO; este painel publica somente um espelho de leitura.</p>`;
   elements.dialogContent.innerHTML = `<div class="dialog-inner">
     <div class="dialog-title-row"><span class="ticket-id">${escapeHtml(ticket.id)}</span><h2 id="dialog-title">${escapeHtml(ticket.title)}</h2><p class="dialog-summary">${escapeHtml(ticket.objective || ticket.context || "Sem objetivo descrito.")}</p></div>
     <div class="path-callout">
@@ -600,7 +736,7 @@ function openDialog(ticketId) {
       ${dialogBlock("Restrições de staging", `<p>${escapeHtml(ticket.testInstructions?.stagingRestrictions || "Não informado")}</p>`)}
     </div></details>
     ${blockers.length ? `<p class="dialog-error">Aguardando: ${escapeHtml(blockers.join(", "))}</p>` : ""}
-    <form id="status-form" class="status-editor"><label>Status<select id="status-select">${STATUS_ORDER.map((status) => `<option value="${status}" ${ticket.status === status ? "selected" : ""}>${STATUS_LABELS[status]}</option>`).join("")}</select></label><button class="button status-save" type="submit">${state.editable ? "Salvar status" : "Solicitar no GitHub"}</button></form><textarea id="status-note" class="dialog-note" placeholder="Nota opcional para a linha do tempo"></textarea><p id="status-form-error" class="dialog-error hidden"></p>${state.editable ? "" : `<p class="dialog-readonly">A solicitação abrirá um Issue pré-preenchido. A Action valida a mudança e cria um PR para <strong>feature</strong>.</p>`}
+    ${statusControls}
     ${ticketEvents.length ? `<div class="detail-block" style="margin-top:16px"><h3>Atividade recente</h3>${ticketEvents.map((event) => `<p style="margin:0 0 7px;color:var(--muted);font-size:12px"><strong style="color:var(--ink)">${escapeHtml(formatDate(event.timestamp))}</strong> · ${escapeHtml(event.summary || event.type)}</p>`).join("")}</div>` : ""}
   </div>`;
   elements.dialog.classList.remove("hidden");
@@ -624,6 +760,10 @@ function openDialog(ticketId) {
 }
 
 async function saveStatus(ticketId) {
+  if (!currentProject().supportsStatusRequests) {
+    showToast("O AutoBO está disponível somente para consulta neste painel.");
+    return;
+  }
   const status = elements.dialog.querySelector("#status-select")?.value;
   const note = elements.dialog.querySelector("#status-note")?.value.trim() || "";
   const errorElement = elements.dialog.querySelector("#status-form-error");
@@ -631,7 +771,7 @@ async function saveStatus(ticketId) {
   if (!state.editable) {
     const title = encodeURIComponent(`[Workflow] ${ticketId} → ${STATUS_LABELS[status]}`);
     const body = encodeURIComponent(`<!-- autoos-workflow-status-request -->\nticketId=${ticketId}\nstatus=${status}\nnote=${note || "Solicitação feita pelo painel público."}`);
-    window.open(`https://github.com/${GITHUB_REPOSITORY}/issues/new?title=${title}&body=${body}&labels=workflow-status`, "_blank", "noopener");
+    window.open(`https://github.com/${currentProject().repository}/issues/new?title=${title}&body=${body}&labels=workflow-status`, "_blank", "noopener");
     showToast("Solicitação aberta no GitHub para confirmação.");
     return;
   }
@@ -659,6 +799,7 @@ function showToast(message) {
   showToast.timer = window.setTimeout(() => elements.toast.classList.remove("visible"), 3200);
 }
 
+state.project = readStoredProject();
 state.track = readStoredTrack();
 bootPage();
 
