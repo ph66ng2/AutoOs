@@ -58,3 +58,17 @@ Na CI, o binário `ci_migrate` aplica migrations somente ao PostgreSQL descartá
 
 1. Thumbprint só no build: ver [WINDOWS_CODE_SIGNING.md](./WINDOWS_CODE_SIGNING.md).
 2. Timestamp já está configurado no `tauri.conf.json`; o bloqueio remanente de prontidão é normalmente apenas **thumbprint**.
+
+## Auto-updater (GitHub Releases)
+
+O workflow `.github/workflows/build.yml` é a publicação oficial do canal `latest`. Detalhes operacionais, rotação de chave e schema de `latest.json` estão em [ATUALIZACAO_EXE.md](./ATUALIZACAO_EXE.md).
+
+Checklist extra antes da tag:
+
+1. A mesma SemVer está em `package.json`, `src-tauri/Cargo.toml` e `src-tauri/tauri.conf.json`.
+2. `bundle.createUpdaterArtifacts` permanece `true`.
+3. `plugins.updater.pubkey` é o par da chave privada nos secrets `TAURI_SIGNING_PRIVATE_KEY` / `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` (alias `TAURI_SIGNING_KEY`).
+4. `workflow_dispatch` só publica se o input `version` for essa SemVer; sem versão o job falha e não altera latest.
+5. O release só deixa de ser rascunho depois de `scripts/generate-update-manifest.mjs` validar instalador, `.sig` e `latest.json`.
+
+Não imprima a chave privada, a senha ou `AUTOOS_DATABASE_URL` em logs, PRs ou evidências. Authenticode (thumbprint) e assinatura do updater (minisign) são camadas distintas.

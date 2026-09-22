@@ -1,7 +1,7 @@
 {
   "name": "autoos",
   "private": true,
-  "version": "0.5.3",
+  "version": "0.5.4",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -14,8 +14,9 @@
     "tauri:build:saas": "tauri build --features saas --config src-tauri/tauri.saas.conf.json",
     "test": "vitest",
     "test:ui": "vitest --ui",
-    "test:run": "vitest run && npm run test:server-scripts",
+    "test:run": "vitest run && npm run test:server-scripts && npm run test:updater",
     "test:server-scripts": "node --test scripts/__tests__/saas-admin-identity.test.mjs",
+    "test:updater": "node --test scripts/__tests__/generate-update-manifest.test.mjs",
     "test:coverage": "vitest run --coverage",
     "lint": "tsc --noEmit",
     "e2e": "npm run e2e:web",

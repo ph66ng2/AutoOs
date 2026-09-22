@@ -2728,7 +2728,7 @@
     {
       "id": "AO-UPD-001",
       "title": "Estabilizar artefatos assinados do auto-updater",
-      "status": "ready",
+      "status": "merged",
       "blockedBy": [
         "AO-HOTFIX-002"
       ],
@@ -2810,7 +2810,7 @@
     {
       "id": "AO-UPD-002",
       "title": "Criar experiência confiável de atualização no app",
-      "status": "ready",
+      "status": "merged",
       "blockedBy": [
         "AO-UPD-001"
       ],

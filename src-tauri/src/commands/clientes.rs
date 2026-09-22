@@ -9,9 +9,12 @@
 //! ╚══════════════════════════════════════════════════════════════╝
 
 use crate::commands::types::{ClienteInput, ClienteRow, CLIENTE_SELECT};
-use crate::commands::auth::{record_security_event, require_permission, PERMISSION_DELETE_RECORDS};
+use crate::commands::auth::{
+    record_security_event, require_active_session_company_id, require_permission,
+    PERMISSION_DELETE_RECORDS,
+};
 use crate::db::get_pool;
-use sqlx::{PgPool, Row};
+use sqlx::Row;
 use tracing::{debug, error, info, instrument};
 
 use super::equipamentos::PAGE_SIZE;
@@ -105,27 +108,6 @@ fn duplicate_client_document_message(error: &sqlx::Error) -> Option<String> {
     None
 }
 
-/// A empresa de um novo cliente vem sempre do perfil operacional ativo.
-/// O valor eventualmente recebido no payload é deliberadamente ignorado para
-/// não permitir que a tela escolha o tenant de destino.
-async fn active_profile_company_id(pool: &PgPool) -> Result<i32, String> {
-    sqlx::query_scalar(
-        "SELECT e.id
-         FROM security_profiles p
-         JOIN empresas e ON e.id = p.empresa_id AND LOWER(e.status) = 'ativo'
-         WHERE p.ativo = true AND p.is_default = true
-         ORDER BY p.id
-         LIMIT 1",
-    )
-    .fetch_optional(pool)
-    .await
-    .map_err(|error| format!("Erro ao identificar a empresa do perfil ativo: {}", error))?
-    .ok_or_else(|| {
-        "O perfil ativo não está vinculado a uma empresa ativa. Vincule a empresa interna antes de cadastrar clientes."
-            .to_string()
-    })
-}
-
 /// Listar clientes com paginação.
 #[tauri::command]
 #[instrument(skip_all, fields(page = page))]
@@ -135,12 +117,14 @@ pub async fn listar_clientes(page: Option<i32>, busca: Option<String>) -> Result
         error!("Erro ao obter pool: {}", e);
         e.to_string()
     })?;
+    let empresa_id = require_active_session_company_id(&pool).await?;
 
     let offset = page.unwrap_or(0) * PAGE_SIZE;
     let mut query_builder = sqlx::QueryBuilder::<sqlx::Postgres>::new(format!(
-        "{} WHERE ativo = true",
+        "{} WHERE ativo = true AND empresa_id = ",
         CLIENTE_SELECT,
     ));
+    query_builder.push_bind(empresa_id);
 
     if let Some(busca) = busca.as_deref().map(str::trim).filter(|value| !value.is_empty()) {
         let pattern = format!("%{}%", busca);
@@ -187,10 +171,12 @@ pub async fn listar_clientes(page: Option<i32>, busca: Option<String>) -> Result
 pub async fn buscar_cliente(id: i32) -> Result<ClienteRow, String> {
     debug!("Buscando cliente {}", id);
     let pool = get_pool().await.map_err(|e| e.to_string())?;
+    let empresa_id = require_active_session_company_id(&pool).await?;
 
-    let query = format!("{} WHERE id = $1", CLIENTE_SELECT);
+    let query = format!("{} WHERE id = $1 AND empresa_id = $2", CLIENTE_SELECT);
     let row = sqlx::query_as::<_, ClienteRow>(sqlx::AssertSqlSafe(&*query))
         .bind(id)
+        .bind(empresa_id)
         .fetch_one(&pool)
         .await
         .map_err(|e| {
@@ -208,7 +194,7 @@ pub async fn buscar_cliente(id: i32) -> Result<ClienteRow, String> {
 pub async fn criar_cliente(input: ClienteInput) -> Result<ClienteRow, String> {
     debug!("Criando cliente: {}", input.telefone);
     let pool = get_pool().await.map_err(|e| e.to_string())?;
-    let empresa_id = active_profile_company_id(&pool).await?;
+    let empresa_id = require_active_session_company_id(&pool).await?;
     let tipo_pessoa = normalize_tipo_pessoa(
         input.tipo_pessoa.as_deref(),
         input.documento.as_deref(),
@@ -290,6 +276,7 @@ pub async fn criar_cliente(input: ClienteInput) -> Result<ClienteRow, String> {
 pub async fn atualizar_cliente(id: i32, input: ClienteInput) -> Result<ClienteRow, String> {
     debug!("Atualizando cliente {}", id);
     let pool = get_pool().await.map_err(|e| e.to_string())?;
+    let empresa_id = require_active_session_company_id(&pool).await?;
     let concurrency_token = required_concurrency_token(input.atualizado_em.as_deref(), "cliente")?;
     let tipo_pessoa = normalize_tipo_pessoa(
         input.tipo_pessoa.as_deref(),
@@ -331,7 +318,7 @@ pub async fn atualizar_cliente(id: i32, input: ClienteInput) -> Result<ClienteRo
             receber_email = $18, receber_whatsapp = $19, observacoes = $20,
             atualizado_em = NOW()
         WHERE id = $21 AND atualizado_em = $22::TIMESTAMPTZ
-          AND ($23::INTEGER IS NULL OR empresa_id = $23)
+          AND empresa_id = $23
         "#,
     )
     .bind(Some(nome_exibicao))
@@ -356,7 +343,7 @@ pub async fn atualizar_cliente(id: i32, input: ClienteInput) -> Result<ClienteRo
     .bind(optional_text(input.observacoes.as_deref()))
     .bind(id)
     .bind(concurrency_token)
-    .bind(input.empresa_id)
+    .bind(empresa_id)
     .execute(&pool)
     .await
     .map_err(|e| {
@@ -380,10 +367,12 @@ pub async fn deletar_cliente(id: i32) -> Result<bool, String> {
     let actor = require_permission(PERMISSION_DELETE_RECORDS)?;
     debug!("Deletando cliente {}", id);
     let pool = get_pool().await.map_err(|e| e.to_string())?;
+    let empresa_id = require_active_session_company_id(&pool).await?;
 
     // Soft delete: marca como inativo em vez de deletar
-    let result = sqlx::query("UPDATE clientes SET ativo = false, atualizado_em = NOW() WHERE id = $1")
+    let result = sqlx::query("UPDATE clientes SET ativo = false, atualizado_em = NOW() WHERE id = $1 AND empresa_id = $2")
         .bind(id)
+        .bind(empresa_id)
         .execute(&pool)
         .await
         .map_err(|e| {
