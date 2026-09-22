@@ -4,15 +4,17 @@ Painel visual local e publicação estática do `.workflow/workflow.json`.
 
 ## Projetos no mesmo painel
 
-As abas `AutoOS` e `AutoBO` usam o mesmo painel, mas nunca misturam tickets ou dependências. O AutoOS continua lendo a fonte local e pode ser editado no modo local. O AutoBO aparece como um snapshot somente leitura porque ainda não possui repositório Git.
+As abas `AutoOS` e `AutoBO` usam o mesmo painel, mas nunca misturam tickets ou dependências. O AutoOS continua lendo a fonte local e pode ser editado no modo local. O AutoBO aparece como um espelho somente leitura do seu repositório privado.
 
-Para atualizar o snapshot público do AutoBO a partir da pasta local, execute na raiz do AutoOS:
+Na publicação do GitHub Pages, a Action baixa somente `AutoBO/.workflow/workflow.json` usando o segredo `AUTOBO_WORKFLOW_READ_TOKEN`, valida o conteúdo e gera o espelho estático. O token e o restante do repositório privado nunca entram no artefato público.
+
+Para validar ou atualizar o espelho localmente a partir de uma cópia do AutoBO, execute na raiz do AutoOS:
 
 ```bash
 npm run workflow:dashboard:sync-autobo
 ```
 
-O comando valida o formato e recusa campos cujo nome pareça conter segredo. Ele só atualiza `workflow-dashboard/data/autobo-workflow.json`; a publicação acontece quando essa alteração entra na `feature`. Para usar outro caminho local, defina `AUTOBO_WORKFLOW_SOURCE` com o caminho absoluto do `workflow.json`.
+O comando valida o formato e recusa campos cujo nome pareça conter segredo. Ele só atualiza `workflow-dashboard/data/autobo-workflow.json`. Para usar outro caminho local, defina `AUTOBO_WORKFLOW_SOURCE` com o caminho absoluto do `workflow.json`.
 
 ## Abrir para acompanhar e editar
 
@@ -43,7 +45,7 @@ O relatório encontra a worktree principal automaticamente, registra branch e co
 
 ## Publicação no GitHub
 
-O workflow `.github/workflows/workflow-dashboard.yml` copia o JSON e os eventos para um artefato estático e publica a visão no GitHub Pages. A página pública não recebe tokens e não grava no repositório.
+O workflow `.github/workflows/workflow-dashboard.yml` copia o JSON e os eventos para um artefato estático e publica a visão no GitHub Pages. Ele também recebe o evento `autobo-workflow-updated`, preparado para uma Action do AutoBO solicitar a atualização quando seu workflow mudar. A página pública não recebe tokens e não grava no repositório.
 
 O painel permanece publicado em `https://ph66ng2.github.io/AutoOs/`. O atalho `https://phmedeiros.dev/workflow/`, mantido pelo site principal, redireciona para esse endereço sem exigir configuração adicional de DNS.
 

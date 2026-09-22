@@ -53,8 +53,8 @@ const PROJECTS = [
     subtitle: "FINANCEIRO-FISCAL",
     workflowUrl: "./data/autobo-workflow.json",
     eventsUrl: "./data/autobo-events.json",
-    sourceLabel: "AutoBO / snapshot revisado",
-    staticModeLabel: "Consulta do snapshot",
+    sourceLabel: "AutoBO / workflow.json privado",
+    staticModeLabel: "Espelho publicado",
     expectedBaseBranch: "origin/main",
     expectedPromotionTarget: "origin/main",
     repository: null,
@@ -710,7 +710,7 @@ function openDialog(ticketId) {
   const project = currentProject();
   const statusControls = project.supportsStatusRequests
     ? `<form id="status-form" class="status-editor"><label>Status<select id="status-select">${STATUS_ORDER.map((status) => `<option value="${status}" ${ticket.status === status ? "selected" : ""}>${STATUS_LABELS[status]}</option>`).join("")}</select></label><button class="button status-save" type="submit">${state.editable ? "Salvar status" : "Solicitar no GitHub"}</button></form><textarea id="status-note" class="dialog-note" placeholder="Nota opcional para a linha do tempo"></textarea><p id="status-form-error" class="dialog-error hidden"></p>${state.editable ? "" : `<p class="dialog-readonly">A solicitação abrirá um Issue pré-preenchido. A Action valida a mudança e cria um PR para <strong>feature</strong>.</p>`}`
-    : `<p class="dialog-readonly"><strong>AutoBO está em consulta.</strong> Este projeto ainda não possui repositório Git. Feche BO-GOV-001 antes de editar tickets ou pedir mudanças pelo painel.</p>`;
+    : `<p class="dialog-readonly"><strong>AutoBO está em consulta.</strong> A fonte oficial permanece no repositório privado AutoBO; este painel publica somente um espelho de leitura.</p>`;
   elements.dialogContent.innerHTML = `<div class="dialog-inner">
     <div class="dialog-title-row"><span class="ticket-id">${escapeHtml(ticket.id)}</span><h2 id="dialog-title">${escapeHtml(ticket.title)}</h2><p class="dialog-summary">${escapeHtml(ticket.objective || ticket.context || "Sem objetivo descrito.")}</p></div>
     <div class="path-callout">
@@ -761,7 +761,7 @@ function openDialog(ticketId) {
 
 async function saveStatus(ticketId) {
   if (!currentProject().supportsStatusRequests) {
-    showToast("O AutoBO ainda está em modo de consulta.");
+    showToast("O AutoBO está disponível somente para consulta neste painel.");
     return;
   }
   const status = elements.dialog.querySelector("#status-select")?.value;

@@ -10,6 +10,8 @@ on:
       - "scripts/workflow-report.mjs"
       - "scripts/prepare-workflow-dashboard.mjs"
       - ".github/workflows/workflow-dashboard.yml"
+  repository_dispatch:
+    types: [autobo-workflow-updated]
   workflow_dispatch:
 
 permissions:
@@ -29,6 +31,16 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Baixar workflow privado do AutoBO
+        uses: actions/checkout@v4
+        with:
+          repository: ph66ng2/AutoBO
+          token: ${{ secrets.AUTOBO_WORKFLOW_READ_TOKEN }}
+          path: .tmp/autobo
+          sparse-checkout: .workflow/workflow.json
+          sparse-checkout-cone-mode: false
+          persist-credentials: false
+
       - name: Configurar Pages
         uses: actions/configure-pages@v5
 
@@ -39,6 +51,11 @@ jobs:
 
       - name: Testar armazenamento do workflow
         run: npm run test:workflow
+
+      - name: Validar workflow do AutoBO
+        env:
+          AUTOBO_WORKFLOW_SOURCE: ${{ github.workspace }}/.tmp/autobo/.workflow/workflow.json
+        run: npm run workflow:dashboard:sync-autobo
 
       - name: Montar artefato estático
         env:
