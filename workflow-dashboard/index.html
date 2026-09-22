@@ -52,7 +52,6 @@
             </div>
           </section>
 
-          <div id="track-filters" class="track-switcher" role="tablist" aria-label="Foco de trabalho"></div>
           <section id="quality-alert" class="quality-alert hidden" aria-live="polite"></section>
 
           <section id="overview" class="site-page is-active" data-page="overview" aria-label="Resumo do projeto">
@@ -94,12 +93,19 @@
                 <button class="view-button active" data-view="board" role="tab" aria-selected="true" type="button">Quadro</button>
                 <button class="view-button" data-view="path" role="tab" aria-selected="false" type="button">Caminho</button>
               </div>
+              <label id="track-control" class="toolbar-select">
+                <span>Rota</span>
+                <select id="track-filters" aria-label="Rota de trabalho"></select>
+              </label>
+              <label id="area-control" class="toolbar-select">
+                <span>Categoria</span>
+                <select id="area-filters" aria-label="Categoria de tickets"></select>
+              </label>
               <label class="search-box">
                 <span class="search-icon" aria-hidden="true">⌕</span>
                 <span class="sr-only">Buscar ticket</span>
                 <input id="search-input" type="search" placeholder="Buscar ticket..." autocomplete="off" />
               </label>
-              <div id="area-filters" class="filter-list" role="list"></div>
             </div>
 
             <section id="board-view" class="kanban-board" aria-label="Quadro Kanban"></section>

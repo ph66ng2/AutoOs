@@ -106,7 +106,9 @@ const elements = {
   metricBlocked: document.querySelector("#metric-blocked"),
   searchInput: document.querySelector("#search-input"),
   areaFilters: document.querySelector("#area-filters"),
+  areaControl: document.querySelector("#area-control"),
   trackFilters: document.querySelector("#track-filters"),
+  trackControl: document.querySelector("#track-control"),
   boardView: document.querySelector("#board-view"),
   pathView: document.querySelector("#path-view"),
   pathList: document.querySelector("#path-list"),
@@ -366,40 +368,36 @@ function renderMetrics() {
 
 function renderTrackFilters() {
   if (!currentProject().supportsTracks) {
-    elements.trackFilters.classList.add("hidden");
+    elements.trackControl.hidden = true;
     elements.trackFilters.innerHTML = "";
     return;
   }
-  elements.trackFilters.classList.remove("hidden");
+  elements.trackControl.hidden = false;
   const options = [
     { id: "all", label: "Tudo", description: "Todos os focos no mesmo quadro" },
     ...TRACKS.map((track) => ({ id: track.id, label: track.label, description: track.description })),
   ];
-  elements.trackFilters.innerHTML = options.map((option) => {
-    const selected = state.track === option.id;
-    return `<button class="track-chip ${selected ? "active" : ""}" data-track="${escapeHtml(option.id)}" type="button" role="tab" aria-selected="${selected}" title="${escapeHtml(option.description)}">${escapeHtml(option.label)}</button>`;
-  }).join("");
-  elements.trackFilters.querySelectorAll("[data-track]").forEach((button) => {
-    button.addEventListener("click", () => {
-      persistTrack(button.dataset.track);
-      if (state.area !== "all" && state.track !== "all" && state.area !== state.track) state.area = "all";
-      render();
-    });
-  });
+  elements.trackFilters.innerHTML = options.map((option) => `<option value="${escapeHtml(option.id)}" title="${escapeHtml(option.description)}">${escapeHtml(option.label)}</option>`).join("");
+  elements.trackFilters.value = state.track;
+  elements.trackFilters.onchange = () => {
+    persistTrack(elements.trackFilters.value);
+    if (state.track !== "all") state.area = "all";
+    render();
+  };
 }
 
 function renderFilters() {
   if (!currentProject().supportsTracks || state.track !== "all") {
-    elements.areaFilters.innerHTML = "";
+    elements.areaControl.hidden = true;
     return;
   }
-  elements.areaFilters.innerHTML = AREA_KEYS.map((area) => `<button class="filter-button ${state.area === area ? "active" : ""}" data-area="${area}" type="button">${AREA_LABELS[area] || area}</button>`).join("");
-  elements.areaFilters.querySelectorAll("[data-area]").forEach((button) => {
-    button.addEventListener("click", () => {
-      state.area = button.dataset.area;
-      render();
-    });
-  });
+  elements.areaControl.hidden = false;
+  elements.areaFilters.innerHTML = AREA_KEYS.map((area) => `<option value="${escapeHtml(area)}">${escapeHtml(AREA_LABELS[area] || area)}</option>`).join("");
+  elements.areaFilters.value = state.area;
+  elements.areaFilters.onchange = () => {
+    state.area = elements.areaFilters.value;
+    render();
+  };
 }
 
 function cardMeta(ticket) {
