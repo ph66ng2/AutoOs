@@ -5,6 +5,10 @@ export class Channel<T> {
   onmessage: ((message: T) => void) | null = null;
 }
 
+export function isTauri(): boolean {
+  return false;
+}
+
 const agora = "2026-09-17T15:00:00Z";
 
 const status = {
