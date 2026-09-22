@@ -860,7 +860,7 @@
     {
       "id": "AO-AUTH-004",
       "title": "Integrar perfis SaaS e PIN local",
-      "status": "ready",
+      "status": "merged",
       "blockedBy": [
         "AO-AUTH-003"
       ],
@@ -962,7 +962,8 @@
         "Manter verificador de perfil inativo ou sincronizar hash entre máquinas.",
         "Pedir novamente a senha no primeiro acesso e criar fluxo redundante/confuso.",
         "Auditoria sugerir identidade individual forte que o MVP não consegue provar."
-      ]
+      ],
+      "completedAt": "2026-09-21"
     },
     {
       "id": "AO-PS-005",
@@ -3298,7 +3299,7 @@
     {
       "id": "AO-AUTH-005",
       "title": "Ajustar PIN e recuperação de acesso SaaS",
-      "status": "in_progress",
+      "status": "merged",
       "blockedBy": [
         "AO-AUTH-004"
       ],
@@ -3359,7 +3360,8 @@
         "Aceitar tamanhos divergentes no frontend e backend.",
         "Confundir PIN local com senha cloud.",
         "Fazer Bloquear parecer logout definitivo."
-      ]
+      ],
+      "completedAt": "2026-09-22"
     }
   ]
 }
