@@ -11,6 +11,10 @@ export class Channel<T> {
   onmessage: ((message: T) => void) | null = null;
 }
 
+export function isTauri(): boolean {
+  return false;
+}
+
 export async function invoke<T>(command: string): Promise<T> {
   switch (command) {
     case "verificar_status_banco": return true as T;
