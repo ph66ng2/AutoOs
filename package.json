@@ -15,7 +15,7 @@
     "test": "vitest",
     "test:ui": "vitest --ui",
     "test:run": "vitest run && npm run test:server-scripts",
-    "test:server-scripts": "node --test scripts/__tests__/saas-admin-identity.test.mjs",
+    "test:server-scripts": "node --test scripts/__tests__/saas-admin-identity.test.mjs scripts/__tests__/generate-update-manifest.test.mjs",
     "test:coverage": "vitest run --coverage",
     "lint": "tsc --noEmit",
     "e2e": "npm run e2e:web",

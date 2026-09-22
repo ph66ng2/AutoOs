@@ -2728,7 +2728,7 @@
     {
       "id": "AO-UPD-001",
       "title": "Estabilizar artefatos assinados do auto-updater",
-      "status": "ready",
+      "status": "review",
       "blockedBy": [
         "AO-HOTFIX-002"
       ],
