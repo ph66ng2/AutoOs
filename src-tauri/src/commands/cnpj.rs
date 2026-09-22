@@ -28,9 +28,19 @@ fn map_status(status: StatusCode) -> String {
         }
         _ => lookup_error(
             "unavailable",
-            "O serviço de consulta está indisponível no momento.",
+            format!(
+                "O serviço de consulta está indisponível no momento (HTTP {}).",
+                status.as_u16()
+            ),
         ),
     }
+}
+
+fn lookup_error_detail(error: &str) -> &str {
+    error
+        .splitn(3, '|')
+        .nth(2)
+        .unwrap_or("falha sem detalhe do provedor")
 }
 
 fn should_try_fallback(status: StatusCode) -> bool {
@@ -51,7 +61,14 @@ async fn fallback_or_primary_error(
         }
         Err(fallback_error) => {
             warn!(error = %fallback_error, "BrasilAPI e CNPJ.ws não concluíram a consulta");
-            Err(primary_error)
+            Err(lookup_error(
+                "unavailable",
+                format!(
+                    "BrasilAPI: {}; CNPJ.ws: {}",
+                    lookup_error_detail(&primary_error),
+                    lookup_error_detail(&fallback_error),
+                ),
+            ))
         }
     }
 }
