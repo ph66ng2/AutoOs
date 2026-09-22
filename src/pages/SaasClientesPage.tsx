@@ -6,7 +6,7 @@ import { ClienteFormularioCampos } from "@/components/clientes/ClienteFormulario
 import { documentoExibicaoCliente, nomeExibicaoCliente } from "@/components/clientes/cliente-display-utils";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import { Dialog, DialogClose, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogClose, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { ErrorAlert } from "@/components/ui/error-alert";
 import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -18,6 +18,14 @@ const EMPTY_FORM: ClienteFormData = {
   documento: "", tipo_pessoa: "PF", nome: "", razao_social: "", nome_fantasia: "",
   inscricao_estadual: "", telefone: "", telefone_secundario: "", email: "", cep: "",
   endereco: "", numero: "", complemento: "", bairro: "", cidade: "", uf: "", observacoes: "",
+};
+
+const FORM_FIELD_LABELS: Partial<Record<keyof ClienteFormData, string>> = {
+  documento: "CPF ou CNPJ",
+  nome: "Nome completo",
+  razao_social: "Razão Social",
+  email: "E-mail",
+  uf: "UF",
 };
 
 /** Clientes SaaS: usa exclusivamente o repository remoto selecionado por useClientes. */
@@ -34,6 +42,12 @@ export default function SaasClientesPage() {
   const { clientes, loading, error, criar, atualizar, deletar, recarregar } = useClientes({ busca: busca || undefined });
   const form = useForm<ClienteFormData>({ resolver: zodResolver(clienteSchema), defaultValues: EMPTY_FORM });
   const documento = form.watch("documento");
+  const validationIssues = Object.entries(form.formState.errors).flatMap(([field, issue]) =>
+    issue?.message ? [`${FORM_FIELD_LABELS[field as keyof ClienteFormData] ?? field}: ${issue.message}`] : [],
+  );
+  const validationMessage = form.formState.submitCount > 0 && validationIssues.length > 0
+    ? `Revise os campos antes de salvar: ${validationIssues.join("; ")}`
+    : null;
 
   useEffect(() => {
     const detected = detectarTipoDocumento(documento || "");
@@ -137,10 +151,34 @@ export default function SaasClientesPage() {
       <div><h1 className="text-3xl font-bold tracking-tight">Clientes</h1><p className="text-muted-foreground">Cadastros da sua empresa no plano Online.</p></div>
       <Button onClick={abrirNovo}><Plus className="mr-2 h-4 w-4" />Novo cliente</Button>
     </div>
-    {(error || operationError) && <ErrorAlert variant="error" context="Clientes" action="Operação não concluída" message={operationError || error || ""} />}
+    {(error || (!dialogOpen && operationError)) && <ErrorAlert variant="error" context="Clientes" action="Operação não concluída" message={operationError || error || ""} />}
     <Card><CardContent className="pt-6"><div className="flex gap-3"><div className="relative flex-1"><Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" /><Input className="pl-9" value={busca} onChange={(event) => setBusca(event.target.value)} placeholder="Buscar por nome, documento, telefone ou e-mail" /></div><Button aria-label="Atualizar clientes" variant="outline" size="icon" onClick={() => void recarregar()}><RefreshCw className="h-4 w-4" /></Button></div></CardContent></Card>
     <Card><CardContent className="pt-6">{loading ? <div className="py-12 text-center text-muted-foreground">Carregando clientes…</div> : clientes.length === 0 ? <div className="py-12 text-center text-muted-foreground"><Users className="mx-auto mb-3 h-12 w-12 opacity-30" /><p>Nenhum cliente encontrado.</p></div> : <div className="overflow-x-auto"><Table><TableHeader><TableRow><TableHead>Cliente</TableHead><TableHead>Documento</TableHead><TableHead>Contato</TableHead><TableHead className="w-24 text-right">Ações</TableHead></TableRow></TableHeader><TableBody>{clientes.map((cliente) => <TableRow key={cliente.id}><TableCell><p className="font-medium">{nomeExibicaoCliente(cliente)}</p>{cliente.razao_social && <p className="text-xs text-muted-foreground">{cliente.razao_social}</p>}</TableCell><TableCell>{documentoExibicaoCliente(cliente)}</TableCell><TableCell><p>{formatarTelefone(cliente.telefone || "")}</p><p className="text-xs text-muted-foreground">{cliente.email || "—"}</p></TableCell><TableCell><div className="flex justify-end gap-1"><Button aria-label={`Editar ${nomeExibicaoCliente(cliente)}`} variant="ghost" size="icon" onClick={() => abrirEditar(cliente)}><Edit className="h-4 w-4" /></Button><Button aria-label={`Excluir ${nomeExibicaoCliente(cliente)}`} variant="ghost" size="icon" className="text-destructive hover:text-destructive" onClick={() => { setDeletando(cliente); setDeleteOpen(true); }}><Trash2 className="h-4 w-4" /></Button></div></TableCell></TableRow>)}</TableBody></Table></div>}</CardContent></Card>
-    <Dialog open={dialogOpen} onOpenChange={setDialogOpen}><DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-2xl"><DialogHeader><DialogTitle>{editando ? "Editar cliente" : "Novo cliente"}</DialogTitle></DialogHeader><form className="space-y-5" onSubmit={form.handleSubmit(salvar)}><ClienteFormularioCampos form={form} tipoPessoa={tipoPessoa} buscarCep={buscarCep} buscandoCep={buscandoCep} /><DialogFooter><DialogClose asChild><Button type="button" variant="outline">Cancelar</Button></DialogClose><Button type="submit" disabled={salvando}>{salvando ? "Salvando…" : "Salvar"}</Button></DialogFooter></form></DialogContent></Dialog>
+    <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+      <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-2xl">
+        <DialogHeader>
+          <DialogTitle>{editando ? "Editar cliente" : "Novo cliente"}</DialogTitle>
+          <DialogDescription>Preencha os campos obrigatórios e confira os dados antes de salvar.</DialogDescription>
+        </DialogHeader>
+        <form className="space-y-5" onSubmit={form.handleSubmit(salvar, () => setOperationError(null))}>
+          <ClienteFormularioCampos form={form} tipoPessoa={tipoPessoa} buscarCep={buscarCep} buscandoCep={buscandoCep} />
+          {(validationMessage || operationError) && (
+            <div role="alert">
+              <ErrorAlert
+                variant="error"
+                context="Clientes"
+                action={validationMessage ? "Revise o formulário" : "Falha ao salvar online"}
+                message={validationMessage || operationError || ""}
+              />
+            </div>
+          )}
+          <DialogFooter>
+            <DialogClose asChild><Button type="button" variant="outline">Cancelar</Button></DialogClose>
+            <Button type="submit" disabled={salvando}>{salvando ? "Salvando…" : "Salvar"}</Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
     <Dialog open={deleteOpen} onOpenChange={setDeleteOpen}><DialogContent className="sm:max-w-md"><DialogHeader><DialogTitle>Excluir cliente</DialogTitle></DialogHeader><p>Excluir <strong>{deletando ? nomeExibicaoCliente(deletando) : "este cliente"}</strong>? Esta ação não pode ser desfeita.</p><DialogFooter><DialogClose asChild><Button variant="outline">Cancelar</Button></DialogClose><Button variant="destructive" disabled={salvando} onClick={() => void confirmarExclusao()}>{salvando ? "Excluindo…" : "Excluir"}</Button></DialogFooter></DialogContent></Dialog>
   </div>;
 }
