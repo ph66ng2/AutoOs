@@ -4975,6 +4975,29 @@
         "Tempo mínimo de splash + animação de conclusão pode parecer lento se as fases avançarem rápido demais em dev."
       ],
       "completedAt": "2026-09-18"
+    },
+    {
+      "id": "AO-AUTH-005",
+      "title": "Ajustar PIN e recuperação de acesso SaaS",
+      "status": "in_progress",
+      "blockedBy": ["AO-AUTH-004"],
+      "objective": "Ajustar o PIN local para quatro dígitos e tornar a recuperação da conta cloud uma tela própria.",
+      "context": "A homologação do AO-AUTH-004 identificou ajustes de clareza no PIN e na recuperação da conta.",
+      "expectedBehavior": "PIN de quatro dígitos, reautenticação como Senha da Conta e recuperação cloud em tela dedicada.",
+      "scope": ["Alterar validação e UI do PIN SaaS.", "Separar a recuperação de senha da tela de login.", "Cobrir os fluxos alterados com testes."],
+      "outOfScope": ["Alterar o projeto Supabase ou suas migrations.", "Enviar ou armazenar PIN na nuvem.", "Modificar o login da versão interna."],
+      "acceptanceCriteria": ["Somente PIN de quatro dígitos é aceito.", "A recuperação do PIN pede Senha da Conta.", "A recuperação de conta preserva o email e permite voltar ao login.", "Lint, testes, build SaaS e cargo check passam."],
+      "tests": ["Teste Rust para PIN de quatro dígitos.", "Teste de UI para recuperação de conta.", "npm run lint, npm run test:run, npm run build:saas e cargo check SaaS."],
+      "testInstructions": {
+        "prerequisites": ["AO-AUTH-004 mesclado e migration aplicada no Staging.", "Conta sintética administrativa ativa no Staging."],
+        "steps": ["Abrir o SaaS localmente.", "Criar e desbloquear com PIN de quatro dígitos.", "Testar recuperação do PIN e da conta.", "Acionar Bloquear e confirmar que o painel some."],
+        "expectedResultAndEvidence": ["Tamanhos diferentes de quatro são rejeitados.", "A recuperação cloud ocorre em tela dedicada.", "O painel é removido ao bloquear."],
+        "dataImpact": "Somente sessão e verificadores locais de teste; não há mudança de schema.",
+        "cleanupAndRollback": ["Sair e remover a máquina de teste.", "Reverter somente o commit deste ticket se a UX for rejeitada."],
+        "stagingRestrictions": "Usar somente Staging e dados sintéticos; não usar produção nem segredos administrativos."
+      },
+      "likelyFiles": ["src/components/SaasLoginScreen.tsx", "src/components/SaasProfilePinGate.tsx", "src/components/SaasApp.tsx", "src-tauri/src/commands/saas_profile_pin.rs"],
+      "risks": ["Aceitar tamanhos divergentes no frontend e backend.", "Confundir PIN local com senha cloud.", "Fazer Bloquear parecer logout definitivo."]
     }
   ]
 }

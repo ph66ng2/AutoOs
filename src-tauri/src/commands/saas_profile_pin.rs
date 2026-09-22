@@ -44,8 +44,8 @@ fn validate_profile(profile_id: &str) -> Result<(), String> {
 
 fn validate_pin(pin: &str) -> Result<&str, String> {
     let pin = pin.trim();
-    if pin.len() != 6 || !pin.chars().all(|value| value.is_ascii_digit()) {
-        return Err("O PIN SaaS deve conter exatamente seis dígitos numéricos.".to_string());
+    if pin.len() != 4 || !pin.chars().all(|value| value.is_ascii_digit()) {
+        return Err("O PIN local deve conter exatamente quatro dígitos numéricos.".to_string());
     }
     Ok(pin)
 }
@@ -242,8 +242,9 @@ pub async fn remover_todos_pins_saas_do_dispositivo(device_id: &str) -> Result<(
 mod tests {
     use super::{lock_seconds, validate_pin};
     #[test]
-    fn accepts_exactly_six_digits() {
-        assert!(validate_pin("123456").is_ok());
+    fn accepts_exactly_four_digits() {
+        assert!(validate_pin("1234").is_ok());
+        assert!(validate_pin("123").is_err());
         assert!(validate_pin("12345").is_err());
     }
     #[test]

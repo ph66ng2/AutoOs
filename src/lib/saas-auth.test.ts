@@ -186,4 +186,15 @@ describe("DefaultSaasAuthService", () => {
     await service.requestPasswordRecovery(" Admin@Example.com ");
     expect(port.resetPasswordForEmail).toHaveBeenCalledWith("admin@example.com", "https://app.autoos.com.br/auth/recovery");
   });
+
+  it("explica quando o limite de e-mails de recuperação foi atingido", async () => {
+    const { service, port } = harness();
+    vi.mocked(port.resetPasswordForEmail).mockResolvedValue({
+      error: { status: 429, code: "over_email_send_rate_limit", message: "email rate limit exceeded" },
+    });
+    await expect(service.requestPasswordRecovery("admin@example.com")).rejects.toMatchObject({
+      code: "account_unavailable",
+      message: "Limite de e-mails atingido. Aguarde antes de solicitar uma nova recuperação.",
+    });
+  });
 });
