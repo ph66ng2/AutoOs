@@ -2805,7 +2805,8 @@
         "Assinar com chave diferente da chave pública embarcada e bloquear todas as instalações existentes.",
         "Misturar assinatura do updater com Authenticode e diagnosticar incorretamente uma das camadas.",
         "Uma execução manual sobrescrever o canal latest com versão inválida ou incompleta."
-      ]
+      ],
+      "completedAt": "2026-09-22"
     },
     {
       "id": "AO-UPD-002",
@@ -2889,7 +2890,8 @@
         "Iniciar duas instalações concorrentes por cliques repetidos.",
         "Usar any ou conservar objeto inválido após nova consulta e quebrar a instalação.",
         "Assumir que relaunch sempre executa depois que o instalador encerra o app no Windows."
-      ]
+      ],
+      "completedAt": "2026-09-22"
     },
     {
       "id": "AO-UPD-003",
