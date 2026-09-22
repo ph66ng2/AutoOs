@@ -5,8 +5,13 @@ on:
     tags:
       - 'v*'         # Dispara ao criar uma tag como v1.0.0, v2.3.1, etc.
 
-  # Permite rodar manualmente pela aba "Actions" no GitHub
+  # Publica somente com versão SemVer explícita e alinhada aos manifests.
   workflow_dispatch:
+    inputs:
+      version:
+        description: "SemVer sem prefixo v (ex: 0.5.5). Obrigatória; sem ela o job não publica latest."
+        required: true
+        type: string
 
 jobs:
   build-windows:
@@ -44,6 +49,26 @@ jobs:
       - name: Instalar dependências do frontend
         run: npm install
 
+      - name: Validar SemVer alinhada
+        id: version
+        env:
+          AUTOOS_RELEASE_VERSION: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.version || '' }}
+        run: node scripts/generate-update-manifest.mjs --check-versions
+
+      - name: Exigir chave do updater
+        shell: pwsh
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY || secrets.TAURI_SIGNING_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: |
+          if ([string]::IsNullOrWhiteSpace($env:TAURI_SIGNING_PRIVATE_KEY)) {
+            throw "Configure o secret TAURI_SIGNING_PRIVATE_KEY (ou TAURI_SIGNING_KEY) antes do release."
+          }
+          if ([string]::IsNullOrWhiteSpace($env:TAURI_SIGNING_PRIVATE_KEY_PASSWORD)) {
+            throw "Configure o secret TAURI_SIGNING_PRIVATE_KEY_PASSWORD antes do release."
+          }
+          Write-Host "Chave do updater presente (conteudo omitido)."
+
       - name: Impedir empacotamento de arquivos de ambiente
         shell: pwsh
         run: |
@@ -73,7 +98,7 @@ jobs:
           AUTOOS_DATABASE_URL: ${{ secrets.AUTOOS_DATABASE_URL }}
         run: cargo run --manifest-path src-tauri/Cargo.toml --locked --quiet --bin release_database_check
 
-      - name: Build e criar Release
+      - name: Build e criar Release em rascunho
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -82,18 +107,28 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
           AUTOOS_DATABASE_URL: ${{ secrets.AUTOOS_DATABASE_URL }}
         with:
-          # O nome da tag vira o nome do release (ex: v1.0.0 → "Release v1.0.0")
-          tagName: ${{ github.ref_name }}
-          releaseName: 'Release ${{ github.ref_name }}'
+          tagName: ${{ steps.version.outputs.tag }}
+          releaseName: 'Release ${{ steps.version.outputs.tag }}'
           releaseBody: |
-            Veja os assets abaixo para baixar o instalador Windows (.exe).
-          releaseDraft: false    # false = release público imediatamente
+            Veja os assets abaixo para baixar o instalador Windows.
+          releaseDraft: true
           prerelease: false
+          includeUpdaterJson: false
 
-      - name: Generate update manifest
+      - name: Gerar e validar latest.json
+        env:
+          AUTOOS_RELEASE_VERSION: ${{ steps.version.outputs.version }}
+          GITHUB_REF_TYPE: tag
+          GITHUB_REF_NAME: ${{ steps.version.outputs.tag }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY || secrets.TAURI_SIGNING_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         run: node scripts/generate-update-manifest.mjs
 
-      - name: Upload update manifest
+      - name: Publicar release com manifesto
         uses: softprops/action-gh-release@v2
         with:
+          tag_name: ${{ steps.version.outputs.tag }}
           files: latest.json
+          draft: false
+          make_latest: true
+          fail_on_unmatched_files: true

@@ -2,7 +2,7 @@
 
 ## 1. Visão Geral
 
-O AutoOS é uma aplicação desktop construída com Tauri 2.x, React 18 e backend Rust. A distribuição atual é **manual**, sem auto-updater integrado. Este documento cobre o processo completo de versionamento, build, assinatura e distribuição do executável.
+O AutoOS é uma aplicação desktop construída com Tauri 2.x, React 18 e backend Rust. O release Windows assinado publica instalador, `.sig` e `latest.json` no GitHub Releases para o `tauri-plugin-updater`. A instalação manual continua disponível como fallback. Este documento cobre versionamento, build, assinatura Authenticode, chave do updater e distribuição.
 
 Para detalhes sobre convenções de versão e camadas de QA, consulte [RELEASE.md](./RELEASE.md). Para assinatura Windows, consulte [WINDOWS_CODE_SIGNING.md](./WINDOWS_CODE_SIGNING.md).
 
@@ -112,9 +112,9 @@ Detalhes completos em [WINDOWS_CODE_SIGNING.md](./WINDOWS_CODE_SIGNING.md).
 
 ---
 
-## 6. Distribuição Manual (Processo Atual)
+## 6. Distribuição Manual (fallback)
 
-A distribuição atual é feita de forma manual:
+Se o auto-updater não estiver disponível na máquina do cliente:
 
 1. Copie o `.msi` ou `.exe` de `src-tauri/target/release/bundle/` para uma pasta compartilhada na rede.
 2. Ou envie o instalador por email aos usuários.
@@ -129,69 +129,80 @@ A distribuição atual é feita de forma manual:
 
 ---
 
-## 7. Auto-Updater (Plano Futuro)
+## 7. Auto-updater Windows
 
-A arquitetura planejada utiliza o `tauri-plugin-updater` para distribuição automática de atualizações.
+A fonte única de `latest.json` é `scripts/generate-update-manifest.mjs`. O `tauri-action` só compila e anexa o instalador/`.sig` a um **release em rascunho**; o manifesto é validado e o rascunho só vira `latest` depois disso. Clientes em produção continuam no release anterior se a validação falhar.
 
-### Estrutura do endpoint JSON
+Endpoint embarcado em `src-tauri/tauri.conf.json`:
 
-O servidor deve expor um JSON com as informações de versão:
+```text
+https://github.com/ph66ng2/AutoOs/releases/latest/download/latest.json
+```
+
+Schema publicado:
 
 ```json
 {
-  "version": "1.1.0",
-  "notes": "Novas funcionalidades e correções",
-  "pub_date": "2026-06-12T00:00:00Z",
+  "version": "0.5.5",
+  "notes": "Veja as notas de release no GitHub.",
+  "pub_date": "2026-09-22T18:00:00.000Z",
   "platforms": {
     "windows-x86_64": {
-      "signature": "...",
-      "url": "https://seu-servidor.com/AutoOS_1.1.0_x64.msi.zip"
-    },
-    "linux-x86_64": {
-      "signature": "...",
-      "url": "https://seu-servidor.com/AutoOS_1.1.0_amd64.AppImage.tar.gz"
+      "signature": "<conteúdo do arquivo .sig>",
+      "url": "https://github.com/ph66ng2/AutoOs/releases/download/v0.5.5/AutoOS_0.5.5_x64_en-US.msi"
     }
   }
 }
 ```
 
-### Fluxo de atualização
+### Pipeline
 
+1. Tag `vX.Y.Z` (ou `workflow_dispatch` com o input `version` igual a `X.Y.Z`).
+2. O job valida o alinhamento entre tag, `package.json`, `src-tauri/Cargo.toml` e `src-tauri/tauri.conf.json`. Sem SemVer válida o job falha; **não existe fallback 0.0.0**.
+3. Exige `TAURI_SIGNING_PRIVATE_KEY` (alias `TAURI_SIGNING_KEY`) e `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` nos GitHub Secrets.
+4. O build Windows gera MSI/NSIS com `createUpdaterArtifacts` e assina o `.sig`.
+5. O script escolhe o MSI assinado (ou NSIS se o MSI não tiver `.sig`), recusa arquivos vazios e grava `latest.json`.
+6. Só então o rascunho é publicado como latest.
+
+Validação local com artefatos sintéticos (sem chave real):
+
+```bash
+node --test scripts/__tests__/generate-update-manifest.test.mjs
+node scripts/generate-update-manifest.mjs --check-versions
 ```
-AutoOS (Cliente) → verifica → Servidor JSON → download → instala → reinicia
+
+### Chave do updater (minisign)
+
+Esta chave **não** é o certificado Authenticode. Authenticode usa thumbprint no bundle; o updater usa par minisign.
+
+Geração inicial (fora do repositório, nunca commitar `.key`):
+
+```bash
+npx @tauri-apps/cli signer generate -w "$HOME/.tauri/autoos.key"
 ```
 
-### Componentes necessários
+1. Conteúdo da chave privada → secret `TAURI_SIGNING_PRIVATE_KEY`.
+2. Senha → secret `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`.
+3. Chave pública → `plugins.updater.pubkey` em `src-tauri/tauri.conf.json` (já versionada).
+4. Confirme que o pubkey embarcado é o par da chave privada vigente antes do primeiro release que os clientes vão baixar.
 
-1. **tauri-plugin-updater** — dependência Rust para verificação e download.
-2. **Endpoint JSON** — servidor HTTP estático ou dinâmico com o manifesto de versões.
-3. **Assinatura dos bundles** — gerar signatures com `tauri signer` para validação de integridade.
-4. **Botão na UI** — "Verificar atualizações" em Configurações (trabalho futuro).
+### Rotação compatível
 
-### Implementação futura (esboço)
+Trocar o pubkey no cliente antigo impede a atualização. Rotação segura:
 
-```rust
-// Exemplo conceitual — não implementar agora
-use tauri_plugin_updater::UpdaterExt;
+1. Assine a versão **N+1** com a chave **antiga**, para os clientes atuais aceitarem o download.
+2. Embarque o **novo** pubkey em N+1.
+3. Assine **N+2** com a chave nova.
 
-async fn check_for_updates(app: tauri::AppHandle) -> Result<(), Error> {
-    let updater = app.updater()?;
-    if let Some(update) = updater.check().await? {
-        let mut downloaded = 0;
-        update
-            .download_and_install(
-                |chunk_length, content_length| {
-                    downloaded += chunk_length;
-                    println!("progresso: {downloaded}/{content_length:?}");
-                },
-                || println!("download concluído"),
-            )
-            .await?;
-        app.restart();
-    }
-    Ok(())
-}
-```
+Não apague o secret antigo antes de N+1 estar instalado nas máquinas que precisam atualizar. Não gere um release latest com chave diferente da pubkey já embarcada nas instalações ativas.
+
+### O que o pipeline recusa
+
+- Tag ou dispatch sem SemVer, ou versão `0.0.0`.
+- `package.json` / `Cargo.toml` / `tauri.conf.json` divergentes da tag.
+- Instalador ou `.sig` ausente ou vazio.
+- `latest.json` sem `windows-x86_64`, URL fora deste repositório ou assinatura diferente do `.sig`.
+- Publicar o canal `latest` antes do manifesto válido.
 
 ---
 
@@ -208,7 +219,11 @@ async fn check_for_updates(app: tauri::AppHandle) -> Result<(), Error> {
 [ ] Branch release/X.Y.Z criada
 [ ] Build executado com sucesso (npm run tauri build)
 [ ] Executável testado em máquina limpa
-[ ] Release tag criada no Git
+[ ] Release tag criada no Git (`vX.Y.Z`, alinhada aos 3 manifests)
+[ ] Secrets TAURI_SIGNING_PRIVATE_KEY e TAURI_SIGNING_PRIVATE_KEY_PASSWORD presentes
+[ ] pubkey em tauri.conf.json corresponde à chave privada do release
+[ ] Release publicado contém instalador, .sig e latest.json válidos
+[ ] /releases/latest/download/latest.json aponta para o asset do mesmo tag
 ```
 
 ---
