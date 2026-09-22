@@ -211,6 +211,7 @@ export default function Equipamentos() {
   const [comunicacoes, setComunicacoes] = useState<Comunicacao[]>([]);
   const [imagensDetalhes, setImagensDetalhes] = useState<EquipamentoImagemDraft[]>([]);
   const [historicoDetalhes, setHistoricoDetalhes] = useState<EquipamentoHistoricoEvento[]>([]);
+  const [historicoDetalhesError, setHistoricoDetalhesError] = useState<string | null>(null);
   const [carregandoDetalhes, setCarregandoDetalhes] = useState(false);
 
   // Mudança de status
@@ -580,6 +581,7 @@ export default function Equipamentos() {
     setComunicacoes([]);
     setImagensDetalhes([]);
     setHistoricoDetalhes([]);
+    setHistoricoDetalhesError(null);
     try {
       const [verif, comms, imagens, historico] = await Promise.allSettled([
         db.buscarVerificacao(eq.id!),
@@ -591,6 +593,11 @@ export default function Equipamentos() {
       setComunicacoes(comms.status === "fulfilled" ? comms.value : []);
       setImagensDetalhes(imagens.status === "fulfilled" ? imagens.value : []);
       setHistoricoDetalhes(historico.status === "fulfilled" ? historico.value : []);
+      setHistoricoDetalhesError(
+        historico.status === "rejected"
+          ? "Não foi possível carregar o histórico deste equipamento. " + String(historico.reason)
+          : null,
+      );
     } catch (err) {
       console.error("Erro ao carregar detalhes:", err);
     } finally {
@@ -1772,6 +1779,10 @@ export default function Equipamentos() {
     if (!selecionado) return null;
     const eq = selecionado;
     const eventos = historicoDetalhes;
+
+    if (historicoDetalhesError) {
+      return <div className="rounded-md border border-destructive/40 bg-destructive/5 p-4 text-sm text-destructive">{historicoDetalhesError}</div>;
+    }
 
     if (eventos.length === 0) return <div className="text-center py-8 text-muted-foreground"><History className="h-10 w-10 mx-auto mb-2 opacity-20" /><p>Nenhum registro de histórico</p></div>;
 

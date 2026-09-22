@@ -14,7 +14,8 @@ use crate::commands::types::{
     EquipamentoInput, EquipamentoRow, EQUIPAMENTO_SELECT,
 };
 use crate::commands::auth::{
-    current_session_profile, record_security_event, require_permission, require_sensitive_access,
+    current_session_profile, record_security_event, require_active_session_company_id,
+    require_permission,
     SecurityProfileSummary, PERMISSION_DELETE_RECORDS, PERMISSION_FINANCIAL_ACTIONS,
 };
 use crate::db::get_pool;
@@ -208,6 +209,7 @@ fn audit_detail(details: &str, key: &str) -> Option<String> {
 async fn resolve_responsavel_snapshot(
     pool: &PgPool,
     input: &EquipamentoInput,
+    empresa_id: i32,
 ) -> Result<(Option<i32>, Option<String>, Option<String>, Option<String>), String> {
     let Some(contact_id) = input.responsavel_contato_id else {
         return Ok((
@@ -218,9 +220,6 @@ async fn resolve_responsavel_snapshot(
         ));
     };
 
-    let empresa_id = input
-        .empresa_id
-        .ok_or_else(|| "empresa_id é obrigatório ao associar um contato responsável.".to_string())?;
     let cliente_id = input
         .cliente_id
         .ok_or_else(|| "cliente_id é obrigatório ao associar um contato responsável.".to_string())?;
@@ -242,6 +241,31 @@ async fn resolve_responsavel_snapshot(
     };
 
     Ok((Some(contact_id), Some(nome), email, telefone))
+}
+
+async fn require_cliente_da_empresa(
+    pool: &PgPool,
+    cliente_id: Option<i32>,
+    empresa_id: i32,
+) -> Result<(), String> {
+    let Some(cliente_id) = cliente_id else {
+        return Ok(());
+    };
+
+    let exists: bool = sqlx::query_scalar(
+        "SELECT EXISTS(SELECT 1 FROM clientes WHERE id = $1 AND empresa_id = $2 AND ativo = true)",
+    )
+    .bind(cliente_id)
+    .bind(empresa_id)
+    .fetch_one(pool)
+    .await
+    .map_err(|error| format!("Erro ao validar cliente do equipamento: {}", error))?;
+
+    if exists {
+        Ok(())
+    } else {
+        Err("O cliente informado não existe, está inativo ou pertence a outra empresa.".to_string())
+    }
 }
 
     fn equipment_has_sensitive_financial_input(input: &EquipamentoInput) -> bool {
@@ -283,10 +307,12 @@ async fn resolve_responsavel_snapshot(
         if !needs_financial {
             if let Some(id) = equipment_id {
                 let pool = get_pool().await.map_err(|e| e.to_string())?;
+                let empresa_id = require_active_session_company_id(&pool).await?;
                 let current_status: Option<String> = sqlx::query_scalar(
-                    "SELECT status FROM equipamentos WHERE id = $1",
+                    "SELECT status FROM equipamentos WHERE id = $1 AND empresa_id = $2",
                 )
                 .bind(id)
+                .bind(empresa_id)
                 .fetch_optional(&pool)
                 .await
                 .map_err(|e| {
@@ -327,10 +353,12 @@ pub async fn listar_equipamentos(
         error!("Erro ao obter pool: {}", e);
         e.to_string()
     })?;
+    let empresa_id = require_active_session_company_id(&pool).await?;
 
     let offset = page.unwrap_or(0) * PAGE_SIZE;
     let mut query_builder = sqlx::QueryBuilder::<sqlx::Postgres>::new(EQUIPAMENTO_SELECT);
-    query_builder.push(" WHERE 1=1");
+    query_builder.push(" WHERE empresa_id = ");
+    query_builder.push_bind(empresa_id);
 
     if let Some(busca) = busca.as_deref().map(str::trim).filter(|value| !value.is_empty()) {
         let pattern = format!("%{}%", busca);
@@ -383,10 +411,12 @@ pub async fn listar_equipamentos(
 pub async fn buscar_equipamento(id: i32) -> Result<EquipamentoRow, String> {
     debug!("Buscando equipamento {}", id);
     let pool = get_pool().await.map_err(|e| e.to_string())?;
+    let empresa_id = require_active_session_company_id(&pool).await?;
 
-    let query = format!("{} WHERE id = $1", EQUIPAMENTO_SELECT);
+    let query = format!("{} WHERE id = $1 AND empresa_id = $2", EQUIPAMENTO_SELECT);
     let row = sqlx::query_as::<_, EquipamentoRow>(sqlx::AssertSqlSafe(&*query))
         .bind(id)
+        .bind(empresa_id)
         .fetch_one(&pool)
         .await
         .map_err(|e| {
@@ -405,21 +435,8 @@ pub async fn buscar_equipamento(id: i32) -> Result<EquipamentoRow, String> {
 pub async fn listar_historico_equipamento(
     equipamento_id: i32,
 ) -> Result<Vec<EquipamentoHistoricoEvento>, String> {
-    let actor = require_sensitive_access()?;
     let pool = get_pool().await.map_err(|error| error.to_string())?;
-    let empresa_id: Option<i32> = sqlx::query_scalar(
-        "SELECT p.empresa_id
-         FROM security_profiles p
-         JOIN empresas e ON e.id = p.empresa_id AND LOWER(e.status) = 'ativo'
-         WHERE p.id = $1 AND p.ativo = true",
-    )
-    .bind(actor.id)
-    .fetch_optional(&pool)
-    .await
-    .map_err(|error| format!("Erro ao identificar a empresa do perfil: {}", error))?
-    .flatten();
-    let empresa_id = empresa_id
-        .ok_or_else(|| "O perfil ativo não está vinculado a uma empresa ativa.".to_string())?;
+    let empresa_id = require_active_session_company_id(&pool).await?;
 
     let equipamento: Option<(
         Option<String>, String, Option<String>, Option<String>, Option<String>, Option<String>,
@@ -535,9 +552,11 @@ pub async fn listar_historico_equipamento(
 pub async fn buscar_equipamentos_por_serial(serial: String) -> Result<Vec<EquipamentoRow>, String> {
     debug!("Buscando equipamentos por serial: {}", serial);
     let pool = get_pool().await.map_err(|e| e.to_string())?;
-    let query = format!("{} WHERE LOWER(serial_number) = LOWER($1) ORDER BY id DESC", EQUIPAMENTO_SELECT);
+    let empresa_id = require_active_session_company_id(&pool).await?;
+    let query = format!("{} WHERE LOWER(serial_number) = LOWER($1) AND empresa_id = $2 ORDER BY id DESC", EQUIPAMENTO_SELECT);
     let rows = sqlx::query_as::<_, EquipamentoRow>(sqlx::AssertSqlSafe(&*query))
         .bind(serial.trim())
+        .bind(empresa_id)
         .fetch_all(&pool)
         .await
         .map_err(|e| {
@@ -555,6 +574,7 @@ pub async fn criar_equipamento(input: EquipamentoInput) -> Result<EquipamentoRow
     debug!("Criando equipamento: {}", input.serial_number);
     let financial_actor = require_financial_actor_for_equipment_write(None, &input).await?;
     let pool = get_pool().await.map_err(|e| e.to_string())?;
+    let empresa_id = require_active_session_company_id(&pool).await?;
     let serial_number = required_text(&input.serial_number, "Número de série")?;
     let defeito_relatado = required_text(input.defeito_relatado.as_deref().unwrap_or(""), "Defeito")?;
     let marca = required_text(&input.marca, "Marca")?;
@@ -568,7 +588,8 @@ pub async fn criar_equipamento(input: EquipamentoInput) -> Result<EquipamentoRow
     validate_non_negative_f64(input.preco_compra, "Preço de compra")?;
     validate_non_negative_f64(input.preco_venda, "Preço de venda")?;
     validate_non_negative_f64(input.valor_orcamento, "Valor do orçamento")?;
-    let responsavel = resolve_responsavel_snapshot(&pool, &input).await?;
+    require_cliente_da_empresa(&pool, input.cliente_id, empresa_id).await?;
+    let responsavel = resolve_responsavel_snapshot(&pool, &input, empresa_id).await?;
 
     let row = sqlx::query(
         r#"
@@ -610,7 +631,7 @@ pub async fn criar_equipamento(input: EquipamentoInput) -> Result<EquipamentoRow
     .bind(optional_text(input.cliente_email.as_deref()))
     .bind(optional_text(input.prazo_aprovacao.as_deref()))
     .bind(input.valor_orcamento)
-    .bind(input.empresa_id)
+    .bind(empresa_id)
     .bind(responsavel.0)
     .bind(responsavel.1)
     .bind(responsavel.2)
@@ -643,6 +664,7 @@ pub async fn atualizar_equipamento(id: i32, input: EquipamentoInput) -> Result<E
     debug!("Atualizando equipamento {}", id);
     let financial_actor = require_financial_actor_for_equipment_write(Some(id), &input).await?;
     let pool = get_pool().await.map_err(|e| e.to_string())?;
+    let empresa_id = require_active_session_company_id(&pool).await?;
     let concurrency_token = required_concurrency_token(input.atualizado_em.as_deref(), "equipamento")?;
     let serial_number = required_text(&input.serial_number, "Número de série")?;
     let defeito_relatado = required_text(input.defeito_relatado.as_deref().unwrap_or(""), "Defeito")?;
@@ -657,7 +679,8 @@ pub async fn atualizar_equipamento(id: i32, input: EquipamentoInput) -> Result<E
     validate_non_negative_f64(input.preco_compra, "Preço de compra")?;
     validate_non_negative_f64(input.preco_venda, "Preço de venda")?;
     validate_non_negative_f64(input.valor_orcamento, "Valor do orçamento")?;
-    let responsavel = resolve_responsavel_snapshot(&pool, &input).await?;
+    require_cliente_da_empresa(&pool, input.cliente_id, empresa_id).await?;
+    let responsavel = resolve_responsavel_snapshot(&pool, &input, empresa_id).await?;
 
     let updated_rows = sqlx::query(
         r#"
@@ -672,7 +695,7 @@ pub async fn atualizar_equipamento(id: i32, input: EquipamentoInput) -> Result<E
             responsavel_email = $26, responsavel_telefone = $27,
             atualizado_em = NOW()
         WHERE id = $28 AND atualizado_em = $29::TIMESTAMPTZ
-          AND ($30::INTEGER IS NULL OR empresa_id = $30)
+          AND empresa_id = $30
         "#,
     )
     .bind(serial_number)
@@ -704,7 +727,7 @@ pub async fn atualizar_equipamento(id: i32, input: EquipamentoInput) -> Result<E
     .bind(responsavel.3)
     .bind(id)
     .bind(concurrency_token)
-    .bind(input.empresa_id)
+    .bind(empresa_id)
     .execute(&pool)
     .await
     .map_err(|e| {
@@ -738,9 +761,11 @@ pub async fn deletar_equipamento(id: i32) -> Result<bool, String> {
     let actor = require_permission(PERMISSION_DELETE_RECORDS)?;
     debug!("Deletando equipamento {}", id);
     let pool = get_pool().await.map_err(|e| e.to_string())?;
+    let empresa_id = require_active_session_company_id(&pool).await?;
 
-    let result = sqlx::query("DELETE FROM equipamentos WHERE id = $1")
+    let result = sqlx::query("DELETE FROM equipamentos WHERE id = $1 AND empresa_id = $2")
         .bind(id)
+        .bind(empresa_id)
         .execute(&pool)
         .await
         .map_err(|e| {
@@ -789,8 +814,10 @@ pub async fn atualizar_status_equipamento(
         .map(|value| value.to_string());
     let motivo_correcao_value = optional_text(motivo_correcao.as_deref());
     let pool = get_pool().await.map_err(|e| e.to_string())?;
-    let current_status: Option<String> = sqlx::query_scalar("SELECT status FROM equipamentos WHERE id = $1")
+    let empresa_id = require_active_session_company_id(&pool).await?;
+    let current_status: Option<String> = sqlx::query_scalar("SELECT status FROM equipamentos WHERE id = $1 AND empresa_id = $2")
         .bind(id)
+        .bind(empresa_id)
         .fetch_optional(&pool)
         .await
         .map_err(|e| e.to_string())?;
@@ -821,11 +848,11 @@ pub async fn atualizar_status_equipamento(
 
     let query = if let Some(date_field) = date_field {
         format!(
-            "UPDATE equipamentos SET status = $1, {} = NOW(), valor_orcamento = COALESCE($2, valor_orcamento), prazo_aprovacao = COALESCE($3, prazo_aprovacao), valor_final = COALESCE($4, valor_final), atualizado_em = NOW() WHERE id = $5 AND atualizado_em = $6::TIMESTAMPTZ",
+            "UPDATE equipamentos SET status = $1, {} = NOW(), valor_orcamento = COALESCE($2, valor_orcamento), prazo_aprovacao = COALESCE($3, prazo_aprovacao), valor_final = COALESCE($4, valor_final), atualizado_em = NOW() WHERE id = $5 AND atualizado_em = $6::TIMESTAMPTZ AND empresa_id = $7",
             date_field
         )
     } else {
-        "UPDATE equipamentos SET status = $1, valor_orcamento = COALESCE($2, valor_orcamento), prazo_aprovacao = COALESCE($3, prazo_aprovacao), valor_final = COALESCE($4, valor_final), atualizado_em = NOW() WHERE id = $5 AND atualizado_em = $6::TIMESTAMPTZ".to_string()
+        "UPDATE equipamentos SET status = $1, valor_orcamento = COALESCE($2, valor_orcamento), prazo_aprovacao = COALESCE($3, prazo_aprovacao), valor_final = COALESCE($4, valor_final), atualizado_em = NOW() WHERE id = $5 AND atualizado_em = $6::TIMESTAMPTZ AND empresa_id = $7".to_string()
     };
 
     let updated_rows = sqlx::query(sqlx::AssertSqlSafe(&*query))
@@ -835,6 +862,7 @@ pub async fn atualizar_status_equipamento(
         .bind(valor_final)
         .bind(id)
         .bind(concurrency_token)
+        .bind(empresa_id)
         .execute(&pool)
         .await
         .map_err(|e| {
@@ -883,11 +911,8 @@ pub async fn atualizar_status_equipamento(
 /// mesma transação. A verificação e o equipamento são sempre conferidos no
 /// mesmo tenant; falhas de concorrência deixam ambos inalterados.
 #[tauri::command]
-#[instrument(skip_all, fields(empresa_id = input.empresa_id, equipamento_id = input.equipamento_id))]
+#[instrument(skip_all, fields(equipamento_id = input.equipamento_id))]
 pub async fn aprovar_orcamento(input: AprovarOrcamentoInput) -> Result<EquipamentoRow, String> {
-    if input.empresa_id <= 0 {
-        return Err("Empresa inválida".to_string());
-    }
     if input.equipamento_id <= 0 {
         return Err("Equipamento inválido".to_string());
     }
@@ -901,6 +926,7 @@ pub async fn aprovar_orcamento(input: AprovarOrcamentoInput) -> Result<Equipamen
     )?;
     let actor = require_permission(PERMISSION_FINANCIAL_ACTIONS)?;
     let pool = get_pool().await.map_err(|error| error.to_string())?;
+    let empresa_id = require_active_session_company_id(&pool).await?;
     let mut tx = pool.begin().await.map_err(|error| {
         error!("Erro ao iniciar transação de aprovação do equipamento {}: {}", input.equipamento_id, error);
         error.to_string()
@@ -913,13 +939,13 @@ pub async fn aprovar_orcamento(input: AprovarOrcamentoInput) -> Result<Equipamen
          FOR UPDATE",
     )
     .bind(input.equipamento_id)
-    .bind(input.empresa_id)
+    .bind(empresa_id)
     .fetch_optional(&mut *tx)
     .await
     .map_err(|error| format!("Erro ao validar equipamento para aprovação: {}", error))?;
 
     let Some((current_status, _current_updated_em)) = equipment else {
-        return Err("Equipamento não encontrado na empresa informada.".to_string());
+        return Err("Equipamento não encontrado na empresa do perfil autenticado.".to_string());
     };
     if normalize_status_key(&current_status) != "AGUARDANDO_APROVACAO" {
         return Err("Somente orçamentos aguardando aprovação podem ser aprovados.".to_string());
@@ -934,7 +960,7 @@ pub async fn aprovar_orcamento(input: AprovarOrcamentoInput) -> Result<Equipamen
          FOR UPDATE",
     )
     .bind(input.equipamento_id)
-    .bind(input.empresa_id)
+    .bind(empresa_id)
     .fetch_optional(&mut *tx)
     .await
     .map_err(|error| format!("Erro ao validar tenant da verificação: {}", error))?;
@@ -951,7 +977,7 @@ pub async fn aprovar_orcamento(input: AprovarOrcamentoInput) -> Result<Equipamen
          FOR UPDATE",
     )
     .bind(input.equipamento_id)
-    .bind(input.empresa_id)
+    .bind(empresa_id)
     .fetch_optional(&mut *tx)
     .await
     .map_err(|error| format!("Erro ao validar verificação para aprovação: {}", error))?;
@@ -971,7 +997,7 @@ pub async fn aprovar_orcamento(input: AprovarOrcamentoInput) -> Result<Equipamen
     .bind(payment_detail.as_deref())
     .bind(verification_id)
     .bind(input.equipamento_id)
-    .bind(input.empresa_id)
+    .bind(empresa_id)
     .execute(&mut *tx)
     .await
     .map_err(|error| format!("Erro ao salvar pagamento do orçamento: {}", error))?
@@ -987,7 +1013,7 @@ pub async fn aprovar_orcamento(input: AprovarOrcamentoInput) -> Result<Equipamen
          WHERE id = $1 AND empresa_id = $2 AND atualizado_em = $3::TIMESTAMPTZ",
     )
     .bind(input.equipamento_id)
-    .bind(input.empresa_id)
+    .bind(empresa_id)
     .bind(&concurrency_token)
     .execute(&mut *tx)
     .await
@@ -1008,7 +1034,7 @@ pub async fn aprovar_orcamento(input: AprovarOrcamentoInput) -> Result<Equipamen
         Some(&actor),
         format!(
             "empresa_id={}; equipamento_id={}; verificacao_id={}; pagamento_codigo={}; status_anterior=AGUARDANDO_APROVACAO; status=APROVADO; motivo=Orçamento aprovado pelo cliente.; verificacao_legada_regularizada={}",
-            input.empresa_id,
+            empresa_id,
             input.equipamento_id,
             verification_id,
             payment_code.as_deref().unwrap_or(""),
@@ -1021,7 +1047,7 @@ pub async fn aprovar_orcamento(input: AprovarOrcamentoInput) -> Result<Equipamen
     let query = format!("{} WHERE id = $1 AND empresa_id = $2", EQUIPAMENTO_SELECT);
     sqlx::query_as::<_, EquipamentoRow>(sqlx::AssertSqlSafe(query))
         .bind(input.equipamento_id)
-        .bind(input.empresa_id)
+        .bind(empresa_id)
         .fetch_one(&pool)
         .await
         .map_err(|error| format!("Erro ao carregar equipamento aprovado: {}", error))
