@@ -122,9 +122,18 @@ export function ConfiguracoesTabInfra({
             </Button>
           </div>
 
-          <div className="mt-4 pt-4 border-t">
-            <UpdateChecker />
-          </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Atualizações do aplicativo</CardTitle>
+          <CardDescription>
+            Consulta o canal assinado do GitHub Releases. A instalação só começa depois de uma ação explícita.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <UpdateChecker />
         </CardContent>
       </Card>
 
