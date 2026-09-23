@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useState } from "react";
-import { CloudOff, LaptopMinimal, LockKeyhole, LogOut, RefreshCw, ShieldCheck } from "lucide-react";
+import { CloudOff, LogOut, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { BootSplashGate } from "@/components/BootSplashGate";
 import { useBootUi } from "@/components/BootUi";
 import { SaasLoginScreen } from "@/components/SaasLoginScreen";
 import { SaasProfileSelector } from "@/components/SaasProfileSelector";
+import { SaasOperationalShell } from "@/components/SaasOperationalShell";
 import { useSaasAuth } from "@/hooks/useSaasAuth";
 import type { SaasAuthState } from "@/types/saas-auth";
 
@@ -111,28 +112,5 @@ function SaasAppBody({
     return <SaasProfileSelector session={state.session} onUnlocked={() => setProfileUnlocked(true)} />;
   }
 
-  return (
-    <main className="min-h-screen bg-slate-950 px-6 py-10 text-white">
-      <section className="mx-auto max-w-3xl space-y-6 rounded-2xl border border-white/10 bg-white/[0.03] p-8">
-        <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-center">
-          <div className="flex items-center gap-3"><ShieldCheck className="h-8 w-8 text-slate-200" /><div><h1 className="text-xl font-semibold">Sessão SaaS autenticada</h1><p className="text-sm text-slate-400">{state.session.identity.email}</p></div></div>
-          <div className="flex gap-2">
-            <Button variant="outline" className="border-slate-500 bg-slate-800 text-slate-100 hover:bg-slate-700 hover:text-white" onClick={() => void lock()}><LockKeyhole className="mr-2 h-4 w-4" />Bloquear</Button>
-            <Button variant="destructive" onClick={() => void signOut()}><LogOut className="mr-2 h-4 w-4" />Sair</Button>
-          </div>
-        </div>
-        <div className="border-t border-white/10 pt-5">
-          <Button variant="outline" className="border-rose-800 bg-rose-950/60 font-medium text-rose-100 hover:bg-rose-900 hover:text-white" onClick={confirmDeviceRemoval}>
-            <LaptopMinimal className="mr-2 h-4 w-4" />Remover esta máquina
-          </Button>
-          <p className="mt-2 text-xs text-slate-500">Bloquear oculta o painel e preserva a sessão protegida no cofre local. Sair encerra apenas esta sessão; remover revoga a instalação no servidor e limpa seu acesso local.</p>
-        </div>
-        <div className="grid gap-3 text-sm sm:grid-cols-2">
-          <div className="rounded-xl bg-white/5 p-4"><span className="text-slate-500">Empresa</span><p className="mt-1 break-all font-mono text-xs">{state.session.identity.companyId}</p></div>
-          <div className="rounded-xl bg-white/5 p-4"><span className="text-slate-500">Perfil administrador</span><p className="mt-1 break-all font-mono text-xs">{state.session.identity.profileId}</p></div>
-        </div>
-        <p className="rounded-xl border border-slate-700 bg-slate-900 p-4 text-sm text-slate-200">A identidade SaaS está pronta. Os módulos operacionais serão ligados ao adaptador remoto nos próximos tickets.</p>
-      </section>
-    </main>
-  );
+  return <SaasOperationalShell session={state.session} onLock={() => void lock()} onSignOut={() => void signOut()} onRemoveDevice={confirmDeviceRemoval} />;
 }

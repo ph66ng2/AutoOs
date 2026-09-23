@@ -1,0 +1,9 @@
+{
+  "plugins": {
+    "updater": {
+      "endpoints": [
+        "https://github.com/ph66ng2/AutoOs/releases/download/updater-homolog/latest.json"
+      ]
+    }
+  }
+}

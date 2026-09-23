@@ -72,3 +72,5 @@ Checklist extra antes da tag:
 5. O release só deixa de ser rascunho depois de `scripts/generate-update-manifest.mjs` validar instalador, `.sig` e `latest.json`.
 
 Não imprima a chave privada, a senha ou `AUTOOS_DATABASE_URL` em logs, PRs ou evidências. Authenticode (thumbprint) e assinatura do updater (minisign) são camadas distintas.
+
+A jornada N para N+1 usa o workflow `updater-homolog.yml`, a tag `updater-homolog` e o endpoint de `tauri.homolog.conf.json`. Esse disparo pede a confirmação `HOMOLOG`, não embute banco e não pode ocupar o release latest. O `build.yml` permanece o único caminho do canal de produção.

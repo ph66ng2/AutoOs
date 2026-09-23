@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   classifyUpdaterError,
   sanitizeUpdateNotes,
+  updaterChannelLabel,
   UpdateChecker,
 } from "@/components/UpdateChecker";
 
@@ -52,6 +53,13 @@ describe("sanitizeUpdateNotes e classifyUpdaterError", () => {
   it("remove HTML e recusa notas com segredo", () => {
     expect(sanitizeUpdateNotes("<p>Notas <b>seguras</b></p>")).toBe("Notas seguras");
     expect(sanitizeUpdateNotes("url postgres://user:pass@host/db")).toBe("");
+  });
+
+  it("mostra o aviso só no canal de homologação", () => {
+    expect(updaterChannelLabel(undefined)).toBeNull();
+    expect(updaterChannelLabel("production")).toBeNull();
+    expect(updaterChannelLabel("homolog")).toMatch(/homologação/i);
+    expect(updaterChannelLabel("homolog")).toMatch(/latest/i);
   });
 
   it("classifica rede, HTTP, manifesto, plataforma, assinatura e instalação", () => {

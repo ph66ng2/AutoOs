@@ -37,6 +37,22 @@ function session(): SaasSession {
 }
 
 describe("SupabaseClientesRepository", () => {
+  it("chama o fetch nativo com o contexto do navegador", async () => {
+    const nativeFetch = vi.fn(function (this: unknown) {
+      if (this !== globalThis) throw new TypeError("Illegal invocation");
+      return Promise.resolve(new Response("[]", { status: 200 }));
+    });
+    vi.stubGlobal("fetch", nativeFetch);
+
+    try {
+      const repository = new SupabaseClientesRepository(sessionFromSaasSession(session(), configuration));
+      await expect(repository.listar()).resolves.toEqual([]);
+      expect(nativeFetch).toHaveBeenCalledTimes(1);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
   it("deriva empresa_id da identidade SaaS já validada", async () => {
     const onlineSession = sessionFromSaasSession(session(), configuration);
     const fetcher = vi.fn<typeof fetch>().mockResolvedValue(new Response(JSON.stringify([{ id: companyId, nome: "Ana", telefone: "11" }]), { status: 201 }));
@@ -56,7 +72,10 @@ describe("SupabaseClientesRepository", () => {
     await expect(expired.listar()).rejects.toMatchObject<Partial<OnlineDataError>>({ code: "SESSION_EXPIRED" });
 
     const offline = new SupabaseClientesRepository(onlineSession, vi.fn<typeof fetch>().mockRejectedValue(new TypeError("network down")));
-    await expect(offline.criar({ nome: "Ana", telefone: "11" })).rejects.toMatchObject<Partial<OnlineDataError>>({ code: "ONLINE_UNAVAILABLE" });
+    await expect(offline.criar({ nome: "Ana", telefone: "11" })).rejects.toMatchObject<Partial<OnlineDataError>>({
+      code: "ONLINE_UNAVAILABLE",
+      message: expect.stringContaining("A comunicação com o serviço Online falhou"),
+    });
   });
 
   it("recusa sessão SaaS sem empresa UUID válida", () => {
