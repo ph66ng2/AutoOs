@@ -32,21 +32,41 @@ BEGIN
 
     IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'fk_equipamentos_cliente_empresa')
        OR NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'fk_movimentacoes_produto_empresa')
-       OR NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'fk_company_admin_identity_profile_empresa') THEN
+       OR NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'fk_company_admin_identity_profile_empresa')
+       OR NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'fk_company_user_identity_profile_empresa') THEN
         RAISE EXCEPTION 'tenant-safe composite foreign keys are missing';
     END IF;
 
     IF to_regclass('public.company_admin_identities') IS NULL
+       OR to_regclass('public.company_user_identities') IS NULL
        OR to_regprocedure('public.autoos_custom_access_token_hook(jsonb)') IS NULL THEN
-        RAISE EXCEPTION 'SaaS admin identity table or Auth hook is missing';
+        RAISE EXCEPTION 'SaaS identity table or Auth hook is missing';
     END IF;
 
     IF has_table_privilege('anon', 'public.company_admin_identities', 'SELECT')
        OR has_table_privilege('authenticated', 'public.company_admin_identities', 'SELECT')
+       OR has_table_privilege('anon', 'public.company_user_identities', 'SELECT')
+       OR has_table_privilege('authenticated', 'public.company_user_identities', 'SELECT')
+       OR has_table_privilege('authenticated', 'public.company_user_identities', 'INSERT')
+       OR has_table_privilege('supabase_auth_admin', 'public.company_user_identities', 'INSERT')
+       OR NOT has_column_privilege(
+           'supabase_auth_admin', 'public.company_user_identities', 'auth_user_id', 'SELECT'
+       )
        OR has_function_privilege('anon', 'public.autoos_custom_access_token_hook(jsonb)', 'EXECUTE')
        OR has_function_privilege('authenticated', 'public.autoos_custom_access_token_hook(jsonb)', 'EXECUTE')
        OR NOT has_function_privilege('supabase_auth_admin', 'public.autoos_custom_access_token_hook(jsonb)', 'EXECUTE') THEN
-        RAISE EXCEPTION 'SaaS admin identity privileges are unsafe';
+        RAISE EXCEPTION 'SaaS identity privileges are unsafe';
+    END IF;
+
+    IF NOT EXISTS (
+        SELECT 1
+          FROM pg_class AS relation
+          JOIN pg_namespace AS namespace ON namespace.oid = relation.relnamespace
+         WHERE namespace.nspname = 'public'
+           AND relation.relname = 'company_user_identities'
+           AND relation.relrowsecurity
+    ) THEN
+        RAISE EXCEPTION 'RLS is not enabled on company_user_identities';
     END IF;
 END;
 $$;

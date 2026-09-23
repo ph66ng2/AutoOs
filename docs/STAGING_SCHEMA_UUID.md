@@ -10,7 +10,9 @@ Cada relação entre dados de negócio inclui a empresa nos dois lados da FK. Po
 
 Somente o projeto **AutoOS Staging** pode receber este schema. O projeto interno e a `master` ficam fora deste procedimento. O staging deve estar vazio ou ter backup descartável, e nunca pode receber dump, seed ou credencial da BMITAG.
 
-No terminal de operações, com a URL PostgreSQL de staging carregada apenas na sessão atual, execute primeiro o dry-run:
+Este procedimento é apenas para a homologação aprovada em Staging; não faz parte
+da implementação local de AO-SAAS-ID-001. No terminal de operações, com a URL
+PostgreSQL de staging carregada apenas na sessão atual, execute primeiro o dry-run:
 
 ```bash
 ./scripts/dry-run-staging-schema.sh
@@ -22,6 +24,8 @@ O comando cria o schema e roda os testes na mesma transação, que sempre termin
 psql "$SUPABASE_STAGING_DATABASE_URL" --set ON_ERROR_STOP=on --file supabase/schema.sql
 psql "$SUPABASE_STAGING_DATABASE_URL" --set ON_ERROR_STOP=on \
   --file supabase/migrations/20260827180517_provision_saas_admin_identity.sql
+psql "$SUPABASE_STAGING_DATABASE_URL" --set ON_ERROR_STOP=on \
+  --file supabase/migrations/20260923151000_individual_saas_user_identities.sql
 psql "$SUPABASE_STAGING_DATABASE_URL" --set ON_ERROR_STOP=on --file supabase/seed.sql
 psql "$SUPABASE_STAGING_DATABASE_URL" --set ON_ERROR_STOP=on --file supabase/rls.sql
 ./scripts/validate-staging-schema.sh

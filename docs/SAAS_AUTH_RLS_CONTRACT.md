@@ -2,14 +2,17 @@
 
 ## Claims autoritativas
 
-O servidor de autenticação é o único componente que associa um usuário a uma
-empresa. `public.company_admin_identities` mantém o vínculo entre `auth.users`,
-uma empresa e um perfil `ADMIN` ativo. A tabela não tem grants para `anon` ou
-`authenticated`.
+O servidor é o único componente que associa um usuário a uma empresa/perfil.
+`public.company_user_identities` mantém o vínculo individual de
+`auth.users.id` com uma empresa e um `security_profiles.id` ativo. A tabela não
+tem grants para `anon` ou `authenticated`. Durante a transição,
+`public.company_admin_identities` continua como fallback restrito aos ADMIN
+legados; nenhum cliente escolhe qual vínculo será usado.
 
 O Custom Access Token Hook `public.autoos_custom_access_token_hook(jsonb)` lê
-esse vínculo como `supabase_auth_admin`, rejeita identidades ausentes ou
-suspensas e substitui qualquer valor enviado pelo usuário. O JWT emitido contém:
+o vínculo individual (ou o ADMIN legado compatível) como
+`supabase_auth_admin`, rejeita identidades ausentes/inativas e substitui claims
+de tenant/perfil a partir do banco. O JWT emitido contém:
 
 ```json
 {
@@ -17,16 +20,22 @@ suspensas e substitui qualquer valor enviado pelo usuário. O JWT emitido conté
   "app_metadata": {
     "company_id": "<empresa-uuid>",
     "profile_id": "<security-profile-uuid>",
-    "profile_role": "ADMIN"
+    "profile_role": "<role do perfil ativo>"
   }
 }
 ```
 
-`user_metadata` é editável pelo usuário e nunca participa de autorização. O
-helper `public.current_company_id()` exige UUIDs válidos nas duas claims e
-revalida `auth.uid()`, empresa, perfil e vínculo ativos. Claim ausente, inválida,
-incompatível ou suspensa resulta em nenhum tenant, inclusive para um token ainda
-não expirado.
+`user_metadata` e claims de tenant/perfil nunca participam da autorização. O
+helper `public.current_company_id()` resolve `auth.uid()` novamente contra o
+vínculo, empresa e perfil atualmente ativos em cada chamada RLS. Claims ausentes
+ou antigas continuam seguras: a identidade ADMIN legada segue usando o vínculo
+persistido, e perfil/vínculo inativado ou suspenso perde acesso mesmo que o JWT
+anterior ainda não tenha expirado. O Hook renova as claims para a interface, mas
+RLS não confia nelas para selecionar tenant.
+
+Este vínculo/RLS resolve identidade e isolamento por empresa; não substitui as
+permissões funcionais por perfil. A autorização server-side de ações financeiras
+continua no ticket AO-SAAS-AUTHZ-001.
 
 O Online usa o JWT de usuário com a chave publicável do Supabase. O desktop não
 recebe `service_role`, secret key, senha PostgreSQL ou chave privada de assinatura.
@@ -58,11 +67,15 @@ administrativa.
   server-side até que uma Edge Function defina uma interface pública específica.
 - FKs compostas do `AO-PS-003` continuam impedindo referências entre empresas.
 
-Aplicação no staging:
+Aplicação no staging (procedimento futuro; não executar como parte do ticket
+AO-SAAS-ID-001. Exige revisão e aprovação humana específica no ticket
+AO-SAAS-STAGING-001):
 
 ```bash
 psql "$SUPABASE_STAGING_DATABASE_URL" --set ON_ERROR_STOP=on \
   --file supabase/migrations/20260827180517_provision_saas_admin_identity.sql
+psql "$SUPABASE_STAGING_DATABASE_URL" --set ON_ERROR_STOP=on \
+  --file supabase/migrations/20260923151000_individual_saas_user_identities.sql
 psql "$SUPABASE_STAGING_DATABASE_URL" --set ON_ERROR_STOP=on --file supabase/rls.sql
 ```
 
