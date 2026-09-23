@@ -3063,7 +3063,7 @@
     {
       "id": "AO-HOTFIX-004",
       "title": "Impedir novos cadastros sem empresa e expor conflitos legados",
-      "status": "ready",
+      "status": "merged",
       "blockedBy": [],
       "objective": "Garantir que clientes e equipamentos novos pertençam sempre à empresa da sessão autenticada e que bloqueios de registros legados sejam exibidos como erros acionáveis.",
       "context": "A regularização em lote do 0.5.0 corrige dados antigos, mas alguns fluxos novos ainda aceitam empresa_id opcional ou enviado pela tela. Isso permite novos registros sem tenant e faz histórico e aprovação parecerem vazios ou inválidos.",
@@ -3143,7 +3143,8 @@
         "Quebrar a ferramenta de regularização ao bloquear legados cedo demais.",
         "Aplicar filtro apenas na interface e manter escrita cruzada no backend.",
         "Converter erro de tenant em verificação inexistente e continuar confundindo o operador."
-      ]
+      ],
+      "completedAt": "2026-09-22"
     },
     {
       "id": "AO-HOTFIX-005",
