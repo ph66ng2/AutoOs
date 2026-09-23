@@ -99,6 +99,7 @@ export const STATUS_COLORS: Record<StatusEquipamento, string> = {
 
 /** O baseline interno usa serial numérico; o SaaS usa UUID. */
 export type ClienteId = number | string;
+export type EquipamentoId = number | string;
 
 /**
  * Equipamento em manutenção. Espelha a struct Rust `Equipamento` em commands.rs
@@ -107,9 +108,9 @@ export type ClienteId = number | string;
  * Usado por: useEquipamentos hook, Equipamentos.tsx, ClienteSelector.tsx,
  *            WhatsAppService, EmailService, useStatusEquipamento
  */
-export interface Equipamento {
-  id?: number;
-  empresa_id?: number;
+export interface Equipamento<Id extends EquipamentoId = number> {
+  id?: Id;
+  empresa_id?: Id;
   serial_number: string;
   patrimonio?: string;
   marca: string;

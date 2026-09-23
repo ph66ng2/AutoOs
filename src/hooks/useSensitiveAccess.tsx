@@ -15,6 +15,7 @@ import { ProfileSessionDialog } from "@/components/ProfileSessionDialog";
 import { PasswordRecoveryDialog } from "@/components/PasswordRecoveryDialog";
 import { toast } from "sonner";
 import { SensitiveAccessService } from "@/lib/sensitive-access";
+import { IS_SAAS_BUILD } from "@/lib/runtime-mode";
 import { useBootUi } from "@/components/BootUi";
 import { registerSensitiveAccessPrompt } from "@/lib/sensitive-action-retry";
 import {
@@ -23,6 +24,7 @@ import {
   type SensitiveAccessStatus,
   type SensitivePermission,
 } from "@/types";
+import type { SaasOperationalProfile } from "@/types/saas-auth";
 
 interface SensitiveAccessPromptOptions {
   title?: string;
@@ -488,13 +490,44 @@ export function SensitiveAccessProvider({ children }: { children: ReactNode }) {
   );
 }
 
-export function useSensitiveAccess() {
+export function useSensitiveAccess(options?: { operationalProfile?: SaasOperationalProfile }) {
   const context = useContext(SensitiveAccessContext);
-  if (!context) {
-    throw new Error("useSensitiveAccess deve ser usado dentro de SensitiveAccessProvider");
-  }
+  const saasAccess = useMemo<SensitiveAccessContextValue | null>(() => {
+    const profile = options?.operationalProfile;
+    if (!IS_SAAS_BUILD || !profile) return null;
+    const permissions = profile.permissions.filter(
+      (permission): permission is SensitivePermission =>
+        Object.values(SENSITIVE_PERMISSIONS).includes(permission as SensitivePermission),
+    );
+    const status: SensitiveAccessStatus = {
+      ...EMPTY_STATUS,
+      pin_configured: true,
+      unlocked: true,
+      active_profile_name: profile.name,
+      active_role: profile.role,
+      permissions,
+    };
+    return {
+      status,
+      loading: false,
+      bootProgress: 100,
+      advanceBootProgress: () => undefined,
+      refreshStatus: async () => undefined,
+      ensureSensitiveAccess: async (promptOptions) => {
+        if (!promptOptions?.permission || permissions.includes(promptOptions.permission)) return true;
+        toast.error(`O perfil não possui permissão para ${permissionDescription(promptOptions.permission)}.`);
+        return false;
+      },
+      openProfileSelector: async () => false,
+      lockSensitiveAccess: async () => undefined,
+      hasPermission: (permission) => permissions.includes(permission),
+      setActiveProfile: async () => undefined,
+    };
+  }, [options?.operationalProfile]);
 
-  return context;
+  if (context) return context;
+  if (saasAccess) return saasAccess;
+  throw new Error("useSensitiveAccess deve ser usado dentro de SensitiveAccessProvider");
 }
 
 export function SensitiveRoute({

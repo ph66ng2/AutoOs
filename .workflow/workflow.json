@@ -3367,6 +3367,85 @@
       "completedAt": "2026-09-22"
     },
     {
+      "id": "AO-SHELL-001",
+      "title": "Abrir o shell SaaS após autenticação e PIN",
+      "status": "merged",
+      "blockedBy": [
+        "AO-AUTH-005",
+        "AO-SUB-002"
+      ],
+      "objective": "Substituir o painel de sessão SaaS por um shell operacional seguro que leve o usuário autenticado ao piloto Online de Clientes.",
+      "context": "AO-AUTH-001 a AO-AUTH-005 autenticam, registram dispositivo e liberam perfil/PIN; AO-SUB-002 fornece o repositório remoto tenant-safe de Clientes. O SaasApp ainda termina em um painel de confirmação e não expõe nenhuma rota operacional.",
+      "expectedBehavior": "Após login, seleção de perfil e PIN, o build SaaS abre uma navegação operacional restrita com Clientes como rota inicial. Rotas ainda dependentes do PostgreSQL interno não são renderizadas nem acessíveis por URL.",
+      "scope": [
+        "Criar shell e roteamento específicos do runtime SaaS, iniciando em Clientes.",
+        "Reutilizar a página e o hook de Clientes, selecionando exclusivamente o adapter Online do AO-SUB-002.",
+        "Exigir sessão SaaS autenticada, perfil operacional desbloqueado e permissões antes de renderizar as rotas SaaS.",
+        "Expor estado claro para sessão expirada, offline e negação RLS no shell.",
+        "Restringir a navegação SaaS às rotas explicitamente suportadas; impedir fallback para DatabaseConfigDialog, Tauri/sqlx ou páginas internas.",
+        "Preservar Bloquear, Sair e Remover esta máquina no shell operacional."
+      ],
+      "outOfScope": [
+        "Migrar Equipamentos, Balcão, Serviços, Insumos, Gastos ou Configurações para SaaS.",
+        "Implementar assinatura, entitlement, PowerSync ou o runtime Offline.",
+        "Alterar RLS, schema ou usar credenciais privilegiadas no desktop."
+      ],
+      "acceptanceCriteria": [
+        "Login + PIN abre Clientes no build SaaS, sem painel intermediário de sessão.",
+        "Clientes usa o adapter Online e mantém o isolamento tenant-safe do AO-SUB-002.",
+        "Uma URL SaaS para módulo ainda não migrado não abre a página interna nem inicializa PostgreSQL.",
+        "Bloquear, Sair, sessão expirada e offline removem ou restringem o shell adequadamente.",
+        "A versão interna mantém rotas e navegação inalteradas.",
+        "Lint, testes, build SaaS e cargo check SaaS passam."
+      ],
+      "tests": [
+        "Testes de rota/guarda SaaS para login, perfil/PIN, Clientes, bloqueio e sessão expirada.",
+        "Testes do adapter Online de Clientes e das recusas RLS já previstas no AO-SUB-002.",
+        "npm run lint, npm run test:run, npm run build:saas e cargo check com feature saas.",
+        "Homologação manual no Staging com conta sintética: login, PIN e CRUD de cliente temporário."
+      ],
+      "testInstructions": {
+        "prerequisites": [
+          "origin/feature contendo AO-AUTH-005 e AO-SUB-002.",
+          "Conta administrativa e empresa sintéticas no Supabase Staging.",
+          "Variáveis públicas VITE do Staging; sem DATABASE_URL, service_role ou senha PostgreSQL."
+        ],
+        "steps": [
+          "Iniciar npm run tauri:dev:saas com as variáveis de Staging.",
+          "Entrar, selecionar perfil e desbloquear com PIN local.",
+          "Confirmar que Clientes abre automaticamente.",
+          "Criar, editar e excluir logicamente um cliente sintético e confirmar isolamento do tenant.",
+          "Tentar uma rota não migrada, bloquear, sair e simular indisponibilidade de rede."
+        ],
+        "expectedResultAndEvidence": [
+          "A primeira página operacional SaaS é Clientes; nenhuma tela de banco interno aparece.",
+          "Dados sintéticos ficam restritos à empresa autenticada.",
+          "Módulos não migrados não ganham acesso ao adaptador interno por navegação direta.",
+          "Evidências não incluem e-mail real, senha, token ou dados de produção."
+        ],
+        "dataImpact": "Cria e remove somente clientes temporários no Staging e sessões locais de teste.",
+        "cleanupAndRollback": [
+          "Excluir clientes sintéticos e sair/remover a máquina de teste.",
+          "Reverter somente o commit deste ticket se o shell não preservar o isolamento SaaS."
+        ],
+        "stagingRestrictions": "É proibido usar produção, DATABASE_URL, service_role, secret key, senha real ou dados de clientes."
+      },
+      "likelyFiles": [
+        "src/components/SaasApp.tsx",
+        "src/App.tsx",
+        "src/components/Layout.tsx",
+        "src/hooks/useSaasAuth.tsx",
+        "src/lib/data/clientes-repository.ts",
+        "src/**/*.test.tsx"
+      ],
+      "risks": [
+        "Renderizar acidentalmente o shell interno ou inicializar PostgreSQL no build SaaS.",
+        "Expor rota não migrada com adapter incorreto.",
+        "Confundir identidade cloud, perfil operacional e entitlement de assinatura."
+      ],
+      "completedAt": "2026-09-23"
+    },
+    {
       "id": "AO-CLI-003",
       "title": "Permitir recadastro de cliente após exclusão lógica no SaaS",
       "status": "merged",

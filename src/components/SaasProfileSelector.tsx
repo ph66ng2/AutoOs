@@ -8,7 +8,7 @@ import type { SaasOperationalProfile, SaasSession } from "@/types/saas-auth";
 
 interface SaasProfileSelectorProps {
   session: SaasSession;
-  onUnlocked: () => void;
+  onUnlocked: (profile: SaasOperationalProfile) => void;
 }
 
 export function SaasProfileSelector({ session, onUnlocked }: SaasProfileSelectorProps) {
@@ -36,7 +36,7 @@ export function SaasProfileSelector({ session, onUnlocked }: SaasProfileSelector
     return () => { alive = false; };
   }, [session]);
 
-  if (selected) return <SaasProfilePinGate profile={selected} session={session} onUnlocked={onUnlocked} onBack={() => setSelected(null)} />;
+  if (selected) return <SaasProfilePinGate profile={selected} session={session} onUnlocked={() => onUnlocked(selected)} onBack={() => setSelected(null)} />;
 
   const selectProfile = async (profile: SaasOperationalProfile) => {
     setError(null);
