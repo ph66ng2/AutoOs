@@ -47,6 +47,13 @@ export function isUpdaterBusy(phase: UpdaterPhase): boolean {
   return BUSY_PHASES.includes(phase);
 }
 
+export function updaterChannelLabel(channel: string | undefined): string | null {
+  if (channel === "homolog") {
+    return "Canal de homologação. Este build não consulta o release latest de produção.";
+  }
+  return null;
+}
+
 export function sanitizeUpdateNotes(raw: string | undefined | null): string {
   if (!raw) {
     return "";
@@ -269,6 +276,7 @@ export function UpdateChecker() {
     );
   }
 
+  const channelLabel = updaterChannelLabel(import.meta.env.VITE_UPDATER_CHANNEL);
   const busy = isUpdaterBusy(state.phase);
   const percent =
     state.total && state.total > 0 ? Math.min(100, Math.round((state.downloaded / state.total) * 100)) : null;
@@ -290,6 +298,9 @@ export function UpdateChecker() {
       <div className="flex items-start justify-between gap-3">
         <div className="space-y-1">
           <p className="text-sm font-medium">Atualizações do AutoOS</p>
+          {channelLabel ? (
+            <p className="text-xs text-amber-700 dark:text-amber-400">{channelLabel}</p>
+          ) : null}
           {state.currentVersion ? (
             <p className="text-xs text-muted-foreground">Versão instalada: {state.currentVersion}</p>
           ) : (

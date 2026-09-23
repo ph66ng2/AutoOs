@@ -52,6 +52,7 @@ jobs:
       - name: Validar SemVer alinhada
         id: version
         env:
+          AUTOOS_UPDATER_CHANNEL: production
           AUTOOS_RELEASE_VERSION: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.version || '' }}
         run: node scripts/generate-update-manifest.mjs --check-versions
 
@@ -118,6 +119,7 @@ jobs:
 
       - name: Gerar e validar latest.json
         env:
+          AUTOOS_UPDATER_CHANNEL: production
           AUTOOS_RELEASE_VERSION: ${{ steps.version.outputs.version }}
           GITHUB_REF_TYPE: tag
           GITHUB_REF_NAME: ${{ steps.version.outputs.tag }}
