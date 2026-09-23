@@ -1,4 +1,4 @@
--- Migration 0019: sincroniza orçamentos antigos gravados apenas na verificação.
+-- Migration 0022: sincroniza orçamentos antigos gravados apenas na verificação.
 -- O valor principal do equipamento é usado na listagem, aprovações e PDFs.
 -- Não sobrescreve valores já definidos manualmente no equipamento.
 
