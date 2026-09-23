@@ -2896,7 +2896,7 @@
     {
       "id": "AO-UPD-003",
       "title": "Homologar atualização Windows entre versões reais",
-      "status": "ready",
+      "status": "review",
       "blockedBy": [
         "AO-UPD-001",
         "AO-UPD-002"

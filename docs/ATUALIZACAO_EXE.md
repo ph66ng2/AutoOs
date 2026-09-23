@@ -204,6 +204,20 @@ Não apague o secret antigo antes de N+1 estar instalado nas máquinas que preci
 - `latest.json` sem `windows-x86_64`, URL fora deste repositório ou assinatura diferente do `.sig`.
 - Publicar o canal `latest` antes do manifesto válido.
 
+### Canal de homologação
+
+O teste N para N+1 não usa o endpoint de produção. O build de homologação mescla `src-tauri/tauri.homolog.conf.json` e consulta somente:
+
+```text
+https://github.com/ph66ng2/AutoOs/releases/download/updater-homolog/latest.json
+```
+
+O workflow `.github/workflows/updater-homolog.yml` é `workflow_dispatch`. Ele exige a confirmação `HOMOLOG`, recusa variável de banco e publica a tag `updater-homolog` como prerelease com `make_latest: false`. O release marcado como Latest de produção permanece o que o `build.yml` publica.
+
+Para exercitar a jornada, dispare o workflow duas vezes, em commits com SemVer consecutivas e alinhadas nos três manifests. O primeiro instalador é N. O segundo substitui o manifesto nessa mesma tag, e o app N encontra só N+1. A tela desse build mostra que o canal é de homologação.
+
+Ainda falta a prova numa VM Windows descartável: instalar N, atualizar pelo botão, reabrir em N+1 e repetir offline, interrupção e assinatura inválida. Sem essa evidência o canal existe, mas a homologação não está concluída. Não dispare esse workflow com dados reais e não promova a tag `updater-homolog` a latest.
+
 ---
 
 ## 8. Checklist de Pré-Release
