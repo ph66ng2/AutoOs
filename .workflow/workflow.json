@@ -3364,6 +3364,29 @@
         "Fazer Bloquear parecer logout definitivo."
       ],
       "completedAt": "2026-09-22"
+    },
+    {
+      "id": "AO-CLI-003",
+      "title": "Permitir recadastro de cliente após exclusão lógica no SaaS",
+      "status": "ready",
+      "blockedBy": [],
+      "objective": "Preservar clientes inativos sem bloquear novo cadastro com o mesmo CPF ou CNPJ na própria empresa.",
+      "context": "A master usa exclusão lógica. A feature já tem índices parciais para o backend interno, mas o Supabase SaaS ainda usa UNIQUE completo em (empresa_id, documento) e (empresa_id, cpf_cnpj), incluindo registros inativos.",
+      "expectedBehavior": "Somente clientes ativos da mesma empresa disputam a unicidade do documento; o histórico inativo permanece preservado.",
+      "scope": ["Criar migration aditiva substituindo as duas constraints completas por índices únicos parciais por empresa e ativo = true.", "Atualizar supabase/schema.sql para instalações novas.", "Verificar índices e recadastro com dados sintéticos transacionais no staging."],
+      "outOfScope": ["Excluir ou modificar clientes existentes.", "Mudar RLS, autenticação ou módulos vizinhos.", "Promover automaticamente para master ou produção."],
+      "acceptanceCriteria": ["Cliente inativo não bloqueia recadastro do mesmo CPF/CNPJ na mesma empresa.", "Dois clientes ativos da mesma empresa não compartilham documento.", "Empresas distintas permanecem independentes.", "Histórico e UNIQUE (empresa_id, id) são preservados."],
+      "tests": ["Consultar pg_indexes e pg_constraint antes e depois da migration.", "Testar conflito ativo e recadastro após inativação com transação revertida.", "Validar workflow e schema do repositório."],
+      "testInstructions": {
+        "prerequisites": ["Worktree exclusiva de origin/feature; origin/master é referência funcional de exclusão lógica.", "Usar apenas staging aijgtgzsrgxfncnlmoir e dados sintéticos."],
+        "steps": ["Confirmar índices e contagem de linhas antes da DDL.", "Criar migration e alinhar supabase/schema.sql.", "Aplicar migration no staging e consultar catálogo.", "Executar cenário transacional sintético com ROLLBACK e confirmar contagem original."],
+        "expectedResultAndEvidence": ["Os índices parciais incluem empresa_id e ativo = true; constraints antigas não existem.", "Recadastro após inativação funciona, ativo duplicado falha e a contagem de clientes preexistentes não muda."],
+        "dataImpact": "Altera apenas unicidade no staging; testes sintéticos são revertidos, sem alterar clientes existentes.",
+        "cleanupAndRollback": ["Reverter transações de teste e confirmar contagem original.", "Não aplicar em produção; se falhar, corrigir com nova migration, sem editar uma já aplicada.", "Não apagar clientes reais para liberar documentos."],
+        "stagingRestrictions": "É proibido usar produção, banco interno, service_role no cliente, credenciais ou dados reais; somente staging e valores sintéticos descartáveis."
+      },
+      "likelyFiles": ["supabase/migrations/", "supabase/schema.sql", "supabase/tests/clientes-soft-delete-uniqueness.sql"],
+      "risks": ["Derrubar unicidade antes dos índices abre janela para duplicidade ativa.", "Índice sem empresa_id mistura tenants.", "Editar migration já aplicada quebra histórico."]
     }
   ]
 }

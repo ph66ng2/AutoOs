@@ -759,8 +759,12 @@ ALTER TABLE photo_upload_sessions DROP CONSTRAINT IF EXISTS photo_upload_session
 ALTER TABLE photo_upload_sessions ADD CONSTRAINT fk_photo_upload_sessions_equipamento_empresa
     FOREIGN KEY (empresa_id, equipamento_id) REFERENCES equipamentos(empresa_id, id) ON DELETE RESTRICT;
 
-ALTER TABLE clientes ADD CONSTRAINT uq_clientes_empresa_documento UNIQUE (empresa_id, documento);
-ALTER TABLE clientes ADD CONSTRAINT uq_clientes_empresa_cpf_cnpj UNIQUE (empresa_id, cpf_cnpj);
+CREATE UNIQUE INDEX IF NOT EXISTS ux_clientes_empresa_documento_ativo
+    ON clientes (empresa_id, documento)
+    WHERE ativo = true AND documento IS NOT NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS ux_clientes_empresa_cpf_cnpj_ativo
+    ON clientes (empresa_id, cpf_cnpj)
+    WHERE ativo = true AND cpf_cnpj IS NOT NULL;
 ALTER TABLE security_profiles ADD CONSTRAINT uq_security_profiles_empresa_nome UNIQUE (empresa_id, nome);
 ALTER TABLE configuracoes_sistema ADD CONSTRAINT uq_configuracoes_sistema_empresa UNIQUE (empresa_id);
 
