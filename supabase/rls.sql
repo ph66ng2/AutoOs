@@ -2,7 +2,7 @@
 --
 -- Contrato de autenticação:
 --   * somente JWTs de usuários autenticados chegam às tabelas de negócio;
---   * o hook grava company_id/profile_id autoritativos no JWT;
+--   * auth.uid() é resolvido no vínculo server-side ativo; claims não autorizam;
 --   * user_metadata nunca participa de autorização;
 --   * service_role continua server-side e bypassa RLS pelo comportamento nativo;
 --   * anon não recebe grants nem policies.
@@ -10,10 +10,11 @@
 CREATE SCHEMA IF NOT EXISTS private;
 REVOKE ALL ON SCHEMA private FROM PUBLIC, anon, authenticated;
 
--- O JWT é validado novamente contra o vínculo server-side a cada consulta.
+-- O auth.uid() é validado contra o vínculo server-side atual a cada consulta.
 -- Assim, suspender a empresa, o perfil ou a identidade corta o acesso mesmo
--- antes do access token atual expirar. SECURITY DEFINER fica restrito a este
--- lookup interno, com auth.uid() obrigatório e search_path vazio.
+-- antes do access token atual expirar. Claims ausentes/antigas não quebram a
+-- compatibilidade do ADMIN legado, e claims adulteradas não escolhem tenant.
+-- SECURITY DEFINER fica restrito a este lookup interno, com search_path vazio.
 CREATE OR REPLACE FUNCTION private.authorized_company_id()
 RETURNS uuid
 LANGUAGE sql
@@ -21,26 +22,46 @@ STABLE
 SECURITY DEFINER
 SET search_path = ''
 AS $$
-    SELECT identity.empresa_id
-      FROM public.company_admin_identities AS identity
-      JOIN public.empresas AS company
-        ON company.id = identity.empresa_id
-      JOIN public.security_profiles AS profile
-        ON profile.id = identity.profile_id
-       AND profile.empresa_id = identity.empresa_id
-     WHERE identity.auth_user_id = (SELECT auth.uid())
-       AND identity.ativo
-       AND COALESCE(company.ativo, false)
-       AND COALESCE(profile.ativo, false)
-       AND profile.role = 'ADMIN'
-       AND (auth.jwt() -> 'app_metadata' ->> 'company_id')
-           ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
-       AND identity.empresa_id =
-           (auth.jwt() -> 'app_metadata' ->> 'company_id')::uuid
-       AND (auth.jwt() -> 'app_metadata' ->> 'profile_id')
-           ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
-       AND identity.profile_id =
-           (auth.jwt() -> 'app_metadata' ->> 'profile_id')::uuid
+    WITH caller AS (
+        SELECT (SELECT auth.uid()) AS id
+    ),
+    active_binding AS (
+        SELECT identity.empresa_id
+          FROM public.company_user_identities AS identity
+          JOIN caller AS actor
+            ON identity.auth_user_id = actor.id
+          JOIN public.empresas AS company
+            ON company.id = identity.empresa_id
+          JOIN public.security_profiles AS profile
+            ON profile.id = identity.profile_id
+           AND profile.empresa_id = identity.empresa_id
+         WHERE identity.ativo
+           AND COALESCE(company.ativo, false)
+           AND COALESCE(profile.ativo, false)
+
+        UNION ALL
+
+        SELECT identity.empresa_id
+          FROM public.company_admin_identities AS identity
+          JOIN caller AS actor
+            ON identity.auth_user_id = actor.id
+          JOIN public.empresas AS company
+            ON company.id = identity.empresa_id
+          JOIN public.security_profiles AS profile
+            ON profile.id = identity.profile_id
+           AND profile.empresa_id = identity.empresa_id
+         WHERE identity.ativo
+           AND COALESCE(company.ativo, false)
+           AND COALESCE(profile.ativo, false)
+           AND profile.role = 'ADMIN'
+           AND NOT EXISTS (
+                SELECT 1
+                  FROM public.company_user_identities AS individual
+                WHERE individual.auth_user_id = actor.id
+           )
+    )
+    SELECT empresa_id
+      FROM active_binding
      LIMIT 1;
 $$;
 
@@ -74,7 +95,7 @@ BEGIN
         'servicos_catalogo', 'gastos_fixos', 'gastos_variaveis',
         'configuracoes_sistema', 'enrollment_codes', 'os_status_publico',
         'photo_upload_sessions', 'photo_upload_session_items',
-        'company_admin_identities'
+        'company_admin_identities', 'company_user_identities'
     ] LOOP
         EXECUTE format('ALTER TABLE public.%I ENABLE ROW LEVEL SECURITY', table_name);
         EXECUTE format('REVOKE ALL ON TABLE public.%I FROM anon, authenticated', table_name);
@@ -88,12 +109,18 @@ $$;
 GRANT USAGE ON SCHEMA public TO supabase_auth_admin;
 GRANT SELECT (auth_user_id, empresa_id, profile_id, ativo)
     ON TABLE public.company_admin_identities TO supabase_auth_admin;
+GRANT SELECT (auth_user_id, empresa_id, profile_id, ativo)
+    ON TABLE public.company_user_identities TO supabase_auth_admin;
 GRANT SELECT (id, ativo) ON TABLE public.empresas TO supabase_auth_admin;
 GRANT SELECT (id, empresa_id, role, ativo)
     ON TABLE public.security_profiles TO supabase_auth_admin;
 
 DROP POLICY IF EXISTS auth_hook_select ON public.company_admin_identities;
 CREATE POLICY auth_hook_select ON public.company_admin_identities
+    FOR SELECT TO supabase_auth_admin
+    USING (true);
+DROP POLICY IF EXISTS auth_hook_select ON public.company_user_identities;
+CREATE POLICY auth_hook_select ON public.company_user_identities
     FOR SELECT TO supabase_auth_admin
     USING (true);
 DROP POLICY IF EXISTS auth_hook_select ON public.empresas;
@@ -170,5 +197,5 @@ CREATE POLICY company_select ON public.security_audit_log
 -- de Edge Functions/backend. Não são expostos à Data API por chave de cliente.
 REVOKE ALL ON TABLE public.enrollment_codes, public.os_status_publico,
     public.photo_upload_sessions, public.photo_upload_session_items,
-    public.company_admin_identities
+    public.company_admin_identities, public.company_user_identities
     FROM PUBLIC, anon, authenticated;

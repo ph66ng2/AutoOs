@@ -146,7 +146,8 @@ BEGIN
 END;
 $$;
 
--- Claim de empresa correta com profile_id de outro tenant não autoriza nada.
+-- Claims antigas/adulteradas não escolhem a empresa: auth.uid() continua
+-- limitado ao vínculo ADMIN server-side da empresa A.
 SELECT set_config(
     'request.jwt.claims',
     jsonb_set(
@@ -158,9 +159,16 @@ SELECT set_config(
 );
 
 DO $$
+DECLARE
+    visible_rows integer;
 BEGIN
-    IF public.current_company_id() IS NOT NULL THEN
-        RAISE EXCEPTION 'mismatched profile claim authorized a tenant';
+    IF public.current_company_id() IS DISTINCT FROM
+       'a0000000-0000-4000-8000-000000000001'::uuid THEN
+        RAISE EXCEPTION 'legacy ADMIN lost its server-side tenant binding';
+    END IF;
+    SELECT count(*) INTO visible_rows FROM public.clientes;
+    IF visible_rows <> 1 THEN
+        RAISE EXCEPTION 'stale/mismatched claims changed tenant visibility: %', visible_rows;
     END IF;
 END;
 $$;
