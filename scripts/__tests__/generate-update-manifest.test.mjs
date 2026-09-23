@@ -286,6 +286,30 @@ test("homologação publica na tag isolada e recusa latest, banco e make_latest"
   }
 });
 
+test("as notas do arquivo updater-notes.txt entram no manifesto da tela", () => {
+  const root = tempDir();
+  try {
+    writeProject(root);
+    writeBundle(root);
+    const notes = "0.5.5: o AutoOS verifica atualizações no GitHub. A instalação só começa em Baixar e instalar.";
+    writeFileSync(path.join(root, "updater-notes.txt"), `${notes}\n`);
+    const result = generateUpdateManifest({
+      cwd: root,
+      env: {
+        GITHUB_REF_NAME: "v0.9.9",
+        GITHUB_REF_TYPE: "tag",
+        GITHUB_REPOSITORY: "ph66ng2/AutoOs",
+        TAURI_SIGNING_PRIVATE_KEY: "synthetic-private",
+        TAURI_SIGNING_PRIVATE_KEY_PASSWORD: "synthetic-pass",
+      },
+    });
+    assert.equal(result.manifest.notes, notes);
+    assert.ok(notes.length <= 400);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test("endpoint de produção e o workflow de homologação ficam separados", () => {
   const base = JSON.parse(readFileSync("src-tauri/tauri.conf.json", "utf8"));
   const overlay = JSON.parse(readFileSync("src-tauri/tauri.homolog.conf.json", "utf8"));
