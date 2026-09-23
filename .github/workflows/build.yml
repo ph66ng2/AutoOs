@@ -52,6 +52,7 @@ jobs:
       - name: Validar SemVer alinhada
         id: version
         env:
+          AUTOOS_UPDATER_CHANNEL: production
           AUTOOS_RELEASE_VERSION: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.version || '' }}
         run: node scripts/generate-update-manifest.mjs --check-versions
 
@@ -102,7 +103,8 @@ jobs:
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          # Compatível com o segredo atual e com o nome recomendado pelo Tauri.
+          # Tauri recebe o conteúdo da chave, não um caminho no runner.
+          # Mantém compatibilidade com o segredo existente durante a rotação.
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY || secrets.TAURI_SIGNING_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
           AUTOOS_DATABASE_URL: ${{ secrets.AUTOOS_DATABASE_URL }}
@@ -117,6 +119,7 @@ jobs:
 
       - name: Gerar e validar latest.json
         env:
+          AUTOOS_UPDATER_CHANNEL: production
           AUTOOS_RELEASE_VERSION: ${{ steps.version.outputs.version }}
           GITHUB_REF_TYPE: tag
           GITHUB_REF_NAME: ${{ steps.version.outputs.tag }}

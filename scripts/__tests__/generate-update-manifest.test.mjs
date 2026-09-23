@@ -6,10 +6,15 @@ import test from "node:test";
 
 import {
   assertAlignedVersions,
+  assertHomologWorkflow,
+  assertPublishTarget,
   assertSigningSecrets,
   buildManifest,
   findWindowsUpdaterArtifact,
   generateUpdateManifest,
+  HOMOLOG_ENDPOINT,
+  HOMOLOG_RELEASE_TAG,
+  PRODUCTION_LATEST_ENDPOINT,
   resolveReleaseVersion,
   runCli,
   validateManifest,
@@ -229,4 +234,64 @@ test("segredo de assinatura ausente é recusado sem imprimir valor", () => {
     () => assertSigningSecrets({ TAURI_SIGNING_PRIVATE_KEY: "abc" }),
     /TAURI_SIGNING_PRIVATE_KEY_PASSWORD/,
   );
+});
+
+test("homologação publica na tag isolada e recusa latest, banco e make_latest", () => {
+  const root = tempDir();
+  try {
+    writeProject(root);
+    writeBundle(root);
+    const result = generateUpdateManifest({
+      cwd: root,
+      env: {
+        AUTOOS_UPDATER_CHANNEL: "homolog",
+        AUTOOS_HOMOLOG_CONFIRMATION: "HOMOLOG",
+        AUTOOS_RELEASE_VERSION: "0.9.9",
+        GITHUB_REPOSITORY: "ph66ng2/AutoOs",
+        TAURI_SIGNING_PRIVATE_KEY: "synthetic-private",
+        TAURI_SIGNING_PRIVATE_KEY_PASSWORD: "synthetic-pass",
+      },
+      now: new Date("2026-09-22T18:00:00.000Z"),
+    });
+    assert.equal(result.tag, HOMOLOG_RELEASE_TAG);
+    assert.equal(
+      result.manifest.platforms["windows-x86_64"].url,
+      "https://github.com/ph66ng2/AutoOs/releases/download/updater-homolog/AutoOS_0.9.9_x64_en-US.msi",
+    );
+    assert.throws(
+      () =>
+        generateUpdateManifest({
+          cwd: root,
+          env: {
+            AUTOOS_UPDATER_CHANNEL: "homolog",
+            AUTOOS_HOMOLOG_CONFIRMATION: "HOMOLOG",
+            AUTOOS_RELEASE_VERSION: "0.9.9",
+            DATABASE_URL: "postgres://user:secret@localhost/db",
+            TAURI_SIGNING_PRIVATE_KEY: "synthetic-private",
+            TAURI_SIGNING_PRIVATE_KEY_PASSWORD: "synthetic-pass",
+          },
+        }),
+      /recusou variável de banco/,
+    );
+    assert.throws(
+      () => assertPublishTarget({ channel: "homolog", tag: HOMOLOG_RELEASE_TAG, makeLatest: "true", prerelease: "true" }),
+      /make_latest/,
+    );
+    assert.throws(
+      () => assertPublishTarget({ channel: "production", tag: HOMOLOG_RELEASE_TAG, makeLatest: "true", prerelease: "false" }),
+      /production não pode publicar/,
+    );
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("endpoint de produção e o workflow de homologação ficam separados", () => {
+  const base = JSON.parse(readFileSync("src-tauri/tauri.conf.json", "utf8"));
+  const overlay = JSON.parse(readFileSync("src-tauri/tauri.homolog.conf.json", "utf8"));
+  const workflow = readFileSync(".github/workflows/updater-homolog.yml", "utf8");
+  assert.equal(base.plugins.updater.endpoints[0], PRODUCTION_LATEST_ENDPOINT);
+  assert.equal(overlay.plugins.updater.endpoints[0], HOMOLOG_ENDPOINT);
+  assert.equal(overlay.plugins.updater.pubkey, undefined);
+  assert.doesNotThrow(() => assertHomologWorkflow(workflow));
 });
