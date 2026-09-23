@@ -7,7 +7,7 @@ import { SaasLoginScreen } from "@/components/SaasLoginScreen";
 import { SaasProfileSelector } from "@/components/SaasProfileSelector";
 import { SaasOperationalShell } from "@/components/SaasOperationalShell";
 import { useSaasAuth } from "@/hooks/useSaasAuth";
-import type { SaasAuthState } from "@/types/saas-auth";
+import type { SaasAuthState, SaasOperationalProfile } from "@/types/saas-auth";
 
 export function SaasApp() {
   const { state, retry, lock, signOut, removeThisDevice } = useSaasAuth();
@@ -78,8 +78,10 @@ function SaasAppBody({
   confirmDeviceRemoval: () => void;
 }) {
   const [profileUnlocked, setProfileUnlocked] = useState(false);
+  const [operationalProfile, setOperationalProfile] = useState<SaasOperationalProfile | null>(null);
   useEffect(() => {
     setProfileUnlocked(false);
+    setOperationalProfile(null);
   }, [state.kind === "authenticated" ? state.session.identity.profileId : null]);
   if (state.kind === "booting") {
     return (
@@ -109,8 +111,15 @@ function SaasAppBody({
   }
 
   if (!profileUnlocked) {
-    return <SaasProfileSelector session={state.session} onUnlocked={() => setProfileUnlocked(true)} />;
+    return <SaasProfileSelector session={state.session} onUnlocked={(profile) => { setOperationalProfile(profile); setProfileUnlocked(true); }} />;
   }
 
-  return <SaasOperationalShell session={state.session} onLock={() => void lock()} onSignOut={() => void signOut()} onRemoveDevice={confirmDeviceRemoval} />;
+  if (!operationalProfile) return <SaasProfileSelector session={state.session} onUnlocked={(profile) => { setOperationalProfile(profile); setProfileUnlocked(true); }} />;
+  return <SaasOperationalShell
+    session={state.session}
+    profile={operationalProfile}
+    onLock={() => { setProfileUnlocked(false); setOperationalProfile(null); void lock(); }}
+    onSignOut={() => void signOut()}
+    onRemoveDevice={confirmDeviceRemoval}
+  />;
 }
