@@ -1,12 +1,9 @@
 import {
+  Building2,
   CheckCircle2,
-  CircleDollarSign,
-  Filter,
-  Package,
-  Save,
+  Download,
+  RefreshCw,
   Sparkles,
-  Tags,
-  Wrench,
   X,
 } from "lucide-react";
 import { useState } from "react";
@@ -21,52 +18,31 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 
-export const RELEASE_HIGHLIGHTS_VERSION = "0.5.3";
+export const RELEASE_HIGHLIGHTS_VERSION = "0.5.5";
 export const RELEASE_HIGHLIGHTS_STORAGE_KEY =
-  `autoos:release-highlights:${RELEASE_HIGHLIGHTS_VERSION}:garantia`;
+  `autoos:release-highlights:${RELEASE_HIGHLIGHTS_VERSION}:atualizacao`;
 
 const highlights = [
   {
-    icon: Package,
-    title: "Estoque de ribbons e etiquetas",
+    icon: RefreshCw,
+    title: "Verificação no GitHub",
     description:
-      "O cadastro de insumos ganhou os ribbons e as etiquetas BOPP da planilha, com quantidade e preço.",
-    detail: "Os itens já estão no banco de produção e aparecem em Insumos/Peças e no Balcão.",
+      "O AutoOS consulta o último release e diz se esta já é a versão mais recente.",
+    detail: "Se a consulta falhar, a tela mostra o erro. Ela não trata falha como atualização aplicada.",
   },
   {
-    icon: Tags,
-    title: "Categorias no filtro certo",
+    icon: Download,
+    title: "Instalar só no botão",
     description:
-      "Ribbon entra como Cartucho e etiqueta BOPP como Rolo, iguais às opções do filtro.",
-    detail: "A tabela, o Balcão e o Dashboard mostram o mesmo rótulo do seletor.",
+      "A versão nova aparece com as notas, e o download só começa em Baixar e instalar.",
+    detail: "No Windows, o instalador pode fechar o AutoOS. Se a janela não voltar, abra o programa de novo.",
   },
   {
-    icon: Save,
-    title: "Salvar produto de verdade",
+    icon: Building2,
+    title: "Cadastro na empresa da sessão",
     description:
-      "Editar e criar insumo deixou de falhar com missing required key input.",
-    detail: "O app agora envia os dados no formato que o backend espera.",
-  },
-  {
-    icon: CircleDollarSign,
-    title: "Preço na tabela de estoque",
-    description:
-      "A lista de Insumos/Peças passou a mostrar o preço de venda de cada item.",
-    detail: "O mesmo valor continua no card de Estoque e preços do Balcão.",
-  },
-  {
-    icon: Filter,
-    title: "Filtro sem categoria fantasma",
-    description:
-      "Ribbon e Etiqueta saíram das opções extras; vale o que já existia no cadastro.",
-    detail: "Cartucho, Rolo e as demais categorias de sempre continuam no seletor.",
-  },
-  {
-    icon: Wrench,
-    title: "Serviço em garantia a R$ 0,00",
-    description:
-      "O catálogo de Serviços e a verificação técnica aceitam preço zero para garantia.",
-    detail: "Valores negativos continuam bloqueados. Não há mudança de banco.",
+      "Cliente e equipamento novos entram na empresa de quem está logado.",
+    detail: "O app ignora uma empresa escolhida na tela e bloqueia cadastro sem empresa.",
   },
 ] as const;
 
@@ -132,10 +108,10 @@ export function ReleaseHighlightsDialog({ enabled }: { enabled: boolean }) {
             </div>
             <div>
               <DialogTitle className="text-2xl font-bold leading-tight tracking-tight text-white sm:text-3xl">
-                Estoque de insumos e salvamento corrigido
+                Atualização pelo GitHub e cadastro na empresa
               </DialogTitle>
               <DialogDescription className="mt-2 max-w-2xl text-sm leading-relaxed text-slate-300 sm:text-base">
-                AutoOS 0.5.3: ribbons e etiquetas BOPP no estoque, categorias alinhadas ao filtro, correção ao salvar produto e serviços de garantia a R$ 0,00.
+                AutoOS 0.5.5: consulta de versão no GitHub, instalação só no botão Baixar e instalar, e cadastros novos na empresa de quem está logado.
               </DialogDescription>
             </div>
           </div>
@@ -167,16 +143,13 @@ export function ReleaseHighlightsDialog({ enabled }: { enabled: boolean }) {
 
           <div className="mt-5 flex flex-wrap gap-2" aria-label="Outras melhorias da versão">
             <Badge variant="secondary" className="gap-1.5 px-3 py-1.5 font-normal">
-              <Package className="h-3.5 w-3.5" /> 17 itens ativos no estoque de produção
+              <RefreshCw className="h-3.5 w-3.5" /> Consulta ao último release do GitHub
             </Badge>
             <Badge variant="secondary" className="gap-1.5 px-3 py-1.5 font-normal">
-              <Tags className="h-3.5 w-3.5" /> Cartucho para ribbon, Rolo para BOPP
+              <Download className="h-3.5 w-3.5" /> Instalação só em Baixar e instalar
             </Badge>
             <Badge variant="secondary" className="gap-1.5 px-3 py-1.5 font-normal">
-              <Save className="h-3.5 w-3.5" /> Salvar insumo com contrato Tauri correto
-            </Badge>
-            <Badge variant="secondary" className="gap-1.5 px-3 py-1.5 font-normal">
-              <CircleDollarSign className="h-3.5 w-3.5" /> Preço de venda visível na tabela
+              <Building2 className="h-3.5 w-3.5" /> Cliente e equipamento com empresa
             </Badge>
           </div>
         </div>

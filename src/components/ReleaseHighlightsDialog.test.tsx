@@ -14,11 +14,11 @@ describe("ReleaseHighlightsDialog", () => {
     render(<ReleaseHighlightsDialog enabled />);
 
     expect(screen.getByRole("dialog")).toBeInTheDocument();
-    expect(screen.getByText("Estoque de insumos e salvamento corrigido")).toBeInTheDocument();
-    expect(screen.getByText("Estoque de ribbons e etiquetas")).toBeInTheDocument();
-    expect(screen.getByText("Categorias no filtro certo")).toBeInTheDocument();
-    expect(screen.getByText("Salvar produto de verdade")).toBeInTheDocument();
-    expect(screen.getByText("Serviço em garantia a R$ 0,00")).toBeInTheDocument();
+    expect(screen.getByText("Atualização pelo GitHub e cadastro na empresa")).toBeInTheDocument();
+    expect(screen.getByText("Verificação no GitHub")).toBeInTheDocument();
+    expect(screen.getByText("Instalar só no botão")).toBeInTheDocument();
+    expect(screen.getByText("Cadastro na empresa da sessão")).toBeInTheDocument();
+    expect(screen.getByText(/Versão 0\.5\.5/)).toBeInTheDocument();
   });
 
   it("registra a confirmação e não reaparece na mesma versão", () => {
