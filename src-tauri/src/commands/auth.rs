@@ -8,7 +8,7 @@ use chrono::{DateTime, Duration, Utc};
 use keyring::Entry;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
-use sqlx::{FromRow, Row};
+use sqlx::{FromRow, PgPool, Row};
 use std::collections::{BTreeSet, HashMap};
 use native_tls::TlsConnector;
 use tokio_postgres::NoTls;
@@ -569,6 +569,26 @@ pub fn require_sensitive_access() -> Result<SecurityProfileSummary, String> {
     };
     touch_sensitive_access()?;
     Ok(profile)
+}
+
+/// Resolve a empresa exclusivamente a partir do perfil atualmente autenticado.
+/// Valores recebidos da interface nunca devem escolher o tenant de uma escrita.
+pub async fn require_active_session_company_id(pool: &PgPool) -> Result<i32, String> {
+    let profile = require_sensitive_access()?;
+    sqlx::query_scalar(
+        "SELECT e.id
+         FROM security_profiles p
+         JOIN empresas e ON e.id = p.empresa_id AND LOWER(e.status) = 'ativo'
+         WHERE p.id = $1 AND p.ativo = true",
+    )
+    .bind(profile.id)
+    .fetch_optional(pool)
+    .await
+    .map_err(|error| format!("Erro ao identificar a empresa do perfil autenticado: {}", error))?
+    .ok_or_else(|| {
+        "O perfil autenticado não está vinculado a uma empresa ativa. Vincule uma empresa ao perfil antes de continuar."
+            .to_string()
+    })
 }
 
 pub fn require_permission(permission: &str) -> Result<SecurityProfileSummary, String> {
