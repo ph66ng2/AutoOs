@@ -1,0 +1,1 @@
+0.5.5: o AutoOS verifica atualizações no GitHub. A tela mostra se esta já é a versão mais recente ou se a consulta falhou. A instalação só começa em Baixar e instalar. Cadastros novos de cliente e equipamento exigem a empresa da sessão.
