@@ -228,6 +228,22 @@ export function findWindowsUpdaterArtifact(files, { stat = statSync } = {}) {
   );
 }
 
+export function readReleaseNotes(root, env = process.env) {
+  const fromEnv = String(env.AUTOOS_RELEASE_NOTES || "").trim();
+  if (fromEnv) {
+    return fromEnv.replace(/\\n/g, "\n");
+  }
+  try {
+    const text = readFileSync(path.join(root, "updater-notes.txt"), "utf8").trim();
+    if (text) {
+      return text;
+    }
+  } catch {
+    // Sem arquivo, o manifesto usa o texto padrão.
+  }
+  return "Veja as notas de release no GitHub.";
+}
+
 export function buildManifest({
   version,
   tag,
@@ -358,6 +374,7 @@ export function generateUpdateManifest({
   const { installerPath, signaturePath } = findWindowsUpdaterArtifact(files);
   const artifactName = path.basename(installerPath);
   const signature = readFileSync(signaturePath, "utf8").trim();
+  const notes = readReleaseNotes(cwd, env);
   const manifest = validateManifest(
     buildManifest({
       version: checked.version,
@@ -365,6 +382,7 @@ export function generateUpdateManifest({
       repository,
       artifactName,
       signature,
+      notes,
       now,
     }),
     {

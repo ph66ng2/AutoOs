@@ -99,6 +99,17 @@ jobs:
           AUTOOS_DATABASE_URL: ${{ secrets.AUTOOS_DATABASE_URL }}
         run: cargo run --manifest-path src-tauri/Cargo.toml --locked --quiet --bin release_database_check
 
+      - name: Ler notas da tela de atualização
+        id: notes
+        shell: bash
+        run: |
+          delimiter="NOTES_EOF_$(date +%s)"
+          {
+            echo "body<<${delimiter}"
+            cat updater-notes.txt
+            echo "${delimiter}"
+          } >> "$GITHUB_OUTPUT"
+
       - name: Build e criar Release em rascunho
         uses: tauri-apps/tauri-action@v0
         env:
@@ -111,8 +122,7 @@ jobs:
         with:
           tagName: ${{ steps.version.outputs.tag }}
           releaseName: 'Release ${{ steps.version.outputs.tag }}'
-          releaseBody: |
-            Veja os assets abaixo para baixar o instalador Windows.
+          releaseBody: ${{ steps.notes.outputs.body }}
           releaseDraft: true
           prerelease: false
           includeUpdaterJson: false
@@ -131,6 +141,8 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ steps.version.outputs.tag }}
+          name: Release ${{ steps.version.outputs.tag }}
+          body: ${{ steps.notes.outputs.body }}
           files: latest.json
           draft: false
           make_latest: true
