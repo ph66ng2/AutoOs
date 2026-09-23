@@ -30,6 +30,7 @@ function storedSession(): SaasSession {
     refreshToken: "refresh-old",
     expiresAt: 1_900_000_000,
     identity: { userId: USER_ID, companyId: COMPANY_ID, profileId: PROFILE_ID, email: "admin@example.com" },
+    profile: { id: PROFILE_ID, name: "Admin AutoOS", role: "ADMIN", permissions: [] },
   };
 }
 
@@ -45,6 +46,10 @@ function harness(initial: SaasSession | null = null) {
         email: "Admin@Example.com",
         app_metadata: { company_id: COMPANY_ID, profile_id: PROFILE_ID, profile_role: "ADMIN" },
       },
+      error: null,
+    }),
+    getCurrentProfile: vi.fn().mockResolvedValue({
+      profile: { profile_id: PROFILE_ID, empresa_id: COMPANY_ID, nome: "Admin AutoOS", role: "ADMIN", permissions: [] },
       error: null,
     }),
     signOutLocal: vi.fn().mockResolvedValue({ error: null }),
@@ -91,20 +96,36 @@ describe("DefaultSaasAuthService", () => {
     const session = await service.login(" Admin@Example.com ", "password-not-persisted");
     expect(port.signInWithPassword).toHaveBeenCalledWith("admin@example.com", "password-not-persisted");
     expect(port.getClaims).toHaveBeenCalledWith("access-new");
+    expect(port.getCurrentProfile).toHaveBeenCalledWith("access-new");
     expect(session.identity).toEqual({ userId: USER_ID, companyId: COMPANY_ID, profileId: PROFILE_ID, email: "admin@example.com" });
+    expect(session.profile).toEqual({ id: PROFILE_ID, name: "Admin AutoOS", role: "ADMIN", permissions: [] });
     expect(store.save).toHaveBeenCalledWith(session);
     expect(port.registerDevice).toHaveBeenCalledWith("access-new", "refresh-new", "d0000000-0000-4000-8000-000000000001");
     expect(JSON.stringify(session)).not.toContain("password-not-persisted");
   });
 
-  it("recusa sessão quando perfil não é ADMIN", async () => {
+  it("resolve automaticamente o perfil individual ativo e ignora claims de perfil do cliente", async () => {
     const { service, port, store } = harness();
     vi.mocked(port.getClaims).mockResolvedValue({
-      claims: { sub: USER_ID, email: "admin@example.com", app_metadata: { company_id: COMPANY_ID, profile_id: PROFILE_ID, profile_role: "CUSTOM" } },
+      claims: { sub: USER_ID, email: "tecnico@example.com", app_metadata: { company_id: "d0000000-0000-4000-8000-000000000001", profile_id: "d0000000-0000-4000-8000-000000000002", profile_role: "ADMIN" } },
       error: null,
     });
+    vi.mocked(port.getCurrentProfile).mockResolvedValue({
+      profile: { profile_id: PROFILE_ID, empresa_id: COMPANY_ID, nome: "Técnica", role: "TECNICO", permissions: ["EQUIPAMENTOS_VISUALIZAR"] },
+      error: null,
+    });
+    const session = await service.login("tecnico@example.com", "password");
+    expect(session.identity).toEqual({ userId: USER_ID, companyId: COMPANY_ID, profileId: PROFILE_ID, email: "tecnico@example.com" });
+    expect(session.profile).toEqual({ id: PROFILE_ID, name: "Técnica", role: "TECNICO", permissions: ["EQUIPAMENTOS_VISUALIZAR"] });
+    expect(store.save).toHaveBeenCalledWith(session);
+  });
+
+  it("nega perfil inexistente/inativo retornado pela consulta live", async () => {
+    const { service, port, store } = harness();
+    vi.mocked(port.getCurrentProfile).mockResolvedValue({ profile: null, error: null });
     await expect(service.login("admin@example.com", "password")).rejects.toMatchObject({ code: "account_unavailable" });
     expect(store.save).not.toHaveBeenCalled();
+    expect(port.registerDevice).not.toHaveBeenCalled();
   });
 
   it("não libera o app com senha incorreta", async () => {

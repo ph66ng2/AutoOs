@@ -4,13 +4,13 @@ import { Button } from "@/components/ui/button";
 import { BootSplashGate } from "@/components/BootSplashGate";
 import { useBootUi } from "@/components/BootUi";
 import { SaasLoginScreen } from "@/components/SaasLoginScreen";
-import { SaasProfileSelector } from "@/components/SaasProfileSelector";
+import { SaasProfilePinGate } from "@/components/SaasProfilePinGate";
 import { SaasOperationalShell } from "@/components/SaasOperationalShell";
 import { useSaasAuth } from "@/hooks/useSaasAuth";
-import type { SaasAuthState, SaasOperationalProfile } from "@/types/saas-auth";
+import type { SaasAuthState } from "@/types/saas-auth";
 
 export function SaasApp() {
-  const { state, retry, lock, signOut, removeThisDevice } = useSaasAuth();
+  const { state, retry, lock, unlock, signOut, removeThisDevice } = useSaasAuth();
   const { openingComplete, completeOpening } = useBootUi();
   const [bootProgress, setBootProgress] = useState(8);
 
@@ -58,6 +58,7 @@ export function SaasApp() {
       state={state}
       retry={retry}
       lock={lock}
+      unlock={unlock}
       signOut={signOut}
       confirmDeviceRemoval={confirmDeviceRemoval}
     />
@@ -68,21 +69,24 @@ function SaasAppBody({
   state,
   retry,
   lock,
+  unlock,
   signOut,
   confirmDeviceRemoval,
 }: {
   state: SaasAuthState;
   retry: () => Promise<void>;
   lock: () => Promise<void>;
+  unlock: () => void;
   signOut: () => Promise<void>;
   confirmDeviceRemoval: () => void;
 }) {
-  const [profileUnlocked, setProfileUnlocked] = useState(false);
-  const [operationalProfile, setOperationalProfile] = useState<SaasOperationalProfile | null>(null);
+  const [unlockedIdentityKey, setUnlockedIdentityKey] = useState<string | null>(null);
+  const identityKey = state.kind === "authenticated" || state.kind === "locked"
+    ? `${state.session.identity.userId}:${state.session.identity.companyId}:${state.session.identity.profileId}`
+    : null;
   useEffect(() => {
-    setProfileUnlocked(false);
-    setOperationalProfile(null);
-  }, [state.kind === "authenticated" ? state.session.identity.profileId : null]);
+    if (!identityKey) setUnlockedIdentityKey(null);
+  }, [identityKey]);
   if (state.kind === "booting") {
     return (
       <main role="status" className="fixed inset-0 flex items-center justify-center bg-slate-950 text-slate-300">
@@ -93,7 +97,16 @@ function SaasAppBody({
 
   if (state.kind === "signed_out") return <SaasLoginScreen notice={state.message} />;
   if (state.kind === "expired") return <SaasLoginScreen initialEmail={state.email} notice={state.message} />;
-  if (state.kind === "locked") return <SaasLoginScreen notice="Aplicativo bloqueado. O painel foi ocultado e sua sessão protegida permanece somente no cofre desta máquina." />;
+  if (state.kind === "locked") {
+    return <SaasProfilePinGate
+      key={identityKey ?? "locked"}
+      profile={state.session.profile}
+      session={state.session}
+      locked
+      onUnlocked={() => { setUnlockedIdentityKey(identityKey); unlock(); }}
+      onSignOut={() => { setUnlockedIdentityKey(null); void signOut(); }}
+    />;
+  }
 
   if (state.kind === "offline_recoverable") {
     return (
@@ -110,15 +123,20 @@ function SaasAppBody({
     );
   }
 
-  if (!profileUnlocked) {
-    return <SaasProfileSelector session={state.session} onUnlocked={(profile) => { setOperationalProfile(profile); setProfileUnlocked(true); }} />;
+  if (unlockedIdentityKey !== identityKey) {
+    return <SaasProfilePinGate
+      key={identityKey ?? "session"}
+      profile={state.session.profile}
+      session={state.session}
+      onUnlocked={() => setUnlockedIdentityKey(identityKey)}
+      onSignOut={() => { setUnlockedIdentityKey(null); void signOut(); }}
+    />;
   }
 
-  if (!operationalProfile) return <SaasProfileSelector session={state.session} onUnlocked={(profile) => { setOperationalProfile(profile); setProfileUnlocked(true); }} />;
   return <SaasOperationalShell
     session={state.session}
-    profile={operationalProfile}
-    onLock={() => { setProfileUnlocked(false); setOperationalProfile(null); void lock(); }}
+    profile={state.session.profile}
+    onLock={() => { setUnlockedIdentityKey(null); void lock(); }}
     onSignOut={() => void signOut()}
     onRemoveDevice={confirmDeviceRemoval}
   />;
