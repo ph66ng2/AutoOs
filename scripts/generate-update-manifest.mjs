@@ -4,7 +4,11 @@ import { fileURLToPath } from "node:url";
 
 export const DEFAULT_REPOSITORY = "ph66ng2/AutoOs";
 export const UPDATER_PLATFORM = "windows-x86_64";
+export const HOMOLOG_RELEASE_TAG = "updater-homolog";
+export const PRODUCTION_LATEST_ENDPOINT = `https://github.com/${DEFAULT_REPOSITORY}/releases/latest/download/latest.json`;
+export const HOMOLOG_ENDPOINT = `https://github.com/${DEFAULT_REPOSITORY}/releases/download/${HOMOLOG_RELEASE_TAG}/latest.json`;
 const SEMVER = /^[0-9]+\.[0-9]+\.[0-9]+$/;
+const DATABASE_ENV_KEYS = ["AUTOOS_DATABASE_URL", "DATABASE_URL", "COMPILE_TIME_DATABASE_URL"];
 
 export function normalizeVersion(raw) {
   return String(raw || "")
@@ -90,6 +94,77 @@ export function assertUpdaterPublicKey(pubkey) {
     );
   }
   return pubkey;
+}
+
+export function resolveUpdaterChannel(env = process.env) {
+  const channel = String(env.AUTOOS_UPDATER_CHANNEL || "production").trim().toLowerCase();
+  if (channel !== "production" && channel !== "homolog") {
+    throw new Error(`Canal de updater desconhecido: ${channel}. Use production ou homolog.`);
+  }
+  return channel;
+}
+
+export function releaseTagFor(version, channel) {
+  return channel === "homolog" ? HOMOLOG_RELEASE_TAG : `v${version}`;
+}
+
+export function assertHomologIsolation(env = process.env) {
+  if (resolveUpdaterChannel(env) !== "homolog") {
+    throw new Error("A trava de isolamento só vale para o canal homolog.");
+  }
+  if (String(env.AUTOOS_HOMOLOG_CONFIRMATION || "") !== "HOMOLOG") {
+    throw new Error("Confirmação inválida. Digite HOMOLOG para publicar no canal isolado.");
+  }
+  const present = DATABASE_ENV_KEYS.filter((key) => String(env[key] || "").trim());
+  if (present.length > 0) {
+    throw new Error(
+      `O canal de homologação recusou variável de banco (${present.join(", ")}). O instalador não pode sair conectado a um banco.`,
+    );
+  }
+}
+
+export function assertPublishTarget({ channel, tag, makeLatest, prerelease }) {
+  if (channel === "homolog") {
+    if (tag !== HOMOLOG_RELEASE_TAG) {
+      throw new Error("Homologação só publica na tag updater-homolog.");
+    }
+    if (String(makeLatest) !== "false") {
+      throw new Error("Homologação recusou make_latest diferente de false.");
+    }
+    if (String(prerelease) !== "true") {
+      throw new Error("Homologação precisa ser prerelease para não ocupar o latest de produção.");
+    }
+    return;
+  }
+  if (tag === HOMOLOG_RELEASE_TAG) {
+    throw new Error("O canal production não pode publicar na tag updater-homolog.");
+  }
+}
+
+export function assertHomologWorkflow(source) {
+  const text = String(source || "");
+  if (/^\s*(push|pull_request|release):/m.test(text)) {
+    throw new Error("O workflow de homologação só pode ser workflow_dispatch.");
+  }
+  if (!text.includes("workflow_dispatch:")) {
+    throw new Error("O workflow de homologação precisa de workflow_dispatch.");
+  }
+  if (!text.includes(HOMOLOG_RELEASE_TAG) || !text.includes("src-tauri/tauri.homolog.conf.json")) {
+    throw new Error("O workflow de homologação precisa da tag isolada e do config de endpoint.");
+  }
+  if (!/make_latest:\s*false/.test(text) || /make_latest:\s*true/.test(text)) {
+    throw new Error("O workflow de homologação precisa de make_latest: false.");
+  }
+  if (!/prerelease:\s*true/.test(text)) {
+    throw new Error("O workflow de homologação precisa ser prerelease.");
+  }
+  if (/releases\/latest/.test(text) || DATABASE_ENV_KEYS.some((key) => text.includes(key))) {
+    throw new Error("O workflow de homologação não pode apontar para latest nem para banco.");
+  }
+  if (!text.includes("HOMOLOG")) {
+    throw new Error("O workflow de homologação precisa da confirmação HOMOLOG.");
+  }
+  return true;
 }
 
 export function assertSigningSecrets(env = process.env) {
@@ -219,6 +294,15 @@ export function validateManifest(manifest, {
   if (/\.sig$/i.test(platform.url)) {
     throw new Error("URL do manifesto aponta para o arquivo .sig em vez do instalador.");
   }
+  if (String(platform.url).includes("/releases/latest/")) {
+    throw new Error("URL do manifesto não pode usar /releases/latest/.");
+  }
+  if (expectedTag === HOMOLOG_RELEASE_TAG && !String(platform.url).includes(`/releases/download/${HOMOLOG_RELEASE_TAG}/`)) {
+    throw new Error("Manifesto de homologação precisa apontar para a tag updater-homolog.");
+  }
+  if (expectedTag && expectedTag !== HOMOLOG_RELEASE_TAG && String(platform.url).includes(`/releases/download/${HOMOLOG_RELEASE_TAG}/`)) {
+    throw new Error("O canal production não pode publicar na tag updater-homolog.");
+  }
   return manifest;
 }
 
@@ -244,9 +328,14 @@ export function checkReleaseVersions({
   if (!tauri.createUpdaterArtifacts) {
     throw new Error("bundle.createUpdaterArtifacts precisa estar ativo para gerar .sig.");
   }
+  const channel = resolveUpdaterChannel(env);
+  if (channel === "homolog") {
+    assertHomologIsolation(env);
+  }
   return {
     version: releaseVersion,
-    tag: `v${releaseVersion}`,
+    tag: releaseTagFor(releaseVersion, channel),
+    channel,
     pubkeyConfigured: true,
   };
 }
@@ -302,6 +391,17 @@ function writeGithubOutput(values, env = process.env) {
 }
 
 export function runCli(argv = process.argv.slice(2), env = process.env, cwd = process.cwd()) {
+  if (argv.includes("--assert-homolog-publish")) {
+    assertHomologIsolation(env);
+    assertPublishTarget({
+      channel: "homolog",
+      tag: HOMOLOG_RELEASE_TAG,
+      makeLatest: env.AUTOOS_MAKE_LATEST,
+      prerelease: env.AUTOOS_PRERELEASE,
+    });
+    console.log("Publicação de homologação isolada do latest de produção.");
+    return { channel: "homolog", tag: HOMOLOG_RELEASE_TAG };
+  }
   const checkOnly = argv.includes("--check-versions");
   const skipSigning = argv.includes("--skip-signing-check");
   const checked = checkReleaseVersions({ cwd, env });

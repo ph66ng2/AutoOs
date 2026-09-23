@@ -8,6 +8,7 @@
     "build": "tsc && vite build",
     "preview": "vite preview",
     "tauri": "tauri",
+    "tauri:build:homolog": "tauri build --config src-tauri/tauri.homolog.conf.json --bundles nsis",
     "test": "vitest",
     "test:ui": "vitest --ui",
     "test:run": "vitest run && npm run test:updater",
