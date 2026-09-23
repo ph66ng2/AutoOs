@@ -1,4 +1,4 @@
--- Sessões efêmeras para o upload de fotos pelo celular.
+-- Sessões efêmeras para o upload de fotos pelo celular (migration 0021).
 --
 -- O token nunca é persistido em texto puro: apenas o SHA-256 é armazenado.
 -- A futura Edge Function valida o hash e grava objetos em staging privado; esta
