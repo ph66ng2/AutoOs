@@ -532,7 +532,7 @@ function QuickEntry({ onBack }: { onBack: () => void }) {
           client.nome || client.nome_fantasia || client.razao_social,
         cliente_telefone: client.telefone,
         cliente_email: client.email,
-        responsavel_contato_id: responsavel?.id || undefined,
+        responsavel_contato_id: typeof responsavel?.id === "number" ? responsavel.id : undefined,
         responsavel_nome: responsavel?.nome || undefined,
         responsavel_email: responsavel?.email || undefined,
         responsavel_telefone: responsavel?.telefone || undefined,

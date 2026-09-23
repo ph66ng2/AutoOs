@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useState } from "react";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { Edit, Plus, RefreshCw, Search, Trash2, Users } from "lucide-react";
+import { Edit, Plus, RefreshCw, Search, Trash2, UserRound, Users } from "lucide-react";
 import { useForm } from "react-hook-form";
 import { ClienteFormularioCampos } from "@/components/clientes/ClienteFormularioCampos";
+import { ClienteContatosPanel } from "@/components/clientes/ClienteContatosPanel";
 import { documentoExibicaoCliente, nomeExibicaoCliente } from "@/components/clientes/cliente-display-utils";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -35,6 +36,7 @@ export default function SaasClientesPage() {
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [editando, setEditando] = useState<Cliente | null>(null);
   const [deletando, setDeletando] = useState<Cliente | null>(null);
+  const [contatosCliente, setContatosCliente] = useState<Cliente | null>(null);
   const [salvando, setSalvando] = useState(false);
   const [buscandoCep, setBuscandoCep] = useState(false);
   const [tipoPessoa, setTipoPessoa] = useState<"PF" | "PJ" | null>(null);
@@ -153,7 +155,13 @@ export default function SaasClientesPage() {
     </div>
     {(error || (!dialogOpen && operationError)) && <ErrorAlert variant="error" context="Clientes" action="Operação não concluída" message={operationError || error || ""} />}
     <Card><CardContent className="pt-6"><div className="flex gap-3"><div className="relative flex-1"><Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" /><Input className="pl-9" value={busca} onChange={(event) => setBusca(event.target.value)} placeholder="Buscar por nome, documento, telefone ou e-mail" /></div><Button aria-label="Atualizar clientes" variant="outline" size="icon" onClick={() => void recarregar()}><RefreshCw className="h-4 w-4" /></Button></div></CardContent></Card>
-    <Card><CardContent className="pt-6">{loading ? <div className="py-12 text-center text-muted-foreground">Carregando clientes…</div> : clientes.length === 0 ? <div className="py-12 text-center text-muted-foreground"><Users className="mx-auto mb-3 h-12 w-12 opacity-30" /><p>Nenhum cliente encontrado.</p></div> : <div className="overflow-x-auto"><Table><TableHeader><TableRow><TableHead>Cliente</TableHead><TableHead>Documento</TableHead><TableHead>Contato</TableHead><TableHead className="w-24 text-right">Ações</TableHead></TableRow></TableHeader><TableBody>{clientes.map((cliente) => <TableRow key={cliente.id}><TableCell><p className="font-medium">{nomeExibicaoCliente(cliente)}</p>{cliente.razao_social && <p className="text-xs text-muted-foreground">{cliente.razao_social}</p>}</TableCell><TableCell>{documentoExibicaoCliente(cliente)}</TableCell><TableCell><p>{formatarTelefone(cliente.telefone || "")}</p><p className="text-xs text-muted-foreground">{cliente.email || "—"}</p></TableCell><TableCell><div className="flex justify-end gap-1"><Button aria-label={`Editar ${nomeExibicaoCliente(cliente)}`} variant="ghost" size="icon" onClick={() => abrirEditar(cliente)}><Edit className="h-4 w-4" /></Button><Button aria-label={`Excluir ${nomeExibicaoCliente(cliente)}`} variant="ghost" size="icon" className="text-destructive hover:text-destructive" onClick={() => { setDeletando(cliente); setDeleteOpen(true); }}><Trash2 className="h-4 w-4" /></Button></div></TableCell></TableRow>)}</TableBody></Table></div>}</CardContent></Card>
+    <Card><CardContent className="pt-6">{loading ? <div className="py-12 text-center text-muted-foreground">Carregando clientes…</div> : clientes.length === 0 ? <div className="py-12 text-center text-muted-foreground"><Users className="mx-auto mb-3 h-12 w-12 opacity-30" /><p>Nenhum cliente encontrado.</p></div> : <div className="overflow-x-auto"><Table><TableHeader><TableRow><TableHead>Cliente</TableHead><TableHead>Documento</TableHead><TableHead>Contato</TableHead><TableHead className="w-24 text-right">Ações</TableHead></TableRow></TableHeader><TableBody>{clientes.map((cliente) => <TableRow key={cliente.id}><TableCell><p className="font-medium">{nomeExibicaoCliente(cliente)}</p>{cliente.razao_social && <p className="text-xs text-muted-foreground">{cliente.razao_social}</p>}</TableCell><TableCell>{documentoExibicaoCliente(cliente)}</TableCell><TableCell><p>{formatarTelefone(cliente.telefone || "")}</p><p className="text-xs text-muted-foreground">{cliente.email || "—"}</p></TableCell><TableCell><div className="flex justify-end gap-1"><Button aria-label={`Contatos de ${nomeExibicaoCliente(cliente)}`} variant="ghost" size="icon" onClick={() => setContatosCliente(cliente)}><UserRound className="h-4 w-4" /></Button><Button aria-label={`Editar ${nomeExibicaoCliente(cliente)}`} variant="ghost" size="icon" onClick={() => abrirEditar(cliente)}><Edit className="h-4 w-4" /></Button><Button aria-label={`Excluir ${nomeExibicaoCliente(cliente)}`} variant="ghost" size="icon" className="text-destructive hover:text-destructive" onClick={() => { setDeletando(cliente); setDeleteOpen(true); }}><Trash2 className="h-4 w-4" /></Button></div></TableCell></TableRow>)}</TableBody></Table></div>}</CardContent></Card>
+    <Dialog open={Boolean(contatosCliente)} onOpenChange={(open) => { if (!open) setContatosCliente(null); }}>
+      <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-2xl">
+        <DialogHeader><DialogTitle>Contatos do cliente</DialogTitle><DialogDescription>Gerencie os responsáveis e canais de contato vinculados a este cliente.</DialogDescription></DialogHeader>
+        {contatosCliente && <ClienteContatosPanel cliente={contatosCliente} />}
+      </DialogContent>
+    </Dialog>
     <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
       <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-2xl">
         <DialogHeader>

@@ -3369,7 +3369,7 @@
     {
       "id": "AO-CLI-003",
       "title": "Permitir recadastro de cliente após exclusão lógica no SaaS",
-      "status": "ready",
+      "status": "merged",
       "blockedBy": [],
       "objective": "Preservar clientes inativos sem bloquear novo cadastro com o mesmo CPF ou CNPJ na própria empresa.",
       "context": "A master usa exclusão lógica. A feature já tem índices parciais para o backend interno, mas o Supabase SaaS ainda usa UNIQUE completo em (empresa_id, documento) e (empresa_id, cpf_cnpj), incluindo registros inativos.",
@@ -3388,6 +3388,29 @@
       },
       "likelyFiles": ["supabase/migrations/", "supabase/schema.sql", "supabase/tests/clientes-soft-delete-uniqueness.sql"],
       "risks": ["Derrubar unicidade antes dos índices abre janela para duplicidade ativa.", "Índice sem empresa_id mistura tenants.", "Editar migration já aplicada quebra histórico."]
+    },
+    {
+      "id": "AO-CLI-ONLINE-004",
+      "title": "Restaurar contatos de Clientes no SaaS com contrato multi-tenant",
+      "status": "review",
+      "blockedBy": ["AO-CLI-003"],
+      "objective": "Trazer os contatos de Clientes da master para o SaaS, preservando a interface, os UUIDs e o isolamento por empresa.",
+      "context": "A página SaaS simplificada não inclui Contatos; o componente da master só aceita IDs numéricos e chama Tauri. O Staging não possui cliente_contatos, embora o schema versionado já o descreva. Este ticket integra o lote de paridade operacional, promovido apenas após homologação conjunta.",
+      "expectedBehavior": "Após login SaaS, listar, cadastrar, editar e inativar contatos de um cliente com o painel da master e persistência Online isolada por tenant.",
+      "scope": ["Migration aditiva para cliente_contatos UUID com FK composta, RLS, grants e índice, sem DDL remoto.", "Adapter Online com empresa derivada da sessão e preservação do Tauri interno.", "Reutilizar o painel visual da master na página SaaS e testar UUID/isolamento."],
+      "outOfScope": ["Status, verificação, orçamento, comunicações e fotos de Equipamentos.", "DDL remoto, promoção automática para master ou funções administrativas locais."],
+      "acceptanceCriteria": ["A ação Contatos aparece no SaaS com layout e validações da master.", "UUIDs não são convertidos e nenhuma operação SaaS cai no Tauri.", "RLS e FK composta bloqueiam referência cruzada entre tenants.", "Erros não descartam o formulário."],
+      "tests": ["Adapter HTTP sintético para CRUD, UUID, tenant e erros.", "UI SaaS e painel Online sem Tauri.", "Lint, build SaaS e suíte frontend."],
+      "testInstructions": {
+        "prerequisites": ["AO-CLI-003 incorporado em origin/feature; shell SaaS já presente no código-base.", "Somente fixtures sintéticas."],
+        "steps": ["Comparar painel com master.", "Implementar migration e adapter.", "Rodar testes sem gravar remotamente."],
+        "expectedResultAndEvidence": ["CRUD com UUID em mocks e UI existente.", "Tenant derivado da sessão e FK/RLS no SQL."],
+        "dataImpact": "Migration apenas em código; sem escrita remota.",
+        "cleanupAndRollback": ["Não alterar dados reais.", "Não editar migrations aplicadas nem promover para produção."],
+        "stagingRestrictions": "Somente inspeção de metadados; sem DDL ou dados reais."
+      },
+      "likelyFiles": ["src/pages/SaasClientesPage.tsx", "src/components/clientes/ClienteContatosPanel.tsx", "src/lib/data/cliente-contatos-repository.ts", "src/types/index.ts", "supabase/migrations/"],
+      "risks": ["Schema Staging divergente.", "IDs legados numéricos.", "FK simples pode permitir referência cruzada."]
     }
   ]
 }

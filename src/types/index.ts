@@ -349,9 +349,9 @@ export interface Verificacao {
 
 /** Contato operacional pertencente a um cliente dentro de uma empresa. */
 export interface ClienteContato {
-  id?: number;
-  empresa_id: number;
-  cliente_id: number;
+  id?: ClienteId;
+  empresa_id: number | string;
+  cliente_id: ClienteId;
   nome: string;
   email?: string;
   telefone?: string;

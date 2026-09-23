@@ -16,7 +16,8 @@ import {
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { ErrorAlert } from "@/components/ui/error-alert";
 import { useNotification } from "@/hooks/useNotification";
-import { db } from "@/lib/db";
+import { carregarRepositorioClienteContatos } from "@/lib/data/cliente-contatos-repository";
+import { IS_SAAS_BUILD } from "@/lib/runtime-mode";
 import {
   clienteContatoSchema,
   formatarTelefone,
@@ -45,7 +46,7 @@ export function ClienteContatosPanel({ cliente, empresaId }: ClienteContatosPane
   });
 
   async function carregarContatos() {
-    if (typeof cliente.id !== "number" || !empresaId) {
+    if (!cliente.id || (!IS_SAAS_BUILD && !empresaId)) {
       setContatos([]);
       setErro(empresaId ? "Cliente sem identificador para listar contatos." : "Empresa não identificada para listar contatos.");
       return;
@@ -53,7 +54,8 @@ export function ClienteContatosPanel({ cliente, empresaId }: ClienteContatosPane
     setCarregando(true);
     setErro(null);
     try {
-      setContatos(await db.listarClienteContatos(cliente.id, empresaId));
+      const repository = await carregarRepositorioClienteContatos();
+      setContatos(await repository.listar(cliente.id, empresaId));
     } catch (cause) {
       setErro(String(cause));
     } finally {
@@ -84,10 +86,10 @@ export function ClienteContatosPanel({ cliente, empresaId }: ClienteContatosPane
   }
 
   async function salvarContato(data: ClienteContatoFormData) {
-    if (typeof cliente.id !== "number" || !empresaId) return;
+    if (!cliente.id || (!IS_SAAS_BUILD && !empresaId)) return;
     setSalvando(true);
     const input: ClienteContatoInput = {
-      empresa_id: empresaId,
+      empresa_id: empresaId ?? "",
       cliente_id: cliente.id,
       nome: data.nome.trim(),
       email: data.email.trim() || undefined,
@@ -96,10 +98,12 @@ export function ClienteContatosPanel({ cliente, empresaId }: ClienteContatosPane
     };
     try {
       if (editando?.id) {
-        await db.atualizarClienteContato(editando.id, input);
+        const repository = await carregarRepositorioClienteContatos();
+        await repository.atualizar(editando.id, input);
         success("Clientes", "Contato atualizado.", "Contatos");
       } else {
-        await db.criarClienteContato(input);
+        const repository = await carregarRepositorioClienteContatos();
+        await repository.criar(input);
         success("Clientes", "Contato cadastrado.", "Contatos");
       }
       setDialogOpen(false);
@@ -112,10 +116,11 @@ export function ClienteContatosPanel({ cliente, empresaId }: ClienteContatosPane
   }
 
   async function confirmarInativacao() {
-    if (!inativando?.id || !empresaId) return;
+    if (!inativando?.id || (!IS_SAAS_BUILD && !empresaId)) return;
     setSalvando(true);
     try {
-      await db.inativarClienteContato(inativando.id, empresaId);
+      const repository = await carregarRepositorioClienteContatos();
+      await repository.inativar(inativando.id, empresaId);
       setInativando(null);
       await carregarContatos();
       success("Clientes", "Contato inativado.", "Contatos");
@@ -137,12 +142,12 @@ export function ClienteContatosPanel({ cliente, empresaId }: ClienteContatosPane
             Empresa/cliente vinculado: <strong>{nomeExibicaoCliente(cliente)}</strong>
           </p>
         </div>
-        <Button type="button" size="sm" onClick={abrirNovo} disabled={!cliente.id || !empresaId}>
+        <Button type="button" size="sm" onClick={abrirNovo} disabled={!cliente.id || (!IS_SAAS_BUILD && !empresaId)}>
           <Plus className="mr-1 h-4 w-4" /> Novo contato
         </Button>
       </div>
 
-      {erro && <ErrorAlert variant="error" context="Clientes" message={erro} action={empresaId ? "Carregar contatos" : "Use “Regularizar antigos” na tela de clientes"} />}
+      {erro && <ErrorAlert variant="error" context="Clientes" message={erro} action={IS_SAAS_BUILD || empresaId ? "Carregar contatos" : "Use “Regularizar antigos” na tela de clientes"} />}
       {carregando ? (
         <div className="flex items-center justify-center py-8 text-sm text-muted-foreground">Carregando contatos...</div>
       ) : contatos.length === 0 ? (
