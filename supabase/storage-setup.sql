@@ -1,8 +1,11 @@
 -- ═══════════════════════════════════════════════════════════════════════════════
 -- supabase/storage-setup.sql — Configuração do Storage para imagens de equipamento
 -- ═══════════════════════════════════════════════════════════════════════════════
--- Cria o bucket público (ou privado com políticas de acesso) para armazenar
--- imagens de equipamentos (entrada, saída, verificação).
+-- Cria o bucket privado `equipamento-imagens` para fotos de equipamentos.
+-- O desktop de produção envia e lê os objetos com a service key do keyring
+-- (ou AUTOOS_SUPABASE_URL + AUTOOS_SUPABASE_SERVICE_KEY) e grava em
+-- storage_path a referência `storage:equipamento-imagens/{empresa_id}/{equipamento_id}/{id}.ext`.
+-- empresa_id é o inteiro da tabela equipamentos. O bucket não precisa de leitura pública.
 --
 -- Executar via SQL Editor do Supabase Dashboard ou via CLI:
 --   supabase db push

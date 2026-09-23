@@ -594,7 +594,7 @@ async function adicionarRegistroFotografico(
 
   const imagensPreparadas = imagens.map((imagem) => ({
     ...imagem,
-    dataUrl: imagem.storage_path,
+    dataUrl: imagem.conteudo_data_url || imagem.storage_path,
   }));
 
   for (let inicio = 0; inicio < imagensPreparadas.length; inicio += 2) {

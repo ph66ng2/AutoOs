@@ -180,6 +180,7 @@ export interface EquipamentoImagem {
   ordem: number;
   observacao?: string;
   storage_path: string;
+  conteudo_data_url?: string;
   criado_em?: string;
   atualizado_em?: string;
 }

@@ -434,6 +434,10 @@ pub struct EquipamentoImagemRow {
     pub ordem: i32,
     pub observacao: Option<String>,
     pub storage_path: String,
+    /// Data URL transitória para galeria e PDF. Não é coluna do banco.
+    #[sqlx(default)]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub conteudo_data_url: Option<String>,
     pub criado_em: Option<String>,
     pub atualizado_em: Option<String>,
 }
@@ -616,6 +620,7 @@ pub const EQUIPAMENTO_SELECT: &str = "
     pub const EQUIPAMENTO_IMAGEM_SELECT: &str = "
         SELECT id, equipamento_id, categoria, filename, mime_type,
             tamanho_bytes, largura, altura, ordem, observacao, storage_path,
+            NULL::text as conteudo_data_url,
             criado_em::TEXT as criado_em, atualizado_em::TEXT as atualizado_em
         FROM equipamento_imagens";
 

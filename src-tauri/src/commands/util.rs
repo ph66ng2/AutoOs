@@ -9,6 +9,7 @@ use crate::commands::auth::{
     record_security_event, require_permission, PERMISSION_CONFIG_SMTP, PERMISSION_MANAGE_PROFILES,
 };
 use crate::db::{get_pool, known_migrations, validate_connected_migration_history};
+#[cfg(target_os = "windows")]
 use base64::Engine;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
@@ -1103,14 +1104,7 @@ pub async fn salvar_imagem_equipamento(
     file_name: Option<String>,
     mime_type: Option<String>,
 ) -> Result<String, String> {
-    let bytes = if storage_path.starts_with("data:") {
-        let base64_part = storage_path.split(',').last()
-            .ok_or("Data URL inválido: sem conteúdo base64")?;
-        base64::engine::general_purpose::STANDARD.decode(base64_part)
-            .map_err(|e| format!("Erro ao decodificar base64: {}", e))?
-    } else {
-        return Err("Formato de storage_path não suportado para exportação".to_string());
-    };
+    let bytes = crate::commands::equipamento_imagens::bytes_from_storage_path(&storage_path).await?;
 
     debug!("Salvando imagem de equipamento ({} bytes)", bytes.len());
 

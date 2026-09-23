@@ -106,7 +106,7 @@ export async function imagemPersistidaParaDraft(
     ordem: imagem.ordem,
     observacao: imagem.observacao,
     storage_path: imagem.storage_path,
-    preview_url: imagem.storage_path,
+    preview_url: imagem.conteudo_data_url || imagem.storage_path,
   };
 }
 
