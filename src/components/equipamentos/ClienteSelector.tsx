@@ -24,7 +24,8 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { db } from "@/lib/db";
+import { carregarRepositorioClientes } from "@/lib/data/clientes-repository";
+import { carregarRepositorioEquipamentos } from "@/lib/data/equipamentos-repository";
 import type { Cliente, ClienteId, Equipamento } from "@/types";
 import {
   clienteSchema,
@@ -112,13 +113,18 @@ export function ClienteSelector({
 
   useEffect(() => {
     if (clienteIdInicial && !clienteInicial) {
-      db.buscarCliente(clienteIdInicial).then((c) => {
-        if (c) {
-          setClienteSelecionado(c);
-          setModo("selecionado");
-          onClienteSelecionado(c);
-        }
-      }).catch(() => {});
+      let ativo = true;
+      void carregarRepositorioClientes()
+        .then((repository) => repository.buscar(clienteIdInicial))
+        .then((c) => {
+          if (ativo && c) {
+            setClienteSelecionado(c);
+            setModo("selecionado");
+            onClienteSelecionado(c);
+          }
+        })
+        .catch(() => {});
+      return () => { ativo = false; };
     }
   }, [clienteIdInicial]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -132,7 +138,8 @@ export function ClienteSelector({
     const timeout = setTimeout(async () => {
       setBuscando(true);
       try {
-        const data = await db.listarClientes(termoBusca);
+        const repository = await carregarRepositorioClientes();
+        const data = await repository.listar(termoBusca);
         setResultados(data);
         setDropdownAberto(data.length > 0);
       } catch {
@@ -152,13 +159,16 @@ export function ClienteSelector({
     }
     setCarregandoEquip(true);
     const nome = nomeExibicaoCliente(clienteSelecionado);
-    db.listarEquipamentos(nome).then((todos) => {
+    let ativo = true;
+    void carregarRepositorioEquipamentos().then((repository) => repository.listar(nome)).then((todos) => {
+      if (!ativo) return;
       const doCliente = todos.filter(
         (eq) => eq.cliente_id === clienteSelecionado.id || eq.cliente_nome === nome || eq.cliente_nome === clienteSelecionado.nome
       );
       setEquipamentosCliente(doCliente);
-    }).catch(() => setEquipamentosCliente([]))
-      .finally(() => setCarregandoEquip(false));
+    }).catch(() => { if (ativo) setEquipamentosCliente([]); })
+      .finally(() => { if (ativo) setCarregandoEquip(false); });
+    return () => { ativo = false; };
   }, [clienteSelecionado]);
 
   useEffect(() => {
@@ -256,7 +266,8 @@ export function ClienteSelector({
         ativo: true,
       } as Omit<Cliente, "id">;
 
-      const novoCliente = await db.criarCliente(payload);
+      const repository = await carregarRepositorioClientes();
+      const novoCliente = await repository.criar(payload);
       setClienteSelecionado(novoCliente);
       setModo("selecionado");
       onClienteSelecionado(novoCliente);

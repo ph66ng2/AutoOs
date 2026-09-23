@@ -21,6 +21,73 @@ use commands::types::{
 };
 use commands::verificacoes;
 
+// A migration 0019 impede novos registros sem tenant. Para testar a
+// regularização de dados legados, criamos a fixture em uma transação curta e
+// restauramos o CHECK NOT VALID antes de executar qualquer operação testada.
+async fn insert_legacy_client(
+    pool: &sqlx::PgPool,
+    nome: &str,
+    tipo_pessoa: &str,
+    documento: &str,
+    telefone: &str,
+) -> Result<i32> {
+    let mut tx = pool.begin().await?;
+    sqlx::query("ALTER TABLE clientes DROP CONSTRAINT chk_clientes_empresa_required_new")
+        .execute(&mut *tx)
+        .await?;
+    let id = sqlx::query_scalar(
+        "INSERT INTO clientes (nome, tipo_pessoa, documento, cpf_cnpj, telefone, ativo)
+         VALUES ($1, $2, $3, $3, $4, true) RETURNING id",
+    )
+    .bind(nome)
+    .bind(tipo_pessoa)
+    .bind(documento)
+    .bind(telefone)
+    .fetch_one(&mut *tx)
+    .await?;
+    sqlx::query(
+        "ALTER TABLE clientes ADD CONSTRAINT chk_clientes_empresa_required_new
+         CHECK (empresa_id IS NOT NULL) NOT VALID",
+    )
+    .execute(&mut *tx)
+    .await?;
+    tx.commit().await?;
+    Ok(id)
+}
+
+async fn insert_legacy_equipment(
+    pool: &sqlx::PgPool,
+    serial: &str,
+    defeito: &str,
+    cliente_id: i32,
+    cliente_nome: &str,
+) -> Result<i32> {
+    let mut tx = pool.begin().await?;
+    sqlx::query("ALTER TABLE equipamentos DROP CONSTRAINT chk_equipamentos_empresa_required_new")
+        .execute(&mut *tx)
+        .await?;
+    let id = sqlx::query_scalar(
+        "INSERT INTO equipamentos (serial_number, marca, modelo, tipo, status, defeito_relatado,
+          data_entrada, cliente_id, cliente_nome)
+         VALUES ($1, 'TESTE', 'LEGADO', 'IMPRESSORA', 'RECEBIDO', $2, CURRENT_DATE, $3, $4)
+         RETURNING id",
+    )
+    .bind(serial)
+    .bind(defeito)
+    .bind(cliente_id)
+    .bind(cliente_nome)
+    .fetch_one(&mut *tx)
+    .await?;
+    sqlx::query(
+        "ALTER TABLE equipamentos ADD CONSTRAINT chk_equipamentos_empresa_required_new
+         CHECK (empresa_id IS NOT NULL) NOT VALID",
+    )
+    .execute(&mut *tx)
+    .await?;
+    tx.commit().await?;
+    Ok(id)
+}
+
 #[tokio::main]
 async fn main() -> Result<()> {
     memory_keyring::install();
@@ -68,6 +135,11 @@ async fn main() -> Result<()> {
     .execute(&pool)
     .await
     .context("set company-bound bootstrap profile default failed")?;
+
+    // O CRUD agora deriva o tenant da sessão sensível, inclusive na QA real.
+    auth::unlock_session_without_pin()
+        .await
+        .map_err(|error| anyhow!(error))?;
 
     let cliente = clientes::criar_cliente(ClienteInput {
         empresa_id: Some(empresa_id),
@@ -207,12 +279,20 @@ async fn main() -> Result<()> {
     }
 
     // Regularização em lote: prévia/token, invalidação por concorrência e cadeia conflitante.
-    let legacy_client_id: i32 = sqlx::query_scalar(
-        "INSERT INTO clientes (nome, tipo_pessoa, documento, cpf_cnpj, telefone, ativo) VALUES ($1, 'PJ', $2, $2, '11999990000', true) RETURNING id",
-    ).bind(format!("{} Legado", prefix)).bind(format!("{:014}", Utc::now().timestamp_millis().rem_euclid(100_000_000_000_000))).fetch_one(&pool).await?;
-    let legacy_chain_equipment_id: i32 = sqlx::query_scalar(
-        "INSERT INTO equipamentos (serial_number, marca, modelo, tipo, status, defeito_relatado, data_entrada, cliente_id, cliente_nome) VALUES ($1, 'TESTE', 'LEGADO', 'IMPRESSORA', 'RECEBIDO', $2, CURRENT_DATE, $3, $4) RETURNING id",
-    ).bind(format!("{}-REG", prefix)).bind(format!("{} Defeito legado", prefix)).bind(legacy_client_id).bind(format!("{} Legado", prefix)).fetch_one(&pool).await?;
+    let legacy_client_id = insert_legacy_client(
+        &pool,
+        &format!("{} Legado", prefix),
+        "PJ",
+        &format!("{:014}", Utc::now().timestamp_millis().rem_euclid(100_000_000_000_000)),
+        "11999990000",
+    ).await?;
+    let legacy_chain_equipment_id = insert_legacy_equipment(
+        &pool,
+        &format!("{}-REG", prefix),
+        &format!("{} Defeito legado", prefix),
+        legacy_client_id,
+        &format!("{} Legado", prefix),
+    ).await?;
     sqlx::query("INSERT INTO verificacoes (equipamento_id, tecnico_nome, problema_relatado) VALUES ($1, $2, $3)")
         .bind(legacy_chain_equipment_id).bind(format!("{} Técnico", prefix)).bind(format!("{} Teste", prefix)).execute(&pool).await?;
     sqlx::query("INSERT INTO equipamento_imagens (equipamento_id, categoria, filename, mime_type, tamanho_bytes, ordem, storage_path) VALUES ($1, 'ENTRADA', $2, 'image/jpeg', 1, 0, $3)")
@@ -227,16 +307,13 @@ async fn main() -> Result<()> {
     .bind(format!("{}-conflito@example.test", prefix.to_lowercase()))
     .fetch_one(&pool)
     .await?;
-    let conflicting_client_id: i32 = sqlx::query_scalar(
-        "INSERT INTO clientes (nome, tipo_pessoa, documento, cpf_cnpj, telefone, ativo) VALUES ($1, 'PJ', $2, $2, '11999990002', true) RETURNING id",
-    )
-    .bind(format!("{} Cliente Conflitante", prefix))
-    .bind(format!(
-        "{:014}",
-        (Utc::now().timestamp_millis() + 2).rem_euclid(100_000_000_000_000)
-    ))
-    .fetch_one(&pool)
-    .await?;
+    let conflicting_client_id = insert_legacy_client(
+        &pool,
+        &format!("{} Cliente Conflitante", prefix),
+        "PJ",
+        &format!("{:014}", (Utc::now().timestamp_millis() + 2).rem_euclid(100_000_000_000_000)),
+        "11999990002",
+    ).await?;
     let conflicting_equipment_id: i32 = sqlx::query_scalar(
         "INSERT INTO equipamentos (empresa_id, serial_number, marca, modelo, tipo, status, defeito_relatado, data_entrada, cliente_id, cliente_nome) VALUES ($1, $2, 'TESTE', 'CONFLITO', 'IMPRESSORA', 'RECEBIDO', $3, CURRENT_DATE, $4, $5) RETURNING id",
     )
@@ -257,9 +334,13 @@ async fn main() -> Result<()> {
     let stale_preview = legacy_regularization::previsualizar_regularizacao_legados()
         .await
         .map_err(|e| anyhow!(e))?;
-    let late_client_id: i32 = sqlx::query_scalar(
-        "INSERT INTO clientes (nome, tipo_pessoa, documento, cpf_cnpj, telefone, ativo) VALUES ($1, 'PF', $2, $2, '11999990001', true) RETURNING id",
-    ).bind(format!("{} Tardio", prefix)).bind(format!("{:011}", (Utc::now().timestamp_millis() + 1).rem_euclid(100_000_000_000))).fetch_one(&pool).await?;
+    let late_client_id = insert_legacy_client(
+        &pool,
+        &format!("{} Tardio", prefix),
+        "PF",
+        &format!("{:011}", (Utc::now().timestamp_millis() + 1).rem_euclid(100_000_000_000)),
+        "11999990001",
+    ).await?;
     let stale_result =
         legacy_regularization::executar_regularizacao_legados(stale_preview.token, "2468".into())
             .await;

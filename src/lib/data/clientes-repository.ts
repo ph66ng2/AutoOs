@@ -15,7 +15,7 @@ export interface ClientesRepository {
   deletar(id: ClienteId): Promise<void>;
 }
 
-export type OnlineDataErrorCode = "ONLINE_UNAVAILABLE" | "SESSION_EXPIRED" | "RLS_DENIED" | "INVALID_SESSION";
+export type OnlineDataErrorCode = "ONLINE_UNAVAILABLE" | "SESSION_EXPIRED" | "RLS_DENIED" | "INVALID_SESSION" | "CONFLICT" | "INVALID_DATA";
 
 /** Erro seguro para a UI: nunca inclui URL, token ou payload de autenticação. */
 export class OnlineDataError extends Error {

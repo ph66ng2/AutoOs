@@ -98,7 +98,8 @@ import { formatDatePtBr, formatDateTimeSalvador, todayLocalIsoDate } from "@/lib
 import {
   STATUS_LABELS,
   SENSITIVE_PERMISSIONS,
-  type Equipamento,
+  type Equipamento as EquipamentoBase,
+  type EquipamentoId,
   type EquipamentoHistoricoEvento,
   type EquipamentoImagemCategoria,
   type EquipamentoImagemInput,
@@ -169,8 +170,20 @@ import { PagamentoOrcamentoDialog } from "@/components/equipamentos/PagamentoOrc
 import { FormaPagamentoFields } from "@/components/equipamentos/FormaPagamentoFields";
 import { resolveRecipient, type ResolvedRecipient } from "@/lib/recipient-resolver";
 import { saveRecipientAddress } from "@/lib/recipient-persistence";
+import { IS_SAAS_BUILD } from "@/lib/runtime-mode";
+import { carregarRepositorioClientes } from "@/lib/data/clientes-repository";
+import type { SaasOperationalProfile } from "@/types/saas-auth";
 
-export default function Equipamentos() {
+type Equipamento = EquipamentoBase<number>;
+
+function equipamentoInterno(equipamento: EquipamentoBase<EquipamentoId>): EquipamentoBase<number> {
+  if (typeof equipamento.id !== "number" || (equipamento.empresa_id != null && typeof equipamento.empresa_id !== "number")) {
+    throw new Error("Um equipamento SaaS não pode ser encaminhado a uma operação local.");
+  }
+  return equipamento as EquipamentoBase<number>;
+}
+
+export default function Equipamentos({ operationalProfile }: { operationalProfile?: SaasOperationalProfile } = {}) {
   const [busca, setBusca] = useState("");
   const [statusFiltro, setStatusFiltro] = useState("TODOS");
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -188,7 +201,7 @@ export default function Equipamentos() {
   const [editando, setEditando] = useState<Equipamento | null>(null);
   const [deletando, setDeletando] = useState<Equipamento | null>(null);
   const [selecionado, setSelecionado] = useState<Equipamento | null>(null);
-  const selecionadoIdRef = useRef<number | undefined>();
+  const selecionadoIdRef = useRef<Equipamento["id"]>();
   selecionadoIdRef.current = selecionado?.id;
   const [salvando, setSalvando] = useState(false);
   const [pdfPreview, setPdfPreview] = useState<{
@@ -274,17 +287,31 @@ export default function Equipamentos() {
   } | null>(null);
   const [emailDialogOpen, setEmailDialogOpen] = useState(false);
 
-  const { equipamentos, loading, criar, atualizar, deletar, atualizarStatus, recarregar } =
-    useEquipamentos({ busca: busca || undefined, status: statusFiltro });
+  const {
+    equipamentos: registrosEquipamento,
+    loading,
+    error: erroEquipamentos,
+    criar,
+    atualizar,
+    deletar,
+    atualizarStatus,
+    buscarPorSerial,
+    recarregar,
+  } =
+    useEquipamentos<EquipamentoId>({ busca: busca || undefined, status: statusFiltro });
+  // A página original mantém handlers de DB local para os tickets seguintes;
+  // o runtime SaaS só expõe a lista e o CRUD remoto, preservando UUID sem conversão.
+  const equipamentos = registrosEquipamento as unknown as Equipamento[];
 
   // Hook de automação de status
   const { loading: loadingAutomacao, finalizarVerificacao, marcarComoPronto } =
     useStatusEquipamento();
-  const { ensureSensitiveAccess, status: sensitiveStatus } = useSensitiveAccess();
+  const { ensureSensitiveAccess, status: sensitiveStatus, hasPermission } = useSensitiveAccess({ operationalProfile });
   const location = useLocation();
   const navigate = useNavigate();
 
   useEffect(() => {
+    if (IS_SAAS_BUILD) return;
     const state = location.state as { equipamentoId?: number } | null;
     if (state?.equipamentoId && !detalhesDialogOpen) {
       db.buscarEquipamento(state.equipamentoId)
@@ -298,13 +325,16 @@ export default function Equipamentos() {
     }
   }, [location.state, detalhesDialogOpen]);
 
-  const carregarImagensComPreview = useCallback(async (equipamentoId: number) => {
+  const carregarImagensComPreview = useCallback(async (equipamentoId: EquipamentoId) => {
+    if (IS_SAAS_BUILD) return [];
+    if (typeof equipamentoId !== "number") throw new Error("O ID local do equipamento é inválido.");
     const imagens = await db.listarImagensEquipamento(equipamentoId);
     return Promise.all(imagens.map(imagemPersistidaParaDraft));
   }, []);
 
   // ─── Event listener: photo-received ────────────────────
   useEffect(() => {
+    if (IS_SAAS_BUILD) return;
     let unlisten: (() => void) | undefined;
 
     listen<{ equipamento_id: number; imagem_id: number }>("photo-received", (event) => {
@@ -382,9 +412,9 @@ export default function Equipamentos() {
   /** Abre dialog para editar equipamento existente. Carrega cliente vinculado do banco */
   function abrirEditar(eq: Equipamento) {
     setEditando(eq);
-    setResponsavelVinculado(eq.responsavel_contato_id ? {
+    setResponsavelVinculado(!IS_SAAS_BUILD && typeof eq.responsavel_contato_id === "number" ? {
       id: eq.responsavel_contato_id,
-      empresa_id: eq.empresa_id || 0,
+      empresa_id: typeof eq.empresa_id === "number" ? eq.empresa_id : 0,
       cliente_id: typeof eq.cliente_id === "number" ? eq.cliente_id : 0,
       nome: eq.responsavel_nome || "Responsável pelo equipamento",
       email: eq.responsavel_email,
@@ -394,7 +424,7 @@ export default function Equipamentos() {
     setErroCliente(null);
     setErroImagens(null);
     setImagensFormulario([]);
-    setCarregandoImagensFormulario(true);
+    setCarregandoImagensFormulario(!IS_SAAS_BUILD);
     setTecnicoNovoEquipamento(extrairTecnicoInicialDeObservacoes(eq.observacoes) || "Ivan");
     void carregarImagensComPreview(eq.id!)
       .then((imagens) => {
@@ -418,7 +448,7 @@ export default function Equipamentos() {
         telefone: eq.cliente_telefone || "",
         email: eq.cliente_email || undefined,
       });
-      db.buscarCliente(eq.cliente_id).then((c) => {
+      void carregarRepositorioClientes().then((repository) => repository.buscar(eq.cliente_id!)).then((c) => {
         if (c) setClienteVinculado(c);
       }).catch(() => {
         // Fallback: usar dados denormalizados
@@ -526,7 +556,7 @@ export default function Equipamentos() {
       return;
     }
     try {
-      const registros = await db.buscarEquipamentosPorSerial(serial);
+      const registros = await buscarPorSerial(serial) as unknown as Equipamento[];
       const anteriores = editando
         ? registros.filter((r) => r.id !== editando.id)
         : registros;
@@ -541,7 +571,7 @@ export default function Equipamentos() {
     const serial = value.trim();
     if (serial.length < 2) { setSugestoesSerial([]); setMostrarSugestoes(false); return; }
     try {
-      const registros = await db.buscarEquipamentosPorSerial(serial);
+      const registros = await buscarPorSerial(serial) as unknown as Equipamento[];
       setSugestoesSerial(registros.filter((r) => r.serial_number.toLowerCase().startsWith(serial.toLowerCase())));
       setMostrarSugestoes(true);
     } catch { setSugestoesSerial([]); }
@@ -588,6 +618,7 @@ export default function Equipamentos() {
    * Conecta-se a: db.buscarVerificacao, db.listarComunicacoes
    */
   const abrirDetalhes = useCallback(async (eq: Equipamento) => {
+    if (IS_SAAS_BUILD) return;
     setSelecionado(eq);
     setDetalhesDialogOpen(true);
     setCarregandoDetalhes(true);
@@ -821,24 +852,27 @@ export default function Equipamentos() {
       const imagensPayload: EquipamentoImagemInput[] = normalizarOrdemPorCategoria(imagensFormulario)
         .map(({ local_id, preview_url, ...imagem }) => imagem);
       const resultado = editando
-        ? await atualizar(editando.id!, payload)
+        ? await atualizar(editando.id!, payload, editando.atualizado_em)
         : await criar(payload);
 
       if (!resultado.sucesso || !resultado.data?.id) {
         throw new Error(resultado.erro || "Não foi possível salvar o equipamento.");
       }
 
-      try {
-        await db.substituirImagensEquipamento(resultado.data.id, imagensPayload);
-      } catch (err: any) {
-        setEditando(resultado.data);
-        throw new Error(
-          err?.message ||
-          "O equipamento foi salvo, mas as fotos não puderam ser persistidas. Revise e tente novamente."
-        );
+      if (!IS_SAAS_BUILD) {
+        try {
+          if (typeof resultado.data.id !== "number") throw new Error("O ID local do equipamento é inválido.");
+          await db.substituirImagensEquipamento(resultado.data.id, imagensPayload);
+        } catch (err: any) {
+          setEditando(equipamentoInterno(resultado.data));
+          throw new Error(
+            err?.message ||
+            "O equipamento foi salvo, mas as fotos não puderam ser persistidas. Revise e tente novamente."
+          );
+        }
       }
 
-      if (!editando) {
+      if (!editando && !IS_SAAS_BUILD) {
         const liberadoEmail = await ensureSensitiveAccess({
           title: "Enviar ordem de entrada",
           description: "Informe o PIN para enviar a ordem de entrada por email ao cliente.",
@@ -847,23 +881,23 @@ export default function Equipamentos() {
         if (liberadoEmail) {
           async function enviarOrdemEntrada(email: string, nomeDestinatario: string) {
             const retornoEmailEntrada = await EmailService.enviarOrdemEntrada({
-              ...resultado.data,
+              ...equipamentoInterno(resultado.data!),
               cliente_email: email,
               cliente_nome: nomeDestinatario,
-            } as Equipamento);
+            });
             if (!retornoEmailEntrada.sucesso) {
               showError("Equipamentos", "Enviar ordem de entrada", new Error(retornoEmailEntrada.erro || "Falha desconhecida."));
             } else {
               success("Equipamentos", "Email de ordem de entrada enviado com sucesso.", "Enviar email");
             }
           }
-          const recipient = resolveRecipient(resultado.data, "email");
+          const recipient = resolveRecipient(equipamentoInterno(resultado.data), "email");
           setEmailFlow({
             recipient,
             onConfirm: async (email, salvar) => {
               if (salvar) {
                 try {
-                  await saveRecipientAddress(resultado.data, "email", email);
+                  await saveRecipientAddress(equipamentoInterno(resultado.data), "email", email);
                 } catch (cause) {
                   showError("Equipamentos", "Salvar destinatário", cause);
                   return false;
@@ -891,8 +925,14 @@ export default function Equipamentos() {
   async function onDelete() {
     if (!deletando) return;
     setSalvando(true);
-    try { await deletar(deletando.id!); setDeleteDialogOpen(false); setDeletando(null); }
-    catch (err) { console.error("Erro ao deletar:", err); }
+    try {
+      const resultado = await deletar(deletando.id!);
+      if (!resultado.sucesso) throw new Error(resultado.erro || "Não foi possível excluir o equipamento.");
+      setDeleteDialogOpen(false);
+      setDeletando(null);
+    } catch (err) {
+      showError("Equipamentos", "Excluir equipamento", err);
+    }
     finally { setSalvando(false); }
   }
 
@@ -1502,6 +1542,16 @@ export default function Equipamentos() {
       onClick: () => void solicitarExclusao(eq),
     };
 
+    if (IS_SAAS_BUILD) {
+      return (
+        <ActionPriorityRow
+          primary={acaoEditar}
+          overflow={hasPermission(SENSITIVE_PERMISSIONS.DELETE_RECORDS) ? [acaoExcluir] : []}
+          iconOnlyOverflowTrigger
+        />
+      );
+    }
+
     switch (eq.status) {
       case "RECEBIDO":
         primary = {
@@ -1875,7 +1925,7 @@ export default function Equipamentos() {
                 {STATUS_OPTIONS.map(opt => (<SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>))}
               </SelectContent>
             </Select>
-            <Button variant="outline" size="icon" onClick={recarregar}><RefreshCw className="h-4 w-4" /></Button>
+            <Button variant="outline" size="icon" aria-label="Atualizar equipamentos" onClick={recarregar}><RefreshCw className="h-4 w-4" /></Button>
           </div>
         </CardContent>
       </Card>
@@ -1883,6 +1933,7 @@ export default function Equipamentos() {
       {/* Tabela */}
       <Card>
         <CardContent className="pt-6">
+          {erroEquipamentos && <div className="mb-4"><ErrorAlert variant="error" context="Equipamentos" message={erroEquipamentos} /></div>}
           {loading ? (
             <div className="flex items-center justify-center h-32"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600" /></div>
           ) : equipamentos.length === 0 ? (
@@ -1968,13 +2019,15 @@ export default function Equipamentos() {
                 onClienteRemovido={() => { setClienteVinculado(null); setResponsavelVinculado(null); }}
                 readOnly={false}
               />
-              <ContatoResponsavelSelector
+              {!IS_SAAS_BUILD && <ContatoResponsavelSelector
                 cliente={clienteVinculado}
-                empresaId={typeof clienteVinculado?.empresa_id === "number" ? clienteVinculado.empresa_id : editando?.empresa_id}
+                empresaId={typeof clienteVinculado?.empresa_id === "number"
+                  ? clienteVinculado.empresa_id
+                  : typeof editando?.empresa_id === "number" ? editando.empresa_id : undefined}
                 value={responsavelVinculado}
                 onChange={setResponsavelVinculado}
                 disabled={salvando}
-              />
+              />}
               {erroCliente && (
                 <ErrorAlert variant="error" context="Equipamentos" message={erroCliente} />
               )}
@@ -2182,7 +2235,7 @@ export default function Equipamentos() {
                 <Label>Observação</Label>
                 <Textarea {...form.register("observacoes")} placeholder="Detalhe o estado físico, inclusive se o equipamento já chegou quebrado" rows={3} />
               </div>
-              <div className="space-y-4 rounded-lg border p-4">
+              {!IS_SAAS_BUILD && <div className="space-y-4 rounded-lg border p-4">
                 <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
                   <div>
                     <p className="text-sm font-medium">Registro fotográfico do equipamento</p>
@@ -2266,7 +2319,7 @@ export default function Equipamentos() {
                     )}
                   </div>
                 </div>
-              </div>
+              </div>}
             </div>
             <DialogFooter>
               <DialogClose asChild><Button variant="outline" type="button">Cancelar</Button></DialogClose>

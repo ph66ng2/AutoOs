@@ -3367,9 +3367,88 @@
       "completedAt": "2026-09-22"
     },
     {
+      "id": "AO-SHELL-001",
+      "title": "Abrir o shell SaaS após autenticação e PIN",
+      "status": "merged",
+      "blockedBy": [
+        "AO-AUTH-005",
+        "AO-SUB-002"
+      ],
+      "objective": "Substituir o painel de sessão SaaS por um shell operacional seguro que leve o usuário autenticado ao piloto Online de Clientes.",
+      "context": "AO-AUTH-001 a AO-AUTH-005 autenticam, registram dispositivo e liberam perfil/PIN; AO-SUB-002 fornece o repositório remoto tenant-safe de Clientes. O SaasApp ainda termina em um painel de confirmação e não expõe nenhuma rota operacional.",
+      "expectedBehavior": "Após login, seleção de perfil e PIN, o build SaaS abre uma navegação operacional restrita com Clientes como rota inicial. Rotas ainda dependentes do PostgreSQL interno não são renderizadas nem acessíveis por URL.",
+      "scope": [
+        "Criar shell e roteamento específicos do runtime SaaS, iniciando em Clientes.",
+        "Reutilizar a página e o hook de Clientes, selecionando exclusivamente o adapter Online do AO-SUB-002.",
+        "Exigir sessão SaaS autenticada, perfil operacional desbloqueado e permissões antes de renderizar as rotas SaaS.",
+        "Expor estado claro para sessão expirada, offline e negação RLS no shell.",
+        "Restringir a navegação SaaS às rotas explicitamente suportadas; impedir fallback para DatabaseConfigDialog, Tauri/sqlx ou páginas internas.",
+        "Preservar Bloquear, Sair e Remover esta máquina no shell operacional."
+      ],
+      "outOfScope": [
+        "Migrar Equipamentos, Balcão, Serviços, Insumos, Gastos ou Configurações para SaaS.",
+        "Implementar assinatura, entitlement, PowerSync ou o runtime Offline.",
+        "Alterar RLS, schema ou usar credenciais privilegiadas no desktop."
+      ],
+      "acceptanceCriteria": [
+        "Login + PIN abre Clientes no build SaaS, sem painel intermediário de sessão.",
+        "Clientes usa o adapter Online e mantém o isolamento tenant-safe do AO-SUB-002.",
+        "Uma URL SaaS para módulo ainda não migrado não abre a página interna nem inicializa PostgreSQL.",
+        "Bloquear, Sair, sessão expirada e offline removem ou restringem o shell adequadamente.",
+        "A versão interna mantém rotas e navegação inalteradas.",
+        "Lint, testes, build SaaS e cargo check SaaS passam."
+      ],
+      "tests": [
+        "Testes de rota/guarda SaaS para login, perfil/PIN, Clientes, bloqueio e sessão expirada.",
+        "Testes do adapter Online de Clientes e das recusas RLS já previstas no AO-SUB-002.",
+        "npm run lint, npm run test:run, npm run build:saas e cargo check com feature saas.",
+        "Homologação manual no Staging com conta sintética: login, PIN e CRUD de cliente temporário."
+      ],
+      "testInstructions": {
+        "prerequisites": [
+          "origin/feature contendo AO-AUTH-005 e AO-SUB-002.",
+          "Conta administrativa e empresa sintéticas no Supabase Staging.",
+          "Variáveis públicas VITE do Staging; sem DATABASE_URL, service_role ou senha PostgreSQL."
+        ],
+        "steps": [
+          "Iniciar npm run tauri:dev:saas com as variáveis de Staging.",
+          "Entrar, selecionar perfil e desbloquear com PIN local.",
+          "Confirmar que Clientes abre automaticamente.",
+          "Criar, editar e excluir logicamente um cliente sintético e confirmar isolamento do tenant.",
+          "Tentar uma rota não migrada, bloquear, sair e simular indisponibilidade de rede."
+        ],
+        "expectedResultAndEvidence": [
+          "A primeira página operacional SaaS é Clientes; nenhuma tela de banco interno aparece.",
+          "Dados sintéticos ficam restritos à empresa autenticada.",
+          "Módulos não migrados não ganham acesso ao adaptador interno por navegação direta.",
+          "Evidências não incluem e-mail real, senha, token ou dados de produção."
+        ],
+        "dataImpact": "Cria e remove somente clientes temporários no Staging e sessões locais de teste.",
+        "cleanupAndRollback": [
+          "Excluir clientes sintéticos e sair/remover a máquina de teste.",
+          "Reverter somente o commit deste ticket se o shell não preservar o isolamento SaaS."
+        ],
+        "stagingRestrictions": "É proibido usar produção, DATABASE_URL, service_role, secret key, senha real ou dados de clientes."
+      },
+      "likelyFiles": [
+        "src/components/SaasApp.tsx",
+        "src/App.tsx",
+        "src/components/Layout.tsx",
+        "src/hooks/useSaasAuth.tsx",
+        "src/lib/data/clientes-repository.ts",
+        "src/**/*.test.tsx"
+      ],
+      "risks": [
+        "Renderizar acidentalmente o shell interno ou inicializar PostgreSQL no build SaaS.",
+        "Expor rota não migrada com adapter incorreto.",
+        "Confundir identidade cloud, perfil operacional e entitlement de assinatura."
+      ],
+      "completedAt": "2026-09-23"
+    },
+    {
       "id": "AO-CLI-003",
       "title": "Permitir recadastro de cliente após exclusão lógica no SaaS",
-      "status": "ready",
+      "status": "merged",
       "blockedBy": [],
       "objective": "Preservar clientes inativos sem bloquear novo cadastro com o mesmo CPF ou CNPJ na própria empresa.",
       "context": "A master usa exclusão lógica. A feature já tem índices parciais para o backend interno, mas o Supabase SaaS ainda usa UNIQUE completo em (empresa_id, documento) e (empresa_id, cpf_cnpj), incluindo registros inativos.",
@@ -3387,7 +3466,349 @@
         "stagingRestrictions": "É proibido usar produção, banco interno, service_role no cliente, credenciais ou dados reais; somente staging e valores sintéticos descartáveis."
       },
       "likelyFiles": ["supabase/migrations/", "supabase/schema.sql", "supabase/tests/clientes-soft-delete-uniqueness.sql"],
-      "risks": ["Derrubar unicidade antes dos índices abre janela para duplicidade ativa.", "Índice sem empresa_id mistura tenants.", "Editar migration já aplicada quebra histórico."]
+      "risks": ["Derrubar unicidade antes dos índices abre janela para duplicidade ativa.", "Índice sem empresa_id mistura tenants.", "Editar migration já aplicada quebra histórico."],
+      "completedAt": "2026-09-23"
+    },
+    {
+      "id": "AO-EQP-ONLINE-001",
+      "title": "Conectar listagem e cadastro de Equipamentos ao SaaS",
+      "status": "review",
+      "blockedBy": [
+        "AO-SHELL-001",
+        "AO-CLI-003"
+      ],
+      "objective": "Liberar a rota SaaS de Equipamentos com a listagem e o CRUD principal da master, usando Supabase e UUID sem alterar a aparência existente.",
+      "context": "AO-SHELL-001 e AO-CLI-003 estão incorporados em origin/feature. A tela origin/master é a referência visual e funcional obrigatória. Para permitir evolução revisável por fatias, este ticket cobre a rota, listagem e CRUD principal; Informações, Verificação, Comunicações e Histórico têm tickets próprios. Fotos e QR ficam em fluxo independente do agente responsável por PHOTO e não são bloqueadores de Equipamentos.",
+      "expectedBehavior": "Após login SaaS, a navegação abre a listagem de Equipamentos com aparência da master. Busca, filtros de status, recarga e CRUD básico consultam e gravam apenas no tenant atual pelo Supabase, sem usar Tauri/PostgreSQL local.",
+      "scope": [
+        "Adicionar Equipamentos à navegação/rotas do Shell SaaS e reutilizar a implementação visual da origin/master, sem criar página SaaS reduzida.",
+        "Adaptar listagem, busca, filtro por status, recarga, formulário de cadastro/edição e confirmação de exclusão ao repositório Supabase.",
+        "Manter IDs UUID ponta a ponta, derivar empresa_id da sessão validada e deixar a autorização de tenant sob RLS; consultas e mutações não podem cair no invoke/Tauri.",
+        "Usar o repositório de clientes SaaS no seletor existente, sem reimplementar uma segunda interface de clientes.",
+        "Preservar layout, rótulos, hierarquia, estados vazios/carregando/erro, validações e mensagens da master para os fluxos incluídos.",
+        "Fotos e QR, conteúdo das abas operacionais e transições/orçamento ficam fora deste ticket e não podem bloquear a listagem/CRUD."
+      ],
+      "outOfScope": [
+        "Implementar as abas Informações, Verificação, Comunicações e Histórico; cada uma tem ticket próprio.",
+        "Implementar status/transições, orçamento, aprovação ou autorização financeira, que pertencem ao ticket da aba Verificação.",
+        "Implementar QR, upload, processamento ou Storage de fotos; outro agente cuida desse fluxo em tickets PHOTO independentes.",
+        "Migrar Insumos, Serviços, Gastos, Configurações ou qualquer módulo vizinho.",
+        "Redesenhar a interface da master ou remover os fluxos que serão entregues nos tickets seguintes.",
+        "Promover código automaticamente para master ou produção."
+      ],
+      "acceptanceCriteria": [
+        "A rota Equipamentos usa o layout, a listagem e os formulários de cadastro/edição da origin/master.",
+        "Busca, filtro de status, recarga, criação, edição e exclusão funcionam pelo Supabase com IDs UUID.",
+        "RLS restringe operações ao tenant da sessão; empresa_id não é aceito de forma arbitrária do formulário.",
+        "Falhas de rede, RLS, validação e conflitos são visíveis e preservam os dados digitados.",
+        "Os fluxos incluídos não executam persistência pelo backend Tauri no build SaaS."
+      ],
+      "tests": [
+        "Cobrir o contrato do repositório para listagem, filtro, CRUD, UUID, empresa derivada da sessão e erros HTTP.",
+        "Cobrir a rota e os estados visuais principais com respostas SaaS sintéticas.",
+        "Validar que tentativas de acesso a outro tenant não leem nem alteram seus equipamentos.",
+        "Executar lint e checks frontend aplicáveis."
+      ],
+      "testInstructions": {
+        "prerequisites": [
+          "AO-SHELL-001 e AO-CLI-003 estão merged em origin/feature; usar a worktree exclusiva já criada a partir da feature atualizada.",
+          "Usar origin/master como referência visual/funcional; respeitar tickets separados para cada aba operacional.",
+          "Usar apenas fixtures sintéticas; não gravar em staging ou produção sem autorização específica."
+        ],
+        "steps": [
+          "Comparar a listagem/formulários da origin/master com a rota SaaS e mapear apenas as operações deste ticket.",
+          "Confirmar o contrato do schema e RLS; não aplicar DDL remoto nem usar dados reais.",
+          "Revisar os fluxos de listagem e CRUD e confirmar ausência de escrita Tauri.",
+          "Executar checks aplicáveis e deixar pronto para revisão humana."
+        ],
+        "expectedResultAndEvidence": [
+          "Comparação visual demonstra paridade com a listagem e os formulários de Equipamentos da master.",
+          "CRUD básico usa Supabase/RLS e empresa A não lê nem altera registros sintéticos da empresa B.",
+          "Nenhuma mutação do escopo chama o backend Tauri local."
+        ],
+        "dataImpact": "Somente fixtures sintéticas em validação; migrations necessárias são aditivas e entregues em código, sem aplicação remota neste ticket.",
+        "cleanupAndRollback": [
+          "Não criar, editar ou remover registros reais durante validação.",
+          "Não editar migrations já aplicadas; schema adicional deve ser entregue em migration aditiva revisável.",
+          "Não promover para master/produção; merge e promoção permanecem sob revisão humana."
+        ],
+        "stagingRestrictions": "Não acessar produção nem aplicar alterações remotas. Nunca expor service_role; validações de banco usam exclusivamente fixtures sintéticas autorizadas."
+      },
+      "likelyFiles": [
+        "src/components/SaasOperationalShell.tsx",
+        "src/pages/Equipamentos.tsx",
+        "src/lib/data/equipamentos-repository.ts",
+        "src/lib/db.ts",
+        "src/hooks/useEquipamentos.ts",
+        "src/lib/data/equipamentos-repository.test.ts",
+        "src/components/SaasOperationalShell.test.tsx",
+        "src/components/equipamentos/",
+        "src/pages/equipamentos/"
+      ],
+      "risks": [
+        "A rota pode parecer correta mas manter uma chamada Tauri em busca ou gravação indireta.",
+        "IDs UUID podem ser convertidos ou truncados por tipos numéricos legados.",
+        "O schema staging pode divergir do schema versionado em colunas do formulário.",
+        "A UI parcial não deve expor abas ainda sem adapter SaaS funcional."
+      ]
+    },
+    {
+      "id": "AO-EQP-ONLINE-002",
+      "title": "Implementar a aba Informações de Equipamentos no SaaS",
+      "status": "ready",
+      "blockedBy": [
+        "AO-EQP-ONLINE-001"
+      ],
+      "objective": "Entregar a aba Informações com os mesmos dados e ações da origin/master, persistidos no tenant SaaS correto.",
+      "context": "A tela master organiza detalhes em abas operacionais. Esta etapa implementa somente Informações após a base de rota/CRUD. O staging diverge do schema versionado em contatos e snapshots do responsável; resolver por migration aditiva, sem aplicar DDL remoto.",
+      "expectedBehavior": "A aba Informações exibe e atualiza os dados do equipamento, cliente e responsável como na master, respeitando UUID e RLS do tenant.",
+      "scope": [
+        "Reproduzir layout, campos e ações da aba Informações da origin/master.",
+        "Integrar seleção/edição de cliente e contato responsável à camada SaaS já existente.",
+        "Adicionar migration aditiva para cliente_contatos e campos de snapshot que estejam ausentes no schema de staging, com RLS/FKs por empresa.",
+        "Preservar mensagens de validação, estados de carregamento e conflito de atualização."
+      ],
+      "outOfScope": [
+        "Implementar Verificação, Comunicações ou Histórico.",
+        "Implementar upload, QR ou persistência de fotos; outro agente trata esses fluxos.",
+        "Alterar dados reais ou aplicar a migration em staging/produção."
+      ],
+      "acceptanceCriteria": [
+        "A aba Informações mantém o conteúdo e a hierarquia visual da master.",
+        "Cliente e contato são carregados e persistidos com UUIDs e tenant validado por RLS/FKs.",
+        "Alterações concorrentes e falhas de rede não silenciam nem descartam os dados do formulário.",
+        "O build SaaS não usa Tauri para persistência dessa aba."
+      ],
+      "tests": [
+        "Cobrir leitura/atualização dos campos de Informações com IDs UUID.",
+        "Cobrir seleção de contato e tentativa de referência cruzada entre tenants.",
+        "Validar migration aditiva contra o schema versionado sem editar migration aplicada."
+      ],
+      "testInstructions": {
+        "prerequisites": [
+          "AO-EQP-ONLINE-001 merged em origin/feature.",
+          "Usar fixtures sintéticas e não aplicar DDL remoto."
+        ],
+        "steps": [
+          "Comparar a aba Informações da master.",
+          "Implementar/ligar o repositório SaaS e migration aditiva necessária.",
+          "Revisar acessibilidade, validação, RLS e conflito de atualização."
+        ],
+        "expectedResultAndEvidence": [
+          "Campos e contatos correspondem à master.",
+          "UUIDs e empresa mantêm tenant isolation."
+        ],
+        "dataImpact": "Fixtures sintéticas apenas; schema change apenas como migration versionada.",
+        "cleanupAndRollback": [
+          "Não alterar dados reais.",
+          "Não editar migrations aplicadas nem executar DDL remoto."
+        ],
+        "stagingRestrictions": "Sem produção, segredos administrativos ou dados reais; não aplicar migrations remotamente."
+      },
+      "likelyFiles": [
+        "src/pages/Equipamentos.tsx",
+        "src/components/equipamentos/ContatoResponsavelSelector.tsx",
+        "src/lib/data/",
+        "supabase/schema.sql",
+        "supabase/migrations/"
+      ],
+      "risks": [
+        "Contact IDs may retain legacy integer assumptions.",
+        "An additive migration can conflict with untracked staging schema drift."
+      ]
+    },
+    {
+      "id": "AO-EQP-ONLINE-003",
+      "title": "Implementar a aba Verificação e Orçamento no SaaS",
+      "status": "ready",
+      "blockedBy": [
+        "AO-EQP-ONLINE-002"
+      ],
+      "objective": "Reproduzir os fluxos de verificação, orçamento e transições da master com persistência remota segura.",
+      "context": "A aba Verificação contém as ações técnicas e financeiras mais sensíveis. O acesso deve ser imposto no servidor e manter atomicidade; ocultar controles na UI não basta. O schema staging não tem os campos de forma de pagamento presentes no schema versionado.",
+      "expectedBehavior": "Técnicos consultam/salvam verificação e ações de orçamento/status mantêm regras, permissões e confirmações da master no tenant atual.",
+      "scope": [
+        "Implementar a aba/dialog de verificação da master, inclusive itens, diagnóstico, serviços, peças, custo e prazo.",
+        "Integrar catálogo de serviços, ajuste de orçamento, aprovação/reprovação e transições/correções de status previstas na master.",
+        "Adicionar migration aditiva para campos de pagamento ausentes e operações transacionais remotas necessárias.",
+        "Aplicar autorização financeira no servidor sob RLS/claims confiáveis, sem SECURITY DEFINER que contorne RLS.",
+        "Preservar concorrência otimista, validações, confirmação e trilha de auditoria."
+      ],
+      "outOfScope": [
+        "Implementar abas Comunicações ou Histórico.",
+        "Implementar upload/QR/fotos, que são tratados em fluxo separado.",
+        "Aplicar migration, backfill ou alteração de dados em ambientes remotos."
+      ],
+      "acceptanceCriteria": [
+        "A aba e o diálogo reproduzem a experiência da master.",
+        "Verificação, serviços/peças, status e orçamento persistem atomicamente quando a operação altera múltiplas tabelas.",
+        "Chamadas diretas à API não contornam as permissões financeiras do servidor nem o RLS de empresa.",
+        "Conflitos, entradas inválidas e falta de permissão apresentam erro compreensível sem perder formulário."
+      ],
+      "tests": [
+        "Cobrir UUID, tenant e chamadas de escrita/verificação.",
+        "Cobrir transições válidas/inválidas, permissões financeiras, aprovação e concorrência.",
+        "Verificar migration e políticas sem acessar dados reais."
+      ],
+      "testInstructions": {
+        "prerequisites": [
+          "AO-EQP-ONLINE-002 merged em origin/feature.",
+          "Fixtures sintéticas; migrations não aplicadas remotamente."
+        ],
+        "steps": [
+          "Comparar aba/dialogs da master.",
+          "Implementar operações servidoras tenant-safe e transacionais.",
+          "Revisar as permissões por caminho de UI e chamadas diretas."
+        ],
+        "expectedResultAndEvidence": [
+          "Fluxo técnico/financeiro corresponde à master.",
+          "Servidor rejeita escrita sem permissão e mantém atomicidade."
+        ],
+        "dataImpact": "Fixtures sintéticas apenas; migration aditiva versionada.",
+        "cleanupAndRollback": [
+          "Não alterar dados reais.",
+          "Não editar migrations aplicadas nem executar DDL remoto."
+        ],
+        "stagingRestrictions": "Sem produção, service_role no cliente ou dados reais; não aplicar migrations remotamente."
+      },
+      "likelyFiles": [
+        "src/pages/Equipamentos.tsx",
+        "src/components/equipamentos/VerificacaoTecnica.tsx",
+        "src/components/equipamentos/AjusteOrcamentoServicos.tsx",
+        "src/lib/status-fsm.ts",
+        "src/lib/data/",
+        "supabase/migrations/"
+      ],
+      "risks": [
+        "A autorização local pode divergir da autorização usada pelo Postgres.",
+        "Requests separados podem deixar status, verificação e orçamento parcialmente atualizados."
+      ]
+    },
+    {
+      "id": "AO-EQP-ONLINE-004",
+      "title": "Implementar a aba Comunicações de Equipamentos no SaaS",
+      "status": "ready",
+      "blockedBy": [
+        "AO-EQP-ONLINE-003"
+      ],
+      "objective": "Preservar consulta e envio de comunicações da master com registro tenant-safe no SaaS.",
+      "context": "Esta é a terceira aba operacional na ordem visual da master e será executada após Verificação para respeitar a solicitação de uma etapa/PR por vez; essa dependência é de sequência de revisão.",
+      "expectedBehavior": "A aba lista comunicações do equipamento e mantém as ações de email/WhatsApp da master sem gravar em banco local.",
+      "scope": [
+        "Reproduzir a aba, histórico e composer de comunicações da master.",
+        "Integrar transportes email/WhatsApp já suportados e registrar sucesso/falha no tenant remoto.",
+        "Preservar consentimento, destinatário, anexos suportados e mensagens de erro."
+      ],
+      "outOfScope": [
+        "Configurar novos provedores/segredos de produção.",
+        "Implementar upload/QR/fotos.",
+        "Alterar as abas Verificação ou Histórico."
+      ],
+      "acceptanceCriteria": [
+        "A aba mantém layout e ações da master.",
+        "Listagem e registro usam UUID/RLS do tenant.",
+        "Falhas do provedor não são mostradas como envio bem-sucedido e ficam compreensíveis.",
+        "Nenhuma escrita de comunicação usa Tauri no SaaS."
+      ],
+      "tests": [
+        "Cobrir leitura e registro de comunicação por tenant.",
+        "Cobrir sucesso e falha dos transportes com serviços simulados.",
+        "Cobrir bloqueio de referências cruzadas."
+      ],
+      "testInstructions": {
+        "prerequisites": [
+          "AO-EQP-ONLINE-003 merged em origin/feature.",
+          "Usar transportes de teste; não enviar para clientes reais."
+        ],
+        "steps": [
+          "Comparar aba/composer da master.",
+          "Conectar leitura/envio/registro ao adapter SaaS.",
+          "Conferir recipient safety, anexo e erro."
+        ],
+        "expectedResultAndEvidence": [
+          "Histórico e ações correspondem à master.",
+          "Envios sintéticos não vazam entre empresas nem indicam sucesso falso."
+        ],
+        "dataImpact": "Somente fixtures e provedores simulados; sem envio real.",
+        "cleanupAndRollback": [
+          "Não enviar comunicação a destinatários reais.",
+          "Não gravar nem excluir registros reais."
+        ],
+        "stagingRestrictions": "Não usar dados reais ou credenciais de produção; envios sempre simulados."
+      },
+      "likelyFiles": [
+        "src/pages/Equipamentos.tsx",
+        "src/components/equipamentos/HistoricoComunicacoes.tsx",
+        "src/lib/email-service.ts",
+        "src/lib/whatsapp-service.ts",
+        "src/lib/data/"
+      ],
+      "risks": [
+        "Um erro local de configuração pode ser confundido com erro remoto.",
+        "Anexos podem depender de APIs Tauri fora do caminho SaaS."
+      ]
+    },
+    {
+      "id": "AO-EQP-ONLINE-005",
+      "title": "Implementar a aba Histórico de Equipamentos no SaaS",
+      "status": "ready",
+      "blockedBy": [
+        "AO-EQP-ONLINE-004"
+      ],
+      "objective": "Reproduzir a timeline de etapas, alterações e correções de status da master sob isolamento SaaS.",
+      "context": "Esta é a quarta aba operacional da master. A dependência do ticket de Comunicações é somente para manter uma etapa revisável por vez conforme solicitado; o histórico continua sendo derivado de dados/auditoria do próprio equipamento.",
+      "expectedBehavior": "A aba mostra cronologia confiável para o equipamento, incluindo etapas legadas e eventos auditados, sem expor eventos de outro tenant.",
+      "scope": [
+        "Reproduzir apresentação e ordenação da aba Histórico da master.",
+        "Buscar datas de etapa e eventos de status/auditoria pela API SaaS com tenant ID derivado da sessão.",
+        "Representar datas legadas sem autor como não atribuídas e preservar indicador de confiabilidade."
+      ],
+      "outOfScope": [
+        "Alterar histórico/auditoria de outros módulos.",
+        "Implementar upload/QR/fotos.",
+        "Adicionar nova fonte de eventos que não exista na master sem decisão do usuário."
+      ],
+      "acceptanceCriteria": [
+        "Linha do tempo corresponde às etapas exibidas na master.",
+        "Eventos são cronológicos, tenant-safe e mantêm distinção entre histórico legado e auditoria confiável.",
+        "Nenhuma chamada consulta ou persiste pelo Tauri no SaaS."
+      ],
+      "tests": [
+        "Cobrir ordenação/normalização e datas legadas.",
+        "Cobrir filtro de tenant e eventos ausentes.",
+        "Cobrir apresentação vazia/carregando/erro."
+      ],
+      "testInstructions": {
+        "prerequisites": [
+          "AO-EQP-ONLINE-004 merged em origin/feature.",
+          "Usar eventos e equipamentos sintéticos."
+        ],
+        "steps": [
+          "Comparar timeline da master.",
+          "Integrar query remota filtrada pelo tenant.",
+          "Validar ordenação, autor e confiança da data."
+        ],
+        "expectedResultAndEvidence": [
+          "Histórico coincide com a master para fixtures sintéticas.",
+          "Eventos da empresa B não aparecem para a empresa A."
+        ],
+        "dataImpact": "Fixtures sintéticas apenas; nenhuma alteração remota.",
+        "cleanupAndRollback": [
+          "Não alterar auditoria nem registros reais.",
+          "Não promover para master/produção."
+        ],
+        "stagingRestrictions": "Sem produção, registros reais ou credenciais privilegiadas."
+      },
+      "likelyFiles": [
+        "src/pages/Equipamentos.tsx",
+        "src/pages/equipamentos/",
+        "src/lib/data/",
+        "supabase/rls.sql"
+      ],
+      "risks": [
+        "Eventos legados podem ter datas imprecisas.",
+        "A leitura da auditoria pode falhar se os detalhes não tiverem o contrato esperado."
+      ]
     }
   ]
 }
