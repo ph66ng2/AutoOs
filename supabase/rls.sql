@@ -15,21 +15,44 @@ REVOKE ALL ON SCHEMA private FROM PUBLIC, anon, authenticated;
 -- antes do access token atual expirar. Claims ausentes/antigas não quebram a
 -- compatibilidade do ADMIN legado, e claims adulteradas não escolhem tenant.
 -- SECURITY DEFINER fica restrito a este lookup interno, com search_path vazio.
-CREATE OR REPLACE FUNCTION private.authorized_company_id()
-RETURNS uuid
+CREATE OR REPLACE FUNCTION private.current_saas_session_identity()
+RETURNS TABLE (
+    empresa_id uuid,
+    profile_id uuid,
+    auth_user_id uuid,
+    session_id uuid
+)
 LANGUAGE sql
 STABLE
 SECURITY DEFINER
 SET search_path = ''
 AS $$
     WITH caller AS (
-        SELECT (SELECT auth.uid()) AS id
+        SELECT
+            (SELECT auth.uid()) AS auth_user_id,
+            CASE
+                WHEN COALESCE(
+                    ((SELECT auth.jwt()) ->> 'session_id') ~*
+                    '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$',
+                    false
+                )
+                THEN ((SELECT auth.jwt()) ->> 'session_id')::uuid
+                ELSE NULL
+            END AS session_id
     ),
-    active_binding AS (
-        SELECT identity.empresa_id
-          FROM public.company_user_identities AS identity
+    live_session AS (
+        SELECT session.user_id AS auth_user_id, session.id AS session_id
+          FROM auth.sessions AS session
           JOIN caller AS actor
-            ON identity.auth_user_id = actor.id
+            ON actor.auth_user_id = session.user_id
+           AND actor.session_id = session.id
+    ),
+    active_identity AS (
+        SELECT identity.empresa_id, identity.profile_id,
+               live.auth_user_id, live.session_id, 1 AS priority
+          FROM public.company_user_identities AS identity
+          JOIN live_session AS live
+            ON live.auth_user_id = identity.auth_user_id
           JOIN public.empresas AS company
             ON company.id = identity.empresa_id
           JOIN public.security_profiles AS profile
@@ -41,10 +64,11 @@ AS $$
 
         UNION ALL
 
-        SELECT identity.empresa_id
+        SELECT identity.empresa_id, identity.profile_id,
+               live.auth_user_id, live.session_id, 2 AS priority
           FROM public.company_admin_identities AS identity
-          JOIN caller AS actor
-            ON identity.auth_user_id = actor.id
+          JOIN live_session AS live
+            ON live.auth_user_id = identity.auth_user_id
           JOIN public.empresas AS company
             ON company.id = identity.empresa_id
           JOIN public.security_profiles AS profile
@@ -57,11 +81,30 @@ AS $$
            AND NOT EXISTS (
                 SELECT 1
                   FROM public.company_user_identities AS individual
-                WHERE individual.auth_user_id = actor.id
+                 WHERE individual.auth_user_id = live.auth_user_id
            )
     )
-    SELECT empresa_id
-      FROM active_binding
+    SELECT active.empresa_id, active.profile_id,
+           active.auth_user_id, active.session_id
+      FROM active_identity AS active
+     ORDER BY active.priority
+     LIMIT 1;
+$$;
+
+COMMENT ON FUNCTION private.current_saas_session_identity() IS
+    'Returns the caller current active tenant/profile only when auth.uid() and JWT session_id match a live auth.sessions row.';
+REVOKE ALL ON FUNCTION private.current_saas_session_identity() FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION private.current_saas_session_identity() TO authenticated;
+
+CREATE OR REPLACE FUNCTION private.authorized_company_id()
+RETURNS uuid
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+    SELECT identity.empresa_id
+      FROM private.current_saas_session_identity() AS identity
      LIMIT 1;
 $$;
 

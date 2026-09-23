@@ -10,6 +10,7 @@ export interface SaasSession {
   refreshToken: string;
   expiresAt: number;
   identity: SaasIdentity;
+  profile: SaasOperationalProfile;
 }
 
 /** Perfil operacional autorizado pela nuvem; não é uma segunda identidade cloud. */
@@ -23,7 +24,7 @@ export interface SaasOperationalProfile {
 export type SaasAuthState =
   | { kind: "booting" }
   | { kind: "authenticated"; session: SaasSession }
-  | { kind: "locked" }
+  | { kind: "locked"; session: SaasSession }
   | { kind: "expired"; email?: string; message: string }
   | { kind: "offline_recoverable"; session: SaasSession; message: string }
   | { kind: "signed_out"; message?: string };

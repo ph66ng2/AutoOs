@@ -7,6 +7,7 @@ interface SaasAuthContextValue {
   login(email: string, password: string): Promise<void>;
   retry(): Promise<void>;
   lock(): Promise<void>;
+  unlock(): void;
   signOut(): Promise<void>;
   removeThisDevice(): Promise<void>;
   requestPasswordRecovery(email: string): Promise<void>;
@@ -53,17 +54,29 @@ export function SaasAuthProvider({ children, service }: { children: ReactNode; s
   }, [restore]);
 
   useEffect(() => {
-    if (state.kind !== "authenticated") return;
+    if (state.kind !== "authenticated" && state.kind !== "locked") return;
+    let active = true;
+    const wasLocked = state.kind === "locked";
     const delay = Math.min(
       MAX_TIMEOUT_MS,
       Math.max(0, state.session.expiresAt * 1_000 - Date.now() - REFRESH_MARGIN_MS),
     );
     const timer = window.setTimeout(() => {
       void requireService().refreshSession(state.session)
-        .then(setState)
-        .catch((error) => setState({ kind: "signed_out", message: safeMessage(error) }));
+        .then((result) => {
+          if (!active) return;
+          setState(wasLocked && result.kind === "authenticated"
+            ? { kind: "locked", session: result.session }
+            : result);
+        })
+        .catch((error) => {
+          if (active) setState({ kind: "signed_out", message: safeMessage(error) });
+        });
     }, delay);
-    return () => window.clearTimeout(timer);
+    return () => {
+      active = false;
+      window.clearTimeout(timer);
+    };
   }, [requireService, state]);
 
   const value = useMemo<SaasAuthContextValue>(() => ({
@@ -80,11 +93,18 @@ export function SaasAuthProvider({ children, service }: { children: ReactNode; s
     },
     retry: restore,
     async lock() {
+      const session = state.kind === "authenticated" || state.kind === "offline_recoverable" || state.kind === "locked"
+        ? state.session
+        : undefined;
+      if (!session) return;
       await requireService().lock();
-      setState({ kind: "locked" });
+      setState({ kind: "locked", session });
+    },
+    unlock() {
+      if (state.kind === "locked") setState({ kind: "authenticated", session: state.session });
     },
     async signOut() {
-      const session = state.kind === "authenticated" || state.kind === "offline_recoverable"
+      const session = state.kind === "authenticated" || state.kind === "offline_recoverable" || state.kind === "locked"
         ? state.session
         : undefined;
       const result = await requireService().signOut(session);
@@ -96,7 +116,7 @@ export function SaasAuthProvider({ children, service }: { children: ReactNode; s
       });
     },
     async removeThisDevice() {
-      const session = state.kind === "authenticated" || state.kind === "offline_recoverable"
+      const session = state.kind === "authenticated" || state.kind === "offline_recoverable" || state.kind === "locked"
         ? state.session
         : undefined;
       const result = await requireService().removeThisDevice(session);

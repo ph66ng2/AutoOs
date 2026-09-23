@@ -7,6 +7,9 @@ import type { SaasSession } from "@/types/saas-auth";
 vi.mock("@/pages/SaasClientesPage", () => ({
   default: () => <h1>Clientes Online</h1>,
 }));
+vi.mock("@/pages/Equipamentos", () => ({
+  default: () => <h1>Equipamentos Online</h1>,
+}));
 
 const session: SaasSession = {
   accessToken: "access", refreshToken: "refresh", expiresAt: 1_900_000_000,
@@ -16,17 +19,19 @@ const session: SaasSession = {
     profileId: "c0000000-0000-4000-8000-000000000001",
     email: "admin@example.com",
   },
+  profile: { id: "c0000000-0000-4000-8000-000000000001", name: "Admin AutoOS", role: "ADMIN", permissions: [] },
 };
+const profile = session.profile;
 
 describe("SaasOperationalShell", () => {
-  beforeEach(() => window.history.replaceState({}, "", "/equipamentos"));
+  beforeEach(() => window.history.replaceState({}, "", "/not-real"));
 
-  it("redireciona rotas internas para Clientes e mantém somente a navegação Online", () => {
-    render(<SaasOperationalShell session={session} onLock={vi.fn()} onSignOut={vi.fn()} onRemoveDevice={vi.fn()} />);
+  it("redireciona rotas desconhecidas e mostra os módulos SaaS com o perfil resolvido", () => {
+    render(<SaasOperationalShell session={session} profile={profile} onLock={vi.fn()} onSignOut={vi.fn()} onRemoveDevice={vi.fn()} />);
 
     expect(screen.getByRole("heading", { name: "Clientes Online" })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Clientes" })).toHaveAttribute("href", "/clientes");
-    expect(screen.queryByText("Equipamentos")).not.toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Equipamentos" })).toHaveAttribute("href", "/equipamentos");
     expect(window.location.pathname).toBe("/clientes");
   });
 
@@ -35,7 +40,7 @@ describe("SaasOperationalShell", () => {
     const onLock = vi.fn();
     const onSignOut = vi.fn();
     const onRemoveDevice = vi.fn();
-    render(<SaasOperationalShell session={session} onLock={onLock} onSignOut={onSignOut} onRemoveDevice={onRemoveDevice} />);
+    render(<SaasOperationalShell session={session} profile={profile} onLock={onLock} onSignOut={onSignOut} onRemoveDevice={onRemoveDevice} />);
 
     await user.click(screen.getByRole("button", { name: "Bloquear" }));
     await user.click(screen.getByRole("button", { name: "Sair" }));

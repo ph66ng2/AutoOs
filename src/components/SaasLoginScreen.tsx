@@ -70,14 +70,14 @@ export function SaasLoginScreen({ initialEmail = "", notice }: { initialEmail?: 
           </div>
           <div>
             <h1 className="text-2xl font-bold tracking-tight text-white">{screen === "login" ? "AutoOS SaaS" : "Recuperar senha"}</h1>
-            <p className="mt-1 text-sm text-slate-400">{screen === "login" ? "Acesso administrativo da sua empresa" : "Enviaremos um link seguro para sua Conta."}</p>
+            <p className="mt-1 text-sm text-slate-400">{screen === "login" ? "Entre com sua conta individual AutoOS" : "Enviaremos um link seguro para sua Conta."}</p>
           </div>
         </div>
 
         {screen === "login" ? (
           <form className="space-y-5 rounded-2xl border border-white/10 bg-white/[0.03] p-6 backdrop-blur-sm" onSubmit={(event) => { event.preventDefault(); void handleLogin(); }}>
             {notice ? <Notice>{notice}</Notice> : null}
-            <div className="space-y-1.5"><Label htmlFor="saas-email" className="text-slate-300">Email</Label><Input id="saas-email" type="email" autoComplete="username" value={email} onChange={(event) => setEmail(event.target.value)} className="h-11 border-white/10 bg-white/5 text-white placeholder:text-white/20" placeholder="admin@empresa.com.br" autoFocus required /></div>
+            <div className="space-y-1.5"><Label htmlFor="saas-email" className="text-slate-300">Email</Label><Input id="saas-email" type="email" autoComplete="username" value={email} onChange={(event) => setEmail(event.target.value)} className="h-11 border-white/10 bg-white/5 text-white placeholder:text-white/20" placeholder="voce@empresa.com.br" autoFocus required /></div>
             <div className="space-y-1.5"><Label htmlFor="saas-password" className="text-slate-300">Senha</Label><Input id="saas-password" type="password" autoComplete="current-password" value={password} onChange={(event) => setPassword(event.target.value)} className="h-11 border-white/10 bg-white/5 text-white placeholder:text-white/20" placeholder="Sua senha" required /></div>
             {error ? <ErrorNotice>{error}</ErrorNotice> : null}
             <Button type="submit" size="lg" className="h-11 w-full bg-slate-100 font-semibold text-slate-950 hover:bg-white" disabled={submitting || !email.trim() || !password}>{submitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <ArrowRight className="mr-2 h-4 w-4" strokeWidth={2} />}{submitting ? "Entrando..." : "Entrar"}</Button>

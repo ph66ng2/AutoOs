@@ -16,6 +16,7 @@ const session: SaasSession = {
     profileId: "c0000000-0000-4000-8000-000000000001",
     email: "admin@example.com",
   },
+  profile: { id: "c0000000-0000-4000-8000-000000000001", name: "Admin AutoOS", role: "ADMIN", permissions: [] },
 };
 
 describe("tauriSaasSessionStore", () => {

@@ -13,24 +13,14 @@ const { invokeMock } = vi.hoisted(() => ({ invokeMock: vi.fn() }));
 vi.mock("@tauri-apps/api/core", () => ({ invoke: invokeMock }));
 
 vi.mock("@/components/SaasOperationalShell", () => ({
-  SaasOperationalShell: ({ session, onLock }: { session: SaasSession; onLock: () => void }) => (
+  SaasOperationalShell: ({ session, profile, onLock }: { session: SaasSession; profile: SaasSession["profile"]; onLock: () => void }) => (
     <section>
       <p>Shell SaaS Clientes</p>
       <p>{session.identity.email}</p>
+      <p>{profile.name} · {profile.role}</p>
       <button onClick={onLock}>Bloquear</button>
     </section>
   ),
-}));
-
-vi.mock("@/lib/saas-auth", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("@/lib/saas-auth")>()),
-  listSaasOperationalProfiles: vi.fn().mockResolvedValue([{
-    id: "c0000000-0000-4000-8000-000000000001",
-    name: "Admin operacional",
-    role: "ADMIN",
-    permissions: [],
-  }]),
-  auditSaasOperationalProfileSelection: vi.fn().mockResolvedValue(undefined),
 }));
 
 vi.mock("@/components/BootSplashGate", () => ({
@@ -64,7 +54,13 @@ const session: SaasSession = {
     userId: "a0000000-0000-4000-8000-000000000001",
     companyId: COMPANY_ID,
     profileId: "c0000000-0000-4000-8000-000000000001",
-    email: "admin@example.com",
+    email: "tecnico@example.com",
+  },
+  profile: {
+    id: "c0000000-0000-4000-8000-000000000001",
+    name: "Técnica",
+    role: "TECNICO",
+    permissions: ["EQUIPAMENTOS_VISUALIZAR"],
   },
 };
 
@@ -126,22 +122,27 @@ describe("SaasApp", () => {
     expect(screen.queryByRole("heading", { name: "AutoOS SaaS" })).not.toBeInTheDocument();
   });
 
-  it("faz login e bloqueia removendo a identidade da tela", async () => {
+  it("usa o perfil server-side sem seletor e mantém o PIN opcional/local", async () => {
     const authService = service();
     const user = userEvent.setup();
     renderApp(authService);
-    await user.type(await screen.findByLabelText("Email"), "admin@example.com");
+    await user.type(await screen.findByLabelText("Email"), "tecnico@example.com");
     await user.type(screen.getByLabelText("Senha"), "secret-password");
     await user.click(screen.getByRole("button", { name: "Entrar" }));
-    await user.type(await screen.findByLabelText("PIN de quatro dígitos"), "1234");
-    await user.type(screen.getByLabelText("Confirmar PIN"), "1234");
-    await user.click(screen.getByRole("button", { name: "Salvar PIN e continuar" }));
+    expect(await screen.findByRole("heading", { name: "Configure um PIN local (opcional)" })).toBeInTheDocument();
+    expect(screen.getByText("Técnica · tecnico@example.com")).toBeInTheDocument();
+    expect(screen.queryByText("Selecione o perfil operacional")).not.toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Continuar sem PIN" }));
     expect(await screen.findByText("Shell SaaS Clientes")).toBeInTheDocument();
-    expect(screen.getByText("admin@example.com")).toBeInTheDocument();
+    expect(screen.getByText("tecnico@example.com")).toBeInTheDocument();
+    expect(screen.getByText("Técnica · TECNICO")).toBeInTheDocument();
+    expect(invokeMock).not.toHaveBeenCalledWith("configurar_pin_perfil_saas", expect.anything());
     await user.click(screen.getByRole("button", { name: "Bloquear" }));
-    expect(await screen.findByText(/Aplicativo bloqueado/)).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "Acesso local bloqueado" })).toBeInTheDocument();
     expect(authService.lock).toHaveBeenCalledTimes(1);
     expect(screen.queryByText(COMPANY_ID)).not.toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Continuar sem PIN" }));
+    expect(await screen.findByText("Shell SaaS Clientes")).toBeInTheDocument();
   });
 
   it("mantém a sessão recuperável quando o boot está offline", async () => {
@@ -164,6 +165,49 @@ describe("SaasApp", () => {
     renderApp(authService);
     await waitFor(() => expect(authService.refreshSession).toHaveBeenCalledWith(expiring));
   });
+
+  it("mantém a tela bloqueada após renovar a sessão e exige o PIN se o perfil mudar", async () => {
+    window.localStorage.setItem(DAILY_BOOT_OPENING_STORAGE_KEY, todayLocalIsoDate());
+    const expiring = { ...session, expiresAt: Math.floor(Date.now() / 1_000) + 30 };
+    const changedProfile: SaasSession = {
+      ...session,
+      expiresAt: Math.floor(Date.now() / 1_000) + 3_600,
+      identity: { ...session.identity, profileId: "c0000000-0000-4000-8000-000000000002" },
+      profile: { id: "c0000000-0000-4000-8000-000000000002", name: "Supervisora", role: "SUPERVISOR", permissions: [] },
+    };
+    const authService = service({
+      restoreSession: vi.fn().mockResolvedValue({ kind: "authenticated", session: expiring }),
+      refreshSession: vi.fn().mockResolvedValue({ kind: "authenticated", session: changedProfile }),
+    });
+
+    renderApp(authService);
+
+    await waitFor(() => expect(authService.refreshSession).toHaveBeenCalledWith(expiring));
+    expect(await screen.findByText("Supervisora · tecnico@example.com")).toBeInTheDocument();
+    expect(screen.queryByText("Shell SaaS Clientes")).not.toBeInTheDocument();
+  });
+
+  it("continua renovando a sessão sem desbloquear a interface", async () => {
+    window.localStorage.setItem(DAILY_BOOT_OPENING_STORAGE_KEY, todayLocalIsoDate());
+    const expiring = { ...session, expiresAt: Math.floor(Date.now() / 1_000) + 63 };
+    const renewed = { ...session, expiresAt: Math.floor(Date.now() / 1_000) + 3_600 };
+    const authService = service({
+      restoreSession: vi.fn().mockResolvedValue({ kind: "authenticated", session: expiring }),
+      refreshSession: vi.fn().mockResolvedValue({ kind: "authenticated", session: renewed }),
+    });
+    const user = userEvent.setup();
+
+    renderApp(authService);
+    expect(await screen.findByRole("heading", { name: "Configure um PIN local (opcional)" })).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Continuar sem PIN" }));
+    expect(await screen.findByText("Shell SaaS Clientes")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Bloquear" }));
+    expect(await screen.findByRole("heading", { name: "Acesso local bloqueado" })).toBeInTheDocument();
+
+    await waitFor(() => expect(authService.refreshSession).toHaveBeenCalledWith(expiring), { timeout: 5_000 });
+    expect(screen.getByRole("heading", { name: "Acesso local bloqueado" })).toBeInTheDocument();
+    expect(screen.queryByText("Shell SaaS Clientes")).not.toBeInTheDocument();
+  }, 8_000);
 
   it("abre uma tela própria de recuperação sem revelar se o email existe", async () => {
     const authService = service();

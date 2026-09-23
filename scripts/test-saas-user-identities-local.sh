@@ -44,6 +44,10 @@ CREATE TABLE auth.users (
     raw_app_meta_data jsonb NOT NULL DEFAULT '{}'::jsonb,
     raw_user_meta_data jsonb NOT NULL DEFAULT '{}'::jsonb
 );
+CREATE TABLE auth.sessions (
+    id uuid PRIMARY KEY,
+    user_id uuid NOT NULL REFERENCES auth.users(id)
+);
 CREATE FUNCTION auth.uid() RETURNS uuid
 LANGUAGE sql STABLE
 AS $$
@@ -76,10 +80,12 @@ docker exec "${container_name}" psql -U postgres -v ON_ERROR_STOP=1 >/dev/null \
 for migration in "${project_dir}"/supabase/migrations/*.sql; do
   [[ "${migration}" == *20260827180517* ]] && continue
   [[ "${migration}" == *20260923151000* ]] && continue
+  [[ "${migration}" == *20260923173239* ]] && continue
   apply_sql "${migration}"
 done
 
 apply_sql "${project_dir}/supabase/migrations/20260923151000_individual_saas_user_identities.sql"
+apply_sql "${project_dir}/supabase/migrations/20260923173239_saas_current_operational_profile_and_individual_devices.sql"
 apply_sql "${project_dir}/supabase/rls.sql"
 
 docker exec -i "${container_name}" psql -U postgres -v ON_ERROR_STOP=1 >/dev/null <<'SQL'

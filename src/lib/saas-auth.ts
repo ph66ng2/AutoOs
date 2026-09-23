@@ -30,6 +30,7 @@ export interface SaasSupabaseAuthPort {
   setSession(accessToken: string, refreshToken: string): Promise<AuthResult>;
   refreshSession(refreshToken: string): Promise<AuthResult>;
   getClaims(accessToken: string): Promise<{ claims: Record<string, unknown> | null; error: unknown }>;
+  getCurrentProfile(accessToken: string): Promise<{ profile: Record<string, unknown> | null; error: unknown }>;
   signOutLocal(accessToken: string, refreshToken: string): Promise<{ error: unknown }>;
   resetPasswordForEmail(email: string, redirectTo: string): Promise<{ error: unknown }>;
   registerDevice(accessToken: string, refreshToken: string, deviceId: string): Promise<{ error: unknown }>;
@@ -86,13 +87,14 @@ export function loadSaasAuthConfiguration(environment: Environment): SaasAuthCon
   };
 }
 
-function createAuthClient(config: SaasAuthConfiguration): SupabaseClient {
+function createAuthClient(config: SaasAuthConfiguration, accessToken?: string): SupabaseClient {
   return createClient(config.supabaseUrl, config.publishableKey, {
     auth: {
       persistSession: false,
       autoRefreshToken: false,
       detectSessionInUrl: false,
     },
+    ...(accessToken ? { global: { headers: { Authorization: `Bearer ${accessToken}` } } } : {}),
   });
 }
 
@@ -120,6 +122,13 @@ export class SupabaseSaasAuthPort implements SaasSupabaseAuthPort {
   async getClaims(accessToken: string) {
     const { data, error } = await createAuthClient(this.config).auth.getClaims(accessToken);
     return { claims: (data?.claims as Record<string, unknown> | undefined) ?? null, error };
+  }
+
+  async getCurrentProfile(accessToken: string) {
+    const { data, error } = await createAuthClient(this.config, accessToken)
+      .rpc("get_current_saas_operational_profile")
+      .maybeSingle();
+    return { profile: (data as Record<string, unknown> | null) ?? null, error };
   }
 
   async signOutLocal(accessToken: string, refreshToken: string) {
@@ -193,10 +202,6 @@ function requireUuid(value: unknown, label: string): string {
   return value;
 }
 
-function getObject(value: unknown): Record<string, unknown> {
-  return typeof value === "object" && value !== null ? (value as Record<string, unknown>) : {};
-}
-
 async function normalizeSession(port: SaasSupabaseAuthPort, session: Session): Promise<SaasSession> {
   if (!session.access_token || !session.refresh_token || !session.expires_at) {
     throw new SaasAuthError("expired", "A sessão recebida está incompleta.");
@@ -209,13 +214,9 @@ async function normalizeSession(port: SaasSupabaseAuthPort, session: Session): P
   }
 
   const claims = verified.claims;
-  const appMetadata = getObject(claims.app_metadata);
   const userId = requireUuid(claims.sub, "UUID de usuário");
   if (session.user?.id && session.user.id !== userId) {
     throw new SaasAuthError("invalid_claims", "A identidade da sessão não corresponde ao usuário autenticado.");
-  }
-  if (appMetadata.profile_role !== "ADMIN") {
-    throw new SaasAuthError("account_unavailable", "Esta conta não possui um perfil administrador ativo no AutoOS.");
   }
 
   const email = typeof claims.email === "string" ? claims.email.trim().toLowerCase() : "";
@@ -223,10 +224,50 @@ async function normalizeSession(port: SaasSupabaseAuthPort, session: Session): P
     throw new SaasAuthError("invalid_claims", "A sessão não contém um email válido.");
   }
 
+  let current;
+  try {
+    current = await port.getCurrentProfile(session.access_token);
+  } catch (error) {
+    if (isNetworkError(error)) throw new SaasAuthError("network", "Não foi possível validar o vínculo ativo agora.");
+    throw new SaasAuthError("account_unavailable", "Esta conta não está vinculada a um perfil ativo do AutoOS.");
+  }
+  if (current.error) {
+    if (isNetworkError(current.error)) throw new SaasAuthError("network", "Não foi possível validar o vínculo ativo agora.");
+    throw new SaasAuthError("account_unavailable", "Esta conta não está vinculada a um perfil ativo do AutoOS.");
+  }
+  if (!current.profile) {
+    throw new SaasAuthError("account_unavailable", "Esta conta não possui um vínculo ativo no AutoOS.");
+  }
+
+  const companyId = requireUuid(current.profile.empresa_id, "UUID de empresa");
+  const profileId = requireUuid(current.profile.profile_id, "UUID de perfil");
+  const name = typeof current.profile.nome === "string" ? current.profile.nome.trim() : "";
+  const role = typeof current.profile.role === "string" ? current.profile.role.trim() : "";
+  if (!name || !role) {
+    throw new SaasAuthError("invalid_claims", "O perfil ativo recebido do servidor está incompleto.");
+  }
+  let permissions: unknown = current.profile.permissions;
+  if (typeof permissions === "string") {
+    try {
+      permissions = JSON.parse(permissions);
+    } catch {
+      permissions = null;
+    }
+  }
+  if (!Array.isArray(permissions)) {
+    throw new SaasAuthError("invalid_claims", "As permissões do perfil ativo estão inválidas.");
+  }
+  const profile: SaasOperationalProfile = {
+    id: profileId,
+    name,
+    role,
+    permissions: permissions.filter((permission): permission is string => typeof permission === "string"),
+  };
+
   const identity: SaasIdentity = {
     userId,
-    companyId: requireUuid(appMetadata.company_id, "UUID de empresa"),
-    profileId: requireUuid(appMetadata.profile_id, "UUID de perfil"),
+    companyId,
+    profileId,
     email,
   };
   return {
@@ -234,6 +275,7 @@ async function normalizeSession(port: SaasSupabaseAuthPort, session: Session): P
     refreshToken: session.refresh_token,
     expiresAt: session.expires_at,
     identity,
+    profile,
   };
 }
 
@@ -449,37 +491,4 @@ export async function reauthenticateSaasIdentity(
   if (confirmed.identity.userId !== session.identity.userId || confirmed.identity.companyId !== session.identity.companyId) {
     throw new SaasAuthError("invalid_claims", "A confirmação deve usar a mesma conta SaaS desta sessão.");
   }
-}
-
-/** Lê somente perfis ativos do tenant confirmado no JWT da sessão atual. */
-export async function listSaasOperationalProfiles(
-  session: SaasSession,
-  environment: Environment = import.meta.env,
-): Promise<SaasOperationalProfile[]> {
-  const client = createAuthClient(loadSaasAuthConfiguration(environment));
-  const restored = await client.auth.setSession({ access_token: session.accessToken, refresh_token: session.refreshToken });
-  if (restored.error) throw new SaasAuthError("expired", "Não foi possível restaurar a sessão para sincronizar perfis.");
-  const { data, error } = await client.rpc("list_active_saas_operational_profiles");
-  if (error) throw new SaasAuthError("account_unavailable", "Não foi possível sincronizar os perfis autorizados.");
-  return (data ?? []).flatMap((row: Record<string, unknown>) => {
-    if (typeof row.profile_id !== "string" || typeof row.nome !== "string" || typeof row.role !== "string") return [];
-    try {
-      const parsed = typeof row.permissions === "string" ? JSON.parse(row.permissions) : row.permissions;
-      return [{ id: requireUuid(row.profile_id, "UUID de perfil"), name: row.nome, role: row.role, permissions: Array.isArray(parsed) ? parsed.filter((value): value is string => typeof value === "string") : [] }];
-    } catch { return []; }
-  });
-}
-
-/** Registra no servidor a escolha local, sem confundi-la com identidade individual. */
-export async function auditSaasOperationalProfileSelection(
-  session: SaasSession,
-  profileId: string,
-  environment: Environment = import.meta.env,
-): Promise<void> {
-  requireUuid(profileId, "UUID de perfil");
-  const client = createAuthClient(loadSaasAuthConfiguration(environment));
-  const restored = await client.auth.setSession({ access_token: session.accessToken, refresh_token: session.refreshToken });
-  if (restored.error) throw new SaasAuthError("expired", "Não foi possível restaurar a sessão para registrar o perfil.");
-  const { error } = await client.rpc("audit_saas_operational_profile_selection", { p_profile_id: profileId });
-  if (error) throw new SaasAuthError("account_unavailable", "Não foi possível confirmar o perfil operacional autorizado.");
 }

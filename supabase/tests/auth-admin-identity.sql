@@ -98,6 +98,7 @@ SELECT set_config(
     'autoos.test.jwt_a',
     jsonb_build_object(
         'sub', identity.auth_user_id,
+        'session_id', 'a0000000-0000-4000-8000-000000000091',
         'app_metadata', jsonb_build_object(
             'company_id', identity.empresa_id,
             'profile_id', identity.profile_id
@@ -107,6 +108,11 @@ SELECT set_config(
 )
 FROM public.company_admin_identities AS identity
 WHERE identity.empresa_id = 'a0000000-0000-4000-8000-000000000001';
+
+INSERT INTO auth.sessions (id, user_id)
+SELECT 'a0000000-0000-4000-8000-000000000091', identity.auth_user_id
+  FROM public.company_admin_identities AS identity
+ WHERE identity.empresa_id = 'a0000000-0000-4000-8000-000000000001';
 
 SET LOCAL ROLE authenticated;
 SELECT set_config('request.jwt.claims', current_setting('autoos.test.jwt_a'), true);
@@ -133,6 +139,11 @@ BEGIN
         WHERE profile_id = 'b0000000-0000-4000-8000-000000000011'
     ) THEN
         RAISE EXCEPTION 'operational profile RPC leaked a profile from tenant B';
+    END IF;
+
+    IF (SELECT profile_id FROM public.get_current_saas_operational_profile())
+       IS DISTINCT FROM 'a0000000-0000-4000-8000-000000000011'::uuid THEN
+        RAISE EXCEPTION 'current-profile RPC did not return the caller linked ADMIN profile';
     END IF;
 END;
 $$;

@@ -63,6 +63,7 @@ SELECT set_config(
     'autoos.test.individual_user_a',
     jsonb_build_object(
         'sub', identity.auth_user_id,
+        'session_id', 'a0000000-0000-4000-8000-000000000092',
         'app_metadata', jsonb_build_object(
             'company_id', 'b0000000-0000-4000-8000-000000000001',
             'profile_id', 'b0000000-0000-4000-8000-000000000011',
@@ -78,6 +79,32 @@ SELECT set_config(
 )
 FROM public.company_admin_identities AS identity
 WHERE identity.empresa_id = 'a0000000-0000-4000-8000-000000000001';
+
+INSERT INTO auth.sessions (id, user_id)
+SELECT 'a0000000-0000-4000-8000-000000000092', identity.auth_user_id
+  FROM public.company_admin_identities AS identity
+ WHERE identity.empresa_id = 'a0000000-0000-4000-8000-000000000001';
+
+SELECT set_config(
+    'autoos.test.device_user_a',
+    jsonb_build_object(
+        'sub', identity.auth_user_id,
+        'session_id', 'a0000000-0000-4000-8000-000000000094',
+        'app_metadata', jsonb_build_object(
+            'company_id', 'b0000000-0000-4000-8000-000000000001',
+            'profile_id', 'b0000000-0000-4000-8000-000000000011',
+            'profile_role', 'ADMIN'
+        )
+    )::text,
+    true
+)
+FROM public.company_admin_identities AS identity
+WHERE identity.empresa_id = 'a0000000-0000-4000-8000-000000000001';
+
+INSERT INTO auth.sessions (id, user_id)
+SELECT 'a0000000-0000-4000-8000-000000000094', identity.auth_user_id
+  FROM public.company_admin_identities AS identity
+ WHERE identity.empresa_id = 'a0000000-0000-4000-8000-000000000001';
 
 DO $$
 DECLARE
@@ -164,6 +191,16 @@ BEGIN
         RAISE EXCEPTION 'individual login did not resolve its server-side tenant';
     END IF;
 
+    IF NOT EXISTS (
+        SELECT 1
+          FROM public.get_current_saas_operational_profile() AS profile
+         WHERE profile.empresa_id = 'a0000000-0000-4000-8000-000000000001'
+           AND profile.profile_id = 'a0000000-0000-4000-8000-000000000012'
+           AND profile.role = 'TECNICO'
+    ) THEN
+        RAISE EXCEPTION 'current-profile RPC did not resolve the individual user server-side binding';
+    END IF;
+
     SELECT count(*) INTO visible_rows FROM public.clientes;
     IF visible_rows <> 1 THEN
         RAISE EXCEPTION 'individual user saw % rows instead of only tenant A', visible_rows;
@@ -182,6 +219,25 @@ BEGIN
     END;
 END;
 $$;
+
+SELECT set_config('request.jwt.claims', current_setting('autoos.test.device_user_a'), true);
+DO $$
+DECLARE
+    registered_device uuid := 'a0000000-0000-4000-8000-000000000093';
+BEGIN
+    PERFORM * FROM public.register_autoos_device(registered_device, 'Individual test device');
+    PERFORM public.assert_active_autoos_device(registered_device);
+    PERFORM public.revoke_current_autoos_device(registered_device, 'test_revocation');
+END;
+$$;
+DO $$
+BEGIN
+    IF public.current_company_id() IS NOT NULL THEN
+        RAISE EXCEPTION 'device revocation left its access JWT authorized';
+    END IF;
+END;
+$$;
+SELECT set_config('request.jwt.claims', current_setting('autoos.test.individual_user_a'), true);
 
 RESET ROLE;
 UPDATE public.security_profiles
@@ -212,6 +268,9 @@ BEGIN
     IF public.current_company_id() IS NOT NULL THEN
         RAISE EXCEPTION 'stale JWT retained access after the linked profile was deactivated';
     END IF;
+    IF EXISTS (SELECT 1 FROM public.get_current_saas_operational_profile()) THEN
+        RAISE EXCEPTION 'inactive individual profile was returned to the client';
+    END IF;
 END;
 $$;
 
@@ -219,6 +278,23 @@ RESET ROLE;
 UPDATE public.security_profiles
    SET ativo = true, atualizado_em = CURRENT_TIMESTAMP
  WHERE id = 'a0000000-0000-4000-8000-000000000012';
+
+DELETE FROM auth.sessions
+ WHERE id = 'a0000000-0000-4000-8000-000000000092';
+
+SET LOCAL ROLE authenticated;
+DO $$
+BEGIN
+    IF public.current_company_id() IS NOT NULL THEN
+        RAISE EXCEPTION 'revoked old JWT regained access after profile reactivation';
+    END IF;
+    IF EXISTS (SELECT 1 FROM public.get_current_saas_operational_profile()) THEN
+        RAISE EXCEPTION 'revoked old session restored a SaaS profile after reactivation';
+    END IF;
+END;
+$$;
+RESET ROLE;
+
 UPDATE public.company_user_identities
    SET ativo = false, suspended_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP
  WHERE empresa_id = 'a0000000-0000-4000-8000-000000000001';
