@@ -88,7 +88,7 @@ function asOnlineError(response: Response): OnlineDataError {
 }
 
 export class SupabaseClientesRepository implements ClientesRepository {
-  constructor(private readonly session: SupabaseOnlineSession, private readonly fetcher: FetchLike = fetch) {}
+  constructor(private readonly session: SupabaseOnlineSession, private readonly fetcher: FetchLike = fetch.bind(globalThis)) {}
 
   private endpoint(query = ""): string {
     return `${this.session.supabaseUrl}/rest/v1/clientes${query}`;
@@ -102,7 +102,7 @@ export class SupabaseClientesRepository implements ClientesRepository {
         headers: { apikey: this.session.publishableKey, Authorization: `Bearer ${this.session.accessToken}`, "Content-Type": "application/json", ...(init.headers ?? {}) },
       });
     } catch {
-      throw new OnlineDataError("ONLINE_UNAVAILABLE", "Você está sem conexão com o serviço Online. Seus dados do formulário foram mantidos; reconecte e tente novamente.");
+      throw new OnlineDataError("ONLINE_UNAVAILABLE", "A comunicação com o serviço Online falhou. Seus dados do formulário foram mantidos; tente novamente.");
     }
     if (!response.ok) throw asOnlineError(response);
     return (await response.json()) as T;
