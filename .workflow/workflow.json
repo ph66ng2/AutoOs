@@ -3472,7 +3472,7 @@
     {
       "id": "AO-EQP-ONLINE-001",
       "title": "Conectar listagem e cadastro de Equipamentos ao SaaS",
-      "status": "in_progress",
+      "status": "review",
       "blockedBy": [
         "AO-SHELL-001",
         "AO-CLI-003"
