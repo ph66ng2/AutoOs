@@ -16,6 +16,7 @@ import {
   carregarRepositorioEquipamentos,
   type EquipamentosRepository,
 } from "@/lib/data/equipamentos-repository";
+import { carregarRepositorioOperacoesEquipamento } from "@/lib/data/equipamentos-operacoes-repository";
 import type { Equipamento, EquipamentoId } from "@/types";
 
 /**
@@ -156,7 +157,19 @@ export function useEquipamentos<Id extends EquipamentoId = number>(params?: UseE
   ) => {
     try {
       if (IS_SAAS_BUILD) {
-        throw new Error("As transições e correções de status serão habilitadas no ticket operacional correspondente.");
+        if (typeof id !== "string") throw new Error("O identificador do equipamento Online é inválido.");
+        const repository = await carregarRepositorioOperacoesEquipamento();
+        await repository.changeStatus({
+          equipmentId: id,
+          expectedUpdatedAt: expectedUpdatedEm ?? "",
+          status: novoStatus,
+          budget: valorOrcamento,
+          approvalDeadline: prazoAprovacao,
+          finalValue: valorFinal,
+          correctionReason: motivoCorrecao,
+        });
+        await carregar();
+        return { sucesso: true };
       }
       if (typeof id !== "number") throw new Error("Um identificador SaaS não pode ser encaminhado ao banco local.");
       await db.atualizarStatusEquipamento(

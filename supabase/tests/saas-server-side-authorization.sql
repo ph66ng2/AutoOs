@@ -229,8 +229,12 @@ DECLARE
 BEGIN
     UPDATE public.equipamentos SET valor_orcamento = 125
      WHERE id = 'a0000000-0000-4000-8000-000000000041';
-    UPDATE public.equipamentos SET status = 'RECEBIDO'
-     WHERE id = 'a0000000-0000-4000-8000-000000000041';
+    PERFORM public.saas_update_equipment_status(
+        'a0000000-0000-4000-8000-000000000041',
+        (SELECT atualizado_em FROM public.equipamentos
+         WHERE id = 'a0000000-0000-4000-8000-000000000041'),
+        'RECEBIDO', NULL, NULL, NULL, 'Correção autorizada no contrato de testes'
+    );
     UPDATE public.verificacoes SET custo_total = 80
      WHERE id = 'a0000000-0000-4000-8000-000000000061';
     UPDATE public.produtos SET quantidade_estoque = 7

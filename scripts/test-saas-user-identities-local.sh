@@ -86,6 +86,7 @@ for migration in "${project_dir}"/supabase/migrations/*.sql; do
   [[ "${migration}" == *20260923162249* ]] && continue
   [[ "${migration}" == *20260923173239* ]] && continue
   [[ "${migration}" == *20260923211404* ]] && continue
+  [[ "${migration}" == *20260924055044* ]] && continue
   apply_sql "${migration}"
 done
 
@@ -94,6 +95,7 @@ apply_sql "${project_dir}/supabase/migrations/20260923162249_saas_user_lifecycle
 apply_sql "${project_dir}/supabase/migrations/20260923173239_saas_current_operational_profile_and_individual_devices.sql"
 apply_sql "${project_dir}/supabase/rls.sql"
 apply_sql "${project_dir}/supabase/migrations/20260923211404_saas_server_side_sensitive_authorization.sql"
+apply_sql "${project_dir}/supabase/migrations/20260924055044_equipment_verification_quote_workflow.sql"
 
 docker exec -i "${container_name}" psql -U postgres -v ON_ERROR_STOP=1 >/dev/null <<'SQL'
 INSERT INTO auth.users (id, email, email_confirmed_at) VALUES
@@ -114,6 +116,7 @@ apply_sql "${project_dir}/supabase/tests/auth-admin-identity.sql"
 apply_sql "${project_dir}/supabase/tests/individual-user-identity.sql"
 apply_sql "${project_dir}/supabase/tests/saas-user-lifecycle.sql"
 apply_sql "${project_dir}/supabase/tests/saas-server-side-authorization.sql"
+apply_sql "${project_dir}/supabase/tests/equipment_verification_quote_workflow.sql"
 
 server_logs="$(docker logs "${container_name}" 2>&1)"
 if ! grep -Fq \
