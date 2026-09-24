@@ -17,6 +17,13 @@ export interface SaasCompanyUser {
   updated_at: string | null;
 }
 
+export interface SaasOperationalProfileOption {
+  id: string;
+  name: string;
+  role: string;
+  permissions: string[];
+}
+
 export interface SaasUserInviteResult {
   status: "pending";
   userId: string;
@@ -24,6 +31,8 @@ export interface SaasUserInviteResult {
 }
 
 export type SaasUserAdminErrorCode = "SESSION_EXPIRED" | "FORBIDDEN" | "CONFLICT" | "ONLINE_UNAVAILABLE" | "INVALID_RESPONSE";
+
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 export class SaasUserAdminError extends Error {
   constructor(public readonly code: SaasUserAdminErrorCode, message: string) {
@@ -49,7 +58,7 @@ function asFailure(response: Response): SaasUserAdminError {
     return new SaasUserAdminError("FORBIDDEN", "Sua conta não está autorizada a realizar esta operação.");
   }
   if (response.status === 409) {
-    return new SaasUserAdminError("CONFLICT", "A operação conflita com o estado atual do usuário.");
+    return new SaasUserAdminError("CONFLICT", "A equipe mudou ou a operação conflita com o estado atual. Atualize a lista e tente novamente.");
   }
   return new SaasUserAdminError("ONLINE_UNAVAILABLE", "Não foi possível concluir a operação online. Tente novamente.");
 }
@@ -77,14 +86,54 @@ function parseCompanyUsers(payload: unknown): SaasCompanyUser[] {
   return payload.users as SaasCompanyUser[];
 }
 
+function parseActiveProfiles(payload: unknown): SaasOperationalProfileOption[] {
+  if (!Array.isArray(payload) || payload.some((profile) => !isRecord(profile))) {
+    throw new SaasUserAdminError("INVALID_RESPONSE", "O serviço retornou uma lista de perfis inválida.");
+  }
+
+  return payload.map((profile) => {
+    let permissions: unknown = profile.permissions;
+    if (typeof permissions === "string") {
+      try {
+        permissions = JSON.parse(permissions);
+      } catch {
+        permissions = null;
+      }
+    }
+    if (typeof profile.profile_id !== "string" || !UUID_PATTERN.test(profile.profile_id)
+      || typeof profile.nome !== "string" || !profile.nome.trim()
+      || typeof profile.role !== "string" || !profile.role.trim()
+      || !Array.isArray(permissions)
+      || permissions.some((permission) => typeof permission !== "string")) {
+      throw new SaasUserAdminError("INVALID_RESPONSE", "O serviço retornou dados de perfil incompletos.");
+    }
+    return {
+      id: profile.profile_id,
+      name: profile.nome.trim(),
+      role: profile.role.trim(),
+      permissions: permissions as string[],
+    };
+  });
+}
+
 export class SupabaseSaasUsersRepository {
   private readonly endpoint: string;
+  private readonly profilesEndpoint: string;
 
   constructor(
     private readonly session: SupabaseOnlineSession,
     private readonly fetcher: FetchLike = fetch.bind(globalThis),
   ) {
     this.endpoint = `${session.supabaseUrl}/functions/v1/saas-user-admin`;
+    this.profilesEndpoint = `${session.supabaseUrl}/rest/v1/rpc/list_active_saas_operational_profiles`;
+  }
+
+  private authHeaders(): Record<string, string> {
+    return {
+      apikey: this.session.publishableKey,
+      Authorization: `Bearer ${this.session.accessToken}`,
+      "Content-Type": "application/json",
+    };
   }
 
   private async request<T>(action: UserAdminAction): Promise<T> {
@@ -92,11 +141,7 @@ export class SupabaseSaasUsersRepository {
     try {
       response = await this.fetcher(this.endpoint, {
         method: "POST",
-        headers: {
-          apikey: this.session.publishableKey,
-          Authorization: `Bearer ${this.session.accessToken}`,
-          "Content-Type": "application/json",
-        },
+        headers: this.authHeaders(),
         body: JSON.stringify(action),
       });
     } catch {
@@ -113,6 +158,26 @@ export class SupabaseSaasUsersRepository {
 
   async listUsers(): Promise<SaasCompanyUser[]> {
     return parseCompanyUsers(await this.request({ action: "list_users" }));
+  }
+
+  async listActiveProfiles(): Promise<SaasOperationalProfileOption[]> {
+    let response: Response;
+    try {
+      response = await this.fetcher(this.profilesEndpoint, {
+        method: "POST",
+        headers: this.authHeaders(),
+        body: "{}",
+      });
+    } catch {
+      throw new SaasUserAdminError("ONLINE_UNAVAILABLE", "A comunicação com o serviço de perfis falhou. Tente novamente.");
+    }
+    if (!response.ok) throw asFailure(response);
+    try {
+      return parseActiveProfiles(await response.json());
+    } catch (error) {
+      if (error instanceof SaasUserAdminError) throw error;
+      throw new SaasUserAdminError("INVALID_RESPONSE", "O serviço de perfis retornou uma resposta inválida.");
+    }
   }
 
   invite(email: string, profileId: string): Promise<SaasUserInviteResult> {

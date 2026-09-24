@@ -1,6 +1,7 @@
 import { BrowserRouter, Navigate, NavLink, Route, Routes } from "react-router-dom";
-import { LockKeyhole, LogOut, Printer, Trash2, Users } from "lucide-react";
+import { LockKeyhole, LogOut, Printer, Settings, Trash2, Users } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { SaasTeamAccessDenied, SaasTeamSettingsPage } from "@/components/saas/SaasTeamSettingsPage";
 import SaasClientesPage from "@/pages/SaasClientesPage";
 import Equipamentos from "@/pages/Equipamentos";
 import type { SaasOperationalProfile, SaasSession } from "@/types/saas-auth";
@@ -52,12 +53,16 @@ function SaasOperationalRoutes({ session, profile, onLock, onSignOut, onRemoveDe
           <NavLink to="/equipamentos" className={({ isActive }) => `mt-1 flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium ${isActive ? "bg-slate-700 text-white" : "text-slate-300 hover:bg-white/10 hover:text-white"}`}>
             <Printer className="h-4 w-4" />Equipamentos
           </NavLink>
+          {profile.role === "ADMIN" ? <NavLink to="/configuracoes/equipe" className={({ isActive }) => `mt-1 flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium ${isActive ? "bg-slate-700 text-white" : "text-slate-300 hover:bg-white/10 hover:text-white"}`}>
+            <Settings className="h-4 w-4" />Equipe e Acessos
+          </NavLink> : null}
           <p className="mt-5 text-xs leading-5 text-slate-500">Outros módulos serão liberados quando receberem adapters SaaS tenant-safe.</p>
         </nav>
         <main className="min-w-0 flex-1 rounded-xl bg-background p-6 text-foreground">
           <Routes>
             <Route path="/clientes" element={<SaasClientesPage />} />
             <Route path="/equipamentos" element={<Equipamentos operationalProfile={profile} />} />
+            <Route path="/configuracoes/equipe" element={profile.role === "ADMIN" ? <SaasTeamSettingsPage session={session} /> : <SaasTeamAccessDenied />} />
             <Route path="*" element={<Navigate to="/clientes" replace />} />
           </Routes>
         </main>

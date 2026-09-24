@@ -63,6 +63,39 @@ describe("SupabaseSaasUsersRepository", () => {
     await expect(repository.listUsers()).resolves.toEqual([user]);
   });
 
+  it("loads active profiles through the session-scoped SECURITY INVOKER RPC without a tenant payload", async () => {
+    const fetcher = vi.fn<typeof fetch>().mockResolvedValue(response([{
+      profile_id: "a0000000-0000-4000-8000-000000000014",
+      nome: "Técnico",
+      role: "TECNICO",
+      permissions: ["CLIENTS_READ"],
+    }]));
+    const repository = createSaasUsersRepository(session, configuration, fetcher);
+
+    await expect(repository.listActiveProfiles()).resolves.toEqual([{
+      id: "a0000000-0000-4000-8000-000000000014",
+      name: "Técnico",
+      role: "TECNICO",
+      permissions: ["CLIENTS_READ"],
+    }]);
+    const [url, init] = fetcher.mock.calls[0];
+    expect(url).toBe("https://project.example.test/rest/v1/rpc/list_active_saas_operational_profiles");
+    expect(init?.headers).toMatchObject({ apikey: "sb_publishable_test", Authorization: "Bearer user-jwt-test" });
+    expect(JSON.parse(String(init?.body))).toEqual({});
+    expect(String(init?.body)).not.toContain(session.identity.companyId);
+  });
+
+  it("rejects malformed profile options", async () => {
+    const repository = createSaasUsersRepository(session, configuration, vi.fn<typeof fetch>().mockResolvedValue(response([{
+      profile_id: "not-a-uuid",
+      nome: "Técnico",
+      role: "TECNICO",
+      permissions: [],
+    }])));
+
+    await expect(repository.listActiveProfiles()).rejects.toMatchObject({ code: "INVALID_RESPONSE" });
+  });
+
   it.each([
     [401, "SESSION_EXPIRED"],
     [403, "FORBIDDEN"],
@@ -73,6 +106,15 @@ describe("SupabaseSaasUsersRepository", () => {
 
     await expect(repository.listUsers()).rejects.toMatchObject({ code });
     await expect(repository.listUsers()).rejects.not.toThrow("provider secret");
+  });
+
+  it("maps an authorization conflict to an actionable safe message", async () => {
+    const repository = createSaasUsersRepository(session, configuration, vi.fn<typeof fetch>().mockResolvedValue(response({ error: "provider detail" }, 409)));
+
+    await expect(repository.deactivate("cccccccc-cccc-4ccc-8ccc-cccccccccccc")).rejects.toMatchObject({
+      code: "CONFLICT",
+      message: expect.stringContaining("conflita com o estado atual"),
+    });
   });
 
   it("does not expose transport failures", async () => {
