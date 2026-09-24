@@ -477,6 +477,16 @@ export interface WhatsappConfigInput extends WhatsappConfig {
   token?: string;
 }
 
+export interface PhotoTunnelConfig {
+  has_token?: boolean;
+  env_override?: boolean;
+  public_host: string;
+}
+
+export interface PhotoTunnelConfigInput {
+  token?: string;
+}
+
 export interface EmailAttachment {
   filename: string;
   content_type?: string;

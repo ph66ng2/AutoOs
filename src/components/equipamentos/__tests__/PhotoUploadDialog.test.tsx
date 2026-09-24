@@ -9,6 +9,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, screen, act, fireEvent } from "@testing-library/react";
 import { PhotoUploadDialog } from "../PhotoUploadDialog";
+import { db } from "@/lib/db";
 
 // ─── Mocks ──────────────────────────────────────────────
 
@@ -195,5 +196,63 @@ describe("PhotoUploadDialog — sucesso", () => {
       mime_type: "image/jpeg",
       categoria: "ENTRADA",
     });
+  });
+
+  it("mostra o aviso do hostname público quando o QR usa o túnel nomeado", async () => {
+    vi.mocked(db.gerarQrUpload).mockResolvedValueOnce({
+      qr_svg: "<svg>mock-qr</svg>",
+      url: "https://fotos.bmitag.com.br/?token=test-token&eq=1&cat=ENTRADA",
+      token: "test-token",
+      via_tunnel: true,
+    });
+    (global.fetch as vi.Mock).mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve({ used: false }),
+    });
+
+    render(<PhotoUploadDialog {...defaultProps} />);
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(0);
+    });
+
+    expect(
+      screen.getByText(/não precisa estar no Wi-Fi da recepção/i),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(/fotos.bmitag.com.br enquanto o QR estiver aberto/i),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByText(/mesma rede Wi-Fi que o computador/i),
+    ).not.toBeInTheDocument();
+  });
+
+  it("mostra o aviso do túnel rápido quando o QR usa trycloudflare", async () => {
+    vi.mocked(db.gerarQrUpload).mockResolvedValueOnce({
+      qr_svg: "<svg>mock-qr</svg>",
+      url: "https://foo-bar.trycloudflare.com/?token=test-token&eq=1&cat=ENTRADA",
+      token: "test-token",
+      via_tunnel: true,
+    });
+    (global.fetch as vi.Mock).mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve({ used: false }),
+    });
+
+    render(<PhotoUploadDialog {...defaultProps} />);
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(0);
+    });
+
+    expect(
+      screen.getByText(/cada computador gera o próprio endereço/i),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(/celular pode estar no 4G/i),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByText(/um computador de recepção por vez/i),
+    ).not.toBeInTheDocument();
   });
 });

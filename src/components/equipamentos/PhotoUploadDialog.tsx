@@ -34,6 +34,7 @@ interface QrData {
   qr_svg: string;
   url: string;
   token: string;
+  via_tunnel?: boolean;
 }
 
 export function PhotoUploadDialog({
@@ -115,8 +116,9 @@ export function PhotoUploadDialog({
       const result = await db.gerarQrUpload(equipamentoIdRef.current, categoriaRef.current, PHOTO_SERVER_PORT);
       setQrData(result);
       tokenRef.current = result.token;
-    } catch {
-      setError("Não foi possível iniciar o servidor de fotos");
+    } catch (error) {
+      const message = typeof error === "string" ? error : (error as { message?: string })?.message;
+      setError(message || "Não foi possível iniciar o servidor de fotos");
       return;
     } finally {
       setLoading(false);
@@ -199,6 +201,9 @@ export function PhotoUploadDialog({
     return `${mins}:${secs.toString().padStart(2, "0")}`;
   };
 
+  const viaTunnel = !!qrData?.via_tunnel || !!qrData?.url.startsWith("https://");
+  const namedHost = !!qrData?.url.includes("fotos.bmitag.com.br");
+
   const handleOpenChange = (newOpen: boolean) => {
     if (!newOpen) {
       void stopServer();
@@ -215,7 +220,9 @@ export function PhotoUploadDialog({
             Adicionar Foto via Celular
           </DialogTitle>
           <DialogDescription>
-            Escaneie o QR code com seu celular ou acesse o endereço abaixo (Para enviar a foto é necessario estar na mesma rede Wi-Fi do computador)
+            {viaTunnel
+              ? "Escaneie o QR code com o celular. Não precisa estar no Wi-Fi da recepção — cada computador gera o próprio endereço."
+              : "Escaneie o QR code com seu celular ou acesse o endereço abaixo (Para enviar a foto é necessario estar na mesma rede Wi-Fi do computador)"}
           </DialogDescription>
         </DialogHeader>
 
@@ -237,7 +244,7 @@ export function PhotoUploadDialog({
         {loading && !success && (
           <div className="flex flex-col items-center justify-center py-8 gap-3">
             <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600" />
-            <p className="text-sm text-muted-foreground">Iniciando servidor...</p>
+            <p className="text-sm text-muted-foreground">Preparando o endereço do celular...</p>
           </div>
         )}
 
@@ -292,7 +299,11 @@ export function PhotoUploadDialog({
             <div className="rounded-md bg-amber-50 border border-amber-200 p-3 flex items-start gap-2">
               <AlertCircle className="h-4 w-4 text-amber-600 mt-0.5 shrink-0" />
               <p className="text-xs text-amber-800">
-                Certifique-se de que o celular está na mesma rede Wi-Fi que o computador.
+                {viaTunnel
+                  ? namedHost
+                    ? "Este PC fica responsável por fotos.bmitag.com.br enquanto o QR estiver aberto. Use um computador de recepção por vez."
+                    : "O celular pode estar no 4G. Este endereço vale só enquanto o QR estiver aberto neste computador."
+                  : "Certifique-se de que o celular está na mesma rede Wi-Fi que o computador."}
               </p>
             </div>
           </div>

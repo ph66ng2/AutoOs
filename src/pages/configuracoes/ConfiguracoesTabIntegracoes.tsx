@@ -25,6 +25,15 @@ export type ConfiguracoesTabIntegracoesProps = {
   savingWhatsapp: boolean;
   whatsappStatus: string | null;
   whatsappHasToken: boolean;
+  canConfigurePhotoTunnel: boolean;
+  photoTunnelToken: string;
+  onPhotoTunnelTokenChange: (value: string) => void;
+  onSubmitPhotoTunnel: () => void | Promise<void>;
+  savingPhotoTunnel: boolean;
+  photoTunnelStatus: string | null;
+  photoTunnelHasToken: boolean;
+  photoTunnelEnvOverride: boolean;
+  photoTunnelPublicHost: string;
 };
 
 export function ConfiguracoesTabIntegracoes({
@@ -45,6 +54,15 @@ export function ConfiguracoesTabIntegracoes({
   savingWhatsapp,
   whatsappStatus,
   whatsappHasToken,
+  canConfigurePhotoTunnel,
+  photoTunnelToken,
+  onPhotoTunnelTokenChange,
+  onSubmitPhotoTunnel,
+  savingPhotoTunnel,
+  photoTunnelStatus,
+  photoTunnelHasToken,
+  photoTunnelEnvOverride,
+  photoTunnelPublicHost,
 }: ConfiguracoesTabIntegracoesProps) {
   return (
     <TabsContent value="smtp" className="space-y-4">
@@ -196,6 +214,72 @@ export function ConfiguracoesTabIntegracoes({
           ) : (
             <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
               O perfil ativo nao possui permissao para configurar a API de WhatsApp. Troque para um perfil com essa permissao para editar este bloco.
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Fotos pelo celular</CardTitle>
+          <CardDescription>
+            Padrão: cada PC publica um HTTPS temporário sozinho (sem DNS e sem token). Os três computadores podem enviar foto ao mesmo tempo.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          {canConfigurePhotoTunnel ? (
+            <form
+              onSubmit={(event) => {
+                event.preventDefault();
+                void onSubmitPhotoTunnel();
+              }}
+              className="space-y-4"
+            >
+              <div className="rounded-lg border border-blue-200 bg-blue-50 p-4 text-sm text-blue-900 space-y-2">
+                <p>
+                  Coloque o <code>cloudflared</code> no PATH ou na pasta AutoOS de cada PC que for gerar QR. Não precisa criar DNS nem colar token.
+                </p>
+                <p>
+                  O campo abaixo é opcional: só use se quiser o hostname fixo <strong>{photoTunnelPublicHost || "fotos.bmitag.com.br"}</strong> (aí um PC por vez).
+                </p>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="photo-tunnel-token">Token do túnel Cloudflare</Label>
+                <Input
+                  id="photo-tunnel-token"
+                  type="password"
+                  autoComplete="off"
+                  value={photoTunnelToken}
+                  onChange={(event) => onPhotoTunnelTokenChange(event.target.value)}
+                  placeholder={photoTunnelHasToken ? "Token ja configurado" : "Cole o token do conector"}
+                  disabled={savingPhotoTunnel}
+                />
+                {photoTunnelEnvOverride && (
+                  <p className="text-xs text-muted-foreground">
+                    A variável AUTOOS_PHOTO_TUNNEL_TOKEN está definida e tem prioridade sobre o valor salvo aqui.
+                  </p>
+                )}
+                {photoTunnelHasToken && !photoTunnelEnvOverride && (
+                  <p className="text-xs text-muted-foreground">
+                    Deixe em branco e salve para remover o token e voltar ao túnel automático por PC.
+                  </p>
+                )}
+              </div>
+
+              {photoTunnelStatus && (
+                <p className="text-sm text-muted-foreground">{photoTunnelStatus}</p>
+              )}
+
+              <div className="flex justify-end">
+                <Button type="submit" disabled={savingPhotoTunnel}>
+                  {savingPhotoTunnel ? "Salvando..." : "Salvar token do tunel"}
+                </Button>
+              </div>
+            </form>
+          ) : (
+            <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
+              O perfil ativo nao possui permissao para configurar o tunel de fotos. Use um perfil com permissao de SMTP.
             </div>
           )}
         </CardContent>
