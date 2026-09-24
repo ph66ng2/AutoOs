@@ -1,9 +1,9 @@
 import {
-  Building2,
   CheckCircle2,
-  Download,
-  RefreshCw,
+  QrCode,
+  Smartphone,
   Sparkles,
+  WifiOff,
   X,
 } from "lucide-react";
 import { useState } from "react";
@@ -18,31 +18,31 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 
-export const RELEASE_HIGHLIGHTS_VERSION = "0.5.5";
+export const RELEASE_HIGHLIGHTS_VERSION = "0.5.6";
 export const RELEASE_HIGHLIGHTS_STORAGE_KEY =
-  `autoos:release-highlights:${RELEASE_HIGHLIGHTS_VERSION}:atualizacao`;
+  `autoos:release-highlights:${RELEASE_HIGHLIGHTS_VERSION}:fotos-celular`;
 
 const highlights = [
   {
-    icon: RefreshCw,
-    title: "Verificação no GitHub",
+    icon: Smartphone,
+    title: "Foto pelo celular no 4G",
     description:
-      "O AutoOS consulta o último release e diz se esta já é a versão mais recente.",
-    detail: "Se a consulta falhar, a tela mostra o erro. Ela não trata falha como atualização aplicada.",
+      "O QR de sempre agora pode abrir um endereço HTTPS. O celular não precisa estar no Wi-Fi da recepção.",
+    detail: "O AutoOS sobe um túnel temporário só enquanto o diálogo de foto estiver aberto.",
   },
   {
-    icon: Download,
-    title: "Instalar só no botão",
+    icon: QrCode,
+    title: "Três PCs ao mesmo tempo",
     description:
-      "A versão nova aparece com as notas, e o download só começa em Baixar e instalar.",
-    detail: "No Windows, o instalador pode fechar o AutoOS. Se a janela não voltar, abra o programa de novo.",
+      "Cada computador gera o próprio endereço. Os três da recepção podem mandar foto juntos.",
+    detail: "Não usa o hostname único fotos.bmitag.com.br. Cada QR vale só naquele PC, naquele momento.",
   },
   {
-    icon: Building2,
-    title: "Cadastro na empresa da sessão",
+    icon: WifiOff,
+    title: "cloudflared no PC",
     description:
-      "Cliente e equipamento novos entram na empresa de quem está logado.",
-    detail: "O app ignora uma empresa escolhida na tela e bloqueia cadastro sem empresa.",
+      "Uma vez: copie o cloudflared.exe para o PATH ou para a pasta AutoOS em Dados de aplicativos.",
+    detail: "Sem o executável, o QR continua no IP da rede local, como nas versões anteriores.",
   },
 ] as const;
 
@@ -108,10 +108,10 @@ export function ReleaseHighlightsDialog({ enabled }: { enabled: boolean }) {
             </div>
             <div>
               <DialogTitle className="text-2xl font-bold leading-tight tracking-tight text-white sm:text-3xl">
-                Atualização pelo GitHub e cadastro na empresa
+                Fotos pelo celular sem depender do Wi-Fi
               </DialogTitle>
               <DialogDescription className="mt-2 max-w-2xl text-sm leading-relaxed text-slate-300 sm:text-base">
-                AutoOS 0.5.5: consulta de versão no GitHub, instalação só no botão Baixar e instalar, e cadastros novos na empresa de quem está logado.
+                AutoOS 0.5.6: o QR de fotos usa HTTPS temporário. Os três PCs podem enviar ao mesmo tempo, e o celular pode estar no 4G.
               </DialogDescription>
             </div>
           </div>
@@ -143,13 +143,13 @@ export function ReleaseHighlightsDialog({ enabled }: { enabled: boolean }) {
 
           <div className="mt-5 flex flex-wrap gap-2" aria-label="Outras melhorias da versão">
             <Badge variant="secondary" className="gap-1.5 px-3 py-1.5 font-normal">
-              <RefreshCw className="h-3.5 w-3.5" /> Consulta ao último release do GitHub
+              <Smartphone className="h-3.5 w-3.5" /> QR HTTPS temporário
             </Badge>
             <Badge variant="secondary" className="gap-1.5 px-3 py-1.5 font-normal">
-              <Download className="h-3.5 w-3.5" /> Instalação só em Baixar e instalar
+              <QrCode className="h-3.5 w-3.5" /> Três PCs em paralelo
             </Badge>
             <Badge variant="secondary" className="gap-1.5 px-3 py-1.5 font-normal">
-              <Building2 className="h-3.5 w-3.5" /> Cliente e equipamento com empresa
+              <WifiOff className="h-3.5 w-3.5" /> Celular no 4G
             </Badge>
           </div>
         </div>
