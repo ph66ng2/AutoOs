@@ -260,8 +260,9 @@ export interface Produto {
 }
 
 /** Serviço padrão do catálogo para orçamento/verificação técnica. */
-export interface ServicoCatalogo {
-  id?: number;
+export interface ServicoCatalogo<Id extends ClienteId = number> {
+  id?: Id;
+  empresa_id?: Id;
   nome: string;
   descricao?: string;
   preco_padrao: number;
@@ -303,7 +304,7 @@ export interface ItemVerificacao {
 /** Serviço necessário identificado na verificação (ex: "Limpeza cabeça térmica") */
 export interface ServicoNecessario {
   id: string;
-  catalogo_id?: number;
+  catalogo_id?: ClienteId;
   descricao: string;
   valor: number;
 }
@@ -326,9 +327,9 @@ export interface PecaNecessaria {
  * Usado por: VerificacaoTecnica.tsx, useStatusEquipamento, WhatsAppService, EmailService
  */
 export interface Verificacao {
-  id?: number;
-  equipamento_id: number;
-  empresa_id?: number;
+  id?: EquipamentoId;
+  equipamento_id: EquipamentoId;
+  empresa_id?: EquipamentoId;
   tecnico_nome: string;
   data_inicio?: string;
   data_fim?: string;

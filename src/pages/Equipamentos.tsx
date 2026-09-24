@@ -172,6 +172,10 @@ import { resolveRecipient, type ResolvedRecipient } from "@/lib/recipient-resolv
 import { saveRecipientAddress } from "@/lib/recipient-persistence";
 import { IS_SAAS_BUILD } from "@/lib/runtime-mode";
 import { carregarRepositorioClientes } from "@/lib/data/clientes-repository";
+import {
+  calcularPrazoAprovacaoOnline,
+  carregarRepositorioOperacoesEquipamento,
+} from "@/lib/data/equipamentos-operacoes-repository";
 import type { SaasOperationalProfile } from "@/types/saas-auth";
 
 type Equipamento = EquipamentoBase<number>;
@@ -241,7 +245,7 @@ export default function Equipamentos({ operationalProfile }: { operationalProfil
   const [observacoesAjuste, setObservacoesAjuste] = useState("");
   const [formaPagamentoAjuste, setFormaPagamentoAjuste] = useState<FormaPagamentoCodigo | "">("");
   const [detalhePagamentoAjuste, setDetalhePagamentoAjuste] = useState("");
-  const [catalogoServicosAjuste, setCatalogoServicosAjuste] = useState<ServicoCatalogo[]>([]);
+  const [catalogoServicosAjuste, setCatalogoServicosAjuste] = useState<ServicoCatalogo<EquipamentoId>[]>([]);
   const [carregandoCatalogoAjuste, setCarregandoCatalogoAjuste] = useState(false);
   const [valorFinal, setValorFinal] = useState<number>(0);
   const [valorFinalSugerido, setValorFinalSugerido] = useState<number | null>(null);
@@ -620,13 +624,25 @@ export default function Equipamentos({ operationalProfile }: { operationalProfil
   const abrirDetalhes = useCallback(async (eq: Equipamento) => {
     setSelecionado(eq);
     setDetalhesDialogOpen(true);
-    setCarregandoDetalhes(!IS_SAAS_BUILD);
+    setCarregandoDetalhes(true);
     setVerificacaoDetalhes(null);
     setComunicacoes([]);
     setImagensDetalhes([]);
     setHistoricoDetalhes([]);
     setHistoricoDetalhesError(null);
-    if (IS_SAAS_BUILD) return;
+    if (IS_SAAS_BUILD) {
+      try {
+        const repository = await carregarRepositorioOperacoesEquipamento();
+        const verification = await repository.getVerification(String(eq.id));
+        setVerificacaoDetalhes(verification);
+      } catch (err) {
+        console.error("Erro ao carregar verificação Online:", err);
+        setHistoricoDetalhesError("Não foi possível carregar a verificação deste equipamento.");
+      } finally {
+        setCarregandoDetalhes(false);
+      }
+      return;
+    }
     try {
       const [verif, comms, imagens, historico] = await Promise.allSettled([
         db.buscarVerificacao(eq.id!),
@@ -658,7 +674,9 @@ export default function Equipamentos({ operationalProfile }: { operationalProfil
 
   /** Abre dialog de mudança manual de status com opção de pré-selecionar o status */
   async function prepararValorEntregaPadrao(eq: Equipamento) {
-    const verificacao = await db.buscarVerificacao(eq.id!);
+    const verificacao = IS_SAAS_BUILD
+      ? await (await carregarRepositorioOperacoesEquipamento()).getVerification(String(eq.id))
+      : await db.buscarVerificacao(eq.id!);
     const sugerido = verificacao?.custo_total ?? eq.valor_orcamento ?? 0;
     setValorFinalSugerido(sugerido);
     setValorFinal(sugerido);
@@ -666,7 +684,10 @@ export default function Equipamentos({ operationalProfile }: { operationalProfil
   }
 
   async function prepararAjusteOrcamentoPadrao(eq: Equipamento) {
-    const verificacao = await db.buscarVerificacao(eq.id!, eq.empresa_id);
+    const online = IS_SAAS_BUILD ? await carregarRepositorioOperacoesEquipamento() : null;
+    const verificacao = online
+      ? await online.getVerification(String(eq.id))
+      : await db.buscarVerificacao(eq.id!, eq.empresa_id);
     const valorOriginal = verificacao?.custo_total ?? null;
     const valorAnterior = eq.valor_orcamento ?? null;
     const valorBase = eq.valor_orcamento ?? verificacao?.custo_total ?? 0;
@@ -694,7 +715,9 @@ export default function Equipamentos({ operationalProfile }: { operationalProfil
 
     setCarregandoCatalogoAjuste(true);
     try {
-      const catalogo = await db.listarServicosCatalogoAtivos();
+      const catalogo = online
+        ? await online.listActiveServices()
+        : await db.listarServicosCatalogoAtivos();
       setCatalogoServicosAjuste(catalogo);
     } catch (err) {
       console.error("Erro ao carregar catálogo de serviços:", err);
@@ -744,15 +767,17 @@ export default function Equipamentos({ operationalProfile }: { operationalProfil
     setImagensSaidaEntrega([]);
     if ((statusPreSelecionado || "") === "ENTREGUE") {
       await prepararValorEntregaPadrao(eq);
-      setCarregandoImagensSaidaEntrega(true);
-      try {
-        const imagens = await carregarImagensComPreview(eq.id!);
-        setImagensSaidaEntrega(filtrarImagensPorCategoria(imagens, "SAIDA"));
-      } catch (err) {
-        console.error("Erro ao carregar fotos de saída para entrega:", err);
-        setErroImagensSaidaEntrega("Não foi possível carregar as fotos de saída já cadastradas.");
-      } finally {
-        setCarregandoImagensSaidaEntrega(false);
+      if (!IS_SAAS_BUILD) {
+        setCarregandoImagensSaidaEntrega(true);
+        try {
+          const imagens = await carregarImagensComPreview(eq.id!);
+          setImagensSaidaEntrega(filtrarImagensPorCategoria(imagens, "SAIDA"));
+        } catch (err) {
+          console.error("Erro ao carregar fotos de saída para entrega:", err);
+          setErroImagensSaidaEntrega("Não foi possível carregar as fotos de saída já cadastradas.");
+        } finally {
+          setCarregandoImagensSaidaEntrega(false);
+        }
       }
     }
     if ((statusPreSelecionado || "") === "AGUARDANDO_APROVACAO" && !reabreOrcamentoSemAjuste(eq.status, statusPreSelecionado || "")) {
@@ -965,6 +990,27 @@ export default function Equipamentos({ operationalProfile }: { operationalProfil
     });
     if (!liberado) return false;
 
+    if (IS_SAAS_BUILD) {
+      setSalvando(true);
+      try {
+        const repository = await carregarRepositorioOperacoesEquipamento();
+        await repository.finalizeVerification({
+          equipmentId: String(selecionado.id),
+          expectedUpdatedAt: selecionado.atualizado_em || "",
+          verification: dados,
+          approvalDeadline: calcularPrazoAprovacaoOnline(3),
+        });
+        await recarregar();
+        success("Equipamentos", "Verificação salva e orçamento enviado para aprovação. O envio de comunicações não faz parte desta etapa.", "Finalizar verificação");
+        return true;
+      } catch (err) {
+        showError("Equipamentos", "Finalizar verificação", err);
+        return false;
+      } finally {
+        setSalvando(false);
+      }
+    }
+
     async function executarComEmail(email: string | undefined, nomeDestinatario?: string): Promise<boolean> {
       setSalvando(true);
       try {
@@ -1021,6 +1067,21 @@ export default function Equipamentos({ operationalProfile }: { operationalProfil
       permission: SENSITIVE_PERMISSIONS.FINANCIAL_ACTIONS,
     });
     if (!liberado) return;
+
+    if (IS_SAAS_BUILD) {
+      setSalvando(true);
+      try {
+        const resultado = await atualizarStatus(eq.id!, "PRONTO", undefined, undefined, undefined, eq.atualizado_em);
+        if (!resultado.sucesso) throw new Error(resultado.erro || "Não foi possível marcar o equipamento como pronto.");
+        await recarregar();
+        success("Equipamentos", "Status atualizado para Pronto. O envio de comunicações será tratado em etapa própria.", "Marcar como pronto");
+      } catch (err) {
+        showError("Equipamentos", "Marcar como pronto", err);
+      } finally {
+        setSalvando(false);
+      }
+      return;
+    }
 
     async function executarComEmail(email: string | undefined, nomeDestinatario?: string): Promise<boolean> {
       setSalvando(true);
@@ -1137,7 +1198,9 @@ export default function Equipamentos({ operationalProfile }: { operationalProfil
     setPagamentoAprovacaoError(null);
     setPagamentoAprovacaoLoading(true);
     try {
-      const verificacao = await db.buscarVerificacao(eq.id!);
+      const verificacao = IS_SAAS_BUILD
+        ? await (await carregarRepositorioOperacoesEquipamento()).getVerification(String(eq.id))
+        : await db.buscarVerificacao(eq.id!);
       setPagamentoAprovacaoInicial(verificacao?.forma_pagamento_codigo ? {
         codigo: verificacao.forma_pagamento_codigo,
         detalhe: verificacao.forma_pagamento_detalhe || null,
@@ -1155,7 +1218,7 @@ export default function Equipamentos({ operationalProfile }: { operationalProfil
       setPagamentoAprovacaoError("Não foi possível identificar o equipamento selecionado.");
       return false;
     }
-    if (!selecionado.empresa_id) {
+    if (!IS_SAAS_BUILD && !selecionado.empresa_id) {
       setPagamentoAprovacaoError("Este equipamento é um cadastro legado sem empresa vinculada. Vincule o cliente à empresa antes de aprovar o orçamento.");
       return false;
     }
@@ -1165,12 +1228,21 @@ export default function Equipamentos({ operationalProfile }: { operationalProfil
     }
     setPagamentoAprovacaoLoading(true);
     try {
-      await db.aprovarOrcamento({
-        empresa_id: selecionado.empresa_id,
-        equipamento_id: selecionado.id,
-        expected_updated_em: selecionado.atualizado_em,
-        pagamento,
-      });
+      if (IS_SAAS_BUILD) {
+        const repository = await carregarRepositorioOperacoesEquipamento();
+        await repository.approveQuote({
+          equipmentId: String(selecionado.id),
+          expectedUpdatedAt: selecionado.atualizado_em,
+          payment: pagamento,
+        });
+      } else {
+        await db.aprovarOrcamento({
+          empresa_id: selecionado.empresa_id!,
+          equipamento_id: selecionado.id,
+          expected_updated_em: selecionado.atualizado_em,
+          pagamento,
+        });
+      }
       await recarregar();
       setPagamentoAprovacaoError(null);
       success("Equipamentos", "Orçamento aprovado.", "Aprovação");
@@ -1217,6 +1289,51 @@ export default function Equipamentos({ operationalProfile }: { operationalProfil
 
     setSalvando(true);
     try {
+      if (IS_SAAS_BUILD) {
+        const repository = await carregarRepositorioOperacoesEquipamento();
+        const savesQuote = Boolean(
+          verificacaoAjusteOrcamento
+          && (ajusteOrcamentoSemMudancaStatus
+            || (novoStatus === "AGUARDANDO_APROVACAO"
+              && !reabreOrcamentoSemAjuste(selecionado.status, novoStatus)))
+        );
+        if (savesQuote && verificacaoAjusteOrcamento) {
+          const pecas = JSON.parse(verificacaoAjusteOrcamento.pecas_necessarias || "[]") as PecaNecessaria[];
+          await repository.saveQuote({
+            equipmentId: String(selecionado.id),
+            expectedUpdatedAt: selecionado.atualizado_em || "",
+            services: servicosAjuste,
+            parts: pecas,
+            total: totalAtual,
+            observations: observacoesAjuste,
+            newStatus: ajusteOrcamentoSemMudancaStatus ? undefined : novoStatus,
+            approvalDeadline: ajusteOrcamentoSemMudancaStatus ? undefined : prazoAprovacao,
+            payment: selecionado.status === "APROVADO" && formaPagamentoAjuste
+              ? { codigo: formaPagamentoAjuste, detalhe: formaPagamentoAjuste === "OUTRO" ? detalhePagamentoAjuste.trim() : undefined }
+              : undefined,
+            correctionReason: correcaoStatus ? motivoCorrecaoStatus.trim() : undefined,
+          });
+        } else {
+          const result = await repository.changeStatus({
+            equipmentId: String(selecionado.id),
+            expectedUpdatedAt: selecionado.atualizado_em || "",
+            status: novoStatus,
+            budget: totalAtual || undefined,
+            approvalDeadline: prazoAprovacao || undefined,
+            finalValue: novoStatus === "ENTREGUE" ? valorFinal : valorFinal || undefined,
+            correctionReason: correcaoStatus ? motivoCorrecaoStatus.trim() : undefined,
+          });
+          void result;
+        }
+        await recarregar();
+        setStatusDialogOpen(false);
+        setAjusteOrcamentoSemMudancaStatus(false);
+        setImagensSaidaEntrega([]);
+        setErroImagensSaidaEntrega(null);
+        success("Equipamentos", ajusteOrcamentoSemMudancaStatus ? "Orçamento atualizado." : "Status atualizado.", ajusteOrcamentoSemMudancaStatus ? "Alterar orçamento" : "Alterar status");
+        return;
+      }
+
       if (novoStatus === "ENTREGUE") {
         const imagensAtuais = await carregarImagensComPreview(selecionado.id!);
         const imagensEntradaPayload: EquipamentoImagemInput[] = normalizarOrdemPorCategoria(
@@ -1506,13 +1623,6 @@ export default function Equipamentos({ operationalProfile }: { operationalProfil
       variant: "outline",
       onClick: () => void abrirDetalhes(eq),
     };
-    const acaoInformacoes: PriorityAction = {
-      id: "informacoes",
-      label: "Informações",
-      icon: <FileText className="h-3.5 w-3.5" />,
-      variant: "outline",
-      onClick: () => void abrirDetalhes(eq),
-    };
     const acaoEditar: PriorityAction = {
       id: "editar",
       label: "Editar Equipamento",
@@ -1551,11 +1661,131 @@ export default function Equipamentos({ operationalProfile }: { operationalProfil
     };
 
     if (IS_SAAS_BUILD) {
+      const onlineOverflow: PriorityAction[] = [acaoStatus, acaoEditar];
+      if (hasPermission(SENSITIVE_PERMISSIONS.DELETE_RECORDS)) onlineOverflow.push(acaoExcluir);
+      if (STATUS_COM_ORCAMENTO.includes(eq.status)) {
+        onlineOverflow.push(acaoAlterarOrcamento);
+      }
+      if (getStatusCorrecao(eq.status).length > 0) onlineOverflow.push(acaoCorrigirStatus);
+
+      switch (eq.status) {
+        case "RECEBIDO":
+          primary = {
+            id: "iniciar_verificacao",
+            label: "Iniciar Verificação",
+            icon: <Play className="h-3.5 w-3.5" />,
+            onClick: () => void acaoRapida(eq, "EM_VERIFICACAO"),
+            disabled: salvando,
+          };
+          break;
+        case "EM_VERIFICACAO":
+          primary = {
+            id: "abrir_verificacao",
+            label: "Abrir Verificação",
+            icon: <ClipboardCheck className="h-3.5 w-3.5" />,
+            onClick: () => abrirVerificacao(eq),
+            disabled: salvando,
+          };
+          break;
+        case "VERIFICADO":
+          primary = {
+            id: "enviar_orcamento",
+            label: "Enviar Orçamento",
+            icon: <Send className="h-3.5 w-3.5" />,
+            onClick: () => void abrirMudarStatus(eq, "AGUARDANDO_APROVACAO"),
+            disabled: salvando,
+          };
+          break;
+        case "AGUARDANDO_APROVACAO":
+          primary = {
+            id: "aprovar",
+            label: "Aprovar",
+            icon: <CheckCircle className="h-3.5 w-3.5" />,
+            onClick: () => void abrirDialogoAprovacao(eq),
+            disabled: salvando,
+          };
+          secondary = {
+            id: "reprovar",
+            label: "Reprovar",
+            icon: <XCircle className="h-3.5 w-3.5" />,
+            variant: "outline",
+            onClick: () => void acaoRapida(eq, "REPROVADO"),
+            disabled: salvando,
+          };
+          break;
+        case "APROVADO":
+          primary = {
+            id: "iniciar_manutencao",
+            label: "Iniciar Manutenção",
+            icon: <Wrench className="h-3.5 w-3.5" />,
+            onClick: () => void acaoRapida(eq, "EM_MANUTENCAO"),
+            disabled: salvando,
+          };
+          break;
+        case "EM_MANUTENCAO":
+          primary = {
+            id: "marcar_pronto",
+            label: "Marcar Pronto",
+            icon: <PackageCheck className="h-3.5 w-3.5" />,
+            onClick: () => void handleMarcarPronto(eq),
+            disabled: salvando || loadingAutomacao,
+          };
+          secondary = {
+            id: "aguardando_peca",
+            label: "Aguardar Peça",
+            icon: <PackageCheck className="h-3.5 w-3.5" />,
+            variant: "outline",
+            onClick: () => void acaoRapida(eq, "AGUARDANDO_PECA"),
+            disabled: salvando,
+          };
+          break;
+        case "AGUARDANDO_PECA":
+          primary = {
+            id: "retomar_manutencao",
+            label: "Retomar Manutenção",
+            icon: <Wrench className="h-3.5 w-3.5" />,
+            onClick: () => void acaoRapida(eq, "EM_MANUTENCAO"),
+            disabled: salvando,
+          };
+          break;
+        case "PRONTO":
+          primary = {
+            id: "registrar_entrega",
+            label: "Registrar Entrega",
+            icon: <PackageCheck className="h-3.5 w-3.5" />,
+            onClick: () => void abrirMudarStatus(eq, "ENTREGUE"),
+            disabled: salvando,
+          };
+          break;
+        case "REPROVADO":
+        case "ORCAMENTO_VENCIDO":
+          primary = {
+            id: "reabrir_orcamento",
+            label: "Reabrir Orçamento",
+            icon: <RefreshCw className="h-3.5 w-3.5" />,
+            onClick: () => void abrirMudarStatus(eq, "AGUARDANDO_APROVACAO"),
+            disabled: salvando,
+          };
+          break;
+        default:
+          primary = acaoStatus;
+          if (getProximosStatus(eq.status).length > 0) {
+            secondary = {
+              id: "mudar_status",
+              label: "Mudar Status",
+              icon: <RefreshCw className="h-3.5 w-3.5" />,
+              variant: "outline",
+              onClick: () => void abrirMudarStatus(eq),
+              disabled: salvando,
+            };
+          }
+      }
+
       return (
         <ActionPriorityRow
-          primary={acaoEditar}
-          secondary={acaoInformacoes}
-          overflow={hasPermission(SENSITIVE_PERMISSIONS.DELETE_RECORDS) ? [acaoExcluir] : []}
+          primary={primary || acaoStatus}
+          secondary={secondary}
+          overflow={onlineOverflow}
           iconOnlyOverflowTrigger
         />
       );
@@ -2358,9 +2588,9 @@ export default function Equipamentos({ operationalProfile }: { operationalProfil
               </div>
 
               <Tabs defaultValue="info">
-                <TabsList className={`grid ${IS_SAAS_BUILD ? "grid-cols-1" : "grid-cols-4"} w-full`}>
+                <TabsList className={`grid ${IS_SAAS_BUILD ? "grid-cols-2" : "grid-cols-4"} w-full`}>
                   <TabsTrigger value="info"><FileText className="h-3.5 w-3.5 mr-1 hidden sm:inline" />Informações</TabsTrigger>
-                  {!IS_SAAS_BUILD && <TabsTrigger value="verificacao"><ClipboardCheck className="h-3.5 w-3.5 mr-1 hidden sm:inline" />Verificação</TabsTrigger>}
+                  <TabsTrigger value="verificacao"><ClipboardCheck className="h-3.5 w-3.5 mr-1 hidden sm:inline" />Verificação</TabsTrigger>
                   {!IS_SAAS_BUILD && <TabsTrigger value="comunicacoes"><MessageSquare className="h-3.5 w-3.5 mr-1 hidden sm:inline" />Comunicações</TabsTrigger>}
                   {!IS_SAAS_BUILD && <TabsTrigger value="historico"><History className="h-3.5 w-3.5 mr-1 hidden sm:inline" />Histórico</TabsTrigger>}
                 </TabsList>
@@ -2478,7 +2708,7 @@ export default function Equipamentos({ operationalProfile }: { operationalProfil
                   {!IS_SAAS_BUILD && <DocumentosEquipamento equipamento={selecionado} />}
                 </TabsContent>
 
-                {!IS_SAAS_BUILD && <TabsContent value="verificacao" className="mt-4">{renderVerificacaoTab()}</TabsContent>}
+                <TabsContent value="verificacao" className="mt-4">{renderVerificacaoTab()}</TabsContent>
 
                 {/* Comunicações — agora usa componente extraído */}
                 {!IS_SAAS_BUILD && <TabsContent value="comunicacoes" className="mt-4">
@@ -2507,6 +2737,7 @@ export default function Equipamentos({ operationalProfile }: { operationalProfil
         onConcluir={handleConcluirVerificacao}
         salvando={salvando || loadingAutomacao}
         tecnicoInicial={extrairTecnicoInicialDeObservacoes(selecionado?.observacoes || "") || "Ivan"}
+        saasMode={IS_SAAS_BUILD}
       />
 
       {/* ═══ Dialog Mudar Status ═══ */}
@@ -2701,7 +2932,7 @@ export default function Equipamentos({ operationalProfile }: { operationalProfil
                   )}
                 </>
               )}
-              {novoStatus === "ENTREGUE" && (
+              {novoStatus === "ENTREGUE" && !IS_SAAS_BUILD && (
                 <div className="space-y-3">
                   <div className="rounded-md border bg-accent/40 px-3 py-2 text-sm">
                     Valor padrão de entrega (verificação técnica):{" "}

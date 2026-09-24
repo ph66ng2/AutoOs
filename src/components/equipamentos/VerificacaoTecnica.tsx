@@ -54,9 +54,14 @@ import {
   type Equipamento,
   type ServicoCatalogo,
   type ServicoNecessario,
+  type PecaNecessaria,
   type Verificacao,
+  type ItemVerificacao,
+  type EquipamentoId,
+  CHECKLIST_PADRAO,
 } from "@/types";
 import { db } from "@/lib/db";
+import { carregarRepositorioOperacoesEquipamento } from "@/lib/data/equipamentos-operacoes-repository";
 import { useNotification } from "@/hooks/useNotification";
 import { PhotoUploadDialog } from "@/components/equipamentos/PhotoUploadDialog";
 import { imagemPersistidaParaDraft, type EquipamentoImagemDraft } from "@/lib/equipamento-imagem-utils";
@@ -75,6 +80,7 @@ interface VerificacaoTecnicaProps {
   onConcluir: (dados: DadosVerificacao) => Promise<boolean | void>;
   salvando?: boolean;
   tecnicoInicial?: TecnicoDisponivel;
+  saasMode?: boolean;
 }
 
 export function VerificacaoTecnica({
@@ -84,13 +90,19 @@ export function VerificacaoTecnica({
   onConcluir,
   salvando = false,
   tecnicoInicial = "Ivan",
+  saasMode = false,
 }: VerificacaoTecnicaProps) {
   // ─── State ──────────────────────────────────────────
   const [diagnostico, setDiagnostico] = useState("");
   const [servicos, setServicos] = useState<ServicoNecessario[]>([]);
+  const [pecas, setPecas] = useState<PecaNecessaria[]>([]);
+  const [itensVerificados, setItensVerificados] = useState<ItemVerificacao[]>(() =>
+    CHECKLIST_PADRAO.map((item) => ({ ...item })),
+  );
+  const [tempoEstimado, setTempoEstimado] = useState(0);
   const [observacoesVerif, setObservacoesVerif] = useState("");
   const [tecnicoNome, setTecnicoNome] = useState<TecnicoDisponivel>(tecnicoInicial);
-  const [catalogoServicos, setCatalogoServicos] = useState<ServicoCatalogo[]>([]);
+  const [catalogoServicos, setCatalogoServicos] = useState<ServicoCatalogo<EquipamentoId>[]>([]);
   const [carregandoCatalogo, setCarregandoCatalogo] = useState(false);
   const [linhaSugestaoAberta, setLinhaSugestaoAberta] = useState<string | null>(null);
   const [photoVerifOpen, setPhotoVerifOpen] = useState(false);
@@ -100,14 +112,17 @@ export function VerificacaoTecnica({
   useEffect(() => {
     if (!open) return;
     setCarregandoCatalogo(true);
-    void db.listarServicos(undefined, true)
+    const catalogo = saasMode
+      ? carregarRepositorioOperacoesEquipamento().then((repository) => repository.listActiveServices())
+      : db.listarServicos(undefined, true);
+    void catalogo
       .then((servicosDoCatalogo) => setCatalogoServicos(servicosDoCatalogo))
       .catch((err) => {
         console.error("Erro ao carregar catálogo de serviços:", err);
         setCatalogoServicos([]);
       })
       .finally(() => setCarregandoCatalogo(false));
-  }, [open]);
+  }, [open, saasMode]);
 
   useEffect(() => {
     if (!open) return;
@@ -115,7 +130,7 @@ export function VerificacaoTecnica({
   }, [open, tecnicoInicial]);
 
   useEffect(() => {
-    if (!open || !equipamento?.id) {
+    if (saasMode || !open || !equipamento?.id) {
       setImagensVerificacao([]);
       return;
     }
@@ -126,13 +141,16 @@ export function VerificacaoTecnica({
         console.error("Erro ao carregar imagens de verificação:", err);
         setImagensVerificacao([]);
       });
-  }, [open, equipamento?.id]);
+  }, [open, equipamento?.id, saasMode]);
 
   // ─── Helpers ────────────────────────────────────────
   /** Limpa todos os campos do formulário para valores iniciais */
   function resetForm() {
     setDiagnostico("");
     setServicos([]);
+    setPecas([]);
+    setItensVerificados(CHECKLIST_PADRAO.map((item) => ({ ...item })));
+    setTempoEstimado(0);
     setObservacoesVerif("");
     setTecnicoNome(tecnicoInicial);
     setImagensVerificacao([]);
@@ -158,13 +176,28 @@ export function VerificacaoTecnica({
     );
   }
 
-  function selecionarServicoCatalogo(linhaId: string, servicoCatalogo: ServicoCatalogo) {
+  function selecionarServicoCatalogo(linhaId: string, servicoCatalogo: ServicoCatalogo<EquipamentoId>) {
     atualizarServico(linhaId, {
       catalogo_id: servicoCatalogo.id,
       descricao: servicoCatalogo.nome,
       valor: Number(servicoCatalogo.preco_padrao || 0),
     });
     setLinhaSugestaoAberta(null);
+  }
+
+  function adicionarPeca() {
+    setPecas((atuais) => [...atuais, {
+      id: Date.now().toString(), nome: "", quantidade: 1, valorUnitario: 0, valorTotal: 0,
+    }]);
+  }
+
+  function atualizarPeca(id: string, patch: Partial<PecaNecessaria>) {
+    setPecas((atuais) => atuais.map((peca) => {
+      if (peca.id !== id) return peca;
+      const quantidade = patch.quantidade ?? peca.quantidade;
+      const valorUnitario = patch.valorUnitario ?? peca.valorUnitario;
+      return { ...peca, ...patch, valorTotal: Math.round(quantidade * valorUnitario * 100) / 100 };
+    }));
   }
   /**
    * Monta o objeto DadosVerificacao com todos os dados preenchidos
@@ -181,6 +214,17 @@ export function VerificacaoTecnica({
       warning("Verificação", "Cada serviço precisa ter descrição e valor igual ou maior que zero (0,00 para garantia).");
       return;
     }
+    const pecasInvalidas = pecas.some((peca) =>
+      !peca.nome.trim()
+      || !Number.isFinite(Number(peca.quantidade))
+      || Number(peca.quantidade) <= 0
+      || !Number.isFinite(Number(peca.valorUnitario))
+      || Number(peca.valorUnitario) < 0,
+    );
+    if (pecasInvalidas) {
+      warning("Verificação", "Cada peça precisa ter descrição, quantidade maior que zero e valor igual ou maior que zero.");
+      return;
+    }
 
     const servicosNormalizados = servicos
       .filter((servico) => servico.descricao.trim())
@@ -190,19 +234,28 @@ export function VerificacaoTecnica({
         valor: Number(servico.valor),
       }));
     const custoTotalServicos = servicosNormalizados.reduce((acum, servico) => acum + servico.valor, 0);
+    const pecasNormalizadas = pecas.map((peca) => ({
+      ...peca,
+      nome: peca.nome.trim(),
+      quantidade: Number(peca.quantidade),
+      valorUnitario: Number(peca.valorUnitario),
+      valorTotal: Math.round(Number(peca.quantidade) * Number(peca.valorUnitario) * 100) / 100,
+    }));
+    const custoTotalPecas = pecasNormalizadas.reduce((acum, peca) => acum + peca.valorTotal, 0);
+    const custoTotal = Math.round((custoTotalServicos + custoTotalPecas) * 100) / 100;
 
     const dados: DadosVerificacao = {
       equipamento_id: equipamento.id!,
       tecnico_nome: tecnicoNome,
       problema_relatado: equipamento.defeito_relatado || "Não informado",
       diagnostico,
-      itens_verificados: JSON.stringify([]),
+      itens_verificados: JSON.stringify(itensVerificados),
       servicos_necessarios: JSON.stringify(servicosNormalizados),
-      pecas_necessarias: JSON.stringify([]),
+      pecas_necessarias: JSON.stringify(pecasNormalizadas),
       custo_estimado_mao_obra: custoTotalServicos,
-      custo_estimado_pecas: 0,
-      custo_total: custoTotalServicos,
-      tempo_estimado: 0,
+      custo_estimado_pecas: custoTotalPecas,
+      custo_total: custoTotal,
+      tempo_estimado: Math.max(0, Math.floor(Number(tempoEstimado) || 0)),
       concluida: true,
       observacoes: observacoesVerif,
     };
@@ -269,6 +322,36 @@ export function VerificacaoTecnica({
                   placeholder="Descreva o diagnóstico detalhado e os problemas encontrados..."
                   rows={4}
                 />
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader><CardTitle className="text-sm">Checklist de Verificação</CardTitle></CardHeader>
+              <CardContent className="space-y-3">
+                {itensVerificados.map((item) => (
+                  <label key={item.id} className="flex items-start gap-3 text-sm">
+                    <input
+                      type="checkbox"
+                      checked={item.verificado}
+                      onChange={(event) => setItensVerificados((atuais) => atuais.map((linha) =>
+                        linha.id === item.id ? { ...linha, verificado: event.target.checked } : linha,
+                      ))}
+                      className="mt-1"
+                    />
+                    <span>{item.nome}</span>
+                  </label>
+                ))}
+                <div className="space-y-2 pt-2">
+                  <label className="text-sm font-medium" htmlFor="tempo-estimado-verificacao">Tempo estimado (horas)</label>
+                  <Input
+                    id="tempo-estimado-verificacao"
+                    type="number"
+                    min={0}
+                    step={1}
+                    value={tempoEstimado || ""}
+                    onChange={(event) => setTempoEstimado(Math.max(0, Number(event.target.value) || 0))}
+                  />
+                </div>
               </CardContent>
             </Card>
 
@@ -367,13 +450,67 @@ export function VerificacaoTecnica({
               </CardContent>
             </Card>
 
+            <Card>
+              <CardHeader>
+                <div className="flex items-center justify-between">
+                  <CardTitle className="text-sm">Peças Necessárias</CardTitle>
+                  <Button onClick={adicionarPeca} variant="outline" size="sm">
+                    <Plus className="mr-1 h-4 w-4" />Adicionar Peça
+                  </Button>
+                </div>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                {pecas.map((peca) => (
+                  <div key={peca.id} className="grid grid-cols-[minmax(0,1fr)_5rem_7rem_2rem] items-center gap-2">
+                    <Input
+                      aria-label="Nome da peça"
+                      placeholder="Nome da peça"
+                      value={peca.nome}
+                      onChange={(event) => atualizarPeca(peca.id, { nome: event.target.value })}
+                    />
+                    <Input
+                      aria-label="Quantidade da peça"
+                      type="number"
+                      min={1}
+                      step={1}
+                      value={peca.quantidade}
+                      onChange={(event) => atualizarPeca(peca.id, { quantidade: Number(event.target.value) })}
+                    />
+                    <Input
+                      aria-label="Valor unitário da peça"
+                      type="number"
+                      min={0}
+                      step="0.01"
+                      value={peca.valorUnitario}
+                      onChange={(event) => atualizarPeca(peca.id, { valorUnitario: Number(event.target.value) })}
+                    />
+                    <Button variant="ghost" size="icon" aria-label="Remover peça" onClick={() => setPecas((atuais) => atuais.filter((item) => item.id !== peca.id))}>
+                      <Trash2 className="h-4 w-4 text-red-500" />
+                    </Button>
+                    <p className="col-span-4 text-right text-xs text-muted-foreground">
+                      Subtotal: R$ {Number(peca.valorTotal || 0).toFixed(2)}
+                    </p>
+                  </div>
+                ))}
+                {pecas.length === 0 && <p className="py-2 text-center text-sm text-muted-foreground">Nenhuma peça adicionada.</p>}
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardContent className="space-y-1 pt-4 text-sm">
+                <div className="flex justify-between"><span>Serviços / mão de obra</span><span>R$ {servicos.reduce((sum, item) => sum + (Number(item.valor) || 0), 0).toFixed(2)}</span></div>
+                <div className="flex justify-between"><span>Peças</span><span>R$ {pecas.reduce((sum, item) => sum + (Number(item.valorTotal) || 0), 0).toFixed(2)}</span></div>
+                <div className="flex justify-between border-t pt-2 font-semibold"><span>Orçamento total</span><span>R$ {(servicos.reduce((sum, item) => sum + (Number(item.valor) || 0), 0) + pecas.reduce((sum, item) => sum + (Number(item.valorTotal) || 0), 0)).toFixed(2)}</span></div>
+              </CardContent>
+            </Card>
+
             {/* Observações */}
             <Card>
               <CardHeader>
                 <CardTitle className="text-sm">Observações</CardTitle>
               </CardHeader>
               <CardContent className="space-y-3">
-                <div className="flex items-center gap-2">
+                {!saasMode && <div className="flex items-center gap-2">
                   <Button
                     type="button"
                     variant="ghost"
@@ -385,7 +522,7 @@ export function VerificacaoTecnica({
                     <Smartphone className="h-4 w-4" />
                   </Button>
                   <span className="text-xs text-muted-foreground">Registrar foto da verificação</span>
-                </div>
+                </div>}
 
                 {imagensVerificacao.length > 0 && (
                   <div className="flex gap-2 overflow-x-auto pb-1">
@@ -427,7 +564,7 @@ export function VerificacaoTecnica({
               </Button>
             </DialogFooter>
 
-            {equipamento?.id && (
+            {!saasMode && equipamento?.id && (
               <PhotoUploadDialog
                 equipamentoId={equipamento.id}
                 categoria="VERIFICACAO"

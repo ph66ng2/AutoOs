@@ -2,11 +2,11 @@ import { useState } from "react";
 import { Plus, Trash2, Search } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import type { ServicoCatalogo, ServicoNecessario } from "@/types";
+import type { EquipamentoId, ServicoCatalogo, ServicoNecessario } from "@/types";
 
 interface AjusteOrcamentoServicosProps {
   servicos: ServicoNecessario[];
-  catalogo: ServicoCatalogo[];
+  catalogo: ServicoCatalogo<EquipamentoId>[];
   carregandoCatalogo?: boolean;
   onChange: (servicos: ServicoNecessario[]) => void;
   onRemoverTodos?: () => void;
@@ -42,7 +42,7 @@ export function AjusteOrcamentoServicos({
     onChange(servicos.map((s) => (s.id === id ? { ...s, ...patch } : s)));
   }
 
-  function selecionarServicoCatalogo(servicoId: string, item: ServicoCatalogo) {
+  function selecionarServicoCatalogo(servicoId: string, item: ServicoCatalogo<EquipamentoId>) {
     atualizarServico(servicoId, {
       descricao: item.nome,
       catalogo_id: item.id,
