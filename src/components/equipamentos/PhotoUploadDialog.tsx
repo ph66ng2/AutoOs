@@ -34,6 +34,7 @@ interface QrData {
   qr_svg: string;
   url: string;
   token: string;
+  via_tunnel?: boolean;
 }
 
 export function PhotoUploadDialog({
@@ -199,6 +200,8 @@ export function PhotoUploadDialog({
     return `${mins}:${secs.toString().padStart(2, "0")}`;
   };
 
+  const viaTunnel = !!qrData?.via_tunnel || !!qrData?.url.includes("fotos.bmitag.com.br");
+
   const handleOpenChange = (newOpen: boolean) => {
     if (!newOpen) {
       void stopServer();
@@ -215,7 +218,9 @@ export function PhotoUploadDialog({
             Adicionar Foto via Celular
           </DialogTitle>
           <DialogDescription>
-            Escaneie o QR code com seu celular ou acesse o endereço abaixo (Para enviar a foto é necessario estar na mesma rede Wi-Fi do computador)
+            {viaTunnel
+              ? "Escaneie o QR code com o celular. O envio passa por fotos.bmitag.com.br — não precisa estar no Wi-Fi da recepção."
+              : "Escaneie o QR code com seu celular ou acesse o endereço abaixo (Para enviar a foto é necessario estar na mesma rede Wi-Fi do computador)"}
           </DialogDescription>
         </DialogHeader>
 
@@ -292,7 +297,9 @@ export function PhotoUploadDialog({
             <div className="rounded-md bg-amber-50 border border-amber-200 p-3 flex items-start gap-2">
               <AlertCircle className="h-4 w-4 text-amber-600 mt-0.5 shrink-0" />
               <p className="text-xs text-amber-800">
-                Certifique-se de que o celular está na mesma rede Wi-Fi que o computador.
+                {viaTunnel
+                  ? "Este PC fica responsável por fotos.bmitag.com.br enquanto o QR estiver aberto. Use um computador de recepção por vez."
+                  : "Certifique-se de que o celular está na mesma rede Wi-Fi que o computador."}
               </p>
             </div>
           </div>

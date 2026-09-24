@@ -440,8 +440,8 @@ export const db = {
     equipamentoId: number,
     categoria: string,
     port: number,
-  ): Promise<{ qr_svg: string; url: string; token: string }> {
-    return invoke<{ qr_svg: string; url: string; token: string }>("gerar_qr_upload", {
+  ): Promise<{ qr_svg: string; url: string; token: string; via_tunnel?: boolean }> {
+    return invoke<{ qr_svg: string; url: string; token: string; via_tunnel?: boolean }>("gerar_qr_upload", {
       equipamentoId,
       categoria,
       port,

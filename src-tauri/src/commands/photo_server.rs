@@ -22,6 +22,7 @@ use tower_http::cors::{Any, CorsLayer};
 use tracing::{error, info, warn};
 
 use crate::commands::equipamento_imagens::{adicionar_imagem_equipamento_raw, MAX_IMAGE_BYTES};
+use crate::commands::photo_tunnel;
 use base64::Engine;
 
 const HTML_UPLOAD_PAGE: &str = r#"<!DOCTYPE html>
@@ -502,11 +503,18 @@ pub(crate) fn get_lan_ip() -> Option<String> {
     Some(ip)
 }
 
-/// Try to bind a TCP listener on the given port. Returns the bound listener or an error.
-fn try_bind(port: u16) -> Result<tokio::net::TcpListener, String> {
-    let addr = SocketAddr::from(([0, 0, 0, 0], port));
+pub(crate) fn photo_listen_addr(port: u16, loopback_only: bool) -> SocketAddr {
+    if loopback_only {
+        SocketAddr::from(([127, 0, 0, 1], port))
+    } else {
+        SocketAddr::from(([0, 0, 0, 0], port))
+    }
+}
+
+/// Try to bind a TCP listener on the given address. Returns the bound listener or an error.
+fn try_bind(addr: SocketAddr) -> Result<tokio::net::TcpListener, String> {
     let std_listener = TcpListener::bind(addr)
-        .map_err(|e| format!("Porta {} em uso: {}", port, e))?;
+        .map_err(|e| format!("Porta {} em uso: {}", addr.port(), e))?;
     std_listener.set_nonblocking(true).map_err(|e| e.to_string())?;
     tokio::net::TcpListener::from_std(std_listener).map_err(|e| e.to_string())
 }
@@ -840,12 +848,15 @@ pub async fn start_photo_server(
         }
     }
 
-    // ── 2. Try ports with fallback (3 attempts) ───────────────
+    // ── 2. Bind. Túnel exige 127.0.0.1 na porta pedida (Cloudflare → 8765).
+    let via_tunnel = photo_tunnel::is_tunnel_configured();
+    let bind_attempts = if via_tunnel { 1 } else { 3 };
     let mut listener = None;
     let mut bound_port = port;
-    for offset in 0..3 {
+    for offset in 0..bind_attempts {
         let candidate = port + offset;
-        match try_bind(candidate) {
+        let addr = photo_listen_addr(candidate, via_tunnel);
+        match try_bind(addr) {
             Ok(l) => {
                 listener = Some(l);
                 bound_port = candidate;
@@ -858,12 +869,20 @@ pub async fn start_photo_server(
     }
 
     let listener = listener.ok_or_else(|| {
-        format!(
-            "Nenhuma porta disponível (tentou {}, {}, {})",
-            port,
-            port + 1,
-            port + 2
-        )
+        if via_tunnel {
+            format!(
+                "Porta {} ocupada. O túnel {} exige essa porta.",
+                port,
+                photo_tunnel::PHOTO_PUBLIC_HOST
+            )
+        } else {
+            format!(
+                "Nenhuma porta disponível (tentou {}, {}, {})",
+                port,
+                port + 1,
+                port + 2
+            )
+        }
     })?;
 
     // ── 3. Build shared state ─────────────────────────────────
@@ -906,6 +925,19 @@ pub async fn start_photo_server(
             join_handle,
             shutdown_trigger,
         });
+    }
+
+    if via_tunnel {
+        if let Err(e) = photo_tunnel::start_tunnel().await {
+            let _ = stop_photo_server().await;
+            return Err(e);
+        }
+        info!(
+            "Servidor de fotos iniciado em {} (local 127.0.0.1:{})",
+            photo_tunnel::PHOTO_PUBLIC_BASE_URL,
+            bound_port
+        );
+        return Ok(photo_tunnel::PHOTO_PUBLIC_BASE_URL.to_string());
     }
 
     let lan_ip = get_lan_ip().unwrap_or_else(|| "localhost".to_string());
@@ -951,6 +983,7 @@ pub async fn stop_photo_server() -> Result<(), String> {
         }
     }
 
+    photo_tunnel::stop_tunnel().await;
     info!("Servidor de fotos parado");
     Ok(())
 }
@@ -979,4 +1012,25 @@ pub async fn generate_upload_token(
 
     info!("Token de upload gerado para equipamento {}", equipamento_id);
     Ok(token)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn tunnel_binds_loopback_only() {
+        assert_eq!(
+            photo_listen_addr(8765, true),
+            SocketAddr::from(([127, 0, 0, 1], 8765))
+        );
+    }
+
+    #[test]
+    fn lan_binds_all_interfaces() {
+        assert_eq!(
+            photo_listen_addr(8765, false),
+            SocketAddr::from(([0, 0, 0, 0], 8765))
+        );
+    }
 }
