@@ -56,4 +56,16 @@ describe("SupabaseClienteContatosRepository", () => {
     await expect(repository.atualizar(contactId, { empresa_id: companyId, cliente_id: clientId, nome: "Ana", atualizado_em: "2026-09-23T00:00:00" })).rejects.toThrow(/mudou|não está disponível/);
     await expect(repository.inativar(contactId)).rejects.toThrow(/não pôde ser inativado/);
   });
+
+  it("recusa uma resposta de contato atribuída a outro tenant ou cliente", async () => {
+    const foreignTenant = new SupabaseClienteContatosRepository(session, vi.fn<typeof fetch>().mockResolvedValue(
+      new Response(JSON.stringify([{ ...result()[0], empresa_id: "55555555-5555-4555-8555-555555555555" }]), { status: 200 }),
+    ));
+    const foreignClient = new SupabaseClienteContatosRepository(session, vi.fn<typeof fetch>().mockResolvedValue(
+      new Response(JSON.stringify([{ ...result()[0], cliente_id: "55555555-5555-4555-8555-555555555555" }]), { status: 200 }),
+    ));
+
+    await expect(foreignTenant.listar(clientId)).rejects.toMatchObject<Partial<OnlineDataError>>({ code: "RLS_DENIED" });
+    await expect(foreignClient.listar(clientId)).rejects.toMatchObject<Partial<OnlineDataError>>({ code: "RLS_DENIED" });
+  });
 });

@@ -107,6 +107,7 @@ CREATE TABLE IF NOT EXISTS equipamentos (
     observacoes TEXT,
     cliente_id uuid,
     cliente_nome TEXT,
+    cliente_documento TEXT,
     cliente_telefone TEXT,
     cliente_email TEXT,
     responsavel_contato_id uuid,
@@ -692,6 +693,7 @@ ALTER TABLE clientes DROP CONSTRAINT IF EXISTS clientes_cpf_cnpj_key;
 ALTER TABLE security_profiles DROP CONSTRAINT IF EXISTS security_profiles_nome_key;
 
 ALTER TABLE clientes ADD CONSTRAINT uq_clientes_empresa_id UNIQUE (empresa_id, id);
+ALTER TABLE cliente_contatos ADD CONSTRAINT uq_cliente_contatos_empresa_cliente_id UNIQUE (empresa_id, cliente_id, id);
 ALTER TABLE equipamentos ADD CONSTRAINT uq_equipamentos_empresa_id UNIQUE (empresa_id, id);
 ALTER TABLE produtos ADD CONSTRAINT uq_produtos_empresa_id UNIQUE (empresa_id, id);
 ALTER TABLE security_profiles ADD CONSTRAINT uq_security_profiles_empresa_id UNIQUE (empresa_id, id);
@@ -727,6 +729,17 @@ ALTER TABLE configuracoes_sistema ADD CONSTRAINT fk_configuracoes_sistema_empres
 ALTER TABLE equipamentos DROP CONSTRAINT IF EXISTS fk_equipamentos_cliente;
 ALTER TABLE equipamentos ADD CONSTRAINT fk_equipamentos_cliente_empresa
     FOREIGN KEY (empresa_id, cliente_id) REFERENCES clientes(empresa_id, id) ON DELETE RESTRICT;
+ALTER TABLE cliente_contatos DROP CONSTRAINT IF EXISTS fk_cliente_contatos_cliente;
+ALTER TABLE cliente_contatos ADD CONSTRAINT fk_cliente_contatos_cliente_empresa
+    FOREIGN KEY (empresa_id, cliente_id) REFERENCES clientes(empresa_id, id) ON DELETE RESTRICT;
+ALTER TABLE cliente_contatos ALTER COLUMN empresa_id DROP DEFAULT;
+ALTER TABLE equipamentos DROP CONSTRAINT IF EXISTS fk_equipamentos_responsavel_contato;
+ALTER TABLE equipamentos ADD CONSTRAINT fk_equipamentos_responsavel_cliente_empresa
+    FOREIGN KEY (empresa_id, cliente_id, responsavel_contato_id)
+    REFERENCES cliente_contatos(empresa_id, cliente_id, id)
+    ON DELETE SET NULL (responsavel_contato_id);
+ALTER TABLE equipamentos ADD CONSTRAINT chk_equipamentos_responsavel_requires_cliente
+    CHECK (responsavel_contato_id IS NULL OR cliente_id IS NOT NULL) NOT VALID;
 ALTER TABLE movimentacoes_estoque DROP CONSTRAINT IF EXISTS fk_movimentacoes_produto;
 ALTER TABLE movimentacoes_estoque ADD CONSTRAINT fk_movimentacoes_produto_empresa
     FOREIGN KEY (empresa_id, produto_id) REFERENCES produtos(empresa_id, id) ON DELETE RESTRICT;
@@ -805,6 +818,9 @@ CREATE UNIQUE INDEX ux_gastos_fixos_nome_ativo
 
 CREATE INDEX IF NOT EXISTS idx_clientes_empresa ON clientes (empresa_id);
 CREATE INDEX IF NOT EXISTS idx_equipamentos_empresa ON equipamentos (empresa_id);
+CREATE INDEX IF NOT EXISTS idx_equipamentos_empresa_cliente
+    ON equipamentos (empresa_id, cliente_id)
+    WHERE cliente_id IS NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_produtos_empresa ON produtos (empresa_id);
 CREATE INDEX IF NOT EXISTS idx_movimentacoes_estoque_empresa ON movimentacoes_estoque (empresa_id);
 CREATE INDEX IF NOT EXISTS idx_security_profiles_empresa ON security_profiles (empresa_id);

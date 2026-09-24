@@ -11,7 +11,7 @@ export async function saveRecipientAddress(
   const value = endereco.trim();
   if (!value) throw new Error("Informe um endereço válido para salvar.");
 
-  if (equipamento.responsavel_contato_id && equipamento.empresa_id && typeof equipamento.cliente_id === "number") {
+  if (typeof equipamento.responsavel_contato_id === "number" && equipamento.empresa_id && typeof equipamento.cliente_id === "number") {
     const input: ClienteContatoInput = {
       empresa_id: equipamento.empresa_id,
       cliente_id: equipamento.cliente_id,
@@ -24,7 +24,7 @@ export async function saveRecipientAddress(
     return;
   }
 
-  if (!equipamento.cliente_id) {
+  if (typeof equipamento.cliente_id !== "number") {
     throw new Error("Não foi possível identificar o cliente para salvar o contato.");
   }
 

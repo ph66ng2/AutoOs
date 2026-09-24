@@ -5,7 +5,7 @@ import { OnlineDataError, sessionFromSaasSession, type SupabaseOnlineSession } f
 import type { ClienteContato, ClienteContatoInput, ClienteId } from "@/types";
 
 export interface ClienteContatosRepository {
-  listar(clienteId: ClienteId, empresaId?: number): Promise<ClienteContato[]>;
+  listar(clienteId: ClienteId, empresaId?: ClienteId): Promise<ClienteContato[]>;
   criar(input: ClienteContatoInput): Promise<ClienteContato>;
   atualizar(id: ClienteId, input: ClienteContatoInput): Promise<ClienteContato>;
   inativar(id: ClienteId, empresaId?: number): Promise<ClienteContato>;
@@ -23,6 +23,23 @@ function uuid(value: ClienteId | undefined): string {
 function numeric(value: ClienteId | undefined, label: string): number {
   if (typeof value !== "number") throw new Error(`${label} local inválido.`);
   return value;
+}
+
+function assertTenantContacts(
+  contacts: ClienteContato[],
+  session: SupabaseOnlineSession,
+  expectedClientId?: string,
+): ClienteContato[] {
+  for (const contact of contacts) {
+    if (
+      typeof contact.id !== "string" || !UUID.test(contact.id) ||
+      contact.empresa_id !== session.companyId ||
+      (expectedClientId && contact.cliente_id !== expectedClientId)
+    ) {
+      throw new OnlineDataError("RLS_DENIED", "A resposta Online contém um contato fora do cliente ou tenant autenticado.");
+    }
+  }
+  return contacts;
 }
 
 export class SupabaseClienteContatosRepository implements ClienteContatosRepository {
@@ -55,7 +72,8 @@ export class SupabaseClienteContatosRepository implements ClienteContatosReposit
 
   async listar(clienteId: ClienteId): Promise<ClienteContato[]> {
     const id = uuid(clienteId);
-    return this.request(this.endpoint(`?select=*&empresa_id=eq.${this.session.companyId}&cliente_id=eq.${id}&ativo=is.true&order=nome.asc`), { method: "GET" });
+    const rows = await this.request(this.endpoint(`?select=*&empresa_id=eq.${this.session.companyId}&cliente_id=eq.${id}&ativo=is.true&order=nome.asc`), { method: "GET" });
+    return assertTenantContacts(rows, this.session, id);
   }
 
   async criar(input: ClienteContatoInput): Promise<ClienteContato> {
@@ -71,8 +89,9 @@ export class SupabaseClienteContatosRepository implements ClienteContatosReposit
         ativo: true,
       }),
     });
-    if (!rows[0]) throw new OnlineDataError("RLS_DENIED", "O contato não pôde ser criado para sua empresa.");
-    return rows[0];
+    const row = assertTenantContacts(rows, this.session, uuid(input.cliente_id))[0];
+    if (!row) throw new OnlineDataError("RLS_DENIED", "O contato não pôde ser criado para sua empresa.");
+    return row;
   }
 
   async atualizar(id: ClienteId, input: ClienteContatoInput): Promise<ClienteContato> {
@@ -89,8 +108,9 @@ export class SupabaseClienteContatosRepository implements ClienteContatosReposit
         atualizado_em: new Date().toISOString(),
       }),
     });
-    if (!rows[0]) throw new OnlineDataError("RLS_DENIED", "O contato mudou ou não está disponível para sua empresa. Recarregue e tente novamente.");
-    return rows[0];
+    const row = assertTenantContacts(rows, this.session, clientId)[0];
+    if (!row) throw new OnlineDataError("RLS_DENIED", "O contato mudou ou não está disponível para sua empresa. Recarregue e tente novamente.");
+    return row;
   }
 
   async inativar(id: ClienteId): Promise<ClienteContato> {
@@ -99,15 +119,16 @@ export class SupabaseClienteContatosRepository implements ClienteContatosReposit
       headers: { Prefer: "return=representation" },
       body: JSON.stringify({ ativo: false, atualizado_em: new Date().toISOString() }),
     });
-    if (!rows[0]) throw new OnlineDataError("RLS_DENIED", "O contato não pôde ser inativado para sua empresa.");
-    return rows[0];
+    const row = assertTenantContacts(rows, this.session)[0];
+    if (!row) throw new OnlineDataError("RLS_DENIED", "O contato não pôde ser inativado para sua empresa.");
+    return row;
   }
 }
 
 const tauriRepository: ClienteContatosRepository = {
   listar: (clienteId, empresaId) => db.listarClienteContatos(numeric(clienteId, "Cliente"), numeric(empresaId, "Empresa")),
-  criar: (input) => db.criarClienteContato(input),
-  atualizar: (id, input) => db.atualizarClienteContato(numeric(id, "Contato"), input),
+  criar: (input) => db.criarClienteContato({ ...input, empresa_id: numeric(input.empresa_id, "Empresa") }),
+  atualizar: (id, input) => db.atualizarClienteContato(numeric(id, "Contato"), { ...input, empresa_id: numeric(input.empresa_id, "Empresa") }),
   inativar: (id, empresaId) => db.inativarClienteContato(numeric(id, "Contato"), numeric(empresaId, "Empresa")),
 };
 

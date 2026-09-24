@@ -37,6 +37,26 @@ BEGIN
         RAISE EXCEPTION 'tenant-safe composite foreign keys are missing';
     END IF;
 
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns
+         WHERE table_schema = 'public' AND table_name = 'equipamentos'
+           AND column_name = 'cliente_documento' AND data_type = 'text'
+    ) OR NOT EXISTS (
+        SELECT 1 FROM information_schema.columns
+         WHERE table_schema = 'public' AND table_name = 'equipamentos'
+           AND column_name = 'responsavel_contato_id' AND data_type = 'uuid'
+    ) OR NOT EXISTS (
+        SELECT 1 FROM pg_constraint
+         WHERE conrelid = 'public.equipamentos'::regclass
+           AND conname = 'fk_equipamentos_responsavel_cliente_empresa'
+    ) OR NOT EXISTS (
+        SELECT 1 FROM pg_constraint
+         WHERE conrelid = 'public.cliente_contatos'::regclass
+           AND conname = 'uq_cliente_contatos_empresa_cliente_id'
+    ) THEN
+        RAISE EXCEPTION 'equipment info contact UUID/snapshot contract is incomplete';
+    END IF;
+
     IF to_regclass('public.company_admin_identities') IS NULL
        OR to_regclass('public.company_user_identities') IS NULL
        OR to_regprocedure('public.autoos_custom_access_token_hook(jsonb)') IS NULL THEN

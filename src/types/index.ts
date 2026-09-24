@@ -134,7 +134,7 @@ export interface Equipamento<Id extends EquipamentoId = number> {
   cliente_documento?: string;
   cliente_telefone?: string;
   cliente_email?: string;
-  responsavel_contato_id?: number;
+  responsavel_contato_id?: ClienteId;
   responsavel_nome?: string;
   responsavel_email?: string;
   responsavel_telefone?: string;
@@ -356,7 +356,7 @@ export interface ClienteContato {
   nome: string;
   email?: string;
   telefone?: string;
-  ativo: boolean;
+  ativo?: boolean;
   criado_em?: string;
   atualizado_em?: string;
 }
@@ -417,7 +417,8 @@ export interface VinculoEmpresaPerfilResultado {
   empresa_criada: boolean;
 }
 
-export type ClienteContatoInput = Omit<ClienteContato, "id" | "ativo" | "criado_em" | "atualizado_em"> & {
+export type ClienteContatoInput = Omit<ClienteContato, "id" | "empresa_id" | "ativo" | "criado_em" | "atualizado_em"> & {
+  empresa_id?: ClienteId;
   atualizado_em?: string;
 };
 

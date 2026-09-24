@@ -412,14 +412,14 @@ export default function Equipamentos({ operationalProfile }: { operationalProfil
   /** Abre dialog para editar equipamento existente. Carrega cliente vinculado do banco */
   function abrirEditar(eq: Equipamento) {
     setEditando(eq);
-    setResponsavelVinculado(!IS_SAAS_BUILD && typeof eq.responsavel_contato_id === "number" ? {
+    setResponsavelVinculado(eq.responsavel_contato_id && eq.cliente_id ? {
       id: eq.responsavel_contato_id,
-      empresa_id: typeof eq.empresa_id === "number" ? eq.empresa_id : 0,
-      cliente_id: typeof eq.cliente_id === "number" ? eq.cliente_id : 0,
+      empresa_id: eq.empresa_id ?? "",
+      cliente_id: eq.cliente_id,
       nome: eq.responsavel_nome || "Responsável pelo equipamento",
       email: eq.responsavel_email,
       telefone: eq.responsavel_telefone,
-      ativo: true,
+      ativo: undefined,
     } : null);
     setErroCliente(null);
     setErroImagens(null);
@@ -618,15 +618,15 @@ export default function Equipamentos({ operationalProfile }: { operationalProfil
    * Conecta-se a: db.buscarVerificacao, db.listarComunicacoes
    */
   const abrirDetalhes = useCallback(async (eq: Equipamento) => {
-    if (IS_SAAS_BUILD) return;
     setSelecionado(eq);
     setDetalhesDialogOpen(true);
-    setCarregandoDetalhes(true);
+    setCarregandoDetalhes(!IS_SAAS_BUILD);
     setVerificacaoDetalhes(null);
     setComunicacoes([]);
     setImagensDetalhes([]);
     setHistoricoDetalhes([]);
     setHistoricoDetalhesError(null);
+    if (IS_SAAS_BUILD) return;
     try {
       const [verif, comms, imagens, historico] = await Promise.allSettled([
         db.buscarVerificacao(eq.id!),
@@ -841,6 +841,7 @@ export default function Equipamentos({ operationalProfile }: { operationalProfil
         empresa_id: clienteVinculado.empresa_id || editando?.empresa_id || null,
         // Dados denormalizados para exibição rápida
         cliente_nome: nomeCliente,
+        cliente_documento: clienteVinculado.documento || clienteVinculado.cpf_cnpj || null,
         cliente_telefone: clienteVinculado.telefone || null,
         cliente_email: clienteVinculado.email || null,
         responsavel_contato_id: responsavelVinculado?.id || null,
@@ -1505,6 +1506,13 @@ export default function Equipamentos({ operationalProfile }: { operationalProfil
       variant: "outline",
       onClick: () => void abrirDetalhes(eq),
     };
+    const acaoInformacoes: PriorityAction = {
+      id: "informacoes",
+      label: "Informações",
+      icon: <FileText className="h-3.5 w-3.5" />,
+      variant: "outline",
+      onClick: () => void abrirDetalhes(eq),
+    };
     const acaoEditar: PriorityAction = {
       id: "editar",
       label: "Editar Equipamento",
@@ -1546,6 +1554,7 @@ export default function Equipamentos({ operationalProfile }: { operationalProfil
       return (
         <ActionPriorityRow
           primary={acaoEditar}
+          secondary={acaoInformacoes}
           overflow={hasPermission(SENSITIVE_PERMISSIONS.DELETE_RECORDS) ? [acaoExcluir] : []}
           iconOnlyOverflowTrigger
         />
@@ -2019,15 +2028,13 @@ export default function Equipamentos({ operationalProfile }: { operationalProfil
                 onClienteRemovido={() => { setClienteVinculado(null); setResponsavelVinculado(null); }}
                 readOnly={false}
               />
-              {!IS_SAAS_BUILD && <ContatoResponsavelSelector
+              <ContatoResponsavelSelector
                 cliente={clienteVinculado}
-                empresaId={typeof clienteVinculado?.empresa_id === "number"
-                  ? clienteVinculado.empresa_id
-                  : typeof editando?.empresa_id === "number" ? editando.empresa_id : undefined}
+                empresaId={clienteVinculado?.empresa_id ?? editando?.empresa_id}
                 value={responsavelVinculado}
                 onChange={setResponsavelVinculado}
                 disabled={salvando}
-              />}
+              />
               {erroCliente && (
                 <ErrorAlert variant="error" context="Equipamentos" message={erroCliente} />
               )}
@@ -2351,11 +2358,11 @@ export default function Equipamentos({ operationalProfile }: { operationalProfil
               </div>
 
               <Tabs defaultValue="info">
-                <TabsList className="grid grid-cols-4 w-full">
+                <TabsList className={`grid ${IS_SAAS_BUILD ? "grid-cols-1" : "grid-cols-4"} w-full`}>
                   <TabsTrigger value="info"><FileText className="h-3.5 w-3.5 mr-1 hidden sm:inline" />Informações</TabsTrigger>
-                  <TabsTrigger value="verificacao"><ClipboardCheck className="h-3.5 w-3.5 mr-1 hidden sm:inline" />Verificação</TabsTrigger>
-                  <TabsTrigger value="comunicacoes"><MessageSquare className="h-3.5 w-3.5 mr-1 hidden sm:inline" />Comunicações</TabsTrigger>
-                  <TabsTrigger value="historico"><History className="h-3.5 w-3.5 mr-1 hidden sm:inline" />Histórico</TabsTrigger>
+                  {!IS_SAAS_BUILD && <TabsTrigger value="verificacao"><ClipboardCheck className="h-3.5 w-3.5 mr-1 hidden sm:inline" />Verificação</TabsTrigger>}
+                  {!IS_SAAS_BUILD && <TabsTrigger value="comunicacoes"><MessageSquare className="h-3.5 w-3.5 mr-1 hidden sm:inline" />Comunicações</TabsTrigger>}
+                  {!IS_SAAS_BUILD && <TabsTrigger value="historico"><History className="h-3.5 w-3.5 mr-1 hidden sm:inline" />Histórico</TabsTrigger>}
                 </TabsList>
 
                 <TabsContent value="info" className="space-y-4 mt-4">
@@ -2364,12 +2371,18 @@ export default function Equipamentos({ operationalProfile }: { operationalProfil
                     <div><span className="text-muted-foreground">Entrada:</span> <span className="ml-1 font-medium">{formatDatePtBr(selecionado.data_entrada)}</span></div>
                     <div><span className="text-muted-foreground">Patrimônio:</span> <span className="ml-1 font-medium">{selecionado.patrimonio || "—"}</span></div>
                     <div><span className="text-muted-foreground">Nº Série:</span> <span className="ml-1 font-medium font-mono">{selecionado.serial_number}</span></div>
+                    {selecionado.tecnologia && <div><span className="text-muted-foreground">Tecnologia:</span> <span className="ml-1 font-medium">{selecionado.tecnologia}</span></div>}
+                    {selecionado.conectividade && <div><span className="text-muted-foreground">Conectividade:</span> <span className="ml-1 font-medium">{selecionado.conectividade}</span></div>}
+                    {selecionado.paginas_impressas != null && <div><span className="text-muted-foreground">Páginas impressas:</span> <span className="ml-1 font-medium">{selecionado.paginas_impressas.toLocaleString("pt-BR")}</span></div>}
+                    {selecionado.proprietario && <div><span className="text-muted-foreground">Proprietário:</span> <span className="ml-1 font-medium">{selecionado.proprietario}</span></div>}
+                    {selecionado.preco_compra != null && <div><span className="text-muted-foreground">Preço de compra:</span> <span className="ml-1 font-medium">R$ {selecionado.preco_compra.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}</span></div>}
+                    {selecionado.preco_venda != null && <div><span className="text-muted-foreground">Preço de venda:</span> <span className="ml-1 font-medium">R$ {selecionado.preco_venda.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}</span></div>}
                   </div>
                   {selecionado.defeito_relatado && <div className="text-sm"><p className="text-muted-foreground mb-1">Defeito na entrada:</p><p className="bg-accent/50 p-2 rounded whitespace-pre-wrap">{selecionado.defeito_relatado}</p></div>}
                   {selecionado.acessorios && <div className="text-sm"><p className="text-muted-foreground mb-1">Acessórios:</p><p className="bg-accent/50 p-2 rounded">{selecionado.acessorios}</p></div>}
                   {selecionado.acessorios_outros && <div className="text-sm"><p className="text-muted-foreground mb-1">Outros Acessórios:</p><p className="bg-accent/50 p-2 rounded whitespace-pre-wrap">{selecionado.acessorios_outros}</p></div>}
                   {selecionado.observacoes && <div className="text-sm"><p className="text-muted-foreground mb-1">Observação física:</p><p className="bg-accent/50 p-2 rounded whitespace-pre-wrap">{selecionado.observacoes}</p></div>}
-                  <div className="grid gap-4 lg:grid-cols-2">
+                  {!IS_SAAS_BUILD && <div className="grid gap-4 lg:grid-cols-2">
                     <div className="space-y-2">
                       <div className="flex items-center justify-between">
                         <p className="text-sm text-muted-foreground">Fotos da entrada</p>
@@ -2438,14 +2451,16 @@ export default function Equipamentos({ operationalProfile }: { operationalProfil
                         />
                       )}
                     </div>
-                  </div>
+                  </div>}
                   {selecionado.cliente_nome && (
                     <Card>
                       <CardHeader className="py-3"><CardTitle className="text-sm flex items-center gap-1"><Users className="h-4 w-4" />Cliente</CardTitle></CardHeader>
                       <CardContent className="text-sm space-y-1">
                         <p><strong>{selecionado.cliente_nome}</strong></p>
+                        {selecionado.cliente_documento && <p>CPF/CNPJ: {selecionado.cliente_documento}</p>}
                         {selecionado.cliente_telefone && <p>Tel: {selecionado.cliente_telefone}</p>}
                         {selecionado.cliente_email && <p>Email: {selecionado.cliente_email}</p>}
+                        {selecionado.responsavel_nome && <div className="mt-3 border-t pt-2"><p className="font-medium">Contato responsável: {selecionado.responsavel_nome}</p>{selecionado.responsavel_email && <p>Email: {selecionado.responsavel_email}</p>}{selecionado.responsavel_telefone && <p>Tel: {selecionado.responsavel_telefone}</p>}</div>}
                       </CardContent>
                     </Card>
                   )}
@@ -2460,13 +2475,13 @@ export default function Equipamentos({ operationalProfile }: { operationalProfil
                     </Card>
                   )}
                   {selecionado.observacoes && <div><p className="text-sm text-muted-foreground">Observações:</p><p className="text-sm mt-1 bg-accent/50 p-2 rounded">{selecionado.observacoes}</p></div>}
-                  <DocumentosEquipamento equipamento={selecionado} />
+                  {!IS_SAAS_BUILD && <DocumentosEquipamento equipamento={selecionado} />}
                 </TabsContent>
 
-                <TabsContent value="verificacao" className="mt-4">{renderVerificacaoTab()}</TabsContent>
+                {!IS_SAAS_BUILD && <TabsContent value="verificacao" className="mt-4">{renderVerificacaoTab()}</TabsContent>}
 
                 {/* Comunicações — agora usa componente extraído */}
-                <TabsContent value="comunicacoes" className="mt-4">
+                {!IS_SAAS_BUILD && <TabsContent value="comunicacoes" className="mt-4">
                   {carregandoDetalhes ? (
                     <div className="flex justify-center py-8"><div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600" /></div>
                   ) : (
@@ -2475,9 +2490,9 @@ export default function Equipamentos({ operationalProfile }: { operationalProfil
                       comunicacoesExternas={comunicacoes}
                     />
                   )}
-                </TabsContent>
+                </TabsContent>}
 
-                <TabsContent value="historico" className="mt-4">{renderHistoricoTab()}</TabsContent>
+                {!IS_SAAS_BUILD && <TabsContent value="historico" className="mt-4">{renderHistoricoTab()}</TabsContent>}
               </Tabs>
             </div>
           )}
