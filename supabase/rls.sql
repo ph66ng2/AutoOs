@@ -192,7 +192,7 @@ DECLARE
 BEGIN
     FOREACH table_name IN ARRAY ARRAY[
         'clientes', 'cliente_contatos', 'equipamentos', 'produtos', 'movimentacoes_estoque',
-        'security_profiles', 'verificacoes', 'comunicacoes',
+        'verificacoes', 'comunicacoes',
         'equipamento_imagens', 'servicos_catalogo', 'gastos_fixos',
         'gastos_variaveis', 'configuracoes_sistema'
     ] LOOP
@@ -224,8 +224,23 @@ BEGIN
 END;
 $$;
 
+-- Perfis definem a autorização SaaS: o cliente só pode ler os perfis do tenant.
+-- Escritas futuras devem passar por uma RPC server-side autorizada.
+REVOKE INSERT, UPDATE, DELETE ON TABLE public.security_profiles
+    FROM PUBLIC, anon, authenticated;
+GRANT SELECT ON TABLE public.security_profiles TO authenticated;
+DROP POLICY IF EXISTS company_select ON public.security_profiles;
+DROP POLICY IF EXISTS company_insert ON public.security_profiles;
+DROP POLICY IF EXISTS company_update ON public.security_profiles;
+DROP POLICY IF EXISTS company_delete ON public.security_profiles;
+CREATE POLICY company_select ON public.security_profiles
+    FOR SELECT TO authenticated
+    USING (empresa_id = (select public.current_company_id()));
+
 -- Auditoria é legível pelo tenant, mas eventos são gravados por comandos
 -- server-side; o cliente não pode fabricar ou apagar trilha de segurança.
+REVOKE INSERT, UPDATE, DELETE ON TABLE public.security_audit_log
+    FROM PUBLIC, anon, authenticated;
 GRANT SELECT ON TABLE public.security_audit_log TO authenticated;
 DROP POLICY IF EXISTS company_select ON public.security_audit_log;
 DROP POLICY IF EXISTS company_insert ON public.security_audit_log;

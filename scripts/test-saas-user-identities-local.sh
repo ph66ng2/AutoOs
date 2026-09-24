@@ -81,12 +81,14 @@ for migration in "${project_dir}"/supabase/migrations/*.sql; do
   [[ "${migration}" == *20260827180517* ]] && continue
   [[ "${migration}" == *20260923151000* ]] && continue
   [[ "${migration}" == *20260923173239* ]] && continue
+  [[ "${migration}" == *20260923211404* ]] && continue
   apply_sql "${migration}"
 done
 
 apply_sql "${project_dir}/supabase/migrations/20260923151000_individual_saas_user_identities.sql"
 apply_sql "${project_dir}/supabase/migrations/20260923173239_saas_current_operational_profile_and_individual_devices.sql"
 apply_sql "${project_dir}/supabase/rls.sql"
+apply_sql "${project_dir}/supabase/migrations/20260923211404_saas_server_side_sensitive_authorization.sql"
 
 docker exec -i "${container_name}" psql -U postgres -v ON_ERROR_STOP=1 >/dev/null <<'SQL'
 INSERT INTO auth.users (id, email) VALUES
@@ -105,5 +107,15 @@ docker exec -i "${container_name}" psql -U postgres -v ON_ERROR_STOP=1 \
   --command 'BEGIN;' >/dev/null < "${project_dir}/supabase/tests/staging-schema-integrity.sql"
 apply_sql "${project_dir}/supabase/tests/auth-admin-identity.sql"
 apply_sql "${project_dir}/supabase/tests/individual-user-identity.sql"
+apply_sql "${project_dir}/supabase/tests/saas-server-side-authorization.sql"
 
-printf 'Local SaaS individual-identity, ADMIN compatibility, RLS, stale-JWT, and schema checks passed.\n'
+server_logs="$(docker logs "${container_name}" 2>&1)"
+if ! grep -Fq \
+  'AUTOOS_SAAS_AUTHZ_DENIED auth_user_id=aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa tenant_id=a0000000-0000-4000-8000-000000000001 action=equipamentos.UPDATE' \
+  <<<"${server_logs}"; then
+  printf '%s\n' "${server_logs}" >&2
+  printf 'Expected server-side denial audit log was not emitted.\n' >&2
+  exit 1
+fi
+
+printf 'Local SaaS identity, server-side authorization, audit immutability, ADMIN compatibility, RLS, stale-JWT, and schema checks passed.\n'
