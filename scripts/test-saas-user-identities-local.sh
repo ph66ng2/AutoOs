@@ -41,6 +41,9 @@ CREATE SCHEMA auth;
 CREATE TABLE auth.users (
     id uuid PRIMARY KEY,
     email text,
+    email_confirmed_at timestamptz,
+    invited_at timestamptz,
+    banned_until timestamptz,
     raw_app_meta_data jsonb NOT NULL DEFAULT '{}'::jsonb,
     raw_user_meta_data jsonb NOT NULL DEFAULT '{}'::jsonb
 );
@@ -80,20 +83,22 @@ docker exec "${container_name}" psql -U postgres -v ON_ERROR_STOP=1 >/dev/null \
 for migration in "${project_dir}"/supabase/migrations/*.sql; do
   [[ "${migration}" == *20260827180517* ]] && continue
   [[ "${migration}" == *20260923151000* ]] && continue
+  [[ "${migration}" == *20260923162249* ]] && continue
   [[ "${migration}" == *20260923173239* ]] && continue
   [[ "${migration}" == *20260923211404* ]] && continue
   apply_sql "${migration}"
 done
 
 apply_sql "${project_dir}/supabase/migrations/20260923151000_individual_saas_user_identities.sql"
+apply_sql "${project_dir}/supabase/migrations/20260923162249_saas_user_lifecycle.sql"
 apply_sql "${project_dir}/supabase/migrations/20260923173239_saas_current_operational_profile_and_individual_devices.sql"
 apply_sql "${project_dir}/supabase/rls.sql"
 apply_sql "${project_dir}/supabase/migrations/20260923211404_saas_server_side_sensitive_authorization.sql"
 
 docker exec -i "${container_name}" psql -U postgres -v ON_ERROR_STOP=1 >/dev/null <<'SQL'
-INSERT INTO auth.users (id, email) VALUES
-    ('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', 'auth-test-a@example.invalid'),
-    ('bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb', 'auth-test-b@example.invalid');
+INSERT INTO auth.users (id, email, email_confirmed_at) VALUES
+    ('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', 'auth-test-a@example.invalid', now()),
+    ('bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb', 'auth-test-b@example.invalid', now());
 SQL
 apply_sql "${project_dir}/supabase/operations/bootstrap-auth-test-tenants.sql"
 
@@ -107,6 +112,7 @@ docker exec -i "${container_name}" psql -U postgres -v ON_ERROR_STOP=1 \
   --command 'BEGIN;' >/dev/null < "${project_dir}/supabase/tests/staging-schema-integrity.sql"
 apply_sql "${project_dir}/supabase/tests/auth-admin-identity.sql"
 apply_sql "${project_dir}/supabase/tests/individual-user-identity.sql"
+apply_sql "${project_dir}/supabase/tests/saas-user-lifecycle.sql"
 apply_sql "${project_dir}/supabase/tests/saas-server-side-authorization.sql"
 
 server_logs="$(docker logs "${container_name}" 2>&1)"
