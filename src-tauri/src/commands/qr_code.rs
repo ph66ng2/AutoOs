@@ -2,7 +2,7 @@ use serde::Serialize;
 use tracing::info;
 
 use crate::commands::photo_server;
-use crate::commands::photo_tunnel::{self, PHOTO_PUBLIC_BASE_URL};
+use crate::commands::photo_tunnel;
 
 #[derive(Serialize)]
 pub struct QrUploadResult {
@@ -13,17 +13,20 @@ pub struct QrUploadResult {
 }
 
 pub(crate) fn build_upload_url(
-    via_tunnel: bool,
+    public_base: Option<&str>,
     lan_host: &str,
     port: u16,
     token: &str,
     equipamento_id: i32,
     categoria: &str,
 ) -> String {
-    if via_tunnel {
+    if let Some(base) = public_base.filter(|value| !value.is_empty()) {
         format!(
             "{}/?token={}&eq={}&cat={}",
-            PHOTO_PUBLIC_BASE_URL, token, equipamento_id, categoria
+            base.trim_end_matches('/'),
+            token,
+            equipamento_id,
+            categoria
         )
     } else {
         format!(
@@ -35,8 +38,8 @@ pub(crate) fn build_upload_url(
 
 /// Gera um QR code para upload de foto via dispositivo móvel.
 ///
-/// Com túnel configurado o QR aponta para `https://fotos.bmitag.com.br`.
-/// Sem token, permanece o endereço LAN `http://{IP}:{PORT}`.
+/// Com túnel ativo o QR aponta para a URL pública (trycloudflare ou
+/// fotos.bmitag.com.br). Sem túnel, permanece o endereço LAN.
 #[tauri::command]
 pub async fn gerar_qr_upload(
     equipamento_id: i32,
@@ -49,10 +52,11 @@ pub async fn gerar_qr_upload(
     );
 
     let token = photo_server::generate_upload_token(equipamento_id, categoria.clone()).await?;
-    let via_tunnel = photo_tunnel::is_tunnel_configured();
+    let public_base = photo_tunnel::active_public_base_url();
+    let via_tunnel = public_base.is_some();
     let lan_host = photo_server::get_lan_ip().unwrap_or_else(|| "localhost".to_string());
     let url = build_upload_url(
-        via_tunnel,
+        public_base.as_deref(),
         &lan_host,
         port,
         &token,
@@ -81,9 +85,27 @@ mod tests {
     use super::*;
 
     #[test]
-    fn tunnel_url_uses_fotos_bmitag() {
+    fn tunnel_url_uses_public_base() {
         assert_eq!(
-            build_upload_url(true, "192.168.0.10", 8765, "tok", 7, "ENTRADA"),
+            build_upload_url(
+                Some("https://foo-bar.trycloudflare.com"),
+                "192.168.0.10",
+                8765,
+                "tok",
+                7,
+                "ENTRADA"
+            ),
+            "https://foo-bar.trycloudflare.com/?token=tok&eq=7&cat=ENTRADA"
+        );
+        assert_eq!(
+            build_upload_url(
+                Some("https://fotos.bmitag.com.br/"),
+                "192.168.0.10",
+                8765,
+                "tok",
+                7,
+                "ENTRADA"
+            ),
             "https://fotos.bmitag.com.br/?token=tok&eq=7&cat=ENTRADA"
         );
     }
@@ -91,7 +113,7 @@ mod tests {
     #[test]
     fn lan_url_keeps_http_ip_and_port() {
         assert_eq!(
-            build_upload_url(false, "192.168.0.10", 8765, "tok", 7, "SAIDA"),
+            build_upload_url(None, "192.168.0.10", 8765, "tok", 7, "SAIDA"),
             "http://192.168.0.10:8765/?token=tok&eq=7&cat=SAIDA"
         );
     }

@@ -536,8 +536,8 @@ export default function Configuracoes() {
       setPhotoTunnelToken("");
       setPhotoTunnelStatus(
         photoTunnelToken.trim()
-          ? "Token do túnel salvo. O QR de fotos usará https://fotos.bmitag.com.br."
-          : "Token removido. O QR de fotos volta para o endereço da rede local.",
+          ? "Token do túnel nomeado salvo. O QR usará https://fotos.bmitag.com.br (um PC por vez)."
+          : "Token removido. O QR volta ao túnel automático — cada PC com o próprio endereço.",
       );
     } catch (error: any) {
       const msg = typeof error === "string" ? error : (error?.message || "Falha ao salvar o token do túnel de fotos.");

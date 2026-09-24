@@ -221,9 +221,9 @@ export function ConfiguracoesTabIntegracoes({
 
       <Card>
         <CardHeader>
-          <CardTitle>Fotos pelo celular ({photoTunnelPublicHost || "fotos.bmitag.com.br"})</CardTitle>
+          <CardTitle>Fotos pelo celular</CardTitle>
           <CardDescription>
-            Túnel Cloudflare para o QR público. O celular não precisa estar no Wi-Fi da recepção. Um computador por vez.
+            Padrão: cada PC publica um HTTPS temporário sozinho (sem DNS e sem token). Os três computadores podem enviar foto ao mesmo tempo.
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -237,10 +237,10 @@ export function ConfiguracoesTabIntegracoes({
             >
               <div className="rounded-lg border border-blue-200 bg-blue-50 p-4 text-sm text-blue-900 space-y-2">
                 <p>
-                  No Cloudflare: túnel nomeado com hostname público <strong>{photoTunnelPublicHost || "fotos.bmitag.com.br"}</strong> apontando para <code>http://127.0.0.1:8765</code>. Cole o token do conector abaixo.
+                  Coloque o <code>cloudflared</code> no PATH ou na pasta AutoOS de cada PC que for gerar QR. Não precisa criar DNS nem colar token.
                 </p>
                 <p>
-                  Instale o <code>cloudflared</code> no PC da recepção (PATH ou pasta AutoOS). Sem token o QR volta para o IP da rede local.
+                  O campo abaixo é opcional: só use se quiser o hostname fixo <strong>{photoTunnelPublicHost || "fotos.bmitag.com.br"}</strong> (aí um PC por vez).
                 </p>
               </div>
 
@@ -262,7 +262,7 @@ export function ConfiguracoesTabIntegracoes({
                 )}
                 {photoTunnelHasToken && !photoTunnelEnvOverride && (
                   <p className="text-xs text-muted-foreground">
-                    Deixe em branco e salve para remover o token e voltar ao QR pela rede local.
+                    Deixe em branco e salve para remover o token e voltar ao túnel automático por PC.
                   </p>
                 )}
               </div>

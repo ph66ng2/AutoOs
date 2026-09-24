@@ -198,7 +198,7 @@ describe("PhotoUploadDialog — sucesso", () => {
     });
   });
 
-  it("mostra o aviso do hostname público quando o QR usa o túnel", async () => {
+  it("mostra o aviso do hostname público quando o QR usa o túnel nomeado", async () => {
     vi.mocked(db.gerarQrUpload).mockResolvedValueOnce({
       qr_svg: "<svg>mock-qr</svg>",
       url: "https://fotos.bmitag.com.br/?token=test-token&eq=1&cat=ENTRADA",
@@ -224,6 +224,35 @@ describe("PhotoUploadDialog — sucesso", () => {
     ).toBeInTheDocument();
     expect(
       screen.queryByText(/mesma rede Wi-Fi que o computador/i),
+    ).not.toBeInTheDocument();
+  });
+
+  it("mostra o aviso do túnel rápido quando o QR usa trycloudflare", async () => {
+    vi.mocked(db.gerarQrUpload).mockResolvedValueOnce({
+      qr_svg: "<svg>mock-qr</svg>",
+      url: "https://foo-bar.trycloudflare.com/?token=test-token&eq=1&cat=ENTRADA",
+      token: "test-token",
+      via_tunnel: true,
+    });
+    (global.fetch as vi.Mock).mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve({ used: false }),
+    });
+
+    render(<PhotoUploadDialog {...defaultProps} />);
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(0);
+    });
+
+    expect(
+      screen.getByText(/cada computador gera o próprio endereço/i),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(/celular pode estar no 4G/i),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByText(/um computador de recepção por vez/i),
     ).not.toBeInTheDocument();
   });
 });

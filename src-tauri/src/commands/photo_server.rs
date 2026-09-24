@@ -848,8 +848,9 @@ pub async fn start_photo_server(
         }
     }
 
-    // ── 2. Bind. Túnel exige 127.0.0.1 na porta pedida (Cloudflare → 8765).
-    let via_tunnel = photo_tunnel::is_tunnel_configured();
+    // ── 2. Bind. Túnel (rápido ou nomeado) escuta só em 127.0.0.1:porta.
+    let via_tunnel = photo_tunnel::should_use_tunnel();
+    let named_tunnel = photo_tunnel::is_named_tunnel_configured();
     let bind_attempts = if via_tunnel { 1 } else { 3 };
     let mut listener = None;
     let mut bound_port = port;
@@ -869,7 +870,7 @@ pub async fn start_photo_server(
     }
 
     let listener = listener.ok_or_else(|| {
-        if via_tunnel {
+        if named_tunnel {
             format!(
                 "Porta {} ocupada. O túnel {} exige essa porta.",
                 port,
@@ -928,16 +929,19 @@ pub async fn start_photo_server(
     }
 
     if via_tunnel {
-        if let Err(e) = photo_tunnel::start_tunnel().await {
-            let _ = stop_photo_server().await;
-            return Err(e);
+        match photo_tunnel::start_tunnel(bound_port).await {
+            Ok(public_url) => {
+                info!(
+                    "Servidor de fotos iniciado em {} (local 127.0.0.1:{})",
+                    public_url, bound_port
+                );
+                return Ok(public_url);
+            }
+            Err(e) => {
+                let _ = stop_photo_server().await;
+                return Err(e);
+            }
         }
-        info!(
-            "Servidor de fotos iniciado em {} (local 127.0.0.1:{})",
-            photo_tunnel::PHOTO_PUBLIC_BASE_URL,
-            bound_port
-        );
-        return Ok(photo_tunnel::PHOTO_PUBLIC_BASE_URL.to_string());
     }
 
     let lan_ip = get_lan_ip().unwrap_or_else(|| "localhost".to_string());
