@@ -25,6 +25,7 @@ const EQUIPMENT_FIELDS = [
   "acessorios", "acessorios_outros", "paginas_impressas", "tecnologia", "conectividade",
   "data_entrada", "proprietario", "preco_compra", "preco_venda", "observacoes",
   "cliente_id", "cliente_nome", "cliente_documento", "cliente_telefone", "cliente_email",
+  "responsavel_contato_id", "responsavel_nome", "responsavel_email", "responsavel_telefone",
 ] as const;
 
 function legacyId(id: EquipamentoId): number {
@@ -43,6 +44,9 @@ function allowedPayload(input: EquipamentoInput, includeInitialStatus: boolean):
   if (includeInitialStatus) payload.status = "RECEBIDO";
   if (payload.cliente_id != null && (typeof payload.cliente_id !== "string" || !UUID_PATTERN.test(payload.cliente_id))) {
     throw new OnlineDataError("INVALID_DATA", "O cliente selecionado não possui um identificador Online válido.");
+  }
+  if (payload.responsavel_contato_id != null && (typeof payload.responsavel_contato_id !== "string" || !UUID_PATTERN.test(payload.responsavel_contato_id))) {
+    throw new OnlineDataError("INVALID_DATA", "O contato responsável não possui um identificador Online válido.");
   }
   return payload;
 }
