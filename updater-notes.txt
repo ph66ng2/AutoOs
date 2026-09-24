@@ -1,1 +1,1 @@
-0.5.5: o AutoOS verifica atualizações no GitHub. A tela mostra se esta já é a versão mais recente ou se a consulta falhou. A instalação só começa em Baixar e instalar. Cadastros novos de cliente e equipamento exigem a empresa da sessão.
+0.5.6: o QR de fotos pelo celular passa a usar HTTPS temporário (trycloudflare). Os três PCs da recepção podem enviar foto ao mesmo tempo, e o celular pode estar no 4G. Coloque o cloudflared.exe no PATH ou em %LOCALAPPDATA%\AutoOS\. Sem o executável, o QR continua no Wi-Fi local.

@@ -22,9 +22,9 @@ A versão **1.0** será marcada **apenas quando o AutoOS estiver pronto para uso
 
 ### Versão atual
 
-A base atual de distribuição é **0.5.3**. Todas as próximas tags devem partir deste ponto:
+A base atual de distribuição é **0.5.6**. Todas as próximas tags devem partir deste ponto:
 
-- Correções: `0.5.4`, `0.5.5`...
+- Correções: `0.5.6`, `0.5.7`...
 - Novas features: `0.6.0`, `0.7.0`...
 
 ### Tags para release Windows
