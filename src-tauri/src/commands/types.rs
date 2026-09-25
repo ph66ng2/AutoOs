@@ -332,6 +332,15 @@ pub struct EmailSendInput {
     pub anexos: Option<Vec<EmailAttachmentInput>>,
 }
 
+/// Configuração pública usada pelo comando SaaS para validar a sessão junto
+/// ao projeto Supabase que emitiu o token armazenado no keyring.
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct SaasCommunicationConfigInput {
+    pub supabase_url: String,
+    pub publishable_key: String,
+}
+
 /// Input para configurar o provider de WhatsApp.
 #[derive(Debug, Deserialize, Default)]
 #[serde(default)]

@@ -17,11 +17,21 @@ pub struct SaasIdentity {
 
 #[derive(Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct SaasOperationalProfile {
+    pub id: String,
+    pub name: String,
+    pub role: String,
+    pub permissions: Vec<String>,
+}
+
+#[derive(Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct SaasSession {
     pub access_token: String,
     pub refresh_token: String,
     pub expires_at: i64,
     pub identity: SaasIdentity,
+    pub profile: SaasOperationalProfile,
 }
 
 fn keyring_entry() -> Result<Entry, String> {
@@ -47,6 +57,13 @@ fn validate_session(session: &SaasSession) -> Result<(), String> {
     validate_uuid(&session.identity.user_id, "UUID do usuário")?;
     validate_uuid(&session.identity.company_id, "UUID da empresa")?;
     validate_uuid(&session.identity.profile_id, "UUID do perfil")?;
+    validate_uuid(&session.profile.id, "UUID do perfil operacional")?;
+    if !session.profile.id.eq_ignore_ascii_case(&session.identity.profile_id) {
+        return Err("O perfil operacional não corresponde à identidade da sessão SaaS.".to_string());
+    }
+    if session.profile.name.trim().is_empty() || session.profile.role.trim().is_empty() {
+        return Err("Nome ou papel ausente no perfil operacional SaaS.".to_string());
+    }
     let email = session.identity.email.trim();
     if email.is_empty() || !email.contains('@') || email.contains(char::is_whitespace) {
         return Err("Email inválido na sessão SaaS.".to_string());
@@ -105,7 +122,7 @@ pub async fn remover_sessao_saas() -> Result<(), String> {
 
 #[cfg(test)]
 mod tests {
-    use super::{validate_session, SaasIdentity, SaasSession};
+    use super::{validate_session, SaasIdentity, SaasOperationalProfile, SaasSession};
 
     fn valid_session() -> SaasSession {
         SaasSession {
@@ -117,6 +134,12 @@ mod tests {
                 company_id: "b0000000-0000-4000-8000-000000000001".into(),
                 profile_id: "c0000000-0000-4000-8000-000000000001".into(),
                 email: "admin@example.com".into(),
+            },
+            profile: SaasOperationalProfile {
+                id: "c0000000-0000-4000-8000-000000000001".into(),
+                name: "Admin AutoOS".into(),
+                role: "ADMIN".into(),
+                permissions: Vec::new(),
             },
         }
     }

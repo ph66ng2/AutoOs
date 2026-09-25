@@ -67,7 +67,7 @@ describe("EmailService", () => {
     mockBuscarVerificacao.mockResolvedValue(verificacaoBase);
     mockCopiarAnexoEmailParaTemp.mockResolvedValue("/tmp/autoos/orcamento_test.pdf");
     mockRemoverAnexoEmailTemp.mockResolvedValue(undefined);
-    mockInvoke.mockResolvedValue(undefined);
+    mockInvoke.mockResolvedValue(true);
   });
 
   it("enviarOrcamento retorna erro quando não há email do cliente", async () => {
@@ -213,6 +213,15 @@ describe("EmailService", () => {
       }),
     );
     expect(mockRemoverAnexoEmailTemp).toHaveBeenCalledWith("/tmp/autoos/orcamento_test.pdf");
+  });
+
+  it("enviarOrcamento registra falha quando o comando não confirma o envio", async () => {
+    mockInvoke.mockResolvedValueOnce(false);
+
+    const res = await EmailService.enviarOrcamento(equipamentoBase, verificacaoBase);
+
+    expect(res).toEqual({ sucesso: false, erro: "O servidor SMTP não confirmou o envio." });
+    expect(mockRegistrarComunicacao).toHaveBeenCalledWith(expect.objectContaining({ enviado: false, canal: "EMAIL" }));
   });
 
   it("enviarEquipamentoPronto envia, registra sucesso e copia gerência", async () => {

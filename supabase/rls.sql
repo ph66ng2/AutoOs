@@ -224,6 +224,36 @@ BEGIN
 END;
 $$;
 
+-- A comunicação também deve apontar para equipamento da mesma empresa.
+-- As políticas acima já restringem a empresa da linha; este predicado bloqueia
+-- UUIDs de equipamento cruzados tanto em INSERT quanto em UPDATE.
+DROP POLICY IF EXISTS company_insert ON public.comunicacoes;
+CREATE POLICY company_insert ON public.comunicacoes
+    FOR INSERT TO authenticated
+    WITH CHECK (
+        empresa_id = (select public.current_company_id())
+        AND EXISTS (
+            SELECT 1
+              FROM public.equipamentos AS equipment
+             WHERE equipment.id = comunicacoes.equipamento_id
+               AND equipment.empresa_id = comunicacoes.empresa_id
+        )
+    );
+
+DROP POLICY IF EXISTS company_update ON public.comunicacoes;
+CREATE POLICY company_update ON public.comunicacoes
+    FOR UPDATE TO authenticated
+    USING (empresa_id = (select public.current_company_id()))
+    WITH CHECK (
+        empresa_id = (select public.current_company_id())
+        AND EXISTS (
+            SELECT 1
+              FROM public.equipamentos AS equipment
+             WHERE equipment.id = comunicacoes.equipamento_id
+               AND equipment.empresa_id = comunicacoes.empresa_id
+        )
+    );
+
 -- Perfis definem a autorização SaaS: o cliente só pode ler os perfis do tenant.
 -- Escritas futuras devem passar por uma RPC server-side autorizada.
 REVOKE INSERT, UPDATE, DELETE ON TABLE public.security_profiles

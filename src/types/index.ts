@@ -434,10 +434,10 @@ export type ClienteContatoInput = Omit<ClienteContato, "id" | "empresa_id" | "at
  *
  * Usado por: HistoricoComunicacoes.tsx, WhatsAppService, EmailService
  */
-export interface Comunicacao {
-  id?: number;
-  empresa_id?: number;
-  equipamento_id: number;
+export interface Comunicacao<Id extends EquipamentoId = number> {
+  id?: Id;
+  empresa_id?: Id;
+  equipamento_id: Id;
   tipo: string;    // ORCAMENTO, PRONTO, LEMBRETE, MANUAL
   canal: string;   // EMAIL, WHATSAPP
   destinatario: string;

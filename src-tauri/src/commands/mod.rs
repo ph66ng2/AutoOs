@@ -34,6 +34,7 @@ pub mod storage_config;
 pub mod enrollment;
 pub mod image_migration;
 pub mod saas_auth;
+pub mod saas_communication;
 pub mod saas_device;
 pub mod saas_profile_pin;
 pub mod legacy_regularization;

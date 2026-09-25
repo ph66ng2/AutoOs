@@ -1,9 +1,11 @@
 use crate::commands::auth::{
-    record_security_event, require_permission, PERMISSION_CONFIG_WHATSAPP,
+    record_security_event, require_permission, SecurityProfileSummary, PERMISSION_CONFIG_WHATSAPP,
 };
 use crate::commands::types::{
     WhatsappConfigInput, WhatsappConfigResponse, WhatsappConfigStored, WhatsappSendInput,
 };
+#[cfg(feature = "saas")]
+use crate::commands::types::SaasCommunicationConfigInput;
 use keyring::Entry;
 use reqwest::{Client, Url};
 use serde_json::json;
@@ -148,6 +150,32 @@ pub async fn carregar_config_whatsapp() -> Result<WhatsappConfigResponse, String
 #[instrument(skip_all)]
 pub async fn enviar_whatsapp(input: WhatsappSendInput) -> Result<bool, String> {
     let actor = require_permission(PERMISSION_CONFIG_WHATSAPP)?;
+    enviar_whatsapp_interno(input, Some(actor), true).await
+}
+
+/// Usa o provider EVOLUTION já existente no keyring no build SaaS, após
+/// validar perfil e permissão atuais no Supabase.
+#[cfg(feature = "saas")]
+#[tauri::command]
+#[instrument(skip_all)]
+pub async fn enviar_whatsapp_saas(
+    input: WhatsappSendInput,
+    config: SaasCommunicationConfigInput,
+) -> Result<bool, String> {
+    crate::commands::saas_communication::authorize_communication(
+        &config.supabase_url,
+        &config.publishable_key,
+        PERMISSION_CONFIG_WHATSAPP,
+    )
+    .await?;
+    enviar_whatsapp_interno(input, None, false).await
+}
+
+async fn enviar_whatsapp_interno(
+    input: WhatsappSendInput,
+    actor: Option<SecurityProfileSummary>,
+    record_local_audit: bool,
+) -> Result<bool, String> {
     debug!("Enviando WhatsApp via provider HTTP");
 
     let audit_details = format!("contato={}", input.contato.trim());
@@ -155,8 +183,12 @@ pub async fn enviar_whatsapp(input: WhatsappSendInput) -> Result<bool, String> {
     let config = match load_stored_whatsapp_config()? {
         Some(config) => config,
         None => {
-            let details = format!("{}; motivo=configuracao_ausente", audit_details);
-            record_security_event("WHATSAPP_SEND_FAILED", Some(&actor), details, false).await;
+            if record_local_audit {
+                if let Some(actor) = actor.as_ref() {
+                    let details = format!("{}; motivo=configuracao_ausente", audit_details);
+                    record_security_event("WHATSAPP_SEND_FAILED", Some(actor), details, false).await;
+                }
+            }
             return Err("Configure o WhatsApp primeiro".to_string());
         }
     };
@@ -209,17 +241,21 @@ pub async fn enviar_whatsapp(input: WhatsappSendInput) -> Result<bool, String> {
     if !status.is_success() {
         let body = response.text().await.unwrap_or_default();
         error!("Provider WhatsApp retornou {}: {}", status, body);
-        record_security_event(
-            "WHATSAPP_SEND_FAILED",
-            Some(&actor),
-            if body.trim().is_empty() {
-                format!("{}; status={}", audit_details, status)
-            } else {
-                format!("{}; status={}; body={}", audit_details, status, body)
-            },
-            false,
-        )
-        .await;
+        if record_local_audit {
+            if let Some(actor) = actor.as_ref() {
+                record_security_event(
+                    "WHATSAPP_SEND_FAILED",
+                    Some(actor),
+                    if body.trim().is_empty() {
+                        format!("{}; status={}", audit_details, status)
+                    } else {
+                        format!("{}; status={}; body={}", audit_details, status, body)
+                    },
+                    false,
+                )
+                .await;
+            }
+        }
         return Err(if body.trim().is_empty() {
             format!("Provider WhatsApp retornou status {}", status)
         } else {
@@ -227,7 +263,11 @@ pub async fn enviar_whatsapp(input: WhatsappSendInput) -> Result<bool, String> {
         });
     }
 
-    record_security_event("WHATSAPP_SENT", Some(&actor), audit_details, true).await;
+    if record_local_audit {
+        if let Some(actor) = actor.as_ref() {
+            record_security_event("WHATSAPP_SENT", Some(actor), audit_details, true).await;
+        }
+    }
 
     info!("WhatsApp enviado com sucesso para {}", contato);
     Ok(true)

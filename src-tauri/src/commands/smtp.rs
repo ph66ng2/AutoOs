@@ -9,8 +9,10 @@
 use crate::commands::types::{
     EmailAttachmentInput, EmailSendInput, SmtpConfigInput, SmtpConfigResponse, SmtpConfigStored,
 };
+#[cfg(feature = "saas")]
+use crate::commands::types::SaasCommunicationConfigInput;
 use crate::commands::auth::{
-    record_security_event, require_permission, PERMISSION_CONFIG_SMTP,
+    record_security_event, require_permission, SecurityProfileSummary, PERMISSION_CONFIG_SMTP,
 };
 use keyring::Entry;
 use lettre::{
@@ -248,6 +250,32 @@ pub async fn carregar_config_smtp() -> Result<SmtpConfigResponse, String> {
 #[instrument(skip_all)]
 pub async fn enviar_email(input: EmailSendInput) -> Result<bool, String> {
     let actor = require_permission(PERMISSION_CONFIG_SMTP)?;
+    enviar_email_interno(input, Some(actor), true).await
+}
+
+/// Envia email no build SaaS usando a mesma configuração SMTP Gmail guardada
+/// no keyring; a autorização do perfil é revalidada no Supabase.
+#[cfg(feature = "saas")]
+#[tauri::command]
+#[instrument(skip_all)]
+pub async fn enviar_email_saas(
+    input: EmailSendInput,
+    config: SaasCommunicationConfigInput,
+) -> Result<bool, String> {
+    crate::commands::saas_communication::authorize_communication(
+        &config.supabase_url,
+        &config.publishable_key,
+        PERMISSION_CONFIG_SMTP,
+    )
+    .await?;
+    enviar_email_interno(input, None, false).await
+}
+
+async fn enviar_email_interno(
+    input: EmailSendInput,
+    actor: Option<SecurityProfileSummary>,
+    record_local_audit: bool,
+) -> Result<bool, String> {
     debug!("Enviando email via SMTP");
 
     let audit_details = format!(
@@ -260,8 +288,12 @@ pub async fn enviar_email(input: EmailSendInput) -> Result<bool, String> {
     let config = match load_stored_smtp_config()? {
         Some(config) => config,
         None => {
-            let details = format!("{}; motivo=configuracao_ausente", audit_details);
-            record_security_event("EMAIL_SEND_FAILED", Some(&actor), details, false).await;
+            if record_local_audit {
+                if let Some(actor) = actor.as_ref() {
+                    let details = format!("{}; motivo=configuracao_ausente", audit_details);
+                    record_security_event("EMAIL_SEND_FAILED", Some(actor), details, false).await;
+                }
+            }
             return Err("Configure o SMTP primeiro".to_string());
         }
     };
@@ -417,15 +449,22 @@ pub async fn enviar_email(input: EmailSendInput) -> Result<bool, String> {
     mailer.send(email).await.map_err(|e| {
         error!("Erro ao enviar email: {}", e);
         let error_message = format!("Erro ao enviar email: {}", e);
-        let details = format!("{}; motivo={}", audit_details, error_message);
-        let actor = actor.clone();
-        tauri::async_runtime::spawn(async move {
-            record_security_event("EMAIL_SEND_FAILED", Some(&actor), details, false).await;
-        });
+        if record_local_audit {
+            if let Some(actor) = actor.clone() {
+                let details = format!("{}; motivo={}", audit_details, error_message);
+                tauri::async_runtime::spawn(async move {
+                    record_security_event("EMAIL_SEND_FAILED", Some(&actor), details, false).await;
+                });
+            }
+        }
         error_message
     })?;
 
-    record_security_event("EMAIL_SENT", Some(&actor), audit_details, true).await;
+    if record_local_audit {
+        if let Some(actor) = actor.as_ref() {
+            record_security_event("EMAIL_SENT", Some(actor), audit_details, true).await;
+        }
+    }
 
     info!("Email enviado com sucesso para {}", input.email);
     Ok(true)

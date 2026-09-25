@@ -47,7 +47,7 @@ const verificacaoBase: Verificacao = {
 describe("WhatsAppService", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mockInvoke.mockResolvedValue(undefined);
+    mockInvoke.mockResolvedValue(true);
   });
 
   it("enviarOrcamento retorna erro sem telefone", async () => {
@@ -127,6 +127,15 @@ describe("WhatsAppService", () => {
         erro: "HTTP 500",
       }),
     );
+  });
+
+  it("enviarOrcamento registra falha quando o provider não confirma o envio", async () => {
+    mockInvoke.mockResolvedValueOnce(false);
+
+    const res = await WhatsAppService.enviarOrcamento(equipamentoBase, verificacaoBase);
+
+    expect(res).toEqual({ sucesso: false, erro: "O provedor de WhatsApp não confirmou o envio." });
+    expect(mockRegistrarComunicacao).toHaveBeenCalledWith(expect.objectContaining({ enviado: false, canal: "WHATSAPP" }));
   });
 
   it("enviarEquipamentoPronto envia mensagem de pronto e registra sucesso", async () => {
