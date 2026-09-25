@@ -166,6 +166,7 @@ fn main() {
             commands::photo_server::start_photo_server,
             commands::photo_server::stop_photo_server,
             commands::photo_server::generate_upload_token,
+            commands::photo_server::consultar_status_foto,
             commands::qr_code::gerar_qr_upload,
             commands::photo_tunnel::salvar_config_photo_tunnel,
             commands::photo_tunnel::carregar_config_photo_tunnel,

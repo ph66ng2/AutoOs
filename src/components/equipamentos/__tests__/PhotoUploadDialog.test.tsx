@@ -2,8 +2,9 @@
  * Testes do PhotoUploadDialog — estado de sucesso após upload
  *
  * Cobre:
- * - Renderização do overlay de sucesso (checkmark verde + mensagem)
- * - Auto-fechamento após 2 segundos
+ * - Overlay "Fotos recebidas" via poll IPC (CSP bloqueia fetch localhost)
+ * - Overlay via evento photo-received
+ * - Auto-fechamento após 2.2s
  * - Fechamento manual durante sucesso (cancela timer)
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
@@ -11,7 +12,23 @@ import { render, screen, act, fireEvent } from "@testing-library/react";
 import { PhotoUploadDialog } from "../PhotoUploadDialog";
 import { db } from "@/lib/db";
 
-// ─── Mocks ──────────────────────────────────────────────
+const mockUnlisten = vi.hoisted(() => vi.fn());
+const mockListen = vi.hoisted(() => {
+  const fn: any = vi.fn(() => Promise.resolve(mockUnlisten));
+  fn.callbacks = {} as Record<string, (event: { payload: unknown }) => void>;
+  return fn;
+});
+
+mockListen.mockImplementation(
+  (eventName: string, callback: (event: { payload: unknown }) => void) => {
+    mockListen.callbacks[eventName] = callback;
+    return Promise.resolve(mockUnlisten);
+  },
+);
+
+vi.mock("@tauri-apps/api/event", () => ({
+  listen: mockListen,
+}));
 
 vi.mock("@/lib/db", () => ({
   db: {
@@ -23,10 +40,9 @@ vi.mock("@/lib/db", () => ({
       token: "test-token",
     }),
     abrirUrl: vi.fn().mockResolvedValue(undefined),
+    consultarStatusFoto: vi.fn().mockResolvedValue({ used: false, valid: true, count: 0 }),
   },
 }));
-
-// ─── Suite ──────────────────────────────────────────────
 
 describe("PhotoUploadDialog — sucesso", () => {
   const defaultProps = {
@@ -40,7 +56,12 @@ describe("PhotoUploadDialog — sucesso", () => {
   beforeEach(() => {
     vi.useFakeTimers();
     vi.clearAllMocks();
-    global.fetch = vi.fn();
+    mockListen.callbacks = {};
+    vi.mocked(db.consultarStatusFoto).mockResolvedValue({
+      used: false,
+      valid: true,
+      count: 0,
+    });
   });
 
   afterEach(() => {
@@ -48,125 +69,116 @@ describe("PhotoUploadDialog — sucesso", () => {
     vi.restoreAllMocks();
   });
 
-  // ─── Teste 1: Overlay de sucesso ─────────────────
+  async function flushStart() {
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(0);
+    });
+  }
 
-  it("mostra checkmark verde e mensagem de sucesso após upload", async () => {
-    (global.fetch as vi.Mock).mockResolvedValue({
-      ok: true,
-      json: () =>
-        Promise.resolve({
-          used: true,
-          image_data: [
-            { bytes: [1, 2, 3], filename: "test.jpg", mime_type: "image/jpeg" },
-          ],
-        }),
+  it("mostra Fotos recebidas após o poll IPC marcar o token usado", async () => {
+    vi.mocked(db.consultarStatusFoto).mockResolvedValue({
+      used: true,
+      valid: false,
+      count: 1,
+      image_data: [
+        { bytes: [1, 2, 3], filename: "test.jpg", mime_type: "image/jpeg" },
+      ],
     });
 
     render(<PhotoUploadDialog {...defaultProps} />);
 
-    // Avança 3s do poll + 500ms de delay → upload detectado
-    await act(async () => {
-      await vi.advanceTimersByTimeAsync(3500);
-    });
+    await flushStart();
 
-    // Mensagem de sucesso
-    expect(
-      screen.getByText("Imagem(ns) recebida(s) com sucesso!"),
-    ).toBeInTheDocument();
-
-    // Contagem de fotos
-    expect(screen.getByText("1 foto recebida")).toBeInTheDocument();
-
-    // Ícone verde (CheckCircle2 com classe text-green-600)
+    expect(screen.getByText("Fotos recebidas")).toBeInTheDocument();
+    expect(screen.getByText("1 foto no equipamento")).toBeInTheDocument();
     const checkIcon = document.querySelector(".text-green-600");
     expect(checkIcon).toBeInTheDocument();
   });
 
-  // ─── Teste 2: Auto-close após 2s ────────────────
+  it("mostra Fotos recebidas quando o backend emite photo-received", async () => {
+    render(<PhotoUploadDialog {...defaultProps} />);
+    await flushStart();
 
-  it("fecha o diálogo automaticamente após 2 segundos do sucesso", async () => {
+    expect(screen.queryByText("Fotos recebidas")).not.toBeInTheDocument();
+
+    vi.mocked(db.consultarStatusFoto).mockResolvedValue({
+      used: true,
+      valid: false,
+      count: 3,
+    });
+
+    await act(async () => {
+      mockListen.callbacks["photo-received"]({
+        payload: { equipamento_id: 1, count: 3 },
+      });
+      await Promise.resolve();
+    });
+
+    expect(screen.getByText("Fotos recebidas")).toBeInTheDocument();
+    expect(screen.getByText("3 fotos no equipamento")).toBeInTheDocument();
+  });
+
+  it("fecha o diálogo automaticamente após mostrar o sucesso", async () => {
     const onOpenChange = vi.fn();
-
-    (global.fetch as vi.Mock).mockResolvedValue({
-      ok: true,
-      json: () => Promise.resolve({ used: true }),
+    vi.mocked(db.consultarStatusFoto).mockResolvedValue({
+      used: true,
+      valid: false,
+      count: 1,
     });
 
     render(
       <PhotoUploadDialog {...defaultProps} onOpenChange={onOpenChange} />,
     );
 
-    // Dispara upload
-    await act(async () => {
-      await vi.advanceTimersByTimeAsync(3500);
-    });
+    await flushStart();
 
-    expect(
-      screen.getByText("Imagem(ns) recebida(s) com sucesso!"),
-    ).toBeInTheDocument();
+    expect(screen.getByText("Fotos recebidas")).toBeInTheDocument();
 
-    // Avança 2s do auto-close
     await act(async () => {
-      await vi.advanceTimersByTimeAsync(2000);
+      await vi.advanceTimersByTimeAsync(2200);
     });
 
     expect(onOpenChange).toHaveBeenCalledWith(false);
   });
 
-  // ─── Teste 3: Fechamento manual cancela timer ────
-
   it("fechamento manual durante sucesso cancela o timer de auto-close", async () => {
     const onOpenChange = vi.fn();
-
-    (global.fetch as vi.Mock).mockResolvedValue({
-      ok: true,
-      json: () => Promise.resolve({ used: true }),
+    vi.mocked(db.consultarStatusFoto).mockResolvedValue({
+      used: true,
+      valid: false,
+      count: 1,
     });
 
     render(
       <PhotoUploadDialog {...defaultProps} onOpenChange={onOpenChange} />,
     );
 
-    // Dispara upload
-    await act(async () => {
-      await vi.advanceTimersByTimeAsync(3500);
-    });
+    await flushStart();
 
-    expect(
-      screen.getByText("Imagem(ns) recebida(s) com sucesso!"),
-    ).toBeInTheDocument();
+    expect(screen.getByText("Fotos recebidas")).toBeInTheDocument();
 
-    // Usuário clica Fechar durante sucesso (fireEvent sincrono)
     fireEvent.click(screen.getByRole("button", { name: /fechar/i }));
 
-    // onOpenChange(false) deve ter sido chamado
     expect(onOpenChange).toHaveBeenCalledWith(false);
 
-    // Limpa o mock para detectar novas chamadas
     onOpenChange.mockClear();
 
-    // Avança 2s — o timer de auto-close NÃO deve disparar
     await act(async () => {
-      await vi.advanceTimersByTimeAsync(2000);
+      await vi.advanceTimersByTimeAsync(2200);
     });
 
     expect(onOpenChange).not.toHaveBeenCalled();
   });
 
-  // ─── Teste 4: Draft mode (equipamentoId === 0) ───
-
   it("draft mode (equipamentoId=0) ainda mostra sucesso e chama onPhotoData", async () => {
     const onPhotoData = vi.fn();
-
-    (global.fetch as vi.Mock).mockResolvedValue({
-      ok: true,
-      json: () =>
-        Promise.resolve({
-          used: true,
-          image_data: [
-            { bytes: [10, 20, 30], filename: "draft.jpg", mime_type: "image/jpeg" },
-          ],
-        }),
+    vi.mocked(db.consultarStatusFoto).mockResolvedValue({
+      used: true,
+      valid: false,
+      count: 1,
+      image_data: [
+        { bytes: [10, 20, 30], filename: "draft.jpg", mime_type: "image/jpeg" },
+      ],
     });
 
     render(
@@ -180,16 +192,9 @@ describe("PhotoUploadDialog — sucesso", () => {
       />,
     );
 
-    await act(async () => {
-      await vi.advanceTimersByTimeAsync(3500);
-    });
+    await flushStart();
 
-    // Sucesso aparece
-    expect(
-      screen.getByText("Imagem(ns) recebida(s) com sucesso!"),
-    ).toBeInTheDocument();
-
-    // onPhotoData foi chamado com os dados da imagem
+    expect(screen.getByText("Fotos recebidas")).toBeInTheDocument();
     expect(onPhotoData).toHaveBeenCalledWith({
       bytes: [10, 20, 30],
       filename: "draft.jpg",
@@ -205,16 +210,9 @@ describe("PhotoUploadDialog — sucesso", () => {
       token: "test-token",
       via_tunnel: true,
     });
-    (global.fetch as vi.Mock).mockResolvedValue({
-      ok: true,
-      json: () => Promise.resolve({ used: false }),
-    });
 
     render(<PhotoUploadDialog {...defaultProps} />);
-
-    await act(async () => {
-      await vi.advanceTimersByTimeAsync(0);
-    });
+    await flushStart();
 
     expect(
       screen.getByText(/não precisa do Wi-Fi da recepção/i),
@@ -234,16 +232,9 @@ describe("PhotoUploadDialog — sucesso", () => {
       token: "test-token",
       via_tunnel: true,
     });
-    (global.fetch as vi.Mock).mockResolvedValue({
-      ok: true,
-      json: () => Promise.resolve({ used: false }),
-    });
 
     render(<PhotoUploadDialog {...defaultProps} />);
-
-    await act(async () => {
-      await vi.advanceTimersByTimeAsync(0);
-    });
+    await flushStart();
 
     expect(
       screen.getByText(/Pode usar 4G/i),
@@ -263,16 +254,9 @@ describe("PhotoUploadDialog — sucesso", () => {
       token: "test-token",
       via_tunnel: true,
     });
-    (global.fetch as vi.Mock).mockResolvedValue({
-      ok: true,
-      json: () => Promise.resolve({ used: false }),
-    });
 
     render(<PhotoUploadDialog {...defaultProps} />);
-
-    await act(async () => {
-      await vi.advanceTimersByTimeAsync(0);
-    });
+    await flushStart();
 
     expect(screen.getByText("foo-bar.trycloudflare.com")).toBeInTheDocument();
     expect(screen.queryByText(/token=test-token/i)).not.toBeInTheDocument();
@@ -290,16 +274,9 @@ describe("PhotoUploadDialog — sucesso", () => {
       token: "test-token",
       via_tunnel: true,
     });
-    (global.fetch as vi.Mock).mockResolvedValue({
-      ok: true,
-      json: () => Promise.resolve({ used: false }),
-    });
 
     render(<PhotoUploadDialog {...defaultProps} />);
-
-    await act(async () => {
-      await vi.advanceTimersByTimeAsync(0);
-    });
+    await flushStart();
 
     fireEvent.click(screen.getByRole("button", { name: /copiar endereço/i }));
 

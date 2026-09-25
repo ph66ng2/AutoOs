@@ -1,4 +1,5 @@
 import { useState, useCallback, useEffect, useRef } from "react";
+import { listen } from "@tauri-apps/api/event";
 import { Smartphone, Clock, AlertCircle, RefreshCw, X, Copy, Check, CheckCircle2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -12,7 +13,8 @@ import { db } from "@/lib/db";
 
 const PHOTO_SERVER_PORT = 8765;
 const TOKEN_TTL_SECONDS = 600;
-const POLL_INTERVAL_MS = 3000;
+const POLL_INTERVAL_MS = 1000;
+const SUCCESS_VISIBLE_MS = 2200;
 
 interface PhotoUploadData {
   bytes: number[];
@@ -64,6 +66,7 @@ export function PhotoUploadDialog({
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const tokenRef = useRef<string | null>(null);
   const successTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const handledRef = useRef(false);
 
   const openRef = useRef(open);
   const onPhotoUploadedRef = useRef(onPhotoUploaded);
@@ -112,7 +115,53 @@ export function PhotoUploadDialog({
     setCopied(false);
   }, [cleanup]);
 
+  const finishSuccess = useCallback(
+    async (countHint?: number) => {
+      if (handledRef.current) return;
+      handledRef.current = true;
+      cleanup();
+
+      let count = countHint && countHint > 0 ? countHint : 1;
+      const token = tokenRef.current;
+      let imageData:
+        | Array<{ bytes: number[]; filename: string; mime_type: string }>
+        | undefined;
+
+      if (token) {
+        try {
+          const status = await db.consultarStatusFoto(token);
+          if (status.count > 0) count = status.count;
+          imageData = status.image_data;
+        } catch {
+          // Evento já basta para mostrar o overlay
+        }
+      }
+
+      if (onPhotoDataRef.current && imageData && imageData.length > 0) {
+        count = imageData.length;
+        for (const img of imageData) {
+          onPhotoDataRef.current({
+            bytes: img.bytes,
+            filename: img.filename,
+            mime_type: img.mime_type,
+            categoria: categoriaRef.current,
+          });
+        }
+      } else {
+        onPhotoUploadedRef.current();
+      }
+
+      setSuccessCount(count);
+      setSuccess(true);
+      successTimeoutRef.current = setTimeout(() => {
+        onOpenChangeRef.current(false);
+      }, SUCCESS_VISIBLE_MS);
+    },
+    [cleanup],
+  );
+
   const startServer = useCallback(async () => {
+    handledRef.current = false;
     setSuccess(false);
     setSuccessCount(0);
     setLoading(true);
@@ -145,46 +194,23 @@ export function PhotoUploadDialog({
       });
     }, 1000);
 
-    pollRef.current = setInterval(async () => {
+    const pollOnce = () => {
       const token = tokenRef.current;
       if (!token) return;
-      try {
-        const res = await fetch(`http://localhost:${PHOTO_SERVER_PORT}/status/${token}`);
-        const data = await res.json();
-        if (data.used) {
-          cleanup();
-          await stopServer();
-          // 500ms delay to ensure DB has fully committed before parent refreshes
-          await new Promise((resolve) => setTimeout(resolve, 500));
-          if (onPhotoDataRef.current && data.image_data) {
-            const images = Array.isArray(data.image_data) ? data.image_data : [data.image_data];
-            for (const img of images) {
-              onPhotoDataRef.current({
-                bytes: img.bytes,
-                filename: img.filename,
-                mime_type: img.mime_type,
-                categoria: categoriaRef.current,
-              });
-            }
-          } else {
-            onPhotoUploadedRef.current();
+      void db
+        .consultarStatusFoto(token)
+        .then((data) => {
+          if (data.used) {
+            return finishSuccess(data.count);
           }
-          // Show success state for 2s then auto-close
-          setSuccessCount(
-            onPhotoDataRef.current && data.image_data
-              ? (Array.isArray(data.image_data) ? data.image_data.length : 1)
-              : 1,
-          );
-          setSuccess(true);
-          successTimeoutRef.current = setTimeout(() => {
-            onOpenChangeRef.current(false);
-          }, 2000);
-        }
-      } catch {
-        // Polling error - ignore, will retry
-      }
-    }, POLL_INTERVAL_MS);
-  }, [cleanup]);
+        })
+        .catch(() => {
+          // Polling error - ignore, will retry
+        });
+    };
+    pollOnce();
+    pollRef.current = setInterval(pollOnce, POLL_INTERVAL_MS);
+  }, [cleanup, finishSuccess]);
 
   useEffect(() => {
     if (openRef.current) {
@@ -197,6 +223,31 @@ export function PhotoUploadDialog({
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
+
+  useEffect(() => {
+    if (!open) return;
+    let cancelled = false;
+    let unlisten: (() => void) | undefined;
+    void listen<{ equipamento_id?: number; count?: number }>("photo-received", (event) => {
+      const id = event.payload?.equipamento_id;
+      if (id !== undefined && id !== equipamentoIdRef.current) return;
+      void finishSuccess(event.payload?.count);
+    })
+      .then((fn) => {
+        if (cancelled) {
+          fn();
+          return;
+        }
+        unlisten = fn;
+      })
+      .catch(() => {
+        // Sem Tauri (testes / e2e mock) o poll IPC continua válido
+      });
+    return () => {
+      cancelled = true;
+      unlisten?.();
+    };
+  }, [open, finishSuccess]);
 
   const handleRegenerate = useCallback(() => {
     void stopServer();
@@ -252,12 +303,9 @@ export function PhotoUploadDialog({
             <div className="h-16 w-16 rounded-full bg-green-100 flex items-center justify-center">
               <CheckCircle2 className="h-10 w-10 text-green-600" />
             </div>
-            <p className="text-lg font-semibold text-green-800">
-              Imagem(ns) recebida(s) com sucesso!
-            </p>
+            <p className="text-lg font-semibold text-green-800">Fotos recebidas</p>
             <p className="text-sm text-muted-foreground">
-              {successCount} {successCount === 1 ? "foto" : "fotos"} recebida
-              {successCount !== 1 && "s"}
+              {successCount} {successCount === 1 ? "foto" : "fotos"} no equipamento
             </p>
           </div>
         )}
