@@ -285,8 +285,8 @@ export function PhotoUploadDialog({
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
-      <DialogContent className="max-h-[90vh] w-[min(100%,360px)] gap-3 overflow-y-auto p-4 sm:max-w-[360px] sm:p-5">
-        <DialogHeader className="space-y-1">
+      <DialogContent className="flex max-h-[calc(100dvh-1rem)] w-[min(calc(100vw-1.5rem),22.5rem)] max-w-[min(calc(100vw-1.5rem),22.5rem)] flex-col gap-2 overflow-hidden p-4">
+        <DialogHeader className="shrink-0 space-y-1 pr-6">
           <DialogTitle className="flex items-center gap-2 text-base">
             <Smartphone className="h-5 w-5" />
             Foto pelo celular
@@ -340,16 +340,16 @@ export function PhotoUploadDialog({
         )}
 
         {!success && qrData && !error && (
-          <div className="space-y-3">
-            <div className="mx-auto flex h-[220px] w-[220px] items-center justify-center overflow-hidden rounded-xl bg-white p-2 outline outline-1 outline-[oklch(0_0_0/0.1)]">
+          <div className="flex min-w-0 flex-col gap-2 overflow-hidden">
+            <div className="mx-auto flex size-[min(220px,max(8rem,calc(100dvh-20rem)),calc(100vw-4.5rem))] shrink-0 items-center justify-center overflow-hidden rounded-xl bg-white p-1.5 outline outline-1 outline-black/10">
               <div
                 data-testid="qr-frame"
-                className="h-full w-full [&_svg]:block [&_svg]:h-full [&_svg]:w-full"
+                className="h-full w-full min-h-0 min-w-0 [&_svg]:block [&_svg]:h-full [&_svg]:max-h-full [&_svg]:w-full [&_svg]:max-w-full"
                 dangerouslySetInnerHTML={{ __html: qrData.qr_svg }}
               />
             </div>
 
-            <div className="flex items-center gap-1.5 rounded-lg bg-muted px-2.5 py-1.5">
+            <div className="flex w-full min-w-0 items-center gap-1.5 overflow-hidden rounded-lg bg-muted px-2.5 py-1.5">
               <p
                 className="min-w-0 flex-1 truncate font-mono text-xs text-muted-foreground"
                 title={qrData.url}
@@ -368,14 +368,14 @@ export function PhotoUploadDialog({
               </Button>
             </div>
 
-            <div className="flex items-center justify-center gap-2 text-sm text-muted-foreground">
+            <div className="flex shrink-0 items-center justify-center gap-2 text-sm text-muted-foreground">
               <Clock className="h-4 w-4" />
               <span>Expira em {formatTime(timer)}</span>
             </div>
 
-            <div className="flex items-start gap-2 rounded-md border border-amber-200 bg-amber-50 p-2.5">
+            <div className="flex min-w-0 shrink-0 items-start gap-2 overflow-hidden rounded-md border border-amber-200 bg-amber-50 p-2.5">
               <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" />
-              <p className="text-xs text-amber-800">
+              <p className="min-w-0 break-words text-xs text-amber-800">
                 {viaTunnel
                   ? namedHost
                     ? "Este PC responde por fotos.bmitag.com.br enquanto o QR estiver aberto. Um computador por vez."
@@ -386,7 +386,7 @@ export function PhotoUploadDialog({
           </div>
         )}
 
-        <div className="flex justify-end">
+        <div className="flex shrink-0 justify-end">
           <Button variant="outline" size="sm" onClick={() => handleOpenChange(false)}>
             <X className="h-4 w-4 mr-1" />
             Fechar
