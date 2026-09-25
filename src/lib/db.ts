@@ -458,6 +458,16 @@ export const db = {
     return invoke<void>("stop_photo_server");
   },
 
+  /** Status do token de upload sem HTTP (o CSP bloqueia localhost:8765) → Rust: consultar_status_foto */
+  async consultarStatusFoto(token: string): Promise<{
+    valid: boolean;
+    used: boolean;
+    count: number;
+    image_data?: Array<{ bytes: number[]; filename: string; mime_type: string }>;
+  }> {
+    return invoke("consultar_status_foto", { token });
+  },
+
   // ─── Arquivo Temporário ────────────────────────────────
 
   /**

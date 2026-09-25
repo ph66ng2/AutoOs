@@ -40,6 +40,7 @@ struct TokenData {
     categoria: String,
     expires_at: Instant,
     used: bool,
+    received_count: usize,
     /// Stores resized image bytes when equipamento_id == 0 (draft mode)
     image_data: Option<Arc<Vec<ImageData>>>,
 }
@@ -84,18 +85,32 @@ struct UploadParams {
 }
 
 #[derive(Serialize)]
-struct ImageDataResponse {
-    bytes: Vec<u8>,
-    filename: String,
-    mime_type: String,
+pub(crate) struct ImageDataResponse {
+    pub bytes: Vec<u8>,
+    pub filename: String,
+    pub mime_type: String,
 }
 
 #[derive(Serialize)]
-struct StatusResponse {
-    valid: bool,
-    used: bool,
+pub(crate) struct StatusResponse {
+    pub valid: bool,
+    pub used: bool,
+    pub count: usize,
     #[serde(skip_serializing_if = "Option::is_none")]
-    image_data: Option<Vec<ImageDataResponse>>,
+    pub image_data: Option<Vec<ImageDataResponse>>,
+}
+
+fn emit_photo_received(handle: Option<&tauri::AppHandle>, equipamento_id: i32, count: usize) {
+    let Some(handle) = handle else {
+        return;
+    };
+    let payload = json!({
+        "equipamento_id": equipamento_id,
+        "count": count,
+    });
+    if let Err(e) = handle.emit("photo-received", payload) {
+        error!("Falha ao emitir evento photo-received: {}", e);
+    }
 }
 
 // ── Helpers ────────────────────────────────────────────────────
@@ -275,9 +290,11 @@ async fn upload_handler(
         let mut store = state.token_store.lock().await;
         if let Some(t) = store.get_mut(&params.token) {
             t.used = true;
+            t.received_count = count;
             t.image_data = Some(Arc::new(image_vec));
         }
 
+        emit_photo_received(state.app_handle.as_ref(), token_data.equipamento_id, count);
         info!("Fotos recebidas (modo rascunho): count={}", count);
 
         return Json(json!({
@@ -326,26 +343,18 @@ async fn upload_handler(
         *last = Instant::now();
     }
 
-    // ── Emit photo-received events to frontend ─────
-    for imagem_id in &imagem_ids {
-        let payload = json!({
-            "equipamento_id": token_data.equipamento_id,
-            "imagem_id": imagem_id,
-        });
-        if let Some(handle) = &state.app_handle {
-            if let Err(e) = handle.emit("photo-received", payload) {
-                error!("Falha ao emitir evento photo-received: {}", e);
-            }
+    let count = imagem_ids.len();
+
+    // ── Mark token as used, then notify the desktop QR dialog ─
+    {
+        let mut store = state.token_store.lock().await;
+        if let Some(t) = store.get_mut(&params.token) {
+            t.used = true;
+            t.received_count = count;
         }
     }
+    emit_photo_received(state.app_handle.as_ref(), token_data.equipamento_id, count);
 
-    // ── Mark token as used ───────────────────────
-    let mut store = state.token_store.lock().await;
-    if let Some(t) = store.get_mut(&params.token) {
-        t.used = true;
-    }
-
-    let count = imagem_ids.len();
     info!(
         "Fotos recebidas: equipamento={} count={}",
         token_data.equipamento_id, count
@@ -451,6 +460,7 @@ async fn status_handler(
         None => false,
     };
     let used = token_data.map(|t| t.used).unwrap_or(false);
+    let count = token_data.map(|t| t.received_count).unwrap_or(0);
     let image_data = token_data
         .and_then(|t| t.image_data.clone())
         .map(|vec| {
@@ -462,7 +472,12 @@ async fn status_handler(
                 })
                 .collect::<Vec<_>>()
         });
-    Json(StatusResponse { valid, used, image_data })
+    Json(StatusResponse {
+        valid,
+        used,
+        count,
+        image_data,
+    })
 }
 
 // ── Auto-shutdown monitor ──────────────────────────────────────
@@ -702,12 +717,44 @@ pub async fn generate_upload_token(
             categoria,
             expires_at: Instant::now() + Duration::from_secs(600),
             used: false,
+            received_count: 0,
             image_data: None,
         },
     );
 
     info!("Token de upload gerado para equipamento {}", equipamento_id);
     Ok(token)
+}
+
+/// Status do token sem HTTP — o CSP do webview bloqueia fetch em localhost:8765.
+#[tauri::command]
+pub async fn consultar_status_foto(token: String) -> Result<StatusResponse, String> {
+    let store = get_token_store();
+    let store = store.lock().await;
+    let token_data = store.get(&token);
+    let valid = match token_data {
+        Some(t) => t.expires_at > Instant::now() && !t.used,
+        None => false,
+    };
+    let used = token_data.map(|t| t.used).unwrap_or(false);
+    let count = token_data.map(|t| t.received_count).unwrap_or(0);
+    let image_data = token_data
+        .and_then(|t| t.image_data.clone())
+        .map(|vec| {
+            vec.iter()
+                .map(|data| ImageDataResponse {
+                    bytes: data.bytes.clone(),
+                    filename: data.filename.clone(),
+                    mime_type: data.mime_type.clone(),
+                })
+                .collect::<Vec<_>>()
+        });
+    Ok(StatusResponse {
+        valid,
+        used,
+        count,
+        image_data,
+    })
 }
 
 #[cfg(test)]

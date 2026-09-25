@@ -141,6 +141,16 @@ async fn main() -> Result<()> {
         if status["used"] != true {
             bail!("token não ficou used depois do upload: {status}");
         }
+        if status["count"] != 1 {
+            bail!("status HTTP deveria ter count=1: {status}");
+        }
+        let ipc_status = tauri_result(
+            photo_server::consultar_status_foto(token.clone()).await,
+            "consultar_status_foto",
+        )?;
+        if !ipc_status.used || ipc_status.count != 1 {
+            bail!("IPC status deveria marcar used com count=1");
+        }
         println!("P1_PHOTO_STATUS_USED_OK");
 
         let token_heic = tauri_result(
