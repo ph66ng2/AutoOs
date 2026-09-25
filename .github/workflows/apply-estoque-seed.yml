@@ -1,0 +1,77 @@
+# Aplica o inventário de insumos no PostgreSQL do app (Supavisor Session).
+# Disparo: merge deste workflow em master, ou Actions → "Aplicar seed de estoque" → Run.
+# Não imprime a URL. O secret AUTOOS_DATABASE_URL nunca deve ir para logs.
+
+name: Aplicar seed de estoque
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [master]
+    paths:
+      - ".github/workflows/apply-estoque-seed.yml"
+
+jobs:
+  apply-seed:
+    name: Upsert produtos no Supabase
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Validar secret do pooler
+        env:
+          AUTOOS_DATABASE_URL: ${{ secrets.AUTOOS_DATABASE_URL }}
+        run: |
+          if [ -z "${AUTOOS_DATABASE_URL:-}" ]; then
+            echo "Configure o secret AUTOOS_DATABASE_URL (Supavisor Session, porta 5432)."
+            exit 1
+          fi
+          case "$AUTOOS_DATABASE_URL" in
+            postgres://*.pooler.supabase.com:5432/postgres*|postgresql://*.pooler.supabase.com:5432/postgres*) ;;
+            *)
+              echo "AUTOOS_DATABASE_URL deve usar o Supavisor Session pooler na porta 5432 e o banco /postgres."
+              exit 1
+              ;;
+          esac
+          case "$AUTOOS_DATABASE_URL" in
+            *sslmode=require*) ;;
+            *)
+              echo "AUTOOS_DATABASE_URL deve exigir TLS com sslmode=require."
+              exit 1
+              ;;
+          esac
+
+      - name: Instalar cliente PostgreSQL
+        run: sudo apt-get update && sudo apt-get install -y postgresql-client
+
+      - name: Aplicar scripts/seed-estoque-ribbons-bopp.sql
+        env:
+          AUTOOS_DATABASE_URL: ${{ secrets.AUTOOS_DATABASE_URL }}
+        run: psql "$AUTOOS_DATABASE_URL" -v ON_ERROR_STOP=1 -f scripts/seed-estoque-ribbons-bopp.sql
+
+      - name: Confirmar 42 SKUs do inventário
+        env:
+          AUTOOS_DATABASE_URL: ${{ secrets.AUTOOS_DATABASE_URL }}
+        run: |
+          psql "$AUTOOS_DATABASE_URL" -v ON_ERROR_STOP=1 -c "
+            SELECT COUNT(*) AS skus_inventario
+            FROM produtos
+            WHERE ativo = true
+              AND codigo IN (
+                'ETQ-100X50-COUCHE','ETQ-32X18X3-TRANS-BOPP','ETQ-102X51-TRANS-BOPP',
+                'ETQ-100X70-BOPP','ETQ-50X40X2-TRANS-BOPP','ETQ-100X150-BOPP',
+                'ETQ-45X20X2-LACRE-ELMECO','ETQ-32X18X5-BOPP','ETQ-100X65-BOPP',
+                'ETQ-100X40-BOPP','ETQ-100X70-COUCHE','ETQ-40X33-PRATA',
+                'ETQ-20X25X3-BOPP','ETQ-30X30-BOPP','ETQ-50X20-BOPP',
+                'ETQ-50X50X20-BOPP','ETQ-100X50-BOPP','ETQ-45X20-BOPP',
+                'ETQ-35X70X3-CARTAO-ROUPA','ETQ-70X125X01-BOPP-3POL','ETQ-100X50-BOPP-3POL',
+                'ETQ-28X80-COUCHE-DYMO','ETQ-70X30-COUCHE-3POL','ETQ-50X70X2-BOPP-3POL',
+                'ETQ-90X60-GONDOLA-AM-3POL','RIB-CERA-110X450','RIB-RESINA',
+                'RIB-ZXP1-COLOR','RIB-ZXP1-MONO','RIB-ZC300-MONO','PEC-CANETA-LIMPEZA',
+                'ETQ-17X152X5-COUCHE','ETQ-80X50-COUCHE-AZUL','ETQ-50X120X2-COUCHE',
+                'ETQ-50X160X2-COUCHE','ETQ-50X28-COUCHE-AMARELA','ETQ-100X30-GONDOLA',
+                'ETQ-100X40-GONDOLA-LARANJA','ETQ-33X22X3-COUCHE','ETQ-33X22X3-AMARELA',
+                'ETQ-75X30-GONDOLA-LARANJA','ETQ-80X70-BOPP'
+              );
+          "
