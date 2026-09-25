@@ -23,6 +23,7 @@
     "qa:tier:e2e": "npm run e2e:web",
     "qa:integrations:critical": "cd src-tauri && cargo run --quiet --bin p1_critical_integration",
     "qa:integrations:communication": "cd src-tauri && cargo run --quiet --bin p1_communication_integration",
+    "qa:photos": "cd src-tauri && cargo run --quiet --bin p1_photo_integration",
     "qa:integrations": "npm run qa:integrations:critical && npm run qa:integrations:communication",
     "qa:tier:jornada-real": "npm run lint && npm run test:run && npm run e2e:real",
     "qa:integration:local": "npx tsc --noEmit && cd src-tauri && cargo test",

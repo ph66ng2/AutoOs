@@ -30,7 +30,7 @@ use base64::Engine;
 /// continua sendo `MAX_IMAGE_BYTES` depois do encode.
 const MAX_INCOMING_IMAGE_BYTES: usize = 12 * 1024 * 1024;
 
-const HTML_UPLOAD_PAGE: &str = include_str!("photo_upload.html");
+pub(crate) const HTML_UPLOAD_PAGE: &str = include_str!("photo_upload.html");
 
 // ── Token types ────────────────────────────────────────────────
 
@@ -59,7 +59,7 @@ type TokenStore = Arc<TokioMutex<HashMap<String, TokenData>>>;
 #[derive(Clone)]
 struct AppState {
     token_store: TokenStore,
-    app_handle: tauri::AppHandle,
+    app_handle: Option<tauri::AppHandle>,
     last_activity: Arc<std::sync::Mutex<Instant>>,
 }
 
@@ -332,8 +332,10 @@ async fn upload_handler(
             "equipamento_id": token_data.equipamento_id,
             "imagem_id": imagem_id,
         });
-        if let Err(e) = state.app_handle.emit("photo-received", payload) {
-            error!("Falha ao emitir evento photo-received: {}", e);
+        if let Some(handle) = &state.app_handle {
+            if let Err(e) = handle.emit("photo-received", payload) {
+                error!("Falha ao emitir evento photo-received: {}", e);
+            }
         }
     }
 
@@ -510,6 +512,25 @@ pub async fn start_photo_server(
     app_handle: tauri::AppHandle,
     port: u16,
 ) -> Result<String, String> {
+    let via_tunnel = photo_tunnel::should_use_tunnel();
+    let (_bound_port, url) =
+        start_photo_listener(Some(app_handle), port, via_tunnel, via_tunnel).await?;
+    Ok(url)
+}
+
+/// Sobe o HTTP de fotos só em 127.0.0.1, sem túnel e sem AppHandle.
+/// Usado pelo teste Windows/CI (`p1_photo_integration`).
+pub async fn start_photo_http_loopback(port: u16) -> Result<u16, String> {
+    let (bound_port, _url) = start_photo_listener(None, port, true, false).await?;
+    Ok(bound_port)
+}
+
+async fn start_photo_listener(
+    app_handle: Option<tauri::AppHandle>,
+    port: u16,
+    loopback_only: bool,
+    enable_tunnel: bool,
+) -> Result<(u16, String), String> {
     // ── 1. Check if already running ────────────────────────────
     let server_lock = SERVER.get_or_init(|| std::sync::Mutex::new(None));
     {
@@ -520,14 +541,13 @@ pub async fn start_photo_server(
     }
 
     // ── 2. Bind. Túnel (rápido ou nomeado) escuta só em 127.0.0.1:porta.
-    let via_tunnel = photo_tunnel::should_use_tunnel();
     let named_tunnel = photo_tunnel::is_named_tunnel_configured();
-    let bind_attempts = if via_tunnel { 1 } else { 3 };
+    let bind_attempts = if loopback_only { 1 } else { 3 };
     let mut listener = None;
     let mut bound_port = port;
     for offset in 0..bind_attempts {
         let candidate = port + offset;
-        let addr = photo_listen_addr(candidate, via_tunnel);
+        let addr = photo_listen_addr(candidate, loopback_only);
         match try_bind(addr) {
             Ok(l) => {
                 listener = Some(l);
@@ -541,7 +561,7 @@ pub async fn start_photo_server(
     }
 
     let listener = listener.ok_or_else(|| {
-        if named_tunnel {
+        if named_tunnel && enable_tunnel {
             format!(
                 "Porta {} ocupada. O túnel {} exige essa porta.",
                 port,
@@ -565,7 +585,7 @@ pub async fn start_photo_server(
 
     let state = AppState {
         token_store,
-        app_handle: app_handle.clone(),
+        app_handle,
         last_activity: last_activity.clone(),
     };
 
@@ -599,14 +619,14 @@ pub async fn start_photo_server(
         });
     }
 
-    if via_tunnel {
+    if enable_tunnel {
         match photo_tunnel::start_tunnel(bound_port).await {
             Ok(public_url) => {
                 info!(
                     "Servidor de fotos iniciado em {} (local 127.0.0.1:{})",
                     public_url, bound_port
                 );
-                return Ok(public_url);
+                return Ok((bound_port, public_url));
             }
             Err(e) => {
                 let _ = stop_photo_server().await;
@@ -615,13 +635,14 @@ pub async fn start_photo_server(
         }
     }
 
-    let lan_ip = get_lan_ip().unwrap_or_else(|| "localhost".to_string());
-    info!(
-        "Servidor de fotos iniciado em http://{}:{}",
-        lan_ip, bound_port
-    );
-
-    Ok(format!("http://{}:{}", lan_ip, bound_port))
+    let lan_ip = if loopback_only {
+        "127.0.0.1".to_string()
+    } else {
+        get_lan_ip().unwrap_or_else(|| "localhost".to_string())
+    };
+    let url = format!("http://{}:{}", lan_ip, bound_port);
+    info!("Servidor de fotos iniciado em {}", url);
+    Ok((bound_port, url))
 }
 
 /// Stop the photo server gracefully. Sends shutdown signal, waits up to 5 seconds

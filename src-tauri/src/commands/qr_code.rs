@@ -79,7 +79,7 @@ pub async fn gerar_qr_upload(
 /// QR compacto o bastante para caber no diálogo sem estourar a tela.
 const QR_SVG_PX: u32 = 220;
 
-fn render_qr_svg(url: &str) -> Result<String, String> {
+pub(crate) fn render_qr_svg(url: &str) -> Result<String, String> {
     let code = qrcode::QrCode::new(url.as_bytes())
         .map_err(|e| format!("Erro ao gerar QR code: {}", e))?;
     Ok(code
