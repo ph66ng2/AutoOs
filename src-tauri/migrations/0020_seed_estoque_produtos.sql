@@ -1,9 +1,8 @@
 -- Inventário de estoque BMITAG (etiquetas, ribbons e acessórios).
--- A fonte aplicada na subida do app é src-tauri/migrations/0020_seed_estoque_produtos.sql.
--- Este script replica o mesmo upsert para reaplicar manualmente no PostgreSQL.
 -- Idempotente por codigo (UNIQUE). Valores informados entram como preço
 -- unitário em preco_custo e preco_venda. Itens sem preço usam 0,00 e
 -- ficam descritos como "Preço unitário não informado".
+-- empresa_id permanece NULL, no mesmo padrão de criar_produto.
 
 INSERT INTO produtos (
     codigo,
