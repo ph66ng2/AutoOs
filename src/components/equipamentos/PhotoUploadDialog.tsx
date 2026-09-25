@@ -1,5 +1,5 @@
 import { useState, useCallback, useEffect, useRef } from "react";
-import { Smartphone, Clock, AlertCircle, RefreshCw, X, ExternalLink, CheckCircle2 } from "lucide-react";
+import { Smartphone, Clock, AlertCircle, RefreshCw, X, Copy, Check, CheckCircle2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -37,6 +37,14 @@ interface QrData {
   via_tunnel?: boolean;
 }
 
+function hostFromUrl(url: string): string {
+  try {
+    return new URL(url).host;
+  } catch {
+    return url;
+  }
+}
+
 export function PhotoUploadDialog({
   equipamentoId,
   categoria,
@@ -51,6 +59,7 @@ export function PhotoUploadDialog({
   const [loading, setLoading] = useState(false);
   const [success, setSuccess] = useState(false);
   const [successCount, setSuccessCount] = useState(0);
+  const [copied, setCopied] = useState(false);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const tokenRef = useRef<string | null>(null);
@@ -100,6 +109,7 @@ export function PhotoUploadDialog({
     setTimer(TOKEN_TTL_SECONDS);
     setError(null);
     setLoading(false);
+    setCopied(false);
   }, [cleanup]);
 
   const startServer = useCallback(async () => {
@@ -211,18 +221,29 @@ export function PhotoUploadDialog({
     onOpenChange(newOpen);
   };
 
+  const handleCopyUrl = async () => {
+    if (!qrData?.url) return;
+    try {
+      await navigator.clipboard.writeText(qrData.url);
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 1500);
+    } catch {
+      void db.abrirUrl(qrData.url);
+    }
+  };
+
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
-      <DialogContent className="sm:max-w-md">
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
+      <DialogContent className="max-h-[90vh] w-[min(100%,360px)] gap-3 overflow-y-auto p-4 sm:max-w-[360px] sm:p-5">
+        <DialogHeader className="space-y-1">
+          <DialogTitle className="flex items-center gap-2 text-base">
             <Smartphone className="h-5 w-5" />
-            Adicionar Foto via Celular
+            Foto pelo celular
           </DialogTitle>
           <DialogDescription>
             {viaTunnel
-              ? "Escaneie o QR code com o celular. Não precisa estar no Wi-Fi da recepção — cada computador gera o próprio endereço."
-              : "Escaneie o QR code com seu celular ou acesse o endereço abaixo (Para enviar a foto é necessario estar na mesma rede Wi-Fi do computador)"}
+              ? "Escaneie com o celular. Pode usar 4G — não precisa do Wi-Fi da recepção."
+              : "Escaneie o QR. O celular precisa estar no mesmo Wi-Fi do computador."}
           </DialogDescription>
         </DialogHeader>
 
@@ -271,24 +292,32 @@ export function PhotoUploadDialog({
         )}
 
         {!success && qrData && !error && (
-          <div className="space-y-4">
-            <div className="flex justify-center">
+          <div className="space-y-3">
+            <div className="mx-auto flex h-[220px] w-[220px] items-center justify-center overflow-hidden rounded-xl bg-white p-2 outline outline-1 outline-[oklch(0_0_0/0.1)]">
               <div
-                className="border rounded-lg p-4 bg-white"
+                data-testid="qr-frame"
+                className="h-full w-full [&_svg]:block [&_svg]:h-full [&_svg]:w-full"
                 dangerouslySetInnerHTML={{ __html: qrData.qr_svg }}
               />
             </div>
 
-            <div className="space-y-1">
-              <p className="text-xs text-muted-foreground">Endereço para acesso manual:</p>
-              <button
-                type="button"
-                onClick={() => { db.abrirUrl(qrData.url).catch(() => {}); }}
-                className="flex items-center gap-1 text-xs bg-muted px-2 py-1 rounded break-all text-blue-600 hover:text-blue-800 hover:underline transition-colors w-full text-left cursor-pointer"
+            <div className="flex items-center gap-1.5 rounded-lg bg-muted px-2.5 py-1.5">
+              <p
+                className="min-w-0 flex-1 truncate font-mono text-xs text-muted-foreground"
+                title={qrData.url}
               >
-                {qrData.url}
-                <ExternalLink className="h-3 w-3 shrink-0" />
-              </button>
+                {hostFromUrl(qrData.url)}
+              </p>
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                className="h-8 w-8 shrink-0"
+                onClick={() => { void handleCopyUrl(); }}
+              >
+                {copied ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
+                <span className="sr-only">{copied ? "Copiado" : "Copiar endereço"}</span>
+              </Button>
             </div>
 
             <div className="flex items-center justify-center gap-2 text-sm text-muted-foreground">
@@ -296,14 +325,14 @@ export function PhotoUploadDialog({
               <span>Expira em {formatTime(timer)}</span>
             </div>
 
-            <div className="rounded-md bg-amber-50 border border-amber-200 p-3 flex items-start gap-2">
-              <AlertCircle className="h-4 w-4 text-amber-600 mt-0.5 shrink-0" />
+            <div className="flex items-start gap-2 rounded-md border border-amber-200 bg-amber-50 p-2.5">
+              <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" />
               <p className="text-xs text-amber-800">
                 {viaTunnel
                   ? namedHost
-                    ? "Este PC fica responsável por fotos.bmitag.com.br enquanto o QR estiver aberto. Use um computador de recepção por vez."
+                    ? "Este PC responde por fotos.bmitag.com.br enquanto o QR estiver aberto. Um computador por vez."
                     : "O celular pode estar no 4G. Este endereço vale só enquanto o QR estiver aberto neste computador."
-                  : "Certifique-se de que o celular está na mesma rede Wi-Fi que o computador."}
+                  : "O celular precisa estar no mesmo Wi-Fi do computador."}
               </p>
             </div>
           </div>

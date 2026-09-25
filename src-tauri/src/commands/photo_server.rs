@@ -25,394 +25,12 @@ use crate::commands::equipamento_imagens::{adicionar_imagem_equipamento_raw, MAX
 use crate::commands::photo_tunnel;
 use base64::Engine;
 
-const HTML_UPLOAD_PAGE: &str = r#"<!DOCTYPE html>
-<html lang="pt-BR">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>AutoOS - Upload de Foto</title>
-    <style>
-        * { box-sizing: border-box; margin: 0; padding: 0; }
-        body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-            background: #f5f5f5;
-            padding: 16px;
-            min-height: 100vh;
-            min-height: 100dvh;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            justify-content: center;
-        }
-        .container {
-            width: 100%;
-            max-width: 480px;
-            background: white;
-            border-radius: 12px;
-            padding: 24px;
-            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
-        }
-        h1 {
-            font-size: 1.5rem;
-            color: #333;
-            margin-bottom: 8px;
-            text-align: center;
-        }
-        .subtitle {
-            color: #666;
-            font-size: 0.9rem;
-            text-align: center;
-            margin-bottom: 24px;
-        }
-        .btn-group {
-            display: flex;
-            flex-direction: column;
-            gap: 12px;
-            margin-bottom: 20px;
-        }
-        .btn-option {
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            gap: 10px;
-            width: 100%;
-            padding: 16px;
-            border: 2px solid #e0e0e0;
-            border-radius: 12px;
-            background: white;
-            font-size: 1.05rem;
-            font-weight: 600;
-            color: #333;
-            cursor: pointer;
-            min-height: 56px;
-            touch-action: manipulation;
-            -webkit-tap-highlight-color: transparent;
-            transition: border-color 0.15s, background 0.15s;
-        }
-        .btn-option:active {
-            background: #f0f8ff;
-            border-color: #007bff;
-        }
-        .btn-option.camera {
-            border-color: #007bff;
-            background: #f0f8ff;
-            color: #007bff;
-        }
-        .btn-option.camera:active {
-            background: #dbeaff;
-        }
-        .btn-option .icon {
-            font-size: 1.4rem;
-        }
-        .btn-option .label-small {
-            font-size: 0.78rem;
-            font-weight: 400;
-            color: #888;
-            margin-top: 2px;
-        }
-        .btn-option .btn-text {
-            display: flex;
-            flex-direction: column;
-            align-items: flex-start;
-        }
-        input[type="file"] {
-            display: none;
-        }
-        .preview-area {
-            display: none;
-            margin-bottom: 16px;
-        }
-        .preview-area.visible {
-            display: block;
-        }
-        .preview-grid {
-            display: grid;
-            grid-template-columns: repeat(3, 1fr);
-            gap: 8px;
-            margin-bottom: 8px;
-        }
-        .preview-grid img {
-            width: 100%;
-            height: 80px;
-            object-fit: cover;
-            border-radius: 8px;
-            border: 1px solid #e0e0e0;
-        }
-        .file-count {
-            font-size: 0.85rem;
-            color: #666;
-            text-align: center;
-        }
-        button.submit-btn {
-            width: 100%;
-            padding: 16px;
-            background: #007bff;
-            color: white;
-            border: none;
-            border-radius: 8px;
-            font-size: 1.1rem;
-            font-weight: 600;
-            cursor: pointer;
-            min-height: 44px;
-            touch-action: manipulation;
-            -webkit-tap-highlight-color: transparent;
-            display: none;
-        }
-        button.submit-btn.visible {
-            display: block;
-        }
-        button.submit-btn:active {
-            background: #0056b3;
-        }
-        button.submit-btn:disabled {
-            background: #ccc;
-            cursor: not-allowed;
-        }
-        #status {
-            margin-top: 16px;
-            padding: 12px;
-            border-radius: 8px;
-            text-align: center;
-            font-size: 0.95rem;
-            display: none;
-        }
-        #status.success {
-            background: #d4edda;
-            color: #155724;
-            border: 1px solid #c3e6cb;
-            display: block;
-        }
-        #status.error {
-            background: #f8d7da;
-            color: #721c24;
-            border: 1px solid #f5c6cb;
-            display: block;
-        }
-        #status.info {
-            background: #d1ecf1;
-            color: #0c5460;
-            border: 1px solid #bee5eb;
-            display: block;
-        }
-        .success-overlay {
-            display: none;
-            text-align: center;
-            padding: 24px 16px;
-        }
-        .success-overlay.visible {
-            display: block;
-        }
-        .success-icon {
-            font-size: 4rem;
-            color: #28a745;
-            margin-bottom: 16px;
-        }
-        .success-title {
-            font-size: 1.3rem;
-            font-weight: 700;
-            color: #155724;
-            margin-bottom: 8px;
-        }
-        .success-count {
-            font-size: 1rem;
-            color: #666;
-            margin-bottom: 24px;
-        }
-        .success-btn {
-            width: 100%;
-            padding: 14px;
-            background: #007bff;
-            color: white;
-            border: none;
-            border-radius: 8px;
-            font-size: 1rem;
-            font-weight: 600;
-            cursor: pointer;
-        }
-        .success-btn:active {
-            background: #0056b3;
-        }
-    </style>
-</head>
-<body>
-    <div class="container">
-        <h1>AutoOS</h1>
-        <p class="subtitle">Upload de Foto</p>
-        <form id="uploadForm" enctype="multipart/form-data" method="POST">
-            <div class="btn-group" id="formContent">
-                <button type="button" class="btn-option camera" id="cameraBtn">
-                    <span class="icon">&#128247;</span>
-                    <div class="btn-text">
-                        <span>Tirar Foto</span>
-                        <span class="label-small">Usar c&#226;mera do celular</span>
-                    </div>
-                </button>
-                <button type="button" class="btn-option" id="galleryBtn">
-                    <span class="icon">&#128444;&#65039;</span>
-                    <div class="btn-text">
-                        <span>Escolher da Galeria</span>
-                        <span class="label-small">Selecionar at&#233; 3 fotos</span>
-                    </div>
-                </button>
-            </div>
-            <input type="file" id="cameraInput" name="photo" accept="image/*" capture="environment" multiple>
-            <input type="file" id="galleryInput" name="photo" accept="image/*" multiple>
-            <div class="preview-area" id="previewArea">
-                <div class="preview-grid" id="previewGrid"></div>
-                <div class="file-count" id="fileCount"></div>
-            </div>
-            <button type="submit" class="submit-btn" id="submitBtn">Enviar Foto</button>
-        </form>
-        <div id="status"></div>
-        <div class="success-overlay" id="successOverlay">
-            <div class="success-icon">&#9989;</div>
-            <div class="success-title">Imagem(ns) Carregada(s) com Sucesso!</div>
-            <div class="success-count" id="successCount"></div>
-            <button type="button" class="success-btn" id="sendMoreBtn">Enviar mais fotos</button>
-        </div>
-    </div>
-    <script>
-        const form = document.getElementById('uploadForm');
-        const statusEl = document.getElementById('status');
-        const submitBtn = document.getElementById('submitBtn');
-        const cameraBtn = document.getElementById('cameraBtn');
-        const galleryBtn = document.getElementById('galleryBtn');
-        const cameraInput = document.getElementById('cameraInput');
-        const galleryInput = document.getElementById('galleryInput');
-        const previewArea = document.getElementById('previewArea');
-        const previewGrid = document.getElementById('previewGrid');
-        const fileCountEl = document.getElementById('fileCount');
-        const successOverlay = document.getElementById('successOverlay');
-        const successCountEl = document.getElementById('successCount');
-        const sendMoreBtn = document.getElementById('sendMoreBtn');
-        const formContent = document.getElementById('formContent');
-        const params = new URLSearchParams(window.location.search);
-        const token = params.get('token');
-        
-        form.action = '/upload?token=' + encodeURIComponent(token || '');
+/// Tamanho máximo do arquivo que chega da câmera, antes do redimensionamento.
+/// Fotos nativas de celular passam fácil de 3MB; o limite de armazenamento
+/// continua sendo `MAX_IMAGE_BYTES` depois do encode.
+const MAX_INCOMING_IMAGE_BYTES: usize = 12 * 1024 * 1024;
 
-        let selectedFiles = [];
-
-        function updatePreview() {
-            previewGrid.innerHTML = '';
-            if (selectedFiles.length === 0) {
-                previewArea.classList.remove('visible');
-                submitBtn.classList.remove('visible');
-                return;
-            }
-            selectedFiles.forEach(file => {
-                const reader = new FileReader();
-                reader.onload = function(e) {
-                    const img = document.createElement('img');
-                    img.src = e.target.result;
-                    img.alt = file.name;
-                    previewGrid.appendChild(img);
-                };
-                reader.readAsDataURL(file);
-            });
-            previewArea.classList.add('visible');
-            submitBtn.classList.add('visible');
-            const count = selectedFiles.length;
-            fileCountEl.textContent = count + ' foto' + (count > 1 ? 's' : '') + ' selecionada' + (count > 1 ? 's' : '');
-            submitBtn.textContent = 'Enviar ' + count + ' Foto' + (count > 1 ? 's' : '');
-        }
-
-        function addFiles(files) {
-            if (!files) return;
-            const newFiles = Array.from(files);
-            if (selectedFiles.length + newFiles.length > 3) {
-                statusEl.className = 'error';
-                statusEl.textContent = 'M\u00e1ximo de 3 fotos permitido.';
-                return;
-            }
-            selectedFiles = selectedFiles.concat(newFiles);
-            updatePreview();
-        }
-
-        cameraBtn.addEventListener('click', function() {
-            cameraInput.value = '';
-            cameraInput.click();
-        });
-
-        galleryBtn.addEventListener('click', function() {
-            galleryInput.value = '';
-            galleryInput.click();
-        });
-
-        cameraInput.addEventListener('change', function() {
-            selectedFiles = [];
-            addFiles(this.files);
-        });
-
-        galleryInput.addEventListener('change', function() {
-            selectedFiles = [];
-            addFiles(this.files);
-        });
-        
-        form.addEventListener('submit', async (e) => {
-            e.preventDefault();
-            if (selectedFiles.length === 0) {
-                statusEl.className = 'error';
-                statusEl.textContent = 'Selecione uma foto primeiro.';
-                return;
-            }
-            if (selectedFiles.length > 3) {
-                statusEl.className = 'error';
-                statusEl.textContent = 'M\u00e1ximo de 3 fotos permitido.';
-                return;
-            }
-            submitBtn.disabled = true;
-            statusEl.className = 'info';
-            statusEl.textContent = 'Enviando...';
-            
-            const formData = new FormData();
-            selectedFiles.forEach(file => {
-                formData.append('photo[]', file);
-            });
-
-            try {
-                const response = await fetch(form.action, {
-                    method: 'POST',
-                    body: formData
-                });
-                const result = await response.json();
-                if (result.success) {
-                    formContent.style.display = 'none';
-                    form.style.display = 'none';
-                    statusEl.style.display = 'none';
-                    successOverlay.classList.add('visible');
-                    const count = result.count || selectedFiles.length;
-                    successCountEl.textContent = count + ' foto' + (count > 1 ? 's' : '') + ' enviada' + (count > 1 ? 's' : '');
-                    selectedFiles = [];
-                } else {
-                    statusEl.className = 'error';
-                    statusEl.textContent = result.error || result.message || 'Erro ao enviar foto';
-                }
-            } catch (err) {
-                statusEl.className = 'error';
-                statusEl.textContent = 'Erro de conex\u00e3o. Tente novamente.';
-            } finally {
-                submitBtn.disabled = false;
-            }
-        });
-
-        sendMoreBtn.addEventListener('click', function() {
-            formContent.style.display = 'flex';
-            form.style.display = 'block';
-            statusEl.style.display = 'none';
-            successOverlay.classList.remove('visible');
-            selectedFiles = [];
-            cameraInput.value = '';
-            galleryInput.value = '';
-            previewArea.classList.remove('visible');
-            submitBtn.classList.remove('visible');
-            submitBtn.textContent = 'Enviar Foto';
-            statusEl.className = '';
-            statusEl.textContent = '';
-        });
-    </script>
-</body>
-</html>"#;
+const HTML_UPLOAD_PAGE: &str = include_str!("photo_upload.html");
 
 // ── Token types ────────────────────────────────────────────────
 
@@ -547,10 +165,10 @@ async fn upload_handler(
     if let Some(content_length) = headers.get("content-length") {
         if let Ok(len_str) = content_length.to_str() {
             if let Ok(len) = len_str.parse::<usize>() {
-                if len > MAX_IMAGE_BYTES * 3 {
+                if len > MAX_INCOMING_IMAGE_BYTES * 3 {
                     return Json(json!({
                         "success": false,
-                        "error": "Requisição muito grande. Máximo 9MB no total."
+                        "error": "Requisição muito grande. Máximo 36MB no total."
                     }));
                 }
             }
@@ -582,19 +200,29 @@ async fn upload_handler(
         };
 
         let mime = content_type.as_deref().unwrap_or("");
-        let is_jpeg = mime == "image/jpeg";
-        let is_png = mime == "image/png";
-        if !is_jpeg && !is_png {
+        if data.is_empty() {
+            return Json(json!({
+                "success": false,
+                "error": "Foto vazia. Tire de novo ou use a galeria."
+            }));
+        }
+        if is_heic_like(&data, mime) {
+            return Json(json!({
+                "success": false,
+                "error": "A câmera enviou HEIC. Atualize a página no celular e tire a foto de novo."
+            }));
+        }
+        let Some(is_jpeg) = sniff_image_kind(&data, mime) else {
             return Json(json!({
                 "success": false,
                 "error": "Tipo de arquivo não suportado. Use JPEG ou PNG."
             }));
-        }
+        };
 
-        if data.len() > MAX_IMAGE_BYTES {
+        if data.len() > MAX_INCOMING_IMAGE_BYTES {
             return Json(json!({
                 "success": false,
-                "error": "Arquivo muito grande. Máximo 3MB."
+                "error": "Arquivo muito grande. Máximo 12MB."
             }));
         }
 
@@ -726,6 +354,49 @@ async fn upload_handler(
         "message": format!("{} foto(s) salva(s) com sucesso!", count),
         "count": count
     }))
+}
+
+fn sniff_image_kind(data: &[u8], declared_mime: &str) -> Option<bool> {
+    if data.len() >= 3 && data[0] == 0xFF && data[1] == 0xD8 && data[2] == 0xFF {
+        return Some(true);
+    }
+    if data.len() >= 8
+        && data[0] == 0x89
+        && data[1] == b'P'
+        && data[2] == b'N'
+        && data[3] == b'G'
+        && data[4] == 0x0D
+        && data[5] == 0x0A
+        && data[6] == 0x1A
+        && data[7] == 0x0A
+    {
+        return Some(false);
+    }
+    let mime = declared_mime.to_ascii_lowercase();
+    if mime == "image/jpeg" || mime == "image/jpg" {
+        return Some(true);
+    }
+    if mime == "image/png" {
+        return Some(false);
+    }
+    None
+}
+
+fn is_heic_like(data: &[u8], declared_mime: &str) -> bool {
+    let mime = declared_mime.to_ascii_lowercase();
+    if mime.contains("heic") || mime.contains("heif") {
+        return true;
+    }
+    if data.len() >= 12 && &data[4..8] == b"ftyp" {
+        let brand = &data[8..12];
+        return brand == b"heic"
+            || brand == b"heif"
+            || brand == b"mif1"
+            || brand == b"msf1"
+            || brand == b"heix"
+            || brand == b"hevc";
+    }
+    false
 }
 
 fn resize_image(data: &[u8], is_jpeg: bool) -> Result<(Vec<u8>, String), String> {
@@ -1036,5 +707,47 @@ mod tests {
             photo_listen_addr(8765, false),
             SocketAddr::from(([0, 0, 0, 0], 8765))
         );
+    }
+
+    #[test]
+    fn upload_page_has_single_picker_up_to_three() {
+        assert!(HTML_UPLOAD_PAGE.contains(r#"id="pickerInput""#));
+        assert!(HTML_UPLOAD_PAGE.contains(r#"accept="image/*" multiple"#));
+        assert!(
+            !HTML_UPLOAD_PAGE.contains("capture="),
+            "sem capture o celular pergunta câmera ou galeria"
+        );
+        assert!(!HTML_UPLOAD_PAGE.contains("cameraInput"));
+        assert!(!HTML_UPLOAD_PAGE.contains("galleryInput"));
+        assert!(HTML_UPLOAD_PAGE.contains("var MAX_PHOTOS = 3"));
+        assert!(HTML_UPLOAD_PAGE.contains("Adicionar fotos"));
+        assert!(HTML_UPLOAD_PAGE.contains("AutoOS"));
+        assert!(HTML_UPLOAD_PAGE.contains("BMITAG"));
+        assert!(HTML_UPLOAD_PAGE.contains("--primary: hsl(220 70% 50%)"));
+        assert!(HTML_UPLOAD_PAGE.contains("fileToJpeg"));
+        assert!(HTML_UPLOAD_PAGE.contains("sendSelected"));
+    }
+
+    #[test]
+    fn jpeg_magic_bytes_are_accepted_even_without_mime() {
+        let jpeg = [0xFF, 0xD8, 0xFF, 0xE0, 0x00, 0x10];
+        assert_eq!(sniff_image_kind(&jpeg, ""), Some(true));
+        assert_eq!(sniff_image_kind(&jpeg, "application/octet-stream"), Some(true));
+    }
+
+    #[test]
+    fn png_magic_bytes_are_accepted() {
+        let png = [0x89, b'P', b'N', b'G', 0x0D, 0x0A, 0x1A, 0x0A];
+        assert_eq!(sniff_image_kind(&png, ""), Some(false));
+    }
+
+    #[test]
+    fn heic_is_detected_from_mime_or_ftyp() {
+        assert!(is_heic_like(&[0], "image/heic"));
+        let mut ftyp = vec![0u8; 12];
+        ftyp[4..8].copy_from_slice(b"ftyp");
+        ftyp[8..12].copy_from_slice(b"heic");
+        assert!(is_heic_like(&ftyp, ""));
+        assert!(!is_heic_like(&[0xFF, 0xD8, 0xFF], "image/jpeg"));
     }
 }

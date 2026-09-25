@@ -217,7 +217,7 @@ describe("PhotoUploadDialog — sucesso", () => {
     });
 
     expect(
-      screen.getByText(/não precisa estar no Wi-Fi da recepção/i),
+      screen.getByText(/não precisa do Wi-Fi da recepção/i),
     ).toBeInTheDocument();
     expect(
       screen.getByText(/fotos.bmitag.com.br enquanto o QR estiver aberto/i),
@@ -246,7 +246,7 @@ describe("PhotoUploadDialog — sucesso", () => {
     });
 
     expect(
-      screen.getByText(/cada computador gera o próprio endereço/i),
+      screen.getByText(/Pode usar 4G/i),
     ).toBeInTheDocument();
     expect(
       screen.getByText(/celular pode estar no 4G/i),
@@ -254,5 +254,61 @@ describe("PhotoUploadDialog — sucesso", () => {
     expect(
       screen.queryByText(/um computador de recepção por vez/i),
     ).not.toBeInTheDocument();
+  });
+
+  it("mostra só o host do trycloudflare e o QR em quadro fixo", async () => {
+    vi.mocked(db.gerarQrUpload).mockResolvedValueOnce({
+      qr_svg: '<svg width="220" height="220"></svg>',
+      url: "https://foo-bar.trycloudflare.com/?token=test-token&eq=1&cat=ENTRADA",
+      token: "test-token",
+      via_tunnel: true,
+    });
+    (global.fetch as vi.Mock).mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve({ used: false }),
+    });
+
+    render(<PhotoUploadDialog {...defaultProps} />);
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(0);
+    });
+
+    expect(screen.getByText("foo-bar.trycloudflare.com")).toBeInTheDocument();
+    expect(screen.queryByText(/token=test-token/i)).not.toBeInTheDocument();
+    expect(screen.getByTestId("qr-frame")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /copiar endereço/i })).toBeInTheDocument();
+  });
+
+  it("copia a URL completa ao clicar no botão", async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.assign(navigator, { clipboard: { writeText } });
+
+    vi.mocked(db.gerarQrUpload).mockResolvedValueOnce({
+      qr_svg: "<svg>mock-qr</svg>",
+      url: "https://foo-bar.trycloudflare.com/?token=test-token&eq=1&cat=ENTRADA",
+      token: "test-token",
+      via_tunnel: true,
+    });
+    (global.fetch as vi.Mock).mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve({ used: false }),
+    });
+
+    render(<PhotoUploadDialog {...defaultProps} />);
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(0);
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: /copiar endereço/i }));
+
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    expect(writeText).toHaveBeenCalledWith(
+      "https://foo-bar.trycloudflare.com/?token=test-token&eq=1&cat=ENTRADA",
+    );
   });
 });

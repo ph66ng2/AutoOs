@@ -64,11 +64,7 @@ pub async fn gerar_qr_upload(
         &categoria,
     );
 
-    let code = qrcode::QrCode::new(url.as_bytes())
-        .map_err(|e| format!("Erro ao gerar QR code: {}", e))?;
-    let qr_svg = code
-        .render::<qrcode::render::svg::Color>()
-        .build();
+    let qr_svg = render_qr_svg(&url)?;
 
     info!("QR code gerado para equipamento {} em {}", equipamento_id, url);
 
@@ -78,6 +74,19 @@ pub async fn gerar_qr_upload(
         token,
         via_tunnel,
     })
+}
+
+/// QR compacto o bastante para caber no diálogo sem estourar a tela.
+const QR_SVG_PX: u32 = 220;
+
+fn render_qr_svg(url: &str) -> Result<String, String> {
+    let code = qrcode::QrCode::new(url.as_bytes())
+        .map_err(|e| format!("Erro ao gerar QR code: {}", e))?;
+    Ok(code
+        .render::<qrcode::render::svg::Color>()
+        .min_dimensions(QR_SVG_PX, QR_SVG_PX)
+        .max_dimensions(QR_SVG_PX, QR_SVG_PX)
+        .build())
 }
 
 #[cfg(test)]
@@ -115,6 +124,33 @@ mod tests {
         assert_eq!(
             build_upload_url(None, "192.168.0.10", 8765, "tok", 7, "SAIDA"),
             "http://192.168.0.10:8765/?token=tok&eq=7&cat=SAIDA"
+        );
+    }
+
+    #[test]
+    fn qr_svg_stays_within_dialog_size() {
+        let url = "https://throwing-necklace-sets-guidelines.trycloudflare.com/?token=83ca637d-864f-47bb-a47f-320587ac4a38&eq=488&cat=SAIDA";
+        let svg = render_qr_svg(url).expect("svg");
+        let width = svg
+            .split("width=\"")
+            .nth(1)
+            .and_then(|rest| rest.split('"').next())
+            .and_then(|raw| raw.parse::<u32>().ok())
+            .expect("svg width");
+        let height = svg
+            .split("height=\"")
+            .nth(1)
+            .and_then(|rest| rest.split('"').next())
+            .and_then(|raw| raw.parse::<u32>().ok())
+            .expect("svg height");
+        assert!(
+            (160..=220).contains(&width),
+            "QR width should fit the dialog, got {width} from {}",
+            &svg[..svg.len().min(180)]
+        );
+        assert!(
+            (160..=220).contains(&height),
+            "QR height should fit the dialog, got {height}"
         );
     }
 }
