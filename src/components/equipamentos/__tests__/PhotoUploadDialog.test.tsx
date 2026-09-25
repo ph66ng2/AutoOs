@@ -261,6 +261,9 @@ describe("PhotoUploadDialog — sucesso", () => {
     expect(screen.getByText("foo-bar.trycloudflare.com")).toBeInTheDocument();
     expect(screen.queryByText(/token=test-token/i)).not.toBeInTheDocument();
     expect(screen.getByTestId("qr-frame")).toBeInTheDocument();
+    const dialog = screen.getByRole("dialog");
+    expect(dialog.className).toContain("overflow-hidden");
+    expect(dialog.className).not.toContain("overflow-y-auto");
     expect(screen.getByRole("button", { name: /copiar endereço/i })).toBeInTheDocument();
   });
 
