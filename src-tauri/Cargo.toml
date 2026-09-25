@@ -22,6 +22,10 @@ name = "p1_windows_support_check"
 path = "src/bin/p1_windows_support_check.rs"
 
 [[bin]]
+name = "p1_photo_integration"
+path = "src/bin/p1_photo_integration.rs"
+
+[[bin]]
 name = "release_database_check"
 path = "src/bin/release_database_check.rs"
 
@@ -78,7 +82,7 @@ argon2 = "0.5"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 url = "2"
-reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls", "multipart"] }
 base64 = "0.22"
 tracing-appender = "0.2.5"
 axum = { version = "0.7", features = ["multipart"] }
