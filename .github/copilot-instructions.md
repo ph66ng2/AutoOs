@@ -118,3 +118,12 @@ Se a mudança envolver runtime operacional de PostgreSQL, deixe explícito quand
 - Prefira correções na causa raiz.
 - Documente mudanças operacionais e de segurança.
 - Não assuma que instruções antigas ainda são válidas só porque o arquivo existe.
+
+## Fotos no celular (improvisado — não é o SaaS)
+
+O QR via `cloudflared` / `*.trycloudflare.com` (`photo_tunnel.rs`) é solução **temporária da recepção**. O celular envia para **este PC** (`localhost:8765`) enquanto o diálogo estiver aberto.
+
+- Não tratar isso como upload de produção do SaaS.
+- Não amarrar sessão de foto a UUID de tenant (PHOTO-001 / PHOTO-009).
+- No SaaS: foto → API / Storage da empresa (URL assinada). Túnel no máximo como fallback do Windows.
+- Não reabrir PHOTO-001 ou PHOTO-009 para promover o túnel. Não usar um hostname único para 3 PCs.
