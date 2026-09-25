@@ -119,6 +119,8 @@ fn main() {
         commands::saas_profile_pin::desbloquear_pin_perfil_saas,
         commands::saas_profile_pin::remover_pin_perfil_saas,
         commands::saas_profile_pin::sincronizar_pins_perfis_saas,
+        commands::smtp::enviar_email_saas,
+        commands::whatsapp::enviar_whatsapp_saas,
         commands::cnpj::consultar_cnpj,
     ]);
 

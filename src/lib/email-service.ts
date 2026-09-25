@@ -20,13 +20,18 @@
 
 import { invoke } from "@tauri-apps/api/core";
 import { db } from "@/lib/db";
-import { PdfService } from "@/lib/pdf-service";
+import { PdfService, type PdfArtifact } from "@/lib/pdf-service";
 import { formatDatePtBr } from "@/lib/date-utils";
+import { IS_SAAS_BUILD } from "@/lib/runtime-mode";
+import { loadSaasAuthConfiguration } from "@/lib/saas-auth";
+import { carregarRepositorioComunicacoes } from "@/lib/data/comunicacoes-repository";
+import { carregarRepositorioOperacoesEquipamento } from "@/lib/data/equipamentos-operacoes-repository";
 import type {
   EmailAttachment,
   EmailSendRequest,
   Comunicacao,
   Equipamento,
+  EquipamentoId,
   Verificacao,
   ServicoNecessario,
 } from "@/types";
@@ -100,12 +105,31 @@ function fraseContatoTecnicoHtml(emailTecnico?: string): string {
   return "Em caso de dúvidas, para uma resolução mais rápida, responda este email para falar diretamente com nossa equipe técnica.";
 }
 
-async function registrarComunicacaoSegura(comunicacao: Omit<Comunicacao, "id">) {
+async function registrarComunicacaoSegura(comunicacao: Omit<Comunicacao<EquipamentoId>, "id">) {
   try {
-    await db.registrarComunicacao(comunicacao);
+    const repository = await carregarRepositorioComunicacoes();
+    await repository.registrar(comunicacao);
   } catch (error) {
     console.error("[EmailService] Falha ao registrar comunicação:", error);
   }
+}
+
+async function enviarEmail(emailData: EmailSendRequest): Promise<void> {
+  let sent: boolean;
+  if (!IS_SAAS_BUILD) {
+    sent = await invoke<boolean>("enviar_email", { input: emailData });
+  } else {
+    const config = loadSaasAuthConfiguration(import.meta.env);
+    sent = await invoke<boolean>("enviar_email_saas", {
+      input: emailData,
+      config: { supabaseUrl: config.supabaseUrl, publishableKey: config.publishableKey },
+    });
+  }
+  if (sent !== true) throw new Error("O servidor SMTP não confirmou o envio.");
+}
+
+function anexoPdfInline(artifact: PdfArtifact): EmailAttachment {
+  return { filename: artifact.filename, content_type: artifact.mimeType, bytes: Array.from(artifact.bytes) };
 }
 
 /**
@@ -140,7 +164,7 @@ async function prepararAnexoTemporario(
 
 export const EmailService = {
   /** Envia email da ordem de entrada (ordem de serviço) via SMTP e registra no banco */
-  async enviarOrdemEntrada(equipamento: Equipamento) {
+  async enviarOrdemEntrada(equipamento: Equipamento<EquipamentoId>) {
     if (!equipamento.cliente_email) {
       return { sucesso: false, erro: "Cliente não possui email cadastrado" };
     }
@@ -185,12 +209,16 @@ Equipe Técnica BMITAG`;
     let anexos: EmailAttachment[] | undefined;
     let limparAnexoTemp: (() => Promise<void>) | undefined;
     try {
-      const caminhoPdf = await PdfService.gerarOrdemServico(equipamento);
-      if (caminhoPdf) {
-        const preparado = await prepararAnexoTemporario(caminhoPdf, "ordem_entrada.pdf");
-        if (preparado) {
-          anexos = [preparado.anexo];
-          limparAnexoTemp = preparado.cleanup;
+      if (IS_SAAS_BUILD) {
+        anexos = [anexoPdfInline(await PdfService.construirOrdemServico(equipamento as Equipamento))];
+      } else {
+        const caminhoPdf = await PdfService.gerarOrdemServico(equipamento as Equipamento);
+        if (caminhoPdf) {
+          const preparado = await prepararAnexoTemporario(caminhoPdf, "ordem_entrada.pdf");
+          if (preparado) {
+            anexos = [preparado.anexo];
+            limparAnexoTemp = preparado.cleanup;
+          }
         }
       }
     } catch (error) {
@@ -209,7 +237,7 @@ Equipe Técnica BMITAG`;
     };
 
     try {
-      await invoke<void>("enviar_email", { input: emailData });
+      await enviarEmail(emailData);
       await registrarComunicacaoSegura({
         equipamento_id: equipamento.id!,
         tipo: "MANUAL",
@@ -245,7 +273,7 @@ Equipe Técnica BMITAG`;
   },
 
   /** Envia email de orçamento via SMTP e registra no banco */
-  async enviarOrcamento(equipamento: Equipamento, verificacao: Verificacao) {
+  async enviarOrcamento(equipamento: Equipamento<EquipamentoId>, verificacao: Verificacao) {
     if (!equipamento.cliente_email) {
       return { sucesso: false, erro: "Cliente não possui email cadastrado" };
     }
@@ -259,12 +287,16 @@ Equipe Técnica BMITAG`;
     let anexos: EmailAttachment[] | undefined;
     let limparAnexoTemp: (() => Promise<void>) | undefined;
     try {
-      const caminhoPdf = await PdfService.gerarOrcamento(equipamento, verificacao);
-      if (caminhoPdf) {
-        const preparado = await prepararAnexoTemporario(caminhoPdf, "orcamento.pdf");
-        if (preparado) {
-          anexos = [preparado.anexo];
-          limparAnexoTemp = preparado.cleanup;
+      if (IS_SAAS_BUILD) {
+        anexos = [anexoPdfInline(await PdfService.construirOrcamento(equipamento as Equipamento, verificacao))];
+      } else {
+        const caminhoPdf = await PdfService.gerarOrcamento(equipamento as Equipamento, verificacao);
+        if (caminhoPdf) {
+          const preparado = await prepararAnexoTemporario(caminhoPdf, "orcamento.pdf");
+          if (preparado) {
+            anexos = [preparado.anexo];
+            limparAnexoTemp = preparado.cleanup;
+          }
         }
       }
     } catch (error) {
@@ -283,7 +315,7 @@ Equipe Técnica BMITAG`;
     };
 
     try {
-      await invoke<void>("enviar_email", { input: emailData });
+      await enviarEmail(emailData);
 
       await registrarComunicacaoSegura({
         equipamento_id: equipamento.id!,
@@ -324,15 +356,17 @@ Equipe Técnica BMITAG`;
   },
 
   /** Envia email de equipamento pronto via SMTP e registra no banco */
-  async enviarEquipamentoPronto(equipamento: Equipamento) {
+  async enviarEquipamentoPronto(equipamento: Equipamento<EquipamentoId>) {
     if (!equipamento.cliente_email) {
       return { sucesso: false, erro: "Cliente não possui email cadastrado" };
     }
 
     const assunto = `Seu equipamento está pronto! - ${equipamento.marca} ${equipamento.modelo}`;
-    const verificacao = equipamento.id
-      ? await db.buscarVerificacao(equipamento.id).catch(() => null)
-      : null;
+    const verificacao = IS_SAAS_BUILD && equipamento.id
+      ? await carregarRepositorioOperacoesEquipamento().then((repository) => repository.getVerification(String(equipamento.id))).catch(() => null)
+      : typeof equipamento.id === "number"
+        ? await db.buscarVerificacao(equipamento.id).catch(() => null)
+        : null;
     const tecnicoNome = verificacao?.tecnico_nome || extrairTecnicoInicialDeObservacoes(equipamento.observacoes);
     const emailTecnico = emailTecnicoPorNome(tecnicoNome);
     const cc = montarCcs(emailTecnico);
@@ -350,7 +384,7 @@ Equipe Técnica BMITAG`;
     };
 
     try {
-      await invoke<void>("enviar_email", { input: emailData });
+      await enviarEmail(emailData);
 
       await registrarComunicacaoSegura({
         equipamento_id: equipamento.id!,
@@ -422,7 +456,7 @@ function escapeHtml(value: string) {
  * Conecta-se a: EmailService.enviarOrcamento()
  */
 function gerarCorpoOrcamentoTexto(
-  equipamento: Equipamento,
+  equipamento: Equipamento<EquipamentoId>,
   verificacao: Verificacao,
   emailTecnico?: string,
 ): string {
@@ -490,7 +524,7 @@ Equipe Técnica BMITAG`.trim();
 }
 
 function gerarCorpoOrcamentoHtml(
-  equipamento: Equipamento,
+  equipamento: Equipamento<EquipamentoId>,
   verificacao: Verificacao,
   emailTecnico?: string,
 ): string {
@@ -581,7 +615,7 @@ function gerarCorpoOrcamentoHtml(
  * Inclui: dados do equipamento, horário, valor a pagar.
  * Conecta-se a: EmailService.enviarEquipamentoPronto()
  */
-function gerarCorpoEquipamentoProntoTexto(equipamento: Equipamento, emailTecnico?: string): string {
+function gerarCorpoEquipamentoProntoTexto(equipamento: Equipamento<EquipamentoId>, emailTecnico?: string): string {
   const valor = equipamento.valor_final || equipamento.valor_orcamento;
   return `Prezado(a) ${equipamento.cliente_nome},
 
@@ -609,7 +643,7 @@ Atenciosamente,
 Equipe Técnica BMITAG`.trim();
 }
 
-function gerarCorpoEquipamentoProntoHtml(equipamento: Equipamento, emailTecnico?: string): string {
+function gerarCorpoEquipamentoProntoHtml(equipamento: Equipamento<EquipamentoId>, emailTecnico?: string): string {
   const valor = equipamento.valor_final || equipamento.valor_orcamento;
 
   return `

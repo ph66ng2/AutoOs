@@ -114,6 +114,7 @@ import {
   type PecaNecessaria,
   type Verificacao,
   type Comunicacao,
+  type ResultadoAutomacao,
 } from "@/types";
 
 // Componentes extraídos
@@ -172,6 +173,7 @@ import { resolveRecipient, type ResolvedRecipient } from "@/lib/recipient-resolv
 import { saveRecipientAddress } from "@/lib/recipient-persistence";
 import { IS_SAAS_BUILD } from "@/lib/runtime-mode";
 import { carregarRepositorioClientes } from "@/lib/data/clientes-repository";
+import { carregarRepositorioComunicacoes } from "@/lib/data/comunicacoes-repository";
 import {
   calcularPrazoAprovacaoOnline,
   carregarRepositorioOperacoesEquipamento,
@@ -226,7 +228,8 @@ export default function Equipamentos({ operationalProfile }: { operationalProfil
 
   // Dados do drawer de detalhes
   const [verificacaoDetalhes, setVerificacaoDetalhes] = useState<Verificacao | null>(null);
-  const [comunicacoes, setComunicacoes] = useState<Comunicacao[]>([]);
+  const [comunicacoes, setComunicacoes] = useState<Comunicacao<EquipamentoId>[]>([]);
+  const [comunicacoesError, setComunicacoesError] = useState<string | null>(null);
   const [imagensDetalhes, setImagensDetalhes] = useState<EquipamentoImagemDraft[]>([]);
   const [historicoDetalhes, setHistoricoDetalhes] = useState<EquipamentoHistoricoEvento[]>([]);
   const [historicoDetalhesError, setHistoricoDetalhesError] = useState<string | null>(null);
@@ -618,8 +621,8 @@ export default function Equipamentos({ operationalProfile }: { operationalProfil
   }
 
   /**
-   * Abre dialog de detalhes com 4 abas. Carrega verificação e comunicações em paralelo.
-   * Conecta-se a: db.buscarVerificacao, db.listarComunicacoes
+   * Abre dialog de detalhes com as abas existentes. Carrega verificação e comunicações em paralelo.
+   * No SaaS, as comunicações usam Supabase com UUID/RLS; no modo local, continuam no banco Tauri.
    */
   const abrirDetalhes = useCallback(async (eq: Equipamento) => {
     setSelecionado(eq);
@@ -627,20 +630,29 @@ export default function Equipamentos({ operationalProfile }: { operationalProfil
     setCarregandoDetalhes(true);
     setVerificacaoDetalhes(null);
     setComunicacoes([]);
+    setComunicacoesError(null);
     setImagensDetalhes([]);
     setHistoricoDetalhes([]);
     setHistoricoDetalhesError(null);
     if (IS_SAAS_BUILD) {
-      try {
-        const repository = await carregarRepositorioOperacoesEquipamento();
-        const verification = await repository.getVerification(String(eq.id));
-        setVerificacaoDetalhes(verification);
-      } catch (err) {
-        console.error("Erro ao carregar verificação Online:", err);
+      const [verificationResult, communicationsResult] = await Promise.allSettled([
+        carregarRepositorioOperacoesEquipamento().then((repository) => repository.getVerification(String(eq.id))),
+        carregarRepositorioComunicacoes().then((repository) => repository.listar(String(eq.id))),
+      ]);
+      setVerificacaoDetalhes(verificationResult.status === "fulfilled" ? verificationResult.value : null);
+      setComunicacoes(communicationsResult.status === "fulfilled" ? communicationsResult.value : []);
+      setComunicacoesError(
+        communicationsResult.status === "rejected"
+          ? communicationsResult.reason instanceof Error
+            ? communicationsResult.reason.message
+            : "Não foi possível carregar as comunicações deste equipamento."
+          : null,
+      );
+      if (verificationResult.status === "rejected") {
+        console.error("Erro ao carregar verificação Online:", verificationResult.reason);
         setHistoricoDetalhesError("Não foi possível carregar a verificação deste equipamento.");
-      } finally {
-        setCarregandoDetalhes(false);
       }
+      setCarregandoDetalhes(false);
       return;
     }
     try {
@@ -652,6 +664,11 @@ export default function Equipamentos({ operationalProfile }: { operationalProfil
       ]);
       setVerificacaoDetalhes(verif.status === "fulfilled" ? verif.value : null);
       setComunicacoes(comms.status === "fulfilled" ? comms.value : []);
+      setComunicacoesError(
+        comms.status === "rejected"
+          ? "Não foi possível carregar as comunicações deste equipamento. " + String(comms.reason)
+          : null,
+      );
       setImagensDetalhes(imagens.status === "fulfilled" ? imagens.value : []);
       setHistoricoDetalhes(historico.status === "fulfilled" ? historico.value : []);
       setHistoricoDetalhesError(
@@ -898,16 +915,17 @@ export default function Equipamentos({ operationalProfile }: { operationalProfil
         }
       }
 
-      if (!editando && !IS_SAAS_BUILD) {
+      if (!editando) {
         const liberadoEmail = await ensureSensitiveAccess({
           title: "Enviar ordem de entrada",
           description: "Informe o PIN para enviar a ordem de entrada por email ao cliente.",
           permission: SENSITIVE_PERMISSIONS.FINANCIAL_ACTIONS,
         });
         if (liberadoEmail) {
+          const equipamentoSalvo = resultado.data as unknown as Equipamento;
           async function enviarOrdemEntrada(email: string, nomeDestinatario: string) {
             const retornoEmailEntrada = await EmailService.enviarOrdemEntrada({
-              ...equipamentoInterno(resultado.data!),
+              ...equipamentoSalvo,
               cliente_email: email,
               cliente_nome: nomeDestinatario,
             });
@@ -917,13 +935,13 @@ export default function Equipamentos({ operationalProfile }: { operationalProfil
               success("Equipamentos", "Email de ordem de entrada enviado com sucesso.", "Enviar email");
             }
           }
-          const recipient = resolveRecipient(equipamentoInterno(resultado.data), "email");
+          const recipient = resolveRecipient(equipamentoSalvo, "email");
           setEmailFlow({
             recipient,
             onConfirm: async (email, salvar) => {
               if (salvar) {
                 try {
-                  await saveRecipientAddress(equipamentoInterno(resultado.data), "email", email);
+                  await saveRecipientAddress(equipamentoSalvo, "email", email);
                 } catch (cause) {
                   showError("Equipamentos", "Salvar destinatário", cause);
                   return false;
@@ -982,7 +1000,8 @@ export default function Equipamentos({ operationalProfile }: { operationalProfil
    * Conecta-se a: useStatusEquipamento.finalizarVerificacao
    */
   async function handleConcluirVerificacao(dados: DadosVerificacao): Promise<boolean> {
-    if (!selecionado) return false;
+    const equipamentoSelecionado = selecionado;
+    if (!equipamentoSelecionado) return false;
     const liberado = await ensureSensitiveAccess({
       title: "Finalizar verificação",
       description: "Informe o PIN para salvar orçamento, prazo de aprovação e disparar comunicações automáticas.",
@@ -991,24 +1010,71 @@ export default function Equipamentos({ operationalProfile }: { operationalProfil
     if (!liberado) return false;
 
     if (IS_SAAS_BUILD) {
-      setSalvando(true);
-      try {
-        const repository = await carregarRepositorioOperacoesEquipamento();
-        await repository.finalizeVerification({
-          equipmentId: String(selecionado.id),
-          expectedUpdatedAt: selecionado.atualizado_em || "",
-          verification: dados,
-          approvalDeadline: calcularPrazoAprovacaoOnline(3),
-        });
-        await recarregar();
-        success("Equipamentos", "Verificação salva e orçamento enviado para aprovação. O envio de comunicações não faz parte desta etapa.", "Finalizar verificação");
-        return true;
-      } catch (err) {
-        showError("Equipamentos", "Finalizar verificação", err);
-        return false;
-      } finally {
-        setSalvando(false);
+      const recipient = resolveRecipient(equipamentoSelecionado, "email");
+      async function executarOnline(email: string, nomeDestinatario?: string): Promise<boolean> {
+        setSalvando(true);
+        try {
+          const repository = await carregarRepositorioOperacoesEquipamento();
+          const result = await repository.finalizeVerification({
+            equipmentId: String(equipamentoSelecionado!.id),
+            expectedUpdatedAt: equipamentoSelecionado!.atualizado_em || "",
+            verification: dados,
+            approvalDeadline: calcularPrazoAprovacaoOnline(3),
+          });
+          const equipamentoOnline = result.equipment as unknown as Equipamento;
+          const verificacaoOnline = result.verification;
+          let whatsapp: { sucesso: boolean; erro?: string } = { sucesso: false, erro: "Verificação não retornada pelo serviço Online." };
+          let emailResult: { sucesso: boolean; erro?: string } = { sucesso: false, erro: "Envio de email ignorado pelo operador." };
+          if (verificacaoOnline) {
+            const telefone = resolveRecipient(equipamentoOnline, "telefone");
+            whatsapp = await WhatsAppService.enviarOrcamento({
+              ...equipamentoOnline,
+              cliente_telefone: telefone.endereco || undefined,
+              cliente_nome: telefone.nome,
+            }, verificacaoOnline);
+            if (email.trim()) {
+              emailResult = await EmailService.enviarOrcamento({
+                ...equipamentoOnline,
+                cliente_email: email.trim(),
+                cliente_nome: nomeDestinatario || equipamentoOnline.cliente_nome,
+              }, verificacaoOnline);
+            }
+          }
+          setVerificacaoDialogOpen(false);
+          await recarregar();
+          const resumo = mensagemResultadoCanais({
+            sucesso: true,
+            canais: {
+              whatsapp: { enviado: whatsapp.sucesso, erro: whatsapp.erro },
+              email: { enviado: emailResult.sucesso, erro: emailResult.erro },
+            },
+          } satisfies ResultadoAutomacao);
+          if (resumo) success("Equipamentos", resumo, "Finalizar verificação");
+          return true;
+        } catch (err) {
+          showError("Equipamentos", "Finalizar verificação", err);
+          return false;
+        } finally {
+          setSalvando(false);
+        }
       }
+      setEmailFlow({
+        recipient,
+        onConfirm: async (email, salvar) => {
+          if (salvar) {
+            try {
+              await saveRecipientAddress(equipamentoSelecionado, "email", email);
+            } catch (cause) {
+              showError("Equipamentos", "Salvar destinatário", cause);
+              return false;
+            }
+          }
+          return executarOnline(email, recipient.nome);
+        },
+        onSkip: async () => { await executarOnline(""); },
+      });
+      setEmailDialogOpen(true);
+      return false;
     }
 
     async function executarComEmail(email: string | undefined, nomeDestinatario?: string): Promise<boolean> {
@@ -1069,17 +1135,59 @@ export default function Equipamentos({ operationalProfile }: { operationalProfil
     if (!liberado) return;
 
     if (IS_SAAS_BUILD) {
-      setSalvando(true);
-      try {
-        const resultado = await atualizarStatus(eq.id!, "PRONTO", undefined, undefined, undefined, eq.atualizado_em);
-        if (!resultado.sucesso) throw new Error(resultado.erro || "Não foi possível marcar o equipamento como pronto.");
-        await recarregar();
-        success("Equipamentos", "Status atualizado para Pronto. O envio de comunicações será tratado em etapa própria.", "Marcar como pronto");
-      } catch (err) {
-        showError("Equipamentos", "Marcar como pronto", err);
-      } finally {
-        setSalvando(false);
+      const recipient = resolveRecipient(eq, "email");
+      async function executarOnline(email: string, nomeDestinatario?: string): Promise<boolean> {
+        setSalvando(true);
+        try {
+          const resultado = await atualizarStatus(eq.id!, "PRONTO", undefined, undefined, undefined, eq.atualizado_em);
+          if (!resultado.sucesso) throw new Error(resultado.erro || "Não foi possível marcar o equipamento como pronto.");
+          const equipamentoOnline = eq as unknown as Equipamento;
+          const telefone = resolveRecipient(equipamentoOnline, "telefone");
+          const whatsapp = await WhatsAppService.enviarEquipamentoPronto({
+            ...equipamentoOnline,
+            cliente_telefone: telefone.endereco || undefined,
+            cliente_nome: telefone.nome,
+          });
+          const emailResult = email.trim()
+            ? await EmailService.enviarEquipamentoPronto({
+              ...equipamentoOnline,
+              cliente_email: email.trim(),
+              cliente_nome: nomeDestinatario || equipamentoOnline.cliente_nome,
+            })
+            : { sucesso: false, erro: "Envio de email ignorado pelo operador." };
+          await recarregar();
+          const resumo = mensagemResultadoCanais({
+            sucesso: true,
+            canais: {
+              whatsapp: { enviado: whatsapp.sucesso, erro: whatsapp.erro },
+              email: { enviado: emailResult.sucesso, erro: emailResult.erro },
+            },
+          } satisfies ResultadoAutomacao);
+          if (resumo) success("Equipamentos", resumo, "Marcar como pronto");
+          return true;
+        } catch (err) {
+          showError("Equipamentos", "Marcar como pronto", err);
+          return false;
+        } finally {
+          setSalvando(false);
+        }
       }
+      setEmailFlow({
+        recipient,
+        onConfirm: async (email, salvar) => {
+          if (salvar) {
+            try {
+              await saveRecipientAddress(eq, "email", email);
+            } catch (cause) {
+              showError("Equipamentos", "Salvar destinatário", cause);
+              return false;
+            }
+          }
+          return executarOnline(email, recipient.nome);
+        },
+        onSkip: async () => { await executarOnline(""); },
+      });
+      setEmailDialogOpen(true);
       return;
     }
 
@@ -1514,14 +1622,16 @@ export default function Equipamentos({ operationalProfile }: { operationalProfil
     });
     if (!liberado) return;
 
-    const verif = await db.buscarVerificacao(eq.id!);
+    const verif = IS_SAAS_BUILD
+      ? await (await carregarRepositorioOperacoesEquipamento()).getVerification(String(eq.id))
+      : await db.buscarVerificacao(eq.id!);
     if (!verif) { warning("Equipamentos", "Nenhuma verificação técnica encontrada para este equipamento."); return; }
     const recipient = resolveRecipient(eq, "telefone");
     if (!recipient.endereco) { warning("Equipamentos", "Nenhum telefone disponível para este envio."); return; }
     const r = await WhatsAppService.enviarOrcamento({ ...eq, cliente_telefone: recipient.endereco, cliente_nome: recipient.nome }, verif);
     if (!r.sucesso) {
       if (whatsappNaoConfigurado(r.erro)) {
-        console.warn("[WhatsApp] Integração não configurada. Fluxo segue com envio manual de PDF.");
+        warning("Equipamentos", "WhatsApp ainda não está configurado. O histórico registra que o envio não foi realizado.");
         return;
       }
       showError("Equipamentos", "Enviar WhatsApp", new Error(r.erro));
@@ -1596,7 +1706,7 @@ export default function Equipamentos({ operationalProfile }: { operationalProfil
     const r = await WhatsAppService.enviarEquipamentoPronto({ ...eq, cliente_telefone: recipient.endereco, cliente_nome: recipient.nome });
     if (!r.sucesso) {
       if (whatsappNaoConfigurado(r.erro)) {
-        console.warn("[WhatsApp] Integração não configurada. Fluxo segue sem envio automático.");
+        warning("Equipamentos", "WhatsApp ainda não está configurado. O histórico registra que o envio não foi realizado.");
         return;
       }
       showError("Equipamentos", "Enviar WhatsApp", new Error(r.erro));
@@ -2588,10 +2698,10 @@ export default function Equipamentos({ operationalProfile }: { operationalProfil
               </div>
 
               <Tabs defaultValue="info">
-                <TabsList className={`grid ${IS_SAAS_BUILD ? "grid-cols-2" : "grid-cols-4"} w-full`}>
+                <TabsList className={`grid ${IS_SAAS_BUILD ? "grid-cols-3" : "grid-cols-4"} w-full`}>
                   <TabsTrigger value="info"><FileText className="h-3.5 w-3.5 mr-1 hidden sm:inline" />Informações</TabsTrigger>
                   <TabsTrigger value="verificacao"><ClipboardCheck className="h-3.5 w-3.5 mr-1 hidden sm:inline" />Verificação</TabsTrigger>
-                  {!IS_SAAS_BUILD && <TabsTrigger value="comunicacoes"><MessageSquare className="h-3.5 w-3.5 mr-1 hidden sm:inline" />Comunicações</TabsTrigger>}
+                  <TabsTrigger value="comunicacoes"><MessageSquare className="h-3.5 w-3.5 mr-1 hidden sm:inline" />Comunicações</TabsTrigger>
                   {!IS_SAAS_BUILD && <TabsTrigger value="historico"><History className="h-3.5 w-3.5 mr-1 hidden sm:inline" />Histórico</TabsTrigger>}
                 </TabsList>
 
@@ -2711,16 +2821,17 @@ export default function Equipamentos({ operationalProfile }: { operationalProfil
                 <TabsContent value="verificacao" className="mt-4">{renderVerificacaoTab()}</TabsContent>
 
                 {/* Comunicações — agora usa componente extraído */}
-                {!IS_SAAS_BUILD && <TabsContent value="comunicacoes" className="mt-4">
+                <TabsContent value="comunicacoes" className="mt-4">
                   {carregandoDetalhes ? (
                     <div className="flex justify-center py-8"><div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600" /></div>
                   ) : (
                     <HistoricoComunicacoes
                       equipamentoId={selecionado.id!}
                       comunicacoesExternas={comunicacoes}
+                      erroExterno={comunicacoesError}
                     />
                   )}
-                </TabsContent>}
+                </TabsContent>
 
                 {!IS_SAAS_BUILD && <TabsContent value="historico" className="mt-4">{renderHistoricoTab()}</TabsContent>}
               </Tabs>

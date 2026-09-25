@@ -19,10 +19,13 @@
 
 import { invoke } from "@tauri-apps/api/core";
 import { formatDatePtBr } from "@/lib/date-utils";
-import { db } from "@/lib/db";
+import { IS_SAAS_BUILD } from "@/lib/runtime-mode";
+import { loadSaasAuthConfiguration } from "@/lib/saas-auth";
+import { carregarRepositorioComunicacoes } from "@/lib/data/comunicacoes-repository";
 import type {
   Comunicacao,
   Equipamento,
+  EquipamentoId,
   PecaNecessaria,
   ServicoNecessario,
   Verificacao,
@@ -30,12 +33,27 @@ import type {
 } from "@/types";
 import { resolveRecipient } from "@/lib/recipient-resolver";
 
-async function registrarComunicacaoSegura(comunicacao: Omit<Comunicacao, "id">) {
+async function registrarComunicacaoSegura(comunicacao: Omit<Comunicacao<EquipamentoId>, "id">) {
   try {
-    await db.registrarComunicacao(comunicacao);
+    const repository = await carregarRepositorioComunicacoes();
+    await repository.registrar(comunicacao);
   } catch (error) {
     console.error("[WhatsAppService] Falha ao registrar comunicação:", error);
   }
+}
+
+async function enviarWhatsapp(request: WhatsappSendRequest): Promise<void> {
+  let sent: boolean;
+  if (!IS_SAAS_BUILD) {
+    sent = await invoke<boolean>("enviar_whatsapp", { input: request });
+  } else {
+    const config = loadSaasAuthConfiguration(import.meta.env);
+    sent = await invoke<boolean>("enviar_whatsapp_saas", {
+      input: request,
+      config: { supabaseUrl: config.supabaseUrl, publishableKey: config.publishableKey },
+    });
+  }
+  if (sent !== true) throw new Error("O provedor de WhatsApp não confirmou o envio.");
 }
 
 /** Adiciona DDI 55 (Brasil) se não presente. Remove caracteres não-numéricos */
@@ -68,7 +86,7 @@ export const WhatsAppService = {
    * Registra comunicação tipo=ORCAMENTO canal=WHATSAPP no banco.
    * Conecta-se a: db.registrarComunicacao, backend enviar_whatsapp
    */
-  async enviarOrcamento(equipamento: Equipamento, verificacao: Verificacao) {
+  async enviarOrcamento(equipamento: Equipamento<EquipamentoId>, verificacao: Verificacao) {
     const recipient = resolveRecipient(equipamento, "telefone");
     const equipamentoComDestinatario = {
       ...equipamento,
@@ -124,7 +142,7 @@ Para dúvidas, estamos à disposição! 😊`;
         contato: telefone,
         mensagem,
       };
-      await invoke<void>("enviar_whatsapp", { input: request });
+      await enviarWhatsapp(request);
 
       await registrarComunicacaoSegura({
         equipamento_id: equipamento.id!,
@@ -162,7 +180,7 @@ Para dúvidas, estamos à disposição! 😊`;
    * Registra comunicação tipo=PRONTO canal=WHATSAPP no banco.
    * Conecta-se a: db.registrarComunicacao, backend enviar_whatsapp
    */
-  async enviarEquipamentoPronto(equipamento: Equipamento) {
+  async enviarEquipamentoPronto(equipamento: Equipamento<EquipamentoId>) {
     const recipient = resolveRecipient(equipamento, "telefone");
     const equipamentoComDestinatario = {
       ...equipamento,
@@ -197,7 +215,7 @@ Aguardamos você! 😊`;
         contato: telefone,
         mensagem,
       };
-      await invoke<void>("enviar_whatsapp", { input: request });
+      await enviarWhatsapp(request);
 
       await registrarComunicacaoSegura({
         equipamento_id: equipamento.id!,
