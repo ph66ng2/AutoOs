@@ -1,7 +1,13 @@
 //! Túnel Cloudflare para o QR público de fotos.
 //!
-//! Padrão: túnel rápido (`cloudflared tunnel --url`), uma URL HTTPS temporária
-//! por PC (`*.trycloudflare.com`). Não precisa de DNS nem de token.
+//! IMPROVISADO / TEMPORÁRIO — não é o desenho de fotos do SaaS.
+//! O celular envia para este PC (`localhost:8765`) só enquanto o QR estiver
+//! aberto. Tickets futuros (PHOTO / AO-EQP-ONLINE) devem mandar a foto para a
+//! API ou Storage da empresa (URL assinada), não através deste túnel.
+//! Não reabrir PHOTO-001 / PHOTO-009 para promover esta solução.
+//!
+//! Padrão atual: túnel rápido (`cloudflared tunnel --url`), uma URL HTTPS
+//! temporária por PC (`*.trycloudflare.com`). Não precisa de DNS nem de token.
 //! Opcional: token de túnel nomeado para `fotos.bmitag.com.br` (um PC por vez).
 
 use crate::commands::auth::{

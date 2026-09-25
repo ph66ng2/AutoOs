@@ -169,6 +169,7 @@ npm run bundle:prep:windows:sign # Injects certThumbprint from env into tauri.co
 - Don't introduce `query!` / `query_as!` sqlx macros — the project uses runtime queries exclusively.
 - Don't assume `serial_number` is a unique business key (multiple `equipamentos` rows can share it).
 - Don't store sensitive data (PINs, SMTP passwords, WhatsApp tokens) in the database — use OS keyring.
+- Don't treat the Cloudflare photo tunnel (`cloudflared` / `*.trycloudflare.com`) as the SaaS photo architecture. It is a reception workaround: the phone uploads to **this PC** while the QR dialog is open. Future PHOTO / AO-EQP-ONLINE tickets must send photos to the company API or Storage (signed URL), not through a per-PC tunnel. Do not reopen PHOTO-001 or PHOTO-009 to "fix" the tunnel.
 
 ## UNIQUE STYLES
 
