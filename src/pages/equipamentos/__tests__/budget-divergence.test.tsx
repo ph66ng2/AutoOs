@@ -23,6 +23,7 @@ const mockAtualizarStatusEquipamento = vi.hoisted(() => vi.fn());
 const mockBuscarVerificacao = vi.hoisted(() => vi.fn());
 const mockListarServicosCatalogoAtivos = vi.hoisted(() => vi.fn());
 const mockListarImagensEquipamento = vi.hoisted(() => vi.fn());
+const mockListarHistoricoEquipamento = vi.hoisted(() => vi.fn());
 const mockBuscarEquipamentosPorSerial = vi.hoisted(() => vi.fn());
 const mockBuscarCliente = vi.hoisted(() => vi.fn());
 const mockRecarregar = vi.hoisted(() => vi.fn());
@@ -87,6 +88,7 @@ vi.mock("@/lib/db", () => ({
     buscarEquipamentosPorSerial: (...args: unknown[]) => mockBuscarEquipamentosPorSerial(...args),
     buscarCliente: (...args: unknown[]) => mockBuscarCliente(...args),
     listarComunicacoes: vi.fn().mockResolvedValue([]),
+    listarHistoricoEquipamento: (...args: unknown[]) => mockListarHistoricoEquipamento(...args),
     listarEquipamentos: vi.fn().mockResolvedValue([]),
     substituirImagensEquipamento: vi.fn().mockResolvedValue([]),
   },
@@ -256,6 +258,7 @@ describe("Equipamentos — Budget Divergence & Audit", () => {
     vi.clearAllMocks();
     equipamentoVerificado.status = "VERIFICADO";
     mockListarImagensEquipamento.mockResolvedValue([]);
+    mockListarHistoricoEquipamento.mockResolvedValue([]);
     mockBuscarEquipamentosPorSerial.mockResolvedValue([]);
     mockBuscarCliente.mockRejectedValue(new Error("no client"));
     mockListarServicosCatalogoAtivos.mockResolvedValue([]);
@@ -434,6 +437,31 @@ describe("Equipamentos — Budget Divergence & Audit", () => {
     await abrirDialogoAjusteOrcamento();
 
     expect(screen.queryByText(/Histórico de Ajustes/i)).not.toBeInTheDocument();
+  });
+
+  it("mostra carregamento e estado vazio na aba Histórico existente", async () => {
+    let concluirHistorico!: (events: unknown[]) => void;
+    mockListarHistoricoEquipamento.mockReturnValueOnce(new Promise<unknown[]>((resolve) => {
+      concluirHistorico = resolve;
+    }));
+    render(<Equipamentos />);
+    await waitFor(() => expect(screen.getByTestId("action-status")).toBeInTheDocument());
+    fireEvent.click(screen.getByTestId("action-status"));
+    fireEvent.mouseDown(await screen.findByRole("tab", { name: "Histórico" }), { button: 0 });
+
+    expect(document.querySelector(".animate-spin")).toBeInTheDocument();
+    await act(async () => concluirHistorico([]));
+    expect(await screen.findByText("Nenhum registro de histórico")).toBeInTheDocument();
+  });
+
+  it("mostra o erro de leitura na aba Histórico existente", async () => {
+    mockListarHistoricoEquipamento.mockRejectedValueOnce(new Error("Falha sintética ao consultar histórico"));
+    render(<Equipamentos />);
+    await waitFor(() => expect(screen.getByTestId("action-status")).toBeInTheDocument());
+    fireEvent.click(screen.getByTestId("action-status"));
+    fireEvent.mouseDown(await screen.findByRole("tab", { name: "Histórico" }), { button: 0 });
+
+    expect(await screen.findByText(/Falha sintética ao consultar histórico/)).toBeInTheDocument();
   });
 
   it("exibe Observações e envia texto vazio quando o campo é apagado", async () => {

@@ -174,6 +174,7 @@ import { saveRecipientAddress } from "@/lib/recipient-persistence";
 import { IS_SAAS_BUILD } from "@/lib/runtime-mode";
 import { carregarRepositorioClientes } from "@/lib/data/clientes-repository";
 import { carregarRepositorioComunicacoes } from "@/lib/data/comunicacoes-repository";
+import { carregarRepositorioHistoricoEquipamento } from "@/lib/data/equipamentos-historico-repository";
 import {
   calcularPrazoAprovacaoOnline,
   carregarRepositorioOperacoesEquipamento,
@@ -621,8 +622,8 @@ export default function Equipamentos({ operationalProfile }: { operationalProfil
   }
 
   /**
-   * Abre dialog de detalhes com as abas existentes. Carrega verificação e comunicações em paralelo.
-   * No SaaS, as comunicações usam Supabase com UUID/RLS; no modo local, continuam no banco Tauri.
+   * Abre dialog de detalhes com as abas existentes. No SaaS, leituras remotas
+   * usam UUID/RLS; no modo local, os dados continuam vindo do banco Tauri.
    */
   const abrirDetalhes = useCallback(async (eq: Equipamento) => {
     setSelecionado(eq);
@@ -635,9 +636,10 @@ export default function Equipamentos({ operationalProfile }: { operationalProfil
     setHistoricoDetalhes([]);
     setHistoricoDetalhesError(null);
     if (IS_SAAS_BUILD) {
-      const [verificationResult, communicationsResult] = await Promise.allSettled([
+      const [verificationResult, communicationsResult, historyResult] = await Promise.allSettled([
         carregarRepositorioOperacoesEquipamento().then((repository) => repository.getVerification(String(eq.id))),
         carregarRepositorioComunicacoes().then((repository) => repository.listar(String(eq.id))),
+        carregarRepositorioHistoricoEquipamento().then((repository) => repository.listar(String(eq.id))),
       ]);
       setVerificacaoDetalhes(verificationResult.status === "fulfilled" ? verificationResult.value : null);
       setComunicacoes(communicationsResult.status === "fulfilled" ? communicationsResult.value : []);
@@ -650,8 +652,15 @@ export default function Equipamentos({ operationalProfile }: { operationalProfil
       );
       if (verificationResult.status === "rejected") {
         console.error("Erro ao carregar verificação Online:", verificationResult.reason);
-        setHistoricoDetalhesError("Não foi possível carregar a verificação deste equipamento.");
       }
+      setHistoricoDetalhes(historyResult.status === "fulfilled" ? historyResult.value : []);
+      setHistoricoDetalhesError(
+        historyResult.status === "rejected"
+          ? historyResult.reason instanceof Error
+            ? historyResult.reason.message
+            : "Não foi possível carregar o histórico deste equipamento."
+          : null,
+      );
       setCarregandoDetalhes(false);
       return;
     }
@@ -2193,6 +2202,10 @@ export default function Equipamentos({ operationalProfile }: { operationalProfil
     const eq = selecionado;
     const eventos = historicoDetalhes;
 
+    if (carregandoDetalhes) {
+      return <div className="flex justify-center py-8"><div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600" /></div>;
+    }
+
     if (historicoDetalhesError) {
       return <div className="rounded-md border border-destructive/40 bg-destructive/5 p-4 text-sm text-destructive">{historicoDetalhesError}</div>;
     }
@@ -2698,11 +2711,11 @@ export default function Equipamentos({ operationalProfile }: { operationalProfil
               </div>
 
               <Tabs defaultValue="info">
-                <TabsList className={`grid ${IS_SAAS_BUILD ? "grid-cols-3" : "grid-cols-4"} w-full`}>
+                <TabsList className="grid grid-cols-4 w-full">
                   <TabsTrigger value="info"><FileText className="h-3.5 w-3.5 mr-1 hidden sm:inline" />Informações</TabsTrigger>
                   <TabsTrigger value="verificacao"><ClipboardCheck className="h-3.5 w-3.5 mr-1 hidden sm:inline" />Verificação</TabsTrigger>
                   <TabsTrigger value="comunicacoes"><MessageSquare className="h-3.5 w-3.5 mr-1 hidden sm:inline" />Comunicações</TabsTrigger>
-                  {!IS_SAAS_BUILD && <TabsTrigger value="historico"><History className="h-3.5 w-3.5 mr-1 hidden sm:inline" />Histórico</TabsTrigger>}
+                  <TabsTrigger value="historico"><History className="h-3.5 w-3.5 mr-1 hidden sm:inline" />Histórico</TabsTrigger>
                 </TabsList>
 
                 <TabsContent value="info" className="space-y-4 mt-4">
@@ -2833,7 +2846,7 @@ export default function Equipamentos({ operationalProfile }: { operationalProfil
                   )}
                 </TabsContent>
 
-                {!IS_SAAS_BUILD && <TabsContent value="historico" className="mt-4">{renderHistoricoTab()}</TabsContent>}
+                <TabsContent value="historico" className="mt-4">{renderHistoricoTab()}</TabsContent>
               </Tabs>
             </div>
           )}
