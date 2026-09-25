@@ -25,6 +25,11 @@ use crate::commands::equipamento_imagens::{adicionar_imagem_equipamento_raw, MAX
 use crate::commands::photo_tunnel;
 use base64::Engine;
 
+/// Tamanho máximo do arquivo que chega da câmera, antes do redimensionamento.
+/// Fotos nativas de celular passam fácil de 3MB; o limite de armazenamento
+/// continua sendo `MAX_IMAGE_BYTES` depois do encode.
+const MAX_INCOMING_IMAGE_BYTES: usize = 12 * 1024 * 1024;
+
 const HTML_UPLOAD_PAGE: &str = r#"<!DOCTYPE html>
 <html lang="pt-BR">
 <head>
@@ -237,14 +242,14 @@ const HTML_UPLOAD_PAGE: &str = r#"<!DOCTYPE html>
 <body>
     <div class="container">
         <h1>AutoOS</h1>
-        <p class="subtitle">Upload de Foto</p>
+        <p class="subtitle">Tire a foto &mdash; ela ser&#225; enviada sozinha</p>
         <form id="uploadForm" enctype="multipart/form-data" method="POST">
             <div class="btn-group" id="formContent">
                 <button type="button" class="btn-option camera" id="cameraBtn">
                     <span class="icon">&#128247;</span>
                     <div class="btn-text">
                         <span>Tirar Foto</span>
-                        <span class="label-small">Usar c&#226;mera do celular</span>
+                        <span class="label-small">Envia na hora</span>
                     </div>
                 </button>
                 <button type="button" class="btn-option" id="galleryBtn">
@@ -255,8 +260,8 @@ const HTML_UPLOAD_PAGE: &str = r#"<!DOCTYPE html>
                     </div>
                 </button>
             </div>
-            <input type="file" id="cameraInput" name="photo" accept="image/*" capture="environment" multiple>
-            <input type="file" id="galleryInput" name="photo" accept="image/*" multiple>
+            <input type="file" id="cameraInput" accept="image/*" capture="environment">
+            <input type="file" id="galleryInput" accept="image/*" multiple>
             <div class="preview-area" id="previewArea">
                 <div class="preview-grid" id="previewGrid"></div>
                 <div class="file-count" id="fileCount"></div>
@@ -292,6 +297,90 @@ const HTML_UPLOAD_PAGE: &str = r#"<!DOCTYPE html>
         form.action = '/upload?token=' + encodeURIComponent(token || '');
 
         let selectedFiles = [];
+        const MAX_DIM = 1600;
+        const JPEG_QUALITY = 0.82;
+
+        function showStatus(kind, text) {
+            statusEl.style.display = '';
+            statusEl.className = kind;
+            statusEl.textContent = text;
+        }
+
+        function canvasToJpegBlob(canvas) {
+            return new Promise(function(resolve, reject) {
+                if (canvas.toBlob) {
+                    canvas.toBlob(function(blob) {
+                        if (blob) resolve(blob);
+                        else reject(new Error('blob'));
+                    }, 'image/jpeg', JPEG_QUALITY);
+                    return;
+                }
+                try {
+                    var dataUrl = canvas.toDataURL('image/jpeg', JPEG_QUALITY);
+                    var raw = atob(dataUrl.split(',')[1]);
+                    var arr = new Uint8Array(raw.length);
+                    for (var i = 0; i < raw.length; i++) arr[i] = raw.charCodeAt(i);
+                    resolve(new Blob([arr], { type: 'image/jpeg' }));
+                } catch (err) {
+                    reject(err);
+                }
+            });
+        }
+
+        function fileToJpeg(file) {
+            return new Promise(function(resolve, reject) {
+                var url = URL.createObjectURL(file);
+                var img = new Image();
+                img.onload = function() {
+                    try {
+                        var w = img.naturalWidth || img.width;
+                        var h = img.naturalHeight || img.height;
+                        if (!w || !h) {
+                            URL.revokeObjectURL(url);
+                            reject(new Error('empty'));
+                            return;
+                        }
+                        if (w > MAX_DIM || h > MAX_DIM) {
+                            var scale = Math.min(MAX_DIM / w, MAX_DIM / h);
+                            w = Math.round(w * scale);
+                            h = Math.round(h * scale);
+                        }
+                        var canvas = document.createElement('canvas');
+                        canvas.width = w;
+                        canvas.height = h;
+                        var ctx = canvas.getContext('2d');
+                        ctx.drawImage(img, 0, 0, w, h);
+                        URL.revokeObjectURL(url);
+                        canvasToJpegBlob(canvas).then(function(blob) {
+                            var name = (file.name || 'foto').replace(/\.[^.]+$/, '') + '.jpg';
+                            resolve(new File([blob], name, { type: 'image/jpeg' }));
+                        }).catch(reject);
+                    } catch (err) {
+                        URL.revokeObjectURL(url);
+                        reject(err);
+                    }
+                };
+                img.onerror = function() {
+                    URL.revokeObjectURL(url);
+                    reject(new Error('decode'));
+                };
+                img.src = url;
+            });
+        }
+
+        async function prepareFile(file) {
+            if (!file || file.size === 0) {
+                throw new Error('empty');
+            }
+            try {
+                return await fileToJpeg(file);
+            } catch (err) {
+                if (file.type === 'image/jpeg' || file.type === 'image/png') {
+                    return file;
+                }
+                throw err;
+            }
+        }
 
         function updatePreview() {
             previewGrid.innerHTML = '';
@@ -300,33 +389,74 @@ const HTML_UPLOAD_PAGE: &str = r#"<!DOCTYPE html>
                 submitBtn.classList.remove('visible');
                 return;
             }
-            selectedFiles.forEach(file => {
-                const reader = new FileReader();
-                reader.onload = function(e) {
-                    const img = document.createElement('img');
-                    img.src = e.target.result;
-                    img.alt = file.name;
-                    previewGrid.appendChild(img);
-                };
-                reader.readAsDataURL(file);
+            selectedFiles.forEach(function(file) {
+                var img = document.createElement('img');
+                img.src = URL.createObjectURL(file);
+                img.alt = file.name;
+                img.onload = function() { URL.revokeObjectURL(img.src); };
+                previewGrid.appendChild(img);
             });
             previewArea.classList.add('visible');
             submitBtn.classList.add('visible');
-            const count = selectedFiles.length;
+            var count = selectedFiles.length;
             fileCountEl.textContent = count + ' foto' + (count > 1 ? 's' : '') + ' selecionada' + (count > 1 ? 's' : '');
             submitBtn.textContent = 'Enviar ' + count + ' Foto' + (count > 1 ? 's' : '');
         }
 
-        function addFiles(files) {
-            if (!files) return;
-            const newFiles = Array.from(files);
-            if (selectedFiles.length + newFiles.length > 3) {
-                statusEl.className = 'error';
-                statusEl.textContent = 'M\u00e1ximo de 3 fotos permitido.';
+        async function prepareFileList(files) {
+            var list = Array.prototype.slice.call(files || []).filter(function(f) { return f && f.size > 0; });
+            if (list.length === 0) {
+                throw new Error('empty');
+            }
+            if (list.length > 3) {
+                throw new Error('max');
+            }
+            var prepared = [];
+            for (var i = 0; i < list.length; i++) {
+                prepared.push(await prepareFile(list[i]));
+            }
+            return prepared;
+        }
+
+        async function sendSelected() {
+            if (selectedFiles.length === 0) {
+                showStatus('error', 'Selecione uma foto primeiro.');
                 return;
             }
-            selectedFiles = selectedFiles.concat(newFiles);
-            updatePreview();
+            if (selectedFiles.length > 3) {
+                showStatus('error', 'M\u00e1ximo de 3 fotos permitido.');
+                return;
+            }
+            submitBtn.disabled = true;
+            showStatus('info', 'Enviando...');
+
+            var formData = new FormData();
+            selectedFiles.forEach(function(file) {
+                formData.append('photo[]', file, file.name || 'foto.jpg');
+            });
+
+            try {
+                var response = await fetch(form.action, {
+                    method: 'POST',
+                    body: formData
+                });
+                var result = await response.json();
+                if (result.success) {
+                    formContent.style.display = 'none';
+                    form.style.display = 'none';
+                    statusEl.style.display = 'none';
+                    successOverlay.classList.add('visible');
+                    var count = result.count || selectedFiles.length;
+                    successCountEl.textContent = count + ' foto' + (count > 1 ? 's' : '') + ' enviada' + (count > 1 ? 's' : '');
+                    selectedFiles = [];
+                } else {
+                    showStatus('error', result.error || result.message || 'Erro ao enviar foto');
+                }
+            } catch (err) {
+                showStatus('error', 'Erro de conex\u00e3o. Tente novamente.');
+            } finally {
+                submitBtn.disabled = false;
+            }
         }
 
         cameraBtn.addEventListener('click', function() {
@@ -339,61 +469,49 @@ const HTML_UPLOAD_PAGE: &str = r#"<!DOCTYPE html>
             galleryInput.click();
         });
 
-        cameraInput.addEventListener('change', function() {
+        cameraInput.addEventListener('change', async function() {
             selectedFiles = [];
-            addFiles(this.files);
-        });
-
-        galleryInput.addEventListener('change', function() {
-            selectedFiles = [];
-            addFiles(this.files);
-        });
-        
-        form.addEventListener('submit', async (e) => {
-            e.preventDefault();
-            if (selectedFiles.length === 0) {
-                statusEl.className = 'error';
-                statusEl.textContent = 'Selecione uma foto primeiro.';
-                return;
-            }
-            if (selectedFiles.length > 3) {
-                statusEl.className = 'error';
-                statusEl.textContent = 'M\u00e1ximo de 3 fotos permitido.';
-                return;
-            }
-            submitBtn.disabled = true;
-            statusEl.className = 'info';
-            statusEl.textContent = 'Enviando...';
-            
-            const formData = new FormData();
-            selectedFiles.forEach(file => {
-                formData.append('photo[]', file);
-            });
-
+            if (!this.files || this.files.length === 0) return;
+            showStatus('info', 'Preparando foto...');
             try {
-                const response = await fetch(form.action, {
-                    method: 'POST',
-                    body: formData
-                });
-                const result = await response.json();
-                if (result.success) {
-                    formContent.style.display = 'none';
-                    form.style.display = 'none';
-                    statusEl.style.display = 'none';
-                    successOverlay.classList.add('visible');
-                    const count = result.count || selectedFiles.length;
-                    successCountEl.textContent = count + ' foto' + (count > 1 ? 's' : '') + ' enviada' + (count > 1 ? 's' : '');
-                    selectedFiles = [];
-                } else {
-                    statusEl.className = 'error';
-                    statusEl.textContent = result.error || result.message || 'Erro ao enviar foto';
-                }
+                selectedFiles = await prepareFileList(this.files);
+                updatePreview();
+                await sendSelected();
             } catch (err) {
-                statusEl.className = 'error';
-                statusEl.textContent = 'Erro de conex\u00e3o. Tente novamente.';
-            } finally {
-                submitBtn.disabled = false;
+                selectedFiles = [];
+                updatePreview();
+                if (err && err.message === 'empty') {
+                    showStatus('error', 'A c\u00e2mera n\u00e3o entregou o arquivo. Tente de novo ou use a galeria.');
+                } else {
+                    showStatus('error', 'N\u00e3o foi poss\u00edvel ler a foto da c\u00e2mera. Use a galeria.');
+                }
             }
+        });
+
+        galleryInput.addEventListener('change', async function() {
+            selectedFiles = [];
+            if (!this.files || this.files.length === 0) return;
+            showStatus('info', 'Preparando foto...');
+            try {
+                selectedFiles = await prepareFileList(this.files);
+                updatePreview();
+                statusEl.className = '';
+                statusEl.textContent = '';
+                statusEl.style.display = 'none';
+            } catch (err) {
+                selectedFiles = [];
+                updatePreview();
+                if (err && err.message === 'max') {
+                    showStatus('error', 'M\u00e1ximo de 3 fotos permitido.');
+                } else {
+                    showStatus('error', 'N\u00e3o foi poss\u00edvel ler a foto. Tente JPEG ou PNG.');
+                }
+            }
+        });
+
+        form.addEventListener('submit', async function(e) {
+            e.preventDefault();
+            await sendSelected();
         });
 
         sendMoreBtn.addEventListener('click', function() {
@@ -547,10 +665,10 @@ async fn upload_handler(
     if let Some(content_length) = headers.get("content-length") {
         if let Ok(len_str) = content_length.to_str() {
             if let Ok(len) = len_str.parse::<usize>() {
-                if len > MAX_IMAGE_BYTES * 3 {
+                if len > MAX_INCOMING_IMAGE_BYTES * 3 {
                     return Json(json!({
                         "success": false,
-                        "error": "Requisição muito grande. Máximo 9MB no total."
+                        "error": "Requisição muito grande. Máximo 36MB no total."
                     }));
                 }
             }
@@ -582,19 +700,29 @@ async fn upload_handler(
         };
 
         let mime = content_type.as_deref().unwrap_or("");
-        let is_jpeg = mime == "image/jpeg";
-        let is_png = mime == "image/png";
-        if !is_jpeg && !is_png {
+        if data.is_empty() {
+            return Json(json!({
+                "success": false,
+                "error": "Foto vazia. Tire de novo ou use a galeria."
+            }));
+        }
+        if is_heic_like(&data, mime) {
+            return Json(json!({
+                "success": false,
+                "error": "A câmera enviou HEIC. Atualize a página no celular e tire a foto de novo."
+            }));
+        }
+        let Some(is_jpeg) = sniff_image_kind(&data, mime) else {
             return Json(json!({
                 "success": false,
                 "error": "Tipo de arquivo não suportado. Use JPEG ou PNG."
             }));
-        }
+        };
 
-        if data.len() > MAX_IMAGE_BYTES {
+        if data.len() > MAX_INCOMING_IMAGE_BYTES {
             return Json(json!({
                 "success": false,
-                "error": "Arquivo muito grande. Máximo 3MB."
+                "error": "Arquivo muito grande. Máximo 12MB."
             }));
         }
 
@@ -726,6 +854,49 @@ async fn upload_handler(
         "message": format!("{} foto(s) salva(s) com sucesso!", count),
         "count": count
     }))
+}
+
+fn sniff_image_kind(data: &[u8], declared_mime: &str) -> Option<bool> {
+    if data.len() >= 3 && data[0] == 0xFF && data[1] == 0xD8 && data[2] == 0xFF {
+        return Some(true);
+    }
+    if data.len() >= 8
+        && data[0] == 0x89
+        && data[1] == b'P'
+        && data[2] == b'N'
+        && data[3] == b'G'
+        && data[4] == 0x0D
+        && data[5] == 0x0A
+        && data[6] == 0x1A
+        && data[7] == 0x0A
+    {
+        return Some(false);
+    }
+    let mime = declared_mime.to_ascii_lowercase();
+    if mime == "image/jpeg" || mime == "image/jpg" {
+        return Some(true);
+    }
+    if mime == "image/png" {
+        return Some(false);
+    }
+    None
+}
+
+fn is_heic_like(data: &[u8], declared_mime: &str) -> bool {
+    let mime = declared_mime.to_ascii_lowercase();
+    if mime.contains("heic") || mime.contains("heif") {
+        return true;
+    }
+    if data.len() >= 12 && &data[4..8] == b"ftyp" {
+        let brand = &data[8..12];
+        return brand == b"heic"
+            || brand == b"heif"
+            || brand == b"mif1"
+            || brand == b"msf1"
+            || brand == b"heix"
+            || brand == b"hevc";
+    }
+    false
 }
 
 fn resize_image(data: &[u8], is_jpeg: bool) -> Result<(Vec<u8>, String), String> {
@@ -1036,5 +1207,41 @@ mod tests {
             photo_listen_addr(8765, false),
             SocketAddr::from(([0, 0, 0, 0], 8765))
         );
+    }
+
+    #[test]
+    fn camera_input_has_capture_without_multiple() {
+        assert!(HTML_UPLOAD_PAGE.contains(r#"id="cameraInput""#));
+        assert!(HTML_UPLOAD_PAGE.contains(r#"capture="environment""#));
+        assert!(
+            !HTML_UPLOAD_PAGE.contains(r#"capture="environment" multiple"#),
+            "capture+multiple no iOS entrega arquivo vazio"
+        );
+        assert!(HTML_UPLOAD_PAGE.contains("fileToJpeg"));
+        assert!(HTML_UPLOAD_PAGE.contains("sendSelected"));
+        assert!(HTML_UPLOAD_PAGE.contains("Preparando foto"));
+    }
+
+    #[test]
+    fn jpeg_magic_bytes_are_accepted_even_without_mime() {
+        let jpeg = [0xFF, 0xD8, 0xFF, 0xE0, 0x00, 0x10];
+        assert_eq!(sniff_image_kind(&jpeg, ""), Some(true));
+        assert_eq!(sniff_image_kind(&jpeg, "application/octet-stream"), Some(true));
+    }
+
+    #[test]
+    fn png_magic_bytes_are_accepted() {
+        let png = [0x89, b'P', b'N', b'G', 0x0D, 0x0A, 0x1A, 0x0A];
+        assert_eq!(sniff_image_kind(&png, ""), Some(false));
+    }
+
+    #[test]
+    fn heic_is_detected_from_mime_or_ftyp() {
+        assert!(is_heic_like(&[0], "image/heic"));
+        let mut ftyp = vec![0u8; 12];
+        ftyp[4..8].copy_from_slice(b"ftyp");
+        ftyp[8..12].copy_from_slice(b"heic");
+        assert!(is_heic_like(&ftyp, ""));
+        assert!(!is_heic_like(&[0xFF, 0xD8, 0xFF], "image/jpeg"));
     }
 }
