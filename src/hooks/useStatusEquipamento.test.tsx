@@ -72,6 +72,7 @@ describe("useStatusEquipamento", () => {
     vi.mocked(db.salvarVerificacao).mockResolvedValue(1);
     vi.mocked(db.atualizarStatusEquipamento).mockResolvedValue();
     vi.mocked(db.buscarEquipamento)
+      .mockResolvedValueOnce({ ...equipamentoBase, atualizado_em: "2026-04-28 12:00:00.5" })
       .mockResolvedValueOnce({
         ...equipamentoBase,
         status: "VERIFICADO",
@@ -109,7 +110,7 @@ describe("useStatusEquipamento", () => {
       undefined,
       undefined,
       undefined,
-      equipamentoBase.atualizado_em,
+      "2026-04-28 12:00:00.5",
     );
     expect(db.atualizarStatusEquipamento).toHaveBeenNthCalledWith(
       2,

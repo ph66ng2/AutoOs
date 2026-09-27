@@ -13,6 +13,7 @@ use crate::commands::auth::{
 };
 use crate::commands::types::{ServicoCatalogoInput, ServicoCatalogoRow, SERVICO_CATALOGO_SELECT};
 use crate::db::get_pool;
+use crate::commands::orcamento_estoque::parse_servicos;
 use tracing::{error, info, instrument};
 
 use super::equipamentos::PAGE_SIZE;
@@ -133,17 +134,19 @@ pub async fn criar_servico(input: ServicoCatalogoInput) -> Result<ServicoCatalog
     let descricao = optional_text(input.descricao.as_deref());
 
     validate_preco_padrao(input.preco_padrao)?;
+    parse_servicos(&serde_json::json!([{"id":"catalogo","pecas":input.pecas_sugeridas}]).to_string())?;
 
     let row = sqlx::query_scalar::<_, i32>(
         r#"
-        INSERT INTO servicos_catalogo (nome, descricao, preco_padrao)
-        VALUES ($1, $2, $3)
+        INSERT INTO servicos_catalogo (nome, descricao, preco_padrao, pecas_sugeridas)
+        VALUES ($1, $2, $3, $4)
         RETURNING id
         "#,
     )
     .bind(nome.clone())
     .bind(descricao)
     .bind(input.preco_padrao)
+    .bind(serde_json::Value::Array(input.pecas_sugeridas.clone()))
     .fetch_one(&pool)
     .await
     .map_err(|e| {
@@ -175,6 +178,7 @@ pub async fn atualizar_servico(id: i32, input: ServicoCatalogoInput) -> Result<S
     let concurrency_token = required_concurrency_token(input.atualizado_em.as_deref())?;
 
     validate_preco_padrao(input.preco_padrao)?;
+    parse_servicos(&serde_json::json!([{"id":"catalogo","pecas":input.pecas_sugeridas}]).to_string())?;
 
     let updated_rows = sqlx::query(
         r#"
@@ -182,6 +186,7 @@ pub async fn atualizar_servico(id: i32, input: ServicoCatalogoInput) -> Result<S
             nome = $1,
             descricao = $2,
             preco_padrao = $3,
+            pecas_sugeridas = $6,
             atualizado_em = NOW()
         WHERE id = $4 AND atualizado_em = $5::TIMESTAMPTZ
         "#,
@@ -191,6 +196,7 @@ pub async fn atualizar_servico(id: i32, input: ServicoCatalogoInput) -> Result<S
     .bind(input.preco_padrao)
     .bind(id)
     .bind(concurrency_token)
+    .bind(serde_json::Value::Array(input.pecas_sugeridas.clone()))
     .execute(&pool)
     .await
     .map_err(|e| {

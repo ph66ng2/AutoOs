@@ -1,3 +1,4 @@
+import { validarPecas } from "@/lib/orcamento-estoque";
 import { useState } from "react";
 import { Plus, Search, Edit, Trash2, RefreshCw, Wrench } from "lucide-react";
 import { useForm } from "react-hook-form";
@@ -29,7 +30,8 @@ import { useSensitiveAccess } from "@/hooks/useSensitiveAccess";
 import { useNotification } from "@/hooks/useNotification";
 import { ErrorAlert } from "@/components/ui/error-alert";
 import { FormValidationError } from "@/components/ui/form-validation-error";
-import { SENSITIVE_PERMISSIONS, type ServicoCatalogo } from "@/types";
+import { SENSITIVE_PERMISSIONS, type ServicoCatalogo, type PecaVinculada } from "@/types";
+import { PecasDoServico } from "@/components/equipamentos/PecasDoServico";
 import { ActionPriorityRow } from "@/components/ui/action-priority-row";
 
 export default function Servicos() {
@@ -39,6 +41,7 @@ export default function Servicos() {
   const [editando, setEditando] = useState<ServicoCatalogo | null>(null);
   const [deletando, setDeletando] = useState<ServicoCatalogo | null>(null);
   const [salvando, setSalvando] = useState(false);
+  const [pecasSugeridas, setPecasSugeridas] = useState<PecaVinculada[]>([]);
   const { ensureSensitiveAccess } = useSensitiveAccess();
   const { error: showError } = useNotification();
 
@@ -65,6 +68,7 @@ export default function Servicos() {
     if (!liberado) return;
 
     setEditando(null);
+    setPecasSugeridas([]);
     form.reset({ nome: "", descricao: "", preco_padrao: 0 });
     setDialogOpen(true);
   }
@@ -78,6 +82,7 @@ export default function Servicos() {
     if (!liberado) return;
 
     setEditando(servico);
+    setPecasSugeridas(servico.pecas_sugeridas ?? []);
     form.reset({
       nome: servico.nome,
       descricao: servico.descricao || "",
@@ -89,10 +94,12 @@ export default function Servicos() {
   async function onSubmit(data: ServicoCatalogoFormData) {
     setSalvando(true);
     try {
+      if (!validarPecas(pecasSugeridas)) throw new Error("Informe quantidade inteira positiva e preço válido para as peças.");
       const payload = {
         nome: data.nome,
         descricao: data.descricao || undefined,
         preco_padrao: Number(data.preco_padrao),
+        pecas_sugeridas: pecasSugeridas,
         atualizado_em: editando?.atualizado_em,
       };
 
@@ -265,6 +272,7 @@ export default function Servicos() {
               <Label>Descrição</Label>
               <Textarea {...form.register("descricao")} rows={3} placeholder="Detalhes opcionais do serviço..." />
             </div>
+            <PecasDoServico pecas={pecasSugeridas} onChange={setPecasSugeridas} />
 
             <DialogFooter>
               <DialogClose asChild>

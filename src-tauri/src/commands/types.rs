@@ -201,6 +201,7 @@ pub struct ServicoCatalogoInput {
     pub nome: String,
     pub descricao: Option<String>,
     pub preco_padrao: f64,
+    pub pecas_sugeridas: Vec<serde_json::Value>,
     pub atualizado_em: Option<String>,
 }
 
@@ -255,6 +256,7 @@ pub struct AprovarOrcamentoInput {
     pub equipamento_id: i32,
     pub expected_updated_em: String,
     pub pagamento: FormaPagamento,
+    pub servicos_aprovados: Vec<String>,
 }
 
 /// Input para registrar comunicação (email/WhatsApp).
@@ -503,6 +505,7 @@ pub struct ServicoCatalogoRow {
     pub nome: String,
     pub descricao: Option<String>,
     pub preco_padrao: Option<f64>,
+    pub pecas_sugeridas: serde_json::Value,
     pub ativo: Option<bool>,
     pub criado_em: Option<String>,
     pub atualizado_em: Option<String>,
@@ -514,6 +517,8 @@ pub struct VerificacaoRow {
     pub id: i32,
     pub equipamento_id: i32,
     pub empresa_id: Option<i32>,
+    pub servicos_orcamento_original: Option<serde_json::Value>,
+    pub decisoes_servicos: serde_json::Value,
     pub tecnico_nome: String,
     pub data_inicio: Option<String>,
     pub data_fim: Option<String>,
@@ -725,11 +730,15 @@ pub const PRODUTO_SELECT: &str = "
 
 pub const SERVICO_CATALOGO_SELECT: &str = "
     SELECT id, nome, descricao, preco_padrao::FLOAT8 as preco_padrao,
+           pecas_sugeridas,
            ativo, criado_em::TEXT as criado_em, atualizado_em::TEXT as atualizado_em
     FROM servicos_catalogo";
 
 pub const VERIFICACAO_SELECT: &str = "
     SELECT id, equipamento_id, empresa_id, tecnico_nome,
+           servicos_orcamento_original,
+           COALESCE((SELECT jsonb_agg(jsonb_build_object('servico_id', d.servico_id, 'decisao', d.decisao))
+                     FROM orcamento_servicos_decisao d WHERE d.verificacao_id = verificacoes.id), '[]'::jsonb) as decisoes_servicos,
            data_inicio::TEXT as data_inicio, data_fim::TEXT as data_fim,
            problema_relatado, diagnostico,
            itens_verificados, servicos_necessarios, pecas_necessarias,

@@ -124,6 +124,8 @@ async fn main() -> Result<()> {
         None,
         None,
         None,
+        None,
+        None,
     ).await;
     if denied.is_ok() {
         return Err(anyhow!("expected denied financial transition but it was allowed"));
@@ -160,6 +162,8 @@ async fn main() -> Result<()> {
         Some(225.0),
         privileged_profile_id,
         false,
+        None,
+        None,
         None,
         None,
         None,

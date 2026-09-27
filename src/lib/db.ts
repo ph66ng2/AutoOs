@@ -28,6 +28,7 @@ import { withSensitiveAccessRetry } from "@/lib/sensitive-action-retry";
 import type {
   AjusteOrcamentoInput,
   AprovarOrcamentoInput,
+  ConsumoOrcamento,
   Cliente,
   ClienteContato,
   ClienteContatoInput,
@@ -297,9 +298,11 @@ export const db = {
   async listarProdutos(
     busca?: string,
     categoria?: string,
-    apenasEstoqueBaixo?: boolean
+    apenasEstoqueBaixo?: boolean,
+    page = 0,
   ): Promise<Produto[]> {
     return invoke<Produto[]>("listar_produtos", {
+      page,
       busca: busca ?? null,
       categoria: categoria ?? null,
       apenasEstoqueBaixo: apenasEstoqueBaixo || false,
@@ -633,6 +636,8 @@ export const db = {
       custoTotal: input.custo_total,
       profileId,
       divergence: input.divergence ?? false,
+      clienteAprovouAlteracao: input.cliente_aprovou_alteracao ?? false,
+      expectedUpdatedEm: input.expected_updated_em ?? null,
       ...(input.observacoes === undefined ? {} : { observacoes: input.observacoes }),
       ...(input.forma_pagamento_codigo === undefined
         ? {}
@@ -650,6 +655,14 @@ export const db = {
   /** Aprova orçamento, pagamento e status APROVADO atomicamente no backend. */
   async aprovarOrcamento(input: AprovarOrcamentoInput): Promise<Equipamento> {
     return invoke<Equipamento>("aprovar_orcamento", { input });
+  },
+
+  async listarConsumosOrcamento(equipamentoId: number): Promise<ConsumoOrcamento[]> {
+    return invoke<ConsumoOrcamento[]>("listar_consumos_orcamento", { equipamentoId });
+  },
+
+  async baixarPecasPendentes(equipamentoId: number): Promise<number> {
+    return invoke<number>("baixar_pecas_pendentes", { equipamentoId });
   },
 
   /** Lista serviços ativos do catálogo (apenas leitura) → Rust: listar_servicos_catalogo_ativos */

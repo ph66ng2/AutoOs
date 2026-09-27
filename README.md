@@ -171,3 +171,7 @@ O `cargo tauri build` embute os metadados das migrations no binário para valida
 ## Licença
 
 Proprietário - BMITAG
+
+### Estoque vinculado ao orçamento
+
+Serviços podem vincular peças e consumir estoque somente após aprovação do cliente, inclusive aprovação parcial. AutoOS e AutoBO compartilham o mesmo estoque no Supabase. Veja [regras de operação e publicação coordenada](docs/ESTOQUE_ORCAMENTO.md).

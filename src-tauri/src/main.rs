@@ -212,6 +212,8 @@ fn main() {
             commands::verificacoes::buscar_verificacao_tecnica,
             commands::verificacoes::atualizar_servicos_verificacao,
             commands::equipamentos::aprovar_orcamento,
+            commands::orcamento_estoque::listar_consumos_orcamento,
+            commands::orcamento_estoque::baixar_pecas_pendentes,
             // Comunicações
             commands::comunicacoes::registrar_comunicacao,
             commands::comunicacoes::listar_comunicacoes,

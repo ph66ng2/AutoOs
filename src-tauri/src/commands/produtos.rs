@@ -9,7 +9,7 @@
 //! ╚══════════════════════════════════════════════════════════════╝
 
 use crate::commands::auth::{
-    record_security_event, require_permission, PERMISSION_DELETE_RECORDS, PERMISSION_STOCK_CONTROL,
+    record_security_event, require_permission, require_active_session_company_id, PERMISSION_DELETE_RECORDS, PERMISSION_STOCK_CONTROL,
 };
 use crate::commands::types::{MovimentacaoEstoqueInput, ProdutoInput, ProdutoRow, PRODUTO_SELECT};
 use crate::db::get_pool;
@@ -25,6 +25,14 @@ fn required_text(value: &str, field: &str) -> Result<String, String> {
     }
 
     Ok(trimmed.to_string())
+}
+
+fn validar_categoria(categoria: &str) -> Result<(), String> {
+    if matches!(categoria, "IMPRESSORA" | "PEÇA" | "ETIQUETA" | "RIBBON" | "OUTROS") {
+        Ok(())
+    } else {
+        Err("Categoria de estoque inválida.".to_string())
+    }
 }
 
 fn optional_text(value: Option<&str>) -> Option<String> {
@@ -103,12 +111,14 @@ pub async fn listar_produtos(
         e.to_string()
     })?;
 
+    let empresa_id = require_active_session_company_id(&pool).await?;
     let offset = page.unwrap_or(0) * PAGE_SIZE;
     let mut query_builder = sqlx::QueryBuilder::<sqlx::Postgres>::new(format!(
         "{} WHERE ativo = true",
         PRODUTO_SELECT,
     ));
 
+    query_builder.push(" AND empresa_id = ").push_bind(empresa_id);
     if let Some(busca) = busca.as_deref().map(str::trim).filter(|value| !value.is_empty()) {
         let pattern = format!("%{}%", busca);
         query_builder.push(" AND (");
@@ -154,10 +164,12 @@ pub async fn listar_produtos(
 pub async fn buscar_produto(id: i32) -> Result<ProdutoRow, String> {
     debug!("Buscando produto {}", id);
     let pool = get_pool().await.map_err(|e| e.to_string())?;
+    let empresa_id = require_active_session_company_id(&pool).await?;
 
-    let query = format!("{} WHERE id = $1", PRODUTO_SELECT);
+    let query = format!("{} WHERE id = $1 AND empresa_id = $2", PRODUTO_SELECT);
     let row = sqlx::query_as::<_, ProdutoRow>(sqlx::AssertSqlSafe(&*query))
         .bind(id)
+        .bind(empresa_id)
         .fetch_one(&pool)
         .await
         .map_err(|e| {
@@ -176,9 +188,11 @@ pub async fn criar_produto(input: ProdutoInput) -> Result<ProdutoRow, String> {
     let actor = require_permission(PERMISSION_STOCK_CONTROL)?;
     debug!("Criando produto: {}", input.codigo);
     let pool = get_pool().await.map_err(|e| e.to_string())?;
+    let empresa_id = require_active_session_company_id(&pool).await?;
     let codigo = required_text(&input.codigo, "Código")?;
     let nome = required_text(&input.nome, "Nome")?;
     let categoria = required_text(&input.categoria, "Categoria")?;
+    validar_categoria(&categoria)?;
     let unidade_medida = optional_text(input.unidade_medida.as_deref()).unwrap_or_else(|| "UN".to_string());
     let quantidade_minima = input.quantidade_minima.unwrap_or(5);
     let quantidade_maxima = input.quantidade_maxima.unwrap_or(50);
@@ -216,10 +230,10 @@ pub async fn criar_produto(input: ProdutoInput) -> Result<ProdutoRow, String> {
             quantidade_estoque, quantidade_minima, quantidade_maxima,
             unidade_medida, localizacao, preco_custo, preco_venda, margem_lucro,
             marca_original, tipo_cartucho, cor, rendimento, modelos_compativeis,
-            fornecedor_principal, prazo_entrega
+            fornecedor_principal, prazo_entrega, empresa_id
         ) VALUES (
             $1, $2, $3, $4, $5, $6, $7, $8, $9, $10,
-            $11, $12, $13, $14, $15, $16, $17, $18, $19
+            $11, $12, $13, $14, $15, $16, $17, $18, $19, $20
         ) RETURNING id
         "#,
     )
@@ -242,6 +256,7 @@ pub async fn criar_produto(input: ProdutoInput) -> Result<ProdutoRow, String> {
     .bind(optional_text(input.modelos_compativeis.as_deref()))
     .bind(optional_text(input.fornecedor_principal.as_deref()))
     .bind(input.prazo_entrega)
+    .bind(empresa_id)
     .fetch_one(&pool)
     .await
     .map_err(|e| {
@@ -268,10 +283,12 @@ pub async fn atualizar_produto(id: i32, input: ProdutoInput) -> Result<ProdutoRo
     let actor = require_permission(PERMISSION_STOCK_CONTROL)?;
     debug!("Atualizando produto {}", id);
     let pool = get_pool().await.map_err(|e| e.to_string())?;
+    let empresa_id = require_active_session_company_id(&pool).await?;
     let concurrency_token = required_concurrency_token(input.atualizado_em.as_deref(), "produto")?;
     let codigo = required_text(&input.codigo, "Código")?;
     let nome = required_text(&input.nome, "Nome")?;
     let categoria = required_text(&input.categoria, "Categoria")?;
+    validar_categoria(&categoria)?;
     let unidade_medida = optional_text(input.unidade_medida.as_deref()).unwrap_or_else(|| "UN".to_string());
     let quantidade_minima = input.quantidade_minima.unwrap_or(5);
     let quantidade_maxima = input.quantidade_maxima.unwrap_or(50);
@@ -311,7 +328,7 @@ pub async fn atualizar_produto(id: i32, input: ProdutoInput) -> Result<ProdutoRo
             preco_venda = $11, margem_lucro = $12, marca_original = $13,
             tipo_cartucho = $14, cor = $15, rendimento = $16, modelos_compativeis = $17,
             fornecedor_principal = $18, prazo_entrega = $19, atualizado_em = NOW()
-        WHERE id = $20 AND atualizado_em = $21::TIMESTAMPTZ
+        WHERE id = $20 AND atualizado_em = $21::TIMESTAMPTZ AND empresa_id = $22
         "#,
     )
     .bind(codigo)
@@ -335,6 +352,7 @@ pub async fn atualizar_produto(id: i32, input: ProdutoInput) -> Result<ProdutoRo
     .bind(input.prazo_entrega)
     .bind(id)
     .bind(concurrency_token)
+    .bind(empresa_id)
     .execute(&pool)
     .await
     .map_err(|e| {
@@ -366,10 +384,12 @@ pub async fn deletar_produto(id: i32) -> Result<bool, String> {
     let actor = require_permission(PERMISSION_DELETE_RECORDS)?;
     debug!("Deletando produto {}", id);
     let pool = get_pool().await.map_err(|e| e.to_string())?;
+    let empresa_id = require_active_session_company_id(&pool).await?;
 
     // Soft delete: marca como inativo em vez de deletar
-    let result = sqlx::query("UPDATE produtos SET ativo = false, atualizado_em = NOW() WHERE id = $1")
+    let result = sqlx::query("UPDATE produtos SET ativo = false, atualizado_em = NOW() WHERE id = $1 AND empresa_id = $2")
         .bind(id)
+        .bind(empresa_id)
         .execute(&pool)
         .await
         .map_err(|e| {
@@ -401,18 +421,20 @@ pub async fn registrar_movimentacao_estoque(input: MovimentacaoEstoqueInput) -> 
     let (movimento, origem, referencia) = validate_movimentacao_input(&input)?;
 
     let pool = get_pool().await.map_err(|e| e.to_string())?;
+    let empresa_id = require_active_session_company_id(&pool).await?;
     let mut tx = pool.begin().await.map_err(|e| e.to_string())?;
     let _saldo_resultante = if movimento == "ENTRADA" {
         sqlx::query_scalar(
             r#"
             UPDATE produtos
             SET quantidade_estoque = COALESCE(quantidade_estoque, 0) + $1, atualizado_em = NOW()
-            WHERE id = $2 AND ativo = true
+            WHERE id = $2 AND empresa_id = $3 AND ativo = true
             RETURNING quantidade_estoque
             "#,
         )
         .bind(input.quantidade)
         .bind(input.produto_id)
+        .bind(empresa_id)
         .fetch_optional(&mut *tx)
         .await
         .map_err(|e| {
@@ -425,7 +447,7 @@ pub async fn registrar_movimentacao_estoque(input: MovimentacaoEstoqueInput) -> 
             r#"
             UPDATE produtos
             SET quantidade_estoque = COALESCE(quantidade_estoque, 0) - $1, atualizado_em = NOW()
-            WHERE id = $2
+            WHERE id = $2 AND empresa_id = $3
               AND ativo = true
               AND COALESCE(quantidade_estoque, 0) >= $1
             RETURNING quantidade_estoque
@@ -433,6 +455,7 @@ pub async fn registrar_movimentacao_estoque(input: MovimentacaoEstoqueInput) -> 
         )
         .bind(input.quantidade)
         .bind(input.produto_id)
+        .bind(empresa_id)
         .fetch_optional(&mut *tx)
         .await
         .map_err(|e| {
@@ -442,9 +465,10 @@ pub async fn registrar_movimentacao_estoque(input: MovimentacaoEstoqueInput) -> 
             Some(quantidade) => quantidade,
             None => {
                 let saldo_atual = sqlx::query_scalar::<_, i32>(
-                    "SELECT COALESCE(quantidade_estoque, 0) FROM produtos WHERE id = $1 AND ativo = true",
+                    "SELECT COALESCE(quantidade_estoque, 0) FROM produtos WHERE id = $1 AND empresa_id = $2 AND ativo = true",
                 )
                 .bind(input.produto_id)
+                .bind(empresa_id)
                 .fetch_optional(&mut *tx)
                 .await
                 .map_err(|e| {
@@ -461,8 +485,8 @@ pub async fn registrar_movimentacao_estoque(input: MovimentacaoEstoqueInput) -> 
     sqlx::query(
         r#"
         INSERT INTO movimentacoes_estoque (
-            produto_id, tipo, quantidade, origem, referencia, data_hora
-        ) VALUES ($1, $2, $3, $4, $5, NOW())
+            produto_id, tipo, quantidade, origem, referencia, data_hora, empresa_id
+        ) VALUES ($1, $2, $3, $4, $5, NOW(), $6)
         "#,
     )
     .bind(input.produto_id)
@@ -470,6 +494,7 @@ pub async fn registrar_movimentacao_estoque(input: MovimentacaoEstoqueInput) -> 
     .bind(input.quantidade)
     .bind(&origem)
     .bind(referencia)
+    .bind(empresa_id)
     .execute(&mut *tx)
     .await
     .map_err(|e| {

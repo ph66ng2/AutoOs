@@ -91,7 +91,7 @@ async fn main() -> Result<()> {
             codigo: format!("P1-CONC-{}", suffix),
             nome: format!("Produto Concorrencia {}", suffix),
             descricao: Some("p1_concurrency_integration:create".to_string()),
-            categoria: "TONER".to_string(),
+            categoria: "RIBBON".to_string(),
             quantidade_estoque: 5,
             quantidade_minima: Some(1),
             quantidade_maxima: Some(20),

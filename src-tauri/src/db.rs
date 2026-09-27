@@ -172,11 +172,17 @@ const REQUIRED_RUNTIME_TABLES: &[&str] = &[
     "comunicacoes",
     "equipamento_imagens",
     "servicos_catalogo",
+    "orcamento_consumos",
+    "orcamento_servicos_decisao",
     "security_profiles",
     "security_audit_log",
 ];
 
 const REQUIRED_RUNTIME_COLUMNS: &[(&str, &str)] = &[
+    ("servicos_catalogo", "pecas_sugeridas"),
+    ("verificacoes", "servicos_orcamento_original"),
+    ("verificacoes", "pecas_orcamento_original"),
+    ("verificacoes", "valor_orcamento_original"),
     ("clientes", "id"),
     ("cliente_contatos", "empresa_id"),
     ("cliente_contatos", "cliente_id"),
