@@ -173,7 +173,7 @@ import { PagamentoOrcamentoDialog } from "@/components/equipamentos/PagamentoOrc
 import { FormaPagamentoFields } from "@/components/equipamentos/FormaPagamentoFields";
 import { resolveRecipient, type ResolvedRecipient } from "@/lib/recipient-resolver";
 import { saveRecipientAddress } from "@/lib/recipient-persistence";
-import { paginateItems, totalPages } from "@/lib/pagination";
+import { totalPages } from "@/lib/pagination";
 
 export default function Equipamentos() {
   const [busca, setBusca] = useState("");
@@ -291,11 +291,11 @@ export default function Equipamentos() {
   } | null>(null);
   const [emailDialogOpen, setEmailDialogOpen] = useState(false);
 
-  const { equipamentos, loading, criar, atualizar, deletar, atualizarStatus, recarregar } =
-    useEquipamentos({ busca: busca || undefined, status: statusFiltro });
-  const totalPaginasEquipamentos = totalPages(equipamentos.length);
+  const { equipamentos, total: totalEquipamentos, loading, criar, atualizar, deletar, atualizarStatus, recarregar } =
+    useEquipamentos({ busca: busca || undefined, status: statusFiltro, page: paginaEquipamentos });
+  const totalPaginasEquipamentos = totalPages(totalEquipamentos);
   const paginaEquipamentosExibida = Math.min(paginaEquipamentos, totalPaginasEquipamentos);
-  const equipamentosExibidos = paginateItems(equipamentos, paginaEquipamentosExibida);
+  const equipamentosExibidos = equipamentos;
 
   useEffect(() => {
     setPaginaEquipamentos(1);

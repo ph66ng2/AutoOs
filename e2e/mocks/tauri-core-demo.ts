@@ -123,6 +123,14 @@ export async function invoke<T>(command: string, args?: Record<string, unknown>)
       return false as T;
     case "listar_clientes":
       return [cliente] as T;
+    case "listar_clientes_paginados": {
+      const page = Math.max(0, Number(args?.page ?? 0));
+      const busca = String(args?.busca ?? "").toLowerCase();
+      const items = !busca || `${cliente.nome} ${cliente.razao_social} ${cliente.documento}`.toLowerCase().includes(busca)
+        ? [cliente]
+        : [];
+      return { items: items.slice(page * 10, (page + 1) * 10), total: items.length } as T;
+    }
     case "buscar_cliente":
       return cliente as T;
     case "listar_equipamentos": {
@@ -131,6 +139,14 @@ export async function invoke<T>(command: string, args?: Record<string, unknown>)
         return [] as T;
       }
       return [equipamento] as T;
+    }
+    case "listar_equipamentos_paginados": {
+      const statusFiltro = args?.status as string | undefined;
+      const busca = String(args?.busca ?? "").toLowerCase();
+      const matchesStatus = !statusFiltro || statusFiltro === "TODOS" || equipamento.status === statusFiltro;
+      const matchesSearch = !busca || `${equipamento.serial_number} ${equipamento.patrimonio} ${equipamento.modelo} ${equipamento.cliente_nome}`.toLowerCase().includes(busca);
+      const items = matchesStatus && matchesSearch ? [equipamento] : [];
+      return { items: items.slice(Number(args?.page ?? 0) * 10, (Number(args?.page ?? 0) + 1) * 10), total: items.length } as T;
     }
     case "buscar_equipamento":
       return equipamento as T;
@@ -172,6 +188,12 @@ export async function invoke<T>(command: string, args?: Record<string, unknown>)
       return verificacao as T;
     case "listar_servicos_catalogo_ativos":
       return catalogo as T;
+    case "listar_servicos_paginados": {
+      const page = Math.max(0, Number(args?.page ?? 0));
+      const busca = String(args?.busca ?? "").toLowerCase();
+      const items = catalogo.filter((item) => !busca || item.nome.toLowerCase().includes(busca));
+      return { items: items.slice(page * 10, (page + 1) * 10), total: items.length } as T;
+    }
     case "atualizar_servicos_verificacao": {
       const custo = Number(args?.custoTotal ?? 120);
       equipamento.valor_orcamento = custo;
@@ -188,6 +210,23 @@ export async function invoke<T>(command: string, args?: Record<string, unknown>)
         { id: 1, nome: "Cabeça GC420t", codigo: "CAB-420", categoria: "PEÇA", quantidade_estoque: 0, preco_venda: 450, ativo: true },
         { id: 2, nome: "Botão feed", codigo: "FEED", categoria: "PEÇA", quantidade_estoque: 3, preco_venda: 30, ativo: true },
       ] : []) as T;
+    case "listar_produtos_paginados": {
+      const todos = estoqueDemo ? [
+        { id: 1, nome: "Cabeça GC420t", codigo: "CAB-420", categoria: "PEÇA", quantidade_estoque: 0, quantidade_minima: 1, preco_venda: 450, ativo: true },
+        { id: 2, nome: "Botão feed", codigo: "FEED", categoria: "PEÇA", quantidade_estoque: 3, quantidade_minima: 1, preco_venda: 30, ativo: true },
+      ] : [];
+      const busca = String(args?.busca ?? "").toLowerCase();
+      const categoria = String(args?.categoria ?? "TODOS");
+      const baixo = Boolean(args?.apenasEstoqueBaixo);
+      const items = todos.filter((item) =>
+        (!busca || `${item.nome} ${item.codigo}`.toLowerCase().includes(busca)) &&
+        (categoria === "TODOS" || !categoria || item.categoria === categoria) &&
+        (!baixo || item.quantidade_estoque < item.quantidade_minima),
+      );
+      const page = Math.max(0, Number(args?.page ?? 0));
+      const belowMinimum = todos.filter((item) => item.quantidade_estoque < item.quantidade_minima).length;
+      return { items: items.slice(page * 10, (page + 1) * 10), total: items.length, belowMinimum } as T;
+    }
     case "listar_imagens_equipamento":
     case "listar_historico_equipamento":
     case "listar_comunicacoes":

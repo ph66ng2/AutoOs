@@ -79,7 +79,6 @@ import { PaginationControls } from "@/components/ui/pagination-controls";
 import { nomeExibicaoCliente, documentoExibicaoCliente } from "@/components/clientes/cliente-display-utils";
 import { ClientesStatusBadge } from "@/pages/clientes/ClientesStatusBadge";
 import {
-  clientesDaAba,
   totalAbasClientes,
 } from "@/pages/clientes/clientes-pagination";
 import {
@@ -116,13 +115,13 @@ export default function Clientes() {
   const [previaVinculoEmpresa, setPreviaVinculoEmpresa] = useState<VinculoEmpresaPerfilPrevia | null>(null);
   const [regularizando, setRegularizando] = useState(false);
 
-  const { clientes, loading, error, criar, atualizar, deletar, recarregar } =
-    useClientes({ busca: busca || undefined });
+  const { clientes, total: totalClientes, loading, error, criar, atualizar, deletar, recarregar } =
+    useClientes({ busca: busca || undefined, page: abaAtual });
   const { ensureSensitiveAccess } = useSensitiveAccess();
   const { error: showError, success } = useNotification();
-  const totalAbas = totalAbasClientes(clientes.length);
+  const totalAbas = totalAbasClientes(totalClientes);
   const abaExibida = Math.min(abaAtual, totalAbas);
-  const clientesExibidos = clientesDaAba(clientes, abaExibida);
+  const clientesExibidos = clientes;
 
   useEffect(() => {
     setAbaAtual(1);

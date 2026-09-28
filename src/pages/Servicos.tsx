@@ -34,11 +34,20 @@ import { SENSITIVE_PERMISSIONS, type ServicoCatalogo, type PecaVinculada } from 
 import { PecasDoServico } from "@/components/equipamentos/PecasDoServico";
 import { ActionPriorityRow } from "@/components/ui/action-priority-row";
 import { PaginationControls } from "@/components/ui/pagination-controls";
-import { paginateItems, totalPages } from "@/lib/pagination";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { totalPages } from "@/lib/pagination";
+import { MODELOS_SERVICO } from "@/pages/servicos/servicos-modelos";
 
 export default function Servicos() {
   const [busca, setBusca] = useState("");
   const [paginaServicos, setPaginaServicos] = useState(1);
+  const [modeloSelecionado, setModeloSelecionado] = useState("");
   const [dialogOpen, setDialogOpen] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [editando, setEditando] = useState<ServicoCatalogo | null>(null);
@@ -48,13 +57,14 @@ export default function Servicos() {
   const { ensureSensitiveAccess } = useSensitiveAccess();
   const { error: showError } = useNotification();
 
-  const { servicos, loading, error, criar, atualizar, deletar, recarregar } = useServicos({
+  const { servicos, total: totalServicos, loading, error, criar, atualizar, deletar, recarregar } = useServicos({
     busca: busca || undefined,
     apenasAtivos: true,
+    page: paginaServicos,
   });
-  const totalPaginasServicos = totalPages(servicos.length);
+  const totalPaginasServicos = totalPages(totalServicos);
   const paginaServicosExibida = Math.min(paginaServicos, totalPaginasServicos);
-  const servicosExibidos = paginateItems(servicos, paginaServicosExibida);
+  const servicosExibidos = servicos;
 
   useEffect(() => {
     setPaginaServicos(1);
@@ -82,6 +92,7 @@ export default function Servicos() {
     if (!liberado) return;
 
     setEditando(null);
+    setModeloSelecionado("");
     setPecasSugeridas([]);
     form.reset({ nome: "", descricao: "", preco_padrao: 0 });
     setDialogOpen(true);
@@ -96,6 +107,7 @@ export default function Servicos() {
     if (!liberado) return;
 
     setEditando(servico);
+    setModeloSelecionado("");
     setPecasSugeridas(servico.pecas_sugeridas ?? []);
     form.reset({
       nome: servico.nome,
@@ -103,6 +115,15 @@ export default function Servicos() {
       preco_padrao: Number(servico.preco_padrao || 0),
     });
     setDialogOpen(true);
+  }
+
+  function selecionarModelo(modeloId: string) {
+    const modelo = MODELOS_SERVICO.find((item) => item.id === modeloId);
+    if (!modelo) return;
+
+    setModeloSelecionado(modeloId);
+    setPecasSugeridas([]);
+    form.reset({ nome: modelo.nome, descricao: modelo.descricao, preco_padrao: 0 });
   }
 
   async function onSubmit(data: ServicoCatalogoFormData) {
@@ -279,6 +300,26 @@ export default function Servicos() {
             <DialogTitle>{editando ? "Editar Serviço" : "Novo Serviço"}</DialogTitle>
           </DialogHeader>
           <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+            {!editando && (
+              <div className="space-y-2">
+                <Label>Modelo inicial</Label>
+                <Select value={modeloSelecionado} onValueChange={selecionarModelo}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Começar em branco ou escolher um modelo" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {MODELOS_SERVICO.map((modelo) => (
+                      <SelectItem key={modelo.id} value={modelo.id}>
+                        {modelo.nome}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <p className="text-xs text-muted-foreground">
+                  O modelo cria um cadastro próprio para esta empresa. Preço e peças do estoque podem ser definidos e editados aqui.
+                </p>
+              </div>
+            )}
             <div className="space-y-2">
               <Label>Nome do serviço *</Label>
               <Input {...form.register("nome")} placeholder="Ex.: Limpeza de cabeça térmica" />

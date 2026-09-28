@@ -55,6 +55,7 @@ import type {
   PostgresBackupResult,
   PostgresRestoreResult,
   PostgresBackupToolsStatus,
+  PaginatedResult,
   Produto,
   ResultadoVerificacaoCredenciais,
   ServicoCatalogo,
@@ -106,6 +107,10 @@ export const db = {
   /** Lista equipamentos com filtro opcional de busca e status → Rust: listar_equipamentos */
   async listarEquipamentos(busca?: string, status?: string): Promise<Equipamento[]> {
     return invoke<Equipamento[]>("listar_equipamentos", { busca, status });
+  },
+
+  async listarEquipamentosPaginados(busca: string | undefined, status: string | undefined, page: number): Promise<PaginatedResult<Equipamento>> {
+    return invoke<PaginatedResult<Equipamento>>("listar_equipamentos_paginados", { busca: busca ?? null, status: status ?? null, page });
   },
 
   /** Busca equipamento por ID → Rust: buscar_equipamento */
@@ -162,6 +167,10 @@ export const db = {
   /** Lista clientes com busca por nome/CPF/CNPJ/telefone/email → Rust: listar_clientes */
   async listarClientes(busca?: string): Promise<Cliente[]> {
     return invoke<Cliente[]>("listar_clientes", { busca: busca ?? null });
+  },
+
+  async listarClientesPaginados(busca: string | undefined, page: number): Promise<PaginatedResult<Cliente>> {
+    return invoke<PaginatedResult<Cliente>>("listar_clientes_paginados", { busca: busca ?? null, page });
   },
 
   /** Busca cliente por ID → Rust: buscar_cliente */
@@ -309,6 +318,20 @@ export const db = {
     });
   },
 
+  async listarProdutosPaginados(
+    busca: string | undefined,
+    categoria: string | undefined,
+    apenasEstoqueBaixo: boolean,
+    page: number,
+  ): Promise<PaginatedResult<Produto>> {
+    return invoke<PaginatedResult<Produto>>("listar_produtos_paginados", {
+      page,
+      busca: busca ?? null,
+      categoria: categoria ?? null,
+      apenasEstoqueBaixo,
+    });
+  },
+
   /** Cria novo produto → Rust: criar_produto */
   async criarProduto(produto: Omit<Produto, "id">): Promise<Produto> {
     return invoke<Produto>("criar_produto", { input: produto });
@@ -353,6 +376,14 @@ export const db = {
     return invoke<ServicoCatalogo[]>("listar_servicos", {
       busca: busca ?? null,
       apenasAtivos,
+    });
+  },
+
+  async listarServicosPaginados(busca: string | undefined, apenasAtivos: boolean, page: number): Promise<PaginatedResult<ServicoCatalogo>> {
+    return invoke<PaginatedResult<ServicoCatalogo>>("listar_servicos_paginados", {
+      busca: busca ?? null,
+      apenasAtivos,
+      page,
     });
   },
 

@@ -8,13 +8,13 @@
 //! ║  - deletar_cliente: DELETE por ID                            ║
 //! ╚══════════════════════════════════════════════════════════════╝
 
-use crate::commands::types::{ClienteInput, ClienteRow, CLIENTE_SELECT};
+use crate::commands::types::{ClienteInput, ClienteRow, PaginatedResult, CLIENTE_SELECT};
 use crate::commands::auth::{
     record_security_event, require_active_session_company_id, require_permission,
     PERMISSION_DELETE_RECORDS,
 };
 use crate::db::get_pool;
-use sqlx::Row;
+use sqlx::{PgPool, Postgres, QueryBuilder, Row};
 use tracing::{debug, error, info, instrument};
 
 use super::equipamentos::PAGE_SIZE;
@@ -108,6 +108,70 @@ fn duplicate_client_document_message(error: &sqlx::Error) -> Option<String> {
     None
 }
 
+fn add_client_filters(query: &mut QueryBuilder<Postgres>, empresa_id: i32, busca: Option<&str>) {
+    query.push(" WHERE ativo = true AND empresa_id = ").push_bind(empresa_id);
+
+    if let Some(busca) = busca.map(str::trim).filter(|value| !value.is_empty()) {
+        let pattern = format!("%{}%", busca);
+        query.push(" AND (");
+        for (index, column) in [
+            "COALESCE(nome, '')",
+            "COALESCE(razao_social, '')",
+            "COALESCE(nome_fantasia, '')",
+            "COALESCE(documento, '')",
+            "COALESCE(cpf_cnpj, '')",
+            "COALESCE(telefone, '')",
+            "COALESCE(email, '')",
+        ]
+        .iter()
+        .enumerate()
+        {
+            if index > 0 {
+                query.push(" OR ");
+            }
+            query.push(*column).push(" ILIKE ").push_bind(pattern.clone());
+        }
+        query.push(")");
+    }
+}
+
+async fn query_client_page(
+    pool: &PgPool,
+    empresa_id: i32,
+    page: Option<i32>,
+    busca: Option<&str>,
+    page_size: i32,
+) -> Result<PaginatedResult<ClienteRow>, String> {
+    let mut count_query = QueryBuilder::<Postgres>::new("SELECT COUNT(*) FROM clientes");
+    add_client_filters(&mut count_query, empresa_id, busca);
+    let total = count_query
+        .build_query_scalar::<i64>()
+        .fetch_one(pool)
+        .await
+        .map_err(|error| format!("Erro ao contar clientes: {}", error))?;
+
+    let safe_page = page.unwrap_or(0).max(0) as i64;
+    let mut items_query = QueryBuilder::<Postgres>::new(CLIENTE_SELECT);
+    add_client_filters(&mut items_query, empresa_id, busca);
+    items_query
+        .push(" ORDER BY id DESC LIMIT ")
+        .push_bind(page_size)
+        .push(" OFFSET ")
+        .push_bind(safe_page * i64::from(page_size));
+
+    let items = items_query
+        .build_query_as::<ClienteRow>()
+        .fetch_all(pool)
+        .await
+        .map_err(|error| format!("Erro ao listar clientes: {}", error))?;
+
+    Ok(PaginatedResult {
+        items,
+        total,
+        below_minimum: None,
+    })
+}
+
 /// Listar clientes com paginação.
 #[tauri::command]
 #[instrument(skip_all, fields(page = page))]
@@ -163,6 +227,25 @@ pub async fn listar_clientes(page: Option<i32>, busca: Option<String>) -> Result
 
     info!("Clientes listados: {} itens (página {})", rows.len(), page.unwrap_or(0));
     Ok(rows)
+}
+
+/// Lista uma página de clientes e informa o total após aplicar a busca.
+#[tauri::command]
+#[instrument(skip_all, fields(page = page))]
+pub async fn listar_clientes_paginados(
+    page: Option<i32>,
+    busca: Option<String>,
+) -> Result<PaginatedResult<ClienteRow>, String> {
+    let pool = get_pool().await.map_err(|error| error.to_string())?;
+    let empresa_id = require_active_session_company_id(&pool).await?;
+    query_client_page(
+        &pool,
+        empresa_id,
+        page,
+        busca.as_deref(),
+        super::equipamentos::UI_PAGE_SIZE,
+    )
+    .await
 }
 
 /// Buscar cliente por ID.

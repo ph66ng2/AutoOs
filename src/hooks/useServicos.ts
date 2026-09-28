@@ -5,10 +5,13 @@ import type { ServicoCatalogo } from "@/types";
 interface UseServicosParams {
   busca?: string;
   apenasAtivos?: boolean;
+  /** Página apresentada pela interface, iniciando em 1. */
+  page?: number;
 }
 
 export function useServicos(params?: UseServicosParams) {
   const [servicos, setServicos] = useState<ServicoCatalogo[]>([]);
+  const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -16,15 +19,20 @@ export function useServicos(params?: UseServicosParams) {
     setLoading(true);
     setError(null);
     try {
-      const data = await db.listarServicos(params?.busca, params?.apenasAtivos ?? true);
-      setServicos(data);
+      const data = await db.listarServicosPaginados(
+        params?.busca,
+        params?.apenasAtivos ?? true,
+        Math.max((params?.page ?? 1) - 1, 0),
+      );
+      setServicos(data.items);
+      setTotal(data.total);
     } catch (err: any) {
       setError(err?.toString() || "Erro ao carregar serviços");
       console.error("Erro ao carregar serviços:", err);
     } finally {
       setLoading(false);
     }
-  }, [params?.busca, params?.apenasAtivos]);
+  }, [params?.busca, params?.apenasAtivos, params?.page]);
 
   useEffect(() => {
     void carregar();
@@ -62,6 +70,7 @@ export function useServicos(params?: UseServicosParams) {
 
   return {
     servicos,
+    total,
     loading,
     error,
     criar,
