@@ -57,6 +57,8 @@ import {
   type Verificacao,
 } from "@/types";
 import { db } from "@/lib/db";
+import { PecasDoServico } from "@/components/equipamentos/PecasDoServico";
+import { pecasParaOrcamento, validarPecas } from "@/lib/orcamento-estoque";
 import { useNotification } from "@/hooks/useNotification";
 import { PhotoUploadDialog } from "@/components/equipamentos/PhotoUploadDialog";
 import { imagemPersistidaParaDraft, type EquipamentoImagemDraft } from "@/lib/equipamento-imagem-utils";
@@ -142,7 +144,7 @@ export function VerificacaoTecnica({
   function adicionarServico() {
     setServicos([
       ...servicos,
-      { id: Date.now().toString(), descricao: "", valor: 0, catalogo_id: undefined },
+      { id: crypto.randomUUID(), descricao: "", valor: 0, catalogo_id: undefined },
     ]);
   }
   /** Remove serviço da lista pelo ID */
@@ -163,6 +165,7 @@ export function VerificacaoTecnica({
       catalogo_id: servicoCatalogo.id,
       descricao: servicoCatalogo.nome,
       valor: Number(servicoCatalogo.preco_padrao || 0),
+      pecas: servicoCatalogo.pecas_sugeridas ?? [],
     });
     setLinhaSugestaoAberta(null);
   }
@@ -177,7 +180,7 @@ export function VerificacaoTecnica({
       (servico) =>
         !servico.descricao.trim() || Number(servico.valor) < 0 || Number.isNaN(Number(servico.valor)),
     );
-    if (servicosInvalidos) {
+    if (servicosInvalidos || servicos.some((s) => !validarPecas(s.pecas ?? []))) {
       warning("Verificação", "Cada serviço precisa ter descrição e valor igual ou maior que zero (0,00 para garantia).");
       return;
     }
@@ -190,6 +193,8 @@ export function VerificacaoTecnica({
         valor: Number(servico.valor),
       }));
     const custoTotalServicos = servicosNormalizados.reduce((acum, servico) => acum + servico.valor, 0);
+    const pecasOrcamento = pecasParaOrcamento(servicosNormalizados);
+    const custoTotalPecas = pecasOrcamento.reduce((acum, peca) => acum + peca.valorTotal, 0);
 
     const dados: DadosVerificacao = {
       equipamento_id: equipamento.id!,
@@ -198,10 +203,10 @@ export function VerificacaoTecnica({
       diagnostico,
       itens_verificados: JSON.stringify([]),
       servicos_necessarios: JSON.stringify(servicosNormalizados),
-      pecas_necessarias: JSON.stringify([]),
+      pecas_necessarias: JSON.stringify(pecasOrcamento),
       custo_estimado_mao_obra: custoTotalServicos,
-      custo_estimado_pecas: 0,
-      custo_total: custoTotalServicos,
+      custo_estimado_pecas: custoTotalPecas,
+      custo_total: custoTotalServicos + custoTotalPecas,
       tempo_estimado: 0,
       concluida: true,
       observacoes: observacoesVerif,
@@ -295,7 +300,8 @@ export function VerificacaoTecnica({
                 </p>
                 <div className="space-y-3">
                   {servicos.map((s) => (
-                    <div key={s.id} className="flex gap-3 items-start">
+                    <div key={s.id} className="rounded-md border p-2">
+                    <div className="flex gap-3 items-start">
                       <div className="relative flex-1">
                         <Search className="pointer-events-none absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
                         <Input
@@ -356,6 +362,8 @@ export function VerificacaoTecnica({
                       >
                         <Trash2 className="h-4 w-4 text-red-500" />
                       </Button>
+                    </div>
+                    <PecasDoServico pecas={s.pecas ?? []} onChange={(pecas) => atualizarServico(s.id, { pecas })} />
                     </div>
                   ))}
                   {servicos.length === 0 && (

@@ -19,6 +19,7 @@ use crate::commands::auth::{
     SecurityProfileSummary, PERMISSION_DELETE_RECORDS, PERMISSION_FINANCIAL_ACTIONS,
 };
 use crate::db::get_pool;
+use crate::commands::orcamento_estoque::{aplicar_decisoes, normalizar_servicos, parse_servicos};
 use chrono::NaiveDateTime;
 use sqlx::{PgPool, Row};
 use std::collections::HashSet;
@@ -471,7 +472,7 @@ pub async fn listar_historico_equipamento(
                 to_char(created_at, 'YYYY-MM-DD\"T\"HH24:MI:SS.US\"Z\"')
          FROM security_audit_log
          WHERE success = true
-           AND event_type IN ('EQUIPMENT_STATUS_UPDATED', 'EQUIPMENT_STATUS_CORRECTED', 'BUDGET_APPROVED')
+           AND event_type IN ('EQUIPMENT_STATUS_UPDATED', 'EQUIPMENT_STATUS_CORRECTED', 'BUDGET_APPROVED', 'BUDGET_REJECTED')
            AND (empresa_id = $1 OR empresa_id IS NULL)
            AND split_part(split_part(COALESCE(details, ''), 'equipamento_id=', 2), ';', 1) = $2
          ORDER BY created_at ASC, id ASC",
@@ -927,6 +928,7 @@ pub async fn aprovar_orcamento(input: AprovarOrcamentoInput) -> Result<Equipamen
     let actor = require_permission(PERMISSION_FINANCIAL_ACTIONS)?;
     let pool = get_pool().await.map_err(|error| error.to_string())?;
     let empresa_id = require_active_session_company_id(&pool).await?;
+    if input.empresa_id != empresa_id { return Err("Empresa diferente do perfil autenticado.".to_string()); }
     let mut tx = pool.begin().await.map_err(|error| {
         error!("Erro ao iniciar transação de aprovação do equipamento {}: {}", input.equipamento_id, error);
         error.to_string()
@@ -968,8 +970,8 @@ pub async fn aprovar_orcamento(input: AprovarOrcamentoInput) -> Result<Equipamen
         return Err("A verificação técnica pertence a outra empresa e não pode ser usada nesta aprovação.".to_string());
     }
 
-    let verification: Option<(i32, Option<i32>)> = sqlx::query_as(
-        "SELECT id, empresa_id
+    let verification: Option<(i32, Option<i32>, Option<String>, Option<String>, Option<f64>)> = sqlx::query_as(
+        "SELECT id, empresa_id, servicos_necessarios, pecas_necessarias, custo_total::FLOAT8
          FROM verificacoes
          WHERE equipamento_id = $1 AND (empresa_id = $2 OR empresa_id IS NULL)
          ORDER BY (empresa_id = $2) DESC, id DESC
@@ -982,14 +984,67 @@ pub async fn aprovar_orcamento(input: AprovarOrcamentoInput) -> Result<Equipamen
     .await
     .map_err(|error| format!("Erro ao validar verificação para aprovação: {}", error))?;
 
-    let Some((verification_id, verification_empresa_id)) = verification else {
+    let Some((verification_id, verification_empresa_id, servicos_json, pecas_json, total_original)) = verification else {
         return Err("Não é possível aprovar sem uma verificação técnica.".to_string());
     };
+    let servicos = parse_servicos(servicos_json.as_deref().unwrap_or("[]"))?;
+    let itens = normalizar_servicos(servicos_json.as_deref().unwrap_or("[]"))?;
+    let vinculadas: HashSet<String> = itens.iter().flat_map(|s| {
+        let id = s.get("id").and_then(|v| v.as_str()).unwrap_or("");
+        s.get("pecas").and_then(|v| v.as_array()).into_iter().flatten().map(move |p| {
+            format!("{}:{}", id, p.get("produto_id").and_then(|v| v.as_i64()).unwrap_or(0))
+        })
+    }).collect();
+    let pecas_antigas: Vec<serde_json::Value> = serde_json::from_str(pecas_json.as_deref().unwrap_or("[]"))
+        .map_err(|_| "Peças do orçamento inválidas.".to_string())?;
+    if !input.servicos_aprovados.is_empty() && pecas_antigas.iter().any(|p| !p.get("id").and_then(|v| v.as_str()).is_some_and(|id| vinculadas.contains(id))) {
+        return Err("Há peças antigas sem serviço vinculado. Use Alterar Orçamento para vinculá-las antes da aprovação.".to_string());
+    }
+    aplicar_decisoes(&mut tx, empresa_id, verification_id, &servicos, &input.servicos_aprovados).await?;
+    let aprovado = !input.servicos_aprovados.is_empty();
+    let novo_status = if aprovado { "APROVADO" } else { "REPROVADO" };
+    let todos = itens;
+    let selecionados: HashSet<&str> = input.servicos_aprovados.iter().map(String::as_str).collect();
+    let mut aceitos: Vec<serde_json::Value> = todos.into_iter().filter(|servico| {
+        servico.get("id").and_then(|id| id.as_str()).is_some_and(|id| selecionados.contains(id))
+    }).collect();
+    let mut pecas_aceitas = Vec::new();
+    let mut total = 0.0_f64;
+    for servico in &aceitos {
+        total += servico.get("valor").and_then(|v| v.as_f64()).unwrap_or(0.0);
+        if let Some(pecas) = servico.get("pecas").and_then(|v| v.as_array()) {
+            for peca in pecas {
+                let quantidade = peca.get("quantidade").and_then(|v| v.as_i64()).unwrap_or(0);
+                let unitario = peca.get("valor_unitario").and_then(|v| v.as_f64()).unwrap_or(0.0);
+                total += quantidade as f64 * unitario;
+                pecas_aceitas.push(serde_json::json!({
+                    "id": format!("{}:{}", servico.get("id").and_then(|v| v.as_str()).unwrap_or(""), peca.get("produto_id").and_then(|v| v.as_i64()).unwrap_or(0)),
+                    "nome": peca.get("nome").and_then(|v| v.as_str()).unwrap_or("Peça"),
+                    "quantidade": quantidade,
+                    "valorUnitario": unitario,
+                    "valorTotal": quantidade as f64 * unitario,
+                }));
+            }
+        }
+    }
+    if aprovado && selecionados.len() == servicos.len() {
+        total = total_original.unwrap_or(total);
+    }
+    if !aprovado {
+        aceitos = normalizar_servicos(servicos_json.as_deref().unwrap_or("[]"))?;
+        pecas_aceitas = pecas_antigas;
+        total = total_original.unwrap_or(0.0);
+    }
+    if !total.is_finite() || total < 0.0 { return Err("Total aprovado inválido.".to_string()); }
 
     let payment_updated_rows = sqlx::query(
         "UPDATE verificacoes
          SET forma_pagamento_codigo = $1, forma_pagamento_detalhe = $2,
-             empresa_id = COALESCE(empresa_id, $5)
+             empresa_id = COALESCE(empresa_id, $5),
+             servicos_orcamento_original = COALESCE(servicos_orcamento_original, servicos_necessarios::jsonb),
+             pecas_orcamento_original = COALESCE(pecas_orcamento_original, pecas_necessarias::jsonb),
+             valor_orcamento_original = COALESCE(valor_orcamento_original, custo_total),
+             servicos_necessarios = $6, pecas_necessarias = $7, custo_total = $8
          WHERE id = $3 AND equipamento_id = $4
            AND (empresa_id = $5 OR empresa_id IS NULL)",
     )
@@ -998,6 +1053,9 @@ pub async fn aprovar_orcamento(input: AprovarOrcamentoInput) -> Result<Equipamen
     .bind(verification_id)
     .bind(input.equipamento_id)
     .bind(empresa_id)
+    .bind(serde_json::to_string(&aceitos).map_err(|e| e.to_string())?)
+    .bind(serde_json::to_string(&pecas_aceitas).map_err(|e| e.to_string())?)
+    .bind(total)
     .execute(&mut *tx)
     .await
     .map_err(|error| format!("Erro ao salvar pagamento do orçamento: {}", error))?
@@ -1009,12 +1067,17 @@ pub async fn aprovar_orcamento(input: AprovarOrcamentoInput) -> Result<Equipamen
 
     let updated_rows = sqlx::query(
         "UPDATE equipamentos
-         SET status = 'APROVADO', data_aprovacao = NOW(), atualizado_em = NOW()
+         SET status = $4, valor_orcamento = $5,
+             data_aprovacao = CASE WHEN $4 = 'APROVADO' THEN NOW()::TEXT ELSE data_aprovacao END,
+             data_reprovacao = CASE WHEN $4 = 'REPROVADO' THEN NOW()::TEXT ELSE data_reprovacao END,
+             atualizado_em = NOW()
          WHERE id = $1 AND empresa_id = $2 AND atualizado_em = $3::TIMESTAMPTZ",
     )
     .bind(input.equipamento_id)
     .bind(empresa_id)
     .bind(&concurrency_token)
+    .bind(novo_status)
+    .bind(total)
     .execute(&mut *tx)
     .await
     .map_err(|error| format!("Erro ao aprovar orçamento: {}", error))?
@@ -1030,14 +1093,17 @@ pub async fn aprovar_orcamento(input: AprovarOrcamentoInput) -> Result<Equipamen
     })?;
 
     record_security_event(
-        "BUDGET_APPROVED",
+        if aprovado { "BUDGET_APPROVED" } else { "BUDGET_REJECTED" },
         Some(&actor),
         format!(
-            "empresa_id={}; equipamento_id={}; verificacao_id={}; pagamento_codigo={}; status_anterior=AGUARDANDO_APROVACAO; status=APROVADO; motivo=Orçamento aprovado pelo cliente.; verificacao_legada_regularizada={}",
+            "empresa_id={}; equipamento_id={}; verificacao_id={}; pagamento_codigo={}; status_anterior=AGUARDANDO_APROVACAO; status={}; motivo={}; servicos_aprovados={}; verificacao_legada_regularizada={}",
             empresa_id,
             input.equipamento_id,
             verification_id,
             payment_code.as_deref().unwrap_or(""),
+            novo_status,
+            if aprovado { "Orçamento aprovado pelo cliente." } else { "Orçamento reprovado pelo cliente." },
+            selecionados.len(),
             verification_empresa_id.is_none(),
         ),
         true,

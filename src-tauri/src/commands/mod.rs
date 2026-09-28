@@ -22,6 +22,7 @@ pub mod clientes;
 pub mod contatos;
 pub mod cnpj;
 pub mod produtos;
+pub mod orcamento_estoque;
 pub mod servicos;
 pub mod verificacoes;
 pub mod comunicacoes;

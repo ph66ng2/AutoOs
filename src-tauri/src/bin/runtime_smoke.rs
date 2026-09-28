@@ -165,7 +165,7 @@ async fn main() -> Result<()> {
                 codigo: produto_codigo.clone(),
                 nome: format!("Produto Smoke {}", suffix),
                 descricao: Some("runtime_smoke:create".to_string()),
-                categoria: "TONER".to_string(),
+                categoria: "RIBBON".to_string(),
                 quantidade_estoque: 10,
                 quantidade_minima: Some(2),
                 quantidade_maxima: Some(25),

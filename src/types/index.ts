@@ -261,6 +261,7 @@ export interface ServicoCatalogo {
   nome: string;
   descricao?: string;
   preco_padrao: number;
+  pecas_sugeridas?: PecaVinculada[];
   ativo?: boolean;
   criado_em?: string;
   atualizado_em?: string;
@@ -302,6 +303,14 @@ export interface ServicoNecessario {
   catalogo_id?: number;
   descricao: string;
   valor: number;
+  pecas?: PecaVinculada[];
+}
+
+export interface PecaVinculada {
+  produto_id: number;
+  nome: string;
+  quantidade: number;
+  valor_unitario: number;
 }
 
 /** Peça necessária para reparo (ex: "Cabeça de impressão", qtd: 1, R$ 350) */
@@ -322,6 +331,8 @@ export interface PecaNecessaria {
  * Usado por: VerificacaoTecnica.tsx, useStatusEquipamento, WhatsAppService, EmailService
  */
 export interface Verificacao {
+  servicos_orcamento_original?: ServicoNecessario[];
+  decisoes_servicos?: Array<{ servico_id: string; decisao: "APROVADO" | "REPROVADO" }>;
   id?: number;
   equipamento_id: number;
   empresa_id?: number;
@@ -815,6 +826,17 @@ export interface AjusteOrcamentoInput {
   forma_pagamento_codigo?: FormaPagamentoCodigo;
   forma_pagamento_detalhe?: string;
   divergence?: boolean;
+  cliente_aprovou_alteracao?: boolean;
+  expected_updated_em?: string;
+}
+
+export interface ConsumoOrcamento {
+  verificacao_id: number;
+  servico_id: string;
+  produto_id: number;
+  nome: string;
+  quantidade_aprovada: number;
+  quantidade_baixada: number;
 }
 
 /** Payload da operação atômica de aprovação de orçamento. */
@@ -823,4 +845,5 @@ export interface AprovarOrcamentoInput {
   equipamento_id: number;
   expected_updated_em: string;
   pagamento: FormaPagamento;
+  servicos_aprovados: string[];
 }

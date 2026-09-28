@@ -160,7 +160,9 @@ describe("db — new functions (inactivity, db credentials, budget)", () => {
       expect(mockInvoke).toHaveBeenCalledWith("atualizar_servicos_verificacao", {
         equipamentoId: 5,
         servicosJson: JSON.stringify(servicos),
-        pecasJson: JSON.stringify(pecas),
+        clienteAprovouAlteracao: false,
+      expectedUpdatedEm: null,
+      pecasJson: JSON.stringify(pecas),
         custoTotal: 430,
         profileId: 3,
         divergence: false,
@@ -190,7 +192,9 @@ describe("db — new functions (inactivity, db credentials, budget)", () => {
       expect(mockInvoke).toHaveBeenCalledWith("atualizar_servicos_verificacao", {
         equipamentoId: 6,
         servicosJson: "[]",
-        pecasJson: "[]",
+        clienteAprovouAlteracao: false,
+      expectedUpdatedEm: null,
+      pecasJson: "[]",
         custoTotal: 0,
         profileId: 1,
         divergence: false,

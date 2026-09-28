@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { validarPecas } from "@/lib/orcamento-estoque";
+import { useEffect, useState } from "react";
 import { Plus, Search, Edit, Trash2, RefreshCw, Wrench } from "lucide-react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -29,16 +30,21 @@ import { useSensitiveAccess } from "@/hooks/useSensitiveAccess";
 import { useNotification } from "@/hooks/useNotification";
 import { ErrorAlert } from "@/components/ui/error-alert";
 import { FormValidationError } from "@/components/ui/form-validation-error";
-import { SENSITIVE_PERMISSIONS, type ServicoCatalogo } from "@/types";
+import { SENSITIVE_PERMISSIONS, type ServicoCatalogo, type PecaVinculada } from "@/types";
+import { PecasDoServico } from "@/components/equipamentos/PecasDoServico";
 import { ActionPriorityRow } from "@/components/ui/action-priority-row";
+import { PaginationControls } from "@/components/ui/pagination-controls";
+import { paginateItems, totalPages } from "@/lib/pagination";
 
 export default function Servicos() {
   const [busca, setBusca] = useState("");
+  const [paginaServicos, setPaginaServicos] = useState(1);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [editando, setEditando] = useState<ServicoCatalogo | null>(null);
   const [deletando, setDeletando] = useState<ServicoCatalogo | null>(null);
   const [salvando, setSalvando] = useState(false);
+  const [pecasSugeridas, setPecasSugeridas] = useState<PecaVinculada[]>([]);
   const { ensureSensitiveAccess } = useSensitiveAccess();
   const { error: showError } = useNotification();
 
@@ -46,6 +52,17 @@ export default function Servicos() {
     busca: busca || undefined,
     apenasAtivos: true,
   });
+  const totalPaginasServicos = totalPages(servicos.length);
+  const paginaServicosExibida = Math.min(paginaServicos, totalPaginasServicos);
+  const servicosExibidos = paginateItems(servicos, paginaServicosExibida);
+
+  useEffect(() => {
+    setPaginaServicos(1);
+  }, [busca]);
+
+  useEffect(() => {
+    setPaginaServicos((pagina) => Math.min(pagina, totalPaginasServicos));
+  }, [totalPaginasServicos]);
 
   const form = useForm<ServicoCatalogoFormData>({
     resolver: zodResolver(servicoCatalogoSchema),
@@ -65,6 +82,7 @@ export default function Servicos() {
     if (!liberado) return;
 
     setEditando(null);
+    setPecasSugeridas([]);
     form.reset({ nome: "", descricao: "", preco_padrao: 0 });
     setDialogOpen(true);
   }
@@ -78,6 +96,7 @@ export default function Servicos() {
     if (!liberado) return;
 
     setEditando(servico);
+    setPecasSugeridas(servico.pecas_sugeridas ?? []);
     form.reset({
       nome: servico.nome,
       descricao: servico.descricao || "",
@@ -89,10 +108,12 @@ export default function Servicos() {
   async function onSubmit(data: ServicoCatalogoFormData) {
     setSalvando(true);
     try {
+      if (!validarPecas(pecasSugeridas)) throw new Error("Informe quantidade inteira positiva e preço válido para as peças.");
       const payload = {
         nome: data.nome,
         descricao: data.descricao || undefined,
         preco_padrao: Number(data.preco_padrao),
+        pecas_sugeridas: pecasSugeridas,
         atualizado_em: editando?.atualizado_em,
       };
 
@@ -193,8 +214,15 @@ export default function Servicos() {
               </p>
             </div>
           ) : (
-            <div className="rounded-md border">
-              <Table>
+            <>
+              <PaginationControls
+                page={paginaServicosExibida}
+                totalPages={totalPaginasServicos}
+                onPageChange={setPaginaServicos}
+                label="Paginação de serviços"
+              />
+              <div className="rounded-md border">
+                <Table>
                 <TableHeader>
                   <TableRow>
                     <TableHead>Serviço</TableHead>
@@ -204,7 +232,7 @@ export default function Servicos() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {servicos.map((servico) => (
+                  {servicosExibidos.map((servico) => (
                     <TableRow key={servico.id}>
                       <TableCell className="font-medium">{servico.nome}</TableCell>
                       <TableCell className="text-muted-foreground">
@@ -238,8 +266,9 @@ export default function Servicos() {
                     </TableRow>
                   ))}
                 </TableBody>
-              </Table>
-            </div>
+                </Table>
+              </div>
+            </>
           )}
         </CardContent>
       </Card>
@@ -265,6 +294,7 @@ export default function Servicos() {
               <Label>Descrição</Label>
               <Textarea {...form.register("descricao")} rows={3} placeholder="Detalhes opcionais do serviço..." />
             </div>
+            <PecasDoServico pecas={pecasSugeridas} onChange={setPecasSugeridas} />
 
             <DialogFooter>
               <DialogClose asChild>

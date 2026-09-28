@@ -65,6 +65,7 @@ import {
   Dialog,
   DialogContent,
   DialogHeader,
+  DialogDescription,
   DialogTitle,
   DialogFooter,
   DialogClose,
@@ -111,6 +112,8 @@ import {
   type ServicoNecessario,
   type ServicoCatalogo,
   type PecaNecessaria,
+  type Produto,
+  type ConsumoOrcamento,
   type Verificacao,
   type Comunicacao,
 } from "@/types";
@@ -129,6 +132,7 @@ import { PhotoUploadDialog } from "@/components/equipamentos/PhotoUploadDialog";
 import { DocumentosEquipamento } from "@/components/equipamentos/DocumentosEquipamento";
 import { PdfPreviewDialog } from "@/components/equipamentos/PdfPreviewDialog";
 import { AjusteOrcamentoServicos } from "@/components/equipamentos/AjusteOrcamentoServicos";
+import { carregarProdutosOrcamento, normalizarServicosOrcamento, pecasParaOrcamento, orcamentoJaAprovado, resumirPecas, validarPecas } from "@/lib/orcamento-estoque";
 import { ActionPriorityRow, type PriorityAction } from "@/components/ui/action-priority-row";
 import {
   arquivoParaImagemEquipamento,
@@ -164,14 +168,17 @@ import { useNotification } from "@/hooks/useNotification";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { InputDialog } from "@/components/ui/input-dialog";
 import { ErrorAlert } from "@/components/ui/error-alert";
+import { PaginationControls } from "@/components/ui/pagination-controls";
 import { PagamentoOrcamentoDialog } from "@/components/equipamentos/PagamentoOrcamentoDialog";
 import { FormaPagamentoFields } from "@/components/equipamentos/FormaPagamentoFields";
 import { resolveRecipient, type ResolvedRecipient } from "@/lib/recipient-resolver";
 import { saveRecipientAddress } from "@/lib/recipient-persistence";
+import { paginateItems, totalPages } from "@/lib/pagination";
 
 export default function Equipamentos() {
   const [busca, setBusca] = useState("");
   const [statusFiltro, setStatusFiltro] = useState("TODOS");
+  const [paginaEquipamentos, setPaginaEquipamentos] = useState(1);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [detalhesDialogOpen, setDetalhesDialogOpen] = useState(false);
@@ -181,6 +188,16 @@ export default function Equipamentos() {
   const [pagamentoAprovacaoLoading, setPagamentoAprovacaoLoading] = useState(false);
   const [pagamentoAprovacaoError, setPagamentoAprovacaoError] = useState<string | null>(null);
   const [pagamentoAprovacaoInicial, setPagamentoAprovacaoInicial] = useState<FormaPagamento | null>(null);
+  const [selecaoServicosOpen, setSelecaoServicosOpen] = useState(false);
+  const [servicosAprovacao, setServicosAprovacao] = useState<ServicoNecessario[]>([]);
+  const [produtosAprovacao, setProdutosAprovacao] = useState<Produto[]>([]);
+  const [todosServicosAprovados, setTodosServicosAprovados] = useState<boolean | null>(null);
+  const [idsAprovados, setIdsAprovados] = useState<string[]>([]);
+  const [totalOrcamentoAprovacao, setTotalOrcamentoAprovacao] = useState<number | undefined>();
+  const [clienteAprovouAlteracao, setClienteAprovouAlteracao] = useState(false);
+  const [consumosDetalhes, setConsumosDetalhes] = useState<ConsumoOrcamento[]>([]);
+  const [baixandoPendentes, setBaixandoPendentes] = useState(false);
+  const [consumosDialogOpen, setConsumosDialogOpen] = useState(false);
   const [ajusteOrcamentoSemMudancaStatus, setAjusteOrcamentoSemMudancaStatus] = useState(false);
   const [correcaoStatus, setCorrecaoStatus] = useState(false);
   const [motivoCorrecaoStatus, setMotivoCorrecaoStatus] = useState("");
@@ -224,6 +241,7 @@ export default function Equipamentos() {
   const [valorOrcamentoAnterior, setValorOrcamentoAnterior] = useState<number | null>(null);
   const [verificacaoAjusteOrcamento, setVerificacaoAjusteOrcamento] = useState<Verificacao | null>(null);
   const [servicosAjuste, setServicosAjuste] = useState<ServicoNecessario[]>([]);
+  const [pecasLegadasAjuste, setPecasLegadasAjuste] = useState<PecaNecessaria[]>([]);
   const [observacoesAjuste, setObservacoesAjuste] = useState("");
   const [formaPagamentoAjuste, setFormaPagamentoAjuste] = useState<FormaPagamentoCodigo | "">("");
   const [detalhePagamentoAjuste, setDetalhePagamentoAjuste] = useState("");
@@ -275,6 +293,17 @@ export default function Equipamentos() {
 
   const { equipamentos, loading, criar, atualizar, deletar, atualizarStatus, recarregar } =
     useEquipamentos({ busca: busca || undefined, status: statusFiltro });
+  const totalPaginasEquipamentos = totalPages(equipamentos.length);
+  const paginaEquipamentosExibida = Math.min(paginaEquipamentos, totalPaginasEquipamentos);
+  const equipamentosExibidos = paginateItems(equipamentos, paginaEquipamentosExibida);
+
+  useEffect(() => {
+    setPaginaEquipamentos(1);
+  }, [busca, statusFiltro]);
+
+  useEffect(() => {
+    setPaginaEquipamentos((pagina) => Math.min(pagina, totalPaginasEquipamentos));
+  }, [totalPaginasEquipamentos]);
 
   // Hook de automação de status
   const { loading: loadingAutomacao, finalizarVerificacao, marcarComoPronto } =
@@ -631,7 +660,7 @@ export default function Equipamentos() {
     setPrazoAprovacao(eq.prazo_aprovacao || "");
     setVerificacaoAjusteOrcamento(verificacao);
     setObservacoesAjuste(verificacao?.observacoes || "");
-    if (eq.status === "APROVADO" && verificacao?.forma_pagamento_codigo) {
+    if (orcamentoJaAprovado(eq.status) && verificacao?.forma_pagamento_codigo) {
       setFormaPagamentoAjuste(verificacao.forma_pagamento_codigo);
       setDetalhePagamentoAjuste(verificacao.forma_pagamento_detalhe || "");
     } else {
@@ -645,7 +674,12 @@ export default function Equipamentos() {
     } catch {
       servicosIniciais = [];
     }
-    setServicosAjuste(servicosIniciais);
+    setServicosAjuste(normalizarServicosOrcamento(servicosIniciais));
+    try {
+      const todas = JSON.parse(verificacao?.pecas_necessarias || "[]") as PecaNecessaria[];
+      const vinculadas = new Set(pecasParaOrcamento(normalizarServicosOrcamento(servicosIniciais)).map((p) => p.id));
+      setPecasLegadasAjuste(todas.filter((p) => !vinculadas.has(p.id)));
+    } catch { setPecasLegadasAjuste([]); }
 
     setCarregandoCatalogoAjuste(true);
     try {
@@ -687,6 +721,7 @@ export default function Equipamentos() {
     setValorOrcamentoAnterior(null);
     setVerificacaoAjusteOrcamento(null);
     setServicosAjuste([]);
+    setPecasLegadasAjuste([]);
     setObservacoesAjuste("");
     setFormaPagamentoAjuste("");
     setDetalhePagamentoAjuste("");
@@ -746,6 +781,7 @@ export default function Equipamentos() {
     setSelecionado(eq);
     setNovoStatus("");
     setAjusteOrcamentoSemMudancaStatus(true);
+    setClienteAprovouAlteracao(false);
     setCorrecaoStatus(false);
     setMotivoCorrecaoStatus("");
     setValorFinal(0);
@@ -753,6 +789,31 @@ export default function Equipamentos() {
     setAcordoExcecaoEntrega(false);
     await prepararAjusteOrcamentoPadrao(eq);
     setStatusDialogOpen(true);
+  }
+
+  async function abrirConsumosOrcamento(eq: Equipamento) {
+    const liberado = await ensureSensitiveAccess({
+      title: "Peças desta OS",
+      description: "Informe o PIN para consultar e confirmar baixas pendentes.",
+      permission: SENSITIVE_PERMISSIONS.STOCK_CONTROL,
+    });
+    if (!liberado || !eq.id) return;
+    try {
+      setSelecionado(eq);
+      setConsumosDetalhes(await db.listarConsumosOrcamento(eq.id));
+      setConsumosDialogOpen(true);
+    } catch (cause) { showError("Equipamentos", "Peças da OS", cause); }
+  }
+
+  async function confirmarBaixaPendente() {
+    if (!selecionado?.id || baixandoPendentes) return;
+    setBaixandoPendentes(true);
+    try {
+      const quantidade = await db.baixarPecasPendentes(selecionado.id);
+      setConsumosDetalhes(await db.listarConsumosOrcamento(selecionado.id));
+      success("Equipamentos", `${quantidade} peça(s) baixada(s).`, "Estoque da OS");
+    } catch (cause) { showError("Equipamentos", "Baixar peças pendentes", cause); }
+    finally { setBaixandoPendentes(false); }
   }
 
   /**
@@ -1017,13 +1078,8 @@ export default function Equipamentos() {
       const totalOriginal = servicosOriginal.reduce((sum, s) => sum + (Number(s.valor) || 0), 0);
       const totalNovo = servicosAjuste.reduce((sum, s) => sum + (Number(s.valor) || 0), 0);
 
-      let pecasTotal = 0;
-      try {
-        const pecas = JSON.parse(verificacaoAjusteOrcamento.pecas_necessarias || "[]") as PecaNecessaria[];
-        pecasTotal = pecas.reduce((sum, p) => sum + (p.valorTotal || 0), 0);
-      } catch {
-        pecasTotal = 0;
-      }
+      const pecasTotal = [...pecasParaOrcamento(servicosAjuste), ...pecasLegadasAjuste]
+        .reduce((sum, p) => sum + p.valorTotal, 0);
       const calculado = totalNovo + pecasTotal;
 
       if (Math.abs(calculado - valorOrcamentoRef.current) > 0.001) {
@@ -1083,11 +1139,17 @@ export default function Equipamentos() {
     setPagamentoAprovacaoLoading(true);
     try {
       const verificacao = await db.buscarVerificacao(eq.id!);
+      const servicos = normalizarServicosOrcamento(JSON.parse(verificacao?.servicos_necessarios || "[]") as ServicoNecessario[]);
+      setServicosAprovacao(servicos);
+      setTotalOrcamentoAprovacao(verificacao?.custo_total);
+      setProdutosAprovacao(await carregarProdutosOrcamento());
+      setTodosServicosAprovados(null);
+      setIdsAprovados([]);
       setPagamentoAprovacaoInicial(verificacao?.forma_pagamento_codigo ? {
         codigo: verificacao.forma_pagamento_codigo,
         detalhe: verificacao.forma_pagamento_detalhe || null,
       } : null);
-      setPagamentoDialogOpen(true);
+      setSelecaoServicosOpen(true);
     } catch (cause) {
       showError("Equipamentos", "Carregar pagamento", cause);
     } finally {
@@ -1115,10 +1177,11 @@ export default function Equipamentos() {
         equipamento_id: selecionado.id,
         expected_updated_em: selecionado.atualizado_em,
         pagamento,
+        servicos_aprovados: idsAprovados,
       });
       await recarregar();
       setPagamentoAprovacaoError(null);
-      success("Equipamentos", "Orçamento aprovado.", "Aprovação");
+      success("Equipamentos", idsAprovados.length ? "Serviços aprovados. As peças disponíveis foram baixadas; confira faltas em Peças da OS." : "Orçamento reprovado sem baixa de estoque.", "Decisão do cliente");
       return true;
     } catch (cause) {
       setPagamentoAprovacaoError(String(cause));
@@ -1130,7 +1193,7 @@ export default function Equipamentos() {
 
   async function confirmarMudancaStatus(divergencia = false) {
     if (!selecionado || (!novoStatus && !ajusteOrcamentoSemMudancaStatus)) return;
-    if (ajusteOrcamentoSemMudancaStatus && selecionado.status === "APROVADO") {
+    if (ajusteOrcamentoSemMudancaStatus && orcamentoJaAprovado(selecionado.status)) {
       if (!formaPagamentoAjuste) {
         warning("Equipamentos", "Escolha a forma de pagamento antes de salvar o orçamento aprovado.");
         return;
@@ -1139,6 +1202,10 @@ export default function Equipamentos() {
         warning("Equipamentos", "Descreva a forma de pagamento escolhida em Outro.");
         return;
       }
+    }
+    if (servicosAjuste.some((s) => !validarPecas(s.pecas ?? []))) {
+      warning("Equipamentos", "Informe quantidade inteira positiva e preço válido para as peças.");
+      return;
     }
     const totalAtual = valorOrcamentoRef.current;
     if (correcaoStatus && !motivoCorrecaoStatus.trim()) {
@@ -1176,15 +1243,13 @@ export default function Equipamentos() {
         ]);
       }
 
+      let versaoAtual = selecionado.atualizado_em;
       if ((novoStatus === "AGUARDANDO_APROVACAO" || ajusteOrcamentoSemMudancaStatus) && verificacaoAjusteOrcamento && !reabreOrcamentoSemAjuste(selecionado.status, novoStatus)) {
         const profileId = sensitiveStatus?.active_profile_id;
         if (!profileId) {
           throw new Error("Perfil autorizado não encontrado para ajustar o orçamento.");
         }
-        let pecas: PecaNecessaria[] = [];
-        try {
-          pecas = JSON.parse(verificacaoAjusteOrcamento.pecas_necessarias || "[]") as PecaNecessaria[];
-        } catch {}
+        const pecas = [...pecasParaOrcamento(servicosAjuste), ...pecasLegadasAjuste];
         await db.atualizarServicosVerificacao(
           {
             equipamento_id: selecionado.id!,
@@ -1193,16 +1258,19 @@ export default function Equipamentos() {
             pecas,
             custo_total: totalAtual,
             observacoes: observacoesAjuste,
-            ...(selecionado.status === "APROVADO" && formaPagamentoAjuste
+            ...(orcamentoJaAprovado(selecionado.status) && formaPagamentoAjuste
               ? {
                 forma_pagamento_codigo: formaPagamentoAjuste,
                 forma_pagamento_detalhe: formaPagamentoAjuste === "OUTRO" ? detalhePagamentoAjuste.trim() : undefined,
               }
               : {}),
             divergence: divergencia,
+            cliente_aprovou_alteracao: clienteAprovouAlteracao,
+            expected_updated_em: selecionado.atualizado_em,
           },
           profileId,
         );
+        if (!ajusteOrcamentoSemMudancaStatus) versaoAtual = (await db.buscarEquipamento(selecionado.id!)).atualizado_em;
       }
 
       if (ajusteOrcamentoSemMudancaStatus) {
@@ -1219,7 +1287,7 @@ export default function Equipamentos() {
         totalAtual || undefined,
         prazoAprovacao || undefined,
         valorFinal || undefined,
-        selecionado.atualizado_em,
+        versaoAtual,
         correcaoStatus ? motivoCorrecaoStatus.trim() : undefined,
       );
       if (!resultado.sucesso) {
@@ -1472,6 +1540,13 @@ export default function Equipamentos() {
       variant: "outline",
       onClick: () => void abrirAlterarOrcamento(eq),
     };
+    const acaoPecasOs: PriorityAction = {
+      id: "pecas_os",
+      label: "Peças da OS",
+      icon: <PackageCheck className="h-3.5 w-3.5" />,
+      variant: "outline",
+      onClick: () => void abrirConsumosOrcamento(eq),
+    };
     const acaoCorrigirStatus: PriorityAction = {
       id: "corrigir_status",
       label: "Corrigir Status",
@@ -1560,7 +1635,7 @@ export default function Equipamentos() {
           icon: <XCircle className="h-3.5 w-3.5" />,
           variant: "default",
           className: "bg-red-600 text-white hover:bg-red-700",
-          onClick: () => void acaoRapida(eq, "REPROVADO"),
+          onClick: () => void abrirDialogoAprovacao(eq),
           disabled: salvando,
         };
         if (eq.cliente_telefone) {
@@ -1694,6 +1769,9 @@ export default function Equipamentos() {
         acaoOrcamentoPdf,
         acaoAlterarOrcamento,
       );
+    }
+    if (["APROVADO", "EM_MANUTENCAO", "AGUARDANDO_PECA", "PRONTO"].includes(eq.status)) {
+      overflow.unshift(acaoPecasOs);
     }
     if (getStatusCorrecao(eq.status).length > 0) {
       const editarIndex = overflow.findIndex((acao) => acao.id === acaoEditar.id);
@@ -1878,8 +1956,15 @@ export default function Equipamentos() {
               <p className="text-sm">{busca || statusFiltro !== "TODOS" ? "Tente ajustar os filtros" : "Clique em 'Novo Equipamento' para cadastrar"}</p>
             </div>
           ) : (
-            <div className="rounded-md border">
-              <Table>
+            <>
+              <PaginationControls
+                page={paginaEquipamentosExibida}
+                totalPages={totalPaginasEquipamentos}
+                onPageChange={setPaginaEquipamentos}
+                label="Paginação de equipamentos"
+              />
+              <div className="rounded-md border">
+                <Table>
                 <TableHeader>
                   <TableRow>
                     <TableHead>Nº Série</TableHead>
@@ -1891,7 +1976,7 @@ export default function Equipamentos() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {equipamentos.map(eq => (
+                  {equipamentosExibidos.map(eq => (
                     <TableRow key={eq.id}>
                       <TableCell className="font-mono font-medium">{eq.serial_number}</TableCell>
                       <TableCell>
@@ -1930,8 +2015,9 @@ export default function Equipamentos() {
                     </TableRow>
                   ))}
                 </TableBody>
-              </Table>
-            </div>
+                </Table>
+              </div>
+            </>
           )}
         </CardContent>
       </Card>
@@ -2459,6 +2545,15 @@ export default function Equipamentos() {
                       ? "Edite o orçamento. O status atual do equipamento será mantido."
                       : "Revise o valor e o prazo para reenviar o orçamento atualizado ao cliente."}
                   </div>
+                  {verificacaoAjusteOrcamento?.servicos_orcamento_original && (
+                    <details className="rounded-md border p-3 text-sm">
+                      <summary className="cursor-pointer font-medium">Orçamento original e decisões do cliente</summary>
+                      <p className="mt-2 text-muted-foreground">Itens da primeira decisão. Serviços reprovados precisam de nova aprovação para consumir peças.</p>
+                      {normalizarServicosOrcamento(verificacaoAjusteOrcamento.servicos_orcamento_original).map((servico) => (
+                        <p key={servico.id} className="mt-1">{servico.descricao} · {verificacaoAjusteOrcamento.decisoes_servicos?.find((d) => d.servico_id === servico.id)?.decisao ?? "Sem decisão"}</p>
+                      ))}
+                    </details>
+                  )}
                   {verificacaoAjusteOrcamento?.adjusted_at && (
                     <div className="rounded-md border bg-blue-50 px-3 py-2 text-sm text-blue-900 flex items-center gap-2">
                       <History className="h-4 w-4 text-blue-700" />
@@ -2500,7 +2595,13 @@ export default function Equipamentos() {
                       rows={3}
                     />
                   </div>
-                  {ajusteOrcamentoSemMudancaStatus && selecionado.status === "APROVADO" ? (
+                  {ajusteOrcamentoSemMudancaStatus && orcamentoJaAprovado(selecionado.status) ? (
+                    <div className="space-y-3">
+                    <label className="flex items-start gap-2 rounded-md border p-3 text-sm">
+                      <input type="checkbox" checked={clienteAprovouAlteracao}
+                        onChange={(event) => setClienteAprovouAlteracao(event.target.checked)} />
+                      <span>O cliente aprovou as mudanças de serviços e peças deste ajuste. Só a quantidade adicional aprovada terá baixa.</span>
+                    </label>
                     <FormaPagamentoFields
                       codigo={formaPagamentoAjuste}
                       detalhe={detalhePagamentoAjuste}
@@ -2508,6 +2609,7 @@ export default function Equipamentos() {
                       onDetalheChange={setDetalhePagamentoAjuste}
                       required
                     />
+                    </div>
                   ) : (
                     <div className="rounded-md border bg-muted/30 px-3 py-2 text-sm text-muted-foreground">
                       A forma de pagamento será definida durante a aprovação.
@@ -2539,34 +2641,21 @@ export default function Equipamentos() {
                           setConfirmOpen(true);
                         }}
                       />
-                      {(() => {
-                        let pecas: PecaNecessaria[] = [];
-                        try {
-                          pecas = JSON.parse(verificacaoAjusteOrcamento.pecas_necessarias || "[]") as PecaNecessaria[];
-                        } catch {
-                          pecas = [];
-                        }
-                        return (
-                          <>
-                            {pecas.length > 0 && (
-                              <div>
-                                <p className="text-xs font-semibold text-muted-foreground mb-1">Peças da verificação</p>
-                                <ul className="space-y-1">
-                                  {pecas.map((p) => (
-                                    <li key={p.id} className="flex justify-between text-sm">
-                                      <span>{p.nome} (x{p.quantidade})</span>
-                                      <span className="font-medium">R$ {p.valorTotal.toFixed(2)}</span>
-                                    </li>
-                                  ))}
-                                </ul>
-                              </div>
-                            )}
-                            {pecas.length === 0 && servicosAjuste.length === 0 && (
-                              <p className="text-xs text-muted-foreground">Nenhum serviço ou peça registrado na verificação.</p>
-                            )}
-                          </>
-                        );
-                      })()}
+                      {pecasLegadasAjuste.length > 0 && (
+                        <div className="rounded-md border border-amber-200 bg-amber-50 p-2">
+                          <p className="text-xs font-semibold text-amber-900">Peças antigas sem serviço vinculado</p>
+                          <p className="text-xs text-amber-800">Vincule cada peça a um serviço para permitir aprovação parcial e baixa automática. Remova a linha antiga depois de vinculá-la.</p>
+                          {pecasLegadasAjuste.map((peca, indice) => (
+                            <div key={`${peca.id}-${indice}`} className="flex items-center justify-between gap-2 text-sm">
+                              <span>{peca.nome} × {peca.quantidade} · R$ {peca.valorTotal.toFixed(2)}</span>
+                              <Button type="button" variant="ghost" size="sm" onClick={() => setPecasLegadasAjuste((atual) => atual.filter((_, i) => i !== indice))}>Remover linha antiga</Button>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                      {pecasLegadasAjuste.length === 0 && servicosAjuste.length === 0 && (
+                        <p className="text-xs text-muted-foreground">Nenhum serviço ou peça registrado na verificação.</p>
+                      )}
                     </div>
                   )}
                   {valorOrcamentoOriginal != null && (
@@ -2698,6 +2787,84 @@ export default function Equipamentos() {
               </DialogFooter>
             </div>
           )}
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={consumosDialogOpen} onOpenChange={setConsumosDialogOpen}>
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader><DialogTitle>Peças da OS</DialogTitle><DialogDescription>Reposições ficam disponíveis no estoque. Confirme aqui o consumo das peças pendentes.</DialogDescription></DialogHeader>
+          <div className="max-h-72 space-y-2 overflow-y-auto">
+            {consumosDetalhes.length === 0 && <p className="text-sm text-muted-foreground">Nenhuma peça vinculada a serviços aprovados.</p>}
+            {consumosDetalhes.map((consumo) => (
+              <div key={`${consumo.verificacao_id}:${consumo.servico_id}:${consumo.produto_id}`} className="rounded-md border p-2 text-sm">
+                <p className="font-medium">{consumo.nome}</p>
+                <p>{consumo.quantidade_baixada} baixada(s) de {consumo.quantidade_aprovada} aprovada(s)
+                  {consumo.quantidade_baixada < consumo.quantidade_aprovada && <span className="text-amber-700"> · pendente</span>}
+                </p>
+              </div>
+            ))}
+          </div>
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={() => setConsumosDialogOpen(false)}>Fechar</Button>
+            <Button type="button" disabled={baixandoPendentes || !consumosDetalhes.some((c) => c.quantidade_baixada < c.quantidade_aprovada)}
+              onClick={() => void confirmarBaixaPendente()}>Confirmar baixa pendente</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={selecaoServicosOpen} onOpenChange={setSelecaoServicosOpen}>
+        <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-xl">
+          <DialogHeader><DialogTitle>Aprovação dos serviços pelo cliente</DialogTitle><DialogDescription>Registre a decisão do cliente antes de movimentar o estoque.</DialogDescription></DialogHeader>
+          <div className="space-y-4">
+            <p className="text-sm">Todos os serviços de troca foram aprovados?</p>
+            <p className="text-sm text-muted-foreground">A seleção inclui todos os serviços do orçamento. Somente peças dos serviços aprovados serão baixadas. Serviços não selecionados serão reprovados, sem baixa. Se faltar estoque, a quantidade restante ficará pendente de confirmação na OS.</p>
+            {pagamentoAprovacaoError && <p role="alert" className="text-sm text-destructive">{pagamentoAprovacaoError}</p>}
+            <div className="flex gap-2">
+              <Button type="button" variant={todosServicosAprovados === true ? "default" : "outline"}
+                onClick={() => { setTodosServicosAprovados(true); setIdsAprovados(servicosAprovacao.map((s) => s.id)); }}>Sim, todos</Button>
+              <Button type="button" variant={todosServicosAprovados === false ? "default" : "outline"}
+                onClick={() => { setTodosServicosAprovados(false); setIdsAprovados([]); }}>Não, selecionar</Button>
+            </div>
+            {todosServicosAprovados === false && (
+              <div className="max-h-64 space-y-2 overflow-y-auto rounded-md border p-3">
+                {servicosAprovacao.map((servico) => (
+                  <label key={servico.id} className="flex cursor-pointer items-start gap-2 text-sm">
+                    <input type="checkbox" checked={idsAprovados.includes(servico.id)}
+                      onChange={(event) => setIdsAprovados((ids) => event.target.checked
+                        ? [...ids, servico.id] : ids.filter((id) => id !== servico.id))} />
+                    <span>{servico.descricao} · {formatCurrency(Number(servico.valor || 0))}</span>
+                  </label>
+                ))}
+              </div>
+            )}
+            {todosServicosAprovados !== null && (
+              <div className="rounded-md bg-muted/40 p-3 text-sm">
+                <p className="font-medium">{idsAprovados.length} de {servicosAprovacao.length} serviços aprovados</p>
+                {resumirPecas(servicosAprovacao.filter((s) => idsAprovados.includes(s.id))).map((peca, i) => {
+                  const saldo = produtosAprovacao.find((p) => p.id === peca.produto_id)?.quantidade_estoque ?? 0;
+                  return <p key={`${peca.produto_id}-${i}`} className={saldo < peca.quantidade ? "text-amber-700" : ""}>
+                    {peca.nome}: {peca.quantidade} necessária(s), saldo {saldo}{saldo < peca.quantidade ? " · pendência" : ""}
+                  </p>;
+                })}
+                <p className="mt-2 font-semibold">Total aprovado: {formatCurrency(idsAprovados.length === servicosAprovacao.length && totalOrcamentoAprovacao != null ? totalOrcamentoAprovacao : servicosAprovacao
+                  .filter((s) => idsAprovados.includes(s.id))
+                  .reduce((total, s) => total + Number(s.valor || 0) + (s.pecas ?? [])
+                    .reduce((subtotal, p) => subtotal + p.quantidade * p.valor_unitario, 0), 0))}</p>
+              </div>
+            )}
+          </div>
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={() => setSelecaoServicosOpen(false)}>Cancelar</Button>
+            <Button type="button" disabled={todosServicosAprovados === null || pagamentoAprovacaoLoading}
+              onClick={() => {
+                if (idsAprovados.length) {
+                  setSelecaoServicosOpen(false);
+                  setPagamentoDialogOpen(true);
+                } else {
+                  void confirmarAprovacao({ codigo: "A_COMBINAR" }).then((ok) => { if (ok) setSelecaoServicosOpen(false); });
+                }
+              }}>{idsAprovados.length ? "Continuar para pagamento" : "Confirmar reprovação"}</Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
 
