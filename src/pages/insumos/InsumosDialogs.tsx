@@ -28,7 +28,7 @@ import type {
   ProdutoFormData,
 } from "@/lib/validations";
 import type { Produto } from "@/types";
-import { CATEGORIA_OPTIONS } from "./insumos-page-constants";
+import { CATEGORIA_OPTIONS, MINIMO_POR_CATEGORIA } from "./insumos-page-constants";
 
 export function InsumosProdutoDialog({
   open,
@@ -73,7 +73,17 @@ export function InsumosProdutoDialog({
                 control={form.control}
                 name="categoria"
                 render={({ field }) => (
-                  <Select value={field.value} onValueChange={field.onChange}>
+                  <Select
+                    value={field.value}
+                    onValueChange={(categoria) => {
+                      field.onChange(categoria);
+                      if (!editando) {
+                        form.setValue("quantidade_minima", MINIMO_POR_CATEGORIA[categoria], {
+                          shouldValidate: true,
+                        });
+                      }
+                    }}
+                  >
                     <SelectTrigger>
                       <SelectValue placeholder="Selecione..." />
                     </SelectTrigger>
