@@ -75,11 +75,11 @@ import {
 } from "@/types";
 import { useSensitiveAccess } from "@/hooks/useSensitiveAccess";
 import { ErrorAlert } from "@/components/ui/error-alert";
+import { PaginationControls } from "@/components/ui/pagination-controls";
 import { nomeExibicaoCliente, documentoExibicaoCliente } from "@/components/clientes/cliente-display-utils";
 import { ClientesStatusBadge } from "@/pages/clientes/ClientesStatusBadge";
 import {
   clientesDaAba,
-  itensPaginacao,
   totalAbasClientes,
 } from "@/pages/clientes/clientes-pagination";
 import {
@@ -123,7 +123,6 @@ export default function Clientes() {
   const totalAbas = totalAbasClientes(clientes.length);
   const abaExibida = Math.min(abaAtual, totalAbas);
   const clientesExibidos = clientesDaAba(clientes, abaExibida);
-  const paginasVisiveis = itensPaginacao(totalAbas, abaExibida);
 
   useEffect(() => {
     setAbaAtual(1);
@@ -445,42 +444,12 @@ export default function Clientes() {
             </div>
           ) : (
             <>
-              {totalAbas > 1 && (
-                <nav
-                  className="flex justify-end pb-3"
-                  aria-label="Paginação de clientes"
-                >
-                  <div className="flex h-8 items-center gap-1">
-                    {paginasVisiveis.map((item) =>
-                      typeof item === "number" ? (
-                        <Button
-                          key={item}
-                          type="button"
-                          variant={item === abaExibida ? "secondary" : "ghost"}
-                          className="h-8 min-w-8 px-2 text-xs tabular-nums"
-                          aria-label={
-                            item === abaExibida
-                              ? `Página ${item}, atual`
-                              : `Ir para página ${item}`
-                          }
-                          aria-current={item === abaExibida ? "page" : undefined}
-                          onClick={() => setAbaAtual(item)}
-                        >
-                          {item}
-                        </Button>
-                      ) : (
-                        <span
-                          key={item}
-                          className="flex h-8 w-5 items-center justify-center text-xs text-muted-foreground"
-                          aria-hidden="true"
-                        >
-                          ...
-                        </span>
-                      ),
-                    )}
-                  </div>
-                </nav>
-              )}
+              <PaginationControls
+                page={abaExibida}
+                totalPages={totalAbas}
+                onPageChange={setAbaAtual}
+                label="Paginação de clientes"
+              />
               <div className="rounded-md border">
                 <Table>
                 <TableHeader>

@@ -1,5 +1,5 @@
 import { validarPecas } from "@/lib/orcamento-estoque";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Plus, Search, Edit, Trash2, RefreshCw, Wrench } from "lucide-react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -33,9 +33,12 @@ import { FormValidationError } from "@/components/ui/form-validation-error";
 import { SENSITIVE_PERMISSIONS, type ServicoCatalogo, type PecaVinculada } from "@/types";
 import { PecasDoServico } from "@/components/equipamentos/PecasDoServico";
 import { ActionPriorityRow } from "@/components/ui/action-priority-row";
+import { PaginationControls } from "@/components/ui/pagination-controls";
+import { paginateItems, totalPages } from "@/lib/pagination";
 
 export default function Servicos() {
   const [busca, setBusca] = useState("");
+  const [paginaServicos, setPaginaServicos] = useState(1);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [editando, setEditando] = useState<ServicoCatalogo | null>(null);
@@ -49,6 +52,17 @@ export default function Servicos() {
     busca: busca || undefined,
     apenasAtivos: true,
   });
+  const totalPaginasServicos = totalPages(servicos.length);
+  const paginaServicosExibida = Math.min(paginaServicos, totalPaginasServicos);
+  const servicosExibidos = paginateItems(servicos, paginaServicosExibida);
+
+  useEffect(() => {
+    setPaginaServicos(1);
+  }, [busca]);
+
+  useEffect(() => {
+    setPaginaServicos((pagina) => Math.min(pagina, totalPaginasServicos));
+  }, [totalPaginasServicos]);
 
   const form = useForm<ServicoCatalogoFormData>({
     resolver: zodResolver(servicoCatalogoSchema),
@@ -200,8 +214,15 @@ export default function Servicos() {
               </p>
             </div>
           ) : (
-            <div className="rounded-md border">
-              <Table>
+            <>
+              <PaginationControls
+                page={paginaServicosExibida}
+                totalPages={totalPaginasServicos}
+                onPageChange={setPaginaServicos}
+                label="Paginação de serviços"
+              />
+              <div className="rounded-md border">
+                <Table>
                 <TableHeader>
                   <TableRow>
                     <TableHead>Serviço</TableHead>
@@ -211,7 +232,7 @@ export default function Servicos() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {servicos.map((servico) => (
+                  {servicosExibidos.map((servico) => (
                     <TableRow key={servico.id}>
                       <TableCell className="font-medium">{servico.nome}</TableCell>
                       <TableCell className="text-muted-foreground">
@@ -245,8 +266,9 @@ export default function Servicos() {
                     </TableRow>
                   ))}
                 </TableBody>
-              </Table>
-            </div>
+                </Table>
+              </div>
+            </>
           )}
         </CardContent>
       </Card>

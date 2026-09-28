@@ -168,14 +168,17 @@ import { useNotification } from "@/hooks/useNotification";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { InputDialog } from "@/components/ui/input-dialog";
 import { ErrorAlert } from "@/components/ui/error-alert";
+import { PaginationControls } from "@/components/ui/pagination-controls";
 import { PagamentoOrcamentoDialog } from "@/components/equipamentos/PagamentoOrcamentoDialog";
 import { FormaPagamentoFields } from "@/components/equipamentos/FormaPagamentoFields";
 import { resolveRecipient, type ResolvedRecipient } from "@/lib/recipient-resolver";
 import { saveRecipientAddress } from "@/lib/recipient-persistence";
+import { paginateItems, totalPages } from "@/lib/pagination";
 
 export default function Equipamentos() {
   const [busca, setBusca] = useState("");
   const [statusFiltro, setStatusFiltro] = useState("TODOS");
+  const [paginaEquipamentos, setPaginaEquipamentos] = useState(1);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [detalhesDialogOpen, setDetalhesDialogOpen] = useState(false);
@@ -290,6 +293,17 @@ export default function Equipamentos() {
 
   const { equipamentos, loading, criar, atualizar, deletar, atualizarStatus, recarregar } =
     useEquipamentos({ busca: busca || undefined, status: statusFiltro });
+  const totalPaginasEquipamentos = totalPages(equipamentos.length);
+  const paginaEquipamentosExibida = Math.min(paginaEquipamentos, totalPaginasEquipamentos);
+  const equipamentosExibidos = paginateItems(equipamentos, paginaEquipamentosExibida);
+
+  useEffect(() => {
+    setPaginaEquipamentos(1);
+  }, [busca, statusFiltro]);
+
+  useEffect(() => {
+    setPaginaEquipamentos((pagina) => Math.min(pagina, totalPaginasEquipamentos));
+  }, [totalPaginasEquipamentos]);
 
   // Hook de automação de status
   const { loading: loadingAutomacao, finalizarVerificacao, marcarComoPronto } =
@@ -1942,8 +1956,15 @@ export default function Equipamentos() {
               <p className="text-sm">{busca || statusFiltro !== "TODOS" ? "Tente ajustar os filtros" : "Clique em 'Novo Equipamento' para cadastrar"}</p>
             </div>
           ) : (
-            <div className="rounded-md border">
-              <Table>
+            <>
+              <PaginationControls
+                page={paginaEquipamentosExibida}
+                totalPages={totalPaginasEquipamentos}
+                onPageChange={setPaginaEquipamentos}
+                label="Paginação de equipamentos"
+              />
+              <div className="rounded-md border">
+                <Table>
                 <TableHeader>
                   <TableRow>
                     <TableHead>Nº Série</TableHead>
@@ -1955,7 +1976,7 @@ export default function Equipamentos() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {equipamentos.map(eq => (
+                  {equipamentosExibidos.map(eq => (
                     <TableRow key={eq.id}>
                       <TableCell className="font-mono font-medium">{eq.serial_number}</TableCell>
                       <TableCell>
@@ -1994,8 +2015,9 @@ export default function Equipamentos() {
                     </TableRow>
                   ))}
                 </TableBody>
-              </Table>
-            </div>
+                </Table>
+              </div>
+            </>
           )}
         </CardContent>
       </Card>

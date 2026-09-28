@@ -19,7 +19,7 @@
  * ║  USADO POR: App.tsx (rota /insumos)                         ║
  * ╚══════════════════════════════════════════════════════════════╝
  */
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   Package,
   Plus,
@@ -64,7 +64,9 @@ import { useSensitiveAccess } from "@/hooks/useSensitiveAccess";
 import { ErrorAlert } from "@/components/ui/error-alert";
 import { SENSITIVE_PERMISSIONS, type Produto } from "@/types";
 import { ActionPriorityRow } from "@/components/ui/action-priority-row";
+import { PaginationControls } from "@/components/ui/pagination-controls";
 import { formatCurrency } from "@/lib/utils";
+import { paginateItems, totalPages } from "@/lib/pagination";
 import { CATEGORIA_OPTIONS, categoriaProdutoLabel } from "@/pages/insumos/insumos-page-constants";
 import {
   InsumosDeleteDialog,
@@ -76,6 +78,7 @@ export default function Insumos() {
   const [busca, setBusca] = useState("");
   const [categoriaFiltro, setCategoriaFiltro] = useState("TODOS");
   const [apenasEstoqueBaixo, setApenasEstoqueBaixo] = useState(false);
+  const [paginaInsumos, setPaginaInsumos] = useState(1);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [movDialogOpen, setMovDialogOpen] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
@@ -99,6 +102,17 @@ export default function Insumos() {
     categoria: categoriaFiltro,
     apenasEstoqueBaixo,
   });
+  const totalPaginasInsumos = totalPages(produtos.length);
+  const paginaInsumosExibida = Math.min(paginaInsumos, totalPaginasInsumos);
+  const produtosExibidos = paginateItems(produtos, paginaInsumosExibida);
+
+  useEffect(() => {
+    setPaginaInsumos(1);
+  }, [busca, categoriaFiltro, apenasEstoqueBaixo]);
+
+  useEffect(() => {
+    setPaginaInsumos((pagina) => Math.min(pagina, totalPaginasInsumos));
+  }, [totalPaginasInsumos]);
   const { error: showError } = useNotification();
   const { ensureSensitiveAccess } = useSensitiveAccess();
 
@@ -363,8 +377,15 @@ export default function Insumos() {
               </p>
             </div>
           ) : (
-            <div className="rounded-md border">
-              <Table>
+            <>
+              <PaginationControls
+                page={paginaInsumosExibida}
+                totalPages={totalPaginasInsumos}
+                onPageChange={setPaginaInsumos}
+                label="Paginação de estoque"
+              />
+              <div className="rounded-md border">
+                <Table>
                 <TableHeader>
                   <TableRow>
                     <TableHead>Nome</TableHead>
@@ -378,7 +399,7 @@ export default function Insumos() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {produtos.map((p) => {
+                  {produtosExibidos.map((p) => {
                     const estoqueBaixo = p.quantidade_estoque < p.quantidade_minima;
                     return (
                       <TableRow
@@ -453,8 +474,9 @@ export default function Insumos() {
                     );
                   })}
                 </TableBody>
-              </Table>
-            </div>
+                </Table>
+              </div>
+            </>
           )}
         </CardContent>
       </Card>
