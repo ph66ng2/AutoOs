@@ -21,7 +21,7 @@
     "e2e:real": "npm run qa:integrations:critical && npm run qa:integrations:communication && npm run e2e:web",
     "bundle:prep:windows:sign": "node scripts/apply-windows-bundle-signing.mjs",
     "qa:tier:e2e": "npm run e2e:web",
-    "qa:integrations:critical": "cd src-tauri && cargo run --quiet --bin p1_critical_integration",
+    "qa:integrations:critical": "cd src-tauri && cargo run --quiet --bin test_service_catalog_isolation && cargo run --quiet --bin p1_critical_integration",
     "qa:integrations:communication": "cd src-tauri && cargo run --quiet --bin p1_communication_integration",
     "qa:photos": "cd src-tauri && cargo run --quiet --bin p1_photo_integration",
     "qa:integrations": "npm run qa:integrations:critical && npm run qa:integrations:communication",

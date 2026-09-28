@@ -58,6 +58,10 @@ name = "test_budget_service_mgmt"
 path = "src/bin/test_budget_service_mgmt.rs"
 
 [[bin]]
+name = "test_service_catalog_isolation"
+path = "src/bin/test_service_catalog_isolation.rs"
+
+[[bin]]
 name = "test_auth_integration"
 path = "src/bin/test_auth_integration.rs"
 

@@ -21,6 +21,8 @@ import type { Equipamento } from "@/types";
 interface UseEquipamentosParams {
   busca?: string;
   status?: string;
+  /** Página apresentada pela interface, iniciando em 1. */
+  page?: number;
 }
 
 /**
@@ -32,6 +34,7 @@ interface UseEquipamentosParams {
  */
 export function useEquipamentos(params?: UseEquipamentosParams) {
   const [equipamentos, setEquipamentos] = useState<Equipamento[]>([]);
+  const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -44,18 +47,20 @@ export function useEquipamentos(params?: UseEquipamentosParams) {
     setLoading(true);
     setError(null);
     try {
-      const data = await db.listarEquipamentos(
+      const data = await db.listarEquipamentosPaginados(
         params?.busca,
-        params?.status === "TODOS" ? undefined : params?.status
+        params?.status === "TODOS" ? undefined : params?.status,
+        Math.max((params?.page ?? 1) - 1, 0),
       );
-      setEquipamentos(data);
+      setEquipamentos(data.items);
+      setTotal(data.total);
     } catch (err: any) {
       setError(err?.toString() || "Erro ao carregar equipamentos");
       console.error("Erro ao carregar equipamentos:", err);
     } finally {
       setLoading(false);
     }
-  }, [params?.busca, params?.status]);
+  }, [params?.busca, params?.status, params?.page]);
 
   useEffect(() => {
     carregar();
@@ -152,6 +157,7 @@ export function useEquipamentos(params?: UseEquipamentosParams) {
 
   return {
     equipamentos,
+    total,
     loading,
     error,
     criar,

@@ -43,6 +43,7 @@ vi.mock("react-router-dom", () => ({
 vi.mock("@/hooks/useEquipamentos", () => ({
   useEquipamentos: () => ({
     equipamentos: mockEquipamentos,
+    total: 1,
     loading: false,
     criar: vi.fn(),
     atualizar: vi.fn(),
@@ -90,6 +91,7 @@ vi.mock("@/lib/db", () => ({
     buscarCliente: (...args: unknown[]) => mockBuscarCliente(...args),
     listarComunicacoes: vi.fn().mockResolvedValue([]),
     listarEquipamentos: vi.fn().mockResolvedValue([]),
+    listarEquipamentosPaginados: vi.fn().mockResolvedValue({ items: [], total: 0 }),
     substituirImagensEquipamento: vi.fn().mockResolvedValue([]),
   },
 }));

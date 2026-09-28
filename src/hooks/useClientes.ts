@@ -28,6 +28,8 @@ import type { Cliente } from "@/types";
  */
 interface UseClientesParams {
   busca?: string;
+  /** Página apresentada pela interface, iniciando em 1. */
+  page?: number;
 }
 
 /**
@@ -42,6 +44,7 @@ interface UseClientesParams {
  */
 export function useClientes(params?: UseClientesParams) {
   const [clientes, setClientes] = useState<Cliente[]>([]);
+  const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -56,15 +59,19 @@ export function useClientes(params?: UseClientesParams) {
     setLoading(true);
     setError(null);
     try {
-      const data = await db.listarClientes(params?.busca);
-      setClientes(data);
+      const data = await db.listarClientesPaginados(
+        params?.busca,
+        Math.max((params?.page ?? 1) - 1, 0),
+      );
+      setClientes(data.items);
+      setTotal(data.total);
     } catch (err: any) {
       setError(err?.toString() || "Erro ao carregar clientes");
       console.error("Erro ao carregar clientes:", err);
     } finally {
       setLoading(false);
     }
-  }, [params?.busca]);
+  }, [params?.busca, params?.page]);
 
   useEffect(() => {
     carregar();
@@ -133,6 +140,7 @@ export function useClientes(params?: UseClientesParams) {
 
   return {
     clientes,
+    total,
     loading,
     error,
     criar,

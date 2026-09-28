@@ -10,6 +10,15 @@
 use serde::{Deserialize, Serialize};
 use sqlx::FromRow;
 
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PaginatedResult<T> {
+    pub items: Vec<T>,
+    pub total: i64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub below_minimum: Option<i64>,
+}
+
 /// Códigos estáveis usados para persistir a forma de pagamento do orçamento.
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]

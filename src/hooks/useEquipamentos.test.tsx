@@ -2,12 +2,12 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { renderHook, act, waitFor } from "@testing-library/react";
 import type { Equipamento } from "@/types";
 
-const mockListar = vi.hoisted(() => vi.fn());
+const mockListarPaginados = vi.hoisted(() => vi.fn());
 const mockCriar = vi.hoisted(() => vi.fn());
 
 vi.mock("@/lib/db", () => ({
   db: {
-    listarEquipamentos: (...args: unknown[]) => mockListar(...args),
+    listarEquipamentosPaginados: (...args: unknown[]) => mockListarPaginados(...args),
     criarEquipamento: (...args: unknown[]) => mockCriar(...args),
   },
 }));
@@ -29,14 +29,14 @@ const novoEquipamento: Omit<Equipamento, "id"> = {
 describe("useEquipamentos — registro", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mockListar.mockResolvedValue([]);
+    mockListarPaginados.mockResolvedValue({ items: [], total: 0 });
   });
 
   it("criar chama db.criarEquipamento e recarrega a lista", async () => {
     const persistido: Equipamento = { ...novoEquipamento, id: 100 };
     let lista: Equipamento[] = [];
 
-    mockListar.mockImplementation(async () => [...lista]);
+    mockListarPaginados.mockImplementation(async () => ({ items: [...lista], total: lista.length }));
     mockCriar.mockImplementation(async (payload: Omit<Equipamento, "id">) => {
       lista = [{ ...payload, id: persistido.id }];
       return lista[0]!;

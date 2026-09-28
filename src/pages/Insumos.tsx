@@ -66,7 +66,7 @@ import { SENSITIVE_PERMISSIONS, type Produto } from "@/types";
 import { ActionPriorityRow } from "@/components/ui/action-priority-row";
 import { PaginationControls } from "@/components/ui/pagination-controls";
 import { formatCurrency } from "@/lib/utils";
-import { paginateItems, totalPages } from "@/lib/pagination";
+import { totalPages } from "@/lib/pagination";
 import { CATEGORIA_OPTIONS, categoriaProdutoLabel } from "@/pages/insumos/insumos-page-constants";
 import {
   InsumosDeleteDialog,
@@ -89,6 +89,7 @@ export default function Insumos() {
 
   const {
     produtos,
+    total: totalProdutos,
     loading,
     error,
     insumosAbaixoMinimo,
@@ -101,10 +102,11 @@ export default function Insumos() {
     busca: busca || undefined,
     categoria: categoriaFiltro,
     apenasEstoqueBaixo,
+    page: paginaInsumos,
   });
-  const totalPaginasInsumos = totalPages(produtos.length);
+  const totalPaginasInsumos = totalPages(totalProdutos);
   const paginaInsumosExibida = Math.min(paginaInsumos, totalPaginasInsumos);
-  const produtosExibidos = paginateItems(produtos, paginaInsumosExibida);
+  const produtosExibidos = produtos;
 
   useEffect(() => {
     setPaginaInsumos(1);

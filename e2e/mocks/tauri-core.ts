@@ -25,6 +25,10 @@ export async function invoke<T>(command: string): Promise<T> {
     case "listar_equipamentos":
     case "listar_clientes":
     case "buscar_equipamentos_por_serial": return [] as T;
+    case "listar_equipamentos_paginados":
+    case "listar_clientes_paginados":
+    case "listar_produtos_paginados":
+    case "listar_servicos_paginados": return { items: [], total: 0 } as T;
     default: return undefined as T;
   }
 }

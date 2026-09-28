@@ -11,9 +11,11 @@
 use crate::commands::auth::{
     record_security_event, require_permission, require_active_session_company_id, PERMISSION_DELETE_RECORDS, PERMISSION_STOCK_CONTROL,
 };
-use crate::commands::types::{MovimentacaoEstoqueInput, ProdutoInput, ProdutoRow, PRODUTO_SELECT};
+use crate::commands::types::{
+    MovimentacaoEstoqueInput, PaginatedResult, ProdutoInput, ProdutoRow, PRODUTO_SELECT,
+};
 use crate::db::get_pool;
-use sqlx::Row;
+use sqlx::{PgPool, Postgres, QueryBuilder, Row};
 use tracing::{debug, error, info, instrument};
 
 use super::equipamentos::PAGE_SIZE;
@@ -33,6 +35,99 @@ fn validar_categoria(categoria: &str) -> Result<(), String> {
     } else {
         Err("Categoria de estoque inválida.".to_string())
     }
+}
+
+fn add_product_filters(
+    query: &mut QueryBuilder<Postgres>,
+    empresa_id: i32,
+    busca: Option<&str>,
+    categoria: Option<&str>,
+    apenas_estoque_baixo: bool,
+) {
+    query.push(" WHERE ativo = true AND empresa_id = ").push_bind(empresa_id);
+
+    if let Some(busca) = busca.map(str::trim).filter(|value| !value.is_empty()) {
+        let pattern = format!("%{}%", busca);
+        query
+            .push(" AND (codigo ILIKE ")
+            .push_bind(pattern.clone())
+            .push(" OR nome ILIKE ")
+            .push_bind(pattern.clone())
+            .push(" OR COALESCE(descricao, '') ILIKE ")
+            .push_bind(pattern)
+            .push(")");
+    }
+
+    if let Some(categoria) = categoria
+        .map(str::trim)
+        .filter(|value| !value.is_empty() && *value != "TODOS")
+    {
+        query.push(" AND categoria = ").push_bind(categoria.to_string());
+    }
+
+    if apenas_estoque_baixo {
+        query.push(" AND quantidade_estoque < quantidade_minima");
+    }
+}
+
+async fn query_product_page(
+    pool: &PgPool,
+    empresa_id: i32,
+    page: Option<i32>,
+    busca: Option<&str>,
+    categoria: Option<&str>,
+    apenas_estoque_baixo: bool,
+) -> Result<PaginatedResult<ProdutoRow>, String> {
+    let mut count_query = QueryBuilder::<Postgres>::new("SELECT COUNT(*) FROM produtos");
+    add_product_filters(
+        &mut count_query,
+        empresa_id,
+        busca,
+        categoria,
+        apenas_estoque_baixo,
+    );
+    let total = count_query
+        .build_query_scalar::<i64>()
+        .fetch_one(pool)
+        .await
+        .map_err(|error| format!("Erro ao contar produtos: {}", error))?;
+
+    let below_minimum = sqlx::query_scalar::<_, i64>(
+        "SELECT COUNT(*) FROM produtos
+         WHERE empresa_id = $1 AND ativo = true
+           AND quantidade_estoque < quantidade_minima",
+    )
+    .bind(empresa_id)
+    .fetch_one(pool)
+    .await
+    .map_err(|error| format!("Erro ao contar produtos abaixo do mínimo: {}", error))?;
+
+    let safe_page = page.unwrap_or(0).max(0) as i64;
+    let mut items_query = QueryBuilder::<Postgres>::new(PRODUTO_SELECT);
+    add_product_filters(
+        &mut items_query,
+        empresa_id,
+        busca,
+        categoria,
+        apenas_estoque_baixo,
+    );
+    items_query
+        .push(" ORDER BY id DESC LIMIT ")
+        .push_bind(super::equipamentos::UI_PAGE_SIZE)
+        .push(" OFFSET ")
+        .push_bind(safe_page * i64::from(super::equipamentos::UI_PAGE_SIZE));
+
+    let items = items_query
+        .build_query_as::<ProdutoRow>()
+        .fetch_all(pool)
+        .await
+        .map_err(|error| format!("Erro ao listar produtos: {}", error))?;
+
+    Ok(PaginatedResult {
+        items,
+        total,
+        below_minimum: Some(below_minimum),
+    })
 }
 
 fn optional_text(value: Option<&str>) -> Option<String> {
@@ -156,6 +251,28 @@ pub async fn listar_produtos(
 
     info!("Produtos listados: {} itens (página {})", rows.len(), page.unwrap_or(0));
     Ok(rows)
+}
+
+/// Lista uma página de produtos, sua contagem filtrada e o total abaixo do mínimo.
+#[tauri::command]
+#[instrument(skip_all, fields(page = page))]
+pub async fn listar_produtos_paginados(
+    page: Option<i32>,
+    busca: Option<String>,
+    categoria: Option<String>,
+    apenas_estoque_baixo: Option<bool>,
+) -> Result<PaginatedResult<ProdutoRow>, String> {
+    let pool = get_pool().await.map_err(|error| error.to_string())?;
+    let empresa_id = require_active_session_company_id(&pool).await?;
+    query_product_page(
+        &pool,
+        empresa_id,
+        page,
+        busca.as_deref(),
+        categoria.as_deref(),
+        apenas_estoque_baixo.unwrap_or(false),
+    )
+    .await
 }
 
 /// Buscar produto por ID.

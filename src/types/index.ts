@@ -267,6 +267,13 @@ export interface ServicoCatalogo {
   atualizado_em?: string;
 }
 
+/** Resposta comum das consultas paginadas no backend. */
+export interface PaginatedResult<T> {
+  items: T[];
+  total: number;
+  belowMinimum?: number;
+}
+
 /**
  * Movimentação de entrada/saída de estoque.
  * Espelha a tabela `movimentacoes_estoque` em db.rs.

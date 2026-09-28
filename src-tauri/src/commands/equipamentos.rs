@@ -11,7 +11,7 @@
 
 use crate::commands::types::{
     normalize_forma_pagamento, AprovarOrcamentoInput, EquipamentoHistoricoEvento,
-    EquipamentoInput, EquipamentoRow, EQUIPAMENTO_SELECT,
+    EquipamentoInput, EquipamentoRow, PaginatedResult, EQUIPAMENTO_SELECT,
 };
 use crate::commands::auth::{
     current_session_profile, record_security_event, require_active_session_company_id,
@@ -21,12 +21,13 @@ use crate::commands::auth::{
 use crate::db::get_pool;
 use crate::commands::orcamento_estoque::{aplicar_decisoes, normalizar_servicos, parse_servicos};
 use chrono::NaiveDateTime;
-use sqlx::{PgPool, Row};
+use sqlx::{PgPool, Postgres, QueryBuilder, Row};
 use std::collections::HashSet;
 use tracing::{debug, error, info, instrument};
 
 /// Limite padrão de itens por página.
 pub const PAGE_SIZE: i32 = 50;
+pub const UI_PAGE_SIZE: i32 = 10;
 
 fn required_text(value: &str, field: &str) -> Result<String, String> {
     let trimmed = value.trim();
@@ -81,6 +82,84 @@ fn normalize_status_key(status: &str) -> String {
         other => other,
     }
     .to_string()
+}
+
+fn add_equipment_filters(
+    query: &mut QueryBuilder<Postgres>,
+    empresa_id: i32,
+    busca: Option<&str>,
+    status: Option<&str>,
+) {
+    query.push(" WHERE empresa_id = ").push_bind(empresa_id);
+
+    if let Some(busca) = busca.map(str::trim).filter(|value| !value.is_empty()) {
+        let pattern = format!("%{}%", busca);
+        query.push(" AND (");
+        for (index, column) in [
+            "serial_number",
+            "COALESCE(patrimonio, '')",
+            "marca",
+            "modelo",
+            "COALESCE(defeito_relatado, '')",
+            "COALESCE(cliente_nome, '')",
+            "COALESCE(cliente_email, '')",
+            "COALESCE(cliente_telefone, '')",
+        ]
+        .iter()
+        .enumerate()
+        {
+            if index > 0 {
+                query.push(" OR ");
+            }
+            query.push(*column).push(" ILIKE ").push_bind(pattern.clone());
+        }
+        query.push(")");
+    }
+
+    if let Some(status) = status
+        .map(str::trim)
+        .filter(|value| !value.is_empty() && *value != "TODOS")
+    {
+        query.push(" AND status = ").push_bind(normalize_status_key(status));
+    }
+}
+
+async fn query_equipment_page(
+    pool: &PgPool,
+    empresa_id: i32,
+    page: Option<i32>,
+    busca: Option<&str>,
+    status: Option<&str>,
+    page_size: i32,
+) -> Result<PaginatedResult<EquipamentoRow>, String> {
+    let mut count_query = QueryBuilder::<Postgres>::new("SELECT COUNT(*) FROM equipamentos");
+    add_equipment_filters(&mut count_query, empresa_id, busca, status);
+    let total = count_query
+        .build_query_scalar::<i64>()
+        .fetch_one(pool)
+        .await
+        .map_err(|error| format!("Erro ao contar equipamentos: {}", error))?;
+
+    let safe_page = page.unwrap_or(0).max(0) as i64;
+    let mut items_query = QueryBuilder::<Postgres>::new(EQUIPAMENTO_SELECT);
+    add_equipment_filters(&mut items_query, empresa_id, busca, status);
+    items_query
+        .push(" ORDER BY id DESC LIMIT ")
+        .push_bind(page_size)
+        .push(" OFFSET ")
+        .push_bind(safe_page * i64::from(page_size));
+
+    let items = items_query
+        .build_query_as::<EquipamentoRow>()
+        .fetch_all(pool)
+        .await
+        .map_err(|error| format!("Erro ao listar equipamentos: {}", error))?;
+
+    Ok(PaginatedResult {
+        items,
+        total,
+        below_minimum: None,
+    })
 }
 
 fn status_change_requires_sensitive_access(
@@ -404,6 +483,27 @@ pub async fn listar_equipamentos(
 
     info!("Equipamentos listados: {} itens (página {})", rows.len(), page.unwrap_or(0));
     Ok(rows)
+}
+
+/// Lista uma página de equipamentos, com contagem aplicada aos mesmos filtros.
+#[tauri::command]
+#[instrument(skip_all, fields(page = page))]
+pub async fn listar_equipamentos_paginados(
+    page: Option<i32>,
+    busca: Option<String>,
+    status: Option<String>,
+) -> Result<PaginatedResult<EquipamentoRow>, String> {
+    let pool = get_pool().await.map_err(|error| error.to_string())?;
+    let empresa_id = require_active_session_company_id(&pool).await?;
+    query_equipment_page(
+        &pool,
+        empresa_id,
+        page,
+        busca.as_deref(),
+        status.as_deref(),
+        UI_PAGE_SIZE,
+    )
+    .await
 }
 
 /// Buscar equipamento por ID.

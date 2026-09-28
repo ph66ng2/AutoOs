@@ -152,6 +152,7 @@ fn main() {
             commands::util::reiniciar_banco_com_config,
             // Equipamentos
             commands::equipamentos::listar_equipamentos,
+            commands::equipamentos::listar_equipamentos_paginados,
             commands::equipamentos::buscar_equipamento,
             commands::equipamentos::listar_historico_equipamento,
             commands::equipamentos::buscar_equipamentos_por_serial,
@@ -172,6 +173,7 @@ fn main() {
             commands::photo_tunnel::carregar_config_photo_tunnel,
             // Clientes
             commands::clientes::listar_clientes,
+            commands::clientes::listar_clientes_paginados,
             commands::clientes::buscar_cliente,
             commands::clientes::criar_cliente,
             commands::clientes::atualizar_cliente,
@@ -188,6 +190,7 @@ fn main() {
             commands::contatos::inativar_cliente_contato,
             // Produtos
             commands::produtos::listar_produtos,
+            commands::produtos::listar_produtos_paginados,
             commands::produtos::buscar_produto,
             commands::produtos::criar_produto,
             commands::produtos::atualizar_produto,
@@ -202,6 +205,7 @@ fn main() {
             commands::gastos::resumo_mensal,
             // Serviços (catálogo)
             commands::servicos::listar_servicos,
+            commands::servicos::listar_servicos_paginados,
             commands::servicos::listar_servicos_catalogo_ativos,
             commands::servicos::buscar_servico,
             commands::servicos::criar_servico,

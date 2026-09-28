@@ -31,6 +31,8 @@ interface UseInsumosParams {
   busca?: string;
   categoria?: string;
   apenasEstoqueBaixo?: boolean;
+  /** Página apresentada pela interface, iniciando em 1. */
+  page?: number;
 }
 
 /**
@@ -48,6 +50,8 @@ interface UseInsumosParams {
  */
 export function useInsumos(params?: UseInsumosParams) {
   const [produtos, setProdutos] = useState<Produto[]>([]);
+  const [total, setTotal] = useState(0);
+  const [insumosAbaixoMinimo, setInsumosAbaixoMinimo] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -65,19 +69,22 @@ export function useInsumos(params?: UseInsumosParams) {
     setLoading(true);
     setError(null);
     try {
-      const data = await db.listarProdutos(
+      const data = await db.listarProdutosPaginados(
         params?.busca,
         params?.categoria === "TODOS" ? undefined : params?.categoria,
-        params?.apenasEstoqueBaixo
+        params?.apenasEstoqueBaixo ?? false,
+        Math.max((params?.page ?? 1) - 1, 0),
       );
-      setProdutos(data);
+      setProdutos(data.items);
+      setTotal(data.total);
+      setInsumosAbaixoMinimo(data.belowMinimum ?? 0);
     } catch (err: any) {
       setError(err?.toString() || "Erro ao carregar produtos");
       console.error("Erro ao carregar produtos:", err);
     } finally {
       setLoading(false);
     }
-  }, [params?.busca, params?.categoria, params?.apenasEstoqueBaixo]);
+  }, [params?.busca, params?.categoria, params?.apenasEstoqueBaixo, params?.page]);
 
   useEffect(() => {
     carregar();
@@ -181,12 +188,9 @@ export function useInsumos(params?: UseInsumosParams) {
    * página de Insumos. Recalculado automaticamente sempre que a lista
    * de produtos é atualizada.
    */
-  const insumosAbaixoMinimo = produtos.filter(
-    (p) => p.quantidade_estoque < p.quantidade_minima
-  ).length;
-
   return {
     produtos,
+    total,
     loading,
     error,
     insumosAbaixoMinimo,
