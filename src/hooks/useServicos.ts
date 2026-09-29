@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { carregarRepositorioServicos, type ServicoCatalogoInput } from "@/lib/data/servicos-repository";
 import type { ClienteId, ServicoCatalogo } from "@/types";
 
@@ -14,25 +14,32 @@ export function useServicos(params?: UseServicosParams) {
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const requestVersion = useRef(0);
 
   const carregar = useCallback(async () => {
+    const currentRequestVersion = ++requestVersion.current;
     setLoading(true);
     setError(null);
     try {
       const repository = await carregarRepositorioServicos();
       const data = await repository.listar(params?.busca, params?.apenasAtivos ?? true, Math.max((params?.page ?? 1) - 1, 0));
+      if (currentRequestVersion !== requestVersion.current) return;
       setServicos(data.items);
       setTotal(data.total);
     } catch (err: any) {
+      if (currentRequestVersion !== requestVersion.current) return;
       setError(err?.toString() || "Erro ao carregar serviços");
       console.error("Erro ao carregar serviços:", err);
     } finally {
-      setLoading(false);
+      if (currentRequestVersion === requestVersion.current) setLoading(false);
     }
   }, [params?.busca, params?.apenasAtivos, params?.page]);
 
   useEffect(() => {
     void carregar();
+    return () => {
+      requestVersion.current += 1;
+    };
   }, [carregar]);
 
   const criar = async (servico: ServicoCatalogoInput) => {

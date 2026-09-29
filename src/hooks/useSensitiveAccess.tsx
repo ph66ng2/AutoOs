@@ -495,10 +495,12 @@ export function useSensitiveAccess(options?: { operationalProfile?: SaasOperatio
   const saasAccess = useMemo<SensitiveAccessContextValue | null>(() => {
     const profile = options?.operationalProfile;
     if (!IS_SAAS_BUILD || !profile) return null;
-    const permissions = profile.permissions.filter(
-      (permission): permission is SensitivePermission =>
-        Object.values(SENSITIVE_PERMISSIONS).includes(permission as SensitivePermission),
-    );
+    const permissions = profile.role === "ADMIN"
+      ? Object.values(SENSITIVE_PERMISSIONS)
+      : profile.permissions.filter(
+        (permission): permission is SensitivePermission =>
+          Object.values(SENSITIVE_PERMISSIONS).includes(permission as SensitivePermission),
+      );
     const status: SensitiveAccessStatus = {
       ...EMPTY_STATUS,
       pin_configured: true,

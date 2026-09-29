@@ -37,6 +37,14 @@ INSERT INTO public.produtos (
     'AUTHZ-A', 'Produto Authz A', 'Peças', 4, 0, 20, 'UN', 10, 20
 );
 
+INSERT INTO public.servicos_catalogo (
+    id, empresa_id, nome, descricao, preco_padrao, ativo
+) VALUES
+    ('a0000000-0000-4000-8000-000000000071',
+     'a0000000-0000-4000-8000-000000000001', 'Serviço Authz A', 'Catálogo sintético', 50, true),
+    ('b0000000-0000-4000-8000-000000000072',
+     'b0000000-0000-4000-8000-000000000001', 'Serviço Authz B', 'Catálogo sintético', 75, true);
+
 INSERT INTO public.verificacoes (
     id, empresa_id, equipamento_id, tecnico_nome, problema_relatado
 ) VALUES (
@@ -186,6 +194,39 @@ BEGIN
     END;
 
     BEGIN
+        INSERT INTO public.servicos_catalogo (id, empresa_id, nome, preco_padrao)
+        VALUES ('a0000000-0000-4000-8000-000000000073',
+                'a0000000-0000-4000-8000-000000000001', 'Serviço sem permissão', 10);
+        RAISE EXCEPTION 'service catalog insert bypassed server authorization';
+    EXCEPTION WHEN insufficient_privilege THEN
+        NULL;
+    END;
+
+    BEGIN
+        UPDATE public.servicos_catalogo SET nome = 'Serviço editado sem permissão'
+         WHERE id = 'a0000000-0000-4000-8000-000000000071';
+        RAISE EXCEPTION 'service catalog update bypassed server authorization';
+    EXCEPTION WHEN insufficient_privilege THEN
+        NULL;
+    END;
+
+    BEGIN
+        UPDATE public.servicos_catalogo SET ativo = false
+         WHERE id = 'a0000000-0000-4000-8000-000000000071';
+        RAISE EXCEPTION 'service catalog soft delete bypassed DELETE_RECORDS authorization';
+    EXCEPTION WHEN insufficient_privilege THEN
+        NULL;
+    END;
+
+    BEGIN
+        DELETE FROM public.servicos_catalogo
+         WHERE id = 'a0000000-0000-4000-8000-000000000071';
+        RAISE EXCEPTION 'service catalog delete bypassed DELETE_RECORDS authorization';
+    EXCEPTION WHEN insufficient_privilege THEN
+        NULL;
+    END;
+
+    BEGIN
         INSERT INTO public.security_audit_log (
             empresa_id, event_type, profile_id, profile_name, details,
             success, auth_user_id
@@ -248,6 +289,18 @@ BEGIN
     VALUES (tenant_id, 'Despesa autorizada de teste', 25, 'Teste');
     INSERT INTO public.gastos_variaveis (empresa_id, descricao, valor, data, categoria)
     VALUES (tenant_id, 'Despesa variável autorizada de teste', 12, CURRENT_DATE, 'Teste');
+    INSERT INTO public.servicos_catalogo (id, empresa_id, nome, preco_padrao)
+    VALUES ('a0000000-0000-4000-8000-000000000073', tenant_id, 'Serviço autorizado', 10);
+    UPDATE public.servicos_catalogo SET descricao = 'Alteração autorizada'
+     WHERE id = 'a0000000-0000-4000-8000-000000000071';
+
+    BEGIN
+        UPDATE public.servicos_catalogo SET ativo = false
+         WHERE id = 'a0000000-0000-4000-8000-000000000071';
+        RAISE EXCEPTION 'service catalog soft delete bypassed DELETE_RECORDS authorization';
+    EXCEPTION WHEN insufficient_privilege THEN
+        NULL;
+    END;
 
     IF (SELECT adjusted_by_profile_id FROM public.verificacoes
         WHERE id = 'a0000000-0000-4000-8000-000000000061')
@@ -260,8 +313,15 @@ BEGIN
           AND profile_id = 'a0000000-0000-4000-8000-000000000012'
           AND success IS TRUE
           AND occurred_at IS NOT NULL
-          AND event_type = 'SAAS_SENSITIVE_MUTATION') <> 7 THEN
+          AND event_type = 'SAAS_SENSITIVE_MUTATION') <> 9 THEN
         RAISE EXCEPTION 'successful sensitive mutations lack authoritative audit records';
+    END IF;
+    IF (SELECT count(*) FROM public.security_audit_log
+        WHERE auth_user_id = actor_id
+          AND empresa_id = tenant_id
+          AND event_type = 'SAAS_SENSITIVE_MUTATION'
+          AND (details::jsonb ->> 'table') = 'servicos_catalogo') <> 2 THEN
+        RAISE EXCEPTION 'authorized service catalog mutations lack server audit records';
     END IF;
 
     BEGIN
@@ -277,6 +337,28 @@ BEGIN
         WHERE id = 'a0000000-0000-4000-8000-000000000041')
        IS DISTINCT FROM tenant_id THEN
         RAISE EXCEPTION 'failed forged-tenant update changed the stored tenant';
+    END IF;
+END;
+$$;
+
+-- A permissão de estoque permite criar/editar o catálogo, mas a inativação e a
+-- exclusão lógica exigem DELETE_RECORDS no perfil atual.
+RESET ROLE;
+UPDATE public.security_profiles
+   SET permissions = '["FINANCIAL_ACTIONS", "STOCK_CONTROL", "DELETE_RECORDS"]'
+ WHERE id = 'a0000000-0000-4000-8000-000000000012';
+SET LOCAL ROLE authenticated;
+SELECT set_config('request.jwt.claims', current_setting('autoos.test.authz_user_a'), true);
+DO $$
+BEGIN
+    UPDATE public.servicos_catalogo SET ativo = false
+     WHERE id = 'a0000000-0000-4000-8000-000000000071';
+    IF (SELECT count(*) FROM public.security_audit_log
+        WHERE auth_user_id = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'
+          AND empresa_id = 'a0000000-0000-4000-8000-000000000001'
+          AND event_type = 'SAAS_SENSITIVE_MUTATION'
+          AND (details::jsonb ->> 'table') = 'servicos_catalogo') <> 3 THEN
+        RAISE EXCEPTION 'service catalog soft delete lacks an authoritative audit record';
     END IF;
 END;
 $$;
@@ -345,14 +427,23 @@ $$;
 SELECT set_config('request.jwt.claims', current_setting('autoos.test.authz_admin_b'), true);
 DO $$
 BEGIN
+    UPDATE public.servicos_catalogo SET descricao = 'Edição autorizada por ADMIN'
+     WHERE id = 'b0000000-0000-4000-8000-000000000072';
     UPDATE public.equipamentos SET status = 'AGUARDANDO_APROVACAO'
      WHERE id = 'b0000000-0000-4000-8000-000000000041';
     IF (SELECT count(*) FROM public.security_audit_log
         WHERE auth_user_id = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb'
           AND empresa_id = 'b0000000-0000-4000-8000-000000000001'
           AND event_type = 'SAAS_SENSITIVE_MUTATION'
-          AND success IS TRUE) <> 1 THEN
+          AND success IS TRUE) <> 2 THEN
         RAISE EXCEPTION 'active legacy ADMIN lost access or audit used a client-supplied actor';
+    END IF;
+    IF (SELECT count(*) FROM public.security_audit_log
+        WHERE auth_user_id = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb'
+          AND empresa_id = 'b0000000-0000-4000-8000-000000000001'
+          AND event_type = 'SAAS_SENSITIVE_MUTATION'
+          AND (details::jsonb ->> 'table') = 'servicos_catalogo') <> 1 THEN
+        RAISE EXCEPTION 'active ADMIN could not mutate and audit the service catalog';
     END IF;
 END;
 $$;
