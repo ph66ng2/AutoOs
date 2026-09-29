@@ -2985,7 +2985,7 @@
     {
       "id": "AO-AUTH-TEST-001",
       "title": "Gerar instalador Windows para validar login SaaS",
-      "status": "review",
+      "status": "merged",
       "blockedBy": [
         "AO-AUTH-002"
       ],
@@ -3058,7 +3058,8 @@
         "Inserir uma chave privilegiada no ambiente VITE e expô-la no bundle.",
         "Misturar URL/redirect de produção e staging e testar a identidade no projeto errado.",
         "Confundir a página de recuperação com a tela de login do aplicativo."
-      ]
+      ],
+      "completedAt": "2026-09-16"
     },
     {
       "id": "AO-HOTFIX-004",
@@ -3472,7 +3473,7 @@
     {
       "id": "AO-CLI-ONLINE-004",
       "title": "Restaurar contatos de Clientes no SaaS com contrato multi-tenant",
-      "status": "review",
+      "status": "merged",
       "blockedBy": ["AO-CLI-003"],
       "objective": "Trazer os contatos de Clientes da master para o SaaS, preservando a interface, os UUIDs e o isolamento por empresa.",
       "context": "A página SaaS simplificada não inclui Contatos; o componente da master só aceita IDs numéricos e chama Tauri. O Staging não possui cliente_contatos, embora o schema versionado já o descreva. Este ticket integra o lote de paridade operacional, promovido apenas após homologação conjunta.",
@@ -3490,7 +3491,8 @@
         "stagingRestrictions": "Somente inspeção de metadados; sem DDL ou dados reais."
       },
       "likelyFiles": ["src/pages/SaasClientesPage.tsx", "src/components/clientes/ClienteContatosPanel.tsx", "src/lib/data/cliente-contatos-repository.ts", "src/types/index.ts", "supabase/migrations/"],
-      "risks": ["Schema Staging divergente.", "IDs legados numéricos.", "FK simples pode permitir referência cruzada."]
+      "risks": ["Schema Staging divergente.", "IDs legados numéricos.", "FK simples pode permitir referência cruzada."],
+      "completedAt": "2026-09-23"
     }
   ]
 }
