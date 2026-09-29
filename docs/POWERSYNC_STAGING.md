@@ -1,57 +1,79 @@
-# Staging isolado para PowerSync
+# PowerSync no staging SaaS
 
-Esta configuração existe exclusivamente para a POC SaaS. A linha interna da
-BMITAG continua em `master`, com Tauri/Rust/sqlx e sem PowerSync.
+O plano Offline usa uma instância PowerSync Cloud exclusiva conectada somente
+ao Supabase staging. O plano Online não usa PowerSync. A linha interna da
+BMITAG e a produção ficam fora desta configuração.
 
-## Limites obrigatórios
+## Limites de segurança
 
-- Crie um projeto Supabase novo, identificado como **AutoOS Staging**. Não use o
-  projeto interno e não reutilize seu database password, keys ou Storage.
-- Crie uma instância PowerSync nova ligada somente a esse projeto de staging.
-- Não importe dump, backup, imagem ou cadastro da BMITAG. O schema UUID/text e
-  o seed sintético serão aplicados somente em `AO-PS-003`, depois de a revisão
-  do modelo e IDs ser aprovada.
-- Não versione `src-tauri/.env`. O template contém somente endpoints públicos;
-  senha PostgreSQL, `service_role`, token administrativo PowerSync e segredo de
-  cobrança ficam exclusivamente no cofre de operações ou nos respectivos
-  serviços server-side, nunca no desktop.
-- Credenciais que já tenham sido expostas em histórico Git devem ser rotacionadas
-  antes de qualquer distribuição externa. Elas não podem ser reutilizadas no
-  staging.
+- Nunca conecte PowerSync ao banco interno ou à produção. Não reutilize senhas,
+  chaves, dumps, backups, imagens ou cadastros reais.
+- Mantenha senha PostgreSQL, chave privada JWT, `service_role` e credenciais
+  administrativas somente nos cofres dos serviços. Não as versione nem as
+  distribua no desktop.
+- A configuração versionada fica em
+  `supabase/powersync-sync-rules.yaml`. O nome histórico do arquivo contém
+  “sync-rules”, mas seu conteúdo usa Sync Streams, edition 3.
+- Cada consulta lista explicitamente suas colunas e exige `empresa_id` igual ao
+  claim assinado `company_id`, além do claim booleano `offline_sync = true`.
+  Se qualquer claim estiver ausente ou falso, a consulta não entrega linhas.
+- O token aceito pela instância deve ser o token PowerSync curto emitido pelo
+  backend depois de validar o entitlement. Ele deve ter `company_id`,
+  `offline_sync`, `sub`, `iss`, `aud`, `exp` e `jti`, conforme
+  `docs/SAAS_AUTH_RLS_CONTRACT.md`. Não habilite o JWT comum do Supabase como
+  credencial direta para essas streams: ele não prova a capacidade Offline.
+- Conceda ao usuário de replicação leitura somente nas tabelas sincronizadas e
+  publique somente essas tabelas. Não use `FOR ALL TABLES` como atalho.
+- `security_audit_log` não é baixado: o schema PowerSync o trata como tabela
+  somente para inserção/upload.
 
-## Provisionamento manual
+## Provisionamento da instância
 
-1. No dashboard Supabase, crie o projeto descartável de staging.
-2. Não aplique as migrations do baseline interno nem `supabase/schema.sql` como
-   atalho. O banco pode permanecer vazio até `AO-PS-003` definir o schema SaaS.
-3. No dashboard PowerSync, crie uma instância de staging e conecte-a ao Postgres
-   desse projeto Supabase.
-4. Registre os endpoints públicos de staging somente em configuração local não
-   versionada. Não inclua `DATABASE_URL`, `service_role` ou token PowerSync no
-   diretório do aplicativo.
-5. Exporte, apenas no terminal de operações, as variáveis de validação abaixo.
-   A URL PostgreSQL é usada unicamente pelo validador e pela conexão server-side
-   do PowerSync Cloud; ela nunca entra no bundle desktop:
+O provisionamento é manual no ambiente de staging e exige um operador com
+acesso aos dashboards. Nenhum segredo ou alteração remota é necessário para
+revisar os arquivos deste repositório.
 
-   ```bash
-   export SUPABASE_STAGING_URL='https://<staging-project-ref>.supabase.co'
-   export SUPABASE_STAGING_DATABASE_URL='postgresql://postgres:<password>@db.<staging-project-ref>.supabase.co:5432/postgres?sslmode=require'
-   export POWERSYNC_STAGING_URL='https://<staging-powersync-instance>.powersync.journeyapps.com'
-   export AUTOOS_INTERNAL_SUPABASE_URL='https://<internal-project-ref>.supabase.co'
-   ```
+1. Confirme que o projeto é o Supabase staging descartável, distinto da conta
+   interna e da produção. Use apenas o schema SaaS com IDs UUID definido em
+   `supabase/schema.sql` e nas migrations de `supabase/migrations/`.
+2. Crie uma instância PowerSync Cloud identificada como staging e conecte-a
+   apenas ao Postgres desse projeto. Use usuário dedicado de replicação,
+   publicação restrita às tabelas sincronizadas e validação TLS completa.
+3. Configure Client Auth para validar a chave pública/JWKS do emissor server-side
+   definido em `AO-SUB-003`, com a audiência específica dessa instância. O
+   token para teste deve ser gerado pelo backend de staging e conter somente
+   identidade sintética autorizada e capacidade `offline_sync` vigente.
+4. Carregue `supabase/powersync-sync-rules.yaml` no editor Sync Streams do
+   dashboard e execute Validate. Revise os filtros e confirme que nenhuma
+   consulta usa seleção global.
+5. **Antes de Deploy**, confira a configuração atual e confirme explicitamente
+   a publicação das streams persistentes da instância staging. Não substitua
+   streams já existentes sem essa confirmação.
 
-6. Execute `./scripts/verify-staging-isolation.sh`. O comando falha se a URL de
-   staging coincidir com a URL interna e testa a conexão PostgreSQL sem imprimir
-   credenciais.
+O emissor e a emissão de token pertencem a `AO-SUB-003`. Até esse fluxo existir,
+a validação de isolamento A/B e o aceite final em Cloud continuam pendentes; não
+substitua o token por JWT comum, claim editável no cliente ou segredo de teste
+persistente.
 
-## Checklist de aceite da S0
+## Verificação A/B em staging
 
-- [x ] Projeto Supabase de staging acessível e marcado como descartável.
-- [x ] Instância PowerSync exclusiva conectada ao Postgres de staging.
-- [x] `SUPABASE_STAGING_URL` é diferente de `AUTOOS_INTERNAL_SUPABASE_URL`.
-- [x] `./scripts/verify-staging-isolation.sh` retorna sucesso.
-- [x] Nenhum dump, seed ou arquivo de ambiente contém dado real da BMITAG.
-- [ ] Nenhuma chave, token ou senha aparece em arquivos versionados.
+Depois de provisionar uma instância exclusiva e obter tokens sintéticos pelo
+emissor autorizado:
 
-O ticket S1 só pode começar após todos os itens acima serem confirmados por um
-operador com acesso aos dashboards.
+1. Valide a configuração no dashboard antes de qualquer publicação.
+2. Com o token Offline do tenant A, insira um registro sintético
+   `TESTE-POWERSYNC-A` e confirme no diagnóstico/cliente PowerSync que A recebe
+   somente linhas com o `empresa_id` de A.
+3. Repita com tenant B e `TESTE-POWERSYNC-B`; confirme que B recebe somente as
+   linhas de B e que nenhuma consulta retorna dados de A.
+4. Tente assinar uma conexão de teste de A com a identidade do tenant B e
+   confirme que o emissor a rejeita ou que não há linhas disponíveis.
+5. Confirme que um token válido sem `offline_sync = true` recebe zero linhas.
+6. Registre a validação, IDs sintéticos e logs sanitizados, sem guardar tokens,
+   URLs privadas ou credenciais.
+7. Remova os registros sintéticos e as assinaturas locais de teste ao concluir.
+
+Impacto de dados: esses passos criam somente linhas sintéticas temporárias no
+Supabase staging e uma publicação persistente de Sync Streams no PowerSync
+staging. Use rollback/limpeza para as linhas e obtenha confirmação antes de
+publicar ou substituir a configuração persistente.

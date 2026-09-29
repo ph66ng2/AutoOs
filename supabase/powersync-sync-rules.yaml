@@ -2,18 +2,102 @@ config:
   edition: 3
 
 streams:
-  autoos_data:
+  autoos_offline_data:
     auto_subscribe: true
     queries:
-      - SELECT * FROM clientes
-      - SELECT * FROM equipamentos
-      - SELECT * FROM produtos
-      - SELECT * FROM movimentacoes_estoque
-      - SELECT * FROM verificacoes
-      - SELECT * FROM comunicacoes
-      - SELECT * FROM security_profiles
-      - SELECT * FROM equipamento_imagens
-      - SELECT * FROM servicos_catalogo
-      - SELECT * FROM gastos_fixos
-      - SELECT * FROM gastos_variaveis
-      - SELECT * FROM configuracoes_sistema
+      - |
+        SELECT id, empresa_id, nome, tipo_pessoa, documento, razao_social,
+               nome_fantasia, inscricao_estadual, cpf_cnpj, telefone,
+               telefone_secundario, email, cep, endereco, numero, complemento,
+               bairro, cidade, uf, receber_email, receber_whatsapp, observacoes,
+               ativo, criado_em, atualizado_em
+          FROM clientes
+         WHERE empresa_id = auth.parameter('company_id')
+           AND auth.parameter('offline_sync') = true
+      - |
+        SELECT id, empresa_id, cliente_id, nome, email, telefone, ativo,
+               criado_em, atualizado_em
+          FROM cliente_contatos
+         WHERE empresa_id = auth.parameter('company_id')
+           AND auth.parameter('offline_sync') = true
+      - |
+        SELECT id, empresa_id, serial_number, patrimonio, marca, modelo, tipo,
+               status, paginas_impressas, tecnologia, conectividade, data_entrada,
+               proprietario, preco_compra, preco_venda, observacoes, cliente_id,
+               cliente_nome, cliente_telefone, cliente_email,
+               responsavel_contato_id, responsavel_nome, responsavel_email,
+               responsavel_telefone, prazo_aprovacao, data_aprovacao,
+               data_reprovacao, data_verificacao, data_pronto, data_saida,
+               valor_orcamento, valor_final, defeito_relatado, acessorios,
+               acessorios_outros, criado_em, atualizado_em
+          FROM equipamentos
+         WHERE empresa_id = auth.parameter('company_id')
+           AND auth.parameter('offline_sync') = true
+      - |
+        SELECT id, empresa_id, codigo, nome, descricao, categoria,
+               quantidade_estoque, quantidade_minima, quantidade_maxima,
+               unidade_medida, localizacao, preco_custo, preco_venda,
+               margem_lucro, marca_original, tipo_cartucho, cor, rendimento,
+               modelos_compativeis, fornecedor_principal, prazo_entrega, ativo,
+               criado_em, atualizado_em
+          FROM produtos
+         WHERE empresa_id = auth.parameter('company_id')
+           AND auth.parameter('offline_sync') = true
+      - |
+        SELECT id, empresa_id, produto_id, tipo, quantidade, origem, referencia,
+               data_hora, usuario, observacoes, valor_unitario, valor_total
+          FROM movimentacoes_estoque
+         WHERE empresa_id = auth.parameter('company_id')
+           AND auth.parameter('offline_sync') = true
+      - |
+        SELECT id, empresa_id, nome, role, permissions, ativo, is_default,
+               criado_em, atualizado_em
+          FROM security_profiles
+         WHERE empresa_id = auth.parameter('company_id')
+           AND auth.parameter('offline_sync') = true
+      - |
+        SELECT id, empresa_id, equipamento_id, tecnico_nome, data_inicio,
+               data_fim, problema_relatado, diagnostico, itens_verificados,
+               servicos_necessarios, pecas_necessarias, custo_estimado_mao_obra,
+               custo_estimado_pecas, custo_total, tempo_estimado, concluida,
+               observacoes, forma_pagamento_codigo, forma_pagamento_detalhe,
+               adjusted_at, adjusted_by_profile_id
+          FROM verificacoes
+         WHERE empresa_id = auth.parameter('company_id')
+           AND auth.parameter('offline_sync') = true
+      - |
+        SELECT id, empresa_id, equipamento_id, tipo, canal, destinatario, contato,
+               assunto, mensagem, anexos, enviado, data_envio, erro, criado_em
+          FROM comunicacoes
+         WHERE empresa_id = auth.parameter('company_id')
+           AND auth.parameter('offline_sync') = true
+      - |
+        SELECT id, empresa_id, equipamento_id, categoria, filename, mime_type,
+               tamanho_bytes, largura, altura, ordem, observacao, storage_path,
+               criado_em, atualizado_em
+          FROM equipamento_imagens
+         WHERE empresa_id = auth.parameter('company_id')
+           AND auth.parameter('offline_sync') = true
+      - |
+        SELECT id, empresa_id, nome, descricao, preco_padrao, ativo, criado_em,
+               atualizado_em
+          FROM servicos_catalogo
+         WHERE empresa_id = auth.parameter('company_id')
+           AND auth.parameter('offline_sync') = true
+      - |
+        SELECT id, empresa_id, nome, valor, vencimento_dia, categoria, ativo,
+               criado_em, atualizado_em
+          FROM gastos_fixos
+         WHERE empresa_id = auth.parameter('company_id')
+           AND auth.parameter('offline_sync') = true
+      - |
+        SELECT id, empresa_id, descricao, valor, data, categoria, nota,
+               referencia_id, criado_em, atualizado_em
+          FROM gastos_variaveis
+         WHERE empresa_id = auth.parameter('company_id')
+           AND auth.parameter('offline_sync') = true
+      - |
+        SELECT id, empresa_id, inactivity_lock_enabled, updated_at
+          FROM configuracoes_sistema
+         WHERE empresa_id = auth.parameter('company_id')
+           AND auth.parameter('offline_sync') = true
