@@ -1,14 +1,17 @@
 import { useCallback, useEffect, useState } from "react";
-import { db } from "@/lib/db";
-import type { ServicoCatalogo } from "@/types";
+import { carregarRepositorioServicos, type ServicoCatalogoInput } from "@/lib/data/servicos-repository";
+import type { ClienteId, ServicoCatalogo } from "@/types";
 
 interface UseServicosParams {
   busca?: string;
   apenasAtivos?: boolean;
+  /** Página apresentada pela interface, iniciando em 1. */
+  page?: number;
 }
 
 export function useServicos(params?: UseServicosParams) {
-  const [servicos, setServicos] = useState<ServicoCatalogo[]>([]);
+  const [servicos, setServicos] = useState<ServicoCatalogo<ClienteId>[]>([]);
+  const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -16,23 +19,26 @@ export function useServicos(params?: UseServicosParams) {
     setLoading(true);
     setError(null);
     try {
-      const data = await db.listarServicos(params?.busca, params?.apenasAtivos ?? true);
-      setServicos(data);
+      const repository = await carregarRepositorioServicos();
+      const data = await repository.listar(params?.busca, params?.apenasAtivos ?? true, Math.max((params?.page ?? 1) - 1, 0));
+      setServicos(data.items);
+      setTotal(data.total);
     } catch (err: any) {
       setError(err?.toString() || "Erro ao carregar serviços");
       console.error("Erro ao carregar serviços:", err);
     } finally {
       setLoading(false);
     }
-  }, [params?.busca, params?.apenasAtivos]);
+  }, [params?.busca, params?.apenasAtivos, params?.page]);
 
   useEffect(() => {
     void carregar();
   }, [carregar]);
 
-  const criar = async (servico: Omit<ServicoCatalogo, "id">) => {
+  const criar = async (servico: ServicoCatalogoInput) => {
     try {
-      await db.criarServico(servico);
+      const repository = await carregarRepositorioServicos();
+      await repository.criar(servico);
       await carregar();
       return { sucesso: true };
     } catch (err: any) {
@@ -40,9 +46,10 @@ export function useServicos(params?: UseServicosParams) {
     }
   };
 
-  const atualizar = async (id: number, servico: Omit<ServicoCatalogo, "id">) => {
+  const atualizar = async (id: ClienteId, servico: ServicoCatalogoInput) => {
     try {
-      await db.atualizarServico(id, servico);
+      const repository = await carregarRepositorioServicos();
+      await repository.atualizar(id, servico);
       await carregar();
       return { sucesso: true };
     } catch (err: any) {
@@ -50,9 +57,10 @@ export function useServicos(params?: UseServicosParams) {
     }
   };
 
-  const deletar = async (id: number) => {
+  const deletar = async (id: ClienteId) => {
     try {
-      await db.deletarServico(id);
+      const repository = await carregarRepositorioServicos();
+      await repository.desativar(id);
       await carregar();
       return { sucesso: true };
     } catch (err: any) {
@@ -62,6 +70,7 @@ export function useServicos(params?: UseServicosParams) {
 
   return {
     servicos,
+    total,
     loading,
     error,
     criar,

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Plus, Search, Edit, Trash2, RefreshCw, Wrench } from "lucide-react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -29,23 +29,38 @@ import { useSensitiveAccess } from "@/hooks/useSensitiveAccess";
 import { useNotification } from "@/hooks/useNotification";
 import { ErrorAlert } from "@/components/ui/error-alert";
 import { FormValidationError } from "@/components/ui/form-validation-error";
-import { SENSITIVE_PERMISSIONS, type ServicoCatalogo } from "@/types";
+import { SENSITIVE_PERMISSIONS, type ClienteId, type ServicoCatalogo } from "@/types";
 import { ActionPriorityRow } from "@/components/ui/action-priority-row";
+import { PaginationControls } from "@/components/ui/pagination-controls";
+import { totalPages } from "@/lib/pagination";
+import type { SaasOperationalProfile } from "@/types/saas-auth";
 
-export default function Servicos() {
+export default function Servicos({ operationalProfile }: { operationalProfile?: SaasOperationalProfile } = {}) {
   const [busca, setBusca] = useState("");
+  const [paginaServicos, setPaginaServicos] = useState(1);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
-  const [editando, setEditando] = useState<ServicoCatalogo | null>(null);
-  const [deletando, setDeletando] = useState<ServicoCatalogo | null>(null);
+  const [editando, setEditando] = useState<ServicoCatalogo<ClienteId> | null>(null);
+  const [deletando, setDeletando] = useState<ServicoCatalogo<ClienteId> | null>(null);
   const [salvando, setSalvando] = useState(false);
-  const { ensureSensitiveAccess } = useSensitiveAccess();
+  const { ensureSensitiveAccess } = useSensitiveAccess({ operationalProfile });
   const { error: showError } = useNotification();
 
-  const { servicos, loading, error, criar, atualizar, deletar, recarregar } = useServicos({
+  const { servicos, total: totalServicos, loading, error, criar, atualizar, deletar, recarregar } = useServicos({
     busca: busca || undefined,
     apenasAtivos: true,
+    page: paginaServicos,
   });
+  const totalPaginasServicos = totalPages(totalServicos);
+  const paginaServicosExibida = Math.min(paginaServicos, totalPaginasServicos);
+
+  useEffect(() => {
+    setPaginaServicos(1);
+  }, [busca]);
+
+  useEffect(() => {
+    setPaginaServicos((pagina) => Math.min(pagina, totalPaginasServicos));
+  }, [totalPaginasServicos]);
 
   const form = useForm<ServicoCatalogoFormData>({
     resolver: zodResolver(servicoCatalogoSchema),
@@ -69,7 +84,7 @@ export default function Servicos() {
     setDialogOpen(true);
   }
 
-  async function abrirEditar(servico: ServicoCatalogo) {
+  async function abrirEditar(servico: ServicoCatalogo<ClienteId>) {
     const liberado = await ensureSensitiveAccess({
       title: "Editar serviço",
       description: "Informe o PIN para alterar nome e preço do serviço padrão.",
@@ -112,7 +127,7 @@ export default function Servicos() {
     }
   }
 
-  async function solicitarExclusao(servico: ServicoCatalogo) {
+  async function solicitarExclusao(servico: ServicoCatalogo<ClienteId>) {
     const liberado = await ensureSensitiveAccess({
       title: "Excluir serviço",
       description: "Informe o PIN para desativar um serviço padrão do catálogo.",
@@ -193,7 +208,14 @@ export default function Servicos() {
               </p>
             </div>
           ) : (
-            <div className="rounded-md border">
+            <>
+              <PaginationControls
+                page={paginaServicosExibida}
+                totalPages={totalPaginasServicos}
+                onPageChange={setPaginaServicos}
+                label="Paginação de serviços"
+              />
+              <div className="rounded-md border">
               <Table>
                 <TableHeader>
                   <TableRow>
@@ -239,7 +261,8 @@ export default function Servicos() {
                   ))}
                 </TableBody>
               </Table>
-            </div>
+              </div>
+            </>
           )}
         </CardContent>
       </Card>
