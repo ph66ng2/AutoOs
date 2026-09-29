@@ -35,7 +35,7 @@ describe("SupabaseEquipmentOperationsRepository", () => {
   it("loads verification and service catalog through tenant-scoped reads", async () => {
     const fetcher = vi.fn<typeof fetch>()
       .mockResolvedValueOnce(response([{ empresa_id: tenantId, equipamento_id: equipmentId, tecnico_nome: "Ivan", problema_relatado: "Falha", id: "33000000-0000-4000-8000-000000000001" }]))
-      .mockResolvedValueOnce(response([{ empresa_id: tenantId, id: "44000000-0000-4000-8000-000000000001", nome: "Limpeza", preco_padrao: 35, ativo: true }]));
+      .mockResolvedValueOnce(response([{ empresa_id: tenantId, id: "44000000-0000-4000-8000-000000000001", nome: "Limpeza", preco_padrao: 35, ativo: true, pecas_sugeridas: [{ produto_id: "55000000-0000-4000-8000-000000000001", nome: "Cabeça", quantidade: 1, valor_unitario: 85 }] }]));
     const repository = new SupabaseEquipmentOperationsRepository(session, fetcher);
 
     const verification = await repository.getVerification(equipmentId);
@@ -43,9 +43,36 @@ describe("SupabaseEquipmentOperationsRepository", () => {
 
     expect(verification?.tecnico_nome).toBe("Ivan");
     expect(services[0]?.nome).toBe("Limpeza");
+    expect(services[0]?.pecas_sugeridas?.[0]?.nome).toBe("Cabeça");
     expect(String(fetcher.mock.calls[0]?.[0])).toContain(`empresa_id=eq.${tenantId}`);
     expect(String(fetcher.mock.calls[1]?.[0])).toContain(`empresa_id=eq.${tenantId}`);
+    expect(String(fetcher.mock.calls[1]?.[0])).toContain("pecas_sugeridas");
     expect(fetcher.mock.calls.every(([, init]) => (init?.headers as Record<string, string>).Authorization === `Bearer ${session.accessToken}`)).toBe(true);
+  });
+
+  it("paginates active services and keeps the tenant filter on every page", async () => {
+    const rows = Array.from({ length: 101 }, (_, index) => ({
+      empresa_id: tenantId,
+      id: `44000000-0000-4000-8000-${String(index + 1).padStart(12, "0")}`,
+      nome: `Serviço ${index + 1}`,
+      preco_padrao: 35,
+      ativo: true,
+      pecas_sugeridas: [],
+    }));
+    const fetcher = vi.fn<typeof fetch>()
+      .mockResolvedValueOnce(response(rows.slice(0, 100)))
+      .mockResolvedValueOnce(response(rows.slice(100)));
+    const repository = new SupabaseEquipmentOperationsRepository(session, fetcher);
+
+    const services = await repository.listActiveServices();
+
+    expect(services).toHaveLength(101);
+    const firstUrl = new URL(String(fetcher.mock.calls[0]?.[0]));
+    const secondUrl = new URL(String(fetcher.mock.calls[1]?.[0]));
+    expect(firstUrl.searchParams.get("empresa_id")).toBe(`eq.${tenantId}`);
+    expect(firstUrl.searchParams.get("limit")).toBe("100");
+    expect(secondUrl.searchParams.get("empresa_id")).toBe(`eq.${tenantId}`);
+    expect(secondUrl.searchParams.get("offset")).toBe("100");
   });
 
   it("finalizes verification with one RPC and never sends a tenant, profile, or privileged key", async () => {

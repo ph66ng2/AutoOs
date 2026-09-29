@@ -21,12 +21,18 @@ vi.mock("@/hooks/useNotification", () => ({ useNotification: () => ({ error: moc
 vi.mock("@/hooks/useSensitiveAccess", () => ({
   useSensitiveAccess: () => ({ ensureSensitiveAccess: mocks.ensureSensitiveAccess }),
 }));
+vi.mock("@/lib/runtime-mode", () => ({ IS_SAAS_BUILD: true }));
+vi.mock("@/components/equipamentos/PecasDoServico", () => ({ PecasDoServico: () => null }));
 
 import Servicos from "@/pages/Servicos";
 
 describe("Servicos", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    Object.defineProperty(HTMLElement.prototype, "hasPointerCapture", { configurable: true, value: () => false });
+    Object.defineProperty(HTMLElement.prototype, "setPointerCapture", { configurable: true, value: () => undefined });
+    Object.defineProperty(HTMLElement.prototype, "releasePointerCapture", { configurable: true, value: () => undefined });
+    Object.defineProperty(HTMLElement.prototype, "scrollIntoView", { configurable: true, value: () => undefined });
     mocks.criar.mockResolvedValue({ sucesso: false, erro: "Serviço indisponível" });
     mocks.ensureSensitiveAccess.mockResolvedValue(true);
   });
@@ -46,5 +52,26 @@ describe("Servicos", () => {
     expect(screen.getByRole("dialog")).toBeInTheDocument();
     expect(name).toHaveValue("Limpeza técnica");
     expect(price).toHaveValue(150);
+  });
+
+  it("preenche o formulário pelo modelo e cria um serviço SaaS com lista de peças vazia", async () => {
+    const user = userEvent.setup();
+    mocks.criar.mockResolvedValueOnce({ sucesso: true });
+    render(<Servicos />);
+
+    await user.click(screen.getByRole("button", { name: /Novo Serviço/ }));
+    await user.click(screen.getByRole("combobox", { name: "Modelo inicial" }));
+    await user.click(screen.getByRole("option", { name: "Limpeza técnica" }));
+
+    expect(screen.getByPlaceholderText("Ex.: Limpeza de cabeça térmica")).toHaveValue("Limpeza técnica");
+    expect(screen.getByPlaceholderText("Detalhes opcionais do serviço...")).toHaveValue("Limpeza e inspeção técnica do equipamento.");
+    await user.click(screen.getByRole("button", { name: "Cadastrar" }));
+
+    await waitFor(() => expect(mocks.criar).toHaveBeenCalledWith(expect.objectContaining({
+      nome: "Limpeza técnica",
+      descricao: "Limpeza e inspeção técnica do equipamento.",
+      preco_padrao: 0,
+      pecas_sugeridas: [],
+    })));
   });
 });

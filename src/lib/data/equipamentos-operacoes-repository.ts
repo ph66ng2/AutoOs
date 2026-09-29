@@ -5,6 +5,7 @@ import {
   type SupabaseOnlineSession,
 } from "@/lib/data/clientes-repository";
 import { tauriSaasSessionStore } from "@/lib/saas-session-store";
+import { validatePecasSugeridas } from "@/lib/data/servicos-repository";
 import type {
   Equipamento,
   FormaPagamento,
@@ -15,6 +16,7 @@ import type {
 } from "@/types";
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const SERVICE_PAGE_SIZE = 100;
 type FetchLike = typeof fetch;
 
 export interface EquipmentOperationResult {
@@ -184,14 +186,24 @@ export class SupabaseEquipmentOperationsRepository implements EquipmentOperation
   }
 
   async listActiveServices(): Promise<ServicoCatalogo<string>[]> {
-    const query = new URLSearchParams({
-      select: "id,empresa_id,nome,descricao,preco_padrao,ativo,criado_em,atualizado_em",
-      empresa_id: `eq.${this.session.companyId}`,
-      ativo: "eq.true",
-      order: "nome.asc",
-    });
-    const rows = await this.request<ServicoCatalogo<string>[]>(`${this.session.supabaseUrl}/rest/v1/servicos_catalogo?${query}`);
-    return rows.map((row) => assertTenant(row, this.session));
+    const services: ServicoCatalogo<string>[] = [];
+    for (let offset = 0; ; offset += SERVICE_PAGE_SIZE) {
+      const query = new URLSearchParams({
+        select: "id,empresa_id,nome,descricao,preco_padrao,pecas_sugeridas,ativo,criado_em,atualizado_em",
+        empresa_id: `eq.${this.session.companyId}`,
+        ativo: "eq.true",
+        order: "nome.asc,id.asc",
+        limit: String(SERVICE_PAGE_SIZE),
+        offset: String(offset),
+      });
+      const rows = await this.request<ServicoCatalogo<string>[]>(`${this.session.supabaseUrl}/rest/v1/servicos_catalogo?${query}`);
+      services.push(...rows.map((row) => {
+        assertTenant(row, this.session);
+        validatePecasSugeridas(row.pecas_sugeridas ?? []);
+        return row;
+      }));
+      if (rows.length < SERVICE_PAGE_SIZE) return services;
+    }
   }
 
   async finalizeVerification(input: {

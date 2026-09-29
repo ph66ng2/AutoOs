@@ -3,6 +3,7 @@ import { Plus, Trash2, Search } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import type { EquipamentoId, ServicoCatalogo, ServicoNecessario } from "@/types";
+import { PecasDoServico } from "@/components/equipamentos/PecasDoServico";
 
 interface AjusteOrcamentoServicosProps {
   servicos: ServicoNecessario[];
@@ -10,6 +11,7 @@ interface AjusteOrcamentoServicosProps {
   carregandoCatalogo?: boolean;
   onChange: (servicos: ServicoNecessario[]) => void;
   onRemoverTodos?: () => void;
+  saasMode?: boolean;
 }
 
 export function AjusteOrcamentoServicos({
@@ -18,6 +20,7 @@ export function AjusteOrcamentoServicos({
   carregandoCatalogo = false,
   onChange,
   onRemoverTodos,
+  saasMode = false,
 }: AjusteOrcamentoServicosProps) {
   const [linhaSugestaoAberta, setLinhaSugestaoAberta] = useState<string | null>(null);
 
@@ -47,6 +50,7 @@ export function AjusteOrcamentoServicos({
       descricao: item.nome,
       catalogo_id: item.id,
       valor: Number(item.preco_padrao) || 0,
+      ...(saasMode ? { pecas: item.pecas_sugeridas ?? [] } : {}),
     });
   }
 
@@ -66,7 +70,8 @@ export function AjusteOrcamentoServicos({
       </p>
       <div className="space-y-2">
         {servicos.map((s) => (
-          <div key={s.id} className="flex gap-2 items-start">
+          <div key={s.id} className={saasMode ? "rounded-md border p-2" : "flex gap-2 items-start"}>
+          <div className="flex gap-2 items-start">
             <div className="relative flex-1">
               <Search className="pointer-events-none absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
               <Input
@@ -131,6 +136,8 @@ export function AjusteOrcamentoServicos({
             >
               <Trash2 className="h-4 w-4 text-red-500" />
             </Button>
+          </div>
+          {saasMode && <PecasDoServico pecas={s.pecas ?? []} onChange={(pecas) => atualizarServico(s.id, { pecas })} />}
           </div>
         ))}
         {servicos.length === 0 && (
