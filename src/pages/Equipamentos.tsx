@@ -131,6 +131,8 @@ import { PhotoUploadDialog } from "@/components/equipamentos/PhotoUploadDialog";
 import { DocumentosEquipamento } from "@/components/equipamentos/DocumentosEquipamento";
 import { PdfPreviewDialog } from "@/components/equipamentos/PdfPreviewDialog";
 import { AjusteOrcamentoServicos } from "@/components/equipamentos/AjusteOrcamentoServicos";
+import { validatePecasSugeridas } from "@/lib/data/servicos-repository";
+import { mesclarPecasDoOrcamento, somarPecas } from "@/lib/servico-pecas";
 import { ActionPriorityRow, type PriorityAction } from "@/components/ui/action-priority-row";
 import {
   arquivoParaImagemEquipamento,
@@ -366,18 +368,17 @@ export default function Equipamentos({ operationalProfile }: { operationalProfil
   }, [carregarImagensComPreview]);
 
   useEffect(() => {
-    if (novoStatus === "AGUARDANDO_APROVACAO" && verificacaoAjusteOrcamento) {
-      let pecasTotal = 0;
+    if ((novoStatus === "AGUARDANDO_APROVACAO" || ajusteOrcamentoSemMudancaStatus) && verificacaoAjusteOrcamento) {
+      let pecasSalvas: PecaNecessaria[] = [];
       try {
-        const pecas = JSON.parse(verificacaoAjusteOrcamento.pecas_necessarias || "[]") as PecaNecessaria[];
-        pecasTotal = pecas.reduce((sum, p) => sum + (p.valorTotal || 0), 0);
+        pecasSalvas = JSON.parse(verificacaoAjusteOrcamento.pecas_necessarias || "[]") as PecaNecessaria[];
       } catch {
-        pecasTotal = 0;
+        pecasSalvas = [];
       }
       const servicosTotal = servicosAjuste.reduce((sum, s) => sum + (Number(s.valor) || 0), 0);
-      setValorOrcamento(servicosTotal + pecasTotal);
+      setValorOrcamento(servicosTotal + somarPecas(mesclarPecasDoOrcamento(pecasSalvas, servicosAjuste)));
     }
-  }, [servicosAjuste, verificacaoAjusteOrcamento, novoStatus]);
+  }, [servicosAjuste, verificacaoAjusteOrcamento, novoStatus, ajusteOrcamentoSemMudancaStatus]);
 
   const form = useForm<EquipamentoFormData>({
      resolver: zodResolver(equipamentoSchema),
@@ -1250,14 +1251,13 @@ export default function Equipamentos({ operationalProfile }: { operationalProfil
       const totalOriginal = servicosOriginal.reduce((sum, s) => sum + (Number(s.valor) || 0), 0);
       const totalNovo = servicosAjuste.reduce((sum, s) => sum + (Number(s.valor) || 0), 0);
 
-      let pecasTotal = 0;
+      let pecasSalvas: PecaNecessaria[] = [];
       try {
-        const pecas = JSON.parse(verificacaoAjusteOrcamento.pecas_necessarias || "[]") as PecaNecessaria[];
-        pecasTotal = pecas.reduce((sum, p) => sum + (p.valorTotal || 0), 0);
+        pecasSalvas = JSON.parse(verificacaoAjusteOrcamento.pecas_necessarias || "[]") as PecaNecessaria[];
       } catch {
-        pecasTotal = 0;
+        pecasSalvas = [];
       }
-      const calculado = totalNovo + pecasTotal;
+      const calculado = totalNovo + somarPecas(mesclarPecasDoOrcamento(pecasSalvas, servicosAjuste));
 
       if (Math.abs(calculado - valorOrcamentoRef.current) > 0.001) {
         setConfirmProps({
@@ -1415,12 +1415,18 @@ export default function Equipamentos({ operationalProfile }: { operationalProfil
               && !reabreOrcamentoSemAjuste(selecionado.status, novoStatus)))
         );
         if (savesQuote && verificacaoAjusteOrcamento) {
-          const pecas = JSON.parse(verificacaoAjusteOrcamento.pecas_necessarias || "[]") as PecaNecessaria[];
+          let pecasSalvas: PecaNecessaria[] = [];
+          try {
+            pecasSalvas = JSON.parse(verificacaoAjusteOrcamento.pecas_necessarias || "[]") as PecaNecessaria[];
+          } catch {
+            pecasSalvas = [];
+          }
+          for (const servico of servicosAjuste) validatePecasSugeridas(servico.pecas ?? []);
           await repository.saveQuote({
             equipmentId: String(selecionado.id),
             expectedUpdatedAt: selecionado.atualizado_em || "",
             services: servicosAjuste,
-            parts: pecas,
+            parts: mesclarPecasDoOrcamento(pecasSalvas, servicosAjuste),
             total: totalAtual,
             observations: observacoesAjuste,
             newStatus: ajusteOrcamentoSemMudancaStatus ? undefined : novoStatus,
@@ -2997,6 +3003,7 @@ export default function Equipamentos({ operationalProfile }: { operationalProfil
                         servicos={servicosAjuste}
                         catalogo={catalogoServicosAjuste}
                         carregandoCatalogo={carregandoCatalogoAjuste}
+                        saasMode={IS_SAAS_BUILD}
                         onChange={setServicosAjuste}
                         onRemoverTodos={() => {
                           setConfirmProps({
@@ -3019,6 +3026,7 @@ export default function Equipamentos({ operationalProfile }: { operationalProfil
                         } catch {
                           pecas = [];
                         }
+                        pecas = mesclarPecasDoOrcamento(pecas, servicosAjuste);
                         return (
                           <>
                             {pecas.length > 0 && (

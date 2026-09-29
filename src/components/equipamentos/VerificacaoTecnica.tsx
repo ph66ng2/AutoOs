@@ -62,6 +62,9 @@ import {
 } from "@/types";
 import { db } from "@/lib/db";
 import { carregarRepositorioOperacoesEquipamento } from "@/lib/data/equipamentos-operacoes-repository";
+import { validatePecasSugeridas } from "@/lib/data/servicos-repository";
+import { PecasDoServico } from "@/components/equipamentos/PecasDoServico";
+import { pecasDosServicosParaVerificacao } from "@/lib/servico-pecas";
 import { useNotification } from "@/hooks/useNotification";
 import { PhotoUploadDialog } from "@/components/equipamentos/PhotoUploadDialog";
 import { imagemPersistidaParaDraft, type EquipamentoImagemDraft } from "@/lib/equipamento-imagem-utils";
@@ -181,6 +184,7 @@ export function VerificacaoTecnica({
       catalogo_id: servicoCatalogo.id,
       descricao: servicoCatalogo.nome,
       valor: Number(servicoCatalogo.preco_padrao || 0),
+      ...(saasMode ? { pecas: servicoCatalogo.pecas_sugeridas ?? [] } : {}),
     });
     setLinhaSugestaoAberta(null);
   }
@@ -214,6 +218,14 @@ export function VerificacaoTecnica({
       warning("Verificação", "Cada serviço precisa ter descrição e valor igual ou maior que zero (0,00 para garantia).");
       return;
     }
+    if (saasMode) {
+      try {
+        for (const servico of servicos) validatePecasSugeridas(servico.pecas ?? []);
+      } catch {
+        warning("Verificação", "Cada peça sugerida precisa ter produto válido, quantidade inteira positiva e preço válido.");
+        return;
+      }
+    }
     const pecasInvalidas = pecas.some((peca) =>
       !peca.nome.trim()
       || !Number.isFinite(Number(peca.quantidade))
@@ -234,13 +246,15 @@ export function VerificacaoTecnica({
         valor: Number(servico.valor),
       }));
     const custoTotalServicos = servicosNormalizados.reduce((acum, servico) => acum + servico.valor, 0);
-    const pecasNormalizadas = pecas.map((peca) => ({
-      ...peca,
-      nome: peca.nome.trim(),
-      quantidade: Number(peca.quantidade),
-      valorUnitario: Number(peca.valorUnitario),
-      valorTotal: Math.round(Number(peca.quantidade) * Number(peca.valorUnitario) * 100) / 100,
-    }));
+    const pecasNormalizadas = saasMode
+      ? pecasDosServicosParaVerificacao(servicosNormalizados)
+      : pecas.map((peca) => ({
+        ...peca,
+        nome: peca.nome.trim(),
+        quantidade: Number(peca.quantidade),
+        valorUnitario: Number(peca.valorUnitario),
+        valorTotal: Math.round(Number(peca.quantidade) * Number(peca.valorUnitario) * 100) / 100,
+      }));
     const custoTotalPecas = pecasNormalizadas.reduce((acum, peca) => acum + peca.valorTotal, 0);
     const custoTotal = Math.round((custoTotalServicos + custoTotalPecas) * 100) / 100;
 
@@ -271,6 +285,12 @@ export function VerificacaoTecnica({
     if (!value) resetForm();
     onOpenChange(value);
   }
+
+  const custoTotalServicosExibido = servicos.reduce((sum, item) => sum + (Number(item.valor) || 0), 0);
+  const custoTotalPecasExibido = saasMode
+    ? pecasDosServicosParaVerificacao(servicos).reduce((sum, item) => sum + item.valorTotal, 0)
+    : pecas.reduce((sum, item) => sum + (Number(item.valorTotal) || 0), 0);
+
   // ─── Render ─────────────────────────────────────────
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
@@ -378,7 +398,8 @@ export function VerificacaoTecnica({
                 </p>
                 <div className="space-y-3">
                   {servicos.map((s) => (
-                    <div key={s.id} className="flex gap-3 items-start">
+                    <div key={s.id} className="rounded-md border p-2">
+                    <div className="flex gap-3 items-start">
                       <div className="relative flex-1">
                         <Search className="pointer-events-none absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
                         <Input
@@ -440,6 +461,13 @@ export function VerificacaoTecnica({
                         <Trash2 className="h-4 w-4 text-red-500" />
                       </Button>
                     </div>
+                    {saasMode && (
+                      <PecasDoServico
+                        pecas={s.pecas ?? []}
+                        onChange={(pecasServ) => atualizarServico(s.id, { pecas: pecasServ })}
+                      />
+                    )}
+                    </div>
                   ))}
                   {servicos.length === 0 && (
                     <p className="text-sm text-muted-foreground text-center py-4">
@@ -450,7 +478,7 @@ export function VerificacaoTecnica({
               </CardContent>
             </Card>
 
-            <Card>
+            {!saasMode && <Card>
               <CardHeader>
                 <div className="flex items-center justify-between">
                   <CardTitle className="text-sm">Peças Necessárias</CardTitle>
@@ -494,13 +522,13 @@ export function VerificacaoTecnica({
                 ))}
                 {pecas.length === 0 && <p className="py-2 text-center text-sm text-muted-foreground">Nenhuma peça adicionada.</p>}
               </CardContent>
-            </Card>
+            </Card>}
 
             <Card>
               <CardContent className="space-y-1 pt-4 text-sm">
-                <div className="flex justify-between"><span>Serviços / mão de obra</span><span>R$ {servicos.reduce((sum, item) => sum + (Number(item.valor) || 0), 0).toFixed(2)}</span></div>
-                <div className="flex justify-between"><span>Peças</span><span>R$ {pecas.reduce((sum, item) => sum + (Number(item.valorTotal) || 0), 0).toFixed(2)}</span></div>
-                <div className="flex justify-between border-t pt-2 font-semibold"><span>Orçamento total</span><span>R$ {(servicos.reduce((sum, item) => sum + (Number(item.valor) || 0), 0) + pecas.reduce((sum, item) => sum + (Number(item.valorTotal) || 0), 0)).toFixed(2)}</span></div>
+                <div className="flex justify-between"><span>Serviços / mão de obra</span><span>R$ {custoTotalServicosExibido.toFixed(2)}</span></div>
+                <div className="flex justify-between"><span>Peças</span><span>R$ {custoTotalPecasExibido.toFixed(2)}</span></div>
+                <div className="flex justify-between border-t pt-2 font-semibold"><span>Orçamento total</span><span>R$ {(custoTotalServicosExibido + custoTotalPecasExibido).toFixed(2)}</span></div>
               </CardContent>
             </Card>
 

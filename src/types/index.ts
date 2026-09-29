@@ -266,6 +266,7 @@ export interface ServicoCatalogo<Id extends ClienteId = number> {
   nome: string;
   descricao?: string;
   preco_padrao: number;
+  pecas_sugeridas?: PecaVinculada<Id>[];
   ativo?: boolean;
   criado_em?: string;
   atualizado_em?: string;
@@ -307,11 +308,22 @@ export interface ServicoNecessario {
   catalogo_id?: ClienteId;
   descricao: string;
   valor: number;
+  pecas?: PecaVinculada[];
+}
+
+/** Produto do estoque sugerido para compor um serviço padrão. */
+export interface PecaVinculada<Id extends ClienteId = ClienteId> {
+  produto_id: Id;
+  nome: string;
+  quantidade: number;
+  valor_unitario: number;
 }
 
 /** Peça necessária para reparo (ex: "Cabeça de impressão", qtd: 1, R$ 350) */
 export interface PecaNecessaria {
   id: string;
+  produto_id?: ClienteId;
+  servico_id?: string;
   nome: string;
   quantidade: number;
   valorUnitario: number;

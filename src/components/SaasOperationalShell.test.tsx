@@ -10,6 +10,9 @@ vi.mock("@/pages/SaasClientesPage", () => ({
 vi.mock("@/pages/Equipamentos", () => ({
   default: () => <h1>Equipamentos Online</h1>,
 }));
+vi.mock("@/pages/Servicos", () => ({
+  default: () => <h1>Serviços Online</h1>,
+}));
 vi.mock("@/components/saas/SaasTeamSettingsPage", () => ({
   SaasTeamSettingsPage: () => <h1>Equipe e Acessos Online</h1>,
   SaasTeamAccessDenied: () => <h1>Acesso restrito</h1>,
@@ -52,6 +55,16 @@ describe("SaasOperationalShell", () => {
     expect(onLock).toHaveBeenCalledOnce();
     expect(onSignOut).toHaveBeenCalledOnce();
     expect(onRemoveDevice).toHaveBeenCalledOnce();
+  });
+
+  it("expõe a tela existente de Serviços na navegação SaaS", async () => {
+    const user = userEvent.setup();
+    render(<SaasOperationalShell session={session} profile={profile} onLock={vi.fn()} onSignOut={vi.fn()} onRemoveDevice={vi.fn()} />);
+
+    const serviceLink = screen.getByRole("link", { name: "Serviços" });
+    expect(serviceLink).toHaveAttribute("href", "/servicos");
+    await user.click(serviceLink);
+    expect(screen.getByRole("heading", { name: "Serviços Online" })).toBeInTheDocument();
   });
 
   it("expõe Equipe e Acessos somente para ADMIN e permite abrir a rota", async () => {

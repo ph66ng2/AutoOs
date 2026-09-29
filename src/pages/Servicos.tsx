@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Plus, Search, Edit, Trash2, RefreshCw, Wrench } from "lucide-react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -29,23 +29,51 @@ import { useSensitiveAccess } from "@/hooks/useSensitiveAccess";
 import { useNotification } from "@/hooks/useNotification";
 import { ErrorAlert } from "@/components/ui/error-alert";
 import { FormValidationError } from "@/components/ui/form-validation-error";
-import { SENSITIVE_PERMISSIONS, type ServicoCatalogo } from "@/types";
+import { SENSITIVE_PERMISSIONS, type ClienteId, type PecaVinculada, type ServicoCatalogo } from "@/types";
 import { ActionPriorityRow } from "@/components/ui/action-priority-row";
+import { PaginationControls } from "@/components/ui/pagination-controls";
+import { totalPages } from "@/lib/pagination";
+import type { SaasOperationalProfile } from "@/types/saas-auth";
+import { IS_SAAS_BUILD } from "@/lib/runtime-mode";
+import { validatePecasSugeridas } from "@/lib/data/servicos-repository";
+import { PecasDoServico } from "@/components/equipamentos/PecasDoServico";
+import { MODELOS_SERVICO } from "@/pages/servicos/servicos-modelos";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 
-export default function Servicos() {
+export default function Servicos({ operationalProfile }: { operationalProfile?: SaasOperationalProfile } = {}) {
   const [busca, setBusca] = useState("");
+  const [paginaServicos, setPaginaServicos] = useState(1);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
-  const [editando, setEditando] = useState<ServicoCatalogo | null>(null);
-  const [deletando, setDeletando] = useState<ServicoCatalogo | null>(null);
+  const [modeloSelecionado, setModeloSelecionado] = useState("");
+  const [pecasSugeridas, setPecasSugeridas] = useState<PecaVinculada<string>[]>([]);
+  const [editando, setEditando] = useState<ServicoCatalogo<ClienteId> | null>(null);
+  const [deletando, setDeletando] = useState<ServicoCatalogo<ClienteId> | null>(null);
   const [salvando, setSalvando] = useState(false);
-  const { ensureSensitiveAccess } = useSensitiveAccess();
+  const { ensureSensitiveAccess } = useSensitiveAccess({ operationalProfile });
   const { error: showError } = useNotification();
 
-  const { servicos, loading, error, criar, atualizar, deletar, recarregar } = useServicos({
+  const { servicos, total: totalServicos, loading, error, criar, atualizar, deletar, recarregar } = useServicos({
     busca: busca || undefined,
     apenasAtivos: true,
+    page: paginaServicos,
   });
+  const totalPaginasServicos = totalPages(totalServicos);
+  const paginaServicosExibida = Math.min(paginaServicos, totalPaginasServicos);
+
+  useEffect(() => {
+    setPaginaServicos(1);
+  }, [busca]);
+
+  useEffect(() => {
+    setPaginaServicos((pagina) => Math.min(pagina, totalPaginasServicos));
+  }, [totalPaginasServicos]);
 
   const form = useForm<ServicoCatalogoFormData>({
     resolver: zodResolver(servicoCatalogoSchema),
@@ -65,11 +93,13 @@ export default function Servicos() {
     if (!liberado) return;
 
     setEditando(null);
+    setModeloSelecionado("");
+    setPecasSugeridas([]);
     form.reset({ nome: "", descricao: "", preco_padrao: 0 });
     setDialogOpen(true);
   }
 
-  async function abrirEditar(servico: ServicoCatalogo) {
+  async function abrirEditar(servico: ServicoCatalogo<ClienteId>) {
     const liberado = await ensureSensitiveAccess({
       title: "Editar serviço",
       description: "Informe o PIN para alterar nome e preço do serviço padrão.",
@@ -78,6 +108,8 @@ export default function Servicos() {
     if (!liberado) return;
 
     setEditando(servico);
+    setModeloSelecionado("");
+    setPecasSugeridas((servico.pecas_sugeridas ?? []).map((peca) => ({ ...peca, produto_id: String(peca.produto_id) })));
     form.reset({
       nome: servico.nome,
       descricao: servico.descricao || "",
@@ -86,13 +118,23 @@ export default function Servicos() {
     setDialogOpen(true);
   }
 
+  function selecionarModelo(modeloId: string) {
+    const modelo = MODELOS_SERVICO.find((item) => item.id === modeloId);
+    if (!modelo) return;
+    setModeloSelecionado(modeloId);
+    setPecasSugeridas([]);
+    form.reset({ nome: modelo.nome, descricao: modelo.descricao, preco_padrao: 0 });
+  }
+
   async function onSubmit(data: ServicoCatalogoFormData) {
     setSalvando(true);
     try {
+      if (IS_SAAS_BUILD) validatePecasSugeridas(pecasSugeridas);
       const payload = {
         nome: data.nome,
         descricao: data.descricao || undefined,
         preco_padrao: Number(data.preco_padrao),
+        pecas_sugeridas: IS_SAAS_BUILD ? pecasSugeridas : undefined,
         atualizado_em: editando?.atualizado_em,
       };
 
@@ -112,7 +154,7 @@ export default function Servicos() {
     }
   }
 
-  async function solicitarExclusao(servico: ServicoCatalogo) {
+  async function solicitarExclusao(servico: ServicoCatalogo<ClienteId>) {
     const liberado = await ensureSensitiveAccess({
       title: "Excluir serviço",
       description: "Informe o PIN para desativar um serviço padrão do catálogo.",
@@ -193,7 +235,14 @@ export default function Servicos() {
               </p>
             </div>
           ) : (
-            <div className="rounded-md border">
+            <>
+              <PaginationControls
+                page={paginaServicosExibida}
+                totalPages={totalPaginasServicos}
+                onPageChange={setPaginaServicos}
+                label="Paginação de serviços"
+              />
+              <div className="rounded-md border">
               <Table>
                 <TableHeader>
                   <TableRow>
@@ -239,7 +288,8 @@ export default function Servicos() {
                   ))}
                 </TableBody>
               </Table>
-            </div>
+              </div>
+            </>
           )}
         </CardContent>
       </Card>
@@ -247,9 +297,27 @@ export default function Servicos() {
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
         <DialogContent className="sm:max-w-lg">
           <DialogHeader>
-            <DialogTitle>{editando ? "Editar Serviço" : "Novo Serviço"}</DialogTitle>
+          <DialogTitle>{editando ? "Editar Serviço" : "Novo Serviço"}</DialogTitle>
           </DialogHeader>
           <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+            {IS_SAAS_BUILD && !editando && (
+              <div className="space-y-2">
+                <Label>Modelo inicial</Label>
+                <Select value={modeloSelecionado} onValueChange={selecionarModelo}>
+                  <SelectTrigger aria-label="Modelo inicial">
+                    <SelectValue placeholder="Começar em branco ou escolher um modelo" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {MODELOS_SERVICO.map((modelo) => (
+                      <SelectItem key={modelo.id} value={modelo.id}>{modelo.nome}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <p className="text-xs text-muted-foreground">
+                  O modelo preenche os campos do serviço; preço e peças podem ser definidos aqui.
+                </p>
+              </div>
+            )}
             <div className="space-y-2">
               <Label>Nome do serviço *</Label>
               <Input {...form.register("nome")} placeholder="Ex.: Limpeza de cabeça térmica" />
@@ -265,6 +333,7 @@ export default function Servicos() {
               <Label>Descrição</Label>
               <Textarea {...form.register("descricao")} rows={3} placeholder="Detalhes opcionais do serviço..." />
             </div>
+            {IS_SAAS_BUILD && <PecasDoServico pecas={pecasSugeridas} onChange={setPecasSugeridas} />}
 
             <DialogFooter>
               <DialogClose asChild>
