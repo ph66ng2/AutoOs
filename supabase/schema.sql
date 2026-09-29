@@ -673,10 +673,197 @@ CREATE INDEX IF NOT EXISTS idx_produtos_ativos_categoria_id_desc
 CREATE INDEX IF NOT EXISTS idx_produtos_estoque_baixo
     ON produtos (id DESC)
     WHERE ativo = true AND quantidade_estoque < quantidade_minima;
+CREATE INDEX IF NOT EXISTS idx_produtos_empresa_categoria_nome_ativo
+    ON produtos (empresa_id, categoria, nome, id)
+    WHERE ativo IS TRUE;
+CREATE INDEX IF NOT EXISTS idx_produtos_empresa_nome_ativo
+    ON produtos (empresa_id, nome, id)
+    WHERE ativo IS TRUE;
 
 -- movimentacoes_estoque
 CREATE INDEX IF NOT EXISTS idx_movimentacoes_produto_data_hora_desc
     ON movimentacoes_estoque (produto_id, data_hora DESC);
+
+-- Movimentações SaaS alteram o saldo e criam histórico na mesma transação.
+CREATE SCHEMA IF NOT EXISTS private;
+
+CREATE OR REPLACE FUNCTION private.enforce_saas_product_stock_movement()
+RETURNS trigger
+LANGUAGE plpgsql
+SET search_path = ''
+AS $$
+BEGIN
+    IF OLD.quantidade_estoque IS DISTINCT FROM NEW.quantidade_estoque
+       AND current_user <> 'postgres' THEN
+        RAISE EXCEPTION 'Product stock must be changed through a stock movement'
+            USING ERRCODE = '42501';
+    END IF;
+    RETURN NEW;
+END;
+$$;
+
+REVOKE ALL ON FUNCTION private.enforce_saas_product_stock_movement()
+    FROM PUBLIC, anon, authenticated, service_role;
+
+DROP TRIGGER IF EXISTS saas_product_stock_movement_guard ON public.produtos;
+CREATE TRIGGER saas_product_stock_movement_guard
+    BEFORE UPDATE OF quantidade_estoque ON public.produtos
+    FOR EACH ROW EXECUTE FUNCTION private.enforce_saas_product_stock_movement();
+
+CREATE OR REPLACE FUNCTION private.normalize_saas_product_quantity_bounds()
+RETURNS trigger
+LANGUAGE plpgsql
+SET search_path = ''
+AS $$
+BEGIN
+    IF COALESCE(NEW.quantidade_maxima, 0) < COALESCE(NEW.quantidade_minima, 0) THEN
+        NEW.quantidade_maxima := COALESCE(NEW.quantidade_minima, 0);
+    END IF;
+    RETURN NEW;
+END;
+$$;
+
+REVOKE ALL ON FUNCTION private.normalize_saas_product_quantity_bounds()
+    FROM PUBLIC, anon, authenticated, service_role;
+
+DROP TRIGGER IF EXISTS saas_product_quantity_bounds ON public.produtos;
+CREATE TRIGGER saas_product_quantity_bounds
+    BEFORE INSERT OR UPDATE OF quantidade_minima, quantidade_maxima ON public.produtos
+    FOR EACH ROW EXECUTE FUNCTION private.normalize_saas_product_quantity_bounds();
+
+CREATE OR REPLACE VIEW public.produtos_estoque_baixo
+WITH (security_invoker = true)
+AS
+SELECT *
+  FROM public.produtos
+ WHERE ativo IS TRUE
+   AND COALESCE(quantidade_estoque, 0) < COALESCE(quantidade_minima, 0);
+
+REVOKE ALL ON public.produtos_estoque_baixo FROM PUBLIC, anon;
+GRANT SELECT ON public.produtos_estoque_baixo TO authenticated;
+
+CREATE OR REPLACE FUNCTION public.registrar_movimentacao_estoque(
+    p_produto_id uuid,
+    p_tipo text,
+    p_quantidade integer,
+    p_origem text,
+    p_referencia text DEFAULT NULL
+)
+RETURNS TABLE (
+    movimentacao_id uuid,
+    produto_id uuid,
+    quantidade_estoque integer
+)
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+    v_empresa_id uuid;
+    v_usuario text;
+    v_tipo text := upper(btrim(COALESCE(p_tipo, '')));
+    v_origem text := btrim(COALESCE(p_origem, ''));
+    v_referencia text := NULLIF(btrim(COALESCE(p_referencia, '')), '');
+    v_saldo integer;
+    v_novo_saldo integer;
+    v_movimentacao_id uuid;
+BEGIN
+    IF (SELECT auth.uid()) IS NULL OR NOT private.saas_has_permission('STOCK_CONTROL') THEN
+        RAISE EXCEPTION 'Stock control permission is required' USING ERRCODE = '42501';
+    END IF;
+
+    IF v_tipo NOT IN ('ENTRADA', 'SAIDA') THEN
+        RAISE EXCEPTION 'Invalid stock movement type' USING ERRCODE = '22023';
+    END IF;
+    IF p_quantidade IS NULL OR p_quantidade <= 0 THEN
+        RAISE EXCEPTION 'Stock movement quantity must be positive' USING ERRCODE = '22023';
+    END IF;
+    IF v_origem = '' THEN
+        RAISE EXCEPTION 'Stock movement origin is required' USING ERRCODE = '22023';
+    END IF;
+
+    SELECT identity.empresa_id, profile.nome
+      INTO v_empresa_id, v_usuario
+      FROM private.current_saas_session_identity() AS identity
+      JOIN public.security_profiles AS profile
+        ON profile.id = identity.profile_id
+       AND profile.empresa_id = identity.empresa_id
+       AND profile.ativo IS TRUE
+     LIMIT 1;
+    IF v_empresa_id IS NULL THEN
+        RAISE EXCEPTION 'Active SaaS identity is required' USING ERRCODE = '42501';
+    END IF;
+
+    SELECT COALESCE(product.quantidade_estoque, 0)
+      INTO v_saldo
+      FROM public.produtos AS product
+     WHERE product.id = p_produto_id
+       AND product.empresa_id = v_empresa_id
+       AND product.ativo IS TRUE
+     FOR UPDATE;
+    IF NOT FOUND THEN
+        RAISE EXCEPTION 'Product is unavailable for this company' USING ERRCODE = 'P0002';
+    END IF;
+
+    IF v_tipo = 'SAIDA' AND v_saldo < p_quantidade THEN
+        RAISE EXCEPTION 'Insufficient stock for this movement' USING ERRCODE = 'P0001';
+    END IF;
+    IF v_tipo = 'ENTRADA' AND v_saldo > 2147483647 - p_quantidade THEN
+        RAISE EXCEPTION 'Stock exceeds the supported quantity range' USING ERRCODE = '22023';
+    END IF;
+
+    v_novo_saldo := CASE
+        WHEN v_tipo = 'ENTRADA' THEN v_saldo + p_quantidade
+        ELSE v_saldo - p_quantidade
+    END;
+
+    UPDATE public.produtos AS product
+       SET quantidade_estoque = v_novo_saldo,
+           atualizado_em = clock_timestamp()
+     WHERE product.id = p_produto_id
+       AND product.empresa_id = v_empresa_id
+       AND product.ativo IS TRUE;
+
+    INSERT INTO public.movimentacoes_estoque (
+        empresa_id, produto_id, tipo, quantidade, origem, referencia, usuario, data_hora
+    ) VALUES (
+        v_empresa_id, p_produto_id, v_tipo, p_quantidade, v_origem, v_referencia, v_usuario, clock_timestamp()
+    )
+    RETURNING id INTO v_movimentacao_id;
+
+    RETURN QUERY SELECT v_movimentacao_id, p_produto_id, v_novo_saldo;
+END;
+$$;
+
+ALTER FUNCTION public.registrar_movimentacao_estoque(uuid, text, integer, text, text)
+    OWNER TO postgres;
+
+REVOKE ALL ON FUNCTION public.registrar_movimentacao_estoque(uuid, text, integer, text, text)
+    FROM PUBLIC, anon, service_role;
+GRANT EXECUTE ON FUNCTION public.registrar_movimentacao_estoque(uuid, text, integer, text, text)
+    TO authenticated;
+
+CREATE OR REPLACE FUNCTION private.enforce_saas_atomic_stock_movement_insert()
+RETURNS trigger
+LANGUAGE plpgsql
+SET search_path = ''
+AS $$
+BEGIN
+    IF current_user <> 'postgres' THEN
+        RAISE EXCEPTION 'Stock movements must be created through the atomic stock RPC'
+            USING ERRCODE = '42501';
+    END IF;
+    RETURN NEW;
+END;
+$$;
+
+REVOKE ALL ON FUNCTION private.enforce_saas_atomic_stock_movement_insert()
+    FROM PUBLIC, anon, authenticated, service_role;
+
+DROP TRIGGER IF EXISTS saas_atomic_stock_movement_insert ON public.movimentacoes_estoque;
+CREATE TRIGGER saas_atomic_stock_movement_insert
+    BEFORE INSERT ON public.movimentacoes_estoque
+    FOR EACH ROW EXECUTE FUNCTION private.enforce_saas_atomic_stock_movement_insert();
 
 -- verificacoes
 CREATE INDEX IF NOT EXISTS idx_verificacoes_equipamento_data_inicio_desc

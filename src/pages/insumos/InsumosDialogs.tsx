@@ -27,7 +27,7 @@ import type {
   MovimentacaoFormData,
   ProdutoFormData,
 } from "@/lib/validations";
-import type { Produto } from "@/types";
+import type { ClienteId, Produto } from "@/types";
 import { CATEGORIA_OPTIONS } from "./insumos-page-constants";
 
 export function InsumosProdutoDialog({
@@ -36,13 +36,15 @@ export function InsumosProdutoDialog({
   editando,
   form,
   salvando,
+  bloquearEdicaoEstoque,
   onSubmit,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  editando: Produto | null;
+  editando: Produto<ClienteId> | null;
   form: UseFormReturn<ProdutoFormData>;
   salvando: boolean;
+  bloquearEdicaoEstoque: boolean;
   onSubmit: (data: ProdutoFormData) => void | Promise<void>;
 }) {
   return (
@@ -109,7 +111,11 @@ export function InsumosProdutoDialog({
                 type="number"
                 {...form.register("quantidade_estoque", { valueAsNumber: true })}
                 min={0}
+                readOnly={bloquearEdicaoEstoque}
               />
+              {bloquearEdicaoEstoque && (
+                <p className="text-xs text-muted-foreground">Use “Movimentar” para registrar entradas ou saídas e manter o histórico do estoque.</p>
+              )}
               <FormValidationError message={form.formState.errors.quantidade_estoque?.message} />
             </div>
             <div className="space-y-2">
@@ -177,7 +183,7 @@ export function InsumosMovimentacaoDialog({
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  movimentando: Produto | null;
+  movimentando: Produto<ClienteId> | null;
   movForm: UseFormReturn<MovimentacaoFormData>;
   salvando: boolean;
   onMovSubmit: (data: MovimentacaoFormData) => void | Promise<void>;
@@ -295,7 +301,7 @@ export function InsumosDeleteDialog({
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  deletando: Produto | null;
+  deletando: Produto<ClienteId> | null;
   salvando: boolean;
   onDelete: () => void | Promise<void>;
 }) {

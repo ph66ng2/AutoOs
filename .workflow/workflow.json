@@ -3493,6 +3493,352 @@
       "likelyFiles": ["src/pages/SaasClientesPage.tsx", "src/components/clientes/ClienteContatosPanel.tsx", "src/lib/data/cliente-contatos-repository.ts", "src/types/index.ts", "supabase/migrations/"],
       "risks": ["Schema Staging divergente.", "IDs legados numéricos.", "FK simples pode permitir referência cruzada."],
       "completedAt": "2026-09-23"
+    },
+    {
+      "id": "AO-INS-ONLINE-001",
+      "title": "Disponibilizar o módulo existente de Insumos no SaaS Online",
+      "status": "in_progress",
+      "blockedBy": [],
+      "objective": "Conectar a tela existente de Insumos a um repositório SaaS seguro e torná-la acessível no plano Online.",
+      "context": "O SaaS já possui tabela de produtos e movimentos, mas a navegação não expõe Insumos e o hook useInsumos chama diretamente o backend Tauri. A tela e os diálogos de estoque já existem; devem ser reutilizados, mantendo os fluxos internos atuais.",
+      "scope": [
+        "Criar adapter/repositório Supabase para listar, criar, editar e desativar produtos, com IDs UUID, validação de resposta e erros seguros.",
+        "Implementar listagem paginada no servidor com busca, categoria, estoque abaixo do mínimo e total de registros; derivar empresa_id da sessão autenticada e validar todas as respostas contra esse tenant.",
+        "Implementar movimentos de entrada/saída em operação transacional atômica: atualizar saldo e registrar o movimento imutável juntos; impedir saldo negativo e validar produto ativo da empresa.",
+        "Integrar useInsumos ao adapter SaaS no build Online e preservar o adapter Tauri no runtime interno.",
+        "Reutilizar src/pages/Insumos.tsx e os diálogos existentes; adicionar a rota e o item Insumos/Peças ao shell SaaS sem criar tela paralela.",
+        "Manter o padrão da Master: mínimo inicial 5, editável pelo operador e preservado ao editar; não criar regras de mínimo por categoria.",
+        "Manter STOCK_CONTROL e DELETE_RECORDS validados no servidor e respeitar auditoria e políticas RLS atuais; adicionar apenas migration aditiva caso falte operação atômica ou índice necessário."
+      ],
+      "outOfScope": [
+        "Baixa de peças decorrente de aprovação de orçamento ou confirmação de consumo na OS; fica no AO-STOCK-BUDGET-ONLINE-001.",
+        "Importação automática do catálogo inicial de etiquetas/ribbons; fica no AO-INS-SEED-ONLINE-001.",
+        "Alterações ou execução de migrations, seed, RPC ou dados em Staging e produção.",
+        "PowerSync, sincronização offline, redesign da página existente ou novos componentes de estoque sem necessidade funcional."
+      ],
+      "expectedBehavior": "No SaaS Online, operadores autorizados usam a tela já existente para consultar e manter o catálogo da própria empresa, ver estoque baixo e registrar entradas/saídas; as operações persistem sem exposição entre tenants e sem perda de movimentação em falhas.",
+      "acceptanceCriteria": [
+        "A rota e navegação SaaS exibem a tela Insumos existente; o runtime interno continua usando o backend atual.",
+        "Busca, categoria, filtro de estoque baixo e paginação retornam resultados consistentes e total correto no tenant autenticado.",
+        "Criar, editar e desativar produto validam os campos atuais e nunca aceitam empresa_id arbitrário do cliente.",
+        "Novo produto mantém mínimo inicial 5 conforme a Master; o operador pode alterá-lo e a edição preserva o mínimo salvo.",
+        "Entrada/saída atualiza saldo e cria exatamente um movimento na mesma transação; falha não deixa saldo e histórico divergentes; saída acima do saldo é rejeitada.",
+        "Tentativas sem STOCK_CONTROL ou DELETE_RECORDS falham no servidor; movimentos continuam imutáveis e a consulta/mutação respeita isolamento da empresa.",
+        "O diálogo, estados de carregamento, vazio, erro, confirmação e filtros permanecem coerentes com a interface existente.",
+        "Nenhuma migration ou carga de dados é aplicada em ambiente remoto durante implementação ou validação."
+      ],
+      "tests": [
+        "Cobrir autorização por tenant, validação de payload e tratamento de erros com testes direcionados usando respostas e identidades sintéticas.",
+        "Executar npm run lint e npm run test:run.",
+        "Revisar o diff, confirmar que nenhum segredo foi introduzido e que nenhuma chamada alterou Staging ou produção."
+      ],
+      "testInstructions": {
+        "prerequisites": [
+          "Usar worktree exclusiva criada de origin/feature atualizado; não usar master nem worktree de outro ticket.",
+          "Usar identidade e dados sintéticos; serviços Supabase devem ser mockados, exceto quando houver banco local descartável explicitamente configurado.",
+          "Não exigir credenciais de Staging/produção nem configurar chaves privilegiadas no cliente."
+        ],
+        "steps": [
+          "Executar testes do repositório SaaS com fetch, sessão, perfil e respostas PostgREST mockados; cobrir paginação, filtros, UUID, validação e tenant incorreto.",
+          "Executar testes direcionados da tela existente para listar, criar, editar, desativar, abrir movimento e tratar falhas sem submeter dados reais.",
+          "Se a operação atômica exigir migration, aplicar e testar somente em banco PostgreSQL local descartável; simular entrada, saída válida, saldo insuficiente e rollback em falha.",
+          "Executar lint e suíte frontend; inspecionar o diff e verificar que não houve chamadas para Staging/produção."
+        ],
+        "expectedResultAndEvidence": [
+          "As chamadas mockadas incluem filtros de empresa e os testes rejeitam registros de outro tenant.",
+          "O saldo e o movimento são criados juntos; saldo insuficiente ou erro na transação não altera nenhum dos dois.",
+          "A tela existente está acessível pela navegação SaaS e não invoca comandos Tauri no build Online.",
+          "Lint e suíte frontend passam; migration, se criada, permanece apenas no repositório e não é aplicada remotamente."
+        ],
+        "dataImpact": "Somente código local, mocks e banco descartável; nenhum dado real é criado ou alterado.",
+        "cleanupAndRollback": [
+          "Apagar apenas os fixtures temporários do banco descartável, se algum tiver sido criado, e confirmar que nenhum recurso remoto foi usado.",
+          "Se a validação falhar, reverter somente as mudanças deste ticket na worktree exclusiva; preservar arquivos e branches de outros tickets."
+        ],
+        "stagingRestrictions": "Não usar Staging, produção, dados reais, credenciais internas, service_role ou dumps. Validar apenas com mocks ou banco descartável autorizado; não aplicar migrations nem seed remoto."
+      },
+      "likelyFiles": [
+        "src/hooks/useInsumos.ts",
+        "src/lib/data/produtos-repository.ts",
+        "src/pages/Insumos.tsx",
+        "src/pages/insumos/InsumosDialogs.tsx",
+        "src/pages/insumos/insumos-page-constants.ts",
+        "src/components/SaasOperationalShell.tsx",
+        "src/types/index.ts",
+        "supabase/migrations/",
+        "supabase/schema.sql"
+      ],
+      "risks": [
+        "IDs numéricos do backend Tauri e UUIDs Supabase se misturarem no mesmo contrato de tipos.",
+        "Atualização de saldo e inserção de movimento em requests separados causarem divergência sob falha ou concorrência.",
+        "RLS ou autorização sensível no servidor permitirem leitura/mutação de outro tenant ou ignorarem a permissão do perfil.",
+        "A tela existente passar a depender de Tauri ou perder filtros e validações no build SaaS."
+      ]
+    },
+    {
+      "id": "AO-STOCK-BUDGET-ONLINE-001",
+      "title": "Vincular aprovação de orçamento ao consumo de estoque no SaaS",
+      "status": "ready",
+      "blockedBy": [
+        "AO-INS-ONLINE-001"
+      ],
+      "objective": "Registrar consumo de peças somente para serviços aprovados e manter pendências de estoque visíveis na OS.",
+      "context": "A Master vincula peças a serviços do orçamento, aceita aprovação parcial e registra as baixas com proteção contra repetição. O catálogo SaaS já pode sugerir peças, mas ainda não executa o ciclo de consumo.",
+      "scope": [
+        "Persistir decisões por serviço e quantidades aprovadas/baixadas com chaves UUID e vínculo à empresa/equipamento/verificação.",
+        "Na aprovação, baixar somente peças dos serviços aprovados, em operação atômica e idempotente; serviços recusados não movimentam estoque.",
+        "Se o saldo não cobrir a necessidade, baixar apenas o saldo disponível e manter o restante pendente sem permitir quantidade negativa.",
+        "Exibir consumos e pendências na OS existente e oferecer confirmação explícita da baixa após reposição.",
+        "Proteger autorização, tenant e concorrência no banco; criar migrations aditivas e testes locais descartáveis."
+      ],
+      "outOfScope": [
+        "Cadastro geral e movimentação manual de produtos, tratados no AO-INS-ONLINE-001.",
+        "Estorno automático de peças já consumidas ao editar/reprovar orçamento; qualquer estorno futuro exige movimento compensatório explícito.",
+        "PowerSync ou sincronização offline.",
+        "Aplicar migrations ou movimentar estoque em Staging/produção."
+      ],
+      "expectedBehavior": "A aprovação parcial de orçamento movimenta apenas as peças dos serviços selecionados, uma única vez; faltas aparecem como pendência confirmável e alterações repetidas não duplicam baixas.",
+      "acceptanceCriteria": [
+        "Apenas serviços aprovados geram baixa; rejeitados não geram movimento.",
+        "A repetição da mesma aprovação não cria consumo duplicado e ajustes baixam somente o incremento ainda não consumido.",
+        "Saldo insuficiente nunca fica negativo e a diferença permanece registrada como pendente.",
+        "A confirmação de pendências exige permissão de estoque e operação no estado permitido da OS.",
+        "Isolamento por empresa, auditoria e conflitos concorrentes são testados em banco local descartável.",
+        "Nenhum dado remoto de estoque é alterado durante desenvolvimento."
+      ],
+      "tests": [
+        "Testes de regra e concorrência em banco descartável; testes de UI com fixtures; npm run lint; npm run test:run."
+      ],
+      "testInstructions": {
+        "prerequisites": [
+          "Usar worktree exclusiva criada de origin/feature atualizado; não usar master nem worktree de outro ticket.",
+          "Usar identidade e dados sintéticos; serviços Supabase devem ser mockados, exceto quando houver banco local descartável explicitamente configurado.",
+          "Não exigir credenciais de Staging/produção nem configurar chaves privilegiadas no cliente."
+        ],
+        "steps": [
+          "Executar testes de UI com sessões e equipamentos sintéticos, cobrindo aprovação total/parcial, recusa e confirmação de pendência.",
+          "Executar cenários de transação em PostgreSQL local descartável: aprovação repetida, duas aprovações concorrentes, saldo suficiente/insuficiente e rollback.",
+          "Inspecionar migrations e políticas para confirmar tenant e permissões; não aplicar em Staging."
+        ],
+        "expectedResultAndEvidence": [
+          "Somente os serviços aprovados criam movimentos e a repetição não duplica consumo.",
+          "Saldo insuficiente gera pendência consultável e confirmação posterior baixa somente a diferença disponível.",
+          "Testes locais e lint passam sem acesso a dados ou credenciais reais."
+        ],
+        "dataImpact": "Somente código local, mocks e banco descartável; nenhum dado real é criado ou alterado.",
+        "cleanupAndRollback": [
+          "Apagar apenas os fixtures temporários do banco descartável, se algum tiver sido criado, e confirmar que nenhum recurso remoto foi usado.",
+          "Se a validação falhar, reverter somente as mudanças deste ticket na worktree exclusiva; preservar arquivos e branches de outros tickets."
+        ],
+        "stagingRestrictions": "Não usar Staging, produção, dados reais, credenciais internas, service_role ou dumps. Validar apenas com mocks ou banco descartável autorizado; não aplicar migrations nem seed remoto."
+      },
+      "likelyFiles": [
+        "src/pages/Equipamentos.tsx",
+        "src/lib/data/equipamentos-operacoes-repository.ts",
+        "src/lib/orcamento-estoque.ts",
+        "supabase/migrations/",
+        "supabase/schema.sql"
+      ],
+      "risks": [
+        "Baixa duplicada por retry ou aprovação concorrente.",
+        "Estorno implícito apagar histórico de consumo.",
+        "ID de produto ou verificação de outro tenant entrar no fluxo."
+      ]
+    },
+    {
+      "id": "AO-INS-SEED-ONLINE-001",
+      "title": "Preparar catálogo inicial de etiquetas e ribbons por empresa SaaS",
+      "status": "ready",
+      "blockedBy": [
+        "AO-INS-ONLINE-001"
+      ],
+      "objective": "Disponibilizar um carregamento inicial controlado do catálogo de etiquetas e ribbons sem copiar saldo operacional para outros tenants.",
+      "context": "A Master possui um seed de itens de etiquetas e ribbons. Esse conjunto é específico ao negócio e não deve ser aplicado automaticamente a todas as empresas SaaS nem propagar quantidades reais entre tenants.",
+      "scope": [
+        "Transformar os itens de referência da Master em um modelo de catálogo importável para uma empresa explicitamente selecionada.",
+        "Oferecer pré-visualização, validação de duplicatas e confirmação administrativa; importar apenas cadastros de produto com saldo inicial zero.",
+        "Manter importação idempotente e isolada por empresa; preservar registros e saldos já existentes.",
+        "Documentar origem, campos e procedimento de rollback; testar somente com empresa sintética local."
+      ],
+      "outOfScope": [
+        "Carga automática para novos tenants ou alteração de saldo real existente.",
+        "Executar seed em Staging, produção ou na empresa BMITAG.",
+        "Alterar política de estoque ou fluxo de orçamento."
+      ],
+      "expectedBehavior": "Um administrador pode revisar e importar os cadastros de referência para a própria empresa, sem sobrescrever produtos ou quantidades e sem tornar o seed obrigatório.",
+      "acceptanceCriteria": [
+        "A operação identifica explicitamente a empresa autenticada e rejeita empresa_id fornecido pelo cliente.",
+        "A prévia apresenta os itens que serão criados e os que serão ignorados por duplicidade antes da confirmação.",
+        "Nenhum item importado recebe saldo positivo; nenhuma linha existente ou movimento é alterado.",
+        "Repetir importação não duplica produtos e todas as mutações respeitam a permissão administrativa/estoque.",
+        "Teste e documentação não usam bancos compartilhados nem dados reais."
+      ],
+      "tests": [
+        "Testar importação idempotente em tenant descartável e validação de isolamento; npm run lint; npm run test:run."
+      ],
+      "testInstructions": {
+        "prerequisites": [
+          "Usar worktree exclusiva criada de origin/feature atualizado; não usar master nem worktree de outro ticket.",
+          "Usar identidade e dados sintéticos; serviços Supabase devem ser mockados, exceto quando houver banco local descartável explicitamente configurado.",
+          "Não exigir credenciais de Staging/produção nem configurar chaves privilegiadas no cliente."
+        ],
+        "steps": [
+          "Revisar a prévia com catálogo sintético e testar confirmação, cancelamento, duplicidade e tenant incompatível.",
+          "Executar a importação duas vezes em banco local descartável e comparar produtos/movimentos antes e depois.",
+          "Confirmar que todos os saldos importados são zero e nenhum ambiente remoto foi acessado."
+        ],
+        "expectedResultAndEvidence": [
+          "A primeira confirmação cria apenas produtos sintéticos previstos; a segunda não duplica nem altera saldo.",
+          "Cancelar a prévia não grava nada; tenant incompatível é rejeitado.",
+          "Evidências mostram somente IDs sintéticos e ambiente local descartável."
+        ],
+        "dataImpact": "Somente código local, mocks e banco descartável; nenhum dado real é criado ou alterado.",
+        "cleanupAndRollback": [
+          "Apagar apenas os fixtures temporários do banco descartável, se algum tiver sido criado, e confirmar que nenhum recurso remoto foi usado.",
+          "Se a validação falhar, reverter somente as mudanças deste ticket na worktree exclusiva; preservar arquivos e branches de outros tickets."
+        ],
+        "stagingRestrictions": "Não usar Staging, produção, dados reais, credenciais internas, service_role ou dumps. Validar apenas com mocks ou banco descartável autorizado; não aplicar migrations nem seed remoto."
+      },
+      "likelyFiles": [
+        "scripts/seed-estoque-ribbons-bopp.sql",
+        "src/lib/data/produtos-repository.ts",
+        "src/pages/Insumos.tsx",
+        "supabase/migrations/"
+      ],
+      "risks": [
+        "Dados de uma empresa serem aplicados a outra.",
+        "Seed apagar ou sobrescrever saldo já controlado pela operação.",
+        "Importação sem revisão registrar catálogo incorreto."
+      ]
+    },
+    {
+      "id": "AO-PAGINATION-ONLINE-001",
+      "title": "Completar paginação de Clientes e Equipamentos no SaaS",
+      "status": "in_progress",
+      "blockedBy": [],
+      "objective": "Paginar no servidor as listas de clientes e equipamentos usando a mesma experiência visual da Master.",
+      "context": "A Master paginou as listas principais; o SaaS atual ainda carrega as listas de Clientes e Equipamentos sem paginação visível, enquanto Serviços já usa paginação.",
+      "scope": [
+        "Adicionar total e página aos repositories/queries SaaS de Clientes e Equipamentos com filtro de tenant, busca e filtros atuais.",
+        "Reutilizar PaginationControls e estado de paginação nas telas existentes; resetar a página ao mudar filtros e limitar página após alterações/exclusões.",
+        "Preservar busca, ordenação, seleção e fluxos CRUD existentes; rejeitar respostas fora da empresa autenticada."
+      ],
+      "outOfScope": [
+        "Alterar design das telas ou tamanho global de páginas sem necessidade.",
+        "Paginar Serviços ou Insumos, que têm tickets próprios.",
+        "PowerSync e alterações de schema sem necessidade demonstrada."
+      ],
+      "expectedBehavior": "Clientes e Equipamentos mostram navegação por páginas com total correto e carregam apenas os registros da página selecionada.",
+      "acceptanceCriteria": [
+        "Listas grandes são paginadas no servidor e exibem total coerente com os filtros.",
+        "Mudança de busca/filtro volta à primeira página; excluir o último item da página atual ajusta a página.",
+        "As respostas permanecem tenant-safe e nenhum fluxo CRUD existente se perde.",
+        "Loading, erro, vazio e controle de página têm estados acessíveis."
+      ],
+      "tests": [
+        "Testes dos repositories e telas para página, total, filtros, reset e tenant; npm run lint; npm run test:run."
+      ],
+      "testInstructions": {
+        "prerequisites": [
+          "Usar worktree exclusiva criada de origin/feature atualizado; não usar master nem worktree de outro ticket.",
+          "Usar identidade e dados sintéticos; serviços Supabase devem ser mockados, exceto quando houver banco local descartável explicitamente configurado.",
+          "Não exigir credenciais de Staging/produção nem configurar chaves privilegiadas no cliente."
+        ],
+        "steps": [
+          "Usar fixtures sintéticas de mais de duas páginas e mocks PostgREST; cobrir página inicial, última página e filtros.",
+          "Verificar busca e exclusão após navegar para outra página.",
+          "Inspecionar que queries incluem tenant autenticado e ordenação estável; executar lint e testes direcionados."
+        ],
+        "expectedResultAndEvidence": [
+          "Cada página retorna somente o intervalo pedido e o total corresponde ao filtro.",
+          "Filtros e exclusões não deixam a tela em página inválida.",
+          "Respostas de outro tenant são rejeitadas sem expor conteúdo."
+        ],
+        "dataImpact": "Somente código local, mocks e banco descartável; nenhum dado real é criado ou alterado.",
+        "cleanupAndRollback": [
+          "Apagar apenas os fixtures temporários do banco descartável, se algum tiver sido criado, e confirmar que nenhum recurso remoto foi usado.",
+          "Se a validação falhar, reverter somente as mudanças deste ticket na worktree exclusiva; preservar arquivos e branches de outros tickets."
+        ],
+        "stagingRestrictions": "Não usar Staging, produção, dados reais, credenciais internas, service_role ou dumps. Validar apenas com mocks ou banco descartável autorizado; não aplicar migrations nem seed remoto."
+      },
+      "likelyFiles": [
+        "src/pages/SaasClientesPage.tsx",
+        "src/pages/Equipamentos.tsx",
+        "src/hooks/useClientes.ts",
+        "src/hooks/useEquipamentos.ts",
+        "src/lib/data/clientes-repository.ts",
+        "src/lib/data/equipamentos-repository.ts",
+        "src/components/ui/pagination-controls.tsx"
+      ],
+      "risks": [
+        "Contagem e dados divergirem por filtro inconsistente.",
+        "Paginação instável por ordenação sem desempate.",
+        "Resposta antiga sobrescrever uma página solicitada mais recentemente."
+      ]
+    },
+    {
+      "id": "AO-BALCAO-ONLINE-001",
+      "title": "Disponibilizar o Balcão operacional no SaaS",
+      "status": "ready",
+      "blockedBy": [],
+      "objective": "Expor no SaaS a fila operacional existente, incluindo data real de entrega para equipamentos retirados.",
+      "context": "A Master possui painel de Balcão para acompanhar a operação e mostra a data de saída nos equipamentos entregues. O shell SaaS ainda não expõe esse módulo.",
+      "scope": [
+        "Reaproveitar src/pages/Balcao.tsx e o fluxo existente; adaptar somente os acessos de dados necessários por repository SaaS tenant-safe.",
+        "Adicionar rota e item de navegação do Balcão no shell SaaS com os mesmos estados e transições permitidas ao perfil.",
+        "Exibir data_saida no painel para itens ENTREGUE e data_entrada para os demais, com ordenação operacional consistente.",
+        "Preservar autorização server-side para transições e registrar erros de concorrência sem aplicar atualização parcial."
+      ],
+      "outOfScope": [
+        "Reimplementar o módulo em uma tela paralela.",
+        "Alterar regras de status publicadas sem requisito explícito.",
+        "Impressão local, chamadas Tauri não disponíveis na web e PowerSync."
+      ],
+      "expectedBehavior": "Operadores SaaS acompanham e atualizam a fila do Balcão dentro das permissões atuais; itens entregues mostram quando saíram, sem acessar equipamentos de outra empresa.",
+      "acceptanceCriteria": [
+        "A rota apresenta os estados operacionais existentes da Master e aplica as transições já permitidas.",
+        "Item ENTREGUE mostra data_saida; quando indisponível, informa ausência sem inventar data.",
+        "Leitura e escrita usam tenant autenticado e as permissões são validadas no servidor.",
+        "Conflitos não apagam mudanças e não deixam estado local divergente."
+      ],
+      "tests": [
+        "Testes de repository e UI com estados sintéticos, tenant e concorrência; npm run lint; npm run test:run."
+      ],
+      "testInstructions": {
+        "prerequisites": [
+          "Usar worktree exclusiva criada de origin/feature atualizado; não usar master nem worktree de outro ticket.",
+          "Usar identidade e dados sintéticos; serviços Supabase devem ser mockados, exceto quando houver banco local descartável explicitamente configurado.",
+          "Não exigir credenciais de Staging/produção nem configurar chaves privilegiadas no cliente."
+        ],
+        "steps": [
+          "Usar equipamentos sintéticos para cada estado da fila, incluindo entrega com e sem data_saida.",
+          "Testar transições autorizadas e negadas, concorrência e resultado de tenant incorreto com mocks.",
+          "Confirmar a navegação e o display da data na tela reaproveitada; executar lint e testes direcionados."
+        ],
+        "expectedResultAndEvidence": [
+          "A fila reflete apenas a empresa autenticada e mantém os filtros/estados existentes.",
+          "A entrega usa data_saida real ou mensagem de ausência, nunca data_entrada como substituto.",
+          "Tentativas sem permissão e conflitos não alteram estado persistido."
+        ],
+        "dataImpact": "Somente código local, mocks e banco descartável; nenhum dado real é criado ou alterado.",
+        "cleanupAndRollback": [
+          "Apagar apenas os fixtures temporários do banco descartável, se algum tiver sido criado, e confirmar que nenhum recurso remoto foi usado.",
+          "Se a validação falhar, reverter somente as mudanças deste ticket na worktree exclusiva; preservar arquivos e branches de outros tickets."
+        ],
+        "stagingRestrictions": "Não usar Staging, produção, dados reais, credenciais internas, service_role ou dumps. Validar apenas com mocks ou banco descartável autorizado; não aplicar migrations nem seed remoto."
+      },
+      "likelyFiles": [
+        "src/pages/Balcao.tsx",
+        "src/components/SaasOperationalShell.tsx",
+        "src/lib/data/equipamentos-repository.ts",
+        "src/lib/data/equipamentos-operacoes-repository.ts",
+        "src/hooks/useStatusEquipamento.ts"
+      ],
+      "risks": [
+        "Fluxos que dependem de runtime Tauri não funcionarem em navegador.",
+        "Permitir transição de status fora da regra do servidor.",
+        "Data de entrada ser confundida com data efetiva de entrega."
+      ]
     }
   ]
 }

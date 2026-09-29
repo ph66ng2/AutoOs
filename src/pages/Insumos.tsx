@@ -19,7 +19,7 @@
  * ║  USADO POR: App.tsx (rota /insumos)                         ║
  * ╚══════════════════════════════════════════════════════════════╝
  */
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   Package,
   Plus,
@@ -62,30 +62,36 @@ import { useInsumos } from "@/hooks/useInsumos";
 import { useNotification } from "@/hooks/useNotification";
 import { useSensitiveAccess } from "@/hooks/useSensitiveAccess";
 import { ErrorAlert } from "@/components/ui/error-alert";
-import { SENSITIVE_PERMISSIONS, type Produto } from "@/types";
+import { SENSITIVE_PERMISSIONS, type ClienteId, type Produto } from "@/types";
 import { ActionPriorityRow } from "@/components/ui/action-priority-row";
+import { PaginationControls } from "@/components/ui/pagination-controls";
 import { formatCurrency } from "@/lib/utils";
+import { totalPages } from "@/lib/pagination";
+import { IS_SAAS_BUILD } from "@/lib/runtime-mode";
 import { CATEGORIA_OPTIONS, categoriaProdutoLabel } from "@/pages/insumos/insumos-page-constants";
+import type { SaasOperationalProfile } from "@/types/saas-auth";
 import {
   InsumosDeleteDialog,
   InsumosMovimentacaoDialog,
   InsumosProdutoDialog,
 } from "@/pages/insumos/InsumosDialogs";
 
-export default function Insumos() {
+export default function Insumos({ operationalProfile }: { operationalProfile?: SaasOperationalProfile } = {}) {
   const [busca, setBusca] = useState("");
+  const [pagina, setPagina] = useState(1);
   const [categoriaFiltro, setCategoriaFiltro] = useState("TODOS");
   const [apenasEstoqueBaixo, setApenasEstoqueBaixo] = useState(false);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [movDialogOpen, setMovDialogOpen] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
-  const [editando, setEditando] = useState<Produto | null>(null);
-  const [movimentando, setMovimentando] = useState<Produto | null>(null);
-  const [deletando, setDeletando] = useState<Produto | null>(null);
+  const [editando, setEditando] = useState<Produto<ClienteId> | null>(null);
+  const [movimentando, setMovimentando] = useState<Produto<ClienteId> | null>(null);
+  const [deletando, setDeletando] = useState<Produto<ClienteId> | null>(null);
   const [salvando, setSalvando] = useState(false);
 
   const {
     produtos,
+    total,
     loading,
     error,
     insumosAbaixoMinimo,
@@ -98,9 +104,20 @@ export default function Insumos() {
     busca: busca || undefined,
     categoria: categoriaFiltro,
     apenasEstoqueBaixo,
+    page: pagina,
   });
   const { error: showError } = useNotification();
-  const { ensureSensitiveAccess } = useSensitiveAccess();
+  const { ensureSensitiveAccess } = useSensitiveAccess({ operationalProfile });
+  const totalPaginas = totalPages(total);
+  const paginaExibida = Math.min(pagina, totalPaginas);
+
+  useEffect(() => {
+    setPagina(1);
+  }, [busca, categoriaFiltro, apenasEstoqueBaixo]);
+
+  useEffect(() => {
+    setPagina((atual) => Math.min(atual, totalPaginas));
+  }, [totalPaginas]);
 
   const form = useForm<ProdutoFormData>({
     resolver: zodResolver(produtoSchema),
@@ -150,7 +167,7 @@ export default function Insumos() {
     setDialogOpen(true);
   }
 
-  async function abrirEditar(p: Produto) {
+  async function abrirEditar(p: Produto<ClienteId>) {
     const liberado = await ensureSensitiveAccess({
       title: "Editar insumo/peça",
       description: "Informe o PIN para alterar preços e parâmetros de estoque deste insumo/peça.",
@@ -173,7 +190,7 @@ export default function Insumos() {
     setDialogOpen(true);
   }
 
-  async function abrirMovimentacao(p: Produto) {
+  async function abrirMovimentacao(p: Produto<ClienteId>) {
     const liberado = await ensureSensitiveAccess({
       title: "Movimentar estoque",
       description: "Informe o PIN para registrar entradas e saídas de estoque.",
@@ -248,17 +265,21 @@ export default function Insumos() {
     if (!deletando) return;
     setSalvando(true);
     try {
-      await deletar(deletando.id!);
+      const resultado = await deletar(deletando.id!, deletando.atualizado_em);
+      if (!resultado.sucesso) {
+        throw new Error(resultado.erro || "Não foi possível excluir o insumo/peça.");
+      }
       setDeleteDialogOpen(false);
       setDeletando(null);
     } catch (err) {
       console.error("Erro ao deletar:", err);
+      showError("Insumos/Peças", "Excluir produto", err);
     } finally {
       setSalvando(false);
     }
   }
 
-  async function solicitarExclusao(produto: Produto) {
+  async function solicitarExclusao(produto: Produto<ClienteId>) {
     const liberado = await ensureSensitiveAccess({
       title: "Excluir insumo/peça",
       description: "Informe o PIN para excluir um insumo/peça do estoque.",
@@ -363,7 +384,14 @@ export default function Insumos() {
               </p>
             </div>
           ) : (
-            <div className="rounded-md border">
+            <>
+              <PaginationControls
+                page={paginaExibida}
+                totalPages={totalPaginas}
+                onPageChange={setPagina}
+                label="Paginação de estoque"
+              />
+              <div className="rounded-md border">
               <Table>
                 <TableHeader>
                   <TableRow>
@@ -454,7 +482,8 @@ export default function Insumos() {
                   })}
                 </TableBody>
               </Table>
-            </div>
+              </div>
+            </>
           )}
         </CardContent>
       </Card>
@@ -465,6 +494,7 @@ export default function Insumos() {
         editando={editando}
         form={form}
         salvando={salvando}
+        bloquearEdicaoEstoque={IS_SAAS_BUILD && Boolean(editando)}
         onSubmit={onSubmit}
       />
       <InsumosMovimentacaoDialog
