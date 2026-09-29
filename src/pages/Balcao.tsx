@@ -1531,7 +1531,10 @@ function OperationalPanel({ onBack }: { onBack: () => void }) {
             <strong>{equipmentTitle(eq)}</strong>
             <span className="ml-3">#{eq.id}</span>
             <p>
-              {eq.cliente_nome} · {eq.serial_number} · {eq.data_entrada}
+              {eq.cliente_nome} · {eq.serial_number} ·{" "}
+              {status === "ENTREGUE"
+                ? `Entregue em: ${eq.data_saida || "data indisponível"}`
+                : `Entrada: ${eq.data_entrada}`}
             </p>
           </button>
         ))}
