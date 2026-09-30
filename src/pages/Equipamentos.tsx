@@ -169,6 +169,8 @@ import { useNotification } from "@/hooks/useNotification";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { InputDialog } from "@/components/ui/input-dialog";
 import { ErrorAlert } from "@/components/ui/error-alert";
+import { PaginationControls } from "@/components/ui/pagination-controls";
+import { ITEMS_PER_PAGE, totalPages } from "@/lib/pagination";
 import { PagamentoOrcamentoDialog } from "@/components/equipamentos/PagamentoOrcamentoDialog";
 import { FormaPagamentoFields } from "@/components/equipamentos/FormaPagamentoFields";
 import { resolveRecipient, type ResolvedRecipient } from "@/lib/recipient-resolver";
@@ -180,10 +182,32 @@ import { carregarRepositorioHistoricoEquipamento } from "@/lib/data/equipamentos
 import {
   calcularPrazoAprovacaoOnline,
   carregarRepositorioOperacoesEquipamento,
+  type EquipmentPartConsumption,
 } from "@/lib/data/equipamentos-operacoes-repository";
+import { carregarProdutosParaPecas, type ProdutoParaPecaSugerida } from "@/lib/data/servicos-repository";
 import type { SaasOperationalProfile } from "@/types/saas-auth";
 
 type Equipamento = EquipamentoBase<number>;
+
+function normalizarServicosAprovacao(servicos: ServicoNecessario[]): ServicoNecessario[] {
+  return servicos.map((servico, index) => ({ ...servico, id: servico.id || `legacy:${index}` }));
+}
+
+function resumirPecasAprovadas(servicos: ServicoNecessario[]) {
+  const resumo = new Map<string, { produto_id: string; nome: string; quantidade: number }>();
+  for (const servico of servicos) {
+    for (const peca of servico.pecas ?? []) {
+      const produtoId = String(peca.produto_id);
+      const anterior = resumo.get(produtoId);
+      resumo.set(produtoId, {
+        produto_id: produtoId,
+        nome: peca.nome,
+        quantidade: (anterior?.quantidade ?? 0) + peca.quantidade,
+      });
+    }
+  }
+  return [...resumo.values()];
+}
 
 function equipamentoInterno(equipamento: EquipamentoBase<EquipamentoId>): EquipamentoBase<number> {
   if (typeof equipamento.id !== "number" || (equipamento.empresa_id != null && typeof equipamento.empresa_id !== "number")) {
@@ -195,6 +219,7 @@ function equipamentoInterno(equipamento: EquipamentoBase<EquipamentoId>): Equipa
 export default function Equipamentos({ operationalProfile }: { operationalProfile?: SaasOperationalProfile } = {}) {
   const [busca, setBusca] = useState("");
   const [statusFiltro, setStatusFiltro] = useState("TODOS");
+  const [paginaEquipamentos, setPaginaEquipamentos] = useState(1);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [detalhesDialogOpen, setDetalhesDialogOpen] = useState(false);
@@ -204,6 +229,15 @@ export default function Equipamentos({ operationalProfile }: { operationalProfil
   const [pagamentoAprovacaoLoading, setPagamentoAprovacaoLoading] = useState(false);
   const [pagamentoAprovacaoError, setPagamentoAprovacaoError] = useState<string | null>(null);
   const [pagamentoAprovacaoInicial, setPagamentoAprovacaoInicial] = useState<FormaPagamento | null>(null);
+  const [selecaoServicosOpen, setSelecaoServicosOpen] = useState(false);
+  const [servicosAprovacao, setServicosAprovacao] = useState<ServicoNecessario[]>([]);
+  const [produtosAprovacao, setProdutosAprovacao] = useState<ProdutoParaPecaSugerida[]>([]);
+  const [todosServicosAprovados, setTodosServicosAprovados] = useState<boolean | null>(null);
+  const [idsAprovados, setIdsAprovados] = useState<string[]>([]);
+  const [totalOrcamentoAprovacao, setTotalOrcamentoAprovacao] = useState<number | undefined>();
+  const [consumosDetalhes, setConsumosDetalhes] = useState<EquipmentPartConsumption[]>([]);
+  const [baixandoPendentes, setBaixandoPendentes] = useState(false);
+  const [consumosDialogOpen, setConsumosDialogOpen] = useState(false);
   const [ajusteOrcamentoSemMudancaStatus, setAjusteOrcamentoSemMudancaStatus] = useState(false);
   const [correcaoStatus, setCorrecaoStatus] = useState(false);
   const [motivoCorrecaoStatus, setMotivoCorrecaoStatus] = useState("");
@@ -299,6 +333,7 @@ export default function Equipamentos({ operationalProfile }: { operationalProfil
 
   const {
     equipamentos: registrosEquipamento,
+    total: totalEquipamentos,
     loading,
     error: erroEquipamentos,
     criar,
@@ -308,10 +343,15 @@ export default function Equipamentos({ operationalProfile }: { operationalProfil
     buscarPorSerial,
     recarregar,
   } =
-    useEquipamentos<EquipamentoId>({ busca: busca || undefined, status: statusFiltro });
+    useEquipamentos<EquipamentoId>({ busca: busca || undefined, status: statusFiltro, page: paginaEquipamentos });
   // A página original mantém handlers de DB local para os tickets seguintes;
   // o runtime SaaS só expõe a lista e o CRUD remoto, preservando UUID sem conversão.
   const equipamentos = registrosEquipamento as unknown as Equipamento[];
+  const totalPaginasEquipamentos = totalPages(totalEquipamentos, ITEMS_PER_PAGE);
+  const paginaEquipamentosExibida = Math.min(paginaEquipamentos, totalPaginasEquipamentos);
+
+  useEffect(() => setPaginaEquipamentos(1), [busca, statusFiltro]);
+  useEffect(() => setPaginaEquipamentos((current) => Math.min(current, totalPaginasEquipamentos)), [totalPaginasEquipamentos]);
 
   // Hook de automação de status
   const { loading: loadingAutomacao, finalizarVerificacao, marcarComoPronto } =
@@ -1318,11 +1358,26 @@ export default function Equipamentos({ operationalProfile }: { operationalProfil
       const verificacao = IS_SAAS_BUILD
         ? await (await carregarRepositorioOperacoesEquipamento()).getVerification(String(eq.id))
         : await db.buscarVerificacao(eq.id!);
+      if (IS_SAAS_BUILD) {
+        const servicosSalvos = JSON.parse(verificacao?.servicos_necessarios || "[]") as ServicoNecessario[];
+        const servicos = normalizarServicosAprovacao(servicosSalvos);
+        setServicosAprovacao(servicos);
+        setTodosServicosAprovados(null);
+        setIdsAprovados([]);
+        setTotalOrcamentoAprovacao(verificacao?.custo_total ?? undefined);
+        if (servicos.length > 0) {
+          setProdutosAprovacao(await carregarProdutosParaPecas());
+          setSelecaoServicosOpen(true);
+        } else {
+          setPagamentoDialogOpen(true);
+        }
+      } else {
+        setPagamentoDialogOpen(true);
+      }
       setPagamentoAprovacaoInicial(verificacao?.forma_pagamento_codigo ? {
         codigo: verificacao.forma_pagamento_codigo,
         detalhe: verificacao.forma_pagamento_detalhe || null,
       } : null);
-      setPagamentoDialogOpen(true);
     } catch (cause) {
       showError("Equipamentos", "Carregar pagamento", cause);
     } finally {
@@ -1351,6 +1406,7 @@ export default function Equipamentos({ operationalProfile }: { operationalProfil
           equipmentId: String(selecionado.id),
           expectedUpdatedAt: selecionado.atualizado_em,
           payment: pagamento,
+          ...(servicosAprovacao.length > 0 ? { servicesApproved: idsAprovados } : {}),
         });
       } else {
         await db.aprovarOrcamento({
@@ -1362,13 +1418,79 @@ export default function Equipamentos({ operationalProfile }: { operationalProfil
       }
       await recarregar();
       setPagamentoAprovacaoError(null);
-      success("Equipamentos", "Orçamento aprovado.", "Aprovação");
+      success(
+        "Equipamentos",
+        IS_SAAS_BUILD && servicosAprovacao.length > 0
+          ? idsAprovados.length > 0
+            ? "Serviços aprovados. As peças disponíveis foram baixadas; confira faltas em Peças da OS."
+            : "Orçamento reprovado sem baixa de estoque."
+          : "Orçamento aprovado.",
+        IS_SAAS_BUILD && servicosAprovacao.length > 0 ? "Decisão do cliente" : "Aprovação",
+      );
       return true;
     } catch (cause) {
       setPagamentoAprovacaoError(String(cause));
       return false;
     } finally {
       setPagamentoAprovacaoLoading(false);
+    }
+  }
+
+  async function confirmarSelecaoServicosAprovados() {
+    if (todosServicosAprovados === null) return;
+    const servicosSelecionados = servicosAprovacao.filter((servico) => idsAprovados.includes(servico.id));
+    if (servicosSelecionados.some((servico) => (servico.pecas ?? []).length > 0)) {
+      const liberado = await ensureSensitiveAccess({
+        title: "Baixa de peças da aprovação",
+        description: "Seu perfil precisa autorizar estoque para baixar as peças dos serviços aprovados.",
+        permission: SENSITIVE_PERMISSIONS.STOCK_CONTROL,
+      });
+      if (!liberado) return;
+    }
+    if (idsAprovados.length > 0) {
+      setPagamentoAprovacaoError(null);
+      setSelecaoServicosOpen(false);
+      setPagamentoDialogOpen(true);
+      return;
+    }
+    const confirmado = await confirmarAprovacao({ codigo: "A_COMBINAR" });
+    if (confirmado) setSelecaoServicosOpen(false);
+  }
+
+  async function abrirConsumosOrcamento(eq: Equipamento) {
+    const liberado = await ensureSensitiveAccess({
+      title: "Peças desta OS",
+      description: "Informe o PIN para consultar e confirmar baixas pendentes.",
+      permission: SENSITIVE_PERMISSIONS.STOCK_CONTROL,
+    });
+    if (!liberado || !eq.id) return;
+    try {
+      const repository = await carregarRepositorioOperacoesEquipamento();
+      if (!repository.listPartsConsumption) throw new Error("A consulta de peças da OS não está disponível neste runtime.");
+      setSelecionado(eq);
+      setConsumosDetalhes(await repository.listPartsConsumption(String(eq.id)));
+      setConsumosDialogOpen(true);
+    } catch (cause) {
+      showError("Equipamentos", "Peças da OS", cause);
+    }
+  }
+
+  async function confirmarBaixaPendente() {
+    if (!selecionado?.id || baixandoPendentes) return;
+    setBaixandoPendentes(true);
+    try {
+      const repository = await carregarRepositorioOperacoesEquipamento();
+      if (!repository.consumePendingParts || !repository.listPartsConsumption) {
+        throw new Error("A baixa pendente não está disponível neste runtime.");
+      }
+      const quantidade = await repository.consumePendingParts(String(selecionado.id));
+      setConsumosDetalhes(await repository.listPartsConsumption(String(selecionado.id)));
+      await recarregar();
+      success("Equipamentos", `${quantidade} peça(s) baixada(s).`, "Estoque da OS");
+    } catch (cause) {
+      showError("Equipamentos", "Baixar peças pendentes", cause);
+    } finally {
+      setBaixandoPendentes(false);
     }
   }
 
@@ -1769,6 +1891,13 @@ export default function Equipamentos({ operationalProfile }: { operationalProfil
       variant: "outline",
       onClick: () => void abrirAlterarOrcamento(eq),
     };
+    const acaoPecasOs: PriorityAction = {
+      id: "pecas_os",
+      label: "Peças da OS",
+      icon: <PackageCheck className="h-3.5 w-3.5" />,
+      variant: "outline",
+      onClick: () => void abrirConsumosOrcamento(eq),
+    };
     const acaoCorrigirStatus: PriorityAction = {
       id: "corrigir_status",
       label: "Corrigir Status",
@@ -1792,6 +1921,10 @@ export default function Equipamentos({ operationalProfile }: { operationalProfil
         onlineOverflow.push(acaoAlterarOrcamento);
       }
       if (getStatusCorrecao(eq.status).length > 0) onlineOverflow.push(acaoCorrigirStatus);
+      if (hasPermission(SENSITIVE_PERMISSIONS.STOCK_CONTROL)
+        && ["APROVADO", "EM_MANUTENCAO", "AGUARDANDO_PECA", "PRONTO"].includes(eq.status)) {
+        onlineOverflow.unshift(acaoPecasOs);
+      }
 
       switch (eq.status) {
         case "RECEBIDO":
@@ -2311,6 +2444,16 @@ export default function Equipamentos({ operationalProfile }: { operationalProfil
               <p className="text-sm">{busca || statusFiltro !== "TODOS" ? "Tente ajustar os filtros" : "Clique em 'Novo Equipamento' para cadastrar"}</p>
             </div>
           ) : (
+            <>
+            <div className="mb-2 flex items-center justify-between text-xs text-muted-foreground">
+              <span>{totalEquipamentos} equipamento(s)</span>
+              <PaginationControls
+                page={paginaEquipamentosExibida}
+                totalPages={totalPaginasEquipamentos}
+                onPageChange={setPaginaEquipamentos}
+                label="Paginação de equipamentos"
+              />
+            </div>
             <div className="rounded-md border">
               <Table>
                 <TableHeader>
@@ -2365,6 +2508,7 @@ export default function Equipamentos({ operationalProfile }: { operationalProfil
                 </TableBody>
               </Table>
             </div>
+            </>
           )}
         </CardContent>
       </Card>
@@ -3179,6 +3323,86 @@ export default function Equipamentos({ operationalProfile }: { operationalProfil
               </DialogFooter>
             </div>
           )}
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={consumosDialogOpen} onOpenChange={setConsumosDialogOpen}>
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader><DialogTitle>Peças da OS</DialogTitle></DialogHeader>
+          <p className="text-sm text-muted-foreground">Reposições ficam disponíveis no estoque. Confirme aqui o consumo das peças pendentes.</p>
+          <div className="max-h-72 space-y-2 overflow-y-auto">
+            {consumosDetalhes.length === 0 && <p className="text-sm text-muted-foreground">Nenhuma peça vinculada a serviços aprovados.</p>}
+            {consumosDetalhes.map((consumo) => (
+              <div key={`${consumo.verificacao_id}:${consumo.servico_id}:${consumo.produto_id}`} className="rounded-md border p-2 text-sm">
+                <p className="font-medium">{consumo.nome}</p>
+                <p>{consumo.quantidade_baixada} baixada(s) de {consumo.quantidade_aprovada} aprovada(s)
+                  {consumo.quantidade_baixada < consumo.quantidade_aprovada && <span className="text-amber-700"> · pendente</span>}
+                </p>
+              </div>
+            ))}
+          </div>
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={() => setConsumosDialogOpen(false)}>Fechar</Button>
+            <Button type="button" disabled={baixandoPendentes || !consumosDetalhes.some((consumo) => consumo.quantidade_baixada < consumo.quantidade_aprovada)}
+              onClick={() => void confirmarBaixaPendente()}>{baixandoPendentes ? "Baixando..." : "Confirmar baixa pendente"}</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={selecaoServicosOpen} onOpenChange={(open) => {
+        setSelecaoServicosOpen(open);
+        if (!open) setPagamentoAprovacaoError(null);
+      }}>
+        <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-xl">
+          <DialogHeader><DialogTitle>Aprovação dos serviços pelo cliente</DialogTitle></DialogHeader>
+          <div className="space-y-4">
+            <p className="text-sm">Todos os serviços de troca foram aprovados?</p>
+            <p className="text-sm text-muted-foreground">Somente peças dos serviços aprovados serão baixadas. Serviços não selecionados serão reprovados, sem baixa. Se faltar estoque, a quantidade restante ficará pendente para confirmação na OS.</p>
+            {pagamentoAprovacaoError && <p role="alert" className="text-sm text-destructive">{pagamentoAprovacaoError}</p>}
+            <div className="flex flex-wrap gap-2">
+              <Button type="button" variant={todosServicosAprovados === true ? "default" : "outline"}
+                onClick={() => { setTodosServicosAprovados(true); setIdsAprovados(servicosAprovacao.map((servico) => servico.id)); }}>Sim, todos</Button>
+              <Button type="button" variant={todosServicosAprovados === false ? "default" : "outline"}
+                onClick={() => { setTodosServicosAprovados(false); setIdsAprovados([]); }}>Não, selecionar</Button>
+            </div>
+            {todosServicosAprovados === false && (
+              <div className="max-h-64 space-y-2 overflow-y-auto rounded-md border p-3">
+                {servicosAprovacao.map((servico) => (
+                  <label key={servico.id} className="flex cursor-pointer items-start gap-2 text-sm">
+                    <input type="checkbox" checked={idsAprovados.includes(servico.id)}
+                      onChange={(event) => setIdsAprovados((ids) => event.target.checked
+                        ? [...ids, servico.id] : ids.filter((id) => id !== servico.id))} />
+                    <span>{servico.descricao} · {formatCurrency(Number(servico.valor || 0))}</span>
+                  </label>
+                ))}
+              </div>
+            )}
+            {todosServicosAprovados !== null && (
+              <div className="rounded-md bg-muted/40 p-3 text-sm">
+                <p className="font-medium">{idsAprovados.length} de {servicosAprovacao.length} serviços aprovados</p>
+                {resumirPecasAprovadas(servicosAprovacao.filter((servico) => idsAprovados.includes(servico.id))).map((peca) => {
+                  const saldo = produtosAprovacao.find((produto) => produto.id === peca.produto_id)?.quantidade_estoque ?? 0;
+                  return <p key={peca.produto_id} className={saldo < peca.quantidade ? "text-amber-700" : ""}>
+                    {peca.nome}: {peca.quantidade} necessária(s), saldo {saldo}{saldo < peca.quantidade ? " · pendência" : ""}
+                  </p>;
+                })}
+                <p className="mt-2 font-semibold">Total aprovado: {formatCurrency(
+                  idsAprovados.length === servicosAprovacao.length && totalOrcamentoAprovacao != null
+                    ? totalOrcamentoAprovacao
+                    : servicosAprovacao.filter((servico) => idsAprovados.includes(servico.id))
+                      .reduce((total, servico) => total + Number(servico.valor || 0)
+                        + (servico.pecas ?? []).reduce((subtotal, peca) => subtotal + peca.quantidade * peca.valor_unitario, 0), 0),
+                )}</p>
+              </div>
+            )}
+          </div>
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={() => setSelecaoServicosOpen(false)} disabled={pagamentoAprovacaoLoading}>Cancelar</Button>
+            <Button type="button" disabled={todosServicosAprovados === null || pagamentoAprovacaoLoading}
+              onClick={() => void confirmarSelecaoServicosAprovados()}>
+              {pagamentoAprovacaoLoading ? "Salvando..." : idsAprovados.length ? "Continuar para pagamento" : "Confirmar reprovação"}
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
 

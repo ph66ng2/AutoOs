@@ -37,6 +37,15 @@ export interface EquipmentQuoteInput {
   correctionReason?: string;
 }
 
+export interface EquipmentPartConsumption {
+  verificacao_id: string;
+  servico_id: string;
+  produto_id: string;
+  nome: string;
+  quantidade_aprovada: number;
+  quantidade_baixada: number;
+}
+
 export interface EquipmentStatusInput {
   equipmentId: string;
   expectedUpdatedAt: string;
@@ -62,7 +71,17 @@ export interface EquipmentOperationsRepository {
     equipmentId: string;
     expectedUpdatedAt: string;
     payment: FormaPagamento;
+    servicesApproved?: string[];
   }): Promise<Equipamento<string>>;
+  listPartsConsumption?(equipmentId: string): Promise<EquipmentPartConsumption[]>;
+  consumePendingParts?(equipmentId: string): Promise<number>;
+  registerCounterIntakeVerification?(input: {
+    equipmentId: string;
+    technician: string;
+    reportedProblem: string;
+    diagnosis: string;
+    observations: string;
+  }): Promise<Verificacao>;
 }
 
 function validUuid(id: string): boolean {
@@ -277,19 +296,87 @@ export class SupabaseEquipmentOperationsRepository implements EquipmentOperation
     return assertTenant(equipment, this.session);
   }
 
-  async approveQuote(input: { equipmentId: string; expectedUpdatedAt: string; payment: FormaPagamento }): Promise<Equipamento<string>> {
+  async approveQuote(input: { equipmentId: string; expectedUpdatedAt: string; payment: FormaPagamento; servicesApproved?: string[] }): Promise<Equipamento<string>> {
     assertOperationInput(input.equipmentId, input.expectedUpdatedAt);
-    const response = await this.rpc<unknown>("saas_approve_equipment_quote", {
+    const response = await this.rpc<unknown>(input.servicesApproved === undefined ? "saas_approve_equipment_quote" : "saas_approve_equipment_quote_with_stock", {
       p_equipment_id: input.equipmentId,
       p_expected_updated_em: input.expectedUpdatedAt,
       p_payment_code: input.payment.codigo,
       p_payment_detail: input.payment.detalhe ?? null,
+      ...(input.servicesApproved === undefined ? {} : { p_services_approved: input.servicesApproved }),
     });
     const equipment = Array.isArray(response) && response.length === 1 ? response[0] as Equipamento<string> : response as Equipamento<string>;
     if (!equipment || typeof equipment.id !== "string" || !validUuid(equipment.id)) {
       throw new OnlineDataError("ONLINE_UNAVAILABLE", "O serviço Online retornou um equipamento inválido.");
     }
     return assertTenant(equipment, this.session);
+  }
+
+  async listPartsConsumption(equipmentId: string): Promise<EquipmentPartConsumption[]> {
+    if (!validUuid(equipmentId)) throw new OnlineDataError("INVALID_DATA", "O identificador do equipamento Online é inválido.");
+    const response = await this.rpc<unknown>("saas_list_equipment_quote_consumption", {
+      p_equipment_id: equipmentId,
+    });
+    const rows = Array.isArray(response) ? response : [];
+    return rows.map((candidate) => {
+      if (!candidate || typeof candidate !== "object") {
+        throw new OnlineDataError("ONLINE_UNAVAILABLE", "O serviço Online retornou consumos de peças inválidos.");
+      }
+      const row = candidate as EquipmentPartConsumption;
+      const approved = Number(row.quantidade_aprovada);
+      const debited = Number(row.quantidade_baixada);
+      if (!validUuid(row.verificacao_id) || !validUuid(row.produto_id)
+        || typeof row.servico_id !== "string" || typeof row.nome !== "string"
+        || !Number.isSafeInteger(approved) || approved < 0
+        || !Number.isSafeInteger(debited) || debited < 0 || debited > approved) {
+        throw new OnlineDataError("ONLINE_UNAVAILABLE", "O serviço Online retornou consumos de peças inválidos.");
+      }
+      return { ...row, quantidade_aprovada: approved, quantidade_baixada: debited };
+    });
+  }
+
+  async consumePendingParts(equipmentId: string): Promise<number> {
+    if (!validUuid(equipmentId)) throw new OnlineDataError("INVALID_DATA", "O identificador do equipamento Online é inválido.");
+    const response = await this.rpc<unknown>("saas_consume_pending_equipment_parts", {
+      p_equipment_id: equipmentId,
+    });
+    const candidate = Array.isArray(response) && response.length === 1 ? response[0] : response;
+    const amount = Number(candidate);
+    if (!Number.isSafeInteger(amount) || amount < 0) {
+      throw new OnlineDataError("ONLINE_UNAVAILABLE", "O serviço Online não confirmou a baixa pendente. Atualize a lista antes de tentar novamente.");
+    }
+    return amount;
+  }
+
+  async registerCounterIntakeVerification(input: {
+    equipmentId: string;
+    technician: string;
+    reportedProblem: string;
+    diagnosis: string;
+    observations: string;
+  }): Promise<Verificacao> {
+    if (!validUuid(input.equipmentId)) throw new OnlineDataError("INVALID_DATA", "O identificador do equipamento Online é inválido.");
+    if (!input.technician.trim() || !input.reportedProblem.trim()) {
+      throw new OnlineDataError("INVALID_DATA", "Informe técnico e defeito relatado para registrar a entrada.");
+    }
+    const response = await this.rpc<unknown>("saas_register_counter_intake_verification", {
+      p_equipment_id: input.equipmentId,
+      p_technician: input.technician.trim(),
+      p_reported_problem: input.reportedProblem.trim(),
+      p_diagnosis: input.diagnosis.trim(),
+      p_observations: input.observations.trim(),
+    });
+    const candidate = Array.isArray(response) && response.length === 1 ? response[0] : response;
+    if (!candidate || typeof candidate !== "object" || Array.isArray(candidate)) {
+      throw new OnlineDataError("ONLINE_UNAVAILABLE", "O serviço Online não confirmou a verificação inicial.");
+    }
+    const verification = candidate as Verificacao;
+    if (typeof verification.id !== "string" || !validUuid(verification.id)
+      || verification.equipamento_id !== input.equipmentId
+      || String(verification.empresa_id ?? "") !== this.session.companyId) {
+      throw new OnlineDataError("RLS_DENIED", "A resposta Online contém uma verificação fora da empresa autenticada.");
+    }
+    return verification;
   }
 }
 

@@ -1,11 +1,13 @@
 import { BrowserRouter, Navigate, NavLink, Route, Routes } from "react-router-dom";
-import { LockKeyhole, LogOut, Package, Printer, Settings, Trash2, Users, Wrench } from "lucide-react";
+import { ClipboardList, LockKeyhole, LogOut, Package, Printer, Settings, Trash2, Users, Wrench } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { SaasTeamAccessDenied, SaasTeamSettingsPage } from "@/components/saas/SaasTeamSettingsPage";
 import SaasClientesPage from "@/pages/SaasClientesPage";
 import Equipamentos from "@/pages/Equipamentos";
 import Servicos from "@/pages/Servicos";
 import Insumos from "@/pages/Insumos";
+import Balcao from "@/pages/Balcao";
+import { CounterSessionProvider } from "@/components/CounterLayout";
 import type { SaasOperationalProfile, SaasSession } from "@/types/saas-auth";
 
 interface SaasOperationalShellProps {
@@ -61,6 +63,9 @@ function SaasOperationalRoutes({ session, profile, onLock, onSignOut, onRemoveDe
           <NavLink to="/insumos" className={({ isActive }) => `mt-1 flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium ${isActive ? "bg-slate-700 text-white" : "text-slate-300 hover:bg-white/10 hover:text-white"}`}>
             <Package className="h-4 w-4" />Insumos
           </NavLink>
+          <NavLink to="/balcao" className={({ isActive }) => `mt-1 flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium ${isActive ? "bg-slate-700 text-white" : "text-slate-300 hover:bg-white/10 hover:text-white"}`}>
+            <ClipboardList className="h-4 w-4" />Balcão
+          </NavLink>
           {profile.role === "ADMIN" ? <NavLink to="/configuracoes/equipe" className={({ isActive }) => `mt-1 flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium ${isActive ? "bg-slate-700 text-white" : "text-slate-300 hover:bg-white/10 hover:text-white"}`}>
             <Settings className="h-4 w-4" />Equipe e Acessos
           </NavLink> : null}
@@ -72,6 +77,7 @@ function SaasOperationalRoutes({ session, profile, onLock, onSignOut, onRemoveDe
             <Route path="/equipamentos" element={<Equipamentos operationalProfile={profile} />} />
             <Route path="/servicos" element={<Servicos operationalProfile={profile} />} />
             <Route path="/insumos" element={<Insumos operationalProfile={profile} />} />
+            <Route path="/balcao/*" element={<CounterSessionProvider><Balcao operationalProfile={profile} /></CounterSessionProvider>} />
             <Route path="/configuracoes/equipe" element={profile.role === "ADMIN" ? <SaasTeamSettingsPage session={session} /> : <SaasTeamAccessDenied />} />
             <Route path="*" element={<Navigate to="/clientes" replace />} />
           </Routes>

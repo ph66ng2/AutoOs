@@ -9,7 +9,7 @@
  * @depends types/index.ts - interface Equipamento
  * @usedBy pages/Equipamentos.tsx - página principal de equipamentos
  */
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { IS_SAAS_BUILD } from "@/lib/runtime-mode";
 import { db } from "@/lib/db";
 import {
@@ -18,6 +18,7 @@ import {
 } from "@/lib/data/equipamentos-repository";
 import { carregarRepositorioOperacoesEquipamento } from "@/lib/data/equipamentos-operacoes-repository";
 import type { Equipamento, EquipamentoId } from "@/types";
+import { ITEMS_PER_PAGE, paginateItems } from "@/lib/pagination";
 
 /**
  * Parâmetros de busca e filtro para a listagem de equipamentos.
@@ -27,6 +28,7 @@ import type { Equipamento, EquipamentoId } from "@/types";
 interface UseEquipamentosParams<Id extends EquipamentoId> {
   busca?: string;
   status?: string;
+  page?: number;
   /** Injeção para testes; em runtime, o build escolhe o adapter Online ou Tauri. */
   repository?: EquipamentosRepository<Id>;
 }
@@ -40,8 +42,10 @@ interface UseEquipamentosParams<Id extends EquipamentoId> {
  */
 export function useEquipamentos<Id extends EquipamentoId = number>(params?: UseEquipamentosParams<Id>) {
   const [equipamentos, setEquipamentos] = useState<Equipamento<Id>[]>([]);
+  const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const latestRequest = useRef(0);
 
   /**
    * Carrega a lista de equipamentos do banco de dados.
@@ -49,25 +53,35 @@ export function useEquipamentos<Id extends EquipamentoId = number>(params?: UseE
    * Atualiza os estados loading e error durante a execução.
    */
   const carregar = useCallback(async () => {
+    const requestId = ++latestRequest.current;
     setLoading(true);
     setError(null);
     try {
       const repository = params?.repository ?? await carregarRepositorioEquipamentos<Id>();
-      const data = await repository.listar(
-        params?.busca,
-        params?.status === "TODOS" ? undefined : params?.status
-      );
-      setEquipamentos(data);
+      const status = params?.status === "TODOS" ? undefined : params?.status;
+      if (params?.page !== undefined && repository.listarPagina) {
+        const result = await repository.listarPagina(params.busca, status, params.page);
+        if (requestId !== latestRequest.current) return;
+        setEquipamentos(result.items);
+        setTotal(result.total);
+      } else {
+        const data = await repository.listar(params?.busca, status);
+        if (requestId !== latestRequest.current) return;
+        setEquipamentos(params?.page === undefined ? data : paginateItems(data, params.page, ITEMS_PER_PAGE));
+        setTotal(data.length);
+      }
     } catch (err: any) {
+      if (requestId !== latestRequest.current) return;
       setError(err?.toString() || "Erro ao carregar equipamentos");
       console.error("Erro ao carregar equipamentos:", err);
     } finally {
-      setLoading(false);
+      if (requestId === latestRequest.current) setLoading(false);
     }
-  }, [params?.busca, params?.status, params?.repository]);
+  }, [params?.busca, params?.status, params?.page, params?.repository]);
 
   useEffect(() => {
-    carregar();
+    void carregar();
+    return () => { latestRequest.current += 1; };
   }, [carregar]);
 
   /**
@@ -190,6 +204,7 @@ export function useEquipamentos<Id extends EquipamentoId = number>(params?: UseE
 
   return {
     equipamentos,
+    total,
     loading,
     error,
     criar,

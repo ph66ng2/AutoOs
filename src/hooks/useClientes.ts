@@ -16,13 +16,14 @@
  *  O método `criar` retorna o ID do novo cliente, permitindo que outros
  *  componentes o utilizem imediatamente após a criação.
  */
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import {
   carregarRepositorioClientes,
   type ClienteInput,
   type ClientesRepository,
 } from "@/lib/data/clientes-repository";
 import type { Cliente, ClienteId } from "@/types";
+import { ITEMS_PER_PAGE, paginateItems } from "@/lib/pagination";
 
 /**
  * Parâmetros de pesquisa aceitos pelo hook useClientes.
@@ -32,6 +33,7 @@ import type { Cliente, ClienteId } from "@/types";
  */
 interface UseClientesParams {
   busca?: string;
+  page?: number;
   /** Injeção para teste; o runtime seleciona o adapter Online ou interno. */
   repository?: ClientesRepository;
 }
@@ -48,8 +50,10 @@ interface UseClientesParams {
  */
 export function useClientes(params?: UseClientesParams) {
   const [clientes, setClientes] = useState<Cliente[]>([]);
+  const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const latestRequest = useRef(0);
 
   /**
    * Carrega a lista de clientes a partir do banco de dados.
@@ -59,22 +63,34 @@ export function useClientes(params?: UseClientesParams) {
    * que o valor de `busca` muda.
    */
   const carregar = useCallback(async () => {
+    const requestId = ++latestRequest.current;
     setLoading(true);
     setError(null);
     try {
       const repository = params?.repository ?? await carregarRepositorioClientes();
-      const data = await repository.listar(params?.busca);
-      setClientes(data);
+      if (params?.page !== undefined && repository.listarPagina) {
+        const result = await repository.listarPagina(params.busca, params.page);
+        if (requestId !== latestRequest.current) return;
+        setClientes(result.items);
+        setTotal(result.total);
+      } else {
+        const data = await repository.listar(params?.busca);
+        if (requestId !== latestRequest.current) return;
+        setClientes(params?.page === undefined ? data : paginateItems(data, params.page, ITEMS_PER_PAGE));
+        setTotal(data.length);
+      }
     } catch (err: any) {
+      if (requestId !== latestRequest.current) return;
       setError(err?.toString() || "Erro ao carregar clientes");
       console.error("Erro ao carregar clientes:", err);
     } finally {
-      setLoading(false);
+      if (requestId === latestRequest.current) setLoading(false);
     }
-  }, [params?.busca, params?.repository]);
+  }, [params?.busca, params?.page, params?.repository]);
 
   useEffect(() => {
-    carregar();
+    void carregar();
+    return () => { latestRequest.current += 1; };
   }, [carregar]);
 
   /**
@@ -143,6 +159,7 @@ export function useClientes(params?: UseClientesParams) {
 
   return {
     clientes,
+    total,
     loading,
     error,
     criar,
