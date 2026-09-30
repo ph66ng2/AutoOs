@@ -7,7 +7,7 @@ import {
 } from "@/lib/data/clientes-repository";
 import { tauriSaasSessionStore } from "@/lib/saas-session-store";
 import { ITEMS_PER_PAGE, paginateItems } from "@/lib/pagination";
-import type { Equipamento, EquipamentoId } from "@/types";
+import type { ClienteId, Equipamento, EquipamentoId } from "@/types";
 
 export type EquipamentoInput<Id extends EquipamentoId = number> = Omit<Equipamento<Id>, "id" | "empresa_id" | "criado_em" | "atualizado_em">;
 
@@ -19,6 +19,7 @@ export interface EquipamentosPage<Id extends EquipamentoId = number> {
 export interface EquipamentosRepository<Id extends EquipamentoId = number> {
   listar(busca?: string, status?: string): Promise<Equipamento<Id>[]>;
   listarPagina?(busca: string | undefined, status: string | undefined, page: number): Promise<EquipamentosPage<Id>>;
+  listarPorClienteId?(clienteId: ClienteId): Promise<Equipamento<Id>[]>;
   buscar?(id: Id): Promise<Equipamento<Id>>;
   buscarPorSerial(serial: string): Promise<Equipamento<Id>[]>;
   criar(equipamento: EquipamentoInput<Id>): Promise<Equipamento<Id>>;
@@ -167,6 +168,21 @@ export class SupabaseEquipamentosRepository implements EquipamentosRepository<st
     }
   }
 
+  async listarPorClienteId(clienteId: ClienteId): Promise<Equipamento<string>[]> {
+    if (typeof clienteId !== "string" || !UUID_PATTERN.test(clienteId)) {
+      throw new OnlineDataError("INVALID_DATA", "O identificador Online do cliente é inválido.");
+    }
+    const pageSize = 500;
+    const rows: Equipamento<string>[] = [];
+    for (let offset = 0; ; offset += pageSize) {
+      const query = equipamentosQuery(this.session, undefined, undefined, pageSize, offset);
+      query.set("cliente_id", `eq.${clienteId}`);
+      const page = await this.request<Equipamento<string>>(query, { method: "GET" });
+      rows.push(...assertTenantRows(page, this.session));
+      if (page.length < pageSize) return rows;
+    }
+  }
+
   async listarPagina(busca: string | undefined, status: string | undefined, page: number): Promise<EquipamentosPage<string>> {
     const safePage = Math.max(1, Math.floor(page));
     const query = equipamentosQuery(this.session, busca, status, ITEMS_PER_PAGE, (safePage - 1) * ITEMS_PER_PAGE);
@@ -264,6 +280,9 @@ export class SupabaseEquipamentosRepository implements EquipamentosRepository<st
 
 const tauriEquipamentosRepository: EquipamentosRepository<number> = {
   listar: (busca, status) => db.listarEquipamentos(busca, status),
+  async listarPorClienteId(clienteId) {
+    return (await db.listarEquipamentos()).filter((equipment) => equipment.cliente_id === clienteId);
+  },
   async listarPagina(busca, status, page) {
     const rows = await db.listarEquipamentos(busca, status);
     return { items: paginateItems(rows, page, ITEMS_PER_PAGE), total: rows.length };

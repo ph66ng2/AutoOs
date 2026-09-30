@@ -83,6 +83,12 @@ async function listarEquipamentosBalcao(busca?: string, status?: string): Promis
   return repository.listar(busca, status);
 }
 
+async function listarEquipamentosBalcaoPorCliente(clienteId: ClienteId): Promise<BalcaoEquipamento[]> {
+  const repository = await carregarRepositorioEquipamentos<ClienteId>();
+  if (repository.listarPorClienteId) return repository.listarPorClienteId(clienteId);
+  return (await repository.listar()).filter((equipment) => equipment.cliente_id === clienteId);
+}
+
 async function buscarEquipamentoBalcao(id: ClienteId): Promise<BalcaoEquipamento> {
   if (IS_SAAS_BUILD) {
     const repository = await carregarRepositorioEquipamentos<ClienteId>();
@@ -1347,21 +1353,25 @@ function ClientCycles({
   onSelectEquipment: (equipment: BalcaoEquipamento) => void;
 }) {
   const [rows, setRows] = useState<BalcaoEquipamento[]>([]);
+  const clientId = client.id;
   useEffect(() => {
-    void listarEquipamentosBalcao(
-      client.nome || client.nome_fantasia || client.razao_social,
-    )
-      .then((all) =>
-        setRows(
-          all
-            .filter((eq) => eq.cliente_id === client.id)
-            .sort((a, b) =>
-              String(b.criado_em).localeCompare(String(a.criado_em)),
-            ),
-        ),
-      )
-      .catch(() => setRows([]));
-  }, [client]);
+    if (clientId === undefined) {
+      setRows([]);
+      return;
+    }
+    let active = true;
+    void listarEquipamentosBalcaoPorCliente(clientId)
+      .then((items) => {
+        if (!active) return;
+        setRows(items.sort((a, b) =>
+          String(b.criado_em).localeCompare(String(a.criado_em)),
+        ));
+      })
+      .catch(() => {
+        if (active) setRows([]);
+      });
+    return () => { active = false; };
+  }, [clientId]);
   return (
     <section>
       <Back onBack={onBack} />
