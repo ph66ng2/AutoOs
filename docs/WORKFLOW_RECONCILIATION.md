@@ -3,8 +3,8 @@
 ## Decisão para começar
 
 1. O [PR #101](https://github.com/ph66ng2/AutoOs/pull/101) foi mesclado na `feature`. Sua entrega, **Insumos SaaS Online**, agora tem o ticket histórico `AO-INS-ONLINE-001` no catálogo. O merge não prova aplicação em produção: o próprio PR declara migração aplicada em staging e suíte de testes não executada.
-2. O [PR #102](https://github.com/ph66ng2/AutoOs/pull/102), o [AutoPlatform #10](https://github.com/ph66ng2/AutoPlatform/pull/10) e o [AutoBO #9](https://github.com/ph66ng2/AutoBO/pull/9) mesclaram a mudança de rumo. O ticket de alinhamento `AO-WF-RECONCILE-001` fica em revisão enquanto esta reconciliação do catálogo e do painel aguarda merge humano.
-3. **O próximo ticket de implementação no AutoOS, após essa revisão, é `AO-SUITE-001`**: aprovar a autoridade dos dados de cliente, produto, serviço, estoque, equipamento e OS. Não se deve portar o AutoBO inteiro em bloco. Depois do ownership, `AO-SUITE-002` produz o fato faturável, condicionado ao contrato externo no AutoPlatform. Os `AO-FISC-*` seguem os bloqueios do DAG.
+2. O [PR #102](https://github.com/ph66ng2/AutoOs/pull/102), o [AutoPlatform #10](https://github.com/ph66ng2/AutoPlatform/pull/10) e o [AutoBO #9](https://github.com/ph66ng2/AutoBO/pull/9) mesclaram a mudança de rumo. O ticket de alinhamento `AO-WF-RECONCILE-001` foi concluído pelo [PR #103](https://github.com/ph66ng2/AutoOs/pull/103), mesclado na `feature`.
+3. **O próximo ticket de implementação no AutoOS é `AO-SUITE-001`**: aprovar a autoridade dos dados de cliente, produto, serviço, estoque, equipamento e OS. Não se deve portar o AutoBO inteiro em bloco. Depois do ownership, `AO-SUITE-002` produz o fato faturável, condicionado ao contrato externo no AutoPlatform. Os `AO-FISC-*` seguem os bloqueios do DAG.
 4. O desktop AutoOS opera Online. **PowerSync é reservado ao futuro Mobile Field**. Os tickets que prescreviam PowerSync/Offline para desktop foram classificados como *substituídos*, preservando seu estado factual. A futura trilha mobile exige tickets próprios quando entrar no foco.
 
 ## PRs mesclados que não tinham ticket no catálogo
