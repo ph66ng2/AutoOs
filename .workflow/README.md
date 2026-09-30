@@ -2,6 +2,10 @@
 
 Este diretório organiza mudanças em tarefas pequenas, com dependências explícitas.
 
+**Foco atual:** uma OS real da BMITAG chegar ao [Fiscal PROD](https://github.com/ph66ng2/AutoPlatform/blob/main/.workflow/FISCAL_PROD_ROADMAP.md). AutoOS mantém a operação, produz `FatoComercial` v2 e oferece fila, revisão, retorno, documentos e histórico. AutoPlatform implementa contrato, ingestão e emissão. AutoBO é fonte de código e regras. O campo `roadmap` identifica tickets ativos e adiados; prioridade não altera status.
+
+O trabalho inicial pode avançar em paralelo: `AO-WF-RECONCILE-001` alinha os catálogos; `AO-SUITE-001` fecha ownership; `AP-CONTRACT-002` versiona o fato no AutoPlatform; a contabilidade valida `AP-FISC-ACCOUNTING-EXT-001`. `AO-SUITE-002` permanece `blocked` até o contrato externo ser aprovado. `AO-FISC-GATE-001` permanece `blocked` até o gate backend externo ser confirmado. `externalPrerequisites` é informativo: o planejador local ainda não aplica bloqueadores de outros repositórios.
+
 ## Regra simples
 
 1. Primeiro, transforme uma feature em tickets no `workflow.json`.

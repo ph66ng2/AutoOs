@@ -1,5 +1,38 @@
 {
-  "project": "AutoOS SaaS — planos Online e Offline com PowerSync",
+  "project": "AutoOS — operação interna BMITAG e Fiscal PROD",
+  "roadmap": {
+    "milestone": "AutoOS Fiscal PROD BMITAG",
+    "role": "Operação, FatoComercial e experiência fiscal",
+    "focusIds": [
+      "AO-WF-RECONCILE-001",
+      "AO-SUITE-001",
+      "AO-SUITE-002",
+      "AO-FISC-001",
+      "AO-FISC-002",
+      "AO-FISC-003",
+      "AO-FISC-004",
+      "AO-FISC-005",
+      "AO-FISC-006",
+      "AO-FISC-GATE-001"
+    ],
+    "deferredIds": [
+      "AO-PS-005",
+      "AO-PS-006",
+      "AO-PS-007",
+      "AO-PS-008",
+      "AO-SUB-003",
+      "AO-SUB-004",
+      "AO-SUB-005",
+      "AO-PHOTO-003",
+      "AO-PHOTO-004",
+      "AO-PHOTO-005",
+      "AO-PHOTO-006",
+      "AO-PHOTO-007",
+      "AO-PHOTO-008",
+      "AO-PHOTO-009"
+    ],
+    "note": "Prioridade de roadmap separada de status e blockedBy. Relações externas em externalPrerequisites exigem revisão humana; waves.sh só lê blockedBy local."
+  },
   "baseBranch": "origin/feature",
   "promotionTarget": "origin/master",
   "architectureDecisions": [
@@ -3493,6 +3526,586 @@
       "likelyFiles": ["src/pages/SaasClientesPage.tsx", "src/components/clientes/ClienteContatosPanel.tsx", "src/lib/data/cliente-contatos-repository.ts", "src/types/index.ts", "supabase/migrations/"],
       "risks": ["Schema Staging divergente.", "IDs legados numéricos.", "FK simples pode permitir referência cruzada."],
       "completedAt": "2026-09-23"
+    },
+    {
+      "id": "AO-WF-RECONCILE-001",
+      "title": "Alinhar roadmap Fiscal PROD entre os três workflows",
+      "status": "ready",
+      "blockedBy": [],
+      "objective": "Registrar a decisão de produto, a divisão de responsabilidades e a revisão dos tickets sem confundir prioridade com status técnico.",
+      "context": "O DAG atual prioriza SaaS e integração entre desktops; o marco de negócio passou a ser Fiscal PROD interno BMITAG.",
+      "expectedBehavior": "Registrar a decisão de produto, a divisão de responsabilidades e a revisão dos tickets sem confundir prioridade com status técnico.",
+      "scope": [
+        "Revisar os três catálogos e documentar IDs ativos, adiados e substituídos.",
+        "Vincular os PRs de roadmap dos três repositórios e registrar decisões ainda abertas."
+      ],
+      "outOfScope": [
+        "Implementar Fiscal ou alterar status de tickets já entregues sem evidência."
+      ],
+      "acceptanceCriteria": [
+        "Roadmap aponta AutoOS como operação e UI, AutoPlatform como backend Fiscal e AutoBO como fonte de código.",
+        "Nenhum ticket é marcado merged apenas por ter sido adiado ou substituído."
+      ],
+      "tests": [
+        "Validar JSON e executar os três planejadores de ondas.",
+        "Conferir com revisão humana os PRs de roadmap e as referências externas."
+      ],
+      "testInstructions": {
+        "prerequisites": [
+          "Usar a branch e worktree do ticket, criada a partir da branch principal indicada no workflow.",
+          "Usar fixtures sintéticas e serviços falsos; não inserir dados ou credenciais BMITAG em testes automatizados."
+        ],
+        "steps": [
+          "Executar .workflow/scripts/waves.sh plan .workflow/workflow.json.",
+          "Revisar o diff do catálogo e comparar com o roadmap Fiscal PROD versionado."
+        ],
+        "expectedResultAndEvidence": [
+          "Roadmap aponta AutoOS como operação e UI, AutoPlatform como backend Fiscal e AutoBO como fonte de código.",
+          "Nenhum ticket é marcado merged apenas por ter sido adiado ou substituído."
+        ],
+        "dataImpact": "Somente documentação e catálogo; nenhum dado operacional é modificado.",
+        "cleanupAndRollback": [
+          "Remover fixtures e recursos temporários criados no ambiente descartável.",
+          "Em caso de falha, reverter o PR e preservar trilha de auditoria; não desfazer documentos fiscais reais por script."
+        ],
+        "stagingRestrictions": "Staging usa dados fictícios e credenciais de homologação; operações fiscais reais exigem autorização humana separada."
+      },
+      "likelyFiles": [
+        ".workflow/workflow.json",
+        ".workflow/README.md",
+        "3-NEXT_STEPS.md"
+      ],
+      "risks": [
+        "Declarar dependência entre repositórios que os planejadores ainda não sabem aplicar."
+      ]
+    },
+    {
+      "id": "AO-SUITE-001",
+      "title": "Definir ownership do Core AutoOS para o produto interno",
+      "status": "ready",
+      "blockedBy": [],
+      "objective": "Aprovar a fonte autoritativa de cada dado antes de produzir fatos faturáveis.",
+      "context": "A operação já possui cliente, produto, serviço, equipamento, OS e estoque; duplicar autoridade no AutoPlatform ou AutoBO criaria divergência.",
+      "expectedBehavior": "Aprovar a fonte autoritativa de cada dado antes de produzir fatos faturáveis.",
+      "scope": [
+        "Documentar autoridade de cliente, produto, serviço e estoque no Core AutoOS; equipamento e OS na operação.",
+        "Definir IDs, versão, leitura e correção de dados que entram no snapshot fiscal."
+      ],
+      "outOfScope": [
+        "Migrar estoque ou alterar tabelas de produção neste ticket."
+      ],
+      "acceptanceCriteria": [
+        "Matriz de ownership aprovada com exemplos de OS de serviço, produto e mista.",
+        "Não há segunda escrita autoritativa de estoque para o piloto Fiscal."
+      ],
+      "tests": [
+        "Revisão arquitetural da matriz com exemplos sintéticos.",
+        "Conferir que contratos e tickets fiscais adotam a mesma autoridade."
+      ],
+      "testInstructions": {
+        "prerequisites": [
+          "Usar a branch e worktree do ticket, criada a partir da branch principal indicada no workflow.",
+          "Usar fixtures sintéticas e serviços falsos; não inserir dados ou credenciais BMITAG em testes automatizados."
+        ],
+        "steps": [
+          "Desenhar três exemplos sintéticos de OS.",
+          "Revisar a matriz com responsáveis de operação e AutoPlatform."
+        ],
+        "expectedResultAndEvidence": [
+          "Matriz de ownership aprovada com exemplos de OS de serviço, produto e mista.",
+          "Não há segunda escrita autoritativa de estoque para o piloto Fiscal."
+        ],
+        "dataImpact": "Somente decisões e documentação; nenhuma escrita em dados de clientes.",
+        "cleanupAndRollback": [
+          "Remover fixtures e recursos temporários criados no ambiente descartável.",
+          "Em caso de falha, reverter o PR e preservar trilha de auditoria; não desfazer documentos fiscais reais por script."
+        ],
+        "stagingRestrictions": "Staging usa dados fictícios e credenciais de homologação; operações fiscais reais exigem autorização humana separada."
+      },
+      "likelyFiles": [
+        ".workflow/README.md",
+        "3-NEXT_STEPS.md",
+        "docs/"
+      ],
+      "risks": [
+        "Confundir projeção de dados com nova autoridade.",
+        "Ignorar dados legados já presentes no AutoOS."
+      ]
+    },
+    {
+      "id": "AO-SUITE-002",
+      "title": "Produzir FatoComercial v2 imutável a partir da OS",
+      "status": "blocked",
+      "blockedBy": [
+        "AO-SUITE-001"
+      ],
+      "objective": "Gerar um fato faturável por versão de OS com origem, empresa, cliente e itens consistentes.",
+      "context": "O contrato v1 não contém snapshot de cliente, itens e valores suficientes para emissão fiscal; o v2 será versionado no AutoPlatform.",
+      "expectedBehavior": "Gerar um fato faturável por versão de OS com origem, empresa, cliente e itens consistentes.",
+      "scope": [
+        "Mapear OS aprovada/faturável para o contrato v2 sem alterar o v1.",
+        "Persistir correlação e versão; nova correção gera nova versão/evento, não mutação silenciosa do fato entregue.",
+        "Preparar envio idempotente ao AutoPlatform sem bloquear a operação local por indisponibilidade remota."
+      ],
+      "outOfScope": [
+        "Emitir nota, implementar tributação ou criar autoridade de estoque remota."
+      ],
+      "acceptanceCriteria": [
+        "Serviço, produto e OS mista geram snapshots válidos no schema v2.",
+        "Retry da mesma versão não cria outro fato; edição posterior segue regra explícita."
+      ],
+      "tests": [
+        "Testes de contrato v2 e valores totais com fixtures sintéticas.",
+        "Teste de retry, versão nova e indisponibilidade da API."
+      ],
+      "testInstructions": {
+        "prerequisites": [
+          "Usar a branch e worktree do ticket, criada a partir da branch principal indicada no workflow.",
+          "Usar fixtures sintéticas e serviços falsos; não inserir dados ou credenciais BMITAG em testes automatizados."
+        ],
+        "steps": [
+          "Construir fixtures sintéticas de OS de serviço, produto e mista.",
+          "Validar cada payload contra o schema v2; repetir o envio e alterar a versão da OS.",
+          "Executar npm run lint e npm run test:run; usar banco descartável para testes Rust associados."
+        ],
+        "expectedResultAndEvidence": [
+          "Serviço, produto e OS mista geram snapshots válidos no schema v2.",
+          "Retry da mesma versão não cria outro fato; edição posterior segue regra explícita."
+        ],
+        "dataImpact": "Somente dados sintéticos e temporários em ambiente de teste.",
+        "cleanupAndRollback": [
+          "Remover fixtures e recursos temporários criados no ambiente descartável.",
+          "Em caso de falha, reverter o PR e preservar trilha de auditoria; não desfazer documentos fiscais reais por script."
+        ],
+        "stagingRestrictions": "Staging usa dados fictícios e credenciais de homologação; operações fiscais reais exigem autorização humana separada."
+      },
+      "likelyFiles": [
+        "src-tauri/src/commands/",
+        "src/lib/",
+        "src/types/",
+        "src-tauri/migrations/"
+      ],
+      "risks": [
+        "Snapshot refletir cadastro alterado depois da revisão.",
+        "Duplicar fato no retry ou misturar empresas."
+      ],
+      "externalPrerequisites": [
+        {
+          "repo": "AutoPlatform",
+          "id": "AP-CONTRACT-002",
+          "state": "proposed",
+          "condition": "Contrato v2 aprovado antes da implementação integrada; liberar status blocked por revisão humana."
+        }
+      ]
+    },
+    {
+      "id": "AO-FISC-001",
+      "title": "Criar fila Pronto para Faturar da OS",
+      "status": "ready",
+      "blockedBy": [
+        "AO-SUITE-002"
+      ],
+      "objective": "Oferecer uma fila deduplicada e filtrável de OS prontas para revisão humana.",
+      "context": "A operação precisa enxergar quais OS possuem snapshot faturável antes de qualquer comando fiscal.",
+      "expectedBehavior": "Oferecer uma fila deduplicada e filtrável de OS prontas para revisão humana.",
+      "scope": [
+        "Listar OS, cliente, composição de produto/serviço e total do snapshot.",
+        "Indicar versões substituídas, já enviadas e com pendência sem duplicar linhas."
+      ],
+      "outOfScope": [
+        "Confirmação de emissão e configuração de certificado."
+      ],
+      "acceptanceCriteria": [
+        "Uma OS faturável aparece uma vez por versão ativa.",
+        "A fila não emite documentos nem altera o fato ao abrir uma linha."
+      ],
+      "tests": [
+        "Teste de UI com OS de serviço, produto e mista.",
+        "Teste de atualização e deduplicação da fila."
+      ],
+      "testInstructions": {
+        "prerequisites": [
+          "Usar a branch e worktree do ticket, criada a partir da branch principal indicada no workflow.",
+          "Usar fixtures sintéticas e serviços falsos; não inserir dados ou credenciais BMITAG em testes automatizados."
+        ],
+        "steps": [
+          "Abrir a fila com fixtures sintéticas de três tipos de OS.",
+          "Conferir total, versão e duplicatas; executar npm run lint e npm run test:run."
+        ],
+        "expectedResultAndEvidence": [
+          "Uma OS faturável aparece uma vez por versão ativa.",
+          "A fila não emite documentos nem altera o fato ao abrir uma linha."
+        ],
+        "dataImpact": "Somente dados sintéticos e temporários em ambiente de teste.",
+        "cleanupAndRollback": [
+          "Remover fixtures e recursos temporários criados no ambiente descartável.",
+          "Em caso de falha, reverter o PR e preservar trilha de auditoria; não desfazer documentos fiscais reais por script."
+        ],
+        "stagingRestrictions": "Staging usa dados fictícios e credenciais de homologação; operações fiscais reais exigem autorização humana separada."
+      },
+      "likelyFiles": [
+        "src/pages/",
+        "src/components/",
+        "src/hooks/"
+      ],
+      "risks": [
+        "Fila baseada em cadastro mutável divergir do snapshot."
+      ]
+    },
+    {
+      "id": "AO-FISC-002",
+      "title": "Criar revisão e confirmação fiscal humana",
+      "status": "ready",
+      "blockedBy": [
+        "AO-FISC-001"
+      ],
+      "objective": "Mostrar exatamente o snapshot e exigir confirmação explícita da pessoa autorizada.",
+      "context": "Uma OS pode combinar serviço e mercadoria, gerando documentos separados que exigem revisão antes da emissão.",
+      "expectedBehavior": "Mostrar exatamente o snapshot e exigir confirmação explícita da pessoa autorizada.",
+      "scope": [
+        "Separar itens de serviço e produto, valores e tipos de documento esperados.",
+        "Exigir permissão fiscal, confirmação explícita e versão/hash do snapshot revisado."
+      ],
+      "outOfScope": [
+        "Calcular regras tributárias no desktop.",
+        "Emitir automaticamente ao aprovar orçamento."
+      ],
+      "acceptanceCriteria": [
+        "Mudança do snapshot após a abertura invalida a confirmação.",
+        "Nenhuma emissão ocorre por visualização ou ação implícita."
+      ],
+      "tests": [
+        "Teste de permissão, confirmação e versão concorrente.",
+        "Teste de OS mista com dois documentos independentes."
+      ],
+      "testInstructions": {
+        "prerequisites": [
+          "Usar a branch e worktree do ticket, criada a partir da branch principal indicada no workflow.",
+          "Usar fixtures sintéticas e serviços falsos; não inserir dados ou credenciais BMITAG em testes automatizados."
+        ],
+        "steps": [
+          "Simular revisão de OS mista e alteração concorrente do snapshot.",
+          "Conferir bloqueio sem permissão e executar npm run lint, npm run test:run e E2E mock relevante."
+        ],
+        "expectedResultAndEvidence": [
+          "Mudança do snapshot após a abertura invalida a confirmação.",
+          "Nenhuma emissão ocorre por visualização ou ação implícita."
+        ],
+        "dataImpact": "Somente dados sintéticos e temporários em ambiente de teste.",
+        "cleanupAndRollback": [
+          "Remover fixtures e recursos temporários criados no ambiente descartável.",
+          "Em caso de falha, reverter o PR e preservar trilha de auditoria; não desfazer documentos fiscais reais por script."
+        ],
+        "stagingRestrictions": "Staging usa dados fictícios e credenciais de homologação; operações fiscais reais exigem autorização humana separada."
+      },
+      "likelyFiles": [
+        "src/pages/",
+        "src/components/",
+        "src/hooks/",
+        "src-tauri/src/commands/"
+      ],
+      "risks": [
+        "Confirmar dados desatualizados.",
+        "Permitir emissão sem permissão fiscal."
+      ]
+    },
+    {
+      "id": "AO-FISC-003",
+      "title": "Integrar AutoOS à API fiscal do AutoPlatform",
+      "status": "ready",
+      "blockedBy": [
+        "AO-SUITE-002"
+      ],
+      "objective": "Implementar cliente de ingestão, consulta e comandos fiscais com correlação e retry seguro.",
+      "context": "AutoOS envia o fato faturável e recebe identidade, estado e documentos fiscais por API versionada; não acessa tabelas internas do AutoPlatform.",
+      "expectedBehavior": "Implementar cliente de ingestão, consulta e comandos fiscais com correlação e retry seguro.",
+      "scope": [
+        "Enviar FatoComercial v2 e guardar ID/correlação retornados.",
+        "Tratar timeout como resultado indeterminado e consultar antes de repetir comando.",
+        "Encapsular autenticação e erros sanitizados no backend Tauri."
+      ],
+      "outOfScope": [
+        "Criar migrations compartilhadas no AutoOS.",
+        "Guardar segredo fiscal no navegador."
+      ],
+      "acceptanceCriteria": [
+        "Retry não duplica fato nem emissão.",
+        "Falha remota preserva a OS e permite reconciliação posterior."
+      ],
+      "tests": [
+        "Contract tests com fake do AutoPlatform.",
+        "Teste de timeout, resposta perdida e isolamento por empresa."
+      ],
+      "testInstructions": {
+        "prerequisites": [
+          "Usar a branch e worktree do ticket, criada a partir da branch principal indicada no workflow.",
+          "Usar fixtures sintéticas e serviços falsos; não inserir dados ou credenciais BMITAG em testes automatizados."
+        ],
+        "steps": [
+          "Usar fake da API para sucesso, conflito, timeout e consulta.",
+          "Executar testes de contrato, npm run lint e npm run test:run; nenhuma chamada a emissor real."
+        ],
+        "expectedResultAndEvidence": [
+          "Retry não duplica fato nem emissão.",
+          "Falha remota preserva a OS e permite reconciliação posterior."
+        ],
+        "dataImpact": "Somente dados sintéticos e temporários em ambiente de teste.",
+        "cleanupAndRollback": [
+          "Remover fixtures e recursos temporários criados no ambiente descartável.",
+          "Em caso de falha, reverter o PR e preservar trilha de auditoria; não desfazer documentos fiscais reais por script."
+        ],
+        "stagingRestrictions": "Staging usa dados fictícios e credenciais de homologação; operações fiscais reais exigem autorização humana separada."
+      },
+      "likelyFiles": [
+        "src-tauri/src/commands/",
+        "src/lib/db.ts",
+        "src/types/"
+      ],
+      "risks": [
+        "Retry de issue após timeout criar segunda nota.",
+        "Expor credenciais no frontend."
+      ],
+      "externalPrerequisites": [
+        {
+          "repo": "AutoPlatform",
+          "id": "AP-INTEGRATION-001",
+          "state": "proposed",
+          "condition": "Implementação integrada depende da API; o cliente pode avançar com contrato e fake."
+        }
+      ]
+    },
+    {
+      "id": "AO-FISC-004",
+      "title": "Mostrar status e rejeições fiscais corrigíveis",
+      "status": "ready",
+      "blockedBy": [
+        "AO-FISC-003"
+      ],
+      "objective": "Expor estado por documento e orientar correção sem esconder resultado indeterminado.",
+      "context": "NFS-e e NF-e de uma mesma OS podem retornar estados distintos e falhas acionáveis.",
+      "expectedBehavior": "Expor estado por documento e orientar correção sem esconder resultado indeterminado.",
+      "scope": [
+        "Mostrar emitida, rejeitada, pendente e indeterminada por documento.",
+        "Consultar estado antes de nova tentativa e apresentar motivo sanitizado ao operador."
+      ],
+      "outOfScope": [
+        "Editar matriz contábil ou regras fiscais no AutoOS."
+      ],
+      "acceptanceCriteria": [
+        "Uma falha de NF-e não altera indevidamente a NFS-e correlata.",
+        "Timeout nunca aparece como falha definitiva ou autorização de retry cego."
+      ],
+      "tests": [
+        "Teste de estados mistos, rejeição e timeout.",
+        "Teste de permissão e ausência de dados fiscais sensíveis em mensagens."
+      ],
+      "testInstructions": {
+        "prerequisites": [
+          "Usar a branch e worktree do ticket, criada a partir da branch principal indicada no workflow.",
+          "Usar fixtures sintéticas e serviços falsos; não inserir dados ou credenciais BMITAG em testes automatizados."
+        ],
+        "steps": [
+          "Simular duas respostas fiscais independentes e um timeout.",
+          "Conferir rótulos e ações; executar npm run test:run e E2E mock relevante."
+        ],
+        "expectedResultAndEvidence": [
+          "Uma falha de NF-e não altera indevidamente a NFS-e correlata.",
+          "Timeout nunca aparece como falha definitiva ou autorização de retry cego."
+        ],
+        "dataImpact": "Somente dados sintéticos e temporários em ambiente de teste.",
+        "cleanupAndRollback": [
+          "Remover fixtures e recursos temporários criados no ambiente descartável.",
+          "Em caso de falha, reverter o PR e preservar trilha de auditoria; não desfazer documentos fiscais reais por script."
+        ],
+        "stagingRestrictions": "Staging usa dados fictícios e credenciais de homologação; operações fiscais reais exigem autorização humana separada."
+      },
+      "likelyFiles": [
+        "src/pages/",
+        "src/components/",
+        "src/hooks/"
+      ],
+      "risks": [
+        "Esconder falha parcial.",
+        "Repetir emissão ao interpretar timeout como rejeição."
+      ]
+    },
+    {
+      "id": "AO-FISC-005",
+      "title": "Disponibilizar XML e documentos auxiliares fiscais",
+      "status": "ready",
+      "blockedBy": [
+        "AO-FISC-003"
+      ],
+      "objective": "Mostrar e baixar referências de documentos fiscais da API com autorização por empresa.",
+      "context": "O XML emitido e o documento auxiliar precisam ser recuperáveis pelo operador autorizado sem virar fonte duplicada no desktop.",
+      "expectedBehavior": "Mostrar e baixar referências de documentos fiscais da API com autorização por empresa.",
+      "scope": [
+        "Listar XML e documento auxiliar por nota e versão.",
+        "Aplicar permissão e tratar documento ainda não disponível ou revogado."
+      ],
+      "outOfScope": [
+        "Gerar XML fiscal no frontend."
+      ],
+      "acceptanceCriteria": [
+        "Documento pertence à empresa e à OS corretas.",
+        "A visualização não contém token privilegiado ou URL permanente pública."
+      ],
+      "tests": [
+        "Teste de acesso entre empresas e documento ausente.",
+        "Teste de UI para XML e documento auxiliar."
+      ],
+      "testInstructions": {
+        "prerequisites": [
+          "Usar a branch e worktree do ticket, criada a partir da branch principal indicada no workflow.",
+          "Usar fixtures sintéticas e serviços falsos; não inserir dados ou credenciais BMITAG em testes automatizados."
+        ],
+        "steps": [
+          "Usar artefatos fictícios com dois tenants no fake.",
+          "Conferir autorização, download e ausência; executar npm run lint e npm run test:run."
+        ],
+        "expectedResultAndEvidence": [
+          "Documento pertence à empresa e à OS corretas.",
+          "A visualização não contém token privilegiado ou URL permanente pública."
+        ],
+        "dataImpact": "Somente dados sintéticos e temporários em ambiente de teste.",
+        "cleanupAndRollback": [
+          "Remover fixtures e recursos temporários criados no ambiente descartável.",
+          "Em caso de falha, reverter o PR e preservar trilha de auditoria; não desfazer documentos fiscais reais por script."
+        ],
+        "stagingRestrictions": "Staging usa dados fictícios e credenciais de homologação; operações fiscais reais exigem autorização humana separada."
+      },
+      "likelyFiles": [
+        "src/pages/",
+        "src/components/",
+        "src-tauri/src/commands/"
+      ],
+      "risks": [
+        "Vazar documento entre empresas.",
+        "Persistir URL sem expiração como autorização."
+      ]
+    },
+    {
+      "id": "AO-FISC-006",
+      "title": "Vincular emissão e histórico fiscal à OS",
+      "status": "ready",
+      "blockedBy": [
+        "AO-FISC-003"
+      ],
+      "objective": "Adicionar seção Faturamento na OS com vínculo estável ao fato e às notas.",
+      "context": "A operação precisa rastrear fatos, tentativas, documentos e estados fiscais desde a OS original.",
+      "expectedBehavior": "Adicionar seção Faturamento na OS com vínculo estável ao fato e às notas.",
+      "scope": [
+        "Mostrar cada NFS-e/NF-e, total, estado e documento por OS.",
+        "Preservar histórico de correções, rejeições e consultas sem sobrescrever eventos."
+      ],
+      "outOfScope": [
+        "Criar segundo registro autoritativo de emissão no AutoOS."
+      ],
+      "acceptanceCriteria": [
+        "A OS mostra vínculo com todos os documentos correlacionados.",
+        "Mudança posterior de cliente/produto não reescreve o snapshot emitido."
+      ],
+      "tests": [
+        "Teste de histórico de OS mista e correção.",
+        "Teste de versão posterior e consistência de totais."
+      ],
+      "testInstructions": {
+        "prerequisites": [
+          "Usar a branch e worktree do ticket, criada a partir da branch principal indicada no workflow.",
+          "Usar fixtures sintéticas e serviços falsos; não inserir dados ou credenciais BMITAG em testes automatizados."
+        ],
+        "steps": [
+          "Abrir OS sintética com dois documentos e uma rejeição corrigida.",
+          "Conferir histórico e totais; executar npm run lint e npm run test:run."
+        ],
+        "expectedResultAndEvidence": [
+          "A OS mostra vínculo com todos os documentos correlacionados.",
+          "Mudança posterior de cliente/produto não reescreve o snapshot emitido."
+        ],
+        "dataImpact": "Somente dados sintéticos e temporários em ambiente de teste.",
+        "cleanupAndRollback": [
+          "Remover fixtures e recursos temporários criados no ambiente descartável.",
+          "Em caso de falha, reverter o PR e preservar trilha de auditoria; não desfazer documentos fiscais reais por script."
+        ],
+        "stagingRestrictions": "Staging usa dados fictícios e credenciais de homologação; operações fiscais reais exigem autorização humana separada."
+      },
+      "likelyFiles": [
+        "src/pages/Equipamentos.tsx",
+        "src/components/equipamentos/",
+        "src/hooks/"
+      ],
+      "risks": [
+        "Perder referência fiscal ao editar OS.",
+        "Mostrar total de cadastro atual no lugar do snapshot."
+      ]
+    },
+    {
+      "id": "AO-FISC-GATE-001",
+      "title": "Homologar jornada OS até documentos fiscais",
+      "status": "blocked",
+      "blockedBy": [
+        "AO-FISC-001",
+        "AO-FISC-002",
+        "AO-FISC-003",
+        "AO-FISC-004",
+        "AO-FISC-005",
+        "AO-FISC-006"
+      ],
+      "objective": "Demonstrar orçamento, aprovação, OS, fato v2, revisão, emissão, retorno, documentos e histórico em homologação.",
+      "context": "O gate de produto deve provar a jornada integrada no AutoOS antes do piloto real BMITAG.",
+      "expectedBehavior": "Demonstrar orçamento, aprovação, OS, fato v2, revisão, emissão, retorno, documentos e histórico em homologação.",
+      "scope": [
+        "Executar cenário de serviço, produto e misto com provider de homologação.",
+        "Registrar evidência de falha parcial, timeout, consulta e correção."
+      ],
+      "outOfScope": [
+        "Emitir documento fiscal real ou fazer rollout de produção."
+      ],
+      "acceptanceCriteria": [
+        "Jornada integrada é reproduzível e auditável por OS.",
+        "Permissão humana, isolamento entre empresas e idempotência são demonstrados."
+      ],
+      "tests": [
+        "E2E com API de homologação e dados fictícios.",
+        "Teste de falha parcial, retry consultado e permissões."
+      ],
+      "testInstructions": {
+        "prerequisites": [
+          "Usar a branch e worktree do ticket, criada a partir da branch principal indicada no workflow.",
+          "Usar fixtures sintéticas e serviços falsos; não inserir dados ou credenciais BMITAG em testes automatizados."
+        ],
+        "steps": [
+          "Executar roteiro completo em homologação com dados sintéticos e registrar IDs de correlação redigidos.",
+          "Conferir evidência dos seis tickets AutoOS e do gate backend; executar checks relevantes."
+        ],
+        "expectedResultAndEvidence": [
+          "Jornada integrada é reproduzível e auditável por OS.",
+          "Permissão humana, isolamento entre empresas e idempotência são demonstrados."
+        ],
+        "dataImpact": "Somente dados sintéticos e temporários em ambiente de teste.",
+        "cleanupAndRollback": [
+          "Remover fixtures e recursos temporários criados no ambiente descartável.",
+          "Em caso de falha, reverter o PR e preservar trilha de auditoria; não desfazer documentos fiscais reais por script."
+        ],
+        "stagingRestrictions": "Staging usa dados fictícios e credenciais de homologação; operações fiscais reais exigem autorização humana separada."
+      },
+      "likelyFiles": [
+        ".workflow/workflow.json",
+        "docs/",
+        "e2e/"
+      ],
+      "risks": [
+        "Gate aprovar telas usando apenas mocks.",
+        "Usar documento real sem autorização."
+      ],
+      "externalPrerequisites": [
+        {
+          "repo": "AutoPlatform",
+          "id": "AP-FISC-GATE-001",
+          "state": "proposed",
+          "condition": "O gate AutoOS permanece blocked até homologação backend confirmada por pessoa."
+        }
+      ]
     }
   ]
 }
