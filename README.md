@@ -128,9 +128,15 @@ O app mantém housekeeping local desses diretórios e expõe um snapshot de supo
 
 O runtime interno usa as migrações SQLx em `src-tauri/migrations`. O runtime SaaS usa as migrações Supabase em `supabase/migrations`, com `supabase/schema.sql` alinhado ao estado versionado. Cada mudança é aditiva; o app não aplica migrations durante a inicialização.
 
-Migrations Supabase são promovidas pelo processo controlado de release. Abrir uma migration neste repositório não significa que ela já foi aplicada em Staging ou Produção. A migration `20260930190000_saas_approved_service_stock.sql` adiciona o vínculo entre serviços aprovados e consumo de peças no estoque.
+Migrations Supabase são promovidas pelo processo controlado de release. Abrir uma migration neste repositório não significa que ela já foi aplicada em Staging ou Produção. A migration `20260930121301_saas_approved_service_stock.sql` adiciona o vínculo entre serviços aprovados e consumo de peças no estoque; ela e o índice adicional `20260930121822_orcamento_consumos_produto_empresa_index.sql` foram aplicados em Staging.
 
 O estado aplicado do banco interno pode ser conferido no app em `Configurações > Segurança > Banco e schema`.
+
+### Numeração SQLx entre `master` e `feature`
+
+As migrations `0001`–`0022` seguem os arquivos da `master`. As mudanças exclusivas da `feature` receberam `0023` (unicidade de clientes ativos), `0024` (unicidade de produtos e gastos ativos) e `0025` (sessões de upload de fotos), sem alterar o SQL dos arquivos movidos. Contatos e backfill de orçamento apareciam com outros números na `feature`; eram cópias das migrations `0017` e `0016` da `master`, exceto pelo comentário de cabeçalho, e foram retiradas da sequência duplicada.
+
+`npm run check:migrations` falha em versões duplicadas ou ausentes e roda na CI de pull requests para `master` e `feature`. Antes de executar SQLx em qualquer banco existente, confira `_sqlx_migrations`: bancos que já tenham aplicado a sequência antiga da `feature` precisam de reconciliação individual de histórico após auditoria do schema. Na checagem de 30/09/2026, os projetos Supabase de Produção e Staging registravam apenas a versão `0001` nessa tabela; nenhum histórico remoto foi alterado nesta reconciliação.
 
 ## Regras de Migration
 
