@@ -3651,7 +3651,7 @@
     {
       "id": "AO-SUITE-001",
       "title": "Definir ownership do Core AutoOS para o produto interno",
-      "status": "ready",
+      "status": "in_progress",
       "blockedBy": [],
       "objective": "Aprovar a fonte autoritativa de cada dado antes de produzir fatos faturáveis.",
       "context": "A operação já possui cliente, produto, serviço, equipamento, OS e estoque; duplicar autoridade no AutoPlatform ou AutoBO criaria divergência.",
