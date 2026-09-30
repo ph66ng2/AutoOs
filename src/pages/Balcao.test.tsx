@@ -68,7 +68,7 @@ describe("Modo Balcão", () => {
     await user.click(screen.getByRole("button", { name: /consultar estoque/i }));
     expect(await screen.findByRole("heading", { name: "Ribbon Preto" })).toBeInTheDocument();
     expect(screen.getByText(/R\$\s*45,00/)).toBeInTheDocument();
-    expect(db.listarProdutos).toHaveBeenCalledWith(undefined);
+    expect(db.listarProdutos).toHaveBeenCalledWith(undefined, undefined, undefined);
     expect(screen.queryByRole("button", { name: /registrar movimentação/i })).not.toBeInTheDocument();
   });
 
