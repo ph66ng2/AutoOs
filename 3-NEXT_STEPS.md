@@ -1,3 +1,9 @@
+# Direção atual: Fiscal PROD interno BMITAG
+
+O primeiro marco agora é uma OS real da BMITAG com NFS-e/NF-e e rastreabilidade no AutoOS. O plano executável está em `.workflow/workflow.json` e a visão entre projetos em [FISCAL_PROD_ROADMAP.md](https://github.com/ph66ng2/AutoPlatform/blob/main/.workflow/FISCAL_PROD_ROADMAP.md). As seções históricas abaixo refletem prioridades anteriores de SaaS/offline; consulte `workflow.roadmap.deferredIds` antes de escolher a próxima onda. Elegibilidade técnica não equivale a prioridade de produto.
+
+---
+
 # Próximos Passos — AutoOS
 
 ## ✅ Concluído
