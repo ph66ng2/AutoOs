@@ -650,7 +650,7 @@ async fn main() -> Result<()> {
     let produto = produtos::criar_produto(ProdutoInput {
         codigo: format!("{}-PROD", prefix),
         nome: format!("{} Produto", prefix),
-        categoria: "TONER".to_string(),
+        categoria: "RIBBON".to_string(),
         quantidade_estoque: 10,
         quantidade_minima: Some(2),
         quantidade_maxima: Some(30),
