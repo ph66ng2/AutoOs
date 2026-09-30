@@ -1171,6 +1171,8 @@ CREATE INDEX IF NOT EXISTS idx_orcamento_decisao_empresa
 CREATE INDEX IF NOT EXISTS idx_orcamento_consumos_pendentes
     ON public.orcamento_consumos (empresa_id, verificacao_id, produto_id)
     WHERE quantidade_baixada < quantidade_aprovada;
+CREATE INDEX IF NOT EXISTS idx_orcamento_consumos_produto_empresa
+    ON public.orcamento_consumos (empresa_id, produto_id);
 
 ALTER TABLE public.orcamento_servicos_decisao ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.orcamento_consumos ENABLE ROW LEVEL SECURITY;
