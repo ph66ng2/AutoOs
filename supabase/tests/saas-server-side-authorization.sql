@@ -278,12 +278,8 @@ BEGIN
     );
     UPDATE public.verificacoes SET custo_total = 80
      WHERE id = 'a0000000-0000-4000-8000-000000000061';
-    UPDATE public.produtos SET quantidade_estoque = 7
-     WHERE id = 'a0000000-0000-4000-8000-000000000051';
-    INSERT INTO public.movimentacoes_estoque (
-        empresa_id, produto_id, tipo, quantidade, origem
-    ) VALUES (
-        tenant_id, 'a0000000-0000-4000-8000-000000000051', 'ENTRADA', 3, 'Teste autorizado'
+    PERFORM * FROM public.registrar_movimentacao_estoque(
+        'a0000000-0000-4000-8000-000000000051', 'ENTRADA', 3, 'Teste autorizado', NULL
     );
     INSERT INTO public.gastos_fixos (empresa_id, nome, valor, categoria)
     VALUES (tenant_id, 'Despesa autorizada de teste', 25, 'Teste');

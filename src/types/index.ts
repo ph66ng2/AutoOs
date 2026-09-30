@@ -243,8 +243,9 @@ export interface Cliente {
  *
  * Usado por: useInsumos hook, Insumos.tsx
  */
-export interface Produto {
-  id?: number;
+export interface Produto<Id extends ClienteId = number> {
+  id?: Id;
+  empresa_id?: Id;
   codigo: string;
   nome: string;
   descricao?: string;
@@ -278,9 +279,10 @@ export interface ServicoCatalogo<Id extends ClienteId = number> {
  *
  * Usado por: useInsumos hook (registrarMovimentacao), Insumos.tsx
  */
-export interface MovimentacaoEstoque {
-  id?: number;
-  produto_id: number;
+export interface MovimentacaoEstoque<Id extends ClienteId = number> {
+  id?: Id;
+  empresa_id?: Id;
+  produto_id: Id;
   tipo: "ENTRADA" | "SAIDA";
   quantidade: number;
   origem: "COMPRA" | "VENDA" | "MANUTENCAO" | "AJUSTE" | "PERDA" | "DEVOLUCAO";

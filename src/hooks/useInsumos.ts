@@ -1,192 +1,114 @@
 /**
- * @file useInsumos.ts
- *
- * Hook React para gerenciamento de estado de produtos/insumos de estoque.
- * Fornece operações CRUD completas (criar, ler, atualizar, deletar) e
- * registro de movimentações de estoque (entradas e saídas).
- *
- * @dependência lib/db.ts - Bridge de comunicação com PostgreSQL via Tauri
- * @dependência types/index.ts - Interface {@link Produto} que define a estrutura de um produto
- *
- * @utilizadoPor pages/Insumos.tsx - Página de gestão de insumos/estoque
- *
- * @recursoChave `insumosAbaixoMinimo` — propriedade computada que retorna a
- * quantidade de produtos cujo estoque atual está abaixo do estoque mínimo
- * configurado, utilizada para alertas de estoque baixo no Dashboard.
+ * Hook do módulo já existente de Insumos: carrega dados paginados e delega
+ * CRUD/movimentações ao adapter Tauri ou Supabase conforme o build ativo.
  */
-import { useState, useEffect, useCallback } from "react";
-import { db } from "@/lib/db";
-import type { Produto } from "@/types";
+import { useCallback, useEffect, useRef, useState } from "react";
+import type { ClienteId, Produto } from "@/types";
+import {
+  carregarRepositorioProdutos,
+  type ProdutoInput,
+} from "@/lib/data/produtos-repository";
 
-/**
- * Parâmetros de filtragem para o hook {@link useInsumos}.
- *
- * @property busca - Texto livre para busca por nome ou código do produto.
- * @property categoria - Categoria para filtrar os produtos (ex.: "TONER", "CILINDRO").
- *   O valor especial "TODOS" é tratado como sem filtro.
- * @property apenasEstoqueBaixo - Quando `true`, retorna apenas produtos cujo
- *   estoque atual está abaixo da quantidade mínima configurada.
- */
 interface UseInsumosParams {
   busca?: string;
   categoria?: string;
   apenasEstoqueBaixo?: boolean;
+  page?: number;
 }
 
-/**
- * Hook principal de gerenciamento de produtos/insumos.
- *
- * Gerencia a lista de produtos com controle de estoque, incluindo:
- * - Listagem com filtros (busca, categoria, estoque baixo)
- * - Criação, atualização e exclusão lógica de produtos
- * - Registro de movimentações de estoque (entrada/saída)
- * - Cálculo reativo de insumos abaixo do estoque mínimo
- *
- * @param params - Parâmetros opcionais de filtragem ({@link UseInsumosParams})
- * @returns Objeto contendo a lista de produtos, estados de loading/error,
- *   contagem de insumos abaixo do mínimo e funções CRUD + movimentação.
- */
 export function useInsumos(params?: UseInsumosParams) {
-  const [produtos, setProdutos] = useState<Produto[]>([]);
+  const [produtos, setProdutos] = useState<Produto<ClienteId>[]>([]);
+  const [total, setTotal] = useState(0);
+  const [insumosAbaixoMinimo, setInsumosAbaixoMinimo] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const requestIdRef = useRef(0);
 
-  /**
-   * Carrega a lista de produtos do banco de dados aplicando os filtros atuais.
-   *
-   * Chama `db.listarProdutos` que internamente invoca o comando Tauri
-   * `listar_produtos` no backend Rust. Atualiza os estados `produtos`,
-   * `loading` e `error` conforme o resultado.
-   *
-   * É memoizada via `useCallback` e re-executada automaticamente quando
-   * os parâmetros de filtro mudam.
-   */
   const carregar = useCallback(async () => {
+    const requestId = ++requestIdRef.current;
     setLoading(true);
     setError(null);
     try {
-      const data = await db.listarProdutos(
-        params?.busca,
-        params?.categoria === "TODOS" ? undefined : params?.categoria,
-        params?.apenasEstoqueBaixo
-      );
-      setProdutos(data);
-    } catch (err: any) {
-      setError(err?.toString() || "Erro ao carregar produtos");
+      const repository = await carregarRepositorioProdutos();
+      const result = await repository.listar({
+        busca: params?.busca,
+        categoria: params?.categoria === "TODOS" ? undefined : params?.categoria,
+        apenasEstoqueBaixo: params?.apenasEstoqueBaixo,
+      }, params?.page ?? 1);
+      if (requestId !== requestIdRef.current) return;
+      setProdutos(result.items);
+      setTotal(result.total);
+      setInsumosAbaixoMinimo(result.insumosAbaixoMinimo);
+    } catch (err) {
+      if (requestId !== requestIdRef.current) return;
+      setError(err instanceof Error ? err.message : "Erro ao carregar produtos.");
       console.error("Erro ao carregar produtos:", err);
     } finally {
-      setLoading(false);
+      if (requestId === requestIdRef.current) setLoading(false);
     }
-  }, [params?.busca, params?.categoria, params?.apenasEstoqueBaixo]);
+  }, [params?.busca, params?.categoria, params?.apenasEstoqueBaixo, params?.page]);
 
   useEffect(() => {
-    carregar();
+    void carregar();
   }, [carregar]);
 
-  /**
-   * Cria um novo produto no banco de dados.
-   *
-   * Fluxo: `db.criarProduto(produto)` → comando Tauri `criar_produto` (Rust).
-   * Após criação bem-sucedida, recarrega a lista de produtos automaticamente.
-   *
-   * @param produto - Dados do novo produto a ser criado.
-   * @returns Objeto com `{ sucesso: true }` ou `{ sucesso: false, erro: string }`.
-   */
-  const criar = async (produto: any) => {
+  useEffect(() => () => {
+    requestIdRef.current += 1;
+  }, []);
+
+  const criar = async (input: ProdutoInput) => {
     try {
-      await db.criarProduto(produto);
+      const repository = await carregarRepositorioProdutos();
+      await repository.criar(input);
       await carregar();
-      return { sucesso: true };
-    } catch (err: any) {
-      return { sucesso: false, erro: err?.toString() };
+      return { sucesso: true } as const;
+    } catch (err) {
+      return { sucesso: false, erro: err instanceof Error ? err.message : String(err) } as const;
     }
   };
 
-  /**
-   * Atualiza os dados de um produto existente.
-   *
-   * Fluxo: `db.atualizarProduto(id, produto)` → comando Tauri `atualizar_produto` (Rust).
-   * Após atualização bem-sucedida, recarrega a lista de produtos automaticamente.
-   *
-   * @param id - ID do produto a ser atualizado.
-   * @param produto - Dados atualizados do produto.
-   * @returns Objeto com `{ sucesso: true }` ou `{ sucesso: false, erro: string }`.
-   */
-  const atualizar = async (id: number, produto: any) => {
+  const atualizar = async (id: ClienteId, input: ProdutoInput) => {
     try {
-      await db.atualizarProduto(id, produto);
+      const repository = await carregarRepositorioProdutos();
+      await repository.atualizar(id, input);
       await carregar();
-      return { sucesso: true };
-    } catch (err: any) {
-      return { sucesso: false, erro: err?.toString() };
+      return { sucesso: true } as const;
+    } catch (err) {
+      return { sucesso: false, erro: err instanceof Error ? err.message : String(err) } as const;
     }
   };
 
-  /**
-   * Realiza a exclusão lógica (soft delete) de um produto, marcando `ativo = 0`.
-   *
-   * Fluxo: `db.deletarProduto(id)` → comando Tauri `deletar_produto` (Rust).
-   * O produto não é removido fisicamente do banco, apenas desativado.
-   * Após exclusão, recarrega a lista de produtos automaticamente.
-   *
-   * @param id - ID do produto a ser desativado.
-   * @returns Objeto com `{ sucesso: true }` ou `{ sucesso: false, erro: string }`.
-   */
-  const deletar = async (id: number) => {
+  const deletar = async (id: ClienteId, atualizadoEm?: string) => {
     try {
-      await db.deletarProduto(id);
+      const repository = await carregarRepositorioProdutos();
+      await repository.desativar(id, atualizadoEm);
       await carregar();
-      return { sucesso: true };
-    } catch (err: any) {
-      return { sucesso: false, erro: err?.toString() };
+      return { sucesso: true } as const;
+    } catch (err) {
+      return { sucesso: false, erro: err instanceof Error ? err.message : String(err) } as const;
     }
   };
 
-  /**
-   * Registra uma movimentação de estoque (ENTRADA ou SAÍDA) para um produto.
-   *
-   * Fluxo: `db.registrarMovimentacao(...)` → comando Tauri
-   * `registrar_movimentacao_estoque` (Rust). O backend Rust atualiza
-   * automaticamente a `quantidade_estoque` do produto após o registro.
-   * Após a movimentação, recarrega a lista para refletir o novo saldo.
-   *
-   * @param produtoId - ID do produto que receberá a movimentação.
-   * @param tipo - Tipo da movimentação: `"ENTRADA"` (aumenta estoque) ou `"SAIDA"` (diminui estoque).
-   * @param quantidade - Quantidade de unidades movimentadas (sempre positiva).
-   * @param origem - Origem/motivo da movimentação (ex.: "COMPRA", "CONSUMO", "AJUSTE").
-   * @param referencia - Referência opcional (ex.: número da nota fiscal, ID do equipamento).
-   * @returns Objeto com `{ sucesso: true }` ou `{ sucesso: false, erro: string }`.
-   */
   const registrarMovimentacao = async (
-    produtoId: number,
+    produtoId: ClienteId,
     tipo: "ENTRADA" | "SAIDA",
     quantidade: number,
     origem: string,
-    referencia?: string
+    referencia?: string,
   ) => {
     try {
-      await db.registrarMovimentacao(produtoId, tipo, quantidade, origem, referencia);
+      const repository = await carregarRepositorioProdutos();
+      await repository.registrarMovimentacao(produtoId, tipo, quantidade, origem, referencia);
       await carregar();
-      return { sucesso: true };
-    } catch (err: any) {
-      return { sucesso: false, erro: err?.toString() };
+      return { sucesso: true } as const;
+    } catch (err) {
+      return { sucesso: false, erro: err instanceof Error ? err.message : String(err) } as const;
     }
   };
 
-  /**
-   * Contagem computada de produtos cujo estoque atual (`quantidade_estoque`)
-   * está abaixo do estoque mínimo configurado (`quantidade_minima`).
-   *
-   * Utilizado para exibir alertas de estoque baixo no Dashboard e na
-   * página de Insumos. Recalculado automaticamente sempre que a lista
-   * de produtos é atualizada.
-   */
-  const insumosAbaixoMinimo = produtos.filter(
-    (p) => p.quantidade_estoque < p.quantidade_minima
-  ).length;
-
   return {
     produtos,
+    total,
     loading,
     error,
     insumosAbaixoMinimo,
