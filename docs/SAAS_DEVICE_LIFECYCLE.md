@@ -26,10 +26,13 @@ O novo login cria um novo UUID de instalação e o registra com a nova sessão.
 
 ## Gates cloud e revogação
 
-Todo endpoint que emitir entitlement, token PowerSync ou sessão de fotos deve
+Todo endpoint que emitir entitlement ou sessão de fotos deve
 chamar `assert_active_autoos_device(device_id)` antes de conceder capacidade.
 Esse gate valida `empresa_id`, `auth_user_id`, `session_id` e estado ativo no
 registro server-side.
+
+Token PowerSync não é emitido para o desktop AutoOS. Se o futuro Mobile Field
+usar PowerSync, seu contrato de dispositivo e revogação terá tickets próprios.
 
 Um access token JWT já emitido pode continuar criptograficamente válido até seu
 `exp`. Por isso operações sensíveis não podem depender apenas da validação do

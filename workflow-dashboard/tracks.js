@@ -12,6 +12,7 @@ export const AREA_LABELS = {
   all: "Todas",
   auth: "Auth",
   subscription: "SaaS",
+  fiscal: "Fiscal PROD",
   powersync: "PowerSync",
   photos: "Fotos",
   hotfix: "Correções",
@@ -24,15 +25,25 @@ export const BOARD_COLUMNS = [
   { id: "doing", label: "Em curso", hint: "Já tem dono. Não abra outro no mesmo arquivo." },
   { id: "review", label: "Revisão", hint: "PR aberto. Merge é humano." },
   { id: "waiting", label: "Na fila", hint: "Ainda depende de outro ticket." },
+  { id: "paused", label: "Fora do foco", hint: "Adiado ou substituído no roadmap. Status preservado." },
   { id: "done", label: "Feito", hint: "Merged na feature." },
 ];
 
 export const TRACKS = [
   {
+    id: "fiscal",
+    label: "Fiscal PROD",
+    description: "Marco atual: ownership, fato faturável e operação fiscal na OS.",
+    prefixes: ["AO-WF-", "AO-SUITE-", "AO-FISC-"],
+    recommended: ["AO-WF-RECONCILE-001", "AO-SUITE-001", "AO-SUITE-002", "AO-FISC-001", "AO-FISC-003", "AO-FISC-002", "AO-FISC-004", "AO-FISC-005", "AO-FISC-006", "AO-FISC-GATE-001"],
+    skip: [],
+    why: { "AO-SUITE-001": "Definir a autoridade dos dados antes de portar módulos do AutoBO." },
+  },
+  {
     id: "saas",
     label: "SaaS",
-    description: "Identidade, fotos, entitlement e runtime offline.",
-    prefixes: ["AO-PS-", "AO-AUTH-", "AO-SUB-", "AO-PHOTO-"],
+    description: "Entregas Online existentes; expansão pausada após o marco Fiscal.",
+    prefixes: ["AO-PS-", "AO-AUTH-", "AO-SUB-", "AO-PHOTO-", "AO-SAAS-", "AO-EQP-ONLINE-", "AO-SRV-ONLINE-", "AO-INS-ONLINE-"],
     recommended: [
       "AO-AUTH-004",
       "AO-SUB-002",
@@ -44,12 +55,6 @@ export const TRACKS = [
       "AO-PHOTO-006",
       "AO-PHOTO-007",
       "AO-PHOTO-008",
-      "AO-PS-005",
-      "AO-PS-006",
-      "AO-SUB-004",
-      "AO-PS-007",
-      "AO-SUB-005",
-      "AO-PS-008",
     ],
     skip: [],
     why: {
@@ -57,7 +62,6 @@ export const TRACKS = [
       "AO-SUB-002": "Concluído na feature (#34). CRUD Online de clientes sem PowerSync.",
       "AO-SUB-003": "Entitlement no servidor, em paralelo com Auth.",
       "AO-PHOTO-009": "AUTH-004 destrava; SUB-002 já está na feature.",
-      "AO-PS-005": "Ramo paralelo de PowerSync; não bloqueia o Online.",
     },
   },
   {
@@ -86,6 +90,7 @@ export const TRACKS = [
 ];
 
 const AREA_PREFIXES = [
+  [/^AO-(WF|SUITE|FISC)-/, "fiscal"],
   [/^AO-PS-/, "powersync"],
   [/^AO-AUTH-/, "auth"],
   [/^AO-SUB-/, "subscription"],
@@ -122,9 +127,18 @@ export function pendingBlockers(ticket, tickets) {
   return (ticket?.blockedBy || []).filter((blockerId) => byId.get(blockerId)?.status !== "merged");
 }
 
-export function boardColumn(ticket, tickets) {
+export function roadmapKind(ticket, roadmap) {
+  if (!ticket || !roadmap || ticket.status === "merged") return "history";
+  if (roadmap.supersededIds?.includes(ticket.id)) return "superseded";
+  if (roadmap.deferredIds?.includes(ticket.id)) return "deferred";
+  if (roadmap.focusIds?.includes(ticket.id)) return "focus";
+  return "unclassified";
+}
+
+export function boardColumn(ticket, tickets, roadmap) {
   if (!ticket) return "waiting";
   if (ticket.status === "merged") return "done";
+  if (["deferred", "superseded"].includes(roadmapKind(ticket, roadmap))) return "paused";
   if (ticket.status === "review") return "review";
   if (ticket.status === "in_progress") return "doing";
   if (ticket.status === "blocked" || pendingBlockers(ticket, tickets).length > 0) return "waiting";
@@ -155,27 +169,36 @@ export function isActionable(ticket, tickets) {
   return ticket.status === "in_progress" || (ticket.status === "ready" && pendingBlockers(ticket, tickets).length === 0);
 }
 
-export function nextRecommended(tickets, trackId = "all") {
+export function nextRecommended(tickets, trackId = "all", roadmap) {
   const scoped = ticketsForTrack(tickets, trackId);
-  const inProgress = scoped.find((ticket) => ticket.status === "in_progress");
+  const active = scoped.filter((ticket) => !["deferred", "superseded"].includes(roadmapKind(ticket, roadmap)));
+  const inProgress = active.find((ticket) => ticket.status === "in_progress");
   if (inProgress) return { ticket: inProgress, source: "in_progress" };
+
+  if (trackId === "all" && roadmap?.focusIds) {
+    for (const ticketId of roadmap.focusIds) {
+      const ticket = active.find((item) => item.id === ticketId);
+      if (ticket?.status === "review") return { ticket, source: "review" };
+      if (ticket && isActionable(ticket, tickets)) return { ticket, source: "ready" };
+    }
+  }
 
   const tracks = trackId === "all" ? TRACKS : [trackById(trackId)].filter(Boolean);
   for (const track of tracks) {
     for (const ticketId of track.recommended) {
       if (track.skip.includes(ticketId)) continue;
-      const ticket = scoped.find((item) => item.id === ticketId) || tickets.find((item) => item.id === ticketId);
+      const ticket = active.find((item) => item.id === ticketId);
       if (!ticket) continue;
       if (ticket.status === "review") return { ticket, source: "review", track };
       if (isActionable(ticket, tickets)) return { ticket, source: "ready", track };
     }
   }
 
-  const review = scoped.find((ticket) => ticket.status === "review");
+  const review = active.find((ticket) => ticket.status === "review");
   if (review) return { ticket: review, source: "review" };
-  const ready = scoped.find((ticket) => isActionable(ticket, tickets));
+  const ready = active.find((ticket) => isActionable(ticket, tickets));
   if (ready) return { ticket: ready, source: "ready" };
-  const waiting = scoped.find((ticket) => ticket.status !== "merged");
+  const waiting = active.find((ticket) => ticket.status !== "merged");
   return waiting ? { ticket: waiting, source: "waiting" } : { ticket: null, source: "empty" };
 }
 
@@ -205,21 +228,21 @@ export function sortForColumn(columnId, columnTickets, tickets, trackId) {
   return copy;
 }
 
-export function pathEntries(tickets, trackId) {
+export function pathEntries(tickets, trackId, roadmap) {
   const tracks = trackId === "all" ? TRACKS : [trackById(trackId)].filter(Boolean);
-  const next = nextRecommended(tickets, trackId).ticket;
+  const next = nextRecommended(tickets, trackId, roadmap).ticket;
   return tracks.flatMap((track) => {
     const ids = [...track.recommended, ...track.skip.filter((id) => !track.recommended.includes(id))];
     return ids.map((ticketId, index) => {
       const ticket = tickets.find((item) => item.id === ticketId);
-      const column = ticket ? boardColumn(ticket, tickets) : "waiting";
+      const column = ticket ? boardColumn(ticket, tickets, roadmap) : "waiting";
       return {
         trackId: track.id,
         trackLabel: track.label,
         ticketId,
         ticket,
         column,
-        skipped: isSkipped(track, ticketId),
+        skipped: isSkipped(track, ticketId) || ["deferred", "superseded"].includes(roadmapKind(ticket, roadmap)),
         reason: reasonFor(track, ticketId),
         current: next?.id === ticketId,
         index,
@@ -228,11 +251,11 @@ export function pathEntries(tickets, trackId) {
   });
 }
 
-export function groupedReadyTickets(tickets, workflowTickets = tickets) {
+export function groupedReadyTickets(tickets, workflowTickets = tickets, roadmap) {
   return TRACKS.map((track) => {
     const trackTickets = sortForColumn(
       "ready",
-      tickets.filter((ticket) => ticketMatchesTrack(ticket.id, track) && boardColumn(ticket, workflowTickets) === "ready"),
+      tickets.filter((ticket) => ticketMatchesTrack(ticket.id, track) && boardColumn(ticket, workflowTickets, roadmap) === "ready"),
       workflowTickets,
       track.id,
     );

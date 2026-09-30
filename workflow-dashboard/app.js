@@ -12,6 +12,7 @@ import {
   pathEntries,
   pendingBlockers,
   reasonFor,
+  roadmapKind,
   sortForColumn,
   ticketsForTrack,
   trackById,
@@ -30,7 +31,7 @@ const STATUS_EVENT_LABELS = {
 };
 
 const AREA_KEYS = Object.keys(AREA_LABELS);
-const FOCUS_STORAGE_KEY = "autoos-workflow-foco";
+const FOCUS_STORAGE_KEY = "autoos-workflow-foco-fiscal-v2";
 const PROJECT_STORAGE_KEY = "autoos-workflow-projeto";
 const PROJECTS = [
   {
@@ -78,7 +79,7 @@ const state = {
   editable: false,
   mode: "static",
   view: "board",
-  track: "all",
+  track: "fiscal",
   area: "all",
   query: "",
   selectedTicketId: null,
@@ -161,6 +162,10 @@ function currentTrack() {
   return trackById(state.track);
 }
 
+function currentRoadmap() {
+  return state.project === "autoos" ? state.workflow?.roadmap : null;
+}
+
 function scopedTickets() {
   const query = state.query.trim().toLocaleLowerCase("pt-BR");
   return ticketsForTrack(allTickets(), state.track).filter((ticket) => {
@@ -185,7 +190,7 @@ function readStoredTrack() {
   } catch {
     /* ignore quota / privacy */
   }
-  return "all";
+  return "fiscal";
 }
 
 function persistTrack(trackId) {
@@ -217,7 +222,7 @@ function readStoredProject() {
 function persistProject(projectId) {
   if (!PROJECT_IDS.includes(projectId) || state.project === projectId) return;
   state.project = projectId;
-  state.track = "all";
+  state.track = projectId === "autoos" ? "fiscal" : "all";
   state.area = "all";
   state.query = "";
   state.showDone = false;
@@ -353,8 +358,8 @@ function renderProjectSwitcher() {
 
 function renderMetrics() {
   const tickets = scopedTickets();
-  const readyNow = tickets.filter((ticket) => boardColumn(ticket, allTickets()) === "ready").length;
-  const waiting = tickets.filter((ticket) => boardColumn(ticket, allTickets()) === "waiting").length;
+  const readyNow = tickets.filter((ticket) => boardColumn(ticket, allTickets(), currentRoadmap()) === "ready").length;
+  const waiting = tickets.filter((ticket) => boardColumn(ticket, allTickets(), currentRoadmap()) === "waiting").length;
   const progress = tickets.length ? Math.round((tickets.filter((ticket) => ticket.status === "merged").length / tickets.length) * 100) : 0;
   elements.metricTotal.textContent = tickets.length;
   elements.metricReady.textContent = readyNow;
@@ -403,6 +408,9 @@ function renderFilters() {
 }
 
 function cardMeta(ticket) {
+  const priority = roadmapKind(ticket, currentRoadmap());
+  if (priority === "superseded") return { line: "Substituído no roadmap; não iniciar", kind: "paused" };
+  if (priority === "deferred") return { line: "Adiado por prioridade; status preservado", kind: "paused" };
   const track = currentTrack() || TRACKS.find((item) => item.prefixes.some((prefix) => ticket.id.startsWith(prefix)));
   const unlocks = unlocksFrom(ticket.id, allTickets());
   const blockers = pendingBlockers(ticket, allTickets());
@@ -416,11 +424,11 @@ function cardMeta(ticket) {
 }
 
 function ticketCard(ticket, options = {}) {
-  const recommended = nextRecommended(allTickets(), state.track).ticket;
+  const recommended = nextRecommended(allTickets(), state.track, currentRoadmap()).ticket;
   const isNext = recommended?.id === ticket.id;
   const meta = cardMeta(ticket);
   const groupLabel = options.groupLabel ? `<span class="ticket-track">${escapeHtml(options.groupLabel)}</span>` : "";
-  return `<button class="ticket-card ${isNext ? "is-next" : ""} ${meta.kind === "skip" ? "is-skipped" : ""}" data-ticket="${escapeHtml(ticket.id)}" data-area="${areaFor(ticket.id)}" type="button">
+  return `<button class="ticket-card ${isNext ? "is-next" : ""} ${["skip", "paused"].includes(meta.kind) ? "is-skipped" : ""}" data-ticket="${escapeHtml(ticket.id)}" data-area="${areaFor(ticket.id)}" type="button">
     <span class="ticket-top">${groupLabel}<span class="ticket-id">${escapeHtml(ticket.id)}</span>${isNext ? `<span class="next-pill">agora</span>` : ""}</span>
     <span class="ticket-title">${escapeHtml(ticket.title)}</span>
     <span class="ticket-footer"><span class="ticket-state state-${escapeHtml(ticket.status)}"><i aria-hidden="true"></i>${escapeHtml(meta.line)}</span></span>
@@ -429,7 +437,7 @@ function ticketCard(ticket, options = {}) {
 
 function renderReadyColumn(tickets) {
   if (state.track === "all") {
-    const groups = groupedReadyTickets(tickets, allTickets());
+    const groups = groupedReadyTickets(tickets, allTickets(), currentRoadmap());
     if (!groups.length) return `<div class="empty-column">Nada liberado neste filtro.</div>`;
     return groups.map((group) => `<div class="kanban-group"><p class="kanban-group-label">${escapeHtml(group.track.label)}</p>${group.tickets.map((ticket) => ticketCard(ticket, { groupLabel: group.track.label })).join("")}</div>`).join("");
   }
@@ -439,9 +447,9 @@ function renderReadyColumn(tickets) {
 
 function renderBoard() {
   const tickets = scopedTickets();
-  const nextId = nextRecommended(allTickets(), state.track).ticket?.id;
+  const nextId = nextRecommended(allTickets(), state.track, currentRoadmap()).ticket?.id;
   elements.boardView.innerHTML = BOARD_COLUMNS.map((column) => {
-    let columnTickets = tickets.filter((ticket) => boardColumn(ticket, allTickets()) === column.id);
+    let columnTickets = tickets.filter((ticket) => boardColumn(ticket, allTickets(), currentRoadmap()) === column.id);
     if (column.id !== "ready") columnTickets = sortForColumn(column.id, columnTickets, allTickets(), state.track);
     const collapsed = column.id === "done" && !state.showDone && columnTickets.length > 8;
     const visible = collapsed ? columnTickets.slice(0, 8) : columnTickets;
@@ -474,7 +482,7 @@ function renderBoard() {
 
 function renderPath() {
   const track = currentTrack();
-  const allEntries = currentProject().supportsTracks ? pathEntries(allTickets(), state.track) : genericPathEntries();
+  const allEntries = currentProject().supportsTracks ? pathEntries(allTickets(), state.track, currentRoadmap()) : genericPathEntries();
   const entries = allEntries.filter((entry) => {
     if (state.area !== "all" && areaFor(entry.ticketId) !== state.area) return false;
     if (!state.query) return true;
@@ -519,10 +527,10 @@ function genericPathEntries() {
   return ordered.map((ticket) => ({
     ticketId: ticket.id,
     ticket,
-    column: boardColumn(ticket, allTickets()),
+    column: boardColumn(ticket, allTickets(), currentRoadmap()),
     skipped: false,
     reason: pendingBlockers(ticket, allTickets()).length ? `Depende de ${pendingBlockers(ticket, allTickets()).join(", ")}.` : ticket.objective || "Liberado pela ordem atual.",
-    current: nextRecommended(allTickets()).ticket?.id === ticket.id,
+    current: nextRecommended(allTickets(), "all", currentRoadmap()).ticket?.id === ticket.id,
   }));
 }
 
@@ -581,7 +589,7 @@ function renderTimeline() {
 }
 
 function renderFocus() {
-  const result = nextRecommended(allTickets(), state.track);
+  const result = nextRecommended(allTickets(), state.track, currentRoadmap());
   const ticket = result.ticket;
   const track = currentTrack();
   elements.focusWave.textContent = track ? `Foco ${track.label}` : "Todos os focos";
@@ -597,7 +605,9 @@ function renderFocus() {
   const why = reasonFor(result.track || track, ticket.id);
   elements.focusTicketId.textContent = ticket.id;
   elements.focusTitle.textContent = ticket.title;
-  elements.focusSummary.textContent = why || ticket.objective || ticket.context || "Sem objetivo descrito.";
+  elements.focusSummary.textContent = ticket.status === "review"
+    ? "Aguardando revisão humana. O próximo ticket de implementação no AutoOS é AO-SUITE-001."
+    : why || ticket.objective || ticket.context || "Sem objetivo descrito.";
   elements.focusUnlocks.textContent = unlocks.length ? `Daqui você segue para ${unlocks.join(", ")}.` : "Este passo não destrava outro ticket diretamente.";
   elements.focusButton.disabled = false;
   elements.focusButton.onclick = () => {
@@ -637,7 +647,7 @@ function formatActivityTime(value) {
 
 function renderHealth() {
   const tickets = scopedTickets();
-  const waiting = tickets.filter((ticket) => boardColumn(ticket, allTickets()) === "waiting").length;
+  const waiting = tickets.filter((ticket) => boardColumn(ticket, allTickets(), currentRoadmap()) === "waiting").length;
   const review = tickets.filter((ticket) => ticket.status === "review").length;
   const score = Math.max(0, Math.min(100, 100 - waiting * 4 - review * 2));
   elements.healthScore.textContent = `${score}/100`;
@@ -706,11 +716,13 @@ function openDialog(ticketId) {
   const blockers = pendingBlockers(ticket, allTickets());
   const unlocks = unlocksFrom(ticket.id, allTickets());
   const ticketEvents = state.events.filter((event) => event.ticketId === ticketId || event.ticketIds?.includes(ticketId)).slice(0, 6);
-  const column = BOARD_COLUMNS.find((item) => item.id === boardColumn(ticket, allTickets()));
+  const column = BOARD_COLUMNS.find((item) => item.id === boardColumn(ticket, allTickets(), currentRoadmap()));
   const project = currentProject();
   const statusControls = project.supportsStatusRequests
     ? `<form id="status-form" class="status-editor"><label>Status<select id="status-select">${STATUS_ORDER.map((status) => `<option value="${status}" ${ticket.status === status ? "selected" : ""}>${STATUS_LABELS[status]}</option>`).join("")}</select></label><button class="button status-save" type="submit">${state.editable ? "Salvar status" : "Solicitar no GitHub"}</button></form><textarea id="status-note" class="dialog-note" placeholder="Nota opcional para a linha do tempo"></textarea><p id="status-form-error" class="dialog-error hidden"></p>${state.editable ? "" : `<p class="dialog-readonly">A solicitação abrirá um Issue pré-preenchido. A Action valida a mudança e cria um PR para <strong>feature</strong>.</p>`}`
     : `<p class="dialog-readonly"><strong>AutoBO está em consulta.</strong> A fonte oficial permanece no repositório privado AutoBO; este painel publica somente um espelho de leitura.</p>`;
+  const sourcePr = ticket.evidence?.find((item) => item.type === "merged_pr" && item.url);
+  const evidenceLink = sourcePr ? `<p class="dialog-readonly">${ticket.status === "merged" ? "Entrega registrada pelo" : "Contexto no"} <a href="${escapeHtml(sourcePr.url)}" target="_blank" rel="noreferrer">PR de origem ↗</a>. ${escapeHtml(ticket.validationGap || (ticket.status === "merged" ? "Merge confirmado; homologação deve ser conferida separadamente." : "Este ticket ainda aguarda revisão e merge."))}</p>` : "";
   elements.dialogContent.innerHTML = `<div class="dialog-inner">
     <div class="dialog-title-row"><span class="ticket-id">${escapeHtml(ticket.id)}</span><h2 id="dialog-title">${escapeHtml(ticket.title)}</h2><p class="dialog-summary">${escapeHtml(ticket.objective || ticket.context || "Sem objetivo descrito.")}</p></div>
     <div class="path-callout">
@@ -736,6 +748,7 @@ function openDialog(ticketId) {
       ${dialogBlock("Restrições de staging", `<p>${escapeHtml(ticket.testInstructions?.stagingRestrictions || "Não informado")}</p>`)}
     </div></details>
     ${blockers.length ? `<p class="dialog-error">Aguardando: ${escapeHtml(blockers.join(", "))}</p>` : ""}
+    ${evidenceLink}
     ${statusControls}
     ${ticketEvents.length ? `<div class="detail-block" style="margin-top:16px"><h3>Atividade recente</h3>${ticketEvents.map((event) => `<p style="margin:0 0 7px;color:var(--muted);font-size:12px"><strong style="color:var(--ink)">${escapeHtml(formatDate(event.timestamp))}</strong> · ${escapeHtml(event.summary || event.type)}</p>`).join("")}</div>` : ""}
   </div>`;

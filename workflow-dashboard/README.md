@@ -28,17 +28,17 @@ Abra `http://127.0.0.1:4173`. Nesse modo, o painel lê o `workflow.json` da work
 
 O servidor escuta somente em `127.0.0.1`. A atualização grava o JSON com lock e troca atômica; não executa merge, push ou alteração no banco.
 
-O site tem três páginas: **Visão geral** (`#overview`), **Kanban** (`#board`) e **Atividade** (`#activity`). O quadro é um Kanban por estado (`Pode começar`, `Em curso`, `Revisão`, `Na fila`, `Feito`). Os chips de foco (SaaS, Correções, Atualização) filtram a rota. No Kanban, a aba **Caminho** mostra a ordem recomendada daquele foco.
+O site tem três páginas: **Visão geral** (`#overview`), **Kanban** (`#board`) e **Atividade** (`#activity`). O AutoOS abre por padrão em **Fiscal PROD**, com `AO-WF-RECONCILE-001` em revisão até o merge humano desta reconciliação; `AO-SUITE-001` é o próximo ticket de implementação. O quadro separa `Pode começar`, `Em curso`, `Revisão`, `Na fila`, `Fora do foco` e `Feito`. `Fora do foco` reúne adiados e escopos substituídos sem falsificar o status técnico. Os chips de foco filtram a rota; a aba **Caminho** mostra sua ordem. O histórico do PR #101 aparece em `AO-INS-ONLINE-001`. PowerSync é reservado ao futuro Mobile Field.
 
 ## Relatar progresso como agente
 
 ```bash
-npm run workflow:report -- start AO-PS-005 "Iniciei a configuração"
-npm run workflow:report -- progress AO-PS-005 "Conexão staging validada"
-npm run workflow:report -- test AO-PS-005 "Teste A/B passou"
-npm run workflow:report -- review AO-PS-005 "PR pronto para revisão"
-npm run workflow:report -- block AO-PS-005 "Aguardando credencial"
-npm run workflow:report -- merged AO-PS-005 "Merge humano confirmado"
+npm run workflow:report -- start AO-SUITE-001 "Iniciei a matriz de ownership"
+npm run workflow:report -- progress AO-SUITE-001 "Exemplos de OS revisados"
+npm run workflow:report -- test AO-SUITE-001 "Critérios conferidos"
+npm run workflow:report -- review AO-SUITE-001 "PR pronto para revisão"
+npm run workflow:report -- block AO-SUITE-001 "Aguardando decisão de autoridade"
+npm run workflow:report -- merged AO-SUITE-001 "Merge humano confirmado"
 ```
 
 O relatório encontra a worktree principal automaticamente, registra branch e commit atuais e usa o mesmo lock do painel. `in_progress` é recusado enquanto houver dependência não mesclada.
