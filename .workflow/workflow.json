@@ -3578,7 +3578,7 @@
     {
       "id": "AO-WF-RECONCILE-001",
       "title": "Alinhar roadmap Fiscal PROD entre os três workflows",
-      "status": "review",
+      "status": "merged",
       "blockedBy": [],
       "objective": "Registrar a decisão de produto, a divisão de responsabilidades e a revisão dos tickets sem confundir prioridade com status técnico.",
       "context": "O DAG atual prioriza SaaS e integração entre desktops; o marco de negócio passou a ser Fiscal PROD interno BMITAG.",
@@ -3638,8 +3638,14 @@
         {
           "type": "merged_pr",
           "url": "https://github.com/ph66ng2/AutoBO/pull/9"
+        },
+        {
+          "type": "merged_pr",
+          "url": "https://github.com/ph66ng2/AutoOs/pull/103",
+          "mergedAt": "2026-09-30T04:40:23Z"
         }
-      ]
+      ],
+      "completedAt": "2026-09-30"
     },
     {
       "id": "AO-SUITE-001",

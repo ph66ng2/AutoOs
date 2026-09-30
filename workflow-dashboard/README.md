@@ -28,7 +28,7 @@ Abra `http://127.0.0.1:4173`. Nesse modo, o painel lê o `workflow.json` da work
 
 O servidor escuta somente em `127.0.0.1`. A atualização grava o JSON com lock e troca atômica; não executa merge, push ou alteração no banco.
 
-O site tem três páginas: **Visão geral** (`#overview`), **Kanban** (`#board`) e **Atividade** (`#activity`). O AutoOS abre por padrão em **Fiscal PROD**, com `AO-WF-RECONCILE-001` em revisão até o merge humano desta reconciliação; `AO-SUITE-001` é o próximo ticket de implementação. O quadro separa `Pode começar`, `Em curso`, `Revisão`, `Na fila`, `Fora do foco` e `Feito`. `Fora do foco` reúne adiados e escopos substituídos sem falsificar o status técnico. Os chips de foco filtram a rota; a aba **Caminho** mostra sua ordem. O histórico do PR #101 aparece em `AO-INS-ONLINE-001`. PowerSync é reservado ao futuro Mobile Field.
+O site tem três páginas: **Visão geral** (`#overview`), **Kanban** (`#board`) e **Atividade** (`#activity`). O AutoOS abre por padrão em **Fiscal PROD**, com `AO-WF-RECONCILE-001` concluído no [PR #103](https://github.com/ph66ng2/AutoOs/pull/103); `AO-SUITE-001` é o próximo ticket de implementação. O quadro separa `Pode começar`, `Em curso`, `Revisão`, `Na fila`, `Fora do foco` e `Feito`. `Fora do foco` reúne adiados e escopos substituídos sem falsificar o status técnico. Os chips de foco filtram a rota; a aba **Caminho** mostra sua ordem. O histórico do PR #101 aparece em `AO-INS-ONLINE-001`. PowerSync é reservado ao futuro Mobile Field.
 
 ## Relatar progresso como agente
 

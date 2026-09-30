@@ -606,7 +606,7 @@ function renderFocus() {
   elements.focusTicketId.textContent = ticket.id;
   elements.focusTitle.textContent = ticket.title;
   elements.focusSummary.textContent = ticket.status === "review"
-    ? "Aguardando revisão humana. O próximo ticket de implementação no AutoOS é AO-SUITE-001."
+    ? "Aguardando revisão humana. Após o merge, o painel recalcula o próximo ticket."
     : why || ticket.objective || ticket.context || "Sem objetivo descrito.";
   elements.focusUnlocks.textContent = unlocks.length ? `Daqui você segue para ${unlocks.join(", ")}.` : "Este passo não destrava outro ticket diretamente.";
   elements.focusButton.disabled = false;
