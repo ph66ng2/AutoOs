@@ -11,7 +11,9 @@ import { Dialog, DialogClose, DialogContent, DialogDescription, DialogFooter, Di
 import { ErrorAlert } from "@/components/ui/error-alert";
 import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { PaginationControls } from "@/components/ui/pagination-controls";
 import { useClientes } from "@/hooks/useClientes";
+import { totalPages } from "@/lib/pagination";
 import { clienteSchema, detectarTipoDocumento, formatarCEP, formatarDocumento, formatarTelefone, type ClienteFormData } from "@/lib/validations";
 import type { Cliente } from "@/types";
 
@@ -32,6 +34,7 @@ const FORM_FIELD_LABELS: Partial<Record<keyof ClienteFormData, string>> = {
 /** Clientes SaaS: usa exclusivamente o repository remoto selecionado por useClientes. */
 export default function SaasClientesPage() {
   const [busca, setBusca] = useState("");
+  const [pagina, setPagina] = useState(1);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [editando, setEditando] = useState<Cliente | null>(null);
@@ -41,7 +44,9 @@ export default function SaasClientesPage() {
   const [buscandoCep, setBuscandoCep] = useState(false);
   const [tipoPessoa, setTipoPessoa] = useState<"PF" | "PJ" | null>(null);
   const [operationError, setOperationError] = useState<string | null>(null);
-  const { clientes, loading, error, criar, atualizar, deletar, recarregar } = useClientes({ busca: busca || undefined });
+  const { clientes, total, loading, error, criar, atualizar, deletar, recarregar } = useClientes({ busca: busca || undefined, page: pagina });
+  const totalPaginas = totalPages(total);
+  const paginaExibida = Math.min(pagina, totalPaginas);
   const form = useForm<ClienteFormData>({ resolver: zodResolver(clienteSchema), defaultValues: EMPTY_FORM });
   const documento = form.watch("documento");
   const validationIssues = Object.entries(form.formState.errors).flatMap(([field, issue]) =>
@@ -50,6 +55,9 @@ export default function SaasClientesPage() {
   const validationMessage = form.formState.submitCount > 0 && validationIssues.length > 0
     ? `Revise os campos antes de salvar: ${validationIssues.join("; ")}`
     : null;
+
+  useEffect(() => setPagina(1), [busca]);
+  useEffect(() => setPagina((current) => Math.min(current, totalPaginas)), [totalPaginas]);
 
   useEffect(() => {
     const detected = detectarTipoDocumento(documento || "");
@@ -124,6 +132,7 @@ export default function SaasClientesPage() {
     try {
       const result = editando ? await atualizar(editando.id!, payload) : await criar(payload);
       if (!result.sucesso) throw new Error(result.erro || "Não foi possível salvar o cliente.");
+      if (!editando) setPagina(1);
       setDialogOpen(false);
     } catch (cause) {
       setOperationError(cause instanceof Error ? cause.message : "Não foi possível salvar o cliente.");
@@ -155,7 +164,7 @@ export default function SaasClientesPage() {
     </div>
     {(error || (!dialogOpen && operationError)) && <ErrorAlert variant="error" context="Clientes" action="Operação não concluída" message={operationError || error || ""} />}
     <Card><CardContent className="pt-6"><div className="flex gap-3"><div className="relative flex-1"><Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" /><Input className="pl-9" value={busca} onChange={(event) => setBusca(event.target.value)} placeholder="Buscar por nome, documento, telefone ou e-mail" /></div><Button aria-label="Atualizar clientes" variant="outline" size="icon" onClick={() => void recarregar()}><RefreshCw className="h-4 w-4" /></Button></div></CardContent></Card>
-    <Card><CardContent className="pt-6">{loading ? <div className="py-12 text-center text-muted-foreground">Carregando clientes…</div> : clientes.length === 0 ? <div className="py-12 text-center text-muted-foreground"><Users className="mx-auto mb-3 h-12 w-12 opacity-30" /><p>Nenhum cliente encontrado.</p></div> : <div className="overflow-x-auto"><Table><TableHeader><TableRow><TableHead>Cliente</TableHead><TableHead>Documento</TableHead><TableHead>Contato</TableHead><TableHead className="w-24 text-right">Ações</TableHead></TableRow></TableHeader><TableBody>{clientes.map((cliente) => <TableRow key={cliente.id}><TableCell><p className="font-medium">{nomeExibicaoCliente(cliente)}</p>{cliente.razao_social && <p className="text-xs text-muted-foreground">{cliente.razao_social}</p>}</TableCell><TableCell>{documentoExibicaoCliente(cliente)}</TableCell><TableCell><p>{formatarTelefone(cliente.telefone || "")}</p><p className="text-xs text-muted-foreground">{cliente.email || "—"}</p></TableCell><TableCell><div className="flex justify-end gap-1"><Button aria-label={`Contatos de ${nomeExibicaoCliente(cliente)}`} variant="ghost" size="icon" onClick={() => setContatosCliente(cliente)}><UserRound className="h-4 w-4" /></Button><Button aria-label={`Editar ${nomeExibicaoCliente(cliente)}`} variant="ghost" size="icon" onClick={() => abrirEditar(cliente)}><Edit className="h-4 w-4" /></Button><Button aria-label={`Excluir ${nomeExibicaoCliente(cliente)}`} variant="ghost" size="icon" className="text-destructive hover:text-destructive" onClick={() => { setDeletando(cliente); setDeleteOpen(true); }}><Trash2 className="h-4 w-4" /></Button></div></TableCell></TableRow>)}</TableBody></Table></div>}</CardContent></Card>
+    <Card><CardContent className="pt-6">{loading ? <div className="py-12 text-center text-muted-foreground">Carregando clientes…</div> : clientes.length === 0 ? <div className="py-12 text-center text-muted-foreground"><Users className="mx-auto mb-3 h-12 w-12 opacity-30" /><p>Nenhum cliente encontrado.</p></div> : <><div className="mb-2 flex items-center justify-between text-xs text-muted-foreground"><span>{total} cliente(s)</span><PaginationControls page={paginaExibida} totalPages={totalPaginas} onPageChange={setPagina} label="Paginação de clientes" /></div><div className="overflow-x-auto"><Table><TableHeader><TableRow><TableHead>Cliente</TableHead><TableHead>Documento</TableHead><TableHead>Contato</TableHead><TableHead className="w-24 text-right">Ações</TableHead></TableRow></TableHeader><TableBody>{clientes.map((cliente) => <TableRow key={cliente.id}><TableCell><p className="font-medium">{nomeExibicaoCliente(cliente)}</p>{cliente.razao_social && <p className="text-xs text-muted-foreground">{cliente.razao_social}</p>}</TableCell><TableCell>{documentoExibicaoCliente(cliente)}</TableCell><TableCell><p>{formatarTelefone(cliente.telefone || "")}</p><p className="text-xs text-muted-foreground">{cliente.email || "—"}</p></TableCell><TableCell><div className="flex justify-end gap-1"><Button aria-label={`Contatos de ${nomeExibicaoCliente(cliente)}`} variant="ghost" size="icon" onClick={() => setContatosCliente(cliente)}><UserRound className="h-4 w-4" /></Button><Button aria-label={`Editar ${nomeExibicaoCliente(cliente)}`} variant="ghost" size="icon" onClick={() => abrirEditar(cliente)}><Edit className="h-4 w-4" /></Button><Button aria-label={`Excluir ${nomeExibicaoCliente(cliente)}`} variant="ghost" size="icon" className="text-destructive hover:text-destructive" onClick={() => { setDeletando(cliente); setDeleteOpen(true); }}><Trash2 className="h-4 w-4" /></Button></div></TableCell></TableRow>)}</TableBody></Table></div></>}</CardContent></Card>
     <Dialog open={Boolean(contatosCliente)} onOpenChange={(open) => { if (!open) setContatosCliente(null); }}>
       <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-2xl">
         <DialogHeader><DialogTitle>Contatos do cliente</DialogTitle><DialogDescription>Gerencie os responsáveis e canais de contato vinculados a este cliente.</DialogDescription></DialogHeader>

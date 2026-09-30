@@ -2,13 +2,20 @@ import { db } from "@/lib/db";
 import { IS_SAAS_BUILD } from "@/lib/runtime-mode";
 import { loadSaasAuthConfiguration, type SaasAuthConfiguration } from "@/lib/saas-auth";
 import { tauriSaasSessionStore } from "@/lib/saas-session-store";
+import { ITEMS_PER_PAGE, paginateItems } from "@/lib/pagination";
 import type { Cliente, ClienteId } from "@/types";
 import type { SaasSession } from "@/types/saas-auth";
 
 export type ClienteInput = Omit<Cliente, "id">;
 
+export interface ClientesPage {
+  items: Cliente[];
+  total: number;
+}
+
 export interface ClientesRepository {
   listar(busca?: string): Promise<Cliente[]>;
+  listarPagina?(busca: string | undefined, page: number): Promise<ClientesPage>;
   buscar(id: ClienteId): Promise<Cliente>;
   criar(cliente: ClienteInput): Promise<Cliente>;
   atualizar(id: ClienteId, cliente: ClienteInput): Promise<Cliente>;
@@ -87,6 +94,46 @@ function asOnlineError(response: Response): OnlineDataError {
   return new OnlineDataError("ONLINE_UNAVAILABLE", "Não foi possível concluir a operação online. Tente novamente.");
 }
 
+function searchPattern(value: string): string {
+  const escaped = value.replace(/[\\%_*",()]/g, (character) => `\\${character}`);
+  return `"%${escaped}%"`;
+}
+
+function responseTotal(response: Response): number {
+  const match = response.headers.get("Content-Range")?.match(/\/(\d+)$/);
+  if (!match) {
+    throw new OnlineDataError("ONLINE_UNAVAILABLE", "O serviço Online não informou o total de clientes para a paginação.");
+  }
+  return Number(match[1]);
+}
+
+function assertTenantClientes(rows: Cliente[], session: SupabaseOnlineSession): Cliente[] {
+  for (const cliente of rows) {
+    if (typeof cliente.id !== "string" || !UUID_PATTERN.test(cliente.id)
+      || String(cliente.empresa_id ?? "") !== session.companyId) {
+      throw new OnlineDataError("RLS_DENIED", "A resposta Online contém clientes fora da empresa autenticada.");
+    }
+  }
+  return rows;
+}
+
+function clientesQuery(session: SupabaseOnlineSession, busca: string | undefined, limit: number, offset: number): URLSearchParams {
+  const query = new URLSearchParams({
+    select: "*",
+    empresa_id: `eq.${session.companyId}`,
+    ativo: "is.true",
+    order: "criado_em.desc,id.desc",
+    limit: String(limit),
+    offset: String(offset),
+  });
+  const term = busca?.trim();
+  if (term) {
+    const pattern = searchPattern(term);
+    query.set("or", `(nome.ilike.${pattern},razao_social.ilike.${pattern},nome_fantasia.ilike.${pattern},documento.ilike.${pattern},cpf_cnpj.ilike.${pattern},telefone.ilike.${pattern},email.ilike.${pattern})`);
+  }
+  return query;
+}
+
 export class SupabaseClientesRepository implements ClientesRepository {
   constructor(private readonly session: SupabaseOnlineSession, private readonly fetcher: FetchLike = fetch.bind(globalThis)) {}
 
@@ -109,10 +156,39 @@ export class SupabaseClientesRepository implements ClientesRepository {
   }
 
   async listar(busca?: string): Promise<Cliente[]> {
-    const rows = await this.request<Cliente[]>(this.endpoint("?select=*&ativo=is.true&order=criado_em.desc"), { method: "GET" });
-    const term = busca?.trim().toLocaleLowerCase("pt-BR");
-    if (!term) return rows;
-    return rows.filter((cliente) => [cliente.nome, cliente.razao_social, cliente.nome_fantasia, cliente.documento, cliente.cpf_cnpj, cliente.telefone, cliente.email].some((value) => value?.toLocaleLowerCase("pt-BR").includes(term)));
+    const pageSize = 500;
+    const rows: Cliente[] = [];
+    for (let offset = 0; ; offset += pageSize) {
+      const page = await this.request<Cliente[]>(this.endpoint(`?${clientesQuery(this.session, busca, pageSize, offset).toString()}`), { method: "GET" });
+      rows.push(...assertTenantClientes(page, this.session));
+      if (page.length < pageSize) return rows;
+    }
+  }
+
+  async listarPagina(busca: string | undefined, page: number): Promise<ClientesPage> {
+    const query = clientesQuery(this.session, busca, ITEMS_PER_PAGE, (Math.max(1, Math.floor(page)) - 1) * ITEMS_PER_PAGE);
+    let response: Response;
+    try {
+      response = await this.fetcher(this.endpoint(`?${query.toString()}`), {
+        method: "GET",
+        headers: {
+          apikey: this.session.publishableKey,
+          Authorization: `Bearer ${this.session.accessToken}`,
+          "Content-Type": "application/json",
+          Prefer: "count=exact",
+        },
+      });
+    } catch {
+      throw new OnlineDataError("ONLINE_UNAVAILABLE", "A comunicação com o serviço Online falhou. Tente novamente.");
+    }
+    if (!response.ok) throw asOnlineError(response);
+    let rows: Cliente[];
+    try {
+      rows = await response.json() as Cliente[];
+    } catch {
+      throw new OnlineDataError("ONLINE_UNAVAILABLE", "O serviço Online retornou uma resposta inválida. Tente novamente.");
+    }
+    return { items: assertTenantClientes(rows, this.session), total: responseTotal(response) };
   }
 
   async buscar(id: ClienteId): Promise<Cliente> {
@@ -141,6 +217,10 @@ export class SupabaseClientesRepository implements ClientesRepository {
 
 const tauriClientesRepository: ClientesRepository = {
   listar: (busca) => db.listarClientes(busca),
+  async listarPagina(busca, page) {
+    const rows = await db.listarClientes(busca);
+    return { items: paginateItems(rows, page, ITEMS_PER_PAGE), total: rows.length };
+  },
   buscar: (id) => db.buscarCliente(id),
   criar: (cliente) => db.criarCliente(cliente),
   atualizar: async (id, cliente) => { await db.atualizarCliente(id, cliente); return db.buscarCliente(id); },

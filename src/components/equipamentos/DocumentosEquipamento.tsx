@@ -6,15 +6,24 @@ import { db } from "@/lib/db";
 import { PdfService, PRAZO_EXECUCAO_PADRAO, type PdfArtifact } from "@/lib/pdf-service";
 import { PdfPreviewDialog } from "@/components/equipamentos/PdfPreviewDialog";
 import { STATUS_COM_ORCAMENTO } from "@/pages/equipamentos/equipamentos-page-constants";
-import type { Equipamento, Verificacao } from "@/types";
+import { IS_SAAS_BUILD } from "@/lib/runtime-mode";
+import { carregarRepositorioOperacoesEquipamento } from "@/lib/data/equipamentos-operacoes-repository";
+import type { Equipamento, EquipamentoId, Verificacao } from "@/types";
 
 interface DocumentosEquipamentoProps {
-  equipamento: Equipamento;
+  equipamento: Equipamento<EquipamentoId>;
 }
 
-function buildDocumentName(tipo: string, equipamento: Equipamento): string {
+function buildDocumentName(tipo: string, equipamento: Equipamento<EquipamentoId>): string {
   const sn = (equipamento.serial_number || "SN").replace(/[^a-zA-Z0-9]/g, "").slice(0, 8);
   return `${tipo}_${equipamento.id}_${sn}.pdf`;
+}
+
+function equipamentoIdInterno(equipamento: Equipamento<EquipamentoId>): number {
+  if (typeof equipamento.id !== "number") {
+    throw new Error("O identificador local do equipamento é inválido.");
+  }
+  return equipamento.id;
 }
 
 interface DocumentoItem {
@@ -65,7 +74,9 @@ export function DocumentosEquipamento({ equipamento }: DocumentosEquipamentoProp
       if (doc.tipo === "OrdemServico") {
         setPreview({ artifact: await PdfService.construirOrdemServico(equipamento, nomeArquivo), documento: doc });
       } else if (doc.tipo === "Orcamento") {
-        const verificacao = await db.buscarVerificacao(equipamento.id!);
+        const verificacao = IS_SAAS_BUILD
+          ? await (await carregarRepositorioOperacoesEquipamento()).getVerification(String(equipamento.id))
+          : await db.buscarVerificacao(equipamentoIdInterno(equipamento));
         if (!verificacao) {
           console.warn("[DocumentosEquipamento] Nenhuma verificação encontrada para gerar orçamento.");
           return;

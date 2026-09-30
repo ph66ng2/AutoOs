@@ -6,12 +6,20 @@ import {
   type SupabaseOnlineSession,
 } from "@/lib/data/clientes-repository";
 import { tauriSaasSessionStore } from "@/lib/saas-session-store";
+import { ITEMS_PER_PAGE, paginateItems } from "@/lib/pagination";
 import type { Equipamento, EquipamentoId } from "@/types";
 
 export type EquipamentoInput<Id extends EquipamentoId = number> = Omit<Equipamento<Id>, "id" | "empresa_id" | "criado_em" | "atualizado_em">;
 
+export interface EquipamentosPage<Id extends EquipamentoId = number> {
+  items: Equipamento<Id>[];
+  total: number;
+}
+
 export interface EquipamentosRepository<Id extends EquipamentoId = number> {
   listar(busca?: string, status?: string): Promise<Equipamento<Id>[]>;
+  listarPagina?(busca: string | undefined, status: string | undefined, page: number): Promise<EquipamentosPage<Id>>;
+  buscar?(id: Id): Promise<Equipamento<Id>>;
   buscarPorSerial(serial: string): Promise<Equipamento<Id>[]>;
   criar(equipamento: EquipamentoInput<Id>): Promise<Equipamento<Id>>;
   atualizar(id: Id, equipamento: EquipamentoInput<Id>, atualizadoEm?: string): Promise<Equipamento<Id>>;
@@ -60,15 +68,6 @@ function assertTenantRows(rows: Equipamento<string>[], session: SupabaseOnlineSe
   return rows;
 }
 
-function filterSearch<Id extends EquipamentoId>(rows: Equipamento<Id>[], busca?: string): Equipamento<Id>[] {
-  const term = busca?.trim().toLocaleLowerCase("pt-BR");
-  if (!term) return rows;
-  return rows.filter((equipment) => [
-    equipment.serial_number, equipment.patrimonio, equipment.marca, equipment.modelo,
-    equipment.tipo, equipment.cliente_nome, equipment.cliente_telefone,
-  ].some((value) => value?.toLocaleLowerCase("pt-BR").includes(term)));
-}
-
 function equipmentHttpError(status: number, code: string | undefined, method: string | undefined): OnlineDataError {
   if (status === 401) return new OnlineDataError("SESSION_EXPIRED", "Sua sessão expirou. Entre novamente para continuar.");
   if (status === 403 || code === "42501") return new OnlineDataError("RLS_DENIED", "Seu acesso a estes equipamentos foi negado pela empresa.");
@@ -77,6 +76,42 @@ function equipmentHttpError(status: number, code: string | undefined, method: st
   if (status === 409 || code === "23505") return new OnlineDataError("CONFLICT", "Já existe um equipamento com este patrimônio nesta empresa.");
   if (status === 400 && code?.startsWith("23")) return new OnlineDataError("INVALID_DATA", "Os dados do equipamento não atendem às regras do cadastro.");
   return new OnlineDataError("ONLINE_UNAVAILABLE", "Não foi possível concluir a operação online. Tente novamente.");
+}
+
+function searchPattern(value: string): string {
+  const escaped = value.replace(/[\\%_*",()]/g, (character) => `\\${character}`);
+  return `"%${escaped}%"`;
+}
+
+function responseTotal(response: Response): number {
+  const match = response.headers.get("Content-Range")?.match(/\/(\d+)$/);
+  if (!match) {
+    throw new OnlineDataError("ONLINE_UNAVAILABLE", "O serviço Online não informou o total de equipamentos para a paginação.");
+  }
+  return Number(match[1]);
+}
+
+function equipamentosQuery(
+  session: SupabaseOnlineSession,
+  busca: string | undefined,
+  status: string | undefined,
+  limit: number,
+  offset: number,
+): URLSearchParams {
+  const query = new URLSearchParams({
+    select: "*",
+    empresa_id: `eq.${session.companyId}`,
+    order: "criado_em.desc,id.desc",
+    limit: String(limit),
+    offset: String(offset),
+  });
+  if (status) query.set("status", `eq.${status}`);
+  const term = busca?.trim();
+  if (term) {
+    const pattern = searchPattern(term);
+    query.set("or", `(serial_number.ilike.${pattern},patrimonio.ilike.${pattern},marca.ilike.${pattern},modelo.ilike.${pattern},tipo.ilike.${pattern},cliente_nome.ilike.${pattern},cliente_telefone.ilike.${pattern})`);
+  }
+  return query;
 }
 
 export class SupabaseEquipamentosRepository implements EquipamentosRepository<string> {
@@ -120,10 +155,64 @@ export class SupabaseEquipamentosRepository implements EquipamentosRepository<st
   }
 
   async listar(busca?: string, status?: string): Promise<Equipamento<string>[]> {
-    const query = new URLSearchParams({ select: "*", empresa_id: `eq.${this.session.companyId}`, order: "criado_em.desc" });
-    if (status) query.set("status", `eq.${status}`);
+    const pageSize = 500;
+    const rows: Equipamento<string>[] = [];
+    for (let offset = 0; ; offset += pageSize) {
+      const page = await this.request<Equipamento<string>>(
+        equipamentosQuery(this.session, busca, status, pageSize, offset),
+        { method: "GET" },
+      );
+      rows.push(...assertTenantRows(page, this.session));
+      if (page.length < pageSize) return rows;
+    }
+  }
+
+  async listarPagina(busca: string | undefined, status: string | undefined, page: number): Promise<EquipamentosPage<string>> {
+    const safePage = Math.max(1, Math.floor(page));
+    const query = equipamentosQuery(this.session, busca, status, ITEMS_PER_PAGE, (safePage - 1) * ITEMS_PER_PAGE);
+    let response: Response;
+    try {
+      response = await this.fetcher(this.endpoint(query), {
+        method: "GET",
+        headers: {
+          apikey: this.session.publishableKey,
+          Authorization: `Bearer ${this.session.accessToken}`,
+          "Content-Type": "application/json",
+          Prefer: "count=exact",
+        },
+      });
+    } catch {
+      throw new OnlineDataError("ONLINE_UNAVAILABLE", "A comunicação com o serviço Online falhou. Tente novamente.");
+    }
+    if (!response.ok) {
+      let code: string | undefined;
+      try { code = (await response.json() as { code?: string }).code; } catch { /* resposta sem JSON */ }
+      throw equipmentHttpError(response.status, code, "GET");
+    }
+    let rows: Equipamento<string>[];
+    try {
+      rows = await response.json() as Equipamento<string>[];
+    } catch {
+      throw new OnlineDataError("ONLINE_UNAVAILABLE", "O serviço Online retornou uma resposta inválida. Tente novamente.");
+    }
+    return {
+      items: assertTenantRows(rows, this.session),
+      total: responseTotal(response),
+    };
+  }
+
+  async buscar(id: string): Promise<Equipamento<string>> {
+    if (!UUID_PATTERN.test(id)) throw new OnlineDataError("INVALID_DATA", "O identificador do equipamento Online é inválido.");
+    const query = new URLSearchParams({
+      select: "*",
+      id: `eq.${id}`,
+      empresa_id: `eq.${this.session.companyId}`,
+      limit: "1",
+    });
     const rows = await this.request<Equipamento<string>>(query, { method: "GET" });
-    return filterSearch(assertTenantRows(rows, this.session), busca);
+    const equipment = assertTenantRows(rows, this.session)[0];
+    if (!equipment) throw new OnlineDataError("RLS_DENIED", "Equipamento não encontrado ou indisponível para sua empresa.");
+    return equipment;
   }
 
   async buscarPorSerial(serial: string): Promise<Equipamento<string>[]> {
@@ -175,6 +264,11 @@ export class SupabaseEquipamentosRepository implements EquipamentosRepository<st
 
 const tauriEquipamentosRepository: EquipamentosRepository<number> = {
   listar: (busca, status) => db.listarEquipamentos(busca, status),
+  async listarPagina(busca, status, page) {
+    const rows = await db.listarEquipamentos(busca, status);
+    return { items: paginateItems(rows, page, ITEMS_PER_PAGE), total: rows.length };
+  },
+  buscar: (id) => db.buscarEquipamento(legacyId(id)),
   buscarPorSerial: (serial) => db.buscarEquipamentosPorSerial(serial),
   criar: (equipamento) => db.criarEquipamento(equipamento),
   atualizar: (id, equipamento) => db.atualizarEquipamento(legacyId(id), equipamento),

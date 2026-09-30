@@ -23,6 +23,7 @@ import {
   type ClientesRepository,
 } from "@/lib/data/clientes-repository";
 import type { Cliente, ClienteId } from "@/types";
+import { ITEMS_PER_PAGE, paginateItems } from "@/lib/pagination";
 
 /**
  * Parâmetros de pesquisa aceitos pelo hook useClientes.
@@ -32,6 +33,7 @@ import type { Cliente, ClienteId } from "@/types";
  */
 interface UseClientesParams {
   busca?: string;
+  page?: number;
   /** Injeção para teste; o runtime seleciona o adapter Online ou interno. */
   repository?: ClientesRepository;
 }
@@ -48,6 +50,7 @@ interface UseClientesParams {
  */
 export function useClientes(params?: UseClientesParams) {
   const [clientes, setClientes] = useState<Cliente[]>([]);
+  const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -63,15 +66,22 @@ export function useClientes(params?: UseClientesParams) {
     setError(null);
     try {
       const repository = params?.repository ?? await carregarRepositorioClientes();
-      const data = await repository.listar(params?.busca);
-      setClientes(data);
+      if (params?.page !== undefined && repository.listarPagina) {
+        const result = await repository.listarPagina(params.busca, params.page);
+        setClientes(result.items);
+        setTotal(result.total);
+      } else {
+        const data = await repository.listar(params?.busca);
+        setClientes(params?.page === undefined ? data : paginateItems(data, params.page, ITEMS_PER_PAGE));
+        setTotal(data.length);
+      }
     } catch (err: any) {
       setError(err?.toString() || "Erro ao carregar clientes");
       console.error("Erro ao carregar clientes:", err);
     } finally {
       setLoading(false);
     }
-  }, [params?.busca, params?.repository]);
+  }, [params?.busca, params?.page, params?.repository]);
 
   useEffect(() => {
     carregar();
@@ -143,6 +153,7 @@ export function useClientes(params?: UseClientesParams) {
 
   return {
     clientes,
+    total,
     loading,
     error,
     criar,

@@ -4,6 +4,7 @@
     "milestone": "AutoOS Fiscal PROD BMITAG",
     "role": "Operação, FatoComercial e experiência fiscal",
     "focusIds": [
+      "AO-SAAS-PARITY-001",
       "AO-WF-RECONCILE-001",
       "AO-SUITE-001",
       "AO-SUITE-002",
@@ -4938,6 +4939,105 @@
         "AO-SAAS-ID-001",
         "AO-SAAS-INVITE-001",
         "AO-SAAS-TEAM-001"
+      ]
+    },
+    {
+      "id": "AO-SAAS-PARITY-001",
+      "title": "Completar paridade operacional SaaS sem fotos",
+      "status": "review",
+      "blockedBy": [
+        "AO-INS-ONLINE-001",
+        "AO-SRV-ONLINE-001",
+        "AO-EQP-ONLINE-003"
+      ],
+      "objective": "Completar no Plano Online as regras de mínimos por categoria, consumo de peças vinculadas à aprovação de serviços, paginação de Clientes e Equipamentos e o Balcão existente, incluindo a data de entrega no painel.",
+      "context": "Insumos, Serviços e Equipamentos já possuem adapters SaaS. A Master recebeu regras operacionais para categoria, baixa de estoque na aprovação e painel do Balcão. A paridade deve reutilizar páginas e fluxos existentes, manter isolamento por empresa e não incluir fotos.",
+      "expectedBehavior": "O SaaS mantém o mesmo fluxo operacional da Master nos domínios deste ticket. Listas grandes são consultadas com paginação no servidor; aprovação e baixa de estoque são transacionais e autorizadas pelo perfil; o Balcão existente fica acessível pelo shell SaaS sem chamadas de dados ao banco local.",
+      "scope": [
+        "Usar as categorias operacionais IMPRESSORA, PEÇA, ETIQUETA, RIBBON e OUTROS e aplicar mínimos padrão 0, 1, 1, 2 e 0 apenas em novos cadastros; edição preserva o mínimo salvo.",
+        "Adicionar schema e operações Supabase tenant-safe para registrar serviços aprovados, baixar saldo disponível atomicamente, manter faltas pendentes e permitir confirmar baixa posterior na OS.",
+        "Reutilizar a decisão por serviço e a exibição de consumos pendentes da Master no fluxo de orçamento SaaS existente.",
+        "Implementar paginação server-side e total para Clientes e Equipamentos SaaS, mantendo busca, filtro de status e refresh.",
+        "Expor no shell SaaS o Balcão existente e conectar suas consultas, cadastro, estoque, busca e entrega aos adapters SaaS existentes; exibir data de saída para entregues no painel.",
+        "Versionar as migrations aditivas necessárias em supabase/migrations e manter supabase/schema.sql alinhado; não executar alterações remotas durante a implementação."
+      ],
+      "outOfScope": [
+        "Qualquer fluxo de fotos, upload, túnel, QR, Storage ou alterações em tickets AO-PHOTO-*.",
+        "PowerSync, alterações de planos/entitlements, sincronização offline ou redesign das telas existentes.",
+        "Aplicar migrations em Staging ou Produção neste ticket."
+      ],
+      "acceptanceCriteria": [
+        "Novo produto recebe o mínimo da sua categoria ao selecioná-la; categoria alterada em produto existente não sobrescreve o mínimo salvo; operador ainda pode editar o mínimo manualmente.",
+        "Aprovação do orçamento pode aprovar serviços individualmente; somente as peças dos serviços aprovados consomem estoque e as quantidades sem saldo ficam pendentes.",
+        "A baixa e os movimentos são atômicos, idempotentes contra concorrência, limitados ao tenant e protegidos pelas permissões SaaS de finanças e estoque.",
+        "A tela Peças da OS mostra aprovado versus baixado e permite nova baixa apenas do pendente, sem exceder o saldo.",
+        "Clientes e Equipamentos mostram páginas e totais coerentes com a busca/filtros mesmo além do limite padrão do PostgREST; nenhum domínio carrega a tabela inteira para paginar no navegador em SaaS.",
+        "O Balcão existente fica navegável no SaaS com busca de clientes/equipamentos, cadastro de entrada, consulta de estoque e entrega; nenhum fluxo de dados usa o banco Tauri local.",
+        "Entregues no painel mostram data_saida como data de entrega, mantendo data_entrada para os demais status.",
+        "As migrations são novas, tenant-safe, aditivas e incluem índices, RLS, permissões e rollback documentado; nenhuma migration aplicada é editada.",
+        "Fotos e os demais itens fora de escopo permanecem sem alterações."
+      ],
+      "tests": [
+        "npm run lint.",
+        "Testes de unidade já existentes de repositórios e helpers afetados, atualizados se contratos mudarem; não usar credenciais nem dados operacionais.",
+        "Validação em banco Supabase descartável da migração, das permissões, da concorrência, da baixa parcial e da confirmação pendente.",
+        "Verificação manual em build SaaS com dados sintéticos para paginação, cadastro e fluxo do Balcão."
+      ],
+      "testInstructions": {
+        "prerequisites": [
+          "Usar branch/worktree própria baseada em origin/feature e ambiente local; para SQL, usar somente Supabase local ou banco descartável isolado.",
+          "Não usar Staging, Produção, usuários, credenciais, emails ou dados reais da BMITAG.",
+          "Configurar mocks e dados sintéticos com duas empresas para validar isolamento tenant."
+        ],
+        "steps": [
+          "Executar npm run lint e validar o JSON do Workflow.",
+          "Aplicar a migration em banco descartável e criar dois tenants, perfis com permissões distintas, produtos, OS, verificações e serviços sintéticos.",
+          "Aprovar um subconjunto de serviços com estoque suficiente e insuficiente; repetir concorrentemente e conferir saldo, movimentos e quantidade pendente.",
+          "Repor saldo no banco descartável, confirmar baixa pendente e verificar que uma segunda confirmação sem saldo pendente não cria movimento.",
+          "Criar mais registros que o limite padrão do PostgREST e verificar navegação de Clientes/Equipamentos com busca, filtros, totais e última página.",
+          "No build SaaS, percorrer busca e cadastro do Balcão, consulta de estoque, detalhe, entrega e painel operacional com dados sintéticos."
+        ],
+        "expectedResultAndEvidence": [
+          "O mínimo padrão acompanha a categoria apenas em cadastro novo e valores manuais/editados são preservados.",
+          "A aprovação só consome peças de serviços aprovados; movimentos refletem a baixa realmente feita e faltas permanecem pendentes até reposição.",
+          "A concorrência não reduz estoque abaixo de zero, não duplica movimento e não permite ler/alterar registros do outro tenant.",
+          "Os totais e páginas cobrem todos os registros sintéticos, sem itens duplicados ou ausentes entre páginas.",
+          "As operações do Balcão SaaS usam apenas repositories Supabase e entregues mostram a data de saída."
+        ],
+        "dataImpact": "Testes locais/descartáveis criam e alteram registros sintéticos; nenhuma ação é autorizada em dados operacionais persistentes.",
+        "cleanupAndRollback": [
+          "Destruir o banco descartável ao final e remover apenas os dados sintéticos criados no ambiente local.",
+          "A migration de desenvolvimento é nova e não deve ser revertida após aplicação em ambiente compartilhado; use migration corretiva aditiva caso seja necessário.",
+          "A branch pode ser descartada antes do merge sem alterar Staging ou Produção."
+        ],
+        "stagingRestrictions": "Proibido aplicar migrations, testar com usuários/dados reais ou usar credenciais internas em Staging/Produção neste ticket; validação SQL deve ocorrer somente em ambiente local ou banco descartável."
+      },
+      "likelyFiles": [
+        "src/pages/insumos/insumos-page-constants.ts",
+        "src/pages/insumos/InsumosDialogs.tsx",
+        "src/pages/Insumos.tsx",
+        "src/lib/data/clientes-repository.ts",
+        "src/lib/data/equipamentos-repository.ts",
+        "src/hooks/useClientes.ts",
+        "src/hooks/useEquipamentos.ts",
+        "src/pages/SaasClientesPage.tsx",
+        "src/pages/Equipamentos.tsx",
+        "src/components/equipamentos/DocumentosEquipamento.tsx",
+        "src/pages/Balcao.tsx",
+        "src/components/SaasOperationalShell.tsx",
+        "src/components/CounterLayout.tsx",
+        "src/lib/data/equipamentos-operacoes-repository.ts",
+        "src/lib/pdf-service.ts",
+        "supabase/migrations/",
+        "supabase/schema.sql",
+        ".workflow/workflow.json"
+      ],
+      "risks": [
+        "Alterar listas para paginação sem atualizar filtros pode esconder registros fora da página atual.",
+        "Aprovar serviços sem transação tenant-safe pode baixar estoque duplicado ou de outra empresa.",
+        "Mudar categorias sem mapear valores antigos pode bloquear edições de produtos existentes.",
+        "Expor Balcão sem substituir chamadas locais pode criar dados que não aparecem no SaaS ou gravar no runtime errado.",
+        "Autorização de baixa automática pode diferir dos perfis SaaS existentes e deve falhar fechada."
       ]
     }
   ]

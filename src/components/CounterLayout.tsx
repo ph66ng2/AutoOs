@@ -4,24 +4,43 @@ import { useNavigate, Outlet } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { useSensitiveAccess } from "@/hooks/useSensitiveAccess";
 import { setAppMode, type AppMode } from "@/lib/app-mode";
+import type { ReactNode } from "react";
 
 interface CounterSessionValue { reset: () => void; resetKey: number; }
 const CounterSessionContext = createContext<CounterSessionValue | null>(null);
 
 export function useCounterSession() {
   const context = useContext(CounterSessionContext);
-  if (!context) throw new Error("useCounterSession deve ser usado dentro de CounterLayout");
+  if (!context) throw new Error("useCounterSession deve ser usado dentro de CounterSessionProvider");
   return context;
 }
 
-export function CounterLayout({ onChangeMode }: { onChangeMode: (mode: AppMode) => void }) {
+export function CounterSessionProvider({ children }: { children: ReactNode }) {
   const navigate = useNavigate();
-  const { status, lockSensitiveAccess, openProfileSelector } = useSensitiveAccess();
   const [resetKey, setResetKey] = useState(0);
   const reset = useCallback(() => {
     setResetKey((key) => key + 1);
     navigate("/balcao");
   }, [navigate]);
+  return (
+    <CounterSessionContext.Provider value={{ reset, resetKey }}>
+      {children}
+    </CounterSessionContext.Provider>
+  );
+}
+
+export function CounterLayout({ onChangeMode }: { onChangeMode: (mode: AppMode) => void }) {
+  return (
+    <CounterSessionProvider>
+      <CounterLayoutContent onChangeMode={onChangeMode} />
+    </CounterSessionProvider>
+  );
+}
+
+function CounterLayoutContent({ onChangeMode }: { onChangeMode: (mode: AppMode) => void }) {
+  const navigate = useNavigate();
+  const { status, lockSensitiveAccess, openProfileSelector } = useSensitiveAccess();
+  const { reset } = useCounterSession();
 
   function changeMode() {
     const next = window.confirm("Abrir o AutoOS Completo? Use o cabeçalho para voltar ao Modo Balcão.") ? "standard" : "counter";
@@ -31,8 +50,7 @@ export function CounterLayout({ onChangeMode }: { onChangeMode: (mode: AppMode) 
   }
 
   return (
-    <CounterSessionContext.Provider value={{ reset, resetKey }}>
-      <div className="min-h-screen bg-slate-100 text-slate-950">
+    <div className="min-h-screen bg-slate-100 text-slate-950">
         <header className="sticky top-0 z-30 flex min-h-20 flex-wrap items-center gap-3 border-b bg-slate-950 px-4 py-3 text-white shadow-lg lg:px-8">
           <Button variant="ghost" className="min-h-12 gap-2 text-base text-white hover:bg-white/10 hover:text-white" onClick={reset}><Home /> Início</Button>
           <Button variant="ghost" className="min-h-12 gap-2 text-base text-white hover:bg-white/10 hover:text-white" onClick={() => navigate("/balcao/painel")}><LayoutPanelTop /> Painel operacional</Button>
@@ -44,7 +62,6 @@ export function CounterLayout({ onChangeMode }: { onChangeMode: (mode: AppMode) 
           </div>
         </header>
         <main className="mx-auto max-w-[1600px] p-4 lg:p-8"><Outlet /></main>
-      </div>
-    </CounterSessionContext.Provider>
+    </div>
   );
 }

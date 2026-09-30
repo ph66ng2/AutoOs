@@ -17,6 +17,7 @@ O projeto não está mais em fase de scaffold. O estado atual é um app Tauri + 
 
 - Cadastro e gestão de clientes, equipamentos e produtos
 - Controle de estoque com entrada, saída e trilha de movimentações
+- No runtime SaaS: Balcão operacional, paginação de Clientes/Equipamentos, mínimos de estoque por categoria e baixa de peças vinculada aos serviços aprovados
 - Recebimento técnico com defeito relatado, patrimônio, acessórios e imagens de entrada/saída
 - Histórico de comunicações por WhatsApp e email
 - Perfis locais com PIN, permissões granulares e auditoria mínima
@@ -125,7 +126,11 @@ O app mantém housekeeping local desses diretórios e expõe um snapshot de supo
 
 ## Banco e migrações
 
-As migrações versionadas vivem em `src-tauri/migrations` e são a fonte de verdade do schema. O estado aplicado pode ser conferido no app em `Configurações > Segurança > Banco e schema`.
+O runtime interno usa as migrações SQLx em `src-tauri/migrations`. O runtime SaaS usa as migrações Supabase em `supabase/migrations`, com `supabase/schema.sql` alinhado ao estado versionado. Cada mudança é aditiva; o app não aplica migrations durante a inicialização.
+
+Migrations Supabase são promovidas pelo processo controlado de release. Abrir uma migration neste repositório não significa que ela já foi aplicada em Staging ou Produção. A migration `20260930190000_saas_approved_service_stock.sql` adiciona o vínculo entre serviços aprovados e consumo de peças no estoque.
+
+O estado aplicado do banco interno pode ser conferido no app em `Configurações > Segurança > Banco e schema`.
 
 ## Regras de Migration
 
