@@ -133,28 +133,11 @@ e execute `supabase/operations/delete-auth-test-tenants.sql`. A exclusão do
 usuário Auth remove o vínculo por `ON DELETE CASCADE`; tokens já emitidos deixam
 de passar na revalidação RLS.
 
-## Entitlement e token PowerSync
+## Entitlement e sincronização futura
 
-O entitlement JWS continua sendo emitido pelo servidor de assinatura descrito
-em `docs/SAAS_PLANOS_E_ENTITLEMENTS.md`. A capacidade `offline_sync=true` não é
-derivada do plano local nem do cache.
-
-Somente depois de validar um entitlement vigente o backend pode emitir um token
-PowerSync curto com, no mínimo:
-
-```json
-{
-  "iss": "<autoos-auth-issuer>",
-  "aud": "<powersync-instance>",
-  "sub": "<user-uuid>",
-  "company_id": "<empresa-uuid>",
-  "offline_sync": true,
-  "exp": 0,
-  "jti": "<unique-token-id>"
-}
-```
-
-O token PowerSync não substitui o entitlement e não contém segredo de banco.
-Online nunca solicita esse token. A chave privada de assinatura, o issuer e a
-validação do entitlement permanecem em backend server-side; os tickets de
-runtime e PowerSync consumirão este contrato sem reimplementá-lo no desktop.
+O servidor é autoridade de assinatura e acesso, conforme
+`docs/SAAS_PLANOS_E_ENTITLEMENTS.md`. O desktop SaaS Online nunca pede token
+PowerSync nem inicializa sincronização offline. As regras antigas de token
+PowerSync para um plano Offline no Tauri estão arquivadas; não são contrato
+vigente. Mobile Field precisará de contrato próprio, com autorização por
+empresa, expiração e validação server-side, antes de implementar sincronização.

@@ -2,7 +2,7 @@
 
 ## Decisão
 
-O schema SaaS usa UUID nativo como `id` e `empresa_id` em todas as tabelas sincronizáveis. Não será usado sequential-id mapping no runtime Online ou Offline. O conversor `scripts/migrate_serial_to_uuid.py` permanece apenas como ferramenta histórica para dumps legados e sempre produz um único `empresa_id` UUID por registro.
+O schema SaaS Online usa UUID nativo como `id` e `empresa_id` nas tabelas multi-tenant. A escolha de UUID não implica PowerSync no desktop; Mobile Field decidirá seu contrato de sincronização em fase própria. O conversor `scripts/migrate_serial_to_uuid.py` permanece apenas como ferramenta histórica para dumps legados e sempre produz um único `empresa_id` UUID por registro.
 
 Cada relação entre dados de negócio inclui a empresa nos dois lados da FK. Por exemplo, um equipamento de uma empresa não pode referenciar um cliente de outra empresa, mesmo que uma chamada de backend esteja defeituosa. RLS e as claims de autenticação continuam sendo definidos no `AO-PS-004`.
 

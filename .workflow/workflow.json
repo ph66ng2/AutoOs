@@ -16,38 +16,86 @@
       "AO-FISC-GATE-001"
     ],
     "deferredIds": [
-      "AO-PS-005",
-      "AO-PS-006",
-      "AO-PS-007",
-      "AO-PS-008",
       "AO-SUB-003",
-      "AO-SUB-004",
-      "AO-SUB-005",
       "AO-PHOTO-003",
       "AO-PHOTO-004",
       "AO-PHOTO-005",
       "AO-PHOTO-006",
       "AO-PHOTO-007",
       "AO-PHOTO-008",
-      "AO-PHOTO-009"
+      "AO-PHOTO-009",
+      "AO-AUTH-OPS-001"
     ],
-    "note": "Prioridade de roadmap separada de status e blockedBy. Relações externas em externalPrerequisites exigem revisão humana; waves.sh só lê blockedBy local."
+    "note": "Prioridade, status e dependências são distintos. O planejador classifica adiados/substituídos separadamente; externalPrerequisites continuam sujeitos a revisão humana.",
+    "supersededIds": [
+      "AO-PS-005",
+      "AO-PS-006",
+      "AO-PS-007",
+      "AO-PS-008",
+      "AO-SUB-004",
+      "AO-SUB-005"
+    ],
+    "superseded": [
+      {
+        "id": "AO-PS-005",
+        "reason": "Escopo antigo de PowerSync/Offline no desktop não corresponde à decisão Mobile Field; substituição será especificada por tickets mobile após Fiscal PROD."
+      },
+      {
+        "id": "AO-PS-006",
+        "reason": "Escopo antigo de PowerSync/Offline no desktop não corresponde à decisão Mobile Field; substituição será especificada por tickets mobile após Fiscal PROD."
+      },
+      {
+        "id": "AO-PS-007",
+        "reason": "Escopo antigo de PowerSync/Offline no desktop não corresponde à decisão Mobile Field; substituição será especificada por tickets mobile após Fiscal PROD."
+      },
+      {
+        "id": "AO-PS-008",
+        "reason": "Escopo antigo de PowerSync/Offline no desktop não corresponde à decisão Mobile Field; substituição será especificada por tickets mobile após Fiscal PROD."
+      },
+      {
+        "id": "AO-SUB-004",
+        "reason": "Escopo antigo de PowerSync/Offline no desktop não corresponde à decisão Mobile Field; substituição será especificada por tickets mobile após Fiscal PROD."
+      },
+      {
+        "id": "AO-SUB-005",
+        "reason": "Escopo antigo de PowerSync/Offline no desktop não corresponde à decisão Mobile Field; substituição será especificada por tickets mobile após Fiscal PROD."
+      }
+    ],
+    "platformDecision": "Desktop AutoOS opera Online com Supabase e RLS; PowerSync é reservado ao futuro Mobile Field. Nenhum plano desktop Offline usa PowerSync.",
+    "prReconciliation": {
+      "mergedMissingTicketsAdded": [
+        "AO-EQP-ONLINE-001",
+        "AO-SAAS-ID-001",
+        "AO-SAAS-SESSION-001",
+        "AO-SAAS-AUTHZ-001",
+        "AO-SAAS-INVITE-001",
+        "AO-SAAS-TEAM-001",
+        "AO-EQP-ONLINE-002",
+        "AO-EQP-ONLINE-003",
+        "AO-EQP-ONLINE-004",
+        "AO-EQP-ONLINE-005",
+        "AO-SRV-ONLINE-001",
+        "AO-INS-ONLINE-001"
+      ],
+      "closedUnmergedPr": "https://github.com/ph66ng2/AutoOs/pull/99",
+      "details": "docs/WORKFLOW_RECONCILIATION.md"
+    }
   },
   "baseBranch": "origin/feature",
   "promotionTarget": "origin/master",
   "architectureDecisions": [
-    "Manter um único aplicativo e uma única base de código para todos os planos.",
-    "O plano Online usa Supabase com autenticação e RLS, sem PowerSync e sem credenciais privilegiadas no cliente.",
-    "O plano Offline adiciona PowerSync e só inicializa o sync quando o entitlement assinado permitir.",
+    "Uma base de código AutoOS mantém operação interna e build SaaS desktop explícito; o desktop SaaS permanece Online.",
+    "O desktop SaaS usa Supabase Auth e RLS sem PowerSync; nenhum segredo privilegiado entra no cliente.",
+    "PowerSync é reservado ao futuro AutoOS Field/mobile e não integra o runtime Tauri desktop nem um plano desktop Offline.",
     "Assinatura e capacidades são autoritativas no servidor; flags locais servem apenas como cache temporário.",
     "O provedor de cobrança será decidido em AO-SUB-001 e não fica implicitamente fixado como Stripe.",
     "Toda worktree parte exclusivamente de origin/feature; master só recebe promoção humana após validação e representa a linha usada em produção.",
-    "A master interna da BMITAG permanece congelada até o Go/No-Go final.",
-    "No modo SaaS, somente o administrador autentica a empresa com email e senha pelo Supabase Auth; não existe cadastro público de empresas no MVP.",
+    "A master é a linha produtiva BMITAG; promoção a partir de feature requer validação e decisão humana.",
+    "Cada usuário SaaS autentica individualmente no Supabase Auth e recebe vínculo ativo de empresa e perfil definido server-side; convites substituem o antigo modelo de único administrador.",
     "Funcionários usam perfis UUID autoritativos na nuvem e PIN local por dispositivo; o PIN nunca autentica no Supabase, escolhe tenant ou concede capacidade cloud.",
     "A sessão Supabase é mantida no keyring e renovada automaticamente; senha, service_role, senha PostgreSQL e credenciais internas nunca são persistidas ou distribuídas no cliente.",
     "O build SaaS é explícito e não selecionável pelo usuário; nesse modo o AutoOS não inicializa o PostgreSQL legado nem exibe configuração de banco.",
-    "No MVP, o perfil local identifica o operador para o fluxo e a auditoria operacional, mas não constitui identidade cloud individual forte e incontestável."
+    "Identidade cloud individual e autorização sensível são resolvidas no servidor por sessão ativa, empresa e perfil; PIN local não concede permissão cloud."
   ],
   "ticketTestProtocol": {
     "requiredForNewOrModifiedTickets": true,
@@ -3530,7 +3578,7 @@
     {
       "id": "AO-WF-RECONCILE-001",
       "title": "Alinhar roadmap Fiscal PROD entre os três workflows",
-      "status": "ready",
+      "status": "review",
       "blockedBy": [],
       "objective": "Registrar a decisão de produto, a divisão de responsabilidades e a revisão dos tickets sem confundir prioridade com status técnico.",
       "context": "O DAG atual prioriza SaaS e integração entre desktops; o marco de negócio passou a ser Fiscal PROD interno BMITAG.",
@@ -3577,6 +3625,20 @@
       ],
       "risks": [
         "Declarar dependência entre repositórios que os planejadores ainda não sabem aplicar."
+      ],
+      "evidence": [
+        {
+          "type": "merged_pr",
+          "url": "https://github.com/ph66ng2/AutoOs/pull/102"
+        },
+        {
+          "type": "merged_pr",
+          "url": "https://github.com/ph66ng2/AutoPlatform/pull/10"
+        },
+        {
+          "type": "merged_pr",
+          "url": "https://github.com/ph66ng2/AutoBO/pull/9"
+        }
       ]
     },
     {
@@ -4105,6 +4167,777 @@
           "state": "proposed",
           "condition": "O gate AutoOS permanece blocked até homologação backend confirmada por pessoa."
         }
+      ]
+    },
+    {
+      "id": "AO-EQP-ONLINE-001",
+      "title": "Equipamentos no shell SaaS: lista, busca, cadastro e edição tenant-safe",
+      "status": "merged",
+      "blockedBy": [],
+      "context": "Entrega histórica do PR #72, mesclado na feature; estava ausente do catálogo. Relações de contexto não são blockedBy retroativo.",
+      "objective": "As ações básicas de Equipamentos usam UUID e isolamento por empresa.",
+      "scope": [
+        "As ações básicas de Equipamentos usam UUID e isolamento por empresa.",
+        "Preservar rastreabilidade do código já mesclado no catálogo do workflow."
+      ],
+      "outOfScope": [
+        "Declarar homologação remota ou rollout produtivo sem evidência independente."
+      ],
+      "expectedBehavior": "As ações básicas de Equipamentos usam UUID e isolamento por empresa.",
+      "acceptanceCriteria": [
+        "PR #72 foi mesclado na branch feature.",
+        "As ações básicas de Equipamentos usam UUID e isolamento por empresa."
+      ],
+      "tests": [
+        "Consultar evidência declarada no PR e distinguir verificações executadas de pendências."
+      ],
+      "testInstructions": {
+        "prerequisites": [
+          "Revisão documental somente leitura da branch feature e do PR original."
+        ],
+        "steps": [
+          "Abrir o PR #72 e conferir merge, arquivos alterados e validações declaradas.",
+          "Registrar separadamente qualquer lacuna de homologação ou rollout."
+        ],
+        "expectedResultAndEvidence": [
+          "URL do PR #72, merge confirmado e ressalva documentada."
+        ],
+        "dataImpact": "Somente leitura; reconciliação do catálogo não altera dados de aplicação.",
+        "cleanupAndRollback": [
+          "Se a associação for incorreta, corrigir o catálogo por novo PR; nenhum dado de cliente é afetado."
+        ],
+        "stagingRestrictions": "Não inferir aplicação de migrations, testes ou operação produtiva apenas do merge."
+      },
+      "likelyFiles": [
+        "src/",
+        "supabase/"
+      ],
+      "risks": [
+        "Migrations desse PR não foram aplicadas remotamente no próprio PR."
+      ],
+      "evidence": [
+        {
+          "type": "merged_pr",
+          "url": "https://github.com/ph66ng2/AutoOs/pull/72",
+          "mergedAt": "2026-09-23T14:59:55Z"
+        }
+      ],
+      "relatedTo": [
+        "AO-SHELL-001",
+        "AO-SUB-002"
+      ],
+      "validationGap": "Migrations desse PR não foram aplicadas remotamente no próprio PR.",
+      "completedAt": "2026-09-23"
+    },
+    {
+      "id": "AO-SAAS-ID-001",
+      "title": "Vincular identidade individual à empresa e ao perfil",
+      "status": "merged",
+      "blockedBy": [],
+      "context": "Entrega histórica do PR #74, mesclado na feature; estava ausente do catálogo. Relações de contexto não são blockedBy retroativo.",
+      "objective": "O servidor resolve o vínculo Auth–empresa–perfil sem confiar em metadados do cliente.",
+      "scope": [
+        "O servidor resolve o vínculo Auth–empresa–perfil sem confiar em metadados do cliente.",
+        "Preservar rastreabilidade do código já mesclado no catálogo do workflow."
+      ],
+      "outOfScope": [
+        "Declarar homologação remota ou rollout produtivo sem evidência independente."
+      ],
+      "expectedBehavior": "O servidor resolve o vínculo Auth–empresa–perfil sem confiar em metadados do cliente.",
+      "acceptanceCriteria": [
+        "PR #74 foi mesclado na branch feature.",
+        "O servidor resolve o vínculo Auth–empresa–perfil sem confiar em metadados do cliente."
+      ],
+      "tests": [
+        "Consultar evidência declarada no PR e distinguir verificações executadas de pendências."
+      ],
+      "testInstructions": {
+        "prerequisites": [
+          "Revisão documental somente leitura da branch feature e do PR original."
+        ],
+        "steps": [
+          "Abrir o PR #74 e conferir merge, arquivos alterados e validações declaradas.",
+          "Registrar separadamente qualquer lacuna de homologação ou rollout."
+        ],
+        "expectedResultAndEvidence": [
+          "URL do PR #74, merge confirmado e ressalva documentada."
+        ],
+        "dataImpact": "Somente leitura; reconciliação do catálogo não altera dados de aplicação.",
+        "cleanupAndRollback": [
+          "Se a associação for incorreta, corrigir o catálogo por novo PR; nenhum dado de cliente é afetado."
+        ],
+        "stagingRestrictions": "Não inferir aplicação de migrations, testes ou operação produtiva apenas do merge."
+      },
+      "likelyFiles": [
+        "src/",
+        "supabase/"
+      ],
+      "risks": [
+        "O PR não aplicou migration em staging ou produção."
+      ],
+      "evidence": [
+        {
+          "type": "merged_pr",
+          "url": "https://github.com/ph66ng2/AutoOs/pull/74",
+          "mergedAt": "2026-09-23T15:46:53Z"
+        }
+      ],
+      "relatedTo": [
+        "AO-AUTH-001",
+        "AO-AUTH-004"
+      ],
+      "validationGap": "O PR não aplicou migration em staging ou produção.",
+      "completedAt": "2026-09-23"
+    },
+    {
+      "id": "AO-SAAS-SESSION-001",
+      "title": "Resolver perfil e sessão individual no servidor",
+      "status": "merged",
+      "blockedBy": [],
+      "context": "Entrega histórica do PR #77, mesclado na feature; estava ausente do catálogo. Relações de contexto não são blockedBy retroativo.",
+      "objective": "A sessão ativa define usuário, empresa e perfil; PIN continua somente local.",
+      "scope": [
+        "A sessão ativa define usuário, empresa e perfil; PIN continua somente local.",
+        "Preservar rastreabilidade do código já mesclado no catálogo do workflow."
+      ],
+      "outOfScope": [
+        "Declarar homologação remota ou rollout produtivo sem evidência independente."
+      ],
+      "expectedBehavior": "A sessão ativa define usuário, empresa e perfil; PIN continua somente local.",
+      "acceptanceCriteria": [
+        "PR #77 foi mesclado na branch feature.",
+        "A sessão ativa define usuário, empresa e perfil; PIN continua somente local."
+      ],
+      "tests": [
+        "Consultar evidência declarada no PR e distinguir verificações executadas de pendências."
+      ],
+      "testInstructions": {
+        "prerequisites": [
+          "Revisão documental somente leitura da branch feature e do PR original."
+        ],
+        "steps": [
+          "Abrir o PR #77 e conferir merge, arquivos alterados e validações declaradas.",
+          "Registrar separadamente qualquer lacuna de homologação ou rollout."
+        ],
+        "expectedResultAndEvidence": [
+          "URL do PR #77, merge confirmado e ressalva documentada."
+        ],
+        "dataImpact": "Somente leitura; reconciliação do catálogo não altera dados de aplicação.",
+        "cleanupAndRollback": [
+          "Se a associação for incorreta, corrigir o catálogo por novo PR; nenhum dado de cliente é afetado."
+        ],
+        "stagingRestrictions": "Não inferir aplicação de migrations, testes ou operação produtiva apenas do merge."
+      },
+      "likelyFiles": [
+        "src/",
+        "supabase/"
+      ],
+      "risks": [
+        "Compatibilidade temporária do ADMIN legado ainda exige retirada planejada."
+      ],
+      "evidence": [
+        {
+          "type": "merged_pr",
+          "url": "https://github.com/ph66ng2/AutoOs/pull/77",
+          "mergedAt": "2026-09-23T21:00:08Z"
+        }
+      ],
+      "relatedTo": [
+        "AO-SAAS-ID-001",
+        "AO-AUTH-004"
+      ],
+      "validationGap": "Compatibilidade temporária do ADMIN legado ainda exige retirada planejada.",
+      "completedAt": "2026-09-23"
+    },
+    {
+      "id": "AO-SAAS-AUTHZ-001",
+      "title": "Autorizar operações sensíveis do SaaS no servidor",
+      "status": "merged",
+      "blockedBy": [
+        "AO-SAAS-SESSION-001"
+      ],
+      "context": "Entrega histórica do PR #78, mesclado na feature; estava ausente do catálogo. Relações de contexto não são blockedBy retroativo.",
+      "objective": "Mutações sensíveis validam sessão, perfil e empresa no servidor.",
+      "scope": [
+        "Mutações sensíveis validam sessão, perfil e empresa no servidor.",
+        "Preservar rastreabilidade do código já mesclado no catálogo do workflow."
+      ],
+      "outOfScope": [
+        "Declarar homologação remota ou rollout produtivo sem evidência independente."
+      ],
+      "expectedBehavior": "Mutações sensíveis validam sessão, perfil e empresa no servidor.",
+      "acceptanceCriteria": [
+        "PR #78 foi mesclado na branch feature.",
+        "Mutações sensíveis validam sessão, perfil e empresa no servidor."
+      ],
+      "tests": [
+        "Consultar evidência declarada no PR e distinguir verificações executadas de pendências."
+      ],
+      "testInstructions": {
+        "prerequisites": [
+          "Revisão documental somente leitura da branch feature e do PR original."
+        ],
+        "steps": [
+          "Abrir o PR #78 e conferir merge, arquivos alterados e validações declaradas.",
+          "Registrar separadamente qualquer lacuna de homologação ou rollout."
+        ],
+        "expectedResultAndEvidence": [
+          "URL do PR #78, merge confirmado e ressalva documentada."
+        ],
+        "dataImpact": "Somente leitura; reconciliação do catálogo não altera dados de aplicação.",
+        "cleanupAndRollback": [
+          "Se a associação for incorreta, corrigir o catálogo por novo PR; nenhum dado de cliente é afetado."
+        ],
+        "stagingRestrictions": "Não inferir aplicação de migrations, testes ou operação produtiva apenas do merge."
+      },
+      "likelyFiles": [
+        "src/",
+        "supabase/"
+      ],
+      "risks": [
+        "O PR não acessou banco remoto para homologação."
+      ],
+      "evidence": [
+        {
+          "type": "merged_pr",
+          "url": "https://github.com/ph66ng2/AutoOs/pull/78",
+          "mergedAt": "2026-09-24T00:36:36Z"
+        }
+      ],
+      "relatedTo": [
+        "AO-SAAS-SESSION-001",
+        "AO-AUTH-004"
+      ],
+      "validationGap": "O PR não acessou banco remoto para homologação.",
+      "completedAt": "2026-09-24"
+    },
+    {
+      "id": "AO-SAAS-INVITE-001",
+      "title": "Convidar e administrar o ciclo de vida de usuários SaaS",
+      "status": "merged",
+      "blockedBy": [],
+      "context": "Entrega histórica do PR #80, mesclado na feature; estava ausente do catálogo. Relações de contexto não são blockedBy retroativo.",
+      "objective": "Convite e mudança de vínculo seguem escopo por empresa e auditoria.",
+      "scope": [
+        "Convite e mudança de vínculo seguem escopo por empresa e auditoria.",
+        "Preservar rastreabilidade do código já mesclado no catálogo do workflow."
+      ],
+      "outOfScope": [
+        "Declarar homologação remota ou rollout produtivo sem evidência independente."
+      ],
+      "expectedBehavior": "Convite e mudança de vínculo seguem escopo por empresa e auditoria.",
+      "acceptanceCriteria": [
+        "PR #80 foi mesclado na branch feature.",
+        "Convite e mudança de vínculo seguem escopo por empresa e auditoria."
+      ],
+      "tests": [
+        "Consultar evidência declarada no PR e distinguir verificações executadas de pendências."
+      ],
+      "testInstructions": {
+        "prerequisites": [
+          "Revisão documental somente leitura da branch feature e do PR original."
+        ],
+        "steps": [
+          "Abrir o PR #80 e conferir merge, arquivos alterados e validações declaradas.",
+          "Registrar separadamente qualquer lacuna de homologação ou rollout."
+        ],
+        "expectedResultAndEvidence": [
+          "URL do PR #80, merge confirmado e ressalva documentada."
+        ],
+        "dataImpact": "Somente leitura; reconciliação do catálogo não altera dados de aplicação.",
+        "cleanupAndRollback": [
+          "Se a associação for incorreta, corrigir o catálogo por novo PR; nenhum dado de cliente é afetado."
+        ],
+        "stagingRestrictions": "Não inferir aplicação de migrations, testes ou operação produtiva apenas do merge."
+      },
+      "likelyFiles": [
+        "src/",
+        "supabase/"
+      ],
+      "risks": [
+        "Redirect externo de aceite de convite ainda precisava ser criado e homologado."
+      ],
+      "evidence": [
+        {
+          "type": "merged_pr",
+          "url": "https://github.com/ph66ng2/AutoOs/pull/80",
+          "mergedAt": "2026-09-24T01:40:43Z"
+        }
+      ],
+      "relatedTo": [
+        "AO-SAAS-ID-001",
+        "AO-SAAS-AUTHZ-001"
+      ],
+      "validationGap": "Redirect externo de aceite de convite ainda precisava ser criado e homologado.",
+      "completedAt": "2026-09-24"
+    },
+    {
+      "id": "AO-SAAS-TEAM-001",
+      "title": "Exibir Equipe e Acessos no shell SaaS",
+      "status": "merged",
+      "blockedBy": [],
+      "context": "Entrega histórica do PR #81, mesclado na feature; estava ausente do catálogo. Relações de contexto não são blockedBy retroativo.",
+      "objective": "ADMIN vê e administra equipe pela interface tenant-safe.",
+      "scope": [
+        "ADMIN vê e administra equipe pela interface tenant-safe.",
+        "Preservar rastreabilidade do código já mesclado no catálogo do workflow."
+      ],
+      "outOfScope": [
+        "Declarar homologação remota ou rollout produtivo sem evidência independente."
+      ],
+      "expectedBehavior": "ADMIN vê e administra equipe pela interface tenant-safe.",
+      "acceptanceCriteria": [
+        "PR #81 foi mesclado na branch feature.",
+        "ADMIN vê e administra equipe pela interface tenant-safe."
+      ],
+      "tests": [
+        "Consultar evidência declarada no PR e distinguir verificações executadas de pendências."
+      ],
+      "testInstructions": {
+        "prerequisites": [
+          "Revisão documental somente leitura da branch feature e do PR original."
+        ],
+        "steps": [
+          "Abrir o PR #81 e conferir merge, arquivos alterados e validações declaradas.",
+          "Registrar separadamente qualquer lacuna de homologação ou rollout."
+        ],
+        "expectedResultAndEvidence": [
+          "URL do PR #81, merge confirmado e ressalva documentada."
+        ],
+        "dataImpact": "Somente leitura; reconciliação do catálogo não altera dados de aplicação.",
+        "cleanupAndRollback": [
+          "Se a associação for incorreta, corrigir o catálogo por novo PR; nenhum dado de cliente é afetado."
+        ],
+        "stagingRestrictions": "Não inferir aplicação de migrations, testes ou operação produtiva apenas do merge."
+      },
+      "likelyFiles": [
+        "src/",
+        "supabase/"
+      ],
+      "risks": [
+        "O PR não validou staging ou produção."
+      ],
+      "evidence": [
+        {
+          "type": "merged_pr",
+          "url": "https://github.com/ph66ng2/AutoOs/pull/81",
+          "mergedAt": "2026-09-24T02:26:26Z"
+        }
+      ],
+      "relatedTo": [
+        "AO-SAAS-INVITE-001",
+        "AO-SAAS-AUTHZ-001"
+      ],
+      "validationGap": "O PR não validou staging ou produção.",
+      "completedAt": "2026-09-24"
+    },
+    {
+      "id": "AO-EQP-ONLINE-002",
+      "title": "Portar informações e contatos de Equipamentos ao SaaS",
+      "status": "merged",
+      "blockedBy": [],
+      "context": "Entrega histórica do PR #83, mesclado na feature; estava ausente do catálogo. Relações de contexto não são blockedBy retroativo.",
+      "objective": "Informações e responsáveis usam UUID e não cruzam empresas ou clientes.",
+      "scope": [
+        "Informações e responsáveis usam UUID e não cruzam empresas ou clientes.",
+        "Preservar rastreabilidade do código já mesclado no catálogo do workflow."
+      ],
+      "outOfScope": [
+        "Declarar homologação remota ou rollout produtivo sem evidência independente."
+      ],
+      "expectedBehavior": "Informações e responsáveis usam UUID e não cruzam empresas ou clientes.",
+      "acceptanceCriteria": [
+        "PR #83 foi mesclado na branch feature.",
+        "Informações e responsáveis usam UUID e não cruzam empresas ou clientes."
+      ],
+      "tests": [
+        "Consultar evidência declarada no PR e distinguir verificações executadas de pendências."
+      ],
+      "testInstructions": {
+        "prerequisites": [
+          "Revisão documental somente leitura da branch feature e do PR original."
+        ],
+        "steps": [
+          "Abrir o PR #83 e conferir merge, arquivos alterados e validações declaradas.",
+          "Registrar separadamente qualquer lacuna de homologação ou rollout."
+        ],
+        "expectedResultAndEvidence": [
+          "URL do PR #83, merge confirmado e ressalva documentada."
+        ],
+        "dataImpact": "Somente leitura; reconciliação do catálogo não altera dados de aplicação.",
+        "cleanupAndRollback": [
+          "Se a associação for incorreta, corrigir o catálogo por novo PR; nenhum dado de cliente é afetado."
+        ],
+        "stagingRestrictions": "Não inferir aplicação de migrations, testes ou operação produtiva apenas do merge."
+      },
+      "likelyFiles": [
+        "src/",
+        "supabase/"
+      ],
+      "risks": [
+        "O PR não aplicou migration em staging ou produção."
+      ],
+      "evidence": [
+        {
+          "type": "merged_pr",
+          "url": "https://github.com/ph66ng2/AutoOs/pull/83",
+          "mergedAt": "2026-09-24T05:38:16Z"
+        }
+      ],
+      "relatedTo": [
+        "AO-EQP-ONLINE-001"
+      ],
+      "validationGap": "O PR não aplicou migration em staging ou produção.",
+      "completedAt": "2026-09-24"
+    },
+    {
+      "id": "AO-EQP-ONLINE-003",
+      "title": "Portar verificação e orçamento de Equipamentos ao SaaS",
+      "status": "merged",
+      "blockedBy": [],
+      "context": "Entrega histórica do PR #84, mesclado na feature; estava ausente do catálogo. Relações de contexto não são blockedBy retroativo.",
+      "objective": "Verificação, orçamento e status persistem por operações atômicas tenant-safe.",
+      "scope": [
+        "Verificação, orçamento e status persistem por operações atômicas tenant-safe.",
+        "Preservar rastreabilidade do código já mesclado no catálogo do workflow."
+      ],
+      "outOfScope": [
+        "Declarar homologação remota ou rollout produtivo sem evidência independente."
+      ],
+      "expectedBehavior": "Verificação, orçamento e status persistem por operações atômicas tenant-safe.",
+      "acceptanceCriteria": [
+        "PR #84 foi mesclado na branch feature.",
+        "Verificação, orçamento e status persistem por operações atômicas tenant-safe."
+      ],
+      "tests": [
+        "Consultar evidência declarada no PR e distinguir verificações executadas de pendências."
+      ],
+      "testInstructions": {
+        "prerequisites": [
+          "Revisão documental somente leitura da branch feature e do PR original."
+        ],
+        "steps": [
+          "Abrir o PR #84 e conferir merge, arquivos alterados e validações declaradas.",
+          "Registrar separadamente qualquer lacuna de homologação ou rollout."
+        ],
+        "expectedResultAndEvidence": [
+          "URL do PR #84, merge confirmado e ressalva documentada."
+        ],
+        "dataImpact": "Somente leitura; reconciliação do catálogo não altera dados de aplicação.",
+        "cleanupAndRollback": [
+          "Se a associação for incorreta, corrigir o catálogo por novo PR; nenhum dado de cliente é afetado."
+        ],
+        "stagingRestrictions": "Não inferir aplicação de migrations, testes ou operação produtiva apenas do merge."
+      },
+      "likelyFiles": [
+        "src/",
+        "supabase/"
+      ],
+      "risks": [
+        "O PR não aplicou migration em staging ou produção."
+      ],
+      "evidence": [
+        {
+          "type": "merged_pr",
+          "url": "https://github.com/ph66ng2/AutoOs/pull/84",
+          "mergedAt": "2026-09-24T06:39:06Z"
+        }
+      ],
+      "relatedTo": [
+        "AO-EQP-ONLINE-002"
+      ],
+      "validationGap": "O PR não aplicou migration em staging ou produção.",
+      "completedAt": "2026-09-24"
+    },
+    {
+      "id": "AO-EQP-ONLINE-004",
+      "title": "Portar comunicações de Equipamentos ao SaaS",
+      "status": "merged",
+      "blockedBy": [],
+      "context": "Entrega histórica do PR #85, mesclado na feature; estava ausente do catálogo. Relações de contexto não são blockedBy retroativo.",
+      "objective": "Comunicações registram envio e falha com isolamento por empresa.",
+      "scope": [
+        "Comunicações registram envio e falha com isolamento por empresa.",
+        "Preservar rastreabilidade do código já mesclado no catálogo do workflow."
+      ],
+      "outOfScope": [
+        "Declarar homologação remota ou rollout produtivo sem evidência independente."
+      ],
+      "expectedBehavior": "Comunicações registram envio e falha com isolamento por empresa.",
+      "acceptanceCriteria": [
+        "PR #85 foi mesclado na branch feature.",
+        "Comunicações registram envio e falha com isolamento por empresa."
+      ],
+      "tests": [
+        "Consultar evidência declarada no PR e distinguir verificações executadas de pendências."
+      ],
+      "testInstructions": {
+        "prerequisites": [
+          "Revisão documental somente leitura da branch feature e do PR original."
+        ],
+        "steps": [
+          "Abrir o PR #85 e conferir merge, arquivos alterados e validações declaradas.",
+          "Registrar separadamente qualquer lacuna de homologação ou rollout."
+        ],
+        "expectedResultAndEvidence": [
+          "URL do PR #85, merge confirmado e ressalva documentada."
+        ],
+        "dataImpact": "Somente leitura; reconciliação do catálogo não altera dados de aplicação.",
+        "cleanupAndRollback": [
+          "Se a associação for incorreta, corrigir o catálogo por novo PR; nenhum dado de cliente é afetado."
+        ],
+        "stagingRestrictions": "Não inferir aplicação de migrations, testes ou operação produtiva apenas do merge."
+      },
+      "likelyFiles": [
+        "src/",
+        "supabase/"
+      ],
+      "risks": [
+        "O PR não enviou mensagem real durante validação."
+      ],
+      "evidence": [
+        {
+          "type": "merged_pr",
+          "url": "https://github.com/ph66ng2/AutoOs/pull/85",
+          "mergedAt": "2026-09-25T11:50:20Z"
+        }
+      ],
+      "relatedTo": [
+        "AO-EQP-ONLINE-003"
+      ],
+      "validationGap": "O PR não enviou mensagem real durante validação.",
+      "completedAt": "2026-09-25"
+    },
+    {
+      "id": "AO-EQP-ONLINE-005",
+      "title": "Portar histórico de Equipamentos ao SaaS",
+      "status": "merged",
+      "blockedBy": [],
+      "context": "Entrega histórica do PR #86, mesclado na feature; estava ausente do catálogo. Relações de contexto não são blockedBy retroativo.",
+      "objective": "Histórico lê etapas, auditoria e verificação por empresa e equipamento.",
+      "scope": [
+        "Histórico lê etapas, auditoria e verificação por empresa e equipamento.",
+        "Preservar rastreabilidade do código já mesclado no catálogo do workflow."
+      ],
+      "outOfScope": [
+        "Declarar homologação remota ou rollout produtivo sem evidência independente."
+      ],
+      "expectedBehavior": "Histórico lê etapas, auditoria e verificação por empresa e equipamento.",
+      "acceptanceCriteria": [
+        "PR #86 foi mesclado na branch feature.",
+        "Histórico lê etapas, auditoria e verificação por empresa e equipamento."
+      ],
+      "tests": [
+        "Consultar evidência declarada no PR e distinguir verificações executadas de pendências."
+      ],
+      "testInstructions": {
+        "prerequisites": [
+          "Revisão documental somente leitura da branch feature e do PR original."
+        ],
+        "steps": [
+          "Abrir o PR #86 e conferir merge, arquivos alterados e validações declaradas.",
+          "Registrar separadamente qualquer lacuna de homologação ou rollout."
+        ],
+        "expectedResultAndEvidence": [
+          "URL do PR #86, merge confirmado e ressalva documentada."
+        ],
+        "dataImpact": "Somente leitura; reconciliação do catálogo não altera dados de aplicação.",
+        "cleanupAndRollback": [
+          "Se a associação for incorreta, corrigir o catálogo por novo PR; nenhum dado de cliente é afetado."
+        ],
+        "stagingRestrictions": "Não inferir aplicação de migrations, testes ou operação produtiva apenas do merge."
+      },
+      "likelyFiles": [
+        "src/",
+        "supabase/"
+      ],
+      "risks": [
+        "A consulta de staging foi somente leitura."
+      ],
+      "evidence": [
+        {
+          "type": "merged_pr",
+          "url": "https://github.com/ph66ng2/AutoOs/pull/86",
+          "mergedAt": "2026-09-29T14:23:44Z"
+        }
+      ],
+      "relatedTo": [
+        "AO-EQP-ONLINE-004"
+      ],
+      "validationGap": "A consulta de staging foi somente leitura.",
+      "completedAt": "2026-09-29"
+    },
+    {
+      "id": "AO-SRV-ONLINE-001",
+      "title": "Disponibilizar Serviços no SaaS Online",
+      "status": "merged",
+      "blockedBy": [],
+      "context": "Entrega histórica do PR #98, mesclado na feature; estava ausente do catálogo. Relações de contexto não são blockedBy retroativo.",
+      "objective": "Serviços usam CRUD, modelos e peças sugeridas sem baixa de estoque.",
+      "scope": [
+        "Serviços usam CRUD, modelos e peças sugeridas sem baixa de estoque.",
+        "Preservar rastreabilidade do código já mesclado no catálogo do workflow."
+      ],
+      "outOfScope": [
+        "Declarar homologação remota ou rollout produtivo sem evidência independente."
+      ],
+      "expectedBehavior": "Serviços usam CRUD, modelos e peças sugeridas sem baixa de estoque.",
+      "acceptanceCriteria": [
+        "PR #98 foi mesclado na branch feature.",
+        "Serviços usam CRUD, modelos e peças sugeridas sem baixa de estoque."
+      ],
+      "tests": [
+        "Consultar evidência declarada no PR e distinguir verificações executadas de pendências."
+      ],
+      "testInstructions": {
+        "prerequisites": [
+          "Revisão documental somente leitura da branch feature e do PR original."
+        ],
+        "steps": [
+          "Abrir o PR #98 e conferir merge, arquivos alterados e validações declaradas.",
+          "Registrar separadamente qualquer lacuna de homologação ou rollout."
+        ],
+        "expectedResultAndEvidence": [
+          "URL do PR #98, merge confirmado e ressalva documentada."
+        ],
+        "dataImpact": "Somente leitura; reconciliação do catálogo não altera dados de aplicação.",
+        "cleanupAndRollback": [
+          "Se a associação for incorreta, corrigir o catálogo por novo PR; nenhum dado de cliente é afetado."
+        ],
+        "stagingRestrictions": "Não inferir aplicação de migrations, testes ou operação produtiva apenas do merge."
+      },
+      "likelyFiles": [
+        "src/",
+        "supabase/"
+      ],
+      "risks": [
+        "Migration aditiva não foi aplicada no staging por esse PR."
+      ],
+      "evidence": [
+        {
+          "type": "merged_pr",
+          "url": "https://github.com/ph66ng2/AutoOs/pull/98",
+          "mergedAt": "2026-09-29T19:59:34Z"
+        }
+      ],
+      "relatedTo": [
+        "AO-SUB-002",
+        "AO-EQP-ONLINE-003"
+      ],
+      "validationGap": "Migration aditiva não foi aplicada no staging por esse PR.",
+      "completedAt": "2026-09-29"
+    },
+    {
+      "id": "AO-INS-ONLINE-001",
+      "title": "Disponibilizar Insumos no SaaS Online",
+      "status": "merged",
+      "blockedBy": [],
+      "context": "Entrega histórica do PR #101, mesclado na feature; estava ausente do catálogo. Relações de contexto não são blockedBy retroativo.",
+      "objective": "Catálogo e movimentações de Insumos usam RPC transacional e isolamento por empresa.",
+      "scope": [
+        "Catálogo e movimentações de Insumos usam RPC transacional e isolamento por empresa.",
+        "Preservar rastreabilidade do código já mesclado no catálogo do workflow."
+      ],
+      "outOfScope": [
+        "Declarar homologação remota ou rollout produtivo sem evidência independente."
+      ],
+      "expectedBehavior": "Catálogo e movimentações de Insumos usam RPC transacional e isolamento por empresa.",
+      "acceptanceCriteria": [
+        "PR #101 foi mesclado na branch feature.",
+        "Catálogo e movimentações de Insumos usam RPC transacional e isolamento por empresa."
+      ],
+      "tests": [
+        "Consultar evidência declarada no PR e distinguir verificações executadas de pendências."
+      ],
+      "testInstructions": {
+        "prerequisites": [
+          "Revisão documental somente leitura da branch feature e do PR original."
+        ],
+        "steps": [
+          "Abrir o PR #101 e conferir merge, arquivos alterados e validações declaradas.",
+          "Registrar separadamente qualquer lacuna de homologação ou rollout."
+        ],
+        "expectedResultAndEvidence": [
+          "URL do PR #101, merge confirmado e ressalva documentada."
+        ],
+        "dataImpact": "Somente leitura; reconciliação do catálogo não altera dados de aplicação.",
+        "cleanupAndRollback": [
+          "Se a associação for incorreta, corrigir o catálogo por novo PR; nenhum dado de cliente é afetado."
+        ],
+        "stagingRestrictions": "Não inferir aplicação de migrations, testes ou operação produtiva apenas do merge."
+      },
+      "likelyFiles": [
+        "src/",
+        "supabase/"
+      ],
+      "risks": [
+        "O PR não executou a suíte de testes; migration foi aplicada em staging, não em produção."
+      ],
+      "evidence": [
+        {
+          "type": "merged_pr",
+          "url": "https://github.com/ph66ng2/AutoOs/pull/101",
+          "mergedAt": "2026-09-30T03:18:43Z"
+        }
+      ],
+      "relatedTo": [
+        "AO-SUB-002",
+        "AO-SRV-ONLINE-001"
+      ],
+      "validationGap": "O PR não executou a suíte de testes; migration foi aplicada em staging, não em produção.",
+      "completedAt": "2026-09-30"
+    },
+    {
+      "id": "AO-AUTH-OPS-001",
+      "title": "Aprovar provisionamento produtivo de usuários SaaS",
+      "status": "blocked",
+      "blockedBy": [],
+      "context": "O PR #30 documentou o fluxo de staging e anunciou este ticket; docs/SAAS_ADMIN_PROVISIONING.md ainda o cita, mas ele não estava no catálogo. Convites e identidade individual foram entregues depois, então o procedimento produtivo precisa ser revisto sobre o estado atual.",
+      "objective": "Definir e homologar um processo server-side de provisionamento produtivo com responsável e evidência humana.",
+      "scope": [
+        "Revisar identidade individual, convites, papéis e revogação já entregues.",
+        "Documentar runbook de produção, dupla checagem de empresa/perfil, rollback e responsáveis."
+      ],
+      "outOfScope": [
+        "Executar provisionamento real neste ticket de planejamento.",
+        "Usar o script de staging em produção."
+      ],
+      "expectedBehavior": "O acesso produtivo não depende de procedimento improvisado nem de credenciais privilegiadas no desktop.",
+      "acceptanceCriteria": [
+        "Runbook e responsáveis aprovados por pessoa autorizada.",
+        "Staging demonstra criação, revogação e recuperação sem usar dados reais."
+      ],
+      "tests": [
+        "Revisão do runbook e simulação sintética no ambiente permitido."
+      ],
+      "testInstructions": {
+        "prerequisites": [
+          "Ambiente de staging e usuários sintéticos; revisão humana antes de qualquer ação persistente."
+        ],
+        "steps": [
+          "Comparar o runbook com os PRs de identidade, convite e equipe.",
+          "Simular conta sintética, revogação e rollback em staging após autorização."
+        ],
+        "expectedResultAndEvidence": [
+          "Procedimento versionado, evidência redigida e aprovação explícita."
+        ],
+        "dataImpact": "Planejamento somente leitura; simulação futura cria dados temporários em staging.",
+        "cleanupAndRollback": [
+          "Remover contas sintéticas após a simulação e documentar rollback."
+        ],
+        "stagingRestrictions": "Nunca usar script, segredos ou dados produtivos para validar o fluxo."
+      },
+      "likelyFiles": [
+        "docs/SAAS_ADMIN_PROVISIONING.md",
+        "scripts/"
+      ],
+      "risks": [
+        "Confundir merge dos PRs de identidade com provisionamento produtivo homologado."
+      ],
+      "relatedTo": [
+        "AO-SAAS-ID-001",
+        "AO-SAAS-INVITE-001",
+        "AO-SAAS-TEAM-001"
       ]
     }
   ]

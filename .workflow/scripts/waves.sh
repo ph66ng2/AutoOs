@@ -51,6 +51,16 @@ jq -e '
   exit 65
 }
 
+jq -e '
+  . as $workflow |
+  [.roadmap.focusIds[], .roadmap.deferredIds[], .roadmap.supersededIds[]] as $classified |
+  ($classified | length) == ($classified | unique | length) and
+  all($classified[]; . as $id | any($workflow.tickets[]; .id == $id))
+' "$workflow" >/dev/null || {
+  printf 'workflow.json inválido: roadmap repete IDs ou aponta para ticket ausente.\n' >&2
+  exit 65
+}
+
 case "$command" in
   plan)
     jq -r '
@@ -61,20 +71,26 @@ case "$command" in
       [ .blockedBy[]? as $blocker |
         ($tickets[] | select(.id == $blocker) | .status) // "missing"
       ] as $states |
-      if .status != "ready" then
+      if .id as $id | ($roadmap.supersededIds // [] | index($id)) != null then
+        "SUBSTITUIDA\t\(.id)\t\(.title)"
+      elif .id as $id | ($roadmap.deferredIds // [] | index($id)) != null then
+        "ADIADA\t\(.id)\t\(.title)"
+      elif .status != "ready" then
         "EM_\(.status | ascii_upcase)\t\(.id)\t\(.title)"
       elif ($states | length == 0 or all($states[]; . == "merged")) then
         "PRONTA\t\(.id)\t\(.title)"
       else
         "BLOQUEADA\t\(.id)\t\(.title)\tpor: \(.blockedBy | join(", "))"
       end
-    ' "$workflow" | sort
+    ' --argjson roadmap "$(jq '.roadmap' "$workflow")" "$workflow" | sort
     ;;
   spawn)
     [[ $# -eq 3 ]] || usage
     ticket_id="$3"
     git rev-parse --is-inside-work-tree >/dev/null 2>&1 || { printf 'Execute dentro de um repositório Git.\n' >&2; exit 69; }
     ticket_json=$(jq -ce --arg id "$ticket_id" '.tickets[] | select(.id == $id)' "$workflow") || { printf 'Ticket não encontrado: %s\n' "$ticket_id" >&2; exit 65; }
+    priority=$(jq -r --arg id "$ticket_id" 'if (.roadmap.supersededIds // [] | index($id)) != null then "substituída" elif (.roadmap.deferredIds // [] | index($id)) != null then "adiada" else "ativa" end' "$workflow")
+    [[ "$priority" == "ativa" ]] || { printf 'Ticket %s tem prioridade %s no roadmap; revise o plano antes de spawnar.\n' "$ticket_id" "$priority" >&2; exit 65; }
     status=$(jq -r '.status' <<<"$ticket_json")
     [[ "$status" == "ready" ]] || { printf 'Ticket %s não está ready (status: %s).\n' "$ticket_id" "$status" >&2; exit 65; }
     blockers_ok=$(jq -r --arg id "$ticket_id" '
