@@ -138,7 +138,7 @@ jobs:
       - name: Install Linux dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf libsecret-1-dev gnome-keyring dbus-x11
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf libsecret-1-dev gnome-keyring dbus-x11 postgresql-client
 
       - name: Install dependencies
         run: npm ci
@@ -146,7 +146,10 @@ jobs:
       - name: Apply migrations to disposable test database
         env:
           AUTOOS_MIGRATION_MODE: ci
-        run: cargo run --manifest-path src-tauri/Cargo.toml --locked --quiet --bin ci_migrate
+          AUTOOS_MIGRATION_DATABASE_URL: ${{ env.DATABASE_URL }}
+        run: |
+          npm run check:migrations:db
+          cargo run --manifest-path src-tauri/Cargo.toml --locked --quiet --bin ci_migrate
 
       - name: Install Playwright browser
         run: npx playwright install --with-deps chromium
