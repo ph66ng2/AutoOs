@@ -76,11 +76,15 @@ if (query("SELECT to_regclass('public._sqlx_migrations') IS NOT NULL") === "f") 
 
 const rows = query("SELECT version, success, encode(checksum, 'hex') FROM public._sqlx_migrations ORDER BY version");
 const errors = [];
+const applied = new Set();
+let highestApplied = 0;
 let count = 0;
 for (const row of rows.split("\n").filter(Boolean)) {
   const [rawVersion, success, checksum] = row.split("|");
   const version = Number(rawVersion);
   const expected = checksums.get(version);
+  applied.add(version);
+  highestApplied = Math.max(highestApplied, version);
   count += 1;
   if (success !== "t") errors.push(`Versão ${rawVersion} está registrada como falha.`);
   if (!expected) {
@@ -88,6 +92,11 @@ for (const row of rows.split("\n").filter(Boolean)) {
   } else if (checksum !== expected.checksum) {
     const legacy = oldFeatureChecksums.get(version) === checksum ? " (histórico antigo da feature)" : "";
     errors.push(`Versão ${rawVersion}: checksum incompatível com ${expected.file}${legacy}.`);
+  }
+}
+for (let version = 1; version <= Math.min(highestApplied, Math.max(...checksums.keys())); version += 1) {
+  if (!applied.has(version)) {
+    errors.push(`Versão ${String(version).padStart(4, "0")} ausente no histórico aplicado.`);
   }
 }
 
