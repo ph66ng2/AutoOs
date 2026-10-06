@@ -1,4 +1,4 @@
-import { Printer } from "lucide-react";
+import { AlertCircle, Printer } from "lucide-react";
 import type { UseFormReturn } from "react-hook-form";
 import { Button } from "@/components/ui/button";
 import {
@@ -26,10 +26,14 @@ export function ClientesFormDialog({
   buscarCep,
   buscandoCep,
   salvando,
+  erroDocumentoDuplicado,
+  onBuscarClienteExistente,
   onSubmit,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  erroDocumentoDuplicado: boolean;
+  onBuscarClienteExistente: () => void;
   editando: Cliente | null;
   form: UseFormReturn<ClienteFormData>;
   tipoPessoa: "PF" | "PJ" | null;
@@ -51,6 +55,25 @@ export function ClientesFormDialog({
             buscarCep={buscarCep}
             buscandoCep={buscandoCep}
           />
+
+          {erroDocumentoDuplicado && (
+            <div
+              role="alert"
+              className="flex gap-3 rounded-md border border-red-200 bg-red-50 p-4 text-red-900"
+            >
+              <AlertCircle className="mt-0.5 h-5 w-5 shrink-0" aria-hidden="true" />
+              <div className="space-y-2">
+                <p className="font-medium">CPF/CNPJ já cadastrado</p>
+                <p className="text-sm">
+                  Já existe um cliente ativo com esse documento. Pesquise pelo número para localizar o cadastro.
+                  Se ele não aparecer, pode estar vinculado a outra empresa.
+                </p>
+                <Button type="button" variant="outline" size="sm" onClick={onBuscarClienteExistente}>
+                  Buscar cliente existente
+                </Button>
+              </div>
+            </div>
+          )}
 
           <DialogFooter>
             <DialogClose asChild><Button variant="outline" type="button">Cancelar</Button></DialogClose>
