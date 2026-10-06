@@ -101,11 +101,30 @@ fn concurrency_conflict_message(entity_label: &str) -> String {
 }
 
 fn duplicate_client_document_message(error: &sqlx::Error) -> Option<String> {
-    let lower = error.to_string().to_lowercase();
-    if lower.contains("clientes_documento_key") {
-        return Some("Já existe um cliente cadastrado com este CPF/CNPJ.".to_string());
+    let database_error = error.as_database_error()?;
+    if database_error.code().as_deref() != Some("23505") {
+        return None;
     }
-    None
+
+    match database_error.constraint()? {
+        "ux_clientes_documento_ativo" | "ux_clientes_cpf_cnpj_ativo" => Some(
+            "Este CPF/CNPJ já está cadastrado em um cliente ativo. Pesquise pelo documento para localizar o registro."
+                .to_string(),
+        ),
+        "clientes_documento_key" | "clientes_cpf_cnpj_key" => Some(
+            "Este CPF/CNPJ já está cadastrado. O cliente pode estar inativo; peça a um administrador para localizar ou reativar o cadastro."
+                .to_string(),
+        ),
+        _ => None,
+    }
+}
+
+fn document_search_digits(busca: &str) -> Option<String> {
+    let is_document_search = busca.chars().all(|character| {
+        character.is_ascii_digit() || character.is_ascii_whitespace() || matches!(character, '.' | '-' | '/')
+    });
+    let digits = digits_only(Some(busca));
+    (is_document_search && digits.len() >= 3).then_some(digits)
 }
 
 fn add_client_filters(query: &mut QueryBuilder<Postgres>, empresa_id: i32, busca: Option<&str>) {
@@ -131,6 +150,16 @@ fn add_client_filters(query: &mut QueryBuilder<Postgres>, empresa_id: i32, busca
             }
             query.push(*column).push(" ILIKE ").push_bind(pattern.clone());
         }
+
+        if let Some(document_digits) = document_search_digits(busca) {
+            let document_pattern = format!("%{}%", document_digits);
+            query
+                .push(" OR REGEXP_REPLACE(COALESCE(documento, ''), '[^0-9]', '', 'g') ILIKE ")
+                .push_bind(document_pattern.clone())
+                .push(" OR REGEXP_REPLACE(COALESCE(cpf_cnpj, ''), '[^0-9]', '', 'g') ILIKE ")
+                .push_bind(document_pattern);
+        }
+
         query.push(")");
     }
 }
@@ -208,6 +237,16 @@ pub async fn listar_clientes(page: Option<i32>, busca: Option<String>) -> Result
         query_builder.push_bind(pattern.clone());
         query_builder.push(" OR COALESCE(email, '') ILIKE ");
         query_builder.push_bind(pattern);
+
+        if let Some(document_digits) = document_search_digits(busca) {
+            let document_pattern = format!("%{}%", document_digits);
+            query_builder
+                .push(" OR REGEXP_REPLACE(COALESCE(documento, ''), '[^0-9]', '', 'g') ILIKE ")
+                .push_bind(document_pattern.clone())
+                .push(" OR REGEXP_REPLACE(COALESCE(cpf_cnpj, ''), '[^0-9]', '', 'g') ILIKE ")
+                .push_bind(document_pattern);
+        }
+
         query_builder.push(")");
     }
 

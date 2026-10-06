@@ -126,7 +126,11 @@ export async function invoke<T>(command: string, args?: Record<string, unknown>)
     case "listar_clientes_paginados": {
       const page = Math.max(0, Number(args?.page ?? 0));
       const busca = String(args?.busca ?? "").toLowerCase();
-      const items = !busca || `${cliente.nome} ${cliente.razao_social} ${cliente.documento}`.toLowerCase().includes(busca)
+      const buscaDocumento = busca.replace(/\D/g, "");
+      const documento = String(cliente.documento ?? "").replace(/\D/g, "");
+      const textoCliente = `${cliente.nome} ${cliente.razao_social} ${cliente.documento}`.toLowerCase();
+      const pesquisaDocumento = /^[\d\s.\-/]+$/.test(busca) && buscaDocumento.length >= 3;
+      const items = !busca || textoCliente.includes(busca) || (pesquisaDocumento && documento.includes(buscaDocumento))
         ? [cliente]
         : [];
       return { items: items.slice(page * 10, (page + 1) * 10), total: items.length } as T;
