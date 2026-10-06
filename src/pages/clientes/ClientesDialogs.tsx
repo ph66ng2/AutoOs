@@ -65,8 +65,8 @@ export function ClientesFormDialog({
               <div className="space-y-2">
                 <p className="font-medium">CPF/CNPJ já cadastrado</p>
                 <p className="text-sm">
-                  Já existe um cliente ativo com esse documento. Pesquise pelo número para localizar o cadastro.
-                  Se ele não aparecer, pode estar vinculado a outra empresa.
+                  Já existe um cadastro com esse documento. Pesquise pelo número para localizar o cliente.
+                  Se ele não aparecer, pode estar inativo ou vinculado a outra empresa.
                 </p>
                 <Button type="button" variant="outline" size="sm" onClick={onBuscarClienteExistente}>
                   Buscar cliente existente

@@ -106,15 +106,24 @@ fn duplicate_client_document_message(error: &sqlx::Error) -> Option<String> {
         return None;
     }
 
-    let constraint = database_error.constraint().unwrap_or_default().to_lowercase();
-    if constraint.contains("documento") || constraint.contains("cpf_cnpj") {
-        return Some(
+    match database_error.constraint()? {
+        "ux_clientes_documento_ativo" | "ux_clientes_cpf_cnpj_ativo" => Some(
             "Este CPF/CNPJ já está cadastrado em um cliente ativo. Pesquise pelo documento para localizar o registro."
                 .to_string(),
-        );
+        ),
+        "clientes_documento_key" | "clientes_cpf_cnpj_key" => Some(
+            "Este CPF/CNPJ já está cadastrado. Confira também os clientes inativos.".to_string(),
+        ),
+        _ => None,
     }
+}
 
-    None
+fn document_search_digits(busca: &str) -> Option<String> {
+    let is_document_search = busca.chars().all(|character| {
+        character.is_ascii_digit() || character.is_ascii_whitespace() || matches!(character, '.' | '-' | '/')
+    });
+    let digits = digits_only(Some(busca));
+    (is_document_search && digits.len() >= 3).then_some(digits)
 }
 
 fn add_client_filters(query: &mut QueryBuilder<Postgres>, empresa_id: i32, busca: Option<&str>) {
@@ -141,8 +150,7 @@ fn add_client_filters(query: &mut QueryBuilder<Postgres>, empresa_id: i32, busca
             query.push(*column).push(" ILIKE ").push_bind(pattern.clone());
         }
 
-        let document_digits = digits_only(Some(busca));
-        if !document_digits.is_empty() {
+        if let Some(document_digits) = document_search_digits(busca) {
             let document_pattern = format!("%{}%", document_digits);
             query
                 .push(" OR REGEXP_REPLACE(COALESCE(documento, ''), '[^0-9]', '', 'g') ILIKE ")
@@ -229,8 +237,7 @@ pub async fn listar_clientes(page: Option<i32>, busca: Option<String>) -> Result
         query_builder.push(" OR COALESCE(email, '') ILIKE ");
         query_builder.push_bind(pattern);
 
-        let document_digits = digits_only(Some(busca));
-        if !document_digits.is_empty() {
+        if let Some(document_digits) = document_search_digits(busca) {
             let document_pattern = format!("%{}%", document_digits);
             query_builder
                 .push(" OR REGEXP_REPLACE(COALESCE(documento, ''), '[^0-9]', '', 'g') ILIKE ")
