@@ -21,6 +21,7 @@ import type { Equipamento } from "@/types";
 interface UseEquipamentosParams {
   busca?: string;
   status?: string;
+  ordenacao?: "ATUALIZACAO_RECENTE" | "CADASTRO_RECENTE";
   /** Página apresentada pela interface, iniciando em 1. */
   page?: number;
 }
@@ -51,6 +52,7 @@ export function useEquipamentos(params?: UseEquipamentosParams) {
         params?.busca,
         params?.status === "TODOS" ? undefined : params?.status,
         Math.max((params?.page ?? 1) - 1, 0),
+        params?.ordenacao ?? "ATUALIZACAO_RECENTE",
       );
       setEquipamentos(data.items);
       setTotal(data.total);
@@ -60,7 +62,7 @@ export function useEquipamentos(params?: UseEquipamentosParams) {
     } finally {
       setLoading(false);
     }
-  }, [params?.busca, params?.status, params?.page]);
+  }, [params?.busca, params?.status, params?.page, params?.ordenacao]);
 
   useEffect(() => {
     carregar();

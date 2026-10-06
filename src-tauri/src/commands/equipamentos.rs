@@ -104,6 +104,7 @@ fn add_equipment_filters(
             "COALESCE(cliente_nome, '')",
             "COALESCE(cliente_email, '')",
             "COALESCE(cliente_telefone, '')",
+            "COALESCE(responsavel_nome, '')",
         ]
         .iter()
         .enumerate()
@@ -113,6 +114,21 @@ fn add_equipment_filters(
             }
             query.push(*column).push(" ILIKE ").push_bind(pattern.clone());
         }
+        query.push(
+            " OR EXISTS (SELECT 1 FROM clientes c WHERE c.id = equipamentos.cliente_id AND c.empresa_id = equipamentos.empresa_id AND (COALESCE(c.nome, '') ILIKE "
+        ).push_bind(pattern.clone());
+        query.push(" OR COALESCE(c.razao_social, '') ILIKE ").push_bind(pattern.clone());
+        query.push(" OR COALESCE(c.nome_fantasia, '') ILIKE ").push_bind(pattern.clone());
+        query.push(" OR COALESCE(NULLIF(c.documento, ''), c.cpf_cnpj, '') ILIKE ").push_bind(pattern.clone());
+        let document_digits = busca.chars().filter(|character| character.is_ascii_digit()).collect::<String>();
+        let is_document_search = busca.chars().all(|character| {
+            character.is_ascii_digit() || character.is_ascii_whitespace() || matches!(character, '.' | '-' | '/')
+        });
+        if is_document_search && document_digits.len() >= 3 {
+            query.push(" OR regexp_replace(COALESCE(NULLIF(c.documento, ''), c.cpf_cnpj, ''), '[^0-9]', '', 'g') LIKE ")
+                .push_bind(format!("%{}%", document_digits));
+        }
+        query.push("))");
         query.push(")");
     }
 
@@ -124,12 +140,20 @@ fn add_equipment_filters(
     }
 }
 
+fn equipment_order_clause(ordenacao: Option<&str>) -> &'static str {
+    match ordenacao {
+        Some("CADASTRO_RECENTE") => " ORDER BY id DESC",
+        _ => " ORDER BY COALESCE(atualizado_em, criado_em) DESC NULLS LAST, id DESC",
+    }
+}
+
 async fn query_equipment_page(
     pool: &PgPool,
     empresa_id: i32,
     page: Option<i32>,
     busca: Option<&str>,
     status: Option<&str>,
+    ordenacao: Option<&str>,
     page_size: i32,
 ) -> Result<PaginatedResult<EquipamentoRow>, String> {
     let mut count_query = QueryBuilder::<Postgres>::new("SELECT COUNT(*) FROM equipamentos");
@@ -144,7 +168,8 @@ async fn query_equipment_page(
     let mut items_query = QueryBuilder::<Postgres>::new(EQUIPAMENTO_SELECT);
     add_equipment_filters(&mut items_query, empresa_id, busca, status);
     items_query
-        .push(" ORDER BY id DESC LIMIT ")
+        .push(equipment_order_clause(ordenacao))
+        .push(" LIMIT ")
         .push_bind(page_size)
         .push(" OFFSET ")
         .push_bind(safe_page * i64::from(page_size));
@@ -492,6 +517,7 @@ pub async fn listar_equipamentos_paginados(
     page: Option<i32>,
     busca: Option<String>,
     status: Option<String>,
+    ordenacao: Option<String>,
 ) -> Result<PaginatedResult<EquipamentoRow>, String> {
     let pool = get_pool().await.map_err(|error| error.to_string())?;
     let empresa_id = require_active_session_company_id(&pool).await?;
@@ -501,6 +527,7 @@ pub async fn listar_equipamentos_paginados(
         page,
         busca.as_deref(),
         status.as_deref(),
+        ordenacao.as_deref(),
         UI_PAGE_SIZE,
     )
     .await
@@ -1332,5 +1359,12 @@ mod tests {
         let message = duplicate_equipment_patrimonio_message(&error)
             .expect("conflito de patrimônio deve ser reconhecido");
         assert!(message.contains("outro número de série"));
+    }
+
+    #[test]
+    fn equipment_order_is_whitelisted_and_defaults_to_recent_changes() {
+        assert!(equipment_order_clause(None).contains("atualizado_em"));
+        assert_eq!(equipment_order_clause(Some("CADASTRO_RECENTE")), " ORDER BY id DESC");
+        assert_eq!(equipment_order_clause(Some("id; DROP TABLE equipamentos")), equipment_order_clause(None));
     }
 }

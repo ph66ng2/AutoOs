@@ -109,8 +109,8 @@ export const db = {
     return invoke<Equipamento[]>("listar_equipamentos", { busca, status });
   },
 
-  async listarEquipamentosPaginados(busca: string | undefined, status: string | undefined, page: number): Promise<PaginatedResult<Equipamento>> {
-    return invoke<PaginatedResult<Equipamento>>("listar_equipamentos_paginados", { busca: busca ?? null, status: status ?? null, page });
+  async listarEquipamentosPaginados(busca: string | undefined, status: string | undefined, page: number, ordenacao: "ATUALIZACAO_RECENTE" | "CADASTRO_RECENTE" = "ATUALIZACAO_RECENTE"): Promise<PaginatedResult<Equipamento>> {
+    return invoke<PaginatedResult<Equipamento>>("listar_equipamentos_paginados", { busca: busca ?? null, status: status ?? null, page, ordenacao });
   },
 
   /** Busca equipamento por ID → Rust: buscar_equipamento */

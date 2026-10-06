@@ -1,1 +1,1 @@
-0.5.6: o QR de fotos pelo celular passa a usar HTTPS temporário (trycloudflare). Os três PCs da recepção podem enviar foto ao mesmo tempo, e o celular pode estar no 4G. Coloque o cloudflared.exe no PATH ou em %LOCALAPPDATA%\AutoOS\. Sem o executável, o QR continua no Wi-Fi local.
+0.6.0: em Equipamentos, pesquise por nome ou documento do cliente, série e outros dados do aparelho. Ordene pela alteração mais recente ou pelo cadastro mais recente para encontrar rapidamente o próximo atendimento.

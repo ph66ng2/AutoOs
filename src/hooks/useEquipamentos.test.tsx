@@ -80,4 +80,21 @@ describe("useEquipamentos — registro", () => {
     expect(out?.sucesso).toBe(false);
     expect(String(out?.erro)).toContain("duplicado");
   });
+
+  it("envia a ordenação escolhida ao banco ao trocar a visualização", async () => {
+    const { rerender } = renderHook(
+      ({ ordenacao }: { ordenacao: "ATUALIZACAO_RECENTE" | "CADASTRO_RECENTE" }) =>
+        useEquipamentos({ page: 2, ordenacao }),
+      { initialProps: { ordenacao: "ATUALIZACAO_RECENTE" as const } },
+    );
+
+    await waitFor(() => {
+      expect(mockListarPaginados).toHaveBeenCalledWith(undefined, undefined, 1, "ATUALIZACAO_RECENTE");
+    });
+
+    rerender({ ordenacao: "CADASTRO_RECENTE" });
+    await waitFor(() => {
+      expect(mockListarPaginados).toHaveBeenCalledWith(undefined, undefined, 1, "CADASTRO_RECENTE");
+    });
+  });
 });

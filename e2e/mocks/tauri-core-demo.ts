@@ -144,7 +144,11 @@ export async function invoke<T>(command: string, args?: Record<string, unknown>)
       const statusFiltro = args?.status as string | undefined;
       const busca = String(args?.busca ?? "").toLowerCase();
       const matchesStatus = !statusFiltro || statusFiltro === "TODOS" || equipamento.status === statusFiltro;
-      const matchesSearch = !busca || `${equipamento.serial_number} ${equipamento.patrimonio} ${equipamento.modelo} ${equipamento.cliente_nome}`.toLowerCase().includes(busca);
+      const textoEquipamento = `${equipamento.serial_number} ${equipamento.patrimonio} ${equipamento.marca} ${equipamento.modelo} ${equipamento.cliente_nome} ${cliente.nome} ${cliente.documento}`.toLowerCase();
+      const buscaDocumento = busca.replace(/\D/g, "");
+      const documentoCliente = String(cliente.documento ?? "").replace(/\D/g, "");
+      const pesquisaDocumento = /^[\d\s.\-/]+$/.test(busca) && buscaDocumento.length >= 3;
+      const matchesSearch = !busca || textoEquipamento.includes(busca) || (pesquisaDocumento && documentoCliente.includes(buscaDocumento));
       const items = matchesStatus && matchesSearch ? [equipamento] : [];
       return { items: items.slice(Number(args?.page ?? 0) * 10, (Number(args?.page ?? 0) + 1) * 10), total: items.length } as T;
     }

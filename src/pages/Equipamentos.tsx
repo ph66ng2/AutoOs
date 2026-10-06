@@ -32,6 +32,8 @@ import {
   Printer,
   Plus,
   Search,
+  ArrowDownUp,
+  X,
   Edit,
   Trash2,
   Filter,
@@ -178,6 +180,7 @@ import { totalPages } from "@/lib/pagination";
 export default function Equipamentos() {
   const [busca, setBusca] = useState("");
   const [statusFiltro, setStatusFiltro] = useState("TODOS");
+  const [ordenacao, setOrdenacao] = useState<"ATUALIZACAO_RECENTE" | "CADASTRO_RECENTE">("ATUALIZACAO_RECENTE");
   const [paginaEquipamentos, setPaginaEquipamentos] = useState(1);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
@@ -292,14 +295,14 @@ export default function Equipamentos() {
   const [emailDialogOpen, setEmailDialogOpen] = useState(false);
 
   const { equipamentos, total: totalEquipamentos, loading, criar, atualizar, deletar, atualizarStatus, recarregar } =
-    useEquipamentos({ busca: busca || undefined, status: statusFiltro, page: paginaEquipamentos });
+    useEquipamentos({ busca: busca || undefined, status: statusFiltro, ordenacao, page: paginaEquipamentos });
   const totalPaginasEquipamentos = totalPages(totalEquipamentos);
   const paginaEquipamentosExibida = Math.min(paginaEquipamentos, totalPaginasEquipamentos);
   const equipamentosExibidos = equipamentos;
 
   useEffect(() => {
     setPaginaEquipamentos(1);
-  }, [busca, statusFiltro]);
+  }, [busca, statusFiltro, ordenacao]);
 
   useEffect(() => {
     setPaginaEquipamentos((pagina) => Math.min(pagina, totalPaginasEquipamentos));
@@ -1926,20 +1929,30 @@ export default function Equipamentos() {
       {/* Filtros */}
       <Card>
         <CardContent className="pt-6">
-          <div className="flex flex-col sm:flex-row gap-4">
+          <div className="flex flex-col lg:flex-row gap-3">
             <div className="relative flex-1">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-              <Input placeholder="Buscar por série, marca, modelo, cliente..." value={busca} onChange={e => setBusca(e.target.value)} className="pl-9" />
+              <Input aria-label="Pesquisar equipamentos" placeholder="Série, patrimônio, equipamento, cliente ou CPF/CNPJ" value={busca} onChange={e => setBusca(e.target.value)} className="pl-9 pr-10" />
+              {busca && <Button type="button" variant="ghost" size="icon" aria-label="Limpar pesquisa" className="absolute right-0 top-0 h-full w-10" onClick={() => setBusca("")}><X className="h-4 w-4" /></Button>}
             </div>
             <Select value={statusFiltro} onValueChange={setStatusFiltro}>
-              <SelectTrigger className="w-full sm:w-56">
+              <SelectTrigger aria-label="Filtrar equipamentos por status" className="w-full lg:w-48">
                 <Filter className="h-4 w-4 mr-2" /><SelectValue />
               </SelectTrigger>
               <SelectContent>
                 {STATUS_OPTIONS.map(opt => (<SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>))}
               </SelectContent>
             </Select>
-            <Button variant="outline" size="icon" onClick={recarregar}><RefreshCw className="h-4 w-4" /></Button>
+            <Select value={ordenacao} onValueChange={(value: "ATUALIZACAO_RECENTE" | "CADASTRO_RECENTE") => setOrdenacao(value)}>
+              <SelectTrigger aria-label="Ordenar equipamentos" className="w-full lg:w-56">
+                <ArrowDownUp className="h-4 w-4 mr-2" /><SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="ATUALIZACAO_RECENTE">Alterados recentemente</SelectItem>
+                <SelectItem value="CADASTRO_RECENTE">Cadastros recentes</SelectItem>
+              </SelectContent>
+            </Select>
+            <Button variant="outline" size="icon" aria-label="Atualizar equipamentos" className="shrink-0" onClick={recarregar}><RefreshCw className="h-4 w-4" /></Button>
           </div>
         </CardContent>
       </Card>
@@ -1963,7 +1976,7 @@ export default function Equipamentos() {
                 onPageChange={setPaginaEquipamentos}
                 label="Paginação de equipamentos"
               />
-              <div className="rounded-md border">
+              <div className="overflow-x-auto rounded-md border">
                 <Table>
                 <TableHeader>
                   <TableRow>
@@ -1972,6 +1985,7 @@ export default function Equipamentos() {
                     <TableHead>Cliente</TableHead>
                     <TableHead>Status</TableHead>
                     <TableHead>Entrada</TableHead>
+                    <TableHead>Última alteração</TableHead>
                     <TableHead className="text-right">Ações</TableHead>
                   </TableRow>
                 </TableHeader>
@@ -2006,6 +2020,9 @@ export default function Equipamentos() {
                       </TableCell>
                       <TableCell className="text-sm text-muted-foreground">
                         {formatDatePtBr(eq.data_entrada)}
+                      </TableCell>
+                      <TableCell className="text-sm text-muted-foreground">
+                        {formatDatePtBr(eq.atualizado_em || eq.criado_em)}
                       </TableCell>
                       <TableCell className="text-right">
                         <div className="flex justify-end">
