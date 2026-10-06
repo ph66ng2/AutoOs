@@ -101,7 +101,7 @@ export default function Clientes() {
   const [editando, setEditando] = useState<Cliente | null>(null);
   const [deletando, setDeletando] = useState<Cliente | null>(null);
   const [salvando, setSalvando] = useState(false);
-  const [erroDocumentoDuplicado, setErroDocumentoDuplicado] = useState(false);
+  const [erroDocumentoDuplicado, setErroDocumentoDuplicado] = useState<string | null>(null);
   const [tipoPessoa, setTipoPessoa] = useState<"PF" | "PJ" | null>(null);
   const [buscandoCep, setBuscandoCep] = useState(false);
 
@@ -146,7 +146,7 @@ export default function Clientes() {
   // Detectar tipo de documento em tempo real
   const documentoValue = form.watch("documento");
   useEffect(() => {
-    setErroDocumentoDuplicado(false);
+    setErroDocumentoDuplicado(null);
   }, [documentoValue]);
 
   useEffect(() => {
@@ -225,7 +225,7 @@ export default function Clientes() {
   /** Abre dialog para criar novo cliente. Reseta form e tipo de pessoa */
   function abrirNovo() {
     setEditando(null);
-    setErroDocumentoDuplicado(false);
+    setErroDocumentoDuplicado(null);
     setTipoPessoa(null);
     form.reset({
       documento: "", tipo_pessoa: "PF", nome: "",
@@ -239,7 +239,7 @@ export default function Clientes() {
 
   /** Abre dialog para editar cliente. Preenche form com dados existentes e detecta tipo PF/PJ */
   function abrirEditar(c: Cliente) {
-    setErroDocumentoDuplicado(false);
+    setErroDocumentoDuplicado(null);
     setEditando(c);
     const doc = c.documento || c.cpf_cnpj || "";
     setTipoPessoa(c.tipo_pessoa === "PJ" ? "PJ" : doc.replace(/\D/g, "").length === 14 ? "PJ" : "PF");
@@ -273,7 +273,7 @@ export default function Clientes() {
    * Conecta-se a: useClientes.criar/atualizar → db → Rust
    */
   async function onSubmit(data: ClienteFormData) {
-    setErroDocumentoDuplicado(false);
+    setErroDocumentoDuplicado(null);
     setSalvando(true);
     try {
       const docNumeros = data.documento.replace(/\D/g, "");
@@ -319,7 +319,7 @@ export default function Clientes() {
       console.error("Erro:", err);
       const message = err instanceof Error ? err.message : String(err);
       if (message.toLowerCase().includes("cpf/cnpj já está cadastrado")) {
-        setErroDocumentoDuplicado(true);
+        setErroDocumentoDuplicado(message);
       } else {
         showError("Clientes", "Salvar cliente", err);
       }
@@ -641,13 +641,13 @@ export default function Clientes() {
         open={dialogOpen}
         onOpenChange={(open) => {
           setDialogOpen(open);
-          if (!open) setErroDocumentoDuplicado(false);
+          if (!open) setErroDocumentoDuplicado(null);
         }}
         erroDocumentoDuplicado={erroDocumentoDuplicado}
         onBuscarClienteExistente={() => {
           const documento = form.getValues("documento").replace(/\D/g, "");
           setBusca(documento);
-          setErroDocumentoDuplicado(false);
+          setErroDocumentoDuplicado(null);
           setDialogOpen(false);
         }}
         editando={editando}

@@ -32,7 +32,7 @@ export function ClientesFormDialog({
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  erroDocumentoDuplicado: boolean;
+  erroDocumentoDuplicado: string | null;
   onBuscarClienteExistente: () => void;
   editando: Cliente | null;
   form: UseFormReturn<ClienteFormData>;
@@ -64,13 +64,12 @@ export function ClientesFormDialog({
               <AlertCircle className="mt-0.5 h-5 w-5 shrink-0" aria-hidden="true" />
               <div className="space-y-2">
                 <p className="font-medium">CPF/CNPJ já cadastrado</p>
-                <p className="text-sm">
-                  Já existe um cadastro com esse documento. Pesquise pelo número para localizar o cliente.
-                  Se ele não aparecer, pode estar inativo ou vinculado a outra empresa.
-                </p>
-                <Button type="button" variant="outline" size="sm" onClick={onBuscarClienteExistente}>
-                  Buscar cliente existente
-                </Button>
+                <p className="text-sm">{erroDocumentoDuplicado}</p>
+                {erroDocumentoDuplicado.includes("cliente ativo") && (
+                  <Button type="button" variant="outline" size="sm" onClick={onBuscarClienteExistente}>
+                    Buscar cliente existente
+                  </Button>
+                )}
               </div>
             </div>
           )}

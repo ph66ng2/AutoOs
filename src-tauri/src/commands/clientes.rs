@@ -112,7 +112,8 @@ fn duplicate_client_document_message(error: &sqlx::Error) -> Option<String> {
                 .to_string(),
         ),
         "clientes_documento_key" | "clientes_cpf_cnpj_key" => Some(
-            "Este CPF/CNPJ já está cadastrado. Confira também os clientes inativos.".to_string(),
+            "Este CPF/CNPJ já está cadastrado. O cliente pode estar inativo; peça a um administrador para localizar ou reativar o cadastro."
+                .to_string(),
         ),
         _ => None,
     }
