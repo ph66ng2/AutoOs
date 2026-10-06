@@ -101,10 +101,19 @@ fn concurrency_conflict_message(entity_label: &str) -> String {
 }
 
 fn duplicate_client_document_message(error: &sqlx::Error) -> Option<String> {
-    let lower = error.to_string().to_lowercase();
-    if lower.contains("clientes_documento_key") {
-        return Some("Já existe um cliente cadastrado com este CPF/CNPJ.".to_string());
+    let database_error = error.as_database_error()?;
+    if database_error.code().as_deref() != Some("23505") {
+        return None;
     }
+
+    let constraint = database_error.constraint().unwrap_or_default().to_lowercase();
+    if constraint.contains("documento") || constraint.contains("cpf_cnpj") {
+        return Some(
+            "Este CPF/CNPJ já está cadastrado em um cliente ativo. Pesquise pelo documento para localizar o registro."
+                .to_string(),
+        );
+    }
+
     None
 }
 
@@ -131,6 +140,17 @@ fn add_client_filters(query: &mut QueryBuilder<Postgres>, empresa_id: i32, busca
             }
             query.push(*column).push(" ILIKE ").push_bind(pattern.clone());
         }
+
+        let document_digits = digits_only(Some(busca));
+        if !document_digits.is_empty() {
+            let document_pattern = format!("%{}%", document_digits);
+            query
+                .push(" OR REGEXP_REPLACE(COALESCE(documento, ''), '[^0-9]', '', 'g') ILIKE ")
+                .push_bind(document_pattern.clone())
+                .push(" OR REGEXP_REPLACE(COALESCE(cpf_cnpj, ''), '[^0-9]', '', 'g') ILIKE ")
+                .push_bind(document_pattern);
+        }
+
         query.push(")");
     }
 }
@@ -208,6 +228,17 @@ pub async fn listar_clientes(page: Option<i32>, busca: Option<String>) -> Result
         query_builder.push_bind(pattern.clone());
         query_builder.push(" OR COALESCE(email, '') ILIKE ");
         query_builder.push_bind(pattern);
+
+        let document_digits = digits_only(Some(busca));
+        if !document_digits.is_empty() {
+            let document_pattern = format!("%{}%", document_digits);
+            query_builder
+                .push(" OR REGEXP_REPLACE(COALESCE(documento, ''), '[^0-9]', '', 'g') ILIKE ")
+                .push_bind(document_pattern.clone())
+                .push(" OR REGEXP_REPLACE(COALESCE(cpf_cnpj, ''), '[^0-9]', '', 'g') ILIKE ")
+                .push_bind(document_pattern);
+        }
+
         query_builder.push(")");
     }
 
