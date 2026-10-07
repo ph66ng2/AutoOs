@@ -6,9 +6,20 @@ import {
   DialogContent,
   DialogHeader,
   DialogTitle,
+  DialogDescription,
   DialogFooter,
   DialogClose,
 } from "@/components/ui/dialog";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { ClienteFormularioCampos } from "@/components/clientes/ClienteFormularioCampos";
 import { nomeExibicaoCliente } from "@/components/clientes/cliente-display-utils";
 import type { ClienteFormData } from "@/lib/validations";
@@ -27,12 +38,14 @@ export function ClientesFormDialog({
   buscandoCep,
   salvando,
   erroDocumentoDuplicado,
+  onDismissDuplicate,
   onBuscarClienteExistente,
   onSubmit,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   erroDocumentoDuplicado: string | null;
+  onDismissDuplicate: () => void;
   onBuscarClienteExistente: () => void;
   editando: Cliente | null;
   form: UseFormReturn<ClienteFormData>;
@@ -47,6 +60,9 @@ export function ClientesFormDialog({
       <DialogContent className="sm:max-w-2xl max-h-[85vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>{editando ? "Editar Cliente" : "Novo Cliente"}</DialogTitle>
+          <DialogDescription className="sr-only">
+            Informe os dados do cliente e confirme o cadastro.
+          </DialogDescription>
         </DialogHeader>
         <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-5">
           <ClienteFormularioCampos
@@ -56,24 +72,6 @@ export function ClientesFormDialog({
             buscandoCep={buscandoCep}
           />
 
-          {erroDocumentoDuplicado && (
-            <div
-              role="alert"
-              className="flex gap-3 rounded-md border border-red-200 bg-red-50 p-4 text-red-900"
-            >
-              <AlertCircle className="mt-0.5 h-5 w-5 shrink-0" aria-hidden="true" />
-              <div className="space-y-2">
-                <p className="font-medium">CPF/CNPJ já cadastrado</p>
-                <p className="text-sm">{erroDocumentoDuplicado}</p>
-                {erroDocumentoDuplicado.includes("cliente ativo") && (
-                  <Button type="button" variant="outline" size="sm" onClick={onBuscarClienteExistente}>
-                    Buscar cliente existente
-                  </Button>
-                )}
-              </div>
-            </div>
-          )}
-
           <DialogFooter>
             <DialogClose asChild><Button variant="outline" type="button">Cancelar</Button></DialogClose>
             <Button type="submit" disabled={salvando}>
@@ -81,6 +79,32 @@ export function ClientesFormDialog({
             </Button>
           </DialogFooter>
         </form>
+        <AlertDialog open={Boolean(erroDocumentoDuplicado)} onOpenChange={(open) => {
+          if (!open) onDismissDuplicate();
+        }}>
+          <AlertDialogContent
+            className="z-[60] sm:max-w-md"
+            overlayClassName="bg-black/30"
+          >
+            <AlertDialogHeader>
+              <AlertDialogTitle className="flex items-center gap-2 text-red-900">
+                <AlertCircle className="h-5 w-5 shrink-0" aria-hidden="true" />
+                CPF/CNPJ já cadastrado
+              </AlertDialogTitle>
+              <AlertDialogDescription>{erroDocumentoDuplicado}</AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>
+                Corrigir documento
+              </AlertDialogCancel>
+              {erroDocumentoDuplicado?.includes("cliente ativo") && (
+                <AlertDialogAction onClick={onBuscarClienteExistente}>
+                  Buscar cliente existente
+                </AlertDialogAction>
+              )}
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
       </DialogContent>
     </Dialog>
   );

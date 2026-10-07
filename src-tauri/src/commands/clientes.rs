@@ -100,23 +100,47 @@ fn concurrency_conflict_message(entity_label: &str) -> String {
     )
 }
 
-fn duplicate_client_document_message(error: &sqlx::Error) -> Option<String> {
+async fn duplicate_client_document_message(
+    error: &sqlx::Error,
+    pool: &PgPool,
+    empresa_id: i32,
+    document_digits: &str,
+    current_id: Option<i32>,
+) -> Option<String> {
     let database_error = error.as_database_error()?;
     if database_error.code().as_deref() != Some("23505") {
         return None;
     }
 
-    match database_error.constraint()? {
-        "ux_clientes_documento_ativo" | "ux_clientes_cpf_cnpj_ativo" => Some(
-            "Este CPF/CNPJ já está cadastrado em um cliente ativo. Pesquise pelo documento para localizar o registro."
-                .to_string(),
-        ),
-        "clientes_documento_key" | "clientes_cpf_cnpj_key" => Some(
-            "Este CPF/CNPJ já está cadastrado. O cliente pode estar inativo; peça a um administrador para localizar ou reativar o cadastro."
-                .to_string(),
-        ),
-        _ => None,
+    if !matches!(
+        database_error.constraint()?,
+        "ux_clientes_documento_ativo"
+            | "ux_clientes_cpf_cnpj_ativo"
+            | "clientes_documento_key"
+            | "clientes_cpf_cnpj_key"
+    ) {
+        return None;
     }
+
+    let owner = sqlx::query_scalar::<_, bool>(
+        "SELECT COALESCE(ativo, false) FROM clientes
+         WHERE empresa_id = $1 AND (documento = $2 OR cpf_cnpj = $2)
+           AND ($3::INTEGER IS NULL OR id <> $3)
+         ORDER BY ativo DESC NULLS LAST LIMIT 1",
+    )
+    .bind(empresa_id)
+    .bind(document_digits)
+    .bind(current_id)
+    .fetch_optional(pool)
+    .await
+    .ok()
+    .flatten();
+
+    Some(match owner {
+        Some(true) => "Este CPF/CNPJ já está cadastrado em um cliente ativo. Pesquise pelo documento para localizar o registro.",
+        Some(false) => "Este CPF/CNPJ já está cadastrado em um cliente inativo. Peça a um administrador para localizar ou reativar o cadastro.",
+        None => "Este CPF/CNPJ já está cadastrado, mas o registro não está disponível nesta empresa. Peça a um administrador para verificar o cadastro.",
+    }.to_string())
 }
 
 fn document_search_digits(busca: &str) -> Option<String> {
@@ -366,7 +390,7 @@ pub async fn criar_cliente(input: ClienteInput) -> Result<ClienteRow, String> {
     .bind(razao_social)
     .bind(optional_text(input.nome_fantasia.as_deref()))
     .bind(optional_text(input.inscricao_estadual.as_deref()))
-    .bind(Some(document_digits))
+    .bind(Some(document_digits.clone()))
     .bind(input.telefone.trim())
     .bind(optional_text(input.telefone_secundario.as_deref()))
     .bind(optional_text(input.email.as_deref()))
@@ -381,11 +405,16 @@ pub async fn criar_cliente(input: ClienteInput) -> Result<ClienteRow, String> {
     .bind(input.receber_whatsapp)
     .bind(optional_text(input.observacoes.as_deref()))
     .fetch_one(&pool)
-    .await
-    .map_err(|e| {
-        error!("Erro ao criar cliente: {}", e);
-        duplicate_client_document_message(&e).unwrap_or_else(|| e.to_string())
-    })?;
+    .await;
+    let row = match row {
+        Ok(row) => row,
+        Err(e) => {
+            error!("Erro ao criar cliente: {}", e);
+            return Err(duplicate_client_document_message(&e, &pool, empresa_id, &document_digits, None)
+                .await
+                .unwrap_or_else(|| e.to_string()));
+        }
+    };
 
     let id: i32 = row.get("id");
     info!("Cliente criado: id={}", id);
@@ -449,7 +478,7 @@ pub async fn atualizar_cliente(id: i32, input: ClienteInput) -> Result<ClienteRo
     .bind(razao_social)
     .bind(optional_text(input.nome_fantasia.as_deref()))
     .bind(optional_text(input.inscricao_estadual.as_deref()))
-    .bind(Some(document_digits))
+    .bind(Some(document_digits.clone()))
     .bind(input.telefone.trim())
     .bind(optional_text(input.telefone_secundario.as_deref()))
     .bind(optional_text(input.email.as_deref()))
@@ -467,12 +496,16 @@ pub async fn atualizar_cliente(id: i32, input: ClienteInput) -> Result<ClienteRo
     .bind(concurrency_token)
     .bind(empresa_id)
     .execute(&pool)
-    .await
-    .map_err(|e| {
-        error!("Erro ao atualizar cliente {}: {}", id, e);
-        duplicate_client_document_message(&e).unwrap_or_else(|| e.to_string())
-    })?
-    .rows_affected();
+    .await;
+    let updated_rows = match updated_rows {
+        Ok(result) => result.rows_affected(),
+        Err(e) => {
+            error!("Erro ao atualizar cliente {}: {}", id, e);
+            return Err(duplicate_client_document_message(&e, &pool, empresa_id, &document_digits, Some(id))
+                .await
+                .unwrap_or_else(|| e.to_string()));
+        }
+    };
 
     if updated_rows == 0 {
         return Err(concurrency_conflict_message("o cliente"));
