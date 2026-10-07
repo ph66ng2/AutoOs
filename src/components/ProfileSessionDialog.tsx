@@ -265,6 +265,7 @@ export function ProfileSessionDialog({
                     <button
                       key={profile.id}
                       type="button"
+                      aria-pressed={isSelected}
                       onClick={() => onSelectProfile(String(profile.id))}
                       className={cn(
                         "rounded-2xl border p-4 text-left transition-all",

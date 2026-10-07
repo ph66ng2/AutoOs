@@ -102,6 +102,11 @@ export function SensitiveAccessProvider({ children }: { children: ReactNode }) {
   const resolverRef = useRef<((value: boolean) => void) | null>(null);
   const startupPromptedRef = useRef(false);
   const bootPhasesTrackedRef = useRef(true);
+  const dialogOpenRef = useRef(false);
+
+  useEffect(() => {
+    dialogOpenRef.current = dialogOpen;
+  }, [dialogOpen]);
 
   const refreshStatus = useCallback(async () => {
     if (bootPhasesTrackedRef.current) {
@@ -123,18 +128,18 @@ export function SensitiveAccessProvider({ children }: { children: ReactNode }) {
         lastProfileId = localStorage.getItem("autoos_last_profile_id");
       } catch { /* ignorar — localStorage pode estar indisponível */ }
 
-      if (lastProfileId) {
-        const savedProfile = nextStatus.profiles.find(
-          (p) => String(p.id) === lastProfileId && p.ativo !== false
+      const savedProfile = nextStatus.profiles.find(
+        (profile) => String(profile.id) === lastProfileId && profile.ativo !== false
+      );
+      const preferredProfileId = savedProfile
+        ? String(savedProfile.id)
+        : nextStatus.active_profile_id ? String(nextStatus.active_profile_id) : "";
+      setSelectedProfileId((current) => {
+        const selectedStillAvailable = nextStatus.profiles.some(
+          (profile) => String(profile.id) === current && profile.ativo !== false
         );
-        if (savedProfile) {
-          setSelectedProfileId(lastProfileId);
-        } else {
-          setSelectedProfileId(nextStatus.active_profile_id ? String(nextStatus.active_profile_id) : "");
-        }
-      } else {
-        setSelectedProfileId(nextStatus.active_profile_id ? String(nextStatus.active_profile_id) : "");
-      }
+        return dialogOpenRef.current && selectedStillAvailable ? current : preferredProfileId;
+      });
 
       if (!startupPromptedRef.current && nextStatus.profiles.length > 0) {
         startupPromptedRef.current = true;

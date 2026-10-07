@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, waitFor, act } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { useState } from "react";
 import { SensitiveAccessProvider, useSensitiveAccess } from "@/hooks/useSensitiveAccess";
 import type { SensitiveAccessStatus, SensitivePermission } from "@/types";
@@ -39,11 +40,35 @@ describe("useSensitiveAccess — integração com novos recursos de auth", () =>
     vi.clearAllMocks();
     mockInvoke.mockReset();
     hookRef = null;
+    localStorage.removeItem("autoos_last_profile_id");
   });
 
   function captureHook(h: ReturnType<typeof useSensitiveAccess>) {
     hookRef = h;
   }
+
+  it("mantém o perfil escolhido e o PIN digitado durante uma atualização de status", async () => {
+    const user = userEvent.setup();
+    const profiles = [
+      { id: 1, nome: "Admin", role: "ADMIN", permissions: [], pin_configured: true, is_default: true, ativo: true },
+      { id: 2, nome: "Operador", role: "CUSTOM", permissions: [], pin_configured: true, is_default: false, ativo: true },
+    ];
+    mockInvoke.mockImplementation((cmd: string) => cmd === "get_sensitive_access_status"
+      ? Promise.resolve({ ...EMPTY_STATUS, pin_configured: true, active_profile_id: 1, active_profile_name: "Admin", profiles })
+      : Promise.resolve(null));
+
+    render(<TestHarness><HookInspector capture={captureHook} /></TestHarness>);
+    const operator = await screen.findByRole("button", { name: /Operador/ });
+    await user.click(operator);
+    const pinInput = screen.getByLabelText("PIN do perfil");
+    await user.click(pinInput);
+    await user.type(pinInput, "1234");
+
+    await act(async () => { await hookRef?.refreshStatus(); });
+
+    expect(operator).toHaveAttribute("aria-pressed", "true");
+    expect(pinInput).toHaveValue("1234");
+  });
 
   it("inatividade ATIVADA: sessão expirada reflete unlocked=false no status", async () => {
     mockInvoke.mockImplementation((cmd: string) => {

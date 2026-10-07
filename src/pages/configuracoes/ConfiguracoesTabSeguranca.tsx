@@ -143,7 +143,7 @@ export function ConfiguracoesTabSeguranca({
         <CardHeader>
           <CardTitle>Perfil ativo</CardTitle>
           <CardDescription>
-            O acesso sensivel atual esta associado ao perfil {accessStatus?.active_profile_name || "selecionado"}.
+            O acesso sensível atual está associado ao perfil {accessStatus?.active_profile_name || "selecionado"}.
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -151,7 +151,7 @@ export function ConfiguracoesTabSeguranca({
             <div className="font-medium">{accessStatus?.active_profile_name || "Perfil sem nome"}</div>
             <div className="text-muted-foreground">Papel: {accessStatus?.active_role || "-"}</div>
             <div className="mt-2 text-muted-foreground">
-              Permissoes: {accessStatus?.permissions.length ? accessStatus.permissions.join(", ") : "nenhuma"}
+              Permissões: {accessStatus?.permissions.length ? accessStatus.permissions.join(", ") : "nenhuma"}
             </div>
           </div>
         </CardContent>
@@ -249,7 +249,7 @@ export function ConfiguracoesTabSeguranca({
                 </div>
 
                 <div className="rounded-lg border bg-muted/40 p-4 text-sm text-muted-foreground">
-                  O perfil ADMIN recebe todas as permissoes automaticamente. No papel CUSTOM, voce escolhe cada permissao abaixo.
+                  O perfil ADMIN recebe todas as permissões automaticamente. No papel CUSTOM, você escolhe cada permissão abaixo.
                 </div>
               </div>
 

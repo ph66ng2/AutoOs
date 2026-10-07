@@ -442,9 +442,9 @@ export default function Configuracoes() {
 
       await SmtpConfigService.salvar(payload);
       setHasPassword(!!payload.password || hasPassword);
-      setStatus("Configuracao SMTP salva com sucesso.");
+      setStatus("Configuração SMTP salva com sucesso.");
     } catch (error: any) {
-      const msg = typeof error === "string" ? error : (error?.message || "Falha ao salvar configuracao SMTP.");
+      const msg = typeof error === "string" ? error : (error?.message || "Falha ao salvar configuração SMTP.");
       setStatus(msg);
     } finally {
       setSaving(false);
