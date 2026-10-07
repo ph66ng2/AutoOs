@@ -68,8 +68,8 @@ export function ConfiguracoesTabIntegracoes({
     <TabsContent value="smtp" className="space-y-4">
       <Card>
         <CardHeader>
-          <CardTitle>SMTP (Email Real)</CardTitle>
-          <CardDescription>Credenciais e parametros de envio protegidos por permissao de SMTP.</CardDescription>
+          <CardTitle>SMTP (email real)</CardTitle>
+          <CardDescription>Credenciais e parâmetros de envio protegidos por permissão de SMTP.</CardDescription>
         </CardHeader>
         <CardContent>
           {canConfigureSmtp ? (
@@ -104,7 +104,7 @@ export function ConfiguracoesTabIntegracoes({
                 </div>
 
                 <div className="space-y-2">
-                  <Label htmlFor="username">Usuario</Label>
+                  <Label htmlFor="username">Usuário</Label>
                   <Input id="username" placeholder="email@dominio.com" {...register("username")} disabled={!smtpEditUnlocked || saving} />
                 </div>
 
@@ -120,7 +120,7 @@ export function ConfiguracoesTabIntegracoes({
 
                 <div className="space-y-2">
                   <Label htmlFor="password">Senha / App Password</Label>
-                  <Input id="password" type="password" placeholder={hasPassword ? "Senha ja configurada" : "Digite a senha"} {...register("password")} disabled={!smtpEditUnlocked || saving} />
+                  <Input id="password" type="password" placeholder={hasPassword ? "Senha já configurada" : "Digite a senha"} {...register("password")} disabled={!smtpEditUnlocked || saving} />
                   {hasPassword && (
                     <p className="text-xs text-muted-foreground">Deixe em branco para manter a senha atual.</p>
                   )}
@@ -147,13 +147,13 @@ export function ConfiguracoesTabIntegracoes({
 
               <div className="flex justify-end">
                 <Button type="submit" disabled={saving || !smtpEditUnlocked}>
-                  {saving ? "Salvando..." : "Salvar configuracao"}
+                  {saving ? "Salvando..." : "Salvar configuração"}
                 </Button>
               </div>
             </form>
           ) : (
             <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
-              O perfil ativo nao possui permissao para configurar SMTP. Troque para um perfil com essa permissao para editar este bloco.
+              O perfil ativo não possui permissão para configurar SMTP. Troque para um perfil com essa permissão para editar este bloco.
             </div>
           )}
         </CardContent>
@@ -163,7 +163,7 @@ export function ConfiguracoesTabIntegracoes({
         <CardHeader>
           <CardTitle>WhatsApp API</CardTitle>
           <CardDescription>
-            Provider padrao: Evolution API self-hosted. Configure a URL completa do endpoint de envio e o token da API.
+            Provedor padrão: Evolution API self-hosted. Configure a URL completa do endpoint de envio e o token da API.
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -192,7 +192,7 @@ export function ConfiguracoesTabIntegracoes({
                   <Input
                     id="whatsapp-token"
                     type="password"
-                    placeholder={whatsappHasToken ? "Token ja configurado" : "Digite o token da API"}
+                    placeholder={whatsappHasToken ? "Token já configurado" : "Digite o token da API"}
                     {...registerWhatsapp("token")}
                   />
                   {whatsappHasToken && (
@@ -207,13 +207,13 @@ export function ConfiguracoesTabIntegracoes({
 
               <div className="flex justify-end">
                 <Button type="submit" disabled={savingWhatsapp}>
-                  {savingWhatsapp ? "Salvando..." : "Salvar configuracao"}
+                  {savingWhatsapp ? "Salvando..." : "Salvar configuração"}
                 </Button>
               </div>
             </form>
           ) : (
             <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
-              O perfil ativo nao possui permissao para configurar a API de WhatsApp. Troque para um perfil com essa permissao para editar este bloco.
+              O perfil ativo não possui permissão para configurar a API de WhatsApp. Troque para um perfil com essa permissão para editar este bloco.
             </div>
           )}
         </CardContent>
@@ -252,7 +252,7 @@ export function ConfiguracoesTabIntegracoes({
                   autoComplete="off"
                   value={photoTunnelToken}
                   onChange={(event) => onPhotoTunnelTokenChange(event.target.value)}
-                  placeholder={photoTunnelHasToken ? "Token ja configurado" : "Cole o token do conector"}
+                  placeholder={photoTunnelHasToken ? "Token já configurado" : "Cole o token do conector"}
                   disabled={savingPhotoTunnel}
                 />
                 {photoTunnelEnvOverride && (
@@ -273,13 +273,13 @@ export function ConfiguracoesTabIntegracoes({
 
               <div className="flex justify-end">
                 <Button type="submit" disabled={savingPhotoTunnel}>
-                  {savingPhotoTunnel ? "Salvando..." : "Salvar token do tunel"}
+                  {savingPhotoTunnel ? "Salvando..." : "Salvar token do túnel"}
                 </Button>
               </div>
             </form>
           ) : (
             <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
-              O perfil ativo nao possui permissao para configurar o tunel de fotos. Use um perfil com permissao de SMTP.
+              O perfil ativo não possui permissão para configurar o túnel de fotos. Use um perfil com permissão de SMTP.
             </div>
           )}
         </CardContent>

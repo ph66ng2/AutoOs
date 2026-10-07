@@ -43,9 +43,9 @@ const navItems: {
   { label: "Equipamentos", path: "/equipamentos", icon: Printer },
   { label: "Clientes", path: "/clientes", icon: Users },
   { label: "Insumos/Peças", path: "/insumos", icon: Package },
-  { label: "Servicos", path: "/servicos", icon: Wrench },
+  { label: "Serviços", path: "/servicos", icon: Wrench },
   { label: "Gastos", path: "/gastos", icon: Receipt, permission: SENSITIVE_PERMISSIONS.VIEW_EXPENSES },
-  { label: "Configuracoes", path: "/configuracoes", icon: Settings },
+  { label: "Configurações", path: "/configuracoes", icon: Settings },
 ];
 
 export function Layout() {

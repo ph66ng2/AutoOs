@@ -49,7 +49,7 @@ import {
 } from "@/types";
 
 export default function Configuracoes() {
-  const { status: accessStatus, refreshStatus, hasPermission, setActiveProfile, ensureSensitiveAccess } = useSensitiveAccess();
+  const { status: accessStatus, refreshStatus, hasPermission, ensureSensitiveAccess } = useSensitiveAccess();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [hasPassword, setHasPassword] = useState(false);
@@ -83,12 +83,6 @@ export default function Configuracoes() {
   const [resetPin, setResetPin] = useState("");
   const [resetPinConfirm, setResetPinConfirm] = useState("");
   const [adminPinVerify, setAdminPinVerify] = useState("");
-  const [newProfileName, setNewProfileName] = useState("");
-  const [newProfileRole, setNewProfileRole] = useState("CUSTOM");
-  const [newProfilePermissions, setNewProfilePermissions] = useState<SensitivePermission[]>([]);
-  const [newProfilePin, setNewProfilePin] = useState("");
-  const [newProfilePinConfirm, setNewProfilePinConfirm] = useState("");
-  const [newProfileNoPin, setNewProfileNoPin] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [auditSearch, setAuditSearch] = useState("");
   const [auditOutcomeFilter, setAuditOutcomeFilter] = useState("ALL");
@@ -448,9 +442,9 @@ export default function Configuracoes() {
 
       await SmtpConfigService.salvar(payload);
       setHasPassword(!!payload.password || hasPassword);
-      setStatus("Configuracao SMTP salva com sucesso.");
+      setStatus("Configuração SMTP salva com sucesso.");
     } catch (error: any) {
-      const msg = typeof error === "string" ? error : (error?.message || "Falha ao salvar configuracao SMTP.");
+      const msg = typeof error === "string" ? error : (error?.message || "Falha ao salvar configuração SMTP.");
       setStatus(msg);
     } finally {
       setSaving(false);
@@ -625,28 +619,6 @@ export default function Configuracoes() {
     }
   }
 
-  async function trocarPerfilAtivo(profileId: number) {
-    const liberado = await ensureSensitiveAccess({
-      title: "Trocar perfil ativo",
-      description: "Informe o PIN de administrador para alterar o perfil de segurança ativo.",
-      permission: SENSITIVE_PERMISSIONS.MANAGE_PROFILES,
-    });
-    if (!liberado) {
-      return;
-    }
-
-    setSecurityBusy(true);
-    setSecurityMessage(null);
-    try {
-      await setActiveProfile(profileId);
-      setSecurityMessage("Perfil ativo alterado. O PIN desse perfil será exigido na próxima ação sensível e na próxima abertura do app.");
-    } catch (error: any) {
-      setSecurityMessage(error?.message || error?.toString() || "Falha ao alterar o perfil ativo.");
-    } finally {
-      setSecurityBusy(false);
-    }
-  }
-
   async function trocarMeuPin() {
     if (!securityAdminUnlocked) {
       setSecurityMessage("Desbloqueie a gestão de segurança com PIN/Admin para alterar PINs e perfis.");
@@ -705,53 +677,6 @@ export default function Configuracoes() {
       await atualizarEstadoSeguranca();
     } catch (error: any) {
       setSecurityMessage(error?.message || error?.toString() || "Falha ao atualizar o perfil.");
-    } finally {
-      setSecurityBusy(false);
-    }
-  }
-
-  async function criarPerfil() {
-    if (!securityAdminUnlocked) {
-      setSecurityMessage("Desbloqueie a gestão de segurança com PIN/Admin para criar perfis.");
-      return;
-    }
-
-    const skipPin = newProfileNoPin;
-
-    if (!skipPin && newProfilePin.length < 4) {
-      setSecurityMessage("O PIN inicial do novo perfil deve ter entre 4 e 8 dígitos.");
-      return;
-    }
-
-    if (!skipPin && newProfilePin !== newProfilePinConfirm) {
-      setSecurityMessage("A confirmação do PIN do novo perfil não confere.");
-      return;
-    }
-
-    if (newProfileRole === "CUSTOM" && newProfilePermissions.length === 0) {
-      setSecurityMessage("Um perfil CUSTOM deve ter pelo menos uma permissão.");
-      return;
-    }
-
-    const permissions = permissionsForRole(newProfileRole, newProfilePermissions);
-    setSecurityBusy(true);
-    setSecurityMessage(null);
-    try {
-      await SensitiveAccessService.createProfile({
-        nome: newProfileName.trim(),
-        role: newProfileRole,
-        permissions,
-      }, skipPin ? "" : newProfilePin);
-      setNewProfileName("");
-      setNewProfileRole("CUSTOM");
-      setNewProfilePermissions([]);
-      setNewProfilePin("");
-      setNewProfilePinConfirm("");
-      setNewProfileNoPin(false);
-      setSecurityMessage("Novo perfil criado com sucesso.");
-      await atualizarEstadoSeguranca();
-    } catch (error: any) {
-      setSecurityMessage(error?.message || error?.toString() || "Falha ao criar o perfil.");
     } finally {
       setSecurityBusy(false);
     }
@@ -938,15 +863,15 @@ export default function Configuracoes() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-3xl font-bold tracking-tight">Configuracoes</h1>
-        <p className="text-muted-foreground">Defina parametros do sistema e integracoes.</p>
+        <h1 className="text-3xl font-bold tracking-tight">Configurações</h1>
+        <p className="text-muted-foreground">Defina parâmetros do sistema e integrações.</p>
       </div>
 
       <Tabs value={tab} onValueChange={setTab} className="space-y-4">
         <TabsList>
-          <TabsTrigger value="smtp" disabled={!canConfigureIntegrations}>Integracoes</TabsTrigger>
+          <TabsTrigger value="smtp" disabled={!canConfigureIntegrations}>Integrações</TabsTrigger>
           <TabsTrigger value="infra">Banco</TabsTrigger>
-          <TabsTrigger value="seguranca">Seguranca</TabsTrigger>
+          <TabsTrigger value="seguranca">Segurança</TabsTrigger>
           {canManageProfiles && <TabsTrigger value="observabilidade">Suporte e Logs</TabsTrigger>}
         </TabsList>
 
@@ -1031,7 +956,6 @@ export default function Configuracoes() {
           securityBusy={securityBusy}
           handleSecurityAdminToggle={handleSecurityAdminToggle}
           accessStatus={accessStatus}
-          trocarPerfilAtivo={trocarPerfilAtivo}
           currentPin={currentPin}
           setCurrentPin={setCurrentPin}
           newPin={newPin}
@@ -1059,19 +983,6 @@ export default function Configuracoes() {
           resetPinConfirm={resetPinConfirm}
           setResetPinConfirm={setResetPinConfirm}
           resetarPinPerfil={resetarPinPerfil}
-          newProfileName={newProfileName}
-          setNewProfileName={setNewProfileName}
-          newProfileRole={newProfileRole}
-          setNewProfileRole={setNewProfileRole}
-          newProfilePermissions={newProfilePermissions}
-          setNewProfilePermissions={setNewProfilePermissions}
-          newProfilePin={newProfilePin}
-          setNewProfilePin={setNewProfilePin}
-          newProfilePinConfirm={newProfilePinConfirm}
-          setNewProfilePinConfirm={setNewProfilePinConfirm}
-          newProfileNoPin={newProfileNoPin}
-          setNewProfileNoPin={setNewProfileNoPin}
-          criarPerfil={criarPerfil}
           securityMessage={securityMessage}
           inactivityLockEnabled={inactivityLockEnabled}
           onToggleInactivityLock={handleInactivityToggle}

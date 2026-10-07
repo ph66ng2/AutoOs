@@ -26,7 +26,6 @@ export type ConfiguracoesTabSegurancaProps = {
   securityBusy: boolean;
   handleSecurityAdminToggle: (nextValue: boolean) => void | Promise<void>;
   accessStatus: SensitiveAccessStatus | null;
-  trocarPerfilAtivo: (profileId: number) => void | Promise<void>;
   currentPin: string;
   setCurrentPin: (value: string) => void;
   newPin: string;
@@ -58,19 +57,6 @@ export type ConfiguracoesTabSegurancaProps = {
   resetPinConfirm: string;
   setResetPinConfirm: (value: string) => void;
   resetarPinPerfil: () => void | Promise<void>;
-  newProfileName: string;
-  setNewProfileName: (value: string) => void;
-  newProfileRole: string;
-  setNewProfileRole: (value: string) => void;
-  newProfilePermissions: SensitivePermission[];
-  setNewProfilePermissions: (value: SensitivePermission[]) => void;
-  newProfilePin: string;
-  setNewProfilePin: (value: string) => void;
-  newProfilePinConfirm: string;
-  setNewProfilePinConfirm: (value: string) => void;
-  newProfileNoPin: boolean;
-  setNewProfileNoPin: (value: boolean) => void;
-  criarPerfil: () => void | Promise<void>;
   securityMessage: string | null;
   inactivityLockEnabled: boolean;
   onToggleInactivityLock: (enabled: boolean) => void | Promise<void>;
@@ -87,7 +73,6 @@ export function ConfiguracoesTabSeguranca({
   securityBusy,
   handleSecurityAdminToggle,
   accessStatus,
-  trocarPerfilAtivo,
   currentPin,
   setCurrentPin,
   newPin,
@@ -115,19 +100,6 @@ export function ConfiguracoesTabSeguranca({
   resetPinConfirm,
   setResetPinConfirm,
   resetarPinPerfil,
-  newProfileName,
-  setNewProfileName,
-  newProfileRole,
-  setNewProfileRole,
-  newProfilePermissions,
-  setNewProfilePermissions,
-  newProfilePin,
-  setNewProfilePin,
-  newProfilePinConfirm,
-  setNewProfilePinConfirm,
-  newProfileNoPin,
-  setNewProfileNoPin,
-  criarPerfil,
   securityMessage,
   inactivityLockEnabled,
   onToggleInactivityLock,
@@ -171,38 +143,16 @@ export function ConfiguracoesTabSeguranca({
         <CardHeader>
           <CardTitle>Perfil ativo</CardTitle>
           <CardDescription>
-            O acesso sensivel atual esta associado ao perfil {accessStatus?.active_profile_name || "selecionado"}.
+            O acesso sensível atual está associado ao perfil {accessStatus?.active_profile_name || "selecionado"}.
           </CardDescription>
         </CardHeader>
-        <CardContent className="grid gap-4 md:grid-cols-2">
+        <CardContent>
           <div className="rounded-lg border bg-muted/40 p-4 text-sm">
             <div className="font-medium">{accessStatus?.active_profile_name || "Perfil sem nome"}</div>
             <div className="text-muted-foreground">Papel: {accessStatus?.active_role || "-"}</div>
             <div className="mt-2 text-muted-foreground">
-              Permissoes: {accessStatus?.permissions.length ? accessStatus.permissions.join(", ") : "nenhuma"}
+              Permissões: {accessStatus?.permissions.length ? accessStatus.permissions.join(", ") : "nenhuma"}
             </div>
-          </div>
-
-          <div className="space-y-2">
-            <Label>Selecionar perfil da sessão</Label>
-            <Select
-              value={accessStatus?.active_profile_id ? String(accessStatus.active_profile_id) : undefined}
-              onValueChange={(value) => void trocarPerfilAtivo(Number(value))}
-            >
-              <SelectTrigger>
-                <SelectValue placeholder="Selecione um perfil" />
-              </SelectTrigger>
-              <SelectContent>
-                {accessStatus?.profiles.map((profile) => (
-                  <SelectItem key={`active-${profile.id}`} value={String(profile.id)}>
-                    {profile.nome} ({profile.role})
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <p className="text-xs text-muted-foreground">
-              A troca do perfil ativo encerra o desbloqueio atual e passa a usar o PIN do perfil escolhido.
-            </p>
           </div>
         </CardContent>
       </Card>
@@ -212,7 +162,7 @@ export function ConfiguracoesTabSeguranca({
           <CardHeader>
             <CardTitle>Administração de perfis</CardTitle>
             <CardDescription>
-              Gerencie perfis, permissões e PINs dos colaboradores.
+              Edite perfis, permissões e PINs dos colaboradores. Para criar um perfil, abra a aba Perfil.
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-6">
@@ -299,7 +249,7 @@ export function ConfiguracoesTabSeguranca({
                 </div>
 
                 <div className="rounded-lg border bg-muted/40 p-4 text-sm text-muted-foreground">
-                  O perfil ADMIN recebe todas as permissoes automaticamente. No papel CUSTOM, voce escolhe cada permissao abaixo.
+                  O perfil ADMIN recebe todas as permissões automaticamente. No papel CUSTOM, você escolhe cada permissão abaixo.
                 </div>
               </div>
 
@@ -389,84 +339,6 @@ export function ConfiguracoesTabSeguranca({
               <div className="flex justify-end">
                 <Button type="button" variant="outline" onClick={() => void resetarPinPerfil()} disabled={securityBusy || !securityAdminUnlocked || !managedProfileId || !managedProfile?.ativo}>
                   Redefinir PIN do colaborador
-                </Button>
-              </div>
-            </div>
-
-            <div className="border-t pt-6 space-y-4">
-              <h3 className="text-lg font-semibold">Criar novo perfil</h3>
-              <div className="grid gap-4 md:grid-cols-2">
-                <div className="space-y-2">
-                  <Label htmlFor="new-profile-name">Nome</Label>
-                  <Input id="new-profile-name" value={newProfileName} onChange={(event) => setNewProfileName(event.target.value)} placeholder="Ex.: Estoque Local" disabled={!securityAdminUnlocked || securityBusy} />
-                </div>
-                <div className="space-y-2">
-                  <Label>Papel</Label>
-                  <Select value={newProfileRole} onValueChange={(value) => {
-                    setNewProfileRole(value);
-                    if (value === "ADMIN") {
-                      setNewProfilePermissions(permissionOptions);
-                    } else {
-                      setNewProfilePermissions([]);
-                    }
-                  }} disabled={!securityAdminUnlocked || securityBusy}>
-                    <SelectTrigger>
-                      <SelectValue placeholder="Selecione um papel" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="ADMIN">ADMIN</SelectItem>
-                      <SelectItem value="CUSTOM">CUSTOM</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-              </div>
-
-              <div className="grid gap-3 md:grid-cols-2">
-                {permissionOptions.map((permission) => (
-                  <label key={`new-${permission}`} className="flex items-start gap-3 rounded-lg border p-3 text-sm">
-                    <Checkbox
-                      checked={newProfileRole === "ADMIN" ? true : newProfilePermissions.includes(permission)}
-                      disabled={!securityAdminUnlocked || securityBusy || newProfileRole === "ADMIN"}
-                      onCheckedChange={() => togglePermission(newProfilePermissions, permission, setNewProfilePermissions)}
-                    />
-                    <span>{SENSITIVE_PERMISSION_LABELS[permission]}</span>
-                  </label>
-                ))}
-              </div>
-
-              <div className="flex items-center gap-3 rounded-lg border p-3">
-                <Checkbox
-                  id="new-profile-no-pin"
-                  checked={newProfileNoPin}
-                  onCheckedChange={(value) => setNewProfileNoPin(!!value)}
-                  disabled={!securityAdminUnlocked || securityBusy || newProfileRole === "ADMIN"}
-                />
-                <Label htmlFor="new-profile-no-pin" className="text-sm font-normal cursor-pointer">
-                  <span className={newProfileRole === "ADMIN" ? "text-muted-foreground" : ""}>
-                    Este perfil não terá PIN (login por nome apenas)
-                  </span>
-                  {newProfileRole === "ADMIN" && (
-                    <p className="text-xs text-muted-foreground mt-1">
-                      Perfis ADMIN exigem PIN obrigatoriamente
-                    </p>
-                  )}
-                </Label>
-              </div>
-
-              <div className="grid gap-4 md:grid-cols-2">
-                <div className="space-y-2">
-                  <Label htmlFor="new-profile-pin">PIN inicial</Label>
-                  <Input id="new-profile-pin" type="password" inputMode="numeric" value={newProfilePin} onChange={(event) => setNewProfilePin(event.target.value.replace(/\D/g, "").slice(0, 8))} disabled={!securityAdminUnlocked || securityBusy || newProfileNoPin} />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="new-profile-pin-confirm">Confirmar PIN inicial</Label>
-                  <Input id="new-profile-pin-confirm" type="password" inputMode="numeric" value={newProfilePinConfirm} onChange={(event) => setNewProfilePinConfirm(event.target.value.replace(/\D/g, "").slice(0, 8))} disabled={!securityAdminUnlocked || securityBusy || newProfileNoPin} />
-                </div>
-              </div>
-
-              <div className="flex justify-end">
-                <Button type="button" onClick={() => void criarPerfil()} disabled={securityBusy || !securityAdminUnlocked}>
-                  Criar perfil
                 </Button>
               </div>
             </div>
