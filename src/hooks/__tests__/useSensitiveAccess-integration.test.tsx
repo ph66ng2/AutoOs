@@ -182,7 +182,7 @@ describe("useSensitiveAccess — integração com novos recursos de auth", () =>
     expect(hookRef?.status?.profiles.find((p) => p.id === 2)?.pin_configured).toBe(false);
 
     await act(async () => {
-      await hookRef?.setActiveProfile(2);
+      await hookRef?.setActiveProfile(2, "");
     });
 
     expect(hookRef?.status?.active_profile_id).toBe(2);

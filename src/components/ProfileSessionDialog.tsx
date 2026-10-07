@@ -65,7 +65,7 @@ export function ProfileSessionDialog({
   const isSelectorMode = mode === "selector";
   const isCurrentProfileSelected = !!selectedProfile && selectedProfile.id === activeProfileId;
   const isAdminWithoutPin = selectedProfile?.role === "ADMIN" && !selectedProfile?.pin_configured;
-  const shouldAskForPin = isAdminWithoutPin || (Boolean(selectedProfile?.pin_configured) && (!isSelectorMode || !isCurrentProfileSelected));
+  const shouldAskForPin = isAdminWithoutPin || (Boolean(selectedProfile?.pin_configured) && (!isSelectorMode || !isCurrentProfileSelected || !unlocked));
   const permissionPreview = selectedProfile?.permissions.slice(0, 3) ?? [];
 
   const primaryActionLabel = (() => {
@@ -83,7 +83,7 @@ export function ProfileSessionDialog({
 
     if (mode === "selector") {
       return isCurrentProfileSelected
-        ? "Continuar com este perfil"
+        ? (unlocked ? "Continuar com este perfil" : "Desbloquear este perfil")
         : selectedProfile.pin_configured
           ? "Trocar para este perfil"
           : "Trocar para este perfil";
@@ -98,7 +98,7 @@ export function ProfileSessionDialog({
     !selectedProfile ||
     busy ||
     (shouldAskForPin && pin.length < 4) ||
-    (isAdminWithoutPin && confirmPin.length < 4);
+    (isAdminWithoutPin && (confirmPin.length < 4 || pin !== confirmPin));
 
   const handlePrimaryAction = () => {
     if (primaryDisabled) return;
@@ -119,7 +119,7 @@ export function ProfileSessionDialog({
     }
 
     if (mode === "selector" && isCurrentProfileSelected) {
-      return "Você já está usando este perfil. Feche agora ou continue nele.";
+      return unlocked ? "Você já está usando este perfil. Feche agora ou continue nele." : "Informe o PIN deste perfil para desbloquear a sessão.";
     }
 
     if (!selectedProfile.pin_configured) {
@@ -288,9 +288,11 @@ export function ProfileSessionDialog({
                         </div>
                       </div>
 
-                      <div className="mt-3 text-xs text-slate-500">
-                        {profile.permissions.length} permiss{profile.permissions.length === 1 ? "ão" : "ões"} configuradas
-                      </div>
+                      {unlocked && (
+                        <div className="mt-3 text-xs text-slate-500">
+                          {profile.permissions.length} permiss{profile.permissions.length === 1 ? "ão" : "ões"} configuradas
+                        </div>
+                      )}
                     </button>
                   );
                 })}

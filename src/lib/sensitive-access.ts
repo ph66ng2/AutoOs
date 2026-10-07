@@ -36,8 +36,8 @@ export const SensitiveAccessService = {
     return invoke<boolean>("lock_sensitive_access");
   },
 
-  async setActiveProfile(profileId: number): Promise<SensitiveAccessStatus> {
-    return invoke<SensitiveAccessStatus>("set_active_security_profile", { profileId });
+  async setActiveProfile(profileId: number, pin: string): Promise<SensitiveAccessStatus> {
+    return invoke<SensitiveAccessStatus>("set_active_security_profile", { profileId, pin });
   },
 
   async createProfile(input: SecurityProfileInput, pin: string): Promise<SensitiveAccessStatus> {

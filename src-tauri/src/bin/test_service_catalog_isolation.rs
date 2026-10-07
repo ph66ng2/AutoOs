@@ -110,7 +110,7 @@ async fn create_fixture(pool: &PgPool, prefix: &str) -> Result<Fixture> {
 }
 
 async fn activate_profile(profile_id: i32) -> Result<()> {
-    auth::set_active_security_profile(profile_id)
+    auth::set_active_security_profile(profile_id, String::new())
         .await
         .map_err(|error| anyhow!(error))?;
     auth::unlock_session_without_pin()

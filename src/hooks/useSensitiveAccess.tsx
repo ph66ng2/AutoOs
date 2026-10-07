@@ -47,7 +47,7 @@ interface SensitiveAccessContextValue {
   openProfileSelector: (options?: ProfileSelectorOptions) => Promise<boolean>;
   lockSensitiveAccess: () => Promise<void>;
   hasPermission: (permission: SensitivePermission) => boolean;
-  setActiveProfile: (profileId: number) => Promise<void>;
+  setActiveProfile: (profileId: number, pin: string) => Promise<void>;
 }
 
 const defaultPrompt: SensitiveAccessPromptOptions = {
@@ -250,7 +250,7 @@ export function SensitiveAccessProvider({ children }: { children: ReactNode }) {
   const openProfileSelector = useCallback(async (options?: ProfileSelectorOptions) => {
     const currentStatus = await SensitiveAccessService.status().catch(() => status);
     if (!currentStatus || currentStatus.profiles.length === 0) {
-      toast.error("Nenhum perfil encontrado. Crie um perfil em Configurações > Segurança.");
+      toast.error("Nenhum perfil encontrado. Crie um perfil na aba Perfil.");
       return false;
     }
 
@@ -280,8 +280,8 @@ export function SensitiveAccessProvider({ children }: { children: ReactNode }) {
     }
   }, [refreshStatus]);
 
-  const setActiveProfile = useCallback(async (profileId: number) => {
-    const nextStatus = await SensitiveAccessService.setActiveProfile(profileId);
+  const setActiveProfile = useCallback(async (profileId: number, pin: string) => {
+    const nextStatus = await SensitiveAccessService.setActiveProfile(profileId, pin);
     setStatus(nextStatus);
     setSelectedProfileId(nextStatus.active_profile_id ? String(nextStatus.active_profile_id) : "");
   }, []);
@@ -304,7 +304,7 @@ export function SensitiveAccessProvider({ children }: { children: ReactNode }) {
 
       const isCurrentSelection = targetProfileId === status?.active_profile_id;
       const shouldAskForPin =
-        dialogMode !== "selector" || !isCurrentSelection;
+        dialogMode !== "selector" || !isCurrentSelection || !status?.unlocked;
 
       if (!shouldAskForPin) {
         closeDialog(true);
@@ -322,8 +322,14 @@ export function SensitiveAccessProvider({ children }: { children: ReactNode }) {
       }
 
       if (targetProfileId && targetProfileId !== workingStatus.active_profile_id) {
-        workingStatus = await SensitiveAccessService.setActiveProfile(targetProfileId);
+        workingStatus = await SensitiveAccessService.setActiveProfile(targetProfileId, pin);
         setStatus(workingStatus);
+        const switchedProfile = workingStatus.profiles.find((profile) => profile.id === targetProfileId);
+        if (workingStatus.unlocked && switchedProfile?.pin_configured && profileHasPermission(workingStatus, promptOptions.permission)) {
+          try { localStorage.setItem("autoos_last_profile_id", String(targetProfileId)); } catch { /* storage indisponível */ }
+          closeDialog(true);
+          return;
+        }
       }
 
       const activeProfile = workingStatus?.profiles.find((profile) => profile.id === (workingStatus.active_profile_id ?? targetProfileId)) ?? null;
@@ -442,6 +448,8 @@ export function SensitiveAccessProvider({ children }: { children: ReactNode }) {
         onClose={() => closeDialog(false)}
         onSelectProfile={(profileId) => {
           setSelectedProfileId(profileId);
+          setPin("");
+          setConfirmPin("");
           setError(null);
         }}
         onPinChange={setPin}

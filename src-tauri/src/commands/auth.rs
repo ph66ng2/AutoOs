@@ -1011,9 +1011,23 @@ pub async fn lock_sensitive_access() -> Result<bool, String> {
 
 #[tauri::command]
 #[instrument(skip_all)]
-pub async fn set_active_security_profile(profile_id: i32) -> Result<SensitiveAccessStatus, String> {
+pub async fn set_active_security_profile(profile_id: i32, pin: String) -> Result<SensitiveAccessStatus, String> {
     let actor = fetch_active_profile_record().await.ok().and_then(|profile| to_profile_summary(profile).ok());
     let profile = fetch_profile_record_by_id(profile_id).await?;
+    let summary = to_profile_summary(profile.clone())?;
+    let stored = load_profile_pin_for_record(&profile)?;
+    if let Some(ref stored_pin) = stored {
+        validate_pin_format(&pin)?;
+        check_unlock_lockout(profile_id)?;
+        if !verify_pin(pin.trim(), stored_pin) {
+            record_unlock_failure(profile_id);
+            record_security_event("PROFILE_SWITCH_FAILED", actor.as_ref(), "PIN do perfil de destino inválido", false).await;
+            return Err("PIN do perfil selecionado inválido".to_string());
+        }
+        upgrade_pin_hash_if_legacy(profile_id, pin.trim(), stored_pin)?;
+    } else if !pin.is_empty() {
+        return Err("Este perfil não possui PIN configurado".to_string());
+    }
     let pool = get_pool().await.map_err(|e| e.to_string())?;
 
     // Duas queries separadas para evitar violação da constraint parcial unique
@@ -1047,8 +1061,8 @@ pub async fn set_active_security_profile(profile_id: i32) -> Result<SensitiveAcc
         e.to_string()
     })?;
 
-    clear_session()?;
-    let summary = to_profile_summary(profile)?;
+    reset_unlock_attempts(profile_id);
+    unlock_session(summary.clone())?;
     record_security_event(
         "PROFILE_SWITCH",
         actor.as_ref(),
@@ -1063,15 +1077,18 @@ pub async fn set_active_security_profile(profile_id: i32) -> Result<SensitiveAcc
 #[instrument(skip_all)]
 pub async fn create_security_profile(input: SecurityProfileInput, pin: String) -> Result<SensitiveAccessStatus, String> {
     let actor = require_permission(PERMISSION_MANAGE_PROFILES)?;
-    validate_pin_format(&pin)?;
 
     let nome = input.nome.trim();
-    if nome.len() < 3 {
+    if nome.chars().count() < 3 {
         return Err("Nome do perfil deve ter no mínimo 3 caracteres".to_string());
     }
+    validate_pin_format(&pin)?;
 
     let role = normalize_role(&input.role)?;
     let permissions = normalize_permissions(&role, &input.permissions)?;
+    if pin.trim().is_empty() && (role == "ADMIN" || has_permission_values(&permissions, PERMISSION_MANAGE_PROFILES)) {
+        return Err("Perfis com acesso à administração exigem PIN".to_string());
+    }
     let permissions_json = serde_json::to_string(&permissions).map_err(|e| e.to_string())?;
 
     let pool = get_pool().await.map_err(|e| e.to_string())?;
@@ -1087,7 +1104,12 @@ pub async fn create_security_profile(input: SecurityProfileInput, pin: String) -
     .await
     .map_err(|e| {
         error!("Erro ao criar perfil de segurança: {}", e);
-        e.to_string()
+        if let sqlx::Error::Database(ref db_error) = e {
+            if db_error.code().as_deref() == Some("23505") && db_error.constraint() == Some("security_profiles_nome_key") {
+                return "Já existe um perfil com este nome. Escolha outro nome.".to_string();
+            }
+        }
+        "Não foi possível criar o perfil. Tente novamente.".to_string()
     })?;
 
     let profile_id: i32 = row.try_get("id").map_err(|e| e.to_string())?;
@@ -1130,6 +1152,9 @@ pub async fn update_security_profile(profile_id: i32, input: SecurityProfileInpu
 
     let role = normalize_role(&input.role)?;
     let permissions = normalize_permissions(&role, &input.permissions)?;
+    if !current.pin_configured && (role == "ADMIN" || has_permission_values(&permissions, PERMISSION_MANAGE_PROFILES)) {
+        return Err("Configure o PIN deste perfil antes de conceder acesso à administração".to_string());
+    }
     if !has_permission_values(&permissions, PERMISSION_MANAGE_PROFILES)
         && has_permission(&current, PERMISSION_MANAGE_PROFILES)
         && count_manager_profiles_excluding(profile_id).await? == 0
@@ -1152,7 +1177,12 @@ pub async fn update_security_profile(profile_id: i32, input: SecurityProfileInpu
     .await
     .map_err(|e| {
         error!("Erro ao atualizar perfil de segurança {}: {}", profile_id, e);
-        e.to_string()
+        if let sqlx::Error::Database(ref db_error) = e {
+            if db_error.code().as_deref() == Some("23505") && db_error.constraint() == Some("security_profiles_nome_key") {
+                return "Já existe um perfil com este nome. Escolha outro nome.".to_string();
+            }
+        }
+        "Não foi possível atualizar o perfil. Tente novamente.".to_string()
     })?;
 
     if actor.id == profile_id {
