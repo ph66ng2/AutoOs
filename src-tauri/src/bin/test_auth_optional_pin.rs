@@ -76,7 +76,7 @@ async fn main() -> Result<()> {
     );
 
     // Set the new profile as active and unlock without PIN
-    tauri_result(auth::set_active_security_profile(created.id, "".to_string()).await, "Falha ao definir perfil ativo")?;
+    tauri_result(auth::set_active_security_profile(created.id, "".to_string(), None).await, "Falha ao definir perfil ativo")?;
     let status = tauri_result(auth::unlock_session_without_pin().await, "Falha ao desbloquear sessão sem PIN")?;
     assert!(
         status.unlocked,

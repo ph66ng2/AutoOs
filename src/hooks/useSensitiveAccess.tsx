@@ -327,10 +327,15 @@ export function SensitiveAccessProvider({ children }: { children: ReactNode }) {
       }
 
       if (targetProfileId && targetProfileId !== workingStatus.active_profile_id) {
-        workingStatus = await SensitiveAccessService.setActiveProfile(targetProfileId, pin);
+        workingStatus = await SensitiveAccessService.setActiveProfile(targetProfileId, pin, confirmPin);
         setStatus(workingStatus);
         const switchedProfile = workingStatus.profiles.find((profile) => profile.id === targetProfileId);
-        if (workingStatus.unlocked && switchedProfile?.pin_configured && profileHasPermission(workingStatus, promptOptions.permission)) {
+        if (workingStatus.unlocked && switchedProfile?.pin_configured) {
+          if (!profileHasPermission(workingStatus, promptOptions.permission)) {
+            setError(`O perfil ativo não possui permissão para ${permissionDescription(promptOptions.permission)}.`);
+            setBusy(false);
+            return;
+          }
           try { localStorage.setItem("autoos_last_profile_id", String(targetProfileId)); } catch { /* storage indisponível */ }
           closeDialog(true);
           return;

@@ -70,6 +70,33 @@ describe("useSensitiveAccess — integração com novos recursos de auth", () =>
     expect(pinInput).toHaveValue("1234");
   });
 
+  it("envia PIN e confirmação ao ativar um administrador sem PIN inicial", async () => {
+    const user = userEvent.setup();
+    const pending = { id: 2, nome: "Admin pendente", role: "ADMIN", permissions: [], pin_configured: false, is_default: false, ativo: true };
+    const admin = { id: 1, nome: "Admin atual", role: "ADMIN", permissions: [], pin_configured: true, is_default: true, ativo: true };
+    const initial = { ...EMPTY_STATUS, pin_configured: true, active_profile_id: 1, active_profile_name: admin.nome, profiles: [admin, pending] };
+    mockInvoke.mockImplementation((cmd: string) => {
+      if (cmd === "get_sensitive_access_status") return Promise.resolve(initial);
+      if (cmd === "set_active_security_profile") return Promise.resolve({
+        ...initial, pin_configured: true, unlocked: true, active_profile_id: 2,
+        active_profile_name: pending.nome, active_role: "ADMIN", permissions: ["MANAGE_PROFILES"],
+        profiles: [admin, { ...pending, pin_configured: true }],
+      });
+      return Promise.resolve(null);
+    });
+
+    render(<TestHarness><HookInspector capture={captureHook} /></TestHarness>);
+    await user.click(await screen.findByRole("button", { name: /Admin pendente/ }));
+    await user.type(screen.getByLabelText("Novo PIN"), "2468");
+    await user.type(screen.getByLabelText("Confirmar PIN"), "2468");
+    await user.click(screen.getByRole("button", { name: "Configurar PIN e continuar" }));
+
+    await waitFor(() => expect(mockInvoke).toHaveBeenCalledWith("set_active_security_profile", {
+      profileId: 2, pin: "2468", confirmPin: "2468",
+    }));
+    await waitFor(() => expect(hookRef?.status?.active_profile_id).toBe(2));
+  });
+
   it("inatividade ATIVADA: sessão expirada reflete unlocked=false no status", async () => {
     mockInvoke.mockImplementation((cmd: string) => {
       if (cmd === "get_sensitive_access_status") {

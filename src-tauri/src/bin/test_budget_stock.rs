@@ -20,8 +20,7 @@ async fn main() -> Result<()> {
         .bind(format!("cmd-{suffix}@example.test")).fetch_one(&pool).await?;
     let profile: i32 = sqlx::query_scalar("INSERT INTO security_profiles(nome,role,permissions,empresa_id,ativo,is_default) VALUES ($1,'ADMIN',$2,$3,true,false) RETURNING id")
         .bind(format!("Stock {suffix}")).bind(serde_json::to_string(&[auth::PERMISSION_STOCK_CONTROL, auth::PERMISSION_FINANCIAL_ACTIONS])?).bind(empresa).fetch_one(&pool).await?;
-    auth::set_active_security_profile(profile, String::new()).await.map_err(|e| anyhow!(e))?;
-    auth::configure_sensitive_pin("1357".into(), None).await.map_err(|e| anyhow!(e))?;
+    auth::set_active_security_profile(profile, "1357".into(), Some("1357".into())).await.map_err(|e| anyhow!(e))?;
     auth::unlock_sensitive_access("1357".into()).await.map_err(|e| anyhow!(e))?;
     let produto = produtos::criar_produto(ProdutoInput {
         codigo: format!("P-{suffix}"), nome: "Cabeça".into(), categoria: "PEÇA".into(),

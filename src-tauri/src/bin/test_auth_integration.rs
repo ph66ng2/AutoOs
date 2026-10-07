@@ -171,7 +171,7 @@ async fn test_operator_no_pin_dropdown_login(pool: &sqlx::PgPool) -> Result<()> 
     assert_eq!(operator.role, "CUSTOM", "Papel do operador deve ser CUSTOM");
     assert!(!operator.pin_configured, "Operador criado sem PIN deve ter pin_configured=false");
 
-    tauri_result(auth::set_active_security_profile(operator.id, "".to_string()).await, "Falha ao definir perfil ativo como operador")?;
+    tauri_result(auth::set_active_security_profile(operator.id, "".to_string(), None).await, "Falha ao definir perfil ativo como operador")?;
     let unlocked_status = tauri_result(auth::unlock_session_without_pin().await, "Falha ao desbloquear sessão sem PIN")?;
 
     assert!(unlocked_status.unlocked, "Deve desbloquear sem PIN para operador sem PIN configurado");
@@ -196,12 +196,12 @@ async fn test_admin_with_pin_dropdown_not_available(pool: &sqlx::PgPool) -> Resu
     let target_id = switch_status.profiles.iter().find(|profile| profile.nome == "Test Auth Integration Switch Target")
         .context("Perfil de teste para troca não encontrado")?.id;
     let before = tauri_result(auth::get_sensitive_access_status().await, "Falha ao obter perfil anterior")?;
-    let invalid_switch = auth::set_active_security_profile(target_id, "9999".to_string()).await;
+    let invalid_switch = auth::set_active_security_profile(target_id, "9999".to_string(), None).await;
     assert!(invalid_switch.is_err(), "PIN incorreto deve impedir a troca de perfil");
     let after = tauri_result(auth::get_sensitive_access_status().await, "Falha ao obter perfil após PIN incorreto")?;
     assert_eq!(before.active_profile_id, after.active_profile_id, "PIN incorreto não pode mudar o perfil ativo");
-    tauri_result(auth::set_active_security_profile(target_id, "2468".to_string()).await, "Falha ao trocar com PIN correto")?;
-    tauri_result(auth::set_active_security_profile(admin_id, "1234".to_string()).await, "Falha ao definir perfil ativo como admin")?;
+    tauri_result(auth::set_active_security_profile(target_id, "2468".to_string(), None).await, "Falha ao trocar com PIN correto")?;
+    tauri_result(auth::set_active_security_profile(admin_id, "1234".to_string(), None).await, "Falha ao definir perfil ativo como admin")?;
     let admin_status = tauri_result(auth::get_sensitive_access_status().await, "Falha ao obter status do admin")?;
     let admin_profile_in_status = admin_status.profiles.iter()
         .find(|p| p.id == admin_id)
@@ -212,6 +212,39 @@ async fn test_admin_with_pin_dropdown_not_available(pool: &sqlx::PgPool) -> Resu
     );
     sqlx::query("DELETE FROM security_profiles WHERE id = $1").bind(target_id).execute(pool).await?;
     cleanup_test_keyring(target_id).await;
+    cleanup_test_keyring(admin_id).await;
+    Ok(())
+}
+
+async fn test_first_pin_for_inactive_admin(pool: &sqlx::PgPool) -> Result<()> {
+    let admin_id = create_test_admin(pool).await?;
+    let permissions = serde_json::to_string(&vec![auth::PERMISSION_MANAGE_PROFILES.to_string()])?;
+    let pending_id: i32 = sqlx::query_scalar(
+        "INSERT INTO security_profiles (nome, role, permissions, ativo, is_default, atualizado_em)
+         VALUES ('Test Auth Integration Pending Admin', 'ADMIN', $1, true, false, NOW()) RETURNING id"
+    )
+    .bind(permissions)
+    .fetch_one(pool)
+    .await?;
+
+    assert!(auth::set_active_security_profile(pending_id, String::new(), None).await.is_err());
+    assert!(auth::set_active_security_profile(pending_id, "2468".into(), Some("1357".into())).await.is_err());
+    let unchanged = tauri_result(auth::get_sensitive_access_status().await, "Falha ao obter perfil após PINs inválidos")?;
+    assert_eq!(unchanged.active_profile_id, Some(admin_id), "PINs inválidos não podem trocar o perfil");
+
+    let activated = tauri_result(
+        auth::set_active_security_profile(pending_id, "2468".into(), Some("2468".into())).await,
+        "Falha ao configurar PIN e ativar administrador",
+    )?;
+    assert_eq!(activated.active_profile_id, Some(pending_id));
+    assert!(activated.pin_configured && activated.unlocked);
+    let stored = tauri_result(auth::load_profile_pin(pending_id), "Falha ao carregar PIN inicial")?
+        .context("PIN inicial não encontrado")?;
+    assert!(auth::verify_pin("2468", &stored));
+
+    tauri_result(auth::set_active_security_profile(admin_id, "1234".into(), None).await, "Falha ao restaurar administrador")?;
+    sqlx::query("DELETE FROM security_profiles WHERE id = $1").bind(pending_id).execute(pool).await?;
+    cleanup_test_keyring(pending_id).await;
     cleanup_test_keyring(admin_id).await;
     Ok(())
 }
@@ -329,6 +362,7 @@ async fn main() -> Result<()> {
     test_inactivity_off_session_stays_valid(&pool).await?;
     test_operator_no_pin_dropdown_login(&pool).await?;
     test_admin_with_pin_dropdown_not_available(&pool).await?;
+    test_first_pin_for_inactive_admin(&pool).await?;
     test_recovery_success_then_login(&pool, host.clone(), port, database.clone(), username.clone(), password.clone()).await?;
     test_recovery_wrong_creds_audit_logged(&pool, host, port, database, username).await?;
 

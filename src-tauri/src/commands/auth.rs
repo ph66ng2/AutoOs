@@ -1011,11 +1011,12 @@ pub async fn lock_sensitive_access() -> Result<bool, String> {
 
 #[tauri::command]
 #[instrument(skip_all)]
-pub async fn set_active_security_profile(profile_id: i32, pin: String) -> Result<SensitiveAccessStatus, String> {
+pub async fn set_active_security_profile(profile_id: i32, pin: String, confirm_pin: Option<String>) -> Result<SensitiveAccessStatus, String> {
     let actor = fetch_active_profile_record().await.ok().and_then(|profile| to_profile_summary(profile).ok());
     let profile = fetch_profile_record_by_id(profile_id).await?;
     let summary = to_profile_summary(profile.clone())?;
     let stored = load_profile_pin_for_record(&profile)?;
+    let provision_admin_pin = stored.is_none() && summary.role == "ADMIN";
     if let Some(ref stored_pin) = stored {
         validate_pin_format(&pin)?;
         check_unlock_lockout(profile_id)?;
@@ -1025,6 +1026,14 @@ pub async fn set_active_security_profile(profile_id: i32, pin: String) -> Result
             return Err("PIN do perfil selecionado inválido".to_string());
         }
         upgrade_pin_hash_if_legacy(profile_id, pin.trim(), stored_pin)?;
+    } else if provision_admin_pin {
+        validate_pin_format(&pin)?;
+        if pin.trim().is_empty() {
+            return Err("Defina um PIN para o perfil administrador".to_string());
+        }
+        if confirm_pin.as_deref() != Some(pin.as_str()) {
+            return Err("Os PINs não conferem".to_string());
+        }
     } else if !pin.is_empty() {
         return Err("Este perfil não possui PIN configurado".to_string());
     }
@@ -1056,6 +1065,10 @@ pub async fn set_active_security_profile(profile_id: i32, pin: String) -> Result
             e.to_string()
         })?;
 
+    if provision_admin_pin {
+        store_profile_pin(profile_id, &pin)?;
+    }
+
     tx.commit().await.map_err(|e| {
         error!("Erro ao confirmar transação de perfil: {}", e);
         e.to_string()
@@ -1063,6 +1076,9 @@ pub async fn set_active_security_profile(profile_id: i32, pin: String) -> Result
 
     reset_unlock_attempts(profile_id);
     unlock_session(summary.clone())?;
+    if provision_admin_pin {
+        record_security_event("PIN_CONFIGURED_ON_SWITCH", Some(&summary), "PIN inicial do perfil configurado", true).await;
+    }
     record_security_event(
         "PROFILE_SWITCH",
         actor.as_ref(),
