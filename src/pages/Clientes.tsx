@@ -644,6 +644,7 @@ export default function Clientes() {
           if (!open) setErroDocumentoDuplicado(null);
         }}
         erroDocumentoDuplicado={erroDocumentoDuplicado}
+        onDismissDuplicate={() => setErroDocumentoDuplicado(null)}
         onBuscarClienteExistente={() => {
           const documento = form.getValues("documento").replace(/\D/g, "");
           setBusca(documento);

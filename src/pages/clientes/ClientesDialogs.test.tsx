@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import { vi } from "vitest";
 import { ClientesFormDialog } from "./ClientesDialogs";
 
@@ -10,16 +10,19 @@ const baseProps = {
   open: true,
   onOpenChange: vi.fn(),
   editando: null,
-  form: { handleSubmit: () => vi.fn() } as any,
+  form: { handleSubmit: () => vi.fn(), setFocus: vi.fn() } as any,
   tipoPessoa: null,
   buscarCep: vi.fn(),
   buscandoCep: false,
   salvando: false,
+  onDismissDuplicate: vi.fn(),
   onBuscarClienteExistente: vi.fn(),
   onSubmit: vi.fn(),
 };
 
 describe("orientação para CPF/CNPJ duplicado", () => {
+  beforeEach(() => vi.clearAllMocks());
+
   it("oferece busca quando o conflito é com cliente ativo", () => {
     render(
       <ClientesFormDialog
@@ -28,7 +31,10 @@ describe("orientação para CPF/CNPJ duplicado", () => {
       />,
     );
 
-    expect(screen.getByRole("button", { name: "Buscar cliente existente" })).toBeInTheDocument();
+    const aviso = screen.getByRole("alertdialog", { name: "CPF/CNPJ já cadastrado" });
+    expect(aviso).toHaveTextContent("cliente ativo");
+    fireEvent.click(screen.getByRole("button", { name: "Buscar cliente existente" }));
+    expect(baseProps.onBuscarClienteExistente).toHaveBeenCalled();
   });
 
   it("não oferece busca de ativos quando o cadastro pode estar inativo", () => {
@@ -39,7 +45,10 @@ describe("orientação para CPF/CNPJ duplicado", () => {
       />,
     );
 
-    expect(screen.getByRole("alert")).toHaveTextContent("administrador");
+    expect(screen.getByRole("alertdialog")).toHaveTextContent("administrador");
     expect(screen.queryByRole("button", { name: "Buscar cliente existente" })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Corrigir documento" }));
+    expect(baseProps.onDismissDuplicate).toHaveBeenCalled();
+    expect(baseProps.onOpenChange).not.toHaveBeenCalled();
   });
 });

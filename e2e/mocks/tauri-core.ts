@@ -15,8 +15,13 @@ export function isTauri(): boolean {
   return false;
 }
 
-export async function invoke<T>(command: string): Promise<T> {
+export async function invoke<T>(command: string, args?: Record<string, unknown>): Promise<T> {
   switch (command) {
+    case "criar_cliente":
+      if ((args?.input as { documento?: string } | undefined)?.documento === "52998224725") {
+        throw new Error("Este CPF/CNPJ já está cadastrado em um cliente ativo. Pesquise pelo documento para localizar o registro.");
+      }
+      return undefined as T;
     case "verificar_status_banco": return true as T;
     case "get_sensitive_access_status":
     case "set_active_security_profile":
