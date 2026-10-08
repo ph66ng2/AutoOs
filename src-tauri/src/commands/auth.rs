@@ -719,18 +719,22 @@ async fn fetch_active_profile_record() -> Result<SecurityProfileRecord, String> 
 
 async fn fetch_profile_record_by_id(profile_id: i32) -> Result<SecurityProfileRecord, String> {
     let pool = get_pool().await.map_err(|e| e.to_string())?;
-    sqlx::query_as::<_, SecurityProfileRecord>(
+    let profile = sqlx::query_as::<_, SecurityProfileRecord>(
         "SELECT id, nome, role, permissions, ativo, is_default, criado_em
          FROM security_profiles
          WHERE id = $1 AND ativo = true"
     )
     .bind(profile_id)
     .fetch_optional(&pool)
-    .await
-    .map_err(|e| {
-        error!("Erro ao buscar perfil de segurança {}: {}", profile_id, e);
-        e.to_string()
-    })?
+    .await;
+    let profile = match profile {
+        Ok(profile) => profile,
+        Err(e) => {
+            error!("Erro ao buscar perfil de segurança {}: {}", profile_id, e);
+            return Err(db::database_operation_error(e).await);
+        }
+    };
+    profile
     .ok_or_else(|| "Perfil de segurança não encontrado".to_string())
 }
 
@@ -1023,7 +1027,9 @@ pub async fn lock_sensitive_access() -> Result<bool, String> {
 #[tauri::command]
 #[instrument(skip_all)]
 pub async fn set_active_security_profile(profile_id: i32, pin: String, confirm_pin: Option<String>) -> Result<SensitiveAccessStatus, String> {
-    let actor = fetch_active_profile_record().await.ok().and_then(|profile| to_profile_summary(profile).ok());
+    // The actor is only used for the audit event. Read it from the current
+    // session instead of issuing another profile query before the actual switch.
+    let actor = current_session_profile()?.map(|(_, profile)| profile);
     let profile = fetch_profile_record_by_id(profile_id).await?;
     let summary = to_profile_summary(profile.clone())?;
     let stored = load_profile_pin_for_record(&profile)?;
@@ -1054,36 +1060,45 @@ pub async fn set_active_security_profile(profile_id: i32, pin: String, confirm_p
     // (ux_security_profiles_single_default_active). O PostgreSQL valida constraints
     // linha a linha durante o UPDATE, então fazer tudo numa query só pode causar
     // estado transitório com dois is_default=true.
-    let mut tx = pool.begin().await.map_err(|e| {
-        error!("Erro ao iniciar transação de perfil: {}", e);
-        e.to_string()
-    })?;
+    let mut tx = match pool.begin().await {
+        Ok(tx) => tx,
+        Err(e) => {
+            error!("Erro ao iniciar transação de perfil: {}", e);
+            return Err(db::database_operation_error(e).await);
+        }
+    };
 
-    sqlx::query("UPDATE security_profiles SET is_default = false, atualizado_em = NOW() WHERE ativo = true AND is_default = true")
+    let clear_previous_profile = sqlx::query("UPDATE security_profiles SET is_default = false, atualizado_em = NOW() WHERE ativo = true AND is_default = true")
         .execute(&mut *tx)
         .await
         .map_err(|e| {
             error!("Erro ao limpar perfil ativo anterior: {}", e);
-            e.to_string()
-        })?;
+            e
+        });
+    if let Err(e) = clear_previous_profile {
+        return Err(db::database_operation_error(e).await);
+    }
 
-    sqlx::query("UPDATE security_profiles SET is_default = true, atualizado_em = NOW() WHERE id = $1 AND ativo = true")
+    let set_active_profile = sqlx::query("UPDATE security_profiles SET is_default = true, atualizado_em = NOW() WHERE id = $1 AND ativo = true")
         .bind(profile_id)
         .execute(&mut *tx)
         .await
         .map_err(|e| {
             error!("Erro ao definir perfil ativo {}: {}", profile_id, e);
-            e.to_string()
-        })?;
+            e
+        });
+    if let Err(e) = set_active_profile {
+        return Err(db::database_operation_error(e).await);
+    }
 
     if provision_admin_pin {
         store_profile_pin(profile_id, &pin)?;
     }
 
-    tx.commit().await.map_err(|e| {
+    if let Err(e) = tx.commit().await {
         error!("Erro ao confirmar transação de perfil: {}", e);
-        e.to_string()
-    })?;
+        return Err(db::database_operation_error(e).await);
+    }
 
     reset_unlock_attempts(profile_id);
     unlock_session(summary.clone())?;

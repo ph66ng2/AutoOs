@@ -26,7 +26,7 @@ use std::env;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 use tracing::warn;
 
 static MIGRATOR: Migrator = sqlx::migrate!("./migrations");
@@ -44,8 +44,12 @@ const DATABASE_ACQUIRE_TIMEOUT: Duration = Duration::from_secs(6);
 const DATABASE_SCHEMA_TIMEOUT: Duration = Duration::from_secs(6);
 const DATABASE_MAX_CONNECTIONS: u32 = 5;
 const DATABASE_CAPACITY_DIAGNOSTIC_TIMEOUT: Duration = Duration::from_secs(2);
+const DATABASE_CAPACITY_BACKOFF: Duration = Duration::from_secs(30);
 const STARTUP_CONNECT_ATTEMPTS: usize = 2;
 const STARTUP_RETRY_DELAY: Duration = Duration::from_millis(750);
+const DATABASE_ACCESS_LIMIT_ERROR: &str = "SQLSTATE 53300: too many clients";
+
+static LAST_DATABASE_CAPACITY_ERROR: Mutex<Option<Instant>> = Mutex::new(None);
 
 pub async fn get_pool() -> Result<PgPool, String> {
     let guard = POOL
@@ -67,6 +71,43 @@ pub fn is_database_initialized() -> bool {
 
 pub fn database_init_error() -> Option<String> {
     INIT_ERROR.lock().ok().and_then(|g| g.clone())
+}
+
+fn is_database_capacity_error(error: &sqlx::Error) -> bool {
+    match error {
+        sqlx::Error::Database(database_error) => {
+            let code = database_error.code();
+            if code.as_deref() == Some("53300") {
+                return true;
+            }
+
+            let message = database_error.message().to_ascii_lowercase();
+            message.contains("emaxconnsession")
+                || message.contains("maxclientsinsessionmode")
+                || message.contains("max clients reached")
+                || message.contains("too many clients")
+        }
+        _ => false,
+    }
+}
+
+fn note_database_capacity_error() {
+    if let Ok(mut last_error) = LAST_DATABASE_CAPACITY_ERROR.lock() {
+        *last_error = Some(Instant::now());
+    }
+}
+
+fn database_capacity_backoff_active() -> bool {
+    LAST_DATABASE_CAPACITY_ERROR
+        .lock()
+        .ok()
+        .and_then(|last_error| *last_error)
+        .is_some_and(|last_error| last_error.elapsed() < DATABASE_CAPACITY_BACKOFF)
+}
+
+fn database_capacity_error_message() -> String {
+    note_database_capacity_error();
+    DATABASE_ACCESS_LIMIT_ERROR.to_string()
 }
 
 pub fn clear_database_init_error() {
@@ -103,9 +144,7 @@ pub fn database_error_message(error: &sqlx::Error) -> String {
         sqlx::Error::Database(database_error) if database_error.code().as_deref() == Some("3D000") => {
             "O banco de dados informado não existe. No Supabase, use a URL do Session pooler completa e confirme que ela termina em /postgres?sslmode=require.".to_string()
         }
-        sqlx::Error::Database(database_error) if database_error.code().as_deref() == Some("53300") => {
-            "SQLSTATE 53300: too many clients".to_string()
-        }
+        error if is_database_capacity_error(error) => database_capacity_error_message(),
         sqlx::Error::Database(_) => {
             "O servidor PostgreSQL recusou a conexão ou a operação de inicialização.".to_string()
         }
@@ -123,16 +162,16 @@ pub fn database_error_message(error: &sqlx::Error) -> String {
 /// confirmar. Se o pool local já estiver totalmente ocupado, mantemos a
 /// mensagem de espera do pool sem abrir uma conexão extra.
 pub async fn database_operation_error(error: sqlx::Error) -> String {
-    if matches!(
-        &error,
-        sqlx::Error::Database(database_error)
-            if database_error.code().as_deref() == Some("53300")
-    ) {
-        return "SQLSTATE 53300: too many clients".to_string();
+    if is_database_capacity_error(&error) {
+        return database_capacity_error_message();
     }
 
     if !matches!(&error, sqlx::Error::PoolTimedOut) {
         return database_error_message(&error);
+    }
+
+    if database_capacity_backoff_active() {
+        return DATABASE_ACCESS_LIMIT_ERROR.to_string();
     }
 
     if let Ok(pool) = get_pool().await {
@@ -151,10 +190,8 @@ pub async fn database_operation_error(error: sqlx::Error) -> String {
     )
     .await
     {
-        Ok(Err(sqlx::Error::Database(database_error)))
-            if database_error.code().as_deref() == Some("53300") =>
-        {
-            "SQLSTATE 53300: too many clients".to_string()
+        Ok(Err(diagnostic_error)) if is_database_capacity_error(&diagnostic_error) => {
+            database_capacity_error_message()
         }
         Ok(Ok(connection)) => {
             let _ = connection.close().await;
@@ -585,6 +622,55 @@ mod tests {
     use super::*;
     use std::io;
 
+    struct TestDatabaseError {
+        code: &'static str,
+        message: &'static str,
+    }
+
+    impl std::fmt::Debug for TestDatabaseError {
+        fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            formatter
+                .debug_struct("TestDatabaseError")
+                .field("code", &self.code)
+                .field("message", &self.message)
+                .finish()
+        }
+    }
+
+    impl std::fmt::Display for TestDatabaseError {
+        fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            formatter.write_str(self.message)
+        }
+    }
+
+    impl std::error::Error for TestDatabaseError {}
+
+    impl sqlx::error::DatabaseError for TestDatabaseError {
+        fn message(&self) -> &str {
+            self.message
+        }
+
+        fn code(&self) -> Option<std::borrow::Cow<'_, str>> {
+            Some(self.code.into())
+        }
+
+        fn as_error(&self) -> &(dyn std::error::Error + Send + Sync + 'static) {
+            self
+        }
+
+        fn as_error_mut(&mut self) -> &mut (dyn std::error::Error + Send + Sync + 'static) {
+            self
+        }
+
+        fn into_error(self: Box<Self>) -> Box<dyn std::error::Error + Send + Sync + 'static> {
+            self
+        }
+
+        fn kind(&self) -> sqlx::error::ErrorKind {
+            sqlx::error::ErrorKind::Other
+        }
+    }
+
     #[test]
     fn classifies_timeout_without_exposing_connection_details() {
         let message = database_error_message(&sqlx::Error::PoolTimedOut);
@@ -601,41 +687,35 @@ mod tests {
 
     #[test]
     fn explains_the_supabase_database_name_for_3d000() {
-        struct MissingDatabase;
-        impl std::fmt::Debug for MissingDatabase {
-            fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-                formatter.write_str("MissingDatabase")
-            }
-        }
-        impl std::fmt::Display for MissingDatabase {
-            fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-                formatter.write_str("database missing")
-            }
-        }
-        impl std::error::Error for MissingDatabase {}
-        impl sqlx::error::DatabaseError for MissingDatabase {
-            fn message(&self) -> &str {
-                "database missing"
-            }
-            fn code(&self) -> Option<std::borrow::Cow<'_, str>> {
-                Some("3D000".into())
-            }
-            fn as_error(&self) -> &(dyn std::error::Error + Send + Sync + 'static) {
-                self
-            }
-            fn as_error_mut(&mut self) -> &mut (dyn std::error::Error + Send + Sync + 'static) {
-                self
-            }
-            fn into_error(self: Box<Self>) -> Box<dyn std::error::Error + Send + Sync + 'static> {
-                self
-            }
-            fn kind(&self) -> sqlx::error::ErrorKind {
-                sqlx::error::ErrorKind::Other
-            }
-        }
-
-        let message = database_error_message(&sqlx::Error::Database(Box::new(MissingDatabase)));
+        let message = database_error_message(&sqlx::Error::Database(Box::new(
+            TestDatabaseError {
+                code: "3D000",
+                message: "database missing",
+            },
+        )));
         assert!(message.contains("/postgres?sslmode=require"));
+    }
+
+    #[test]
+    fn recognizes_supavisor_session_limits_and_postgres_connection_limits() {
+        for (code, message) in [
+            ("XX000", "EMAXCONNSESSION: max clients reached in session mode"),
+            ("XX000", "MaxClientsInSessionMode: max clients reached"),
+            ("53300", "too many clients already"),
+        ] {
+            let error = sqlx::Error::Database(Box::new(TestDatabaseError { code, message }));
+            assert!(is_database_capacity_error(&error), "{code}: {message}");
+            assert_eq!(database_error_message(&error), DATABASE_ACCESS_LIMIT_ERROR);
+        }
+    }
+
+    #[tokio::test]
+    async fn reuses_a_recent_confirmed_capacity_error_for_pool_timeouts() {
+        note_database_capacity_error();
+
+        let message = database_operation_error(sqlx::Error::PoolTimedOut).await;
+
+        assert_eq!(message, DATABASE_ACCESS_LIMIT_ERROR);
     }
 
     #[test]

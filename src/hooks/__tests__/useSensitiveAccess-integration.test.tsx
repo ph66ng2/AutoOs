@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, screen, waitFor, act } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { useState } from "react";
@@ -43,11 +43,16 @@ describe("useSensitiveAccess — integração com novos recursos de auth", () =>
     localStorage.removeItem("autoos_last_profile_id");
   });
 
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
   function captureHook(h: ReturnType<typeof useSensitiveAccess>) {
     hookRef = h;
   }
 
   it("mantém os perfis em uma falha temporária e limpa o aviso após recuperar", async () => {
+    const intervalSpy = vi.spyOn(window, "setInterval");
     const profile = { id: 1, nome: "Admin", role: "ADMIN", permissions: [], pin_configured: true, is_default: true, ativo: true };
     const available = { ...EMPTY_STATUS, unlocked: true, active_profile_id: 1, active_profile_name: "Admin", pin_configured: true, profiles: [profile] };
     mockInvoke
@@ -62,6 +67,7 @@ describe("useSensitiveAccess — integração com novos recursos de auth", () =>
     expect(hookRef?.status?.profiles).toHaveLength(1);
     expect(screen.getByText("Banco temporariamente indisponível")).toBeInTheDocument();
     expect(screen.getByText(/limite de acessos ao mesmo tempo/i)).toBeInTheDocument();
+    await waitFor(() => expect(intervalSpy.mock.calls.some(([, delay]) => delay === 30_000)).toBe(true));
 
     await act(async () => { await hookRef?.refreshStatus(); });
     expect(screen.queryByText("Banco temporariamente indisponível")).not.toBeInTheDocument();

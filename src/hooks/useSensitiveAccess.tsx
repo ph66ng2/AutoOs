@@ -171,7 +171,7 @@ export function SensitiveAccessProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     const intervalId = window.setInterval(() => {
       void refreshStatus();
-    }, connectionUnavailable ? 10_000 : 60_000);
+    }, connectionUnavailable ? 30_000 : 60_000);
 
     return () => window.clearInterval(intervalId);
   }, [connectionUnavailable, refreshStatus]);
