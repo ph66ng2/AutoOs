@@ -61,12 +61,12 @@ async fn main() -> Result<()> {
     let mut novos = services.as_array().unwrap()[..1].to_vec();
     novos[0]["pecas"][0]["quantidade"] = 4.into();
     let json = serde_json::to_string(&novos)?;
-    assert!(verificacoes::atualizar_servicos_verificacao(eq,Some(json.clone()),Some("[]".into()),Some(60.0),profile,false,None,None,None,Some(empresa),Some(false),None).await.is_err());
-    assert!(verificacoes::atualizar_servicos_verificacao(eq,Some(json.clone()),Some("[]".into()),Some(60.0),profile,false,None,None,None,Some(empresa),Some(true),Some(token)).await.is_err());
+    assert!(verificacoes::atualizar_servicos_verificacao(eq,Some(json.clone()),Some("[]".into()),Some(60.0),profile,false,None,None,None,Some(empresa),Some(false),String::new()).await.is_err());
+    assert!(verificacoes::atualizar_servicos_verificacao(eq,Some(json.clone()),Some("[]".into()),Some(60.0),profile,false,None,None,None,Some(empresa),Some(true),token).await.is_err());
     let token_ajuste: String = sqlx::query_scalar("SELECT atualizado_em::TEXT FROM equipamentos WHERE id=$1").bind(eq).fetch_one(&pool).await?;
-    verificacoes::atualizar_servicos_verificacao(eq,Some(json.clone()),Some("[]".into()),Some(60.0),profile,false,None,None,None,Some(empresa),Some(true),Some(token_ajuste)).await.map_err(|e| anyhow!(e))?;
+    verificacoes::atualizar_servicos_verificacao(eq,Some(json.clone()),Some("[]".into()),Some(60.0),profile,false,None,None,None,Some(empresa),Some(true),token_ajuste).await.map_err(|e| anyhow!(e))?;
     let token_reajuste: String = sqlx::query_scalar("SELECT atualizado_em::TEXT FROM equipamentos WHERE id=$1").bind(eq).fetch_one(&pool).await?;
-    verificacoes::atualizar_servicos_verificacao(eq,Some(json),Some("[]".into()),Some(60.0),profile,false,None,None,None,Some(empresa),Some(true),Some(token_reajuste)).await.map_err(|e| anyhow!(e))?;
+    verificacoes::atualizar_servicos_verificacao(eq,Some(json),Some("[]".into()),Some(60.0),profile,false,None,None,None,Some(empresa),Some(true),token_reajuste).await.map_err(|e| anyhow!(e))?;
     assert_eq!(produtos::buscar_produto(produto.id).await.map_err(|e| anyhow!(e))?.quantidade_estoque,Some(3));
     assert!(verificacoes::salvar_verificacao_tecnica(VerificacaoInput { equipamento_id:eq,empresa_id:Some(empresa),..VerificacaoInput::default() }).await.is_err());
     // Reprovação total preserva o orçamento e o saldo.
