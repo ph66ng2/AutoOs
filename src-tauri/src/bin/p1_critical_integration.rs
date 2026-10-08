@@ -185,6 +185,62 @@ async fn main() -> Result<()> {
     .await
     .map_err(|error| anyhow!(error))?;
 
+    // As duas listagens podem produzir o mesmo texto SQL sem filtros. Verifique
+    // os dois sentidos em conexões diferentes, mantendo cada par na mesma
+    // conexão para cobrir o cache de prepared statements do SQLx.
+    let mut legacy_first_connection = pool.acquire().await?;
+    let mut paginated_first_connection = pool.acquire().await?;
+    let legacy_first = equipamentos::listar_equipamentos_on_connection(
+        &mut legacy_first_connection,
+        empresa_id,
+        Some(0),
+        None,
+        None,
+    )
+    .await
+    .map_err(|error| anyhow!(error))?;
+    let paginated_second = equipamentos::query_equipment_page_on_connection(
+        &mut legacy_first_connection,
+        empresa_id,
+        Some(0),
+        None,
+        None,
+        Some("CADASTRO_RECENTE"),
+        equipamentos::UI_PAGE_SIZE,
+    )
+    .await
+    .map_err(|error| anyhow!(error))?;
+    let paginated_first = equipamentos::query_equipment_page_on_connection(
+        &mut paginated_first_connection,
+        empresa_id,
+        Some(0),
+        None,
+        None,
+        Some("CADASTRO_RECENTE"),
+        equipamentos::UI_PAGE_SIZE,
+    )
+    .await
+    .map_err(|error| anyhow!(error))?;
+    let legacy_second = equipamentos::listar_equipamentos_on_connection(
+        &mut paginated_first_connection,
+        empresa_id,
+        Some(0),
+        None,
+        None,
+    )
+    .await
+    .map_err(|error| anyhow!(error))?;
+    for (label, contains_equipment) in [
+        ("simple equipment listing", legacy_first.iter().any(|item| item.id == equipamento.id)),
+        ("paged listing after simple listing", paginated_second.items.iter().any(|item| item.id == equipamento.id)),
+        ("recent paged listing", paginated_first.items.iter().any(|item| item.id == equipamento.id)),
+        ("simple listing after recent paged listing", legacy_second.iter().any(|item| item.id == equipamento.id)),
+    ] {
+        if !contains_equipment {
+            return Err(anyhow!("{} omitted the newly created equipment", label));
+        }
+    }
+
     verificacoes::salvar_verificacao_tecnica(VerificacaoInput {
         equipamento_id: equipamento.id,
         empresa_id: Some(empresa_id),

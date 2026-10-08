@@ -21,7 +21,7 @@ use crate::commands::auth::{
 use crate::db::get_pool;
 use crate::commands::orcamento_estoque::{aplicar_decisoes, normalizar_servicos, parse_servicos};
 use chrono::NaiveDateTime;
-use sqlx::{PgPool, Postgres, QueryBuilder, Row};
+use sqlx::{PgConnection, PgPool, Postgres, QueryBuilder, Row};
 use std::collections::HashSet;
 use tracing::{debug, error, info, instrument};
 
@@ -147,8 +147,8 @@ fn equipment_order_clause(ordenacao: Option<&str>) -> &'static str {
     }
 }
 
-async fn query_equipment_page(
-    pool: &PgPool,
+pub(crate) async fn query_equipment_page_on_connection(
+    connection: &mut PgConnection,
     empresa_id: i32,
     page: Option<i32>,
     busca: Option<&str>,
@@ -160,7 +160,7 @@ async fn query_equipment_page(
     add_equipment_filters(&mut count_query, empresa_id, busca, status);
     let total = count_query
         .build_query_scalar::<i64>()
-        .fetch_one(pool)
+        .fetch_one(&mut *connection)
         .await
         .map_err(|error| format!("Erro ao contar equipamentos: {}", error))?;
 
@@ -176,7 +176,7 @@ async fn query_equipment_page(
 
     let items = items_query
         .build_query_as::<EquipamentoRow>()
-        .fetch_all(pool)
+        .fetch_all(&mut *connection)
         .await
         .map_err(|error| format!("Erro ao listar equipamentos: {}", error))?;
 
@@ -460,12 +460,33 @@ pub async fn listar_equipamentos(
     })?;
     let empresa_id = require_active_session_company_id(&pool).await?;
 
-    let offset = page.unwrap_or(0) * PAGE_SIZE;
+    let mut connection = pool.acquire().await.map_err(|error| error.to_string())?;
+    listar_equipamentos_on_connection(
+        &mut connection,
+        empresa_id,
+        page,
+        busca.as_deref(),
+        status.as_deref(),
+    )
+    .await
+}
+
+/// Executa a consulta simples de equipamentos na conexão recebida.
+/// Os parâmetros de paginação usam o mesmo tipo da consulta paginada para
+/// evitar incompatibilidade no cache de prepared statements do PostgreSQL.
+pub(crate) async fn listar_equipamentos_on_connection(
+    connection: &mut PgConnection,
+    empresa_id: i32,
+    page: Option<i32>,
+    busca: Option<&str>,
+    status: Option<&str>,
+) -> Result<Vec<EquipamentoRow>, String> {
+    let offset = i64::from(page.unwrap_or(0).max(0)) * i64::from(PAGE_SIZE);
     let mut query_builder = sqlx::QueryBuilder::<sqlx::Postgres>::new(EQUIPAMENTO_SELECT);
     query_builder.push(" WHERE empresa_id = ");
     query_builder.push_bind(empresa_id);
 
-    if let Some(busca) = busca.as_deref().map(str::trim).filter(|value| !value.is_empty()) {
+    if let Some(busca) = busca.map(str::trim).filter(|value| !value.is_empty()) {
         let pattern = format!("%{}%", busca);
         query_builder.push(" AND (");
         query_builder.push("serial_number ILIKE ");
@@ -487,19 +508,19 @@ pub async fn listar_equipamentos(
         query_builder.push(")");
     }
 
-    if let Some(status) = status.as_deref().map(str::trim).filter(|value| !value.is_empty() && *value != "TODOS") {
+    if let Some(status) = status.map(str::trim).filter(|value| !value.is_empty() && *value != "TODOS") {
         query_builder.push(" AND status = ");
         query_builder.push_bind(normalize_status_key(status));
     }
 
     query_builder.push(" ORDER BY id DESC LIMIT ");
-    query_builder.push_bind(PAGE_SIZE);
+    query_builder.push_bind(i64::from(PAGE_SIZE));
     query_builder.push(" OFFSET ");
     query_builder.push_bind(offset);
 
     let rows = query_builder
         .build_query_as::<EquipamentoRow>()
-        .fetch_all(&pool)
+        .fetch_all(&mut *connection)
         .await
         .map_err(|e| {
             error!("Erro ao listar equipamentos: {}", e);
@@ -521,8 +542,9 @@ pub async fn listar_equipamentos_paginados(
 ) -> Result<PaginatedResult<EquipamentoRow>, String> {
     let pool = get_pool().await.map_err(|error| error.to_string())?;
     let empresa_id = require_active_session_company_id(&pool).await?;
-    query_equipment_page(
-        &pool,
+    let mut connection = pool.acquire().await.map_err(|error| error.to_string())?;
+    query_equipment_page_on_connection(
+        &mut connection,
         empresa_id,
         page,
         busca.as_deref(),

@@ -1130,10 +1130,12 @@ export default function Equipamentos() {
     void confirmarMudancaStatus(false);
   }
 
-  async function abrirDialogoAprovacao(eq: Equipamento) {
+  async function abrirDialogoAprovacao(eq: Equipamento, decisaoInicial: "aprovar" | "reprovar") {
     const liberado = await ensureSensitiveAccess({
-      title: "Aprovar orçamento",
-      description: "Informe o PIN para aprovar o orçamento com a forma de pagamento escolhida.",
+      title: decisaoInicial === "aprovar" ? "Aprovar orçamento" : "Reprovar orçamento",
+      description: decisaoInicial === "aprovar"
+        ? "Informe o PIN para registrar a decisão do cliente sobre este orçamento."
+        : "Informe o PIN para registrar a reprovação do orçamento pelo cliente.",
       permission: SENSITIVE_PERMISSIONS.FINANCIAL_ACTIONS,
     });
     if (!liberado) return;
@@ -1153,7 +1155,7 @@ export default function Equipamentos() {
             : eq.valor_orcamento ?? verificacao?.custo_total)
         : verificacao?.custo_total);
       setProdutosAprovacao(await carregarProdutosOrcamento());
-      setTodosServicosAprovados(null);
+      setTodosServicosAprovados(decisaoInicial === "reprovar" ? false : null);
       setIdsAprovados([]);
       setPagamentoAprovacaoInicial(verificacao?.forma_pagamento_codigo ? {
         codigo: verificacao.forma_pagamento_codigo,
@@ -1192,8 +1194,16 @@ export default function Equipamentos() {
       });
       await recarregar();
       setPagamentoAprovacaoError(null);
+      const servicosReprovados = servicosAprovacao
+        .filter((servico) => !idsAprovados.includes(servico.id))
+        .map((servico) => servico.descricao);
+      const detalheReprovacaoParcial = servicosReprovados.length > 0
+        ? ` Serviços não aprovados: ${servicosReprovados.join(", ")}.`
+        : "";
       success("Equipamentos", decisaoAprovada
-        ? servicosAprovacao.length ? "Serviços aprovados. As peças disponíveis foram baixadas; confira faltas em Peças da OS." : "Orçamento aprovado sem serviços detalhados e sem baixa de estoque."
+        ? servicosAprovacao.length
+          ? `Serviços aprovados. As peças disponíveis foram baixadas; confira faltas em Peças da OS.${detalheReprovacaoParcial}`
+          : "Orçamento aprovado sem serviços detalhados e sem baixa de estoque."
         : "Orçamento reprovado sem baixa de estoque.", "Decisão do cliente");
       return true;
     } catch (cause) {
@@ -1639,7 +1649,7 @@ export default function Equipamentos() {
           icon: <CheckCircle className="h-3.5 w-3.5" />,
           variant: "default",
           className: "bg-green-600 hover:bg-green-700 text-white",
-          onClick: () => void abrirDialogoAprovacao(eq),
+          onClick: () => void abrirDialogoAprovacao(eq, "aprovar"),
           disabled: salvando,
         };
         secondary = {
@@ -1648,7 +1658,7 @@ export default function Equipamentos() {
           icon: <XCircle className="h-3.5 w-3.5" />,
           variant: "default",
           className: "bg-red-600 text-white hover:bg-red-700",
-          onClick: () => void abrirDialogoAprovacao(eq),
+          onClick: () => void abrirDialogoAprovacao(eq, "reprovar"),
           disabled: salvando,
         };
         if (eq.cliente_telefone) {
@@ -2873,6 +2883,12 @@ export default function Equipamentos() {
                 ))}
               </div>
             )}
+            {servicosAprovacao.length === 0 && (
+              <div className="rounded-md bg-muted/40 p-3 text-sm">
+                <p className="font-semibold">Valor do orçamento: {formatCurrency(totalOrcamentoAprovacao ?? 0)}</p>
+                <p className="mt-1 text-muted-foreground">A aprovação preserva o valor do equipamento e não baixa peças do estoque.</p>
+              </div>
+            )}
             {todosServicosAprovados !== null && (
               <div className="rounded-md bg-muted/40 p-3 text-sm">
                 {servicosAprovacao.length > 0 && <p className="font-medium">{idsAprovados.length} de {servicosAprovacao.length} serviços aprovados</p>}
@@ -2882,10 +2898,10 @@ export default function Equipamentos() {
                     {peca.nome}: {peca.quantidade} necessária(s), saldo {saldo}{saldo < peca.quantidade ? " · pendência" : ""}
                   </p>;
                 })}
-                <p className="mt-2 font-semibold">{servicosAprovacao.length === 0 ? "Valor do orçamento" : "Total aprovado"}: {formatCurrency(idsAprovados.length === servicosAprovacao.length && totalOrcamentoAprovacao != null ? totalOrcamentoAprovacao : servicosAprovacao
+                {servicosAprovacao.length > 0 && <p className="mt-2 font-semibold">Total aprovado: {formatCurrency(idsAprovados.length === servicosAprovacao.length && totalOrcamentoAprovacao != null ? totalOrcamentoAprovacao : servicosAprovacao
                   .filter((s) => idsAprovados.includes(s.id))
                   .reduce((total, s) => total + Number(s.valor || 0) + (s.pecas ?? [])
-                    .reduce((subtotal, p) => subtotal + p.quantidade * p.valor_unitario, 0), 0))}</p>
+                    .reduce((subtotal, p) => subtotal + p.quantidade * p.valor_unitario, 0), 0))}</p>}
               </div>
             )}
           </div>
@@ -2899,7 +2915,7 @@ export default function Equipamentos() {
                 } else {
                   void confirmarAprovacao({ codigo: "A_COMBINAR" }).then((ok) => { if (ok) setSelecaoServicosOpen(false); });
                 }
-              }}>{decisaoAprovada ? "Continuar para pagamento" : "Confirmar reprovação"}</Button>
+              }}>{todosServicosAprovados === null ? "Selecione uma decisão" : decisaoAprovada ? "Continuar para pagamento" : "Confirmar reprovação"}</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
