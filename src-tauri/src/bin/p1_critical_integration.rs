@@ -665,7 +665,7 @@ async fn main() -> Result<()> {
 
     sqlx::query("UPDATE equipamentos SET status = 'AGUARDANDO_APROVACAO', valor_orcamento = 199 WHERE id = $1")
         .bind(legacy_equipment_id).execute(&pool).await?;
-    sqlx::query("UPDATE verificacoes SET servicos_necessarios = '[]', pecas_necessarias = '[]', custo_total = 199 WHERE equipamento_id = $1")
+    sqlx::query("UPDATE verificacoes SET servicos_necessarios = '[]', pecas_necessarias = '[]', custo_total = 0 WHERE equipamento_id = $1")
         .bind(legacy_equipment_id).execute(&pool).await?;
     let legacy_token: String = sqlx::query_scalar("SELECT atualizado_em::TEXT FROM equipamentos WHERE id = $1")
         .bind(legacy_equipment_id).fetch_one(&pool).await?;

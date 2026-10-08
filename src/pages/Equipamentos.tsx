@@ -1145,7 +1145,13 @@ export default function Equipamentos() {
       const verificacao = await db.buscarVerificacao(eq.id!);
       const servicos = normalizarServicosOrcamento(JSON.parse(verificacao?.servicos_necessarios || "[]") as ServicoNecessario[]);
       setServicosAprovacao(servicos);
-      setTotalOrcamentoAprovacao(verificacao?.custo_total);
+      setTotalOrcamentoAprovacao(servicos.length === 0
+        ? (eq.valor_orcamento != null && eq.valor_orcamento > 0
+          ? eq.valor_orcamento
+          : verificacao?.custo_total != null && verificacao.custo_total > 0
+            ? verificacao.custo_total
+            : eq.valor_orcamento ?? verificacao?.custo_total)
+        : verificacao?.custo_total);
       setProdutosAprovacao(await carregarProdutosOrcamento());
       setTodosServicosAprovados(null);
       setIdsAprovados([]);

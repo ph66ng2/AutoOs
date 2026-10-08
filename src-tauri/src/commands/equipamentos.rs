@@ -1160,7 +1160,13 @@ pub async fn aprovar_orcamento(input: AprovarOrcamentoInput) -> Result<Equipamen
             }
         }
     }
-    if aprovado && selecionados.len() == servicos.len() {
+    if aprovado && servicos.is_empty() {
+        total = equipment_total.filter(|value| *value > 0.0)
+            .or(total_original.filter(|value| *value > 0.0))
+            .or(equipment_total)
+            .or(total_original)
+            .unwrap_or(total);
+    } else if aprovado && selecionados.len() == servicos.len() {
         total = total_original.or(equipment_total).unwrap_or(total);
     }
     if aprovado && servicos.is_empty() {

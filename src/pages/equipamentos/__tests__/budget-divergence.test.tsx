@@ -584,12 +584,13 @@ describe("Equipamentos — Budget Divergence & Audit", () => {
 
   it("aprova orçamento antigo sem serviços detalhados sem convertê-lo em reprovação", async () => {
     equipamentoVerificado.status = "AGUARDANDO_APROVACAO";
-    mockBuscarVerificacao.mockResolvedValue(makeVerificacao({ servicos: [], pecas: [], custo_total: 150 }));
+    mockBuscarVerificacao.mockResolvedValue(makeVerificacao({ servicos: [], pecas: [], custo_total: 0 }));
     render(<Equipamentos />);
 
     fireEvent.click(screen.getByTestId("action-aprovar"));
     await screen.findByText(/orçamento antigo não possui serviços detalhados/i);
     fireEvent.click(screen.getByRole("button", { name: "Aprovar orçamento" }));
+    expect(screen.getByText(/Valor do orçamento:/)).toHaveTextContent("R$ 150,00");
     expect(screen.getByRole("button", { name: "Continuar para pagamento" })).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Continuar para pagamento" }));
     fireEvent.change(await screen.findByLabelText("Forma de pagamento"), { target: { value: "PIX" } });
@@ -600,6 +601,17 @@ describe("Equipamentos — Budget Divergence & Audit", () => {
       servicos_aprovados: [],
       pagamento: { codigo: "PIX", detalhe: null },
     })));
+  });
+
+  it("mostra o valor do equipamento quando o total antigo está ausente", async () => {
+    equipamentoVerificado.status = "AGUARDANDO_APROVACAO";
+    mockBuscarVerificacao.mockResolvedValue({ ...makeVerificacao({ servicos: [], pecas: [] }), custo_total: null });
+    render(<Equipamentos />);
+
+    fireEvent.click(screen.getByTestId("action-aprovar"));
+    await screen.findByText(/orçamento antigo não possui serviços detalhados/i);
+    fireEvent.click(screen.getByRole("button", { name: "Aprovar orçamento" }));
+    expect(screen.getByText(/Valor do orçamento:/)).toHaveTextContent("R$ 150,00");
   });
 
   it("permite cancelar a aprovação e mantém o modal após erro do backend", async () => {
