@@ -15,6 +15,7 @@ import { ProfileSessionDialog } from "@/components/ProfileSessionDialog";
 import { PasswordRecoveryDialog } from "@/components/PasswordRecoveryDialog";
 import { toast } from "sonner";
 import { SensitiveAccessService } from "@/lib/sensitive-access";
+import { sensitiveAccessErrorMessage } from "@/lib/sensitive-access-error";
 import { registerSensitiveAccessPrompt } from "@/lib/sensitive-action-retry";
 import {
   SENSITIVE_PERMISSION_LABELS,
@@ -151,7 +152,7 @@ export function SensitiveAccessProvider({ children }: { children: ReactNode }) {
       }
     } catch (refreshError: any) {
       setStatus(EMPTY_STATUS);
-      setError(refreshError?.message || refreshError?.toString() || "Não foi possível verificar o acesso sensível.");
+      setError(sensitiveAccessErrorMessage(refreshError, "Não foi possível verificar o acesso sensível."));
     } finally {
       if (bootPhasesTrackedRef.current) {
         setBootProgress(100);
@@ -400,7 +401,7 @@ export function SensitiveAccessProvider({ children }: { children: ReactNode }) {
 
       closeDialog(true);
     } catch (submitError: any) {
-      setError(submitError?.message || submitError?.toString() || "Falha ao validar o acesso sensível.");
+      setError(sensitiveAccessErrorMessage(submitError, "Falha ao validar o acesso sensível."));
       setBusy(false);
     }
   }, [closeDialog, pin, confirmPin, promptOptions.permission, selectedProfileId, status, dialogMode]);
