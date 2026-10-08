@@ -1128,7 +1128,7 @@ pub async fn create_security_profile(input: SecurityProfileInput, pin: String) -
     .map_err(|e| {
         error!("Erro ao criar perfil de segurança: {}", e);
         if let sqlx::Error::Database(ref db_error) = e {
-            if db_error.code().as_deref() == Some("23505") && db_error.constraint() == Some("security_profiles_nome_key") {
+            if db_error.code().as_deref() == Some("23505") {
                 return "Já existe um perfil com este nome. Escolha outro nome.".to_string();
             }
         }
@@ -1201,7 +1201,7 @@ pub async fn update_security_profile(profile_id: i32, input: SecurityProfileInpu
     .map_err(|e| {
         error!("Erro ao atualizar perfil de segurança {}: {}", profile_id, e);
         if let sqlx::Error::Database(ref db_error) = e {
-            if db_error.code().as_deref() == Some("23505") && db_error.constraint() == Some("security_profiles_nome_key") {
+            if db_error.code().as_deref() == Some("23505") {
                 return "Já existe um perfil com este nome. Escolha outro nome.".to_string();
             }
         }

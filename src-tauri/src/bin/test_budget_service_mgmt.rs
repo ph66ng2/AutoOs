@@ -125,7 +125,7 @@ async fn main() -> Result<()> {
         None,
         None,
         None,
-        None,
+        String::new(),
     ).await;
     if denied.is_ok() {
         return Err(anyhow!("expected denied financial transition but it was allowed"));
@@ -169,7 +169,7 @@ async fn main() -> Result<()> {
         None,
         None,
         None,
-        Some(adjustment_token),
+        adjustment_token,
     ).await.map_err(|e| anyhow!(e))?;
 
     if updated.custo_total != Some(225.0) {

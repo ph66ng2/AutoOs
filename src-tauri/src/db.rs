@@ -215,6 +215,8 @@ const REQUIRED_RUNTIME_INDEXES: &[&str] = &[
     "ux_clientes_cpf_cnpj_ativo",
     "ux_gastos_fixos_nome_ativo",
     "ux_produtos_empresa_codigo_ativo",
+    "ux_produtos_codigo_ativo_sem_empresa",
+    "ux_security_profiles_nome_normalizado",
     "idx_photo_upload_sessions_active_token",
 ];
 
