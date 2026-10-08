@@ -1985,7 +1985,7 @@ export default function Equipamentos({ operationalProfile }: { operationalProfil
             label: "Reprovar",
             icon: <XCircle className="h-3.5 w-3.5" />,
             variant: "outline",
-            onClick: () => void acaoRapida(eq, "REPROVADO"),
+            onClick: () => void abrirDialogoAprovacao(eq),
             disabled: salvando,
           };
           break;
@@ -2139,7 +2139,7 @@ export default function Equipamentos({ operationalProfile }: { operationalProfil
           icon: <XCircle className="h-3.5 w-3.5" />,
           variant: "default",
           className: "bg-red-600 text-white hover:bg-red-700",
-          onClick: () => void acaoRapida(eq, "REPROVADO"),
+          onClick: () => void abrirDialogoAprovacao(eq),
           disabled: salvando,
         };
         if (eq.cliente_telefone) {
