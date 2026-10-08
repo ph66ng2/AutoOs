@@ -32,6 +32,7 @@ import {
   Printer,
   Plus,
   Search,
+  X,
   Edit,
   Trash2,
   Filter,
@@ -219,6 +220,7 @@ function equipamentoInterno(equipamento: EquipamentoBase<EquipamentoId>): Equipa
 export default function Equipamentos({ operationalProfile }: { operationalProfile?: SaasOperationalProfile } = {}) {
   const [busca, setBusca] = useState("");
   const [statusFiltro, setStatusFiltro] = useState("TODOS");
+  const [ordenacaoEquipamentos, setOrdenacaoEquipamentos] = useState<"ATUALIZACAO_RECENTE" | "CADASTRO_RECENTE">("ATUALIZACAO_RECENTE");
   const [paginaEquipamentos, setPaginaEquipamentos] = useState(1);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
@@ -343,14 +345,14 @@ export default function Equipamentos({ operationalProfile }: { operationalProfil
     buscarPorSerial,
     recarregar,
   } =
-    useEquipamentos<EquipamentoId>({ busca: busca || undefined, status: statusFiltro, page: paginaEquipamentos });
+    useEquipamentos<EquipamentoId>({ busca: busca || undefined, status: statusFiltro, page: paginaEquipamentos, ordenacao: ordenacaoEquipamentos });
   // A página original mantém handlers de DB local para os tickets seguintes;
   // o runtime SaaS só expõe a lista e o CRUD remoto, preservando UUID sem conversão.
   const equipamentos = registrosEquipamento as unknown as Equipamento[];
   const totalPaginasEquipamentos = totalPages(totalEquipamentos, ITEMS_PER_PAGE);
   const paginaEquipamentosExibida = Math.min(paginaEquipamentos, totalPaginasEquipamentos);
 
-  useEffect(() => setPaginaEquipamentos(1), [busca, statusFiltro]);
+  useEffect(() => setPaginaEquipamentos(1), [busca, statusFiltro, ordenacaoEquipamentos]);
   useEffect(() => setPaginaEquipamentos((current) => Math.min(current, totalPaginasEquipamentos)), [totalPaginasEquipamentos]);
 
   // Hook de automação de status
@@ -2416,7 +2418,8 @@ export default function Equipamentos({ operationalProfile }: { operationalProfil
           <div className="flex flex-col sm:flex-row gap-4">
             <div className="relative flex-1">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-              <Input placeholder="Buscar por série, marca, modelo, cliente..." value={busca} onChange={e => setBusca(e.target.value)} className="pl-9" />
+              <Input placeholder="Buscar por série, marca, modelo, cliente ou responsável..." value={busca} onChange={e => setBusca(e.target.value)} className="pl-9 pr-9" />
+              {busca && <Button type="button" variant="ghost" size="icon" className="absolute right-0 top-0" aria-label="Limpar busca" onClick={() => setBusca("")}><X className="h-4 w-4" /></Button>}
             </div>
             <Select value={statusFiltro} onValueChange={setStatusFiltro}>
               <SelectTrigger className="w-full sm:w-56">
@@ -2424,6 +2427,13 @@ export default function Equipamentos({ operationalProfile }: { operationalProfil
               </SelectTrigger>
               <SelectContent>
                 {STATUS_OPTIONS.map(opt => (<SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>))}
+              </SelectContent>
+            </Select>
+            <Select value={ordenacaoEquipamentos} onValueChange={(value) => setOrdenacaoEquipamentos(value as "ATUALIZACAO_RECENTE" | "CADASTRO_RECENTE")}>
+              <SelectTrigger className="w-full sm:w-56" aria-label="Ordenar equipamentos"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="ATUALIZACAO_RECENTE">Alterados recentemente</SelectItem>
+                <SelectItem value="CADASTRO_RECENTE">Cadastrados recentemente</SelectItem>
               </SelectContent>
             </Select>
             <Button variant="outline" size="icon" aria-label="Atualizar equipamentos" onClick={recarregar}><RefreshCw className="h-4 w-4" /></Button>
@@ -2463,6 +2473,7 @@ export default function Equipamentos({ operationalProfile }: { operationalProfil
                     <TableHead>Cliente</TableHead>
                     <TableHead>Status</TableHead>
                     <TableHead>Entrada</TableHead>
+                    <TableHead>Última alteração</TableHead>
                     <TableHead className="text-right">Ações</TableHead>
                   </TableRow>
                 </TableHeader>
@@ -2498,6 +2509,7 @@ export default function Equipamentos({ operationalProfile }: { operationalProfil
                       <TableCell className="text-sm text-muted-foreground">
                         {formatDatePtBr(eq.data_entrada)}
                       </TableCell>
+                      <TableCell className="text-sm text-muted-foreground">{formatDatePtBr(eq.atualizado_em || eq.criado_em)}</TableCell>
                       <TableCell className="text-right">
                         <div className="flex justify-end">
                           {renderAcoes(eq)}

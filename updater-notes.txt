@@ -1,1 +1,1 @@
-0.5.5: o AutoOS verifica atualizações no GitHub. A tela mostra se esta já é a versão mais recente ou se a consulta falhou. A instalação só começa em Baixar e instalar. Cadastros novos de cliente e equipamento exigem a empresa da sessão.
+0.6.0: em Equipamentos, pesquise por nome ou documento do cliente, série e outros dados do aparelho. Ordene pela alteração mais recente ou pelo cadastro mais recente para encontrar rapidamente o próximo atendimento.

@@ -180,6 +180,26 @@ export class SupabaseSaasUsersRepository {
     }
   }
 
+  async createProfile(name: string, role: "ADMIN" | "CUSTOM", permissions: string[]): Promise<string> {
+    let response: Response;
+    try {
+      response = await this.fetcher(`${this.session.supabaseUrl}/rest/v1/rpc/create_saas_operational_profile`, {
+        method: "POST",
+        headers: this.authHeaders(),
+        body: JSON.stringify({ p_name: name, p_role: role, p_permissions: permissions }),
+      });
+    } catch {
+      throw new SaasUserAdminError("ONLINE_UNAVAILABLE", "A comunicação com o serviço de perfis falhou. Tente novamente.");
+    }
+    if (response.status === 409) throw new SaasUserAdminError("CONFLICT", "Já existe um perfil com este nome nesta empresa.");
+    if (!response.ok) throw asFailure(response);
+    const id = await response.json().catch(() => null) as unknown;
+    if (typeof id !== "string" || !UUID_PATTERN.test(id)) {
+      throw new SaasUserAdminError("INVALID_RESPONSE", "O serviço de perfis retornou uma resposta inválida.");
+    }
+    return id;
+  }
+
   invite(email: string, profileId: string): Promise<SaasUserInviteResult> {
     return this.request({ action: "invite", email, profileId });
   }

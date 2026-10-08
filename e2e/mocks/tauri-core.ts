@@ -15,8 +15,13 @@ export function isTauri(): boolean {
   return false;
 }
 
-export async function invoke<T>(command: string): Promise<T> {
+export async function invoke<T>(command: string, args?: Record<string, unknown>): Promise<T> {
   switch (command) {
+    case "criar_cliente":
+      if ((args?.input as { documento?: string } | undefined)?.documento === "52998224725") {
+        throw new Error("Este CPF/CNPJ já está cadastrado em um cliente ativo. Pesquise pelo documento para localizar o registro.");
+      }
+      return undefined as T;
     case "verificar_status_banco": return true as T;
     case "get_sensitive_access_status":
     case "set_active_security_profile":
@@ -25,6 +30,10 @@ export async function invoke<T>(command: string): Promise<T> {
     case "listar_equipamentos":
     case "listar_clientes":
     case "buscar_equipamentos_por_serial": return [] as T;
+    case "listar_equipamentos_paginados":
+    case "listar_clientes_paginados":
+    case "listar_produtos_paginados":
+    case "listar_servicos_paginados": return { items: [], total: 0 } as T;
     default: return undefined as T;
   }
 }

@@ -1,6 +1,6 @@
 [package]
 name = "autoos"
-version = "0.5.5"
+version = "0.6.0"
 description = "Sistema de Gestão de Impressoras e Estoque de Insumos"
 authors = ["BMITAG"]
 edition = "2021"
@@ -24,6 +24,10 @@ path = "src/bin/p1_concurrency_integration.rs"
 [[bin]]
 name = "p1_windows_support_check"
 path = "src/bin/p1_windows_support_check.rs"
+
+[[bin]]
+name = "p1_photo_integration"
+path = "src/bin/p1_photo_integration.rs"
 
 [[bin]]
 name = "release_database_check"
@@ -58,6 +62,10 @@ name = "test_budget_service_mgmt"
 path = "src/bin/test_budget_service_mgmt.rs"
 
 [[bin]]
+name = "test_service_catalog_isolation"
+path = "src/bin/test_service_catalog_isolation.rs"
+
+[[bin]]
 name = "test_auth_integration"
 path = "src/bin/test_auth_integration.rs"
 
@@ -82,7 +90,7 @@ argon2 = "0.5"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 url = "2"
-reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls", "multipart"] }
 base64 = "0.22"
 tracing-appender = "0.2.5"
 axum = { version = "0.7", features = ["multipart"] }

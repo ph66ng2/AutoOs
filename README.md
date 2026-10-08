@@ -21,6 +21,7 @@ O projeto não está mais em fase de scaffold. O estado atual é um app Tauri + 
 - Recebimento técnico com defeito relatado, patrimônio, acessórios e imagens de entrada/saída
 - Histórico de comunicações por WhatsApp e email
 - Perfis locais com PIN, permissões granulares e auditoria mínima
+- A criação de perfis fica em `Perfil > Criar perfil` e exige uma sessão com permissão para gerenciar perfis. Informe nome, tipo de acesso, permissões e PIN com confirmação. Depois de criar, use `Ver perfis e decidir` para entrar com o PIN do novo perfil. O perfil ativo só muda após validar o PIN de destino.
 - Painel de conferência do schema em `Configurações > Segurança`
 - Backup manual PostgreSQL pelo app
 - Restore manual PostgreSQL pelo app com confirmação explícita
@@ -184,3 +185,7 @@ O `cargo tauri build` embute os metadados das migrations no binário para valida
 ## Licença
 
 Proprietário - BMITAG
+
+### Estoque vinculado ao orçamento
+
+Serviços podem vincular peças e consumir estoque somente após aprovação do cliente, inclusive aprovação parcial. AutoOS e AutoBO compartilham o mesmo estoque no Supabase. Veja [regras de operação e publicação coordenada](docs/ESTOQUE_ORCAMENTO.md).

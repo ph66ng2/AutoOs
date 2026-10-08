@@ -26,6 +26,7 @@ import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { db } from "@/lib/db";
 import { SmtpConfigService } from "@/lib/smtp-config";
 import { WhatsappConfigService } from "@/lib/whatsapp-config";
+import { PhotoTunnelConfigService } from "@/lib/photo-tunnel-config";
 import { SensitiveAccessService } from "@/lib/sensitive-access";
 import { useSensitiveAccess } from "@/hooks/useSensitiveAccess";
 import { ConfiguracoesTabInfra } from "@/pages/configuracoes/ConfiguracoesTabInfra";
@@ -48,7 +49,7 @@ import {
 } from "@/types";
 
 export default function Configuracoes() {
-  const { status: accessStatus, refreshStatus, hasPermission, setActiveProfile, ensureSensitiveAccess } = useSensitiveAccess();
+  const { status: accessStatus, refreshStatus, hasPermission, ensureSensitiveAccess } = useSensitiveAccess();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [hasPassword, setHasPassword] = useState(false);
@@ -58,6 +59,13 @@ export default function Configuracoes() {
   const [savingWhatsapp, setSavingWhatsapp] = useState(false);
   const [whatsappHasToken, setWhatsappHasToken] = useState(false);
   const [whatsappStatus, setWhatsappStatus] = useState<string | null>(null);
+  const [photoTunnelLoading, setPhotoTunnelLoading] = useState(true);
+  const [savingPhotoTunnel, setSavingPhotoTunnel] = useState(false);
+  const [photoTunnelHasToken, setPhotoTunnelHasToken] = useState(false);
+  const [photoTunnelEnvOverride, setPhotoTunnelEnvOverride] = useState(false);
+  const [photoTunnelStatus, setPhotoTunnelStatus] = useState<string | null>(null);
+  const [photoTunnelToken, setPhotoTunnelToken] = useState("");
+  const [photoTunnelPublicHost, setPhotoTunnelPublicHost] = useState("fotos.bmitag.com.br");
   const [securityMessage, setSecurityMessage] = useState<string | null>(null);
   const [securityAdminUnlocked, setSecurityAdminUnlocked] = useState(false);
   const [tab, setTab] = useState("smtp");
@@ -75,12 +83,6 @@ export default function Configuracoes() {
   const [resetPin, setResetPin] = useState("");
   const [resetPinConfirm, setResetPinConfirm] = useState("");
   const [adminPinVerify, setAdminPinVerify] = useState("");
-  const [newProfileName, setNewProfileName] = useState("");
-  const [newProfileRole, setNewProfileRole] = useState("CUSTOM");
-  const [newProfilePermissions, setNewProfilePermissions] = useState<SensitivePermission[]>([]);
-  const [newProfilePin, setNewProfilePin] = useState("");
-  const [newProfilePinConfirm, setNewProfilePinConfirm] = useState("");
-  const [newProfileNoPin, setNewProfileNoPin] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [auditSearch, setAuditSearch] = useState("");
   const [auditOutcomeFilter, setAuditOutcomeFilter] = useState("ALL");
@@ -107,6 +109,7 @@ export default function Configuracoes() {
   const permissionOptions = Object.values(SENSITIVE_PERMISSIONS);
   const canConfigureSmtp = hasPermission(SENSITIVE_PERMISSIONS.CONFIG_SMTP);
   const canConfigureWhatsapp = hasPermission(SENSITIVE_PERMISSIONS.CONFIG_WHATSAPP);
+  const canConfigurePhotoTunnel = canConfigureSmtp;
   const canConfigureIntegrations = canConfigureSmtp || canConfigureWhatsapp;
   const canManageProfiles = hasPermission(SENSITIVE_PERMISSIONS.MANAGE_PROFILES);
   const restoreMode = detectRestoreMode(restoreFilePath);
@@ -335,6 +338,33 @@ export default function Configuracoes() {
   }, [canConfigureWhatsapp, setWhatsappValue, accessStatus?.active_profile_id]);
 
   useEffect(() => {
+    async function loadPhotoTunnelConfig() {
+      if (!canConfigurePhotoTunnel) {
+        setPhotoTunnelLoading(false);
+        return;
+      }
+
+      setPhotoTunnelLoading(true);
+
+      try {
+        const config = await PhotoTunnelConfigService.buscar();
+        setPhotoTunnelHasToken(!!config?.has_token);
+        setPhotoTunnelEnvOverride(!!config?.env_override);
+        setPhotoTunnelPublicHost(config?.public_host || "fotos.bmitag.com.br");
+        setPhotoTunnelToken("");
+      } catch (error) {
+        console.error("Erro ao carregar config do tunel de fotos:", error);
+        setPhotoTunnelHasToken(false);
+        setPhotoTunnelEnvOverride(false);
+      } finally {
+        setPhotoTunnelLoading(false);
+      }
+    }
+
+    void loadPhotoTunnelConfig();
+  }, [canConfigurePhotoTunnel, accessStatus?.active_profile_id]);
+
+  useEffect(() => {
     if (!canConfigureIntegrations) {
       setTab("seguranca");
     }
@@ -412,9 +442,9 @@ export default function Configuracoes() {
 
       await SmtpConfigService.salvar(payload);
       setHasPassword(!!payload.password || hasPassword);
-      setStatus("Configuracao SMTP salva com sucesso.");
+      setStatus("Configuração SMTP salva com sucesso.");
     } catch (error: any) {
-      const msg = typeof error === "string" ? error : (error?.message || "Falha ao salvar configuracao SMTP.");
+      const msg = typeof error === "string" ? error : (error?.message || "Falha ao salvar configuração SMTP.");
       setStatus(msg);
     } finally {
       setSaving(false);
@@ -472,6 +502,42 @@ export default function Configuracoes() {
       setWhatsappStatus(msg);
     } finally {
       setSavingWhatsapp(false);
+    }
+  }
+
+  async function onSubmitPhotoTunnel() {
+    const liberado = await ensureSensitiveAccess({
+      title: "Salvar túnel de fotos",
+      description: "Informe o PIN para salvar o token do Cloudflare Tunnel.",
+      permission: SENSITIVE_PERMISSIONS.CONFIG_SMTP,
+    });
+    if (!liberado) {
+      setPhotoTunnelStatus("Salvamento do túnel de fotos não autorizado. PIN/permissão necessários.");
+      return;
+    }
+
+    setSavingPhotoTunnel(true);
+    setPhotoTunnelStatus(null);
+
+    try {
+      await PhotoTunnelConfigService.salvar({
+        token: photoTunnelToken.trim() || undefined,
+      });
+      const config = await PhotoTunnelConfigService.buscar();
+      setPhotoTunnelHasToken(!!config?.has_token);
+      setPhotoTunnelEnvOverride(!!config?.env_override);
+      setPhotoTunnelPublicHost(config?.public_host || "fotos.bmitag.com.br");
+      setPhotoTunnelToken("");
+      setPhotoTunnelStatus(
+        photoTunnelToken.trim()
+          ? "Token do túnel nomeado salvo. O QR usará https://fotos.bmitag.com.br (um PC por vez)."
+          : "Token removido. O QR volta ao túnel automático — cada PC com o próprio endereço.",
+      );
+    } catch (error: any) {
+      const msg = typeof error === "string" ? error : (error?.message || "Falha ao salvar o token do túnel de fotos.");
+      setPhotoTunnelStatus(msg);
+    } finally {
+      setSavingPhotoTunnel(false);
     }
   }
 
@@ -553,28 +619,6 @@ export default function Configuracoes() {
     }
   }
 
-  async function trocarPerfilAtivo(profileId: number) {
-    const liberado = await ensureSensitiveAccess({
-      title: "Trocar perfil ativo",
-      description: "Informe o PIN de administrador para alterar o perfil de segurança ativo.",
-      permission: SENSITIVE_PERMISSIONS.MANAGE_PROFILES,
-    });
-    if (!liberado) {
-      return;
-    }
-
-    setSecurityBusy(true);
-    setSecurityMessage(null);
-    try {
-      await setActiveProfile(profileId);
-      setSecurityMessage("Perfil ativo alterado. O PIN desse perfil será exigido na próxima ação sensível e na próxima abertura do app.");
-    } catch (error: any) {
-      setSecurityMessage(error?.message || error?.toString() || "Falha ao alterar o perfil ativo.");
-    } finally {
-      setSecurityBusy(false);
-    }
-  }
-
   async function trocarMeuPin() {
     if (!securityAdminUnlocked) {
       setSecurityMessage("Desbloqueie a gestão de segurança com PIN/Admin para alterar PINs e perfis.");
@@ -633,53 +677,6 @@ export default function Configuracoes() {
       await atualizarEstadoSeguranca();
     } catch (error: any) {
       setSecurityMessage(error?.message || error?.toString() || "Falha ao atualizar o perfil.");
-    } finally {
-      setSecurityBusy(false);
-    }
-  }
-
-  async function criarPerfil() {
-    if (!securityAdminUnlocked) {
-      setSecurityMessage("Desbloqueie a gestão de segurança com PIN/Admin para criar perfis.");
-      return;
-    }
-
-    const skipPin = newProfileNoPin;
-
-    if (!skipPin && newProfilePin.length < 4) {
-      setSecurityMessage("O PIN inicial do novo perfil deve ter entre 4 e 8 dígitos.");
-      return;
-    }
-
-    if (!skipPin && newProfilePin !== newProfilePinConfirm) {
-      setSecurityMessage("A confirmação do PIN do novo perfil não confere.");
-      return;
-    }
-
-    if (newProfileRole === "CUSTOM" && newProfilePermissions.length === 0) {
-      setSecurityMessage("Um perfil CUSTOM deve ter pelo menos uma permissão.");
-      return;
-    }
-
-    const permissions = permissionsForRole(newProfileRole, newProfilePermissions);
-    setSecurityBusy(true);
-    setSecurityMessage(null);
-    try {
-      await SensitiveAccessService.createProfile({
-        nome: newProfileName.trim(),
-        role: newProfileRole,
-        permissions,
-      }, skipPin ? "" : newProfilePin);
-      setNewProfileName("");
-      setNewProfileRole("CUSTOM");
-      setNewProfilePermissions([]);
-      setNewProfilePin("");
-      setNewProfilePinConfirm("");
-      setNewProfileNoPin(false);
-      setSecurityMessage("Novo perfil criado com sucesso.");
-      await atualizarEstadoSeguranca();
-    } catch (error: any) {
-      setSecurityMessage(error?.message || error?.toString() || "Falha ao criar o perfil.");
     } finally {
       setSecurityBusy(false);
     }
@@ -855,7 +852,7 @@ export default function Configuracoes() {
     await atualizarEstadoSeguranca();
   }
 
-  if ((canConfigureSmtp && loading) || (canConfigureWhatsapp && whatsappLoading)) {
+  if ((canConfigureSmtp && loading) || (canConfigureWhatsapp && whatsappLoading) || (canConfigurePhotoTunnel && photoTunnelLoading)) {
     return (
       <div className="flex items-center justify-center h-64">
         <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600" />
@@ -866,15 +863,15 @@ export default function Configuracoes() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-3xl font-bold tracking-tight">Configuracoes</h1>
-        <p className="text-muted-foreground">Defina parametros do sistema e integracoes.</p>
+        <h1 className="text-3xl font-bold tracking-tight">Configurações</h1>
+        <p className="text-muted-foreground">Defina parâmetros do sistema e integrações.</p>
       </div>
 
       <Tabs value={tab} onValueChange={setTab} className="space-y-4">
         <TabsList>
-          <TabsTrigger value="smtp" disabled={!canConfigureIntegrations}>Integracoes</TabsTrigger>
+          <TabsTrigger value="smtp" disabled={!canConfigureIntegrations}>Integrações</TabsTrigger>
           <TabsTrigger value="infra">Banco</TabsTrigger>
-          <TabsTrigger value="seguranca">Seguranca</TabsTrigger>
+          <TabsTrigger value="seguranca">Segurança</TabsTrigger>
           {canManageProfiles && <TabsTrigger value="observabilidade">Suporte e Logs</TabsTrigger>}
         </TabsList>
 
@@ -896,6 +893,15 @@ export default function Configuracoes() {
           savingWhatsapp={savingWhatsapp}
           whatsappStatus={whatsappStatus}
           whatsappHasToken={whatsappHasToken}
+          canConfigurePhotoTunnel={canConfigurePhotoTunnel}
+          photoTunnelToken={photoTunnelToken}
+          onPhotoTunnelTokenChange={setPhotoTunnelToken}
+          onSubmitPhotoTunnel={onSubmitPhotoTunnel}
+          savingPhotoTunnel={savingPhotoTunnel}
+          photoTunnelStatus={photoTunnelStatus}
+          photoTunnelHasToken={photoTunnelHasToken}
+          photoTunnelEnvOverride={photoTunnelEnvOverride}
+          photoTunnelPublicHost={photoTunnelPublicHost}
         />
 
         <ConfiguracoesTabInfra
@@ -950,7 +956,6 @@ export default function Configuracoes() {
           securityBusy={securityBusy}
           handleSecurityAdminToggle={handleSecurityAdminToggle}
           accessStatus={accessStatus}
-          trocarPerfilAtivo={trocarPerfilAtivo}
           currentPin={currentPin}
           setCurrentPin={setCurrentPin}
           newPin={newPin}
@@ -978,19 +983,6 @@ export default function Configuracoes() {
           resetPinConfirm={resetPinConfirm}
           setResetPinConfirm={setResetPinConfirm}
           resetarPinPerfil={resetarPinPerfil}
-          newProfileName={newProfileName}
-          setNewProfileName={setNewProfileName}
-          newProfileRole={newProfileRole}
-          setNewProfileRole={setNewProfileRole}
-          newProfilePermissions={newProfilePermissions}
-          setNewProfilePermissions={setNewProfilePermissions}
-          newProfilePin={newProfilePin}
-          setNewProfilePin={setNewProfilePin}
-          newProfilePinConfirm={newProfilePinConfirm}
-          setNewProfilePinConfirm={setNewProfilePinConfirm}
-          newProfileNoPin={newProfileNoPin}
-          setNewProfileNoPin={setNewProfileNoPin}
-          criarPerfil={criarPerfil}
           securityMessage={securityMessage}
           inactivityLockEnabled={inactivityLockEnabled}
           onToggleInactivityLock={handleInactivityToggle}

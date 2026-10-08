@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, waitFor, act } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { useState } from "react";
 import { SensitiveAccessProvider, useSensitiveAccess } from "@/hooks/useSensitiveAccess";
 import type { SensitiveAccessStatus, SensitivePermission } from "@/types";
@@ -39,11 +40,62 @@ describe("useSensitiveAccess — integração com novos recursos de auth", () =>
     vi.clearAllMocks();
     mockInvoke.mockReset();
     hookRef = null;
+    localStorage.removeItem("autoos_last_profile_id");
   });
 
   function captureHook(h: ReturnType<typeof useSensitiveAccess>) {
     hookRef = h;
   }
+
+  it("mantém o perfil escolhido e o PIN digitado durante uma atualização de status", async () => {
+    const user = userEvent.setup();
+    const profiles = [
+      { id: 1, nome: "Admin", role: "ADMIN", permissions: [], pin_configured: true, is_default: true, ativo: true },
+      { id: 2, nome: "Operador", role: "CUSTOM", permissions: [], pin_configured: true, is_default: false, ativo: true },
+    ];
+    mockInvoke.mockImplementation((cmd: string) => cmd === "get_sensitive_access_status"
+      ? Promise.resolve({ ...EMPTY_STATUS, pin_configured: true, active_profile_id: 1, active_profile_name: "Admin", profiles })
+      : Promise.resolve(null));
+
+    render(<TestHarness><HookInspector capture={captureHook} /></TestHarness>);
+    const operator = await screen.findByRole("button", { name: /Operador/ });
+    await user.click(operator);
+    const pinInput = screen.getByLabelText("PIN do perfil");
+    await user.click(pinInput);
+    await user.type(pinInput, "1234");
+
+    await act(async () => { await hookRef?.refreshStatus(); });
+
+    expect(operator).toHaveAttribute("aria-pressed", "true");
+    expect(pinInput).toHaveValue("1234");
+  });
+
+  it("envia PIN e confirmação ao ativar um administrador sem PIN inicial", async () => {
+    const user = userEvent.setup();
+    const pending = { id: 2, nome: "Admin pendente", role: "ADMIN", permissions: [], pin_configured: false, is_default: false, ativo: true };
+    const admin = { id: 1, nome: "Admin atual", role: "ADMIN", permissions: [], pin_configured: true, is_default: true, ativo: true };
+    const initial = { ...EMPTY_STATUS, pin_configured: true, active_profile_id: 1, active_profile_name: admin.nome, profiles: [admin, pending] };
+    mockInvoke.mockImplementation((cmd: string) => {
+      if (cmd === "get_sensitive_access_status") return Promise.resolve(initial);
+      if (cmd === "set_active_security_profile") return Promise.resolve({
+        ...initial, pin_configured: true, unlocked: true, active_profile_id: 2,
+        active_profile_name: pending.nome, active_role: "ADMIN", permissions: ["MANAGE_PROFILES"],
+        profiles: [admin, { ...pending, pin_configured: true }],
+      });
+      return Promise.resolve(null);
+    });
+
+    render(<TestHarness><HookInspector capture={captureHook} /></TestHarness>);
+    await user.click(await screen.findByRole("button", { name: /Admin pendente/ }));
+    await user.type(screen.getByLabelText("Novo PIN"), "2468");
+    await user.type(screen.getByLabelText("Confirmar PIN"), "2468");
+    await user.click(screen.getByRole("button", { name: "Configurar PIN e continuar" }));
+
+    await waitFor(() => expect(mockInvoke).toHaveBeenCalledWith("set_active_security_profile", {
+      profileId: 2, pin: "2468", confirmPin: "2468",
+    }));
+    await waitFor(() => expect(hookRef?.status?.active_profile_id).toBe(2));
+  });
 
   it("inatividade ATIVADA: sessão expirada reflete unlocked=false no status", async () => {
     mockInvoke.mockImplementation((cmd: string) => {
@@ -182,7 +234,7 @@ describe("useSensitiveAccess — integração com novos recursos de auth", () =>
     expect(hookRef?.status?.profiles.find((p) => p.id === 2)?.pin_configured).toBe(false);
 
     await act(async () => {
-      await hookRef?.setActiveProfile(2);
+      await hookRef?.setActiveProfile(2, "");
     });
 
     expect(hookRef?.status?.active_profile_id).toBe(2);

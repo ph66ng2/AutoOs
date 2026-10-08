@@ -177,6 +177,7 @@ fn main() {
         commands::util::reiniciar_banco_com_config,
         // Equipamentos
         commands::equipamentos::listar_equipamentos,
+        commands::equipamentos::listar_equipamentos_paginados,
         commands::equipamentos::buscar_equipamento,
         commands::equipamentos::listar_historico_equipamento,
         commands::equipamentos::buscar_equipamentos_por_serial,
@@ -191,6 +192,9 @@ fn main() {
         commands::photo_server::start_photo_server,
         commands::photo_server::stop_photo_server,
         commands::photo_server::generate_upload_token,
+        commands::photo_server::consultar_status_foto,
+        commands::photo_tunnel::salvar_config_photo_tunnel,
+        commands::photo_tunnel::carregar_config_photo_tunnel,
         commands::qr_code::gerar_qr_upload,
         commands::photo_upload_sessions::criar_sessao_upload_fotos,
         commands::photo_upload_sessions::consultar_sessao_upload_fotos,

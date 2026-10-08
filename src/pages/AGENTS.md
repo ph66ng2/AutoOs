@@ -26,9 +26,9 @@ pages/
 | Clientes | 708 lines | List, add, edit, delete clients |
 | Equipamentos | 1466 lines | Technical receipt, status tracking |
 | Insumos | 720 lines | Stock movements, input/output |
-| Configuracoes | 1590 lines | Profiles, PIN, backup, restore, schema |
+| Configuracoes | 1590 lines | Profile editing, PIN, backup, restore, schema |
 | Dashboard | 21k | Charts, summary |
-| Perfil | 4k | Profile settings |
+| Perfil | 4k | Profile creation and PIN verified session switching |
 
 ## CONVENTIONS
 

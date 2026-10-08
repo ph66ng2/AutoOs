@@ -9,6 +9,8 @@ export function isTauri(): boolean {
   return false;
 }
 
+const estoqueDemo = typeof window !== "undefined" && new URLSearchParams(window.location.search).has("estoque");
+
 const agora = "2026-09-17T15:00:00Z";
 
 const status = {
@@ -18,7 +20,7 @@ const status = {
   active_profile_id: 1,
   active_profile_name: "Atendente BMITAG",
   active_role: "ATENDENTE",
-  permissions: ["FINANCIAL_ACTIONS", "VIEW_EXPENSES"],
+  permissions: ["FINANCIAL_ACTIONS", "VIEW_EXPENSES", "STOCK_CONTROL"],
   can_manage_profiles: false,
   profiles: [],
 };
@@ -64,7 +66,7 @@ const equipamento = {
   marca: "Zebra",
   modelo: "ZD620",
   tipo: "Impressora de Código de Barra",
-  status: "EM_MANUTENCAO",
+  status: estoqueDemo ? "AGUARDANDO_APROVACAO" : "EM_MANUTENCAO",
   defeito_relatado: "Não imprime etiquetas",
   data_entrada: "2026-09-10",
   cliente_id: 11,
@@ -87,11 +89,14 @@ let verificacao = {
   tecnico_nome: "Ivan",
   problema_relatado: "Não imprime etiquetas",
   diagnostico: "Firmware desatualizado e sensor de gap descalibrado.",
-  servicos_necessarios: JSON.stringify([
+  servicos_necessarios: JSON.stringify(estoqueDemo ? [
+    { id: "head", descricao: "Troca da cabeça de impressão", valor: 100, pecas: [{ produto_id: 1, nome: "Cabeça GC420t", quantidade: 1, valor_unitario: 450 }] },
+    { id: "feed", descricao: "Troca do botão feed", valor: 50, pecas: [{ produto_id: 2, nome: "Botão feed", quantidade: 1, valor_unitario: 30 }] },
+  ] : [
     { id: "s1", descricao: "Atualização do Firmware", valor: 120 },
   ]),
   pecas_necessarias: "[]",
-  custo_total: 0,
+  custo_total: estoqueDemo ? 630 : 0,
   tempo_estimado: 4,
   concluida: true,
   observacoes: "Cliente pediu retorno rápido.",
@@ -118,6 +123,18 @@ export async function invoke<T>(command: string, args?: Record<string, unknown>)
       return false as T;
     case "listar_clientes":
       return [cliente] as T;
+    case "listar_clientes_paginados": {
+      const page = Math.max(0, Number(args?.page ?? 0));
+      const busca = String(args?.busca ?? "").toLowerCase();
+      const buscaDocumento = busca.replace(/\D/g, "");
+      const documento = String(cliente.documento ?? "").replace(/\D/g, "");
+      const textoCliente = `${cliente.nome} ${cliente.razao_social} ${cliente.documento}`.toLowerCase();
+      const pesquisaDocumento = /^[\d\s.\-/]+$/.test(busca) && buscaDocumento.length >= 3;
+      const items = !busca || textoCliente.includes(busca) || (pesquisaDocumento && documento.includes(buscaDocumento))
+        ? [cliente]
+        : [];
+      return { items: items.slice(page * 10, (page + 1) * 10), total: items.length } as T;
+    }
     case "buscar_cliente":
       return cliente as T;
     case "listar_equipamentos": {
@@ -126,6 +143,18 @@ export async function invoke<T>(command: string, args?: Record<string, unknown>)
         return [] as T;
       }
       return [equipamento] as T;
+    }
+    case "listar_equipamentos_paginados": {
+      const statusFiltro = args?.status as string | undefined;
+      const busca = String(args?.busca ?? "").toLowerCase();
+      const matchesStatus = !statusFiltro || statusFiltro === "TODOS" || equipamento.status === statusFiltro;
+      const textoEquipamento = `${equipamento.serial_number} ${equipamento.patrimonio} ${equipamento.marca} ${equipamento.modelo} ${equipamento.cliente_nome} ${cliente.nome} ${cliente.documento}`.toLowerCase();
+      const buscaDocumento = busca.replace(/\D/g, "");
+      const documentoCliente = String(cliente.documento ?? "").replace(/\D/g, "");
+      const pesquisaDocumento = /^[\d\s.\-/]+$/.test(busca) && buscaDocumento.length >= 3;
+      const matchesSearch = !busca || textoEquipamento.includes(busca) || (pesquisaDocumento && documentoCliente.includes(buscaDocumento));
+      const items = matchesStatus && matchesSearch ? [equipamento] : [];
+      return { items: items.slice(Number(args?.page ?? 0) * 10, (Number(args?.page ?? 0) + 1) * 10), total: items.length } as T;
     }
     case "buscar_equipamento":
       return equipamento as T;
@@ -167,6 +196,12 @@ export async function invoke<T>(command: string, args?: Record<string, unknown>)
       return verificacao as T;
     case "listar_servicos_catalogo_ativos":
       return catalogo as T;
+    case "listar_servicos_paginados": {
+      const page = Math.max(0, Number(args?.page ?? 0));
+      const busca = String(args?.busca ?? "").toLowerCase();
+      const items = catalogo.filter((item) => !busca || item.nome.toLowerCase().includes(busca));
+      return { items: items.slice(page * 10, (page + 1) * 10), total: items.length } as T;
+    }
     case "atualizar_servicos_verificacao": {
       const custo = Number(args?.custoTotal ?? 120);
       equipamento.valor_orcamento = custo;
@@ -179,6 +214,27 @@ export async function invoke<T>(command: string, args?: Record<string, unknown>)
       return verificacao as T;
     }
     case "listar_produtos":
+      return (estoqueDemo ? [
+        { id: 1, nome: "Cabeça GC420t", codigo: "CAB-420", categoria: "PEÇA", quantidade_estoque: 0, preco_venda: 450, ativo: true },
+        { id: 2, nome: "Botão feed", codigo: "FEED", categoria: "PEÇA", quantidade_estoque: 3, preco_venda: 30, ativo: true },
+      ] : []) as T;
+    case "listar_produtos_paginados": {
+      const todos = estoqueDemo ? [
+        { id: 1, nome: "Cabeça GC420t", codigo: "CAB-420", categoria: "PEÇA", quantidade_estoque: 0, quantidade_minima: 1, preco_venda: 450, ativo: true },
+        { id: 2, nome: "Botão feed", codigo: "FEED", categoria: "PEÇA", quantidade_estoque: 3, quantidade_minima: 1, preco_venda: 30, ativo: true },
+      ] : [];
+      const busca = String(args?.busca ?? "").toLowerCase();
+      const categoria = String(args?.categoria ?? "TODOS");
+      const baixo = Boolean(args?.apenasEstoqueBaixo);
+      const items = todos.filter((item) =>
+        (!busca || `${item.nome} ${item.codigo}`.toLowerCase().includes(busca)) &&
+        (categoria === "TODOS" || !categoria || item.categoria === categoria) &&
+        (!baixo || item.quantidade_estoque < item.quantidade_minima),
+      );
+      const page = Math.max(0, Number(args?.page ?? 0));
+      const belowMinimum = todos.filter((item) => item.quantidade_estoque < item.quantidade_minima).length;
+      return { items: items.slice(page * 10, (page + 1) * 10), total: items.length, belowMinimum } as T;
+    }
     case "listar_imagens_equipamento":
     case "listar_historico_equipamento":
     case "listar_comunicacoes":

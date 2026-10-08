@@ -1,0 +1,537 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="theme-color" content="#1B2433">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <title>AutoOS — Fotos</title>
+    <style>
+        :root {
+            --background: hsl(210 20% 98%);
+            --foreground: hsl(220 20% 10%);
+            --card: #ffffff;
+            --primary: hsl(220 70% 50%);
+            --primary-foreground: #ffffff;
+            --muted: hsl(215 20% 95%);
+            --muted-foreground: hsl(215 15% 50%);
+            --border: hsl(215 20% 90%);
+            --sidebar: hsl(220 30% 15%);
+            --destructive: hsl(0 72% 51%);
+            --radius: 8px;
+            --shadow: 0 1px 2px hsl(220 20% 10% / 0.06), 0 8px 24px hsl(220 30% 15% / 0.06);
+        }
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        html, body { min-height: 100%; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            background: var(--background);
+            color: var(--foreground);
+            min-height: 100dvh;
+            display: flex;
+            flex-direction: column;
+        }
+        .topbar {
+            background: var(--sidebar);
+            color: #e8eef5;
+            padding: 14px 20px 16px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+        .brand {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        .mark {
+            width: 32px;
+            height: 32px;
+            border-radius: 8px;
+            background: var(--primary);
+            display: grid;
+            place-items: center;
+            flex-shrink: 0;
+        }
+        .mark svg { display: block; }
+        .brand-text {
+            display: flex;
+            flex-direction: column;
+            line-height: 1.15;
+        }
+        .brand-text strong {
+            font-size: 0.95rem;
+            font-weight: 700;
+            letter-spacing: 0.04em;
+        }
+        .brand-text span {
+            font-size: 0.68rem;
+            letter-spacing: 0.16em;
+            text-transform: uppercase;
+            color: #8aa0b8;
+            font-weight: 500;
+        }
+        .shell {
+            flex: 1;
+            display: flex;
+            align-items: flex-start;
+            justify-content: center;
+            padding: 16px 16px 28px;
+        }
+        .card {
+            width: 100%;
+            max-width: 420px;
+            background: var(--card);
+            border: 1px solid var(--border);
+            border-radius: 16px;
+            padding: 20px;
+            box-shadow: var(--shadow);
+        }
+        h1 {
+            font-size: 1.15rem;
+            font-weight: 650;
+            letter-spacing: -0.02em;
+            margin-bottom: 4px;
+        }
+        .subtitle {
+            color: var(--muted-foreground);
+            font-size: 0.88rem;
+            margin-bottom: 18px;
+            line-height: 1.4;
+        }
+        .slots {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 10px;
+            margin-bottom: 16px;
+        }
+        .slot {
+            position: relative;
+            aspect-ratio: 1;
+            border-radius: 12px;
+            overflow: hidden;
+            background: var(--muted);
+        }
+        .slot img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            display: block;
+            outline: 1px solid oklch(0 0 0 / 0.1);
+            outline-offset: -1px;
+        }
+        .slot.empty {
+            border: 1.5px dashed hsl(215 16% 78%);
+            background: hsl(215 20% 97%);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 4px;
+            color: var(--muted-foreground);
+            cursor: pointer;
+            -webkit-tap-highlight-color: transparent;
+        }
+        .slot.empty:active { transform: scale(0.96); }
+        .slot.empty svg { opacity: 0.7; }
+        .slot.empty span { font-size: 0.68rem; font-weight: 600; }
+        .slot .remove {
+            position: absolute;
+            top: 6px;
+            right: 6px;
+            width: 26px;
+            height: 26px;
+            border: 0;
+            border-radius: 999px;
+            background: hsl(220 20% 10% / 0.72);
+            color: #fff;
+            font-size: 16px;
+            line-height: 1;
+            cursor: pointer;
+            display: grid;
+            place-items: center;
+        }
+        input[type="file"] { display: none; }
+        .actions { display: flex; flex-direction: column; gap: 8px; }
+        .btn {
+            width: 100%;
+            min-height: 48px;
+            border-radius: var(--radius);
+            font-size: 0.98rem;
+            font-weight: 600;
+            cursor: pointer;
+            touch-action: manipulation;
+            -webkit-tap-highlight-color: transparent;
+            transition-property: transform, background, opacity;
+            transition-duration: 150ms;
+            transition-timing-function: cubic-bezier(0.2, 0, 0, 1);
+        }
+        .btn:active:not(:disabled) { transform: scale(0.96); }
+        .btn:disabled { opacity: 0.55; cursor: not-allowed; }
+        .btn-primary {
+            background: var(--primary);
+            color: var(--primary-foreground);
+            border: 0;
+        }
+        .btn-secondary {
+            background: var(--card);
+            color: var(--foreground);
+            border: 1px solid var(--border);
+        }
+        .hint {
+            margin-top: 12px;
+            text-align: center;
+            font-size: 0.78rem;
+            color: var(--muted-foreground);
+        }
+        #status {
+            margin-top: 14px;
+            padding: 10px 12px;
+            border-radius: var(--radius);
+            text-align: center;
+            font-size: 0.9rem;
+            display: none;
+        }
+        #status.success { display: block; background: hsl(152 45% 93%); color: hsl(152 60% 22%); }
+        #status.error { display: block; background: hsl(0 70% 95%); color: hsl(0 55% 32%); }
+        #status.info { display: block; background: hsl(210 80% 95%); color: hsl(220 50% 32%); }
+        .success-overlay { display: none; text-align: center; padding: 12px 4px 4px; }
+        .success-overlay.visible { display: block; }
+        .success-icon {
+            width: 56px;
+            height: 56px;
+            margin: 0 auto 12px;
+            border-radius: 999px;
+            background: hsl(152 45% 93%);
+            color: hsl(152 55% 32%);
+            display: grid;
+            place-items: center;
+        }
+        .success-title { font-size: 1.1rem; font-weight: 700; margin-bottom: 6px; }
+        .success-count { font-size: 0.9rem; color: var(--muted-foreground); margin-bottom: 20px; }
+        .foot {
+            text-align: center;
+            padding: 0 16px 18px;
+            font-size: 0.7rem;
+            letter-spacing: 0.12em;
+            text-transform: uppercase;
+            color: var(--muted-foreground);
+        }
+    </style>
+</head>
+<body>
+    <header class="topbar">
+        <div class="brand">
+            <span class="mark" aria-hidden="true">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M6 9h12a2 2 0 0 1 2 2v5H18v-2H6v2H4v-5a2 2 0 0 1 2-2Z"/>
+                    <path d="M8 9V5h8v4"/>
+                    <path d="M8 16h8v4H8z"/>
+                </svg>
+            </span>
+            <div class="brand-text">
+                <strong>AutoOS</strong>
+                <span>BMITAG</span>
+            </div>
+        </div>
+    </header>
+    <main class="shell">
+        <div class="card">
+            <div id="mainPanel">
+                <h1 id="pageTitle">Fotos do equipamento</h1>
+                <p class="subtitle">Um toque abre a c&#226;mera ou a galeria. At&#233; 3 fotos.</p>
+                <form id="uploadForm" enctype="multipart/form-data" method="POST">
+                    <div class="slots" id="slots"></div>
+                    <div class="actions">
+                        <button type="button" class="btn btn-primary" id="pickerBtn">Adicionar fotos</button>
+                        <button type="submit" class="btn btn-primary" id="submitBtn" hidden>Enviar</button>
+                    </div>
+                    <input type="file" id="pickerInput" accept="image/*" multiple>
+                    <p class="hint" id="fileCount">Nenhuma foto ainda</p>
+                </form>
+            </div>
+            <div id="status"></div>
+            <div class="success-overlay" id="successOverlay">
+                <div class="success-icon" aria-hidden="true">
+                    <svg width="28" height="28" viewBox="0 0 24 24" fill="none">
+                        <path d="M5 12.5 9.5 17 19 7" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>
+                    </svg>
+                </div>
+                <div class="success-title">Fotos enviadas</div>
+                <div class="success-count" id="successCount"></div>
+                <button type="button" class="btn btn-primary" id="sendMoreBtn">Enviar mais fotos</button>
+            </div>
+        </div>
+    </main>
+    <p class="foot">BMITAG · AutoOS</p>
+    <script>
+        var form = document.getElementById('uploadForm');
+        var statusEl = document.getElementById('status');
+        var submitBtn = document.getElementById('submitBtn');
+        var pickerBtn = document.getElementById('pickerBtn');
+        var pickerInput = document.getElementById('pickerInput');
+        var slotsEl = document.getElementById('slots');
+        var fileCountEl = document.getElementById('fileCount');
+        var successOverlay = document.getElementById('successOverlay');
+        var successCountEl = document.getElementById('successCount');
+        var sendMoreBtn = document.getElementById('sendMoreBtn');
+        var mainPanel = document.getElementById('mainPanel');
+        var pageTitle = document.getElementById('pageTitle');
+        var params = new URLSearchParams(window.location.search);
+        var token = params.get('token');
+        var cat = (params.get('cat') || '').toUpperCase();
+        form.action = '/upload?token=' + encodeURIComponent(token || '');
+
+        if (cat === 'SAIDA') pageTitle.textContent = 'Fotos de sa\u00edda';
+        else if (cat === 'ENTRADA') pageTitle.textContent = 'Fotos de entrada';
+        else if (cat === 'VERIFICACAO') pageTitle.textContent = 'Fotos de verifica\u00e7\u00e3o';
+
+        var selectedFiles = [];
+        var MAX_PHOTOS = 3;
+        var MAX_DIM = 1600;
+        var JPEG_QUALITY = 0.82;
+
+        function showStatus(kind, text) {
+            statusEl.style.display = '';
+            statusEl.className = kind;
+            statusEl.textContent = text;
+        }
+
+        function clearStatus() {
+            statusEl.className = '';
+            statusEl.textContent = '';
+            statusEl.style.display = 'none';
+        }
+
+        function remaining() {
+            return MAX_PHOTOS - selectedFiles.length;
+        }
+
+        function openPicker() {
+            if (remaining() <= 0) return;
+            pickerInput.value = '';
+            pickerInput.click();
+        }
+
+        function canvasToJpegBlob(canvas) {
+            return new Promise(function(resolve, reject) {
+                if (canvas.toBlob) {
+                    canvas.toBlob(function(blob) {
+                        if (blob) resolve(blob);
+                        else reject(new Error('blob'));
+                    }, 'image/jpeg', JPEG_QUALITY);
+                    return;
+                }
+                try {
+                    var dataUrl = canvas.toDataURL('image/jpeg', JPEG_QUALITY);
+                    var raw = atob(dataUrl.split(',')[1]);
+                    var arr = new Uint8Array(raw.length);
+                    for (var i = 0; i < raw.length; i++) arr[i] = raw.charCodeAt(i);
+                    resolve(new Blob([arr], { type: 'image/jpeg' }));
+                } catch (err) {
+                    reject(err);
+                }
+            });
+        }
+
+        function fileToJpeg(file) {
+            return new Promise(function(resolve, reject) {
+                var url = URL.createObjectURL(file);
+                var img = new Image();
+                img.onload = function() {
+                    try {
+                        var w = img.naturalWidth || img.width;
+                        var h = img.naturalHeight || img.height;
+                        if (!w || !h) {
+                            URL.revokeObjectURL(url);
+                            reject(new Error('empty'));
+                            return;
+                        }
+                        if (w > MAX_DIM || h > MAX_DIM) {
+                            var scale = Math.min(MAX_DIM / w, MAX_DIM / h);
+                            w = Math.round(w * scale);
+                            h = Math.round(h * scale);
+                        }
+                        var canvas = document.createElement('canvas');
+                        canvas.width = w;
+                        canvas.height = h;
+                        var ctx = canvas.getContext('2d');
+                        if (!ctx) {
+                            URL.revokeObjectURL(url);
+                            reject(new Error('canvas'));
+                            return;
+                        }
+                        ctx.drawImage(img, 0, 0, w, h);
+                        URL.revokeObjectURL(url);
+                        canvasToJpegBlob(canvas).then(function(blob) {
+                            var name = (file.name || 'foto').replace(/\.[^.]+$/, '') + '.jpg';
+                            resolve(new File([blob], name, { type: 'image/jpeg' }));
+                        }).catch(reject);
+                    } catch (err) {
+                        URL.revokeObjectURL(url);
+                        reject(err);
+                    }
+                };
+                img.onerror = function() {
+                    URL.revokeObjectURL(url);
+                    reject(new Error('decode'));
+                };
+                img.src = url;
+            });
+        }
+
+        async function prepareFile(file) {
+            if (!file || file.size === 0) throw new Error('empty');
+            try {
+                return await fileToJpeg(file);
+            } catch (err) {
+                if (file.type === 'image/jpeg' || file.type === 'image/png') return file;
+                throw err;
+            }
+        }
+
+        async function prepareFileList(files) {
+            var list = Array.prototype.slice.call(files || []).filter(function(f) { return f && f.size > 0; });
+            if (list.length === 0) throw new Error('empty');
+            var room = remaining();
+            if (room <= 0) throw new Error('max');
+            if (list.length > room) list = list.slice(0, room);
+            var prepared = [];
+            for (var i = 0; i < list.length; i++) {
+                prepared.push(await prepareFile(list[i]));
+            }
+            return prepared;
+        }
+
+        function renderSlots() {
+            slotsEl.innerHTML = '';
+            for (var i = 0; i < MAX_PHOTOS; i++) {
+                var slot = document.createElement('div');
+                if (i < selectedFiles.length) {
+                    slot.className = 'slot';
+                    var img = document.createElement('img');
+                    img.src = URL.createObjectURL(selectedFiles[i]);
+                    img.alt = 'Foto ' + (i + 1);
+                    img.onload = function() { URL.revokeObjectURL(this.src); };
+                    var remove = document.createElement('button');
+                    remove.type = 'button';
+                    remove.className = 'remove';
+                    remove.setAttribute('aria-label', 'Remover foto ' + (i + 1));
+                    remove.textContent = '\u00d7';
+                    remove.addEventListener('click', (function(index) {
+                        return function(event) {
+                            event.stopPropagation();
+                            selectedFiles.splice(index, 1);
+                            renderSlots();
+                        };
+                    })(i));
+                    slot.appendChild(img);
+                    slot.appendChild(remove);
+                } else {
+                    slot.className = 'slot empty';
+                    slot.innerHTML = '<svg width="22" height="22" viewBox="0 0 24 24" fill="none"><path d="M12 5v14M5 12h14" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg><span>Foto</span>';
+                    slot.addEventListener('click', openPicker);
+                }
+                slotsEl.appendChild(slot);
+            }
+
+            var count = selectedFiles.length;
+            var left = remaining();
+            if (count === 0) {
+                fileCountEl.textContent = 'Nenhuma foto ainda';
+                pickerBtn.hidden = false;
+                pickerBtn.className = 'btn btn-primary';
+                pickerBtn.textContent = 'Adicionar fotos';
+                submitBtn.hidden = true;
+            } else {
+                fileCountEl.textContent = count + ' de ' + MAX_PHOTOS + ' foto' + (count > 1 ? 's' : '');
+                pickerBtn.hidden = left <= 0;
+                pickerBtn.className = 'btn btn-secondary';
+                pickerBtn.textContent = left === 1 ? 'Adicionar mais (1 restante)' : 'Adicionar mais (' + left + ' restantes)';
+                submitBtn.hidden = false;
+                submitBtn.textContent = 'Enviar ' + count + ' foto' + (count > 1 ? 's' : '');
+            }
+        }
+
+        async function sendSelected() {
+            if (selectedFiles.length === 0) {
+                showStatus('error', 'Adicione uma foto primeiro.');
+                return;
+            }
+            if (selectedFiles.length > MAX_PHOTOS) {
+                showStatus('error', 'M\u00e1ximo de 3 fotos permitido.');
+                return;
+            }
+            submitBtn.disabled = true;
+            pickerBtn.disabled = true;
+            showStatus('info', 'Enviando...');
+
+            var formData = new FormData();
+            selectedFiles.forEach(function(file) {
+                formData.append('photo[]', file, file.name || 'foto.jpg');
+            });
+
+            try {
+                var response = await fetch(form.action, { method: 'POST', body: formData });
+                var result = await response.json();
+                if (result.success) {
+                    mainPanel.style.display = 'none';
+                    statusEl.style.display = 'none';
+                    successOverlay.classList.add('visible');
+                    var count = result.count || selectedFiles.length;
+                    successCountEl.textContent = count + ' foto' + (count > 1 ? 's' : '') + ' enviada' + (count > 1 ? 's' : '');
+                    selectedFiles = [];
+                } else {
+                    showStatus('error', result.error || result.message || 'Erro ao enviar foto');
+                }
+            } catch (err) {
+                showStatus('error', 'Erro de conex\u00e3o. Tente novamente.');
+            } finally {
+                submitBtn.disabled = false;
+                pickerBtn.disabled = false;
+            }
+        }
+
+        pickerBtn.addEventListener('click', openPicker);
+
+        pickerInput.addEventListener('change', async function() {
+            if (!this.files || this.files.length === 0) return;
+            showStatus('info', 'Preparando foto...');
+            try {
+                var prepared = await prepareFileList(this.files);
+                selectedFiles = selectedFiles.concat(prepared);
+                renderSlots();
+                clearStatus();
+                if (selectedFiles.length >= MAX_PHOTOS) {
+                    await sendSelected();
+                }
+            } catch (err) {
+                renderSlots();
+                if (err && err.message === 'empty') {
+                    showStatus('error', 'Nenhum arquivo recebido. Tente de novo.');
+                } else if (err && err.message === 'max') {
+                    showStatus('error', 'M\u00e1ximo de 3 fotos permitido.');
+                } else {
+                    showStatus('error', 'N\u00e3o foi poss\u00edvel ler a foto. Tente JPEG ou PNG.');
+                }
+            }
+        });
+
+        form.addEventListener('submit', async function(e) {
+            e.preventDefault();
+            await sendSelected();
+        });
+
+        sendMoreBtn.addEventListener('click', function() {
+            mainPanel.style.display = 'block';
+            successOverlay.classList.remove('visible');
+            selectedFiles = [];
+            pickerInput.value = '';
+            clearStatus();
+            renderSlots();
+        });
+
+        renderSlots();
+    </script>
+</body>
+</html>

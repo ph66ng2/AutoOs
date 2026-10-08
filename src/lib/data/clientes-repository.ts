@@ -88,9 +88,14 @@ function clientePayload(cliente: ClienteInput): Record<string, unknown> {
   }));
 }
 
-function asOnlineError(response: Response): OnlineDataError {
+async function asOnlineError(response: Response): Promise<OnlineDataError> {
   if (response.status === 401) return new OnlineDataError("SESSION_EXPIRED", "Sua sessão expirou. Entre novamente para continuar.");
   if (response.status === 403) return new OnlineDataError("RLS_DENIED", "Seu acesso a estes dados foi negado pela empresa.");
+  if (response.status === 409) {
+    let code: string | undefined;
+    try { code = (await response.json() as { code?: string }).code; } catch { /* resposta sem JSON */ }
+    if (code === "23505") return new OnlineDataError("CONFLICT", "Este CPF/CNPJ já está cadastrado nesta empresa. Busque o cliente existente.");
+  }
   return new OnlineDataError("ONLINE_UNAVAILABLE", "Não foi possível concluir a operação online. Tente novamente.");
 }
 
@@ -129,7 +134,9 @@ function clientesQuery(session: SupabaseOnlineSession, busca: string | undefined
   const term = busca?.trim();
   if (term) {
     const pattern = searchPattern(term);
-    query.set("or", `(nome.ilike.${pattern},razao_social.ilike.${pattern},nome_fantasia.ilike.${pattern},documento.ilike.${pattern},cpf_cnpj.ilike.${pattern},telefone.ilike.${pattern},email.ilike.${pattern})`);
+    const digits = term.replace(/\D/g, "");
+    const documentPattern = searchPattern(digits && /^[\d.\-/\s]+$/.test(term) ? digits : term);
+    query.set("or", `(nome.ilike.${pattern},razao_social.ilike.${pattern},nome_fantasia.ilike.${pattern},documento.ilike.${documentPattern},cpf_cnpj.ilike.${documentPattern},telefone.ilike.${pattern},email.ilike.${pattern})`);
   }
   return query;
 }
@@ -151,7 +158,7 @@ export class SupabaseClientesRepository implements ClientesRepository {
     } catch {
       throw new OnlineDataError("ONLINE_UNAVAILABLE", "A comunicação com o serviço Online falhou. Seus dados do formulário foram mantidos; tente novamente.");
     }
-    if (!response.ok) throw asOnlineError(response);
+    if (!response.ok) throw await asOnlineError(response);
     return (await response.json()) as T;
   }
 
@@ -181,7 +188,7 @@ export class SupabaseClientesRepository implements ClientesRepository {
     } catch {
       throw new OnlineDataError("ONLINE_UNAVAILABLE", "A comunicação com o serviço Online falhou. Tente novamente.");
     }
-    if (!response.ok) throw asOnlineError(response);
+    if (!response.ok) throw await asOnlineError(response);
     let rows: Cliente[];
     try {
       rows = await response.json() as Cliente[];

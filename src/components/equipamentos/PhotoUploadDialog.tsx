@@ -1,5 +1,6 @@
 import { useState, useCallback, useEffect, useRef } from "react";
-import { Smartphone, Clock, AlertCircle, RefreshCw, X, ExternalLink, CheckCircle2 } from "lucide-react";
+import { listen } from "@tauri-apps/api/event";
+import { Smartphone, Clock, AlertCircle, RefreshCw, X, Copy, Check, CheckCircle2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -12,7 +13,8 @@ import { db } from "@/lib/db";
 
 const PHOTO_SERVER_PORT = 8765;
 const TOKEN_TTL_SECONDS = 600;
-const POLL_INTERVAL_MS = 3000;
+const POLL_INTERVAL_MS = 1000;
+const SUCCESS_VISIBLE_MS = 2200;
 
 interface PhotoUploadData {
   bytes: number[];
@@ -34,6 +36,15 @@ interface QrData {
   qr_svg: string;
   url: string;
   token: string;
+  via_tunnel?: boolean;
+}
+
+function hostFromUrl(url: string): string {
+  try {
+    return new URL(url).host;
+  } catch {
+    return url;
+  }
 }
 
 export function PhotoUploadDialog({
@@ -50,10 +61,12 @@ export function PhotoUploadDialog({
   const [loading, setLoading] = useState(false);
   const [success, setSuccess] = useState(false);
   const [successCount, setSuccessCount] = useState(0);
+  const [copied, setCopied] = useState(false);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const tokenRef = useRef<string | null>(null);
   const successTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const handledRef = useRef(false);
 
   const openRef = useRef(open);
   const onPhotoUploadedRef = useRef(onPhotoUploaded);
@@ -99,9 +112,56 @@ export function PhotoUploadDialog({
     setTimer(TOKEN_TTL_SECONDS);
     setError(null);
     setLoading(false);
+    setCopied(false);
   }, [cleanup]);
 
+  const finishSuccess = useCallback(
+    async (countHint?: number) => {
+      if (handledRef.current) return;
+      handledRef.current = true;
+      cleanup();
+
+      let count = countHint && countHint > 0 ? countHint : 1;
+      const token = tokenRef.current;
+      let imageData:
+        | Array<{ bytes: number[]; filename: string; mime_type: string }>
+        | undefined;
+
+      if (token) {
+        try {
+          const status = await db.consultarStatusFoto(token);
+          if (status.count > 0) count = status.count;
+          imageData = status.image_data;
+        } catch {
+          // Evento já basta para mostrar o overlay
+        }
+      }
+
+      if (onPhotoDataRef.current && imageData && imageData.length > 0) {
+        count = imageData.length;
+        for (const img of imageData) {
+          onPhotoDataRef.current({
+            bytes: img.bytes,
+            filename: img.filename,
+            mime_type: img.mime_type,
+            categoria: categoriaRef.current,
+          });
+        }
+      } else {
+        onPhotoUploadedRef.current();
+      }
+
+      setSuccessCount(count);
+      setSuccess(true);
+      successTimeoutRef.current = setTimeout(() => {
+        onOpenChangeRef.current(false);
+      }, SUCCESS_VISIBLE_MS);
+    },
+    [cleanup],
+  );
+
   const startServer = useCallback(async () => {
+    handledRef.current = false;
     setSuccess(false);
     setSuccessCount(0);
     setLoading(true);
@@ -115,8 +175,9 @@ export function PhotoUploadDialog({
       const result = await db.gerarQrUpload(equipamentoIdRef.current, categoriaRef.current, PHOTO_SERVER_PORT);
       setQrData(result);
       tokenRef.current = result.token;
-    } catch {
-      setError("Não foi possível iniciar o servidor de fotos");
+    } catch (error) {
+      const message = typeof error === "string" ? error : (error as { message?: string })?.message;
+      setError(message || "Não foi possível iniciar o servidor de fotos");
       return;
     } finally {
       setLoading(false);
@@ -133,46 +194,23 @@ export function PhotoUploadDialog({
       });
     }, 1000);
 
-    pollRef.current = setInterval(async () => {
+    const pollOnce = () => {
       const token = tokenRef.current;
       if (!token) return;
-      try {
-        const res = await fetch(`http://localhost:${PHOTO_SERVER_PORT}/status/${token}`);
-        const data = await res.json();
-        if (data.used) {
-          cleanup();
-          await stopServer();
-          // 500ms delay to ensure DB has fully committed before parent refreshes
-          await new Promise((resolve) => setTimeout(resolve, 500));
-          if (onPhotoDataRef.current && data.image_data) {
-            const images = Array.isArray(data.image_data) ? data.image_data : [data.image_data];
-            for (const img of images) {
-              onPhotoDataRef.current({
-                bytes: img.bytes,
-                filename: img.filename,
-                mime_type: img.mime_type,
-                categoria: categoriaRef.current,
-              });
-            }
-          } else {
-            onPhotoUploadedRef.current();
+      void db
+        .consultarStatusFoto(token)
+        .then((data) => {
+          if (data.used) {
+            return finishSuccess(data.count);
           }
-          // Show success state for 2s then auto-close
-          setSuccessCount(
-            onPhotoDataRef.current && data.image_data
-              ? (Array.isArray(data.image_data) ? data.image_data.length : 1)
-              : 1,
-          );
-          setSuccess(true);
-          successTimeoutRef.current = setTimeout(() => {
-            onOpenChangeRef.current(false);
-          }, 2000);
-        }
-      } catch {
-        // Polling error - ignore, will retry
-      }
-    }, POLL_INTERVAL_MS);
-  }, [cleanup]);
+        })
+        .catch(() => {
+          // Polling error - ignore, will retry
+        });
+    };
+    pollOnce();
+    pollRef.current = setInterval(pollOnce, POLL_INTERVAL_MS);
+  }, [cleanup, finishSuccess]);
 
   useEffect(() => {
     if (openRef.current) {
@@ -185,6 +223,31 @@ export function PhotoUploadDialog({
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
+
+  useEffect(() => {
+    if (!open) return;
+    let cancelled = false;
+    let unlisten: (() => void) | undefined;
+    void listen<{ equipamento_id?: number; count?: number }>("photo-received", (event) => {
+      const id = event.payload?.equipamento_id;
+      if (id !== undefined && id !== equipamentoIdRef.current) return;
+      void finishSuccess(event.payload?.count);
+    })
+      .then((fn) => {
+        if (cancelled) {
+          fn();
+          return;
+        }
+        unlisten = fn;
+      })
+      .catch(() => {
+        // Sem Tauri (testes / e2e mock) o poll IPC continua válido
+      });
+    return () => {
+      cancelled = true;
+      unlisten?.();
+    };
+  }, [open, finishSuccess]);
 
   const handleRegenerate = useCallback(() => {
     void stopServer();
@@ -199,6 +262,9 @@ export function PhotoUploadDialog({
     return `${mins}:${secs.toString().padStart(2, "0")}`;
   };
 
+  const viaTunnel = !!qrData?.via_tunnel || !!qrData?.url.startsWith("https://");
+  const namedHost = !!qrData?.url.includes("fotos.bmitag.com.br");
+
   const handleOpenChange = (newOpen: boolean) => {
     if (!newOpen) {
       void stopServer();
@@ -206,16 +272,29 @@ export function PhotoUploadDialog({
     onOpenChange(newOpen);
   };
 
+  const handleCopyUrl = async () => {
+    if (!qrData?.url) return;
+    try {
+      await navigator.clipboard.writeText(qrData.url);
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 1500);
+    } catch {
+      void db.abrirUrl(qrData.url);
+    }
+  };
+
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
-      <DialogContent className="sm:max-w-md">
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
+      <DialogContent className="flex max-h-[calc(100dvh-1rem)] w-[min(calc(100vw-1.5rem),22.5rem)] max-w-[min(calc(100vw-1.5rem),22.5rem)] flex-col gap-2 overflow-hidden p-4">
+        <DialogHeader className="shrink-0 space-y-1 pr-6">
+          <DialogTitle className="flex items-center gap-2 text-base">
             <Smartphone className="h-5 w-5" />
-            Adicionar Foto via Celular
+            Foto pelo celular
           </DialogTitle>
           <DialogDescription>
-            Escaneie o QR code com seu celular ou acesse o endereço abaixo (Para enviar a foto é necessario estar na mesma rede Wi-Fi do computador)
+            {viaTunnel
+              ? "Escaneie com o celular. Pode usar 4G — não precisa do Wi-Fi da recepção."
+              : "Escaneie o QR. O celular precisa estar no mesmo Wi-Fi do computador."}
           </DialogDescription>
         </DialogHeader>
 
@@ -224,12 +303,9 @@ export function PhotoUploadDialog({
             <div className="h-16 w-16 rounded-full bg-green-100 flex items-center justify-center">
               <CheckCircle2 className="h-10 w-10 text-green-600" />
             </div>
-            <p className="text-lg font-semibold text-green-800">
-              Imagem(ns) recebida(s) com sucesso!
-            </p>
+            <p className="text-lg font-semibold text-green-800">Fotos recebidas</p>
             <p className="text-sm text-muted-foreground">
-              {successCount} {successCount === 1 ? "foto" : "fotos"} recebida
-              {successCount !== 1 && "s"}
+              {successCount} {successCount === 1 ? "foto" : "fotos"} no equipamento
             </p>
           </div>
         )}
@@ -237,7 +313,7 @@ export function PhotoUploadDialog({
         {loading && !success && (
           <div className="flex flex-col items-center justify-center py-8 gap-3">
             <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600" />
-            <p className="text-sm text-muted-foreground">Iniciando servidor...</p>
+            <p className="text-sm text-muted-foreground">Preparando o endereço do celular...</p>
           </div>
         )}
 
@@ -264,41 +340,53 @@ export function PhotoUploadDialog({
         )}
 
         {!success && qrData && !error && (
-          <div className="space-y-4">
-            <div className="flex justify-center">
+          <div className="flex min-w-0 flex-col gap-2 overflow-hidden">
+            <div className="mx-auto flex size-[min(220px,max(8rem,calc(100dvh-20rem)),calc(100vw-4.5rem))] shrink-0 items-center justify-center overflow-hidden rounded-xl bg-white p-1.5 outline outline-1 outline-black/10">
               <div
-                className="border rounded-lg p-4 bg-white"
+                data-testid="qr-frame"
+                className="h-full w-full min-h-0 min-w-0 [&_svg]:block [&_svg]:h-full [&_svg]:max-h-full [&_svg]:w-full [&_svg]:max-w-full"
                 dangerouslySetInnerHTML={{ __html: qrData.qr_svg }}
               />
             </div>
 
-            <div className="space-y-1">
-              <p className="text-xs text-muted-foreground">Endereço para acesso manual:</p>
-              <button
-                type="button"
-                onClick={() => { db.abrirUrl(qrData.url).catch(() => {}); }}
-                className="flex items-center gap-1 text-xs bg-muted px-2 py-1 rounded break-all text-blue-600 hover:text-blue-800 hover:underline transition-colors w-full text-left cursor-pointer"
+            <div className="flex w-full min-w-0 items-center gap-1.5 overflow-hidden rounded-lg bg-muted px-2.5 py-1.5">
+              <p
+                className="min-w-0 flex-1 truncate font-mono text-xs text-muted-foreground"
+                title={qrData.url}
               >
-                {qrData.url}
-                <ExternalLink className="h-3 w-3 shrink-0" />
-              </button>
+                {hostFromUrl(qrData.url)}
+              </p>
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                className="h-8 w-8 shrink-0"
+                onClick={() => { void handleCopyUrl(); }}
+              >
+                {copied ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
+                <span className="sr-only">{copied ? "Copiado" : "Copiar endereço"}</span>
+              </Button>
             </div>
 
-            <div className="flex items-center justify-center gap-2 text-sm text-muted-foreground">
+            <div className="flex shrink-0 items-center justify-center gap-2 text-sm text-muted-foreground">
               <Clock className="h-4 w-4" />
               <span>Expira em {formatTime(timer)}</span>
             </div>
 
-            <div className="rounded-md bg-amber-50 border border-amber-200 p-3 flex items-start gap-2">
-              <AlertCircle className="h-4 w-4 text-amber-600 mt-0.5 shrink-0" />
-              <p className="text-xs text-amber-800">
-                Certifique-se de que o celular está na mesma rede Wi-Fi que o computador.
+            <div className="flex min-w-0 shrink-0 items-start gap-2 overflow-hidden rounded-md border border-amber-200 bg-amber-50 p-2.5">
+              <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" />
+              <p className="min-w-0 break-words text-xs text-amber-800">
+                {viaTunnel
+                  ? namedHost
+                    ? "Este PC responde por fotos.bmitag.com.br enquanto o QR estiver aberto. Um computador por vez."
+                    : "O celular pode estar no 4G. Este endereço vale só enquanto o QR estiver aberto neste computador."
+                  : "O celular precisa estar no mesmo Wi-Fi do computador."}
               </p>
             </div>
           </div>
         )}
 
-        <div className="flex justify-end">
+        <div className="flex shrink-0 justify-end">
           <Button variant="outline" size="sm" onClick={() => handleOpenChange(false)}>
             <X className="h-4 w-4 mr-1" />
             Fechar

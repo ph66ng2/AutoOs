@@ -22,396 +22,15 @@ use tower_http::cors::{Any, CorsLayer};
 use tracing::{error, info, warn};
 
 use crate::commands::equipamento_imagens::{adicionar_imagem_equipamento_raw, MAX_IMAGE_BYTES};
+use crate::commands::photo_tunnel;
 use base64::Engine;
 
-const HTML_UPLOAD_PAGE: &str = r#"<!DOCTYPE html>
-<html lang="pt-BR">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>AutoOS - Upload de Foto</title>
-    <style>
-        * { box-sizing: border-box; margin: 0; padding: 0; }
-        body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-            background: #f5f5f5;
-            padding: 16px;
-            min-height: 100vh;
-            min-height: 100dvh;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            justify-content: center;
-        }
-        .container {
-            width: 100%;
-            max-width: 480px;
-            background: white;
-            border-radius: 12px;
-            padding: 24px;
-            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
-        }
-        h1 {
-            font-size: 1.5rem;
-            color: #333;
-            margin-bottom: 8px;
-            text-align: center;
-        }
-        .subtitle {
-            color: #666;
-            font-size: 0.9rem;
-            text-align: center;
-            margin-bottom: 24px;
-        }
-        .btn-group {
-            display: flex;
-            flex-direction: column;
-            gap: 12px;
-            margin-bottom: 20px;
-        }
-        .btn-option {
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            gap: 10px;
-            width: 100%;
-            padding: 16px;
-            border: 2px solid #e0e0e0;
-            border-radius: 12px;
-            background: white;
-            font-size: 1.05rem;
-            font-weight: 600;
-            color: #333;
-            cursor: pointer;
-            min-height: 56px;
-            touch-action: manipulation;
-            -webkit-tap-highlight-color: transparent;
-            transition: border-color 0.15s, background 0.15s;
-        }
-        .btn-option:active {
-            background: #f0f8ff;
-            border-color: #007bff;
-        }
-        .btn-option.camera {
-            border-color: #007bff;
-            background: #f0f8ff;
-            color: #007bff;
-        }
-        .btn-option.camera:active {
-            background: #dbeaff;
-        }
-        .btn-option .icon {
-            font-size: 1.4rem;
-        }
-        .btn-option .label-small {
-            font-size: 0.78rem;
-            font-weight: 400;
-            color: #888;
-            margin-top: 2px;
-        }
-        .btn-option .btn-text {
-            display: flex;
-            flex-direction: column;
-            align-items: flex-start;
-        }
-        input[type="file"] {
-            display: none;
-        }
-        .preview-area {
-            display: none;
-            margin-bottom: 16px;
-        }
-        .preview-area.visible {
-            display: block;
-        }
-        .preview-grid {
-            display: grid;
-            grid-template-columns: repeat(3, 1fr);
-            gap: 8px;
-            margin-bottom: 8px;
-        }
-        .preview-grid img {
-            width: 100%;
-            height: 80px;
-            object-fit: cover;
-            border-radius: 8px;
-            border: 1px solid #e0e0e0;
-        }
-        .file-count {
-            font-size: 0.85rem;
-            color: #666;
-            text-align: center;
-        }
-        button.submit-btn {
-            width: 100%;
-            padding: 16px;
-            background: #007bff;
-            color: white;
-            border: none;
-            border-radius: 8px;
-            font-size: 1.1rem;
-            font-weight: 600;
-            cursor: pointer;
-            min-height: 44px;
-            touch-action: manipulation;
-            -webkit-tap-highlight-color: transparent;
-            display: none;
-        }
-        button.submit-btn.visible {
-            display: block;
-        }
-        button.submit-btn:active {
-            background: #0056b3;
-        }
-        button.submit-btn:disabled {
-            background: #ccc;
-            cursor: not-allowed;
-        }
-        #status {
-            margin-top: 16px;
-            padding: 12px;
-            border-radius: 8px;
-            text-align: center;
-            font-size: 0.95rem;
-            display: none;
-        }
-        #status.success {
-            background: #d4edda;
-            color: #155724;
-            border: 1px solid #c3e6cb;
-            display: block;
-        }
-        #status.error {
-            background: #f8d7da;
-            color: #721c24;
-            border: 1px solid #f5c6cb;
-            display: block;
-        }
-        #status.info {
-            background: #d1ecf1;
-            color: #0c5460;
-            border: 1px solid #bee5eb;
-            display: block;
-        }
-        .success-overlay {
-            display: none;
-            text-align: center;
-            padding: 24px 16px;
-        }
-        .success-overlay.visible {
-            display: block;
-        }
-        .success-icon {
-            font-size: 4rem;
-            color: #28a745;
-            margin-bottom: 16px;
-        }
-        .success-title {
-            font-size: 1.3rem;
-            font-weight: 700;
-            color: #155724;
-            margin-bottom: 8px;
-        }
-        .success-count {
-            font-size: 1rem;
-            color: #666;
-            margin-bottom: 24px;
-        }
-        .success-btn {
-            width: 100%;
-            padding: 14px;
-            background: #007bff;
-            color: white;
-            border: none;
-            border-radius: 8px;
-            font-size: 1rem;
-            font-weight: 600;
-            cursor: pointer;
-        }
-        .success-btn:active {
-            background: #0056b3;
-        }
-    </style>
-</head>
-<body>
-    <div class="container">
-        <h1>AutoOS</h1>
-        <p class="subtitle">Upload de Foto</p>
-        <form id="uploadForm" enctype="multipart/form-data" method="POST">
-            <div class="btn-group" id="formContent">
-                <button type="button" class="btn-option camera" id="cameraBtn">
-                    <span class="icon">&#128247;</span>
-                    <div class="btn-text">
-                        <span>Tirar Foto</span>
-                        <span class="label-small">Usar c&#226;mera do celular</span>
-                    </div>
-                </button>
-                <button type="button" class="btn-option" id="galleryBtn">
-                    <span class="icon">&#128444;&#65039;</span>
-                    <div class="btn-text">
-                        <span>Escolher da Galeria</span>
-                        <span class="label-small">Selecionar at&#233; 3 fotos</span>
-                    </div>
-                </button>
-            </div>
-            <input type="file" id="cameraInput" name="photo" accept="image/*" capture="environment" multiple>
-            <input type="file" id="galleryInput" name="photo" accept="image/*" multiple>
-            <div class="preview-area" id="previewArea">
-                <div class="preview-grid" id="previewGrid"></div>
-                <div class="file-count" id="fileCount"></div>
-            </div>
-            <button type="submit" class="submit-btn" id="submitBtn">Enviar Foto</button>
-        </form>
-        <div id="status"></div>
-        <div class="success-overlay" id="successOverlay">
-            <div class="success-icon">&#9989;</div>
-            <div class="success-title">Imagem(ns) Carregada(s) com Sucesso!</div>
-            <div class="success-count" id="successCount"></div>
-            <button type="button" class="success-btn" id="sendMoreBtn">Enviar mais fotos</button>
-        </div>
-    </div>
-    <script>
-        const form = document.getElementById('uploadForm');
-        const statusEl = document.getElementById('status');
-        const submitBtn = document.getElementById('submitBtn');
-        const cameraBtn = document.getElementById('cameraBtn');
-        const galleryBtn = document.getElementById('galleryBtn');
-        const cameraInput = document.getElementById('cameraInput');
-        const galleryInput = document.getElementById('galleryInput');
-        const previewArea = document.getElementById('previewArea');
-        const previewGrid = document.getElementById('previewGrid');
-        const fileCountEl = document.getElementById('fileCount');
-        const successOverlay = document.getElementById('successOverlay');
-        const successCountEl = document.getElementById('successCount');
-        const sendMoreBtn = document.getElementById('sendMoreBtn');
-        const formContent = document.getElementById('formContent');
-        const params = new URLSearchParams(window.location.search);
-        const token = params.get('token');
-        
-        form.action = '/upload?token=' + encodeURIComponent(token || '');
+/// Tamanho máximo do arquivo que chega da câmera, antes do redimensionamento.
+/// Fotos nativas de celular passam fácil de 3MB; o limite de armazenamento
+/// continua sendo `MAX_IMAGE_BYTES` depois do encode.
+const MAX_INCOMING_IMAGE_BYTES: usize = 12 * 1024 * 1024;
 
-        let selectedFiles = [];
-
-        function updatePreview() {
-            previewGrid.innerHTML = '';
-            if (selectedFiles.length === 0) {
-                previewArea.classList.remove('visible');
-                submitBtn.classList.remove('visible');
-                return;
-            }
-            selectedFiles.forEach(file => {
-                const reader = new FileReader();
-                reader.onload = function(e) {
-                    const img = document.createElement('img');
-                    img.src = e.target.result;
-                    img.alt = file.name;
-                    previewGrid.appendChild(img);
-                };
-                reader.readAsDataURL(file);
-            });
-            previewArea.classList.add('visible');
-            submitBtn.classList.add('visible');
-            const count = selectedFiles.length;
-            fileCountEl.textContent = count + ' foto' + (count > 1 ? 's' : '') + ' selecionada' + (count > 1 ? 's' : '');
-            submitBtn.textContent = 'Enviar ' + count + ' Foto' + (count > 1 ? 's' : '');
-        }
-
-        function addFiles(files) {
-            if (!files) return;
-            const newFiles = Array.from(files);
-            if (selectedFiles.length + newFiles.length > 3) {
-                statusEl.className = 'error';
-                statusEl.textContent = 'M\u00e1ximo de 3 fotos permitido.';
-                return;
-            }
-            selectedFiles = selectedFiles.concat(newFiles);
-            updatePreview();
-        }
-
-        cameraBtn.addEventListener('click', function() {
-            cameraInput.value = '';
-            cameraInput.click();
-        });
-
-        galleryBtn.addEventListener('click', function() {
-            galleryInput.value = '';
-            galleryInput.click();
-        });
-
-        cameraInput.addEventListener('change', function() {
-            selectedFiles = [];
-            addFiles(this.files);
-        });
-
-        galleryInput.addEventListener('change', function() {
-            selectedFiles = [];
-            addFiles(this.files);
-        });
-        
-        form.addEventListener('submit', async (e) => {
-            e.preventDefault();
-            if (selectedFiles.length === 0) {
-                statusEl.className = 'error';
-                statusEl.textContent = 'Selecione uma foto primeiro.';
-                return;
-            }
-            if (selectedFiles.length > 3) {
-                statusEl.className = 'error';
-                statusEl.textContent = 'M\u00e1ximo de 3 fotos permitido.';
-                return;
-            }
-            submitBtn.disabled = true;
-            statusEl.className = 'info';
-            statusEl.textContent = 'Enviando...';
-            
-            const formData = new FormData();
-            selectedFiles.forEach(file => {
-                formData.append('photo[]', file);
-            });
-
-            try {
-                const response = await fetch(form.action, {
-                    method: 'POST',
-                    body: formData
-                });
-                const result = await response.json();
-                if (result.success) {
-                    formContent.style.display = 'none';
-                    form.style.display = 'none';
-                    statusEl.style.display = 'none';
-                    successOverlay.classList.add('visible');
-                    const count = result.count || selectedFiles.length;
-                    successCountEl.textContent = count + ' foto' + (count > 1 ? 's' : '') + ' enviada' + (count > 1 ? 's' : '');
-                    selectedFiles = [];
-                } else {
-                    statusEl.className = 'error';
-                    statusEl.textContent = result.error || result.message || 'Erro ao enviar foto';
-                }
-            } catch (err) {
-                statusEl.className = 'error';
-                statusEl.textContent = 'Erro de conex\u00e3o. Tente novamente.';
-            } finally {
-                submitBtn.disabled = false;
-            }
-        });
-
-        sendMoreBtn.addEventListener('click', function() {
-            formContent.style.display = 'flex';
-            form.style.display = 'block';
-            statusEl.style.display = 'none';
-            successOverlay.classList.remove('visible');
-            selectedFiles = [];
-            cameraInput.value = '';
-            galleryInput.value = '';
-            previewArea.classList.remove('visible');
-            submitBtn.classList.remove('visible');
-            submitBtn.textContent = 'Enviar Foto';
-            statusEl.className = '';
-            statusEl.textContent = '';
-        });
-    </script>
-</body>
-</html>"#;
+pub(crate) const HTML_UPLOAD_PAGE: &str = include_str!("photo_upload.html");
 
 // ── Token types ────────────────────────────────────────────────
 
@@ -421,6 +40,7 @@ struct TokenData {
     categoria: String,
     expires_at: Instant,
     used: bool,
+    received_count: usize,
     /// Stores resized image bytes when equipamento_id == 0 (draft mode)
     image_data: Option<Arc<Vec<ImageData>>>,
 }
@@ -440,7 +60,7 @@ type TokenStore = Arc<TokioMutex<HashMap<String, TokenData>>>;
 #[derive(Clone)]
 struct AppState {
     token_store: TokenStore,
-    app_handle: tauri::AppHandle,
+    app_handle: Option<tauri::AppHandle>,
     last_activity: Arc<std::sync::Mutex<Instant>>,
 }
 
@@ -465,18 +85,32 @@ struct UploadParams {
 }
 
 #[derive(Serialize)]
-struct ImageDataResponse {
-    bytes: Vec<u8>,
-    filename: String,
-    mime_type: String,
+pub(crate) struct ImageDataResponse {
+    pub bytes: Vec<u8>,
+    pub filename: String,
+    pub mime_type: String,
 }
 
 #[derive(Serialize)]
-struct StatusResponse {
-    valid: bool,
-    used: bool,
+pub(crate) struct StatusResponse {
+    pub valid: bool,
+    pub used: bool,
+    pub count: usize,
     #[serde(skip_serializing_if = "Option::is_none")]
-    image_data: Option<Vec<ImageDataResponse>>,
+    pub image_data: Option<Vec<ImageDataResponse>>,
+}
+
+fn emit_photo_received(handle: Option<&tauri::AppHandle>, equipamento_id: i32, count: usize) {
+    let Some(handle) = handle else {
+        return;
+    };
+    let payload = json!({
+        "equipamento_id": equipamento_id,
+        "count": count,
+    });
+    if let Err(e) = handle.emit("photo-received", payload) {
+        error!("Falha ao emitir evento photo-received: {}", e);
+    }
 }
 
 // ── Helpers ────────────────────────────────────────────────────
@@ -502,11 +136,18 @@ pub(crate) fn get_lan_ip() -> Option<String> {
     Some(ip)
 }
 
-/// Try to bind a TCP listener on the given port. Returns the bound listener or an error.
-fn try_bind(port: u16) -> Result<tokio::net::TcpListener, String> {
-    let addr = SocketAddr::from(([0, 0, 0, 0], port));
+pub(crate) fn photo_listen_addr(port: u16, loopback_only: bool) -> SocketAddr {
+    if loopback_only {
+        SocketAddr::from(([127, 0, 0, 1], port))
+    } else {
+        SocketAddr::from(([0, 0, 0, 0], port))
+    }
+}
+
+/// Try to bind a TCP listener on the given address. Returns the bound listener or an error.
+fn try_bind(addr: SocketAddr) -> Result<tokio::net::TcpListener, String> {
     let std_listener = TcpListener::bind(addr)
-        .map_err(|e| format!("Porta {} em uso: {}", port, e))?;
+        .map_err(|e| format!("Porta {} em uso: {}", addr.port(), e))?;
     std_listener.set_nonblocking(true).map_err(|e| e.to_string())?;
     tokio::net::TcpListener::from_std(std_listener).map_err(|e| e.to_string())
 }
@@ -539,10 +180,10 @@ async fn upload_handler(
     if let Some(content_length) = headers.get("content-length") {
         if let Ok(len_str) = content_length.to_str() {
             if let Ok(len) = len_str.parse::<usize>() {
-                if len > MAX_IMAGE_BYTES * 3 {
+                if len > MAX_INCOMING_IMAGE_BYTES * 3 {
                     return Json(json!({
                         "success": false,
-                        "error": "Requisição muito grande. Máximo 9MB no total."
+                        "error": "Requisição muito grande. Máximo 36MB no total."
                     }));
                 }
             }
@@ -574,19 +215,29 @@ async fn upload_handler(
         };
 
         let mime = content_type.as_deref().unwrap_or("");
-        let is_jpeg = mime == "image/jpeg";
-        let is_png = mime == "image/png";
-        if !is_jpeg && !is_png {
+        if data.is_empty() {
+            return Json(json!({
+                "success": false,
+                "error": "Foto vazia. Tire de novo ou use a galeria."
+            }));
+        }
+        if is_heic_like(&data, mime) {
+            return Json(json!({
+                "success": false,
+                "error": "A câmera enviou HEIC. Atualize a página no celular e tire a foto de novo."
+            }));
+        }
+        let Some(is_jpeg) = sniff_image_kind(&data, mime) else {
             return Json(json!({
                 "success": false,
                 "error": "Tipo de arquivo não suportado. Use JPEG ou PNG."
             }));
-        }
+        };
 
-        if data.len() > MAX_IMAGE_BYTES {
+        if data.len() > MAX_INCOMING_IMAGE_BYTES {
             return Json(json!({
                 "success": false,
-                "error": "Arquivo muito grande. Máximo 3MB."
+                "error": "Arquivo muito grande. Máximo 12MB."
             }));
         }
 
@@ -639,9 +290,11 @@ async fn upload_handler(
         let mut store = state.token_store.lock().await;
         if let Some(t) = store.get_mut(&params.token) {
             t.used = true;
+            t.received_count = count;
             t.image_data = Some(Arc::new(image_vec));
         }
 
+        emit_photo_received(state.app_handle.as_ref(), token_data.equipamento_id, count);
         info!("Fotos recebidas (modo rascunho): count={}", count);
 
         return Json(json!({
@@ -690,24 +343,18 @@ async fn upload_handler(
         *last = Instant::now();
     }
 
-    // ── Emit photo-received events to frontend ─────
-    for imagem_id in &imagem_ids {
-        let payload = json!({
-            "equipamento_id": token_data.equipamento_id,
-            "imagem_id": imagem_id,
-        });
-        if let Err(e) = state.app_handle.emit("photo-received", payload) {
-            error!("Falha ao emitir evento photo-received: {}", e);
+    let count = imagem_ids.len();
+
+    // ── Mark token as used, then notify the desktop QR dialog ─
+    {
+        let mut store = state.token_store.lock().await;
+        if let Some(t) = store.get_mut(&params.token) {
+            t.used = true;
+            t.received_count = count;
         }
     }
+    emit_photo_received(state.app_handle.as_ref(), token_data.equipamento_id, count);
 
-    // ── Mark token as used ───────────────────────
-    let mut store = state.token_store.lock().await;
-    if let Some(t) = store.get_mut(&params.token) {
-        t.used = true;
-    }
-
-    let count = imagem_ids.len();
     info!(
         "Fotos recebidas: equipamento={} count={}",
         token_data.equipamento_id, count
@@ -718,6 +365,49 @@ async fn upload_handler(
         "message": format!("{} foto(s) salva(s) com sucesso!", count),
         "count": count
     }))
+}
+
+fn sniff_image_kind(data: &[u8], declared_mime: &str) -> Option<bool> {
+    if data.len() >= 3 && data[0] == 0xFF && data[1] == 0xD8 && data[2] == 0xFF {
+        return Some(true);
+    }
+    if data.len() >= 8
+        && data[0] == 0x89
+        && data[1] == b'P'
+        && data[2] == b'N'
+        && data[3] == b'G'
+        && data[4] == 0x0D
+        && data[5] == 0x0A
+        && data[6] == 0x1A
+        && data[7] == 0x0A
+    {
+        return Some(false);
+    }
+    let mime = declared_mime.to_ascii_lowercase();
+    if mime == "image/jpeg" || mime == "image/jpg" {
+        return Some(true);
+    }
+    if mime == "image/png" {
+        return Some(false);
+    }
+    None
+}
+
+fn is_heic_like(data: &[u8], declared_mime: &str) -> bool {
+    let mime = declared_mime.to_ascii_lowercase();
+    if mime.contains("heic") || mime.contains("heif") {
+        return true;
+    }
+    if data.len() >= 12 && &data[4..8] == b"ftyp" {
+        let brand = &data[8..12];
+        return brand == b"heic"
+            || brand == b"heif"
+            || brand == b"mif1"
+            || brand == b"msf1"
+            || brand == b"heix"
+            || brand == b"hevc";
+    }
+    false
 }
 
 fn resize_image(data: &[u8], is_jpeg: bool) -> Result<(Vec<u8>, String), String> {
@@ -770,6 +460,7 @@ async fn status_handler(
         None => false,
     };
     let used = token_data.map(|t| t.used).unwrap_or(false);
+    let count = token_data.map(|t| t.received_count).unwrap_or(0);
     let image_data = token_data
         .and_then(|t| t.image_data.clone())
         .map(|vec| {
@@ -781,7 +472,12 @@ async fn status_handler(
                 })
                 .collect::<Vec<_>>()
         });
-    Json(StatusResponse { valid, used, image_data })
+    Json(StatusResponse {
+        valid,
+        used,
+        count,
+        image_data,
+    })
 }
 
 // ── Auto-shutdown monitor ──────────────────────────────────────
@@ -831,6 +527,25 @@ pub async fn start_photo_server(
     app_handle: tauri::AppHandle,
     port: u16,
 ) -> Result<String, String> {
+    let via_tunnel = photo_tunnel::should_use_tunnel();
+    let (_bound_port, url) =
+        start_photo_listener(Some(app_handle), port, via_tunnel, via_tunnel).await?;
+    Ok(url)
+}
+
+/// Sobe o HTTP de fotos só em 127.0.0.1, sem túnel e sem AppHandle.
+/// Usado pelo teste Windows/CI (`p1_photo_integration`).
+pub async fn start_photo_http_loopback(port: u16) -> Result<u16, String> {
+    let (bound_port, _url) = start_photo_listener(None, port, true, false).await?;
+    Ok(bound_port)
+}
+
+async fn start_photo_listener(
+    app_handle: Option<tauri::AppHandle>,
+    port: u16,
+    loopback_only: bool,
+    enable_tunnel: bool,
+) -> Result<(u16, String), String> {
     // ── 1. Check if already running ────────────────────────────
     let server_lock = SERVER.get_or_init(|| std::sync::Mutex::new(None));
     {
@@ -840,12 +555,15 @@ pub async fn start_photo_server(
         }
     }
 
-    // ── 2. Try ports with fallback (3 attempts) ───────────────
+    // ── 2. Bind. Túnel (rápido ou nomeado) escuta só em 127.0.0.1:porta.
+    let named_tunnel = photo_tunnel::is_named_tunnel_configured();
+    let bind_attempts = if loopback_only { 1 } else { 3 };
     let mut listener = None;
     let mut bound_port = port;
-    for offset in 0..3 {
+    for offset in 0..bind_attempts {
         let candidate = port + offset;
-        match try_bind(candidate) {
+        let addr = photo_listen_addr(candidate, loopback_only);
+        match try_bind(addr) {
             Ok(l) => {
                 listener = Some(l);
                 bound_port = candidate;
@@ -858,12 +576,20 @@ pub async fn start_photo_server(
     }
 
     let listener = listener.ok_or_else(|| {
-        format!(
-            "Nenhuma porta disponível (tentou {}, {}, {})",
-            port,
-            port + 1,
-            port + 2
-        )
+        if named_tunnel && enable_tunnel {
+            format!(
+                "Porta {} ocupada. O túnel {} exige essa porta.",
+                port,
+                photo_tunnel::PHOTO_PUBLIC_HOST
+            )
+        } else {
+            format!(
+                "Nenhuma porta disponível (tentou {}, {}, {})",
+                port,
+                port + 1,
+                port + 2
+            )
+        }
     })?;
 
     // ── 3. Build shared state ─────────────────────────────────
@@ -874,7 +600,7 @@ pub async fn start_photo_server(
 
     let state = AppState {
         token_store,
-        app_handle: app_handle.clone(),
+        app_handle,
         last_activity: last_activity.clone(),
     };
 
@@ -908,13 +634,30 @@ pub async fn start_photo_server(
         });
     }
 
-    let lan_ip = get_lan_ip().unwrap_or_else(|| "localhost".to_string());
-    info!(
-        "Servidor de fotos iniciado em http://{}:{}",
-        lan_ip, bound_port
-    );
+    if enable_tunnel {
+        match photo_tunnel::start_tunnel(bound_port).await {
+            Ok(public_url) => {
+                info!(
+                    "Servidor de fotos iniciado em {} (local 127.0.0.1:{})",
+                    public_url, bound_port
+                );
+                return Ok((bound_port, public_url));
+            }
+            Err(e) => {
+                let _ = stop_photo_server().await;
+                return Err(e);
+            }
+        }
+    }
 
-    Ok(format!("http://{}:{}", lan_ip, bound_port))
+    let lan_ip = if loopback_only {
+        "127.0.0.1".to_string()
+    } else {
+        get_lan_ip().unwrap_or_else(|| "localhost".to_string())
+    };
+    let url = format!("http://{}:{}", lan_ip, bound_port);
+    info!("Servidor de fotos iniciado em {}", url);
+    Ok((bound_port, url))
 }
 
 /// Stop the photo server gracefully. Sends shutdown signal, waits up to 5 seconds
@@ -951,6 +694,7 @@ pub async fn stop_photo_server() -> Result<(), String> {
         }
     }
 
+    photo_tunnel::stop_tunnel().await;
     info!("Servidor de fotos parado");
     Ok(())
 }
@@ -973,10 +717,105 @@ pub async fn generate_upload_token(
             categoria,
             expires_at: Instant::now() + Duration::from_secs(600),
             used: false,
+            received_count: 0,
             image_data: None,
         },
     );
 
     info!("Token de upload gerado para equipamento {}", equipamento_id);
     Ok(token)
+}
+
+/// Status do token sem HTTP — o CSP do webview bloqueia fetch em localhost:8765.
+#[tauri::command]
+pub async fn consultar_status_foto(token: String) -> Result<StatusResponse, String> {
+    let store = get_token_store();
+    let store = store.lock().await;
+    let token_data = store.get(&token);
+    let valid = match token_data {
+        Some(t) => t.expires_at > Instant::now() && !t.used,
+        None => false,
+    };
+    let used = token_data.map(|t| t.used).unwrap_or(false);
+    let count = token_data.map(|t| t.received_count).unwrap_or(0);
+    let image_data = token_data
+        .and_then(|t| t.image_data.clone())
+        .map(|vec| {
+            vec.iter()
+                .map(|data| ImageDataResponse {
+                    bytes: data.bytes.clone(),
+                    filename: data.filename.clone(),
+                    mime_type: data.mime_type.clone(),
+                })
+                .collect::<Vec<_>>()
+        });
+    Ok(StatusResponse {
+        valid,
+        used,
+        count,
+        image_data,
+    })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn tunnel_binds_loopback_only() {
+        assert_eq!(
+            photo_listen_addr(8765, true),
+            SocketAddr::from(([127, 0, 0, 1], 8765))
+        );
+    }
+
+    #[test]
+    fn lan_binds_all_interfaces() {
+        assert_eq!(
+            photo_listen_addr(8765, false),
+            SocketAddr::from(([0, 0, 0, 0], 8765))
+        );
+    }
+
+    #[test]
+    fn upload_page_has_single_picker_up_to_three() {
+        assert!(HTML_UPLOAD_PAGE.contains(r#"id="pickerInput""#));
+        assert!(HTML_UPLOAD_PAGE.contains(r#"accept="image/*" multiple"#));
+        assert!(
+            !HTML_UPLOAD_PAGE.contains("capture="),
+            "sem capture o celular pergunta câmera ou galeria"
+        );
+        assert!(!HTML_UPLOAD_PAGE.contains("cameraInput"));
+        assert!(!HTML_UPLOAD_PAGE.contains("galleryInput"));
+        assert!(HTML_UPLOAD_PAGE.contains("var MAX_PHOTOS = 3"));
+        assert!(HTML_UPLOAD_PAGE.contains("Adicionar fotos"));
+        assert!(HTML_UPLOAD_PAGE.contains("AutoOS"));
+        assert!(HTML_UPLOAD_PAGE.contains("BMITAG"));
+        assert!(HTML_UPLOAD_PAGE.contains("--primary: hsl(220 70% 50%)"));
+        assert!(HTML_UPLOAD_PAGE.contains("fileToJpeg"));
+        assert!(HTML_UPLOAD_PAGE.contains("sendSelected"));
+    }
+
+    #[test]
+    fn jpeg_magic_bytes_are_accepted_even_without_mime() {
+        let jpeg = [0xFF, 0xD8, 0xFF, 0xE0, 0x00, 0x10];
+        assert_eq!(sniff_image_kind(&jpeg, ""), Some(true));
+        assert_eq!(sniff_image_kind(&jpeg, "application/octet-stream"), Some(true));
+    }
+
+    #[test]
+    fn png_magic_bytes_are_accepted() {
+        let png = [0x89, b'P', b'N', b'G', 0x0D, 0x0A, 0x1A, 0x0A];
+        assert_eq!(sniff_image_kind(&png, ""), Some(false));
+    }
+
+    #[test]
+    fn heic_is_detected_from_mime_or_ftyp() {
+        assert!(is_heic_like(&[0], "image/heic"));
+        let mut ftyp = vec![0u8; 12];
+        ftyp[4..8].copy_from_slice(b"ftyp");
+        ftyp[8..12].copy_from_slice(b"heic");
+        assert!(is_heic_like(&ftyp, ""));
+        assert!(!is_heic_like(&[0xFF, 0xD8, 0xFF], "image/jpeg"));
+    }
 }

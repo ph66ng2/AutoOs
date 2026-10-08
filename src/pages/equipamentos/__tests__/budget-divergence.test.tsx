@@ -44,6 +44,7 @@ vi.mock("react-router-dom", () => ({
 vi.mock("@/hooks/useEquipamentos", () => ({
   useEquipamentos: () => ({
     equipamentos: mockEquipamentos,
+    total: 1,
     loading: false,
     criar: vi.fn(),
     atualizar: vi.fn(),
@@ -79,6 +80,8 @@ vi.mock("@/hooks/useNotification", () => ({
 
 vi.mock("@/lib/db", () => ({
   db: {
+    listarProdutos: vi.fn().mockResolvedValue([]),
+    buscarEquipamento: vi.fn().mockResolvedValue({ atualizado_em: "2024-01-15T10:00:01Z" }),
     buscarVerificacao: (...args: unknown[]) => mockBuscarVerificacao(...args),
     listarServicosCatalogoAtivos: (...args: unknown[]) => mockListarServicosCatalogoAtivos(...args),
     atualizarServicosVerificacao: (...args: unknown[]) => mockAtualizarServicosVerificacao(...args),
@@ -90,6 +93,7 @@ vi.mock("@/lib/db", () => ({
     listarComunicacoes: vi.fn().mockResolvedValue([]),
     listarHistoricoEquipamento: (...args: unknown[]) => mockListarHistoricoEquipamento(...args),
     listarEquipamentos: vi.fn().mockResolvedValue([]),
+    listarEquipamentosPaginados: vi.fn().mockResolvedValue({ items: [], total: 0 }),
     substituirImagensEquipamento: vi.fn().mockResolvedValue([]),
   },
 }));
@@ -559,6 +563,8 @@ describe("Equipamentos — Budget Divergence & Audit", () => {
       expect(screen.getByText(/O status atual do equipamento será mantido/i)).toBeInTheDocument();
     });
     expect(screen.queryByText("Prazo Aprovação")).not.toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText("Forma de pagamento"), { target: { value: "PIX" } });
+    fireEvent.click(screen.getByLabelText(/O cliente aprovou as mudanças/));
     await clicarConfirmarStatus();
     await act(async () => {
       fireEvent.click(screen.getByTestId("confirm-action"));
@@ -589,6 +595,9 @@ describe("Equipamentos — Budget Divergence & Audit", () => {
     render(<Equipamentos />);
 
     fireEvent.click(screen.getByTestId("action-aprovar"));
+    await waitFor(() => expect(screen.getByText("Todos os serviços de troca foram aprovados?")).toBeInTheDocument());
+    fireEvent.click(screen.getByRole("button", { name: "Sim, todos" }));
+    fireEvent.click(screen.getByRole("button", { name: "Continuar para pagamento" }));
     await waitFor(() => expect(screen.getByText(/Forma de pagamento da aprovação/i)).toBeInTheDocument());
     expect(mockAtualizarStatusEquipamento).not.toHaveBeenCalledWith(10, "APROVADO", expect.anything(), expect.anything(), expect.anything(), expect.anything(), expect.anything());
 
@@ -608,17 +617,55 @@ describe("Equipamentos — Budget Divergence & Audit", () => {
     render(<Equipamentos />);
 
     fireEvent.click(screen.getByTestId("action-aprovar"));
+    await waitFor(() => expect(screen.getByText("Todos os serviços de troca foram aprovados?")).toBeInTheDocument());
+    fireEvent.click(screen.getByRole("button", { name: "Sim, todos" }));
+    fireEvent.click(screen.getByRole("button", { name: "Continuar para pagamento" }));
     await waitFor(() => expect(screen.getByText(/Forma de pagamento da aprovação/i)).toBeInTheDocument());
     fireEvent.change(screen.getByLabelText("Forma de pagamento"), { target: { value: "PIX" } });
     fireEvent.click(screen.getByRole("button", { name: "Cancelar" }));
     expect(mockAprovarOrcamento).not.toHaveBeenCalled();
 
     fireEvent.click(screen.getByTestId("action-aprovar"));
+    await waitFor(() => expect(screen.getByText("Todos os serviços de troca foram aprovados?")).toBeInTheDocument());
+    fireEvent.click(screen.getByRole("button", { name: "Sim, todos" }));
+    fireEvent.click(screen.getByRole("button", { name: "Continuar para pagamento" }));
     await waitFor(() => expect(screen.getByText(/Forma de pagamento da aprovação/i)).toBeInTheDocument());
     fireEvent.change(screen.getByLabelText("Forma de pagamento"), { target: { value: "PIX" } });
     fireEvent.click(screen.getByRole("button", { name: /confirmar aprovação/i }));
     await waitFor(() => expect(screen.getByRole("alert")).toHaveTextContent(/Falha de concorrência/i));
     expect(screen.getByText(/Forma de pagamento da aprovação/i)).toBeInTheDocument();
+  });
+
+  it("envia somente serviços selecionados na aprovação parcial", async () => {
+    equipamentoVerificado.status = "AGUARDANDO_APROVACAO";
+    mockBuscarVerificacao.mockResolvedValue(makeVerificacao({ pecas: [], servicos: [
+      { id: "cabeca", descricao: "Troca da cabeça", valor: 100, pecas: [{ produto_id: 1, nome: "Cabeça", quantidade: 1, valor_unitario: 80 }] },
+      { id: "feed", descricao: "Troca do feed", valor: 30 },
+    ] }));
+    render(<Equipamentos />);
+    fireEvent.click(screen.getByTestId("action-aprovar"));
+    await screen.findByText("Todos os serviços de troca foram aprovados?");
+    fireEvent.click(screen.getByRole("button", { name: "Não, selecionar" }));
+    fireEvent.click(screen.getByLabelText(/Troca da cabeça/));
+    expect(screen.getByText(/Cabeça: 1 necessária/)).toHaveTextContent("pendência");
+    expect(mockAprovarOrcamento).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: "Continuar para pagamento" }));
+    fireEvent.change(await screen.findByLabelText("Forma de pagamento"), { target: { value: "PIX" } });
+    fireEvent.click(screen.getByRole("button", { name: /confirmar aprovação/i }));
+    await waitFor(() => expect(mockAprovarOrcamento).toHaveBeenCalledWith(expect.objectContaining({ servicos_aprovados: ["cabeca"] })));
+  });
+
+  it("reprova sem serviços selecionados e exibe falha sem fechar o modal", async () => {
+    equipamentoVerificado.status = "AGUARDANDO_APROVACAO";
+    mockBuscarVerificacao.mockResolvedValue(makeVerificacao());
+    mockAprovarOrcamento.mockRejectedValue(new Error("Orçamento desatualizado"));
+    render(<Equipamentos />);
+    fireEvent.click(screen.getByTestId("action-reprovar"));
+    await screen.findByText("Todos os serviços de troca foram aprovados?");
+    fireEvent.click(screen.getByRole("button", { name: "Não, selecionar" }));
+    fireEvent.click(screen.getByRole("button", { name: "Confirmar reprovação" }));
+    await waitFor(() => expect(mockAprovarOrcamento).toHaveBeenCalledWith(expect.objectContaining({ servicos_aprovados: [] })));
+    expect(await screen.findByRole("alert")).toHaveTextContent("Orçamento desatualizado");
   });
 
   it("oferece Orçamento PDF e Alterar Orçamento no menu em todas as fases após a verificação", () => {

@@ -111,6 +111,10 @@ export const db = {
     return invoke<Equipamento[]>("listar_equipamentos", { busca, status });
   },
 
+  async listarEquipamentosPaginados(busca: string | undefined, status: string | undefined, page: number, ordenacao: "ATUALIZACAO_RECENTE" | "CADASTRO_RECENTE" = "ATUALIZACAO_RECENTE"): Promise<{ items: Equipamento[]; total: number }> {
+    return invoke("listar_equipamentos_paginados", { busca: busca ?? null, status: status ?? null, page, ordenacao });
+  },
+
   /** Busca equipamento por ID → Rust: buscar_equipamento */
   async buscarEquipamento(id: number): Promise<Equipamento> {
     return invoke<Equipamento>("buscar_equipamento", { id });
@@ -460,6 +464,16 @@ export const db = {
   /** Para o servidor HTTP local de fotos → Rust: stop_photo_server */
   async stopPhotoServer(): Promise<void> {
     return invoke<void>("stop_photo_server");
+  },
+
+  /** Consulta o token de upload pelo backend Tauri, sem requisição HTTP local. */
+  async consultarStatusFoto(token: string): Promise<{
+    valid: boolean;
+    used: boolean;
+    count: number;
+    image_data?: Array<{ bytes: number[]; filename: string; mime_type: string }>;
+  }> {
+    return invoke("consultar_status_foto", { token });
   },
 
   // ─── Arquivo Temporário ────────────────────────────────

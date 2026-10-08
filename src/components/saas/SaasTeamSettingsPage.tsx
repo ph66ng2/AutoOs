@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react";
-import { CheckCircle2, Clock3, MailPlus, RefreshCw, Search, ShieldCheck, UserCheck, UserRound, UserX, UsersRound } from "lucide-react";
+import { CheckCircle2, Clock3, MailPlus, RefreshCw, Search, ShieldCheck, UserCheck, UserPlus, UserRound, UserX, UsersRound } from "lucide-react";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -10,10 +10,11 @@ import { Label } from "@/components/ui/label";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { createSaasUsersRepository, type SaasCompanyUser, type SaasOperationalProfileOption, type SupabaseSaasUsersRepository } from "@/lib/data/saas-users-repository";
 import type { SaasSession } from "@/types/saas-auth";
+import { SENSITIVE_PERMISSIONS, SENSITIVE_PERMISSION_LABELS, type SensitivePermission } from "@/types";
 
 type TeamRepository = Pick<
   SupabaseSaasUsersRepository,
-  "listUsers" | "listActiveProfiles" | "invite" | "resendInvite" | "changeProfile" | "deactivate" | "reactivate"
+  "listUsers" | "listActiveProfiles" | "createProfile" | "invite" | "resendInvite" | "changeProfile" | "deactivate" | "reactivate"
 >;
 
 type PendingAction =
@@ -64,6 +65,9 @@ export function SaasTeamSettingsPage({ session, repository: providedRepository }
   const [refreshWarning, setRefreshWarning] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [inviteEmail, setInviteEmail] = useState("");
+  const [newProfileName, setNewProfileName] = useState("");
+  const [newProfileRole, setNewProfileRole] = useState<"ADMIN" | "CUSTOM">("CUSTOM");
+  const [newProfilePermissions, setNewProfilePermissions] = useState<SensitivePermission[]>([]);
   const [inviteProfileId, setInviteProfileId] = useState("");
   const [profileDrafts, setProfileDrafts] = useState<Record<string, string>>({});
   const [busyKey, setBusyKey] = useState<string | null>(null);
@@ -108,6 +112,27 @@ export function SaasTeamSettingsPage({ session, repository: providedRepository }
       setRefreshWarning("A alteração foi confirmada pelo servidor, mas a lista não atualizou. Use “Atualizar equipe” para conferir o estado atual.");
     }
   };
+
+  async function createProfile(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const name = newProfileName.trim();
+    if (busyKey || name.length < 3 || (newProfileRole === "CUSTOM" && newProfilePermissions.length === 0)) return;
+    setBusyKey("create-profile");
+    setOperationError(null);
+    setSuccessMessage(null);
+    try {
+      await repository.createProfile(name, newProfileRole, newProfilePermissions);
+      setNewProfileName("");
+      setNewProfileRole("CUSTOM");
+      setNewProfilePermissions([]);
+      setSuccessMessage(`Perfil ${name} criado. O PIN local poderá ser configurado quando o perfil for usado em um dispositivo.`);
+      await loadData(false);
+    } catch (error) {
+      setOperationError(safeErrorMessage(error));
+    } finally {
+      setBusyKey(null);
+    }
+  }
 
   async function inviteEmployee(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -223,6 +248,26 @@ export function SaasTeamSettingsPage({ session, repository: providedRepository }
         <Card><CardContent className="flex items-center gap-3 pt-6"><div className="rounded-lg bg-emerald-500/10 p-2 text-emerald-600"><UserCheck className="h-5 w-5" /></div><div><p className="text-2xl font-semibold tabular-nums">{loading ? "—" : activeCount}</p><p className="text-sm text-muted-foreground">Acessos ativos</p></div></CardContent></Card>
         <Card><CardContent className="flex items-center gap-3 pt-6"><div className="rounded-lg bg-amber-500/10 p-2 text-amber-600"><Clock3 className="h-5 w-5" /></div><div><p className="text-2xl font-semibold tabular-nums">{loading ? "—" : pendingCount}</p><p className="text-sm text-muted-foreground">Convites pendentes</p></div></CardContent></Card>
       </div>
+
+      <Card>
+        <CardHeader className="pb-4">
+          <CardTitle className="flex items-center gap-2 text-lg"><UserPlus className="h-5 w-5 text-primary" />Criar perfil de acesso</CardTitle>
+          <CardDescription>Defina as permissões antes de convidar alguém. O PIN é configurado no cofre local de cada dispositivo.</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <form onSubmit={(event) => void createProfile(event)} className="space-y-4">
+            <div className="grid gap-4 md:grid-cols-2">
+              <div className="space-y-2"><Label htmlFor="new-saas-profile-name">Nome do perfil</Label><Input id="new-saas-profile-name" value={newProfileName} onChange={(event) => setNewProfileName(event.target.value)} minLength={3} maxLength={80} required disabled={Boolean(busyKey)} placeholder="Ex.: Operador do balcão" /></div>
+              <div className="space-y-2"><Label htmlFor="new-saas-profile-role">Tipo de acesso</Label><select id="new-saas-profile-role" className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm" value={newProfileRole} onChange={(event) => setNewProfileRole(event.target.value as "ADMIN" | "CUSTOM")} disabled={Boolean(busyKey)}><option value="CUSTOM">Personalizado</option><option value="ADMIN">Administrador</option></select></div>
+            </div>
+            <fieldset className="grid gap-2 sm:grid-cols-2" disabled={Boolean(busyKey) || newProfileRole === "ADMIN"}>
+              <legend className="mb-2 text-sm font-medium">Permissões</legend>
+              {Object.values(SENSITIVE_PERMISSIONS).map((permission) => <label key={permission} className="flex items-center gap-2 rounded-md border p-3 text-sm"><input type="checkbox" checked={newProfileRole === "ADMIN" || newProfilePermissions.includes(permission)} onChange={() => setNewProfilePermissions((current) => current.includes(permission) ? current.filter((item) => item !== permission) : [...current, permission])} />{SENSITIVE_PERMISSION_LABELS[permission]}</label>)}
+            </fieldset>
+            <div className="flex justify-end"><Button type="submit" disabled={Boolean(busyKey) || newProfileName.trim().length < 3 || (newProfileRole === "CUSTOM" && newProfilePermissions.length === 0)}>{busyKey === "create-profile" ? "Criando…" : "Criar perfil"}</Button></div>
+          </form>
+        </CardContent>
+      </Card>
 
       <Card>
         <CardHeader className="pb-4">

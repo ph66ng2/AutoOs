@@ -70,6 +70,8 @@ describe("db — contatos e contratos de orçamento", () => {
     expect(mockInvoke).toHaveBeenCalledWith("atualizar_servicos_verificacao", {
       equipamentoId: 20,
       servicosJson: "[]",
+      clienteAprovouAlteracao: false,
+      expectedUpdatedEm: null,
       pecasJson: "[]",
       custoTotal: 125,
       profileId: 3,
@@ -97,6 +99,8 @@ describe("db — contatos e contratos de orçamento", () => {
     expect(mockInvoke).toHaveBeenCalledWith("atualizar_servicos_verificacao", {
       equipamentoId: 20,
       servicosJson: "[]",
+      clienteAprovouAlteracao: false,
+      expectedUpdatedEm: null,
       pecasJson: "[]",
       custoTotal: 125,
       profileId: 3,
@@ -112,6 +116,7 @@ describe("db — contatos e contratos de orçamento", () => {
       equipamento_id: 20,
       expected_updated_em: "2026-09-10T12:00:00",
       pagamento: { codigo: "PIX", detalhe: null },
+      servicos_aprovados: [],
     };
     mockInvoke.mockResolvedValue({ id: 20, status: "APROVADO" });
 
@@ -126,6 +131,7 @@ describe("db — contatos e contratos de orçamento", () => {
       equipamento_id: 20,
       expected_updated_em: "2026-09-10T12:00:00",
       pagamento: { codigo: "PIX", detalhe: null },
+      servicos_aprovados: [],
     };
     const prompt = vi.fn().mockResolvedValue(true);
     const unregister = registerSensitiveAccessPrompt(prompt);

@@ -6,7 +6,7 @@ import {
   type SupabaseOnlineSession,
 } from "@/lib/data/clientes-repository";
 import { tauriSaasSessionStore } from "@/lib/saas-session-store";
-import { ITEMS_PER_PAGE, paginateItems } from "@/lib/pagination";
+import { ITEMS_PER_PAGE } from "@/lib/pagination";
 import type { ClienteId, Equipamento, EquipamentoId } from "@/types";
 
 export type EquipamentoInput<Id extends EquipamentoId = number> = Omit<Equipamento<Id>, "id" | "empresa_id" | "criado_em" | "atualizado_em">;
@@ -16,9 +16,11 @@ export interface EquipamentosPage<Id extends EquipamentoId = number> {
   total: number;
 }
 
+export type EquipmentOrdering = "ATUALIZACAO_RECENTE" | "CADASTRO_RECENTE";
+
 export interface EquipamentosRepository<Id extends EquipamentoId = number> {
   listar(busca?: string, status?: string): Promise<Equipamento<Id>[]>;
-  listarPagina?(busca: string | undefined, status: string | undefined, page: number): Promise<EquipamentosPage<Id>>;
+  listarPagina?(busca: string | undefined, status: string | undefined, page: number, ordenacao?: EquipmentOrdering): Promise<EquipamentosPage<Id>>;
   listarPorClienteId?(clienteId: ClienteId): Promise<Equipamento<Id>[]>;
   buscar?(id: Id): Promise<Equipamento<Id>>;
   buscarPorSerial(serial: string): Promise<Equipamento<Id>[]>;
@@ -98,11 +100,12 @@ function equipamentosQuery(
   status: string | undefined,
   limit: number,
   offset: number,
+  ordenacao: EquipmentOrdering = "ATUALIZACAO_RECENTE",
 ): URLSearchParams {
   const query = new URLSearchParams({
     select: "*",
     empresa_id: `eq.${session.companyId}`,
-    order: "criado_em.desc,id.desc",
+    order: ordenacao === "CADASTRO_RECENTE" ? "criado_em.desc,id.desc" : "atualizado_em.desc.nullslast,id.desc",
     limit: String(limit),
     offset: String(offset),
   });
@@ -110,7 +113,7 @@ function equipamentosQuery(
   const term = busca?.trim();
   if (term) {
     const pattern = searchPattern(term);
-    query.set("or", `(serial_number.ilike.${pattern},patrimonio.ilike.${pattern},marca.ilike.${pattern},modelo.ilike.${pattern},tipo.ilike.${pattern},cliente_nome.ilike.${pattern},cliente_telefone.ilike.${pattern})`);
+    query.set("or", `(serial_number.ilike.${pattern},patrimonio.ilike.${pattern},marca.ilike.${pattern},modelo.ilike.${pattern},tipo.ilike.${pattern},cliente_nome.ilike.${pattern},cliente_documento.ilike.${pattern},cliente_telefone.ilike.${pattern},responsavel_nome.ilike.${pattern})`);
   }
   return query;
 }
@@ -183,9 +186,9 @@ export class SupabaseEquipamentosRepository implements EquipamentosRepository<st
     }
   }
 
-  async listarPagina(busca: string | undefined, status: string | undefined, page: number): Promise<EquipamentosPage<string>> {
+  async listarPagina(busca: string | undefined, status: string | undefined, page: number, ordenacao: EquipmentOrdering = "ATUALIZACAO_RECENTE"): Promise<EquipamentosPage<string>> {
     const safePage = Math.max(1, Math.floor(page));
-    const query = equipamentosQuery(this.session, busca, status, ITEMS_PER_PAGE, (safePage - 1) * ITEMS_PER_PAGE);
+    const query = equipamentosQuery(this.session, busca, status, ITEMS_PER_PAGE, (safePage - 1) * ITEMS_PER_PAGE, ordenacao);
     let response: Response;
     try {
       response = await this.fetcher(this.endpoint(query), {
@@ -283,9 +286,8 @@ const tauriEquipamentosRepository: EquipamentosRepository<number> = {
   async listarPorClienteId(clienteId) {
     return (await db.listarEquipamentos()).filter((equipment) => equipment.cliente_id === clienteId);
   },
-  async listarPagina(busca, status, page) {
-    const rows = await db.listarEquipamentos(busca, status);
-    return { items: paginateItems(rows, page, ITEMS_PER_PAGE), total: rows.length };
+  async listarPagina(busca, status, page, ordenacao) {
+    return db.listarEquipamentosPaginados(busca, status, Math.max(0, page - 1), ordenacao);
   },
   buscar: (id) => db.buscarEquipamento(legacyId(id)),
   buscarPorSerial: (serial) => db.buscarEquipamentosPorSerial(serial),

@@ -15,6 +15,7 @@ import { db } from "@/lib/db";
 import {
   carregarRepositorioEquipamentos,
   type EquipamentosRepository,
+  type EquipmentOrdering,
 } from "@/lib/data/equipamentos-repository";
 import { carregarRepositorioOperacoesEquipamento } from "@/lib/data/equipamentos-operacoes-repository";
 import type { Equipamento, EquipamentoId } from "@/types";
@@ -29,6 +30,7 @@ interface UseEquipamentosParams<Id extends EquipamentoId> {
   busca?: string;
   status?: string;
   page?: number;
+  ordenacao?: EquipmentOrdering;
   /** Injeção para testes; em runtime, o build escolhe o adapter Online ou Tauri. */
   repository?: EquipamentosRepository<Id>;
 }
@@ -60,7 +62,7 @@ export function useEquipamentos<Id extends EquipamentoId = number>(params?: UseE
       const repository = params?.repository ?? await carregarRepositorioEquipamentos<Id>();
       const status = params?.status === "TODOS" ? undefined : params?.status;
       if (params?.page !== undefined && repository.listarPagina) {
-        const result = await repository.listarPagina(params.busca, status, params.page);
+        const result = await repository.listarPagina(params.busca, status, params.page, params.ordenacao);
         if (requestId !== latestRequest.current) return;
         setEquipamentos(result.items);
         setTotal(result.total);
@@ -77,7 +79,7 @@ export function useEquipamentos<Id extends EquipamentoId = number>(params?: UseE
     } finally {
       if (requestId === latestRequest.current) setLoading(false);
     }
-  }, [params?.busca, params?.status, params?.page, params?.repository]);
+  }, [params?.busca, params?.status, params?.page, params?.ordenacao, params?.repository]);
 
   useEffect(() => {
     void carregar();

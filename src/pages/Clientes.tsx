@@ -76,11 +76,10 @@ import {
 } from "@/types";
 import { useSensitiveAccess } from "@/hooks/useSensitiveAccess";
 import { ErrorAlert } from "@/components/ui/error-alert";
+import { PaginationControls } from "@/components/ui/pagination-controls";
 import { nomeExibicaoCliente, documentoExibicaoCliente } from "@/components/clientes/cliente-display-utils";
 import { ClientesStatusBadge } from "@/pages/clientes/ClientesStatusBadge";
 import {
-  clientesDaAba,
-  itensPaginacao,
   totalAbasClientes,
 } from "@/pages/clientes/clientes-pagination";
 import {
@@ -103,6 +102,7 @@ export default function Clientes() {
   const [editando, setEditando] = useState<Cliente | null>(null);
   const [deletando, setDeletando] = useState<Cliente | null>(null);
   const [salvando, setSalvando] = useState(false);
+  const [erroDocumentoDuplicado, setErroDocumentoDuplicado] = useState<string | null>(null);
   const [tipoPessoa, setTipoPessoa] = useState<"PF" | "PJ" | null>(null);
   const [buscandoCep, setBuscandoCep] = useState(false);
 
@@ -117,14 +117,13 @@ export default function Clientes() {
   const [previaVinculoEmpresa, setPreviaVinculoEmpresa] = useState<VinculoEmpresaPerfilPrevia | null>(null);
   const [regularizando, setRegularizando] = useState(false);
 
-  const { clientes, loading, error, criar, atualizar, deletar, recarregar } =
-    useClientes({ busca: busca || undefined });
+  const { clientes, total: totalClientes, loading, error, criar, atualizar, deletar, recarregar } =
+    useClientes({ busca: busca || undefined, page: abaAtual });
   const { ensureSensitiveAccess } = useSensitiveAccess();
   const { error: showError, success } = useNotification();
-  const totalAbas = totalAbasClientes(clientes.length);
+  const totalAbas = totalAbasClientes(totalClientes);
   const abaExibida = Math.min(abaAtual, totalAbas);
-  const clientesExibidos = clientesDaAba(clientes, abaExibida);
-  const paginasVisiveis = itensPaginacao(totalAbas, abaExibida);
+  const clientesExibidos = clientes;
 
   useEffect(() => {
     setAbaAtual(1);
@@ -147,6 +146,10 @@ export default function Clientes() {
 
   // Detectar tipo de documento em tempo real
   const documentoValue = form.watch("documento");
+  useEffect(() => {
+    setErroDocumentoDuplicado(null);
+  }, [documentoValue]);
+
   useEffect(() => {
     if (!documentoValue) {
       setTipoPessoa(null);
@@ -223,6 +226,7 @@ export default function Clientes() {
   /** Abre dialog para criar novo cliente. Reseta form e tipo de pessoa */
   function abrirNovo() {
     setEditando(null);
+    setErroDocumentoDuplicado(null);
     setTipoPessoa(null);
     form.reset({
       documento: "", tipo_pessoa: "PF", nome: "",
@@ -236,6 +240,7 @@ export default function Clientes() {
 
   /** Abre dialog para editar cliente. Preenche form com dados existentes e detecta tipo PF/PJ */
   function abrirEditar(c: Cliente) {
+    setErroDocumentoDuplicado(null);
     setEditando(c);
     const doc = c.documento || c.cpf_cnpj || "";
     setTipoPessoa(c.tipo_pessoa === "PJ" ? "PJ" : doc.replace(/\D/g, "").length === 14 ? "PJ" : "PF");
@@ -269,6 +274,7 @@ export default function Clientes() {
    * Conecta-se a: useClientes.criar/atualizar → db → Rust
    */
   async function onSubmit(data: ClienteFormData) {
+    setErroDocumentoDuplicado(null);
     setSalvando(true);
     try {
       const docNumeros = data.documento.replace(/\D/g, "");
@@ -312,7 +318,12 @@ export default function Clientes() {
       setDialogOpen(false);
     } catch (err: any) {
       console.error("Erro:", err);
-      showError("Clientes", "Salvar cliente", err);
+      const message = err instanceof Error ? err.message : String(err);
+      if (message.toLowerCase().includes("cpf/cnpj já está cadastrado")) {
+        setErroDocumentoDuplicado(message);
+      } else {
+        showError("Clientes", "Salvar cliente", err);
+      }
     } finally {
       setSalvando(false);
     }
@@ -446,42 +457,12 @@ export default function Clientes() {
             </div>
           ) : (
             <>
-              {totalAbas > 1 && (
-                <nav
-                  className="flex justify-end pb-3"
-                  aria-label="Paginação de clientes"
-                >
-                  <div className="flex h-8 items-center gap-1">
-                    {paginasVisiveis.map((item) =>
-                      typeof item === "number" ? (
-                        <Button
-                          key={item}
-                          type="button"
-                          variant={item === abaExibida ? "secondary" : "ghost"}
-                          className="h-8 min-w-8 px-2 text-xs tabular-nums"
-                          aria-label={
-                            item === abaExibida
-                              ? `Página ${item}, atual`
-                              : `Ir para página ${item}`
-                          }
-                          aria-current={item === abaExibida ? "page" : undefined}
-                          onClick={() => setAbaAtual(item)}
-                        >
-                          {item}
-                        </Button>
-                      ) : (
-                        <span
-                          key={item}
-                          className="flex h-8 w-5 items-center justify-center text-xs text-muted-foreground"
-                          aria-hidden="true"
-                        >
-                          ...
-                        </span>
-                      ),
-                    )}
-                  </div>
-                </nav>
-              )}
+              <PaginationControls
+                page={abaExibida}
+                totalPages={totalAbas}
+                onPageChange={setAbaAtual}
+                label="Paginação de clientes"
+              />
               <div className="rounded-md border">
                 <Table>
                 <TableHeader>
@@ -659,7 +640,18 @@ export default function Clientes() {
 
       <ClientesFormDialog
         open={dialogOpen}
-        onOpenChange={setDialogOpen}
+        onOpenChange={(open) => {
+          setDialogOpen(open);
+          if (!open) setErroDocumentoDuplicado(null);
+        }}
+        erroDocumentoDuplicado={erroDocumentoDuplicado}
+        onDismissDuplicate={() => setErroDocumentoDuplicado(null)}
+        onBuscarClienteExistente={() => {
+          const documento = form.getValues("documento").replace(/\D/g, "");
+          setBusca(documento);
+          setErroDocumentoDuplicado(null);
+          setDialogOpen(false);
+        }}
         editando={editando}
         form={form}
         tipoPessoa={tipoPessoa}
