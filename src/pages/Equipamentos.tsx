@@ -2898,7 +2898,7 @@ export default function Equipamentos() {
                     {peca.nome}: {peca.quantidade} necessária(s), saldo {saldo}{saldo < peca.quantidade ? " · pendência" : ""}
                   </p>;
                 })}
-                {servicosAprovacao.length > 0 && <p className="mt-2 font-semibold">Total aprovado: {formatCurrency(idsAprovados.length === servicosAprovacao.length && totalOrcamentoAprovacao != null ? totalOrcamentoAprovacao : servicosAprovacao
+                {servicosAprovacao.length > 0 && <p className="mt-2 font-semibold">Total aprovado: {formatCurrency(idsAprovados.length === servicosAprovacao.length && totalOrcamentoAprovacao != null && totalOrcamentoAprovacao > 0 ? totalOrcamentoAprovacao : servicosAprovacao
                   .filter((s) => idsAprovados.includes(s.id))
                   .reduce((total, s) => total + Number(s.valor || 0) + (s.pecas ?? [])
                     .reduce((subtotal, p) => subtotal + p.quantidade * p.valor_unitario, 0), 0))}</p>}

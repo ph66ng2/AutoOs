@@ -254,11 +254,20 @@ async fn main() -> Result<()> {
     })
     .await
     .map_err(|error| anyhow!(error))?;
-    sqlx::query("UPDATE equipamentos SET status = 'AGUARDANDO_APROVACAO' WHERE id = $1")
+    sqlx::query(
+        "UPDATE equipamentos
+         SET status = 'AGUARDANDO_APROVACAO', valor_orcamento = 300, atualizado_em = NOW()
+         WHERE id = $1",
+    )
         .bind(equipamento.id)
         .execute(&pool)
         .await
         .context("prepare equipment approval status failed")?;
+    sqlx::query("UPDATE verificacoes SET custo_total = 0 WHERE equipamento_id = $1")
+        .bind(equipamento.id)
+        .execute(&pool)
+        .await
+        .context("prepare zero-total equipment approval failed")?;
     let approval_token: String = sqlx::query_scalar("SELECT atualizado_em::TEXT FROM equipamentos WHERE id=$1")
         .bind(equipamento.id).fetch_one(&pool).await?;
 
@@ -575,6 +584,20 @@ async fn main() -> Result<()> {
     .await
     .map_err(|error| anyhow!(error))?;
     assert_approval_state(&pool, equipamento.id, "APROVADO", Some("PIX")).await?;
+    let approved_totals: (Option<f64>, Option<f64>) = sqlx::query_as(
+        "SELECT e.valor_orcamento::FLOAT8, v.custo_total::FLOAT8
+         FROM equipamentos e JOIN verificacoes v ON v.equipamento_id = e.id
+         WHERE e.id = $1",
+    )
+    .bind(equipamento.id)
+    .fetch_one(&pool)
+    .await?;
+    if approved_totals != (Some(120.0), Some(120.0)) {
+        return Err(anyhow!(
+            "approving all services replaced the zero legacy total with the wrong value"
+        ));
+    }
+    println!("P1_INTEGRATION_ZERO_TOTAL_ALL_SERVICES=ok");
     let adopted_company: Option<i32> = sqlx::query_scalar(
         "SELECT empresa_id FROM verificacoes WHERE equipamento_id = $1",
     )
@@ -734,11 +757,65 @@ async fn main() -> Result<()> {
         aprovado: Some(true),
     }).await.map_err(|error| anyhow!(error))?;
     assert_approval_state(&pool, legacy_equipment_id, "APROVADO", Some("PIX")).await?;
-    let legacy_budget_total: Option<f64> = sqlx::query_scalar("SELECT custo_total::FLOAT8 FROM verificacoes WHERE equipamento_id = $1")
+    let legacy_budget_totals: (Option<f64>, Option<f64>) = sqlx::query_as(
+        "SELECT e.valor_orcamento::FLOAT8, v.custo_total::FLOAT8
+         FROM equipamentos e JOIN verificacoes v ON v.equipamento_id = e.id
+         WHERE e.id = $1",
+    )
         .bind(legacy_equipment_id).fetch_one(&pool).await?;
-    if legacy_budget_total != Some(199.0) {
-        return Err(anyhow!("approval without services changed the legacy budget total"));
+    if legacy_budget_totals != (Some(199.0), Some(199.0)) {
+        return Err(anyhow!(
+            "approval without services changed the legacy budget total"
+        ));
     }
+    sqlx::query(
+        "UPDATE equipamentos
+         SET status = 'AGUARDANDO_APROVACAO', valor_orcamento = 300, atualizado_em = NOW()
+         WHERE id = $1",
+    )
+        .bind(legacy_equipment_id)
+        .execute(&pool)
+        .await
+        .context("prepare legacy budget rejection failed")?;
+    sqlx::query("UPDATE verificacoes SET custo_total = 0 WHERE equipamento_id = $1")
+        .bind(legacy_equipment_id)
+        .execute(&pool)
+        .await
+        .context("prepare zero-total legacy rejection failed")?;
+    let reject_legacy_token: String = sqlx::query_scalar(
+        "SELECT atualizado_em::TEXT FROM equipamentos WHERE id = $1",
+    )
+    .bind(legacy_equipment_id)
+    .fetch_one(&pool)
+    .await?;
+    equipamentos::aprovar_orcamento(AprovarOrcamentoInput {
+        empresa_id,
+        equipamento_id: legacy_equipment_id,
+        expected_updated_em: reject_legacy_token,
+        pagamento: FormaPagamento {
+            codigo: FormaPagamentoCodigo::Pix,
+            detalhe: None,
+        },
+        servicos_aprovados: vec![],
+        aprovado: Some(false),
+    })
+    .await
+    .map_err(|error| anyhow!(error))?;
+    assert_approval_state(&pool, legacy_equipment_id, "REPROVADO", Some("PIX")).await?;
+    let rejected_budget_totals: (Option<f64>, Option<f64>) = sqlx::query_as(
+        "SELECT e.valor_orcamento::FLOAT8, v.custo_total::FLOAT8
+         FROM equipamentos e JOIN verificacoes v ON v.equipamento_id = e.id
+         WHERE e.id = $1",
+    )
+    .bind(legacy_equipment_id)
+    .fetch_one(&pool)
+    .await?;
+    if rejected_budget_totals != (Some(300.0), Some(300.0)) {
+        return Err(anyhow!(
+            "rejecting a zero-total legacy budget erased the equipment value"
+        ));
+    }
+    println!("P1_INTEGRATION_ZERO_TOTAL_LEGACY_REJECTION=ok");
 
     let produto = produtos::criar_produto(ProdutoInput {
         codigo: format!("{}-PROD", prefix),

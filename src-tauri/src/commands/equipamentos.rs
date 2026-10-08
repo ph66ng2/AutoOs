@@ -1189,7 +1189,7 @@ pub async fn aprovar_orcamento(input: AprovarOrcamentoInput) -> Result<Equipamen
             .or(total_original)
             .unwrap_or(total);
     } else if aprovado && selecionados.len() == servicos.len() {
-        total = total_original.or(equipment_total).unwrap_or(total);
+        total = total_original.filter(|value| *value > 0.0).unwrap_or(total);
     }
     if aprovado && servicos.is_empty() {
         pecas_aceitas = pecas_antigas.clone();
@@ -1197,7 +1197,12 @@ pub async fn aprovar_orcamento(input: AprovarOrcamentoInput) -> Result<Equipamen
     if !aprovado {
         aceitos = normalizar_servicos(servicos_json.as_deref().unwrap_or("[]"))?;
         pecas_aceitas = pecas_antigas;
-        total = total_original.or(equipment_total).unwrap_or(0.0);
+        total = equipment_total
+            .filter(|value| *value > 0.0)
+            .or(total_original.filter(|value| *value > 0.0))
+            .or(equipment_total)
+            .or(total_original)
+            .unwrap_or(0.0);
     }
     if !total.is_finite() || total < 0.0 { return Err("Total aprovado inválido.".to_string()); }
 

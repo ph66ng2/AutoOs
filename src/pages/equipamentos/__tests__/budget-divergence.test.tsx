@@ -259,6 +259,7 @@ describe("Equipamentos — Budget Divergence & Audit", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     equipamentoVerificado.status = "VERIFICADO";
+    equipamentoVerificado.valor_orcamento = 150;
     mockListarImagensEquipamento.mockResolvedValue([]);
     mockBuscarEquipamentosPorSerial.mockResolvedValue([]);
     mockBuscarCliente.mockRejectedValue(new Error("no client"));
@@ -580,6 +581,23 @@ describe("Equipamentos — Budget Divergence & Audit", () => {
       equipamento_id: 10,
       pagamento: { codigo: "PIX", detalhe: null },
     })));
+  });
+
+  it("usa a soma dos serviços quando o total legado é zero", async () => {
+    equipamentoVerificado.status = "AGUARDANDO_APROVACAO";
+    equipamentoVerificado.valor_orcamento = 80;
+    mockBuscarVerificacao.mockResolvedValue(makeVerificacao({
+      servicos: [{ id: "s1", descricao: "Troca de fonte", valor: 80, pecas: [] }],
+      pecas: [],
+      custo_total: 0,
+    }));
+    render(<Equipamentos />);
+
+    fireEvent.click(screen.getByTestId("action-aprovar"));
+    await waitFor(() => expect(screen.getByText("Todos os serviços de troca foram aprovados?")).toBeInTheDocument());
+    fireEvent.click(screen.getByRole("button", { name: "Sim, todos" }));
+
+    expect(screen.getByText(/Total aprovado:/)).toHaveTextContent("R$ 80,00");
   });
 
   it("aprova orçamento antigo sem serviços detalhados sem convertê-lo em reprovação", async () => {
