@@ -170,7 +170,7 @@ async fn query_equipment_page(
     items_query
         .push(equipment_order_clause(ordenacao))
         .push(" LIMIT ")
-        .push_bind(page_size)
+        .push_bind(i64::from(page_size))
         .push(" OFFSET ")
         .push_bind(safe_page * i64::from(page_size));
 
@@ -1061,8 +1061,8 @@ pub async fn aprovar_orcamento(input: AprovarOrcamentoInput) -> Result<Equipamen
         error.to_string()
     })?;
 
-    let equipment: Option<(String, String)> = sqlx::query_as(
-        "SELECT COALESCE(status, ''), atualizado_em::TEXT
+    let equipment: Option<(String, String, Option<f64>)> = sqlx::query_as(
+        "SELECT COALESCE(status, ''), atualizado_em::TEXT, valor_orcamento::FLOAT8
          FROM equipamentos
          WHERE id = $1 AND empresa_id = $2
          FOR UPDATE",
@@ -1073,7 +1073,7 @@ pub async fn aprovar_orcamento(input: AprovarOrcamentoInput) -> Result<Equipamen
     .await
     .map_err(|error| format!("Erro ao validar equipamento para aprovação: {}", error))?;
 
-    let Some((current_status, _current_updated_em)) = equipment else {
+    let Some((current_status, _current_updated_em, equipment_total)) = equipment else {
         return Err("Equipamento não encontrado na empresa do perfil autenticado.".to_string());
     };
     if normalize_status_key(&current_status) != "AGUARDANDO_APROVACAO" {
@@ -1115,6 +1115,13 @@ pub async fn aprovar_orcamento(input: AprovarOrcamentoInput) -> Result<Equipamen
         return Err("Não é possível aprovar sem uma verificação técnica.".to_string());
     };
     let servicos = parse_servicos(servicos_json.as_deref().unwrap_or("[]"))?;
+    let aprovado = input.aprovado.unwrap_or(!input.servicos_aprovados.is_empty());
+    if aprovado && !servicos.is_empty() && input.servicos_aprovados.is_empty() {
+        return Err("Selecione ao menos um serviço para aprovar este orçamento.".to_string());
+    }
+    if !aprovado && !input.servicos_aprovados.is_empty() {
+        return Err("Uma reprovação não pode conter serviços aprovados.".to_string());
+    }
     let itens = normalizar_servicos(servicos_json.as_deref().unwrap_or("[]"))?;
     let vinculadas: HashSet<String> = itens.iter().flat_map(|s| {
         let id = s.get("id").and_then(|v| v.as_str()).unwrap_or("");
@@ -1128,7 +1135,6 @@ pub async fn aprovar_orcamento(input: AprovarOrcamentoInput) -> Result<Equipamen
         return Err("Há peças antigas sem serviço vinculado. Use Alterar Orçamento para vinculá-las antes da aprovação.".to_string());
     }
     aplicar_decisoes(&mut tx, empresa_id, verification_id, &servicos, &input.servicos_aprovados).await?;
-    let aprovado = !input.servicos_aprovados.is_empty();
     let novo_status = if aprovado { "APROVADO" } else { "REPROVADO" };
     let todos = itens;
     let selecionados: HashSet<&str> = input.servicos_aprovados.iter().map(String::as_str).collect();
@@ -1155,12 +1161,15 @@ pub async fn aprovar_orcamento(input: AprovarOrcamentoInput) -> Result<Equipamen
         }
     }
     if aprovado && selecionados.len() == servicos.len() {
-        total = total_original.unwrap_or(total);
+        total = total_original.or(equipment_total).unwrap_or(total);
+    }
+    if aprovado && servicos.is_empty() {
+        pecas_aceitas = pecas_antigas.clone();
     }
     if !aprovado {
         aceitos = normalizar_servicos(servicos_json.as_deref().unwrap_or("[]"))?;
         pecas_aceitas = pecas_antigas;
-        total = total_original.unwrap_or(0.0);
+        total = total_original.or(equipment_total).unwrap_or(0.0);
     }
     if !total.is_finite() || total < 0.0 { return Err("Total aprovado inválido.".to_string()); }
 

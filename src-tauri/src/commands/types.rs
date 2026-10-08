@@ -266,6 +266,9 @@ pub struct AprovarOrcamentoInput {
     pub expected_updated_em: String,
     pub pagamento: FormaPagamento,
     pub servicos_aprovados: Vec<String>,
+    /// Decisão explícita permite aprovar orçamentos legados sem serviços detalhados.
+    #[serde(default)]
+    pub aprovado: Option<bool>,
 }
 
 /// Input para registrar comunicação (email/WhatsApp).

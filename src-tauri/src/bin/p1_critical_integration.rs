@@ -206,6 +206,13 @@ async fn main() -> Result<()> {
     let approval_token: String = sqlx::query_scalar("SELECT atualizado_em::TEXT FROM equipamentos WHERE id=$1")
         .bind(equipamento.id).fetch_one(&pool).await?;
 
+    let recent_page = equipamentos::listar_equipamentos_paginados(
+        Some(0), None, Some("AGUARDANDO_APROVACAO".to_string()), Some("CADASTRO_RECENTE".to_string()),
+    ).await.map_err(|error| anyhow!(error))?;
+    if !recent_page.items.iter().any(|item| item.id == equipamento.id) {
+        return Err(anyhow!("recent equipment order omitted the expected record"));
+    }
+
     let restricted_profile_permissions = serde_json::to_string(&vec![
         auth::PERMISSION_STOCK_CONTROL.to_string(),
         auth::PERMISSION_CONFIG_SMTP.to_string(),
@@ -419,6 +426,7 @@ async fn main() -> Result<()> {
 
     let denied = equipamentos::aprovar_orcamento(AprovarOrcamentoInput {
         servicos_aprovados: vec!["test-service".to_string()],
+        aprovado: None,
         empresa_id,
         equipamento_id: equipamento.id,
         expected_updated_em: approval_token.clone(),
@@ -473,6 +481,7 @@ async fn main() -> Result<()> {
 
     let stale_approval = equipamentos::aprovar_orcamento(AprovarOrcamentoInput {
         servicos_aprovados: vec!["test-service".to_string()],
+        aprovado: None,
         empresa_id,
         equipamento_id: equipamento.id,
         expected_updated_em: "2000-01-01T00:00:00Z".to_string(),
@@ -498,6 +507,7 @@ async fn main() -> Result<()> {
 
     let equipamento_aprovado = equipamentos::aprovar_orcamento(AprovarOrcamentoInput {
         servicos_aprovados: vec!["test-service".to_string()],
+        aprovado: None,
         empresa_id,
         equipamento_id: equipamento.id,
         expected_updated_em: approval_token,
@@ -653,6 +663,27 @@ async fn main() -> Result<()> {
         return Err(anyhow!("legacy nullable contracts were not preserved"));
     }
 
+    sqlx::query("UPDATE equipamentos SET status = 'AGUARDANDO_APROVACAO', valor_orcamento = 199 WHERE id = $1")
+        .bind(legacy_equipment_id).execute(&pool).await?;
+    sqlx::query("UPDATE verificacoes SET servicos_necessarios = '[]', pecas_necessarias = '[]', custo_total = 199 WHERE equipamento_id = $1")
+        .bind(legacy_equipment_id).execute(&pool).await?;
+    let legacy_token: String = sqlx::query_scalar("SELECT atualizado_em::TEXT FROM equipamentos WHERE id = $1")
+        .bind(legacy_equipment_id).fetch_one(&pool).await?;
+    equipamentos::aprovar_orcamento(AprovarOrcamentoInput {
+        empresa_id,
+        equipamento_id: legacy_equipment_id,
+        expected_updated_em: legacy_token,
+        pagamento: FormaPagamento { codigo: FormaPagamentoCodigo::Pix, detalhe: None },
+        servicos_aprovados: vec![],
+        aprovado: Some(true),
+    }).await.map_err(|error| anyhow!(error))?;
+    assert_approval_state(&pool, legacy_equipment_id, "APROVADO", Some("PIX")).await?;
+    let legacy_budget_total: Option<f64> = sqlx::query_scalar("SELECT custo_total::FLOAT8 FROM verificacoes WHERE equipamento_id = $1")
+        .bind(legacy_equipment_id).fetch_one(&pool).await?;
+    if legacy_budget_total != Some(199.0) {
+        return Err(anyhow!("approval without services changed the legacy budget total"));
+    }
+
     let produto = produtos::criar_produto(ProdutoInput {
         codigo: format!("{}-PROD", prefix),
         nome: format!("{} Produto", prefix),
@@ -698,6 +729,8 @@ async fn main() -> Result<()> {
     println!("P1_INTEGRATION_PERMISSION_DENIED=ok");
     println!("P1_INTEGRATION_CONCURRENCY_ROLLBACK=ok");
     println!("P1_INTEGRATION_PAYMENT_APPROVAL=ok");
+    println!("P1_INTEGRATION_LEGACY_APPROVAL_WITHOUT_SERVICES=ok");
+    println!("P1_INTEGRATION_RECENT_EQUIPMENT_ORDER=ok");
     println!("P1_INTEGRATION_CONTACT_SNAPSHOT=ok");
     println!("P1_INTEGRATION_LEGACY_NULLS=ok");
     println!("P1_INTEGRATION_LEGACY_REGULARIZATION=ok");
