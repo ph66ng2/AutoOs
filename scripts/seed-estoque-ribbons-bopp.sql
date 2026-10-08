@@ -1,11 +1,26 @@
 -- Inventário de estoque BMITAG (etiquetas, ribbons e acessórios).
 -- Inventário original: migration 0020; categorias atuais: migration 0021.
--- Reaplicação manual do inventário no PostgreSQL (redefine saldos aos valores abaixo).
--- Idempotente por codigo (UNIQUE). Valores informados entram como preço
+-- Reaplicação manual do inventário para uma empresa explícita.
+-- Valores informados entram como preço
 -- unitário em preco_custo e preco_venda. Itens sem preço usam 0,00 e
 -- ficam descritos como "Preço unitário não informado".
 
-INSERT INTO produtos (
+\if :{?company_id}
+\else
+\echo 'Informe company_id para aplicar o inventário.'
+\quit 3
+\endif
+
+BEGIN;
+SELECT pg_advisory_xact_lock(928354661);
+
+CREATE TEMP TABLE autoos_stock_seed ON COMMIT DROP AS
+SELECT codigo, nome, descricao, categoria, quantidade_estoque,
+       quantidade_minima, quantidade_maxima, unidade_medida,
+       preco_custo, preco_venda, margem_lucro, ativo
+  FROM produtos WHERE false;
+
+INSERT INTO autoos_stock_seed (
     codigo,
     nome,
     descricao,
@@ -62,16 +77,53 @@ VALUES
     ('ETQ-33X22X3-AMARELA', '33x22x03 Amarela', 'Preço unitário não informado', 'ETIQUETA', 1, 5, 50, 'UN', 0.00, 0.00, 0, true),
     ('ETQ-75X30-GONDOLA-LARANJA', '75x30 Gôndola Laranja', 'Etiqueta gôndola laranja', 'ETIQUETA', 2, 5, 50, 'UN', 42.00, 42.00, 0, true),
     ('ETQ-80X70-BOPP', '80x70 BOPP', 'Etiqueta BOPP', 'ETIQUETA', 1, 5, 50, 'UN', 56.00, 56.00, 0, true)
-ON CONFLICT (codigo) DO UPDATE SET
-    nome = EXCLUDED.nome,
-    descricao = EXCLUDED.descricao,
-    categoria = EXCLUDED.categoria,
-    quantidade_estoque = EXCLUDED.quantidade_estoque,
-    quantidade_minima = EXCLUDED.quantidade_minima,
-    quantidade_maxima = EXCLUDED.quantidade_maxima,
-    unidade_medida = EXCLUDED.unidade_medida,
-    preco_custo = EXCLUDED.preco_custo,
-    preco_venda = EXCLUDED.preco_venda,
-    margem_lucro = EXCLUDED.margem_lucro,
-    ativo = true,
-    atualizado_em = CURRENT_TIMESTAMP;
+;
+
+UPDATE produtos AS product
+   SET nome = seed.nome,
+       descricao = seed.descricao,
+       categoria = seed.categoria,
+       quantidade_estoque = seed.quantidade_estoque,
+       quantidade_minima = seed.quantidade_minima,
+       quantidade_maxima = seed.quantidade_maxima,
+       unidade_medida = seed.unidade_medida,
+       preco_custo = seed.preco_custo,
+       preco_venda = seed.preco_venda,
+       margem_lucro = seed.margem_lucro,
+       atualizado_em = CURRENT_TIMESTAMP
+  FROM autoos_stock_seed AS seed
+ WHERE product.empresa_id::text = :'company_id'
+   AND product.codigo = seed.codigo
+   AND product.ativo = true;
+
+INSERT INTO produtos (
+    empresa_id, codigo, nome, descricao, categoria, quantidade_estoque,
+    quantidade_minima, quantidade_maxima, unidade_medida,
+    preco_custo, preco_venda, margem_lucro, ativo
+)
+SELECT company.id, seed.codigo, seed.nome, seed.descricao, seed.categoria,
+       seed.quantidade_estoque, seed.quantidade_minima, seed.quantidade_maxima,
+       seed.unidade_medida, seed.preco_custo, seed.preco_venda,
+       seed.margem_lucro, true
+  FROM autoos_stock_seed AS seed
+  JOIN empresas AS company ON company.id::text = :'company_id'
+ WHERE NOT EXISTS (
+    SELECT 1 FROM produtos AS existing
+     WHERE existing.empresa_id = company.id
+       AND existing.codigo = seed.codigo
+       AND existing.ativo = true
+ );
+
+SELECT (SELECT COUNT(*) FROM autoos_stock_seed) =
+       (SELECT COUNT(*) FROM produtos AS product
+         JOIN autoos_stock_seed AS seed ON seed.codigo = product.codigo
+        WHERE product.empresa_id::text = :'company_id' AND product.ativo = true)
+       AS seed_ok \gset
+\if :seed_ok
+COMMIT;
+\echo 'Inventário aplicado à empresa selecionada.'
+\else
+ROLLBACK;
+\echo 'Empresa não encontrada ou inventário incompleto.'
+\quit 3
+\endif

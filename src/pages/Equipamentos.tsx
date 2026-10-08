@@ -301,6 +301,7 @@ export default function Equipamentos({ operationalProfile }: { operationalProfil
   const [valorOrcamentoAnterior, setValorOrcamentoAnterior] = useState<number | null>(null);
   const [verificacaoAjusteOrcamento, setVerificacaoAjusteOrcamento] = useState<Verificacao | null>(null);
   const [servicosAjuste, setServicosAjuste] = useState<ServicoNecessario[]>([]);
+  const [pecasLegadasAjuste, setPecasLegadasAjuste] = useState<PecaNecessaria[]>([]);
   const [observacoesAjuste, setObservacoesAjuste] = useState("");
   const [formaPagamentoAjuste, setFormaPagamentoAjuste] = useState<FormaPagamentoCodigo | "">("");
   const [clienteAprovouAlteracao, setClienteAprovouAlteracao] = useState(false);
@@ -429,16 +430,10 @@ export default function Equipamentos({ operationalProfile }: { operationalProfil
 
   useEffect(() => {
     if ((novoStatus === "AGUARDANDO_APROVACAO" || ajusteOrcamentoSemMudancaStatus) && verificacaoAjusteOrcamento) {
-      let pecasSalvas: PecaNecessaria[] = [];
-      try {
-        pecasSalvas = JSON.parse(verificacaoAjusteOrcamento.pecas_necessarias || "[]") as PecaNecessaria[];
-      } catch {
-        pecasSalvas = [];
-      }
       const servicosTotal = servicosAjuste.reduce((sum, s) => sum + (Number(s.valor) || 0), 0);
-      setValorOrcamento(servicosTotal + somarPecas(mesclarPecasDoOrcamento(pecasSalvas, servicosAjuste)));
+      setValorOrcamento(servicosTotal + somarPecas(mesclarPecasDoOrcamento(pecasLegadasAjuste, servicosAjuste)));
     }
-  }, [servicosAjuste, verificacaoAjusteOrcamento, novoStatus, ajusteOrcamentoSemMudancaStatus]);
+  }, [servicosAjuste, pecasLegadasAjuste, verificacaoAjusteOrcamento, novoStatus, ajusteOrcamentoSemMudancaStatus]);
 
   const form = useForm<EquipamentoFormData>({
      resolver: zodResolver(equipamentoSchema),
@@ -798,7 +793,10 @@ export default function Equipamentos({ operationalProfile }: { operationalProfil
     } catch {
       servicosIniciais = [];
     }
-    setServicosAjuste(servicosIniciais);
+    setServicosAjuste(normalizarServicosAprovacao(servicosIniciais));
+    let pecasIniciais: PecaNecessaria[] = [];
+    try { pecasIniciais = JSON.parse(verificacao?.pecas_necessarias || "[]") as PecaNecessaria[]; } catch { /* orçamento legado sem peças válidas */ }
+    setPecasLegadasAjuste(pecasIniciais.filter((peca) => !peca.servico_id));
 
     setCarregandoCatalogoAjuste(true);
     try {
@@ -1312,13 +1310,7 @@ export default function Equipamentos({ operationalProfile }: { operationalProfil
       const totalOriginal = servicosOriginal.reduce((sum, s) => sum + (Number(s.valor) || 0), 0);
       const totalNovo = servicosAjuste.reduce((sum, s) => sum + (Number(s.valor) || 0), 0);
 
-      let pecasSalvas: PecaNecessaria[] = [];
-      try {
-        pecasSalvas = JSON.parse(verificacaoAjusteOrcamento.pecas_necessarias || "[]") as PecaNecessaria[];
-      } catch {
-        pecasSalvas = [];
-      }
-      const calculado = totalNovo + somarPecas(mesclarPecasDoOrcamento(pecasSalvas, servicosAjuste));
+      const calculado = totalNovo + somarPecas(mesclarPecasDoOrcamento(pecasLegadasAjuste, servicosAjuste));
 
       if (Math.abs(calculado - valorOrcamentoRef.current) > 0.001) {
         setConfirmProps({
@@ -1614,16 +1606,13 @@ export default function Equipamentos({ operationalProfile }: { operationalProfil
         if (!profileId) {
           throw new Error("Perfil autorizado não encontrado para ajustar o orçamento.");
         }
-        let pecas: PecaNecessaria[] = [];
-        try {
-          pecas = JSON.parse(verificacaoAjusteOrcamento.pecas_necessarias || "[]") as PecaNecessaria[];
-        } catch {}
+        const pecas = mesclarPecasDoOrcamento(pecasLegadasAjuste, servicosAjuste);
         await db.atualizarServicosVerificacao(
           {
             equipamento_id: selecionado.id!,
             empresa_id: selecionado.empresa_id,
             servicos: servicosAjuste,
-            pecas,
+                            pecas,
             custo_total: totalAtual,
             observacoes: observacoesAjuste,
             ...(orcamentoJaAprovado(selecionado.status) && formaPagamentoAjuste
@@ -3197,35 +3186,19 @@ export default function Equipamentos({ operationalProfile }: { operationalProfil
                           setConfirmOpen(true);
                         }}
                       />
-                      {(() => {
-                        let pecas: PecaNecessaria[] = [];
-                        try {
-                          pecas = JSON.parse(verificacaoAjusteOrcamento.pecas_necessarias || "[]") as PecaNecessaria[];
-                        } catch {
-                          pecas = [];
-                        }
-                        pecas = mesclarPecasDoOrcamento(pecas, servicosAjuste);
-                        return (
-                          <>
-                            {pecas.length > 0 && (
-                              <div>
-                                <p className="text-xs font-semibold text-muted-foreground mb-1">Peças da verificação</p>
-                                <ul className="space-y-1">
-                                  {pecas.map((p) => (
-                                    <li key={p.id} className="flex justify-between text-sm">
-                                      <span>{p.nome} (x{p.quantidade})</span>
-                                      <span className="font-medium">R$ {p.valorTotal.toFixed(2)}</span>
-                                    </li>
-                                  ))}
-                                </ul>
-                              </div>
-                            )}
-                            {pecas.length === 0 && servicosAjuste.length === 0 && (
-                              <p className="text-xs text-muted-foreground">Nenhum serviço ou peça registrado na verificação.</p>
-                            )}
-                          </>
-                        );
-                      })()}
+                      {pecasLegadasAjuste.length > 0 && (
+                        <div className="rounded-md border border-amber-200 bg-amber-50 p-3">
+                          <p className="text-xs font-semibold text-amber-900">Peças antigas sem serviço vinculado</p>
+                          <p className="text-xs text-amber-800">Adicione cada peça ao serviço correspondente acima e remova a linha antiga antes de aprovar.</p>
+                          {pecasLegadasAjuste.map((peca, index) => (
+                            <div key={`${peca.id}-${index}`} className="flex items-center justify-between gap-2 text-sm">
+                              <span>{peca.nome} × {peca.quantidade} · R$ {peca.valorTotal.toFixed(2)}</span>
+                              <Button type="button" variant="ghost" size="sm" onClick={() => setPecasLegadasAjuste((current) => current.filter((_, position) => position !== index))}>Remover linha antiga</Button>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                      {pecasLegadasAjuste.length === 0 && servicosAjuste.length === 0 && <p className="text-xs text-muted-foreground">Nenhum serviço ou peça registrado na verificação.</p>}
                     </div>
                   )}
                   {valorOrcamentoOriginal != null && (

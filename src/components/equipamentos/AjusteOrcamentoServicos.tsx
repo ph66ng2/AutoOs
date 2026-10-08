@@ -50,7 +50,7 @@ export function AjusteOrcamentoServicos({
       descricao: item.nome,
       catalogo_id: item.id,
       valor: Number(item.preco_padrao) || 0,
-      ...(saasMode ? { pecas: item.pecas_sugeridas ?? [] } : {}),
+      pecas: item.pecas_sugeridas ?? [],
     });
   }
 
@@ -137,7 +137,7 @@ export function AjusteOrcamentoServicos({
               <Trash2 className="h-4 w-4 text-red-500" />
             </Button>
           </div>
-          {saasMode && <PecasDoServico pecas={s.pecas ?? []} onChange={(pecas) => atualizarServico(s.id, { pecas })} />}
+          <PecasDoServico pecas={s.pecas ?? []} onChange={(pecas) => atualizarServico(s.id, { pecas })} />
           </div>
         ))}
         {servicos.length === 0 && (

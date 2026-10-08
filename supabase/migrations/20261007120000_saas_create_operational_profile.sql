@@ -1,5 +1,21 @@
 -- Criação de perfis operacionais SaaS por um administrador ativo da mesma empresa.
 -- O PIN permanece no cofre local de cada dispositivo e não é enviado ao banco.
+ALTER TABLE public.security_profiles
+    DROP CONSTRAINT IF EXISTS security_profiles_nome_key;
+
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint
+         WHERE conrelid = 'public.security_profiles'::regclass
+           AND conname = 'uq_security_profiles_empresa_nome'
+    ) THEN
+        ALTER TABLE public.security_profiles
+            ADD CONSTRAINT uq_security_profiles_empresa_nome UNIQUE (empresa_id, nome);
+    END IF;
+END;
+$$;
+
 CREATE OR REPLACE FUNCTION public.create_saas_operational_profile(
     p_name text,
     p_role text,
