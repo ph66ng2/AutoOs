@@ -259,6 +259,7 @@ describe("Equipamentos — Budget Divergence & Audit", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     equipamentoVerificado.status = "VERIFICADO";
+    equipamentoVerificado.valor_orcamento = 150;
     mockListarImagensEquipamento.mockResolvedValue([]);
     mockBuscarEquipamentosPorSerial.mockResolvedValue([]);
     mockBuscarCliente.mockRejectedValue(new Error("no client"));
@@ -582,6 +583,55 @@ describe("Equipamentos — Budget Divergence & Audit", () => {
     })));
   });
 
+  it("usa a soma dos serviços quando o total legado é zero", async () => {
+    equipamentoVerificado.status = "AGUARDANDO_APROVACAO";
+    equipamentoVerificado.valor_orcamento = 80;
+    mockBuscarVerificacao.mockResolvedValue(makeVerificacao({
+      servicos: [{ id: "s1", descricao: "Troca de fonte", valor: 80, pecas: [] }],
+      pecas: [],
+      custo_total: 0,
+    }));
+    render(<Equipamentos />);
+
+    fireEvent.click(screen.getByTestId("action-aprovar"));
+    await waitFor(() => expect(screen.getByText("Todos os serviços de troca foram aprovados?")).toBeInTheDocument());
+    fireEvent.click(screen.getByRole("button", { name: "Sim, todos" }));
+
+    expect(screen.getByText(/Total aprovado:/)).toHaveTextContent("R$ 80,00");
+  });
+
+  it("aprova orçamento antigo sem serviços detalhados sem convertê-lo em reprovação", async () => {
+    equipamentoVerificado.status = "AGUARDANDO_APROVACAO";
+    mockBuscarVerificacao.mockResolvedValue(makeVerificacao({ servicos: [], pecas: [], custo_total: 0 }));
+    render(<Equipamentos />);
+
+    fireEvent.click(screen.getByTestId("action-aprovar"));
+    await screen.findByText(/orçamento antigo não possui serviços detalhados/i);
+    fireEvent.click(screen.getByRole("button", { name: "Aprovar orçamento" }));
+    expect(screen.getByText(/Valor do orçamento:/)).toHaveTextContent("R$ 150,00");
+    expect(screen.getByRole("button", { name: "Continuar para pagamento" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Continuar para pagamento" }));
+    fireEvent.change(await screen.findByLabelText("Forma de pagamento"), { target: { value: "PIX" } });
+    fireEvent.click(screen.getByRole("button", { name: /confirmar aprovação/i }));
+
+    await waitFor(() => expect(mockAprovarOrcamento).toHaveBeenCalledWith(expect.objectContaining({
+      aprovado: true,
+      servicos_aprovados: [],
+      pagamento: { codigo: "PIX", detalhe: null },
+    })));
+  });
+
+  it("mostra o valor do equipamento quando o total antigo está ausente", async () => {
+    equipamentoVerificado.status = "AGUARDANDO_APROVACAO";
+    mockBuscarVerificacao.mockResolvedValue({ ...makeVerificacao({ servicos: [], pecas: [] }), custo_total: null });
+    render(<Equipamentos />);
+
+    fireEvent.click(screen.getByTestId("action-aprovar"));
+    await screen.findByText(/orçamento antigo não possui serviços detalhados/i);
+    fireEvent.click(screen.getByRole("button", { name: "Aprovar orçamento" }));
+    expect(screen.getByText(/Valor do orçamento:/)).toHaveTextContent("R$ 150,00");
+  });
+
   it("permite cancelar a aprovação e mantém o modal após erro do backend", async () => {
     equipamentoVerificado.status = "AGUARDANDO_APROVACAO";
     mockBuscarVerificacao.mockResolvedValue(makeVerificacao());
@@ -636,7 +686,7 @@ describe("Equipamentos — Budget Divergence & Audit", () => {
     await screen.findByText("Todos os serviços de troca foram aprovados?");
     fireEvent.click(screen.getByRole("button", { name: "Não, selecionar" }));
     fireEvent.click(screen.getByRole("button", { name: "Confirmar reprovação" }));
-    await waitFor(() => expect(mockAprovarOrcamento).toHaveBeenCalledWith(expect.objectContaining({ servicos_aprovados: [] })));
+    await waitFor(() => expect(mockAprovarOrcamento).toHaveBeenCalledWith(expect.objectContaining({ aprovado: false, servicos_aprovados: [] })));
     expect(await screen.findByRole("alert")).toHaveTextContent("Orçamento desatualizado");
   });
 

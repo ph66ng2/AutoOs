@@ -197,6 +197,7 @@ export default function Equipamentos() {
   const [todosServicosAprovados, setTodosServicosAprovados] = useState<boolean | null>(null);
   const [idsAprovados, setIdsAprovados] = useState<string[]>([]);
   const [totalOrcamentoAprovacao, setTotalOrcamentoAprovacao] = useState<number | undefined>();
+  const decisaoAprovada = todosServicosAprovados === true || idsAprovados.length > 0;
   const [clienteAprovouAlteracao, setClienteAprovouAlteracao] = useState(false);
   const [consumosDetalhes, setConsumosDetalhes] = useState<ConsumoOrcamento[]>([]);
   const [baixandoPendentes, setBaixandoPendentes] = useState(false);
@@ -1129,10 +1130,12 @@ export default function Equipamentos() {
     void confirmarMudancaStatus(false);
   }
 
-  async function abrirDialogoAprovacao(eq: Equipamento) {
+  async function abrirDialogoAprovacao(eq: Equipamento, decisaoInicial: "aprovar" | "reprovar") {
     const liberado = await ensureSensitiveAccess({
-      title: "Aprovar orçamento",
-      description: "Informe o PIN para aprovar o orçamento com a forma de pagamento escolhida.",
+      title: decisaoInicial === "aprovar" ? "Aprovar orçamento" : "Reprovar orçamento",
+      description: decisaoInicial === "aprovar"
+        ? "Informe o PIN para registrar a decisão do cliente sobre este orçamento."
+        : "Informe o PIN para registrar a reprovação do orçamento pelo cliente.",
       permission: SENSITIVE_PERMISSIONS.FINANCIAL_ACTIONS,
     });
     if (!liberado) return;
@@ -1144,9 +1147,15 @@ export default function Equipamentos() {
       const verificacao = await db.buscarVerificacao(eq.id!);
       const servicos = normalizarServicosOrcamento(JSON.parse(verificacao?.servicos_necessarios || "[]") as ServicoNecessario[]);
       setServicosAprovacao(servicos);
-      setTotalOrcamentoAprovacao(verificacao?.custo_total);
+      setTotalOrcamentoAprovacao(servicos.length === 0
+        ? (eq.valor_orcamento != null && eq.valor_orcamento > 0
+          ? eq.valor_orcamento
+          : verificacao?.custo_total != null && verificacao.custo_total > 0
+            ? verificacao.custo_total
+            : eq.valor_orcamento ?? verificacao?.custo_total)
+        : verificacao?.custo_total);
       setProdutosAprovacao(await carregarProdutosOrcamento());
-      setTodosServicosAprovados(null);
+      setTodosServicosAprovados(decisaoInicial === "reprovar" ? false : null);
       setIdsAprovados([]);
       setPagamentoAprovacaoInicial(verificacao?.forma_pagamento_codigo ? {
         codigo: verificacao.forma_pagamento_codigo,
@@ -1181,10 +1190,21 @@ export default function Equipamentos() {
         expected_updated_em: selecionado.atualizado_em,
         pagamento,
         servicos_aprovados: idsAprovados,
+        aprovado: decisaoAprovada,
       });
       await recarregar();
       setPagamentoAprovacaoError(null);
-      success("Equipamentos", idsAprovados.length ? "Serviços aprovados. As peças disponíveis foram baixadas; confira faltas em Peças da OS." : "Orçamento reprovado sem baixa de estoque.", "Decisão do cliente");
+      const servicosReprovados = servicosAprovacao
+        .filter((servico) => !idsAprovados.includes(servico.id))
+        .map((servico) => servico.descricao);
+      const detalheReprovacaoParcial = servicosReprovados.length > 0
+        ? ` Serviços não aprovados: ${servicosReprovados.join(", ")}.`
+        : "";
+      success("Equipamentos", decisaoAprovada
+        ? servicosAprovacao.length
+          ? `Serviços aprovados. As peças disponíveis foram baixadas; confira faltas em Peças da OS.${detalheReprovacaoParcial}`
+          : "Orçamento aprovado sem serviços detalhados e sem baixa de estoque."
+        : "Orçamento reprovado sem baixa de estoque.", "Decisão do cliente");
       return true;
     } catch (cause) {
       setPagamentoAprovacaoError(String(cause));
@@ -1629,7 +1649,7 @@ export default function Equipamentos() {
           icon: <CheckCircle className="h-3.5 w-3.5" />,
           variant: "default",
           className: "bg-green-600 hover:bg-green-700 text-white",
-          onClick: () => void abrirDialogoAprovacao(eq),
+          onClick: () => void abrirDialogoAprovacao(eq, "aprovar"),
           disabled: salvando,
         };
         secondary = {
@@ -1638,7 +1658,7 @@ export default function Equipamentos() {
           icon: <XCircle className="h-3.5 w-3.5" />,
           variant: "default",
           className: "bg-red-600 text-white hover:bg-red-700",
-          onClick: () => void abrirDialogoAprovacao(eq),
+          onClick: () => void abrirDialogoAprovacao(eq, "reprovar"),
           disabled: salvando,
         };
         if (eq.cliente_telefone) {
@@ -2831,18 +2851,27 @@ export default function Equipamentos() {
 
       <Dialog open={selecaoServicosOpen} onOpenChange={setSelecaoServicosOpen}>
         <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-xl">
-          <DialogHeader><DialogTitle>Aprovação dos serviços pelo cliente</DialogTitle><DialogDescription>Registre a decisão do cliente antes de movimentar o estoque.</DialogDescription></DialogHeader>
+          <DialogHeader><DialogTitle>Decisão do cliente sobre o orçamento</DialogTitle><DialogDescription>Registre a decisão do cliente antes de movimentar o estoque.</DialogDescription></DialogHeader>
           <div className="space-y-4">
-            <p className="text-sm">Todos os serviços de troca foram aprovados?</p>
-            <p className="text-sm text-muted-foreground">A seleção inclui todos os serviços do orçamento. Somente peças dos serviços aprovados serão baixadas. Serviços não selecionados serão reprovados, sem baixa. Se faltar estoque, a quantidade restante ficará pendente de confirmação na OS.</p>
+            {servicosAprovacao.length === 0 ? (
+              <>
+                <p className="text-sm">Este orçamento antigo não possui serviços detalhados. O cliente aprovou o valor total?</p>
+                <p className="text-sm text-muted-foreground">A aprovação preserva o valor do orçamento e a forma de pagamento, sem baixar peças do estoque.</p>
+              </>
+            ) : (
+              <>
+                <p className="text-sm">Todos os serviços de troca foram aprovados?</p>
+                <p className="text-sm text-muted-foreground">A seleção inclui todos os serviços do orçamento. Somente peças dos serviços aprovados serão baixadas. Serviços não selecionados serão reprovados, sem baixa. Se faltar estoque, a quantidade restante ficará pendente de confirmação na OS.</p>
+              </>
+            )}
             {pagamentoAprovacaoError && <p role="alert" className="text-sm text-destructive">{pagamentoAprovacaoError}</p>}
             <div className="flex gap-2">
               <Button type="button" variant={todosServicosAprovados === true ? "default" : "outline"}
-                onClick={() => { setTodosServicosAprovados(true); setIdsAprovados(servicosAprovacao.map((s) => s.id)); }}>Sim, todos</Button>
+                onClick={() => { setTodosServicosAprovados(true); setIdsAprovados(servicosAprovacao.map((s) => s.id)); }}>{servicosAprovacao.length === 0 ? "Aprovar orçamento" : "Sim, todos"}</Button>
               <Button type="button" variant={todosServicosAprovados === false ? "default" : "outline"}
-                onClick={() => { setTodosServicosAprovados(false); setIdsAprovados([]); }}>Não, selecionar</Button>
+                onClick={() => { setTodosServicosAprovados(false); setIdsAprovados([]); }}>{servicosAprovacao.length === 0 ? "Reprovar orçamento" : "Não, selecionar"}</Button>
             </div>
-            {todosServicosAprovados === false && (
+            {todosServicosAprovados === false && servicosAprovacao.length > 0 && (
               <div className="max-h-64 space-y-2 overflow-y-auto rounded-md border p-3">
                 {servicosAprovacao.map((servico) => (
                   <label key={servico.id} className="flex cursor-pointer items-start gap-2 text-sm">
@@ -2854,19 +2883,25 @@ export default function Equipamentos() {
                 ))}
               </div>
             )}
+            {servicosAprovacao.length === 0 && (
+              <div className="rounded-md bg-muted/40 p-3 text-sm">
+                <p className="font-semibold">Valor do orçamento: {formatCurrency(totalOrcamentoAprovacao ?? 0)}</p>
+                <p className="mt-1 text-muted-foreground">A aprovação preserva o valor do equipamento e não baixa peças do estoque.</p>
+              </div>
+            )}
             {todosServicosAprovados !== null && (
               <div className="rounded-md bg-muted/40 p-3 text-sm">
-                <p className="font-medium">{idsAprovados.length} de {servicosAprovacao.length} serviços aprovados</p>
+                {servicosAprovacao.length > 0 && <p className="font-medium">{idsAprovados.length} de {servicosAprovacao.length} serviços aprovados</p>}
                 {resumirPecas(servicosAprovacao.filter((s) => idsAprovados.includes(s.id))).map((peca, i) => {
                   const saldo = produtosAprovacao.find((p) => p.id === peca.produto_id)?.quantidade_estoque ?? 0;
                   return <p key={`${peca.produto_id}-${i}`} className={saldo < peca.quantidade ? "text-amber-700" : ""}>
                     {peca.nome}: {peca.quantidade} necessária(s), saldo {saldo}{saldo < peca.quantidade ? " · pendência" : ""}
                   </p>;
                 })}
-                <p className="mt-2 font-semibold">Total aprovado: {formatCurrency(idsAprovados.length === servicosAprovacao.length && totalOrcamentoAprovacao != null ? totalOrcamentoAprovacao : servicosAprovacao
+                {servicosAprovacao.length > 0 && <p className="mt-2 font-semibold">Total aprovado: {formatCurrency(idsAprovados.length === servicosAprovacao.length && totalOrcamentoAprovacao != null && totalOrcamentoAprovacao > 0 ? totalOrcamentoAprovacao : servicosAprovacao
                   .filter((s) => idsAprovados.includes(s.id))
                   .reduce((total, s) => total + Number(s.valor || 0) + (s.pecas ?? [])
-                    .reduce((subtotal, p) => subtotal + p.quantidade * p.valor_unitario, 0), 0))}</p>
+                    .reduce((subtotal, p) => subtotal + p.quantidade * p.valor_unitario, 0), 0))}</p>}
               </div>
             )}
           </div>
@@ -2874,13 +2909,13 @@ export default function Equipamentos() {
             <Button type="button" variant="outline" onClick={() => setSelecaoServicosOpen(false)}>Cancelar</Button>
             <Button type="button" disabled={todosServicosAprovados === null || pagamentoAprovacaoLoading}
               onClick={() => {
-                if (idsAprovados.length) {
+                if (decisaoAprovada) {
                   setSelecaoServicosOpen(false);
                   setPagamentoDialogOpen(true);
                 } else {
                   void confirmarAprovacao({ codigo: "A_COMBINAR" }).then((ok) => { if (ok) setSelecaoServicosOpen(false); });
                 }
-              }}>{idsAprovados.length ? "Continuar para pagamento" : "Confirmar reprovação"}</Button>
+              }}>{todosServicosAprovados === null ? "Selecione uma decisão" : decisaoAprovada ? "Continuar para pagamento" : "Confirmar reprovação"}</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

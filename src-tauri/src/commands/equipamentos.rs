@@ -21,7 +21,7 @@ use crate::commands::auth::{
 use crate::db::get_pool;
 use crate::commands::orcamento_estoque::{aplicar_decisoes, normalizar_servicos, parse_servicos};
 use chrono::NaiveDateTime;
-use sqlx::{PgPool, Postgres, QueryBuilder, Row};
+use sqlx::{PgConnection, PgPool, Postgres, QueryBuilder, Row};
 use std::collections::HashSet;
 use tracing::{debug, error, info, instrument};
 
@@ -147,8 +147,8 @@ fn equipment_order_clause(ordenacao: Option<&str>) -> &'static str {
     }
 }
 
-async fn query_equipment_page(
-    pool: &PgPool,
+pub(crate) async fn query_equipment_page_on_connection(
+    connection: &mut PgConnection,
     empresa_id: i32,
     page: Option<i32>,
     busca: Option<&str>,
@@ -160,7 +160,7 @@ async fn query_equipment_page(
     add_equipment_filters(&mut count_query, empresa_id, busca, status);
     let total = count_query
         .build_query_scalar::<i64>()
-        .fetch_one(pool)
+        .fetch_one(&mut *connection)
         .await
         .map_err(|error| format!("Erro ao contar equipamentos: {}", error))?;
 
@@ -170,13 +170,13 @@ async fn query_equipment_page(
     items_query
         .push(equipment_order_clause(ordenacao))
         .push(" LIMIT ")
-        .push_bind(page_size)
+        .push_bind(i64::from(page_size))
         .push(" OFFSET ")
         .push_bind(safe_page * i64::from(page_size));
 
     let items = items_query
         .build_query_as::<EquipamentoRow>()
-        .fetch_all(pool)
+        .fetch_all(&mut *connection)
         .await
         .map_err(|error| format!("Erro ao listar equipamentos: {}", error))?;
 
@@ -460,12 +460,33 @@ pub async fn listar_equipamentos(
     })?;
     let empresa_id = require_active_session_company_id(&pool).await?;
 
-    let offset = page.unwrap_or(0) * PAGE_SIZE;
+    let mut connection = pool.acquire().await.map_err(|error| error.to_string())?;
+    listar_equipamentos_on_connection(
+        &mut connection,
+        empresa_id,
+        page,
+        busca.as_deref(),
+        status.as_deref(),
+    )
+    .await
+}
+
+/// Executa a consulta simples de equipamentos na conexão recebida.
+/// Os parâmetros de paginação usam o mesmo tipo da consulta paginada para
+/// evitar incompatibilidade no cache de prepared statements do PostgreSQL.
+pub(crate) async fn listar_equipamentos_on_connection(
+    connection: &mut PgConnection,
+    empresa_id: i32,
+    page: Option<i32>,
+    busca: Option<&str>,
+    status: Option<&str>,
+) -> Result<Vec<EquipamentoRow>, String> {
+    let offset = i64::from(page.unwrap_or(0).max(0)) * i64::from(PAGE_SIZE);
     let mut query_builder = sqlx::QueryBuilder::<sqlx::Postgres>::new(EQUIPAMENTO_SELECT);
     query_builder.push(" WHERE empresa_id = ");
     query_builder.push_bind(empresa_id);
 
-    if let Some(busca) = busca.as_deref().map(str::trim).filter(|value| !value.is_empty()) {
+    if let Some(busca) = busca.map(str::trim).filter(|value| !value.is_empty()) {
         let pattern = format!("%{}%", busca);
         query_builder.push(" AND (");
         query_builder.push("serial_number ILIKE ");
@@ -487,19 +508,19 @@ pub async fn listar_equipamentos(
         query_builder.push(")");
     }
 
-    if let Some(status) = status.as_deref().map(str::trim).filter(|value| !value.is_empty() && *value != "TODOS") {
+    if let Some(status) = status.map(str::trim).filter(|value| !value.is_empty() && *value != "TODOS") {
         query_builder.push(" AND status = ");
         query_builder.push_bind(normalize_status_key(status));
     }
 
     query_builder.push(" ORDER BY id DESC LIMIT ");
-    query_builder.push_bind(PAGE_SIZE);
+    query_builder.push_bind(i64::from(PAGE_SIZE));
     query_builder.push(" OFFSET ");
     query_builder.push_bind(offset);
 
     let rows = query_builder
         .build_query_as::<EquipamentoRow>()
-        .fetch_all(&pool)
+        .fetch_all(&mut *connection)
         .await
         .map_err(|e| {
             error!("Erro ao listar equipamentos: {}", e);
@@ -521,8 +542,9 @@ pub async fn listar_equipamentos_paginados(
 ) -> Result<PaginatedResult<EquipamentoRow>, String> {
     let pool = get_pool().await.map_err(|error| error.to_string())?;
     let empresa_id = require_active_session_company_id(&pool).await?;
-    query_equipment_page(
-        &pool,
+    let mut connection = pool.acquire().await.map_err(|error| error.to_string())?;
+    query_equipment_page_on_connection(
+        &mut connection,
         empresa_id,
         page,
         busca.as_deref(),
@@ -1061,8 +1083,8 @@ pub async fn aprovar_orcamento(input: AprovarOrcamentoInput) -> Result<Equipamen
         error.to_string()
     })?;
 
-    let equipment: Option<(String, String)> = sqlx::query_as(
-        "SELECT COALESCE(status, ''), atualizado_em::TEXT
+    let equipment: Option<(String, String, Option<f64>)> = sqlx::query_as(
+        "SELECT COALESCE(status, ''), atualizado_em::TEXT, valor_orcamento::FLOAT8
          FROM equipamentos
          WHERE id = $1 AND empresa_id = $2
          FOR UPDATE",
@@ -1073,7 +1095,7 @@ pub async fn aprovar_orcamento(input: AprovarOrcamentoInput) -> Result<Equipamen
     .await
     .map_err(|error| format!("Erro ao validar equipamento para aprovação: {}", error))?;
 
-    let Some((current_status, _current_updated_em)) = equipment else {
+    let Some((current_status, _current_updated_em, equipment_total)) = equipment else {
         return Err("Equipamento não encontrado na empresa do perfil autenticado.".to_string());
     };
     if normalize_status_key(&current_status) != "AGUARDANDO_APROVACAO" {
@@ -1115,6 +1137,13 @@ pub async fn aprovar_orcamento(input: AprovarOrcamentoInput) -> Result<Equipamen
         return Err("Não é possível aprovar sem uma verificação técnica.".to_string());
     };
     let servicos = parse_servicos(servicos_json.as_deref().unwrap_or("[]"))?;
+    let aprovado = input.aprovado.unwrap_or(!input.servicos_aprovados.is_empty());
+    if aprovado && !servicos.is_empty() && input.servicos_aprovados.is_empty() {
+        return Err("Selecione ao menos um serviço para aprovar este orçamento.".to_string());
+    }
+    if !aprovado && !input.servicos_aprovados.is_empty() {
+        return Err("Uma reprovação não pode conter serviços aprovados.".to_string());
+    }
     let itens = normalizar_servicos(servicos_json.as_deref().unwrap_or("[]"))?;
     let vinculadas: HashSet<String> = itens.iter().flat_map(|s| {
         let id = s.get("id").and_then(|v| v.as_str()).unwrap_or("");
@@ -1128,7 +1157,6 @@ pub async fn aprovar_orcamento(input: AprovarOrcamentoInput) -> Result<Equipamen
         return Err("Há peças antigas sem serviço vinculado. Use Alterar Orçamento para vinculá-las antes da aprovação.".to_string());
     }
     aplicar_decisoes(&mut tx, empresa_id, verification_id, &servicos, &input.servicos_aprovados).await?;
-    let aprovado = !input.servicos_aprovados.is_empty();
     let novo_status = if aprovado { "APROVADO" } else { "REPROVADO" };
     let todos = itens;
     let selecionados: HashSet<&str> = input.servicos_aprovados.iter().map(String::as_str).collect();
@@ -1154,13 +1182,27 @@ pub async fn aprovar_orcamento(input: AprovarOrcamentoInput) -> Result<Equipamen
             }
         }
     }
-    if aprovado && selecionados.len() == servicos.len() {
-        total = total_original.unwrap_or(total);
+    if aprovado && servicos.is_empty() {
+        total = equipment_total.filter(|value| *value > 0.0)
+            .or(total_original.filter(|value| *value > 0.0))
+            .or(equipment_total)
+            .or(total_original)
+            .unwrap_or(total);
+    } else if aprovado && selecionados.len() == servicos.len() {
+        total = total_original.filter(|value| *value > 0.0).unwrap_or(total);
+    }
+    if aprovado && servicos.is_empty() {
+        pecas_aceitas = pecas_antigas.clone();
     }
     if !aprovado {
         aceitos = normalizar_servicos(servicos_json.as_deref().unwrap_or("[]"))?;
         pecas_aceitas = pecas_antigas;
-        total = total_original.unwrap_or(0.0);
+        total = equipment_total
+            .filter(|value| *value > 0.0)
+            .or(total_original.filter(|value| *value > 0.0))
+            .or(equipment_total)
+            .or(total_original)
+            .unwrap_or(0.0);
     }
     if !total.is_finite() || total < 0.0 { return Err("Total aprovado inválido.".to_string()); }
 
