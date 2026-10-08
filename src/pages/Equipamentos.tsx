@@ -1415,7 +1415,9 @@ export default function Equipamentos({ operationalProfile }: { operationalProfil
           equipmentId: String(selecionado.id),
           expectedUpdatedAt: selecionado.atualizado_em,
           payment: pagamento,
-          ...(servicosAprovacao.length > 0 ? { servicesApproved: idsAprovados } : {}),
+          ...(servicosAprovacao.length > 0 || todosServicosAprovados !== true
+            ? { servicesApproved: idsAprovados }
+            : {}),
         }) as unknown as Equipamento;
       } else {
         aprovado = await db.aprovarOrcamento({
@@ -1428,11 +1430,7 @@ export default function Equipamentos({ operationalProfile }: { operationalProfil
         });
       }
       await recarregar();
-      const statusFinal = idsAprovados.length > 0
-        || (servicosAprovacao.length === 0 && todosServicosAprovados === true)
-        ? "APROVADO"
-        : "REPROVADO";
-      const equipamentoAtualizado = { ...selecionado, ...aprovado, status: statusFinal };
+      const equipamentoAtualizado = { ...selecionado, ...aprovado };
       substituirLocal(equipamentoAtualizado);
       setSelecionado(equipamentoAtualizado);
       setPagamentoAprovacaoError(null);
