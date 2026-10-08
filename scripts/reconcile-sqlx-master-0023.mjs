@@ -10,10 +10,17 @@ if (!source) {
   process.exit(2);
 }
 let url;
+let databaseName;
+let databaseUser;
+let databasePassword;
 try {
   url = new URL(source);
   if (!["postgres:", "postgresql:"].includes(url.protocol)
     || !url.hostname || !url.username || !url.pathname.slice(1)) throw new Error("invalid PostgreSQL URL");
+  databaseName = decodeURIComponent(url.pathname.slice(1));
+  databaseUser = decodeURIComponent(url.username);
+  databasePassword = decodeURIComponent(url.password);
+  if (!databaseName || !databaseUser) throw new Error("incomplete PostgreSQL URL");
 } catch {
   console.error(`AUTOOS_MIGRATION_DATABASE_URL deve ser uma URL PostgreSQL válida.\n${usage}`);
   process.exit(2);
@@ -25,9 +32,9 @@ const env = {
   ...process.env,
   PGHOST: url.hostname.replace(/^\[|\]$/g, ""),
   PGPORT: url.port || "5432",
-  PGDATABASE: decodeURIComponent(url.pathname.slice(1)),
-  PGUSER: decodeURIComponent(url.username),
-  PGPASSWORD: decodeURIComponent(url.password),
+  PGDATABASE: databaseName,
+  PGUSER: databaseUser,
+  PGPASSWORD: databasePassword,
   PGCONNECT_TIMEOUT: "10",
 };
 delete env.PGHOSTADDR;
