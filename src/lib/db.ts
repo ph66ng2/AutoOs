@@ -305,9 +305,11 @@ export const db = {
   async listarProdutos(
     busca?: string,
     categoria?: string,
-    apenasEstoqueBaixo?: boolean
+    apenasEstoqueBaixo?: boolean,
+    page = 0,
   ): Promise<Produto[]> {
     return invoke<Produto[]>("listar_produtos", {
+      page,
       busca: busca ?? null,
       categoria: categoria ?? null,
       apenasEstoqueBaixo: apenasEstoqueBaixo || false,
@@ -641,6 +643,8 @@ export const db = {
       custoTotal: input.custo_total,
       profileId,
       divergence: input.divergence ?? false,
+      clienteAprovouAlteracao: input.cliente_aprovou_alteracao ?? false,
+      expectedUpdatedEm: input.expected_updated_em ?? null,
       ...(input.observacoes === undefined ? {} : { observacoes: input.observacoes }),
       ...(input.forma_pagamento_codigo === undefined
         ? {}

@@ -194,6 +194,23 @@ function normalizarServicosAprovacao(servicos: ServicoNecessario[]): ServicoNece
   return servicos.map((servico, index) => ({ ...servico, id: servico.id || `legacy:${index}` }));
 }
 
+function orcamentoJaAprovado(status: string): boolean {
+  return ["APROVADO", "EM_MANUTENCAO", "AGUARDANDO_PECA", "PRONTO", "ENTREGUE"].includes(status);
+}
+
+async function carregarProdutosLocaisParaAprovacao(): Promise<ProdutoParaPecaSugerida[]> {
+  const produtos: ProdutoParaPecaSugerida[] = [];
+  for (let page = 0; ; page += 1) {
+    const lote = await db.listarProdutos(undefined, undefined, false, page);
+    produtos.push(...lote.map((produto) => ({
+      id: String(produto.id), empresa_id: String(produto.empresa_id), nome: produto.nome,
+      quantidade_estoque: produto.quantidade_estoque, preco_venda: produto.preco_venda,
+      ativo: produto.ativo ?? true,
+    })));
+    if (lote.length < 50) return produtos;
+  }
+}
+
 function resumirPecasAprovadas(servicos: ServicoNecessario[]) {
   const resumo = new Map<string, { produto_id: string; nome: string; quantidade: number }>();
   for (const servico of servicos) {
@@ -286,6 +303,7 @@ export default function Equipamentos({ operationalProfile }: { operationalProfil
   const [servicosAjuste, setServicosAjuste] = useState<ServicoNecessario[]>([]);
   const [observacoesAjuste, setObservacoesAjuste] = useState("");
   const [formaPagamentoAjuste, setFormaPagamentoAjuste] = useState<FormaPagamentoCodigo | "">("");
+  const [clienteAprovouAlteracao, setClienteAprovouAlteracao] = useState(false);
   const [detalhePagamentoAjuste, setDetalhePagamentoAjuste] = useState("");
   const [catalogoServicosAjuste, setCatalogoServicosAjuste] = useState<ServicoCatalogo<EquipamentoId>[]>([]);
   const [carregandoCatalogoAjuste, setCarregandoCatalogoAjuste] = useState(false);
@@ -885,6 +903,7 @@ export default function Equipamentos({ operationalProfile }: { operationalProfil
     setSelecionado(eq);
     setNovoStatus("");
     setAjusteOrcamentoSemMudancaStatus(true);
+    setClienteAprovouAlteracao(false);
     setCorrecaoStatus(false);
     setMotivoCorrecaoStatus("");
     setValorFinal(0);
@@ -1360,22 +1379,16 @@ export default function Equipamentos({ operationalProfile }: { operationalProfil
       const verificacao = IS_SAAS_BUILD
         ? await (await carregarRepositorioOperacoesEquipamento()).getVerification(String(eq.id))
         : await db.buscarVerificacao(eq.id!);
-      if (IS_SAAS_BUILD) {
-        const servicosSalvos = JSON.parse(verificacao?.servicos_necessarios || "[]") as ServicoNecessario[];
-        const servicos = normalizarServicosAprovacao(servicosSalvos);
-        setServicosAprovacao(servicos);
-        setTodosServicosAprovados(null);
-        setIdsAprovados([]);
-        setTotalOrcamentoAprovacao(verificacao?.custo_total ?? undefined);
-        if (servicos.length > 0) {
-          setProdutosAprovacao(await carregarProdutosParaPecas());
-          setSelecaoServicosOpen(true);
-        } else {
-          setPagamentoDialogOpen(true);
-        }
-      } else {
-        setPagamentoDialogOpen(true);
-      }
+      const servicosSalvos = JSON.parse(verificacao?.servicos_necessarios || "[]") as ServicoNecessario[];
+      const servicos = normalizarServicosAprovacao(servicosSalvos);
+      setServicosAprovacao(servicos);
+      setTodosServicosAprovados(null);
+      setIdsAprovados([]);
+      setTotalOrcamentoAprovacao(verificacao?.custo_total ?? undefined);
+      setProdutosAprovacao(IS_SAAS_BUILD
+        ? await carregarProdutosParaPecas()
+        : await carregarProdutosLocaisParaAprovacao());
+      setSelecaoServicosOpen(true);
       setPagamentoAprovacaoInicial(verificacao?.forma_pagamento_codigo ? {
         codigo: verificacao.forma_pagamento_codigo,
         detalhe: verificacao.forma_pagamento_detalhe || null,
@@ -1416,18 +1429,19 @@ export default function Equipamentos({ operationalProfile }: { operationalProfil
           equipamento_id: selecionado.id,
           expected_updated_em: selecionado.atualizado_em,
           pagamento,
+          servicos_aprovados: idsAprovados,
         });
       }
       await recarregar();
       setPagamentoAprovacaoError(null);
       success(
         "Equipamentos",
-        IS_SAAS_BUILD && servicosAprovacao.length > 0
+        servicosAprovacao.length > 0
           ? idsAprovados.length > 0
             ? "Serviços aprovados. As peças disponíveis foram baixadas; confira faltas em Peças da OS."
             : "Orçamento reprovado sem baixa de estoque."
           : "Orçamento aprovado.",
-        IS_SAAS_BUILD && servicosAprovacao.length > 0 ? "Decisão do cliente" : "Aprovação",
+        servicosAprovacao.length > 0 ? "Decisão do cliente" : "Aprovação",
       );
       return true;
     } catch (cause) {
@@ -1498,7 +1512,7 @@ export default function Equipamentos({ operationalProfile }: { operationalProfil
 
   async function confirmarMudancaStatus(divergencia = false) {
     if (!selecionado || (!novoStatus && !ajusteOrcamentoSemMudancaStatus)) return;
-    if (ajusteOrcamentoSemMudancaStatus && selecionado.status === "APROVADO") {
+    if (ajusteOrcamentoSemMudancaStatus && orcamentoJaAprovado(selecionado.status)) {
       if (!formaPagamentoAjuste) {
         warning("Equipamentos", "Escolha a forma de pagamento antes de salvar o orçamento aprovado.");
         return;
@@ -1612,13 +1626,15 @@ export default function Equipamentos({ operationalProfile }: { operationalProfil
             pecas,
             custo_total: totalAtual,
             observacoes: observacoesAjuste,
-            ...(selecionado.status === "APROVADO" && formaPagamentoAjuste
+            ...(orcamentoJaAprovado(selecionado.status) && formaPagamentoAjuste
               ? {
                 forma_pagamento_codigo: formaPagamentoAjuste,
                 forma_pagamento_detalhe: formaPagamentoAjuste === "OUTRO" ? detalhePagamentoAjuste.trim() : undefined,
               }
               : {}),
             divergence: divergencia,
+            cliente_aprovou_alteracao: clienteAprovouAlteracao,
+            expected_updated_em: selecionado.atualizado_em,
           },
           profileId,
         );
@@ -3135,7 +3151,12 @@ export default function Equipamentos({ operationalProfile }: { operationalProfil
                       rows={3}
                     />
                   </div>
-                  {ajusteOrcamentoSemMudancaStatus && selecionado.status === "APROVADO" ? (
+                  {ajusteOrcamentoSemMudancaStatus && orcamentoJaAprovado(selecionado.status) ? (
+                    <div className="space-y-3">
+                    <label className="flex items-start gap-2 rounded-md border p-3 text-sm">
+                      <input type="checkbox" checked={clienteAprovouAlteracao} onChange={(event) => setClienteAprovouAlteracao(event.target.checked)} />
+                      <span>O cliente aprovou as mudanças de serviços e peças deste ajuste. Só a quantidade adicional aprovada terá baixa.</span>
+                    </label>
                     <FormaPagamentoFields
                       codigo={formaPagamentoAjuste}
                       detalhe={detalhePagamentoAjuste}
@@ -3143,6 +3164,7 @@ export default function Equipamentos({ operationalProfile }: { operationalProfil
                       onDetalheChange={setDetalhePagamentoAjuste}
                       required
                     />
+                    </div>
                   ) : (
                     <div className="rounded-md border bg-muted/30 px-3 py-2 text-sm text-muted-foreground">
                       A forma de pagamento será definida durante a aprovação.
@@ -3393,7 +3415,7 @@ export default function Equipamentos({ operationalProfile }: { operationalProfil
               <div className="rounded-md bg-muted/40 p-3 text-sm">
                 <p className="font-medium">{idsAprovados.length} de {servicosAprovacao.length} serviços aprovados</p>
                 {resumirPecasAprovadas(servicosAprovacao.filter((servico) => idsAprovados.includes(servico.id))).map((peca) => {
-                  const saldo = produtosAprovacao.find((produto) => produto.id === peca.produto_id)?.quantidade_estoque ?? 0;
+                  const saldo = produtosAprovacao.find((produto) => String(produto.id) === String(peca.produto_id))?.quantidade_estoque ?? 0;
                   return <p key={peca.produto_id} className={saldo < peca.quantidade ? "text-amber-700" : ""}>
                     {peca.nome}: {peca.quantidade} necessária(s), saldo {saldo}{saldo < peca.quantidade ? " · pendência" : ""}
                   </p>;
