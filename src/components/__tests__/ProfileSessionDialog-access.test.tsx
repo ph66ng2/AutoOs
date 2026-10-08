@@ -26,4 +26,11 @@ describe("confirmação de sessão", () => {
     render(<ProfileSessionDialog {...defaults} profiles={[admin, { ...admin, id: 2, nome: "Operador", role: "CUSTOM", is_default: false, pin_configured: true }]} selectedProfile={null} selectedProfileId="" />);
     expect(screen.queryByText(/0 permissões configuradas/)).not.toBeInTheDocument();
   });
+
+  it("não mostra a dica de sucesso junto de um erro de acesso", () => {
+    const current = { ...admin, pin_configured: true };
+    render(<ProfileSessionDialog {...defaults} mode="selector" profiles={[current]} selectedProfile={current} error="O banco atingiu o limite de acessos ao mesmo tempo." />);
+    expect(screen.getByText(/O banco atingiu o limite/)).toBeInTheDocument();
+    expect(screen.queryByText(/Você já está neste perfil/)).not.toBeInTheDocument();
+  });
 });

@@ -13,6 +13,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { cn } from "@/lib/utils";
+import { securityRoleLabel } from "@/lib/security-profile-labels";
 import { SENSITIVE_PERMISSION_LABELS, type SecurityProfile } from "@/types";
 
 type ProfileDialogMode = "startup" | "selector" | "sensitive";
@@ -168,7 +169,7 @@ export function ProfileSessionDialog({
                   </div>
                   <div>
                     <div className="font-semibold text-slate-900">{selectedProfile?.nome}</div>
-                    <div className="text-xs text-slate-500">{selectedProfile?.role}</div>
+                    <div className="text-xs text-slate-500">{securityRoleLabel(selectedProfile?.role)}</div>
                   </div>
                 </div>
 
@@ -277,7 +278,7 @@ export function ProfileSessionDialog({
                       <div className="flex items-start justify-between gap-3">
                         <div>
                           <div className="font-semibold text-slate-900">{profile.nome}</div>
-                          <div className="text-xs text-slate-500">{profile.role}</div>
+                          <div className="text-xs text-slate-500">{securityRoleLabel(profile.role)}</div>
                         </div>
                         <div className="flex flex-wrap justify-end gap-2">
                           {isCurrent && <Badge variant="secondary">Perfil atual</Badge>}
@@ -310,7 +311,7 @@ export function ProfileSessionDialog({
                     </div>
                     <div>
                       <CardTitle className="text-xl">{selectedProfile.nome}</CardTitle>
-                      <CardDescription>{selectedProfile.role}</CardDescription>
+                      <CardDescription>{securityRoleLabel(selectedProfile.role)}</CardDescription>
                     </div>
                   </div>
                 </CardHeader>
@@ -395,15 +396,15 @@ export function ProfileSessionDialog({
               </form>
             ) : (
               <div className="mt-5 space-y-4">
-                {selectedProfile && !selectedProfile.pin_configured ? (
-                  <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-800">
-                    Este perfil não exige PIN. Clique abaixo para continuar.
-                  </div>
-                ) : (
+                {!error && selectedProfile && (selectedProfile.pin_configured ? (
                   <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-800">
                     Você já está neste perfil. Use o botão abaixo para continuar sem trocar a conta atual.
                   </div>
-                )}
+                ) : (
+                  <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-800">
+                    Este perfil não exige PIN. Clique abaixo para continuar.
+                  </div>
+                ))}
                 {error && <p className="text-sm text-red-600">{error}</p>}
               </div>
             )}
