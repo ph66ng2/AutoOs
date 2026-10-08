@@ -29,8 +29,8 @@ BEGIN
       ) AS duplicates;
 
     IF duplicate_profiles IS NOT NULL THEN
-        RAISE EXCEPTION 'Perfis ativos com nomes duplicados: %', duplicate_profiles
-            USING HINT = 'Renomeie os perfis duplicados (inclusive inativos) e execute novamente a migration.';
+        RAISE EXCEPTION 'Perfis com nomes normalizados duplicados: %', duplicate_profiles
+            USING HINT = 'Renomeie todos os perfis duplicados, inclusive inativos, e execute novamente a migration.';
     END IF;
 END $$;
 
