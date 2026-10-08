@@ -23,6 +23,7 @@ import {
 import { db } from "@/lib/db";
 import { DatabaseConfigService } from "@/lib/db-config";
 import type { DatabaseConnectionConfig, SecurityProfile } from "@/types";
+import { securityRoleLabel } from "@/lib/security-profile-labels";
 
 interface PasswordRecoveryDialogProps {
   open: boolean;
@@ -280,7 +281,7 @@ export function PasswordRecoveryDialog({
                 </option>
                 {activeProfiles.map((profile) => (
                   <option key={profile.id} value={String(profile.id)}>
-                    {profile.nome} ({profile.role})
+                    {profile.nome} ({securityRoleLabel(profile.role)})
                   </option>
                 ))}
               </select>

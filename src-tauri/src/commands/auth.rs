@@ -1,5 +1,5 @@
 use crate::commands::types::{LoginEmpresaResult, RegistroEmpresaResult};
-use crate::db::get_pool;
+use crate::db::{self, get_pool};
 use argon2::{
     password_hash::{rand_core::OsRng, PasswordHash, PasswordHasher, PasswordVerifier, SaltString},
     Argon2,
@@ -624,46 +624,54 @@ pub fn require_permission(permission: &str) -> Result<SecurityProfileSummary, St
 
 async fn ensure_default_profile_exists() -> Result<(), String> {
     let pool = get_pool().await.map_err(|e| e.to_string())?;
-    let row = sqlx::query("SELECT COUNT(*) AS total FROM security_profiles WHERE ativo = true")
+    let row_result = sqlx::query("SELECT COUNT(*) AS total FROM security_profiles WHERE ativo = true")
         .fetch_one(&pool)
-        .await
-        .map_err(|e| {
-            error!("Erro ao contar perfis de segurança: {}", e);
-            e.to_string()
-        })?;
+        .await;
+    let row = match row_result {
+        Ok(row) => row,
+        Err(error) => {
+            error!("Erro ao contar perfis de segurança: {}", error);
+            return Err(db::database_operation_error(error).await);
+        }
+    };
 
     let total: i64 = row.try_get("total").map_err(|e| e.to_string())?;
     if total == 0 {
         let permissions = serde_json::to_string(&ALL_PERMISSIONS.iter().map(|value| value.to_string()).collect::<Vec<_>>())
             .map_err(|e| e.to_string())?;
-        sqlx::query(
+        let insert_result = sqlx::query(
             "INSERT INTO security_profiles (nome, role, permissions, is_default) VALUES ($1, $2, $3, true)"
         )
         .bind("Administrador Local")
         .bind("ADMIN")
         .bind(permissions)
         .execute(&pool)
-        .await
-        .map_err(|e| {
-            error!("Erro ao recriar perfil administrador padrão: {}", e);
-            e.to_string()
-        })?;
+        .await;
+        if let Err(error) = insert_result {
+            error!("Erro ao recriar perfil administrador padrão: {}", error);
+            return Err(db::database_operation_error(error).await);
+        }
     }
 
-    let default_row = sqlx::query("SELECT COUNT(*) AS total FROM security_profiles WHERE ativo = true AND is_default = true")
+    let default_row_result = sqlx::query("SELECT COUNT(*) AS total FROM security_profiles WHERE ativo = true AND is_default = true")
         .fetch_one(&pool)
-        .await
-        .map_err(|e| e.to_string())?;
+        .await;
+    let default_row = match default_row_result {
+        Ok(row) => row,
+        Err(error) => return Err(db::database_operation_error(error).await),
+    };
     let default_total: i64 = default_row.try_get("total").map_err(|e| e.to_string())?;
     if default_total == 0 {
-        sqlx::query(
+        let update_result = sqlx::query(
             "UPDATE security_profiles SET is_default = CASE WHEN id = (
                 SELECT id FROM security_profiles WHERE ativo = true ORDER BY id ASC LIMIT 1
             ) THEN true ELSE false END"
         )
         .execute(&pool)
-        .await
-        .map_err(|e| e.to_string())?;
+        .await;
+        if let Err(error) = update_result {
+            return Err(db::database_operation_error(error).await);
+        }
     }
 
     Ok(())
@@ -682,14 +690,17 @@ async fn fetch_profile_records_with_scope(include_inactive: bool) -> Result<Vec<
 
     query_builder.push(" ORDER BY ativo DESC, is_default DESC, nome ASC");
 
-    query_builder
+    let profiles_result = query_builder
         .build_query_as::<SecurityProfileRecord>()
         .fetch_all(&pool)
-        .await
-        .map_err(|e| {
-            error!("Erro ao listar perfis de segurança: {}", e);
-            e.to_string()
-        })
+        .await;
+    match profiles_result {
+        Ok(profiles) => Ok(profiles),
+        Err(error) => {
+            error!("Erro ao listar perfis de segurança: {}", error);
+            Err(db::database_operation_error(error).await)
+        }
+    }
 }
 
 async fn fetch_profile_records() -> Result<Vec<SecurityProfileRecord>, String> {

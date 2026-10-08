@@ -13,8 +13,8 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { cn } from "@/lib/utils";
-import { securityRoleLabel } from "@/lib/security-profile-labels";
-import { SENSITIVE_PERMISSION_LABELS, type SecurityProfile } from "@/types";
+import { securityPermissionLabel, securityRoleLabel } from "@/lib/security-profile-labels";
+import type { SecurityProfile } from "@/types";
 
 type ProfileDialogMode = "startup" | "selector" | "sensitive";
 
@@ -332,7 +332,7 @@ export function ProfileSessionDialog({
                     <div className="flex flex-wrap gap-2">
                       {permissionPreview.map((permission) => (
                         <Badge key={permission} variant="outline" className="text-[11px]">
-                          {SENSITIVE_PERMISSION_LABELS[permission]}
+                          {securityPermissionLabel(permission)}
                         </Badge>
                       ))}
                       {selectedProfile.permissions.length > permissionPreview.length && (

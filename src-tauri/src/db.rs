@@ -19,7 +19,8 @@
 use crate::commands::util::{local_app_data_dir, DatabaseConnectionConfig, DATABASE_CONFIG_FILE};
 use sqlx::{
     migrate::Migrator,
-    postgres::{PgPool, PgPoolOptions},
+    postgres::{PgConnection, PgPool, PgPoolOptions},
+    Connection,
 };
 use std::env;
 use std::fs;
@@ -42,6 +43,7 @@ static INIT_ERROR: Mutex<Option<String>> = Mutex::new(None);
 const DATABASE_ACQUIRE_TIMEOUT: Duration = Duration::from_secs(6);
 const DATABASE_SCHEMA_TIMEOUT: Duration = Duration::from_secs(6);
 const DATABASE_MAX_CONNECTIONS: u32 = 5;
+const DATABASE_CAPACITY_DIAGNOSTIC_TIMEOUT: Duration = Duration::from_secs(2);
 const STARTUP_CONNECT_ATTEMPTS: usize = 2;
 const STARTUP_RETRY_DELAY: Duration = Duration::from_millis(750);
 
@@ -101,6 +103,9 @@ pub fn database_error_message(error: &sqlx::Error) -> String {
         sqlx::Error::Database(database_error) if database_error.code().as_deref() == Some("3D000") => {
             "O banco de dados informado não existe. No Supabase, use a URL do Session pooler completa e confirme que ela termina em /postgres?sslmode=require.".to_string()
         }
+        sqlx::Error::Database(database_error) if database_error.code().as_deref() == Some("53300") => {
+            "SQLSTATE 53300: too many clients".to_string()
+        }
         sqlx::Error::Database(_) => {
             "O servidor PostgreSQL recusou a conexão ou a operação de inicialização.".to_string()
         }
@@ -109,6 +114,53 @@ pub fn database_error_message(error: &sqlx::Error) -> String {
                 .to_string()
         }
         _ => "Não foi possível inicializar o banco de dados.".to_string(),
+    }
+}
+
+/// O SQLx 0.9 repete o SQLSTATE 53300 durante a abertura de conexões e pode
+/// convertê-lo em PoolTimedOut. Após esse timeout, fazemos uma única conexão
+/// curta para recuperar o código original e só o reportamos se o Postgres o
+/// confirmar. Se o pool local já estiver totalmente ocupado, mantemos a
+/// mensagem de espera do pool sem abrir uma conexão extra.
+pub async fn database_operation_error(error: sqlx::Error) -> String {
+    if matches!(
+        &error,
+        sqlx::Error::Database(database_error)
+            if database_error.code().as_deref() == Some("53300")
+    ) {
+        return "SQLSTATE 53300: too many clients".to_string();
+    }
+
+    if !matches!(&error, sqlx::Error::PoolTimedOut) {
+        return database_error_message(&error);
+    }
+
+    if let Ok(pool) = get_pool().await {
+        if pool.size() >= DATABASE_MAX_CONNECTIONS && pool.num_idle() == 0 {
+            return database_error_message(&error);
+        }
+    }
+
+    let Ok(database_url) = resolve_database_url() else {
+        return database_error_message(&error);
+    };
+
+    match tokio::time::timeout(
+        DATABASE_CAPACITY_DIAGNOSTIC_TIMEOUT,
+        PgConnection::connect(&database_url),
+    )
+    .await
+    {
+        Ok(Err(sqlx::Error::Database(database_error)))
+            if database_error.code().as_deref() == Some("53300") =>
+        {
+            "SQLSTATE 53300: too many clients".to_string()
+        }
+        Ok(Ok(connection)) => {
+            let _ = connection.close().await;
+            database_error_message(&error)
+        }
+        _ => database_error_message(&error),
     }
 }
 

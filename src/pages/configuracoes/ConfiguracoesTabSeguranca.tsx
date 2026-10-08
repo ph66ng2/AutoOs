@@ -13,7 +13,7 @@ import {
 } from "@/components/ui/select";
 import { TabsContent } from "@/components/ui/tabs";
 import { ProfileDeleteDialog } from "@/components/ProfileDeleteDialog";
-import { securityRoleLabel } from "@/lib/security-profile-labels";
+import { securityPermissionLabel, securityRoleLabel } from "@/lib/security-profile-labels";
 import {
   SENSITIVE_PERMISSION_LABELS,
   type SecurityProfile,
@@ -152,7 +152,7 @@ export function ConfiguracoesTabSeguranca({
             <div className="font-medium">{accessStatus?.active_profile_name || "Perfil sem nome"}</div>
             <div className="text-muted-foreground">Papel: {securityRoleLabel(accessStatus?.active_role || accessStatus?.profiles.find((profile) => profile.id === accessStatus.active_profile_id)?.role)}</div>
             <div className="mt-2 text-muted-foreground">
-              Permissões: {accessStatus?.permissions.length ? accessStatus.permissions.map((permission) => SENSITIVE_PERMISSION_LABELS[permission] || permission).join(", ") : "nenhuma"}
+              Permissões: {accessStatus?.permissions.length ? accessStatus.permissions.map(securityPermissionLabel).join(", ") : "nenhuma"}
             </div>
           </div>
         </CardContent>
@@ -312,7 +312,7 @@ export function ConfiguracoesTabSeguranca({
               <h3 className="text-lg font-semibold">Resetar PIN do colaborador</h3>
               {managedProfile && (
                 <p className="text-sm text-muted-foreground">
-                  Perfil selecionado: {managedProfile.nome} ({managedProfile.role}) — {managedProfile.pin_configured ? "PIN ativo" : "PIN pendente"}
+                  Perfil selecionado: {managedProfile.nome} ({securityRoleLabel(managedProfile.role)}) — {managedProfile.pin_configured ? "PIN ativo" : "PIN pendente"}
                 </p>
               )}
               <div className="grid gap-4 md:grid-cols-2">
