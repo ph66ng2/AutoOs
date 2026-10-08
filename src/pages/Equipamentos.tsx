@@ -429,13 +429,6 @@ export default function Equipamentos({ operationalProfile }: { operationalProfil
     };
   }, [carregarImagensComPreview]);
 
-  useEffect(() => {
-    if ((novoStatus === "AGUARDANDO_APROVACAO" || ajusteOrcamentoSemMudancaStatus) && verificacaoAjusteOrcamento) {
-      const servicosTotal = servicosAjuste.reduce((sum, s) => sum + (Number(s.valor) || 0), 0);
-      setValorOrcamento(servicosTotal + somarPecas(mesclarPecasDoOrcamento(pecasLegadasAjuste, servicosAjuste)));
-    }
-  }, [servicosAjuste, pecasLegadasAjuste, verificacaoAjusteOrcamento, novoStatus, ajusteOrcamentoSemMudancaStatus]);
-
   const form = useForm<EquipamentoFormData>({
      resolver: zodResolver(equipamentoSchema),
       defaultValues: {
@@ -1609,17 +1602,18 @@ export default function Equipamentos({ operationalProfile }: { operationalProfil
         ]);
       }
 
+      let expectedUpdatedEm = selecionado.atualizado_em;
       if ((novoStatus === "AGUARDANDO_APROVACAO" || ajusteOrcamentoSemMudancaStatus) && verificacaoAjusteOrcamento && !reabreOrcamentoSemAjuste(selecionado.status, novoStatus)) {
         const profileId = sensitiveStatus?.active_profile_id;
         if (!profileId) {
           throw new Error("Perfil autorizado não encontrado para ajustar o orçamento.");
         }
-        const expectedUpdatedEm = selecionado.atualizado_em?.trim();
-        if (!expectedUpdatedEm) {
+        const expectedUpdatedEmAtual = selecionado.atualizado_em?.trim();
+        if (!expectedUpdatedEmAtual) {
           throw new Error("A versão deste orçamento não está disponível. Atualize a lista e tente novamente.");
         }
         const pecas = mesclarPecasDoOrcamento(pecasLegadasAjuste, servicosAjuste);
-        await db.atualizarServicosVerificacao(
+        const ajusteSalvo = await db.atualizarServicosVerificacao(
           {
             equipamento_id: selecionado.id!,
             empresa_id: selecionado.empresa_id,
@@ -1635,10 +1629,14 @@ export default function Equipamentos({ operationalProfile }: { operationalProfil
               : {}),
             divergence: divergencia,
             cliente_aprovou_alteracao: clienteAprovouAlteracao,
-            expected_updated_em: expectedUpdatedEm,
+            expected_updated_em: expectedUpdatedEmAtual,
           },
           profileId,
         );
+        expectedUpdatedEm = ajusteSalvo.equipamento_atualizado_em;
+        if (!expectedUpdatedEm) {
+          throw new Error("O orçamento foi salvo, mas não foi possível confirmar sua nova versão. Atualize a lista antes de continuar.");
+        }
       }
 
       if (ajusteOrcamentoSemMudancaStatus) {
@@ -1655,7 +1653,7 @@ export default function Equipamentos({ operationalProfile }: { operationalProfil
         totalAtual || undefined,
         prazoAprovacao || undefined,
         valorFinal || undefined,
-        selecionado.atualizado_em,
+        expectedUpdatedEm,
         correcaoStatus ? motivoCorrecaoStatus.trim() : undefined,
       );
       if (!resultado.sucesso) {
@@ -1664,9 +1662,18 @@ export default function Equipamentos({ operationalProfile }: { operationalProfil
       setStatusDialogOpen(false);
       setImagensSaidaEntrega([]);
       setErroImagensSaidaEntrega(null);
+      success(
+        "Equipamentos",
+        ajusteOrcamentoSemMudancaStatus ? "Orçamento atualizado." : "Status atualizado.",
+        ajusteOrcamentoSemMudancaStatus ? "Alterar orçamento" : "Alterar status",
+      );
     } catch (err: any) {
       console.error("Erro:", err);
-      showError("Equipamentos", "Alterar status", err);
+      const ajusteDeOrcamento = ajusteOrcamentoSemMudancaStatus
+        || (novoStatus === "AGUARDANDO_APROVACAO"
+          && Boolean(verificacaoAjusteOrcamento)
+          && !reabreOrcamentoSemAjuste(selecionado.status, novoStatus));
+      showError("Equipamentos", ajusteDeOrcamento ? "Alterar orçamento" : "Alterar status", err);
     }
     finally { setSalvando(false); }
   }
@@ -2515,8 +2522,7 @@ export default function Equipamentos({ operationalProfile }: { operationalProfil
                       <TableCell>
                         <div className="flex flex-wrap items-center gap-2">
                           <StatusBadge status={eq.status} />
-                          {(eq.status === "AGUARDANDO_APROVACAO" || eq.status === "ORCAMENTO_VENCIDO") &&
-                            eq.valor_orcamento != null && eq.valor_orcamento > 0 && (
+                          {eq.valor_orcamento != null && eq.valor_orcamento > 0 && (
                               <div className="inline-flex items-center rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-xs font-medium text-amber-900">
                                 Orçamento: R$ {eq.valor_orcamento.toFixed(2)}
                               </div>
@@ -3421,7 +3427,13 @@ export default function Equipamentos({ operationalProfile }: { operationalProfil
             <Button type="button" variant="outline" onClick={() => setSelecaoServicosOpen(false)} disabled={pagamentoAprovacaoLoading}>Cancelar</Button>
             <Button type="button" disabled={todosServicosAprovados === null || pagamentoAprovacaoLoading}
               onClick={() => void confirmarSelecaoServicosAprovados()}>
-              {pagamentoAprovacaoLoading ? "Salvando..." : idsAprovados.length || (servicosAprovacao.length === 0 && todosServicosAprovados) ? "Continuar para pagamento" : "Confirmar reprovação"}
+              {pagamentoAprovacaoLoading
+                ? "Salvando..."
+                : todosServicosAprovados === null
+                  ? "Escolha uma decisão"
+                  : idsAprovados.length > 0 || (servicosAprovacao.length === 0 && todosServicosAprovados)
+                    ? "Continuar para pagamento"
+                    : "Confirmar reprovação"}
             </Button>
           </DialogFooter>
         </DialogContent>

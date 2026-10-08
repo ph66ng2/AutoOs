@@ -155,6 +155,11 @@ async fn main() -> Result<()> {
 
     auth::unlock_session_without_pin().await.map_err(|e| anyhow!(e))?;
 
+    sqlx::query("UPDATE equipamentos SET status = 'VERIFICADO', atualizado_em = NOW() WHERE id = $1")
+        .bind(equipamento.id)
+        .execute(&pool)
+        .await
+        .context("prepare quote submission status failed")?;
     let adjustment_token: String = sqlx::query_scalar("SELECT atualizado_em::TEXT FROM equipamentos WHERE id=$1")
         .bind(equipamento.id).fetch_one(&pool).await?;
     let updated = verificacoes::atualizar_servicos_verificacao(
@@ -175,6 +180,9 @@ async fn main() -> Result<()> {
     if updated.custo_total != Some(225.0) {
         return Err(anyhow!("expected custo_total=225.0, got {:?}", updated.custo_total));
     }
+    if updated.equipamento_atualizado_em.is_empty() {
+        return Err(anyhow!("budget adjustment did not return the new equipment version"));
+    }
     let expected_servicos = Some("[{\"nome\":\"Serviço A\"},{\"nome\":\"Serviço B\"}]".to_string());
     if updated.servicos_necessarios != expected_servicos {
         return Err(anyhow!("servicos_necessarios not updated correctly: got {:?}", updated.servicos_necessarios));
@@ -184,9 +192,24 @@ async fn main() -> Result<()> {
         return Err(anyhow!("pecas_necessarias not updated correctly: got {:?}", updated.pecas_necessarias));
     }
 
+    equipamentos::atualizar_status_equipamento(
+        equipamento.id,
+        "AGUARDANDO_APROVACAO".to_string(),
+        Some(225.0),
+        None,
+        None,
+        Some(updated.equipamento_atualizado_em.clone()),
+        None,
+    )
+    .await
+    .map_err(|error| anyhow!("submitting adjusted quote with returned version failed: {error}"))?;
+
     let equipamento_final = equipamentos::buscar_equipamento(equipamento.id).await.map_err(|e| anyhow!(e))?;
     if equipamento_final.valor_orcamento != Some(225.0) {
         return Err(anyhow!("expected valor_orcamento=225.0, got {:?}", equipamento_final.valor_orcamento));
+    }
+    if equipamento_final.status.as_deref() != Some("AGUARDANDO_APROVACAO") {
+        return Err(anyhow!("expected AGUARDANDO_APROVACAO after adjusted quote submission, got {:?}", equipamento_final.status));
     }
 
     let adjusted: (Option<String>, Option<i32>) = sqlx::query_as(

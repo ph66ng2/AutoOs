@@ -361,6 +361,8 @@ export interface Verificacao {
   forma_pagamento_codigo?: FormaPagamentoCodigo;
   forma_pagamento_detalhe?: string;
   adjusted_at?: string;
+  /** Timestamp do equipamento após um ajuste de orçamento local. */
+  equipamento_atualizado_em?: string;
 }
 
 /** Contato operacional pertencente a um cliente dentro de uma empresa. */
