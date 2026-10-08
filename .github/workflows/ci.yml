@@ -172,9 +172,7 @@ jobs:
       matrix:
         include:
           - platform: windows-latest
-            args: ''
           - platform: ubuntu-latest
-            args: ''
     runs-on: ${{ matrix.platform }}
     steps:
       - name: Checkout
@@ -212,13 +210,13 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY || secrets.TAURI_SIGNING_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
-          args: ${{ matrix.args }}
+          args: --no-bundle
 
-      - name: Upload artifacts
+      - name: Upload compiled application
         uses: actions/upload-artifact@v4
         with:
           name: autoos-${{ matrix.platform }}
           path: |
-            src-tauri/target/release/bundle/
+            src-tauri/target/release/autoos
             src-tauri/target/release/*.exe
           retention-days: 7

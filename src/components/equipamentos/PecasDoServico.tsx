@@ -3,30 +3,45 @@ import { Plus, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { carregarProdutosParaPecas, type ProdutoParaPecaSugerida } from "@/lib/data/servicos-repository";
+import { db } from "@/lib/db";
 import type { ClienteId, PecaVinculada } from "@/types";
 
 interface Props<Id extends ClienteId> {
   pecas: PecaVinculada<Id>[];
   onChange: (pecas: PecaVinculada<Id>[]) => void;
+  saasMode?: boolean;
 }
 
-export function PecasDoServico<Id extends ClienteId>({ pecas, onChange }: Props<Id>) {
+export function PecasDoServico<Id extends ClienteId>({ pecas, onChange, saasMode = true }: Props<Id>) {
   const [produtos, setProdutos] = useState<ProdutoParaPecaSugerida[]>([]);
   const [erro, setErro] = useState("");
   const [carregando, setCarregando] = useState(true);
 
   useEffect(() => {
     let ativo = true;
-    void carregarProdutosParaPecas()
+    const carregar = async (): Promise<ProdutoParaPecaSugerida[]> => {
+      if (saasMode) return carregarProdutosParaPecas();
+      const rows: ProdutoParaPecaSugerida[] = [];
+      for (let page = 0; ; page += 1) {
+        const lote = await db.listarProdutos(undefined, undefined, false, page);
+        rows.push(...lote.map((produto) => ({
+          id: produto.id!, empresa_id: produto.empresa_id!, nome: produto.nome,
+          quantidade_estoque: produto.quantidade_estoque,
+          preco_venda: produto.preco_venda, ativo: produto.ativo ?? true,
+        })));
+        if (lote.length < 50) return rows;
+      }
+    };
+    void carregar()
       .then((lista) => { if (ativo) setProdutos(lista); })
       .catch(() => { if (ativo) setErro("Não foi possível consultar o estoque."); })
       .finally(() => { if (ativo) setCarregando(false); });
     return () => { ativo = false; };
-  }, []);
+  }, [saasMode]);
 
   function adicionar(produtoId: string) {
-    const produto = produtos.find((item) => item.id === produtoId);
-    if (!produto || pecas.some((item) => item.produto_id === produtoId)) return;
+    const produto = produtos.find((item) => String(item.id) === produtoId);
+    if (!produto || pecas.some((item) => String(item.produto_id) === produtoId)) return;
     onChange([...pecas, {
       produto_id: produto.id as Id,
       nome: produto.nome,
@@ -36,10 +51,10 @@ export function PecasDoServico<Id extends ClienteId>({ pecas, onChange }: Props<
   }
 
   return (
-    <div className="mt-2 space-y-2 rounded-md border p-3">
+    <div className="mt-2 min-w-0 space-y-2 rounded-md border p-3">
       <p className="text-xs font-medium">Peças sugeridas para este serviço</p>
       {pecas.map((peca) => {
-        const saldo = produtos.find((item) => item.id === peca.produto_id)?.quantidade_estoque;
+        const saldo = produtos.find((item) => String(item.id) === String(peca.produto_id))?.quantidade_estoque;
         return (
           <div key={peca.produto_id} className="flex flex-wrap items-center gap-2 text-sm">
             <span className="min-w-36 flex-1">{peca.nome}</span>
@@ -85,7 +100,7 @@ export function PecasDoServico<Id extends ClienteId>({ pecas, onChange }: Props<
         <select
           aria-label="Adicionar peça"
           aria-busy={carregando}
-          className="h-9 flex-1 rounded-md border bg-background px-2 text-sm"
+          className="h-9 min-w-0 flex-1 rounded-md border bg-background px-2 text-sm"
           value=""
           disabled={carregando || Boolean(erro) || produtos.length === 0}
           onChange={(event) => adicionar(event.target.value)}
@@ -93,7 +108,7 @@ export function PecasDoServico<Id extends ClienteId>({ pecas, onChange }: Props<
           <option value="">
             {carregando ? "Carregando estoque..." : erro ? "Estoque indisponível" : produtos.length === 0 ? "Nenhuma peça ativa no estoque" : "Adicionar peça do estoque..."}
           </option>
-          {produtos.filter((produto) => !pecas.some((peca) => peca.produto_id === produto.id))
+          {produtos.filter((produto) => !pecas.some((peca) => String(peca.produto_id) === String(produto.id)))
             .map((produto) => (
               <option key={produto.id} value={produto.id}>
                 {produto.nome} · saldo {produto.quantidade_estoque}

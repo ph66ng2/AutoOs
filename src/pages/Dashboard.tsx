@@ -405,7 +405,7 @@ export default function Dashboard() {
       {/* Graficos */}
       <div className="grid gap-6 lg:grid-cols-3">
         <Card>
-          <CardHeader><CardTitle className="text-lg">Distribuicao por Status</CardTitle></CardHeader>
+          <CardHeader><CardTitle className="text-lg">Distribuição por status</CardTitle></CardHeader>
           <CardContent className="h-64">
             {statusChartData.length === 0 ? (
               <div className="flex items-center justify-center h-full text-muted-foreground">
@@ -428,7 +428,7 @@ export default function Dashboard() {
         </Card>
 
         <Card>
-          <CardHeader><CardTitle className="text-lg">Recebidos por Mes</CardTitle></CardHeader>
+          <CardHeader><CardTitle className="text-lg">Recebidos por mês</CardTitle></CardHeader>
           <CardContent className="h-64">
             {recebidosPorMes.length === 0 ? (
               <div className="flex items-center justify-center h-full text-muted-foreground">
@@ -449,7 +449,7 @@ export default function Dashboard() {
         </Card>
 
         <Card>
-          <CardHeader><CardTitle className="text-lg">Receita por Mes</CardTitle></CardHeader>
+          <CardHeader><CardTitle className="text-lg">Receita por mês</CardTitle></CardHeader>
           <CardContent className="h-64">
             {receitaPorMes.length === 0 ? (
               <div className="flex items-center justify-center h-full text-muted-foreground">

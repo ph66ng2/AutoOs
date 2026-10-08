@@ -40,6 +40,7 @@ vi.mock("@/lib/db", () => ({
     listarImagensEquipamento: (...args: unknown[]) =>
       mockListarImagensEquipamento(...args),
     listarEquipamentos: vi.fn().mockResolvedValue([]),
+    listarEquipamentosPaginados: vi.fn().mockResolvedValue({ items: [], total: 0 }),
     buscarCliente: vi.fn().mockRejectedValue(new Error("no client")),
     buscarVerificacao: vi.fn().mockRejectedValue(new Error("no verif")),
     listarComunicacoes: vi.fn().mockResolvedValue([]),

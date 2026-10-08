@@ -497,6 +497,16 @@ export interface WhatsappConfigInput extends WhatsappConfig {
   token?: string;
 }
 
+export interface PhotoTunnelConfig {
+  has_token?: boolean;
+  env_override?: boolean;
+  public_host: string;
+}
+
+export interface PhotoTunnelConfigInput {
+  token?: string;
+}
+
 export interface EmailAttachment {
   filename: string;
   content_type?: string;
@@ -851,6 +861,8 @@ export interface AjusteOrcamentoInput {
   forma_pagamento_codigo?: FormaPagamentoCodigo;
   forma_pagamento_detalhe?: string;
   divergence?: boolean;
+  cliente_aprovou_alteracao?: boolean;
+  expected_updated_em?: string;
 }
 
 /** Payload da operação atômica de aprovação de orçamento. */
@@ -859,4 +871,6 @@ export interface AprovarOrcamentoInput {
   equipamento_id: number;
   expected_updated_em: string;
   pagamento: FormaPagamento;
+  servicos_aprovados: string[];
+  aprovar_sem_servicos?: boolean;
 }

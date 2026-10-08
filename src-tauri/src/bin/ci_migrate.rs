@@ -43,6 +43,9 @@ async fn main() -> Result<()> {
         Ok(Ok(())) => {}
         Ok(Err(error)) => {
             pool.close().await;
+            if matches!(error, sqlx::migrate::MigrateError::VersionMismatch(_)) {
+                bail!("Histórico SQLx incompatível: rode scripts/check-sqlx-database-history.mjs com AUTOOS_MIGRATION_DATABASE_URL. Se a divergência for a 0023 conhecida da master, use scripts/reconcile-sqlx-master-0023.mjs --apply após conferir o schema.");
+            }
             return Err(error).context("falha ao aplicar migrations no banco descartável da CI");
         }
         Err(_) => {

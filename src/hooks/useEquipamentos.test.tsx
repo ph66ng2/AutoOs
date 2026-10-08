@@ -2,12 +2,13 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { renderHook, act, waitFor } from "@testing-library/react";
 import type { Equipamento } from "@/types";
 
-const mockListar = vi.hoisted(() => vi.fn());
+const mockListarPaginados = vi.hoisted(() => vi.fn());
 const mockCriar = vi.hoisted(() => vi.fn());
 
 vi.mock("@/lib/db", () => ({
   db: {
-    listarEquipamentos: (...args: unknown[]) => mockListar(...args),
+    listarEquipamentosPaginados: (...args: unknown[]) => mockListarPaginados(...args),
+    listarEquipamentos: async (...args: unknown[]) => (await mockListarPaginados(...args)).items,
     criarEquipamento: (...args: unknown[]) => mockCriar(...args),
   },
 }));
@@ -29,14 +30,14 @@ const novoEquipamento: Omit<Equipamento, "id"> = {
 describe("useEquipamentos — registro", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mockListar.mockResolvedValue([]);
+    mockListarPaginados.mockResolvedValue({ items: [], total: 0 });
   });
 
   it("criar chama db.criarEquipamento e recarrega a lista", async () => {
     const persistido: Equipamento = { ...novoEquipamento, id: 100 };
     let lista: Equipamento[] = [];
 
-    mockListar.mockImplementation(async () => [...lista]);
+    mockListarPaginados.mockImplementation(async () => ({ items: [...lista], total: lista.length }));
     mockCriar.mockImplementation(async (payload: Omit<Equipamento, "id">) => {
       lista = [{ ...payload, id: persistido.id }];
       return lista[0]!;
@@ -79,5 +80,22 @@ describe("useEquipamentos — registro", () => {
 
     expect(out?.sucesso).toBe(false);
     expect(String(out?.erro)).toContain("duplicado");
+  });
+
+  it("envia a ordenação escolhida ao banco ao trocar a visualização", async () => {
+    const { rerender } = renderHook(
+      ({ ordenacao }: { ordenacao: "ATUALIZACAO_RECENTE" | "CADASTRO_RECENTE" }) =>
+        useEquipamentos({ page: 2, ordenacao }),
+      { initialProps: { ordenacao: "ATUALIZACAO_RECENTE" as const } },
+    );
+
+    await waitFor(() => {
+      expect(mockListarPaginados).toHaveBeenCalledWith(undefined, undefined, 1, "ATUALIZACAO_RECENTE");
+    });
+
+    rerender({ ordenacao: "CADASTRO_RECENTE" });
+    await waitFor(() => {
+      expect(mockListarPaginados).toHaveBeenCalledWith(undefined, undefined, 1, "CADASTRO_RECENTE");
+    });
   });
 });

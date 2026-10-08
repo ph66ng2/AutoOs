@@ -187,6 +187,13 @@ export default function SaasClientesPage() {
                 action={validationMessage ? "Revise o formulário" : "Falha ao salvar online"}
                 message={validationMessage || operationError || ""}
               />
+              {operationError?.includes("CPF/CNPJ já está cadastrado") && (
+                <Button type="button" variant="outline" className="mt-3" onClick={() => {
+                  setBusca(form.getValues("documento").replace(/\D/g, ""));
+                  setPagina(1);
+                  setDialogOpen(false);
+                }}>Buscar cliente existente</Button>
+              )}
             </div>
           )}
           <DialogFooter>

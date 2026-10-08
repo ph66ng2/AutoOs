@@ -8,13 +8,13 @@
 //! ║  - deletar_cliente: DELETE por ID                            ║
 //! ╚══════════════════════════════════════════════════════════════╝
 
-use crate::commands::types::{ClienteInput, ClienteRow, CLIENTE_SELECT};
+use crate::commands::types::{ClienteInput, ClienteRow, PaginatedResult, CLIENTE_SELECT};
 use crate::commands::auth::{
     record_security_event, require_active_session_company_id, require_permission,
     PERMISSION_DELETE_RECORDS,
 };
 use crate::db::get_pool;
-use sqlx::Row;
+use sqlx::{PgPool, Postgres, QueryBuilder, Row};
 use tracing::{debug, error, info, instrument};
 
 use super::equipamentos::PAGE_SIZE;
@@ -100,12 +100,129 @@ fn concurrency_conflict_message(entity_label: &str) -> String {
     )
 }
 
-fn duplicate_client_document_message(error: &sqlx::Error) -> Option<String> {
-    let lower = error.to_string().to_lowercase();
-    if lower.contains("clientes_documento_key") {
-        return Some("Já existe um cliente cadastrado com este CPF/CNPJ.".to_string());
+async fn duplicate_client_document_message(
+    error: &sqlx::Error,
+    pool: &PgPool,
+    empresa_id: i32,
+    document_digits: &str,
+    current_id: Option<i32>,
+) -> Option<String> {
+    let database_error = error.as_database_error()?;
+    if database_error.code().as_deref() != Some("23505") {
+        return None;
     }
-    None
+
+    if !matches!(
+        database_error.constraint()?,
+        "ux_clientes_documento_ativo"
+            | "ux_clientes_cpf_cnpj_ativo"
+            | "clientes_documento_key"
+            | "clientes_cpf_cnpj_key"
+    ) {
+        return None;
+    }
+
+    let owner = sqlx::query_scalar::<_, bool>(
+        "SELECT COALESCE(ativo, false) FROM clientes
+         WHERE empresa_id = $1 AND (documento = $2 OR cpf_cnpj = $2)
+           AND ($3::INTEGER IS NULL OR id <> $3)
+         ORDER BY ativo DESC NULLS LAST LIMIT 1",
+    )
+    .bind(empresa_id)
+    .bind(document_digits)
+    .bind(current_id)
+    .fetch_optional(pool)
+    .await
+    .ok()
+    .flatten();
+
+    Some(match owner {
+        Some(true) => "Este CPF/CNPJ já está cadastrado em um cliente ativo. Pesquise pelo documento para localizar o registro.",
+        Some(false) => "Este CPF/CNPJ já está cadastrado em um cliente inativo. Peça a um administrador para localizar ou reativar o cadastro.",
+        None => "Este CPF/CNPJ já está cadastrado, mas o registro não está disponível nesta empresa. Peça a um administrador para verificar o cadastro.",
+    }.to_string())
+}
+
+fn document_search_digits(busca: &str) -> Option<String> {
+    let is_document_search = busca.chars().all(|character| {
+        character.is_ascii_digit() || character.is_ascii_whitespace() || matches!(character, '.' | '-' | '/')
+    });
+    let digits = digits_only(Some(busca));
+    (is_document_search && digits.len() >= 3).then_some(digits)
+}
+
+fn add_client_filters(query: &mut QueryBuilder<Postgres>, empresa_id: i32, busca: Option<&str>) {
+    query.push(" WHERE ativo = true AND empresa_id = ").push_bind(empresa_id);
+
+    if let Some(busca) = busca.map(str::trim).filter(|value| !value.is_empty()) {
+        let pattern = format!("%{}%", busca);
+        query.push(" AND (");
+        for (index, column) in [
+            "COALESCE(nome, '')",
+            "COALESCE(razao_social, '')",
+            "COALESCE(nome_fantasia, '')",
+            "COALESCE(documento, '')",
+            "COALESCE(cpf_cnpj, '')",
+            "COALESCE(telefone, '')",
+            "COALESCE(email, '')",
+        ]
+        .iter()
+        .enumerate()
+        {
+            if index > 0 {
+                query.push(" OR ");
+            }
+            query.push(*column).push(" ILIKE ").push_bind(pattern.clone());
+        }
+
+        if let Some(document_digits) = document_search_digits(busca) {
+            let document_pattern = format!("%{}%", document_digits);
+            query
+                .push(" OR REGEXP_REPLACE(COALESCE(documento, ''), '[^0-9]', '', 'g') ILIKE ")
+                .push_bind(document_pattern.clone())
+                .push(" OR REGEXP_REPLACE(COALESCE(cpf_cnpj, ''), '[^0-9]', '', 'g') ILIKE ")
+                .push_bind(document_pattern);
+        }
+
+        query.push(")");
+    }
+}
+
+async fn query_client_page(
+    pool: &PgPool,
+    empresa_id: i32,
+    page: Option<i32>,
+    busca: Option<&str>,
+    page_size: i32,
+) -> Result<PaginatedResult<ClienteRow>, String> {
+    let mut count_query = QueryBuilder::<Postgres>::new("SELECT COUNT(*) FROM clientes");
+    add_client_filters(&mut count_query, empresa_id, busca);
+    let total = count_query
+        .build_query_scalar::<i64>()
+        .fetch_one(pool)
+        .await
+        .map_err(|error| format!("Erro ao contar clientes: {}", error))?;
+
+    let safe_page = page.unwrap_or(0).max(0) as i64;
+    let mut items_query = QueryBuilder::<Postgres>::new(CLIENTE_SELECT);
+    add_client_filters(&mut items_query, empresa_id, busca);
+    items_query
+        .push(" ORDER BY id DESC LIMIT ")
+        .push_bind(page_size)
+        .push(" OFFSET ")
+        .push_bind(safe_page * i64::from(page_size));
+
+    let items = items_query
+        .build_query_as::<ClienteRow>()
+        .fetch_all(pool)
+        .await
+        .map_err(|error| format!("Erro ao listar clientes: {}", error))?;
+
+    Ok(PaginatedResult {
+        items,
+        total,
+        below_minimum: None,
+    })
 }
 
 /// Listar clientes com paginação.
@@ -144,6 +261,16 @@ pub async fn listar_clientes(page: Option<i32>, busca: Option<String>) -> Result
         query_builder.push_bind(pattern.clone());
         query_builder.push(" OR COALESCE(email, '') ILIKE ");
         query_builder.push_bind(pattern);
+
+        if let Some(document_digits) = document_search_digits(busca) {
+            let document_pattern = format!("%{}%", document_digits);
+            query_builder
+                .push(" OR REGEXP_REPLACE(COALESCE(documento, ''), '[^0-9]', '', 'g') ILIKE ")
+                .push_bind(document_pattern.clone())
+                .push(" OR REGEXP_REPLACE(COALESCE(cpf_cnpj, ''), '[^0-9]', '', 'g') ILIKE ")
+                .push_bind(document_pattern);
+        }
+
         query_builder.push(")");
     }
 
@@ -163,6 +290,25 @@ pub async fn listar_clientes(page: Option<i32>, busca: Option<String>) -> Result
 
     info!("Clientes listados: {} itens (página {})", rows.len(), page.unwrap_or(0));
     Ok(rows)
+}
+
+/// Lista uma página de clientes e informa o total após aplicar a busca.
+#[tauri::command]
+#[instrument(skip_all, fields(page = page))]
+pub async fn listar_clientes_paginados(
+    page: Option<i32>,
+    busca: Option<String>,
+) -> Result<PaginatedResult<ClienteRow>, String> {
+    let pool = get_pool().await.map_err(|error| error.to_string())?;
+    let empresa_id = require_active_session_company_id(&pool).await?;
+    query_client_page(
+        &pool,
+        empresa_id,
+        page,
+        busca.as_deref(),
+        super::equipamentos::UI_PAGE_SIZE,
+    )
+    .await
 }
 
 /// Buscar cliente por ID.
@@ -244,7 +390,7 @@ pub async fn criar_cliente(input: ClienteInput) -> Result<ClienteRow, String> {
     .bind(razao_social)
     .bind(optional_text(input.nome_fantasia.as_deref()))
     .bind(optional_text(input.inscricao_estadual.as_deref()))
-    .bind(Some(document_digits))
+    .bind(Some(document_digits.clone()))
     .bind(input.telefone.trim())
     .bind(optional_text(input.telefone_secundario.as_deref()))
     .bind(optional_text(input.email.as_deref()))
@@ -259,11 +405,16 @@ pub async fn criar_cliente(input: ClienteInput) -> Result<ClienteRow, String> {
     .bind(input.receber_whatsapp)
     .bind(optional_text(input.observacoes.as_deref()))
     .fetch_one(&pool)
-    .await
-    .map_err(|e| {
-        error!("Erro ao criar cliente: {}", e);
-        duplicate_client_document_message(&e).unwrap_or_else(|| e.to_string())
-    })?;
+    .await;
+    let row = match row {
+        Ok(row) => row,
+        Err(e) => {
+            error!("Erro ao criar cliente: {}", e);
+            return Err(duplicate_client_document_message(&e, &pool, empresa_id, &document_digits, None)
+                .await
+                .unwrap_or_else(|| e.to_string()));
+        }
+    };
 
     let id: i32 = row.get("id");
     info!("Cliente criado: id={}", id);
@@ -327,7 +478,7 @@ pub async fn atualizar_cliente(id: i32, input: ClienteInput) -> Result<ClienteRo
     .bind(razao_social)
     .bind(optional_text(input.nome_fantasia.as_deref()))
     .bind(optional_text(input.inscricao_estadual.as_deref()))
-    .bind(Some(document_digits))
+    .bind(Some(document_digits.clone()))
     .bind(input.telefone.trim())
     .bind(optional_text(input.telefone_secundario.as_deref()))
     .bind(optional_text(input.email.as_deref()))
@@ -345,12 +496,16 @@ pub async fn atualizar_cliente(id: i32, input: ClienteInput) -> Result<ClienteRo
     .bind(concurrency_token)
     .bind(empresa_id)
     .execute(&pool)
-    .await
-    .map_err(|e| {
-        error!("Erro ao atualizar cliente {}: {}", id, e);
-        duplicate_client_document_message(&e).unwrap_or_else(|| e.to_string())
-    })?
-    .rows_affected();
+    .await;
+    let updated_rows = match updated_rows {
+        Ok(result) => result.rows_affected(),
+        Err(e) => {
+            error!("Erro ao atualizar cliente {}: {}", id, e);
+            return Err(duplicate_client_document_message(&e, &pool, empresa_id, &document_digits, Some(id))
+                .await
+                .unwrap_or_else(|| e.to_string()));
+        }
+    };
 
     if updated_rows == 0 {
         return Err(concurrency_conflict_message("o cliente"));

@@ -1,7 +1,7 @@
 {
   "name": "autoos",
   "private": true,
-  "version": "0.5.5",
+  "version": "0.6.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -28,8 +28,9 @@
     "e2e:real": "npm run qa:integrations:critical && npm run qa:integrations:communication && npm run e2e:web",
     "bundle:prep:windows:sign": "node scripts/apply-windows-bundle-signing.mjs",
     "qa:tier:e2e": "npm run e2e:web",
-    "qa:integrations:critical": "cd src-tauri && cargo run --quiet --bin p1_critical_integration",
+    "qa:integrations:critical": "cd src-tauri && cargo run --quiet --bin test_service_catalog_isolation && cargo run --quiet --bin p1_critical_integration",
     "qa:integrations:communication": "cd src-tauri && cargo run --quiet --bin p1_communication_integration",
+    "qa:photos": "cd src-tauri && cargo run --quiet --bin p1_photo_integration",
     "qa:integrations": "npm run qa:integrations:critical && npm run qa:integrations:communication",
     "qa:staging:auth": "node scripts/validate-staging-auth.mjs",
     "qa:tier:jornada-real": "npm run lint && npm run test:run && npm run e2e:real",

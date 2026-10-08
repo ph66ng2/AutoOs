@@ -21,6 +21,7 @@ O projeto não está mais em fase de scaffold. O estado atual é um app Tauri + 
 - Recebimento técnico com defeito relatado, patrimônio, acessórios e imagens de entrada/saída
 - Histórico de comunicações por WhatsApp e email
 - Perfis locais com PIN, permissões granulares e auditoria mínima
+- A criação de perfis fica em `Perfil > Criar perfil` e exige uma sessão com permissão para gerenciar perfis. Informe nome, tipo de acesso, permissões e PIN com confirmação. Depois de criar, use `Ver perfis e decidir` para entrar com o PIN do novo perfil. O perfil ativo só muda após validar o PIN de destino.
 - Painel de conferência do schema em `Configurações > Segurança`
 - Backup manual PostgreSQL pelo app
 - Restore manual PostgreSQL pelo app com confirmação explícita
@@ -134,7 +135,7 @@ O estado aplicado do banco interno pode ser conferido no app em `Configurações
 
 ### Numeração SQLx entre `master` e `feature`
 
-As migrations `0001`–`0022` seguem os arquivos da `master`. As mudanças exclusivas da `feature` receberam `0023` (unicidade de clientes ativos), `0024` (unicidade de produtos e gastos ativos) e `0025` (sessões de upload de fotos), sem alterar o SQL dos arquivos movidos. Contatos e backfill de orçamento apareciam com outros números na `feature`; eram cópias das migrations `0017` e `0016` da `master`, exceto pelo comentário de cabeçalho, e foram retiradas da sequência duplicada. Um único diretório SQLx não consegue preservar, sob a mesma versão, dois checksums já aplicados em bancos diferentes; por isso a `master` foi escolhida como sequência canônica.
+As migrations `0001`–`0022` seguem os arquivos da `master`. As mudanças exclusivas da `feature` receberam `0023` (unicidade de clientes ativos), `0024` (unicidade de produtos e gastos ativos) e `0025` (sessões de upload de fotos), sem alterar o SQL dos arquivos movidos. Contatos e backfill de orçamento apareciam com outros números na `feature`; eram cópias das migrations `0017` e `0016` da `master`, exceto pelo comentário de cabeçalho, e foram retiradas da sequência duplicada. A `master` também recebeu uma `0023` de unicidade de clientes ativos: o DDL é equivalente ao da `feature`, mas o comentário inicial mudou o checksum. O merge mantém a `0023` da `feature`, que já estava versionada. O verificador reconhece o checksum alternativo da `master` e bloqueia a migração de um banco que a tenha aplicado até uma reconciliação auditada. Um único diretório SQLx não pode aceitar os dois checksums na mesma versão.
 
 `npm run check:migrations` falha em versões duplicadas ou ausentes e roda na CI de pull requests para `master` e `feature`. Antes de executar SQLx em um banco existente, rode `AUTOOS_MIGRATION_DATABASE_URL="$DATABASE_URL" npm run check:migrations:db` com a URL do banco alvo. Esse comando só lê `_sqlx_migrations` e bloqueia checksums divergentes, inclusive a sequência antiga da `feature`; ele não altera histórico nem schema. Também roda antes das migrations no banco descartável da CI.
 
@@ -184,3 +185,7 @@ O `cargo tauri build` embute os metadados das migrations no binário para valida
 ## Licença
 
 Proprietário - BMITAG
+
+### Estoque vinculado ao orçamento
+
+Serviços podem vincular peças e consumir estoque somente após aprovação do cliente, inclusive aprovação parcial. AutoOS e AutoBO compartilham o mesmo estoque no Supabase. Veja [regras de operação e publicação coordenada](docs/ESTOQUE_ORCAMENTO.md).

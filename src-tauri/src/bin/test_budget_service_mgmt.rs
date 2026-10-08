@@ -124,6 +124,8 @@ async fn main() -> Result<()> {
         None,
         None,
         None,
+        None,
+        None,
     ).await;
     if denied.is_ok() {
         return Err(anyhow!("expected denied financial transition but it was allowed"));
@@ -153,6 +155,8 @@ async fn main() -> Result<()> {
 
     auth::unlock_session_without_pin().await.map_err(|e| anyhow!(e))?;
 
+    let adjustment_token: String = sqlx::query_scalar("SELECT atualizado_em::TEXT FROM equipamentos WHERE id=$1")
+        .bind(equipamento.id).fetch_one(&pool).await?;
     let updated = verificacoes::atualizar_servicos_verificacao(
         equipamento.id,
         Some("[{\"nome\":\"Serviço A\"},{\"nome\":\"Serviço B\"}]".to_string()),
@@ -164,6 +168,8 @@ async fn main() -> Result<()> {
         None,
         None,
         None,
+        None,
+        Some(adjustment_token),
     ).await.map_err(|e| anyhow!(e))?;
 
     if updated.custo_total != Some(225.0) {

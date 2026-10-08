@@ -184,10 +184,6 @@ async fn main() -> Result<()> {
     })
     .await
     .map_err(|error| anyhow!(error))?;
-    let approval_token = equipamento
-        .atualizado_em
-        .clone()
-        .context("created equipment has no concurrency token")?;
 
     verificacoes::salvar_verificacao_tecnica(VerificacaoInput {
         equipamento_id: equipamento.id,
@@ -195,6 +191,7 @@ async fn main() -> Result<()> {
         tecnico_nome: format!("{} Técnico", prefix),
         problema_relatado: format!("{} Problema", prefix),
         diagnostico: Some(format!("{} Diagnóstico", prefix)),
+        servicos_necessarios: Some(r#"[{"id":"test-service","descricao":"Limpeza","valor":120.0}]"#.to_string()),
         observacoes: Some(format!("{} Observação inicial", prefix)),
         concluida: Some(true),
         ..VerificacaoInput::default()
@@ -206,6 +203,8 @@ async fn main() -> Result<()> {
         .execute(&pool)
         .await
         .context("prepare equipment approval status failed")?;
+    let approval_token: String = sqlx::query_scalar("SELECT atualizado_em::TEXT FROM equipamentos WHERE id=$1")
+        .bind(equipamento.id).fetch_one(&pool).await?;
 
     let restricted_profile_permissions = serde_json::to_string(&vec![
         auth::PERMISSION_STOCK_CONTROL.to_string(),
@@ -419,6 +418,8 @@ async fn main() -> Result<()> {
     }
 
     let denied = equipamentos::aprovar_orcamento(AprovarOrcamentoInput {
+        servicos_aprovados: vec!["test-service".to_string()],
+        aprovar_sem_servicos: false,
         empresa_id,
         equipamento_id: equipamento.id,
         expected_updated_em: approval_token.clone(),
@@ -472,6 +473,8 @@ async fn main() -> Result<()> {
         .map_err(|error| anyhow!(error))?;
 
     let stale_approval = equipamentos::aprovar_orcamento(AprovarOrcamentoInput {
+        servicos_aprovados: vec!["test-service".to_string()],
+        aprovar_sem_servicos: false,
         empresa_id,
         equipamento_id: equipamento.id,
         expected_updated_em: "2000-01-01T00:00:00Z".to_string(),
@@ -496,6 +499,8 @@ async fn main() -> Result<()> {
     }
 
     let equipamento_aprovado = equipamentos::aprovar_orcamento(AprovarOrcamentoInput {
+        servicos_aprovados: vec!["test-service".to_string()],
+        aprovar_sem_servicos: false,
         empresa_id,
         equipamento_id: equipamento.id,
         expected_updated_em: approval_token,
@@ -530,6 +535,8 @@ async fn main() -> Result<()> {
     println!("P1_INTEGRATION_LEGACY_VERIFICATION_APPROVAL=ok");
     println!("P1_INTEGRATION_STATUS_HISTORY=ok");
 
+    let token_ajuste: String = sqlx::query_scalar("SELECT atualizado_em::TEXT FROM equipamentos WHERE id=$1")
+        .bind(equipamento.id).fetch_one(&pool).await?;
     let verificacao_ajustada = verificacoes::atualizar_servicos_verificacao(
         equipamento.id,
         Some(r#"[{"descricao":"Limpeza técnica completa","valor":120.0}]"#.to_string()),
@@ -541,6 +548,8 @@ async fn main() -> Result<()> {
         Some(FormaPagamentoCodigo::Outro),
         Some("Faturamento corporativo em 15 dias".to_string()),
         Some(empresa_id),
+        Some(true),
+        Some(token_ajuste),
     )
     .await
     .map_err(|error| anyhow!(error))?;
@@ -555,6 +564,8 @@ async fn main() -> Result<()> {
         ));
     }
 
+    let token_reajuste: String = sqlx::query_scalar("SELECT atualizado_em::TEXT FROM equipamentos WHERE id=$1")
+        .bind(equipamento.id).fetch_one(&pool).await?;
     let verificacao_sem_observacoes = verificacoes::atualizar_servicos_verificacao(
         equipamento.id,
         Some(r#"[{"descricao":"Limpeza técnica completa","valor":120.0}]"#.to_string()),
@@ -566,6 +577,8 @@ async fn main() -> Result<()> {
         Some(FormaPagamentoCodigo::Outro),
         Some("Faturamento corporativo em 15 dias".to_string()),
         Some(empresa_id),
+        Some(true),
+        Some(token_reajuste),
     )
     .await
     .map_err(|error| anyhow!(error))?;

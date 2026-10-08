@@ -51,6 +51,7 @@ export function useStatusEquipamento() {
     try {
       // 1. Salvar verificação no banco
       await db.salvarVerificacao(dadosVerificacao);
+      const equipamentoAposVerificacao = await db.buscarEquipamento(equipamento.id!);
 
       // 2. Atualizar para VERIFICADO
       await db.atualizarStatusEquipamento(
@@ -59,7 +60,7 @@ export function useStatusEquipamento() {
         undefined,
         undefined,
         undefined,
-        equipamento.atualizado_em
+        equipamentoAposVerificacao.atualizado_em
       );
 
       const equipamentoVerificado = await db.buscarEquipamento(equipamento.id!);

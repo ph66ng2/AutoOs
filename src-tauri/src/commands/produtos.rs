@@ -9,11 +9,13 @@
 //! ╚══════════════════════════════════════════════════════════════╝
 
 use crate::commands::auth::{
-    record_security_event, require_permission, PERMISSION_DELETE_RECORDS, PERMISSION_STOCK_CONTROL,
+    record_security_event, require_permission, require_active_session_company_id, PERMISSION_DELETE_RECORDS, PERMISSION_STOCK_CONTROL,
 };
-use crate::commands::types::{MovimentacaoEstoqueInput, ProdutoInput, ProdutoRow, PRODUTO_SELECT};
+use crate::commands::types::{
+    MovimentacaoEstoqueInput, PaginatedResult, ProdutoInput, ProdutoRow, PRODUTO_SELECT,
+};
 use crate::db::get_pool;
-use sqlx::Row;
+use sqlx::{PgPool, Postgres, QueryBuilder, Row};
 use tracing::{debug, error, info, instrument};
 
 use super::equipamentos::PAGE_SIZE;
@@ -25,6 +27,107 @@ fn required_text(value: &str, field: &str) -> Result<String, String> {
     }
 
     Ok(trimmed.to_string())
+}
+
+fn validar_categoria(categoria: &str) -> Result<(), String> {
+    if matches!(categoria, "IMPRESSORA" | "PEÇA" | "ETIQUETA" | "RIBBON" | "OUTROS") {
+        Ok(())
+    } else {
+        Err("Categoria de estoque inválida.".to_string())
+    }
+}
+
+fn add_product_filters(
+    query: &mut QueryBuilder<Postgres>,
+    empresa_id: i32,
+    busca: Option<&str>,
+    categoria: Option<&str>,
+    apenas_estoque_baixo: bool,
+) {
+    query.push(" WHERE ativo = true AND empresa_id = ").push_bind(empresa_id);
+
+    if let Some(busca) = busca.map(str::trim).filter(|value| !value.is_empty()) {
+        let pattern = format!("%{}%", busca);
+        query
+            .push(" AND (codigo ILIKE ")
+            .push_bind(pattern.clone())
+            .push(" OR nome ILIKE ")
+            .push_bind(pattern.clone())
+            .push(" OR COALESCE(descricao, '') ILIKE ")
+            .push_bind(pattern)
+            .push(")");
+    }
+
+    if let Some(categoria) = categoria
+        .map(str::trim)
+        .filter(|value| !value.is_empty() && *value != "TODOS")
+    {
+        query.push(" AND categoria = ").push_bind(categoria.to_string());
+    }
+
+    if apenas_estoque_baixo {
+        query.push(" AND quantidade_estoque < quantidade_minima");
+    }
+}
+
+async fn query_product_page(
+    pool: &PgPool,
+    empresa_id: i32,
+    page: Option<i32>,
+    busca: Option<&str>,
+    categoria: Option<&str>,
+    apenas_estoque_baixo: bool,
+) -> Result<PaginatedResult<ProdutoRow>, String> {
+    let mut count_query = QueryBuilder::<Postgres>::new("SELECT COUNT(*) FROM produtos");
+    add_product_filters(
+        &mut count_query,
+        empresa_id,
+        busca,
+        categoria,
+        apenas_estoque_baixo,
+    );
+    let total = count_query
+        .build_query_scalar::<i64>()
+        .fetch_one(pool)
+        .await
+        .map_err(|error| format!("Erro ao contar produtos: {}", error))?;
+
+    let below_minimum = sqlx::query_scalar::<_, i64>(
+        "SELECT COUNT(*) FROM produtos
+         WHERE empresa_id = $1 AND ativo = true
+           AND quantidade_estoque < quantidade_minima",
+    )
+    .bind(empresa_id)
+    .fetch_one(pool)
+    .await
+    .map_err(|error| format!("Erro ao contar produtos abaixo do mínimo: {}", error))?;
+
+    let safe_page = page.unwrap_or(0).max(0) as i64;
+    let mut items_query = QueryBuilder::<Postgres>::new(PRODUTO_SELECT);
+    add_product_filters(
+        &mut items_query,
+        empresa_id,
+        busca,
+        categoria,
+        apenas_estoque_baixo,
+    );
+    items_query
+        .push(" ORDER BY id DESC LIMIT ")
+        .push_bind(super::equipamentos::UI_PAGE_SIZE)
+        .push(" OFFSET ")
+        .push_bind(safe_page * i64::from(super::equipamentos::UI_PAGE_SIZE));
+
+    let items = items_query
+        .build_query_as::<ProdutoRow>()
+        .fetch_all(pool)
+        .await
+        .map_err(|error| format!("Erro ao listar produtos: {}", error))?;
+
+    Ok(PaginatedResult {
+        items,
+        total,
+        below_minimum: Some(below_minimum),
+    })
 }
 
 fn optional_text(value: Option<&str>) -> Option<String> {
@@ -103,12 +206,14 @@ pub async fn listar_produtos(
         e.to_string()
     })?;
 
+    let empresa_id = require_active_session_company_id(&pool).await?;
     let offset = page.unwrap_or(0) * PAGE_SIZE;
     let mut query_builder = sqlx::QueryBuilder::<sqlx::Postgres>::new(format!(
         "{} WHERE ativo = true",
         PRODUTO_SELECT,
     ));
 
+    query_builder.push(" AND empresa_id = ").push_bind(empresa_id);
     if let Some(busca) = busca.as_deref().map(str::trim).filter(|value| !value.is_empty()) {
         let pattern = format!("%{}%", busca);
         query_builder.push(" AND (");
@@ -148,16 +253,40 @@ pub async fn listar_produtos(
     Ok(rows)
 }
 
+/// Lista uma página de produtos, sua contagem filtrada e o total abaixo do mínimo.
+#[tauri::command]
+#[instrument(skip_all, fields(page = page))]
+pub async fn listar_produtos_paginados(
+    page: Option<i32>,
+    busca: Option<String>,
+    categoria: Option<String>,
+    apenas_estoque_baixo: Option<bool>,
+) -> Result<PaginatedResult<ProdutoRow>, String> {
+    let pool = get_pool().await.map_err(|error| error.to_string())?;
+    let empresa_id = require_active_session_company_id(&pool).await?;
+    query_product_page(
+        &pool,
+        empresa_id,
+        page,
+        busca.as_deref(),
+        categoria.as_deref(),
+        apenas_estoque_baixo.unwrap_or(false),
+    )
+    .await
+}
+
 /// Buscar produto por ID.
 #[tauri::command]
 #[instrument(skip_all, fields(id = id))]
 pub async fn buscar_produto(id: i32) -> Result<ProdutoRow, String> {
     debug!("Buscando produto {}", id);
     let pool = get_pool().await.map_err(|e| e.to_string())?;
+    let empresa_id = require_active_session_company_id(&pool).await?;
 
-    let query = format!("{} WHERE id = $1", PRODUTO_SELECT);
+    let query = format!("{} WHERE id = $1 AND empresa_id = $2", PRODUTO_SELECT);
     let row = sqlx::query_as::<_, ProdutoRow>(sqlx::AssertSqlSafe(&*query))
         .bind(id)
+        .bind(empresa_id)
         .fetch_one(&pool)
         .await
         .map_err(|e| {
@@ -176,9 +305,11 @@ pub async fn criar_produto(input: ProdutoInput) -> Result<ProdutoRow, String> {
     let actor = require_permission(PERMISSION_STOCK_CONTROL)?;
     debug!("Criando produto: {}", input.codigo);
     let pool = get_pool().await.map_err(|e| e.to_string())?;
+    let empresa_id = require_active_session_company_id(&pool).await?;
     let codigo = required_text(&input.codigo, "Código")?;
     let nome = required_text(&input.nome, "Nome")?;
     let categoria = required_text(&input.categoria, "Categoria")?;
+    validar_categoria(&categoria)?;
     let unidade_medida = optional_text(input.unidade_medida.as_deref()).unwrap_or_else(|| "UN".to_string());
     let quantidade_minima = input.quantidade_minima.unwrap_or(5);
     let quantidade_maxima = input.quantidade_maxima.unwrap_or(50);
@@ -216,10 +347,10 @@ pub async fn criar_produto(input: ProdutoInput) -> Result<ProdutoRow, String> {
             quantidade_estoque, quantidade_minima, quantidade_maxima,
             unidade_medida, localizacao, preco_custo, preco_venda, margem_lucro,
             marca_original, tipo_cartucho, cor, rendimento, modelos_compativeis,
-            fornecedor_principal, prazo_entrega
+            fornecedor_principal, prazo_entrega, empresa_id
         ) VALUES (
             $1, $2, $3, $4, $5, $6, $7, $8, $9, $10,
-            $11, $12, $13, $14, $15, $16, $17, $18, $19
+            $11, $12, $13, $14, $15, $16, $17, $18, $19, $20
         ) RETURNING id
         "#,
     )
@@ -242,6 +373,7 @@ pub async fn criar_produto(input: ProdutoInput) -> Result<ProdutoRow, String> {
     .bind(optional_text(input.modelos_compativeis.as_deref()))
     .bind(optional_text(input.fornecedor_principal.as_deref()))
     .bind(input.prazo_entrega)
+    .bind(empresa_id)
     .fetch_one(&pool)
     .await
     .map_err(|e| {
@@ -268,10 +400,12 @@ pub async fn atualizar_produto(id: i32, input: ProdutoInput) -> Result<ProdutoRo
     let actor = require_permission(PERMISSION_STOCK_CONTROL)?;
     debug!("Atualizando produto {}", id);
     let pool = get_pool().await.map_err(|e| e.to_string())?;
+    let empresa_id = require_active_session_company_id(&pool).await?;
     let concurrency_token = required_concurrency_token(input.atualizado_em.as_deref(), "produto")?;
     let codigo = required_text(&input.codigo, "Código")?;
     let nome = required_text(&input.nome, "Nome")?;
     let categoria = required_text(&input.categoria, "Categoria")?;
+    validar_categoria(&categoria)?;
     let unidade_medida = optional_text(input.unidade_medida.as_deref()).unwrap_or_else(|| "UN".to_string());
     let quantidade_minima = input.quantidade_minima.unwrap_or(5);
     let quantidade_maxima = input.quantidade_maxima.unwrap_or(50);
@@ -311,7 +445,7 @@ pub async fn atualizar_produto(id: i32, input: ProdutoInput) -> Result<ProdutoRo
             preco_venda = $11, margem_lucro = $12, marca_original = $13,
             tipo_cartucho = $14, cor = $15, rendimento = $16, modelos_compativeis = $17,
             fornecedor_principal = $18, prazo_entrega = $19, atualizado_em = NOW()
-        WHERE id = $20 AND atualizado_em = $21::TIMESTAMPTZ
+        WHERE id = $20 AND atualizado_em = $21::TIMESTAMPTZ AND empresa_id = $22
         "#,
     )
     .bind(codigo)
@@ -335,6 +469,7 @@ pub async fn atualizar_produto(id: i32, input: ProdutoInput) -> Result<ProdutoRo
     .bind(input.prazo_entrega)
     .bind(id)
     .bind(concurrency_token)
+    .bind(empresa_id)
     .execute(&pool)
     .await
     .map_err(|e| {
@@ -366,10 +501,12 @@ pub async fn deletar_produto(id: i32) -> Result<bool, String> {
     let actor = require_permission(PERMISSION_DELETE_RECORDS)?;
     debug!("Deletando produto {}", id);
     let pool = get_pool().await.map_err(|e| e.to_string())?;
+    let empresa_id = require_active_session_company_id(&pool).await?;
 
     // Soft delete: marca como inativo em vez de deletar
-    let result = sqlx::query("UPDATE produtos SET ativo = false, atualizado_em = NOW() WHERE id = $1")
+    let result = sqlx::query("UPDATE produtos SET ativo = false, atualizado_em = NOW() WHERE id = $1 AND empresa_id = $2")
         .bind(id)
+        .bind(empresa_id)
         .execute(&pool)
         .await
         .map_err(|e| {
@@ -401,18 +538,20 @@ pub async fn registrar_movimentacao_estoque(input: MovimentacaoEstoqueInput) -> 
     let (movimento, origem, referencia) = validate_movimentacao_input(&input)?;
 
     let pool = get_pool().await.map_err(|e| e.to_string())?;
+    let empresa_id = require_active_session_company_id(&pool).await?;
     let mut tx = pool.begin().await.map_err(|e| e.to_string())?;
     let _saldo_resultante = if movimento == "ENTRADA" {
         sqlx::query_scalar(
             r#"
             UPDATE produtos
             SET quantidade_estoque = COALESCE(quantidade_estoque, 0) + $1, atualizado_em = NOW()
-            WHERE id = $2 AND ativo = true
+            WHERE id = $2 AND empresa_id = $3 AND ativo = true
             RETURNING quantidade_estoque
             "#,
         )
         .bind(input.quantidade)
         .bind(input.produto_id)
+        .bind(empresa_id)
         .fetch_optional(&mut *tx)
         .await
         .map_err(|e| {
@@ -425,7 +564,7 @@ pub async fn registrar_movimentacao_estoque(input: MovimentacaoEstoqueInput) -> 
             r#"
             UPDATE produtos
             SET quantidade_estoque = COALESCE(quantidade_estoque, 0) - $1, atualizado_em = NOW()
-            WHERE id = $2
+            WHERE id = $2 AND empresa_id = $3
               AND ativo = true
               AND COALESCE(quantidade_estoque, 0) >= $1
             RETURNING quantidade_estoque
@@ -433,6 +572,7 @@ pub async fn registrar_movimentacao_estoque(input: MovimentacaoEstoqueInput) -> 
         )
         .bind(input.quantidade)
         .bind(input.produto_id)
+        .bind(empresa_id)
         .fetch_optional(&mut *tx)
         .await
         .map_err(|e| {
@@ -442,9 +582,10 @@ pub async fn registrar_movimentacao_estoque(input: MovimentacaoEstoqueInput) -> 
             Some(quantidade) => quantidade,
             None => {
                 let saldo_atual = sqlx::query_scalar::<_, i32>(
-                    "SELECT COALESCE(quantidade_estoque, 0) FROM produtos WHERE id = $1 AND ativo = true",
+                    "SELECT COALESCE(quantidade_estoque, 0) FROM produtos WHERE id = $1 AND empresa_id = $2 AND ativo = true",
                 )
                 .bind(input.produto_id)
+                .bind(empresa_id)
                 .fetch_optional(&mut *tx)
                 .await
                 .map_err(|e| {
@@ -461,8 +602,8 @@ pub async fn registrar_movimentacao_estoque(input: MovimentacaoEstoqueInput) -> 
     sqlx::query(
         r#"
         INSERT INTO movimentacoes_estoque (
-            produto_id, tipo, quantidade, origem, referencia, data_hora
-        ) VALUES ($1, $2, $3, $4, $5, NOW())
+            produto_id, tipo, quantidade, origem, referencia, data_hora, empresa_id
+        ) VALUES ($1, $2, $3, $4, $5, NOW(), $6)
         "#,
     )
     .bind(input.produto_id)
@@ -470,6 +611,7 @@ pub async fn registrar_movimentacao_estoque(input: MovimentacaoEstoqueInput) -> 
     .bind(input.quantidade)
     .bind(&origem)
     .bind(referencia)
+    .bind(empresa_id)
     .execute(&mut *tx)
     .await
     .map_err(|e| {

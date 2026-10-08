@@ -15,8 +15,8 @@ export type ServicoCatalogoInput = Pick<ServicoCatalogo<ClienteId>, "nome" | "de
 };
 
 export interface ProdutoParaPecaSugerida {
-  id: string;
-  empresa_id: string;
+  id: ClienteId;
+  empresa_id: ClienteId;
   nome: string;
   quantidade_estoque: number;
   preco_venda: number;

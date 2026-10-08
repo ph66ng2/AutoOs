@@ -1,0 +1,57 @@
+# Aplica o inventário de insumos no PostgreSQL do app (Supavisor Session).
+# Disparo manual: Actions → "Aplicar seed de estoque" → Run.
+# Não imprime a URL. O secret AUTOOS_DATABASE_URL nunca deve ir para logs.
+
+name: Aplicar seed de estoque
+
+on:
+  workflow_dispatch:
+
+jobs:
+  apply-seed:
+    name: Upsert produtos no Supabase
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Validar secret do pooler
+        env:
+          AUTOOS_DATABASE_URL: ${{ secrets.AUTOOS_DATABASE_URL }}
+        run: |
+          if [ -z "${AUTOOS_DATABASE_URL:-}" ]; then
+            echo "Configure o secret AUTOOS_DATABASE_URL (Supavisor Session, porta 5432)."
+            exit 1
+          fi
+          case "$AUTOOS_DATABASE_URL" in
+            postgres://*.pooler.supabase.com:5432/postgres*|postgresql://*.pooler.supabase.com:5432/postgres*) ;;
+            *)
+              echo "AUTOOS_DATABASE_URL deve usar o Supavisor Session pooler na porta 5432 e o banco /postgres."
+              exit 1
+              ;;
+          esac
+          case "$AUTOOS_DATABASE_URL" in
+            *sslmode=require*) ;;
+            *)
+              echo "AUTOOS_DATABASE_URL deve exigir TLS com sslmode=require."
+              exit 1
+              ;;
+          esac
+
+      - name: Validar empresa de destino
+        env:
+          AUTOOS_SEED_COMPANY_ID: ${{ vars.AUTOOS_SEED_COMPANY_ID }}
+        run: |
+          if [ -z "${AUTOOS_SEED_COMPANY_ID:-}" ]; then
+            echo "Configure a variável AUTOOS_SEED_COMPANY_ID com o ID da empresa destinatária."
+            exit 1
+          fi
+
+      - name: Instalar cliente PostgreSQL
+        run: sudo apt-get update && sudo apt-get install -y postgresql-client
+
+      - name: Aplicar scripts/seed-estoque-ribbons-bopp.sql
+        env:
+          AUTOOS_DATABASE_URL: ${{ secrets.AUTOOS_DATABASE_URL }}
+          AUTOOS_SEED_COMPANY_ID: ${{ vars.AUTOOS_SEED_COMPANY_ID }}
+        run: psql "$AUTOOS_DATABASE_URL" -v ON_ERROR_STOP=1 -v company_id="$AUTOOS_SEED_COMPANY_ID" -f scripts/seed-estoque-ribbons-bopp.sql

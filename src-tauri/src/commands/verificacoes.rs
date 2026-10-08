@@ -10,9 +10,11 @@ use crate::commands::types::{
     VERIFICACAO_SELECT,
 };
 use crate::commands::auth::{
-    record_security_event, require_permission, SecurityProfileSummary, PERMISSION_FINANCIAL_ACTIONS,
+    record_security_event, require_permission, require_active_session_company_id, SecurityProfileSummary, PERMISSION_FINANCIAL_ACTIONS,
 };
 use crate::db::get_pool;
+use crate::commands::orcamento_estoque::{aplicar_decisoes, cancelar_pendencias_ausentes, normalizar_servicos, parse_servicos};
+use std::collections::{HashMap, HashSet};
 use tracing::{debug, error, info, instrument};
 
 fn verification_has_sensitive_financial_input(input: &VerificacaoInput) -> bool {
@@ -57,7 +59,7 @@ fn require_financial_actor_for_verification_write(
 /// Se já existe verificação para o equipamento, atualiza; senão, cria nova.
 #[tauri::command]
 #[instrument(skip_all, fields(equipamento_id = input.equipamento_id))]
-pub async fn salvar_verificacao_tecnica(input: VerificacaoInput) -> Result<VerificacaoRow, String> {
+pub async fn salvar_verificacao_tecnica(mut input: VerificacaoInput) -> Result<VerificacaoRow, String> {
     debug!("Salvando verificação técnica para equipamento {}", input.equipamento_id);
     let (payment_code, payment_detail) = normalize_forma_pagamento(
         input.forma_pagamento_codigo.as_ref(),
@@ -65,6 +67,22 @@ pub async fn salvar_verificacao_tecnica(input: VerificacaoInput) -> Result<Verif
     )?;
     let financial_actor = require_financial_actor_for_verification_write(&input)?;
     let pool = get_pool().await.map_err(|e| e.to_string())?;
+
+    let empresa_id = require_active_session_company_id(&pool).await?;
+    if input.empresa_id.is_some_and(|id| id != empresa_id) {
+        return Err("O equipamento não pertence à empresa ativa.".to_string());
+    }
+    input.empresa_id = Some(empresa_id);
+    parse_servicos(input.servicos_necessarios.as_deref().unwrap_or("[]"))?;
+    let mut tx = pool.begin().await.map_err(|e| e.to_string())?;
+    let status: Option<String> = sqlx::query_scalar("SELECT status FROM equipamentos WHERE id = $1 AND empresa_id = $2 FOR UPDATE")
+        .bind(input.equipamento_id).bind(empresa_id).fetch_optional(&mut *tx).await.map_err(|e| e.to_string())?;
+    let status = status.ok_or("Equipamento não encontrado na empresa ativa.")?;
+    if matches!(status.as_str(), "APROVADO" | "EM_MANUTENCAO" | "AGUARDANDO_PECA" | "PRONTO" | "ENTREGUE") {
+        return Err("Use Alterar Orçamento para modificar serviços de uma OS já aprovada.".to_string());
+    }
+    sqlx::query("UPDATE equipamentos SET atualizado_em = NOW() WHERE id = $1")
+        .bind(input.equipamento_id).execute(&mut *tx).await.map_err(|e| e.to_string())?;
 
     // Verificar se já existe uma verificação para este equipamento
     let existing: Option<(i32,)> = sqlx::query_as(
@@ -75,7 +93,7 @@ pub async fn salvar_verificacao_tecnica(input: VerificacaoInput) -> Result<Verif
     )
     .bind(input.equipamento_id)
     .bind(input.empresa_id)
-    .fetch_optional(&pool)
+    .fetch_optional(&mut *tx)
     .await
     .map_err(|e| {
         error!("Erro ao verificar existência de verificação: {}", e);
@@ -114,13 +132,14 @@ pub async fn salvar_verificacao_tecnica(input: VerificacaoInput) -> Result<Verif
         .bind(payment_detail.as_deref())
         .bind(id)
         .bind(input.empresa_id)
-        .execute(&pool)
+        .execute(&mut *tx)
         .await
         .map_err(|e| {
             error!("Erro ao atualizar verificação {}: {}", id, e);
             e.to_string()
         })?;
 
+        tx.commit().await.map_err(|e| e.to_string())?;
         if let Some(actor) = financial_actor.as_ref() {
             record_security_event(
                 "VERIFICATION_FINANCIAL_SAVED",
@@ -166,13 +185,14 @@ pub async fn salvar_verificacao_tecnica(input: VerificacaoInput) -> Result<Verif
     .bind(&input.observacoes)
     .bind(payment_code.as_deref())
     .bind(payment_detail.as_deref())
-    .execute(&pool)
+    .execute(&mut *tx)
     .await
     .map_err(|e| {
         error!("Erro ao criar verificação: {}", e);
         e.to_string()
     })?;
 
+    tx.commit().await.map_err(|e| e.to_string())?;
     if let Some(actor) = financial_actor.as_ref() {
         record_security_event(
             "VERIFICATION_FINANCIAL_SAVED",
@@ -253,28 +273,40 @@ pub async fn atualizar_servicos_verificacao(
     forma_pagamento_codigo: Option<FormaPagamentoCodigo>,
     forma_pagamento_detalhe: Option<String>,
     empresa_id: Option<i32>,
+    cliente_aprovou_alteracao: Option<bool>,
+    expected_updated_em: Option<String>,
 ) -> Result<VerificacaoRow, String> {
+    let concurrency_token = super::equipamentos::required_concurrency_token(expected_updated_em.as_deref(), "equipamento")?;
     let actor = require_permission(PERMISSION_FINANCIAL_ACTIONS)?;
     let (payment_code, payment_detail) = normalize_forma_pagamento(
         forma_pagamento_codigo.as_ref(),
         forma_pagamento_detalhe.as_deref(),
     )?;
     let pool = get_pool().await.map_err(|e| e.to_string())?;
+    let active_empresa_id = require_active_session_company_id(&pool).await?;
     let mut tx = pool.begin().await.map_err(|error| {
         error!("Erro ao iniciar ajuste da verificação: {}", error);
         error.to_string()
     })?;
 
-    let equipment: Option<(Option<i32>,)> = sqlx::query_as(
-        "SELECT empresa_id FROM equipamentos WHERE id = $1 FOR UPDATE",
+    let equipment: Option<(Option<i32>, String, bool)> = sqlx::query_as(
+        "SELECT empresa_id, status, atualizado_em = $2::TIMESTAMPTZ
+         FROM equipamentos WHERE id = $1 FOR UPDATE",
     )
     .bind(equipamento_id)
+    .bind(&concurrency_token)
     .fetch_optional(&mut *tx)
     .await
     .map_err(|e| e.to_string())?;
-    let Some((resolved_empresa_id,)) = equipment else {
+    let Some((resolved_empresa_id, status, versao_valida)) = equipment else {
         return Err("Equipamento não encontrado.".to_string());
     };
+    if resolved_empresa_id != Some(active_empresa_id) {
+        return Err("O equipamento não pertence à empresa ativa.".to_string());
+    }
+    if !versao_valida {
+        return Err("O orçamento mudou em outra sessão. Reabra Alterar Orçamento antes de salvar.".to_string());
+    }
     if claimed_tenant_conflicts(empresa_id, resolved_empresa_id) {
         return Err("O equipamento não pertence à empresa informada.".to_string());
     }
@@ -317,10 +349,38 @@ pub async fn atualizar_servicos_verificacao(
         e.to_string()
     })?;
 
-    let (verificacao_id, old_servicos, _old_pecas, old_total) = match existing {
+    let (verificacao_id, old_servicos, old_pecas, old_total) = match existing {
         Some(row) => row,
         None => return Err("Nenhuma verificação encontrada para este equipamento.".to_string()),
     };
+
+    let servicos = parse_servicos(servicos_json.as_deref().unwrap_or("[]"))?;
+    let depois_aprovacao = matches!(status.as_str(), "APROVADO" | "EM_MANUTENCAO" | "AGUARDANDO_PECA" | "PRONTO" | "ENTREGUE");
+    if depois_aprovacao && (old_servicos != servicos_json || old_pecas != pecas_json || old_total != custo_total) {
+        if cliente_aprovou_alteracao != Some(true) {
+            return Err("Confirme que o cliente aprovou as mudanças nos serviços e peças.".to_string());
+        }
+        let Some(empresa_id) = resolved_empresa_id else {
+            return Err("A OS precisa estar vinculada a uma empresa.".to_string());
+        };
+        let antigos: HashMap<String, serde_json::Value> = normalizar_servicos(old_servicos.as_deref().unwrap_or("[]"))?
+        .into_iter().filter_map(|s| {
+            s.get("id").and_then(|id| id.as_str()).map(|id| (id.to_string(), s.clone()))
+        }).collect();
+        let ja_aprovados: Vec<String> = sqlx::query_scalar(
+            "SELECT servico_id FROM orcamento_servicos_decisao
+             WHERE verificacao_id = $1 AND empresa_id = $2 AND decisao = 'APROVADO'"
+        ).bind(verificacao_id).bind(empresa_id).fetch_all(&mut *tx).await.map_err(|e| e.to_string())?;
+        let mut aprovados: HashSet<String> = ja_aprovados.into_iter().chain(antigos.keys().cloned()).collect();
+        for novo in normalizar_servicos(servicos_json.as_deref().unwrap_or("[]"))? {
+            let id = novo["id"].as_str().ok_or("Serviço sem identificador")?;
+            if Some(&novo) != antigos.get(id) { aprovados.insert(id.to_string()); }
+        }
+        let aprovados: Vec<String> = servicos.iter().filter(|s| aprovados.contains(&s.id))
+            .map(|s| s.id.clone()).collect();
+        aplicar_decisoes(&mut tx, empresa_id, verificacao_id, &servicos, &aprovados).await?;
+        cancelar_pendencias_ausentes(&mut tx, verificacao_id, &servicos).await?;
+    }
 
     sqlx::query(
         r#"

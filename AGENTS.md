@@ -95,6 +95,7 @@ cargo run --manifest-path src-tauri/Cargo.toml --bin p1_critical_integration    
 cargo run --manifest-path src-tauri/Cargo.toml --bin p1_communication_integration # SMTP + WhatsApp with fake servers
 cargo run --manifest-path src-tauri/Cargo.toml --bin p1_concurrency_integration # Concurrent update races
 cargo run --manifest-path src-tauri/Cargo.toml --bin p1_windows_support_check    # Support bundle generation
+cargo run --manifest-path src-tauri/Cargo.toml --bin p1_photo_integration        # HTTP de fotos (JPEG, HEIC, até 3) sem banco
 cargo run --manifest-path src-tauri/Cargo.toml --bin test_auth_integration      # Comprehensive auth tests
 npm run qa:integrations          # Runs p1_critical + p1_communication
 npm run e2e:real                 # qa:integrations + Playwright E2E (needs real DB)
@@ -169,6 +170,7 @@ npm run bundle:prep:windows:sign # Injects certThumbprint from env into tauri.co
 - Don't introduce `query!` / `query_as!` sqlx macros — the project uses runtime queries exclusively.
 - Don't assume `serial_number` is a unique business key (multiple `equipamentos` rows can share it).
 - Don't store sensitive data (PINs, SMTP passwords, WhatsApp tokens) in the database — use OS keyring.
+- Don't treat the Cloudflare photo tunnel (`cloudflared` / `*.trycloudflare.com`) as the SaaS photo architecture. It is a reception workaround: the phone uploads to **this PC** while the QR dialog is open. Future PHOTO / AO-EQP-ONLINE tickets must send photos to the company API or Storage (signed URL), not through a per-PC tunnel. Do not reopen PHOTO-001 or PHOTO-009 to "fix" the tunnel.
 
 ## UNIQUE STYLES
 
