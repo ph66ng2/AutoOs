@@ -137,7 +137,7 @@ export function AjusteOrcamentoServicos({
               <Trash2 className="h-4 w-4 text-red-500" />
             </Button>
           </div>
-          <PecasDoServico pecas={s.pecas ?? []} onChange={(pecas) => atualizarServico(s.id, { pecas })} />
+          <PecasDoServico pecas={s.pecas ?? []} saasMode={saasMode} onChange={(pecas) => atualizarServico(s.id, { pecas })} />
           </div>
         ))}
         {servicos.length === 0 && (

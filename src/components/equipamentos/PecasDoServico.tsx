@@ -3,16 +3,16 @@ import { Plus, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { carregarProdutosParaPecas, type ProdutoParaPecaSugerida } from "@/lib/data/servicos-repository";
-import { IS_SAAS_BUILD } from "@/lib/runtime-mode";
 import { db } from "@/lib/db";
 import type { ClienteId, PecaVinculada } from "@/types";
 
 interface Props<Id extends ClienteId> {
   pecas: PecaVinculada<Id>[];
   onChange: (pecas: PecaVinculada<Id>[]) => void;
+  saasMode?: boolean;
 }
 
-export function PecasDoServico<Id extends ClienteId>({ pecas, onChange }: Props<Id>) {
+export function PecasDoServico<Id extends ClienteId>({ pecas, onChange, saasMode = true }: Props<Id>) {
   const [produtos, setProdutos] = useState<ProdutoParaPecaSugerida[]>([]);
   const [erro, setErro] = useState("");
   const [carregando, setCarregando] = useState(true);
@@ -20,7 +20,7 @@ export function PecasDoServico<Id extends ClienteId>({ pecas, onChange }: Props<
   useEffect(() => {
     let ativo = true;
     const carregar = async (): Promise<ProdutoParaPecaSugerida[]> => {
-      if (IS_SAAS_BUILD) return carregarProdutosParaPecas();
+      if (saasMode) return carregarProdutosParaPecas();
       const rows: ProdutoParaPecaSugerida[] = [];
       for (let page = 0; ; page += 1) {
         const lote = await db.listarProdutos(undefined, undefined, false, page);
@@ -37,7 +37,7 @@ export function PecasDoServico<Id extends ClienteId>({ pecas, onChange }: Props<
       .catch(() => { if (ativo) setErro("Não foi possível consultar o estoque."); })
       .finally(() => { if (ativo) setCarregando(false); });
     return () => { ativo = false; };
-  }, []);
+  }, [saasMode]);
 
   function adicionar(produtoId: string) {
     const produto = produtos.find((item) => String(item.id) === produtoId);
