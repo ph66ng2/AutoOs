@@ -266,6 +266,8 @@ pub struct AprovarOrcamentoInput {
     pub expected_updated_em: String,
     pub pagamento: FormaPagamento,
     pub servicos_aprovados: Vec<String>,
+    #[serde(default)]
+    pub aprovar_sem_servicos: bool,
 }
 
 /// Input para registrar comunicação (email/WhatsApp).

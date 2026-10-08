@@ -363,6 +363,7 @@ export default function Equipamentos({ operationalProfile }: { operationalProfil
     atualizarStatus,
     buscarPorSerial,
     recarregar,
+    substituirLocal,
   } =
     useEquipamentos<EquipamentoId>({ busca: busca || undefined, status: statusFiltro, page: paginaEquipamentos, ordenacao: ordenacaoEquipamentos });
   // A página original mantém handlers de DB local para os tickets seguintes;
@@ -1407,24 +1408,28 @@ export default function Equipamentos({ operationalProfile }: { operationalProfil
     }
     setPagamentoAprovacaoLoading(true);
     try {
+      let aprovado: Equipamento;
       if (IS_SAAS_BUILD) {
         const repository = await carregarRepositorioOperacoesEquipamento();
-        await repository.approveQuote({
+        aprovado = await repository.approveQuote({
           equipmentId: String(selecionado.id),
           expectedUpdatedAt: selecionado.atualizado_em,
           payment: pagamento,
           ...(servicosAprovacao.length > 0 ? { servicesApproved: idsAprovados } : {}),
-        });
+        }) as unknown as Equipamento;
       } else {
-        await db.aprovarOrcamento({
+        aprovado = await db.aprovarOrcamento({
           empresa_id: selecionado.empresa_id!,
           equipamento_id: selecionado.id,
           expected_updated_em: selecionado.atualizado_em,
           pagamento,
           servicos_aprovados: idsAprovados,
+          aprovar_sem_servicos: servicosAprovacao.length === 0 && todosServicosAprovados === true,
         });
       }
       await recarregar();
+      substituirLocal(aprovado);
+      setSelecionado(aprovado);
       setPagamentoAprovacaoError(null);
       success(
         "Equipamentos",
@@ -1432,7 +1437,7 @@ export default function Equipamentos({ operationalProfile }: { operationalProfil
           ? idsAprovados.length > 0
             ? "Serviços aprovados. As peças disponíveis foram baixadas; confira faltas em Peças da OS."
             : "Orçamento reprovado sem baixa de estoque."
-          : "Orçamento aprovado.",
+          : todosServicosAprovados ? "Orçamento aprovado." : "Orçamento reprovado sem baixa de estoque.",
         servicosAprovacao.length > 0 ? "Decisão do cliente" : "Aprovação",
       );
       return true;
@@ -1455,7 +1460,7 @@ export default function Equipamentos({ operationalProfile }: { operationalProfil
       });
       if (!liberado) return;
     }
-    if (idsAprovados.length > 0) {
+    if (idsAprovados.length > 0 || (servicosAprovacao.length === 0 && todosServicosAprovados)) {
       setPagamentoAprovacaoError(null);
       setSelecaoServicosOpen(false);
       setPagamentoDialogOpen(true);
@@ -3043,7 +3048,7 @@ export default function Equipamentos({ operationalProfile }: { operationalProfil
           }
         }}
       >
-        <DialogContent className="flex max-h-[calc(100vh-2rem)] flex-col overflow-hidden sm:max-w-md">
+        <DialogContent className="flex max-h-[calc(100vh-2rem)] min-w-0 flex-col overflow-hidden sm:max-w-md">
           <DialogHeader>
             <DialogTitle>
               {(
@@ -3053,7 +3058,7 @@ export default function Equipamentos({ operationalProfile }: { operationalProfil
             </DialogTitle>
           </DialogHeader>
           {selecionado && (
-            <div className="min-h-0 space-y-4 overflow-y-auto pr-1">
+            <div className="min-h-0 min-w-0 space-y-4 overflow-y-auto pr-4">
               {!ajusteOrcamentoSemMudancaStatus && (
                 <>
                   <div className="flex items-center gap-2">
@@ -3322,7 +3327,7 @@ export default function Equipamentos({ operationalProfile }: { operationalProfil
                   </div>
                 </div>
               )}
-              <DialogFooter className="sticky bottom-0 bg-background pt-3">
+              <DialogFooter className="sticky bottom-0 z-10 bg-background pr-2 pt-3">
                 <DialogClose asChild><Button variant="outline">Cancelar</Button></DialogClose>
                 <Button onClick={iniciarConfirmacaoStatus} disabled={salvando || (!novoStatus && !ajusteOrcamentoSemMudancaStatus)}>
                   {salvando ? "Salvando..." : correcaoStatus ? "Corrigir status" : "Confirmar"}
@@ -3407,7 +3412,7 @@ export default function Equipamentos({ operationalProfile }: { operationalProfil
             <Button type="button" variant="outline" onClick={() => setSelecaoServicosOpen(false)} disabled={pagamentoAprovacaoLoading}>Cancelar</Button>
             <Button type="button" disabled={todosServicosAprovados === null || pagamentoAprovacaoLoading}
               onClick={() => void confirmarSelecaoServicosAprovados()}>
-              {pagamentoAprovacaoLoading ? "Salvando..." : idsAprovados.length ? "Continuar para pagamento" : "Confirmar reprovação"}
+              {pagamentoAprovacaoLoading ? "Salvando..." : idsAprovados.length || (servicosAprovacao.length === 0 && todosServicosAprovados) ? "Continuar para pagamento" : "Confirmar reprovação"}
             </Button>
           </DialogFooter>
         </DialogContent>

@@ -1,4 +1,5 @@
 import { AlertCircle, Printer } from "lucide-react";
+import { useRef } from "react";
 import type { UseFormReturn } from "react-hook-form";
 import { Button } from "@/components/ui/button";
 import {
@@ -55,6 +56,7 @@ export function ClientesFormDialog({
   salvando: boolean;
   onSubmit: (data: ClienteFormData) => void | Promise<void>;
 }) {
+  const focusDocumentAfterAlert = useRef(false);
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-2xl max-h-[85vh] overflow-y-auto">
@@ -85,6 +87,12 @@ export function ClientesFormDialog({
           <AlertDialogContent
             className="z-[60] sm:max-w-md"
             overlayClassName="bg-black/30"
+            onCloseAutoFocus={(event) => {
+              if (!focusDocumentAfterAlert.current) return;
+              event.preventDefault();
+              focusDocumentAfterAlert.current = false;
+              document.getElementById("cliente-documento")?.focus();
+            }}
           >
             <AlertDialogHeader>
               <AlertDialogTitle className="flex items-center gap-2 text-red-900">
@@ -94,7 +102,7 @@ export function ClientesFormDialog({
               <AlertDialogDescription>{erroDocumentoDuplicado}</AlertDialogDescription>
             </AlertDialogHeader>
             <AlertDialogFooter>
-              <AlertDialogCancel>
+              <AlertDialogCancel onClick={() => { focusDocumentAfterAlert.current = true; }}>
                 Corrigir documento
               </AlertDialogCancel>
               {erroDocumentoDuplicado?.includes("cliente ativo") && (

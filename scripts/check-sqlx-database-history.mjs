@@ -110,7 +110,7 @@ for (let version = 1; version <= Math.min(highestApplied, Math.max(...checksums.
 if (errors.length) {
   console.error("SQLX_DATABASE_HISTORY_INCOMPATIBLE: migração bloqueada antes de qualquer alteração.");
   for (const error of errors) console.error(`- ${error}`);
-  console.error("Audite schema, histórico e backup deste banco antes de reconciliar versões. Não edite _sqlx_migrations automaticamente.");
+  console.error("Para a variante 0023 da master, use scripts/reconcile-sqlx-master-0023.mjs para conferir o schema e --apply para reconciliar após backup. Outras divergências exigem auditoria manual.");
   process.exit(1);
 }
 

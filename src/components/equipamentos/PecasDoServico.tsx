@@ -51,7 +51,7 @@ export function PecasDoServico<Id extends ClienteId>({ pecas, onChange, saasMode
   }
 
   return (
-    <div className="mt-2 space-y-2 rounded-md border p-3">
+    <div className="mt-2 min-w-0 space-y-2 rounded-md border p-3">
       <p className="text-xs font-medium">Peças sugeridas para este serviço</p>
       {pecas.map((peca) => {
         const saldo = produtos.find((item) => String(item.id) === String(peca.produto_id))?.quantidade_estoque;
@@ -100,7 +100,7 @@ export function PecasDoServico<Id extends ClienteId>({ pecas, onChange, saasMode
         <select
           aria-label="Adicionar peça"
           aria-busy={carregando}
-          className="h-9 flex-1 rounded-md border bg-background px-2 text-sm"
+          className="h-9 min-w-0 flex-1 rounded-md border bg-background px-2 text-sm"
           value=""
           disabled={carregando || Boolean(erro) || produtos.length === 0}
           onChange={(event) => adicionar(event.target.value)}

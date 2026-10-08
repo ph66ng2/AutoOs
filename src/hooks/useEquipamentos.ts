@@ -81,6 +81,10 @@ export function useEquipamentos<Id extends EquipamentoId = number>(params?: UseE
     }
   }, [params?.busca, params?.status, params?.page, params?.ordenacao, params?.repository]);
 
+  const substituirLocal = useCallback((equipamento: Equipamento<Id>) => {
+    setEquipamentos((current) => current.map((item) => item.id === equipamento.id ? equipamento : item));
+  }, []);
+
   useEffect(() => {
     void carregar();
     return () => { latestRequest.current += 1; };
@@ -215,5 +219,6 @@ export function useEquipamentos<Id extends EquipamentoId = number>(params?: UseE
     atualizarStatus,
     buscarPorSerial,
     recarregar: carregar,
+    substituirLocal,
   };
 }

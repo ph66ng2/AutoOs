@@ -268,7 +268,7 @@ fn sanitize_legacy_event_date(candidate: Option<String>, received_at: Option<&st
     }
 }
 
-fn required_concurrency_token(token: Option<&str>, entity_label: &str) -> Result<String, String> {
+pub(crate) fn required_concurrency_token(token: Option<&str>, entity_label: &str) -> Result<String, String> {
     token
         .map(str::trim)
         .filter(|value| !value.is_empty())
@@ -1115,6 +1115,9 @@ pub async fn aprovar_orcamento(input: AprovarOrcamentoInput) -> Result<Equipamen
         return Err("Não é possível aprovar sem uma verificação técnica.".to_string());
     };
     let servicos = parse_servicos(servicos_json.as_deref().unwrap_or("[]"))?;
+    if input.aprovar_sem_servicos && (!servicos.is_empty() || !input.servicos_aprovados.is_empty()) {
+        return Err("Aprovação sem serviços só é válida para orçamento sem serviços.".to_string());
+    }
     let itens = normalizar_servicos(servicos_json.as_deref().unwrap_or("[]"))?;
     let vinculadas: HashSet<String> = itens.iter().flat_map(|s| {
         let id = s.get("id").and_then(|v| v.as_str()).unwrap_or("");
@@ -1128,7 +1131,7 @@ pub async fn aprovar_orcamento(input: AprovarOrcamentoInput) -> Result<Equipamen
         return Err("Há peças antigas sem serviço vinculado. Use Alterar Orçamento para vinculá-las antes da aprovação.".to_string());
     }
     aplicar_decisoes(&mut tx, empresa_id, verification_id, &servicos, &input.servicos_aprovados).await?;
-    let aprovado = !input.servicos_aprovados.is_empty();
+    let aprovado = !input.servicos_aprovados.is_empty() || input.aprovar_sem_servicos;
     let novo_status = if aprovado { "APROVADO" } else { "REPROVADO" };
     let todos = itens;
     let selecionados: HashSet<&str> = input.servicos_aprovados.iter().map(String::as_str).collect();
@@ -1156,6 +1159,9 @@ pub async fn aprovar_orcamento(input: AprovarOrcamentoInput) -> Result<Equipamen
     }
     if aprovado && selecionados.len() == servicos.len() {
         total = total_original.unwrap_or(total);
+    }
+    if input.aprovar_sem_servicos {
+        pecas_aceitas = pecas_antigas.clone();
     }
     if !aprovado {
         aceitos = normalizar_servicos(servicos_json.as_deref().unwrap_or("[]"))?;

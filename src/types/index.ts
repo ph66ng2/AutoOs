@@ -872,4 +872,5 @@ export interface AprovarOrcamentoInput {
   expected_updated_em: string;
   pagamento: FormaPagamento;
   servicos_aprovados: string[];
+  aprovar_sem_servicos?: boolean;
 }

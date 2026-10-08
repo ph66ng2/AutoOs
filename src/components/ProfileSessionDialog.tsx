@@ -291,7 +291,7 @@ export function ProfileSessionDialog({
 
                       {unlocked && (
                         <div className="mt-3 text-xs text-slate-500">
-                          {profile.permissions.length} permiss{profile.permissions.length === 1 ? "ão" : "ões"} configuradas
+                          {profile.permissions.length} permiss{profile.permissions.length === 1 ? "ão configurada" : "ões configuradas"}
                         </div>
                       )}
                     </button>

@@ -419,6 +419,7 @@ async fn main() -> Result<()> {
 
     let denied = equipamentos::aprovar_orcamento(AprovarOrcamentoInput {
         servicos_aprovados: vec!["test-service".to_string()],
+        aprovar_sem_servicos: false,
         empresa_id,
         equipamento_id: equipamento.id,
         expected_updated_em: approval_token.clone(),
@@ -473,6 +474,7 @@ async fn main() -> Result<()> {
 
     let stale_approval = equipamentos::aprovar_orcamento(AprovarOrcamentoInput {
         servicos_aprovados: vec!["test-service".to_string()],
+        aprovar_sem_servicos: false,
         empresa_id,
         equipamento_id: equipamento.id,
         expected_updated_em: "2000-01-01T00:00:00Z".to_string(),
@@ -498,6 +500,7 @@ async fn main() -> Result<()> {
 
     let equipamento_aprovado = equipamentos::aprovar_orcamento(AprovarOrcamentoInput {
         servicos_aprovados: vec!["test-service".to_string()],
+        aprovar_sem_servicos: false,
         empresa_id,
         equipamento_id: equipamento.id,
         expected_updated_em: approval_token,
@@ -532,6 +535,8 @@ async fn main() -> Result<()> {
     println!("P1_INTEGRATION_LEGACY_VERIFICATION_APPROVAL=ok");
     println!("P1_INTEGRATION_STATUS_HISTORY=ok");
 
+    let token_ajuste: String = sqlx::query_scalar("SELECT atualizado_em::TEXT FROM equipamentos WHERE id=$1")
+        .bind(equipamento.id).fetch_one(&pool).await?;
     let verificacao_ajustada = verificacoes::atualizar_servicos_verificacao(
         equipamento.id,
         Some(r#"[{"descricao":"Limpeza técnica completa","valor":120.0}]"#.to_string()),
@@ -544,7 +549,7 @@ async fn main() -> Result<()> {
         Some("Faturamento corporativo em 15 dias".to_string()),
         Some(empresa_id),
         Some(true),
-        None,
+        Some(token_ajuste),
     )
     .await
     .map_err(|error| anyhow!(error))?;
@@ -559,6 +564,8 @@ async fn main() -> Result<()> {
         ));
     }
 
+    let token_reajuste: String = sqlx::query_scalar("SELECT atualizado_em::TEXT FROM equipamentos WHERE id=$1")
+        .bind(equipamento.id).fetch_one(&pool).await?;
     let verificacao_sem_observacoes = verificacoes::atualizar_servicos_verificacao(
         equipamento.id,
         Some(r#"[{"descricao":"Limpeza técnica completa","valor":120.0}]"#.to_string()),
@@ -571,7 +578,7 @@ async fn main() -> Result<()> {
         Some("Faturamento corporativo em 15 dias".to_string()),
         Some(empresa_id),
         Some(true),
-        None,
+        Some(token_reajuste),
     )
     .await
     .map_err(|error| anyhow!(error))?;

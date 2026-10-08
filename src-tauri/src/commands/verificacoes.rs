@@ -276,6 +276,7 @@ pub async fn atualizar_servicos_verificacao(
     cliente_aprovou_alteracao: Option<bool>,
     expected_updated_em: Option<String>,
 ) -> Result<VerificacaoRow, String> {
+    let concurrency_token = super::equipamentos::required_concurrency_token(expected_updated_em.as_deref(), "equipamento")?;
     let actor = require_permission(PERMISSION_FINANCIAL_ACTIONS)?;
     let (payment_code, payment_detail) = normalize_forma_pagamento(
         forma_pagamento_codigo.as_ref(),
@@ -289,11 +290,11 @@ pub async fn atualizar_servicos_verificacao(
     })?;
 
     let equipment: Option<(Option<i32>, String, bool)> = sqlx::query_as(
-        "SELECT empresa_id, status, ($2::TIMESTAMPTZ IS NULL OR atualizado_em = $2::TIMESTAMPTZ)
+        "SELECT empresa_id, status, atualizado_em = $2::TIMESTAMPTZ
          FROM equipamentos WHERE id = $1 FOR UPDATE",
     )
     .bind(equipamento_id)
-    .bind(expected_updated_em.as_deref())
+    .bind(&concurrency_token)
     .fetch_optional(&mut *tx)
     .await
     .map_err(|e| e.to_string())?;

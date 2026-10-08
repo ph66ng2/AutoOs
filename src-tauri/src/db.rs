@@ -176,6 +176,8 @@ const REQUIRED_RUNTIME_TABLES: &[&str] = &[
     "orcamento_servicos_decisao",
     "security_profiles",
     "security_audit_log",
+    "photo_upload_sessions",
+    "photo_upload_session_items",
 ];
 
 const REQUIRED_RUNTIME_COLUMNS: &[(&str, &str)] = &[
@@ -204,6 +206,16 @@ const REQUIRED_RUNTIME_COLUMNS: &[(&str, &str)] = &[
     ("verificacoes", "adjusted_at"),
     ("equipamento_imagens", "storage_path"),
     ("security_profiles", "permissions"),
+    ("photo_upload_sessions", "token_hash"),
+    ("photo_upload_session_items", "storage_path"),
+];
+
+const REQUIRED_RUNTIME_INDEXES: &[&str] = &[
+    "ux_clientes_documento_ativo",
+    "ux_clientes_cpf_cnpj_ativo",
+    "ux_gastos_fixos_nome_ativo",
+    "ux_produtos_empresa_codigo_ativo",
+    "idx_photo_upload_sessions_active_token",
 ];
 
 const REQUIRED_RUNTIME_COLUMN_TYPES: &[(&str, &str, &str)] = &[
@@ -233,6 +245,17 @@ async fn validate_runtime_schema_on_pool(pool: &PgPool) -> Result<usize, String>
     .fetch_all(pool)
     .await
     .map_err(|error| format!("Não foi possível verificar as tabelas do AutoOS: {error}"))?;
+
+    let missing_indexes = sqlx::query_scalar::<_, String>(
+        "SELECT required_name
+         FROM unnest($1::text[]) AS required(required_name)
+         WHERE to_regclass(format('public.%I', required_name)) IS NULL
+         ORDER BY required_name",
+    )
+    .bind(REQUIRED_RUNTIME_INDEXES.iter().map(|value| value.to_string()).collect::<Vec<_>>())
+    .fetch_all(pool)
+    .await
+    .map_err(|error| format!("Não foi possível verificar os índices do AutoOS: {error}"))?;
 
     let column_tables = REQUIRED_RUNTIME_COLUMNS
         .iter()
@@ -293,10 +316,12 @@ async fn validate_runtime_schema_on_pool(pool: &PgPool) -> Result<usize, String>
     if !missing_tables.is_empty()
         || !missing_columns.is_empty()
         || !incompatible_columns.is_empty()
+        || !missing_indexes.is_empty()
     {
         let mut missing = missing_tables;
         missing.extend(missing_columns);
         missing.extend(incompatible_columns);
+        missing.extend(missing_indexes);
         return Err(format!(
             "Estruturas obrigatórias ausentes: {}.",
             missing.join(", ")
@@ -305,7 +330,8 @@ async fn validate_runtime_schema_on_pool(pool: &PgPool) -> Result<usize, String>
 
     Ok(REQUIRED_RUNTIME_TABLES.len()
         + REQUIRED_RUNTIME_COLUMNS.len()
-        + REQUIRED_RUNTIME_COLUMN_TYPES.len())
+        + REQUIRED_RUNTIME_COLUMN_TYPES.len()
+        + REQUIRED_RUNTIME_INDEXES.len())
 }
 
 async fn validate_migration_history_on_pool(pool: &PgPool) -> Result<usize, String> {
