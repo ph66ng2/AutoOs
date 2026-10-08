@@ -41,6 +41,9 @@ const oldFeatureChecksums = new Map([
   [21, "4ba9262d14525738d628cad84dba534b2e6653a7a9483d3e06e8da394bf475d4d6d47fe1eb0fb37ea947b0089aea84a4"],
   [22, "9aca5a749bdb63b8ead286f76cc2fc196a86c03928155afa88d380b47ce33d6ef72349457b88a945938b28b9fc4dd42e"],
 ]);
+const equivalentMasterChecksums = new Map([
+  [23, "d1b63adb27c7decb76facd852fb631a08f35cf7ae1a5282650edbccd76851b1d0b62c4d3f30f6eefe78267740ddd2342"],
+]);
 
 const env = {
   ...process.env,
@@ -90,7 +93,11 @@ for (const row of rows.split("\n").filter(Boolean)) {
   if (!expected) {
     errors.push(`Versão ${rawVersion} aplicada, mas ausente do repositório.`);
   } else if (checksum !== expected.checksum) {
-    const legacy = oldFeatureChecksums.get(version) === checksum ? " (histórico antigo da feature)" : "";
+    const legacy = oldFeatureChecksums.get(version) === checksum
+      ? " (histórico antigo da feature)"
+      : equivalentMasterChecksums.get(version) === checksum
+        ? " (variante da master com SQL equivalente; requer reconciliação auditada do checksum)"
+        : "";
     errors.push(`Versão ${rawVersion}: checksum incompatível com ${expected.file}${legacy}.`);
   }
 }
