@@ -71,11 +71,12 @@ export function AjusteOrcamentoServicos({
       <div className="space-y-2">
         {servicos.map((s) => (
           <div key={s.id} className="min-w-0 rounded-md border p-2">
-          <div className="flex min-w-0 items-start gap-2">
-            <div className="relative min-w-0 flex-1">
+          <div className="grid min-w-0 grid-cols-[minmax(0,1fr)_2.25rem] gap-2">
+            <div className="relative col-span-2 min-w-0">
               <Search className="pointer-events-none absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
               <Input
                 placeholder="Nome do serviço"
+                title={s.descricao || undefined}
                 value={s.descricao}
                 onFocus={() => setLinhaSugestaoAberta(s.id)}
                 onBlur={() => window.setTimeout(() => setLinhaSugestaoAberta(null), 120)}
@@ -83,7 +84,7 @@ export function AjusteOrcamentoServicos({
                   atualizarServico(s.id, { descricao: e.target.value, catalogo_id: undefined });
                   setLinhaSugestaoAberta(s.id);
                 }}
-                className="min-w-0 pl-8 text-sm"
+                className="w-full min-w-0 pl-8 text-sm"
               />
               {linhaSugestaoAberta === s.id && (
                 <div className="absolute z-20 mt-1 max-h-44 w-full overflow-auto rounded-md border bg-popover shadow">
@@ -125,12 +126,12 @@ export function AjusteOrcamentoServicos({
               placeholder="Valor"
               value={Number.isFinite(Number(s.valor)) ? Number(s.valor) : ""}
               onChange={(e) => atualizarServico(s.id, { valor: Number(e.target.value) })}
-              className="w-20 shrink-0 text-sm sm:w-28"
+              className="col-start-1 w-full min-w-0 text-sm"
             />
             <Button
               variant="ghost"
               size="icon"
-              className="h-9 w-9 shrink-0"
+              className="col-start-2 row-start-2 h-9 w-9 shrink-0"
               onClick={() => removerServico(s.id)}
               aria-label="Remover serviço"
             >

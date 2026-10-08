@@ -1428,8 +1428,13 @@ export default function Equipamentos({ operationalProfile }: { operationalProfil
         });
       }
       await recarregar();
-      substituirLocal(aprovado);
-      setSelecionado(aprovado);
+      const statusFinal = idsAprovados.length > 0
+        || (servicosAprovacao.length === 0 && todosServicosAprovados === true)
+        ? "APROVADO"
+        : "REPROVADO";
+      const equipamentoAtualizado = { ...selecionado, ...aprovado, status: statusFinal };
+      substituirLocal(equipamentoAtualizado);
+      setSelecionado(equipamentoAtualizado);
       setPagamentoAprovacaoError(null);
       success(
         "Equipamentos",
@@ -1611,6 +1616,10 @@ export default function Equipamentos({ operationalProfile }: { operationalProfil
         if (!profileId) {
           throw new Error("Perfil autorizado não encontrado para ajustar o orçamento.");
         }
+        const expectedUpdatedEm = selecionado.atualizado_em?.trim();
+        if (!expectedUpdatedEm) {
+          throw new Error("A versão deste orçamento não está disponível. Atualize a lista e tente novamente.");
+        }
         const pecas = mesclarPecasDoOrcamento(pecasLegadasAjuste, servicosAjuste);
         await db.atualizarServicosVerificacao(
           {
@@ -1628,7 +1637,7 @@ export default function Equipamentos({ operationalProfile }: { operationalProfil
               : {}),
             divergence: divergencia,
             cliente_aprovou_alteracao: clienteAprovouAlteracao,
-            expected_updated_em: selecionado.atualizado_em,
+            expected_updated_em: expectedUpdatedEm,
           },
           profileId,
         );
@@ -3048,7 +3057,7 @@ export default function Equipamentos({ operationalProfile }: { operationalProfil
           }
         }}
       >
-        <DialogContent className="flex max-h-[calc(100vh-2rem)] min-w-0 flex-col overflow-hidden sm:max-w-md">
+        <DialogContent className="flex w-[calc(100vw-2rem)] max-h-[calc(100vh-2rem)] min-w-0 flex-col overflow-hidden sm:max-w-md">
           <DialogHeader>
             <DialogTitle>
               {(
@@ -3058,7 +3067,8 @@ export default function Equipamentos({ operationalProfile }: { operationalProfil
             </DialogTitle>
           </DialogHeader>
           {selecionado && (
-            <div className="min-h-0 min-w-0 space-y-4 overflow-y-auto pr-4">
+            <>
+            <div className="min-h-0 min-w-0 space-y-4 overflow-y-auto pr-5">
               {!ajusteOrcamentoSemMudancaStatus && (
                 <>
                   <div className="flex items-center gap-2">
@@ -3327,13 +3337,14 @@ export default function Equipamentos({ operationalProfile }: { operationalProfil
                   </div>
                 </div>
               )}
-              <DialogFooter className="sticky bottom-0 z-10 bg-background pr-2 pt-3">
+            </div>
+              <DialogFooter className="shrink-0 bg-background pt-3">
                 <DialogClose asChild><Button variant="outline">Cancelar</Button></DialogClose>
                 <Button onClick={iniciarConfirmacaoStatus} disabled={salvando || (!novoStatus && !ajusteOrcamentoSemMudancaStatus)}>
                   {salvando ? "Salvando..." : correcaoStatus ? "Corrigir status" : "Confirmar"}
                 </Button>
               </DialogFooter>
-            </div>
+            </>
           )}
         </DialogContent>
       </Dialog>
