@@ -153,13 +153,7 @@ describe("db — new functions (inactivity, db credentials, budget)", () => {
       });
 
       const result = await db.atualizarServicosVerificacao(
-        {
-          equipamento_id: 5,
-          servicos,
-          pecas,
-          custo_total: 430,
-          expected_updated_em: "2026-10-08T09:00:00.000Z",
-        },
+        { equipamento_id: 5, servicos, pecas, custo_total: 430 },
         3,
       );
 
@@ -167,8 +161,8 @@ describe("db — new functions (inactivity, db credentials, budget)", () => {
         equipamentoId: 5,
         servicosJson: JSON.stringify(servicos),
         clienteAprovouAlteracao: false,
-        expectedUpdatedEm: "2026-10-08T09:00:00.000Z",
-        pecasJson: JSON.stringify(pecas),
+      expectedUpdatedEm: null,
+      pecasJson: JSON.stringify(pecas),
         custoTotal: 430,
         profileId: 3,
         divergence: false,
@@ -191,13 +185,7 @@ describe("db — new functions (inactivity, db credentials, budget)", () => {
       });
 
       const result = await db.atualizarServicosVerificacao(
-        {
-          equipamento_id: 6,
-          servicos: [],
-          pecas: [],
-          custo_total: 0,
-          expected_updated_em: "2026-10-08T09:00:00.000Z",
-        },
+        { equipamento_id: 6, servicos: [], pecas: [], custo_total: 0 },
         1,
       );
 
@@ -205,8 +193,8 @@ describe("db — new functions (inactivity, db credentials, budget)", () => {
         equipamentoId: 6,
         servicosJson: "[]",
         clienteAprovouAlteracao: false,
-        expectedUpdatedEm: "2026-10-08T09:00:00.000Z",
-        pecasJson: "[]",
+      expectedUpdatedEm: null,
+      pecasJson: "[]",
         custoTotal: 0,
         profileId: 1,
         divergence: false,

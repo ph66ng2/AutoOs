@@ -862,7 +862,7 @@ export interface AjusteOrcamentoInput {
   forma_pagamento_detalhe?: string;
   divergence?: boolean;
   cliente_aprovou_alteracao?: boolean;
-  expected_updated_em: string;
+  expected_updated_em?: string;
 }
 
 /** Payload da operação atômica de aprovação de orçamento. */

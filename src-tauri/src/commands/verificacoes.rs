@@ -274,9 +274,9 @@ pub async fn atualizar_servicos_verificacao(
     forma_pagamento_detalhe: Option<String>,
     empresa_id: Option<i32>,
     cliente_aprovou_alteracao: Option<bool>,
-    expected_updated_em: String,
+    expected_updated_em: Option<String>,
 ) -> Result<VerificacaoRow, String> {
-    let concurrency_token = super::equipamentos::required_concurrency_token(Some(&expected_updated_em), "equipamento")?;
+    let concurrency_token = super::equipamentos::required_concurrency_token(expected_updated_em.as_deref(), "equipamento")?;
     let actor = require_permission(PERMISSION_FINANCIAL_ACTIONS)?;
     let (payment_code, payment_detail) = normalize_forma_pagamento(
         forma_pagamento_codigo.as_ref(),

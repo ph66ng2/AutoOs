@@ -644,7 +644,7 @@ export const db = {
       profileId,
       divergence: input.divergence ?? false,
       clienteAprovouAlteracao: input.cliente_aprovou_alteracao ?? false,
-      expectedUpdatedEm: input.expected_updated_em,
+      expectedUpdatedEm: input.expected_updated_em ?? null,
       ...(input.observacoes === undefined ? {} : { observacoes: input.observacoes }),
       ...(input.forma_pagamento_codigo === undefined
         ? {}

@@ -60,7 +60,6 @@ describe("db — contatos e contratos de orçamento", () => {
       pecas: [],
       custo_total: 125,
       observacoes: "Serviço aprovado pelo cliente",
-      expected_updated_em: "2026-10-08T12:00:00Z",
       forma_pagamento_codigo: "OUTRO",
       forma_pagamento_detalhe: "Faturamento mensal",
     };
@@ -72,7 +71,7 @@ describe("db — contatos e contratos de orçamento", () => {
       equipamentoId: 20,
       servicosJson: "[]",
       clienteAprovouAlteracao: false,
-      expectedUpdatedEm: "2026-10-08T12:00:00Z",
+      expectedUpdatedEm: null,
       pecasJson: "[]",
       custoTotal: 125,
       profileId: 3,
@@ -92,7 +91,6 @@ describe("db — contatos e contratos de orçamento", () => {
       pecas: [],
       custo_total: 125,
       observacoes: "",
-      expected_updated_em: "2026-10-08T12:00:00Z",
     };
     mockInvoke.mockResolvedValue({ id: 8, equipamento_id: 20 });
 
@@ -102,7 +100,7 @@ describe("db — contatos e contratos de orçamento", () => {
       equipamentoId: 20,
       servicosJson: "[]",
       clienteAprovouAlteracao: false,
-      expectedUpdatedEm: "2026-10-08T12:00:00Z",
+      expectedUpdatedEm: null,
       pecasJson: "[]",
       custoTotal: 125,
       profileId: 3,
