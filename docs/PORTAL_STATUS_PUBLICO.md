@@ -16,7 +16,7 @@ O portal permite que o cliente consulte a etapa atual de um ciclo de atendimento
 
 ## Banco
 
-A migration é `src-tauri/migrations/0029_portal_status_publico.sql`, a fonte de schema usada pelo aplicativo. Ela cria a data confiável de mudança de status, os links com vínculo composto por empresa e equipamento, e o limite de consultas. As versões 0024–0028 estão reservadas para a branch `feature`; integre essas migrations antes de aplicar a 0029 em um banco real.
+A migration é `src-tauri/migrations/0029_portal_status_publico.sql`, a fonte de schema usada pelo aplicativo. Ela cria a data confiável de mudança de status, os links com vínculo composto por empresa e equipamento, e o limite de consultas. As versões 0024–0028 são promovidas pelo PR #123 e precisam estar aplicadas antes da 0029 em um banco real.
 
 Na auditoria de produção de 2026-10-08, `autoos` usava IDs inteiros para `empresas` e `equipamentos`, não possuía `os_status_publico` nem Edge Functions. `supabase/schema.sql` ainda descreve um modelo com UUID e não corresponde a esse banco; **não aplique esse snapshot em produção para instalar o portal**. Use o processo administrativo já adotado para aplicar a migration SQLx e confirme o schema antes de publicar a função.
 

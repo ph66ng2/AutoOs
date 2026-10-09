@@ -8,7 +8,7 @@ use url::Url;
 
 static MIGRATOR: Migrator = sqlx::migrate!("./migrations");
 
-const REQUIRED_PROMOTION_MIGRATIONS: [i64; 2] = [27, 28];
+const REQUIRED_PROMOTION_MIGRATIONS: [i64; 3] = [27, 28, 29];
 
 fn required_env(name: &str) -> Result<String> {
     std::env::var(name)
@@ -114,8 +114,8 @@ fn validate_migration_set() -> Result<()> {
     }
 
     ensure!(
-        versions.len() == 28,
-        "conjunto SQLx incompleto ou inesperado: esperadas 28 migrations (0001–0028), encontradas {}",
+        versions.len() == 29,
+        "conjunto SQLx incompleto ou inesperado: esperadas 29 migrations (0001–0029), encontradas {}",
         versions.len()
     );
     for (index, version) in versions.iter().enumerate() {
@@ -154,7 +154,7 @@ async fn require_established_history(pool: &PgPool) -> Result<()> {
     let expected_versions_applied: bool = sqlx::query_scalar(
         "SELECT NOT EXISTS (
              SELECT expected.version
-               FROM generate_series(1, 26) AS expected(version)
+               FROM generate_series(1, 28) AS expected(version)
                LEFT JOIN public._sqlx_migrations AS applied
                  ON applied.version = expected.version AND applied.success = true
               WHERE applied.version IS NULL
@@ -162,10 +162,10 @@ async fn require_established_history(pool: &PgPool) -> Result<()> {
     )
     .fetch_one(pool)
     .await
-    .context("não foi possível validar as migrations SQLx 0001–0026")?;
+    .context("não foi possível validar as migrations SQLx 0001–0028")?;
     ensure!(
         expected_versions_applied,
-        "produção não tem todas as migrations SQLx 0001–0026 aplicadas com sucesso"
+        "produção não tem todas as migrations SQLx 0001–0028 aplicadas com sucesso"
     );
 
     let failed_migrations: i64 =
@@ -292,6 +292,24 @@ async fn verify_promoted_schema(pool: &PgPool) -> Result<()> {
         "equipamentos.atualizado_em continua aceitando NULL após a migration 0028"
     );
 
+    let portal_schema_exists: bool = sqlx::query_scalar(
+        "SELECT to_regclass('public.links_status_publico') IS NOT NULL
+             AND to_regclass('public.status_portal_config') IS NOT NULL
+             AND to_regclass('public.status_portal_rate_limits') IS NOT NULL
+             AND EXISTS (
+                 SELECT 1 FROM information_schema.columns
+                  WHERE table_schema = 'public' AND table_name = 'equipamentos'
+                    AND column_name = 'status_alterado_em'
+             )",
+    )
+    .fetch_one(pool)
+    .await
+    .context("não foi possível confirmar as estruturas do portal público")?;
+    ensure!(
+        portal_schema_exists,
+        "estruturas da migration SQLx 0029 não foram encontradas"
+    );
+
     let applied_count: i64 =
         sqlx::query_scalar("SELECT count(*) FROM public._sqlx_migrations WHERE success = true")
             .fetch_one(pool)
@@ -314,7 +332,7 @@ async fn required_promotion_migrations_already_applied(pool: &PgPool) -> Result<
     .bind(REQUIRED_PROMOTION_MIGRATIONS.as_slice())
     .fetch_one(pool)
     .await
-    .context("não foi possível consultar o status inicial das migrations 0027–0028")?;
+    .context("não foi possível consultar o status inicial das migrations 0027–0029")?;
     Ok(applied_count == REQUIRED_PROMOTION_MIGRATIONS.len() as i64)
 }
 
