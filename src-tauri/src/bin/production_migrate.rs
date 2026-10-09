@@ -9,6 +9,7 @@ use url::Url;
 static MIGRATOR: Migrator = sqlx::migrate!("./migrations");
 
 const REQUIRED_PROMOTION_MIGRATIONS: [i64; 2] = [27, 28];
+const LAST_REQUIRED_APPLIED_MIGRATION: i64 = 23;
 
 fn required_env(name: &str) -> Result<String> {
     std::env::var(name)
@@ -98,11 +99,7 @@ fn validate_production_target() -> Result<String> {
     Ok(database_url)
 }
 
-fn validate_migration_set() -> Result<()> {
-    let mut versions = MIGRATOR
-        .iter()
-        .map(|migration| migration.version)
-        .collect::<Vec<_>>();
+fn validate_migration_versions(mut versions: Vec<i64>, expected_count: usize) -> Result<()> {
     versions.sort_unstable();
 
     for pair in versions.windows(2) {
@@ -114,8 +111,8 @@ fn validate_migration_set() -> Result<()> {
     }
 
     ensure!(
-        versions.len() == 28,
-        "conjunto SQLx incompleto ou inesperado: esperadas 28 migrations (0001–0028), encontradas {}",
+        versions.len() == expected_count,
+        "conjunto SQLx incompleto ou inesperado: esperadas {expected_count} migrations (0001–{expected_count:04}), encontradas {}",
         versions.len()
     );
     for (index, version) in versions.iter().enumerate() {
@@ -126,6 +123,13 @@ fn validate_migration_set() -> Result<()> {
         );
     }
     Ok(())
+}
+
+fn validate_migration_set() -> Result<()> {
+    validate_migration_versions(
+        MIGRATOR.iter().map(|migration| migration.version).collect(),
+        28,
+    )
 }
 
 fn require_expected_migrations() -> Result<()> {
@@ -154,18 +158,19 @@ async fn require_established_history(pool: &PgPool) -> Result<()> {
     let expected_versions_applied: bool = sqlx::query_scalar(
         "SELECT NOT EXISTS (
              SELECT expected.version
-               FROM generate_series(1, 26) AS expected(version)
+               FROM generate_series(1, $1) AS expected(version)
                LEFT JOIN public._sqlx_migrations AS applied
                  ON applied.version = expected.version AND applied.success = true
               WHERE applied.version IS NULL
          )",
     )
+    .bind(LAST_REQUIRED_APPLIED_MIGRATION)
     .fetch_one(pool)
     .await
-    .context("não foi possível validar as migrations SQLx 0001–0026")?;
+    .with_context(|| format!("não foi possível validar as migrations SQLx 0001–{LAST_REQUIRED_APPLIED_MIGRATION:04}"))?;
     ensure!(
         expected_versions_applied,
-        "produção não tem todas as migrations SQLx 0001–0026 aplicadas com sucesso"
+        "produção não tem todas as migrations SQLx 0001–{LAST_REQUIRED_APPLIED_MIGRATION:04} aplicadas com sucesso"
     );
 
     let failed_migrations: i64 =
@@ -178,6 +183,33 @@ async fn require_established_history(pool: &PgPool) -> Result<()> {
         "histórico SQLx de produção contém migrations com falha"
     );
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn promotes_from_master_0023_with_a_contiguous_migration_set() {
+        assert_eq!(LAST_REQUIRED_APPLIED_MIGRATION, 23);
+        assert!(validate_migration_set().is_ok());
+        assert!(require_expected_migrations().is_ok());
+    }
+
+    #[test]
+    fn rejects_duplicate_missing_and_out_of_order_versions() {
+        let complete = (1..=28).collect::<Vec<_>>();
+        assert!(validate_migration_versions(complete.clone(), 28).is_ok());
+
+        let mut duplicate = complete.clone();
+        duplicate[23] = 23;
+        assert!(validate_migration_versions(duplicate, 28).is_err());
+        assert!(validate_migration_versions(complete[..27].to_vec(), 28).is_err());
+
+        let mut gap = complete;
+        gap[23] = 29;
+        assert!(validate_migration_versions(gap, 28).is_err());
+    }
 }
 
 async fn preflight_migration_0027(pool: &PgPool) -> Result<()> {
