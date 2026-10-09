@@ -34,6 +34,10 @@ name = "ci_migrate"
 path = "src/bin/ci_migrate.rs"
 
 [[bin]]
+name = "production_migrate"
+path = "src/bin/production_migrate.rs"
+
+[[bin]]
 name = "p1_critical_integration"
 path = "src/bin/p1_critical_integration.rs"
 

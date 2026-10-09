@@ -15,6 +15,8 @@
     "test:updater": "node --test scripts/__tests__/generate-update-manifest.test.mjs",
     "test:coverage": "vitest run --coverage",
     "lint": "tsc --noEmit",
+    "check:migrations": "node scripts/check-sqlx-migrations.mjs",
+    "check:migrations:db": "node scripts/check-sqlx-database-history.mjs",
     "e2e": "npm run e2e:web",
     "e2e:web": "playwright test",
     "e2e:mock": "npm run e2e:web",

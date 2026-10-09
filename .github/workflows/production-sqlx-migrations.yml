@@ -1,0 +1,131 @@
+name: Aplicar migrations SQLx na produção
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirmation:
+        description: 'Digite exatamente "APLICAR EM PROD" para continuar.'
+        required: true
+        type: string
+      expected_host:
+        description: 'Digite o hostname Supavisor de produção configurado no ambiente.'
+        required: true
+        type: string
+      expected_user:
+        description: 'Digite o usuário PostgreSQL de produção configurado no ambiente.'
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: autoos-production-sqlx-migrations
+  cancel-in-progress: false
+
+jobs:
+  apply:
+    name: Preflight e migrations SQLx de produção
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/master'
+    environment:
+      name: production-migrations
+    timeout-minutes: 30
+    env:
+      AUTOOS_MIGRATION_MODE: production
+      AUTOOS_PRODUCTION_MIGRATION_CONFIRM: ${{ inputs.confirmation }}
+      AUTOOS_PRODUCTION_MIGRATION_CONFIRMED_HOST: ${{ inputs.expected_host }}
+      AUTOOS_PRODUCTION_MIGRATION_CONFIRMED_USER: ${{ inputs.expected_user }}
+      AUTOOS_PRODUCTION_MIGRATIONS_ENABLED: ${{ vars.AUTOOS_PRODUCTION_MIGRATIONS_ENABLED }}
+      AUTOOS_PRODUCTION_DATABASE_HOST: ${{ vars.AUTOOS_PRODUCTION_DATABASE_HOST }}
+      AUTOOS_PRODUCTION_DATABASE_USER: ${{ vars.AUTOOS_PRODUCTION_DATABASE_USER }}
+    steps:
+      - name: Checkout do commit selecionado em master
+        # actions/checkout v4.2.2
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+
+      - name: Exigir confirmação, destino configurado e aprovação do ambiente
+        shell: bash
+        env:
+          AUTOOS_PRODUCTION_MIGRATION_DATABASE_URL: ${{ secrets.AUTOOS_PRODUCTION_MIGRATION_DATABASE_URL }}
+        run: |
+          set -euo pipefail
+          if [[ "$GITHUB_REF" != "refs/heads/master" ]]; then
+            echo "A aplicação de migrations SQLx só pode ser executada em master."
+            exit 1
+          fi
+          if [[ "$AUTOOS_PRODUCTION_MIGRATION_CONFIRM" != "APLICAR EM PROD" ]]; then
+            echo "Confirmação inválida; nenhuma conexão foi aberta."
+            exit 1
+          fi
+          if [[ "$AUTOOS_PRODUCTION_MIGRATION_CONFIRMED_HOST" != "$AUTOOS_PRODUCTION_DATABASE_HOST" ]]; then
+            echo "O host digitado não corresponde ao host configurado; nenhuma conexão foi aberta."
+            exit 1
+          fi
+          if [[ "$AUTOOS_PRODUCTION_MIGRATION_CONFIRMED_USER" != "$AUTOOS_PRODUCTION_DATABASE_USER" ]]; then
+            echo "O usuário digitado não corresponde ao usuário configurado; nenhuma conexão foi aberta."
+            exit 1
+          fi
+          if [[ "$AUTOOS_PRODUCTION_MIGRATIONS_ENABLED" != "true" ]]; then
+            echo "Configure AUTOOS_PRODUCTION_MIGRATIONS_ENABLED=true no ambiente production-migrations após configurar a aprovação obrigatória."
+            exit 1
+          fi
+          if [[ -z "$AUTOOS_PRODUCTION_MIGRATION_DATABASE_URL" || -z "$AUTOOS_PRODUCTION_DATABASE_HOST" || -z "$AUTOOS_PRODUCTION_DATABASE_USER" ]]; then
+            echo "Configure a URL secreta e as variáveis de host/usuário no ambiente production-migrations."
+            exit 1
+          fi
+          echo "Confirmação e destino conferidos; credenciais omitidas dos logs."
+
+      - name: Instalar Node.js
+        # actions/setup-node v4.4.0
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: "22"
+
+      - name: Instalar Rust 1.99.0
+        # dtolnay/rust-toolchain commit correspondente ao toolchain estável usado pela CI.
+        uses: dtolnay/rust-toolchain@686976e191b89faba57d3206551f0f330d8cb249
+        with:
+          toolchain: "1.99.0"
+
+      - name: Cache Cargo
+        # Swatinem/rust-cache v2.8.2
+        uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6
+        with:
+          workspaces: src-tauri
+
+      - name: Instalar dependências do runner
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf libsecret-1-dev postgresql-client
+
+      - name: Validar sequência de migrations do commit
+        run: npm run check:migrations
+
+      - name: Compilar executor sem credenciais de produção
+        run: cargo build --manifest-path src-tauri/Cargo.toml --locked --quiet --bin production_migrate
+
+      - name: Pré-checar conflitos sem alterar o banco
+        env:
+          AUTOOS_PRODUCTION_MIGRATION_DATABASE_URL: ${{ secrets.AUTOOS_PRODUCTION_MIGRATION_DATABASE_URL }}
+        run: ./src-tauri/target/debug/production_migrate --preflight-only
+
+      - name: Reconciliar somente a variante conhecida da migration 0023
+        env:
+          AUTOOS_MIGRATION_DATABASE_URL: ${{ secrets.AUTOOS_PRODUCTION_MIGRATION_DATABASE_URL }}
+        run: node scripts/reconcile-sqlx-master-0023.mjs --apply
+
+      - name: Bloquear histórico SQLx divergente antes de migrar
+        env:
+          AUTOOS_MIGRATION_DATABASE_URL: ${{ secrets.AUTOOS_PRODUCTION_MIGRATION_DATABASE_URL }}
+        run: npm run check:migrations:db
+
+      - name: Pré-checar dados e aplicar migrations pendentes
+        env:
+          AUTOOS_PRODUCTION_MIGRATION_DATABASE_URL: ${{ secrets.AUTOOS_PRODUCTION_MIGRATION_DATABASE_URL }}
+        run: ./src-tauri/target/debug/production_migrate
+
+      - name: Confirmar histórico SQLx final
+        env:
+          AUTOOS_MIGRATION_DATABASE_URL: ${{ secrets.AUTOOS_PRODUCTION_MIGRATION_DATABASE_URL }}
+        run: npm run check:migrations:db
