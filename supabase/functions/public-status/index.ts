@@ -53,7 +53,6 @@ const TOKEN_PATTERN = /^[a-f0-9]{64}$/i;
 const MAX_BODY_BYTES = 2_048;
 const RATE_LIMIT_PER_MINUTE = 30;
 const CLIENT_RATE_LIMIT_PER_MINUTE = 60;
-const GLOBAL_RATE_LIMIT_PER_MINUTE = 300;
 const DELIVERY_VALIDITY_MS = 30 * 24 * 60 * 60 * 1_000;
 
 type LinkRow = {
@@ -275,22 +274,18 @@ Deno.serve(async (request: Request) => {
   // X-Forwarded-For ou X-Real-IP, que podem conter valores do cliente.
   const gatewayIp = request.headers.get("cf-connecting-ip")?.trim().toLowerCase();
   const hasGatewayIp = Boolean(gatewayIp && gatewayIp.length <= 45 && /^[0-9a-f:.]+$/.test(gatewayIp));
-  const clientFingerprint = await hmacFingerprint(
-    rateLimitSecret,
-    hasGatewayIp ? `portal:client:${gatewayIp}` : "portal:global-fallback",
-  );
-  const clientUnderLimit = await consumeRateLimit(
-    supabaseUrl,
-    serverKey,
-    clientFingerprint,
-    hasGatewayIp ? CLIENT_RATE_LIMIT_PER_MINUTE : GLOBAL_RATE_LIMIT_PER_MINUTE,
-  );
-  if (clientUnderLimit === null) {
-    return jsonResponse({ erro: "Serviço temporariamente indisponível." }, 503, origin);
-  }
-  if (!clientUnderLimit) {
-    console.warn("public_status_rate_limited");
-    return jsonResponse({ erro: "Aguarde um minuto e tente novamente." }, 429, origin, { "Retry-After": "60" });
+  if (hasGatewayIp) {
+    const clientFingerprint = await hmacFingerprint(rateLimitSecret, `portal:client:${gatewayIp}`);
+    const clientUnderLimit = await consumeRateLimit(
+      supabaseUrl, serverKey, clientFingerprint, CLIENT_RATE_LIMIT_PER_MINUTE,
+    );
+    if (clientUnderLimit === null) {
+      return jsonResponse({ erro: "Serviço temporariamente indisponível." }, 503, origin);
+    }
+    if (!clientUnderLimit) {
+      console.warn("public_status_rate_limited");
+      return jsonResponse({ erro: "Aguarde um minuto e tente novamente." }, 429, origin, { "Retry-After": "60" });
+    }
   }
 
   const configUrl = new URL(`${supabaseUrl}/rest/v1/status_portal_config`);

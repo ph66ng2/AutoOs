@@ -217,8 +217,27 @@ describe("public status edge function", () => {
       .filter(([input]) => new URL(input instanceof Request ? input.url : input.toString()).pathname.endsWith("/rpc/consumir_limite_status_publico"))
       .map(([, init]) => JSON.parse(String(init?.body)).p_fingerprint);
 
-    expect(firstFingerprints).toHaveLength(2);
+    expect(firstFingerprints).toHaveLength(1);
     expect(firstFingerprints).toEqual(secondFingerprints);
+  });
+
+  it("does not share a fallback bucket when the gateway IP is absent", async () => {
+    const fingerprints = new Set<string>();
+    for (let attempt = 0; attempt < 300; attempt += 1) {
+      const token = attempt.toString(16).padStart(64, "0");
+      const { response } = await callPortal(token);
+      expect(response.status).toBe(404);
+    }
+    for (const [input, init] of vi.mocked(fetch).mock.calls) {
+      const url = new URL(input instanceof Request ? input.url : input.toString());
+      if (url.pathname.endsWith("/rpc/consumir_limite_status_publico")) {
+        fingerprints.add(JSON.parse(String(init?.body)).p_fingerprint);
+      }
+    }
+    expect(fingerprints.size).toBe(300);
+
+    const { response } = await callPortal();
+    expect(response.status).toBe(200);
   });
 
   it("separates client buckets using the gateway IP", async () => {
