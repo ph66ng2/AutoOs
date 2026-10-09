@@ -30,6 +30,7 @@ import type {
   Verificacao,
   ServicoNecessario,
 } from "@/types";
+import { resolveRecipient } from "@/lib/recipient-resolver";
 
 /**
  * Email da gerência que deve sempre receber cópia (CC) de toda comunicação
@@ -139,6 +140,59 @@ async function prepararAnexoTemporario(
 }
 
 export const EmailService = {
+  /** Envia o link de acompanhamento sem persistir o token no histórico interno. */
+  async enviarLinkStatusPublico(equipamento: Equipamento, url: string) {
+    const recipient = resolveRecipient(equipamento, "email");
+    if (!recipient.endereco) {
+      return { sucesso: false, erro: "Não há email cadastrado para este atendimento." };
+    }
+
+    const assunto = `Acompanhe seu atendimento - ${equipamento.marca} ${equipamento.modelo}`;
+    const corpoTexto = `Olá, ${recipient.nome}.\n\nAcompanhe a etapa atual do atendimento do seu equipamento pelo link abaixo:\n${url}\n\nEste link permite apenas consultar o andamento e não aprova orçamento nem altera dados.\n\nBMI TAG`;
+    const corpoHtml = `<p>Olá, ${escapeHtml(recipient.nome)}.</p><p>Acompanhe a etapa atual do atendimento do seu equipamento pelo link abaixo:</p><p><a href="${url}">Acompanhar atendimento</a></p><p>Este link permite apenas consultar o andamento e não aprova orçamento nem altera dados.</p><p>BMI TAG</p>`;
+    const logMessage = "Link público de acompanhamento enviado. O token foi omitido do histórico interno.";
+
+    try {
+      await invoke<void>("enviar_email", {
+        input: {
+          destinatario: recipient.nome,
+          email: recipient.endereco,
+          assunto,
+          corpo: corpoTexto,
+          corpo_texto: corpoTexto,
+          corpo_html: corpoHtml,
+          anexos: undefined,
+        },
+      });
+      await registrarComunicacaoSegura({
+        equipamento_id: equipamento.id!,
+        tipo: "STATUS_PUBLICO",
+        canal: "EMAIL",
+        destinatario: recipient.nome,
+        contato: recipient.endereco,
+        assunto,
+        mensagem: logMessage,
+        enviado: true,
+        data_envio: new Date().toISOString(),
+      });
+      return { sucesso: true };
+    } catch (error: any) {
+      const erroMsg = typeof error === "string" ? error : (error?.message || "Falha ao enviar o link por email.");
+      await registrarComunicacaoSegura({
+        equipamento_id: equipamento.id!,
+        tipo: "STATUS_PUBLICO",
+        canal: "EMAIL",
+        destinatario: recipient.nome,
+        contato: recipient.endereco,
+        assunto,
+        mensagem: logMessage,
+        enviado: false,
+        erro: erroMsg,
+      });
+      return { sucesso: false, erro: erroMsg };
+    }
+  },
+
   /** Envia email da ordem de entrada (ordem de serviço) via SMTP e registra no banco */
   async enviarOrdemEntrada(equipamento: Equipamento) {
     if (!equipamento.cliente_email) {

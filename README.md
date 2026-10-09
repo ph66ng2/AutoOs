@@ -19,6 +19,7 @@ O projeto não está mais em fase de scaffold. O estado atual é um app Tauri + 
 - Controle de estoque com entrada, saída e trilha de movimentações
 - Recebimento técnico com defeito relatado, patrimônio, acessórios e imagens de entrada/saída
 - Histórico de comunicações por WhatsApp e email
+- Consulta pública de etapa por link individual, com revogação e QR code
 - Perfis locais com PIN, permissões granulares e auditoria mínima
 - A criação de perfis fica em `Perfil > Criar perfil` e exige uma sessão com permissão para gerenciar perfis. Informe nome, tipo de acesso, permissões e PIN com confirmação. Depois de criar, use `Ver perfis e decidir` para entrar com o PIN do novo perfil. O perfil ativo só muda após validar o PIN de destino.
 - Painel de conferência do schema em `Configurações > Segurança`
@@ -90,6 +91,14 @@ Build local do desktop:
 npm run tauri build
 ```
 
+Build separado do portal público para publicar em `status.bmitag.com.br`:
+
+```bash
+npm run build:public-status
+```
+
+O conteúdo publicável é gerado em `dist-public-status/`. Veja os pré-requisitos de banco, Edge Function e hospedagem em [docs/PORTAL_STATUS_PUBLICO.md](./docs/PORTAL_STATUS_PUBLICO.md).
+
 Estado atual de distribuição Windows:
 
 - bundle Tauri ativo;
@@ -123,6 +132,7 @@ O app mantém housekeeping local desses diretórios e expõe um snapshot de supo
 - Assinatura Windows: [docs/WINDOWS_CODE_SIGNING.md](./docs/WINDOWS_CODE_SIGNING.md)
 - Roadmap: [3-NEXT_STEPS.md](./3-NEXT_STEPS.md)
 - Backup e restore: [4-BACKUP.md](./4-BACKUP.md)
+- Portal público de acompanhamento: [docs/PORTAL_STATUS_PUBLICO.md](./docs/PORTAL_STATUS_PUBLICO.md)
 
 ## Banco e migrações
 

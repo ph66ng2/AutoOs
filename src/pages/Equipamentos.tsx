@@ -55,6 +55,7 @@ import {
   Download,
   Smartphone,
   DollarSign,
+  Link2,
 } from "lucide-react";
 import { useForm, Controller } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -172,6 +173,7 @@ import { InputDialog } from "@/components/ui/input-dialog";
 import { ErrorAlert } from "@/components/ui/error-alert";
 import { PaginationControls } from "@/components/ui/pagination-controls";
 import { PagamentoOrcamentoDialog } from "@/components/equipamentos/PagamentoOrcamentoDialog";
+import { PublicStatusLinkDialog } from "@/components/equipamentos/PublicStatusLinkDialog";
 import { FormaPagamentoFields } from "@/components/equipamentos/FormaPagamentoFields";
 import { resolveRecipient, type ResolvedRecipient } from "@/lib/recipient-resolver";
 import { saveRecipientAddress } from "@/lib/recipient-persistence";
@@ -185,6 +187,7 @@ export default function Equipamentos() {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [detalhesDialogOpen, setDetalhesDialogOpen] = useState(false);
+  const [publicStatusDialogOpen, setPublicStatusDialogOpen] = useState(false);
   const [verificacaoDialogOpen, setVerificacaoDialogOpen] = useState(false);
   const [statusDialogOpen, setStatusDialogOpen] = useState(false);
   const [pagamentoDialogOpen, setPagamentoDialogOpen] = useState(false);
@@ -2357,7 +2360,7 @@ export default function Equipamentos() {
           <DialogHeader><DialogTitle>Detalhes do Equipamento</DialogTitle></DialogHeader>
           {selecionado && (
             <div className="space-y-4">
-              <div className="flex items-center justify-between">
+              <div className="flex items-center justify-between gap-3">
                 <div>
                   <h3 className="text-lg font-bold">{selecionado.marca} {selecionado.modelo}</h3>
                   <p className="text-sm text-muted-foreground font-mono">{selecionado.serial_number}</p>
@@ -2367,7 +2370,23 @@ export default function Equipamentos() {
                     </p>
                   )}
                 </div>
-                <StatusBadge status={selecionado.status} />
+                <div className="flex shrink-0 flex-col items-end gap-2">
+                  <StatusBadge status={selecionado.status} />
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={async () => {
+                      const allowed = await ensureSensitiveAccess({
+                        title: "Acompanhamento público",
+                        description: "Confirme o acesso para consultar e gerenciar links públicos deste atendimento.",
+                        permission: SENSITIVE_PERMISSIONS.MANAGE_STATUS_LINKS,
+                      });
+                      if (allowed) setPublicStatusDialogOpen(true);
+                    }}
+                  >
+                    <Link2 className="mr-2 h-4 w-4" /> Acompanhamento público
+                  </Button>
+                </div>
               </div>
 
               <Tabs defaultValue="info">
@@ -2503,6 +2522,12 @@ export default function Equipamentos() {
           )}
         </DialogContent>
       </Dialog>
+
+      <PublicStatusLinkDialog
+        equipamento={selecionado}
+        open={publicStatusDialogOpen}
+        onOpenChange={setPublicStatusDialogOpen}
+      />
 
       {/* ═══ Dialog Verificação Técnica (componente extraído) ═══ */}
       <VerificacaoTecnica

@@ -62,6 +62,49 @@ function parseJsonList<T>(value?: string): T[] {
 }
 
 export const WhatsAppService = {
+  /** Envia o link de acompanhamento e registra apenas o resultado, nunca o token. */
+  async enviarLinkStatusPublico(equipamento: Equipamento, url: string) {
+    const recipient = resolveRecipient(equipamento, "telefone");
+    if (!recipient.endereco) {
+      return { sucesso: false, erro: "Não há telefone cadastrado para este atendimento." };
+    }
+
+    const mensagem = `Olá, ${recipient.nome}! Acompanhe a etapa atual do atendimento do seu equipamento ${equipamento.marca} ${equipamento.modelo} pelo link seguro: ${url}\n\nEste link permite apenas consultar o andamento e não aprova orçamento nem altera dados.\n\nBMI TAG`;
+    const logMessage = "Link público de acompanhamento enviado. O token foi omitido do histórico interno.";
+    let telefone = recipient.endereco;
+
+    try {
+      telefone = formatarTelefone(recipient.endereco);
+      await invoke<void>("enviar_whatsapp", {
+        input: { contato: telefone, mensagem },
+      });
+      await registrarComunicacaoSegura({
+        equipamento_id: equipamento.id!,
+        tipo: "STATUS_PUBLICO",
+        canal: "WHATSAPP",
+        destinatario: recipient.nome,
+        contato: telefone,
+        mensagem: logMessage,
+        enviado: true,
+        data_envio: new Date().toISOString(),
+      });
+      return { sucesso: true };
+    } catch (error: any) {
+      const erroMsg = typeof error === "string" ? error : (error?.message || "Falha ao enviar o link por WhatsApp.");
+      await registrarComunicacaoSegura({
+        equipamento_id: equipamento.id!,
+        tipo: "STATUS_PUBLICO",
+        canal: "WHATSAPP",
+        destinatario: recipient.nome,
+        contato: telefone,
+        mensagem: logMessage,
+        enviado: false,
+        erro: erroMsg,
+      });
+      return { sucesso: false, erro: erroMsg };
+    }
+  },
+
   /**
    * Envia orçamento via WhatsApp API.
    * Monta mensagem com: dados do equipamento, serviços, peças, valor total, prazo.

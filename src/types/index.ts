@@ -159,6 +159,18 @@ export interface EquipamentoHistoricoEvento {
   autor?: string;
 }
 
+export interface PublicStatusLinkInfo {
+  status: "ativo" | "expirado" | "revogado";
+  createdAt?: string | null;
+  expiresAt?: string | null;
+  lastAccessAt?: string | null;
+}
+
+export interface PublicStatusLinkCreated {
+  url: string;
+  expiresAt: string;
+}
+
 export const CATEGORIAS_IMAGEM_EQUIPAMENTO = {
   ENTRADA: "ENTRADA",
   SAIDA: "SAIDA",
@@ -545,6 +557,7 @@ export const SENSITIVE_PERMISSIONS = {
   FINANCIAL_ACTIONS: "FINANCIAL_ACTIONS",
   STOCK_CONTROL: "STOCK_CONTROL",
   MANAGE_PROFILES: "MANAGE_PROFILES",
+  MANAGE_STATUS_LINKS: "MANAGE_STATUS_LINKS",
   VIEW_EXPENSES: "VIEW_EXPENSES",
 } as const;
 
@@ -557,6 +570,7 @@ export const SENSITIVE_PERMISSION_LABELS: Record<SensitivePermission, string> = 
   FINANCIAL_ACTIONS: "alterar orçamentos, aprovações e valores",
   STOCK_CONTROL: "movimentar e editar estoque",
   MANAGE_PROFILES: "gerenciar perfis e auditoria",
+  MANAGE_STATUS_LINKS: "criar e revogar links públicos de acompanhamento",
   VIEW_EXPENSES: "visualizar gastos e despesas",
 };
 

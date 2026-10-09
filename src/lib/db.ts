@@ -55,6 +55,8 @@ import type {
   PostgresBackupResult,
   PostgresRestoreResult,
   PostgresBackupToolsStatus,
+  PublicStatusLinkCreated,
+  PublicStatusLinkInfo,
   PaginatedResult,
   Produto,
   ResultadoVerificacaoCredenciais,
@@ -255,6 +257,22 @@ export const db = {
   /** Lista etapas e mudanças de status auditadas no tenant do perfil ativo. */
   async listarHistoricoEquipamento(equipamentoId: number): Promise<EquipamentoHistoricoEvento[]> {
     return invoke<EquipamentoHistoricoEvento[]>("listar_historico_equipamento", { equipamentoId });
+  },
+
+  async obterLinkStatusPublico(equipamentoId: number): Promise<PublicStatusLinkInfo | null> {
+    return invoke<PublicStatusLinkInfo | null>("obter_link_status_publico", { equipamentoId });
+  },
+
+  async criarLinkStatusPublico(equipamentoId: number): Promise<PublicStatusLinkCreated> {
+    return invoke<PublicStatusLinkCreated>("criar_link_status_publico", { equipamentoId });
+  },
+
+  async revogarLinkStatusPublico(equipamentoId: number): Promise<boolean> {
+    return invoke<boolean>("revogar_link_status_publico", { equipamentoId });
+  },
+
+  async gerarQrLinkStatusPublico(url: string): Promise<string> {
+    return invoke<string>("gerar_qr_link_status_publico", { url });
   },
 
   /** Lista imagens vinculadas a um equipamento → Rust: listar_imagens_equipamento */
