@@ -15,6 +15,7 @@ type TestState = {
   links: Array<Record<string, unknown>>;
   equipment: Record<string, unknown>;
   allowedByRateLimit: boolean;
+  blockedFingerprint: string | null;
 };
 
 let handler: PublicStatusHandler;
@@ -71,6 +72,7 @@ beforeEach(() => {
     links: [linkRow()],
     equipment: equipmentRow(),
     allowedByRateLimit: true,
+    blockedFingerprint: null,
   };
 
   vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
@@ -78,7 +80,8 @@ beforeEach(() => {
     const method = init?.method ?? "GET";
 
     if (url.pathname.endsWith("/rpc/consumir_limite_status_publico")) {
-      return mockResponse(state.allowedByRateLimit);
+      const fingerprint = JSON.parse(String(init?.body)).p_fingerprint;
+      return mockResponse(state.allowedByRateLimit && fingerprint !== state.blockedFingerprint);
     }
     if (url.pathname.endsWith("/status_portal_config")) {
       return mockResponse([{ public_enabled: state.enabled }]);
@@ -236,6 +239,16 @@ describe("public status edge function", () => {
     expect(firstFingerprints).toHaveLength(2);
     expect(firstFingerprints[0]).not.toBe(secondFingerprints[0]);
     expect(firstFingerprints[1]).toBe(secondFingerprints[1]);
+
+    state.blockedFingerprint = firstFingerprints[0];
+    const limited = await handler(new Request(`${SUPABASE_URL}/functions/v1/public-status`, {
+      method: "POST", headers, body: JSON.stringify({ token: TOKEN }),
+    }));
+    const otherClient = await handler(new Request(`${SUPABASE_URL}/functions/v1/public-status`, {
+      method: "POST", headers: { ...headers, "cf-connecting-ip": "203.0.113.11" }, body: JSON.stringify({ token: TOKEN }),
+    }));
+    expect(limited.status).toBe(429);
+    expect(otherClient.status).toBe(200);
   });
 
   it("rejects local browser origins unless explicitly enabled", async () => {
