@@ -1,7 +1,52 @@
+-- REGISTRO HISTÓRICO: a reconciliação foi executada em 2026-10-09.
+-- A guarda de schema abaixo foi acrescentada após a execução. Não reutilize
+-- este arquivo como baseline genérico sem nova auditoria do banco de destino.
 BEGIN;
 SET LOCAL lock_timeout = '10s';
 SET LOCAL statement_timeout = '5min';
 LOCK TABLE public._sqlx_migrations IN EXCLUSIVE MODE;
+DO $$
+DECLARE
+    missing_tables TEXT;
+BEGIN
+    SELECT string_agg(name, ', ' ORDER BY name) INTO missing_tables
+    FROM unnest(ARRAY[
+        'cliente_contatos', 'clientes', 'comunicacoes', 'configuracoes_sistema',
+        'empresas', 'equipamento_imagens', 'equipamentos', 'gastos_fixos',
+        'gastos_variaveis', 'movimentacoes_estoque', 'orcamento_consumos',
+        'orcamento_servicos_decisao', 'produtos', 'security_audit_log',
+        'security_profiles', 'servicos_catalogo', 'verificacoes'
+    ]) AS required(name)
+    WHERE to_regclass(format('public.%I', name)) IS NULL;
+
+    IF missing_tables IS NOT NULL THEN
+        RAISE EXCEPTION 'Tabelas do baseline 0001–0023 ausentes: %', missing_tables;
+    END IF;
+
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_schema = 'public' AND table_name = 'equipamentos'
+          AND column_name = 'responsavel_contato_id'
+    ) OR NOT EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_schema = 'public' AND table_name = 'verificacoes'
+          AND column_name = 'forma_pagamento_codigo'
+    ) OR NOT EXISTS (
+        SELECT 1 FROM pg_constraint
+        WHERE conrelid = 'public.equipamentos'::regclass
+          AND conname = 'fk_equipamentos_responsavel_contato'
+    ) OR NOT EXISTS (
+        SELECT 1 FROM pg_indexes
+        WHERE schemaname = 'public' AND tablename = 'clientes'
+          AND indexname = 'ux_clientes_documento_ativo'
+    ) OR NOT EXISTS (
+        SELECT 1 FROM pg_indexes
+        WHERE schemaname = 'public' AND tablename = 'clientes'
+          AND indexname = 'ux_clientes_cpf_cnpj_ativo'
+    ) THEN
+        RAISE EXCEPTION 'Schema legado incompleto: efeitos das migrations 0017/0023 ausentes';
+    END IF;
+END $$;
 DO $$ BEGIN IF (SELECT count(*) FROM public._sqlx_migrations) <> 1 OR NOT EXISTS (SELECT 1 FROM public._sqlx_migrations WHERE version=1 AND success AND encode(checksum,'hex')='4b4a2ab3e7c6d70e31352cc836c55d74143c4d01ace8777795108effedf89de951b2a7d5b56b89b6e4a89d1eeabc1afa') THEN RAISE EXCEPTION 'Unexpected SQLx baseline'; END IF; IF (SELECT count(*) FROM public.empresas) <> 1 THEN RAISE EXCEPTION 'Expected exactly one company'; END IF; IF EXISTS (SELECT 1 FROM (SELECT empresa_id, lower(btrim(nome)) FROM public.servicos_catalogo WHERE ativo GROUP BY 1,2 HAVING count(*)>1) duplicate) THEN RAISE EXCEPTION 'Duplicate active service name'; END IF; END $$;
 -- Begin 0006_gastos.sql
 -- ═══════════════════════════════════════════════════════════════
