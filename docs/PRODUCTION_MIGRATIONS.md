@@ -2,7 +2,9 @@
 
 O workflow `.github/workflows/production-sqlx-migrations.yml` é o caminho controlado para aplicar migrations do desktop AutoOS no banco PostgreSQL de produção. Ele só pode ser iniciado manualmente em `master`; promover código ou migrations para `master` não inicia uma aplicação.
 
-O workflow não usa `AUTOOS_DATABASE_URL` do build e não usa `supabase db push`: esse fluxo aplica as migrations SQLx de `src-tauri/migrations/`. O job espera aprovação pelo ambiente GitHub `production-migrations` antes de receber a credencial de produção.
+O workflow usa somente o secret de ambiente `AUTOOS_PRODUCTION_MIGRATION_DATABASE_URL`; não aceita `AUTOOS_DATABASE_URL` do build e não usa `supabase db push`. Ele aplica as migrations SQLx de `src-tauri/migrations/`. Configure um revisor obrigatório no ambiente GitHub `production-migrations` antes de habilitar novas execuções.
+
+Em 2026-10-09, a execução que aplicou 0024–0028 usou temporariamente `AUTOOS_DATABASE_URL` como fallback. Esse fallback foi removido. A variável `AUTOOS_PRODUCTION_MIGRATIONS_ENABLED` está desativada; o ambiente ainda precisa de um secret dedicado e de um revisor obrigatório. A URL do desktop é embutida no instalador por `src-tauri/build.rs`, portanto deve ser tratada como credencial distribuída e não pode receber permissões de DDL.
 
 ## Configuração única no GitHub
 
@@ -26,7 +28,7 @@ As variáveis e a secret são específicas do ambiente, não ficam no repositór
 5. Aplica as migrations pendentes com o migrator SQLx embutido no código.
 6. Confirma que 0027–0029 estão registradas como aplicadas, que os índices da 0027 existem, que `equipamentos.atualizado_em` é `NOT NULL`, que as tabelas do portal existem e que o histórico completo corresponde ao build. A saída distingue `already_applied` de `applied_and_verified`.
 
-O workflow serializa execuções e não cancela uma migration em andamento. Para aplicar, abra **Actions → Aplicar migrations SQLx na produção → Run workflow**, selecione `master`, digite `APLICAR EM PROD`, o host e o usuário configurados, e confirme a execução. O ambiente GitHub ainda exige a aprovação dos revisores configurados. Confira o backup recente e o resumo do commit antes de aprovar; conflitos detectados na 0027 exigem correção dos dados antes de tentar novamente.
+O workflow serializa execuções e não cancela uma migration em andamento. Para aplicar, abra **Actions → Aplicar migrations SQLx na produção → Run workflow**, selecione `master`, digite `APLICAR EM PROD`, o host e o usuário configurados, e confirme a execução. Configure a aprovação dos revisores antes de habilitar o ambiente. Confira o backup recente e o resumo do commit antes de aprovar; conflitos detectados na 0027 exigem correção dos dados antes de tentar novamente.
 
 ### Histórico incompleto
 

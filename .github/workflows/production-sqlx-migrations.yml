@@ -47,7 +47,7 @@ jobs:
       - name: Exigir confirmação, destino configurado e proteção do ambiente
         shell: bash
         env:
-          AUTOOS_PRODUCTION_MIGRATION_DATABASE_URL: ${{ secrets.AUTOOS_PRODUCTION_MIGRATION_DATABASE_URL || secrets.AUTOOS_DATABASE_URL }}
+          AUTOOS_PRODUCTION_MIGRATION_DATABASE_URL: ${{ secrets.AUTOOS_PRODUCTION_MIGRATION_DATABASE_URL }}
         run: |
           set -euo pipefail
           if [[ "$GITHUB_REF" != "refs/heads/master" ]]; then
@@ -71,7 +71,7 @@ jobs:
             exit 1
           fi
           if [[ -z "$AUTOOS_PRODUCTION_MIGRATION_DATABASE_URL" || -z "$AUTOOS_PRODUCTION_DATABASE_HOST" || -z "$AUTOOS_PRODUCTION_DATABASE_USER" ]]; then
-            echo "Configure a URL secreta de produção e as variáveis de host/usuário no ambiente production-migrations."
+            echo "Configure AUTOOS_PRODUCTION_MIGRATION_DATABASE_URL e as variáveis de host/usuário no ambiente production-migrations; o secret do desktop não é aceito."
             exit 1
           fi
           echo "Confirmação e destino conferidos; credenciais omitidas dos logs."
@@ -107,25 +107,25 @@ jobs:
 
       - name: Pré-checar conflitos sem alterar o banco
         env:
-          AUTOOS_PRODUCTION_MIGRATION_DATABASE_URL: ${{ secrets.AUTOOS_PRODUCTION_MIGRATION_DATABASE_URL || secrets.AUTOOS_DATABASE_URL }}
+          AUTOOS_PRODUCTION_MIGRATION_DATABASE_URL: ${{ secrets.AUTOOS_PRODUCTION_MIGRATION_DATABASE_URL }}
         run: ./src-tauri/target/debug/production_migrate --preflight-only
 
       - name: Reconciliar somente a variante conhecida da migration 0023
         env:
-          AUTOOS_MIGRATION_DATABASE_URL: ${{ secrets.AUTOOS_PRODUCTION_MIGRATION_DATABASE_URL || secrets.AUTOOS_DATABASE_URL }}
+          AUTOOS_MIGRATION_DATABASE_URL: ${{ secrets.AUTOOS_PRODUCTION_MIGRATION_DATABASE_URL }}
         run: node scripts/reconcile-sqlx-master-0023.mjs --apply
 
       - name: Bloquear histórico SQLx divergente antes de migrar
         env:
-          AUTOOS_MIGRATION_DATABASE_URL: ${{ secrets.AUTOOS_PRODUCTION_MIGRATION_DATABASE_URL || secrets.AUTOOS_DATABASE_URL }}
+          AUTOOS_MIGRATION_DATABASE_URL: ${{ secrets.AUTOOS_PRODUCTION_MIGRATION_DATABASE_URL }}
         run: npm run check:migrations:db
 
       - name: Pré-checar dados e aplicar migrations pendentes
         env:
-          AUTOOS_PRODUCTION_MIGRATION_DATABASE_URL: ${{ secrets.AUTOOS_PRODUCTION_MIGRATION_DATABASE_URL || secrets.AUTOOS_DATABASE_URL }}
+          AUTOOS_PRODUCTION_MIGRATION_DATABASE_URL: ${{ secrets.AUTOOS_PRODUCTION_MIGRATION_DATABASE_URL }}
         run: ./src-tauri/target/debug/production_migrate
 
       - name: Confirmar histórico SQLx final
         env:
-          AUTOOS_MIGRATION_DATABASE_URL: ${{ secrets.AUTOOS_PRODUCTION_MIGRATION_DATABASE_URL || secrets.AUTOOS_DATABASE_URL }}
+          AUTOOS_MIGRATION_DATABASE_URL: ${{ secrets.AUTOOS_PRODUCTION_MIGRATION_DATABASE_URL }}
         run: npm run check:migrations:db

@@ -1,6 +1,6 @@
 # Reconciliação SQLx de produção — 2026-10-09
 
-Projeto Supabase: `autoos` (`sgaqvxubopgwysnyocjs`). O banco registrava apenas a migration SQLx 0001, embora o esquema posterior tivesse sido aplicado fora do histórico SQLx. A aplicação direta de 0002 falhava por objetos já existentes. O arquivo SQL ao lado registra a transação executada via Supabase Migration API com o nome `reconcile_autoos_sqlx_legacy_before_0024`.
+Projeto Supabase: `autoos` (`sgaqvxubopgwysnyocjs`). O banco registrava apenas a migration SQLx 0001, embora o esquema posterior tivesse sido aplicado fora do histórico SQLx. A aplicação direta de 0002 falhava por objetos já existentes. O arquivo SQL ao lado documenta a transação executada via Supabase Migration API com o nome `reconcile_autoos_sqlx_legacy_before_0024`. **É um registro histórico, não um procedimento reutilizável.** A guarda de tabelas e efeitos das migrations 0017/0023 foi acrescentada ao arquivo depois da execução para que uma reutilização acidental falhe cedo; uma nova reconciliação ainda exige auditoria completa do schema de destino.
 
 ## Backup e ensaio
 
@@ -13,4 +13,4 @@ Projeto Supabase: `autoos` (`sgaqvxubopgwysnyocjs`). O banco registrava apenas a
 
 A transação verifica o checksum legado conhecido da 0001 e a presença de exatamente uma empresa. Ela aplica as seis referências inativas da 0006, o backfill da 0016, o trigger da 0018, as constraints da 0019, o vínculo de uma movimentação de estoque à empresa e a migração de serviços globais da 0022. Por fim, atualiza o checksum da 0001 para o arquivo canônico e registra os checksums SHA-384 das versões 0002–0023 em `_sqlx_migrations`. Nenhum valor atual de estoque ou preço é sobrescrito pela seed da 0020.
 
-Depois da operação, o banco confirmou 23 versões SQLx sem divergência de checksum, zero serviços globais, 40 serviços da empresa, seis referências de gastos e zero movimentações vinculáveis sem empresa. O workflow de produção ainda precisa aplicar 0024–0028 e confirmar o histórico final antes de mesclar o PR #122.
+Depois da operação, o banco confirmou 23 versões SQLx sem divergência de checksum, zero serviços globais, 40 serviços da empresa, seis referências de gastos e zero movimentações vinculáveis sem empresa. O [workflow de produção 37979998763](https://github.com/ph66ng2/AutoOs/actions/runs/37979998763) aplicou 0024–0028 e confirmou 28 versões contínuas, sem falhas ou checksums divergentes. A 0029 do PR #122 não foi aplicada.
