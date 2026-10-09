@@ -13,6 +13,7 @@ import {
 } from "@/components/ui/select";
 import { TabsContent } from "@/components/ui/tabs";
 import { ProfileDeleteDialog } from "@/components/ProfileDeleteDialog";
+import { securityPermissionLabel, securityRoleLabel } from "@/lib/security-profile-labels";
 import {
   SENSITIVE_PERMISSION_LABELS,
   type SecurityProfile,
@@ -149,9 +150,9 @@ export function ConfiguracoesTabSeguranca({
         <CardContent>
           <div className="rounded-lg border bg-muted/40 p-4 text-sm">
             <div className="font-medium">{accessStatus?.active_profile_name || "Perfil sem nome"}</div>
-            <div className="text-muted-foreground">Papel: {accessStatus?.active_role || "-"}</div>
+            <div className="text-muted-foreground">Papel: {securityRoleLabel(accessStatus?.active_role || accessStatus?.profiles.find((profile) => profile.id === accessStatus.active_profile_id)?.role)}</div>
             <div className="mt-2 text-muted-foreground">
-              Permissões: {accessStatus?.permissions.length ? accessStatus.permissions.join(", ") : "nenhuma"}
+              Permissões: {accessStatus?.permissions.length ? accessStatus.permissions.map(securityPermissionLabel).join(", ") : "nenhuma"}
             </div>
           </div>
         </CardContent>
@@ -205,7 +206,7 @@ export function ConfiguracoesTabSeguranca({
                   <SelectContent>
                     {profilesCatalog.map((profile) => (
                       <SelectItem key={profile.id} value={String(profile.id)}>
-                        {profile.nome} ({profile.role}){profile.ativo ? "" : " • inativo"}
+                        {profile.nome} ({securityRoleLabel(profile.role)}){profile.ativo ? "" : " • inativo"}
                       </SelectItem>
                     ))}
                   </SelectContent>
@@ -242,14 +243,14 @@ export function ConfiguracoesTabSeguranca({
                       <SelectValue placeholder="Selecione um papel" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="ADMIN">ADMIN</SelectItem>
-                      <SelectItem value="CUSTOM">CUSTOM</SelectItem>
+                      <SelectItem value="ADMIN">Administrador</SelectItem>
+                      <SelectItem value="CUSTOM">Personalizado</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
 
                 <div className="rounded-lg border bg-muted/40 p-4 text-sm text-muted-foreground">
-                  O perfil ADMIN recebe todas as permissões automaticamente. No papel CUSTOM, você escolhe cada permissão abaixo.
+                  O perfil de administrador recebe todas as permissões automaticamente. No perfil personalizado, você escolhe cada permissão abaixo.
                 </div>
               </div>
 
@@ -311,7 +312,7 @@ export function ConfiguracoesTabSeguranca({
               <h3 className="text-lg font-semibold">Resetar PIN do colaborador</h3>
               {managedProfile && (
                 <p className="text-sm text-muted-foreground">
-                  Perfil selecionado: {managedProfile.nome} ({managedProfile.role}) — {managedProfile.pin_configured ? "PIN ativo" : "PIN pendente"}
+                  Perfil selecionado: {managedProfile.nome} ({securityRoleLabel(managedProfile.role)}) — {managedProfile.pin_configured ? "PIN ativo" : "PIN pendente"}
                 </p>
               )}
               <div className="grid gap-4 md:grid-cols-2">

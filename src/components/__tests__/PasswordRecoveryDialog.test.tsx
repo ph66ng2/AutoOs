@@ -252,9 +252,9 @@ describe("PasswordRecoveryDialog", () => {
       const select = screen.getByRole("combobox", { name: /Perfil/i });
       const options = Array.from(select.querySelectorAll("option")).filter((opt) => opt.value !== "");
 
-      expect(options.map((opt) => opt.textContent)).toContain("Admin (ADMIN)");
-      expect(options.map((opt) => opt.textContent)).toContain("Operador (CUSTOM)");
-      expect(options.map((opt) => opt.textContent)).not.toContain("Inativo (CUSTOM)");
+      expect(options.map((opt) => opt.textContent)).toContain("Admin (Administrador)");
+      expect(options.map((opt) => opt.textContent)).toContain("Operador (Personalizado)");
+      expect(options.map((opt) => opt.textContent)).not.toContain("Inativo (Personalizado)");
     });
 
     it("exibe erro quando PINs nao coincidem", async () => {
