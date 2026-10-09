@@ -21,8 +21,11 @@ for (const file of files) {
   }
 }
 
-// A numeração pode reservar versões para outra branch ainda não integrada.
-// A unicidade é obrigatória porque versões repetidas quebram o histórico SQLx.
+for (let version = 1; version <= Math.max(0, ...byVersion.keys()); version += 1) {
+  if (!byVersion.has(version)) {
+    errors.push(`Versão ${String(version).padStart(4, "0")} ausente`);
+  }
+}
 
 if (errors.length > 0) {
   console.error("Sequência de migrations SQLx inválida:");

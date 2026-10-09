@@ -1,6 +1,7 @@
--- Substitui as unicidades globais legadas pelos índices usados no cadastro.
--- Cadastros inativos não impedem um novo registro com o mesmo documento.
--- Mantém os nomes já usados em bancos que receberam a correção manualmente.
+-- Clientes excluídos são preservados com ativo = false para manter histórico.
+-- CPF/CNPJ só precisa ser único entre cadastros ativos, permitindo reativar o
+-- relacionamento comercial por meio de um novo cadastro após exclusão lógica.
+
 ALTER TABLE clientes DROP CONSTRAINT IF EXISTS clientes_documento_key;
 ALTER TABLE clientes DROP CONSTRAINT IF EXISTS clientes_cpf_cnpj_key;
 
