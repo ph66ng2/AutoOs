@@ -575,7 +575,7 @@ pub fn require_sensitive_access() -> Result<SecurityProfileSummary, String> {
 /// Valores recebidos da interface nunca devem escolher o tenant de uma escrita.
 pub async fn require_active_session_company_id(pool: &PgPool) -> Result<i32, String> {
     let profile = require_sensitive_access()?;
-    sqlx::query_scalar(
+    let company_id = sqlx::query_scalar(
         "SELECT e.id
          FROM security_profiles p
          JOIN empresas e ON e.id = p.empresa_id AND LOWER(e.status) = 'ativo'
@@ -583,12 +583,22 @@ pub async fn require_active_session_company_id(pool: &PgPool) -> Result<i32, Str
     )
     .bind(profile.id)
     .fetch_optional(pool)
-    .await
-    .map_err(|error| format!("Erro ao identificar a empresa do perfil autenticado: {}", error))?
-    .ok_or_else(|| {
+    .await;
+    let company_id = match company_id {
+        Ok(company_id) => company_id,
+        Err(error) => return Err(active_session_company_query_error(error).await),
+    };
+    company_id.ok_or_else(|| {
         "O perfil autenticado não está vinculado a uma empresa ativa. Vincule uma empresa ao perfil antes de continuar."
             .to_string()
     })
+}
+
+async fn active_session_company_query_error(error: sqlx::Error) -> String {
+    format!(
+        "Erro ao identificar a empresa do perfil autenticado: {}",
+        db::database_operation_error(error).await
+    )
 }
 
 pub fn require_permission(permission: &str) -> Result<SecurityProfileSummary, String> {
@@ -1872,6 +1882,16 @@ pub async fn provision_pin_with_enrollment(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[tokio::test]
+    async fn company_lookup_does_not_expose_database_error_details() {
+        let error = sqlx::Error::Io(std::io::Error::other("private connection detail"));
+        let message = active_session_company_query_error(error).await;
+
+        assert!(message.contains("Erro ao identificar a empresa"));
+        assert!(message.contains("Não foi possível alcançar o banco"));
+        assert!(!message.contains("private connection detail"));
+    }
 
     #[test]
     fn company_password_hash_requires_the_original_password() {

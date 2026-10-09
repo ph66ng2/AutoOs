@@ -97,6 +97,12 @@ fn note_database_capacity_error() {
     }
 }
 
+fn clear_database_capacity_error() {
+    if let Ok(mut last_error) = LAST_DATABASE_CAPACITY_ERROR.lock() {
+        *last_error = None;
+    }
+}
+
 fn database_capacity_backoff_active() -> bool {
     LAST_DATABASE_CAPACITY_ERROR
         .lock()
@@ -195,6 +201,7 @@ pub async fn database_operation_error(error: sqlx::Error) -> String {
         }
         Ok(Ok(connection)) => {
             let _ = connection.close().await;
+            clear_database_capacity_error();
             database_error_message(&error)
         }
         _ => database_error_message(&error),
@@ -242,6 +249,7 @@ pub async fn validate_migration_history(database_url: &str) -> Result<usize, Str
         .acquire_timeout(DATABASE_ACQUIRE_TIMEOUT)
         .after_connect(|connection, _metadata| Box::pin(async move {
             sqlx::query("SET TIME ZONE 'UTC'").execute(connection).await?;
+            clear_database_capacity_error();
             Ok(())
         }))
         .connect(database_url)
@@ -584,6 +592,7 @@ async fn connect_and_setup_pool(database_url: &str) -> Result<PgPool, sqlx::Erro
             // O schema legado usa TIMESTAMP sem fuso. UTC fixo evita que pools
             // diferentes gravem relógios locais incompatíveis.
             sqlx::query("SET TIME ZONE 'UTC'").execute(connection).await?;
+            clear_database_capacity_error();
             Ok(())
         }))
         .connect(database_url)
@@ -716,6 +725,8 @@ mod tests {
         let message = database_operation_error(sqlx::Error::PoolTimedOut).await;
 
         assert_eq!(message, DATABASE_ACCESS_LIMIT_ERROR);
+        clear_database_capacity_error();
+        assert!(!database_capacity_backoff_active());
     }
 
     #[test]

@@ -221,7 +221,12 @@ export function SensitiveAccessProvider({ children }: { children: ReactNode }) {
   }, [dialogMandatory, resetDialogState, resolvePending]);
 
   const ensureSensitiveAccess = useCallback(async (options?: SensitiveAccessPromptOptions) => {
-    const currentStatus = await SensitiveAccessService.status().catch(() => status);
+    const currentStatus = await SensitiveAccessService.status()
+      .then((nextStatus) => {
+        setConnectionUnavailable(false);
+        return nextStatus;
+      })
+      .catch(() => status);
     if (currentStatus) {
       setStatus(currentStatus);
       setSelectedProfileId(currentStatus.active_profile_id ? String(currentStatus.active_profile_id) : "");
@@ -253,7 +258,12 @@ export function SensitiveAccessProvider({ children }: { children: ReactNode }) {
   })), [ensureSensitiveAccess]);
 
   const openProfileSelector = useCallback(async (options?: ProfileSelectorOptions) => {
-    const currentStatus = await SensitiveAccessService.status().catch(() => status);
+    const currentStatus = await SensitiveAccessService.status()
+      .then((nextStatus) => {
+        setConnectionUnavailable(false);
+        return nextStatus;
+      })
+      .catch(() => status);
     if (!currentStatus || currentStatus.profiles.length === 0) {
       toast.error("Nenhum perfil encontrado. Crie um perfil na aba Perfil.");
       return false;
@@ -288,6 +298,7 @@ export function SensitiveAccessProvider({ children }: { children: ReactNode }) {
   const setActiveProfile = useCallback(async (profileId: number, pin: string) => {
     const nextStatus = await SensitiveAccessService.setActiveProfile(profileId, pin);
     setStatus(nextStatus);
+    setConnectionUnavailable(false);
     setSelectedProfileId(nextStatus.active_profile_id ? String(nextStatus.active_profile_id) : "");
   }, []);
 
@@ -320,6 +331,7 @@ export function SensitiveAccessProvider({ children }: { children: ReactNode }) {
       // do keyring. Reconsulta antes de escolher entre criar e desbloquear PIN.
       let workingStatus = await SensitiveAccessService.status();
       setStatus(workingStatus);
+      setConnectionUnavailable(false);
       if (!workingStatus.active_profile_id) {
         setError("Não foi possível determinar o perfil ativo. Feche e abra o AutoOS novamente.");
         setBusy(false);
