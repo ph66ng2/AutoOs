@@ -54,6 +54,10 @@ Na CI, o binário `ci_migrate` aplica migrations somente ao PostgreSQL descartá
 - O aplicativo desktop apenas valida esse histórico, com timeout e sem advisory lock; migrations devem estar aplicadas antes do build.
 - `src-tauri/.env` é apenas configuração local ignorada pelo Git; não deve ser versionado nem incluído no bundle.
 
+### Migrations SQLx em produção
+
+As migrations em `src-tauri/migrations/` são aplicadas pelo workflow protegido [production-sqlx-migrations.yml](../.github/workflows/production-sqlx-migrations.yml), não pelo app nem pelo build de release. Configure o ambiente, a URL exclusiva de migration e os revisores conforme [PRODUCTION_MIGRATIONS.md](./PRODUCTION_MIGRATIONS.md). Aguarde o workflow concluir com sucesso antes de publicar um release que dependa dessas migrations.
+
 ## Windows (distribuição assistida)
 
 1. Thumbprint só no build: ver [WINDOWS_CODE_SIGNING.md](./WINDOWS_CODE_SIGNING.md).
