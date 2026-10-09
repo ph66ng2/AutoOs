@@ -1,0 +1,67 @@
+name: Backup criptografado do banco AutoOS
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirmation:
+        description: 'Digite BACKUP AUTOOS para gerar o dump criptografado.'
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  backup:
+    if: github.ref == 'refs/heads/master'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+
+      - name: Validar confirmação e destino sem expor credenciais
+        env:
+          AUTOOS_DATABASE_URL: ${{ secrets.AUTOOS_DATABASE_URL }}
+          CONFIRMATION: ${{ inputs.confirmation }}
+        run: |
+          python3 - <<'PY'
+          import os
+          from urllib.parse import urlparse, parse_qs
+
+          assert os.environ.get("CONFIRMATION") == "BACKUP AUTOOS", "Confirmação inválida"
+          url = urlparse(os.environ.get("AUTOOS_DATABASE_URL", ""))
+          assert url.scheme in ("postgres", "postgresql"), "Secret de banco ausente ou inválido"
+          assert url.hostname and url.hostname.endswith(".pooler.supabase.com"), "Host fora do Supavisor"
+          assert url.port == 5432 and url.path == "/postgres", "Porta ou banco inesperado"
+          assert url.username == "postgres.sgaqvxubopgwysnyocjs", "Projeto Supabase inesperado"
+          assert parse_qs(url.query).get("sslmode") == ["require"], "TLS obrigatório"
+          print("Destino confirmado: projeto autoos; credenciais omitidas.")
+          PY
+
+      - name: Gerar dump da aplicação e criptografar antes do upload
+        env:
+          AUTOOS_DATABASE_URL: ${{ secrets.AUTOOS_DATABASE_URL }}
+        run: |
+          set -euo pipefail
+          trap 'rm -f "$RUNNER_TEMP/autoos-public.dump"' EXIT
+          docker run --rm --network host \
+            -e AUTOOS_DATABASE_URL \
+            -v "$RUNNER_TEMP:/backup" \
+            postgres:17 \
+            sh -eu -c 'pg_dump --dbname="$AUTOOS_DATABASE_URL" --schema=public --format=custom --compress=6 --no-owner --no-acl --file=/backup/autoos-public.dump'
+          test -s "$RUNNER_TEMP/autoos-public.dump"
+          gpg --batch --import ops/keys/production-backup-2026-10-09.asc
+          actual_fingerprint="$(gpg --batch --show-keys --with-colons ops/keys/production-backup-2026-10-09.asc | awk -F: '$1 == "fpr" { print $10; exit }')"
+          test "$actual_fingerprint" = '1526B38178D1EB1F556846064FB1BCB9BB1CF57E'
+          gpg --batch --yes --trust-model always --recipient "$actual_fingerprint" \
+            --output "$RUNNER_TEMP/autoos-public.dump.gpg" --encrypt "$RUNNER_TEMP/autoos-public.dump"
+          test -s "$RUNNER_TEMP/autoos-public.dump.gpg"
+          sha256sum "$RUNNER_TEMP/autoos-public.dump.gpg"
+
+      - name: Guardar somente o dump criptografado por um dia
+        uses: actions/upload-artifact@v4
+        with:
+          name: autoos-public-encrypted-${{ github.run_id }}
+          path: ${{ runner.temp }}/autoos-public.dump.gpg
+          if-no-files-found: error
+          retention-days: 1
