@@ -24,33 +24,24 @@ button, p, h1 { font: inherit; }
   padding: 3rem 0 2rem;
   display: flex;
   flex-direction: column;
+  min-width: 0;
 }
 
 .status-brand {
   align-self: center;
-  display: flex;
-  align-items: center;
-  gap: 0.4rem;
-  margin-bottom: 2rem;
-  color: #0f3d6e;
-  font-weight: 800;
-  letter-spacing: 0.08em;
+  margin-bottom: 1.5rem;
 }
 
-.brand-mark {
-  display: grid;
-  place-items: center;
-  width: 2.45rem;
-  height: 2.45rem;
-  border-radius: 0.65rem;
-  color: white;
-  background: #0f5796;
-  letter-spacing: -0.05em;
+.status-brand img {
+  display: block;
+  width: auto;
+  height: 6rem;
+  max-width: min(70vw, 12rem);
+  object-fit: contain;
 }
-
-.brand-name { font-size: 1.5rem; }
 
 .status-card {
+  min-width: 0;
   padding: clamp(1.5rem, 6vw, 3rem);
   border: 1px solid #dce5f0;
   border-radius: 1.25rem;
@@ -71,7 +62,55 @@ button, p, h1 { font: inherit; }
   margin: 0 0 0.65rem;
   color: #526b89;
   font-size: 0.95rem;
+  overflow-wrap: anywhere;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
 }
+
+.tone-blue { --stage-color: #12619c; }
+.tone-indigo { --stage-color: #4946a3; }
+.tone-amber { --stage-color: #a25b08; }
+.tone-teal { --stage-color: #087776; }
+.tone-violet { --stage-color: #7141a8; }
+.tone-green { --stage-color: #237249; }
+.tone-red { --stage-color: #b33a40; }
+
+.current-status { display: flex; align-items: flex-start; gap: 0.85rem; min-width: 0; }
+.current-status h1 { color: var(--stage-color); overflow-wrap: anywhere; }
+.status-pulse {
+  position: relative;
+  flex: 0 0 0.7rem;
+  width: 0.7rem;
+  height: 0.7rem;
+  margin-top: 0.85rem;
+  border-radius: 50%;
+  background: var(--stage-color);
+}
+.status-pulse::after {
+  content: "";
+  position: absolute;
+  inset: -0.4rem;
+  border: 2px solid var(--stage-color);
+  border-radius: 50%;
+  animation: pulse 2.2s ease-out infinite;
+}
+@keyframes pulse { 0% { opacity: 0.65; transform: scale(0.45); } 70%, 100% { opacity: 0; transform: scale(1.25); } }
+
+.timeline { margin-top: 1.75rem; padding-top: 1.4rem; border-top: 1px solid #e1e8f0; }
+.timeline-heading { margin: 0 0 1rem; color: #263d59; font-size: 0.88rem; font-weight: 750; }
+.timeline ol { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 0.3rem; }
+.timeline li { position: relative; display: flex; flex-direction: column; align-items: center; gap: 0.55rem; min-width: 0; color: #66788c; font-size: 0.7rem; line-height: 1.25; text-align: center; overflow-wrap: anywhere; }
+.timeline li:not(:nth-child(6)):not(.is-deviation)::after { content: ""; position: absolute; top: 0.65rem; left: calc(50% + 0.85rem); width: calc(100% - 1.7rem); height: 2px; background: #dce5ed; }
+.timeline-marker { display: grid; place-items: center; flex: 0 0 1.35rem; width: 1.35rem; height: 1.35rem; border: 2px solid #c9d5df; border-radius: 50%; background: white; font-size: 0.7rem; font-weight: 800; }
+.timeline li.is-complete { color: #276850; font-weight: 650; }
+.timeline li.is-complete .timeline-marker { color: white; background: #318768; border-color: #318768; }
+.timeline li.is-complete::after { background: #74b7a0 !important; }
+.timeline li.is-current { color: var(--stage-color); font-weight: 800; }
+.timeline li.is-current .timeline-marker { color: white; background: var(--stage-color); border-color: var(--stage-color); box-shadow: 0 0 0 3px color-mix(in srgb, var(--stage-color) 16%, white); }
+.timeline li.is-deviation { grid-column: 3 / span 2; margin-top: 0.55rem; }
+.timeline-note { margin: 0.85rem 0 0; color: #6c7d8e; font-size: 0.72rem; }
 
 h1 {
   margin: 0;
@@ -160,8 +199,13 @@ h1 {
   .status-shell { padding-top: 1.5rem; }
   .status-brand { margin-bottom: 1.25rem; }
   .status-card { border-radius: 1rem; }
+  .timeline ol { grid-template-columns: 1fr; gap: 0; }
+  .timeline li { flex-direction: row; gap: 0.75rem; min-height: 2.5rem; text-align: left; font-size: 0.82rem; }
+  .timeline li:not(:nth-child(6)):not(.is-deviation)::after { top: 1.7rem; left: 0.67rem; width: 2px; height: 0.8rem; }
+  .timeline li.is-deviation { grid-column: auto; margin-top: 0.25rem; }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  *, *::before, *::after { animation-duration: 0.01ms !important; scroll-behavior: auto !important; }
+  *, *::before, *::after { animation: none !important; scroll-behavior: auto !important; }
+  .status-pulse::after { opacity: 0.5; transform: scale(0.65); }
 }

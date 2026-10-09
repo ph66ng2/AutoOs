@@ -212,7 +212,7 @@ export function PublicStatusLinkDialog({ equipamento, open, onOpenChange }: Prop
             ) : linkInfo ? (
               <div className="rounded-lg border p-3 text-sm">
                 <p className="font-semibold">{STATUS_LABEL[linkInfo.status]}</p>
-                <p className="mt-1 text-muted-foreground">Criado em {formatDate(linkInfo.createdAt)} · válido até {formatDate(linkInfo.expiresAt)}</p>
+                <p className="mt-1 text-muted-foreground">Criado em {formatDate(linkInfo.createdAt)}{linkInfo.expiresAt && ` · válido até ${formatDate(linkInfo.expiresAt)}`}</p>
                 {linkInfo.lastAccessAt && <p className="mt-1 text-muted-foreground">Último acesso em {formatDate(linkInfo.lastAccessAt)}</p>}
                 {hasActiveLink && !linkUrl && (
                   <p className="mt-2 text-amber-800">

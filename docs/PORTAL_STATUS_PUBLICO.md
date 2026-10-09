@@ -10,13 +10,13 @@ O portal permite que o cliente consulte a etapa atual de um ciclo de atendimento
 - O link tem validade máxima de 180 dias e termina 30 dias após a entrega. A data de mudança de status só aparece quando existe registro confiável; a migration não preenche datas para atendimentos antigos.
 - Links ausentes, expirados ou revogados recebem a mesma resposta pública. Cada abertura atualiza somente `ultimo_acesso_em`.
 - O portal nasce pausado (`status_portal_config.public_enabled = false`). A função pública e a emissão no AutoOS respeitam essa chave global.
-- O banco limita cada endereço de rede a 30 consultas por minuto. A tabela registra um HMAC temporário do endereço, não o IP original. A Edge Function registra eventos de bloqueio sem token ou IP.
+- O banco limita o portal a 300 consultas por minuto e cada token a 30 consultas por minuto. A tabela registra apenas HMACs dos identificadores de limite; cabeçalhos de IP enviados pelo cliente não participam da decisão. A Edge Function registra eventos de bloqueio sem token ou IP.
 - O portal não carrega analítica, gerenciador de tags nem scripts de terceiros. A política de segurança, `no-store`, `no-referrer` e `noindex` estão em `public/.htaccess` e `public-status.html`.
 - O app exige a permissão `MANAGE_STATUS_LINKS` para criar e revogar links. Email e WhatsApp usam as integrações existentes; o histórico guarda canal, destinatário e resultado, mas substitui o token por um texto de redação.
 
 ## Banco
 
-A migration é `src-tauri/migrations/0024_portal_status_publico.sql`, a fonte de schema usada pelo aplicativo. Ela cria a data confiável de mudança de status, os links com vínculo composto por empresa e equipamento, e o limite de consultas.
+A migration é `src-tauri/migrations/0029_portal_status_publico.sql`, a fonte de schema usada pelo aplicativo. Ela cria a data confiável de mudança de status, os links com vínculo composto por empresa e equipamento, e o limite de consultas. As versões 0024–0028 estão reservadas para a branch `feature`; integre essas migrations antes de aplicar a 0029 em um banco real.
 
 Na auditoria de produção de 2026-10-08, `autoos` usava IDs inteiros para `empresas` e `equipamentos`, não possuía `os_status_publico` nem Edge Functions. `supabase/schema.sql` ainda descreve um modelo com UUID e não corresponde a esse banco; **não aplique esse snapshot em produção para instalar o portal**. Use o processo administrativo já adotado para aplicar a migration SQLx e confirme o schema antes de publicar a função.
 
@@ -26,10 +26,10 @@ O código está em `supabase/functions/public-status/index.ts`. `supabase/config
 
 Antes de publicar a função no projeto Supabase `autoos`:
 
-1. Aplique e confira a migration `0024_portal_status_publico.sql` no banco de produção.
+1. Após integrar as versões 0024–0028, aplique e confira a migration `0029_portal_status_publico.sql` no banco de produção.
 2. Confirme que a Edge Function recebe `SUPABASE_URL` e uma chave secreta de servidor em `SUPABASE_SECRET_KEYS` (a chave `default`) ou `SUPABASE_SERVICE_ROLE_KEY`. Nunca coloque essa chave no navegador ou no pacote desktop.
 3. Configure `PUBLIC_STATUS_RATE_LIMIT_SECRET` com pelo menos 32 caracteres aleatórios. Sem ele, a função responde `503`.
-4. Configure `PUBLIC_STATUS_ORIGIN=https://status.bmitag.com.br` e publique `public-status` com `verify_jwt = false`.
+4. Configure `PUBLIC_STATUS_ORIGIN=https://status.bmitag.com.br` e publique `public-status` com `verify_jwt = false`. `PUBLIC_STATUS_ALLOW_LOCAL_ORIGINS=true` é só para desenvolvimento local.
 5. Confira os advisors de segurança do Supabase após instalar a função e a migration.
 6. Ative o piloto só depois da validação interna, alterando `public_enabled` para `true` na linha `singleton = true`.
 
@@ -48,7 +48,7 @@ COMMIT;
 
 Essa ação é reversível quanto à emissão (o flag pode voltar a `true`), mas os links já revogados não voltam a funcionar. Não habilite o flag antes de aprovar a implantação.
 
-O navegador envia apenas JSON com o token e não usa API key do Supabase. As chamadas ao PostgREST e ao limite por IP são feitas no servidor com a chave secreta.
+O navegador envia apenas JSON com o token e não usa API key do Supabase. As chamadas ao PostgREST e aos limites de consulta são feitas no servidor com a chave secreta.
 
 ## Publicar a página
 
@@ -66,4 +66,4 @@ O controle do DNS e da hospedagem HostGator ainda precisa ser confirmado antes d
 
 Em Equipamentos → Detalhes, usuários autorizados podem criar um link, copiar, mostrar QR, enviar por email ou WhatsApp e revogar. O app não consegue recuperar o token de um link já criado porque o banco guarda apenas o hash; para reenviar, é preciso gerar outro, revogando o anterior.
 
-O portal mostra uma etapa e sua orientação em texto, sem barra de progresso, pois correções podem mover o atendimento para uma etapa anterior. O horário da consulta é separado do horário confiável da última mudança de etapa.
+O portal mostra a etapa atual e uma linha do tempo derivada do título público, sem expor histórico de mudanças. Correções podem mover o atendimento para uma etapa anterior. O horário da consulta é separado do horário confiável da última mudança de etapa.

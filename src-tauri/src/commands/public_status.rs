@@ -63,7 +63,7 @@ pub async fn obter_link_status_publico(
                 ELSE 'ativo'
             END AS status,
             to_char(l.criado_em AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS.US\"Z\"') AS criado_em,
-            to_char(
+            CASE WHEN e.status = 'ENTREGUE' AND e.status_alterado_em IS NULL THEN NULL ELSE to_char(
                 LEAST(
                     l.expira_em,
                     CASE WHEN e.status = 'ENTREGUE'
@@ -72,7 +72,7 @@ pub async fn obter_link_status_publico(
                     END
                 ) AT TIME ZONE 'UTC',
                 'YYYY-MM-DD\"T\"HH24:MI:SS.US\"Z\"'
-            ) AS expira_em,
+            ) END AS expira_em,
             to_char(l.ultimo_acesso_em AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS.US\"Z\"') AS ultimo_acesso_em
          FROM links_status_publico l
          JOIN equipamentos e ON e.id = l.equipamento_id AND e.empresa_id = l.empresa_id

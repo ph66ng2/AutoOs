@@ -187,4 +187,30 @@ describe("public status edge function", () => {
     expect(response.status).toBe(429);
     expect(linkLookups).toHaveLength(0);
   });
+
+  it("does not use client-supplied IP headers as a rate-limit identity", async () => {
+    const headers = { origin: PORTAL_ORIGIN, "content-type": "application/json", "x-real-ip": "1.2.3.4", "x-forwarded-for": "5.6.7.8" };
+    await handler(new Request(`${SUPABASE_URL}/functions/v1/public-status`, { method: "POST", headers, body: JSON.stringify({ token: TOKEN }) }));
+    const firstFingerprints = vi.mocked(fetch).mock.calls
+      .filter(([input]) => new URL(input instanceof Request ? input.url : input.toString()).pathname.endsWith("/rpc/consumir_limite_status_publico"))
+      .map(([, init]) => JSON.parse(String(init?.body)).p_fingerprint);
+
+    vi.mocked(fetch).mockClear();
+    await handler(new Request(`${SUPABASE_URL}/functions/v1/public-status`, {
+      method: "POST", headers: { ...headers, "x-real-ip": "9.9.9.9", "x-forwarded-for": "8.8.8.8" }, body: JSON.stringify({ token: TOKEN }),
+    }));
+    const secondFingerprints = vi.mocked(fetch).mock.calls
+      .filter(([input]) => new URL(input instanceof Request ? input.url : input.toString()).pathname.endsWith("/rpc/consumir_limite_status_publico"))
+      .map(([, init]) => JSON.parse(String(init?.body)).p_fingerprint);
+
+    expect(firstFingerprints).toHaveLength(2);
+    expect(firstFingerprints).toEqual(secondFingerprints);
+  });
+
+  it("rejects local browser origins unless explicitly enabled", async () => {
+    const response = await handler(new Request(`${SUPABASE_URL}/functions/v1/public-status`, {
+      method: "OPTIONS", headers: { origin: "http://localhost:1420" },
+    }));
+    expect(response.status).toBe(403);
+  });
 });

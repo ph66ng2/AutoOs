@@ -18,6 +18,19 @@ env:
   DATABASE_URL: postgres://test_user:test_password@localhost:5432/test_autoos
 
 jobs:
+  migrations:
+    name: Verificar versões SQLx
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Check SQLx migration versions
+        run: node scripts/check-sqlx-migrations.mjs
+
   # ═══════════════════════════════════════════════════════════
   # Lint — TypeScript check
   # ═══════════════════════════════════════════════════════════
@@ -99,7 +112,7 @@ jobs:
   qa-real:
     name: QA Real (E2E + Integrations)
     runs-on: ubuntu-latest
-    needs: [lint, test-frontend, test-rust]
+    needs: [migrations, lint, test-frontend, test-rust]
     services:
       postgres:
         image: postgres:16
@@ -156,7 +169,7 @@ jobs:
   # ═══════════════════════════════════════════════════════════
   build-tauri:
     name: Build Tauri App
-    needs: [lint, test-frontend, test-rust, qa-real]
+    needs: [migrations, lint, test-frontend, test-rust, qa-real]
     if: github.event_name == 'push' && github.ref == 'refs/heads/master'
     strategy:
       matrix:

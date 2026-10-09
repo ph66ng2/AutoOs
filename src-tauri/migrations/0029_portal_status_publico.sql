@@ -83,14 +83,14 @@ CREATE POLICY links_status_publico_empresa ON links_status_publico
     USING (empresa_id = current_setting('app.empresa_id', true)::INTEGER)
     WITH CHECK (empresa_id = current_setting('app.empresa_id', true)::INTEGER);
 
--- Fingerprints HMAC de IP são mantidos em janelas curtas; o IP original não é salvo.
+-- Fingerprints HMAC do limite global e de cada token são mantidos em janelas curtas.
 CREATE TABLE IF NOT EXISTS status_portal_rate_limits (
-    ip_fingerprint TEXT NOT NULL,
+    fingerprint TEXT NOT NULL,
     janela_inicio TIMESTAMPTZ NOT NULL,
     tentativas INTEGER NOT NULL DEFAULT 1,
-    CONSTRAINT pk_status_portal_rate_limits PRIMARY KEY (ip_fingerprint, janela_inicio),
+    CONSTRAINT pk_status_portal_rate_limits PRIMARY KEY (fingerprint, janela_inicio),
     CONSTRAINT chk_status_portal_rate_limits_fingerprint
-        CHECK (ip_fingerprint ~ '^[0-9a-f]{64}$'),
+        CHECK (fingerprint ~ '^[0-9a-f]{64}$'),
     CONSTRAINT chk_status_portal_rate_limits_tentativas
         CHECK (tentativas > 0)
 );
@@ -118,9 +118,9 @@ BEGIN
         RAISE EXCEPTION 'Limite de requisições inválido';
     END IF;
 
-    INSERT INTO public.status_portal_rate_limits (ip_fingerprint, janela_inicio, tentativas)
+    INSERT INTO public.status_portal_rate_limits (fingerprint, janela_inicio, tentativas)
     VALUES (p_fingerprint, p_janela_inicio, 1)
-    ON CONFLICT (ip_fingerprint, janela_inicio)
+    ON CONFLICT (fingerprint, janela_inicio)
     DO UPDATE SET tentativas = public.status_portal_rate_limits.tentativas + 1
     RETURNING tentativas INTO v_tentativas;
 
@@ -158,7 +158,9 @@ BEGIN
         EXECUTE 'REVOKE ALL ON TABLE public.status_portal_rate_limits FROM service_role';
         EXECUTE 'REVOKE ALL ON TABLE public.status_portal_config FROM service_role';
         EXECUTE 'REVOKE ALL ON FUNCTION public.consumir_limite_status_publico(TEXT, TIMESTAMPTZ, INTEGER) FROM service_role';
-        EXECUTE 'GRANT SELECT, UPDATE ON TABLE public.links_status_publico TO service_role';
+        EXECUTE 'GRANT SELECT ON TABLE public.links_status_publico TO service_role';
+        EXECUTE 'GRANT UPDATE (ultimo_acesso_em) ON TABLE public.links_status_publico TO service_role';
+        EXECUTE 'GRANT SELECT (id, empresa_id, tipo, marca, modelo, status, status_alterado_em) ON TABLE public.equipamentos TO service_role';
         EXECUTE 'GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public.status_portal_rate_limits TO service_role';
         EXECUTE 'GRANT SELECT ON TABLE public.status_portal_config TO service_role';
         EXECUTE 'GRANT EXECUTE ON FUNCTION public.consumir_limite_status_publico(TEXT, TIMESTAMPTZ, INTEGER) TO service_role';

@@ -52,6 +52,7 @@ const STATUS_COPY: Record<string, { title: string; orientation: string }> = {
 const TOKEN_PATTERN = /^[a-f0-9]{64}$/i;
 const MAX_BODY_BYTES = 2_048;
 const RATE_LIMIT_PER_MINUTE = 30;
+const GLOBAL_RATE_LIMIT_PER_MINUTE = 300;
 const DELIVERY_VALIDITY_MS = 30 * 24 * 60 * 60 * 1_000;
 
 type LinkRow = {
@@ -99,11 +100,12 @@ function jsonResponse(
 }
 
 function allowedOrigins() {
-  return new Set([
-    Deno.env.get("PUBLIC_STATUS_ORIGIN") ?? "https://status.bmitag.com.br",
-    "http://localhost:1420",
-    "http://localhost:5173",
-  ]);
+  const origins = new Set([Deno.env.get("PUBLIC_STATUS_ORIGIN") ?? "https://status.bmitag.com.br"]);
+  if (Deno.env.get("PUBLIC_STATUS_ALLOW_LOCAL_ORIGINS") === "true") {
+    origins.add("http://localhost:1420");
+    origins.add("http://localhost:5173");
+  }
+  return origins;
 }
 
 function getServerKey(): string | null {
@@ -139,17 +141,11 @@ async function hmacFingerprint(secret: string, value: string): Promise<string> {
   return Array.from(signature, (byte) => byte.toString(16).padStart(2, "0")).join("");
 }
 
-function clientAddress(request: Request): string {
-  const realIp = request.headers.get("x-real-ip")?.trim();
-  if (realIp) return realIp;
-  const forwarded = request.headers.get("x-forwarded-for")?.split(",")[0]?.trim();
-  return forwarded || "unknown";
-}
-
 async function consumeRateLimit(
   supabaseUrl: string,
   serverKey: string,
   fingerprint: string,
+  limit = RATE_LIMIT_PER_MINUTE,
 ): Promise<boolean | null> {
   const bucketMillis = Math.floor(Date.now() / 60_000) * 60_000;
   const result = await fetch(`${supabaseUrl}/rest/v1/rpc/consumir_limite_status_publico`, {
@@ -158,7 +154,7 @@ async function consumeRateLimit(
     body: JSON.stringify({
       p_fingerprint: fingerprint,
       p_janela_inicio: new Date(bucketMillis).toISOString(),
-      p_limite: RATE_LIMIT_PER_MINUTE,
+      p_limite: limit,
     }),
   });
   if (!result.ok) {
@@ -259,8 +255,10 @@ Deno.serve(async (request: Request) => {
     return jsonResponse({ erro: "Serviço temporariamente indisponível." }, 503, origin);
   }
 
-  const fingerprint = await hmacFingerprint(rateLimitSecret, clientAddress(request));
-  const underLimit = await consumeRateLimit(supabaseUrl, serverKey, fingerprint);
+  // Headers de IP podem ser enviados pelo próprio cliente. O limite global
+  // impede varrer tokens; o limite por token protege cada link válido.
+  const globalFingerprint = await hmacFingerprint(rateLimitSecret, "portal:global");
+  const underLimit = await consumeRateLimit(supabaseUrl, serverKey, globalFingerprint, GLOBAL_RATE_LIMIT_PER_MINUTE);
   if (underLimit === null) {
     return jsonResponse({ erro: "Serviço temporariamente indisponível." }, 503, origin);
   }
@@ -300,6 +298,14 @@ Deno.serve(async (request: Request) => {
     new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(token))),
     (byte) => byte.toString(16).padStart(2, "0"),
   ).join("");
+  const tokenFingerprint = await hmacFingerprint(rateLimitSecret, `portal:token:${tokenHash}`);
+  const tokenUnderLimit = await consumeRateLimit(supabaseUrl, serverKey, tokenFingerprint);
+  if (tokenUnderLimit === null) {
+    return jsonResponse({ erro: "Serviço temporariamente indisponível." }, 503, origin);
+  }
+  if (!tokenUnderLimit) {
+    return jsonResponse({ erro: "Aguarde um minuto e tente novamente." }, 429, origin, { "Retry-After": "60" });
+  }
   const linksUrl = new URL(`${supabaseUrl}/rest/v1/links_status_publico`);
   linksUrl.search = new URLSearchParams({
     select: "id,equipamento_id,empresa_id,criado_em,expira_em,revogado_em",

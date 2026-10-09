@@ -5,6 +5,12 @@ export interface PublicStatusResponse {
   statusAlteradoEm: string | null;
 }
 
+export class PublicStatusRequestError extends Error {
+  constructor(public readonly kind: "rate-limit" | "service" | "unavailable") {
+    super(kind);
+  }
+}
+
 const API_URL = import.meta.env.VITE_PUBLIC_STATUS_API_URL
   || "https://sgaqvxubopgwysnyocjs.supabase.co/functions/v1/public-status";
 
@@ -20,7 +26,9 @@ export async function buscarStatusPublico(token: string): Promise<PublicStatusRe
   });
 
   if (!response.ok) {
-    throw new Error("Acompanhamento indisponível.");
+    throw new PublicStatusRequestError(
+      response.status === 429 ? "rate-limit" : response.status >= 500 ? "service" : "unavailable",
+    );
   }
 
   return await response.json() as PublicStatusResponse;
