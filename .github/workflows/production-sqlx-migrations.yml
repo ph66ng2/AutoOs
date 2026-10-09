@@ -23,6 +23,7 @@ jobs:
   apply:
     name: Preflight e migrations SQLx de produção
     runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/master'
     environment:
       name: production-migrations
     timeout-minutes: 30
@@ -30,8 +31,6 @@ jobs:
       AUTOOS_MIGRATION_MODE: production
       AUTOOS_PRODUCTION_MIGRATION_CONFIRM: ${{ github.event_name == 'push' && 'APLICAR EM PROD' || inputs.confirmation }}
       AUTOOS_PRODUCTION_MIGRATIONS_ENABLED: ${{ vars.AUTOOS_PRODUCTION_MIGRATIONS_ENABLED }}
-      AUTOOS_PRODUCTION_MIGRATION_DATABASE_URL: ${{ secrets.AUTOOS_PRODUCTION_MIGRATION_DATABASE_URL }}
-      AUTOOS_MIGRATION_DATABASE_URL: ${{ secrets.AUTOOS_PRODUCTION_MIGRATION_DATABASE_URL }}
       AUTOOS_PRODUCTION_DATABASE_HOST: ${{ vars.AUTOOS_PRODUCTION_DATABASE_HOST }}
       AUTOOS_PRODUCTION_DATABASE_USER: ${{ vars.AUTOOS_PRODUCTION_DATABASE_USER }}
     steps:
@@ -40,6 +39,8 @@ jobs:
 
       - name: Exigir promoção aprovada e destino configurado
         shell: bash
+        env:
+          AUTOOS_PRODUCTION_MIGRATION_DATABASE_URL: ${{ secrets.AUTOOS_PRODUCTION_MIGRATION_DATABASE_URL }}
         run: |
           set -euo pipefail
           if [[ "$GITHUB_REF" != "refs/heads/master" ]]; then
@@ -82,16 +83,26 @@ jobs:
         run: npm run check:migrations
 
       - name: Pré-checar conflitos sem alterar o banco
+        env:
+          AUTOOS_PRODUCTION_MIGRATION_DATABASE_URL: ${{ secrets.AUTOOS_PRODUCTION_MIGRATION_DATABASE_URL }}
         run: cargo run --manifest-path src-tauri/Cargo.toml --locked --quiet --bin production_migrate -- --preflight-only
 
       - name: Reconciliar somente a variante conhecida da migration 0023
+        env:
+          AUTOOS_MIGRATION_DATABASE_URL: ${{ secrets.AUTOOS_PRODUCTION_MIGRATION_DATABASE_URL }}
         run: node scripts/reconcile-sqlx-master-0023.mjs --apply
 
       - name: Bloquear histórico SQLx divergente antes de migrar
+        env:
+          AUTOOS_MIGRATION_DATABASE_URL: ${{ secrets.AUTOOS_PRODUCTION_MIGRATION_DATABASE_URL }}
         run: npm run check:migrations:db
 
       - name: Pré-checar dados e aplicar migrations pendentes
+        env:
+          AUTOOS_PRODUCTION_MIGRATION_DATABASE_URL: ${{ secrets.AUTOOS_PRODUCTION_MIGRATION_DATABASE_URL }}
         run: cargo run --manifest-path src-tauri/Cargo.toml --locked --quiet --bin production_migrate
 
       - name: Confirmar histórico SQLx final
+        env:
+          AUTOOS_MIGRATION_DATABASE_URL: ${{ secrets.AUTOOS_PRODUCTION_MIGRATION_DATABASE_URL }}
         run: npm run check:migrations:db
