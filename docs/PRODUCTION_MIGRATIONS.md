@@ -1,6 +1,6 @@
 # Migrations SQLx em produção
 
-O workflow `.github/workflows/production-sqlx-migrations.yml` é o caminho controlado para aplicar migrations do desktop AutoOS no banco PostgreSQL de produção. Ele dispara quando uma migration chega a `master` e também permite uma execução manual em `master`.
+O workflow `.github/workflows/production-sqlx-migrations.yml` é o caminho controlado para aplicar migrations do desktop AutoOS no banco PostgreSQL de produção. Ele só pode ser iniciado manualmente em `master`; promover código ou migrations para `master` não inicia uma aplicação.
 
 O workflow não usa `AUTOOS_DATABASE_URL` do build e não usa `supabase db push`: esse fluxo aplica as migrations SQLx de `src-tauri/migrations/`. O job espera aprovação pelo ambiente GitHub `production-migrations` antes de receber a credencial de produção.
 
@@ -15,18 +15,18 @@ Em **Settings → Environments**, crie `production-migrations` e configure:
 5. A variável `AUTOOS_PRODUCTION_DATABASE_USER` com o usuário exato usado pela URL.
 6. A variável `AUTOOS_PRODUCTION_MIGRATIONS_ENABLED=true`. Só habilite depois de revisar a proteção do ambiente e confirmar a política de backup do projeto Supabase.
 
-As variáveis e a secret são específicas do ambiente, não ficam no repositório e não são impressas nos logs. A URL é validada contra o host e usuário configurados, porta, banco e TLS antes da conexão.
+As variáveis e a secret são específicas do ambiente, não ficam no repositório e não são impressas nos logs. A URL é validada contra o host e usuário configurados, porta, banco e TLS antes da conexão. Na execução manual, o operador também precisa digitar o host e o usuário esperados; os dois valores são comparados com as variáveis do ambiente antes de abrir a conexão.
 
 ## O que o workflow faz
 
 1. Confere a sequência versionada das migrations.
-2. Consulta o histórico e os dados de produção sem escrita. Antes de qualquer reconciliação, procura códigos duplicados em produtos ativos sem empresa e nomes de perfil duplicados após `trim` e conversão para minúsculas. A consulta inclui perfis inativos. Se houver conflito, o fluxo para e informa a quantidade de grupos encontrados.
+2. Consulta o histórico e os dados de produção sem escrita. Antes de qualquer reconciliação, procura códigos duplicados em produtos ativos sem empresa e nomes de perfil duplicados após `trim` e conversão para minúsculas. A consulta inclui perfis inativos. Se houver conflito, o fluxo para e lista os códigos de produto e nomes normalizados dos perfis conflitantes, além da quantidade de linhas em cada grupo.
 3. Executa o reconciliador da migration 0023, que só altera o checksum quando reconhece a variante conhecida e confirma que o schema já corresponde aos índices esperados; qualquer outra divergência interrompe o fluxo.
 4. Confere o histórico SQLx e bloqueia versões ausentes, falhas ou checksums desconhecidos.
 5. Aplica as migrations pendentes com o migrator SQLx embutido no código.
-6. Confirma que 0027 e 0028 estão registradas como aplicadas, que os índices da 0027 existem, que `equipamentos.atualizado_em` é `NOT NULL` e que o histórico completo corresponde ao build.
+6. Confirma que 0027 e 0028 estão registradas como aplicadas, que os índices da 0027 existem, que `equipamentos.atualizado_em` é `NOT NULL` e que o histórico completo corresponde ao build. A saída distingue `already_applied` de `applied_and_verified`.
 
-O workflow serializa execuções e não cancela uma migration em andamento. Em execução manual, selecione `master` e digite `APLICAR EM PROD`. Em execução após promoção para `master`, aprove somente depois de conferir o backup recente e o resumo do commit; conflitos detectados na 0027 exigem correção dos dados antes de tentar novamente.
+O workflow serializa execuções e não cancela uma migration em andamento. Para aplicar, abra **Actions → Aplicar migrations SQLx na produção → Run workflow**, selecione `master`, digite `APLICAR EM PROD`, o host e o usuário configurados, e confirme a execução. O ambiente GitHub ainda exige a aprovação dos revisores configurados. Confira o backup recente e o resumo do commit antes de aprovar; conflitos detectados na 0027 exigem correção dos dados antes de tentar novamente.
 
 Para investigar conflitos antes de reexecutar, use consultas somente de leitura:
 

@@ -39,37 +39,93 @@ fn validate_production_target() -> Result<String> {
     let database_url = required_env("AUTOOS_PRODUCTION_MIGRATION_DATABASE_URL")?;
     let expected_host = required_env("AUTOOS_PRODUCTION_DATABASE_HOST")?;
     let expected_user = required_env("AUTOOS_PRODUCTION_DATABASE_USER")?;
+    let confirmed_host = required_env("AUTOOS_PRODUCTION_MIGRATION_CONFIRMED_HOST")?;
+    let confirmed_user = required_env("AUTOOS_PRODUCTION_MIGRATION_CONFIRMED_USER")?;
+    ensure!(
+        confirmed_host == expected_host,
+        "host confirmado não corresponde ao destino de produção configurado"
+    );
+    ensure!(
+        confirmed_user == expected_user,
+        "usuário confirmado não corresponde ao destino de produção configurado"
+    );
     let parsed = Url::parse(&database_url).context("URL de migração de produção inválida")?;
 
     ensure!(
         matches!(parsed.scheme(), "postgres" | "postgresql"),
         "a conexão de produção precisa usar PostgreSQL"
     );
+    ensure!(
+        parsed.fragment().is_none(),
+        "a URL de produção não pode conter fragmento"
+    );
     let host = parsed.host_str().context("URL de produção sem host")?;
+    ensure!(
+        !host.contains('%') && !expected_host.contains('%'),
+        "host de produção inválido"
+    );
     ensure!(
         host.ends_with(".pooler.supabase.com") && host.eq_ignore_ascii_case(&expected_host),
         "host da URL não corresponde ao host Supavisor de produção configurado"
     );
     ensure!(
-        parsed.port_or_known_default() == Some(5432),
+        parsed.port() == Some(5432),
         "a conexão de produção precisa usar Supavisor Session na porta 5432"
     );
     ensure!(
-        parsed.path() == "/postgres",
+        parsed.path() == "/postgres" && !parsed.path().contains('%'),
         "a conexão de produção precisa apontar para o banco /postgres"
     );
     ensure!(
-        parsed.username() == expected_user,
+        !parsed.username().is_empty()
+            && !parsed.username().contains('%')
+            && !expected_user.contains('%')
+            && parsed.username() == expected_user,
         "usuário da URL não corresponde ao usuário de produção configurado"
     );
     ensure!(
         parsed
-            .query_pairs()
-            .any(|(key, value)| key == "sslmode" && value == "require"),
-        "a conexão de produção precisa exigir TLS com sslmode=require"
+            .password()
+            .is_some_and(|password| !password.is_empty()),
+        "a URL de produção precisa conter a credencial PostgreSQL"
+    );
+    let query_pairs = parsed.query_pairs().collect::<Vec<_>>();
+    ensure!(
+        query_pairs.len() == 1 && query_pairs[0].0 == "sslmode" && query_pairs[0].1 == "require",
+        "a URL de produção aceita somente o parâmetro sslmode=require"
     );
 
     Ok(database_url)
+}
+
+fn validate_migration_set() -> Result<()> {
+    let mut versions = MIGRATOR
+        .iter()
+        .map(|migration| migration.version)
+        .collect::<Vec<_>>();
+    versions.sort_unstable();
+
+    for pair in versions.windows(2) {
+        ensure!(
+            pair[0] != pair[1],
+            "versão SQLx {:04} duplicada no build; confira colisões de migrations entre branches",
+            pair[0]
+        );
+    }
+
+    ensure!(
+        versions.len() == 28,
+        "conjunto SQLx incompleto ou inesperado: esperadas 28 migrations (0001–0028), encontradas {}",
+        versions.len()
+    );
+    for (index, version) in versions.iter().enumerate() {
+        let expected = index as i64 + 1;
+        ensure!(
+            *version == expected,
+            "sequência SQLx inválida: esperada migration {expected:04}, encontrada {version:04}"
+        );
+    }
+    Ok(())
 }
 
 fn require_expected_migrations() -> Result<()> {
@@ -150,31 +206,41 @@ async fn preflight_migration_0027(pool: &PgPool) -> Result<()> {
         "tabelas necessárias à migration SQLx 0027 não existem em produção"
     );
 
-    let duplicate_products: i64 = sqlx::query_scalar(
-        "SELECT count(*) FROM (
-             SELECT codigo FROM public.produtos
-              WHERE ativo = true AND empresa_id IS NULL AND codigo IS NOT NULL
-              GROUP BY codigo HAVING count(*) > 1
-         ) AS duplicates",
+    let duplicate_products = sqlx::query_as::<_, (String, i64)>(
+        "SELECT codigo, count(*)::bigint
+           FROM public.produtos
+          WHERE ativo = true AND empresa_id IS NULL AND codigo IS NOT NULL
+          GROUP BY codigo
+         HAVING count(*) > 1
+          ORDER BY codigo",
     )
-    .fetch_one(pool)
+    .fetch_all(pool)
     .await
     .context("não foi possível conferir códigos de produtos sem empresa duplicados")?;
-    let duplicate_profiles: i64 = sqlx::query_scalar(
-        "SELECT count(*) FROM (
-             SELECT lower(btrim(nome)) AS nome_normalizado
-               FROM public.security_profiles
-              GROUP BY lower(btrim(nome)) HAVING count(*) > 1
-         ) AS duplicates",
+    let duplicate_profiles = sqlx::query_as::<_, (String, i64)>(
+        "SELECT lower(btrim(nome)) AS nome_normalizado, count(*)::bigint
+           FROM public.security_profiles
+          GROUP BY lower(btrim(nome))
+         HAVING count(*) > 1
+          ORDER BY nome_normalizado",
     )
-    .fetch_one(pool)
+    .fetch_all(pool)
     .await
     .context("não foi possível conferir nomes de perfil duplicados")?;
 
-    ensure!(
-        duplicate_products == 0 && duplicate_profiles == 0,
-        "SQLX_0027_BLOCKED: encontrados {duplicate_products} grupos de produtos ativos sem empresa com código repetido e {duplicate_profiles} grupos de perfis com nomes repetidos após trim/caixa (inclui perfis inativos). Nenhuma migration foi aplicada. Corrija os dados e tente novamente."
-    );
+    if !duplicate_products.is_empty() || !duplicate_profiles.is_empty() {
+        for (code, rows) in &duplicate_products {
+            eprintln!("SQLX_0027_CONFLICT product_code={code:?} active_rows={rows}");
+        }
+        for (name, rows) in &duplicate_profiles {
+            eprintln!("SQLX_0027_CONFLICT normalized_profile_name={name:?} rows={rows}");
+        }
+        anyhow::bail!(
+            "SQLX_0027_BLOCKED: encontrados {} grupos de produtos ativos sem empresa com código repetido e {} grupos de perfis com nomes repetidos após trim/caixa (inclui perfis inativos). Nenhuma migration foi aplicada. Corrija os grupos listados e tente novamente.",
+            duplicate_products.len(),
+            duplicate_profiles.len()
+        );
+    }
 
     println!("SQLX_0027_PREFLIGHT_OK: sem conflitos de produto ou perfil.");
     Ok(())
@@ -239,6 +305,19 @@ async fn verify_promoted_schema(pool: &PgPool) -> Result<()> {
     Ok(())
 }
 
+async fn required_promotion_migrations_already_applied(pool: &PgPool) -> Result<bool> {
+    let applied_count: i64 = sqlx::query_scalar(
+        "SELECT count(*)
+           FROM public._sqlx_migrations
+          WHERE version = ANY($1) AND success = true",
+    )
+    .bind(REQUIRED_PROMOTION_MIGRATIONS.as_slice())
+    .fetch_one(pool)
+    .await
+    .context("não foi possível consultar o status inicial das migrations 0027–0028")?;
+    Ok(applied_count == REQUIRED_PROMOTION_MIGRATIONS.len() as i64)
+}
+
 #[tokio::main]
 async fn main() -> Result<()> {
     let args = std::env::args().skip(1).collect::<Vec<_>>();
@@ -248,6 +327,7 @@ async fn main() -> Result<()> {
         "uso: production_migrate [--preflight-only]"
     );
 
+    validate_migration_set()?;
     require_expected_migrations()?;
     let database_url = validate_production_target()?;
     let pool = PgPoolOptions::new()
@@ -263,11 +343,21 @@ async fn main() -> Result<()> {
         if preflight_only {
             return Ok::<(), anyhow::Error>(());
         }
+        let required_were_already_applied =
+            required_promotion_migrations_already_applied(&pool).await?;
         tokio::time::timeout(Duration::from_secs(600), MIGRATOR.run(&pool))
             .await
             .context("aplicação de migrations excedeu 10 minutos")?
             .context("SQLx não conseguiu aplicar as migrations pendentes")?;
         verify_promoted_schema(&pool).await?;
+        println!(
+            "PRODUCTION_MIGRATIONS_OK status={}",
+            if required_were_already_applied {
+                "already_applied"
+            } else {
+                "applied_and_verified"
+            }
+        );
         Ok::<(), anyhow::Error>(())
     }
     .await;
@@ -276,8 +366,6 @@ async fn main() -> Result<()> {
     result?;
     if preflight_only {
         println!("PRODUCTION_MIGRATIONS_PREFLIGHT_OK: nenhuma migration foi aplicada.");
-    } else {
-        println!("PRODUCTION_MIGRATIONS_OK versions=0027,0028");
     }
     Ok(())
 }

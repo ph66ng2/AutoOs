@@ -1,14 +1,18 @@
 name: Aplicar migrations SQLx na produção
 
 on:
-  push:
-    branches: [master]
-    paths:
-      - "src-tauri/migrations/**"
   workflow_dispatch:
     inputs:
       confirmation:
         description: 'Digite exatamente "APLICAR EM PROD" para continuar.'
+        required: true
+        type: string
+      expected_host:
+        description: 'Digite o hostname Supavisor de produção configurado no ambiente.'
+        required: true
+        type: string
+      expected_user:
+        description: 'Digite o usuário PostgreSQL de produção configurado no ambiente.'
         required: true
         type: string
 
@@ -29,15 +33,18 @@ jobs:
     timeout-minutes: 30
     env:
       AUTOOS_MIGRATION_MODE: production
-      AUTOOS_PRODUCTION_MIGRATION_CONFIRM: ${{ github.event_name == 'push' && 'APLICAR EM PROD' || inputs.confirmation }}
+      AUTOOS_PRODUCTION_MIGRATION_CONFIRM: ${{ inputs.confirmation }}
+      AUTOOS_PRODUCTION_MIGRATION_CONFIRMED_HOST: ${{ inputs.expected_host }}
+      AUTOOS_PRODUCTION_MIGRATION_CONFIRMED_USER: ${{ inputs.expected_user }}
       AUTOOS_PRODUCTION_MIGRATIONS_ENABLED: ${{ vars.AUTOOS_PRODUCTION_MIGRATIONS_ENABLED }}
       AUTOOS_PRODUCTION_DATABASE_HOST: ${{ vars.AUTOOS_PRODUCTION_DATABASE_HOST }}
       AUTOOS_PRODUCTION_DATABASE_USER: ${{ vars.AUTOOS_PRODUCTION_DATABASE_USER }}
     steps:
-      - name: Checkout do commit promovido
-        uses: actions/checkout@v4
+      - name: Checkout do commit selecionado em master
+        # actions/checkout v4.2.2
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
 
-      - name: Exigir promoção aprovada e destino configurado
+      - name: Exigir confirmação, destino configurado e aprovação do ambiente
         shell: bash
         env:
           AUTOOS_PRODUCTION_MIGRATION_DATABASE_URL: ${{ secrets.AUTOOS_PRODUCTION_MIGRATION_DATABASE_URL }}
@@ -47,8 +54,16 @@ jobs:
             echo "A aplicação de migrations SQLx só pode ser executada em master."
             exit 1
           fi
-          if [[ "$GITHUB_EVENT_NAME" == "workflow_dispatch" && "$AUTOOS_PRODUCTION_MIGRATION_CONFIRM" != "APLICAR EM PROD" ]]; then
+          if [[ "$AUTOOS_PRODUCTION_MIGRATION_CONFIRM" != "APLICAR EM PROD" ]]; then
             echo "Confirmação inválida; nenhuma conexão foi aberta."
+            exit 1
+          fi
+          if [[ "$AUTOOS_PRODUCTION_MIGRATION_CONFIRMED_HOST" != "$AUTOOS_PRODUCTION_DATABASE_HOST" ]]; then
+            echo "O host digitado não corresponde ao host configurado; nenhuma conexão foi aberta."
+            exit 1
+          fi
+          if [[ "$AUTOOS_PRODUCTION_MIGRATION_CONFIRMED_USER" != "$AUTOOS_PRODUCTION_DATABASE_USER" ]]; then
+            echo "O usuário digitado não corresponde ao usuário configurado; nenhuma conexão foi aberta."
             exit 1
           fi
           if [[ "$AUTOOS_PRODUCTION_MIGRATIONS_ENABLED" != "true" ]]; then
@@ -59,18 +74,23 @@ jobs:
             echo "Configure a URL secreta e as variáveis de host/usuário no ambiente production-migrations."
             exit 1
           fi
-          echo "Destino configurado; credenciais omitidas dos logs."
+          echo "Confirmação e destino conferidos; credenciais omitidas dos logs."
 
       - name: Instalar Node.js
-        uses: actions/setup-node@v4
+        # actions/setup-node v4.4.0
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
         with:
           node-version: "22"
 
-      - name: Instalar Rust estável
-        uses: dtolnay/rust-toolchain@stable
+      - name: Instalar Rust 1.99.0
+        # dtolnay/rust-toolchain commit correspondente ao toolchain estável usado pela CI.
+        uses: dtolnay/rust-toolchain@686976e191b89faba57d3206551f0f330d8cb249
+        with:
+          toolchain: "1.99.0"
 
       - name: Cache Cargo
-        uses: Swatinem/rust-cache@v2
+        # Swatinem/rust-cache v2.8.2
+        uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6
         with:
           workspaces: src-tauri
 
@@ -82,10 +102,13 @@ jobs:
       - name: Validar sequência de migrations do commit
         run: npm run check:migrations
 
+      - name: Compilar executor sem credenciais de produção
+        run: cargo build --manifest-path src-tauri/Cargo.toml --locked --quiet --bin production_migrate
+
       - name: Pré-checar conflitos sem alterar o banco
         env:
           AUTOOS_PRODUCTION_MIGRATION_DATABASE_URL: ${{ secrets.AUTOOS_PRODUCTION_MIGRATION_DATABASE_URL }}
-        run: cargo run --manifest-path src-tauri/Cargo.toml --locked --quiet --bin production_migrate -- --preflight-only
+        run: ./src-tauri/target/debug/production_migrate --preflight-only
 
       - name: Reconciliar somente a variante conhecida da migration 0023
         env:
@@ -100,7 +123,7 @@ jobs:
       - name: Pré-checar dados e aplicar migrations pendentes
         env:
           AUTOOS_PRODUCTION_MIGRATION_DATABASE_URL: ${{ secrets.AUTOOS_PRODUCTION_MIGRATION_DATABASE_URL }}
-        run: cargo run --manifest-path src-tauri/Cargo.toml --locked --quiet --bin production_migrate
+        run: ./src-tauri/target/debug/production_migrate
 
       - name: Confirmar histórico SQLx final
         env:
