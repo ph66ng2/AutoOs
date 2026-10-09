@@ -38,6 +38,7 @@ import {
   Trash2,
   Filter,
   RefreshCw,
+  RotateCcw,
   MessageSquare,
   ClipboardCheck,
   Users,
@@ -1553,7 +1554,7 @@ export default function Equipamentos() {
     const acaoCorrigirStatus: PriorityAction = {
       id: "corrigir_status",
       label: "Corrigir Status",
-      icon: <RefreshCw className="h-3.5 w-3.5" />,
+      icon: <History className="h-3.5 w-3.5" />,
       variant: "outline",
       onClick: () => void abrirCorrecaoStatus(eq),
     };
@@ -1714,7 +1715,7 @@ export default function Equipamentos() {
         primary = {
           id: "reabrir_orcamento",
           label: "Reabrir Orçamento",
-          icon: <RefreshCw className="h-3.5 w-3.5" />,
+          icon: <RotateCcw className="h-3.5 w-3.5" />,
           variant: "default",
           className: classeAcaoPrincipal,
           onClick: () => void abrirMudarStatus(eq, "AGUARDANDO_APROVACAO"),
@@ -1723,7 +1724,7 @@ export default function Equipamentos() {
         secondary = {
           id: "mudar_status",
           label: "Mudar Status",
-          icon: <RefreshCw className="h-3.5 w-3.5" />,
+          icon: <ArrowDownUp className="h-3.5 w-3.5" />,
           variant: "outline",
           onClick: () => void abrirMudarStatus(eq),
           disabled: salvando,
@@ -1755,7 +1756,7 @@ export default function Equipamentos() {
           secondary = {
             id: "mudar_status",
             label: "Mudar Status",
-            icon: <RefreshCw className="h-3.5 w-3.5" />,
+            icon: <ArrowDownUp className="h-3.5 w-3.5" />,
             variant: "outline",
             onClick: () => void abrirMudarStatus(eq),
           };
