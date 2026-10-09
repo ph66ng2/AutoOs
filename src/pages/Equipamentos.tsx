@@ -1721,14 +1721,14 @@ export default function Equipamentos() {
           onClick: () => void abrirMudarStatus(eq, "AGUARDANDO_APROVACAO"),
           disabled: salvando,
         };
-        secondary = {
+        overflow.push({
           id: "mudar_status",
           label: "Mudar Status",
           icon: <ArrowDownUp className="h-3.5 w-3.5" />,
           variant: "outline",
           onClick: () => void abrirMudarStatus(eq),
           disabled: salvando,
-        };
+        });
         overflow.push(acaoEditar, acaoExcluir);
         break;
       case "ORCAMENTO_VENCIDO":
