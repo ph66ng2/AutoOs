@@ -15,7 +15,23 @@ use crate::commands::auth::{
 use crate::db::get_pool;
 use crate::commands::orcamento_estoque::{aplicar_decisoes, cancelar_pendencias_ausentes, normalizar_servicos, parse_servicos};
 use std::collections::{HashMap, HashSet};
+use serde::Serialize;
 use tracing::{debug, error, info, instrument};
+
+#[derive(Debug, Serialize)]
+pub struct AjusteVerificacaoResultado {
+    #[serde(flatten)]
+    pub verificacao: VerificacaoRow,
+    pub equipamento_atualizado_em: String,
+}
+
+impl std::ops::Deref for AjusteVerificacaoResultado {
+    type Target = VerificacaoRow;
+
+    fn deref(&self) -> &Self::Target {
+        &self.verificacao
+    }
+}
 
 fn verification_has_sensitive_financial_input(input: &VerificacaoInput) -> bool {
     input.custo_estimado_mao_obra.is_some()
@@ -274,9 +290,9 @@ pub async fn atualizar_servicos_verificacao(
     forma_pagamento_detalhe: Option<String>,
     empresa_id: Option<i32>,
     cliente_aprovou_alteracao: Option<bool>,
-    expected_updated_em: Option<String>,
-) -> Result<VerificacaoRow, String> {
-    let concurrency_token = super::equipamentos::required_concurrency_token(expected_updated_em.as_deref(), "equipamento")?;
+    expected_updated_em: String,
+) -> Result<AjusteVerificacaoResultado, String> {
+    let concurrency_token = super::equipamentos::required_concurrency_token(Some(&expected_updated_em), "equipamento")?;
     let actor = require_permission(PERMISSION_FINANCIAL_ACTIONS)?;
     let (payment_code, payment_detail) = normalize_forma_pagamento(
         forma_pagamento_codigo.as_ref(),
@@ -423,25 +439,25 @@ pub async fn atualizar_servicos_verificacao(
         e.to_string()
     })?;
 
-    let equipment_updated = sqlx::query(
+    let equipamento_atualizado_em: Option<String> = sqlx::query_scalar(
         "UPDATE equipamentos
          SET valor_orcamento = $1, atualizado_em = NOW()
-         WHERE id = $2 AND ($3::INTEGER IS NULL OR empresa_id = $3)",
+         WHERE id = $2 AND ($3::INTEGER IS NULL OR empresa_id = $3)
+         RETURNING atualizado_em::TEXT",
     )
         .bind(custo_total)
         .bind(equipamento_id)
         .bind(resolved_empresa_id)
-        .execute(&mut *tx)
+        .fetch_optional(&mut *tx)
         .await
         .map_err(|e| {
             error!("Erro ao sincronizar valor_orcamento do equipamento {}: {}", equipamento_id, e);
             e.to_string()
-        })?
-        .rows_affected();
+        })?;
 
-    if equipment_updated == 0 {
+    let Some(equipamento_atualizado_em) = equipamento_atualizado_em else {
         return Err("Equipamento não encontrado na empresa informada.".to_string());
-    }
+    };
 
     tx.commit().await.map_err(|error| {
         error!("Erro ao confirmar ajuste da verificação {}: {}", verificacao_id, error);
@@ -480,7 +496,11 @@ pub async fn atualizar_servicos_verificacao(
     .await;
 
     info!("Serviços e orçamento atualizados para equipamento {}", equipamento_id);
-    buscar_verificacao_tecnica(equipamento_id, resolved_empresa_id).await
+    let verificacao = buscar_verificacao_tecnica(equipamento_id, resolved_empresa_id).await?;
+    Ok(AjusteVerificacaoResultado {
+        verificacao,
+        equipamento_atualizado_em,
+    })
 }
 
 #[cfg(test)]

@@ -261,12 +261,16 @@ describe("Equipamentos — Budget Divergence & Audit", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     equipamentoVerificado.status = "VERIFICADO";
+    equipamentoVerificado.valor_orcamento = 150;
     mockListarImagensEquipamento.mockResolvedValue([]);
     mockListarHistoricoEquipamento.mockResolvedValue([]);
     mockBuscarEquipamentosPorSerial.mockResolvedValue([]);
     mockBuscarCliente.mockRejectedValue(new Error("no client"));
     mockListarServicosCatalogoAtivos.mockResolvedValue([]);
-    mockAtualizarServicosVerificacao.mockResolvedValue(makeVerificacao());
+    mockAtualizarServicosVerificacao.mockResolvedValue({
+      ...makeVerificacao(),
+      equipamento_atualizado_em: "2024-01-15T10:00:01Z",
+    });
     mockAprovarOrcamento.mockResolvedValue({ ...equipamentoVerificado, status: "APROVADO" });
     mockAtualizarStatusEquipamento.mockResolvedValue({ sucesso: true });
   });
@@ -368,6 +372,42 @@ describe("Equipamentos — Budget Divergence & Audit", () => {
       expect(screen.getByTestId("confirm-dialog")).toBeInTheDocument();
     });
     expect(screen.getByTestId("confirm-title")).toHaveTextContent(/Resumo do Ajuste/i);
+  });
+
+  it("prefills the adjustment with the current equipment budget, not the item sum", async () => {
+    equipamentoVerificado.valor_orcamento = 230;
+    mockBuscarVerificacao.mockResolvedValue(makeVerificacao({ custo_total: 80, servicos: [
+      { id: "s1", descricao: "Troca de fonte", valor: 80 },
+    ], pecas: [] }));
+    await abrirDialogoAjusteOrcamento();
+
+    expect((screen.getByTestId("valor-orcamento-input") as HTMLInputElement).value).toBe("230");
+    equipamentoVerificado.valor_orcamento = 150;
+  });
+
+  it("keeps the budget visible on approved and rejected equipment rows", () => {
+    for (const status of ["APROVADO", "REPROVADO"]) {
+      equipamentoVerificado.status = status;
+      const view = render(<Equipamentos />);
+      expect(screen.getByText("Orçamento: R$ 150.00")).toBeInTheDocument();
+      view.unmount();
+    }
+  });
+
+  it("uses the timestamp returned by the quote adjustment for the status update", async () => {
+    const updatedAt = "2026-10-08T12:35:00.000Z";
+    mockBuscarVerificacao.mockResolvedValue(makeVerificacao());
+    mockAtualizarServicosVerificacao.mockResolvedValue({
+      ...makeVerificacao(),
+      equipamento_atualizado_em: updatedAt,
+    });
+    await abrirDialogoAjusteOrcamento();
+    await clicarConfirmarStatus();
+    await waitFor(() => expect(screen.getByTestId("confirm-dialog")).toBeInTheDocument());
+    fireEvent.click(screen.getByTestId("confirm-action"));
+
+    await waitFor(() => expect(mockAtualizarStatusEquipamento).toHaveBeenCalled());
+    expect(mockAtualizarStatusEquipamento.mock.calls.at(-1)?.[5]).toBe(updatedAt);
   });
 
   // ─── Test 4: "Continuar" salva com divergence=true ───
@@ -662,6 +702,8 @@ describe("Equipamentos — Budget Divergence & Audit", () => {
     render(<Equipamentos />);
     fireEvent.click(screen.getByTestId("action-reprovar"));
     await screen.findByText("Todos os serviços de troca foram aprovados?");
+    expect(screen.getByRole("button", { name: "Escolha uma decisão" })).toBeDisabled();
+    expect(screen.queryByRole("button", { name: "Confirmar reprovação" })).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Não, selecionar" }));
     fireEvent.click(screen.getByRole("button", { name: "Confirmar reprovação" }));
     await waitFor(() => expect(mockAprovarOrcamento).toHaveBeenCalledWith(expect.objectContaining({ servicos_aprovados: [] })));

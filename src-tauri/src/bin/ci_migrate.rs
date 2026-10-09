@@ -1,9 +1,48 @@
 use anyhow::{bail, Context, Result};
-use sqlx::{migrate::Migrator, postgres::PgPoolOptions};
+use sqlx::{migrate::Migrator, postgres::{PgPool, PgPoolOptions}};
 use std::time::Duration;
 use url::Url;
 
 static MIGRATOR: Migrator = sqlx::migrate!("./migrations");
+
+async fn migration_0027_conflicts(pool: &PgPool) -> Result<Vec<String>> {
+    let schema_ready: bool = sqlx::query_scalar(
+        "SELECT to_regclass('public.produtos') IS NOT NULL
+            AND to_regclass('public.security_profiles') IS NOT NULL",
+    )
+    .fetch_one(pool)
+    .await
+    .context("não foi possível verificar as tabelas da migration 0027")?;
+    if !schema_ready {
+        return Ok(Vec::new());
+    }
+
+    let mut conflicts: Vec<String> = sqlx::query_scalar(
+        "SELECT format('produtos: código %L, ids=%s, nomes=%s', codigo,
+                      array_agg(id ORDER BY id), array_agg(nome ORDER BY id))
+         FROM produtos
+         WHERE ativo = true AND empresa_id IS NULL AND codigo IS NOT NULL
+         GROUP BY codigo
+         HAVING count(*) > 1
+         ORDER BY codigo",
+    )
+    .fetch_all(pool)
+    .await
+    .context("não foi possível listar códigos de produtos duplicados")?;
+    let profile_conflicts: Vec<String> = sqlx::query_scalar(
+        "SELECT format('perfis: nome normalizado %L, ids=%s, nomes=%s', lower(btrim(nome)),
+                      array_agg(id ORDER BY id), array_agg(nome ORDER BY id))
+         FROM security_profiles
+         GROUP BY lower(btrim(nome))
+         HAVING count(*) > 1
+         ORDER BY lower(btrim(nome))",
+    )
+    .fetch_all(pool)
+    .await
+    .context("não foi possível listar nomes de perfil duplicados")?;
+    conflicts.extend(profile_conflicts);
+    Ok(conflicts)
+}
 
 fn validate_ci_target(database_url: &str, migration_mode: Option<&str>) -> Result<()> {
     if migration_mode != Some("ci") {
@@ -37,6 +76,15 @@ async fn main() -> Result<()> {
         .connect(&database_url)
         .await
         .context("falha ao conectar no PostgreSQL descartável da CI")?;
+
+    let conflicts = migration_0027_conflicts(&pool).await?;
+    if !conflicts.is_empty() {
+        pool.close().await;
+        bail!(
+            "SQLX_0027_BLOCKED: corrija os conflitos antes de migrar:\n- {}",
+            conflicts.join("\n- ")
+        );
+    }
 
     let migration_result = tokio::time::timeout(Duration::from_secs(60), MIGRATOR.run(&pool)).await;
     match migration_result {
