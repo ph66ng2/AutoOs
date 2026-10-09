@@ -36,6 +36,7 @@ export function CreateProfileCard({ profiles, onCreated }: Props) {
   const permissionsError = role === "CUSTOM" && permissions.length === 0 ? "Selecione ao menos uma permissão." : null;
   const pinError = !/^\d{4,8}$/.test(pin) ? "Use de 4 a 8 dígitos numéricos." : null;
   const confirmError = confirmPin !== pin ? "Os PINs não conferem." : null;
+  const pinMismatch = pin.length > 0 && confirmPin.length > 0 && pin !== confirmPin;
   const valid = !nameError && !permissionsError && !pinError && !confirmError;
 
   async function createProfile(event: React.FormEvent<HTMLFormElement>) {
@@ -119,12 +120,12 @@ export function CreateProfileCard({ profiles, onCreated }: Props) {
             <div className="space-y-2">
               <Label htmlFor="profile-pin-confirm">Confirmar PIN</Label>
               <Input id="profile-pin-confirm" type="password" inputMode="numeric" autoComplete="new-password" value={confirmPin} onChange={(event) => { setConfirmPin(event.target.value); setError(null); }} maxLength={8} disabled={busy} aria-invalid={submitted && !!confirmError} />
-              {submitted && confirmError && <p className="text-sm text-destructive" role="alert">{confirmError}</p>}
+              {(pinMismatch || (submitted && confirmError)) && <p className="text-sm text-destructive" role="alert">{confirmError}</p>}
             </div>
           </div>
           {error && <p className="rounded-lg border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive" role="alert">{error}</p>}
           {createdName && <p className="rounded-lg border border-emerald-300 bg-emerald-50 p-3 text-sm text-emerald-900" role="status">Perfil {createdName} criado. Para usá-lo, escolha esse perfil em “Ver perfis e decidir”.</p>}
-          <div className="flex justify-end"><Button type="submit" disabled={busy || (submitted && !valid)}>{busy ? "Criando..." : "Criar perfil"}</Button></div>
+          <div className="flex justify-end"><Button type="submit" disabled={busy || pinMismatch || (submitted && !valid)}>{busy ? "Criando..." : "Criar perfil"}</Button></div>
         </form>
       </CardContent>
     </Card>

@@ -1,5 +1,5 @@
 use crate::commands::types::{LoginEmpresaResult, RegistroEmpresaResult};
-use crate::db::get_pool;
+use crate::db::{self, get_pool};
 use argon2::{
     password_hash::{rand_core::OsRng, PasswordHash, PasswordHasher, PasswordVerifier, SaltString},
     Argon2,
@@ -575,7 +575,7 @@ pub fn require_sensitive_access() -> Result<SecurityProfileSummary, String> {
 /// Valores recebidos da interface nunca devem escolher o tenant de uma escrita.
 pub async fn require_active_session_company_id(pool: &PgPool) -> Result<i32, String> {
     let profile = require_sensitive_access()?;
-    sqlx::query_scalar(
+    let company_id = sqlx::query_scalar(
         "SELECT e.id
          FROM security_profiles p
          JOIN empresas e ON e.id = p.empresa_id AND LOWER(e.status) = 'ativo'
@@ -583,12 +583,22 @@ pub async fn require_active_session_company_id(pool: &PgPool) -> Result<i32, Str
     )
     .bind(profile.id)
     .fetch_optional(pool)
-    .await
-    .map_err(|error| format!("Erro ao identificar a empresa do perfil autenticado: {}", error))?
-    .ok_or_else(|| {
+    .await;
+    let company_id = match company_id {
+        Ok(company_id) => company_id,
+        Err(error) => return Err(active_session_company_query_error(error).await),
+    };
+    company_id.ok_or_else(|| {
         "O perfil autenticado não está vinculado a uma empresa ativa. Vincule uma empresa ao perfil antes de continuar."
             .to_string()
     })
+}
+
+async fn active_session_company_query_error(error: sqlx::Error) -> String {
+    format!(
+        "Erro ao identificar a empresa do perfil autenticado: {}",
+        db::database_operation_error(error).await
+    )
 }
 
 pub fn require_permission(permission: &str) -> Result<SecurityProfileSummary, String> {
@@ -624,46 +634,54 @@ pub fn require_permission(permission: &str) -> Result<SecurityProfileSummary, St
 
 async fn ensure_default_profile_exists() -> Result<(), String> {
     let pool = get_pool().await.map_err(|e| e.to_string())?;
-    let row = sqlx::query("SELECT COUNT(*) AS total FROM security_profiles WHERE ativo = true")
+    let row_result = sqlx::query("SELECT COUNT(*) AS total FROM security_profiles WHERE ativo = true")
         .fetch_one(&pool)
-        .await
-        .map_err(|e| {
-            error!("Erro ao contar perfis de segurança: {}", e);
-            e.to_string()
-        })?;
+        .await;
+    let row = match row_result {
+        Ok(row) => row,
+        Err(error) => {
+            error!("Erro ao contar perfis de segurança: {}", error);
+            return Err(db::database_operation_error(error).await);
+        }
+    };
 
     let total: i64 = row.try_get("total").map_err(|e| e.to_string())?;
     if total == 0 {
         let permissions = serde_json::to_string(&ALL_PERMISSIONS.iter().map(|value| value.to_string()).collect::<Vec<_>>())
             .map_err(|e| e.to_string())?;
-        sqlx::query(
+        let insert_result = sqlx::query(
             "INSERT INTO security_profiles (nome, role, permissions, is_default) VALUES ($1, $2, $3, true)"
         )
         .bind("Administrador Local")
         .bind("ADMIN")
         .bind(permissions)
         .execute(&pool)
-        .await
-        .map_err(|e| {
-            error!("Erro ao recriar perfil administrador padrão: {}", e);
-            e.to_string()
-        })?;
+        .await;
+        if let Err(error) = insert_result {
+            error!("Erro ao recriar perfil administrador padrão: {}", error);
+            return Err(db::database_operation_error(error).await);
+        }
     }
 
-    let default_row = sqlx::query("SELECT COUNT(*) AS total FROM security_profiles WHERE ativo = true AND is_default = true")
+    let default_row_result = sqlx::query("SELECT COUNT(*) AS total FROM security_profiles WHERE ativo = true AND is_default = true")
         .fetch_one(&pool)
-        .await
-        .map_err(|e| e.to_string())?;
+        .await;
+    let default_row = match default_row_result {
+        Ok(row) => row,
+        Err(error) => return Err(db::database_operation_error(error).await),
+    };
     let default_total: i64 = default_row.try_get("total").map_err(|e| e.to_string())?;
     if default_total == 0 {
-        sqlx::query(
+        let update_result = sqlx::query(
             "UPDATE security_profiles SET is_default = CASE WHEN id = (
                 SELECT id FROM security_profiles WHERE ativo = true ORDER BY id ASC LIMIT 1
             ) THEN true ELSE false END"
         )
         .execute(&pool)
-        .await
-        .map_err(|e| e.to_string())?;
+        .await;
+        if let Err(error) = update_result {
+            return Err(db::database_operation_error(error).await);
+        }
     }
 
     Ok(())
@@ -682,14 +700,17 @@ async fn fetch_profile_records_with_scope(include_inactive: bool) -> Result<Vec<
 
     query_builder.push(" ORDER BY ativo DESC, is_default DESC, nome ASC");
 
-    query_builder
+    let profiles_result = query_builder
         .build_query_as::<SecurityProfileRecord>()
         .fetch_all(&pool)
-        .await
-        .map_err(|e| {
-            error!("Erro ao listar perfis de segurança: {}", e);
-            e.to_string()
-        })
+        .await;
+    match profiles_result {
+        Ok(profiles) => Ok(profiles),
+        Err(error) => {
+            error!("Erro ao listar perfis de segurança: {}", error);
+            Err(db::database_operation_error(error).await)
+        }
+    }
 }
 
 async fn fetch_profile_records() -> Result<Vec<SecurityProfileRecord>, String> {
@@ -708,18 +729,22 @@ async fn fetch_active_profile_record() -> Result<SecurityProfileRecord, String> 
 
 async fn fetch_profile_record_by_id(profile_id: i32) -> Result<SecurityProfileRecord, String> {
     let pool = get_pool().await.map_err(|e| e.to_string())?;
-    sqlx::query_as::<_, SecurityProfileRecord>(
+    let profile = sqlx::query_as::<_, SecurityProfileRecord>(
         "SELECT id, nome, role, permissions, ativo, is_default, criado_em
          FROM security_profiles
          WHERE id = $1 AND ativo = true"
     )
     .bind(profile_id)
     .fetch_optional(&pool)
-    .await
-    .map_err(|e| {
-        error!("Erro ao buscar perfil de segurança {}: {}", profile_id, e);
-        e.to_string()
-    })?
+    .await;
+    let profile = match profile {
+        Ok(profile) => profile,
+        Err(e) => {
+            error!("Erro ao buscar perfil de segurança {}: {}", profile_id, e);
+            return Err(db::database_operation_error(e).await);
+        }
+    };
+    profile
     .ok_or_else(|| "Perfil de segurança não encontrado".to_string())
 }
 
@@ -1012,7 +1037,9 @@ pub async fn lock_sensitive_access() -> Result<bool, String> {
 #[tauri::command]
 #[instrument(skip_all)]
 pub async fn set_active_security_profile(profile_id: i32, pin: String, confirm_pin: Option<String>) -> Result<SensitiveAccessStatus, String> {
-    let actor = fetch_active_profile_record().await.ok().and_then(|profile| to_profile_summary(profile).ok());
+    // The actor is only used for the audit event. Read it from the current
+    // session instead of issuing another profile query before the actual switch.
+    let actor = current_session_profile()?.map(|(_, profile)| profile);
     let profile = fetch_profile_record_by_id(profile_id).await?;
     let summary = to_profile_summary(profile.clone())?;
     let stored = load_profile_pin_for_record(&profile)?;
@@ -1043,36 +1070,45 @@ pub async fn set_active_security_profile(profile_id: i32, pin: String, confirm_p
     // (ux_security_profiles_single_default_active). O PostgreSQL valida constraints
     // linha a linha durante o UPDATE, então fazer tudo numa query só pode causar
     // estado transitório com dois is_default=true.
-    let mut tx = pool.begin().await.map_err(|e| {
-        error!("Erro ao iniciar transação de perfil: {}", e);
-        e.to_string()
-    })?;
+    let mut tx = match pool.begin().await {
+        Ok(tx) => tx,
+        Err(e) => {
+            error!("Erro ao iniciar transação de perfil: {}", e);
+            return Err(db::database_operation_error(e).await);
+        }
+    };
 
-    sqlx::query("UPDATE security_profiles SET is_default = false, atualizado_em = NOW() WHERE ativo = true AND is_default = true")
+    let clear_previous_profile = sqlx::query("UPDATE security_profiles SET is_default = false, atualizado_em = NOW() WHERE ativo = true AND is_default = true")
         .execute(&mut *tx)
         .await
         .map_err(|e| {
             error!("Erro ao limpar perfil ativo anterior: {}", e);
-            e.to_string()
-        })?;
+            e
+        });
+    if let Err(e) = clear_previous_profile {
+        return Err(db::database_operation_error(e).await);
+    }
 
-    sqlx::query("UPDATE security_profiles SET is_default = true, atualizado_em = NOW() WHERE id = $1 AND ativo = true")
+    let set_active_profile = sqlx::query("UPDATE security_profiles SET is_default = true, atualizado_em = NOW() WHERE id = $1 AND ativo = true")
         .bind(profile_id)
         .execute(&mut *tx)
         .await
         .map_err(|e| {
             error!("Erro ao definir perfil ativo {}: {}", profile_id, e);
-            e.to_string()
-        })?;
+            e
+        });
+    if let Err(e) = set_active_profile {
+        return Err(db::database_operation_error(e).await);
+    }
 
     if provision_admin_pin {
         store_profile_pin(profile_id, &pin)?;
     }
 
-    tx.commit().await.map_err(|e| {
+    if let Err(e) = tx.commit().await {
         error!("Erro ao confirmar transação de perfil: {}", e);
-        e.to_string()
-    })?;
+        return Err(db::database_operation_error(e).await);
+    }
 
     reset_unlock_attempts(profile_id);
     unlock_session(summary.clone())?;
@@ -1846,6 +1882,16 @@ pub async fn provision_pin_with_enrollment(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[tokio::test]
+    async fn company_lookup_does_not_expose_database_error_details() {
+        let error = sqlx::Error::Io(std::io::Error::other("private connection detail"));
+        let message = active_session_company_query_error(error).await;
+
+        assert!(message.contains("Erro ao identificar a empresa"));
+        assert!(message.contains("Não foi possível alcançar o banco"));
+        assert!(!message.contains("private connection detail"));
+    }
 
     #[test]
     fn company_password_hash_requires_the_original_password() {

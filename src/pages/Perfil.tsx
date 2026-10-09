@@ -5,6 +5,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { CreateProfileCard } from "@/components/CreateProfileCard";
 import { useSensitiveAccess } from "@/hooks/useSensitiveAccess";
 import { setAppMode } from "@/lib/app-mode";
+import { securityRoleLabel } from "@/lib/security-profile-labels";
 import { SENSITIVE_PERMISSIONS } from "@/types";
 import { useNavigate } from "react-router-dom";
 
@@ -60,7 +61,7 @@ export default function Perfil() {
                 <div>
                   <p className="text-xs uppercase tracking-[0.18em] text-white/50">Conta em uso</p>
                   <p className="text-lg font-semibold">{accessStatus?.active_profile_name || "Perfil não definido"}</p>
-                  <p className="text-sm text-white/65">{accessStatus?.active_role || "Sem papel definido"}</p>
+                  <p className="text-sm text-white/65">{securityRoleLabel(accessStatus?.active_role || accessStatus?.profiles.find((profile) => profile.id === accessStatus.active_profile_id)?.role)}</p>
                 </div>
               </div>
 
@@ -69,7 +70,7 @@ export default function Perfil() {
                   {accessStatus?.unlocked ? <ShieldCheck className="h-4 w-4 text-emerald-300" /> : <ShieldAlert className="h-4 w-4 text-amber-300" />}
                   {accessStatus?.unlocked ? "Sessão sensível ativa" : "Sessão sensível bloqueada"}
                 </span>
-                <span className="text-white/50">{accessStatus?.profiles.length || 0} perfis</span>
+                <span className="text-white/50">{accessStatus?.profiles.length || 0} {(accessStatus?.profiles.length || 0) === 1 ? "perfil" : "perfis"}</span>
               </div>
 
               <Button

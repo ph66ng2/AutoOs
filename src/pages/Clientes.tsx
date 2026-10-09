@@ -4,9 +4,9 @@
  * ╠══════════════════════════════════════════════════════════════╣
  * ║  CRUD completo de clientes Pessoa Física e Jurídica.        ║
  * ║  Funcionalidades:                                            ║
- * ║  - Tabela com busca por nome/CPF/CNPJ/telefone/email       ║
+ * ║  - Lista com busca por nome/CPF/CNPJ/telefone/email        ║
  * ║  - Detecção automática PF/PJ pelo documento digitado       ║
- * ║  - Expansão de linha para ver equipamentos vinculados       ║
+ * ║  - Expansão do cliente para ver equipamentos vinculados     ║
  * ║  - Busca de CEP automática via ViaCEP                       ║
  * ║  - Dialog de criar/editar com todos os campos               ║
  * ║  - Dialog de confirmação de exclusão                         ║
@@ -20,7 +20,7 @@
  * ║  USADO POR: App.tsx (rota /clientes)                        ║
  * ╚══════════════════════════════════════════════════════════════╝
  */
-import { Fragment, useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { formatDatePtBr } from "@/lib/date-utils";
 import {
@@ -29,15 +29,12 @@ import {
   Edit,
   Trash2,
   RefreshCw,
-  Phone,
-  Mail,
   Printer,
   ChevronDown,
   ChevronRight,
   Plus,
   Building2,
   User,
-  Eye,
   ContactRound,
 } from "lucide-react";
 import { useForm } from "react-hook-form";
@@ -46,14 +43,6 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
 import {
   clienteSchema,
   type ClienteFormData,
@@ -440,7 +429,7 @@ export default function Clientes() {
         </CardContent>
       </Card>
 
-      {/* Tabela */}
+      {/* Lista */}
       <Card>
         <CardContent className="pt-6">
           {error && (
@@ -462,175 +451,136 @@ export default function Clientes() {
                 onPageChange={setAbaAtual}
                 label="Paginação de clientes"
               />
-              <div className="rounded-md border">
-                <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead className="w-10"></TableHead>
-                    <TableHead>Tipo</TableHead>
-                    <TableHead>Nome / Razão Social</TableHead>
-                    <TableHead>CPF / CNPJ</TableHead>
-                    <TableHead>Telefone</TableHead>
-                    <TableHead>Email</TableHead>
-                    <TableHead>Cidade/UF</TableHead>
-                    <TableHead className="sticky right-0 z-20 bg-background text-right shadow-[-5px_0_8px_-6px_hsl(var(--foreground))]">Ações</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {clientesExibidos.map(c => (
-                    <Fragment key={c.id}>
-                      <TableRow key={c.id}>
-                        <TableCell>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            className="h-8 gap-1 px-2 text-xs"
-                            onClick={() => void toggleExpandir(c.id!)}
-                            title={expandido === c.id ? "Ocultar equipamentos" : "Ver equipamentos"}
-                          >
-                            {expandido === c.id ? (
-                              <ChevronDown className="h-4 w-4 text-muted-foreground" />
-                            ) : (
-                              <ChevronRight className="h-4 w-4 text-muted-foreground" />
-                            )}
-                            Equip.
-                          </Button>
-                        </TableCell>
-                        <TableCell>
+              <div className="divide-y rounded-md border" role="list" aria-label="Clientes">
+                {clientesExibidos.map(c => (
+                  <div key={c.id} role="listitem" className="min-w-0">
+                    <div className="grid min-w-0 gap-4 p-4 xl:grid-cols-[minmax(0,1fr)_auto]">
+                      <div className="min-w-0 space-y-3">
+                        <div className="flex min-w-0 items-start gap-3">
                           {c.tipo_pessoa === "PJ" ? (
-                            <Badge variant="outline" className="bg-purple-50 text-purple-700 border-purple-200">
-                              <Building2 className="h-3 w-3 mr-1" />PJ
+                            <Badge variant="outline" className="shrink-0 border-purple-200 bg-purple-50 text-purple-700">
+                              <Building2 className="mr-1 h-3 w-3" />PJ
                             </Badge>
                           ) : (
-                            <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-200">
-                              <User className="h-3 w-3 mr-1" />PF
+                            <Badge variant="outline" className="shrink-0 border-blue-200 bg-blue-50 text-blue-700">
+                              <User className="mr-1 h-3 w-3" />PF
                             </Badge>
                           )}
-                        </TableCell>
-                        <TableCell className="font-medium">
-                          <div>
-                            <p>{nomeExibicaoCliente(c)}</p>
+                          <div className="min-w-0">
+                            <p className="break-words font-medium">{nomeExibicaoCliente(c)}</p>
                             {c.tipo_pessoa === "PJ" && c.razao_social && c.nome_fantasia && (
-                              <p className="text-xs text-muted-foreground">{c.razao_social}</p>
+                              <p className="break-words text-xs text-muted-foreground">{c.razao_social}</p>
                             )}
                           </div>
-                        </TableCell>
-                        <TableCell className="text-sm font-mono">{documentoExibicaoCliente(c)}</TableCell>
-                        <TableCell>
-                          <div className="flex items-center gap-1">
-                            <Phone className="h-3 w-3 text-muted-foreground" />
-                            <span className="text-sm">{c.telefone ? formatarTelefone(c.telefone) : c.telefone}</span>
+                        </div>
+                        <dl className="grid min-w-0 gap-x-6 gap-y-3 text-sm sm:grid-cols-2 2xl:grid-cols-4">
+                          <div className="min-w-0">
+                            <dt className="text-xs text-muted-foreground">CPF / CNPJ</dt>
+                            <dd className="break-all font-mono">{documentoExibicaoCliente(c)}</dd>
                           </div>
-                          {c.telefone_secundario && (
-                            <p className="text-xs text-muted-foreground">{formatarTelefone(c.telefone_secundario)}</p>
-                          )}
-                        </TableCell>
-                        <TableCell>
-                          {c.email ? (
-                            <div className="flex items-center gap-1">
-                              <Mail className="h-3 w-3 text-muted-foreground" />
-                              <span className="text-sm">{c.email}</span>
-                            </div>
-                          ) : <span className="text-muted-foreground">—</span>}
-                        </TableCell>
-                        <TableCell className="text-sm">
-                          {c.cidade && c.uf ? `${c.cidade}/${c.uf}` : c.cidade || c.uf || "—"}
-                        </TableCell>
-                        <TableCell className="sticky right-0 z-10 bg-background text-right shadow-[-5px_0_8px_-6px_hsl(var(--foreground))]">
-                          <div className="flex justify-end gap-1">
-                            <ActionPriorityRow
-                              primary={{
-                                id: `equipamentos-${c.id}`,
-                                label: "Equipamentos",
-                                icon: <Eye className="h-4 w-4" />,
-                                variant: "default",
-                                onClick: () => void toggleExpandir(c.id!),
-                              }}
-                              secondary={{
-                                id: `editar-${c.id}`,
-                                label: "Editar",
-                                icon: <Edit className="h-4 w-4" />,
-                                variant: "outline",
-                                onClick: () => abrirEditar(c),
-                              }}
-                              overflow={[
-                                {
-                                  id: `contatos-${c.id}`,
-                                  label: "Contatos",
-                                  icon: <ContactRound className="h-4 w-4" />,
-                                  onClick: () => setContatosClienteSelecionado(c),
-                                },
-                                {
-                                  id: `excluir-${c.id}`,
-                                  label: "Excluir",
-                                  icon: <Trash2 className="h-4 w-4" />,
-                                  className: "text-red-600",
-                                  onClick: () => void solicitarExclusao(c),
-                                },
-                              ]}
-                            />
+                          <div className="min-w-0">
+                            <dt className="text-xs text-muted-foreground">Telefone</dt>
+                            <dd className="break-all">{c.telefone ? formatarTelefone(c.telefone) : "—"}</dd>
+                            {c.telefone_secundario && (
+                              <dd className="break-all text-xs text-muted-foreground">{formatarTelefone(c.telefone_secundario)}</dd>
+                            )}
                           </div>
-                        </TableCell>
-                      </TableRow>
-                      {/* Equipamentos expandidos */}
-                      {expandido === c.id && (
-                        <TableRow key={`eq-${c.id}`}>
-                          <TableCell colSpan={8} className="bg-accent/30 p-0">
-                            <div className="px-6 py-3">
-                              {carregandoEquip ? (
-                                <div className="flex items-center gap-2 py-2">
-                                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-600" />
-                                  <span className="text-sm text-muted-foreground">Carregando equipamentos...</span>
-                                </div>
-                              ) : equipamentosCliente.length === 0 ? (
-                                <div className="flex items-center gap-2 py-2 text-muted-foreground">
-                                  <Printer className="h-4 w-4 opacity-40" />
-                                  <span className="text-sm">Nenhum equipamento vinculado</span>
-                                </div>
-                              ) : (
-                                <div className="space-y-2">
-                                  <p className="text-xs font-medium text-muted-foreground mb-2">
-                                    {equipamentosCliente.length} equipamento(s) vinculado(s)
-                                  </p>
-                                  {equipamentosCliente.slice(0, LIMITE_EQUIPAMENTOS_EXPANDIDOS).map(eq => (
-                                    <button key={eq.id} type="button" onClick={() => navigate("/equipamentos", { state: { equipamentoId: eq.id } })} className="flex w-full items-center justify-between rounded border bg-background p-2 text-left hover:border-cyan-600 hover:bg-cyan-50">
-                                      <div className="flex items-center gap-3">
-                                        <Printer className="h-4 w-4 text-muted-foreground" />
-                                        <div>
-                                          <p className="text-sm font-medium">{eq.marca} {eq.modelo}</p>
-                                          <p className="text-xs text-muted-foreground font-mono">{eq.serial_number}</p>
-                                        </div>
-                                      </div>
-                                      <div className="flex items-center gap-3">
-                                        <ClientesStatusBadge status={eq.status} />
-                                        <span className="text-xs text-muted-foreground">
-                                          {formatDatePtBr(eq.data_entrada, "")}
-                                        </span>
-                                      </div>
-                                    </button>
-                                  ))}
-                                  {equipamentosCliente.length > LIMITE_EQUIPAMENTOS_EXPANDIDOS && (
-                                    <div className="flex justify-end pt-1">
-                                      <Button
-                                        variant="outline"
-                                        size="sm"
-                                        className="h-8 text-xs"
-                                        onClick={() => abrirModalTodosEquipamentos(c)}
-                                      >
-                                        Mostrar mais ({equipamentosCliente.length - LIMITE_EQUIPAMENTOS_EXPANDIDOS})
-                                      </Button>
-                                    </div>
-                                  )}
-                                </div>
-                              )}
-                            </div>
-                          </TableCell>
-                        </TableRow>
-                      )}
-                    </Fragment>
-                  ))}
-                </TableBody>
-                </Table>
+                          <div className="min-w-0">
+                            <dt className="text-xs text-muted-foreground">Email</dt>
+                            <dd className="break-all">{c.email || "—"}</dd>
+                          </div>
+                          <div className="min-w-0">
+                            <dt className="text-xs text-muted-foreground">Cidade/UF</dt>
+                            <dd className="break-words">{c.cidade && c.uf ? `${c.cidade}/${c.uf}` : c.cidade || c.uf || "—"}</dd>
+                          </div>
+                        </dl>
+                      </div>
+                      <div className="flex min-w-0 items-start justify-end">
+                        <ActionPriorityRow
+                          wrap
+                          primary={{
+                            id: `equipamentos-${c.id}`,
+                            label: "Equipamentos",
+                            icon: expandido === c.id ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />,
+                            variant: "default",
+                            ariaExpanded: expandido === c.id,
+                            onClick: () => void toggleExpandir(c.id!),
+                          }}
+                          secondary={{
+                            id: `editar-${c.id}`,
+                            label: "Editar",
+                            icon: <Edit className="h-4 w-4" />,
+                            variant: "outline",
+                            onClick: () => abrirEditar(c),
+                          }}
+                          overflow={[
+                            {
+                              id: `contatos-${c.id}`,
+                              label: "Contatos",
+                              icon: <ContactRound className="h-4 w-4" />,
+                              onClick: () => setContatosClienteSelecionado(c),
+                            },
+                            {
+                              id: `excluir-${c.id}`,
+                              label: "Excluir",
+                              icon: <Trash2 className="h-4 w-4" />,
+                              className: "text-red-600",
+                              onClick: () => void solicitarExclusao(c),
+                            },
+                          ]}
+                        />
+                      </div>
+                    </div>
+                    {expandido === c.id && (
+                      <div id={`equipamentos-cliente-${c.id}`} className="min-w-0 border-t bg-accent/30 px-4 py-3">
+                        {carregandoEquip ? (
+                          <div className="flex items-center gap-2 py-2">
+                            <div className="h-4 w-4 animate-spin rounded-full border-b-2 border-blue-600" />
+                            <span className="text-sm text-muted-foreground">Carregando equipamentos...</span>
+                          </div>
+                        ) : equipamentosCliente.length === 0 ? (
+                          <div className="flex items-center gap-2 py-2 text-muted-foreground">
+                            <Printer className="h-4 w-4 opacity-40" />
+                            <span className="text-sm">Nenhum equipamento vinculado</span>
+                          </div>
+                        ) : (
+                          <div className="space-y-2">
+                            <p className="text-xs font-medium text-muted-foreground">
+                              {equipamentosCliente.length} equipamento(s) vinculado(s)
+                            </p>
+                            {equipamentosCliente.slice(0, LIMITE_EQUIPAMENTOS_EXPANDIDOS).map(eq => (
+                              <button
+                                key={eq.id}
+                                type="button"
+                                onClick={() => navigate("/equipamentos", { state: { equipamentoId: eq.id } })}
+                                className="grid w-full min-w-0 gap-2 rounded border bg-background p-3 text-left hover:border-cyan-600 hover:bg-cyan-50 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center"
+                              >
+                                <span className="flex min-w-0 items-start gap-3">
+                                  <Printer className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
+                                  <span className="min-w-0">
+                                    <span className="block break-words text-sm font-medium">{eq.marca} {eq.modelo}</span>
+                                    <span className="block break-all font-mono text-xs text-muted-foreground">{eq.serial_number}</span>
+                                  </span>
+                                </span>
+                                <span className="flex flex-wrap items-center gap-2 sm:justify-end">
+                                  <ClientesStatusBadge status={eq.status} />
+                                  <span className="text-xs text-muted-foreground">{formatDatePtBr(eq.data_entrada, "")}</span>
+                                </span>
+                              </button>
+                            ))}
+                            {equipamentosCliente.length > LIMITE_EQUIPAMENTOS_EXPANDIDOS && (
+                              <div className="flex justify-end pt-1">
+                                <Button variant="outline" size="sm" className="h-8 text-xs" onClick={() => abrirModalTodosEquipamentos(c)}>
+                                  Mostrar mais ({equipamentosCliente.length - LIMITE_EQUIPAMENTOS_EXPANDIDOS})
+                                </Button>
+                              </div>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                ))}
               </div>
             </>
           )}

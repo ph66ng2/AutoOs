@@ -1,8 +1,8 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, screen, waitFor, act } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { useState } from "react";
-import { SensitiveAccessProvider, useSensitiveAccess } from "@/hooks/useSensitiveAccess";
+import { SensitiveAccessBadge, SensitiveAccessProvider, useSensitiveAccess } from "@/hooks/useSensitiveAccess";
 import type { SensitiveAccessStatus, SensitivePermission } from "@/types";
 
 const mockInvoke = vi.hoisted(() => vi.fn());
@@ -43,9 +43,54 @@ describe("useSensitiveAccess — integração com novos recursos de auth", () =>
     localStorage.removeItem("autoos_last_profile_id");
   });
 
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
   function captureHook(h: ReturnType<typeof useSensitiveAccess>) {
     hookRef = h;
   }
+
+  it("mantém os perfis em uma falha temporária e limpa o aviso após recuperar", async () => {
+    const intervalSpy = vi.spyOn(window, "setInterval");
+    const profile = { id: 1, nome: "Admin", role: "ADMIN", permissions: [], pin_configured: true, is_default: true, ativo: true };
+    const available = { ...EMPTY_STATUS, unlocked: true, active_profile_id: 1, active_profile_name: "Admin", pin_configured: true, profiles: [profile] };
+    mockInvoke
+      .mockResolvedValueOnce(available)
+      .mockRejectedValueOnce("MaxClientsInSessionMode: max clients reached")
+      .mockResolvedValueOnce(available);
+
+    render(<TestHarness><HookInspector capture={captureHook} /><SensitiveAccessBadge /></TestHarness>);
+    await waitFor(() => expect(hookRef?.status?.profiles).toHaveLength(1));
+
+    await act(async () => { await hookRef?.refreshStatus(); });
+    expect(hookRef?.status?.profiles).toHaveLength(1);
+    expect(screen.getByText("Banco temporariamente indisponível")).toBeInTheDocument();
+    expect(screen.getByText(/limite de acessos ao mesmo tempo/i)).toBeInTheDocument();
+    await waitFor(() => expect(intervalSpy.mock.calls.some(([, delay]) => delay === 30_000)).toBe(true));
+
+    await act(async () => { await hookRef?.refreshStatus(); });
+    expect(screen.queryByText("Banco temporariamente indisponível")).not.toBeInTheDocument();
+    expect(screen.queryByText(/limite de acessos ao mesmo tempo/i)).not.toBeInTheDocument();
+  });
+
+  it("remove o aviso quando a primeira consulta ao perfil volta a funcionar", async () => {
+    const profile = { id: 1, nome: "Admin", role: "ADMIN", permissions: [], pin_configured: true, is_default: true, ativo: true };
+    const available = { ...EMPTY_STATUS, unlocked: true, active_profile_id: 1, active_profile_name: "Admin", pin_configured: true, profiles: [profile] };
+    mockInvoke
+      .mockResolvedValueOnce(available)
+      .mockRejectedValueOnce("MaxClientsInSessionMode: max clients reached")
+      .mockResolvedValueOnce(available);
+
+    render(<TestHarness><HookInspector capture={captureHook} /><SensitiveAccessBadge /></TestHarness>);
+    await waitFor(() => expect(hookRef?.status?.profiles).toHaveLength(1));
+
+    await act(async () => { await hookRef?.refreshStatus(); });
+    expect(screen.getByText("Banco temporariamente indisponível")).toBeInTheDocument();
+
+    await act(async () => { expect(await hookRef?.ensureSensitiveAccess()).toBe(true); });
+    expect(screen.queryByText("Banco temporariamente indisponível")).not.toBeInTheDocument();
+  });
 
   it("mantém o perfil escolhido e o PIN digitado durante uma atualização de status", async () => {
     const user = userEvent.setup();

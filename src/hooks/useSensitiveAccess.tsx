@@ -15,6 +15,7 @@ import { ProfileSessionDialog } from "@/components/ProfileSessionDialog";
 import { PasswordRecoveryDialog } from "@/components/PasswordRecoveryDialog";
 import { toast } from "sonner";
 import { SensitiveAccessService } from "@/lib/sensitive-access";
+import { isTemporaryDatabaseAccessMessage, sensitiveAccessErrorMessage } from "@/lib/sensitive-access-error";
 import { registerSensitiveAccessPrompt } from "@/lib/sensitive-action-retry";
 import {
   SENSITIVE_PERMISSION_LABELS,
@@ -40,6 +41,7 @@ type SensitiveDialogMode = "startup" | "selector" | "sensitive";
 interface SensitiveAccessContextValue {
   status: SensitiveAccessStatus | null;
   loading: boolean;
+  connectionUnavailable: boolean;
   /** 0–100 durante o primeiro arranque (conexão com backend / status sensível). */
   bootProgress: number;
   refreshStatus: () => Promise<void>;
@@ -53,18 +55,6 @@ interface SensitiveAccessContextValue {
 const defaultPrompt: SensitiveAccessPromptOptions = {
   title: "Acesso sensível",
   description: "Informe o PIN para continuar com esta ação.",
-};
-
-const EMPTY_STATUS: SensitiveAccessStatus = {
-  pin_configured: false,
-  unlocked: false,
-  expires_at: null,
-  active_profile_id: null,
-  active_profile_name: null,
-  active_role: null,
-  permissions: [],
-  can_manage_profiles: false,
-  profiles: [],
 };
 
 function profileHasPermission(status: SensitiveAccessStatus | null, permission?: SensitivePermission) {
@@ -88,6 +78,7 @@ const SensitiveAccessContext = createContext<SensitiveAccessContextValue | null>
 export function SensitiveAccessProvider({ children }: { children: ReactNode }) {
   const [status, setStatus] = useState<SensitiveAccessStatus | null>(null);
   const [loading, setLoading] = useState(true);
+  const [connectionUnavailable, setConnectionUnavailable] = useState(false);
   const [bootProgress, setBootProgress] = useState(6);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [dialogMandatory, setDialogMandatory] = useState(false);
@@ -103,6 +94,7 @@ export function SensitiveAccessProvider({ children }: { children: ReactNode }) {
   const startupPromptedRef = useRef(false);
   const bootPhasesTrackedRef = useRef(true);
   const dialogOpenRef = useRef(false);
+  const statusErrorRef = useRef<string | null>(null);
 
   useEffect(() => {
     dialogOpenRef.current = dialogOpen;
@@ -121,6 +113,10 @@ export function SensitiveAccessProvider({ children }: { children: ReactNode }) {
         setBootProgress((p) => Math.max(p, 86));
       }
       setStatus(nextStatus);
+      setConnectionUnavailable(false);
+      const statusError = statusErrorRef.current;
+      setError((current) => current && (current === statusError || isTemporaryDatabaseAccessMessage(current)) ? null : current);
+      statusErrorRef.current = null;
 
       // Pré-selecionar o último perfil usado, se ainda existir e estiver ativo
       let lastProfileId: string | null = null;
@@ -155,8 +151,10 @@ export function SensitiveAccessProvider({ children }: { children: ReactNode }) {
         setDialogOpen(true);
       }
     } catch (refreshError: any) {
-      setStatus(EMPTY_STATUS);
-      setError(refreshError?.message || refreshError?.toString() || "Não foi possível verificar o acesso sensível.");
+      setConnectionUnavailable(true);
+      const message = sensitiveAccessErrorMessage(refreshError, "Não foi possível verificar o acesso sensível.");
+      statusErrorRef.current = message;
+      setError(message);
     } finally {
       if (bootPhasesTrackedRef.current) {
         setBootProgress(100);
@@ -168,13 +166,15 @@ export function SensitiveAccessProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     void refreshStatus();
+  }, [refreshStatus]);
 
+  useEffect(() => {
     const intervalId = window.setInterval(() => {
       void refreshStatus();
-    }, 60_000);
+    }, connectionUnavailable ? 30_000 : 60_000);
 
     return () => window.clearInterval(intervalId);
-  }, [refreshStatus]);
+  }, [connectionUnavailable, refreshStatus]);
 
   // Abre o dialog de startup somente quando perfis ficam disponíveis E já existe sessão ativa
   // Evita conflito com AuthDialog (multi-tenant) que deve aparecer primeiro
@@ -221,7 +221,12 @@ export function SensitiveAccessProvider({ children }: { children: ReactNode }) {
   }, [dialogMandatory, resetDialogState, resolvePending]);
 
   const ensureSensitiveAccess = useCallback(async (options?: SensitiveAccessPromptOptions) => {
-    const currentStatus = await SensitiveAccessService.status().catch(() => status);
+    const currentStatus = await SensitiveAccessService.status()
+      .then((nextStatus) => {
+        setConnectionUnavailable(false);
+        return nextStatus;
+      })
+      .catch(() => status);
     if (currentStatus) {
       setStatus(currentStatus);
       setSelectedProfileId(currentStatus.active_profile_id ? String(currentStatus.active_profile_id) : "");
@@ -253,7 +258,12 @@ export function SensitiveAccessProvider({ children }: { children: ReactNode }) {
   })), [ensureSensitiveAccess]);
 
   const openProfileSelector = useCallback(async (options?: ProfileSelectorOptions) => {
-    const currentStatus = await SensitiveAccessService.status().catch(() => status);
+    const currentStatus = await SensitiveAccessService.status()
+      .then((nextStatus) => {
+        setConnectionUnavailable(false);
+        return nextStatus;
+      })
+      .catch(() => status);
     if (!currentStatus || currentStatus.profiles.length === 0) {
       toast.error("Nenhum perfil encontrado. Crie um perfil na aba Perfil.");
       return false;
@@ -288,6 +298,7 @@ export function SensitiveAccessProvider({ children }: { children: ReactNode }) {
   const setActiveProfile = useCallback(async (profileId: number, pin: string) => {
     const nextStatus = await SensitiveAccessService.setActiveProfile(profileId, pin);
     setStatus(nextStatus);
+    setConnectionUnavailable(false);
     setSelectedProfileId(nextStatus.active_profile_id ? String(nextStatus.active_profile_id) : "");
   }, []);
 
@@ -320,6 +331,7 @@ export function SensitiveAccessProvider({ children }: { children: ReactNode }) {
       // do keyring. Reconsulta antes de escolher entre criar e desbloquear PIN.
       let workingStatus = await SensitiveAccessService.status();
       setStatus(workingStatus);
+      setConnectionUnavailable(false);
       if (!workingStatus.active_profile_id) {
         setError("Não foi possível determinar o perfil ativo. Feche e abra o AutoOS novamente.");
         setBusy(false);
@@ -416,7 +428,9 @@ export function SensitiveAccessProvider({ children }: { children: ReactNode }) {
 
       closeDialog(true);
     } catch (submitError: any) {
-      setError(submitError?.message || submitError?.toString() || "Falha ao validar o acesso sensível.");
+      const message = sensitiveAccessErrorMessage(submitError, "Falha ao validar o acesso sensível.");
+      setError(message);
+      if (isTemporaryDatabaseAccessMessage(message)) setConnectionUnavailable(true);
       setBusy(false);
     }
   }, [closeDialog, pin, confirmPin, promptOptions.permission, selectedProfileId, status, dialogMode]);
@@ -424,6 +438,7 @@ export function SensitiveAccessProvider({ children }: { children: ReactNode }) {
   const value = useMemo<SensitiveAccessContextValue>(() => ({
     status,
     loading,
+    connectionUnavailable,
     bootProgress,
     refreshStatus,
     ensureSensitiveAccess,
@@ -431,7 +446,7 @@ export function SensitiveAccessProvider({ children }: { children: ReactNode }) {
     lockSensitiveAccess,
     hasPermission,
     setActiveProfile,
-  }), [bootProgress, ensureSensitiveAccess, hasPermission, loading, lockSensitiveAccess, openProfileSelector, refreshStatus, setActiveProfile, status]);
+  }), [bootProgress, connectionUnavailable, ensureSensitiveAccess, hasPermission, loading, lockSensitiveAccess, openProfileSelector, refreshStatus, setActiveProfile, status]);
 
   const activeProfile = status?.profiles.find((profile) => profile.id === status.active_profile_id) ?? null;
   const selectedProfile = status?.profiles.find((profile) => String(profile.id) === selectedProfileId) ?? activeProfile ?? null;
@@ -571,13 +586,22 @@ export function SensitiveRoute({
 }
 
 export function SensitiveAccessBadge() {
-  const { status } = useSensitiveAccess();
+  const { status, loading, connectionUnavailable } = useSensitiveAccess();
+
+  if (connectionUnavailable) {
+    return (
+      <span className="inline-flex items-center gap-1 rounded-md border border-amber-200 bg-amber-50 px-2.5 py-1 text-xs font-medium text-amber-900">
+        <ShieldAlert className="h-3.5 w-3.5" />
+        Banco temporariamente indisponível
+      </span>
+    );
+  }
 
   if (!status || !status.active_profile_id) {
     return (
       <span className="inline-flex items-center gap-1 rounded-md border border-slate-200 bg-slate-50 px-2.5 py-1 text-xs font-medium text-slate-700">
         <ShieldAlert className="h-3.5 w-3.5" />
-        Nenhum perfil configurado
+        {loading ? "Carregando perfis..." : status ? "Nenhum perfil configurado" : "Não foi possível verificar os perfis"}
       </span>
     );
   }
