@@ -2361,12 +2361,12 @@ export default function Equipamentos() {
           <DialogHeader><DialogTitle>Detalhes do Equipamento</DialogTitle></DialogHeader>
           {selecionado && (
             <div className="space-y-4">
-              <div className="flex items-center justify-between gap-3">
-                <div>
-                  <h3 className="text-lg font-bold">{selecionado.marca} {selecionado.modelo}</h3>
-                  <p className="text-sm text-muted-foreground font-mono">{selecionado.serial_number}</p>
+              <div className="flex min-w-0 items-start justify-between gap-3">
+                <div className="min-w-0 flex-1">
+                  <h3 className="break-words text-lg font-bold [overflow-wrap:anywhere]">{selecionado.marca} {selecionado.modelo}</h3>
+                  <p className="break-words text-sm text-muted-foreground font-mono [overflow-wrap:anywhere]">{selecionado.serial_number}</p>
                   {selecionado.responsavel_nome && (
-                    <p className="mt-1 text-sm text-muted-foreground">
+                    <p className="mt-1 break-words text-sm text-muted-foreground [overflow-wrap:anywhere]">
                       Contato responsável: <span className="font-medium text-foreground">{selecionado.responsavel_nome}</span>
                     </p>
                   )}

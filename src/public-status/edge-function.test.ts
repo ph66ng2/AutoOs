@@ -188,6 +188,17 @@ describe("public status edge function", () => {
     expect(linkLookups).toHaveLength(0);
   });
 
+  it("does not spend any shared rate-limit bucket on malformed tokens", async () => {
+    for (let attempt = 0; attempt < 300; attempt += 1) {
+      const { response } = await callPortal("abc");
+      expect(response.status).toBe(404);
+    }
+    expect(vi.mocked(fetch)).not.toHaveBeenCalled();
+
+    const { response } = await callPortal();
+    expect(response.status).toBe(200);
+  });
+
   it("does not use client-supplied IP headers as a rate-limit identity", async () => {
     const headers = { origin: PORTAL_ORIGIN, "content-type": "application/json", "x-real-ip": "1.2.3.4", "x-forwarded-for": "5.6.7.8" };
     await handler(new Request(`${SUPABASE_URL}/functions/v1/public-status`, { method: "POST", headers, body: JSON.stringify({ token: TOKEN }) }));
@@ -205,6 +216,26 @@ describe("public status edge function", () => {
 
     expect(firstFingerprints).toHaveLength(2);
     expect(firstFingerprints).toEqual(secondFingerprints);
+  });
+
+  it("separates client buckets using the gateway IP", async () => {
+    const headers = { origin: PORTAL_ORIGIN, "content-type": "application/json", "cf-connecting-ip": "203.0.113.10" };
+    await handler(new Request(`${SUPABASE_URL}/functions/v1/public-status`, { method: "POST", headers, body: JSON.stringify({ token: TOKEN }) }));
+    const firstFingerprints = vi.mocked(fetch).mock.calls
+      .filter(([input]) => new URL(input instanceof Request ? input.url : input.toString()).pathname.endsWith("/rpc/consumir_limite_status_publico"))
+      .map(([, init]) => JSON.parse(String(init?.body)).p_fingerprint);
+
+    vi.mocked(fetch).mockClear();
+    await handler(new Request(`${SUPABASE_URL}/functions/v1/public-status`, {
+      method: "POST", headers: { ...headers, "cf-connecting-ip": "203.0.113.11" }, body: JSON.stringify({ token: TOKEN }),
+    }));
+    const secondFingerprints = vi.mocked(fetch).mock.calls
+      .filter(([input]) => new URL(input instanceof Request ? input.url : input.toString()).pathname.endsWith("/rpc/consumir_limite_status_publico"))
+      .map(([, init]) => JSON.parse(String(init?.body)).p_fingerprint);
+
+    expect(firstFingerprints).toHaveLength(2);
+    expect(firstFingerprints[0]).not.toBe(secondFingerprints[0]);
+    expect(firstFingerprints[1]).toBe(secondFingerprints[1]);
   });
 
   it("rejects local browser origins unless explicitly enabled", async () => {

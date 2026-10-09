@@ -52,6 +52,7 @@ const STATUS_COPY: Record<string, { title: string; orientation: string }> = {
 const TOKEN_PATTERN = /^[a-f0-9]{64}$/i;
 const MAX_BODY_BYTES = 2_048;
 const RATE_LIMIT_PER_MINUTE = 30;
+const CLIENT_RATE_LIMIT_PER_MINUTE = 60;
 const GLOBAL_RATE_LIMIT_PER_MINUTE = 300;
 const DELIVERY_VALIDITY_MS = 30 * 24 * 60 * 60 * 1_000;
 
@@ -255,14 +256,39 @@ Deno.serve(async (request: Request) => {
     return jsonResponse({ erro: "Serviço temporariamente indisponível." }, 503, origin);
   }
 
-  // Headers de IP podem ser enviados pelo próprio cliente. O limite global
-  // impede varrer tokens; o limite por token protege cada link válido.
-  const globalFingerprint = await hmacFingerprint(rateLimitSecret, "portal:global");
-  const underLimit = await consumeRateLimit(supabaseUrl, serverKey, globalFingerprint, GLOBAL_RATE_LIMIT_PER_MINUTE);
-  if (underLimit === null) {
+  const bodyText = await readBoundedText(request, MAX_BODY_BYTES);
+  if (bodyText === null) {
+    return jsonResponse({ erro: "Acompanhamento indisponível." }, 404, origin);
+  }
+
+  let token: unknown;
+  try {
+    token = (JSON.parse(bodyText) as { token?: unknown }).token;
+  } catch {
+    return jsonResponse({ erro: "Acompanhamento indisponível." }, 404, origin);
+  }
+  if (typeof token !== "string" || !TOKEN_PATTERN.test(token)) {
+    return jsonResponse({ erro: "Acompanhamento indisponível." }, 404, origin);
+  }
+
+  // O gateway Cloudflare do Supabase define CF-Connecting-IP. Não usar
+  // X-Forwarded-For ou X-Real-IP, que podem conter valores do cliente.
+  const gatewayIp = request.headers.get("cf-connecting-ip")?.trim().toLowerCase();
+  const hasGatewayIp = Boolean(gatewayIp && gatewayIp.length <= 45 && /^[0-9a-f:.]+$/.test(gatewayIp));
+  const clientFingerprint = await hmacFingerprint(
+    rateLimitSecret,
+    hasGatewayIp ? `portal:client:${gatewayIp}` : "portal:global-fallback",
+  );
+  const clientUnderLimit = await consumeRateLimit(
+    supabaseUrl,
+    serverKey,
+    clientFingerprint,
+    hasGatewayIp ? CLIENT_RATE_LIMIT_PER_MINUTE : GLOBAL_RATE_LIMIT_PER_MINUTE,
+  );
+  if (clientUnderLimit === null) {
     return jsonResponse({ erro: "Serviço temporariamente indisponível." }, 503, origin);
   }
-  if (!underLimit) {
+  if (!clientUnderLimit) {
     console.warn("public_status_rate_limited");
     return jsonResponse({ erro: "Aguarde um minuto e tente novamente." }, 429, origin, { "Retry-After": "60" });
   }
@@ -276,21 +302,6 @@ Deno.serve(async (request: Request) => {
   }
   const configRows = await readJson<Array<{ public_enabled: boolean }>>(configResponse);
   if (!configRows?.[0]?.public_enabled) {
-    return jsonResponse({ erro: "Acompanhamento indisponível." }, 404, origin);
-  }
-
-  const bodyText = await readBoundedText(request, MAX_BODY_BYTES);
-  if (bodyText === null) {
-    return jsonResponse({ erro: "Acompanhamento indisponível." }, 404, origin);
-  }
-
-  let token: unknown;
-  try {
-    token = (JSON.parse(bodyText) as { token?: unknown }).token;
-  } catch {
-    return jsonResponse({ erro: "Acompanhamento indisponível." }, 404, origin);
-  }
-  if (typeof token !== "string" || !TOKEN_PATTERN.test(token)) {
     return jsonResponse({ erro: "Acompanhamento indisponível." }, 404, origin);
   }
 
