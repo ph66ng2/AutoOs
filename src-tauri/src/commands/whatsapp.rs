@@ -208,6 +208,7 @@ pub async fn enviar_whatsapp(input: WhatsappSendInput) -> Result<bool, String> {
     let status = response.status();
     if !status.is_success() {
         let body = response.text().await.unwrap_or_default();
+        let body = redact_long_hex_values(&body);
         error!("Provider WhatsApp retornou {}: {}", status, body);
         record_security_event(
             "WHATSAPP_SEND_FAILED",
@@ -231,4 +232,32 @@ pub async fn enviar_whatsapp(input: WhatsappSendInput) -> Result<bool, String> {
 
     info!("WhatsApp enviado com sucesso para {}", contato);
     Ok(true)
+}
+
+fn redact_long_hex_values(value: &str) -> String {
+    let bytes = value.as_bytes();
+    let mut output = String::with_capacity(value.len());
+    let mut index = 0;
+    let mut copied_until = 0;
+
+    while index < bytes.len() {
+        if !bytes[index].is_ascii_hexdigit() {
+            index += 1;
+            continue;
+        }
+
+        let start = index;
+        while index < bytes.len() && bytes[index].is_ascii_hexdigit() {
+            index += 1;
+        }
+
+        if index - start >= 64 {
+            output.push_str(&value[copied_until..start]);
+            output.push_str("[REDACTED]");
+            copied_until = index;
+        }
+    }
+
+    output.push_str(&value[copied_until..]);
+    output
 }

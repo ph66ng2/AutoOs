@@ -26,13 +26,13 @@ As variáveis e a secret são específicas do ambiente, não ficam no repositór
 3. Executa o reconciliador da migration 0023, que só altera o checksum quando reconhece a variante conhecida e confirma que o schema já corresponde aos índices esperados; qualquer outra divergência interrompe o fluxo.
 4. Confere o histórico SQLx e bloqueia versões ausentes, falhas ou checksums desconhecidos.
 5. Aplica as migrations pendentes com o migrator SQLx embutido no código.
-6. Confirma que 0027 e 0028 estão registradas como aplicadas, que os índices da 0027 existem, que `equipamentos.atualizado_em` é `NOT NULL` e que o histórico completo corresponde ao build. A saída distingue `already_applied` de `applied_and_verified`.
+6. Confirma que 0027–0029 estão registradas como aplicadas, que os índices da 0027 existem, que `equipamentos.atualizado_em` é `NOT NULL`, que as tabelas do portal existem e que o histórico completo corresponde ao build. A saída distingue `already_applied` de `applied_and_verified`.
 
 O workflow serializa execuções e não cancela uma migration em andamento. Para aplicar, abra **Actions → Aplicar migrations SQLx na produção → Run workflow**, selecione `master`, digite `APLICAR EM PROD`, o host e o usuário configurados, e confirme a execução. Configure a aprovação dos revisores antes de habilitar o ambiente. Confira o backup recente e o resumo do commit antes de aprovar; conflitos detectados na 0027 exigem correção dos dados antes de tentar novamente.
 
 ### Histórico incompleto
 
-O reconciliador da 0023 só funciona quando a versão 23 já consta no histórico SQLx. O executor exige 0001–0023 registradas com sucesso e aplica as versões pendentes até a 0028. O verificador de histórico também recusa uma base anterior à 0023. Um banco cujo schema avançou por aplicações manuais, mas cujo `_sqlx_migrations` registra apenas a versão 1, será bloqueado antes de qualquer migration; **não preencha o histórico automaticamente**. Audite o schema e os checksums em uma cópia desse banco e estabeleça um procedimento de reconciliação específico antes de liberar o workflow. A reconciliação da 0023 não substitui essa auditoria.
+O reconciliador da 0023 só funciona quando a versão 23 já consta no histórico SQLx. Para aplicar a 0029, o executor exige 0001–0028 registradas com sucesso; o verificador de histórico também recusa uma base anterior à 0028. Um banco cujo schema avançou por aplicações manuais, mas cujo `_sqlx_migrations` registra apenas a versão 1, será bloqueado antes de qualquer migration; **não preencha o histórico automaticamente**. Audite o schema e os checksums em uma cópia desse banco e estabeleça um procedimento de reconciliação específico antes de liberar o workflow. A reconciliação da 0023 não substitui essa auditoria.
 
 Para investigar conflitos antes de reexecutar, use consultas somente de leitura:
 

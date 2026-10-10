@@ -56,7 +56,7 @@ Na CI, o binário `ci_migrate` aplica migrations somente ao PostgreSQL descartá
 
 ### Migrations SQLx em produção
 
-Antes de publicar um release que dependa das migrations 0024–0028, aplique-as pelo workflow protegido [production-sqlx-migrations.yml](../.github/workflows/production-sqlx-migrations.yml). Configure o ambiente e confira os bloqueios de histórico e dados em [PRODUCTION_MIGRATIONS.md](./PRODUCTION_MIGRATIONS.md). O desktop não executa migrations ao iniciar.
+Antes de publicar um release que dependa das migrations 0024–0029, aplique-as pelo workflow protegido [production-sqlx-migrations.yml](../.github/workflows/production-sqlx-migrations.yml). Configure o ambiente e confira os bloqueios de histórico e dados em [PRODUCTION_MIGRATIONS.md](./PRODUCTION_MIGRATIONS.md). O desktop não executa migrations ao iniciar.
 
 ## Windows (distribuição assistida)
 

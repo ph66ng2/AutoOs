@@ -8,8 +8,8 @@ use url::Url;
 
 static MIGRATOR: Migrator = sqlx::migrate!("./migrations");
 
-const REQUIRED_PROMOTION_MIGRATIONS: [i64; 2] = [27, 28];
-const LAST_REQUIRED_APPLIED_MIGRATION: i64 = 23;
+const REQUIRED_PROMOTION_MIGRATIONS: [i64; 3] = [27, 28, 29];
+const LAST_REQUIRED_APPLIED_MIGRATION: i64 = 28;
 
 fn required_env(name: &str) -> Result<String> {
     std::env::var(name)
@@ -128,7 +128,7 @@ fn validate_migration_versions(mut versions: Vec<i64>, expected_count: usize) ->
 fn validate_migration_set() -> Result<()> {
     validate_migration_versions(
         MIGRATOR.iter().map(|migration| migration.version).collect(),
-        28,
+        29,
     )
 }
 
@@ -190,25 +190,25 @@ mod tests {
     use super::*;
 
     #[test]
-    fn promotes_from_master_0023_with_a_contiguous_migration_set() {
-        assert_eq!(LAST_REQUIRED_APPLIED_MIGRATION, 23);
+    fn promotes_from_0028_with_a_contiguous_migration_set() {
+        assert_eq!(LAST_REQUIRED_APPLIED_MIGRATION, 28);
         assert!(validate_migration_set().is_ok());
         assert!(require_expected_migrations().is_ok());
     }
 
     #[test]
     fn rejects_duplicate_missing_and_out_of_order_versions() {
-        let complete = (1..=28).collect::<Vec<_>>();
-        assert!(validate_migration_versions(complete.clone(), 28).is_ok());
+        let complete = (1..=29).collect::<Vec<_>>();
+        assert!(validate_migration_versions(complete.clone(), 29).is_ok());
 
         let mut duplicate = complete.clone();
         duplicate[23] = 23;
-        assert!(validate_migration_versions(duplicate, 28).is_err());
-        assert!(validate_migration_versions(complete[..27].to_vec(), 28).is_err());
+        assert!(validate_migration_versions(duplicate, 29).is_err());
+        assert!(validate_migration_versions(complete[..28].to_vec(), 29).is_err());
 
         let mut gap = complete;
-        gap[23] = 29;
-        assert!(validate_migration_versions(gap, 28).is_err());
+        gap[23] = 30;
+        assert!(validate_migration_versions(gap, 29).is_err());
     }
 }
 
@@ -324,6 +324,24 @@ async fn verify_promoted_schema(pool: &PgPool) -> Result<()> {
         "equipamentos.atualizado_em continua aceitando NULL após a migration 0028"
     );
 
+    let portal_schema_exists: bool = sqlx::query_scalar(
+        "SELECT to_regclass('public.links_status_publico') IS NOT NULL
+             AND to_regclass('public.status_portal_config') IS NOT NULL
+             AND to_regclass('public.status_portal_rate_limits') IS NOT NULL
+             AND EXISTS (
+                 SELECT 1 FROM information_schema.columns
+                  WHERE table_schema = 'public' AND table_name = 'equipamentos'
+                    AND column_name = 'status_alterado_em'
+             )",
+    )
+    .fetch_one(pool)
+    .await
+    .context("não foi possível confirmar as estruturas do portal público")?;
+    ensure!(
+        portal_schema_exists,
+        "estruturas da migration SQLx 0029 não foram encontradas"
+    );
+
     let applied_count: i64 =
         sqlx::query_scalar("SELECT count(*) FROM public._sqlx_migrations WHERE success = true")
             .fetch_one(pool)
@@ -346,7 +364,7 @@ async fn required_promotion_migrations_already_applied(pool: &PgPool) -> Result<
     .bind(REQUIRED_PROMOTION_MIGRATIONS.as_slice())
     .fetch_one(pool)
     .await
-    .context("não foi possível consultar o status inicial das migrations 0027–0028")?;
+    .context("não foi possível consultar o status inicial das migrations 0027–0029")?;
     Ok(applied_count == REQUIRED_PROMOTION_MIGRATIONS.len() as i64)
 }
 

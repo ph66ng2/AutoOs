@@ -56,6 +56,7 @@ import {
   Download,
   Smartphone,
   DollarSign,
+  Link2,
 } from "lucide-react";
 import { useForm, Controller } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -173,6 +174,7 @@ import { InputDialog } from "@/components/ui/input-dialog";
 import { ErrorAlert } from "@/components/ui/error-alert";
 import { PaginationControls } from "@/components/ui/pagination-controls";
 import { PagamentoOrcamentoDialog } from "@/components/equipamentos/PagamentoOrcamentoDialog";
+import { PublicStatusLinkDialog } from "@/components/equipamentos/PublicStatusLinkDialog";
 import { FormaPagamentoFields } from "@/components/equipamentos/FormaPagamentoFields";
 import { resolveRecipient, type ResolvedRecipient } from "@/lib/recipient-resolver";
 import { saveRecipientAddress } from "@/lib/recipient-persistence";
@@ -186,6 +188,7 @@ export default function Equipamentos() {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [detalhesDialogOpen, setDetalhesDialogOpen] = useState(false);
+  const [publicStatusDialogOpen, setPublicStatusDialogOpen] = useState(false);
   const [verificacaoDialogOpen, setVerificacaoDialogOpen] = useState(false);
   const [statusDialogOpen, setStatusDialogOpen] = useState(false);
   const [pagamentoDialogOpen, setPagamentoDialogOpen] = useState(false);
@@ -2358,17 +2361,33 @@ export default function Equipamentos() {
           <DialogHeader><DialogTitle>Detalhes do Equipamento</DialogTitle></DialogHeader>
           {selecionado && (
             <div className="space-y-4">
-              <div className="flex items-center justify-between">
-                <div>
-                  <h3 className="text-lg font-bold">{selecionado.marca} {selecionado.modelo}</h3>
-                  <p className="text-sm text-muted-foreground font-mono">{selecionado.serial_number}</p>
+              <div className="flex min-w-0 items-start justify-between gap-3">
+                <div className="min-w-0 flex-1">
+                  <h3 className="break-words text-lg font-bold [overflow-wrap:anywhere]">{selecionado.marca} {selecionado.modelo}</h3>
+                  <p className="break-words text-sm text-muted-foreground font-mono [overflow-wrap:anywhere]">{selecionado.serial_number}</p>
                   {selecionado.responsavel_nome && (
-                    <p className="mt-1 text-sm text-muted-foreground">
+                    <p className="mt-1 break-words text-sm text-muted-foreground [overflow-wrap:anywhere]">
                       Contato responsável: <span className="font-medium text-foreground">{selecionado.responsavel_nome}</span>
                     </p>
                   )}
                 </div>
-                <StatusBadge status={selecionado.status} />
+                <div className="flex shrink-0 flex-col items-end gap-2">
+                  <StatusBadge status={selecionado.status} />
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={async () => {
+                      const allowed = await ensureSensitiveAccess({
+                        title: "Acompanhamento público",
+                        description: "Confirme o acesso para consultar e gerenciar links públicos deste atendimento.",
+                        permission: SENSITIVE_PERMISSIONS.MANAGE_STATUS_LINKS,
+                      });
+                      if (allowed) setPublicStatusDialogOpen(true);
+                    }}
+                  >
+                    <Link2 className="mr-2 h-4 w-4" /> Acompanhamento público
+                  </Button>
+                </div>
               </div>
 
               <Tabs defaultValue="info">
@@ -2384,7 +2403,7 @@ export default function Equipamentos() {
                     <div><span className="text-muted-foreground">Tipo:</span> <span className="ml-1 font-medium">{selecionado.tipo}</span></div>
                     <div><span className="text-muted-foreground">Entrada:</span> <span className="ml-1 font-medium">{formatDatePtBr(selecionado.data_entrada)}</span></div>
                     <div><span className="text-muted-foreground">Patrimônio:</span> <span className="ml-1 font-medium">{selecionado.patrimonio || "—"}</span></div>
-                    <div><span className="text-muted-foreground">Nº Série:</span> <span className="ml-1 font-medium font-mono">{selecionado.serial_number}</span></div>
+                    <div className="min-w-0 [overflow-wrap:anywhere]"><span className="text-muted-foreground">Nº Série:</span> <span className="ml-1 font-medium font-mono">{selecionado.serial_number}</span></div>
                   </div>
                   {selecionado.defeito_relatado && <div className="text-sm"><p className="text-muted-foreground mb-1">Defeito na entrada:</p><p className="bg-accent/50 p-2 rounded whitespace-pre-wrap">{selecionado.defeito_relatado}</p></div>}
                   {selecionado.acessorios && <div className="text-sm"><p className="text-muted-foreground mb-1">Acessórios:</p><p className="bg-accent/50 p-2 rounded">{selecionado.acessorios}</p></div>}
@@ -2504,6 +2523,12 @@ export default function Equipamentos() {
           )}
         </DialogContent>
       </Dialog>
+
+      <PublicStatusLinkDialog
+        equipamento={selecionado}
+        open={publicStatusDialogOpen}
+        onOpenChange={setPublicStatusDialogOpen}
+      />
 
       {/* ═══ Dialog Verificação Técnica (componente extraído) ═══ */}
       <VerificacaoTecnica

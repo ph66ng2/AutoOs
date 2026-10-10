@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const databaseUrl = process.env.AUTOOS_MIGRATION_DATABASE_URL;
-const minimumAppliedVersion = 23;
+const minimumAppliedVersion = 28;
 if (!databaseUrl) {
   console.error("Defina AUTOOS_MIGRATION_DATABASE_URL para conferir o histórico antes de migrar.");
   process.exit(2);
