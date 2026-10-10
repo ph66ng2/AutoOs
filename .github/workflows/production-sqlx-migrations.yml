@@ -7,12 +7,8 @@ on:
         description: 'Digite exatamente "APLICAR EM PROD" para continuar.'
         required: true
         type: string
-      expected_host:
-        description: 'Digite o hostname Supavisor de produção configurado no ambiente.'
-        required: true
-        type: string
-      expected_user:
-        description: 'Digite o usuário PostgreSQL de produção configurado no ambiente.'
+      expected_target_sha256:
+        description: 'SHA-256 (hex minúsculo) de "<host>|<usuário>" de produção. Calcule localmente: printf "%s|%s" HOST USER | sha256sum'
         required: true
         type: string
 
@@ -34,11 +30,8 @@ jobs:
     env:
       AUTOOS_MIGRATION_MODE: production
       AUTOOS_PRODUCTION_MIGRATION_CONFIRM: ${{ inputs.confirmation }}
-      AUTOOS_PRODUCTION_MIGRATION_CONFIRMED_HOST: ${{ inputs.expected_host }}
-      AUTOOS_PRODUCTION_MIGRATION_CONFIRMED_USER: ${{ inputs.expected_user }}
+      AUTOOS_PRODUCTION_MIGRATION_CONFIRMED_TARGET_SHA256: ${{ inputs.expected_target_sha256 }}
       AUTOOS_PRODUCTION_MIGRATIONS_ENABLED: ${{ vars.AUTOOS_PRODUCTION_MIGRATIONS_ENABLED }}
-      AUTOOS_PRODUCTION_DATABASE_HOST: ${{ vars.AUTOOS_PRODUCTION_DATABASE_HOST }}
-      AUTOOS_PRODUCTION_DATABASE_USER: ${{ vars.AUTOOS_PRODUCTION_DATABASE_USER }}
     steps:
       - name: Checkout do commit selecionado em master
         # actions/checkout v4.2.2
@@ -48,6 +41,8 @@ jobs:
         shell: bash
         env:
           AUTOOS_PRODUCTION_MIGRATION_DATABASE_URL: ${{ secrets.AUTOOS_PRODUCTION_MIGRATION_DATABASE_URL }}
+          AUTOOS_PRODUCTION_DATABASE_HOST: ${{ secrets.AUTOOS_PRODUCTION_DATABASE_HOST }}
+          AUTOOS_PRODUCTION_DATABASE_USER: ${{ secrets.AUTOOS_PRODUCTION_DATABASE_USER }}
         run: |
           set -euo pipefail
           if [[ "$GITHUB_REF" != "refs/heads/master" ]]; then
@@ -58,20 +53,20 @@ jobs:
             echo "Confirmação inválida; nenhuma conexão foi aberta."
             exit 1
           fi
-          if [[ "$AUTOOS_PRODUCTION_MIGRATION_CONFIRMED_HOST" != "$AUTOOS_PRODUCTION_DATABASE_HOST" ]]; then
-            echo "O host digitado não corresponde ao host configurado; nenhuma conexão foi aberta."
+          if [[ -z "$AUTOOS_PRODUCTION_MIGRATION_DATABASE_URL" || -z "$AUTOOS_PRODUCTION_DATABASE_HOST" || -z "$AUTOOS_PRODUCTION_DATABASE_USER" ]]; then
+            echo "Configure os secrets AUTOOS_PRODUCTION_MIGRATION_DATABASE_URL, AUTOOS_PRODUCTION_DATABASE_HOST e AUTOOS_PRODUCTION_DATABASE_USER no ambiente production-migrations; o secret do desktop não é aceito."
             exit 1
           fi
-          if [[ "$AUTOOS_PRODUCTION_MIGRATION_CONFIRMED_USER" != "$AUTOOS_PRODUCTION_DATABASE_USER" ]]; then
-            echo "O usuário digitado não corresponde ao usuário configurado; nenhuma conexão foi aberta."
+          # Defesa em profundidade: mascara valores derivados, como o host em minúsculas.
+          echo "::add-mask::${AUTOOS_PRODUCTION_DATABASE_HOST,,}"
+          actual_sha="$(printf '%s|%s' "$AUTOOS_PRODUCTION_DATABASE_HOST" "$AUTOOS_PRODUCTION_DATABASE_USER" | sha256sum | cut -d' ' -f1)"
+          confirmed_sha="${AUTOOS_PRODUCTION_MIGRATION_CONFIRMED_TARGET_SHA256,,}"
+          if [[ ! "$confirmed_sha" =~ ^[0-9a-f]{64}$ || "$confirmed_sha" != "$actual_sha" ]]; then
+            echo "O hash de destino digitado não corresponde ao host/usuário configurados; nenhuma conexão foi aberta."
             exit 1
           fi
           if [[ "$AUTOOS_PRODUCTION_MIGRATIONS_ENABLED" != "true" ]]; then
             echo "Configure AUTOOS_PRODUCTION_MIGRATIONS_ENABLED=true no ambiente production-migrations após configurar a proteção do ambiente."
-            exit 1
-          fi
-          if [[ -z "$AUTOOS_PRODUCTION_MIGRATION_DATABASE_URL" || -z "$AUTOOS_PRODUCTION_DATABASE_HOST" || -z "$AUTOOS_PRODUCTION_DATABASE_USER" ]]; then
-            echo "Configure AUTOOS_PRODUCTION_MIGRATION_DATABASE_URL e as variáveis de host/usuário no ambiente production-migrations; o secret do desktop não é aceito."
             exit 1
           fi
           echo "Confirmação e destino conferidos; credenciais omitidas dos logs."
@@ -108,6 +103,8 @@ jobs:
       - name: Pré-checar conflitos sem alterar o banco
         env:
           AUTOOS_PRODUCTION_MIGRATION_DATABASE_URL: ${{ secrets.AUTOOS_PRODUCTION_MIGRATION_DATABASE_URL }}
+          AUTOOS_PRODUCTION_DATABASE_HOST: ${{ secrets.AUTOOS_PRODUCTION_DATABASE_HOST }}
+          AUTOOS_PRODUCTION_DATABASE_USER: ${{ secrets.AUTOOS_PRODUCTION_DATABASE_USER }}
         run: ./src-tauri/target/debug/production_migrate --preflight-only
 
       - name: Reconciliar somente a variante conhecida da migration 0023
@@ -123,6 +120,8 @@ jobs:
       - name: Pré-checar dados e aplicar migrations pendentes
         env:
           AUTOOS_PRODUCTION_MIGRATION_DATABASE_URL: ${{ secrets.AUTOOS_PRODUCTION_MIGRATION_DATABASE_URL }}
+          AUTOOS_PRODUCTION_DATABASE_HOST: ${{ secrets.AUTOOS_PRODUCTION_DATABASE_HOST }}
+          AUTOOS_PRODUCTION_DATABASE_USER: ${{ secrets.AUTOOS_PRODUCTION_DATABASE_USER }}
         run: ./src-tauri/target/debug/production_migrate
 
       - name: Confirmar histórico SQLx final

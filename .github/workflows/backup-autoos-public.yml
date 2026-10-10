@@ -22,6 +22,7 @@ jobs:
       - name: Validar confirmação e destino sem expor credenciais
         env:
           AUTOOS_DATABASE_URL: ${{ secrets.AUTOOS_DATABASE_URL }}
+          AUTOOS_BACKUP_EXPECTED_DB_USER: ${{ secrets.AUTOOS_BACKUP_EXPECTED_DB_USER }}
           CONFIRMATION: ${{ inputs.confirmation }}
         run: |
           python3 - <<'PY'
@@ -33,7 +34,9 @@ jobs:
           assert url.scheme in ("postgres", "postgresql"), "Secret de banco ausente ou inválido"
           assert url.hostname and url.hostname.endswith(".pooler.supabase.com"), "Host fora do Supavisor"
           assert url.port == 5432 and url.path == "/postgres", "Porta ou banco inesperado"
-          assert url.username == "postgres.sgaqvxubopgwysnyocjs", "Projeto Supabase inesperado"
+          expected_user = os.environ.get("AUTOOS_BACKUP_EXPECTED_DB_USER", "")
+          assert expected_user.startswith("postgres.") and len(expected_user) > len("postgres."), "Secret AUTOOS_BACKUP_EXPECTED_DB_USER ausente"
+          assert url.username == expected_user, "Projeto Supabase inesperado"
           assert parse_qs(url.query).get("sslmode") == ["require"], "TLS obrigatório"
           print("Destino confirmado: projeto autoos; credenciais omitidas.")
           PY

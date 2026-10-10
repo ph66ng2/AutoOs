@@ -13,11 +13,11 @@ Em **Settings → Environments**, crie `production-migrations` e configure:
 1. Um ou mais **Required reviewers** responsáveis pela aprovação da implantação.
 2. Uma regra de branch que permita somente `master`.
 3. A secret `AUTOOS_PRODUCTION_MIGRATION_DATABASE_URL`, com uma URL de conexão PostgreSQL do **Supavisor Session**, porta `5432`, banco `/postgres` e `sslmode=require`. Use uma credencial dedicada com permissões SQL necessárias às migrations; não use chave `service_role` da API.
-4. A variável `AUTOOS_PRODUCTION_DATABASE_HOST` com o hostname exato do pooler usado pela URL.
-5. A variável `AUTOOS_PRODUCTION_DATABASE_USER` com o usuário exato usado pela URL.
+4. O secret de ambiente `AUTOOS_PRODUCTION_DATABASE_HOST` com o hostname exato do pooler usado pela URL.
+5. O secret de ambiente `AUTOOS_PRODUCTION_DATABASE_USER` com o usuário exato usado pela URL.
 6. A variável `AUTOOS_PRODUCTION_MIGRATIONS_ENABLED=true`. Só habilite depois de revisar a proteção do ambiente e confirmar a política de backup do projeto Supabase.
 
-As variáveis e a secret são específicas do ambiente, não ficam no repositório e não são impressas nos logs. A URL é validada contra o host e usuário configurados, porta, banco e TLS antes da conexão. Na execução manual, o operador também precisa digitar o host e o usuário esperados; os dois valores são comparados com as variáveis do ambiente antes de abrir a conexão.
+Configure também o secret de repositório `AUTOOS_BACKUP_EXPECTED_DB_USER` com o mesmo usuário PostgreSQL, para a validação do workflow de backup. Host e usuário ficam em secrets, disponíveis somente nos steps que precisam deles; o build não recebe essas informações. A URL é validada contra host, usuário, porta, banco e TLS antes da conexão. Na execução manual, o operador informa o SHA-256 de `<host>|<usuário>` calculado localmente, sem publicar os valores no evento do GitHub.
 
 ## O que o workflow faz
 
@@ -28,7 +28,7 @@ As variáveis e a secret são específicas do ambiente, não ficam no repositór
 5. Aplica as migrations pendentes com o migrator SQLx embutido no código.
 6. Confirma que 0027–0029 estão registradas como aplicadas, que os índices da 0027 existem, que `equipamentos.atualizado_em` é `NOT NULL`, que as tabelas do portal existem e que o histórico completo corresponde ao build. A saída distingue `already_applied` de `applied_and_verified`.
 
-O workflow serializa execuções e não cancela uma migration em andamento. Para aplicar, abra **Actions → Aplicar migrations SQLx na produção → Run workflow**, selecione `master`, digite `APLICAR EM PROD`, o host e o usuário configurados, e confirme a execução. Configure a aprovação dos revisores antes de habilitar o ambiente. Confira o backup recente e o resumo do commit antes de aprovar; conflitos detectados na 0027 exigem correção dos dados antes de tentar novamente.
+O workflow serializa execuções e não cancela uma migration em andamento. Para aplicar, abra **Actions → Aplicar migrations SQLx na produção → Run workflow**, selecione `master`, digite `APLICAR EM PROD` e o hash SHA-256 de `<host>|<usuário>` calculado localmente, e confirme a execução. Configure a aprovação dos revisores antes de habilitar o ambiente. Confira o backup recente e o resumo do commit antes de aprovar; conflitos detectados na 0027 exigem correção dos dados antes de tentar novamente.
 
 ### Histórico incompleto
 

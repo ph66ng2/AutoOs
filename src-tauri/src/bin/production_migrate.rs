@@ -23,6 +23,11 @@ fn required_env(name: &str) -> Result<String> {
         })
 }
 
+fn target_fingerprint(host: &str, user: &str) -> String {
+    use sha2::{Digest, Sha256};
+    hex::encode(Sha256::digest(format!("{host}|{user}").as_bytes()))
+}
+
 fn validate_production_target() -> Result<String> {
     ensure!(
         std::env::var("AUTOOS_MIGRATION_MODE").ok().as_deref() == Some("production"),
@@ -40,15 +45,11 @@ fn validate_production_target() -> Result<String> {
     let database_url = required_env("AUTOOS_PRODUCTION_MIGRATION_DATABASE_URL")?;
     let expected_host = required_env("AUTOOS_PRODUCTION_DATABASE_HOST")?;
     let expected_user = required_env("AUTOOS_PRODUCTION_DATABASE_USER")?;
-    let confirmed_host = required_env("AUTOOS_PRODUCTION_MIGRATION_CONFIRMED_HOST")?;
-    let confirmed_user = required_env("AUTOOS_PRODUCTION_MIGRATION_CONFIRMED_USER")?;
+    let confirmed_sha = required_env("AUTOOS_PRODUCTION_MIGRATION_CONFIRMED_TARGET_SHA256")?
+        .to_ascii_lowercase();
     ensure!(
-        confirmed_host == expected_host,
-        "host confirmado não corresponde ao destino de produção configurado"
-    );
-    ensure!(
-        confirmed_user == expected_user,
-        "usuário confirmado não corresponde ao destino de produção configurado"
+        confirmed_sha == target_fingerprint(&expected_host, &expected_user),
+        "hash de destino confirmado não corresponde ao host/usuário de produção configurados"
     );
     let parsed = Url::parse(&database_url).context("URL de migração de produção inválida")?;
 
@@ -194,6 +195,17 @@ mod tests {
         assert_eq!(LAST_REQUIRED_APPLIED_MIGRATION, 28);
         assert!(validate_migration_set().is_ok());
         assert!(require_expected_migrations().is_ok());
+    }
+
+    #[test]
+    fn target_fingerprint_matches_shell_printf_sha256sum() {
+        // printf '%s|%s' 'example.invalid' 'postgres.exampleref' | sha256sum
+        let got = target_fingerprint("example.invalid", "postgres.exampleref");
+        assert_eq!(
+            got,
+            "2d016a5e935f7d1084e61c8451edf0aa0e5292ea12e631806ae5e9028bea323f"
+        );
+        assert_ne!(got, target_fingerprint("example.invalid", "postgres.otherref"));
     }
 
     #[test]
