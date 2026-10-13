@@ -8,7 +8,7 @@ on:
         required: true
         type: string
       expected_target_sha256:
-        description: 'SHA-256 (hex minúsculo) de "<host>|<usuário>" de produção. Calcule localmente: printf "%s|%s" HOST USER | sha256sum'
+        description: 'Confirmação do destino, não é segredo. SHA-256 (hex minúsculo) de "<host>|<usuário>", sem newline. Calcule: printf "%s|%s" HOST USER | sha256sum'
         required: true
         type: string
 
@@ -30,7 +30,8 @@ jobs:
     env:
       AUTOOS_MIGRATION_MODE: production
       AUTOOS_PRODUCTION_MIGRATION_CONFIRM: ${{ inputs.confirmation }}
-      AUTOOS_PRODUCTION_MIGRATION_CONFIRMED_TARGET_SHA256: ${{ inputs.expected_target_sha256 }}
+      # O SHA-256 de host|usuário é confirmação do destino, não credencial.
+      # Não entra no env do job: o runner imprimiria o valor no bloco env do log.
       AUTOOS_PRODUCTION_MIGRATIONS_ENABLED: ${{ vars.AUTOOS_PRODUCTION_MIGRATIONS_ENABLED }}
     steps:
       - name: Checkout do commit selecionado em master
@@ -59,12 +60,29 @@ jobs:
           fi
           # Defesa em profundidade: mascara valores derivados, como o host em minúsculas.
           echo "::add-mask::${AUTOOS_PRODUCTION_DATABASE_HOST,,}"
+          # O hash confirma o destino (host|usuário). Não é segredo. É lido do
+          # evento para não aparecer no bloco env e mascarado antes de seguir.
+          confirmed_sha="$(python3 - <<'PY'
+          import json, os
+          with open(os.environ["GITHUB_EVENT_PATH"], encoding="utf-8") as handle:
+              payload = json.load(handle)
+          value = payload.get("inputs", {}).get("expected_target_sha256", "")
+          if not isinstance(value, str):
+              value = ""
+          print(value.strip(), end="")
+          PY
+          )"
+          confirmed_sha="${confirmed_sha,,}"
           actual_sha="$(printf '%s|%s' "$AUTOOS_PRODUCTION_DATABASE_HOST" "$AUTOOS_PRODUCTION_DATABASE_USER" | sha256sum | cut -d' ' -f1)"
-          confirmed_sha="${AUTOOS_PRODUCTION_MIGRATION_CONFIRMED_TARGET_SHA256,,}"
+          if [[ "$confirmed_sha" =~ ^[0-9a-f]{64}$ ]]; then
+            echo "::add-mask::${confirmed_sha}"
+          fi
+          echo "::add-mask::${actual_sha}"
           if [[ ! "$confirmed_sha" =~ ^[0-9a-f]{64}$ || "$confirmed_sha" != "$actual_sha" ]]; then
             echo "O hash de destino digitado não corresponde ao host/usuário configurados; nenhuma conexão foi aberta."
             exit 1
           fi
+          echo "AUTOOS_PRODUCTION_MIGRATION_CONFIRMED_TARGET_SHA256=${confirmed_sha}" >> "$GITHUB_ENV"
           if [[ "$AUTOOS_PRODUCTION_MIGRATIONS_ENABLED" != "true" ]]; then
             echo "Configure AUTOOS_PRODUCTION_MIGRATIONS_ENABLED=true no ambiente production-migrations após configurar a proteção do ambiente."
             exit 1

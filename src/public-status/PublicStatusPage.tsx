@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { buscarStatusPublico, PublicStatusRequestError, type PublicStatusResponse } from "./api";
 
 const STEPS = ["Recebido", "Em verificação", "Aguardando aprovação", "Aprovado", "Pronto", "Entregue"] as const;
@@ -30,29 +30,41 @@ function formatDate(value: string) {
 }
 
 export default function PublicStatusPage() {
-  const token = useMemo(tokenFromFragment, []);
+  const [token, setToken] = useState<string | null>(tokenFromFragment);
   const [data, setData] = useState<PublicStatusResponse | null>(null);
   const [loading, setLoading] = useState(Boolean(token));
   const [checkedAt, setCheckedAt] = useState<string | null>(null);
   const [error, setError] = useState<"unavailable" | "rate-limit" | "service" | null>(token ? null : "unavailable");
+  const requestSeq = useRef(0);
+
+  useEffect(() => {
+    const syncToken = () => setToken(tokenFromFragment());
+    window.addEventListener("hashchange", syncToken);
+    return () => window.removeEventListener("hashchange", syncToken);
+  }, []);
 
   const loadStatus = useCallback(async () => {
+    const requestId = ++requestSeq.current;
     if (!token) {
+      setData(null);
       setError("unavailable");
       setLoading(false);
       return;
     }
     setLoading(true);
     setError(null);
+    setData(null);
     try {
       const response = await buscarStatusPublico(token);
+      if (requestId !== requestSeq.current) return;
       setData(response);
       setCheckedAt(new Date().toISOString());
     } catch (cause) {
+      if (requestId !== requestSeq.current) return;
       setData(null);
       setError(cause instanceof PublicStatusRequestError ? cause.kind : "service");
     } finally {
-      setLoading(false);
+      if (requestId === requestSeq.current) setLoading(false);
     }
   }, [token]);
 

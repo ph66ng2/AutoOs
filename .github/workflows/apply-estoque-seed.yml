@@ -1,60 +1,144 @@
-# Aplica o inventário de insumos no PostgreSQL do app (Supavisor Session).
-# Disparo: merge deste workflow em master, ou Actions → "Aplicar seed de estoque" → Run.
-# Não imprime a URL. O secret AUTOOS_DATABASE_URL nunca deve ir para logs.
+# Reaplicação manual do inventário em scripts/seed-estoque-ribbons-bopp.sql.
+# O SQL redefine quantidade_estoque para o snapshot; não é seguro rodar em
+# todo push. O disparo automático foi removido de propósito: o arquivo
+# continua útil como operação manual, então o workflow fica, com as mesmas
+# travas de produção das migrations SQLx.
+#
+# Só workflow_dispatch em master, environment production-migrations (revisor),
+# confirmação digitada, secret dedicado AUTOOS_PRODUCTION_SEED_DATABASE_URL
+# e variável AUTOOS_PRODUCTION_SEED_ENABLED=true. Não usa AUTOOS_DATABASE_URL.
+# O SHA-256 de host|usuário só confirma o destino; não é segredo e não entra
+# no env do job, para não aparecer no bloco env do log.
 
 name: Aplicar seed de estoque
 
 on:
   workflow_dispatch:
-  push:
-    branches: [master]
-    paths:
-      - ".github/workflows/apply-estoque-seed.yml"
+    inputs:
+      confirmation:
+        description: 'Digite exatamente "APLICAR SEED EM PROD". O script redefine os saldos do inventário para o snapshot.'
+        required: true
+        type: string
+      expected_target_sha256:
+        description: 'Confirmação do destino, não é segredo. SHA-256 (hex minúsculo) de "<host>|<usuário>", sem newline. Calcule: printf "%s|%s" HOST USER | sha256sum'
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: autoos-production-estoque-seed
+  cancel-in-progress: false
 
 jobs:
   apply-seed:
     name: Upsert produtos no Supabase
     runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/master'
+    environment:
+      name: production-migrations
+    timeout-minutes: 20
+    env:
+      AUTOOS_PRODUCTION_SEED_CONFIRM: ${{ inputs.confirmation }}
+      AUTOOS_PRODUCTION_SEED_ENABLED: ${{ vars.AUTOOS_PRODUCTION_SEED_ENABLED }}
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - name: Checkout do commit selecionado em master
+        # actions/checkout v4.2.2
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
 
-      - name: Validar secret do pooler
+      - name: Exigir confirmação, destino configurado e proteção do ambiente
+        shell: bash
         env:
+          AUTOOS_PRODUCTION_SEED_DATABASE_URL: ${{ secrets.AUTOOS_PRODUCTION_SEED_DATABASE_URL }}
           AUTOOS_DATABASE_URL: ${{ secrets.AUTOOS_DATABASE_URL }}
+          AUTOOS_PRODUCTION_DATABASE_HOST: ${{ secrets.AUTOOS_PRODUCTION_DATABASE_HOST }}
+          AUTOOS_PRODUCTION_DATABASE_USER: ${{ secrets.AUTOOS_PRODUCTION_DATABASE_USER }}
         run: |
-          if [ -z "${AUTOOS_DATABASE_URL:-}" ]; then
-            echo "Configure o secret AUTOOS_DATABASE_URL (Supavisor Session, porta 5432)."
+          set -euo pipefail
+          if [[ "$GITHUB_REF" != "refs/heads/master" ]]; then
+            echo "A aplicação do seed de estoque só pode ser executada em master."
             exit 1
           fi
-          case "$AUTOOS_DATABASE_URL" in
-            postgres://*.pooler.supabase.com:5432/postgres*|postgresql://*.pooler.supabase.com:5432/postgres*) ;;
-            *)
-              echo "AUTOOS_DATABASE_URL deve usar o Supavisor Session pooler na porta 5432 e o banco /postgres."
-              exit 1
-              ;;
-          esac
-          case "$AUTOOS_DATABASE_URL" in
-            *sslmode=require*) ;;
-            *)
-              echo "AUTOOS_DATABASE_URL deve exigir TLS com sslmode=require."
-              exit 1
-              ;;
-          esac
+          if [[ "$AUTOOS_PRODUCTION_SEED_CONFIRM" != "APLICAR SEED EM PROD" ]]; then
+            echo "Confirmação inválida; nenhuma conexão foi aberta."
+            exit 1
+          fi
+          if [[ -z "$AUTOOS_PRODUCTION_SEED_DATABASE_URL" || -z "$AUTOOS_PRODUCTION_DATABASE_HOST" || -z "$AUTOOS_PRODUCTION_DATABASE_USER" ]]; then
+            echo "Configure os secrets AUTOOS_PRODUCTION_SEED_DATABASE_URL, AUTOOS_PRODUCTION_DATABASE_HOST e AUTOOS_PRODUCTION_DATABASE_USER no ambiente production-migrations; o secret do desktop não é aceito."
+            exit 1
+          fi
+          if [[ -n "${AUTOOS_DATABASE_URL:-}" && "$AUTOOS_PRODUCTION_SEED_DATABASE_URL" == "$AUTOOS_DATABASE_URL" ]]; then
+            echo "AUTOOS_PRODUCTION_SEED_DATABASE_URL não pode reutilizar a credencial do desktop."
+            exit 1
+          fi
+          echo "::add-mask::${AUTOOS_PRODUCTION_DATABASE_HOST,,}"
+          confirmed_sha="$(python3 - <<'PY'
+          import json, os
+          with open(os.environ["GITHUB_EVENT_PATH"], encoding="utf-8") as handle:
+              payload = json.load(handle)
+          value = payload.get("inputs", {}).get("expected_target_sha256", "")
+          if not isinstance(value, str):
+              value = ""
+          print(value.strip(), end="")
+          PY
+          )"
+          confirmed_sha="${confirmed_sha,,}"
+          actual_sha="$(printf '%s|%s' "$AUTOOS_PRODUCTION_DATABASE_HOST" "$AUTOOS_PRODUCTION_DATABASE_USER" | sha256sum | cut -d' ' -f1)"
+          if [[ "$confirmed_sha" =~ ^[0-9a-f]{64}$ ]]; then
+            echo "::add-mask::${confirmed_sha}"
+          fi
+          echo "::add-mask::${actual_sha}"
+          if [[ ! "$confirmed_sha" =~ ^[0-9a-f]{64}$ || "$confirmed_sha" != "$actual_sha" ]]; then
+            echo "O hash de destino digitado não corresponde ao host/usuário configurados; nenhuma conexão foi aberta."
+            exit 1
+          fi
+          python3 - <<'PY'
+          import os
+          from urllib.parse import parse_qs, urlparse
+
+          raw = os.environ["AUTOOS_PRODUCTION_SEED_DATABASE_URL"]
+          parsed = urlparse(raw)
+          expected_host = os.environ["AUTOOS_PRODUCTION_DATABASE_HOST"]
+          expected_user = os.environ["AUTOOS_PRODUCTION_DATABASE_USER"]
+          if parsed.scheme not in ("postgres", "postgresql"):
+              raise SystemExit("A URL do seed precisa usar PostgreSQL.")
+          if parsed.fragment:
+              raise SystemExit("A URL do seed não pode conter fragmento.")
+          host = parsed.hostname or ""
+          if "%" in host or "%" in expected_host or not host.endswith(".pooler.supabase.com"):
+              raise SystemExit("A URL do seed precisa usar o Supavisor Session pooler.")
+          if host.lower() != expected_host.lower():
+              raise SystemExit("O host da URL do seed não corresponde ao host de produção configurado.")
+          if parsed.port != 5432 or parsed.path != "/postgres":
+              raise SystemExit("A URL do seed precisa usar a porta 5432 e o banco /postgres.")
+          user = parsed.username or ""
+          if not user or "%" in user or "%" in expected_user or user != expected_user:
+              raise SystemExit("O usuário da URL do seed não corresponde ao usuário de produção configurado.")
+          if not parsed.password:
+              raise SystemExit("A URL do seed precisa conter a credencial PostgreSQL.")
+          if parse_qs(parsed.query) != {"sslmode": ["require"]}:
+              raise SystemExit("A URL do seed aceita somente sslmode=require.")
+          PY
+          if [[ "$AUTOOS_PRODUCTION_SEED_ENABLED" != "true" ]]; then
+            echo "Configure AUTOOS_PRODUCTION_SEED_ENABLED=true no ambiente production-migrations após configurar a proteção do ambiente."
+            exit 1
+          fi
+          echo "Confirmação e destino do seed conferidos; credenciais omitidas dos logs."
 
       - name: Instalar cliente PostgreSQL
         run: sudo apt-get update && sudo apt-get install -y postgresql-client
 
       - name: Aplicar scripts/seed-estoque-ribbons-bopp.sql
         env:
-          AUTOOS_DATABASE_URL: ${{ secrets.AUTOOS_DATABASE_URL }}
-        run: psql "$AUTOOS_DATABASE_URL" -v ON_ERROR_STOP=1 -f scripts/seed-estoque-ribbons-bopp.sql
+          AUTOOS_PRODUCTION_SEED_DATABASE_URL: ${{ secrets.AUTOOS_PRODUCTION_SEED_DATABASE_URL }}
+        run: psql "$AUTOOS_PRODUCTION_SEED_DATABASE_URL" -v ON_ERROR_STOP=1 -f scripts/seed-estoque-ribbons-bopp.sql
 
       - name: Confirmar 42 SKUs do inventário
         env:
-          AUTOOS_DATABASE_URL: ${{ secrets.AUTOOS_DATABASE_URL }}
+          AUTOOS_PRODUCTION_SEED_DATABASE_URL: ${{ secrets.AUTOOS_PRODUCTION_SEED_DATABASE_URL }}
         run: |
-          psql "$AUTOOS_DATABASE_URL" -v ON_ERROR_STOP=1 -c "
+          psql "$AUTOOS_PRODUCTION_SEED_DATABASE_URL" -v ON_ERROR_STOP=1 -c "
             SELECT COUNT(*) AS skus_inventario
             FROM produtos
             WHERE ativo = true
