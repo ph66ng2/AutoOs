@@ -180,6 +180,15 @@ import { resolveRecipient, type ResolvedRecipient } from "@/lib/recipient-resolv
 import { saveRecipientAddress } from "@/lib/recipient-persistence";
 import { totalPages } from "@/lib/pagination";
 
+// O anel é a borda de um ::after dentro da célula. O box-shadow fica por baixo
+// do divisor colapsado e, na Ações sticky, o fundo branco cobre o topo.
+// border-separate deixa esse divisor fora do anel.
+const EQUIPMENT_ROW_FOCUS_RING =
+  "border-b group-focus-visible:z-[30] group-focus-visible:bg-sky-100 group-focus-visible:after:pointer-events-none group-focus-visible:after:absolute group-focus-visible:after:inset-0 group-focus-visible:after:z-[1] group-focus-visible:after:border-y-[3px] group-focus-visible:after:border-[#1d4ed8] group-focus-visible:after:content-['']";
+const EQUIPMENT_ROW_FOCUS_EDGE = `relative ${EQUIPMENT_ROW_FOCUS_RING}`;
+const EQUIPMENT_ROW_FOCUS_FIRST = `relative ${EQUIPMENT_ROW_FOCUS_RING} group-focus-visible:after:border-l-[3px]`;
+const EQUIPMENT_ROW_FOCUS_LAST = `${EQUIPMENT_ROW_FOCUS_RING} group-focus-visible:after:border-r-[3px]`;
+
 export default function Equipamentos() {
   const [busca, setBusca] = useState("");
   const [statusFiltro, setStatusFiltro] = useState("TODOS");
@@ -2000,55 +2009,74 @@ export default function Equipamentos() {
                 onPageChange={setPaginaEquipamentos}
                 label="Paginação de equipamentos"
               />
-              <div className="overflow-x-auto rounded-md border">
-                <Table>
-                <TableHeader>
+              <div className="rounded-md border">
+                <Table className="min-w-[76rem] table-fixed border-separate border-spacing-0">
+                <TableHeader className="[&_tr]:!border-b-0 [&_th]:border-b">
                   <TableRow>
-                    <TableHead>Nº Série</TableHead>
-                    <TableHead>Equipamento</TableHead>
-                    <TableHead>Cliente</TableHead>
-                    <TableHead>Status</TableHead>
-                    <TableHead>Entrada</TableHead>
-                    <TableHead>Última alteração</TableHead>
-                    <TableHead className="text-right">Ações</TableHead>
+                    <TableHead className="w-[8rem]">Nº Série</TableHead>
+                    <TableHead className="w-[14rem]">Equipamento</TableHead>
+                    <TableHead className="w-[10rem]">Cliente</TableHead>
+                    <TableHead className="w-[11rem]">Status</TableHead>
+                    <TableHead className="w-[7rem]">Entrada</TableHead>
+                    <TableHead className="w-[8rem]">Última alteração</TableHead>
+                    <TableHead className="sticky right-0 z-20 w-[18rem] min-w-[18rem] bg-card text-right">Ações</TableHead>
                   </TableRow>
                 </TableHeader>
-                <TableBody>
+                <TableBody className="[&_tr]:!border-b-0 [&_tr:last-child_td]:border-b-0">
                   {equipamentosExibidos.map(eq => (
-                    <TableRow key={eq.id}>
-                      <TableCell className="font-mono font-medium">{eq.serial_number}</TableCell>
-                      <TableCell>
-                        <div>
-                          <span className="font-medium">{eq.marca} {eq.modelo}</span>
-                          <p className="text-xs text-muted-foreground">{eq.tipo}</p>
+                    <TableRow
+                      key={eq.id}
+                      tabIndex={0}
+                      role="button"
+                      aria-label={`Abrir detalhes de ${eq.marca} ${eq.modelo}`}
+                      className="group cursor-pointer focus-visible:outline-none"
+                      onClick={() => void abrirDetalhes(eq)}
+                      onKeyDown={(event) => {
+                        if (event.target !== event.currentTarget) return;
+                        if (event.key !== "Enter" && event.key !== " ") return;
+                        event.preventDefault();
+                        void abrirDetalhes(eq);
+                      }}
+                    >
+                      <TableCell className={`overflow-hidden font-mono font-medium ${EQUIPMENT_ROW_FOCUS_FIRST}`}>
+                        <span className="block truncate" title={eq.serial_number}>{eq.serial_number}</span>
+                      </TableCell>
+                      <TableCell className={`overflow-hidden ${EQUIPMENT_ROW_FOCUS_EDGE}`}>
+                        <div className="min-w-0">
+                          <span className="block truncate font-medium" title={`${eq.marca} ${eq.modelo}`}>{eq.marca} {eq.modelo}</span>
+                          <p className="truncate text-xs text-muted-foreground" title={eq.tipo}>{eq.tipo}</p>
                         </div>
                       </TableCell>
-                      <TableCell>
+                      <TableCell className={`overflow-hidden ${EQUIPMENT_ROW_FOCUS_EDGE}`}>
                         {eq.cliente_nome ? (
-                          <div>
-                            <span className="text-sm">{eq.cliente_nome}</span>
-                            {eq.cliente_telefone && <p className="text-xs text-muted-foreground">{eq.cliente_telefone}</p>}
+                          <div className="min-w-0">
+                            <span className="block truncate text-sm" title={eq.cliente_nome}>{eq.cliente_nome}</span>
+                            {eq.cliente_telefone && <p className="truncate text-xs text-muted-foreground" title={eq.cliente_telefone}>{eq.cliente_telefone}</p>}
                           </div>
                         ) : <span className="text-muted-foreground">—</span>}
                       </TableCell>
-                      <TableCell>
+                      <TableCell className={`overflow-hidden ${EQUIPMENT_ROW_FOCUS_EDGE}`}>
                         <div className="flex flex-wrap items-center gap-2">
                           <StatusBadge status={eq.status} />
                           {(eq.status === "AGUARDANDO_APROVACAO" || eq.status === "ORCAMENTO_VENCIDO") &&
                             eq.valor_orcamento != null && eq.valor_orcamento > 0 && (
-                              <div className="inline-flex items-center rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-xs font-medium text-amber-900">
+                              <div className="inline-flex max-w-full items-center truncate rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-xs font-medium text-amber-900">
                                 Orçamento: R$ {eq.valor_orcamento.toFixed(2)}
                               </div>
                             )}
                         </div>
                       </TableCell>
-                      <TableCell className="text-sm text-muted-foreground">
-                        {formatDatePtBr(eq.data_entrada)}
+                      <TableCell className={`overflow-hidden text-sm text-muted-foreground ${EQUIPMENT_ROW_FOCUS_EDGE}`}>
+                        <span className="block truncate">{formatDatePtBr(eq.data_entrada)}</span>
                       </TableCell>
-                      <TableCell className="text-sm text-muted-foreground">
-                        {formatDatePtBr(eq.atualizado_em || eq.criado_em)}
+                      <TableCell className={`overflow-hidden text-sm text-muted-foreground ${EQUIPMENT_ROW_FOCUS_EDGE}`}>
+                        <span className="block truncate">{formatDatePtBr(eq.atualizado_em || eq.criado_em)}</span>
                       </TableCell>
-                      <TableCell className="text-right">
+                      <TableCell
+                        className={`sticky right-0 z-10 w-[18rem] min-w-[18rem] bg-card text-right group-hover:bg-muted/50 ${EQUIPMENT_ROW_FOCUS_LAST}`}
+                        onClick={(event) => event.stopPropagation()}
+                        onKeyDown={(event) => event.stopPropagation()}
+                      >
                         <div className="flex justify-end">
                           {renderAcoes(eq)}
                         </div>

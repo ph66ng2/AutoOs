@@ -17,7 +17,7 @@ Em **Settings → Environments**, crie `production-migrations` e configure:
 5. O secret de ambiente `AUTOOS_PRODUCTION_DATABASE_USER` com o usuário exato usado pela URL.
 6. A variável `AUTOOS_PRODUCTION_MIGRATIONS_ENABLED=true`. Só habilite depois de revisar a proteção do ambiente e confirmar a política de backup do projeto Supabase.
 
-Configure também o secret de repositório `AUTOOS_BACKUP_EXPECTED_DB_USER` com o mesmo usuário PostgreSQL, para a validação do workflow de backup. Host e usuário ficam em secrets, disponíveis somente nos steps que precisam deles; o build não recebe essas informações. A URL é validada contra host, usuário, porta, banco e TLS antes da conexão. Na execução manual, o operador informa o SHA-256 de `<host>|<usuário>` calculado localmente, sem publicar os valores no evento do GitHub.
+Configure também o secret de repositório `AUTOOS_BACKUP_EXPECTED_DB_USER` com o mesmo usuário PostgreSQL, para a validação do workflow de backup. Host e usuário ficam em secrets, disponíveis somente nos steps que precisam deles; o build não recebe essas informações. A URL é validada contra host, usuário, porta, banco e TLS antes da conexão. Na execução manual, o operador informa o SHA-256 de `<host>|<usuário>` (`printf '%s|%s' HOST USER | sha256sum`, hex minúsculo, sem newline). Esse hash só confirma o destino: não é segredo, não substitui a senha e quem já conhece host e usuário chega ao mesmo valor. O workflow não copia o hash para o `env` do job, para o bloco de ambiente do log não exibi-lo, e mascara o valor antes dos passos seguintes. A comparação continua exigindo 64 hex minúsculos na ordem `host|usuário`.
 
 ## O que o workflow faz
 
@@ -28,7 +28,7 @@ Configure também o secret de repositório `AUTOOS_BACKUP_EXPECTED_DB_USER` com 
 5. Aplica as migrations pendentes com o migrator SQLx embutido no código.
 6. Confirma que 0027–0029 estão registradas como aplicadas, que os índices da 0027 existem, que `equipamentos.atualizado_em` é `NOT NULL`, que as tabelas do portal existem e que o histórico completo corresponde ao build. A saída distingue `already_applied` de `applied_and_verified`.
 
-O workflow serializa execuções e não cancela uma migration em andamento. Para aplicar, abra **Actions → Aplicar migrations SQLx na produção → Run workflow**, selecione `master`, digite `APLICAR EM PROD` e o hash SHA-256 de `<host>|<usuário>` calculado localmente, e confirme a execução. Configure a aprovação dos revisores antes de habilitar o ambiente. Confira o backup recente e o resumo do commit antes de aprovar; conflitos detectados na 0027 exigem correção dos dados antes de tentar novamente.
+O workflow serializa execuções e não cancela uma migration em andamento. Para aplicar, abra **Actions → Aplicar migrations SQLx na produção → Run workflow**, selecione `master`, digite `APLICAR EM PROD` e o hash SHA-256 de `<host>|<usuário>` (confirmação do destino, não é segredo) calculado localmente, e confirme a execução. Configure a aprovação dos revisores antes de habilitar o ambiente. Confira o backup recente e o resumo do commit antes de aprovar; conflitos detectados na 0027 exigem correção dos dados antes de tentar novamente.
 
 ### Histórico incompleto
 

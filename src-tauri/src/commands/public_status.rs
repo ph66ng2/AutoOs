@@ -39,6 +39,23 @@ fn status_url(token: &str) -> String {
     format!("{}/#/c/{}", PUBLIC_STATUS_BASE_URL, token)
 }
 
+/// Validade gravada no link e devolvida ao diálogo.
+/// Equipamento já entregue fica disponível no portal só até 30 dias depois
+/// de `status_alterado_em`, então a data mostrada não pode passar desse corte.
+fn public_status_link_expires_at(
+    now: DateTime<Utc>,
+    status: &str,
+    status_changed_at: Option<DateTime<Utc>>,
+) -> DateTime<Utc> {
+    let max_age = now + Duration::days(LINK_MAX_AGE_DAYS);
+    if status == "ENTREGUE" {
+        if let Some(changed_at) = status_changed_at {
+            return max_age.min(changed_at + Duration::days(LINK_AFTER_DELIVERY_DAYS));
+        }
+    }
+    max_age
+}
+
 #[tauri::command]
 #[instrument(skip_all, fields(equipamento_id = equipamento_id))]
 pub async fn obter_link_status_publico(
@@ -157,15 +174,15 @@ async fn create_link(
     let status_changed_at: Option<DateTime<Utc>> = equipment
         .try_get("status_alterado_em")
         .map_err(|error| error.to_string())?;
+    let now = Utc::now();
     if status == "ENTREGUE" && status_changed_at.is_none() {
         return Err(
             "Não é possível emitir um link para este atendimento entregue porque não há uma data confiável de entrega.".to_string(),
         );
     }
     if status == "ENTREGUE"
-        && status_changed_at.is_some_and(|changed_at| {
-            Utc::now() >= changed_at + Duration::days(LINK_AFTER_DELIVERY_DAYS)
-        })
+        && status_changed_at
+            .is_some_and(|changed_at| now >= changed_at + Duration::days(LINK_AFTER_DELIVERY_DAYS))
     {
         return Err("O prazo de acompanhamento terminou 30 dias após a entrega.".to_string());
     }
@@ -187,7 +204,7 @@ async fn create_link(
     OsRng.fill_bytes(&mut token_bytes);
     let token = hex::encode(token_bytes);
     let token_hash = hex::encode(Sha256::digest(token.as_bytes()));
-    let expires_at = Utc::now() + Duration::days(LINK_MAX_AGE_DAYS);
+    let expires_at = public_status_link_expires_at(now, &status, status_changed_at);
 
     sqlx::query(
         "INSERT INTO links_status_publico
@@ -279,4 +296,51 @@ pub fn gerar_qr_link_status_publico(url: String) -> Result<String, String> {
         return Err("URL de acompanhamento inválida.".to_string());
     }
     render_qr_svg(&url)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn entregue_link_expires_at_delivery_plus_30_days_when_that_is_sooner() {
+        let now = Utc::now();
+        let delivered_at = now - Duration::days(29);
+        let expires_at = public_status_link_expires_at(now, "ENTREGUE", Some(delivered_at));
+
+        assert_eq!(
+            expires_at,
+            delivered_at + Duration::days(LINK_AFTER_DELIVERY_DAYS)
+        );
+        assert!(expires_at < now + Duration::days(LINK_MAX_AGE_DAYS));
+    }
+
+    #[test]
+    fn fresh_delivery_is_capped_at_30_days() {
+        let now = Utc::now();
+        assert_eq!(
+            public_status_link_expires_at(now, "ENTREGUE", Some(now)),
+            now + Duration::days(LINK_AFTER_DELIVERY_DAYS)
+        );
+    }
+
+    #[test]
+    fn future_delivery_still_respects_the_180_day_cap() {
+        let now = Utc::now();
+        let delivered_at = now + Duration::days(200);
+        assert_eq!(
+            public_status_link_expires_at(now, "ENTREGUE", Some(delivered_at)),
+            now + Duration::days(LINK_MAX_AGE_DAYS)
+        );
+    }
+
+    #[test]
+    fn open_equipment_keeps_the_180_day_cap() {
+        let now = Utc::now();
+        let changed_at = now - Duration::days(29);
+        assert_eq!(
+            public_status_link_expires_at(now, "EM_VERIFICACAO", Some(changed_at)),
+            now + Duration::days(LINK_MAX_AGE_DAYS)
+        );
+    }
 }

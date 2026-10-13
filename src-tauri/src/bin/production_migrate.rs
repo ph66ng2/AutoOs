@@ -23,6 +23,10 @@ fn required_env(name: &str) -> Result<String> {
         })
 }
 
+/// Confirmação do destino, não é segredo.
+/// SHA-256 de `host|user` em hex minúsculo, sem newline — a mesma saída de
+/// `printf '%s|%s' HOST USER | sha256sum`. Quem conhece o host e o usuário
+/// recalcula o valor; a credencial continua somente na URL.
 fn target_fingerprint(host: &str, user: &str) -> String {
     use sha2::{Digest, Sha256};
     hex::encode(Sha256::digest(format!("{host}|{user}").as_bytes()))

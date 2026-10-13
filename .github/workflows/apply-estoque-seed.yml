@@ -1,77 +1,184 @@
-# Aplica o inventário de insumos no PostgreSQL do app (Supavisor Session).
-# Disparo: merge deste workflow em master, ou Actions → "Aplicar seed de estoque" → Run.
-# Não imprime a URL. O secret AUTOOS_DATABASE_URL nunca deve ir para logs.
+# Inserção manual dos SKUs ausentes em scripts/seed-estoque-ribbons-bopp.sql.
+# O SQL não redefine saldo nem preço e não apaga movimentações. Um código
+# que já existe na empresa, mesmo inativo, não é inserido de novo. O saldo
+# de um SKU novo entra direto em quantidade_estoque, sem movimentação de
+# entrada. O input opcional empresa_id escolhe a empresa quando há mais de
+# uma. Ainda assim não roda em todo push: o disparo automático foi removido
+# de propósito.
+#
+# Só workflow_dispatch em master, environment production-migrations (revisor),
+# confirmação digitada, secret dedicado AUTOOS_PRODUCTION_SEED_DATABASE_URL
+# e variável AUTOOS_PRODUCTION_SEED_ENABLED=true. O secret do desktop
+# (AUTOOS_DATABASE_URL) não entra neste job. O destino é o host e o usuário
+# já interpretados da URL (postgres:// e postgresql:// são o mesmo destino),
+# conferidos com AUTOOS_PRODUCTION_DATABASE_HOST/USER e com o SHA-256 de
+# host|usuário. Esse hash só confirma o destino; não é segredo e não entra
+# no env do job, para não aparecer no bloco env do log.
 
 name: Aplicar seed de estoque
 
 on:
   workflow_dispatch:
-  push:
-    branches: [master]
-    paths:
-      - ".github/workflows/apply-estoque-seed.yml"
+    inputs:
+      confirmation:
+        description: 'Digite exatamente "APLICAR SEED EM PROD". Insere só SKUs ausentes (ativos ou inativos) da empresa alvo. Não altera saldos, preços nem movimentações. O saldo inicial não gera movimentação de entrada.'
+        required: true
+        type: string
+      expected_target_sha256:
+        description: 'Confirmação do destino, não é segredo. SHA-256 (hex minúsculo) de "<host>|<usuário>", sem newline. Calcule: printf "%s|%s" HOST USER | sha256sum'
+        required: true
+        type: string
+      empresa_id:
+        description: 'Opcional. Id numérico da empresa quando houver mais de uma. Vazio usa a única empresa. SKU novo grava o saldo direto, sem movimentação de entrada. SKU inativo não é recriado.'
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: autoos-production-estoque-seed
+  cancel-in-progress: false
 
 jobs:
   apply-seed:
-    name: Upsert produtos no Supabase
+    name: Inserir SKUs ausentes no inventário
     runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/master'
+    environment:
+      name: production-migrations
+    timeout-minutes: 20
+    env:
+      AUTOOS_PRODUCTION_SEED_CONFIRM: ${{ inputs.confirmation }}
+      AUTOOS_PRODUCTION_SEED_ENABLED: ${{ vars.AUTOOS_PRODUCTION_SEED_ENABLED }}
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - name: Checkout do commit selecionado em master
+        # actions/checkout v4.2.2
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
 
-      - name: Validar secret do pooler
+      - name: Exigir confirmação, destino configurado e proteção do ambiente
+        shell: bash
         env:
-          AUTOOS_DATABASE_URL: ${{ secrets.AUTOOS_DATABASE_URL }}
+          AUTOOS_PRODUCTION_SEED_DATABASE_URL: ${{ secrets.AUTOOS_PRODUCTION_SEED_DATABASE_URL }}
+          AUTOOS_PRODUCTION_DATABASE_HOST: ${{ secrets.AUTOOS_PRODUCTION_DATABASE_HOST }}
+          AUTOOS_PRODUCTION_DATABASE_USER: ${{ secrets.AUTOOS_PRODUCTION_DATABASE_USER }}
+          AUTOOS_PRODUCTION_SEED_EMPRESA_ID: ${{ inputs.empresa_id }}
         run: |
-          if [ -z "${AUTOOS_DATABASE_URL:-}" ]; then
-            echo "Configure o secret AUTOOS_DATABASE_URL (Supavisor Session, porta 5432)."
+          set -euo pipefail
+          if [[ "$GITHUB_REF" != "refs/heads/master" ]]; then
+            echo "A aplicação do seed de estoque só pode ser executada em master."
             exit 1
           fi
-          case "$AUTOOS_DATABASE_URL" in
-            postgres://*.pooler.supabase.com:5432/postgres*|postgresql://*.pooler.supabase.com:5432/postgres*) ;;
-            *)
-              echo "AUTOOS_DATABASE_URL deve usar o Supavisor Session pooler na porta 5432 e o banco /postgres."
-              exit 1
-              ;;
-          esac
-          case "$AUTOOS_DATABASE_URL" in
-            *sslmode=require*) ;;
-            *)
-              echo "AUTOOS_DATABASE_URL deve exigir TLS com sslmode=require."
-              exit 1
-              ;;
-          esac
+          if [[ "$AUTOOS_PRODUCTION_SEED_CONFIRM" != "APLICAR SEED EM PROD" ]]; then
+            echo "Confirmação inválida; nenhuma conexão foi aberta."
+            exit 1
+          fi
+          if [[ -z "$AUTOOS_PRODUCTION_SEED_DATABASE_URL" || -z "$AUTOOS_PRODUCTION_DATABASE_HOST" || -z "$AUTOOS_PRODUCTION_DATABASE_USER" ]]; then
+            echo "Configure os secrets AUTOOS_PRODUCTION_SEED_DATABASE_URL, AUTOOS_PRODUCTION_DATABASE_HOST e AUTOOS_PRODUCTION_DATABASE_USER no ambiente production-migrations."
+            exit 1
+          fi
+          seed_empresa_id="$(bash scripts/normalize-seed-empresa-id.sh "${AUTOOS_PRODUCTION_SEED_EMPRESA_ID:-}")"
+          echo "::add-mask::${AUTOOS_PRODUCTION_DATABASE_HOST,,}"
+          confirmed_sha="$(python3 - <<'PY'
+          import json, os
+          with open(os.environ["GITHUB_EVENT_PATH"], encoding="utf-8") as handle:
+              payload = json.load(handle)
+          value = payload.get("inputs", {}).get("expected_target_sha256", "")
+          if not isinstance(value, str):
+              value = ""
+          print(value.strip(), end="")
+          PY
+          )"
+          confirmed_sha="${confirmed_sha,,}"
+          actual_sha="$(printf '%s|%s' "$AUTOOS_PRODUCTION_DATABASE_HOST" "$AUTOOS_PRODUCTION_DATABASE_USER" | sha256sum | cut -d' ' -f1)"
+          if [[ "$confirmed_sha" =~ ^[0-9a-f]{64}$ ]]; then
+            echo "::add-mask::${confirmed_sha}"
+          fi
+          echo "::add-mask::${actual_sha}"
+          if [[ ! "$confirmed_sha" =~ ^[0-9a-f]{64}$ || "$confirmed_sha" != "$actual_sha" ]]; then
+            echo "O hash de destino digitado não corresponde ao host/usuário configurados; nenhuma conexão foi aberta."
+            exit 1
+          fi
+          python3 - <<'PY'
+          import os
+          from urllib.parse import parse_qs, urlparse
+
+          raw = os.environ["AUTOOS_PRODUCTION_SEED_DATABASE_URL"]
+          parsed = urlparse(raw)
+          expected_host = os.environ["AUTOOS_PRODUCTION_DATABASE_HOST"]
+          expected_user = os.environ["AUTOOS_PRODUCTION_DATABASE_USER"]
+          if parsed.scheme not in ("postgres", "postgresql"):
+              raise SystemExit("A URL do seed precisa usar PostgreSQL.")
+          # Identidade do destino é host+usuário já parseados. postgres:// e
+          # postgresql:// com o mesmo host e usuário são o mesmo destino.
+          if parsed.fragment:
+              raise SystemExit("A URL do seed não pode conter fragmento.")
+          host = parsed.hostname or ""
+          if "%" in host or "%" in expected_host or not host.endswith(".pooler.supabase.com"):
+              raise SystemExit("A URL do seed precisa usar o Supavisor Session pooler.")
+          if host.lower() != expected_host.lower():
+              raise SystemExit("O host da URL do seed não corresponde ao host de produção configurado.")
+          if parsed.port != 5432 or parsed.path != "/postgres":
+              raise SystemExit("A URL do seed precisa usar a porta 5432 e o banco /postgres.")
+          user = parsed.username or ""
+          if not user or "%" in user or "%" in expected_user or user != expected_user:
+              raise SystemExit("O usuário da URL do seed não corresponde ao usuário de produção configurado.")
+          if not parsed.password:
+              raise SystemExit("A URL do seed precisa conter a credencial PostgreSQL.")
+          if parse_qs(parsed.query) != {"sslmode": ["require"]}:
+              raise SystemExit("A URL do seed aceita somente sslmode=require.")
+          PY
+          if [[ "$AUTOOS_PRODUCTION_SEED_ENABLED" != "true" ]]; then
+            echo "Configure AUTOOS_PRODUCTION_SEED_ENABLED=true no ambiente production-migrations após configurar a proteção do ambiente."
+            exit 1
+          fi
+          echo "Confirmação e destino do seed conferidos; credenciais omitidas dos logs."
 
       - name: Instalar cliente PostgreSQL
         run: sudo apt-get update && sudo apt-get install -y postgresql-client
 
       - name: Aplicar scripts/seed-estoque-ribbons-bopp.sql
         env:
-          AUTOOS_DATABASE_URL: ${{ secrets.AUTOOS_DATABASE_URL }}
-        run: psql "$AUTOOS_DATABASE_URL" -v ON_ERROR_STOP=1 -f scripts/seed-estoque-ribbons-bopp.sql
-
-      - name: Confirmar 42 SKUs do inventário
-        env:
-          AUTOOS_DATABASE_URL: ${{ secrets.AUTOOS_DATABASE_URL }}
+          AUTOOS_PRODUCTION_SEED_DATABASE_URL: ${{ secrets.AUTOOS_PRODUCTION_SEED_DATABASE_URL }}
+          AUTOOS_PRODUCTION_SEED_EMPRESA_ID: ${{ inputs.empresa_id }}
         run: |
-          psql "$AUTOOS_DATABASE_URL" -v ON_ERROR_STOP=1 -c "
-            SELECT COUNT(*) AS skus_inventario
-            FROM produtos
-            WHERE ativo = true
-              AND codigo IN (
-                'ETQ-100X50-COUCHE','ETQ-32X18X3-TRANS-BOPP','ETQ-102X51-TRANS-BOPP',
-                'ETQ-100X70-BOPP','ETQ-50X40X2-TRANS-BOPP','ETQ-100X150-BOPP',
-                'ETQ-45X20X2-LACRE-ELMECO','ETQ-32X18X5-BOPP','ETQ-100X65-BOPP',
-                'ETQ-100X40-BOPP','ETQ-100X70-COUCHE','ETQ-40X33-PRATA',
-                'ETQ-20X25X3-BOPP','ETQ-30X30-BOPP','ETQ-50X20-BOPP',
-                'ETQ-50X50X20-BOPP','ETQ-100X50-BOPP','ETQ-45X20-BOPP',
-                'ETQ-35X70X3-CARTAO-ROUPA','ETQ-70X125X01-BOPP-3POL','ETQ-100X50-BOPP-3POL',
-                'ETQ-28X80-COUCHE-DYMO','ETQ-70X30-COUCHE-3POL','ETQ-50X70X2-BOPP-3POL',
-                'ETQ-90X60-GONDOLA-AM-3POL','RIB-CERA-110X450','RIB-RESINA',
-                'RIB-ZXP1-COLOR','RIB-ZXP1-MONO','RIB-ZC300-MONO','PEC-CANETA-LIMPEZA',
-                'ETQ-17X152X5-COUCHE','ETQ-80X50-COUCHE-AZUL','ETQ-50X120X2-COUCHE',
-                'ETQ-50X160X2-COUCHE','ETQ-50X28-COUCHE-AMARELA','ETQ-100X30-GONDOLA',
-                'ETQ-100X40-GONDOLA-LARANJA','ETQ-33X22X3-COUCHE','ETQ-33X22X3-AMARELA',
-                'ETQ-75X30-GONDOLA-LARANJA','ETQ-80X70-BOPP'
-              );
+          set -euo pipefail
+          unset PGHOST PGHOSTADDR PGPORT PGUSER PGDATABASE PGSERVICE PGSERVICEFILE PGOPTIONS
+          seed_empresa_id="$(bash scripts/normalize-seed-empresa-id.sh "${AUTOOS_PRODUCTION_SEED_EMPRESA_ID:-}")"
+          if [[ -n "$seed_empresa_id" ]]; then
+            export PGOPTIONS="-c seed.empresa_id=${seed_empresa_id}"
+          fi
+          psql "$AUTOOS_PRODUCTION_SEED_DATABASE_URL" -v ON_ERROR_STOP=1 -f scripts/seed-estoque-ribbons-bopp.sql
+
+      - name: Confirmar 42 SKUs do inventário na empresa
+        env:
+          AUTOOS_PRODUCTION_SEED_DATABASE_URL: ${{ secrets.AUTOOS_PRODUCTION_SEED_DATABASE_URL }}
+        run: |
+          psql "$AUTOOS_PRODUCTION_SEED_DATABASE_URL" -v ON_ERROR_STOP=1 -c "
+            DO \$\$
+            DECLARE found integer;
+            BEGIN
+              SELECT COUNT(DISTINCT codigo) INTO found
+              FROM produtos
+              WHERE empresa_id IS NOT NULL
+                AND codigo IN (
+                  'ETQ-100X50-COUCHE','ETQ-32X18X3-TRANS-BOPP','ETQ-102X51-TRANS-BOPP',
+                  'ETQ-100X70-BOPP','ETQ-50X40X2-TRANS-BOPP','ETQ-100X150-BOPP',
+                  'ETQ-45X20X2-LACRE-ELMECO','ETQ-32X18X5-BOPP','ETQ-100X65-BOPP',
+                  'ETQ-100X40-BOPP','ETQ-100X70-COUCHE','ETQ-40X33-PRATA',
+                  'ETQ-20X25X3-BOPP','ETQ-30X30-BOPP','ETQ-50X20-BOPP',
+                  'ETQ-50X50X20-BOPP','ETQ-100X50-BOPP','ETQ-45X20-BOPP',
+                  'ETQ-35X70X3-CARTAO-ROUPA','ETQ-70X125X01-BOPP-3POL','ETQ-100X50-BOPP-3POL',
+                  'ETQ-28X80-COUCHE-DYMO','ETQ-70X30-COUCHE-3POL','ETQ-50X70X2-BOPP-3POL',
+                  'ETQ-90X60-GONDOLA-AM-3POL','RIB-CERA-110X450','RIB-RESINA',
+                  'RIB-ZXP1-COLOR','RIB-ZXP1-MONO','RIB-ZC300-MONO','PEC-CANETA-LIMPEZA',
+                  'ETQ-17X152X5-COUCHE','ETQ-80X50-COUCHE-AZUL','ETQ-50X120X2-COUCHE',
+                  'ETQ-50X160X2-COUCHE','ETQ-50X28-COUCHE-AMARELA','ETQ-100X30-GONDOLA',
+                  'ETQ-100X40-GONDOLA-LARANJA','ETQ-33X22X3-COUCHE','ETQ-33X22X3-AMARELA',
+                  'ETQ-75X30-GONDOLA-LARANJA','ETQ-80X70-BOPP'
+                );
+              IF found <> 42 THEN
+                RAISE EXCEPTION 'Esperados 42 SKUs com empresa, ativos ou inativos; encontrados %.', found;
+              END IF;
+            END \$\$;
           "
