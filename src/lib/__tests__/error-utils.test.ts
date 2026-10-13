@@ -25,6 +25,13 @@ describe('error-utils', () => {
       const result = formatAppError({ context: 'X', action: 'Y', error: null });
       expect(result.message).toBe('Ocorreu um erro inesperado.');
     });
+
+    it('traduz duplicidade de cliente para o operador e guarda o texto técnico', () => {
+      const raw = 'duplicate key value violates unique constraint "ux_clientes_documento_ativo"';
+      const result = formatAppError({ context: 'Clientes', action: 'Salvar cliente', error: raw });
+      expect(result.message).toContain('cliente já está cadastrado');
+      expect(result.technicalDetails).toBe(raw);
+    });
   });
 
   describe('formatErrorForCopy', () => {

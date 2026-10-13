@@ -54,6 +54,7 @@ import {
 import { useClientes } from "@/hooks/useClientes";
 import { useNotification } from "@/hooks/useNotification";
 import { db } from "@/lib/db";
+import { mensagemCadastroDuplicado } from "@/lib/operator-errors";
 import {
   SENSITIVE_PERMISSIONS,
   type Cliente,
@@ -307,8 +308,9 @@ export default function Clientes() {
     } catch (err: any) {
       console.error("Erro:", err);
       const message = err instanceof Error ? err.message : String(err);
-      if (message.toLowerCase().includes("cpf/cnpj já está cadastrado")) {
-        setErroDocumentoDuplicado(message);
+      const duplicado = mensagemCadastroDuplicado(message);
+      if (duplicado || message.toLowerCase().includes("cpf/cnpj já está cadastrado")) {
+        setErroDocumentoDuplicado(duplicado ?? message);
       } else {
         showError("Clientes", "Salvar cliente", err);
       }

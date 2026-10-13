@@ -48,6 +48,8 @@ interface SensitiveAccessContextValue {
   ensureSensitiveAccess: (options?: SensitiveAccessPromptOptions) => Promise<boolean>;
   openProfileSelector: (options?: ProfileSelectorOptions) => Promise<boolean>;
   lockSensitiveAccess: () => Promise<void>;
+  /** O primeiro pedido de PIN foi fechado sem desbloquear a sessão. */
+  pinPromptDismissed: boolean;
   hasPermission: (permission: SensitivePermission) => boolean;
   setActiveProfile: (profileId: number, pin: string) => Promise<void>;
 }
@@ -92,6 +94,7 @@ export function SensitiveAccessProvider({ children }: { children: ReactNode }) {
   const [selectedProfileId, setSelectedProfileId] = useState<string>("");
   const resolverRef = useRef<((value: boolean) => void) | null>(null);
   const startupPromptedRef = useRef(false);
+  const [pinPromptDismissed, setPinPromptDismissed] = useState(false);
   const bootPhasesTrackedRef = useRef(true);
   const dialogOpenRef = useRef(false);
   const statusErrorRef = useRef<string | null>(null);
@@ -210,15 +213,19 @@ export function SensitiveAccessProvider({ children }: { children: ReactNode }) {
   }, [status?.active_profile_id]);
 
   const closeDialog = useCallback((result: boolean) => {
-    if (!result && dialogMandatory) {
+    if (!result && dialogMandatory && dialogMode !== "startup") {
       return;
+    }
+
+    if (!result && dialogMode === "startup") {
+      setPinPromptDismissed(true);
     }
 
     setDialogMandatory(false);
     setDialogOpen(false);
     resetDialogState();
     resolvePending(result);
-  }, [dialogMandatory, resetDialogState, resolvePending]);
+  }, [dialogMandatory, dialogMode, resetDialogState, resolvePending]);
 
   const ensureSensitiveAccess = useCallback(async (options?: SensitiveAccessPromptOptions) => {
     const currentStatus = await SensitiveAccessService.status()
@@ -444,9 +451,10 @@ export function SensitiveAccessProvider({ children }: { children: ReactNode }) {
     ensureSensitiveAccess,
     openProfileSelector,
     lockSensitiveAccess,
+    pinPromptDismissed,
     hasPermission,
     setActiveProfile,
-  }), [bootProgress, connectionUnavailable, ensureSensitiveAccess, hasPermission, loading, lockSensitiveAccess, openProfileSelector, refreshStatus, setActiveProfile, status]);
+  }), [bootProgress, connectionUnavailable, ensureSensitiveAccess, hasPermission, loading, lockSensitiveAccess, openProfileSelector, pinPromptDismissed, refreshStatus, setActiveProfile, status]);
 
   const activeProfile = status?.profiles.find((profile) => profile.id === status.active_profile_id) ?? null;
   const selectedProfile = status?.profiles.find((profile) => String(profile.id) === selectedProfileId) ?? activeProfile ?? null;

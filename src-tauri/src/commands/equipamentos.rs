@@ -790,7 +790,8 @@ pub async fn criar_equipamento(input: EquipamentoInput) -> Result<EquipamentoRow
     .await
     .map_err(|e| {
         error!("Erro ao criar equipamento: {}", e);
-        duplicate_equipment_patrimonio_message(&e).unwrap_or_else(|| e.to_string())
+        duplicate_equipment_patrimonio_message(&e)
+            .unwrap_or_else(|| super::operator_errors::erro_sql_para_operador(&e))
     })?;
 
     let id: i32 = row.get("id");
@@ -882,7 +883,8 @@ pub async fn atualizar_equipamento(id: i32, input: EquipamentoInput) -> Result<E
     .await
     .map_err(|e| {
         error!("Erro ao atualizar equipamento {}: {}", id, e);
-        duplicate_equipment_patrimonio_message(&e).unwrap_or_else(|| e.to_string())
+        duplicate_equipment_patrimonio_message(&e)
+            .unwrap_or_else(|| super::operator_errors::erro_sql_para_operador(&e))
     })?
     .rows_affected();
 

@@ -1158,10 +1158,8 @@ pub async fn create_security_profile(input: SecurityProfileInput, pin: String) -
     .await
     .map_err(|e| {
         error!("Erro ao criar perfil de segurança: {}", e);
-        if let sqlx::Error::Database(ref db_error) = e {
-            if db_error.code().as_deref() == Some("23505") && db_error.constraint() == Some("security_profiles_nome_key") {
-                return "Já existe um perfil com este nome. Escolha outro nome.".to_string();
-            }
+        if let Some(message) = super::operator_errors::mensagem_cadastro_duplicado(&e.to_string()) {
+            return message;
         }
         "Não foi possível criar o perfil. Tente novamente.".to_string()
     })?;
@@ -1231,10 +1229,8 @@ pub async fn update_security_profile(profile_id: i32, input: SecurityProfileInpu
     .await
     .map_err(|e| {
         error!("Erro ao atualizar perfil de segurança {}: {}", profile_id, e);
-        if let sqlx::Error::Database(ref db_error) = e {
-            if db_error.code().as_deref() == Some("23505") && db_error.constraint() == Some("security_profiles_nome_key") {
-                return "Já existe um perfil com este nome. Escolha outro nome.".to_string();
-            }
+        if let Some(message) = super::operator_errors::mensagem_cadastro_duplicado(&e.to_string()) {
+            return message;
         }
         "Não foi possível atualizar o perfil. Tente novamente.".to_string()
     })?;
