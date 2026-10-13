@@ -7,6 +7,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { mensagemVisivelAoOperador } from "@/lib/operator-errors";
 import { SensitiveAccessService } from "@/lib/sensitive-access";
 import { SENSITIVE_PERMISSION_LABELS, SENSITIVE_PERMISSIONS, type SecurityProfile, type SensitivePermission } from "@/types";
 
@@ -68,7 +69,7 @@ export function CreateProfileCard({ profiles, onCreated }: Props) {
       }
     } catch (cause) {
       const message = typeof cause === "string" ? cause : cause instanceof Error ? cause.message : "Não foi possível criar o perfil.";
-      setError(message);
+      setError(mensagemVisivelAoOperador(message) ?? message);
     } finally {
       setBusy(false);
     }

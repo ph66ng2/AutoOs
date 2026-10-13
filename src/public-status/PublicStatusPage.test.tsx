@@ -1,6 +1,6 @@
 import { act, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import PublicStatusPage from "./PublicStatusPage";
+import PublicStatusPage, { latestAcceptedPublicStatus } from "./PublicStatusPage";
 import { buscarStatusPublico } from "./api";
 
 vi.mock("./api", () => ({
@@ -26,6 +26,7 @@ function response(titulo: string) {
 
 beforeEach(() => {
   vi.mocked(buscarStatusPublico).mockReset();
+  latestAcceptedPublicStatus.title = null;
   window.location.hash = `#/c/${tokenA}`;
 });
 
@@ -47,6 +48,45 @@ describe("PublicStatusPage", () => {
 
     expect(await screen.findByRole("heading", { name: "Equipamento entregue" })).toBeInTheDocument();
     await waitFor(() => expect(buscarStatusPublico).toHaveBeenCalledWith(tokenB));
+  });
+
+  it("não renderiza a resposta antiga que chega depois da troca do hash", async () => {
+    let resolveA: (value: ReturnType<typeof response>) => void = () => {};
+    let resolveB: (value: ReturnType<typeof response>) => void = () => {};
+    vi.mocked(buscarStatusPublico).mockImplementation((token: string) => {
+      if (token === tokenA) {
+        return new Promise((resolve) => {
+          resolveA = resolve;
+        });
+      }
+      return new Promise((resolve) => {
+        resolveB = resolve;
+      });
+    });
+
+    const staleTitle = "Estamos analisando seu equipamento";
+    latestAcceptedPublicStatus.title = null;
+    render(<PublicStatusPage />);
+    expect(screen.getByText("Consultando o atendimento…")).toBeInTheDocument();
+
+    await act(async () => {
+      window.location.hash = `#/c/${tokenB}`;
+      window.dispatchEvent(new HashChangeEvent("hashchange"));
+      resolveA(response(staleTitle));
+      await Promise.resolve();
+    });
+
+    expect(latestAcceptedPublicStatus.title).not.toBe(staleTitle);
+    expect(screen.queryByRole("heading", { name: staleTitle })).not.toBeInTheDocument();
+    expect(screen.getByText("Consultando o atendimento…")).toBeInTheDocument();
+
+    await act(async () => {
+      resolveB(response("Equipamento entregue"));
+    });
+
+    expect(await screen.findByRole("heading", { name: "Equipamento entregue" })).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: staleTitle })).not.toBeInTheDocument();
+    expect(latestAcceptedPublicStatus.title).toBe("Equipamento entregue");
   });
 
   it("remove o listener de hashchange ao desmontar", async () => {

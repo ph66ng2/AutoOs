@@ -182,12 +182,14 @@ import { totalPages } from "@/lib/pagination";
 
 // O anel é a borda de um ::after dentro da célula. O box-shadow fica por baixo
 // do divisor colapsado e, na Ações sticky, o fundo branco cobre o topo.
-// border-separate deixa esse divisor fora do anel.
+// border-separate deixa esse divisor fora do anel. O anel segue só o
+// :focus-visible do botão .equipment-row-open, então o clique do mouse não
+// acende e os botões de Ações continuam fora de um role=button.
 const EQUIPMENT_ROW_FOCUS_RING =
-  "border-b group-focus-visible:z-[30] group-focus-visible:bg-sky-100 group-focus-visible:after:pointer-events-none group-focus-visible:after:absolute group-focus-visible:after:inset-0 group-focus-visible:after:z-[1] group-focus-visible:after:border-y-[3px] group-focus-visible:after:border-[#1d4ed8] group-focus-visible:after:content-['']";
+  "border-b group-has-[.equipment-row-open:focus-visible]:z-[30] group-has-[.equipment-row-open:focus-visible]:bg-sky-100 group-has-[.equipment-row-open:focus-visible]:after:pointer-events-none group-has-[.equipment-row-open:focus-visible]:after:absolute group-has-[.equipment-row-open:focus-visible]:after:inset-0 group-has-[.equipment-row-open:focus-visible]:after:z-[1] group-has-[.equipment-row-open:focus-visible]:after:border-y-[3px] group-has-[.equipment-row-open:focus-visible]:after:border-[#1d4ed8] group-has-[.equipment-row-open:focus-visible]:after:content-['']";
 const EQUIPMENT_ROW_FOCUS_EDGE = `relative ${EQUIPMENT_ROW_FOCUS_RING}`;
-const EQUIPMENT_ROW_FOCUS_FIRST = `relative ${EQUIPMENT_ROW_FOCUS_RING} group-focus-visible:after:border-l-[3px]`;
-const EQUIPMENT_ROW_FOCUS_LAST = `${EQUIPMENT_ROW_FOCUS_RING} group-focus-visible:after:border-r-[3px]`;
+const EQUIPMENT_ROW_FOCUS_FIRST = `relative ${EQUIPMENT_ROW_FOCUS_RING} group-has-[.equipment-row-open:focus-visible]:after:border-l-[3px]`;
+const EQUIPMENT_ROW_FOCUS_LAST = `${EQUIPMENT_ROW_FOCUS_RING} group-has-[.equipment-row-open:focus-visible]:after:border-r-[3px]`;
 
 export default function Equipamentos() {
   const [busca, setBusca] = useState("");
@@ -2026,24 +2028,25 @@ export default function Equipamentos() {
                   {equipamentosExibidos.map(eq => (
                     <TableRow
                       key={eq.id}
-                      tabIndex={0}
-                      role="button"
-                      aria-label={`Abrir detalhes de ${eq.marca} ${eq.modelo}`}
-                      className="group cursor-pointer focus-visible:outline-none"
+                      className="group cursor-pointer"
                       onClick={() => void abrirDetalhes(eq)}
-                      onKeyDown={(event) => {
-                        if (event.target !== event.currentTarget) return;
-                        if (event.key !== "Enter" && event.key !== " ") return;
-                        event.preventDefault();
-                        void abrirDetalhes(eq);
-                      }}
                     >
                       <TableCell className={`overflow-hidden font-mono font-medium ${EQUIPMENT_ROW_FOCUS_FIRST}`}>
                         <span className="block truncate" title={eq.serial_number}>{eq.serial_number}</span>
                       </TableCell>
                       <TableCell className={`overflow-hidden ${EQUIPMENT_ROW_FOCUS_EDGE}`}>
                         <div className="min-w-0">
-                          <span className="block truncate font-medium" title={`${eq.marca} ${eq.modelo}`}>{eq.marca} {eq.modelo}</span>
+                          <button
+                            type="button"
+                            className="equipment-row-open block w-full min-w-0 cursor-pointer truncate border-0 bg-transparent p-0 text-left font-medium text-inherit focus-visible:outline-none"
+                            aria-label={`Abrir detalhes de ${eq.marca} ${eq.modelo}`}
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              void abrirDetalhes(eq);
+                            }}
+                          >
+                            <span className="block truncate" title={`${eq.marca} ${eq.modelo}`}>{eq.marca} {eq.modelo}</span>
+                          </button>
                           <p className="truncate text-xs text-muted-foreground" title={eq.tipo}>{eq.tipo}</p>
                         </div>
                       </TableCell>

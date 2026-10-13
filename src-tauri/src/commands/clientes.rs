@@ -201,22 +201,23 @@ async fn query_client_page(
         .build_query_scalar::<i64>()
         .fetch_one(pool)
         .await
-        .map_err(|error| format!("Erro ao contar clientes: {}", error))?;
+        .map_err(super::operator_errors::mapear_erro_sql)?;
 
     let safe_page = page.unwrap_or(0).max(0) as i64;
+    let page_limit = i64::from(page_size);
     let mut items_query = QueryBuilder::<Postgres>::new(CLIENTE_SELECT);
     add_client_filters(&mut items_query, empresa_id, busca);
     items_query
         .push(" ORDER BY id DESC LIMIT ")
-        .push_bind(page_size)
+        .push_bind(page_limit)
         .push(" OFFSET ")
-        .push_bind(safe_page * i64::from(page_size));
+        .push_bind(safe_page * page_limit);
 
     let items = items_query
         .build_query_as::<ClienteRow>()
         .fetch_all(pool)
         .await
-        .map_err(|error| format!("Erro ao listar clientes: {}", error))?;
+        .map_err(super::operator_errors::mapear_erro_sql)?;
 
     Ok(PaginatedResult {
         items,
@@ -236,7 +237,9 @@ pub async fn listar_clientes(page: Option<i32>, busca: Option<String>) -> Result
     })?;
     let empresa_id = require_active_session_company_id(&pool).await?;
 
-    let offset = page.unwrap_or(0) * PAGE_SIZE;
+    let safe_page = i64::from(page.unwrap_or(0).max(0));
+    let page_limit = i64::from(PAGE_SIZE);
+    let offset = safe_page * page_limit;
     let mut query_builder = sqlx::QueryBuilder::<sqlx::Postgres>::new(format!(
         "{} WHERE ativo = true AND empresa_id = ",
         CLIENTE_SELECT,
@@ -275,7 +278,7 @@ pub async fn listar_clientes(page: Option<i32>, busca: Option<String>) -> Result
     }
 
     query_builder.push(" ORDER BY id DESC LIMIT ");
-    query_builder.push_bind(PAGE_SIZE);
+    query_builder.push_bind(page_limit);
     query_builder.push(" OFFSET ");
     query_builder.push_bind(offset);
 
@@ -285,7 +288,7 @@ pub async fn listar_clientes(page: Option<i32>, busca: Option<String>) -> Result
         .await
         .map_err(|e| {
             error!("Erro ao listar clientes: {}", e);
-            e.to_string()
+            super::operator_errors::mapear_erro_sql(e)
         })?;
 
     info!("Clientes listados: {} itens (página {})", rows.len(), page.unwrap_or(0));
@@ -327,7 +330,7 @@ pub async fn buscar_cliente(id: i32) -> Result<ClienteRow, String> {
         .await
         .map_err(|e| {
             error!("Cliente {} não encontrado: {}", id, e);
-            e.to_string()
+            super::operator_errors::mapear_erro_sql(e)
         })?;
 
     info!("Cliente {} encontrado", id);
@@ -412,7 +415,7 @@ pub async fn criar_cliente(input: ClienteInput) -> Result<ClienteRow, String> {
             error!("Erro ao criar cliente: {}", e);
             return Err(duplicate_client_document_message(&e, &pool, empresa_id, &document_digits, None)
                 .await
-                .unwrap_or_else(|| e.to_string()));
+                .unwrap_or_else(|| super::operator_errors::erro_sql_para_operador(&e)));
         }
     };
 
@@ -503,7 +506,7 @@ pub async fn atualizar_cliente(id: i32, input: ClienteInput) -> Result<ClienteRo
             error!("Erro ao atualizar cliente {}: {}", id, e);
             return Err(duplicate_client_document_message(&e, &pool, empresa_id, &document_digits, Some(id))
                 .await
-                .unwrap_or_else(|| e.to_string()));
+                .unwrap_or_else(|| super::operator_errors::erro_sql_para_operador(&e)));
         }
     };
 
@@ -532,7 +535,7 @@ pub async fn deletar_cliente(id: i32) -> Result<bool, String> {
         .await
         .map_err(|e| {
             error!("Erro ao deletar cliente {}: {}", id, e);
-            e.to_string()
+            super::operator_errors::mapear_erro_sql(e)
         })?;
 
     let deleted = result.rows_affected() > 0;

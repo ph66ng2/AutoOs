@@ -243,6 +243,9 @@ export function ProfileSessionDialog({
                     </>
                   )}
                 </Button>
+                <Button type="button" variant="ghost" className="w-full" onClick={onClose} disabled={busy}>
+                  Cancelar
+                </Button>
               </div>
             </div>
           </div>
@@ -421,11 +424,15 @@ export function ProfileSessionDialog({
                 Esqueci minha senha
               </Button>
             )}
-            {!mandatory && (
+            {mode === "startup" ? (
+              <Button variant="outline" type="button" onClick={onClose} disabled={busy}>
+                Cancelar
+              </Button>
+            ) : !mandatory ? (
               <Button variant="outline" type="button" onClick={onClose} disabled={busy}>
                 Fechar
               </Button>
-            )}
+            ) : null}
             <Button
               type={shouldAskForPin ? "submit" : "button"}
               form={shouldAskForPin ? "profile-session-pin-form" : undefined}

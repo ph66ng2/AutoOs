@@ -44,7 +44,7 @@ async fn ensure_cliente_belongs_to_empresa(
     .bind(empresa_id)
     .fetch_optional(pool)
     .await
-    .map_err(|error| format!("Erro ao validar cliente do contato: {}", error))?;
+    .map_err(super::operator_errors::mapear_erro_sql)?;
 
     if exists.is_none() {
         return Err("Cliente não encontrado na empresa informada.".to_string());
@@ -63,7 +63,7 @@ async fn fetch_contact(pool: &PgPool, id: i32, empresa_id: i32) -> Result<Client
         .bind(empresa_id)
         .fetch_optional(pool)
         .await
-        .map_err(|error| error.to_string())?
+        .map_err(super::operator_errors::mapear_erro_sql)?
         .ok_or_else(|| "Contato não encontrado na empresa informada.".to_string())
 }
 
@@ -92,7 +92,7 @@ pub async fn listar_cliente_contatos(
                 "Erro ao listar contatos do cliente {}: {}",
                 cliente_id, error
             );
-            error.to_string()
+            super::operator_errors::mapear_erro_sql(error)
         })
 }
 
@@ -120,7 +120,7 @@ pub async fn criar_cliente_contato(input: ClienteContatoInput) -> Result<Cliente
     .await
     .map_err(|error| {
         error!("Erro ao criar contato do cliente {}: {}", cliente_id, error);
-        error.to_string()
+        super::operator_errors::mapear_erro_sql(error)
     })?;
 
     record_security_event(
@@ -193,7 +193,7 @@ pub async fn atualizar_cliente_contato(
     }
     .map_err(|error| {
         error!("Erro ao atualizar contato {}: {}", id, error);
-        error.to_string()
+        super::operator_errors::mapear_erro_sql(error)
     })?
     .rows_affected();
 
@@ -234,7 +234,7 @@ pub async fn inativar_cliente_contato(id: i32, empresa_id: i32) -> Result<Client
     .await
     .map_err(|error| {
         error!("Erro ao inativar contato {}: {}", id, error);
-        error.to_string()
+        super::operator_errors::mapear_erro_sql(error)
     })?
     .rows_affected();
 

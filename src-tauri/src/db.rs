@@ -329,7 +329,7 @@ async fn validate_runtime_schema_on_pool(pool: &PgPool) -> Result<usize, String>
     .bind(table_names)
     .fetch_all(pool)
     .await
-    .map_err(|error| format!("Não foi possível verificar as tabelas do AutoOS: {error}"))?;
+    .map_err(crate::commands::operator_errors::mapear_erro_sql)?;
 
     let column_tables = REQUIRED_RUNTIME_COLUMNS
         .iter()
@@ -354,7 +354,7 @@ async fn validate_runtime_schema_on_pool(pool: &PgPool) -> Result<usize, String>
     .bind(column_names)
     .fetch_all(pool)
     .await
-    .map_err(|error| format!("Não foi possível verificar as colunas do AutoOS: {error}"))?;
+    .map_err(crate::commands::operator_errors::mapear_erro_sql)?;
 
     let typed_tables = REQUIRED_RUNTIME_COLUMN_TYPES
         .iter()
@@ -385,7 +385,7 @@ async fn validate_runtime_schema_on_pool(pool: &PgPool) -> Result<usize, String>
     .bind(expected_types)
     .fetch_all(pool)
     .await
-    .map_err(|error| format!("Não foi possível verificar os tipos do AutoOS: {error}"))?;
+    .map_err(crate::commands::operator_errors::mapear_erro_sql)?;
 
     if !missing_tables.is_empty()
         || !missing_columns.is_empty()
@@ -411,7 +411,7 @@ async fn validate_migration_history_on_pool(pool: &PgPool) -> Result<usize, Stri
     )
     .fetch_all(pool)
     .await
-    .map_err(|error| format!("Não foi possível ler o histórico de migrations: {error}"))?;
+    .map_err(crate::commands::operator_errors::mapear_erro_sql)?;
 
     let known = MIGRATOR.iter().collect::<Vec<_>>();
     if applied.len() != known.len() {

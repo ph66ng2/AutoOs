@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { Mail } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -33,7 +33,6 @@ export function CommunicationEmailDialog({
   const [email, setEmail] = useState("");
   const [salvar, setSalvar] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
-  const fechamentoPorAcao = useRef<"confirmar" | "cancelar" | null>(null);
   const temEndereco = Boolean(recipient?.endereco);
 
   useEffect(() => {
@@ -41,7 +40,6 @@ export function CommunicationEmailDialog({
     setEmail(recipient?.endereco || "");
     setSalvar(false);
     setErro(null);
-    fechamentoPorAcao.current = null;
   }, [open, recipient]);
 
   async function confirmar() {
@@ -51,30 +49,23 @@ export function CommunicationEmailDialog({
       return;
     }
     setErro(null);
-    fechamentoPorAcao.current = "confirmar";
     const resultado = await onConfirm(endereco, salvar);
     if (resultado !== false) onOpenChange(false);
-    else fechamentoPorAcao.current = null;
   }
 
-  async function cancelar() {
+  async function pular() {
     setErro(null);
-    fechamentoPorAcao.current = "cancelar";
     await onSkip();
     onOpenChange(false);
   }
 
-  function tratarFechamento(openValue: boolean) {
-    if (!openValue && !fechamentoPorAcao.current) {
-      fechamentoPorAcao.current = "cancelar";
-      void onSkip();
-    }
-    if (openValue) fechamentoPorAcao.current = null;
-    onOpenChange(openValue);
+  function cancelar() {
+    setErro(null);
+    onOpenChange(false);
   }
 
   return (
-    <Dialog open={open} onOpenChange={tratarFechamento}>
+    <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
@@ -117,7 +108,8 @@ export function CommunicationEmailDialog({
           {temEndereco && erro && <p className="text-xs text-red-600" role="alert">{erro}</p>}
         </div>
         <DialogFooter>
-          <Button type="button" variant="outline" onClick={() => void cancelar()}>Cancelar envio</Button>
+          <Button type="button" variant="outline" onClick={cancelar}>Cancelar envio</Button>
+          <Button type="button" variant="outline" onClick={() => void pular()}>Pular e-mail</Button>
           <Button type="button" onClick={() => void confirmar()}>Enviar</Button>
         </DialogFooter>
       </DialogContent>

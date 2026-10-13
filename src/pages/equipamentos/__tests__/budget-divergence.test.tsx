@@ -10,6 +10,7 @@
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, screen, act, fireEvent, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 
 // ─── Hoisted Mocks ──────────────────────────────────────
 
@@ -720,14 +721,21 @@ describe("Equipamentos — Budget Divergence & Audit", () => {
     view.unmount();
   });
 
-  it("a linha do equipamento é focável e Enter ou Espaço abrem o detalhe", async () => {
+  it("a linha permanece linha e o controle dedicado abre o detalhe", async () => {
+    const user = userEvent.setup();
     const view = render(<Equipamentos />);
-    const row = screen.getByRole("button", { name: "Abrir detalhes de Zebra ZT230" });
-    expect(row.tagName).toBe("TR");
-    expect(row).toHaveAttribute("tabindex", "0");
-    const cells = row.querySelectorAll("td");
-    expect(cells[0].className).toContain("after:border-l-[3px]");
+    const opener = screen.getByRole("button", { name: "Abrir detalhes de Zebra ZT230" });
+    expect(opener.tagName).toBe("BUTTON");
+    expect(opener).toHaveClass("equipment-row-open");
+    const row = opener.closest("tr");
+    expect(row).not.toBeNull();
+    expect(row).not.toHaveAttribute("role");
+    expect(row).not.toHaveAttribute("tabindex");
+    expect(opener.contains(screen.getByTestId("action-enviar_orcamento"))).toBe(false);
+    const cells = row!.querySelectorAll("td");
+    expect(cells[0].className).toContain("group-has-[.equipment-row-open:focus-visible]:after:border-l-[3px]");
     expect(cells[0].className).toContain("after:border-[#1d4ed8]");
+    expect(cells[0].className).toContain("focus-visible");
     expect(cells[0].classList.contains("relative")).toBe(true);
     expect(cells[1].className).toContain("after:border-y-[3px]");
     expect(cells[1].className).not.toContain("after:border-l-[3px]");
@@ -735,14 +743,34 @@ describe("Equipamentos — Budget Divergence & Audit", () => {
     expect(cells[cells.length - 1].className).toContain("after:inset-0");
     expect(cells[cells.length - 1].classList.contains("relative")).toBe(false);
 
-    fireEvent.keyDown(row, { key: "Enter" });
+    fireEvent.click(screen.getByText("SN001"));
     expect(await screen.findByText("Detalhes do Equipamento")).toBeInTheDocument();
     view.unmount();
 
+    const enterView = render(<Equipamentos />);
+    const enterOpener = screen.getByRole("button", { name: "Abrir detalhes de Zebra ZT230" });
+    enterOpener.focus();
+    await user.keyboard("{Enter}");
+    expect(await screen.findByText("Detalhes do Equipamento")).toBeInTheDocument();
+    enterView.unmount();
+
     const spaceView = render(<Equipamentos />);
-    fireEvent.keyDown(screen.getByRole("button", { name: "Abrir detalhes de Zebra ZT230" }), { key: " " });
+    const spaceOpener = screen.getByRole("button", { name: "Abrir detalhes de Zebra ZT230" });
+    spaceOpener.focus();
+    await user.keyboard(" ");
     expect(await screen.findByText("Detalhes do Equipamento")).toBeInTheDocument();
     spaceView.unmount();
+  });
+
+  it("Enter em Marcar Pronto não abre o detalhe", async () => {
+    const user = userEvent.setup();
+    equipamentoVerificado.status = "EM_MANUTENCAO";
+    render(<Equipamentos />);
+    const pronto = screen.getByRole("button", { name: "Marcar Pronto" });
+    expect(screen.getByRole("button", { name: "Abrir detalhes de Zebra ZT230" }).contains(pronto)).toBe(false);
+    pronto.focus();
+    await user.keyboard("{Enter}");
+    expect(screen.queryByText("Detalhes do Equipamento")).not.toBeInTheDocument();
   });
 
   it("Enter e Espaço nos botões de Ações não abrem o detalhe pela linha", async () => {

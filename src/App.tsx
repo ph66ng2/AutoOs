@@ -20,6 +20,7 @@
 import { useEffect, useState } from "react";
 import { BrowserRouter, Routes, Route, useLocation, useNavigate } from "react-router-dom";
 import { Toaster } from "sonner";
+import { Button } from "@/components/ui/button";
 import { BootSplash } from "@/components/BootSplash";
 import { DatabaseConfigDialog } from "@/components/DatabaseConfigDialog";
 import { SensitiveRoute, useSensitiveAccess } from "@/hooks/useSensitiveAccess";
@@ -49,7 +50,7 @@ const MIN_BOOT_SPLASH_MS = 1_100;
 const BOOT_COMPLETION_ANIMATION_MS = 1_450;
 
 function AppContent() {
-  const { loading, bootProgress, status, refreshStatus } = useSensitiveAccess();
+  const { loading, bootProgress, status, pinPromptDismissed, openProfileSelector, refreshStatus } = useSensitiveAccess();
   const [appMode, setCurrentAppMode] = useState<AppMode | null>(() => getAppMode());
   const [splashVisible, setSplashVisible] = useState(true);
   const [minSplashElapsed, setMinSplashElapsed] = useState(false);
@@ -87,8 +88,10 @@ function AppContent() {
     return () => window.clearTimeout(t);
   }, [loading]);
 
+  const sessionBlocked = Boolean(status && status.profiles.length > 0 && !status.unlocked);
+  const showEntryGate = sessionBlocked && pinPromptDismissed;
   const splashCanFadeOut = !loading && minSplashElapsed && completionAnimationElapsed && (
-    Boolean(status?.unlocked) || (status?.profiles.length === 0)
+    Boolean(status?.unlocked) || (status?.profiles.length === 0) || pinPromptDismissed
   );
   const sessionReady = Boolean(status?.active_profile_id && status.unlocked);
 
@@ -101,6 +104,14 @@ function AppContent() {
 
   return (
     <>
+      {showEntryGate ? (
+        <SessionPinGate
+          onEnter={() => void openProfileSelector({
+            title: "Selecionar perfil da sessão",
+            description: "Escolha o perfil e informe o PIN. Sem o PIN, o atendimento continua bloqueado.",
+          })}
+        />
+      ) : (
       <BrowserRouter>
         <AppModeChoice
           visible={!loading && sessionReady && appMode === null}
@@ -150,10 +161,25 @@ function AppContent() {
           </Route>
         </Routes>
       </BrowserRouter>
+      )}
       {splashVisible && (
         <BootSplash progress={loading ? bootProgress : 100} fadeOut={splashCanFadeOut} />
       )}
     </>
+  );
+}
+
+function SessionPinGate({ onEnter }: { onEnter: () => void }) {
+  return (
+    <div className="fixed inset-0 z-30 flex items-center justify-center bg-[#050608] px-6 text-white">
+      <div className="w-full max-w-md space-y-4 text-center">
+        <h1 className="text-2xl font-semibold">Informe o PIN para entrar</h1>
+        <p className="text-sm text-slate-300">
+          O AutoOS continua bloqueado. Sem o PIN do perfil, o atendimento não abre.
+        </p>
+        <Button type="button" onClick={onEnter}>Entrar com PIN</Button>
+      </div>
+    </div>
   );
 }
 

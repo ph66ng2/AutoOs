@@ -162,7 +162,7 @@ pub(crate) async fn query_equipment_page_on_connection(
         .build_query_scalar::<i64>()
         .fetch_one(&mut *connection)
         .await
-        .map_err(|error| format!("Erro ao contar equipamentos: {}", error))?;
+        .map_err(super::operator_errors::mapear_erro_sql)?;
 
     let safe_page = page.unwrap_or(0).max(0) as i64;
     let mut items_query = QueryBuilder::<Postgres>::new(EQUIPAMENTO_SELECT);
@@ -178,7 +178,7 @@ pub(crate) async fn query_equipment_page_on_connection(
         .build_query_as::<EquipamentoRow>()
         .fetch_all(&mut *connection)
         .await
-        .map_err(|error| format!("Erro ao listar equipamentos: {}", error))?;
+        .map_err(super::operator_errors::mapear_erro_sql)?;
 
     Ok(PaginatedResult {
         items,
@@ -339,7 +339,7 @@ async fn resolve_responsavel_snapshot(
     .bind(cliente_id)
     .fetch_optional(pool)
     .await
-    .map_err(|error| format!("Erro ao validar contato responsável: {}", error))?;
+    .map_err(super::operator_errors::mapear_erro_sql)?;
 
     let Some((nome, email, telefone)) = snapshot else {
         return Err("Contato responsável não encontrado, inativo ou incompatível com o cliente/empresa.".to_string());
@@ -364,7 +364,7 @@ async fn require_cliente_da_empresa(
     .bind(empresa_id)
     .fetch_one(pool)
     .await
-    .map_err(|error| format!("Erro ao validar cliente do equipamento: {}", error))?;
+    .map_err(super::operator_errors::mapear_erro_sql)?;
 
     if exists {
         Ok(())
@@ -422,7 +422,7 @@ async fn require_cliente_da_empresa(
                 .await
                 .map_err(|e| {
                     error!("Erro ao consultar status atual do equipamento {}: {}", id, e);
-                    e.to_string()
+                    super::operator_errors::mapear_erro_sql(e)
                 })?;
 
                 if let Some(current_status) = current_status {
@@ -460,7 +460,7 @@ pub async fn listar_equipamentos(
     })?;
     let empresa_id = require_active_session_company_id(&pool).await?;
 
-    let mut connection = pool.acquire().await.map_err(|error| error.to_string())?;
+    let mut connection = pool.acquire().await.map_err(super::operator_errors::mapear_erro_sql)?;
     listar_equipamentos_on_connection(
         &mut connection,
         empresa_id,
@@ -524,7 +524,7 @@ pub(crate) async fn listar_equipamentos_on_connection(
         .await
         .map_err(|e| {
             error!("Erro ao listar equipamentos: {}", e);
-            e.to_string()
+            super::operator_errors::mapear_erro_sql(e)
         })?;
 
     info!("Equipamentos listados: {} itens (página {})", rows.len(), page.unwrap_or(0));
@@ -542,7 +542,7 @@ pub async fn listar_equipamentos_paginados(
 ) -> Result<PaginatedResult<EquipamentoRow>, String> {
     let pool = get_pool().await.map_err(|error| error.to_string())?;
     let empresa_id = require_active_session_company_id(&pool).await?;
-    let mut connection = pool.acquire().await.map_err(|error| error.to_string())?;
+    let mut connection = pool.acquire().await.map_err(super::operator_errors::mapear_erro_sql)?;
     query_equipment_page_on_connection(
         &mut connection,
         empresa_id,
@@ -571,7 +571,7 @@ pub async fn buscar_equipamento(id: i32) -> Result<EquipamentoRow, String> {
         .await
         .map_err(|e| {
             error!("Equipamento {} não encontrado: {}", id, e);
-            e.to_string()
+            super::operator_errors::mapear_erro_sql(e)
         })?;
 
     info!("Equipamento {} encontrado", id);
@@ -611,7 +611,7 @@ pub async fn listar_historico_equipamento(
     .bind(empresa_id)
     .fetch_optional(&pool)
     .await
-    .map_err(|error| format!("Erro ao carregar histórico do equipamento: {}", error))?;
+    .map_err(super::operator_errors::mapear_erro_sql)?;
     let Some((criado_em, data_entrada, data_aprovacao, data_reprovacao, data_pronto, data_saida, verificacao_inicio, verificacao_fim)) = equipamento else {
         return Err("Equipamento não encontrado na empresa do perfil ativo.".to_string());
     };
@@ -630,7 +630,7 @@ pub async fn listar_historico_equipamento(
     .bind(equipamento_id.to_string())
     .fetch_all(&pool)
     .await
-    .map_err(|error| format!("Erro ao carregar auditoria do equipamento: {}", error))?;
+    .map_err(super::operator_errors::mapear_erro_sql)?;
 
     let mut eventos = Vec::new();
     let mut statuses_auditados = HashSet::new();
@@ -711,7 +711,7 @@ pub async fn buscar_equipamentos_por_serial(serial: String) -> Result<Vec<Equipa
         .await
         .map_err(|e| {
             error!("Erro ao buscar equipamentos por serial: {}", e);
-            format!("Erro ao buscar equipamentos: {}", e)
+            super::operator_errors::mapear_erro_sql(e)
         })?;
     info!("Equipamentos encontrados para serial {}: {}", serial, rows.len());
     Ok(rows)
@@ -790,7 +790,8 @@ pub async fn criar_equipamento(input: EquipamentoInput) -> Result<EquipamentoRow
     .await
     .map_err(|e| {
         error!("Erro ao criar equipamento: {}", e);
-        duplicate_equipment_patrimonio_message(&e).unwrap_or_else(|| e.to_string())
+        duplicate_equipment_patrimonio_message(&e)
+            .unwrap_or_else(|| super::operator_errors::erro_sql_para_operador(&e))
     })?;
 
     let id: i32 = row.get("id");
@@ -882,7 +883,8 @@ pub async fn atualizar_equipamento(id: i32, input: EquipamentoInput) -> Result<E
     .await
     .map_err(|e| {
         error!("Erro ao atualizar equipamento {}: {}", id, e);
-        duplicate_equipment_patrimonio_message(&e).unwrap_or_else(|| e.to_string())
+        duplicate_equipment_patrimonio_message(&e)
+            .unwrap_or_else(|| super::operator_errors::erro_sql_para_operador(&e))
     })?
     .rows_affected();
 
@@ -920,7 +922,7 @@ pub async fn deletar_equipamento(id: i32) -> Result<bool, String> {
         .await
         .map_err(|e| {
             error!("Erro ao deletar equipamento {}: {}", id, e);
-            e.to_string()
+            super::operator_errors::mapear_erro_sql(e)
         })?;
 
     let deleted = result.rows_affected() > 0;
@@ -970,7 +972,7 @@ pub async fn atualizar_status_equipamento(
         .bind(empresa_id)
         .fetch_optional(&pool)
         .await
-        .map_err(|e| e.to_string())?;
+        .map_err(super::operator_errors::mapear_erro_sql)?;
     let current_status = current_status.ok_or_else(|| "Equipamento não encontrado.".to_string())?;
     let normalized_current_status = normalize_status_key(&current_status);
     let is_regular = is_regular_status_transition(&normalized_current_status, &normalized_status);
@@ -1017,7 +1019,7 @@ pub async fn atualizar_status_equipamento(
         .await
         .map_err(|e| {
             error!("Erro ao atualizar status do equipamento {}: {}", id, e);
-            e.to_string()
+            super::operator_errors::mapear_erro_sql(e)
         })?
         .rows_affected();
 
@@ -1080,7 +1082,7 @@ pub async fn aprovar_orcamento(input: AprovarOrcamentoInput) -> Result<Equipamen
     if input.empresa_id != empresa_id { return Err("Empresa diferente do perfil autenticado.".to_string()); }
     let mut tx = pool.begin().await.map_err(|error| {
         error!("Erro ao iniciar transação de aprovação do equipamento {}: {}", input.equipamento_id, error);
-        error.to_string()
+        super::operator_errors::mapear_erro_sql(error)
     })?;
 
     let equipment: Option<(String, String, Option<f64>)> = sqlx::query_as(
@@ -1093,7 +1095,7 @@ pub async fn aprovar_orcamento(input: AprovarOrcamentoInput) -> Result<Equipamen
     .bind(empresa_id)
     .fetch_optional(&mut *tx)
     .await
-    .map_err(|error| format!("Erro ao validar equipamento para aprovação: {}", error))?;
+    .map_err(super::operator_errors::mapear_erro_sql)?;
 
     let Some((current_status, _current_updated_em, equipment_total)) = equipment else {
         return Err("Equipamento não encontrado na empresa do perfil autenticado.".to_string());
@@ -1114,7 +1116,7 @@ pub async fn aprovar_orcamento(input: AprovarOrcamentoInput) -> Result<Equipamen
     .bind(empresa_id)
     .fetch_optional(&mut *tx)
     .await
-    .map_err(|error| format!("Erro ao validar tenant da verificação: {}", error))?;
+    .map_err(super::operator_errors::mapear_erro_sql)?;
     if conflicting_verification.is_some() {
         return Err("A verificação técnica pertence a outra empresa e não pode ser usada nesta aprovação.".to_string());
     }
@@ -1131,7 +1133,7 @@ pub async fn aprovar_orcamento(input: AprovarOrcamentoInput) -> Result<Equipamen
     .bind(empresa_id)
     .fetch_optional(&mut *tx)
     .await
-    .map_err(|error| format!("Erro ao validar verificação para aprovação: {}", error))?;
+    .map_err(super::operator_errors::mapear_erro_sql)?;
 
     let Some((verification_id, verification_empresa_id, servicos_json, pecas_json, total_original)) = verification else {
         return Err("Não é possível aprovar sem uma verificação técnica.".to_string());
@@ -1227,7 +1229,7 @@ pub async fn aprovar_orcamento(input: AprovarOrcamentoInput) -> Result<Equipamen
     .bind(total)
     .execute(&mut *tx)
     .await
-    .map_err(|error| format!("Erro ao salvar pagamento do orçamento: {}", error))?
+    .map_err(super::operator_errors::mapear_erro_sql)?
     .rows_affected();
 
     if payment_updated_rows != 1 {
@@ -1249,7 +1251,7 @@ pub async fn aprovar_orcamento(input: AprovarOrcamentoInput) -> Result<Equipamen
     .bind(total)
     .execute(&mut *tx)
     .await
-    .map_err(|error| format!("Erro ao aprovar orçamento: {}", error))?
+    .map_err(super::operator_errors::mapear_erro_sql)?
     .rows_affected();
 
     if updated_rows == 0 {
@@ -1258,7 +1260,7 @@ pub async fn aprovar_orcamento(input: AprovarOrcamentoInput) -> Result<Equipamen
 
     tx.commit().await.map_err(|error| {
         error!("Erro ao confirmar aprovação do equipamento {}: {}", input.equipamento_id, error);
-        error.to_string()
+        super::operator_errors::mapear_erro_sql(error)
     })?;
 
     record_security_event(
@@ -1285,7 +1287,7 @@ pub async fn aprovar_orcamento(input: AprovarOrcamentoInput) -> Result<Equipamen
         .bind(empresa_id)
         .fetch_one(&pool)
         .await
-        .map_err(|error| format!("Erro ao carregar equipamento aprovado: {}", error))
+        .map_err(super::operator_errors::mapear_erro_sql)
 }
 
 #[cfg(test)]

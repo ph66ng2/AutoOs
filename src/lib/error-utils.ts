@@ -1,4 +1,5 @@
 import { AppError, NotificationMessage, NotificationType } from '@/types/notification';
+import { mensagemVisivelAoOperador } from '@/lib/operator-errors';
 
 /**
  * Formata um erro desconhecido (Error, string, unknown) em um AppError estruturado
@@ -18,6 +19,12 @@ export function formatAppError(params: {
     technicalDetails = error.stack;
   } else if (typeof error === 'string') {
     message = error;
+  }
+
+  const visivel = mensagemVisivelAoOperador(message);
+  if (visivel) {
+    message = visivel;
+    technicalDetails = undefined;
   }
 
   return {

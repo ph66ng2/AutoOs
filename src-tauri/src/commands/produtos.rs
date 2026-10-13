@@ -90,7 +90,7 @@ async fn query_product_page(
         .build_query_scalar::<i64>()
         .fetch_one(pool)
         .await
-        .map_err(|error| format!("Erro ao contar produtos: {}", error))?;
+        .map_err(super::operator_errors::mapear_erro_sql)?;
 
     let below_minimum = sqlx::query_scalar::<_, i64>(
         "SELECT COUNT(*) FROM produtos
@@ -100,9 +100,10 @@ async fn query_product_page(
     .bind(empresa_id)
     .fetch_one(pool)
     .await
-    .map_err(|error| format!("Erro ao contar produtos abaixo do mínimo: {}", error))?;
+    .map_err(super::operator_errors::mapear_erro_sql)?;
 
     let safe_page = page.unwrap_or(0).max(0) as i64;
+    let page_limit = i64::from(super::equipamentos::UI_PAGE_SIZE);
     let mut items_query = QueryBuilder::<Postgres>::new(PRODUTO_SELECT);
     add_product_filters(
         &mut items_query,
@@ -111,17 +112,20 @@ async fn query_product_page(
         categoria,
         apenas_estoque_baixo,
     );
+    // LIMIT e OFFSET são int8 aqui e em `query_product_rows`. O PostgreSQL
+    // reaproveita a consulta preparada pelo texto; misturar int4 e int8 no
+    // OFFSET quebra a tela com "incorrect binary data format in bind parameter 3".
     items_query
         .push(" ORDER BY id DESC LIMIT ")
-        .push_bind(super::equipamentos::UI_PAGE_SIZE)
+        .push_bind(page_limit)
         .push(" OFFSET ")
-        .push_bind(safe_page * i64::from(super::equipamentos::UI_PAGE_SIZE));
+        .push_bind(safe_page * page_limit);
 
     let items = items_query
         .build_query_as::<ProdutoRow>()
         .fetch_all(pool)
         .await
-        .map_err(|error| format!("Erro ao listar produtos: {}", error))?;
+        .map_err(super::operator_errors::mapear_erro_sql)?;
 
     Ok(PaginatedResult {
         items,
@@ -207,14 +211,35 @@ pub async fn listar_produtos(
     })?;
 
     let empresa_id = require_active_session_company_id(&pool).await?;
-    let offset = page.unwrap_or(0) * PAGE_SIZE;
+    query_product_rows(
+        &pool,
+        empresa_id,
+        page,
+        busca.as_deref(),
+        categoria.as_deref(),
+        apenas_estoque_baixo.unwrap_or(false),
+    )
+    .await
+}
+
+async fn query_product_rows(
+    pool: &PgPool,
+    empresa_id: i32,
+    page: Option<i32>,
+    busca: Option<&str>,
+    categoria: Option<&str>,
+    apenas_estoque_baixo: bool,
+) -> Result<Vec<ProdutoRow>, String> {
+    let safe_page = i64::from(page.unwrap_or(0).max(0));
+    let page_limit = i64::from(PAGE_SIZE);
+    let offset = safe_page * page_limit;
     let mut query_builder = sqlx::QueryBuilder::<sqlx::Postgres>::new(format!(
         "{} WHERE ativo = true",
         PRODUTO_SELECT,
     ));
 
     query_builder.push(" AND empresa_id = ").push_bind(empresa_id);
-    if let Some(busca) = busca.as_deref().map(str::trim).filter(|value| !value.is_empty()) {
+    if let Some(busca) = busca.map(str::trim).filter(|value| !value.is_empty()) {
         let pattern = format!("%{}%", busca);
         query_builder.push(" AND (");
         query_builder.push("codigo ILIKE ");
@@ -226,27 +251,27 @@ pub async fn listar_produtos(
         query_builder.push(")");
     }
 
-    if let Some(categoria) = categoria.as_deref().map(str::trim).filter(|value| !value.is_empty() && *value != "TODOS") {
+    if let Some(categoria) = categoria.map(str::trim).filter(|value| !value.is_empty() && *value != "TODOS") {
         query_builder.push(" AND categoria = ");
         query_builder.push_bind(categoria.to_string());
     }
 
-    if apenas_estoque_baixo.unwrap_or(false) {
+    if apenas_estoque_baixo {
         query_builder.push(" AND quantidade_estoque < quantidade_minima");
     }
 
     query_builder.push(" ORDER BY id DESC LIMIT ");
-    query_builder.push_bind(PAGE_SIZE);
+    query_builder.push_bind(page_limit);
     query_builder.push(" OFFSET ");
     query_builder.push_bind(offset);
 
     let rows = query_builder
         .build_query_as::<ProdutoRow>()
-        .fetch_all(&pool)
+        .fetch_all(pool)
         .await
         .map_err(|e| {
             error!("Erro ao listar produtos: {}", e);
-            e.to_string()
+            super::operator_errors::mapear_erro_sql(e)
         })?;
 
     info!("Produtos listados: {} itens (página {})", rows.len(), page.unwrap_or(0));
@@ -291,7 +316,7 @@ pub async fn buscar_produto(id: i32) -> Result<ProdutoRow, String> {
         .await
         .map_err(|e| {
             error!("Produto {} não encontrado: {}", id, e);
-            e.to_string()
+            super::operator_errors::mapear_erro_sql(e)
         })?;
 
     info!("Produto {} encontrado", id);
@@ -378,7 +403,7 @@ pub async fn criar_produto(input: ProdutoInput) -> Result<ProdutoRow, String> {
     .await
     .map_err(|e| {
         error!("Erro ao criar produto: {}", e);
-        e.to_string()
+        super::operator_errors::erro_sql_para_operador(&e)
     })?;
 
     let id: i32 = row.get("id");
@@ -474,7 +499,7 @@ pub async fn atualizar_produto(id: i32, input: ProdutoInput) -> Result<ProdutoRo
     .await
     .map_err(|e| {
         error!("Erro ao atualizar produto {}: {}", id, e);
-        e.to_string()
+        super::operator_errors::erro_sql_para_operador(&e)
     })?
     .rows_affected();
 
@@ -511,7 +536,7 @@ pub async fn deletar_produto(id: i32) -> Result<bool, String> {
         .await
         .map_err(|e| {
             error!("Erro ao deletar produto {}: {}", id, e);
-            e.to_string()
+            super::operator_errors::mapear_erro_sql(e)
         })?;
 
     let deleted = result.rows_affected() > 0;
@@ -539,7 +564,7 @@ pub async fn registrar_movimentacao_estoque(input: MovimentacaoEstoqueInput) -> 
 
     let pool = get_pool().await.map_err(|e| e.to_string())?;
     let empresa_id = require_active_session_company_id(&pool).await?;
-    let mut tx = pool.begin().await.map_err(|e| e.to_string())?;
+    let mut tx = pool.begin().await.map_err(super::operator_errors::mapear_erro_sql)?;
     let _saldo_resultante = if movimento == "ENTRADA" {
         sqlx::query_scalar(
             r#"
@@ -556,7 +581,7 @@ pub async fn registrar_movimentacao_estoque(input: MovimentacaoEstoqueInput) -> 
         .await
         .map_err(|e| {
             error!("Erro ao registrar entrada no produto {}: {}", input.produto_id, e);
-            e.to_string()
+            super::operator_errors::mapear_erro_sql(e)
         })?
         .ok_or_else(|| "Produto não encontrado".to_string())?
     } else {
@@ -577,7 +602,7 @@ pub async fn registrar_movimentacao_estoque(input: MovimentacaoEstoqueInput) -> 
         .await
         .map_err(|e| {
             error!("Erro ao registrar saída no produto {}: {}", input.produto_id, e);
-            e.to_string()
+            super::operator_errors::mapear_erro_sql(e)
         })? {
             Some(quantidade) => quantidade,
             None => {
@@ -590,7 +615,7 @@ pub async fn registrar_movimentacao_estoque(input: MovimentacaoEstoqueInput) -> 
                 .await
                 .map_err(|e| {
                     error!("Erro ao verificar saldo atual do produto {}: {}", input.produto_id, e);
-                    e.to_string()
+                    super::operator_errors::mapear_erro_sql(e)
                 })?;
 
                 let quantidade_atual = saldo_atual.ok_or_else(|| "Produto não encontrado".to_string())?;
@@ -616,12 +641,12 @@ pub async fn registrar_movimentacao_estoque(input: MovimentacaoEstoqueInput) -> 
     .await
     .map_err(|e| {
         error!("Erro ao registrar movimentação de estoque do produto {}: {}", input.produto_id, e);
-        e.to_string()
+        super::operator_errors::mapear_erro_sql(e)
     })?;
 
     tx.commit().await.map_err(|e| {
         error!("Erro ao confirmar transação de movimentação do produto {}: {}", input.produto_id, e);
-        e.to_string()
+        super::operator_errors::mapear_erro_sql(e)
     })?;
 
     record_security_event(
@@ -681,5 +706,133 @@ mod tests {
         assert!(calculate_resulting_stock(2, 3, "SAIDA")
             .unwrap_err()
             .contains("insuficiente"));
+    }
+
+    /// Só devolve a URL quando ela foi passada de propósito e aponta para um
+    /// banco descartável em localhost. Sem isso o teste não conecta e não
+    /// executa DROP SCHEMA.
+    fn banco_descartavel_explicito() -> Option<String> {
+        let url = std::env::var("AUTOOS_PAGE_TEST_DATABASE_URL").ok()?;
+        let parsed = url::Url::parse(&url).ok()?;
+        let host = parsed.host_str().unwrap_or("");
+        let local = host.is_empty() || host == "localhost" || host == "127.0.0.1" || host == "::1";
+        let nome = parsed.path().trim_start_matches('/').to_ascii_lowercase();
+        let descartavel = nome.contains("test") || nome.contains("descart");
+        if local && descartavel {
+            Some(url)
+        } else {
+            None
+        }
+    }
+
+    async fn pool_no_schema_de_teste(url: &str) -> PgPool {
+        let mut separado = url::Url::parse(url).unwrap();
+        separado.query_pairs_mut().clear().append_pair(
+            "options",
+            "-csearch_path=autoos_insumos_page_test",
+        );
+        sqlx::postgres::PgPoolOptions::new()
+            .max_connections(1)
+            .connect(separado.as_str())
+            .await
+            .unwrap_or_else(|error| panic!("não foi possível abrir o schema de teste: {error}"))
+    }
+
+    /// Pagina Insumos pelos dois comandos que compartilham o mesmo SQL.
+    /// Antes, um OFFSET int4 e outro int8 faziam o PostgreSQL recusar o bind 3.
+    #[tokio::test]
+    async fn paginar_insumos_reaproveita_a_consulta_sem_erro() {
+        let Some(url) = banco_descartavel_explicito() else {
+            eprintln!(
+                "paginar_insumos ignorado: defina AUTOOS_PAGE_TEST_DATABASE_URL com um banco descartável em localhost"
+            );
+            return;
+        };
+        let admin = sqlx::postgres::PgPoolOptions::new()
+            .max_connections(1)
+            .connect(&url)
+            .await
+            .unwrap_or_else(|error| panic!("Postgres local indisponível para paginar insumos: {error}"));
+        sqlx::query("DROP SCHEMA IF EXISTS autoos_insumos_page_test CASCADE")
+            .execute(&admin)
+            .await
+            .unwrap();
+        sqlx::query("CREATE SCHEMA autoos_insumos_page_test")
+            .execute(&admin)
+            .await
+            .unwrap();
+        sqlx::query(
+            "CREATE TABLE autoos_insumos_page_test.produtos (
+                id serial primary key,
+                empresa_id integer,
+                codigo text,
+                nome text,
+                descricao text,
+                categoria text,
+                quantidade_estoque integer,
+                quantidade_minima integer,
+                quantidade_maxima integer,
+                unidade_medida text,
+                localizacao text,
+                preco_custo numeric,
+                preco_venda numeric,
+                margem_lucro numeric,
+                marca_original text,
+                tipo_cartucho text,
+                cor text,
+                rendimento integer,
+                modelos_compativeis text,
+                fornecedor_principal text,
+                prazo_entrega integer,
+                ativo boolean,
+                criado_em timestamptz default now(),
+                atualizado_em timestamptz default now()
+            )",
+        )
+        .execute(&admin)
+        .await
+        .unwrap();
+        for numero in 1..=12 {
+            sqlx::query(
+                "INSERT INTO autoos_insumos_page_test.produtos
+                    (empresa_id, codigo, nome, categoria, quantidade_estoque, quantidade_minima, quantidade_maxima, preco_custo, preco_venda, ativo)
+                 VALUES (7, $1, $2, 'OUTROS', 4, 1, 20, 1, 2, true)",
+            )
+            .bind(format!("SKU-{numero:02}"))
+            .bind(format!("Insumo {numero}"))
+            .execute(&admin)
+            .await
+            .unwrap();
+        }
+
+        let pool = pool_no_schema_de_teste(&url).await;
+        let lista = query_product_rows(&pool, 7, Some(0), None, None, false)
+            .await
+            .expect("listar insumos");
+        let pagina = query_product_page(&pool, 7, Some(1), None, None, false)
+            .await
+            .expect("paginar insumos depois da listagem");
+        assert_eq!(lista.len(), 12, "a listagem não pode falhar nem cortar a página de 50");
+        assert_eq!(pagina.total, 12);
+        assert_eq!(pagina.items.len(), 2, "a segunda página de 10 itens fica com o restante");
+        assert!(
+            pagina.items.iter().all(|item| lista.iter().any(|outro| outro.id == item.id)),
+            "a página precisa pertencer à mesma listagem"
+        );
+
+        let outro = pool_no_schema_de_teste(&url).await;
+        let primeira = query_product_page(&outro, 7, Some(0), None, None, false)
+            .await
+            .expect("abrir a primeira página");
+        let lista_depois = query_product_rows(&outro, 7, Some(0), None, None, false)
+            .await
+            .expect("listar depois de paginar");
+        assert_eq!(primeira.items.len(), 10);
+        assert_eq!(lista_depois.len(), 12);
+
+        sqlx::query("DROP SCHEMA IF EXISTS autoos_insumos_page_test CASCADE")
+            .execute(&admin)
+            .await
+            .unwrap();
     }
 }
