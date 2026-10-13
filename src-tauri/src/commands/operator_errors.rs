@@ -46,6 +46,13 @@ pub fn mapear_erro_sql(error: sqlx::Error) -> String {
     erro_sql_para_operador(&error)
 }
 
+/// Erros de processo, arquivo e serialização não possuem SQLSTATE.
+/// Registra o detalhe técnico sem expô-lo na resposta do comando.
+pub fn mapear_erro_operacional(error: impl std::fmt::Display) -> String {
+    tracing::error!(erro = %error, "erro operacional ocultado do operador");
+    MENSAGEM_ERRO_GENERICO.to_string()
+}
+
 pub fn erro_sql_para_operador(error: &sqlx::Error) -> String {
     if let Some(codigo) = mensagem_duplicidade_sql(error) {
         let restricao = error
