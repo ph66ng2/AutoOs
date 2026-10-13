@@ -11,13 +11,33 @@ pub fn mensagem_para_sqlstate(code: Option<&str>, constraint: Option<&str>) -> O
     Some(texto_para_operador(constraint.unwrap_or("")).to_string())
 }
 
+pub const MENSAGEM_ERRO_GENERICO: &str = "Não foi possível concluir esta ação. O detalhe técnico foi registrado no log do aplicativo.";
+
+/// Código que o frontend reconhece. Não é uma frase, então um texto solto com
+/// "23505" ou "unicidade" não entra nesta forma.
+pub fn codigo_duplicado_estruturado(code: Option<&str>, constraint: Option<&str>) -> Option<String> {
+    if code != Some("23505") {
+        return None;
+    }
+    let nome = constraint.unwrap_or("");
+    if nome.is_empty() || !nome.chars().all(|caractere| caractere.is_ascii_alphanumeric() || caractere == '_') {
+        return Some("AUTOOS:23505".to_string());
+    }
+    Some(format!("AUTOOS:23505:{nome}"))
+}
+
 pub fn mensagem_duplicidade_sql(error: &sqlx::Error) -> Option<String> {
     let database = error.as_database_error()?;
-    mensagem_para_sqlstate(database.code().as_deref(), database.constraint())
+    codigo_duplicado_estruturado(database.code().as_deref(), database.constraint())
 }
 
 pub fn erro_sql_para_operador(error: &sqlx::Error) -> String {
-    mensagem_duplicidade_sql(error).unwrap_or_else(|| error.to_string())
+    if let Some(codigo) = mensagem_duplicidade_sql(error) {
+        tracing::error!(erro = %error, "cadastro duplicado; o operador recebe só o código estruturado");
+        return codigo;
+    }
+    tracing::error!(erro = %error, "erro de banco ocultado do operador");
+    MENSAGEM_ERRO_GENERICO.to_string()
 }
 
 fn texto_para_operador(constraint: &str) -> &'static str {
@@ -99,8 +119,14 @@ mod tests {
         );
         assert!(super::mensagem_duplicidade_sql(&protocolo).is_none());
         assert_eq!(
-            super::erro_sql_para_operador(&protocolo),
-            protocolo.to_string()
+            super::codigo_duplicado_estruturado(Some("23505"), Some("ux_clientes_documento_ativo")).as_deref(),
+            Some("AUTOOS:23505:ux_clientes_documento_ativo")
         );
+        assert!(super::codigo_duplicado_estruturado(Some("23502"), Some("ux_clientes_documento_ativo")).is_none());
+        let visivel = super::erro_sql_para_operador(&protocolo);
+        assert_eq!(visivel, super::MENSAGEM_ERRO_GENERICO);
+        assert!(!visivel.contains("23505"));
+        assert!(!visivel.to_lowercase().contains("constraint"));
+        assert!(!visivel.contains("duplicate key"));
     }
 }

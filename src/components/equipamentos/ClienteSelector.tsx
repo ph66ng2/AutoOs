@@ -262,9 +262,9 @@ export function ClienteSelector({
       setModo("selecionado");
       onClienteSelecionado(novoCliente);
     } catch (err: unknown) {
-      const msg = err?.toString() || "";
-      const duplicado = mensagemCadastroDuplicado(msg);
-      if (duplicado || msg.includes("UNIQUE") || msg.toLowerCase().includes("cpf/cnpj já está cadastrado")) {
+      const msg = err instanceof Error ? err.message : String(err ?? "");
+      const duplicado = mensagemCadastroDuplicado(err);
+      if (duplicado || msg.toLowerCase().includes("cpf/cnpj já está cadastrado")) {
         warning("Clientes", duplicado ?? "Já existe um cliente com este CPF/CNPJ. Use a busca para encontrá-lo.");
       } else {
         console.error("Erro ao criar cliente:", err);

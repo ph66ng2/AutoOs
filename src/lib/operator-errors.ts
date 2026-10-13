@@ -48,28 +48,34 @@ function textoDoErro(value: unknown): string {
   return "";
 }
 
+const CODIGO_DUPLICADO = /^AUTOOS:23505(?::([A-Za-z_][A-Za-z0-9_]*))?$/;
+
+export const MENSAGEM_ERRO_GENERICO = "Não foi possível concluir esta ação. O detalhe técnico foi registrado no log do aplicativo.";
+
+/** Só o código AUTOOS:23505 que o backend monta a partir do SQLSTATE. Texto solto não conta. */
 export function erroDeCadastroDuplicado(value: unknown): boolean {
-  const lower = textoDoErro(value).toLowerCase();
-  return lower.includes("duplicate key")
-    || lower.includes("unique constraint")
-    || lower.includes("23505")
-    || lower.includes("unicidade")
-    || lower.includes("chave duplicada");
+  return CODIGO_DUPLICADO.test(textoDoErro(value).trim());
 }
 
 function nomeDaRestricao(raw: string): string {
-  const match = raw.match(/(?:constraint|unicidade) "([^"]+)"/i);
-  return match?.[1] ?? "";
+  return CODIGO_DUPLICADO.exec(raw.trim())?.[1] ?? "";
 }
 
-/** Traduz chave duplicada do banco para uma frase de balcão. Mantém os outros erros. */
+/** Traduz o código estruturado de duplicidade. Mantém os outros erros. */
 export function mensagemCadastroDuplicado(value: unknown): string | null {
-  const raw = textoDoErro(value);
-  if (!erroDeCadastroDuplicado(raw)) return null;
+  const raw = textoDoErro(value).trim();
+  if (!CODIGO_DUPLICADO.test(raw)) return null;
 
   const restricao = nomeDaRestricao(raw);
   const especifica = MENSAGENS.find((item) => item.restricoes.includes(restricao));
   if (especifica) return especifica.texto;
   if (restricao.endsWith("_pkey")) return MENSAGEM_CHAVE_PRIMARIA;
   return MENSAGEM_GENERICA;
+}
+
+export function textoTecnicoDeBanco(value: unknown): boolean {
+  if (erroDeCadastroDuplicado(value)) return false;
+  const raw = textoDoErro(value);
+  if (!raw) return false;
+  return /sqlstate|duplicate key|unique constraint|syntax error|violates|constraint "|chave duplicada|unicidade|pg_[a-z0-9_]+|\b235\d{2}\b|\b42\d{3}\b/i.test(raw);
 }

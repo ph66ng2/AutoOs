@@ -1,5 +1,6 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { formatAppError, formatErrorForCopy, formatToastMessage } from '../error-utils';
+import { MENSAGEM_ERRO_GENERICO } from '../operator-errors';
 
 describe('error-utils', () => {
   describe('formatAppError', () => {
@@ -26,17 +27,55 @@ describe('error-utils', () => {
       expect(result.message).toBe('Ocorreu um erro inesperado.');
     });
 
-    it('traduz duplicidade e a cópia não leva a constraint nem o texto técnico', () => {
-      const raw = 'duplicate key value violates unique constraint "ux_clientes_documento_ativo" SQLSTATE 23505';
-      const result = formatAppError({ context: 'Clientes', action: 'Salvar cliente', error: new Error(raw) });
+    it('traduz o código estruturado de duplicidade e a cópia não leva a constraint', () => {
+      const result = formatAppError({
+        context: 'Clientes',
+        action: 'Salvar cliente',
+        error: new Error('AUTOOS:23505:ux_clientes_documento_ativo'),
+      });
       expect(result.message).toContain('cliente já está cadastrado');
       expect(result.technicalDetails).toBeUndefined();
       const copied = formatErrorForCopy(result);
       expect(copied).toContain('cliente já está cadastrado');
       expect(copied).not.toContain('ux_clientes_documento_ativo');
       expect(copied.toLowerCase()).not.toContain('constraint');
-      expect(copied).not.toContain('duplicate key');
       expect(copied).not.toContain('23505');
+    });
+
+    it('troca SQL que não é duplicidade por mensagem genérica e não copia o detalhe', () => {
+      const spy = vi.spyOn(console, 'error').mockImplementation(() => {});
+      const raw = 'syntax error at or near "FROM" (SQLSTATE 42601)';
+      const err = new Error(raw);
+      const result = formatAppError({ context: 'Insumos', action: 'Salvar insumo', error: err });
+      expect(result.message).toBe(MENSAGEM_ERRO_GENERICO);
+      expect(result.technicalDetails).toBeUndefined();
+      expect(result.message).not.toContain('42601');
+      expect(result.message.toLowerCase()).not.toContain('syntax');
+      const copied = formatErrorForCopy(result);
+      expect(copied).toContain(MENSAGEM_ERRO_GENERICO);
+      expect(copied).not.toContain('42601');
+      expect(copied.toLowerCase()).not.toContain('syntax');
+      expect(copied.toLowerCase()).not.toContain('constraint');
+      expect(copied).not.toContain('Detalhes Técnicos');
+      expect(spy).toHaveBeenCalledWith('[AutoOS] detalhe técnico ocultado do operador', err);
+      spy.mockRestore();
+    });
+
+    it('não copia SQL nem constraint mesmo quando os detalhes técnicos vêm preenchidos', () => {
+      const copied = formatErrorForCopy({
+        type: 'error',
+        context: 'Insumos',
+        action: 'Salvar insumo',
+        message: 'Falhou ao salvar',
+        timestamp: new Date('2024-01-01'),
+        technicalDetails: 'duplicate key value violates unique constraint "ux_produtos_codigo_key" SQLSTATE 23505',
+      });
+      expect(copied).toContain('Falhou ao salvar');
+      expect(copied).not.toContain('ux_produtos_codigo_key');
+      expect(copied.toLowerCase()).not.toContain('constraint');
+      expect(copied).not.toContain('23505');
+      expect(copied).not.toContain('duplicate key');
+      expect(copied).not.toContain('Detalhes Técnicos');
     });
   });
 
