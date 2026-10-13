@@ -4,10 +4,12 @@
 -- (ux_produtos_empresa_codigo_ativo) e, separadamente, entre produtos ativos
 -- ainda sem empresa. ON CONFLICT (codigo) não encontra índice nesse schema.
 --
--- Inserção apenas dos SKUs ausentes da empresa alvo. Não atualiza nome,
--- saldo, preço nem qualquer outra coluna de um produto que já existe, e não
+-- Inserção apenas dos SKUs que ainda não existem na empresa alvo, ativos ou
+-- inativos. Um código desativado não ganha outra linha ativa com o saldo do
+-- snapshot. Não atualiza nome, saldo, preço nem qualquer outra coluna, e não
 -- lê nem apaga movimentacoes_estoque. O snapshot de quantidade e preço vale
--- só para o primeiro insert daquele código na empresa.
+-- só para o primeiro insert daquele código na empresa, gravado direto em
+-- quantidade_estoque, sem movimentação de entrada.
 --
 -- Empresa alvo:
 --   * seed.empresa_id, quando definido e existente (id numérico);
@@ -26,7 +28,7 @@ DECLARE
     empresa_count integer;
     snapshot_count integer;
     inserted_count integer;
-    active_count integer;
+    present_count integer;
 BEGIN
     configured := NULLIF(BTRIM(current_setting('seed.empresa_id', true)), '');
     IF configured IS NOT NULL THEN
@@ -148,21 +150,29 @@ BEGIN
         snapshot.margem_lucro,
         true
     FROM seed_inventario_snapshot AS snapshot
-    ON CONFLICT (empresa_id, codigo) WHERE ativo = true DO NOTHING;
+    WHERE NOT EXISTS (
+        SELECT 1
+        FROM produtos AS existente
+        WHERE existente.empresa_id = target_empresa
+          AND existente.codigo = snapshot.codigo
+    );
 
     GET DIAGNOSTICS inserted_count = ROW_COUNT;
 
-    SELECT COUNT(*)::integer INTO active_count
-    FROM produtos AS produto
-    JOIN seed_inventario_snapshot AS snapshot ON snapshot.codigo = produto.codigo
-    WHERE produto.ativo = true
-      AND produto.empresa_id = target_empresa;
+    SELECT COUNT(*)::integer INTO present_count
+    FROM seed_inventario_snapshot AS snapshot
+    WHERE EXISTS (
+        SELECT 1
+        FROM produtos AS produto
+        WHERE produto.empresa_id = target_empresa
+          AND produto.codigo = snapshot.codigo
+    );
 
-    IF active_count <> snapshot_count THEN
-        RAISE EXCEPTION 'A empresa % ficou com % SKUs ativos do inventário; esperados %.', target_empresa, active_count, snapshot_count;
+    IF present_count <> snapshot_count THEN
+        RAISE EXCEPTION 'A empresa % ficou com % SKUs do inventário; esperados %.', target_empresa, present_count, snapshot_count;
     END IF;
 
-    RAISE NOTICE 'Seed de estoque: empresa %, inseridos agora %, ativos no inventário %. Saldos, preços e movimentações existentes não foram alterados.',
-        target_empresa, inserted_count, active_count;
+    RAISE NOTICE 'Seed de estoque: empresa %, inseridos agora %, presentes no inventário %. Saldos, preços, inativos e movimentações existentes não foram alterados. Insert novo não gera movimentação de entrada.',
+        target_empresa, inserted_count, present_count;
 END
 $seed$;
