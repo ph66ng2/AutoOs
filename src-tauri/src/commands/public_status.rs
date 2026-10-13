@@ -102,22 +102,22 @@ pub async fn obter_link_status_publico(
     .bind(LINK_AFTER_DELIVERY_DAYS as i32)
     .fetch_optional(&pool)
     .await
-    .map_err(|error| format!("Erro ao consultar o link público: {}", error))?;
+    .map_err(super::operator_errors::mapear_erro_sql)?;
 
     let Some(row) = row else {
         return Ok(None);
     };
 
-    let status: String = row.try_get("status").map_err(|error| error.to_string())?;
+    let status: String = row.try_get("status").map_err(super::operator_errors::mapear_erro_sql)?;
     let created_at: Option<String> = row
         .try_get("criado_em")
-        .map_err(|error| error.to_string())?;
+        .map_err(super::operator_errors::mapear_erro_sql)?;
     let expires_at: Option<String> = row
         .try_get("expira_em")
-        .map_err(|error| error.to_string())?;
+        .map_err(super::operator_errors::mapear_erro_sql)?;
     let last_access_at: Option<String> = row
         .try_get("ultimo_acesso_em")
-        .map_err(|error| error.to_string())?;
+        .map_err(super::operator_errors::mapear_erro_sql)?;
 
     Ok(Some(PublicStatusLinkInfo {
         status,
@@ -142,14 +142,14 @@ async fn create_link(
 ) -> Result<PublicStatusLinkCreated, String> {
     let pool = get_pool().await.map_err(|error| error.to_string())?;
     let empresa_id = require_active_session_company_id(&pool).await?;
-    let mut tx = pool.begin().await.map_err(|error| error.to_string())?;
+    let mut tx = pool.begin().await.map_err(super::operator_errors::mapear_erro_sql)?;
 
     let portal_enabled: bool = sqlx::query_scalar(
         "SELECT public_enabled FROM public.status_portal_config WHERE singleton = TRUE FOR SHARE",
     )
     .fetch_optional(&mut *tx)
     .await
-    .map_err(|error| error.to_string())?
+    .map_err(super::operator_errors::mapear_erro_sql)?
     .unwrap_or(false);
     if !portal_enabled {
         return Err("A emissão de links públicos está pausada.".to_string());
@@ -165,15 +165,15 @@ async fn create_link(
     .bind(empresa_id)
     .fetch_optional(&mut *tx)
     .await
-    .map_err(|error| error.to_string())?
+    .map_err(super::operator_errors::mapear_erro_sql)?
     .ok_or_else(|| "Equipamento não encontrado na empresa do perfil ativo.".to_string())?;
 
     let status: String = equipment
         .try_get("status")
-        .map_err(|error| error.to_string())?;
+        .map_err(super::operator_errors::mapear_erro_sql)?;
     let status_changed_at: Option<DateTime<Utc>> = equipment
         .try_get("status_alterado_em")
-        .map_err(|error| error.to_string())?;
+        .map_err(super::operator_errors::mapear_erro_sql)?;
     let now = Utc::now();
     if status == "ENTREGUE" && status_changed_at.is_none() {
         return Err(
@@ -197,7 +197,7 @@ async fn create_link(
     .bind(equipamento_id)
     .execute(&mut *tx)
     .await
-    .map_err(|error| error.to_string())?
+    .map_err(super::operator_errors::mapear_erro_sql)?
     .rows_affected();
 
     let mut token_bytes = [0_u8; 32];
@@ -218,9 +218,9 @@ async fn create_link(
     .bind(actor.id)
     .execute(&mut *tx)
     .await
-    .map_err(|error| format!("Erro ao gerar o link de acompanhamento: {}", error))?;
+    .map_err(super::operator_errors::mapear_erro_sql)?;
 
-    tx.commit().await.map_err(|error| error.to_string())?;
+    tx.commit().await.map_err(super::operator_errors::mapear_erro_sql)?;
 
     record_security_event(
         "PUBLIC_STATUS_LINK_CREATED",
@@ -245,14 +245,14 @@ pub async fn revogar_link_status_publico(equipamento_id: i32) -> Result<bool, St
     let actor = require_permission(PERMISSION_MANAGE_STATUS_LINKS)?;
     let pool = get_pool().await.map_err(|error| error.to_string())?;
     let empresa_id = require_active_session_company_id(&pool).await?;
-    let mut tx = pool.begin().await.map_err(|error| error.to_string())?;
+    let mut tx = pool.begin().await.map_err(super::operator_errors::mapear_erro_sql)?;
 
     sqlx::query("SELECT id FROM equipamentos WHERE id = $1 AND empresa_id = $2 FOR UPDATE")
         .bind(equipamento_id)
         .bind(empresa_id)
         .fetch_optional(&mut *tx)
         .await
-        .map_err(|error| error.to_string())?
+        .map_err(super::operator_errors::mapear_erro_sql)?
         .ok_or_else(|| "Equipamento não encontrado na empresa do perfil ativo.".to_string())?;
 
     let revoked = sqlx::query(
@@ -265,10 +265,10 @@ pub async fn revogar_link_status_publico(equipamento_id: i32) -> Result<bool, St
     .bind(equipamento_id)
     .execute(&mut *tx)
     .await
-    .map_err(|error| error.to_string())?
+    .map_err(super::operator_errors::mapear_erro_sql)?
     .rows_affected();
 
-    tx.commit().await.map_err(|error| error.to_string())?;
+    tx.commit().await.map_err(super::operator_errors::mapear_erro_sql)?;
 
     if revoked > 0 {
         record_security_event(

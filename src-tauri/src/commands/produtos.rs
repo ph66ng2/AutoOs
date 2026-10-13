@@ -90,7 +90,7 @@ async fn query_product_page(
         .build_query_scalar::<i64>()
         .fetch_one(pool)
         .await
-        .map_err(|error| format!("Erro ao contar produtos: {}", error))?;
+        .map_err(super::operator_errors::mapear_erro_sql)?;
 
     let below_minimum = sqlx::query_scalar::<_, i64>(
         "SELECT COUNT(*) FROM produtos
@@ -100,7 +100,7 @@ async fn query_product_page(
     .bind(empresa_id)
     .fetch_one(pool)
     .await
-    .map_err(|error| format!("Erro ao contar produtos abaixo do mínimo: {}", error))?;
+    .map_err(super::operator_errors::mapear_erro_sql)?;
 
     let safe_page = page.unwrap_or(0).max(0) as i64;
     let page_limit = i64::from(super::equipamentos::UI_PAGE_SIZE);
@@ -125,7 +125,7 @@ async fn query_product_page(
         .build_query_as::<ProdutoRow>()
         .fetch_all(pool)
         .await
-        .map_err(|error| format!("Erro ao listar produtos: {}", error))?;
+        .map_err(super::operator_errors::mapear_erro_sql)?;
 
     Ok(PaginatedResult {
         items,
@@ -271,7 +271,7 @@ async fn query_product_rows(
         .await
         .map_err(|e| {
             error!("Erro ao listar produtos: {}", e);
-            e.to_string()
+            super::operator_errors::mapear_erro_sql(e)
         })?;
 
     info!("Produtos listados: {} itens (página {})", rows.len(), page.unwrap_or(0));
@@ -316,7 +316,7 @@ pub async fn buscar_produto(id: i32) -> Result<ProdutoRow, String> {
         .await
         .map_err(|e| {
             error!("Produto {} não encontrado: {}", id, e);
-            e.to_string()
+            super::operator_errors::mapear_erro_sql(e)
         })?;
 
     info!("Produto {} encontrado", id);
@@ -536,7 +536,7 @@ pub async fn deletar_produto(id: i32) -> Result<bool, String> {
         .await
         .map_err(|e| {
             error!("Erro ao deletar produto {}: {}", id, e);
-            e.to_string()
+            super::operator_errors::mapear_erro_sql(e)
         })?;
 
     let deleted = result.rows_affected() > 0;
@@ -564,7 +564,7 @@ pub async fn registrar_movimentacao_estoque(input: MovimentacaoEstoqueInput) -> 
 
     let pool = get_pool().await.map_err(|e| e.to_string())?;
     let empresa_id = require_active_session_company_id(&pool).await?;
-    let mut tx = pool.begin().await.map_err(|e| e.to_string())?;
+    let mut tx = pool.begin().await.map_err(super::operator_errors::mapear_erro_sql)?;
     let _saldo_resultante = if movimento == "ENTRADA" {
         sqlx::query_scalar(
             r#"
@@ -581,7 +581,7 @@ pub async fn registrar_movimentacao_estoque(input: MovimentacaoEstoqueInput) -> 
         .await
         .map_err(|e| {
             error!("Erro ao registrar entrada no produto {}: {}", input.produto_id, e);
-            e.to_string()
+            super::operator_errors::mapear_erro_sql(e)
         })?
         .ok_or_else(|| "Produto não encontrado".to_string())?
     } else {
@@ -602,7 +602,7 @@ pub async fn registrar_movimentacao_estoque(input: MovimentacaoEstoqueInput) -> 
         .await
         .map_err(|e| {
             error!("Erro ao registrar saída no produto {}: {}", input.produto_id, e);
-            e.to_string()
+            super::operator_errors::mapear_erro_sql(e)
         })? {
             Some(quantidade) => quantidade,
             None => {
@@ -615,7 +615,7 @@ pub async fn registrar_movimentacao_estoque(input: MovimentacaoEstoqueInput) -> 
                 .await
                 .map_err(|e| {
                     error!("Erro ao verificar saldo atual do produto {}: {}", input.produto_id, e);
-                    e.to_string()
+                    super::operator_errors::mapear_erro_sql(e)
                 })?;
 
                 let quantidade_atual = saldo_atual.ok_or_else(|| "Produto não encontrado".to_string())?;
@@ -641,12 +641,12 @@ pub async fn registrar_movimentacao_estoque(input: MovimentacaoEstoqueInput) -> 
     .await
     .map_err(|e| {
         error!("Erro ao registrar movimentação de estoque do produto {}: {}", input.produto_id, e);
-        e.to_string()
+        super::operator_errors::mapear_erro_sql(e)
     })?;
 
     tx.commit().await.map_err(|e| {
         error!("Erro ao confirmar transação de movimentação do produto {}: {}", input.produto_id, e);
-        e.to_string()
+        super::operator_errors::mapear_erro_sql(e)
     })?;
 
     record_security_event(

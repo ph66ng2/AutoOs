@@ -13,6 +13,13 @@ pub fn mensagem_para_sqlstate(code: Option<&str>, constraint: Option<&str>) -> O
 
 pub const MENSAGEM_ERRO_GENERICO: &str = "Não foi possível concluir esta ação. O detalhe técnico foi registrado no log do aplicativo.";
 
+/// Código genérico de banco. O SQLSTATE que não é 23505 fica só no log.
+pub const CODIGO_BANCO: &str = "AUTOOS:DB";
+
+fn resposta_estruturada(codigo: &str, mensagem: &str) -> String {
+    format!("{codigo}\n{mensagem}")
+}
+
 /// Código que o frontend reconhece. Não é uma frase, então um texto solto com
 /// "23505" ou "unicidade" não entra nesta forma.
 pub fn codigo_duplicado_estruturado(code: Option<&str>, constraint: Option<&str>) -> Option<String> {
@@ -31,13 +38,25 @@ pub fn mensagem_duplicidade_sql(error: &sqlx::Error) -> Option<String> {
     codigo_duplicado_estruturado(database.code().as_deref(), database.constraint())
 }
 
+/// Mapeador único dos erros sqlx que um comando Tauri devolve ao operador.
+/// Duplicidade (SQLSTATE 23505) sai como `AUTOOS:23505` mais a frase.
+/// Bind, conexão, tabela inexistente e qualquer outro erro de banco saem como
+/// `AUTOOS:DB` mais a frase genérica. O texto técnico fica no log.
+pub fn mapear_erro_sql(error: sqlx::Error) -> String {
+    erro_sql_para_operador(&error)
+}
+
 pub fn erro_sql_para_operador(error: &sqlx::Error) -> String {
     if let Some(codigo) = mensagem_duplicidade_sql(error) {
-        tracing::error!(erro = %error, "cadastro duplicado; o operador recebe só o código estruturado");
-        return codigo;
+        let restricao = error
+            .as_database_error()
+            .and_then(|banco| banco.constraint())
+            .unwrap_or("");
+        tracing::error!(erro = %error, "cadastro duplicado; o operador recebe o código estruturado e a frase");
+        return resposta_estruturada(&codigo, texto_para_operador(restricao));
     }
     tracing::error!(erro = %error, "erro de banco ocultado do operador");
-    MENSAGEM_ERRO_GENERICO.to_string()
+    resposta_estruturada(CODIGO_BANCO, MENSAGEM_ERRO_GENERICO)
 }
 
 fn texto_para_operador(constraint: &str) -> &'static str {
@@ -124,9 +143,110 @@ mod tests {
         );
         assert!(super::codigo_duplicado_estruturado(Some("23502"), Some("ux_clientes_documento_ativo")).is_none());
         let visivel = super::erro_sql_para_operador(&protocolo);
-        assert_eq!(visivel, super::MENSAGEM_ERRO_GENERICO);
+        let (codigo, mensagem) = visivel.split_once('\n').expect("código e frase");
+        assert_eq!(codigo, super::CODIGO_BANCO);
+        assert_eq!(mensagem, super::MENSAGEM_ERRO_GENERICO);
         assert!(!visivel.contains("23505"));
         assert!(!visivel.to_lowercase().contains("constraint"));
         assert!(!visivel.contains("duplicate key"));
+    }
+
+    #[derive(Debug)]
+    struct BancoFalso {
+        code: &'static str,
+        constraint: Option<&'static str>,
+        message: &'static str,
+    }
+
+    impl std::fmt::Display for BancoFalso {
+        fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            write!(formatter, "{} (SQLSTATE {})", self.message, self.code)
+        }
+    }
+
+    impl std::error::Error for BancoFalso {}
+
+    impl sqlx::error::DatabaseError for BancoFalso {
+        fn message(&self) -> &str {
+            self.message
+        }
+
+        fn code(&self) -> Option<std::borrow::Cow<'_, str>> {
+            Some(std::borrow::Cow::Borrowed(self.code))
+        }
+
+        fn constraint(&self) -> Option<&str> {
+            self.constraint
+        }
+
+        fn kind(&self) -> sqlx::error::ErrorKind {
+            if self.code == "23505" {
+                sqlx::error::ErrorKind::UniqueViolation
+            } else {
+                sqlx::error::ErrorKind::Other
+            }
+        }
+
+        fn as_error(&self) -> &(dyn std::error::Error + Send + Sync + 'static) {
+            self
+        }
+
+        fn as_error_mut(&mut self) -> &mut (dyn std::error::Error + Send + Sync + 'static) {
+            self
+        }
+
+        fn into_error(self: Box<Self>) -> Box<dyn std::error::Error + Send + Sync + 'static> {
+            self
+        }
+    }
+
+    fn assert_banco_generico(error: sqlx::Error) {
+        let tecnico = error.to_string();
+        let visivel = super::mapear_erro_sql(error);
+        let (codigo, mensagem) = visivel.split_once('\n').expect("código e frase");
+        assert_eq!(codigo, super::CODIGO_BANCO);
+        assert_eq!(mensagem, super::MENSAGEM_ERRO_GENERICO);
+        assert!(!visivel.contains(&tecnico));
+        assert!(!mensagem.contains("SQLSTATE"));
+        assert!(!mensagem.contains("23505"));
+        assert!(!mensagem.contains("42"));
+    }
+
+    #[test]
+    fn duplicidade_reais_traz_codigo_e_frase_sem_o_texto_tecnico() {
+        let error = sqlx::Error::database(BancoFalso {
+            code: "23505",
+            constraint: Some("ux_clientes_documento_ativo"),
+            message: "duplicate key value violates unique constraint \"ux_clientes_documento_ativo\"",
+        });
+        let visivel = super::mapear_erro_sql(error);
+        let (codigo, mensagem) = visivel.split_once('\n').expect("código e frase");
+        assert_eq!(codigo, "AUTOOS:23505:ux_clientes_documento_ativo");
+        assert!(mensagem.contains("cliente já está cadastrado"));
+        assert!(!mensagem.contains("23505"));
+        assert!(!mensagem.contains("ux_clientes_documento_ativo"));
+        assert!(!mensagem.to_lowercase().contains("constraint"));
+        assert!(!mensagem.contains("duplicate key"));
+    }
+
+    #[test]
+    fn bind_conexao_e_tabela_inexistente_viram_codigo_generico() {
+        assert_banco_generico(sqlx::Error::Encode(Box::new(std::io::Error::new(
+            std::io::ErrorKind::InvalidData,
+            "bind do parâmetro $3 incompatível",
+        ))));
+        assert_banco_generico(sqlx::Error::PoolTimedOut);
+        assert_banco_generico(sqlx::Error::Io(std::io::Error::new(
+            std::io::ErrorKind::ConnectionRefused,
+            "connection refused 127.0.0.1:5432",
+        )));
+        assert_banco_generico(sqlx::Error::database(BancoFalso {
+            code: "42P01",
+            constraint: None,
+            message: "relation \"clientes\" does not exist",
+        }));
+        assert_banco_generico(sqlx::Error::Protocol(
+            "duplicate key value violates unique constraint \"clientes_pkey\" SQLSTATE 23505".to_string(),
+        ));
     }
 }

@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect } from 'vitest';
 import { formatAppError, formatErrorForCopy, formatToastMessage } from '../error-utils';
 import { MENSAGEM_ERRO_GENERICO } from '../operator-errors';
 
@@ -42,39 +42,26 @@ describe('error-utils', () => {
       expect(copied).not.toContain('23505');
     });
 
-    it('troca SQL que não é duplicidade por mensagem genérica e não copia o detalhe', () => {
-      const spy = vi.spyOn(console, 'error').mockImplementation(() => {});
-      const raw = 'syntax error at or near "FROM" (SQLSTATE 42601)';
-      const err = new Error(raw);
-      const result = formatAppError({ context: 'Insumos', action: 'Salvar insumo', error: err });
+    it('mostra a frase do código AUTOOS:DB e não esconde mensagem com 23xxx ou 42xxx', () => {
+      const negocio = 'A OS 23500 do lote 42001 permanece em aberto.';
+      const intacto = formatAppError({ context: 'Equipamentos', action: 'Salvar', error: negocio });
+      expect(intacto.message).toBe(negocio);
+      expect(formatErrorForCopy(intacto)).toContain('23500');
+      expect(formatErrorForCopy(intacto)).toContain('42001');
+
+      const solto = 'syntax error at or near "FROM" (SQLSTATE 42601)';
+      expect(formatAppError({ context: 'Insumos', action: 'Salvar insumo', error: solto }).message).toBe(solto);
+
+      const estruturado = `AUTOOS:DB\n${MENSAGEM_ERRO_GENERICO}`;
+      const result = formatAppError({ context: 'Insumos', action: 'Salvar insumo', error: new Error(estruturado) });
       expect(result.message).toBe(MENSAGEM_ERRO_GENERICO);
       expect(result.technicalDetails).toBeUndefined();
-      expect(result.message).not.toContain('42601');
-      expect(result.message.toLowerCase()).not.toContain('syntax');
       const copied = formatErrorForCopy(result);
       expect(copied).toContain(MENSAGEM_ERRO_GENERICO);
+      expect(copied).not.toContain('AUTOOS:DB');
       expect(copied).not.toContain('42601');
       expect(copied.toLowerCase()).not.toContain('syntax');
       expect(copied.toLowerCase()).not.toContain('constraint');
-      expect(copied).not.toContain('Detalhes Técnicos');
-      expect(spy).toHaveBeenCalledWith('[AutoOS] detalhe técnico ocultado do operador', err);
-      spy.mockRestore();
-    });
-
-    it('não copia SQL nem constraint mesmo quando os detalhes técnicos vêm preenchidos', () => {
-      const copied = formatErrorForCopy({
-        type: 'error',
-        context: 'Insumos',
-        action: 'Salvar insumo',
-        message: 'Falhou ao salvar',
-        timestamp: new Date('2024-01-01'),
-        technicalDetails: 'duplicate key value violates unique constraint "ux_produtos_codigo_key" SQLSTATE 23505',
-      });
-      expect(copied).toContain('Falhou ao salvar');
-      expect(copied).not.toContain('ux_produtos_codigo_key');
-      expect(copied.toLowerCase()).not.toContain('constraint');
-      expect(copied).not.toContain('23505');
-      expect(copied).not.toContain('duplicate key');
       expect(copied).not.toContain('Detalhes Técnicos');
     });
   });

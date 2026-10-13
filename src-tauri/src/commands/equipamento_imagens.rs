@@ -208,7 +208,7 @@ async fn ensure_equipment_exists(equipamento_id: i32) -> Result<(), String> {
         .await
         .map_err(|e| {
             error!("Erro ao validar equipamento {}: {}", equipamento_id, e);
-            e.to_string()
+            super::operator_errors::mapear_erro_sql(e)
         })?;
 
     if exists.is_none() {
@@ -237,7 +237,7 @@ pub async fn listar_imagens_equipamento(
         .await
         .map_err(|e| {
             error!("Erro ao listar imagens do equipamento {}: {}", equipamento_id, e);
-            e.to_string()
+            super::operator_errors::mapear_erro_sql(e)
         })
 }
 
@@ -259,7 +259,7 @@ pub async fn substituir_imagens_equipamento(
     let pool = get_pool().await.map_err(|e| e.to_string())?;
     let mut tx = pool.begin().await.map_err(|e| {
         error!("Erro ao iniciar transação de imagens: {}", e);
-        e.to_string()
+        super::operator_errors::mapear_erro_sql(e)
     })?;
 
     sqlx::query("DELETE FROM equipamento_imagens WHERE equipamento_id = $1")
@@ -271,7 +271,7 @@ pub async fn substituir_imagens_equipamento(
                 "Erro ao limpar imagens existentes do equipamento {}: {}",
                 equipamento_id, e
             );
-            e.to_string()
+            super::operator_errors::mapear_erro_sql(e)
         })?;
 
     for (index, imagem) in imagens.into_iter().enumerate() {
@@ -315,13 +315,13 @@ pub async fn substituir_imagens_equipamento(
                 "Erro ao inserir imagem {} do equipamento {}: {}",
                 index, equipamento_id, e
             );
-            e.to_string()
+            super::operator_errors::mapear_erro_sql(e)
         })?;
     }
 
     tx.commit().await.map_err(|e| {
         error!("Erro ao concluir transação de imagens: {}", e);
-        e.to_string()
+        super::operator_errors::mapear_erro_sql(e)
     })?;
 
     info!("Imagens do equipamento {} atualizadas", equipamento_id);
@@ -353,7 +353,7 @@ pub async fn adicionar_imagem_equipamento_raw(
     .await
     .map_err(|e| {
         error!("Erro ao contar imagens do equipamento {}: {}", equipamento_id, e);
-        e.to_string()
+        super::operator_errors::mapear_erro_sql(e)
     })?;
 
     if count.0 >= MAX_IMAGES_PER_EQUIPMENT as i64 {
@@ -397,7 +397,7 @@ pub async fn adicionar_imagem_equipamento_raw(
     .await
     .map_err(|e| {
         error!("Erro ao inserir imagem do equipamento {}: {}", equipamento_id, e);
-        e.to_string()
+        super::operator_errors::mapear_erro_sql(e)
     })?;
 
     info!("Imagem adicionada ao equipamento {}", equipamento_id);
@@ -415,7 +415,7 @@ pub async fn remover_imagem_equipamento(imagem_id: i32) -> Result<(), String> {
         .await
         .map_err(|e| {
             error!("Erro ao remover imagem {}: {}", imagem_id, e);
-            e.to_string()
+            super::operator_errors::mapear_erro_sql(e)
         })?;
 
     if result.rows_affected() == 0 {
@@ -449,7 +449,7 @@ pub async fn adicionar_imagem_equipamento(
             "Erro ao contar imagens do equipamento {}: {}",
             equipamento_id, e
         );
-        e.to_string()
+        super::operator_errors::mapear_erro_sql(e)
     })?;
 
     if count.0 as usize >= MAX_IMAGES_PER_EQUIPMENT {
@@ -501,7 +501,7 @@ pub async fn adicionar_imagem_equipamento(
                 "Erro ao inserir imagem no equipamento {}: {}",
                 equipamento_id, e
             );
-            e.to_string()
+            super::operator_errors::mapear_erro_sql(e)
         })?;
 
     let select_query = format!(
@@ -518,6 +518,6 @@ pub async fn adicionar_imagem_equipamento(
                 "Erro ao buscar imagem inserida no equipamento {}: {}",
                 equipamento_id, e
             );
-            e.to_string()
+            super::operator_errors::mapear_erro_sql(e)
         })
 }

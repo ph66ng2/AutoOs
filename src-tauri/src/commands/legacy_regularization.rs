@@ -153,7 +153,7 @@ async fn actor_company(actor: &SecurityProfileSummary) -> Result<(i32, String), 
     .bind(actor.id)
     .fetch_optional(&pool)
     .await
-    .map_err(|e| e.to_string())?
+    .map_err(super::operator_errors::mapear_erro_sql)?
     .ok_or_else(|| "O perfil administrador ativo não está vinculado a uma empresa ativa.".to_string())
 }
 
@@ -196,7 +196,7 @@ pub async fn previsualizar_vinculo_empresa_perfil() -> Result<VinculoEmpresaPerf
     .bind(actor.id)
     .fetch_optional(&pool)
     .await
-    .map_err(|e| e.to_string())?
+    .map_err(super::operator_errors::mapear_erro_sql)?
     .ok_or_else(|| "O perfil administrador autenticado não é mais o perfil ativo.".to_string())?;
     if empresa_id.is_some() {
         return Err("O perfil administrador já possui empresa vinculada. A associação existente não pode ser sobrescrita.".to_string());
@@ -206,7 +206,7 @@ pub async fn previsualizar_vinculo_empresa_perfil() -> Result<VinculoEmpresaPerf
     )
     .fetch_all(&pool)
     .await
-    .map_err(|e| e.to_string())?;
+    .map_err(super::operator_errors::mapear_erro_sql)?;
     Ok(VinculoEmpresaPerfilPrevia {
         perfil_id: actor.id,
         perfil_nome: actor.nome,
@@ -232,22 +232,22 @@ pub async fn vincular_perfil_ativo_empresa(
     }
 
     let pool = get_pool().await.map_err(|e| e.to_string())?;
-    let mut tx = pool.begin().await.map_err(|e| e.to_string())?;
+    let mut tx = pool.begin().await.map_err(super::operator_errors::mapear_erro_sql)?;
     sqlx::query("SET TRANSACTION ISOLATION LEVEL SERIALIZABLE")
         .execute(&mut *tx)
         .await
-        .map_err(|e| e.to_string())?;
+        .map_err(super::operator_errors::mapear_erro_sql)?;
     sqlx::query("SET LOCAL statement_timeout = '15s'")
         .execute(&mut *tx)
         .await
-        .map_err(|e| e.to_string())?;
+        .map_err(super::operator_errors::mapear_erro_sql)?;
     let empresa_atual: Option<i32> = sqlx::query_scalar(
         "SELECT empresa_id FROM security_profiles WHERE id = $1 AND ativo = true AND is_default = true FOR UPDATE",
     )
     .bind(actor.id)
     .fetch_optional(&mut *tx)
     .await
-    .map_err(|e| e.to_string())?
+    .map_err(super::operator_errors::mapear_erro_sql)?
     .ok_or_else(|| "O perfil administrador autenticado não é mais o perfil ativo.".to_string())?;
     if empresa_atual.is_some() {
         return Err(
@@ -263,7 +263,7 @@ pub async fn vincular_perfil_ativo_empresa(
         .bind(empresa_id)
         .fetch_optional(&mut *tx)
         .await
-        .map_err(|e| e.to_string())?
+        .map_err(super::operator_errors::mapear_erro_sql)?
         .ok_or_else(|| "A empresa selecionada não existe ou deixou de estar ativa.".to_string())?;
         (empresa_id, nome, false)
     } else {
@@ -274,7 +274,7 @@ pub async fn vincular_perfil_ativo_empresa(
         .bind(&email)
         .fetch_optional(&mut *tx)
         .await
-        .map_err(|e| e.to_string())?
+        .map_err(super::operator_errors::mapear_erro_sql)?
         .is_some()
         {
             return Err("Já existe uma empresa com esse email. Gere novamente a prévia e selecione o cadastro existente se ele estiver ativo.".to_string());
@@ -287,7 +287,7 @@ pub async fn vincular_perfil_ativo_empresa(
         .bind(cnpj)
         .fetch_one(&mut *tx)
         .await
-        .map_err(|e| e.to_string())?;
+        .map_err(super::operator_errors::mapear_erro_sql)?;
         (id, nome, true)
     };
 
@@ -298,7 +298,7 @@ pub async fn vincular_perfil_ativo_empresa(
     .bind(actor.id)
     .execute(&mut *tx)
     .await
-    .map_err(|e| e.to_string())?
+    .map_err(super::operator_errors::mapear_erro_sql)?
     .rows_affected();
     if updated != 1 {
         return Err(
@@ -314,8 +314,8 @@ pub async fn vincular_perfil_ativo_empresa(
     .bind(empresa_id)
     .execute(&mut *tx)
     .await
-    .map_err(|e| e.to_string())?;
-    tx.commit().await.map_err(|e| e.to_string())?;
+    .map_err(super::operator_errors::mapear_erro_sql)?;
+    tx.commit().await.map_err(super::operator_errors::mapear_erro_sql)?;
     Ok(VinculoEmpresaPerfilResultado {
         empresa_id,
         empresa_nome,
@@ -326,24 +326,24 @@ pub async fn vincular_perfil_ativo_empresa(
 async fn load_snapshot(conn: &mut PgConnection, empresa_id: i32) -> Result<Snapshot, String> {
     let clients = sqlx::query_as::<_, TenantRow>(
         "SELECT id, empresa_id FROM clientes WHERE empresa_id IS NULL OR empresa_id = $1 ORDER BY id",
-    ).bind(empresa_id).fetch_all(&mut *conn).await.map_err(|e| e.to_string())?;
+    ).bind(empresa_id).fetch_all(&mut *conn).await.map_err(super::operator_errors::mapear_erro_sql)?;
     let client_ids: Vec<i32> = clients.iter().map(|row| row.id).collect();
     let equipment = sqlx::query_as::<_, EquipmentRow>(
         "SELECT id, cliente_id, empresa_id FROM equipamentos WHERE cliente_id = ANY($1) OR (cliente_id IS NULL AND empresa_id IS NULL) ORDER BY id",
-    ).bind(&client_ids).fetch_all(&mut *conn).await.map_err(|e| e.to_string())?;
+    ).bind(&client_ids).fetch_all(&mut *conn).await.map_err(super::operator_errors::mapear_erro_sql)?;
     let equipment_ids: Vec<i32> = equipment.iter().map(|row| row.id).collect();
     let verifications = sqlx::query_as::<_, DependencyRow>(
         "SELECT id, equipamento_id, empresa_id FROM verificacoes WHERE equipamento_id = ANY($1) ORDER BY id",
-    ).bind(&equipment_ids).fetch_all(&mut *conn).await.map_err(|e| e.to_string())?;
+    ).bind(&equipment_ids).fetch_all(&mut *conn).await.map_err(super::operator_errors::mapear_erro_sql)?;
     let images = sqlx::query_as::<_, DependencyRow>(
         "SELECT id, equipamento_id, empresa_id FROM equipamento_imagens WHERE equipamento_id = ANY($1) ORDER BY id",
-    ).bind(&equipment_ids).fetch_all(&mut *conn).await.map_err(|e| e.to_string())?;
+    ).bind(&equipment_ids).fetch_all(&mut *conn).await.map_err(super::operator_errors::mapear_erro_sql)?;
     let communications = sqlx::query_as::<_, DependencyRow>(
         "SELECT id, equipamento_id, empresa_id FROM comunicacoes WHERE equipamento_id = ANY($1) ORDER BY id",
-    ).bind(&equipment_ids).fetch_all(&mut *conn).await.map_err(|e| e.to_string())?;
+    ).bind(&equipment_ids).fetch_all(&mut *conn).await.map_err(super::operator_errors::mapear_erro_sql)?;
     let contacts = sqlx::query_as::<_, ContactRow>(
         "SELECT id, cliente_id, empresa_id FROM cliente_contatos WHERE cliente_id = ANY($1) ORDER BY id",
-    ).bind(&client_ids).fetch_all(&mut *conn).await.map_err(|e| e.to_string())?;
+    ).bind(&client_ids).fetch_all(&mut *conn).await.map_err(super::operator_errors::mapear_erro_sql)?;
 
     let mut conflicts = Vec::new();
     let legacy_clients: HashSet<i32> = clients
@@ -470,9 +470,9 @@ fn snapshot_digest(
 
 async fn lock_in_order(conn: &mut PgConnection, empresa_id: i32) -> Result<(), String> {
     let clients: Vec<i32> = sqlx::query_scalar("SELECT id FROM clientes WHERE empresa_id IS NULL OR empresa_id = $1 ORDER BY id FOR UPDATE")
-        .bind(empresa_id).fetch_all(&mut *conn).await.map_err(|e| e.to_string())?;
+        .bind(empresa_id).fetch_all(&mut *conn).await.map_err(super::operator_errors::mapear_erro_sql)?;
     let equipment: Vec<i32> = sqlx::query_scalar("SELECT id FROM equipamentos WHERE cliente_id = ANY($1) OR (cliente_id IS NULL AND empresa_id IS NULL) ORDER BY id FOR UPDATE")
-        .bind(&clients).fetch_all(&mut *conn).await.map_err(|e| e.to_string())?;
+        .bind(&clients).fetch_all(&mut *conn).await.map_err(super::operator_errors::mapear_erro_sql)?;
     for sql in [
         "SELECT id FROM verificacoes WHERE equipamento_id = ANY($1) ORDER BY id FOR UPDATE",
         "SELECT id FROM equipamento_imagens WHERE equipamento_id = ANY($1) ORDER BY id FOR UPDATE",
@@ -482,7 +482,7 @@ async fn lock_in_order(conn: &mut PgConnection, empresa_id: i32) -> Result<(), S
             .bind(&equipment)
             .fetch_all(&mut *conn)
             .await
-            .map_err(|e| e.to_string())?;
+            .map_err(super::operator_errors::mapear_erro_sql)?;
     }
     sqlx::query(
         "SELECT id FROM cliente_contatos WHERE cliente_id = ANY($1) ORDER BY id FOR UPDATE",
@@ -490,7 +490,7 @@ async fn lock_in_order(conn: &mut PgConnection, empresa_id: i32) -> Result<(), S
     .bind(&clients)
     .fetch_all(&mut *conn)
     .await
-    .map_err(|e| e.to_string())?;
+    .map_err(super::operator_errors::mapear_erro_sql)?;
     Ok(())
 }
 
@@ -512,7 +512,7 @@ async fn ensure_owner(
         .bind(empresa_id)
         .fetch_one(conn)
         .await
-        .map_err(|e| e.to_string())?;
+        .map_err(super::operator_errors::mapear_erro_sql)?;
     if count != ids.len() as i64 {
         return Err(format!(
             "A validação final encontrou vínculo inconsistente em {}. A transação foi cancelada.",
@@ -527,7 +527,7 @@ pub async fn previsualizar_regularizacao_legados() -> Result<RegularizacaoLegado
     let actor = require_permission(PERMISSION_MANAGE_PROFILES)?;
     let (empresa_id, empresa_nome) = actor_company(&actor).await?;
     let pool = get_pool().await.map_err(|e| e.to_string())?;
-    let mut conn = pool.acquire().await.map_err(|e| e.to_string())?;
+    let mut conn = pool.acquire().await.map_err(super::operator_errors::mapear_erro_sql)?;
     let snapshot = load_snapshot(&mut conn, empresa_id).await?;
     let expires_at = Utc::now() + Duration::minutes(PREVIEW_TTL_MINUTES);
     let digest = snapshot_digest(&snapshot, actor.id, expires_at)?;
@@ -580,15 +580,15 @@ pub async fn executar_regularizacao_legados(
     }
 
     let pool = get_pool().await.map_err(|e| e.to_string())?;
-    let mut tx = pool.begin().await.map_err(|e| e.to_string())?;
+    let mut tx = pool.begin().await.map_err(super::operator_errors::mapear_erro_sql)?;
     sqlx::query("SET TRANSACTION ISOLATION LEVEL SERIALIZABLE")
         .execute(&mut *tx)
         .await
-        .map_err(|e| e.to_string())?;
+        .map_err(super::operator_errors::mapear_erro_sql)?;
     sqlx::query("SET LOCAL statement_timeout = '15s'")
         .execute(&mut *tx)
         .await
-        .map_err(|e| e.to_string())?;
+        .map_err(super::operator_errors::mapear_erro_sql)?;
     lock_in_order(&mut tx, empresa_id).await?;
     let snapshot = load_snapshot(&mut tx, empresa_id).await?;
     if snapshot_digest(&snapshot, actor.id, stored.expires_at)? != stored.digest {
@@ -614,19 +614,19 @@ pub async fn executar_regularizacao_legados(
             .execute(conn)
             .await
             .map(|r| r.rows_affected())
-            .map_err(|e| e.to_string())
+            .map_err(super::operator_errors::mapear_erro_sql)
     }
     let clientes = if snapshot.clientes_atualizar.is_empty() {
         0
     } else {
         sqlx::query("UPDATE clientes SET empresa_id = $1, atualizado_em = NOW() WHERE id = ANY($2) AND empresa_id IS NULL")
-            .bind(empresa_id).bind(&snapshot.clientes_atualizar).execute(&mut *tx).await.map_err(|e| e.to_string())?.rows_affected()
+            .bind(empresa_id).bind(&snapshot.clientes_atualizar).execute(&mut *tx).await.map_err(super::operator_errors::mapear_erro_sql)?.rows_affected()
     };
     let equipamentos = if snapshot.equipamentos_atualizar.is_empty() {
         0
     } else {
         sqlx::query("UPDATE equipamentos SET empresa_id = $1, atualizado_em = NOW() WHERE id = ANY($2) AND empresa_id IS NULL")
-            .bind(empresa_id).bind(&snapshot.equipamentos_atualizar).execute(&mut *tx).await.map_err(|e| e.to_string())?.rows_affected()
+            .bind(empresa_id).bind(&snapshot.equipamentos_atualizar).execute(&mut *tx).await.map_err(super::operator_errors::mapear_erro_sql)?.rows_affected()
     };
     let verificacoes = update_ids(
         &mut tx,
@@ -697,8 +697,8 @@ pub async fn executar_regularizacao_legados(
     .await?;
     sqlx::query("INSERT INTO security_audit_log (event_type, profile_id, profile_name, details, success, empresa_id) VALUES ('LEGACY_DATA_REGULARIZED', $1, $2, $3, true, $4)")
         .bind(actor.id).bind(&actor.nome).bind(format!("rules_version={}; clientes={}; equipamentos={}; verificacoes={}; imagens={}; comunicacoes={}", RULES_VERSION, clientes, equipamentos, verificacoes, imagens, comunicacoes)).bind(empresa_id)
-        .execute(&mut *tx).await.map_err(|e| e.to_string())?;
-    tx.commit().await.map_err(|e| e.to_string())?;
+        .execute(&mut *tx).await.map_err(super::operator_errors::mapear_erro_sql)?;
+    tx.commit().await.map_err(super::operator_errors::mapear_erro_sql)?;
     Ok(RegularizacaoLegadoResultado {
         empresa_id,
         clientes,

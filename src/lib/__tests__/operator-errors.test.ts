@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { erroDeCadastroDuplicado, mensagemCadastroDuplicado } from "@/lib/operator-errors";
+import { erroDeCadastroDuplicado, mensagemCadastroDuplicado, mensagemDeBanco, mensagemVisivelAoOperador } from "@/lib/operator-errors";
 
 describe("mensagem de cadastro duplicado", () => {
   it("explica cliente repetido a partir do código estruturado, sem chave nem restrição", () => {
@@ -37,6 +37,27 @@ describe("mensagem de cadastro duplicado", () => {
     for (const texto of soltos) {
       expect(erroDeCadastroDuplicado(texto)).toBe(false);
       expect(mensagemCadastroDuplicado(texto)).toBeNull();
+      expect(mensagemVisivelAoOperador(texto)).toBeNull();
     }
+  });
+
+  it("mostra a frase embutida no código e deixa número de negócio passar inteiro", () => {
+    const negocio = "A OS 23500 do lote 42001 permanece em aberto. A unicidade do patrimônio foi conferida.";
+    expect(erroDeCadastroDuplicado(negocio)).toBe(false);
+    expect(mensagemDeBanco(negocio)).toBeNull();
+    expect(mensagemVisivelAoOperador(negocio)).toBeNull();
+
+    const banco = "AUTOOS:DB\nNão foi possível concluir esta ação. O detalhe técnico foi registrado no log do aplicativo.";
+    expect(erroDeCadastroDuplicado(banco)).toBe(false);
+    expect(mensagemDeBanco(banco)).toBe("Não foi possível concluir esta ação. O detalhe técnico foi registrado no log do aplicativo.");
+    expect(mensagemDeBanco(banco)).not.toContain("AUTOOS:DB");
+    expect(mensagemDeBanco(banco)).not.toContain("42601");
+
+    const duplicado = "AUTOOS:23505:ux_clientes_documento_ativo\nfrase que não deve vazar a restrição";
+    expect(erroDeCadastroDuplicado(duplicado)).toBe(true);
+    const visivel = mensagemVisivelAoOperador(duplicado);
+    expect(visivel).toContain("cliente já está cadastrado");
+    expect(visivel).not.toContain("ux_clientes_documento_ativo");
+    expect(visivel).not.toContain("23505");
   });
 });

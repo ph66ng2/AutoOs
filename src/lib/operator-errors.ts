@@ -48,34 +48,45 @@ function textoDoErro(value: unknown): string {
   return "";
 }
 
-const CODIGO_DUPLICADO = /^AUTOOS:23505(?::([A-Za-z_][A-Za-z0-9_]*))?$/;
+const CODIGO_DUPLICADO = /^AUTOOS:23505(?::([A-Za-z_][A-Za-z0-9_]*))?(?:\n([\s\S]*))?$/;
+const CODIGO_BANCO = /^AUTOOS:DB(?:\n([\s\S]*))?$/;
 
 export const MENSAGEM_ERRO_GENERICO = "Não foi possível concluir esta ação. O detalhe técnico foi registrado no log do aplicativo.";
 
-/** Só o código AUTOOS:23505 que o backend monta a partir do SQLSTATE. Texto solto não conta. */
-export function erroDeCadastroDuplicado(value: unknown): boolean {
-  return CODIGO_DUPLICADO.test(textoDoErro(value).trim());
+function lerDuplicado(value: unknown): { restricao: string; embutida: string } | null {
+  const match = CODIGO_DUPLICADO.exec(textoDoErro(value).trim());
+  if (!match) return null;
+  return { restricao: match[1] ?? "", embutida: (match[2] ?? "").trim() };
 }
 
-function nomeDaRestricao(raw: string): string {
-  return CODIGO_DUPLICADO.exec(raw.trim())?.[1] ?? "";
+/** Só o código AUTOOS:23505 que o backend monta a partir do SQLSTATE. Texto solto não conta. */
+export function erroDeCadastroDuplicado(value: unknown): boolean {
+  return lerDuplicado(value) !== null;
 }
 
 /** Traduz o código estruturado de duplicidade. Mantém os outros erros. */
 export function mensagemCadastroDuplicado(value: unknown): string | null {
-  const raw = textoDoErro(value).trim();
-  if (!CODIGO_DUPLICADO.test(raw)) return null;
+  const lido = lerDuplicado(value);
+  if (!lido) return null;
 
-  const restricao = nomeDaRestricao(raw);
-  const especifica = MENSAGENS.find((item) => item.restricoes.includes(restricao));
+  const especifica = MENSAGENS.find((item) => item.restricoes.includes(lido.restricao));
   if (especifica) return especifica.texto;
-  if (restricao.endsWith("_pkey")) return MENSAGEM_CHAVE_PRIMARIA;
+  if (lido.restricao.endsWith("_pkey")) return MENSAGEM_CHAVE_PRIMARIA;
+  if (lido.embutida) return lido.embutida;
   return MENSAGEM_GENERICA;
 }
 
-export function textoTecnicoDeBanco(value: unknown): boolean {
-  if (erroDeCadastroDuplicado(value)) return false;
-  const raw = textoDoErro(value);
-  if (!raw) return false;
-  return /sqlstate|duplicate key|unique constraint|syntax error|violates|constraint "|chave duplicada|unicidade|pg_[a-z0-9_]+|\b235\d{2}\b|\b42\d{3}\b/i.test(raw);
+/** Frase do código AUTOOS:DB. Número parecido com SQLSTATE no texto não entra aqui. */
+export function mensagemDeBanco(value: unknown): string | null {
+  const match = CODIGO_BANCO.exec(textoDoErro(value).trim());
+  if (!match) return null;
+  return (match[1] ?? "").trim() || MENSAGEM_ERRO_GENERICO;
+}
+
+/**
+ * Frase para o operador quando o backend mandou código estruturado.
+ * Sem código, devolve null para a mensagem original seguir inteira.
+ */
+export function mensagemVisivelAoOperador(value: unknown): string | null {
+  return mensagemCadastroDuplicado(value) ?? mensagemDeBanco(value);
 }

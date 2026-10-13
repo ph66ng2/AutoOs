@@ -74,15 +74,15 @@ pub async fn salvar_verificacao_tecnica(mut input: VerificacaoInput) -> Result<V
     }
     input.empresa_id = Some(empresa_id);
     parse_servicos(input.servicos_necessarios.as_deref().unwrap_or("[]"))?;
-    let mut tx = pool.begin().await.map_err(|e| e.to_string())?;
+    let mut tx = pool.begin().await.map_err(super::operator_errors::mapear_erro_sql)?;
     let status: Option<String> = sqlx::query_scalar("SELECT status FROM equipamentos WHERE id = $1 AND empresa_id = $2 FOR UPDATE")
-        .bind(input.equipamento_id).bind(empresa_id).fetch_optional(&mut *tx).await.map_err(|e| e.to_string())?;
+        .bind(input.equipamento_id).bind(empresa_id).fetch_optional(&mut *tx).await.map_err(super::operator_errors::mapear_erro_sql)?;
     let status = status.ok_or("Equipamento não encontrado na empresa ativa.")?;
     if matches!(status.as_str(), "APROVADO" | "EM_MANUTENCAO" | "AGUARDANDO_PECA" | "PRONTO" | "ENTREGUE") {
         return Err("Use Alterar Orçamento para modificar serviços de uma OS já aprovada.".to_string());
     }
     sqlx::query("UPDATE equipamentos SET atualizado_em = NOW() WHERE id = $1")
-        .bind(input.equipamento_id).execute(&mut *tx).await.map_err(|e| e.to_string())?;
+        .bind(input.equipamento_id).execute(&mut *tx).await.map_err(super::operator_errors::mapear_erro_sql)?;
 
     // Verificar se já existe uma verificação para este equipamento
     let existing: Option<(i32,)> = sqlx::query_as(
@@ -97,7 +97,7 @@ pub async fn salvar_verificacao_tecnica(mut input: VerificacaoInput) -> Result<V
     .await
     .map_err(|e| {
         error!("Erro ao verificar existência de verificação: {}", e);
-        e.to_string()
+        super::operator_errors::mapear_erro_sql(e)
     })?;
 
     if let Some((id,)) = existing {
@@ -136,10 +136,10 @@ pub async fn salvar_verificacao_tecnica(mut input: VerificacaoInput) -> Result<V
         .await
         .map_err(|e| {
             error!("Erro ao atualizar verificação {}: {}", id, e);
-            e.to_string()
+            super::operator_errors::mapear_erro_sql(e)
         })?;
 
-        tx.commit().await.map_err(|e| e.to_string())?;
+        tx.commit().await.map_err(super::operator_errors::mapear_erro_sql)?;
         if let Some(actor) = financial_actor.as_ref() {
             record_security_event(
                 "VERIFICATION_FINANCIAL_SAVED",
@@ -189,10 +189,10 @@ pub async fn salvar_verificacao_tecnica(mut input: VerificacaoInput) -> Result<V
     .await
     .map_err(|e| {
         error!("Erro ao criar verificação: {}", e);
-        e.to_string()
+        super::operator_errors::mapear_erro_sql(e)
     })?;
 
-    tx.commit().await.map_err(|e| e.to_string())?;
+    tx.commit().await.map_err(super::operator_errors::mapear_erro_sql)?;
     if let Some(actor) = financial_actor.as_ref() {
         record_security_event(
             "VERIFICATION_FINANCIAL_SAVED",
@@ -222,7 +222,7 @@ pub async fn buscar_verificacao_tecnica(
     .bind(equipamento_id)
     .fetch_optional(&pool)
     .await
-    .map_err(|e| e.to_string())?;
+    .map_err(super::operator_errors::mapear_erro_sql)?;
     let Some((resolved_empresa_id,)) = equipment_empresa_id else {
         return Err("Equipamento não encontrado.".to_string());
     };
@@ -242,7 +242,7 @@ pub async fn buscar_verificacao_tecnica(
         .await
         .map_err(|e| {
             error!("Verificação do equipamento {} não encontrada: {}", equipamento_id, e);
-            e.to_string()
+            super::operator_errors::mapear_erro_sql(e)
         })?;
 
     info!("Verificação do equipamento {} encontrada", equipamento_id);
@@ -285,7 +285,7 @@ pub async fn atualizar_servicos_verificacao(
     let active_empresa_id = require_active_session_company_id(&pool).await?;
     let mut tx = pool.begin().await.map_err(|error| {
         error!("Erro ao iniciar ajuste da verificação: {}", error);
-        error.to_string()
+        super::operator_errors::mapear_erro_sql(error)
     })?;
 
     let equipment: Option<(Option<i32>, String, bool)> = sqlx::query_as(
@@ -296,7 +296,7 @@ pub async fn atualizar_servicos_verificacao(
     .bind(expected_updated_em.as_deref())
     .fetch_optional(&mut *tx)
     .await
-    .map_err(|e| e.to_string())?;
+    .map_err(super::operator_errors::mapear_erro_sql)?;
     let Some((resolved_empresa_id, status, versao_valida)) = equipment else {
         return Err("Equipamento não encontrado.".to_string());
     };
@@ -323,7 +323,7 @@ pub async fn atualizar_servicos_verificacao(
         .bind(resolved_id)
         .fetch_optional(&mut *tx)
         .await
-        .map_err(|e| format!("Erro ao validar tenant da verificação: {}", e))?;
+        .map_err(super::operator_errors::mapear_erro_sql)?;
         if conflicting_verification.is_some() {
             return Err(
                 "A verificação técnica pertence a outra empresa e não pode ser ajustada.".to_string(),
@@ -345,7 +345,7 @@ pub async fn atualizar_servicos_verificacao(
     .await
     .map_err(|e| {
         error!("Erro ao buscar verificação existente: {}", e);
-        e.to_string()
+        super::operator_errors::mapear_erro_sql(e)
     })?;
 
     let (verificacao_id, old_servicos, old_pecas, old_total) = match existing {
@@ -369,7 +369,7 @@ pub async fn atualizar_servicos_verificacao(
         let ja_aprovados: Vec<String> = sqlx::query_scalar(
             "SELECT servico_id FROM orcamento_servicos_decisao
              WHERE verificacao_id = $1 AND empresa_id = $2 AND decisao = 'APROVADO'"
-        ).bind(verificacao_id).bind(empresa_id).fetch_all(&mut *tx).await.map_err(|e| e.to_string())?;
+        ).bind(verificacao_id).bind(empresa_id).fetch_all(&mut *tx).await.map_err(super::operator_errors::mapear_erro_sql)?;
         let mut aprovados: HashSet<String> = ja_aprovados.into_iter().chain(antigos.keys().cloned()).collect();
         for novo in normalizar_servicos(servicos_json.as_deref().unwrap_or("[]"))? {
             let id = novo["id"].as_str().ok_or("Serviço sem identificador")?;
@@ -419,7 +419,7 @@ pub async fn atualizar_servicos_verificacao(
     .await
     .map_err(|e| {
         error!("Erro ao atualizar serviços da verificação {}: {}", verificacao_id, e);
-        e.to_string()
+        super::operator_errors::mapear_erro_sql(e)
     })?;
 
     let equipment_updated = sqlx::query(
@@ -434,7 +434,7 @@ pub async fn atualizar_servicos_verificacao(
         .await
         .map_err(|e| {
             error!("Erro ao sincronizar valor_orcamento do equipamento {}: {}", equipamento_id, e);
-            e.to_string()
+            super::operator_errors::mapear_erro_sql(e)
         })?
         .rows_affected();
 
@@ -444,7 +444,7 @@ pub async fn atualizar_servicos_verificacao(
 
     tx.commit().await.map_err(|error| {
         error!("Erro ao confirmar ajuste da verificação {}: {}", verificacao_id, error);
-        error.to_string()
+        super::operator_errors::mapear_erro_sql(error)
     })?;
 
     let old_service_count = count_json_array_items(&old_servicos);

@@ -96,7 +96,7 @@ async fn baixar_disponivel(
     .bind(empresa_id)
     .fetch_optional(&mut **tx)
     .await
-    .map_err(|e| format!("Erro ao consultar estoque: {e}"))?;
+    .map_err(super::operator_errors::mapear_erro_sql)?;
     let Some((saldo,)) = row else {
         return Err(format!(
             "Produto {} inexistente, inativo ou de outra empresa.",
@@ -109,7 +109,7 @@ async fn baixar_disponivel(
     }
     sqlx::query("UPDATE produtos SET quantidade_estoque = quantidade_estoque - $1, atualizado_em = NOW() WHERE id = $2 AND empresa_id = $3")
         .bind(baixa).bind(produto_id).bind(empresa_id).execute(&mut **tx).await
-        .map_err(|e| format!("Erro ao baixar estoque: {e}"))?;
+        .map_err(super::operator_errors::mapear_erro_sql)?;
     sqlx::query(
         "INSERT INTO movimentacoes_estoque
          (produto_id, tipo, quantidade, origem, referencia, usuario, data_hora, empresa_id)
@@ -121,7 +121,7 @@ async fn baixar_disponivel(
     .bind(empresa_id)
     .execute(&mut **tx)
     .await
-    .map_err(|e| format!("Erro ao registrar movimento: {e}"))?;
+    .map_err(super::operator_errors::mapear_erro_sql)?;
     Ok(baixa)
 }
 
@@ -153,7 +153,7 @@ pub async fn aplicar_decisoes(
     .bind(empresa_id)
     .fetch_all(&mut **tx)
     .await
-    .map_err(|e| e.to_string())?;
+    .map_err(super::operator_errors::mapear_erro_sql)?;
     for servico in servicos {
         let aprovado = escolhidos.contains(servico.id.as_str());
         sqlx::query(
@@ -164,10 +164,10 @@ pub async fn aplicar_decisoes(
         )
         .bind(verificacao_id).bind(&servico.id).bind(empresa_id)
         .bind(if aprovado { "APROVADO" } else { "REPROVADO" })
-        .execute(&mut **tx).await.map_err(|e| format!("Erro ao registrar decisão: {e}"))?;
+        .execute(&mut **tx).await.map_err(super::operator_errors::mapear_erro_sql)?;
         if !aprovado {
             sqlx::query("UPDATE orcamento_consumos SET quantidade_aprovada = quantidade_baixada WHERE verificacao_id = $1 AND servico_id = $2")
-                .bind(verificacao_id).bind(&servico.id).execute(&mut **tx).await.map_err(|e| e.to_string())?;
+                .bind(verificacao_id).bind(&servico.id).execute(&mut **tx).await.map_err(super::operator_errors::mapear_erro_sql)?;
             continue;
         }
 
@@ -190,7 +190,7 @@ pub async fn aplicar_decisoes(
             .bind(produto_id)
             .fetch_optional(&mut **tx)
             .await
-            .map_err(|e| e.to_string())?;
+            .map_err(super::operator_errors::mapear_erro_sql)?;
             let (aprovada_anterior, baixada_anterior) = anterior.unwrap_or((0, 0));
             // Quantidades já baixadas nunca desaparecem por edição do orçamento.
             let nova_aprovada = quantidade.max(baixada_anterior);
@@ -202,7 +202,7 @@ pub async fn aplicar_decisoes(
                  DO UPDATE SET quantidade_aprovada = EXCLUDED.quantidade_aprovada",
             )
             .bind(verificacao_id).bind(&servico.id).bind(produto_id).bind(empresa_id)
-            .bind(nova_aprovada).execute(&mut **tx).await.map_err(|e| e.to_string())?;
+            .bind(nova_aprovada).execute(&mut **tx).await.map_err(super::operator_errors::mapear_erro_sql)?;
             // Uma pendência antiga só sai pelo comando de confirmação na OS.
             let restante = (nova_aprovada - aprovada_anterior).max(0);
             if restante > 0 {
@@ -226,7 +226,7 @@ pub async fn aplicar_decisoes(
                     .bind(produto_id)
                     .execute(&mut **tx)
                     .await
-                    .map_err(|e| e.to_string())?;
+                    .map_err(super::operator_errors::mapear_erro_sql)?;
                 }
             }
         }
@@ -251,7 +251,7 @@ pub async fn cancelar_pendencias_ausentes(
         .collect();
     let existentes: Vec<(String, i32)> = sqlx::query_as(
         "SELECT servico_id, produto_id FROM orcamento_consumos WHERE verificacao_id = $1 FOR UPDATE",
-    ).bind(verificacao_id).fetch_all(&mut **tx).await.map_err(|e| e.to_string())?;
+    ).bind(verificacao_id).fetch_all(&mut **tx).await.map_err(super::operator_errors::mapear_erro_sql)?;
     for (servico_id, produto_id) in existentes {
         if !presentes.contains(&(servico_id.clone(), produto_id)) {
             sqlx::query(
@@ -263,7 +263,7 @@ pub async fn cancelar_pendencias_ausentes(
             .bind(produto_id)
             .execute(&mut **tx)
             .await
-            .map_err(|e| e.to_string())?;
+            .map_err(super::operator_errors::mapear_erro_sql)?;
         }
     }
     Ok(())
@@ -289,7 +289,7 @@ pub async fn listar_consumos_orcamento(
     .bind(empresa_id)
     .fetch_all(&pool)
     .await
-    .map_err(|e| e.to_string())
+    .map_err(super::operator_errors::mapear_erro_sql)
 }
 
 #[tauri::command]
@@ -297,7 +297,7 @@ pub async fn baixar_pecas_pendentes(equipamento_id: i32) -> Result<i32, String> 
     let actor = require_permission(PERMISSION_STOCK_CONTROL)?;
     let pool = get_pool().await.map_err(|e| e.to_string())?;
     let empresa_id = require_active_session_company_id(&pool).await?;
-    let mut tx = pool.begin().await.map_err(|e| e.to_string())?;
+    let mut tx = pool.begin().await.map_err(super::operator_errors::mapear_erro_sql)?;
     let equipamento: Option<(i32,)> = sqlx::query_as(
         "SELECT empresa_id FROM equipamentos WHERE id = $1 AND empresa_id = $2 AND status IN
          ('APROVADO', 'EM_MANUTENCAO', 'AGUARDANDO_PECA', 'PRONTO') FOR UPDATE",
@@ -306,7 +306,7 @@ pub async fn baixar_pecas_pendentes(equipamento_id: i32) -> Result<i32, String> 
     .bind(empresa_id)
     .fetch_optional(&mut *tx)
     .await
-    .map_err(|e| e.to_string())?;
+    .map_err(super::operator_errors::mapear_erro_sql)?;
     if equipamento.is_none() {
         return Err("OS não está aprovada ou não pertence à empresa ativa.".to_string());
     }
@@ -324,7 +324,7 @@ pub async fn baixar_pecas_pendentes(equipamento_id: i32) -> Result<i32, String> 
     .bind(empresa_id)
     .fetch_all(&mut *tx)
     .await
-    .map_err(|e| e.to_string())?;
+    .map_err(super::operator_errors::mapear_erro_sql)?;
     let mut total = 0;
     for (verificacao_id, servico_id, produto_id, restante) in pendentes {
         let baixa = baixar_disponivel(
@@ -338,10 +338,10 @@ pub async fn baixar_pecas_pendentes(equipamento_id: i32) -> Result<i32, String> 
         .await?;
         sqlx::query("UPDATE orcamento_consumos SET quantidade_baixada = quantidade_baixada + $1 WHERE verificacao_id = $2 AND servico_id = $3 AND produto_id = $4")
             .bind(baixa).bind(verificacao_id).bind(&servico_id).bind(produto_id)
-            .execute(&mut *tx).await.map_err(|e| e.to_string())?;
+            .execute(&mut *tx).await.map_err(super::operator_errors::mapear_erro_sql)?;
         total += baixa;
     }
-    tx.commit().await.map_err(|e| e.to_string())?;
+    tx.commit().await.map_err(super::operator_errors::mapear_erro_sql)?;
     record_security_event(
         "BUDGET_PENDING_STOCK_CONSUMED",
         Some(&actor),

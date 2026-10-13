@@ -457,7 +457,7 @@ async fn read_inactivity_config_from_db() -> Result<bool, String> {
     .await
     .map_err(|e| {
         error!("Erro ao ler configuração de inatividade: {}", e);
-        e.to_string()
+        super::operator_errors::mapear_erro_sql(e)
     })?;
     INACTIVITY_LOCK_ENABLED.store(row, Ordering::Relaxed);
     Ok(row)
@@ -483,7 +483,7 @@ pub async fn salvar_config_inatividade(enabled: bool) -> Result<bool, String> {
     .await
     .map_err(|e| {
         error!("Erro ao salvar configuração de inatividade: {}", e);
-        e.to_string()
+        super::operator_errors::mapear_erro_sql(e)
     })?;
 
     INACTIVITY_LOCK_ENABLED.store(enabled, Ordering::Relaxed);
@@ -647,7 +647,7 @@ async fn ensure_default_profile_exists() -> Result<(), String> {
         }
     };
 
-    let total: i64 = row.try_get("total").map_err(|e| e.to_string())?;
+    let total: i64 = row.try_get("total").map_err(super::operator_errors::mapear_erro_sql)?;
     if total == 0 {
         let permissions = serde_json::to_string(&ALL_PERMISSIONS.iter().map(|value| value.to_string()).collect::<Vec<_>>())
             .map_err(|e| e.to_string())?;
@@ -672,7 +672,7 @@ async fn ensure_default_profile_exists() -> Result<(), String> {
         Ok(row) => row,
         Err(error) => return Err(db::database_operation_error(error).await),
     };
-    let default_total: i64 = default_row.try_get("total").map_err(|e| e.to_string())?;
+    let default_total: i64 = default_row.try_get("total").map_err(super::operator_errors::mapear_erro_sql)?;
     if default_total == 0 {
         let update_result = sqlx::query(
             "UPDATE security_profiles SET is_default = CASE WHEN id = (
@@ -762,7 +762,7 @@ async fn fetch_profile_record_by_id_any(profile_id: i32) -> Result<SecurityProfi
     .await
     .map_err(|e| {
         error!("Erro ao buscar perfil de segurança {}: {}", profile_id, e);
-        e.to_string()
+        super::operator_errors::mapear_erro_sql(e)
     })?
     .ok_or_else(|| "Perfil de segurança não encontrado".to_string())
 }
@@ -1146,7 +1146,7 @@ pub async fn create_security_profile(input: SecurityProfileInput, pin: String) -
     let permissions_json = serde_json::to_string(&permissions).map_err(|e| e.to_string())?;
 
     let pool = get_pool().await.map_err(|e| e.to_string())?;
-    let mut tx = pool.begin().await.map_err(|e| e.to_string())?;
+    let mut tx = pool.begin().await.map_err(super::operator_errors::mapear_erro_sql)?;
     let row = sqlx::query(
         "INSERT INTO security_profiles (nome, role, permissions, ativo, is_default, atualizado_em)
          VALUES ($1, $2, $3, true, false, NOW()) RETURNING id"
@@ -1157,18 +1157,19 @@ pub async fn create_security_profile(input: SecurityProfileInput, pin: String) -
     .fetch_one(&mut *tx)
     .await
     .map_err(|e| {
-        error!("Erro ao criar perfil de segurança: {}", e);
-        if let Some(message) = super::operator_errors::mensagem_duplicidade_sql(&e) {
-            return message;
+        let resposta = super::operator_errors::mapear_erro_sql(e);
+        if resposta.starts_with("AUTOOS:23505") {
+            resposta
+        } else {
+            format!("AUTOOS:DB\nNão foi possível criar o perfil. Tente novamente.")
         }
-        "Não foi possível criar o perfil. Tente novamente.".to_string()
     })?;
 
-    let profile_id: i32 = row.try_get("id").map_err(|e| e.to_string())?;
+    let profile_id: i32 = row.try_get("id").map_err(super::operator_errors::mapear_erro_sql)?;
     if !pin.trim().is_empty() {
         store_profile_pin(profile_id, &pin)?;
     }
-    tx.commit().await.map_err(|e| e.to_string())?;
+    tx.commit().await.map_err(super::operator_errors::mapear_erro_sql)?;
 
     let created = to_profile_summary(fetch_profile_record_by_id(profile_id).await?)?;
     record_security_event(
@@ -1228,11 +1229,12 @@ pub async fn update_security_profile(profile_id: i32, input: SecurityProfileInpu
     .execute(&pool)
     .await
     .map_err(|e| {
-        error!("Erro ao atualizar perfil de segurança {}: {}", profile_id, e);
-        if let Some(message) = super::operator_errors::mensagem_duplicidade_sql(&e) {
-            return message;
+        let resposta = super::operator_errors::mapear_erro_sql(e);
+        if resposta.starts_with("AUTOOS:23505") {
+            resposta
+        } else {
+            format!("AUTOOS:DB\nNão foi possível atualizar o perfil. Tente novamente.")
         }
-        "Não foi possível atualizar o perfil. Tente novamente.".to_string()
     })?;
 
     if actor.id == profile_id {
@@ -1446,7 +1448,7 @@ pub async fn deactivate_security_profile(profile_id: i32) -> Result<SensitiveAcc
     .await
     .map_err(|e| {
         error!("Erro ao desativar perfil de segurança {}: {}", profile_id, e);
-        e.to_string()
+        super::operator_errors::mapear_erro_sql(e)
     })?;
 
     ensure_default_profile_exists().await?;
@@ -1486,7 +1488,7 @@ pub async fn reactivate_security_profile(profile_id: i32) -> Result<SensitiveAcc
     .await
     .map_err(|e| {
         error!("Erro ao reativar perfil de segurança {}: {}", profile_id, e);
-        e.to_string()
+        super::operator_errors::mapear_erro_sql(e)
     })?;
 
     record_security_event(
@@ -1570,7 +1572,7 @@ pub async fn deletar_perfil(
         .await
         .map_err(|e| {
             error!("Erro ao excluir perfil de segurança {}: {}", profile_id, e);
-            e.to_string()
+            super::operator_errors::mapear_erro_sql(e)
         })?;
 
     if let Ok(entry) = get_keyring_entry(&profile_keyring_user(profile_id)) {
@@ -1627,7 +1629,7 @@ pub async fn list_security_audit_events(limit: Option<i32>) -> Result<Vec<Securi
     .await
     .map_err(|e| {
         error!("Erro ao listar auditoria de segurança: {}", e);
-        e.to_string()
+        super::operator_errors::mapear_erro_sql(e)
     })
 }
 
@@ -1696,7 +1698,7 @@ pub async fn registrar_empresa(
         .await
         .map_err(|e| {
             error!("Erro ao verificar email existente: {}", e);
-            e.to_string()
+            super::operator_errors::mapear_erro_sql(e)
         })?;
 
     if existing.is_some() {
@@ -1705,7 +1707,7 @@ pub async fn registrar_empresa(
 
     let mut tx = pool.begin().await.map_err(|e| {
         error!("Erro ao iniciar transação de registro de empresa: {}", e);
-        e.to_string()
+        super::operator_errors::mapear_erro_sql(e)
     })?;
 
     let row = sqlx::query(
@@ -1719,10 +1721,10 @@ pub async fn registrar_empresa(
     .await
     .map_err(|e| {
         error!("Erro ao registrar empresa: {}", e);
-        e.to_string()
+        super::operator_errors::mapear_erro_sql(e)
     })?;
 
-    let empresa_id: i32 = row.try_get("id").map_err(|e| e.to_string())?;
+    let empresa_id: i32 = row.try_get("id").map_err(super::operator_errors::mapear_erro_sql)?;
 
     let permissions = serde_json::to_string(&ALL_PERMISSIONS.iter().map(|p| p.to_string()).collect::<Vec<_>>())
         .map_err(|e| e.to_string())?;
@@ -1739,12 +1741,12 @@ pub async fn registrar_empresa(
     .await
     .map_err(|e| {
         error!("Erro ao criar perfil administrador para empresa {}: {}", empresa_id, e);
-        e.to_string()
+        super::operator_errors::mapear_erro_sql(e)
     })?;
 
     tx.commit().await.map_err(|e| {
         error!("Erro ao confirmar transação de registro de empresa: {}", e);
-        e.to_string()
+        super::operator_errors::mapear_erro_sql(e)
     })?;
 
     Ok(RegistroEmpresaResult {
@@ -1771,17 +1773,17 @@ pub async fn login_empresa(
         .await
         .map_err(|e| {
             error!("Erro ao buscar empresa por email: {}", e);
-            e.to_string()
+            super::operator_errors::mapear_erro_sql(e)
         })?;
 
     let Some(row) = row else {
         return Err("Email não cadastrado".to_string());
     };
 
-    let empresa_id: i32 = row.try_get("id").map_err(|e| e.to_string())?;
-    let nome: String = row.try_get("nome").map_err(|e| e.to_string())?;
-    let status: String = row.try_get("status").map_err(|e| e.to_string())?;
-    let senha_hash: Option<String> = row.try_get("senha_hash").map_err(|e| e.to_string())?;
+    let empresa_id: i32 = row.try_get("id").map_err(super::operator_errors::mapear_erro_sql)?;
+    let nome: String = row.try_get("nome").map_err(super::operator_errors::mapear_erro_sql)?;
+    let status: String = row.try_get("status").map_err(super::operator_errors::mapear_erro_sql)?;
+    let senha_hash: Option<String> = row.try_get("senha_hash").map_err(super::operator_errors::mapear_erro_sql)?;
 
     let Some(senha_hash) = senha_hash else {
         warn!(email = %email, "Login negado: empresa sem credencial central configurada");
@@ -1847,10 +1849,10 @@ pub async fn provision_pin_with_enrollment(
     .await
     .map_err(|e| {
         error!("Erro ao criar perfil via enrollment: {}", e);
-        e.to_string()
+        super::operator_errors::mapear_erro_sql(e)
     })?;
 
-    let profile_id: i32 = row.try_get("id").map_err(|e| e.to_string())?;
+    let profile_id: i32 = row.try_get("id").map_err(super::operator_errors::mapear_erro_sql)?;
 
     // Store PIN in keyring
     store_profile_pin(profile_id, &pin)?;

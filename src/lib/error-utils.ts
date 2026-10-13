@@ -1,5 +1,5 @@
 import { AppError, NotificationMessage, NotificationType } from '@/types/notification';
-import { mensagemCadastroDuplicado, MENSAGEM_ERRO_GENERICO, textoTecnicoDeBanco } from '@/lib/operator-errors';
+import { mensagemVisivelAoOperador } from '@/lib/operator-errors';
 
 /**
  * Formata um erro desconhecido (Error, string, unknown) em um AppError estruturado
@@ -21,13 +21,9 @@ export function formatAppError(params: {
     message = error;
   }
 
-  const duplicado = mensagemCadastroDuplicado(message);
-  if (duplicado) {
-    message = duplicado;
-    technicalDetails = undefined;
-  } else if (textoTecnicoDeBanco(message) || textoTecnicoDeBanco(technicalDetails)) {
-    console.error("[AutoOS] detalhe técnico ocultado do operador", error);
-    message = MENSAGEM_ERRO_GENERICO;
+  const visivel = mensagemVisivelAoOperador(message);
+  if (visivel) {
+    message = visivel;
     technicalDetails = undefined;
   }
 
@@ -85,7 +81,7 @@ export function formatErrorForCopy(error: AppError): string {
     `Mensagem: ${error.message}`,
     `Data/Hora: ${error.timestamp.toISOString()}`,
   ];
-  if (error.technicalDetails && !textoTecnicoDeBanco(error.technicalDetails)) {
+  if (error.technicalDetails) {
     lines.push('', '--- Detalhes Técnicos ---', error.technicalDetails);
   }
   return lines.join('\n');
