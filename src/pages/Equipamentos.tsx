@@ -2020,7 +2020,7 @@ export default function Equipamentos() {
                       tabIndex={0}
                       role="button"
                       aria-label={`Abrir detalhes de ${eq.marca} ${eq.modelo}`}
-                      className="group cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                      className="group cursor-pointer focus-visible:bg-sky-100 focus-visible:outline focus-visible:outline-[3px] focus-visible:-outline-offset-2 focus-visible:outline-blue-700 focus-visible:[&>td]:bg-sky-100"
                       onClick={() => void abrirDetalhes(eq)}
                       onKeyDown={(event) => {
                         if (event.target !== event.currentTarget) return;
@@ -2064,7 +2064,7 @@ export default function Equipamentos() {
                         <span className="block truncate">{formatDatePtBr(eq.atualizado_em || eq.criado_em)}</span>
                       </TableCell>
                       <TableCell
-                        className="sticky right-0 z-10 w-[18rem] min-w-[18rem] bg-card text-right group-hover:bg-muted/50"
+                        className="sticky right-0 z-10 w-[18rem] min-w-[18rem] bg-card text-right group-hover:bg-muted/50 group-focus-visible:bg-sky-100"
                         onClick={(event) => event.stopPropagation()}
                         onKeyDown={(event) => event.stopPropagation()}
                       >
