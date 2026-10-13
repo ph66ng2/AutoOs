@@ -180,12 +180,14 @@ import { resolveRecipient, type ResolvedRecipient } from "@/lib/recipient-resolv
 import { saveRecipientAddress } from "@/lib/recipient-persistence";
 import { totalPages } from "@/lib/pagination";
 
-const EQUIPMENT_ROW_FOCUS_EDGE =
-  "group-focus-visible:bg-sky-100 group-focus-visible:shadow-[inset_0_3px_0_0_#1d4ed8,inset_0_-3px_0_0_#1d4ed8]";
-const EQUIPMENT_ROW_FOCUS_FIRST =
-  "group-focus-visible:bg-sky-100 group-focus-visible:shadow-[inset_3px_0_0_0_#1d4ed8,inset_0_3px_0_0_#1d4ed8,inset_0_-3px_0_0_#1d4ed8]";
-const EQUIPMENT_ROW_FOCUS_LAST =
-  "group-focus-visible:bg-sky-100 group-focus-visible:shadow-[inset_-3px_0_0_0_#1d4ed8,inset_0_3px_0_0_#1d4ed8,inset_0_-3px_0_0_#1d4ed8]";
+// O anel é a borda de um ::after dentro da célula. O box-shadow fica por baixo
+// do divisor colapsado e, na Ações sticky, o fundo branco cobre o topo.
+// border-separate deixa esse divisor fora do anel.
+const EQUIPMENT_ROW_FOCUS_RING =
+  "border-b group-focus-visible:z-[30] group-focus-visible:bg-sky-100 group-focus-visible:after:pointer-events-none group-focus-visible:after:absolute group-focus-visible:after:inset-0 group-focus-visible:after:z-[1] group-focus-visible:after:border-y-[3px] group-focus-visible:after:border-[#1d4ed8] group-focus-visible:after:content-['']";
+const EQUIPMENT_ROW_FOCUS_EDGE = `relative ${EQUIPMENT_ROW_FOCUS_RING}`;
+const EQUIPMENT_ROW_FOCUS_FIRST = `relative ${EQUIPMENT_ROW_FOCUS_RING} group-focus-visible:after:border-l-[3px]`;
+const EQUIPMENT_ROW_FOCUS_LAST = `${EQUIPMENT_ROW_FOCUS_RING} group-focus-visible:after:border-r-[3px]`;
 
 export default function Equipamentos() {
   const [busca, setBusca] = useState("");
@@ -2008,8 +2010,8 @@ export default function Equipamentos() {
                 label="Paginação de equipamentos"
               />
               <div className="rounded-md border">
-                <Table className="min-w-[76rem] table-fixed">
-                <TableHeader>
+                <Table className="min-w-[76rem] table-fixed border-separate border-spacing-0">
+                <TableHeader className="[&_tr]:!border-b-0 [&_th]:border-b">
                   <TableRow>
                     <TableHead className="w-[8rem]">Nº Série</TableHead>
                     <TableHead className="w-[14rem]">Equipamento</TableHead>
@@ -2020,7 +2022,7 @@ export default function Equipamentos() {
                     <TableHead className="sticky right-0 z-20 w-[18rem] min-w-[18rem] bg-card text-right">Ações</TableHead>
                   </TableRow>
                 </TableHeader>
-                <TableBody>
+                <TableBody className="[&_tr]:!border-b-0 [&_tr:last-child_td]:border-b-0">
                   {equipamentosExibidos.map(eq => (
                     <TableRow
                       key={eq.id}

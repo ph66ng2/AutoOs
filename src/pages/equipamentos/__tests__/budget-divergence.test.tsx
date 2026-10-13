@@ -726,9 +726,14 @@ describe("Equipamentos — Budget Divergence & Audit", () => {
     expect(row.tagName).toBe("TR");
     expect(row).toHaveAttribute("tabindex", "0");
     const cells = row.querySelectorAll("td");
-    expect(cells[0].className).toContain("inset_3px_0_0_0_#1d4ed8");
-    expect(cells[cells.length - 1].className).toContain("inset_-3px_0_0_0_#1d4ed8");
-    expect(cells[1].className).toContain("inset_0_3px_0_0_#1d4ed8");
+    expect(cells[0].className).toContain("after:border-l-[3px]");
+    expect(cells[0].className).toContain("after:border-[#1d4ed8]");
+    expect(cells[0].classList.contains("relative")).toBe(true);
+    expect(cells[1].className).toContain("after:border-y-[3px]");
+    expect(cells[1].className).not.toContain("after:border-l-[3px]");
+    expect(cells[cells.length - 1].className).toContain("after:border-r-[3px]");
+    expect(cells[cells.length - 1].className).toContain("after:inset-0");
+    expect(cells[cells.length - 1].classList.contains("relative")).toBe(false);
 
     fireEvent.keyDown(row, { key: "Enter" });
     expect(await screen.findByText("Detalhes do Equipamento")).toBeInTheDocument();
