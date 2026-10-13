@@ -1,13 +1,14 @@
-# Reaplicação manual do inventário em scripts/seed-estoque-ribbons-bopp.sql.
-# O SQL redefine quantidade_estoque para o snapshot; não é seguro rodar em
-# todo push. O disparo automático foi removido de propósito: o arquivo
-# continua útil como operação manual, então o workflow fica, com as mesmas
-# travas de produção das migrations SQLx.
+# Inserção manual dos SKUs ausentes em scripts/seed-estoque-ribbons-bopp.sql.
+# O SQL não redefine saldo nem preço e não apaga movimentações. Ainda assim
+# não roda em todo push: o disparo automático foi removido de propósito.
 #
 # Só workflow_dispatch em master, environment production-migrations (revisor),
 # confirmação digitada, secret dedicado AUTOOS_PRODUCTION_SEED_DATABASE_URL
-# e variável AUTOOS_PRODUCTION_SEED_ENABLED=true. Não usa AUTOOS_DATABASE_URL.
-# O SHA-256 de host|usuário só confirma o destino; não é segredo e não entra
+# e variável AUTOOS_PRODUCTION_SEED_ENABLED=true. O secret do desktop
+# (AUTOOS_DATABASE_URL) não entra neste job. O destino é o host e o usuário
+# já interpretados da URL (postgres:// e postgresql:// são o mesmo destino),
+# conferidos com AUTOOS_PRODUCTION_DATABASE_HOST/USER e com o SHA-256 de
+# host|usuário. Esse hash só confirma o destino; não é segredo e não entra
 # no env do job, para não aparecer no bloco env do log.
 
 name: Aplicar seed de estoque
@@ -16,7 +17,7 @@ on:
   workflow_dispatch:
     inputs:
       confirmation:
-        description: 'Digite exatamente "APLICAR SEED EM PROD". O script redefine os saldos do inventário para o snapshot.'
+        description: 'Digite exatamente "APLICAR SEED EM PROD". Insere só SKUs ausentes da empresa alvo; não altera saldos, preços nem movimentações.'
         required: true
         type: string
       expected_target_sha256:
@@ -33,7 +34,7 @@ concurrency:
 
 jobs:
   apply-seed:
-    name: Upsert produtos no Supabase
+    name: Inserir SKUs ausentes no inventário
     runs-on: ubuntu-latest
     if: github.ref == 'refs/heads/master'
     environment:
@@ -51,7 +52,6 @@ jobs:
         shell: bash
         env:
           AUTOOS_PRODUCTION_SEED_DATABASE_URL: ${{ secrets.AUTOOS_PRODUCTION_SEED_DATABASE_URL }}
-          AUTOOS_DATABASE_URL: ${{ secrets.AUTOOS_DATABASE_URL }}
           AUTOOS_PRODUCTION_DATABASE_HOST: ${{ secrets.AUTOOS_PRODUCTION_DATABASE_HOST }}
           AUTOOS_PRODUCTION_DATABASE_USER: ${{ secrets.AUTOOS_PRODUCTION_DATABASE_USER }}
         run: |
@@ -65,11 +65,7 @@ jobs:
             exit 1
           fi
           if [[ -z "$AUTOOS_PRODUCTION_SEED_DATABASE_URL" || -z "$AUTOOS_PRODUCTION_DATABASE_HOST" || -z "$AUTOOS_PRODUCTION_DATABASE_USER" ]]; then
-            echo "Configure os secrets AUTOOS_PRODUCTION_SEED_DATABASE_URL, AUTOOS_PRODUCTION_DATABASE_HOST e AUTOOS_PRODUCTION_DATABASE_USER no ambiente production-migrations; o secret do desktop não é aceito."
-            exit 1
-          fi
-          if [[ -n "${AUTOOS_DATABASE_URL:-}" && "$AUTOOS_PRODUCTION_SEED_DATABASE_URL" == "$AUTOOS_DATABASE_URL" ]]; then
-            echo "AUTOOS_PRODUCTION_SEED_DATABASE_URL não pode reutilizar a credencial do desktop."
+            echo "Configure os secrets AUTOOS_PRODUCTION_SEED_DATABASE_URL, AUTOOS_PRODUCTION_DATABASE_HOST e AUTOOS_PRODUCTION_DATABASE_USER no ambiente production-migrations."
             exit 1
           fi
           echo "::add-mask::${AUTOOS_PRODUCTION_DATABASE_HOST,,}"
@@ -103,6 +99,8 @@ jobs:
           expected_user = os.environ["AUTOOS_PRODUCTION_DATABASE_USER"]
           if parsed.scheme not in ("postgres", "postgresql"):
               raise SystemExit("A URL do seed precisa usar PostgreSQL.")
+          # Identidade do destino é host+usuário já parseados. postgres:// e
+          # postgresql:// com o mesmo host e usuário são o mesmo destino.
           if parsed.fragment:
               raise SystemExit("A URL do seed não pode conter fragmento.")
           host = parsed.hostname or ""
@@ -134,28 +132,36 @@ jobs:
           AUTOOS_PRODUCTION_SEED_DATABASE_URL: ${{ secrets.AUTOOS_PRODUCTION_SEED_DATABASE_URL }}
         run: psql "$AUTOOS_PRODUCTION_SEED_DATABASE_URL" -v ON_ERROR_STOP=1 -f scripts/seed-estoque-ribbons-bopp.sql
 
-      - name: Confirmar 42 SKUs do inventário
+      - name: Confirmar 42 SKUs do inventário na empresa
         env:
           AUTOOS_PRODUCTION_SEED_DATABASE_URL: ${{ secrets.AUTOOS_PRODUCTION_SEED_DATABASE_URL }}
         run: |
           psql "$AUTOOS_PRODUCTION_SEED_DATABASE_URL" -v ON_ERROR_STOP=1 -c "
-            SELECT COUNT(*) AS skus_inventario
-            FROM produtos
-            WHERE ativo = true
-              AND codigo IN (
-                'ETQ-100X50-COUCHE','ETQ-32X18X3-TRANS-BOPP','ETQ-102X51-TRANS-BOPP',
-                'ETQ-100X70-BOPP','ETQ-50X40X2-TRANS-BOPP','ETQ-100X150-BOPP',
-                'ETQ-45X20X2-LACRE-ELMECO','ETQ-32X18X5-BOPP','ETQ-100X65-BOPP',
-                'ETQ-100X40-BOPP','ETQ-100X70-COUCHE','ETQ-40X33-PRATA',
-                'ETQ-20X25X3-BOPP','ETQ-30X30-BOPP','ETQ-50X20-BOPP',
-                'ETQ-50X50X20-BOPP','ETQ-100X50-BOPP','ETQ-45X20-BOPP',
-                'ETQ-35X70X3-CARTAO-ROUPA','ETQ-70X125X01-BOPP-3POL','ETQ-100X50-BOPP-3POL',
-                'ETQ-28X80-COUCHE-DYMO','ETQ-70X30-COUCHE-3POL','ETQ-50X70X2-BOPP-3POL',
-                'ETQ-90X60-GONDOLA-AM-3POL','RIB-CERA-110X450','RIB-RESINA',
-                'RIB-ZXP1-COLOR','RIB-ZXP1-MONO','RIB-ZC300-MONO','PEC-CANETA-LIMPEZA',
-                'ETQ-17X152X5-COUCHE','ETQ-80X50-COUCHE-AZUL','ETQ-50X120X2-COUCHE',
-                'ETQ-50X160X2-COUCHE','ETQ-50X28-COUCHE-AMARELA','ETQ-100X30-GONDOLA',
-                'ETQ-100X40-GONDOLA-LARANJA','ETQ-33X22X3-COUCHE','ETQ-33X22X3-AMARELA',
-                'ETQ-75X30-GONDOLA-LARANJA','ETQ-80X70-BOPP'
-              );
+            DO \$\$
+            DECLARE found integer;
+            BEGIN
+              SELECT COUNT(DISTINCT codigo) INTO found
+              FROM produtos
+              WHERE ativo = true
+                AND empresa_id IS NOT NULL
+                AND codigo IN (
+                  'ETQ-100X50-COUCHE','ETQ-32X18X3-TRANS-BOPP','ETQ-102X51-TRANS-BOPP',
+                  'ETQ-100X70-BOPP','ETQ-50X40X2-TRANS-BOPP','ETQ-100X150-BOPP',
+                  'ETQ-45X20X2-LACRE-ELMECO','ETQ-32X18X5-BOPP','ETQ-100X65-BOPP',
+                  'ETQ-100X40-BOPP','ETQ-100X70-COUCHE','ETQ-40X33-PRATA',
+                  'ETQ-20X25X3-BOPP','ETQ-30X30-BOPP','ETQ-50X20-BOPP',
+                  'ETQ-50X50X20-BOPP','ETQ-100X50-BOPP','ETQ-45X20-BOPP',
+                  'ETQ-35X70X3-CARTAO-ROUPA','ETQ-70X125X01-BOPP-3POL','ETQ-100X50-BOPP-3POL',
+                  'ETQ-28X80-COUCHE-DYMO','ETQ-70X30-COUCHE-3POL','ETQ-50X70X2-BOPP-3POL',
+                  'ETQ-90X60-GONDOLA-AM-3POL','RIB-CERA-110X450','RIB-RESINA',
+                  'RIB-ZXP1-COLOR','RIB-ZXP1-MONO','RIB-ZC300-MONO','PEC-CANETA-LIMPEZA',
+                  'ETQ-17X152X5-COUCHE','ETQ-80X50-COUCHE-AZUL','ETQ-50X120X2-COUCHE',
+                  'ETQ-50X160X2-COUCHE','ETQ-50X28-COUCHE-AMARELA','ETQ-100X30-GONDOLA',
+                  'ETQ-100X40-GONDOLA-LARANJA','ETQ-33X22X3-COUCHE','ETQ-33X22X3-AMARELA',
+                  'ETQ-75X30-GONDOLA-LARANJA','ETQ-80X70-BOPP'
+                );
+              IF found <> 42 THEN
+                RAISE EXCEPTION 'Esperados 42 SKUs ativos com empresa; encontrados %.', found;
+              END IF;
+            END \$\$;
           "

@@ -17,6 +17,7 @@
     "test:coverage": "vitest run --coverage",
     "lint": "tsc --noEmit",
     "check:migrations": "node scripts/check-sqlx-migrations.mjs",
+    "verify:estoque-seed": "bash scripts/verify-estoque-seed.sh",
     "check:migrations:db": "node scripts/check-sqlx-database-history.mjs",
     "e2e": "npm run e2e:web",
     "e2e:web": "playwright test",

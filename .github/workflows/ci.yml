@@ -153,6 +153,17 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Verificar seed de estoque em Postgres local
+        env:
+          SEED_VERIFY_PGHOST: localhost
+          SEED_VERIFY_PGPORT: "5432"
+          SEED_VERIFY_PGUSER: test_user
+          SEED_VERIFY_PGPASSWORD: test_password
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y postgresql-client
+          bash scripts/verify-estoque-seed.sh
+
       - name: Apply migrations to disposable test database
         env:
           AUTOOS_MIGRATION_MODE: ci
