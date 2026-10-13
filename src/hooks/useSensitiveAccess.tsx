@@ -94,6 +94,7 @@ export function SensitiveAccessProvider({ children }: { children: ReactNode }) {
   const [selectedProfileId, setSelectedProfileId] = useState<string>("");
   const resolverRef = useRef<((value: boolean) => void) | null>(null);
   const startupPromptedRef = useRef(false);
+  const unlockedSinceBootRef = useRef(false);
   const [pinPromptDismissed, setPinPromptDismissed] = useState(false);
   const bootPhasesTrackedRef = useRef(true);
   const dialogOpenRef = useRef(false);
@@ -102,6 +103,12 @@ export function SensitiveAccessProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     dialogOpenRef.current = dialogOpen;
   }, [dialogOpen]);
+
+  useEffect(() => {
+    if (status?.unlocked) {
+      unlockedSinceBootRef.current = true;
+    }
+  }, [status]);
 
   const refreshStatus = useCallback(async () => {
     if (bootPhasesTrackedRef.current) {
@@ -217,7 +224,10 @@ export function SensitiveAccessProvider({ children }: { children: ReactNode }) {
       return;
     }
 
-    if (!result && dialogMode === "startup") {
+    // Uma consulta do boot pode trocar o diálogo de entrada para "PIN necessário
+    // para continuar" antes do fechamento. A dispensa vale sempre que a sessão
+    // ainda não foi desbloqueada desde o arranque, senão o splash fica preso.
+    if (!result && !unlockedSinceBootRef.current) {
       setPinPromptDismissed(true);
     }
 

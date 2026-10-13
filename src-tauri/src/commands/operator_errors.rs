@@ -1,40 +1,23 @@
 //! Traduz erro de cadastro repetido para uma frase que o operador entende.
 //! O texto técnico do banco (chave duplicada, restrição, SQLSTATE) fica no log.
 
-pub fn mensagem_cadastro_duplicado(raw: &str) -> Option<String> {
-    if !erro_de_cadastro_duplicado(raw) {
+/// Reconhece duplicidade só pelo SQLSTATE 23505 e pelo nome estruturado da constraint.
+/// Um texto que apenas mencione "23505" ou "duplicate key" não é duplicidade.
+pub fn mensagem_para_sqlstate(code: Option<&str>, constraint: Option<&str>) -> Option<String> {
+    if code != Some("23505") {
         return None;
     }
 
-    Some(texto_para_operador(nome_da_restricao(raw).unwrap_or("")).to_string())
+    Some(texto_para_operador(constraint.unwrap_or("")).to_string())
+}
+
+pub fn mensagem_duplicidade_sql(error: &sqlx::Error) -> Option<String> {
+    let database = error.as_database_error()?;
+    mensagem_para_sqlstate(database.code().as_deref(), database.constraint())
 }
 
 pub fn erro_sql_para_operador(error: &sqlx::Error) -> String {
-    let raw = error.to_string();
-    mensagem_cadastro_duplicado(&raw).unwrap_or(raw)
-}
-
-fn erro_de_cadastro_duplicado(raw: &str) -> bool {
-    let lower = raw.to_lowercase();
-    lower.contains("duplicate key")
-        || lower.contains("unique constraint")
-        || lower.contains("23505")
-        || lower.contains("unicidade")
-        || lower.contains("chave duplicada")
-}
-
-fn nome_da_restricao(raw: &str) -> Option<&str> {
-    for marker in ["constraint \"", "unicidade \""] {
-        if let Some(start) = raw.find(marker) {
-            let rest = &raw[start + marker.len()..];
-            if let Some(end) = rest.find('"') {
-                if end > 0 {
-                    return Some(&rest[..end]);
-                }
-            }
-        }
-    }
-    None
+    mensagem_duplicidade_sql(error).unwrap_or_else(|| error.to_string())
 }
 
 fn texto_para_operador(constraint: &str) -> &'static str {
@@ -77,33 +60,47 @@ fn texto_para_operador(constraint: &str) -> &'static str {
 
 #[cfg(test)]
 mod tests {
-    use super::mensagem_cadastro_duplicado;
+    use super::mensagem_para_sqlstate;
 
     #[test]
-    fn explica_cliente_duplicado_sem_jargao_de_banco() {
-        let raw = "error returned from database: duplicate key value violates unique constraint \"ux_clientes_documento_ativo\"";
-        let message = mensagem_cadastro_duplicado(raw).unwrap();
+    fn explica_cliente_duplicado_pelo_sqlstate_23505() {
+        let message = mensagem_para_sqlstate(Some("23505"), Some("ux_clientes_documento_ativo")).unwrap();
         assert!(message.contains("cliente já está cadastrado"));
         assert!(message.contains("CPF ou CNPJ"));
         assert!(!message.to_lowercase().contains("constraint"));
         assert!(!message.contains("23505"));
+        assert!(!message.contains("ux_clientes_documento_ativo"));
     }
 
     #[test]
     fn explica_codigo_de_insumo_e_chave_primaria() {
-        let produto = "duplicate key value violates unique constraint \"ux_produtos_empresa_codigo_ativo\"";
-        assert!(mensagem_cadastro_duplicado(produto)
+        assert!(mensagem_para_sqlstate(Some("23505"), Some("ux_produtos_empresa_codigo_ativo"))
             .unwrap()
             .contains("código de insumo"));
 
-        let chave = "duplicar valor da chave viola a restrição de unicidade \"clientes_pkey\"";
-        let message = mensagem_cadastro_duplicado(chave).unwrap();
+        let message = mensagem_para_sqlstate(Some("23505"), Some("clientes_pkey")).unwrap();
         assert!(message.contains("cadastro já existe"));
         assert!(!message.to_lowercase().contains("unicidade"));
+        assert!(!message.contains("clientes_pkey"));
     }
 
     #[test]
-    fn deixa_passar_erro_que_nao_e_duplicidade() {
-        assert!(mensagem_cadastro_duplicado("Conflito de concorrência").is_none());
+    fn ignora_texto_solto_e_outro_sqlstate() {
+        assert!(mensagem_para_sqlstate(None, Some("ux_clientes_documento_ativo")).is_none());
+        assert!(mensagem_para_sqlstate(Some("23502"), Some("ux_clientes_documento_ativo")).is_none());
+        assert!(mensagem_para_sqlstate(
+            Some("P0001"),
+            Some("ux_equipamentos_patrimonio_when_present")
+        )
+        .is_none());
+        let protocolo = sqlx::Error::Protocol(
+            "duplicate key value violates unique constraint \"ux_clientes_documento_ativo\" 23505"
+                .to_string(),
+        );
+        assert!(super::mensagem_duplicidade_sql(&protocolo).is_none());
+        assert_eq!(
+            super::erro_sql_para_operador(&protocolo),
+            protocolo.to_string()
+        );
     }
 }

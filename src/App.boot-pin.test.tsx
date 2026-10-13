@@ -1,7 +1,8 @@
-import { describe, expect, it, vi, beforeEach } from "vitest";
-import { render, screen, waitFor } from "@testing-library/react";
+import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
+import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { SensitiveAccessProvider } from "@/hooks/useSensitiveAccess";
+import { withSensitiveAccessRetry } from "@/lib/sensitive-action-retry";
 import App from "@/App";
 
 const mockInvoke = vi.hoisted(() => vi.fn());
@@ -54,6 +55,34 @@ describe("cancelar o primeiro PIN", () => {
     });
   });
 
+  afterEach(() => {
+    cleanup();
+  });
+
+  async function abrirPromptSobrescritoPeloBoot() {
+    const user = userEvent.setup();
+    render(
+      <SensitiveAccessProvider>
+        <App />
+      </SensitiveAccessProvider>,
+    );
+    await screen.findByRole("heading", { name: "Selecionar perfil da sessão" }, { timeout: 8000 });
+    const consulta = withSensitiveAccessRetry(async () => {
+      throw "Acesso sensível bloqueado. Informe o PIN para continuar.";
+    }).catch(() => false);
+    await screen.findByRole("heading", { name: "PIN necessário para continuar" });
+    return { user, consulta };
+  }
+
+  async function expectGateSemAtendimento() {
+    expect(await screen.findByRole("heading", { name: "Informe o PIN para entrar" }, { timeout: 8000 })).toBeInTheDocument();
+    await waitFor(() => {
+      expect(screen.queryByRole("status", { name: /carregando aplicativo/i })).not.toBeInTheDocument();
+    }, { timeout: 8000 });
+    expect(screen.getByText(/continua bloqueado/i)).toBeInTheDocument();
+    expect(screen.queryByText("Painel operacional")).not.toBeInTheDocument();
+  }
+
   it("sai do splash para a tela de PIN e não abre o atendimento", async () => {
     const user = userEvent.setup();
     render(
@@ -76,4 +105,25 @@ describe("cancelar o primeiro PIN", () => {
     expect(await screen.findByRole("heading", { name: "Selecionar perfil da sessão" })).toBeInTheDocument();
     expect(screen.queryByText("Painel operacional")).not.toBeInTheDocument();
   });
+
+  it("Fechar o PIN necessário do boot abre a entrada sem liberar a sessão", async () => {
+    const { user, consulta } = await abrirPromptSobrescritoPeloBoot();
+    await user.click(screen.getByRole("button", { name: "Fechar" }));
+    await expectGateSemAtendimento();
+    await expect(consulta).resolves.toBe(false);
+  }, 12000);
+
+  it("Esc no PIN necessário do boot abre a entrada sem liberar a sessão", async () => {
+    const { user, consulta } = await abrirPromptSobrescritoPeloBoot();
+    await user.keyboard("{Escape}");
+    await expectGateSemAtendimento();
+    await expect(consulta).resolves.toBe(false);
+  }, 12000);
+
+  it("o X no PIN necessário do boot abre a entrada sem liberar a sessão", async () => {
+    const { user, consulta } = await abrirPromptSobrescritoPeloBoot();
+    await user.click(screen.getByRole("button", { name: "Close" }));
+    await expectGateSemAtendimento();
+    await expect(consulta).resolves.toBe(false);
+  }, 12000);
 });

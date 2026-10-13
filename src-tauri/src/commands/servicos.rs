@@ -47,8 +47,11 @@ fn required_concurrency_token(token: Option<&str>) -> Result<String, String> {
 }
 
 fn duplicate_service_name_message(error: &sqlx::Error) -> Option<String> {
-    let lower = error.to_string().to_lowercase();
-    if lower.contains("ux_servicos_catalogo_nome_ativo") {
+    let database = error.as_database_error()?;
+    if database.code().as_deref() != Some("23505") {
+        return None;
+    }
+    if database.constraint() == Some("ux_servicos_catalogo_nome_ativo") {
         return Some("Já existe um serviço ativo com esse nome.".to_string());
     }
     None

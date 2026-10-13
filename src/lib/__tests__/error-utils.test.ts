@@ -26,11 +26,17 @@ describe('error-utils', () => {
       expect(result.message).toBe('Ocorreu um erro inesperado.');
     });
 
-    it('traduz duplicidade de cliente para o operador e guarda o texto técnico', () => {
-      const raw = 'duplicate key value violates unique constraint "ux_clientes_documento_ativo"';
-      const result = formatAppError({ context: 'Clientes', action: 'Salvar cliente', error: raw });
+    it('traduz duplicidade e a cópia não leva a constraint nem o texto técnico', () => {
+      const raw = 'duplicate key value violates unique constraint "ux_clientes_documento_ativo" SQLSTATE 23505';
+      const result = formatAppError({ context: 'Clientes', action: 'Salvar cliente', error: new Error(raw) });
       expect(result.message).toContain('cliente já está cadastrado');
-      expect(result.technicalDetails).toBe(raw);
+      expect(result.technicalDetails).toBeUndefined();
+      const copied = formatErrorForCopy(result);
+      expect(copied).toContain('cliente já está cadastrado');
+      expect(copied).not.toContain('ux_clientes_documento_ativo');
+      expect(copied.toLowerCase()).not.toContain('constraint');
+      expect(copied).not.toContain('duplicate key');
+      expect(copied).not.toContain('23505');
     });
   });
 

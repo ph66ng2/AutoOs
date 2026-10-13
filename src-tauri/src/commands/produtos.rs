@@ -708,15 +708,21 @@ mod tests {
             .contains("insuficiente"));
     }
 
-    fn banco_local_de_teste() -> String {
-        let url = std::env::var("AUTOOS_PAGE_TEST_DATABASE_URL")
-            .unwrap_or_else(|_| "postgresql:///postgres".to_string());
-        let parsed = url::Url::parse(&url).expect("URL de teste inválida");
+    /// Só devolve a URL quando ela foi passada de propósito e aponta para um
+    /// banco descartável em localhost. Sem isso o teste não conecta e não
+    /// executa DROP SCHEMA.
+    fn banco_descartavel_explicito() -> Option<String> {
+        let url = std::env::var("AUTOOS_PAGE_TEST_DATABASE_URL").ok()?;
+        let parsed = url::Url::parse(&url).ok()?;
         let host = parsed.host_str().unwrap_or("");
-        if !host.is_empty() && host != "localhost" && host != "127.0.0.1" && host != "::1" {
-            panic!("o teste de paginação de insumos só conecta em Postgres local");
+        let local = host.is_empty() || host == "localhost" || host == "127.0.0.1" || host == "::1";
+        let nome = parsed.path().trim_start_matches('/').to_ascii_lowercase();
+        let descartavel = nome.contains("test") || nome.contains("descart");
+        if local && descartavel {
+            Some(url)
+        } else {
+            None
         }
-        url
     }
 
     async fn pool_no_schema_de_teste(url: &str) -> PgPool {
@@ -736,7 +742,12 @@ mod tests {
     /// Antes, um OFFSET int4 e outro int8 faziam o PostgreSQL recusar o bind 3.
     #[tokio::test]
     async fn paginar_insumos_reaproveita_a_consulta_sem_erro() {
-        let url = banco_local_de_teste();
+        let Some(url) = banco_descartavel_explicito() else {
+            eprintln!(
+                "paginar_insumos ignorado: defina AUTOOS_PAGE_TEST_DATABASE_URL com um banco descartável em localhost"
+            );
+            return;
+        };
         let admin = sqlx::postgres::PgPoolOptions::new()
             .max_connections(1)
             .connect(&url)

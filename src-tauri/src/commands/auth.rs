@@ -1158,7 +1158,7 @@ pub async fn create_security_profile(input: SecurityProfileInput, pin: String) -
     .await
     .map_err(|e| {
         error!("Erro ao criar perfil de segurança: {}", e);
-        if let Some(message) = super::operator_errors::mensagem_cadastro_duplicado(&e.to_string()) {
+        if let Some(message) = super::operator_errors::mensagem_duplicidade_sql(&e) {
             return message;
         }
         "Não foi possível criar o perfil. Tente novamente.".to_string()
@@ -1229,7 +1229,7 @@ pub async fn update_security_profile(profile_id: i32, input: SecurityProfileInpu
     .await
     .map_err(|e| {
         error!("Erro ao atualizar perfil de segurança {}: {}", profile_id, e);
-        if let Some(message) = super::operator_errors::mensagem_cadastro_duplicado(&e.to_string()) {
+        if let Some(message) = super::operator_errors::mensagem_duplicidade_sql(&e) {
             return message;
         }
         "Não foi possível atualizar o perfil. Tente novamente.".to_string()

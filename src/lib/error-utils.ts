@@ -23,8 +23,8 @@ export function formatAppError(params: {
 
   const duplicado = mensagemCadastroDuplicado(message);
   if (duplicado) {
-    if (!technicalDetails) technicalDetails = message;
     message = duplicado;
+    technicalDetails = undefined;
   }
 
   return {
