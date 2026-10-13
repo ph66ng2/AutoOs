@@ -127,7 +127,7 @@ pub async fn criar_gasto_fixo(input: GastoFixoInput) -> Result<GastoFixoRow, Str
     .await
     .map_err(|e| {
         error!("Erro ao criar gasto fixo: {}", e);
-        e.to_string()
+        super::operator_errors::erro_sql_para_operador(&e)
     })?;
 
     let id: i32 = row.get("id");
@@ -188,7 +188,7 @@ pub async fn atualizar_gasto_fixo(id: i32, input: GastoFixoInput) -> Result<Gast
     .await
     .map_err(|e| {
         error!("Erro ao atualizar gasto fixo {}: {}", id, e);
-        e.to_string()
+        super::operator_errors::erro_sql_para_operador(&e)
     })?
     .rows_affected();
 

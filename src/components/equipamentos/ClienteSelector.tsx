@@ -25,6 +25,7 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { db } from "@/lib/db";
+import { mensagemCadastroDuplicado } from "@/lib/operator-errors";
 import type { Cliente, Equipamento } from "@/types";
 import {
   clienteSchema,
@@ -262,8 +263,9 @@ export function ClienteSelector({
       onClienteSelecionado(novoCliente);
     } catch (err: unknown) {
       const msg = err?.toString() || "";
-      if (msg.includes("UNIQUE")) {
-        warning("Clientes", "Já existe um cliente com este CPF/CNPJ. Use a busca para encontrá-lo.");
+      const duplicado = mensagemCadastroDuplicado(msg);
+      if (duplicado || msg.includes("UNIQUE") || msg.toLowerCase().includes("cpf/cnpj já está cadastrado")) {
+        warning("Clientes", duplicado ?? "Já existe um cliente com este CPF/CNPJ. Use a busca para encontrá-lo.");
       } else {
         console.error("Erro ao criar cliente:", err);
         showError("Clientes", "Criar cliente", err || "Erro ao criar cliente.");

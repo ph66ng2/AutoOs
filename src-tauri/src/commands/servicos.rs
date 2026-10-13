@@ -271,7 +271,7 @@ pub async fn criar_servico(input: ServicoCatalogoInput) -> Result<ServicoCatalog
             return message;
         }
         error!("Erro ao criar serviço '{}': {}", nome, e);
-        e.to_string()
+        super::operator_errors::erro_sql_para_operador(&e)
     })?;
 
     record_security_event(
@@ -324,7 +324,7 @@ pub async fn atualizar_servico(id: i32, input: ServicoCatalogoInput) -> Result<S
             return message;
         }
         error!("Erro ao atualizar serviço {}: {}", id, e);
-        e.to_string()
+        super::operator_errors::erro_sql_para_operador(&e)
     })?
     .rows_affected();
 

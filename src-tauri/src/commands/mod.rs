@@ -13,6 +13,7 @@
 //! ╚══════════════════════════════════════════════════════════════╝
 
 pub mod types;
+pub mod operator_errors;
 pub mod auth;
 pub mod equipamentos;
 pub mod equipamento_imagens;
