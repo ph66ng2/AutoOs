@@ -45,5 +45,24 @@ test("empresa_id recusa espaço ou quebra internos em vez de juntar os dígitos"
 test("o workflow usa o normalizador e não apaga espaço interno", () => {
   const source = readFileSync(workflow, "utf8");
   assert.equal(source.includes("//[[:space:]]/"), false);
-  assert.equal(source.split("normalize-seed-empresa-id.sh").length - 1, 2);
+  assert.equal(source.split("normalize-seed-empresa-id.sh").length - 1, 3);
+});
+
+test("a conferência pós-seed conta os códigos só na empresa resolvida", () => {
+  const source = readFileSync(workflow, "utf8");
+  const confirm = readFileSync(new URL("../confirm-estoque-seed-empresa.sql", import.meta.url), "utf8");
+  const seed = readFileSync(new URL("../seed-estoque-ribbons-bopp.sql", import.meta.url), "utf8");
+  assert.equal(source.includes("empresa_id IS NOT NULL"), false);
+  assert.match(source, /steps\.seed\.outputs\.empresa_id/);
+  assert.match(source, /seed\.empresa_id=\$\{alvo\}/);
+  assert.match(source, /seed\.empresa_id=\$\{seed_empresa_id\}/);
+  assert.equal(confirm.includes("empresa_id IS NOT NULL"), false);
+  assert.match(confirm, /empresa_id = target_empresa/);
+  assert.match(confirm, /Esperados 42 SKUs na empresa/);
+
+  const codes = (sql) => [...sql.matchAll(/'(ETQ-[^']+|RIB-[^']+|PEC-[^']+)'/g)].map((match) => match[1]);
+  const seedCodes = [...new Set(codes(seed))].sort();
+  const confirmCodes = [...new Set(codes(confirm))].sort();
+  assert.equal(seedCodes.length, 42);
+  assert.deepEqual(confirmCodes, seedCodes);
 });

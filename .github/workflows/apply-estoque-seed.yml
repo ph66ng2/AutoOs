@@ -3,7 +3,9 @@
 # que já existe na empresa, mesmo inativo, não é inserido de novo. O saldo
 # de um SKU novo entra direto em quantidade_estoque, sem movimentação de
 # entrada. O input opcional empresa_id escolhe a empresa quando há mais de
-# uma. Ainda assim não roda em todo push: o disparo automático foi removido
+# uma. A conferência final conta os 42 códigos só nessa empresa — o id
+# normalizado ou, se vier vazio, a empresa única resolvida antes do seed.
+# Ainda assim não roda em todo push: o disparo automático foi removido
 # de propósito.
 #
 # Só workflow_dispatch em master, environment production-migrations (revisor),
@@ -138,6 +140,7 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y postgresql-client
 
       - name: Aplicar scripts/seed-estoque-ribbons-bopp.sql
+        id: seed
         env:
           AUTOOS_PRODUCTION_SEED_DATABASE_URL: ${{ secrets.AUTOOS_PRODUCTION_SEED_DATABASE_URL }}
           AUTOOS_PRODUCTION_SEED_EMPRESA_ID: ${{ inputs.empresa_id }}
@@ -145,40 +148,47 @@ jobs:
           set -euo pipefail
           unset PGHOST PGHOSTADDR PGPORT PGUSER PGDATABASE PGSERVICE PGSERVICEFILE PGOPTIONS
           seed_empresa_id="$(bash scripts/normalize-seed-empresa-id.sh "${AUTOOS_PRODUCTION_SEED_EMPRESA_ID:-}")"
-          if [[ -n "$seed_empresa_id" ]]; then
-            export PGOPTIONS="-c seed.empresa_id=${seed_empresa_id}"
+          if [[ -z "$seed_empresa_id" ]]; then
+            empresa_ids_output="$(psql "$AUTOOS_PRODUCTION_SEED_DATABASE_URL" -v ON_ERROR_STOP=1 -At -q -c "SELECT id FROM empresas ORDER BY id")"
+            empresa_ids=()
+            if [[ -n "$empresa_ids_output" ]]; then
+              mapfile -t empresa_ids <<< "$empresa_ids_output"
+            fi
+            if [[ "${#empresa_ids[@]}" -eq 0 ]]; then
+              echo "Nenhuma empresa cadastrada. Cadastre a empresa ou defina seed.empresa_id antes de aplicar o seed."
+              exit 1
+            fi
+            if [[ "${#empresa_ids[@]}" -ne 1 || ! "${empresa_ids[0]}" =~ ^[0-9]+$ ]]; then
+              echo "Há ${#empresa_ids[@]} empresas. Defina seed.empresa_id com o id da empresa alvo. O seed não escolhe uma empresa sozinho."
+              exit 1
+            fi
+            seed_empresa_id="${empresa_ids[0]}"
           fi
+          echo "empresa_id=${seed_empresa_id}" >> "$GITHUB_OUTPUT"
+          export PGOPTIONS="-c seed.empresa_id=${seed_empresa_id}"
           psql "$AUTOOS_PRODUCTION_SEED_DATABASE_URL" -v ON_ERROR_STOP=1 -f scripts/seed-estoque-ribbons-bopp.sql
 
       - name: Confirmar 42 SKUs do inventário na empresa
         env:
           AUTOOS_PRODUCTION_SEED_DATABASE_URL: ${{ secrets.AUTOOS_PRODUCTION_SEED_DATABASE_URL }}
+          AUTOOS_PRODUCTION_SEED_EMPRESA_ID: ${{ inputs.empresa_id }}
+          SEED_EMPRESA_ID: ${{ steps.seed.outputs.empresa_id }}
         run: |
-          psql "$AUTOOS_PRODUCTION_SEED_DATABASE_URL" -v ON_ERROR_STOP=1 -c "
-            DO \$\$
-            DECLARE found integer;
-            BEGIN
-              SELECT COUNT(DISTINCT codigo) INTO found
-              FROM produtos
-              WHERE empresa_id IS NOT NULL
-                AND codigo IN (
-                  'ETQ-100X50-COUCHE','ETQ-32X18X3-TRANS-BOPP','ETQ-102X51-TRANS-BOPP',
-                  'ETQ-100X70-BOPP','ETQ-50X40X2-TRANS-BOPP','ETQ-100X150-BOPP',
-                  'ETQ-45X20X2-LACRE-ELMECO','ETQ-32X18X5-BOPP','ETQ-100X65-BOPP',
-                  'ETQ-100X40-BOPP','ETQ-100X70-COUCHE','ETQ-40X33-PRATA',
-                  'ETQ-20X25X3-BOPP','ETQ-30X30-BOPP','ETQ-50X20-BOPP',
-                  'ETQ-50X50X20-BOPP','ETQ-100X50-BOPP','ETQ-45X20-BOPP',
-                  'ETQ-35X70X3-CARTAO-ROUPA','ETQ-70X125X01-BOPP-3POL','ETQ-100X50-BOPP-3POL',
-                  'ETQ-28X80-COUCHE-DYMO','ETQ-70X30-COUCHE-3POL','ETQ-50X70X2-BOPP-3POL',
-                  'ETQ-90X60-GONDOLA-AM-3POL','RIB-CERA-110X450','RIB-RESINA',
-                  'RIB-ZXP1-COLOR','RIB-ZXP1-MONO','RIB-ZC300-MONO','PEC-CANETA-LIMPEZA',
-                  'ETQ-17X152X5-COUCHE','ETQ-80X50-COUCHE-AZUL','ETQ-50X120X2-COUCHE',
-                  'ETQ-50X160X2-COUCHE','ETQ-50X28-COUCHE-AMARELA','ETQ-100X30-GONDOLA',
-                  'ETQ-100X40-GONDOLA-LARANJA','ETQ-33X22X3-COUCHE','ETQ-33X22X3-AMARELA',
-                  'ETQ-75X30-GONDOLA-LARANJA','ETQ-80X70-BOPP'
-                );
-              IF found <> 42 THEN
-                RAISE EXCEPTION 'Esperados 42 SKUs com empresa, ativos ou inativos; encontrados %.', found;
-              END IF;
-            END \$\$;
-          "
+          set -euo pipefail
+          unset PGHOST PGHOSTADDR PGPORT PGUSER PGDATABASE PGSERVICE PGSERVICEFILE PGOPTIONS
+          normalized="$(bash scripts/normalize-seed-empresa-id.sh "${AUTOOS_PRODUCTION_SEED_EMPRESA_ID:-}")"
+          if [[ -n "$normalized" ]]; then
+            alvo="$normalized"
+          else
+            alvo="${SEED_EMPRESA_ID:-}"
+          fi
+          if [[ ! "$alvo" =~ ^[0-9]+$ ]]; then
+            echo "A conferência não recebeu a empresa alvo: use o empresa_id normalizado ou a empresa única resolvida no seed."
+            exit 1
+          fi
+          if [[ -n "${SEED_EMPRESA_ID:-}" && "$alvo" != "$SEED_EMPRESA_ID" ]]; then
+            echo "A conferência usaria a empresa ${alvo}, diferente da empresa ${SEED_EMPRESA_ID} em que o seed foi aplicado."
+            exit 1
+          fi
+          export PGOPTIONS="-c seed.empresa_id=${alvo}"
+          psql "$AUTOOS_PRODUCTION_SEED_DATABASE_URL" -v ON_ERROR_STOP=1 -f scripts/confirm-estoque-seed-empresa.sql

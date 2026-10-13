@@ -43,6 +43,7 @@ fi
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 DB_NAME="autoos_seed_verify"
 SEED="$ROOT/scripts/seed-estoque-ribbons-bopp.sql"
+CONFIRM="$ROOT/scripts/confirm-estoque-seed-empresa.sql"
 MIGRATIONS="$ROOT/src-tauri/migrations"
 
 psql_local() {
@@ -127,20 +128,49 @@ done
 
 expect_seed_failure "Nenhuma empresa cadastrada" \
   psql_cmd -d "$DB_NAME" -f "$SEED"
+expect_seed_failure "Nenhuma empresa cadastrada" \
+  psql_cmd -d "$DB_NAME" -f "$CONFIRM"
 
 psql_cmd -d "$DB_NAME" -v ON_ERROR_STOP=1 <<'SQL' >/dev/null
 INSERT INTO empresas (nome, email, status) VALUES
-    ('BMITAG', 'seed-verify-a@example.invalid', 'ativo'),
+    ('BMITAG', 'seed-verify-a@example.invalid', 'ativo');
+SQL
+
+echo "Sem empresa_id, o seed e a conferência usam a única empresa"
+psql_cmd -d "$DB_NAME" -f "$SEED"
+psql_cmd -d "$DB_NAME" -f "$CONFIRM"
+
+echo "Código ausente na única empresa faz a conferência falhar"
+psql_cmd -d "$DB_NAME" -v ON_ERROR_STOP=1 -c "DELETE FROM produtos WHERE codigo = 'ETQ-80X70-BOPP' AND empresa_id = (SELECT id FROM empresas);" >/dev/null
+expect_seed_failure "encontrados 41" \
+  psql_cmd -d "$DB_NAME" -f "$CONFIRM"
+psql_cmd -d "$DB_NAME" -f "$SEED"
+psql_cmd -d "$DB_NAME" -f "$CONFIRM"
+
+psql_cmd -d "$DB_NAME" -v ON_ERROR_STOP=1 <<'SQL' >/dev/null
+INSERT INTO empresas (nome, email, status) VALUES
     ('Outra', 'seed-verify-b@example.invalid', 'ativo');
 SQL
 
 expect_seed_failure "Defina seed.empresa_id" \
   psql_cmd -d "$DB_NAME" -f "$SEED"
+expect_seed_failure "Defina seed.empresa_id" \
+  psql_cmd -d "$DB_NAME" -f "$CONFIRM"
 
 null_before="$(psql_cmd -d "$DB_NAME" -At -c "SELECT COUNT(*) FROM produtos WHERE ativo = true AND empresa_id IS NULL;")"
 
 echo "Primeira aplicação do seed na empresa 1"
 psql_cmd_for_empresa 1 -d "$DB_NAME" -f "$SEED"
+
+echo "A soma das empresas não substitui a conferência da empresa alvo"
+global_codes="$(psql_cmd -d "$DB_NAME" -At -c "SELECT COUNT(DISTINCT codigo) FROM produtos WHERE empresa_id IS NOT NULL;")"
+if [[ "$global_codes" != "42" ]]; then
+  echo "O cenário da conferência frouxa precisa de 42 códigos somando as empresas; achou ${global_codes}." >&2
+  exit 1
+fi
+psql_cmd_for_empresa 1 -d "$DB_NAME" -f "$CONFIRM"
+expect_seed_failure "encontrados 0" \
+  psql_cmd_for_empresa 2 -d "$DB_NAME" -f "$CONFIRM"
 
 psql_cmd -d "$DB_NAME" -v ON_ERROR_STOP=1 <<'SQL' >/dev/null
 CREATE TABLE seed_verify_sentinel (
@@ -272,6 +302,10 @@ BEGIN
 END \$\$;
 SQL
 
+echo "Conferência dos 42 códigos em cada empresa, ativos ou inativos"
+psql_cmd_for_empresa 1 -d "$DB_NAME" -f "$CONFIRM"
+psql_cmd_for_empresa 2 -d "$DB_NAME" -f "$CONFIRM"
+
 echo "SKU inativo da mesma empresa não recebe outra linha ativa"
 psql_cmd -d "$DB_NAME" -v ON_ERROR_STOP=1 <<'SQL' >/dev/null
 UPDATE produtos
@@ -312,4 +346,15 @@ BEGIN
 END $$;
 SQL
 
-echo "SEED_VERIFY_OK migrations=0001-0029 idempotent=1 movements_preserved=1 inactive_preserved=1"
+echo "Código que falta numa empresa não é coberto pelo estoque da outra"
+psql_cmd -d "$DB_NAME" -v ON_ERROR_STOP=1 -c "DELETE FROM produtos WHERE empresa_id = 2 AND codigo = 'RIB-RESINA';" >/dev/null
+global_codes="$(psql_cmd -d "$DB_NAME" -At -c "SELECT COUNT(DISTINCT codigo) FROM produtos WHERE empresa_id IS NOT NULL;")"
+if [[ "$global_codes" != "42" ]]; then
+  echo "A soma das empresas ainda deveria ver os 42 códigos; achou ${global_codes}." >&2
+  exit 1
+fi
+psql_cmd_for_empresa 1 -d "$DB_NAME" -f "$CONFIRM"
+expect_seed_failure "encontrados 41" \
+  psql_cmd_for_empresa 2 -d "$DB_NAME" -f "$CONFIRM"
+
+echo "SEED_VERIFY_OK migrations=0001-0029 idempotent=1 movements_preserved=1 inactive_preserved=1 company_scoped=1"

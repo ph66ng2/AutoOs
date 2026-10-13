@@ -29,6 +29,9 @@ function formatDate(value: string) {
   }).format(new Date(value));
 }
 
+/** Título da última resposta aceita no estado. O teste observa a corrida do hash. */
+export const latestAcceptedPublicStatus = { title: null as string | null };
+
 export default function PublicStatusPage() {
   const [token, setToken] = useState<string | null>(tokenFromFragment);
   const [data, setData] = useState<PublicStatusResponse | null>(null);
@@ -36,16 +39,28 @@ export default function PublicStatusPage() {
   const [checkedAt, setCheckedAt] = useState<string | null>(null);
   const [error, setError] = useState<"unavailable" | "rate-limit" | "service" | null>(token ? null : "unavailable");
   const requestSeq = useRef(0);
+  const tokenRef = useRef(token);
 
   useEffect(() => {
-    const syncToken = () => setToken(tokenFromFragment());
+    const syncToken = () => {
+      const next = tokenFromFragment();
+      if (next === tokenRef.current) return;
+      tokenRef.current = next;
+      requestSeq.current += 1;
+      setToken(next);
+      setData(null);
+      setCheckedAt(null);
+      setError(next ? null : "unavailable");
+      setLoading(Boolean(next));
+    };
     window.addEventListener("hashchange", syncToken);
     return () => window.removeEventListener("hashchange", syncToken);
   }, []);
 
   const loadStatus = useCallback(async () => {
+    const requestedToken = token;
     const requestId = ++requestSeq.current;
-    if (!token) {
+    if (!requestedToken) {
       setData(null);
       setError("unavailable");
       setLoading(false);
@@ -55,16 +70,17 @@ export default function PublicStatusPage() {
     setError(null);
     setData(null);
     try {
-      const response = await buscarStatusPublico(token);
-      if (requestId !== requestSeq.current) return;
+      const response = await buscarStatusPublico(requestedToken);
+      if (requestId !== requestSeq.current || tokenRef.current !== requestedToken) return;
+      latestAcceptedPublicStatus.title = response.titulo;
       setData(response);
       setCheckedAt(new Date().toISOString());
     } catch (cause) {
-      if (requestId !== requestSeq.current) return;
+      if (requestId !== requestSeq.current || tokenRef.current !== requestedToken) return;
       setData(null);
       setError(cause instanceof PublicStatusRequestError ? cause.kind : "service");
     } finally {
-      if (requestId === requestSeq.current) setLoading(false);
+      if (requestId === requestSeq.current && tokenRef.current === requestedToken) setLoading(false);
     }
   }, [token]);
 
