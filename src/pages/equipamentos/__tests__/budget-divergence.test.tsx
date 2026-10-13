@@ -90,6 +90,7 @@ vi.mock("@/lib/db", () => ({
     buscarEquipamentosPorSerial: (...args: unknown[]) => mockBuscarEquipamentosPorSerial(...args),
     buscarCliente: (...args: unknown[]) => mockBuscarCliente(...args),
     listarComunicacoes: vi.fn().mockResolvedValue([]),
+    listarHistoricoEquipamento: vi.fn().mockResolvedValue([]),
     listarEquipamentos: vi.fn().mockResolvedValue([]),
     listarEquipamentosPaginados: vi.fn().mockResolvedValue({ items: [], total: 0 }),
     substituirImagensEquipamento: vi.fn().mockResolvedValue([]),
@@ -717,5 +718,35 @@ describe("Equipamentos — Budget Divergence & Audit", () => {
     expect(screen.queryByTestId("action-orcamento_pdf")).not.toBeInTheDocument();
     expect(screen.queryByTestId("action-alterar_orcamento")).not.toBeInTheDocument();
     view.unmount();
+  });
+
+  it("a linha do equipamento é focável e Enter ou Espaço abrem o detalhe", async () => {
+    const view = render(<Equipamentos />);
+    const row = screen.getByRole("button", { name: "Abrir detalhes de Zebra ZT230" });
+    expect(row.tagName).toBe("TR");
+    expect(row).toHaveAttribute("tabindex", "0");
+
+    fireEvent.keyDown(row, { key: "Enter" });
+    expect(await screen.findByText("Detalhes do Equipamento")).toBeInTheDocument();
+    view.unmount();
+
+    const spaceView = render(<Equipamentos />);
+    fireEvent.keyDown(screen.getByRole("button", { name: "Abrir detalhes de Zebra ZT230" }), { key: " " });
+    expect(await screen.findByText("Detalhes do Equipamento")).toBeInTheDocument();
+    spaceView.unmount();
+  });
+
+  it("Enter e Espaço nos botões de Ações não abrem o detalhe pela linha", async () => {
+    mockBuscarVerificacao.mockResolvedValue(makeVerificacao());
+    render(<Equipamentos />);
+    const action = screen.getByTestId("action-enviar_orcamento");
+
+    fireEvent.keyDown(action, { key: "Enter" });
+    fireEvent.keyDown(action, { key: " " });
+    expect(screen.queryByText("Detalhes do Equipamento")).not.toBeInTheDocument();
+
+    fireEvent.click(action);
+    expect(await screen.findByText(/Ajuste de Orçamento/i)).toBeInTheDocument();
+    expect(screen.queryByText("Detalhes do Equipamento")).not.toBeInTheDocument();
   });
 });

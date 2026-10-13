@@ -2017,8 +2017,17 @@ export default function Equipamentos() {
                   {equipamentosExibidos.map(eq => (
                     <TableRow
                       key={eq.id}
-                      className="group cursor-pointer"
+                      tabIndex={0}
+                      role="button"
+                      aria-label={`Abrir detalhes de ${eq.marca} ${eq.modelo}`}
+                      className="group cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
                       onClick={() => void abrirDetalhes(eq)}
+                      onKeyDown={(event) => {
+                        if (event.target !== event.currentTarget) return;
+                        if (event.key !== "Enter" && event.key !== " ") return;
+                        event.preventDefault();
+                        void abrirDetalhes(eq);
+                      }}
                     >
                       <TableCell className="overflow-hidden font-mono font-medium">
                         <span className="block truncate" title={eq.serial_number}>{eq.serial_number}</span>
@@ -2057,6 +2066,7 @@ export default function Equipamentos() {
                       <TableCell
                         className="sticky right-0 z-10 w-[18rem] min-w-[18rem] bg-card text-right group-hover:bg-muted/50"
                         onClick={(event) => event.stopPropagation()}
+                        onKeyDown={(event) => event.stopPropagation()}
                       >
                         <div className="flex justify-end">
                           {renderAcoes(eq)}
