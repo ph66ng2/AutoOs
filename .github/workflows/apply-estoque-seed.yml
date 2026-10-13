@@ -77,11 +77,7 @@ jobs:
             echo "Configure os secrets AUTOOS_PRODUCTION_SEED_DATABASE_URL, AUTOOS_PRODUCTION_DATABASE_HOST e AUTOOS_PRODUCTION_DATABASE_USER no ambiente production-migrations."
             exit 1
           fi
-          seed_empresa_id="${AUTOOS_PRODUCTION_SEED_EMPRESA_ID//[[:space:]]/}"
-          if [[ -n "$seed_empresa_id" && ! "$seed_empresa_id" =~ ^[0-9]+$ ]]; then
-            echo "empresa_id precisa ser um inteiro; nenhuma conexão foi aberta."
-            exit 1
-          fi
+          seed_empresa_id="$(bash scripts/normalize-seed-empresa-id.sh "${AUTOOS_PRODUCTION_SEED_EMPRESA_ID:-}")"
           echo "::add-mask::${AUTOOS_PRODUCTION_DATABASE_HOST,,}"
           confirmed_sha="$(python3 - <<'PY'
           import json, os
@@ -148,12 +144,8 @@ jobs:
         run: |
           set -euo pipefail
           unset PGHOST PGHOSTADDR PGPORT PGUSER PGDATABASE PGSERVICE PGSERVICEFILE PGOPTIONS
-          seed_empresa_id="${AUTOOS_PRODUCTION_SEED_EMPRESA_ID//[[:space:]]/}"
+          seed_empresa_id="$(bash scripts/normalize-seed-empresa-id.sh "${AUTOOS_PRODUCTION_SEED_EMPRESA_ID:-}")"
           if [[ -n "$seed_empresa_id" ]]; then
-            if [[ ! "$seed_empresa_id" =~ ^[0-9]+$ ]]; then
-              echo "empresa_id precisa ser um inteiro; nenhuma conexão foi aberta."
-              exit 1
-            fi
             export PGOPTIONS="-c seed.empresa_id=${seed_empresa_id}"
           fi
           psql "$AUTOOS_PRODUCTION_SEED_DATABASE_URL" -v ON_ERROR_STOP=1 -f scripts/seed-estoque-ribbons-bopp.sql

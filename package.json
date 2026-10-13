@@ -13,7 +13,7 @@
     "test": "vitest",
     "test:ui": "vitest --ui",
     "test:run": "vitest run && npm run test:updater",
-    "test:updater": "node --test scripts/__tests__/generate-update-manifest.test.mjs",
+    "test:updater": "node --test scripts/__tests__/generate-update-manifest.test.mjs scripts/__tests__/normalize-seed-empresa-id.test.mjs",
     "test:coverage": "vitest run --coverage",
     "lint": "tsc --noEmit",
     "check:migrations": "node scripts/check-sqlx-migrations.mjs",
