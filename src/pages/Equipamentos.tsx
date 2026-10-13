@@ -180,6 +180,13 @@ import { resolveRecipient, type ResolvedRecipient } from "@/lib/recipient-resolv
 import { saveRecipientAddress } from "@/lib/recipient-persistence";
 import { totalPages } from "@/lib/pagination";
 
+const EQUIPMENT_ROW_FOCUS_EDGE =
+  "group-focus-visible:bg-sky-100 group-focus-visible:shadow-[inset_0_3px_0_0_#1d4ed8,inset_0_-3px_0_0_#1d4ed8]";
+const EQUIPMENT_ROW_FOCUS_FIRST =
+  "group-focus-visible:bg-sky-100 group-focus-visible:shadow-[inset_3px_0_0_0_#1d4ed8,inset_0_3px_0_0_#1d4ed8,inset_0_-3px_0_0_#1d4ed8]";
+const EQUIPMENT_ROW_FOCUS_LAST =
+  "group-focus-visible:bg-sky-100 group-focus-visible:shadow-[inset_-3px_0_0_0_#1d4ed8,inset_0_3px_0_0_#1d4ed8,inset_0_-3px_0_0_#1d4ed8]";
+
 export default function Equipamentos() {
   const [busca, setBusca] = useState("");
   const [statusFiltro, setStatusFiltro] = useState("TODOS");
@@ -2020,7 +2027,7 @@ export default function Equipamentos() {
                       tabIndex={0}
                       role="button"
                       aria-label={`Abrir detalhes de ${eq.marca} ${eq.modelo}`}
-                      className="group cursor-pointer focus-visible:bg-sky-100 focus-visible:outline focus-visible:outline-[3px] focus-visible:-outline-offset-2 focus-visible:outline-blue-700 focus-visible:[&>td]:bg-sky-100"
+                      className="group cursor-pointer focus-visible:outline-none"
                       onClick={() => void abrirDetalhes(eq)}
                       onKeyDown={(event) => {
                         if (event.target !== event.currentTarget) return;
@@ -2029,16 +2036,16 @@ export default function Equipamentos() {
                         void abrirDetalhes(eq);
                       }}
                     >
-                      <TableCell className="overflow-hidden font-mono font-medium">
+                      <TableCell className={`overflow-hidden font-mono font-medium ${EQUIPMENT_ROW_FOCUS_FIRST}`}>
                         <span className="block truncate" title={eq.serial_number}>{eq.serial_number}</span>
                       </TableCell>
-                      <TableCell className="overflow-hidden">
+                      <TableCell className={`overflow-hidden ${EQUIPMENT_ROW_FOCUS_EDGE}`}>
                         <div className="min-w-0">
                           <span className="block truncate font-medium" title={`${eq.marca} ${eq.modelo}`}>{eq.marca} {eq.modelo}</span>
                           <p className="truncate text-xs text-muted-foreground" title={eq.tipo}>{eq.tipo}</p>
                         </div>
                       </TableCell>
-                      <TableCell className="overflow-hidden">
+                      <TableCell className={`overflow-hidden ${EQUIPMENT_ROW_FOCUS_EDGE}`}>
                         {eq.cliente_nome ? (
                           <div className="min-w-0">
                             <span className="block truncate text-sm" title={eq.cliente_nome}>{eq.cliente_nome}</span>
@@ -2046,7 +2053,7 @@ export default function Equipamentos() {
                           </div>
                         ) : <span className="text-muted-foreground">—</span>}
                       </TableCell>
-                      <TableCell className="overflow-hidden">
+                      <TableCell className={`overflow-hidden ${EQUIPMENT_ROW_FOCUS_EDGE}`}>
                         <div className="flex flex-wrap items-center gap-2">
                           <StatusBadge status={eq.status} />
                           {(eq.status === "AGUARDANDO_APROVACAO" || eq.status === "ORCAMENTO_VENCIDO") &&
@@ -2057,14 +2064,14 @@ export default function Equipamentos() {
                             )}
                         </div>
                       </TableCell>
-                      <TableCell className="overflow-hidden text-sm text-muted-foreground">
+                      <TableCell className={`overflow-hidden text-sm text-muted-foreground ${EQUIPMENT_ROW_FOCUS_EDGE}`}>
                         <span className="block truncate">{formatDatePtBr(eq.data_entrada)}</span>
                       </TableCell>
-                      <TableCell className="overflow-hidden text-sm text-muted-foreground">
+                      <TableCell className={`overflow-hidden text-sm text-muted-foreground ${EQUIPMENT_ROW_FOCUS_EDGE}`}>
                         <span className="block truncate">{formatDatePtBr(eq.atualizado_em || eq.criado_em)}</span>
                       </TableCell>
                       <TableCell
-                        className="sticky right-0 z-10 w-[18rem] min-w-[18rem] bg-card text-right group-hover:bg-muted/50 group-focus-visible:bg-sky-100"
+                        className={`sticky right-0 z-10 w-[18rem] min-w-[18rem] bg-card text-right group-hover:bg-muted/50 ${EQUIPMENT_ROW_FOCUS_LAST}`}
                         onClick={(event) => event.stopPropagation()}
                         onKeyDown={(event) => event.stopPropagation()}
                       >

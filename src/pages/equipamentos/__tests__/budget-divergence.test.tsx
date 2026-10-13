@@ -725,8 +725,10 @@ describe("Equipamentos — Budget Divergence & Audit", () => {
     const row = screen.getByRole("button", { name: "Abrir detalhes de Zebra ZT230" });
     expect(row.tagName).toBe("TR");
     expect(row).toHaveAttribute("tabindex", "0");
-    expect(row.className).toContain("focus-visible:outline-blue-700");
-    expect(row.className).toContain("focus-visible:bg-sky-100");
+    const cells = row.querySelectorAll("td");
+    expect(cells[0].className).toContain("inset_3px_0_0_0_#1d4ed8");
+    expect(cells[cells.length - 1].className).toContain("inset_-3px_0_0_0_#1d4ed8");
+    expect(cells[1].className).toContain("inset_0_3px_0_0_#1d4ed8");
 
     fireEvent.keyDown(row, { key: "Enter" });
     expect(await screen.findByText("Detalhes do Equipamento")).toBeInTheDocument();
