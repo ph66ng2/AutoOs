@@ -369,6 +369,14 @@ export function StampDemo({
     [date, ink, mode, status],
   )
 
+  const pendingReveal = useRef<"fade" | "thump" | null>(null)
+  useLayoutEffect(() => {
+    const kind = pendingReveal.current
+    if (!kind || !print) return
+    pendingReveal.current = null
+    revealPrint([print3d.current, printFlat.current], kind)
+  }, [print])
+
   const stampNow = useCallback(
     async (opts: { quick?: boolean; voided?: boolean; via: string; autoRise?: boolean }) => {
       if (phase !== "set") return
@@ -399,11 +407,9 @@ export function StampDemo({
             lift.set(0)
             press.set(0)
             setPhase("done")
-            if (reduced) revealPrint([print3d.current, printFlat.current], "fade")
-            else {
-              play("impact", 0.13, -9)
-              revealPrint([print3d.current, printFlat.current], "thump")
-            }
+            // A marca acabou de entrar em `print`; o <img>/<svg> só existe após o commit.
+            pendingReveal.current = reduced ? "fade" : "thump"
+            if (!reduced) play("impact", 0.13, -9)
             return "quick"
           }
           setPhase("quick")
