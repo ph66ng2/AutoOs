@@ -19,7 +19,11 @@ concurrency:
 jobs:
   review:
     name: Revisar PR
-    if: github.event.pull_request.draft == false
+    # PRs de fork e do Dependabot não recebem os secrets do repositório: pular em vez de falhar
+    if: >-
+      github.event.pull_request.draft == false &&
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      github.event.pull_request.user.login != 'dependabot[bot]'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     permissions:
