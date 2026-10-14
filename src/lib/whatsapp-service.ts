@@ -142,6 +142,8 @@ export interface ResultadoSolicitacaoWhatsapp {
   sucesso: boolean;
   estado: EstadoEnvioWhatsapp;
   erro?: string;
+  /** A mensagem entrou na fila central e será enviada pelo processador em instantes. */
+  enfileirada?: boolean;
   /** O pedido já existia e não foi enviado de novo (gatilho automático repetido). */
   jaSolicitado?: boolean;
   /** O envio anterior tem resultado incerto; repetir exige confirmação do operador. */
@@ -154,6 +156,8 @@ function traduzirResultado(resultado: ResultadoEnvioWhatsapp): ResultadoSolicita
   switch (resultado.estado) {
     case "ENVIADA":
       return { sucesso: true, estado: resultado.estado };
+    case "ENFILEIRADA":
+      return { sucesso: true, estado: resultado.estado, enfileirada: true, mensagem };
     case "JA_SOLICITADO":
       return { sucesso: true, estado: resultado.estado, jaSolicitado: true, mensagem };
     case "REQUER_CONFIRMACAO":

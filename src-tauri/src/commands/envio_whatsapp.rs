@@ -28,6 +28,10 @@ use sqlx::{Postgres, Row, Transaction};
 use tracing::{info, instrument};
 
 const PROVEDOR_EVOLUTION: &str = "EVOLUTION";
+/// Provedor registrado na tentativa enquanto o processador central ainda não escolheu o transporte.
+const PROVEDOR_CENTRAL: &str = "CENTRAL";
+/// No modo central o link de decisão nasce no momento do envio; o texto leva este marcador.
+pub(crate) const TOKEN_PLACEHOLDER: &str = "{{TOKEN}}";
 /// Uma tentativa `PREPARANDO` mais antiga que isto é de uma instância que parou; vira `INCERTA`.
 const TENTATIVA_ABANDONADA_MINUTOS: i32 = 2;
 const ERRO_MAX_CHARS: usize = 300;
@@ -275,6 +279,21 @@ pub(crate) fn mensagem_decisao(
 
 // ─── Apoio ──────────────────────────────────────────────────────────────────
 
+/// Conteúdo que o processador central usa para enviar: parâmetros do modelo e o texto da Evolution.
+/// Nunca contém token: no modo central o texto traz `{{TOKEN}}` e o processador o substitui.
+fn montar_payload(mensagem: &MensagemWhatsapp, nome: &str, telefone: &str, tipo: TipoEnvio) -> serde_json::Value {
+    serde_json::json!({
+        "template": mensagem.template,
+        "parametros": mensagem.parametros,
+        "usaLink": mensagem.url_botao.is_some(),
+        "texto": mensagem.texto,
+        "historico": mensagem.historico,
+        "destinatario": nome,
+        "contato": telefone,
+        "tipoComunicacao": tipo.tipo_comunicacao(),
+    })
+}
+
 fn mascarar_telefone(telefone: &str) -> String {
     if telefone.len() <= 8 {
         return "****".to_string();
@@ -435,7 +454,7 @@ async fn reservar(
 
     let ultima: Option<(i64, i32, String, bool)> = sqlx::query_as(
         "SELECT id, numero, estado,
-                (criado_em < NOW() - make_interval(mins => $2)) AS abandonada
+                (COALESCE(reservado_em, criado_em) < NOW() - make_interval(mins => $2)) AS abandonada
          FROM envios_whatsapp_tentativas
          WHERE pedido_id = $1
          ORDER BY numero DESC
@@ -450,6 +469,15 @@ async fn reservar(
     let mut numero = 1;
     let mut origem = if input.reenvio_manual { "REENVIO_MANUAL" } else { "AUTOMATICO" };
     if let Some((ultima_id, ultimo_numero, mut ultimo_estado, abandonada)) = ultima {
+        if ultimo_estado == "PENDENTE" {
+            return Ok(Reserva::Resposta(ResultadoEnvioWhatsapp {
+                pedido_id: Some(pedido_id),
+                tentativa_id: Some(ultima_id),
+                estado: "EM_ANDAMENTO".to_string(),
+                ultimo_estado: Some(ultimo_estado),
+                mensagem: Some("Esta mensagem já está na fila de envio.".to_string()),
+            }));
+        }
         if ultimo_estado == "PREPARANDO" {
             if !abandonada {
                 return Ok(Reserva::Resposta(ResultadoEnvioWhatsapp {
@@ -508,22 +536,37 @@ async fn reservar(
             .await;
         }
     };
-    let config = match carregar_config_armazenada()? {
-        Some(config) if config.provider.trim().eq_ignore_ascii_case(PROVEDOR_EVOLUTION) => config,
-        Some(_) => {
-            return registrar_falha_imediata(
-                tx, empresa_id, profile_id, pedido_id, numero, origem, nome, telefone,
-                "Provider de WhatsApp não suportado.",
-            )
-            .await;
-        }
-        None => {
-            return registrar_falha_imediata(
-                tx, empresa_id, profile_id, pedido_id, numero, origem, nome, telefone,
-                "Configure o WhatsApp primeiro",
-            )
-            .await;
-        }
+    // Modo da empresa: sem linha de configuração o envio segue local (computador que clicou).
+    let central = sqlx::query_scalar::<_, String>(
+        "SELECT modo FROM envio_whatsapp_config_empresa WHERE empresa_id = $1",
+    )
+    .bind(empresa_id)
+    .fetch_optional(&mut **tx)
+    .await
+    .map_err(map)?
+    .is_some_and(|modo| modo == "CENTRAL");
+
+    // No modo central a configuração e o token ficam no processador, não neste computador.
+    let config = if central {
+        None
+    } else {
+        Some(match carregar_config_armazenada()? {
+            Some(config) if config.provider.trim().eq_ignore_ascii_case(PROVEDOR_EVOLUTION) => config,
+            Some(_) => {
+                return registrar_falha_imediata(
+                    tx, empresa_id, profile_id, pedido_id, numero, origem, nome, telefone,
+                    "Provider de WhatsApp não suportado.",
+                )
+                .await;
+            }
+            None => {
+                return registrar_falha_imediata(
+                    tx, empresa_id, profile_id, pedido_id, numero, origem, nome, telefone,
+                    "Configure o WhatsApp primeiro",
+                )
+                .await;
+            }
+        })
     };
 
     // Texto a partir dos dados atuais e, no orçamento, da versão congelada.
@@ -557,6 +600,22 @@ async fn reservar(
                 equipamento.prazo_aprovacao.as_deref(),
             )
         }
+        TipoEnvio::OrcamentoDecisao if central => {
+            let valor: f64 = sqlx::query_scalar("SELECT valor_total::FLOAT8 FROM orcamento_versoes WHERE id = $1")
+                .bind(versao_id)
+                .fetch_one(&mut **tx)
+                .await
+                .map_err(map)?;
+            let limite = Utc::now() + chrono::Duration::days(30);
+            mensagem_decisao(
+                &nome,
+                &equipamento.marca,
+                &equipamento.modelo,
+                valor,
+                TOKEN_PLACEHOLDER,
+                valido_ate.map_or(Some(limite), |v| Some(v.min(limite))),
+            )
+        }
         TipoEnvio::OrcamentoDecisao => {
             let emitido =
                 emitir_link_decisao(tx, empresa_id, input.equipamento_id, profile_id, false).await?;
@@ -579,21 +638,27 @@ async fn reservar(
         }
     };
 
+    // O conteúdo só é gravado na fila central, e lá o link de decisão é sempre um marcador.
+    // No envio local o texto pode conter o token real e nunca vai para o banco.
+    let payload = central.then(|| montar_payload(&mensagem, &nome, &telefone, tipo).to_string());
     let tentativa_id: i64 = match sqlx::query_scalar(
         "INSERT INTO envios_whatsapp_tentativas
             (pedido_id, empresa_id, numero, origem, estado, provedor, destino_final,
-             link_decisao_id, criado_por_profile_id)
-         VALUES ($1, $2, $3, $4, 'PREPARANDO', $5, $6, $7, $8)
+             link_decisao_id, criado_por_profile_id, reservado_em, mensagem_payload)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9,
+                 CASE WHEN $5 = 'PREPARANDO' THEN NOW() END, $10::TEXT::JSONB)
          RETURNING id",
     )
     .bind(pedido_id)
     .bind(empresa_id)
     .bind(numero)
     .bind(origem)
-    .bind(PROVEDOR_EVOLUTION)
+    .bind(if central { "PENDENTE" } else { "PREPARANDO" })
+    .bind(if central { PROVEDOR_CENTRAL } else { PROVEDOR_EVOLUTION })
     .bind(mascarar_telefone(&telefone))
     .bind(link_id)
     .bind(profile_id)
+    .bind(payload)
     .fetch_one(&mut **tx)
     .await
     {
@@ -608,6 +673,17 @@ async fn reservar(
             }));
         }
         Err(erro) => return Err(map(erro)),
+    };
+
+    let Some(config) = config else {
+        // Modo central: a tentativa fica na fila e o processador faz o resto.
+        return Ok(Reserva::Resposta(ResultadoEnvioWhatsapp {
+            pedido_id: Some(pedido_id),
+            tentativa_id: Some(tentativa_id),
+            estado: "ENFILEIRADA".to_string(),
+            ultimo_estado: None,
+            mensagem: Some("Mensagem na fila; será enviada em instantes.".to_string()),
+        }));
     };
 
     Ok(Reserva::Enviar(Box::new(EnvioPreparado {

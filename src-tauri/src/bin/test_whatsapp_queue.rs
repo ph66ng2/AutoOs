@@ -238,6 +238,87 @@ async fn main() -> Result<()> {
     assert!(pedir(orcamento, "orcamento_decisao", false, false).await.unwrap_err().to_string().contains("ainda não foi ativado"));
     assert_eq!(fake.requisicoes.load(Ordering::SeqCst), antes);
 
-    println!("OK: fila de WhatsApp — idempotência, concorrência, resultado incerto, reenvio, sem telefone, imutabilidade e link de decisão por versão.");
+
+    // 12. Modo central: o desktop só enfileira; o processador reserva, gera o link e conclui.
+    sqlx::query("UPDATE public.orcamento_aceite_config SET online_enabled = TRUE").execute(&pool).await?;
+    sqlx::query("INSERT INTO envio_whatsapp_config_empresa(empresa_id, modo, provedor, evolution_api_url) VALUES ($1, 'CENTRAL', 'EVOLUTION', 'https://evolution.test/send')").bind(empresa).execute(&pool).await?;
+    let antes = fake.requisicoes.load(Ordering::SeqCst);
+    let central = novo("PRONTO", Some("71933332222"), "Z").await?;
+    let r = pedir(central, "equipamento_pronto", false, false).await?;
+    assert_eq!(r.estado, "ENFILEIRADA", "{r:?}");
+    assert_eq!(fake.requisicoes.load(Ordering::SeqCst), antes, "o desktop não chama o provedor no modo central");
+    let (estado, provedor, payload): (String, String, String) = sqlx::query_as("SELECT estado, provedor, mensagem_payload::TEXT FROM envios_whatsapp_tentativas WHERE id = $1").bind(r.tentativa_id).fetch_one(&pool).await?;
+    assert_eq!((estado.as_str(), provedor.as_str()), ("PENDENTE", "CENTRAL"));
+    assert!(payload.contains("5571933332222") && payload.contains("equipamento_pronto"));
+    // Fila: repetir o gatilho ou reenviar enquanto está pendente não cria outra tentativa.
+    assert_eq!(pedir(central, "equipamento_pronto", false, false).await?.estado, "EM_ANDAMENTO");
+    assert_eq!(pedir(central, "equipamento_pronto", true, false).await?.estado, "EM_ANDAMENTO");
+    assert_eq!(tentativas(central).await?, 1);
+
+    // O link de decisão não nasce no desktop: o texto leva um marcador e nenhum link existe ainda.
+    let orc_central = novo("AGUARDANDO_APROVACAO", Some("71922221111"), "Y").await?;
+    verificacoes::salvar_verificacao_tecnica(VerificacaoInput {
+        equipamento_id: orc_central, empresa_id: Some(empresa), tecnico_nome: "Teste".into(), problema_relatado: "Teste".into(),
+        servicos_necessarios: Some(serde_json::json!([{"id":"a","descricao":"Troca","valor":90,"pecas":[]}]).to_string()),
+        pecas_necessarias: Some("[]".into()), custo_total: Some(90.0), ..VerificacaoInput::default()
+    }).await.map_err(|e| anyhow!(e))?;
+    let r = pedir(orc_central, "orcamento_decisao", false, false).await?;
+    assert_eq!(r.estado, "ENFILEIRADA", "{r:?}");
+    let payload: String = sqlx::query_scalar("SELECT mensagem_payload::TEXT FROM envios_whatsapp_tentativas WHERE id = $1").bind(r.tentativa_id).fetch_one(&pool).await?;
+    assert!(payload.contains("{{TOKEN}}") && payload.contains("\"usaLink\": true"), "{payload}");
+    let links: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM orcamento_links_decisao WHERE equipamento_id = $1").bind(orc_central).fetch_one(&pool).await?;
+    assert_eq!(links, 0);
+    assert!(!payload.contains("/#/o/") || payload.contains("/#/o/{{TOKEN}}"));
+
+    // Processadores simultâneos nunca recebem a mesma tentativa.
+    for indice in 0..7 {
+        let eq = novo("PRONTO", Some("71911110000"), Box::leak(format!("F{indice}").into_boxed_str())).await?;
+        assert_eq!(pedir(eq, "equipamento_pronto", false, false).await?.estado, "ENFILEIRADA");
+    }
+    let pendentes: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM envios_whatsapp_tentativas WHERE estado = 'PENDENTE'").fetch_one(&pool).await?;
+    let mut tarefas = Vec::new();
+    for indice in 0..(pendentes as usize + 3) {
+        let pool = pool.clone();
+        tarefas.push(tokio::spawn(async move {
+            sqlx::query_as::<_, (i64, bool)>("SELECT tentativa_id, valido FROM reservar_envios_whatsapp($1, 1)").bind(format!("proc-{indice}")).fetch_all(&pool).await
+        }));
+    }
+    let mut reservadas = Vec::new();
+    for tarefa in tarefas { reservadas.extend(tarefa.await??); }
+    let mut ids: Vec<i64> = reservadas.iter().map(|(id, _)| *id).collect();
+    ids.sort_unstable();
+    let total = ids.len();
+    ids.dedup();
+    assert_eq!(total, pendentes as usize, "todas as pendentes reservadas");
+    assert_eq!(ids.len(), total, "nenhuma tentativa reservada por dois processadores");
+    assert!(reservadas.iter().all(|(_, valido)| *valido));
+
+    // Processador: gera o link no envio e conclui; o histórico sai sem o token.
+    let tentativa_decisao = r.tentativa_id.unwrap();
+    let dono: String = sqlx::query_scalar("SELECT reservado_por FROM envios_whatsapp_tentativas WHERE id = $1").bind(tentativa_decisao).fetch_one(&pool).await?;
+    assert!(sqlx::query_scalar::<_, String>("SELECT emitir_link_decisao_envio($1, 'outra-instancia')").bind(tentativa_decisao).fetch_one(&pool).await.is_err(), "só quem reservou gera o link");
+    let token: String = sqlx::query_scalar("SELECT emitir_link_decisao_envio($1, $2)").bind(tentativa_decisao).bind(&dono).fetch_one(&pool).await?;
+    assert!(token.len() == 64 && token.chars().all(|c| c.is_ascii_hexdigit()));
+    let hash_confere: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM orcamento_links_decisao WHERE equipamento_id = $1 AND token_hash = encode(sha256($2::bytea), 'hex') AND revogado_em IS NULL").bind(orc_central).bind(&token).fetch_one(&pool).await?;
+    assert_eq!(hash_confere, 1);
+    let concluiu: bool = sqlx::query_scalar("SELECT concluir_envio_whatsapp($1, $2, 'ENVIADA', 'EVOLUTION', 'MSG-9', NULL)").bind(tentativa_decisao).bind(&dono).fetch_one(&pool).await?;
+    assert!(concluiu);
+    let vazou: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM comunicacoes WHERE equipamento_id = $1 AND mensagem LIKE '%' || $2 || '%'").bind(orc_central).bind(&token).fetch_one(&pool).await?;
+    assert_eq!(vazou, 0);
+    let historico: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM comunicacoes WHERE equipamento_id = $1 AND tipo = 'ORCAMENTO_DECISAO' AND enviado").bind(orc_central).fetch_one(&pool).await?;
+    assert_eq!(historico, 1);
+    let tem_token: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM envios_whatsapp_tentativas WHERE id = $1 AND mensagem_payload::TEXT LIKE '%' || $2 || '%'").bind(tentativa_decisao).bind(&token).fetch_one(&pool).await?;
+    assert_eq!(tem_token, 0, "a fila nunca guarda o token");
+    // Depois de enviada, o automático não repete e o reenvio manual enfileira outra tentativa.
+    assert_eq!(pedir(orc_central, "orcamento_decisao", false, false).await?.estado, "JA_SOLICITADO");
+    assert_eq!(pedir(orc_central, "orcamento_decisao", true, false).await?.estado, "ENFILEIRADA");
+
+    // Orçamento editado entre o pedido e a reserva: o processador recebe valido = false.
+    sqlx::query("UPDATE equipamentos SET valor_orcamento = 777 WHERE id = $1").bind(orc_central).execute(&pool).await?;
+    let invalido: (i64, bool) = sqlx::query_as("SELECT tentativa_id, valido FROM reservar_envios_whatsapp('proc-editado', 1)").fetch_one(&pool).await?;
+    assert!(!invalido.1, "a versão foi encerrada pela edição");
+    assert!(sqlx::query_scalar::<_, String>("SELECT emitir_link_decisao_envio($1, 'proc-editado')").bind(invalido.0).fetch_one(&pool).await.is_err());
+
+    println!("OK: fila de WhatsApp — idempotência, concorrência, resultado incerto, reenvio, sem telefone, imutabilidade, link de decisão por versão e modo central (fila, reserva concorrente, link no envio).");
     Ok(())
 }

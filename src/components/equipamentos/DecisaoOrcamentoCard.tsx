@@ -169,7 +169,11 @@ export function DecisaoOrcamentoCard({ equipamento, onRespostaVista, onAplicar }
           opcoes: { reenvioManual: true, confirmarIncerto: true },
         });
       } else if (resultado.sucesso) {
-        toast.success("Link aceito pelo provedor de WhatsApp. A entrega não é confirmada neste momento.");
+        toast.success(
+          resultado.enfileirada
+            ? "Link na fila de envio. O resultado aparece no histórico de comunicações."
+            : "Link aceito pelo provedor de WhatsApp. A entrega não é confirmada neste momento.",
+        );
         await carregar();
       } else {
         setError(resultado.erro || "O envio por WhatsApp não foi concluído.");

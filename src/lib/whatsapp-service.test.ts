@@ -76,6 +76,13 @@ describe("WhatsAppService — pedidos de envio ao backend", () => {
     }));
   });
 
+  it("modo central: a mensagem enfileirada conta como sucesso e avisa que ainda não saiu", async () => {
+    mockSolicitarEnvio.mockResolvedValue(resposta("ENFILEIRADA", "Mensagem na fila; será enviada em instantes."));
+    const res = await WhatsAppService.enviarEquipamentoPronto(equipamentoBase);
+
+    expect(res).toMatchObject({ sucesso: true, estado: "ENFILEIRADA", enfileirada: true });
+  });
+
   it("evento já solicitado não é erro para o gatilho automático", async () => {
     mockSolicitarEnvio.mockResolvedValue(resposta("JA_SOLICITADO", "Já solicitado."));
     const res = await WhatsAppService.enviarOrcamento(equipamentoBase);

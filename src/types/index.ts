@@ -188,6 +188,7 @@ export interface RespostaOrcamentoInfo {
 export type TipoEnvioWhatsapp = "orcamento_informativo" | "orcamento_decisao" | "equipamento_pronto";
 
 export type EstadoEnvioWhatsapp =
+  | "ENFILEIRADA"
   | "ENVIADA"
   | "FALHOU"
   | "INCERTA"

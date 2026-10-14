@@ -20,6 +20,8 @@ export interface ContextoEnvioOrcamento {
 export interface ResultadoEnvioOrcamento {
   sucesso: boolean;
   erro?: string;
+  /** A mensagem entrou na fila central; o envio acontece em instantes. */
+  enfileirada?: boolean;
   /** O orçamento desta versão já foi solicitado; reenviar exige gesto explícito. */
   jaSolicitado?: boolean;
   /** O envio anterior tem resultado incerto; repetir exige confirmação. */

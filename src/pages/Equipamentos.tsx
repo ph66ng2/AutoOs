@@ -1517,7 +1517,13 @@ export default function Equipamentos() {
       resultado = await WhatsAppService.solicitarEnvio(eq.id!, tipo, { reenvioManual: true, confirmarIncerto: true });
     }
     if (resultado.sucesso) {
-      success("Equipamentos", "Mensagem aceita pelo provedor de WhatsApp. A entrega não é confirmada neste momento.", "WhatsApp");
+      success(
+        "Equipamentos",
+        resultado.enfileirada
+          ? "Mensagem na fila de envio. O resultado aparece no histórico de comunicações."
+          : "Mensagem aceita pelo provedor de WhatsApp. A entrega não é confirmada neste momento.",
+        "WhatsApp",
+      );
       return;
     }
     if (whatsappNaoConfigurado(resultado.erro)) {
