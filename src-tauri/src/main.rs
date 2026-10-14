@@ -167,6 +167,7 @@ fn main() {
             commands::orcamento_decisao::marcar_solicitacao_orcamento_tratada,
             commands::orcamento_correcao::analisar_correcao_decisao,
             commands::orcamento_correcao::corrigir_decisao_orcamento,
+            commands::envio_whatsapp::solicitar_envio_whatsapp,
             commands::public_status::obter_link_status_publico,
             commands::public_status::criar_link_status_publico,
             commands::public_status::revogar_link_status_publico,

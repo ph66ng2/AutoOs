@@ -1486,7 +1486,52 @@ export default function Equipamentos() {
     }
   }
 
-  /** Envia orçamento manualmente via WhatsApp. Busca verificação do banco primeiro */
+  /** Pergunta ao operador e devolve a resposta (usa o diálogo de confirmação da página). */
+  function confirmarComOperador(title: string, description: string, confirmLabel: string): Promise<boolean> {
+    return new Promise((resolve) => {
+      setConfirmProps({
+        title,
+        description,
+        confirmLabel,
+        cancelLabel: "Cancelar",
+        onConfirm: () => resolve(true),
+        onCancel: () => resolve(false),
+      });
+      setConfirmOpen(true);
+    });
+  }
+
+  /**
+   * Reenvio manual de WhatsApp. A tela só informa equipamento e tipo; o backend decide o texto,
+   * evita duplicidade e pede confirmação quando o envio anterior tem resultado incerto.
+   */
+  async function reenviarWhatsApp(eq: Equipamento, tipo: "orcamento_informativo" | "equipamento_pronto") {
+    let resultado = await WhatsAppService.solicitarEnvio(eq.id!, tipo, { reenvioManual: true });
+    if (resultado.requerConfirmacao) {
+      const confirmado = await confirmarComOperador(
+        "Enviar de novo?",
+        resultado.mensagem || "O resultado do envio anterior é incerto: a mensagem pode já ter chegado ao cliente.",
+        "Enviar mesmo assim",
+      );
+      if (!confirmado) return;
+      resultado = await WhatsAppService.solicitarEnvio(eq.id!, tipo, { reenvioManual: true, confirmarIncerto: true });
+    }
+    if (resultado.sucesso) {
+      success("Equipamentos", "Mensagem aceita pelo provedor de WhatsApp. A entrega não é confirmada neste momento.", "WhatsApp");
+      return;
+    }
+    if (whatsappNaoConfigurado(resultado.erro)) {
+      console.warn("[WhatsApp] Integração não configurada. Fluxo segue com envio manual.");
+      return;
+    }
+    if (resultado.estado === "INCERTA") {
+      warning("Equipamentos", resultado.erro || "O provedor não confirmou o envio. Confira antes de tentar de novo.");
+      return;
+    }
+    showError("Equipamentos", "Enviar WhatsApp", new Error(resultado.erro));
+  }
+
+  /** Envia orçamento manualmente via WhatsApp (texto da versão congelada do orçamento). */
   async function enviarWhatsAppOrcamento(eq: Equipamento) {
     const liberado = await ensureSensitiveAccess({
       title: "Enviar orçamento por WhatsApp",
@@ -1494,19 +1539,7 @@ export default function Equipamentos() {
       permission: SENSITIVE_PERMISSIONS.FINANCIAL_ACTIONS,
     });
     if (!liberado) return;
-
-    const verif = await db.buscarVerificacao(eq.id!);
-    if (!verif) { warning("Equipamentos", "Nenhuma verificação técnica encontrada para este equipamento."); return; }
-    const recipient = resolveRecipient(eq, "telefone");
-    if (!recipient.endereco) { warning("Equipamentos", "Nenhum telefone disponível para este envio."); return; }
-    const r = await WhatsAppService.enviarOrcamento({ ...eq, cliente_telefone: recipient.endereco, cliente_nome: recipient.nome }, verif);
-    if (!r.sucesso) {
-      if (whatsappNaoConfigurado(r.erro)) {
-        console.warn("[WhatsApp] Integração não configurada. Fluxo segue com envio manual de PDF.");
-        return;
-      }
-      showError("Equipamentos", "Enviar WhatsApp", new Error(r.erro));
-    }
+    await reenviarWhatsApp(eq, "orcamento_informativo");
   }
 
   /** Constrói o orçamento para inspeção sem persistir o arquivo. */
@@ -1571,17 +1604,7 @@ export default function Equipamentos() {
       permission: SENSITIVE_PERMISSIONS.FINANCIAL_ACTIONS,
     });
     if (!liberado) return;
-
-    const recipient = resolveRecipient(eq, "telefone");
-    if (!recipient.endereco) { warning("Equipamentos", "Nenhum telefone disponível para este envio."); return; }
-    const r = await WhatsAppService.enviarEquipamentoPronto({ ...eq, cliente_telefone: recipient.endereco, cliente_nome: recipient.nome });
-    if (!r.sucesso) {
-      if (whatsappNaoConfigurado(r.erro)) {
-        console.warn("[WhatsApp] Integração não configurada. Fluxo segue sem envio automático.");
-        return;
-      }
-      showError("Equipamentos", "Enviar WhatsApp", new Error(r.erro));
-    }
+    await reenviarWhatsApp(eq, "equipamento_pronto");
   }
 
   // ─── Botões de ação contextuais por status ────────────

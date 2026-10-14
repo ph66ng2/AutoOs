@@ -61,6 +61,8 @@ import type {
   DecisaoOrcamentoInfo,
   LinkDecisaoOrcamentoCriado,
   PublicStatusLinkCreated,
+  ResultadoEnvioWhatsapp,
+  SolicitarEnvioWhatsappInput,
   PublicStatusLinkInfo,
   PaginatedResult,
   Produto,
@@ -295,6 +297,11 @@ export const db = {
     motivo?: string,
   ): Promise<void> {
     return invoke<void>("registrar_decisao_informada", { equipamentoId, decisao, motivo: motivo ?? null });
+  },
+
+  /** Único ponto de envio de WhatsApp ao cliente → Rust: solicitar_envio_whatsapp */
+  async solicitarEnvioWhatsapp(input: SolicitarEnvioWhatsappInput): Promise<ResultadoEnvioWhatsapp> {
+    return invoke<ResultadoEnvioWhatsapp>("solicitar_envio_whatsapp", { input });
   },
 
   async marcarSolicitacaoOrcamentoTratada(solicitacaoId: number): Promise<boolean> {

@@ -1,19 +1,37 @@
 /**
- * Ponto de ligação do envio do link de decisão por email ou WhatsApp.
+ * Envio do link de decisão do orçamento.
  *
- * O provedor ainda não foi escolhido, então nenhum está registrado e o app só oferece
- * "copiar mensagem". Quando houver um, basta chamar `registrarProvedorEnvioOrcamento`
- * na inicialização: a interface do card passa a habilitar o botão do canal.
+ * WhatsApp passa pela fila do backend (`solicitar_envio_whatsapp`): o backend congela o orçamento,
+ * gera o token, monta o texto e registra cada tentativa; a tela não vê nem transmite o link.
+ * Email ainda não tem provedor registrado e fica desabilitado. Quando houver um, registre-o aqui
+ * com `registrarProvedorEnvioOrcamento` e o card passa a habilitar o botão.
  */
+import { WhatsAppService, type OpcoesEnvioWhatsapp } from "@/lib/whatsapp-service";
 import type { MensagemLinkOrcamento } from "@/lib/orcamento-link-message";
 
 export type CanalEnvioOrcamento = "email" | "whatsapp";
 
+export interface ContextoEnvioOrcamento {
+  equipamentoId: number;
+  /** Texto montado na tela, para canais que ainda enviam pelo frontend (email). */
+  mensagem?: MensagemLinkOrcamento;
+}
+
+export interface ResultadoEnvioOrcamento {
+  sucesso: boolean;
+  erro?: string;
+  /** O orçamento desta versão já foi solicitado; reenviar exige gesto explícito. */
+  jaSolicitado?: boolean;
+  /** O envio anterior tem resultado incerto; repetir exige confirmação. */
+  requerConfirmacao?: boolean;
+  mensagem?: string;
+}
+
 export interface ProvedorEnvioOrcamento {
   canal: CanalEnvioOrcamento;
-  /** Nome mostrado ao operador, por exemplo o provedor escolhido. */
+  /** Nome mostrado ao operador. */
   nome: string;
-  enviar(destino: string, mensagem: MensagemLinkOrcamento): Promise<void>;
+  enviar(contexto: ContextoEnvioOrcamento, opcoes: OpcoesEnvioWhatsapp): Promise<ResultadoEnvioOrcamento>;
 }
 
 const provedores = new Map<CanalEnvioOrcamento, ProvedorEnvioOrcamento>();
@@ -35,13 +53,18 @@ export function envioOrcamentoDisponivel(canal: CanalEnvioOrcamento): boolean {
 
 export async function enviarLinkOrcamento(
   canal: CanalEnvioOrcamento,
-  destino: string,
-  mensagem: MensagemLinkOrcamento,
-): Promise<void> {
+  contexto: ContextoEnvioOrcamento,
+  opcoes: OpcoesEnvioWhatsapp = {},
+): Promise<ResultadoEnvioOrcamento> {
   const provedor = provedores.get(canal);
   if (!provedor) {
-    throw new Error("O envio automático ainda não está configurado. Copie a mensagem e envie manualmente.");
+    throw new Error("O envio automático por este canal ainda não está configurado. Copie a mensagem e envie manualmente.");
   }
-  if (!destino.trim()) throw new Error("Informe o contato de destino.");
-  await provedor.enviar(destino.trim(), mensagem);
+  return provedor.enviar(contexto, opcoes);
 }
+
+registrarProvedorEnvioOrcamento({
+  canal: "whatsapp",
+  nome: "Fila de WhatsApp",
+  enviar: (contexto, opcoes) => WhatsAppService.enviarLinkDecisaoOrcamento(contexto.equipamentoId, opcoes),
+});

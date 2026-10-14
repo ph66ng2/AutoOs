@@ -185,6 +185,34 @@ export interface RespostaOrcamentoInfo {
   aplicadaEm?: string | null;
 }
 
+export type TipoEnvioWhatsapp = "orcamento_informativo" | "orcamento_decisao" | "equipamento_pronto";
+
+export type EstadoEnvioWhatsapp =
+  | "ENVIADA"
+  | "FALHOU"
+  | "INCERTA"
+  | "EM_ANDAMENTO"
+  | "JA_SOLICITADO"
+  | "REQUER_CONFIRMACAO";
+
+/** Resposta do comando central de envio. `ENVIADA` significa aceita pelo provedor, não entregue. */
+export interface ResultadoEnvioWhatsapp {
+  pedidoId?: number | null;
+  tentativaId?: number | null;
+  estado: EstadoEnvioWhatsapp;
+  ultimoEstado?: string | null;
+  mensagem?: string | null;
+}
+
+export interface SolicitarEnvioWhatsappInput {
+  equipamento_id: number;
+  tipo: TipoEnvioWhatsapp;
+  /** Gesto explícito do operador: cria outra tentativa do mesmo pedido. */
+  reenvio_manual?: boolean;
+  /** Confirma que uma tentativa de resultado incerto pode ser repetida. */
+  confirmar_incerto?: boolean;
+}
+
 export interface SolicitacaoOrcamentoInfo {
   id: number;
   /** DUVIDA com o link aberto; MUDANCA depois que a equipe aplicou a decisão. */

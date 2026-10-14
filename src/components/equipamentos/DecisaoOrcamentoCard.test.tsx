@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { DecisaoOrcamentoCard } from "@/components/equipamentos/DecisaoOrcamentoCard";
+import { WhatsAppService } from "@/lib/whatsapp-service";
 import type { DecisaoOrcamentoInfo, Equipamento } from "@/types";
 
 const mocks = vi.hoisted(() => ({
@@ -103,5 +104,33 @@ describe("DecisaoOrcamentoCard", () => {
     fireEvent.click(screen.getByRole("button", { name: /cliente aprovou/i }));
     await waitFor(() => expect(mocks.ensure).toHaveBeenCalledTimes(2));
     expect(mocks.informada).not.toHaveBeenCalled();
+  });
+
+  it("envia o link pela fila e só repete após confirmação quando já foi solicitado", async () => {
+    mocks.obter.mockResolvedValue(info());
+    const enviar = vi.spyOn(WhatsAppService, "enviarLinkDecisaoOrcamento")
+      .mockResolvedValueOnce({ sucesso: true, estado: "JA_SOLICITADO", jaSolicitado: true })
+      .mockResolvedValueOnce({ sucesso: true, estado: "ENVIADA" });
+    render(<DecisaoOrcamentoCard equipamento={equipamento} onRespostaVista={vi.fn()} onAplicar={vi.fn()} />);
+
+    fireEvent.click(await screen.findByRole("button", { name: "Enviar por WhatsApp" }));
+    await waitFor(() => expect(enviar).toHaveBeenCalledWith(7, {}));
+    expect(await screen.findByRole("alertdialog")).toHaveTextContent(/já foi enviado por WhatsApp/);
+    expect(enviar).toHaveBeenCalledTimes(1);
+
+    fireEvent.click(screen.getByRole("button", { name: "Enviar mesmo assim" }));
+    await waitFor(() => expect(enviar).toHaveBeenLastCalledWith(7, { reenvioManual: true }));
+    await waitFor(() => expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument());
+  });
+
+  it("não envia se o operador não for liberado pelo PIN", async () => {
+    mocks.obter.mockResolvedValue(info());
+    mocks.ensure.mockResolvedValue(false);
+    const enviar = vi.spyOn(WhatsAppService, "enviarLinkDecisaoOrcamento");
+    render(<DecisaoOrcamentoCard equipamento={equipamento} onRespostaVista={vi.fn()} onAplicar={vi.fn()} />);
+
+    fireEvent.click(await screen.findByRole("button", { name: "Enviar por WhatsApp" }));
+    await waitFor(() => expect(mocks.ensure).toHaveBeenCalled());
+    expect(enviar).not.toHaveBeenCalled();
   });
 });

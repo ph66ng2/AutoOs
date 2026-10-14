@@ -144,6 +144,110 @@ pub async fn carregar_config_whatsapp() -> Result<WhatsappConfigResponse, String
     })
 }
 
+/// Resultado de uma chamada ao provedor que não foi aceita.
+///
+/// `Falhou` significa que nada chegou ao provedor ou que ele recusou o pedido; repetir é seguro.
+/// `Incerto` significa que o pedido pode ter sido processado (tempo esgotado, erro 5xx):
+/// repetir sem conferir pode duplicar a mensagem.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum ErroProvedor {
+    Falhou(String),
+    Incerto(String),
+}
+
+impl ErroProvedor {
+    pub(crate) fn mensagem(&self) -> &str {
+        match self {
+            Self::Falhou(texto) | Self::Incerto(texto) => texto,
+        }
+    }
+}
+
+pub(crate) fn carregar_config_armazenada() -> Result<Option<WhatsappConfigStored>, String> {
+    load_stored_whatsapp_config()
+}
+
+/// Normaliza telefone brasileiro: só dígitos, com DDI 55 e no mínimo 12 dígitos.
+pub(crate) fn normalizar_telefone_br(raw: &str) -> Result<String, String> {
+    let digits: String = raw.chars().filter(|character| character.is_ascii_digit()).collect();
+    let com_ddi = if digits.starts_with("55") { digits } else { format!("55{digits}") };
+    sanitize_phone(&com_ddi)
+}
+
+fn resumir_corpo(corpo: &str) -> String {
+    let corpo = redact_long_hex_values(corpo);
+    let corpo = corpo.split_whitespace().collect::<Vec<_>>().join(" ");
+    corpo.chars().take(160).collect()
+}
+
+/// Id da mensagem devolvido pela Evolution, quando existir (`key.id` ou `id`).
+fn extrair_id_mensagem(corpo: &str) -> Option<String> {
+    let valor: serde_json::Value = serde_json::from_str(corpo).ok()?;
+    let id = valor
+        .pointer("/key/id")
+        .or_else(|| valor.get("id"))
+        .and_then(|candidato| candidato.as_str())?;
+    Some(id.chars().take(120).collect())
+}
+
+/// Uma chamada à Evolution API. Não grava histórico: quem chama decide o que registrar.
+pub(crate) async fn despachar_evolution(
+    config: &WhatsappConfigStored,
+    contato: &str,
+    mensagem: &str,
+) -> Result<Option<String>, ErroProvedor> {
+    let payload = json!({
+        "number": contato,
+        "text": mensagem,
+        "textMessage": {
+            "text": mensagem,
+        },
+        "options": {
+            "delay": 1200,
+            "presence": "composing",
+            "linkPreview": false,
+        }
+    });
+
+    let client = Client::builder()
+        .timeout(std::time::Duration::from_secs(15))
+        .build()
+        .map_err(|e| ErroProvedor::Falhou(format!("Erro ao preparar o envio de WhatsApp: {}", e.without_url())))?;
+
+    let response = client
+        .post(&config.api_url)
+        .header("apikey", &config.token)
+        .bearer_auth(&config.token)
+        .json(&payload)
+        .send()
+        .await
+        .map_err(|e| {
+            let e = e.without_url();
+            if e.is_connect() || e.is_builder() {
+                ErroProvedor::Falhou(format!("Não foi possível conectar ao provedor de WhatsApp: {e}"))
+            } else {
+                ErroProvedor::Incerto(format!("O provedor de WhatsApp não respondeu a tempo ({e}). A mensagem pode ter sido enviada."))
+            }
+        })?;
+
+    let status = response.status();
+    let corpo = response.text().await.unwrap_or_default();
+    if status.is_success() {
+        return Ok(extrair_id_mensagem(&corpo));
+    }
+    let resumo = resumir_corpo(&corpo);
+    let texto = if resumo.is_empty() {
+        format!("Provider WhatsApp retornou status {status}")
+    } else {
+        format!("Provider WhatsApp retornou status {status}: {resumo}")
+    };
+    if status.is_server_error() {
+        Err(ErroProvedor::Incerto(texto))
+    } else {
+        Err(ErroProvedor::Falhou(texto))
+    }
+}
+
 #[tauri::command]
 #[instrument(skip_all)]
 pub async fn enviar_whatsapp(input: WhatsappSendInput) -> Result<bool, String> {
@@ -172,60 +276,18 @@ pub async fn enviar_whatsapp(input: WhatsappSendInput) -> Result<bool, String> {
         return Err("Mensagem do WhatsApp é obrigatória".to_string());
     }
 
-    let payload = json!({
-        "number": contato,
-        "text": mensagem,
-        "textMessage": {
-            "text": mensagem,
-        },
-        "options": {
-            "delay": 1200,
-            "presence": "composing",
-            "linkPreview": false,
-        }
-    });
-
-    let client = Client::builder()
-        .timeout(std::time::Duration::from_secs(15))
-        .build()
-        .map_err(|e| {
-            error!("Erro ao criar cliente HTTP do WhatsApp: {}", e);
-            e.to_string()
-        })?;
-
-    let response = client
-        .post(&config.api_url)
-        .header("apikey", &config.token)
-        .bearer_auth(&config.token)
-        .json(&payload)
-        .send()
-        .await
-        .map_err(|e| {
-            error!("Erro ao enviar WhatsApp: {}", e);
-            format!("Erro ao enviar WhatsApp: {}", e)
-        })?;
-
-    let status = response.status();
-    if !status.is_success() {
-        let body = response.text().await.unwrap_or_default();
-        let body = redact_long_hex_values(&body);
-        error!("Provider WhatsApp retornou {}: {}", status, body);
+    let config = WhatsappConfigStored { provider, ..config };
+    if let Err(erro) = despachar_evolution(&config, &contato, mensagem).await {
+        let detalhe = erro.mensagem().to_string();
+        error!("Erro ao enviar WhatsApp: {}", detalhe);
         record_security_event(
             "WHATSAPP_SEND_FAILED",
             Some(&actor),
-            if body.trim().is_empty() {
-                format!("{}; status={}", audit_details, status)
-            } else {
-                format!("{}; status={}; body={}", audit_details, status, body)
-            },
+            format!("{}; {}", audit_details, detalhe),
             false,
         )
         .await;
-        return Err(if body.trim().is_empty() {
-            format!("Provider WhatsApp retornou status {}", status)
-        } else {
-            format!("Provider WhatsApp retornou status {}: {}", status, body)
-        });
+        return Err(detalhe);
     }
 
     record_security_event("WHATSAPP_SENT", Some(&actor), audit_details, true).await;
@@ -234,7 +296,7 @@ pub async fn enviar_whatsapp(input: WhatsappSendInput) -> Result<bool, String> {
     Ok(true)
 }
 
-fn redact_long_hex_values(value: &str) -> String {
+pub(crate) fn redact_long_hex_values(value: &str) -> String {
     let bytes = value.as_bytes();
     let mut output = String::with_capacity(value.len());
     let mut index = 0;

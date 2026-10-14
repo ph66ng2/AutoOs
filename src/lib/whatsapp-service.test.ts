@@ -1,8 +1,9 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import type { Equipamento, Verificacao } from "@/types";
+import type { Equipamento, ResultadoEnvioWhatsapp } from "@/types";
 
 const mockInvoke = vi.hoisted(() => vi.fn());
 const mockRegistrarComunicacao = vi.hoisted(() => vi.fn());
+const mockSolicitarEnvio = vi.hoisted(() => vi.fn());
 
 vi.mock("@tauri-apps/api/core", () => ({
   invoke: (...args: unknown[]) => mockInvoke(...args),
@@ -11,6 +12,7 @@ vi.mock("@tauri-apps/api/core", () => ({
 vi.mock("@/lib/db", () => ({
   db: {
     registrarComunicacao: (...args: unknown[]) => mockRegistrarComunicacao(...args),
+    solicitarEnvioWhatsapp: (...args: unknown[]) => mockSolicitarEnvio(...args),
   },
 }));
 
@@ -28,130 +30,113 @@ const equipamentoBase: Equipamento = {
   cliente_telefone: "11988776655",
 };
 
-const verificacaoBase: Verificacao = {
-  equipamento_id: 20,
-  tecnico_nome: "Tech",
-  problema_relatado: "p",
-  diagnostico: "d",
-  itens_verificados: "[]",
-  servicos_necessarios: "[]",
-  pecas_necessarias: "[]",
-  custo_estimado_mao_obra: 5,
-  custo_estimado_pecas: 5,
-  custo_total: 10,
-  tempo_estimado: 2,
-  concluida: true,
-  observacoes: "",
-};
+const resposta = (estado: ResultadoEnvioWhatsapp["estado"], mensagem?: string): ResultadoEnvioWhatsapp => ({
+  pedidoId: 1,
+  tentativaId: 1,
+  estado,
+  mensagem,
+});
 
-describe("WhatsAppService", () => {
+describe("WhatsAppService — pedidos de envio ao backend", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockSolicitarEnvio.mockResolvedValue(resposta("ENVIADA"));
+  });
+
+  it("orçamento pede só o equipamento e o tipo: o texto é montado no backend", async () => {
+    const res = await WhatsAppService.enviarOrcamento(equipamentoBase);
+
+    expect(res).toEqual({ sucesso: true, estado: "ENVIADA" });
+    expect(mockSolicitarEnvio).toHaveBeenCalledWith({
+      equipamento_id: 20,
+      tipo: "orcamento_informativo",
+      reenvio_manual: false,
+      confirmar_incerto: false,
+    });
+    expect(mockInvoke).not.toHaveBeenCalled();
+    expect(mockRegistrarComunicacao).not.toHaveBeenCalled();
+  });
+
+  it("equipamento pronto e link de decisão usam o mesmo comando com tipos próprios", async () => {
+    await WhatsAppService.enviarEquipamentoPronto(equipamentoBase);
+    await WhatsAppService.enviarLinkDecisaoOrcamento(20);
+
+    expect(mockSolicitarEnvio.mock.calls.map(([entrada]) => entrada.tipo)).toEqual([
+      "equipamento_pronto",
+      "orcamento_decisao",
+    ]);
+  });
+
+  it("reenvio manual e confirmação do resultado incerto seguem para o backend", async () => {
+    await WhatsAppService.enviarEquipamentoPronto(equipamentoBase, { reenvioManual: true, confirmarIncerto: true });
+
+    expect(mockSolicitarEnvio).toHaveBeenCalledWith(expect.objectContaining({
+      reenvio_manual: true,
+      confirmar_incerto: true,
+    }));
+  });
+
+  it("evento já solicitado não é erro para o gatilho automático", async () => {
+    mockSolicitarEnvio.mockResolvedValue(resposta("JA_SOLICITADO", "Já solicitado."));
+    const res = await WhatsAppService.enviarOrcamento(equipamentoBase);
+
+    expect(res.sucesso).toBe(true);
+    expect(res.jaSolicitado).toBe(true);
+  });
+
+  it("resultado incerto pede confirmação em vez de repetir sozinho", async () => {
+    mockSolicitarEnvio.mockResolvedValue(resposta("REQUER_CONFIRMACAO", "Resultado incerto."));
+    const res = await WhatsAppService.enviarOrcamento(equipamentoBase, undefined, { reenvioManual: true });
+
+    expect(res).toMatchObject({ sucesso: false, requerConfirmacao: true, erro: "Resultado incerto." });
+  });
+
+  it("falha do provedor, envio em andamento e erro de comando viram sucesso=false", async () => {
+    mockSolicitarEnvio.mockResolvedValueOnce(resposta("FALHOU", "Configure o WhatsApp primeiro"));
+    expect(await WhatsAppService.enviarOrcamento(equipamentoBase)).toMatchObject({
+      sucesso: false,
+      estado: "FALHOU",
+      erro: "Configure o WhatsApp primeiro",
+    });
+
+    mockSolicitarEnvio.mockResolvedValueOnce(resposta("EM_ANDAMENTO", "Já existe um envio em andamento."));
+    expect((await WhatsAppService.enviarOrcamento(equipamentoBase)).sucesso).toBe(false);
+
+    mockSolicitarEnvio.mockRejectedValueOnce("O orçamento só pode ser enviado enquanto aguarda aprovação.");
+    expect(await WhatsAppService.enviarOrcamento(equipamentoBase)).toEqual({
+      sucesso: false,
+      estado: "FALHOU",
+      erro: "O orçamento só pode ser enviado enquanto aguarda aprovação.",
+    });
+  });
+});
+
+describe("WhatsAppService — link de acompanhamento (envio direto)", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockInvoke.mockResolvedValue(undefined);
   });
 
-  it("enviarOrcamento retorna erro sem telefone", async () => {
-    const res = await WhatsAppService.enviarOrcamento(
-      { ...equipamentoBase, cliente_telefone: undefined },
-      verificacaoBase,
-    );
-    expect(res).toEqual({ sucesso: false, erro: "Cliente não possui telefone cadastrado" });
-    expect(mockInvoke).not.toHaveBeenCalled();
-  });
-
-  it("enviarOrcamento normaliza DDI 55 e chama enviar_whatsapp", async () => {
-    const res = await WhatsAppService.enviarOrcamento(equipamentoBase, verificacaoBase);
+  it("normaliza o DDI, envia e registra o histórico sem o token", async () => {
+    const url = `https://status.bmitag.com.br/#/c/${"a".repeat(64)}`;
+    const res = await WhatsAppService.enviarLinkStatusPublico(equipamentoBase, url);
 
     expect(res).toEqual({ sucesso: true });
     expect(mockInvoke).toHaveBeenCalledWith(
       "enviar_whatsapp",
-      expect.objectContaining({
-        input: {
-          contato: "5511988776655",
-          mensagem: expect.stringContaining("Beltrano"),
-        },
-      }),
+      expect.objectContaining({ input: { contato: "5511988776655", mensagem: expect.stringContaining(url) } }),
     );
-    expect(mockInvoke.mock.calls[0]![1].input.mensagem).toContain("SN-W");
-    expect(mockInvoke.mock.calls[0]![1].input.mensagem).toContain("R$ 10.00");
-
-    expect(mockRegistrarComunicacao).toHaveBeenCalledWith(
-      expect.objectContaining({
-        equipamento_id: 20,
-        tipo: "ORCAMENTO",
-        canal: "WHATSAPP",
-        contato: "5511988776655",
-        enviado: true,
-      }),
-    );
+    const registrado = mockRegistrarComunicacao.mock.calls[0]![0];
+    expect(registrado).toMatchObject({ tipo: "STATUS_PUBLICO", canal: "WHATSAPP", enviado: true });
+    expect(registrado.mensagem).not.toContain("a".repeat(64));
   });
 
-  it("enviarOrcamento mantém 55 quando já presente no número", async () => {
-    await WhatsAppService.enviarOrcamento(
-      { ...equipamentoBase, cliente_telefone: "+55 (11) 98877-6655" },
-      verificacaoBase,
-    );
-    expect(mockInvoke).toHaveBeenCalledWith(
-      "enviar_whatsapp",
-      expect.objectContaining({
-        input: expect.objectContaining({ contato: "5511988776655" }),
-      }),
-    );
-  });
-
-  it("enviarOrcamento registra falha quando telefone é curto demais", async () => {
-    const res = await WhatsAppService.enviarOrcamento(
-      { ...equipamentoBase, cliente_telefone: "11" },
-      verificacaoBase,
+  it("não envia sem telefone cadastrado", async () => {
+    const res = await WhatsAppService.enviarLinkStatusPublico(
+      { ...equipamentoBase, cliente_telefone: "", responsavel_telefone: "" },
+      "https://status.bmitag.com.br/#/c/x",
     );
     expect(res.sucesso).toBe(false);
-    expect(res.erro).toContain("Telefone");
     expect(mockInvoke).not.toHaveBeenCalled();
-    expect(mockRegistrarComunicacao).toHaveBeenCalledWith(
-      expect.objectContaining({
-        enviado: false,
-        canal: "WHATSAPP",
-      }),
-    );
-  });
-
-  it("enviarOrcamento registra falha quando API rejeita", async () => {
-    mockInvoke.mockRejectedValueOnce(new Error("HTTP 500"));
-
-    const res = await WhatsAppService.enviarOrcamento(equipamentoBase, verificacaoBase);
-
-    expect(res).toEqual({ sucesso: false, erro: "HTTP 500" });
-    expect(mockRegistrarComunicacao).toHaveBeenCalledWith(
-      expect.objectContaining({
-        enviado: false,
-        erro: "HTTP 500",
-      }),
-    );
-  });
-
-  it("enviarEquipamentoPronto envia mensagem de pronto e registra sucesso", async () => {
-    const res = await WhatsAppService.enviarEquipamentoPronto({
-      ...equipamentoBase,
-      valor_final: 120,
-    });
-
-    expect(res).toEqual({ sucesso: true });
-    expect(mockInvoke).toHaveBeenCalledWith(
-      "enviar_whatsapp",
-      expect.objectContaining({
-        input: {
-          contato: "5511988776655",
-          mensagem: expect.stringContaining("PRONTO"),
-        },
-      }),
-    );
-    expect(mockInvoke.mock.calls[0]![1].input.mensagem).toContain("120.00");
-    expect(mockRegistrarComunicacao).toHaveBeenCalledWith(
-      expect.objectContaining({
-        tipo: "PRONTO",
-        canal: "WHATSAPP",
-        enviado: true,
-      }),
-    );
   });
 });

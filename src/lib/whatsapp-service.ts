@@ -2,13 +2,13 @@
  * ╔══════════════════════════════════════════════════════════════╗
  * ║  lib/whatsapp-service.ts — Serviço de WhatsApp por API      ║
  * ╠══════════════════════════════════════════════════════════════╣
- * ║  Gera mensagens formatadas e envia pelo backend Tauri.      ║
- * ║  Registra cada envio na tabela `comunicacoes` para          ║
- * ║  tabela `comunicacoes` para rastreabilidade.                 ║
+ * ║  Orçamento, decisão e "pronto" pedem o envio ao backend por  ║
+ * ║  `solicitar_envio_whatsapp` (fila com tentativas e histórico);║
+ * ║  o texto é montado lá. O link de acompanhamento ainda usa o  ║
+ * ║  envio direto, porque o token só existe na tela.             ║
  * ║                                                              ║
  * ║  DEPENDE DE:                                                 ║
- * ║  - @tauri-apps/api/core (invoke) — aciona envio no backend  ║
- * ║  - lib/db.ts (registrarComunicacao) — salva log no banco    ║
+ * ║  - lib/db.ts (solicitarEnvioWhatsapp, registrarComunicacao)  ║
  * ║  - types/index.ts (Equipamento, Verificacao)                 ║
  * ║                                                              ║
  * ║  USADO POR:                                                  ║
@@ -18,15 +18,14 @@
  */
 
 import { invoke } from "@tauri-apps/api/core";
-import { formatDatePtBr } from "@/lib/date-utils";
 import { db } from "@/lib/db";
 import type {
   Comunicacao,
   Equipamento,
-  PecaNecessaria,
-  ServicoNecessario,
+  EstadoEnvioWhatsapp,
+  ResultadoEnvioWhatsapp,
+  TipoEnvioWhatsapp,
   Verificacao,
-  WhatsappSendRequest,
 } from "@/types";
 import { resolveRecipient } from "@/lib/recipient-resolver";
 
@@ -47,18 +46,6 @@ function formatarTelefone(telefone: string): string {
   }
 
   return normalizado;
-}
-
-function parseJsonList<T>(value?: string): T[] {
-  if (!value) {
-    return [];
-  }
-
-  try {
-    return JSON.parse(value) as T[];
-  } catch {
-    return [];
-  }
 }
 
 export const WhatsAppService = {
@@ -106,169 +93,72 @@ export const WhatsAppService = {
   },
 
   /**
-   * Envia orçamento via WhatsApp API.
-   * Monta mensagem com: dados do equipamento, serviços, peças, valor total, prazo.
-   * Registra comunicação tipo=ORCAMENTO canal=WHATSAPP no banco.
-   * Conecta-se a: db.registrarComunicacao, backend enviar_whatsapp
+   * Pede ao backend o envio de um evento. A tela não monta nem transmite o texto: o backend
+   * busca os dados atualizados, congela o orçamento, escolhe a mensagem, evita duplicidade e
+   * registra cada tentativa. Conecta-se a: db.solicitarEnvioWhatsapp → solicitar_envio_whatsapp.
    */
-  async enviarOrcamento(equipamento: Equipamento, verificacao: Verificacao) {
-    const recipient = resolveRecipient(equipamento, "telefone");
-    const equipamentoComDestinatario = {
-      ...equipamento,
-      cliente_telefone: recipient.endereco || undefined,
-      cliente_nome: recipient.nome,
-    };
-    if (!equipamentoComDestinatario.cliente_telefone) {
-      return { sucesso: false, erro: "Cliente não possui telefone cadastrado" };
-    }
-
-    const servicos = parseJsonList<ServicoNecessario>(verificacao.servicos_necessarios);
-    const pecas = parseJsonList<PecaNecessaria>(verificacao.pecas_necessarias);
-
-    let detalhesServicos = "";
-    if (servicos.length > 0) {
-      detalhesServicos = "\n*SERVIÇOS:*\n" +
-        servicos.map((s: any) => `• ${s.descricao}: R$ ${s.valor.toFixed(2)}`).join("\n");
-    }
-
-    let detalhesPecas = "";
-    if (pecas.length > 0) {
-      detalhesPecas = "\n*PEÇAS:*\n" +
-        pecas.map((p: any) => `• ${p.nome} (x${p.quantidade}): R$ ${p.valorTotal.toFixed(2)}`).join("\n");
-    }
-
-    const mensagem = `🔧 *Olá, ${equipamentoComDestinatario.cliente_nome}!*
-
-Seu equipamento foi verificado e elaboramos o orçamento:
-
-*EQUIPAMENTO:*
-${equipamento.marca} ${equipamento.modelo}
-SN: ${equipamento.serial_number}
-${detalhesServicos}${detalhesPecas}
-
-*ORÇAMENTO:*
-Mão de Obra: R$ ${(verificacao.custo_estimado_mao_obra || 0).toFixed(2)}
-Peças: R$ ${(verificacao.custo_estimado_pecas || 0).toFixed(2)}
-━━━━━━━━━━━━━━━━━━━━
-*TOTAL: R$ ${(verificacao.custo_total || 0).toFixed(2)}*
-
-⏱️ Tempo estimado: ${verificacao.tempo_estimado || 0}h
-${equipamento.prazo_aprovacao ? `📅 Prazo para aprovação: ${formatDatePtBr(equipamento.prazo_aprovacao)}` : ""}
-
-Para aprovar, responda *APROVADO*.
-Para dúvidas, estamos à disposição! 😊`;
-
-    let telefone = equipamentoComDestinatario.cliente_telefone;
-
+  async solicitarEnvio(
+    equipamentoId: number,
+    tipo: TipoEnvioWhatsapp,
+    opcoes: OpcoesEnvioWhatsapp = {},
+  ): Promise<ResultadoSolicitacaoWhatsapp> {
     try {
-      telefone = formatarTelefone(equipamentoComDestinatario.cliente_telefone);
-
-      const request: WhatsappSendRequest = {
-        contato: telefone,
-        mensagem,
-      };
-      await invoke<void>("enviar_whatsapp", { input: request });
-
-      await registrarComunicacaoSegura({
-        equipamento_id: equipamento.id!,
-        tipo: "ORCAMENTO",
-        canal: "WHATSAPP",
-        destinatario: equipamentoComDestinatario.cliente_nome || "",
-        contato: telefone,
-        mensagem,
-        enviado: true,
-        data_envio: new Date().toISOString(),
+      const resultado = await db.solicitarEnvioWhatsapp({
+        equipamento_id: equipamentoId,
+        tipo,
+        reenvio_manual: opcoes.reenvioManual ?? false,
+        confirmar_incerto: opcoes.confirmarIncerto ?? false,
       });
-
-      return { sucesso: true };
+      return traduzirResultado(resultado);
     } catch (error: any) {
-      const erroMsg = typeof error === "string" ? error : (error?.message || error?.toString() || "Falha ao enviar WhatsApp");
-
-      await registrarComunicacaoSegura({
-        equipamento_id: equipamento.id!,
-        tipo: "ORCAMENTO",
-        canal: "WHATSAPP",
-        destinatario: equipamentoComDestinatario.cliente_nome || "",
-        contato: telefone,
-        mensagem,
-        enviado: false,
-        erro: erroMsg,
-      });
-
-      return { sucesso: false, erro: erroMsg };
+      const erro = typeof error === "string" ? error : (error?.message || "Falha ao solicitar o envio de WhatsApp");
+      return { sucesso: false, estado: "FALHOU", erro };
     }
   },
 
-  /**
-   * Notifica cliente que equipamento está PRONTO via WhatsApp API.
-   * Monta mensagem com: dados do equipamento, valor a pagar.
-   * Registra comunicação tipo=PRONTO canal=WHATSAPP no banco.
-   * Conecta-se a: db.registrarComunicacao, backend enviar_whatsapp
-   */
-  async enviarEquipamentoPronto(equipamento: Equipamento) {
-    const recipient = resolveRecipient(equipamento, "telefone");
-    const equipamentoComDestinatario = {
-      ...equipamento,
-      cliente_telefone: recipient.endereco || undefined,
-      cliente_nome: recipient.nome,
-    };
-    if (!equipamentoComDestinatario.cliente_telefone) {
-      return { sucesso: false, erro: "Cliente não possui telefone cadastrado" };
-    }
+  /** Orçamento concluído: texto informativo a partir da versão congelada do orçamento. */
+  async enviarOrcamento(equipamento: Equipamento, _verificacao?: Verificacao, opcoes?: OpcoesEnvioWhatsapp) {
+    return WhatsAppService.solicitarEnvio(equipamento.id!, "orcamento_informativo", opcoes);
+  },
 
-    const valor = equipamento.valor_final || equipamento.valor_orcamento;
+  /** Orçamento com link de aprovação online (exige o aceite online ativado). */
+  async enviarLinkDecisaoOrcamento(equipamentoId: number, opcoes?: OpcoesEnvioWhatsapp) {
+    return WhatsAppService.solicitarEnvio(equipamentoId, "orcamento_decisao", opcoes);
+  },
 
-    const mensagem = `🎉 *Ótimas notícias, ${equipamentoComDestinatario.cliente_nome}!*
-
-Seu equipamento está *PRONTO* para retirada! ✅
-
-*EQUIPAMENTO:*
-${equipamento.marca} ${equipamento.modelo}
-SN: ${equipamento.serial_number}
-
-${valor ? `💰 Valor a pagar: R$ ${valor.toFixed(2)}\n` : ""}
-Traga documento com foto para retirada.
-
-Aguardamos você! 😊`;
-
-    let telefone = equipamentoComDestinatario.cliente_telefone;
-
-    try {
-      telefone = formatarTelefone(equipamentoComDestinatario.cliente_telefone);
-
-      const request: WhatsappSendRequest = {
-        contato: telefone,
-        mensagem,
-      };
-      await invoke<void>("enviar_whatsapp", { input: request });
-
-      await registrarComunicacaoSegura({
-        equipamento_id: equipamento.id!,
-        tipo: "PRONTO",
-        canal: "WHATSAPP",
-        destinatario: equipamentoComDestinatario.cliente_nome || "",
-        contato: telefone,
-        mensagem,
-        enviado: true,
-        data_envio: new Date().toISOString(),
-      });
-
-      return { sucesso: true };
-    } catch (error: any) {
-      const erroMsg = typeof error === "string" ? error : (error?.message || error?.toString() || "Falha ao enviar WhatsApp");
-
-      await registrarComunicacaoSegura({
-        equipamento_id: equipamento.id!,
-        tipo: "PRONTO",
-        canal: "WHATSAPP",
-        destinatario: equipamentoComDestinatario.cliente_nome || "",
-        contato: telefone,
-        mensagem,
-        enviado: false,
-        erro: erroMsg,
-      });
-
-      return { sucesso: false, erro: erroMsg };
-    }
+  /** Equipamento PRONTO: aviso de retirada. */
+  async enviarEquipamentoPronto(equipamento: Equipamento, opcoes?: OpcoesEnvioWhatsapp) {
+    return WhatsAppService.solicitarEnvio(equipamento.id!, "equipamento_pronto", opcoes);
   },
 };
+
+export interface OpcoesEnvioWhatsapp {
+  reenvioManual?: boolean;
+  confirmarIncerto?: boolean;
+}
+
+export interface ResultadoSolicitacaoWhatsapp {
+  /** `true` quando o provedor aceitou o envio ou o evento já havia sido solicitado. */
+  sucesso: boolean;
+  estado: EstadoEnvioWhatsapp;
+  erro?: string;
+  /** O pedido já existia e não foi enviado de novo (gatilho automático repetido). */
+  jaSolicitado?: boolean;
+  /** O envio anterior tem resultado incerto; repetir exige confirmação do operador. */
+  requerConfirmacao?: boolean;
+  mensagem?: string;
+}
+
+function traduzirResultado(resultado: ResultadoEnvioWhatsapp): ResultadoSolicitacaoWhatsapp {
+  const mensagem = resultado.mensagem ?? undefined;
+  switch (resultado.estado) {
+    case "ENVIADA":
+      return { sucesso: true, estado: resultado.estado };
+    case "JA_SOLICITADO":
+      return { sucesso: true, estado: resultado.estado, jaSolicitado: true, mensagem };
+    case "REQUER_CONFIRMACAO":
+      return { sucesso: false, estado: resultado.estado, requerConfirmacao: true, erro: mensagem, mensagem };
+    default:
+      return { sucesso: false, estado: resultado.estado, erro: mensagem ?? "Falha ao enviar WhatsApp", mensagem };
+  }
+}

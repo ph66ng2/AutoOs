@@ -42,6 +42,10 @@ name = "p1_critical_integration"
 path = "src/bin/p1_critical_integration.rs"
 
 [[bin]]
+name = "test_whatsapp_queue"
+path = "src/bin/test_whatsapp_queue.rs"
+
+[[bin]]
 name = "p1_communication_integration"
 path = "src/bin/p1_communication_integration.rs"
 

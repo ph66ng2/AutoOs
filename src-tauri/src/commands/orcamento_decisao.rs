@@ -120,20 +120,22 @@ async fn correction_window_minutes(
     Ok(minutes.unwrap_or(MIN_CORRECTION_WINDOW_MINUTES).max(MIN_CORRECTION_WINDOW_MINUTES))
 }
 
-struct VersaoCriada {
-    id: i64,
-    numero: i32,
-    valido_ate: Option<DateTime<Utc>>,
+pub(crate) struct VersaoCongelada {
+    pub id: i64,
+    pub numero: i32,
+    pub valido_ate: Option<DateTime<Utc>>,
 }
 
-/// Congela o orçamento atual numa nova versão e encerra as versões abertas anteriores.
+/// Congela o orçamento atual. Se a versão aberta já tem exatamente este conteúdo (reenvio),
+/// ela é reaproveitada e os links e envios existentes continuam valendo; se o orçamento mudou,
+/// as versões abertas anteriores são encerradas (revogando seus links) e uma nova é criada.
 /// Deve rodar com o equipamento bloqueado (`FOR UPDATE`) na transação.
-async fn criar_versao(
+pub(crate) async fn obter_ou_criar_versao(
     tx: &mut Transaction<'_, Postgres>,
     empresa_id: i32,
     equipamento_id: i32,
     profile_id: i32,
-) -> Result<VersaoCriada, String> {
+) -> Result<VersaoCongelada, String> {
     let equipamento = sqlx::query(
         "SELECT COALESCE(status, '') AS status, tipo, marca, modelo,
                 valor_orcamento::FLOAT8 AS valor_orcamento, prazo_aprovacao
@@ -223,6 +225,31 @@ async fn criar_versao(
         return Err("O prazo de aprovação do orçamento já terminou. Atualize o prazo antes de enviar.".to_string());
     }
 
+    let snapshot_texto = snapshot.to_string();
+    let existente: Option<(i64, i32, Option<DateTime<Utc>>)> = sqlx::query_as(
+        "SELECT id, versao, valido_ate
+         FROM orcamento_versoes
+         WHERE equipamento_id = $1 AND empresa_id = $2 AND encerrada_em IS NULL
+           AND verificacao_id IS NOT DISTINCT FROM $3
+           AND snapshot = $4::TEXT::JSONB
+           AND valor_total = ROUND($5::FLOAT8::NUMERIC, 2)
+           AND valido_ate IS NOT DISTINCT FROM $6
+         ORDER BY versao DESC
+         LIMIT 1",
+    )
+    .bind(equipamento_id)
+    .bind(empresa_id)
+    .bind(verificacao_id)
+    .bind(&snapshot_texto)
+    .bind(total)
+    .bind(valido_ate)
+    .fetch_optional(&mut **tx)
+    .await
+    .map_err(super::operator_errors::mapear_erro_sql)?;
+    if let Some((id, numero, valido_ate)) = existente {
+        return Ok(VersaoCongelada { id, numero, valido_ate });
+    }
+
     sqlx::query("SELECT public.autoos_encerrar_orcamento_versoes($1, 'NOVA_VERSAO')")
         .bind(equipamento_id)
         .execute(&mut **tx)
@@ -248,7 +275,7 @@ async fn criar_versao(
     .bind(equipamento_id)
     .bind(verificacao_id)
     .bind(numero)
-    .bind(snapshot.to_string())
+    .bind(&snapshot_texto)
     .bind(total)
     .bind(valido_ate)
     .bind(profile_id)
@@ -256,7 +283,7 @@ async fn criar_versao(
     .await
     .map_err(super::operator_errors::mapear_erro_sql)?;
 
-    Ok(VersaoCriada { id, numero, valido_ate })
+    Ok(VersaoCongelada { id, numero, valido_ate })
 }
 
 async fn aceite_online_ativo(pool: &PgPool) -> Result<bool, String> {
@@ -422,7 +449,84 @@ pub async fn obter_decisao_orcamento(
     }))
 }
 
-/// Congela o orçamento e emite o link próprio da decisão (revoga o anterior).
+pub(crate) struct LinkEmitido {
+    pub link_id: i64,
+    pub token: String,
+    pub expires_at: DateTime<Utc>,
+    pub versao: VersaoCongelada,
+}
+
+/// Chave de ativação do aceite online (`FOR SHARE` para não mudar durante a emissão).
+pub(crate) async fn exigir_aceite_online(tx: &mut Transaction<'_, Postgres>) -> Result<(), String> {
+    let enabled: bool = sqlx::query_scalar(
+        "SELECT online_enabled FROM public.orcamento_aceite_config WHERE singleton = TRUE FOR SHARE",
+    )
+    .fetch_optional(&mut **tx)
+    .await
+    .map_err(super::operator_errors::mapear_erro_sql)?
+    .unwrap_or(false);
+    if enabled {
+        Ok(())
+    } else {
+        Err("O aceite online de orçamento ainda não foi ativado.".to_string())
+    }
+}
+
+/// Emite um token novo para a versão congelada atual. `revogar_anteriores` encerra os outros links
+/// da mesma versão (gesto explícito do operador); o envio automático nunca revoga, porque o link
+/// de uma tentativa de resultado incerto pode já estar com o cliente.
+pub(crate) async fn emitir_link_decisao(
+    tx: &mut Transaction<'_, Postgres>,
+    empresa_id: i32,
+    equipamento_id: i32,
+    profile_id: i32,
+    revogar_anteriores: bool,
+) -> Result<LinkEmitido, String> {
+    let versao = obter_ou_criar_versao(tx, empresa_id, equipamento_id, profile_id).await?;
+
+    if revogar_anteriores {
+        sqlx::query(
+            "UPDATE orcamento_links_decisao
+             SET revogado_em = NOW(), revogado_motivo = 'SUBSTITUIDO_PELA_EQUIPE', revogado_por_profile_id = $2
+             WHERE versao_id = $1 AND revogado_em IS NULL",
+        )
+        .bind(versao.id)
+        .bind(profile_id)
+        .execute(&mut **tx)
+        .await
+        .map_err(super::operator_errors::mapear_erro_sql)?;
+    }
+
+    let mut token_bytes = [0_u8; 32];
+    OsRng.fill_bytes(&mut token_bytes);
+    let token = hex::encode(token_bytes);
+    let max_expiry = Utc::now() + Duration::days(LINK_MAX_AGE_DAYS);
+    let expires_at = versao.valido_ate.map_or(max_expiry, |limit| limit.min(max_expiry));
+
+    let link_id: i64 = sqlx::query_scalar(
+        "INSERT INTO orcamento_links_decisao
+            (empresa_id, equipamento_id, versao_id, token_hash, expira_em, criado_por_profile_id)
+         VALUES ($1, $2, $3, $4, $5, $6)
+         RETURNING id",
+    )
+    .bind(empresa_id)
+    .bind(equipamento_id)
+    .bind(versao.id)
+    .bind(hash_token(&token))
+    .bind(expires_at)
+    .bind(profile_id)
+    .fetch_one(&mut **tx)
+    .await
+    .map_err(super::operator_errors::mapear_erro_sql)?;
+
+    Ok(LinkEmitido { link_id, token, expires_at, versao })
+}
+
+pub(crate) fn url_decisao(token: &str) -> String {
+    decision_url(token)
+}
+
+/// Congela o orçamento e emite o link próprio da decisão (o link anterior da mesma versão é encerrado).
 #[tauri::command]
 #[instrument(skip_all, fields(equipamento_id = equipamento_id))]
 pub async fn criar_link_decisao_orcamento(
@@ -433,39 +537,11 @@ pub async fn criar_link_decisao_orcamento(
     let empresa_id = require_active_session_company_id(&pool).await?;
     let mut tx = pool.begin().await.map_err(super::operator_errors::mapear_erro_sql)?;
 
-    let enabled: bool = sqlx::query_scalar(
-        "SELECT online_enabled FROM public.orcamento_aceite_config WHERE singleton = TRUE FOR SHARE",
-    )
-    .fetch_optional(&mut *tx)
-    .await
-    .map_err(super::operator_errors::mapear_erro_sql)?
-    .unwrap_or(false);
-    if !enabled {
-        return Err("O aceite online de orçamento ainda não foi ativado.".to_string());
-    }
-
-    let versao = criar_versao(&mut tx, empresa_id, equipamento_id, actor.id).await?;
-
-    let mut token_bytes = [0_u8; 32];
-    OsRng.fill_bytes(&mut token_bytes);
-    let token = hex::encode(token_bytes);
-    let max_expiry = Utc::now() + Duration::days(LINK_MAX_AGE_DAYS);
-    let expires_at = versao.valido_ate.map_or(max_expiry, |limit| limit.min(max_expiry));
-
-    sqlx::query(
-        "INSERT INTO orcamento_links_decisao
-            (empresa_id, equipamento_id, versao_id, token_hash, expira_em, criado_por_profile_id)
-         VALUES ($1, $2, $3, $4, $5, $6)",
-    )
-    .bind(empresa_id)
-    .bind(equipamento_id)
-    .bind(versao.id)
-    .bind(hash_token(&token))
-    .bind(expires_at)
-    .bind(actor.id)
-    .execute(&mut *tx)
-    .await
-    .map_err(super::operator_errors::mapear_erro_sql)?;
+    exigir_aceite_online(&mut tx).await?;
+    let emitido = emitir_link_decisao(&mut tx, empresa_id, equipamento_id, actor.id, true).await?;
+    let versao = emitido.versao;
+    let token = emitido.token;
+    let expires_at = emitido.expires_at;
 
     tx.commit().await.map_err(super::operator_errors::mapear_erro_sql)?;
 
@@ -556,7 +632,7 @@ pub async fn registrar_decisao_informada(
     .map_err(super::operator_errors::mapear_erro_sql)?;
     let versao_id = match aberta {
         Some(id) => id,
-        None => criar_versao(&mut tx, empresa_id, equipamento_id, actor.id).await?.id,
+        None => obter_ou_criar_versao(&mut tx, empresa_id, equipamento_id, actor.id).await?.id,
     };
 
     let ja_aplicada: bool = sqlx::query_scalar(

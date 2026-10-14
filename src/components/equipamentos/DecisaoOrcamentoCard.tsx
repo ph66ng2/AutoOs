@@ -3,7 +3,8 @@ import { Copy, Link2, Loader2, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { db } from "@/lib/db";
-import { envioOrcamentoDisponivel } from "@/lib/orcamento-link-envio";
+import { enviarLinkOrcamento, envioOrcamentoDisponivel } from "@/lib/orcamento-link-envio";
+import type { OpcoesEnvioWhatsapp } from "@/lib/whatsapp-service";
 import { montarMensagemLinkOrcamento } from "@/lib/orcamento-link-message";
 import { useSensitiveAccess } from "@/hooks/useSensitiveAccess";
 import {
@@ -47,6 +48,7 @@ export function DecisaoOrcamentoCard({ equipamento, onRespostaVista, onAplicar }
   const { ensureSensitiveAccess } = useSensitiveAccess();
   const [info, setInfo] = useState<DecisaoOrcamentoInfo | null>(null);
   const [link, setLink] = useState<{ url: string; expiresAt: string } | null>(null);
+  const [confirmacaoEnvio, setConfirmacaoEnvio] = useState<{ texto: string; opcoes: OpcoesEnvioWhatsapp } | null>(null);
   const [loading, setLoading] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -140,6 +142,45 @@ export function DecisaoOrcamentoCard({ equipamento, onRespostaVista, onAplicar }
     }
   }
 
+  /**
+   * Envio pela fila do backend: ele congela o orçamento, gera o link e evita duplicidade.
+   * Se este orçamento já foi solicitado, a tela pede confirmação antes de enviar de novo.
+   */
+  async function enviarPorWhatsApp(opcoes: OpcoesEnvioWhatsapp = {}) {
+    const liberado = await ensureSensitiveAccess({
+      title: "Enviar link do orçamento",
+      description: "Confirme o acesso para enviar o link de decisão ao cliente por WhatsApp.",
+      permission: SENSITIVE_PERMISSIONS.MANAGE_STATUS_LINKS,
+    });
+    if (!liberado) return;
+    setBusy(true);
+    setError(null);
+    setConfirmacaoEnvio(null);
+    try {
+      const resultado = await enviarLinkOrcamento("whatsapp", { equipamentoId: equipamentoId! }, opcoes);
+      if (resultado.jaSolicitado) {
+        setConfirmacaoEnvio({
+          texto: "Este orçamento já foi enviado por WhatsApp. Enviar o link de novo?",
+          opcoes: { reenvioManual: true },
+        });
+      } else if (resultado.requerConfirmacao) {
+        setConfirmacaoEnvio({
+          texto: resultado.mensagem || "O envio anterior tem resultado incerto: a mensagem pode já ter chegado. Enviar de novo?",
+          opcoes: { reenvioManual: true, confirmarIncerto: true },
+        });
+      } else if (resultado.sucesso) {
+        toast.success("Link aceito pelo provedor de WhatsApp. A entrega não é confirmada neste momento.");
+        await carregar();
+      } else {
+        setError(resultado.erro || "O envio por WhatsApp não foi concluído.");
+      }
+    } catch (cause) {
+      setError(mensagemErro(cause instanceof Error ? cause.message : cause, "O envio por WhatsApp não foi concluído."));
+    } finally {
+      setBusy(false);
+    }
+  }
+
   function tratarSolicitacao(id: number) {
     void executar(
       SENSITIVE_PERMISSIONS.MANAGE_STATUS_LINKS,
@@ -224,10 +265,24 @@ export function DecisaoOrcamentoCard({ equipamento, onRespostaVista, onAplicar }
               <Link2 className="mr-2 h-4 w-4" />
               {info?.linkStatus === "ativo" ? "Gerar novo link" : "Gerar link de decisão"}
             </Button>
+            {envioOrcamentoDisponivel("whatsapp") && (
+              <Button size="sm" variant="outline" onClick={() => void enviarPorWhatsApp()} disabled={busy || !aceiteAtivo}>
+                Enviar por WhatsApp
+              </Button>
+            )}
             {info?.linkStatus === "ativo" && (
               <Button size="sm" variant="outline" onClick={revogarLink} disabled={busy}>Encerrar link</Button>
             )}
           </div>
+          {confirmacaoEnvio && (
+            <div role="alertdialog" className="space-y-2 rounded border border-amber-300 bg-amber-100/60 p-2 text-xs">
+              <p>{confirmacaoEnvio.texto}</p>
+              <div className="flex gap-2">
+                <Button size="sm" disabled={busy} onClick={() => void enviarPorWhatsApp(confirmacaoEnvio.opcoes)}>Enviar mesmo assim</Button>
+                <Button size="sm" variant="outline" disabled={busy} onClick={() => setConfirmacaoEnvio(null)}>Cancelar</Button>
+              </div>
+            </div>
+          )}
           {!aceiteAtivo && (
             <p className="text-xs text-muted-foreground">O aceite online ainda não foi ativado para esta instalação.</p>
           )}
@@ -249,11 +304,10 @@ export function DecisaoOrcamentoCard({ equipamento, onRespostaVista, onAplicar }
                   <Copy className="mr-1 h-4 w-4" /> Copiar só o link
                 </Button>
                 <Button size="sm" variant="outline" disabled={!envioOrcamentoDisponivel("email")}>Enviar por email</Button>
-                <Button size="sm" variant="outline" disabled={!envioOrcamentoDisponivel("whatsapp")}>Enviar por WhatsApp</Button>
               </div>
-              {!envioOrcamentoDisponivel("email") && !envioOrcamentoDisponivel("whatsapp") && (
+              {!envioOrcamentoDisponivel("email") && (
                 <p className="text-xs text-muted-foreground">
-                  O envio automático ainda não está configurado: copie a mensagem e envie pelo canal do cliente.
+                  O envio por email ainda não está configurado: copie a mensagem e envie pelo canal do cliente.
                 </p>
               )}
               <p className="text-xs text-muted-foreground">

@@ -68,9 +68,11 @@ Ação ao lado de "Mudar Status" para orçamentos `APROVADO` ou `REPROVADO`. "Co
 3. Com peças baixadas, o operador precisa marcar que elas estão intactas; só então o sistema gera entrada de estoque (`origem = CORRECAO_ORCAMENTO`). Sem a confirmação, nada é alterado.
 4. Na mesma transação: restaura serviços, peças e valor originais, apaga forma de pagamento e decisões por serviço, zera as quantidades aprovadas/baixadas, volta a etapa para `AGUARDANDO_APROVACAO` e grava `orcamento_correcoes` e o evento de auditoria `BUDGET_DECISION_CORRECTED`. Conflito de concorrência (`atualizado_em`) cancela tudo.
 
-## Envio do link (pronto, não ligado)
+## Envio do link
 
-`src/lib/orcamento-link-message.ts` monta o texto (assunto, texto simples e HTML escapado) e o card mostra a "mensagem pronta" com **Copiar mensagem** e **Copiar só o link**. `src/lib/orcamento-link-envio.ts` define a interface `ProvedorEnvioOrcamento` e um registro vazio: os botões "Enviar por email" e "Enviar por WhatsApp" ficam desabilitados e `enviarLinkOrcamento` recusa o envio enquanto nenhum provedor for registrado. Quando o provedor for escolhido, basta chamar `registrarProvedorEnvioOrcamento({ canal, nome, enviar })` na inicialização e ligar os botões do card; nenhuma outra parte muda. Nada é enviado hoje.
+O botão **Enviar por WhatsApp** do card pede o envio ao comando central da fila (`orcamento_decisao`, veja `docs/FILA_ENVIOS_WHATSAPP.md`): o backend congela o orçamento, gera o token, monta o texto e registra a tentativa; a tela não vê o link. Reenviar o mesmo orçamento reaproveita a versão e não invalida o link já enviado; editar o orçamento cria nova versão e derruba os links antigos. Hoje o transporte é a Evolution API.
+
+O card também mostra a **mensagem pronta** (`orcamento-link-message.ts`) com **Copiar mensagem** e **Copiar só o link** para envio manual por outro canal. O botão de email segue desabilitado: `registrarProvedorEnvioOrcamento` em `orcamento-link-envio.ts` é o ponto de ligação quando houver um provedor.
 
 ## Edge Function e página
 
@@ -87,7 +89,7 @@ Ação ao lado de "Mudar Status" para orçamentos `APROVADO` ou `REPROVADO`. "Co
 
 ## Pendências conhecidas
 
-- **Provedor de envio** (email/WhatsApp) e, depois, o código de verificação enviado ao contato cadastrado.
+- **Cloud API do WhatsApp**, webhook de entrega, processador central e, depois, o código de verificação (veja `docs/FILA_ENVIOS_WHATSAPP.md`). Provedor de email ainda indefinido.
 - Nenhuma migration foi aplicada e a função não foi publicada em nenhum ambiente.
 - O fluxo da lista e do campo de motivo foi coberto por testes de backend e de componentes; falta o QA manual no app com um banco real.
 
