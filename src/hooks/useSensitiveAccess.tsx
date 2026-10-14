@@ -11,6 +11,7 @@ import {
 import { ShieldAlert, ShieldCheck, ShieldOff } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { useBootUi } from "@/components/BootUi";
 import { ProfileSessionDialog } from "@/components/ProfileSessionDialog";
 import { PasswordRecoveryDialog } from "@/components/PasswordRecoveryDialog";
 import { toast } from "sonner";
@@ -78,6 +79,7 @@ function permissionDescription(permission?: SensitivePermission) {
 const SensitiveAccessContext = createContext<SensitiveAccessContextValue | null>(null);
 
 export function SensitiveAccessProvider({ children }: { children: ReactNode }) {
+  const { bootAnimationComplete } = useBootUi();
   const [status, setStatus] = useState<SensitiveAccessStatus | null>(null);
   const [loading, setLoading] = useState(true);
   const [connectionUnavailable, setConnectionUnavailable] = useState(false);
@@ -474,7 +476,7 @@ export function SensitiveAccessProvider({ children }: { children: ReactNode }) {
       {children}
 
       <ProfileSessionDialog
-        open={dialogOpen}
+        open={dialogOpen && bootAnimationComplete}
         mandatory={dialogMandatory}
         mode={dialogMode}
         title={promptOptions.title || defaultPrompt.title || "Perfis"}

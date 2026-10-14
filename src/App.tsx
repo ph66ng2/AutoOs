@@ -17,7 +17,7 @@
  * ║  USADO POR: main.tsx (ponto de entrada)                    ║
  * ╚══════════════════════════════════════════════════════════════╝
  */
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { BrowserRouter, Routes, Route, useLocation, useNavigate } from "react-router-dom";
 import { Toaster } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -47,7 +47,6 @@ import Balcao from "@/pages/Balcao";
 
 /** Exibição mínima do boot (IPC em dev pode resolver em poucos ms). Prod fica igual ou mais pesado só se o Rust/DB demorar. */
 const MIN_BOOT_SPLASH_MS = 1_100;
-const BOOT_COMPLETION_ANIMATION_MS = 1_450;
 
 function AppContent() {
   const { loading, bootProgress, status, pinPromptDismissed, openProfileSelector, refreshStatus } = useSensitiveAccess();
@@ -76,17 +75,10 @@ function AppContent() {
   }, []);
 
   useEffect(() => {
-    if (loading) {
-      setCompletionAnimationElapsed(false);
-      return;
-    }
-
-    const t = window.setTimeout(
-      () => setCompletionAnimationElapsed(true),
-      BOOT_COMPLETION_ANIMATION_MS,
-    );
-    return () => window.clearTimeout(t);
+    if (loading) setCompletionAnimationElapsed(false);
   }, [loading]);
+
+  const handleBootAnimationComplete = useCallback(() => setCompletionAnimationElapsed(true), []);
 
   const sessionBlocked = Boolean(status && status.profiles.length > 0 && !status.unlocked);
   const showEntryGate = sessionBlocked && pinPromptDismissed;
@@ -163,7 +155,11 @@ function AppContent() {
       </BrowserRouter>
       )}
       {splashVisible && (
-        <BootSplash progress={loading ? bootProgress : 100} fadeOut={splashCanFadeOut} />
+        <BootSplash
+          progress={loading ? bootProgress : 100}
+          fadeOut={splashCanFadeOut}
+          onAnimationComplete={handleBootAnimationComplete}
+        />
       )}
     </>
   );
