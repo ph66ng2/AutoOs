@@ -90,6 +90,287 @@
   }
 }
 
+@keyframes boot-stage-in {
+  from {
+    opacity: 0;
+    transform: translateY(10px) scale(0.965);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes boot-breathe {
+  0%, 100% {
+    opacity: 0.75;
+    transform: scale(0.98);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.03);
+  }
+}
+
+/* Tremor curto da carcaça enquanto o recibo é impresso — dá "peso" mecânico. */
+@keyframes boot-printing {
+  0%, 100% { transform: translate(0, 0); }
+  20% { transform: translate(-0.6px, 0.3px); }
+  40% { transform: translate(0.5px, -0.2px); }
+  60% { transform: translate(-0.4px, -0.3px); }
+  80% { transform: translate(0.6px, 0.2px); }
+}
+
+@keyframes boot-led-blink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.35; }
+}
+
+@keyframes boot-led-ring {
+  from {
+    opacity: 0.9;
+    transform: scale(1);
+  }
+  to {
+    opacity: 0;
+    transform: scale(3.2);
+  }
+}
+
+@keyframes boot-equipment-out {
+  to {
+    opacity: 0;
+    transform: scale(0.94);
+    filter: blur(3px);
+  }
+}
+
+@keyframes boot-brand-in {
+  0% {
+    opacity: 0;
+    transform: scale(0.82);
+  }
+  60% {
+    opacity: 1;
+    transform: scale(1.035);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes boot-brand-ring {
+  0% {
+    opacity: 0;
+    transform: scale(0.7);
+  }
+  25% {
+    opacity: 0.7;
+  }
+  100% {
+    opacity: 0;
+    transform: scale(1.6);
+  }
+}
+
+@keyframes boot-label-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+    filter: blur(2px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+    filter: blur(0);
+  }
+}
+
+.boot-particle {
+  animation: boot-particle-travel 1.8s ease-in-out infinite;
+  transform-box: fill-box;
+  transform-origin: center;
+}
+
+.boot-particle-delayed {
+  animation-delay: 0.65s;
+}
+
+.boot-orbit-dot {
+  animation: boot-orbit-drift 2.1s ease-in-out infinite;
+  transform-box: fill-box;
+  transform-origin: center;
+}
+
+.boot-stage-in {
+  animation: boot-stage-in 650ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.boot-breathe {
+  animation: boot-breathe 3.2s ease-in-out infinite;
+  transform-box: fill-box;
+  transform-origin: center;
+}
+
+.boot-equipment {
+  transform-box: view-box;
+  transform-origin: 210px 166px;
+}
+
+.boot-equipment.is-leaving {
+  animation: boot-equipment-out 420ms cubic-bezier(0.55, 0, 1, 0.45) forwards;
+}
+
+.boot-printing {
+  animation: boot-printing 180ms linear infinite;
+}
+
+.boot-led-blink {
+  animation: boot-led-blink 0.9s ease-in-out infinite;
+}
+
+.boot-led-ring {
+  animation: boot-led-ring 700ms cubic-bezier(0.22, 1, 0.36, 1) forwards;
+  transform-box: fill-box;
+  transform-origin: center;
+}
+
+.boot-brand-in {
+  animation: boot-brand-in 720ms cubic-bezier(0.34, 1.3, 0.64, 1) 240ms both;
+  transform-box: view-box;
+  transform-origin: 210px 160px;
+}
+
+.boot-brand-ring {
+  animation: boot-brand-ring 1.1s cubic-bezier(0.22, 1, 0.36, 1) 300ms both;
+  transform-box: fill-box;
+  transform-origin: center;
+}
+
+.boot-label-in {
+  animation: boot-label-in 360ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.boot-stage-out {
+  opacity: 0;
+  transform: scale(1.02);
+  filter: blur(4px);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .boot-particle,
+  .boot-orbit-dot,
+  .boot-stage-in,
+  .boot-breathe,
+  .boot-printing,
+  .boot-led-blink,
+  .boot-led-ring,
+  .boot-brand-in,
+  .boot-brand-ring,
+  .boot-label-in {
+    animation: none;
+  }
+
+  .boot-equipment.is-leaving {
+    animation: none;
+    opacity: 0;
+  }
+
+  .boot-stage-out {
+    transform: none;
+    filter: none;
+  }
+}
+
+@layer base {
+  :root {
+    --background: 210 20% 98%;
+    --foreground: 220 20% 10%;
+    --card: 0 0% 100%;
+    --card-foreground: 220 20% 10%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 220 20% 10%;
+    --primary: 220 70% 50%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 215 20% 93%;
+    --secondary-foreground: 220 20% 15%;
+    --muted: 215 20% 95%;
+    --muted-foreground: 215 15% 50%;
+    --accent: 215 20% 93%;
+    --accent-foreground: 220 20% 15%;
+    --destructive: 0 72% 51%;
+    --destructive-foreground: 0 0% 100%;
+    --warning: 38 92% 50%;
+    --warning-foreground: 0 0% 100%;
+    --info: 199 89% 48%;
+    --info-foreground: 0 0% 100%;
+    --border: 215 20% 90%;
+    --input: 215 20% 90%;
+    --ring: 220 70% 50%;
+    --radius: 0.5rem;
+    --sidebar: 220 30% 15%;
+    --sidebar-border: 220 20% 22%;
+  }
+
+  .dark {
+    --background: 220 25% 6%;
+    --foreground: 210 20% 95%;
+    --card: 220 25% 9%;
+    --card-foreground: 210 20% 95%;
+    --popover: 220 25% 9%;
+    --popover-foreground: 210 20% 95%;
+    --primary: 217 91% 60%;
+    --primary-foreground: 220 25% 6%;
+    --secondary: 217 30% 18%;
+    --secondary-foreground: 210 20% 95%;
+    --muted: 217 30% 18%;
+    --muted-foreground: 215 18% 60%;
+    --accent: 217 30% 18%;
+    --accent-foreground: 210 20% 95%;
+    --destructive: 0 63% 31%;
+    --destructive-foreground: 210 20% 95%;
+    --warning: 38 92% 50%;
+    --warning-foreground: 0 0% 100%;
+    --info: 199 89% 48%;
+    --info-foreground: 0 0% 100%;
+    --border: 217 30% 18%;
+    --input: 217 30% 18%;
+    --ring: 224 76% 48%;
+    --sidebar: 220 35% 8%;
+    --sidebar-border: 220 25% 14%;
+  }
+}
+
+@keyframes boot-particle-travel {
+  0%, 12% {
+    opacity: 0;
+    transform: translateX(0);
+  }
+  35% {
+    opacity: 1;
+  }
+  78% {
+    opacity: 1;
+    transform: translateX(36px);
+  }
+  100% {
+    opacity: 0;
+    transform: translateX(42px);
+  }
+}
+
+@keyframes boot-orbit-drift {
+  0%, 100% {
+    opacity: 0.25;
+    transform: translateY(0) scale(0.85);
+  }
+  50% {
+    opacity: 1;
+    transform: translateY(-8px) scale(1.15);
+  }
+}
+
 @keyframes boot-brand-fade {
   0% {
     opacity: 0;
