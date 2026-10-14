@@ -1,0 +1,68 @@
+# ╔══════════════════════════════════════════════════════════════╗
+# ║  Claude Code Review — revisão automática de PRs               ║
+# ╠══════════════════════════════════════════════════════════════╣
+# ║  Executa em: PR aberto, reaberto, novo push, pronto p/ revisão ║
+# ║  Requer secret: CLAUDE_CODE_OAUTH_TOKEN ou ANTHROPIC_API_KEY  ║
+# ║  (configure com /install-github-app no Claude Code)           ║
+# ╚══════════════════════════════════════════════════════════════╝
+
+name: Claude Code Review
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+
+concurrency:
+  group: claude-review-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  review:
+    name: Revisar PR
+    if: github.event.pull_request.draft == false
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      pull-requests: write
+      issues: write
+      id-token: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Revisão com Claude
+        uses: anthropics/claude-code-action@v1
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          track_progress: true
+          prompt: |
+            REPO: ${{ github.repository }}
+            PR NUMBER: ${{ github.event.pull_request.number }}
+
+            Revise este pull request. Leia primeiro `AGENTS.md` e `.github/copilot-instructions.md`.
+            Escreva todos os comentários em português.
+
+            Foque em bugs reais e riscos, não em estilo:
+            - Correção e regressões no fluxo alterado
+            - Segurança: PINs, senhas SMTP e tokens WhatsApp só no keyring do SO (nunca no banco);
+              ações sensíveis devem chamar `record_security_event()`; ações financeiras exigem
+              `require_permission(PERMISSION_FINANCIAL_ACTIONS)`
+            - Banco: apenas PostgreSQL (nenhuma referência a SQLite); sqlx só com queries em runtime
+              (sem `query!`/`query_as!`); nunca editar migration já aplicada — mudanças de schema
+              exigem novo arquivo sequencial e idempotente em `src-tauri/migrations/`
+            - Concorrência: UPDATEs devem manter o lock otimista via `atualizado_em`
+            - Frontend: `invoke()` só via `src/lib/db.ts`; hooks seguem o padrão canônico
+              (useState/useCallback/useEffect, sem React Query/SWR/Zustand); formulários com RHF + Zod
+            - `serial_number` não é chave única
+            - Testes ausentes para comportamento novo ou alterado
+
+            Use `mcp__github_inline_comment__create_inline_comment` para problemas em linhas
+            específicas (marque cada um como 🔴 bloqueante ou 🟡 sugestão). Ao final, publique um
+            resumo curto com `gh pr comment`. Se não houver problemas, diga isso em uma linha.
+            Não comente sobre o que está correto.
+          claude_args: |
+            --allowedTools "mcp__github_inline_comment__create_inline_comment,Bash(gh pr comment:*),Bash(gh pr diff:*),Bash(gh pr view:*)"
