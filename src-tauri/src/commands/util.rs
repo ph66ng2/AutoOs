@@ -546,7 +546,7 @@ fn reveal_file_in_manager(file_path: &Path) -> Result<(), String> {
             .arg("/select,")
             .arg(file_path)
             .spawn()
-            .map_err(super::operator_errors::mapear_erro_sql)?;
+            .map_err(super::operator_errors::mapear_erro_operacional)?;
         return Ok(());
     }
 
@@ -579,7 +579,7 @@ fn reveal_file_in_manager(file_path: &Path) -> Result<(), String> {
             .arg("-R")
             .arg(file_path)
             .spawn()
-            .map_err(super::operator_errors::mapear_erro_sql)?;
+            .map_err(super::operator_errors::mapear_erro_operacional)?;
         return Ok(());
     }
 
@@ -921,7 +921,7 @@ pub async fn abrir_painel_impressoras_windows() -> Result<(), String> {
         Command::new("control.exe")
             .arg("printers")
             .spawn()
-            .map_err(super::operator_errors::mapear_erro_sql)?;
+            .map_err(super::operator_errors::mapear_erro_operacional)?;
         return Ok(());
     }
 
@@ -944,8 +944,8 @@ pub async fn listar_impressoras_windows() -> Result<Vec<ImpressoraWindows>, Stri
                 .output()
         })
         .await
-        .map_err(super::operator_errors::mapear_erro_sql)?
-        .map_err(super::operator_errors::mapear_erro_sql)?;
+        .map_err(super::operator_errors::mapear_erro_operacional)?
+        .map_err(super::operator_errors::mapear_erro_operacional)?;
 
         if !output.status.success() {
             return Err(format!(
@@ -959,7 +959,7 @@ pub async fn listar_impressoras_windows() -> Result<Vec<ImpressoraWindows>, Stri
             return Ok(Vec::new());
         }
         serde_json::from_str(json.trim())
-            .map_err(super::operator_errors::mapear_erro_sql)
+            .map_err(super::operator_errors::mapear_erro_operacional)
     }
 
     #[cfg(not(target_os = "windows"))]
@@ -979,7 +979,7 @@ pub async fn imprimir_teste_bmitag(input: TesteImpressaoBmitagInput) -> Result<(
 
         let image_path = autoos_temp_dir()?.join(format!("teste-bmitag-{}.png", uuid::Uuid::new_v4()));
         fs::write(&image_path, &input.logo_png)
-            .map_err(super::operator_errors::mapear_erro_sql)?;
+            .map_err(super::operator_errors::mapear_erro_operacional)?;
 
         let payload = json!({
             "impressora": input.impressora.trim(),
@@ -990,7 +990,7 @@ pub async fn imprimir_teste_bmitag(input: TesteImpressaoBmitagInput) -> Result<(
             "tecnico": input.tecnico.trim(),
         });
         let payload_base64 = base64::engine::general_purpose::STANDARD
-            .encode(serde_json::to_vec(&payload).map_err(super::operator_errors::mapear_erro_sql)?);
+            .encode(serde_json::to_vec(&payload).map_err(super::operator_errors::mapear_erro_operacional)?);
         let script = format!(r#"
 Add-Type -AssemblyName System.Drawing
 $data = [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('{payload_base64}')) | ConvertFrom-Json
@@ -1036,8 +1036,8 @@ $logo.Dispose()
                 .output()
         })
         .await
-        .map_err(super::operator_errors::mapear_erro_sql)?
-        .map_err(super::operator_errors::mapear_erro_sql);
+        .map_err(super::operator_errors::mapear_erro_operacional)?
+        .map_err(super::operator_errors::mapear_erro_operacional);
         let _ = fs::remove_file(&image_path);
         let output = output?;
         if !output.status.success() {
@@ -1081,14 +1081,14 @@ pub async fn abrir_url(url: String) -> Result<(), String> {
         std::process::Command::new("cmd")
             .args(["/c", "start", "", &url_trimmed])
             .spawn()
-            .map_err(super::operator_errors::mapear_erro_sql)?;
+            .map_err(super::operator_errors::mapear_erro_operacional)?;
     }
     #[cfg(target_os = "macos")]
     {
         std::process::Command::new("open")
             .arg(&url_trimmed)
             .spawn()
-            .map_err(super::operator_errors::mapear_erro_sql)?;
+            .map_err(super::operator_errors::mapear_erro_operacional)?;
     }
     Ok(())
 }
