@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { cn } from "@/lib/utils";
 
 interface AutoOsBootAnimationProps {
-  /** 0–100 do boot real; a animação persegue esse alvo de forma suave. */
+  /** 0–100 já suavizado (ver `useSmoothedProgress`); 100 só quando o boot real terminou. */
   progress: number;
   /** Chamado uma vez quando a marca BMITAG terminou de assentar na tela. */
   onComplete?: () => void;
@@ -32,18 +32,30 @@ function prefersReducedMotion() {
   return window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 }
 
+function documentHidden() {
+  return typeof document !== "undefined" && document.visibilityState === "hidden";
+}
+
 /**
- * Persegue o progresso real com aceleração suave e velocidade limitada,
+ * Persegue o progresso com aceleração suave e velocidade limitada,
  * transformando os saltos discretos do boot (6 → 38 → 86 → 100) em um traço contínuo.
+ * Com a janela minimizada o rAF para; nesse caso (e como trava de tempo) o valor salta direto ao alvo.
  */
-function useSmoothedProgress(target: number) {
+export function useSmoothedProgress(target: number) {
   const [value, setValue] = useState(0);
   const valueRef = useRef(0);
 
   useEffect(() => {
-    if (prefersReducedMotion() || typeof window.requestAnimationFrame !== "function") {
+    const snap = () => {
       valueRef.current = target;
       setValue(target);
+    };
+    if (
+      prefersReducedMotion() ||
+      documentHidden() ||
+      typeof window.requestAnimationFrame !== "function"
+    ) {
+      snap();
       return;
     }
 
@@ -55,8 +67,7 @@ function useSmoothedProgress(target: number) {
       const current = valueRef.current;
       const gap = target - current;
       if (Math.abs(gap) < 0.05) {
-        valueRef.current = target;
-        setValue(target);
+        snap();
         return;
       }
       const eased = Math.abs(gap) * (1 - Math.exp(-dt * 4.2));
@@ -67,10 +78,56 @@ function useSmoothedProgress(target: number) {
       frame = window.requestAnimationFrame(tick);
     };
     frame = window.requestAnimationFrame(tick);
-    return () => window.cancelAnimationFrame(frame);
+
+    // Pior caso da aproximação + folga: se o rAF não rodou até lá, encerra no alvo.
+    const worstCaseMs = (Math.abs(target - valueRef.current) / MIN_SPEED) * 1000 + 800;
+    const fallback = window.setTimeout(() => {
+      window.cancelAnimationFrame(frame);
+      snap();
+    }, worstCaseMs);
+    const onVisibility = () => {
+      if (!documentHidden()) return;
+      window.cancelAnimationFrame(frame);
+      snap();
+    };
+    document.addEventListener("visibilitychange", onVisibility);
+
+    return () => {
+      window.cancelAnimationFrame(frame);
+      window.clearTimeout(fallback);
+      document.removeEventListener("visibilitychange", onVisibility);
+    };
   }, [target]);
 
   return value;
+}
+
+/** Teto do avanço entre marcos reais: nunca passa disso sem o próximo sinal do backend. */
+const TRICKLE_CEILING = 94;
+const TRICKLE_INTERVAL_MS = 220;
+
+/**
+ * Progresso "honesto": parte sempre do valor real e, enquanto espera o próximo marco,
+ * avança devagar e cada vez mais lento em direção a um teto — sem nunca chegar a 100 sozinho.
+ */
+export function useTrickledProgress(target: number) {
+  const [value, setValue] = useState(target);
+
+  useEffect(() => {
+    setValue((current) => Math.max(current, target));
+    if (target >= 100) return;
+    const ceiling = Math.min(TRICKLE_CEILING, target + (100 - target) * 0.55);
+    const t = window.setInterval(() => {
+      setValue((current) => {
+        const base = Math.max(current, target);
+        if (base >= ceiling) return base;
+        return base + Math.max(0.05, (ceiling - base) * 0.045);
+      });
+    }, TRICKLE_INTERVAL_MS);
+    return () => window.clearInterval(t);
+  }, [target]);
+
+  return target >= 100 ? 100 : Math.min(value, TRICKLE_CEILING);
 }
 
 export function bootStatusLabel(progress: number): string {
@@ -140,8 +197,7 @@ function ChecklistRow({ y, amount, lineEnd, tone, pulse }: ChecklistRowProps) {
 }
 
 export function AutoOsBootAnimation({ progress, onComplete }: AutoOsBootAnimationProps) {
-  const target = Math.min(100, Math.max(0, progress));
-  const p = useSmoothedProgress(target);
+  const p = Math.min(100, Math.max(0, progress));
 
   const printerDraw = easeInOutCubic(phase(p, 0, 36));
   const ledOn = p >= 34;
@@ -167,10 +223,13 @@ export function AutoOsBootAnimation({ progress, onComplete }: AutoOsBootAnimatio
   const printerDash = 100 - printerDraw * 100;
 
   return (
-    <div className="boot-stage-in relative w-full max-w-[460px]" aria-hidden="true">
+    <div
+      className="boot-stage-in relative flex w-full max-w-[380px] justify-center px-6 py-4"
+      aria-hidden="true"
+    >
       <svg
         viewBox="0 0 420 320"
-        className="h-auto w-full overflow-visible"
+        className="h-auto max-h-[min(44vh,320px)] w-full overflow-visible"
         focusable="false"
       >
         <defs>

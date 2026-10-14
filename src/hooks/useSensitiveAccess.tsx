@@ -79,7 +79,7 @@ function permissionDescription(permission?: SensitivePermission) {
 const SensitiveAccessContext = createContext<SensitiveAccessContextValue | null>(null);
 
 export function SensitiveAccessProvider({ children }: { children: ReactNode }) {
-  const { openingComplete } = useBootUi();
+  const { bootAnimationComplete } = useBootUi();
   const [status, setStatus] = useState<SensitiveAccessStatus | null>(null);
   const [loading, setLoading] = useState(true);
   const [connectionUnavailable, setConnectionUnavailable] = useState(false);
@@ -476,7 +476,7 @@ export function SensitiveAccessProvider({ children }: { children: ReactNode }) {
       {children}
 
       <ProfileSessionDialog
-        open={dialogOpen && openingComplete}
+        open={dialogOpen && bootAnimationComplete}
         mandatory={dialogMandatory}
         mode={dialogMode}
         title={promptOptions.title || defaultPrompt.title || "Perfis"}

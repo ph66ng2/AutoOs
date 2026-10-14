@@ -252,6 +252,20 @@
   animation: boot-label-in 360ms cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 
+/* Brilho correndo sobre a barra enquanto carrega. */
+.boot-bar-fill {
+  background-image: linear-gradient(90deg, transparent 0%, rgb(255 255 255 / 0.28) 50%, transparent 100%);
+  background-size: 40% 100%;
+  background-repeat: no-repeat;
+  animation: boot-bar-shine 1.4s ease-in-out infinite;
+  transition: background-color 300ms ease-out;
+}
+
+@keyframes boot-bar-shine {
+  from { background-position: -40% 0; }
+  to { background-position: 140% 0; }
+}
+
 .boot-stage-out {
   opacity: 0;
   transform: scale(1.02);
@@ -268,7 +282,8 @@
   .boot-led-ring,
   .boot-brand-in,
   .boot-brand-ring,
-  .boot-label-in {
+  .boot-label-in,
+  .boot-bar-fill {
     animation: none;
   }
 
