@@ -58,9 +58,9 @@ Rode:
 npm run build:public-status
 ```
 
-Envie o conteúdo de `dist-public-status/` para a raiz HTTPS do subdomínio `status.bmitag.com.br`, preservando o arquivo `.htaccess`. O endereço de API padrão está no projeto Supabase `autoos`; para usar outro, defina `VITE_PUBLIC_STATUS_API_URL` antes do build e ajuste a allowlist CORS da Edge Function.
+Envie o conteúdo de `dist-public-status/` para a raiz do subdomínio `status.bmitag.com.br`, preservando o arquivo `.htaccess`. Ele redireciona HTTP para HTTPS e aplica os cabeçalhos de segurança. O endereço de API padrão está no projeto Supabase `autoos`; para usar outro, defina `VITE_PUBLIC_STATUS_API_URL` antes do build e ajuste a allowlist CORS da Edge Function.
 
-O controle do DNS e da hospedagem HostGator ainda precisa ser confirmado antes da publicação. O código e o artefato de build podem ser preparados sem esse acesso.
+O DNS e a hospedagem HostGator de `status.bmitag.com.br` foram configurados em 2026-10-13. Antes de ativar o portal em outro ambiente, confirme o certificado HTTPS e o acesso ao site no domínio definitivo.
 
 ## Fluxo no AutoOS
 
