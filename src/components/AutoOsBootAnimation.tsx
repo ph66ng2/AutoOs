@@ -349,9 +349,9 @@ export function AutoOsBootAnimation({ progress, onComplete }: AutoOsBootAnimatio
               strokeDasharray="100"
               strokeDashoffset={100 - easeOutCubic(phase(p, 42, 52)) * 100}
             />
-            <ChecklistRow y={216} amount={receivedProgress} lineEnd={247} tone="done" />
-            <ChecklistRow y={244} amount={serviceProgress} lineEnd={238} tone="service" pulse />
-            <ChecklistRow y={272} amount={completedProgress} lineEnd={247} tone="done" />
+            <ChecklistRow y={206} amount={receivedProgress} lineEnd={247} tone="done" />
+            <ChecklistRow y={232} amount={serviceProgress} lineEnd={238} tone="service" pulse />
+            <ChecklistRow y={258} amount={completedProgress} lineEnd={247} tone="done" />
           </g>
         </g>
 
