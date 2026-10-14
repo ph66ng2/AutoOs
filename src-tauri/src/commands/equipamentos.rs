@@ -1158,6 +1158,16 @@ pub async fn aprovar_orcamento(input: AprovarOrcamentoInput) -> Result<Equipamen
     if !input.servicos_aprovados.is_empty() && pecas_antigas.iter().any(|p| !p.get("id").and_then(|v| v.as_str()).is_some_and(|id| vinculadas.contains(id))) {
         return Err("Há peças antigas sem serviço vinculado. Use Alterar Orçamento para vinculá-las antes da aprovação.".to_string());
     }
+    super::orcamento_decisao::conferir_e_aplicar_resposta(
+        &mut tx,
+        empresa_id,
+        input.equipamento_id,
+        aprovado,
+        input.resposta_esperada_id,
+        input.motivo_divergencia.as_deref(),
+        actor.id,
+    )
+    .await?;
     aplicar_decisoes(&mut tx, empresa_id, verification_id, &servicos, &input.servicos_aprovados).await?;
     let novo_status = if aprovado { "APROVADO" } else { "REPROVADO" };
     let todos = itens;

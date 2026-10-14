@@ -34,6 +34,7 @@ pub mod gastos;
 pub mod qr_code;
 pub mod storage_config;
 pub mod enrollment;
+pub mod orcamento_decisao;
 pub mod public_status;
 pub mod image_migration;
 pub mod legacy_regularization;

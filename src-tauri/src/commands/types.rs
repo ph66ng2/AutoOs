@@ -269,6 +269,12 @@ pub struct AprovarOrcamentoInput {
     /// Decisão explícita permite aprovar orçamentos legados sem serviços detalhados.
     #[serde(default)]
     pub aprovado: Option<bool>,
+    /// Id da resposta do cliente que a tela mostrava (0/ausente = nenhuma). Se mudou, a aplicação falha.
+    #[serde(default)]
+    pub resposta_esperada_id: Option<i64>,
+    /// Obrigatório para aplicar uma decisão diferente da registrada pelo cliente.
+    #[serde(default)]
+    pub motivo_divergencia: Option<String>,
 }
 
 /// Input para registrar comunicação (email/WhatsApp).

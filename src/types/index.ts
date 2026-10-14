@@ -171,6 +171,41 @@ export interface PublicStatusLinkCreated {
   expiresAt: string;
 }
 
+export type DecisaoOrcamento = "APROVAR" | "RECUSAR" | "DESFEITA";
+
+export interface RespostaOrcamentoInfo {
+  id: number;
+  origem: "PORTAL" | "EQUIPE";
+  decisao: DecisaoOrcamento;
+  registradaEm: string;
+  registradaPor?: string | null;
+  motivo?: string | null;
+  aplicadaEm?: string | null;
+}
+
+/** Estado do aceite online: versão congelada, link, resposta vigente e histórico. */
+export interface DecisaoOrcamentoInfo {
+  versaoId: number;
+  versao: number;
+  valorTotal: number;
+  validoAte?: string | null;
+  criadaEm: string;
+  encerradaMotivo?: string | null;
+  aceiteOnlineAtivo: boolean;
+  linkStatus?: "ativo" | "expirado" | "revogado" | null;
+  linkExpiraEm?: string | null;
+  resposta?: RespostaOrcamentoInfo | null;
+  historico: RespostaOrcamentoInfo[];
+  aplicavelAPartirDe?: string | null;
+  podeAplicar: boolean;
+}
+
+export interface LinkDecisaoOrcamentoCriado {
+  url: string;
+  expiresAt: string;
+  versao: number;
+}
+
 export const CATEGORIAS_IMAGEM_EQUIPAMENTO = {
   ENTRADA: "ENTRADA",
   SAIDA: "SAIDA",
@@ -869,4 +904,8 @@ export interface AprovarOrcamentoInput {
   servicos_aprovados: string[];
   /** Necessário para distinguir aprovação de reprovação quando não há serviços detalhados. */
   aprovado?: boolean;
+  /** Id da resposta do cliente exibida na tela (0/ausente = nenhuma). Se mudou, a aplicação é recusada. */
+  resposta_esperada_id?: number;
+  /** Motivo exigido para aplicar uma decisão diferente da registrada pelo cliente. */
+  motivo_divergencia?: string;
 }

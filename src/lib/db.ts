@@ -55,6 +55,9 @@ import type {
   PostgresBackupResult,
   PostgresRestoreResult,
   PostgresBackupToolsStatus,
+  DecisaoOrcamento,
+  DecisaoOrcamentoInfo,
+  LinkDecisaoOrcamentoCriado,
   PublicStatusLinkCreated,
   PublicStatusLinkInfo,
   PaginatedResult,
@@ -269,6 +272,27 @@ export const db = {
 
   async revogarLinkStatusPublico(equipamentoId: number): Promise<boolean> {
     return invoke<boolean>("revogar_link_status_publico", { equipamentoId });
+  },
+
+  async obterDecisaoOrcamento(equipamentoId: number): Promise<DecisaoOrcamentoInfo | null> {
+    return invoke<DecisaoOrcamentoInfo | null>("obter_decisao_orcamento", { equipamentoId });
+  },
+
+  async criarLinkDecisaoOrcamento(equipamentoId: number): Promise<LinkDecisaoOrcamentoCriado> {
+    return invoke<LinkDecisaoOrcamentoCriado>("criar_link_decisao_orcamento", { equipamentoId });
+  },
+
+  async revogarLinkDecisaoOrcamento(equipamentoId: number): Promise<boolean> {
+    return invoke<boolean>("revogar_link_decisao_orcamento", { equipamentoId });
+  },
+
+  /** Decisão dada ao telefone/WhatsApp, registrada no mesmo histórico (exige FINANCIAL_ACTIONS). */
+  async registrarDecisaoInformada(
+    equipamentoId: number,
+    decisao: Exclude<DecisaoOrcamento, "DESFEITA">,
+    motivo?: string,
+  ): Promise<void> {
+    return invoke<void>("registrar_decisao_informada", { equipamentoId, decisao, motivo: motivo ?? null });
   },
 
   async gerarQrLinkStatusPublico(url: string): Promise<string> {

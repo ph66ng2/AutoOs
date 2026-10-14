@@ -175,6 +175,7 @@ import { ErrorAlert } from "@/components/ui/error-alert";
 import { PaginationControls } from "@/components/ui/pagination-controls";
 import { PagamentoOrcamentoDialog } from "@/components/equipamentos/PagamentoOrcamentoDialog";
 import { PublicStatusLinkDialog } from "@/components/equipamentos/PublicStatusLinkDialog";
+import { DecisaoOrcamentoCard } from "@/components/equipamentos/DecisaoOrcamentoCard";
 import { FormaPagamentoFields } from "@/components/equipamentos/FormaPagamentoFields";
 import { resolveRecipient, type ResolvedRecipient } from "@/lib/recipient-resolver";
 import { saveRecipientAddress } from "@/lib/recipient-persistence";
@@ -200,6 +201,11 @@ export default function Equipamentos() {
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [detalhesDialogOpen, setDetalhesDialogOpen] = useState(false);
   const [publicStatusDialogOpen, setPublicStatusDialogOpen] = useState(false);
+  // Resposta do cliente que o operador está vendo; segue junto da aprovação para barrar tela desatualizada.
+  const respostaClienteVistaRef = useRef(0);
+  const registrarRespostaClienteVista = useCallback((id: number) => {
+    respostaClienteVistaRef.current = id;
+  }, []);
   const [verificacaoDialogOpen, setVerificacaoDialogOpen] = useState(false);
   const [statusDialogOpen, setStatusDialogOpen] = useState(false);
   const [pagamentoDialogOpen, setPagamentoDialogOpen] = useState(false);
@@ -1172,6 +1178,10 @@ export default function Equipamentos() {
       setProdutosAprovacao(await carregarProdutosOrcamento());
       setTodosServicosAprovados(decisaoInicial === "reprovar" ? false : null);
       setIdsAprovados([]);
+      const decisaoCliente = await db.obterDecisaoOrcamento(eq.id!);
+      respostaClienteVistaRef.current = decisaoCliente && !decisaoCliente.encerradaMotivo
+        ? decisaoCliente.resposta?.id ?? 0
+        : 0;
       setPagamentoAprovacaoInicial(verificacao?.forma_pagamento_codigo ? {
         codigo: verificacao.forma_pagamento_codigo,
         detalhe: verificacao.forma_pagamento_detalhe || null,
@@ -1206,6 +1216,7 @@ export default function Equipamentos() {
         pagamento,
         servicos_aprovados: idsAprovados,
         aprovado: decisaoAprovada,
+        resposta_esperada_id: respostaClienteVistaRef.current,
       });
       await recarregar();
       setPagamentoAprovacaoError(null);
@@ -2420,6 +2431,12 @@ export default function Equipamentos() {
                   </Button>
                 </div>
               </div>
+
+              <DecisaoOrcamentoCard
+                equipamento={selecionado}
+                onRespostaVista={registrarRespostaClienteVista}
+                onAplicar={(decisao) => void abrirDialogoAprovacao(selecionado, decisao)}
+              />
 
               <Tabs defaultValue="info">
                 <TabsList className="grid grid-cols-4 w-full">
