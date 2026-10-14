@@ -2,7 +2,7 @@
 #[path = "../commands/mod.rs"] mod commands;
 #[path = "../db.rs"] mod db;
 #[path = "../test_support/memory_keyring.rs"] mod memory_keyring;
-use commands::{auth, equipamentos, orcamento_decisao, verificacoes, orcamento_estoque, produtos, servicos};
+use commands::{auth, equipamentos, orcamento_correcao, orcamento_decisao, verificacoes, orcamento_estoque, produtos, servicos};
 use commands::types::*;
 use anyhow::{Result, anyhow};
 
@@ -96,6 +96,8 @@ async fn main() -> Result<()> {
             pagamento:FormaPagamento { codigo:FormaPagamentoCodigo::Pix,detalhe:None },servicos_aprovados:if aprovado == Some(false) { vec![] } else { vec!["a".into()] },
             aprovado,resposta_esperada_id:esperada,motivo_divergencia:motivo }).await
     };
+    // A lista mostra a resposta ainda não aplicada.
+    assert_eq!(equipamentos::buscar_equipamento(eq2).await.map_err(|e| anyhow!(e))?.resposta_cliente.as_deref(), Some("APROVAR"));
     // Tela antiga (não viu a resposta) e janela de correção ainda aberta: nada muda.
     assert!(atual(None, Some(true), None).await.unwrap_err().contains("alterou a resposta"));
     assert!(atual(Some(resposta_id), Some(true), None).await.unwrap_err().contains("ainda pode corrigir"));
@@ -112,7 +114,50 @@ async fn main() -> Result<()> {
     let encerrada: Option<String> = sqlx::query_scalar("SELECT encerrada_motivo FROM orcamento_versoes WHERE equipamento_id=$1").bind(eq2).fetch_one(&pool).await?;
     assert!(encerrada.is_some());
     let revogado: bool = sqlx::query_scalar("SELECT revogado_em IS NOT NULL FROM orcamento_links_decisao WHERE equipamento_id=$1").bind(eq2).fetch_one(&pool).await?;
-    assert!(revogado);
-    println!("OK: catálogo, tenant, aprovação parcial, repetição, reposição, pendências, ajuste confirmado, concorrência otimista, reprovação e conferência da resposta do cliente.");
+    assert!(!revogado, "o link segue ativo após a aplicação para permitir Pedir mudança");
+    // Correção guiada: desfaz pagamento, serviços e baixas juntos, com decisão explícita sobre o estoque.
+    produtos::registrar_movimentacao_estoque(MovimentacaoEstoqueInput { produto_id:produto.id,tipo:"ENTRADA".into(),quantidade:10,origem:"COMPRA".into(),referencia:None }).await.map_err(|e| anyhow!(e))?;
+    let eq3: i32 = sqlx::query_scalar("INSERT INTO equipamentos(serial_number,marca,modelo,tipo,data_entrada,defeito_relatado,empresa_id,status) VALUES ($1,'Zebra','GC420t','Impressora','2026-09-27','Teste',$2,'VERIFICADO') RETURNING id")
+        .bind(format!("C-{suffix}")).bind(empresa).fetch_one(&pool).await?;
+    verificacoes::salvar_verificacao_tecnica(VerificacaoInput {
+        equipamento_id:eq3, empresa_id:Some(empresa), tecnico_nome:"Teste".into(), problema_relatado:"Teste".into(),
+        servicos_necessarios:Some(services.to_string()), pecas_necessarias:Some("[]".into()), custo_total:Some(90.0), ..VerificacaoInput::default()
+    }).await.map_err(|e| anyhow!(e))?;
+    sqlx::query("UPDATE equipamentos SET status='AGUARDANDO_APROVACAO', valor_orcamento=90 WHERE id=$1").bind(eq3).execute(&pool).await?;
+    let estoque_antes = produtos::buscar_produto(produto.id).await.map_err(|e| anyhow!(e))?.quantidade_estoque.unwrap_or(0);
+    let token3: String = sqlx::query_scalar("SELECT atualizado_em::TEXT FROM equipamentos WHERE id=$1").bind(eq3).fetch_one(&pool).await?;
+    equipamentos::aprovar_orcamento(AprovarOrcamentoInput { empresa_id:empresa,equipamento_id:eq3,expected_updated_em:token3,
+        pagamento:FormaPagamento { codigo:FormaPagamentoCodigo::Pix,detalhe:None },servicos_aprovados:vec!["a".into()],aprovado:None,resposta_esperada_id:None,motivo_divergencia:None }).await.map_err(|e| anyhow!(e))?;
+    assert_eq!(produtos::buscar_produto(produto.id).await.map_err(|e| anyhow!(e))?.quantidade_estoque,Some(estoque_antes - 3));
+    let analise = orcamento_correcao::analisar_correcao_decisao(eq3).await.map_err(|e| anyhow!(e))?;
+    assert!(analise.pode_corrigir && analise.exige_decisao_estoque);
+    assert_eq!(analise.total_baixado, 3);
+    assert_eq!(analise.pagamento_codigo.as_deref(), Some("PIX"));
+    let token3: String = sqlx::query_scalar("SELECT atualizado_em::TEXT FROM equipamentos WHERE id=$1").bind(eq3).fetch_one(&pool).await?;
+    let corrigir = |devolver: bool, motivo: &str, token: String| orcamento_correcao::corrigir_decisao_orcamento(orcamento_correcao::CorrigirDecisaoInput {
+        equipamento_id: eq3, expected_updated_em: token, motivo: motivo.into(), devolver_estoque: devolver });
+    assert!(corrigir(true, "oi", token3.clone()).await.is_err());
+    assert!(corrigir(false, "Cliente ligou desistindo", token3.clone()).await.unwrap_err().contains("baixadas"));
+    assert!(corrigir(true, "Cliente ligou desistindo", "2000-01-01T00:00:00Z".into()).await.is_err());
+    assert_eq!(produtos::buscar_produto(produto.id).await.map_err(|e| anyhow!(e))?.quantidade_estoque,Some(estoque_antes - 3));
+    let reaberto = corrigir(true, "Cliente ligou desistindo", token3).await.map_err(|e| anyhow!(e))?;
+    assert_eq!(reaberto.status.as_deref(), Some("AGUARDANDO_APROVACAO"));
+    assert_eq!(reaberto.valor_orcamento, Some(90.0));
+    assert_eq!(produtos::buscar_produto(produto.id).await.map_err(|e| anyhow!(e))?.quantidade_estoque,Some(estoque_antes));
+    let v = verificacoes::buscar_verificacao_tecnica(eq3,Some(empresa)).await.map_err(|e| anyhow!(e))?;
+    assert_eq!(v.custo_total,Some(90.0));
+    assert_eq!(serde_json::from_str::<Vec<serde_json::Value>>(&v.servicos_necessarios.unwrap())?.len(),2);
+    assert!(v.forma_pagamento_codigo.is_none());
+    let baixado: i64 = sqlx::query_scalar("SELECT COALESCE(SUM(quantidade_baixada),0) FROM orcamento_consumos WHERE empresa_id=$1 AND verificacao_id=$2").bind(empresa).bind(v.id).fetch_one(&pool).await?;
+    assert_eq!(baixado, 0);
+    let registros: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM orcamento_correcoes WHERE equipamento_id=$1 AND estoque_devolvido").bind(eq3).fetch_one(&pool).await?;
+    assert_eq!(registros, 1);
+    // Já aguardando decisão, ou com o serviço em andamento, não há o que corrigir automaticamente.
+    let token3: String = sqlx::query_scalar("SELECT atualizado_em::TEXT FROM equipamentos WHERE id=$1").bind(eq3).fetch_one(&pool).await?;
+    assert!(corrigir(false, "Tentativa repetida", token3).await.is_err());
+    sqlx::query("UPDATE equipamentos SET status='EM_MANUTENCAO' WHERE id=$1").bind(eq3).execute(&pool).await?;
+    let em_servico = orcamento_correcao::analisar_correcao_decisao(eq3).await.map_err(|e| anyhow!(e))?;
+    assert!(!em_servico.pode_corrigir && em_servico.bloqueios[0].contains("atendimento humano"));
+    println!("OK: catálogo, tenant, aprovação parcial, repetição, reposição, pendências, ajuste confirmado, concorrência otimista, reprovação conferência da resposta do cliente e correção guiada da decisão.");
     Ok(())
 }

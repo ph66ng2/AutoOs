@@ -143,6 +143,8 @@ export interface Equipamento {
   data_saida?: string;
   valor_orcamento?: number;
   valor_final?: number;
+  /** Última resposta do cliente ao orçamento que a equipe ainda não aplicou (só em AGUARDANDO_APROVACAO). */
+  resposta_cliente?: "APROVAR" | "RECUSAR" | "DESFEITA" | null;
   // Auditoria
   criado_em?: string;
   atualizado_em?: string;
@@ -183,6 +185,42 @@ export interface RespostaOrcamentoInfo {
   aplicadaEm?: string | null;
 }
 
+export interface SolicitacaoOrcamentoInfo {
+  id: number;
+  /** DUVIDA com o link aberto; MUDANCA depois que a equipe aplicou a decisão. */
+  tipo: "DUVIDA" | "MUDANCA";
+  mensagem: string;
+  criadaEm: string;
+  tratadaEm?: string | null;
+}
+
+export interface PecaBaixadaInfo {
+  produtoId: number;
+  nome: string;
+  quantidade: number;
+}
+
+/** O que a aprovação/recusa fez e se a decisão pode ser corrigida sem atendimento humano. */
+export interface AnaliseCorrecaoDecisao {
+  status: string;
+  podeCorrigir: boolean;
+  bloqueios: string[];
+  pagamentoCodigo?: string | null;
+  pagamentoDetalhe?: string | null;
+  valorAtual?: number | null;
+  valorOriginal?: number | null;
+  pecasBaixadas: PecaBaixadaInfo[];
+  totalBaixado: number;
+  exigeDecisaoEstoque: boolean;
+}
+
+export interface CorrigirDecisaoInput {
+  equipamento_id: number;
+  expected_updated_em: string;
+  motivo: string;
+  devolver_estoque: boolean;
+}
+
 /** Estado do aceite online: versão congelada, link, resposta vigente e histórico. */
 export interface DecisaoOrcamentoInfo {
   versaoId: number;
@@ -196,6 +234,7 @@ export interface DecisaoOrcamentoInfo {
   linkExpiraEm?: string | null;
   resposta?: RespostaOrcamentoInfo | null;
   historico: RespostaOrcamentoInfo[];
+  solicitacoes: SolicitacaoOrcamentoInfo[];
   aplicavelAPartirDe?: string | null;
   podeAplicar: boolean;
 }

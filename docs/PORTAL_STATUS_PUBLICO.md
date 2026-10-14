@@ -2,6 +2,8 @@
 
 O portal permite que o cliente consulte a etapa atual de um ciclo de atendimento por um link individual. A página é somente para leitura: não altera status nem aprova orçamento.
 
+> O orçamento com resposta do cliente usa outro link (`#/o/<token>`), outra Edge Function e outra chave de ativação. Veja `docs/ACEITE_ORCAMENTO_ONLINE.md`.
+
 ## Dados e segurança
 
 - O AutoOS gera um token aleatório de 32 bytes e salva somente seu hash SHA-256 em `links_status_publico`.

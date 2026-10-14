@@ -55,6 +55,8 @@ import type {
   PostgresBackupResult,
   PostgresRestoreResult,
   PostgresBackupToolsStatus,
+  AnaliseCorrecaoDecisao,
+  CorrigirDecisaoInput,
   DecisaoOrcamento,
   DecisaoOrcamentoInfo,
   LinkDecisaoOrcamentoCriado,
@@ -293,6 +295,20 @@ export const db = {
     motivo?: string,
   ): Promise<void> {
     return invoke<void>("registrar_decisao_informada", { equipamentoId, decisao, motivo: motivo ?? null });
+  },
+
+  async marcarSolicitacaoOrcamentoTratada(solicitacaoId: number): Promise<boolean> {
+    return invoke<boolean>("marcar_solicitacao_orcamento_tratada", { solicitacaoId });
+  },
+
+  /** Mostra o que a aprovação fez (pagamento, valores, peças baixadas) → Rust: analisar_correcao_decisao */
+  async analisarCorrecaoDecisao(equipamentoId: number): Promise<AnaliseCorrecaoDecisao> {
+    return invoke<AnaliseCorrecaoDecisao>("analisar_correcao_decisao", { equipamentoId });
+  },
+
+  /** Reabre o orçamento desfazendo pagamento, serviços e (com confirmação) baixas de estoque. */
+  async corrigirDecisaoOrcamento(input: CorrigirDecisaoInput): Promise<Equipamento> {
+    return invoke<Equipamento>("corrigir_decisao_orcamento", { input });
   },
 
   async gerarQrLinkStatusPublico(url: string): Promise<string> {

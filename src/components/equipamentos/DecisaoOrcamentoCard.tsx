@@ -3,6 +3,8 @@ import { Copy, Link2, Loader2, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { db } from "@/lib/db";
+import { envioOrcamentoDisponivel } from "@/lib/orcamento-link-envio";
+import { montarMensagemLinkOrcamento } from "@/lib/orcamento-link-message";
 import { useSensitiveAccess } from "@/hooks/useSensitiveAccess";
 import {
   SENSITIVE_PERMISSIONS,
@@ -44,7 +46,7 @@ function mensagemErro(cause: unknown, fallback: string) {
 export function DecisaoOrcamentoCard({ equipamento, onRespostaVista, onAplicar }: Props) {
   const { ensureSensitiveAccess } = useSensitiveAccess();
   const [info, setInfo] = useState<DecisaoOrcamentoInfo | null>(null);
-  const [linkUrl, setLinkUrl] = useState<string | null>(null);
+  const [link, setLink] = useState<{ url: string; expiresAt: string } | null>(null);
   const [loading, setLoading] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -66,7 +68,7 @@ export function DecisaoOrcamentoCard({ equipamento, onRespostaVista, onAplicar }
   }, [equipamentoId, onRespostaVista]);
 
   useEffect(() => {
-    setLinkUrl(null);
+    setLink(null);
     void carregar();
   }, [carregar, equipamento.atualizado_em]);
 
@@ -99,7 +101,7 @@ export function DecisaoOrcamentoCard({ equipamento, onRespostaVista, onAplicar }
       "Confirme o acesso para congelar o orçamento atual e gerar um link de decisão. O link anterior deixa de funcionar.",
       async () => {
         const created = await db.criarLinkDecisaoOrcamento(equipamentoId!);
-        setLinkUrl(created.url);
+        setLink({ url: created.url, expiresAt: created.expiresAt });
       },
     );
   }
@@ -111,7 +113,7 @@ export function DecisaoOrcamentoCard({ equipamento, onRespostaVista, onAplicar }
       "Confirme o acesso para encerrar o link de decisão deste orçamento.",
       async () => {
         await db.revogarLinkDecisaoOrcamento(equipamentoId!);
-        setLinkUrl(null);
+        setLink(null);
       },
     );
   }
@@ -124,20 +126,40 @@ export function DecisaoOrcamentoCard({ equipamento, onRespostaVista, onAplicar }
       `Confirme com o PIN para registrar que o cliente ${texto} o orçamento por telefone ou WhatsApp. O link público será encerrado.`,
       async () => {
         await db.registrarDecisaoInformada(equipamentoId!, decisao);
-        setLinkUrl(null);
+        setLink(null);
       },
     );
   }
 
-  async function copiar() {
-    if (!linkUrl) return;
+  async function copiar(texto: string, rotulo: string) {
     try {
-      await navigator.clipboard.writeText(linkUrl);
-      toast.success("Link copiado.");
+      await navigator.clipboard.writeText(texto);
+      toast.success(`${rotulo} copiado.`);
     } catch {
-      toast.error("Não foi possível copiar. Selecione o link e copie manualmente.");
+      toast.error("Não foi possível copiar. Selecione o texto e copie manualmente.");
     }
   }
+
+  function tratarSolicitacao(id: number) {
+    void executar(
+      SENSITIVE_PERMISSIONS.MANAGE_STATUS_LINKS,
+      "Mensagem do cliente",
+      "Confirme o acesso para marcar a mensagem do cliente como tratada.",
+      async () => {
+        await db.marcarSolicitacaoOrcamentoTratada(id);
+      },
+    );
+  }
+
+  const mensagem = link && info
+    ? montarMensagemLinkOrcamento({
+        clienteNome: equipamento.cliente_nome,
+        equipamento: [equipamento.tipo, equipamento.marca, equipamento.modelo].filter(Boolean).join(" "),
+        valorTotal: info.valorTotal,
+        url: link.url,
+        validoAte: link.expiresAt,
+      })
+    : null;
 
   const resposta = aberta ? info?.resposta : null;
   const respostaFinal = resposta && resposta.decisao !== "DESFEITA" && !resposta.aplicadaEm ? resposta : null;
@@ -209,18 +231,35 @@ export function DecisaoOrcamentoCard({ equipamento, onRespostaVista, onAplicar }
           {!aceiteAtivo && (
             <p className="text-xs text-muted-foreground">O aceite online ainda não foi ativado para esta instalação.</p>
           )}
-          {linkUrl && (
-            <div className="flex items-center gap-2">
-              <input readOnly value={linkUrl} className="min-w-0 flex-1 rounded border bg-background px-2 py-1 text-xs" aria-label="Link de decisão" />
-              <Button size="sm" variant="outline" onClick={() => void copiar()}>
-                <Copy className="mr-1 h-4 w-4" /> Copiar
-              </Button>
+          {link && mensagem && (
+            <div className="space-y-2">
+              <label className="block text-xs font-medium" htmlFor="mensagem-link-orcamento">Mensagem pronta</label>
+              <textarea
+                id="mensagem-link-orcamento"
+                readOnly
+                rows={7}
+                value={mensagem.texto}
+                className="w-full rounded border bg-background px-2 py-1 text-xs"
+              />
+              <div className="flex flex-wrap items-center gap-2">
+                <Button size="sm" variant="outline" onClick={() => void copiar(mensagem.texto, "Mensagem")}>
+                  <Copy className="mr-1 h-4 w-4" /> Copiar mensagem
+                </Button>
+                <Button size="sm" variant="outline" onClick={() => void copiar(link.url, "Link")}>
+                  <Copy className="mr-1 h-4 w-4" /> Copiar só o link
+                </Button>
+                <Button size="sm" variant="outline" disabled={!envioOrcamentoDisponivel("email")}>Enviar por email</Button>
+                <Button size="sm" variant="outline" disabled={!envioOrcamentoDisponivel("whatsapp")}>Enviar por WhatsApp</Button>
+              </div>
+              {!envioOrcamentoDisponivel("email") && !envioOrcamentoDisponivel("whatsapp") && (
+                <p className="text-xs text-muted-foreground">
+                  O envio automático ainda não está configurado: copie a mensagem e envie pelo canal do cliente.
+                </p>
+              )}
+              <p className="text-xs text-muted-foreground">
+                Este link aparece só agora; para reenviar depois, gere outro (o anterior é encerrado).
+              </p>
             </div>
-          )}
-          {linkUrl && (
-            <p className="text-xs text-muted-foreground">
-              Este link aparece só agora; para reenviar depois, gere outro (o anterior é encerrado).
-            </p>
           )}
         </div>
       )}
@@ -230,6 +269,26 @@ export function DecisaoOrcamentoCard({ equipamento, onRespostaVista, onAplicar }
           <span className="text-xs text-muted-foreground">Resposta por telefone ou WhatsApp:</span>
           <Button size="sm" variant="outline" disabled={busy} onClick={() => registrarInformada("APROVAR")}>Cliente aprovou</Button>
           <Button size="sm" variant="outline" disabled={busy} onClick={() => registrarInformada("RECUSAR")}>Cliente recusou</Button>
+        </div>
+      )}
+
+      {info && info.solicitacoes.length > 0 && (
+        <div className="space-y-1 border-t pt-2">
+          <p className="text-xs font-medium text-amber-950">Mensagens do cliente</p>
+          <ul className="space-y-1 text-xs">
+            {info.solicitacoes.map((item) => (
+              <li key={item.id} className="flex items-start justify-between gap-2">
+                <span className={item.tratadaEm ? "text-muted-foreground" : ""}>
+                  <strong>{item.tipo === "MUDANCA" ? "Pedido de mudança" : "Dúvida"}</strong> · {formatarHora(item.criadaEm)} · {item.mensagem}
+                </span>
+                {item.tratadaEm ? (
+                  <span className="shrink-0 text-muted-foreground">tratada</span>
+                ) : (
+                  <Button size="sm" variant="outline" disabled={busy} onClick={() => tratarSolicitacao(item.id)}>Marcar como tratada</Button>
+                )}
+              </li>
+            ))}
+          </ul>
         </div>
       )}
 

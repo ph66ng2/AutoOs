@@ -32,6 +32,7 @@ function info(overrides: Partial<DecisaoOrcamentoInfo> = {}): DecisaoOrcamentoIn
     aceiteOnlineAtivo: true,
     linkStatus: "ativo",
     historico: [],
+    solicitacoes: [],
     podeAplicar: false,
     ...overrides,
   };

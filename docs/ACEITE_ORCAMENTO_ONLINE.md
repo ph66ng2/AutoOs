@@ -2,7 +2,7 @@
 
 O cliente responde ao orçamento por um link próprio. A resposta é **registrada na hora**, mas só a equipe altera status, pagamento e estoque, depois de conferir. Isso separa a *resposta do cliente* da *etapa operacional do equipamento* e deixa espaço para corrigir um toque errado.
 
-> **Estado atual: fase 1 (banco + desktop).** A Edge Function e a página pública (fase 2) ainda não existem, e o aceite online nasce **desligado**.
+> **Estado atual: fases 1 e 2 implementadas, nada ativado.** Migrations 0030 e 0031, Edge Function `orcamento-decisao`, página `#/o/<token>` e desktop estão no código. O aceite online nasce **desligado** (`online_enabled = FALSE`), a função ainda não foi publicada e o envio do link por email/WhatsApp **não está ligado a nenhum provedor**.
 
 ## Regras de produto
 
@@ -11,7 +11,9 @@ O cliente responde ao orçamento por um link próprio. A resposta é **registrad
 - Até a equipe aplicar, o cliente pode **desfazer ou alterar** a resposta pelo link. Cada mudança entra no histórico; nada é apagado. A equipe só aplica uma resposta do portal depois de **pelo menos 15 minutos** (`janela_correcao_minutos`, mínimo 15) desde a última resposta.
 - Resposta dada por telefone ou WhatsApp é registrada pela equipe como **decisão informada à equipe** (permissão `FINANCIAL_ACTIONS`, com PIN) no mesmo histórico, e encerra o link público.
 - A primeira versão aceita ou recusa o **orçamento inteiro**. Escolha de serviços individuais fica para uma etapa posterior.
-- Depois que a equipe aplica a decisão, o link deixa de aceitar respostas. Correção posterior é feita pela equipe; o sistema não devolve peças ao estoque por conta própria.
+- Depois que a equipe aplica a decisão, o link deixa de aceitar respostas, mas continua aberto (até expirar) para mostrar o resultado e receber um **pedido de mudança**. O pedido apenas avisa a equipe: não cancela serviço nem devolve peça.
+- **Tenho uma dúvida** envia uma mensagem (até 500 caracteres) sem registrar decisão; no máximo 5 mensagens por hora e versão.
+- Correção posterior é feita pela equipe, com **Corrigir decisão do orçamento**; o sistema nunca devolve peças ao estoque sem confirmação explícita.
 
 ## Banco (`0030_aceite_orcamento_online.sql`)
 
@@ -26,7 +28,21 @@ O cliente responde ao orçamento por um link próprio. A resposta é **registrad
 
 Erros da função (para a Edge Function mapear): `ACEITE_PAUSADO`, `LINK_INDISPONIVEL` (inexistente, vencido, revogado, versão encerrada ou etapa mudada — mesma resposta pública), `RESPOSTA_DESATUALIZADA`, `RESPOSTA_JA_APLICADA`, `NADA_A_DESFAZER`, `DECISAO_INVALIDA`.
 
-Os privilégios de `service_role` já cobrem só o necessário para a função de servidor; `anon` e `authenticated` não têm acesso.
+### Fase 2 (`0031_aceite_orcamento_fase2.sql`)
+
+| Objeto | Função |
+|---|---|
+| `orcamento_solicitacoes` | Dúvidas e pedidos de mudança do cliente (somente acréscimo; a equipe preenche `tratado_*`). |
+| `orcamento_correcoes` | Registro imutável de cada correção de decisão (motivo, estoque devolvido, quantidade, quem). |
+| `consultar_orcamento_decisao(token_hash)` | Devolve só campos em lista branca da versão congelada (descrição, valor, peças com nome, quantidade e preço unitário), o estado (`ABERTO` ou `APLICADO`) e a resposta vigente. Não expõe custos, ids de produto nem dados do cliente. |
+| `registrar_solicitacao_orcamento(token_hash, tipo, mensagem)` | `DUVIDA` só com o link aberto, `MUDANCA` só depois da aplicação. Remove caracteres de controle e limita a 5 por hora. |
+| `autoos_estado_link_orcamento` | Auxiliar que decide `ABERTO`/`APLICADO`/`LINK_INDISPONIVEL` num só lugar. |
+
+Mudança de comportamento em relação à 0030: ao aplicar uma resposta, a versão é encerrada, mas o **link não é mais revogado** (só os links de versões sem resposta aplicada).
+
+**Privilégios.** As quatro funções do aceite são `SECURITY DEFINER` (`search_path` fixo), executáveis só por `service_role`. `SELECT … FOR UPDATE/SHARE` exige privilégio de UPDATE, que o `service_role` não deve ter; por isso a 0031 também **retira** os grants diretos de tabela que a 0030 tinha dado. A Edge Function chega ao banco apenas por essas funções. `anon` e `authenticated` não têm acesso.
+
+Erros novos: `LIMITE_SOLICITACOES`, `MENSAGEM_INVALIDA`, `TIPO_INVALIDO`.
 
 ## Desktop
 
@@ -37,21 +53,43 @@ Os privilégios de `service_role` já cobrem só o necessário para a função d
   - resposta do portal dentro da janela não pode ser aplicada;
   - decisão diferente da do cliente exige `motivo_divergencia` (mínimo 5 caracteres);
   - a resposta é marcada como aplicada junto com pagamento, status e baixa de estoque.
+- `orcamento_correcao.rs`: `analisar_correcao_decisao` e `corrigir_decisao_orcamento` (`FINANCIAL_ACTIONS`, com PIN). Veja "Corrigir decisão do orçamento" abaixo.
+- `marcar_solicitacao_orcamento_tratada` marca dúvidas e pedidos do cliente como tratados.
+- A lista de equipamentos mostra **"Cliente respondeu: aprovou/recusou — aguardando conferência"** (coluna `resposta_cliente` em `EQUIPAMENTO_SELECT`, só enquanto a resposta não foi aplicada e a versão está aberta).
+- No fluxo de aprovação, se a decisão do operador diferir da do cliente aparece o campo **Motivo da divergência** (mínimo de 5 caracteres, também exigido pelo backend).
 - `DecisaoOrcamentoCard` (detalhe do equipamento): mostra "Cliente respondeu: aprovou — aguardando conferência", versão, valor, janela, histórico, gerar/encerrar link e as ações de decisão informada. "Revisar e aplicar decisão" abre o fluxo atual de pagamento com PIN.
+
+## Corrigir decisão do orçamento
+
+Ação ao lado de "Mudar Status" para orçamentos `APROVADO` ou `REPROVADO`. "Corrigir Status" para `AGUARDANDO_APROVACAO` nesses casos é recusado e aponta para ela, porque trocar só o rótulo não desfaz pagamento, serviços aprovados nem baixa de estoque.
+
+1. A análise mostra pagamento registrado, valor atual e o valor enviado ao cliente, e as peças já baixadas.
+2. **Bloqueia** (atendimento humano) se o serviço já passou de `APROVADO`/`REPROVADO`, se o orçamento não guardou a versão original (legado) ou se foi ajustado depois da aprovação.
+3. Com peças baixadas, o operador precisa marcar que elas estão intactas; só então o sistema gera entrada de estoque (`origem = CORRECAO_ORCAMENTO`). Sem a confirmação, nada é alterado.
+4. Na mesma transação: restaura serviços, peças e valor originais, apaga forma de pagamento e decisões por serviço, zera as quantidades aprovadas/baixadas, volta a etapa para `AGUARDANDO_APROVACAO` e grava `orcamento_correcoes` e o evento de auditoria `BUDGET_DECISION_CORRECTED`. Conflito de concorrência (`atualizado_em`) cancela tudo.
+
+## Envio do link (pronto, não ligado)
+
+`src/lib/orcamento-link-message.ts` monta o texto (assunto, texto simples e HTML escapado) e o card mostra a "mensagem pronta" com **Copiar mensagem** e **Copiar só o link**. `src/lib/orcamento-link-envio.ts` define a interface `ProvedorEnvioOrcamento` e um registro vazio: os botões "Enviar por email" e "Enviar por WhatsApp" ficam desabilitados e `enviarLinkOrcamento` recusa o envio enquanto nenhum provedor for registrado. Quando o provedor for escolhido, basta chamar `registrarProvedorEnvioOrcamento({ canal, nome, enviar })` na inicialização e ligar os botões do card; nenhuma outra parte muda. Nada é enviado hoje.
+
+## Edge Function e página
+
+- `supabase/functions/orcamento-decisao/index.ts` (`verify_jwt = false` em `supabase/config.toml`): `POST` JSON com `token` e `acao` = `consultar`, `responder` (`decisao`, `respostaVigenteId`) ou `solicitar` (`tipo`, `mensagem`). Reaproveita os segredos e a origem do acompanhamento (`PUBLIC_STATUS_RATE_LIMIT_SECRET`, `PUBLIC_STATUS_ORIGIN`) e o limite por cliente (60/min) e por token (30/min leitura, 10/min escrita).
+- Link inexistente, vencido, revogado, versão encerrada, etapa mudada e aceite pausado respondem o mesmo `404`. Conflitos viram `409` (`DESATUALIZADA`, `JA_APLICADA`, `NADA_A_DESFAZER`); erros internos do banco nunca vão ao navegador.
+- Página: mesma publicação do acompanhamento (`npm run build:public-status`). `#/c/<token>` continua sendo o acompanhamento e `#/o/<token>` é o orçamento. Fluxo: aprovar/não aprovar → confirmação com valor → "Resposta recebida às HH:MM" com Desfazer/Alterar → depois da aplicação, "Pedir mudança". A URL da função pode ser trocada com `VITE_ORCAMENTO_DECISAO_API_URL`.
 
 ## Ativação
 
-1. Aplicar a migration 0030 (as 0024–0029 antes).
-2. Fase 2: publicar a função e a página; só então, após o QA, `UPDATE public.orcamento_aceite_config SET online_enabled = TRUE` para um piloto.
-3. Pausar: `online_enabled = FALSE`. Links existentes passam a responder `ACEITE_PAUSADO`.
+1. Aplicar as migrations 0030 e 0031 (as 0024–0029 antes). Confirme os advisors de segurança do Supabase.
+2. Publicar `orcamento-decisao` com os mesmos segredos do `public-status` e publicar a página (`npm run build:public-status`).
+3. Após o QA, `UPDATE public.orcamento_aceite_config SET online_enabled = TRUE` para um piloto.
+4. Pausar: `online_enabled = FALSE`. A função passa a responder `404` para todos os links; nada é apagado.
 
 ## Pendências conhecidas
 
-- **Fase 2:** Edge Function (token por `POST`, limite de consultas como no acompanhamento), página `#/o/<token>` com confirmação, desfazer e "Tenho uma dúvida", e "Pedir mudança" depois da aplicação.
-- Indicação "Cliente respondeu" na **lista** de equipamentos (hoje só no detalhe).
-- Ação "Corrigir decisão do orçamento" ao lado de "Mudar Status", que verifique pagamento, serviços e baixas antes de reabrir. Enquanto isso, "Mudar Status" de `APROVADO` para `AGUARDANDO_APROVACAO` não reverte pagamento nem estoque.
-- UI para informar o `motivo_divergencia` (o backend já exige; sem motivo a aplicação divergente é recusada).
-- Envio do link por email/WhatsApp pelo app (hoje: copiar).
+- **Provedor de envio** (email/WhatsApp) e, depois, o código de verificação enviado ao contato cadastrado.
+- Nenhuma migration foi aplicada e a função não foi publicada em nenhum ambiente.
+- O fluxo da lista e do campo de motivo foi coberto por testes de backend e de componentes; falta o QA manual no app com um banco real.
 
 ## Limitação
 
@@ -59,4 +97,4 @@ Possuir o link não prova quem clicou. Nesta versão a conferência humana antes
 
 ## QA
 
-Cobertos: SQL (resposta, toque duplo, aparelho desatualizado, alterar, desfazer, imutabilidade, invalidação por edição, cascata) e a trava do desktop em `test_budget_stock` (tela antiga, janela, divergência, aplicação). A cobrir na fase 2: link vencido na página, dois aparelhos pela Edge Function, aprovação com peça em falta e correção após início do serviço.
+Cobertos: SQL (resposta, toque duplo, aparelho desatualizado, alterar, desfazer, imutabilidade, invalidação por edição, cascata) e a trava do desktop em `test_budget_stock` (tela antiga, janela, divergência, aplicação). Também cobertos: Edge Function (tradução de erros, validação, limites, sem vazar erros do banco), página (confirmação, desfazer, tela desatualizada, dúvida, pedido de mudança, link indisponível), SQL como `service_role` sem acesso direto às tabelas, correção de decisão com devolução de estoque e bloqueio após o início do serviço. Falta QA manual com peça em falta e com dois aparelhos reais.

@@ -209,3 +209,42 @@ h1 {
   *, *::before, *::after { animation: none !important; scroll-behavior: auto !important; }
   .status-pulse::after { opacity: 0.5; transform: scale(0.65); }
 }
+
+/* Orçamento para decisão do cliente */
+.quote-list { list-style: none; margin: 1.5rem 0 0; padding: 0; display: grid; gap: 0.75rem; }
+.quote-list li { display: grid; gap: 0.2rem; padding-bottom: 0.75rem; border-bottom: 1px solid #e1e8f0; }
+.quote-line { display: flex; justify-content: space-between; gap: 1rem; color: #243d59; overflow-wrap: anywhere; }
+.quote-part { color: #66788c; font-size: 0.85rem; overflow-wrap: anywhere; }
+.quote-total { display: flex; justify-content: space-between; margin: 1rem 0 0; color: #102e50; font-size: 1.1rem; }
+
+.action-stack { display: grid; gap: 0.75rem; margin-top: 1.5rem; }
+.action-row { display: flex; flex-wrap: wrap; gap: 0.75rem; margin-top: 1rem; }
+.primary-button, .secondary-button {
+  min-height: 3rem;
+  padding: 0.75rem 1.1rem;
+  border-radius: 0.65rem;
+  font-weight: 700;
+  cursor: pointer;
+  overflow-wrap: anywhere;
+}
+.primary-button { border: 0; color: #fff; background: #12619c; }
+.secondary-button { border: 1px solid #b9c9da; color: #243d59; background: #fff; }
+.action-stack .primary-button, .action-stack .secondary-button { width: 100%; }
+.primary-button:disabled, .secondary-button:disabled { opacity: 0.55; cursor: not-allowed; }
+.link-button { border: 0; padding: 0.5rem 0; color: #12619c; background: none; font-weight: 650; text-decoration: underline; cursor: pointer; }
+
+.answer-box, .confirm-box, .contact-box, .sent-box, .notice-box {
+  margin-top: 1.5rem;
+  padding: 1rem 1.1rem;
+  border-radius: 0.65rem;
+}
+.answer-box { border-left: 3px solid #4b8ec8; background: #f3f8fd; }
+.confirm-box { border: 2px solid #12619c; background: #fff; }
+.contact-box { border: 1px solid #dce5f0; background: #f9fbfd; }
+.sent-box { background: #edf8f2; color: #1f5a3b; }
+.notice-box { background: #fff4e5; color: #7a4a05; }
+.answer-box h2, .confirm-box h2 { margin: 0 0 0.5rem; font-size: 1.1rem; color: #102e50; }
+.answer-box p, .confirm-box p, .notice-box { margin: 0.35rem 0 0; line-height: 1.55; }
+.answer-hint { color: #526b89; font-size: 0.85rem; }
+.contact-box label { display: block; margin-bottom: 0.4rem; font-weight: 700; }
+.contact-box textarea { width: 100%; padding: 0.7rem; border: 1px solid #b9c9da; border-radius: 0.5rem; font: inherit; resize: vertical; }

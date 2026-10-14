@@ -176,6 +176,7 @@ import { PaginationControls } from "@/components/ui/pagination-controls";
 import { PagamentoOrcamentoDialog } from "@/components/equipamentos/PagamentoOrcamentoDialog";
 import { PublicStatusLinkDialog } from "@/components/equipamentos/PublicStatusLinkDialog";
 import { DecisaoOrcamentoCard } from "@/components/equipamentos/DecisaoOrcamentoCard";
+import { CorrigirDecisaoDialog } from "@/components/equipamentos/CorrigirDecisaoDialog";
 import { FormaPagamentoFields } from "@/components/equipamentos/FormaPagamentoFields";
 import { resolveRecipient, type ResolvedRecipient } from "@/lib/recipient-resolver";
 import { saveRecipientAddress } from "@/lib/recipient-persistence";
@@ -203,6 +204,10 @@ export default function Equipamentos() {
   const [publicStatusDialogOpen, setPublicStatusDialogOpen] = useState(false);
   // Resposta do cliente que o operador está vendo; segue junto da aprovação para barrar tela desatualizada.
   const respostaClienteVistaRef = useRef(0);
+  // Decisão do cliente (ainda não aplicada) que o operador está conferindo, e o motivo se ele divergir dela.
+  const [respostaClienteDecisao, setRespostaClienteDecisao] = useState<"APROVAR" | "RECUSAR" | null>(null);
+  const [motivoDivergencia, setMotivoDivergencia] = useState("");
+  const [corrigirDecisaoAlvo, setCorrigirDecisaoAlvo] = useState<Equipamento | null>(null);
   const registrarRespostaClienteVista = useCallback((id: number) => {
     respostaClienteVistaRef.current = id;
   }, []);
@@ -776,6 +781,16 @@ export default function Equipamentos() {
     setStatusDialogOpen(true);
   }
 
+  async function abrirCorrigirDecisao(eq: Equipamento) {
+    const liberado = await ensureSensitiveAccess({
+      title: "Corrigir decisão do orçamento",
+      description: "Informe o PIN para reabrir um orçamento já decidido. Pagamento, serviços e estoque serão conferidos.",
+      permission: SENSITIVE_PERMISSIONS.FINANCIAL_ACTIONS,
+    });
+    if (!liberado) return;
+    setCorrigirDecisaoAlvo(eq);
+  }
+
   async function abrirCorrecaoStatus(eq: Equipamento) {
     const liberado = await ensureSensitiveAccess({
       title: "Corrigir status",
@@ -1182,6 +1197,13 @@ export default function Equipamentos() {
       respostaClienteVistaRef.current = decisaoCliente && !decisaoCliente.encerradaMotivo
         ? decisaoCliente.resposta?.id ?? 0
         : 0;
+      const respostaPendente = decisaoCliente && !decisaoCliente.encerradaMotivo ? decisaoCliente.resposta : null;
+      setRespostaClienteDecisao(
+        respostaPendente && !respostaPendente.aplicadaEm && respostaPendente.decisao !== "DESFEITA"
+          ? respostaPendente.decisao
+          : null,
+      );
+      setMotivoDivergencia("");
       setPagamentoAprovacaoInicial(verificacao?.forma_pagamento_codigo ? {
         codigo: verificacao.forma_pagamento_codigo,
         detalhe: verificacao.forma_pagamento_detalhe || null,
@@ -1193,6 +1215,11 @@ export default function Equipamentos() {
       setPagamentoAprovacaoLoading(false);
     }
   }
+
+  const decisaoDivergeDoCliente = respostaClienteDecisao != null
+    && todosServicosAprovados !== null
+    && (respostaClienteDecisao === "APROVAR") !== decisaoAprovada;
+  const motivoDivergenciaValido = motivoDivergencia.trim().length >= 5;
 
   async function confirmarAprovacao(pagamento: FormaPagamento): Promise<boolean> {
     if (!selecionado?.id) {
@@ -1207,6 +1234,10 @@ export default function Equipamentos() {
       setPagamentoAprovacaoError("A versão atual do orçamento não está disponível. Feche, atualize a lista e tente novamente.");
       return false;
     }
+    if (decisaoDivergeDoCliente && !motivoDivergenciaValido) {
+      setPagamentoAprovacaoError("O cliente respondeu de outra forma. Informe o motivo da divergência (mínimo de 5 caracteres).");
+      return false;
+    }
     setPagamentoAprovacaoLoading(true);
     try {
       await db.aprovarOrcamento({
@@ -1217,6 +1248,7 @@ export default function Equipamentos() {
         servicos_aprovados: idsAprovados,
         aprovado: decisaoAprovada,
         resposta_esperada_id: respostaClienteVistaRef.current,
+        ...(decisaoDivergeDoCliente ? { motivo_divergencia: motivoDivergencia.trim() } : {}),
       });
       await recarregar();
       setPagamentoAprovacaoError(null);
@@ -1257,6 +1289,10 @@ export default function Equipamentos() {
       return;
     }
     const totalAtual = valorOrcamentoRef.current;
+    if (correcaoStatus && novoStatus === "AGUARDANDO_APROVACAO" && ["APROVADO", "REPROVADO"].includes(selecionado.status)) {
+      warning("Equipamentos", "Para reabrir um orçamento já decidido use “Corrigir decisão do orçamento”: ela desfaz pagamento e estoque junto.");
+      return;
+    }
     if (correcaoStatus && !motivoCorrecaoStatus.trim()) {
       warning("Equipamentos", "Informe o motivo da correção antes de continuar.");
       return;
@@ -1603,6 +1639,13 @@ export default function Equipamentos() {
       variant: "outline",
       onClick: () => void abrirCorrecaoStatus(eq),
     };
+    const acaoCorrigirDecisao: PriorityAction = {
+      id: "corrigir_decisao",
+      label: "Corrigir decisão do orçamento",
+      icon: <RotateCcw className="h-3.5 w-3.5" />,
+      variant: "outline",
+      onClick: () => void abrirCorrigirDecisao(eq),
+    };
     const acaoExcluir: PriorityAction = {
       id: "excluir",
       label: "Excluir",
@@ -1708,7 +1751,7 @@ export default function Equipamentos() {
           disabled: salvando,
         };
         secondary = acaoStatus;
-        overflow.push(acaoEditar, acaoExcluir);
+        overflow.push(acaoCorrigirDecisao, acaoEditar, acaoExcluir);
         break;
       case "EM_MANUTENCAO":
         primary = {
@@ -1774,7 +1817,7 @@ export default function Equipamentos() {
           onClick: () => void abrirMudarStatus(eq),
           disabled: salvando,
         });
-        overflow.push(acaoEditar, acaoExcluir);
+        overflow.push(acaoCorrigirDecisao, acaoEditar, acaoExcluir);
         break;
       case "ORCAMENTO_VENCIDO":
         primary = {
@@ -2076,6 +2119,12 @@ export default function Equipamentos() {
                             eq.valor_orcamento != null && eq.valor_orcamento > 0 && (
                               <div className="inline-flex max-w-full items-center truncate rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-xs font-medium text-amber-900">
                                 Orçamento: R$ {eq.valor_orcamento.toFixed(2)}
+                              </div>
+                            )}
+                          {eq.status === "AGUARDANDO_APROVACAO" &&
+                            (eq.resposta_cliente === "APROVAR" || eq.resposta_cliente === "RECUSAR") && (
+                              <div className="inline-flex max-w-full items-center truncate rounded-full border border-sky-200 bg-sky-50 px-2 py-0.5 text-xs font-medium text-sky-900">
+                                Cliente respondeu: {eq.resposta_cliente === "APROVAR" ? "aprovou" : "recusou"} — aguardando conferência
                               </div>
                             )}
                         </div>
@@ -2572,6 +2621,17 @@ export default function Equipamentos() {
         </DialogContent>
       </Dialog>
 
+      <CorrigirDecisaoDialog
+        equipamento={corrigirDecisaoAlvo}
+        open={corrigirDecisaoAlvo !== null}
+        onOpenChange={(open) => { if (!open) setCorrigirDecisaoAlvo(null); }}
+        onCorrigido={async () => {
+          setSelecionado(null);
+          await recarregar();
+          success("Equipamentos", "Orçamento reaberto. Envie ou registre uma nova decisão do cliente.", "Decisão corrigida");
+        }}
+      />
+
       <PublicStatusLinkDialog
         equipamento={selecionado}
         open={publicStatusDialogOpen}
@@ -2633,6 +2693,25 @@ export default function Equipamentos() {
                           ))}
                         </SelectContent>
                       </Select>
+                    </div>
+                  )}
+                  {correcaoStatus && novoStatus === "AGUARDANDO_APROVACAO" && ["APROVADO", "REPROVADO"].includes(selecionado.status) && (
+                    <div role="alert" className="space-y-2 rounded-md border border-amber-300 bg-amber-50 p-3 text-sm text-amber-950">
+                      <p>
+                        Trocar só o status não desfaz pagamento, serviços aprovados nem baixa de estoque. Use a correção guiada da decisão.
+                      </p>
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        onClick={() => {
+                          const alvo = selecionado;
+                          setStatusDialogOpen(false);
+                          void abrirCorrigirDecisao(alvo);
+                        }}
+                      >
+                        Corrigir decisão do orçamento
+                      </Button>
                     </div>
                   )}
                   {correcaoStatus && (
@@ -2945,6 +3024,23 @@ export default function Equipamentos() {
               <Button type="button" variant={todosServicosAprovados === false ? "default" : "outline"}
                 onClick={() => { setTodosServicosAprovados(false); setIdsAprovados([]); }}>{servicosAprovacao.length === 0 ? "Reprovar orçamento" : "Não, selecionar"}</Button>
             </div>
+            {respostaClienteDecisao && (
+              <div className="rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-950">
+                <p>O cliente respondeu pelo link: <strong>{respostaClienteDecisao === "APROVAR" ? "aprovou" : "recusou"}</strong> o orçamento.</p>
+                {decisaoDivergeDoCliente && (
+                  <div className="mt-2 space-y-1">
+                    <Label htmlFor="motivo-divergencia">Motivo da divergência *</Label>
+                    <Textarea
+                      id="motivo-divergencia"
+                      value={motivoDivergencia}
+                      onChange={(event) => setMotivoDivergencia(event.target.value)}
+                      placeholder="Ex.: cliente ligou e pediu para aprovar mesmo assim"
+                    />
+                    <p className="text-xs">A decisão aplicada é diferente da resposta do cliente. O motivo fica registrado na auditoria.</p>
+                  </div>
+                )}
+              </div>
+            )}
             {todosServicosAprovados === false && servicosAprovacao.length > 0 && (
               <div className="max-h-64 space-y-2 overflow-y-auto rounded-md border p-3">
                 {servicosAprovacao.map((servico) => (
@@ -2981,7 +3077,7 @@ export default function Equipamentos() {
           </div>
           <DialogFooter>
             <Button type="button" variant="outline" onClick={() => setSelecaoServicosOpen(false)}>Cancelar</Button>
-            <Button type="button" disabled={todosServicosAprovados === null || pagamentoAprovacaoLoading}
+            <Button type="button" disabled={todosServicosAprovados === null || pagamentoAprovacaoLoading || (decisaoDivergeDoCliente && !motivoDivergenciaValido)}
               onClick={() => {
                 if (decisaoAprovada) {
                   setSelecaoServicosOpen(false);

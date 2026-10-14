@@ -35,6 +35,17 @@ pub struct RespostaOrcamentoInfo {
 
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
+pub struct SolicitacaoOrcamentoInfo {
+    pub id: i64,
+    /// `DUVIDA` (link aberto) ou `MUDANCA` (decisão já aplicada).
+    pub tipo: String,
+    pub mensagem: String,
+    pub criada_em: String,
+    pub tratada_em: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct DecisaoOrcamentoInfo {
     pub versao_id: i64,
     pub versao: i32,
@@ -50,6 +61,8 @@ pub struct DecisaoOrcamentoInfo {
     /// Resposta vigente (a de maior id). `DESFEITA` significa que o cliente retirou a resposta.
     pub resposta: Option<RespostaOrcamentoInfo>,
     pub historico: Vec<RespostaOrcamentoInfo>,
+    /// Dúvidas e pedidos de mudança enviados pelo cliente, do mais recente ao mais antigo.
+    pub solicitacoes: Vec<SolicitacaoOrcamentoInfo>,
     /// Fim da janela mínima de correção da resposta vigente do portal.
     pub aplicavel_a_partir_de: Option<String>,
     pub pode_aplicar: bool,
@@ -339,6 +352,31 @@ pub async fn obter_decisao_orcamento(
         historico.push(resposta_from_row(row)?);
     }
 
+    let solicitacao_rows = sqlx::query(sqlx::AssertSqlSafe(format!(
+        "SELECT id, tipo, mensagem,
+                to_char(criado_em AT TIME ZONE 'UTC', '{TS_FMT}') AS criada_em,
+                to_char(tratado_em AT TIME ZONE 'UTC', '{TS_FMT}') AS tratada_em
+         FROM orcamento_solicitacoes
+         WHERE versao_id = $1 AND empresa_id = $2
+         ORDER BY id DESC
+         LIMIT 20"
+    )))
+    .bind(versao_id)
+    .bind(empresa_id)
+    .fetch_all(&pool)
+    .await
+    .map_err(map)?;
+    let mut solicitacoes = Vec::with_capacity(solicitacao_rows.len());
+    for row in &solicitacao_rows {
+        solicitacoes.push(SolicitacaoOrcamentoInfo {
+            id: row.try_get("id").map_err(map)?,
+            tipo: row.try_get("tipo").map_err(map)?,
+            mensagem: row.try_get("mensagem").map_err(map)?,
+            criada_em: row.try_get("criada_em").map_err(map)?,
+            tratada_em: row.try_get("tratada_em").map_err(map)?,
+        });
+    }
+
     let janela: i32 = sqlx::query_scalar(
         "SELECT janela_correcao_minutos FROM public.orcamento_aceite_config WHERE singleton = TRUE",
     )
@@ -378,6 +416,7 @@ pub async fn obter_decisao_orcamento(
             aplicada_em: r.aplicada_em.clone(),
         }),
         historico,
+        solicitacoes,
         aplicavel_a_partir_de: aplicavel_a_partir_de.map(|limit| limit.to_rfc3339()),
         pode_aplicar,
     }))
@@ -567,6 +606,28 @@ pub async fn registrar_decisao_informada(
     )
     .await;
     Ok(())
+}
+
+/// Marca uma dúvida ou pedido de mudança do cliente como tratado pela equipe.
+#[tauri::command]
+#[instrument(skip_all, fields(solicitacao_id = solicitacao_id))]
+pub async fn marcar_solicitacao_orcamento_tratada(solicitacao_id: i64) -> Result<bool, String> {
+    let actor = require_permission(PERMISSION_MANAGE_STATUS_LINKS)?;
+    let pool = get_pool().await.map_err(|error| error.to_string())?;
+    let empresa_id = require_active_session_company_id(&pool).await?;
+    let updated = sqlx::query(
+        "UPDATE orcamento_solicitacoes
+         SET tratado_em = NOW(), tratado_por_profile_id = $3
+         WHERE id = $1 AND empresa_id = $2 AND tratado_em IS NULL",
+    )
+    .bind(solicitacao_id)
+    .bind(empresa_id)
+    .bind(actor.id)
+    .execute(&pool)
+    .await
+    .map_err(super::operator_errors::mapear_erro_sql)?
+    .rows_affected();
+    Ok(updated > 0)
 }
 
 /// Conferência feita dentro da transação de `aprovar_orcamento`.

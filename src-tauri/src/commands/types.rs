@@ -437,6 +437,8 @@ pub struct EquipamentoRow {
     pub data_saida: Option<String>,
     pub valor_orcamento: Option<f64>,
     pub valor_final: Option<f64>,
+    /// Última resposta do cliente ainda não aplicada pela equipe; só em AGUARDANDO_APROVACAO.
+    pub resposta_cliente: Option<String>,
     pub criado_em: Option<String>,
     pub atualizado_em: Option<String>,
 }
@@ -633,6 +635,21 @@ pub const EQUIPAMENTO_SELECT: &str = "
                )
            )::FLOAT8 as valor_orcamento,
            valor_final::FLOAT8 as valor_final,
+           -- Resposta do cliente ao orçamento ainda não aplicada pela equipe (APROVAR, RECUSAR ou DESFEITA).
+           CASE WHEN equipamentos.status = 'AGUARDANDO_APROVACAO' THEN (
+               SELECT r.decisao
+                 FROM orcamento_respostas r
+                 JOIN orcamento_versoes v ON v.id = r.versao_id AND v.empresa_id = r.empresa_id
+                WHERE r.equipamento_id = equipamentos.id
+                  AND r.empresa_id = equipamentos.empresa_id
+                  AND v.encerrada_em IS NULL
+                  AND NOT EXISTS (
+                      SELECT 1 FROM orcamento_respostas aplicada
+                       WHERE aplicada.versao_id = v.id AND aplicada.aplicada_em IS NOT NULL
+                  )
+                ORDER BY r.id DESC
+                LIMIT 1
+           ) END AS resposta_cliente,
            criado_em::TEXT as criado_em, atualizado_em::TEXT as atualizado_em
     FROM equipamentos";
 
