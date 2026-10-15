@@ -95,6 +95,8 @@ O card também mostra a **mensagem pronta** (`orcamento-link-message.ts`) com **
 
 ## Limitação
 
+> O Portal das Impressoras do Cliente (`docs/PORTAL_CLIENTE.md`, migration 0034) resolve isto para quem entra com código: respostas de origem `PORTAL_CLIENTE` são atribuídas ao contato e efetivadas pelo servidor depois do prazo de correção. Respostas pelo link continuam com conferência da equipe.
+
 Possuir o link não prova quem clicou. Nesta versão a conferência humana antes de iniciar o serviço é parte da proteção. Um código enviado ao contato cadastrado exige um serviço de envio no servidor, pois a configuração de WhatsApp e email guardada no desktop não funciona com o app fechado.
 
 ## QA

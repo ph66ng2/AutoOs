@@ -2,6 +2,8 @@
 
 O portal permite que o cliente consulte a etapa atual de um ciclo de atendimento por um link individual. A página é somente para leitura: não altera status nem aprova orçamento.
 
+> O mesmo endereço agora abre o **Portal das Impressoras do Cliente** (login por CPF/CNPJ + código, lista de atendimentos e resposta ao orçamento) quando não há `#/c/<token>` na URL. Os links individuais já enviados continuam funcionando sem mudança. Veja `docs/PORTAL_CLIENTE.md`.
+
 > O orçamento com resposta do cliente usa outro link (`#/o/<token>`), outra Edge Function e outra chave de ativação. Veja `docs/ACEITE_ORCAMENTO_ONLINE.md`.
 
 ## Dados e segurança

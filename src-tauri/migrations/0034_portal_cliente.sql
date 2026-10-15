@@ -971,9 +971,10 @@ BEGIN
     END IF;
 
     -- Mesma ordem de bloqueio de `aprovar_orcamento` no desktop: equipamento, depois versão.
+    -- FOR UPDATE (não FOR SHARE): a linha é atualizada adiante e dois FOR SHARE se travariam.
     SELECT * INTO v_e FROM public.equipamentos
     WHERE id = p_equipamento_id AND empresa_id = v_s.s_empresa_id
-    FOR SHARE;
+    FOR UPDATE;
     IF NOT FOUND OR v_e.cliente_id IS DISTINCT FROM v_s.s_cliente_id THEN
         RAISE EXCEPTION 'ATENDIMENTO_INDISPONIVEL';
     END IF;
@@ -1119,7 +1120,8 @@ BEGIN
     END IF;
 
     SELECT * INTO v_e FROM public.equipamentos
-    WHERE id = p_equipamento_id AND empresa_id = v_s.s_empresa_id AND cliente_id = v_s.s_cliente_id;
+    WHERE id = p_equipamento_id AND empresa_id = v_s.s_empresa_id AND cliente_id = v_s.s_cliente_id
+    FOR UPDATE;
     SELECT * INTO v_v FROM public.orcamento_versoes
     WHERE id = p_versao_id AND equipamento_id = p_equipamento_id AND empresa_id = v_s.s_empresa_id
     FOR UPDATE;
@@ -1225,13 +1227,24 @@ BEGIN
         RETURN 'IGNORADA';
     END IF;
 
-    -- Ordem de bloqueio de `aprovar_orcamento`: equipamento, depois versão (a mesma de
-    -- `conferir_e_aplicar_resposta` e `portal_registrar_resposta`).
+    -- Ordem de bloqueio de `aprovar_orcamento` + `conferir_e_aplicar_resposta` no desktop:
+    -- equipamento, verificação, versão. Editar a verificação (trigger que encerra versões) segue
+    -- verificação → versão; a mesma ordem aqui evita ciclo.
     SELECT * INTO v_e FROM public.equipamentos
     WHERE id = v_r.equipamento_id AND empresa_id = v_r.empresa_id FOR UPDATE;
     IF NOT FOUND THEN
         RAISE EXCEPTION 'PORTAL_EFETIVACAO:ATENDIMENTO_REMOVIDO';
     END IF;
+    IF EXISTS (SELECT 1 FROM public.verificacoes
+               WHERE equipamento_id = v_e.id AND empresa_id IS NOT NULL AND empresa_id <> v_e.empresa_id) THEN
+        RAISE EXCEPTION 'PORTAL_EFETIVACAO:VERIFICACAO_DE_OUTRA_EMPRESA';
+    END IF;
+    SELECT id, empresa_id, servicos_necessarios, pecas_necessarias, custo_total INTO v_ver
+    FROM public.verificacoes
+    WHERE equipamento_id = v_e.id AND (empresa_id = v_e.empresa_id OR empresa_id IS NULL)
+    ORDER BY (empresa_id = v_e.empresa_id) DESC, id DESC
+    LIMIT 1
+    FOR UPDATE;
     SELECT * INTO v_v FROM public.orcamento_versoes WHERE id = v_r.versao_id FOR UPDATE;
     SELECT id INTO v_ultima FROM public.orcamento_respostas WHERE versao_id = v_v.id ORDER BY id DESC LIMIT 1;
     SELECT aplicada_em IS NOT NULL AS aplicada, decisao INTO v_item FROM public.orcamento_respostas WHERE id = p_resposta_id;
@@ -1252,17 +1265,7 @@ BEGIN
         RAISE EXCEPTION 'PORTAL_EFETIVACAO:PROPOSTA_ALTERADA';
     END IF;
 
-    IF EXISTS (SELECT 1 FROM public.verificacoes
-               WHERE equipamento_id = v_e.id AND empresa_id IS NOT NULL AND empresa_id <> v_e.empresa_id) THEN
-        RAISE EXCEPTION 'PORTAL_EFETIVACAO:VERIFICACAO_DE_OUTRA_EMPRESA';
-    END IF;
-    SELECT id, empresa_id, servicos_necessarios, pecas_necessarias, custo_total INTO v_ver
-    FROM public.verificacoes
-    WHERE equipamento_id = v_e.id AND (empresa_id = v_e.empresa_id OR empresa_id IS NULL)
-    ORDER BY (empresa_id = v_e.empresa_id) DESC, id DESC
-    LIMIT 1
-    FOR UPDATE;
-    IF NOT FOUND THEN
+    IF v_ver.id IS NULL THEN
         RAISE EXCEPTION 'PORTAL_EFETIVACAO:SEM_VERIFICACAO';
     END IF;
     IF v_v.verificacao_id IS DISTINCT FROM v_ver.id THEN
