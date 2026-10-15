@@ -214,6 +214,7 @@ h1 {
 .quote-list { list-style: none; margin: 1.5rem 0 0; padding: 0; display: grid; gap: 0.75rem; }
 .quote-list li { display: grid; gap: 0.2rem; padding-bottom: 0.75rem; border-bottom: 1px solid #e1e8f0; }
 .quote-line { display: flex; justify-content: space-between; gap: 1rem; color: #243d59; overflow-wrap: anywhere; }
+.quote-line strong { flex-shrink: 0; white-space: nowrap; }
 .quote-part { color: #66788c; font-size: 0.85rem; overflow-wrap: anywhere; }
 .quote-total { display: flex; justify-content: space-between; margin: 1rem 0 0; color: #102e50; font-size: 1.1rem; }
 
