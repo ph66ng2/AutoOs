@@ -2,19 +2,21 @@ import React, { useEffect, useState } from "react";
 import ReactDOM from "react-dom/client";
 import PublicStatusPage from "./PublicStatusPage";
 import OrcamentoDecisaoPage from "./OrcamentoDecisaoPage";
+import PortalApp from "./PortalApp";
+import { areaFromHash, type Area } from "./portal-session";
 import "./public-status.css";
 
-const isDecisionRoute = () => window.location.hash.startsWith("#/o/");
-
-/** `#/c/<token>` acompanha o atendimento; `#/o/<token>` responde ao orçamento. */
+/** `#/c/` e `#/o/` continuam como antes; o resto do endereço é o Portal do Cliente. */
 function App() {
-  const [decision, setDecision] = useState(isDecisionRoute);
+  const [area, setArea] = useState<Area>(() => areaFromHash());
   useEffect(() => {
-    const sync = () => setDecision(isDecisionRoute());
+    const sync = () => setArea(areaFromHash());
     window.addEventListener("hashchange", sync);
     return () => window.removeEventListener("hashchange", sync);
   }, []);
-  return decision ? <OrcamentoDecisaoPage /> : <PublicStatusPage />;
+  if (area === "status") return <PublicStatusPage />;
+  if (area === "decisao") return <OrcamentoDecisaoPage />;
+  return <PortalApp />;
 }
 
 ReactDOM.createRoot(document.getElementById("root")!).render(
