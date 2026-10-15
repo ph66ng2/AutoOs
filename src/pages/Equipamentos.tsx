@@ -2153,7 +2153,11 @@ export default function Equipamentos() {
                           {eq.status === "AGUARDANDO_APROVACAO" &&
                             (eq.resposta_cliente === "APROVAR" || eq.resposta_cliente === "RECUSAR") && (
                               <div className="inline-flex max-w-full items-center truncate rounded-full border border-sky-200 bg-sky-50 px-2 py-0.5 text-xs font-medium text-sky-900">
-                                Cliente respondeu: {eq.resposta_cliente === "APROVAR" ? "aprovou" : "recusou"} — aguardando conferência
+                                Cliente respondeu: {eq.resposta_cliente === "APROVAR" ? "aprovou" : "recusou"} — {
+                                  eq.resposta_cliente_situacao === "EM_CORRECAO" ? "em prazo de correção"
+                                    : eq.resposta_cliente_situacao === "PROCESSANDO" ? "aguardando efetivação automática"
+                                      : eq.resposta_cliente_situacao === "PENDENTE_EQUIPE" ? "efetivação falhou, confira"
+                                        : "aguardando conferência"}
                               </div>
                             )}
                         </div>

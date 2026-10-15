@@ -145,6 +145,8 @@ export interface Equipamento {
   valor_final?: number;
   /** Última resposta do cliente ao orçamento que a equipe ainda não aplicou (só em AGUARDANDO_APROVACAO). */
   resposta_cliente?: "APROVAR" | "RECUSAR" | "DESFEITA" | null;
+  /** EM_CORRECAO: cliente ainda pode mudar; PROCESSANDO: efetivação automática; PENDENTE_EQUIPE: efetivação falhou. */
+  resposta_cliente_situacao?: "EM_CORRECAO" | "PROCESSANDO" | "PENDENTE_EQUIPE" | "AGUARDANDO_EQUIPE" | null;
   // Auditoria
   criado_em?: string;
   atualizado_em?: string;
@@ -177,12 +179,17 @@ export type DecisaoOrcamento = "APROVAR" | "RECUSAR" | "DESFEITA";
 
 export interface RespostaOrcamentoInfo {
   id: number;
-  origem: "PORTAL" | "EQUIPE";
+  /** PORTAL: link de decisão; PORTAL_CLIENTE: contato autorizado no Portal do Cliente; EQUIPE: informada à equipe. */
+  origem: "PORTAL" | "EQUIPE" | "PORTAL_CLIENTE";
   decisao: DecisaoOrcamento;
   registradaEm: string;
   registradaPor?: string | null;
   motivo?: string | null;
   aplicadaEm?: string | null;
+  contato?: string | null;
+  aplicadaPeloSistema?: boolean;
+  efetivacaoErro?: string | null;
+  efetivacaoFalhouEm?: string | null;
 }
 
 export type TipoEnvioWhatsapp = "orcamento_informativo" | "orcamento_decisao" | "equipamento_pronto";
@@ -216,11 +223,12 @@ export interface SolicitarEnvioWhatsappInput {
 
 export interface SolicitacaoOrcamentoInfo {
   id: number;
-  /** DUVIDA com o link aberto; MUDANCA depois que a equipe aplicou a decisão. */
-  tipo: "DUVIDA" | "MUDANCA";
+  /** DUVIDA com o link aberto; MUDANCA depois da decisão aplicada; NEGOCIAR pelo Portal do Cliente. */
+  tipo: "DUVIDA" | "MUDANCA" | "NEGOCIAR";
   mensagem: string;
   criadaEm: string;
   tratadaEm?: string | null;
+  contato?: string | null;
 }
 
 export interface PecaBaixadaInfo {
@@ -266,6 +274,40 @@ export interface DecisaoOrcamentoInfo {
   solicitacoes: SolicitacaoOrcamentoInfo[];
   aplicavelAPartirDe?: string | null;
   podeAplicar: boolean;
+  /** Resposta do Portal do Cliente: o servidor efetiva sozinho ao fim do prazo de correção. */
+  efetivacaoAutomatica?: boolean;
+}
+
+/** Alerta interno persistente gerado pelo Portal do Cliente. */
+export interface AlertaPortal {
+  id: number;
+  equipamentoId?: number | null;
+  tipo:
+    | "RESPOSTA_RECEBIDA" | "RESPOSTA_ALTERADA" | "RESPOSTA_CANCELADA"
+    | "DECISAO_EFETIVADA" | "EFETIVACAO_FALHOU"
+    | "NEGOCIACAO_SOLICITADA" | "CORRECAO_SOLICITADA" | "DUVIDA_RECEBIDA"
+    | "CODIGO_NAO_ENTREGUE";
+  titulo: string;
+  detalhe?: string | null;
+  criadoEm: string;
+  lidoEm?: string | null;
+  lidoPor?: string | null;
+}
+
+export type AcessoPortalContato = "NENHUM" | "ACOMPANHAR" | "DECIDIR";
+
+export interface OrcamentoPublicado {
+  versaoId: number;
+  versao: number;
+  nova: boolean;
+}
+
+export interface ContatoPortalEmpresa {
+  nomeExibicao: string;
+  whatsapp?: string | null;
+  email?: string | null;
+  telefone?: string | null;
+  horario?: string | null;
 }
 
 export interface LinkDecisaoOrcamentoCriado {
@@ -486,6 +528,8 @@ export interface ClienteContato {
   email?: string;
   telefone?: string;
   ativo: boolean;
+  /** Acesso ao Portal das Impressoras do Cliente. Alterado só por `definirAcessoPortalContato`. */
+  portal_acesso?: AcessoPortalContato;
   criado_em?: string;
   atualizado_em?: string;
 }
@@ -546,7 +590,7 @@ export interface VinculoEmpresaPerfilResultado {
   empresa_criada: boolean;
 }
 
-export type ClienteContatoInput = Omit<ClienteContato, "id" | "ativo" | "criado_em" | "atualizado_em"> & {
+export type ClienteContatoInput = Omit<ClienteContato, "id" | "ativo" | "portal_acesso" | "criado_em" | "atualizado_em"> & {
   atualizado_em?: string;
 };
 

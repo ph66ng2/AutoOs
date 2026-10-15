@@ -40,6 +40,21 @@ function formatarValor(value: number) {
   return new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(value);
 }
 
+const MOTIVO_FALHA: Record<string, string> = {
+  ETAPA_ALTERADA: "a etapa do equipamento mudou",
+  PROPOSTA_ALTERADA: "o orçamento foi alterado",
+  ATENDIMENTO_TRANSFERIDO: "o atendimento foi transferido de cliente",
+  PECAS_SEM_SERVICO: "há peças antigas sem serviço vinculado",
+  PRODUTO_INDISPONIVEL: "um produto do orçamento está inativo ou é de outra empresa",
+  ORCAMENTO_INVALIDO: "os itens do orçamento estão inválidos",
+};
+
+function origemTexto(item: RespostaOrcamentoInfo) {
+  if (item.origem === "PORTAL_CLIENTE") return `Cliente no portal (${item.contato ?? "contato"})`;
+  if (item.origem === "PORTAL") return "Cliente (link)";
+  return `Equipe (${item.registradaPor ?? "—"})`;
+}
+
 function mensagemErro(cause: unknown, fallback: string) {
   return typeof cause === "string" && cause.trim() ? cause : fallback;
 }
@@ -185,6 +200,20 @@ export function DecisaoOrcamentoCard({ equipamento, onRespostaVista, onAplicar }
     }
   }
 
+  function publicarNoPortal() {
+    void executar(
+      SENSITIVE_PERMISSIONS.MANAGE_STATUS_LINKS,
+      "Publicar orçamento no portal",
+      "Confirme o acesso para publicar o orçamento atual no Portal do Cliente. Se ele mudou, a versão anterior deixa de aceitar respostas.",
+      async () => {
+        const publicado = await db.publicarOrcamentoPortal(equipamentoId!);
+        toast.success(publicado.nova
+          ? `Versão ${publicado.versao} publicada no portal.`
+          : `A versão ${publicado.versao} já estava publicada com este conteúdo.`);
+      },
+    );
+  }
+
   function tratarSolicitacao(id: number) {
     void executar(
       SENSITIVE_PERMISSIONS.MANAGE_STATUS_LINKS,
@@ -236,7 +265,14 @@ export function DecisaoOrcamentoCard({ equipamento, onRespostaVista, onAplicar }
         </p>
       )}
 
-      {respostaFinal ? (
+      {respostaFinal?.origem === "PORTAL_CLIENTE" ? (
+        <RespostaPortalCliente
+          resposta={respostaFinal}
+          info={info!}
+          busy={busy}
+          onAplicar={() => onAplicar(respostaFinal.decisao === "APROVAR" ? "aprovar" : "reprovar")}
+        />
+      ) : respostaFinal ? (
         <div className="space-y-1">
           <p className="font-medium text-amber-950">
             Cliente respondeu: {DECISAO_TEXTO[respostaFinal.decisao]} — aguardando conferência
@@ -260,6 +296,17 @@ export function DecisaoOrcamentoCard({ equipamento, onRespostaVista, onAplicar }
         resposta?.decisao === "DESFEITA" && (
           <p className="text-muted-foreground">O cliente retirou a resposta em {formatarHora(resposta.registradaEm)}.</p>
         )
+      )}
+
+      {equipamento.status === "AGUARDANDO_APROVACAO" && (
+        <div className="flex flex-wrap items-center gap-2">
+          <Button size="sm" variant="outline" onClick={publicarNoPortal} disabled={busy}>
+            Publicar no Portal do Cliente
+          </Button>
+          <span className="text-xs text-muted-foreground">
+            Contatos autorizados veem esta versão em status.bmitag.com.br. Alterou o orçamento? Publique de novo.
+          </span>
+        </div>
       )}
 
       {podeEmitir && (
@@ -337,7 +384,8 @@ export function DecisaoOrcamentoCard({ equipamento, onRespostaVista, onAplicar }
             {info.solicitacoes.map((item) => (
               <li key={item.id} className="flex items-start justify-between gap-2">
                 <span className={item.tratadaEm ? "text-muted-foreground" : ""}>
-                  <strong>{item.tipo === "MUDANCA" ? "Pedido de mudança" : "Dúvida"}</strong> · {formatarHora(item.criadaEm)} · {item.mensagem}
+                  <strong>{item.tipo === "MUDANCA" ? "Pedido de mudança" : item.tipo === "NEGOCIAR" ? "Pedido de negociação" : "Dúvida"}</strong>
+                  {item.contato ? ` · ${item.contato}` : ""} · {formatarHora(item.criadaEm)} · {item.mensagem}
                 </span>
                 {item.tratadaEm ? (
                   <span className="shrink-0 text-muted-foreground">tratada</span>
@@ -356,13 +404,53 @@ export function DecisaoOrcamentoCard({ equipamento, onRespostaVista, onAplicar }
           <ul className="mt-1 space-y-1 text-xs">
             {info.historico.map((item) => (
               <li key={item.id}>
-                {formatarHora(item.registradaEm)} · {item.origem === "PORTAL" ? "Cliente (link)" : `Equipe (${item.registradaPor ?? "—"})`} {DECISAO_TEXTO[item.decisao]}
-                {item.aplicadaEm ? ` · aplicada em ${formatarHora(item.aplicadaEm)}` : ""}
+                {formatarHora(item.registradaEm)} · {origemTexto(item)} {DECISAO_TEXTO[item.decisao]}
+                {item.aplicadaEm ? ` · aplicada em ${formatarHora(item.aplicadaEm)}${item.aplicadaPeloSistema ? " (efetivação automática)" : ""}` : ""}
+                {item.efetivacaoFalhouEm ? ` · efetivação falhou: ${MOTIVO_FALHA[item.efetivacaoErro ?? ""] ?? item.efetivacaoErro ?? "motivo não informado"}` : ""}
               </li>
             ))}
           </ul>
         </details>
       )}
     </section>
+  );
+}
+
+/**
+ * Resposta de um contato autorizado no Portal do Cliente. Dentro do prazo de correção a equipe não
+ * deve agir como se estivesse aprovada; depois, o servidor efetiva sozinho. Se a efetivação falhar,
+ * a resposta continua pendente e a equipe aplica pelo fluxo normal (pagamento, estoque, PIN).
+ */
+function RespostaPortalCliente({
+  resposta,
+  info,
+  busy,
+  onAplicar,
+}: {
+  resposta: RespostaOrcamentoInfo;
+  info: DecisaoOrcamentoInfo;
+  busy: boolean;
+  onAplicar: () => void;
+}) {
+  const emPrazo = Boolean(info.aplicavelAPartirDe && new Date(info.aplicavelAPartirDe).getTime() > Date.now());
+  const falhou = Boolean(resposta.efetivacaoFalhouEm);
+  return (
+    <div className="space-y-1">
+      <p className="font-medium text-amber-950">
+        Cliente {DECISAO_TEXTO[resposta.decisao]} pelo portal
+        {emPrazo ? " — resposta recebida, em prazo de correção" : falhou ? " — efetivação NÃO concluída" : " — aguardando efetivação automática"}
+      </p>
+      <p className="text-muted-foreground">
+        {resposta.contato ?? "Contato autorizado"} em {formatarHora(resposta.registradaEm)}.
+        {emPrazo && ` O cliente pode mudar de ideia até ${formatarHora(info.aplicavelAPartirDe)}. Não inicie o serviço nem separe peças antes disso.`}
+        {!emPrazo && !falhou && " O sistema aplica status, pagamento (a combinar, se vazio) e estoque em instantes."}
+        {falhou && ` Motivo: ${MOTIVO_FALHA[resposta.efetivacaoErro ?? ""] ?? resposta.efetivacaoErro ?? "não informado"}. Confira com o cliente e aplique manualmente.`}
+      </p>
+      {falhou && (
+        <Button size="sm" disabled={!info.podeAplicar || busy} onClick={onAplicar}>
+          Revisar e aplicar decisão
+        </Button>
+      )}
+    </div>
   );
 }

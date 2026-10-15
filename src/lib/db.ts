@@ -26,7 +26,11 @@
 import { invoke as tauriInvoke } from "@tauri-apps/api/core";
 import { withSensitiveAccessRetry } from "@/lib/sensitive-action-retry";
 import type {
+  AcessoPortalContato,
   AjusteOrcamentoInput,
+  AlertaPortal,
+  ContatoPortalEmpresa,
+  OrcamentoPublicado,
   AprovarOrcamentoInput,
   ConsumoOrcamento,
   Cliente,
@@ -276,6 +280,36 @@ export const db = {
 
   async revogarLinkStatusPublico(equipamentoId: number): Promise<boolean> {
     return invoke<boolean>("revogar_link_status_publico", { equipamentoId });
+  },
+
+  // ─── Portal das Impressoras do Cliente ─────────────────
+  async listarAlertasPortal(apenasNaoLidos: boolean, limite = 50): Promise<AlertaPortal[]> {
+    return invoke<AlertaPortal[]>("listar_alertas_portal", { apenasNaoLidos, limite });
+  },
+
+  async contarAlertasPortalNaoLidos(): Promise<number> {
+    return invoke<number>("contar_alertas_portal_nao_lidos");
+  },
+
+  /** Sem `alertaId`, marca todos os não lidos da empresa ativa. */
+  async marcarAlertasPortalLidos(alertaId?: number): Promise<number> {
+    return invoke<number>("marcar_alertas_portal_lidos", { alertaId: alertaId ?? null });
+  },
+
+  async definirAcessoPortalContato(contatoId: number, acesso: AcessoPortalContato): Promise<ClienteContato> {
+    return invoke<ClienteContato>("definir_acesso_portal_contato", { contatoId, acesso });
+  },
+
+  async publicarOrcamentoPortal(equipamentoId: number): Promise<OrcamentoPublicado> {
+    return invoke<OrcamentoPublicado>("publicar_orcamento_portal", { equipamentoId });
+  },
+
+  async obterContatoPortalEmpresa(): Promise<ContatoPortalEmpresa | null> {
+    return invoke<ContatoPortalEmpresa | null>("obter_contato_portal_empresa");
+  },
+
+  async salvarContatoPortalEmpresa(input: ContatoPortalEmpresa): Promise<ContatoPortalEmpresa> {
+    return invoke<ContatoPortalEmpresa>("salvar_contato_portal_empresa", { input });
   },
 
   async obterDecisaoOrcamento(equipamentoId: number): Promise<DecisaoOrcamentoInfo | null> {

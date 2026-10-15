@@ -37,6 +37,7 @@ pub mod enrollment;
 pub mod envio_whatsapp;
 pub mod orcamento_correcao;
 pub mod orcamento_decisao;
+pub mod portal_cliente;
 pub mod public_status;
 pub mod image_migration;
 pub mod legacy_regularization;

@@ -31,6 +31,13 @@ pub struct RespostaOrcamentoInfo {
     pub registrada_por: Option<String>,
     pub motivo: Option<String>,
     pub aplicada_em: Option<String>,
+    /// Contato autorizado que respondeu pelo Portal do Cliente (origem `PORTAL_CLIENTE`).
+    pub contato: Option<String>,
+    /// Efetivada pelo servidor depois do prazo de correção, sem operador.
+    pub aplicada_pelo_sistema: bool,
+    /// Motivo de a efetivação automática ter parado; a resposta segue pendente para a equipe.
+    pub efetivacao_erro: Option<String>,
+    pub efetivacao_falhou_em: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -42,6 +49,8 @@ pub struct SolicitacaoOrcamentoInfo {
     pub mensagem: String,
     pub criada_em: String,
     pub tratada_em: Option<String>,
+    /// Contato do portal que enviou (vazio para o link de decisão).
+    pub contato: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -66,6 +75,8 @@ pub struct DecisaoOrcamentoInfo {
     /// Fim da janela mínima de correção da resposta vigente do portal.
     pub aplicavel_a_partir_de: Option<String>,
     pub pode_aplicar: bool,
+    /// Resposta do Portal do Cliente: o servidor efetiva sozinho ao fim do prazo.
+    pub efetivacao_automatica: bool,
 }
 
 #[derive(Debug, Serialize)]
@@ -82,6 +93,11 @@ fn hash_token(token: &str) -> String {
 
 fn decision_url(token: &str) -> String {
     format!("{}/#/o/{}", DECISION_BASE_URL, token)
+}
+
+/// Respostas dadas pelo próprio cliente (link de decisão ou Portal do Cliente) têm prazo de correção.
+fn is_portal_origin(origem: &str) -> bool {
+    matches!(origem, "PORTAL" | "PORTAL_CLIENTE")
 }
 
 fn is_final_decision(decisao: &str) -> bool {
@@ -306,6 +322,10 @@ fn resposta_from_row(row: &sqlx::postgres::PgRow) -> Result<RespostaOrcamentoInf
         registrada_por: row.try_get("registrada_por").map_err(map)?,
         motivo: row.try_get("motivo").map_err(map)?,
         aplicada_em: row.try_get("aplicada_em").map_err(map)?,
+        contato: row.try_get("contato").map_err(map)?,
+        aplicada_pelo_sistema: row.try_get("aplicada_pelo_sistema").map_err(map)?,
+        efetivacao_erro: row.try_get("efetivacao_erro").map_err(map)?,
+        efetivacao_falhou_em: row.try_get("efetivacao_falhou_em").map_err(map)?,
     })
 }
 
@@ -363,7 +383,9 @@ pub async fn obter_decisao_orcamento(
         "SELECT r.id, r.origem, r.decisao,
                 to_char(r.registrada_em AT TIME ZONE 'UTC', '{TS_FMT}') AS registrada_em,
                 p.nome AS registrada_por, r.motivo,
-                to_char(r.aplicada_em AT TIME ZONE 'UTC', '{TS_FMT}') AS aplicada_em
+                to_char(r.aplicada_em AT TIME ZONE 'UTC', '{TS_FMT}') AS aplicada_em,
+                r.contato_nome AS contato, r.aplicada_pelo_sistema, r.efetivacao_erro,
+                to_char(r.efetivacao_falhou_em AT TIME ZONE 'UTC', '{TS_FMT}') AS efetivacao_falhou_em
          FROM orcamento_respostas r
          LEFT JOIN security_profiles p ON p.id = r.registrada_por_profile_id
          WHERE r.versao_id = $1 AND r.empresa_id = $2
@@ -382,7 +404,8 @@ pub async fn obter_decisao_orcamento(
     let solicitacao_rows = sqlx::query(sqlx::AssertSqlSafe(format!(
         "SELECT id, tipo, mensagem,
                 to_char(criado_em AT TIME ZONE 'UTC', '{TS_FMT}') AS criada_em,
-                to_char(tratado_em AT TIME ZONE 'UTC', '{TS_FMT}') AS tratada_em
+                to_char(tratado_em AT TIME ZONE 'UTC', '{TS_FMT}') AS tratada_em,
+                contato_nome AS contato
          FROM orcamento_solicitacoes
          WHERE versao_id = $1 AND empresa_id = $2
          ORDER BY id DESC
@@ -401,6 +424,7 @@ pub async fn obter_decisao_orcamento(
             mensagem: row.try_get("mensagem").map_err(map)?,
             criada_em: row.try_get("criada_em").map_err(map)?,
             tratada_em: row.try_get("tratada_em").map_err(map)?,
+            contato: row.try_get("contato").map_err(map)?,
         });
     }
 
@@ -414,7 +438,7 @@ pub async fn obter_decisao_orcamento(
 
     let atual = historico.first();
     let aplicavel_a_partir_de = atual
-        .filter(|resposta| resposta.origem == "PORTAL" && is_final_decision(&resposta.decisao))
+        .filter(|resposta| is_portal_origin(&resposta.origem) && is_final_decision(&resposta.decisao))
         .and_then(|resposta| DateTime::parse_from_rfc3339(&resposta.registrada_em).ok())
         .map(|registered| correction_window_end(registered.with_timezone(&Utc), janela));
     let pode_aplicar = aberta
@@ -433,6 +457,12 @@ pub async fn obter_decisao_orcamento(
         aceite_online_ativo: ativo,
         link_status,
         link_expira_em: versao.try_get("link_expira_em").map_err(map)?,
+        efetivacao_automatica: atual.is_some_and(|resposta| {
+            resposta.origem == "PORTAL_CLIENTE"
+                && is_final_decision(&resposta.decisao)
+                && resposta.aplicada_em.is_none()
+                && resposta.efetivacao_falhou_em.is_none()
+        }),
         resposta: historico.first().map(|r| RespostaOrcamentoInfo {
             id: r.id,
             origem: r.origem.clone(),
@@ -441,6 +471,10 @@ pub async fn obter_decisao_orcamento(
             registrada_por: r.registrada_por.clone(),
             motivo: r.motivo.clone(),
             aplicada_em: r.aplicada_em.clone(),
+            contato: r.contato.clone(),
+            aplicada_pelo_sistema: r.aplicada_pelo_sistema,
+            efetivacao_erro: r.efetivacao_erro.clone(),
+            efetivacao_falhou_em: r.efetivacao_falhou_em.clone(),
         }),
         historico,
         solicitacoes,
@@ -764,7 +798,7 @@ pub(crate) async fn conferir_e_aplicar_resposta(
     let origem: String = atual.try_get("origem").map_err(map)?;
     let registrada_em: DateTime<Utc> = atual.try_get("registrada_em").map_err(map)?;
 
-    if origem == "PORTAL" {
+    if is_portal_origin(&origem) {
         let janela = correction_window_minutes(tx).await?;
         let limite = correction_window_end(registrada_em, janela);
         if limite > Utc::now() {
@@ -804,6 +838,13 @@ mod tests {
         let now = Utc::now();
         assert_eq!(correction_window_end(now, 1), now + Duration::minutes(15));
         assert_eq!(correction_window_end(now, 30), now + Duration::minutes(30));
+    }
+
+    #[test]
+    fn portal_client_answers_have_the_correction_window() {
+        assert!(is_portal_origin("PORTAL"));
+        assert!(is_portal_origin("PORTAL_CLIENTE"));
+        assert!(!is_portal_origin("EQUIPE"));
     }
 
     #[test]

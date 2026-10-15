@@ -143,7 +143,9 @@ fn add_equipment_filters(
 fn equipment_order_clause(ordenacao: Option<&str>) -> &'static str {
     match ordenacao {
         Some("CADASTRO_RECENTE") => " ORDER BY criado_em DESC NULLS LAST, id DESC",
-        _ => " ORDER BY COALESCE(atualizado_em, criado_em) DESC NULLS LAST, id DESC",
+        // Atividade recente inclui respostas e pedidos do cliente no portal, que não mexem em
+        // `atualizado_em` (token de concorrência do operador).
+        _ => " ORDER BY GREATEST(COALESCE(atualizado_em, criado_em), COALESCE(ultima_atividade_cliente_em, criado_em)) DESC NULLS LAST, id DESC",
     }
 }
 
@@ -1418,6 +1420,7 @@ mod tests {
     #[test]
     fn equipment_order_is_whitelisted_and_defaults_to_recent_changes() {
         assert!(equipment_order_clause(None).contains("atualizado_em"));
+        assert!(equipment_order_clause(None).contains("ultima_atividade_cliente_em"));
         assert_eq!(equipment_order_clause(Some("CADASTRO_RECENTE")), " ORDER BY criado_em DESC NULLS LAST, id DESC");
         assert_eq!(equipment_order_clause(Some("id; DROP TABLE equipamentos")), equipment_order_clause(None));
     }

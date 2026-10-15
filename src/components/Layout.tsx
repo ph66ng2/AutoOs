@@ -30,6 +30,7 @@ import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { SensitiveAccessBadge, useSensitiveAccess } from "@/hooks/useSensitiveAccess";
 import { SENSITIVE_PERMISSIONS, type SensitivePermission } from "@/types";
+import { PortalAlertasBotao } from "@/components/PortalAlertas";
 
 /** Itens de navegação da sidebar. Cada item mapeia para uma rota do React Router */
 const navItems: {
@@ -90,6 +91,7 @@ export function Layout() {
               {!collapsed && <span>{item.label}</span>}
             </NavLink>
           ))}
+          <PortalAlertasBotao collapsed={collapsed} />
         </nav>
 
         {/* Segurança */}

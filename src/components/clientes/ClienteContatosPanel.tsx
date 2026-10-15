@@ -23,7 +23,13 @@ import {
   type ClienteContatoFormData,
 } from "@/lib/validations";
 import { nomeExibicaoCliente } from "@/components/clientes/cliente-display-utils";
-import type { Cliente, ClienteContato, ClienteContatoInput } from "@/types";
+import type { AcessoPortalContato, Cliente, ClienteContato, ClienteContatoInput } from "@/types";
+
+const ACESSO_PORTAL: Record<AcessoPortalContato, string> = {
+  NENHUM: "Sem acesso ao portal",
+  ACOMPANHAR: "Portal: acompanha status",
+  DECIDIR: "Portal: acompanha e responde orçamentos",
+};
 
 interface ClienteContatosPanelProps {
   cliente: Cliente;
@@ -38,6 +44,7 @@ export function ClienteContatosPanel({ cliente, empresaId }: ClienteContatosPane
   const [editando, setEditando] = useState<ClienteContato | null>(null);
   const [inativando, setInativando] = useState<ClienteContato | null>(null);
   const [salvando, setSalvando] = useState(false);
+  const [alterandoAcesso, setAlterandoAcesso] = useState<number | null>(null);
   const { success, error: showError } = useNotification();
   const form = useForm<ClienteContatoFormData>({
     resolver: zodResolver(clienteContatoSchema),
@@ -111,6 +118,20 @@ export function ClienteContatosPanel({ cliente, empresaId }: ClienteContatosPane
     }
   }
 
+  async function alterarAcessoPortal(contato: ClienteContato, acesso: AcessoPortalContato) {
+    if (!contato.id) return;
+    setAlterandoAcesso(contato.id);
+    try {
+      await db.definirAcessoPortalContato(contato.id, acesso);
+      success("Clientes", ACESSO_PORTAL[acesso] + ".", "Portal do cliente");
+      await carregarContatos();
+    } catch (cause) {
+      showError("Clientes", "Alterar acesso ao portal", cause);
+    } finally {
+      setAlterandoAcesso(null);
+    }
+  }
+
   async function confirmarInativacao() {
     if (!inativando?.id || !empresaId) return;
     setSalvando(true);
@@ -159,6 +180,20 @@ export function ClienteContatosPanel({ cliente, empresaId }: ClienteContatosPane
                   <span><Mail className="mr-1 inline h-3 w-3" />{contato.email || "Sem e-mail"}</span>
                   <span><Phone className="mr-1 inline h-3 w-3" />{contato.telefone ? formatarTelefone(contato.telefone) : "Sem telefone"}</span>
                 </div>
+                <label className="mt-2 flex flex-wrap items-center gap-2 text-xs">
+                  <span className="text-muted-foreground">Portal das Impressoras:</span>
+                  <select
+                    aria-label={`Acesso de ${contato.nome} ao portal`}
+                    className="h-8 rounded-md border border-input bg-background px-2 text-xs"
+                    value={contato.portal_acesso ?? "NENHUM"}
+                    disabled={alterandoAcesso === contato.id || (!contato.telefone && !contato.email)}
+                    onChange={(event) => void alterarAcessoPortal(contato, event.target.value as AcessoPortalContato)}
+                  >
+                    {(Object.keys(ACESSO_PORTAL) as AcessoPortalContato[]).map((acesso) => (
+                      <option key={acesso} value={acesso}>{ACESSO_PORTAL[acesso]}</option>
+                    ))}
+                  </select>
+                </label>
               </div>
               <div className="flex shrink-0 gap-1">
                 <Button type="button" size="sm" variant="outline" onClick={() => abrirEdicao(contato)}>
@@ -177,7 +212,12 @@ export function ClienteContatosPanel({ cliente, empresaId }: ClienteContatosPane
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle>{editando ? "Editar contato" : "Novo contato"}</DialogTitle>
-            <DialogDescription>Informe os canais que poderão ser usados para falar com este contato.</DialogDescription>
+            <DialogDescription>
+              Informe os canais que poderão ser usados para falar com este contato.
+              {editando?.portal_acesso && editando.portal_acesso !== "NENHUM" && (
+                <> Trocar o telefone ou o email retira o acesso ao Portal do Cliente: o código de acesso vai para esses canais.</>
+              )}
+            </DialogDescription>
           </DialogHeader>
           <form className="space-y-4" onSubmit={form.handleSubmit(salvarContato)}>
             <div className="space-y-2">
