@@ -12,6 +12,7 @@
 import React from "react";
 import ReactDOM from "react-dom/client";
 import App from "./App";
+import { BootUiProvider } from "@/components/BootUi";
 import { SensitiveAccessProvider } from "@/hooks/useSensitiveAccess";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import "./index.css";
@@ -20,9 +21,11 @@ import "./index.css";
 ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
     <ErrorBoundary>
-      <SensitiveAccessProvider>
-        <App />
-      </SensitiveAccessProvider>
+      <BootUiProvider>
+        <SensitiveAccessProvider>
+          <App />
+        </SensitiveAccessProvider>
+      </BootUiProvider>
     </ErrorBoundary>
   </React.StrictMode>,
 );

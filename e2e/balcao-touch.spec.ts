@@ -2,6 +2,11 @@ import { expect, test } from "@playwright/test";
 
 test.use({ hasTouch: true });
 
+// O resumo de novidades abre quando o splash sai e cobriria o painel no meio do teste.
+test.beforeEach(async ({ page }) => {
+  await page.addInitScript(() => localStorage.setItem("autoos:release-highlights:0.5.6:fotos-celular", "seen"));
+});
+
 for (const viewport of [{ width: 1920, height: 1080 }, { width: 1366, height: 768 }]) {
   test(`modo balcão funciona em ${viewport.width}×${viewport.height} com toque`, async ({ page }) => {
     await page.setViewportSize(viewport);
