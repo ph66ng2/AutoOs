@@ -2,14 +2,14 @@
 
 Evolução de `status.bmitag.com.br`: o cliente entra com CPF/CNPJ + a senha que a equipe criou para o contato, vê todos os atendimentos do cadastro e responde ao orçamento publicado. Funciona com o AutoOS desktop fechado: login, resposta e efetivação rodam no Supabase.
 
-> **Estado: implementado, nada ativado.** Migrations `0034_portal_cliente.sql`, `0035_portal_senha.sql` (senha criada pelo operador) e `0037_portal_por_empresa_so_senha.sql` (chaves por empresa, login por código removido). Toda empresa nasce com o portal desligado. A Edge Function `portal-cliente` não foi publicada e nenhum dado de produção foi alterado.
+> **Estado: implementado, nada ativado.** Migrations `0035_portal_cliente.sql`, `0036_portal_senha.sql` (senha criada pelo operador) e `0038_portal_por_empresa_so_senha.sql` (chaves por empresa, login por código removido). Toda empresa nasce com o portal desligado. A Edge Function `portal-cliente` não foi publicada e nenhum dado de produção foi alterado.
 
-Usa as versões e respostas de orçamento das migrations 0030–0031 (`docs/ACEITE_ORCAMENTO_ONLINE.md`) e a configuração de WhatsApp central (`docs/FILA_ENVIOS_WHATSAPP.md`, 0033). É o **único** caminho de resposta online: o link individual `#/o/<token>` foi removido na 0036.
+Usa as versões e respostas de orçamento das migrations 0031–0032 (`docs/ACEITE_ORCAMENTO_ONLINE.md`) e a configuração de WhatsApp central (`docs/FILA_ENVIOS_WHATSAPP.md`, 0034). É o **único** caminho de resposta online: o link individual `#/o/<token>` foi removido na 0037.
 
 ## Jornada
 
-0. **Senha criada pelo operador (padrão, migration 0035).** Nos detalhes do equipamento (**Dar acesso a um contato**) ou em Clientes → Contatos e Portal, o operador libera o portal para o contato e cria a senha (o AutoOS sugere uma senha forte; ele pode digitar outra com 8+ caracteres, letras e números). Os dados de acesso aparecem uma única vez para entregar ao contato; o banco guarda só o hash bcrypt (`pgcrypto`). O cliente entra com **CPF/CNPJ + senha**. A senha é **por contato**, não por CNPJ: é ela que diz quem entrou, se pode decidir e a quem a resposta é atribuída (senhas repetidas no mesmo CPF/CNPJ são recusadas). A senha vale por tempo indeterminado: para trocar ou se esquecer, o contato fala com a equipe, que cria outra. Trocar a senha desconecta o contato; retirar o acesso apaga a senha. Antes de aceitar/recusar, se a última conferência tiver mais de 10 minutos, o portal pede a senha de novo. Limite: 8 tentativas por CPF/CNPJ a cada 15 minutos.
-1. **Sem login por código.** A entrada por código enviado por WhatsApp/email existiu na 0034 e foi removida na 0037: só há senha. O CPF/CNPJ sozinho nunca dá acesso, e senha errada e CPF/CNPJ inexistente têm a mesma resposta.
+0. **Senha criada pelo operador (padrão, migration 0036).** Nos detalhes do equipamento (**Dar acesso a um contato**) ou em Clientes → Contatos e Portal, o operador libera o portal para o contato e cria a senha (o AutoOS sugere uma senha forte; ele pode digitar outra com 8+ caracteres, letras e números). Os dados de acesso aparecem uma única vez para entregar ao contato; o banco guarda só o hash bcrypt (`pgcrypto`). O cliente entra com **CPF/CNPJ + senha**. A senha é **por contato**, não por CNPJ: é ela que diz quem entrou, se pode decidir e a quem a resposta é atribuída (senhas repetidas no mesmo CPF/CNPJ são recusadas). A senha vale por tempo indeterminado: para trocar ou se esquecer, o contato fala com a equipe, que cria outra. Trocar a senha desconecta o contato; retirar o acesso apaga a senha. Antes de aceitar/recusar, se a última conferência tiver mais de 10 minutos, o portal pede a senha de novo. Limite: 8 tentativas por CPF/CNPJ a cada 15 minutos.
+1. **Sem login por código.** A entrada por código enviado por WhatsApp/email existiu na 0035 e foi removida na 0038: só há senha. O CPF/CNPJ sozinho nunca dá acesso, e senha errada e CPF/CNPJ inexistente têm a mesma resposta.
 2. **Lista.** Todos os atendimentos com `empresa_id` + `cliente_id` do cadastro, separados em **Atuais** e **Histórico** (entregues e encerrados). Ordenação por atividade recente (padrão) ou data de entrada. O cartão mostra equipamento, série, patrimônio, entrada, etapa colorida e “Aguarda sua resposta”.
 3. **Detalhe.** A tela pública de status (`StatusView`: logo, etapa com pulso, linha do tempo, data) + orçamento publicado (versão, itens, total, validade) + pedidos enviados + cartão de contato.
 4. **Responder.** Aceitar ou recusar o **orçamento inteiro** (sem aprovação parcial) ou **Quero negociar**. Aceitar/recusar exige confirmação com impressora e valor e uma verificação feita há menos de 10 minutos (senão o portal pede a senha de novo). O comprovante tem protocolo `R-<id>`.
@@ -62,7 +62,7 @@ Usa as versões e respostas de orçamento das migrations 0030–0031 (`docs/ACEI
 - **Cliques repetidos / duas abas / dois contatos.** `portal_registrar_resposta` trava equipamento e versão (mesma ordem do desktop) e confere a resposta vigente que o cliente viu. Clique repetido devolve o mesmo comprovante; tela velha recebe `RESPOSTA_DESATUALIZADA`; outro contato não muda a resposta de quem respondeu (`RESPOSTA_DE_OUTRO_CONTATO`). Teste real com 6 chamadas simultâneas: 1 resposta.
 - **Proposta alterada com a página aberta.** A resposta leva `versaoId`; versão encerrada → `PROPOSTA_ALTERADA`; a página fecha a confirmação e mostra a versão nova. A atualização automática (60 s) também derruba a confirmação antiga.
 - **Isolamento.** Lista e detalhe filtram por `empresa_id` e `cliente_id` da sessão, nunca por nome ou série (o contrato SQL cobre série repetida em outra empresa e `cliente_nome` sem vínculo).
-- **Permissão por contato.** `cliente_contatos.portal_acesso`: `NENHUM`, `ACOMPANHAR` (vê status e orçamento) ou `DECIDIR` (também responde). Liberar `DECIDIR` exige a permissão financeira. Inativar ou mudar de cliente zera o acesso, apaga a senha e encerra as sessões; corrigir telefone/email não mexe no acesso (0037). Passar um contato a `DECIDIR` apaga a senha anterior: a senha de quem decide é criada por quem tem a permissão financeira.
+- **Permissão por contato.** `cliente_contatos.portal_acesso`: `NENHUM`, `ACOMPANHAR` (vê status e orçamento) ou `DECIDIR` (também responde). Liberar `DECIDIR` exige a permissão financeira. Inativar ou mudar de cliente zera o acesso, apaga a senha e encerra as sessões; corrigir telefone/email não mexe no acesso (0038). Passar um contato a `DECIDIR` apaga a senha anterior: a senha de quem decide é criada por quem tem a permissão financeira.
 - **Efetivação concorrente.** Quatro processadores simultâneos: uma efetivação, uma baixa de estoque, um alerta.
 
 ## Regras de efetivação (`portal_efetivar_resposta`)
@@ -79,15 +79,15 @@ Espelha `aprovar_orcamento` + `aplicar_decisoes` (`src-tauri/src/commands/equipa
 
 Respostas antigas de origem `PORTAL` (link removido) ou `EQUIPE` só existem em bancos de teste e, se aparecerem, continuam com conferência manual.
 
-## Banco (`0034`, `0035`, `0037`)
+## Banco (`0035`, `0036`, `0038`)
 
 | Objeto | Função |
 |---|---|
 | `cliente_contatos.portal_acesso` + trigger | Acesso por contato; inativar ou mudar de cliente zera o acesso |
-| `portal_config_empresa` (0037) | Chaves por empresa: `portal_enabled` (login e consulta) e `respostas_enabled` (aceitar/recusar/negociar; exige o portal ligado). Sem linha = desligado |
+| `portal_config_empresa` (0038) | Chaves por empresa: `portal_enabled` (login e consulta) e `respostas_enabled` (aceitar/recusar/negociar; exige o portal ligado). Sem linha = desligado |
 | `portal_cliente_config` | Reverificação e duração da sessão (globais do produto). `portal_enabled` daqui não é mais lido |
 | `portal_contato_empresa` | Cartão “Fale com a equipe” (Configurações → Integrações) |
-| `portal_codigos` | Histórico do login por código (removido na 0037) |
+| `portal_codigos` | Histórico do login por código (removido na 0038) |
 | `portal_sessoes` | Hash do token de sessão, `verificada_em`, expiração; só sessões `metodo = SENHA` valem |
 | `orcamento_respostas` (+colunas) | `PORTAL_CLIENTE`, contato, sessão, efetivação automática e falha |
 | `orcamento_solicitacoes` (+colunas) | `NEGOCIAR` e contato |
@@ -97,7 +97,7 @@ Respostas antigas de origem `PORTAL` (link removido) ou `EQUIPE` só existem em 
 
 ## Ativação (ambiente de teste primeiro)
 
-1. Aplicar 0030–0037 pelo processo de migrations (`docs/PRODUCTION_MIGRATIONS.md`) e conferir os advisors de segurança do Supabase.
+1. Aplicar 0031–0038 pelo processo de migrations (`docs/PRODUCTION_MIGRATIONS.md`) e conferir os advisors de segurança do Supabase.
 2. Publicar a Edge Function `portal-cliente` (`verify_jwt = false`, já em `supabase/config.toml`) com os segredos:
 
 | Segredo | Uso |
@@ -116,7 +116,7 @@ select cron.schedule('portal-efetivar-respostas', '* * * * *',
 
 4. Publicar a página (`npm run build:public-status`, enviar `dist-public-status/` com o `.htaccess`). A URL da função pode ser trocada com `VITE_PORTAL_CLIENTE_API_URL`.
 5. No AutoOS: Configurações → Integrações → cartão “Fale com a equipe”; nos detalhes do equipamento, dar acesso ao contato e **Publicar no Portal do Cliente**.
-6. Ligar para um piloto em Configurações → Integrações → **Portal do Cliente: funcionamento**: “Portal ligado” e “Clientes podem responder orçamentos” (PIN; respostas exigem a permissão financeira; auditoria `PORTAL_CONFIG_CHANGED`). As chaves são de cada empresa (`portal_config_empresa`, 0037): ligar numa empresa não liga nas outras.
+6. Ligar para um piloto em Configurações → Integrações → **Portal do Cliente: funcionamento**: “Portal ligado” e “Clientes podem responder orçamentos” (PIN; respostas exigem a permissão financeira; auditoria `PORTAL_CONFIG_CHANGED`). As chaves são de cada empresa (`portal_config_empresa`, 0038): ligar numa empresa não liga nas outras.
 
 Pausar: desligar “Portal ligado” derruba login e sessões na hora; nada é apagado. Desligar só as respostas mantém o acompanhamento. O cartão avisa quando respostas vencidas não estão sendo aplicadas (agendamento do passo 3 parado).
 

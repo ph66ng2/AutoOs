@@ -1,6 +1,6 @@
 //! Portal das Impressoras do Cliente — lado da equipe.
 //!
-//! O cliente responde pela Edge Function `portal-cliente` (migration 0034). Aqui ficam os
+//! O cliente responde pela Edge Function `portal-cliente` (migration 0035). Aqui ficam os
 //! alertas persistentes que a equipe lê, o acesso de cada contato ao portal, a publicação da
 //! proposta (versão congelada) e o cartão de contato exibido ao cliente.
 
@@ -125,7 +125,7 @@ pub async fn marcar_alertas_portal_lidos(alerta_id: Option<i64>) -> Result<u64, 
 }
 
 /// Define o acesso do contato ao portal. `DECIDIR` autoriza responder a orçamentos e exige
-/// a permissão financeira; inativar o contato ou mudá-lo de cliente retira o acesso (trigger, 0037).
+/// a permissão financeira; inativar o contato ou mudá-lo de cliente retira o acesso (trigger, 0038).
 #[tauri::command]
 #[instrument(skip_all, fields(contato_id = contato_id))]
 pub async fn definir_acesso_portal_contato(contato_id: i32, acesso: String) -> Result<ClienteContato, String> {
@@ -183,7 +183,7 @@ pub async fn definir_acesso_portal_contato(contato_id: i32, acesso: String) -> R
 }
 
 /// Senha do portal criada pelo operador para um contato (`None` remove). O cliente entra com
-/// CPF/CNPJ + esta senha; ela identifica o contato. Só o hash bcrypt fica no banco (0035).
+/// CPF/CNPJ + esta senha; ela identifica o contato. Só o hash bcrypt fica no banco (0036).
 #[tauri::command]
 #[instrument(skip_all, fields(contato_id = contato_id))]
 pub async fn definir_senha_portal_contato(contato_id: i32, senha: Option<String>) -> Result<ClienteContato, String> {
@@ -238,7 +238,7 @@ pub async fn definir_senha_portal_contato(contato_id: i32, senha: Option<String>
         .map_err(super::operator_errors::mapear_erro_sql)
 }
 
-/// Mesma regra de `autoos_portal_senha_valida` (0035), conferida antes de ir ao banco.
+/// Mesma regra de `autoos_portal_senha_valida` (0036), conferida antes de ir ao banco.
 fn senha_aceitavel(senha: &str) -> bool {
     senha.chars().count() >= 8
         && senha.len() <= 72

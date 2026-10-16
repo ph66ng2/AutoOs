@@ -20,7 +20,7 @@ export function PortalContatoEmpresaCard() {
   useEffect(() => {
     db.obterContatoPortalEmpresa()
       .then((atual) => { if (atual) setForm({ ...VAZIO, ...atual }); })
-      .catch(() => setStatus("Não foi possível carregar o contato do portal (confira se o banco tem a migration 0034)."));
+      .catch(() => setStatus("Não foi possível carregar o contato do portal (confira se o banco tem a migration 0035)."));
   }, []);
 
   const campo = (key: keyof ContatoPortalEmpresa) => ({

@@ -50,6 +50,7 @@ async fn main() -> Result<()> {
         role: "ADMIN".to_string(),
         permissions: vec![auth::PERMISSION_MANAGE_PROFILES.to_string()],
         pin_configured: false,
+        pin_required: false,
         is_default: true,
         ativo: true,
     };
@@ -90,6 +91,7 @@ async fn main() -> Result<()> {
         role: "ADMIN".to_string(),
         permissions: vec![auth::PERMISSION_MANAGE_PROFILES.to_string()],
         pin_configured: false,
+        pin_required: false,
         is_default: true,
         ativo: true,
     };

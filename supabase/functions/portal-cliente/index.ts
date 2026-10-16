@@ -2,8 +2,8 @@
 //
 // Entrada: CPF/CNPJ + senha que a equipe cria para cada contato → sessão. Antes de responder a um
 // orçamento, a senha é pedida de novo se a última conferência tiver mais de alguns minutos. Não
-// há login por código (removido na 0037). O navegador nunca recebe chave do Supabase; esta função
-// chega ao banco só pelas funções `portal_*` (SECURITY DEFINER, 0034/0035/0037).
+// há login por código (removido na 0038). O navegador nunca recebe chave do Supabase; esta função
+// chega ao banco só pelas funções `portal_*` (SECURITY DEFINER, 0035/0036/0038).
 // Não funciona como o link individual `#/c/<token>`, que continua na função `public-status`.
 
 import { STATUS_COPY, STATUS_COPY_FALLBACK } from "../_shared/status-copy.ts";

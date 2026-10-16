@@ -2,7 +2,7 @@
 --
 -- A senha é de cada contato (não do CNPJ): é ela que diz QUEM entrou, se pode decidir orçamento
 -- e a quem a resposta é atribuída. Só o hash bcrypt (pgcrypto) é gravado. O login por código
--- (0034) continua disponível. No Supabase o pgcrypto já existe no schema `extensions`.
+-- (0035) continua disponível. No Supabase o pgcrypto já existe no schema `extensions`.
 
 CREATE EXTENSION IF NOT EXISTS pgcrypto;
 

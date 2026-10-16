@@ -1,5 +1,5 @@
 -- Aceite online de orçamento, fase 2: consulta pública, dúvidas, pedidos de mudança
--- e auditoria da correção de decisão. A 0030 não é alterada.
+-- e auditoria da correção de decisão. A 0031 não é alterada.
 
 -- Mensagens do cliente. Uma dúvida não registra decisão; um pedido de mudança só existe
 -- depois que a equipe aplicou a resposta. Somente `tratado_*` pode ser preenchido depois.
@@ -369,7 +369,7 @@ $$;
 
 -- As funções do aceite rodam com os privilégios do dono (SECURITY DEFINER), porque
 -- SELECT ... FOR UPDATE/SHARE exige UPDATE. Elas são a única porta do service_role:
--- os grants diretos de tabela da 0030 deixam de ser necessários e são retirados.
+-- os grants diretos de tabela da 0031 deixam de ser necessários e são retirados.
 ALTER FUNCTION public.registrar_resposta_orcamento(TEXT, TEXT, BIGINT) SECURITY DEFINER;
 ALTER FUNCTION public.registrar_resposta_orcamento(TEXT, TEXT, BIGINT) SET search_path = pg_catalog, public;
 

@@ -273,7 +273,7 @@ const REQUIRED_RUNTIME_TABLES: &[&str] = &[
     "orcamento_servicos_decisao",
     "security_profiles",
     "security_audit_log",
-    // Orçamento pelo Portal do Cliente e fila de WhatsApp (0030–0037): aprovar, finalizar
+    // Orçamento pelo Portal do Cliente e fila de WhatsApp (0031–0038): aprovar, finalizar
     // verificação e o sino de alertas dependem delas. Sem as migrations o app não abre pela metade.
     "orcamento_versoes",
     "orcamento_respostas",
@@ -312,6 +312,7 @@ const REQUIRED_RUNTIME_COLUMNS: &[(&str, &str)] = &[
     ("verificacoes", "adjusted_at"),
     ("equipamento_imagens", "storage_path"),
     ("security_profiles", "permissions"),
+    ("security_profiles", "pin_required"),
 ];
 
 const REQUIRED_RUNTIME_COLUMN_TYPES: &[(&str, &str, &str)] = &[
@@ -322,6 +323,7 @@ const REQUIRED_RUNTIME_COLUMN_TYPES: &[(&str, &str, &str)] = &[
     ("equipamentos", "responsavel_contato_id", "int4"),
     ("security_profiles", "id", "int4"),
     ("security_profiles", "permissions", "text"),
+    ("security_profiles", "pin_required", "bool"),
     ("security_audit_log", "profile_id", "int4"),
     ("verificacoes", "adjusted_by_profile_id", "int4"),
 ];

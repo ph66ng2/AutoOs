@@ -17,6 +17,21 @@ const defaults: React.ComponentProps<typeof ProfileSessionDialog> = {
 };
 
 describe("confirmação de sessão", () => {
+  it("não chama de PIN pendente um perfil explicitamente sem exigência de PIN", () => {
+    const optional = { ...admin, id: 2, nome: "Operador", role: "CUSTOM", pin_required: false, is_default: false };
+    render(<ProfileSessionDialog {...defaults} mode="selector" profiles={[optional]} selectedProfileId="2" selectedProfile={optional} activeProfileId={1} />);
+    expect(screen.queryByText("PIN pendente", { exact: true })).not.toBeInTheDocument();
+    expect(screen.getAllByText("Não exige PIN", { exact: true }).length).toBeGreaterThan(0);
+    expect(screen.getAllByText("Este perfil não exige PIN. Clique abaixo para continuar.").length).toBeGreaterThan(0);
+  });
+
+  it("bloqueia PIN exigido mas ausente neste PC, inclusive administrador", () => {
+    const protectedAdmin = { ...admin, pin_required: true };
+    render(<ProfileSessionDialog {...defaults} profiles={[protectedAdmin]} selectedProfile={protectedAdmin} />);
+    expect(screen.getByRole("button", { name: "PIN pendente neste computador" })).toBeDisabled();
+    expect(screen.queryByRole("button", { name: /Criar meu acesso/ })).not.toBeInTheDocument();
+  });
+
   it("impede criar o PIN inicial quando a confirmação diverge", () => {
     render(<ProfileSessionDialog {...defaults} />);
     expect(screen.getByRole("button", { name: /Criar meu acesso e entrar/i })).toBeDisabled();

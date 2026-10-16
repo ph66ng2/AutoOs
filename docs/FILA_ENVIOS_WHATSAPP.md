@@ -12,7 +12,7 @@ Todo WhatsApp enviado ao cliente por evento do atendimento passa por **um comand
 | `equipamento_pronto` | Ao mudar para `PRONTO` (automático) e botão de reenvio | `s:<status_alterado_em em µs>` | `useStatusEquipamento`, botão WhatsApp de pronto |
 | `codigo_verificacao` | Etapa futura | — | — |
 
-O orçamento só é enviado em `AGUARDANDO_APROVACAO`; o aviso de pronto só em `PRONTO` e exige a data confiável da mudança de etapa. O tipo `orcamento_decisao` (link individual de decisão) foi removido na 0036: o banco recusa novos pedidos e o processador marca como `FALHOU`, sem enviar, qualquer pedido antigo que tenha sobrado.
+O orçamento só é enviado em `AGUARDANDO_APROVACAO`; o aviso de pronto só em `PRONTO` e exige a data confiável da mudança de etapa. O tipo `orcamento_decisao` (link individual de decisão) foi removido na 0037: o banco recusa novos pedidos e o processador marca como `FALHOU`, sem enviar, qualquer pedido antigo que tenha sobrado.
 
 O link de acompanhamento (`#/c/<token>`) **continua fora da fila**: o token só existe na tela que o gerou e o AutoOS guarda apenas o hash. O email também segue no fluxo atual.
 
@@ -39,7 +39,7 @@ Resultados do comando: `ENFILEIRADA` (modo central), `ENVIADA`, `FALHOU`, `INCER
 
 ## Dados e privacidade
 
-- `envios_whatsapp_pedidos` e `envios_whatsapp_tentativas` (migration `0032`), com RLS por empresa e sem acesso de `anon`, `authenticated` ou `service_role`.
+- `envios_whatsapp_pedidos` e `envios_whatsapp_tentativas` (migration `0033`), com RLS por empresa e sem acesso de `anon`, `authenticated` ou `service_role`.
 - O telefone fica **mascarado** na tentativa (`5571****8888`); o número completo continua só em `comunicacoes`, como antes.
 - O token e a URL de decisão não entram em log, em `erro_resumo` (sanitizado, até 300 caracteres) nem no histórico: `comunicacoes` recebe um texto sem o link. O teste de integração confere isso.
 - A tabela `comunicacoes` continua sendo o histórico visível por equipamento; é gravada **depois** do resultado, uma linha por tentativa. Se a gravação falhar, a fila mantém o registro.
@@ -108,7 +108,7 @@ on conflict (empresa_id) do update set modo = 'CENTRAL', provedor = excluded.pro
 
 Ao voltar para `LOCAL`, o que já está `PENDENTE` continua sendo enviado pelo processador enquanto o Cron estiver ativo, ou expira em 6 horas.
 
-Antes de ligar uma empresa: aplicar 0032 e 0033, publicar a função, definir os segredos, agendar o Cron e testar com um número interno.
+Antes de ligar uma empresa: aplicar 0033 e 0034, publicar a função, definir os segredos, agendar o Cron e testar com um número interno.
 
 ## Conteúdo da mensagem
 

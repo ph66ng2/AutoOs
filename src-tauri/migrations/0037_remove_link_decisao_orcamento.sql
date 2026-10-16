@@ -1,7 +1,7 @@
--- 0036: remove o link de decisão individual do orçamento (`status.bmitag.com.br/#/o/<token>`).
+-- 0037: remove o link de decisão individual do orçamento (`status.bmitag.com.br/#/o/<token>`).
 --
--- O cliente responde ao orçamento pelo Portal do Cliente, com login (0034/0035). O link por
--- token (0030/0031) e o envio dele pela fila de WhatsApp (tipo `orcamento_decisao`, 0032/0033)
+-- O cliente responde ao orçamento pelo Portal do Cliente, com login (0035/0036). O link por
+-- token (0031/0032) e o envio dele pela fila de WhatsApp (tipo `orcamento_decisao`, 0033/0034)
 -- deixam de existir. Versões, respostas, solicitações e a fila continuam: o portal usa as mesmas
 -- tabelas. Linhas antigas de links ficam só como histórico.
 --
@@ -40,4 +40,4 @@ $$;
 COMMENT ON COLUMN public.orcamento_aceite_config.online_enabled IS
     'Liga as respostas ao orçamento no Portal do Cliente (aceitar, recusar, negociar).';
 COMMENT ON TABLE orcamento_links_decisao IS
-    'Histórico do link de decisão individual, substituído pelo Portal do Cliente na 0036.';
+    'Histórico do link de decisão individual, substituído pelo Portal do Cliente na 0037.';

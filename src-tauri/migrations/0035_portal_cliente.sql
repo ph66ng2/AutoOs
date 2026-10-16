@@ -6,7 +6,7 @@
 -- mesmas regras de `aprovar_orcamento` (pagamento, concorrência e estoque) numa transação.
 --
 -- Tudo nasce desligado (`portal_cliente_config.portal_enabled = FALSE`). As decisões ainda
--- dependem de `orcamento_aceite_config.online_enabled` (0030). As 0030–0033 não são alteradas.
+-- dependem de `orcamento_aceite_config.online_enabled` (0031). As 0031–0034 não são alteradas.
 
 -- ─── Acesso dos contatos ─────────────────────────────────────────────────────
 -- NENHUM: sem portal. ACOMPANHAR: vê status e orçamento. DECIDIR: também responde ao orçamento.
@@ -1552,7 +1552,7 @@ END;
 $$;
 
 -- Provedor de WhatsApp da empresa para o código de acesso. Ao contrário do processador de
--- eventos (0033), vale também no modo LOCAL: o código precisa sair com o desktop fechado.
+-- eventos (0034), vale também no modo LOCAL: o código precisa sair com o desktop fechado.
 -- Nenhum segredo aqui; o token fica em `WHATSAPP_TOKENS` da Edge Function.
 CREATE OR REPLACE FUNCTION public.portal_config_envio_whatsapp(p_empresa_id INTEGER)
 RETURNS TABLE (

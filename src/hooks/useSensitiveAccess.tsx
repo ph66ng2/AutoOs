@@ -333,7 +333,6 @@ export function SensitiveAccessProvider({ children }: { children: ReactNode }) {
       const targetProfileId = selectedProfileId ? Number(selectedProfileId) : status?.active_profile_id ?? null;
       if (!targetProfileId) {
         setError("Selecione um perfil para continuar.");
-        setBusy(false);
         return;
       }
 
@@ -353,7 +352,6 @@ export function SensitiveAccessProvider({ children }: { children: ReactNode }) {
       setConnectionUnavailable(false);
       if (!workingStatus.active_profile_id) {
         setError("Não foi possível determinar o perfil ativo. Feche e abra o AutoOS novamente.");
-        setBusy(false);
         return;
       }
 
@@ -364,7 +362,6 @@ export function SensitiveAccessProvider({ children }: { children: ReactNode }) {
         if (workingStatus.unlocked && switchedProfile?.pin_configured) {
           if (!profileHasPermission(workingStatus, promptOptions.permission)) {
             setError(`O perfil ativo não possui permissão para ${permissionDescription(promptOptions.permission)}.`);
-            setBusy(false);
             return;
           }
           try { localStorage.setItem("autoos_last_profile_id", String(targetProfileId)); } catch { /* storage indisponível */ }
@@ -390,7 +387,11 @@ export function SensitiveAccessProvider({ children }: { children: ReactNode }) {
           `O PIN do perfil "${activeProfile.nome}" já foi configurado desde que esta tela foi aberta. ` +
           "A tela foi atualizada para desbloqueio: informe o PIN já criado ou use \"Esqueci minha senha\" para redefini-lo."
         );
-        setBusy(false);
+        return;
+      }
+
+      if (activeProfile?.pin_required && !activeProfile.pin_configured) {
+        setError("Este perfil exige um PIN local. Peça a um administrador para configurá-lo em Equipe e acessos.");
         return;
       }
 
@@ -398,21 +399,17 @@ export function SensitiveAccessProvider({ children }: { children: ReactNode }) {
       if (activeProfile?.role === "ADMIN" && !activeProfile?.pin_configured) {
         if (pin !== confirmPin) {
           setError("Os PINs não conferem.");
-          setBusy(false);
           return;
         }
         if (pin.length < 4) {
           setError("O PIN deve ter entre 4 e 8 dígitos.");
-          setBusy(false);
           return;
         }
-        await SensitiveAccessService.unlockWithoutPin();
-        const nextStatus = await SensitiveAccessService.configurePin(pin);
+        const nextStatus = await SensitiveAccessService.setActiveProfile(activeProfile.id, pin, confirmPin);
         setStatus(nextStatus);
 
         if (!profileHasPermission(nextStatus, promptOptions.permission)) {
           setError(`O perfil ativo não possui permissão para ${permissionDescription(promptOptions.permission)}.`);
-          setBusy(false);
           return;
         }
 
@@ -434,7 +431,6 @@ export function SensitiveAccessProvider({ children }: { children: ReactNode }) {
       if (!profileHasPermission(nextStatus, promptOptions.permission)) {
         setStatus(nextStatus);
         setError(`O perfil ativo não possui permissão para ${permissionDescription(promptOptions.permission)}.`);
-        setBusy(false);
         return;
       }
 
@@ -450,6 +446,7 @@ export function SensitiveAccessProvider({ children }: { children: ReactNode }) {
       const message = sensitiveAccessErrorMessage(submitError, "Falha ao validar o acesso sensível.");
       setError(message);
       if (isTemporaryDatabaseAccessMessage(message)) setConnectionUnavailable(true);
+    } finally {
       setBusy(false);
     }
   }, [closeDialog, pin, confirmPin, promptOptions.permission, selectedProfileId, status, dialogMode]);
@@ -497,8 +494,8 @@ export function SensitiveAccessProvider({ children }: { children: ReactNode }) {
           setConfirmPin("");
           setError(null);
         }}
-        onPinChange={setPin}
-        onConfirmPinChange={setConfirmPin}
+        onPinChange={(value) => { setPin(value); setError(null); }}
+        onConfirmPinChange={(value) => { setConfirmPin(value); setError(null); }}
         onSubmit={() => void submitSensitiveAccess()}
         onForgotPassword={() => setRecoveryOpen(true)}
       />

@@ -29,7 +29,7 @@ type Reserved = {
 type MessagePayload = {
   template?: string;
   parametros?: unknown[];
-  /** Só em pedidos antigos do link de decisão (removido na 0036); nunca são enviados. */
+  /** Só em pedidos antigos do link de decisão (removido na 0037); nunca são enviados. */
   usaLink?: boolean;
   texto?: string;
   contato?: string;

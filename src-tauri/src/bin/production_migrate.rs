@@ -8,7 +8,8 @@ use url::Url;
 
 static MIGRATOR: Migrator = sqlx::migrate!("./migrations");
 
-const REQUIRED_PROMOTION_MIGRATIONS: [i64; 3] = [27, 28, 29];
+const REQUIRED_PROMOTION_MIGRATIONS: [i64; 12] = [27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38];
+const EXPECTED_MIGRATION_COUNT: usize = 38;
 const LAST_REQUIRED_APPLIED_MIGRATION: i64 = 28;
 
 fn required_env(name: &str) -> Result<String> {
@@ -133,7 +134,7 @@ fn validate_migration_versions(mut versions: Vec<i64>, expected_count: usize) ->
 fn validate_migration_set() -> Result<()> {
     validate_migration_versions(
         MIGRATOR.iter().map(|migration| migration.version).collect(),
-        29,
+        EXPECTED_MIGRATION_COUNT,
     )
 }
 
@@ -214,17 +215,17 @@ mod tests {
 
     #[test]
     fn rejects_duplicate_missing_and_out_of_order_versions() {
-        let complete = (1..=29).collect::<Vec<_>>();
-        assert!(validate_migration_versions(complete.clone(), 29).is_ok());
+        let complete = (1..=30).collect::<Vec<_>>();
+        assert!(validate_migration_versions(complete.clone(), 30).is_ok());
 
         let mut duplicate = complete.clone();
         duplicate[23] = 23;
-        assert!(validate_migration_versions(duplicate, 29).is_err());
-        assert!(validate_migration_versions(complete[..28].to_vec(), 29).is_err());
+        assert!(validate_migration_versions(duplicate, 30).is_err());
+        assert!(validate_migration_versions(complete[..29].to_vec(), 30).is_err());
 
         let mut gap = complete;
-        gap[23] = 30;
-        assert!(validate_migration_versions(gap, 29).is_err());
+        gap[23] = 31;
+        assert!(validate_migration_versions(gap, 30).is_err());
     }
 }
 
@@ -358,6 +359,38 @@ async fn verify_promoted_schema(pool: &PgPool) -> Result<()> {
         "estruturas da migration SQLx 0029 não foram encontradas"
     );
 
+    let profile_pin_policy_exists: bool = sqlx::query_scalar(
+        "SELECT EXISTS (
+             SELECT 1 FROM information_schema.columns
+              WHERE table_schema = 'public' AND table_name = 'security_profiles'
+                AND column_name = 'pin_required' AND udt_name = 'bool'
+                AND is_nullable = 'NO'
+         )",
+    )
+    .fetch_one(pool)
+    .await
+    .context("não foi possível confirmar security_profiles.pin_required")?;
+    ensure!(profile_pin_policy_exists, "política de PIN da migration SQLx 0030 não foi encontrada");
+
+    // Orçamento pelo Portal do Cliente e fila de WhatsApp (0031–0038): as mesmas tabelas que o
+    // aplicativo exige ao abrir.
+    let portal_cliente_schema_exists: bool = sqlx::query_scalar(
+        "SELECT to_regclass('public.orcamento_versoes') IS NOT NULL
+             AND to_regclass('public.orcamento_respostas') IS NOT NULL
+             AND to_regclass('public.envios_whatsapp_pedidos') IS NOT NULL
+             AND to_regclass('public.portal_alertas') IS NOT NULL
+             AND to_regclass('public.portal_config_empresa') IS NOT NULL
+             AND to_regprocedure('public.portal_entrar_senha(text,text,text)') IS NOT NULL
+             AND to_regprocedure('public.portal_criar_desafio(text,text,uuid,text)') IS NULL",
+    )
+    .fetch_one(pool)
+    .await
+    .context("não foi possível confirmar as estruturas do Portal do Cliente")?;
+    ensure!(
+        portal_cliente_schema_exists,
+        "estruturas das migrations SQLx 0031–0038 não foram encontradas"
+    );
+
     let applied_count: i64 =
         sqlx::query_scalar("SELECT count(*) FROM public._sqlx_migrations WHERE success = true")
             .fetch_one(pool)
@@ -380,7 +413,7 @@ async fn required_promotion_migrations_already_applied(pool: &PgPool) -> Result<
     .bind(REQUIRED_PROMOTION_MIGRATIONS.as_slice())
     .fetch_one(pool)
     .await
-    .context("não foi possível consultar o status inicial das migrations 0027–0029")?;
+    .context("não foi possível consultar o status inicial das migrations 0027–0038")?;
     Ok(applied_count == REQUIRED_PROMOTION_MIGRATIONS.len() as i64)
 }
 

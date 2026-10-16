@@ -102,8 +102,8 @@ expect_seed_failure() {
 
 mapfile -t migration_files < <(find "$MIGRATIONS" -maxdepth 1 -type f -name '*.sql' | sort)
 # O seed nasceu na 0020; as migrations posteriores entram na mesma ordem do aplicativo.
-if [[ "${#migration_files[@]}" -lt 29 ]]; then
-  echo "Esperadas pelo menos 29 migrations (0001-0029); encontradas ${#migration_files[@]}." >&2
+if [[ "${#migration_files[@]}" -lt 30 ]]; then
+  echo "Esperadas pelo menos 30 migrations (0001-0030); encontradas ${#migration_files[@]}." >&2
   exit 1
 fi
 for index in "${!migration_files[@]}"; do

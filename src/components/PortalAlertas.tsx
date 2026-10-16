@@ -166,7 +166,7 @@ export function PortalAlertasSino() {
       }
       ultimoVisto.current = Math.max(ultimoVisto.current ?? 0, maior);
     } catch {
-      // Sessão bloqueada ou banco sem a migration 0034: só os erros do app contam.
+      // Sessão bloqueada ou banco sem a migration 0035: só os erros do app contam.
       setNaoLidosPortal(0);
     }
   }, [abrirAtendimento]);

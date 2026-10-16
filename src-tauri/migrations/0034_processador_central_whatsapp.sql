@@ -2,7 +2,7 @@
 --
 -- Com vários computadores no mesmo banco, o desktop só enfileira (`PENDENTE`) e um processador
 -- central reserva (`FOR UPDATE SKIP LOCKED`), envia e conclui as tentativas. O modo é escolhido
--- por empresa e nasce `LOCAL`: sem linha de configuração, tudo continua como na 0032.
+-- por empresa e nasce `LOCAL`: sem linha de configuração, tudo continua como na 0033.
 
 CREATE TABLE IF NOT EXISTS envio_whatsapp_config_empresa (
     empresa_id INTEGER PRIMARY KEY REFERENCES empresas(id) ON DELETE CASCADE,

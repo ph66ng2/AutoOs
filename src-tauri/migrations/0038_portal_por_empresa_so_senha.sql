@@ -1,4 +1,4 @@
--- 0037: Portal do Cliente por empresa e só com senha.
+-- 0038: Portal do Cliente por empresa e só com senha.
 --
 -- 1. As chaves "Portal ligado" e "Clientes podem responder orçamentos" passam a ser de cada
 --    empresa (`portal_config_empresa`). As colunas globais `portal_cliente_config.portal_enabled`
@@ -14,7 +14,7 @@
 -- 4. Lista: "aguarda sua resposta" só com versão aberta e respostas ligadas; o limite de 300
 --    atendimentos pega os mais recentes. Negociar exige as respostas ligadas.
 --
--- As funções redefinidas abaixo são cópias das versões da 0034/0035; mudam só as linhas das chaves
+-- As funções redefinidas abaixo são cópias das versões da 0035/0036; mudam só as linhas das chaves
 -- (e, na sessão, o método). O portal pausado continua respondendo PORTAL_PAUSADO, agora conferido
 -- pela empresa da sessão ou do contato que entrou.
 
@@ -36,9 +36,9 @@ ON CONFLICT (empresa_id) DO NOTHING;
 COMMENT ON TABLE portal_config_empresa IS
     'Chaves do Portal do Cliente por empresa: login/consulta (portal_enabled) e respostas a orçamentos (respostas_enabled).';
 COMMENT ON COLUMN public.portal_cliente_config.portal_enabled IS
-    'Sem uso desde a 0037: a chave é por empresa (portal_config_empresa.portal_enabled).';
+    'Sem uso desde a 0038: a chave é por empresa (portal_config_empresa.portal_enabled).';
 COMMENT ON COLUMN public.orcamento_aceite_config.online_enabled IS
-    'Sem uso desde a 0037: a chave é por empresa (portal_config_empresa.respostas_enabled).';
+    'Sem uso desde a 0038: a chave é por empresa (portal_config_empresa.respostas_enabled).';
 
 ALTER TABLE portal_config_empresa ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS portal_config_empresa_empresa ON portal_config_empresa;
@@ -76,7 +76,7 @@ UPDATE portal_sessoes
 SET encerrada_em = statement_timestamp(), encerrada_motivo = 'LOGIN_POR_CODIGO_REMOVIDO'
 WHERE metodo = 'CODIGO' AND encerrada_em IS NULL;
 
-COMMENT ON TABLE portal_codigos IS 'Histórico do login por código, removido na 0037.';
+COMMENT ON TABLE portal_codigos IS 'Histórico do login por código, removido na 0038.';
 
 -- ─── Acesso do contato sem depender de telefone/email ───────────────────────
 CREATE OR REPLACE FUNCTION autoos_portal_revisar_acesso_contato()

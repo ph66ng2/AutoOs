@@ -1,4 +1,4 @@
--- Contrato SQL do Portal das Impressoras do Cliente (migrations 0034, 0035 e 0037).
+-- Contrato SQL do Portal das Impressoras do Cliente (migrations 0035, 0036 e 0038).
 -- Execute num banco descartável com as migrations SQLx aplicadas (nome iniciando por autoos_stock_test):
 --   psql --set ON_ERROR_STOP=1 --file=supabase/tests/portal_cliente_contract.sql
 -- Tudo roda numa transação desfeita no final; dados sintéticos TESTE-PORTAL.
@@ -47,7 +47,7 @@ DECLARE
 BEGIN
     INSERT INTO empresas (nome, email, status) VALUES ('TESTE-PORTAL A', 'portal-a@teste.invalid', 'ativo') RETURNING id INTO ea;
     INSERT INTO empresas (nome, email, status) VALUES ('TESTE-PORTAL B', 'portal-b@teste.invalid', 'ativo') RETURNING id INTO eb;
-    -- Chaves por empresa (0037): as duas ligadas; a separação entre empresas é testada no fim.
+    -- Chaves por empresa (0038): as duas ligadas; a separação entre empresas é testada no fim.
     INSERT INTO portal_config_empresa (empresa_id, portal_enabled, respostas_enabled)
         VALUES (ea, TRUE, TRUE), (eb, TRUE, TRUE)
         ON CONFLICT (empresa_id) DO UPDATE SET portal_enabled = TRUE, respostas_enabled = TRUE;
@@ -120,7 +120,7 @@ SELECT pg_temp.ok((portal_entrar_senha('11222333000181', 'Carla-Inicial-3', repe
 SELECT pg_temp.ok((portal_entrar_senha('11222333000181', 'Davi-Inicial-4', repeat('4', 64))->>'resultado') = 'INVALIDO',
     'contato sem acesso ao portal não entra');
 
--- Sem login por código (0037): funções removidas, sessão por código antiga não vale.
+-- Sem login por código (0038): funções removidas, sessão por código antiga não vale.
 SELECT pg_temp.ok(to_regprocedure('public.portal_criar_desafio(text,text,uuid,text)') IS NULL
     AND to_regprocedure('public.portal_verificar_codigo(uuid,text,text,text)') IS NULL
     AND to_regprocedure('public.portal_criar_desafio_sessao(text,text,uuid,text)') IS NULL
@@ -291,7 +291,7 @@ SELECT pg_temp.espera_erro(format('SELECT portal_detalhe_atendimento(%L, %s)', r
 -- ─── Mudança no contato derruba o acesso ───────────────────────────────────
 UPDATE cliente_contatos SET telefone = '71911112222', email = 'bruno@cliente.invalid' WHERE id = pg_temp.g('decisor2')::INTEGER;
 SELECT pg_temp.ok((SELECT portal_acesso = 'DECIDIR' AND portal_senha_hash IS NOT NULL FROM cliente_contatos WHERE id = pg_temp.g('decisor2')::INTEGER),
-    'corrigir telefone/email não retira o acesso nem a senha (0037)');
+    'corrigir telefone/email não retira o acesso nem a senha (0038)');
 SELECT pg_temp.ok(jsonb_array_length(portal_listar_atendimentos(repeat('2', 64))->'atendimentos') > 0, 'sessão continua após corrigir o telefone');
 UPDATE cliente_contatos SET ativo = FALSE WHERE id = pg_temp.g('decisor2')::INTEGER;
 SELECT pg_temp.ok((SELECT portal_acesso = 'NENHUM' AND portal_senha_hash IS NULL FROM cliente_contatos WHERE id = pg_temp.g('decisor2')::INTEGER),
@@ -303,7 +303,7 @@ SELECT pg_temp.espera_erro('UPDATE portal_alertas SET titulo = ''x''', 'Alerta d
 UPDATE portal_alertas SET lido_em = now() WHERE tipo = 'NEGOCIACAO_SOLICITADA';
 SELECT pg_temp.espera_erro('DELETE FROM portal_alertas', 'Alertas do portal não podem ser apagados');
 
--- ─── Senha definida pelo operador (0035) ────────────────────────────────────
+-- ─── Senha definida pelo operador (0036) ────────────────────────────────────
 SELECT pg_temp.espera_erro(format('SELECT portal_definir_senha_contato(%s, %s, ''abc'', NULL)', pg_temp.g('ea'), pg_temp.g('decisor')), 'SENHA_FRACA');
 SELECT pg_temp.espera_erro(format('SELECT portal_definir_senha_contato(%s, %s, ''Senha1234'', NULL)', pg_temp.g('ea'), pg_temp.g('sem_acesso')), 'CONTATO_SEM_ACESSO');
 SELECT pg_temp.espera_erro(format('SELECT portal_definir_senha_contato(%s, %s, ''Senha1234'', NULL)', pg_temp.g('eb'), pg_temp.g('decisor')), 'CONTATO_INDISPONIVEL');
@@ -338,7 +338,7 @@ UPDATE cliente_contatos SET portal_acesso = 'NENHUM' WHERE id = pg_temp.g('acomp
 SELECT pg_temp.ok((SELECT portal_senha_hash IS NULL FROM cliente_contatos WHERE id = pg_temp.g('acompanha')::INTEGER), 'sem acesso, sem senha');
 SELECT pg_temp.ok((portal_entrar_senha('11222333000181', 'Carla-2026', repeat('7', 64))->>'resultado') = 'INVALIDO', 'senha removida não entra');
 
--- ─── Chaves por empresa (0037) ──────────────────────────────────────────────
+-- ─── Chaves por empresa (0038) ──────────────────────────────────────────────
 DO $$
 DECLARE
     cb_contato INTEGER;

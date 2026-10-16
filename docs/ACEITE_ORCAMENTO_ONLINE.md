@@ -1,6 +1,6 @@
 # Aceite online de orçamento (base do Portal do Cliente)
 
-> **O link individual de decisão (`#/o/<token>`) foi removido na migration 0036.** O cliente responde pelo **Portal do Cliente** com login (`docs/PORTAL_CLIENTE.md`). Saíram: a Edge Function `orcamento-decisao`, a página `#/o/`, os comandos `criar_link_decisao_orcamento`/`revogar_link_decisao_orcamento`, as funções SQL `consultar_orcamento_decisao`, `registrar_resposta_orcamento`, `registrar_solicitacao_orcamento`, `autoos_estado_link_orcamento`, `emitir_link_decisao_envio` e o tipo `orcamento_decisao` da fila de WhatsApp. **Continuam valendo** e são usados pelo portal: versões congeladas (`orcamento_versoes`), respostas (`orcamento_respostas`), solicitações, a janela de correção e a chave `online_enabled`. As seções abaixo que falam do link ficam como registro histórico.
+> **O link individual de decisão (`#/o/<token>`) foi removido na migration 0037.** O cliente responde pelo **Portal do Cliente** com login (`docs/PORTAL_CLIENTE.md`). Saíram: a Edge Function `orcamento-decisao`, a página `#/o/`, os comandos `criar_link_decisao_orcamento`/`revogar_link_decisao_orcamento`, as funções SQL `consultar_orcamento_decisao`, `registrar_resposta_orcamento`, `registrar_solicitacao_orcamento`, `autoos_estado_link_orcamento`, `emitir_link_decisao_envio` e o tipo `orcamento_decisao` da fila de WhatsApp. **Continuam valendo** e são usados pelo portal: versões congeladas (`orcamento_versoes`), respostas (`orcamento_respostas`), solicitações, a janela de correção e a chave `online_enabled`. As seções abaixo que falam do link ficam como registro histórico.
 
 O cliente responde ao orçamento por um link próprio. A resposta é **registrada na hora**, mas só a equipe altera status, pagamento e estoque, depois de conferir. Isso separa a *resposta do cliente* da *etapa operacional do equipamento* e deixa espaço para corrigir um toque errado.
 
@@ -17,7 +17,7 @@ O cliente responde ao orçamento por um link próprio. A resposta é **registrad
 - **Tenho uma dúvida** envia uma mensagem (até 500 caracteres) sem registrar decisão; no máximo 5 mensagens por hora e versão.
 - Correção posterior é feita pela equipe, com **Corrigir decisão do orçamento**; o sistema nunca devolve peças ao estoque sem confirmação explícita.
 
-## Banco (`0030_aceite_orcamento_online.sql`)
+## Banco (`0031_aceite_orcamento_online.sql`)
 
 | Objeto | Função |
 |---|---|
@@ -30,7 +30,7 @@ O cliente responde ao orçamento por um link próprio. A resposta é **registrad
 
 Erros da função (para a Edge Function mapear): `ACEITE_PAUSADO`, `LINK_INDISPONIVEL` (inexistente, vencido, revogado, versão encerrada ou etapa mudada — mesma resposta pública), `RESPOSTA_DESATUALIZADA`, `RESPOSTA_JA_APLICADA`, `NADA_A_DESFAZER`, `DECISAO_INVALIDA`.
 
-### Fase 2 (`0031_aceite_orcamento_fase2.sql`)
+### Fase 2 (`0032_aceite_orcamento_fase2.sql`)
 
 | Objeto | Função |
 |---|---|
@@ -40,9 +40,9 @@ Erros da função (para a Edge Function mapear): `ACEITE_PAUSADO`, `LINK_INDISPO
 | `registrar_solicitacao_orcamento(token_hash, tipo, mensagem)` | `DUVIDA` só com o link aberto, `MUDANCA` só depois da aplicação. Remove caracteres de controle e limita a 5 por hora. |
 | `autoos_estado_link_orcamento` | Auxiliar que decide `ABERTO`/`APLICADO`/`LINK_INDISPONIVEL` num só lugar. |
 
-Mudança de comportamento em relação à 0030: ao aplicar uma resposta, a versão é encerrada, mas o **link não é mais revogado** (só os links de versões sem resposta aplicada).
+Mudança de comportamento em relação à 0031: ao aplicar uma resposta, a versão é encerrada, mas o **link não é mais revogado** (só os links de versões sem resposta aplicada).
 
-**Privilégios.** As quatro funções do aceite são `SECURITY DEFINER` (`search_path` fixo), executáveis só por `service_role`. `SELECT … FOR UPDATE/SHARE` exige privilégio de UPDATE, que o `service_role` não deve ter; por isso a 0031 também **retira** os grants diretos de tabela que a 0030 tinha dado. A Edge Function chega ao banco apenas por essas funções. `anon` e `authenticated` não têm acesso.
+**Privilégios.** As quatro funções do aceite são `SECURITY DEFINER` (`search_path` fixo), executáveis só por `service_role`. `SELECT … FOR UPDATE/SHARE` exige privilégio de UPDATE, que o `service_role` não deve ter; por isso a 0032 também **retira** os grants diretos de tabela que a 0031 tinha dado. A Edge Function chega ao banco apenas por essas funções. `anon` e `authenticated` não têm acesso.
 
 Erros novos: `LIMITE_SOLICITACOES`, `MENSAGEM_INVALIDA`, `TIPO_INVALIDO`.
 
@@ -84,7 +84,7 @@ O card também mostra a **mensagem pronta** (`orcamento-link-message.ts`) com **
 
 ## Ativação
 
-1. Aplicar as migrations 0030 e 0031 (as 0024–0029 antes). Confirme os advisors de segurança do Supabase.
+1. Aplicar as migrations 0031 e 0032 (as 0024–0029 antes). Confirme os advisors de segurança do Supabase.
 2. Publicar `orcamento-decisao` com os mesmos segredos do `public-status` e publicar a página (`npm run build:public-status`).
 3. Após o QA, `UPDATE public.orcamento_aceite_config SET online_enabled = TRUE` para um piloto.
 4. Pausar: `online_enabled = FALSE`. A função passa a responder `404` para todos os links; nada é apagado.
@@ -97,7 +97,7 @@ O card também mostra a **mensagem pronta** (`orcamento-link-message.ts`) com **
 
 ## Limitação
 
-> O Portal das Impressoras do Cliente (`docs/PORTAL_CLIENTE.md`, migration 0034) resolve isto para quem entra com código: respostas de origem `PORTAL_CLIENTE` são atribuídas ao contato e efetivadas pelo servidor depois do prazo de correção. Respostas pelo link continuam com conferência da equipe.
+> O Portal das Impressoras do Cliente (`docs/PORTAL_CLIENTE.md`, migration 0035) resolve isto para quem entra com código: respostas de origem `PORTAL_CLIENTE` são atribuídas ao contato e efetivadas pelo servidor depois do prazo de correção. Respostas pelo link continuam com conferência da equipe.
 
 Possuir o link não prova quem clicou. Nesta versão a conferência humana antes de iniciar o serviço é parte da proteção. Um código enviado ao contato cadastrado exige um serviço de envio no servidor, pois a configuração de WhatsApp e email guardada no desktop não funciona com o app fechado.
 
