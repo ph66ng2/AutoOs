@@ -9,7 +9,7 @@ O cliente responde ao orçamento por um link próprio. A resposta é **registrad
 - Abrir o link ou tocar uma vez nunca decide nada: a página repete valor e ação e pede confirmação.
 - O cliente vê uma **versão congelada** do orçamento. Editar o orçamento, a verificação, o prazo ou a etapa do equipamento encerra a versão e revoga seus links; o cliente nunca aprova valores que não viu.
 - Até a equipe aplicar, o cliente pode **desfazer ou alterar** a resposta pelo link. Cada mudança entra no histórico; nada é apagado. A equipe só aplica uma resposta do portal depois de **pelo menos 15 minutos** (`janela_correcao_minutos`, mínimo 15) desde a última resposta.
-- Resposta dada por telefone ou WhatsApp é registrada pela equipe como **decisão informada à equipe** (permissão `FINANCIAL_ACTIONS`, com PIN) no mesmo histórico, e encerra o link público.
+- Resposta dada por telefone ou WhatsApp é aplicada direto pelos botões Aprovar/Reprovar do equipamento (PIN + `FINANCIAL_ACTIONS`, registrado na auditoria). A mudança de status encerra a versão e o link público. Não há etapa intermediária de “decisão informada”.
 - A primeira versão aceita ou recusa o **orçamento inteiro**. Escolha de serviços individuais fica para uma etapa posterior.
 - Depois que a equipe aplica a decisão, o link deixa de aceitar respostas, mas continua aberto (até expirar) para mostrar o resultado e receber um **pedido de mudança**. O pedido apenas avisa a equipe: não cancela serviço nem devolve peça.
 - **Tenho uma dúvida** envia uma mensagem (até 500 caracteres) sem registrar decisão; no máximo 5 mensagens por hora e versão.
@@ -46,7 +46,7 @@ Erros novos: `LIMITE_SOLICITACOES`, `MENSAGEM_INVALIDA`, `TIPO_INVALIDO`.
 
 ## Desktop
 
-- `src-tauri/src/commands/orcamento_decisao.rs`: `obter_decisao_orcamento`, `criar_link_decisao_orcamento` (`MANAGE_STATUS_LINKS`), `revogar_link_decisao_orcamento`, `registrar_decisao_informada` (`FINANCIAL_ACTIONS`).
+- `src-tauri/src/commands/orcamento_decisao.rs`: `obter_decisao_orcamento`, `criar_link_decisao_orcamento` (`MANAGE_STATUS_LINKS`), `revogar_link_decisao_orcamento`.
 - `aprovar_orcamento` chama `conferir_e_aplicar_resposta` na mesma transação:
   - sem resposta registrada, o fluxo é o de sempre;
   - `resposta_esperada_id` diferente da resposta vigente falha ("recarregue e confira"), cobrindo a tela antiga do operador;
@@ -57,7 +57,7 @@ Erros novos: `LIMITE_SOLICITACOES`, `MENSAGEM_INVALIDA`, `TIPO_INVALIDO`.
 - `marcar_solicitacao_orcamento_tratada` marca dúvidas e pedidos do cliente como tratados.
 - A lista de equipamentos mostra **"Cliente respondeu: aprovou/recusou — aguardando conferência"** (coluna `resposta_cliente` em `EQUIPAMENTO_SELECT`, só enquanto a resposta não foi aplicada e a versão está aberta).
 - No fluxo de aprovação, se a decisão do operador diferir da do cliente aparece o campo **Motivo da divergência** (mínimo de 5 caracteres, também exigido pelo backend).
-- `DecisaoOrcamentoCard` (detalhe do equipamento): mostra "Cliente respondeu: aprovou — aguardando conferência", versão, valor, janela, histórico, gerar/encerrar link e as ações de decisão informada. "Revisar e aplicar decisão" abre o fluxo atual de pagamento com PIN.
+- `DecisaoOrcamentoCard` (detalhe do equipamento): mostra "Cliente respondeu: aprovou — aguardando conferência", versão, valor, janela, histórico, gerar/encerrar link e as mensagens do cliente. Sem versão publicada, mostra só o botão “Publicar no Portal do Cliente”; o quadro fica âmbar apenas quando há resposta pendente ou mensagem não tratada. "Revisar e aplicar decisão" abre o fluxo atual de pagamento com PIN.
 
 ## Corrigir decisão do orçamento
 

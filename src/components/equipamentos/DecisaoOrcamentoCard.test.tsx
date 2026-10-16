@@ -6,7 +6,6 @@ import type { DecisaoOrcamentoInfo, Equipamento } from "@/types";
 
 const mocks = vi.hoisted(() => ({
   obter: vi.fn(),
-  informada: vi.fn(),
   ensure: vi.fn(),
   publicar: vi.fn(),
 }));
@@ -14,7 +13,6 @@ const mocks = vi.hoisted(() => ({
 vi.mock("@/lib/db", () => ({
   db: {
     obterDecisaoOrcamento: mocks.obter,
-    registrarDecisaoInformada: mocks.informada,
     criarLinkDecisaoOrcamento: vi.fn(),
     publicarOrcamentoPortal: mocks.publicar,
     revogarLinkDecisaoOrcamento: vi.fn(),
@@ -93,19 +91,39 @@ describe("DecisaoOrcamentoCard", () => {
     expect(screen.queryByRole("button", { name: /revisar e aplicar decisão/i })).not.toBeInTheDocument();
   });
 
-  it("registra decisão informada à equipe somente após a liberação com PIN", async () => {
+  it("sem orçamento publicado mostra só o botão de publicar, sem quadro nem registro por telefone", async () => {
     mocks.obter.mockResolvedValue(null);
-    mocks.informada.mockResolvedValue(undefined);
     render(<DecisaoOrcamentoCard equipamento={equipamento} onRespostaVista={vi.fn()} onAplicar={vi.fn()} />);
+    expect(await screen.findByRole("button", { name: "Publicar no Portal do Cliente" })).toBeInTheDocument();
+    await waitFor(() => expect(mocks.obter).toHaveBeenCalled());
+    expect(screen.queryByRole("region", { name: "Resposta do cliente ao orçamento" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /cliente aprovou|cliente recusou/i })).not.toBeInTheDocument();
+  });
 
-    fireEvent.click(await screen.findByRole("button", { name: /cliente recusou/i }));
-    await waitFor(() => expect(mocks.informada).toHaveBeenCalledWith(7, "RECUSAR"));
+  it("fora de AGUARDANDO_APROVACAO e sem orçamento publicado não mostra nada", async () => {
+    mocks.obter.mockResolvedValue(null);
+    const { container } = render(
+      <DecisaoOrcamentoCard equipamento={{ ...equipamento, status: "EM_MANUTENCAO" }} onRespostaVista={vi.fn()} onAplicar={vi.fn()} />,
+    );
+    await waitFor(() => expect(mocks.obter).toHaveBeenCalled());
+    expect(container).toBeEmptyDOMElement();
+  });
 
-    mocks.informada.mockClear();
-    mocks.ensure.mockResolvedValue(false);
-    fireEvent.click(screen.getByRole("button", { name: /cliente aprovou/i }));
-    await waitFor(() => expect(mocks.ensure).toHaveBeenCalledTimes(2));
-    expect(mocks.informada).not.toHaveBeenCalled();
+  it("publicado e sem resposta fica neutro; resposta pendente fica em destaque", async () => {
+    mocks.obter.mockResolvedValue(info());
+    const { unmount } = render(<DecisaoOrcamentoCard equipamento={equipamento} onRespostaVista={vi.fn()} onAplicar={vi.fn()} />);
+    expect(await screen.findByText("Orçamento no portal")).toBeInTheDocument();
+    expect(screen.getByText("Aguardando resposta do cliente.")).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "Resposta do cliente ao orçamento" }).className).not.toContain("amber");
+    unmount();
+
+    mocks.obter.mockResolvedValue(info({ resposta: respostaPortal, historico: [respostaPortal] }));
+    render(<DecisaoOrcamentoCard equipamento={equipamento} onRespostaVista={vi.fn()} onAplicar={vi.fn()} />);
+    expect(await screen.findByText("Resposta do cliente ao orçamento")).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "Resposta do cliente ao orçamento" }).className).toContain("amber");
+    // Publicar de novo ou gerar link anularia a resposta pendente.
+    expect(screen.queryByRole("button", { name: "Publicar no Portal do Cliente" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /gerar (novo )?link/i })).not.toBeInTheDocument();
   });
 
   it("envia o link pela fila e só repete após confirmação quando já foi solicitado", async () => {

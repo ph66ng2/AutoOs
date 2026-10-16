@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { Copy, Link2, Loader2, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
 import { db } from "@/lib/db";
 import { enviarLinkOrcamento, envioOrcamentoDisponivel } from "@/lib/orcamento-link-envio";
 import type { OpcoesEnvioWhatsapp } from "@/lib/whatsapp-service";
@@ -69,6 +70,8 @@ export function DecisaoOrcamentoCard({ equipamento, onRespostaVista, onAplicar, 
   const [loading, setLoading] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Até a primeira consulta terminar não há como saber se mostra o quadro ou só o botão.
+  const [consultado, setConsultado] = useState<number | null>(null);
   const equipamentoId = equipamento.id;
 
   const carregar = useCallback(async () => {
@@ -83,6 +86,7 @@ export function DecisaoOrcamentoCard({ equipamento, onRespostaVista, onAplicar, 
       setError(mensagemErro(cause, "Não foi possível consultar a resposta do cliente."));
     } finally {
       setLoading(false);
+      setConsultado(equipamentoId);
     }
   }, [equipamentoId, onRespostaVista]);
 
@@ -91,7 +95,7 @@ export function DecisaoOrcamentoCard({ equipamento, onRespostaVista, onAplicar, 
     void carregar();
   }, [carregar, equipamento.atualizado_em, sinalPortal]);
 
-  if (!equipamentoId) return null;
+  if (!equipamentoId || consultado !== equipamentoId) return null;
   const aberta = info != null && !info.encerradaMotivo;
   async function executar(
     permission: (typeof SENSITIVE_PERMISSIONS)[keyof typeof SENSITIVE_PERMISSIONS],
@@ -132,19 +136,6 @@ export function DecisaoOrcamentoCard({ equipamento, onRespostaVista, onAplicar, 
       "Confirme o acesso para encerrar o link de decisão deste orçamento.",
       async () => {
         await db.revogarLinkDecisaoOrcamento(equipamentoId!);
-        setLink(null);
-      },
-    );
-  }
-
-  function registrarInformada(decisao: "APROVAR" | "RECUSAR") {
-    const texto = decisao === "APROVAR" ? "aprovou" : "recusou";
-    void executar(
-      SENSITIVE_PERMISSIONS.FINANCIAL_ACTIONS,
-      "Decisão informada à equipe",
-      `Confirme com o PIN para registrar que o cliente ${texto} o orçamento por telefone ou WhatsApp. O link público será encerrado.`,
-      async () => {
-        await db.registrarDecisaoInformada(equipamentoId!, decisao);
         setLink(null);
       },
     );
@@ -240,17 +231,38 @@ export function DecisaoOrcamentoCard({ equipamento, onRespostaVista, onAplicar, 
   const resposta = aberta ? info?.resposta : null;
   const respostaFinal = resposta && resposta.decisao !== "DESFEITA" && !resposta.aplicadaEm ? resposta : null;
   const aceiteAtivo = info?.aceiteOnlineAtivo ?? false;
-  const podeEmitir = aceiteAtivo || aberta;
+  // Com resposta pendente, publicar ou gerar link criaria versão nova e anularia a resposta do cliente.
+  const podeEmitir = (aceiteAtivo || aberta) && !respostaFinal;
 
-  if (!loading && !error && !info && !aceiteAtivo && equipamento.status !== "AGUARDANDO_APROVACAO") return null;
+  const solicitacoesAbertas = info?.solicitacoes.filter((item) => !item.tratadaEm).length ?? 0;
+  // Destaque (âmbar) só quando há algo para a equipe ver ou fazer; o resto fica neutro.
+  const precisaAtencao = Boolean(respostaFinal) || solicitacoesAbertas > 0;
+
+  // Nada publicado ainda: só a ação de publicar, sem quadro.
+  if (!info && !error) {
+    if (equipamento.status !== "AGUARDANDO_APROVACAO") return null;
+    return (
+      <div className="flex flex-wrap items-center gap-2 text-sm">
+        <Button size="sm" variant="outline" onClick={publicarNoPortal} disabled={busy}>
+          Publicar no Portal do Cliente
+        </Button>
+        <span className="text-xs text-muted-foreground">O cliente vê e responde ao orçamento em status.bmitag.com.br.</span>
+      </div>
+    );
+  }
 
   return (
     <section
-      className="space-y-3 rounded-md border border-amber-200 bg-amber-50/60 p-3 text-sm"
+      className={cn(
+        "space-y-3 rounded-md border p-3 text-sm",
+        precisaAtencao ? "border-amber-200 bg-amber-50/60" : "border-border bg-muted/20",
+      )}
       aria-label="Resposta do cliente ao orçamento"
     >
       <div className="flex items-center justify-between gap-2">
-        <h4 className="font-semibold text-amber-950">Resposta do cliente ao orçamento</h4>
+        <h4 className={cn("font-semibold", precisaAtencao ? "text-amber-950" : "text-foreground")}>
+          {precisaAtencao ? "Resposta do cliente ao orçamento" : "Orçamento no portal"}
+        </h4>
         <Button size="sm" variant="ghost" onClick={() => void carregar()} disabled={loading || busy}>
           {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
           <span className="sr-only">Atualizar resposta</span>
@@ -294,19 +306,19 @@ export function DecisaoOrcamentoCard({ equipamento, onRespostaVista, onAplicar, 
             Revisar e aplicar decisão
           </Button>
         </div>
+      ) : resposta?.decisao === "DESFEITA" ? (
+        <p className="text-muted-foreground">O cliente retirou a resposta em {formatarHora(resposta.registradaEm)}.</p>
       ) : (
-        resposta?.decisao === "DESFEITA" && (
-          <p className="text-muted-foreground">O cliente retirou a resposta em {formatarHora(resposta.registradaEm)}.</p>
-        )
+        aberta && equipamento.status === "AGUARDANDO_APROVACAO" && <p className="text-muted-foreground">Aguardando resposta do cliente.</p>
       )}
 
-      {equipamento.status === "AGUARDANDO_APROVACAO" && (
+      {equipamento.status === "AGUARDANDO_APROVACAO" && !respostaFinal && (
         <div className="flex flex-wrap items-center gap-2">
           <Button size="sm" variant="outline" onClick={publicarNoPortal} disabled={busy}>
             Publicar no Portal do Cliente
           </Button>
           <span className="text-xs text-muted-foreground">
-            Contatos autorizados veem esta versão em status.bmitag.com.br. Alterou o orçamento? Publique de novo.
+            Alterou o orçamento? Publique de novo: a versão anterior deixa de aceitar respostas.
           </span>
         </div>
       )}
@@ -368,14 +380,6 @@ export function DecisaoOrcamentoCard({ equipamento, onRespostaVista, onAplicar, 
               </p>
             </div>
           )}
-        </div>
-      )}
-
-      {equipamento.status === "AGUARDANDO_APROVACAO" && !respostaFinal && (
-        <div className="flex flex-wrap items-center gap-2 border-t pt-2">
-          <span className="text-xs text-muted-foreground">Resposta por telefone ou WhatsApp:</span>
-          <Button size="sm" variant="outline" disabled={busy} onClick={() => registrarInformada("APROVAR")}>Cliente aprovou</Button>
-          <Button size="sm" variant="outline" disabled={busy} onClick={() => registrarInformada("RECUSAR")}>Cliente recusou</Button>
         </div>
       )}
 

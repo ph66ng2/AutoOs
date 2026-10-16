@@ -61,7 +61,6 @@ import type {
   PostgresBackupToolsStatus,
   AnaliseCorrecaoDecisao,
   CorrigirDecisaoInput,
-  DecisaoOrcamento,
   DecisaoOrcamentoInfo,
   LinkDecisaoOrcamentoCriado,
   PublicStatusLinkCreated,
@@ -327,15 +326,6 @@ export const db = {
 
   async revogarLinkDecisaoOrcamento(equipamentoId: number): Promise<boolean> {
     return invoke<boolean>("revogar_link_decisao_orcamento", { equipamentoId });
-  },
-
-  /** Decisão dada ao telefone/WhatsApp, registrada no mesmo histórico (exige FINANCIAL_ACTIONS). */
-  async registrarDecisaoInformada(
-    equipamentoId: number,
-    decisao: Exclude<DecisaoOrcamento, "DESFEITA">,
-    motivo?: string,
-  ): Promise<void> {
-    return invoke<void>("registrar_decisao_informada", { equipamentoId, decisao, motivo: motivo ?? null });
   },
 
   /** Único ponto de envio de WhatsApp ao cliente → Rust: solicitar_envio_whatsapp */
