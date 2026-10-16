@@ -95,48 +95,54 @@ export default function PortalDetalhe({ session, equipamentoId, onExpirou }: Pro
 
         {data && (
           <>
-            <StatusView
-              equipamento={data.equipamento}
-              titulo={data.titulo}
-              orientacao={data.orientacao}
-              statusAlteradoEm={data.statusAlteradoEm}
-              identificacao={(data.serie || data.patrimonio || data.entradaEm) && (
-                <p className="portal-identification">
-                  {data.serie && <>Série {data.serie}</>}
-                  {data.patrimonio && <> · Patrimônio {data.patrimonio}</>}
-                  {data.entradaEm && <> · Entrada em {shortDate(data.entradaEm)}</>}
-                </p>
-              )}
-            />
-
-            {data.orcamento && (
-              <PortalOrcamento
-                session={session}
-                detalhe={data}
-                orcamento={data.orcamento}
-                recarregar={recarregar}
-                onExpirou={onExpirou}
-              />
-            )}
-            {!data.orcamento && data.status === "AGUARDANDO_APROVACAO" && (
-              <p className="notice-box">O orçamento ainda não foi publicado no portal. Fale com a equipe para recebê-lo.</p>
-            )}
-
-            {data.solicitacoes.length > 0 && (
-              <div className="portal-requests">
-                <h2>Pedidos enviados</h2>
-                <ul>
-                  {data.solicitacoes.map((item) => (
-                    <li key={item.id}>
-                      {item.tipo === "NEGOCIAR" ? "Negociação" : item.tipo === "MUDANCA" ? "Correção" : "Dúvida"} · {item.protocolo} ·{" "}
-                      {formatDate(item.criadoEm)} · {item.tratada ? "tratado pela equipe" : "aguardando a equipe"}
-                    </li>
-                  ))}
-                </ul>
+            {/* Celular: uma coluna. Tela larga: status à esquerda, orçamento e contato à direita. */}
+            <div className="portal-detail-grid">
+              <div className="portal-detail-main">
+                <StatusView
+                  equipamento={data.equipamento}
+                  titulo={data.titulo}
+                  orientacao={data.orientacao}
+                  statusAlteradoEm={data.statusAlteradoEm}
+                  identificacao={(data.serie || data.patrimonio || data.entradaEm) && (
+                    <p className="portal-identification">
+                      {data.serie && <>Série {data.serie}</>}
+                      {data.patrimonio && <> · Patrimônio {data.patrimonio}</>}
+                      {data.entradaEm && <> · Entrada em {shortDate(data.entradaEm)}</>}
+                    </p>
+                  )}
+                />
               </div>
-            )}
+              <div className="portal-detail-side">
+                {data.orcamento && (
+                  <PortalOrcamento
+                    session={session}
+                    detalhe={data}
+                    orcamento={data.orcamento}
+                    recarregar={recarregar}
+                    onExpirou={onExpirou}
+                  />
+                )}
+                {!data.orcamento && data.status === "AGUARDANDO_APROVACAO" && (
+                  <p className="notice-box">O orçamento ainda não foi publicado no portal. Fale com a equipe para recebê-lo.</p>
+                )}
 
-            <ContatoCard contato={data.contatoEmpresa} />
+                {data.solicitacoes.length > 0 && (
+                  <div className="portal-requests">
+                    <h2>Pedidos enviados</h2>
+                    <ul>
+                      {data.solicitacoes.map((item) => (
+                        <li key={item.id}>
+                          {item.tipo === "NEGOCIAR" ? "Negociação" : item.tipo === "MUDANCA" ? "Correção" : "Dúvida"} · {item.protocolo} ·{" "}
+                          {formatDate(item.criadoEm)} · {item.tratada ? "tratado pela equipe" : "aguardando a equipe"}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+
+                <ContatoCard contato={data.contatoEmpresa} />
+              </div>
+            </div>
 
             <button className="refresh-button" type="button" onClick={() => void carregar()}>
               Atualizar acompanhamento

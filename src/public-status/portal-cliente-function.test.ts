@@ -185,6 +185,14 @@ describe("portal-cliente: sessão e orçamento", () => {
     expect(String(body.orientacao)).toContain("Quero negociar");
   });
 
+  it("depois da resposta, a orientação não manda mais responder pelo outro canal", async () => {
+    rpcResponses.portal_detalhe_atendimento = () => ({
+      body: { id: 28, status: "AGUARDANDO_APROVACAO", equipamento: "Impressora Zebra", orcamento: { estado: "RESPONDIDA", versaoId: 9 } },
+    });
+    const { body } = await call({ acao: "detalhe", sessao: SESSION, equipamentoId: 28 });
+    expect(body.orientacao).toBe("Sua resposta ao orçamento foi registrada. O andamento dela aparece no quadro do orçamento.");
+  });
+
   it("traduz proposta alterada em 409 com código", async () => {
     rpcResponses.portal_registrar_resposta = () => ({ status: 400, body: { code: "P0001", message: "PROPOSTA_ALTERADA" } });
     const { response, body } = await call({ acao: "responder", sessao: SESSION, equipamentoId: 28, versaoId: 9, decisao: "APROVAR", respostaVigenteId: null });

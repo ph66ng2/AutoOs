@@ -102,7 +102,7 @@ export default function PortalLogin({ aviso, onEntrou }: Props) {
   );
 
   return (
-    <section className="status-card" aria-live="polite">
+    <section className="status-card portal-login-card" aria-live="polite">
       <p className="eyebrow">Portal das Impressoras</p>
       <h1 className="portal-title">Acompanhe suas impressoras</h1>
       {aviso && <p className="notice-box" role="status">{aviso}</p>}

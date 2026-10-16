@@ -472,13 +472,21 @@ async function verifyCode(context: Context, body: Json, sessionHash: string | nu
   }, 200, context.origin);
 }
 
+/** Orientação sob o título enquanto o orçamento está em jogo: acompanha o quadro do orçamento. */
+const ORIENTACAO_ORCAMENTO: Record<string, string> = {
+  ABERTA: "Confira a proposta e responda por aqui. Para negociar valores ou itens, use “Quero negociar”.",
+  RESPONDIDA: "Sua resposta ao orçamento foi registrada. O andamento dela aparece no quadro do orçamento.",
+  EM_REVISAO: "A equipe está revisando a proposta. A nova versão aparece aqui quando for publicada.",
+  VENCIDA: "O prazo desta proposta terminou. Fale com a equipe BMI TAG para renová-la.",
+};
+
 function publicDetail(data: Json): Json {
   const status = typeof data.status === "string" ? data.status : "";
   const copy = STATUS_COPY[status] ?? STATUS_COPY_FALLBACK;
   const orcamento = data.orcamento as Json | null;
   // O texto do link individual manda falar com a equipe; aqui a resposta é pelo portal.
-  const orientation = status === "AGUARDANDO_APROVACAO" && orcamento?.estado === "ABERTA"
-    ? "Confira a proposta abaixo e responda por aqui. Para negociar valores ou itens, use “Quero negociar”."
+  const orientation = status === "AGUARDANDO_APROVACAO" && orcamento
+    ? ORIENTACAO_ORCAMENTO[String(orcamento.estado)] ?? copy.orientation
     : copy.orientation;
   return { ...data, titulo: copy.title, orientacao: orientation };
 }

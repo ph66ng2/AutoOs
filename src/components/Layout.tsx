@@ -30,7 +30,7 @@ import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { SensitiveAccessBadge, useSensitiveAccess } from "@/hooks/useSensitiveAccess";
 import { SENSITIVE_PERMISSIONS, type SensitivePermission } from "@/types";
-import { PortalAlertasBotao } from "@/components/PortalAlertas";
+import { PortalAlertasSino } from "@/components/PortalAlertas";
 
 /** Itens de navegação da sidebar. Cada item mapeia para uma rota do React Router */
 const navItems: {
@@ -91,7 +91,6 @@ export function Layout() {
               {!collapsed && <span>{item.label}</span>}
             </NavLink>
           ))}
-          <PortalAlertasBotao collapsed={collapsed} />
         </nav>
 
         {/* Segurança */}
@@ -143,6 +142,10 @@ export function Layout() {
 
       {/* Main Content */}
       <main className="flex-1 overflow-auto bg-background">
+        {/* Faixa superior: alertas do portal no canto direito, logo acima dos avisos (toasts). */}
+        <header className="sticky top-0 z-30 flex h-14 items-center justify-end gap-2 border-b bg-background/95 px-6 backdrop-blur supports-[backdrop-filter]:bg-background/80">
+          <PortalAlertasSino />
+        </header>
         <div className="p-6 max-w-7xl mx-auto">
           <Outlet />
         </div>

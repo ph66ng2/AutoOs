@@ -314,3 +314,29 @@ h1 {
 }
 .portal-password { display: flex; align-items: center; gap: 0.5rem; }
 .portal-password .portal-input { flex: 1; min-width: 0; }
+
+/* Telas largas: aproveita a largura sem mudar a identidade da página. */
+@media (min-width: 1000px) {
+  .portal-shell { width: min(100% - 4rem, 74rem); }
+  .portal-shell > .status-card,
+  .portal-shell > .status-footer { width: 100%; }
+  .portal-list { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .portal-detail-grid {
+    display: grid;
+    grid-template-columns: minmax(0, 1.05fr) minmax(0, 1fr);
+    gap: 2.5rem;
+    align-items: start;
+  }
+  .portal-detail-side {
+    position: sticky;
+    top: 1.5rem;
+    padding-left: 2.5rem;
+    border-left: 1px solid #e1e8f0;
+  }
+  .portal-detail-side > .portal-quote { margin-top: 0; padding-top: 0; border-top: 0; }
+  .portal-detail-side > :first-child { margin-top: 0; }
+}
+/* O login continua estreito: formulário curto lê melhor numa coluna. */
+@media (min-width: 1000px) {
+  .portal-login-card { width: min(100%, 34rem) !important; margin-inline: auto; }
+}
