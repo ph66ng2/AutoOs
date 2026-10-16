@@ -14,6 +14,7 @@ import {
 } from "@/components/ui/select";
 import { TabsContent } from "@/components/ui/tabs";
 import { ProfileDeleteDialog } from "@/components/ProfileDeleteDialog";
+import { PROFILE_PRESETS } from "@/lib/profile-presets";
 import { securityPermissionLabel, securityRoleLabel } from "@/lib/security-profile-labels";
 import {
   SENSITIVE_PERMISSION_LABELS,
@@ -235,18 +236,17 @@ export function ConfiguracoesTabSeguranca({
                   <Label>Papel</Label>
                   <Select value={editProfileRole} onValueChange={(value) => {
                     setEditProfileRole(value);
-                    if (value === "ADMIN") {
-                      setEditPermissions(permissionOptions);
-                    } else {
-                      setEditPermissions([]);
-                    }
+                    const preset = PROFILE_PRESETS.find((item) => item.role === value);
+                    setEditPermissions(preset ? [...preset.permissions] : []);
                   }} disabled={!securityAdminUnlocked || securityBusy || !managedProfile?.ativo}>
                     <SelectTrigger>
                       <SelectValue placeholder="Selecione um papel" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="ADMIN">Administrador</SelectItem>
-                      <SelectItem value="CUSTOM">Personalizado</SelectItem>
+                      {!PROFILE_PRESETS.some((preset) => preset.role === editProfileRole) && (
+                        <SelectItem value={editProfileRole}>{securityRoleLabel(editProfileRole)}</SelectItem>
+                      )}
+                      {PROFILE_PRESETS.map((preset) => <SelectItem key={preset.role} value={preset.role}>{preset.label}</SelectItem>)}
                     </SelectContent>
                   </Select>
                 </div>
@@ -262,7 +262,7 @@ export function ConfiguracoesTabSeguranca({
                     <Checkbox
                       checked={editProfileRole === "ADMIN" ? true : editPermissions.includes(permission)}
                       disabled={!securityAdminUnlocked || securityBusy || editProfileRole === "ADMIN" || !managedProfile?.ativo}
-                      onCheckedChange={() => togglePermission(editPermissions, permission, setEditPermissions)}
+                      onCheckedChange={() => { setEditProfileRole("CUSTOM"); togglePermission(editPermissions, permission, setEditPermissions); }}
                     />
                     <span>{SENSITIVE_PERMISSION_LABELS[permission]}</span>
                   </label>
