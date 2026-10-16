@@ -84,6 +84,8 @@ async fn main() -> Result<()> {
     let permissoes = [auth::PERMISSION_CONFIG_WHATSAPP, auth::PERMISSION_MANAGE_STATUS_LINKS, auth::PERMISSION_FINANCIAL_ACTIONS];
     let perfil: i32 = sqlx::query_scalar("INSERT INTO security_profiles(nome,role,permissions,empresa_id,ativo,is_default) VALUES ($1,'ADMIN',$2,$3,true,false) RETURNING id")
         .bind(format!("Fila {sufixo}")).bind(serde_json::to_string(&permissoes)?).bind(empresa).fetch_one(&pool).await?;
+    // Perfis exigem PIN por padrão (0030): o perfil sintético usa um PIN real de fixture.
+    auth::store_profile_pin(perfil, "1357").map_err(|e| anyhow!(e))?;
     auth::set_active_security_profile(perfil, "1357".into(), Some("1357".into())).await.map_err(|e| anyhow!(e))?;
     auth::unlock_sensitive_access("1357".into()).await.map_err(|e| anyhow!(e))?;
 
