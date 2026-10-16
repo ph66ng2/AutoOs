@@ -122,7 +122,7 @@ export function ConfiguracoesTabSeguranca({
 }: ConfiguracoesTabSegurancaProps) {
   return (
     <TabsContent value="seguranca" className="space-y-4" onChange={onClearSecurityMessage}>
-      {securityMessage && <div role={securityMessageVariant === "error" ? "alert" : "status"} className="sticky top-0 z-10" aria-live={securityMessageVariant === "error" ? "assertive" : "polite"}>
+      {securityMessage && <div role={securityMessageVariant === "error" ? "alert" : "status"} aria-live={securityMessageVariant === "error" ? "assertive" : "polite"}>
         <ErrorAlert variant={securityMessageVariant} message={securityMessage} />
       </div>}
       <Card>

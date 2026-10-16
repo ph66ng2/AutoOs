@@ -45,6 +45,8 @@ describe("cadastro guiado de colaboradores", () => {
     await user.click(screen.getByRole("button", { name: "Continuar" }));
     expect(screen.getByRole("alert")).toHaveTextContent("Os PINs não conferem");
     await user.clear(screen.getByLabelText("Confirmar PIN"));
+    expect(screen.queryByText("Os PINs não conferem.")).not.toBeInTheDocument();
+    expect(screen.getByLabelText("Confirmar PIN")).toHaveAttribute("aria-invalid", "false");
     await user.type(screen.getByLabelText("Confirmar PIN"), "1234");
     await user.click(screen.getByRole("button", { name: "Continuar" }));
     expect(

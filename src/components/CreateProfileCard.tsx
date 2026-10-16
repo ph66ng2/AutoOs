@@ -162,7 +162,7 @@ export function CreateProfileCard({ profiles, onCreated }: Props) {
               ))}
             </ol>
             <form
-              onChange={() => setError(null)}
+              onChange={() => { setError(null); setSubmitted(false); }}
               onSubmit={(event) => {
                 event.preventDefault();
                 if (step < 2) continueStep();
