@@ -138,8 +138,8 @@ function AppContent() {
               path="/configuracoes"
               element={
                 <SensitiveRoute
-                  title="Configurações SMTP protegidas"
-                  description="Desbloqueie o acesso sensível para visualizar ou alterar credenciais e envios SMTP."
+                  title="Configurações protegidas"
+                  description="Desbloqueie o acesso administrativo para gerenciar segurança, banco e integrações."
                   permission={SENSITIVE_PERMISSIONS.MANAGE_PROFILES}
                 >
                   <Configuracoes />

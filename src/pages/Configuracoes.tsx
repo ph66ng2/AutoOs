@@ -83,6 +83,7 @@ export default function Configuracoes() {
   const [resetPin, setResetPin] = useState("");
   const [resetPinConfirm, setResetPinConfirm] = useState("");
   const [adminPinVerify, setAdminPinVerify] = useState("");
+  const [resetAdminPin, setResetAdminPin] = useState("");
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [auditSearch, setAuditSearch] = useState("");
   const [auditOutcomeFilter, setAuditOutcomeFilter] = useState("ALL");
@@ -395,6 +396,8 @@ export default function Configuracoes() {
     setEditPermissions(managedProfile.permissions);
     setResetPin("");
     setResetPinConfirm("");
+    setAdminPinVerify("");
+    setResetAdminPin("");
   }, [managedProfile?.id]);
 
   useEffect(() => {
@@ -669,6 +672,7 @@ export default function Configuracoes() {
       }, adminPinVerify);
       setAdminPinVerify("");
       setSecurityMessage("Perfil atualizado com sucesso.");
+      toast.success("Perfil atualizado com sucesso.");
       await atualizarEstadoSeguranca();
     } catch (error: any) {
       setSecurityMessage(error?.message || error?.toString() || "Falha ao atualizar o perfil.");
@@ -697,11 +701,12 @@ export default function Configuracoes() {
     setSecurityBusy(true);
     setSecurityMessage(null);
     try {
-      await SensitiveAccessService.resetProfilePin(managedProfileId, resetPin, adminPinVerify);
+      await SensitiveAccessService.resetProfilePin(managedProfileId, resetPin, resetAdminPin);
       setResetPin("");
       setResetPinConfirm("");
-      setAdminPinVerify("");
+      setResetAdminPin("");
       setSecurityMessage("PIN do perfil selecionado redefinido com sucesso.");
+      toast.success("PIN do perfil selecionado redefinido com sucesso.");
       await atualizarEstadoSeguranca();
     } catch (error: any) {
       setSecurityMessage(error?.message || error?.toString() || "Falha ao redefinir o PIN do perfil.");
@@ -986,6 +991,8 @@ export default function Configuracoes() {
           onDeleteSuccess={handleDeleteSuccess}
           adminPinVerify={adminPinVerify}
           setAdminPinVerify={setAdminPinVerify}
+          resetAdminPin={resetAdminPin}
+          setResetAdminPin={setResetAdminPin}
         />
 
       </Tabs>

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Aplica as migrations 0001-0029 num Postgres local vazio, roda o seed duas
+# Aplica as migrations 0001-0030 num Postgres local vazio, roda o seed duas
 # vezes e confere que saldo, preço, SKU inativo e movimentações sobrevivem.
 # Recusa host remoto. Ignora DATABASE_URL e qualquer credencial de produção.
 # O banco autoos_seed_verify é recriado a cada execução.
@@ -101,14 +101,14 @@ expect_seed_failure() {
 }
 
 mapfile -t migration_files < <(find "$MIGRATIONS" -maxdepth 1 -type f -name '*.sql' | sort)
-if [[ "${#migration_files[@]}" -ne 29 ]]; then
-  echo "Esperadas 29 migrations (0001-0029); encontradas ${#migration_files[@]}." >&2
+if [[ "${#migration_files[@]}" -ne 30 ]]; then
+  echo "Esperadas 30 migrations (0001-0030); encontradas ${#migration_files[@]}." >&2
   exit 1
 fi
 first="$(basename "${migration_files[0]}")"
-last="$(basename "${migration_files[28]}")"
-if [[ "$first" != 0001_* || "$last" != 0029_* ]]; then
-  echo "A sequência precisa ir de 0001 a 0029 (achados: $first ... $last)." >&2
+last="$(basename "${migration_files[29]}")"
+if [[ "$first" != 0001_* || "$last" != 0030_* ]]; then
+  echo "A sequência precisa ir de 0001 a 0030 (achados: $first ... $last)." >&2
   exit 1
 fi
 
@@ -121,7 +121,7 @@ psql_cmd -d postgres -c "SELECT pg_terminate_backend(pid) FROM pg_stat_activity 
 psql_cmd -d postgres -c "DROP DATABASE IF EXISTS ${DB_NAME};" >/dev/null
 psql_cmd -d postgres -c "CREATE DATABASE ${DB_NAME};" >/dev/null
 
-echo "Aplicando migrations 0001-0029"
+echo "Aplicando migrations 0001-0030"
 for file in "${migration_files[@]}"; do
   psql_cmd -d "$DB_NAME" -f "$file" >/dev/null
 done
@@ -357,4 +357,4 @@ psql_cmd_for_empresa 1 -d "$DB_NAME" -f "$CONFIRM"
 expect_seed_failure "encontrados 41" \
   psql_cmd_for_empresa 2 -d "$DB_NAME" -f "$CONFIRM"
 
-echo "SEED_VERIFY_OK migrations=0001-0029 idempotent=1 movements_preserved=1 inactive_preserved=1 company_scoped=1"
+echo "SEED_VERIFY_OK migrations=0001-0030 idempotent=1 movements_preserved=1 inactive_preserved=1 company_scoped=1"

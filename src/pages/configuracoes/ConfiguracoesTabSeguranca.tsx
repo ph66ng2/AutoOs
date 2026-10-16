@@ -68,6 +68,8 @@ export type ConfiguracoesTabSegurancaProps = {
   onDeleteSuccess: () => void | Promise<void>;
   adminPinVerify: string;
   setAdminPinVerify: (value: string) => void;
+  resetAdminPin: string;
+  setResetAdminPin: (value: string) => void;
 };
 
 export function ConfiguracoesTabSeguranca({
@@ -111,9 +113,14 @@ export function ConfiguracoesTabSeguranca({
   onDeleteSuccess,
   adminPinVerify,
   setAdminPinVerify,
+  resetAdminPin,
+  setResetAdminPin,
 }: ConfiguracoesTabSegurancaProps) {
   return (
     <TabsContent value="seguranca" className="space-y-4">
+      {securityMessage && <div role="status" className="sticky top-0 z-10" aria-live="polite">
+        <ErrorAlert variant={securityMessage.includes("com sucesso") ? "success" : "info"} message={securityMessage} />
+      </div>}
       <Card>
         <CardHeader>
           <CardTitle>Minhas ações</CardTitle>
@@ -333,8 +340,8 @@ export function ConfiguracoesTabSeguranca({
                   id="admin-pin-verify"
                   type="password"
                   inputMode="numeric"
-                  value={adminPinVerify}
-                  onChange={(event) => setAdminPinVerify(event.target.value.replace(/\D/g, "").slice(0, 8))}
+                  value={resetAdminPin}
+                  onChange={(event) => setResetAdminPin(event.target.value.replace(/\D/g, "").slice(0, 8))}
                   disabled={!securityAdminUnlocked || securityBusy || !managedProfile?.ativo}
                   placeholder="Digite seu PIN para autorizar"
                 />
@@ -363,10 +370,6 @@ export function ConfiguracoesTabSeguranca({
             </div>
           </CardContent>
         </Card>
-      )}
-
-      {securityMessage && (
-        <ErrorAlert variant="info" message={securityMessage} />
       )}
 
       <ProfileDeleteDialog

@@ -51,6 +51,24 @@ describe("useSensitiveAccess — integração com novos recursos de auth", () =>
     hookRef = h;
   }
 
+  it("libera os controles quando o PIN local desaparece entre abrir e confirmar", async () => {
+    const user = userEvent.setup();
+    const profile = { id: 1, nome: "Admin", role: "ADMIN", permissions: [], pin_required: true, pin_configured: true, is_default: true, ativo: true };
+    const initial = { ...EMPTY_STATUS, pin_configured: true, active_profile_id: 1, active_profile_name: "Admin", profiles: [profile] };
+    let reads = 0;
+    mockInvoke.mockImplementation((cmd: string) => {
+      if (cmd === "get_sensitive_access_status") return Promise.resolve(++reads === 1 ? initial : { ...initial, pin_configured: false, profiles: [{ ...profile, pin_configured: false }] });
+      return Promise.resolve(null);
+    });
+    render(<TestHarness><HookInspector capture={captureHook} /></TestHarness>);
+    await user.type(await screen.findByLabelText("PIN do perfil"), "1234");
+    await user.click(screen.getByRole("button", { name: "Entrar com este perfil" }));
+    await screen.findByText("Este perfil exige um PIN local. Peça a um administrador para configurá-lo em Equipe e acessos.");
+    expect(screen.getByRole("button", { name: "Cancelar" })).toBeEnabled();
+    expect(screen.queryByRole("button", { name: "Validando..." })).not.toBeInTheDocument();
+    expect(mockInvoke.mock.calls.some(([cmd]) => cmd === "unlock_session_without_pin")).toBe(false);
+  });
+
   it("mantém os perfis em uma falha temporária e limpa o aviso após recuperar", async () => {
     const intervalSpy = vi.spyOn(window, "setInterval");
     const profile = { id: 1, nome: "Admin", role: "ADMIN", permissions: [], pin_configured: true, is_default: true, ativo: true };

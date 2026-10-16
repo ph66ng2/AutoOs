@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import { toast } from "sonner";
 import { KeyRound, Pencil, Search, ShieldCheck, Users } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -126,7 +127,12 @@ export function TeamAccessManager({
       if (action === "reactivate")
         await SensitiveAccessService.reactivateProfile(profile.id);
       close();
-      setNotice("Alteração concluída com sucesso.");
+      const successMessage = action === "edit" ? `Acesso de ${name.trim()} atualizado com sucesso.`
+        : action === "pin" ? `PIN de ${profile.nome} configurado neste computador com sucesso.`
+        : action === "deactivate" ? `Acesso de ${profile.nome} desativado com sucesso.`
+        : `Acesso de ${profile.nome} reativado com sucesso.`;
+      setNotice(successMessage);
+      toast.success(successMessage);
       // If the manager changed their own access, refresh auth before making another privileged call.
       if (profile.id === activeProfileId) await onChanged();
       else await changed();
@@ -193,7 +199,7 @@ export function TeamAccessManager({
             </label>
           </div>
           {notice && (
-            <p role="status" className="text-sm text-emerald-700">
+            <p role="status" className="rounded-xl border border-emerald-300 bg-emerald-50 p-4 text-sm text-emerald-900 dark:border-emerald-800 dark:bg-emerald-950 dark:text-emerald-200">
               {notice}
             </p>
           )}

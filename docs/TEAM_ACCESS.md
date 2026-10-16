@@ -50,3 +50,15 @@ O script de interface inicia seu próprio Vite com IPC simulado, cadastra, revis
 ![Permissões](previews/cadastro-permissoes.png)
 
 ![Revisão](previews/cadastro-revisao.png)
+
+## Reset de PIN por outro administrador (F-5)
+
+A decisão é manter o bloqueio de perfis protegidos quando o PIN não existe no cofre deste computador. Ter acesso em outro PC não provisiona este automaticamente.
+
+1. No computador em que o colaborador está bloqueado, selecione **outro administrador com PIN já configurado neste PC** e autentique-se com o PIN dele.
+2. Abra **Equipe e acessos**, localize o colaborador e clique em **PIN**.
+3. Digite um novo PIN de 4 a 8 dígitos e repita em **Confirmar novo PIN**.
+4. Em **Seu PIN de administrador**, informe o PIN do administrador que está autenticado. Confirme a alteração.
+5. Aguarde a confirmação de sucesso e o indicador **PIN configurado neste PC**. Use **Trocar de perfil** e entre como o colaborador com o novo PIN.
+
+O reset preserva as permissões, é registrado na auditoria e altera apenas o segredo local deste PC. Se não houver nenhum administrador com PIN local, use **Esqueci minha senha** na entrada e a recuperação existente com credenciais PostgreSQL autorizadas; não remova `pin_required` nem habilite entrada sem PIN como atalho. O primeiro cadastro de uma instalação vazia continua seguindo a exceção de bootstrap já documentada acima.

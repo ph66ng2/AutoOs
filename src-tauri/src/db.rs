@@ -301,6 +301,7 @@ const REQUIRED_RUNTIME_COLUMNS: &[(&str, &str)] = &[
     ("verificacoes", "adjusted_at"),
     ("equipamento_imagens", "storage_path"),
     ("security_profiles", "permissions"),
+    ("security_profiles", "pin_required"),
 ];
 
 const REQUIRED_RUNTIME_COLUMN_TYPES: &[(&str, &str, &str)] = &[
@@ -311,6 +312,7 @@ const REQUIRED_RUNTIME_COLUMN_TYPES: &[(&str, &str, &str)] = &[
     ("equipamentos", "responsavel_contato_id", "int4"),
     ("security_profiles", "id", "int4"),
     ("security_profiles", "permissions", "text"),
+    ("security_profiles", "pin_required", "bool"),
     ("security_audit_log", "profile_id", "int4"),
     ("verificacoes", "adjusted_by_profile_id", "int4"),
 ];

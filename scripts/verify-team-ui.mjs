@@ -5,6 +5,7 @@ import { createServer } from "vite";
 
 process.env.VITE_E2E_MOCK = "1";
 process.env.VITE_E2E_TEAM = "1";
+const previewDir = process.env.AUTOOS_PREVIEW_DIR ?? "docs/previews";
 const server = await createServer({ server: { host: "127.0.0.1", port: 1420 } });
 await server.listen();
 const browser = await chromium.launch({
@@ -28,19 +29,19 @@ try {
   await expect(entry).not.toBeVisible();
   await expect(page.getByText("Ivan Santos", { exact: true }).first()).toBeVisible();
   await expect(page.locator('[aria-label^="Carregando aplicativo"]')).toHaveCount(0, { timeout: 30000 });
-  await mkdir("docs/previews", { recursive: true });
-  await page.screenshot({ path: "docs/previews/equipe-acessos.png", fullPage: true });
+  await mkdir(previewDir, { recursive: true });
+  await page.screenshot({ path: `${previewDir}/equipe-acessos.png`, fullPage: true });
 
   await page.getByLabel("Nome do colaborador", { exact: true }).fill("Lucas Almeida");
   await page.getByRole("radio", { name: /^Financeiro/ }).check();
   await page.getByRole("button", { name: "Continuar", exact: true }).click();
   await expect(page.getByRole("checkbox", { name: "Orçamentos e valores" })).toBeChecked();
   await expect(page.getByRole("checkbox", { name: "Gerenciar equipe" })).not.toBeChecked();
-  await page.locator("#novo-colaborador").screenshot({ path: "docs/previews/cadastro-permissoes.png" });
+  await page.locator("#novo-colaborador").screenshot({ path: `${previewDir}/cadastro-permissoes.png` });
   await page.getByLabel("PIN inicial", { exact: true }).fill("2468");
   await page.getByLabel("Confirmar PIN", { exact: true }).fill("2468");
   await page.getByRole("button", { name: "Continuar", exact: true }).click();
-  await page.locator("#novo-colaborador").screenshot({ path: "docs/previews/cadastro-revisao.png" });
+  await page.locator("#novo-colaborador").screenshot({ path: `${previewDir}/cadastro-revisao.png` });
   await page.getByRole("button", { name: "Criar perfil", exact: true }).click();
   await expect(page.getByRole("heading", { name: "Perfil Lucas Almeida criado", exact: true })).toBeVisible();
   await expect(page.getByText("Lucas Almeida", { exact: true }).first()).toBeVisible();
@@ -53,6 +54,7 @@ try {
   await page.getByLabel("Seu PIN de administrador", { exact: true }).fill("1234");
   await page.getByRole("button", { name: "Confirmar alteração" }).click();
   await expect(page.getByRole("list", { name: "Colaboradores" }).getByText("Ivan Silva", { exact: true })).toBeVisible();
+  await expect(page.getByRole("status").filter({ hasText: "Acesso de Ivan Silva atualizado com sucesso." })).toBeVisible();
   const ana = page.getByRole("listitem").filter({ hasText: "Ana Costa" });
   await ana.getByRole("button", { name: "PIN", exact: true }).click();
   await page.getByLabel("Novo PIN", { exact: true }).fill("4321");
@@ -60,6 +62,7 @@ try {
   await page.getByLabel("Seu PIN de administrador", { exact: true }).fill("1234");
   await page.getByRole("button", { name: "Confirmar alteração" }).click();
   await expect(ana.getByText("PIN configurado neste PC")).toBeVisible();
+  await expect(page.getByRole("status").filter({ hasText: "PIN de Ana Costa configurado neste computador com sucesso." })).toBeVisible();
   await ana.getByRole("button", { name: "Desativar", exact: true }).click();
   await page.getByRole("button", { name: "Confirmar alteração" }).click();
   await expect(page.getByText("Ana Costa", { exact: true })).not.toBeVisible();
@@ -70,6 +73,15 @@ try {
   await page.setViewportSize({ width: 390, height: 844 });
   await page.getByRole("button", { name: "Cadastrar outra pessoa" }).click();
   await expect(page.locator("#novo-colaborador")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Abrir menu", exact: true })).toBeVisible();
+  await expect(page.locator("main")).toHaveJSProperty("clientWidth", 390);
+  await expect(page.getByRole("navigation").getByRole("link", { name: "Equipe e acessos", exact: true })).not.toBeVisible();
+  await page.getByRole("button", { name: "Abrir menu", exact: true }).click();
+  await expect(page.getByRole("navigation").getByRole("link", { name: "Equipe e acessos", exact: true })).toBeVisible();
+  await page.getByRole("navigation").getByRole("link", { name: "Equipe e acessos", exact: true }).click();
+  await expect(page.getByRole("button", { name: "Abrir menu", exact: true })).toHaveAttribute("aria-expanded", "false");
+  await expect(page.getByRole("navigation").getByRole("link", { name: "Equipe e acessos", exact: true })).not.toBeVisible();
+  await page.screenshot({ path: `${previewDir}/equipe-mobile.png` });
   const overflow = await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth);
   expect(overflow).toBe(false);
   expect(errors).toEqual([]);
