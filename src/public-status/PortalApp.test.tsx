@@ -237,22 +237,39 @@ describe("detalhe e orçamento", () => {
     expect(screen.getByText(/Versão 3/)).toBeInTheDocument();
   });
 
-  it("no prazo de correção, quem respondeu pode mudar de ideia; outro contato não", async () => {
+  it("no prazo de correção, quem respondeu só vê um Desfazer discreto; outro contato não", async () => {
     const resposta = {
       id: 77, decisao: "APROVAR" as const, origem: "PORTAL_CLIENTE" as const, registradaEm: new Date().toISOString(), janelaAte: FUTURO,
       contato: "Ana Souza", propria: true, estado: "EM_CORRECAO" as const, efetivadaEm: null, protocolo: "R-77",
     };
     api.detalhe.mockResolvedValue(detalhe({ orcamento: orcamento({ estado: "RESPONDIDA", resposta }) }));
+    api.responder.mockResolvedValue({
+      comprovante: { id: 78, protocolo: "R-78", decisao: "DESFEITA", registradaEm: new Date().toISOString(), janelaAte: FUTURO,
+        versao: 2, valorTotal: 350, equipamento: "Impressora Zebra ZT230", serie: "SER-123", contato: "Ana Souza", repetida: false },
+    });
     const { unmount } = render(<PortalApp />);
-    expect(await screen.findByRole("button", { name: "Mudei de ideia: recusar" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Mudei de ideia: cancelar resposta" })).toBeInTheDocument();
+    const desfazer = await screen.findByRole("button", { name: /Errou\? Desfazer resposta/ });
+    expect(screen.queryByRole("button", { name: /Mudei de ideia/ })).not.toBeInTheDocument();
     expect(screen.getByText("Resposta registrada: aceite")).toBeInTheDocument();
+    fireEvent.click(desfazer);
+    fireEvent.click(screen.getByRole("button", { name: "Cancelar resposta" }));
+    await waitFor(() => expect(api.responder).toHaveBeenCalledWith(TOKEN, 28, 9, "DESFEITA", 77));
     unmount();
 
     api.detalhe.mockResolvedValue(detalhe({ orcamento: orcamento({ estado: "RESPONDIDA", resposta: { ...resposta, propria: false, contato: "Bruno" } }) }));
     render(<PortalApp />);
     expect(await screen.findByText(/Por Bruno/)).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: /Mudei de ideia/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Desfazer/ })).not.toBeInTheDocument();
+  });
+
+  it("barra de decisão (celular) mostra o total e abre a mesma confirmação", async () => {
+    api.detalhe.mockResolvedValue(detalhe());
+    render(<PortalApp />);
+    const barra = await screen.findByRole("region", { name: "Responder ao orçamento" });
+    expect(within(barra).getByText(/R\$\s*350,00/)).toBeInTheDocument();
+    fireEvent.click(within(barra).getByRole("button", { name: "Recusar" }));
+    expect(screen.getByRole("heading", { name: "Confirmar RECUSA do orçamento inteiro?" })).toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: "Responder ao orçamento" })).not.toBeInTheDocument();
   });
 
   it("falha de efetivação nunca aparece como aprovação", async () => {

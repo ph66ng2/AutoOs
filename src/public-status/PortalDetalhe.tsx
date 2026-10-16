@@ -74,6 +74,11 @@ export default function PortalDetalhe({ session, equipamentoId, onExpirou }: Pro
     <>
       <nav className="portal-back">
         <a href="#/atendimentos" onClick={(event) => { event.preventDefault(); navigate("#/atendimentos"); }}>← Todos os atendimentos</a>
+        {data && (
+          <button className="link-button" type="button" onClick={() => void carregar()} disabled={loading}>
+            {loading ? "Atualizando…" : "Atualizar"}
+          </button>
+        )}
       </nav>
       <section className="status-card" aria-live="polite">
         <p className="eyebrow">Acompanhamento do atendimento</p>
@@ -103,6 +108,7 @@ export default function PortalDetalhe({ session, equipamentoId, onExpirou }: Pro
                   titulo={data.titulo}
                   orientacao={data.orientacao}
                   statusAlteradoEm={data.statusAlteradoEm}
+                  compacto
                   identificacao={(data.serie || data.patrimonio || data.entradaEm) && (
                     <p className="portal-identification">
                       {data.serie && <>Série {data.serie}</>}
@@ -144,9 +150,6 @@ export default function PortalDetalhe({ session, equipamentoId, onExpirou }: Pro
               </div>
             </div>
 
-            <button className="refresh-button" type="button" onClick={() => void carregar()}>
-              Atualizar acompanhamento
-            </button>
             {checkedAt && <p className="checked-at">Consulta realizada em {formatDate(checkedAt)}.</p>}
           </>
         )}

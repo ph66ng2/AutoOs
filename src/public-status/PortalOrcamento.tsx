@@ -63,6 +63,7 @@ export default function PortalOrcamento({ session, detalhe, orcamento, recarrega
   const porSenha = detalhe.metodo === "SENHA" && !usarCodigo;
   const [agora, setAgora] = useState(() => Date.now());
   const versaoAnterior = useRef(orcamento.versaoId);
+  const caixaEtapa = useRef<HTMLDivElement>(null);
 
   const resposta = orcamento.resposta;
   const respostaAtiva = resposta && resposta.decisao !== "DESFEITA" ? resposta : null;
@@ -80,6 +81,13 @@ export default function PortalOrcamento({ session, detalhe, orcamento, recarrega
       setAviso(`A proposta foi atualizada para a versão ${orcamento.versao}. Releia antes de responder.`);
     }
   }, [orcamento.versaoId, orcamento.versao]);
+
+  // A barra fixa do celular inicia a confirmação longe dela: leva a caixa para a tela.
+  useEffect(() => {
+    if (etapa && etapa.tipo !== "negociar" && etapa.tipo !== "corrigir") {
+      caixaEtapa.current?.scrollIntoView?.({ behavior: "smooth", block: "center" });
+    }
+  }, [etapa]);
 
   // Contagem do prazo de correção; ao terminar, a página busca o estado novo.
   useEffect(() => {
@@ -292,7 +300,7 @@ export default function PortalOrcamento({ session, detalhe, orcamento, recarrega
           {respostaAtiva.estado === "EM_CORRECAO" && (
             <p>
               {respostaAtiva.propria
-                ? `Até ${shortTime(respostaAtiva.janelaAte)} você pode mudar de ideia. Depois disso, a resposta é efetivada.`
+                ? `A resposta é efetivada às ${shortTime(respostaAtiva.janelaAte)}. Se você errou, ainda dá para desfazer até lá.`
                 : `O prazo de correção vai até ${shortTime(respostaAtiva.janelaAte)}. Só quem respondeu pode mudar; para discutir, use “Quero negociar” ou fale com a equipe.`}
             </p>
           )}
@@ -320,7 +328,7 @@ export default function PortalOrcamento({ session, detalhe, orcamento, recarrega
           </p>
           <p>Protocolo {comprovante.protocolo} · {dateTime(comprovante.registradaEm)} · {comprovante.contato}</p>
           {comprovante.decisao !== "DESFEITA" && (
-            <p>Você pode mudar de ideia até {shortTime(comprovante.janelaAte)}. A equipe já foi avisada; enviar a mensagem abaixo é opcional.</p>
+            <p>A equipe já foi avisada; enviar a mensagem abaixo é opcional. Efetivação às {shortTime(comprovante.janelaAte)}.</p>
           )}
           {textoComprovante && <MensagemPronta whatsapp={whatsapp} texto={textoComprovante} />}
           <button className="link-button" type="button" onClick={() => setComprovante(null)}>Fechar comprovante</button>
@@ -328,7 +336,7 @@ export default function PortalOrcamento({ session, detalhe, orcamento, recarrega
       )}
 
       {etapa?.tipo === "verificar" && (
-        <div className="confirm-box">
+        <div className="confirm-box" ref={caixaEtapa}>
           <h2>Confirme que é você</h2>
           {porSenha ? (
             <form className="portal-form" onSubmit={(event) => void confirmarSenha(event)} noValidate>
@@ -368,7 +376,7 @@ export default function PortalOrcamento({ session, detalhe, orcamento, recarrega
       )}
 
       {etapa?.tipo === "confirmar" && (
-        <div className="confirm-box" role="alertdialog" aria-labelledby="portal-confirm-title">
+        <div className="confirm-box" ref={caixaEtapa} role="alertdialog" aria-labelledby="portal-confirm-title">
           <h2 id="portal-confirm-title">
             {etapa.decisao === "APROVAR" ? "Confirmar ACEITE do orçamento inteiro?" : etapa.decisao === "RECUSAR" ? "Confirmar RECUSA do orçamento inteiro?" : "Cancelar sua resposta?"}
           </h2>
@@ -378,7 +386,7 @@ export default function PortalOrcamento({ session, detalhe, orcamento, recarrega
             <p className="answer-hint">Você aceita todos os itens acima. Para discutir preço ou itens, use “Quero negociar”.</p>
           )}
           {etapa.decisao !== "DESFEITA" && (
-            <p className="answer-hint">Você terá {orcamento.janelaMinutos} minutos para mudar de ideia. Depois disso a resposta é efetivada.</p>
+            <p className="answer-hint">Confira antes de confirmar. Se errar, há {orcamento.janelaMinutos} minutos para desfazer; depois a resposta é efetivada.</p>
           )}
           {etapa.decisao === "DESFEITA" && <p className="answer-hint">O orçamento volta a aguardar resposta.</p>}
           {erro && <p className="portal-error" role="alert">{erro}</p>}
@@ -425,18 +433,16 @@ export default function PortalOrcamento({ session, detalhe, orcamento, recarrega
       {etapa === null && (
         <div className="action-stack">
           {podeResponder && (
-            <>
+            <div className="portal-inline-decision">
               <button className="primary-button" type="button" onClick={() => iniciar("APROVAR")}>Aceitar orçamento</button>
               <button className="secondary-button" type="button" onClick={() => iniciar("RECUSAR")}>Recusar orçamento</button>
-            </>
+            </div>
           )}
+          {/* Correção de clique errado, discreta: desfaz e o orçamento volta a aguardar resposta. */}
           {podeMudar && respostaAtiva && (
-            <>
-              <button className="secondary-button" type="button" onClick={() => iniciar(respostaAtiva.decisao === "APROVAR" ? "RECUSAR" : "APROVAR")}>
-                Mudei de ideia: {respostaAtiva.decisao === "APROVAR" ? "recusar" : "aceitar"}
-              </button>
-              <button className="secondary-button" type="button" onClick={() => iniciar("DESFEITA")}>Mudei de ideia: cancelar resposta</button>
-            </>
+            <button className="link-button portal-undo" type="button" onClick={() => iniciar("DESFEITA")}>
+              Errou? Desfazer resposta (até {shortTime(respostaAtiva.janelaAte)})
+            </button>
           )}
           {detalhe.podeDecidir && orcamento.estado === "ABERTA" && !respostaAtiva && (
             <button className="link-button" type="button" onClick={() => { setErro(null); setEtapa({ tipo: "negociar" }); }}>Quero negociar</button>
@@ -444,6 +450,18 @@ export default function PortalOrcamento({ session, detalhe, orcamento, recarrega
           {detalhe.podeDecidir && respostaAtiva?.estado === "EFETIVADA" && (
             <button className="secondary-button" type="button" onClick={() => { setErro(null); setEtapa({ tipo: "corrigir" }); }}>Solicitar correção</button>
           )}
+        </div>
+      )}
+
+      {/* Celular: decisão sempre ao alcance do polegar, sem rolar até o fim. */}
+      {etapa === null && podeResponder && (
+        <div className="portal-decision-bar" role="region" aria-label="Responder ao orçamento">
+          <div className="portal-decision-total">
+            <span>Total</span>
+            <strong>{money(orcamento.valorTotal)}</strong>
+          </div>
+          <button className="secondary-button" type="button" onClick={() => iniciar("RECUSAR")}>Recusar</button>
+          <button className="primary-button" type="button" onClick={() => iniciar("APROVAR")}>Aceitar</button>
         </div>
       )}
     </section>

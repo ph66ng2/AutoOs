@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 
 /**
  * Identidade visual do acompanhamento: etapa atual colorida com pulso, orientação, linha do
@@ -47,10 +47,13 @@ type StatusViewProps = {
   statusAlteradoEm: string | null;
   /** Linha extra abaixo do nome do equipamento (série, patrimônio). */
   identificacao?: ReactNode;
+  /** No celular, troca a lista de etapas por uma barra de progresso que expande (portal). */
+  compacto?: boolean;
 };
 
-export function StatusView({ equipamento, titulo, orientacao, statusAlteradoEm, identificacao }: StatusViewProps) {
+export function StatusView({ equipamento, titulo, orientacao, statusAlteradoEm, identificacao, compacto = false }: StatusViewProps) {
   const stage = TITLE_STAGE[titulo];
+  const [etapasAbertas, setEtapasAbertas] = useState(false);
   return (
     <>
       <p className="equipment-name" title={equipamento}>{equipamento}</p>
@@ -62,7 +65,25 @@ export function StatusView({ equipamento, titulo, orientacao, statusAlteradoEm, 
       <p className="orientation">{orientacao}</p>
 
       {stage && (
-        <nav className="timeline" aria-label="Etapas do atendimento">
+        <nav className={`timeline${compacto ? " is-compact" : ""}${etapasAbertas ? " is-open" : ""}`} aria-label="Etapas do atendimento">
+          {compacto && (
+            <div className={`timeline-compact tone-${stage.tone}`}>
+              <div className="timeline-compact-bar" aria-hidden="true">
+                {STEPS.map((label, index) => (
+                  <span key={label} className={index < stage.index ? "is-complete" : index === stage.index ? "is-current" : ""} />
+                ))}
+              </div>
+              <p className="timeline-compact-text">
+                <span>
+                  {stage.deviation ? stage.deviation : `Etapa ${stage.index + 1} de ${STEPS.length}`}
+                  {statusAlteradoEm && <> · desde {new Intl.DateTimeFormat("pt-BR", { dateStyle: "short", timeStyle: "short" }).format(new Date(statusAlteradoEm))}</>}
+                </span>
+                <button type="button" className="link-button" aria-expanded={etapasAbertas} onClick={() => setEtapasAbertas((v) => !v)}>
+                  {etapasAbertas ? "Ocultar etapas" : "Ver etapas"}
+                </button>
+              </p>
+            </div>
+          )}
           <p className="timeline-heading">Etapas do atendimento</p>
           <ol>
             {STEPS.map((label, index) => {
@@ -86,7 +107,7 @@ export function StatusView({ equipamento, titulo, orientacao, statusAlteradoEm, 
         </nav>
       )}
 
-      <div className="date-panel">
+      <div className={`date-panel${compacto ? " is-compactable" : ""}`}>
         <span className="date-label">Etapa registrada em</span>
         {statusAlteradoEm
           ? <time dateTime={statusAlteradoEm}>{formatDate(statusAlteradoEm)}</time>

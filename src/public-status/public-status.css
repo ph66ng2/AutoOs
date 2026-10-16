@@ -340,3 +340,65 @@ h1 {
 @media (min-width: 1000px) {
   .portal-login-card { width: min(100%, 34rem) !important; margin-inline: auto; }
 }
+
+/* ─── Portal no celular: decisão perto do topo, sem rolagem longa ─── */
+.portal-back { display: flex; align-items: center; justify-content: space-between; gap: 1rem; }
+.timeline-compact { display: none; }
+.portal-decision-bar { display: none; }
+.portal-inline-decision { display: grid; gap: 0.75rem; }
+.portal-undo { justify-self: center; font-size: 0.85rem; color: #526b89; }
+
+@media (max-width: 640px) {
+  .portal-shell { padding-top: 0.75rem; }
+  .portal-shell .status-brand { margin-bottom: 0.5rem; }
+  .portal-shell .status-brand img { height: 3.25rem; }
+  .portal-shell .portal-userbar { margin: 0 0 0.35rem; font-size: 0.82rem; }
+  .portal-shell .portal-back { margin-bottom: 0.5rem; font-size: 0.9rem; }
+  .portal-shell .status-card { padding: 1.15rem 1.1rem 1.35rem; }
+  .portal-shell .eyebrow { display: none; }
+  .portal-shell .equipment-name { margin-bottom: 0.2rem; font-size: 0.9rem; }
+  .portal-shell .portal-identification { margin: 0 0 0.6rem; font-size: 0.78rem; }
+  .portal-shell .current-status h1 { font-size: 1.35rem; }
+  .portal-shell .status-pulse { margin-top: 0.55rem; }
+  .portal-shell .orientation { margin-top: 0.5rem; font-size: 0.92rem; line-height: 1.5; }
+
+  /* Etapas: barra de progresso; a lista completa abre sob demanda. */
+  .timeline.is-compact { margin-top: 0.9rem; padding-top: 0; border-top: 0; }
+  .timeline.is-compact .timeline-compact { display: block; }
+  .timeline.is-compact:not(.is-open) .timeline-heading,
+  .timeline.is-compact:not(.is-open) ol,
+  .timeline.is-compact:not(.is-open) .timeline-note { display: none; }
+  .timeline.is-compact.is-open .timeline-heading { margin-top: 0.9rem; }
+  .timeline-compact-bar { display: grid; grid-template-columns: repeat(6, 1fr); gap: 4px; }
+  .timeline-compact-bar span { height: 6px; border-radius: 999px; background: #dce5ed; }
+  .timeline-compact-bar span.is-complete { background: #318768; }
+  .timeline-compact-bar span.is-current { background: var(--stage-color); }
+  .timeline-compact-text { display: flex; justify-content: space-between; align-items: center; gap: 0.5rem; margin: 0.4rem 0 0; color: #526b89; font-size: 0.8rem; }
+  .timeline-compact-text .link-button { padding: 0; font-size: 0.8rem; }
+  .date-panel.is-compactable { display: none; }
+
+  .portal-quote { margin-top: 1.1rem; padding-top: 1rem; }
+  .portal-quote .quote-list { margin-top: 0.75rem; gap: 0.5rem; }
+  .portal-quote .quote-list li { padding-bottom: 0.5rem; }
+  .portal-quote .quote-line { font-size: 0.92rem; }
+  .portal-quote .quote-total { margin-top: 0.6rem; }
+  .portal-inline-decision { display: none; }
+  .portal-shell .contact-card { margin-top: 1rem; padding: 0.85rem 1rem; }
+  .portal-shell .contact-card h2 { font-size: 1rem; }
+  .portal-shell .status-footer { padding-top: 1rem; font-size: 0.72rem; }
+
+  /* Barra fixa: total + Recusar/Aceitar. */
+  .portal-decision-bar {
+    position: fixed; left: 0; right: 0; bottom: 0; z-index: 20;
+    display: grid; grid-template-columns: 1fr auto auto; align-items: center; gap: 0.5rem;
+    padding: 0.7rem 1rem calc(0.7rem + env(safe-area-inset-bottom));
+    background: rgb(255 255 255 / 96%); border-top: 1px solid #dce5f0;
+    box-shadow: 0 -0.5rem 1.5rem rgb(27 58 94 / 10%);
+    backdrop-filter: blur(6px);
+  }
+  .portal-decision-bar .primary-button, .portal-decision-bar .secondary-button { min-height: 2.75rem; padding: 0.55rem 1rem; }
+  .portal-decision-total { display: grid; line-height: 1.15; }
+  .portal-decision-total span { color: #66788c; font-size: 0.72rem; }
+  .portal-decision-total strong { color: #102e50; font-size: 1.05rem; }
+  .portal-shell:has(.portal-decision-bar) { padding-bottom: 5.5rem; }
+}
