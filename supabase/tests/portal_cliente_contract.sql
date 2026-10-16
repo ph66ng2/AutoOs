@@ -355,12 +355,47 @@ SELECT pg_temp.ok((portal_entrar_senha('99888777000166', 'errada-B1', repeat('8'
 SELECT pg_temp.ok((portal_entrar_senha('11222333000181', 'Nova-Senha-77', repeat('9', 64))->>'resultado') = 'OK', 'Ana entra de novo');
 SELECT pg_temp.ok(jsonb_array_length(portal_listar_atendimentos(repeat('9', 64))->'atendimentos') > 0,
     'empresa B desligada não afeta a empresa A');
+DO $$
+DECLARE e INTEGER; v BIGINT;
+BEGIN
+    INSERT INTO equipamentos (serial_number, marca, modelo, tipo, data_entrada, defeito_relatado, empresa_id, cliente_id, status, valor_orcamento)
+        VALUES ('SER-888', 'Zebra', 'ZD220', 'Impressora', '2026-10-05', 'Falha', pg_temp.g('ea')::INTEGER, pg_temp.g('ca')::INTEGER, 'AGUARDANDO_APROVACAO', 50)
+        RETURNING id INTO e;
+    INSERT INTO orcamento_versoes (empresa_id, equipamento_id, versao, snapshot, valor_total)
+        VALUES (pg_temp.g('ea')::INTEGER, e, 1, '{"servicos":[],"pecas":[]}', 50) RETURNING id INTO v;
+    INSERT INTO t VALUES ('e8', e), ('v_e8', v);
+END $$;
+CREATE FUNCTION pg_temp.aguarda(p_sessao TEXT, p_e INTEGER) RETURNS BOOLEAN LANGUAGE sql AS $$
+    SELECT (x->>'aguardaResposta')::BOOLEAN FROM jsonb_array_elements(portal_listar_atendimentos(p_sessao)->'atendimentos') x
+    WHERE (x->>'id')::INTEGER = p_e
+$$;
+SELECT pg_temp.ok(pg_temp.aguarda(repeat('9', 64), pg_temp.g('e8')::INTEGER), 'versão aberta aguarda resposta');
 UPDATE portal_config_empresa SET respostas_enabled = FALSE WHERE empresa_id = pg_temp.g('ea')::INTEGER;
+SELECT pg_temp.ok(NOT pg_temp.aguarda(repeat('9', 64), pg_temp.g('e8')::INTEGER), 'respostas desligadas: lista não pede resposta');
+SELECT pg_temp.espera_erro(format('SELECT portal_registrar_solicitacao(%L, %s, %s, ''NEGOCIAR'', '''')', repeat('9', 64), pg_temp.g('e8'), pg_temp.g('v_e8')),
+    'ACEITE_PAUSADO');
 SELECT pg_temp.ok((portal_detalhe_atendimento(repeat('9', 64), pg_temp.g('e1')::INTEGER)->'orcamento'->>'aceiteOnline') = 'false',
     'respostas desligadas na empresa A');
 UPDATE portal_config_empresa SET portal_enabled = FALSE, respostas_enabled = TRUE WHERE empresa_id = pg_temp.g('ea')::INTEGER;
 SELECT pg_temp.ok(NOT autoos_portal_respostas_ligadas(pg_temp.g('ea')::INTEGER), 'respostas exigem o portal ligado');
 SELECT pg_temp.espera_erro(format('SELECT portal_listar_atendimentos(%L)', repeat('9', 64)), 'PORTAL_PAUSADO');
+UPDATE portal_config_empresa SET portal_enabled = TRUE WHERE empresa_id = pg_temp.g('ea')::INTEGER;
+UPDATE orcamento_versoes SET encerrada_em = now(), encerrada_motivo = 'ORCAMENTO_ALTERADO' WHERE id = pg_temp.g('v_e8')::BIGINT;
+SELECT pg_temp.ok(NOT pg_temp.aguarda(repeat('9', 64), pg_temp.g('e8')::INTEGER), 'versão encerrada: lista não pede resposta');
+
+-- Passar a decidir apaga a senha antiga (criada sem a permissão financeira).
+DO $$
+DECLARE c INTEGER;
+BEGIN
+    INSERT INTO cliente_contatos (empresa_id, cliente_id, nome, portal_acesso)
+        VALUES (pg_temp.g('ea')::INTEGER, pg_temp.g('ca')::INTEGER, 'Elis Acompanha', 'ACOMPANHAR') RETURNING id INTO c;
+    PERFORM portal_definir_senha_contato(pg_temp.g('ea')::INTEGER, c, 'Elis-Senha-5', NULL);
+    UPDATE cliente_contatos SET portal_acesso = 'DECIDIR' WHERE id = c;
+    PERFORM pg_temp.ok((SELECT portal_senha_hash IS NULL FROM cliente_contatos WHERE id = c), 'promoção a DECIDIR apaga a senha anterior');
+END $$;
+SELECT pg_temp.ok((portal_entrar_senha('11222333000181', 'Elis-Senha-5', repeat('a', 64))->>'resultado') = 'INVALIDO',
+    'senha anterior à promoção não entra');
+
 DELETE FROM portal_config_empresa WHERE empresa_id = pg_temp.g('ea')::INTEGER;
 SELECT pg_temp.ok(NOT autoos_portal_ligado(pg_temp.g('ea')::INTEGER), 'empresa sem configuração: portal desligado');
 

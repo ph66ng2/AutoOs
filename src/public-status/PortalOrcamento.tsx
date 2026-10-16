@@ -86,12 +86,14 @@ export default function PortalOrcamento({ session, detalhe, orcamento, recarrega
     }
   }, [etapa]);
 
-  // Contagem do prazo de correção; ao terminar, a página busca o estado novo.
+  // Contagem do prazo de correção; ao terminar, a página busca o estado novo. O relógio segue
+  // enquanto o servidor ainda disser EM_CORRECAO (relógio do cliente adiantado): recarrega a cada volta.
+  const aguardandoServidor = respostaAtiva?.estado === "EM_CORRECAO";
   useEffect(() => {
-    if (!emCorrecao) return;
+    if (!aguardandoServidor) return;
     const timer = window.setInterval(() => setAgora(Date.now()), 15_000);
     return () => window.clearInterval(timer);
-  }, [emCorrecao]);
+  }, [aguardandoServidor]);
   useEffect(() => {
     if (respostaAtiva?.estado === "EM_CORRECAO" && janelaAte <= agora) void recarregar();
   }, [agora, janelaAte, respostaAtiva?.estado, recarregar]);
@@ -388,7 +390,7 @@ export default function PortalOrcamento({ session, detalhe, orcamento, recarrega
               Errou? Desfazer resposta (até {shortTime(respostaAtiva.janelaAte)})
             </button>
           )}
-          {detalhe.podeDecidir && orcamento.estado === "ABERTA" && !respostaAtiva && (
+          {detalhe.podeDecidir && orcamento.aceiteOnline && orcamento.estado === "ABERTA" && !respostaAtiva && (
             <button className="link-button" type="button" onClick={() => { setErro(null); setEtapa({ tipo: "negociar" }); }}>Quero negociar</button>
           )}
           {detalhe.podeDecidir && respostaAtiva?.estado === "EFETIVADA" && (

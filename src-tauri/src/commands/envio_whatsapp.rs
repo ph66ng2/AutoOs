@@ -321,17 +321,16 @@ async fn carregar_equipamento(
                 COALESCE(valor_final, valor_orcamento)::FLOAT8 AS valor,
                 prazo_aprovacao,
                 (EXTRACT(EPOCH FROM status_alterado_em) * 1000000)::BIGINT AS micros,
-                -- Mesmo telefone (últimos 10 dígitos) de um contato com acesso de decisão e senha,
+                -- Mesmo telefone (DDD + número, sem DDI) de um contato com acesso de decisão e senha,
                 -- com o portal e as respostas ligados.
                 public.autoos_portal_respostas_ligadas(equipamentos.empresa_id)
                 AND EXISTS (
                     SELECT 1 FROM cliente_contatos c
                     WHERE c.cliente_id = equipamentos.cliente_id AND c.empresa_id = equipamentos.empresa_id
                       AND c.ativo AND c.portal_acesso = 'DECIDIR' AND c.portal_senha_hash IS NOT NULL
-                      AND length(regexp_replace(COALESCE(c.telefone, ''), '\\D', '', 'g')) >= 10
-                      AND right(regexp_replace(c.telefone, '\\D', '', 'g'), 10) = right(regexp_replace(
-                          COALESCE(NULLIF(BTRIM(equipamentos.responsavel_telefone), ''), equipamentos.cliente_telefone, ''),
-                          '\\D', '', 'g'), 10)
+                      AND length(public.autoos_portal_telefone(c.telefone)) >= 10
+                      AND public.autoos_portal_telefone(c.telefone) = public.autoos_portal_telefone(
+                          COALESCE(NULLIF(BTRIM(equipamentos.responsavel_telefone), ''), equipamentos.cliente_telefone))
                 ) AS destinatario_no_portal
          FROM equipamentos
          WHERE id = $1 AND empresa_id = $2

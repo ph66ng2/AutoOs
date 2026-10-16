@@ -288,6 +288,14 @@ describe("detalhe e orçamento", () => {
     expect(api.responder).not.toHaveBeenCalled();
   });
 
+  it("respostas pausadas na empresa: sem aceitar, recusar nem negociar", async () => {
+    api.detalhe.mockResolvedValue(detalhe({ orcamento: orcamento({ aceiteOnline: false }) }));
+    render(<PortalApp />);
+    expect(await screen.findByText(/As respostas pelo portal estão pausadas/)).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Aceitar orçamento" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Quero negociar" })).not.toBeInTheDocument();
+  });
+
   it("contato só de acompanhamento não vê botões de decisão", async () => {
     logar("ACOMPANHAR");
     api.detalhe.mockResolvedValue(detalhe({ podeDecidir: false }));

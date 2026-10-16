@@ -174,7 +174,7 @@ function ContatoCard({ contato }: { contato: ContatoEmpresa | null }) {
       <ul>
         {contato.whatsapp && (
           <li>
-            <a href={`https://wa.me/${whatsappDigits.startsWith("55") ? whatsappDigits : `55${whatsappDigits}`}`} target="_blank" rel="noopener noreferrer">
+            <a href={`https://wa.me/${whatsappDigits.startsWith("55") && whatsappDigits.length >= 12 ? whatsappDigits : `55${whatsappDigits}`}`} target="_blank" rel="noopener noreferrer">
               WhatsApp
             </a>
           </li>

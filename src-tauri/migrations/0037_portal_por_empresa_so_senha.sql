@@ -9,7 +9,10 @@
 --    `autoos_portal_sessao` só aceita sessões por senha. `portal_codigos` fica como histórico.
 -- 3. Trocar telefone ou email do contato não retira mais o acesso nem apaga a senha: a regra existia
 --    porque o código ia para esses canais. Desativar o contato ou movê-lo de cliente/empresa continua
---    retirando o acesso.
+--    retirando o acesso. Passar a DECIDIR apaga a senha anterior: senha de quem decide orçamento só
+--    é criada por quem tem a permissão financeira (o desktop exige isso ao criar a senha).
+-- 4. Lista: "aguarda sua resposta" só com versão aberta e respostas ligadas; o limite de 300
+--    atendimentos pega os mais recentes. Negociar exige as respostas ligadas.
 --
 -- As funções redefinidas abaixo são cópias das versões da 0034/0035; mudam só as linhas das chaves
 -- (e, na sessão, o método). O portal pausado continua respondendo PORTAL_PAUSADO, agora conferido
@@ -88,7 +91,8 @@ BEGIN
             OR NOT NEW.ativo) THEN
         NEW.portal_acesso := 'NENHUM';
     END IF;
-    IF NEW.portal_acesso = 'NENHUM' THEN
+    IF NEW.portal_acesso = 'NENHUM'
+       OR (NEW.portal_acesso = 'DECIDIR' AND OLD.portal_acesso IS DISTINCT FROM 'DECIDIR') THEN
         NEW.portal_senha_hash := NULL;
         NEW.portal_senha_definida_em := NULL;
         NEW.portal_senha_definida_por_profile_id := NULL;
@@ -104,6 +108,161 @@ END;
 $$;
 
 -- ─── Funções que liam as chaves globais ──────────────────────────────────────
+CREATE OR REPLACE FUNCTION public.portal_listar_atendimentos(p_sessao_hash TEXT)
+RETURNS JSONB
+LANGUAGE plpgsql
+VOLATILE
+SECURITY DEFINER
+SET search_path = pg_catalog, public
+AS $$
+DECLARE
+    v_s RECORD;
+    v_lista JSONB;
+    v_cliente TEXT;
+    v_respostas BOOLEAN;
+BEGIN
+    SELECT * INTO v_s FROM public.autoos_portal_sessao(p_sessao_hash);
+    v_respostas := public.autoos_portal_respostas_ligadas(v_s.s_empresa_id);
+    -- Efetiva o que já passou do prazo antes de mostrar: o portal fica correto mesmo sem o Cron.
+    PERFORM public.portal_efetivar_respostas_vencidas(10, v_s.s_empresa_id, v_s.s_cliente_id);
+    SELECT COALESCE(NULLIF(btrim(nome_fantasia), ''), NULLIF(btrim(razao_social), ''), nome)
+    INTO v_cliente FROM public.clientes WHERE id = v_s.s_cliente_id;
+
+    SELECT COALESCE(jsonb_agg(item ORDER BY (item->>'atividadeEm') DESC NULLS LAST, (item->>'id')::INTEGER DESC), '[]'::JSONB)
+    INTO v_lista
+    FROM (
+        SELECT jsonb_build_object(
+            'id', e.id,
+            'equipamento', COALESCE(NULLIF(public.autoos_portal_rotulo_equipamento(e.tipo, e.marca, e.modelo), ''), 'Equipamento'),
+            'serie', left(e.serial_number, 60),
+            'patrimonio', left(NULLIF(btrim(e.patrimonio), ''), 60),
+            'status', e.status,
+            'titulo', public.autoos_portal_titulo_status(e.status),
+            'historico', e.status IN ('ENTREGUE', 'ABANDONADO'),
+            'entradaEm', e.criado_em,
+            'atividadeEm', GREATEST(COALESCE(e.atualizado_em, e.criado_em), COALESCE(e.ultima_atividade_cliente_em, e.criado_em)),
+            'statusAlteradoEm', e.status_alterado_em,
+            'aguardaResposta', e.status = 'AGUARDANDO_APROVACAO' AND v.id IS NOT NULL AND v.encerrada_em IS NULL
+                AND v_respostas
+                AND (v.valido_ate IS NULL OR v.valido_ate > statement_timestamp())
+                AND COALESCE(r.decisao, 'DESFEITA') = 'DESFEITA',
+            'resposta', public.autoos_portal_estado_resposta(r.origem, r.decisao, r.registrada_em, r.aplicada_em,
+                r.efetivacao_falhou_em, v.encerrada_em IS NOT NULL)
+        ) AS item
+        FROM public.equipamentos e
+        LEFT JOIN LATERAL (
+            SELECT ov.* FROM public.orcamento_versoes ov
+            WHERE ov.equipamento_id = e.id AND ov.empresa_id = e.empresa_id
+            ORDER BY ov.versao DESC LIMIT 1
+        ) v ON TRUE
+        LEFT JOIN LATERAL (
+            SELECT orr.* FROM public.orcamento_respostas orr
+            WHERE orr.versao_id = v.id ORDER BY orr.id DESC LIMIT 1
+        ) r ON TRUE
+        WHERE e.empresa_id = v_s.s_empresa_id AND e.cliente_id = v_s.s_cliente_id
+        -- Entregues há mais de 2 anos saem da lista para não crescer sem limite.
+          AND NOT (e.status = 'ENTREGUE' AND e.status_alterado_em < statement_timestamp() - INTERVAL '2 years')
+        -- Os 300 mais recentes, não 300 quaisquer.
+        ORDER BY GREATEST(COALESCE(e.atualizado_em, e.criado_em), COALESCE(e.ultima_atividade_cliente_em, e.criado_em)) DESC NULLS LAST, e.id DESC
+        LIMIT 300
+    ) x;
+
+    RETURN jsonb_build_object(
+        'cliente', v_cliente,
+        'contato', v_s.s_contato_nome,
+        'podeDecidir', v_s.s_acesso = 'DECIDIR',
+        'atendimentos', v_lista
+    );
+END;
+$$;
+CREATE OR REPLACE FUNCTION public.portal_registrar_solicitacao(
+    p_sessao_hash TEXT,
+    p_equipamento_id INTEGER,
+    p_versao_id BIGINT,
+    p_tipo TEXT,
+    p_mensagem TEXT
+)
+RETURNS JSONB
+LANGUAGE plpgsql
+VOLATILE
+SECURITY DEFINER
+SET search_path = pg_catalog, public
+AS $$
+DECLARE
+    v_s RECORD;
+    v_e RECORD;
+    v_v RECORD;
+    v_aplicada BOOLEAN;
+    v_mensagem TEXT := left(btrim(regexp_replace(COALESCE(p_mensagem, ''), '[[:cntrl:]]', ' ', 'g')), 500);
+    v_id BIGINT;
+    v_agora TIMESTAMPTZ := statement_timestamp();
+BEGIN
+    IF p_tipo NOT IN ('NEGOCIAR', 'DUVIDA', 'MUDANCA') THEN
+        RAISE EXCEPTION 'TIPO_INVALIDO';
+    END IF;
+    SELECT * INTO v_s FROM public.autoos_portal_sessao(p_sessao_hash);
+    IF p_tipo IN ('NEGOCIAR', 'MUDANCA') AND v_s.s_acesso <> 'DECIDIR' THEN
+        RAISE EXCEPTION 'SEM_PERMISSAO_DECISAO';
+    END IF;
+    -- Negociar faz parte das respostas: com elas desligadas, o cliente fala pelos canais da equipe.
+    IF p_tipo = 'NEGOCIAR' AND NOT public.autoos_portal_respostas_ligadas(v_s.s_empresa_id) THEN
+        RAISE EXCEPTION 'ACEITE_PAUSADO';
+    END IF;
+
+    SELECT * INTO v_e FROM public.equipamentos
+    WHERE id = p_equipamento_id AND empresa_id = v_s.s_empresa_id AND cliente_id = v_s.s_cliente_id
+    FOR UPDATE;
+    SELECT * INTO v_v FROM public.orcamento_versoes
+    WHERE id = p_versao_id AND equipamento_id = p_equipamento_id AND empresa_id = v_s.s_empresa_id
+    FOR UPDATE;
+    IF v_v.id IS NULL OR v_e.id IS NULL THEN
+        RAISE EXCEPTION 'ATENDIMENTO_INDISPONIVEL';
+    END IF;
+
+    SELECT EXISTS (SELECT 1 FROM public.orcamento_respostas WHERE versao_id = v_v.id AND aplicada_em IS NOT NULL)
+    INTO v_aplicada;
+    IF p_tipo = 'MUDANCA' AND NOT v_aplicada THEN
+        RAISE EXCEPTION 'SOLICITACAO_INDISPONIVEL';
+    END IF;
+    IF p_tipo = 'NEGOCIAR' AND (v_aplicada OR v_v.encerrada_em IS NOT NULL OR v_e.status <> 'AGUARDANDO_APROVACAO') THEN
+        RAISE EXCEPTION 'PROPOSTA_ALTERADA';
+    END IF;
+    IF v_mensagem = '' THEN
+        v_mensagem := CASE p_tipo
+            WHEN 'NEGOCIAR' THEN 'Quero negociar este orçamento.'
+            WHEN 'MUDANCA' THEN 'Quero solicitar uma correção na decisão do orçamento.'
+            ELSE '' END;
+    END IF;
+    IF char_length(v_mensagem) = 0 THEN
+        RAISE EXCEPTION 'MENSAGEM_INVALIDA';
+    END IF;
+    IF (SELECT count(*) FROM public.orcamento_solicitacoes so
+        WHERE so.versao_id = v_v.id AND so.criado_em > v_agora - INTERVAL '1 hour') >= 5 THEN
+        RAISE EXCEPTION 'LIMITE_SOLICITACOES';
+    END IF;
+
+    INSERT INTO public.orcamento_solicitacoes
+        (empresa_id, equipamento_id, versao_id, tipo, mensagem, criado_em, contato_id, contato_nome)
+    VALUES
+        (v_v.empresa_id, v_v.equipamento_id, v_v.id, p_tipo, v_mensagem, v_agora, v_s.s_contato_id, v_s.s_contato_nome)
+    RETURNING id INTO v_id;
+
+    UPDATE public.equipamentos SET ultima_atividade_cliente_em = CURRENT_TIMESTAMP
+    WHERE id = v_e.id AND empresa_id = v_e.empresa_id;
+
+    PERFORM public.autoos_portal_alerta(
+        v_v.empresa_id, v_v.equipamento_id,
+        CASE p_tipo WHEN 'NEGOCIAR' THEN 'NEGOCIACAO_SOLICITADA' WHEN 'MUDANCA' THEN 'CORRECAO_SOLICITADA' ELSE 'DUVIDA_RECEBIDA' END,
+        CASE p_tipo WHEN 'NEGOCIAR' THEN 'Cliente quer negociar'
+                    WHEN 'MUDANCA' THEN 'Cliente pediu correção'
+                    ELSE 'Nova dúvida do cliente' END,
+        public.autoos_portal_linha_alerta(v_e.id, v_e.empresa_id, v_v.valor_total, v_s.s_contato_nome)
+            || chr(10) || '“' || left(v_mensagem, 140) || CASE WHEN char_length(v_mensagem) > 140 THEN '…' ELSE '' END || '”',
+        NULL, v_id, v_s.s_contato_id);
+
+    RETURN jsonb_build_object('id', v_id, 'protocolo', 'S-' || v_id, 'tipo', p_tipo, 'criadoEm', v_agora);
+END;
+$$;
 CREATE OR REPLACE FUNCTION public.autoos_portal_sessao(p_sessao_hash TEXT)
 RETURNS TABLE (
     s_id BIGINT,

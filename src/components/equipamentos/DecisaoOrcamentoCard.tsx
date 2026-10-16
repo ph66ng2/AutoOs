@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useState, useRef } from "react";
 import { CheckCircle2, KeyRound, Loader2, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -68,6 +68,9 @@ export function DecisaoOrcamentoCard({ equipamento, onAplicar, sinalPortal }: Pr
   // Até a primeira consulta terminar não há como saber se mostra o quadro ou só o botão.
   const [consultado, setConsultado] = useState<number | null>(null);
   const equipamentoId = equipamento.id;
+  // Troca rápida de equipamento: só a consulta do equipamento atual pode atualizar o quadro.
+  const atualRef = useRef(equipamentoId);
+  atualRef.current = equipamentoId;
 
   const carregar = useCallback(async () => {
     if (!equipamentoId) return;
@@ -75,12 +78,16 @@ export function DecisaoOrcamentoCard({ equipamento, onAplicar, sinalPortal }: Pr
     setError(null);
     try {
       const next = await db.obterDecisaoOrcamento(equipamentoId);
+      if (atualRef.current !== equipamentoId) return;
       setInfo(next);
     } catch (cause) {
+      if (atualRef.current !== equipamentoId) return;
       setError(mensagemErro(cause, "Não foi possível consultar a resposta do cliente."));
     } finally {
-      setLoading(false);
-      setConsultado(equipamentoId);
+      if (atualRef.current === equipamentoId) {
+        setLoading(false);
+        setConsultado(equipamentoId);
+      }
     }
   }, [equipamentoId]);
 

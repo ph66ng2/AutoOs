@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { DecisaoOrcamentoCard } from "@/components/equipamentos/DecisaoOrcamentoCard";
 import type { DecisaoOrcamentoInfo, Equipamento } from "@/types";
 
@@ -189,5 +189,16 @@ describe("DecisaoOrcamentoCard", () => {
     render(<DecisaoOrcamentoCard equipamento={comCliente} onAplicar={vi.fn()} />);
     expect(await screen.findByText("Ana Souza")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /Gerenciar acesso/ })).toBeInTheDocument();
+  });
+  it("troca rápida de equipamento: resposta atrasada do anterior não sobrescreve o quadro", async () => {
+    let liberarAntigo: (valor: DecisaoOrcamentoInfo) => void = () => {};
+    mocks.obter.mockImplementationOnce(() => new Promise((resolve) => { liberarAntigo = resolve; }));
+    mocks.obter.mockResolvedValueOnce(info({ resposta: respostaPortal, historico: [respostaPortal], podeAplicar: true }));
+    const { rerender } = render(<DecisaoOrcamentoCard equipamento={equipamento} onAplicar={vi.fn()} />);
+    rerender(<DecisaoOrcamentoCard equipamento={{ ...equipamento, id: 8 }} onAplicar={vi.fn()} />);
+    const botao = await screen.findByRole("button", { name: /revisar e aplicar decisão/i });
+    await act(async () => { liberarAntigo(info()); });
+    expect(botao).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /revisar e aplicar decisão/i })).toBeEnabled();
   });
 });

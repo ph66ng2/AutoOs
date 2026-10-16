@@ -40,7 +40,8 @@ async function registrarComunicacaoSegura(comunicacao: Omit<Comunicacao, "id">) 
 /** Adiciona DDI 55 (Brasil) se não presente. Remove caracteres não-numéricos */
 function formatarTelefone(telefone: string): string {
   const numeros = telefone.replace(/\D/g, "");
-  const normalizado = numeros.startsWith("55") ? numeros : "55" + numeros;
+  // Pelo tamanho, não pelo prefixo: DDD 55 (RS) com 10/11 dígitos ainda precisa do DDI.
+  const normalizado = numeros.startsWith("55") && numeros.length >= 12 ? numeros : "55" + numeros;
   if (normalizado.length < 12) {
     throw new Error("Telefone do cliente inválido para envio de WhatsApp");
   }

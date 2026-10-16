@@ -527,8 +527,8 @@ pub(crate) async fn conferir_e_aplicar_resposta(
         let limite = correction_window_end(registrada_em, janela);
         if limite > Utc::now() {
             return Err(format!(
-                "O cliente respondeu há pouco e ainda pode corrigir a resposta. Aguarde até {} (UTC) para aplicar.",
-                limite.format("%H:%M")
+                "O cliente respondeu há pouco e ainda pode corrigir a resposta. Aguarde até {} para aplicar.",
+                horario_brasilia(limite)
             ));
         }
     }
@@ -553,8 +553,20 @@ pub(crate) async fn conferir_e_aplicar_resposta(
     Ok(())
 }
 
+/// Horário de Brasília (UTC−3, sem horário de verão desde 2019), como nos alertas do portal.
+fn horario_brasilia(instante: DateTime<Utc>) -> String {
+    let brasilia = chrono::FixedOffset::west_opt(3 * 3600).expect("offset fixo válido");
+    instante.with_timezone(&brasilia).format("%H:%M").to_string()
+}
+
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn prazo_de_correcao_aparece_no_horario_de_brasilia() {
+        let instante = DateTime::parse_from_rfc3339("2026-10-16T17:15:00Z").unwrap().with_timezone(&Utc);
+        assert_eq!(horario_brasilia(instante), "14:15");
+    }
+
     use super::*;
 
     #[test]
