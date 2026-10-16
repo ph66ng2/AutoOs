@@ -71,7 +71,6 @@ beforeEach(() => {
         : { resultado: "INVALIDO" },
     }),
     portal_reverificar_senha: (args) => ({ body: args.p_senha === "Ana-Senha-2026" }),
-    portal_trocar_senha: () => ({ body: "OK" }),
   };
 
   vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
@@ -264,53 +263,5 @@ describe("portal-cliente: senha definida pelo operador", () => {
   it("detalhe informa o método da sessão", async () => {
     const { body } = await call({ acao: "detalhe", sessao: SESSION, equipamentoId: 28 });
     expect(body.metodo).toBe("SENHA");
-  });
-
-  it("senha provisória: o login avisa que é preciso criar a própria", async () => {
-    rpcResponses.portal_entrar_senha = () => ({
-      body: { resultado: "OK", contato: "Ana Souza", acesso: "DECIDIR", expiraEm: "2026-10-16T20:00:00Z", metodo: "SENHA", trocarSenha: true },
-    });
-    const { body } = await call({ acao: "entrarSenha", documento: "11222333000181", senha: "Provisoria-1" });
-    expect(body.trocarSenha).toBe(true);
-  });
-
-  it("troca a senha pela sessão; senha de outro contato é recusada sem dizer o motivo", async () => {
-    const ok = await call({ acao: "trocarSenha", sessao: SESSION, novaSenha: "Minha-Senha-9" });
-    expect(ok.response.status).toBe(200);
-    expect(rpc("portal_trocar_senha")[0].args).toEqual({
-      p_sessao_hash: createHash("sha256").update(SESSION).digest("hex"),
-      p_senha_nova: "Minha-Senha-9",
-    });
-
-    rpcResponses.portal_trocar_senha = () => ({ status: 400, body: { code: "P0001", message: "SENHA_REPETIDA" } });
-    const repetida = await call({ acao: "trocarSenha", sessao: SESSION, novaSenha: "Senha-Do-Bruno-1" });
-    expect(repetida.response.status).toBe(400);
-    expect(repetida.body.erro).toBe("Escolha outra senha.");
-    expect(JSON.stringify(repetida.body).toLowerCase()).not.toContain("outro contato");
-  });
-
-  it("sem verificação recente, a troca pede para entrar de novo", async () => {
-    rpcResponses.portal_trocar_senha = () => ({ status: 400, body: { code: "P0001", message: "VERIFICACAO_NECESSARIA" } });
-    const { response, body } = await call({ acao: "trocarSenha", sessao: SESSION, novaSenha: "Minha-Senha-9" });
-    expect(response.status).toBe(428);
-    expect(body.erro).toMatch(/entre de novo/);
-  });
-
-  it("limita tentativas de troca por sessão e recusa senha vazia sem chamar o banco", async () => {
-    expect((await call({ acao: "trocarSenha", sessao: SESSION, novaSenha: "" })).response.status).toBe(400);
-    rpcResponses.consumir_limite_status_publico = (() => {
-      let count = 0;
-      return () => ({ body: ++count === 1 });
-    })();
-    const { response } = await call({ acao: "trocarSenha", sessao: SESSION, novaSenha: "Minha-Senha-9" });
-    expect(response.status).toBe(429);
-    expect(rpc("portal_trocar_senha")).toHaveLength(0);
-  });
-
-  it("com troca pendente, listar responde 403 com código", async () => {
-    rpcResponses.portal_listar_atendimentos = () => ({ status: 400, body: { code: "P0001", message: "TROCA_SENHA_PENDENTE" } });
-    const { response, body } = await call({ acao: "listar", sessao: SESSION });
-    expect(response.status).toBe(403);
-    expect(body.codigo).toBe("TROCA_SENHA_PENDENTE");
   });
 });

@@ -15,10 +15,7 @@ export function respondeNoPortal(contato: ClienteContato) {
 
 export function situacaoPortal(contato: ClienteContato): string {
   if (contato.portal_acesso === "DECIDIR") {
-    if (!contato.portal_senha_definida_em) return "Pode responder · ainda sem senha";
-    return contato.portal_senha_provisoria
-      ? "Pode responder · senha provisória (ainda não entrou)"
-      : "Pode responder · senha criada";
+    return contato.portal_senha_definida_em ? "Pode responder · senha criada" : "Pode responder · ainda sem senha";
   }
   if (contato.portal_acesso === "ACOMPANHAR") {
     return contato.portal_senha_definida_em ? "Só acompanha · senha criada" : "Só acompanha · sem senha";
@@ -47,7 +44,7 @@ type Props = {
 };
 
 /**
- * Libera um contato para responder orçamentos e cria a senha provisória, sem sair do equipamento.
+ * Libera um contato para responder orçamentos e cria a senha, sem sair do equipamento.
  * Cadastrar ou editar contatos acontece aqui mesmo (painel de contatos embutido) e volta para o acesso.
  */
 export function AcessoPortalDialog({ open, onOpenChange, clienteId, empresaId, responsavelContatoId, onAlterado }: Props) {

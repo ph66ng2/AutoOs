@@ -358,7 +358,6 @@ function QuemRespondeNoPortal({ equipamento }: { equipamento: Equipamento }) {
               <span key={contato.id}>
                 {indice > 0 && ", "}
                 <strong>{contato.nome}</strong>
-                {contato.portal_senha_provisoria && <span className="text-muted-foreground"> (ainda não entrou)</span>}
               </span>
             ))}
           </span>

@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useState } from "react";
-import CriarSenha from "./CriarSenha";
 import PortalDetalhe from "./PortalDetalhe";
 import PortalLista from "./PortalLista";
 import PortalLogin from "./PortalLogin";
@@ -32,14 +31,6 @@ export default function PortalApp() {
     if (route.kind === "entrar") navigate("#/atendimentos");
   };
 
-  const senhaCriada = () => {
-    if (!session) return;
-    const atualizada = { ...session, trocarSenha: undefined };
-    saveSession(atualizada);
-    setSession(atualizada);
-    navigate("#/atendimentos");
-  };
-
   const sair = async () => {
     const atual = session;
     clearSession();
@@ -60,14 +51,11 @@ export default function PortalApp() {
       )}
 
       {!session && <PortalLogin aviso={aviso} onEntrou={entrou} />}
-      {session?.trocarSenha && <CriarSenha session={session} onConcluido={senhaCriada} onExpirou={expirou} />}
-      {session && !session.trocarSenha && route.kind === "detalhe" && (
-        <PortalDetalhe session={session} equipamentoId={route.id} onExpirou={expirou} />
-      )}
-      {session && !session.trocarSenha && route.kind !== "detalhe" && <PortalLista session={session} onExpirou={expirou} />}
+      {session && route.kind === "detalhe" && <PortalDetalhe session={session} equipamentoId={route.id} onExpirou={expirou} />}
+      {session && route.kind !== "detalhe" && <PortalLista session={session} onExpirou={expirou} />}
 
       <footer className="status-footer">
-        <p>Portal das Impressoras BMI TAG. O acesso é pessoal: não compartilhe sua senha nem seus códigos.</p>
+        <p>Portal das Impressoras BMI TAG. O acesso é pessoal: não compartilhe seus códigos.</p>
         <p>Recebeu um link individual de acompanhamento? Ele continua funcionando.</p>
       </footer>
     </main>

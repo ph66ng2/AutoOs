@@ -48,7 +48,7 @@ describe("AcessoPortalDialog", () => {
     fireEvent.click(screen.getByRole("button", { name: "Liberar acesso e criar senha" }));
     await waitFor(() => expect(mocks.definirAcesso).toHaveBeenCalledWith(6, "DECIDIR"));
     expect(onAlterado).toHaveBeenCalled();
-    expect(await screen.findByLabelText("Senha provisória")).toBeInTheDocument();
+    expect(await screen.findByLabelText("Senha")).toBeInTheDocument();
     expect(screen.getByText(/11\.222\.333\/0001-81/, { selector: "strong" })).toBeInTheDocument();
   });
 
@@ -65,7 +65,7 @@ describe("AcessoPortalDialog", () => {
     mocks.listar.mockResolvedValue([{ ...ana, portal_acesso: "DECIDIR", portal_senha_definida_em: "2026-10-16T10:00:00Z" }]);
     abrir();
     fireEvent.click(await screen.findByRole("button", { name: "Criar nova senha" }));
-    expect(await screen.findByLabelText("Senha provisória")).toBeInTheDocument();
+    expect(await screen.findByLabelText("Senha")).toBeInTheDocument();
     expect(mocks.definirAcesso).not.toHaveBeenCalled();
   });
 
@@ -90,8 +90,7 @@ describe("AcessoPortalDialog", () => {
 
   it("descreve a situação de cada contato no portal", () => {
     expect(situacaoPortal({ ...ana, portal_acesso: "DECIDIR" })).toBe("Pode responder · ainda sem senha");
-    expect(situacaoPortal({ ...ana, portal_acesso: "DECIDIR", portal_senha_definida_em: "x", portal_senha_provisoria: true }))
-      .toMatch(/provisória/);
+    expect(situacaoPortal({ ...ana, portal_acesso: "DECIDIR", portal_senha_definida_em: "x" })).toBe("Pode responder · senha criada");
     expect(situacaoPortal(ana)).toBe("Sem acesso ao portal");
   });
 });

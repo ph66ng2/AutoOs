@@ -2,13 +2,13 @@
 
 Evolução de `status.bmitag.com.br`: o cliente entra com CPF/CNPJ + código temporário, vê todos os atendimentos do cadastro e responde ao orçamento publicado. Funciona com o AutoOS desktop fechado: login, envio do código, resposta e efetivação rodam no Supabase.
 
-> **Estado: implementado, nada ativado.** As migrations `0034_portal_cliente.sql`, `0035_portal_senha.sql` (senha criada pelo operador) e `0037_portal_senha_provisoria.sql` (troca obrigatória no primeiro acesso); a 0034 nasce com `portal_cliente_config.portal_enabled = FALSE`. A Edge Function `portal-cliente` não foi publicada e nenhum dado de produção foi alterado.
+> **Estado: implementado, nada ativado.** As migrations `0034_portal_cliente.sql` e `0035_portal_senha.sql` (senha criada pelo operador); a 0034 nasce com `portal_cliente_config.portal_enabled = FALSE`. A Edge Function `portal-cliente` não foi publicada e nenhum dado de produção foi alterado.
 
 Usa as versões e respostas de orçamento das migrations 0030–0031 (`docs/ACEITE_ORCAMENTO_ONLINE.md`) e a configuração de WhatsApp central (`docs/FILA_ENVIOS_WHATSAPP.md`, 0033). É o **único** caminho de resposta online: o link individual `#/o/<token>` foi removido na 0036.
 
 ## Jornada
 
-0. **Senha criada pelo operador (padrão, migrations 0035 e 0037).** Nos detalhes do equipamento (**Dar acesso a um contato**) ou em Clientes → Contatos e Portal, o operador libera o portal para o contato e cria a senha (o AutoOS sugere uma senha forte; ele pode digitar outra com 8+ caracteres, letras e números). Os dados de acesso aparecem uma única vez para entregar ao contato; o banco guarda só o hash bcrypt (`pgcrypto`). O cliente entra com **CPF/CNPJ + senha**. A senha é **por contato**, não por CNPJ: é ela que diz quem entrou, se pode decidir e a quem a resposta é atribuída (senhas repetidas no mesmo CPF/CNPJ são recusadas). A senha do operador é **provisória**: no primeiro acesso o contato cria a própria (“Crie sua senha”) antes de ver qualquer atendimento, e a equipe deixa de conhecê-la. Trocar a senha desconecta o contato; retirar o acesso apaga a senha. **Esqueci minha senha**, no login, entra pelo código (WhatsApp/email) e leva à criação de uma nova. Antes de aceitar/recusar, a sessão por senha reconfirma a senha (em vez de um código). Limite: 8 tentativas por CPF/CNPJ a cada 15 minutos.
+0. **Senha criada pelo operador (padrão, migration 0035).** Nos detalhes do equipamento (**Dar acesso a um contato**) ou em Clientes → Contatos e Portal, o operador libera o portal para o contato e cria a senha (o AutoOS sugere uma senha forte; ele pode digitar outra com 8+ caracteres, letras e números). Os dados de acesso aparecem uma única vez para entregar ao contato; o banco guarda só o hash bcrypt (`pgcrypto`). O cliente entra com **CPF/CNPJ + senha**. A senha é **por contato**, não por CNPJ: é ela que diz quem entrou, se pode decidir e a quem a resposta é atribuída (senhas repetidas no mesmo CPF/CNPJ são recusadas). A senha vale por tempo indeterminado: para trocar ou se esquecer, o contato fala com a equipe, que cria outra. Trocar a senha desconecta o contato; retirar o acesso apaga a senha. Antes de aceitar/recusar, a sessão por senha reconfirma a senha (em vez de um código). Limite: 8 tentativas por CPF/CNPJ a cada 15 minutos.
 1. **Entrar com código (alternativa).** CPF/CNPJ + WhatsApp ou email do contato. Se o par casar com exatamente um contato autorizado, o servidor envia um código de 6 dígitos (10 min, 5 tentativas, uso único). A resposta da tela é a mesma quando nada casa: o portal não revela quem é cliente. O CPF/CNPJ sozinho nunca dá acesso.
 2. **Lista.** Todos os atendimentos com `empresa_id` + `cliente_id` do cadastro, separados em **Atuais** e **Histórico** (entregues e encerrados). Ordenação por atividade recente (padrão) ou data de entrada. O cartão mostra equipamento, série, patrimônio, entrada, etapa colorida e “Aguarda sua resposta”.
 3. **Detalhe.** A tela pública de status (`StatusView`: logo, etapa com pulso, linha do tempo, data) + orçamento publicado (versão, itens, total, validade) + pedidos enviados + cartão de contato.
@@ -22,7 +22,7 @@ Usa as versões e respostas de orçamento das migrations 0030–0031 (`docs/ACEI
 
 **Uma vez (ativação):** aplicar as migrations, publicar `portal-cliente`, agendar a efetivação e ligar `portal_enabled` + `online_enabled` (ver Ativação). Em Configurações → Integrações, preencher o cartão “Fale com a equipe”.
 
-**Uma vez por contato do cliente (direto do equipamento):** o quadro do orçamento mostra “Quem responde no portal”. Sem ninguém, **Dar acesso a um contato** abre uma janela: escolher o contato (o responsável vem marcado), “pode responder orçamentos”, **Liberar acesso e criar senha**. Falta o contato? **Cadastrar ou editar contatos** abre os contatos na mesma janela e volta com o novo já marcado. A senha provisória sai com **Enviar por WhatsApp** (link `wa.me` aberto no navegador; não passa pelo servidor nem fica no histórico) ou **Copiar**. O mesmo continua em Clientes → Contatos e Portal.
+**Uma vez por contato do cliente (direto do equipamento):** o quadro do orçamento mostra “Quem responde no portal”. Sem ninguém, **Dar acesso a um contato** abre uma janela: escolher o contato (o responsável vem marcado), “pode responder orçamentos”, **Liberar acesso e criar senha**. Falta o contato? **Cadastrar ou editar contatos** abre os contatos na mesma janela e volta com o novo já marcado. A senha sai com **Enviar por WhatsApp** (link `wa.me` aberto no navegador; não passa pelo servidor nem fica no histórico) ou **Copiar**. O mesmo continua em Clientes → Contatos e Portal.
 
 **WhatsApp do orçamento:** se o destinatário (responsável ou cliente) é um contato que responde pelo portal, a mensagem automática diz para aceitar/recusar em status.bmitag.com.br; para os outros continua “responda APROVADO”. Na Cloud API isso usa o modelo `orcamento_portal`, que precisa ser aprovado pela Meta.
 
@@ -98,7 +98,7 @@ Respostas antigas de origem `PORTAL` (link removido) ou `EQUIPE` só existem em 
 
 ## Ativação (ambiente de teste primeiro)
 
-1. Aplicar 0030–0037 pelo processo de migrations (`docs/PRODUCTION_MIGRATIONS.md`) e conferir os advisors de segurança do Supabase.
+1. Aplicar 0030–0036 pelo processo de migrations (`docs/PRODUCTION_MIGRATIONS.md`) e conferir os advisors de segurança do Supabase.
 2. Publicar a Edge Function `portal-cliente` (`verify_jwt = false`, já em `supabase/config.toml`) com os segredos:
 
 | Segredo | Uso |
@@ -141,7 +141,6 @@ Pausar: desligar “Portal ligado” derruba login e sessões na hora; nada é a
 - A Cloud API e a Evolution não foram testadas de verdade a partir da função; o modelo de autenticação da Meta precisa ser aprovado com um parâmetro (código) e o botão de copiar.
 - O tempo de resposta do pedido de código é maior quando há envio real; um observador atento poderia inferir que o par CPF/CNPJ + contato existe. O conteúdo da resposta é igual.
 - A sessão fica no `sessionStorage` da aba: abrir outra aba exige novo login.
-- A senha provisória fica conhecida pela equipe até o primeiro acesso do contato (depois disso, só ele a conhece).
-- “Esqueci minha senha” depende do envio de código pelo servidor (WhatsApp/email configurados). Sem isso, o contato pede uma nova senha à equipe.
-- A senha identifica o contato; por isso duas senhas iguais no mesmo CPF/CNPJ são recusadas. Na troca feita pelo cliente o portal não diz o motivo e limita 6 tentativas por sessão a cada 15 minutos.
+- A equipe conhece a senha do contato (decisão de produto: a troca é feita pela equipe). A resposta prova que alguém com a senha daquele contato respondeu.
+- A senha identifica o contato; por isso duas senhas iguais no mesmo CPF/CNPJ são recusadas.
 - Documento repetido em duas empresas com o mesmo contato não entra (não há como escolher a empresa com segurança).

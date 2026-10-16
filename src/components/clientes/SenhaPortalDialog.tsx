@@ -32,14 +32,14 @@ export function senhaPortalValida(senha: string): boolean {
   return senha.length >= 8 && new TextEncoder().encode(senha).length <= 72 && /\p{L}/u.test(senha) && /\d/.test(senha);
 }
 
-/** Texto entregue ao contato. A senha é provisória: ele cria a dele no primeiro acesso. */
+/** Texto entregue ao contato. A senha vale até a equipe trocá-la; o contato pede a troca à equipe. */
 export function mensagemAcessoPortal(nome: string, documentoCliente: string, senha: string): string {
   return [
     `Olá, ${nome}! Seu acesso ao Portal das Impressoras BMI TAG:`,
     PORTAL_URL,
     `CPF/CNPJ: ${documentoCliente}`,
-    `Senha provisória: ${senha}`,
-    "No primeiro acesso você cria a sua própria senha.",
+    `Senha: ${senha}`,
+    "A senha é pessoal. Para trocá-la, fale com a equipe BMI TAG.",
   ].join("\n");
 }
 
@@ -134,8 +134,7 @@ export function SenhaPortalForm({ contato, documentoCliente, onCancelar, onSalvo
     return (
       <div className="space-y-3">
         <p className="rounded-md border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-900">
-          Senha provisória salva. Entregue os dados ao contato: no primeiro acesso ele cria a própria senha.
-          <strong> Ela não será mostrada de novo.</strong>
+          Senha salva. Entregue os dados ao contato. <strong>Ela não será mostrada de novo</strong>: o AutoOS guarda só uma versão cifrada.
         </p>
         <pre className="whitespace-pre-wrap rounded-md border bg-muted/40 p-3 font-mono text-sm" aria-label="Dados de acesso">{instrucoes}</pre>
         {erro && <p className="text-sm text-destructive" role="alert">{erro}</p>}
@@ -160,7 +159,7 @@ export function SenhaPortalForm({ contato, documentoCliente, onCancelar, onSalvo
   return (
     <form className="space-y-4" onSubmit={(event) => void salvar(event)}>
       <div className="space-y-2">
-        <Label htmlFor="senha-portal">Senha provisória</Label>
+        <Label htmlFor="senha-portal">Senha</Label>
         <div className="flex gap-2">
           <Input id="senha-portal" value={senha} maxLength={72} autoComplete="off" spellCheck={false}
             onChange={(event) => setSenha(event.target.value)} className="font-mono" />
@@ -170,7 +169,6 @@ export function SenhaPortalForm({ contato, documentoCliente, onCancelar, onSalvo
         </div>
         <p className="text-xs text-muted-foreground">
           Sugerimos uma senha forte; você pode digitar outra (mínimo 8 caracteres, com letras e números).
-          No primeiro acesso o contato troca por uma senha só dele.
           {contato.portal_senha_definida_em ? " Salvar substitui a senha atual e desconecta o contato." : ""}
         </p>
       </div>

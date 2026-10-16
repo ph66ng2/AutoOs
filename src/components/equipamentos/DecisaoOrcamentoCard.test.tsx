@@ -188,10 +188,9 @@ describe("DecisaoOrcamentoCard", () => {
     unmount();
 
     mocks.contatos.mockResolvedValue([{ id: 5, empresa_id: 1, cliente_id: 2, nome: "Ana Souza", ativo: true, portal_acesso: "DECIDIR",
-      portal_senha_definida_em: "2026-10-16T10:00:00Z", portal_senha_provisoria: true }]);
+      portal_senha_definida_em: "2026-10-16T10:00:00Z" }]);
     render(<DecisaoOrcamentoCard equipamento={comCliente} onRespostaVista={vi.fn()} onAplicar={vi.fn()} />);
     expect(await screen.findByText("Ana Souza")).toBeInTheDocument();
-    expect(screen.getByText(/ainda não entrou/)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /Gerenciar acesso/ })).toBeInTheDocument();
   });
 });

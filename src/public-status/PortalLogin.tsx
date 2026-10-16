@@ -27,8 +27,6 @@ export default function PortalLogin({ aviso, onEntrou }: Props) {
   const [mostrarSenha, setMostrarSenha] = useState(false);
   const [contato, setContato] = useState("");
   const [desafio, setDesafio] = useState<{ id: string; canal: "WHATSAPP" | "EMAIL" } | null>(null);
-  // "Esqueci minha senha": entra pelo código e vai direto para criar uma senha nova.
-  const [redefinir, setRedefinir] = useState(false);
   const [busy, setBusy] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
 
@@ -37,9 +35,8 @@ export default function PortalLogin({ aviso, onEntrou }: Props) {
   const contatoValido = contato.includes("@") ? /^\S+@\S+\.\S+$/.test(contato.trim()) : contato.replace(/\D/g, "").length >= 10;
   const podePedir = docValido && contatoValido;
 
-  const trocarModo = (novo: Modo, esqueci = false) => {
+  const trocarModo = (novo: Modo) => {
     setModo(novo);
-    setRedefinir(esqueci);
     setErro(null);
     setDesafio(null);
   };
@@ -51,14 +48,7 @@ export default function PortalLogin({ aviso, onEntrou }: Props) {
     setErro(null);
     try {
       const result = await portalApi.entrarSenha(docDigits, senha);
-      onEntrou({
-        token: result.sessao,
-        contato: result.contato,
-        acesso: result.acesso,
-        expiraEm: result.expiraEm,
-        metodo: "SENHA",
-        trocarSenha: result.trocarSenha ? "obrigatoria" : undefined,
-      });
+      onEntrou({ token: result.sessao, contato: result.contato, acesso: result.acesso, expiraEm: result.expiraEm, metodo: "SENHA" });
     } catch (cause) {
       setErro(cause instanceof PortalError ? cause.message : "Não foi possível entrar agora.");
     } finally {
@@ -88,14 +78,7 @@ export default function PortalLogin({ aviso, onEntrou }: Props) {
     try {
       const result = await portalApi.verificarCodigo(desafio.id, codigo);
       if (!result.sessao) throw new PortalError("Não foi possível iniciar a sessão.", 500, null);
-      onEntrou({
-        token: result.sessao,
-        contato: result.contato,
-        acesso: result.acesso,
-        expiraEm: result.expiraEm,
-        metodo: "CODIGO",
-        trocarSenha: redefinir ? "esqueci" : undefined,
-      });
+      onEntrou({ token: result.sessao, contato: result.contato, acesso: result.acesso, expiraEm: result.expiraEm, metodo: "CODIGO" });
     } catch (cause) {
       setErro(cause instanceof PortalError ? cause.message : "Não foi possível conferir o código agora.");
     } finally {
@@ -148,23 +131,18 @@ export default function PortalLogin({ aviso, onEntrou }: Props) {
           <button className="primary-button portal-full" type="submit" disabled={!docValido || !senha || busy}>
             {busy ? "Entrando…" : "Entrar"}
           </button>
-          <div className="portal-login-links">
-            <button className="link-button" type="button" onClick={() => trocarModo("codigo", true)}>Esqueci minha senha</button>
-            <button className="link-button" type="button" onClick={() => trocarModo("codigo")}>
-              Entrar com código pelo WhatsApp ou email
-            </button>
-          </div>
-          <p className="answer-hint">Ainda não tem senha? Peça à equipe BMI TAG.</p>
+          <p className="answer-hint">Não tem senha ou esqueceu? Peça à equipe BMI TAG uma nova.</p>
+          <button className="link-button" type="button" onClick={() => trocarModo("codigo")}>
+            Entrar com código pelo WhatsApp ou email
+          </button>
         </form>
       )}
 
       {modo === "codigo" && !desafio && (
         <form className="portal-form" onSubmit={pedirCodigo} noValidate>
-          {redefinir && <h2 className="portal-subtitle">Criar uma nova senha</h2>}
           <p className="portal-help">
-            {redefinir
-              ? "Informe o CPF ou CNPJ do cadastro e o seu WhatsApp ou email. Enviaremos um código; depois de confirmá-lo você cria a nova senha."
-              : "Informe o CPF ou CNPJ do cadastro e o WhatsApp ou email de um contato autorizado. Enviaremos um código de acesso para esse contato."}
+            Informe o CPF ou CNPJ do cadastro e o WhatsApp ou email de um contato autorizado.
+            Enviaremos um código de acesso para esse contato.
           </p>
           {campoDocumento}
           <label htmlFor="portal-contato">WhatsApp ou email do contato</label>
@@ -181,9 +159,7 @@ export default function PortalLogin({ aviso, onEntrou }: Props) {
             {busy ? "Enviando…" : "Receber código"}
           </button>
           <p className="answer-hint">
-            {redefinir
-              ? "Se o código não chegar, peça uma nova senha à equipe BMI TAG."
-              : "O CPF/CNPJ sozinho não dá acesso. Se o seu contato ainda não é autorizado, peça à equipe BMI TAG."}
+            O CPF/CNPJ sozinho não dá acesso. Se o seu contato ainda não é autorizado, peça à equipe BMI TAG.
           </p>
           <button className="link-button" type="button" onClick={() => trocarModo("senha")}>Entrar com senha</button>
         </form>

@@ -338,30 +338,14 @@ DO $$
 DECLARE r JSONB := portal_entrar_senha('11.222.333/0001-81', 'Ana-Senha-2026', repeat('5', 64));
 BEGIN
     PERFORM pg_temp.ok(r->>'resultado' = 'OK' AND r->>'acesso' = 'DECIDIR' AND r->>'metodo' = 'SENHA', 'senha da decisora entra como ela');
-    PERFORM pg_temp.ok((r->>'trocarSenha')::BOOLEAN, 'senha do operador é provisória');
 END $$;
 SELECT pg_temp.ok((portal_entrar_senha('11222333000181', 'Carla-2026', repeat('6', 64))->>'acesso') = 'ACOMPANHAR', 'a senha identifica o contato');
 SELECT pg_temp.ok(portal_metodo_sessao(repeat('5', 64)) = 'SENHA', 'método da sessão');
-
--- ─── Senha provisória: troca obrigatória antes de qualquer outra coisa (0037) ─
-SELECT pg_temp.espera_erro(format('SELECT portal_listar_atendimentos(%L)', repeat('5', 64)), 'TROCA_SENHA_PENDENTE');
-SELECT pg_temp.espera_erro(format('SELECT portal_trocar_senha(%L, ''curta'')', repeat('5', 64)), 'SENHA_FRACA');
-SELECT pg_temp.espera_erro(format('SELECT portal_trocar_senha(%L, ''Ana-Senha-2026'')', repeat('5', 64)), 'SENHA_IGUAL');
-SELECT pg_temp.espera_erro(format('SELECT portal_trocar_senha(%L, ''Carla-2026'')', repeat('5', 64)), 'SENHA_REPETIDA');
-SELECT pg_temp.ok(portal_trocar_senha(repeat('5', 64), 'Ana-Propria-99') = 'OK', 'contato cria a própria senha');
-SELECT pg_temp.ok((SELECT NOT portal_senha_provisoria AND portal_senha_definida_por_profile_id IS NULL
-    FROM cliente_contatos WHERE id = pg_temp.g('decisor')::INTEGER), 'senha deixa de ser provisória e não é do operador');
-SELECT pg_temp.ok(jsonb_array_length(portal_listar_atendimentos(repeat('5', 64))->'atendimentos') > 0, 'a mesma sessão segue depois da troca');
-SELECT pg_temp.espera_erro(format('SELECT portal_listar_atendimentos(%L)', repeat('6', 64)), 'TROCA_SENHA_PENDENTE');
-SELECT pg_temp.ok((portal_entrar_senha('11222333000181', 'Ana-Senha-2026', repeat('8', 64))->>'resultado') = 'INVALIDO', 'provisória não vale mais');
-SELECT pg_temp.ok(NOT ((portal_entrar_senha('11222333000181', 'Ana-Propria-99', repeat('8', 64))->>'trocarSenha')::BOOLEAN), 'nova senha entra direto');
--- Troca voluntária (esqueci a senha) exige verificação recente.
-UPDATE portal_sessoes SET verificada_em = verificada_em - INTERVAL '1 hour' WHERE token_hash = repeat('8', 64);
-SELECT pg_temp.espera_erro(format('SELECT portal_trocar_senha(%L, ''Outra-Senha-1'')', repeat('8', 64)), 'VERIFICACAO_NECESSARIA');
+SELECT pg_temp.ok(jsonb_array_length(portal_listar_atendimentos(repeat('5', 64))->'atendimentos') > 0, 'sessão por senha lista atendimentos');
 
 UPDATE portal_sessoes SET verificada_em = verificada_em - INTERVAL '1 hour' WHERE token_hash = repeat('5', 64);
 SELECT pg_temp.ok(NOT portal_reverificar_senha(repeat('5', 64), 'Carla-2026'), 'reverificação não aceita senha de outro contato');
-SELECT pg_temp.ok(portal_reverificar_senha(repeat('5', 64), 'Ana-Propria-99'), 'reverificação com a própria senha');
+SELECT pg_temp.ok(portal_reverificar_senha(repeat('5', 64), 'Ana-Senha-2026'), 'reverificação com a própria senha');
 SELECT pg_temp.ok((SELECT verificada_em > now() - INTERVAL '1 minute' FROM portal_sessoes WHERE token_hash = repeat('5', 64)), 'verificação renovada');
 
 -- Trocar a senha derruba as sessões; retirar o acesso apaga a senha.
@@ -384,7 +368,6 @@ BEGIN
     PERFORM pg_temp.ok(NOT has_table_privilege('service_role', 'public.portal_codigos', 'SELECT'), 'sem leitura direta de códigos');
     PERFORM pg_temp.ok(NOT has_function_privilege('anon', 'public.portal_listar_atendimentos(text)', 'EXECUTE'), 'anon sem acesso');
     PERFORM pg_temp.ok(has_function_privilege('service_role', 'public.portal_entrar_senha(text,text,text)', 'EXECUTE'), 'service_role entra com senha');
-    PERFORM pg_temp.ok(has_function_privilege('service_role', 'public.portal_trocar_senha(text,text)', 'EXECUTE'), 'service_role troca senha');
     PERFORM pg_temp.ok(NOT has_function_privilege('service_role', 'public.portal_definir_senha_contato(integer,integer,text,integer)', 'EXECUTE'),
         'só o desktop define senha');
     PERFORM pg_temp.ok(NOT has_column_privilege('service_role', 'public.cliente_contatos', 'portal_senha_hash', 'SELECT'), 'hash fora do alcance da função');
