@@ -176,6 +176,10 @@ import { PaginationControls } from "@/components/ui/pagination-controls";
 import { PagamentoOrcamentoDialog } from "@/components/equipamentos/PagamentoOrcamentoDialog";
 import { PublicStatusLinkDialog } from "@/components/equipamentos/PublicStatusLinkDialog";
 import { DecisaoOrcamentoCard } from "@/components/equipamentos/DecisaoOrcamentoCard";
+import { EVENTO_ALERTAS_PORTAL } from "@/components/PortalAlertas";
+import { toast } from "sonner";
+
+const AVISO_ATENDIMENTO_PENDENTE = "abrir-atendimento-pendente";
 import { CorrigirDecisaoDialog } from "@/components/equipamentos/CorrigirDecisaoDialog";
 import { FormaPagamentoFields } from "@/components/equipamentos/FormaPagamentoFields";
 import { resolveRecipient, type ResolvedRecipient } from "@/lib/recipient-resolver";
@@ -201,6 +205,9 @@ export default function Equipamentos() {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [detalhesDialogOpen, setDetalhesDialogOpen] = useState(false);
+  const detalhesAbertoRef = useRef(false);
+  const [sinalPortal, setSinalPortal] = useState(0);
+  detalhesAbertoRef.current = detalhesDialogOpen;
   const [publicStatusDialogOpen, setPublicStatusDialogOpen] = useState(false);
   // Resposta do cliente que o operador está vendo; segue junto da aprovação para barrar tela desatualizada.
   const respostaClienteVistaRef = useRef(0);
@@ -321,7 +328,7 @@ export default function Equipamentos() {
   } | null>(null);
   const [emailDialogOpen, setEmailDialogOpen] = useState(false);
 
-  const { equipamentos, total: totalEquipamentos, loading, criar, atualizar, deletar, atualizarStatus, recarregar } =
+  const { equipamentos, total: totalEquipamentos, loading, criar, atualizar, deletar, atualizarStatus, recarregar, atualizarEmSegundoPlano } =
     useEquipamentos({ busca: busca || undefined, status: statusFiltro, ordenacao, page: paginaEquipamentos });
   const totalPaginasEquipamentos = totalPages(totalEquipamentos);
   const paginaEquipamentosExibida = Math.min(paginaEquipamentos, totalPaginasEquipamentos);
@@ -342,19 +349,63 @@ export default function Equipamentos() {
   const location = useLocation();
   const navigate = useNavigate();
 
+  // Diálogo com algo sendo preenchido: abrir outro atendimento por cima perderia o que foi digitado.
+  const edicaoEmAndamento =
+    dialogOpen ? "o cadastro do equipamento"
+    : verificacaoDialogOpen ? "a verificação técnica"
+    : statusDialogOpen ? "a mudança de status"
+    : pagamentoDialogOpen ? "a forma de pagamento"
+    : selecaoServicosOpen ? "a decisão do orçamento"
+    : consumosDialogOpen ? "as peças da OS"
+    : corrigirDecisaoAlvo !== null ? "a correção da decisão"
+    : emailDialogOpen ? "o envio de email"
+    : photoUploadOpen ? "o envio de fotos"
+    : deleteDialogOpen || confirmOpen ? "a confirmação aberta"
+    : null;
+  const avisoEdicaoPendente = useRef<unknown>(null);
+
+  // Vindo de um alerta/atalho: abre o atendimento pedido. Se outra janela de detalhes estiver
+  // aberta, troca na hora; só espera quando há um formulário em preenchimento.
   useEffect(() => {
     const state = location.state as { equipamentoId?: number } | null;
-    if (state?.equipamentoId && !detalhesDialogOpen) {
-      db.buscarEquipamento(state.equipamentoId)
-        .then((eq) => {
-          abrirDetalhes(eq);
-          navigate(location.pathname, { replace: true, state: {} });
-        })
-        .catch((err) => {
-          console.error("Erro ao buscar equipamento do estado de navegação:", err);
+    if (!state?.equipamentoId) return;
+    if (edicaoEmAndamento) {
+      if (avisoEdicaoPendente.current !== state) {
+        avisoEdicaoPendente.current = state;
+        toast.warning("Equipamentos — Abrir atendimento", {
+          id: AVISO_ATENDIMENTO_PENDENTE,
+          description: `Termine ou feche ${edicaoEmAndamento}. O atendimento do alerta abre em seguida.`,
+          duration: Infinity,
         });
+      }
+      return;
     }
-  }, [location.state, detalhesDialogOpen]);
+    toast.dismiss(AVISO_ATENDIMENTO_PENDENTE);
+    navigate(location.pathname, { replace: true, state: {} });
+    db.buscarEquipamento(state.equipamentoId)
+      .then((eq) => abrirDetalhes(eq))
+      .catch((err) => {
+        console.error("Erro ao buscar equipamento do estado de navegação:", err);
+      });
+  }, [location.state, edicaoEmAndamento]);
+
+  // Cliente respondeu/pediu algo no portal: a lista reordena sem o operador recarregar, e o
+  // atendimento aberto mostra o estado novo.
+  useEffect(() => {
+    const aoChegar = (event: Event) => {
+      const ids = (event as CustomEvent<{ equipamentoIds?: number[] }>).detail?.equipamentoIds ?? [];
+      void atualizarEmSegundoPlano();
+      const abertoId = selecionadoIdRef.current;
+      if (detalhesAbertoRef.current && abertoId && ids.includes(abertoId)) {
+        setSinalPortal((valor) => valor + 1);
+        db.buscarEquipamento(abertoId)
+          .then((eq) => { if (selecionadoIdRef.current === eq.id) setSelecionado(eq); })
+          .catch(() => undefined);
+      }
+    };
+    window.addEventListener(EVENTO_ALERTAS_PORTAL, aoChegar);
+    return () => window.removeEventListener(EVENTO_ALERTAS_PORTAL, aoChegar);
+  }, [atualizarEmSegundoPlano]);
 
   const carregarImagensComPreview = useCallback(async (equipamentoId: number) => {
     const imagens = await db.listarImagensEquipamento(equipamentoId);
@@ -632,7 +683,10 @@ export default function Equipamentos() {
    * Abre dialog de detalhes com 4 abas. Carrega verificação e comunicações em paralelo.
    * Conecta-se a: db.buscarVerificacao, db.listarComunicacoes
    */
+  const detalhesSeq = useRef(0);
   const abrirDetalhes = useCallback(async (eq: Equipamento) => {
+    // Trocar de atendimento com a janela aberta: só a última abertura grava os dados.
+    const seq = ++detalhesSeq.current;
     setSelecionado(eq);
     setDetalhesDialogOpen(true);
     setCarregandoDetalhes(true);
@@ -648,6 +702,7 @@ export default function Equipamentos() {
         carregarImagensComPreview(eq.id!),
         db.listarHistoricoEquipamento(eq.id!),
       ]);
+      if (seq !== detalhesSeq.current) return;
       setVerificacaoDetalhes(verif.status === "fulfilled" ? verif.value : null);
       setComunicacoes(comms.status === "fulfilled" ? comms.value : []);
       setImagensDetalhes(imagens.status === "fulfilled" ? imagens.value : []);
@@ -660,7 +715,7 @@ export default function Equipamentos() {
     } catch (err) {
       console.error("Erro ao carregar detalhes:", err);
     } finally {
-      setCarregandoDetalhes(false);
+      if (seq === detalhesSeq.current) setCarregandoDetalhes(false);
     }
   }, [carregarImagensComPreview]);
 
@@ -2518,9 +2573,10 @@ export default function Equipamentos() {
                 equipamento={selecionado}
                 onRespostaVista={registrarRespostaClienteVista}
                 onAplicar={(decisao) => void abrirDialogoAprovacao(selecionado, decisao)}
+                sinalPortal={sinalPortal}
               />
 
-              <Tabs defaultValue="info">
+              <Tabs key={selecionado.id} defaultValue="info">
                 <TabsList className="grid grid-cols-4 w-full">
                   <TabsTrigger value="info"><FileText className="h-3.5 w-3.5 mr-1 hidden sm:inline" />Informações</TabsTrigger>
                   <TabsTrigger value="verificacao"><ClipboardCheck className="h-3.5 w-3.5 mr-1 hidden sm:inline" />Verificação</TabsTrigger>

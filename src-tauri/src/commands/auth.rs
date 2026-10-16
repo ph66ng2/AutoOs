@@ -1161,7 +1161,7 @@ pub async fn create_security_profile(input: SecurityProfileInput, pin: String) -
         if resposta.starts_with("AUTOOS:23505") {
             resposta
         } else {
-            format!("AUTOOS:DB\nNão foi possível criar o perfil. Tente novamente.")
+            super::operator_errors::trocar_frase(&resposta, "Não foi possível criar o perfil. Tente novamente.")
         }
     })?;
 
@@ -1233,7 +1233,7 @@ pub async fn update_security_profile(profile_id: i32, input: SecurityProfileInpu
         if resposta.starts_with("AUTOOS:23505") {
             resposta
         } else {
-            format!("AUTOOS:DB\nNão foi possível atualizar o perfil. Tente novamente.")
+            super::operator_errors::trocar_frase(&resposta, "Não foi possível atualizar o perfil. Tente novamente.")
         }
     })?;
 

@@ -97,6 +97,13 @@ select cron.schedule('portal-efetivar-respostas', '* * * * *',
 
 Pausar: `portal_enabled = FALSE` derruba login e sessões na hora; nada é apagado. Pausar só as respostas: `online_enabled = FALSE`.
 
+## Notificações no AutoOS (sino no canto superior direito)
+
+- Abas **Todos**, **Erros** e **Portal do Cliente**, cada uma com “Não lidas” e “Histórico”. Erros reúne os erros do app e os alertas do portal que pedem ação (efetivação falhou, código não entregue).
+- Alerta novo do portal vira aviso; **Ver** marca como lido e abre o atendimento. Se outra janela de detalhes estiver aberta, troca na hora; se houver formulário em preenchimento (cadastro, verificação, status, pagamento…), avisa e abre ao fechar o formulário.
+- Alerta novo também atualiza a lista de Equipamentos em segundo plano (ordem “Alterados recentemente” inclui a atividade do cliente) e recarrega a resposta do atendimento aberto.
+- Erros do app ficam guardados neste computador (até 50). **Copiar relatório** leva código (`AUTOOS:DB:<SQLSTATE ou categoria>`, `AUTOOS:23505:<restrição>`, `AUTOOS:OP`), descrição técnica, referência do log, contexto, tela e versão. O texto bruto do banco continua só no log (`autoos.log`), na linha com a mesma `referencia=`.
+
 ## Testes
 
 - Contrato SQL: `psql --set ON_ERROR_STOP=1 --file=supabase/tests/portal_cliente_contract.sql` (também no job `qa-real` do CI).

@@ -444,3 +444,9 @@
     font-family: 'Inter', 'Segoe UI', system-ui, -apple-system, sans-serif;
   }
 }
+
+/* Janela modal aberta deixa o <body> com pointer-events: none. Os avisos (Sonner) ficam acima
+   dela e precisam continuar clicáveis ("Ver", "Copiar detalhes", fechar). */
+[data-sonner-toaster] [data-sonner-toast] {
+  pointer-events: auto;
+}

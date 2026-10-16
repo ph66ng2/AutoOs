@@ -27,19 +27,21 @@ describe('error-utils', () => {
       expect(result.message).toBe('Ocorreu um erro inesperado.');
     });
 
-    it('traduz o código estruturado de duplicidade e a cópia não leva a constraint', () => {
+    it('traduz a duplicidade para o operador; a cópia para o suporte leva código e restrição', () => {
       const result = formatAppError({
         context: 'Clientes',
         action: 'Salvar cliente',
-        error: new Error('AUTOOS:23505:ux_clientes_documento_ativo'),
+        error: new Error('AUTOOS:23505:ux_clientes_documento_ativo#K7M2Q9XA'),
       });
       expect(result.message).toContain('cliente já está cadastrado');
+      expect(result.message).not.toContain('ux_clientes_documento_ativo');
       expect(result.technicalDetails).toBeUndefined();
       const copied = formatErrorForCopy(result);
       expect(copied).toContain('cliente já está cadastrado');
-      expect(copied).not.toContain('ux_clientes_documento_ativo');
-      expect(copied.toLowerCase()).not.toContain('constraint');
-      expect(copied).not.toContain('23505');
+      expect(copied).toContain('Código: AUTOOS:23505:ux_clientes_documento_ativo');
+      expect(copied).toContain('Descrição técnica: 23505 · registro duplicado (chave única) em ux_clientes_documento_ativo');
+      expect(copied).toContain('Referência no log: K7M2Q9XA');
+      expect(copied.toLowerCase()).not.toContain('duplicate key');
     });
 
     it('mostra a frase do código AUTOOS:DB e não esconde mensagem com 23xxx ou 42xxx', () => {
@@ -52,17 +54,24 @@ describe('error-utils', () => {
       const solto = 'syntax error at or near "FROM" (SQLSTATE 42601)';
       expect(formatAppError({ context: 'Insumos', action: 'Salvar insumo', error: solto }).message).toBe(solto);
 
-      const estruturado = `AUTOOS:DB\n${MENSAGEM_ERRO_GENERICO}`;
+      const estruturado = `AUTOOS:DB:42601#K7M2Q9XA\n${MENSAGEM_ERRO_GENERICO}`;
       const result = formatAppError({ context: 'Insumos', action: 'Salvar insumo', error: new Error(estruturado) });
       expect(result.message).toBe(MENSAGEM_ERRO_GENERICO);
       expect(result.technicalDetails).toBeUndefined();
       const copied = formatErrorForCopy(result);
       expect(copied).toContain(MENSAGEM_ERRO_GENERICO);
-      expect(copied).not.toContain('AUTOOS:DB');
-      expect(copied).not.toContain('42601');
+      expect(copied).toContain('Código: AUTOOS:DB:42601');
+      expect(copied).toContain('SQLSTATE 42601');
+      expect(copied).toContain('Referência no log: K7M2Q9XA');
+      // O texto do banco (SQL, nomes, valores) não viaja: fica no log, achado pela referência.
       expect(copied.toLowerCase()).not.toContain('syntax');
       expect(copied.toLowerCase()).not.toContain('constraint');
       expect(copied).not.toContain('Detalhes Técnicos');
+
+      // Resposta de versão antiga (sem SQLSTATE nem referência) continua funcionando.
+      const antigo = formatAppError({ context: 'Insumos', action: 'Salvar', error: new Error(`AUTOOS:DB\n${MENSAGEM_ERRO_GENERICO}`) });
+      expect(antigo.message).toBe(MENSAGEM_ERRO_GENERICO);
+      expect(antigo.codigo).toBe('AUTOOS:DB');
     });
   });
 

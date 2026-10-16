@@ -13,6 +13,7 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { Card, CardContent } from "@/components/ui/card";
+import { notificarErro } from "@/hooks/useNotification";
 
 export function GerarEnrollmentCodeDialog() {
   const [open, setOpen] = useState(false);
@@ -27,9 +28,7 @@ export function GerarEnrollmentCodeDialog() {
       setGeneratedCode(code);
       toast.success("Código de enrollment gerado com sucesso");
     } catch (err) {
-      toast.error("Erro ao gerar código de enrollment", {
-        description: String(err),
-      });
+      notificarErro("Configurações", "Gerar código de enrollment", err);
     } finally {
       setLoading(false);
     }

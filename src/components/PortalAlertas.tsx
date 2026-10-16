@@ -1,12 +1,13 @@
 /**
- * Alertas do Portal das Impressoras do Cliente.
+ * Central de notificações (sino no canto superior direito).
  *
- * Persistentes no banco (`portal_alertas`): respostas ao orçamento, efetivações, falhas,
- * pedidos de negociação/correção e códigos não entregues. Não dependem de WhatsApp nem de o
- * AutoOS estar aberto quando o cliente responde. Ler um alerta registra quem leu e quando.
+ * Duas fontes, uma lista:
+ * - Portal do Cliente: alertas persistentes no banco (`portal_alertas`) — respostas ao orçamento,
+ *   efetivações, falhas, pedidos e códigos não entregues. Ler registra quem leu e quando.
+ * - Erros do app: o que apareceu como aviso de erro (`notificarErro`), guardado neste computador
+ *   para o operador copiar o relatório técnico depois.
  *
- * Fica no canto superior direito, junto dos avisos (toasts) do app: o sino abre um painel logo
- * abaixo dele e um alerta novo aparece como toast com o mesmo visual dos avisos de erro/sucesso.
+ * Abas: Todos, Erros (erros do app + alertas do portal que pedem ação) e Portal do Cliente.
  */
 
 import { useCallback, useEffect, useRef, useState, type ComponentType } from "react";
@@ -14,8 +15,11 @@ import { useNavigate } from "react-router-dom";
 import {
   BadgeCheck,
   Bell,
+  Check,
   CheckCheck,
+  CircleAlert,
   CircleX,
+  Copy,
   Hourglass,
   MailX,
   MessageCircleQuestion,
@@ -28,10 +32,16 @@ import {
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { db } from "@/lib/db";
+import { copyErrorDetails } from "@/lib/error-utils";
+import { marcarErrosLidos, useErrosRegistrados, type ErroRegistrado } from "@/lib/error-log";
+import { PREFIXO_TOAST_ERRO } from "@/hooks/useNotification";
 import { cn } from "@/lib/utils";
 import type { AlertaPortal } from "@/types";
 
 const POLL_MS = 30_000;
+
+/** Disparado quando chegam alertas novos do portal; a tela de Equipamentos reordena a lista. */
+export const EVENTO_ALERTAS_PORTAL = "autoos:alertas-portal-novos";
 const MAX_TOASTS_POR_VEZ = 3;
 
 /**
@@ -91,7 +101,7 @@ function quando(value: string) {
   return new Intl.DateTimeFormat("pt-BR", { dateStyle: "short", timeStyle: "short" }).format(data);
 }
 
-function notificar(alerta: AlertaPortal, abrir: () => void) {
+function notificar(alerta: AlertaPortal, ver: () => void) {
   const visual = visualDoAlerta(alerta);
   const opcoes = {
     id: `portal-alerta-${alerta.id}`,
@@ -99,7 +109,7 @@ function notificar(alerta: AlertaPortal, abrir: () => void) {
     icon: <visual.Icone className="h-4 w-4" />,
     // Erro fica até alguém fechar, como os avisos de erro do app.
     duration: visual.erro ? Infinity : 10_000,
-    action: { label: "Ver", onClick: abrir },
+    action: { label: "Ver", onClick: ver },
     classNames: { description: "!whitespace-pre-line", toast: visual.toast },
   };
   if (visual.erro) toast.error(alerta.titulo, opcoes);
@@ -108,11 +118,16 @@ function notificar(alerta: AlertaPortal, abrir: () => void) {
 
 export function PortalAlertasSino() {
   const navigate = useNavigate();
-  const [naoLidos, setNaoLidos] = useState(0);
+  const erros = useErrosRegistrados();
+  const [naoLidosPortal, setNaoLidosPortal] = useState(0);
   const [aberto, setAberto] = useState(false);
   const ultimoVisto = useRef<number | null>(null);
   const notificados = useRef<string[]>([]);
   const raiz = useRef<HTMLDivElement>(null);
+  const errosNaoLidos = erros.filter((item) => !item.lido).length;
+  const naoLidos = naoLidosPortal + errosNaoLidos;
+  const errosAbertos = useRef<string[]>([]);
+  errosAbertos.current = erros.filter((item) => !item.lido).map((item) => item.id);
 
   const abrirAtendimento = useCallback((equipamentoId: number) => {
     setAberto(false);
@@ -122,7 +137,7 @@ export function PortalAlertasSino() {
   const verificar = useCallback(async () => {
     try {
       const total = Number(await db.contarAlertasPortalNaoLidos()) || 0;
-      setNaoLidos(total);
+      setNaoLidosPortal(total);
       if (total === 0) {
         ultimoVisto.current ??= 0;
         return;
@@ -131,21 +146,32 @@ export function PortalAlertasSino() {
       const maior = recentes.reduce((max, alerta) => Math.max(max, alerta.id), 0);
       // Na primeira consulta só o contador aparece; toasts são para o que chegar depois.
       if (ultimoVisto.current !== null) {
-        recentes
-          .filter((alerta) => alerta.id > (ultimoVisto.current ?? 0))
+        const novos = recentes.filter((alerta) => alerta.id > (ultimoVisto.current ?? 0));
+        novos
           .slice(0, MAX_TOASTS_POR_VEZ)
           .reverse()
           .forEach((alerta) => {
             notificados.current.push(`portal-alerta-${alerta.id}`);
-            notificar(alerta, () => (alerta.equipamentoId ? abrirAtendimento(alerta.equipamentoId) : setAberto(true)));
+            notificar(alerta, () => {
+              // "Ver" conta como leitura, igual a abrir pelo painel.
+              void db.marcarAlertasPortalLidos(alerta.id).then(() => verificarRef.current()).catch(() => undefined);
+              if (alerta.equipamentoId) abrirAtendimento(alerta.equipamentoId);
+              else setAberto(true);
+            });
           });
+        const equipamentoIds = [...new Set(novos.map((alerta) => alerta.equipamentoId).filter((id): id is number => id != null))];
+        if (novos.length > 0) {
+          window.dispatchEvent(new CustomEvent(EVENTO_ALERTAS_PORTAL, { detail: { equipamentoIds } }));
+        }
       }
       ultimoVisto.current = Math.max(ultimoVisto.current ?? 0, maior);
     } catch {
-      // Sessão bloqueada ou banco sem a migration 0034: o sino fica sem contador.
-      setNaoLidos(0);
+      // Sessão bloqueada ou banco sem a migration 0034: só os erros do app contam.
+      setNaoLidosPortal(0);
     }
   }, [abrirAtendimento]);
+  const verificarRef = useRef(verificar);
+  verificarRef.current = verificar;
 
   useEffect(() => {
     void verificar();
@@ -156,9 +182,10 @@ export function PortalAlertasSino() {
   // Fecha ao clicar fora ou com Esc, como os menus do app.
   useEffect(() => {
     if (!aberto) return;
-    // Os avisos do portal já estão no painel: some com eles para não cobrir a lista.
+    // O que já está no painel não precisa continuar cobrindo a tela como aviso.
     notificados.current.forEach((id) => toast.dismiss(id));
     notificados.current = [];
+    errosAbertos.current.forEach((id) => toast.dismiss(`${PREFIXO_TOAST_ERRO}${id}`));
     const fora = (event: MouseEvent) => {
       if (raiz.current && !raiz.current.contains(event.target as Node)) setAberto(false);
     };
@@ -181,7 +208,7 @@ export function PortalAlertasSino() {
         onClick={() => setAberto((valor) => !valor)}
         aria-haspopup="dialog"
         aria-expanded={aberto}
-        aria-label={naoLidos > 0 ? `Alertas do portal: ${naoLidos} não lido(s)` : "Alertas do portal"}
+        aria-label={naoLidos > 0 ? `Notificações: ${naoLidos} não lida(s)` : "Notificações"}
       >
         <Bell className="h-5 w-5" />
         {naoLidos > 0 && (
@@ -192,6 +219,7 @@ export function PortalAlertasSino() {
       </Button>
       {aberto && (
         <PortalAlertasPainel
+          erros={erros}
           onFechar={() => setAberto(false)}
           onAbrirAtendimento={abrirAtendimento}
           onChanged={() => void verificar()}
@@ -201,14 +229,24 @@ export function PortalAlertasSino() {
   );
 }
 
+type Aba = "todos" | "erros" | "portal";
+
+type Item =
+  | { tipo: "portal"; chave: string; quando: string; alerta: AlertaPortal }
+  | { tipo: "erro"; chave: string; quando: string; registro: ErroRegistrado };
+
 type PainelProps = {
+  erros: ErroRegistrado[];
   onFechar: () => void;
   onAbrirAtendimento: (equipamentoId: number) => void;
   onChanged: () => void;
 };
 
-export function PortalAlertasPainel({ onFechar, onAbrirAtendimento, onChanged }: PainelProps) {
-  const [aba, setAba] = useState<"nao-lidos" | "historico">("nao-lidos");
+const ROTULO_ABA: Record<Aba, string> = { todos: "Todos", erros: "Erros", portal: "Portal do Cliente" };
+
+export function PortalAlertasPainel({ erros, onFechar, onAbrirAtendimento, onChanged }: PainelProps) {
+  const [aba, setAba] = useState<Aba>("todos");
+  const [historico, setHistorico] = useState(false);
   const [alertas, setAlertas] = useState<AlertaPortal[]>([]);
   const [loading, setLoading] = useState(true);
   const [erro, setErro] = useState<string | null>(null);
@@ -217,13 +255,13 @@ export function PortalAlertasPainel({ onFechar, onAbrirAtendimento, onChanged }:
     setLoading(true);
     setErro(null);
     try {
-      setAlertas(await db.listarAlertasPortal(aba === "nao-lidos", aba === "nao-lidos" ? 100 : 200));
+      setAlertas(await db.listarAlertasPortal(!historico, historico ? 200 : 100));
     } catch (cause) {
       setErro(cause instanceof Error ? cause.message : String(cause));
     } finally {
       setLoading(false);
     }
-  }, [aba]);
+  }, [historico]);
 
   useEffect(() => {
     void carregar();
@@ -245,89 +283,190 @@ export function PortalAlertasPainel({ onFechar, onAbrirAtendimento, onChanged }:
     onAbrirAtendimento(alerta.equipamentoId);
   };
 
+  const errosVisiveis = historico ? erros : erros.filter((item) => !item.lido);
+  const portalErro = (alerta: AlertaPortal) => visualDoAlerta(alerta).erro === true;
+  const contagem: Record<Aba, number> = {
+    todos: alertas.filter((a) => !a.lidoEm).length + erros.filter((e) => !e.lido).length,
+    erros: alertas.filter((a) => !a.lidoEm && portalErro(a)).length + erros.filter((e) => !e.lido).length,
+    portal: alertas.filter((a) => !a.lidoEm).length,
+  };
+
+  const itens: Item[] = [
+    ...(aba === "portal" || aba === "todos" ? alertas : aba === "erros" ? alertas.filter(portalErro) : [])
+      .map((alerta): Item => ({ tipo: "portal", chave: `p-${alerta.id}`, quando: alerta.criadoEm, alerta })),
+    ...(aba === "portal" ? [] : errosVisiveis)
+      .map((registro): Item => ({ tipo: "erro", chave: `e-${registro.id}`, quando: registro.erro.timestamp.toISOString(), registro })),
+  ].sort((a, b) => b.quando.localeCompare(a.quando));
+
+  const marcarTodos = async () => {
+    if (aba !== "portal") marcarErrosLidos();
+    if (aba === "erros") {
+      for (const alerta of alertas.filter((a) => !a.lidoEm && portalErro(a))) await db.marcarAlertasPortalLidos(alerta.id).catch(() => undefined);
+      onChanged();
+      await carregar();
+    } else {
+      await marcar();
+    }
+  };
+  const haNaoLidos = itens.some((item) => (item.tipo === "portal" ? !item.alerta.lidoEm : !item.registro.lido));
+
   return (
     <div
       role="dialog"
-      aria-label="Alertas do Portal do Cliente"
-      className="absolute right-0 top-11 z-[1000000000] flex max-h-[min(70vh,40rem)] w-[min(26rem,calc(100vw-2rem))] flex-col overflow-hidden rounded-lg border border-border bg-background text-foreground shadow-lg"
+      aria-label="Notificações"
+      className="absolute right-0 top-11 z-[1000000000] flex max-h-[min(75vh,42rem)] w-[min(27rem,calc(100vw-2rem))] flex-col overflow-hidden rounded-lg border border-border bg-background text-foreground shadow-lg"
     >
-      <div className="flex items-start justify-between gap-3 border-b px-4 py-3">
-        <div>
-          <h2 className="text-sm font-semibold">Alertas do portal</h2>
-          <p className="text-xs text-muted-foreground">“Confirma às…”: o cliente ainda pode desfazer. Só inicie o serviço depois.</p>
-        </div>
-        <button type="button" className="rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground" onClick={onFechar} aria-label="Fechar alertas">
+      <div className="flex items-center justify-between gap-3 border-b px-4 py-3">
+        <h2 className="text-sm font-semibold">Notificações</h2>
+        <button type="button" className="rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground" onClick={onFechar} aria-label="Fechar notificações">
           <X className="h-4 w-4" />
         </button>
       </div>
-      <div className="flex items-center justify-between gap-2 border-b px-4 py-2">
-        <div className="flex gap-1 rounded-md bg-muted p-0.5" role="tablist" aria-label="Filtro de alertas">
-          {(["nao-lidos", "historico"] as const).map((valor) => (
+      <div className="flex gap-4 border-b px-4" role="tablist" aria-label="Tipo de notificação">
+        {(["todos", "erros", "portal"] as const).map((valor) => (
+          <button
+            key={valor}
+            type="button"
+            role="tab"
+            aria-selected={aba === valor}
+            onClick={() => setAba(valor)}
+            className={cn(
+              "-mb-px flex items-center gap-1.5 border-b-2 py-2 text-xs font-medium",
+              aba === valor ? "border-primary text-foreground" : "border-transparent text-muted-foreground hover:text-foreground",
+            )}
+          >
+            {ROTULO_ABA[valor]}
+            {contagem[valor] > 0 && (
+              <span className={cn(
+                "rounded-full px-1.5 text-[10px] font-semibold leading-4",
+                valor === "erros" ? "bg-red-100 text-red-700" : "bg-muted text-muted-foreground",
+              )}>
+                {contagem[valor]}
+              </span>
+            )}
+          </button>
+        ))}
+      </div>
+      <div className="flex items-center justify-between gap-2 px-4 py-2">
+        <div className="flex gap-1 rounded-md bg-muted p-0.5" aria-label="Lidas ou histórico">
+          {([false, true] as const).map((valor) => (
             <button
-              key={valor}
+              key={String(valor)}
               type="button"
-              role="tab"
-              aria-selected={aba === valor}
-              onClick={() => setAba(valor)}
-              className={cn("rounded px-2.5 py-1 text-xs font-medium", aba === valor ? "bg-background shadow-sm" : "text-muted-foreground")}
+              aria-pressed={historico === valor}
+              onClick={() => setHistorico(valor)}
+              className={cn("rounded px-2.5 py-1 text-xs font-medium", historico === valor ? "bg-background shadow-sm" : "text-muted-foreground")}
             >
-              {valor === "nao-lidos" ? "Não lidos" : "Histórico"}
+              {valor ? "Histórico" : "Não lidas"}
             </button>
           ))}
         </div>
-        {aba === "nao-lidos" && alertas.length > 0 && (
-          <button type="button" className="flex items-center gap-1 text-xs font-medium text-primary hover:underline" onClick={() => void marcar()}>
-            <CheckCheck className="h-3.5 w-3.5" /> Marcar todos como lidos
+        {haNaoLidos && (
+          <button type="button" className="flex items-center gap-1 text-xs font-medium text-primary hover:underline" onClick={() => void marcarTodos()}>
+            <CheckCheck className="h-3.5 w-3.5" /> Marcar todas como lidas
           </button>
         )}
       </div>
-      <div className="flex-1 space-y-2 overflow-y-auto p-3">
-        {erro && <p className="text-sm text-destructive" role="alert">{erro}</p>}
-        {loading && alertas.length === 0 && <p className="px-1 text-sm text-muted-foreground">Carregando…</p>}
-        {!loading && alertas.length === 0 && !erro && (
+      {aba === "erros" && (
+        <p className="mx-4 mb-1 rounded bg-muted/60 px-2.5 py-1.5 text-[11px] leading-snug text-muted-foreground">
+          “Copiar relatório” leva código, descrição técnica e referência do log — é o que você manda para o suporte.
+        </p>
+      )}
+      <div className="flex-1 space-y-2 overflow-y-auto px-3 pb-3 pt-1">
+        {erro && aba !== "erros" && <p className="text-sm text-destructive" role="alert">{erro}</p>}
+        {loading && itens.length === 0 && <p className="px-1 text-sm text-muted-foreground">Carregando…</p>}
+        {!loading && itens.length === 0 && (
           <p className="px-1 py-6 text-center text-sm text-muted-foreground">
-            {aba === "nao-lidos" ? "Nenhum alerta novo." : "Nenhum alerta registrado."}
+            {historico ? "Nada registrado." : aba === "erros" ? "Nenhum erro novo." : "Nenhuma notificação nova."}
           </p>
         )}
-        {alertas.map((alerta) => {
-          const visual = visualDoAlerta(alerta);
-          return (
-            <article
-              key={alerta.id}
-              className={cn("flex gap-3 rounded-md border border-l-4 bg-background px-3 py-2.5", visual.borda, alerta.lidoEm && "opacity-75")}
-            >
-              <span className={cn("mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full", visual.chip)} aria-hidden="true">
-                <visual.Icone className="h-4 w-4" />
-              </span>
-              <div className="min-w-0 flex-1">
-                <div className="flex items-baseline justify-between gap-2">
-                  <h3 className="text-sm font-semibold leading-snug">{alerta.titulo}</h3>
-                  <time className="shrink-0 text-[11px] text-muted-foreground" dateTime={alerta.criadoEm}>{quando(alerta.criadoEm)}</time>
-                </div>
-                {alerta.detalhe && (
-                  <p className="mt-0.5 line-clamp-3 whitespace-pre-line text-xs leading-relaxed text-muted-foreground">{alerta.detalhe}</p>
-                )}
-                <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1">
-                  {alerta.equipamentoId && (
-                    <button type="button" className="text-xs font-medium text-primary hover:underline" onClick={() => void abrir(alerta)}>
-                      Abrir atendimento
-                    </button>
-                  )}
-                  {!alerta.lidoEm ? (
-                    <button type="button" className="text-xs text-muted-foreground hover:text-foreground hover:underline" onClick={() => void marcar(alerta.id)}>
-                      Marcar como lido
-                    </button>
-                  ) : (
-                    <span className="text-[11px] text-muted-foreground">
-                      Lido {alerta.lidoPor ? `por ${alerta.lidoPor} ` : ""}{quando(alerta.lidoEm)}
-                    </span>
-                  )}
-                </div>
-              </div>
-            </article>
-          );
-        })}
+        {itens.map((item) => item.tipo === "portal"
+          ? <ItemPortal key={item.chave} alerta={item.alerta} onAbrir={() => void abrir(item.alerta)} onMarcar={() => void marcar(item.alerta.id)} />
+          : <ItemErro key={item.chave} registro={item.registro} />)}
       </div>
+      {aba !== "erros" && (
+        <p className="border-t px-4 py-2 text-[11px] text-muted-foreground">
+          Portal: “confirma às…” significa que o cliente ainda pode desfazer. Só inicie o serviço depois.
+        </p>
+      )}
     </div>
+  );
+}
+
+function ItemPortal({ alerta, onAbrir, onMarcar }: { alerta: AlertaPortal; onAbrir: () => void; onMarcar: () => void }) {
+  const visual = visualDoAlerta(alerta);
+  return (
+    <article className={cn("flex gap-3 rounded-md border border-l-4 bg-background px-3 py-2.5", visual.borda, alerta.lidoEm && "opacity-75")}>
+      <span className={cn("mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full", visual.chip)} aria-hidden="true">
+        <visual.Icone className="h-4 w-4" />
+      </span>
+      <div className="min-w-0 flex-1">
+        <div className="flex items-baseline justify-between gap-2">
+          <h3 className="text-sm font-semibold leading-snug">{alerta.titulo}</h3>
+          <time className="shrink-0 text-[11px] text-muted-foreground" dateTime={alerta.criadoEm}>{quando(alerta.criadoEm)}</time>
+        </div>
+        {alerta.detalhe && (
+          <p className="mt-0.5 line-clamp-3 whitespace-pre-line text-xs leading-relaxed text-muted-foreground">{alerta.detalhe}</p>
+        )}
+        <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1">
+          <span className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">Portal</span>
+          {alerta.equipamentoId && (
+            <button type="button" className="text-xs font-medium text-primary hover:underline" onClick={onAbrir}>
+              Abrir atendimento
+            </button>
+          )}
+          {!alerta.lidoEm ? (
+            <button type="button" className="text-xs text-muted-foreground hover:text-foreground hover:underline" onClick={onMarcar}>
+              Marcar como lido
+            </button>
+          ) : (
+            <span className="text-[11px] text-muted-foreground">
+              Lido {alerta.lidoPor ? `por ${alerta.lidoPor} ` : ""}{quando(alerta.lidoEm)}
+            </span>
+          )}
+        </div>
+      </div>
+    </article>
+  );
+}
+
+function ItemErro({ registro }: { registro: ErroRegistrado }) {
+  const { erro } = registro;
+  const [copiado, setCopiado] = useState<"ok" | "falhou" | null>(null);
+  const copiar = async () => {
+    const ok = await copyErrorDetails(erro);
+    setCopiado(ok ? "ok" : "falhou");
+    window.setTimeout(() => setCopiado(null), 2500);
+  };
+  return (
+    <article className={cn("flex gap-3 rounded-md border border-l-4 border-l-red-500 bg-background px-3 py-2.5", registro.lido && "opacity-75")}>
+      <span className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-red-100 text-red-700" aria-hidden="true">
+        <CircleAlert className="h-4 w-4" />
+      </span>
+      <div className="min-w-0 flex-1">
+        <div className="flex items-baseline justify-between gap-2">
+          <h3 className="text-sm font-semibold leading-snug">{erro.context} — {erro.action}</h3>
+          <time className="shrink-0 text-[11px] text-muted-foreground" dateTime={erro.timestamp.toISOString()}>{quando(erro.timestamp.toISOString())}</time>
+        </div>
+        <p className="mt-0.5 line-clamp-3 text-xs leading-relaxed text-muted-foreground">{erro.message}</p>
+        {erro.codigo && (
+          <p className="mt-1 font-mono text-[11px] text-foreground/80">
+            {erro.codigo}{erro.referencia && <span className="text-muted-foreground"> · ref {erro.referencia}</span>}
+          </p>
+        )}
+        <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1">
+          <span className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">AutoOS</span>
+          <button type="button" className="flex items-center gap-1 text-xs font-medium text-primary hover:underline" onClick={() => void copiar()}>
+            {copiado === "ok" ? <><Check className="h-3.5 w-3.5" /> Copiado</> : <><Copy className="h-3.5 w-3.5" /> Copiar relatório</>}
+          </button>
+          {copiado === "falhou" && <span className="text-[11px] text-destructive">Não foi possível copiar.</span>}
+          {!registro.lido && (
+            <button type="button" className="text-xs text-muted-foreground hover:text-foreground hover:underline" onClick={() => marcarErrosLidos(registro.id)}>
+              Marcar como lido
+            </button>
+          )}
+        </div>
+      </div>
+    </article>
   );
 }

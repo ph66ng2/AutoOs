@@ -44,8 +44,11 @@ export function useEquipamentos(params?: UseEquipamentosParams) {
    * Disparado automaticamente quando os parâmetros de busca/status mudam.
    * Atualiza os estados loading e error durante a execução.
    */
-  const carregar = useCallback(async () => {
-    setLoading(true);
+  const carregar = useCallback(async (opcoes?: { silencioso?: boolean }) => {
+    // Silencioso: atualização em segundo plano (ex.: cliente respondeu no portal) sem trocar a
+    // lista pelo indicador de carregamento.
+    const silencioso = opcoes?.silencioso === true;
+    if (!silencioso) setLoading(true);
     setError(null);
     try {
       const data = await db.listarEquipamentosPaginados(
@@ -57,16 +60,19 @@ export function useEquipamentos(params?: UseEquipamentosParams) {
       setEquipamentos(data.items);
       setTotal(data.total);
     } catch (err: any) {
-      setError(err?.toString() || "Erro ao carregar equipamentos");
+      if (!silencioso) setError(err?.toString() || "Erro ao carregar equipamentos");
       console.error("Erro ao carregar equipamentos:", err);
     } finally {
-      setLoading(false);
+      if (!silencioso) setLoading(false);
     }
   }, [params?.busca, params?.status, params?.page, params?.ordenacao]);
 
   useEffect(() => {
     carregar();
   }, [carregar]);
+
+  const recarregar = useCallback(() => carregar(), [carregar]);
+  const atualizarEmSegundoPlano = useCallback(() => carregar({ silencioso: true }), [carregar]);
 
   /**
    * Cria um novo equipamento e recarrega a lista.
@@ -166,6 +172,7 @@ export function useEquipamentos(params?: UseEquipamentosParams) {
     atualizar,
     deletar,
     atualizarStatus,
-    recarregar: carregar,
+    recarregar,
+    atualizarEmSegundoPlano,
   };
 }

@@ -18,6 +18,8 @@ type Props = {
   equipamento: Equipamento;
   /** Id da resposta exibida; vai junto da aprovação para detectar tela desatualizada. */
   onRespostaVista: (respostaId: number) => void;
+  /** Muda quando chega um alerta do portal para este equipamento: recarrega a resposta. */
+  sinalPortal?: number;
   /** Abre o fluxo atual de pagamento e aprovação já com a decisão do cliente. */
   onAplicar: (decisao: "aprovar" | "reprovar") => void;
 };
@@ -59,7 +61,7 @@ function mensagemErro(cause: unknown, fallback: string) {
   return typeof cause === "string" && cause.trim() ? cause : fallback;
 }
 
-export function DecisaoOrcamentoCard({ equipamento, onRespostaVista, onAplicar }: Props) {
+export function DecisaoOrcamentoCard({ equipamento, onRespostaVista, onAplicar, sinalPortal }: Props) {
   const { ensureSensitiveAccess } = useSensitiveAccess();
   const [info, setInfo] = useState<DecisaoOrcamentoInfo | null>(null);
   const [link, setLink] = useState<{ url: string; expiresAt: string } | null>(null);
@@ -87,7 +89,7 @@ export function DecisaoOrcamentoCard({ equipamento, onRespostaVista, onAplicar }
   useEffect(() => {
     setLink(null);
     void carregar();
-  }, [carregar, equipamento.atualizado_em]);
+  }, [carregar, equipamento.atualizado_em, sinalPortal]);
 
   if (!equipamentoId) return null;
   const aberta = info != null && !info.encerradaMotivo;

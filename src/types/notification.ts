@@ -6,6 +6,14 @@ export interface AppError {
   action: string;
   message: string;
   technicalDetails?: string;
+  /** Código técnico do backend (ex.: `AUTOOS:DB:42P01`). */
+  codigo?: string;
+  /** Referência da linha correspondente no log do aplicativo. */
+  referencia?: string;
+  /** Explicação do código para quem investiga (SQLSTATE, categoria). */
+  descricaoTecnica?: string;
+  /** Texto bruto devolvido, quando não veio código estruturado. */
+  mensagemOriginal?: string;
   originalError?: unknown;
   timestamp: Date;
 }
