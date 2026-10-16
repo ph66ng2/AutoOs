@@ -212,6 +212,41 @@ async fn main() -> Result<()> {
     let pedidos: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM envios_whatsapp_pedidos WHERE equipamento_id = $1 AND tipo = 'orcamento_informativo'").bind(orcamento).fetch_one(&pool).await?;
     assert_eq!(pedidos, 2);
 
+    // 10b. Destinatário que responde pelo portal recebe o endereço do portal; os outros, "APROVADO".
+    sqlx::query("UPDATE portal_cliente_config SET portal_enabled = TRUE").execute(&pool).await?;
+    let documento = format!("{:014}", std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH)?.as_nanos() % 100_000_000_000_000);
+    let cliente: i32 = sqlx::query_scalar("INSERT INTO clientes(nome,tipo_pessoa,documento,empresa_id,ativo) VALUES ('Gráfica Portal','PJ',$1,$2,true) RETURNING id")
+        .bind(&documento).bind(empresa).fetch_one(&pool).await?;
+    let contato: i32 = sqlx::query_scalar("INSERT INTO cliente_contatos(empresa_id,cliente_id,nome,telefone,ativo) VALUES ($1,$2,'Ana','(71) 97777-6666',true) RETURNING id")
+        .bind(empresa).bind(cliente).fetch_one(&pool).await?;
+    sqlx::query("UPDATE cliente_contatos SET portal_acesso = 'DECIDIR' WHERE id = $1").bind(contato).execute(&pool).await?;
+    sqlx::query("SELECT portal_definir_senha_contato($1, $2, 'Senha-Fila-1', NULL)").bind(empresa).bind(contato).execute(&pool).await?;
+    let orcamento_para = |tag: &'static str| {
+        let pool = pool.clone();
+        let novo = &novo;
+        async move {
+            let eq = novo("AGUARDANDO_APROVACAO", Some("5571977776666"), tag).await?;
+            sqlx::query("UPDATE equipamentos SET cliente_id = $1 WHERE id = $2").bind(cliente).bind(eq).execute(&pool).await?;
+            verificacoes::salvar_verificacao_tecnica(VerificacaoInput {
+                equipamento_id: eq, empresa_id: Some(empresa), tecnico_nome: "Teste".into(), problema_relatado: "Teste".into(),
+                servicos_necessarios: Some(serde_json::json!([{"id":"a","descricao":"Troca","valor":90,"pecas":[]}]).to_string()),
+                pecas_necessarias: Some("[]".into()), custo_total: Some(90.0), ..VerificacaoInput::default()
+            }).await.map_err(|e| anyhow!(e))?;
+            anyhow::Ok(eq)
+        }
+    };
+    let eq_portal = orcamento_para("P").await?;
+    assert_eq!(pedir(eq_portal, "orcamento_informativo", false, false).await?.estado, "ENVIADA");
+    let corpo = fake.corpos.lock().unwrap().last().unwrap().clone();
+    assert!(corpo.contains("status.bmitag.com.br") && !corpo.contains("APROVADO"), "contato do portal: {corpo}");
+    // Só acompanha (não decide): volta a responder "APROVADO".
+    sqlx::query("UPDATE cliente_contatos SET portal_acesso = 'ACOMPANHAR' WHERE id = $1").bind(contato).execute(&pool).await?;
+    let eq_sem = orcamento_para("Q").await?;
+    assert_eq!(pedir(eq_sem, "orcamento_informativo", false, false).await?.estado, "ENVIADA");
+    let corpo = fake.corpos.lock().unwrap().last().unwrap().clone();
+    assert!(corpo.contains("APROVADO") && !corpo.contains("status.bmitag.com.br"), "sem decisão no portal: {corpo}");
+    sqlx::query("UPDATE portal_cliente_config SET portal_enabled = FALSE").execute(&pool).await?;
+
     // 11. Estado errado e tipos que não existem mais são recusados sem rastro de envio.
     let antes = fake.requisicoes.load(Ordering::SeqCst);
     assert!(pedir(pronto, "orcamento_informativo", false, false).await.is_err());

@@ -162,6 +162,12 @@ pub(crate) fn mensagem_pronto(
     }
 }
 
+/// Endereço do Portal do Cliente citado na mensagem do orçamento.
+pub(crate) const PORTAL_URL: &str = "https://status.bmitag.com.br";
+
+/// `responde_no_portal`: o destinatário é um contato que já pode aceitar/recusar pelo portal
+/// (acesso de decisão, senha criada e portal ligado). Os outros continuam respondendo "APROVADO".
+#[allow(clippy::too_many_arguments)]
 pub(crate) fn mensagem_informativo(
     nome: &str,
     marca: &str,
@@ -170,6 +176,7 @@ pub(crate) fn mensagem_informativo(
     snapshot: &serde_json::Value,
     valor_total: f64,
     prazo: Option<&str>,
+    responde_no_portal: bool,
 ) -> MensagemWhatsapp {
     let equipamento = nome_do_equipamento(marca, modelo);
     let servicos = snapshot.get("servicos").and_then(|v| v.as_array()).cloned().unwrap_or_default();
@@ -222,12 +229,20 @@ pub(crate) fn mensagem_informativo(
         .map(|p| format!("📅 Prazo para aprovação: {p}\n"))
         .unwrap_or_default();
 
+    let como_responder = if responde_no_portal {
+        format!(
+            "Para aceitar ou recusar, entre no *Portal das Impressoras*: {PORTAL_URL}\nUse o CPF/CNPJ do cadastro e a sua senha. Lá você também pode pedir para negociar."
+        )
+    } else {
+        "Para aprovar, responda *APROVADO*.".to_string()
+    };
     let texto = format!(
-        "🔧 *Olá, {nome}!*\n\nSeu equipamento foi verificado e elaboramos o orçamento:\n\n*EQUIPAMENTO:*\n{equipamento}\nSN: {serial}\n{bloco_servicos}{bloco_pecas}\n\n*ORÇAMENTO:*\n{bloco_subtotais}*TOTAL: {total}*\n\n{linha_prazo}\nPara aprovar, responda *APROVADO*.\nPara dúvidas, estamos à disposição! 😊",
+        "🔧 *Olá, {nome}!*\n\nSeu equipamento foi verificado e elaboramos o orçamento:\n\n*EQUIPAMENTO:*\n{equipamento}\nSN: {serial}\n{bloco_servicos}{bloco_pecas}\n\n*ORÇAMENTO:*\n{bloco_subtotais}*TOTAL: {total}*\n\n{linha_prazo}\n{como_responder}\nPara dúvidas, estamos à disposição! 😊",
         total = formatar_brl(valor_total),
     );
     MensagemWhatsapp {
-        template: "orcamento_informativo",
+        // Cloud API: cada texto é um modelo aprovado pela Meta (o do portal cita o endereço).
+        template: if responde_no_portal { "orcamento_portal" } else { "orcamento_informativo" },
         parametros: vec![
             nome.to_string(),
             equipamento,
@@ -243,7 +258,6 @@ pub(crate) fn mensagem_informativo(
 // ─── Apoio ──────────────────────────────────────────────────────────────────
 
 /// Conteúdo que o processador central usa para enviar: parâmetros do modelo e o texto da Evolution.
-/// Nunca contém token: no modo central o texto traz `{{TOKEN}}` e o processador o substitui.
 fn montar_payload(mensagem: &MensagemWhatsapp, nome: &str, telefone: &str, tipo: TipoEnvio) -> serde_json::Value {
     serde_json::json!({
         "template": mensagem.template,
@@ -284,6 +298,8 @@ struct DadosEquipamento {
     valor_final_ou_orcamento: Option<f64>,
     prazo_aprovacao: Option<String>,
     status_alterado_micros: Option<i64>,
+    /// O destinatário (responsável ou cliente) é um contato que responde pelo portal.
+    destinatario_no_portal: bool,
 }
 
 async fn carregar_equipamento(
@@ -299,10 +315,23 @@ async fn carregar_equipamento(
                 COALESCE(NULLIF(BTRIM(responsavel_telefone), ''), NULLIF(BTRIM(cliente_telefone), '')) AS telefone,
                 COALESCE(valor_final, valor_orcamento)::FLOAT8 AS valor,
                 prazo_aprovacao,
-                (EXTRACT(EPOCH FROM status_alterado_em) * 1000000)::BIGINT AS micros
+                (EXTRACT(EPOCH FROM status_alterado_em) * 1000000)::BIGINT AS micros,
+                -- Mesmo telefone (últimos 10 dígitos) de um contato com acesso de decisão e senha,
+                -- com o portal e as respostas ligados.
+                COALESCE((SELECT portal_enabled FROM portal_cliente_config WHERE singleton), FALSE)
+                AND COALESCE((SELECT online_enabled FROM orcamento_aceite_config WHERE singleton), FALSE)
+                AND EXISTS (
+                    SELECT 1 FROM cliente_contatos c
+                    WHERE c.cliente_id = equipamentos.cliente_id AND c.empresa_id = equipamentos.empresa_id
+                      AND c.ativo AND c.portal_acesso = 'DECIDIR' AND c.portal_senha_hash IS NOT NULL
+                      AND length(regexp_replace(COALESCE(c.telefone, ''), '\\D', '', 'g')) >= 10
+                      AND right(regexp_replace(c.telefone, '\\D', '', 'g'), 10) = right(regexp_replace(
+                          COALESCE(NULLIF(BTRIM(equipamentos.responsavel_telefone), ''), equipamentos.cliente_telefone, ''),
+                          '\\D', '', 'g'), 10)
+                ) AS destinatario_no_portal
          FROM equipamentos
          WHERE id = $1 AND empresa_id = $2
-         FOR UPDATE",
+         FOR UPDATE OF equipamentos",
     )
     .bind(equipamento_id)
     .bind(empresa_id)
@@ -320,6 +349,7 @@ async fn carregar_equipamento(
         valor_final_ou_orcamento: row.try_get("valor").map_err(map)?,
         prazo_aprovacao: row.try_get("prazo_aprovacao").map_err(map)?,
         status_alterado_micros: row.try_get("micros").map_err(map)?,
+        destinatario_no_portal: row.try_get("destinatario_no_portal").map_err(map)?,
     })
 }
 
@@ -555,6 +585,7 @@ async fn reservar(
                 &snapshot,
                 valor,
                 equipamento.prazo_aprovacao.as_deref(),
+                equipamento.destinatario_no_portal,
             )
         }
     };
@@ -840,12 +871,27 @@ mod tests {
             }],
             "pecas": []
         });
-        let mensagem = mensagem_informativo("Maria", "Zebra", "ZT230", "SN1", &snapshot, 40.0, Some("2026-10-30"));
+        let mensagem = mensagem_informativo("Maria", "Zebra", "ZT230", "SN1", &snapshot, 40.0, Some("2026-10-30"), false);
         assert!(mensagem.texto.contains("• Troca da cabeça: R$ 20,00"));
         assert!(mensagem.texto.contains("• Cabeça (x2): R$ 20,00"));
         assert!(mensagem.texto.contains("*TOTAL: R$ 40,00*"));
         assert!(mensagem.texto.contains("Prazo para aprovação: 30/10/2026"));
         assert_eq!(mensagem.parametros[3], "30/10/2026");
+    }
+
+    #[test]
+    fn budget_message_points_to_the_portal_only_for_contacts_who_can_answer_there() {
+        let snapshot = serde_json::json!({ "servicos": [], "pecas": [] });
+        let portal = mensagem_informativo("Ana", "Zebra", "ZT230", "SN1", &snapshot, 40.0, None, true);
+        assert!(portal.texto.contains("https://status.bmitag.com.br"));
+        assert!(portal.texto.contains("CPF/CNPJ do cadastro e a sua senha"));
+        assert!(!portal.texto.contains("responda *APROVADO*"));
+        assert_eq!(portal.template, "orcamento_portal");
+
+        let sem_portal = mensagem_informativo("Ana", "Zebra", "ZT230", "SN1", &snapshot, 40.0, None, false);
+        assert!(sem_portal.texto.contains("responda *APROVADO*"));
+        assert!(!sem_portal.texto.contains("status.bmitag.com.br"));
+        assert_eq!(sem_portal.template, "orcamento_informativo");
     }
 
     #[test]
