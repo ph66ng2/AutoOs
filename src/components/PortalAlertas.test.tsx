@@ -1,14 +1,14 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
-import { PortalAlertasSino } from "@/components/PortalAlertas";
+import { PortalAlertasSino, visualDoAlerta } from "@/components/PortalAlertas";
 import type { AlertaPortal } from "@/types";
 
 const mocks = vi.hoisted(() => ({
   contar: vi.fn(),
   listar: vi.fn(),
   marcar: vi.fn(),
-  toast: { error: vi.fn(), warning: vi.fn(), success: vi.fn(), info: vi.fn(), dismiss: vi.fn() },
+  toast: Object.assign(vi.fn(), { error: vi.fn(), warning: vi.fn(), success: vi.fn(), info: vi.fn(), dismiss: vi.fn() }),
 }));
 
 vi.mock("@/lib/db", () => ({
@@ -70,7 +70,8 @@ describe("PortalAlertasSino", () => {
   it("na primeira consulta não dispara toast (só o contador)", async () => {
     renderSino();
     await screen.findByRole("button", { name: /1 não lido/ });
-    expect(mocks.toast.warning).not.toHaveBeenCalled();
+    expect(mocks.toast).not.toHaveBeenCalled();
+    expect(mocks.toast.error).not.toHaveBeenCalled();
   });
 
   it("alerta que chega depois vira toast no mesmo padrão dos avisos do app", async () => {
@@ -85,7 +86,7 @@ describe("PortalAlertasSino", () => {
       "Resposta do cliente NÃO efetivada",
       expect.objectContaining({ duration: Infinity, action: expect.objectContaining({ label: "Ver" }) }),
     ));
-    expect(mocks.toast.warning).not.toHaveBeenCalled();
+    expect(mocks.toast).not.toHaveBeenCalled();
     expect(await screen.findByRole("button", { name: /2 não lido/ })).toBeInTheDocument();
     // Abrir o painel recolhe os avisos do portal, que já estão listados nele.
     fireEvent.click(screen.getByRole("button", { name: /2 não lido/ }));
@@ -113,5 +114,29 @@ describe("PortalAlertasSino", () => {
     renderSino();
     await waitFor(() => expect(mocks.contar).toHaveBeenCalled());
     expect(screen.getByRole("button", { name: "Alertas do portal" })).toBeInTheDocument();
+  });
+
+  it("aprovação efetivada chega em verde, sem cara de erro, e falha usa o aviso de erro do app", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    renderSino();
+    await screen.findByRole("button", { name: /1 não lido/ });
+    const aprovado: AlertaPortal = { ...alerta, id: 9, tipo: "DECISAO_EFETIVADA", decisao: "APROVAR", titulo: "Orçamento aprovado pelo cliente",
+      detalhe: "Zebra ZT230 · série SER-123 · R$ 350,00 · Ana Souza" };
+    mocks.contar.mockResolvedValue(2);
+    mocks.listar.mockResolvedValue([aprovado, alerta]);
+    await act(async () => { await vi.advanceTimersByTimeAsync(30_000); });
+    await waitFor(() => expect(mocks.toast).toHaveBeenCalledWith("Orçamento aprovado pelo cliente", expect.objectContaining({
+      duration: 10_000,
+      classNames: expect.objectContaining({ toast: expect.stringContaining("emerald") }),
+    })));
+    expect(mocks.toast.error).not.toHaveBeenCalled();
+  });
+
+  it("cada tipo tem cor própria; recusa efetivada não fica verde", () => {
+    expect(visualDoAlerta({ tipo: "DECISAO_EFETIVADA", decisao: "APROVAR" }).chip).toContain("emerald");
+    expect(visualDoAlerta({ tipo: "DECISAO_EFETIVADA", decisao: "RECUSAR" }).chip).toContain("slate");
+    expect(visualDoAlerta({ tipo: "RESPOSTA_RECEBIDA", decisao: "APROVAR" }).chip).toContain("sky");
+    expect(visualDoAlerta({ tipo: "EFETIVACAO_FALHOU", decisao: "APROVAR" }).erro).toBe(true);
+    expect(visualDoAlerta({ tipo: "NEGOCIACAO_SOLICITADA" }).chip).toContain("violet");
   });
 });

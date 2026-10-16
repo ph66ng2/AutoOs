@@ -331,6 +331,26 @@ AS $$
     SELECT translate(to_char(COALESCE(p_valor, 0), 'FM999,999,990.00'), ',.', '.,')
 $$;
 
+-- Linha de identificação dos alertas: "Zebra ZT230 · série X · R$ 480,00 · Ana Souza".
+CREATE OR REPLACE FUNCTION public.autoos_portal_linha_alerta(
+    p_equipamento_id INTEGER,
+    p_empresa_id INTEGER,
+    p_valor NUMERIC,
+    p_contato TEXT
+)
+RETURNS TEXT
+LANGUAGE sql STABLE
+SET search_path = pg_catalog, public
+AS $$
+    SELECT concat_ws(' · ',
+        COALESCE(NULLIF(btrim(concat_ws(' ', NULLIF(btrim(e.marca), ''), NULLIF(btrim(e.modelo), ''))), ''), NULLIF(btrim(e.tipo), ''), 'Equipamento'),
+        'série ' || left(e.serial_number, 40),
+        CASE WHEN p_valor IS NOT NULL THEN 'R$ ' || public.autoos_portal_moeda(p_valor) END,
+        NULLIF(btrim(p_contato), ''))
+    FROM public.equipamentos e
+    WHERE e.id = p_equipamento_id AND e.empresa_id = p_empresa_id
+$$;
+
 CREATE OR REPLACE FUNCTION public.autoos_portal_alerta(
     p_empresa_id INTEGER,
     p_equipamento_id INTEGER,
@@ -573,10 +593,10 @@ BEGIN
     IF FOUND AND p_estado = 'FALHOU' THEN
         PERFORM public.autoos_portal_alerta(
             v_c.empresa_id, NULL, 'CODIGO_NAO_ENTREGUE',
-            'Código de acesso ao portal não entregue',
-            format('Contato %s (%s, %s). Confira o cadastro do contato e a configuração de envio do servidor.',
+            'Código de acesso não entregue',
+            format('%s · %s %s' || chr(10) || 'Confira o contato e o envio de mensagens do servidor.',
                    (SELECT nome FROM public.cliente_contatos WHERE id = v_c.contato_id),
-                   v_c.canal, v_c.destino_mascarado),
+                   CASE v_c.canal WHEN 'EMAIL' THEN 'email' ELSE 'WhatsApp' END, v_c.destino_mascarado),
             NULL, NULL, v_c.contato_id);
     END IF;
 END;
@@ -951,7 +971,6 @@ DECLARE
     v_trocas INTEGER;
     v_janela INTEGER := public.autoos_portal_janela_minutos();
     v_agora TIMESTAMPTZ := statement_timestamp();
-    v_rotulo TEXT;
     v_tipo_alerta TEXT;
 BEGIN
     IF p_decisao NOT IN ('APROVAR', 'RECUSAR', 'DESFEITA') THEN
@@ -1048,8 +1067,6 @@ BEGIN
         UPDATE public.equipamentos SET ultima_atividade_cliente_em = CURRENT_TIMESTAMP
         WHERE id = v_e.id AND empresa_id = v_e.empresa_id;
 
-        v_rotulo := COALESCE(NULLIF(public.autoos_portal_rotulo_equipamento(v_e.tipo, v_e.marca, v_e.modelo), ''), 'Equipamento')
-            || ' (série ' || left(v_e.serial_number, 60) || ')';
         v_tipo_alerta := CASE
             WHEN p_decisao = 'DESFEITA' THEN 'RESPOSTA_CANCELADA'
             WHEN v_atual.id IS NOT NULL AND v_atual.decisao <> 'DESFEITA' THEN 'RESPOSTA_ALTERADA'
@@ -1057,16 +1074,13 @@ BEGIN
         PERFORM public.autoos_portal_alerta(
             v_v.empresa_id, v_v.equipamento_id, v_tipo_alerta,
             CASE p_decisao
-                WHEN 'APROVAR' THEN 'Cliente aceitou o orçamento — em prazo de correção'
-                WHEN 'RECUSAR' THEN 'Cliente recusou o orçamento — em prazo de correção'
-                ELSE 'Cliente cancelou a resposta ao orçamento' END,
-            format('%s. Orçamento v%s, R$ %s. Resposta de %s em %s (protocolo R-%s). %s',
-                   v_rotulo, v_v.versao, public.autoos_portal_moeda(v_v.valor_total),
-                   v_s.s_contato_nome, to_char(v_agora AT TIME ZONE 'America/Sao_Paulo', 'DD/MM/YYYY HH24:MI'),
-                   v_novo_id,
-                   CASE WHEN p_decisao = 'DESFEITA' THEN 'O orçamento volta a aguardar resposta.'
-                        ELSE format('Não aja como efetivada: o cliente pode corrigir até %s.',
-                                    to_char((v_agora + make_interval(mins => v_janela)) AT TIME ZONE 'America/Sao_Paulo', 'HH24:MI')) END),
+                WHEN 'APROVAR' THEN format('Aceite recebido — confirma às %s',
+                    to_char((v_agora + make_interval(mins => v_janela)) AT TIME ZONE 'America/Sao_Paulo', 'HH24:MI'))
+                WHEN 'RECUSAR' THEN format('Recusa recebida — confirma às %s',
+                    to_char((v_agora + make_interval(mins => v_janela)) AT TIME ZONE 'America/Sao_Paulo', 'HH24:MI'))
+                ELSE 'Cliente desfez a resposta' END,
+            public.autoos_portal_linha_alerta(v_e.id, v_e.empresa_id, v_v.valor_total, v_s.s_contato_nome)
+                || CASE WHEN p_decisao = 'DESFEITA' THEN chr(10) || 'O orçamento voltou a aguardar resposta.' ELSE '' END,
             v_novo_id, NULL, v_s.s_contato_id);
     END IF;
 
@@ -1109,7 +1123,6 @@ DECLARE
     v_mensagem TEXT := left(btrim(regexp_replace(COALESCE(p_mensagem, ''), '[[:cntrl:]]', ' ', 'g')), 500);
     v_id BIGINT;
     v_agora TIMESTAMPTZ := statement_timestamp();
-    v_rotulo TEXT;
 BEGIN
     IF p_tipo NOT IN ('NEGOCIAR', 'DUVIDA', 'MUDANCA') THEN
         RAISE EXCEPTION 'TIPO_INVALIDO';
@@ -1160,19 +1173,14 @@ BEGIN
     UPDATE public.equipamentos SET ultima_atividade_cliente_em = CURRENT_TIMESTAMP
     WHERE id = v_e.id AND empresa_id = v_e.empresa_id;
 
-    v_rotulo := COALESCE(NULLIF(public.autoos_portal_rotulo_equipamento(v_e.tipo, v_e.marca, v_e.modelo), ''), 'Equipamento')
-        || ' (série ' || left(v_e.serial_number, 60) || ')';
     PERFORM public.autoos_portal_alerta(
         v_v.empresa_id, v_v.equipamento_id,
         CASE p_tipo WHEN 'NEGOCIAR' THEN 'NEGOCIACAO_SOLICITADA' WHEN 'MUDANCA' THEN 'CORRECAO_SOLICITADA' ELSE 'DUVIDA_RECEBIDA' END,
-        CASE p_tipo WHEN 'NEGOCIAR' THEN 'Cliente quer negociar o orçamento'
-                    WHEN 'MUDANCA' THEN 'Cliente pediu correção da decisão já efetivada'
-                    ELSE 'Cliente enviou uma dúvida' END,
-        format('%s. Orçamento v%s. %s: "%s" (protocolo S-%s).%s', v_rotulo, v_v.versao, v_s.s_contato_nome,
-               left(v_mensagem, 300), v_id,
-               CASE p_tipo WHEN 'NEGOCIAR' THEN ' Não é aceite, recusa nem prorrogação. Para mudar valores, altere o orçamento e publique nova versão.'
-                           WHEN 'MUDANCA' THEN ' Mudar só o status não desfaz baixa de peças nem trabalho iniciado: use Corrigir decisão.'
-                           ELSE '' END),
+        CASE p_tipo WHEN 'NEGOCIAR' THEN 'Cliente quer negociar'
+                    WHEN 'MUDANCA' THEN 'Cliente pediu correção'
+                    ELSE 'Nova dúvida do cliente' END,
+        public.autoos_portal_linha_alerta(v_e.id, v_e.empresa_id, v_v.valor_total, v_s.s_contato_nome)
+            || chr(10) || '“' || left(v_mensagem, 140) || CASE WHEN char_length(v_mensagem) > 140 THEN '…' ELSE '' END || '”',
         NULL, v_id, v_s.s_contato_id);
 
     RETURN jsonb_build_object('id', v_id, 'protocolo', 'S-' || v_id, 'tipo', p_tipo, 'criadoEm', v_agora);
@@ -1217,7 +1225,6 @@ DECLARE
     v_pecas_aceitas JSONB := '[]'::JSONB;
     v_total NUMERIC;
     v_status TEXT;
-    v_rotulo TEXT;
     v_baixadas INTEGER := 0;
     v_pendentes INTEGER := 0;
 BEGIN
@@ -1451,15 +1458,11 @@ BEGIN
         v_e.empresa_id
     );
 
-    v_rotulo := COALESCE(NULLIF(public.autoos_portal_rotulo_equipamento(v_e.tipo, v_e.marca, v_e.modelo), ''), 'Equipamento')
-        || ' (série ' || left(v_e.serial_number, 60) || ')';
     PERFORM public.autoos_portal_alerta(
         v_e.empresa_id, v_e.id, 'DECISAO_EFETIVADA',
-        CASE WHEN v_aprovado THEN 'Orçamento APROVADO pelo cliente (efetivado)' ELSE 'Orçamento REPROVADO pelo cliente (efetivado)' END,
-        format('%s. Orçamento v%s, R$ %s. Resposta de %s (protocolo R-%s) efetivada após o prazo de correção.%s',
-               v_rotulo, v_v.versao, public.autoos_portal_moeda(v_total), v_r.contato_nome, v_r.id,
-               CASE WHEN v_pendentes > 0 THEN format(' %s peça(s) sem saldo ficaram pendentes.', v_pendentes)
-                    WHEN v_aprovado THEN ' Forma de pagamento: a combinar, se não havia outra.' ELSE '' END),
+        CASE WHEN v_aprovado THEN 'Orçamento aprovado pelo cliente' ELSE 'Orçamento recusado pelo cliente' END,
+        public.autoos_portal_linha_alerta(v_e.id, v_e.empresa_id, v_total, v_r.contato_nome)
+            || CASE WHEN v_pendentes > 0 THEN chr(10) || format('%s peça(s) sem estoque ficaram pendentes.', v_pendentes) ELSE '' END,
         v_r.id, NULL, v_r.contato_id);
     RETURN 'EFETIVADA';
 END;
@@ -1529,9 +1532,9 @@ BEGIN
                     v_r.empresa_id,
                     (SELECT id FROM public.equipamentos WHERE id = v_r.equipamento_id AND empresa_id = v_r.empresa_id),
                     'EFETIVACAO_FALHOU',
-                    'Resposta do cliente NÃO efetivada — ação da equipe necessária',
-                    format('%s %s o orçamento (protocolo R-%s), mas o sistema não conseguiu efetivar: %s. A resposta continua pendente; confira e aplique pelo AutoOS ou fale com o cliente.',
-                           v_r.contato_nome, CASE WHEN v_r.decisao = 'APROVAR' THEN 'aceitou' ELSE 'recusou' END, v_id,
+                    CASE WHEN v_r.decisao = 'APROVAR' THEN 'Aceite não efetivado' ELSE 'Recusa não efetivada' END,
+                    public.autoos_portal_linha_alerta(v_r.equipamento_id, v_r.empresa_id, NULL, v_r.contato_nome)
+                    || chr(10) || format('Motivo: %s. Aplique pelo AutoOS.',
                            CASE v_motivo
                                WHEN 'ETAPA_ALTERADA' THEN 'a etapa do equipamento mudou'
                                WHEN 'PROPOSTA_ALTERADA' THEN 'o orçamento foi alterado'
@@ -1615,7 +1618,8 @@ DECLARE
     v_internas TEXT[] := ARRAY[
         'public.portal_efetivar_resposta(BIGINT)',
         'public.autoos_portal_sessao(TEXT)',
-        'public.autoos_portal_alerta(INTEGER, INTEGER, TEXT, TEXT, TEXT, BIGINT, BIGINT, INTEGER)'
+        'public.autoos_portal_alerta(INTEGER, INTEGER, TEXT, TEXT, TEXT, BIGINT, BIGINT, INTEGER)',
+        'public.autoos_portal_linha_alerta(INTEGER, INTEGER, NUMERIC, TEXT)'
     ];
 BEGIN
     FOREACH v_funcao IN ARRAY v_publicas || v_internas LOOP

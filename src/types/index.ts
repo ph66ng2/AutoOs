@@ -292,6 +292,8 @@ export interface AlertaPortal {
   criadoEm: string;
   lidoEm?: string | null;
   lidoPor?: string | null;
+  /** Decisão da resposta ligada ao alerta, para escolher cor e ícone (aceite x recusa). */
+  decisao?: "APROVAR" | "RECUSAR" | "DESFEITA" | null;
 }
 
 export type AcessoPortalContato = "NENHUM" | "ACOMPANHAR" | "DECIDIR";

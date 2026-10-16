@@ -29,6 +29,8 @@ pub struct AlertaPortal {
     pub criado_em: String,
     pub lido_em: Option<String>,
     pub lido_por: Option<String>,
+    /// Decisão da resposta ligada ao alerta (`APROVAR`, `RECUSAR`, `DESFEITA`), para cor e ícone.
+    pub decisao: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -75,9 +77,10 @@ pub async fn listar_alertas_portal(
         "SELECT a.id, a.equipamento_id, a.tipo, a.titulo, a.detalhe,
                 to_char(a.criado_em AT TIME ZONE 'UTC', '{TS_FMT}') AS criado_em,
                 to_char(a.lido_em AT TIME ZONE 'UTC', '{TS_FMT}') AS lido_em,
-                p.nome AS lido_por
+                p.nome AS lido_por, r.decisao
          FROM portal_alertas a
          LEFT JOIN security_profiles p ON p.id = a.lido_por_profile_id
+         LEFT JOIN orcamento_respostas r ON r.id = a.resposta_id AND r.empresa_id = a.empresa_id
          WHERE a.empresa_id = $1 AND ($2 = FALSE OR a.lido_em IS NULL)
          ORDER BY a.id DESC
          LIMIT $3"
