@@ -168,9 +168,12 @@ pub(crate) fn carregar_config_armazenada() -> Result<Option<WhatsappConfigStored
 }
 
 /// Normaliza telefone brasileiro: só dígitos, com DDI 55 e no mínimo 12 dígitos.
+/// Decide pelo tamanho, não pelo prefixo: DDD + número (10 ou 11 dígitos) ganha o DDI, mesmo
+/// quando o DDD é 55 (RS).
 pub(crate) fn normalizar_telefone_br(raw: &str) -> Result<String, String> {
     let digits: String = raw.chars().filter(|character| character.is_ascii_digit()).collect();
-    let com_ddi = if digits.starts_with("55") { digits } else { format!("55{digits}") };
+    let ja_tem_ddi = digits.starts_with("55") && digits.len() >= 12;
+    let com_ddi = if ja_tem_ddi { digits } else { format!("55{digits}") };
     sanitize_phone(&com_ddi)
 }
 
@@ -322,4 +325,19 @@ pub(crate) fn redact_long_hex_values(value: &str) -> String {
 
     output.push_str(&value[copied_until..]);
     output
+}
+
+#[cfg(test)]
+mod tests {
+    use super::normalizar_telefone_br;
+
+    #[test]
+    fn telefone_com_ddd_55_ganha_o_ddi() {
+        assert_eq!(normalizar_telefone_br("(55) 99999-8888").unwrap(), "5555999998888");
+        assert_eq!(normalizar_telefone_br("55 3222-1111").unwrap(), "555532221111");
+        assert_eq!(normalizar_telefone_br("(71) 98888-7777").unwrap(), "5571988887777");
+        assert_eq!(normalizar_telefone_br("+55 71 98888-7777").unwrap(), "5571988887777");
+        assert_eq!(normalizar_telefone_br("+55 55 99999-8888").unwrap(), "5555999998888");
+        assert!(normalizar_telefone_br("9999-8888").is_err());
+    }
 }

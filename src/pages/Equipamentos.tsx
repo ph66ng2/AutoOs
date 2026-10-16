@@ -209,15 +209,13 @@ export default function Equipamentos() {
   const [sinalPortal, setSinalPortal] = useState(0);
   detalhesAbertoRef.current = detalhesDialogOpen;
   const [publicStatusDialogOpen, setPublicStatusDialogOpen] = useState(false);
-  // Resposta do cliente que o operador está vendo; segue junto da aprovação para barrar tela desatualizada.
+  // Resposta do cliente lida ao abrir a aprovação; segue junto dela para barrar tela desatualizada.
+  // Só a aprovação escreve aqui: recarregar o quadro em segundo plano não pode trocar o que o operador conferiu.
   const respostaClienteVistaRef = useRef(0);
   // Decisão do cliente (ainda não aplicada) que o operador está conferindo, e o motivo se ele divergir dela.
   const [respostaClienteDecisao, setRespostaClienteDecisao] = useState<"APROVAR" | "RECUSAR" | null>(null);
   const [motivoDivergencia, setMotivoDivergencia] = useState("");
   const [corrigirDecisaoAlvo, setCorrigirDecisaoAlvo] = useState<Equipamento | null>(null);
-  const registrarRespostaClienteVista = useCallback((id: number) => {
-    respostaClienteVistaRef.current = id;
-  }, []);
   const [verificacaoDialogOpen, setVerificacaoDialogOpen] = useState(false);
   const [statusDialogOpen, setStatusDialogOpen] = useState(false);
   const [pagamentoDialogOpen, setPagamentoDialogOpen] = useState(false);
@@ -2571,7 +2569,6 @@ export default function Equipamentos() {
 
               <DecisaoOrcamentoCard
                 equipamento={selecionado}
-                onRespostaVista={registrarRespostaClienteVista}
                 onAplicar={(decisao) => void abrirDialogoAprovacao(selecionado, decisao)}
                 sinalPortal={sinalPortal}
               />

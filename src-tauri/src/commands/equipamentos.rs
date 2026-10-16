@@ -313,6 +313,18 @@ fn audit_detail(details: &str, key: &str) -> Option<String> {
     })
 }
 
+/// Motivo dado pelo operador ao aplicar decisão diferente da do cliente, pronto para os detalhes
+/// da auditoria (`chave=valor; ...`): sem `;`/quebras de linha e com tamanho limitado.
+fn motivo_divergencia_auditoria(motivo: Option<&str>) -> String {
+    let limpo: String = motivo
+        .unwrap_or("")
+        .chars()
+        .map(|c| if c == ';' || c.is_control() { ' ' } else { c })
+        .collect();
+    let limpo = limpo.split_whitespace().collect::<Vec<_>>().join(" ");
+    limpo.chars().take(300).collect()
+}
+
 async fn resolve_responsavel_snapshot(
     pool: &PgPool,
     input: &EquipamentoInput,
@@ -1279,7 +1291,7 @@ pub async fn aprovar_orcamento(input: AprovarOrcamentoInput) -> Result<Equipamen
         if aprovado { "BUDGET_APPROVED" } else { "BUDGET_REJECTED" },
         Some(&actor),
         format!(
-            "empresa_id={}; equipamento_id={}; verificacao_id={}; pagamento_codigo={}; status_anterior=AGUARDANDO_APROVACAO; status={}; motivo={}; servicos_aprovados={}; verificacao_legada_regularizada={}",
+            "empresa_id={}; equipamento_id={}; verificacao_id={}; pagamento_codigo={}; status_anterior=AGUARDANDO_APROVACAO; status={}; motivo={}; servicos_aprovados={}; verificacao_legada_regularizada={}; motivo_divergencia_cliente={}",
             empresa_id,
             input.equipamento_id,
             verification_id,
@@ -1288,6 +1300,7 @@ pub async fn aprovar_orcamento(input: AprovarOrcamentoInput) -> Result<Equipamen
             if aprovado { "Orçamento aprovado pelo cliente." } else { "Orçamento reprovado pelo cliente." },
             selecionados.len(),
             verification_empresa_id.is_none(),
+            motivo_divergencia_auditoria(input.motivo_divergencia.as_deref()),
         ),
         true,
     )
@@ -1305,6 +1318,14 @@ pub async fn aprovar_orcamento(input: AprovarOrcamentoInput) -> Result<Equipamen
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn motivo_divergencia_vai_para_auditoria_sem_quebrar_os_detalhes() {
+        let detalhes = format!("status=APROVADO; motivo_divergencia_cliente={}", motivo_divergencia_auditoria(Some("  Cliente ligou;\n confirmou  ")));
+        assert_eq!(audit_detail(&detalhes, "motivo_divergencia_cliente").as_deref(), Some("Cliente ligou confirmou"));
+        assert_eq!(motivo_divergencia_auditoria(None), "");
+        assert_eq!(motivo_divergencia_auditoria(Some(&"x".repeat(500))).chars().count(), 300);
+    }
 
     #[test]
     fn p0_sensitive_status_gate_flags_status_only_changes_on_update() {

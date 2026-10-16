@@ -16,8 +16,6 @@ import {
 
 type Props = {
   equipamento: Equipamento;
-  /** Id da resposta exibida; vai junto da aprovação para detectar tela desatualizada. */
-  onRespostaVista: (respostaId: number) => void;
   /** Muda quando chega um alerta do portal para este equipamento: recarrega a resposta. */
   sinalPortal?: number;
   /** Abre o fluxo atual de pagamento e aprovação já com a decisão do cliente. */
@@ -61,7 +59,7 @@ function mensagemErro(cause: unknown, fallback: string) {
   return typeof cause === "string" && cause.trim() ? cause : fallback;
 }
 
-export function DecisaoOrcamentoCard({ equipamento, onRespostaVista, onAplicar, sinalPortal }: Props) {
+export function DecisaoOrcamentoCard({ equipamento, onAplicar, sinalPortal }: Props) {
   const { ensureSensitiveAccess } = useSensitiveAccess();
   const [info, setInfo] = useState<DecisaoOrcamentoInfo | null>(null);
   const [loading, setLoading] = useState(false);
@@ -78,14 +76,13 @@ export function DecisaoOrcamentoCard({ equipamento, onRespostaVista, onAplicar, 
     try {
       const next = await db.obterDecisaoOrcamento(equipamentoId);
       setInfo(next);
-      onRespostaVista(next?.encerradaMotivo ? 0 : next?.resposta?.id ?? 0);
     } catch (cause) {
       setError(mensagemErro(cause, "Não foi possível consultar a resposta do cliente."));
     } finally {
       setLoading(false);
       setConsultado(equipamentoId);
     }
-  }, [equipamentoId, onRespostaVista]);
+  }, [equipamentoId]);
 
   useEffect(() => {
     void carregar();

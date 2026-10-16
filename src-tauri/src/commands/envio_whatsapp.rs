@@ -311,7 +311,12 @@ async fn carregar_equipamento(
     let row = sqlx::query(
         "SELECT COALESCE(status, '') AS status, COALESCE(marca, '') AS marca, COALESCE(modelo, '') AS modelo,
                 COALESCE(serial_number, '') AS serial,
-                COALESCE(NULLIF(BTRIM(responsavel_nome), ''), NULLIF(BTRIM(cliente_nome), ''), 'Cliente') AS nome,
+                -- Nome e telefone vêm da mesma pessoa: sem telefone do responsável, a mensagem vai
+                -- para o cliente e o cumprimenta, não ao responsável.
+                CASE WHEN NULLIF(BTRIM(responsavel_telefone), '') IS NOT NULL
+                     THEN COALESCE(NULLIF(BTRIM(responsavel_nome), ''), NULLIF(BTRIM(cliente_nome), ''), 'Cliente')
+                     ELSE COALESCE(NULLIF(BTRIM(cliente_nome), ''), 'Cliente')
+                END AS nome,
                 COALESCE(NULLIF(BTRIM(responsavel_telefone), ''), NULLIF(BTRIM(cliente_telefone), '')) AS telefone,
                 COALESCE(valor_final, valor_orcamento)::FLOAT8 AS valor,
                 prazo_aprovacao,

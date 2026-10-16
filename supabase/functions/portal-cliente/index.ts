@@ -359,12 +359,10 @@ async function requestCode(context: Context, body: Json) {
   // Sem vínculo: mesma resposta, com um desafio que nunca valida.
   if (!challenge) return json({ desafio: ref, canal, mensagem: GENERIC_CODE_SENT }, 200, context.origin);
 
-  if (!(await deliver(context, challenge, code))) {
-    return json({
-      erro: "Não conseguimos enviar o código agora. Tente o outro canal cadastrado ou fale com a equipe BMI TAG.",
-      codigo: "CODIGO_NAO_ENTREGUE",
-    }, 502, context.origin);
-  }
+  // Falha de entrega responde igual ao par inexistente: só pares cadastrados chegam aqui, e uma
+  // resposta diferente revelaria quais telefones/emails pertencem a cada CPF/CNPJ. A falha fica
+  // registrada no desafio (`portal_registrar_entrega_codigo`) e no log.
+  await deliver(context, challenge, code);
   return json({ desafio: ref, canal, mensagem: GENERIC_CODE_SENT }, 200, context.origin);
 }
 

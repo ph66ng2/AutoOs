@@ -127,11 +127,13 @@ describe("portal-cliente: código de acesso", () => {
     expect(rpc("portal_registrar_entrega_codigo")[0].args).toMatchObject({ p_desafio_id: 41, p_estado: "ENVIADO" });
   });
 
-  it("código não entregue vira estado claro e registra a falha sem vazar o token", async () => {
+  it("código não entregue responde igual ao contato inexistente e registra a falha sem vazar o token", async () => {
     providerStatus = 401;
     const { response, body } = await call({ acao: "solicitarCodigo", documento: "11222333000181", contato: "71988887777" });
-    expect(response.status).toBe(502);
-    expect(body.codigo).toBe("CODIGO_NAO_ENTREGUE");
+    // Resposta diferente revelaria que o par CPF/CNPJ + contato existe.
+    expect(response.status).toBe(200);
+    expect(body.codigo).toBeUndefined();
+    expect(typeof body.desafio).toBe("string");
     const registro = rpc("portal_registrar_entrega_codigo")[0].args;
     expect(registro.p_estado).toBe("FALHOU");
     expect(String(registro.p_erro)).not.toContain(PROVIDER_TOKEN);
