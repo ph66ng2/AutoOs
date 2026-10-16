@@ -265,6 +265,8 @@ h1 {
 .portal-input:focus-visible { outline: 3px solid #8bbce7; outline-offset: 1px; border-color: #12619c; }
 .portal-code { max-width: 12rem; font-size: 1.5rem; letter-spacing: 0.35em; text-align: center; }
 .portal-help { margin: 0; color: #435b76; line-height: 1.6; }
+.portal-subtitle { margin: 0.25rem 0 0; color: #10233d; font-size: 1.1rem; }
+.portal-login-links { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 0 1rem; }
 .portal-error { margin: 0.35rem 0 0; color: #a12a31; font-weight: 650; line-height: 1.5; }
 .portal-full { width: 100%; margin-top: 0.75rem; }
 .portal-refresh { margin-top: 1.25rem; }

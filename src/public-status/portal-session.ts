@@ -10,6 +10,11 @@ export interface PortalSession {
   acesso: Acesso;
   expiraEm: string;
   metodo?: "SENHA" | "CODIGO";
+  /**
+   * `obrigatoria`: entrou com a senha provisória criada pela equipe (o servidor bloqueia o resto).
+   * `esqueci`: entrou pelo código para criar uma senha nova.
+   */
+  trocarSenha?: "obrigatoria" | "esqueci";
 }
 
 const KEY = "autoos.portal.sessao";

@@ -574,6 +574,8 @@ pub struct ClienteContato {
     pub portal_acesso: String,
     /// Quando o operador definiu a senha do portal (`None` = sem senha). O hash nunca sai do banco.
     pub portal_senha_definida_em: Option<String>,
+    /// Senha criada pelo operador e ainda não trocada pelo contato no primeiro acesso.
+    pub portal_senha_provisoria: bool,
     pub criado_em: String,
     pub atualizado_em: String,
 }
@@ -809,6 +811,7 @@ pub const VERIFICACAO_SELECT: &str = "
 pub const CLIENTE_CONTATO_SELECT: &str = "
     SELECT id, empresa_id, cliente_id, nome, email, telefone, ativo, portal_acesso,
            portal_senha_definida_em::TEXT AS portal_senha_definida_em,
+           portal_senha_provisoria,
            criado_em::TEXT as criado_em, atualizado_em::TEXT as atualizado_em
     FROM cliente_contatos";
 

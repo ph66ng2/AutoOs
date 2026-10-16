@@ -13,6 +13,7 @@ const CODE_REQUESTS_PER_DOCUMENT = 5;
 const CODE_REQUEST_WINDOW_MS = 15 * 60_000;
 const VERIFY_LIMIT_PER_MINUTE = 20;
 const PASSWORD_ATTEMPTS_PER_DOCUMENT = 8;
+const PASSWORD_CHANGES_PER_SESSION = 6;
 const MAX_PASSWORD_BYTES = 72;
 const SEND_TIMEOUT_MS = 15_000;
 const SESSION_PATTERN = /^[a-f0-9]{64}$/;
@@ -26,6 +27,11 @@ type RpcResult = { ok: true; data: unknown } | { ok: false; status: number; code
 const DB_ERRORS: Record<string, { status: number; erro: string }> = {
   PORTAL_PAUSADO: { status: 503, erro: "O portal está temporariamente indisponível. Fale com a equipe BMI TAG." },
   SESSAO_INVALIDA: { status: 401, erro: "Sua sessão terminou. Entre novamente." },
+  TROCA_SENHA_PENDENTE: { status: 403, erro: "Crie sua senha para continuar." },
+  SENHA_FRACA: { status: 400, erro: "A senha precisa ter de 8 a 72 caracteres, com letras e números." },
+  SENHA_IGUAL: { status: 400, erro: "Escolha uma senha diferente da provisória." },
+  // Não diz o motivo: confirmar que outro contato usa a senha seria um oráculo de senhas.
+  SENHA_REPETIDA: { status: 400, erro: "Escolha outra senha." },
   ATENDIMENTO_INDISPONIVEL: { status: 404, erro: "Este atendimento não está disponível para o seu acesso." },
   SEM_PERMISSAO_DECISAO: { status: 403, erro: "Seu contato pode acompanhar, mas não responder a orçamentos. Fale com a equipe para liberar." },
   ACEITE_PAUSADO: { status: 409, erro: "As respostas pelo portal estão pausadas. Use o contato da equipe." },
@@ -412,7 +418,38 @@ async function passwordLogin(context: Context, body: Json) {
   if (data.resultado !== "OK") {
     return json({ erro: "CPF/CNPJ ou senha incorretos.", codigo: "SENHA_INVALIDA" }, 400, context.origin);
   }
-  return json({ sessao: newSession, contato: data.contato, acesso: data.acesso, expiraEm: data.expiraEm, metodo: "SENHA" }, 200, context.origin);
+  return json({
+    sessao: newSession,
+    contato: data.contato,
+    acesso: data.acesso,
+    expiraEm: data.expiraEm,
+    metodo: "SENHA",
+    trocarSenha: data.trocarSenha === true,
+  }, 200, context.origin);
+}
+
+/** O contato cria a própria senha: obrigatório após a provisória e no "Esqueci minha senha". */
+async function changePassword(context: Context, body: Json, sessionHash: string) {
+  const nova = typeof body.novaSenha === "string" ? body.novaSenha : "";
+  if (nova.length === 0 || new TextEncoder().encode(nova).length > MAX_PASSWORD_BYTES) {
+    return errorResponse("SENHA_FRACA", context.origin);
+  }
+  // Cada recusa diz algo sobre as senhas do mesmo CPF/CNPJ: poucas tentativas por sessão.
+  const windowStart = Math.floor(Date.now() / CODE_REQUEST_WINDOW_MS) * CODE_REQUEST_WINDOW_MS;
+  const fingerprint = await hmac(context.secret, `portal-cliente:troca:${sessionHash}`);
+  const underLimit = await consumeLimit(context.url, context.key, fingerprint, windowStart, PASSWORD_CHANGES_PER_SESSION);
+  if (underLimit === null) return json({ erro: SERVICE_UNAVAILABLE }, 503, context.origin);
+  if (!underLimit) {
+    return json({ erro: "Muitas tentativas. Aguarde 15 minutos.", codigo: "LIMITE_SENHA" }, 429, context.origin, { "Retry-After": "900" });
+  }
+  const result = await callRpc(context.url, context.key, "portal_trocar_senha", { p_sessao_hash: sessionHash, p_senha_nova: nova });
+  if (!result.ok) {
+    if (result.code === "VERIFICACAO_NECESSARIA") {
+      return json({ erro: "Por segurança, entre de novo antes de trocar a senha.", codigo: result.code }, 428, context.origin);
+    }
+    return errorResponse(result.code, context.origin);
+  }
+  return json({ ok: true }, 200, context.origin);
 }
 
 async function confirmPassword(context: Context, body: Json, sessionHash: string) {
@@ -566,6 +603,7 @@ Deno.serve(async (request: Request) => {
 
   if (acao === "novoCodigo") return await requestSessionCode(context, body, sessionHash);
   if (acao === "confirmarSenha") return await confirmPassword(context, body, sessionHash);
+  if (acao === "trocarSenha") return await changePassword(context, body, sessionHash);
 
   if (acao === "sair") {
     await callRpc(url, key, "portal_encerrar_sessao", { p_sessao_hash: sessionHash });

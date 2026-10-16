@@ -155,7 +155,10 @@ export const portalApi = {
       { acao: "verificarCodigo", desafio, codigo, ...(sessao ? { sessao } : {}) },
     ),
   entrarSenha: (documento: string, senha: string) =>
-    post<{ sessao: string; contato: string; acesso: Acesso; expiraEm: string; metodo: "SENHA" }>({ acao: "entrarSenha", documento, senha }),
+    post<{ sessao: string; contato: string; acesso: Acesso; expiraEm: string; metodo: "SENHA"; trocarSenha?: boolean }>(
+      { acao: "entrarSenha", documento, senha },
+    ),
+  trocarSenha: (sessao: string, novaSenha: string) => post<{ ok: boolean }>({ acao: "trocarSenha", sessao, novaSenha }),
   confirmarSenha: (sessao: string, senha: string) => post<{ ok: boolean }>({ acao: "confirmarSenha", sessao, senha }),
   novoCodigo: (sessao: string, canal: "WHATSAPP" | "EMAIL") =>
     post<{ desafio: string; canal: "WHATSAPP" | "EMAIL"; mensagem: string }>({ acao: "novoCodigo", sessao, canal }),

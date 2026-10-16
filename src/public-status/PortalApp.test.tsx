@@ -12,6 +12,7 @@ vi.mock("./portal-api", async (importOriginal) => {
       solicitarCodigo: vi.fn(),
       entrarSenha: vi.fn(),
       confirmarSenha: vi.fn(),
+      trocarSenha: vi.fn(),
       verificarCodigo: vi.fn(),
       novoCodigo: vi.fn(),
       listar: vi.fn(),
@@ -132,6 +133,53 @@ describe("login com senha", () => {
     fireEvent.click(screen.getByRole("button", { name: "Entrar" }));
     expect(await screen.findByText("CPF/CNPJ ou senha incorretos.")).toBeInTheDocument();
     expect(window.sessionStorage.getItem("autoos.portal.sessao")).toBeNull();
+  });
+});
+
+describe("senha provisória e esqueci minha senha", () => {
+  it("senha provisória obriga a criar a própria antes de ver os atendimentos", async () => {
+    api.entrarSenha.mockResolvedValue({ sessao: TOKEN, contato: "Ana Souza", acesso: "DECIDIR", expiraEm: FUTURO, metodo: "SENHA", trocarSenha: true });
+    api.trocarSenha.mockResolvedValue({ ok: true });
+    api.listar.mockResolvedValue({ cliente: "Cliente A", contato: "Ana Souza", podeDecidir: true, atendimentos: [] });
+    render(<PortalApp />);
+    fireEvent.change(screen.getByLabelText("CPF ou CNPJ"), { target: { value: "11222333000181" } });
+    fireEvent.change(screen.getByLabelText("Senha"), { target: { value: "Provisoria-1" } });
+    fireEvent.click(screen.getByRole("button", { name: "Entrar" }));
+
+    expect(await screen.findByRole("heading", { name: "Crie sua senha" })).toBeInTheDocument();
+    expect(api.listar).not.toHaveBeenCalled();
+    expect(screen.queryByRole("button", { name: "Agora não" })).not.toBeInTheDocument();
+    const salvar = screen.getByRole("button", { name: "Salvar senha e continuar" });
+    fireEvent.change(screen.getByLabelText("Nova senha"), { target: { value: "curta" } });
+    expect(salvar).toBeDisabled();
+    fireEvent.change(screen.getByLabelText("Nova senha"), { target: { value: "Minha-Senha-9" } });
+    fireEvent.change(screen.getByLabelText("Repita a nova senha"), { target: { value: "Minha-Senha-8" } });
+    expect(screen.getByText("As senhas não são iguais.")).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText("Repita a nova senha"), { target: { value: "Minha-Senha-9" } });
+    fireEvent.click(salvar);
+
+    expect(await screen.findByRole("heading", { name: "Cliente A" })).toBeInTheDocument();
+    expect(api.trocarSenha).toHaveBeenCalledWith(TOKEN, "Minha-Senha-9");
+    expect(JSON.parse(window.sessionStorage.getItem("autoos.portal.sessao") ?? "{}").trocarSenha).toBeUndefined();
+  });
+
+  it("esqueci minha senha: entra pelo código e cria uma nova (pode deixar para depois)", async () => {
+    api.solicitarCodigo.mockResolvedValue({ desafio: "0f8fad5b-d9cb-469f-a165-70867728950e", canal: "WHATSAPP", mensagem: "ok" });
+    api.verificarCodigo.mockResolvedValue({ sessao: TOKEN, contato: "Ana Souza", acesso: "DECIDIR", expiraEm: FUTURO, reverificada: false });
+    api.listar.mockResolvedValue({ cliente: "Cliente A", contato: "Ana Souza", podeDecidir: true, atendimentos: [] });
+    render(<PortalApp />);
+    fireEvent.click(screen.getByRole("button", { name: "Esqueci minha senha" }));
+    expect(screen.getByRole("heading", { name: "Criar uma nova senha" })).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText("CPF ou CNPJ"), { target: { value: "11222333000181" } });
+    fireEvent.change(screen.getByLabelText("WhatsApp ou email do contato"), { target: { value: "71988887777" } });
+    fireEvent.click(screen.getByRole("button", { name: "Receber código" }));
+    fireEvent.change(await screen.findByLabelText("Código de 6 dígitos"), { target: { value: "123456" } });
+    fireEvent.click(screen.getByRole("button", { name: "Entrar" }));
+
+    expect(await screen.findByRole("heading", { name: "Crie uma nova senha" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Agora não" }));
+    expect(await screen.findByRole("heading", { name: "Cliente A" })).toBeInTheDocument();
+    expect(api.trocarSenha).not.toHaveBeenCalled();
   });
 });
 

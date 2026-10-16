@@ -527,6 +527,8 @@ export interface ClienteContato {
   portal_acesso?: AcessoPortalContato;
   /** Quando o operador criou a senha do portal; vazio = sem senha. */
   portal_senha_definida_em?: string | null;
+  /** Senha do operador ainda não trocada pelo contato (troca obrigatória no primeiro acesso). */
+  portal_senha_provisoria?: boolean;
   criado_em?: string;
   atualizado_em?: string;
 }
@@ -587,7 +589,7 @@ export interface VinculoEmpresaPerfilResultado {
   empresa_criada: boolean;
 }
 
-export type ClienteContatoInput = Omit<ClienteContato, "id" | "ativo" | "portal_acesso" | "portal_senha_definida_em" | "criado_em" | "atualizado_em"> & {
+export type ClienteContatoInput = Omit<ClienteContato, "id" | "ativo" | "portal_acesso" | "portal_senha_definida_em" | "portal_senha_provisoria" | "criado_em" | "atualizado_em"> & {
   atualizado_em?: string;
 };
 
