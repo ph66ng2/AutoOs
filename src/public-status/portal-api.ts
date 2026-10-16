@@ -79,8 +79,6 @@ export interface DetalheAtendimento {
   podeDecidir: boolean;
   verificacaoRecente: boolean;
   contato: string;
-  /** Como esta sessão entrou: a reconfirmação antes de decidir pede o mesmo fator. */
-  metodo?: "SENHA" | "CODIGO";
 }
 
 export interface Comprovante {
@@ -148,17 +146,9 @@ async function post<T>(body: Record<string, unknown>): Promise<T> {
 }
 
 export const portalApi = {
-  solicitarCodigo: (documento: string, contato: string) =>
-    post<{ desafio: string; canal: "WHATSAPP" | "EMAIL"; mensagem: string }>({ acao: "solicitarCodigo", documento, contato }),
-  verificarCodigo: (desafio: string, codigo: string, sessao?: string) =>
-    post<{ sessao: string | null; contato: string; acesso: Acesso; expiraEm: string; reverificada: boolean }>(
-      { acao: "verificarCodigo", desafio, codigo, ...(sessao ? { sessao } : {}) },
-    ),
   entrarSenha: (documento: string, senha: string) =>
-    post<{ sessao: string; contato: string; acesso: Acesso; expiraEm: string; metodo: "SENHA" }>({ acao: "entrarSenha", documento, senha }),
+    post<{ sessao: string; contato: string; acesso: Acesso; expiraEm: string }>({ acao: "entrarSenha", documento, senha }),
   confirmarSenha: (sessao: string, senha: string) => post<{ ok: boolean }>({ acao: "confirmarSenha", sessao, senha }),
-  novoCodigo: (sessao: string, canal: "WHATSAPP" | "EMAIL") =>
-    post<{ desafio: string; canal: "WHATSAPP" | "EMAIL"; mensagem: string }>({ acao: "novoCodigo", sessao, canal }),
   listar: (sessao: string) => post<ListaAtendimentos>({ acao: "listar", sessao }),
   detalhe: (sessao: string, equipamentoId: number) => post<DetalheAtendimento>({ acao: "detalhe", sessao, equipamentoId }),
   responder: (sessao: string, equipamentoId: number, versaoId: number, decisao: Decisao, respostaVigenteId: number | null) =>

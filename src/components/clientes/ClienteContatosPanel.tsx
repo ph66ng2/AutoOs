@@ -212,7 +212,7 @@ export function ClienteContatosPanel({ cliente, empresaId }: ClienteContatosPane
                   )}
                   {contato.portal_acesso && contato.portal_acesso !== "NENHUM" && (
                     <span className="text-muted-foreground">
-                      {contato.portal_senha_definida_em ? "Senha criada" : "Sem senha (só entra por código)"}
+                      {contato.portal_senha_definida_em ? "Senha criada" : "Sem senha (ainda não entra)"}
                     </span>
                   )}
                 </div>
@@ -237,7 +237,7 @@ export function ClienteContatosPanel({ cliente, empresaId }: ClienteContatosPane
             <DialogDescription>
               Informe os canais que poderão ser usados para falar com este contato.
               {editando?.portal_acesso && editando.portal_acesso !== "NENHUM" && (
-                <> Trocar o telefone ou o email retira o acesso ao Portal do Cliente: o código de acesso vai para esses canais.</>
+                <> O WhatsApp de orçamento só indica o portal se o telefone aqui for o mesmo que recebe a mensagem.</>
               )}
             </DialogDescription>
           </DialogHeader>

@@ -1,5 +1,4 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
-import { CodigoForm } from "./CodigoForm";
 import {
   dateTime,
   mensagemWhatsapp,
@@ -18,7 +17,7 @@ import {
 import type { PortalSession } from "./portal-session";
 
 type Etapa =
-  | { tipo: "verificar"; depois: Decisao; desafio: string | null; canal: "WHATSAPP" | "EMAIL" | null }
+  | { tipo: "verificar"; depois: Decisao }
   | { tipo: "confirmar"; decisao: Decisao; versaoId: number }
   | { tipo: "negociar" }
   | { tipo: "corrigir" }
@@ -59,8 +58,6 @@ export default function PortalOrcamento({ session, detalhe, orcamento, recarrega
   const [solicitacao, setSolicitacao] = useState<SolicitacaoRegistrada | null>(null);
   const [mensagem, setMensagem] = useState("");
   const [senha, setSenha] = useState("");
-  const [usarCodigo, setUsarCodigo] = useState(false);
-  const porSenha = detalhe.metodo === "SENHA" && !usarCodigo;
   const [agora, setAgora] = useState(() => Date.now());
   const versaoAnterior = useRef(orcamento.versaoId);
   const caixaEtapa = useRef<HTMLDivElement>(null);
@@ -106,7 +103,7 @@ export default function PortalOrcamento({ session, detalhe, orcamento, recarrega
         return;
       }
       if (cause.codigo === "VERIFICACAO_NECESSARIA" && etapa?.tipo === "confirmar") {
-        setEtapa({ tipo: "verificar", depois: etapa.decisao, desafio: null, canal: null });
+        setEtapa({ tipo: "verificar", depois: etapa.decisao });
         setErro(null);
         return;
       }
@@ -127,40 +124,10 @@ export default function PortalOrcamento({ session, detalhe, orcamento, recarrega
     setErro(null);
     setAviso(null);
     if (!detalhe.verificacaoRecente && decisao !== "DESFEITA") {
-      setEtapa({ tipo: "verificar", depois: decisao, desafio: null, canal: null });
+      setEtapa({ tipo: "verificar", depois: decisao });
       return;
     }
     setEtapa({ tipo: "confirmar", decisao, versaoId: orcamento.versaoId });
-  };
-
-  const pedirCodigo = async (canal: "WHATSAPP" | "EMAIL") => {
-    if (etapa?.tipo !== "verificar") return;
-    setBusy(true);
-    setErro(null);
-    try {
-      const result = await portalApi.novoCodigo(session.token, canal);
-      setEtapa({ ...etapa, desafio: result.desafio, canal });
-    } catch (cause) {
-      await tratarErro(cause);
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const confirmarCodigo = async (codigo: string) => {
-    if (etapa?.tipo !== "verificar" || !etapa.desafio) return;
-    setBusy(true);
-    setErro(null);
-    try {
-      await portalApi.verificarCodigo(etapa.desafio, codigo, session.token);
-      const novo = await recarregar();
-      const versaoId = novo?.orcamento?.versaoId ?? orcamento.versaoId;
-      setEtapa({ tipo: "confirmar", decisao: etapa.depois, versaoId });
-    } catch (cause) {
-      await tratarErro(cause);
-    } finally {
-      setBusy(false);
-    }
   };
 
   const confirmarSenha = async (event: FormEvent) => {
@@ -338,40 +305,17 @@ export default function PortalOrcamento({ session, detalhe, orcamento, recarrega
       {etapa?.tipo === "verificar" && (
         <div className="confirm-box" ref={caixaEtapa}>
           <h2>Confirme que é você</h2>
-          {porSenha ? (
-            <form className="portal-form" onSubmit={(event) => void confirmarSenha(event)} noValidate>
-              <p className="portal-help">Por segurança, digite sua senha de novo para responder ao orçamento.</p>
-              <label htmlFor="portal-reconfirmar-senha">Senha</label>
-              <input id="portal-reconfirmar-senha" className="portal-input" type="password" autoComplete="current-password"
-                maxLength={72} value={senha} onChange={(event) => setSenha(event.target.value)} autoFocus />
-              {erro && <p className="portal-error" role="alert">{erro}</p>}
-              <div className="action-row">
-                <button className="primary-button" type="submit" disabled={busy || !senha}>{busy ? "Conferindo…" : "Confirmar senha"}</button>
-                <button className="secondary-button" type="button" disabled={busy} onClick={() => setEtapa(null)}>Cancelar</button>
-              </div>
-              <button className="link-button" type="button" onClick={() => { setUsarCodigo(true); setErro(null); }}>Prefiro receber um código</button>
-            </form>
-          ) : !etapa.desafio ? (
-            <>
-              <p>Para responder ao orçamento, enviaremos um novo código para o seu contato cadastrado.</p>
-              <div className="action-row">
-                <button className="primary-button" type="button" disabled={busy} onClick={() => void pedirCodigo("WHATSAPP")}>Enviar por WhatsApp</button>
-                <button className="secondary-button" type="button" disabled={busy} onClick={() => void pedirCodigo("EMAIL")}>Enviar por email</button>
-                <button className="link-button" type="button" onClick={() => setEtapa(null)}>Cancelar</button>
-              </div>
-              {erro && <p className="portal-error" role="alert">{erro}</p>}
-            </>
-          ) : (
-            <CodigoForm
-              destinoDescricao={`Enviamos o código para o ${etapa.canal === "EMAIL" ? "email" : "WhatsApp"} cadastrado.`}
-              busy={busy}
-              erro={erro}
-              confirmarRotulo="Confirmar código"
-              onConfirmar={(codigo) => void confirmarCodigo(codigo)}
-              onReenviar={() => void pedirCodigo(etapa.canal ?? "WHATSAPP")}
-              onVoltar={() => setEtapa(null)}
-            />
-          )}
+          <form className="portal-form" onSubmit={(event) => void confirmarSenha(event)} noValidate>
+            <p className="portal-help">Por segurança, digite sua senha de novo para responder ao orçamento.</p>
+            <label htmlFor="portal-reconfirmar-senha">Senha</label>
+            <input id="portal-reconfirmar-senha" className="portal-input" type="password" autoComplete="current-password"
+              maxLength={72} value={senha} onChange={(event) => setSenha(event.target.value)} autoFocus />
+            {erro && <p className="portal-error" role="alert">{erro}</p>}
+            <div className="action-row">
+              <button className="primary-button" type="submit" disabled={busy || !senha}>{busy ? "Conferindo…" : "Confirmar senha"}</button>
+              <button className="secondary-button" type="button" disabled={busy} onClick={() => setEtapa(null)}>Cancelar</button>
+            </div>
+          </form>
         </div>
       )}
 

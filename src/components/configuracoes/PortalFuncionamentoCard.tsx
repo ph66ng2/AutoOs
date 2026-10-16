@@ -70,7 +70,7 @@ export function PortalFuncionamentoCard() {
     <Card>
       <CardHeader>
         <CardTitle>Portal do Cliente: funcionamento</CardTitle>
-        <CardDescription>Desligar não apaga nada: contatos, senhas e respostas continuam guardados. Vale para todas as empresas deste banco.</CardDescription>
+        <CardDescription>Desligar não apaga nada: contatos, senhas e respostas continuam guardados. Vale só para a empresa do perfil ativo.</CardDescription>
       </CardHeader>
       <CardContent className="space-y-3">
         {erro && <p className="text-sm text-destructive" role="alert">{erro}</p>}

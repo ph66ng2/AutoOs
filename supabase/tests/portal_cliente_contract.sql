@@ -1,4 +1,4 @@
--- Contrato SQL do Portal das Impressoras do Cliente (migrations 0034 e 0035).
+-- Contrato SQL do Portal das Impressoras do Cliente (migrations 0034, 0035 e 0037).
 -- Execute num banco descartável com as migrations SQLx aplicadas (nome iniciando por autoos_stock_test):
 --   psql --set ON_ERROR_STOP=1 --file=supabase/tests/portal_cliente_contract.sql
 -- Tudo roda numa transação desfeita no final; dados sintéticos TESTE-PORTAL.
@@ -45,11 +45,12 @@ DECLARE
     prod INTEGER; v_ver INTEGER;
     servicos TEXT;
 BEGIN
-    UPDATE portal_cliente_config SET portal_enabled = TRUE;
-    UPDATE orcamento_aceite_config SET online_enabled = TRUE;
-
     INSERT INTO empresas (nome, email, status) VALUES ('TESTE-PORTAL A', 'portal-a@teste.invalid', 'ativo') RETURNING id INTO ea;
     INSERT INTO empresas (nome, email, status) VALUES ('TESTE-PORTAL B', 'portal-b@teste.invalid', 'ativo') RETURNING id INTO eb;
+    -- Chaves por empresa (0037): as duas ligadas; a separação entre empresas é testada no fim.
+    INSERT INTO portal_config_empresa (empresa_id, portal_enabled, respostas_enabled)
+        VALUES (ea, TRUE, TRUE), (eb, TRUE, TRUE)
+        ON CONFLICT (empresa_id) DO UPDATE SET portal_enabled = TRUE, respostas_enabled = TRUE;
     INSERT INTO clientes (empresa_id, nome, tipo_pessoa, documento) VALUES (ea, 'TESTE-PORTAL Cliente A', 'PJ', '11222333000181') RETURNING id INTO ca;
     INSERT INTO clientes (empresa_id, nome, tipo_pessoa, documento) VALUES (eb, 'TESTE-PORTAL Cliente B', 'PJ', '99888777000166') RETURNING id INTO cb;
 
@@ -108,44 +109,26 @@ BEGIN
     INSERT INTO t SELECT 'v_e6', id::TEXT FROM orcamento_versoes WHERE equipamento_id = e6;
 END $$;
 
--- ─── Login: CPF/CNPJ sozinho não basta ──────────────────────────────────────
-SELECT pg_temp.ok(NOT EXISTS (SELECT 1 FROM portal_criar_desafio('11.222.333/0001-81', '71900000000',
-    gen_random_uuid(), repeat('a', 64))), 'telefone errado não gera código');
-SELECT pg_temp.ok(NOT EXISTS (SELECT 1 FROM portal_criar_desafio('11.222.333/0001-81', '71966665555',
-    gen_random_uuid(), repeat('a', 64))), 'contato sem acesso ao portal não gera código');
-SELECT pg_temp.ok(NOT EXISTS (SELECT 1 FROM portal_criar_desafio('99.888.777/0001-66', '71988887777',
-    gen_random_uuid(), repeat('a', 64))), 'contato de outro cliente não gera código');
+-- ─── Login com senha: sessões de trabalho ───────────────────────────────────
+-- 1 = Ana (decide), 2 = Bruno (decide), 3 = Carla (só acompanha). O login por código não existe mais.
+SELECT portal_definir_senha_contato(pg_temp.g('ea')::INTEGER, pg_temp.g('decisor')::INTEGER, 'Ana-Inicial-1', NULL);
+SELECT portal_definir_senha_contato(pg_temp.g('ea')::INTEGER, pg_temp.g('decisor2')::INTEGER, 'Bruno-Inicial-2', NULL);
+SELECT portal_definir_senha_contato(pg_temp.g('ea')::INTEGER, pg_temp.g('acompanha')::INTEGER, 'Carla-Inicial-3', NULL);
+SELECT pg_temp.ok((portal_entrar_senha('11.222.333/0001-81', 'Ana-Inicial-1', repeat('1', 64))->>'resultado') = 'OK', 'Ana entra');
+SELECT pg_temp.ok((portal_entrar_senha('11222333000181', 'Bruno-Inicial-2', repeat('2', 64))->>'resultado') = 'OK', 'segundo decisor entra');
+SELECT pg_temp.ok((portal_entrar_senha('11222333000181', 'Carla-Inicial-3', repeat('3', 64))->>'acesso') = 'ACOMPANHAR', 'acompanhante entra');
+SELECT pg_temp.ok((portal_entrar_senha('11222333000181', 'Davi-Inicial-4', repeat('4', 64))->>'resultado') = 'INVALIDO',
+    'contato sem acesso ao portal não entra');
 
-INSERT INTO t SELECT 'desafio_velho', desafio_id::TEXT
-FROM portal_criar_desafio('11.222.333/0001-81', '+55 71 98888-7777', '00000000-0000-0000-0000-0000000000a0', repeat('b', 64));
-INSERT INTO t SELECT 'desafio_ana', desafio_id::TEXT || '|' || canal || '|' || destino
-FROM portal_criar_desafio('11222333000181', '71988887777', '00000000-0000-0000-0000-0000000000a1', repeat('c', 64));
-SELECT pg_temp.ok(split_part(pg_temp.g('desafio_ana'), '|', 2) = 'WHATSAPP' AND split_part(pg_temp.g('desafio_ana'), '|', 3) = '71988887777',
-    'canal e destino completo só para o servidor');
-SELECT pg_temp.ok((portal_verificar_codigo('00000000-0000-0000-0000-0000000000a0', repeat('b', 64), repeat('1', 64))->>'resultado') = 'CODIGO_INDISPONIVEL',
-    'código anterior é invalidado pelo novo');
-SELECT pg_temp.ok((portal_verificar_codigo('00000000-0000-0000-0000-0000000000a1', repeat('d', 64), repeat('1', 64))->>'tentativasRestantes') = '4',
-    'código errado consome tentativa');
-SELECT pg_temp.ok((portal_verificar_codigo('00000000-0000-0000-0000-0000000000a1', repeat('c', 64), repeat('1', 64))->>'resultado') = 'OK',
-    'código certo cria sessão');
-SELECT pg_temp.ok((portal_verificar_codigo('00000000-0000-0000-0000-0000000000a1', repeat('c', 64), repeat('9', 64))->>'resultado') = 'CODIGO_INDISPONIVEL',
-    'código é de uso único');
-
--- Entrega que falhou gera alerta persistente.
-INSERT INTO t SELECT 'desafio_carla', desafio_id::TEXT
-FROM portal_criar_desafio('11222333000181', 'Carla@Cliente.invalid', '00000000-0000-0000-0000-0000000000c1', repeat('e', 64));
-SELECT portal_registrar_entrega_codigo(pg_temp.g('desafio_carla')::BIGINT, 'FALHOU', 'Provedor recusou');
-SELECT pg_temp.ok(EXISTS (SELECT 1 FROM portal_alertas WHERE tipo = 'CODIGO_NAO_ENTREGUE' AND contato_id = pg_temp.g('acompanha')::INTEGER),
-    'alerta de código não entregue');
-SELECT pg_temp.ok((portal_verificar_codigo('00000000-0000-0000-0000-0000000000c1', repeat('e', 64), repeat('3', 64))->>'resultado') = 'CODIGO_INDISPONIVEL',
-    'código não entregue não vale');
-SELECT 1 FROM portal_criar_desafio('11222333000181', 'carla@cliente.invalid', '00000000-0000-0000-0000-0000000000c2', repeat('f', 64));
-SELECT pg_temp.ok((portal_verificar_codigo('00000000-0000-0000-0000-0000000000c2', repeat('f', 64), repeat('3', 64))->>'acesso') = 'ACOMPANHAR',
-    'acompanhante entra');
-
-SELECT 1 FROM portal_criar_desafio('11222333000181', '71977776666', '00000000-0000-0000-0000-0000000000b1', repeat('0', 63) || '1');
-SELECT pg_temp.ok((portal_verificar_codigo('00000000-0000-0000-0000-0000000000b1', repeat('0', 63) || '1', repeat('2', 64))->>'resultado') = 'OK',
-    'segundo decisor entra');
+-- Sem login por código (0037): funções removidas, sessão por código antiga não vale.
+SELECT pg_temp.ok(to_regprocedure('public.portal_criar_desafio(text,text,uuid,text)') IS NULL
+    AND to_regprocedure('public.portal_verificar_codigo(uuid,text,text,text)') IS NULL
+    AND to_regprocedure('public.portal_criar_desafio_sessao(text,text,uuid,text)') IS NULL
+    AND to_regprocedure('public.portal_metodo_sessao(text)') IS NULL, 'funções do código removidas');
+INSERT INTO portal_sessoes (token_hash, empresa_id, cliente_id, contato_id, expira_em, verificada_em, metodo)
+VALUES (repeat('c', 64), pg_temp.g('ea')::INTEGER, pg_temp.g('ca')::INTEGER, pg_temp.g('decisor')::INTEGER,
+        now() + INTERVAL '1 hour', now(), 'CODIGO');
+SELECT pg_temp.espera_erro(format('SELECT portal_listar_atendimentos(%L)', repeat('c', 64)), 'SESSAO_INVALIDA');
 
 -- ─── Isolamento da lista ────────────────────────────────────────────────────
 DO $$
@@ -179,12 +162,8 @@ SELECT pg_temp.espera_erro(format('SELECT portal_registrar_resposta(%L, %s, %s, 
 UPDATE portal_sessoes SET verificada_em = verificada_em - INTERVAL '1 hour' WHERE token_hash = repeat('1', 64);
 SELECT pg_temp.espera_erro(format('SELECT portal_registrar_resposta(%L, %s, %s, ''APROVAR'', 0)', repeat('1', 64), pg_temp.g('e1'), pg_temp.g('v_e1')),
     'VERIFICACAO_NECESSARIA');
-INSERT INTO t SELECT 'reverif', desafio_id::TEXT FROM portal_criar_desafio_sessao(repeat('1', 64), 'EMAIL', '00000000-0000-0000-0000-0000000000a2', repeat('7', 64));
-SELECT pg_temp.ok((portal_verificar_codigo('00000000-0000-0000-0000-0000000000a2', repeat('7', 64), NULL, repeat('2', 64))->>'resultado') = 'CODIGO_INDISPONIVEL',
-    'reverificação não serve para outra sessão');
-INSERT INTO t SELECT 'reverif2', desafio_id::TEXT FROM portal_criar_desafio_sessao(repeat('1', 64), 'EMAIL', '00000000-0000-0000-0000-0000000000a3', repeat('8', 64));
-SELECT pg_temp.ok((portal_verificar_codigo('00000000-0000-0000-0000-0000000000a3', repeat('8', 64), NULL, repeat('1', 64))->>'reverificada') = 'true',
-    'reverificação renova a própria sessão');
+SELECT pg_temp.ok(NOT portal_reverificar_senha(repeat('1', 64), 'Bruno-Inicial-2'), 'reverificação não aceita senha de outro contato');
+SELECT pg_temp.ok(portal_reverificar_senha(repeat('1', 64), 'Ana-Inicial-1'), 'reverificação com a senha renova a própria sessão');
 
 -- ─── Resposta, cliques repetidos, duas abas, dois contatos ──────────────────
 INSERT INTO t SELECT 'r1', (portal_registrar_resposta(repeat('1', 64), pg_temp.g('e1')::INTEGER, pg_temp.g('v_e1')::BIGINT, 'APROVAR', 0))->>'id';
@@ -310,8 +289,13 @@ UPDATE equipamentos SET cliente_id = NULL WHERE id = pg_temp.g('e7')::INTEGER;
 SELECT pg_temp.espera_erro(format('SELECT portal_detalhe_atendimento(%L, %s)', repeat('1', 64), pg_temp.g('e7')), 'ATENDIMENTO_INDISPONIVEL');
 
 -- ─── Mudança no contato derruba o acesso ───────────────────────────────────
-UPDATE cliente_contatos SET telefone = '71911112222' WHERE id = pg_temp.g('decisor2')::INTEGER;
-SELECT pg_temp.ok((SELECT portal_acesso FROM cliente_contatos WHERE id = pg_temp.g('decisor2')::INTEGER) = 'NENHUM', 'trocar telefone retira acesso');
+UPDATE cliente_contatos SET telefone = '71911112222', email = 'bruno@cliente.invalid' WHERE id = pg_temp.g('decisor2')::INTEGER;
+SELECT pg_temp.ok((SELECT portal_acesso = 'DECIDIR' AND portal_senha_hash IS NOT NULL FROM cliente_contatos WHERE id = pg_temp.g('decisor2')::INTEGER),
+    'corrigir telefone/email não retira o acesso nem a senha (0037)');
+SELECT pg_temp.ok(jsonb_array_length(portal_listar_atendimentos(repeat('2', 64))->'atendimentos') > 0, 'sessão continua após corrigir o telefone');
+UPDATE cliente_contatos SET ativo = FALSE WHERE id = pg_temp.g('decisor2')::INTEGER;
+SELECT pg_temp.ok((SELECT portal_acesso = 'NENHUM' AND portal_senha_hash IS NULL FROM cliente_contatos WHERE id = pg_temp.g('decisor2')::INTEGER),
+    'desativar o contato retira acesso e senha');
 SELECT pg_temp.espera_erro(format('SELECT portal_listar_atendimentos(%L)', repeat('2', 64)), 'SESSAO_INVALIDA');
 
 -- ─── Imutabilidade e leitura de alertas ─────────────────────────────────────
@@ -340,7 +324,6 @@ BEGIN
     PERFORM pg_temp.ok(r->>'resultado' = 'OK' AND r->>'acesso' = 'DECIDIR' AND r->>'metodo' = 'SENHA', 'senha da decisora entra como ela');
 END $$;
 SELECT pg_temp.ok((portal_entrar_senha('11222333000181', 'Carla-2026', repeat('6', 64))->>'acesso') = 'ACOMPANHAR', 'a senha identifica o contato');
-SELECT pg_temp.ok(portal_metodo_sessao(repeat('5', 64)) = 'SENHA', 'método da sessão');
 SELECT pg_temp.ok(jsonb_array_length(portal_listar_atendimentos(repeat('5', 64))->'atendimentos') > 0, 'sessão por senha lista atendimentos');
 
 UPDATE portal_sessoes SET verificada_em = verificada_em - INTERVAL '1 hour' WHERE token_hash = repeat('5', 64);
@@ -355,6 +338,32 @@ UPDATE cliente_contatos SET portal_acesso = 'NENHUM' WHERE id = pg_temp.g('acomp
 SELECT pg_temp.ok((SELECT portal_senha_hash IS NULL FROM cliente_contatos WHERE id = pg_temp.g('acompanha')::INTEGER), 'sem acesso, sem senha');
 SELECT pg_temp.ok((portal_entrar_senha('11222333000181', 'Carla-2026', repeat('7', 64))->>'resultado') = 'INVALIDO', 'senha removida não entra');
 
+-- ─── Chaves por empresa (0037) ──────────────────────────────────────────────
+DO $$
+DECLARE
+    cb_contato INTEGER;
+BEGIN
+    INSERT INTO cliente_contatos (empresa_id, cliente_id, nome, telefone, portal_acesso)
+        SELECT pg_temp.g('eb')::INTEGER, id, 'Beto Empresa B', '71955554444', 'DECIDIR' FROM clientes WHERE documento = '99888777000166'
+        RETURNING id INTO cb_contato;
+    PERFORM portal_definir_senha_contato(pg_temp.g('eb')::INTEGER, cb_contato, 'Beto-Senha-B1', NULL);
+    UPDATE portal_config_empresa SET portal_enabled = FALSE WHERE empresa_id = pg_temp.g('eb')::INTEGER;
+END $$;
+SELECT pg_temp.espera_erro(format('SELECT portal_entrar_senha(%L, %L, %L)', '99888777000166', 'Beto-Senha-B1', repeat('8', 64)), 'PORTAL_PAUSADO');
+SELECT pg_temp.ok((portal_entrar_senha('99888777000166', 'errada-B1', repeat('8', 64))->>'resultado') = 'INVALIDO',
+    'pausa só aparece para quem acerta a senha');
+SELECT pg_temp.ok((portal_entrar_senha('11222333000181', 'Nova-Senha-77', repeat('9', 64))->>'resultado') = 'OK', 'Ana entra de novo');
+SELECT pg_temp.ok(jsonb_array_length(portal_listar_atendimentos(repeat('9', 64))->'atendimentos') > 0,
+    'empresa B desligada não afeta a empresa A');
+UPDATE portal_config_empresa SET respostas_enabled = FALSE WHERE empresa_id = pg_temp.g('ea')::INTEGER;
+SELECT pg_temp.ok((portal_detalhe_atendimento(repeat('9', 64), pg_temp.g('e1')::INTEGER)->'orcamento'->>'aceiteOnline') = 'false',
+    'respostas desligadas na empresa A');
+UPDATE portal_config_empresa SET portal_enabled = FALSE, respostas_enabled = TRUE WHERE empresa_id = pg_temp.g('ea')::INTEGER;
+SELECT pg_temp.ok(NOT autoos_portal_respostas_ligadas(pg_temp.g('ea')::INTEGER), 'respostas exigem o portal ligado');
+SELECT pg_temp.espera_erro(format('SELECT portal_listar_atendimentos(%L)', repeat('9', 64)), 'PORTAL_PAUSADO');
+DELETE FROM portal_config_empresa WHERE empresa_id = pg_temp.g('ea')::INTEGER;
+SELECT pg_temp.ok(NOT autoos_portal_ligado(pg_temp.g('ea')::INTEGER), 'empresa sem configuração: portal desligado');
+
 -- ─── Privilégios: a Edge Function só alcança as funções públicas ──────────
 DO $$
 BEGIN
@@ -366,6 +375,7 @@ BEGIN
     PERFORM pg_temp.ok(NOT has_function_privilege('service_role', 'public.portal_efetivar_resposta(bigint)', 'EXECUTE'), 'efetivação unitária interna');
     PERFORM pg_temp.ok(NOT has_table_privilege('service_role', 'public.portal_sessoes', 'SELECT'), 'sem leitura direta de sessões');
     PERFORM pg_temp.ok(NOT has_table_privilege('service_role', 'public.portal_codigos', 'SELECT'), 'sem leitura direta de códigos');
+    PERFORM pg_temp.ok(NOT has_table_privilege('service_role', 'public.portal_config_empresa', 'SELECT'), 'sem leitura direta das chaves');
     PERFORM pg_temp.ok(NOT has_function_privilege('anon', 'public.portal_listar_atendimentos(text)', 'EXECUTE'), 'anon sem acesso');
     PERFORM pg_temp.ok(has_function_privilege('service_role', 'public.portal_entrar_senha(text,text,text)', 'EXECUTE'), 'service_role entra com senha');
     PERFORM pg_temp.ok(NOT has_function_privilege('service_role', 'public.portal_definir_senha_contato(integer,integer,text,integer)', 'EXECUTE'),

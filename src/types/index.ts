@@ -266,7 +266,7 @@ export interface DecisaoOrcamentoInfo {
   validoAte?: string | null;
   criadaEm: string;
   encerradaMotivo?: string | null;
-  /** Respostas pelo Portal do Cliente ligadas (`orcamento_aceite_config.online_enabled`). */
+  /** Respostas pelo Portal do Cliente ligadas para a empresa (`portal_config_empresa`). */
   aceiteOnlineAtivo: boolean;
   resposta?: RespostaOrcamentoInfo | null;
   historico: RespostaOrcamentoInfo[];

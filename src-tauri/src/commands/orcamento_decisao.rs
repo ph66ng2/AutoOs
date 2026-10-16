@@ -59,7 +59,7 @@ pub struct DecisaoOrcamentoInfo {
     pub criada_em: String,
     /// `None` quando a versão foi encerrada; o motivo explica por quê.
     pub encerrada_motivo: Option<String>,
-    /// `orcamento_aceite_config.online_enabled`: o portal só aceita respostas com ele ligado.
+    /// Respostas pelo portal ligadas para a empresa (`portal_config_empresa`).
     pub aceite_online_ativo: bool,
     /// Resposta vigente (a de maior id). `DESFEITA` significa que o cliente retirou a resposta.
     pub resposta: Option<RespostaOrcamentoInfo>,
@@ -281,10 +281,10 @@ pub(crate) async fn obter_ou_criar_versao(
     Ok(VersaoCongelada { id, numero, valido_ate })
 }
 
-async fn aceite_online_ativo(pool: &PgPool) -> Result<bool, String> {
-    let enabled: Option<bool> = sqlx::query_scalar(
-        "SELECT online_enabled FROM public.orcamento_aceite_config WHERE singleton = TRUE",
-    )
+/// Respostas pelo portal ligadas para a empresa (exige também o portal ligado).
+async fn aceite_online_ativo(pool: &PgPool, empresa_id: i32) -> Result<bool, String> {
+    let enabled: Option<bool> = sqlx::query_scalar("SELECT public.autoos_portal_respostas_ligadas($1)")
+    .bind(empresa_id)
     .fetch_optional(pool)
     .await
     .map_err(super::operator_errors::mapear_erro_sql)?;
@@ -317,7 +317,7 @@ pub async fn obter_decisao_orcamento(
     let pool = get_pool().await.map_err(|error| error.to_string())?;
     let empresa_id = require_active_session_company_id(&pool).await?;
     let map = super::operator_errors::mapear_erro_sql;
-    let ativo = aceite_online_ativo(&pool).await?;
+    let ativo = aceite_online_ativo(&pool, empresa_id).await?;
 
     let versao = sqlx::query(sqlx::AssertSqlSafe(format!(
         "SELECT v.id, v.versao, v.valor_total::FLOAT8 AS valor_total,

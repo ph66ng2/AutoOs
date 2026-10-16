@@ -91,7 +91,7 @@ async fn main() -> Result<()> {
     let api_url = iniciar_servidor(Arc::clone(&fake))?;
     whatsapp::salvar_config_whatsapp(WhatsappConfigInput { provider: "EVOLUTION".into(), api_url, token: Some("token-fila".into()) })
         .await.map_err(|e| anyhow!(e))?;
-    sqlx::query("INSERT INTO public.orcamento_aceite_config (singleton, online_enabled) VALUES (TRUE, TRUE) ON CONFLICT (singleton) DO UPDATE SET online_enabled = TRUE").execute(&pool).await?;
+    sqlx::query("INSERT INTO portal_config_empresa (empresa_id, portal_enabled, respostas_enabled) VALUES ($1, FALSE, TRUE) ON CONFLICT (empresa_id) DO UPDATE SET portal_enabled = FALSE, respostas_enabled = TRUE").bind(empresa).execute(&pool).await?;
 
     let novo = |status: &'static str, telefone: Option<&'static str>, tag: &'static str| {
         let pool = pool.clone();
@@ -213,7 +213,7 @@ async fn main() -> Result<()> {
     assert_eq!(pedidos, 2);
 
     // 10b. Destinatário que responde pelo portal recebe o endereço do portal; os outros, "APROVADO".
-    sqlx::query("UPDATE portal_cliente_config SET portal_enabled = TRUE").execute(&pool).await?;
+    sqlx::query("UPDATE portal_config_empresa SET portal_enabled = TRUE WHERE empresa_id = $1").bind(empresa).execute(&pool).await?;
     let documento = format!("{:014}", std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH)?.as_nanos() % 100_000_000_000_000);
     let cliente: i32 = sqlx::query_scalar("INSERT INTO clientes(nome,tipo_pessoa,documento,empresa_id,ativo) VALUES ('Gráfica Portal','PJ',$1,$2,true) RETURNING id")
         .bind(&documento).bind(empresa).fetch_one(&pool).await?;
@@ -245,7 +245,7 @@ async fn main() -> Result<()> {
     assert_eq!(pedir(eq_sem, "orcamento_informativo", false, false).await?.estado, "ENVIADA");
     let corpo = fake.corpos.lock().unwrap().last().unwrap().clone();
     assert!(corpo.contains("APROVADO") && !corpo.contains("status.bmitag.com.br"), "sem decisão no portal: {corpo}");
-    sqlx::query("UPDATE portal_cliente_config SET portal_enabled = FALSE").execute(&pool).await?;
+    sqlx::query("UPDATE portal_config_empresa SET portal_enabled = FALSE WHERE empresa_id = $1").bind(empresa).execute(&pool).await?;
 
     // 11. Estado errado e tipos que não existem mais são recusados sem rastro de envio.
     let antes = fake.requisicoes.load(Ordering::SeqCst);

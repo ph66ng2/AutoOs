@@ -9,8 +9,8 @@ import type { ContatoPortalEmpresa } from "@/types";
 const VAZIO: ContatoPortalEmpresa = { nomeExibicao: "BMI TAG", whatsapp: "", email: "", telefone: "", horario: "" };
 
 /**
- * Cartão "Fale com a equipe" do Portal das Impressoras do Cliente. Só canais públicos: o token
- * do WhatsApp que envia o código de acesso fica nos segredos do servidor, nunca aqui.
+ * Cartão "Fale com a equipe" do Portal das Impressoras do Cliente. Só canais públicos, mostrados
+ * ao cliente logado.
  */
 export function PortalContatoEmpresaCard() {
   const [form, setForm] = useState<ContatoPortalEmpresa>(VAZIO);

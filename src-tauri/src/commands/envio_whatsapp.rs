@@ -323,8 +323,7 @@ async fn carregar_equipamento(
                 (EXTRACT(EPOCH FROM status_alterado_em) * 1000000)::BIGINT AS micros,
                 -- Mesmo telefone (últimos 10 dígitos) de um contato com acesso de decisão e senha,
                 -- com o portal e as respostas ligados.
-                COALESCE((SELECT portal_enabled FROM portal_cliente_config WHERE singleton), FALSE)
-                AND COALESCE((SELECT online_enabled FROM orcamento_aceite_config WHERE singleton), FALSE)
+                public.autoos_portal_respostas_ligadas(equipamentos.empresa_id)
                 AND EXISTS (
                     SELECT 1 FROM cliente_contatos c
                     WHERE c.cliente_id = equipamentos.cliente_id AND c.empresa_id = equipamentos.empresa_id

@@ -77,7 +77,7 @@ async fn main() -> Result<()> {
     assert_eq!(serde_json::from_str::<Vec<serde_json::Value>>(&v.servicos_necessarios.unwrap())?.len(),1);
     assert_eq!(produtos::buscar_produto(produto.id).await.map_err(|e| anyhow!(e))?.quantidade_estoque,Some(3));
     // Portal do Cliente: a resposta só vale depois da janela e da conferência da equipe.
-    sqlx::query("INSERT INTO public.orcamento_aceite_config (singleton, online_enabled) VALUES (TRUE, TRUE) ON CONFLICT (singleton) DO UPDATE SET online_enabled = TRUE").execute(&pool).await?;
+    sqlx::query("INSERT INTO portal_config_empresa (empresa_id, portal_enabled, respostas_enabled) VALUES ($1, TRUE, TRUE) ON CONFLICT (empresa_id) DO UPDATE SET portal_enabled = TRUE, respostas_enabled = TRUE").bind(empresa).execute(&pool).await?;
     let eq2: i32 = sqlx::query_scalar("INSERT INTO equipamentos(serial_number,marca,modelo,tipo,data_entrada,defeito_relatado,empresa_id,status) VALUES ($1,'Zebra','GC420t','Impressora','2026-09-27','Teste',$2,'VERIFICADO') RETURNING id")
         .bind(format!("D-{suffix}")).bind(empresa).fetch_one(&pool).await?;
     verificacoes::salvar_verificacao_tecnica(VerificacaoInput {

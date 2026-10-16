@@ -55,7 +55,7 @@ export default function PortalApp() {
       {session && route.kind !== "detalhe" && <PortalLista session={session} onExpirou={expirou} />}
 
       <footer className="status-footer">
-        <p>Portal das Impressoras BMI TAG. O acesso é pessoal: não compartilhe seus códigos.</p>
+        <p>Portal das Impressoras BMI TAG. O acesso é pessoal: não compartilhe sua senha.</p>
         <p>Recebeu um link individual de acompanhamento? Ele continua funcionando.</p>
       </footer>
     </main>

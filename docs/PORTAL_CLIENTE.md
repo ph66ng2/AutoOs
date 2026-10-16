@@ -1,18 +1,18 @@
 # Portal das Impressoras do Cliente
 
-Evolução de `status.bmitag.com.br`: o cliente entra com CPF/CNPJ + código temporário, vê todos os atendimentos do cadastro e responde ao orçamento publicado. Funciona com o AutoOS desktop fechado: login, envio do código, resposta e efetivação rodam no Supabase.
+Evolução de `status.bmitag.com.br`: o cliente entra com CPF/CNPJ + a senha que a equipe criou para o contato, vê todos os atendimentos do cadastro e responde ao orçamento publicado. Funciona com o AutoOS desktop fechado: login, resposta e efetivação rodam no Supabase.
 
-> **Estado: implementado, nada ativado.** As migrations `0034_portal_cliente.sql` e `0035_portal_senha.sql` (senha criada pelo operador); a 0034 nasce com `portal_cliente_config.portal_enabled = FALSE`. A Edge Function `portal-cliente` não foi publicada e nenhum dado de produção foi alterado.
+> **Estado: implementado, nada ativado.** Migrations `0034_portal_cliente.sql`, `0035_portal_senha.sql` (senha criada pelo operador) e `0037_portal_por_empresa_so_senha.sql` (chaves por empresa, login por código removido). Toda empresa nasce com o portal desligado. A Edge Function `portal-cliente` não foi publicada e nenhum dado de produção foi alterado.
 
 Usa as versões e respostas de orçamento das migrations 0030–0031 (`docs/ACEITE_ORCAMENTO_ONLINE.md`) e a configuração de WhatsApp central (`docs/FILA_ENVIOS_WHATSAPP.md`, 0033). É o **único** caminho de resposta online: o link individual `#/o/<token>` foi removido na 0036.
 
 ## Jornada
 
-0. **Senha criada pelo operador (padrão, migration 0035).** Nos detalhes do equipamento (**Dar acesso a um contato**) ou em Clientes → Contatos e Portal, o operador libera o portal para o contato e cria a senha (o AutoOS sugere uma senha forte; ele pode digitar outra com 8+ caracteres, letras e números). Os dados de acesso aparecem uma única vez para entregar ao contato; o banco guarda só o hash bcrypt (`pgcrypto`). O cliente entra com **CPF/CNPJ + senha**. A senha é **por contato**, não por CNPJ: é ela que diz quem entrou, se pode decidir e a quem a resposta é atribuída (senhas repetidas no mesmo CPF/CNPJ são recusadas). A senha vale por tempo indeterminado: para trocar ou se esquecer, o contato fala com a equipe, que cria outra. Trocar a senha desconecta o contato; retirar o acesso apaga a senha. Antes de aceitar/recusar, a sessão por senha reconfirma a senha (em vez de um código). Limite: 8 tentativas por CPF/CNPJ a cada 15 minutos.
-1. **Entrar com código (alternativa).** CPF/CNPJ + WhatsApp ou email do contato. Se o par casar com exatamente um contato autorizado, o servidor envia um código de 6 dígitos (10 min, 5 tentativas, uso único). A resposta da tela é a mesma quando nada casa: o portal não revela quem é cliente. O CPF/CNPJ sozinho nunca dá acesso.
+0. **Senha criada pelo operador (padrão, migration 0035).** Nos detalhes do equipamento (**Dar acesso a um contato**) ou em Clientes → Contatos e Portal, o operador libera o portal para o contato e cria a senha (o AutoOS sugere uma senha forte; ele pode digitar outra com 8+ caracteres, letras e números). Os dados de acesso aparecem uma única vez para entregar ao contato; o banco guarda só o hash bcrypt (`pgcrypto`). O cliente entra com **CPF/CNPJ + senha**. A senha é **por contato**, não por CNPJ: é ela que diz quem entrou, se pode decidir e a quem a resposta é atribuída (senhas repetidas no mesmo CPF/CNPJ são recusadas). A senha vale por tempo indeterminado: para trocar ou se esquecer, o contato fala com a equipe, que cria outra. Trocar a senha desconecta o contato; retirar o acesso apaga a senha. Antes de aceitar/recusar, se a última conferência tiver mais de 10 minutos, o portal pede a senha de novo. Limite: 8 tentativas por CPF/CNPJ a cada 15 minutos.
+1. **Sem login por código.** A entrada por código enviado por WhatsApp/email existiu na 0034 e foi removida na 0037: só há senha. O CPF/CNPJ sozinho nunca dá acesso, e senha errada e CPF/CNPJ inexistente têm a mesma resposta.
 2. **Lista.** Todos os atendimentos com `empresa_id` + `cliente_id` do cadastro, separados em **Atuais** e **Histórico** (entregues e encerrados). Ordenação por atividade recente (padrão) ou data de entrada. O cartão mostra equipamento, série, patrimônio, entrada, etapa colorida e “Aguarda sua resposta”.
 3. **Detalhe.** A tela pública de status (`StatusView`: logo, etapa com pulso, linha do tempo, data) + orçamento publicado (versão, itens, total, validade) + pedidos enviados + cartão de contato.
-4. **Responder.** Aceitar ou recusar o **orçamento inteiro** (sem aprovação parcial) ou **Quero negociar**. Aceitar/recusar exige confirmação com impressora e valor e uma verificação feita há menos de 10 minutos (senão o portal envia um novo código). O comprovante tem protocolo `R-<id>`.
+4. **Responder.** Aceitar ou recusar o **orçamento inteiro** (sem aprovação parcial) ou **Quero negociar**. Aceitar/recusar exige confirmação com impressora e valor e uma verificação feita há menos de 10 minutos (senão o portal pede a senha de novo). O comprovante tem protocolo `R-<id>`.
 5. **WhatsApp opcional.** Depois de registrar, o portal oferece a mensagem pronta (`wa.me`) e “Copiar mensagem”. O registro e o alerta já existem; fechar o WhatsApp não perde nada.
 6. **Mudei de ideia.** Por 15 minutos (`orcamento_aceite_config.janela_correcao_minutos`, mínimo 15) quem respondeu pode trocar ou cancelar. A equipe vê “resposta recebida, em prazo de correção” e o desktop recusa aplicar nesse período.
 7. **Efetivação.** Terminado o prazo, `portal_efetivar_respostas_vencidas` aplica APROVADO/REPROVADO numa transação com as regras de `aprovar_orcamento`. Se não conseguir, a resposta fica pendente, a equipe recebe alerta e o cliente vê “precisa ser confirmada pela equipe” — nunca uma aprovação falsa. Depois de efetivada, o botão vira **Solicitar correção** (pedido ao operador; não desfaz peças nem trabalho).
@@ -42,7 +42,6 @@ Usa as versões e respostas de orçamento das migrations 0030–0031 (`docs/ACEI
 | Efetivação falhou (etapa ou orçamento mudou, peça sem serviço…) | Vermelho “Aceite não efetivado” + motivo | Abrir o atendimento → **Revisar e aplicar decisão** |
 | Cliente pediu correção depois de efetivado | Âmbar “Cliente pediu correção” | Conversar e, se for o caso, **Corrigir decisão do orçamento** (desfaz pagamento, serviços e baixas com escolha sobre o estoque) |
 | Cliente respondeu por telefone/WhatsApp | — | **Aprovar/Reprovar** direto no equipamento, como antes |
-| Código de acesso não entregue | Vermelho “Código de acesso não entregue” | Conferir telefone/email do contato e o envio do servidor |
 
 ## Estados
 
@@ -55,8 +54,7 @@ Usa as versões e respostas de orçamento das migrations 0030–0031 (`docs/ACEI
 | “Precisa ser confirmada pela equipe” | Alerta vermelho + motivo + “Revisar e aplicar decisão” | Efetivação falhou (etapa mudou, orçamento alterado, atendimento transferido, peças sem serviço, produto inativo) |
 | “A equipe está revisando esta proposta” | — | Versão encerrada por edição, sem nova publicação |
 | “O prazo desta proposta terminou” | — | `valido_ate` vencido |
-| “Não conseguimos enviar o código” | Alerta “código não entregue” | Provedor recusou ou não configurado |
-| “O portal está temporariamente indisponível” | — | `portal_enabled = FALSE` ou falha do servidor |
+| “O portal está temporariamente indisponível” | — | Portal desligado para a empresa (`portal_config_empresa`) ou falha do servidor |
 | Atendimento some da lista | — | `cliente_id` mudou (transferido) |
 
 ## Conflitos tratados
@@ -64,7 +62,7 @@ Usa as versões e respostas de orçamento das migrations 0030–0031 (`docs/ACEI
 - **Cliques repetidos / duas abas / dois contatos.** `portal_registrar_resposta` trava equipamento e versão (mesma ordem do desktop) e confere a resposta vigente que o cliente viu. Clique repetido devolve o mesmo comprovante; tela velha recebe `RESPOSTA_DESATUALIZADA`; outro contato não muda a resposta de quem respondeu (`RESPOSTA_DE_OUTRO_CONTATO`). Teste real com 6 chamadas simultâneas: 1 resposta.
 - **Proposta alterada com a página aberta.** A resposta leva `versaoId`; versão encerrada → `PROPOSTA_ALTERADA`; a página fecha a confirmação e mostra a versão nova. A atualização automática (60 s) também derruba a confirmação antiga.
 - **Isolamento.** Lista e detalhe filtram por `empresa_id` e `cliente_id` da sessão, nunca por nome ou série (o contrato SQL cobre série repetida em outra empresa e `cliente_nome` sem vínculo).
-- **Permissão por contato.** `cliente_contatos.portal_acesso`: `NENHUM`, `ACOMPANHAR` (vê status e orçamento) ou `DECIDIR` (também responde). Liberar `DECIDIR` exige a permissão financeira. Trocar telefone/email, inativar ou mudar de cliente zera o acesso e encerra as sessões.
+- **Permissão por contato.** `cliente_contatos.portal_acesso`: `NENHUM`, `ACOMPANHAR` (vê status e orçamento) ou `DECIDIR` (também responde). Liberar `DECIDIR` exige a permissão financeira. Inativar ou mudar de cliente zera o acesso, apaga a senha e encerra as sessões; corrigir telefone/email não mexe no acesso (0037).
 - **Efetivação concorrente.** Quatro processadores simultâneos: uma efetivação, uma baixa de estoque, um alerta.
 
 ## Regras de efetivação (`portal_efetivar_resposta`)
@@ -81,15 +79,16 @@ Espelha `aprovar_orcamento` + `aplicar_decisoes` (`src-tauri/src/commands/equipa
 
 Respostas antigas de origem `PORTAL` (link removido) ou `EQUIPE` só existem em bancos de teste e, se aparecerem, continuam com conferência manual.
 
-## Banco (`0034_portal_cliente.sql`)
+## Banco (`0034`, `0035`, `0037`)
 
 | Objeto | Função |
 |---|---|
-| `cliente_contatos.portal_acesso` + trigger | Acesso por contato; mudança de canal zera o acesso |
-| `portal_cliente_config` | `portal_enabled`, validade do código, tentativas, reverificação, duração da sessão |
+| `cliente_contatos.portal_acesso` + trigger | Acesso por contato; inativar ou mudar de cliente zera o acesso |
+| `portal_config_empresa` (0037) | Chaves por empresa: `portal_enabled` (login e consulta) e `respostas_enabled` (aceitar/recusar/negociar; exige o portal ligado). Sem linha = desligado |
+| `portal_cliente_config` | Reverificação e duração da sessão (globais do produto). `portal_enabled` daqui não é mais lido |
 | `portal_contato_empresa` | Cartão “Fale com a equipe” (Configurações → Integrações) |
-| `portal_codigos` | Desafios com HMAC do código (segredo fora do banco), entrega e tentativas |
-| `portal_sessoes` | Hash do token de sessão, `verificada_em`, expiração |
+| `portal_codigos` | Histórico do login por código (removido na 0037) |
+| `portal_sessoes` | Hash do token de sessão, `verificada_em`, expiração; só sessões `metodo = SENHA` valem |
 | `orcamento_respostas` (+colunas) | `PORTAL_CLIENTE`, contato, sessão, efetivação automática e falha |
 | `orcamento_solicitacoes` (+colunas) | `NEGOCIAR` e contato |
 | `portal_alertas` | Alertas persistentes; só `lido_em`/`lido_por` mudam |
@@ -98,34 +97,32 @@ Respostas antigas de origem `PORTAL` (link removido) ou `EQUIPE` só existem em 
 
 ## Ativação (ambiente de teste primeiro)
 
-1. Aplicar 0030–0036 pelo processo de migrations (`docs/PRODUCTION_MIGRATIONS.md`) e conferir os advisors de segurança do Supabase.
+1. Aplicar 0030–0037 pelo processo de migrations (`docs/PRODUCTION_MIGRATIONS.md`) e conferir os advisors de segurança do Supabase.
 2. Publicar a Edge Function `portal-cliente` (`verify_jwt = false`, já em `supabase/config.toml`) com os segredos:
 
 | Segredo | Uso |
 |---|---|
-| `PORTAL_CLIENTE_SECRET` | 32+ caracteres; HMAC dos códigos e do limite por documento. Trocar invalida códigos em aberto |
+| `PORTAL_CLIENTE_SECRET` | 32+ caracteres; HMAC do limite de tentativas por documento |
 | `PUBLIC_STATUS_RATE_LIMIT_SECRET`, `PUBLIC_STATUS_ORIGIN` | Os mesmos do `public-status` |
-| `WHATSAPP_TOKENS` | JSON `{"<empresa_id>": "<token>"}` (o mesmo do processador central) |
-| `WHATSAPP_GRAPH_VERSION`, `PORTAL_WHATSAPP_TEMPLATE` | Opcionais (Cloud API; modelo de autenticação, padrão `codigo_verificacao`) |
-| `RESEND_API_KEY`, `PORTAL_EMAIL_FROM` | Envio do código por email (domínio verificado no provedor) |
 
-3. Cadastrar o provedor de WhatsApp da empresa em `envio_whatsapp_config_empresa` (Evolution com URL `https://` acessível pela internet, ou Cloud API). Para o código basta a linha existir; o `modo` pode continuar `LOCAL`.
-4. Agendar a efetivação (o portal também efetiva ao listar/abrir, mas sem o Cron uma resposta só vira status quando alguém abre o portal):
+O portal não envia nada por WhatsApp nem email: não precisa de token de provedor.
+
+3. Agendar a efetivação (o portal também efetiva ao listar/abrir, mas sem o Cron uma resposta só vira status quando alguém abre o portal):
 
 ```sql
 select cron.schedule('portal-efetivar-respostas', '* * * * *',
   $$ select public.portal_efetivar_respostas_vencidas(50) $$);
 ```
 
-5. Publicar a página (`npm run build:public-status`, enviar `dist-public-status/` com o `.htaccess`). A URL da função pode ser trocada com `VITE_PORTAL_CLIENTE_API_URL`.
-6. No AutoOS: Configurações → Integrações → cartão “Fale com a equipe”; nos detalhes do equipamento, dar acesso ao contato e **Publicar no Portal do Cliente**.
-7. Ligar para um piloto em Configurações → Integrações → **Portal do Cliente: funcionamento**: “Portal ligado” e “Clientes podem responder orçamentos” (PIN; respostas exigem a permissão financeira; auditoria `PORTAL_CONFIG_CHANGED`). As chaves são globais do banco.
+4. Publicar a página (`npm run build:public-status`, enviar `dist-public-status/` com o `.htaccess`). A URL da função pode ser trocada com `VITE_PORTAL_CLIENTE_API_URL`.
+5. No AutoOS: Configurações → Integrações → cartão “Fale com a equipe”; nos detalhes do equipamento, dar acesso ao contato e **Publicar no Portal do Cliente**.
+6. Ligar para um piloto em Configurações → Integrações → **Portal do Cliente: funcionamento**: “Portal ligado” e “Clientes podem responder orçamentos” (PIN; respostas exigem a permissão financeira; auditoria `PORTAL_CONFIG_CHANGED`). As chaves são de cada empresa (`portal_config_empresa`, 0037): ligar numa empresa não liga nas outras.
 
-Pausar: desligar “Portal ligado” derruba login e sessões na hora; nada é apagado. Desligar só as respostas mantém o acompanhamento. O cartão avisa quando respostas vencidas não estão sendo aplicadas (agendamento do passo 4 parado).
+Pausar: desligar “Portal ligado” derruba login e sessões na hora; nada é apagado. Desligar só as respostas mantém o acompanhamento. O cartão avisa quando respostas vencidas não estão sendo aplicadas (agendamento do passo 3 parado).
 
 ## Notificações no AutoOS (sino no canto superior direito)
 
-- Abas **Todos**, **Erros** e **Portal do Cliente**, cada uma com “Não lidas” e “Histórico”. Erros reúne os erros do app e os alertas do portal que pedem ação (efetivação falhou, código não entregue).
+- Abas **Todos**, **Erros** e **Portal do Cliente**, cada uma com “Não lidas” e “Histórico”. Erros reúne os erros do app e os alertas do portal que pedem ação (efetivação falhou).
 - Alerta novo do portal vira aviso; **Ver** marca como lido e abre o atendimento. Se outra janela de detalhes estiver aberta, troca na hora; se houver formulário em preenchimento (cadastro, verificação, status, pagamento…), avisa e abre ao fechar o formulário.
 - Alerta novo também atualiza a lista de Equipamentos em segundo plano (ordem “Alterados recentemente” inclui a atividade do cliente) e recarrega a resposta do atendimento aberto.
 - Erros do app ficam guardados neste computador (até 50). **Copiar relatório** leva código (`AUTOOS:DB:<SQLSTATE ou categoria>`, `AUTOOS:23505:<restrição>`, `AUTOOS:OP`), descrição técnica, referência do log, contexto, tela e versão. O texto bruto do banco continua só no log (`autoos.log`), na linha com a mesma `referencia=`.
@@ -138,8 +135,6 @@ Pausar: desligar “Portal ligado” derruba login e sessões na hora; nada é a
 
 ## Limitações conhecidas
 
-- A Cloud API e a Evolution não foram testadas de verdade a partir da função; o modelo de autenticação da Meta precisa ser aprovado com um parâmetro (código) e o botão de copiar.
-- O tempo de resposta do pedido de código é maior quando há envio real; um observador atento poderia inferir que o par CPF/CNPJ + contato existe. O conteúdo da resposta é igual.
 - A sessão fica no `sessionStorage` da aba: abrir outra aba exige novo login.
 - A equipe conhece a senha do contato (decisão de produto: a troca é feita pela equipe). A resposta prova que alguém com a senha daquele contato respondeu.
 - A senha identifica o contato; por isso duas senhas iguais no mesmo CPF/CNPJ são recusadas.

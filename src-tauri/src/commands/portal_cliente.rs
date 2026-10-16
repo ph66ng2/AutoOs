@@ -125,7 +125,7 @@ pub async fn marcar_alertas_portal_lidos(alerta_id: Option<i64>) -> Result<u64, 
 }
 
 /// Define o acesso do contato ao portal. `DECIDIR` autoriza responder a orçamentos e exige
-/// a permissão financeira; trocar telefone ou email depois retira o acesso (trigger da 0034).
+/// a permissão financeira; inativar o contato ou mudá-lo de cliente retira o acesso (trigger, 0037).
 #[tauri::command]
 #[instrument(skip_all, fields(contato_id = contato_id))]
 pub async fn definir_acesso_portal_contato(contato_id: i32, acesso: String) -> Result<ClienteContato, String> {
@@ -363,9 +363,9 @@ mod tests {
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct EstadoPortal {
-    /// `portal_cliente_config.portal_enabled`: login e consulta dos atendimentos.
+    /// `portal_config_empresa.portal_enabled`: login e consulta dos atendimentos desta empresa.
     pub portal_ativo: bool,
-    /// `orcamento_aceite_config.online_enabled`: aceitar, recusar e negociar pelo portal.
+    /// `portal_config_empresa.respostas_enabled`: aceitar, recusar e negociar pelo portal.
     pub respostas_ativas: bool,
     /// Respostas desta empresa que passaram do prazo de correção (+5 min) sem serem aplicadas nem
     /// falharem: sinal de que o agendamento da efetivação no Supabase não está rodando.
@@ -378,8 +378,8 @@ pub async fn obter_estado_portal() -> Result<EstadoPortal, String> {
     let empresa_id = require_active_session_company_id(&pool).await?;
     let (portal_ativo, respostas_ativas, respostas_atrasadas): (bool, bool, i64) = sqlx::query_as(
         "SELECT
-            COALESCE((SELECT portal_enabled FROM portal_cliente_config WHERE singleton), FALSE),
-            COALESCE((SELECT online_enabled FROM orcamento_aceite_config WHERE singleton), FALSE),
+            COALESCE((SELECT portal_enabled FROM portal_config_empresa WHERE empresa_id = $1), FALSE),
+            COALESCE((SELECT respostas_enabled FROM portal_config_empresa WHERE empresa_id = $1), FALSE),
             (SELECT COUNT(*) FROM orcamento_respostas r
              JOIN orcamento_versoes v ON v.id = r.versao_id AND v.empresa_id = r.empresa_id
              WHERE r.empresa_id = $1 AND r.origem = 'PORTAL_CLIENTE' AND r.decisao IN ('APROVAR', 'RECUSAR')
@@ -395,42 +395,50 @@ pub async fn obter_estado_portal() -> Result<EstadoPortal, String> {
     Ok(EstadoPortal { portal_ativo, respostas_ativas, respostas_atrasadas })
 }
 
-/// Liga/desliga o portal (gestão de links) e as respostas pelo portal (permissão financeira).
-/// Desligar não apaga nada: o login cai na hora e as sessões voltam a valer ao religar.
+/// Liga/desliga o portal (gestão de links) e as respostas pelo portal (permissão financeira) da
+/// empresa do perfil ativo. Desligar não apaga nada: o login cai na hora e as sessões voltam a
+/// valer ao religar.
 #[tauri::command]
 #[instrument(skip_all, fields(portal_ativo = portal_ativo, respostas_ativas = respostas_ativas))]
 pub async fn definir_estado_portal(portal_ativo: bool, respostas_ativas: bool) -> Result<EstadoPortal, String> {
     let actor = require_permission(PERMISSION_MANAGE_STATUS_LINKS)?;
     let pool = get_pool().await.map_err(|e| e.to_string())?;
-    let mut tx = pool.begin().await.map_err(super::operator_errors::mapear_erro_sql)?;
+    let empresa_id = require_active_session_company_id(&pool).await?;
+    let map = super::operator_errors::mapear_erro_sql;
+    let mut tx = pool.begin().await.map_err(map)?;
+    sqlx::query("INSERT INTO portal_config_empresa (empresa_id) VALUES ($1) ON CONFLICT (empresa_id) DO NOTHING")
+        .bind(empresa_id)
+        .execute(&mut *tx)
+        .await
+        .map_err(map)?;
     let respostas_antes: bool = sqlx::query_scalar(
-        "SELECT COALESCE((SELECT online_enabled FROM orcamento_aceite_config WHERE singleton FOR UPDATE), FALSE)",
+        "SELECT respostas_enabled FROM portal_config_empresa WHERE empresa_id = $1 FOR UPDATE",
     )
+    .bind(empresa_id)
     .fetch_one(&mut *tx)
     .await
-    .map_err(super::operator_errors::mapear_erro_sql)?;
+    .map_err(map)?;
     if respostas_antes != respostas_ativas {
         // Clientes aprovando orçamentos mexem em status, pagamento e estoque.
         require_permission(PERMISSION_FINANCIAL_ACTIONS)?;
     }
-    sqlx::query("UPDATE portal_cliente_config SET portal_enabled = $1, updated_at = NOW() WHERE singleton")
-        .bind(portal_ativo)
-        .execute(&mut *tx)
-        .await
-        .map_err(super::operator_errors::mapear_erro_sql)?;
     sqlx::query(
-        "INSERT INTO orcamento_aceite_config (singleton, online_enabled) VALUES (TRUE, $1)
-         ON CONFLICT (singleton) DO UPDATE SET online_enabled = EXCLUDED.online_enabled",
+        "UPDATE portal_config_empresa
+         SET portal_enabled = $2, respostas_enabled = $3, atualizado_em = NOW(), atualizado_por_profile_id = $4
+         WHERE empresa_id = $1",
     )
+    .bind(empresa_id)
+    .bind(portal_ativo)
     .bind(respostas_ativas)
+    .bind(actor.id)
     .execute(&mut *tx)
     .await
-    .map_err(super::operator_errors::mapear_erro_sql)?;
-    tx.commit().await.map_err(super::operator_errors::mapear_erro_sql)?;
+    .map_err(map)?;
+    tx.commit().await.map_err(map)?;
     record_security_event(
         "PORTAL_CONFIG_CHANGED",
         Some(&actor),
-        format!("portal_enabled={portal_ativo}; online_enabled={respostas_ativas}"),
+        format!("empresa_id={empresa_id}; portal_enabled={portal_ativo}; respostas_enabled={respostas_ativas}"),
         true,
     )
     .await;

@@ -9,11 +9,8 @@ vi.mock("./portal-api", async (importOriginal) => {
   return {
     ...original,
     portalApi: {
-      solicitarCodigo: vi.fn(),
       entrarSenha: vi.fn(),
       confirmarSenha: vi.fn(),
-      verificarCodigo: vi.fn(),
-      novoCodigo: vi.fn(),
       listar: vi.fn(),
       detalhe: vi.fn(),
       responder: vi.fn(),
@@ -88,31 +85,17 @@ describe("roteamento", () => {
 });
 
 describe("login", () => {
-  it("CPF/CNPJ sozinho não pede código; com o contato, entra pelo código", async () => {
-    api.solicitarCodigo.mockResolvedValue({ desafio: "0f8fad5b-d9cb-469f-a165-70867728950e", canal: "WHATSAPP", mensagem: "ok" });
-    api.verificarCodigo.mockResolvedValue({ sessao: TOKEN, contato: "Ana Souza", acesso: "DECIDIR", expiraEm: FUTURO, reverificada: false });
-    api.listar.mockResolvedValue({ cliente: "Cliente A", contato: "Ana Souza", podeDecidir: true, atendimentos: [] });
-
+  it("só existe a entrada com senha: nada de código por WhatsApp ou email", () => {
     render(<PortalApp />);
-    fireEvent.click(screen.getByRole("button", { name: "Entrar com código pelo WhatsApp ou email" }));
-    fireEvent.change(screen.getByLabelText("CPF ou CNPJ"), { target: { value: "11222333000181" } });
-    expect(screen.getByRole("button", { name: "Receber código" })).toBeDisabled();
-    fireEvent.change(screen.getByLabelText("WhatsApp ou email do contato"), { target: { value: "71988887777" } });
-    fireEvent.click(screen.getByRole("button", { name: "Receber código" }));
-
-    expect(await screen.findByLabelText("Código de 6 dígitos")).toBeInTheDocument();
-    expect(api.solicitarCodigo).toHaveBeenCalledWith("11222333000181", "71988887777");
-    fireEvent.change(screen.getByLabelText("Código de 6 dígitos"), { target: { value: "123456" } });
-    fireEvent.click(screen.getByRole("button", { name: "Entrar" }));
-
-    expect(await screen.findByRole("heading", { name: "Cliente A" })).toBeInTheDocument();
-    expect(JSON.parse(window.sessionStorage.getItem("autoos.portal.sessao") ?? "{}").token).toBe(TOKEN);
+    expect(screen.getByLabelText("Senha")).toBeInTheDocument();
+    expect(screen.queryByText(/código/i)).not.toBeInTheDocument();
+    expect(screen.getByText(/Peça à equipe BMI TAG uma nova/)).toBeInTheDocument();
   });
 });
 
 describe("login com senha", () => {
   it("entra com CNPJ + senha criada pelo operador", async () => {
-    api.entrarSenha.mockResolvedValue({ sessao: TOKEN, contato: "Ana Souza", acesso: "DECIDIR", expiraEm: FUTURO, metodo: "SENHA" });
+    api.entrarSenha.mockResolvedValue({ sessao: TOKEN, contato: "Ana Souza", acesso: "DECIDIR", expiraEm: FUTURO });
     api.listar.mockResolvedValue({ cliente: "Cliente A", contato: "Ana Souza", podeDecidir: true, atendimentos: [] });
     render(<PortalApp />);
     fireEvent.change(screen.getByLabelText("CPF ou CNPJ"), { target: { value: "11222333000181" } });
@@ -121,7 +104,7 @@ describe("login com senha", () => {
     fireEvent.click(screen.getByRole("button", { name: "Entrar" }));
     expect(await screen.findByRole("heading", { name: "Cliente A" })).toBeInTheDocument();
     expect(api.entrarSenha).toHaveBeenCalledWith("11222333000181", "Ana-Senha-2026");
-    expect(JSON.parse(window.sessionStorage.getItem("autoos.portal.sessao") ?? "{}").metodo).toBe("SENHA");
+    expect(JSON.parse(window.sessionStorage.getItem("autoos.portal.sessao") ?? "{}").token).toBe(TOKEN);
   });
 
   it("senha incorreta mostra erro sem entrar", async () => {
@@ -197,24 +180,8 @@ describe("detalhe e orçamento", () => {
     expect(decodeURIComponent(whatsapp.getAttribute("href") ?? "")).toContain("Protocolo R-77");
   });
 
-  it("pede um novo código quando a verificação não é recente", async () => {
+  it("verificação antiga: reconfirma a senha antes de decidir, sem código", async () => {
     api.detalhe.mockResolvedValue(detalhe({ verificacaoRecente: false }));
-    api.novoCodigo.mockResolvedValue({ desafio: "0f8fad5b-d9cb-469f-a165-70867728950e", canal: "WHATSAPP", mensagem: "ok" });
-    api.verificarCodigo.mockResolvedValue({ sessao: null, contato: "Ana Souza", acesso: "DECIDIR", expiraEm: FUTURO, reverificada: true });
-    render(<PortalApp />);
-
-    fireEvent.click(await screen.findByRole("button", { name: "Recusar orçamento" }));
-    expect(screen.getByText("Confirme que é você")).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "Enviar por WhatsApp" }));
-    fireEvent.change(await screen.findByLabelText("Código de 6 dígitos"), { target: { value: "654321" } });
-    fireEvent.click(screen.getByRole("button", { name: "Confirmar código" }));
-
-    expect(await screen.findByRole("heading", { name: "Confirmar RECUSA do orçamento inteiro?" })).toBeInTheDocument();
-    expect(api.verificarCodigo).toHaveBeenCalledWith("0f8fad5b-d9cb-469f-a165-70867728950e", "654321", TOKEN);
-  });
-
-  it("sessão por senha reconfirma a senha antes de decidir", async () => {
-    api.detalhe.mockResolvedValue(detalhe({ verificacaoRecente: false, metodo: "SENHA" }));
     api.confirmarSenha.mockResolvedValue({ ok: true });
     render(<PortalApp />);
     fireEvent.click(await screen.findByRole("button", { name: "Aceitar orçamento" }));
@@ -222,7 +189,7 @@ describe("detalhe e orçamento", () => {
     fireEvent.click(screen.getByRole("button", { name: "Confirmar senha" }));
     expect(await screen.findByRole("heading", { name: "Confirmar ACEITE do orçamento inteiro?" })).toBeInTheDocument();
     expect(api.confirmarSenha).toHaveBeenCalledWith(TOKEN, "Ana-Senha-2026");
-    expect(api.novoCodigo).not.toHaveBeenCalled();
+    expect(screen.queryByText(/código/i)).not.toBeInTheDocument();
   });
 
   it("proposta alterada invalida a confirmação antiga e pede releitura", async () => {
