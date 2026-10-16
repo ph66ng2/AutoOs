@@ -62,7 +62,6 @@ import type {
   AnaliseCorrecaoDecisao,
   CorrigirDecisaoInput,
   DecisaoOrcamentoInfo,
-  LinkDecisaoOrcamentoCriado,
   PublicStatusLinkCreated,
   ResultadoEnvioWhatsapp,
   SolicitarEnvioWhatsappInput,
@@ -318,14 +317,6 @@ export const db = {
 
   async obterDecisaoOrcamento(equipamentoId: number): Promise<DecisaoOrcamentoInfo | null> {
     return invoke<DecisaoOrcamentoInfo | null>("obter_decisao_orcamento", { equipamentoId });
-  },
-
-  async criarLinkDecisaoOrcamento(equipamentoId: number): Promise<LinkDecisaoOrcamentoCriado> {
-    return invoke<LinkDecisaoOrcamentoCriado>("criar_link_decisao_orcamento", { equipamentoId });
-  },
-
-  async revogarLinkDecisaoOrcamento(equipamentoId: number): Promise<boolean> {
-    return invoke<boolean>("revogar_link_decisao_orcamento", { equipamentoId });
   },
 
   /** Único ponto de envio de WhatsApp ao cliente → Rust: solicitar_envio_whatsapp */

@@ -1,12 +1,11 @@
 import React, { useEffect, useState } from "react";
 import ReactDOM from "react-dom/client";
 import PublicStatusPage from "./PublicStatusPage";
-import OrcamentoDecisaoPage from "./OrcamentoDecisaoPage";
 import PortalApp from "./PortalApp";
 import { areaFromHash, type Area } from "./portal-session";
 import "./public-status.css";
 
-/** `#/c/` e `#/o/` continuam como antes; o resto do endereço é o Portal do Cliente. */
+/** `#/c/` (link de acompanhamento) continua como antes; o resto do endereço é o Portal do Cliente. */
 function App() {
   const [area, setArea] = useState<Area>(() => areaFromHash());
   useEffect(() => {
@@ -15,7 +14,6 @@ function App() {
     return () => window.removeEventListener("hashchange", sync);
   }, []);
   if (area === "status") return <PublicStatusPage />;
-  if (area === "decisao") return <OrcamentoDecisaoPage />;
   return <PortalApp />;
 }
 

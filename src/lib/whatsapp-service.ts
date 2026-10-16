@@ -121,11 +121,6 @@ export const WhatsAppService = {
     return WhatsAppService.solicitarEnvio(equipamento.id!, "orcamento_informativo", opcoes);
   },
 
-  /** Orçamento com link de aprovação online (exige o aceite online ativado). */
-  async enviarLinkDecisaoOrcamento(equipamentoId: number, opcoes?: OpcoesEnvioWhatsapp) {
-    return WhatsAppService.solicitarEnvio(equipamentoId, "orcamento_decisao", opcoes);
-  },
-
   /** Equipamento PRONTO: aviso de retirada. */
   async enviarEquipamentoPronto(equipamento: Equipamento, opcoes?: OpcoesEnvioWhatsapp) {
     return WhatsAppService.solicitarEnvio(equipamento.id!, "equipamento_pronto", opcoes);

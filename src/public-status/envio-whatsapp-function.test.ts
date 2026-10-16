@@ -5,7 +5,6 @@ import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
 const SUPABASE_URL = "https://sgaqvxubopgwysnyocjs.supabase.co";
 const SECRET = "processor-secret-with-at-least-32-characters";
-const LINK_TOKEN = "ef".repeat(32);
 const PROVIDER_TOKEN = "provider-token-12345678";
 
 type Handler = (request: Request) => Promise<Response> | Response;
@@ -23,7 +22,6 @@ type Item = {
 let queue: Item[];
 let config: Record<string, unknown> | null;
 let providerReply: (url: string, init: RequestInit) => Response | Promise<Response>;
-let linkReply: () => Response;
 let calls: Array<{ name: string; args: Record<string, any> }>;
 let providerCalls: Array<{ url: string; headers: Headers; body: any }>;
 let concludeOk: boolean;
@@ -70,7 +68,6 @@ beforeEach(() => {
   concludeOk = true;
   config = { provedor: "EVOLUTION", evolution_api_url: "https://evolution.example/send", cloud_phone_number_id: null, cloud_idioma: null };
   providerReply = () => json({ key: { id: "MSG-1" } });
-  linkReply = () => json(LINK_TOKEN);
   vi.spyOn(console, "error").mockImplementation(() => undefined);
   vi.spyOn(console, "warn").mockImplementation(() => undefined);
   vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
@@ -86,7 +83,6 @@ beforeEach(() => {
       case "varrer_envios_whatsapp": return json([{ incertas: 1, expiradas: 2 }]);
       case "reservar_envios_whatsapp": return json(queue.length ? [queue.shift()] : []);
       case "obter_config_envio_whatsapp": return json(config ? [config] : []);
-      case "emitir_link_decisao_envio": return linkReply();
       case "concluir_envio_whatsapp": return json(concludeOk);
       default: return json({ message: "unexpected" }, 500);
     }
@@ -125,14 +121,13 @@ describe("envio-whatsapp processor", () => {
     expect(new Set(concluded().map((args) => args.p_instancia)).size).toBe(1);
   });
 
-  it("envia modelo pela Cloud API com parâmetro de corpo e botão de URL com o token", async () => {
+  it("envia modelo pela Cloud API só com os parâmetros do corpo", async () => {
     config = { provedor: "CLOUD_API", evolution_api_url: null, cloud_phone_number_id: "1234567890", cloud_idioma: "pt_BR" };
     providerReply = () => json({ messages: [{ id: "wamid.ABC" }] });
-    queue = [item({ tipo: "orcamento_decisao" }, {
-      template: "orcamento_decisao",
-      parametros: ["Maria", "Zebra ZT230", "R$ 250,00"],
-      usaLink: true,
-      texto: "Abra https://status.bmitag.com.br/#/o/{{TOKEN}}",
+    queue = [item({ tipo: "orcamento_informativo" }, {
+      template: "orcamento_informativo",
+      parametros: ["Maria", "Zebra ZT230", "R$ 250,00", "30/10/2026"],
+      texto: "Orçamento pronto",
     })];
     const { body } = await run();
 
@@ -145,23 +140,24 @@ describe("envio-whatsapp processor", () => {
       to: "5571999998888",
       type: "template",
       template: {
-        name: "orcamento_decisao",
+        name: "orcamento_informativo",
         language: { code: "pt_BR" },
         components: [
-          { type: "body", parameters: [{ type: "text", text: "Maria" }, { type: "text", text: "Zebra ZT230" }, { type: "text", text: "R$ 250,00" }] },
-          { type: "button", sub_type: "url", index: "0", parameters: [{ type: "text", text: LINK_TOKEN }] },
+          { type: "body", parameters: ["Maria", "Zebra ZT230", "R$ 250,00", "30/10/2026"].map((text) => ({ type: "text", text })) },
         ],
       },
     });
     expect(concluded()[0]).toMatchObject({ p_estado: "ENVIADA", p_provedor: "CLOUD_API", p_mensagem_externa_id: "wamid.ABC" });
   });
 
-  it("troca o marcador pelo token só no corpo enviado à Evolution", async () => {
+  it("pedido antigo do link de decisão (descontinuado) falha sem chamar o provedor", async () => {
     queue = [item({ tipo: "orcamento_decisao" }, { usaLink: true, texto: "Link: https://status.bmitag.com.br/#/o/{{TOKEN}}" })];
     await run();
 
-    expect(providerCalls[0].body.text).toBe(`Link: https://status.bmitag.com.br/#/o/${LINK_TOKEN}`);
-    expect(JSON.stringify(calls.filter((call) => call.name !== "emitir_link_decisao_envio"))).not.toContain(LINK_TOKEN);
+    expect(providerCalls).toEqual([]);
+    expect(calls.some((call) => call.name === "emitir_link_decisao_envio")).toBe(false);
+    expect(concluded()[0]).toMatchObject({ p_estado: "FALHOU" });
+    expect(concluded()[0].p_erro).toMatch(/Portal do Cliente/);
   });
 
   it("preenche parâmetros vazios do modelo, que a Cloud API recusa", async () => {
@@ -215,16 +211,6 @@ describe("envio-whatsapp processor", () => {
     expect(providerCalls).toEqual([]);
   });
 
-  it("não envia se o orçamento mudou entre o pedido e o envio", async () => {
-    linkReply = () => json({ code: "P0001", message: "ORCAMENTO_ALTERADO" }, 400);
-    queue = [item({ tipo: "orcamento_decisao" }, { usaLink: true, texto: "x {{TOKEN}}" })];
-    await run();
-
-    expect(providerCalls).toEqual([]);
-    expect(concluded()[0]).toMatchObject({ p_estado: "FALHOU" });
-    expect(concluded()[0].p_erro).toMatch(/orçamento mudou/);
-  });
-
   it("tenta concluir de novo e, se não conseguir, não repete o envio", async () => {
     queue = [item()];
     let concludeCalls = 0;
@@ -243,18 +229,17 @@ describe("envio-whatsapp processor", () => {
     expect(body.incertas).toBe(1);
   });
 
-  it("nunca registra token, link nem telefone em log", async () => {
+  it("nunca registra token do provedor nem telefone em log", async () => {
     const logs: string[] = [];
     for (const method of ["log", "warn", "error", "info"] as const) {
       vi.spyOn(console, method).mockImplementation((...args: unknown[]) => { logs.push(args.join(" ")); });
     }
     concludeOk = false;
-    providerReply = () => new Response(`erro ${LINK_TOKEN} ${PROVIDER_TOKEN}`, { status: 500 });
-    queue = [item({ tipo: "orcamento_decisao" }, { usaLink: true, texto: "{{TOKEN}}" })];
+    providerReply = () => new Response(`erro ${PROVIDER_TOKEN} 5571999998888`, { status: 500 });
+    queue = [item()];
     await run();
 
     const everything = logs.join("\n");
-    expect(everything).not.toContain(LINK_TOKEN);
     expect(everything).not.toContain(PROVIDER_TOKEN);
     expect(everything).not.toContain("5571999998888");
   });

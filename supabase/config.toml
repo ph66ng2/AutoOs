@@ -1,9 +1,6 @@
 [functions.public-status]
 verify_jwt = false
 
-[functions.orcamento-decisao]
-verify_jwt = false
-
 [functions.envio-whatsapp]
 verify_jwt = false
 

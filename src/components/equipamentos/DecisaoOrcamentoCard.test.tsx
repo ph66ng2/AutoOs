@@ -1,7 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { DecisaoOrcamentoCard } from "@/components/equipamentos/DecisaoOrcamentoCard";
-import { WhatsAppService } from "@/lib/whatsapp-service";
 import type { DecisaoOrcamentoInfo, Equipamento } from "@/types";
 
 const mocks = vi.hoisted(() => ({
@@ -13,9 +12,7 @@ const mocks = vi.hoisted(() => ({
 vi.mock("@/lib/db", () => ({
   db: {
     obterDecisaoOrcamento: mocks.obter,
-    criarLinkDecisaoOrcamento: vi.fn(),
     publicarOrcamentoPortal: mocks.publicar,
-    revogarLinkDecisaoOrcamento: vi.fn(),
   },
 }));
 vi.mock("@/hooks/useSensitiveAccess", () => ({
@@ -31,7 +28,6 @@ function info(overrides: Partial<DecisaoOrcamentoInfo> = {}): DecisaoOrcamentoIn
     valorTotal: 250,
     criadaEm: "2026-10-14T12:00:00Z",
     aceiteOnlineAtivo: true,
-    linkStatus: "ativo",
     historico: [],
     solicitacoes: [],
     podeAplicar: false,
@@ -121,37 +117,22 @@ describe("DecisaoOrcamentoCard", () => {
     render(<DecisaoOrcamentoCard equipamento={equipamento} onRespostaVista={vi.fn()} onAplicar={vi.fn()} />);
     expect(await screen.findByText("Resposta do cliente ao orçamento")).toBeInTheDocument();
     expect(screen.getByRole("region", { name: "Resposta do cliente ao orçamento" }).className).toContain("amber");
-    // Publicar de novo ou gerar link anularia a resposta pendente.
+    // Publicar de novo anularia a resposta pendente.
     expect(screen.queryByRole("button", { name: "Publicar no Portal do Cliente" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: /gerar (novo )?link/i })).not.toBeInTheDocument();
   });
 
-  it("envia o link pela fila e só repete após confirmação quando já foi solicitado", async () => {
+  it("não oferece mais link de decisão nem envio de link por WhatsApp", async () => {
     mocks.obter.mockResolvedValue(info());
-    const enviar = vi.spyOn(WhatsAppService, "enviarLinkDecisaoOrcamento")
-      .mockResolvedValueOnce({ sucesso: true, estado: "JA_SOLICITADO", jaSolicitado: true })
-      .mockResolvedValueOnce({ sucesso: true, estado: "ENVIADA" });
     render(<DecisaoOrcamentoCard equipamento={equipamento} onRespostaVista={vi.fn()} onAplicar={vi.fn()} />);
-
-    fireEvent.click(await screen.findByRole("button", { name: "Enviar por WhatsApp" }));
-    await waitFor(() => expect(enviar).toHaveBeenCalledWith(7, {}));
-    expect(await screen.findByRole("alertdialog")).toHaveTextContent(/já foi enviado por WhatsApp/);
-    expect(enviar).toHaveBeenCalledTimes(1);
-
-    fireEvent.click(screen.getByRole("button", { name: "Enviar mesmo assim" }));
-    await waitFor(() => expect(enviar).toHaveBeenLastCalledWith(7, { reenvioManual: true }));
-    await waitFor(() => expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument());
+    expect(await screen.findByText("Orçamento no portal")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /link/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /whatsapp/i })).not.toBeInTheDocument();
   });
 
-  it("não envia se o operador não for liberado pelo PIN", async () => {
-    mocks.obter.mockResolvedValue(info());
-    mocks.ensure.mockResolvedValue(false);
-    const enviar = vi.spyOn(WhatsAppService, "enviarLinkDecisaoOrcamento");
+  it("avisa quando as respostas pelo portal estão desligadas", async () => {
+    mocks.obter.mockResolvedValue(info({ aceiteOnlineAtivo: false }));
     render(<DecisaoOrcamentoCard equipamento={equipamento} onRespostaVista={vi.fn()} onAplicar={vi.fn()} />);
-
-    fireEvent.click(await screen.findByRole("button", { name: "Enviar por WhatsApp" }));
-    await waitFor(() => expect(mocks.ensure).toHaveBeenCalled());
-    expect(enviar).not.toHaveBeenCalled();
+    expect(await screen.findByText(/respostas pelo Portal do Cliente estão desligadas/)).toBeInTheDocument();
   });
 
   it("resposta do Portal do Cliente em prazo de correção não pode ser aplicada", async () => {

@@ -4,7 +4,7 @@ Evolução de `status.bmitag.com.br`: o cliente entra com CPF/CNPJ + código tem
 
 > **Estado: implementado, nada ativado.** As migrations `0034_portal_cliente.sql` e `0035_portal_senha.sql` (senha criada pelo operador); a 0034 nasce com `portal_cliente_config.portal_enabled = FALSE`. A Edge Function `portal-cliente` não foi publicada e nenhum dado de produção foi alterado.
 
-Depende do aceite online (`docs/ACEITE_ORCAMENTO_ONLINE.md`, migrations 0030–0031) e reaproveita a configuração de WhatsApp central (`docs/FILA_ENVIOS_WHATSAPP.md`, 0033).
+Usa as versões e respostas de orçamento das migrations 0030–0031 (`docs/ACEITE_ORCAMENTO_ONLINE.md`) e a configuração de WhatsApp central (`docs/FILA_ENVIOS_WHATSAPP.md`, 0033). É o **único** caminho de resposta online: o link individual `#/o/<token>` foi removido na 0036.
 
 ## Jornada
 
@@ -17,6 +17,30 @@ Depende do aceite online (`docs/ACEITE_ORCAMENTO_ONLINE.md`, migrations 0030–0
 6. **Mudei de ideia.** Por 15 minutos (`orcamento_aceite_config.janela_correcao_minutos`, mínimo 15) quem respondeu pode trocar ou cancelar. A equipe vê “resposta recebida, em prazo de correção” e o desktop recusa aplicar nesse período.
 7. **Efetivação.** Terminado o prazo, `portal_efetivar_respostas_vencidas` aplica APROVADO/REPROVADO numa transação com as regras de `aprovar_orcamento`. Se não conseguir, a resposta fica pendente, a equipe recebe alerta e o cliente vê “precisa ser confirmada pela equipe” — nunca uma aprovação falsa. Depois de efetivada, o botão vira **Solicitar correção** (pedido ao operador; não desfaz peças nem trabalho).
 8. **Quero negociar.** Registra um pedido (`orcamento_solicitacoes.tipo = NEGOCIAR`) e um alerta antes de oferecer o WhatsApp. Não é aceite, recusa nem prorrogação. Para mudar valores a equipe altera o orçamento e clica em **Publicar no Portal do Cliente**: nasce uma nova versão e a anterior deixa de aceitar respostas.
+
+## Fluxo de trabalho da equipe
+
+**Uma vez (ativação):** aplicar as migrations, publicar `portal-cliente`, agendar a efetivação e ligar `portal_enabled` + `online_enabled` (ver Ativação). Em Configurações → Integrações, preencher o cartão “Fale com a equipe”.
+
+**Uma vez por contato do cliente:** Clientes → Contatos → liberar o portal (`ACOMPANHAR` só vê; `DECIDIR` também responde, exige permissão financeira) → **Criar senha** → entregar CPF/CNPJ + senha ao contato.
+
+**Em cada atendimento:**
+
+1. Recepção e verificação seguem como hoje. O cliente acompanha as etapas no portal.
+2. **Finalizar Verificação** → `AGUARDANDO_APROVACAO` e o WhatsApp informativo automático. O envio congela a versão do orçamento, e versão aberta = orçamento visível no portal. Se o WhatsApp não saiu ou o orçamento mudou, use **Publicar no Portal do Cliente** nos detalhes do equipamento.
+3. O cliente entra, confere e **aceita**, **recusa** ou **quer negociar**.
+4. No AutoOS: aviso azul “Aceite recebido — confirma às HH:MM”, o equipamento sobe na lista e o quadro do orçamento fica âmbar. **Não comece o serviço antes do horário**: o cliente ainda pode desfazer.
+5. Passados 15 minutos, o servidor efetiva sozinho (status, pagamento “a combinar” se vazio, baixa de estoque) e chega o aviso verde “Orçamento aprovado pelo cliente”. Daí em diante o fluxo é o de sempre (manutenção → pronto → entrega), e o cliente vê as etapas no portal.
+
+**Exceções:**
+
+| Situação | Aviso | O que fazer |
+|---|---|---|
+| Cliente quer negociar | Violeta “Cliente quer negociar” + mensagem | Combinar com o cliente, alterar o orçamento e **Publicar** de novo (versão nova; a anterior para de aceitar resposta) |
+| Efetivação falhou (etapa ou orçamento mudou, peça sem serviço…) | Vermelho “Aceite não efetivado” + motivo | Abrir o atendimento → **Revisar e aplicar decisão** |
+| Cliente pediu correção depois de efetivado | Âmbar “Cliente pediu correção” | Conversar e, se for o caso, **Corrigir decisão do orçamento** (desfaz pagamento, serviços e baixas com escolha sobre o estoque) |
+| Cliente respondeu por telefone/WhatsApp | — | **Aprovar/Reprovar** direto no equipamento, como antes |
+| Código de acesso não entregue | Vermelho “Código de acesso não entregue” | Conferir telefone/email do contato e o envio do servidor |
 
 ## Estados
 
@@ -53,7 +77,7 @@ Espelha `aprovar_orcamento` + `aplicar_decisoes` (`src-tauri/src/commands/equipa
 
 **Diferença deliberada:** o valor efetivado é o da versão que o cliente aceitou (`orcamento_versoes.valor_total`). O desktop, ao aprovar todos os serviços, usa `verificacoes.custo_total`; se os dois divergirem, o portal mantém o preço que o cliente viu.
 
-**Respostas pelo link `#/o/<token>` continuam com conferência manual.** O link não identifica quem clicou; só respostas com código (origem `PORTAL_CLIENTE`) são efetivadas automaticamente.
+Respostas antigas de origem `PORTAL` (link removido) ou `EQUIPE` só existem em bancos de teste e, se aparecerem, continuam com conferência manual.
 
 ## Banco (`0034_portal_cliente.sql`)
 
@@ -72,7 +96,7 @@ Espelha `aprovar_orcamento` + `aplicar_decisoes` (`src-tauri/src/commands/equipa
 
 ## Ativação (ambiente de teste primeiro)
 
-1. Aplicar 0030–0034 pelo processo de migrations (`docs/PRODUCTION_MIGRATIONS.md`) e conferir os advisors de segurança do Supabase.
+1. Aplicar 0030–0036 pelo processo de migrations (`docs/PRODUCTION_MIGRATIONS.md`) e conferir os advisors de segurança do Supabase.
 2. Publicar a Edge Function `portal-cliente` (`verify_jwt = false`, já em `supabase/config.toml`) com os segredos:
 
 | Segredo | Uso |

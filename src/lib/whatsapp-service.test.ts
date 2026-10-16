@@ -57,14 +57,10 @@ describe("WhatsAppService — pedidos de envio ao backend", () => {
     expect(mockRegistrarComunicacao).not.toHaveBeenCalled();
   });
 
-  it("equipamento pronto e link de decisão usam o mesmo comando com tipos próprios", async () => {
+  it("equipamento pronto usa o mesmo comando com o tipo próprio", async () => {
     await WhatsAppService.enviarEquipamentoPronto(equipamentoBase);
-    await WhatsAppService.enviarLinkDecisaoOrcamento(20);
 
-    expect(mockSolicitarEnvio.mock.calls.map(([entrada]) => entrada.tipo)).toEqual([
-      "equipamento_pronto",
-      "orcamento_decisao",
-    ]);
+    expect(mockSolicitarEnvio.mock.calls.map(([entrada]) => entrada.tipo)).toEqual(["equipamento_pronto"]);
   });
 
   it("reenvio manual e confirmação do resultado incerto seguem para o backend", async () => {

@@ -58,14 +58,13 @@ export function navigate(hash: string) {
   if (window.location.hash !== hash) window.location.hash = hash;
 }
 
-export type Area = "status" | "decisao" | "portal";
+export type Area = "status" | "portal";
 
 /**
  * `#/c/<token>`: link individual de acompanhamento (já enviado a clientes; não muda).
- * `#/o/<token>`: link de decisão do orçamento. Qualquer outro endereço: Portal do Cliente.
+ * Qualquer outro endereço, inclusive o antigo `#/o/<token>` do link de decisão: Portal do Cliente.
  */
 export function areaFromHash(hash = window.location.hash): Area {
   if (hash.startsWith("#/c/")) return "status";
-  if (hash.startsWith("#/o/")) return "decisao";
   return "portal";
 }

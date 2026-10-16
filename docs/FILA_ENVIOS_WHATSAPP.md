@@ -9,11 +9,10 @@ Todo WhatsApp enviado ao cliente por evento do atendimento passa por **um comand
 | Tipo | Quando | Identidade do evento | Origem na interface |
 |---|---|---|---|
 | `orcamento_informativo` | Ao concluir a verificação (automático) e botão de reenvio | `v:<orcamento_versoes.id>` | `useStatusEquipamento`, botão WhatsApp de orçamento |
-| `orcamento_decisao` | Botão **Enviar por WhatsApp** do card de decisão | `v:<orcamento_versoes.id>` | `DecisaoOrcamentoCard` |
 | `equipamento_pronto` | Ao mudar para `PRONTO` (automático) e botão de reenvio | `s:<status_alterado_em em µs>` | `useStatusEquipamento`, botão WhatsApp de pronto |
 | `codigo_verificacao` | Etapa futura | — | — |
 
-O orçamento só é enviado em `AGUARDANDO_APROVACAO`; o aviso de pronto só em `PRONTO` e exige a data confiável da mudança de etapa. `orcamento_decisao` exige o aceite online ativado.
+O orçamento só é enviado em `AGUARDANDO_APROVACAO`; o aviso de pronto só em `PRONTO` e exige a data confiável da mudança de etapa. O tipo `orcamento_decisao` (link individual de decisão) foi removido na 0036: o banco recusa novos pedidos e o processador marca como `FALHOU`, sem enviar, qualquer pedido antigo que tenha sobrado.
 
 O link de acompanhamento (`#/c/<token>`) **continua fora da fila**: o token só existe na tela que o gerou e o AutoOS guarda apenas o hash. O email também segue no fluxo atual.
 
@@ -24,7 +23,6 @@ O link de acompanhamento (`#/c/<token>`) **continua fora da fila**: o token só 
 - **Reenvio é gesto explícito.** `reenvio_manual = true` cria a tentativa seguinte do mesmo pedido, sempre rastreável.
 - **Orçamento editado = novo evento.** O orçamento é congelado por `obter_ou_criar_versao`: se a versão aberta tem exatamente o mesmo conteúdo ela é **reaproveitada** (reenvio não invalida link nem pedido); se mudou, a versão antiga é encerrada, seus links caem e o novo conteúdo gera outro pedido.
 - **Texto da versão congelada.** O informativo usa o `snapshot` da versão, não o que estiver na tela.
-- **Link de decisão por tentativa.** Cada tentativa gera um token novo; só o hash fica no banco. O envio automático **nunca revoga** links anteriores da mesma versão, porque o de uma tentativa incerta pode já estar com o cliente. "Gerar novo link" manual no card continua encerrando os anteriores.
 - **Histórico imutável.** Pedidos não mudam; tentativas só saem de `PREPARANDO` uma vez. Nada é apagado (exceto por exclusão do equipamento).
 
 ## Estados de uma tentativa
@@ -56,13 +54,13 @@ Cada empresa tem um modo em `envio_whatsapp_config_empresa` (sem linha = `LOCAL`
 | `LOCAL` | O computador que clicou, como no passo 1 | Chaveiro do próprio computador (Evolution) |
 | `CENTRAL` | A Edge Function `envio-whatsapp` | Identificadores no banco; **token só nos segredos da função** |
 
-No modo `CENTRAL` o desktop valida o evento, congela o orçamento, monta o conteúdo e grava a tentativa como `PENDENTE` (`ENFILEIRADA` para a tela). Ele não chama o provedor, não tem o token e **não gera o link de decisão**: o texto leva o marcador `{{TOKEN}}`.
+No modo `CENTRAL` o desktop valida o evento, congela o orçamento, monta o conteúdo e grava a tentativa como `PENDENTE` (`ENFILEIRADA` para a tela). Ele não chama o provedor e não tem o token do provedor.
 
-A função `envio-whatsapp` (separada de `orcamento-decisao`) faz, a cada execução do Cron:
+A função `envio-whatsapp` (separada de `portal-cliente`) faz, a cada execução do Cron:
 
 1. `varrer_envios_whatsapp`: reserva parada há mais de 2 minutos vira `INCERTA`; fila parada há mais de 6 horas vira `FALHOU`. Ambos geram linha no histórico.
 2. Repete `reservar_envios_whatsapp(instância, 1)` (`FOR UPDATE SKIP LOCKED`): instâncias simultâneas recebem tentativas diferentes, e nada fica reservado esperando a vez. Limite de 25 por execução e 100 s.
-3. Para cada uma: confere que o evento ainda vale (orçamento não editado; equipamento ainda `PRONTO`), busca a configuração da empresa, gera o link com `emitir_link_decisao_envio` (só quem reservou; recusa se o orçamento mudou), envia e conclui com `concluir_envio_whatsapp`.
+3. Para cada uma: confere que o evento ainda vale (orçamento não editado; equipamento ainda `PRONTO`), busca a configuração da empresa, envia e conclui com `concluir_envio_whatsapp`.
 4. A conclusão tem trava de posse: se a reserva foi varrida, uma resposta tardia não sobrescreve o resultado. Se a própria conclusão falhar na rede (3 tentativas), a tentativa fica para a varredura marcar como `INCERTA`; **a mensagem nunca é reenviada**.
 
 Classificação do resultado, igual à do envio local: 2xx = `ENVIADA`; 4xx e falha de conexão (DNS, recusa) = `FALHOU`; 5xx, tempo esgotado e qualquer outra falha de rede = `INCERTA`. Mensagens de erro são limpas de tokens, URLs e sequências hexadecimais antes de gravar, e a função não registra token, link nem telefone em log (teste cobre isso).
@@ -70,7 +68,7 @@ Classificação do resultado, igual à do envio local: 2xx = `ENVIADA`; 4xx e fa
 ### Transportes
 
 - **Evolution:** `POST` na URL da empresa com `apikey` e `Bearer` do token, mesmo corpo do envio local. **Não confirmado** se a Evolution é acessível pela internet; se não for, use a Cloud API ou mantenha `LOCAL`.
-- **Cloud API:** `POST https://graph.facebook.com/<versão>/<phone_number_id>/messages` com `type: template`, nome do modelo igual ao tipo do evento (`orcamento_informativo`, `orcamento_decisao`, `equipamento_pronto`), parâmetros de corpo na ordem de `parametros` e, no link de decisão, um botão de URL dinâmica cujo parâmetro é o token. Parâmetros vazios viram `-` (a Meta recusa vazio). O texto dos modelos submetidos precisa casar com os parâmetros enviados. **Escrita conforme a documentação, não testada contra a Meta.**
+- **Cloud API:** `POST https://graph.facebook.com/<versão>/<phone_number_id>/messages` com `type: template`, nome do modelo igual ao tipo do evento (`orcamento_informativo`, `equipamento_pronto`) e parâmetros de corpo na ordem de `parametros`. Parâmetros vazios viram `-` (a Meta recusa vazio). O texto dos modelos submetidos precisa casar com os parâmetros enviados. **Escrita conforme a documentação, não testada contra a Meta.**
 
 ### Segredos e configuração
 
@@ -114,13 +112,13 @@ Antes de ligar uma empresa: aplicar 0032 e 0033, publicar a função, definir os
 
 ## Conteúdo da mensagem
 
-`MensagemWhatsapp` (backend) carrega o texto da Evolution e, para a Cloud API, `template`, `parametros` e `url_botao`. No modo `CENTRAL` isso é gravado em `mensagem_payload` (sem token; o texto leva `{{TOKEN}}`). No modo `LOCAL` o payload **não é gravado**, porque o texto do link de decisão contém o token real. A Cloud API só é usada no modo `CENTRAL`.
+`MensagemWhatsapp` (backend) carrega o texto da Evolution e, para a Cloud API, `template`, `parametros` e `url_botao`. No modo `CENTRAL` isso é gravado em `mensagem_payload`. No modo `LOCAL` o payload não é gravado. A Cloud API só é usada no modo `CENTRAL`.
 
 ## Testes
 
 - Unitários Rust (`cargo test --bin autoos envio_whatsapp`): formatação, mensagens, token fora do histórico, mascaramento.
-- Integração (`npm run qa:integrations:whatsapp-queue`, em banco `autoos_stock_test*`, com servidor HTTP local no lugar da Evolution): idempotência, reenvio, concorrência (um só envio), HTTP 5xx → incerto → confirmação, HTTP 400, cliente sem telefone, tentativa abandonada, imutabilidade, link de decisão por versão (reenvio reaproveita a versão e mantém os dois links), edição do orçamento invalida os links, aceite desligado.
-- Frontend: serviço, card de decisão (confirmação de reenvio) e adaptador de envio.
+- Integração (`npm run qa:integrations:whatsapp-queue`, em banco `autoos_stock_test*`, com servidor HTTP local no lugar da Evolution): idempotência, reenvio, concorrência (um só envio), HTTP 5xx → incerto → confirmação, HTTP 400, cliente sem telefone, tentativa abandonada, imutabilidade, versão do orçamento (reenvio reaproveita a versão; edição gera novo evento), tipo `orcamento_decisao` recusado.
+- Frontend: serviço de WhatsApp e processador (`envio-whatsapp-function.test.ts`).
 
 - Banco: concorrência de reservas (20 tentativas, 4 processadores), posse na conclusão, varredura, imutabilidade e permissões como `service_role` (sem acesso direto às tabelas).
 - Integração Rust (modo central): enfileirar sem chamar o provedor, fila que impede duplicidade, 8+ reservas simultâneas sem repetição, link gerado só no envio com hash gravado, histórico e fila sem token, orçamento editado antes da reserva.

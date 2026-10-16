@@ -179,7 +179,7 @@ export type DecisaoOrcamento = "APROVAR" | "RECUSAR" | "DESFEITA";
 
 export interface RespostaOrcamentoInfo {
   id: number;
-  /** PORTAL: link de decisão; PORTAL_CLIENTE: contato autorizado no Portal do Cliente; EQUIPE: informada à equipe. */
+  /** PORTAL_CLIENTE: contato autorizado no Portal do Cliente. PORTAL (link de decisão) e EQUIPE ficaram só no histórico. */
   origem: "PORTAL" | "EQUIPE" | "PORTAL_CLIENTE";
   decisao: DecisaoOrcamento;
   registradaEm: string;
@@ -192,7 +192,7 @@ export interface RespostaOrcamentoInfo {
   efetivacaoFalhouEm?: string | null;
 }
 
-export type TipoEnvioWhatsapp = "orcamento_informativo" | "orcamento_decisao" | "equipamento_pronto";
+export type TipoEnvioWhatsapp = "orcamento_informativo" | "equipamento_pronto";
 
 export type EstadoEnvioWhatsapp =
   | "ENFILEIRADA"
@@ -266,9 +266,8 @@ export interface DecisaoOrcamentoInfo {
   validoAte?: string | null;
   criadaEm: string;
   encerradaMotivo?: string | null;
+  /** Respostas pelo Portal do Cliente ligadas (`orcamento_aceite_config.online_enabled`). */
   aceiteOnlineAtivo: boolean;
-  linkStatus?: "ativo" | "expirado" | "revogado" | null;
-  linkExpiraEm?: string | null;
   resposta?: RespostaOrcamentoInfo | null;
   historico: RespostaOrcamentoInfo[];
   solicitacoes: SolicitacaoOrcamentoInfo[];
@@ -310,12 +309,6 @@ export interface ContatoPortalEmpresa {
   email?: string | null;
   telefone?: string | null;
   horario?: string | null;
-}
-
-export interface LinkDecisaoOrcamentoCriado {
-  url: string;
-  expiresAt: string;
-  versao: number;
 }
 
 export const CATEGORIAS_IMAGEM_EQUIPAMENTO = {

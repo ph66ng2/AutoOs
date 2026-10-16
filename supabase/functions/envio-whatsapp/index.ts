@@ -2,20 +2,17 @@
 //
 // O desktop só enfileira (`PENDENTE`). Esta função, acionada pelo Supabase Cron, varre
 // tentativas abandonadas, reserva uma por vez (`FOR UPDATE SKIP LOCKED`, no banco), envia pelo
-// provedor da empresa e conclui. Ela é separada de `orcamento-decisao`: quem recebe a decisão
+// provedor da empresa e conclui. Ela é separada de `portal-cliente`: quem recebe a resposta
 // do cliente e quem envia mensagens não compartilham função nem permissões.
 //
 // Segurança: o token do provedor vem dos segredos desta função (`WHATSAPP_TOKENS`), nunca do
-// banco nem do desktop. O token do link de decisão nasce numa função SQL no momento do envio e
-// não é registrado em log, em erro nem no histórico. Resultado de rede ambíguo vira `INCERTA`
-// e nunca é repetido sozinho.
+// banco nem do desktop. Resultado de rede ambíguo vira `INCERTA` e nunca é repetido sozinho.
 
 const INSTANCE_PREFIX = "edge";
 const SEND_TIMEOUT_MS = 15_000;
 const MAX_ITEMS_PER_RUN = 25;
 const RUN_BUDGET_MS = 100_000;
 const ERROR_MAX_CHARS = 300;
-const TOKEN_PLACEHOLDER = "{{TOKEN}}";
 const DEFAULT_GRAPH_VERSION = "v21.0";
 
 type Estado = "ENVIADA" | "FALHOU" | "INCERTA";
@@ -32,6 +29,7 @@ type Reserved = {
 type MessagePayload = {
   template?: string;
   parametros?: unknown[];
+  /** Só em pedidos antigos do link de decisão (removido na 0036); nunca são enviados. */
   usaLink?: boolean;
   texto?: string;
   contato?: string;
@@ -143,19 +141,10 @@ function buildCloudRequest(
   config: ProviderConfig,
   payload: MessagePayload,
   phone: string,
-  linkToken: string | null,
 ) {
   const components: Array<Record<string, unknown>> = [];
   const params = (payload.parametros ?? []).map((value) => ({ type: "text", text: nonEmpty(value) }));
   if (params.length > 0) components.push({ type: "body", parameters: params });
-  if (payload.usaLink && linkToken) {
-    components.push({
-      type: "button",
-      sub_type: "url",
-      index: "0",
-      parameters: [{ type: "text", text: linkToken }],
-    });
-  }
   const version = Deno.env.get("WHATSAPP_GRAPH_VERSION") || DEFAULT_GRAPH_VERSION;
   return {
     url: `https://graph.facebook.com/${version}/${config.cloud_phone_number_id}/messages`,
@@ -183,9 +172,8 @@ async function sendToProvider(
   providerToken: string,
   payload: MessagePayload,
   phone: string,
-  linkToken: string | null,
 ): Promise<Outcome> {
-  const secrets = [providerToken, linkToken ?? ""];
+  const secrets = [providerToken];
   const provedor = config.provedor;
   let url: string;
   let body: unknown;
@@ -193,13 +181,13 @@ async function sendToProvider(
 
   if (provedor === "CLOUD_API") {
     if (!payload.template) return { estado: "FALHOU", erro: "Mensagem sem modelo para a Cloud API.", provedor };
-    const request = buildCloudRequest(config, payload, phone, linkToken);
+    const request = buildCloudRequest(config, payload, phone);
     url = request.url;
     body = request.body;
     headers.set("Authorization", `Bearer ${providerToken}`);
   } else {
     if (!config.evolution_api_url) return { estado: "FALHOU", erro: "URL da Evolution não configurada.", provedor };
-    const text = (payload.texto ?? "").split(TOKEN_PLACEHOLDER).join(linkToken ?? "");
+    const text = payload.texto ?? "";
     url = config.evolution_api_url;
     body = {
       number: phone,
@@ -251,12 +239,6 @@ async function sendToProvider(
   return { estado: response.status >= 500 ? "INCERTA" : "FALHOU", erro: message, provedor };
 }
 
-const LINK_ERRORS: Record<string, string> = {
-  ORCAMENTO_ALTERADO: "O orçamento mudou antes do envio; o link não foi enviado.",
-  ACEITE_PAUSADO: "O aceite online foi pausado antes do envio.",
-  TENTATIVA_INVALIDA: "A reserva do envio expirou antes de gerar o link.",
-};
-
 async function processItem(
   item: Reserved,
   instance: string,
@@ -290,6 +272,10 @@ async function processItem(
   if (!payload || phone.length < 12) {
     return conclude({ estado: "FALHOU", erro: "Pedido de envio sem conteúdo ou telefone válido.", provedor: "CENTRAL" });
   }
+  if (payload.usaLink) {
+    // O link de decisão foi substituído pelo Portal do Cliente: o texto teria um marcador vazio.
+    return conclude({ estado: "FALHOU", erro: "Link de decisão descontinuado; o cliente responde pelo Portal do Cliente.", provedor: "CENTRAL" });
+  }
   if (!item.valido) {
     return conclude({
       estado: "FALHOU",
@@ -310,21 +296,7 @@ async function processItem(
     return conclude({ estado: "FALHOU", erro: "Token do provedor não configurado no processador.", provedor: config.provedor });
   }
 
-  let linkToken: string | null = null;
-  if (payload.usaLink) {
-    const link = await callRpc(url, key, "emitir_link_decisao_envio", { p_tentativa_id: item.tentativa_id, p_instancia: instance });
-    if (!link.ok || typeof link.data !== "string") {
-      const reason = link.ok ? "TENTATIVA_INVALIDA" : link.code;
-      return conclude({
-        estado: "FALHOU",
-        erro: LINK_ERRORS[reason] ?? "Não foi possível gerar o link de decisão.",
-        provedor: config.provedor,
-      });
-    }
-    linkToken = link.data;
-  }
-
-  const outcome = await sendToProvider(config, providerToken, payload, phone, linkToken);
+  const outcome = await sendToProvider(config, providerToken, payload, phone);
   return conclude(outcome);
 }
 

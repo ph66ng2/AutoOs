@@ -161,8 +161,6 @@ fn main() {
             commands::equipamentos::deletar_equipamento,
             commands::equipamentos::atualizar_status_equipamento,
             commands::orcamento_decisao::obter_decisao_orcamento,
-            commands::orcamento_decisao::criar_link_decisao_orcamento,
-            commands::orcamento_decisao::revogar_link_decisao_orcamento,
             commands::orcamento_decisao::marcar_solicitacao_orcamento_tratada,
             commands::portal_cliente::listar_alertas_portal,
             commands::portal_cliente::contar_alertas_portal_nao_lidos,

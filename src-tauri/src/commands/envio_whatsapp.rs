@@ -11,18 +11,15 @@
 
 use crate::commands::auth::{
     record_security_event, require_active_session_company_id, require_permission,
-    PERMISSION_CONFIG_WHATSAPP, PERMISSION_MANAGE_STATUS_LINKS,
+    PERMISSION_CONFIG_WHATSAPP,
 };
-use crate::commands::orcamento_decisao::{
-    emitir_link_decisao, exigir_aceite_online, obter_ou_criar_versao, url_decisao,
-};
+use crate::commands::orcamento_decisao::obter_ou_criar_versao;
 use crate::commands::types::WhatsappConfigStored;
 use crate::commands::whatsapp::{
     carregar_config_armazenada, despachar_evolution, normalizar_telefone_br, redact_long_hex_values,
     ErroProvedor,
 };
 use crate::db::get_pool;
-use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use sqlx::{Postgres, Row, Transaction};
 use tracing::{info, instrument};
@@ -30,8 +27,6 @@ use tracing::{info, instrument};
 const PROVEDOR_EVOLUTION: &str = "EVOLUTION";
 /// Provedor registrado na tentativa enquanto o processador central ainda não escolheu o transporte.
 const PROVEDOR_CENTRAL: &str = "CENTRAL";
-/// No modo central o link de decisão nasce no momento do envio; o texto leva este marcador.
-pub(crate) const TOKEN_PLACEHOLDER: &str = "{{TOKEN}}";
 /// Uma tentativa `PREPARANDO` mais antiga que isto é de uma instância que parou; vira `INCERTA`.
 const TENTATIVA_ABANDONADA_MINUTOS: i32 = 2;
 const ERRO_MAX_CHARS: usize = 300;
@@ -39,7 +34,6 @@ const ERRO_MAX_CHARS: usize = 300;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TipoEnvio {
     OrcamentoInformativo,
-    OrcamentoDecisao,
     EquipamentoPronto,
 }
 
@@ -47,7 +41,6 @@ impl TipoEnvio {
     fn parse(valor: &str) -> Result<Self, String> {
         match valor {
             "orcamento_informativo" => Ok(Self::OrcamentoInformativo),
-            "orcamento_decisao" => Ok(Self::OrcamentoDecisao),
             "equipamento_pronto" => Ok(Self::EquipamentoPronto),
             _ => Err("Tipo de envio inválido.".to_string()),
         }
@@ -56,7 +49,6 @@ impl TipoEnvio {
     fn como_texto(self) -> &'static str {
         match self {
             Self::OrcamentoInformativo => "orcamento_informativo",
-            Self::OrcamentoDecisao => "orcamento_decisao",
             Self::EquipamentoPronto => "equipamento_pronto",
         }
     }
@@ -65,7 +57,6 @@ impl TipoEnvio {
     fn tipo_comunicacao(self) -> &'static str {
         match self {
             Self::OrcamentoInformativo => "ORCAMENTO",
-            Self::OrcamentoDecisao => "ORCAMENTO_DECISAO",
             Self::EquipamentoPronto => "PRONTO",
         }
     }
@@ -249,34 +240,6 @@ pub(crate) fn mensagem_informativo(
     }
 }
 
-pub(crate) fn mensagem_decisao(
-    nome: &str,
-    marca: &str,
-    modelo: &str,
-    valor_total: f64,
-    token: &str,
-    valido_ate: Option<DateTime<Utc>>,
-) -> MensagemWhatsapp {
-    let equipamento = nome_do_equipamento(marca, modelo);
-    let valor = formatar_brl(valor_total);
-    let validade = valido_ate
-        .map(|limite| format!("\n\nO link vale até {}.", limite.format("%d/%m/%Y")))
-        .unwrap_or_default();
-    let texto = format!(
-        "Olá, {nome}!\n\nO orçamento do equipamento {equipamento} está pronto: {valor}.\nPara aprovar ou recusar, ou tirar uma dúvida, abra o link abaixo. Nada é decidido até você confirmar, e você pode corrigir sua resposta enquanto a equipe não a aplicar.\n\n{url}{validade}\n\nEquipe BMI TAG",
-        url = url_decisao(token),
-    );
-    MensagemWhatsapp {
-        template: "orcamento_decisao",
-        parametros: vec![nome.to_string(), equipamento.clone(), valor.clone()],
-        url_botao: Some(token.to_string()),
-        texto,
-        historico: format!(
-            "Link de decisão do orçamento de {equipamento} ({valor}) enviado. O link foi omitido do histórico interno."
-        ),
-    }
-}
-
 // ─── Apoio ──────────────────────────────────────────────────────────────────
 
 /// Conteúdo que o processador central usa para enviar: parâmetros do modelo e o texto da Evolution.
@@ -368,7 +331,6 @@ struct EnvioPreparado {
     telefone: String,
     nome_destinatario: String,
     mensagem: MensagemWhatsapp,
-    segredos: Vec<String>,
 }
 
 enum Reserva {
@@ -395,15 +357,12 @@ async fn reservar(
     let equipamento = carregar_equipamento(tx, empresa_id, input.equipamento_id).await?;
 
     // Identidade do evento.
-    let (chave_evento, versao_id, valido_ate) = if tipo.usa_versao_do_orcamento() {
+    let (chave_evento, versao_id) = if tipo.usa_versao_do_orcamento() {
         if equipamento.status != "AGUARDANDO_APROVACAO" {
             return Err("O orçamento só pode ser enviado enquanto aguarda aprovação.".to_string());
         }
-        if tipo == TipoEnvio::OrcamentoDecisao {
-            exigir_aceite_online(tx).await?;
-        }
         let versao = obter_ou_criar_versao(tx, empresa_id, input.equipamento_id, profile_id).await?;
-        (format!("v:{}", versao.id), Some(versao.id), versao.valido_ate)
+        (format!("v:{}", versao.id), Some(versao.id))
     } else {
         if equipamento.status != "PRONTO" {
             return Err("O aviso de equipamento pronto só pode ser enviado quando ele está PRONTO.".to_string());
@@ -411,7 +370,7 @@ async fn reservar(
         let micros = equipamento.status_alterado_micros.ok_or_else(|| {
             "Não há data confiável da mudança para PRONTO neste atendimento. Use o contato manual.".to_string()
         })?;
-        (format!("s:{micros}"), None, None)
+        (format!("s:{micros}"), None)
     };
 
     let pedido_id: i64 = match sqlx::query_scalar(
@@ -570,8 +529,6 @@ async fn reservar(
     };
 
     // Texto a partir dos dados atuais e, no orçamento, da versão congelada.
-    let mut segredos = Vec::new();
-    let mut link_id = None;
     let mensagem = match tipo {
         TipoEnvio::EquipamentoPronto => mensagem_pronto(
             &nome,
@@ -600,46 +557,9 @@ async fn reservar(
                 equipamento.prazo_aprovacao.as_deref(),
             )
         }
-        TipoEnvio::OrcamentoDecisao if central => {
-            let valor: f64 = sqlx::query_scalar("SELECT valor_total::FLOAT8 FROM orcamento_versoes WHERE id = $1")
-                .bind(versao_id)
-                .fetch_one(&mut **tx)
-                .await
-                .map_err(map)?;
-            let limite = Utc::now() + chrono::Duration::days(30);
-            mensagem_decisao(
-                &nome,
-                &equipamento.marca,
-                &equipamento.modelo,
-                valor,
-                TOKEN_PLACEHOLDER,
-                valido_ate.map_or(Some(limite), |v| Some(v.min(limite))),
-            )
-        }
-        TipoEnvio::OrcamentoDecisao => {
-            let emitido =
-                emitir_link_decisao(tx, empresa_id, input.equipamento_id, profile_id, false).await?;
-            let valor: f64 = sqlx::query_scalar("SELECT valor_total::FLOAT8 FROM orcamento_versoes WHERE id = $1")
-                .bind(emitido.versao.id)
-                .fetch_one(&mut **tx)
-                .await
-                .map_err(map)?;
-            link_id = Some(emitido.link_id);
-            segredos.push(emitido.token.clone());
-            segredos.push(url_decisao(&emitido.token));
-            mensagem_decisao(
-                &nome,
-                &equipamento.marca,
-                &equipamento.modelo,
-                valor,
-                &emitido.token,
-                valido_ate.map_or(Some(emitido.expires_at), |limite| Some(limite.min(emitido.expires_at))),
-            )
-        }
     };
 
-    // O conteúdo só é gravado na fila central, e lá o link de decisão é sempre um marcador.
-    // No envio local o texto pode conter o token real e nunca vai para o banco.
+    // O conteúdo só é gravado na fila central; no envio local o texto não vai para o banco.
     let payload = central.then(|| montar_payload(&mensagem, &nome, &telefone, tipo).to_string());
     let tentativa_id: i64 = match sqlx::query_scalar(
         "INSERT INTO envios_whatsapp_tentativas
@@ -656,7 +576,7 @@ async fn reservar(
     .bind(if central { "PENDENTE" } else { "PREPARANDO" })
     .bind(if central { PROVEDOR_CENTRAL } else { PROVEDOR_EVOLUTION })
     .bind(mascarar_telefone(&telefone))
-    .bind(link_id)
+    .bind(None::<i64>)
     .bind(profile_id)
     .bind(payload)
     .fetch_one(&mut **tx)
@@ -693,7 +613,6 @@ async fn reservar(
         telefone,
         nome_destinatario: nome,
         mensagem,
-        segredos,
     })))
 }
 
@@ -782,9 +701,6 @@ async fn registrar_historico(
 pub async fn solicitar_envio_whatsapp(input: SolicitarEnvioInput) -> Result<ResultadoEnvioWhatsapp, String> {
     let tipo = TipoEnvio::parse(&input.tipo)?;
     let actor = require_permission(PERMISSION_CONFIG_WHATSAPP)?;
-    if tipo == TipoEnvio::OrcamentoDecisao {
-        require_permission(PERMISSION_MANAGE_STATUS_LINKS)?;
-    }
     let pool = get_pool().await.map_err(|error| error.to_string())?;
     let empresa_id = require_active_session_company_id(&pool).await?;
 
@@ -817,7 +733,7 @@ pub async fn solicitar_envio_whatsapp(input: SolicitarEnvioInput) -> Result<Resu
     };
 
     // A chamada ao provedor acontece fora de qualquer transação.
-    let segredos: Vec<&str> = preparado.segredos.iter().map(String::as_str).collect();
+    let segredos: [&str; 0] = [];
     let resultado = despachar_evolution(&preparado.config, &preparado.telefone, &preparado.mensagem.texto).await;
     let (estado, mensagem_externa, erro) = match resultado {
         Ok(id_externo) => ("ENVIADA", id_externo, None),
@@ -906,23 +822,13 @@ mod tests {
 
     #[test]
     fn event_types_round_trip_and_reject_unknown() {
-        for tipo in ["orcamento_informativo", "orcamento_decisao", "equipamento_pronto"] {
+        for tipo in ["orcamento_informativo", "equipamento_pronto"] {
             assert_eq!(TipoEnvio::parse(tipo).unwrap().como_texto(), tipo);
         }
+        // O link de decisão individual foi substituído pelo Portal do Cliente.
+        assert!(TipoEnvio::parse("orcamento_decisao").is_err());
         assert!(TipoEnvio::parse("codigo_verificacao").is_err());
         assert!(TipoEnvio::parse("").is_err());
-    }
-
-    #[test]
-    fn decision_message_carries_the_link_but_history_does_not() {
-        let token = "ab".repeat(32);
-        let mensagem = mensagem_decisao("Maria", "Zebra", "ZT230", 250.0, &token, None);
-        assert!(mensagem.texto.contains(&format!("/#/o/{token}")));
-        assert!(mensagem.texto.contains("R$ 250,00"));
-        assert!(!mensagem.historico.contains(&token));
-        assert!(!mensagem.historico.contains("/#/o/"));
-        assert_eq!(mensagem.url_botao.as_deref(), Some(token.as_str()));
-        assert_eq!(mensagem.template, "orcamento_decisao");
     }
 
     #[test]

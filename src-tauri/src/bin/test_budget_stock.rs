@@ -2,7 +2,7 @@
 #[path = "../commands/mod.rs"] mod commands;
 #[path = "../db.rs"] mod db;
 #[path = "../test_support/memory_keyring.rs"] mod memory_keyring;
-use commands::{auth, equipamentos, orcamento_correcao, orcamento_decisao, verificacoes, orcamento_estoque, produtos, servicos};
+use commands::{auth, equipamentos, orcamento_correcao, portal_cliente, verificacoes, orcamento_estoque, produtos, servicos};
 use commands::types::*;
 use anyhow::{Result, anyhow};
 
@@ -76,7 +76,7 @@ async fn main() -> Result<()> {
     assert_eq!(v.custo_total,Some(60.0));
     assert_eq!(serde_json::from_str::<Vec<serde_json::Value>>(&v.servicos_necessarios.unwrap())?.len(),1);
     assert_eq!(produtos::buscar_produto(produto.id).await.map_err(|e| anyhow!(e))?.quantidade_estoque,Some(3));
-    // Aceite online: a resposta do cliente só vale depois da janela e da conferência da equipe.
+    // Portal do Cliente: a resposta só vale depois da janela e da conferência da equipe.
     sqlx::query("INSERT INTO public.orcamento_aceite_config (singleton, online_enabled) VALUES (TRUE, TRUE) ON CONFLICT (singleton) DO UPDATE SET online_enabled = TRUE").execute(&pool).await?;
     let eq2: i32 = sqlx::query_scalar("INSERT INTO equipamentos(serial_number,marca,modelo,tipo,data_entrada,defeito_relatado,empresa_id,status) VALUES ($1,'Zebra','GC420t','Impressora','2026-09-27','Teste',$2,'VERIFICADO') RETURNING id")
         .bind(format!("D-{suffix}")).bind(empresa).fetch_one(&pool).await?;
@@ -85,10 +85,10 @@ async fn main() -> Result<()> {
         servicos_necessarios:Some(services.to_string()), pecas_necessarias:Some("[]".into()), custo_total:Some(90.0), ..VerificacaoInput::default()
     }).await.map_err(|e| anyhow!(e))?;
     sqlx::query("UPDATE equipamentos SET status='AGUARDANDO_APROVACAO', valor_orcamento=90 WHERE id=$1").bind(eq2).execute(&pool).await?;
-    let link = orcamento_decisao::criar_link_decisao_orcamento(eq2).await.map_err(|e| anyhow!(e))?;
-    let token_cliente = link.url.rsplit('/').next().unwrap().to_string();
-    let hash = hex::encode(<sha2::Sha256 as sha2::Digest>::digest(token_cliente.as_bytes()));
-    sqlx::query("SELECT * FROM registrar_resposta_orcamento($1,'APROVAR',0)").bind(&hash).fetch_one(&pool).await?;
+    let publicado = portal_cliente::publicar_orcamento_portal(eq2).await.map_err(|e| anyhow!(e))?;
+    // Mesma linha que `portal_registrar_resposta` grava (origem PORTAL_CLIENTE, contato identificado).
+    sqlx::query("INSERT INTO orcamento_respostas (empresa_id, equipamento_id, versao_id, origem, decisao, contato_nome) VALUES ($1,$2,$3,'PORTAL_CLIENTE','APROVAR','Contato Teste')")
+        .bind(empresa).bind(eq2).bind(publicado.versao_id).execute(&pool).await?;
     let resposta_id: i64 = sqlx::query_scalar("SELECT MAX(id) FROM orcamento_respostas WHERE equipamento_id=$1").bind(eq2).fetch_one(&pool).await?;
     let atual = |esperada: Option<i64>, aprovado: Option<bool>, motivo: Option<String>| async move {
         let token: String = sqlx::query_scalar("SELECT atualizado_em::TEXT FROM equipamentos WHERE id=$1").bind(eq2).fetch_one(&db::get_pool().await.unwrap()).await.unwrap();
@@ -113,8 +113,6 @@ async fn main() -> Result<()> {
     assert!(aplicada);
     let encerrada: Option<String> = sqlx::query_scalar("SELECT encerrada_motivo FROM orcamento_versoes WHERE equipamento_id=$1").bind(eq2).fetch_one(&pool).await?;
     assert!(encerrada.is_some());
-    let revogado: bool = sqlx::query_scalar("SELECT revogado_em IS NOT NULL FROM orcamento_links_decisao WHERE equipamento_id=$1").bind(eq2).fetch_one(&pool).await?;
-    assert!(!revogado, "o link segue ativo após a aplicação para permitir Pedir mudança");
     // Correção guiada: desfaz pagamento, serviços e baixas juntos, com decisão explícita sobre o estoque.
     produtos::registrar_movimentacao_estoque(MovimentacaoEstoqueInput { produto_id:produto.id,tipo:"ENTRADA".into(),quantidade:10,origem:"COMPRA".into(),referencia:None }).await.map_err(|e| anyhow!(e))?;
     let eq3: i32 = sqlx::query_scalar("INSERT INTO equipamentos(serial_number,marca,modelo,tipo,data_entrada,defeito_relatado,empresa_id,status) VALUES ($1,'Zebra','GC420t','Impressora','2026-09-27','Teste',$2,'VERIFICADO') RETURNING id")

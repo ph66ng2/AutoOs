@@ -1,8 +1,10 @@
-# Aceite online de orçamento
+# Aceite online de orçamento (base do Portal do Cliente)
+
+> **O link individual de decisão (`#/o/<token>`) foi removido na migration 0036.** O cliente responde pelo **Portal do Cliente** com login (`docs/PORTAL_CLIENTE.md`). Saíram: a Edge Function `orcamento-decisao`, a página `#/o/`, os comandos `criar_link_decisao_orcamento`/`revogar_link_decisao_orcamento`, as funções SQL `consultar_orcamento_decisao`, `registrar_resposta_orcamento`, `registrar_solicitacao_orcamento`, `autoos_estado_link_orcamento`, `emitir_link_decisao_envio` e o tipo `orcamento_decisao` da fila de WhatsApp. **Continuam valendo** e são usados pelo portal: versões congeladas (`orcamento_versoes`), respostas (`orcamento_respostas`), solicitações, a janela de correção e a chave `online_enabled`. As seções abaixo que falam do link ficam como registro histórico.
 
 O cliente responde ao orçamento por um link próprio. A resposta é **registrada na hora**, mas só a equipe altera status, pagamento e estoque, depois de conferir. Isso separa a *resposta do cliente* da *etapa operacional do equipamento* e deixa espaço para corrigir um toque errado.
 
-> **Estado atual: fases 1 e 2 implementadas, nada ativado.** Migrations 0030 e 0031, Edge Function `orcamento-decisao`, página `#/o/<token>` e desktop estão no código. O aceite online nasce **desligado** (`online_enabled = FALSE`), a função ainda não foi publicada e o envio do link por email/WhatsApp **não está ligado a nenhum provedor**.
+> **Histórico:** as fases 1 e 2 (link `#/o/<token>`) nunca foram ativadas nem publicadas antes de serem substituídas pelo portal.
 
 ## Regras de produto
 

@@ -78,9 +78,10 @@ beforeEach(() => {
 });
 
 describe("roteamento", () => {
-  it("mantém os links individuais e o link de decisão fora do portal", () => {
+  it("mantém o link de acompanhamento fora do portal; o antigo link de decisão cai no portal", () => {
     expect(areaFromHash(`#/c/${"a".repeat(64)}`)).toBe("status");
-    expect(areaFromHash(`#/o/${"a".repeat(64)}`)).toBe("decisao");
+    // O link de decisão individual foi substituído pelo portal: cai no login.
+    expect(areaFromHash(`#/o/${"a".repeat(64)}`)).toBe("portal");
     expect(areaFromHash("")).toBe("portal");
     expect(areaFromHash("#/atendimentos/3")).toBe("portal");
   });

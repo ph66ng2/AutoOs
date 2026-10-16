@@ -1,23 +1,19 @@
-//! Aceite de orçamento pelo cliente (fase 1: banco e desktop).
+//! Orçamento respondido pelo cliente no Portal do Cliente: versões congeladas, consulta da
+//! resposta para o desktop e conferência dentro de `aprovar_orcamento`.
 //!
-//! A resposta do cliente é só um registro. Status, pagamento e estoque continuam
-//! sendo alterados por `aprovar_orcamento`, depois da conferência da equipe.
+//! O antigo link de decisão individual (`#/o/<token>`) foi removido: o cliente responde pelo
+//! portal com login (CPF/CNPJ + senha ou código).
 
 use crate::commands::auth::{
-    record_security_event, require_active_session_company_id, require_permission,
-    PERMISSION_FINANCIAL_ACTIONS, PERMISSION_MANAGE_STATUS_LINKS,
+    require_active_session_company_id, require_permission, PERMISSION_MANAGE_STATUS_LINKS,
 };
 use crate::commands::orcamento_estoque::normalizar_servicos;
 use crate::db::get_pool;
 use chrono::{DateTime, Duration, Utc};
-use rand::{rngs::OsRng, RngCore};
 use serde::Serialize;
-use sha2::{Digest, Sha256};
 use sqlx::{PgPool, Postgres, Row, Transaction};
 use tracing::instrument;
 
-const DECISION_BASE_URL: &str = "https://status.bmitag.com.br";
-const LINK_MAX_AGE_DAYS: i64 = 30;
 const MIN_CORRECTION_WINDOW_MINUTES: i32 = 15;
 const TS_FMT: &str = "YYYY-MM-DD\"T\"HH24:MI:SS.US\"Z\"";
 
@@ -63,10 +59,8 @@ pub struct DecisaoOrcamentoInfo {
     pub criada_em: String,
     /// `None` quando a versão foi encerrada; o motivo explica por quê.
     pub encerrada_motivo: Option<String>,
+    /// `orcamento_aceite_config.online_enabled`: o portal só aceita respostas com ele ligado.
     pub aceite_online_ativo: bool,
-    /// `ativo`, `expirado`, `revogado` ou `None` quando nunca houve link.
-    pub link_status: Option<String>,
-    pub link_expira_em: Option<String>,
     /// Resposta vigente (a de maior id). `DESFEITA` significa que o cliente retirou a resposta.
     pub resposta: Option<RespostaOrcamentoInfo>,
     pub historico: Vec<RespostaOrcamentoInfo>,
@@ -79,23 +73,8 @@ pub struct DecisaoOrcamentoInfo {
     pub efetivacao_automatica: bool,
 }
 
-#[derive(Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct LinkDecisaoOrcamentoCriado {
-    pub url: String,
-    pub expires_at: String,
-    pub versao: i32,
-}
-
-fn hash_token(token: &str) -> String {
-    hex::encode(Sha256::digest(token.as_bytes()))
-}
-
-fn decision_url(token: &str) -> String {
-    format!("{}/#/o/{}", DECISION_BASE_URL, token)
-}
-
-/// Respostas dadas pelo próprio cliente (link de decisão ou Portal do Cliente) têm prazo de correção.
+/// Respostas dadas pelo próprio cliente têm prazo de correção. `PORTAL` é a origem do antigo
+/// link de decisão, mantida para o histórico.
 fn is_portal_origin(origem: &str) -> bool {
     matches!(origem, "PORTAL" | "PORTAL_CLIENTE")
 }
@@ -345,16 +324,8 @@ pub async fn obter_decisao_orcamento(
                 to_char(v.valido_ate AT TIME ZONE 'UTC', '{TS_FMT}') AS valido_ate,
                 to_char(v.criado_em AT TIME ZONE 'UTC', '{TS_FMT}') AS criado_em,
                 v.encerrada_motivo,
-                (v.encerrada_em IS NULL) AS aberta,
-                l.revogado_em IS NOT NULL AS link_revogado,
-                (l.expira_em <= NOW()) AS link_expirado,
-                to_char(l.expira_em AT TIME ZONE 'UTC', '{TS_FMT}') AS link_expira_em,
-                (l.id IS NOT NULL) AS tem_link
+                (v.encerrada_em IS NULL) AS aberta
          FROM orcamento_versoes v
-         LEFT JOIN LATERAL (
-             SELECT * FROM orcamento_links_decisao
-             WHERE versao_id = v.id ORDER BY id DESC LIMIT 1
-         ) l ON TRUE
          WHERE v.equipamento_id = $1 AND v.empresa_id = $2
          ORDER BY v.versao DESC
          LIMIT 1"
@@ -368,16 +339,6 @@ pub async fn obter_decisao_orcamento(
 
     let versao_id: i64 = versao.try_get("id").map_err(map)?;
     let aberta: bool = versao.try_get("aberta").map_err(map)?;
-    let tem_link: bool = versao.try_get("tem_link").map_err(map)?;
-    let link_status = if !tem_link {
-        None
-    } else if versao.try_get::<bool, _>("link_revogado").map_err(map)? {
-        Some("revogado".to_string())
-    } else if versao.try_get::<bool, _>("link_expirado").map_err(map)? {
-        Some("expirado".to_string())
-    } else {
-        Some("ativo".to_string())
-    };
 
     let rows = sqlx::query(sqlx::AssertSqlSafe(format!(
         "SELECT r.id, r.origem, r.decisao,
@@ -455,8 +416,6 @@ pub async fn obter_decisao_orcamento(
         criada_em: versao.try_get("criado_em").map_err(map)?,
         encerrada_motivo: versao.try_get("encerrada_motivo").map_err(map)?,
         aceite_online_ativo: ativo,
-        link_status,
-        link_expira_em: versao.try_get("link_expira_em").map_err(map)?,
         efetivacao_automatica: atual.is_some_and(|resposta| {
             resposta.origem == "PORTAL_CLIENTE"
                 && is_final_decision(&resposta.decisao)
@@ -481,160 +440,6 @@ pub async fn obter_decisao_orcamento(
         aplicavel_a_partir_de: aplicavel_a_partir_de.map(|limit| limit.to_rfc3339()),
         pode_aplicar,
     }))
-}
-
-pub(crate) struct LinkEmitido {
-    pub link_id: i64,
-    pub token: String,
-    pub expires_at: DateTime<Utc>,
-    pub versao: VersaoCongelada,
-}
-
-/// Chave de ativação do aceite online (`FOR SHARE` para não mudar durante a emissão).
-pub(crate) async fn exigir_aceite_online(tx: &mut Transaction<'_, Postgres>) -> Result<(), String> {
-    let enabled: bool = sqlx::query_scalar(
-        "SELECT online_enabled FROM public.orcamento_aceite_config WHERE singleton = TRUE FOR SHARE",
-    )
-    .fetch_optional(&mut **tx)
-    .await
-    .map_err(super::operator_errors::mapear_erro_sql)?
-    .unwrap_or(false);
-    if enabled {
-        Ok(())
-    } else {
-        Err("O aceite online de orçamento ainda não foi ativado.".to_string())
-    }
-}
-
-/// Emite um token novo para a versão congelada atual. `revogar_anteriores` encerra os outros links
-/// da mesma versão (gesto explícito do operador); o envio automático nunca revoga, porque o link
-/// de uma tentativa de resultado incerto pode já estar com o cliente.
-pub(crate) async fn emitir_link_decisao(
-    tx: &mut Transaction<'_, Postgres>,
-    empresa_id: i32,
-    equipamento_id: i32,
-    profile_id: i32,
-    revogar_anteriores: bool,
-) -> Result<LinkEmitido, String> {
-    let versao = obter_ou_criar_versao(tx, empresa_id, equipamento_id, profile_id).await?;
-
-    if revogar_anteriores {
-        sqlx::query(
-            "UPDATE orcamento_links_decisao
-             SET revogado_em = NOW(), revogado_motivo = 'SUBSTITUIDO_PELA_EQUIPE', revogado_por_profile_id = $2
-             WHERE versao_id = $1 AND revogado_em IS NULL",
-        )
-        .bind(versao.id)
-        .bind(profile_id)
-        .execute(&mut **tx)
-        .await
-        .map_err(super::operator_errors::mapear_erro_sql)?;
-    }
-
-    let mut token_bytes = [0_u8; 32];
-    OsRng.fill_bytes(&mut token_bytes);
-    let token = hex::encode(token_bytes);
-    let max_expiry = Utc::now() + Duration::days(LINK_MAX_AGE_DAYS);
-    let expires_at = versao.valido_ate.map_or(max_expiry, |limit| limit.min(max_expiry));
-
-    let link_id: i64 = sqlx::query_scalar(
-        "INSERT INTO orcamento_links_decisao
-            (empresa_id, equipamento_id, versao_id, token_hash, expira_em, criado_por_profile_id)
-         VALUES ($1, $2, $3, $4, $5, $6)
-         RETURNING id",
-    )
-    .bind(empresa_id)
-    .bind(equipamento_id)
-    .bind(versao.id)
-    .bind(hash_token(&token))
-    .bind(expires_at)
-    .bind(profile_id)
-    .fetch_one(&mut **tx)
-    .await
-    .map_err(super::operator_errors::mapear_erro_sql)?;
-
-    Ok(LinkEmitido { link_id, token, expires_at, versao })
-}
-
-pub(crate) fn url_decisao(token: &str) -> String {
-    decision_url(token)
-}
-
-/// Congela o orçamento e emite o link próprio da decisão (o link anterior da mesma versão é encerrado).
-#[tauri::command]
-#[instrument(skip_all, fields(equipamento_id = equipamento_id))]
-pub async fn criar_link_decisao_orcamento(
-    equipamento_id: i32,
-) -> Result<LinkDecisaoOrcamentoCriado, String> {
-    let actor = require_permission(PERMISSION_MANAGE_STATUS_LINKS)?;
-    let pool = get_pool().await.map_err(|error| error.to_string())?;
-    let empresa_id = require_active_session_company_id(&pool).await?;
-    let mut tx = pool.begin().await.map_err(super::operator_errors::mapear_erro_sql)?;
-
-    exigir_aceite_online(&mut tx).await?;
-    let emitido = emitir_link_decisao(&mut tx, empresa_id, equipamento_id, actor.id, true).await?;
-    let versao = emitido.versao;
-    let token = emitido.token;
-    let expires_at = emitido.expires_at;
-
-    tx.commit().await.map_err(super::operator_errors::mapear_erro_sql)?;
-
-    record_security_event(
-        "BUDGET_DECISION_LINK_CREATED",
-        Some(&actor),
-        format!("equipamento_id={}; versao={}", equipamento_id, versao.numero),
-        true,
-    )
-    .await;
-
-    Ok(LinkDecisaoOrcamentoCriado {
-        url: decision_url(&token),
-        expires_at: expires_at.to_rfc3339(),
-        versao: versao.numero,
-    })
-}
-
-/// Encerra o link de decisão sem apagar a versão nem o histórico.
-#[tauri::command]
-#[instrument(skip_all, fields(equipamento_id = equipamento_id))]
-pub async fn revogar_link_decisao_orcamento(equipamento_id: i32) -> Result<bool, String> {
-    let actor = require_permission(PERMISSION_MANAGE_STATUS_LINKS)?;
-    let pool = get_pool().await.map_err(|error| error.to_string())?;
-    let empresa_id = require_active_session_company_id(&pool).await?;
-    let mut tx = pool.begin().await.map_err(super::operator_errors::mapear_erro_sql)?;
-
-    sqlx::query("SELECT id FROM equipamentos WHERE id = $1 AND empresa_id = $2 FOR UPDATE")
-        .bind(equipamento_id)
-        .bind(empresa_id)
-        .fetch_optional(&mut *tx)
-        .await
-        .map_err(super::operator_errors::mapear_erro_sql)?
-        .ok_or_else(|| "Equipamento não encontrado na empresa do perfil ativo.".to_string())?;
-
-    let revoked = sqlx::query(
-        "UPDATE orcamento_links_decisao
-         SET revogado_em = NOW(), revogado_motivo = 'REVOGADO_PELA_EQUIPE', revogado_por_profile_id = $3
-         WHERE empresa_id = $1 AND equipamento_id = $2 AND revogado_em IS NULL",
-    )
-    .bind(empresa_id)
-    .bind(equipamento_id)
-    .bind(actor.id)
-    .execute(&mut *tx)
-    .await
-    .map_err(super::operator_errors::mapear_erro_sql)?
-    .rows_affected();
-    tx.commit().await.map_err(super::operator_errors::mapear_erro_sql)?;
-
-    if revoked > 0 {
-        record_security_event(
-            "BUDGET_DECISION_LINK_REVOKED",
-            Some(&actor),
-            format!("equipamento_id={}; links_revogados={}", equipamento_id, revoked),
-            true,
-        )
-        .await;
-    }
-    Ok(revoked > 0)
 }
 
 /// Marca uma dúvida ou pedido de mudança do cliente como tratado pela equipe.
@@ -674,7 +479,7 @@ pub(crate) async fn conferir_e_aplicar_resposta(
     profile_id: i32,
 ) -> Result<(), String> {
     let map = super::operator_errors::mapear_erro_sql;
-    // Trava a versão: serializa com `registrar_resposta_orcamento`, que usa o mesmo bloqueio.
+    // Trava a versão: serializa com `portal_registrar_resposta`, que usa o mesmo bloqueio.
     let versao: Option<i64> = sqlx::query_scalar(
         "SELECT id FROM orcamento_versoes
          WHERE equipamento_id = $1 AND empresa_id = $2 AND encerrada_em IS NULL
@@ -779,13 +584,5 @@ mod tests {
         assert!(decision_matches("RECUSAR", false));
         assert!(!decision_matches("APROVAR", false));
         assert!(!decision_matches("RECUSAR", true));
-    }
-
-    #[test]
-    fn decision_link_uses_its_own_route_and_hashes_the_token() {
-        let token = "a".repeat(64);
-        assert_eq!(decision_url(&token), format!("https://status.bmitag.com.br/#/o/{token}"));
-        assert_eq!(hash_token(&token).len(), 64);
-        assert_ne!(hash_token(&token), token);
     }
 }
