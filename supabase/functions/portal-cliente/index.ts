@@ -12,6 +12,8 @@ const CLIENT_LIMIT_PER_MINUTE = 60;
 const CODE_REQUESTS_PER_DOCUMENT = 5;
 const CODE_REQUEST_WINDOW_MS = 15 * 60_000;
 const VERIFY_LIMIT_PER_MINUTE = 20;
+const PASSWORD_ATTEMPTS_PER_DOCUMENT = 8;
+const MAX_PASSWORD_BYTES = 72;
 const SEND_TIMEOUT_MS = 15_000;
 const SESSION_PATTERN = /^[a-f0-9]{64}$/;
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
@@ -385,6 +387,51 @@ async function requestSessionCode(context: Context, body: Json, sessionHash: str
   return json({ desafio: ref, canal, mensagem: "Enviamos um novo código para o seu contato cadastrado." }, 200, context.origin);
 }
 
+/** CPF/CNPJ + senha definida pelo operador. Documento inexistente e senha errada: mesma resposta. */
+async function passwordLogin(context: Context, body: Json) {
+  const documento = digits(body.documento);
+  const senha = typeof body.senha === "string" ? body.senha : "";
+  if (![11, 14].includes(documento.length) || senha.length === 0 || new TextEncoder().encode(senha).length > MAX_PASSWORD_BYTES) {
+    return json({ erro: "CPF/CNPJ ou senha incorretos.", codigo: "SENHA_INVALIDA" }, 400, context.origin);
+  }
+  const windowStart = Math.floor(Date.now() / CODE_REQUEST_WINDOW_MS) * CODE_REQUEST_WINDOW_MS;
+  const docFingerprint = await hmac(context.secret, `portal-cliente:senha:${documento}`);
+  const underLimit = await consumeLimit(context.url, context.key, docFingerprint, windowStart, PASSWORD_ATTEMPTS_PER_DOCUMENT);
+  if (underLimit === null) return json({ erro: SERVICE_UNAVAILABLE }, 503, context.origin);
+  if (!underLimit) {
+    return json({ erro: "Muitas tentativas para este CPF/CNPJ. Aguarde 15 minutos.", codigo: "LIMITE_SENHA" }, 429, context.origin, { "Retry-After": "900" });
+  }
+  const newSession = randomToken();
+  const result = await callRpc(context.url, context.key, "portal_entrar_senha", {
+    p_documento: documento,
+    p_senha: senha,
+    p_nova_sessao_hash: await sha256(newSession),
+  });
+  if (!result.ok) return errorResponse(result.code, context.origin);
+  const data = result.data as Json;
+  if (data.resultado !== "OK") {
+    return json({ erro: "CPF/CNPJ ou senha incorretos.", codigo: "SENHA_INVALIDA" }, 400, context.origin);
+  }
+  return json({ sessao: newSession, contato: data.contato, acesso: data.acesso, expiraEm: data.expiraEm, metodo: "SENHA" }, 200, context.origin);
+}
+
+async function confirmPassword(context: Context, body: Json, sessionHash: string) {
+  const senha = typeof body.senha === "string" ? body.senha : "";
+  if (senha.length === 0 || new TextEncoder().encode(senha).length > MAX_PASSWORD_BYTES) {
+    return json({ erro: "Senha incorreta.", codigo: "SENHA_INVALIDA" }, 400, context.origin);
+  }
+  if (context.verifyFingerprint) {
+    const minute = Math.floor(Date.now() / 60_000) * 60_000;
+    const ok = await consumeLimit(context.url, context.key, context.verifyFingerprint, minute, VERIFY_LIMIT_PER_MINUTE);
+    if (ok === null) return json({ erro: SERVICE_UNAVAILABLE }, 503, context.origin);
+    if (!ok) return json({ erro: "Muitas tentativas. Aguarde um minuto." }, 429, context.origin, { "Retry-After": "60" });
+  }
+  const result = await callRpc(context.url, context.key, "portal_reverificar_senha", { p_sessao_hash: sessionHash, p_senha: senha });
+  if (!result.ok) return errorResponse(result.code, context.origin);
+  if (result.data !== true) return json({ erro: "Senha incorreta.", codigo: "SENHA_INVALIDA" }, 400, context.origin);
+  return json({ ok: true }, 200, context.origin);
+}
+
 async function verifyCode(context: Context, body: Json, sessionHash: string | null) {
   const ref = typeof body.desafio === "string" ? body.desafio.toLowerCase() : "";
   const code = digits(body.codigo);
@@ -500,6 +547,7 @@ Deno.serve(async (request: Request) => {
   const context: Context = { url, key, secret, origin, verifyFingerprint };
   const acao = body.acao;
   if (acao === "solicitarCodigo") return await requestCode(context, body);
+  if (acao === "entrarSenha") return await passwordLogin(context, body);
 
   const sessionToken = typeof body.sessao === "string" ? body.sessao.toLowerCase() : null;
   if (sessionToken !== null && !SESSION_PATTERN.test(sessionToken)) return errorResponse("SESSAO_INVALIDA", origin);
@@ -509,6 +557,7 @@ Deno.serve(async (request: Request) => {
   if (!sessionHash) return errorResponse("SESSAO_INVALIDA", origin);
 
   if (acao === "novoCodigo") return await requestSessionCode(context, body, sessionHash);
+  if (acao === "confirmarSenha") return await confirmPassword(context, body, sessionHash);
 
   if (acao === "sair") {
     await callRpc(url, key, "portal_encerrar_sessao", { p_sessao_hash: sessionHash });
@@ -527,7 +576,10 @@ Deno.serve(async (request: Request) => {
     const result = await callRpc(url, key, "portal_detalhe_atendimento", {
       p_sessao_hash: sessionHash, p_equipamento_id: equipamentoId,
     });
-    return result.ok ? json(publicDetail(result.data as Json), 200, origin) : errorResponse(result.code, origin);
+    if (!result.ok) return errorResponse(result.code, origin);
+    // A tela pede de novo a senha (sessão por senha) ou um código (sessão por código).
+    const metodo = await callRpc(url, key, "portal_metodo_sessao", { p_sessao_hash: sessionHash });
+    return json({ ...publicDetail(result.data as Json), metodo: metodo.ok && metodo.data === "SENHA" ? "SENHA" : "CODIGO" }, 200, origin);
   }
 
   const versaoId = positiveInt(body.versaoId);

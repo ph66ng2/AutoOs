@@ -79,6 +79,8 @@ export interface DetalheAtendimento {
   podeDecidir: boolean;
   verificacaoRecente: boolean;
   contato: string;
+  /** Como esta sessão entrou: a reconfirmação antes de decidir pede o mesmo fator. */
+  metodo?: "SENHA" | "CODIGO";
 }
 
 export interface Comprovante {
@@ -152,6 +154,9 @@ export const portalApi = {
     post<{ sessao: string | null; contato: string; acesso: Acesso; expiraEm: string; reverificada: boolean }>(
       { acao: "verificarCodigo", desafio, codigo, ...(sessao ? { sessao } : {}) },
     ),
+  entrarSenha: (documento: string, senha: string) =>
+    post<{ sessao: string; contato: string; acesso: Acesso; expiraEm: string; metodo: "SENHA" }>({ acao: "entrarSenha", documento, senha }),
+  confirmarSenha: (sessao: string, senha: string) => post<{ ok: boolean }>({ acao: "confirmarSenha", sessao, senha }),
   novoCodigo: (sessao: string, canal: "WHATSAPP" | "EMAIL") =>
     post<{ desafio: string; canal: "WHATSAPP" | "EMAIL"; mensagem: string }>({ acao: "novoCodigo", sessao, canal }),
   listar: (sessao: string) => post<ListaAtendimentos>({ acao: "listar", sessao }),

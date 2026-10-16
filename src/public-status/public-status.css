@@ -312,3 +312,5 @@ h1 {
   .portal-sort { justify-content: space-between; }
   .action-row > .primary-button, .action-row > .secondary-button { flex: 1 1 100%; }
 }
+.portal-password { display: flex; align-items: center; gap: 0.5rem; }
+.portal-password .portal-input { flex: 1; min-width: 0; }

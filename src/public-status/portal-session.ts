@@ -9,6 +9,7 @@ export interface PortalSession {
   contato: string;
   acesso: Acesso;
   expiraEm: string;
+  metodo?: "SENHA" | "CODIGO";
 }
 
 const KEY = "autoos.portal.sessao";

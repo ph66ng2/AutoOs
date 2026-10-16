@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 import { CodigoForm } from "./CodigoForm";
 import {
   dateTime,
@@ -58,6 +58,9 @@ export default function PortalOrcamento({ session, detalhe, orcamento, recarrega
   const [comprovante, setComprovante] = useState<Comprovante | null>(null);
   const [solicitacao, setSolicitacao] = useState<SolicitacaoRegistrada | null>(null);
   const [mensagem, setMensagem] = useState("");
+  const [senha, setSenha] = useState("");
+  const [usarCodigo, setUsarCodigo] = useState(false);
+  const porSenha = detalhe.metodo === "SENHA" && !usarCodigo;
   const [agora, setAgora] = useState(() => Date.now());
   const versaoAnterior = useRef(orcamento.versaoId);
 
@@ -142,6 +145,24 @@ export default function PortalOrcamento({ session, detalhe, orcamento, recarrega
     setErro(null);
     try {
       await portalApi.verificarCodigo(etapa.desafio, codigo, session.token);
+      const novo = await recarregar();
+      const versaoId = novo?.orcamento?.versaoId ?? orcamento.versaoId;
+      setEtapa({ tipo: "confirmar", decisao: etapa.depois, versaoId });
+    } catch (cause) {
+      await tratarErro(cause);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const confirmarSenha = async (event: FormEvent) => {
+    event.preventDefault();
+    if (etapa?.tipo !== "verificar" || !senha) return;
+    setBusy(true);
+    setErro(null);
+    try {
+      await portalApi.confirmarSenha(session.token, senha);
+      setSenha("");
       const novo = await recarregar();
       const versaoId = novo?.orcamento?.versaoId ?? orcamento.versaoId;
       setEtapa({ tipo: "confirmar", decisao: etapa.depois, versaoId });
@@ -309,7 +330,20 @@ export default function PortalOrcamento({ session, detalhe, orcamento, recarrega
       {etapa?.tipo === "verificar" && (
         <div className="confirm-box">
           <h2>Confirme que é você</h2>
-          {!etapa.desafio ? (
+          {porSenha ? (
+            <form className="portal-form" onSubmit={(event) => void confirmarSenha(event)} noValidate>
+              <p className="portal-help">Por segurança, digite sua senha de novo para responder ao orçamento.</p>
+              <label htmlFor="portal-reconfirmar-senha">Senha</label>
+              <input id="portal-reconfirmar-senha" className="portal-input" type="password" autoComplete="current-password"
+                maxLength={72} value={senha} onChange={(event) => setSenha(event.target.value)} autoFocus />
+              {erro && <p className="portal-error" role="alert">{erro}</p>}
+              <div className="action-row">
+                <button className="primary-button" type="submit" disabled={busy || !senha}>{busy ? "Conferindo…" : "Confirmar senha"}</button>
+                <button className="secondary-button" type="button" disabled={busy} onClick={() => setEtapa(null)}>Cancelar</button>
+              </div>
+              <button className="link-button" type="button" onClick={() => { setUsarCodigo(true); setErro(null); }}>Prefiro receber um código</button>
+            </form>
+          ) : !etapa.desafio ? (
             <>
               <p>Para responder ao orçamento, enviaremos um novo código para o seu contato cadastrado.</p>
               <div className="action-row">

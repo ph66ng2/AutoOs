@@ -300,6 +300,11 @@ export const db = {
     return invoke<ClienteContato>("definir_acesso_portal_contato", { contatoId, acesso });
   },
 
+  /** `senha = null` remove a senha. A senha não volta do backend; só a data em que foi criada. */
+  async definirSenhaPortalContato(contatoId: number, senha: string | null): Promise<ClienteContato> {
+    return invoke<ClienteContato>("definir_senha_portal_contato", { contatoId, senha });
+  },
+
   async publicarOrcamentoPortal(equipamentoId: number): Promise<OrcamentoPublicado> {
     return invoke<OrcamentoPublicado>("publicar_orcamento_portal", { equipamentoId });
   },

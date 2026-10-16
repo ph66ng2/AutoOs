@@ -138,8 +138,8 @@ pub async fn definir_acesso_portal_contato(contato_id: i32, acesso: String) -> R
     let pool = get_pool().await.map_err(|e| e.to_string())?;
     let empresa_id = require_active_session_company_id(&pool).await?;
 
-    let contato: Option<(Option<String>, Option<String>, String)> = sqlx::query_as(
-        "SELECT telefone, email, portal_acesso FROM cliente_contatos
+    let contato: Option<(String,)> = sqlx::query_as(
+        "SELECT portal_acesso FROM cliente_contatos
          WHERE id = $1 AND empresa_id = $2 AND ativo = true",
     )
     .bind(contato_id)
@@ -147,14 +147,9 @@ pub async fn definir_acesso_portal_contato(contato_id: i32, acesso: String) -> R
     .fetch_optional(&pool)
     .await
     .map_err(super::operator_errors::mapear_erro_sql)?;
-    let Some((telefone, email, anterior)) = contato else {
+    let Some((anterior,)) = contato else {
         return Err("Contato não encontrado na empresa ativa.".to_string());
     };
-    let tem_canal = telefone.as_deref().is_some_and(|t| t.chars().filter(char::is_ascii_digit).count() >= 10)
-        || email.as_deref().is_some_and(|e| e.contains('@'));
-    if acesso != "NENHUM" && !tem_canal {
-        return Err("Cadastre o WhatsApp ou o email do contato antes de liberar o portal: o código de acesso vai para ele.".to_string());
-    }
 
     sqlx::query(
         "UPDATE cliente_contatos SET portal_acesso = $3, atualizado_em = NOW()
@@ -182,6 +177,71 @@ pub async fn definir_acesso_portal_contato(contato_id: i32, acesso: String) -> R
         .fetch_one(&pool)
         .await
         .map_err(super::operator_errors::mapear_erro_sql)
+}
+
+/// Senha do portal criada pelo operador para um contato (`None` remove). O cliente entra com
+/// CPF/CNPJ + esta senha; ela identifica o contato. Só o hash bcrypt fica no banco (0035).
+#[tauri::command]
+#[instrument(skip_all, fields(contato_id = contato_id))]
+pub async fn definir_senha_portal_contato(contato_id: i32, senha: Option<String>) -> Result<ClienteContato, String> {
+    let pool = get_pool().await.map_err(|e| e.to_string())?;
+    let acesso: Option<String> = sqlx::query_scalar("SELECT portal_acesso FROM cliente_contatos WHERE id = $1")
+        .bind(contato_id)
+        .fetch_optional(&pool)
+        .await
+        .map_err(super::operator_errors::mapear_erro_sql)?;
+    // Quem pode decidir orçamento só recebe senha de quem tem a permissão financeira.
+    let actor = if acesso.as_deref() == Some("DECIDIR") {
+        require_permission(PERMISSION_FINANCIAL_ACTIONS)?
+    } else {
+        require_permission(PERMISSION_MANAGE_STATUS_LINKS)?
+    };
+    let empresa_id = require_active_session_company_id(&pool).await?;
+    if let Some(valor) = senha.as_deref() {
+        if !senha_aceitavel(valor) {
+            return Err("A senha precisa ter de 8 a 72 caracteres, com letras e números.".to_string());
+        }
+    }
+
+    sqlx::query("SELECT public.portal_definir_senha_contato($1, $2, $3, $4)")
+        .bind(empresa_id)
+        .bind(contato_id)
+        .bind(senha.as_deref())
+        .bind(actor.id)
+        .execute(&pool)
+        .await
+        .map_err(|error| match error.as_database_error().map(|db| db.message().to_string()).as_deref() {
+            Some("CONTATO_INDISPONIVEL") => "Contato não encontrado na empresa ativa.".to_string(),
+            Some("CONTATO_SEM_ACESSO") => "Libere o acesso do contato ao portal antes de criar a senha.".to_string(),
+            Some("SENHA_FRACA") => "A senha precisa ter de 8 a 72 caracteres, com letras e números.".to_string(),
+            Some("SENHA_REPETIDA") => "Outro contato deste CPF/CNPJ já usa essa senha. Escolha outra: é a senha que identifica quem entrou.".to_string(),
+            _ => super::operator_errors::mapear_erro_sql(error),
+        })?;
+
+    record_security_event(
+        if senha.is_some() { "PORTAL_PASSWORD_SET" } else { "PORTAL_PASSWORD_REMOVED" },
+        Some(&actor),
+        format!("empresa_id={empresa_id}; contato_id={contato_id}"),
+        true,
+    )
+    .await;
+
+    let query = format!("{} WHERE id = $1 AND empresa_id = $2", CLIENTE_CONTATO_SELECT);
+    sqlx::query_as::<_, ClienteContato>(sqlx::AssertSqlSafe(query))
+        .bind(contato_id)
+        .bind(empresa_id)
+        .fetch_one(&pool)
+        .await
+        .map_err(super::operator_errors::mapear_erro_sql)
+}
+
+/// Mesma regra de `autoos_portal_senha_valida` (0035), conferida antes de ir ao banco.
+fn senha_aceitavel(senha: &str) -> bool {
+    senha.chars().count() >= 8
+        && senha.len() <= 72
+        && senha.chars().any(char::is_alphabetic)
+        && senha.chars().any(|c| c.is_ascii_digit())
+        && !senha.chars().any(char::is_control)
 }
 
 /// Publica o orçamento atual no portal como versão congelada. Republicar o mesmo conteúdo
@@ -278,6 +338,15 @@ mod tests {
         assert!(acesso_valido("ACOMPANHAR"));
         assert!(acesso_valido("NENHUM"));
         assert!(!acesso_valido("ADMIN"));
+    }
+
+    #[test]
+    fn operator_password_rule_matches_the_database() {
+        assert!(senha_aceitavel("Ana-Senha-2026"));
+        assert!(!senha_aceitavel("curta1"));
+        assert!(!senha_aceitavel("somenteletras"));
+        assert!(!senha_aceitavel("12345678"));
+        assert!(!senha_aceitavel(&format!("a1{}", "x".repeat(71))));
     }
 
     #[test]

@@ -64,6 +64,13 @@ beforeEach(() => {
     portal_registrar_resposta: () => ({ body: { id: 77, protocolo: "R-77", decisao: "APROVAR" } }),
     portal_registrar_solicitacao: () => ({ body: { id: 5, protocolo: "S-5", tipo: "NEGOCIAR" } }),
     portal_encerrar_sessao: () => ({ body: null }),
+    portal_metodo_sessao: () => ({ body: "SENHA" }),
+    portal_entrar_senha: (args) => ({
+      body: args.p_senha === "Ana-Senha-2026" && args.p_documento === "11222333000181"
+        ? { resultado: "OK", contato: "Ana Souza", acesso: "DECIDIR", expiraEm: "2026-10-16T20:00:00Z", metodo: "SENHA" }
+        : { resultado: "INVALIDO" },
+    }),
+    portal_reverificar_senha: (args) => ({ body: args.p_senha === "Ana-Senha-2026" }),
   };
 
   vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
@@ -208,5 +215,45 @@ describe("portal-cliente: sessão e orçamento", () => {
   it("recusa origem desconhecida", async () => {
     const { response } = await call({ acao: "listar", sessao: SESSION }, "https://evil.example");
     expect(response.status).toBe(403);
+  });
+});
+
+describe("portal-cliente: senha definida pelo operador", () => {
+  it("entra com CPF/CNPJ + senha e devolve token cujo hash vai ao banco", async () => {
+    const { response, body } = await call({ acao: "entrarSenha", documento: "11.222.333/0001-81", senha: "Ana-Senha-2026" });
+    expect(response.status).toBe(200);
+    expect(body.metodo).toBe("SENHA");
+    const args = rpc("portal_entrar_senha")[0].args;
+    expect(args.p_documento).toBe("11222333000181");
+    expect(args.p_nova_sessao_hash).toBe(createHash("sha256").update(String(body.sessao)).digest("hex"));
+  });
+
+  it("senha errada e CNPJ desconhecido têm a mesma resposta", async () => {
+    const errada = await call({ acao: "entrarSenha", documento: "11222333000181", senha: "outra-1234" });
+    const desconhecido = await call({ acao: "entrarSenha", documento: "00000000000191", senha: "Ana-Senha-2026" });
+    expect(errada.response.status).toBe(400);
+    expect(desconhecido.response.status).toBe(400);
+    expect(errada.body).toEqual(desconhecido.body);
+    expect(JSON.stringify(errada.body)).not.toContain("sessao");
+  });
+
+  it("limita tentativas de senha por documento", async () => {
+    rpcResponses.consumir_limite_status_publico = (() => {
+      let count = 0;
+      return () => ({ body: ++count === 1 });
+    })();
+    const { response } = await call({ acao: "entrarSenha", documento: "11222333000181", senha: "Ana-Senha-2026" });
+    expect(response.status).toBe(429);
+    expect(rpc("portal_entrar_senha")).toHaveLength(0);
+  });
+
+  it("reconfirma a senha da sessão antes de decidir", async () => {
+    expect((await call({ acao: "confirmarSenha", sessao: SESSION, senha: "errada-1" })).response.status).toBe(400);
+    expect((await call({ acao: "confirmarSenha", sessao: SESSION, senha: "Ana-Senha-2026" })).response.status).toBe(200);
+  });
+
+  it("detalhe informa o método da sessão", async () => {
+    const { body } = await call({ acao: "detalhe", sessao: SESSION, equipamentoId: 28 });
+    expect(body.metodo).toBe("SENHA");
   });
 });

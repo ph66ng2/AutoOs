@@ -10,6 +10,8 @@ vi.mock("./portal-api", async (importOriginal) => {
     ...original,
     portalApi: {
       solicitarCodigo: vi.fn(),
+      entrarSenha: vi.fn(),
+      confirmarSenha: vi.fn(),
       verificarCodigo: vi.fn(),
       novoCodigo: vi.fn(),
       listar: vi.fn(),
@@ -91,6 +93,7 @@ describe("login", () => {
     api.listar.mockResolvedValue({ cliente: "Cliente A", contato: "Ana Souza", podeDecidir: true, atendimentos: [] });
 
     render(<PortalApp />);
+    fireEvent.click(screen.getByRole("button", { name: "Entrar com código pelo WhatsApp ou email" }));
     fireEvent.change(screen.getByLabelText("CPF ou CNPJ"), { target: { value: "11222333000181" } });
     expect(screen.getByRole("button", { name: "Receber código" })).toBeDisabled();
     fireEvent.change(screen.getByLabelText("WhatsApp ou email do contato"), { target: { value: "71988887777" } });
@@ -103,6 +106,31 @@ describe("login", () => {
 
     expect(await screen.findByRole("heading", { name: "Cliente A" })).toBeInTheDocument();
     expect(JSON.parse(window.sessionStorage.getItem("autoos.portal.sessao") ?? "{}").token).toBe(TOKEN);
+  });
+});
+
+describe("login com senha", () => {
+  it("entra com CNPJ + senha criada pelo operador", async () => {
+    api.entrarSenha.mockResolvedValue({ sessao: TOKEN, contato: "Ana Souza", acesso: "DECIDIR", expiraEm: FUTURO, metodo: "SENHA" });
+    api.listar.mockResolvedValue({ cliente: "Cliente A", contato: "Ana Souza", podeDecidir: true, atendimentos: [] });
+    render(<PortalApp />);
+    fireEvent.change(screen.getByLabelText("CPF ou CNPJ"), { target: { value: "11222333000181" } });
+    expect(screen.getByRole("button", { name: "Entrar" })).toBeDisabled();
+    fireEvent.change(screen.getByLabelText("Senha"), { target: { value: "Ana-Senha-2026" } });
+    fireEvent.click(screen.getByRole("button", { name: "Entrar" }));
+    expect(await screen.findByRole("heading", { name: "Cliente A" })).toBeInTheDocument();
+    expect(api.entrarSenha).toHaveBeenCalledWith("11222333000181", "Ana-Senha-2026");
+    expect(JSON.parse(window.sessionStorage.getItem("autoos.portal.sessao") ?? "{}").metodo).toBe("SENHA");
+  });
+
+  it("senha incorreta mostra erro sem entrar", async () => {
+    api.entrarSenha.mockRejectedValue(new PortalError("CPF/CNPJ ou senha incorretos.", 400, "SENHA_INVALIDA"));
+    render(<PortalApp />);
+    fireEvent.change(screen.getByLabelText("CPF ou CNPJ"), { target: { value: "11222333000181" } });
+    fireEvent.change(screen.getByLabelText("Senha"), { target: { value: "errada" } });
+    fireEvent.click(screen.getByRole("button", { name: "Entrar" }));
+    expect(await screen.findByText("CPF/CNPJ ou senha incorretos.")).toBeInTheDocument();
+    expect(window.sessionStorage.getItem("autoos.portal.sessao")).toBeNull();
   });
 });
 
@@ -182,6 +210,18 @@ describe("detalhe e orçamento", () => {
 
     expect(await screen.findByRole("heading", { name: "Confirmar RECUSA do orçamento inteiro?" })).toBeInTheDocument();
     expect(api.verificarCodigo).toHaveBeenCalledWith("0f8fad5b-d9cb-469f-a165-70867728950e", "654321", TOKEN);
+  });
+
+  it("sessão por senha reconfirma a senha antes de decidir", async () => {
+    api.detalhe.mockResolvedValue(detalhe({ verificacaoRecente: false, metodo: "SENHA" }));
+    api.confirmarSenha.mockResolvedValue({ ok: true });
+    render(<PortalApp />);
+    fireEvent.click(await screen.findByRole("button", { name: "Aceitar orçamento" }));
+    fireEvent.change(screen.getByLabelText("Senha"), { target: { value: "Ana-Senha-2026" } });
+    fireEvent.click(screen.getByRole("button", { name: "Confirmar senha" }));
+    expect(await screen.findByRole("heading", { name: "Confirmar ACEITE do orçamento inteiro?" })).toBeInTheDocument();
+    expect(api.confirmarSenha).toHaveBeenCalledWith(TOKEN, "Ana-Senha-2026");
+    expect(api.novoCodigo).not.toHaveBeenCalled();
   });
 
   it("proposta alterada invalida a confirmação antiga e pede releitura", async () => {

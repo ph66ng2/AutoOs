@@ -530,6 +530,8 @@ export interface ClienteContato {
   ativo: boolean;
   /** Acesso ao Portal das Impressoras do Cliente. Alterado só por `definirAcessoPortalContato`. */
   portal_acesso?: AcessoPortalContato;
+  /** Quando o operador criou a senha do portal; vazio = sem senha. */
+  portal_senha_definida_em?: string | null;
   criado_em?: string;
   atualizado_em?: string;
 }
@@ -590,7 +592,7 @@ export interface VinculoEmpresaPerfilResultado {
   empresa_criada: boolean;
 }
 
-export type ClienteContatoInput = Omit<ClienteContato, "id" | "ativo" | "portal_acesso" | "criado_em" | "atualizado_em"> & {
+export type ClienteContatoInput = Omit<ClienteContato, "id" | "ativo" | "portal_acesso" | "portal_senha_definida_em" | "criado_em" | "atualizado_em"> & {
   atualizado_em?: string;
 };
 

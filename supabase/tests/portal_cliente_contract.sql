@@ -1,4 +1,4 @@
--- Contrato SQL do Portal das Impressoras do Cliente (migration 0034).
+-- Contrato SQL do Portal das Impressoras do Cliente (migrations 0034 e 0035).
 -- Execute num banco descartável com as migrations SQLx aplicadas (nome iniciando por autoos_stock_test):
 --   psql --set ON_ERROR_STOP=1 --file=supabase/tests/portal_cliente_contract.sql
 -- Tudo roda numa transação desfeita no final; dados sintéticos TESTE-PORTAL.
@@ -319,6 +319,42 @@ SELECT pg_temp.espera_erro('UPDATE portal_alertas SET titulo = ''x''', 'Alerta d
 UPDATE portal_alertas SET lido_em = now() WHERE tipo = 'NEGOCIACAO_SOLICITADA';
 SELECT pg_temp.espera_erro('DELETE FROM portal_alertas', 'Alertas do portal não podem ser apagados');
 
+-- ─── Senha definida pelo operador (0035) ────────────────────────────────────
+SELECT pg_temp.espera_erro(format('SELECT portal_definir_senha_contato(%s, %s, ''abc'', NULL)', pg_temp.g('ea'), pg_temp.g('decisor')), 'SENHA_FRACA');
+SELECT pg_temp.espera_erro(format('SELECT portal_definir_senha_contato(%s, %s, ''Senha1234'', NULL)', pg_temp.g('ea'), pg_temp.g('sem_acesso')), 'CONTATO_SEM_ACESSO');
+SELECT pg_temp.espera_erro(format('SELECT portal_definir_senha_contato(%s, %s, ''Senha1234'', NULL)', pg_temp.g('eb'), pg_temp.g('decisor')), 'CONTATO_INDISPONIVEL');
+SELECT portal_definir_senha_contato(pg_temp.g('ea')::INTEGER, pg_temp.g('decisor')::INTEGER, 'Ana-Senha-2026', NULL);
+SELECT pg_temp.ok((SELECT portal_senha_hash LIKE '$2%' AND portal_senha_hash NOT LIKE '%Ana-Senha%' FROM cliente_contatos WHERE id = pg_temp.g('decisor')::INTEGER),
+    'só o hash bcrypt é gravado');
+SELECT pg_temp.espera_erro(format('SELECT portal_definir_senha_contato(%s, %s, ''Ana-Senha-2026'', NULL)', pg_temp.g('ea'), pg_temp.g('acompanha')), 'SENHA_REPETIDA');
+SELECT portal_definir_senha_contato(pg_temp.g('ea')::INTEGER, pg_temp.g('acompanha')::INTEGER, 'Carla-2026', NULL);
+
+SELECT pg_temp.ok((portal_entrar_senha('11.222.333/0001-81', 'errada123', repeat('5', 64))->>'resultado') = 'INVALIDO', 'senha errada');
+SELECT pg_temp.ok((portal_entrar_senha('99.888.777/0001-66', 'Ana-Senha-2026', repeat('5', 64))->>'resultado') = 'INVALIDO',
+    'senha certa com CNPJ de outro cliente');
+SELECT pg_temp.ok((portal_entrar_senha('00.000.000/0001-91', 'Ana-Senha-2026', repeat('5', 64))->>'resultado') = 'INVALIDO',
+    'CNPJ sem cadastro responde igual');
+DO $$
+DECLARE r JSONB := portal_entrar_senha('11.222.333/0001-81', 'Ana-Senha-2026', repeat('5', 64));
+BEGIN
+    PERFORM pg_temp.ok(r->>'resultado' = 'OK' AND r->>'acesso' = 'DECIDIR' AND r->>'metodo' = 'SENHA', 'senha da decisora entra como ela');
+END $$;
+SELECT pg_temp.ok((portal_entrar_senha('11222333000181', 'Carla-2026', repeat('6', 64))->>'acesso') = 'ACOMPANHAR', 'a senha identifica o contato');
+SELECT pg_temp.ok(portal_metodo_sessao(repeat('5', 64)) = 'SENHA', 'método da sessão');
+SELECT pg_temp.ok(jsonb_array_length(portal_listar_atendimentos(repeat('5', 64))->'atendimentos') > 0, 'sessão por senha lista atendimentos');
+
+UPDATE portal_sessoes SET verificada_em = verificada_em - INTERVAL '1 hour' WHERE token_hash = repeat('5', 64);
+SELECT pg_temp.ok(NOT portal_reverificar_senha(repeat('5', 64), 'Carla-2026'), 'reverificação não aceita senha de outro contato');
+SELECT pg_temp.ok(portal_reverificar_senha(repeat('5', 64), 'Ana-Senha-2026'), 'reverificação com a própria senha');
+SELECT pg_temp.ok((SELECT verificada_em > now() - INTERVAL '1 minute' FROM portal_sessoes WHERE token_hash = repeat('5', 64)), 'verificação renovada');
+
+-- Trocar a senha derruba as sessões; retirar o acesso apaga a senha.
+SELECT portal_definir_senha_contato(pg_temp.g('ea')::INTEGER, pg_temp.g('decisor')::INTEGER, 'Nova-Senha-77', NULL);
+SELECT pg_temp.espera_erro(format('SELECT portal_listar_atendimentos(%L)', repeat('5', 64)), 'SESSAO_INVALIDA');
+UPDATE cliente_contatos SET portal_acesso = 'NENHUM' WHERE id = pg_temp.g('acompanha')::INTEGER;
+SELECT pg_temp.ok((SELECT portal_senha_hash IS NULL FROM cliente_contatos WHERE id = pg_temp.g('acompanha')::INTEGER), 'sem acesso, sem senha');
+SELECT pg_temp.ok((portal_entrar_senha('11222333000181', 'Carla-2026', repeat('7', 64))->>'resultado') = 'INVALIDO', 'senha removida não entra');
+
 -- ─── Privilégios: a Edge Function só alcança as funções públicas ──────────
 DO $$
 BEGIN
@@ -331,6 +367,10 @@ BEGIN
     PERFORM pg_temp.ok(NOT has_table_privilege('service_role', 'public.portal_sessoes', 'SELECT'), 'sem leitura direta de sessões');
     PERFORM pg_temp.ok(NOT has_table_privilege('service_role', 'public.portal_codigos', 'SELECT'), 'sem leitura direta de códigos');
     PERFORM pg_temp.ok(NOT has_function_privilege('anon', 'public.portal_listar_atendimentos(text)', 'EXECUTE'), 'anon sem acesso');
+    PERFORM pg_temp.ok(has_function_privilege('service_role', 'public.portal_entrar_senha(text,text,text)', 'EXECUTE'), 'service_role entra com senha');
+    PERFORM pg_temp.ok(NOT has_function_privilege('service_role', 'public.portal_definir_senha_contato(integer,integer,text,integer)', 'EXECUTE'),
+        'só o desktop define senha');
+    PERFORM pg_temp.ok(NOT has_column_privilege('service_role', 'public.cliente_contatos', 'portal_senha_hash', 'SELECT'), 'hash fora do alcance da função');
 END $$;
 
 SELECT 'portal_cliente_contract: OK' AS resultado;
