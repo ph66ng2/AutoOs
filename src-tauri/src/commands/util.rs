@@ -1078,8 +1078,9 @@ pub async fn abrir_url(url: String) -> Result<(), String> {
     }
     #[cfg(target_os = "windows")]
     {
-        std::process::Command::new("cmd")
-            .args(["/c", "start", "", &url_trimmed])
+        // Sem `cmd /c start`: o cmd interpreta `&`, `%` e `^` da URL (ex.: mensagem do wa.me).
+        std::process::Command::new("rundll32")
+            .args(["url.dll,FileProtocolHandler", &url_trimmed])
             .spawn()
             .map_err(super::operator_errors::mapear_erro_operacional)?;
     }

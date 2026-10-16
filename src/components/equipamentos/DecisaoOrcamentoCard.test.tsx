@@ -7,12 +7,14 @@ const mocks = vi.hoisted(() => ({
   obter: vi.fn(),
   ensure: vi.fn(),
   publicar: vi.fn(),
+  contatos: vi.fn(),
 }));
 
 vi.mock("@/lib/db", () => ({
   db: {
     obterDecisaoOrcamento: mocks.obter,
     publicarOrcamentoPortal: mocks.publicar,
+    listarClienteContatos: mocks.contatos,
   },
 }));
 vi.mock("@/hooks/useSensitiveAccess", () => ({
@@ -174,5 +176,22 @@ describe("DecisaoOrcamentoCard", () => {
     render(<DecisaoOrcamentoCard equipamento={equipamento} onRespostaVista={vi.fn()} onAplicar={vi.fn()} />);
     fireEvent.click(await screen.findByRole("button", { name: "Publicar no Portal do Cliente" }));
     await waitFor(() => expect(mocks.publicar).toHaveBeenCalledWith(7));
+  });
+
+  it("mostra quem responde no portal e, sem ninguém, oferece dar acesso sem sair do equipamento", async () => {
+    mocks.obter.mockResolvedValue(null);
+    mocks.contatos.mockResolvedValue([{ id: 5, empresa_id: 1, cliente_id: 2, nome: "Ana Souza", ativo: true, portal_acesso: "ACOMPANHAR" }]);
+    const comCliente = { ...equipamento, cliente_id: 2, empresa_id: 1 };
+    const { unmount } = render(<DecisaoOrcamentoCard equipamento={comCliente} onRespostaVista={vi.fn()} onAplicar={vi.fn()} />);
+    expect(await screen.findByText("Ninguém deste cliente pode responder pelo portal.")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Dar acesso a um contato/ })).toBeInTheDocument();
+    unmount();
+
+    mocks.contatos.mockResolvedValue([{ id: 5, empresa_id: 1, cliente_id: 2, nome: "Ana Souza", ativo: true, portal_acesso: "DECIDIR",
+      portal_senha_definida_em: "2026-10-16T10:00:00Z", portal_senha_provisoria: true }]);
+    render(<DecisaoOrcamentoCard equipamento={comCliente} onRespostaVista={vi.fn()} onAplicar={vi.fn()} />);
+    expect(await screen.findByText("Ana Souza")).toBeInTheDocument();
+    expect(screen.getByText(/ainda não entrou/)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Gerenciar acesso/ })).toBeInTheDocument();
   });
 });

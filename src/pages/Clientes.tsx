@@ -518,7 +518,7 @@ export default function Clientes() {
                           overflow={[
                             {
                               id: `contatos-${c.id}`,
-                              label: "Contatos",
+                              label: "Contatos e Portal",
                               icon: <ContactRound className="h-4 w-4" />,
                               onClick: () => setContatosClienteSelecionado(c),
                             },

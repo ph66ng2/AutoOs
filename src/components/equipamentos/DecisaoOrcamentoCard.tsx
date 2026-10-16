@@ -1,12 +1,14 @@
 import { useCallback, useEffect, useState } from "react";
-import { Loader2, RefreshCw } from "lucide-react";
+import { CheckCircle2, KeyRound, Loader2, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { db } from "@/lib/db";
 import { useSensitiveAccess } from "@/hooks/useSensitiveAccess";
+import { AcessoPortalDialog, respondeNoPortal } from "@/components/equipamentos/AcessoPortalDialog";
 import {
   SENSITIVE_PERMISSIONS,
+  type ClienteContato,
   type DecisaoOrcamentoInfo,
   type Equipamento,
   type RespostaOrcamentoInfo,
@@ -148,11 +150,14 @@ export function DecisaoOrcamentoCard({ equipamento, onRespostaVista, onAplicar, 
   if (!info && !error) {
     if (equipamento.status !== "AGUARDANDO_APROVACAO") return null;
     return (
-      <div className="flex flex-wrap items-center gap-2 text-sm">
-        <Button size="sm" variant="outline" onClick={publicarNoPortal} disabled={busy}>
-          Publicar no Portal do Cliente
-        </Button>
-        <span className="text-xs text-muted-foreground">O cliente vê e responde ao orçamento em status.bmitag.com.br.</span>
+      <div className="space-y-2 text-sm">
+        <QuemRespondeNoPortal equipamento={equipamento} />
+        <div className="flex flex-wrap items-center gap-2">
+          <Button size="sm" variant="outline" onClick={publicarNoPortal} disabled={busy}>
+            Publicar no Portal do Cliente
+          </Button>
+          <span className="text-xs text-muted-foreground">O cliente vê e responde ao orçamento em status.bmitag.com.br.</span>
+        </div>
       </div>
     );
   }
@@ -217,6 +222,8 @@ export function DecisaoOrcamentoCard({ equipamento, onRespostaVista, onAplicar, 
       ) : (
         aberta && equipamento.status === "AGUARDANDO_APROVACAO" && <p className="text-muted-foreground">Aguardando resposta do cliente.</p>
       )}
+
+      {equipamento.status === "AGUARDANDO_APROVACAO" && <QuemRespondeNoPortal equipamento={equipamento} />}
 
       {/* Com resposta pendente, publicar criaria versão nova e anularia a resposta do cliente. */}
       {equipamento.status === "AGUARDANDO_APROVACAO" && !respostaFinal && (
@@ -309,6 +316,67 @@ function RespostaPortalCliente({
           Revisar e aplicar decisão
         </Button>
       )}
+    </div>
+  );
+}
+
+/**
+ * Quem deste cliente consegue responder pelo portal. Sem ninguém, o operador libera o acesso e cria
+ * a senha aqui mesmo (inclusive cadastrando o contato), sem sair do equipamento.
+ */
+function QuemRespondeNoPortal({ equipamento }: { equipamento: Equipamento }) {
+  const [contatos, setContatos] = useState<ClienteContato[] | null>(null);
+  const [aberto, setAberto] = useState(false);
+  const clienteId = equipamento.cliente_id;
+  const empresaId = equipamento.empresa_id;
+
+  const carregar = useCallback(async () => {
+    if (!clienteId || !empresaId) return;
+    try {
+      setContatos(await db.listarClienteContatos(clienteId, empresaId));
+    } catch {
+      setContatos(null);
+    }
+  }, [clienteId, empresaId]);
+
+  useEffect(() => { void carregar(); }, [carregar]);
+
+  if (!clienteId) {
+    return <p className="text-xs text-muted-foreground">Atendimento sem cliente cadastrado: vincule um cliente para usar o portal.</p>;
+  }
+  if (!contatos) return null;
+  const respondem = contatos.filter(respondeNoPortal);
+
+  return (
+    <div className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-md border bg-background px-3 py-2">
+      {respondem.length > 0 ? (
+        <p className="flex min-w-0 flex-1 items-center gap-1.5">
+          <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-600" aria-hidden="true" />
+          <span>
+            Quem responde no portal:{" "}
+            {respondem.map((contato, indice) => (
+              <span key={contato.id}>
+                {indice > 0 && ", "}
+                <strong>{contato.nome}</strong>
+                {contato.portal_senha_provisoria && <span className="text-muted-foreground"> (ainda não entrou)</span>}
+              </span>
+            ))}
+          </span>
+        </p>
+      ) : (
+        <p className="min-w-0 flex-1 text-muted-foreground">Ninguém deste cliente pode responder pelo portal.</p>
+      )}
+      <Button size="sm" variant={respondem.length > 0 ? "ghost" : "default"} onClick={() => setAberto(true)}>
+        <KeyRound className="mr-1 h-4 w-4" /> {respondem.length > 0 ? "Gerenciar acesso" : "Dar acesso a um contato"}
+      </Button>
+      <AcessoPortalDialog
+        open={aberto}
+        onOpenChange={setAberto}
+        clienteId={clienteId}
+        empresaId={empresaId}
+        responsavelContatoId={equipamento.responsavel_contato_id}
+        onAlterado={() => void carregar()}
+      />
     </div>
   );
 }

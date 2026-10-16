@@ -131,9 +131,11 @@ export function ClienteContatosPanel({ cliente, empresaId }: ClienteContatosPane
     if (!contato.id) return;
     setAlterandoAcesso(contato.id);
     try {
-      await db.definirAcessoPortalContato(contato.id, acesso);
+      const atualizado = await db.definirAcessoPortalContato(contato.id, acesso);
       success("Clientes", ACESSO_PORTAL[acesso] + ".", "Portal do cliente");
       await carregarContatos();
+      // Liberar e criar a senha é um passo só: sem senha o contato não consegue entrar.
+      if (acesso !== "NENHUM" && !atualizado?.portal_senha_definida_em) setSenhaDe(atualizado ?? { ...contato, portal_acesso: acesso });
     } catch (cause) {
       showError("Clientes", "Alterar acesso ao portal", cause);
     } finally {
