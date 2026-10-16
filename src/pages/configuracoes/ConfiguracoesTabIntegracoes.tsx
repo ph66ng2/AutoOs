@@ -5,6 +5,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { TabsContent } from "@/components/ui/tabs";
+import { PortalFuncionamentoCard } from "@/components/configuracoes/PortalFuncionamentoCard";
 import { PortalContatoEmpresaCard } from "@/components/configuracoes/PortalContatoEmpresaCard";
 import type { SmtpFormValues, WhatsappFormValues } from "./configuracoes-shared";
 
@@ -285,6 +286,7 @@ export function ConfiguracoesTabIntegracoes({
           )}
         </CardContent>
       </Card>
+      <PortalFuncionamentoCard />
       <PortalContatoEmpresaCard />
     </TabsContent>
   );

@@ -358,3 +358,81 @@ mod tests {
         assert_eq!(texto(Some(" abcdef "), 3).as_deref(), Some("abc"));
     }
 }
+
+/// Liga/desliga do portal e situação da efetivação automática, para Configurações.
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct EstadoPortal {
+    /// `portal_cliente_config.portal_enabled`: login e consulta dos atendimentos.
+    pub portal_ativo: bool,
+    /// `orcamento_aceite_config.online_enabled`: aceitar, recusar e negociar pelo portal.
+    pub respostas_ativas: bool,
+    /// Respostas desta empresa que passaram do prazo de correção (+5 min) sem serem aplicadas nem
+    /// falharem: sinal de que o agendamento da efetivação no Supabase não está rodando.
+    pub respostas_atrasadas: i64,
+}
+
+#[tauri::command]
+pub async fn obter_estado_portal() -> Result<EstadoPortal, String> {
+    let pool = get_pool().await.map_err(|e| e.to_string())?;
+    let empresa_id = require_active_session_company_id(&pool).await?;
+    let (portal_ativo, respostas_ativas, respostas_atrasadas): (bool, bool, i64) = sqlx::query_as(
+        "SELECT
+            COALESCE((SELECT portal_enabled FROM portal_cliente_config WHERE singleton), FALSE),
+            COALESCE((SELECT online_enabled FROM orcamento_aceite_config WHERE singleton), FALSE),
+            (SELECT COUNT(*) FROM orcamento_respostas r
+             JOIN orcamento_versoes v ON v.id = r.versao_id AND v.empresa_id = r.empresa_id
+             WHERE r.empresa_id = $1 AND r.origem = 'PORTAL_CLIENTE' AND r.decisao IN ('APROVAR', 'RECUSAR')
+               AND r.aplicada_em IS NULL AND r.efetivacao_falhou_em IS NULL AND v.encerrada_em IS NULL
+               AND NOT EXISTS (SELECT 1 FROM orcamento_respostas n WHERE n.versao_id = r.versao_id AND n.id > r.id)
+               AND r.registrada_em < NOW() - make_interval(mins => GREATEST(
+                   COALESCE((SELECT janela_correcao_minutos FROM orcamento_aceite_config WHERE singleton), 15), 15) + 5))",
+    )
+    .bind(empresa_id)
+    .fetch_one(&pool)
+    .await
+    .map_err(super::operator_errors::mapear_erro_sql)?;
+    Ok(EstadoPortal { portal_ativo, respostas_ativas, respostas_atrasadas })
+}
+
+/// Liga/desliga o portal (gestão de links) e as respostas pelo portal (permissão financeira).
+/// Desligar não apaga nada: o login cai na hora e as sessões voltam a valer ao religar.
+#[tauri::command]
+#[instrument(skip_all, fields(portal_ativo = portal_ativo, respostas_ativas = respostas_ativas))]
+pub async fn definir_estado_portal(portal_ativo: bool, respostas_ativas: bool) -> Result<EstadoPortal, String> {
+    let actor = require_permission(PERMISSION_MANAGE_STATUS_LINKS)?;
+    let pool = get_pool().await.map_err(|e| e.to_string())?;
+    let mut tx = pool.begin().await.map_err(super::operator_errors::mapear_erro_sql)?;
+    let respostas_antes: bool = sqlx::query_scalar(
+        "SELECT COALESCE((SELECT online_enabled FROM orcamento_aceite_config WHERE singleton FOR UPDATE), FALSE)",
+    )
+    .fetch_one(&mut *tx)
+    .await
+    .map_err(super::operator_errors::mapear_erro_sql)?;
+    if respostas_antes != respostas_ativas {
+        // Clientes aprovando orçamentos mexem em status, pagamento e estoque.
+        require_permission(PERMISSION_FINANCIAL_ACTIONS)?;
+    }
+    sqlx::query("UPDATE portal_cliente_config SET portal_enabled = $1, updated_at = NOW() WHERE singleton")
+        .bind(portal_ativo)
+        .execute(&mut *tx)
+        .await
+        .map_err(super::operator_errors::mapear_erro_sql)?;
+    sqlx::query(
+        "INSERT INTO orcamento_aceite_config (singleton, online_enabled) VALUES (TRUE, $1)
+         ON CONFLICT (singleton) DO UPDATE SET online_enabled = EXCLUDED.online_enabled",
+    )
+    .bind(respostas_ativas)
+    .execute(&mut *tx)
+    .await
+    .map_err(super::operator_errors::mapear_erro_sql)?;
+    tx.commit().await.map_err(super::operator_errors::mapear_erro_sql)?;
+    record_security_event(
+        "PORTAL_CONFIG_CHANGED",
+        Some(&actor),
+        format!("portal_enabled={portal_ativo}; online_enabled={respostas_ativas}"),
+        true,
+    )
+    .await;
+    obter_estado_portal().await
+}

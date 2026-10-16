@@ -277,6 +277,14 @@ export interface DecisaoOrcamentoInfo {
   efetivacaoAutomatica?: boolean;
 }
 
+/** Liga/desliga do Portal do Cliente (Configurações → Integrações). */
+export interface EstadoPortal {
+  portalAtivo: boolean;
+  respostasAtivas: boolean;
+  /** Respostas vencidas e não aplicadas: o agendamento da efetivação pode estar parado. */
+  respostasAtrasadas: number;
+}
+
 /** Alerta interno persistente gerado pelo Portal do Cliente. */
 export interface AlertaPortal {
   id: number;

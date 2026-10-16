@@ -62,6 +62,7 @@ import type {
   AnaliseCorrecaoDecisao,
   CorrigirDecisaoInput,
   DecisaoOrcamentoInfo,
+  EstadoPortal,
   PublicStatusLinkCreated,
   ResultadoEnvioWhatsapp,
   SolicitarEnvioWhatsappInput,
@@ -309,6 +310,14 @@ export const db = {
 
   async obterContatoPortalEmpresa(): Promise<ContatoPortalEmpresa | null> {
     return invoke<ContatoPortalEmpresa | null>("obter_contato_portal_empresa");
+  },
+
+  async obterEstadoPortal(): Promise<EstadoPortal> {
+    return invoke<EstadoPortal>("obter_estado_portal");
+  },
+
+  async definirEstadoPortal(portalAtivo: boolean, respostasAtivas: boolean): Promise<EstadoPortal> {
+    return invoke<EstadoPortal>("definir_estado_portal", { portalAtivo, respostasAtivas });
   },
 
   async salvarContatoPortalEmpresa(input: ContatoPortalEmpresa): Promise<ContatoPortalEmpresa> {

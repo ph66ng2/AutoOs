@@ -170,6 +170,8 @@ fn main() {
             commands::portal_cliente::publicar_orcamento_portal,
             commands::portal_cliente::obter_contato_portal_empresa,
             commands::portal_cliente::salvar_contato_portal_empresa,
+            commands::portal_cliente::obter_estado_portal,
+            commands::portal_cliente::definir_estado_portal,
             commands::orcamento_correcao::analisar_correcao_decisao,
             commands::orcamento_correcao::corrigir_decisao_orcamento,
             commands::envio_whatsapp::solicitar_envio_whatsapp,
