@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Aplica as migrations 0001-0030 num Postgres local vazio, roda o seed duas
+# Aplica todas as migrations (0001 em diante, sem buracos) num Postgres local vazio, roda o seed duas
 # vezes e confere que saldo, preço, SKU inativo e movimentações sobrevivem.
 # Recusa host remoto. Ignora DATABASE_URL e qualquer credencial de produção.
 # O banco autoos_seed_verify é recriado a cada execução.
@@ -101,16 +101,20 @@ expect_seed_failure() {
 }
 
 mapfile -t migration_files < <(find "$MIGRATIONS" -maxdepth 1 -type f -name '*.sql' | sort)
-if [[ "${#migration_files[@]}" -ne 30 ]]; then
-  echo "Esperadas 30 migrations (0001-0030); encontradas ${#migration_files[@]}." >&2
+# O seed nasceu na 0020; as migrations posteriores entram na mesma ordem do aplicativo.
+if [[ "${#migration_files[@]}" -lt 30 ]]; then
+  echo "Esperadas pelo menos 30 migrations (0001-0030); encontradas ${#migration_files[@]}." >&2
   exit 1
 fi
-first="$(basename "${migration_files[0]}")"
-last="$(basename "${migration_files[29]}")"
-if [[ "$first" != 0001_* || "$last" != 0030_* ]]; then
-  echo "A sequência precisa ir de 0001 a 0030 (achados: $first ... $last)." >&2
-  exit 1
-fi
+for index in "${!migration_files[@]}"; do
+  expected="$(printf '%04d' "$((index + 1))")"
+  if [[ "$(basename "${migration_files[$index]}")" != "${expected}"_* ]]; then
+    echo "A sequência de migrations tem um buraco ou duplicata perto de ${expected} ($(basename "${migration_files[$index]}"))." >&2
+    exit 1
+  fi
+done
+last_migration="$(basename "${migration_files[-1]}")"
+last_migration="${last_migration%%_*}"
 
 if [[ -n "$seed_user" ]]; then
   echo "Recriando $DB_NAME em 127.0.0.1:$seed_port"
@@ -121,7 +125,7 @@ psql_cmd -d postgres -c "SELECT pg_terminate_backend(pid) FROM pg_stat_activity 
 psql_cmd -d postgres -c "DROP DATABASE IF EXISTS ${DB_NAME};" >/dev/null
 psql_cmd -d postgres -c "CREATE DATABASE ${DB_NAME};" >/dev/null
 
-echo "Aplicando migrations 0001-0030"
+echo "Aplicando migrations 0001-${last_migration}"
 for file in "${migration_files[@]}"; do
   psql_cmd -d "$DB_NAME" -f "$file" >/dev/null
 done
@@ -357,4 +361,4 @@ psql_cmd_for_empresa 1 -d "$DB_NAME" -f "$CONFIRM"
 expect_seed_failure "encontrados 41" \
   psql_cmd_for_empresa 2 -d "$DB_NAME" -f "$CONFIRM"
 
-echo "SEED_VERIFY_OK migrations=0001-0030 idempotent=1 movements_preserved=1 inactive_preserved=1 company_scoped=1"
+echo "SEED_VERIFY_OK migrations=0001-${last_migration} idempotent=1 movements_preserved=1 inactive_preserved=1 company_scoped=1"

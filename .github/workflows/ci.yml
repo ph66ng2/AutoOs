@@ -169,6 +169,9 @@ jobs:
           AUTOOS_MIGRATION_MODE: ci
         run: cargo run --manifest-path src-tauri/Cargo.toml --locked --quiet --bin ci_migrate
 
+      - name: Contrato SQL do Portal do Cliente
+        run: psql "$DATABASE_URL" --no-psqlrc --set ON_ERROR_STOP=1 --quiet --file=supabase/tests/portal_cliente_contract.sql
+
       - name: Install Playwright browser
         run: npx playwright install --with-deps chromium
 

@@ -222,7 +222,7 @@ function App() {
   if (!dbReady) {
     return (
       <>
-        <Toaster position="top-right" visibleToasts={3} richColors closeButton duration={5000} />
+        <Toaster position="top-right" offset={{ top: 64, right: 24 }} visibleToasts={3} richColors closeButton duration={5000} />
         <ErrorBoundary>
           <DatabaseConfigDialog onConfigured={() => setDbReady(true)} />
         </ErrorBoundary>
@@ -232,7 +232,7 @@ function App() {
 
   return (
     <>
-      <Toaster position="top-right" visibleToasts={3} richColors closeButton duration={5000} />
+      <Toaster position="top-right" offset={{ top: 64, right: 24 }} visibleToasts={3} richColors closeButton duration={5000} />
       <ErrorBoundary>
         <AppContent />
       </ErrorBoundary>

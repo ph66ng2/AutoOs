@@ -26,7 +26,11 @@
 import { invoke as tauriInvoke } from "@tauri-apps/api/core";
 import { withSensitiveAccessRetry } from "@/lib/sensitive-action-retry";
 import type {
+  AcessoPortalContato,
   AjusteOrcamentoInput,
+  AlertaPortal,
+  ContatoPortalEmpresa,
+  OrcamentoPublicado,
   AprovarOrcamentoInput,
   ConsumoOrcamento,
   Cliente,
@@ -55,7 +59,13 @@ import type {
   PostgresBackupResult,
   PostgresRestoreResult,
   PostgresBackupToolsStatus,
+  AnaliseCorrecaoDecisao,
+  CorrigirDecisaoInput,
+  DecisaoOrcamentoInfo,
+  EstadoPortal,
   PublicStatusLinkCreated,
+  ResultadoEnvioWhatsapp,
+  SolicitarEnvioWhatsappInput,
   PublicStatusLinkInfo,
   PaginatedResult,
   Produto,
@@ -269,6 +279,72 @@ export const db = {
 
   async revogarLinkStatusPublico(equipamentoId: number): Promise<boolean> {
     return invoke<boolean>("revogar_link_status_publico", { equipamentoId });
+  },
+
+  // ─── Portal das Impressoras do Cliente ─────────────────
+  async listarAlertasPortal(apenasNaoLidos: boolean, limite = 50): Promise<AlertaPortal[]> {
+    return invoke<AlertaPortal[]>("listar_alertas_portal", { apenasNaoLidos, limite });
+  },
+
+  async contarAlertasPortalNaoLidos(): Promise<number> {
+    return invoke<number>("contar_alertas_portal_nao_lidos");
+  },
+
+  /** Sem `alertaId`, marca todos os não lidos da empresa ativa. */
+  async marcarAlertasPortalLidos(alertaId?: number): Promise<number> {
+    return invoke<number>("marcar_alertas_portal_lidos", { alertaId: alertaId ?? null });
+  },
+
+  async definirAcessoPortalContato(contatoId: number, acesso: AcessoPortalContato): Promise<ClienteContato> {
+    return invoke<ClienteContato>("definir_acesso_portal_contato", { contatoId, acesso });
+  },
+
+  /** `senha = null` remove a senha. A senha não volta do backend; só a data em que foi criada. */
+  async definirSenhaPortalContato(contatoId: number, senha: string | null): Promise<ClienteContato> {
+    return invoke<ClienteContato>("definir_senha_portal_contato", { contatoId, senha });
+  },
+
+  async publicarOrcamentoPortal(equipamentoId: number): Promise<OrcamentoPublicado> {
+    return invoke<OrcamentoPublicado>("publicar_orcamento_portal", { equipamentoId });
+  },
+
+  async obterContatoPortalEmpresa(): Promise<ContatoPortalEmpresa | null> {
+    return invoke<ContatoPortalEmpresa | null>("obter_contato_portal_empresa");
+  },
+
+  async obterEstadoPortal(): Promise<EstadoPortal> {
+    return invoke<EstadoPortal>("obter_estado_portal");
+  },
+
+  async definirEstadoPortal(portalAtivo: boolean, respostasAtivas: boolean): Promise<EstadoPortal> {
+    return invoke<EstadoPortal>("definir_estado_portal", { portalAtivo, respostasAtivas });
+  },
+
+  async salvarContatoPortalEmpresa(input: ContatoPortalEmpresa): Promise<ContatoPortalEmpresa> {
+    return invoke<ContatoPortalEmpresa>("salvar_contato_portal_empresa", { input });
+  },
+
+  async obterDecisaoOrcamento(equipamentoId: number): Promise<DecisaoOrcamentoInfo | null> {
+    return invoke<DecisaoOrcamentoInfo | null>("obter_decisao_orcamento", { equipamentoId });
+  },
+
+  /** Único ponto de envio de WhatsApp ao cliente → Rust: solicitar_envio_whatsapp */
+  async solicitarEnvioWhatsapp(input: SolicitarEnvioWhatsappInput): Promise<ResultadoEnvioWhatsapp> {
+    return invoke<ResultadoEnvioWhatsapp>("solicitar_envio_whatsapp", { input });
+  },
+
+  async marcarSolicitacaoOrcamentoTratada(solicitacaoId: number): Promise<boolean> {
+    return invoke<boolean>("marcar_solicitacao_orcamento_tratada", { solicitacaoId });
+  },
+
+  /** Mostra o que a aprovação fez (pagamento, valores, peças baixadas) → Rust: analisar_correcao_decisao */
+  async analisarCorrecaoDecisao(equipamentoId: number): Promise<AnaliseCorrecaoDecisao> {
+    return invoke<AnaliseCorrecaoDecisao>("analisar_correcao_decisao", { equipamentoId });
+  },
+
+  /** Reabre o orçamento desfazendo pagamento, serviços e (com confirmação) baixas de estoque. */
+  async corrigirDecisaoOrcamento(input: CorrigirDecisaoInput): Promise<Equipamento> {
+    return invoke<Equipamento>("corrigir_decisao_orcamento", { input });
   },
 
   async gerarQrLinkStatusPublico(url: string): Promise<string> {

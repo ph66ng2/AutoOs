@@ -2,6 +2,10 @@
 
 O portal permite que o cliente consulte a etapa atual de um ciclo de atendimento por um link individual. A página é somente para leitura: não altera status nem aprova orçamento.
 
+> O mesmo endereço agora abre o **Portal das Impressoras do Cliente** (login por CPF/CNPJ + senha, lista de atendimentos e resposta ao orçamento) quando não há `#/c/<token>` na URL. Os links individuais já enviados continuam funcionando sem mudança. Veja `docs/PORTAL_CLIENTE.md`.
+
+> A resposta ao orçamento é feita no Portal do Cliente, com login. O antigo link de decisão `#/o/<token>` foi removido (0037); quem abrir um endereço assim cai no login do portal.
+
 ## Dados e segurança
 
 - O AutoOS gera um token aleatório de 32 bytes e salva somente seu hash SHA-256 em `links_status_publico`.

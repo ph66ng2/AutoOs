@@ -495,6 +495,8 @@ async fn main() -> Result<()> {
     let denied = equipamentos::aprovar_orcamento(AprovarOrcamentoInput {
         servicos_aprovados: vec!["test-service".to_string()],
         aprovado: None,
+        resposta_esperada_id: None,
+        motivo_divergencia: None,
         empresa_id,
         equipamento_id: equipamento.id,
         expected_updated_em: approval_token.clone(),
@@ -552,6 +554,8 @@ async fn main() -> Result<()> {
     let stale_approval = equipamentos::aprovar_orcamento(AprovarOrcamentoInput {
         servicos_aprovados: vec!["test-service".to_string()],
         aprovado: None,
+        resposta_esperada_id: None,
+        motivo_divergencia: None,
         empresa_id,
         equipamento_id: equipamento.id,
         expected_updated_em: "2000-01-01T00:00:00Z".to_string(),
@@ -578,6 +582,8 @@ async fn main() -> Result<()> {
     let equipamento_aprovado = equipamentos::aprovar_orcamento(AprovarOrcamentoInput {
         servicos_aprovados: vec!["test-service".to_string()],
         aprovado: None,
+        resposta_esperada_id: None,
+        motivo_divergencia: None,
         empresa_id,
         equipamento_id: equipamento.id,
         expected_updated_em: approval_token,
@@ -760,6 +766,8 @@ async fn main() -> Result<()> {
         pagamento: FormaPagamento { codigo: FormaPagamentoCodigo::Pix, detalhe: None },
         servicos_aprovados: vec![],
         aprovado: Some(true),
+        resposta_esperada_id: None,
+        motivo_divergencia: None,
     }).await.map_err(|error| anyhow!(error))?;
     assert_approval_state(&pool, legacy_equipment_id, "APROVADO", Some("PIX")).await?;
     let legacy_budget_totals: (Option<f64>, Option<f64>) = sqlx::query_as(
@@ -803,6 +811,8 @@ async fn main() -> Result<()> {
         },
         servicos_aprovados: vec![],
         aprovado: Some(false),
+        resposta_esperada_id: None,
+        motivo_divergencia: None,
     })
     .await
     .map_err(|error| anyhow!(error))?;

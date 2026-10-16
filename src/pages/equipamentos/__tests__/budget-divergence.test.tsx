@@ -86,6 +86,7 @@ vi.mock("@/lib/db", () => ({
     listarServicosCatalogoAtivos: (...args: unknown[]) => mockListarServicosCatalogoAtivos(...args),
     atualizarServicosVerificacao: (...args: unknown[]) => mockAtualizarServicosVerificacao(...args),
     aprovarOrcamento: (...args: unknown[]) => mockAprovarOrcamento(...args),
+    obterDecisaoOrcamento: () => Promise.resolve(null),
     atualizarStatusEquipamento: (...args: unknown[]) => mockAtualizarStatusEquipamento(...args),
     listarImagensEquipamento: (...args: unknown[]) => mockListarImagensEquipamento(...args),
     buscarEquipamentosPorSerial: (...args: unknown[]) => mockBuscarEquipamentosPorSerial(...args),

@@ -1,5 +1,9 @@
 //! Traduz erro de cadastro repetido para uma frase que o operador entende.
-//! O texto técnico do banco (chave duplicada, restrição, SQLSTATE) fica no log.
+//! O texto técnico do banco (mensagem, valores, nomes de tabela) fica no log.
+//!
+//! A primeira linha da resposta é um código técnico que o operador pode copiar e mandar ao
+//! suporte: `AUTOOS:DB:<SQLSTATE ou categoria>#<referência>`. A referência é a mesma gravada
+//! na linha do log, para achar o texto completo do erro.
 
 /// Reconhece duplicidade só pelo SQLSTATE 23505 e pelo nome estruturado da constraint.
 /// Um texto que apenas mencione "23505" ou "duplicate key" não é duplicidade.
@@ -13,11 +17,52 @@ pub fn mensagem_para_sqlstate(code: Option<&str>, constraint: Option<&str>) -> O
 
 pub const MENSAGEM_ERRO_GENERICO: &str = "Não foi possível concluir esta ação. O detalhe técnico foi registrado no log do aplicativo.";
 
-/// Código genérico de banco. O SQLSTATE que não é 23505 fica só no log.
+/// Código genérico de banco. Vem seguido do SQLSTATE (ou da categoria do erro) e da referência.
 pub const CODIGO_BANCO: &str = "AUTOOS:DB";
+
+/// Erro de arquivo, processo ou serialização (sem banco).
+pub const CODIGO_OPERACIONAL: &str = "AUTOOS:OP";
 
 fn resposta_estruturada(codigo: &str, mensagem: &str) -> String {
     format!("{codigo}\n{mensagem}")
+}
+
+/// Referência curta que liga o erro copiado pelo operador à linha do log.
+/// Sem 0/1/I/L/O para ser lida em voz alta sem ambiguidade.
+pub fn nova_referencia() -> String {
+    const ALFABETO: &[u8] = b"ABCDEFGHJKMNPQRSTUVWXYZ23456789";
+    uuid::Uuid::new_v4()
+        .as_bytes()
+        .iter()
+        .take(8)
+        .map(|byte| ALFABETO[usize::from(*byte) % ALFABETO.len()] as char)
+        .collect()
+}
+
+/// SQLSTATE do Postgres ou a categoria do erro sqlx. Nunca leva texto livre do banco.
+pub fn assinatura_tecnica(error: &sqlx::Error) -> String {
+    let categoria = match error {
+        sqlx::Error::Database(banco) => {
+            return banco
+                .code()
+                .filter(|code| code.len() == 5 && code.chars().all(|c| c.is_ascii_alphanumeric()))
+                .map(|code| code.to_ascii_uppercase())
+                .unwrap_or_else(|| "BANCO".to_string());
+        }
+        sqlx::Error::PoolTimedOut => "POOL_TIMEOUT",
+        sqlx::Error::PoolClosed => "POOL_FECHADO",
+        sqlx::Error::Io(_) => "REDE",
+        sqlx::Error::Tls(_) => "TLS",
+        sqlx::Error::Protocol(_) => "PROTOCOLO",
+        sqlx::Error::RowNotFound => "SEM_LINHA",
+        sqlx::Error::ColumnNotFound(_) | sqlx::Error::ColumnIndexOutOfBounds { .. } => "COLUNA",
+        sqlx::Error::ColumnDecode { .. } | sqlx::Error::Decode(_) => "DECODE",
+        sqlx::Error::Encode(_) => "ENCODE",
+        sqlx::Error::Configuration(_) => "CONFIG",
+        sqlx::Error::Migrate(_) => "MIGRATION",
+        _ => "OUTRO",
+    };
+    categoria.to_string()
 }
 
 /// Código que o frontend reconhece. Não é uma frase, então um texto solto com
@@ -49,21 +94,33 @@ pub fn mapear_erro_sql(error: sqlx::Error) -> String {
 /// Erros de processo, arquivo e serialização não possuem SQLSTATE.
 /// Registra o detalhe técnico sem expô-lo na resposta do comando.
 pub fn mapear_erro_operacional(error: impl std::fmt::Display) -> String {
-    tracing::error!(erro = %error, "erro operacional ocultado do operador");
-    MENSAGEM_ERRO_GENERICO.to_string()
+    let referencia = nova_referencia();
+    tracing::error!(referencia = %referencia, erro = %error, "erro operacional ocultado do operador");
+    resposta_estruturada(&format!("{CODIGO_OPERACIONAL}#{referencia}"), MENSAGEM_ERRO_GENERICO)
 }
 
 pub fn erro_sql_para_operador(error: &sqlx::Error) -> String {
+    let referencia = nova_referencia();
     if let Some(codigo) = mensagem_duplicidade_sql(error) {
         let restricao = error
             .as_database_error()
             .and_then(|banco| banco.constraint())
             .unwrap_or("");
-        tracing::error!(erro = %error, "cadastro duplicado; o operador recebe o código estruturado e a frase");
-        return resposta_estruturada(&codigo, texto_para_operador(restricao));
+        tracing::error!(referencia = %referencia, erro = %error, "cadastro duplicado; o operador recebe o código estruturado e a frase");
+        return resposta_estruturada(&format!("{codigo}#{referencia}"), texto_para_operador(restricao));
     }
-    tracing::error!(erro = %error, "erro de banco ocultado do operador");
-    resposta_estruturada(CODIGO_BANCO, MENSAGEM_ERRO_GENERICO)
+    tracing::error!(referencia = %referencia, erro = %error, "erro de banco ocultado do operador");
+    resposta_estruturada(
+        &format!("{CODIGO_BANCO}:{}#{referencia}", assinatura_tecnica(error)),
+        MENSAGEM_ERRO_GENERICO,
+    )
+}
+
+/// Troca a frase de uma resposta estruturada mantendo o código técnico e a referência.
+pub fn trocar_frase(resposta: &str, frase: &str) -> String {
+    let codigo = resposta.split_once('\n').map_or(resposta, |(codigo, _)| codigo);
+    let codigo = if codigo.starts_with("AUTOOS:") { codigo } else { CODIGO_BANCO };
+    resposta_estruturada(codigo, frase)
 }
 
 fn texto_para_operador(constraint: &str) -> &'static str {
@@ -151,7 +208,7 @@ mod tests {
         assert!(super::codigo_duplicado_estruturado(Some("23502"), Some("ux_clientes_documento_ativo")).is_none());
         let visivel = super::erro_sql_para_operador(&protocolo);
         let (codigo, mensagem) = visivel.split_once('\n').expect("código e frase");
-        assert_eq!(codigo, super::CODIGO_BANCO);
+        assert!(codigo.starts_with("AUTOOS:DB:PROTOCOLO#"), "{codigo}");
         assert_eq!(mensagem, super::MENSAGEM_ERRO_GENERICO);
         assert!(!visivel.contains("23505"));
         assert!(!visivel.to_lowercase().contains("constraint"));
@@ -211,7 +268,9 @@ mod tests {
         let tecnico = error.to_string();
         let visivel = super::mapear_erro_sql(error);
         let (codigo, mensagem) = visivel.split_once('\n').expect("código e frase");
-        assert_eq!(codigo, super::CODIGO_BANCO);
+        assert!(codigo.starts_with("AUTOOS:DB:"), "{codigo}");
+        let (_, referencia) = codigo.split_once('#').expect("referência do log");
+        assert_eq!(referencia.len(), 8);
         assert_eq!(mensagem, super::MENSAGEM_ERRO_GENERICO);
         assert!(!visivel.contains(&tecnico));
         assert!(!mensagem.contains("SQLSTATE"));
@@ -228,7 +287,7 @@ mod tests {
         });
         let visivel = super::mapear_erro_sql(error);
         let (codigo, mensagem) = visivel.split_once('\n').expect("código e frase");
-        assert_eq!(codigo, "AUTOOS:23505:ux_clientes_documento_ativo");
+        assert!(codigo.starts_with("AUTOOS:23505:ux_clientes_documento_ativo#"), "{codigo}");
         assert!(mensagem.contains("cliente já está cadastrado"));
         assert!(!mensagem.contains("23505"));
         assert!(!mensagem.contains("ux_clientes_documento_ativo"));
@@ -255,5 +314,31 @@ mod tests {
         assert_banco_generico(sqlx::Error::Protocol(
             "duplicate key value violates unique constraint \"clientes_pkey\" SQLSTATE 23505".to_string(),
         ));
+    }
+
+    #[test]
+    fn codigo_tecnico_leva_sqlstate_categoria_e_referencia_sem_texto_do_banco() {
+        let tabela = sqlx::Error::database(BancoFalso {
+            code: "42P01",
+            constraint: None,
+            message: "relation \"tabela_secreta\" does not exist",
+        });
+        let visivel = super::mapear_erro_sql(tabela);
+        assert!(visivel.starts_with("AUTOOS:DB:42P01#"), "{visivel}");
+        assert!(!visivel.contains("tabela_secreta"));
+        assert!(super::mapear_erro_sql(sqlx::Error::PoolTimedOut).starts_with("AUTOOS:DB:POOL_TIMEOUT#"));
+
+        let operacional = super::mapear_erro_operacional("permission denied: /home/x/arquivo");
+        let (codigo, frase) = operacional.split_once('\n').expect("código e frase");
+        assert!(codigo.starts_with("AUTOOS:OP#"));
+        assert_eq!(frase, super::MENSAGEM_ERRO_GENERICO);
+        assert!(!operacional.contains("arquivo"));
+
+        assert_ne!(super::nova_referencia(), super::nova_referencia());
+        assert!(super::nova_referencia().chars().all(|c| !"01ILO".contains(c)));
+        assert_eq!(
+            super::trocar_frase("AUTOOS:DB:42P01#ABCDEFGH\nfrase antiga", "Nova frase."),
+            "AUTOOS:DB:42P01#ABCDEFGH\nNova frase."
+        );
     }
 }

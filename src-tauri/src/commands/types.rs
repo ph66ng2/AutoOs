@@ -269,6 +269,12 @@ pub struct AprovarOrcamentoInput {
     /// Decisão explícita permite aprovar orçamentos legados sem serviços detalhados.
     #[serde(default)]
     pub aprovado: Option<bool>,
+    /// Id da resposta do cliente que a tela mostrava (0/ausente = nenhuma). Se mudou, a aplicação falha.
+    #[serde(default)]
+    pub resposta_esperada_id: Option<i64>,
+    /// Obrigatório para aplicar uma decisão diferente da registrada pelo cliente.
+    #[serde(default)]
+    pub motivo_divergencia: Option<String>,
 }
 
 /// Input para registrar comunicação (email/WhatsApp).
@@ -431,6 +437,11 @@ pub struct EquipamentoRow {
     pub data_saida: Option<String>,
     pub valor_orcamento: Option<f64>,
     pub valor_final: Option<f64>,
+    /// Última resposta do cliente ainda não aplicada pela equipe; só em AGUARDANDO_APROVACAO.
+    pub resposta_cliente: Option<String>,
+    /// Situação da `resposta_cliente`: `EM_CORRECAO` (cliente ainda pode mudar), `PROCESSANDO`
+    /// (efetivação automática a caminho), `PENDENTE_EQUIPE` (efetivação falhou) ou `AGUARDANDO_EQUIPE`.
+    pub resposta_cliente_situacao: Option<String>,
     pub criado_em: Option<String>,
     pub atualizado_em: Option<String>,
 }
@@ -559,6 +570,10 @@ pub struct ClienteContato {
     pub email: Option<String>,
     pub telefone: Option<String>,
     pub ativo: bool,
+    /// `NENHUM`, `ACOMPANHAR` ou `DECIDIR` (Portal das Impressoras do Cliente).
+    pub portal_acesso: String,
+    /// Quando o operador definiu a senha do portal (`None` = sem senha). O hash nunca sai do banco.
+    pub portal_senha_definida_em: Option<String>,
     pub criado_em: String,
     pub atualizado_em: String,
 }
@@ -627,6 +642,36 @@ pub const EQUIPAMENTO_SELECT: &str = "
                )
            )::FLOAT8 as valor_orcamento,
            valor_final::FLOAT8 as valor_final,
+           -- Resposta do cliente ao orçamento ainda não aplicada pela equipe (APROVAR, RECUSAR ou DESFEITA).
+           CASE WHEN equipamentos.status = 'AGUARDANDO_APROVACAO' THEN (
+               SELECT r.decisao
+                 FROM orcamento_respostas r
+                 JOIN orcamento_versoes v ON v.id = r.versao_id AND v.empresa_id = r.empresa_id
+                WHERE r.equipamento_id = equipamentos.id
+                  AND r.empresa_id = equipamentos.empresa_id
+                  AND v.encerrada_em IS NULL
+                  AND NOT EXISTS (
+                      SELECT 1 FROM orcamento_respostas aplicada
+                       WHERE aplicada.versao_id = v.id AND aplicada.aplicada_em IS NOT NULL
+                  )
+                ORDER BY r.id DESC
+                LIMIT 1
+           ) END AS resposta_cliente,
+           CASE WHEN equipamentos.status = 'AGUARDANDO_APROVACAO' THEN (
+               SELECT autoos_portal_estado_resposta(r.origem, r.decisao, r.registrada_em, r.aplicada_em,
+                                                    r.efetivacao_falhou_em, FALSE)
+                 FROM orcamento_respostas r
+                 JOIN orcamento_versoes v ON v.id = r.versao_id AND v.empresa_id = r.empresa_id
+                WHERE r.equipamento_id = equipamentos.id
+                  AND r.empresa_id = equipamentos.empresa_id
+                  AND v.encerrada_em IS NULL
+                  AND NOT EXISTS (
+                      SELECT 1 FROM orcamento_respostas aplicada
+                       WHERE aplicada.versao_id = v.id AND aplicada.aplicada_em IS NOT NULL
+                  )
+                ORDER BY r.id DESC
+                LIMIT 1
+           ) END AS resposta_cliente_situacao,
            criado_em::TEXT as criado_em, atualizado_em::TEXT as atualizado_em
     FROM equipamentos";
 
@@ -762,7 +807,8 @@ pub const VERIFICACAO_SELECT: &str = "
     FROM verificacoes";
 
 pub const CLIENTE_CONTATO_SELECT: &str = "
-    SELECT id, empresa_id, cliente_id, nome, email, telefone, ativo,
+    SELECT id, empresa_id, cliente_id, nome, email, telefone, ativo, portal_acesso,
+           portal_senha_definida_em::TEXT AS portal_senha_definida_em,
            criado_em::TEXT as criado_em, atualizado_em::TEXT as atualizado_em
     FROM cliente_contatos";
 

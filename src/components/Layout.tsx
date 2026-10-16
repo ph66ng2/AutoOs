@@ -31,6 +31,7 @@ import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { SensitiveAccessBadge, useSensitiveAccess } from "@/hooks/useSensitiveAccess";
 import { SENSITIVE_PERMISSIONS, type SensitivePermission } from "@/types";
+import { PortalAlertasSino } from "@/components/PortalAlertas";
 
 /** Itens de navegação da sidebar. Cada item mapeia para uma rota do React Router */
 const navItems: {
@@ -149,7 +150,14 @@ export function Layout() {
 
       {/* Main Content */}
       <main className="min-w-0 flex-1 overflow-auto bg-background">
-        <header className="sticky top-0 z-20 flex h-14 items-center gap-3 border-b bg-background px-4 md:hidden"><Button type="button" variant="outline" size="icon" aria-label="Abrir menu" aria-expanded={mobileOpen} aria-controls="main-sidebar" onClick={() => setMobileOpen(true)}><Menu className="h-5 w-5" /></Button><span className="font-semibold">AutoOS</span></header>
+        {/* Faixa superior: menu no celular e, à direita, as notificações (logo acima dos avisos). */}
+        <header className="sticky top-0 z-30 flex h-14 items-center gap-3 border-b bg-background/95 px-4 backdrop-blur supports-[backdrop-filter]:bg-background/80 md:px-6">
+          <Button type="button" variant="outline" size="icon" className="md:hidden" aria-label="Abrir menu" aria-expanded={mobileOpen} aria-controls="main-sidebar" onClick={() => setMobileOpen(true)}><Menu className="h-5 w-5" /></Button>
+          <span className="font-semibold md:hidden">AutoOS</span>
+          <div className="ml-auto flex items-center gap-2">
+            <PortalAlertasSino />
+          </div>
+        </header>
         <div className="mx-auto max-w-7xl p-4 md:p-6">
           <Outlet />
         </div>

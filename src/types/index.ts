@@ -143,6 +143,10 @@ export interface Equipamento {
   data_saida?: string;
   valor_orcamento?: number;
   valor_final?: number;
+  /** Última resposta do cliente ao orçamento que a equipe ainda não aplicou (só em AGUARDANDO_APROVACAO). */
+  resposta_cliente?: "APROVAR" | "RECUSAR" | "DESFEITA" | null;
+  /** EM_CORRECAO: cliente ainda pode mudar; PROCESSANDO: efetivação automática; PENDENTE_EQUIPE: efetivação falhou. */
+  resposta_cliente_situacao?: "EM_CORRECAO" | "PROCESSANDO" | "PENDENTE_EQUIPE" | "AGUARDANDO_EQUIPE" | null;
   // Auditoria
   criado_em?: string;
   atualizado_em?: string;
@@ -169,6 +173,150 @@ export interface PublicStatusLinkInfo {
 export interface PublicStatusLinkCreated {
   url: string;
   expiresAt: string;
+}
+
+export type DecisaoOrcamento = "APROVAR" | "RECUSAR" | "DESFEITA";
+
+export interface RespostaOrcamentoInfo {
+  id: number;
+  /** PORTAL_CLIENTE: contato autorizado no Portal do Cliente. PORTAL (link de decisão) e EQUIPE ficaram só no histórico. */
+  origem: "PORTAL" | "EQUIPE" | "PORTAL_CLIENTE";
+  decisao: DecisaoOrcamento;
+  registradaEm: string;
+  registradaPor?: string | null;
+  motivo?: string | null;
+  aplicadaEm?: string | null;
+  contato?: string | null;
+  aplicadaPeloSistema?: boolean;
+  efetivacaoErro?: string | null;
+  efetivacaoFalhouEm?: string | null;
+}
+
+export type TipoEnvioWhatsapp = "orcamento_informativo" | "equipamento_pronto";
+
+export type EstadoEnvioWhatsapp =
+  | "ENFILEIRADA"
+  | "ENVIADA"
+  | "FALHOU"
+  | "INCERTA"
+  | "EM_ANDAMENTO"
+  | "JA_SOLICITADO"
+  | "REQUER_CONFIRMACAO";
+
+/** Resposta do comando central de envio. `ENVIADA` significa aceita pelo provedor, não entregue. */
+export interface ResultadoEnvioWhatsapp {
+  pedidoId?: number | null;
+  tentativaId?: number | null;
+  estado: EstadoEnvioWhatsapp;
+  ultimoEstado?: string | null;
+  mensagem?: string | null;
+}
+
+export interface SolicitarEnvioWhatsappInput {
+  equipamento_id: number;
+  tipo: TipoEnvioWhatsapp;
+  /** Gesto explícito do operador: cria outra tentativa do mesmo pedido. */
+  reenvio_manual?: boolean;
+  /** Confirma que uma tentativa de resultado incerto pode ser repetida. */
+  confirmar_incerto?: boolean;
+}
+
+export interface SolicitacaoOrcamentoInfo {
+  id: number;
+  /** DUVIDA com o link aberto; MUDANCA depois da decisão aplicada; NEGOCIAR pelo Portal do Cliente. */
+  tipo: "DUVIDA" | "MUDANCA" | "NEGOCIAR";
+  mensagem: string;
+  criadaEm: string;
+  tratadaEm?: string | null;
+  contato?: string | null;
+}
+
+export interface PecaBaixadaInfo {
+  produtoId: number;
+  nome: string;
+  quantidade: number;
+}
+
+/** O que a aprovação/recusa fez e se a decisão pode ser corrigida sem atendimento humano. */
+export interface AnaliseCorrecaoDecisao {
+  status: string;
+  podeCorrigir: boolean;
+  bloqueios: string[];
+  pagamentoCodigo?: string | null;
+  pagamentoDetalhe?: string | null;
+  valorAtual?: number | null;
+  valorOriginal?: number | null;
+  pecasBaixadas: PecaBaixadaInfo[];
+  totalBaixado: number;
+  exigeDecisaoEstoque: boolean;
+}
+
+export interface CorrigirDecisaoInput {
+  equipamento_id: number;
+  expected_updated_em: string;
+  motivo: string;
+  devolver_estoque: boolean;
+}
+
+/** Estado do aceite online: versão congelada, link, resposta vigente e histórico. */
+export interface DecisaoOrcamentoInfo {
+  versaoId: number;
+  versao: number;
+  valorTotal: number;
+  validoAte?: string | null;
+  criadaEm: string;
+  encerradaMotivo?: string | null;
+  /** Respostas pelo Portal do Cliente ligadas para a empresa (`portal_config_empresa`). */
+  aceiteOnlineAtivo: boolean;
+  resposta?: RespostaOrcamentoInfo | null;
+  historico: RespostaOrcamentoInfo[];
+  solicitacoes: SolicitacaoOrcamentoInfo[];
+  aplicavelAPartirDe?: string | null;
+  podeAplicar: boolean;
+  /** Resposta do Portal do Cliente: o servidor efetiva sozinho ao fim do prazo de correção. */
+  efetivacaoAutomatica?: boolean;
+}
+
+/** Liga/desliga do Portal do Cliente (Configurações → Integrações). */
+export interface EstadoPortal {
+  portalAtivo: boolean;
+  respostasAtivas: boolean;
+  /** Respostas vencidas e não aplicadas: o agendamento da efetivação pode estar parado. */
+  respostasAtrasadas: number;
+}
+
+/** Alerta interno persistente gerado pelo Portal do Cliente. */
+export interface AlertaPortal {
+  id: number;
+  equipamentoId?: number | null;
+  tipo:
+    | "RESPOSTA_RECEBIDA" | "RESPOSTA_ALTERADA" | "RESPOSTA_CANCELADA"
+    | "DECISAO_EFETIVADA" | "EFETIVACAO_FALHOU"
+    | "NEGOCIACAO_SOLICITADA" | "CORRECAO_SOLICITADA" | "DUVIDA_RECEBIDA"
+    | "CODIGO_NAO_ENTREGUE";
+  titulo: string;
+  detalhe?: string | null;
+  criadoEm: string;
+  lidoEm?: string | null;
+  lidoPor?: string | null;
+  /** Decisão da resposta ligada ao alerta, para escolher cor e ícone (aceite x recusa). */
+  decisao?: "APROVAR" | "RECUSAR" | "DESFEITA" | null;
+}
+
+export type AcessoPortalContato = "NENHUM" | "ACOMPANHAR" | "DECIDIR";
+
+export interface OrcamentoPublicado {
+  versaoId: number;
+  versao: number;
+  nova: boolean;
+}
+
+export interface ContatoPortalEmpresa {
+  nomeExibicao: string;
+  whatsapp?: string | null;
+  email?: string | null;
+  telefone?: string | null;
+  horario?: string | null;
 }
 
 export const CATEGORIAS_IMAGEM_EQUIPAMENTO = {
@@ -383,6 +531,10 @@ export interface ClienteContato {
   email?: string;
   telefone?: string;
   ativo: boolean;
+  /** Acesso ao Portal das Impressoras do Cliente. Alterado só por `definirAcessoPortalContato`. */
+  portal_acesso?: AcessoPortalContato;
+  /** Quando o operador criou a senha do portal; vazio = sem senha. */
+  portal_senha_definida_em?: string | null;
   criado_em?: string;
   atualizado_em?: string;
 }
@@ -443,7 +595,7 @@ export interface VinculoEmpresaPerfilResultado {
   empresa_criada: boolean;
 }
 
-export type ClienteContatoInput = Omit<ClienteContato, "id" | "ativo" | "criado_em" | "atualizado_em"> & {
+export type ClienteContatoInput = Omit<ClienteContato, "id" | "ativo" | "portal_acesso" | "portal_senha_definida_em" | "criado_em" | "atualizado_em"> & {
   atualizado_em?: string;
 };
 
@@ -870,4 +1022,8 @@ export interface AprovarOrcamentoInput {
   servicos_aprovados: string[];
   /** Necessário para distinguir aprovação de reprovação quando não há serviços detalhados. */
   aprovado?: boolean;
+  /** Id da resposta do cliente exibida na tela (0/ausente = nenhuma). Se mudou, a aplicação é recusada. */
+  resposta_esperada_id?: number;
+  /** Motivo exigido para aplicar uma decisão diferente da registrada pelo cliente. */
+  motivo_divergencia?: string;
 }

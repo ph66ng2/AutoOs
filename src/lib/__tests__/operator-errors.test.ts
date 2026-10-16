@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { erroDeCadastroDuplicado, mensagemCadastroDuplicado, mensagemDeBanco, mensagemVisivelAoOperador } from "@/lib/operator-errors";
+import { erroDeCadastroDuplicado, mensagemCadastroDuplicado, mensagemDeBanco, mensagemVisivelAoOperador, lerCodigoTecnico } from "@/lib/operator-errors";
 
 describe("mensagem de cadastro duplicado", () => {
   it("explica cliente repetido a partir do código estruturado, sem chave nem restrição", () => {
@@ -59,5 +59,17 @@ describe("mensagem de cadastro duplicado", () => {
     expect(visivel).toContain("cliente já está cadastrado");
     expect(visivel).not.toContain("ux_clientes_documento_ativo");
     expect(visivel).not.toContain("23505");
+  });
+
+  it("lê código técnico e referência sem mostrar ao operador", () => {
+    const resposta = "AUTOOS:DB:40P01#ABCD2345\nNão foi possível concluir esta ação. O detalhe técnico foi registrado no log do aplicativo.";
+    expect(mensagemDeBanco(resposta)).not.toContain("40P01");
+    expect(lerCodigoTecnico(resposta)).toEqual({ codigo: "AUTOOS:DB:40P01", referencia: "ABCD2345", descricao: expect.stringContaining("deadlock") });
+    expect(lerCodigoTecnico("AUTOOS:DB:POOL_TIMEOUT#ABCD2345\nx")?.descricao).toContain("conexão livre");
+    expect(lerCodigoTecnico("AUTOOS:OP#ABCD2345\nx")?.codigo).toBe("AUTOOS:OP");
+    expect(mensagemDeBanco("AUTOOS:OP#ABCD2345\nfrase")).toBe("frase");
+    expect(erroDeCadastroDuplicado("AUTOOS:23505:ux_clientes_documento_ativo#ABCD2345\nx")).toBe(true);
+    expect(mensagemCadastroDuplicado("AUTOOS:23505:ux_clientes_documento_ativo#ABCD2345\nx")).toContain("cliente já está cadastrado");
+    expect(lerCodigoTecnico("Prazo inválido: informe uma data futura.")).toBeNull();
   });
 });

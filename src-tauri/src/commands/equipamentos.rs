@@ -143,7 +143,9 @@ fn add_equipment_filters(
 fn equipment_order_clause(ordenacao: Option<&str>) -> &'static str {
     match ordenacao {
         Some("CADASTRO_RECENTE") => " ORDER BY criado_em DESC NULLS LAST, id DESC",
-        _ => " ORDER BY COALESCE(atualizado_em, criado_em) DESC NULLS LAST, id DESC",
+        // Atividade recente inclui respostas e pedidos do cliente no portal, que não mexem em
+        // `atualizado_em` (token de concorrência do operador).
+        _ => " ORDER BY GREATEST(COALESCE(atualizado_em, criado_em), COALESCE(ultima_atividade_cliente_em, criado_em)) DESC NULLS LAST, id DESC",
     }
 }
 
@@ -309,6 +311,18 @@ fn audit_detail(details: &str, key: &str) -> Option<String> {
             .then(|| value.trim().to_string())
             .filter(|value| !value.is_empty())
     })
+}
+
+/// Motivo dado pelo operador ao aplicar decisão diferente da do cliente, pronto para os detalhes
+/// da auditoria (`chave=valor; ...`): sem `;`/quebras de linha e com tamanho limitado.
+fn motivo_divergencia_auditoria(motivo: Option<&str>) -> String {
+    let limpo: String = motivo
+        .unwrap_or("")
+        .chars()
+        .map(|c| if c == ';' || c.is_control() { ' ' } else { c })
+        .collect();
+    let limpo = limpo.split_whitespace().collect::<Vec<_>>().join(" ");
+    limpo.chars().take(300).collect()
 }
 
 async fn resolve_responsavel_snapshot(
@@ -1158,6 +1172,16 @@ pub async fn aprovar_orcamento(input: AprovarOrcamentoInput) -> Result<Equipamen
     if !input.servicos_aprovados.is_empty() && pecas_antigas.iter().any(|p| !p.get("id").and_then(|v| v.as_str()).is_some_and(|id| vinculadas.contains(id))) {
         return Err("Há peças antigas sem serviço vinculado. Use Alterar Orçamento para vinculá-las antes da aprovação.".to_string());
     }
+    super::orcamento_decisao::conferir_e_aplicar_resposta(
+        &mut tx,
+        empresa_id,
+        input.equipamento_id,
+        aprovado,
+        input.resposta_esperada_id,
+        input.motivo_divergencia.as_deref(),
+        actor.id,
+    )
+    .await?;
     aplicar_decisoes(&mut tx, empresa_id, verification_id, &servicos, &input.servicos_aprovados).await?;
     let novo_status = if aprovado { "APROVADO" } else { "REPROVADO" };
     let todos = itens;
@@ -1267,7 +1291,7 @@ pub async fn aprovar_orcamento(input: AprovarOrcamentoInput) -> Result<Equipamen
         if aprovado { "BUDGET_APPROVED" } else { "BUDGET_REJECTED" },
         Some(&actor),
         format!(
-            "empresa_id={}; equipamento_id={}; verificacao_id={}; pagamento_codigo={}; status_anterior=AGUARDANDO_APROVACAO; status={}; motivo={}; servicos_aprovados={}; verificacao_legada_regularizada={}",
+            "empresa_id={}; equipamento_id={}; verificacao_id={}; pagamento_codigo={}; status_anterior=AGUARDANDO_APROVACAO; status={}; motivo={}; servicos_aprovados={}; verificacao_legada_regularizada={}; motivo_divergencia_cliente={}",
             empresa_id,
             input.equipamento_id,
             verification_id,
@@ -1276,6 +1300,7 @@ pub async fn aprovar_orcamento(input: AprovarOrcamentoInput) -> Result<Equipamen
             if aprovado { "Orçamento aprovado pelo cliente." } else { "Orçamento reprovado pelo cliente." },
             selecionados.len(),
             verification_empresa_id.is_none(),
+            motivo_divergencia_auditoria(input.motivo_divergencia.as_deref()),
         ),
         true,
     )
@@ -1293,6 +1318,14 @@ pub async fn aprovar_orcamento(input: AprovarOrcamentoInput) -> Result<Equipamen
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn motivo_divergencia_vai_para_auditoria_sem_quebrar_os_detalhes() {
+        let detalhes = format!("status=APROVADO; motivo_divergencia_cliente={}", motivo_divergencia_auditoria(Some("  Cliente ligou;\n confirmou  ")));
+        assert_eq!(audit_detail(&detalhes, "motivo_divergencia_cliente").as_deref(), Some("Cliente ligou confirmou"));
+        assert_eq!(motivo_divergencia_auditoria(None), "");
+        assert_eq!(motivo_divergencia_auditoria(Some(&"x".repeat(500))).chars().count(), 300);
+    }
 
     #[test]
     fn p0_sensitive_status_gate_flags_status_only_changes_on_update() {
@@ -1408,6 +1441,7 @@ mod tests {
     #[test]
     fn equipment_order_is_whitelisted_and_defaults_to_recent_changes() {
         assert!(equipment_order_clause(None).contains("atualizado_em"));
+        assert!(equipment_order_clause(None).contains("ultima_atividade_cliente_em"));
         assert_eq!(equipment_order_clause(Some("CADASTRO_RECENTE")), " ORDER BY criado_em DESC NULLS LAST, id DESC");
         assert_eq!(equipment_order_clause(Some("id; DROP TABLE equipamentos")), equipment_order_clause(None));
     }

@@ -175,6 +175,12 @@ import { ErrorAlert } from "@/components/ui/error-alert";
 import { PaginationControls } from "@/components/ui/pagination-controls";
 import { PagamentoOrcamentoDialog } from "@/components/equipamentos/PagamentoOrcamentoDialog";
 import { PublicStatusLinkDialog } from "@/components/equipamentos/PublicStatusLinkDialog";
+import { DecisaoOrcamentoCard } from "@/components/equipamentos/DecisaoOrcamentoCard";
+import { EVENTO_ALERTAS_PORTAL } from "@/components/PortalAlertas";
+import { toast } from "sonner";
+
+const AVISO_ATENDIMENTO_PENDENTE = "abrir-atendimento-pendente";
+import { CorrigirDecisaoDialog } from "@/components/equipamentos/CorrigirDecisaoDialog";
 import { FormaPagamentoFields } from "@/components/equipamentos/FormaPagamentoFields";
 import { resolveRecipient, type ResolvedRecipient } from "@/lib/recipient-resolver";
 import { saveRecipientAddress } from "@/lib/recipient-persistence";
@@ -199,7 +205,17 @@ export default function Equipamentos() {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [detalhesDialogOpen, setDetalhesDialogOpen] = useState(false);
+  const detalhesAbertoRef = useRef(false);
+  const [sinalPortal, setSinalPortal] = useState(0);
+  detalhesAbertoRef.current = detalhesDialogOpen;
   const [publicStatusDialogOpen, setPublicStatusDialogOpen] = useState(false);
+  // Resposta do cliente lida ao abrir a aprovação; segue junto dela para barrar tela desatualizada.
+  // Só a aprovação escreve aqui: recarregar o quadro em segundo plano não pode trocar o que o operador conferiu.
+  const respostaClienteVistaRef = useRef(0);
+  // Decisão do cliente (ainda não aplicada) que o operador está conferindo, e o motivo se ele divergir dela.
+  const [respostaClienteDecisao, setRespostaClienteDecisao] = useState<"APROVAR" | "RECUSAR" | null>(null);
+  const [motivoDivergencia, setMotivoDivergencia] = useState("");
+  const [corrigirDecisaoAlvo, setCorrigirDecisaoAlvo] = useState<Equipamento | null>(null);
   const [verificacaoDialogOpen, setVerificacaoDialogOpen] = useState(false);
   const [statusDialogOpen, setStatusDialogOpen] = useState(false);
   const [pagamentoDialogOpen, setPagamentoDialogOpen] = useState(false);
@@ -310,7 +326,7 @@ export default function Equipamentos() {
   } | null>(null);
   const [emailDialogOpen, setEmailDialogOpen] = useState(false);
 
-  const { equipamentos, total: totalEquipamentos, loading, criar, atualizar, deletar, atualizarStatus, recarregar } =
+  const { equipamentos, total: totalEquipamentos, loading, criar, atualizar, deletar, atualizarStatus, recarregar, atualizarEmSegundoPlano } =
     useEquipamentos({ busca: busca || undefined, status: statusFiltro, ordenacao, page: paginaEquipamentos });
   const totalPaginasEquipamentos = totalPages(totalEquipamentos);
   const paginaEquipamentosExibida = Math.min(paginaEquipamentos, totalPaginasEquipamentos);
@@ -331,19 +347,63 @@ export default function Equipamentos() {
   const location = useLocation();
   const navigate = useNavigate();
 
+  // Diálogo com algo sendo preenchido: abrir outro atendimento por cima perderia o que foi digitado.
+  const edicaoEmAndamento =
+    dialogOpen ? "o cadastro do equipamento"
+    : verificacaoDialogOpen ? "a verificação técnica"
+    : statusDialogOpen ? "a mudança de status"
+    : pagamentoDialogOpen ? "a forma de pagamento"
+    : selecaoServicosOpen ? "a decisão do orçamento"
+    : consumosDialogOpen ? "as peças da OS"
+    : corrigirDecisaoAlvo !== null ? "a correção da decisão"
+    : emailDialogOpen ? "o envio de email"
+    : photoUploadOpen ? "o envio de fotos"
+    : deleteDialogOpen || confirmOpen ? "a confirmação aberta"
+    : null;
+  const avisoEdicaoPendente = useRef<unknown>(null);
+
+  // Vindo de um alerta/atalho: abre o atendimento pedido. Se outra janela de detalhes estiver
+  // aberta, troca na hora; só espera quando há um formulário em preenchimento.
   useEffect(() => {
     const state = location.state as { equipamentoId?: number } | null;
-    if (state?.equipamentoId && !detalhesDialogOpen) {
-      db.buscarEquipamento(state.equipamentoId)
-        .then((eq) => {
-          abrirDetalhes(eq);
-          navigate(location.pathname, { replace: true, state: {} });
-        })
-        .catch((err) => {
-          console.error("Erro ao buscar equipamento do estado de navegação:", err);
+    if (!state?.equipamentoId) return;
+    if (edicaoEmAndamento) {
+      if (avisoEdicaoPendente.current !== state) {
+        avisoEdicaoPendente.current = state;
+        toast.warning("Equipamentos — Abrir atendimento", {
+          id: AVISO_ATENDIMENTO_PENDENTE,
+          description: `Termine ou feche ${edicaoEmAndamento}. O atendimento do alerta abre em seguida.`,
+          duration: Infinity,
         });
+      }
+      return;
     }
-  }, [location.state, detalhesDialogOpen]);
+    toast.dismiss(AVISO_ATENDIMENTO_PENDENTE);
+    navigate(location.pathname, { replace: true, state: {} });
+    db.buscarEquipamento(state.equipamentoId)
+      .then((eq) => abrirDetalhes(eq))
+      .catch((err) => {
+        console.error("Erro ao buscar equipamento do estado de navegação:", err);
+      });
+  }, [location.state, edicaoEmAndamento]);
+
+  // Cliente respondeu/pediu algo no portal: a lista reordena sem o operador recarregar, e o
+  // atendimento aberto mostra o estado novo.
+  useEffect(() => {
+    const aoChegar = (event: Event) => {
+      const ids = (event as CustomEvent<{ equipamentoIds?: number[] }>).detail?.equipamentoIds ?? [];
+      void atualizarEmSegundoPlano();
+      const abertoId = selecionadoIdRef.current;
+      if (detalhesAbertoRef.current && abertoId && ids.includes(abertoId)) {
+        setSinalPortal((valor) => valor + 1);
+        db.buscarEquipamento(abertoId)
+          .then((eq) => { if (selecionadoIdRef.current === eq.id) setSelecionado(eq); })
+          .catch(() => undefined);
+      }
+    };
+    window.addEventListener(EVENTO_ALERTAS_PORTAL, aoChegar);
+    return () => window.removeEventListener(EVENTO_ALERTAS_PORTAL, aoChegar);
+  }, [atualizarEmSegundoPlano]);
 
   const carregarImagensComPreview = useCallback(async (equipamentoId: number) => {
     const imagens = await db.listarImagensEquipamento(equipamentoId);
@@ -621,7 +681,10 @@ export default function Equipamentos() {
    * Abre dialog de detalhes com 4 abas. Carrega verificação e comunicações em paralelo.
    * Conecta-se a: db.buscarVerificacao, db.listarComunicacoes
    */
+  const detalhesSeq = useRef(0);
   const abrirDetalhes = useCallback(async (eq: Equipamento) => {
+    // Trocar de atendimento com a janela aberta: só a última abertura grava os dados.
+    const seq = ++detalhesSeq.current;
     setSelecionado(eq);
     setDetalhesDialogOpen(true);
     setCarregandoDetalhes(true);
@@ -637,6 +700,7 @@ export default function Equipamentos() {
         carregarImagensComPreview(eq.id!),
         db.listarHistoricoEquipamento(eq.id!),
       ]);
+      if (seq !== detalhesSeq.current) return;
       setVerificacaoDetalhes(verif.status === "fulfilled" ? verif.value : null);
       setComunicacoes(comms.status === "fulfilled" ? comms.value : []);
       setImagensDetalhes(imagens.status === "fulfilled" ? imagens.value : []);
@@ -649,7 +713,7 @@ export default function Equipamentos() {
     } catch (err) {
       console.error("Erro ao carregar detalhes:", err);
     } finally {
-      setCarregandoDetalhes(false);
+      if (seq === detalhesSeq.current) setCarregandoDetalhes(false);
     }
   }, [carregarImagensComPreview]);
 
@@ -768,6 +832,16 @@ export default function Equipamentos() {
       await prepararAjusteOrcamentoPadrao(eq);
     }
     setStatusDialogOpen(true);
+  }
+
+  async function abrirCorrigirDecisao(eq: Equipamento) {
+    const liberado = await ensureSensitiveAccess({
+      title: "Corrigir decisão do orçamento",
+      description: "Informe o PIN para reabrir um orçamento já decidido. Pagamento, serviços e estoque serão conferidos.",
+      permission: SENSITIVE_PERMISSIONS.FINANCIAL_ACTIONS,
+    });
+    if (!liberado) return;
+    setCorrigirDecisaoAlvo(eq);
   }
 
   async function abrirCorrecaoStatus(eq: Equipamento) {
@@ -1172,6 +1246,17 @@ export default function Equipamentos() {
       setProdutosAprovacao(await carregarProdutosOrcamento());
       setTodosServicosAprovados(decisaoInicial === "reprovar" ? false : null);
       setIdsAprovados([]);
+      const decisaoCliente = await db.obterDecisaoOrcamento(eq.id!);
+      respostaClienteVistaRef.current = decisaoCliente && !decisaoCliente.encerradaMotivo
+        ? decisaoCliente.resposta?.id ?? 0
+        : 0;
+      const respostaPendente = decisaoCliente && !decisaoCliente.encerradaMotivo ? decisaoCliente.resposta : null;
+      setRespostaClienteDecisao(
+        respostaPendente && !respostaPendente.aplicadaEm && respostaPendente.decisao !== "DESFEITA"
+          ? respostaPendente.decisao
+          : null,
+      );
+      setMotivoDivergencia("");
       setPagamentoAprovacaoInicial(verificacao?.forma_pagamento_codigo ? {
         codigo: verificacao.forma_pagamento_codigo,
         detalhe: verificacao.forma_pagamento_detalhe || null,
@@ -1183,6 +1268,11 @@ export default function Equipamentos() {
       setPagamentoAprovacaoLoading(false);
     }
   }
+
+  const decisaoDivergeDoCliente = respostaClienteDecisao != null
+    && todosServicosAprovados !== null
+    && (respostaClienteDecisao === "APROVAR") !== decisaoAprovada;
+  const motivoDivergenciaValido = motivoDivergencia.trim().length >= 5;
 
   async function confirmarAprovacao(pagamento: FormaPagamento): Promise<boolean> {
     if (!selecionado?.id) {
@@ -1197,6 +1287,10 @@ export default function Equipamentos() {
       setPagamentoAprovacaoError("A versão atual do orçamento não está disponível. Feche, atualize a lista e tente novamente.");
       return false;
     }
+    if (decisaoDivergeDoCliente && !motivoDivergenciaValido) {
+      setPagamentoAprovacaoError("O cliente respondeu de outra forma. Informe o motivo da divergência (mínimo de 5 caracteres).");
+      return false;
+    }
     setPagamentoAprovacaoLoading(true);
     try {
       await db.aprovarOrcamento({
@@ -1206,6 +1300,8 @@ export default function Equipamentos() {
         pagamento,
         servicos_aprovados: idsAprovados,
         aprovado: decisaoAprovada,
+        resposta_esperada_id: respostaClienteVistaRef.current,
+        ...(decisaoDivergeDoCliente ? { motivo_divergencia: motivoDivergencia.trim() } : {}),
       });
       await recarregar();
       setPagamentoAprovacaoError(null);
@@ -1246,6 +1342,10 @@ export default function Equipamentos() {
       return;
     }
     const totalAtual = valorOrcamentoRef.current;
+    if (correcaoStatus && novoStatus === "AGUARDANDO_APROVACAO" && ["APROVADO", "REPROVADO"].includes(selecionado.status)) {
+      warning("Equipamentos", "Para reabrir um orçamento já decidido use “Corrigir decisão do orçamento”: ela desfaz pagamento e estoque junto.");
+      return;
+    }
     if (correcaoStatus && !motivoCorrecaoStatus.trim()) {
       warning("Equipamentos", "Informe o motivo da correção antes de continuar.");
       return;
@@ -1439,7 +1539,58 @@ export default function Equipamentos() {
     }
   }
 
-  /** Envia orçamento manualmente via WhatsApp. Busca verificação do banco primeiro */
+  /** Pergunta ao operador e devolve a resposta (usa o diálogo de confirmação da página). */
+  function confirmarComOperador(title: string, description: string, confirmLabel: string): Promise<boolean> {
+    return new Promise((resolve) => {
+      setConfirmProps({
+        title,
+        description,
+        confirmLabel,
+        cancelLabel: "Cancelar",
+        onConfirm: () => resolve(true),
+        onCancel: () => resolve(false),
+      });
+      setConfirmOpen(true);
+    });
+  }
+
+  /**
+   * Reenvio manual de WhatsApp. A tela só informa equipamento e tipo; o backend decide o texto,
+   * evita duplicidade e pede confirmação quando o envio anterior tem resultado incerto.
+   */
+  async function reenviarWhatsApp(eq: Equipamento, tipo: "orcamento_informativo" | "equipamento_pronto") {
+    let resultado = await WhatsAppService.solicitarEnvio(eq.id!, tipo, { reenvioManual: true });
+    if (resultado.requerConfirmacao) {
+      const confirmado = await confirmarComOperador(
+        "Enviar de novo?",
+        resultado.mensagem || "O resultado do envio anterior é incerto: a mensagem pode já ter chegado ao cliente.",
+        "Enviar mesmo assim",
+      );
+      if (!confirmado) return;
+      resultado = await WhatsAppService.solicitarEnvio(eq.id!, tipo, { reenvioManual: true, confirmarIncerto: true });
+    }
+    if (resultado.sucesso) {
+      success(
+        "Equipamentos",
+        resultado.enfileirada
+          ? "Mensagem na fila de envio. O resultado aparece no histórico de comunicações."
+          : "Mensagem aceita pelo provedor de WhatsApp. A entrega não é confirmada neste momento.",
+        "WhatsApp",
+      );
+      return;
+    }
+    if (whatsappNaoConfigurado(resultado.erro)) {
+      console.warn("[WhatsApp] Integração não configurada. Fluxo segue com envio manual.");
+      return;
+    }
+    if (resultado.estado === "INCERTA") {
+      warning("Equipamentos", resultado.erro || "O provedor não confirmou o envio. Confira antes de tentar de novo.");
+      return;
+    }
+    showError("Equipamentos", "Enviar WhatsApp", new Error(resultado.erro));
+  }
+
+  /** Envia orçamento manualmente via WhatsApp (texto da versão congelada do orçamento). */
   async function enviarWhatsAppOrcamento(eq: Equipamento) {
     const liberado = await ensureSensitiveAccess({
       title: "Enviar orçamento por WhatsApp",
@@ -1447,19 +1598,7 @@ export default function Equipamentos() {
       permission: SENSITIVE_PERMISSIONS.FINANCIAL_ACTIONS,
     });
     if (!liberado) return;
-
-    const verif = await db.buscarVerificacao(eq.id!);
-    if (!verif) { warning("Equipamentos", "Nenhuma verificação técnica encontrada para este equipamento."); return; }
-    const recipient = resolveRecipient(eq, "telefone");
-    if (!recipient.endereco) { warning("Equipamentos", "Nenhum telefone disponível para este envio."); return; }
-    const r = await WhatsAppService.enviarOrcamento({ ...eq, cliente_telefone: recipient.endereco, cliente_nome: recipient.nome }, verif);
-    if (!r.sucesso) {
-      if (whatsappNaoConfigurado(r.erro)) {
-        console.warn("[WhatsApp] Integração não configurada. Fluxo segue com envio manual de PDF.");
-        return;
-      }
-      showError("Equipamentos", "Enviar WhatsApp", new Error(r.erro));
-    }
+    await reenviarWhatsApp(eq, "orcamento_informativo");
   }
 
   /** Constrói o orçamento para inspeção sem persistir o arquivo. */
@@ -1524,17 +1663,7 @@ export default function Equipamentos() {
       permission: SENSITIVE_PERMISSIONS.FINANCIAL_ACTIONS,
     });
     if (!liberado) return;
-
-    const recipient = resolveRecipient(eq, "telefone");
-    if (!recipient.endereco) { warning("Equipamentos", "Nenhum telefone disponível para este envio."); return; }
-    const r = await WhatsAppService.enviarEquipamentoPronto({ ...eq, cliente_telefone: recipient.endereco, cliente_nome: recipient.nome });
-    if (!r.sucesso) {
-      if (whatsappNaoConfigurado(r.erro)) {
-        console.warn("[WhatsApp] Integração não configurada. Fluxo segue sem envio automático.");
-        return;
-      }
-      showError("Equipamentos", "Enviar WhatsApp", new Error(r.erro));
-    }
+    await reenviarWhatsApp(eq, "equipamento_pronto");
   }
 
   // ─── Botões de ação contextuais por status ────────────
@@ -1591,6 +1720,13 @@ export default function Equipamentos() {
       icon: <History className="h-3.5 w-3.5" />,
       variant: "outline",
       onClick: () => void abrirCorrecaoStatus(eq),
+    };
+    const acaoCorrigirDecisao: PriorityAction = {
+      id: "corrigir_decisao",
+      label: "Corrigir decisão do orçamento",
+      icon: <RotateCcw className="h-3.5 w-3.5" />,
+      variant: "outline",
+      onClick: () => void abrirCorrigirDecisao(eq),
     };
     const acaoExcluir: PriorityAction = {
       id: "excluir",
@@ -1697,7 +1833,7 @@ export default function Equipamentos() {
           disabled: salvando,
         };
         secondary = acaoStatus;
-        overflow.push(acaoEditar, acaoExcluir);
+        overflow.push(acaoCorrigirDecisao, acaoEditar, acaoExcluir);
         break;
       case "EM_MANUTENCAO":
         primary = {
@@ -1763,7 +1899,7 @@ export default function Equipamentos() {
           onClick: () => void abrirMudarStatus(eq),
           disabled: salvando,
         });
-        overflow.push(acaoEditar, acaoExcluir);
+        overflow.push(acaoCorrigirDecisao, acaoEditar, acaoExcluir);
         break;
       case "ORCAMENTO_VENCIDO":
         primary = {
@@ -2065,6 +2201,16 @@ export default function Equipamentos() {
                             eq.valor_orcamento != null && eq.valor_orcamento > 0 && (
                               <div className="inline-flex max-w-full items-center truncate rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-xs font-medium text-amber-900">
                                 Orçamento: R$ {eq.valor_orcamento.toFixed(2)}
+                              </div>
+                            )}
+                          {eq.status === "AGUARDANDO_APROVACAO" &&
+                            (eq.resposta_cliente === "APROVAR" || eq.resposta_cliente === "RECUSAR") && (
+                              <div className="inline-flex max-w-full items-center truncate rounded-full border border-sky-200 bg-sky-50 px-2 py-0.5 text-xs font-medium text-sky-900">
+                                Cliente respondeu: {eq.resposta_cliente === "APROVAR" ? "aprovou" : "recusou"} — {
+                                  eq.resposta_cliente_situacao === "EM_CORRECAO" ? "em prazo de correção"
+                                    : eq.resposta_cliente_situacao === "PROCESSANDO" ? "aguardando efetivação automática"
+                                      : eq.resposta_cliente_situacao === "PENDENTE_EQUIPE" ? "efetivação falhou, confira"
+                                        : "aguardando conferência"}
                               </div>
                             )}
                         </div>
@@ -2421,7 +2567,13 @@ export default function Equipamentos() {
                 </div>
               </div>
 
-              <Tabs defaultValue="info">
+              <DecisaoOrcamentoCard
+                equipamento={selecionado}
+                onAplicar={(decisao) => void abrirDialogoAprovacao(selecionado, decisao)}
+                sinalPortal={sinalPortal}
+              />
+
+              <Tabs key={selecionado.id} defaultValue="info">
                 <TabsList className="grid grid-cols-4 w-full">
                   <TabsTrigger value="info"><FileText className="h-3.5 w-3.5 mr-1 hidden sm:inline" />Informações</TabsTrigger>
                   <TabsTrigger value="verificacao"><ClipboardCheck className="h-3.5 w-3.5 mr-1 hidden sm:inline" />Verificação</TabsTrigger>
@@ -2555,6 +2707,17 @@ export default function Equipamentos() {
         </DialogContent>
       </Dialog>
 
+      <CorrigirDecisaoDialog
+        equipamento={corrigirDecisaoAlvo}
+        open={corrigirDecisaoAlvo !== null}
+        onOpenChange={(open) => { if (!open) setCorrigirDecisaoAlvo(null); }}
+        onCorrigido={async () => {
+          setSelecionado(null);
+          await recarregar();
+          success("Equipamentos", "Orçamento reaberto. Envie ou registre uma nova decisão do cliente.", "Decisão corrigida");
+        }}
+      />
+
       <PublicStatusLinkDialog
         equipamento={selecionado}
         open={publicStatusDialogOpen}
@@ -2616,6 +2779,25 @@ export default function Equipamentos() {
                           ))}
                         </SelectContent>
                       </Select>
+                    </div>
+                  )}
+                  {correcaoStatus && novoStatus === "AGUARDANDO_APROVACAO" && ["APROVADO", "REPROVADO"].includes(selecionado.status) && (
+                    <div role="alert" className="space-y-2 rounded-md border border-amber-300 bg-amber-50 p-3 text-sm text-amber-950">
+                      <p>
+                        Trocar só o status não desfaz pagamento, serviços aprovados nem baixa de estoque. Use a correção guiada da decisão.
+                      </p>
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        onClick={() => {
+                          const alvo = selecionado;
+                          setStatusDialogOpen(false);
+                          void abrirCorrigirDecisao(alvo);
+                        }}
+                      >
+                        Corrigir decisão do orçamento
+                      </Button>
                     </div>
                   )}
                   {correcaoStatus && (
@@ -2928,6 +3110,23 @@ export default function Equipamentos() {
               <Button type="button" variant={todosServicosAprovados === false ? "default" : "outline"}
                 onClick={() => { setTodosServicosAprovados(false); setIdsAprovados([]); }}>{servicosAprovacao.length === 0 ? "Reprovar orçamento" : "Não, selecionar"}</Button>
             </div>
+            {respostaClienteDecisao && (
+              <div className="rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-950">
+                <p>O cliente respondeu pelo link: <strong>{respostaClienteDecisao === "APROVAR" ? "aprovou" : "recusou"}</strong> o orçamento.</p>
+                {decisaoDivergeDoCliente && (
+                  <div className="mt-2 space-y-1">
+                    <Label htmlFor="motivo-divergencia">Motivo da divergência *</Label>
+                    <Textarea
+                      id="motivo-divergencia"
+                      value={motivoDivergencia}
+                      onChange={(event) => setMotivoDivergencia(event.target.value)}
+                      placeholder="Ex.: cliente ligou e pediu para aprovar mesmo assim"
+                    />
+                    <p className="text-xs">A decisão aplicada é diferente da resposta do cliente. O motivo fica registrado na auditoria.</p>
+                  </div>
+                )}
+              </div>
+            )}
             {todosServicosAprovados === false && servicosAprovacao.length > 0 && (
               <div className="max-h-64 space-y-2 overflow-y-auto rounded-md border p-3">
                 {servicosAprovacao.map((servico) => (
@@ -2964,7 +3163,7 @@ export default function Equipamentos() {
           </div>
           <DialogFooter>
             <Button type="button" variant="outline" onClick={() => setSelecaoServicosOpen(false)}>Cancelar</Button>
-            <Button type="button" disabled={todosServicosAprovados === null || pagamentoAprovacaoLoading}
+            <Button type="button" disabled={todosServicosAprovados === null || pagamentoAprovacaoLoading || (decisaoDivergeDoCliente && !motivoDivergenciaValido)}
               onClick={() => {
                 if (decisaoAprovada) {
                   setSelecaoServicosOpen(false);

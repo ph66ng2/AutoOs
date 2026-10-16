@@ -65,6 +65,7 @@ Desktop app for printer management, technical reception, operational communicati
 | Database | `db.rs` + `migrations/` | sqlx runtime queries only (no `query!` macros) |
 | PDF generation | `src/lib/pdf-service.ts` | jsPDF + autotable, 1211 lines with BMITAG branding |
 | Email/WhatsApp | `src/lib/email-service.ts`, `whatsapp-service.ts` | SMTP + Evolution API. Email CC hardcoded to `medeiros@bmitag.com.br` |
+| Customer portal (status.bmitag.com.br) | `src/public-status/` + `supabase/functions/portal-cliente/` + `0035_portal_cliente.sql` + `portal_cliente.rs` | Login by CPF/CNPJ + per-contact password (no OTP since 0038), per-company toggles (`portal_config_empresa`), server-side budget effectuation. See `docs/PORTAL_CLIENTE.md` |
 | Mobile photo upload | `photo_server.rs` + `qr_code.rs` | Axum server, auto-shutdown after 15min idle |
 | Backup/restore | `util.rs` | Orchestrates `pg_dump`/`pg_restore`/`psql`. Restore path restricted to `~/AutoOS/backups` |
 

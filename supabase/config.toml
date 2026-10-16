@@ -1,2 +1,8 @@
 [functions.public-status]
 verify_jwt = false
+
+[functions.envio-whatsapp]
+verify_jwt = false
+
+[functions.portal-cliente]
+verify_jwt = false
