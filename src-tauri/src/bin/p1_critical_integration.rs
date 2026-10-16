@@ -137,7 +137,8 @@ async fn main() -> Result<()> {
     .context("set company-bound bootstrap profile default failed")?;
 
     // O CRUD agora deriva o tenant da sessão sensível, inclusive na QA real.
-    auth::unlock_session_without_pin()
+    auth::store_profile_pin(bootstrap_profile_id, "2468").map_err(|error| anyhow!(error))?;
+    auth::set_active_security_profile(bootstrap_profile_id, "2468".to_string(), None)
         .await
         .map_err(|error| anyhow!(error))?;
 
@@ -301,7 +302,9 @@ async fn main() -> Result<()> {
     .await
     .context("set restricted profile default failed")?;
 
-    auth::configure_sensitive_pin("2468".to_string(), None)
+    // Authentication selects this instance's profile; is_default is not a session switch.
+    auth::store_profile_pin(restricted_profile_id, "2468").map_err(|error| anyhow!(error))?;
+    auth::set_active_security_profile(restricted_profile_id, "2468".to_string(), None)
         .await
         .map_err(|error| anyhow!(error))?;
 
@@ -540,7 +543,9 @@ async fn main() -> Result<()> {
     .await
     .context("set privileged profile default failed")?;
 
-    auth::configure_sensitive_pin("2468".to_string(), None)
+    // Authentication selects this instance's profile; is_default is not a session switch.
+    auth::store_profile_pin(privileged_profile_id, "2468").map_err(|error| anyhow!(error))?;
+    auth::set_active_security_profile(privileged_profile_id, "2468".to_string(), None)
         .await
         .map_err(|error| anyhow!(error))?;
 

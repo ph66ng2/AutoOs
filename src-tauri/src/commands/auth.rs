@@ -13,7 +13,7 @@ use std::collections::{BTreeSet, HashMap};
 use native_tls::TlsConnector;
 use tokio_postgres::NoTls;
 use postgres_native_tls::MakeTlsConnector;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicI32, Ordering};
 use std::sync::{Mutex, OnceLock};
 use tracing::{debug, error, instrument, warn};
 
@@ -46,6 +46,7 @@ const ALL_PERMISSIONS: [&str; 8] = [
 
 static SENSITIVE_SESSION: OnceLock<Mutex<SensitiveSession>> = OnceLock::new();
 static UNLOCK_ATTEMPTS: OnceLock<Mutex<HashMap<i32, UnlockAttemptTracker>>> = OnceLock::new();
+static SELECTED_PROFILE_ID: AtomicI32 = AtomicI32::new(0);
 static INACTIVITY_LOCK_ENABLED: AtomicBool = AtomicBool::new(false);
 
 #[derive(Debug, Default, Clone)]
@@ -68,6 +69,7 @@ pub struct SecurityProfileSummary {
     pub role: String,
     pub permissions: Vec<String>,
     pub pin_configured: bool,
+    pub pin_required: bool,
     pub is_default: bool,
     pub ativo: bool,
 }
@@ -122,6 +124,7 @@ struct SecurityProfileRecord {
     nome: String,
     role: String,
     permissions: String,
+    pin_required: bool,
     ativo: bool,
     is_default: bool,
     criado_em: chrono::NaiveDateTime,
@@ -284,11 +287,14 @@ fn normalize_permissions(role: &str, permissions: &[String]) -> Result<Vec<Strin
         normalized.insert(candidate);
     }
 
-    if normalized.is_empty() {
-        return Err("Selecione ao menos uma permissão para o perfil".to_string());
-    }
-
     Ok(normalized.into_iter().collect())
+}
+
+fn ensure_pinless_session_allowed(profile: &SecurityProfileSummary) -> Result<(), String> {
+    if profile.pin_required || profile.role == "ADMIN" {
+        return Err("Este perfil exige PIN. Configure o acesso neste computador com um administrador ou use a recuperação de acesso.".to_string());
+    }
+    Ok(())
 }
 
 fn parse_permissions(raw: &str) -> Result<Vec<String>, String> {
@@ -534,6 +540,7 @@ pub(crate) fn unlock_session(profile: SecurityProfileSummary) -> Result<(), Stri
     let key = generate_session_key();
     let (obfuscated, key) = obfuscate_profile(&profile, &key)?;
     let mut session = session_state().lock().map_err(|_| "Sessão sensível indisponível".to_string())?;
+    SELECTED_PROFILE_ID.store(profile.id, Ordering::Relaxed);
     session.unlocked_until = Some(expires_at);
     session.profile_obfuscated = Some(obfuscated);
     session.profile_key = Some(key);
@@ -652,7 +659,7 @@ async fn ensure_default_profile_exists() -> Result<(), String> {
         let permissions = serde_json::to_string(&ALL_PERMISSIONS.iter().map(|value| value.to_string()).collect::<Vec<_>>())
             .map_err(|e| e.to_string())?;
         let insert_result = sqlx::query(
-            "INSERT INTO security_profiles (nome, role, permissions, is_default) VALUES ($1, $2, $3, true)"
+            "INSERT INTO security_profiles (nome, role, permissions, is_default, pin_required) VALUES ($1, $2, $3, true, false)"
         )
         .bind("Administrador Local")
         .bind("ADMIN")
@@ -689,11 +696,19 @@ async fn ensure_default_profile_exists() -> Result<(), String> {
     Ok(())
 }
 
+async fn mark_profile_pin_required(profile_id: i32) -> Result<(), String> {
+    let pool = get_pool().await.map_err(|e| e.to_string())?;
+    sqlx::query("UPDATE security_profiles SET pin_required = true WHERE id = $1")
+        .bind(profile_id).execute(&pool).await
+        .map_err(super::operator_errors::mapear_erro_sql)?;
+    Ok(())
+}
+
 async fn fetch_profile_records_with_scope(include_inactive: bool) -> Result<Vec<SecurityProfileRecord>, String> {
     ensure_default_profile_exists().await?;
     let pool = get_pool().await.map_err(|e| e.to_string())?;
     let mut query_builder = sqlx::QueryBuilder::<sqlx::Postgres>::new(
-        "SELECT id, nome, role, permissions, ativo, is_default, criado_em FROM security_profiles",
+        "SELECT id, nome, role, permissions, pin_required, ativo, is_default, criado_em FROM security_profiles",
     );
 
     if !include_inactive {
@@ -723,7 +738,8 @@ async fn fetch_active_profile_record() -> Result<SecurityProfileRecord, String> 
     let mut profiles = fetch_profile_records().await?;
     profiles
         .iter()
-        .find(|profile| profile.is_default)
+        .find(|profile| profile.id == SELECTED_PROFILE_ID.load(Ordering::Relaxed))
+        .or_else(|| profiles.iter().find(|profile| profile.is_default))
         .cloned()
         .or_else(|| profiles.drain(..).next())
         .ok_or_else(|| "Nenhum perfil de segurança ativo encontrado".to_string())
@@ -732,7 +748,7 @@ async fn fetch_active_profile_record() -> Result<SecurityProfileRecord, String> 
 async fn fetch_profile_record_by_id(profile_id: i32) -> Result<SecurityProfileRecord, String> {
     let pool = get_pool().await.map_err(|e| e.to_string())?;
     let profile = sqlx::query_as::<_, SecurityProfileRecord>(
-        "SELECT id, nome, role, permissions, ativo, is_default, criado_em
+        "SELECT id, nome, role, permissions, pin_required, ativo, is_default, criado_em
          FROM security_profiles
          WHERE id = $1 AND ativo = true"
     )
@@ -753,7 +769,7 @@ async fn fetch_profile_record_by_id(profile_id: i32) -> Result<SecurityProfileRe
 async fn fetch_profile_record_by_id_any(profile_id: i32) -> Result<SecurityProfileRecord, String> {
     let pool = get_pool().await.map_err(|e| e.to_string())?;
     sqlx::query_as::<_, SecurityProfileRecord>(
-        "SELECT id, nome, role, permissions, ativo, is_default, criado_em
+        "SELECT id, nome, role, permissions, pin_required, ativo, is_default, criado_em
          FROM security_profiles
          WHERE id = $1"
     )
@@ -789,6 +805,7 @@ fn to_profile_summary(record: SecurityProfileRecord) -> Result<SecurityProfileSu
         role: record.role,
         permissions,
         pin_configured,
+        pin_required: record.pin_required,
         is_default: record.is_default,
         ativo: record.ativo,
     })
@@ -936,11 +953,15 @@ pub async fn configure_sensitive_pin(pin: String, current_pin: Option<String>) -
                 active_profile.nome, active_profile.id
             ));
         }
-    } else if any_profile_has_pin().await? {
+    } else if active_record.pin_required || any_profile_has_pin().await? {
         require_permission(PERMISSION_MANAGE_PROFILES)?;
     }
 
+    if pin.trim().is_empty() {
+        return Err("Informe um PIN de 4 a 8 dígitos.".to_string());
+    }
     store_profile_pin(active_profile.id, &pin)?;
+    mark_profile_pin_required(active_profile.id).await?;
     reset_unlock_attempts(active_profile.id);
     unlock_session(active_profile.clone())?;
     record_security_event("PIN_CHANGED", Some(&active_profile), "PIN do perfil ativo atualizado", true).await;
@@ -1020,6 +1041,7 @@ pub async fn unlock_session_without_pin() -> Result<SensitiveAccessStatus, Strin
             active_profile.nome, active_profile.id
         ));
     }
+    ensure_pinless_session_allowed(&active_profile)?;
     unlock_session(active_profile.clone())?;
     record_security_event("SESSION_UNLOCKED_NO_PIN", Some(&active_profile), "Sessão desbloqueada sem PIN", true).await;
     status_snapshot().await
@@ -1045,7 +1067,10 @@ pub async fn set_active_security_profile(profile_id: i32, pin: String, confirm_p
     let profile = fetch_profile_record_by_id(profile_id).await?;
     let summary = to_profile_summary(profile.clone())?;
     let stored = load_profile_pin_for_record(&profile)?;
-    let provision_admin_pin = stored.is_none() && summary.role == "ADMIN";
+    let provision_admin_pin = stored.is_none() && summary.role == "ADMIN" && !profile.pin_required;
+    if stored.is_none() && profile.pin_required {
+        return Err("Este perfil exige PIN, mas ele não está configurado neste computador. Peça a um administrador para configurar o PIN em Equipe e acessos, ou use a recuperação de acesso.".to_string());
+    }
     if let Some(ref stored_pin) = stored {
         validate_pin_format(&pin)?;
         check_unlock_lockout(profile_id)?;
@@ -1065,51 +1090,14 @@ pub async fn set_active_security_profile(profile_id: i32, pin: String, confirm_p
         }
     } else if !pin.is_empty() {
         return Err("Este perfil não possui PIN configurado".to_string());
+    } else {
+        ensure_pinless_session_allowed(&summary)?;
     }
-    let pool = get_pool().await.map_err(|e| e.to_string())?;
-
-    // Duas queries separadas para evitar violação da constraint parcial unique
-    // (ux_security_profiles_single_default_active). O PostgreSQL valida constraints
-    // linha a linha durante o UPDATE, então fazer tudo numa query só pode causar
-    // estado transitório com dois is_default=true.
-    let mut tx = match pool.begin().await {
-        Ok(tx) => tx,
-        Err(e) => {
-            error!("Erro ao iniciar transação de perfil: {}", e);
-            return Err(db::database_operation_error(e).await);
-        }
-    };
-
-    let clear_previous_profile = sqlx::query("UPDATE security_profiles SET is_default = false, atualizado_em = NOW() WHERE ativo = true AND is_default = true")
-        .execute(&mut *tx)
-        .await
-        .map_err(|e| {
-            error!("Erro ao limpar perfil ativo anterior: {}", e);
-            e
-        });
-    if let Err(e) = clear_previous_profile {
-        return Err(db::database_operation_error(e).await);
-    }
-
-    let set_active_profile = sqlx::query("UPDATE security_profiles SET is_default = true, atualizado_em = NOW() WHERE id = $1 AND ativo = true")
-        .bind(profile_id)
-        .execute(&mut *tx)
-        .await
-        .map_err(|e| {
-            error!("Erro ao definir perfil ativo {}: {}", profile_id, e);
-            e
-        });
-    if let Err(e) = set_active_profile {
-        return Err(db::database_operation_error(e).await);
-    }
-
+    // A troca pertence somente a esta instância do aplicativo. Nunca altera
+    // is_default no banco compartilhado nem os timestamps de outros perfis.
     if provision_admin_pin {
         store_profile_pin(profile_id, &pin)?;
-    }
-
-    if let Err(e) = tx.commit().await {
-        error!("Erro ao confirmar transação de perfil: {}", e);
-        return Err(db::database_operation_error(e).await);
+        mark_profile_pin_required(profile_id).await?;
     }
 
     reset_unlock_attempts(profile_id);
@@ -1148,12 +1136,13 @@ pub async fn create_security_profile(input: SecurityProfileInput, pin: String) -
     let pool = get_pool().await.map_err(|e| e.to_string())?;
     let mut tx = pool.begin().await.map_err(super::operator_errors::mapear_erro_sql)?;
     let row = sqlx::query(
-        "INSERT INTO security_profiles (nome, role, permissions, ativo, is_default, atualizado_em)
-         VALUES ($1, $2, $3, true, false, NOW()) RETURNING id"
+        "INSERT INTO security_profiles (nome, role, permissions, ativo, is_default, pin_required, atualizado_em)
+         VALUES ($1, $2, $3, true, false, $4, NOW()) RETURNING id"
     )
     .bind(nome)
     .bind(&role)
     .bind(&permissions_json)
+    .bind(!pin.trim().is_empty())
     .fetch_one(&mut *tx)
     .await
     .map_err(|e| {
@@ -1267,8 +1256,12 @@ pub async fn reset_security_profile_pin(profile_id: i32, new_pin: String, admin_
     }
 
     validate_pin_format(&new_pin)?;
+    if new_pin.trim().is_empty() {
+        return Err("Informe um PIN de 4 a 8 dígitos.".to_string());
+    }
     let profile = to_profile_summary(fetch_profile_record_by_id(profile_id).await?)?;
     store_profile_pin(profile_id, &new_pin)?;
+    mark_profile_pin_required(profile_id).await?;
 
     if actor.id == profile_id {
         unlock_session(profile.clone())?;
@@ -1394,7 +1387,11 @@ pub async fn redefinir_pin_via_db(
     validate_pin_format(&new_pin)?;
 
     let profile = to_profile_summary(fetch_profile_record_by_id(profile_id).await?)?;
+    if new_pin.trim().is_empty() {
+        return Err("Informe um PIN de 4 a 8 dígitos.".to_string());
+    }
     store_profile_pin(profile_id, &new_pin)?;
+    mark_profile_pin_required(profile_id).await?;
 
     record_security_event(
         "PIN_RECOVERY_SUCCESS",
@@ -1730,8 +1727,8 @@ pub async fn registrar_empresa(
         .map_err(|e| e.to_string())?;
 
     sqlx::query(
-        "INSERT INTO security_profiles (nome, role, permissions, ativo, is_default, empresa_id, atualizado_em) \
-         VALUES ($1, $2, $3, true, true, $4, NOW())"
+        "INSERT INTO security_profiles (nome, role, permissions, ativo, is_default, empresa_id, pin_required, atualizado_em) \
+         VALUES ($1, $2, $3, true, true, $4, false, NOW())"
     )
     .bind("Administrador Local")
     .bind("ADMIN")
@@ -1907,6 +1904,7 @@ mod tests {
             nome: "Administrador Local".to_string(),
             role: "ADMIN".to_string(),
             permissions: "[]".to_string(),
+            pin_required: true,
             ativo: true,
             is_default: true,
             criado_em: chrono::NaiveDate::from_ymd_opt(2026, 8, 13)
@@ -1934,9 +1932,33 @@ mod tests {
             role: role.to_string(),
             permissions: permissions.iter().map(|permission| permission.to_string()).collect(),
             pin_configured: true,
+            pin_required: true,
             is_default: false,
             ativo: true,
         }
+    }
+
+    #[test]
+    fn basic_operator_does_not_need_sensitive_permissions() {
+        assert_eq!(normalize_permissions("ATENDENTE", &[]).unwrap(), Vec::<String>::new());
+        assert!(normalize_permissions("CUSTOM", &["UNKNOWN".to_string()]).is_err());
+    }
+
+    #[test]
+    fn missing_local_pin_never_downgrades_a_required_identity() {
+        for role in ["ATENDENTE", "TECNICO", "ADMIN"] {
+            let mut profile = build_profile(role, &[]);
+            profile.pin_configured = false;
+            assert!(ensure_pinless_session_allowed(&profile).is_err());
+        }
+        let mut bootstrap_admin = build_profile("ADMIN", &[]);
+        bootstrap_admin.pin_required = false;
+        bootstrap_admin.pin_configured = false;
+        assert!(ensure_pinless_session_allowed(&bootstrap_admin).is_err());
+        let mut optional_operator = build_profile("CUSTOM", &[]);
+        optional_operator.pin_required = false;
+        optional_operator.pin_configured = false;
+        assert!(ensure_pinless_session_allowed(&optional_operator).is_ok());
     }
 
     #[test]

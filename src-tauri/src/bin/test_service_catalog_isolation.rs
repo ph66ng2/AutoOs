@@ -100,6 +100,12 @@ async fn create_fixture(pool: &PgPool, prefix: &str) -> Result<Fixture> {
     .context("create company B stock item")?;
     tx.commit().await.context("commit isolation fixture")?;
 
+    // Keep the production default pin_required=true. These synthetic admins
+    // authenticate with a real fixture PIN instead of relying on bootstrap.
+    for profile_id in [profile_a, profile_b] {
+        auth::store_profile_pin(profile_id, "1357").map_err(|error| anyhow!(error))?;
+    }
+
     Ok(Fixture {
         companies: [company_a, company_b],
         profiles: [profile_a, profile_b],

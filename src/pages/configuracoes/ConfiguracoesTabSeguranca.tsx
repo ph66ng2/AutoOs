@@ -1,3 +1,4 @@
+import { Link } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -13,6 +14,7 @@ import {
 } from "@/components/ui/select";
 import { TabsContent } from "@/components/ui/tabs";
 import { ProfileDeleteDialog } from "@/components/ProfileDeleteDialog";
+import { PROFILE_PRESETS } from "@/lib/profile-presets";
 import { securityPermissionLabel, securityRoleLabel } from "@/lib/security-profile-labels";
 import {
   SENSITIVE_PERMISSION_LABELS,
@@ -59,6 +61,8 @@ export type ConfiguracoesTabSegurancaProps = {
   setResetPinConfirm: (value: string) => void;
   resetarPinPerfil: () => void | Promise<void>;
   securityMessage: string | null;
+  securityMessageVariant?: "error" | "info" | "success";
+  onClearSecurityMessage?: () => void;
   inactivityLockEnabled: boolean;
   onToggleInactivityLock: (enabled: boolean) => void | Promise<void>;
   deleteDialogOpen: boolean;
@@ -66,6 +70,8 @@ export type ConfiguracoesTabSegurancaProps = {
   onDeleteSuccess: () => void | Promise<void>;
   adminPinVerify: string;
   setAdminPinVerify: (value: string) => void;
+  resetAdminPin: string;
+  setResetAdminPin: (value: string) => void;
 };
 
 export function ConfiguracoesTabSeguranca({
@@ -102,6 +108,8 @@ export function ConfiguracoesTabSeguranca({
   setResetPinConfirm,
   resetarPinPerfil,
   securityMessage,
+  securityMessageVariant = "error",
+  onClearSecurityMessage,
   inactivityLockEnabled,
   onToggleInactivityLock,
   deleteDialogOpen,
@@ -109,9 +117,14 @@ export function ConfiguracoesTabSeguranca({
   onDeleteSuccess,
   adminPinVerify,
   setAdminPinVerify,
+  resetAdminPin,
+  setResetAdminPin,
 }: ConfiguracoesTabSegurancaProps) {
   return (
-    <TabsContent value="seguranca" className="space-y-4">
+    <TabsContent value="seguranca" className="space-y-4" onChange={onClearSecurityMessage}>
+      {securityMessage && <div role={securityMessageVariant === "error" ? "alert" : "status"} aria-live={securityMessageVariant === "error" ? "assertive" : "polite"}>
+        <ErrorAlert variant={securityMessageVariant} message={securityMessage} />
+      </div>}
       <Card>
         <CardHeader>
           <CardTitle>Minhas ações</CardTitle>
@@ -163,10 +176,11 @@ export function ConfiguracoesTabSeguranca({
           <CardHeader>
             <CardTitle>Administração de perfis</CardTitle>
             <CardDescription>
-              Edite perfis, permissões e PINs dos colaboradores. Para criar um perfil, abra a aba Perfil.
+              Criação, edição, desativação e PINs agora estão reunidos em Equipe e acessos.
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-6">
+            <Button asChild variant="outline"><Link to="/perfil">Abrir Equipe e acessos</Link></Button>
             <div className="flex items-center gap-3 rounded-lg border p-3">
               <Checkbox
                 id="inactivity-lock-toggle"
@@ -233,18 +247,17 @@ export function ConfiguracoesTabSeguranca({
                   <Label>Papel</Label>
                   <Select value={editProfileRole} onValueChange={(value) => {
                     setEditProfileRole(value);
-                    if (value === "ADMIN") {
-                      setEditPermissions(permissionOptions);
-                    } else {
-                      setEditPermissions([]);
-                    }
+                    const preset = PROFILE_PRESETS.find((item) => item.role === value);
+                    setEditPermissions(preset ? [...preset.permissions] : []);
                   }} disabled={!securityAdminUnlocked || securityBusy || !managedProfile?.ativo}>
                     <SelectTrigger>
                       <SelectValue placeholder="Selecione um papel" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="ADMIN">Administrador</SelectItem>
-                      <SelectItem value="CUSTOM">Personalizado</SelectItem>
+                      {!PROFILE_PRESETS.some((preset) => preset.role === editProfileRole) && (
+                        <SelectItem value={editProfileRole}>{securityRoleLabel(editProfileRole)}</SelectItem>
+                      )}
+                      {PROFILE_PRESETS.map((preset) => <SelectItem key={preset.role} value={preset.role}>{preset.label}</SelectItem>)}
                     </SelectContent>
                   </Select>
                 </div>
@@ -260,7 +273,7 @@ export function ConfiguracoesTabSeguranca({
                     <Checkbox
                       checked={editProfileRole === "ADMIN" ? true : editPermissions.includes(permission)}
                       disabled={!securityAdminUnlocked || securityBusy || editProfileRole === "ADMIN" || !managedProfile?.ativo}
-                      onCheckedChange={() => togglePermission(editPermissions, permission, setEditPermissions)}
+                      onCheckedChange={() => { setEditProfileRole("CUSTOM"); togglePermission(editPermissions, permission, setEditPermissions); }}
                     />
                     <span>{SENSITIVE_PERMISSION_LABELS[permission]}</span>
                   </label>
@@ -331,8 +344,8 @@ export function ConfiguracoesTabSeguranca({
                   id="admin-pin-verify"
                   type="password"
                   inputMode="numeric"
-                  value={adminPinVerify}
-                  onChange={(event) => setAdminPinVerify(event.target.value.replace(/\D/g, "").slice(0, 8))}
+                  value={resetAdminPin}
+                  onChange={(event) => setResetAdminPin(event.target.value.replace(/\D/g, "").slice(0, 8))}
                   disabled={!securityAdminUnlocked || securityBusy || !managedProfile?.ativo}
                   placeholder="Digite seu PIN para autorizar"
                 />
@@ -361,10 +374,6 @@ export function ConfiguracoesTabSeguranca({
             </div>
           </CardContent>
         </Card>
-      )}
-
-      {securityMessage && (
-        <ErrorAlert variant="info" message={securityMessage} />
       )}
 
       <ProfileDeleteDialog

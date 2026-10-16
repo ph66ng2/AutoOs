@@ -2,7 +2,7 @@ import { ArrowRightLeft, ShieldAlert, ShieldCheck, UserRound } from "lucide-reac
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import { CreateProfileCard } from "@/components/CreateProfileCard";
+import { TeamAccessManager } from "@/components/TeamAccessManager";
 import { useSensitiveAccess } from "@/hooks/useSensitiveAccess";
 import { setAppMode } from "@/lib/app-mode";
 import { securityRoleLabel } from "@/lib/security-profile-labels";
@@ -16,8 +16,8 @@ export default function Perfil() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-3xl font-bold tracking-tight">Perfil</h1>
-        <p className="text-muted-foreground">Troque de perfil e, se tiver permissão, crie novos acessos.</p>
+        <h1 className="text-3xl font-bold tracking-tight">Equipe e acessos</h1>
+        <p className="text-muted-foreground">Cada pessoa com seu acesso. Cada computador com sua própria sessão.</p>
       </div>
 
       <Card className="overflow-hidden border-slate-200 bg-gradient-to-r from-slate-950 via-slate-900 to-slate-800 text-white shadow-lg">
@@ -82,7 +82,7 @@ export default function Perfil() {
                 })}
               >
                 <ArrowRightLeft className="mr-2 h-4 w-4" />
-                Ver perfis e decidir
+                Trocar de perfil
               </Button>
               <Button
                 type="button"
@@ -98,7 +98,7 @@ export default function Perfil() {
         </CardContent>
       </Card>
       {accessStatus?.can_manage_profiles && (
-        <CreateProfileCard profiles={accessStatus.profiles} onCreated={refreshStatus} />
+        <TeamAccessManager activeProfileId={accessStatus.active_profile_id} onChanged={refreshStatus} />
       )}
       {accessStatus && !accessStatus.can_manage_profiles && (
         <Card>

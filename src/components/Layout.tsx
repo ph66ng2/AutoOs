@@ -21,6 +21,7 @@ import {
   Wrench,
   Users,
   Menu,
+  X,
   Lock,
   Settings,
   ShieldCheck,
@@ -38,7 +39,7 @@ const navItems: {
   icon: React.ComponentType<{ className?: string }>;
   permission?: SensitivePermission;
 }[] = [
-  { label: "Perfil", path: "/perfil", icon: Users },
+  { label: "Equipe e acessos", path: "/perfil", icon: Users },
   { label: "Dashboard", path: "/", icon: LayoutDashboard },
   { label: "Equipamentos", path: "/equipamentos", icon: Printer },
   { label: "Clientes", path: "/clientes", icon: Users },
@@ -49,7 +50,9 @@ const navItems: {
 ];
 
 export function Layout() {
-  const [collapsed, setCollapsed] = useState(false);
+  const [desktopCollapsed, setCollapsed] = useState(false);
+  const [mobileOpen, setMobileOpen] = useState(false);
+  const collapsed = desktopCollapsed && !mobileOpen;
   const { status, lockSensitiveAccess } = useSensitiveAccess();
 
   const visibleNavItems = navItems.filter(item => {
@@ -58,9 +61,11 @@ export function Layout() {
   });
 
   return (
-    <div className="flex h-screen bg-background">
+    <div className="flex h-screen overflow-hidden bg-background">
+      {mobileOpen && <button type="button" aria-label="Fechar menu" onClick={() => setMobileOpen(false)} className="fixed inset-0 z-40 bg-black/60 md:hidden" /> }
       {/* Sidebar */}
-      <aside className={cn("flex flex-col bg-sidebar transition-all duration-300", collapsed ? "w-16" : "w-60")}>
+      <aside id="main-sidebar" aria-label="Menu principal" className={cn("fixed inset-y-0 left-0 z-50 flex w-60 shrink-0 flex-col bg-sidebar transition-all duration-300 md:static md:visible md:translate-x-0", mobileOpen ? "visible translate-x-0" : "invisible -translate-x-full", collapsed ? "md:w-16" : "md:w-60")}>
+        <Button type="button" variant="ghost" aria-label="Fechar menu lateral" className="absolute right-2 top-2 text-white md:hidden" onClick={() => setMobileOpen(false)}><X className="h-5 w-5" /></Button>
         {/* Logo */}
         <div className="flex h-[150px] items-center justify-center border-b border-sidebar-border px-4">
           {!collapsed ? (
@@ -77,6 +82,8 @@ export function Layout() {
               key={item.path}
               to={item.path}
               end={item.path === "/"}
+              aria-label={item.label}
+              onClick={() => setMobileOpen(false)}
               className={({ isActive }) =>
                 cn(
                   "flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-all duration-200",
@@ -126,12 +133,13 @@ export function Layout() {
         </div>
 
         {/* Toggle */}
-        <div className="border-t border-sidebar-border p-3">
+        <div className="hidden border-t border-sidebar-border p-3 md:block">
           <Button
             variant="ghost"
             size="sm"
             className="w-full justify-center text-white/50 hover:text-white hover:bg-white/10"
-            onClick={() => setCollapsed(!collapsed)}
+            aria-label={collapsed ? "Expandir menu" : "Recolher menu"}
+            onClick={() => setCollapsed(!desktopCollapsed)}
           >
             <Menu className="h-4 w-4" />
             {!collapsed && <span className="ml-2">Recolher</span>}
@@ -140,8 +148,9 @@ export function Layout() {
       </aside>
 
       {/* Main Content */}
-      <main className="flex-1 overflow-auto bg-background">
-        <div className="p-6 max-w-7xl mx-auto">
+      <main className="min-w-0 flex-1 overflow-auto bg-background">
+        <header className="sticky top-0 z-20 flex h-14 items-center gap-3 border-b bg-background px-4 md:hidden"><Button type="button" variant="outline" size="icon" aria-label="Abrir menu" aria-expanded={mobileOpen} aria-controls="main-sidebar" onClick={() => setMobileOpen(true)}><Menu className="h-5 w-5" /></Button><span className="font-semibold">AutoOS</span></header>
+        <div className="mx-auto max-w-7xl p-4 md:p-6">
           <Outlet />
         </div>
       </main>
