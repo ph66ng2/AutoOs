@@ -580,6 +580,7 @@ export interface SecurityProfile {
   role: string;
   permissions: SensitivePermission[];
   pin_configured: boolean;
+  pin_required?: boolean;
   is_default: boolean;
   ativo: boolean;
 }

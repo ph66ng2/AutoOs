@@ -38,7 +38,7 @@ const navItems: {
   icon: React.ComponentType<{ className?: string }>;
   permission?: SensitivePermission;
 }[] = [
-  { label: "Perfil", path: "/perfil", icon: Users },
+  { label: "Equipe e acessos", path: "/perfil", icon: Users },
   { label: "Dashboard", path: "/", icon: LayoutDashboard },
   { label: "Equipamentos", path: "/equipamentos", icon: Printer },
   { label: "Clientes", path: "/clientes", icon: Users },

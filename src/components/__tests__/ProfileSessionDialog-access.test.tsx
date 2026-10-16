@@ -17,6 +17,13 @@ const defaults: React.ComponentProps<typeof ProfileSessionDialog> = {
 };
 
 describe("confirmação de sessão", () => {
+  it("bloqueia PIN exigido mas ausente neste PC, inclusive administrador", () => {
+    const protectedAdmin = { ...admin, pin_required: true };
+    render(<ProfileSessionDialog {...defaults} profiles={[protectedAdmin]} selectedProfile={protectedAdmin} />);
+    expect(screen.getByRole("button", { name: "PIN pendente neste computador" })).toBeDisabled();
+    expect(screen.queryByRole("button", { name: /Criar meu acesso/ })).not.toBeInTheDocument();
+  });
+
   it("impede criar o PIN inicial quando a confirmação diverge", () => {
     render(<ProfileSessionDialog {...defaults} />);
     expect(screen.getByRole("button", { name: /Criar meu acesso e entrar/i })).toBeDisabled();

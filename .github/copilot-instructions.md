@@ -71,7 +71,10 @@ autoos/
 - Mudanças de schema devem entrar como nova migração sequencial em `src-tauri/migrations/`.
 - Evite editar migrações já aplicadas em ambientes compartilhados, salvo correção muito controlada e justificada.
 - Ao alterar dados persistidos, mantenha frontend, backend, validações e tipos alinhados.
-- A tela Perfil concentra criação de perfis e troca da sessão com PIN do perfil de destino.
+- A rota `/perfil` (Equipe e acessos) concentra cadastro guiado, gestão da equipe e troca da sessão com PIN do perfil de destino.
+- `pin_required` é política compartilhada; PIN/hash continuam no keyring. Ausência do PIN local não autoriza entrada em um perfil protegido.
+- Trocar a sessão é uma operação local: não alterar `is_default` no banco compartilhado.
+- Perfis operacionais podem ter zero permissões sensíveis. Os modelos em `profile-presets.ts` somente preenchem permissões já verificadas pelo backend.
 - A tela Configurações → Segurança concentra status do schema, edição de perfis e permissões locais, auditoria mínima, backup e restore PostgreSQL.
 - Ações sensíveis devem continuar respeitando o modelo local de perfis, PIN e permissões.
 - Se uma ação for administrativa ou destrutiva, preserve ou amplie trilha de auditoria e confirmação explícita.

@@ -186,3 +186,7 @@ Proprietário - BMITAG
 ### Estoque vinculado ao orçamento
 
 Serviços podem vincular peças e consumir estoque somente após aprovação do cliente, inclusive aprovação parcial. AutoOS e AutoBO compartilham o mesmo estoque no Supabase. Veja [regras de operação e publicação coordenada](docs/ESTOQUE_ORCAMENTO.md).
+
+### Equipe e acessos
+
+A aba **Equipe e acessos** reúne cadastro por função, revisão das permissões, edição, PIN local e desativação/reativação. A troca de perfil é independente em cada computador. Veja o fluxo, a migration e as condições de provisionamento em [Equipe e acessos](docs/TEAM_ACCESS.md).

@@ -394,6 +394,11 @@ export function SensitiveAccessProvider({ children }: { children: ReactNode }) {
         return;
       }
 
+      if (activeProfile?.pin_required && !activeProfile.pin_configured) {
+        setError("Este perfil exige um PIN local. Peça a um administrador para configurá-lo em Equipe e acessos.");
+        return;
+      }
+
       // Admin sem PIN: forçar configuração de PIN no primeiro acesso
       if (activeProfile?.role === "ADMIN" && !activeProfile?.pin_configured) {
         if (pin !== confirmPin) {
@@ -406,8 +411,7 @@ export function SensitiveAccessProvider({ children }: { children: ReactNode }) {
           setBusy(false);
           return;
         }
-        await SensitiveAccessService.unlockWithoutPin();
-        const nextStatus = await SensitiveAccessService.configurePin(pin);
+        const nextStatus = await SensitiveAccessService.setActiveProfile(activeProfile.id, pin, confirmPin);
         setStatus(nextStatus);
 
         if (!profileHasPermission(nextStatus, promptOptions.permission)) {

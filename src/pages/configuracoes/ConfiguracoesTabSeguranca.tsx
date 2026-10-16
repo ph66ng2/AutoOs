@@ -1,3 +1,4 @@
+import { Link } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -163,10 +164,11 @@ export function ConfiguracoesTabSeguranca({
           <CardHeader>
             <CardTitle>Administração de perfis</CardTitle>
             <CardDescription>
-              Edite perfis, permissões e PINs dos colaboradores. Para criar um perfil, abra a aba Perfil.
+              Criação, edição, desativação e PINs agora estão reunidos em Equipe e acessos.
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-6">
+            <Button asChild variant="outline"><Link to="/perfil">Abrir Equipe e acessos</Link></Button>
             <div className="flex items-center gap-3 rounded-lg border p-3">
               <Checkbox
                 id="inactivity-lock-toggle"

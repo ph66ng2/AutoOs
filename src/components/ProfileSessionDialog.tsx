@@ -65,7 +65,8 @@ export function ProfileSessionDialog({
 }: ProfileSessionDialogProps) {
   const isSelectorMode = mode === "selector";
   const isCurrentProfileSelected = !!selectedProfile && selectedProfile.id === activeProfileId;
-  const isAdminWithoutPin = selectedProfile?.role === "ADMIN" && !selectedProfile?.pin_configured;
+  const missingRequiredPin = !!selectedProfile?.pin_required && !selectedProfile.pin_configured;
+  const isAdminWithoutPin = selectedProfile?.role === "ADMIN" && !selectedProfile?.pin_configured && !missingRequiredPin;
   const shouldAskForPin = isAdminWithoutPin || (Boolean(selectedProfile?.pin_configured) && (!isSelectorMode || !isCurrentProfileSelected || !unlocked));
   const permissionPreview = selectedProfile?.permissions.slice(0, 3) ?? [];
 
@@ -74,6 +75,7 @@ export function ProfileSessionDialog({
       return "Selecione um perfil";
     }
 
+    if (missingRequiredPin) return "PIN pendente neste computador";
     if (isAdminWithoutPin) {
       return "Configurar PIN e continuar";
     }
@@ -97,6 +99,7 @@ export function ProfileSessionDialog({
 
   const primaryDisabled =
     !selectedProfile ||
+    missingRequiredPin ||
     busy ||
     (shouldAskForPin && pin.length < 4) ||
     (isAdminWithoutPin && (confirmPin.length < 4 || pin !== confirmPin));
@@ -111,6 +114,7 @@ export function ProfileSessionDialog({
       return "Selecione um perfil para visualizar o contexto da sessão.";
     }
 
+    if (missingRequiredPin) return "Este perfil exige PIN. Peça a um administrador para configurá-lo neste computador em Equipe e acessos, ou use a recuperação de acesso.";
     if (isAdminWithoutPin) {
       return "Seu perfil de administrador exige um PIN. Defina um PIN de 4 a 8 dígitos para continuar.";
     }
@@ -133,7 +137,7 @@ export function ProfileSessionDialog({
   // Ter apenas um perfil não significa, por si só, primeiro acesso: uma instalação
   // já usada pode continuar com apenas o administrador e um PIN já configurado.
   // A tela de criação só pode ser exibida quando o PIN está realmente pendente.
-  const isFirstAccess = mode === "startup" && profiles.length === 1 && !selectedProfile?.pin_configured;
+  const isFirstAccess = mode === "startup" && profiles.length === 1 && isAdminWithoutPin;
 
   return (
     <Dialog
@@ -405,7 +409,7 @@ export function ProfileSessionDialog({
                   </div>
                 ) : (
                   <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-800">
-                    Este perfil não exige PIN. Clique abaixo para continuar.
+                    {missingRequiredPin ? "Acesso bloqueado até a configuração do PIN neste computador." : "Este perfil não exige PIN. Clique abaixo para continuar."}
                   </div>
                 ))}
                 {error && <p className="text-sm text-red-600">{error}</p>}

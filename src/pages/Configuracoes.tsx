@@ -391,7 +391,7 @@ export default function Configuracoes() {
     }
 
     setEditProfileName(managedProfile.nome);
-    setEditProfileRole(managedProfile.role === "ADMIN" ? "ADMIN" : "CUSTOM");
+    setEditProfileRole(managedProfile.role);
     setEditPermissions(managedProfile.permissions);
     setResetPin("");
     setResetPinConfirm("");
@@ -655,11 +655,6 @@ export default function Configuracoes() {
     if (!managedProfileId) return;
     if (!securityAdminUnlocked) {
       setSecurityMessage("Desbloqueie a gestão de segurança com PIN/Admin para alterar perfis.");
-      return;
-    }
-
-    if (editProfileRole === "CUSTOM" && editPermissions.length === 0) {
-      setSecurityMessage("Um perfil CUSTOM deve ter pelo menos uma permissão.");
       return;
     }
 
