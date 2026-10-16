@@ -61,6 +61,8 @@ export type ConfiguracoesTabSegurancaProps = {
   setResetPinConfirm: (value: string) => void;
   resetarPinPerfil: () => void | Promise<void>;
   securityMessage: string | null;
+  securityMessageVariant?: "error" | "info" | "success";
+  onClearSecurityMessage?: () => void;
   inactivityLockEnabled: boolean;
   onToggleInactivityLock: (enabled: boolean) => void | Promise<void>;
   deleteDialogOpen: boolean;
@@ -106,6 +108,8 @@ export function ConfiguracoesTabSeguranca({
   setResetPinConfirm,
   resetarPinPerfil,
   securityMessage,
+  securityMessageVariant = "error",
+  onClearSecurityMessage,
   inactivityLockEnabled,
   onToggleInactivityLock,
   deleteDialogOpen,
@@ -117,9 +121,9 @@ export function ConfiguracoesTabSeguranca({
   setResetAdminPin,
 }: ConfiguracoesTabSegurancaProps) {
   return (
-    <TabsContent value="seguranca" className="space-y-4">
-      {securityMessage && <div role="status" className="sticky top-0 z-10" aria-live="polite">
-        <ErrorAlert variant={securityMessage.includes("com sucesso") ? "success" : "info"} message={securityMessage} />
+    <TabsContent value="seguranca" className="space-y-4" onChange={onClearSecurityMessage}>
+      {securityMessage && <div role={securityMessageVariant === "error" ? "alert" : "status"} className="sticky top-0 z-10" aria-live={securityMessageVariant === "error" ? "assertive" : "polite"}>
+        <ErrorAlert variant={securityMessageVariant} message={securityMessage} />
       </div>}
       <Card>
         <CardHeader>

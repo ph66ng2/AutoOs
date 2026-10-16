@@ -332,7 +332,7 @@ export function TeamAccessManager({
                 : "Confira os dados antes de confirmar."}
             </DialogDescription>
           </DialogHeader>
-          <form onSubmit={(event) => void submit(event)} className="space-y-5">
+          <form onChange={() => setError(null)} onSubmit={(event) => void submit(event)} className="space-y-5">
             {selection?.action === "edit" && (
               <>
                 <div className="space-y-2">

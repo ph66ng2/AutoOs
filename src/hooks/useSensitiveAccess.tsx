@@ -494,8 +494,8 @@ export function SensitiveAccessProvider({ children }: { children: ReactNode }) {
           setConfirmPin("");
           setError(null);
         }}
-        onPinChange={setPin}
-        onConfirmPinChange={setConfirmPin}
+        onPinChange={(value) => { setPin(value); setError(null); }}
+        onConfirmPinChange={(value) => { setConfirmPin(value); setError(null); }}
         onSubmit={() => void submitSensitiveAccess()}
         onForgotPassword={() => setRecoveryOpen(true)}
       />

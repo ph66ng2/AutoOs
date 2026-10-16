@@ -68,9 +68,12 @@ async fn main() -> Result<()> {
         cleanup.profile_id = Some(profile_id);
         set_default_profile(&pool, profile_id).await?;
 
-        auth::configure_sensitive_pin(PIN.to_string(), None)
+        // A protected fixture must have a credential before authenticating.
+        auth::store_profile_pin(profile_id, PIN)
+            .map_err(|error| anyhow!("failed to provision temp profile pin: {}", error))?;
+        auth::set_active_security_profile(profile_id, PIN.to_string(), None)
             .await
-            .map_err(|error| anyhow!("failed to configure temp profile pin: {}", error))?;
+            .map_err(|error| anyhow!("failed to authenticate temp profile: {}", error))?;
 
         let (smtp_port, _smtp_capture, smtp_handle) = start_fake_smtp_server()?;
         let (http_url, http_capture, http_handle) = start_fake_whatsapp_server()?;

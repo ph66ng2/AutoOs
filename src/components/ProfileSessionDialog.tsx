@@ -292,7 +292,7 @@ export function ProfileSessionDialog({
                           {profile.pin_configured ? (
                             <Badge variant="outline">PIN ativo</Badge>
                           ) : (
-                            <Badge variant="outline">Sem PIN</Badge>
+                            <Badge variant="outline">{profile.pin_required || profile.role === "ADMIN" ? "PIN pendente" : "Não exige PIN"}</Badge>
                           )}
                         </div>
                       </div>
@@ -330,7 +330,7 @@ export function ProfileSessionDialog({
                     {unlocked && selectedProfile.id === activeProfileId && (
                       <Badge className="bg-emerald-600 hover:bg-emerald-600">Sessão ativa</Badge>
                     )}
-                    {!selectedProfile.pin_configured && <Badge variant="outline">PIN pendente</Badge>}
+                    {!selectedProfile.pin_configured && <Badge variant="outline">{missingRequiredPin || isAdminWithoutPin ? "PIN pendente" : "Não exige PIN"}</Badge>}
                   </div>
 
                   <p className="text-sm text-muted-foreground">{helperText}</p>

@@ -19,7 +19,7 @@
  * ║  USADO POR: App.tsx (rota /configuracoes)                   ║
  * ╚══════════════════════════════════════════════════════════════╝
  */
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
 import { toast } from "sonner";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -66,7 +66,11 @@ export default function Configuracoes() {
   const [photoTunnelStatus, setPhotoTunnelStatus] = useState<string | null>(null);
   const [photoTunnelToken, setPhotoTunnelToken] = useState("");
   const [photoTunnelPublicHost, setPhotoTunnelPublicHost] = useState("fotos.bmitag.com.br");
-  const [securityMessage, setSecurityMessage] = useState<string | null>(null);
+  const [securityFeedback, setSecurityFeedback] = useState<{ message: string; variant: "error" | "info" | "success" } | null>(null);
+  const securityMessage = securityFeedback?.message ?? null;
+  const setSecurityMessage = useCallback((message: string | null, variant: "error" | "info" | "success" = "error") => {
+    setSecurityFeedback(message ? { message, variant } : null);
+  }, []);
   const [securityAdminUnlocked, setSecurityAdminUnlocked] = useState(false);
   const [tab, setTab] = useState("smtp");
   const [auditEvents, setAuditEvents] = useState<SecurityAuditEvent[]>([]);
@@ -398,7 +402,8 @@ export default function Configuracoes() {
     setResetPinConfirm("");
     setAdminPinVerify("");
     setResetAdminPin("");
-  }, [managedProfile?.id]);
+    setSecurityMessage(null);
+  }, [managedProfile?.id, setSecurityMessage]);
 
   useEffect(() => {
     void loadAuditEvents();
@@ -645,7 +650,7 @@ export default function Configuracoes() {
       setCurrentPin("");
       setNewPin("");
       setConfirmPin("");
-      setSecurityMessage("PIN do perfil ativo atualizado com sucesso.");
+      setSecurityMessage("PIN do perfil ativo atualizado com sucesso.", "success");
       await atualizarEstadoSeguranca();
     } catch (error: any) {
       setSecurityMessage(error?.message || error?.toString() || "Falha ao atualizar o PIN do perfil ativo.");
@@ -671,7 +676,7 @@ export default function Configuracoes() {
         permissions,
       }, adminPinVerify);
       setAdminPinVerify("");
-      setSecurityMessage("Perfil atualizado com sucesso.");
+      setSecurityMessage("Perfil atualizado com sucesso.", "success");
       toast.success("Perfil atualizado com sucesso.");
       await atualizarEstadoSeguranca();
     } catch (error: any) {
@@ -705,7 +710,7 @@ export default function Configuracoes() {
       setResetPin("");
       setResetPinConfirm("");
       setResetAdminPin("");
-      setSecurityMessage("PIN do perfil selecionado redefinido com sucesso.");
+      setSecurityMessage("PIN do perfil selecionado redefinido com sucesso.", "success");
       toast.success("PIN do perfil selecionado redefinido com sucesso.");
       await atualizarEstadoSeguranca();
     } catch (error: any) {
@@ -726,7 +731,7 @@ export default function Configuracoes() {
     setSecurityMessage(null);
     try {
       await SensitiveAccessService.deactivateProfile(managedProfileId);
-      setSecurityMessage("Perfil desativado com sucesso.");
+      setSecurityMessage("Perfil desativado com sucesso.", "success");
       await atualizarEstadoSeguranca();
     } catch (error: any) {
       setSecurityMessage(error?.message || error?.toString() || "Falha ao desativar o perfil selecionado.");
@@ -746,7 +751,7 @@ export default function Configuracoes() {
     setSecurityMessage(null);
     try {
       await SensitiveAccessService.reactivateProfile(managedProfileId);
-      setSecurityMessage("Perfil reativado com sucesso.");
+      setSecurityMessage("Perfil reativado com sucesso.", "success");
       await atualizarEstadoSeguranca();
     } catch (error: any) {
       setSecurityMessage(error?.message || error?.toString() || "Falha ao reativar o perfil selecionado.");
@@ -757,7 +762,7 @@ export default function Configuracoes() {
 
   async function exportarAuditoriaCsv() {
     if (!filteredAuditEvents.length) {
-      setSecurityMessage("Nenhum evento de auditoria corresponde aos filtros atuais.");
+      setSecurityMessage("Nenhum evento de auditoria corresponde aos filtros atuais.", "info");
       return;
     }
 
@@ -789,7 +794,7 @@ export default function Configuracoes() {
         profileId: auditProfileFilter === "ALL" ? undefined : Number(auditProfileFilter),
         exportedCount: filteredAuditEvents.length,
       });
-      setSecurityMessage("CSV da auditoria exportado para a pasta temporária do app.");
+      setSecurityMessage("CSV da auditoria exportado para a pasta temporária do app.", "info");
     } catch (error: any) {
       setSecurityMessage(error?.message || error?.toString() || "Falha ao exportar a auditoria.");
     }
@@ -814,7 +819,7 @@ export default function Configuracoes() {
   async function handleSecurityAdminToggle(nextValue: boolean) {
     if (!nextValue) {
       setSecurityAdminUnlocked(false);
-      setSecurityMessage("Gestão de segurança bloqueada novamente.");
+      setSecurityMessage("Gestão de segurança bloqueada novamente.", "info");
       return;
     }
 
@@ -831,7 +836,7 @@ export default function Configuracoes() {
     }
 
     setSecurityAdminUnlocked(true);
-    setSecurityMessage("Gestão de segurança liberada para esta sessão.");
+    setSecurityMessage("Gestão de segurança liberada para esta sessão.", "info");
   }
 
   async function handleInactivityToggle(enabled: boolean) {
@@ -848,7 +853,7 @@ export default function Configuracoes() {
   }
 
   async function handleDeleteSuccess() {
-    setSecurityMessage("Perfil excluído permanentemente.");
+    setSecurityMessage("Perfil excluído permanentemente.", "success");
     await atualizarEstadoSeguranca();
   }
 
@@ -867,7 +872,7 @@ export default function Configuracoes() {
         <p className="text-muted-foreground">Defina parâmetros do sistema e integrações.</p>
       </div>
 
-      <Tabs value={tab} onValueChange={setTab} className="space-y-4">
+      <Tabs value={tab} onValueChange={(nextTab) => { setTab(nextTab); setSecurityMessage(null); }} className="space-y-4">
         <TabsList>
           <TabsTrigger value="smtp" disabled={!canConfigureIntegrations}>Integrações</TabsTrigger>
           <TabsTrigger value="infra">Banco</TabsTrigger>
@@ -984,6 +989,8 @@ export default function Configuracoes() {
           setResetPinConfirm={setResetPinConfirm}
           resetarPinPerfil={resetarPinPerfil}
           securityMessage={securityMessage}
+          securityMessageVariant={securityFeedback?.variant}
+          onClearSecurityMessage={() => setSecurityMessage(null)}
           inactivityLockEnabled={inactivityLockEnabled}
           onToggleInactivityLock={handleInactivityToggle}
           deleteDialogOpen={deleteDialogOpen}

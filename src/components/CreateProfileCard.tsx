@@ -93,7 +93,7 @@ export function CreateProfileCard({ profiles, onCreated }: Props) {
       setCreatedName(trimmedName);
       setPin("");
       setConfirmPin("");
-      toast.success(`Perfil ${trimmedName} criado`);
+      toast.success(`Perfil ${trimmedName} criado com sucesso.`);
       try {
         await onCreated();
       } catch {
@@ -162,6 +162,7 @@ export function CreateProfileCard({ profiles, onCreated }: Props) {
               ))}
             </ol>
             <form
+              onChange={() => setError(null)}
               onSubmit={(event) => {
                 event.preventDefault();
                 if (step < 2) continueStep();

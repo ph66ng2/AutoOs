@@ -3,6 +3,8 @@ import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { CreateProfileCard } from "../CreateProfileCard";
 const createProfile = vi.hoisted(() => vi.fn());
+const successToast = vi.hoisted(() => vi.fn());
+vi.mock("sonner", () => ({ toast: { success: successToast } }));
 vi.mock("@/lib/sensitive-access", () => ({
   SensitiveAccessService: { createProfile },
 }));
@@ -57,6 +59,7 @@ describe("cadastro guiado de colaboradores", () => {
       ),
     );
     expect(onCreated).toHaveBeenCalledOnce();
+    expect(successToast).toHaveBeenCalledWith("Perfil Maria Santos criado com sucesso.");
     expect(screen.getByRole("status")).toHaveTextContent(
       "Perfil Maria Santos criado",
     );

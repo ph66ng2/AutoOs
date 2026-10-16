@@ -51,12 +51,25 @@ const baseProps: ConfiguracoesTabSegurancaProps = {
   setResetAdminPin: vi.fn(),
 };
 
-function SecurityForm() {
+function SecurityForm({ initialMessage = "Perfil atualizado com sucesso.", variant = "success" }: { initialMessage?: string; variant?: "success" | "error" }) {
+  const [message, setMessage] = useState<string | null>(initialMessage);
   const [editPin, setEditPin] = useState("");
   const [resetPin, setResetPin] = useState("");
-  return <MemoryRouter><Tabs defaultValue="seguranca"><ConfiguracoesTabSeguranca {...baseProps} adminPinVerify={editPin} setAdminPinVerify={setEditPin} resetAdminPin={resetPin} setResetAdminPin={setResetPin} securityMessage="Perfil atualizado com sucesso." /></Tabs></MemoryRouter>;
+  return <MemoryRouter><Tabs defaultValue="seguranca"><ConfiguracoesTabSeguranca {...baseProps} adminPinVerify={editPin} setAdminPinVerify={setEditPin} resetAdminPin={resetPin} setResetAdminPin={setResetPin} securityMessage={message} securityMessageVariant={variant} onClearSecurityMessage={() => setMessage(null)} /></Tabs></MemoryRouter>;
 }
 describe("retorno e credenciais administrativas de segurança", () => {
+  it("destaca o PIN administrativo inválido como erro e limpa ao corrigir o campo", async () => {
+    const user = userEvent.setup();
+    render(<SecurityForm initialMessage="PIN do administrador inválido" variant="error" />);
+    expect(screen.getByRole("alert")).toHaveTextContent("PIN do administrador inválido");
+    await user.type(screen.getByLabelText("Seu PIN de administrador", { selector: "#admin-pin-edit" }), "1234");
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  });
+  it("apresenta sucesso com o papel de status", () => {
+    render(<SecurityForm />);
+    expect(screen.getByRole("status")).toHaveTextContent("Perfil atualizado com sucesso.");
+  });
+
   it("não espelha o PIN de edição no formulário de reset", async () => {
     const user = userEvent.setup();
     render(<SecurityForm />);
@@ -67,6 +80,6 @@ describe("retorno e credenciais administrativas de segurança", () => {
     await user.type(reset, "4321");
     expect(edit).toHaveValue("1234");
     expect(reset).toHaveValue("4321");
-    expect(screen.getByRole("status")).toHaveTextContent("Perfil atualizado com sucesso.");
+    expect(screen.queryByText("Perfil atualizado com sucesso.")).not.toBeInTheDocument();
   });
 });
