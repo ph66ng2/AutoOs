@@ -1,16 +1,14 @@
 import { ArrowRightLeft, ShieldAlert, ShieldCheck, UserRound } from "lucide-react";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { TeamAccessManager } from "@/components/TeamAccessManager";
 import { useSensitiveAccess } from "@/hooks/useSensitiveAccess";
 import { setAppMode } from "@/lib/app-mode";
 import { securityRoleLabel } from "@/lib/security-profile-labels";
-import { SENSITIVE_PERMISSIONS } from "@/types";
 import { useNavigate } from "react-router-dom";
 
 export default function Perfil() {
-  const { status: accessStatus, openProfileSelector, refreshStatus, ensureSensitiveAccess } = useSensitiveAccess();
+  const { status: accessStatus, openProfileSelector, refreshStatus } = useSensitiveAccess();
   const navigate = useNavigate();
 
   return (
@@ -36,21 +34,6 @@ export default function Perfil() {
                   Escolha outro perfil e informe o PIN dele para entrar. O perfil atual só muda após a validação.
                 </p>
               </div>
-
-              <div className="flex flex-wrap gap-2">
-                {accessStatus?.profiles.slice(0, 4).map((profile) => (
-                  <Badge
-                    key={profile.id}
-                    className={profile.id === accessStatus.active_profile_id
-                      ? "border-emerald-300/40 bg-emerald-500/20 text-emerald-50"
-                      : "border-white/15 bg-white/10 text-white/85"
-                    }
-                    variant="outline"
-                  >
-                    {profile.nome}
-                  </Badge>
-                ))}
-              </div>
             </div>
 
             <div className="w-full max-w-md rounded-3xl border border-white/15 bg-white/10 p-5 backdrop-blur-sm">
@@ -70,7 +53,6 @@ export default function Perfil() {
                   {accessStatus?.unlocked ? <ShieldCheck className="h-4 w-4 text-emerald-300" /> : <ShieldAlert className="h-4 w-4 text-amber-300" />}
                   {accessStatus?.unlocked ? "Sessão sensível ativa" : "Sessão sensível bloqueada"}
                 </span>
-                <span className="text-white/50">{accessStatus?.profiles.length || 0} {(accessStatus?.profiles.length || 0) === 1 ? "perfil" : "perfis"}</span>
               </div>
 
               <Button
@@ -99,25 +81,6 @@ export default function Perfil() {
       </Card>
       {accessStatus?.can_manage_profiles && (
         <TeamAccessManager activeProfileId={accessStatus.active_profile_id} onChanged={refreshStatus} />
-      )}
-      {accessStatus && !accessStatus.can_manage_profiles && (
-        <Card>
-          <CardContent className="flex flex-col gap-4 p-6 sm:flex-row sm:items-center sm:justify-between">
-            <div>
-              <h2 className="font-semibold">Criar perfil</h2>
-              <p className="text-sm text-muted-foreground">
-                {accessStatus.unlocked
-                  ? "O perfil atual não pode criar contas. Entre com um perfil que gerencia perfis."
-                  : "Desbloqueie um perfil com permissão para gerenciar contas."}
-              </p>
-            </div>
-            <Button type="button" variant="outline" onClick={() => void (accessStatus.unlocked
-              ? openProfileSelector({ title: "Escolher perfil autorizado", description: "Selecione um perfil com permissão para gerenciar contas e informe o PIN dele." })
-              : ensureSensitiveAccess({ title: "Criar perfil", description: "Entre com um perfil que gerencia contas.", permission: SENSITIVE_PERMISSIONS.MANAGE_PROFILES }))}>
-              {accessStatus.unlocked ? "Trocar perfil" : "Desbloquear"}
-            </Button>
-          </CardContent>
-        </Card>
       )}
     </div>
   );
