@@ -62,7 +62,7 @@ pub(crate) struct SensitiveSession {
     pub(crate) profile_key: Option<Vec<u8>>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
 pub struct SecurityProfileSummary {
     pub id: i32,
     pub nome: String,
@@ -72,12 +72,23 @@ pub struct SecurityProfileSummary {
     pub pin_required: bool,
     pub is_default: bool,
     pub ativo: bool,
+    #[serde(default)]
+    pub avatar_icone: Option<String>,
+    #[serde(default)]
+    pub avatar_cor: Option<String>,
+    #[serde(default)]
+    pub tema: Option<String>,
+    #[serde(default)]
+    pub onboarding_pendente: bool,
+    /// Permissões que o tour já apresentou. `None` = o tour nunca foi visto.
+    #[serde(default)]
+    pub tour_permissoes_vistas: Option<Vec<String>>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum PermissionGateFailure {
     SessionLocked,
-    MissingPermission(SecurityProfileSummary),
+    MissingPermission(Box<SecurityProfileSummary>),
 }
 
 #[derive(Debug, Serialize)]
@@ -128,6 +139,19 @@ struct SecurityProfileRecord {
     ativo: bool,
     is_default: bool,
     criado_em: chrono::NaiveDateTime,
+    avatar_icone: Option<String>,
+    avatar_cor: Option<String>,
+    tema: Option<String>,
+    onboarding_concluido_em: Option<DateTime<Utc>>,
+    tour_permissoes_vistas: Option<String>,
+}
+
+/// Colunas de `SecurityProfileRecord`. Macro para compor SQL estático com `concat!`.
+macro_rules! profile_columns {
+    () => {
+        "id, nome, role, permissions, pin_required, ativo, is_default, criado_em, \
+         avatar_icone, avatar_cor, tema, onboarding_concluido_em, tour_permissoes_vistas"
+    };
 }
 
 pub(crate) fn session_state() -> &'static Mutex<SensitiveSession> {
@@ -403,7 +427,7 @@ fn evaluate_permission_gate(
     if has_permission(&profile, permission) {
         Ok(profile)
     } else {
-        Err(PermissionGateFailure::MissingPermission(profile))
+        Err(PermissionGateFailure::MissingPermission(Box::new(profile)))
     }
 }
 
@@ -626,7 +650,7 @@ pub fn require_permission(permission: &str) -> Result<SecurityProfileSummary, St
             let profile_name = profile.nome.clone();
             spawn_security_event(
                 "PERMISSION_DENIED",
-                Some(profile),
+                Some(*profile),
                 format!("permission={}", permission),
                 false,
             );
@@ -708,7 +732,7 @@ async fn fetch_profile_records_with_scope(include_inactive: bool) -> Result<Vec<
     ensure_default_profile_exists().await?;
     let pool = get_pool().await.map_err(|e| e.to_string())?;
     let mut query_builder = sqlx::QueryBuilder::<sqlx::Postgres>::new(
-        "SELECT id, nome, role, permissions, pin_required, ativo, is_default, criado_em FROM security_profiles",
+        concat!("SELECT ", profile_columns!(), " FROM security_profiles"),
     );
 
     if !include_inactive {
@@ -748,9 +772,7 @@ async fn fetch_active_profile_record() -> Result<SecurityProfileRecord, String> 
 async fn fetch_profile_record_by_id(profile_id: i32) -> Result<SecurityProfileRecord, String> {
     let pool = get_pool().await.map_err(|e| e.to_string())?;
     let profile = sqlx::query_as::<_, SecurityProfileRecord>(
-        "SELECT id, nome, role, permissions, pin_required, ativo, is_default, criado_em
-         FROM security_profiles
-         WHERE id = $1 AND ativo = true"
+        concat!("SELECT ", profile_columns!(), " FROM security_profiles WHERE id = $1 AND ativo = true"),
     )
     .bind(profile_id)
     .fetch_optional(&pool)
@@ -769,9 +791,7 @@ async fn fetch_profile_record_by_id(profile_id: i32) -> Result<SecurityProfileRe
 async fn fetch_profile_record_by_id_any(profile_id: i32) -> Result<SecurityProfileRecord, String> {
     let pool = get_pool().await.map_err(|e| e.to_string())?;
     sqlx::query_as::<_, SecurityProfileRecord>(
-        "SELECT id, nome, role, permissions, pin_required, ativo, is_default, criado_em
-         FROM security_profiles
-         WHERE id = $1"
+        concat!("SELECT ", profile_columns!(), " FROM security_profiles WHERE id = $1"),
     )
     .bind(profile_id)
     .fetch_optional(&pool)
@@ -808,6 +828,14 @@ fn to_profile_summary(record: SecurityProfileRecord) -> Result<SecurityProfileSu
         pin_required: record.pin_required,
         is_default: record.is_default,
         ativo: record.ativo,
+        avatar_icone: record.avatar_icone,
+        avatar_cor: record.avatar_cor,
+        tema: record.tema,
+        onboarding_pendente: record.onboarding_concluido_em.is_none(),
+        tour_permissoes_vistas: match record.tour_permissoes_vistas.as_deref() {
+            Some(raw) => Some(parse_permissions(raw)?),
+            None => None,
+        },
     })
 }
 
@@ -904,6 +932,7 @@ async fn status_snapshot() -> Result<SensitiveAccessStatus, String> {
             .into_iter()
             .map(|mut profile| {
                 profile.permissions = Vec::new();
+                profile.tour_permissoes_vistas = None;
                 profile
             })
             .collect()
@@ -1876,6 +1905,358 @@ pub async fn provision_pin_with_enrollment(
     }))
 }
 
+// ─── Perfil: primeiro acesso por código, personalização e tour ───────────────
+
+/// Ícones de avatar oferecidos na interface (nomes do lucide-react em kebab-case).
+const AVATAR_ICONES: [&str; 12] = [
+    "headphones", "wrench", "printer", "coffee", "star", "zap",
+    "leaf", "flame", "rocket", "heart", "music", "gamepad-2",
+];
+const AVATAR_CORES: [&str; 10] = [
+    "#2563EB", "#4F46E5", "#7C3AED", "#C026D3", "#E11D48",
+    "#EA580C", "#B45309", "#15803D", "#0F766E", "#475569",
+];
+/// Sem caracteres ambíguos (0/O, 1/I/L) para o código ser ditado sem erro.
+const CODIGO_ALFABETO: &[u8] = b"ABCDEFGHJKMNPQRSTUVWXYZ23456789";
+const CODIGO_TAMANHO: usize = 6;
+const CODIGO_VALIDADE_HORAS: i64 = 24;
+
+#[derive(Debug, Serialize)]
+pub struct CodigoPrimeiroAcesso {
+    pub profile_id: i32,
+    pub nome: String,
+    pub codigo: String,
+    pub expira_em: String,
+}
+
+#[derive(Debug, Deserialize, Default)]
+#[serde(default)]
+pub struct PersonalizacaoPerfilInput {
+    pub nome: String,
+    pub avatar_icone: Option<String>,
+    pub avatar_cor: Option<String>,
+    pub tema: Option<String>,
+    pub concluir_onboarding: bool,
+}
+
+fn gerar_codigo_acesso() -> String {
+    use rand::Rng;
+    let mut rng = rand::rngs::OsRng;
+    (0..CODIGO_TAMANHO)
+        .map(|_| CODIGO_ALFABETO[rng.gen_range(0..CODIGO_ALFABETO.len())] as char)
+        .collect()
+}
+
+fn normalizar_codigo_acesso(raw: &str) -> String {
+    raw.chars()
+        .filter(|character| character.is_ascii_alphanumeric())
+        .map(|character| character.to_ascii_uppercase())
+        .collect()
+}
+
+fn formatar_codigo_acesso(codigo: &str) -> String {
+    let (inicio, fim) = codigo.split_at(CODIGO_TAMANHO / 2);
+    format!("{}-{}", inicio, fim)
+}
+
+fn validar_personalizacao(input: &PersonalizacaoPerfilInput) -> Result<(), String> {
+    let nome = input.nome.trim();
+    if nome.chars().count() < 3 || nome.chars().count() > 40 {
+        return Err("O nome deve ter entre 3 e 40 caracteres.".to_string());
+    }
+    if let Some(icone) = input.avatar_icone.as_deref() {
+        if !AVATAR_ICONES.contains(&icone) {
+            return Err("Ícone de perfil inválido.".to_string());
+        }
+    }
+    if let Some(cor) = input.avatar_cor.as_deref() {
+        if !AVATAR_CORES.contains(&cor) {
+            return Err("Cor de perfil inválida.".to_string());
+        }
+    }
+    if let Some(tema) = input.tema.as_deref() {
+        if tema != "light" && tema != "dark" {
+            return Err("Tema inválido.".to_string());
+        }
+    }
+    Ok(())
+}
+
+/// Revoga os códigos abertos do perfil e emite um novo dentro da transação recebida.
+async fn emitir_codigo_primeiro_acesso(
+    tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+    profile_id: i32,
+    actor_id: i32,
+) -> Result<(String, DateTime<Utc>), String> {
+    sqlx::query(
+        "UPDATE codigos_primeiro_acesso SET revogado_em = NOW()
+         WHERE profile_id = $1 AND usado_em IS NULL AND revogado_em IS NULL",
+    )
+    .bind(profile_id)
+    .execute(&mut **tx)
+    .await
+    .map_err(super::operator_errors::mapear_erro_sql)?;
+
+    let codigo = gerar_codigo_acesso();
+    let expira_em: DateTime<Utc> = sqlx::query_scalar(
+        "INSERT INTO codigos_primeiro_acesso (profile_id, codigo_hash, expira_em, criado_por_profile_id)
+         VALUES ($1, $2, NOW() + make_interval(hours => $3), $4)
+         RETURNING expira_em",
+    )
+    .bind(profile_id)
+    .bind(hash_pin_argon2(&codigo)?)
+    .bind(CODIGO_VALIDADE_HORAS as i32)
+    .bind(actor_id)
+    .fetch_one(&mut **tx)
+    .await
+    .map_err(super::operator_errors::mapear_erro_sql)?;
+
+    Ok((codigo, expira_em))
+}
+
+/// Cria um perfil sem PIN local e devolve o código que a pessoa usa no primeiro acesso.
+/// O administrador nunca define nem conhece o PIN definitivo.
+#[tauri::command]
+#[instrument(skip_all)]
+pub async fn criar_perfil_com_codigo(input: SecurityProfileInput) -> Result<CodigoPrimeiroAcesso, String> {
+    let actor = require_permission(PERMISSION_MANAGE_PROFILES)?;
+
+    let nome = input.nome.trim();
+    if nome.chars().count() < 3 {
+        return Err("Nome do perfil deve ter no mínimo 3 caracteres".to_string());
+    }
+    let role = normalize_role(&input.role)?;
+    let permissions = normalize_permissions(&role, &input.permissions)?;
+    let permissions_json = serde_json::to_string(&permissions).map_err(|e| e.to_string())?;
+
+    let pool = get_pool().await.map_err(|e| e.to_string())?;
+    let mut tx = pool.begin().await.map_err(super::operator_errors::mapear_erro_sql)?;
+    // O novo membro herda a empresa de quem o cadastrou.
+    let profile_id: i32 = sqlx::query_scalar(
+        "INSERT INTO security_profiles (nome, role, permissions, ativo, is_default, pin_required, empresa_id, atualizado_em)
+         VALUES ($1, $2, $3, true, false, true, (SELECT empresa_id FROM security_profiles WHERE id = $4), NOW())
+         RETURNING id",
+    )
+    .bind(nome)
+    .bind(&role)
+    .bind(&permissions_json)
+    .bind(actor.id)
+    .fetch_one(&mut *tx)
+    .await
+    .map_err(|e| {
+        let resposta = super::operator_errors::mapear_erro_sql(e);
+        if resposta.starts_with("AUTOOS:23505") {
+            resposta
+        } else {
+            super::operator_errors::trocar_frase(&resposta, "Não foi possível criar o perfil. Tente novamente.")
+        }
+    })?;
+    let (codigo, expira_em) = emitir_codigo_primeiro_acesso(&mut tx, profile_id, actor.id).await?;
+    tx.commit().await.map_err(super::operator_errors::mapear_erro_sql)?;
+
+    record_security_event(
+        "PROFILE_CREATED",
+        Some(&actor),
+        format!("Perfil {} criado com papel {} e código de primeiro acesso", nome, role),
+        true,
+    )
+    .await;
+
+    Ok(CodigoPrimeiroAcesso {
+        profile_id,
+        nome: nome.to_string(),
+        codigo: formatar_codigo_acesso(&codigo),
+        expira_em: expira_em.to_rfc3339(),
+    })
+}
+
+/// Gera um novo código para um perfil existente: outro computador ou PIN esquecido.
+/// Qualquer código anterior ainda aberto deixa de valer. Como o código permite
+/// criar um PIN novo para o perfil, exige o PIN do administrador, igual à troca de PIN.
+#[tauri::command]
+#[instrument(skip_all)]
+pub async fn gerar_codigo_primeiro_acesso(profile_id: i32, admin_pin: String) -> Result<CodigoPrimeiroAcesso, String> {
+    let actor = require_permission(PERMISSION_MANAGE_PROFILES)?;
+    confirm_authenticated_profile_pin(&actor, &admin_pin).await?;
+    let profile = fetch_profile_record_by_id(profile_id).await?;
+
+    let pool = get_pool().await.map_err(|e| e.to_string())?;
+    let mut tx = pool.begin().await.map_err(super::operator_errors::mapear_erro_sql)?;
+    let (codigo, expira_em) = emitir_codigo_primeiro_acesso(&mut tx, profile.id, actor.id).await?;
+    tx.commit().await.map_err(super::operator_errors::mapear_erro_sql)?;
+
+    record_security_event(
+        "ACCESS_CODE_ISSUED",
+        Some(&actor),
+        format!("Código de primeiro acesso gerado para o perfil {}", profile.nome),
+        true,
+    )
+    .await;
+
+    Ok(CodigoPrimeiroAcesso {
+        profile_id: profile.id,
+        nome: profile.nome,
+        codigo: formatar_codigo_acesso(&codigo),
+        expira_em: expira_em.to_rfc3339(),
+    })
+}
+
+/// Usa o código para ativar o perfil neste computador: grava o PIN escolhido pela
+/// pessoa no keyring local e abre a sessão. Não exige sessão prévia.
+#[tauri::command]
+#[instrument(skip_all)]
+pub async fn ativar_perfil_com_codigo(
+    profile_id: i32,
+    codigo: String,
+    pin: String,
+    confirm_pin: String,
+) -> Result<SensitiveAccessStatus, String> {
+    if pin.trim().is_empty() {
+        return Err("Crie um PIN de 4 a 8 dígitos.".to_string());
+    }
+    validate_pin_format(&pin)?;
+    if pin.trim() != confirm_pin.trim() {
+        return Err("Os PINs não conferem.".to_string());
+    }
+    check_unlock_lockout(profile_id)?;
+
+    let record = fetch_profile_record_by_id(profile_id).await?;
+    let codigo = normalizar_codigo_acesso(&codigo);
+    let pool = get_pool().await.map_err(|e| e.to_string())?;
+    let abertos: Vec<(i32, String)> = sqlx::query_as(
+        "SELECT id, codigo_hash FROM codigos_primeiro_acesso
+         WHERE profile_id = $1 AND usado_em IS NULL AND revogado_em IS NULL AND expira_em > NOW()",
+    )
+    .bind(profile_id)
+    .fetch_all(&pool)
+    .await
+    .map_err(super::operator_errors::mapear_erro_sql)?;
+
+    let encontrado = abertos.into_iter().find(|(_, hash)| {
+        PasswordHash::new(hash)
+            .map(|parsed| Argon2::default().verify_password(codigo.as_bytes(), &parsed).is_ok())
+            .unwrap_or(false)
+    });
+
+    let consumido = match encontrado {
+        Some((codigo_id, _)) => sqlx::query(
+            "UPDATE codigos_primeiro_acesso SET usado_em = NOW()
+             WHERE id = $1 AND usado_em IS NULL AND revogado_em IS NULL",
+        )
+        .bind(codigo_id)
+        .execute(&pool)
+        .await
+        .map_err(super::operator_errors::mapear_erro_sql)?
+        .rows_affected()
+            == 1,
+        None => false,
+    };
+
+    if !consumido {
+        record_unlock_failure(profile_id);
+        let summary = to_profile_summary(record)?;
+        record_security_event("ACCESS_CODE_FAILED", Some(&summary), "Código de primeiro acesso inválido ou expirado", false).await;
+        return Err("Código inválido ou expirado. Peça um novo código ao administrador.".to_string());
+    }
+
+    store_profile_pin(profile_id, &pin)?;
+    mark_profile_pin_required(profile_id).await?;
+    reset_unlock_attempts(profile_id);
+    let summary = to_profile_summary(fetch_profile_record_by_id(profile_id).await?)?;
+    unlock_session(summary.clone())?;
+    record_security_event("ACCESS_CODE_REDEEMED", Some(&summary), "Perfil ativado neste computador com código de primeiro acesso", true).await;
+    status_snapshot().await
+}
+
+/// Salva nome, ícone, cor e tema do perfil da sessão. Com `concluir_onboarding`,
+/// marca o primeiro acesso como concluído.
+#[tauri::command]
+#[instrument(skip_all)]
+pub async fn salvar_personalizacao_perfil(input: PersonalizacaoPerfilInput) -> Result<SensitiveAccessStatus, String> {
+    let profile = require_sensitive_access()?;
+    validar_personalizacao(&input)?;
+
+    let pool = get_pool().await.map_err(|e| e.to_string())?;
+    let nome = input.nome.trim();
+    sqlx::query(
+        "UPDATE security_profiles
+         SET nome = $1, avatar_icone = $2, avatar_cor = $3, tema = $4,
+             onboarding_concluido_em = CASE WHEN $5 THEN COALESCE(onboarding_concluido_em, NOW()) ELSE onboarding_concluido_em END,
+             atualizado_em = NOW()
+         WHERE id = $6 AND ativo = true",
+    )
+    .bind(nome)
+    .bind(input.avatar_icone.as_deref())
+    .bind(input.avatar_cor.as_deref())
+    .bind(input.tema.as_deref())
+    .bind(input.concluir_onboarding)
+    .bind(profile.id)
+    .execute(&pool)
+    .await
+    .map_err(|e| {
+        let resposta = super::operator_errors::mapear_erro_sql(e);
+        if resposta.starts_with("AUTOOS:23505") {
+            resposta
+        } else {
+            super::operator_errors::trocar_frase(&resposta, "Não foi possível salvar o perfil. Tente novamente.")
+        }
+    })?;
+
+    if profile.nome != nome {
+        record_security_event(
+            "PROFILE_RENAMED",
+            Some(&profile),
+            format!("Perfil {} passou a se chamar {}", profile.nome, nome),
+            true,
+        )
+        .await;
+    }
+    status_snapshot().await
+}
+
+/// Registra que o tour apresentou todas as permissões atuais do perfil da sessão.
+#[tauri::command]
+#[instrument(skip_all)]
+pub async fn registrar_tour_visto() -> Result<SensitiveAccessStatus, String> {
+    let profile = require_sensitive_access()?;
+    let atual = to_profile_summary(fetch_profile_record_by_id(profile.id).await?)?;
+    let vistas = serde_json::to_string(&atual.permissions).map_err(|e| e.to_string())?;
+
+    let pool = get_pool().await.map_err(|e| e.to_string())?;
+    sqlx::query("UPDATE security_profiles SET tour_permissoes_vistas = $1 WHERE id = $2")
+        .bind(vistas)
+        .bind(atual.id)
+        .execute(&pool)
+        .await
+        .map_err(super::operator_errors::mapear_erro_sql)?;
+    status_snapshot().await
+}
+
+/// Últimos eventos de auditoria do próprio perfil (não exige gerenciar perfis).
+#[tauri::command]
+#[instrument(skip_all)]
+pub async fn listar_minhas_acoes(limit: Option<i32>) -> Result<Vec<SecurityAuditEventRow>, String> {
+    let profile = require_sensitive_access()?;
+    let pool = get_pool().await.map_err(|e| e.to_string())?;
+    let max_items = limit.unwrap_or(5).clamp(1, 20) as i64;
+
+    sqlx::query_as::<_, SecurityAuditEventRow>(
+        "SELECT id, event_type, profile_id, profile_name, details, success, created_at::text AS created_at
+         FROM security_audit_log
+         WHERE profile_id = $1 AND success = true
+         ORDER BY created_at DESC
+         LIMIT $2"
+    )
+    .bind(profile.id)
+    .bind(max_items)
+    .fetch_all(&pool)
+    .await
+    .map_err(|e| {
+        error!("Erro ao listar ações do perfil: {}", e);
+        super::operator_errors::mapear_erro_sql(e)
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1911,6 +2292,11 @@ mod tests {
                 .expect("data válida")
                 .and_hms_opt(12, 0, 0)
                 .expect("hora válida"),
+            avatar_icone: None,
+            avatar_cor: None,
+            tema: None,
+            onboarding_concluido_em: None,
+            tour_permissoes_vistas: None,
         };
         let stale = StoredSensitivePin {
             pin_hash: "$argon2id$placeholder".to_string(),
@@ -1935,6 +2321,48 @@ mod tests {
             pin_required: true,
             is_default: false,
             ativo: true,
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn codigo_de_acesso_usa_apenas_caracteres_sem_ambiguidade() {
+        for _ in 0..50 {
+            let codigo = gerar_codigo_acesso();
+            assert_eq!(codigo.len(), CODIGO_TAMANHO);
+            assert!(codigo.bytes().all(|byte| CODIGO_ALFABETO.contains(&byte)));
+        }
+    }
+
+    #[test]
+    fn codigo_digitado_e_normalizado_antes_da_conferencia() {
+        assert_eq!(normalizar_codigo_acesso(" k7q-42m "), "K7Q42M");
+        assert_eq!(formatar_codigo_acesso("K7Q42M"), "K7Q-42M");
+    }
+
+    #[test]
+    fn personalizacao_aceita_apenas_opcoes_da_interface() {
+        let valida = PersonalizacaoPerfilInput {
+            nome: "Juliana".to_string(),
+            avatar_icone: Some("headphones".to_string()),
+            avatar_cor: Some("#0F766E".to_string()),
+            tema: Some("dark".to_string()),
+            concluir_onboarding: true,
+        };
+        assert!(validar_personalizacao(&valida).is_ok());
+        assert!(validar_personalizacao(&PersonalizacaoPerfilInput { nome: "Jo".to_string(), ..Default::default() }).is_err());
+        assert!(validar_personalizacao(&PersonalizacaoPerfilInput { avatar_icone: Some("skull".to_string()), ..valida_clone(&valida) }).is_err());
+        assert!(validar_personalizacao(&PersonalizacaoPerfilInput { avatar_cor: Some("#123456".to_string()), ..valida_clone(&valida) }).is_err());
+        assert!(validar_personalizacao(&PersonalizacaoPerfilInput { tema: Some("system".to_string()), ..valida_clone(&valida) }).is_err());
+    }
+
+    fn valida_clone(input: &PersonalizacaoPerfilInput) -> PersonalizacaoPerfilInput {
+        PersonalizacaoPerfilInput {
+            nome: input.nome.clone(),
+            avatar_icone: input.avatar_icone.clone(),
+            avatar_cor: input.avatar_cor.clone(),
+            tema: input.tema.clone(),
+            concluir_onboarding: input.concluir_onboarding,
         }
     }
 

@@ -306,7 +306,7 @@ function CounterStock({ onBack }: { onBack: () => void }) {
           <Loader2 className="animate-spin" /> Carregando estoque...
         </div>
       ) : produtos.length === 0 ? (
-        <p className="mt-8 rounded-xl border bg-white p-6 text-lg text-muted-foreground">
+        <p className="mt-8 rounded-xl border bg-card p-6 text-lg text-muted-foreground">
           Nenhum insumo encontrado.
         </p>
       ) : (
@@ -326,7 +326,7 @@ function CounterStock({ onBack }: { onBack: () => void }) {
                     {estoqueBaixo && <Badge variant="destructive">Estoque baixo</Badge>}
                   </div>
                   <div className="grid grid-cols-2 gap-3 text-base">
-                    <div className="rounded-lg bg-slate-100 p-3">
+                    <div className="rounded-lg bg-muted p-3">
                       <p className="text-sm text-muted-foreground">Disponível</p>
                       <p className="mt-1 text-2xl font-bold">{produto.quantidade_estoque}</p>
                     </div>
@@ -675,14 +675,14 @@ function QuickEntry({ onBack }: { onBack: () => void }) {
         {["Cliente", "Equipamento", "Laudo imediato", "Recapitulação"].map((name, index) => (
           <li
             key={name}
-            className={`rounded-full px-4 py-2 ${step === index + 1 ? "bg-cyan-600 text-white" : "bg-slate-200"}`}
+            className={`rounded-full px-4 py-2 ${step === index + 1 ? "bg-cyan-600 text-white" : "bg-muted"}`}
           >
             {index + 1}. {name}
           </li>
         ))}
       </ol>
       {step === 1 && (
-        <div className="rounded-xl border bg-white p-6 [&_button]:min-h-12 [&_button]:text-base [&_input]:min-h-12 [&_input]:text-base">
+        <div className="rounded-xl border bg-card p-6 [&_button]:min-h-12 [&_button]:text-base [&_input]:min-h-12 [&_input]:text-base">
           <ClienteSelector
             onClienteSelecionado={(selectedClient) => {
               setClient(selectedClient);
@@ -712,7 +712,7 @@ function QuickEntry({ onBack }: { onBack: () => void }) {
         </div>
       )}
       {step === 2 && (
-        <div className="space-y-5 rounded-xl border bg-white p-6">
+        <div className="space-y-5 rounded-xl border bg-card p-6">
           <h2 className="text-xl font-semibold">Dados do equipamento</h2>
           <div className="grid gap-4 md:grid-cols-2">
             <Field
@@ -870,13 +870,13 @@ function QuickEntry({ onBack }: { onBack: () => void }) {
         </div>
       )}
       {step === 3 && (
-        <div className="space-y-5 rounded-xl border bg-white p-6">
+        <div className="space-y-5 rounded-xl border bg-card p-6">
           <h2 className="text-xl font-semibold">Laudo imediato</h2>
           <p className="text-base text-muted-foreground">
             Registre o teste feito no recebimento. O texto será salvo na
             verificação técnica e exibido na ordem de serviço.
           </p>
-          <div className="rounded-lg border bg-slate-50 p-4">
+          <div className="rounded-lg border bg-muted/50 p-4">
             <p className="font-medium">Configuração da impressora</p>
             <p className="mt-1 text-sm text-muted-foreground">
               Abra a área de Impressoras e Faxes do Painel de Controle para
@@ -985,7 +985,7 @@ function QuickEntry({ onBack }: { onBack: () => void }) {
         </div>
       )}
       {step === 4 && (
-        <div className="rounded-xl border bg-white p-6">
+        <div className="rounded-xl border bg-card p-6">
           <h2 className="text-xl font-semibold">Recapitulação</h2>
           <dl className="mt-5 grid gap-3 text-base md:grid-cols-2">
             <Info
@@ -1171,7 +1171,7 @@ function EquipmentSearch({ onBack }: { onBack: () => void }) {
           <button
             type="button"
             key={eq.id}
-            className="min-h-28 rounded-xl border bg-white p-5 text-left shadow-sm hover:border-cyan-600"
+            className="min-h-28 rounded-xl border bg-card p-5 text-left shadow-sm hover:border-cyan-600"
             onClick={() => setSelected(eq)}
           >
             <div className="flex flex-wrap items-center gap-3">
@@ -1249,7 +1249,7 @@ function ClientSearch({ onBack }: { onBack: () => void }) {
           <button
             key={client.id}
             type="button"
-            className="min-h-20 rounded-xl border bg-white p-4 text-left hover:border-cyan-600"
+            className="min-h-20 rounded-xl border bg-card p-4 text-left hover:border-cyan-600"
             onClick={() => setSelected(client)}
           >
             <strong className="text-lg">
@@ -1307,7 +1307,7 @@ function ClientCycles({
           <button
             type="button"
             key={eq.id}
-            className="min-h-20 rounded-xl border bg-white p-4 text-left hover:border-cyan-600"
+            className="min-h-20 rounded-xl border bg-card p-4 text-left hover:border-cyan-600"
             onClick={() => onSelectEquipment(eq)}
           >
             <strong>{equipmentTitle(eq)}</strong>
@@ -1525,7 +1525,7 @@ function OperationalPanel({ onBack }: { onBack: () => void }) {
           <button
             type="button"
             key={eq.id}
-            className="min-h-20 rounded-xl border bg-white p-4 text-left hover:border-cyan-600"
+            className="min-h-20 rounded-xl border bg-card p-4 text-left hover:border-cyan-600"
             onClick={() => setSelected(eq)}
           >
             <strong>{equipmentTitle(eq)}</strong>

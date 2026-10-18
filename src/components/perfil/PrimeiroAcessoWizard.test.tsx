@@ -1,0 +1,101 @@
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import { render, screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import { PrimeiroAcessoWizard } from "./PrimeiroAcessoWizard";
+import type { SecurityProfile, SensitiveAccessStatus } from "@/types";
+
+const service = vi.hoisted(() => ({ redeemAccessCode: vi.fn(), savePersonalization: vi.fn() }));
+vi.mock("@/lib/sensitive-access", () => ({ SensitiveAccessService: service }));
+
+const pending: SecurityProfile = {
+  id: 7,
+  nome: "Recepção 2",
+  role: "ATENDENTE",
+  permissions: [],
+  pin_configured: false,
+  pin_required: true,
+  is_default: false,
+  ativo: true,
+  onboarding_pendente: true,
+};
+
+function statusWith(profile: SecurityProfile): SensitiveAccessStatus {
+  return {
+    pin_configured: true,
+    unlocked: true,
+    active_profile_id: profile.id,
+    active_profile_name: profile.nome,
+    active_role: profile.role,
+    permissions: profile.permissions,
+    can_manage_profiles: false,
+    profiles: [profile],
+  };
+}
+
+describe("primeiro acesso", () => {
+  beforeEach(() => vi.resetAllMocks());
+
+  it("ativa com código e PIN, salva nome e visual e termina oferecendo o tour", async () => {
+    const user = userEvent.setup();
+    const onFinish = vi.fn();
+    const onStatusChange = vi.fn();
+    const activated = { ...pending, pin_configured: true, permissions: ["MANAGE_STATUS_LINKS" as const] };
+    service.redeemAccessCode.mockResolvedValue(statusWith(activated));
+    service.savePersonalization.mockResolvedValue(statusWith({ ...activated, nome: "Juliana", onboarding_pendente: false }));
+
+    render(<PrimeiroAcessoWizard profile={pending} needsCode onStatusChange={onStatusChange} onCancel={vi.fn()} onFinish={onFinish} />);
+
+    await user.type(screen.getByLabelText("Código de primeiro acesso"), "k7q42m");
+    expect(screen.getByLabelText("Código de primeiro acesso")).toHaveValue("K7Q-42M");
+    await user.type(screen.getByLabelText("Crie seu PIN"), "2468");
+    await user.type(screen.getByLabelText("Repita o PIN"), "2460");
+    await user.click(screen.getByRole("button", { name: /Continuar/ }));
+    expect(screen.getByRole("alert")).toHaveTextContent("Os PINs não conferem.");
+    expect(service.redeemAccessCode).not.toHaveBeenCalled();
+
+    await user.clear(screen.getByLabelText("Repita o PIN"));
+    await user.type(screen.getByLabelText("Repita o PIN"), "2468");
+    await user.click(screen.getByRole("button", { name: /Continuar/ }));
+    await waitFor(() => expect(service.redeemAccessCode).toHaveBeenCalledWith(7, "K7Q-42M", "2468", "2468"));
+
+    const nome = await screen.findByLabelText("Nome de exibição");
+    await user.clear(nome);
+    await user.type(nome, "Juliana");
+    await user.click(screen.getByRole("button", { name: "Petróleo" }));
+    await user.click(screen.getByRole("button", { name: "Escuro" }));
+    await user.click(screen.getByRole("button", { name: /Continuar/ }));
+    await waitFor(() => expect(service.savePersonalization).toHaveBeenCalledWith({
+      nome: "Juliana",
+      avatar_icone: expect.any(String),
+      avatar_cor: "#0F766E",
+      tema: "dark",
+      concluir_onboarding: true,
+    }));
+
+    expect(await screen.findByRole("heading", { name: "Tudo pronto, Juliana" })).toBeInTheDocument();
+    expect(screen.getByText("Links de acompanhamento")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Começar tour" }));
+    expect(onFinish).toHaveBeenCalledWith(true);
+    expect(onStatusChange).toHaveBeenCalledTimes(2);
+  });
+
+  it("mostra o erro do código e permanece na etapa de acesso", async () => {
+    const user = userEvent.setup();
+    service.redeemAccessCode.mockRejectedValue("Código inválido ou expirado. Peça um novo código ao administrador.");
+    render(<PrimeiroAcessoWizard profile={pending} needsCode onStatusChange={vi.fn()} onCancel={vi.fn()} onFinish={vi.fn()} />);
+
+    await user.type(screen.getByLabelText("Código de primeiro acesso"), "AAA222");
+    await user.type(screen.getByLabelText("Crie seu PIN"), "1357");
+    await user.type(screen.getByLabelText("Repita o PIN"), "1357");
+    await user.click(screen.getByRole("button", { name: /Continuar/ }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("Código inválido ou expirado");
+    expect(screen.getByLabelText("Código de primeiro acesso")).toBeInTheDocument();
+  });
+
+  it("perfil já autenticado começa direto pelo nome e visual", () => {
+    render(<PrimeiroAcessoWizard profile={{ ...pending, pin_configured: true }} needsCode={false} onStatusChange={vi.fn()} onCancel={vi.fn()} onFinish={vi.fn()} />);
+    expect(screen.getByLabelText("Nome de exibição")).toHaveValue("Recepção 2");
+    expect(screen.queryByLabelText("Código de primeiro acesso")).not.toBeInTheDocument();
+  });
+});

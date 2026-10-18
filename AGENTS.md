@@ -62,6 +62,7 @@ Desktop app for printer management, technical reception, operational communicati
 | Supply stock | `src/pages/Insumos.tsx` + `produtos.rs` | Currently blocked in routing (`BlockedInsumosPage`) |
 | Settings/security | `src/pages/Configuracoes.tsx` + `auth.rs` + `util.rs` | Profiles, PIN, audit, backup, schema status |
 | Auth/permissions | `auth.rs` | PINs in OS keyring (never DB), XOR session obfuscation |
+| Profiles, first access, tour | `src/pages/Perfil.tsx`, `src/components/perfil/`, `src/components/tour/`, `src/lib/tour-steps.ts` + `auth.rs` + `0039_perfil_personalizacao_primeiro_acesso.sql` | Admin creates a profile and gets a one-time access code (only its Argon2 hash in `codigos_primeiro_acesso`, 24h, single use). The person redeems it on each computer and creates their own PIN there. Name/icon/color/theme live in `security_profiles`. Tour steps per permission in `tour-steps.ts`; `tour_permissoes_vistas` drives the "what's new" tour |
 | Database | `db.rs` + `migrations/` | sqlx runtime queries only (no `query!` macros) |
 | PDF generation | `src/lib/pdf-service.ts` | jsPDF + autotable, 1211 lines with BMITAG branding |
 | Email/WhatsApp | `src/lib/email-service.ts`, `whatsapp-service.ts` | SMTP + Evolution API. Email CC hardcoded to `medeiros@bmitag.com.br` |
@@ -171,6 +172,8 @@ npm run bundle:prep:windows:sign # Injects certThumbprint from env into tauri.co
 - Don't introduce `query!` / `query_as!` sqlx macros — the project uses runtime queries exclusively.
 - Don't assume `serial_number` is a unique business key (multiple `equipamentos` rows can share it).
 - Don't store sensitive data (PINs, SMTP passwords, WhatsApp tokens) in the database — use OS keyring.
+- Don't let an administrator set or see someone else's definitive PIN. New computers and forgotten PINs go through a new access code (`gerar_codigo_primeiro_acesso`), never through a PIN typed by the admin.
+- Don't add a sensitive permission without its step in `PERMISSION_TOUR` (`src/lib/tour-steps.ts`); `tour-steps.test.ts` fails if one is missing.
 - Don't treat the Cloudflare photo tunnel (`cloudflared` / `*.trycloudflare.com`) as the SaaS photo architecture. It is a reception workaround: the phone uploads to **this PC** while the QR dialog is open. Future PHOTO / AO-EQP-ONLINE tickets must send photos to the company API or Storage (signed URL), not through a per-PC tunnel. Do not reopen PHOTO-001 or PHOTO-009 to "fix" the tunnel.
 
 ## UNIQUE STYLES

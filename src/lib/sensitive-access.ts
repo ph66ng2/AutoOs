@@ -1,6 +1,8 @@
 import { invoke } from "@tauri-apps/api/core";
 import { withSensitiveAccessRetry } from "@/lib/sensitive-action-retry";
 import type {
+  CodigoPrimeiroAcesso,
+  PersonalizacaoPerfilInput,
   SecurityAuditEvent,
   SecurityProfile,
   SecurityProfileInput,
@@ -92,5 +94,35 @@ export const SensitiveAccessService = {
 
   async listAuditEvents(limit = 20): Promise<SecurityAuditEvent[]> {
     return sensitiveInvoke<SecurityAuditEvent[]>("list_security_audit_events", { limit });
+  },
+
+  /** Cria o perfil sem PIN e devolve o código de primeiro acesso → Rust: criar_perfil_com_codigo */
+  async createProfileWithCode(input: SecurityProfileInput): Promise<CodigoPrimeiroAcesso> {
+    return sensitiveInvoke<CodigoPrimeiroAcesso>("criar_perfil_com_codigo", { input });
+  },
+
+  /** Novo código para outro computador ou PIN esquecido → Rust: gerar_codigo_primeiro_acesso */
+  async issueAccessCode(profileId: number, adminPin: string): Promise<CodigoPrimeiroAcesso> {
+    return sensitiveInvoke<CodigoPrimeiroAcesso>("gerar_codigo_primeiro_acesso", { profileId, adminPin });
+  },
+
+  /** Ativa o perfil neste computador com o código e o PIN escolhido → Rust: ativar_perfil_com_codigo */
+  async redeemAccessCode(profileId: number, codigo: string, pin: string, confirmPin: string): Promise<SensitiveAccessStatus> {
+    return invoke<SensitiveAccessStatus>("ativar_perfil_com_codigo", { profileId, codigo, pin, confirmPin });
+  },
+
+  /** Nome, ícone, cor e tema do perfil da sessão → Rust: salvar_personalizacao_perfil */
+  async savePersonalization(input: PersonalizacaoPerfilInput): Promise<SensitiveAccessStatus> {
+    return sensitiveInvoke<SensitiveAccessStatus>("salvar_personalizacao_perfil", { input });
+  },
+
+  /** Marca as permissões atuais como apresentadas pelo tour → Rust: registrar_tour_visto */
+  async markTourSeen(): Promise<SensitiveAccessStatus> {
+    return sensitiveInvoke<SensitiveAccessStatus>("registrar_tour_visto");
+  },
+
+  /** Últimas ações do próprio perfil → Rust: listar_minhas_acoes */
+  async listMyActivity(limit = 5): Promise<SecurityAuditEvent[]> {
+    return sensitiveInvoke<SecurityAuditEvent[]>("listar_minhas_acoes", { limit });
   },
 };

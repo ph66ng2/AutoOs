@@ -123,6 +123,12 @@ fn main() {
             commands::auth::salvar_config_inatividade,
             commands::auth::registrar_empresa,
             commands::auth::login_empresa,
+            commands::auth::criar_perfil_com_codigo,
+            commands::auth::gerar_codigo_primeiro_acesso,
+            commands::auth::ativar_perfil_com_codigo,
+            commands::auth::salvar_personalizacao_perfil,
+            commands::auth::registrar_tour_visto,
+            commands::auth::listar_minhas_acoes,
             // Util
             commands::util::salvar_arquivo_temp,
             commands::util::copiar_anexo_email_para_temp,

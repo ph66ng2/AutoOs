@@ -53,6 +53,7 @@ async fn main() -> Result<()> {
         pin_required: false,
         is_default: true,
         ativo: true,
+        ..Default::default()
     };
     tauri_result(auth::unlock_session(profile), "Falha ao desbloquear sessão")?;
 
@@ -94,6 +95,7 @@ async fn main() -> Result<()> {
         pin_required: false,
         is_default: true,
         ativo: true,
+        ..Default::default()
     };
     tauri_result(auth::unlock_session(profile), "Falha ao desbloquear sessão")?;
     {

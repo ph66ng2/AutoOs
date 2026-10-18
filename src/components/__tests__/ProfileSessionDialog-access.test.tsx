@@ -49,3 +49,14 @@ describe("confirmação de sessão", () => {
     expect(screen.queryByText(/Você já está neste perfil/)).not.toBeInTheDocument();
   });
 });
+
+describe("primeiro acesso neste computador", () => {
+  it("oferece o primeiro acesso com código para perfil sem PIN local", async () => {
+    const onFirstAccess = vi.fn();
+    const pending = { ...admin, id: 5, nome: "Recepção 2", role: "ATENDENTE", pin_required: true, is_default: false };
+    render(<ProfileSessionDialog {...defaults} profiles={[admin, pending]} selectedProfileId="5" selectedProfile={pending} onFirstAccess={onFirstAccess} />);
+    expect(screen.getByText("Primeiro acesso")).toBeInTheDocument();
+    screen.getByRole("button", { name: "Fazer primeiro acesso" }).click();
+    expect(onFirstAccess).toHaveBeenCalledWith(5);
+  });
+});

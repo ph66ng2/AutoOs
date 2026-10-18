@@ -135,7 +135,7 @@ export default function Dashboard() {
       case "AGUARDANDO_APROVACAO": return { label: "Aguardando resposta do cliente", cor: "text-orange-600" };
       case "ORCAMENTO_VENCIDO": return { label: "Orçamento vencido - contatar cliente", cor: "text-red-600" };
       case "PRONTO": return { label: "Pronto para entrega", cor: "text-emerald-600" };
-      default: return { label: "Pendente", cor: "text-gray-600" };
+      default: return { label: "Pendente", cor: "text-muted-foreground" };
     }
   }
 
