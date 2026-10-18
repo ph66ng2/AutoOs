@@ -2,7 +2,7 @@
 
 Evolução de `status.bmitag.com.br`: o cliente entra com CPF/CNPJ + a senha que a equipe criou para o contato, vê todos os atendimentos do cadastro e responde ao orçamento publicado. Funciona com o AutoOS desktop fechado: login, resposta e efetivação rodam no Supabase.
 
-> **Estado: implementado, nada ativado.** Migrations `0035_portal_cliente.sql`, `0036_portal_senha.sql` (senha criada pelo operador) e `0038_portal_por_empresa_so_senha.sql` (chaves por empresa, login por código removido). Toda empresa nasce com o portal desligado. A Edge Function `portal-cliente` não foi publicada e nenhum dado de produção foi alterado.
+> **Estado (18/10/2026): infraestrutura na produção, portal desligado em todas as empresas.** Migrations 0030–0038 aplicadas pelo workflow de produção; Edge Function `portal-cliente` publicada; Cron `portal-efetivar-respostas` agendado (pg_cron). Falta: segredo `PORTAL_CLIENTE_SECRET`, subir a página nova em `status.bmitag.com.br` e ligar o piloto (ver Ativação e Roteiro de teste). Migrations do portal: `0035_portal_cliente.sql`, `0036_portal_senha.sql` (senha criada pelo operador) e `0038_portal_por_empresa_so_senha.sql` (chaves por empresa, login por código removido).
 
 Usa as versões e respostas de orçamento das migrations 0031–0032 (`docs/ACEITE_ORCAMENTO_ONLINE.md`) e a configuração de WhatsApp central (`docs/FILA_ENVIOS_WHATSAPP.md`, 0034). É o **único** caminho de resposta online: o link individual `#/o/<token>` foi removido na 0037.
 
@@ -97,8 +97,10 @@ Respostas antigas de origem `PORTAL` (link removido) ou `EQUIPE` só existem em 
 
 ## Ativação (ambiente de teste primeiro)
 
+Na produção: passos 1–3 feitos em 18/10/2026, exceto o segredo `PORTAL_CLIENTE_SECRET`; passos 4–6 pendentes.
+
 1. Aplicar 0031–0038 pelo processo de migrations (`docs/PRODUCTION_MIGRATIONS.md`) e conferir os advisors de segurança do Supabase.
-2. Publicar a Edge Function `portal-cliente` (`verify_jwt = false`, já em `supabase/config.toml`) com os segredos:
+2. Publicar a Edge Function `portal-cliente` (`verify_jwt = false`, já em `supabase/config.toml`) com os segredos. Sem `PORTAL_CLIENTE_SECRET` (ou com menos de 32 caracteres), toda chamada responde 503 “Serviço temporariamente indisponível”:
 
 | Segredo | Uso |
 |---|---|
@@ -110,8 +112,10 @@ O portal não envia nada por WhatsApp nem email: não precisa de token de proved
 3. Agendar a efetivação (o portal também efetiva ao listar/abrir, mas sem o Cron uma resposta só vira status quando alguém abre o portal):
 
 ```sql
+create extension if not exists pg_cron;
 select cron.schedule('portal-efetivar-respostas', '* * * * *',
   $$ select public.portal_efetivar_respostas_vencidas(50) $$);
+-- conferir: select status, start_time from cron.job_run_details order by start_time desc limit 5;
 ```
 
 4. Publicar a página (`npm run build:public-status`, enviar `dist-public-status/` com o `.htaccess`). A URL da função pode ser trocada com `VITE_PORTAL_CLIENTE_API_URL`.
@@ -119,6 +123,39 @@ select cron.schedule('portal-efetivar-respostas', '* * * * *',
 6. Ligar para um piloto em Configurações → Integrações → **Portal do Cliente: funcionamento**: “Portal ligado” e “Clientes podem responder orçamentos” (PIN; respostas exigem a permissão financeira; auditoria `PORTAL_CONFIG_CHANGED`). As chaves são de cada empresa (`portal_config_empresa`, 0038): ligar numa empresa não liga nas outras.
 
 Pausar: desligar “Portal ligado” derruba login e sessões na hora; nada é apagado. Desligar só as respostas mantém o acompanhamento. O cartão avisa quando respostas vencidas não estão sendo aplicadas (agendamento do passo 3 parado).
+
+## Roteiro de teste do piloto
+
+Pré-requisitos: passos 1–4 da Ativação concluídos; build do AutoOS a partir do master (Windows Test Build ou `npm run tauri dev` com `DATABASE_URL` da produção). Use **um cliente e um equipamento de teste**: o banco é o real.
+
+**Função (sem tela)**
+
+1. `POST https://sgaqvxubopgwysnyocjs.supabase.co/functions/v1/portal-cliente` com `Origin: https://status.bmitag.com.br`, `Content-Type: application/json` e `{"acao":"entrarSenha","documento":"00000000000","senha":"x"}` → **400** `SENHA_INVALIDA`. Se vier **503**, falta o `PORTAL_CLIENTE_SECRET` ou o `PUBLIC_STATUS_RATE_LIMIT_SECRET`.
+2. Mesma chamada com `Origin: https://exemplo.com` → **403** “Origem não permitida”.
+3. Com o portal da empresa desligado, login com senha válida → **503** `PORTAL_PAUSADO`.
+
+**Desktop (AutoOS)**
+
+4. Configurações → Integrações → **Portal do Cliente: funcionamento**: ligar “Portal ligado” e “Clientes podem responder orçamentos” (pede PIN). Conferir na auditoria o evento `PORTAL_CONFIG_CHANGED`.
+5. No equipamento de teste em **Aguardando aprovação** com orçamento: **Dar acesso** → escolher um contato → “pode responder orçamentos” → criar a senha (anotar; aparece uma vez).
+6. **Publicar no Portal do Cliente**. O quadro passa a “Orçamento no portal”, sem resposta.
+
+**Portal (status.bmitag.com.br, celular e computador)**
+
+7. Entrar com o CPF/CNPJ do cliente + senha. A lista mostra o equipamento em “Atuais” como “aguarda sua resposta”.
+8. Senha errada 8 vezes no mesmo CPF/CNPJ → **Muitas tentativas… Aguarde 15 minutos**.
+9. Abrir o equipamento, **Aceitar** → confirmar impressora e valor → comprovante com protocolo. Se a entrada tiver mais de 10 minutos, pede a senha de novo antes.
+10. Dentro do prazo de correção: **Desfazer resposta** → volta a “aguardando resposta”. Aceitar de novo.
+11. No AutoOS: o sino mostra “Orçamento aprovado pelo cliente” (aba Portal do Cliente); o quadro mostra a resposta em prazo de correção, sem botão de aplicar.
+12. Passado o prazo, em até 1 minuto (Cron) o equipamento vira **Aprovado**, pagamento “a combinar” (se não houver outro), peças baixadas do estoque até o saldo (o que faltar vira pendência); a auditoria atribui ao contato. Repetir com **Recusar** num segundo equipamento → **Reprovado**.
+13. **Quero negociar** com uma mensagem → chega como alerta no AutoOS e não muda o status.
+14. Link individual antigo `status.bmitag.com.br/#/c/<token>` de outro equipamento continua abrindo a tela de status.
+
+**Isolamento e desligamento**
+
+15. Entrar com um contato só **ACOMPANHAR**: vê status e orçamento, mas responder dá “Seu contato pode acompanhar, mas não responder”.
+16. Atendimento de outro cliente nunca aparece na lista; outra empresa com o portal desligado continua desligada.
+17. Desligar “Portal ligado” com a sessão aberta → a próxima ação no portal cai para “temporariamente indisponível”. Ao terminar o teste, deixar desligado se o piloto não for começar.
 
 ## Notificações no AutoOS (sino no canto superior direito)
 
