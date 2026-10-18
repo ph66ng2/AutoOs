@@ -1,5 +1,4 @@
 import { ArrowRightLeft, ShieldAlert, ShieldCheck, UserRound } from "lucide-react";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { TeamAccessManager } from "@/components/TeamAccessManager";
@@ -37,20 +36,6 @@ export default function Perfil() {
                 </p>
               </div>
 
-              <div className="flex flex-wrap gap-2">
-                {accessStatus?.profiles.slice(0, 4).map((profile) => (
-                  <Badge
-                    key={profile.id}
-                    className={profile.id === accessStatus.active_profile_id
-                      ? "border-emerald-300/40 bg-emerald-500/20 text-emerald-50"
-                      : "border-white/15 bg-white/10 text-white/85"
-                    }
-                    variant="outline"
-                  >
-                    {profile.nome}
-                  </Badge>
-                ))}
-              </div>
             </div>
 
             <div className="w-full max-w-md rounded-3xl border border-white/15 bg-white/10 p-5 backdrop-blur-sm">
@@ -70,7 +55,6 @@ export default function Perfil() {
                   {accessStatus?.unlocked ? <ShieldCheck className="h-4 w-4 text-emerald-300" /> : <ShieldAlert className="h-4 w-4 text-amber-300" />}
                   {accessStatus?.unlocked ? "Sessão sensível ativa" : "Sessão sensível bloqueada"}
                 </span>
-                <span className="text-white/50">{accessStatus?.profiles.length || 0} {(accessStatus?.profiles.length || 0) === 1 ? "perfil" : "perfis"}</span>
               </div>
 
               <Button
