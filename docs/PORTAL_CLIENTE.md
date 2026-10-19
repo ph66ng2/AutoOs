@@ -2,7 +2,7 @@
 
 Evolução de `status.bmitag.com.br`: o cliente entra com CPF/CNPJ + a senha que a equipe criou para o contato, vê todos os atendimentos do cadastro e responde ao orçamento publicado. Funciona com o AutoOS desktop fechado: login, resposta e efetivação rodam no Supabase.
 
-> **Estado (18/10/2026): infraestrutura na produção, portal desligado em todas as empresas.** Migrations 0030–0038 aplicadas pelo workflow de produção; Edge Function `portal-cliente` publicada; Cron `portal-efetivar-respostas` agendado (pg_cron). Falta: segredo `PORTAL_CLIENTE_SECRET`, subir a página nova em `status.bmitag.com.br` e ligar o piloto (ver Ativação e Roteiro de teste). Migrations do portal: `0035_portal_cliente.sql`, `0036_portal_senha.sql` (senha criada pelo operador) e `0038_portal_por_empresa_so_senha.sql` (chaves por empresa, login por código removido).
+> **Estado (18/10/2026): infraestrutura na produção, portal desligado em todas as empresas.** Migrations 0030–0038 aplicadas pelo workflow de produção; Edge Function `portal-cliente` publicada; Cron `portal-efetivar-respostas` agendado (pg_cron). Falta: segredo `PORTAL_CLIENTE_SECRET`, subir a página nova em `status.bmitag.com.br` e ligar o piloto (ver Ativação e Roteiro de teste). Migrations do portal: `0035_portal_cliente.sql`, `0036_portal_senha.sql` (senha criada pelo operador), `0038_portal_por_empresa_so_senha.sql` (chaves por empresa, login por código removido) e `0039_portal_dados_ampliados.sql` (cliente, valores, etapas, fotos, histórico, ordem de compra e contato de retorno; ainda não aplicada na produção).
 
 Usa as versões e respostas de orçamento das migrations 0031–0032 (`docs/ACEITE_ORCAMENTO_ONLINE.md`) e a configuração de WhatsApp central (`docs/FILA_ENVIOS_WHATSAPP.md`, 0034). É o **único** caminho de resposta online: o link individual `#/o/<token>` foi removido na 0037.
 
@@ -79,27 +79,52 @@ Espelha `aprovar_orcamento` + `aplicar_decisoes` (`src-tauri/src/commands/equipa
 
 Respostas antigas de origem `PORTAL` (link removido) ou `EQUIPE` só existem em bancos de teste e, se aparecerem, continuam com conferência manual.
 
-## Banco (`0035`, `0036`, `0038`)
+## Banco (`0035`, `0036`, `0038`, `0039`)
 
 | Objeto | Função |
 |---|---|
 | `cliente_contatos.portal_acesso` + trigger | Acesso por contato; inativar ou mudar de cliente zera o acesso |
 | `portal_config_empresa` (0038) | Chaves por empresa: `portal_enabled` (login e consulta) e `respostas_enabled` (aceitar/recusar/negociar; exige o portal ligado). Sem linha = desligado |
 | `portal_cliente_config` | Reverificação e duração da sessão (globais do produto). `portal_enabled` daqui não é mais lido |
-| `portal_contato_empresa` | Cartão “Fale com a equipe” (Configurações → Integrações) |
+| `portal_contato_empresa` | Cartão “Fale com a equipe” (Configurações → Integrações); `endereco` (até 300) e `maps_url` (só https, até 500) vieram na 0039 |
 | `portal_codigos` | Histórico do login por código (removido na 0038) |
 | `portal_sessoes` | Hash do token de sessão, `verificada_em`, expiração; só sessões `metodo = SENHA` valem |
-| `orcamento_respostas` (+colunas) | `PORTAL_CLIENTE`, contato, sessão, efetivação automática e falha |
-| `orcamento_solicitacoes` (+colunas) | `NEGOCIAR` e contato |
+| `orcamento_respostas` (+colunas) | `PORTAL_CLIENTE`, contato, sessão, efetivação automática e falha; `ordem_compra` (1 a 60 caracteres, 0039) |
+| `orcamento_solicitacoes` (+colunas) | `NEGOCIAR` e contato; `contato_telefone` / `contato_email` de retorno (0039) |
+| `clientes.exige_ordem_compra` (0039) | Cliente que exige ordem de compra para aprovar pelo portal (padrão `FALSE`; ainda sem tela no desktop) |
 | `portal_alertas` | Alertas persistentes; só `lido_em`/`lido_por` mudam |
 | `equipamentos.ultima_atividade_cliente_em` | Ordenação por atividade sem mexer no token de concorrência |
 | `portal_*` (SECURITY DEFINER) | Única porta da Edge Function (`service_role` só tem EXECUTE nelas) |
 
+## Contrato de dados ampliado (0039)
+
+Tudo aditivo: as chaves antigas não mudaram e os parâmetros novos das funções têm `DEFAULT`. Aplique a migration **antes** de publicar a Edge Function. Exemplo completo de `detalhe` em `supabase/tests/portal_cliente_contract.sql` (seção “Dados ampliados”).
+
+**`detalhe`** (além do que já havia):
+
+| Chave | Conteúdo |
+|---|---|
+| `cliente` | `{ nome, documento (só dígitos), exigeOrdemCompra }` |
+| `defeitoRelatado` | Texto do equipamento |
+| `valores` | `{ orcamento, final, atual }` (`atual` = final, senão orçamento; `null` sem valor) |
+| `etapas` | `[{ status, em }]` só com data conhecida, em ordem cronológica. Datas: cadastro, verificações, 1ª versão publicada, `data_aprovacao/reprovacao/pronto/saida`; manutenção/peça só como etapa atual (`status_alterado_em`). Data anterior ao cadastro é descartada |
+| `fotos` | `[{ id, categoria, url, largura, altura }]` (ENTRADA, VERIFICACAO, SAIDA; até 60). O banco devolve `caminho`; a Edge Function troca por `url` (https mantida, senão `SUPABASE_URL/storage/v1/object/public/<caminho>`) e descarta caminhos suspeitos |
+| `historico` | Respostas e solicitações de **todas** as versões, mais recente primeiro (até 100): `{ tipo RESPOSTA/SOLICITACAO, subtipo, versao, valor, em, contato, protocolo, mensagem, situacao, ordemCompra }`. `situacao` da resposta: estado atual, `DESFEITA` ou `SUBSTITUIDA`; da solicitação: `TRATADA`/`AGUARDANDO` |
+| `contatoEmpresa` | Ganha `endereco` e `mapsUrl` |
+| `temTelefone`, `temEmail` | Do contato logado (ao lado de `contato`, que continua o nome) |
+| `orcamento.resposta.ordemCompra` | Da resposta vigente |
+
+**Lista:** cada atendimento ganha `valorAtual`.
+
+**`responder`:** `ordemCompra` opcional (até 60). Aprovar para um cliente com `exige_ordem_compra` sem ela dá `ORDEM_COMPRA_OBRIGATORIA` (422). O comprovante traz `ordemCompra` e o alerta da equipe mostra o número.
+
+**`solicitar`:** `telefone` (10 a 13 dígitos), `email` (até 200) e `salvarNoContato`. Inválidos dão `CONTATO_INVALIDO` (400). `salvarNoContato` só preenche campos vazios do cadastro do contato logado, nunca sobrescreve. O alerta da equipe mostra o telefone/e-mail informados.
+
 ## Ativação (ambiente de teste primeiro)
 
-Na produção: passos 1–3 feitos em 18/10/2026, exceto o segredo `PORTAL_CLIENTE_SECRET`; passos 4–6 pendentes.
+Na produção: passos 1–3 feitos em 18/10/2026 até a 0038, exceto o segredo `PORTAL_CLIENTE_SECRET`; a 0039 e a função que a usa ainda não foram aplicadas; passos 4–6 pendentes.
 
-1. Aplicar 0031–0038 pelo processo de migrations (`docs/PRODUCTION_MIGRATIONS.md`) e conferir os advisors de segurança do Supabase.
+1. Aplicar 0031–0039 pelo processo de migrations (`docs/PRODUCTION_MIGRATIONS.md`) e conferir os advisors de segurança do Supabase. A 0039 vai antes da Edge Function nova.
 2. Publicar a Edge Function `portal-cliente` (`verify_jwt = false`, já em `supabase/config.toml`) com os segredos. Sem `PORTAL_CLIENTE_SECRET` (ou com menos de 32 caracteres), toda chamada responde 503 “Serviço temporariamente indisponível”:
 
 | Segredo | Uso |

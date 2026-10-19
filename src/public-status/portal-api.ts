@@ -5,6 +5,12 @@ export type Decisao = "APROVAR" | "RECUSAR" | "DESFEITA";
 export type EstadoResposta = "EM_CORRECAO" | "PROCESSANDO" | "PENDENTE_EQUIPE" | "EFETIVADA" | "AGUARDANDO_EQUIPE" | null;
 export type EstadoOrcamento = "ABERTA" | "RESPONDIDA" | "EM_REVISAO" | "VENCIDA" | "ENCERRADA";
 export type TipoSolicitacao = "NEGOCIAR" | "DUVIDA" | "MUDANCA";
+export type EtapaStatus =
+  | "RECEBIDO" | "EM_VERIFICACAO" | "VERIFICADO" | "AGUARDANDO_APROVACAO" | "APROVADO"
+  | "REPROVADO" | "EM_MANUTENCAO" | "AGUARDANDO_PECA" | "PRONTO" | "ENTREGUE";
+export type CategoriaFoto = "ENTRADA" | "SAIDA" | "VERIFICACAO";
+/** Situação de uma linha do histórico: da resposta (estado atual, DESFEITA, SUBSTITUIDA) ou da solicitação. */
+export type SituacaoHistorico = Exclude<EstadoResposta, null> | "DESFEITA" | "SUBSTITUIDA" | "TRATADA" | "AGUARDANDO";
 
 export interface AtendimentoResumo {
   id: number;
@@ -17,6 +23,8 @@ export interface AtendimentoResumo {
   entradaEm: string | null;
   atividadeEm: string | null;
   statusAlteradoEm: string | null;
+  /** COALESCE(valor final, valor do orçamento); null enquanto não há valor. */
+  valorAtual: number | null;
   aguardaResposta: boolean;
   resposta: EstadoResposta;
 }
@@ -39,6 +47,7 @@ export interface RespostaOrcamento {
   estado: EstadoResposta;
   efetivadaEm: string | null;
   protocolo: string;
+  ordemCompra: string | null;
 }
 
 export interface OrcamentoPortal {
@@ -61,6 +70,51 @@ export interface ContatoEmpresa {
   email: string | null;
   telefone: string | null;
   horario: string | null;
+  endereco: string | null;
+  /** Sempre https. */
+  mapsUrl: string | null;
+}
+
+export interface ClientePortal {
+  nome: string;
+  /** Só dígitos: CPF (11) ou CNPJ (14); null se o cadastro não tiver um válido. */
+  documento: string | null;
+  exigeOrdemCompra: boolean;
+}
+
+export interface ValoresAtendimento {
+  orcamento: number | null;
+  final: number | null;
+  atual: number | null;
+}
+
+export interface EtapaAtendimento {
+  status: EtapaStatus;
+  em: string;
+}
+
+/** A Edge Function troca o `caminho` do Storage por `url` absoluta. */
+export interface FotoAtendimento {
+  id: number;
+  categoria: CategoriaFoto;
+  url: string;
+  largura: number | null;
+  altura: number | null;
+}
+
+export interface ItemHistorico {
+  tipo: "RESPOSTA" | "SOLICITACAO";
+  /** Resposta: Decisao. Solicitação: TipoSolicitacao. */
+  subtipo: Decisao | TipoSolicitacao;
+  versao: number;
+  valor: number;
+  em: string;
+  contato: string | null;
+  /** R-n (resposta) ou S-n (solicitação). */
+  protocolo: string;
+  mensagem: string | null;
+  situacao: SituacaoHistorico | null;
+  ordemCompra: string | null;
 }
 
 export interface DetalheAtendimento {
@@ -73,12 +127,22 @@ export interface DetalheAtendimento {
   orientacao: string;
   statusAlteradoEm: string | null;
   entradaEm: string | null;
+  cliente: ClientePortal | null;
+  defeitoRelatado: string | null;
+  valores: ValoresAtendimento;
+  etapas: EtapaAtendimento[];
+  fotos: FotoAtendimento[];
+  /** Tudo que o cliente fez no orçamento, em todas as versões, do mais recente ao mais antigo (até 100). */
+  historico: ItemHistorico[];
   orcamento: OrcamentoPortal | null;
   solicitacoes: Array<{ id: number; tipo: TipoSolicitacao; criadoEm: string; tratada: boolean; contato: string | null; protocolo: string }>;
   contatoEmpresa: ContatoEmpresa | null;
   podeDecidir: boolean;
   verificacaoRecente: boolean;
   contato: string;
+  /** O contato logado tem telefone / e-mail no cadastro (para a tela decidir se pede e se oferece salvar). */
+  temTelefone: boolean;
+  temEmail: boolean;
 }
 
 export interface Comprovante {
@@ -92,6 +156,7 @@ export interface Comprovante {
   equipamento: string;
   serie: string | null;
   contato: string;
+  ordemCompra: string | null;
   repetida: boolean;
 }
 
@@ -145,16 +210,31 @@ async function post<T>(body: Record<string, unknown>): Promise<T> {
   return payload as T;
 }
 
+/** Telefone/e-mail de retorno de uma solicitação; `salvarNoContato` só preenche campos vazios do cadastro. */
+export interface ContatoRetorno {
+  telefone?: string;
+  email?: string;
+  salvarNoContato?: boolean;
+}
+
 export const portalApi = {
   entrarSenha: (documento: string, senha: string) =>
     post<{ sessao: string; contato: string; acesso: Acesso; expiraEm: string }>({ acao: "entrarSenha", documento, senha }),
   confirmarSenha: (sessao: string, senha: string) => post<{ ok: boolean }>({ acao: "confirmarSenha", sessao, senha }),
   listar: (sessao: string) => post<ListaAtendimentos>({ acao: "listar", sessao }),
   detalhe: (sessao: string, equipamentoId: number) => post<DetalheAtendimento>({ acao: "detalhe", sessao, equipamentoId }),
-  responder: (sessao: string, equipamentoId: number, versaoId: number, decisao: Decisao, respostaVigenteId: number | null) =>
-    post<{ comprovante: Comprovante }>({ acao: "responder", sessao, equipamentoId, versaoId, decisao, respostaVigenteId }),
-  solicitar: (sessao: string, equipamentoId: number, versaoId: number, tipo: TipoSolicitacao, mensagem: string) =>
-    post<{ solicitacao: SolicitacaoRegistrada }>({ acao: "solicitar", sessao, equipamentoId, versaoId, tipo, mensagem }),
+  /** `ordemCompra` é obrigatória para APROVAR quando `cliente.exigeOrdemCompra` (erro ORDEM_COMPRA_OBRIGATORIA, 422). */
+  responder: (
+    sessao: string, equipamentoId: number, versaoId: number, decisao: Decisao, respostaVigenteId: number | null,
+    ordemCompra?: string,
+  ) =>
+    post<{ comprovante: Comprovante }>({ acao: "responder", sessao, equipamentoId, versaoId, decisao, respostaVigenteId, ordemCompra }),
+  /** Telefone/e-mail inválidos voltam como CONTATO_INVALIDO (400). */
+  solicitar: (
+    sessao: string, equipamentoId: number, versaoId: number, tipo: TipoSolicitacao, mensagem: string,
+    contato?: ContatoRetorno,
+  ) =>
+    post<{ solicitacao: SolicitacaoRegistrada }>({ acao: "solicitar", sessao, equipamentoId, versaoId, tipo, mensagem, ...contato }),
   sair: (sessao: string) => post<{ ok: boolean }>({ acao: "sair", sessao }),
 };
 
