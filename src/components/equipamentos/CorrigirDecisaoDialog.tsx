@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
 import { db } from "@/lib/db";
-import type { AnaliseCorrecaoDecisao, Equipamento } from "@/types";
+import type { AnaliseCorrecaoDecisao, Equipamento, ModoCorrecaoDecisao } from "@/types";
 
 type Props = {
   equipamento: Equipamento | null;
@@ -23,9 +23,17 @@ function mensagemErro(cause: unknown, fallback: string) {
   return typeof cause === "string" && cause.trim() ? cause : fallback;
 }
 
+/** Com os dois modos disponíveis, começa pelo que não perde o ajuste feito no orçamento. */
+function modoInicial(analise: AnaliseCorrecaoDecisao): ModoCorrecaoDecisao {
+  if (analise.permiteManter && (analise.ajustadoAposDecisao || !analise.permiteRestaurar)) return "MANTER_ATUAL";
+  return "RESTAURAR_ORIGINAL";
+}
+
 /**
  * Corrige uma decisão já aplicada. Mostra pagamento, valores e peças baixadas antes de reabrir
- * o orçamento e só devolve peças ao estoque com a confirmação explícita do operador.
+ * o orçamento e só devolve peças ao estoque com a confirmação explícita do operador. Quando o
+ * orçamento foi ajustado depois da decisão, o operador escolhe entre manter o ajuste ou restaurar
+ * a versão enviada ao cliente.
  */
 export function CorrigirDecisaoDialog({ equipamento, open, onOpenChange, onCorrigido }: Props) {
   const [analise, setAnalise] = useState<AnaliseCorrecaoDecisao | null>(null);
@@ -34,6 +42,7 @@ export function CorrigirDecisaoDialog({ equipamento, open, onOpenChange, onCorri
   const [error, setError] = useState<string | null>(null);
   const [motivo, setMotivo] = useState("");
   const [devolver, setDevolver] = useState(false);
+  const [modo, setModo] = useState<ModoCorrecaoDecisao>("RESTAURAR_ORIGINAL");
   const equipamentoId = equipamento?.id;
 
   useEffect(() => {
@@ -45,7 +54,11 @@ export function CorrigirDecisaoDialog({ equipamento, open, onOpenChange, onCorri
     setDevolver(false);
     setLoading(true);
     db.analisarCorrecaoDecisao(equipamentoId)
-      .then((result) => { if (!cancelado) setAnalise(result); })
+      .then((result) => {
+        if (cancelado) return;
+        setAnalise(result);
+        setModo(modoInicial(result));
+      })
       .catch((cause) => { if (!cancelado) setError(mensagemErro(cause, "Não foi possível analisar a decisão.")); })
       .finally(() => { if (!cancelado) setLoading(false); });
     return () => { cancelado = true; };
@@ -53,7 +66,10 @@ export function CorrigirDecisaoDialog({ equipamento, open, onOpenChange, onCorri
 
   const motivoOk = motivo.trim().length >= MOTIVO_MINIMO;
   const estoqueOk = !analise?.exigeDecisaoEstoque || devolver;
-  const podeConfirmar = Boolean(analise?.podeCorrigir) && motivoOk && estoqueOk && !busy;
+  const modoValido = modo === "MANTER_ATUAL" ? Boolean(analise?.permiteManter) : Boolean(analise?.permiteRestaurar);
+  const podeConfirmar = Boolean(analise?.podeCorrigir) && modoValido && motivoOk && estoqueOk && !busy;
+  const escolheModo = Boolean(analise?.permiteManter && analise?.permiteRestaurar);
+  const decisao = analise?.status === "REPROVADO" ? "recusa" : "aprovação";
 
   async function confirmar() {
     if (!equipamento?.id || !equipamento.atualizado_em || !podeConfirmar) return;
@@ -65,6 +81,7 @@ export function CorrigirDecisaoDialog({ equipamento, open, onOpenChange, onCorri
         expected_updated_em: equipamento.atualizado_em,
         motivo: motivo.trim(),
         devolver_estoque: devolver,
+        modo,
       });
       onOpenChange(false);
       await onCorrigido();
@@ -81,7 +98,7 @@ export function CorrigirDecisaoDialog({ equipamento, open, onOpenChange, onCorri
         <DialogHeader>
           <DialogTitle>Corrigir decisão do orçamento</DialogTitle>
           <DialogDescription>
-            Reabre o orçamento para uma nova decisão. Pagamento, serviços aprovados e baixas de estoque são conferidos juntos.
+            Desfaz a decisão e volta o orçamento para aguardando aprovação. Pagamento, decisões por serviço e baixas de estoque são desfeitos juntos.
           </DialogDescription>
         </DialogHeader>
 
@@ -98,7 +115,7 @@ export function CorrigirDecisaoDialog({ equipamento, open, onOpenChange, onCorri
 
             {analise.bloqueios.length > 0 && (
               <div role="alert" className="rounded-md border border-amber-300 bg-amber-50 p-3 text-amber-950">
-                <p className="font-semibold">Não dá para corrigir automaticamente</p>
+                <p className="font-semibold">Não dá para corrigir a decisão agora</p>
                 <ul className="mt-1 list-disc pl-5">
                   {analise.bloqueios.map((bloqueio) => <li key={bloqueio}>{bloqueio}</li>)}
                 </ul>
@@ -107,9 +124,56 @@ export function CorrigirDecisaoDialog({ equipamento, open, onOpenChange, onCorri
 
             {analise.podeCorrigir && (
               <>
-                <p>
-                  Ao confirmar: o orçamento volta a <strong>Aguardando aprovação</strong> com a versão enviada ao cliente, e a forma de pagamento e as decisões por serviço são apagadas.
-                </p>
+                {escolheModo ? (
+                  <fieldset className="space-y-2">
+                    <legend className="font-medium">
+                      O orçamento foi alterado depois da {decisao}. O que fazer com essa alteração?
+                    </legend>
+                    <label className="flex cursor-pointer items-start gap-2 rounded-md border p-3">
+                      <input
+                        type="radio"
+                        name="modo-correcao-decisao"
+                        className="mt-1"
+                        checked={modo === "MANTER_ATUAL"}
+                        onChange={() => setModo("MANTER_ATUAL")}
+                      />
+                      <span>
+                        <span className="block font-medium">Voltar para aguardando aprovação mantendo o orçamento atual</span>
+                        <span className="block text-muted-foreground">
+                          Serviços, peças e valor ({moeda(analise.valorAtual)}) ficam como estão. Só a decisão, o pagamento e as baixas de estoque são desfeitos.
+                        </span>
+                      </span>
+                    </label>
+                    <label className="flex cursor-pointer items-start gap-2 rounded-md border p-3">
+                      <input
+                        type="radio"
+                        name="modo-correcao-decisao"
+                        className="mt-1"
+                        checked={modo === "RESTAURAR_ORIGINAL"}
+                        onChange={() => setModo("RESTAURAR_ORIGINAL")}
+                      />
+                      <span>
+                        <span className="block font-medium">Restaurar o orçamento enviado ao cliente</span>
+                        <span className="block text-muted-foreground">
+                          Volta para a versão enviada ({moeda(analise.valorOriginal)}).
+                        </span>
+                      </span>
+                    </label>
+                    {modo === "RESTAURAR_ORIGINAL" && (
+                      <p role="note" className="rounded-md border border-amber-300 bg-amber-50 p-2 text-amber-950">
+                        Atenção: a alteração feita depois da {decisao} será perdida.
+                      </p>
+                    )}
+                  </fieldset>
+                ) : modo === "MANTER_ATUAL" ? (
+                  <p>
+                    Este orçamento não guardou a versão enviada ao cliente, então não dá para restaurá-la. Ao confirmar, ele volta a <strong>Aguardando aprovação</strong> com os serviços, peças e valor atuais, e o pagamento e as decisões por serviço são apagados.
+                  </p>
+                ) : (
+                  <p>
+                    Ao confirmar: o orçamento volta a <strong>Aguardando aprovação</strong> com a versão enviada ao cliente, e a forma de pagamento e as decisões por serviço são apagadas.
+                  </p>
+                )}
 
                 {analise.exigeDecisaoEstoque ? (
                   <div className="space-y-2 rounded-md border p-3">
@@ -124,7 +188,7 @@ export function CorrigirDecisaoDialog({ equipamento, open, onOpenChange, onCorri
                       <span>Confirmo que estas peças estão intactas e voltam ao estoque (gera entrada de estoque).</span>
                     </label>
                     <p className="text-xs text-muted-foreground">
-                      Se alguma peça foi usada, não confirme: o caso precisa de atendimento humano.
+                      Se alguma peça já foi usada, não confirme e não corrija por aqui: confira o estoque antes.
                     </p>
                   </div>
                 ) : (

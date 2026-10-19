@@ -156,6 +156,11 @@ import {
 } from "@/pages/equipamentos/equipamentos-page-constants";
 import { GaleriaImagensEquipamento } from "@/pages/equipamentos/EquipamentosPageGallery";
 import { StatusBadge } from "@/pages/equipamentos/EquipamentosStatusBadge";
+import { AnteriorEmAtendimentoAviso } from "@/components/equipamentos/AnteriorEmAtendimentoAviso";
+import {
+  MENSAGEM_DADOS_PREENCHIDOS,
+  usarEquipamentoAnteriorNoCadastro,
+} from "@/pages/equipamentos/equipamento-anterior";
 import {
   extrairTecnicoInicialDeObservacoes,
   filtrarImagensPorCategoria,
@@ -255,6 +260,8 @@ export default function Equipamentos() {
   // Duplicidade de serial (múltiplos ciclos de manutenção)
   const [registrosAnteriores, setRegistrosAnteriores] = useState<Equipamento[]>([]);
   const [confirmouNovoCiclo, setConfirmouNovoCiclo] = useState(false);
+  // Equipamento anterior clicado no cadastro que ainda está em atendimento (não serve de base).
+  const [anteriorEmAtendimento, setAnteriorEmAtendimento] = useState<Equipamento | null>(null);
   const [sugestoesSerial, setSugestoesSerial] = useState<Equipamento[]>([]);
   const [mostrarSugestoes, setMostrarSugestoes] = useState(false);
 
@@ -471,6 +478,7 @@ export default function Equipamentos() {
     setTecnicoNovoEquipamento("Ivan");
     setRegistrosAnteriores([]);
     setConfirmouNovoCiclo(false);
+    setAnteriorEmAtendimento(null);
     form.reset({
       serial_number: "", patrimonio: "", marca: "", modelo: "", tipo: "", status: "RECEBIDO",
       defeito_relatado: "", acessorios: [], acessorios_outros: "",
@@ -629,6 +637,23 @@ export default function Equipamentos() {
     } catch (err) {
       console.error("Erro ao buscar registros anteriores:", err);
     }
+  }
+
+  /**
+   * Cadastro novo: clicar num equipamento anterior do cliente reaproveita só os dados do aparelho
+   * quando o atendimento já foi encerrado; se ainda está em atendimento, avisa e não preenche.
+   */
+  async function usarEquipamentoAnterior(anterior: Equipamento) {
+    const resultado = await usarEquipamentoAnteriorNoCadastro(form, anterior, (serial) => db.buscarEquipamentosPorSerial(serial));
+    if (resultado.tipo === "em_atendimento") {
+      setAnteriorEmAtendimento(anterior);
+      return;
+    }
+    setAnteriorEmAtendimento(null);
+    setMostrarSugestoes(false);
+    setRegistrosAnteriores(resultado.registros);
+    setConfirmouNovoCiclo(resultado.confirmarNovoCiclo);
+    toast.success(MENSAGEM_DADOS_PREENCHIDOS, { duration: 3000 });
   }
 
   async function handleSerialInput(value: string) {
@@ -2256,7 +2281,7 @@ export default function Equipamentos() {
 
       {/* ═══ Dialog Criar/Editar ═══ */}
       <Dialog open={dialogOpen} onOpenChange={(open) => {
-        if (!open) { setRegistrosAnteriores([]); setConfirmouNovoCiclo(false); }
+        if (!open) { setRegistrosAnteriores([]); setConfirmouNovoCiclo(false); setAnteriorEmAtendimento(null); }
         setDialogOpen(open);
       }}>
         <DialogContent className="sm:max-w-2xl max-h-[85vh] overflow-y-auto">
@@ -2268,10 +2293,17 @@ export default function Equipamentos() {
             <div className="space-y-2">
               <ClienteSelector
                 clienteInicial={clienteVinculado}
-                onClienteSelecionado={(c) => { setClienteVinculado(c); setResponsavelVinculado(null); setErroCliente(null); }}
-                onClienteRemovido={() => { setClienteVinculado(null); setResponsavelVinculado(null); }}
+                onClienteSelecionado={(c) => { setClienteVinculado(c); setResponsavelVinculado(null); setErroCliente(null); setAnteriorEmAtendimento(null); }}
+                onClienteRemovido={() => { setClienteVinculado(null); setResponsavelVinculado(null); setAnteriorEmAtendimento(null); }}
+                onEquipamentoSelecionado={editando ? undefined : (anterior) => void usarEquipamentoAnterior(anterior)}
                 readOnly={false}
               />
+              {anteriorEmAtendimento && (
+                <AnteriorEmAtendimentoAviso
+                  equipamento={anteriorEmAtendimento}
+                  onAbrirAtendimento={(eq) => navigate("/equipamentos", { state: { equipamentoId: eq.id } })}
+                />
+              )}
               <ContatoResponsavelSelector
                 cliente={clienteVinculado}
                 empresaId={clienteVinculado?.empresa_id || editando?.empresa_id}

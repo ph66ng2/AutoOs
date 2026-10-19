@@ -66,9 +66,9 @@ Erros novos: `LIMITE_SOLICITACOES`, `MENSAGEM_INVALIDA`, `TIPO_INVALIDO`.
 Ação ao lado de "Mudar Status" para orçamentos `APROVADO` ou `REPROVADO`. "Corrigir Status" para `AGUARDANDO_APROVACAO` nesses casos é recusado e aponta para ela, porque trocar só o rótulo não desfaz pagamento, serviços aprovados nem baixa de estoque.
 
 1. A análise mostra pagamento registrado, valor atual e o valor enviado ao cliente, e as peças já baixadas.
-2. **Bloqueia** (atendimento humano) se o serviço já passou de `APROVADO`/`REPROVADO`, se o orçamento não guardou a versão original (legado) ou se foi ajustado depois da aprovação.
+2. **Bloqueia** só se a etapa já passou de `APROVADO`/`REPROVADO` (a mensagem diz a etapa e o que fazer). O ajuste de serviços só conta se `verificacoes.adjusted_at` for posterior à data da decisão (`data_aprovacao`/`data_reprovacao`); ajuste feito antes da aprovação não impede nada. Com ajuste posterior o operador escolhe o modo: **manter o orçamento atual** (desfaz só a decisão) ou **restaurar o orçamento enviado ao cliente** (perde o ajuste). Sem a versão original guardada (legado), só o modo manter está disponível.
 3. Com peças baixadas, o operador precisa marcar que elas estão intactas; só então o sistema gera entrada de estoque (`origem = CORRECAO_ORCAMENTO`). Sem a confirmação, nada é alterado.
-4. Na mesma transação: restaura serviços, peças e valor originais, apaga forma de pagamento e decisões por serviço, zera as quantidades aprovadas/baixadas, volta a etapa para `AGUARDANDO_APROVACAO` e grava `orcamento_correcoes` e o evento de auditoria `BUDGET_DECISION_CORRECTED`. Conflito de concorrência (`atualizado_em`) cancela tudo.
+4. Na mesma transação: restaura serviços, peças e valor originais (modo restaurar) ou os mantém (modo manter), apaga forma de pagamento e decisões por serviço, zera as quantidades aprovadas/baixadas, volta a etapa para `AGUARDANDO_APROVACAO` acrescenta uma resposta `DESFEITA` (origem `EQUIPE`) à versão publicada, para o portal não mostrar a resposta antiga como vigente, e grava `orcamento_correcoes` (o modo vai no início do motivo) e o evento de auditoria `BUDGET_DECISION_CORRECTED` (com `modo`). Conflito de concorrência (`atualizado_em`) cancela tudo.
 
 ## Envio do link
 
