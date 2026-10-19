@@ -237,7 +237,7 @@ export interface PecaBaixadaInfo {
   quantidade: number;
 }
 
-/** O que a aprovação/recusa fez e se a decisão pode ser corrigida sem atendimento humano. */
+/** O que a aprovação/recusa fez e se a decisão pode ser corrigida (e de que modo). */
 export interface AnaliseCorrecaoDecisao {
   status: string;
   podeCorrigir: boolean;
