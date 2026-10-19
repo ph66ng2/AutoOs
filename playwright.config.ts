@@ -14,8 +14,11 @@
 import { defineConfig, devices } from '@playwright/test';
 
 export default defineConfig({
-  // Diretório dos testes E2E
+  // Diretório dos testes E2E.
+  // A captura de telas roda em playwright.screenshots.config.ts para não
+  // entrar no e2e:real nem exigir o fixture do Postgres local.
   testDir: './e2e',
+  testIgnore: ['**/ui-screenshots.spec.ts'],
   
   // Arquivo de resultado
   outputDir: './e2e/results',
