@@ -242,6 +242,10 @@ export interface AnaliseCorrecaoDecisao {
   status: string;
   podeCorrigir: boolean;
   bloqueios: string[];
+  /** O orçamento foi alterado depois da decisão (ajuste anterior à decisão não conta). */
+  ajustadoAposDecisao: boolean;
+  permiteRestaurar: boolean;
+  permiteManter: boolean;
   pagamentoCodigo?: string | null;
   pagamentoDetalhe?: string | null;
   valorAtual?: number | null;
@@ -251,11 +255,15 @@ export interface AnaliseCorrecaoDecisao {
   exigeDecisaoEstoque: boolean;
 }
 
+/** RESTAURAR_ORIGINAL volta à versão enviada ao cliente; MANTER_ATUAL desfaz só a decisão. */
+export type ModoCorrecaoDecisao = "RESTAURAR_ORIGINAL" | "MANTER_ATUAL";
+
 export interface CorrigirDecisaoInput {
   equipamento_id: number;
   expected_updated_em: string;
   motivo: string;
   devolver_estoque: boolean;
+  modo: ModoCorrecaoDecisao;
 }
 
 /** Estado do aceite online: versão congelada, link, resposta vigente e histórico. */
