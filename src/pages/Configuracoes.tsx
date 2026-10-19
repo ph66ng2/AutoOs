@@ -43,7 +43,6 @@ import {
   type PostgresBackupToolsStatus,
   type SecurityAuditEvent,
   type SecurityProfile,
-  type SensitivePermission,
   type SmtpConfigInput,
   type WhatsappConfigInput,
 } from "@/types";
@@ -81,13 +80,6 @@ export default function Configuracoes() {
   const [newPin, setNewPin] = useState("");
   const [confirmPin, setConfirmPin] = useState("");
   const [managedProfileId, setManagedProfileId] = useState<number | null>(null);
-  const [editProfileName, setEditProfileName] = useState("");
-  const [editProfileRole, setEditProfileRole] = useState("CUSTOM");
-  const [editPermissions, setEditPermissions] = useState<SensitivePermission[]>([]);
-  const [resetPin, setResetPin] = useState("");
-  const [resetPinConfirm, setResetPinConfirm] = useState("");
-  const [adminPinVerify, setAdminPinVerify] = useState("");
-  const [resetAdminPin, setResetAdminPin] = useState("");
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [auditSearch, setAuditSearch] = useState("");
   const [auditOutcomeFilter, setAuditOutcomeFilter] = useState("ALL");
@@ -111,7 +103,6 @@ export default function Configuracoes() {
   const [supportError, setSupportError] = useState<string | null>(null);
   const [supportMessage, setSupportMessage] = useState<string | null>(null);
 
-  const permissionOptions = Object.values(SENSITIVE_PERMISSIONS);
   const canConfigureSmtp = hasPermission(SENSITIVE_PERMISSIONS.CONFIG_SMTP);
   const canConfigureWhatsapp = hasPermission(SENSITIVE_PERMISSIONS.CONFIG_WHATSAPP);
   const canConfigurePhotoTunnel = canConfigureSmtp;
@@ -163,23 +154,6 @@ export default function Configuracoes() {
       token: "",
     },
   });
-
-  function permissionsForRole(role: string, permissions: SensitivePermission[]) {
-    return role === "ADMIN" ? permissionOptions : permissions;
-  }
-
-  function togglePermission(
-    currentPermissions: SensitivePermission[],
-    permission: SensitivePermission,
-    setter: (value: SensitivePermission[]) => void,
-  ) {
-    if (currentPermissions.includes(permission)) {
-      setter(currentPermissions.filter((value) => value !== permission));
-      return;
-    }
-
-    setter([...currentPermissions, permission]);
-  }
 
   async function loadAuditEvents() {
     if (!canManageProfiles) {
@@ -395,13 +369,6 @@ export default function Configuracoes() {
       return;
     }
 
-    setEditProfileName(managedProfile.nome);
-    setEditProfileRole(managedProfile.role);
-    setEditPermissions(managedProfile.permissions);
-    setResetPin("");
-    setResetPinConfirm("");
-    setAdminPinVerify("");
-    setResetAdminPin("");
     setSecurityMessage(null);
   }, [managedProfile?.id, setSecurityMessage]);
 
@@ -628,11 +595,6 @@ export default function Configuracoes() {
   }
 
   async function trocarMeuPin() {
-    if (!securityAdminUnlocked) {
-      setSecurityMessage("Desbloqueie a gestão de segurança com PIN/Admin para alterar PINs e perfis.");
-      return;
-    }
-
     if (newPin.length < 4) {
       setSecurityMessage("O novo PIN deve ter entre 4 e 8 dígitos.");
       return;
@@ -654,107 +616,6 @@ export default function Configuracoes() {
       await atualizarEstadoSeguranca();
     } catch (error: any) {
       setSecurityMessage(error?.message || error?.toString() || "Falha ao atualizar o PIN do perfil ativo.");
-    } finally {
-      setSecurityBusy(false);
-    }
-  }
-
-  async function salvarPerfilAtual() {
-    if (!managedProfileId) return;
-    if (!securityAdminUnlocked) {
-      setSecurityMessage("Desbloqueie a gestão de segurança com PIN/Admin para alterar perfis.");
-      return;
-    }
-
-    const permissions = permissionsForRole(editProfileRole, editPermissions);
-    setSecurityBusy(true);
-    setSecurityMessage(null);
-    try {
-      await SensitiveAccessService.updateProfile(managedProfileId, {
-        nome: editProfileName.trim(),
-        role: editProfileRole,
-        permissions,
-      }, adminPinVerify);
-      setAdminPinVerify("");
-      setSecurityMessage("Perfil atualizado com sucesso.", "success");
-      toast.success("Perfil atualizado com sucesso.");
-      await atualizarEstadoSeguranca();
-    } catch (error: any) {
-      setSecurityMessage(error?.message || error?.toString() || "Falha ao atualizar o perfil.");
-    } finally {
-      setSecurityBusy(false);
-    }
-  }
-
-  async function resetarPinPerfil() {
-    if (!managedProfileId) return;
-    if (!securityAdminUnlocked) {
-      setSecurityMessage("Desbloqueie a gestão de segurança com PIN/Admin para resetar PINs.");
-      return;
-    }
-
-    if (resetPin.length < 4) {
-      setSecurityMessage("O novo PIN deve ter entre 4 e 8 dígitos.");
-      return;
-    }
-
-    if (resetPin !== resetPinConfirm) {
-      setSecurityMessage("A confirmação do reset de PIN não confere.");
-      return;
-    }
-
-    setSecurityBusy(true);
-    setSecurityMessage(null);
-    try {
-      await SensitiveAccessService.resetProfilePin(managedProfileId, resetPin, resetAdminPin);
-      setResetPin("");
-      setResetPinConfirm("");
-      setResetAdminPin("");
-      setSecurityMessage("PIN do perfil selecionado redefinido com sucesso.", "success");
-      toast.success("PIN do perfil selecionado redefinido com sucesso.");
-      await atualizarEstadoSeguranca();
-    } catch (error: any) {
-      setSecurityMessage(error?.message || error?.toString() || "Falha ao redefinir o PIN do perfil.");
-    } finally {
-      setSecurityBusy(false);
-    }
-  }
-
-  async function desativarPerfilSelecionado() {
-    if (!managedProfileId) return;
-    if (!securityAdminUnlocked) {
-      setSecurityMessage("Desbloqueie a gestão de segurança com PIN/Admin para alterar perfis.");
-      return;
-    }
-
-    setSecurityBusy(true);
-    setSecurityMessage(null);
-    try {
-      await SensitiveAccessService.deactivateProfile(managedProfileId);
-      setSecurityMessage("Perfil desativado com sucesso.", "success");
-      await atualizarEstadoSeguranca();
-    } catch (error: any) {
-      setSecurityMessage(error?.message || error?.toString() || "Falha ao desativar o perfil selecionado.");
-    } finally {
-      setSecurityBusy(false);
-    }
-  }
-
-  async function reativarPerfilSelecionado() {
-    if (!managedProfileId) return;
-    if (!securityAdminUnlocked) {
-      setSecurityMessage("Desbloqueie a gestão de segurança com PIN/Admin para alterar perfis.");
-      return;
-    }
-
-    setSecurityBusy(true);
-    setSecurityMessage(null);
-    try {
-      await SensitiveAccessService.reactivateProfile(managedProfileId);
-      setSecurityMessage("Perfil reativado com sucesso.", "success");
-      await atualizarEstadoSeguranca();
-    } catch (error: any) {
-      setSecurityMessage(error?.message || error?.toString() || "Falha ao reativar o perfil selecionado.");
     } finally {
       setSecurityBusy(false);
     }
@@ -819,24 +680,24 @@ export default function Configuracoes() {
   async function handleSecurityAdminToggle(nextValue: boolean) {
     if (!nextValue) {
       setSecurityAdminUnlocked(false);
-      setSecurityMessage("Gestão de segurança bloqueada novamente.", "info");
+      setSecurityMessage("Exclusão de perfis bloqueada novamente.", "info");
       return;
     }
 
     const liberado = await ensureSensitiveAccess({
-      title: "Desbloquear gestão de segurança",
-      description: "Informe o PIN do administrador para liberar alterações de perfis e PINs.",
+      title: "Liberar exclusão de perfis",
+      description: "Informe o PIN do administrador para liberar a exclusão permanente de perfis.",
       permission: SENSITIVE_PERMISSIONS.MANAGE_PROFILES,
     });
 
     if (!liberado) {
       setSecurityAdminUnlocked(false);
-      setSecurityMessage("Desbloqueio não autorizado. PIN/Admin obrigatório.");
+      setSecurityMessage("Exclusão de perfis não liberada. Confirme o PIN de administrador.");
       return;
     }
 
     setSecurityAdminUnlocked(true);
-    setSecurityMessage("Gestão de segurança liberada para esta sessão.", "info");
+    setSecurityMessage("Exclusão de perfis liberada para esta sessão.", "info");
   }
 
   async function handleInactivityToggle(enabled: boolean) {
@@ -972,22 +833,6 @@ export default function Configuracoes() {
           setManagedProfileId={setManagedProfileId}
           profilesCatalog={profilesCatalog}
           managedProfile={managedProfile}
-          editProfileName={editProfileName}
-          setEditProfileName={setEditProfileName}
-          editProfileRole={editProfileRole}
-          setEditProfileRole={setEditProfileRole}
-          editPermissions={editPermissions}
-          setEditPermissions={setEditPermissions}
-          permissionOptions={permissionOptions}
-          togglePermission={togglePermission}
-          desativarPerfilSelecionado={desativarPerfilSelecionado}
-          reativarPerfilSelecionado={reativarPerfilSelecionado}
-          salvarPerfilAtual={salvarPerfilAtual}
-          resetPin={resetPin}
-          setResetPin={setResetPin}
-          resetPinConfirm={resetPinConfirm}
-          setResetPinConfirm={setResetPinConfirm}
-          resetarPinPerfil={resetarPinPerfil}
           securityMessage={securityMessage}
           securityMessageVariant={securityFeedback?.variant}
           onClearSecurityMessage={() => setSecurityMessage(null)}
@@ -996,10 +841,6 @@ export default function Configuracoes() {
           deleteDialogOpen={deleteDialogOpen}
           onDeleteDialogOpenChange={setDeleteDialogOpen}
           onDeleteSuccess={handleDeleteSuccess}
-          adminPinVerify={adminPinVerify}
-          setAdminPinVerify={setAdminPinVerify}
-          resetAdminPin={resetAdminPin}
-          setResetAdminPin={setResetAdminPin}
         />
 
       </Tabs>
