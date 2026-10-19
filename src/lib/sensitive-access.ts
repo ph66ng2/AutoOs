@@ -50,10 +50,6 @@ export const SensitiveAccessService = {
     return sensitiveInvoke<SensitiveAccessStatus>("update_security_profile", { profileId, input, adminPin });
   },
 
-  async resetProfilePin(profileId: number, newPin: string, adminPin: string): Promise<SensitiveAccessStatus> {
-    return sensitiveInvoke<SensitiveAccessStatus>("reset_security_profile_pin", { profileId, newPin, adminPin });
-  },
-
   async listProfiles(includeInactive = false): Promise<SecurityProfile[]> {
     return sensitiveInvoke<SecurityProfile[]>("list_security_profiles", { includeInactive });
   },

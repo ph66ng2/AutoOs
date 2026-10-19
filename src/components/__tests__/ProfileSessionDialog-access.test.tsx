@@ -50,6 +50,22 @@ describe("confirmação de sessão", () => {
   });
 });
 
+describe("recuperação de PIN com código do administrador", () => {
+  it("perfil que já tem PIN neste computador oferece o código do ADM e abre em modo recuperação", async () => {
+    const onFirstAccess = vi.fn();
+    const withPin = { ...admin, id: 4, nome: "Ivan", role: "TECNICO", pin_configured: true, pin_required: true, is_default: false };
+    render(<ProfileSessionDialog {...defaults} mode="selector" profiles={[withPin]} selectedProfileId="4" selectedProfile={withPin} activeProfileId={9} onFirstAccess={onFirstAccess} />);
+    screen.getByRole("button", { name: /tenho um código do administrador/i }).click();
+    expect(onFirstAccess).toHaveBeenCalledWith(4, true);
+  });
+
+  it("não oferece o código de recuperação a quem ainda não tem PIN aqui (é o primeiro acesso)", () => {
+    const pending = { ...admin, id: 5, role: "ATENDENTE", pin_required: true, pin_configured: false, is_default: false };
+    render(<ProfileSessionDialog {...defaults} profiles={[pending]} selectedProfileId="5" selectedProfile={pending} onFirstAccess={vi.fn()} />);
+    expect(screen.queryByRole("button", { name: /tenho um código do administrador/i })).not.toBeInTheDocument();
+  });
+});
+
 describe("primeiro acesso neste computador", () => {
   it("oferece o primeiro acesso com código para perfil sem PIN local", async () => {
     const onFirstAccess = vi.fn();

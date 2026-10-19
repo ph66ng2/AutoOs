@@ -75,7 +75,7 @@ describe("primeiro acesso", () => {
     expect(await screen.findByRole("heading", { name: "Tudo pronto, Juliana" })).toBeInTheDocument();
     expect(screen.getByText("Links de acompanhamento")).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "Começar tour" }));
-    expect(onFinish).toHaveBeenCalledWith(true);
+    expect(onFinish).toHaveBeenCalledWith("tour");
     expect(onStatusChange).toHaveBeenCalledTimes(2);
   });
 
@@ -97,5 +97,24 @@ describe("primeiro acesso", () => {
     render(<PrimeiroAcessoWizard profile={{ ...pending, pin_configured: true }} needsCode={false} onStatusChange={vi.fn()} onCancel={vi.fn()} onFinish={vi.fn()} />);
     expect(screen.getByLabelText("Nome de exibição")).toHaveValue("Recepção 2");
     expect(screen.queryByLabelText("Código de primeiro acesso")).not.toBeInTheDocument();
+  });
+
+  it("recuperação: só código e PIN novo, sem nome, visual nem tour", async () => {
+    const user = userEvent.setup();
+    const onFinish = vi.fn();
+    const withPin = { ...pending, nome: "Ivan Santos", pin_configured: true, onboarding_pendente: false };
+    service.redeemAccessCode.mockResolvedValue(statusWith(withPin));
+    render(<PrimeiroAcessoWizard profile={withPin} needsCode recovery onStatusChange={vi.fn()} onCancel={vi.fn()} onFinish={onFinish} />);
+
+    expect(screen.getByRole("heading", { name: "Redefinir o PIN de Ivan Santos" })).toBeInTheDocument();
+    await user.type(screen.getByLabelText("Código de primeiro acesso"), "K7Q42M");
+    await user.type(screen.getByLabelText("Crie seu PIN"), "1357");
+    await user.type(screen.getByLabelText("Repita o PIN"), "1357");
+    await user.click(screen.getByRole("button", { name: /Redefinir PIN/ }));
+
+    await waitFor(() => expect(service.redeemAccessCode).toHaveBeenCalledWith(7, "K7Q-42M", "1357", "1357"));
+    await waitFor(() => expect(onFinish).toHaveBeenCalledWith("recuperado"));
+    expect(service.savePersonalization).not.toHaveBeenCalled();
+    expect(screen.queryByLabelText("Nome de exibição")).not.toBeInTheDocument();
   });
 });

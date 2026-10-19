@@ -14,10 +14,12 @@ import {
 } from "@/components/ui/select";
 import { TabsContent } from "@/components/ui/tabs";
 import { ProfileDeleteDialog } from "@/components/ProfileDeleteDialog";
+import { AccessCodeCard } from "@/components/perfil/AccessCodeCard";
 import { PROFILE_PRESETS } from "@/lib/profile-presets";
 import { securityPermissionLabel, securityRoleLabel } from "@/lib/security-profile-labels";
 import {
   SENSITIVE_PERMISSION_LABELS,
+  type CodigoPrimeiroAcesso,
   type SecurityProfile,
   type SensitiveAccessStatus,
   type SensitivePermission,
@@ -55,11 +57,8 @@ export type ConfiguracoesTabSegurancaProps = {
   desativarPerfilSelecionado: () => void | Promise<void>;
   reativarPerfilSelecionado: () => void | Promise<void>;
   salvarPerfilAtual: () => void | Promise<void>;
-  resetPin: string;
-  setResetPin: (value: string) => void;
-  resetPinConfirm: string;
-  setResetPinConfirm: (value: string) => void;
-  resetarPinPerfil: () => void | Promise<void>;
+  gerarCodigoPerfil: () => void | Promise<void>;
+  issuedCode: CodigoPrimeiroAcesso | null;
   securityMessage: string | null;
   securityMessageVariant?: "error" | "info" | "success";
   onClearSecurityMessage?: () => void;
@@ -102,11 +101,8 @@ export function ConfiguracoesTabSeguranca({
   desativarPerfilSelecionado,
   reativarPerfilSelecionado,
   salvarPerfilAtual,
-  resetPin,
-  setResetPin,
-  resetPinConfirm,
-  setResetPinConfirm,
-  resetarPinPerfil,
+  gerarCodigoPerfil,
+  issuedCode,
   securityMessage,
   securityMessageVariant = "error",
   onClearSecurityMessage,
@@ -322,22 +318,16 @@ export function ConfiguracoesTabSeguranca({
             </div>
 
             <div className="border-t pt-6 space-y-4">
-              <h3 className="text-lg font-semibold">Resetar PIN do colaborador</h3>
+              <h3 className="text-lg font-semibold">Código de acesso do colaborador</h3>
+              <p className="text-sm text-muted-foreground">
+                Para outro computador ou PIN esquecido. A pessoa usa o código e cria o próprio PIN: você não define nem vê o PIN dela.
+                O PIN atual continua valendo até o código ser usado.
+              </p>
               {managedProfile && (
                 <p className="text-sm text-muted-foreground">
-                  Perfil selecionado: {managedProfile.nome} ({securityRoleLabel(managedProfile.role)}) — {managedProfile.pin_configured ? "PIN ativo" : "PIN pendente"}
+                  Perfil selecionado: {managedProfile.nome} ({securityRoleLabel(managedProfile.role)})
                 </p>
               )}
-              <div className="grid gap-4 md:grid-cols-2">
-                <div className="space-y-2">
-                  <Label htmlFor="reset-pin">Novo PIN</Label>
-                  <Input id="reset-pin" type="password" inputMode="numeric" value={resetPin} onChange={(event) => setResetPin(event.target.value.replace(/\D/g, "").slice(0, 8))} disabled={!securityAdminUnlocked || securityBusy || !managedProfile?.ativo} />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="reset-pin-confirm">Confirmar novo PIN</Label>
-                  <Input id="reset-pin-confirm" type="password" inputMode="numeric" value={resetPinConfirm} onChange={(event) => setResetPinConfirm(event.target.value.replace(/\D/g, "").slice(0, 8))} disabled={!securityAdminUnlocked || securityBusy || !managedProfile?.ativo} />
-                </div>
-              </div>
               <div className="space-y-2">
                 <Label htmlFor="admin-pin-verify">Seu PIN de administrador</Label>
                 <Input
@@ -350,9 +340,10 @@ export function ConfiguracoesTabSeguranca({
                   placeholder="Digite seu PIN para autorizar"
                 />
               </div>
+              {issuedCode && issuedCode.profile_id === managedProfileId && <AccessCodeCard code={issuedCode} />}
               <div className="flex justify-end">
-                <Button type="button" variant="outline" onClick={() => void resetarPinPerfil()} disabled={securityBusy || !securityAdminUnlocked || !managedProfileId || !managedProfile?.ativo}>
-                  Redefinir PIN do colaborador
+                <Button type="button" variant="outline" onClick={() => void gerarCodigoPerfil()} disabled={securityBusy || !securityAdminUnlocked || !managedProfileId || !managedProfile?.ativo}>
+                  Gerar código de acesso
                 </Button>
               </div>
             </div>

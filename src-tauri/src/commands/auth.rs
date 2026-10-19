@@ -1269,43 +1269,6 @@ pub async fn update_security_profile(profile_id: i32, input: SecurityProfileInpu
     status_snapshot().await
 }
 
-#[tauri::command]
-#[instrument(skip_all)]
-pub async fn reset_security_profile_pin(profile_id: i32, new_pin: String, admin_pin: String) -> Result<SensitiveAccessStatus, String> {
-    let actor = require_permission(PERMISSION_MANAGE_PROFILES)?;
-
-    let stored = load_profile_pin(actor.id)?;
-    if let Some(ref stored_pin) = stored {
-        if !verify_pin(admin_pin.trim(), stored_pin) {
-            spawn_security_event("PIN_RESET_FAILED", Some(actor.clone()), "PIN do administrador inválido".to_string(), false);
-            return Err("PIN do administrador inválido".to_string());
-        }
-    } else {
-        return Err("Seu perfil não possui PIN configurado".to_string());
-    }
-
-    validate_pin_format(&new_pin)?;
-    if new_pin.trim().is_empty() {
-        return Err("Informe um PIN de 4 a 8 dígitos.".to_string());
-    }
-    let profile = to_profile_summary(fetch_profile_record_by_id(profile_id).await?)?;
-    store_profile_pin(profile_id, &new_pin)?;
-    mark_profile_pin_required(profile_id).await?;
-
-    if actor.id == profile_id {
-        unlock_session(profile.clone())?;
-    }
-
-    record_security_event(
-        "PIN_RESET",
-        Some(&actor),
-        format!("PIN redefinido para o perfil {}", profile.nome),
-        true,
-    )
-    .await;
-    status_snapshot().await
-}
-
 /// Helper interno para conectar ao PostgreSQL via tokio-postgres.
 /// Quando `use_tls` é true, tenta TLS (necessário para conexões remotas/Supabase).
 /// Quando `use_tls` é false, conecta sem TLS (modo local).

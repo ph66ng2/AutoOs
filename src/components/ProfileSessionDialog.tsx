@@ -38,8 +38,11 @@ interface ProfileSessionDialogProps {
   onConfirmPinChange: (value: string) => void;
   onSubmit: () => void;
   onForgotPassword?: () => void;
-  /** Perfil sem PIN neste computador: abre o primeiro acesso com código. */
-  onFirstAccess?: (profileId: number) => void;
+  /**
+   * Abre o fluxo do código do administrador. `recovery` = o perfil já tem PIN neste
+   * computador e a pessoa o esqueceu; sem ele, é o primeiro acesso.
+   */
+  onFirstAccess?: (profileId: number, recovery?: boolean) => void;
 }
 
 /**
@@ -74,6 +77,7 @@ export function ProfileSessionDialog({
   const isCurrentProfileSelected = !!selectedProfile && selectedProfile.id === activeProfileId;
   const missingRequiredPin = !!selectedProfile && needsFirstAccessHere(selectedProfile);
   const canStartFirstAccess = missingRequiredPin && !!onFirstAccess;
+  const canRecoverWithCode = !!selectedProfile && selectedProfile.pin_configured && !!onFirstAccess;
   const isAdminWithoutPin = selectedProfile?.role === "ADMIN" && !selectedProfile?.pin_configured && !missingRequiredPin;
   const shouldAskForPin = isAdminWithoutPin || (Boolean(selectedProfile?.pin_configured) && (!isSelectorMode || !isCurrentProfileSelected || !unlocked));
 
@@ -307,10 +311,19 @@ export function ProfileSessionDialog({
                   </Button>
                 </div>
 
-                {onForgotPassword && mode !== "selector" && (
-                  <Button variant="link" type="button" onClick={onForgotPassword} className="h-auto px-0 text-sm text-primary">
-                    Esqueci minha senha
-                  </Button>
+                {(canRecoverWithCode || (onForgotPassword && mode !== "selector")) && (
+                  <div className="flex flex-col items-center gap-1">
+                    {canRecoverWithCode && selectedProfile && (
+                      <Button variant="link" type="button" onClick={() => onFirstAccess!(selectedProfile.id, true)} className="h-auto px-0 text-sm text-primary">
+                        Esqueci meu PIN: tenho um código do administrador
+                      </Button>
+                    )}
+                    {onForgotPassword && mode !== "selector" && (
+                      <Button variant="link" type="button" onClick={onForgotPassword} className="h-auto px-0 text-sm text-primary">
+                        Esqueci minha senha
+                      </Button>
+                    )}
+                  </div>
                 )}
               </div>
             </>

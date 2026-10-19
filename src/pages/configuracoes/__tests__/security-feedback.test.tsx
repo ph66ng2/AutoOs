@@ -34,11 +34,8 @@ const baseProps: ConfiguracoesTabSegurancaProps = {
   desativarPerfilSelecionado: vi.fn(),
   reativarPerfilSelecionado: vi.fn(),
   salvarPerfilAtual: vi.fn(),
-  resetPin: "",
-  setResetPin: vi.fn(),
-  resetPinConfirm: "",
-  setResetPinConfirm: vi.fn(),
-  resetarPinPerfil: vi.fn(),
+  gerarCodigoPerfil: vi.fn(),
+  issuedCode: null,
   securityMessage: null,
   inactivityLockEnabled: false,
   onToggleInactivityLock: vi.fn(),
@@ -81,5 +78,20 @@ describe("retorno e credenciais administrativas de segurança", () => {
     expect(edit).toHaveValue("1234");
     expect(reset).toHaveValue("4321");
     expect(screen.queryByText("Perfil atualizado com sucesso.")).not.toBeInTheDocument();
+  });
+
+  it("não oferece mais definir PIN de outra pessoa e mostra o código gerado só do perfil selecionado", async () => {
+    const user = userEvent.setup();
+    const gerarCodigoPerfil = vi.fn();
+    const code = { profile_id: 2, nome: "Ivan", codigo: "K7Q-42M", expira_em: "2026-10-20T12:00:00Z" };
+    const { rerender } = render(<MemoryRouter><Tabs defaultValue="seguranca"><ConfiguracoesTabSeguranca {...baseProps} gerarCodigoPerfil={gerarCodigoPerfil} issuedCode={code} /></Tabs></MemoryRouter>);
+    expect(screen.queryByLabelText("Novo PIN", { selector: "#reset-pin" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Redefinir PIN do colaborador/ })).not.toBeInTheDocument();
+    expect(screen.getByText("K7Q-42M")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Gerar código de acesso" }));
+    expect(gerarCodigoPerfil).toHaveBeenCalledOnce();
+    // Trocar o perfil selecionado não deve exibir o código de outra pessoa.
+    rerender(<MemoryRouter><Tabs defaultValue="seguranca"><ConfiguracoesTabSeguranca {...baseProps} managedProfileId={3} issuedCode={code} /></Tabs></MemoryRouter>);
+    expect(screen.queryByText("K7Q-42M")).not.toBeInTheDocument();
   });
 });

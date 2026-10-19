@@ -27,7 +27,8 @@ Esta matriz fecha o inventário do passo 1.1 do NEXT_STEPS para o backend Rust a
 | `deletar_cliente` | `src-tauri/src/commands/clientes.rs` | Soft delete (`ativo = false`) | Exclusão | Exigir `DELETE_RECORDS` |
 | `create_security_profile` | `src-tauri/src/commands/auth.rs` | `INSERT` em perfis | Administrativo | Exigir `MANAGE_PROFILES` |
 | `update_security_profile` | `src-tauri/src/commands/auth.rs` | `UPDATE` em perfis | Administrativo | Exigir `MANAGE_PROFILES` |
-| `reset_security_profile_pin` | `src-tauri/src/commands/auth.rs` | Mutação de PIN por perfil | Administrativo | Exigir `MANAGE_PROFILES` |
+| `criar_perfil_com_codigo` | `src-tauri/src/commands/auth.rs` | `INSERT` em perfis (sem PIN) + código de primeiro acesso (hash) | Administrativo | Exigir `MANAGE_PROFILES` |
+| `gerar_codigo_primeiro_acesso` | `src-tauri/src/commands/auth.rs` | Revoga códigos abertos e grava novo hash de código | Administrativo | Exigir `MANAGE_PROFILES` e confirmar o PIN do administrador |
 | `deactivate_security_profile` | `src-tauri/src/commands/auth.rs` | `UPDATE` em perfis | Administrativo | Exigir `MANAGE_PROFILES` |
 | `reactivate_security_profile` | `src-tauri/src/commands/auth.rs` | `UPDATE` em perfis | Administrativo | Exigir `MANAGE_PROFILES` |
 | `salvar_config_smtp` | `src-tauri/src/commands/smtp.rs` | Gravação segura no keyring | Administrativo | Exigir `CONFIG_SMTP` |
@@ -39,4 +40,7 @@ Esta matriz fecha o inventário do passo 1.1 do NEXT_STEPS para o backend Rust a
 
 - `criar_cliente` e `atualizar_cliente` persistem dados, mas não entram no escopo mínimo do P0.1 porque não se enquadram em financeiro, estoque, exclusão ou restore.
 - `enviar_email` e `enviar_whatsapp` fazem saída externa e continuam fora desta matriz porque não persistem estado local; qualquer revisão semântica de permissão deve ser tratada separadamente.
+- O administrador não define nem vê o PIN definitivo de ninguém: o antigo `reset_security_profile_pin` foi removido. PIN de outro computador ou esquecido passa por `gerar_codigo_primeiro_acesso`; o código só é consumido por `ativar_perfil_com_codigo`, que grava o PIN no keyring do computador de quem o usa.
+- `ativar_perfil_com_codigo` não exige sessão: a credencial é o código (Argon2, 24 h, uso único) e as tentativas inválidas entram no mesmo bloqueio de PIN.
+- `salvar_personalizacao_perfil`, `registrar_tour_visto` e `listar_minhas_acoes` agem só sobre o perfil da sessão e não exigem `MANAGE_PROFILES`.
 - `set_active_security_profile` altera o perfil padrão ativo para a próxima sessão e mantém trilha de auditoria própria; a exigência principal desta etapa é garantir rastreabilidade e proteção nas mutações administrativas destrutivas ou privilegiadas.

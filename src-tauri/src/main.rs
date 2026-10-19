@@ -110,7 +110,6 @@ fn main() {
             commands::auth::set_active_security_profile,
             commands::auth::create_security_profile,
             commands::auth::update_security_profile,
-            commands::auth::reset_security_profile_pin,
             commands::auth::verificar_credenciais_banco,
             commands::auth::redefinir_pin_via_db,
             commands::auth::list_security_profiles,

@@ -20,6 +20,7 @@ export async function invoke<T>(command: string, args?: Record<string, unknown>)
   if (command === "unlock_sensitive_access") return structuredClone(status()) as T;
   if (command === "get_sensitive_access_status") return structuredClone(status()) as T;
   if (command === "list_security_profiles") return structuredClone(profiles) as T;
+  if (command === "list_security_audit_events") return [] as T;
   if (command === "set_active_security_profile") { const profile = profiles.find(p => p.id === args?.profileId)!; if (profile.pin_required && !profile.pin_configured) throw new Error("PIN pendente neste computador"); active = profile; return structuredClone(status()) as T; }
   if (command === "criar_perfil_com_codigo") { const input = args?.input as SecurityProfileInput; const created: SecurityProfile = { ...input, id: Math.max(...profiles.map(p => p.id)) + 1, pin_configured: false, pin_required: true, is_default: false, ativo: true, onboarding_pendente: true }; profiles.push(created); return structuredClone(demoCode(created)) as T; }
   if (command === "gerar_codigo_primeiro_acesso") return structuredClone(demoCode(profiles.find(p => p.id === args?.profileId)!)) as T;
@@ -30,7 +31,6 @@ export async function invoke<T>(command: string, args?: Record<string, unknown>)
   if (command === "create_security_profile") { const input = args?.input as SecurityProfileInput; profiles.push({ ...input, id: Math.max(...profiles.map(p => p.id)) + 1, pin_configured: true, pin_required: true, is_default: false, ativo: true }); return structuredClone(status()) as T; }
   const target = profiles.find(p => p.id === args?.profileId);
   if (command === "update_security_profile" && target) Object.assign(target, args?.input);
-  else if (command === "reset_security_profile_pin" && target) target.pin_configured = true;
   else if (command === "deactivate_security_profile" && target) target.ativo = false;
   else if (command === "reactivate_security_profile" && target) target.ativo = true;
   else return baseInvoke<T>(command, args);

@@ -99,7 +99,7 @@ export function SensitiveAccessProvider({ children }: { children: ReactNode }) {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [selectedProfileId, setSelectedProfileId] = useState<string>("");
-  const [firstAccess, setFirstAccess] = useState<{ profileId: number; needsCode: boolean } | null>(null);
+  const [firstAccess, setFirstAccess] = useState<{ profileId: number; needsCode: boolean; recovery: boolean } | null>(null);
   const { setTheme } = useTheme();
   const resolverRef = useRef<((value: boolean) => void) | null>(null);
   const startupPromptedRef = useRef(false);
@@ -226,7 +226,7 @@ export function SensitiveAccessProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (!status?.unlocked || firstAccess || dialogOpen) return;
     const active = status.profiles.find((profile) => profile.id === status.active_profile_id);
-    if (active?.onboarding_pendente) setFirstAccess({ profileId: active.id, needsCode: false });
+    if (active?.onboarding_pendente) setFirstAccess({ profileId: active.id, needsCode: false, recovery: false });
   }, [dialogOpen, firstAccess, status]);
 
   const resolvePending = useCallback((value: boolean) => {
@@ -474,11 +474,11 @@ export function SensitiveAccessProvider({ children }: { children: ReactNode }) {
     }
   }, [closeDialog, pin, confirmPin, promptOptions.permission, selectedProfileId, status, dialogMode]);
 
-  const startFirstAccess = useCallback((profileId: number) => {
+  const startFirstAccess = useCallback((profileId: number, recovery = false) => {
     // O pedido de perfil continua pendente: resolve quando a ativação terminar.
     setDialogOpen(false);
     setError(null);
-    setFirstAccess({ profileId, needsCode: true });
+    setFirstAccess({ profileId, needsCode: true, recovery });
   }, []);
 
   const cancelFirstAccess = useCallback(() => {
@@ -486,11 +486,11 @@ export function SensitiveAccessProvider({ children }: { children: ReactNode }) {
     setDialogOpen(true);
   }, []);
 
-  const finishFirstAccess = useCallback(async (startTour: boolean) => {
+  const finishFirstAccess = useCallback(async (result: "tour" | "pular" | "recuperado") => {
     const profileId = firstAccess?.profileId;
-    if (startTour) {
+    if (result === "tour") {
       requestTour("completo");
-    } else {
+    } else if (result === "pular") {
       try {
         setStatus(await SensitiveAccessService.markTourSeen());
       } catch {
@@ -565,13 +565,14 @@ export function SensitiveAccessProvider({ children }: { children: ReactNode }) {
           key={firstAccessProfile.id}
           profile={firstAccessProfile}
           needsCode={firstAccess.needsCode}
+          recovery={firstAccess.recovery}
           onStatusChange={(nextStatus) => {
             setStatus(nextStatus);
             setConnectionUnavailable(false);
             if (nextStatus.unlocked) unlockedSinceBootRef.current = true;
           }}
           onCancel={cancelFirstAccess}
-          onFinish={(startTour) => void finishFirstAccess(startTour)}
+          onFinish={(result) => void finishFirstAccess(result)}
         />
       )}
 

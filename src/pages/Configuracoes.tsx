@@ -39,6 +39,7 @@ import {
   SENSITIVE_PERMISSIONS,
   type DatabaseSchemaStatus,
   type LocalSupportBundleResult,
+  type CodigoPrimeiroAcesso,
   type LocalSupportStatus,
   type PostgresBackupToolsStatus,
   type SecurityAuditEvent,
@@ -84,8 +85,7 @@ export default function Configuracoes() {
   const [editProfileName, setEditProfileName] = useState("");
   const [editProfileRole, setEditProfileRole] = useState("CUSTOM");
   const [editPermissions, setEditPermissions] = useState<SensitivePermission[]>([]);
-  const [resetPin, setResetPin] = useState("");
-  const [resetPinConfirm, setResetPinConfirm] = useState("");
+  const [issuedCode, setIssuedCode] = useState<CodigoPrimeiroAcesso | null>(null);
   const [adminPinVerify, setAdminPinVerify] = useState("");
   const [resetAdminPin, setResetAdminPin] = useState("");
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
@@ -398,8 +398,7 @@ export default function Configuracoes() {
     setEditProfileName(managedProfile.nome);
     setEditProfileRole(managedProfile.role);
     setEditPermissions(managedProfile.permissions);
-    setResetPin("");
-    setResetPinConfirm("");
+    setIssuedCode(null);
     setAdminPinVerify("");
     setResetAdminPin("");
     setSecurityMessage(null);
@@ -686,35 +685,27 @@ export default function Configuracoes() {
     }
   }
 
-  async function resetarPinPerfil() {
+  async function gerarCodigoPerfil() {
     if (!managedProfileId) return;
     if (!securityAdminUnlocked) {
-      setSecurityMessage("Desbloqueie a gestão de segurança com PIN/Admin para resetar PINs.");
+      setSecurityMessage("Desbloqueie a gestão de segurança com PIN/Admin para gerar códigos de acesso.");
       return;
     }
 
-    if (resetPin.length < 4) {
-      setSecurityMessage("O novo PIN deve ter entre 4 e 8 dígitos.");
-      return;
-    }
-
-    if (resetPin !== resetPinConfirm) {
-      setSecurityMessage("A confirmação do reset de PIN não confere.");
+    if (!/^\d{4,8}$/.test(resetAdminPin)) {
+      setSecurityMessage("Informe seu PIN de administrador para autorizar.");
       return;
     }
 
     setSecurityBusy(true);
     setSecurityMessage(null);
     try {
-      await SensitiveAccessService.resetProfilePin(managedProfileId, resetPin, resetAdminPin);
-      setResetPin("");
-      setResetPinConfirm("");
+      setIssuedCode(await SensitiveAccessService.issueAccessCode(managedProfileId, resetAdminPin));
       setResetAdminPin("");
-      setSecurityMessage("PIN do perfil selecionado redefinido com sucesso.", "success");
-      toast.success("PIN do perfil selecionado redefinido com sucesso.");
+      toast.success("Código de acesso gerado.");
       await atualizarEstadoSeguranca();
     } catch (error: any) {
-      setSecurityMessage(error?.message || error?.toString() || "Falha ao redefinir o PIN do perfil.");
+      setSecurityMessage(error?.message || error?.toString() || "Falha ao gerar o código de acesso.");
     } finally {
       setSecurityBusy(false);
     }
@@ -983,11 +974,8 @@ export default function Configuracoes() {
           desativarPerfilSelecionado={desativarPerfilSelecionado}
           reativarPerfilSelecionado={reativarPerfilSelecionado}
           salvarPerfilAtual={salvarPerfilAtual}
-          resetPin={resetPin}
-          setResetPin={setResetPin}
-          resetPinConfirm={resetPinConfirm}
-          setResetPinConfirm={setResetPinConfirm}
-          resetarPinPerfil={resetarPinPerfil}
+          gerarCodigoPerfil={gerarCodigoPerfil}
+          issuedCode={issuedCode}
           securityMessage={securityMessage}
           securityMessageVariant={securityFeedback?.variant}
           onClearSecurityMessage={() => setSecurityMessage(null)}
