@@ -5,6 +5,13 @@ export function orcamentoJaAprovado(status: string): boolean {
   return ["APROVADO", "EM_MANUTENCAO", "AGUARDANDO_PECA", "PRONTO", "ENTREGUE"].includes(status);
 }
 
+/** Categoria do estoque (Insumos) oferecida em "Peças vinculadas". */
+export const CATEGORIA_PECAS_ORCAMENTO = "PEÇA";
+
+export function produtosSelecionaveisComoPeca(produtos: Produto[]): Produto[] {
+  return produtos.filter((produto) => produto.categoria === CATEGORIA_PECAS_ORCAMENTO);
+}
+
 export async function carregarProdutosOrcamento(): Promise<Produto[]> {
   const produtos: Produto[] = [];
   for (let pagina = 0; ; pagina++) {
