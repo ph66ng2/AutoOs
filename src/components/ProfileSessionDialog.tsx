@@ -68,6 +68,8 @@ export function ProfileSessionDialog({
   const missingRequiredPin = !!selectedProfile?.pin_required && !selectedProfile.pin_configured;
   const isAdminWithoutPin = selectedProfile?.role === "ADMIN" && !selectedProfile?.pin_configured && !missingRequiredPin;
   const shouldAskForPin = isAdminWithoutPin || (Boolean(selectedProfile?.pin_configured) && (!isSelectorMode || !isCurrentProfileSelected || !unlocked));
+  // Só afirmamos "não exige PIN" quando o perfil realmente tem pin_required = false.
+  const pinOptional = selectedProfile?.pin_required === false;
   const permissionPreview = selectedProfile?.permissions.slice(0, 3) ?? [];
 
   const primaryActionLabel = (() => {
@@ -75,7 +77,7 @@ export function ProfileSessionDialog({
       return "Selecione um perfil";
     }
 
-    if (missingRequiredPin) return "PIN pendente neste computador";
+    if (missingRequiredPin) return "PIN não configurado neste PC";
     if (isAdminWithoutPin) {
       return "Configurar PIN e continuar";
     }
@@ -128,7 +130,9 @@ export function ProfileSessionDialog({
     }
 
     if (!selectedProfile.pin_configured) {
-      return "Este perfil não exige PIN. Clique abaixo para continuar.";
+      return pinOptional
+        ? "Este perfil não exige PIN. Clique abaixo para continuar."
+        : "Este perfil não tem PIN configurado neste PC. Clique abaixo para continuar.";
     }
 
     return "Informe o PIN do perfil selecionado para confirmar a sessão.";
@@ -290,9 +294,9 @@ export function ProfileSessionDialog({
                         <div className="flex flex-wrap justify-end gap-2">
                           {isCurrent && <Badge variant="secondary">Perfil atual</Badge>}
                           {profile.pin_configured ? (
-                            <Badge variant="outline">PIN ativo</Badge>
+                            <Badge variant="outline">PIN configurado neste PC</Badge>
                           ) : (
-                            <Badge variant="outline">{profile.pin_required || profile.role === "ADMIN" ? "PIN pendente" : "Não exige PIN"}</Badge>
+                            <Badge variant="outline">{profile.pin_required === false && profile.role !== "ADMIN" ? "Não exige PIN" : "PIN não configurado neste PC"}</Badge>
                           )}
                         </div>
                       </div>
@@ -330,7 +334,7 @@ export function ProfileSessionDialog({
                     {unlocked && selectedProfile.id === activeProfileId && (
                       <Badge className="bg-emerald-600 hover:bg-emerald-600">Sessão ativa</Badge>
                     )}
-                    {!selectedProfile.pin_configured && <Badge variant="outline">{missingRequiredPin || isAdminWithoutPin ? "PIN pendente" : "Não exige PIN"}</Badge>}
+                    {!selectedProfile.pin_configured && <Badge variant="outline">{pinOptional && !isAdminWithoutPin ? "Não exige PIN" : "PIN não configurado neste PC"}</Badge>}
                   </div>
 
                   <p className="text-sm text-muted-foreground">{helperText}</p>
@@ -409,7 +413,11 @@ export function ProfileSessionDialog({
                   </div>
                 ) : (
                   <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-800">
-                    {missingRequiredPin ? "Acesso bloqueado até a configuração do PIN neste computador." : "Este perfil não exige PIN. Clique abaixo para continuar."}
+                    {missingRequiredPin
+                      ? "Acesso bloqueado até a configuração do PIN neste computador."
+                      : pinOptional
+                        ? "Este perfil não exige PIN. Clique abaixo para continuar."
+                        : "Este perfil não tem PIN configurado neste PC. Clique abaixo para continuar."}
                   </div>
                 ))}
                 {error && <p className="text-sm text-red-600">{error}</p>}

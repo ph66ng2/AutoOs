@@ -1,6 +1,6 @@
 # Equipe e acessos
 
-A rota `/perfil` reúne a equipe, o cadastro guiado e as ações administrativas de edição, configuração de PIN local, desativação e reativação. A tela de Segurança mantém as ferramentas existentes e oferece um atalho para a equipe. Exclusão permanente continua no fluxo anterior, com verificação dupla.
+A rota `/perfil` reúne a equipe, o cadastro guiado e as ações administrativas de edição, configuração de PIN local, desativação e reativação. A tela de Segurança não repete essa gestão: mostra um resumo da equipe com atalho para Equipe e acessos e mantém só o que não existe aqui, o bloqueio por inatividade e a exclusão permanente de perfil, com verificação dupla.
 
 ## Cadastro
 

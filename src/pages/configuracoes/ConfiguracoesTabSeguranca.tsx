@@ -16,12 +16,7 @@ import { TabsContent } from "@/components/ui/tabs";
 import { ProfileDeleteDialog } from "@/components/ProfileDeleteDialog";
 import { PROFILE_PRESETS } from "@/lib/profile-presets";
 import { securityPermissionLabel, securityRoleLabel } from "@/lib/security-profile-labels";
-import {
-  SENSITIVE_PERMISSION_LABELS,
-  type SecurityProfile,
-  type SensitiveAccessStatus,
-  type SensitivePermission,
-} from "@/types";
+import type { SecurityProfile, SensitiveAccessStatus } from "@/types";
 
 export type ConfiguracoesTabSegurancaProps = {
   canManageProfiles: boolean;
@@ -40,26 +35,6 @@ export type ConfiguracoesTabSegurancaProps = {
   setManagedProfileId: (value: number | null) => void;
   profilesCatalog: SecurityProfile[];
   managedProfile: SecurityProfile | null;
-  editProfileName: string;
-  setEditProfileName: (value: string) => void;
-  editProfileRole: string;
-  setEditProfileRole: (value: string) => void;
-  editPermissions: SensitivePermission[];
-  setEditPermissions: (value: SensitivePermission[]) => void;
-  permissionOptions: SensitivePermission[];
-  togglePermission: (
-    currentPermissions: SensitivePermission[],
-    permission: SensitivePermission,
-    setter: (value: SensitivePermission[]) => void,
-  ) => void;
-  desativarPerfilSelecionado: () => void | Promise<void>;
-  reativarPerfilSelecionado: () => void | Promise<void>;
-  salvarPerfilAtual: () => void | Promise<void>;
-  resetPin: string;
-  setResetPin: (value: string) => void;
-  resetPinConfirm: string;
-  setResetPinConfirm: (value: string) => void;
-  resetarPinPerfil: () => void | Promise<void>;
   securityMessage: string | null;
   securityMessageVariant?: "error" | "info" | "success";
   onClearSecurityMessage?: () => void;
@@ -68,10 +43,6 @@ export type ConfiguracoesTabSegurancaProps = {
   deleteDialogOpen: boolean;
   onDeleteDialogOpenChange: (open: boolean) => void;
   onDeleteSuccess: () => void | Promise<void>;
-  adminPinVerify: string;
-  setAdminPinVerify: (value: string) => void;
-  resetAdminPin: string;
-  setResetAdminPin: (value: string) => void;
 };
 
 export function ConfiguracoesTabSeguranca({
@@ -91,22 +62,6 @@ export function ConfiguracoesTabSeguranca({
   setManagedProfileId,
   profilesCatalog,
   managedProfile,
-  editProfileName,
-  setEditProfileName,
-  editProfileRole,
-  setEditProfileRole,
-  editPermissions,
-  setEditPermissions,
-  permissionOptions,
-  togglePermission,
-  desativarPerfilSelecionado,
-  reativarPerfilSelecionado,
-  salvarPerfilAtual,
-  resetPin,
-  setResetPin,
-  resetPinConfirm,
-  setResetPinConfirm,
-  resetarPinPerfil,
   securityMessage,
   securityMessageVariant = "error",
   onClearSecurityMessage,
@@ -115,11 +70,11 @@ export function ConfiguracoesTabSeguranca({
   deleteDialogOpen,
   onDeleteDialogOpenChange,
   onDeleteSuccess,
-  adminPinVerify,
-  setAdminPinVerify,
-  resetAdminPin,
-  setResetAdminPin,
 }: ConfiguracoesTabSegurancaProps) {
+  const activeProfiles = profilesCatalog.filter((profile) => profile.ativo);
+  const pinConfiguredCount = activeProfiles.filter((profile) => profile.pin_configured).length;
+  const pinMissingCount = activeProfiles.length - pinConfiguredCount;
+
   return (
     <TabsContent value="seguranca" className="space-y-4" onChange={onClearSecurityMessage}>
       {securityMessage && <div role={securityMessageVariant === "error" ? "alert" : "status"} aria-live={securityMessageVariant === "error" ? "assertive" : "polite"}>
@@ -174,13 +129,24 @@ export function ConfiguracoesTabSeguranca({
       {canManageProfiles && (
         <Card>
           <CardHeader>
-            <CardTitle>Administração de perfis</CardTitle>
+            <CardTitle>Equipe e acessos</CardTitle>
             <CardDescription>
-              Criação, edição, desativação e PINs agora estão reunidos em Equipe e acessos.
+              Cadastro, edição, PIN, desativação e reativação de pessoas ficam em Equipe e acessos.
+              Modelos prontos: {PROFILE_PRESETS.map((preset) => preset.label).join(", ")}.
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-6">
-            <Button asChild variant="outline"><Link to="/perfil">Abrir Equipe e acessos</Link></Button>
+            <div className="flex flex-col gap-3 rounded-lg border bg-muted/40 p-4 text-sm sm:flex-row sm:items-center sm:justify-between">
+              <div className="space-y-1">
+                <div className="font-medium">{activeProfiles.length} {activeProfiles.length === 1 ? "pessoa ativa" : "pessoas ativas"}</div>
+                <div className="text-muted-foreground">
+                  {pinConfiguredCount} com PIN configurado neste PC
+                  {pinMissingCount > 0 ? `, ${pinMissingCount} com PIN não configurado neste PC` : ""}
+                </div>
+              </div>
+              <Button asChild variant="outline"><Link to="/perfil">Abrir Equipe e acessos</Link></Button>
+            </div>
+
             <div className="flex items-center gap-3 rounded-lg border p-3">
               <Checkbox
                 id="inactivity-lock-toggle"
@@ -196,23 +162,30 @@ export function ConfiguracoesTabSeguranca({
               </Label>
             </div>
 
-            <div className="flex items-center gap-3 rounded-lg border p-3">
-              <Checkbox
-                checked={securityAdminUnlocked}
-                onCheckedChange={(value) => void handleSecurityAdminToggle(!!value)}
-                disabled={securityBusy}
-              />
-              <div>
-                <p className="text-sm font-medium">Liberar alterações sensíveis de segurança</p>
-                <p className="text-xs text-muted-foreground">
-                  Sem esta liberação, o painel fica em modo leitura.
-                </p>
-              </div>
-            </div>
+            <div className="border-t pt-6 space-y-4">
+              <h3 className="text-lg font-semibold text-red-700">Excluir perfil</h3>
+              <p className="text-sm text-muted-foreground">
+                A exclusão é irreversível e exige verificação dupla (PIN do administrador + credenciais do banco).
+                Para apenas impedir o acesso de alguém, use Desativar em Equipe e acessos.
+              </p>
 
-            <div className="grid gap-4 md:grid-cols-2">
-              <div className="space-y-2">
-                <Label>Perfil para editar</Label>
+              <div className="flex items-center gap-3 rounded-lg border p-3">
+                <Checkbox
+                  id="delete-unlock-toggle"
+                  checked={securityAdminUnlocked}
+                  onCheckedChange={(value) => void handleSecurityAdminToggle(!!value)}
+                  disabled={securityBusy}
+                />
+                <Label htmlFor="delete-unlock-toggle" className="cursor-pointer">
+                  <p className="text-sm font-medium">Liberar exclusão de perfis</p>
+                  <p className="text-xs text-muted-foreground">
+                    Confirme seu PIN de administrador para habilitar a exclusão nesta sessão.
+                  </p>
+                </Label>
+              </div>
+
+              <div className="space-y-2 md:max-w-sm">
+                <Label>Perfil a excluir</Label>
                 <Select value={managedProfileId ? String(managedProfileId) : undefined} onValueChange={(value) => setManagedProfileId(Number(value))}>
                   <SelectTrigger>
                     <SelectValue placeholder="Selecione um perfil" />
@@ -225,143 +198,14 @@ export function ConfiguracoesTabSeguranca({
                     ))}
                   </SelectContent>
                 </Select>
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="edit-profile-name">Nome</Label>
-                <Input id="edit-profile-name" value={editProfileName} onChange={(event) => setEditProfileName(event.target.value)} disabled={!securityAdminUnlocked || securityBusy || !managedProfile?.ativo} />
                 {managedProfile && (
                   <p className="text-xs text-muted-foreground">
-                    {managedProfile.pin_configured ? "PIN configurado" : "PIN pendente"}
+                    {managedProfile.pin_configured ? "PIN configurado neste PC" : "PIN não configurado neste PC"}
                     {managedProfile.ativo ? "" : " • perfil inativo"}
-                    {managedProfile.is_default ? " • perfil ativo padrão" : ""}
                   </p>
                 )}
               </div>
-            </div>
 
-            <div className="space-y-4">
-              <h3 className="text-lg font-semibold">Editar perfil</h3>
-              <div className="grid gap-4 md:grid-cols-2">
-                <div className="space-y-2">
-                  <Label>Papel</Label>
-                  <Select value={editProfileRole} onValueChange={(value) => {
-                    setEditProfileRole(value);
-                    const preset = PROFILE_PRESETS.find((item) => item.role === value);
-                    setEditPermissions(preset ? [...preset.permissions] : []);
-                  }} disabled={!securityAdminUnlocked || securityBusy || !managedProfile?.ativo}>
-                    <SelectTrigger>
-                      <SelectValue placeholder="Selecione um papel" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {!PROFILE_PRESETS.some((preset) => preset.role === editProfileRole) && (
-                        <SelectItem value={editProfileRole}>{securityRoleLabel(editProfileRole)}</SelectItem>
-                      )}
-                      {PROFILE_PRESETS.map((preset) => <SelectItem key={preset.role} value={preset.role}>{preset.label}</SelectItem>)}
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                <div className="rounded-lg border bg-muted/40 p-4 text-sm text-muted-foreground">
-                  O perfil de administrador recebe todas as permissões automaticamente. No perfil personalizado, você escolhe cada permissão abaixo.
-                </div>
-              </div>
-
-              <div className="grid gap-3 md:grid-cols-2">
-                {permissionOptions.map((permission) => (
-                  <label key={permission} className="flex items-start gap-3 rounded-lg border p-3 text-sm">
-                    <Checkbox
-                      checked={editProfileRole === "ADMIN" ? true : editPermissions.includes(permission)}
-                      disabled={!securityAdminUnlocked || securityBusy || editProfileRole === "ADMIN" || !managedProfile?.ativo}
-                      onCheckedChange={() => { setEditProfileRole("CUSTOM"); togglePermission(editPermissions, permission, setEditPermissions); }}
-                    />
-                    <span>{SENSITIVE_PERMISSION_LABELS[permission]}</span>
-                  </label>
-                ))}
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="admin-pin-edit">Seu PIN de administrador</Label>
-                <Input
-                  id="admin-pin-edit"
-                  type="password"
-                  inputMode="numeric"
-                  value={adminPinVerify}
-                  onChange={(event) => setAdminPinVerify(event.target.value.replace(/\D/g, "").slice(0, 8))}
-                  disabled={!securityAdminUnlocked || securityBusy || !managedProfile?.ativo}
-                  placeholder="Digite seu PIN para autorizar"
-                />
-              </div>
-
-              <div className="flex flex-col gap-3 md:flex-row md:justify-between md:items-center">
-                {managedProfile?.ativo ? (
-                  <Button
-                    type="button"
-                    variant="outline"
-                    className="border-red-200 text-red-700 hover:bg-red-50"
-                    onClick={() => void desativarPerfilSelecionado()}
-                    disabled={securityBusy || !securityAdminUnlocked || !managedProfileId}
-                  >
-                    Desativar perfil
-                  </Button>
-                ) : (
-                  <Button
-                    type="button"
-                    variant="outline"
-                    className="border-emerald-200 text-emerald-700 hover:bg-emerald-50"
-                    onClick={() => void reativarPerfilSelecionado()}
-                    disabled={securityBusy || !securityAdminUnlocked || !managedProfileId}
-                  >
-                    Reativar perfil
-                  </Button>
-                )}
-                <Button type="button" onClick={() => void salvarPerfilAtual()} disabled={securityBusy || !securityAdminUnlocked || !managedProfileId || !managedProfile?.ativo}>
-                  {securityBusy ? "Salvando..." : "Salvar perfil"}
-                </Button>
-              </div>
-            </div>
-
-            <div className="border-t pt-6 space-y-4">
-              <h3 className="text-lg font-semibold">Resetar PIN do colaborador</h3>
-              {managedProfile && (
-                <p className="text-sm text-muted-foreground">
-                  Perfil selecionado: {managedProfile.nome} ({securityRoleLabel(managedProfile.role)}) — {managedProfile.pin_configured ? "PIN ativo" : "PIN pendente"}
-                </p>
-              )}
-              <div className="grid gap-4 md:grid-cols-2">
-                <div className="space-y-2">
-                  <Label htmlFor="reset-pin">Novo PIN</Label>
-                  <Input id="reset-pin" type="password" inputMode="numeric" value={resetPin} onChange={(event) => setResetPin(event.target.value.replace(/\D/g, "").slice(0, 8))} disabled={!securityAdminUnlocked || securityBusy || !managedProfile?.ativo} />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="reset-pin-confirm">Confirmar novo PIN</Label>
-                  <Input id="reset-pin-confirm" type="password" inputMode="numeric" value={resetPinConfirm} onChange={(event) => setResetPinConfirm(event.target.value.replace(/\D/g, "").slice(0, 8))} disabled={!securityAdminUnlocked || securityBusy || !managedProfile?.ativo} />
-                </div>
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="admin-pin-verify">Seu PIN de administrador</Label>
-                <Input
-                  id="admin-pin-verify"
-                  type="password"
-                  inputMode="numeric"
-                  value={resetAdminPin}
-                  onChange={(event) => setResetAdminPin(event.target.value.replace(/\D/g, "").slice(0, 8))}
-                  disabled={!securityAdminUnlocked || securityBusy || !managedProfile?.ativo}
-                  placeholder="Digite seu PIN para autorizar"
-                />
-              </div>
-              <div className="flex justify-end">
-                <Button type="button" variant="outline" onClick={() => void resetarPinPerfil()} disabled={securityBusy || !securityAdminUnlocked || !managedProfileId || !managedProfile?.ativo}>
-                  Redefinir PIN do colaborador
-                </Button>
-              </div>
-            </div>
-
-            <div className="border-t pt-6 space-y-4">
-              <h3 className="text-lg font-semibold text-red-700">Excluir perfil</h3>
-              <p className="text-sm text-muted-foreground">
-                A exclusão é irreversível e exige verificação dupla (PIN do administrador + credenciais do banco).
-              </p>
               <Button
                 type="button"
                 variant="outline"
