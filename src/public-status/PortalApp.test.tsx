@@ -1,7 +1,7 @@
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import PortalApp from "./PortalApp";
-import { PortalError, portalApi, type DetalheAtendimento, type OrcamentoPortal } from "./portal-api";
+import { definirContatoEmpresa, formatarDocumento, mensagemWhatsapp, PortalError, portalApi, type Comprovante, type DetalheAtendimento, type OrcamentoPortal } from "./portal-api";
 import { areaFromHash } from "./portal-session";
 
 vi.mock("./portal-api", async (importOriginal) => {
@@ -52,12 +52,20 @@ function detalhe(extra: Partial<DetalheAtendimento> = {}): DetalheAtendimento {
     orientacao: "Confira a proposta abaixo.",
     statusAlteradoEm: "2026-10-14T12:00:00Z",
     entradaEm: "2026-10-10T12:00:00Z",
+    cliente: { nome: "ACME Ltda", documento: "11222333000181", exigeOrdemCompra: false },
+    defeitoRelatado: null,
+    valores: { orcamento: 350, final: null, atual: 350 },
+    etapas: [],
+    fotos: [],
+    historico: [],
     orcamento: orcamento(),
     solicitacoes: [],
     contatoEmpresa: { nome: "BMI TAG", whatsapp: "71933334444", email: "contato@bmitag.invalid", telefone: null, horario: "Seg a sex, 8h às 18h" },
     podeDecidir: true,
     verificacaoRecente: true,
     contato: "Ana Souza",
+    temTelefone: true,
+    temEmail: true,
     ...extra,
   };
 }
@@ -71,6 +79,7 @@ function logar(acesso: "DECIDIR" | "ACOMPANHAR" = "DECIDIR") {
 beforeEach(() => {
   vi.clearAllMocks();
   window.sessionStorage.clear();
+  definirContatoEmpresa(null);
   window.location.hash = "";
 });
 
@@ -159,7 +168,7 @@ describe("detalhe e orçamento", () => {
     api.responder.mockResolvedValue({
       comprovante: {
         id: 77, protocolo: "R-77", decisao: "APROVAR", registradaEm: "2026-10-15T15:00:00Z", janelaAte: FUTURO,
-        versao: 2, valorTotal: 350, equipamento: "Impressora Zebra ZT230", serie: "SER-123", contato: "Ana Souza", repetida: false,
+        versao: 2, valorTotal: 350, equipamento: "Impressora Zebra ZT230", serie: "SER-123", contato: "Ana Souza", ordemCompra: null, repetida: false,
       },
     });
     render(<PortalApp />);
@@ -177,7 +186,9 @@ describe("detalhe e orçamento", () => {
     expect(api.responder).toHaveBeenCalledWith(TOKEN, 28, 9, "APROVAR", null);
     const whatsapp = screen.getByRole("link", { name: "Abrir no WhatsApp" });
     expect(whatsapp.getAttribute("href")).toMatch(/^https:\/\/wa\.me\/5571933334444\?text=/);
-    expect(decodeURIComponent(whatsapp.getAttribute("href") ?? "")).toContain("Protocolo R-77");
+    const texto = decodeURIComponent(whatsapp.getAttribute("href") ?? "");
+    expect(texto).toContain("Protocolo R-77");
+    expect(texto).toContain("Aqui é Ana Souza, da ACME Ltda (CNPJ 11.222.333/0001-81)");
   });
 
   it("verificação antiga: reconfirma a senha antes de decidir, sem código", async () => {
@@ -208,12 +219,12 @@ describe("detalhe e orçamento", () => {
   it("no prazo de correção, quem respondeu só vê um Desfazer discreto; outro contato não", async () => {
     const resposta = {
       id: 77, decisao: "APROVAR" as const, origem: "PORTAL_CLIENTE" as const, registradaEm: new Date().toISOString(), janelaAte: FUTURO,
-      contato: "Ana Souza", propria: true, estado: "EM_CORRECAO" as const, efetivadaEm: null, protocolo: "R-77",
+      contato: "Ana Souza", propria: true, estado: "EM_CORRECAO" as const, efetivadaEm: null, protocolo: "R-77", ordemCompra: null,
     };
     api.detalhe.mockResolvedValue(detalhe({ orcamento: orcamento({ estado: "RESPONDIDA", resposta }) }));
     api.responder.mockResolvedValue({
       comprovante: { id: 78, protocolo: "R-78", decisao: "DESFEITA", registradaEm: new Date().toISOString(), janelaAte: FUTURO,
-        versao: 2, valorTotal: 350, equipamento: "Impressora Zebra ZT230", serie: "SER-123", contato: "Ana Souza", repetida: false },
+        versao: 2, valorTotal: 350, equipamento: "Impressora Zebra ZT230", serie: "SER-123", contato: "Ana Souza", ordemCompra: null, repetida: false },
     });
     const { unmount } = render(<PortalApp />);
     const desfazer = await screen.findByRole("button", { name: /Errou\? Desfazer resposta/ });
@@ -236,6 +247,9 @@ describe("detalhe e orçamento", () => {
     const barra = await screen.findByRole("region", { name: "Responder ao orçamento" });
     expect(within(barra).getByText(/R\$\s*350,00/)).toBeInTheDocument();
     fireEvent.click(within(barra).getByRole("button", { name: "Recusar" }));
+    expect(screen.getByRole("heading", { name: "Tem certeza que quer recusar?" })).toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: "Responder ao orçamento" })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Recusar mesmo assim" }));
     expect(screen.getByRole("heading", { name: "Confirmar RECUSA do orçamento inteiro?" })).toBeInTheDocument();
     expect(screen.queryByRole("region", { name: "Responder ao orçamento" })).not.toBeInTheDocument();
   });
@@ -246,7 +260,7 @@ describe("detalhe e orçamento", () => {
         estado: "RESPONDIDA",
         resposta: {
           id: 77, decisao: "APROVAR", origem: "PORTAL_CLIENTE", registradaEm: "2026-10-15T10:00:00Z", janelaAte: "2026-10-15T10:15:00Z",
-          contato: "Ana Souza", propria: true, estado: "PENDENTE_EQUIPE", efetivadaEm: null, protocolo: "R-77",
+          contato: "Ana Souza", propria: true, estado: "PENDENTE_EQUIPE", efetivadaEm: null, protocolo: "R-77", ordemCompra: null,
         },
       }),
     }));
@@ -263,7 +277,7 @@ describe("detalhe e orçamento", () => {
         estado: "RESPONDIDA",
         resposta: {
           id: 77, decisao: "APROVAR", origem: "PORTAL_CLIENTE", registradaEm: "2026-10-15T10:00:00Z", janelaAte: "2026-10-15T10:15:00Z",
-          contato: "Ana Souza", propria: true, estado: "EFETIVADA", efetivadaEm: "2026-10-15T10:16:00Z", protocolo: "R-77",
+          contato: "Ana Souza", propria: true, estado: "EFETIVADA", efetivadaEm: "2026-10-15T10:16:00Z", protocolo: "R-77", ordemCompra: null,
         },
       }),
     }));
@@ -281,10 +295,11 @@ describe("detalhe e orçamento", () => {
     api.solicitar.mockResolvedValue({ solicitacao: { id: 6, protocolo: "S-6", tipo: "NEGOCIAR", criadoEm: "2026-10-15T11:00:00Z" } });
     render(<PortalApp />);
     fireEvent.click(await screen.findByRole("button", { name: "Quero negociar" }));
-    expect(screen.queryByRole("link", { name: "Abrir no WhatsApp" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "Falar agora no WhatsApp" })).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Registrar pedido de negociação" }));
     expect(await screen.findByText("Pedido S-6 registrado no AutoOS")).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "Abrir no WhatsApp" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Falar agora no WhatsApp" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Enviar por e-mail" }).getAttribute("href")).toMatch(/^mailto:contato@bmitag\.invalid\?subject=/);
     expect(api.responder).not.toHaveBeenCalled();
   });
 
@@ -312,5 +327,234 @@ describe("detalhe e orçamento", () => {
     expect(screen.getByLabelText("CPF ou CNPJ")).toBeInTheDocument();
     await act(async () => undefined);
     expect(window.sessionStorage.getItem("autoos.portal.sessao")).toBeNull();
+  });
+});
+
+function respostaDe(extra: Partial<NonNullable<OrcamentoPortal["resposta"]>> = {}): NonNullable<OrcamentoPortal["resposta"]> {
+  return {
+    id: 77, decisao: "APROVAR", origem: "PORTAL_CLIENTE", registradaEm: new Date().toISOString(), janelaAte: FUTURO,
+    contato: "Ana Souza", propria: true, estado: "EM_CORRECAO", efetivadaEm: null, protocolo: "R-77", ordemCompra: null, ...extra,
+  };
+}
+
+function comprovanteDe(extra: Partial<Comprovante> = {}): Comprovante {
+  return {
+    id: 77, protocolo: "R-77", decisao: "APROVAR", registradaEm: new Date().toISOString(), janelaAte: FUTURO, versao: 2, valorTotal: 350,
+    equipamento: "Impressora Zebra ZT230", serie: "SER-123", contato: "Ana Souza", ordemCompra: null, repetida: false, ...extra,
+  };
+}
+
+describe("mensagens com documento do cliente", () => {
+  it("formata CNPJ e CPF", () => {
+    expect(formatarDocumento("11222333000181")).toBe("11.222.333/0001-81");
+    expect(formatarDocumento("12345678909")).toBe("123.456.789-09");
+    expect(formatarDocumento("123")).toBeNull();
+    expect(formatarDocumento(null)).toBeNull();
+  });
+
+  it("negociação: texto caloroso com cliente, CNPJ, protocolo e contato informado", () => {
+    const texto = mensagemWhatsapp({
+      contato: "Paulo", cliente: { nome: "ACME Ltda", documento: "11222333000181", exigeOrdemCompra: false }, intencao: "NEGOCIAR",
+      equipamento: "Impressora de Cartão Argox 13132", serie: "3123123132", versao: 2, valor: 1849.84, protocolo: "S-1",
+      telefone: "(71) 99999-0000", email: "paulo@acme.com.br",
+    });
+    expect(texto).toContain("Olá, equipe BMI TAG! Aqui é Paulo, da ACME Ltda (CNPJ 11.222.333/0001-81).");
+    expect(texto).toMatch(/Pedi pelo Portal das Impressoras para negociar o orçamento da Impressora de Cartão Argox 13132 \(série 3123123132\), versão 2, R\$\s1\.849,84\./);
+    expect(texto).toContain("Para falar comigo: telefone (71) 99999-0000 ou e-mail paulo@acme.com.br.");
+    expect(texto).toContain("Protocolo S-1. Podemos conversar?");
+  });
+
+  it("CPF de pessoa física e variantes de intenção", () => {
+    const base = { contato: "Maria", cliente: { nome: "Maria", documento: "12345678909", exigeOrdemCompra: false }, equipamento: "Zebra", serie: null, versao: 1, valor: 10, protocolo: "R-3" };
+    expect(mensagemWhatsapp({ ...base, intencao: "APROVAR", ordemCompra: "OC-9" })).toContain("Aqui é Maria (CPF 123.456.789-09).");
+    expect(mensagemWhatsapp({ ...base, intencao: "APROVAR", ordemCompra: "OC-9" })).toContain("Ordem de compra: OC-9.");
+    expect(mensagemWhatsapp({ ...base, intencao: "RECUSAR" })).toContain("a recusa do orçamento");
+    expect(mensagemWhatsapp({ ...base, intencao: "MUDANCA" })).toContain("uma correção na minha decisão");
+    expect(mensagemWhatsapp({ ...base, intencao: "DUVIDA" })).toContain("Tenho uma dúvida");
+    expect(mensagemWhatsapp({ ...base, cliente: null, intencao: "NEGOCIAR" })).toContain("Aqui é Maria.");
+  });
+});
+
+describe("painel do orçamento (ticket T4)", () => {
+  beforeEach(() => {
+    logar();
+    window.location.hash = "#/atendimentos/28";
+  });
+
+  it("desfazer a resposta some com o comprovante verde sem recarregar a página", async () => {
+    let atual = detalhe();
+    api.detalhe.mockImplementation(async () => atual);
+    api.responder.mockImplementationOnce(async () => {
+      atual = detalhe({ orcamento: orcamento({ estado: "RESPONDIDA", resposta: respostaDe() }) });
+      return { comprovante: comprovanteDe() };
+    });
+    render(<PortalApp />);
+    fireEvent.click(await screen.findByRole("button", { name: "Aceitar orçamento" }));
+    fireEvent.click(screen.getByRole("button", { name: "Confirmar aceite" }));
+    expect(await screen.findByText("Resposta registrada no AutoOS")).toBeInTheDocument();
+
+    api.responder.mockImplementationOnce(async () => {
+      atual = detalhe();
+      return { comprovante: comprovanteDe({ id: 78, protocolo: "R-78", decisao: "DESFEITA" }) };
+    });
+    fireEvent.click(await screen.findByRole("button", { name: /Errou\? Desfazer resposta/ }));
+    expect(screen.queryByText("Resposta registrada no AutoOS")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Cancelar resposta" }));
+
+    expect(await screen.findByText(/Resposta cancelada/)).toBeInTheDocument();
+    expect(screen.queryByText("Resposta registrada no AutoOS")).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "Abrir no WhatsApp" })).not.toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: "Aceitar orçamento" })).toBeInTheDocument();
+  });
+
+  it("recusa registrada aparece em vermelho, nunca verde, inclusive efetivada", async () => {
+    api.detalhe.mockResolvedValue(detalhe({
+      status: "REPROVADO",
+      orcamento: orcamento({ estado: "RESPONDIDA", resposta: respostaDe({ decisao: "RECUSAR", estado: "EFETIVADA", efetivadaEm: "2026-10-15T10:16:00Z", janelaAte: "2026-10-15T10:15:00Z" }) }),
+    }));
+    const { container } = render(<PortalApp />);
+    expect(await screen.findByText("Orçamento recusado")).toBeInTheDocument();
+    expect(container.querySelector(".answer-box")?.classList.contains("is-recusa")).toBe(true);
+  });
+
+  it("recusa recém-registrada: comprovante também vermelho", async () => {
+    api.detalhe.mockResolvedValue(detalhe());
+    api.responder.mockResolvedValue({ comprovante: comprovanteDe({ decisao: "RECUSAR" }) });
+    const { container } = render(<PortalApp />);
+    fireEvent.click(await screen.findByRole("button", { name: "Recusar orçamento" }));
+    fireEvent.click(screen.getByRole("button", { name: "Recusar mesmo assim" }));
+    fireEvent.click(screen.getByRole("button", { name: "Confirmar recusa" }));
+    expect(await screen.findByText("Resposta registrada no AutoOS")).toBeInTheDocument();
+    expect(container.querySelector(".sent-box")?.classList.contains("is-recusa")).toBe(true);
+  });
+
+  it("Tem certeza?: negociar, WhatsApp com CNPJ e recusar mesmo assim", async () => {
+    api.detalhe.mockResolvedValue(detalhe());
+    render(<PortalApp />);
+    fireEvent.click(await screen.findByRole("button", { name: "Recusar orçamento" }));
+    expect(screen.getByRole("heading", { name: "Tem certeza que quer recusar?" })).toBeInTheDocument();
+    expect(screen.getByText(/pode negociar com você o valor e os itens/)).toBeInTheDocument();
+    const grupo = screen.getByRole("group", { name: "Tem certeza que quer recusar?" });
+    const acoes = Array.from(grupo.querySelectorAll("button, a")).map((el) => el.textContent);
+    expect(acoes).toEqual(["Quero negociar", "Falar com a equipe no WhatsApp", "Recusar mesmo assim"]);
+    const link = screen.getByRole("link", { name: "Falar com a equipe no WhatsApp" });
+    expect(decodeURIComponent(link.getAttribute("href") ?? "")).toContain("CNPJ 11.222.333/0001-81");
+    expect(api.responder).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole("button", { name: "Quero negociar" }));
+    expect(screen.getByLabelText(/O que você gostaria de negociar/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Voltar" }));
+
+    fireEvent.click(screen.getByRole("button", { name: "Recusar orçamento" }));
+    fireEvent.click(screen.getByRole("button", { name: "Recusar mesmo assim" }));
+    expect(screen.getByRole("heading", { name: "Confirmar RECUSA do orçamento inteiro?" })).toBeInTheDocument();
+  });
+
+  it("Tem certeza? sem WhatsApp da empresa não mostra o botão", async () => {
+    api.detalhe.mockResolvedValue(detalhe({ contatoEmpresa: { nome: "BMI TAG", whatsapp: null, email: null, telefone: null, horario: null, endereco: null, mapsUrl: null } }));
+    render(<PortalApp />);
+    fireEvent.click(await screen.findByRole("button", { name: "Recusar orçamento" }));
+    expect(screen.queryByRole("link", { name: "Falar com a equipe no WhatsApp" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Recusar mesmo assim" })).toBeInTheDocument();
+  });
+
+  it("ordem de compra obrigatória no aceite quando o cadastro exige", async () => {
+    api.detalhe.mockResolvedValue(detalhe({ cliente: { nome: "ACME Ltda", documento: "11222333000181", exigeOrdemCompra: true } }));
+    api.responder.mockResolvedValue({ comprovante: comprovanteDe({ ordemCompra: "OC-2026/15" }) });
+    render(<PortalApp />);
+    fireEvent.click(await screen.findByRole("button", { name: "Aceitar orçamento" }));
+    expect(screen.getByLabelText("Número da ordem de compra")).toHaveAttribute("maxlength", "60");
+    fireEvent.click(screen.getByRole("button", { name: "Confirmar aceite" }));
+    expect(screen.getByRole("alert")).toHaveTextContent(/ordem de compra/);
+    expect(api.responder).not.toHaveBeenCalled();
+
+    fireEvent.change(screen.getByLabelText("Número da ordem de compra"), { target: { value: "  OC-2026/15 " } });
+    fireEvent.click(screen.getByRole("button", { name: "Confirmar aceite" }));
+    expect(await screen.findByText("Resposta registrada no AutoOS")).toBeInTheDocument();
+    expect(api.responder).toHaveBeenCalledWith(TOKEN, 28, 9, "APROVAR", null, "OC-2026/15");
+    expect(screen.getByText("OC-2026/15", { selector: "strong" })).toBeInTheDocument();
+    expect(decodeURIComponent(screen.getByRole("link", { name: "Abrir no WhatsApp" }).getAttribute("href") ?? "")).toContain("Ordem de compra: OC-2026/15.");
+  });
+
+  it("erro ORDEM_COMPRA_OBRIGATORIA do servidor vira mensagem no campo", async () => {
+    api.detalhe.mockResolvedValue(detalhe({ cliente: { nome: "ACME Ltda", documento: "11222333000181", exigeOrdemCompra: true } }));
+    api.responder.mockRejectedValue(new PortalError("Este cliente exige a ordem de compra.", 422, "ORDEM_COMPRA_OBRIGATORIA"));
+    render(<PortalApp />);
+    fireEvent.click(await screen.findByRole("button", { name: "Aceitar orçamento" }));
+    fireEvent.change(screen.getByLabelText("Número da ordem de compra"), { target: { value: "X" } });
+    fireEvent.click(screen.getByRole("button", { name: "Confirmar aceite" }));
+    expect(await screen.findByText("Este cliente exige a ordem de compra.")).toBeInTheDocument();
+    expect(screen.getByRole("alertdialog")).toBeInTheDocument();
+  });
+
+  it("cliente sem exigência não vê o campo de ordem de compra", async () => {
+    api.detalhe.mockResolvedValue(detalhe());
+    render(<PortalApp />);
+    fireEvent.click(await screen.findByRole("button", { name: "Aceitar orçamento" }));
+    expect(screen.queryByLabelText("Número da ordem de compra")).not.toBeInTheDocument();
+  });
+
+  it("negociação pede só o contato que falta, valida e salva no cadastro", async () => {
+    api.detalhe.mockResolvedValue(detalhe({ temTelefone: false, temEmail: true }));
+    api.solicitar.mockResolvedValue({ solicitacao: { id: 1, protocolo: "S-1", tipo: "NEGOCIAR", criadoEm: "2026-10-15T11:00:00Z" } });
+    render(<PortalApp />);
+    fireEvent.click(await screen.findByRole("button", { name: "Quero negociar" }));
+    expect(screen.getByText("Como a equipe pode falar com você?")).toBeInTheDocument();
+    expect(screen.getByLabelText("Telefone com DDD")).toBeInTheDocument();
+    expect(screen.queryByLabelText("E-mail")).not.toBeInTheDocument();
+    expect(screen.getByLabelText(/salvar no meu cadastro/)).toBeChecked();
+
+    fireEvent.change(screen.getByLabelText("Telefone com DDD"), { target: { value: "99999" } });
+    fireEvent.click(screen.getByRole("button", { name: "Registrar pedido de negociação" }));
+    expect(screen.getByRole("alert")).toHaveTextContent(/telefone com DDD/);
+    expect(api.solicitar).not.toHaveBeenCalled();
+
+    fireEvent.change(screen.getByLabelText("Telefone com DDD"), { target: { value: "(71) 99999-0000" } });
+    fireEvent.change(screen.getByLabelText(/O que você gostaria de negociar/), { target: { value: "Desconto no fusor" } });
+    fireEvent.click(screen.getByRole("button", { name: "Registrar pedido de negociação" }));
+    expect(await screen.findByText("Pedido S-1 registrado no AutoOS")).toBeInTheDocument();
+    expect(api.solicitar).toHaveBeenCalledWith(TOKEN, 28, 9, "NEGOCIAR", "Desconto no fusor", { telefone: "(71) 99999-0000", salvarNoContato: true });
+    const href = decodeURIComponent(screen.getByRole("link", { name: "Falar agora no WhatsApp" }).getAttribute("href") ?? "");
+    expect(href).toContain("telefone (71) 99999-0000");
+    expect(href).toContain("CNPJ 11.222.333/0001-81");
+    expect(screen.getByRole("button", { name: "Copiar mensagem" })).toBeInTheDocument();
+  });
+
+  it("e-mail inválido, CONTATO_INVALIDO do servidor e checkbox desmarcado", async () => {
+    api.detalhe.mockResolvedValue(detalhe({ temTelefone: true, temEmail: false }));
+    api.solicitar.mockRejectedValue(new PortalError("Telefone ou e-mail inválido.", 400, "CONTATO_INVALIDO"));
+    render(<PortalApp />);
+    fireEvent.click(await screen.findByRole("button", { name: "Quero negociar" }));
+    expect(screen.queryByLabelText("Telefone com DDD")).not.toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText("E-mail"), { target: { value: "sem-arroba" } });
+    fireEvent.click(screen.getByRole("button", { name: "Registrar pedido de negociação" }));
+    expect(screen.getByRole("alert")).toHaveTextContent(/e-mail válido/);
+
+    fireEvent.change(screen.getByLabelText("E-mail"), { target: { value: "ana@acme.com.br" } });
+    fireEvent.click(screen.getByLabelText(/salvar no meu cadastro/));
+    fireEvent.click(screen.getByRole("button", { name: "Registrar pedido de negociação" }));
+    expect(await screen.findByText("Telefone ou e-mail inválido.")).toBeInTheDocument();
+    expect(api.solicitar).toHaveBeenCalledWith(TOKEN, 28, 9, "NEGOCIAR", "", { email: "ana@acme.com.br", salvarNoContato: false });
+  });
+
+  it("com telefone e e-mail no cadastro, não pergunta contato", async () => {
+    api.detalhe.mockResolvedValue(detalhe());
+    render(<PortalApp />);
+    fireEvent.click(await screen.findByRole("button", { name: "Quero negociar" }));
+    expect(screen.queryByText("Como a equipe pode falar com você?")).not.toBeInTheDocument();
+  });
+
+  it("aviso de testes: no login só o texto; com a empresa conhecida, link para o WhatsApp", async () => {
+    const { unmount } = render(<PortalApp />);
+    expect(screen.getByText(/Portal em período de testes/)).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: /conte o que achou/ })).not.toBeInTheDocument();
+    unmount();
+
+    logar();
+    window.location.hash = "#/atendimentos/28";
+    api.detalhe.mockResolvedValue(detalhe());
+    render(<PortalApp />);
+    const link = await screen.findByRole("link", { name: /conte o que achou/ });
+    expect(link.getAttribute("href")).toMatch(/^https:\/\/wa\.me\/5571933334444\?text=/);
   });
 });

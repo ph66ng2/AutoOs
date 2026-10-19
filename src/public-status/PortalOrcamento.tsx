@@ -1,14 +1,20 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
+import "./portal-orcamento.css";
 import {
   dateTime,
+  definirContatoEmpresa,
+  emailValido,
+  mailtoUrl,
   mensagemWhatsapp,
   money,
   PortalError,
   portalApi,
   shortDate,
   shortTime,
+  telefoneValido,
   whatsappUrl,
   type Comprovante,
+  type ContatoRetorno,
   type Decisao,
   type DetalheAtendimento,
   type OrcamentoPortal,
@@ -17,6 +23,7 @@ import {
 import type { PortalSession } from "./portal-session";
 
 type Etapa =
+  | { tipo: "retencao" }
   | { tipo: "verificar"; depois: Decisao }
   | { tipo: "confirmar"; decisao: Decisao; versaoId: number }
   | { tipo: "negociar" }
@@ -29,10 +36,12 @@ const ROTULO_DECISAO: Record<Decisao, string> = {
   DESFEITA: "Resposta cancelada",
 };
 
-const ACAO_WHATSAPP: Record<Decisao, string> = {
-  APROVAR: "aceitei o orçamento",
-  RECUSAR: "recusei o orçamento",
-  DESFEITA: "cancelei minha resposta ao orçamento",
+/** Pedido recém-enviado, com o que o cliente informou, para montar a mensagem pronta. */
+type Enviado = {
+  solicitacao: SolicitacaoRegistrada;
+  telefone: string | null;
+  email: string | null;
+  observacao: string | null;
 };
 
 /** Conflitos em que a página recarrega e mostra a explicação no lugar da confirmação. */
@@ -55,12 +64,21 @@ export default function PortalOrcamento({ session, detalhe, orcamento, recarrega
   const [erro, setErro] = useState<string | null>(null);
   const [aviso, setAviso] = useState<string | null>(null);
   const [comprovante, setComprovante] = useState<Comprovante | null>(null);
-  const [solicitacao, setSolicitacao] = useState<SolicitacaoRegistrada | null>(null);
+  const [enviado, setEnviado] = useState<Enviado | null>(null);
   const [mensagem, setMensagem] = useState("");
+  const [ordemCompra, setOrdemCompra] = useState("");
+  const [erroOrdem, setErroOrdem] = useState<string | null>(null);
+  const [telefone, setTelefone] = useState("");
+  const [email, setEmail] = useState("");
+  const [salvarContato, setSalvarContato] = useState(true);
+  const [erroContato, setErroContato] = useState<string | null>(null);
   const [senha, setSenha] = useState("");
   const [agora, setAgora] = useState(() => Date.now());
   const versaoAnterior = useRef(orcamento.versaoId);
   const caixaEtapa = useRef<HTMLDivElement>(null);
+  const exigeOrdem = detalhe.cliente?.exigeOrdemCompra === true;
+  const faltaTelefone = !detalhe.temTelefone;
+  const faltaEmail = !detalhe.temEmail;
 
   const resposta = orcamento.resposta;
   const respostaAtiva = resposta && resposta.decisao !== "DESFEITA" ? resposta : null;
@@ -75,9 +93,26 @@ export default function PortalOrcamento({ session, detalhe, orcamento, recarrega
       versaoAnterior.current = orcamento.versaoId;
       setEtapa(null);
       setComprovante(null);
+      setEnviado(null);
       setAviso(`A proposta foi atualizada para a versão ${orcamento.versao}. Releia antes de responder.`);
     }
   }, [orcamento.versaoId, orcamento.versao]);
+
+  // O portal só descobre o contato da empresa no detalhe; o aviso de testes (PortalApp) o reaproveita.
+  useEffect(() => {
+    definirContatoEmpresa(detalhe.contatoEmpresa);
+  }, [detalhe.contatoEmpresa]);
+
+  // A resposta vigente mudou (desfeita aqui, ou por outro contato/canal): o comprovante e o pedido
+  // mostrados antes não descrevem mais o que está valendo. O comprovante da resposta que acabou de
+  // ser registrada (mesmo id) continua.
+  const respostaChave = `${resposta?.id ?? "-"}:${resposta?.decisao ?? "-"}`;
+  const comprovanteProtocolo = comprovante?.protocolo ?? null;
+  useEffect(() => {
+    if (comprovanteProtocolo !== null && comprovanteProtocolo !== (resposta?.protocolo ?? null)) setComprovante(null);
+    setEnviado(null);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [respostaChave]);
 
   // A barra fixa do celular inicia a confirmação longe dela: leva a caixa para a tela.
   useEffect(() => {
@@ -109,6 +144,14 @@ export default function PortalOrcamento({ session, detalhe, orcamento, recarrega
         setErro(null);
         return;
       }
+      if (cause.codigo === "ORDEM_COMPRA_OBRIGATORIA") {
+        setErroOrdem(cause.message);
+        return;
+      }
+      if (cause.codigo === "CONTATO_INVALIDO") {
+        setErroContato(cause.message);
+        return;
+      }
       if (cause.codigo && RECARREGAR.has(cause.codigo)) {
         setEtapa(null);
         setErro(null);
@@ -122,14 +165,42 @@ export default function PortalOrcamento({ session, detalhe, orcamento, recarrega
     setErro("Não foi possível concluir agora. Tente novamente.");
   };
 
-  const iniciar = (decisao: Decisao) => {
+  // Nova ação: o resultado da anterior (comprovante, pedido enviado) deixa de valer na tela.
+  const limparResultados = () => {
     setErro(null);
     setAviso(null);
+    setComprovante(null);
+    setEnviado(null);
+  };
+
+  const prosseguir = (decisao: Decisao) => {
+    limparResultados();
+    setOrdemCompra("");
+    setErroOrdem(null);
     if (!detalhe.verificacaoRecente && decisao !== "DESFEITA") {
       setEtapa({ tipo: "verificar", depois: decisao });
       return;
     }
     setEtapa({ tipo: "confirmar", decisao, versaoId: orcamento.versaoId });
+  };
+
+  // Recusar passa antes por uma conversa: a equipe pode negociar valor e itens.
+  const iniciar = (decisao: Decisao) => {
+    if (decisao === "RECUSAR") {
+      limparResultados();
+      setEtapa({ tipo: "retencao" });
+      return;
+    }
+    prosseguir(decisao);
+  };
+
+  const abrirSolicitacao = (tipo: "negociar" | "corrigir") => {
+    limparResultados();
+    setErroContato(null);
+    setTelefone("");
+    setEmail("");
+    setSalvarContato(true);
+    setEtapa({ tipo });
   };
 
   const confirmarSenha = async (event: FormEvent) => {
@@ -157,11 +228,24 @@ export default function PortalOrcamento({ session, detalhe, orcamento, recarrega
       setAviso("A proposta mudou. Releia a versão atual antes de responder.");
       return;
     }
+    const ordem = etapa.decisao === "APROVAR" && exigeOrdem ? ordemCompra.trim() : "";
+    if (etapa.decisao === "APROVAR" && exigeOrdem && !ordem) {
+      setErroOrdem("Informe o número da ordem de compra para aceitar o orçamento.");
+      return;
+    }
     setBusy(true);
     setErro(null);
+    setErroOrdem(null);
     try {
-      const result = await portalApi.responder(session.token, detalhe.id, etapa.versaoId, etapa.decisao, resposta?.id ?? null);
-      setComprovante(result.comprovante);
+      const base = [session.token, detalhe.id, etapa.versaoId, etapa.decisao, resposta?.id ?? null] as const;
+      const result = ordem ? await portalApi.responder(...base, ordem) : await portalApi.responder(...base);
+      if (etapa.decisao === "DESFEITA") {
+        // Desfeita não gera mensagem pronta: o orçamento só volta a aguardar resposta.
+        setComprovante(null);
+        setAviso("Resposta cancelada. O orçamento voltou a aguardar a sua decisão.");
+      } else {
+        setComprovante(result.comprovante);
+      }
       setEtapa(null);
       await recarregar();
     } catch (cause) {
@@ -172,11 +256,27 @@ export default function PortalOrcamento({ session, detalhe, orcamento, recarrega
   };
 
   const solicitar = async (tipo: "NEGOCIAR" | "MUDANCA") => {
+    const tel = faltaTelefone ? telefone.trim() : "";
+    const mail = faltaEmail ? email.trim() : "";
+    if (tel && !telefoneValido(tel)) {
+      setErroContato("Informe o telefone com DDD, por exemplo (71) 99999-0000.");
+      return;
+    }
+    if (mail && !emailValido(mail)) {
+      setErroContato("Informe um e-mail válido, por exemplo nome@empresa.com.br.");
+      return;
+    }
+    const contato: ContatoRetorno | undefined = tel || mail
+      ? { ...(tel ? { telefone: tel } : {}), ...(mail ? { email: mail } : {}), salvarNoContato: salvarContato }
+      : undefined;
     setBusy(true);
     setErro(null);
+    setErroContato(null);
     try {
-      const result = await portalApi.solicitar(session.token, detalhe.id, orcamento.versaoId, tipo, mensagem);
-      setSolicitacao(result.solicitacao);
+      const result = contato
+        ? await portalApi.solicitar(session.token, detalhe.id, orcamento.versaoId, tipo, mensagem, contato)
+        : await portalApi.solicitar(session.token, detalhe.id, orcamento.versaoId, tipo, mensagem);
+      setEnviado({ solicitacao: result.solicitacao, telefone: tel || null, email: mail || null, observacao: mensagem.trim() || null });
       setMensagem("");
       setEtapa(null);
       await recarregar();
@@ -188,28 +288,48 @@ export default function PortalOrcamento({ session, detalhe, orcamento, recarrega
   };
 
   const whatsapp = detalhe.contatoEmpresa?.whatsapp ?? null;
+  const emailEmpresa = detalhe.contatoEmpresa?.email ?? null;
+  const empresa = detalhe.contatoEmpresa?.nome;
   const textoComprovante = comprovante
     ? mensagemWhatsapp({
       contato: comprovante.contato,
+      cliente: detalhe.cliente,
+      empresa,
+      intencao: comprovante.decisao,
       equipamento: comprovante.equipamento,
       serie: comprovante.serie,
-      acao: ACAO_WHATSAPP[comprovante.decisao],
       versao: comprovante.versao,
       valor: comprovante.valorTotal,
       protocolo: comprovante.protocolo,
+      ordemCompra: comprovante.ordemCompra,
     })
     : null;
-  const textoSolicitacao = solicitacao
+  const textoEnviado = enviado
     ? mensagemWhatsapp({
       contato: session.contato,
+      cliente: detalhe.cliente,
+      empresa,
+      intencao: enviado.solicitacao.tipo,
       equipamento: detalhe.equipamento,
       serie: detalhe.serie,
-      acao: solicitacao.tipo === "NEGOCIAR" ? "pedi para negociar o orçamento" : solicitacao.tipo === "MUDANCA" ? "pedi correção na decisão do orçamento" : "enviei uma dúvida",
       versao: orcamento.versao,
       valor: orcamento.valorTotal,
-      protocolo: solicitacao.protocolo,
+      protocolo: enviado.solicitacao.protocolo,
+      telefone: enviado.telefone,
+      email: enviado.email,
+      observacao: enviado.observacao,
     })
     : null;
+  const textoConversa = mensagemWhatsapp({
+    contato: session.contato,
+    cliente: detalhe.cliente,
+    empresa,
+    intencao: "CONVERSAR",
+    equipamento: detalhe.equipamento,
+    serie: detalhe.serie,
+    versao: orcamento.versao,
+    valor: orcamento.valorTotal,
+  });
 
   return (
     <section className="portal-quote" aria-labelledby="portal-quote-title">
@@ -256,7 +376,7 @@ export default function PortalOrcamento({ session, detalhe, orcamento, recarrega
       )}
 
       {respostaAtiva && !comprovante && (
-        <div className={`answer-box answer-${respostaAtiva.estado?.toLowerCase() ?? "registrada"}`}>
+        <div className={`answer-box answer-${respostaAtiva.estado?.toLowerCase() ?? "registrada"}${respostaAtiva.decisao === "RECUSAR" ? " is-recusa" : ""}`}>
           <h2>
             {respostaAtiva.estado === "EFETIVADA"
               ? respostaAtiva.decisao === "APROVAR" ? "Orçamento aprovado" : "Orçamento recusado"
@@ -266,6 +386,7 @@ export default function PortalOrcamento({ session, detalhe, orcamento, recarrega
             {respostaAtiva.contato ? `Por ${respostaAtiva.propria ? "você" : respostaAtiva.contato}, ` : ""}
             em {dateTime(respostaAtiva.registradaEm)}. Protocolo {respostaAtiva.protocolo}.
           </p>
+          {respostaAtiva.ordemCompra && <p>Ordem de compra: <strong>{respostaAtiva.ordemCompra}</strong></p>}
           {respostaAtiva.estado === "EM_CORRECAO" && (
             <p>
               {respostaAtiva.propria
@@ -289,18 +410,36 @@ export default function PortalOrcamento({ session, detalhe, orcamento, recarrega
       )}
 
       {comprovante && (
-        <div className="sent-box portal-receipt" role="status">
+        <div className={`sent-box portal-receipt${comprovante.decisao === "RECUSAR" ? " is-recusa" : ""}`} role="status">
           <strong>Resposta registrada no AutoOS</strong>
           <p>
             {ROTULO_DECISAO[comprovante.decisao]} — {comprovante.equipamento}{comprovante.serie ? ` (série ${comprovante.serie})` : ""},
             versão {comprovante.versao}, {money(comprovante.valorTotal)}.
           </p>
           <p>Protocolo {comprovante.protocolo} · {dateTime(comprovante.registradaEm)} · {comprovante.contato}</p>
-          {comprovante.decisao !== "DESFEITA" && (
-            <p>A equipe já foi avisada; enviar a mensagem abaixo é opcional. Efetivação às {shortTime(comprovante.janelaAte)}.</p>
-          )}
+          {comprovante.ordemCompra && <p>Ordem de compra: <strong>{comprovante.ordemCompra}</strong></p>}
+          <p>A equipe já foi avisada; enviar a mensagem abaixo é opcional. Efetivação às {shortTime(comprovante.janelaAte)}.</p>
           {textoComprovante && <MensagemPronta whatsapp={whatsapp} texto={textoComprovante} />}
           <button className="link-button" type="button" onClick={() => setComprovante(null)}>Fechar comprovante</button>
+        </div>
+      )}
+
+      {etapa?.tipo === "retencao" && (
+        <div className="confirm-box portal-retention" ref={caixaEtapa} role="group" aria-labelledby="portal-retention-title">
+          <h2 id="portal-retention-title">Tem certeza que quer recusar?</h2>
+          <p>
+            Antes de decidir: a nossa equipe pode negociar com você o valor e os itens deste orçamento.
+            Muitas vezes dá para chegar a uma proposta que faça sentido para os dois lados.
+          </p>
+          <div className="action-row portal-retention-actions">
+            <button className="primary-button" type="button" onClick={() => abrirSolicitacao("negociar")}>Quero negociar</button>
+            {whatsapp && (
+              <a className="secondary-button portal-link-button" href={whatsappUrl(whatsapp, textoConversa)} target="_blank" rel="noopener noreferrer">
+                Falar com a equipe no WhatsApp
+              </a>
+            )}
+          </div>
+          <button className="link-button portal-refuse-anyway" type="button" onClick={() => prosseguir("RECUSAR")}>Recusar mesmo assim</button>
         </div>
       )}
 
@@ -331,6 +470,16 @@ export default function PortalOrcamento({ session, detalhe, orcamento, recarrega
           {etapa.decisao === "APROVAR" && (
             <p className="answer-hint">Você aceita todos os itens acima. Para discutir preço ou itens, use “Quero negociar”.</p>
           )}
+          {etapa.decisao === "APROVAR" && exigeOrdem && (
+            <div className="portal-oc">
+              <label htmlFor="portal-ordem-compra">Número da ordem de compra</label>
+              <input id="portal-ordem-compra" className="portal-input" type="text" maxLength={60} value={ordemCompra}
+                aria-required="true" aria-invalid={erroOrdem ? true : undefined} aria-describedby="portal-ordem-ajuda"
+                onChange={(event) => { setOrdemCompra(event.target.value); setErroOrdem(null); }} />
+              <p id="portal-ordem-ajuda" className="answer-hint">O cadastro da sua empresa exige a ordem de compra para aceitar orçamentos.</p>
+              {erroOrdem && <p className="portal-error" role="alert">{erroOrdem}</p>}
+            </div>
+          )}
           {etapa.decisao !== "DESFEITA" && (
             <p className="answer-hint">Confira antes de confirmar. Se errar, há {orcamento.janelaMinutos} minutos para desfazer; depois a resposta é efetivada.</p>
           )}
@@ -346,16 +495,40 @@ export default function PortalOrcamento({ session, detalhe, orcamento, recarrega
       )}
 
       {(etapa?.tipo === "negociar" || etapa?.tipo === "corrigir") && (
-        <div className="contact-box">
+        <div className="contact-box portal-request-box">
           <label htmlFor="portal-mensagem">
             {etapa.tipo === "negociar" ? "O que você gostaria de negociar? (opcional)" : "O que precisa ser corrigido?"}
           </label>
-          <textarea id="portal-mensagem" rows={3} maxLength={500} value={mensagem} onChange={(event) => setMensagem(event.target.value)} />
+          <textarea id="portal-mensagem" rows={4} maxLength={500} value={mensagem} onChange={(event) => setMensagem(event.target.value)} />
           <p className="answer-hint">
             {etapa.tipo === "negociar"
               ? "O pedido avisa a equipe. Não é aceite, recusa nem prorrogação do prazo. Se a proposta mudar, uma nova versão aparecerá aqui."
               : "A equipe vai analisar. Mudar só o status não desfaz peças já baixadas nem trabalho iniciado."}
           </p>
+          {(faltaTelefone || faltaEmail) && (
+            <fieldset className="portal-reach">
+              <legend>Como a equipe pode falar com você?</legend>
+              {faltaTelefone && (
+                <>
+                  <label htmlFor="portal-contato-telefone">Telefone com DDD</label>
+                  <input id="portal-contato-telefone" className="portal-input" type="tel" inputMode="tel" autoComplete="tel" maxLength={20}
+                    placeholder="(71) 99999-0000" value={telefone} onChange={(event) => { setTelefone(event.target.value); setErroContato(null); }} />
+                </>
+              )}
+              {faltaEmail && (
+                <>
+                  <label htmlFor="portal-contato-email">E-mail</label>
+                  <input id="portal-contato-email" className="portal-input" type="email" inputMode="email" autoComplete="email" maxLength={254}
+                    placeholder="nome@empresa.com.br" value={email} onChange={(event) => { setEmail(event.target.value); setErroContato(null); }} />
+                </>
+              )}
+              <label className="portal-check" htmlFor="portal-contato-salvar">
+                <input id="portal-contato-salvar" type="checkbox" checked={salvarContato} onChange={(event) => setSalvarContato(event.target.checked)} />
+                <span>Estes são meus dados de contato — salvar no meu cadastro</span>
+              </label>
+              {erroContato && <p className="portal-error" role="alert">{erroContato}</p>}
+            </fieldset>
+          )}
           {erro && <p className="portal-error" role="alert">{erro}</p>}
           <div className="action-row">
             <button className="primary-button" type="button" disabled={busy || (etapa.tipo === "corrigir" && mensagem.trim().length === 0)}
@@ -367,12 +540,15 @@ export default function PortalOrcamento({ session, detalhe, orcamento, recarrega
         </div>
       )}
 
-      {solicitacao && (
-        <div className="sent-box" role="status">
-          <strong>Pedido {solicitacao.protocolo} registrado no AutoOS</strong>
-          <p>A equipe foi avisada. Se quiser, envie também a mensagem abaixo.</p>
-          {textoSolicitacao && <MensagemPronta whatsapp={whatsapp} texto={textoSolicitacao} />}
-          <button className="link-button" type="button" onClick={() => setSolicitacao(null)}>Fechar</button>
+      {enviado && (
+        <div className="sent-box portal-request-done" role="status">
+          <strong>Pedido {enviado.solicitacao.protocolo} registrado no AutoOS</strong>
+          <p>A equipe foi avisada. Para agilizar, fale com ela agora: a conversa costuma resolver mais rápido.</p>
+          {textoEnviado && (
+            <MensagemPronta whatsapp={whatsapp} email={emailEmpresa} destaque texto={textoEnviado}
+              assunto={`Portal das Impressoras: pedido ${enviado.solicitacao.protocolo}`} />
+          )}
+          <button className="link-button" type="button" onClick={() => setEnviado(null)}>Fechar</button>
         </div>
       )}
 
@@ -391,10 +567,10 @@ export default function PortalOrcamento({ session, detalhe, orcamento, recarrega
             </button>
           )}
           {detalhe.podeDecidir && orcamento.aceiteOnline && orcamento.estado === "ABERTA" && !respostaAtiva && (
-            <button className="link-button" type="button" onClick={() => { setErro(null); setEtapa({ tipo: "negociar" }); }}>Quero negociar</button>
+            <button className="link-button" type="button" onClick={() => abrirSolicitacao("negociar")}>Quero negociar</button>
           )}
           {detalhe.podeDecidir && respostaAtiva?.estado === "EFETIVADA" && (
-            <button className="secondary-button" type="button" onClick={() => { setErro(null); setEtapa({ tipo: "corrigir" }); }}>Solicitar correção</button>
+            <button className="secondary-button" type="button" onClick={() => abrirSolicitacao("corrigir")}>Solicitar correção</button>
           )}
         </div>
       )}
@@ -414,7 +590,13 @@ export default function PortalOrcamento({ session, detalhe, orcamento, recarrega
   );
 }
 
-function MensagemPronta({ whatsapp, texto }: { whatsapp: string | null; texto: string }) {
+function MensagemPronta({ whatsapp, email, texto, assunto, destaque }: {
+  whatsapp: string | null;
+  email?: string | null;
+  texto: string;
+  assunto?: string;
+  destaque?: boolean;
+}) {
   const [copiado, setCopiado] = useState(false);
   const copiar = async () => {
     try {
@@ -425,13 +607,16 @@ function MensagemPronta({ whatsapp, texto }: { whatsapp: string | null; texto: s
     }
   };
   return (
-    <div className="portal-message">
+    <div className={`portal-message${destaque ? " is-highlight" : ""}`}>
       <pre>{texto}</pre>
       <div className="action-row">
         {whatsapp && (
-          <a className="primary-button portal-link-button" href={whatsappUrl(whatsapp, texto)} target="_blank" rel="noopener noreferrer">
-            Abrir no WhatsApp
+          <a className={`primary-button portal-link-button${destaque ? " portal-cta" : ""}`} href={whatsappUrl(whatsapp, texto)} target="_blank" rel="noopener noreferrer">
+            {destaque ? "Falar agora no WhatsApp" : "Abrir no WhatsApp"}
           </a>
+        )}
+        {destaque && email && (
+          <a className="secondary-button portal-link-button" href={mailtoUrl(email, assunto ?? "Portal das Impressoras", texto)}>Enviar por e-mail</a>
         )}
         <button className="secondary-button" type="button" onClick={() => void copiar()}>{copiado ? "Copiada" : "Copiar mensagem"}</button>
       </div>

@@ -1,4 +1,5 @@
 /** Cliente da Edge Function `portal-cliente`. Só JSON; nenhuma chave do Supabase no navegador. */
+import { useSyncExternalStore } from "react";
 
 export type Acesso = "ACOMPANHAR" | "DECIDIR";
 export type Decisao = "APROVAR" | "RECUSAR" | "DESFEITA";
@@ -250,25 +251,120 @@ export const shortDate = (value: string) =>
 export const dateTime = (value: string) =>
   new Intl.DateTimeFormat("pt-BR", { dateStyle: "short", timeStyle: "short" }).format(new Date(value));
 
-/** Mensagem pronta para o WhatsApp Web. O registro no AutoOS não depende dela. */
+/** CPF (11 dígitos) ou CNPJ (14) com máscara; null quando não for um dos dois. */
+export function formatarDocumento(documento: string | null | undefined): string | null {
+  const digits = (documento ?? "").replace(/\D/g, "");
+  if (digits.length === 14) return digits.replace(/^(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})$/, "$1.$2.$3/$4-$5");
+  if (digits.length === 11) return digits.replace(/^(\d{3})(\d{3})(\d{3})(\d{2})$/, "$1.$2.$3-$4");
+  return null;
+}
+
+export type IntencaoMensagem = Decisao | TipoSolicitacao | "CONVERSAR";
+
+/** Telefone com DDD (10 ou 11 dígitos, com ou sem 55). */
+export function telefoneValido(valor: string): boolean {
+  const digits = valor.replace(/\D/g, "");
+  const local = digits.length >= 12 && digits.startsWith("55") ? digits.slice(2) : digits;
+  return local.length === 10 || local.length === 11;
+}
+
+export function emailValido(valor: string): boolean {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(valor) && valor.length <= 254;
+}
+
+/** Mensagem pronta para o WhatsApp/e-mail. O registro no AutoOS não depende dela. */
 export function mensagemWhatsapp(input: {
   contato: string;
+  cliente?: ClientePortal | null;
+  empresa?: string;
+  intencao: IntencaoMensagem;
   equipamento: string;
   serie: string | null;
-  acao: string;
   versao?: number;
   valor?: number;
-  protocolo: string;
+  protocolo?: string | null;
+  ordemCompra?: string | null;
+  telefone?: string | null;
+  email?: string | null;
+  /** O que o cliente escreveu no pedido (opcional). */
+  observacao?: string | null;
 }): string {
-  const linhas = [
-    `Olá! Aqui é ${input.contato}.`,
-    `Pelo Portal das Impressoras, ${input.acao} — ${input.equipamento}${input.serie ? ` (série ${input.serie})` : ""}.`,
-  ];
-  if (input.versao !== undefined && input.valor !== undefined) {
-    linhas.push(`Orçamento versão ${input.versao}, ${money(input.valor)}.`);
+  const documento = formatarDocumento(input.cliente?.documento);
+  const rotuloDoc = documento ? `${documento.length === 18 ? "CNPJ" : "CPF"} ${documento}` : null;
+  const nomeCliente = input.cliente?.nome?.trim() || null;
+  const mesmaPessoa = nomeCliente !== null && nomeCliente.toLowerCase() === input.contato.trim().toLowerCase();
+  let quem = `Aqui é ${input.contato}`;
+  if (nomeCliente && !mesmaPessoa) quem += `, da ${nomeCliente}`;
+  if (rotuloDoc) quem += ` (${rotuloDoc})`;
+
+  const item = `${input.equipamento}${input.serie ? ` (série ${input.serie})` : ""}`;
+  const detalhes = input.versao !== undefined && input.valor !== undefined
+    ? `, versão ${input.versao}, ${money(input.valor)}`
+    : "";
+  const oc = input.ordemCompra ? ` Ordem de compra: ${input.ordemCompra}.` : "";
+  let corpo: string;
+  let fecho: string;
+  switch (input.intencao) {
+    case "APROVAR":
+      corpo = `Aceitei pelo Portal das Impressoras o orçamento da ${item}${detalhes}.${oc}`;
+      fecho = "Obrigado pela atenção! Qualquer novidade, me avisem.";
+      break;
+    case "RECUSAR":
+      corpo = `Registrei pelo Portal das Impressoras a recusa do orçamento da ${item}${detalhes}.`;
+      fecho = "Se houver espaço para ajustar valores ou itens, vamos conversar?";
+      break;
+    case "DESFEITA":
+      corpo = `Cancelei pelo Portal das Impressoras a minha resposta ao orçamento da ${item}${detalhes}.`;
+      fecho = "Podemos conversar sobre a proposta?";
+      break;
+    case "NEGOCIAR":
+      corpo = `Pedi pelo Portal das Impressoras para negociar o orçamento da ${item}${detalhes}.`;
+      fecho = "Podemos conversar?";
+      break;
+    case "MUDANCA":
+      corpo = `Pedi pelo Portal das Impressoras uma correção na minha decisão sobre o orçamento da ${item}${detalhes}.`;
+      fecho = "Podemos acertar isso?";
+      break;
+    case "DUVIDA":
+      corpo = `Tenho uma dúvida sobre o orçamento da ${item}${detalhes}, enviada pelo Portal das Impressoras.`;
+      fecho = "Podem me ajudar?";
+      break;
+    default:
+      corpo = `Estou olhando pelo Portal das Impressoras o orçamento da ${item}${detalhes} e gostaria de conversar antes de decidir.`;
+      fecho = "Podemos conversar?";
   }
-  linhas.push(`Protocolo ${input.protocolo}.`);
+  const linhas = [`Olá, equipe ${input.empresa ?? "BMI TAG"}! ${quem}.`, corpo];
+  if (input.observacao?.trim()) linhas.push(`Resumo do pedido: ${input.observacao.trim()}`);
+  const retorno = [input.telefone ? `telefone ${input.telefone}` : null, input.email ? `e-mail ${input.email}` : null].filter(Boolean);
+  if (retorno.length) linhas.push(`Para falar comigo: ${retorno.join(" ou ")}.`);
+  linhas.push(input.protocolo ? `Protocolo ${input.protocolo}. ${fecho}` : fecho);
   return linhas.join("\n");
+}
+
+export function mailtoUrl(email: string, assunto: string, texto: string): string {
+  return `mailto:${email}?subject=${encodeURIComponent(assunto)}&body=${encodeURIComponent(texto)}`;
+}
+
+// Contato da empresa conhecido na sessão: só o detalhe do atendimento o traz, mas o aviso de testes
+// (PortalApp) aparece em todas as telas e precisa do WhatsApp quando já houver.
+let contatoEmpresaAtual: ContatoEmpresa | null = null;
+const ouvintesContato = new Set<() => void>();
+
+export function definirContatoEmpresa(contato: ContatoEmpresa | null): void {
+  if (contatoEmpresaAtual === contato) return;
+  contatoEmpresaAtual = contato;
+  ouvintesContato.forEach((ouvinte) => ouvinte());
+}
+
+export function useContatoEmpresa(): ContatoEmpresa | null {
+  return useSyncExternalStore(
+    (ouvinte) => {
+      ouvintesContato.add(ouvinte);
+      return () => ouvintesContato.delete(ouvinte);
+    },
+    () => contatoEmpresaAtual,
+    () => null,
+  );
 }
 
 export function whatsappUrl(numero: string, texto: string): string {
