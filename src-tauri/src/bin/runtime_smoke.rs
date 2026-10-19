@@ -118,7 +118,7 @@ async fn main() -> Result<()> {
         data_entrada: data_entrada.clone(),
         cliente_id: Some(cliente_atualizado.id),
         cliente_nome: cliente_atualizado.nome.clone(),
-        cliente_telefone: Some(cliente_atualizado.telefone.clone()),
+        cliente_telefone: cliente_atualizado.telefone.clone(),
         cliente_email: cliente_atualizado.email.clone(),
         ..EquipamentoInput::default()
     })

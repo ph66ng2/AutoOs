@@ -40,6 +40,35 @@ describe("ClienteSelectorBusca", () => {
     expect(onSelecionarCliente).toHaveBeenCalledWith(clientes[1]);
   });
 
+  it("lista cliente com telefone NULL sem inventar um número", () => {
+    const semTelefone = {
+      id: 3,
+      nome: "Clara Nula",
+      tipo_pessoa: "PF",
+      documento: "11144477735",
+      telefone: null,
+      email: null,
+    } as Cliente;
+
+    render(
+      <ClienteSelectorBusca
+        dropdownRef={{ current: null }}
+        termoBusca="cla"
+        setTermoBusca={vi.fn()}
+        buscando={false}
+        dropdownAberto
+        setDropdownAberto={vi.fn()}
+        resultados={[semTelefone]}
+        onSelecionarCliente={vi.fn()}
+        onAbrirNovoCliente={vi.fn()}
+      />,
+    );
+
+    const option = screen.getByRole("option", { name: /Clara Nula/i });
+    expect(option).toHaveTextContent("111.444.777-35");
+    expect(option).not.toHaveTextContent("(");
+  });
+
   it("fecha as sugestões ao pressionar Esc", () => {
     const setDropdownAberto = vi.fn();
     render(
