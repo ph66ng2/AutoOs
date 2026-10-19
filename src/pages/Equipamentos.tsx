@@ -183,7 +183,7 @@ const AVISO_ATENDIMENTO_PENDENTE = "abrir-atendimento-pendente";
 import { CorrigirDecisaoDialog } from "@/components/equipamentos/CorrigirDecisaoDialog";
 import { FormaPagamentoFields } from "@/components/equipamentos/FormaPagamentoFields";
 import { resolveRecipient, type ResolvedRecipient } from "@/lib/recipient-resolver";
-import { saveRecipientAddress } from "@/lib/recipient-persistence";
+import { mensagemEnvioFalhouComEmailSalvo, saveRecipientAddress } from "@/lib/recipient-persistence";
 import { totalPages } from "@/lib/pagination";
 
 // O anel é a borda de um ::after dentro da célula. O box-shadow fica por baixo
@@ -985,14 +985,20 @@ export default function Equipamentos() {
           permission: SENSITIVE_PERMISSIONS.FINANCIAL_ACTIONS,
         });
         if (liberadoEmail) {
-          async function enviarOrdemEntrada(email: string, nomeDestinatario: string) {
-            const retornoEmailEntrada = await EmailService.enviarOrdemEntrada({
-              ...resultado.data,
-              cliente_email: email,
-              cliente_nome: nomeDestinatario,
-            } as Equipamento);
-            if (!retornoEmailEntrada.sucesso) {
-              showError("Equipamentos", "Enviar ordem de entrada", new Error(retornoEmailEntrada.erro || "Falha desconhecida."));
+          async function enviarOrdemEntrada(email: string, nomeDestinatario: string, emailSalvo: boolean) {
+            let erroEnvio: string | undefined;
+            try {
+              const retornoEmailEntrada = await EmailService.enviarOrdemEntrada({
+                ...resultado.data,
+                cliente_email: email,
+                cliente_nome: nomeDestinatario,
+              } as Equipamento);
+              if (!retornoEmailEntrada.sucesso) erroEnvio = retornoEmailEntrada.erro || "Falha desconhecida.";
+            } catch (cause) {
+              erroEnvio = cause instanceof Error ? cause.message : String(cause);
+            }
+            if (erroEnvio) {
+              showError("Equipamentos", "Enviar ordem de entrada", new Error(emailSalvo ? mensagemEnvioFalhouComEmailSalvo(erroEnvio) : erroEnvio));
             } else {
               success("Equipamentos", "Email de ordem de entrada enviado com sucesso.", "Enviar email");
             }
@@ -1008,8 +1014,10 @@ export default function Equipamentos() {
                   showError("Equipamentos", "Salvar destinatário", cause);
                   return false;
                 }
+                // O cadastro mudou: recarrega para o próximo envio já usar o e-mail salvo.
+                await atualizarEmSegundoPlano();
               }
-              await enviarOrdemEntrada(email, recipient.nome);
+              await enviarOrdemEntrada(email, recipient.nome, salvar);
             },
             onSkip: () => undefined,
           });
@@ -1064,7 +1072,7 @@ export default function Equipamentos() {
     });
     if (!liberado) return false;
 
-    async function executarComEmail(email: string | undefined, nomeDestinatario?: string): Promise<boolean> {
+    async function executarComEmail(email: string | undefined, nomeDestinatario?: string, emailSalvo = false): Promise<boolean> {
       setSalvando(true);
       try {
         const resultado = await finalizarVerificacao(selecionado!, dados, email, nomeDestinatario);
@@ -1074,13 +1082,16 @@ export default function Equipamentos() {
         setVerificacaoDialogOpen(false);
         await recarregar();
         const resumoCanais = mensagemResultadoCanais(resultado);
-        if (resumoCanais) {
+        if (emailSalvo && resultado.canais?.email && !resultado.canais.email.enviado) {
+          showError("Equipamentos", "Finalizar verificação", new Error([mensagemEnvioFalhouComEmailSalvo(resultado.canais.email.erro), ...resumoCanais.split("\n").filter((linha) => linha.startsWith("WhatsApp"))].join("\n")));
+        } else if (resumoCanais) {
           success("Equipamentos", resumoCanais, "Finalizar verificação");
         }
         return true;
       } catch (err: any) {
         console.error("Erro ao finalizar verificação:", err);
         showError("Equipamentos", "Finalizar verificação", err);
+        if (emailSalvo) await atualizarEmSegundoPlano();
         return false;
       } finally {
         setSalvando(false);
@@ -1099,7 +1110,7 @@ export default function Equipamentos() {
             return false;
           }
         }
-        await executarComEmail(email, recipient.nome);
+        await executarComEmail(email, recipient.nome, salvar);
       },
       onSkip: async () => { await executarComEmail(""); },
     });
@@ -1121,7 +1132,7 @@ export default function Equipamentos() {
     });
     if (!liberado) return;
 
-    async function executarComEmail(email: string | undefined, nomeDestinatario?: string): Promise<boolean> {
+    async function executarComEmail(email: string | undefined, nomeDestinatario?: string, emailSalvo = false): Promise<boolean> {
       setSalvando(true);
       try {
         const resultado = await marcarComoPronto(eq, email, nomeDestinatario);
@@ -1130,13 +1141,16 @@ export default function Equipamentos() {
         }
         await recarregar();
         const resumoCanais = mensagemResultadoCanais(resultado);
-        if (resumoCanais) {
+        if (emailSalvo && resultado.canais?.email && !resultado.canais.email.enviado) {
+          showError("Equipamentos", "Marcar como pronto", new Error([mensagemEnvioFalhouComEmailSalvo(resultado.canais.email.erro), ...resumoCanais.split("\n").filter((linha) => linha.startsWith("WhatsApp"))].join("\n")));
+        } else if (resumoCanais) {
           success("Equipamentos", resumoCanais, "Marcar como pronto");
         }
         return true;
       } catch (err: any) {
         console.error("Erro ao marcar pronto:", err);
         showError("Equipamentos", "Marcar como pronto", err);
+        if (emailSalvo) await atualizarEmSegundoPlano();
         return false;
       } finally {
         setSalvando(false);
@@ -1155,7 +1169,7 @@ export default function Equipamentos() {
             return false;
           }
         }
-        await executarComEmail(email, recipient.nome);
+        await executarComEmail(email, recipient.nome, salvar);
       },
       onSkip: async () => { await executarComEmail(""); },
     });
