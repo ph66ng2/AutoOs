@@ -107,6 +107,7 @@ export default function PortalDetalhe({ session, equipamentoId, onExpirou }: Pro
           const resposta = data.orcamento?.resposta;
           const emDecisao = data.status === "AGUARDANDO_APROVACAO" && data.orcamento?.estado === "ABERTA" && !(resposta && resposta.decisao !== "DESFEITA");
           const concluido = data.status === "ENTREGUE";
+          const galeriaLateral = emDecisao || concluido || data.status === "PRONTO";
           const galeria = fotos.length > 0 && <PortalFotos fotos={fotos} equipamento={data.equipamento} destaque={emDecisao} />;
           return (
           <>
@@ -129,13 +130,12 @@ export default function PortalDetalhe({ session, equipamentoId, onExpirou }: Pro
                     </p>
                   )}
                 />
-                {!emDecisao && galeria}
-                <PortalHistorico historico={historico} />
+                {!galeriaLateral && galeria}
               </div>
               <div className={`portal-detail-side${emDecisao ? " is-decisao" : ""}`}>
                 {data.status === "PRONTO" && <DestaqueProntoRetirada detalhe={data} />}
                 {concluido && <DestaqueConcluido detalhe={data} />}
-                {emDecisao && galeria}
+                {galeriaLateral && galeria}
                 {!["PRONTO", "ENTREGUE"].includes(data.status) && <NotaValorAtualizado detalhe={data} />}
                 {data.orcamento && (
                   <PortalOrcamento
@@ -151,6 +151,7 @@ export default function PortalDetalhe({ session, equipamentoId, onExpirou }: Pro
                 )}
 
                 {!concluido && <DocumentosCard detalhe={data} />}
+                <PortalHistorico historico={historico} />
 
                 <ContatoCard contato={data.contatoEmpresa} />
               </div>
