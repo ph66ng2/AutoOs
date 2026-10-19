@@ -226,3 +226,15 @@ describe("valor atualizado após aprovação", () => {
     expect(screen.queryByText(/Valor atualizado pela equipe/)).toBeNull();
   });
 });
+
+describe("Pronto com valor atualizado", () => {
+  it("mostra o valor uma vez no destaque e a linha curta junto do orçamento", async () => {
+    await abrir(detalhe({
+      status: "PRONTO", titulo: "Pronto para retirada", orcamento: orcamento({ estado: "ENCERRADA" }), valores: { orcamento: 350, final: null, atual: 400 },
+    }));
+    const destaque = screen.getByRole("region", { name: "Seu equipamento está pronto" });
+    expect(destaque.textContent?.match(/R\$\s*400,00/g)).toHaveLength(1);
+    expect(destaque).toHaveTextContent(/orçamento aprovado: R\$\s*350,00/);
+    expect(document.querySelector(".portal-valor-linha")).toHaveTextContent(/R\$\s*400,00/);
+  });
+});

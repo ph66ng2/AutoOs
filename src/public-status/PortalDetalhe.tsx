@@ -5,7 +5,7 @@ import { navigate, type PortalSession } from "./portal-session";
 import { formatDate, StatusView } from "./StatusView";
 import PortalFotos from "./PortalFotos";
 import PortalHistorico from "./PortalHistorico";
-import { DestaqueConcluido, DestaqueProntoRetirada, DocumentosCard, NotaValorAtualizado } from "./PortalDestaques";
+import { DestaqueConcluido, DestaqueProntoRetirada, DocumentosCard, LinhaValorAtualizado, NotaValorAtualizado } from "./PortalDestaques";
 
 const REFRESH_MS = 60_000;
 
@@ -146,6 +146,7 @@ export default function PortalDetalhe({ session, equipamentoId, onExpirou }: Pro
                     onExpirou={onExpirou}
                   />
                 )}
+                {(data.status === "PRONTO" || concluido) && <LinhaValorAtualizado detalhe={data} />}
                 {!data.orcamento && data.status === "AGUARDANDO_APROVACAO" && (
                   <p className="notice-box">O orçamento ainda não foi publicado no portal. Fale com a equipe para recebê-lo.</p>
                 )}

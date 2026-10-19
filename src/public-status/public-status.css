@@ -497,3 +497,13 @@ h1 {
   .portal-mapa { height: 12rem; }
   .portal-destaque { padding: 0.95rem 1rem; }
 }
+
+/* Decisão no computador: orçamento e botões primeiro, fotos logo abaixo. */
+@media (min-width: 1000px) {
+  .portal-detail-side.is-decisao { display: flex; flex-direction: column; }
+  .portal-detail-side.is-decisao > * { order: 2; }
+  .portal-detail-side.is-decisao > .portal-quote { order: 0; }
+  .portal-detail-side.is-decisao > .portal-fotos { order: 1; margin-top: 1.5rem; }
+}
+.portal-valor-linha { margin: 0.5rem 0 0; color: #7a4a05; font-size: 0.88rem; }
+.portal-destaque-valor + .portal-valor-nota { margin: 0.2rem 0 0; color: #66788c; font-size: 0.8rem; text-align: right; }

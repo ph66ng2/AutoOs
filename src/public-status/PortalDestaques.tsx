@@ -22,6 +22,13 @@ export function NotaValorAtualizado({ detalhe }: { detalhe: DetalheAtendimento }
   );
 }
 
+/** Linha curta sob o card do orçamento: evita parecer contradição com o valor em destaque. */
+export function LinhaValorAtualizado({ detalhe }: { detalhe: DetalheAtendimento }) {
+  const v = valorAtualizado(detalhe);
+  if (!v) return null;
+  return <p className="portal-valor-linha">Valor atualizado pela equipe: <strong>{money(v.atual)}</strong></p>;
+}
+
 export function mapaEmbedUrl(endereco: string) {
   return `https://www.google.com/maps?q=${encodeURIComponent(endereco)}&output=embed`;
 }
@@ -35,6 +42,7 @@ export function DestaqueProntoRetirada({ detalhe }: { detalhe: DetalheAtendiment
   const contato = detalhe.contatoEmpresa;
   const endereco = contato?.endereco?.trim() || null;
   const valor = detalhe.valores?.atual ?? null;
+  const atualizado = valorAtualizado(detalhe);
   return (
     <section className="portal-destaque is-pronto" aria-labelledby="portal-pronto-titulo">
       <span className="portal-destaque-pill">Pronto para retirada</span>
@@ -42,7 +50,7 @@ export function DestaqueProntoRetirada({ detalhe }: { detalhe: DetalheAtendiment
       {valor != null && (
         <p className="portal-destaque-valor"><span>Valor do atendimento</span><strong>{money(valor)}</strong></p>
       )}
-      <NotaValorAtualizado detalhe={detalhe} />
+      {atualizado && <p className="portal-valor-nota">Valor atualizado pela equipe (orçamento aprovado: {money(atualizado.aprovado)})</p>}
       {endereco && contato && (
         <>
           <address className="portal-endereco">
