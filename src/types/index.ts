@@ -375,8 +375,9 @@ export interface Cliente {
   nome_fantasia?: string;      // PJ
   inscricao_estadual?: string; // PJ
   cpf_cnpj?: string;           // mantido para retrocompatibilidade
-  telefone: string;
-  telefone_secundario?: string;
+  /** Ausente quando o banco guarda NULL (telefone opcional desde a migração 0011). */
+  telefone?: string | null;
+  telefone_secundario?: string | null;
   email?: string;
   cep?: string;
   endereco?: string;

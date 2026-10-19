@@ -38,7 +38,7 @@ async fn main() -> Result<()> {
         data_entrada: Utc::now().date_naive().to_string(),
         cliente_id: Some(cliente.id),
         cliente_nome: cliente.nome.clone(),
-        cliente_telefone: Some(cliente.telefone.clone()),
+        cliente_telefone: cliente.telefone.clone(),
         cliente_email: cliente.email.clone(),
         ..EquipamentoInput::default()
     }).await.map_err(|e| anyhow!(e))?;
