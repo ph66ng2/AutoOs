@@ -401,7 +401,19 @@ const KEYRING_WRITE_TIMEOUT: std::time::Duration = std::time::Duration::from_sec
 
 /// Uma ativação por vez neste processo: duplo clique ou Enter repetido não pode misturar o
 /// "guardar PIN anterior / gravar / consumir / desfazer" de duas chamadas sobre o mesmo cofre.
-static ATIVACAO_EM_ANDAMENTO: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
+/// A trava é tomada com `try_lock_owned` e acompanha a gravação no keyring: se o limite de tempo
+/// estourar, ela fica com a thread de fundo até a gravação terminar e ser desfeita, então uma nova
+/// tentativa nesse intervalo recebe um aviso imediato em vez de disputar o cofre.
+static ATIVACAO_EM_ANDAMENTO: OnceLock<std::sync::Arc<tokio::sync::Mutex<()>>> = OnceLock::new();
+
+fn ativacao_em_andamento() -> std::sync::Arc<tokio::sync::Mutex<()>> {
+    ATIVACAO_EM_ANDAMENTO
+        .get_or_init(|| std::sync::Arc::new(tokio::sync::Mutex::new(())))
+        .clone()
+}
+
+const ATIVACAO_OCUPADA_MESSAGE: &str =
+    "Já há uma ativação em andamento neste computador, esperando o cofre de senhas. Aguarde alguns instantes, ou desbloqueie o cofre, e tente de novo.";
 
 /// Roda uma chamada síncrona do keyring fora do worker async, com limite de tempo. Um cofre
 /// travado esperando resposta do usuário não pode prender o worker nem uma transação aberta.
@@ -427,16 +439,28 @@ enum FaseGravacao {
 /// Como `run_keyring_blocking`, mas para uma gravação que precisa ser desfeita se terminar depois
 /// do limite de tempo. Estourado o limite, a chamada devolve o erro de tempo e a própria thread,
 /// ao terminar a gravação, executa `desfazer` com o que gravou. A fase é decidida sob um mutex:
-/// ou a gravação conclui antes do cancelamento (e o resultado é entregue), ou depois (e é desfeita).
-async fn run_keyring_cancelable<T, W, U>(limit: std::time::Duration, work: W, desfazer: U) -> Result<T, String>
+/// ou a gravação conclui antes do cancelamento (e o resultado é entregue) ou depois (e é desfeita).
+///
+/// `retida` é uma trava (a de ativação) que viaja com a thread: volta ao chamador junto com o
+/// resultado quando a gravação conclui a tempo, e só é solta quando a thread termina (depois de
+/// desfazer) se o limite estourou. Assim nada mais mexe no cofre enquanto a gravação tardia pode
+/// acontecer.
+async fn run_keyring_cancelable<T, G, W, U>(
+    limit: std::time::Duration,
+    retida: G,
+    work: W,
+    desfazer: U,
+) -> Result<(T, G), String>
 where
     T: Send + 'static,
+    G: Send + 'static,
     W: FnOnce() -> Result<T, String> + Send + 'static,
     U: FnOnce(&T) + Send + 'static,
 {
     let fase = std::sync::Arc::new(Mutex::new(FaseGravacao::Gravando));
     let fase_da_thread = fase.clone();
     let mut tarefa = tokio::task::spawn_blocking(move || {
+        let retida = retida;
         let produzido = work()?;
         let mut fase = fase_da_thread.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
         if *fase == FaseGravacao::Cancelada {
@@ -445,7 +469,7 @@ where
             return Err(KEYRING_TIMEOUT_MESSAGE.to_string());
         }
         *fase = FaseGravacao::Concluida;
-        Ok(produzido)
+        Ok((produzido, retida))
     });
     match tokio::time::timeout(limit, &mut tarefa).await {
         Ok(Ok(result)) => result,
@@ -2351,7 +2375,9 @@ pub async fn ativar_perfil_com_codigo(
         return Err("Os PINs não conferem.".to_string());
     }
 
-    let _ativacao = ATIVACAO_EM_ANDAMENTO.lock().await;
+    let ativacao = ativacao_em_andamento()
+        .try_lock_owned()
+        .map_err(|_| ATIVACAO_OCUPADA_MESSAGE.to_string())?;
 
     let record = fetch_profile_record_by_id(profile_id).await?;
     let summary = to_profile_summary(record)?;
@@ -2364,8 +2390,9 @@ pub async fn ativar_perfil_com_codigo(
     // de PIN) para voltar se o código não puder ser consumido e grava o novo.
     let pin_para_gravar = pin.clone();
     // Se o cofre só responder depois do limite, a própria thread desfaz a gravação.
-    let (anterior, escrito) = match run_keyring_cancelable(
+    let ((anterior, escrito), _ativacao) = match run_keyring_cancelable(
         KEYRING_WRITE_TIMEOUT,
+        ativacao,
         move || {
             let anterior = load_profile_pin(profile_id).ok().flatten();
             store_profile_pin(profile_id, &pin_para_gravar)?;
@@ -2582,46 +2609,67 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn write_that_finishes_after_the_timeout_is_undone_by_its_own_thread() {
+    async fn write_that_finishes_after_the_timeout_is_undone_while_the_lock_is_still_held() {
+        let lock = std::sync::Arc::new(tokio::sync::Mutex::new(()));
+        let guard = lock.clone().try_lock_owned().expect("trava livre");
         let undone = std::sync::Arc::new(std::sync::atomic::AtomicI32::new(0));
-        let undone_in_thread = undone.clone();
-        let result: Result<i32, String> = run_keyring_cancelable(
+        let lock_during_undo = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let (undone_in_thread, lock_in_thread, lock_probe) = (undone.clone(), lock_during_undo.clone(), lock.clone());
+        let result: Result<(i32, tokio::sync::OwnedMutexGuard<()>), String> = run_keyring_cancelable(
             std::time::Duration::from_millis(50),
+            guard,
             || {
                 std::thread::sleep(std::time::Duration::from_millis(300));
                 Ok(7)
             },
-            move |written: &i32| undone_in_thread.store(*written, std::sync::atomic::Ordering::SeqCst),
+            move |written: &i32| {
+                // O desfazer roda com a trava de ativação ainda presa à thread.
+                lock_in_thread.store(lock_probe.try_lock().is_err(), std::sync::atomic::Ordering::SeqCst);
+                undone_in_thread.store(*written, std::sync::atomic::Ordering::SeqCst);
+            },
         )
         .await;
 
-        assert_eq!(result.unwrap_err(), KEYRING_TIMEOUT_MESSAGE);
+        assert_eq!(result.err(), Some(KEYRING_TIMEOUT_MESSAGE.to_string()));
+        // Entre o limite e o fim da gravação tardia, uma nova tentativa não consegue tomar a trava.
+        assert!(lock.clone().try_lock_owned().is_err(), "a trava deve ficar com a thread de fundo");
+
         tokio::time::sleep(std::time::Duration::from_millis(600)).await;
         assert_eq!(undone.load(std::sync::atomic::Ordering::SeqCst), 7, "a gravação tardia deve ser desfeita");
+        assert!(lock_during_undo.load(std::sync::atomic::Ordering::SeqCst), "o desfazer deve acontecer antes de soltar a trava");
+        assert!(lock.clone().try_lock_owned().is_ok(), "a trava deve ser solta quando a thread termina");
     }
 
     #[tokio::test]
-    async fn write_that_finishes_in_time_is_delivered_and_not_undone() {
+    async fn write_that_finishes_in_time_is_delivered_with_the_lock_and_not_undone() {
+        let lock = std::sync::Arc::new(tokio::sync::Mutex::new(()));
         let undone = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
         let undone_in_thread = undone.clone();
-        let result = run_keyring_cancelable(
+        let (valor, guard) = run_keyring_cancelable(
             std::time::Duration::from_secs(5),
+            lock.clone().try_lock_owned().expect("trava livre"),
             || Ok(3),
             move |_: &i32| undone_in_thread.store(true, std::sync::atomic::Ordering::SeqCst),
         )
-        .await;
-        assert_eq!(result, Ok(3));
+        .await
+        .expect("gravação a tempo");
+        assert_eq!(valor, 3);
+        assert!(lock.clone().try_lock_owned().is_err(), "a trava volta ao chamador junto com o resultado");
+        drop(guard);
+        assert!(lock.clone().try_lock_owned().is_ok());
 
-        let failed: Result<i32, String> = run_keyring_cancelable(
+        let failed: Result<(i32, tokio::sync::OwnedMutexGuard<()>), String> = run_keyring_cancelable(
             std::time::Duration::from_secs(5),
+            lock.clone().try_lock_owned().expect("trava livre"),
             || Err(KEYRING_UNAVAILABLE_MESSAGE.to_string()),
             |_: &i32| panic!("não há o que desfazer quando a gravação falhou"),
         )
         .await;
-        assert_eq!(failed.unwrap_err(), KEYRING_UNAVAILABLE_MESSAGE);
+        assert_eq!(failed.err(), Some(KEYRING_UNAVAILABLE_MESSAGE.to_string()));
 
         tokio::time::sleep(std::time::Duration::from_millis(100)).await;
         assert!(!undone.load(std::sync::atomic::Ordering::SeqCst));
+        assert!(lock.clone().try_lock_owned().is_ok(), "a falha libera a trava");
     }
 
     #[tokio::test]
