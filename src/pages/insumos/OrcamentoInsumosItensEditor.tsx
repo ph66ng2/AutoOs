@@ -167,6 +167,7 @@ export function OrcamentoInsumosItensEditor({
               </tr>
             )}
             {linhas.map((linha, indice) => {
+              const quantidadeInvalida = !Number.isInteger(linha.quantidade) || linha.quantidade <= 0;
               const semSaldo = linha.saldo != null && Math.floor(linha.quantidade || 0) > linha.saldo;
               return (
                 <tr key={linha.produto_id} className="border-t" data-testid={`item-${linha.produto_id}`}>
@@ -200,8 +201,14 @@ export function OrcamentoInsumosItensEditor({
                       onChange={(event) =>
                         alterar(linha.produto_id, { quantidade: Math.floor(Number(event.target.value)) || 0 })
                       }
-                      className="h-8 px-2 text-center"
+                      aria-invalid={quantidadeInvalida || undefined}
+                      className={quantidadeInvalida ? "h-8 px-2 text-center border-red-500" : "h-8 px-2 text-center"}
                     />
+                    {quantidadeInvalida && (
+                      <p className="mt-0.5 text-[11px] leading-tight text-red-600" role="alert">
+                        Informe uma quantidade maior que zero
+                      </p>
+                    )}
                   </td>
                   <td className="px-2 py-1">
                     <Input
