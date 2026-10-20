@@ -146,8 +146,10 @@ export function TourController() {
   }, [activeProfile, permissions, permissionsKey, run, seenKey, seenPermissions, unlocked]);
 
   // Sessão bloqueada interrompe o tour sem registrar nada e descarta pedidos pendentes.
+  // Esquecer a chave já verificada faz o desbloqueio reavaliar o que ainda não foi visto.
   useEffect(() => {
     if (!unlocked) {
+      checkedStateRef.current = null;
       setRun(null);
       setOffer(false);
       setOfferQueued(false);

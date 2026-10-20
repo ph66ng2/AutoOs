@@ -70,6 +70,21 @@ describe("TourController", () => {
     expect(screen.getByRole("heading", { name: "Estoque" })).toBeInTheDocument();
   });
 
+  it("bloquear e desbloquear a sessão reavalia o tour que ainda não foi visto", async () => {
+    hookState.status = statusFor(["VIEW_EXPENSES", "STOCK_CONTROL"], ["VIEW_EXPENSES"]);
+    const { rerender } = renderTour();
+    expect(await screen.findByText("NOVO NO SEU PERFIL")).toBeInTheDocument();
+
+    hookState.status = { ...hookState.status, unlocked: false };
+    rerender(<MemoryRouter><TourController /></MemoryRouter>);
+    expect(screen.queryByText("NOVO NO SEU PERFIL")).not.toBeInTheDocument();
+
+    // Mesmo perfil, mesmas permissões, e o tour nunca foi gravado como visto.
+    hookState.status = { ...hookState.status, unlocked: true };
+    rerender(<MemoryRouter><TourController /></MemoryRouter>);
+    expect(await screen.findByText("NOVO NO SEU PERFIL")).toBeInTheDocument();
+  });
+
   it("espera a escolha de modo (tela que não é diálogo) antes de começar", async () => {
     const selector = document.createElement("div");
     selector.setAttribute("data-blocks-tour", "true");
