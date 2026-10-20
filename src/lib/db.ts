@@ -105,8 +105,10 @@ function clientePersistenciaParaInput(cliente: Omit<Cliente, "id">) {
     bairro: cliente.bairro ?? undefined,
     cidade: cliente.cidade ?? undefined,
     uf: cliente.uf ?? undefined,
-    receber_email: cliente.receber_email ?? true,
-    receber_whatsapp: cliente.receber_whatsapp ?? true,
+    // Ausente = backend preserva o valor salvo na edição (padrão true só na criação).
+    receber_email: cliente.receber_email ?? undefined,
+    receber_whatsapp: cliente.receber_whatsapp ?? undefined,
+    exige_ordem_compra: cliente.exige_ordem_compra ?? undefined,
     observacoes: cliente.observacoes ?? undefined,
     empresa_id: cliente.empresa_id ?? undefined,
     atualizado_em: cliente.atualizado_em ?? undefined,

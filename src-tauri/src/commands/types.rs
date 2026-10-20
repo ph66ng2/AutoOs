@@ -173,6 +173,8 @@ pub struct ClienteInput {
     pub uf: Option<String>,
     pub receber_email: Option<bool>,
     pub receber_whatsapp: Option<bool>,
+    /// `None` preserva o valor salvo na edição; na criação o padrão é `false`.
+    pub exige_ordem_compra: Option<bool>,
     pub observacoes: Option<String>,
     pub atualizado_em: Option<String>,
 }
@@ -488,6 +490,7 @@ pub struct ClienteRow {
     pub uf: Option<String>,
     pub receber_email: Option<bool>,
     pub receber_whatsapp: Option<bool>,
+    pub exige_ordem_compra: Option<bool>,
     pub observacoes: Option<String>,
     pub ativo: Option<bool>,
     pub criado_em: Option<String>,
@@ -771,7 +774,7 @@ pub const CLIENTE_SELECT: &str = "
     SELECT id, empresa_id, nome, tipo_pessoa, documento, razao_social, nome_fantasia,
            inscricao_estadual, cpf_cnpj, telefone, telefone_secundario, email,
            cep, endereco, numero, complemento, bairro, cidade, uf,
-           receber_email, receber_whatsapp, observacoes, ativo,
+           receber_email, receber_whatsapp, exige_ordem_compra, observacoes, ativo,
            criado_em::TEXT as criado_em, atualizado_em::TEXT as atualizado_em
     FROM clientes";
 

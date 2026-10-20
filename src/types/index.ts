@@ -330,6 +330,10 @@ export interface ContatoPortalEmpresa {
   email?: string | null;
   telefone?: string | null;
   horario?: string | null;
+  /** Endereço de retirada exibido no portal quando o equipamento está pronto. */
+  endereco?: string | null;
+  /** Link https do Google Maps (opcional). */
+  mapsUrl?: string | null;
 }
 
 export const CATEGORIAS_IMAGEM_EQUIPAMENTO = {
@@ -401,6 +405,8 @@ export interface Cliente {
   uf?: string;
   receber_email?: boolean;
   receber_whatsapp?: boolean;
+  /** Portal do Cliente: o contato precisa informar o número da OC para aceitar orçamentos. */
+  exige_ordem_compra?: boolean;
   observacoes?: string;
   ativo?: boolean;
   criado_em?: string;

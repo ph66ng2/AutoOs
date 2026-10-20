@@ -50,6 +50,30 @@ pub struct ContatoPortalEmpresa {
     pub email: Option<String>,
     pub telefone: Option<String>,
     pub horario: Option<String>,
+    /// Endereço de retirada mostrado no portal quando o equipamento está pronto (até 300).
+    pub endereco: Option<String>,
+    /// Link https do mapa (até 500). Opcional.
+    pub maps_url: Option<String>,
+}
+
+/// Mesmas regras dos CHECK da migration 0039 (`chk_portal_contato_endereco`/`chk_portal_contato_maps_url`),
+/// com mensagem clara em vez de truncar em silêncio.
+fn validar_endereco_mapa(endereco: Option<&str>, maps_url: Option<&str>) -> Result<(Option<String>, Option<String>), String> {
+    let endereco = endereco.map(str::trim).filter(|v| !v.is_empty()).map(str::to_string);
+    if endereco.as_deref().is_some_and(|v| v.chars().count() > 300) {
+        return Err("O endereço para retirada deve ter no máximo 300 caracteres.".to_string());
+    }
+    let maps_url = maps_url.map(str::trim).filter(|v| !v.is_empty()).map(str::to_string);
+    if let Some(url) = maps_url.as_deref() {
+        let esquema_https = url.get(..8).is_some_and(|inicio| inicio.eq_ignore_ascii_case("https://"));
+        if !esquema_https || url.len() <= 8 || url.chars().any(char::is_whitespace) {
+            return Err("O link do mapa deve começar com https:// e não pode ter espaços.".to_string());
+        }
+        if url.chars().count() > 500 {
+            return Err("O link do mapa deve ter no máximo 500 caracteres.".to_string());
+        }
+    }
+    Ok((endereco, maps_url))
 }
 
 fn acesso_valido(acesso: &str) -> bool {
@@ -284,7 +308,7 @@ pub async fn obter_contato_portal_empresa() -> Result<Option<ContatoPortalEmpres
     let pool = get_pool().await.map_err(|e| e.to_string())?;
     let empresa_id = require_active_session_company_id(&pool).await?;
     sqlx::query_as::<_, ContatoPortalEmpresa>(
-        "SELECT nome_exibicao, whatsapp, email, telefone, horario
+        "SELECT nome_exibicao, whatsapp, email, telefone, horario, endereco, maps_url
          FROM portal_contato_empresa WHERE empresa_id = $1",
     )
     .bind(empresa_id)
@@ -309,13 +333,15 @@ pub async fn salvar_contato_portal_empresa(input: ContatoPortalEmpresa) -> Resul
     if email.as_deref().is_some_and(|v| !v.contains('@')) {
         return Err("Email de contato inválido.".to_string());
     }
+    let (endereco, maps_url) = validar_endereco_mapa(input.endereco.as_deref(), input.maps_url.as_deref())?;
 
     sqlx::query(
-        "INSERT INTO portal_contato_empresa (empresa_id, nome_exibicao, whatsapp, email, telefone, horario, atualizado_em)
-         VALUES ($1, $2, $3, $4, $5, $6, NOW())
+        "INSERT INTO portal_contato_empresa (empresa_id, nome_exibicao, whatsapp, email, telefone, horario, endereco, maps_url, atualizado_em)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW())
          ON CONFLICT (empresa_id) DO UPDATE
          SET nome_exibicao = EXCLUDED.nome_exibicao, whatsapp = EXCLUDED.whatsapp, email = EXCLUDED.email,
-             telefone = EXCLUDED.telefone, horario = EXCLUDED.horario, atualizado_em = NOW()",
+             telefone = EXCLUDED.telefone, horario = EXCLUDED.horario,
+             endereco = EXCLUDED.endereco, maps_url = EXCLUDED.maps_url, atualizado_em = NOW()",
     )
     .bind(empresa_id)
     .bind(&nome)
@@ -323,6 +349,8 @@ pub async fn salvar_contato_portal_empresa(input: ContatoPortalEmpresa) -> Resul
     .bind(email)
     .bind(texto(input.telefone.as_deref(), 40))
     .bind(texto(input.horario.as_deref(), 120))
+    .bind(endereco)
+    .bind(maps_url)
     .execute(&pool)
     .await
     .map_err(super::operator_errors::mapear_erro_sql)?;
@@ -356,6 +384,23 @@ mod tests {
     fn contact_text_is_trimmed_and_bounded() {
         assert_eq!(texto(Some("  "), 10), None);
         assert_eq!(texto(Some(" abcdef "), 3).as_deref(), Some("abc"));
+    }
+
+    #[test]
+    fn address_and_map_follow_the_database_check() {
+        assert_eq!(validar_endereco_mapa(None, None).unwrap(), (None, None));
+        assert_eq!(validar_endereco_mapa(Some("  "), Some(" ")).unwrap(), (None, None));
+        let (e, m) = validar_endereco_mapa(Some(" Rua A, 10 "), Some(" HTTPS://maps.app.goo.gl/x ")).unwrap();
+        assert_eq!(e.as_deref(), Some("Rua A, 10"));
+        assert_eq!(m.as_deref(), Some("HTTPS://maps.app.goo.gl/x"));
+        assert!(validar_endereco_mapa(Some(&"a".repeat(300)), None).is_ok());
+        assert!(validar_endereco_mapa(Some(&"a".repeat(301)), None).is_err());
+        assert!(validar_endereco_mapa(None, Some("http://maps.google.com/x")).is_err());
+        assert!(validar_endereco_mapa(None, Some("javascript:alert(1)")).is_err());
+        assert!(validar_endereco_mapa(None, Some("https://")).is_err());
+        assert!(validar_endereco_mapa(None, Some("https://maps.google.com/a b")).is_err());
+        assert!(validar_endereco_mapa(None, Some(&format!("https://x.com/{}", "a".repeat(486)))).is_ok());
+        assert!(validar_endereco_mapa(None, Some(&format!("https://x.com/{}", "a".repeat(487)))).is_err());
     }
 }
 

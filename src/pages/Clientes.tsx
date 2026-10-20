@@ -129,7 +129,7 @@ export default function Clientes() {
       razao_social: "", nome_fantasia: "", inscricao_estadual: "",
       telefone: "", telefone_secundario: "",
       email: "", cep: "", endereco: "", numero: "", complemento: "",
-      bairro: "", cidade: "", uf: "", observacoes: "",
+      bairro: "", cidade: "", uf: "", observacoes: "", exige_ordem_compra: false,
     },
   });
 
@@ -222,7 +222,7 @@ export default function Clientes() {
       razao_social: "", nome_fantasia: "", inscricao_estadual: "",
       telefone: "", telefone_secundario: "",
       email: "", cep: "", endereco: "", numero: "", complemento: "",
-      bairro: "", cidade: "", uf: "", observacoes: "",
+      bairro: "", cidade: "", uf: "", observacoes: "", exige_ordem_compra: false,
     });
     setDialogOpen(true);
   }
@@ -251,6 +251,7 @@ export default function Clientes() {
       cidade: c.cidade || "",
       uf: c.uf || "",
       observacoes: c.observacoes || "",
+      exige_ordem_compra: Boolean(c.exige_ordem_compra),
     });
     setDialogOpen(true);
   }
@@ -286,8 +287,10 @@ export default function Clientes() {
         bairro: data.bairro || null,
         cidade: data.cidade || null,
         uf: data.uf || null,
-        receber_email: true,
-        receber_whatsapp: true,
+        // Edição preserva o que está salvo; o padrão (true) vale só na criação.
+        receber_email: editando ? editando.receber_email : true,
+        receber_whatsapp: editando ? editando.receber_whatsapp : true,
+        exige_ordem_compra: Boolean(data.exige_ordem_compra),
         observacoes: data.observacoes || null,
         ativo: true,
         atualizado_em: editando?.atualizado_em,
@@ -469,7 +472,18 @@ export default function Clientes() {
                             </Badge>
                           )}
                           <div className="min-w-0">
-                            <p className="break-words font-medium">{nomeExibicaoCliente(c)}</p>
+                            <div className="break-words font-medium">
+                              {nomeExibicaoCliente(c)}
+                              {c.exige_ordem_compra && (
+                                <Badge
+                                  variant="outline"
+                                  className="ml-2 align-middle border-amber-200 bg-amber-50 text-[10px] font-normal text-amber-800"
+                                  title="O Portal do Cliente exige o número da ordem de compra para aceitar orçamentos"
+                                >
+                                  Exige OC
+                                </Badge>
+                              )}
+                            </div>
                             {c.tipo_pessoa === "PJ" && c.razao_social && c.nome_fantasia && (
                               <p className="break-words text-xs text-muted-foreground">{c.razao_social}</p>
                             )}
