@@ -14,6 +14,7 @@ import { useEffect, useState } from "react";
 import type { UseFormReturn } from "react-hook-form";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
@@ -356,6 +357,23 @@ export function ClienteFormularioCampos({
           </div>
         </div>
       </div>
+
+        <div className="flex items-start gap-3 rounded-md border p-3">
+          <Checkbox
+            id="cliente-exige-oc"
+            className="mt-0.5"
+            checked={Boolean(form.watch("exige_ordem_compra"))}
+            onCheckedChange={(checked) =>
+              form.setValue("exige_ordem_compra", checked, { shouldDirty: true })
+            }
+          />
+          <div className="space-y-0.5">
+            <Label htmlFor="cliente-exige-oc">Exige ordem de compra para aprovar orçamentos</Label>
+            <p className="text-xs text-muted-foreground">
+              No Portal do Cliente, o contato precisa informar o número da OC para aceitar. Vale para todos os contatos deste cliente.
+            </p>
+          </div>
+        </div>
 
         <div className="space-y-2">
           <Label>Observações</Label>

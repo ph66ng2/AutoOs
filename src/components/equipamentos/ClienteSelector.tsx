@@ -107,7 +107,7 @@ export function ClienteSelector({
       razao_social: "", nome_fantasia: "", inscricao_estadual: "",
       telefone: "", telefone_secundario: "",
       email: "", cep: "", endereco: "", numero: "", complemento: "",
-      bairro: "", cidade: "", uf: "", observacoes: "",
+      bairro: "", cidade: "", uf: "", observacoes: "", exige_ordem_compra: false,
     },
   });
 
@@ -223,7 +223,7 @@ export function ClienteSelector({
       razao_social: "", nome_fantasia: "", inscricao_estadual: "",
       telefone: "", telefone_secundario: "",
       email: "", cep: "", endereco: "", numero: "", complemento: "",
-      bairro: "", cidade: "", uf: "", observacoes: "",
+      bairro: "", cidade: "", uf: "", observacoes: "", exige_ordem_compra: false,
     });
     setModo("novo");
   }
@@ -253,6 +253,7 @@ export function ClienteSelector({
         uf: data.uf || null,
         receber_email: true,
         receber_whatsapp: true,
+        exige_ordem_compra: Boolean(data.exige_ordem_compra),
         observacoes: data.observacoes || null,
         ativo: true,
       } as Omit<Cliente, "id">;

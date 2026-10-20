@@ -379,10 +379,10 @@ pub async fn criar_cliente(input: ClienteInput) -> Result<ClienteRow, String> {
             empresa_id, nome, tipo_pessoa, documento, razao_social, nome_fantasia,
             inscricao_estadual, cpf_cnpj, telefone, telefone_secundario, email,
             cep, endereco, numero, complemento, bairro, cidade, uf,
-            receber_email, receber_whatsapp, observacoes
+            receber_email, receber_whatsapp, observacoes, exige_ordem_compra
         ) VALUES (
             $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11,
-            $12, $13, $14, $15, $16, $17, $18, $19, $20, $21
+            $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22
         ) RETURNING id
         "#,
     )
@@ -404,9 +404,10 @@ pub async fn criar_cliente(input: ClienteInput) -> Result<ClienteRow, String> {
     .bind(optional_text(input.bairro.as_deref()))
     .bind(optional_text(input.cidade.as_deref()))
     .bind(uf)
-    .bind(input.receber_email)
-    .bind(input.receber_whatsapp)
+    .bind(input.receber_email.unwrap_or(true))
+    .bind(input.receber_whatsapp.unwrap_or(true))
     .bind(optional_text(input.observacoes.as_deref()))
+    .bind(input.exige_ordem_compra.unwrap_or(false))
     .fetch_one(&pool)
     .await;
     let row = match row {
@@ -469,7 +470,10 @@ pub async fn atualizar_cliente(id: i32, input: ClienteInput) -> Result<ClienteRo
             telefone = $8, telefone_secundario = $9, email = $10,
             cep = $11, endereco = $12, numero = $13, complemento = $14,
             bairro = $15, cidade = $16, uf = $17,
-            receber_email = $18, receber_whatsapp = $19, observacoes = $20,
+            receber_email = COALESCE($18, receber_email),
+            receber_whatsapp = COALESCE($19, receber_whatsapp),
+            observacoes = $20,
+            exige_ordem_compra = COALESCE($24, exige_ordem_compra),
             atualizado_em = NOW()
         WHERE id = $21 AND atualizado_em = $22::TIMESTAMPTZ
           AND empresa_id = $23
@@ -498,6 +502,7 @@ pub async fn atualizar_cliente(id: i32, input: ClienteInput) -> Result<ClienteRo
     .bind(id)
     .bind(concurrency_token)
     .bind(empresa_id)
+    .bind(input.exige_ordem_compra)
     .execute(&pool)
     .await;
     let updated_rows = match updated_rows {
