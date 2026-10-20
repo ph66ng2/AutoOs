@@ -56,7 +56,6 @@ import {
   Download,
   Smartphone,
   DollarSign,
-  Link2,
 } from "lucide-react";
 import { useForm, Controller } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -179,8 +178,9 @@ import { InputDialog } from "@/components/ui/input-dialog";
 import { ErrorAlert } from "@/components/ui/error-alert";
 import { PaginationControls } from "@/components/ui/pagination-controls";
 import { PagamentoOrcamentoDialog } from "@/components/equipamentos/PagamentoOrcamentoDialog";
-import { PublicStatusLinkDialog } from "@/components/equipamentos/PublicStatusLinkDialog";
 import { DecisaoOrcamentoCard } from "@/components/equipamentos/DecisaoOrcamentoCard";
+import { PortalClienteBotao } from "@/components/equipamentos/PortalClienteBotao";
+import { PortalClienteProvider } from "@/components/equipamentos/portal-cliente-context";
 import { EVENTO_ALERTAS_PORTAL } from "@/components/PortalAlertas";
 import { toast } from "sonner";
 
@@ -213,7 +213,6 @@ export default function Equipamentos() {
   const detalhesAbertoRef = useRef(false);
   const [sinalPortal, setSinalPortal] = useState(0);
   detalhesAbertoRef.current = detalhesDialogOpen;
-  const [publicStatusDialogOpen, setPublicStatusDialogOpen] = useState(false);
   // Resposta do cliente lida ao abrir a aprovação; segue junto dela para barrar tela desatualizada.
   // Só a aprovação escreve aqui: recarregar o quadro em segundo plano não pode trocar o que o operador conferiu.
   const respostaClienteVistaRef = useRef(0);
@@ -2583,6 +2582,7 @@ export default function Equipamentos() {
         <DialogContent className="sm:max-w-3xl max-h-[90vh] overflow-y-auto">
           <DialogHeader><DialogTitle>Detalhes do Equipamento</DialogTitle></DialogHeader>
           {selecionado && (
+            <PortalClienteProvider equipamento={selecionado} sinalPortal={sinalPortal}>
             <div className="space-y-4">
               <div className="flex min-w-0 items-start justify-between gap-3">
                 <div className="min-w-0 flex-1">
@@ -2596,27 +2596,12 @@ export default function Equipamentos() {
                 </div>
                 <div className="flex shrink-0 flex-col items-end gap-2">
                   <StatusBadge status={selecionado.status} />
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={async () => {
-                      const allowed = await ensureSensitiveAccess({
-                        title: "Acompanhamento público",
-                        description: "Confirme o acesso para consultar e gerenciar links públicos deste atendimento.",
-                        permission: SENSITIVE_PERMISSIONS.MANAGE_STATUS_LINKS,
-                      });
-                      if (allowed) setPublicStatusDialogOpen(true);
-                    }}
-                  >
-                    <Link2 className="mr-2 h-4 w-4" /> Acompanhamento público
-                  </Button>
+                  <PortalClienteBotao />
                 </div>
               </div>
 
               <DecisaoOrcamentoCard
-                equipamento={selecionado}
                 onAplicar={(decisao) => void abrirDialogoAprovacao(selecionado, decisao)}
-                sinalPortal={sinalPortal}
               />
 
               <Tabs key={selecionado.id} defaultValue="info">
@@ -2749,6 +2734,7 @@ export default function Equipamentos() {
                 <TabsContent value="historico" className="mt-4">{renderHistoricoTab()}</TabsContent>
               </Tabs>
             </div>
+            </PortalClienteProvider>
           )}
         </DialogContent>
       </Dialog>
@@ -2762,12 +2748,6 @@ export default function Equipamentos() {
           await recarregar();
           success("Equipamentos", "Orçamento reaberto. Envie ou registre uma nova decisão do cliente.", "Decisão corrigida");
         }}
-      />
-
-      <PublicStatusLinkDialog
-        equipamento={selecionado}
-        open={publicStatusDialogOpen}
-        onOpenChange={setPublicStatusDialogOpen}
       />
 
       {/* ═══ Dialog Verificação Técnica (componente extraído) ═══ */}

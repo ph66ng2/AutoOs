@@ -34,6 +34,8 @@ pub struct RespostaOrcamentoInfo {
     /// Motivo de a efetivação automática ter parado; a resposta segue pendente para a equipe.
     pub efetivacao_erro: Option<String>,
     pub efetivacao_falhou_em: Option<String>,
+    /// Ordem de compra informada pelo cliente ao aprovar no portal.
+    pub ordem_compra: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -47,6 +49,9 @@ pub struct SolicitacaoOrcamentoInfo {
     pub tratada_em: Option<String>,
     /// Contato do portal que enviou (vazio para o link de decisão).
     pub contato: Option<String>,
+    /// Telefone e e-mail que o cliente deixou na solicitação para retorno.
+    pub contato_telefone: Option<String>,
+    pub contato_email: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -305,6 +310,7 @@ fn resposta_from_row(row: &sqlx::postgres::PgRow) -> Result<RespostaOrcamentoInf
         aplicada_pelo_sistema: row.try_get("aplicada_pelo_sistema").map_err(map)?,
         efetivacao_erro: row.try_get("efetivacao_erro").map_err(map)?,
         efetivacao_falhou_em: row.try_get("efetivacao_falhou_em").map_err(map)?,
+        ordem_compra: row.try_get("ordem_compra").map_err(map)?,
     })
 }
 
@@ -346,7 +352,8 @@ pub async fn obter_decisao_orcamento(
                 p.nome AS registrada_por, r.motivo,
                 to_char(r.aplicada_em AT TIME ZONE 'UTC', '{TS_FMT}') AS aplicada_em,
                 r.contato_nome AS contato, r.aplicada_pelo_sistema, r.efetivacao_erro,
-                to_char(r.efetivacao_falhou_em AT TIME ZONE 'UTC', '{TS_FMT}') AS efetivacao_falhou_em
+                to_char(r.efetivacao_falhou_em AT TIME ZONE 'UTC', '{TS_FMT}') AS efetivacao_falhou_em,
+                r.ordem_compra
          FROM orcamento_respostas r
          LEFT JOIN security_profiles p ON p.id = r.registrada_por_profile_id
          WHERE r.versao_id = $1 AND r.empresa_id = $2
@@ -366,7 +373,7 @@ pub async fn obter_decisao_orcamento(
         "SELECT id, tipo, mensagem,
                 to_char(criado_em AT TIME ZONE 'UTC', '{TS_FMT}') AS criada_em,
                 to_char(tratado_em AT TIME ZONE 'UTC', '{TS_FMT}') AS tratada_em,
-                contato_nome AS contato
+                contato_nome AS contato, contato_telefone, contato_email
          FROM orcamento_solicitacoes
          WHERE versao_id = $1 AND empresa_id = $2
          ORDER BY id DESC
@@ -386,6 +393,8 @@ pub async fn obter_decisao_orcamento(
             criada_em: row.try_get("criada_em").map_err(map)?,
             tratada_em: row.try_get("tratada_em").map_err(map)?,
             contato: row.try_get("contato").map_err(map)?,
+            contato_telefone: row.try_get("contato_telefone").map_err(map)?,
+            contato_email: row.try_get("contato_email").map_err(map)?,
         });
     }
 
@@ -434,6 +443,7 @@ pub async fn obter_decisao_orcamento(
             aplicada_pelo_sistema: r.aplicada_pelo_sistema,
             efetivacao_erro: r.efetivacao_erro.clone(),
             efetivacao_falhou_em: r.efetivacao_falhou_em.clone(),
+            ordem_compra: r.ordem_compra.clone(),
         }),
         historico,
         solicitacoes,

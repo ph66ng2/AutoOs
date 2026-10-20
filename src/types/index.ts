@@ -190,6 +190,8 @@ export interface RespostaOrcamentoInfo {
   aplicadaPeloSistema?: boolean;
   efetivacaoErro?: string | null;
   efetivacaoFalhouEm?: string | null;
+  /** Ordem de compra informada pelo cliente ao aprovar no portal. */
+  ordemCompra?: string | null;
 }
 
 export type TipoEnvioWhatsapp = "orcamento_informativo" | "equipamento_pronto";
@@ -229,6 +231,9 @@ export interface SolicitacaoOrcamentoInfo {
   criadaEm: string;
   tratadaEm?: string | null;
   contato?: string | null;
+  /** Telefone e e-mail que o cliente deixou na solicitação para retorno. */
+  contatoTelefone?: string | null;
+  contatoEmail?: string | null;
 }
 
 export interface PecaBaixadaInfo {
