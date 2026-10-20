@@ -475,7 +475,8 @@ pub struct ClienteRow {
     pub nome_fantasia: Option<String>,
     pub inscricao_estadual: Option<String>,
     pub cpf_cnpj: Option<String>,
-    pub telefone: String,
+    /// Nulo desde a migração 0011. `String` faz o sqlx falhar a lista inteira.
+    pub telefone: Option<String>,
     pub telefone_secundario: Option<String>,
     pub email: Option<String>,
     pub cep: Option<String>,

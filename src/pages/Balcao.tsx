@@ -530,7 +530,7 @@ function QuickEntry({ onBack }: { onBack: () => void }) {
         empresa_id: client.empresa_id || undefined,
         cliente_nome:
           client.nome || client.nome_fantasia || client.razao_social,
-        cliente_telefone: client.telefone,
+        cliente_telefone: client.telefone || undefined,
         cliente_email: client.email,
         responsavel_contato_id: responsavel?.id || undefined,
         responsavel_nome: responsavel?.nome || undefined,

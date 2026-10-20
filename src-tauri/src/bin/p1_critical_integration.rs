@@ -156,6 +156,8 @@ async fn main() -> Result<()> {
     })
     .await
     .map_err(|error| anyhow!(error))?;
+    assert_lista_tolera_telefone_nulo(&pool, empresa_id, &prefix, cliente.id).await?;
+    println!("P1_INTEGRATION_NULL_TELEFONE=ok");
     let contato = contatos::criar_cliente_contato(ClienteContatoInput {
         empresa_id,
         cliente_id: cliente.id,
@@ -177,7 +179,7 @@ async fn main() -> Result<()> {
         data_entrada: Utc::now().date_naive().to_string(),
         cliente_id: Some(cliente.id),
         cliente_nome: cliente.nome.clone(),
-        cliente_telefone: Some(cliente.telefone.clone()),
+        cliente_telefone: cliente.telefone.clone(),
         cliente_email: cliente.email.clone(),
         empresa_id: Some(empresa_id),
         responsavel_contato_id: Some(contato.id),
@@ -967,6 +969,84 @@ async fn main() -> Result<()> {
         .context("cleanup conflicting company failed")?;
 
     Ok(())
+}
+
+/// Um cliente com `telefone` NULL não pode derrubar a lista nem a busca.
+/// `email` e `telefone_secundario` já são opcionais e entram no mesmo assert.
+async fn assert_lista_tolera_telefone_nulo(
+    pool: &sqlx::PgPool,
+    empresa_id: i32,
+    prefix: &str,
+    cliente_com_telefone_id: i32,
+) -> Result<()> {
+    let nome = format!("{prefix} Sem Telefone");
+    let documento = format!(
+        "{:011}",
+        (Utc::now().timestamp_millis() + 97).rem_euclid(100_000_000_000)
+    );
+    let id: i32 = sqlx::query_scalar(
+        "INSERT INTO clientes (
+            empresa_id, nome, tipo_pessoa, documento, cpf_cnpj,
+            telefone, telefone_secundario, email, ativo
+         ) VALUES ($1, $2, 'PF', $3, $3, NULL, NULL, NULL, true)
+         RETURNING id",
+    )
+    .bind(empresa_id)
+    .bind(&nome)
+    .bind(&documento)
+    .fetch_one(pool)
+    .await
+    .context("insert client with NULL telefone failed")?;
+
+    let outcome = async {
+        let lista = clientes::listar_clientes(Some(0), None)
+            .await
+            .map_err(|error| anyhow!("listar_clientes failed with a NULL telefone row: {error}"))?;
+        let nulo = lista.iter().find(|row| row.id == id).ok_or_else(|| {
+            anyhow!("client with NULL telefone missing from list")
+        })?;
+        if nulo.telefone.is_some() || nulo.telefone_secundario.is_some() || nulo.email.is_some() {
+            return Err(anyhow!(
+                "NULL contact fields did not decode as None: telefone={:?} secundario={:?} email={:?}",
+                nulo.telefone,
+                nulo.telefone_secundario,
+                nulo.email
+            ));
+        }
+        if !lista.iter().any(|row| row.id == cliente_com_telefone_id) {
+            return Err(anyhow!("NULL telefone row hid the rest of the client list"));
+        }
+
+        let busca = clientes::listar_clientes(Some(0), Some(nome.clone()))
+            .await
+            .map_err(|error| anyhow!("search failed with a NULL telefone row: {error}"))?;
+        if !busca.iter().any(|row| row.id == id && row.telefone.is_none()) {
+            return Err(anyhow!("search did not return the client with NULL telefone"));
+        }
+
+        let pagina = clientes::listar_clientes_paginados(Some(0), Some(nome))
+            .await
+            .map_err(|error| anyhow!("paginated search failed with a NULL telefone row: {error}"))?;
+        if !pagina.items.iter().any(|row| row.id == id) {
+            return Err(anyhow!("paginated search did not return the client with NULL telefone"));
+        }
+
+        let buscado = clientes::buscar_cliente(id)
+            .await
+            .map_err(|error| anyhow!("buscar_cliente failed with NULL telefone: {error}"))?;
+        if buscado.id != id || buscado.telefone.is_some() || buscado.email.is_some() {
+            return Err(anyhow!("buscar_cliente did not tolerate NULL telefone"));
+        }
+        Ok(())
+    }
+    .await;
+
+    sqlx::query("DELETE FROM clientes WHERE id = $1")
+        .bind(id)
+        .execute(pool)
+        .await
+        .context("cleanup NULL telefone client failed")?;
+    outcome
 }
 
 async fn assert_approval_state(

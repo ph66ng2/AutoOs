@@ -66,7 +66,7 @@ import {
 import { useSensitiveAccess } from "@/hooks/useSensitiveAccess";
 import { ErrorAlert } from "@/components/ui/error-alert";
 import { PaginationControls } from "@/components/ui/pagination-controls";
-import { nomeExibicaoCliente, documentoExibicaoCliente } from "@/components/clientes/cliente-display-utils";
+import { nomeExibicaoCliente, documentoExibicaoCliente, telefoneExibicaoCliente } from "@/components/clientes/cliente-display-utils";
 import { ClientesStatusBadge } from "@/pages/clientes/ClientesStatusBadge";
 import {
   totalAbasClientes,
@@ -482,7 +482,7 @@ export default function Clientes() {
                           </div>
                           <div className="min-w-0">
                             <dt className="text-xs text-muted-foreground">Telefone</dt>
-                            <dd className="break-all">{c.telefone ? formatarTelefone(c.telefone) : "—"}</dd>
+                            <dd className="break-all">{telefoneExibicaoCliente(c.telefone)}</dd>
                             {c.telefone_secundario && (
                               <dd className="break-all text-xs text-muted-foreground">{formatarTelefone(c.telefone_secundario)}</dd>
                             )}
