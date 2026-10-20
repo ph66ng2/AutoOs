@@ -358,8 +358,8 @@ export const db = {
   },
 
   /** Reabre o orçamento desfazendo pagamento, serviços e (com confirmação) baixas de estoque. */
-  async corrigirDecisaoOrcamento(input: CorrigirDecisaoInput): Promise<Equipamento> {
-    return invoke<Equipamento>("corrigir_decisao_orcamento", { input });
+  async corrigirDecisaoOrcamento(input: CorrigirDecisaoInput): Promise<Equipamento & { portal?: PortalAjusteInfo }> {
+    return invoke<Equipamento & { portal?: PortalAjusteInfo }>("corrigir_decisao_orcamento", { input });
   },
 
   async gerarQrLinkStatusPublico(url: string): Promise<string> {

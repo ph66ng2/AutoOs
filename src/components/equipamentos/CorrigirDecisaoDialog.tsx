@@ -4,14 +4,15 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
 import { db } from "@/lib/db";
-import type { AnaliseCorrecaoDecisao, Equipamento, ModoCorrecaoDecisao } from "@/types";
+import type { AnaliseCorrecaoDecisao, Equipamento, ModoCorrecaoDecisao, PortalAjusteInfo } from "@/types";
 
 type Props = {
   equipamento: Equipamento | null;
   open: boolean;
   onOpenChange: (open: boolean) => void;
   /** Chamado depois que o orçamento foi reaberto, para a página recarregar a lista. */
-  onCorrigido: () => void | Promise<void>;
+  /** Recebe o que aconteceu no portal (republicação automática ou aviso de falha). */
+  onCorrigido: (portal?: PortalAjusteInfo) => void | Promise<void>;
 };
 
 const MOTIVO_MINIMO = 5;
@@ -76,7 +77,7 @@ export function CorrigirDecisaoDialog({ equipamento, open, onOpenChange, onCorri
     setBusy(true);
     setError(null);
     try {
-      await db.corrigirDecisaoOrcamento({
+      const resultado = await db.corrigirDecisaoOrcamento({
         equipamento_id: equipamento.id,
         expected_updated_em: equipamento.atualizado_em,
         motivo: motivo.trim(),
@@ -84,7 +85,7 @@ export function CorrigirDecisaoDialog({ equipamento, open, onOpenChange, onCorri
         modo,
       });
       onOpenChange(false);
-      await onCorrigido();
+      await onCorrigido(resultado?.portal);
     } catch (cause) {
       setError(mensagemErro(cause, "A correção não foi concluída."));
     } finally {

@@ -2794,10 +2794,16 @@ export default function Equipamentos() {
         equipamento={corrigirDecisaoAlvo}
         open={corrigirDecisaoAlvo !== null}
         onOpenChange={(open) => { if (!open) setCorrigirDecisaoAlvo(null); }}
-        onCorrigido={async () => {
+        onCorrigido={async (portal) => {
           setSelecionado(null);
           await recarregar();
-          success("Equipamentos", "Orçamento reaberto. Envie ou registre uma nova decisão do cliente.", "Decisão corrigida");
+          // A republicação no portal é feita depois da correção; se falhar, a correção vale e o operador é avisado.
+          if (portal?.aviso) {
+            warning("Equipamentos", `Orçamento reaberto, mas o portal não foi atualizado: ${portal.aviso}`);
+          } else {
+            const portalTexto = portal?.mensagem ? ` ${portal.mensagem}` : " Envie ou registre uma nova decisão do cliente.";
+            success("Equipamentos", `Orçamento reaberto.${portalTexto}`, "Decisão corrigida");
+          }
         }}
       />
 

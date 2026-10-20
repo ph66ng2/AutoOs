@@ -59,7 +59,7 @@ describe("CorrigirDecisaoDialog", () => {
       devolver_estoque: true,
       modo: "RESTAURAR_ORIGINAL",
     }));
-    await waitFor(() => expect(onCorrigido).toHaveBeenCalled());
+    await waitFor(() => expect(onCorrigido).toHaveBeenCalledWith(undefined));
   });
 
   it("não pede decisão de estoque quando nada foi baixado", async () => {
@@ -156,5 +156,19 @@ describe("CorrigirDecisaoDialog", () => {
     expect(await screen.findByRole("alert")).toHaveTextContent(/alterado por outra pessoa/);
     expect(onOpenChange).not.toHaveBeenCalledWith(false);
     expect(onCorrigido).not.toHaveBeenCalled();
+  });
+
+  it("repassa o resultado do portal (aviso quando a republicação falha)", async () => {
+    mocks.analisar.mockResolvedValue(analise());
+    const portal = { acao: "NAO_PUBLICADA", aviso: "Perfil sem permissão para publicar no portal." };
+    mocks.corrigir.mockResolvedValue({ id: 5, portal });
+    const { onCorrigido } = abrir();
+
+    const botao = await screen.findByRole("button", { name: "Reabrir orçamento" });
+    fireEvent.change(screen.getByLabelText(/Motivo da correção/), { target: { value: "Cliente pediu para refazer" } });
+    fireEvent.click(screen.getByRole("checkbox"));
+    fireEvent.click(botao);
+
+    await waitFor(() => expect(onCorrigido).toHaveBeenCalledWith(portal));
   });
 });
