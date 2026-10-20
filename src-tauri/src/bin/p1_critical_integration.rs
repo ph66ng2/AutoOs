@@ -647,6 +647,7 @@ async fn main() -> Result<()> {
         Some(empresa_id),
         Some(true),
         None,
+        None,
     )
     .await
     .map_err(|error| anyhow!(error))?;
@@ -673,6 +674,7 @@ async fn main() -> Result<()> {
         Some("Faturamento corporativo em 15 dias".to_string()),
         Some(empresa_id),
         Some(true),
+        None,
         None,
     )
     .await

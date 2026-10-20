@@ -19,6 +19,7 @@ const mockListen = vi.hoisted(() => vi.fn(() => Promise.resolve(vi.fn())));
 const mockNavigate = vi.hoisted(() => vi.fn());
 
 const mockAtualizarServicosVerificacao = vi.hoisted(() => vi.fn());
+const mockAnalisarAjusteOrcamento = vi.hoisted(() => vi.fn());
 const mockAprovarOrcamento = vi.hoisted(() => vi.fn());
 const mockAtualizarStatusEquipamento = vi.hoisted(() => vi.fn());
 const mockBuscarVerificacao = vi.hoisted(() => vi.fn());
@@ -85,6 +86,7 @@ vi.mock("@/lib/db", () => ({
     buscarVerificacao: (...args: unknown[]) => mockBuscarVerificacao(...args),
     listarServicosCatalogoAtivos: (...args: unknown[]) => mockListarServicosCatalogoAtivos(...args),
     atualizarServicosVerificacao: (...args: unknown[]) => mockAtualizarServicosVerificacao(...args),
+    analisarAjusteOrcamento: (...args: unknown[]) => mockAnalisarAjusteOrcamento(...args),
     aprovarOrcamento: (...args: unknown[]) => mockAprovarOrcamento(...args),
     obterDecisaoOrcamento: () => Promise.resolve(null),
     atualizarStatusEquipamento: (...args: unknown[]) => mockAtualizarStatusEquipamento(...args),
@@ -268,6 +270,15 @@ describe("Equipamentos — Budget Divergence & Audit", () => {
     mockBuscarCliente.mockRejectedValue(new Error("no client"));
     mockListarServicosCatalogoAtivos.mockResolvedValue([]);
     mockAtualizarServicosVerificacao.mockResolvedValue(makeVerificacao());
+    mockAnalisarAjusteOrcamento.mockResolvedValue({
+      status: "VERIFICADO",
+      podePedirNovaAprovacao: false,
+      jaPublicado: false,
+      respostaPendente: null,
+      pecasBaixadas: [],
+      totalBaixado: 0,
+      exigeDecisaoEstoque: false,
+    });
     mockAprovarOrcamento.mockResolvedValue({ ...equipamentoVerificado, status: "APROVADO" });
     mockAtualizarStatusEquipamento.mockResolvedValue({ sucesso: true });
   });
@@ -540,7 +551,6 @@ describe("Equipamentos — Budget Divergence & Audit", () => {
     });
     expect(screen.queryByText("Prazo Aprovação")).not.toBeInTheDocument();
     fireEvent.change(screen.getByLabelText("Forma de pagamento"), { target: { value: "PIX" } });
-    fireEvent.click(screen.getByLabelText(/O cliente aprovou as mudanças/));
     await clicarConfirmarStatus();
     await act(async () => {
       fireEvent.click(screen.getByTestId("confirm-action"));
@@ -552,6 +562,49 @@ describe("Equipamentos — Budget Divergence & Audit", () => {
     });
     expect(mockAtualizarStatusEquipamento).not.toHaveBeenCalled();
     expect(equipamentoVerificado.status).toBe("EM_MANUTENCAO");
+  });
+
+  it("orçamento aprovado alterado: pergunta o que fazer e envia o modo escolhido", async () => {
+    equipamentoVerificado.status = "APROVADO";
+    mockBuscarVerificacao.mockResolvedValue(makeVerificacao());
+    mockAnalisarAjusteOrcamento.mockResolvedValue({
+      status: "APROVADO",
+      podePedirNovaAprovacao: true,
+      jaPublicado: true,
+      respostaPendente: null,
+      pecasBaixadas: [],
+      totalBaixado: 0,
+      exigeDecisaoEstoque: false,
+    });
+    mockAtualizarServicosVerificacao.mockResolvedValue({
+      ...makeVerificacao(),
+      portal: { acao: "NOVA_APROVACAO_PUBLICADA", versao: 2, mensagem: "Nova aprovação pedida: a versão 2 foi publicada no portal para o cliente responder." },
+    });
+    render(<Equipamentos />);
+    await waitFor(() => expect(screen.getByTestId("action-alterar_orcamento")).toBeInTheDocument());
+    await act(async () => {
+      fireEvent.click(screen.getByTestId("action-alterar_orcamento"));
+    });
+    await waitFor(() => expect(screen.getByText(/O status atual do equipamento será mantido/i)).toBeInTheDocument());
+
+    await alterarValorOrcamento(250);
+    await clicarConfirmarStatus();
+    await act(async () => {
+      fireEvent.click(screen.getByTestId("confirm-cancel"));
+    });
+
+    await waitFor(() => expect(screen.getByText("Este orçamento já foi aprovado")).toBeInTheDocument());
+    expect(mockAtualizarServicosVerificacao).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByLabelText(/Pedir nova aprovação ao cliente/));
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Salvar alteração" }));
+    });
+
+    await waitFor(() => expect(mockAtualizarServicosVerificacao).toHaveBeenCalledTimes(1));
+    const [input] = mockAtualizarServicosVerificacao.mock.calls[0];
+    expect(input.opcoes).toEqual({ modoAprovado: "NOVA_APROVACAO", devolverEstoque: false });
+    expect(input.cliente_aprovou_alteracao).toBe(false);
+    expect(input.forma_pagamento_codigo).toBeUndefined();
   });
 
   it("mantém Aprovar e Reprovar visíveis e move Alterar Orçamento para o menu", async () => {

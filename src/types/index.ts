@@ -260,6 +260,44 @@ export interface AnaliseCorrecaoDecisao {
   exigeDecisaoEstoque: boolean;
 }
 
+/** Orçamento já aprovado e alterado: segue aprovado ou pede nova aprovação ao cliente. */
+export type ModoAjusteAprovado = "SEM_NOVA_APROVACAO" | "NOVA_APROVACAO";
+
+/** Escolhas do operador ao salvar a alteração do orçamento. */
+export interface OpcoesAjusteOrcamento {
+  modoAprovado?: ModoAjusteAprovado;
+  /** Confirma a devolução ao estoque das peças já baixadas (nova aprovação). */
+  devolverEstoque?: boolean;
+  /** Confirma que a nova versão anula a resposta do cliente ainda não aplicada. */
+  confirmarRespostaPendente?: boolean;
+}
+
+export interface RespostaPendenteAjuste {
+  decisao: "APROVAR" | "RECUSAR";
+  contato?: string | null;
+  registradaEm: string;
+}
+
+/** O que o operador precisa saber antes de salvar uma alteração no orçamento → Rust: analisar_ajuste_orcamento */
+export interface AnaliseAjusteOrcamento {
+  status: string;
+  podePedirNovaAprovacao: boolean;
+  jaPublicado: boolean;
+  versaoAberta?: number | null;
+  respostaPendente?: RespostaPendenteAjuste | null;
+  pecasBaixadas: PecaBaixadaInfo[];
+  totalBaixado: number;
+  exigeDecisaoEstoque: boolean;
+}
+
+/** O que aconteceu no portal por causa do ajuste (textos prontos para o operador). */
+export interface PortalAjusteInfo {
+  acao: "NENHUMA" | "VERSAO_PUBLICADA" | "NOVA_APROVACAO_PUBLICADA" | "VALOR_ATUALIZADO" | "NAO_PUBLICADA";
+  versao?: number | null;
+  mensagem?: string | null;
+  aviso?: string | null;
+}
+
 /** RESTAURAR_ORIGINAL volta à versão enviada ao cliente; MANTER_ATUAL desfaz só a decisão. */
 export type ModoCorrecaoDecisao = "RESTAURAR_ORIGINAL" | "MANTER_ATUAL";
 
@@ -1022,6 +1060,7 @@ export interface AjusteOrcamentoInput {
   divergence?: boolean;
   cliente_aprovou_alteracao?: boolean;
   expected_updated_em?: string;
+  opcoes?: OpcoesAjusteOrcamento;
 }
 
 export interface ConsumoOrcamento {

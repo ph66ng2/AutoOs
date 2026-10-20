@@ -60,6 +60,8 @@ import type {
   PostgresRestoreResult,
   PostgresBackupToolsStatus,
   AnaliseCorrecaoDecisao,
+  AnaliseAjusteOrcamento,
+  PortalAjusteInfo,
   CorrigirDecisaoInput,
   DecisaoOrcamentoInfo,
   EstadoPortal,
@@ -755,7 +757,7 @@ export const db = {
   async atualizarServicosVerificacao(
     input: AjusteOrcamentoInput,
     profileId: number
-  ): Promise<Verificacao> {
+  ): Promise<Verificacao & { portal?: PortalAjusteInfo }> {
     const payload = {
       equipamentoId: input.equipamento_id,
       servicosJson: JSON.stringify(input.servicos),
@@ -773,10 +775,16 @@ export const db = {
         ? {}
         : { formaPagamentoDetalhe: input.forma_pagamento_detalhe }),
       ...(input.empresa_id === undefined ? {} : { empresaId: input.empresa_id }),
+      ...(input.opcoes === undefined ? {} : { opcoes: input.opcoes }),
     };
-    return invoke<Verificacao>("atualizar_servicos_verificacao", {
+    return invoke<Verificacao & { portal?: PortalAjusteInfo }>("atualizar_servicos_verificacao", {
       ...payload,
     });
+  },
+
+  /** Situação do portal e do estoque antes de salvar uma alteração no orçamento → Rust: analisar_ajuste_orcamento */
+  async analisarAjusteOrcamento(equipamentoId: number): Promise<AnaliseAjusteOrcamento> {
+    return invoke<AnaliseAjusteOrcamento>("analisar_ajuste_orcamento", { equipamentoId });
   },
 
   /** Aprova orçamento, pagamento e status APROVADO atomicamente no backend. */
