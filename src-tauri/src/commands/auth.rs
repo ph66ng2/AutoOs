@@ -1978,7 +1978,7 @@ fn gerar_codigo_acesso() -> String {
         .collect()
 }
 
-fn normalizar_codigo_acesso(raw: &str) -> String {
+pub(crate) fn normalizar_codigo_acesso(raw: &str) -> String {
     raw.chars()
         .filter(|character| character.is_ascii_alphanumeric())
         .map(|character| character.to_ascii_uppercase())
@@ -2018,7 +2018,7 @@ fn validar_personalizacao(input: &PersonalizacaoPerfilInput) -> Result<(), Strin
 /// Dois administradores podem emitir ao mesmo tempo para o mesmo perfil: a linha do perfil é
 /// travada para serializar as emissões (a segunda espera, revoga o código da primeira e emite
 /// o seu) e o índice único parcial garante, no banco, no máximo um código aberto por perfil.
-async fn emitir_codigo_primeiro_acesso(
+pub(crate) async fn emitir_codigo_primeiro_acesso(
     tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
     profile_id: i32,
     actor_id: i32,
@@ -2143,33 +2143,15 @@ pub async fn gerar_codigo_primeiro_acesso(profile_id: i32, admin_pin: String) ->
     })
 }
 
-/// Usa o código para ativar o perfil neste computador: grava o PIN escolhido pela
-/// pessoa no keyring local e abre a sessão. Não exige sessão prévia.
-///
-/// O código é consumido numa transação que só é confirmada depois de o PIN estar no
-/// keyring: se o keyring falhar, a transação volta e o código continua valendo para uma
-/// nova tentativa. Palpites errados são contados no banco e revogam o código ao atingir
-/// `CODIGO_MAX_TENTATIVAS`.
-#[tauri::command]
-#[instrument(skip_all)]
-pub async fn ativar_perfil_com_codigo(
-    profile_id: i32,
-    codigo: String,
-    pin: String,
-    confirm_pin: String,
-) -> Result<SensitiveAccessStatus, String> {
-    if pin.trim().is_empty() {
-        return Err("Crie um PIN de 4 a 8 dígitos.".to_string());
-    }
-    validate_pin_format(&pin)?;
-    if pin.trim() != confirm_pin.trim() {
-        return Err("Os PINs não conferem.".to_string());
-    }
-
-    let record = fetch_profile_record_by_id(profile_id).await?;
-    let summary = to_profile_summary(record)?;
-    let codigo = normalizar_codigo_acesso(&codigo);
-    let pool = get_pool().await.map_err(|e| e.to_string())?;
+/// Confere o código sem consumi-lo. Palpite errado é contado no banco e revoga o código ao
+/// atingir `CODIGO_MAX_TENTATIVAS`. A transação é curta e termina aqui, antes de qualquer
+/// espera pelo keyring, para não deixar a linha do código travada.
+pub(crate) async fn conferir_codigo_primeiro_acesso(
+    pool: &PgPool,
+    summary: &SecurityProfileSummary,
+    codigo: &str,
+) -> Result<i32, String> {
+    let profile_id = summary.id;
     let mut tx = pool.begin().await.map_err(super::operator_errors::mapear_erro_sql)?;
 
     let abertos: Vec<(i32, String)> = sqlx::query_as(
@@ -2211,7 +2193,7 @@ pub async fn ativar_perfil_com_codigo(
         } else {
             "Código de primeiro acesso inválido ou expirado"
         };
-        record_security_event("ACCESS_CODE_FAILED", Some(&summary), detalhe, false).await;
+        record_security_event("ACCESS_CODE_FAILED", Some(summary), detalhe, false).await;
         return Err(if revogados > 0 {
             "Muitas tentativas inválidas: o código foi bloqueado. Peça um novo código ao administrador.".to_string()
         } else {
@@ -2219,21 +2201,107 @@ pub async fn ativar_perfil_com_codigo(
         });
     };
 
-    sqlx::query("UPDATE codigos_primeiro_acesso SET usado_em = NOW() WHERE id = $1")
-        .bind(codigo_id)
-        .execute(&mut *tx)
-        .await
-        .map_err(super::operator_errors::mapear_erro_sql)?;
+    // Nada mudou: só libera a linha.
+    tx.rollback().await.map_err(super::operator_errors::mapear_erro_sql)?;
+    Ok(codigo_id)
+}
 
-    // Se o keyring recusar ou não responder em 30 s, a transação volta (rollback) e o código
-    // continua valendo. Se o cofre responder depois do limite, o PIN fica gravado neste
-    // computador sem o código ter sido consumido; a pessoa usa o mesmo código para repetir.
-    let pin_para_gravar = pin.clone();
-    if let Err(motivo) = run_keyring_blocking(KEYRING_WRITE_TIMEOUT, move || store_profile_pin(profile_id, &pin_para_gravar)).await {
-        record_security_event("ACCESS_CODE_FAILED", Some(&summary), "Falha ao gravar o PIN no cofre de senhas do sistema; o código continua válido", false).await;
-        return Err(format!("{motivo} O código continua válido."));
+/// Consome o código com uma única instrução condicional. Devolve `false` se ele já foi usado,
+/// revogado ou expirou desde a conferência (por exemplo, usado em outro computador).
+pub(crate) async fn consumir_codigo_primeiro_acesso(pool: &PgPool, codigo_id: i32) -> Result<bool, String> {
+    let result = sqlx::query(
+        "UPDATE codigos_primeiro_acesso SET usado_em = NOW()
+         WHERE id = $1 AND usado_em IS NULL AND revogado_em IS NULL AND expira_em > NOW()",
+    )
+    .bind(codigo_id)
+    .execute(pool)
+    .await
+    .map_err(super::operator_errors::mapear_erro_sql)?;
+    Ok(result.rows_affected() == 1)
+}
+
+fn delete_profile_pin_record(profile_id: i32) -> Result<(), String> {
+    let entry = get_keyring_entry(&profile_keyring_user(profile_id))?;
+    match entry.delete_password() {
+        Ok(()) | Err(keyring::Error::NoEntry) => Ok(()),
+        Err(e) => {
+            error!("Erro ao remover PIN do acesso sensível: {}", e);
+            Err(KEYRING_UNAVAILABLE_MESSAGE.to_string())
+        }
     }
-    tx.commit().await.map_err(super::operator_errors::mapear_erro_sql)?;
+}
+
+/// Devolve o keyring ao estado anterior à ativação (PIN antigo, ou nenhum PIN).
+pub(crate) async fn restaurar_pin_anterior(profile_id: i32, anterior: Option<StoredSensitivePin>) {
+    let resultado = run_keyring_blocking(KEYRING_WRITE_TIMEOUT, move || match anterior {
+        Some(record) => store_profile_pin_record(profile_id, &record),
+        None => delete_profile_pin_record(profile_id),
+    })
+    .await;
+    if let Err(motivo) = resultado {
+        warn!("Não foi possível desfazer a gravação do PIN do perfil {}: {}", profile_id, motivo);
+    }
+}
+
+/// Usa o código para ativar o perfil neste computador: grava o PIN escolhido pela
+/// pessoa no keyring local e abre a sessão. Não exige sessão prévia.
+///
+/// Ordem: (1) confere o código numa transação curta; (2) grava o PIN no keyring, sem nenhuma
+/// transação aberta, com limite de 30 s; (3) consome o código com um UPDATE condicional. Se o
+/// keyring recusar ou demorar, o código continua valendo. Se o código deixar de valer entre
+/// (1) e (3), o PIN anterior volta ao keyring. Palpites errados são contados no banco.
+#[tauri::command]
+#[instrument(skip_all)]
+pub async fn ativar_perfil_com_codigo(
+    profile_id: i32,
+    codigo: String,
+    pin: String,
+    confirm_pin: String,
+) -> Result<SensitiveAccessStatus, String> {
+    if pin.trim().is_empty() {
+        return Err("Crie um PIN de 4 a 8 dígitos.".to_string());
+    }
+    validate_pin_format(&pin)?;
+    if pin.trim() != confirm_pin.trim() {
+        return Err("Os PINs não conferem.".to_string());
+    }
+
+    let record = fetch_profile_record_by_id(profile_id).await?;
+    let summary = to_profile_summary(record)?;
+    let codigo = normalizar_codigo_acesso(&codigo);
+    let pool = get_pool().await.map_err(|e| e.to_string())?;
+
+    let codigo_id = conferir_codigo_primeiro_acesso(&pool, &summary, &codigo).await?;
+
+    // Uma única chamada ao keyring, com um só limite de tempo: guarda o PIN anterior (recuperação
+    // de PIN) para voltar se o código não puder ser consumido e grava o novo.
+    let pin_para_gravar = pin.clone();
+    let anterior = match run_keyring_blocking(KEYRING_WRITE_TIMEOUT, move || {
+        let anterior = load_profile_pin(profile_id).ok().flatten();
+        store_profile_pin(profile_id, &pin_para_gravar)?;
+        Ok(anterior)
+    })
+    .await
+    {
+        Ok(anterior) => anterior,
+        Err(motivo) => {
+            record_security_event("ACCESS_CODE_FAILED", Some(&summary), "Falha ao gravar o PIN no cofre de senhas do sistema; o código continua válido", false).await;
+            return Err(format!("{motivo} O código continua válido."));
+        }
+    };
+
+    match consumir_codigo_primeiro_acesso(&pool, codigo_id).await {
+        Ok(true) => {}
+        Ok(false) => {
+            restaurar_pin_anterior(profile_id, anterior).await;
+            record_security_event("ACCESS_CODE_FAILED", Some(&summary), "O código deixou de valer durante a ativação", false).await;
+            return Err("Este código não vale mais (já foi usado, revogado ou expirou). Peça um novo código ao administrador.".to_string());
+        }
+        Err(erro) => {
+            restaurar_pin_anterior(profile_id, anterior).await;
+            return Err(erro);
+        }
+    }
 
     mark_profile_pin_required(profile_id).await?;
     reset_unlock_attempts(profile_id);
