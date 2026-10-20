@@ -221,11 +221,13 @@ async fn main() -> Result<()> {
 
     // ─── T7: alterar o orçamento depois de publicado/aprovado e portal automático ───────────────
     produtos::registrar_movimentacao_estoque(MovimentacaoEstoqueInput { produto_id:produto.id,tipo:"ENTRADA".into(),quantidade:40,origem:"COMPRA".into(),referencia:None }).await.map_err(|e| anyhow!(e))?;
-    let cliente: i32 = sqlx::query_scalar("INSERT INTO clientes (empresa_id, nome, tipo_pessoa, documento) VALUES ($1,'Cliente T7','PJ','11222333000181') RETURNING id")
-        .bind(empresa).fetch_one(&pool).await?;
+    // Documento e sessão únicos por execução (documento ativo e token são únicos no banco inteiro).
+    let documento_t7 = format!("{:0>14}", &suffix[suffix.len().saturating_sub(14)..]);
+    let cliente: i32 = sqlx::query_scalar("INSERT INTO clientes (empresa_id, nome, tipo_pessoa, documento) VALUES ($1,'Cliente T7','PJ',$2) RETURNING id")
+        .bind(empresa).bind(&documento_t7).fetch_one(&pool).await?;
     let contato: i32 = sqlx::query_scalar("INSERT INTO cliente_contatos (empresa_id, cliente_id, nome, telefone, portal_acesso) VALUES ($1,$2,'Ana T7','71988887777','DECIDIR') RETURNING id")
         .bind(empresa).bind(cliente).fetch_one(&pool).await?;
-    let hash = "7".repeat(64);
+    let hash = format!("{:7>64}", suffix);
     sqlx::query("INSERT INTO portal_sessoes (token_hash, empresa_id, cliente_id, contato_id, expira_em, verificada_em, metodo) VALUES ($1,$2,$3,$4, now() + INTERVAL '1 hour', now(), 'SENHA')")
         .bind(&hash).bind(empresa).bind(cliente).bind(contato).execute(&pool).await?;
     let ajustar = |eq: i32, total: f64, cliente_aprovou: Option<bool>, opcoes: Option<verificacoes::OpcoesAjusteOrcamento>| {
