@@ -73,7 +73,7 @@ describe("primeiro acesso", () => {
     }));
 
     expect(await screen.findByRole("heading", { name: "Tudo pronto, Juliana" })).toBeInTheDocument();
-    expect(screen.getByText("Links de acompanhamento")).toBeInTheDocument();
+    expect(screen.getByText("Portal do Cliente e links de acompanhamento")).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "Começar tour" }));
     expect(onFinish).toHaveBeenCalledWith("tour");
     expect(onStatusChange).toHaveBeenCalledTimes(2);

@@ -252,6 +252,7 @@ async fn run_client_concurrency(cliente_id: i32, cliente: &commands::types::Clie
         uf: cliente.uf.clone(),
         receber_email: cliente.receber_email,
         receber_whatsapp: cliente.receber_whatsapp,
+        exige_ordem_compra: cliente.exige_ordem_compra,
         observacoes: Some("p1_concurrency_integration:client-a".to_string()),
         atualizado_em: base_token.clone(),
     };
@@ -277,6 +278,7 @@ async fn run_client_concurrency(cliente_id: i32, cliente: &commands::types::Clie
         uf: cliente.uf.clone(),
         receber_email: cliente.receber_email,
         receber_whatsapp: cliente.receber_whatsapp,
+        exige_ordem_compra: cliente.exige_ordem_compra,
         observacoes: Some("p1_concurrency_integration:client-b".to_string()),
         atualizado_em: base_token,
     };

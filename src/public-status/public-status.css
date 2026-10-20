@@ -402,3 +402,108 @@ h1 {
   .portal-decision-total strong { color: #102e50; font-size: 1.05rem; }
   .portal-shell:has(.portal-decision-bar) { padding-bottom: 5.5rem; }
 }
+
+/* ─── Etapas com data ao passar o mouse / tocar ─── */
+.timeline-step { display: flex; flex-direction: column; align-items: center; gap: 0.55rem; width: 100%; min-width: 0; padding: 0; border: 0; border-radius: 0.4rem; color: inherit; background: none; font: inherit; text-align: inherit; cursor: pointer; overflow-wrap: anywhere; }
+.timeline-step:focus-visible { outline: 3px solid #8bbce7; outline-offset: 2px; }
+.timeline-when { position: absolute; z-index: 5; bottom: calc(100% + 0.35rem); left: 50%; width: 7.5rem; padding: 0.4rem 0.55rem; border-radius: 0.45rem; color: #fff; background: #172b4d; font-size: 0.72rem; font-weight: 600; line-height: 1.3; text-align: center; transform: translateX(-50%); opacity: 0; visibility: hidden; transition: opacity 0.12s; pointer-events: none; }
+.timeline li:hover > .timeline-when,
+.timeline li:focus-within > .timeline-when,
+.timeline li.is-open > .timeline-when { opacity: 1; visibility: visible; }
+.timeline-when.is-static { position: static; width: auto; color: #66788c; background: none; opacity: 1; visibility: visible; transform: none; padding: 0; }
+.concluido-sub { margin: 0.35rem 0 0 1.55rem; color: #526b89; font-weight: 600; }
+.current-status.is-concluido h1 { color: #237249; }
+
+@media (max-width: 480px) {
+  .timeline-step { flex-direction: row; gap: 0.75rem; text-align: left; align-items: flex-start; }
+  .timeline-when { position: static; width: auto; margin: -0.1rem 0 0.2rem 2.1rem; padding: 0; color: #66788c; background: none; font-weight: 500; text-align: left; transform: none; display: none; opacity: 1; visibility: visible; }
+  .timeline li.is-open > .timeline-when { display: block; }
+  .timeline li:has(.timeline-when) { flex-wrap: wrap; }
+  .concluido-sub { margin-left: 1.55rem; }
+}
+
+/* Computador: linha do tempo vertical e limpa, como no celular. */
+@media (min-width: 1000px) {
+  .portal-shell .timeline { margin-top: 1.5rem; padding-top: 1.25rem; }
+  .portal-shell .timeline ol { grid-template-columns: 1fr; gap: 0; }
+  .portal-shell .timeline li { flex-direction: row; gap: 0.85rem; min-height: 2.6rem; align-items: flex-start; text-align: left; font-size: 0.92rem; }
+  .portal-shell .timeline li:not(:nth-child(6)):not(.is-deviation)::after { top: 1.7rem; left: 0.67rem; width: 2px; height: calc(100% - 1.4rem); }
+  .portal-shell .timeline li.is-deviation { grid-column: auto; margin-top: 0.25rem; }
+  .portal-shell .timeline-step { flex-direction: row; align-items: flex-start; gap: 0.85rem; width: auto; }
+  .portal-shell .timeline-when { bottom: auto; top: -0.2rem; left: 12rem; width: auto; white-space: nowrap; transform: none; }
+  .portal-shell .timeline-note { margin-top: 0.5rem; }
+}
+
+/* ─── Fotos ─── */
+.portal-fotos { margin-top: 1.5rem; padding-top: 1.25rem; border-top: 1px solid #e1e8f0; }
+.portal-fotos h2, .portal-historico h2 { margin: 0; color: #102e50; font-size: 1.15rem; }
+.portal-fotos.is-destaque { margin-top: 0; padding: 1rem 1.1rem; border: 1px solid #f0d9ae; border-radius: 0.85rem; background: #fffaf0; }
+.portal-fotos-grupo h3 { margin: 0.9rem 0 0.4rem; color: #435b76; font-size: 0.85rem; font-weight: 700; }
+.portal-fotos-grupo h3 span { color: #66788c; font-weight: 500; }
+.portal-fotos-grupo ul { list-style: none; display: flex; flex-wrap: wrap; gap: 0.5rem; margin: 0; padding: 0; }
+.portal-foto-miniatura { display: block; width: 6rem; height: 6rem; padding: 0; border: 1px solid #dce5f0; border-radius: 0.55rem; background: #edf2f8; overflow: hidden; cursor: zoom-in; }
+.portal-foto-miniatura:focus-visible { outline: 3px solid #8bbce7; outline-offset: 2px; }
+.portal-foto-miniatura img { display: block; width: 100%; height: 100%; object-fit: cover; }
+.portal-lightbox { position: fixed; inset: 0; z-index: 50; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 0.75rem; padding: 1rem; background: rgb(10 20 35 / 90%); }
+.portal-lightbox-bar { display: flex; align-items: center; justify-content: space-between; gap: 1rem; width: min(100%, 60rem); color: #fff; font-size: 0.9rem; }
+.portal-lightbox-img { display: block; width: auto; height: auto; max-width: min(100%, 60rem); max-height: calc(100vh - 11rem); object-fit: contain; border-radius: 0.5rem; background: #fff; }
+.portal-lightbox-nav { display: flex; gap: 0.75rem; }
+.portal-lightbox button { min-height: 2.75rem; padding: 0.4rem 1rem; border: 1px solid rgb(255 255 255 / 45%); border-radius: 0.6rem; color: #fff; background: rgb(255 255 255 / 12%); font-weight: 700; cursor: pointer; }
+.portal-lightbox button:focus-visible { outline: 3px solid #8bbce7; outline-offset: 2px; }
+
+/* ─── Histórico ─── */
+.portal-historico { margin-top: 1.5rem; padding-top: 1.25rem; border-top: 1px solid #e1e8f0; }
+.portal-historico ol { list-style: none; display: grid; gap: 0.6rem; margin: 0.75rem 0 0.25rem; padding: 0; }
+.portal-hist-item { padding: 0.7rem 0.9rem; border-left: 4px solid #b9c9da; border-radius: 0.5rem; background: #f6f8fb; }
+.portal-hist-item.is-aceite { border-left-color: #318768; background: #eef8f3; }
+.portal-hist-item.is-recusa { border-left-color: #b33a40; background: #fdf0f0; }
+.portal-hist-item.is-inativo { opacity: 0.75; }
+.portal-hist-head { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 0.25rem 1rem; color: #102e50; }
+.portal-hist-item.is-aceite .portal-hist-head strong { color: #1f5a3b; }
+.portal-hist-item.is-recusa .portal-hist-head strong { color: #a12a31; }
+.portal-hist-versao { color: #526b89; font-size: 0.82rem; }
+.portal-hist-item p { margin: 0.25rem 0 0; font-size: 0.85rem; line-height: 1.5; color: #435b76; overflow-wrap: anywhere; }
+.portal-hist-msg { padding: 0.4rem 0.6rem; border-radius: 0.4rem; background: rgb(255 255 255 / 75%); white-space: pre-wrap; }
+.portal-hist-situacao { font-weight: 650; }
+
+/* ─── Pronto para retirada / concluído / documentos ─── */
+.portal-destaque { margin-top: 1.5rem; padding: 1.1rem 1.2rem; border-radius: 0.85rem; }
+.portal-detail-side > .portal-destaque:first-child { margin-top: 0; }
+.portal-destaque h2 { margin: 0.5rem 0 0; color: #102e50; font-size: 1.2rem; }
+.portal-destaque.is-pronto { border: 1px solid #d8c6ee; background: #f8f3fd; }
+.portal-destaque.is-concluido { border: 1px solid #bfe0cf; background: #f1faf5; }
+.portal-destaque-pill { display: inline-block; padding: 0.2rem 0.7rem; border-radius: 999px; color: #5a2f8c; background: #e9dcf7; font-size: 0.8rem; font-weight: 750; }
+.portal-destaque-valor { display: flex; align-items: baseline; justify-content: space-between; gap: 1rem; margin: 0.75rem 0 0; color: #435b76; }
+.portal-destaque-valor strong { color: #102e50; font-size: 1.5rem; }
+.portal-valor-ajustado { margin: 0.35rem 0 0; }
+.portal-valor-atualizado { margin-top: 0.75rem; }
+.portal-endereco { display: grid; gap: 0.15rem; margin-top: 0.9rem; font-style: normal; color: #243d59; overflow-wrap: anywhere; }
+.portal-mapa { display: block; width: 100%; height: 14rem; margin: 0.9rem 0; border: 1px solid #dce5f0; border-radius: 0.65rem; background: #edf2f8; }
+.portal-destaque .portal-link-button { width: 100%; justify-content: center; }
+.portal-documentos { margin-top: 1.5rem; }
+.portal-documentos h3 { margin: 0 0 0.5rem; color: #102e50; font-size: 1.05rem; }
+.portal-documentos ul { list-style: none; display: flex; flex-wrap: wrap; gap: 0.5rem; margin: 0; padding: 0; }
+.portal-documentos.is-destaque { margin-top: 1rem; }
+.status-card.is-concluido { border-top: 4px solid #318768; }
+
+/* Computador: o visual de "checkout" (total e decisão) só aparece quando há o que decidir. */
+@media (min-width: 1000px) {
+  .portal-detail-side.is-decisao > .portal-quote { padding: 1.25rem; border: 2px solid #12619c; border-radius: 0.85rem; background: #fff; box-shadow: 0 0.75rem 2rem rgb(27 58 94 / 10%); }
+  .portal-detail-side:not(.is-decisao) .quote-total { font-size: 1rem; color: #435b76; }
+  .portal-detail-side:not(.is-decisao) .portal-quote { margin-top: 1.5rem; padding-top: 1.25rem; border-top: 1px solid #e1e8f0; }
+  .portal-detail-side:not(.is-decisao) > :first-child.portal-quote { margin-top: 0; padding-top: 0; border-top: 0; }
+}
+@media (max-width: 480px) {
+  .portal-mapa { height: 12rem; }
+  .portal-destaque { padding: 0.95rem 1rem; }
+}
+
+/* Decisão no computador: orçamento e botões primeiro, fotos logo abaixo. */
+@media (min-width: 1000px) {
+  .portal-detail-side.is-decisao { display: flex; flex-direction: column; }
+  .portal-detail-side.is-decisao > * { order: 2; }
+  .portal-detail-side.is-decisao > .portal-quote { order: 0; }
+  .portal-detail-side.is-decisao > .portal-fotos { order: 1; margin-top: 1.5rem; }
+}
+.portal-valor-linha { margin: 0.5rem 0 0; color: #7a4a05; font-size: 0.88rem; }
+.portal-destaque-valor + .portal-valor-nota { margin: 0.2rem 0 0; color: #66788c; font-size: 0.8rem; text-align: right; }

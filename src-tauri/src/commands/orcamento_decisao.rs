@@ -34,6 +34,8 @@ pub struct RespostaOrcamentoInfo {
     /// Motivo de a efetivação automática ter parado; a resposta segue pendente para a equipe.
     pub efetivacao_erro: Option<String>,
     pub efetivacao_falhou_em: Option<String>,
+    /// Ordem de compra informada pelo cliente ao aprovar no portal.
+    pub ordem_compra: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -47,6 +49,9 @@ pub struct SolicitacaoOrcamentoInfo {
     pub tratada_em: Option<String>,
     /// Contato do portal que enviou (vazio para o link de decisão).
     pub contato: Option<String>,
+    /// Telefone e e-mail que o cliente deixou na solicitação para retorno.
+    pub contato_telefone: Option<String>,
+    pub contato_email: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -281,6 +286,177 @@ pub(crate) async fn obter_ou_criar_versao(
     Ok(VersaoCongelada { id, numero, valido_ate })
 }
 
+/// Resposta do cliente ainda não aplicada pela equipe na versão aberta do portal.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RespostaPendenteInfo {
+    /// `APROVAR` ou `RECUSAR`.
+    pub decisao: String,
+    pub contato: Option<String>,
+    pub registrada_em: String,
+}
+
+/// O que o portal tem hoje sobre o orçamento de um equipamento.
+pub(crate) struct SituacaoPortal {
+    /// Alguma versão já foi publicada (aberta ou encerrada) para este equipamento.
+    pub ja_publicado: bool,
+    pub versao_aberta: Option<i32>,
+    pub pendente: Option<RespostaPendenteInfo>,
+}
+
+/// Lê a situação do orçamento no portal. Com `travar`, bloqueia a versão aberta (serializa com
+/// `portal_registrar_resposta`), para a resposta conferida valer até o fim da transação.
+pub(crate) async fn situacao_portal(
+    tx: &mut Transaction<'_, Postgres>,
+    empresa_id: i32,
+    equipamento_id: i32,
+    travar: bool,
+) -> Result<SituacaoPortal, String> {
+    let map = super::operator_errors::mapear_erro_sql;
+    let sufixo = if travar { " FOR UPDATE" } else { "" };
+    let ultima = sqlx::query(sqlx::AssertSqlSafe(format!(
+        "SELECT id, versao, (encerrada_em IS NULL) AS aberta
+         FROM orcamento_versoes
+         WHERE equipamento_id = $1 AND empresa_id = $2
+         ORDER BY versao DESC
+         LIMIT 1{sufixo}"
+    )))
+    .bind(equipamento_id)
+    .bind(empresa_id)
+    .fetch_optional(&mut **tx)
+    .await
+    .map_err(map)?;
+    let Some(ultima) = ultima else {
+        return Ok(SituacaoPortal { ja_publicado: false, versao_aberta: None, pendente: None });
+    };
+    let aberta: bool = ultima.try_get("aberta").map_err(map)?;
+    if !aberta {
+        return Ok(SituacaoPortal { ja_publicado: true, versao_aberta: None, pendente: None });
+    }
+    let versao_id: i64 = ultima.try_get("id").map_err(map)?;
+    let versao: i32 = ultima.try_get("versao").map_err(map)?;
+    let resposta = sqlx::query(sqlx::AssertSqlSafe(format!(
+        "SELECT decisao, contato_nome, aplicada_em IS NOT NULL AS aplicada,
+                to_char(registrada_em AT TIME ZONE 'UTC', '{TS_FMT}') AS registrada_em
+         FROM orcamento_respostas
+         WHERE versao_id = $1
+         ORDER BY id DESC
+         LIMIT 1"
+    )))
+    .bind(versao_id)
+    .fetch_optional(&mut **tx)
+    .await
+    .map_err(map)?;
+    let pendente = match resposta {
+        Some(row) => {
+            let decisao: String = row.try_get("decisao").map_err(map)?;
+            let aplicada: bool = row.try_get("aplicada").map_err(map)?;
+            if is_final_decision(&decisao) && !aplicada {
+                Some(RespostaPendenteInfo {
+                    decisao,
+                    contato: row.try_get("contato_nome").map_err(map)?,
+                    registrada_em: row.try_get("registrada_em").map_err(map)?,
+                })
+            } else {
+                None
+            }
+        }
+        None => None,
+    };
+    Ok(SituacaoPortal { ja_publicado: true, versao_aberta: Some(versao), pendente })
+}
+
+/// Marca como desfeita (pela equipe) a resposta que o cliente deu na versão aberta e que ainda
+/// não foi aplicada: o orçamento mudou, então ela deixa de valer. O histórico só recebe um registro novo.
+pub(crate) async fn desfazer_resposta_pendente(
+    tx: &mut Transaction<'_, Postgres>,
+    empresa_id: i32,
+    equipamento_id: i32,
+    profile_id: i32,
+) -> Result<(), String> {
+    sqlx::query(
+        "INSERT INTO orcamento_respostas
+            (empresa_id, equipamento_id, versao_id, origem, decisao, registrada_por_profile_id, motivo)
+         SELECT v.empresa_id, v.equipamento_id, v.id, 'EQUIPE', 'DESFEITA', $3,
+                'Orçamento alterado pela equipe: a resposta anterior deixou de valer.'
+         FROM orcamento_versoes v
+         WHERE v.equipamento_id = $1 AND v.empresa_id = $2 AND v.encerrada_em IS NULL",
+    )
+    .bind(equipamento_id)
+    .bind(empresa_id)
+    .bind(profile_id)
+    .execute(&mut **tx)
+    .await
+    .map_err(super::operator_errors::mapear_erro_sql)?;
+    Ok(())
+}
+
+/// Publica o orçamento atual numa transação própria (depois de o ajuste já ter sido gravado).
+pub(crate) async fn publicar_versao_isolada(
+    pool: &PgPool,
+    empresa_id: i32,
+    equipamento_id: i32,
+    profile_id: i32,
+) -> Result<VersaoCongelada, String> {
+    let mut tx = pool.begin().await.map_err(super::operator_errors::mapear_erro_sql)?;
+    let versao = obter_ou_criar_versao(&mut tx, empresa_id, equipamento_id, profile_id).await?;
+    tx.commit().await.map_err(super::operator_errors::mapear_erro_sql)?;
+    Ok(versao)
+}
+
+/// O que o operador precisa saber antes de salvar uma alteração no orçamento.
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AnaliseAjusteOrcamento {
+    pub status: String,
+    /// Orçamento aprovado e ainda sem serviço em andamento: dá para pedir nova aprovação.
+    pub pode_pedir_nova_aprovacao: bool,
+    pub ja_publicado: bool,
+    pub versao_aberta: Option<i32>,
+    /// Salvar a alteração anula esta resposta (a nova versão substitui a antiga).
+    pub resposta_pendente: Option<RespostaPendenteInfo>,
+    pub pecas_baixadas: Vec<super::orcamento_correcao::PecaBaixadaInfo>,
+    pub total_baixado: i32,
+    /// Pedir nova aprovação devolve peças ao estoque: precisa de confirmação.
+    pub exige_decisao_estoque: bool,
+}
+
+#[tauri::command]
+#[instrument(skip_all, fields(equipamento_id = equipamento_id))]
+pub async fn analisar_ajuste_orcamento(equipamento_id: i32) -> Result<AnaliseAjusteOrcamento, String> {
+    let pool = get_pool().await.map_err(|error| error.to_string())?;
+    let empresa_id = require_active_session_company_id(&pool).await?;
+    let mut tx = pool.begin().await.map_err(super::operator_errors::mapear_erro_sql)?;
+    let (status, verificacao_id): (String, Option<i32>) = sqlx::query_as(
+        "SELECT COALESCE(e.status, ''),
+                (SELECT v.id FROM verificacoes v WHERE v.equipamento_id = e.id AND v.empresa_id = e.empresa_id
+                 ORDER BY v.id DESC LIMIT 1)
+         FROM equipamentos e WHERE e.id = $1 AND e.empresa_id = $2",
+    )
+    .bind(equipamento_id)
+    .bind(empresa_id)
+    .fetch_optional(&mut *tx)
+    .await
+    .map_err(super::operator_errors::mapear_erro_sql)?
+    .ok_or_else(|| "Equipamento não encontrado na empresa do perfil ativo.".to_string())?;
+    let situacao = situacao_portal(&mut tx, empresa_id, equipamento_id, false).await?;
+    let pecas = match verificacao_id {
+        Some(id) => super::orcamento_correcao::pecas_baixadas(&mut tx, empresa_id, id).await?,
+        None => Vec::new(),
+    };
+    let total_baixado: i32 = pecas.iter().map(|peca| peca.quantidade).sum();
+    Ok(AnaliseAjusteOrcamento {
+        pode_pedir_nova_aprovacao: status == "APROVADO",
+        status,
+        ja_publicado: situacao.ja_publicado,
+        versao_aberta: situacao.versao_aberta,
+        resposta_pendente: situacao.pendente,
+        exige_decisao_estoque: total_baixado > 0,
+        total_baixado,
+        pecas_baixadas: pecas,
+    })
+}
+
 /// Respostas pelo portal ligadas para a empresa (exige também o portal ligado).
 async fn aceite_online_ativo(pool: &PgPool, empresa_id: i32) -> Result<bool, String> {
     let enabled: Option<bool> = sqlx::query_scalar("SELECT public.autoos_portal_respostas_ligadas($1)")
@@ -305,6 +481,7 @@ fn resposta_from_row(row: &sqlx::postgres::PgRow) -> Result<RespostaOrcamentoInf
         aplicada_pelo_sistema: row.try_get("aplicada_pelo_sistema").map_err(map)?,
         efetivacao_erro: row.try_get("efetivacao_erro").map_err(map)?,
         efetivacao_falhou_em: row.try_get("efetivacao_falhou_em").map_err(map)?,
+        ordem_compra: row.try_get("ordem_compra").map_err(map)?,
     })
 }
 
@@ -346,7 +523,8 @@ pub async fn obter_decisao_orcamento(
                 p.nome AS registrada_por, r.motivo,
                 to_char(r.aplicada_em AT TIME ZONE 'UTC', '{TS_FMT}') AS aplicada_em,
                 r.contato_nome AS contato, r.aplicada_pelo_sistema, r.efetivacao_erro,
-                to_char(r.efetivacao_falhou_em AT TIME ZONE 'UTC', '{TS_FMT}') AS efetivacao_falhou_em
+                to_char(r.efetivacao_falhou_em AT TIME ZONE 'UTC', '{TS_FMT}') AS efetivacao_falhou_em,
+                r.ordem_compra
          FROM orcamento_respostas r
          LEFT JOIN security_profiles p ON p.id = r.registrada_por_profile_id
          WHERE r.versao_id = $1 AND r.empresa_id = $2
@@ -366,7 +544,7 @@ pub async fn obter_decisao_orcamento(
         "SELECT id, tipo, mensagem,
                 to_char(criado_em AT TIME ZONE 'UTC', '{TS_FMT}') AS criada_em,
                 to_char(tratado_em AT TIME ZONE 'UTC', '{TS_FMT}') AS tratada_em,
-                contato_nome AS contato
+                contato_nome AS contato, contato_telefone, contato_email
          FROM orcamento_solicitacoes
          WHERE versao_id = $1 AND empresa_id = $2
          ORDER BY id DESC
@@ -386,6 +564,8 @@ pub async fn obter_decisao_orcamento(
             criada_em: row.try_get("criada_em").map_err(map)?,
             tratada_em: row.try_get("tratada_em").map_err(map)?,
             contato: row.try_get("contato").map_err(map)?,
+            contato_telefone: row.try_get("contato_telefone").map_err(map)?,
+            contato_email: row.try_get("contato_email").map_err(map)?,
         });
     }
 
@@ -434,6 +614,7 @@ pub async fn obter_decisao_orcamento(
             aplicada_pelo_sistema: r.aplicada_pelo_sistema,
             efetivacao_erro: r.efetivacao_erro.clone(),
             efetivacao_falhou_em: r.efetivacao_falhou_em.clone(),
+            ordem_compra: r.ordem_compra.clone(),
         }),
         historico,
         solicitacoes,

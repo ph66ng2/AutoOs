@@ -273,7 +273,7 @@ const REQUIRED_RUNTIME_TABLES: &[&str] = &[
     "orcamento_servicos_decisao",
     "security_profiles",
     "security_audit_log",
-    // Orçamento pelo Portal do Cliente e fila de WhatsApp (0031–0038): aprovar, finalizar
+    // Orçamento pelo Portal do Cliente e fila de WhatsApp (0031–0040): aprovar, finalizar
     // verificação e o sino de alertas dependem delas. Sem as migrations o app não abre pela metade.
     "orcamento_versoes",
     "orcamento_respostas",
@@ -284,6 +284,10 @@ const REQUIRED_RUNTIME_TABLES: &[&str] = &[
     "portal_cliente_config",
     "portal_alertas",
     "portal_config_empresa",
+    // Orçamento de insumos (0040): a aba de OI e a baixa de estoque dependem delas.
+    "orcamentos_insumos",
+    "orcamento_insumos_itens",
+    "orcamentos_insumos_contadores",
 ];
 
 const REQUIRED_RUNTIME_COLUMNS: &[(&str, &str)] = &[
@@ -313,6 +317,13 @@ const REQUIRED_RUNTIME_COLUMNS: &[(&str, &str)] = &[
     ("equipamento_imagens", "storage_path"),
     ("security_profiles", "permissions"),
     ("security_profiles", "pin_required"),
+    // Dados ampliados do portal (0039).
+    ("clientes", "exige_ordem_compra"),
+    ("portal_contato_empresa", "endereco"),
+    ("portal_contato_empresa", "maps_url"),
+    ("orcamento_respostas", "ordem_compra"),
+    ("orcamento_solicitacoes", "contato_telefone"),
+    ("orcamento_solicitacoes", "contato_email"),
 ];
 
 const REQUIRED_RUNTIME_COLUMN_TYPES: &[(&str, &str, &str)] = &[
@@ -698,6 +709,23 @@ mod tests {
         let message = database_error_message(&sqlx::Error::PoolTimedOut);
         assert!(message.contains("6 segundos"));
         assert!(!message.contains("postgres"));
+    }
+
+    #[test]
+    fn runtime_schema_requires_structures_from_migrations_0039_and_0040() {
+        for tabela in ["orcamentos_insumos", "orcamento_insumos_itens", "orcamentos_insumos_contadores"] {
+            assert!(REQUIRED_RUNTIME_TABLES.contains(&tabela), "{tabela}");
+        }
+        for coluna in [
+            ("clientes", "exige_ordem_compra"),
+            ("portal_contato_empresa", "endereco"),
+            ("portal_contato_empresa", "maps_url"),
+            ("orcamento_respostas", "ordem_compra"),
+            ("orcamento_solicitacoes", "contato_telefone"),
+            ("orcamento_solicitacoes", "contato_email"),
+        ] {
+            assert!(REQUIRED_RUNTIME_COLUMNS.contains(&coluna), "{coluna:?}");
+        }
     }
 
     #[test]

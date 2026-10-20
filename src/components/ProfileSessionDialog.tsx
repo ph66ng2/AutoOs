@@ -80,11 +80,13 @@ export function ProfileSessionDialog({
   const canRecoverWithCode = !!selectedProfile && selectedProfile.pin_configured && !!onFirstAccess;
   const isAdminWithoutPin = selectedProfile?.role === "ADMIN" && !selectedProfile?.pin_configured && !missingRequiredPin;
   const shouldAskForPin = isAdminWithoutPin || (Boolean(selectedProfile?.pin_configured) && (!isSelectorMode || !isCurrentProfileSelected || !unlocked));
+  // Só afirmamos "não exige PIN" quando o perfil realmente tem pin_required = false.
+  const pinOptional = selectedProfile?.pin_required === false;
 
   const primaryActionLabel = (() => {
     if (!selectedProfile) return "Selecione um perfil";
     if (canStartFirstAccess) return selectedProfile.onboarding_pendente ? "Fazer primeiro acesso" : "Ativar neste computador";
-    if (missingRequiredPin) return "PIN pendente neste computador";
+    if (missingRequiredPin) return "PIN não configurado neste PC";
     if (isAdminWithoutPin) return "Configurar PIN e continuar";
     if (mode === "startup") return "Entrar com este perfil";
     if (mode === "selector") {
@@ -123,7 +125,11 @@ export function ProfileSessionDialog({
     if (mode === "selector" && isCurrentProfileSelected) {
       return unlocked ? "Você já está usando este perfil. Feche agora ou continue nele." : "Informe o PIN deste perfil para desbloquear a sessão.";
     }
-    if (!selectedProfile.pin_configured) return "Este perfil não exige PIN. Clique abaixo para continuar.";
+    if (!selectedProfile.pin_configured) {
+      return pinOptional
+        ? "Este perfil não exige PIN. Clique abaixo para continuar."
+        : "Este perfil não tem PIN configurado neste PC. Clique abaixo para continuar.";
+    }
     return null;
   })();
 
@@ -235,8 +241,10 @@ export function ProfileSessionDialog({
                           {neverSetUp ? "Primeiro acesso" : pendingHere ? "Ativar neste computador" : securityRoleLabel(profile.role)}
                         </span>
                         {isCurrent && <span className="mt-1 rounded-full bg-emerald-500/15 px-2 py-0.5 text-[11px] font-medium text-emerald-300">Perfil atual</span>}
-                        {!pendingHere && !profile.pin_configured && profile.role !== "ADMIN" && (
-                          <span className="mt-1 text-[11px] text-muted-foreground">Não exige PIN</span>
+                        {!pendingHere && !profile.pin_configured && (
+                          <span className="mt-1 text-[11px] text-muted-foreground">
+                            {pinOptionalFor(profile) ? "Não exige PIN" : "PIN não configurado neste PC"}
+                          </span>
                         )}
                       </span>
                     </button>
@@ -342,4 +350,9 @@ export function ProfileSessionDialog({
 function avatarProps(profile: SecurityProfile) {
   const look = profileAppearance(profile);
   return { icon: look.icon, color: look.color };
+}
+
+// Só afirmamos "não exige PIN" quando o perfil realmente tem pin_required = false.
+function pinOptionalFor(profile: SecurityProfile) {
+  return profile.pin_required === false && profile.role !== "ADMIN";
 }

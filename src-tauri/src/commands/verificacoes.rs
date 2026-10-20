@@ -10,10 +10,19 @@ use crate::commands::types::{
     VERIFICACAO_SELECT,
 };
 use crate::commands::auth::{
-    record_security_event, require_permission, require_active_session_company_id, SecurityProfileSummary, PERMISSION_FINANCIAL_ACTIONS,
+    record_security_event, require_permission, require_active_session_company_id, SecurityProfileSummary,
+    PERMISSION_FINANCIAL_ACTIONS, PERMISSION_MANAGE_STATUS_LINKS,
 };
 use crate::db::get_pool;
+use crate::commands::orcamento_correcao::{
+    corrigir_na_transacao, registrar_auditoria_correcao, CorrigirDecisaoInput, ModoCorrecao,
+};
+use crate::commands::orcamento_decisao::{
+    desfazer_resposta_pendente, publicar_versao_isolada, situacao_portal,
+};
 use crate::commands::orcamento_estoque::{aplicar_decisoes, cancelar_pendencias_ausentes, normalizar_servicos, parse_servicos};
+use serde::{Deserialize, Serialize};
+use sqlx::PgPool;
 use std::collections::{HashMap, HashSet};
 use tracing::{debug, error, info, instrument};
 
@@ -249,6 +258,144 @@ pub async fn buscar_verificacao_tecnica(
     Ok(row)
 }
 
+/// O que fazer quando o orçamento JÁ APROVADO é alterado.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
+pub enum ModoAjusteAprovado {
+    /// O cliente concordou com a mudança: o orçamento segue aprovado, com o valor novo.
+    SemNovaAprovacao,
+    /// Reabre a aprovação (mantendo o orçamento alterado) e publica a nova versão no portal.
+    NovaAprovacao,
+}
+
+impl ModoAjusteAprovado {
+    fn codigo(self) -> &'static str {
+        match self {
+            Self::SemNovaAprovacao => "SEM_NOVA_APROVACAO",
+            Self::NovaAprovacao => "NOVA_APROVACAO",
+        }
+    }
+}
+
+/// Escolhas do operador ao salvar a alteração do orçamento.
+#[derive(Debug, Default, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct OpcoesAjusteOrcamento {
+    /// Só vale para orçamento aprovado. Sem valor, mantém o comportamento antigo (sem nova aprovação).
+    pub modo_aprovado: Option<ModoAjusteAprovado>,
+    /// Confirma a devolução ao estoque das peças já baixadas (pedir nova aprovação).
+    pub devolver_estoque: bool,
+    /// Confirma que a nova versão anula a resposta que o cliente deu e a equipe ainda não aplicou.
+    pub confirmar_resposta_pendente: bool,
+}
+
+/// O que aconteceu no portal por causa do ajuste, em palavras para o operador.
+#[derive(Debug, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct PortalAjusteInfo {
+    /// `NENHUMA`, `VERSAO_PUBLICADA`, `NOVA_APROVACAO_PUBLICADA`, `VALOR_ATUALIZADO` ou `NAO_PUBLICADA`.
+    pub acao: String,
+    pub versao: Option<i32>,
+    pub mensagem: Option<String>,
+    /// Algo que a equipe precisa resolver (ex.: a publicação automática falhou).
+    pub aviso: Option<String>,
+}
+
+impl PortalAjusteInfo {
+    pub(crate) fn nenhuma() -> Self {
+        Self { acao: "NENHUMA".into(), versao: None, mensagem: None, aviso: None }
+    }
+}
+
+/// Verificação com o resultado do ajuste. Os campos da verificação continuam na raiz do JSON.
+#[derive(Debug, Serialize)]
+pub struct ResultadoAjusteOrcamento {
+    #[serde(flatten)]
+    pub verificacao: VerificacaoRow,
+    pub portal: PortalAjusteInfo,
+}
+
+impl std::ops::Deref for ResultadoAjusteOrcamento {
+    type Target = VerificacaoRow;
+    fn deref(&self) -> &VerificacaoRow {
+        &self.verificacao
+    }
+}
+
+fn mensagem_publicacao(nova_aprovacao: bool, versao: i32) -> String {
+    if nova_aprovacao {
+        format!("Nova aprovação pedida: a versão {versao} foi publicada no portal para o cliente responder.")
+    } else {
+        format!("Portal atualizado: versão {versao} publicada.")
+    }
+}
+
+fn mensagem_valor_atualizado(valor: Option<f64>) -> String {
+    match valor {
+        Some(valor) => format!("Valor atualizado no portal sem nova aprovação (R$ {valor:.2})."),
+        None => "Valor atualizado no portal sem nova aprovação.".to_string(),
+    }
+}
+
+fn pode_publicar_no_portal(actor: &SecurityProfileSummary) -> bool {
+    actor.role == "ADMIN" || actor.permissions.iter().any(|p| p == PERMISSION_MANAGE_STATUS_LINKS)
+}
+
+/// Publica a versão nova logo depois do ajuste já gravado. Nunca falha o ajuste: se não der,
+/// devolve um aviso para o operador publicar manualmente.
+pub(crate) async fn publicar_apos_ajuste(
+    pool: &PgPool,
+    actor: &SecurityProfileSummary,
+    empresa_id: i32,
+    equipamento_id: i32,
+    nova_aprovacao: bool,
+) -> PortalAjusteInfo {
+    let nao_publicada = |aviso: String| PortalAjusteInfo {
+        acao: "NAO_PUBLICADA".into(),
+        versao: None,
+        mensagem: None,
+        aviso: Some(aviso),
+    };
+    if !pode_publicar_no_portal(actor) {
+        return nao_publicada(
+            "A alteração foi salva, mas este perfil não pode publicar no portal. Peça a quem tenha a permissão de links de status para publicar a nova versão.".to_string(),
+        );
+    }
+    match publicar_versao_isolada(pool, empresa_id, equipamento_id, actor.id).await {
+        Ok(versao) => {
+            record_security_event(
+                "BUDGET_PUBLISHED_TO_PORTAL",
+                Some(actor),
+                format!(
+                    "empresa_id={empresa_id}; equipamento_id={equipamento_id}; versao={}; automatica=true; nova_aprovacao={nova_aprovacao}",
+                    versao.numero
+                ),
+                true,
+            )
+            .await;
+            PortalAjusteInfo {
+                acao: if nova_aprovacao { "NOVA_APROVACAO_PUBLICADA" } else { "VERSAO_PUBLICADA" }.into(),
+                versao: Some(versao.numero),
+                mensagem: Some(mensagem_publicacao(nova_aprovacao, versao.numero)),
+                aviso: None,
+            }
+        }
+        Err(erro) => nao_publicada(format!(
+            "A alteração foi salva, mas o portal não foi atualizado: {erro} Use Publicar no portal quando puder."
+        )),
+    }
+}
+
+async fn portal_ligado(pool: &PgPool, empresa_id: i32) -> bool {
+    sqlx::query_scalar::<_, bool>("SELECT portal_enabled FROM portal_config_empresa WHERE empresa_id = $1")
+        .bind(empresa_id)
+        .fetch_optional(pool)
+        .await
+        .ok()
+        .flatten()
+        .unwrap_or(false)
+}
+
 fn count_json_array_items(json: &Option<String>) -> usize {
     match json {
         Some(text) if !text.trim().is_empty() => {
@@ -275,7 +422,9 @@ pub async fn atualizar_servicos_verificacao(
     empresa_id: Option<i32>,
     cliente_aprovou_alteracao: Option<bool>,
     expected_updated_em: Option<String>,
-) -> Result<VerificacaoRow, String> {
+    opcoes: Option<OpcoesAjusteOrcamento>,
+) -> Result<ResultadoAjusteOrcamento, String> {
+    let opcoes = opcoes.unwrap_or_default();
     let actor = require_permission(PERMISSION_FINANCIAL_ACTIONS)?;
     let (payment_code, payment_detail) = normalize_forma_pagamento(
         forma_pagamento_codigo.as_ref(),
@@ -288,8 +437,9 @@ pub async fn atualizar_servicos_verificacao(
         super::operator_errors::mapear_erro_sql(error)
     })?;
 
-    let equipment: Option<(Option<i32>, String, bool)> = sqlx::query_as(
-        "SELECT empresa_id, status, ($2::TIMESTAMPTZ IS NULL OR atualizado_em = $2::TIMESTAMPTZ)
+    let equipment: Option<(Option<i32>, String, bool, Option<f64>)> = sqlx::query_as(
+        "SELECT empresa_id, status, ($2::TIMESTAMPTZ IS NULL OR atualizado_em = $2::TIMESTAMPTZ),
+                valor_orcamento::FLOAT8
          FROM equipamentos WHERE id = $1 FOR UPDATE",
     )
     .bind(equipamento_id)
@@ -297,7 +447,7 @@ pub async fn atualizar_servicos_verificacao(
     .fetch_optional(&mut *tx)
     .await
     .map_err(super::operator_errors::mapear_erro_sql)?;
-    let Some((resolved_empresa_id, status, versao_valida)) = equipment else {
+    let Some((resolved_empresa_id, status, versao_valida, valor_equipamento)) = equipment else {
         return Err("Equipamento não encontrado.".to_string());
     };
     if resolved_empresa_id != Some(active_empresa_id) {
@@ -355,7 +505,14 @@ pub async fn atualizar_servicos_verificacao(
 
     let servicos = parse_servicos(servicos_json.as_deref().unwrap_or("[]"))?;
     let depois_aprovacao = matches!(status.as_str(), "APROVADO" | "EM_MANUTENCAO" | "AGUARDANDO_PECA" | "PRONTO" | "ENTREGUE");
-    if depois_aprovacao && (old_servicos != servicos_json || old_pecas != pecas_json || old_total != custo_total) {
+    let alterou_itens = old_servicos != servicos_json || old_pecas != pecas_json || old_total != custo_total;
+    let modo_aprovado = (depois_aprovacao && alterou_itens)
+        .then(|| opcoes.modo_aprovado.unwrap_or(ModoAjusteAprovado::SemNovaAprovacao));
+    let nova_aprovacao = modo_aprovado == Some(ModoAjusteAprovado::NovaAprovacao);
+    if nova_aprovacao && status != "APROVADO" {
+        return Err("Só dá para pedir nova aprovação enquanto o orçamento está Aprovado. Com o serviço em andamento, use o ajuste sem nova aprovação.".to_string());
+    }
+    if depois_aprovacao && alterou_itens && !nova_aprovacao {
         if cliente_aprovou_alteracao != Some(true) {
             return Err("Confirme que o cliente aprovou as mudanças nos serviços e peças.".to_string());
         }
@@ -379,6 +536,26 @@ pub async fn atualizar_servicos_verificacao(
             .map(|s| s.id.clone()).collect();
         aplicar_decisoes(&mut tx, empresa_id, verificacao_id, &servicos, &aprovados).await?;
         cancelar_pendencias_ausentes(&mut tx, verificacao_id, &servicos).await?;
+    }
+
+    // Aguardando aprovação: se o orçamento já foi ao portal e vai mudar, a versão aberta será
+    // encerrada pelos gatilhos; a resposta pendente do cliente precisa de confirmação antes.
+    let mut republicar = false;
+    if status == "AGUARDANDO_APROVACAO" {
+        let situacao = situacao_portal(&mut tx, active_empresa_id, equipamento_id, true).await?;
+        let vai_mudar = alterou_itens || valor_equipamento != custo_total;
+        if situacao.ja_publicado && vai_mudar {
+            if let Some(pendente) = situacao.pendente.as_ref() {
+                if !opcoes.confirmar_resposta_pendente {
+                    return Err(format!(
+                        "O cliente já respondeu a este orçamento no portal ({}) e a equipe ainda não aplicou. Salvar a alteração publica uma nova versão e anula essa resposta. Confirme para continuar.",
+                        if pendente.decisao == "APROVAR" { "aprovou" } else { "recusou" }
+                    ));
+                }
+                desfazer_resposta_pendente(&mut tx, active_empresa_id, equipamento_id, actor.id).await?;
+            }
+            republicar = true;
+        }
     }
 
     sqlx::query(
@@ -442,10 +619,50 @@ pub async fn atualizar_servicos_verificacao(
         return Err("Equipamento não encontrado na empresa informada.".to_string());
     }
 
+    // Pedir nova aprovação: na mesma transação, reabre a aprovação mantendo o orçamento alterado
+    // (mesma regra de estoque da correção de decisão). Se algo falhar, nada é gravado.
+    let correcao = if nova_aprovacao {
+        let token: String = sqlx::query_scalar("SELECT atualizado_em::TEXT FROM equipamentos WHERE id = $1")
+            .bind(equipamento_id)
+            .fetch_one(&mut *tx)
+            .await
+            .map_err(super::operator_errors::mapear_erro_sql)?;
+        let input = CorrigirDecisaoInput {
+            equipamento_id,
+            expected_updated_em: token,
+            motivo: "Orçamento alterado depois da aprovação: nova aprovação pedida ao cliente.".to_string(),
+            devolver_estoque: opcoes.devolver_estoque,
+            modo: ModoCorrecao::ManterAtual,
+        };
+        let aplicada = corrigir_na_transacao(&mut tx, &actor, active_empresa_id, &input).await?;
+        Some((input, aplicada))
+    } else {
+        None
+    };
+
     tx.commit().await.map_err(|error| {
         error!("Erro ao confirmar ajuste da verificação {}: {}", verificacao_id, error);
         super::operator_errors::mapear_erro_sql(error)
     })?;
+    if let Some((input, aplicada)) = correcao.as_ref() {
+        registrar_auditoria_correcao(&actor, input, aplicada).await;
+    }
+
+    let portal = if nova_aprovacao || republicar {
+        publicar_apos_ajuste(&pool, &actor, active_empresa_id, equipamento_id, nova_aprovacao).await
+    } else if modo_aprovado == Some(ModoAjusteAprovado::SemNovaAprovacao)
+        && old_total != custo_total
+        && portal_ligado(&pool, active_empresa_id).await
+    {
+        PortalAjusteInfo {
+            acao: "VALOR_ATUALIZADO".into(),
+            versao: None,
+            mensagem: Some(mensagem_valor_atualizado(custo_total)),
+            aviso: None,
+        }
+    } else {
+        PortalAjusteInfo::nenhuma()
+    };
 
     let old_service_count = count_json_array_items(&old_servicos);
     let new_service_count = count_json_array_items(&servicos_json);
@@ -464,7 +681,7 @@ pub async fn atualizar_servicos_verificacao(
         "BUDGET_ADJUSTED",
         Some(&actor),
         format!(
-            "equipamento_id={}; old_total={}; new_total={}; services_added={}; services_removed={}; divergence={}; observacoes_updated={}; pagamento_updated={}",
+            "equipamento_id={}; old_total={}; new_total={}; services_added={}; services_removed={}; divergence={}; observacoes_updated={}; pagamento_updated={}; modo={}; portal={}",
             equipamento_id,
             old_total.unwrap_or(0.0),
             custo_total.unwrap_or(0.0),
@@ -473,13 +690,16 @@ pub async fn atualizar_servicos_verificacao(
             divergence,
             observacoes.is_some(),
             payment_code.is_some(),
+            modo_aprovado.map_or("NENHUM", ModoAjusteAprovado::codigo),
+            portal.acao,
         ),
         true,
     )
     .await;
 
     info!("Serviços e orçamento atualizados para equipamento {}", equipamento_id);
-    buscar_verificacao_tecnica(equipamento_id, resolved_empresa_id).await
+    let verificacao = buscar_verificacao_tecnica(equipamento_id, resolved_empresa_id).await?;
+    Ok(ResultadoAjusteOrcamento { verificacao, portal })
 }
 
 #[cfg(test)]
@@ -492,6 +712,46 @@ mod tests {
         assert!(!claimed_tenant_conflicts(Some(1), None));
         assert!(!claimed_tenant_conflicts(Some(1), Some(1)));
         assert!(claimed_tenant_conflicts(Some(1), Some(2)));
+    }
+
+    #[test]
+    fn portal_messages_are_plain_for_the_operator() {
+        assert_eq!(mensagem_publicacao(false, 3), "Portal atualizado: versão 3 publicada.");
+        assert!(mensagem_publicacao(true, 4).contains("versão 4"));
+        assert!(mensagem_publicacao(true, 4).contains("Nova aprovação"));
+        assert_eq!(
+            mensagem_valor_atualizado(Some(60.0)),
+            "Valor atualizado no portal sem nova aprovação (R$ 60.00)."
+        );
+    }
+
+    #[test]
+    fn approved_adjustment_modes_use_screaming_names_and_default_to_no_new_approval() {
+        let modo: ModoAjusteAprovado = serde_json::from_str("\"NOVA_APROVACAO\"").unwrap();
+        assert_eq!(modo, ModoAjusteAprovado::NovaAprovacao);
+        assert_eq!(modo.codigo(), "NOVA_APROVACAO");
+        let opcoes: OpcoesAjusteOrcamento = serde_json::from_str("{}").unwrap();
+        assert!(opcoes.modo_aprovado.is_none() && !opcoes.devolver_estoque && !opcoes.confirmar_resposta_pendente);
+        let opcoes: OpcoesAjusteOrcamento =
+            serde_json::from_str(r#"{"modoAprovado":"SEM_NOVA_APROVACAO","devolverEstoque":true}"#).unwrap();
+        assert_eq!(opcoes.modo_aprovado, Some(ModoAjusteAprovado::SemNovaAprovacao));
+        assert!(opcoes.devolver_estoque);
+    }
+
+    #[test]
+    fn portal_publication_needs_the_status_links_permission() {
+        let mut perfil = SecurityProfileSummary {
+            id: 1, nome: "Ana".into(), role: "OPERADOR".into(), permissions: vec![],
+            pin_configured: true, pin_required: true, is_default: false, ativo: true,
+            avatar_icone: None, avatar_cor: None, tema: None, onboarding_pendente: false,
+            tour_permissoes_vistas: None,
+        };
+        assert!(!pode_publicar_no_portal(&perfil));
+        perfil.permissions.push(PERMISSION_MANAGE_STATUS_LINKS.to_string());
+        assert!(pode_publicar_no_portal(&perfil));
+        perfil.permissions.clear();
+        perfil.role = "ADMIN".into();
+        assert!(pode_publicar_no_portal(&perfil));
     }
 
     #[test]

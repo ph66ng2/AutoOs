@@ -709,7 +709,7 @@ export function SensitiveAccessBadge() {
     return (
       <span className="inline-flex items-center gap-1 rounded-md border border-amber-200 bg-amber-50 px-2.5 py-1 text-xs font-medium text-amber-900">
         <ShieldOff className="h-3.5 w-3.5" />
-        {profileName}: PIN pendente
+        {profileName}: PIN não configurado neste PC
       </span>
     );
   }

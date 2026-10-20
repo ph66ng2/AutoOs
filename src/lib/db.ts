@@ -60,6 +60,8 @@ import type {
   PostgresRestoreResult,
   PostgresBackupToolsStatus,
   AnaliseCorrecaoDecisao,
+  AnaliseAjusteOrcamento,
+  PortalAjusteInfo,
   CorrigirDecisaoInput,
   DecisaoOrcamentoInfo,
   EstadoPortal,
@@ -69,6 +71,12 @@ import type {
   PublicStatusLinkInfo,
   PaginatedResult,
   Produto,
+  OrcamentoInsumosDetalhe,
+  OrcamentoInsumos,
+  OrcamentoInsumosInput,
+  FiltrosOrcamentosInsumos,
+  FormaPagamento,
+  EmailSendRequest,
   ResultadoVerificacaoCredenciais,
   ServicoCatalogo,
   SupabaseStorageConfig,
@@ -105,8 +113,10 @@ function clientePersistenciaParaInput(cliente: Omit<Cliente, "id">) {
     bairro: cliente.bairro ?? undefined,
     cidade: cliente.cidade ?? undefined,
     uf: cliente.uf ?? undefined,
-    receber_email: cliente.receber_email ?? true,
-    receber_whatsapp: cliente.receber_whatsapp ?? true,
+    // Ausente = backend preserva o valor salvo na edição (padrão true só na criação).
+    receber_email: cliente.receber_email ?? undefined,
+    receber_whatsapp: cliente.receber_whatsapp ?? undefined,
+    exige_ordem_compra: cliente.exige_ordem_compra ?? undefined,
     observacoes: cliente.observacoes ?? undefined,
     empresa_id: cliente.empresa_id ?? undefined,
     atualizado_em: cliente.atualizado_em ?? undefined,
@@ -119,6 +129,11 @@ export const db = {
   /** Lista equipamentos com filtro opcional de busca e status → Rust: listar_equipamentos */
   async listarEquipamentos(busca?: string, status?: string): Promise<Equipamento[]> {
     return invoke<Equipamento[]>("listar_equipamentos", { busca, status });
+  },
+
+  /** Equipamentos de um cliente por cliente_id (nomes só para legados sem cliente_id) → Rust: listar_equipamentos_cliente */
+  async listarEquipamentosCliente(clienteId: number, nomes: string[] = []): Promise<Equipamento[]> {
+    return invoke<Equipamento[]>("listar_equipamentos_cliente", { clienteId, nomes });
   },
 
   async listarEquipamentosPaginados(busca: string | undefined, status: string | undefined, page: number, ordenacao: "ATUALIZACAO_RECENTE" | "CADASTRO_RECENTE" = "ATUALIZACAO_RECENTE"): Promise<PaginatedResult<Equipamento>> {
@@ -343,8 +358,8 @@ export const db = {
   },
 
   /** Reabre o orçamento desfazendo pagamento, serviços e (com confirmação) baixas de estoque. */
-  async corrigirDecisaoOrcamento(input: CorrigirDecisaoInput): Promise<Equipamento> {
-    return invoke<Equipamento>("corrigir_decisao_orcamento", { input });
+  async corrigirDecisaoOrcamento(input: CorrigirDecisaoInput): Promise<Equipamento & { portal?: PortalAjusteInfo }> {
+    return invoke<Equipamento & { portal?: PortalAjusteInfo }>("corrigir_decisao_orcamento", { input });
   },
 
   async gerarQrLinkStatusPublico(url: string): Promise<string> {
@@ -461,6 +476,87 @@ export const db = {
         referencia: referencia ?? null,
       },
     });
+  },
+
+  // ─── Orçamento de venda avulsa de insumos (OI-<n>) ───────────
+
+  /** Lista orçamentos de insumos da empresa → Rust: listar_orcamentos_insumos */
+  async listarOrcamentosInsumos(filtros: FiltrosOrcamentosInsumos = {}): Promise<PaginatedResult<OrcamentoInsumos>> {
+    return invoke<PaginatedResult<OrcamentoInsumos>>("listar_orcamentos_insumos", {
+      filtros: {
+        status: filtros.status && filtros.status !== "TODOS" ? filtros.status : null,
+        cliente_id: filtros.cliente_id ?? null,
+        busca: filtros.busca?.trim() || null,
+        page: filtros.page ?? 0,
+      },
+    });
+  },
+
+  async obterOrcamentoInsumos(id: number): Promise<OrcamentoInsumosDetalhe> {
+    return invoke<OrcamentoInsumosDetalhe>("obter_orcamento_insumos", { id });
+  },
+
+  async criarOrcamentoInsumos(input: OrcamentoInsumosInput): Promise<OrcamentoInsumosDetalhe> {
+    return invoke<OrcamentoInsumosDetalhe>("criar_orcamento_insumos", { input });
+  },
+
+  async atualizarOrcamentoInsumos(id: number, input: OrcamentoInsumosInput): Promise<OrcamentoInsumosDetalhe> {
+    return invoke<OrcamentoInsumosDetalhe>("atualizar_orcamento_insumos", { id, input });
+  },
+
+  /** Marca como enviado ao cliente (o canal só vai para a auditoria). */
+  async marcarOrcamentoInsumosEnviado(
+    id: number,
+    atualizadoEm: string,
+    canal: "EMAIL" | "WHATSAPP" | "PDF",
+  ): Promise<OrcamentoInsumosDetalhe> {
+    return invoke<OrcamentoInsumosDetalhe>("marcar_orcamento_insumos_enviado", {
+      input: { id, atualizado_em: atualizadoEm, canal },
+    });
+  },
+
+  /** Aprova e baixa o estoque; sem pagamento vira "A combinar". */
+  async aprovarOrcamentoInsumos(
+    id: number,
+    atualizadoEm: string,
+    pagamento?: FormaPagamento,
+  ): Promise<OrcamentoInsumosDetalhe> {
+    return invoke<OrcamentoInsumosDetalhe>("aprovar_orcamento_insumos", {
+      input: { id, atualizado_em: atualizadoEm, pagamento: pagamento ?? null },
+    });
+  },
+
+  async reprovarOrcamentoInsumos(id: number, atualizadoEm: string): Promise<OrcamentoInsumosDetalhe> {
+    return invoke<OrcamentoInsumosDetalhe>("reprovar_orcamento_insumos", {
+      input: { id, atualizado_em: atualizadoEm },
+    });
+  },
+
+  /** Cancelar um aprovado devolve o estoque e exige `confirmarDevolucaoEstoque`. */
+  async cancelarOrcamentoInsumos(
+    id: number,
+    atualizadoEm: string,
+    confirmarDevolucaoEstoque = false,
+  ): Promise<OrcamentoInsumosDetalhe> {
+    return invoke<OrcamentoInsumosDetalhe>("cancelar_orcamento_insumos", {
+      input: { id, atualizado_em: atualizadoEm, confirmar_devolucao_estoque: confirmarDevolucaoEstoque },
+    });
+  },
+
+  async marcarOrcamentoInsumosEntregue(id: number, atualizadoEm: string): Promise<OrcamentoInsumosDetalhe> {
+    return invoke<OrcamentoInsumosDetalhe>("marcar_orcamento_insumos_entregue", {
+      input: { id, atualizado_em: atualizadoEm },
+    });
+  },
+
+  /** Envio direto de e-mail (SMTP configurado) → Rust: enviar_email */
+  async enviarEmail(input: EmailSendRequest): Promise<void> {
+    return invoke<void>("enviar_email", { input });
+  },
+
+  /** Envio direto de WhatsApp (API configurada) → Rust: enviar_whatsapp */
+  async enviarWhatsapp(contato: string, mensagem: string): Promise<void> {
+    return invoke<void>("enviar_whatsapp", { input: { contato, mensagem } });
   },
 
   // ─── Serviços de Catálogo ─────────────────────────────
@@ -753,7 +849,7 @@ export const db = {
   async atualizarServicosVerificacao(
     input: AjusteOrcamentoInput,
     profileId: number
-  ): Promise<Verificacao> {
+  ): Promise<Verificacao & { portal?: PortalAjusteInfo }> {
     const payload = {
       equipamentoId: input.equipamento_id,
       servicosJson: JSON.stringify(input.servicos),
@@ -771,10 +867,16 @@ export const db = {
         ? {}
         : { formaPagamentoDetalhe: input.forma_pagamento_detalhe }),
       ...(input.empresa_id === undefined ? {} : { empresaId: input.empresa_id }),
+      ...(input.opcoes === undefined ? {} : { opcoes: input.opcoes }),
     };
-    return invoke<Verificacao>("atualizar_servicos_verificacao", {
+    return invoke<Verificacao & { portal?: PortalAjusteInfo }>("atualizar_servicos_verificacao", {
       ...payload,
     });
+  },
+
+  /** Situação do portal e do estoque antes de salvar uma alteração no orçamento → Rust: analisar_ajuste_orcamento */
+  async analisarAjusteOrcamento(equipamentoId: number): Promise<AnaliseAjusteOrcamento> {
+    return invoke<AnaliseAjusteOrcamento>("analisar_ajuste_orcamento", { equipamentoId });
   },
 
   /** Aprova orçamento, pagamento e status APROVADO atomicamente no backend. */

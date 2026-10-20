@@ -1,4 +1,4 @@
--- Contrato SQL do Portal das Impressoras do Cliente (migrations 0035, 0036 e 0038).
+-- Contrato SQL do Portal das Impressoras do Cliente (migrations 0035, 0036, 0038 e 0039).
 -- Execute num banco descartável com as migrations SQLx aplicadas (nome iniciando por autoos_stock_test):
 --   psql --set ON_ERROR_STOP=1 --file=supabase/tests/portal_cliente_contract.sql
 -- Tudo roda numa transação desfeita no final; dados sintéticos TESTE-PORTAL.
@@ -338,6 +338,255 @@ UPDATE cliente_contatos SET portal_acesso = 'NENHUM' WHERE id = pg_temp.g('acomp
 SELECT pg_temp.ok((SELECT portal_senha_hash IS NULL FROM cliente_contatos WHERE id = pg_temp.g('acompanha')::INTEGER), 'sem acesso, sem senha');
 SELECT pg_temp.ok((portal_entrar_senha('11222333000181', 'Carla-2026', repeat('7', 64))->>'resultado') = 'INVALIDO', 'senha removida não entra');
 
+-- ─── Dados ampliados (0039) ─────────────────────────────────────────────────
+-- Ana (sessão b) e o cliente A passam a exigir ordem de compra; Gil é outro decisor do mesmo cliente.
+UPDATE clientes SET exige_ordem_compra = TRUE WHERE id = pg_temp.g('ca')::INTEGER;
+SELECT pg_temp.ok((portal_entrar_senha('11222333000181', 'Nova-Senha-77', repeat('b', 64))->>'resultado') = 'OK', '0039: Ana entra');
+
+DO $$
+DECLARE
+    ea INTEGER := pg_temp.g('ea')::INTEGER;
+    ca INTEGER := pg_temp.g('ca')::INTEGER;
+    e INTEGER; vv INTEGER; v1 BIGINT; c INTEGER;
+BEGIN
+    -- Orçamento com duas versões: a 1 (R$ 100) fica no passado, a 2 (R$ 120) está aberta.
+    INSERT INTO equipamentos (serial_number, marca, modelo, tipo, data_entrada, defeito_relatado, empresa_id, cliente_id, status, valor_orcamento)
+        VALUES ('SER-OC', 'Zebra', 'ZT411', 'Impressora', '2026-10-06', 'Não imprime a etiqueta', ea, ca, 'AGUARDANDO_APROVACAO', 120)
+        RETURNING id INTO e;
+    INSERT INTO verificacoes (equipamento_id, tecnico_nome, problema_relatado, servicos_necessarios, pecas_necessarias, custo_total, empresa_id)
+        VALUES (e, 'Téc', 'Falha', '[]', '[]', 100, ea) RETURNING id INTO vv;
+    INSERT INTO orcamento_versoes (empresa_id, equipamento_id, verificacao_id, versao, snapshot, valor_total)
+        VALUES (ea, e, vv, 1, '{"servicos":[],"pecas":[]}', 100) RETURNING id INTO v1;
+    INSERT INTO t VALUES ('eoc', e), ('v1_eoc', v1);
+
+    -- Gil: decisor sem telefone cadastrado (só e-mail).
+    INSERT INTO cliente_contatos (empresa_id, cliente_id, nome, email, portal_acesso)
+        VALUES (ea, ca, 'Gil Sem Telefone', 'gil@cliente.invalid', 'DECIDIR') RETURNING id INTO c;
+    PERFORM portal_definir_senha_contato(ea, c, 'Gil-Senha-0039', NULL);
+    INSERT INTO t VALUES ('gil', c);
+END $$;
+
+-- Versão 1: Ana recusa e depois tira uma dúvida.
+INSERT INTO t SELECT 'oc_r1', (portal_registrar_resposta(repeat('b', 64), pg_temp.g('eoc')::INTEGER, pg_temp.g('v1_eoc')::BIGINT, 'RECUSAR', 0))->>'id';
+SELECT pg_temp.ok((SELECT ordem_compra IS NULL FROM orcamento_respostas WHERE id = pg_temp.g('oc_r1')::BIGINT), 'recusa não guarda ordem de compra');
+SELECT portal_registrar_solicitacao(repeat('b', 64), pg_temp.g('eoc')::INTEGER, pg_temp.g('v1_eoc')::BIGINT, 'DUVIDA', 'O fusor está incluso?');
+-- A equipe revisa o orçamento: a versão 1 é encerrada e a 2 é publicada.
+UPDATE orcamento_versoes SET encerrada_em = now(), encerrada_motivo = 'ORCAMENTO_ALTERADO' WHERE id = pg_temp.g('v1_eoc')::BIGINT;
+WITH n AS (
+    INSERT INTO orcamento_versoes (empresa_id, equipamento_id, verificacao_id, versao, snapshot, valor_total)
+        SELECT empresa_id, equipamento_id, verificacao_id, 2, '{"servicos":[],"pecas":[]}', 120
+        FROM orcamento_versoes WHERE id = pg_temp.g('v1_eoc')::BIGINT
+        RETURNING id)
+INSERT INTO t SELECT 'v2_eoc', id::TEXT FROM n;
+
+-- Ordem de compra: cliente que exige não aprova sem ela.
+SELECT pg_temp.espera_erro(format('SELECT portal_registrar_resposta(%L, %s, %s, ''APROVAR'', 0)', repeat('b', 64), pg_temp.g('eoc'), pg_temp.g('v2_eoc')),
+    'ORDEM_COMPRA_OBRIGATORIA');
+SELECT pg_temp.espera_erro(format('SELECT portal_registrar_resposta(%L, %s, %s, ''APROVAR'', 0, ''   '')', repeat('b', 64), pg_temp.g('eoc'), pg_temp.g('v2_eoc')),
+    'ORDEM_COMPRA_OBRIGATORIA');
+SELECT pg_temp.espera_erro(format('SELECT portal_registrar_resposta(%L, %s, %s, ''APROVAR'', 0, %L)', repeat('b', 64), pg_temp.g('eoc'), pg_temp.g('v2_eoc'), repeat('9', 61)),
+    'ORDEM_COMPRA_OBRIGATORIA');
+SELECT pg_temp.ok(NOT EXISTS (SELECT 1 FROM orcamento_respostas WHERE versao_id = pg_temp.g('v2_eoc')::BIGINT), 'recusas por falta de OC não gravam resposta');
+-- Recusar não pede OC; mudar de ideia para aprovar pede.
+INSERT INTO t SELECT 'oc_r2', (portal_registrar_resposta(repeat('b', 64), pg_temp.g('eoc')::INTEGER, pg_temp.g('v2_eoc')::BIGINT, 'RECUSAR', 0))->>'id';
+SELECT pg_temp.espera_erro(format('SELECT portal_registrar_resposta(%L, %s, %s, ''APROVAR'', %s)', repeat('b', 64), pg_temp.g('eoc'), pg_temp.g('v2_eoc'), pg_temp.g('oc_r2')),
+    'ORDEM_COMPRA_OBRIGATORIA');
+DO $$
+DECLARE comp JSONB;
+BEGIN
+    comp := portal_registrar_resposta(repeat('b', 64), pg_temp.g('eoc')::INTEGER, pg_temp.g('v2_eoc')::BIGINT, 'APROVAR',
+                pg_temp.g('oc_r2')::BIGINT, '  PO-2026/0042  ');
+    INSERT INTO t VALUES ('oc_r3', comp->>'id');
+    PERFORM pg_temp.ok(comp->>'ordemCompra' = 'PO-2026/0042', 'comprovante traz a ordem de compra sem espaços');
+    PERFORM pg_temp.ok((SELECT ordem_compra FROM orcamento_respostas WHERE id = (comp->>'id')::BIGINT) = 'PO-2026/0042', 'ordem de compra gravada');
+    PERFORM pg_temp.ok(EXISTS (SELECT 1 FROM portal_alertas WHERE resposta_id = (comp->>'id')::BIGINT AND detalhe LIKE '%Ordem de compra: PO-2026/0042%'),
+        'alerta da equipe mostra a ordem de compra');
+    -- Clique repetido devolve o mesmo comprovante.
+    PERFORM pg_temp.ok((portal_registrar_resposta(repeat('b', 64), pg_temp.g('eoc')::INTEGER, pg_temp.g('v2_eoc')::BIGINT, 'APROVAR',
+        pg_temp.g('oc_r2')::BIGINT, 'PO-2026/0042')->>'id') = comp->>'id', 'clique repetido não duplica');
+END $$;
+SELECT pg_temp.espera_erro('UPDATE orcamento_respostas SET ordem_compra = ''OUTRA'' WHERE ordem_compra IS NOT NULL', 'Resposta de orçamento é imutável');
+
+-- Cliente sem exigência aprova sem ordem de compra.
+DO $$
+DECLARE
+    ea INTEGER := pg_temp.g('ea')::INTEGER;
+    cn INTEGER; c INTEGER; e INTEGER; vv INTEGER; v1 BIGINT; r JSONB;
+BEGIN
+    INSERT INTO clientes (empresa_id, nome, tipo_pessoa, documento) VALUES (ea, 'TESTE-PORTAL Cliente Livre', 'PJ', '12345678000195') RETURNING id INTO cn;
+    INSERT INTO cliente_contatos (empresa_id, cliente_id, nome, telefone, portal_acesso)
+        VALUES (ea, cn, 'Hugo Livre', '71900001111', 'DECIDIR') RETURNING id INTO c;
+    PERFORM portal_definir_senha_contato(ea, c, 'Hugo-Senha-0039', NULL);
+    INSERT INTO equipamentos (serial_number, marca, modelo, tipo, data_entrada, defeito_relatado, empresa_id, cliente_id, status, valor_orcamento)
+        VALUES ('SER-LIVRE', 'Epson', 'L805', 'Impressora', '2026-10-06', 'Falha', ea, cn, 'AGUARDANDO_APROVACAO', 70) RETURNING id INTO e;
+    INSERT INTO verificacoes (equipamento_id, tecnico_nome, problema_relatado, servicos_necessarios, pecas_necessarias, custo_total, empresa_id)
+        VALUES (e, 'Téc', 'Falha', '[]', '[]', 70, ea) RETURNING id INTO vv;
+    INSERT INTO orcamento_versoes (empresa_id, equipamento_id, verificacao_id, versao, snapshot, valor_total)
+        VALUES (ea, e, vv, 1, '{"servicos":[],"pecas":[]}', 70) RETURNING id INTO v1;
+    PERFORM pg_temp.ok((portal_entrar_senha('12345678000195', 'Hugo-Senha-0039', repeat('e', 64))->>'resultado') = 'OK', 'Hugo entra');
+    r := portal_registrar_resposta(repeat('e', 64), e, v1, 'APROVAR', 0);
+    PERFORM pg_temp.ok(r->>'decisao' = 'APROVAR' AND r->'ordemCompra' = 'null'::JSONB, 'sem exigência, aprova sem ordem de compra');
+    PERFORM pg_temp.ok((portal_detalhe_atendimento(repeat('e', 64), e)->'cliente'->>'exigeOrdemCompra') = 'false', 'cliente livre não exige OC');
+END $$;
+
+-- Cliente, defeito, valores.
+DO $$
+DECLARE d JSONB := portal_detalhe_atendimento(repeat('b', 64), pg_temp.g('eoc')::INTEGER);
+BEGIN
+    PERFORM pg_temp.ok(d->'cliente' = '{"nome": "TESTE-PORTAL Cliente A", "documento": "11222333000181", "exigeOrdemCompra": true}'::JSONB,
+        'cliente no detalhe: ' || (d->'cliente')::TEXT);
+    PERFORM pg_temp.ok(d->>'defeitoRelatado' = 'Não imprime a etiqueta', 'defeito relatado');
+    PERFORM pg_temp.ok(d->'valores' = '{"orcamento": 120, "final": null, "atual": 120}'::JSONB, 'valores: ' || (d->'valores')::TEXT);
+    PERFORM pg_temp.ok(d->'orcamento'->'resposta'->>'ordemCompra' = 'PO-2026/0042', 'resposta vigente traz a ordem de compra');
+    PERFORM pg_temp.ok(d ? 'fotos' AND d ? 'etapas' AND d ? 'historico' AND d ? 'solicitacoes', 'chaves novas e antigas presentes');
+END $$;
+
+-- Histórico: respostas e solicitações das duas versões, do mais recente ao mais antigo.
+SELECT portal_registrar_solicitacao(repeat('b', 64), pg_temp.g('eoc')::INTEGER, pg_temp.g('v2_eoc')::BIGINT, 'NEGOCIAR', 'Consegue desconto?');
+DO $$
+DECLARE
+    h JSONB := portal_detalhe_atendimento(repeat('b', 64), pg_temp.g('eoc')::INTEGER)->'historico';
+BEGIN
+    PERFORM pg_temp.ok(jsonb_array_length(h) = 5, 'histórico traz 5 itens (3 da versão 2 e 2 da versão 1): ' || jsonb_array_length(h));
+    PERFORM pg_temp.ok(h->0->>'tipo' = 'SOLICITACAO' AND h->0->>'subtipo' = 'NEGOCIAR' AND (h->0->>'versao')::INT = 2
+        AND (h->0->>'valor')::NUMERIC = 120 AND h->0->>'mensagem' = 'Consegue desconto?' AND h->0->>'situacao' = 'AGUARDANDO'
+        AND h->0->>'protocolo' LIKE 'S-%' AND h->0->>'contato' = 'Ana Decisora', 'item mais recente é a negociação');
+    PERFORM pg_temp.ok(h->1->>'tipo' = 'RESPOSTA' AND h->1->>'subtipo' = 'APROVAR' AND h->1->>'ordemCompra' = 'PO-2026/0042'
+        AND h->1->>'protocolo' = 'R-' || pg_temp.g('oc_r3') AND h->1->>'situacao' = 'EM_CORRECAO' AND h->1->'mensagem' = 'null'::JSONB,
+        'aprovação com ordem de compra e prazo de correção');
+    PERFORM pg_temp.ok(h->2->>'subtipo' = 'RECUSAR' AND (h->2->>'versao')::INT = 2 AND h->2->>'situacao' = 'SUBSTITUIDA', 'recusa trocada aparece como substituída');
+    PERFORM pg_temp.ok(h->3->>'tipo' = 'SOLICITACAO' AND h->3->>'subtipo' = 'DUVIDA' AND (h->3->>'versao')::INT = 1 AND (h->3->>'valor')::NUMERIC = 100,
+        'dúvida da versão 1');
+    PERFORM pg_temp.ok(h->4->>'tipo' = 'RESPOSTA' AND h->4->>'subtipo' = 'RECUSAR' AND (h->4->>'versao')::INT = 1 AND h->4->>'situacao' = 'SUBSTITUIDA',
+        'recusa da versão 1 (trocada por uma nova versão sem efetivar)');
+END $$;
+SELECT pg_temp.ok(jsonb_array_length(portal_detalhe_atendimento(repeat('b', 64), pg_temp.g('eoc')::INTEGER)->'solicitacoes') = 2, 'chave antiga solicitacoes continua');
+
+-- Contato de retorno: validação, alerta para a equipe e gravação só nos campos vazios.
+SELECT pg_temp.ok((portal_detalhe_atendimento(repeat('b', 64), pg_temp.g('eoc')::INTEGER)->>'temTelefone') = 'true', 'Ana tem telefone');
+SELECT pg_temp.ok((portal_entrar_senha('11222333000181', 'Gil-Senha-0039', repeat('d', 64))->>'resultado') = 'OK', 'Gil entra');
+SELECT pg_temp.ok((portal_detalhe_atendimento(repeat('d', 64), pg_temp.g('eoc')::INTEGER)->>'temTelefone') = 'false'
+    AND (portal_detalhe_atendimento(repeat('d', 64), pg_temp.g('eoc')::INTEGER)->>'temEmail') = 'true', 'Gil: sem telefone, com e-mail');
+SELECT pg_temp.espera_erro(format('SELECT portal_registrar_solicitacao(%L, %s, %s, ''DUVIDA'', ''Oi'', ''12345'', NULL, FALSE)', repeat('d', 64), pg_temp.g('eoc'), pg_temp.g('v2_eoc')),
+    'CONTATO_INVALIDO');
+SELECT pg_temp.espera_erro(format('SELECT portal_registrar_solicitacao(%L, %s, %s, ''DUVIDA'', ''Oi'', NULL, ''sem-arroba'', FALSE)', repeat('d', 64), pg_temp.g('eoc'), pg_temp.g('v2_eoc')),
+    'CONTATO_INVALIDO');
+SELECT pg_temp.espera_erro(format('SELECT portal_registrar_solicitacao(%L, %s, %s, ''DUVIDA'', ''Oi'', NULL, %L, FALSE)', repeat('d', 64), pg_temp.g('eoc'), pg_temp.g('v2_eoc'), repeat('a', 200) || '@x.com'),
+    'CONTATO_INVALIDO');
+-- Sem marcar "salvar", o cadastro do contato não muda.
+INSERT INTO t SELECT 's_gil1', (portal_registrar_solicitacao(repeat('d', 64), pg_temp.g('eoc')::INTEGER, pg_temp.g('v2_eoc')::BIGINT, 'DUVIDA',
+    'Podem me ligar?', '(71) 91234-5678', 'Outro@Empresa.invalid', FALSE))->>'id';
+SELECT pg_temp.ok((SELECT contato_telefone = '71912345678' AND contato_email = 'outro@empresa.invalid' FROM orcamento_solicitacoes WHERE id = pg_temp.g('s_gil1')::BIGINT),
+    'solicitação guarda telefone (dígitos) e e-mail (minúsculo)');
+SELECT pg_temp.ok((SELECT telefone IS NULL AND email = 'gil@cliente.invalid' FROM cliente_contatos WHERE id = pg_temp.g('gil')::INTEGER), 'sem marcar salvar, o cadastro não muda');
+SELECT pg_temp.ok(EXISTS (SELECT 1 FROM portal_alertas WHERE solicitacao_id = pg_temp.g('s_gil1')::BIGINT
+    AND detalhe LIKE '%Telefone: (71) 91234-5678%' AND detalhe LIKE '%E-mail: outro@empresa.invalid%'), 'alerta da equipe mostra telefone formatado e e-mail');
+-- Fixo de 10 dígitos com DDI 55 (12 dígitos): o alerta tira o 55 e usa 4+4.
+INSERT INTO t SELECT 's_gil_ddi', (portal_registrar_solicitacao(repeat('d', 64), pg_temp.g('eoc')::INTEGER, pg_temp.g('v2_eoc')::BIGINT, 'DUVIDA',
+    'Ligar no fixo', '+55 (71) 3333-4444', NULL, FALSE))->>'id';
+SELECT pg_temp.ok(EXISTS (SELECT 1 FROM portal_alertas WHERE solicitacao_id = pg_temp.g('s_gil_ddi')::BIGINT AND detalhe LIKE '%Telefone: (71) 3333-4444%' AND detalhe NOT LIKE '%Telefone: 55%'),
+    'alerta tira o DDI 55 de telefone fixo');
+-- Marcando "salvar": telefone vazio é preenchido, e-mail já existente é preservado.
+SELECT portal_registrar_solicitacao(repeat('d', 64), pg_temp.g('eoc')::INTEGER, pg_temp.g('v2_eoc')::BIGINT, 'DUVIDA',
+    'Podem me ligar?', '(71) 91234-5678', 'outro@empresa.invalid', TRUE);
+SELECT pg_temp.ok((SELECT telefone = '(71) 91234-5678' AND email = 'gil@cliente.invalid' FROM cliente_contatos WHERE id = pg_temp.g('gil')::INTEGER),
+    'salvar preenche só o campo vazio');
+INSERT INTO t SELECT 's_gil_ddi2', (portal_registrar_solicitacao(repeat('d', 64), pg_temp.g('eoc')::INTEGER, pg_temp.g('v2_eoc')::BIGINT, 'DUVIDA',
+    'Mudei o número', '5571900000000', NULL, TRUE))->>'id';
+SELECT pg_temp.ok(EXISTS (SELECT 1 FROM portal_alertas WHERE solicitacao_id = pg_temp.g('s_gil_ddi2')::BIGINT AND detalhe LIKE '%Telefone: (71) 90000-0000%'),
+    'alerta tira o DDI 55 de celular (13 dígitos)');
+SELECT pg_temp.ok((SELECT telefone = '(71) 91234-5678' FROM cliente_contatos WHERE id = pg_temp.g('gil')::INTEGER), 'salvar nunca sobrescreve');
+SELECT pg_temp.ok((portal_detalhe_atendimento(repeat('d', 64), pg_temp.g('eoc')::INTEGER)->>'temTelefone') = 'true', 'Gil agora tem telefone');
+SELECT pg_temp.ok((SELECT portal_acesso = 'DECIDIR' AND portal_senha_hash IS NOT NULL FROM cliente_contatos WHERE id = pg_temp.g('gil')::INTEGER), 'salvar contato não tira o acesso');
+
+-- Etapas e valores: datas conhecidas, em ordem; sem data (ou anterior ao cadastro) não aparece.
+DO $$
+DECLARE
+    ea INTEGER := pg_temp.g('ea')::INTEGER;
+    ca INTEGER := pg_temp.g('ca')::INTEGER;
+    base TIMESTAMP := (now() AT TIME ZONE 'UTC') - INTERVAL '10 days';
+    e INTEGER; vv INTEGER; d JSONB;
+BEGIN
+    INSERT INTO equipamentos (serial_number, marca, modelo, tipo, data_entrada, defeito_relatado, empresa_id, cliente_id, status,
+                              valor_orcamento, valor_final, criado_em, data_aprovacao, data_reprovacao, data_pronto)
+        VALUES ('SER-ETAPAS', 'Argox', 'OS-2140', 'Impressora', '2026-10-01', 'Falha', ea, ca, 'PRONTO',
+                150, 90, base,
+                (base + INTERVAL '5 days')::TEXT || '+00',
+                '2000-01-01',
+                to_char(base + INTERVAL '8 days', 'YYYY-MM-DD'))
+        RETURNING id INTO e;
+    INSERT INTO verificacoes (equipamento_id, tecnico_nome, problema_relatado, servicos_necessarios, pecas_necessarias, custo_total, empresa_id, data_inicio, data_fim)
+        VALUES (e, 'Téc', 'Falha', '[]', '[]', 150, ea, base + INTERVAL '1 day', base + INTERVAL '2 days') RETURNING id INTO vv;
+    INSERT INTO orcamento_versoes (empresa_id, equipamento_id, verificacao_id, versao, snapshot, valor_total, criado_em)
+        VALUES (ea, e, vv, 1, '{"servicos":[],"pecas":[]}', 150, (base + INTERVAL '3 days') AT TIME ZONE 'UTC');
+    INSERT INTO t VALUES ('eet', e);
+
+    d := portal_detalhe_atendimento(repeat('b', 64), e);
+    PERFORM pg_temp.ok((SELECT string_agg(x->>'status', ',' ORDER BY ord) FROM jsonb_array_elements(d->'etapas') WITH ORDINALITY AS a(x, ord))
+        = 'RECEBIDO,EM_VERIFICACAO,VERIFICADO,AGUARDANDO_APROVACAO,APROVADO,PRONTO',
+        'etapas com data conhecida (reprovação anterior ao cadastro some): ' || (d->'etapas')::TEXT);
+    PERFORM pg_temp.ok((SELECT bool_and((x->>'em')::TIMESTAMPTZ >= lag_em) FROM (
+        SELECT x, lag((x->>'em')::TIMESTAMPTZ, 1, '-infinity') OVER (ORDER BY ord) AS lag_em
+        FROM jsonb_array_elements(d->'etapas') WITH ORDINALITY AS a(x, ord)) z), 'etapas em ordem cronológica');
+    PERFORM pg_temp.ok(d->'valores' = '{"orcamento": 150, "final": 90, "atual": 90}'::JSONB, 'valor atual prefere o final: ' || (d->'valores')::TEXT);
+    PERFORM pg_temp.ok((SELECT (x->>'valorAtual')::NUMERIC FROM jsonb_array_elements(portal_listar_atendimentos(repeat('b', 64))->'atendimentos') x
+                        WHERE (x->>'id')::INTEGER = e) = 90, 'lista traz valorAtual');
+    PERFORM pg_temp.ok((SELECT (x->>'valorAtual')::NUMERIC FROM jsonb_array_elements(portal_listar_atendimentos(repeat('b', 64))->'atendimentos') x
+                        WHERE (x->>'id')::INTEGER = pg_temp.g('eoc')::INTEGER) = 120, 'lista: sem valor final, vale o do orçamento');
+
+    -- Etapa atual sem coluna própria usa a data da última mudança de status.
+    INSERT INTO equipamentos (serial_number, marca, modelo, tipo, data_entrada, defeito_relatado, empresa_id, cliente_id, status, criado_em, status_alterado_em)
+        VALUES ('SER-MANUT', 'Argox', 'OS-214', 'Impressora', '2026-10-01', 'Falha', ea, ca, 'EM_MANUTENCAO', base, (base + INTERVAL '4 days') AT TIME ZONE 'UTC')
+        RETURNING id INTO e;
+    d := portal_detalhe_atendimento(repeat('b', 64), e);
+    PERFORM pg_temp.ok((SELECT string_agg(x->>'status', ',' ORDER BY ord) FROM jsonb_array_elements(d->'etapas') WITH ORDINALITY AS a(x, ord)) = 'RECEBIDO,EM_MANUTENCAO',
+        'etapa atual sem coluna usa status_alterado_em: ' || (d->'etapas')::TEXT);
+    PERFORM pg_temp.ok(d->'valores' = '{"orcamento": null, "final": null, "atual": null}'::JSONB, 'valores nulos quando não há');
+END $$;
+
+-- Fotos: só do equipamento e da empresa da sessão, por categoria e ordem.
+DO $$
+DECLARE
+    ea INTEGER := pg_temp.g('ea')::INTEGER;
+    eb INTEGER := pg_temp.g('eb')::INTEGER;
+    e INTEGER := pg_temp.g('eoc')::INTEGER;
+    fotos JSONB;
+BEGIN
+    INSERT INTO equipamento_imagens (equipamento_id, empresa_id, categoria, filename, mime_type, tamanho_bytes, largura, altura, ordem, storage_path) VALUES
+        (e, ea, 'SAIDA', 's0.jpg', 'image/jpeg', 10, 800, 600, 0, 'equipamento-imagens/1/1/saida0.jpg'),
+        (e, ea, 'ENTRADA', 'e1.jpg', 'image/jpeg', 10, 800, 600, 1, 'equipamento-imagens/1/1/entrada1.jpg'),
+        (e, ea, 'ENTRADA', 'e0.jpg', 'image/jpeg', 10, 640, 480, 0, 'equipamento-imagens/1/1/entrada0.jpg'),
+        (e, ea, 'VERIFICACAO', 'v0.png', 'image/png', 10, NULL, NULL, 0, 'https://cdn.exemplo.invalid/verif0.png'),
+        (e, ea, 'ENTRADA', 'legado.jpg', 'image/jpeg', 10, 100, 100, 5, NULL),
+        (e, eb, 'ENTRADA', 'outra-empresa.jpg', 'image/jpeg', 10, 100, 100, 0, 'equipamento-imagens/2/9/secreta.jpg');
+    -- Foto de um equipamento da empresa B nunca aparece para o cliente da empresa A.
+    INSERT INTO equipamento_imagens (equipamento_id, empresa_id, categoria, filename, mime_type, tamanho_bytes, ordem, storage_path)
+        VALUES (pg_temp.g('e3')::INTEGER, eb, 'ENTRADA', 'b.jpg', 'image/jpeg', 10, 0, 'equipamento-imagens/2/3/b.jpg');
+
+    fotos := portal_detalhe_atendimento(repeat('b', 64), e)->'fotos';
+    PERFORM pg_temp.ok(jsonb_array_length(fotos) = 4, 'só as 4 fotos válidas da empresa: ' || fotos::TEXT);
+    PERFORM pg_temp.ok((SELECT string_agg(x->>'caminho', ' | ' ORDER BY ord) FROM jsonb_array_elements(fotos) WITH ORDINALITY AS a(x, ord))
+        = 'equipamento-imagens/1/1/entrada0.jpg | equipamento-imagens/1/1/entrada1.jpg | https://cdn.exemplo.invalid/verif0.png | equipamento-imagens/1/1/saida0.jpg',
+        'ordem: categoria, ordem, id');
+    PERFORM pg_temp.ok(fotos->0 ?& ARRAY['id', 'categoria', 'caminho', 'largura', 'altura'] AND fotos->0->>'categoria' = 'ENTRADA'
+        AND (fotos->0->>'largura')::INT = 640 AND (fotos->0->>'altura')::INT = 480, 'campos da foto');
+    PERFORM pg_temp.ok(fotos->2->'largura' = 'null'::JSONB, 'largura desconhecida vira null');
+    PERFORM pg_temp.ok(NOT (fotos::TEXT LIKE '%secreta%' OR fotos::TEXT LIKE '%/3/b.jpg%'), 'foto de outra empresa não vaza');
+    PERFORM pg_temp.ok(jsonb_array_length(portal_detalhe_atendimento(repeat('b', 64), pg_temp.g('e1')::INTEGER)->'fotos') = 0, 'equipamento sem foto: lista vazia');
+END $$;
+
+-- Cartão de contato da empresa: endereço e mapa (somente https).
+INSERT INTO portal_contato_empresa (empresa_id, nome_exibicao, endereco, maps_url)
+    VALUES (pg_temp.g('ea')::INTEGER, 'BMI TAG Teste', 'Rua Teste, 10 - Salvador/BA', 'https://maps.example.invalid/?q=bmitag')
+    ON CONFLICT (empresa_id) DO UPDATE SET endereco = EXCLUDED.endereco, maps_url = EXCLUDED.maps_url, nome_exibicao = EXCLUDED.nome_exibicao;
+SELECT pg_temp.ok((portal_detalhe_atendimento(repeat('b', 64), pg_temp.g('eoc')::INTEGER)->'contatoEmpresa'->>'endereco') = 'Rua Teste, 10 - Salvador/BA'
+    AND (portal_detalhe_atendimento(repeat('b', 64), pg_temp.g('eoc')::INTEGER)->'contatoEmpresa'->>'mapsUrl') = 'https://maps.example.invalid/?q=bmitag',
+    'contato da empresa com endereço e mapa');
+SELECT pg_temp.espera_erro(format('UPDATE portal_contato_empresa SET maps_url = %L WHERE empresa_id = %s', 'http://inseguro.invalid/', pg_temp.g('ea')),
+    'new row for relation "portal_contato_empresa" violates check constraint "chk_portal_contato_maps_url"');
+SELECT pg_temp.espera_erro(format('UPDATE portal_contato_empresa SET endereco = %L WHERE empresa_id = %s', repeat('x', 301), pg_temp.g('ea')),
+    'new row for relation "portal_contato_empresa" violates check constraint "chk_portal_contato_endereco"');
+
 -- ─── Chaves por empresa (0038) ──────────────────────────────────────────────
 DO $$
 DECLARE
@@ -413,6 +662,15 @@ BEGIN
     PERFORM pg_temp.ok(NOT has_table_privilege('service_role', 'public.portal_config_empresa', 'SELECT'), 'sem leitura direta das chaves');
     PERFORM pg_temp.ok(NOT has_function_privilege('anon', 'public.portal_listar_atendimentos(text)', 'EXECUTE'), 'anon sem acesso');
     PERFORM pg_temp.ok(has_function_privilege('service_role', 'public.portal_entrar_senha(text,text,text)', 'EXECUTE'), 'service_role entra com senha');
+    -- 0039: assinaturas novas (parâmetros com DEFAULT), sem sobrar a antiga, e o auxiliar interno fechado.
+    PERFORM pg_temp.ok(has_function_privilege('service_role', 'public.portal_registrar_resposta(text,integer,bigint,text,bigint,text)', 'EXECUTE'),
+        'service_role responde com ordem de compra');
+    PERFORM pg_temp.ok(has_function_privilege('service_role', 'public.portal_registrar_solicitacao(text,integer,bigint,text,text,text,text,boolean)', 'EXECUTE'),
+        'service_role solicita com contato de retorno');
+    PERFORM pg_temp.ok(NOT has_function_privilege('anon', 'public.portal_registrar_resposta(text,integer,bigint,text,bigint,text)', 'EXECUTE'), 'anon sem resposta');
+    PERFORM pg_temp.ok(NOT has_function_privilege('service_role', 'public.autoos_portal_ts(text)', 'EXECUTE'), 'auxiliar de datas é interno');
+    PERFORM pg_temp.ok(to_regprocedure('public.portal_registrar_resposta(text,integer,bigint,text,bigint)') IS NULL
+        AND to_regprocedure('public.portal_registrar_solicitacao(text,integer,bigint,text,text)') IS NULL, 'assinaturas antigas removidas');
     PERFORM pg_temp.ok(NOT has_function_privilege('service_role', 'public.portal_definir_senha_contato(integer,integer,text,integer)', 'EXECUTE'),
         'só o desktop define senha');
     PERFORM pg_temp.ok(NOT has_column_privilege('service_role', 'public.cliente_contatos', 'portal_senha_hash', 'SELECT'), 'hash fora do alcance da função');

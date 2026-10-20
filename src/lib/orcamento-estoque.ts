@@ -5,6 +5,13 @@ export function orcamentoJaAprovado(status: string): boolean {
   return ["APROVADO", "EM_MANUTENCAO", "AGUARDANDO_PECA", "PRONTO", "ENTREGUE"].includes(status);
 }
 
+/** Categoria do estoque (Insumos) oferecida em "Peças vinculadas". */
+export const CATEGORIA_PECAS_ORCAMENTO = "PEÇA";
+
+export function produtosSelecionaveisComoPeca(produtos: Produto[]): Produto[] {
+  return produtos.filter((produto) => produto.categoria === CATEGORIA_PECAS_ORCAMENTO);
+}
+
 export async function carregarProdutosOrcamento(): Promise<Produto[]> {
   const produtos: Produto[] = [];
   for (let pagina = 0; ; pagina++) {
@@ -26,6 +33,22 @@ export function pecasParaOrcamento(servicos: ServicoNecessario[]): PecaNecessari
 
 export function normalizarServicosOrcamento(servicos: ServicoNecessario[]): ServicoNecessario[] {
   return servicos.map((servico, indice) => ({ ...servico, id: servico.id || `legacy:${indice}` }));
+}
+
+/** O que está na tela difere do orçamento salvo (serviços, peças vinculadas ou valor)? */
+export function orcamentoMudou(
+  salvo: { servicos_necessarios?: string | null; custo_total?: number | null },
+  servicos: ServicoNecessario[],
+  total: number,
+): boolean {
+  if (Math.abs((salvo.custo_total ?? 0) - total) > 0.001) return true;
+  let anteriores: ServicoNecessario[] = [];
+  try {
+    anteriores = JSON.parse(salvo.servicos_necessarios || "[]") as ServicoNecessario[];
+  } catch {
+    return true;
+  }
+  return JSON.stringify(normalizarServicosOrcamento(anteriores)) !== JSON.stringify(servicos);
 }
 
 export function validarPecas(pecas: PecaVinculada[]): boolean {

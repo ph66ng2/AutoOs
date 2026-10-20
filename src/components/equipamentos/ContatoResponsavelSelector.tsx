@@ -16,6 +16,8 @@ interface ContatoResponsavelSelectorProps {
   value: ClienteContato | null;
   onChange: (contato: ClienteContato | null) => void;
   disabled?: boolean;
+  /** Rótulo do campo; no equipamento é o responsável por ele. */
+  titulo?: string;
 }
 
 export function ContatoResponsavelSelector({
@@ -24,6 +26,7 @@ export function ContatoResponsavelSelector({
   value,
   onChange,
   disabled = false,
+  titulo = "Responsável pelo equipamento",
 }: ContatoResponsavelSelectorProps) {
   const [contatos, setContatos] = useState<ClienteContato[]>([]);
   const [busca, setBusca] = useState("");
@@ -99,7 +102,7 @@ export function ContatoResponsavelSelector({
     <div className="space-y-2 rounded-md border bg-muted/10 p-3">
       <div className="flex items-center justify-between gap-2">
         <div>
-          <Label className="flex items-center gap-1"><UserRound className="h-3.5 w-3.5" /> Responsável pelo equipamento</Label>
+          <Label className="flex items-center gap-1"><UserRound className="h-3.5 w-3.5" /> {titulo}</Label>
           <p className="text-xs text-muted-foreground">Opcional. Escolha um contato ativo deste cliente.</p>
         </div>
         <Button type="button" size="sm" variant="outline" onClick={() => setNovoOpen(true)} disabled={disabled || !cliente?.id || !empresaId}>

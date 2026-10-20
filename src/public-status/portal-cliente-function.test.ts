@@ -148,6 +148,99 @@ describe("portal-cliente: sessão e orçamento", () => {
     expect((negociacao.body.solicitacao as Record<string, unknown>).protocolo).toBe("S-5");
   });
 
+  it("sem ordem de compra nem contato de retorno, os parâmetros novos nem vão ao banco (compatível com a chamada antiga)", async () => {
+    await call({ acao: "responder", sessao: SESSION, equipamentoId: 28, versaoId: 9, decisao: "APROVAR", respostaVigenteId: 0 });
+    await call({ acao: "solicitar", sessao: SESSION, equipamentoId: 28, versaoId: 9, tipo: "DUVIDA", mensagem: "Oi" });
+    expect(Object.keys(rpc("portal_registrar_resposta")[0].args).sort()).toEqual(
+      ["p_decisao", "p_equipamento_id", "p_resposta_vigente_id", "p_sessao_hash", "p_versao_id"]);
+    expect(Object.keys(rpc("portal_registrar_solicitacao")[0].args).sort()).toEqual(
+      ["p_equipamento_id", "p_mensagem", "p_sessao_hash", "p_tipo", "p_versao_id"]);
+  });
+
+  it("repassa a ordem de compra (sem espaços nas pontas) ao aprovar", async () => {
+    const { response } = await call({ acao: "responder", sessao: SESSION, equipamentoId: 28, versaoId: 9, decisao: "APROVAR", respostaVigenteId: 0, ordemCompra: "  PO-2026/0042 " });
+    expect(response.status).toBe(200);
+    expect(rpc("portal_registrar_resposta")[0].args.p_ordem_compra).toBe("PO-2026/0042");
+  });
+
+  it("recusa ordem de compra com mais de 60 caracteres ou de tipo errado antes de chamar o banco", async () => {
+    const base = { acao: "responder", sessao: SESSION, equipamentoId: 28, versaoId: 9, decisao: "APROVAR", respostaVigenteId: 0 };
+    expect((await call({ ...base, ordemCompra: "9".repeat(61) })).response.status).toBe(400);
+    expect((await call({ ...base, ordemCompra: 123 })).response.status).toBe(400);
+    expect(rpc("portal_registrar_resposta")).toHaveLength(0);
+    expect((await call({ ...base, ordemCompra: "9".repeat(60) })).response.status).toBe(200);
+  });
+
+  it("traduz ORDEM_COMPRA_OBRIGATORIA em 422 com mensagem e código", async () => {
+    rpcResponses.portal_registrar_resposta = () => ({ status: 400, body: { code: "P0001", message: "ORDEM_COMPRA_OBRIGATORIA" } });
+    const { response, body } = await call({ acao: "responder", sessao: SESSION, equipamentoId: 28, versaoId: 9, decisao: "APROVAR", respostaVigenteId: 0 });
+    expect(response.status).toBe(422);
+    expect(body).toEqual({ erro: "Informe o número da ordem de compra para aprovar.", codigo: "ORDEM_COMPRA_OBRIGATORIA" });
+  });
+
+  it("repassa telefone, e-mail e salvarNoContato na solicitação", async () => {
+    const { response } = await call({
+      acao: "solicitar", sessao: SESSION, equipamentoId: 28, versaoId: 9, tipo: "NEGOCIAR", mensagem: "Desconto?",
+      telefone: " (71) 91234-5678 ", email: "ana@cliente.invalid", salvarNoContato: true,
+    });
+    expect(response.status).toBe(200);
+    expect(rpc("portal_registrar_solicitacao")[0].args).toMatchObject({
+      p_mensagem: "Desconto?", p_telefone: "(71) 91234-5678", p_email: "ana@cliente.invalid", p_salvar_no_contato: true,
+    });
+  });
+
+  it("valida o tipo dos campos de contato e traduz CONTATO_INVALIDO em 400", async () => {
+    const base = { acao: "solicitar", sessao: SESSION, equipamentoId: 28, versaoId: 9, tipo: "DUVIDA", mensagem: "Oi" };
+    expect((await call({ ...base, telefone: 71912345678 })).response.status).toBe(400);
+    expect((await call({ ...base, salvarNoContato: "sim" })).response.status).toBe(400);
+    const longo = await call({ ...base, email: `${"a".repeat(200)}@x.com` });
+    expect(longo.response.status).toBe(400);
+    expect(longo.body.codigo).toBe("CONTATO_INVALIDO");
+    expect(rpc("portal_registrar_solicitacao")).toHaveLength(0);
+
+    rpcResponses.portal_registrar_solicitacao = () => ({ status: 400, body: { code: "P0001", message: "CONTATO_INVALIDO" } });
+    const { response, body } = await call({ ...base, telefone: "123" });
+    expect(response.status).toBe(400);
+    expect(body).toEqual({ erro: "Confira o telefone ou o e-mail informado.", codigo: "CONTATO_INVALIDO" });
+  });
+
+  it("no detalhe, fotos ganham url absoluta e perdem o caminho", async () => {
+    rpcResponses.portal_detalhe_atendimento = () => ({
+      body: {
+        id: 28, status: "PRONTO", equipamento: "Impressora Zebra",
+        defeitoRelatado: "Não imprime", valores: { orcamento: 120, final: null, atual: 120 },
+        fotos: [
+          { id: 1, categoria: "ENTRADA", caminho: "equipamento-imagens/1/28/10.jpg", largura: 640, altura: 480 },
+          { id: 2, categoria: "VERIFICACAO", caminho: `${SUPABASE_URL}/storage/v1/object/public/equipamento-imagens/1/28/11.png`, largura: null, altura: null },
+          { id: 8, categoria: "ENTRADA", caminho: "https://cdn.exemplo.invalid/v.png", largura: 1, altura: 1 },
+          { id: 9, categoria: "ENTRADA", caminho: `${SUPABASE_URL}/rest/v1/clientes`, largura: 1, altura: 1 },
+          { id: 10, categoria: "ENTRADA", caminho: "https://outro.supabase.co/storage/v1/object/public/x.jpg", largura: 1, altura: 1 },
+          { id: 3, categoria: "SAIDA", caminho: "/equipamento-imagens/1/28/12.jpg", largura: 800, altura: 600 },
+          { id: 4, categoria: "ENTRADA", caminho: "../segredo/x.jpg", largura: 1, altura: 1 },
+          { id: 5, categoria: "ENTRADA", caminho: "http://inseguro.invalid/x.jpg", largura: 1, altura: 1 },
+          { id: 6, categoria: "ENTRADA", caminho: "javascript:alert(1)", largura: 1, altura: 1 },
+          { id: 7, categoria: "ENTRADA", caminho: null, largura: 1, altura: 1 },
+        ],
+      },
+    });
+    const { body } = await call({ acao: "detalhe", sessao: SESSION, equipamentoId: 28 });
+    const fotos = body.fotos as Array<Record<string, unknown>>;
+    expect(fotos).toEqual([
+      { id: 1, categoria: "ENTRADA", url: `${SUPABASE_URL}/storage/v1/object/public/equipamento-imagens/1/28/10.jpg`, largura: 640, altura: 480 },
+      { id: 2, categoria: "VERIFICACAO", url: `${SUPABASE_URL}/storage/v1/object/public/equipamento-imagens/1/28/11.png`, largura: null, altura: null },
+      { id: 3, categoria: "SAIDA", url: `${SUPABASE_URL}/storage/v1/object/public/equipamento-imagens/1/28/12.jpg`, largura: 800, altura: 600 },
+    ]);
+    expect(JSON.stringify(body)).not.toContain("caminho");
+    expect(body.defeitoRelatado).toBe("Não imprime");
+    expect(body.valores).toEqual({ orcamento: 120, final: null, atual: 120 });
+  });
+
+  it("detalhe sem fotos (função antiga) continua funcionando", async () => {
+    const { response, body } = await call({ acao: "detalhe", sessao: SESSION, equipamentoId: 28 });
+    expect(response.status).toBe(200);
+    expect(body).not.toHaveProperty("fotos");
+  });
+
   it("recusa origem desconhecida", async () => {
     const { response } = await call({ acao: "listar", sessao: SESSION }, "https://evil.example");
     expect(response.status).toBe(403);

@@ -3,6 +3,9 @@ import PortalOrcamento from "./PortalOrcamento";
 import { PortalError, portalApi, shortDate, type ContatoEmpresa, type DetalheAtendimento } from "./portal-api";
 import { navigate, type PortalSession } from "./portal-session";
 import { formatDate, StatusView } from "./StatusView";
+import PortalFotos from "./PortalFotos";
+import PortalHistorico from "./PortalHistorico";
+import { DestaqueConcluido, DestaqueProntoRetirada, DocumentosCard, LinhaValorAtualizado, NotaValorAtualizado } from "./PortalDestaques";
 
 const REFRESH_MS = 60_000;
 
@@ -80,8 +83,8 @@ export default function PortalDetalhe({ session, equipamentoId, onExpirou }: Pro
           </button>
         )}
       </nav>
-      <section className="status-card" aria-live="polite">
-        <p className="eyebrow">Acompanhamento do atendimento</p>
+      <section className={`status-card${data?.status === "ENTREGUE" ? " is-concluido" : ""}`} aria-live="polite">
+        <p className="eyebrow">Portal das Impressoras</p>
 
         {loading && !data && (
           <div className="loading-state" role="status">
@@ -98,7 +101,15 @@ export default function PortalDetalhe({ session, equipamentoId, onExpirou }: Pro
           </div>
         )}
 
-        {data && (
+        {data && (() => {
+          const fotos = data.fotos ?? [];
+          const historico = data.historico ?? [];
+          const resposta = data.orcamento?.resposta;
+          const emDecisao = data.status === "AGUARDANDO_APROVACAO" && data.orcamento?.estado === "ABERTA" && !(resposta && resposta.decisao !== "DESFEITA");
+          const concluido = data.status === "ENTREGUE";
+          const galeriaLateral = emDecisao || concluido || data.status === "PRONTO";
+          const galeria = fotos.length > 0 && <PortalFotos fotos={fotos} equipamento={data.equipamento} destaque={emDecisao} />;
+          return (
           <>
             {/* Celular: uma coluna. Tela larga: status à esquerda, orçamento e contato à direita. */}
             <div className="portal-detail-grid">
@@ -109,6 +120,8 @@ export default function PortalDetalhe({ session, equipamentoId, onExpirou }: Pro
                   orientacao={data.orientacao}
                   statusAlteradoEm={data.statusAlteradoEm}
                   compacto
+                  etapas={data.etapas}
+                  concluido={concluido}
                   identificacao={(data.serie || data.patrimonio || data.entradaEm) && (
                     <p className="portal-identification">
                       {data.serie && <>Série {data.serie}</>}
@@ -117,8 +130,13 @@ export default function PortalDetalhe({ session, equipamentoId, onExpirou }: Pro
                     </p>
                   )}
                 />
+                {!galeriaLateral && galeria}
               </div>
-              <div className="portal-detail-side">
+              <div className={`portal-detail-side${emDecisao ? " is-decisao" : ""}`}>
+                {data.status === "PRONTO" && <DestaqueProntoRetirada detalhe={data} />}
+                {concluido && <DestaqueConcluido detalhe={data} />}
+                {galeriaLateral && galeria}
+                {!["PRONTO", "ENTREGUE"].includes(data.status) && <NotaValorAtualizado detalhe={data} />}
                 {data.orcamento && (
                   <PortalOrcamento
                     session={session}
@@ -128,23 +146,13 @@ export default function PortalDetalhe({ session, equipamentoId, onExpirou }: Pro
                     onExpirou={onExpirou}
                   />
                 )}
+                {(data.status === "PRONTO" || concluido) && <LinhaValorAtualizado detalhe={data} />}
                 {!data.orcamento && data.status === "AGUARDANDO_APROVACAO" && (
                   <p className="notice-box">O orçamento ainda não foi publicado no portal. Fale com a equipe para recebê-lo.</p>
                 )}
 
-                {data.solicitacoes.length > 0 && (
-                  <div className="portal-requests">
-                    <h2>Pedidos enviados</h2>
-                    <ul>
-                      {data.solicitacoes.map((item) => (
-                        <li key={item.id}>
-                          {item.tipo === "NEGOCIAR" ? "Negociação" : item.tipo === "MUDANCA" ? "Correção" : "Dúvida"} · {item.protocolo} ·{" "}
-                          {formatDate(item.criadoEm)} · {item.tratada ? "tratado pela equipe" : "aguardando a equipe"}
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-                )}
+                {!concluido && <DocumentosCard detalhe={data} />}
+                <PortalHistorico historico={historico} />
 
                 <ContatoCard contato={data.contatoEmpresa} />
               </div>
@@ -152,7 +160,8 @@ export default function PortalDetalhe({ session, equipamentoId, onExpirou }: Pro
 
             {checkedAt && <p className="checked-at">Consulta realizada em {formatDate(checkedAt)}.</p>}
           </>
-        )}
+          );
+        })()}
       </section>
     </>
   );

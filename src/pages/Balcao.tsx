@@ -53,7 +53,7 @@ import {
 } from "@/pages/equipamentos/equipamentos-page-constants";
 import { categoriaProdutoLabel } from "@/pages/insumos/insumos-page-constants";
 import { resolveRecipient, type ResolvedRecipient } from "@/lib/recipient-resolver";
-import { saveRecipientAddress } from "@/lib/recipient-persistence";
+import { mensagemEnvioFalhouComEmailSalvo, saveRecipientAddress } from "@/lib/recipient-persistence";
 import { LOGO_BMITAG_MONOCHROME_PNG_BASE64 } from "@/lib/logo-monochrome-base64";
 import type { TecnicoDisponivel } from "@/components/equipamentos/VerificacaoTecnica";
 import { canTransition, getTransitionError } from "@/lib/status-fsm";
@@ -452,16 +452,24 @@ function QuickEntry({ onBack }: { onBack: () => void }) {
       setEmailPromptOpen(true);
     }
   }
-  async function enviarOrdemEntrada(equipment: Equipamento, email: string) {
+  async function enviarOrdemEntrada(equipment: Equipamento, email: string, emailSalvo = false) {
     setEmailFeedback(null);
-    const result = await EmailService.enviarOrdemEntrada({
-      ...equipment,
-      cliente_email: email,
-    });
+    let erroEnvio: string | undefined;
+    try {
+      const result = await EmailService.enviarOrdemEntrada({
+        ...equipment,
+        cliente_email: email,
+      });
+      if (!result.sucesso) erroEnvio = result.erro || "falha desconhecida";
+    } catch (cause) {
+      erroEnvio = cause instanceof Error ? cause.message : String(cause);
+    }
     setEmailFeedback(
-      result.sucesso
+      !erroEnvio
         ? "E-mail da ordem de entrada enviado com sucesso."
-        : `A entrada foi salva, mas o e-mail não foi enviado: ${result.erro || "falha desconhecida"}.`,
+        : emailSalvo
+          ? `A entrada foi salva. ${mensagemEnvioFalhouComEmailSalvo(erroEnvio)}`
+          : `A entrada foi salva, mas o e-mail não foi enviado: ${erroEnvio}.`,
     );
   }
   async function abrirPainelImpressoras() {
@@ -643,8 +651,14 @@ function QuickEntry({ onBack }: { onBack: () => void }) {
                 setError(String(cause));
                 return false;
               }
+              // O cadastro mudou: recarrega a entrada para um reenvio já usar o e-mail salvo.
+              try {
+                setCreated(await db.buscarEquipamento(created.id!));
+              } catch {
+                // Melhor esforço: o e-mail já está salvo e o envio segue com o endereço digitado.
+              }
             }
-            await enviarOrdemEntrada(created, email);
+            await enviarOrdemEntrada(created, email, salvar);
           }}
           onSkip={() => undefined}
         />

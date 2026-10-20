@@ -137,6 +137,8 @@ export async function invoke<T>(command: string, args?: Record<string, unknown>)
     }
     case "buscar_cliente":
       return cliente as T;
+    case "listar_equipamentos_cliente":
+      return [equipamento] as T;
     case "listar_equipamentos": {
       const statusFiltro = args?.status as string | undefined;
       if (statusFiltro && statusFiltro !== "TODOS" && equipamento.status !== statusFiltro) {

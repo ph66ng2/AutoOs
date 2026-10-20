@@ -190,6 +190,8 @@ export interface RespostaOrcamentoInfo {
   aplicadaPeloSistema?: boolean;
   efetivacaoErro?: string | null;
   efetivacaoFalhouEm?: string | null;
+  /** Ordem de compra informada pelo cliente ao aprovar no portal. */
+  ordemCompra?: string | null;
 }
 
 export type TipoEnvioWhatsapp = "orcamento_informativo" | "equipamento_pronto";
@@ -229,6 +231,9 @@ export interface SolicitacaoOrcamentoInfo {
   criadaEm: string;
   tratadaEm?: string | null;
   contato?: string | null;
+  /** Telefone e e-mail que o cliente deixou na solicitação para retorno. */
+  contatoTelefone?: string | null;
+  contatoEmail?: string | null;
 }
 
 export interface PecaBaixadaInfo {
@@ -237,11 +242,15 @@ export interface PecaBaixadaInfo {
   quantidade: number;
 }
 
-/** O que a aprovação/recusa fez e se a decisão pode ser corrigida sem atendimento humano. */
+/** O que a aprovação/recusa fez e se a decisão pode ser corrigida (e de que modo). */
 export interface AnaliseCorrecaoDecisao {
   status: string;
   podeCorrigir: boolean;
   bloqueios: string[];
+  /** O orçamento foi alterado depois da decisão (ajuste anterior à decisão não conta). */
+  ajustadoAposDecisao: boolean;
+  permiteRestaurar: boolean;
+  permiteManter: boolean;
   pagamentoCodigo?: string | null;
   pagamentoDetalhe?: string | null;
   valorAtual?: number | null;
@@ -251,11 +260,53 @@ export interface AnaliseCorrecaoDecisao {
   exigeDecisaoEstoque: boolean;
 }
 
+/** Orçamento já aprovado e alterado: segue aprovado ou pede nova aprovação ao cliente. */
+export type ModoAjusteAprovado = "SEM_NOVA_APROVACAO" | "NOVA_APROVACAO";
+
+/** Escolhas do operador ao salvar a alteração do orçamento. */
+export interface OpcoesAjusteOrcamento {
+  modoAprovado?: ModoAjusteAprovado;
+  /** Confirma a devolução ao estoque das peças já baixadas (nova aprovação). */
+  devolverEstoque?: boolean;
+  /** Confirma que a nova versão anula a resposta do cliente ainda não aplicada. */
+  confirmarRespostaPendente?: boolean;
+}
+
+export interface RespostaPendenteAjuste {
+  decisao: "APROVAR" | "RECUSAR";
+  contato?: string | null;
+  registradaEm: string;
+}
+
+/** O que o operador precisa saber antes de salvar uma alteração no orçamento → Rust: analisar_ajuste_orcamento */
+export interface AnaliseAjusteOrcamento {
+  status: string;
+  podePedirNovaAprovacao: boolean;
+  jaPublicado: boolean;
+  versaoAberta?: number | null;
+  respostaPendente?: RespostaPendenteAjuste | null;
+  pecasBaixadas: PecaBaixadaInfo[];
+  totalBaixado: number;
+  exigeDecisaoEstoque: boolean;
+}
+
+/** O que aconteceu no portal por causa do ajuste (textos prontos para o operador). */
+export interface PortalAjusteInfo {
+  acao: "NENHUMA" | "VERSAO_PUBLICADA" | "NOVA_APROVACAO_PUBLICADA" | "VALOR_ATUALIZADO" | "NAO_PUBLICADA";
+  versao?: number | null;
+  mensagem?: string | null;
+  aviso?: string | null;
+}
+
+/** RESTAURAR_ORIGINAL volta à versão enviada ao cliente; MANTER_ATUAL desfaz só a decisão. */
+export type ModoCorrecaoDecisao = "RESTAURAR_ORIGINAL" | "MANTER_ATUAL";
+
 export interface CorrigirDecisaoInput {
   equipamento_id: number;
   expected_updated_em: string;
   motivo: string;
   devolver_estoque: boolean;
+  modo: ModoCorrecaoDecisao;
 }
 
 /** Estado do aceite online: versão congelada, link, resposta vigente e histórico. */
@@ -317,6 +368,10 @@ export interface ContatoPortalEmpresa {
   email?: string | null;
   telefone?: string | null;
   horario?: string | null;
+  /** Endereço de retirada exibido no portal quando o equipamento está pronto. */
+  endereco?: string | null;
+  /** Link https do Google Maps (opcional). */
+  mapsUrl?: string | null;
 }
 
 export const CATEGORIAS_IMAGEM_EQUIPAMENTO = {
@@ -388,6 +443,8 @@ export interface Cliente {
   uf?: string;
   receber_email?: boolean;
   receber_whatsapp?: boolean;
+  /** Portal do Cliente: o contato precisa informar o número da OC para aceitar orçamentos. */
+  exige_ordem_compra?: boolean;
   observacoes?: string;
   ativo?: boolean;
   criado_em?: string;
@@ -723,7 +780,7 @@ export const SENSITIVE_PERMISSION_LABELS: Record<SensitivePermission, string> = 
   FINANCIAL_ACTIONS: "alterar orçamentos, aprovações e valores",
   STOCK_CONTROL: "movimentar e editar estoque",
   MANAGE_PROFILES: "gerenciar perfis e auditoria",
-  MANAGE_STATUS_LINKS: "criar e revogar links públicos de acompanhamento",
+  MANAGE_STATUS_LINKS: "gerenciar o Portal do Cliente e os links de acompanhamento",
   VIEW_EXPENSES: "visualizar gastos e despesas",
 };
 
@@ -1026,6 +1083,7 @@ export interface AjusteOrcamentoInput {
   divergence?: boolean;
   cliente_aprovou_alteracao?: boolean;
   expected_updated_em?: string;
+  opcoes?: OpcoesAjusteOrcamento;
 }
 
 export interface ConsumoOrcamento {
@@ -1050,4 +1108,97 @@ export interface AprovarOrcamentoInput {
   resposta_esperada_id?: number;
   /** Motivo exigido para aplicar uma decisão diferente da registrada pelo cliente. */
   motivo_divergencia?: string;
+}
+
+// ─── Orçamento de venda avulsa de insumos (OI-<n>) ───────────────────────────
+
+export const STATUS_ORCAMENTO_INSUMOS = [
+  "RASCUNHO",
+  "ENVIADO",
+  "APROVADO",
+  "REPROVADO",
+  "CANCELADO",
+  "ENTREGUE",
+] as const;
+
+export type StatusOrcamentoInsumos = (typeof STATUS_ORCAMENTO_INSUMOS)[number];
+
+/** Item do orçamento, com nome e categoria copiados do produto no momento do orçamento. */
+export interface OrcamentoInsumosItem {
+  id: number;
+  orcamento_id: number;
+  produto_id: number;
+  descricao: string;
+  categoria: string;
+  quantidade: number;
+  valor_unitario: number;
+  valor_total: number;
+  /** Saldo atual do produto (pode ter mudado desde que o orçamento foi feito). */
+  saldo_estoque?: number | null;
+}
+
+/** Cabeçalho vindo do Rust (`OrcamentoInsumosRow`). Os valores já vêm calculados pelo backend. */
+export interface OrcamentoInsumos {
+  id: number;
+  empresa_id: number;
+  numero: number;
+  /** "OI-12" */
+  numero_exibicao: string;
+  cliente_id: number;
+  cliente_nome?: string | null;
+  cliente_documento?: string | null;
+  cliente_email?: string | null;
+  cliente_telefone?: string | null;
+  cliente_receber_email?: boolean | null;
+  cliente_receber_whatsapp?: boolean | null;
+  contato_id?: number | null;
+  contato_nome?: string | null;
+  contato_email?: string | null;
+  contato_telefone?: string | null;
+  status: StatusOrcamentoInsumos;
+  /** AAAA-MM-DD */
+  validade?: string | null;
+  observacoes?: string | null;
+  desconto: number;
+  valor_subtotal: number;
+  valor_total: number;
+  forma_pagamento_codigo?: FormaPagamentoCodigo | null;
+  forma_pagamento_detalhe?: string | null;
+  criado_por_profile_id?: number | null;
+  criado_em: string;
+  /** Token de concorrência: devolva-o ao salvar, enviar, aprovar, cancelar... */
+  atualizado_em: string;
+  enviado_em?: string | null;
+  decidido_em?: string | null;
+  entregue_em?: string | null;
+  total_itens: number;
+}
+
+export interface OrcamentoInsumosDetalhe extends OrcamentoInsumos {
+  itens: OrcamentoInsumosItem[];
+}
+
+export interface OrcamentoInsumosItemInput {
+  produto_id: number;
+  quantidade: number;
+  valor_unitario: number;
+}
+
+export interface OrcamentoInsumosInput {
+  cliente_id: number;
+  contato_id?: number | null;
+  validade?: string | null;
+  observacoes?: string | null;
+  desconto?: number;
+  itens: OrcamentoInsumosItemInput[];
+  /** Obrigatório ao atualizar. */
+  atualizado_em?: string;
+}
+
+export interface FiltrosOrcamentosInsumos {
+  status?: StatusOrcamentoInsumos | "TODOS";
+  cliente_id?: number | null;
+  busca?: string;
+  /** Página iniciando em 0. */
+  page?: number;
 }

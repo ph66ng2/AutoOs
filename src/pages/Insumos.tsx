@@ -62,6 +62,7 @@ import { useInsumos } from "@/hooks/useInsumos";
 import { useNotification } from "@/hooks/useNotification";
 import { useSensitiveAccess } from "@/hooks/useSensitiveAccess";
 import { ErrorAlert } from "@/components/ui/error-alert";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { SENSITIVE_PERMISSIONS, type Produto } from "@/types";
 import { ActionPriorityRow } from "@/components/ui/action-priority-row";
 import { PaginationControls } from "@/components/ui/pagination-controls";
@@ -73,8 +74,10 @@ import {
   InsumosMovimentacaoDialog,
   InsumosProdutoDialog,
 } from "@/pages/insumos/InsumosDialogs";
+import { OrcamentosInsumosTab } from "@/pages/insumos/OrcamentosInsumosTab";
 
 export default function Insumos() {
+  const [aba, setAba] = useState<"estoque" | "orcamentos">("estoque");
   const [busca, setBusca] = useState("");
   const [categoriaFiltro, setCategoriaFiltro] = useState("TODOS");
   const [apenasEstoqueBaixo, setApenasEstoqueBaixo] = useState(false);
@@ -287,7 +290,7 @@ export default function Insumos() {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4">
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
@@ -297,18 +300,32 @@ export default function Insumos() {
           </p>
         </div>
         <div className="flex gap-2">
-          {insumosAbaixoMinimo > 0 && (
+          {aba === "estoque" && insumosAbaixoMinimo > 0 && (
             <Badge variant="destructive" className="h-8 px-3 flex items-center gap-1">
               <AlertTriangle className="h-3.5 w-3.5" />
               {insumosAbaixoMinimo} abaixo do mínimo
             </Badge>
           )}
-          <Button onClick={() => void abrirNovo()}>
-            <Plus className="h-4 w-4 mr-2" />
-            Novo Insumo/Peça
-          </Button>
+          {aba === "estoque" && (
+            <Button onClick={() => void abrirNovo()}>
+              <Plus className="h-4 w-4 mr-2" />
+              Novo Insumo/Peça
+            </Button>
+          )}
         </div>
       </div>
+
+      <Tabs value={aba} onValueChange={(valor) => setAba(valor as "estoque" | "orcamentos")}>
+        <TabsList aria-label="Áreas de Insumos/Peças">
+          <TabsTrigger value="estoque">Estoque</TabsTrigger>
+          <TabsTrigger value="orcamentos">Orçamentos</TabsTrigger>
+        </TabsList>
+      </Tabs>
+
+      {aba === "orcamentos" ? (
+        <OrcamentosInsumosTab onEstoqueAlterado={() => void recarregar()} />
+      ) : (
+        <>
 
       {error && (
         <ErrorAlert
@@ -506,6 +523,8 @@ export default function Insumos() {
         salvando={salvando}
         onDelete={onDelete}
       />
+        </>
+      )}
     </div>
   );
 }

@@ -6,6 +6,9 @@ import { MemoryRouter } from "react-router-dom";
 import { Tabs } from "@/components/ui/tabs";
 import { ConfiguracoesTabSeguranca, type ConfiguracoesTabSegurancaProps } from "../ConfiguracoesTabSeguranca";
 vi.mock("@/components/ProfileDeleteDialog", () => ({ ProfileDeleteDialog: () => null }));
+
+const ivan = { id: 2, nome: "Ivan", role: "TECNICO", permissions: [], pin_configured: true, pin_required: true, ativo: true, is_default: false };
+const ana = { id: 3, nome: "Ana", role: "ATENDENTE", permissions: [], pin_configured: false, pin_required: true, ativo: true, is_default: false };
 const baseProps: ConfiguracoesTabSegurancaProps = {
   canManageProfiles: true,
   securityAdminUnlocked: true,
@@ -21,77 +24,68 @@ const baseProps: ConfiguracoesTabSegurancaProps = {
   trocarMeuPin: vi.fn(),
   managedProfileId: 2,
   setManagedProfileId: vi.fn(),
-  profilesCatalog: [],
-  managedProfile: { id: 2, nome: "Ivan", role: "TECNICO", permissions: [], pin_configured: true, pin_required: true, ativo: true, is_default: false },
-  editProfileName: "",
-  setEditProfileName: vi.fn(),
-  editProfileRole: "CUSTOM",
-  setEditProfileRole: vi.fn(),
-  editPermissions: [],
-  setEditPermissions: vi.fn(),
-  permissionOptions: [],
-  togglePermission: vi.fn(),
-  desativarPerfilSelecionado: vi.fn(),
-  reativarPerfilSelecionado: vi.fn(),
-  salvarPerfilAtual: vi.fn(),
-  gerarCodigoPerfil: vi.fn(),
-  issuedCode: null,
+  profilesCatalog: [ivan, ana],
+  managedProfile: ivan,
   securityMessage: null,
   inactivityLockEnabled: false,
   onToggleInactivityLock: vi.fn(),
   deleteDialogOpen: false,
   onDeleteDialogOpenChange: vi.fn(),
   onDeleteSuccess: vi.fn(),
-  adminPinVerify: "",
-  setAdminPinVerify: vi.fn(),
-  resetAdminPin: "",
-  setResetAdminPin: vi.fn(),
 };
 
-function SecurityForm({ initialMessage = "Perfil atualizado com sucesso.", variant = "success" }: { initialMessage?: string; variant?: "success" | "error" }) {
-  const [message, setMessage] = useState<string | null>(initialMessage);
-  const [editPin, setEditPin] = useState("");
-  const [resetPin, setResetPin] = useState("");
-  return <MemoryRouter><Tabs defaultValue="seguranca"><ConfiguracoesTabSeguranca {...baseProps} adminPinVerify={editPin} setAdminPinVerify={setEditPin} resetAdminPin={resetPin} setResetAdminPin={setResetPin} securityMessage={message} securityMessageVariant={variant} onClearSecurityMessage={() => setMessage(null)} /></Tabs></MemoryRouter>;
+function renderTab(props: Partial<ConfiguracoesTabSegurancaProps> = {}) {
+  return render(<MemoryRouter><Tabs defaultValue="seguranca"><ConfiguracoesTabSeguranca {...baseProps} {...props} /></Tabs></MemoryRouter>);
 }
-describe("retorno e credenciais administrativas de segurança", () => {
-  it("destaca o PIN administrativo inválido como erro e limpa ao corrigir o campo", async () => {
-    const user = userEvent.setup();
-    render(<SecurityForm initialMessage="PIN do administrador inválido" variant="error" />);
+function SecurityForm({ initialMessage = "Perfil excluído permanentemente.", variant = "success" }: { initialMessage?: string; variant?: "success" | "error" }) {
+  const [message, setMessage] = useState<string | null>(initialMessage);
+  return <MemoryRouter><Tabs defaultValue="seguranca"><ConfiguracoesTabSeguranca {...baseProps} securityMessage={message} securityMessageVariant={variant} onClearSecurityMessage={() => setMessage(null)} /></Tabs></MemoryRouter>;
+}
+
+describe("painel de Segurança", () => {
+  it("destaca erro com papel de alerta e sucesso com papel de status", () => {
+    const { unmount } = render(<SecurityForm initialMessage="PIN do administrador inválido" variant="error" />);
     expect(screen.getByRole("alert")).toHaveTextContent("PIN do administrador inválido");
-    await user.type(screen.getByLabelText("Seu PIN de administrador", { selector: "#admin-pin-edit" }), "1234");
-    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
-  });
-  it("apresenta sucesso com o papel de status", () => {
+    unmount();
     render(<SecurityForm />);
-    expect(screen.getByRole("status")).toHaveTextContent("Perfil atualizado com sucesso.");
+    expect(screen.getByRole("status")).toHaveTextContent("Perfil excluído permanentemente.");
   });
 
-  it("não espelha o PIN de edição no formulário de reset", async () => {
-    const user = userEvent.setup();
-    render(<SecurityForm />);
-    const edit = screen.getByLabelText("Seu PIN de administrador", { selector: "#admin-pin-edit" });
-    const reset = screen.getByLabelText("Seu PIN de administrador", { selector: "#admin-pin-verify" });
-    await user.type(edit, "1234");
-    expect(reset).toHaveValue("");
-    await user.type(reset, "4321");
-    expect(edit).toHaveValue("1234");
-    expect(reset).toHaveValue("4321");
-    expect(screen.queryByText("Perfil atualizado com sucesso.")).not.toBeInTheDocument();
+  it("não duplica a gestão de perfis: resume a equipe e aponta para Equipe e acessos", () => {
+    renderTab();
+    expect(screen.getByRole("link", { name: "Abrir Equipe e acessos" })).toHaveAttribute("href", "/perfil");
+    expect(screen.getByText("2 pessoas ativas")).toBeInTheDocument();
+    expect(screen.getByText(/1 com PIN configurado neste PC, 1 com PIN não configurado neste PC/)).toBeInTheDocument();
+    expect(screen.getByText(/Recepção, Técnico, Financeiro/)).toBeInTheDocument();
+    for (const name of [/Salvar perfil/, /Redefinir PIN/, /Desativar perfil/, /Reativar perfil/]) {
+      expect(screen.queryByRole("button", { name })).not.toBeInTheDocument();
+    }
+    expect(screen.queryByText(/modo leitura/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/PIN pendente|PIN ativo/)).not.toBeInTheDocument();
   });
 
-  it("não oferece mais definir PIN de outra pessoa e mostra o código gerado só do perfil selecionado", async () => {
+  it("mantém o que só existe aqui: bloqueio por inatividade e exclusão com verificação dupla", async () => {
     const user = userEvent.setup();
-    const gerarCodigoPerfil = vi.fn();
-    const code = { profile_id: 2, nome: "Ivan", codigo: "K7Q-42M", expira_em: "2026-10-20T12:00:00Z" };
-    const { rerender } = render(<MemoryRouter><Tabs defaultValue="seguranca"><ConfiguracoesTabSeguranca {...baseProps} gerarCodigoPerfil={gerarCodigoPerfil} issuedCode={code} /></Tabs></MemoryRouter>);
-    expect(screen.queryByLabelText("Novo PIN", { selector: "#reset-pin" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: /Redefinir PIN do colaborador/ })).not.toBeInTheDocument();
-    expect(screen.getByText("K7Q-42M")).toBeInTheDocument();
-    await user.click(screen.getByRole("button", { name: "Gerar código de acesso" }));
-    expect(gerarCodigoPerfil).toHaveBeenCalledOnce();
-    // Trocar o perfil selecionado não deve exibir o código de outra pessoa.
-    rerender(<MemoryRouter><Tabs defaultValue="seguranca"><ConfiguracoesTabSeguranca {...baseProps} managedProfileId={3} issuedCode={code} /></Tabs></MemoryRouter>);
-    expect(screen.queryByText("K7Q-42M")).not.toBeInTheDocument();
+    const onDeleteDialogOpenChange = vi.fn();
+    renderTab({ onDeleteDialogOpenChange });
+    expect(screen.getByRole("checkbox", { name: /bloqueio por inatividade/i })).toBeEnabled();
+    expect(screen.getByText(/verificação dupla/)).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Excluir perfil permanentemente" }));
+    expect(onDeleteDialogOpenChange).toHaveBeenCalledWith(true);
+  });
+
+  it("bloqueia a exclusão até liberar com o PIN de administrador", async () => {
+    const user = userEvent.setup();
+    const handleSecurityAdminToggle = vi.fn();
+    renderTab({ securityAdminUnlocked: false, handleSecurityAdminToggle });
+    expect(screen.getByRole("button", { name: "Excluir perfil permanentemente" })).toBeDisabled();
+    await user.click(screen.getByRole("checkbox", { name: /Liberar exclusão de perfis/ }));
+    expect(handleSecurityAdminToggle).toHaveBeenCalledWith(true);
+  });
+
+  it("não mostra a administração para quem não gerencia perfis", () => {
+    renderTab({ canManageProfiles: false });
+    expect(screen.queryByRole("link", { name: "Abrir Equipe e acessos" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Trocar meu PIN" })).toBeInTheDocument();
   });
 });

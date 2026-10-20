@@ -229,6 +229,8 @@ uf: z.string().max(2).optional().or(z.literal("")),
 
     // Preferências
    observacoes: z.string().optional().or(z.literal("")),
+   // Portal do Cliente: exige o número da OC para aceitar orçamentos
+   exige_ordem_compra: z.boolean().optional(),
  }).superRefine((data, ctx) => {
    const numeros = data.documento.replace(/\D/g, "");
    if (numeros.length === 11) {

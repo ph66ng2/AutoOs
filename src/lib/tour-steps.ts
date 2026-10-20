@@ -77,8 +77,8 @@ export const PERMISSION_TOUR: Record<SensitivePermission, TourStep> = {
   },
   MANAGE_STATUS_LINKS: {
     id: "links",
-    title: "Links de acompanhamento",
-    body: "Crie e revogue os links que o cliente usa para acompanhar a OS pelo portal.",
+    title: "Portal do Cliente",
+    body: "Publique orçamentos no portal, gerencie os acessos dos contatos e crie ou revogue os links de acompanhamento da OS.",
     target: "nav-/equipamentos",
   },
   DELETE_RECORDS: {
