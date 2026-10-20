@@ -417,6 +417,62 @@ where
     }
 }
 
+#[derive(PartialEq)]
+enum FaseGravacao {
+    Gravando,
+    Concluida,
+    Cancelada,
+}
+
+/// Como `run_keyring_blocking`, mas para uma gravação que precisa ser desfeita se terminar depois
+/// do limite de tempo. Estourado o limite, a chamada devolve o erro de tempo e a própria thread,
+/// ao terminar a gravação, executa `desfazer` com o que gravou. A fase é decidida sob um mutex:
+/// ou a gravação conclui antes do cancelamento (e o resultado é entregue), ou depois (e é desfeita).
+async fn run_keyring_cancelable<T, W, U>(limit: std::time::Duration, work: W, desfazer: U) -> Result<T, String>
+where
+    T: Send + 'static,
+    W: FnOnce() -> Result<T, String> + Send + 'static,
+    U: FnOnce(&T) + Send + 'static,
+{
+    let fase = std::sync::Arc::new(Mutex::new(FaseGravacao::Gravando));
+    let fase_da_thread = fase.clone();
+    let mut tarefa = tokio::task::spawn_blocking(move || {
+        let produzido = work()?;
+        let mut fase = fase_da_thread.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+        if *fase == FaseGravacao::Cancelada {
+            drop(fase);
+            desfazer(&produzido);
+            return Err(KEYRING_TIMEOUT_MESSAGE.to_string());
+        }
+        *fase = FaseGravacao::Concluida;
+        Ok(produzido)
+    });
+    match tokio::time::timeout(limit, &mut tarefa).await {
+        Ok(Ok(result)) => result,
+        Ok(Err(_)) => Err(KEYRING_UNAVAILABLE_MESSAGE.to_string()),
+        Err(_) => {
+            let ja_concluida = {
+                let mut fase = fase.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+                if *fase == FaseGravacao::Concluida {
+                    true
+                } else {
+                    *fase = FaseGravacao::Cancelada;
+                    false
+                }
+            };
+            if ja_concluida {
+                // Terminou no instante do limite: o resultado já existe, é só entregá-lo.
+                match tarefa.await {
+                    Ok(result) => result,
+                    Err(_) => Err(KEYRING_UNAVAILABLE_MESSAGE.to_string()),
+                }
+            } else {
+                Err(KEYRING_TIMEOUT_MESSAGE.to_string())
+            }
+        }
+    }
+}
+
 pub(crate) fn store_profile_pin(profile_id: i32, pin: &str) -> Result<(), String> {
     let stored = StoredSensitivePin {
         pin_hash: hash_pin(pin.trim())?,
@@ -2237,22 +2293,31 @@ fn delete_profile_pin_record(profile_id: i32) -> Result<(), String> {
 
 /// Devolve o keyring ao estado anterior à ativação (PIN antigo, ou nenhum PIN), mas só se o PIN
 /// que está lá ainda for o que esta chamada gravou: se outra coisa o trocou, não é mais nosso.
+/// Devolve `false` quando o PIN mudou e nada foi desfeito.
+fn restaurar_pin_anterior_sync(
+    profile_id: i32,
+    anterior: Option<StoredSensitivePin>,
+    escrito: Option<StoredSensitivePin>,
+) -> Result<bool, String> {
+    if let (Some(mine), Some(current)) = (escrito.as_ref(), load_profile_pin(profile_id).ok().flatten()) {
+        if current.pin_hash != mine.pin_hash || current.created_at != mine.created_at {
+            return Ok(false);
+        }
+    }
+    match anterior {
+        Some(record) => store_profile_pin_record(profile_id, &record)?,
+        None => delete_profile_pin_record(profile_id)?,
+    }
+    Ok(true)
+}
+
 pub(crate) async fn restaurar_pin_anterior(
     profile_id: i32,
     anterior: Option<StoredSensitivePin>,
     escrito: Option<StoredSensitivePin>,
 ) {
     let resultado = run_keyring_blocking(KEYRING_WRITE_TIMEOUT, move || {
-        if let (Some(mine), Some(current)) = (escrito.as_ref(), load_profile_pin(profile_id).ok().flatten()) {
-            if current.pin_hash != mine.pin_hash || current.created_at != mine.created_at {
-                return Ok(false);
-            }
-        }
-        match anterior {
-            Some(record) => store_profile_pin_record(profile_id, &record)?,
-            None => delete_profile_pin_record(profile_id)?,
-        }
-        Ok(true)
+        restaurar_pin_anterior_sync(profile_id, anterior, escrito)
     })
     .await;
     match resultado {
@@ -2267,7 +2332,8 @@ pub(crate) async fn restaurar_pin_anterior(
 ///
 /// Ordem: (1) confere o código numa transação curta; (2) grava o PIN no keyring, sem nenhuma
 /// transação aberta, com limite de 30 s; (3) consome o código com um UPDATE condicional. Se o
-/// keyring recusar ou demorar, o código continua valendo. Se o código deixar de valer entre
+/// keyring recusar ou demorar, o código continua valendo; uma gravação que só termine depois do
+/// limite é desfeita pela própria thread. Se o código deixar de valer entre
 /// (1) e (3), o PIN anterior volta ao keyring. Palpites errados são contados no banco.
 #[tauri::command]
 #[instrument(skip_all)]
@@ -2297,12 +2363,21 @@ pub async fn ativar_perfil_com_codigo(
     // Uma única chamada ao keyring, com um só limite de tempo: guarda o PIN anterior (recuperação
     // de PIN) para voltar se o código não puder ser consumido e grava o novo.
     let pin_para_gravar = pin.clone();
-    let (anterior, escrito) = match run_keyring_blocking(KEYRING_WRITE_TIMEOUT, move || {
-        let anterior = load_profile_pin(profile_id).ok().flatten();
-        store_profile_pin(profile_id, &pin_para_gravar)?;
-        let escrito = load_profile_pin(profile_id).ok().flatten();
-        Ok((anterior, escrito))
-    })
+    // Se o cofre só responder depois do limite, a própria thread desfaz a gravação.
+    let (anterior, escrito) = match run_keyring_cancelable(
+        KEYRING_WRITE_TIMEOUT,
+        move || {
+            let anterior = load_profile_pin(profile_id).ok().flatten();
+            store_profile_pin(profile_id, &pin_para_gravar)?;
+            let escrito = load_profile_pin(profile_id).ok().flatten();
+            Ok((anterior, escrito))
+        },
+        move |(anterior, escrito): &(Option<StoredSensitivePin>, Option<StoredSensitivePin>)| {
+            if let Err(motivo) = restaurar_pin_anterior_sync(profile_id, anterior.clone(), escrito.clone()) {
+                warn!("Não foi possível desfazer a gravação tardia do PIN do perfil {}: {}", profile_id, motivo);
+            }
+        },
+    )
     .await
     {
         Ok(par) => par,
@@ -2504,6 +2579,49 @@ mod tests {
 
         assert_eq!(result.unwrap_err(), KEYRING_TIMEOUT_MESSAGE);
         assert!(started.elapsed() < std::time::Duration::from_millis(400));
+    }
+
+    #[tokio::test]
+    async fn write_that_finishes_after_the_timeout_is_undone_by_its_own_thread() {
+        let undone = std::sync::Arc::new(std::sync::atomic::AtomicI32::new(0));
+        let undone_in_thread = undone.clone();
+        let result: Result<i32, String> = run_keyring_cancelable(
+            std::time::Duration::from_millis(50),
+            || {
+                std::thread::sleep(std::time::Duration::from_millis(300));
+                Ok(7)
+            },
+            move |written: &i32| undone_in_thread.store(*written, std::sync::atomic::Ordering::SeqCst),
+        )
+        .await;
+
+        assert_eq!(result.unwrap_err(), KEYRING_TIMEOUT_MESSAGE);
+        tokio::time::sleep(std::time::Duration::from_millis(600)).await;
+        assert_eq!(undone.load(std::sync::atomic::Ordering::SeqCst), 7, "a gravação tardia deve ser desfeita");
+    }
+
+    #[tokio::test]
+    async fn write_that_finishes_in_time_is_delivered_and_not_undone() {
+        let undone = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let undone_in_thread = undone.clone();
+        let result = run_keyring_cancelable(
+            std::time::Duration::from_secs(5),
+            || Ok(3),
+            move |_: &i32| undone_in_thread.store(true, std::sync::atomic::Ordering::SeqCst),
+        )
+        .await;
+        assert_eq!(result, Ok(3));
+
+        let failed: Result<i32, String> = run_keyring_cancelable(
+            std::time::Duration::from_secs(5),
+            || Err(KEYRING_UNAVAILABLE_MESSAGE.to_string()),
+            |_: &i32| panic!("não há o que desfazer quando a gravação falhou"),
+        )
+        .await;
+        assert_eq!(failed.unwrap_err(), KEYRING_UNAVAILABLE_MESSAGE);
+
+        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+        assert!(!undone.load(std::sync::atomic::Ordering::SeqCst));
     }
 
     #[tokio::test]
