@@ -35,6 +35,22 @@ export function normalizarServicosOrcamento(servicos: ServicoNecessario[]): Serv
   return servicos.map((servico, indice) => ({ ...servico, id: servico.id || `legacy:${indice}` }));
 }
 
+/** O que está na tela difere do orçamento salvo (serviços, peças vinculadas ou valor)? */
+export function orcamentoMudou(
+  salvo: { servicos_necessarios?: string | null; custo_total?: number | null },
+  servicos: ServicoNecessario[],
+  total: number,
+): boolean {
+  if (Math.abs((salvo.custo_total ?? 0) - total) > 0.001) return true;
+  let anteriores: ServicoNecessario[] = [];
+  try {
+    anteriores = JSON.parse(salvo.servicos_necessarios || "[]") as ServicoNecessario[];
+  } catch {
+    return true;
+  }
+  return JSON.stringify(normalizarServicosOrcamento(anteriores)) !== JSON.stringify(servicos);
+}
+
 export function validarPecas(pecas: PecaVinculada[]): boolean {
   return pecas.every((peca) => Number.isInteger(peca.produto_id) && peca.produto_id > 0
     && Number.isInteger(peca.quantidade) && peca.quantidade > 0

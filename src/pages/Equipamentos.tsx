@@ -136,7 +136,7 @@ import { PhotoUploadDialog } from "@/components/equipamentos/PhotoUploadDialog";
 import { DocumentosEquipamento } from "@/components/equipamentos/DocumentosEquipamento";
 import { PdfPreviewDialog } from "@/components/equipamentos/PdfPreviewDialog";
 import { AjusteOrcamentoServicos } from "@/components/equipamentos/AjusteOrcamentoServicos";
-import { carregarProdutosOrcamento, normalizarServicosOrcamento, pecasParaOrcamento, orcamentoJaAprovado, resumirPecas, validarPecas } from "@/lib/orcamento-estoque";
+import { carregarProdutosOrcamento, normalizarServicosOrcamento, pecasParaOrcamento, orcamentoJaAprovado, orcamentoMudou, resumirPecas, validarPecas } from "@/lib/orcamento-estoque";
 import { ActionPriorityRow, type PriorityAction } from "@/components/ui/action-priority-row";
 import {
   arquivoParaImagemEquipamento,
@@ -186,6 +186,8 @@ import { toast } from "sonner";
 
 const AVISO_ATENDIMENTO_PENDENTE = "abrir-atendimento-pendente";
 import { CorrigirDecisaoDialog } from "@/components/equipamentos/CorrigirDecisaoDialog";
+import { EscolhaAjusteOrcamentoDialog } from "@/components/equipamentos/EscolhaAjusteOrcamentoDialog";
+import type { AnaliseAjusteOrcamento, OpcoesAjusteOrcamento, PortalAjusteInfo } from "@/types";
 import { FormaPagamentoFields } from "@/components/equipamentos/FormaPagamentoFields";
 import { resolveRecipient, type ResolvedRecipient } from "@/lib/recipient-resolver";
 import { mensagemEnvioFalhouComEmailSalvo, saveRecipientAddress } from "@/lib/recipient-persistence";
@@ -234,7 +236,8 @@ export default function Equipamentos() {
   const [idsAprovados, setIdsAprovados] = useState<string[]>([]);
   const [totalOrcamentoAprovacao, setTotalOrcamentoAprovacao] = useState<number | undefined>();
   const decisaoAprovada = todosServicosAprovados === true || idsAprovados.length > 0;
-  const [clienteAprovouAlteracao, setClienteAprovouAlteracao] = useState(false);
+  const [escolhaAjuste, setEscolhaAjuste] = useState<{ variante: "aprovado" | "pendente"; analise: AnaliseAjusteOrcamento } | null>(null);
+  const escolhaAjusteResolver = useRef<((opcoes: OpcoesAjusteOrcamento | null) => void) | null>(null);
   const [consumosDetalhes, setConsumosDetalhes] = useState<ConsumoOrcamento[]>([]);
   const [baixandoPendentes, setBaixandoPendentes] = useState(false);
   const [consumosDialogOpen, setConsumosDialogOpen] = useState(false);
@@ -899,7 +902,6 @@ export default function Equipamentos() {
     setSelecionado(eq);
     setNovoStatus("");
     setAjusteOrcamentoSemMudancaStatus(true);
-    setClienteAprovouAlteracao(false);
     setCorrecaoStatus(false);
     setMotivoCorrecaoStatus("");
     setValorFinal(0);
@@ -1364,18 +1366,21 @@ export default function Equipamentos() {
     }
   }
 
+  function pedirEscolhaAjuste(variante: "aprovado" | "pendente", analise: AnaliseAjusteOrcamento) {
+    return new Promise<OpcoesAjusteOrcamento | null>((resolve) => {
+      escolhaAjusteResolver.current = resolve;
+      setEscolhaAjuste({ variante, analise });
+    });
+  }
+
+  function responderEscolhaAjuste(opcoes: OpcoesAjusteOrcamento | null) {
+    escolhaAjusteResolver.current?.(opcoes);
+    escolhaAjusteResolver.current = null;
+    setEscolhaAjuste(null);
+  }
+
   async function confirmarMudancaStatus(divergencia = false) {
     if (!selecionado || (!novoStatus && !ajusteOrcamentoSemMudancaStatus)) return;
-    if (ajusteOrcamentoSemMudancaStatus && orcamentoJaAprovado(selecionado.status)) {
-      if (!formaPagamentoAjuste) {
-        warning("Equipamentos", "Escolha a forma de pagamento antes de salvar o orçamento aprovado.");
-        return;
-      }
-      if (formaPagamentoAjuste === "OUTRO" && !detalhePagamentoAjuste.trim()) {
-        warning("Equipamentos", "Descreva a forma de pagamento escolhida em Outro.");
-        return;
-      }
-    }
     if (servicosAjuste.some((s) => !validarPecas(s.pecas ?? []))) {
       warning("Equipamentos", "Informe quantidade inteira positiva e preço válido para as peças.");
       return;
@@ -1404,6 +1409,34 @@ export default function Equipamentos() {
       if (!liberado) return;
     }
 
+    // Alterar orçamento já aprovado ou já respondido no portal: o operador escolhe o que fazer.
+    let opcoesAjuste: OpcoesAjusteOrcamento | undefined;
+    if (ajusteOrcamentoSemMudancaStatus && verificacaoAjusteOrcamento && selecionado.id) {
+      try {
+        const analise = await db.analisarAjusteOrcamento(selecionado.id);
+        const aprovado = orcamentoJaAprovado(selecionado.status);
+        const variante = aprovado ? "aprovado" : analise.respostaPendente ? "pendente" : null;
+        if (variante && orcamentoMudou(verificacaoAjusteOrcamento, servicosAjuste, totalAtual)) {
+          const escolha = await pedirEscolhaAjuste(variante, analise);
+          if (!escolha) return;
+          opcoesAjuste = escolha;
+        }
+      } catch (err) {
+        showError("Equipamentos", "Conferir o portal antes de salvar", err);
+        return;
+      }
+      if (opcoesAjuste?.modoAprovado === "SEM_NOVA_APROVACAO") {
+        if (!formaPagamentoAjuste) {
+          warning("Equipamentos", "Escolha a forma de pagamento antes de salvar o orçamento aprovado.");
+          return;
+        }
+        if (formaPagamentoAjuste === "OUTRO" && !detalhePagamentoAjuste.trim()) {
+          warning("Equipamentos", "Descreva a forma de pagamento escolhida em Outro.");
+          return;
+        }
+      }
+    }
+
     setSalvando(true);
     try {
       if (novoStatus === "ENTREGUE") {
@@ -1421,13 +1454,15 @@ export default function Equipamentos() {
       }
 
       let versaoAtual = selecionado.atualizado_em;
+      let portalAjuste: PortalAjusteInfo | undefined;
       if ((novoStatus === "AGUARDANDO_APROVACAO" || ajusteOrcamentoSemMudancaStatus) && verificacaoAjusteOrcamento && !reabreOrcamentoSemAjuste(selecionado.status, novoStatus)) {
         const profileId = sensitiveStatus?.active_profile_id;
         if (!profileId) {
           throw new Error("Perfil autorizado não encontrado para ajustar o orçamento.");
         }
         const pecas = [...pecasParaOrcamento(servicosAjuste), ...pecasLegadasAjuste];
-        await db.atualizarServicosVerificacao(
+        const pedeNovaAprovacao = opcoesAjuste?.modoAprovado === "NOVA_APROVACAO";
+        const resultado = await db.atualizarServicosVerificacao(
           {
             equipamento_id: selecionado.id!,
             empresa_id: selecionado.empresa_id,
@@ -1435,26 +1470,34 @@ export default function Equipamentos() {
             pecas,
             custo_total: totalAtual,
             observacoes: observacoesAjuste,
-            ...(orcamentoJaAprovado(selecionado.status) && formaPagamentoAjuste
+            ...(orcamentoJaAprovado(selecionado.status) && formaPagamentoAjuste && !pedeNovaAprovacao
               ? {
                 forma_pagamento_codigo: formaPagamentoAjuste,
                 forma_pagamento_detalhe: formaPagamentoAjuste === "OUTRO" ? detalhePagamentoAjuste.trim() : undefined,
               }
               : {}),
             divergence: divergencia,
-            cliente_aprovou_alteracao: clienteAprovouAlteracao,
+            // Escolher "ajuste sem nova aprovação" é a confirmação de que o cliente concordou.
+            cliente_aprovou_alteracao: opcoesAjuste?.modoAprovado === "SEM_NOVA_APROVACAO",
             expected_updated_em: selecionado.atualizado_em,
+            ...(opcoesAjuste ? { opcoes: opcoesAjuste } : {}),
           },
           profileId,
         );
         if (!ajusteOrcamentoSemMudancaStatus) versaoAtual = (await db.buscarEquipamento(selecionado.id!)).atualizado_em;
+        portalAjuste = resultado?.portal;
       }
 
       if (ajusteOrcamentoSemMudancaStatus) {
         await recarregar();
         setStatusDialogOpen(false);
         setAjusteOrcamentoSemMudancaStatus(false);
-        success("Equipamentos", "Orçamento atualizado.", "Alterar orçamento");
+        success(
+          "Equipamentos",
+          ["Orçamento atualizado.", portalAjuste?.mensagem].filter(Boolean).join(" "),
+          "Alterar orçamento",
+        );
+        if (portalAjuste?.aviso) warning("Equipamentos", portalAjuste.aviso);
         return;
       }
 
@@ -2753,6 +2796,14 @@ export default function Equipamentos() {
         </DialogContent>
       </Dialog>
 
+      <EscolhaAjusteOrcamentoDialog
+        open={escolhaAjuste !== null}
+        variante={escolhaAjuste?.variante ?? "aprovado"}
+        analise={escolhaAjuste?.analise ?? null}
+        onConfirmar={responderEscolhaAjuste}
+        onCancelar={() => responderEscolhaAjuste(null)}
+      />
+
       <CorrigirDecisaoDialog
         equipamento={corrigirDecisaoAlvo}
         open={corrigirDecisaoAlvo !== null}
@@ -2919,11 +2970,9 @@ export default function Equipamentos() {
                   </div>
                   {ajusteOrcamentoSemMudancaStatus && orcamentoJaAprovado(selecionado.status) ? (
                     <div className="space-y-3">
-                    <label className="flex items-start gap-2 rounded-md border p-3 text-sm">
-                      <input type="checkbox" checked={clienteAprovouAlteracao}
-                        onChange={(event) => setClienteAprovouAlteracao(event.target.checked)} />
-                      <span>O cliente aprovou as mudanças de serviços e peças deste ajuste. Só a quantidade adicional aprovada terá baixa.</span>
-                    </label>
+                    <p className="rounded-md border bg-muted/30 px-3 py-2 text-sm text-muted-foreground">
+                      Ao salvar, você escolhe entre ajustar sem nova aprovação (o cliente já concordou; só a quantidade adicional terá baixa) ou pedir nova aprovação pelo portal.
+                    </p>
                     <FormaPagamentoFields
                       codigo={formaPagamentoAjuste}
                       detalhe={detalhePagamentoAjuste}

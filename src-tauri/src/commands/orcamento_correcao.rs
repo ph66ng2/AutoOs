@@ -10,7 +10,7 @@
 
 use crate::commands::auth::{
     record_security_event, require_active_session_company_id, require_permission,
-    PERMISSION_FINANCIAL_ACTIONS,
+    SecurityProfileSummary, PERMISSION_FINANCIAL_ACTIONS,
 };
 use crate::commands::types::EquipamentoRow;
 use crate::db::get_pool;
@@ -202,7 +202,7 @@ async fn carregar_contexto(
     })
 }
 
-async fn pecas_baixadas(
+pub(crate) async fn pecas_baixadas(
     tx: &mut Transaction<'_, Postgres>,
     empresa_id: i32,
     verificacao_id: i32,
@@ -269,7 +269,29 @@ pub async fn corrigir_decisao_orcamento(input: CorrigirDecisaoInput) -> Result<E
     let empresa_id = require_active_session_company_id(&pool).await?;
     let mut tx = pool.begin().await.map_err(map)?;
 
-    let contexto = carregar_contexto(&mut tx, empresa_id, input.equipamento_id, true).await?;
+    let aplicada = corrigir_na_transacao(&mut tx, &actor, empresa_id, &input).await?;
+    tx.commit().await.map_err(map)?;
+    registrar_auditoria_correcao(&actor, &input, &aplicada).await;
+
+    super::equipamentos::buscar_equipamento(input.equipamento_id).await
+}
+
+/// O que a correção fez, para a auditoria feita depois do commit.
+pub(crate) struct CorrecaoAplicada {
+    pub status_anterior: String,
+    pub total_baixado: i32,
+}
+
+/// Corpo da correção, sem abrir nem fechar a transação: o ajuste de orçamento aprovado
+/// ("pedir nova aprovação") usa a mesma regra de estoque e de resposta desfeita na sua transação.
+pub(crate) async fn corrigir_na_transacao(
+    tx: &mut Transaction<'_, Postgres>,
+    actor: &SecurityProfileSummary,
+    empresa_id: i32,
+    input: &CorrigirDecisaoInput,
+) -> Result<CorrecaoAplicada, String> {
+    let map = super::operator_errors::mapear_erro_sql;
+    let contexto = carregar_contexto(tx, empresa_id, input.equipamento_id, true).await?;
     let bloqueios = bloqueios_de(&contexto);
     if let Some(primeiro) = bloqueios.first() {
         return Err(primeiro.clone());
@@ -284,7 +306,7 @@ pub async fn corrigir_decisao_orcamento(input: CorrigirDecisaoInput) -> Result<E
             .ok_or_else(|| "O orçamento atual não tem valor registrado. Restaure o orçamento enviado ao cliente.".to_string())?,
     };
 
-    let pecas = pecas_baixadas(&mut tx, empresa_id, contexto.verificacao_id).await?;
+    let pecas = pecas_baixadas(tx, empresa_id, contexto.verificacao_id).await?;
     let total_baixado: i32 = pecas.iter().map(|peca| peca.quantidade).sum();
     if total_baixado > 0 && !input.devolver_estoque {
         return Err(format!(
@@ -298,7 +320,7 @@ pub async fn corrigir_decisao_orcamento(input: CorrigirDecisaoInput) -> Result<E
         sqlx::query("SELECT id FROM produtos WHERE id = ANY($1) AND empresa_id = $2 ORDER BY id FOR UPDATE")
             .bind(&produtos)
             .bind(empresa_id)
-            .fetch_all(&mut *tx)
+            .fetch_all(&mut **tx)
             .await
             .map_err(map)?;
         let linhas: Vec<(String, i32, i32)> = sqlx::query_as(
@@ -309,7 +331,7 @@ pub async fn corrigir_decisao_orcamento(input: CorrigirDecisaoInput) -> Result<E
         )
         .bind(contexto.verificacao_id)
         .bind(empresa_id)
-        .fetch_all(&mut *tx)
+        .fetch_all(&mut **tx)
         .await
         .map_err(map)?;
         for (servico_id, produto_id, quantidade) in linhas {
@@ -320,7 +342,7 @@ pub async fn corrigir_decisao_orcamento(input: CorrigirDecisaoInput) -> Result<E
             .bind(quantidade)
             .bind(produto_id)
             .bind(empresa_id)
-            .execute(&mut *tx)
+            .execute(&mut **tx)
             .await
             .map_err(map)?;
             sqlx::query(
@@ -332,7 +354,7 @@ pub async fn corrigir_decisao_orcamento(input: CorrigirDecisaoInput) -> Result<E
             .bind(quantidade)
             .bind(format!("verificacao:{};servico:{}", contexto.verificacao_id, servico_id))
             .bind(empresa_id)
-            .execute(&mut *tx)
+            .execute(&mut **tx)
             .await
             .map_err(map)?;
         }
@@ -345,13 +367,13 @@ pub async fn corrigir_decisao_orcamento(input: CorrigirDecisaoInput) -> Result<E
     )
     .bind(contexto.verificacao_id)
     .bind(empresa_id)
-    .execute(&mut *tx)
+    .execute(&mut **tx)
     .await
     .map_err(map)?;
     sqlx::query("DELETE FROM orcamento_servicos_decisao WHERE verificacao_id = $1 AND empresa_id = $2")
         .bind(contexto.verificacao_id)
         .bind(empresa_id)
-        .execute(&mut *tx)
+        .execute(&mut **tx)
         .await
         .map_err(map)?;
 
@@ -374,7 +396,7 @@ pub async fn corrigir_decisao_orcamento(input: CorrigirDecisaoInput) -> Result<E
     let restaurada = sqlx::query(atualizar_verificacao)
     .bind(contexto.verificacao_id)
     .bind(empresa_id)
-    .execute(&mut *tx)
+    .execute(&mut **tx)
     .await
     .map_err(map)?
     .rows_affected();
@@ -392,7 +414,7 @@ pub async fn corrigir_decisao_orcamento(input: CorrigirDecisaoInput) -> Result<E
     .bind(empresa_id)
     .bind(&input.expected_updated_em)
     .bind(valor_reaberto)
-    .execute(&mut *tx)
+    .execute(&mut **tx)
     .await
     .map_err(map)?
     .rows_affected();
@@ -420,7 +442,7 @@ pub async fn corrigir_decisao_orcamento(input: CorrigirDecisaoInput) -> Result<E
     .bind(empresa_id)
     .bind(actor.id)
     .bind(format!("Decisão do orçamento corrigida pela equipe: {}", input.motivo.trim()))
-    .execute(&mut *tx)
+    .execute(&mut **tx)
     .await
     .map_err(map)?;
 
@@ -438,29 +460,33 @@ pub async fn corrigir_decisao_orcamento(input: CorrigirDecisaoInput) -> Result<E
     .bind(total_baixado > 0)
     .bind(total_baixado)
     .bind(actor.id)
-    .execute(&mut *tx)
+    .execute(&mut **tx)
     .await
     .map_err(map)?;
 
-    tx.commit().await.map_err(map)?;
+    Ok(CorrecaoAplicada { status_anterior: contexto.status, total_baixado })
+}
 
+pub(crate) async fn registrar_auditoria_correcao(
+    actor: &SecurityProfileSummary,
+    input: &CorrigirDecisaoInput,
+    aplicada: &CorrecaoAplicada,
+) {
     record_security_event(
         "BUDGET_DECISION_CORRECTED",
-        Some(&actor),
+        Some(actor),
         format!(
             "equipamento_id={}; modo={:?}; status_anterior={}; estoque_devolvido={}; pecas_devolvidas={}; motivo={}",
             input.equipamento_id,
             input.modo,
-            contexto.status,
-            total_baixado > 0,
-            total_baixado,
+            aplicada.status_anterior,
+            aplicada.total_baixado > 0,
+            aplicada.total_baixado,
             input.motivo.trim().replace(';', ","),
         ),
         true,
     )
     .await;
-
-    super::equipamentos::buscar_equipamento(input.equipamento_id).await
 }
 
 #[cfg(test)]
