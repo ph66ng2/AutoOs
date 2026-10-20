@@ -56,7 +56,6 @@ import {
   Download,
   Smartphone,
   DollarSign,
-  Link2,
 } from "lucide-react";
 import { useForm, Controller } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -136,7 +135,7 @@ import { PhotoUploadDialog } from "@/components/equipamentos/PhotoUploadDialog";
 import { DocumentosEquipamento } from "@/components/equipamentos/DocumentosEquipamento";
 import { PdfPreviewDialog } from "@/components/equipamentos/PdfPreviewDialog";
 import { AjusteOrcamentoServicos } from "@/components/equipamentos/AjusteOrcamentoServicos";
-import { carregarProdutosOrcamento, normalizarServicosOrcamento, pecasParaOrcamento, orcamentoJaAprovado, resumirPecas, validarPecas } from "@/lib/orcamento-estoque";
+import { carregarProdutosOrcamento, normalizarServicosOrcamento, pecasParaOrcamento, orcamentoJaAprovado, orcamentoMudou, resumirPecas, validarPecas } from "@/lib/orcamento-estoque";
 import { ActionPriorityRow, type PriorityAction } from "@/components/ui/action-priority-row";
 import {
   arquivoParaImagemEquipamento,
@@ -156,6 +155,11 @@ import {
 } from "@/pages/equipamentos/equipamentos-page-constants";
 import { GaleriaImagensEquipamento } from "@/pages/equipamentos/EquipamentosPageGallery";
 import { StatusBadge } from "@/pages/equipamentos/EquipamentosStatusBadge";
+import { AnteriorEmAtendimentoAviso } from "@/components/equipamentos/AnteriorEmAtendimentoAviso";
+import {
+  MENSAGEM_DADOS_PREENCHIDOS,
+  usarEquipamentoAnteriorNoCadastro,
+} from "@/pages/equipamentos/equipamento-anterior";
 import {
   extrairTecnicoInicialDeObservacoes,
   filtrarImagensPorCategoria,
@@ -174,16 +178,19 @@ import { InputDialog } from "@/components/ui/input-dialog";
 import { ErrorAlert } from "@/components/ui/error-alert";
 import { PaginationControls } from "@/components/ui/pagination-controls";
 import { PagamentoOrcamentoDialog } from "@/components/equipamentos/PagamentoOrcamentoDialog";
-import { PublicStatusLinkDialog } from "@/components/equipamentos/PublicStatusLinkDialog";
 import { DecisaoOrcamentoCard } from "@/components/equipamentos/DecisaoOrcamentoCard";
+import { PortalClienteBotao } from "@/components/equipamentos/PortalClienteBotao";
+import { PortalClienteProvider } from "@/components/equipamentos/portal-cliente-context";
 import { EVENTO_ALERTAS_PORTAL } from "@/components/PortalAlertas";
 import { toast } from "sonner";
 
 const AVISO_ATENDIMENTO_PENDENTE = "abrir-atendimento-pendente";
 import { CorrigirDecisaoDialog } from "@/components/equipamentos/CorrigirDecisaoDialog";
+import { EscolhaAjusteOrcamentoDialog } from "@/components/equipamentos/EscolhaAjusteOrcamentoDialog";
+import type { AnaliseAjusteOrcamento, OpcoesAjusteOrcamento, PortalAjusteInfo } from "@/types";
 import { FormaPagamentoFields } from "@/components/equipamentos/FormaPagamentoFields";
 import { resolveRecipient, type ResolvedRecipient } from "@/lib/recipient-resolver";
-import { saveRecipientAddress } from "@/lib/recipient-persistence";
+import { mensagemEnvioFalhouComEmailSalvo, saveRecipientAddress } from "@/lib/recipient-persistence";
 import { totalPages } from "@/lib/pagination";
 
 // O anel é a borda de um ::after dentro da célula. O box-shadow fica por baixo
@@ -208,7 +215,6 @@ export default function Equipamentos() {
   const detalhesAbertoRef = useRef(false);
   const [sinalPortal, setSinalPortal] = useState(0);
   detalhesAbertoRef.current = detalhesDialogOpen;
-  const [publicStatusDialogOpen, setPublicStatusDialogOpen] = useState(false);
   // Resposta do cliente lida ao abrir a aprovação; segue junto dela para barrar tela desatualizada.
   // Só a aprovação escreve aqui: recarregar o quadro em segundo plano não pode trocar o que o operador conferiu.
   const respostaClienteVistaRef = useRef(0);
@@ -229,7 +235,8 @@ export default function Equipamentos() {
   const [idsAprovados, setIdsAprovados] = useState<string[]>([]);
   const [totalOrcamentoAprovacao, setTotalOrcamentoAprovacao] = useState<number | undefined>();
   const decisaoAprovada = todosServicosAprovados === true || idsAprovados.length > 0;
-  const [clienteAprovouAlteracao, setClienteAprovouAlteracao] = useState(false);
+  const [escolhaAjuste, setEscolhaAjuste] = useState<{ variante: "aprovado" | "pendente"; analise: AnaliseAjusteOrcamento } | null>(null);
+  const escolhaAjusteResolver = useRef<((opcoes: OpcoesAjusteOrcamento | null) => void) | null>(null);
   const [consumosDetalhes, setConsumosDetalhes] = useState<ConsumoOrcamento[]>([]);
   const [baixandoPendentes, setBaixandoPendentes] = useState(false);
   const [consumosDialogOpen, setConsumosDialogOpen] = useState(false);
@@ -255,6 +262,8 @@ export default function Equipamentos() {
   // Duplicidade de serial (múltiplos ciclos de manutenção)
   const [registrosAnteriores, setRegistrosAnteriores] = useState<Equipamento[]>([]);
   const [confirmouNovoCiclo, setConfirmouNovoCiclo] = useState(false);
+  // Equipamento anterior clicado no cadastro que ainda está em atendimento (não serve de base).
+  const [anteriorEmAtendimento, setAnteriorEmAtendimento] = useState<Equipamento | null>(null);
   const [sugestoesSerial, setSugestoesSerial] = useState<Equipamento[]>([]);
   const [mostrarSugestoes, setMostrarSugestoes] = useState(false);
 
@@ -471,6 +480,7 @@ export default function Equipamentos() {
     setTecnicoNovoEquipamento("Ivan");
     setRegistrosAnteriores([]);
     setConfirmouNovoCiclo(false);
+    setAnteriorEmAtendimento(null);
     form.reset({
       serial_number: "", patrimonio: "", marca: "", modelo: "", tipo: "", status: "RECEBIDO",
       defeito_relatado: "", acessorios: [], acessorios_outros: "",
@@ -629,6 +639,23 @@ export default function Equipamentos() {
     } catch (err) {
       console.error("Erro ao buscar registros anteriores:", err);
     }
+  }
+
+  /**
+   * Cadastro novo: clicar num equipamento anterior do cliente reaproveita só os dados do aparelho
+   * quando o atendimento já foi encerrado; se ainda está em atendimento, avisa e não preenche.
+   */
+  async function usarEquipamentoAnterior(anterior: Equipamento) {
+    const resultado = await usarEquipamentoAnteriorNoCadastro(form, anterior, (serial) => db.buscarEquipamentosPorSerial(serial));
+    if (resultado.tipo === "em_atendimento") {
+      setAnteriorEmAtendimento(anterior);
+      return;
+    }
+    setAnteriorEmAtendimento(null);
+    setMostrarSugestoes(false);
+    setRegistrosAnteriores(resultado.registros);
+    setConfirmouNovoCiclo(resultado.confirmarNovoCiclo);
+    toast.success(MENSAGEM_DADOS_PREENCHIDOS, { duration: 3000 });
   }
 
   async function handleSerialInput(value: string) {
@@ -874,7 +901,6 @@ export default function Equipamentos() {
     setSelecionado(eq);
     setNovoStatus("");
     setAjusteOrcamentoSemMudancaStatus(true);
-    setClienteAprovouAlteracao(false);
     setCorrecaoStatus(false);
     setMotivoCorrecaoStatus("");
     setValorFinal(0);
@@ -985,14 +1011,20 @@ export default function Equipamentos() {
           permission: SENSITIVE_PERMISSIONS.FINANCIAL_ACTIONS,
         });
         if (liberadoEmail) {
-          async function enviarOrdemEntrada(email: string, nomeDestinatario: string) {
-            const retornoEmailEntrada = await EmailService.enviarOrdemEntrada({
-              ...resultado.data,
-              cliente_email: email,
-              cliente_nome: nomeDestinatario,
-            } as Equipamento);
-            if (!retornoEmailEntrada.sucesso) {
-              showError("Equipamentos", "Enviar ordem de entrada", new Error(retornoEmailEntrada.erro || "Falha desconhecida."));
+          async function enviarOrdemEntrada(email: string, nomeDestinatario: string, emailSalvo: boolean) {
+            let erroEnvio: string | undefined;
+            try {
+              const retornoEmailEntrada = await EmailService.enviarOrdemEntrada({
+                ...resultado.data,
+                cliente_email: email,
+                cliente_nome: nomeDestinatario,
+              } as Equipamento);
+              if (!retornoEmailEntrada.sucesso) erroEnvio = retornoEmailEntrada.erro || "Falha desconhecida.";
+            } catch (cause) {
+              erroEnvio = cause instanceof Error ? cause.message : String(cause);
+            }
+            if (erroEnvio) {
+              showError("Equipamentos", "Enviar ordem de entrada", new Error(emailSalvo ? mensagemEnvioFalhouComEmailSalvo(erroEnvio) : erroEnvio));
             } else {
               success("Equipamentos", "Email de ordem de entrada enviado com sucesso.", "Enviar email");
             }
@@ -1008,8 +1040,10 @@ export default function Equipamentos() {
                   showError("Equipamentos", "Salvar destinatário", cause);
                   return false;
                 }
+                // O cadastro mudou: recarrega para o próximo envio já usar o e-mail salvo.
+                await atualizarEmSegundoPlano();
               }
-              await enviarOrdemEntrada(email, recipient.nome);
+              await enviarOrdemEntrada(email, recipient.nome, salvar);
             },
             onSkip: () => undefined,
           });
@@ -1064,7 +1098,7 @@ export default function Equipamentos() {
     });
     if (!liberado) return false;
 
-    async function executarComEmail(email: string | undefined, nomeDestinatario?: string): Promise<boolean> {
+    async function executarComEmail(email: string | undefined, nomeDestinatario?: string, emailSalvo = false): Promise<boolean> {
       setSalvando(true);
       try {
         const resultado = await finalizarVerificacao(selecionado!, dados, email, nomeDestinatario);
@@ -1074,13 +1108,16 @@ export default function Equipamentos() {
         setVerificacaoDialogOpen(false);
         await recarregar();
         const resumoCanais = mensagemResultadoCanais(resultado);
-        if (resumoCanais) {
+        if (emailSalvo && resultado.canais?.email && !resultado.canais.email.enviado) {
+          showError("Equipamentos", "Finalizar verificação", new Error([mensagemEnvioFalhouComEmailSalvo(resultado.canais.email.erro), ...resumoCanais.split("\n").filter((linha) => linha.startsWith("WhatsApp"))].join("\n")));
+        } else if (resumoCanais) {
           success("Equipamentos", resumoCanais, "Finalizar verificação");
         }
         return true;
       } catch (err: any) {
         console.error("Erro ao finalizar verificação:", err);
         showError("Equipamentos", "Finalizar verificação", err);
+        if (emailSalvo) await atualizarEmSegundoPlano();
         return false;
       } finally {
         setSalvando(false);
@@ -1099,7 +1136,7 @@ export default function Equipamentos() {
             return false;
           }
         }
-        await executarComEmail(email, recipient.nome);
+        await executarComEmail(email, recipient.nome, salvar);
       },
       onSkip: async () => { await executarComEmail(""); },
     });
@@ -1121,7 +1158,7 @@ export default function Equipamentos() {
     });
     if (!liberado) return;
 
-    async function executarComEmail(email: string | undefined, nomeDestinatario?: string): Promise<boolean> {
+    async function executarComEmail(email: string | undefined, nomeDestinatario?: string, emailSalvo = false): Promise<boolean> {
       setSalvando(true);
       try {
         const resultado = await marcarComoPronto(eq, email, nomeDestinatario);
@@ -1130,13 +1167,16 @@ export default function Equipamentos() {
         }
         await recarregar();
         const resumoCanais = mensagemResultadoCanais(resultado);
-        if (resumoCanais) {
+        if (emailSalvo && resultado.canais?.email && !resultado.canais.email.enviado) {
+          showError("Equipamentos", "Marcar como pronto", new Error([mensagemEnvioFalhouComEmailSalvo(resultado.canais.email.erro), ...resumoCanais.split("\n").filter((linha) => linha.startsWith("WhatsApp"))].join("\n")));
+        } else if (resumoCanais) {
           success("Equipamentos", resumoCanais, "Marcar como pronto");
         }
         return true;
       } catch (err: any) {
         console.error("Erro ao marcar pronto:", err);
         showError("Equipamentos", "Marcar como pronto", err);
+        if (emailSalvo) await atualizarEmSegundoPlano();
         return false;
       } finally {
         setSalvando(false);
@@ -1155,7 +1195,7 @@ export default function Equipamentos() {
             return false;
           }
         }
-        await executarComEmail(email, recipient.nome);
+        await executarComEmail(email, recipient.nome, salvar);
       },
       onSkip: async () => { await executarComEmail(""); },
     });
@@ -1325,18 +1365,21 @@ export default function Equipamentos() {
     }
   }
 
+  function pedirEscolhaAjuste(variante: "aprovado" | "pendente", analise: AnaliseAjusteOrcamento) {
+    return new Promise<OpcoesAjusteOrcamento | null>((resolve) => {
+      escolhaAjusteResolver.current = resolve;
+      setEscolhaAjuste({ variante, analise });
+    });
+  }
+
+  function responderEscolhaAjuste(opcoes: OpcoesAjusteOrcamento | null) {
+    escolhaAjusteResolver.current?.(opcoes);
+    escolhaAjusteResolver.current = null;
+    setEscolhaAjuste(null);
+  }
+
   async function confirmarMudancaStatus(divergencia = false) {
     if (!selecionado || (!novoStatus && !ajusteOrcamentoSemMudancaStatus)) return;
-    if (ajusteOrcamentoSemMudancaStatus && orcamentoJaAprovado(selecionado.status)) {
-      if (!formaPagamentoAjuste) {
-        warning("Equipamentos", "Escolha a forma de pagamento antes de salvar o orçamento aprovado.");
-        return;
-      }
-      if (formaPagamentoAjuste === "OUTRO" && !detalhePagamentoAjuste.trim()) {
-        warning("Equipamentos", "Descreva a forma de pagamento escolhida em Outro.");
-        return;
-      }
-    }
     if (servicosAjuste.some((s) => !validarPecas(s.pecas ?? []))) {
       warning("Equipamentos", "Informe quantidade inteira positiva e preço válido para as peças.");
       return;
@@ -1365,6 +1408,34 @@ export default function Equipamentos() {
       if (!liberado) return;
     }
 
+    // Alterar orçamento já aprovado ou já respondido no portal: o operador escolhe o que fazer.
+    let opcoesAjuste: OpcoesAjusteOrcamento | undefined;
+    if (ajusteOrcamentoSemMudancaStatus && verificacaoAjusteOrcamento && selecionado.id) {
+      try {
+        const analise = await db.analisarAjusteOrcamento(selecionado.id);
+        const aprovado = orcamentoJaAprovado(selecionado.status);
+        const variante = aprovado ? "aprovado" : analise.respostaPendente ? "pendente" : null;
+        if (variante && orcamentoMudou(verificacaoAjusteOrcamento, servicosAjuste, totalAtual)) {
+          const escolha = await pedirEscolhaAjuste(variante, analise);
+          if (!escolha) return;
+          opcoesAjuste = escolha;
+        }
+      } catch (err) {
+        showError("Equipamentos", "Conferir o portal antes de salvar", err);
+        return;
+      }
+      if (opcoesAjuste?.modoAprovado === "SEM_NOVA_APROVACAO") {
+        if (!formaPagamentoAjuste) {
+          warning("Equipamentos", "Escolha a forma de pagamento antes de salvar o orçamento aprovado.");
+          return;
+        }
+        if (formaPagamentoAjuste === "OUTRO" && !detalhePagamentoAjuste.trim()) {
+          warning("Equipamentos", "Descreva a forma de pagamento escolhida em Outro.");
+          return;
+        }
+      }
+    }
+
     setSalvando(true);
     try {
       if (novoStatus === "ENTREGUE") {
@@ -1382,13 +1453,15 @@ export default function Equipamentos() {
       }
 
       let versaoAtual = selecionado.atualizado_em;
+      let portalAjuste: PortalAjusteInfo | undefined;
       if ((novoStatus === "AGUARDANDO_APROVACAO" || ajusteOrcamentoSemMudancaStatus) && verificacaoAjusteOrcamento && !reabreOrcamentoSemAjuste(selecionado.status, novoStatus)) {
         const profileId = sensitiveStatus?.active_profile_id;
         if (!profileId) {
           throw new Error("Perfil autorizado não encontrado para ajustar o orçamento.");
         }
         const pecas = [...pecasParaOrcamento(servicosAjuste), ...pecasLegadasAjuste];
-        await db.atualizarServicosVerificacao(
+        const pedeNovaAprovacao = opcoesAjuste?.modoAprovado === "NOVA_APROVACAO";
+        const resultado = await db.atualizarServicosVerificacao(
           {
             equipamento_id: selecionado.id!,
             empresa_id: selecionado.empresa_id,
@@ -1396,26 +1469,34 @@ export default function Equipamentos() {
             pecas,
             custo_total: totalAtual,
             observacoes: observacoesAjuste,
-            ...(orcamentoJaAprovado(selecionado.status) && formaPagamentoAjuste
+            ...(orcamentoJaAprovado(selecionado.status) && formaPagamentoAjuste && !pedeNovaAprovacao
               ? {
                 forma_pagamento_codigo: formaPagamentoAjuste,
                 forma_pagamento_detalhe: formaPagamentoAjuste === "OUTRO" ? detalhePagamentoAjuste.trim() : undefined,
               }
               : {}),
             divergence: divergencia,
-            cliente_aprovou_alteracao: clienteAprovouAlteracao,
+            // Escolher "ajuste sem nova aprovação" é a confirmação de que o cliente concordou.
+            cliente_aprovou_alteracao: opcoesAjuste?.modoAprovado === "SEM_NOVA_APROVACAO",
             expected_updated_em: selecionado.atualizado_em,
+            ...(opcoesAjuste ? { opcoes: opcoesAjuste } : {}),
           },
           profileId,
         );
         if (!ajusteOrcamentoSemMudancaStatus) versaoAtual = (await db.buscarEquipamento(selecionado.id!)).atualizado_em;
+        portalAjuste = resultado?.portal;
       }
 
       if (ajusteOrcamentoSemMudancaStatus) {
         await recarregar();
         setStatusDialogOpen(false);
         setAjusteOrcamentoSemMudancaStatus(false);
-        success("Equipamentos", "Orçamento atualizado.", "Alterar orçamento");
+        success(
+          "Equipamentos",
+          ["Orçamento atualizado.", portalAjuste?.mensagem].filter(Boolean).join(" "),
+          "Alterar orçamento",
+        );
+        if (portalAjuste?.aviso) warning("Equipamentos", portalAjuste.aviso);
         return;
       }
 
@@ -2242,7 +2323,7 @@ export default function Equipamentos() {
 
       {/* ═══ Dialog Criar/Editar ═══ */}
       <Dialog open={dialogOpen} onOpenChange={(open) => {
-        if (!open) { setRegistrosAnteriores([]); setConfirmouNovoCiclo(false); }
+        if (!open) { setRegistrosAnteriores([]); setConfirmouNovoCiclo(false); setAnteriorEmAtendimento(null); }
         setDialogOpen(open);
       }}>
         <DialogContent className="sm:max-w-2xl max-h-[85vh] overflow-y-auto">
@@ -2254,10 +2335,17 @@ export default function Equipamentos() {
             <div className="space-y-2">
               <ClienteSelector
                 clienteInicial={clienteVinculado}
-                onClienteSelecionado={(c) => { setClienteVinculado(c); setResponsavelVinculado(null); setErroCliente(null); }}
-                onClienteRemovido={() => { setClienteVinculado(null); setResponsavelVinculado(null); }}
+                onClienteSelecionado={(c) => { setClienteVinculado(c); setResponsavelVinculado(null); setErroCliente(null); setAnteriorEmAtendimento(null); }}
+                onClienteRemovido={() => { setClienteVinculado(null); setResponsavelVinculado(null); setAnteriorEmAtendimento(null); }}
+                onEquipamentoSelecionado={editando ? undefined : (anterior) => void usarEquipamentoAnterior(anterior)}
                 readOnly={false}
               />
+              {anteriorEmAtendimento && (
+                <AnteriorEmAtendimentoAviso
+                  equipamento={anteriorEmAtendimento}
+                  onAbrirAtendimento={(eq) => navigate("/equipamentos", { state: { equipamentoId: eq.id } })}
+                />
+              )}
               <ContatoResponsavelSelector
                 cliente={clienteVinculado}
                 empresaId={clienteVinculado?.empresa_id || editando?.empresa_id}
@@ -2537,6 +2625,7 @@ export default function Equipamentos() {
         <DialogContent className="sm:max-w-3xl max-h-[90vh] overflow-y-auto">
           <DialogHeader><DialogTitle>Detalhes do Equipamento</DialogTitle></DialogHeader>
           {selecionado && (
+            <PortalClienteProvider equipamento={selecionado} sinalPortal={sinalPortal}>
             <div className="space-y-4">
               <div className="flex min-w-0 items-start justify-between gap-3">
                 <div className="min-w-0 flex-1">
@@ -2550,27 +2639,12 @@ export default function Equipamentos() {
                 </div>
                 <div className="flex shrink-0 flex-col items-end gap-2">
                   <StatusBadge status={selecionado.status} />
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={async () => {
-                      const allowed = await ensureSensitiveAccess({
-                        title: "Acompanhamento público",
-                        description: "Confirme o acesso para consultar e gerenciar links públicos deste atendimento.",
-                        permission: SENSITIVE_PERMISSIONS.MANAGE_STATUS_LINKS,
-                      });
-                      if (allowed) setPublicStatusDialogOpen(true);
-                    }}
-                  >
-                    <Link2 className="mr-2 h-4 w-4" /> Acompanhamento público
-                  </Button>
+                  <PortalClienteBotao />
                 </div>
               </div>
 
               <DecisaoOrcamentoCard
-                equipamento={selecionado}
                 onAplicar={(decisao) => void abrirDialogoAprovacao(selecionado, decisao)}
-                sinalPortal={sinalPortal}
               />
 
               <Tabs key={selecionado.id} defaultValue="info">
@@ -2703,25 +2777,34 @@ export default function Equipamentos() {
                 <TabsContent value="historico" className="mt-4">{renderHistoricoTab()}</TabsContent>
               </Tabs>
             </div>
+            </PortalClienteProvider>
           )}
         </DialogContent>
       </Dialog>
+
+      <EscolhaAjusteOrcamentoDialog
+        open={escolhaAjuste !== null}
+        variante={escolhaAjuste?.variante ?? "aprovado"}
+        analise={escolhaAjuste?.analise ?? null}
+        onConfirmar={responderEscolhaAjuste}
+        onCancelar={() => responderEscolhaAjuste(null)}
+      />
 
       <CorrigirDecisaoDialog
         equipamento={corrigirDecisaoAlvo}
         open={corrigirDecisaoAlvo !== null}
         onOpenChange={(open) => { if (!open) setCorrigirDecisaoAlvo(null); }}
-        onCorrigido={async () => {
+        onCorrigido={async (portal) => {
           setSelecionado(null);
           await recarregar();
-          success("Equipamentos", "Orçamento reaberto. Envie ou registre uma nova decisão do cliente.", "Decisão corrigida");
+          // A republicação no portal é feita depois da correção; se falhar, a correção vale e o operador é avisado.
+          if (portal?.aviso) {
+            warning("Equipamentos", `Orçamento reaberto, mas o portal não foi atualizado: ${portal.aviso}`);
+          } else {
+            const portalTexto = portal?.mensagem ? ` ${portal.mensagem}` : " Envie ou registre uma nova decisão do cliente.";
+            success("Equipamentos", `Orçamento reaberto.${portalTexto}`, "Decisão corrigida");
+          }
         }}
-      />
-
-      <PublicStatusLinkDialog
-        equipamento={selecionado}
-        open={publicStatusDialogOpen}
-        onOpenChange={setPublicStatusDialogOpen}
       />
 
       {/* ═══ Dialog Verificação Técnica (componente extraído) ═══ */}
@@ -2873,11 +2956,9 @@ export default function Equipamentos() {
                   </div>
                   {ajusteOrcamentoSemMudancaStatus && orcamentoJaAprovado(selecionado.status) ? (
                     <div className="space-y-3">
-                    <label className="flex items-start gap-2 rounded-md border p-3 text-sm">
-                      <input type="checkbox" checked={clienteAprovouAlteracao}
-                        onChange={(event) => setClienteAprovouAlteracao(event.target.checked)} />
-                      <span>O cliente aprovou as mudanças de serviços e peças deste ajuste. Só a quantidade adicional aprovada terá baixa.</span>
-                    </label>
+                    <p className="rounded-md border bg-muted/30 px-3 py-2 text-sm text-muted-foreground">
+                      Ao salvar, você escolhe entre ajustar sem nova aprovação (o cliente já concordou; só a quantidade adicional terá baixa) ou pedir nova aprovação pelo portal.
+                    </p>
                     <FormaPagamentoFields
                       codigo={formaPagamentoAjuste}
                       detalhe={detalhePagamentoAjuste}

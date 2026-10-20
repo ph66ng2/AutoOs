@@ -30,6 +30,20 @@ export function formatDateTimeSalvador(value?: string | Date | null, fallback = 
   });
 }
 
+/**
+ * Lê o instante que o PostgreSQL devolve como texto ("2026-10-20 14:03:05.123456+00").
+ * Normaliza para ISO 8601 antes de criar a data, porque nem todo WebView aceita o espaço
+ * no lugar do "T" nem o deslocamento "+00" sem minutos.
+ */
+export function parseTimestampPostgres(value: string): Date {
+  const iso = value
+    .trim()
+    .replace(" ", "T")
+    .replace(/(\.\d{3})\d+/, "$1")
+    .replace(/([+-]\d{2})$/, "$1:00");
+  return new Date(iso);
+}
+
 /** Converte uma data sem horário para meio-dia local, seguro para ordenação. */
 export function dateOnlyToLocalDate(value: string): Date {
   return /^\d{4}-\d{2}-\d{2}$/.test(value) ? new Date(`${value}T12:00:00`) : new Date(value);

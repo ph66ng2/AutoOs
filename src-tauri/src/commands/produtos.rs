@@ -555,32 +555,41 @@ pub async fn deletar_produto(id: i32) -> Result<bool, String> {
     Ok(deleted)
 }
 
-/// Registra movimentação de estoque e atualiza saldo do produto de forma atômica.
-#[tauri::command]
-#[instrument(skip_all, fields(produto_id = input.produto_id, tipo = %input.tipo))]
-pub async fn registrar_movimentacao_estoque(input: MovimentacaoEstoqueInput) -> Result<bool, String> {
-    let actor = require_permission(PERMISSION_STOCK_CONTROL)?;
-    let (movimento, origem, referencia) = validate_movimentacao_input(&input)?;
-
-    let pool = get_pool().await.map_err(|e| e.to_string())?;
-    let empresa_id = require_active_session_company_id(&pool).await?;
-    let mut tx = pool.begin().await.map_err(super::operator_errors::mapear_erro_sql)?;
-    let _saldo_resultante = if movimento == "ENTRADA" {
+/// Aplica uma movimentação (saldo + linha em `movimentacoes_estoque`) dentro da transação recebida.
+/// É o único caminho que altera saldo: `registrar_movimentacao_estoque` e a venda avulsa de insumos
+/// (aprovar/cancelar orçamento) usam esta função, então a regra de saldo e o registro são os mesmos.
+/// O chamador valida permissão e empresa, abre e confirma a transação e registra a auditoria.
+#[allow(clippy::too_many_arguments)]
+pub(crate) async fn aplicar_movimentacao_em_tx(
+    tx: &mut sqlx::Transaction<'_, Postgres>,
+    empresa_id: i32,
+    produto_id: i32,
+    movimento: &str,
+    quantidade: i32,
+    origem: &str,
+    referencia: Option<&str>,
+    valor_unitario: Option<f64>,
+) -> Result<i32, String> {
+    // A devolução ao cancelar um orçamento de insumos aprovado precisa funcionar mesmo se o
+    // produto foi inativado depois da aprovação; as demais entradas exigem produto ativo.
+    let devolucao_de_orcamento = origem == super::orcamentos_insumos::ORIGEM_VENDA_INSUMOS;
+    let saldo_resultante: i32 = if movimento == "ENTRADA" {
         sqlx::query_scalar(
             r#"
             UPDATE produtos
             SET quantidade_estoque = COALESCE(quantidade_estoque, 0) + $1, atualizado_em = NOW()
-            WHERE id = $2 AND empresa_id = $3 AND ativo = true
+            WHERE id = $2 AND empresa_id = $3 AND (ativo = true OR $4)
             RETURNING quantidade_estoque
             "#,
         )
-        .bind(input.quantidade)
-        .bind(input.produto_id)
+        .bind(quantidade)
+        .bind(produto_id)
         .bind(empresa_id)
-        .fetch_optional(&mut *tx)
+        .bind(devolucao_de_orcamento)
+        .fetch_optional(&mut **tx)
         .await
         .map_err(|e| {
-            error!("Erro ao registrar entrada no produto {}: {}", input.produto_id, e);
+            error!("Erro ao registrar entrada no produto {}: {}", produto_id, e);
             super::operator_errors::mapear_erro_sql(e)
         })?
         .ok_or_else(|| "Produto não encontrado".to_string())?
@@ -595,13 +604,13 @@ pub async fn registrar_movimentacao_estoque(input: MovimentacaoEstoqueInput) -> 
             RETURNING quantidade_estoque
             "#,
         )
-        .bind(input.quantidade)
-        .bind(input.produto_id)
+        .bind(quantidade)
+        .bind(produto_id)
         .bind(empresa_id)
-        .fetch_optional(&mut *tx)
+        .fetch_optional(&mut **tx)
         .await
         .map_err(|e| {
-            error!("Erro ao registrar saída no produto {}: {}", input.produto_id, e);
+            error!("Erro ao registrar saída no produto {}: {}", produto_id, e);
             super::operator_errors::mapear_erro_sql(e)
         })? {
             Some(quantidade) => quantidade,
@@ -609,17 +618,17 @@ pub async fn registrar_movimentacao_estoque(input: MovimentacaoEstoqueInput) -> 
                 let saldo_atual = sqlx::query_scalar::<_, i32>(
                     "SELECT COALESCE(quantidade_estoque, 0) FROM produtos WHERE id = $1 AND empresa_id = $2 AND ativo = true",
                 )
-                .bind(input.produto_id)
+                .bind(produto_id)
                 .bind(empresa_id)
-                .fetch_optional(&mut *tx)
+                .fetch_optional(&mut **tx)
                 .await
                 .map_err(|e| {
-                    error!("Erro ao verificar saldo atual do produto {}: {}", input.produto_id, e);
+                    error!("Erro ao verificar saldo atual do produto {}: {}", produto_id, e);
                     super::operator_errors::mapear_erro_sql(e)
                 })?;
 
                 let quantidade_atual = saldo_atual.ok_or_else(|| "Produto não encontrado".to_string())?;
-                calculate_resulting_stock(quantidade_atual, input.quantidade, &movimento)?
+                calculate_resulting_stock(quantidade_atual, quantidade, movimento)?
             }
         }
     };
@@ -627,22 +636,52 @@ pub async fn registrar_movimentacao_estoque(input: MovimentacaoEstoqueInput) -> 
     sqlx::query(
         r#"
         INSERT INTO movimentacoes_estoque (
-            produto_id, tipo, quantidade, origem, referencia, data_hora, empresa_id
-        ) VALUES ($1, $2, $3, $4, $5, NOW(), $6)
+            produto_id, tipo, quantidade, origem, referencia, data_hora, empresa_id,
+            valor_unitario, valor_total
+        ) VALUES (
+            $1, $2, $3, $4, $5, NOW(), $6,
+            $7::FLOAT8::NUMERIC, ($7::FLOAT8 * $3)::NUMERIC
+        )
         "#,
     )
-    .bind(input.produto_id)
-    .bind(&movimento)
-    .bind(input.quantidade)
-    .bind(&origem)
+    .bind(produto_id)
+    .bind(movimento)
+    .bind(quantidade)
+    .bind(origem)
     .bind(referencia)
     .bind(empresa_id)
-    .execute(&mut *tx)
+    .bind(valor_unitario)
+    .execute(&mut **tx)
     .await
     .map_err(|e| {
-        error!("Erro ao registrar movimentação de estoque do produto {}: {}", input.produto_id, e);
+        error!("Erro ao registrar movimentação de estoque do produto {}: {}", produto_id, e);
         super::operator_errors::mapear_erro_sql(e)
     })?;
+
+    Ok(saldo_resultante)
+}
+
+/// Registra movimentação de estoque e atualiza saldo do produto de forma atômica.
+#[tauri::command]
+#[instrument(skip_all, fields(produto_id = input.produto_id, tipo = %input.tipo))]
+pub async fn registrar_movimentacao_estoque(input: MovimentacaoEstoqueInput) -> Result<bool, String> {
+    let actor = require_permission(PERMISSION_STOCK_CONTROL)?;
+    let (movimento, origem, referencia) = validate_movimentacao_input(&input)?;
+
+    let pool = get_pool().await.map_err(|e| e.to_string())?;
+    let empresa_id = require_active_session_company_id(&pool).await?;
+    let mut tx = pool.begin().await.map_err(super::operator_errors::mapear_erro_sql)?;
+    aplicar_movimentacao_em_tx(
+        &mut tx,
+        empresa_id,
+        input.produto_id,
+        &movimento,
+        input.quantidade,
+        &origem,
+        referencia.as_deref(),
+        None,
+    )
+    .await?;
 
     tx.commit().await.map_err(|e| {
         error!("Erro ao confirmar transação de movimentação do produto {}: {}", input.produto_id, e);

@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { Plus, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { carregarProdutosOrcamento } from "@/lib/orcamento-estoque";
+import { carregarProdutosOrcamento, produtosSelecionaveisComoPeca } from "@/lib/orcamento-estoque";
 import type { PecaVinculada, Produto } from "@/types";
 
 interface Props {
@@ -21,8 +21,12 @@ export function PecasDoServico({ pecas, onChange }: Props) {
     return () => { ativo = false; };
   }, []);
 
+  // O seletor oferece só a categoria Peça. A lista completa segue carregada para o saldo
+  // de peças já vinculadas em orçamentos antigos que não são dessa categoria.
+  const opcoes = produtosSelecionaveisComoPeca(produtos);
+
   function adicionar(produtoId: number) {
-    const produto = produtos.find((item) => item.id === produtoId);
+    const produto = opcoes.find((item) => item.id === produtoId);
     if (!produto || pecas.some((item) => item.produto_id === produtoId)) return;
     onChange([...pecas, {
       produto_id: produtoId,
@@ -61,7 +65,7 @@ export function PecasDoServico({ pecas, onChange }: Props) {
         <select aria-label="Adicionar peça" className="h-9 flex-1 rounded-md border bg-background px-2 text-sm"
           value="" onChange={(event) => adicionar(Number(event.target.value))}>
           <option value="">Adicionar peça do estoque...</option>
-          {produtos.filter((produto) => produto.id && !pecas.some((peca) => peca.produto_id === produto.id))
+          {opcoes.filter((produto) => produto.id && !pecas.some((peca) => peca.produto_id === produto.id))
             .map((produto) => <option key={produto.id} value={produto.id}>{produto.nome} · saldo {produto.quantidade_estoque}</option>)}
         </select>
       </div>

@@ -8,8 +8,8 @@ use url::Url;
 
 static MIGRATOR: Migrator = sqlx::migrate!("./migrations");
 
-const REQUIRED_PROMOTION_MIGRATIONS: [i64; 12] = [27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38];
-const EXPECTED_MIGRATION_COUNT: usize = 38;
+const REQUIRED_PROMOTION_MIGRATIONS: [i64; 14] = [27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40];
+const EXPECTED_MIGRATION_COUNT: usize = 40;
 const LAST_REQUIRED_APPLIED_MIGRATION: i64 = 28;
 
 fn required_env(name: &str) -> Result<String> {
@@ -372,7 +372,7 @@ async fn verify_promoted_schema(pool: &PgPool) -> Result<()> {
     .context("não foi possível confirmar security_profiles.pin_required")?;
     ensure!(profile_pin_policy_exists, "política de PIN da migration SQLx 0030 não foi encontrada");
 
-    // Orçamento pelo Portal do Cliente e fila de WhatsApp (0031–0038): as mesmas tabelas que o
+    // Orçamento pelo Portal do Cliente e fila de WhatsApp (0031–0039): as mesmas tabelas que o
     // aplicativo exige ao abrir.
     let portal_cliente_schema_exists: bool = sqlx::query_scalar(
         "SELECT to_regclass('public.orcamento_versoes') IS NOT NULL
@@ -381,14 +381,49 @@ async fn verify_promoted_schema(pool: &PgPool) -> Result<()> {
              AND to_regclass('public.portal_alertas') IS NOT NULL
              AND to_regclass('public.portal_config_empresa') IS NOT NULL
              AND to_regprocedure('public.portal_entrar_senha(text,text,text)') IS NOT NULL
-             AND to_regprocedure('public.portal_criar_desafio(text,text,uuid,text)') IS NULL",
+             AND to_regprocedure('public.portal_criar_desafio(text,text,uuid,text)') IS NULL
+             -- 0039: dados ampliados do portal (assinaturas novas, sem a antiga, e as colunas novas)
+             AND to_regprocedure('public.portal_registrar_resposta(text,integer,bigint,text,bigint,text)') IS NOT NULL
+             AND to_regprocedure('public.portal_registrar_resposta(text,integer,bigint,text,bigint)') IS NULL
+             AND to_regprocedure('public.portal_registrar_solicitacao(text,integer,bigint,text,text,text,text,boolean)') IS NOT NULL
+             AND to_regprocedure('public.portal_registrar_solicitacao(text,integer,bigint,text,text)') IS NULL
+             AND to_regprocedure('public.autoos_portal_ts(text)') IS NOT NULL
+             AND (SELECT count(*) FROM information_schema.columns
+                   WHERE table_schema = 'public'
+                     AND (table_name, column_name) IN (
+                         ('clientes', 'exige_ordem_compra'),
+                         ('orcamento_respostas', 'ordem_compra'),
+                         ('orcamento_solicitacoes', 'contato_telefone'),
+                         ('orcamento_solicitacoes', 'contato_email'),
+                         ('portal_contato_empresa', 'endereco'),
+                         ('portal_contato_empresa', 'maps_url')
+                     )) = 6",
     )
     .fetch_one(pool)
     .await
     .context("não foi possível confirmar as estruturas do Portal do Cliente")?;
     ensure!(
         portal_cliente_schema_exists,
-        "estruturas das migrations SQLx 0031–0038 não foram encontradas"
+        "estruturas das migrations SQLx 0031–0039 não foram encontradas"
+    );
+
+    // 0040: orçamento de venda avulsa de insumos (tabelas, numeração por empresa e RLS ligado).
+    let orcamentos_insumos_schema_exists: bool = sqlx::query_scalar(
+        "SELECT to_regclass('public.orcamentos_insumos') IS NOT NULL
+             AND to_regclass('public.orcamento_insumos_itens') IS NOT NULL
+             AND to_regclass('public.orcamentos_insumos_contadores') IS NOT NULL
+             AND to_regclass('public.uq_orcamentos_insumos_numero') IS NOT NULL
+             AND (SELECT count(*) FROM pg_class
+                   WHERE relnamespace = 'public'::regnamespace
+                     AND relname IN ('orcamentos_insumos', 'orcamento_insumos_itens', 'orcamentos_insumos_contadores')
+                     AND relrowsecurity) = 3",
+    )
+    .fetch_one(pool)
+    .await
+    .context("não foi possível confirmar as estruturas do orçamento de insumos")?;
+    ensure!(
+        orcamentos_insumos_schema_exists,
+        "estruturas da migration SQLx 0040 (orçamento de insumos) não foram encontradas"
     );
 
     let applied_count: i64 =
@@ -413,7 +448,7 @@ async fn required_promotion_migrations_already_applied(pool: &PgPool) -> Result<
     .bind(REQUIRED_PROMOTION_MIGRATIONS.as_slice())
     .fetch_one(pool)
     .await
-    .context("não foi possível consultar o status inicial das migrations 0027–0038")?;
+    .context("não foi possível consultar o status inicial das migrations 0027–0040")?;
     Ok(applied_count == REQUIRED_PROMOTION_MIGRATIONS.len() as i64)
 }
 

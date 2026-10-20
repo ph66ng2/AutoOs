@@ -26,9 +26,10 @@ import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
 import { invoke } from "@tauri-apps/api/core";
 import { db } from "@/lib/db";
-import { formatDateTimeSalvador } from "@/lib/date-utils";
+import { formatDateTimeSalvador, parseTimestampPostgres } from "@/lib/date-utils";
 import { STATUS_LABELS } from "@/types";
 import type {
+  OrcamentoInsumosDetalhe,
   Equipamento,
   EquipamentoHistoricoEvento,
   EquipamentoImagem,
@@ -274,6 +275,8 @@ function obterFormaPagamento(
 interface CabecalhoPdf {
   titulo: string;
   numeroOS: string;
+  /** Rótulo acima do número do documento; o padrão é o da OS. */
+  rotuloNumero?: string;
   rotuloData: "Emissão" | "Entrada";
   dataFormatada: string;
 }
@@ -324,7 +327,7 @@ function aplicarCabecalhoPadrao(doc: jsPDF, y: number, cabecalho: CabecalhoPdf) 
   doc.setFontSize(8);
   doc.text(cabecalho.titulo, centroDocumento, y + 9, { align: "center" });
   doc.setFontSize(6.5);
-  doc.text("Número da OS", centroDocumento, y + 17, { align: "center" });
+  doc.text(cabecalho.rotuloNumero ?? "Número da OS", centroDocumento, y + 17, { align: "center" });
   doc.setFontSize(9);
   doc.text(cabecalho.numeroOS, centroDocumento, y + 24, { align: "center" });
   doc.setFontSize(6.5);
@@ -856,6 +859,63 @@ function renderizarCondicoesComerciais(
   y += boxHeight + espacoSecao;
 
   return y;
+}
+
+/** Nome de arquivo seguro: "Orcamento_Insumos_OI-12_Cliente.pdf" (prefixo reconhecido pela pasta de orçamentos). */
+function nomeArquivoOrcamentoInsumos(orcamento: OrcamentoInsumosDetalhe): string {
+  const cliente = (orcamento.cliente_nome || "Cliente")
+    .normalize("NFD")
+    .replace(/[̀-ͯ]/g, "")
+    .replace(/[^A-Za-z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "")
+    .slice(0, 40) || "Cliente";
+  return `Orcamento_Insumos_${orcamento.numero_exibicao}_${cliente}.pdf`;
+}
+
+/** Condições comerciais da venda avulsa: faturamento, pagamento, validade e retirada. */
+function renderizarCondicoesInsumos(doc: jsPDF, y: number, orcamento: OrcamentoInsumosDetalhe): number {
+  const centerX = PAGE_WIDTH / 2;
+  const codigo = orcamento.forma_pagamento_codigo?.trim().toUpperCase();
+  const detalhe = orcamento.forma_pagamento_detalhe?.trim();
+  const formaPagamento = codigo
+    ? (codigo === "OUTRO" && detalhe ? `Outro: ${detalhe}` : ROTULOS_PAGAMENTO[codigo] || codigo)
+    : "Definida no momento da aprovação.";
+  const validade = orcamento.validade ? formatarDataBr(orcamento.validade) : "";
+
+  const blocos: Array<[string, string]> = [
+    ["Faturamento:", "O faturamento será realizado somente após a aprovação do orçamento."],
+    ["FORMA DE PAGAMENTO APÓS A APROVAÇÃO", formaPagamento],
+    [
+      "Validade do Orçamento:",
+      validade ? `Válido até ${validade}.` : "Consulte a nossa equipe sobre a validade.",
+    ],
+    [
+      "Disponibilidade:",
+      "Os itens são separados do estoque na aprovação. Os preços podem mudar após o vencimento da validade.",
+    ],
+  ];
+
+  for (const [titulo, texto] of blocos) {
+    y = garantirEspacoVertical(doc, y, 22);
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(10);
+    doc.setTextColor(...CORES_PDF.preto);
+    doc.text(titulo, centerX, y, { align: "center" });
+    y += 6;
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(9);
+    (doc.splitTextToSize(texto, CONTENT_WIDTH) as string[]).forEach((linha) => {
+      doc.text(linha, centerX, y, { align: "center" });
+      y += 5;
+    });
+    y += 5;
+  }
+  return y;
+}
+
+function formatarDataBr(valor: string): string {
+  const [ano, mes, dia] = valor.slice(0, 10).split("-");
+  return ano && mes && dia ? `${dia}/${mes}/${ano}` : valor;
 }
 
 // ─── Serviço principal ──────────────────────────────────
@@ -1626,6 +1686,126 @@ export const PdfService = {
       empresaNome: equipamento.cliente_nome || equipamento.proprietario || "Cliente",
     });
     console.info(`[PdfService] Relatório de status PDF salvo: ${caminho}`);
+    return caminho;
+  },
+
+  /**
+   * Gera o PDF do orçamento de venda avulsa de insumos (OI-<n>) no mesmo padrão visual do
+   * orçamento técnico: cabeçalho BMITAG, cliente, itens, desconto, total e condições.
+   * Usa só os dados já calculados pelo backend; nada é recalculado aqui.
+   */
+  async construirOrcamentoInsumos(orcamento: OrcamentoInsumosDetalhe, nomeArquivo?: string): Promise<PdfArtifact> {
+    try {
+      const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
+      let y = 15;
+      const dataGeracao = new Date();
+      const numero = orcamento.numero_exibicao;
+
+      y = aplicarCabecalhoPadrao(doc, y, {
+        titulo: "ORÇAMENTO DE INSUMOS",
+        numeroOS: numero,
+        rotuloNumero: "Número do orçamento",
+        rotuloData: "Emissão",
+        dataFormatada: formatarDataExtenso(parseTimestampPostgres(orcamento.criado_em)),
+      });
+
+      const cliente = [orcamento.cliente_nome?.trim(), formatarDocumentoCliente(orcamento.cliente_documento ?? undefined)]
+        .filter(Boolean)
+        .join(" - ");
+      const contato = [orcamento.contato_email?.trim(), orcamento.contato_telefone?.trim()]
+        .filter(Boolean)
+        .join("\n");
+      autoTable(doc, {
+        ...opcoesTabelaMonocromatica(),
+        startY: y,
+        headStyles: { ...opcoesTabelaMonocromatica().headStyles, halign: "center" },
+        columnStyles: {
+          0: { cellWidth: 70 },
+          1: { cellWidth: 55 },
+          2: { cellWidth: 55 },
+        },
+        head: [["CLIENTE", "RESPONSÁVEL", "CONTATO"]],
+        body: [[cliente, orcamento.contato_nome?.trim() || "", contato]],
+      });
+      y = yAposUltimaTabela(doc);
+
+      autoTable(doc, {
+        ...opcoesTabelaMonocromatica(),
+        startY: y,
+        styles: { ...opcoesTabelaMonocromatica().styles, halign: "center" },
+        columnStyles: {
+          0: { halign: "left", cellWidth: 62 },
+          1: { halign: "center", cellWidth: 26 },
+          2: { halign: "center", cellWidth: 14 },
+          3: { halign: "right", cellWidth: 36 },
+          4: { halign: "right", cellWidth: 42 },
+        },
+        head: [["Descrição", "Categoria", "Qtd", "Valor Unitário", "Valor Total"]],
+        body: orcamento.itens.map((item) => [
+          item.descricao,
+          item.categoria,
+          String(item.quantidade).padStart(2, "0"),
+          formatarMoeda(item.valor_unitario),
+          formatarMoeda(item.valor_total),
+        ]),
+      });
+      y = yAposUltimaTabela(doc);
+
+      const linhasTotais: string[][] = [];
+      if (orcamento.desconto > 0) {
+        linhasTotais.push(["SUBTOTAL:", formatarMoeda(orcamento.valor_subtotal)]);
+        linhasTotais.push(["DESCONTO:", `- ${formatarMoeda(orcamento.desconto)}`]);
+      }
+      linhasTotais.push(["VALOR TOTAL:", formatarMoeda(orcamento.valor_total)]);
+      autoTable(doc, {
+        ...opcoesTabelaMonocromatica(),
+        startY: y,
+        styles: { ...opcoesTabelaMonocromatica().styles, fontSize: 10, fontStyle: "bold" },
+        columnStyles: {
+          0: { halign: "right", cellWidth: CONTENT_WIDTH * 0.6 },
+          1: { halign: "right", cellWidth: CONTENT_WIDTH * 0.4 },
+        },
+        body: linhasTotais,
+      });
+      y = yAposUltimaTabela(doc, 8);
+
+      const observacoes = limparObservacoesParaDocumento(orcamento.observacoes);
+      if (observacoes) {
+        y = garantirEspacoVertical(doc, y, 24);
+        y = renderizarTituloSecao(doc, y, "OBSERVAÇÕES");
+        doc.setFont("helvetica", "normal");
+        doc.setFontSize(9);
+        doc.setTextColor(...CORES_PDF.texto);
+        y = renderizarParagrafo(doc, observacoes, MARGIN_LEFT, y + 2, CONTENT_WIDTH);
+      }
+
+      y = renderizarCondicoesInsumos(doc, y, orcamento);
+
+      const totalPages = doc.getNumberOfPages();
+      for (let page = 1; page <= totalPages; page += 1) {
+        doc.setPage(page);
+        aplicarRodape(doc, numero, page, totalPages, dataGeracao);
+      }
+
+      return {
+        filename: nomeArquivo || nomeArquivoOrcamentoInsumos(orcamento),
+        bytes: new Uint8Array(doc.output("arraybuffer")),
+        mimeType: "application/pdf",
+      };
+    } catch (error) {
+      console.error("[PdfService] Erro ao gerar orçamento de insumos em PDF:", error);
+      throw error;
+    }
+  },
+
+  /** Grava o PDF do orçamento de insumos na pasta de orçamentos e abre o gerenciador de arquivos. */
+  async salvarOrcamentoInsumos(artifact: PdfArtifact, orcamento: OrcamentoInsumosDetalhe): Promise<string> {
+    const caminho = await invoke<string>("salvar_orcamento_pdf", {
+      bytes: Array.from(artifact.bytes),
+      empresaNome: orcamento.cliente_nome || "Cliente",
+      nomeArquivo: artifact.filename || nomeArquivoOrcamentoInsumos(orcamento),
+    });
+    console.info(`[PdfService] Orçamento de insumos salvo: ${caminho}`);
     return caminho;
   },
 

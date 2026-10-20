@@ -36,7 +36,7 @@ import { resolveRecipient } from "@/lib/recipient-resolver";
  * Email da gerência que deve sempre receber cópia (CC) de toda comunicação
  * automática enviada ao cliente, independentemente do técnico responsável.
  */
-const CC_GERENCIA = "medeiros@bmitag.com.br";
+export const CC_GERENCIA = "medeiros@bmitag.com.br";
 
 /** Frase padrão sobre extensão de prazo em caso de troca de peças. */
 const AVISO_TROCA_PECAS_TEXTO =

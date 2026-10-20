@@ -15,6 +15,9 @@ function analise(overrides: Partial<AnaliseCorrecaoDecisao> = {}): AnaliseCorrec
     status: "APROVADO",
     podeCorrigir: true,
     bloqueios: [],
+    ajustadoAposDecisao: false,
+    permiteRestaurar: true,
+    permiteManter: false,
     pagamentoCodigo: "PIX",
     valorAtual: 50,
     valorOriginal: 90,
@@ -54,8 +57,9 @@ describe("CorrigirDecisaoDialog", () => {
       expected_updated_em: "2026-10-14T10:00:00Z",
       motivo: "Cliente pediu para refazer",
       devolver_estoque: true,
+      modo: "RESTAURAR_ORIGINAL",
     }));
-    await waitFor(() => expect(onCorrigido).toHaveBeenCalled());
+    await waitFor(() => expect(onCorrigido).toHaveBeenCalledWith(undefined));
   });
 
   it("não pede decisão de estoque quando nada foi baixado", async () => {
@@ -68,16 +72,77 @@ describe("CorrigirDecisaoDialog", () => {
     expect(botao).toBeEnabled();
   });
 
-  it("encaminha para atendimento humano quando há bloqueio", async () => {
+  it("explica o bloqueio e não oferece a correção quando o atendimento já avançou", async () => {
     mocks.analisar.mockResolvedValue(analise({
       status: "EM_MANUTENCAO",
       podeCorrigir: false,
-      bloqueios: ["O atendimento já passou da decisão. A correção exige atendimento humano."],
+      permiteRestaurar: true,
+      bloqueios: ["O atendimento já passou da decisão (etapa atual: EM_MANUTENCAO)."],
     }));
     abrir();
 
-    expect(await screen.findByRole("alert")).toHaveTextContent(/atendimento humano/);
+    expect(await screen.findByRole("alert")).toHaveTextContent(/etapa atual: EM_MANUTENCAO/);
     expect(screen.queryByRole("button", { name: "Reabrir orçamento" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("radio")).not.toBeInTheDocument();
+  });
+
+  it("com ajuste depois da aprovação, oferece manter o orçamento atual (padrão) ou restaurar o enviado", async () => {
+    mocks.analisar.mockResolvedValue(analise({
+      ajustadoAposDecisao: true,
+      permiteManter: true,
+      pecasBaixadas: [],
+      totalBaixado: 0,
+      exigeDecisaoEstoque: false,
+    }));
+    mocks.corrigir.mockResolvedValue({});
+    abrir();
+
+    const manter = await screen.findByRole("radio", { name: /mantendo o orçamento atual/ });
+    const restaurar = screen.getByRole("radio", { name: /Restaurar o orçamento enviado ao cliente/ });
+    expect(manter).toBeChecked();
+    expect(restaurar).not.toBeChecked();
+    expect(screen.queryByRole("note")).not.toBeInTheDocument();
+
+    fireEvent.change(screen.getByLabelText(/Motivo da correção/), { target: { value: "Cliente quer rever o valor" } });
+    fireEvent.click(screen.getByRole("button", { name: "Reabrir orçamento" }));
+    await waitFor(() => expect(mocks.corrigir).toHaveBeenCalledWith(expect.objectContaining({ modo: "MANTER_ATUAL" })));
+  });
+
+  it("avisa que o ajuste se perde ao restaurar o orçamento enviado", async () => {
+    mocks.analisar.mockResolvedValue(analise({
+      ajustadoAposDecisao: true,
+      permiteManter: true,
+      pecasBaixadas: [],
+      totalBaixado: 0,
+      exigeDecisaoEstoque: false,
+    }));
+    mocks.corrigir.mockResolvedValue({});
+    abrir();
+
+    fireEvent.click(await screen.findByRole("radio", { name: /Restaurar o orçamento enviado ao cliente/ }));
+    expect(screen.getByRole("note")).toHaveTextContent(/será perdida/);
+
+    fireEvent.change(screen.getByLabelText(/Motivo da correção/), { target: { value: "Voltar ao que o cliente viu" } });
+    fireEvent.click(screen.getByRole("button", { name: "Reabrir orçamento" }));
+    await waitFor(() => expect(mocks.corrigir).toHaveBeenCalledWith(expect.objectContaining({ modo: "RESTAURAR_ORIGINAL" })));
+  });
+
+  it("sem a versão enviada guardada, só oferece manter o orçamento atual", async () => {
+    mocks.analisar.mockResolvedValue(analise({
+      permiteRestaurar: false,
+      permiteManter: true,
+      pecasBaixadas: [],
+      totalBaixado: 0,
+      exigeDecisaoEstoque: false,
+    }));
+    mocks.corrigir.mockResolvedValue({});
+    abrir();
+
+    expect(await screen.findByText(/não guardou a versão enviada ao cliente/)).toBeInTheDocument();
+    expect(screen.queryByRole("radio")).not.toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText(/Motivo da correção/), { target: { value: "Aprovação por engano" } });
+    fireEvent.click(screen.getByRole("button", { name: "Reabrir orçamento" }));
+    await waitFor(() => expect(mocks.corrigir).toHaveBeenCalledWith(expect.objectContaining({ modo: "MANTER_ATUAL" })));
   });
 
   it("mostra o erro do backend sem fechar o diálogo", async () => {
@@ -91,5 +156,19 @@ describe("CorrigirDecisaoDialog", () => {
     expect(await screen.findByRole("alert")).toHaveTextContent(/alterado por outra pessoa/);
     expect(onOpenChange).not.toHaveBeenCalledWith(false);
     expect(onCorrigido).not.toHaveBeenCalled();
+  });
+
+  it("repassa o resultado do portal (aviso quando a republicação falha)", async () => {
+    mocks.analisar.mockResolvedValue(analise());
+    const portal = { acao: "NAO_PUBLICADA", aviso: "Perfil sem permissão para publicar no portal." };
+    mocks.corrigir.mockResolvedValue({ id: 5, portal });
+    const { onCorrigido } = abrir();
+
+    const botao = await screen.findByRole("button", { name: "Reabrir orçamento" });
+    fireEvent.change(screen.getByLabelText(/Motivo da correção/), { target: { value: "Cliente pediu para refazer" } });
+    fireEvent.click(screen.getByRole("checkbox"));
+    fireEvent.click(botao);
+
+    await waitFor(() => expect(onCorrigido).toHaveBeenCalledWith(portal));
   });
 });

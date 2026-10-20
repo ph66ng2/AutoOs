@@ -17,10 +17,10 @@ const defaults: React.ComponentProps<typeof ProfileSessionDialog> = {
 };
 
 describe("confirmação de sessão", () => {
-  it("não chama de PIN pendente um perfil explicitamente sem exigência de PIN", () => {
+  it("não chama de PIN não configurado um perfil explicitamente sem exigência de PIN", () => {
     const optional = { ...admin, id: 2, nome: "Operador", role: "CUSTOM", pin_required: false, is_default: false };
     render(<ProfileSessionDialog {...defaults} mode="selector" profiles={[optional]} selectedProfileId="2" selectedProfile={optional} activeProfileId={1} />);
-    expect(screen.queryByText("PIN pendente", { exact: true })).not.toBeInTheDocument();
+    expect(screen.queryByText("PIN não configurado neste PC", { exact: true })).not.toBeInTheDocument();
     expect(screen.getAllByText("Não exige PIN", { exact: true }).length).toBeGreaterThan(0);
     expect(screen.getAllByText("Este perfil não exige PIN. Clique abaixo para continuar.").length).toBeGreaterThan(0);
   });
@@ -28,8 +28,19 @@ describe("confirmação de sessão", () => {
   it("bloqueia PIN exigido mas ausente neste PC, inclusive administrador", () => {
     const protectedAdmin = { ...admin, pin_required: true };
     render(<ProfileSessionDialog {...defaults} profiles={[protectedAdmin]} selectedProfile={protectedAdmin} />);
-    expect(screen.getByRole("button", { name: "PIN pendente neste computador" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "PIN não configurado neste PC" })).toBeDisabled();
     expect(screen.queryByRole("button", { name: /Criar meu acesso/ })).not.toBeInTheDocument();
+  });
+
+  it("reflete o valor real de pin_required nos textos do perfil", () => {
+    const required = { ...admin, id: 3, nome: "Caixa", role: "CUSTOM", pin_required: true, pin_configured: true, is_default: false };
+    const unknown = { ...admin, id: 4, nome: "Antigo", role: "CUSTOM", pin_required: undefined, pin_configured: false, is_default: false };
+    const { rerender } = render(<ProfileSessionDialog {...defaults} mode="selector" profiles={[required]} selectedProfileId="3" selectedProfile={required} activeProfileId={1} />);
+    expect(screen.getAllByText("PIN configurado neste PC").length).toBeGreaterThan(0);
+    expect(screen.queryByText("Não exige PIN")).not.toBeInTheDocument();
+    rerender(<ProfileSessionDialog {...defaults} mode="selector" profiles={[unknown]} selectedProfileId="4" selectedProfile={unknown} activeProfileId={1} />);
+    expect(screen.queryByText(/não exige PIN/i)).not.toBeInTheDocument();
+    expect(screen.getAllByText("PIN não configurado neste PC").length).toBeGreaterThan(0);
   });
 
   it("impede criar o PIN inicial quando a confirmação diverge", () => {

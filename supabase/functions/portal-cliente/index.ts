@@ -14,6 +14,9 @@ const PASSWORD_WINDOW_MS = 15 * 60_000;
 const VERIFY_LIMIT_PER_MINUTE = 20;
 const PASSWORD_ATTEMPTS_PER_DOCUMENT = 8;
 const MAX_PASSWORD_BYTES = 72;
+const MAX_PURCHASE_ORDER_CHARS = 60;
+const MAX_PHONE_CHARS = 30;
+const MAX_EMAIL_CHARS = 200;
 const SESSION_PATTERN = /^[a-f0-9]{64}$/;
 
 type Json = Record<string, unknown>;
@@ -41,6 +44,8 @@ const DB_ERRORS: Record<string, { status: number; erro: string }> = {
   DECISAO_INVALIDA: { status: 400, erro: "Requisição inválida." },
   TIPO_INVALIDO: { status: 400, erro: "Requisição inválida." },
   MENSAGEM_INVALIDA: { status: 400, erro: "Escreva uma mensagem de até 500 caracteres." },
+  ORDEM_COMPRA_OBRIGATORIA: { status: 422, erro: "Informe o número da ordem de compra para aprovar." },
+  CONTATO_INVALIDO: { status: 400, erro: "Confira o telefone ou o e-mail informado." },
 };
 
 const SERVICE_UNAVAILABLE = "Serviço temporariamente indisponível. Tente novamente em instantes.";
@@ -242,7 +247,38 @@ const ORIENTACAO_ORCAMENTO: Record<string, string> = {
   VENCIDA: "O prazo desta proposta terminou. Fale com a equipe BMI TAG para renová-la.",
 };
 
-function publicDetail(data: Json): Json {
+/** `caminho` do Storage vira URL pública absoluta; o navegador nunca recebe o caminho cru. */
+function photoUrl(supabaseUrl: string, path: unknown): string | null {
+  if (typeof path !== "string") return null;
+  const value = path.trim();
+  if (/^https:\/\//i.test(value)) {
+    // URL absoluta só vale se for do Storage público deste mesmo projeto.
+    try {
+      const url = new URL(value);
+      const base = new URL(supabaseUrl);
+      if (url.origin !== base.origin || !url.pathname.startsWith("/storage/v1/object/public/")) return null;
+      return url.toString();
+    } catch {
+      return null;
+    }
+  }
+  const relative = value.replace(/^\/+/, "");
+  if (!relative || relative.includes("..") || relative.includes("\\") || relative.includes(":") || relative.includes("?") || relative.includes("#")) return null;
+  return `${supabaseUrl.replace(/\/+$/, "")}/storage/v1/object/public/${encodeURI(relative)}`;
+}
+
+function publicPhotos(supabaseUrl: string, fotos: unknown): Json[] {
+  if (!Array.isArray(fotos)) return [];
+  const result: Json[] = [];
+  for (const foto of fotos as Json[]) {
+    const url = photoUrl(supabaseUrl, foto?.caminho);
+    if (!url) continue;
+    result.push({ id: foto.id, categoria: foto.categoria, url, largura: foto.largura ?? null, altura: foto.altura ?? null });
+  }
+  return result;
+}
+
+function publicDetail(data: Json, supabaseUrl: string): Json {
   const status = typeof data.status === "string" ? data.status : "";
   const copy = STATUS_COPY[status] ?? STATUS_COPY_FALLBACK;
   const orcamento = data.orcamento as Json | null;
@@ -250,7 +286,9 @@ function publicDetail(data: Json): Json {
   const orientation = status === "AGUARDANDO_APROVACAO" && orcamento
     ? ORIENTACAO_ORCAMENTO[String(orcamento.estado)] ?? copy.orientation
     : copy.orientation;
-  return { ...data, titulo: copy.title, orientacao: orientation };
+  const detail: Json = { ...data, titulo: copy.title, orientacao: orientation };
+  if ("fotos" in data) detail.fotos = publicPhotos(supabaseUrl, data.fotos);
+  return detail;
 }
 
 function publicList(data: Json): Json {
@@ -343,7 +381,7 @@ Deno.serve(async (request: Request) => {
     const result = await callRpc(url, key, "portal_detalhe_atendimento", {
       p_sessao_hash: sessionHash, p_equipamento_id: equipamentoId,
     });
-    return result.ok ? json(publicDetail(result.data as Json), 200, origin) : errorResponse(result.code, origin);
+    return result.ok ? json(publicDetail(result.data as Json, url), 200, origin) : errorResponse(result.code, origin);
   }
 
   const versaoId = positiveInt(body.versaoId);
@@ -358,13 +396,21 @@ Deno.serve(async (request: Request) => {
       ? 0
       : positiveInt(body.respostaVigenteId);
     if (vigente === null) return json({ erro: "Requisição inválida." }, 400, origin);
-    const result = await callRpc(url, key, "portal_registrar_resposta", {
+    // Ordem de compra: opcional aqui; o banco a exige quando o cliente é marcado para isso.
+    const args: Json = {
       p_sessao_hash: sessionHash,
       p_equipamento_id: equipamentoId,
       p_versao_id: versaoId,
       p_decisao: decisao,
       p_resposta_vigente_id: vigente,
-    });
+    };
+    if (body.ordemCompra !== undefined && body.ordemCompra !== null) {
+      if (typeof body.ordemCompra !== "string" || body.ordemCompra.trim().length > MAX_PURCHASE_ORDER_CHARS) {
+        return json({ erro: "Requisição inválida." }, 400, origin);
+      }
+      args.p_ordem_compra = body.ordemCompra.trim();
+    }
+    const result = await callRpc(url, key, "portal_registrar_resposta", args);
     return result.ok ? json({ comprovante: result.data }, 200, origin) : errorResponse(result.code, origin);
   }
 
@@ -372,13 +418,26 @@ Deno.serve(async (request: Request) => {
     const tipo = body.tipo;
     if (tipo !== "NEGOCIAR" && tipo !== "DUVIDA" && tipo !== "MUDANCA") return json({ erro: "Requisição inválida." }, 400, origin);
     const mensagem = typeof body.mensagem === "string" ? body.mensagem.slice(0, 500) : "";
-    const result = await callRpc(url, key, "portal_registrar_solicitacao", {
+    const args: Json = {
       p_sessao_hash: sessionHash,
       p_equipamento_id: equipamentoId,
       p_versao_id: versaoId,
       p_tipo: tipo,
       p_mensagem: mensagem,
-    });
+    };
+    // Contato de retorno (opcional). O formato é conferido no banco; aqui só o tipo e o tamanho.
+    for (const [field, param, max] of [["telefone", "p_telefone", MAX_PHONE_CHARS], ["email", "p_email", MAX_EMAIL_CHARS]] as const) {
+      const value = body[field];
+      if (value === undefined || value === null) continue;
+      if (typeof value !== "string") return json({ erro: "Requisição inválida." }, 400, origin);
+      if (value.trim().length > max) return errorResponse("CONTATO_INVALIDO", origin);
+      if (value.trim()) args[param] = value.trim();
+    }
+    if (body.salvarNoContato !== undefined && body.salvarNoContato !== null) {
+      if (typeof body.salvarNoContato !== "boolean") return json({ erro: "Requisição inválida." }, 400, origin);
+      args.p_salvar_no_contato = body.salvarNoContato;
+    }
+    const result = await callRpc(url, key, "portal_registrar_solicitacao", args);
     return result.ok ? json({ solicitacao: result.data }, 200, origin) : errorResponse(result.code, origin);
   }
 

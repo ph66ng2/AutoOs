@@ -545,6 +545,52 @@ pub(crate) async fn listar_equipamentos_on_connection(
     Ok(rows)
 }
 
+/// Lista os equipamentos de um cliente pelo `cliente_id`. Equipamentos antigos sem
+/// `cliente_id` entram apenas se o `cliente_nome` gravado for igual (sem diferenciar
+/// maiúsculas) a um dos `nomes` informados.
+#[tauri::command]
+#[instrument(skip_all, fields(cliente_id = cliente_id))]
+pub async fn listar_equipamentos_cliente(
+    cliente_id: i32,
+    nomes: Option<Vec<String>>,
+) -> Result<Vec<EquipamentoRow>, String> {
+    let pool = get_pool().await.map_err(|e| e.to_string())?;
+    let empresa_id = require_active_session_company_id(&pool).await?;
+    let mut connection = pool.acquire().await.map_err(super::operator_errors::mapear_erro_sql)?;
+    listar_equipamentos_cliente_on_connection(&mut connection, empresa_id, cliente_id, nomes.unwrap_or_default()).await
+}
+
+pub(crate) async fn listar_equipamentos_cliente_on_connection(
+    connection: &mut PgConnection,
+    empresa_id: i32,
+    cliente_id: i32,
+    nomes: Vec<String>,
+) -> Result<Vec<EquipamentoRow>, String> {
+    let nomes: Vec<String> = nomes
+        .into_iter()
+        .map(|nome| nome.trim().to_lowercase())
+        .filter(|nome| !nome.is_empty())
+        .collect();
+    let mut query_builder = sqlx::QueryBuilder::<sqlx::Postgres>::new(EQUIPAMENTO_SELECT);
+    query_builder.push(" WHERE empresa_id = ");
+    query_builder.push_bind(empresa_id);
+    query_builder.push(" AND (cliente_id = ");
+    query_builder.push_bind(cliente_id);
+    query_builder.push(" OR (cliente_id IS NULL AND LOWER(BTRIM(COALESCE(cliente_nome, ''))) = ANY(");
+    query_builder.push_bind(nomes);
+    query_builder.push(")))");
+    query_builder.push(" ORDER BY id DESC LIMIT 200");
+
+    query_builder
+        .build_query_as::<EquipamentoRow>()
+        .fetch_all(&mut *connection)
+        .await
+        .map_err(|e| {
+            error!("Erro ao listar equipamentos do cliente: {}", e);
+            super::operator_errors::mapear_erro_sql(e)
+        })
+}
+
 /// Lista uma página de equipamentos, com contagem aplicada aos mesmos filtros.
 #[tauri::command]
 #[instrument(skip_all, fields(page = page))]
@@ -1236,9 +1282,9 @@ pub async fn aprovar_orcamento(input: AprovarOrcamentoInput) -> Result<Equipamen
         "UPDATE verificacoes
          SET forma_pagamento_codigo = $1, forma_pagamento_detalhe = $2,
              empresa_id = COALESCE(empresa_id, $5),
-             servicos_orcamento_original = COALESCE(servicos_orcamento_original, servicos_necessarios::jsonb),
-             pecas_orcamento_original = COALESCE(pecas_orcamento_original, pecas_necessarias::jsonb),
-             valor_orcamento_original = COALESCE(valor_orcamento_original, custo_total),
+             servicos_orcamento_original = servicos_necessarios::jsonb,
+             pecas_orcamento_original = pecas_necessarias::jsonb,
+             valor_orcamento_original = custo_total,
              servicos_necessarios = $6, pecas_necessarias = $7, custo_total = $8
          WHERE id = $3 AND equipamento_id = $4
            AND (empresa_id = $5 OR empresa_id IS NULL)",

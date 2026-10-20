@@ -71,8 +71,8 @@ export const PERMISSION_DETAILS: Record<
     critical: true,
   },
   MANAGE_STATUS_LINKS: {
-    title: "Links de acompanhamento",
-    description: "Criar e revogar links públicos de acompanhamento.",
+    title: "Portal do Cliente e links de acompanhamento",
+    description: "Publicar orçamento no portal, gerenciar acessos de contatos e o contato da empresa, e criar ou revogar links de acompanhamento.",
   },
   VIEW_EXPENSES: {
     title: "Consultar despesas",
