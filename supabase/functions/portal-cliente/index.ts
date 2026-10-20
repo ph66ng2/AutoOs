@@ -252,8 +252,12 @@ function photoUrl(supabaseUrl: string, path: unknown): string | null {
   if (typeof path !== "string") return null;
   const value = path.trim();
   if (/^https:\/\//i.test(value)) {
+    // URL absoluta só vale se for do Storage público deste mesmo projeto.
     try {
-      return new URL(value).toString();
+      const url = new URL(value);
+      const base = new URL(supabaseUrl);
+      if (url.origin !== base.origin || !url.pathname.startsWith("/storage/v1/object/public/")) return null;
+      return url.toString();
     } catch {
       return null;
     }

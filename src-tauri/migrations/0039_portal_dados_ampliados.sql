@@ -734,6 +734,15 @@ BEGIN
         RAISE EXCEPTION 'LIMITE_SOLICITACOES';
     END IF;
 
+    -- Telefone legível para a equipe (e para o cadastro): sem o DDI 55, no formato (71) 99123-4567.
+    IF v_tel IS NOT NULL THEN
+        v_tel_fmt := CASE WHEN length(v_tel) IN (12, 13) AND left(v_tel, 2) = '55' THEN substr(v_tel, 3) ELSE v_tel END;
+        v_tel_fmt := CASE
+            WHEN length(v_tel_fmt) = 11 THEN format('(%s) %s-%s', left(v_tel_fmt, 2), substr(v_tel_fmt, 3, 5), substr(v_tel_fmt, 8))
+            WHEN length(v_tel_fmt) = 10 THEN format('(%s) %s-%s', left(v_tel_fmt, 2), substr(v_tel_fmt, 3, 4), substr(v_tel_fmt, 7))
+            ELSE v_tel_fmt END;
+    END IF;
+
     INSERT INTO public.orcamento_solicitacoes
         (empresa_id, equipamento_id, versao_id, tipo, mensagem, criado_em, contato_id, contato_nome, contato_telefone, contato_email)
     VALUES
@@ -742,10 +751,6 @@ BEGIN
 
     -- Guardar no cadastro do contato que está logado: só preenche o que estiver vazio, nunca sobrescreve.
     IF COALESCE(p_salvar_no_contato, FALSE) AND (v_tel IS NOT NULL OR v_email IS NOT NULL) THEN
-        v_tel_fmt := CASE
-            WHEN length(v_tel) = 11 THEN format('(%s) %s-%s', left(v_tel, 2), substr(v_tel, 3, 5), substr(v_tel, 8))
-            WHEN length(v_tel) = 10 THEN format('(%s) %s-%s', left(v_tel, 2), substr(v_tel, 3, 4), substr(v_tel, 7))
-            ELSE v_tel END;
         UPDATE public.cliente_contatos c
         SET telefone = CASE WHEN NULLIF(btrim(COALESCE(c.telefone, '')), '') IS NULL AND v_tel_fmt IS NOT NULL THEN v_tel_fmt ELSE c.telefone END,
             email = CASE WHEN NULLIF(btrim(COALESCE(c.email, '')), '') IS NULL AND v_email IS NOT NULL THEN v_email ELSE c.email END,
@@ -760,7 +765,7 @@ BEGIN
 
     -- O operador vê, no alerta, por onde o cliente quer ser contatado.
     v_retorno := NULLIF(concat_ws(' · ',
-        CASE WHEN v_tel IS NOT NULL THEN 'Telefone: ' || v_tel END,
+        CASE WHEN v_tel_fmt IS NOT NULL THEN 'Telefone: ' || v_tel_fmt END,
         CASE WHEN v_email IS NOT NULL THEN 'E-mail: ' || v_email END), '');
 
     PERFORM public.autoos_portal_alerta(
@@ -805,5 +810,286 @@ BEGIN
             EXECUTE format('GRANT EXECUTE ON FUNCTION %s TO service_role', v_funcao);
         END LOOP;
     END IF;
+END;
+$$;
+
+-- ─── Orçamento "original" = o que o cliente aprovou por último ─────────────────
+-- A 0035 só gravava o original na 1ª aprovação (COALESCE). Depois de um novo ciclo
+-- (aprovar, ajustar, pedir nova aprovação, aprovar), "restaurar o orçamento enviado ao
+-- cliente" voltava ao valor antigo. Agora cada efetivação regrava o original com o que
+-- estava vigente (e foi mostrado ao cliente) antes da decisão. Só essas 3 linhas mudam
+-- em relação à definição da 0035.
+CREATE OR REPLACE FUNCTION public.portal_efetivar_resposta(p_resposta_id BIGINT)
+RETURNS TEXT
+LANGUAGE plpgsql
+VOLATILE
+SECURITY DEFINER
+SET search_path = pg_catalog, public
+AS $$
+DECLARE
+    v_r RECORD;
+    v_v RECORD;
+    v_ultima BIGINT;
+    v_e RECORD;
+    v_cliente_contato INTEGER;
+    v_ver RECORD;
+    v_servicos JSONB;
+    v_pecas_antigas JSONB;
+    v_aprovado BOOLEAN;
+    v_servico JSONB;
+    v_peca JSONB;
+    v_idx INTEGER;
+    v_ids TEXT[] := ARRAY[]::TEXT[];
+    v_vinculadas TEXT[] := ARRAY[]::TEXT[];
+    v_produtos INTEGER[];
+    v_item RECORD;
+    v_anterior RECORD;
+    v_nova INTEGER;
+    v_restante INTEGER;
+    v_saldo INTEGER;
+    v_baixa INTEGER;
+    v_pecas_aceitas JSONB := '[]'::JSONB;
+    v_total NUMERIC;
+    v_status TEXT;
+    v_baixadas INTEGER := 0;
+    v_pendentes INTEGER := 0;
+BEGIN
+    SELECT * INTO v_r FROM public.orcamento_respostas WHERE id = p_resposta_id;
+    IF NOT FOUND OR v_r.origem <> 'PORTAL_CLIENTE' OR v_r.decisao NOT IN ('APROVAR', 'RECUSAR')
+       OR v_r.aplicada_em IS NOT NULL THEN
+        RETURN 'IGNORADA';
+    END IF;
+
+    -- Ordem de bloqueio de `aprovar_orcamento` + `conferir_e_aplicar_resposta` no desktop:
+    -- equipamento, verificação, versão. Editar a verificação (trigger que encerra versões) segue
+    -- verificação → versão; a mesma ordem aqui evita ciclo.
+    SELECT * INTO v_e FROM public.equipamentos
+    WHERE id = v_r.equipamento_id AND empresa_id = v_r.empresa_id FOR UPDATE;
+    IF NOT FOUND THEN
+        RAISE EXCEPTION 'PORTAL_EFETIVACAO:ATENDIMENTO_REMOVIDO';
+    END IF;
+    IF EXISTS (SELECT 1 FROM public.verificacoes
+               WHERE equipamento_id = v_e.id AND empresa_id IS NOT NULL AND empresa_id <> v_e.empresa_id) THEN
+        RAISE EXCEPTION 'PORTAL_EFETIVACAO:VERIFICACAO_DE_OUTRA_EMPRESA';
+    END IF;
+    SELECT id, empresa_id, servicos_necessarios, pecas_necessarias, custo_total INTO v_ver
+    FROM public.verificacoes
+    WHERE equipamento_id = v_e.id AND (empresa_id = v_e.empresa_id OR empresa_id IS NULL)
+    ORDER BY (empresa_id = v_e.empresa_id) DESC, id DESC
+    LIMIT 1
+    FOR UPDATE;
+    SELECT * INTO v_v FROM public.orcamento_versoes WHERE id = v_r.versao_id FOR UPDATE;
+    SELECT id INTO v_ultima FROM public.orcamento_respostas WHERE versao_id = v_v.id ORDER BY id DESC LIMIT 1;
+    SELECT aplicada_em IS NOT NULL AS aplicada, decisao INTO v_item FROM public.orcamento_respostas WHERE id = p_resposta_id;
+    IF v_ultima <> p_resposta_id OR v_item.aplicada THEN
+        RETURN 'IGNORADA';
+    END IF;
+    IF clock_timestamp() < v_r.registrada_em + make_interval(mins => public.autoos_portal_janela_minutos()) THEN
+        RETURN 'AGUARDANDO_PRAZO';
+    END IF;
+    IF v_e.status IS DISTINCT FROM 'AGUARDANDO_APROVACAO' THEN
+        RAISE EXCEPTION 'PORTAL_EFETIVACAO:ETAPA_ALTERADA';
+    END IF;
+    SELECT cliente_id INTO v_cliente_contato FROM public.cliente_contatos WHERE id = v_r.contato_id;
+    IF v_cliente_contato IS NULL OR v_e.cliente_id IS DISTINCT FROM v_cliente_contato THEN
+        RAISE EXCEPTION 'PORTAL_EFETIVACAO:ATENDIMENTO_TRANSFERIDO';
+    END IF;
+    IF v_v.encerrada_em IS NOT NULL THEN
+        RAISE EXCEPTION 'PORTAL_EFETIVACAO:PROPOSTA_ALTERADA';
+    END IF;
+
+    IF v_ver.id IS NULL THEN
+        RAISE EXCEPTION 'PORTAL_EFETIVACAO:SEM_VERIFICACAO';
+    END IF;
+    IF v_v.verificacao_id IS DISTINCT FROM v_ver.id THEN
+        RAISE EXCEPTION 'PORTAL_EFETIVACAO:PROPOSTA_ALTERADA';
+    END IF;
+
+    BEGIN
+        v_servicos := COALESCE(NULLIF(btrim(v_ver.servicos_necessarios), ''), '[]')::JSONB;
+        v_pecas_antigas := COALESCE(NULLIF(btrim(v_ver.pecas_necessarias), ''), '[]')::JSONB;
+    EXCEPTION WHEN others THEN
+        RAISE EXCEPTION 'PORTAL_EFETIVACAO:ORCAMENTO_INVALIDO';
+    END;
+    IF jsonb_typeof(v_servicos) <> 'array' OR jsonb_typeof(v_pecas_antigas) <> 'array' THEN
+        RAISE EXCEPTION 'PORTAL_EFETIVACAO:ORCAMENTO_INVALIDO';
+    END IF;
+
+    -- normalizar_servicos: serviço sem id recebe `legacy:<índice>`.
+    SELECT COALESCE(jsonb_agg(CASE
+               WHEN jsonb_typeof(s) <> 'object' THEN NULL
+               WHEN jsonb_typeof(s->'id') = 'string' THEN s
+               ELSE s || jsonb_build_object('id', 'legacy:' || (n - 1)) END ORDER BY n), '[]'::JSONB)
+    INTO v_servicos
+    FROM jsonb_array_elements(v_servicos) WITH ORDINALITY AS t(s, n);
+
+    -- parse_servicos: ids únicos e não vazios, valores e peças válidos.
+    FOR v_servico IN SELECT value FROM jsonb_array_elements(v_servicos) LOOP
+        IF v_servico IS NULL OR v_servico = 'null'::JSONB
+           OR btrim(v_servico->>'id') = '' OR (v_servico->>'id') = ANY (v_ids) THEN
+            RAISE EXCEPTION 'PORTAL_EFETIVACAO:ORCAMENTO_INVALIDO';
+        END IF;
+        v_ids := v_ids || (v_servico->>'id');
+        IF v_servico ? 'valor' AND (jsonb_typeof(v_servico->'valor') <> 'number' OR (v_servico->>'valor')::NUMERIC < 0) THEN
+            RAISE EXCEPTION 'PORTAL_EFETIVACAO:ORCAMENTO_INVALIDO';
+        END IF;
+        IF v_servico ? 'pecas' AND jsonb_typeof(v_servico->'pecas') NOT IN ('array', 'null') THEN
+            RAISE EXCEPTION 'PORTAL_EFETIVACAO:ORCAMENTO_INVALIDO';
+        END IF;
+        FOR v_peca IN SELECT value FROM jsonb_array_elements(
+                CASE WHEN jsonb_typeof(v_servico->'pecas') = 'array' THEN v_servico->'pecas' ELSE '[]'::JSONB END) LOOP
+            IF jsonb_typeof(v_peca->'produto_id') <> 'number' OR jsonb_typeof(v_peca->'quantidade') <> 'number'
+               OR (v_peca->>'produto_id')::NUMERIC <= 0 OR (v_peca->>'quantidade')::NUMERIC <= 0
+               OR (v_peca->>'produto_id')::NUMERIC <> trunc((v_peca->>'produto_id')::NUMERIC)
+               OR (v_peca->>'quantidade')::NUMERIC <> trunc((v_peca->>'quantidade')::NUMERIC)
+               OR (v_peca ? 'valor_unitario' AND (jsonb_typeof(v_peca->'valor_unitario') <> 'number'
+                                                  OR (v_peca->>'valor_unitario')::NUMERIC < 0)) THEN
+                RAISE EXCEPTION 'PORTAL_EFETIVACAO:ORCAMENTO_INVALIDO';
+            END IF;
+            v_vinculadas := v_vinculadas || ((v_servico->>'id') || ':' || (v_peca->>'produto_id')::INTEGER);
+        END LOOP;
+    END LOOP;
+
+    v_aprovado := v_r.decisao = 'APROVAR';
+    IF v_aprovado AND jsonb_array_length(v_servicos) > 0 AND EXISTS (
+        SELECT 1 FROM jsonb_array_elements(v_pecas_antigas) p
+        WHERE NOT COALESCE(p->>'id' = ANY (v_vinculadas), FALSE)
+    ) THEN
+        RAISE EXCEPTION 'PORTAL_EFETIVACAO:PECAS_SEM_SERVICO';
+    END IF;
+
+    -- A resposta é marcada antes de mexer na verificação: `autoos_encerrar_orcamento_versoes`
+    -- preserva os links de versões com resposta aplicada (mesma ordem do desktop).
+    UPDATE public.orcamento_respostas
+    SET aplicada_em = statement_timestamp(), aplicada_pelo_sistema = TRUE,
+        efetivacao_tentativas = efetivacao_tentativas + 1, efetivacao_erro = NULL
+    WHERE id = p_resposta_id;
+
+    -- aplicar_decisoes: ordem global de bloqueio por produto.
+    SELECT array_agg(DISTINCT (p->>'produto_id')::INTEGER ORDER BY (p->>'produto_id')::INTEGER) INTO v_produtos
+    FROM jsonb_array_elements(v_servicos) s,
+         jsonb_array_elements(CASE WHEN v_aprovado AND jsonb_typeof(s->'pecas') = 'array' THEN s->'pecas' ELSE '[]'::JSONB END) p;
+    PERFORM 1 FROM public.produtos WHERE id = ANY (COALESCE(v_produtos, ARRAY[]::INTEGER[]))
+        AND empresa_id = v_e.empresa_id ORDER BY id FOR UPDATE;
+
+    FOR v_servico IN SELECT value FROM jsonb_array_elements(v_servicos) LOOP
+        INSERT INTO public.orcamento_servicos_decisao (verificacao_id, servico_id, empresa_id, decisao)
+        VALUES (v_ver.id, v_servico->>'id', v_e.empresa_id, CASE WHEN v_aprovado THEN 'APROVADO' ELSE 'REPROVADO' END)
+        ON CONFLICT (verificacao_id, servico_id) DO UPDATE
+        SET decisao = EXCLUDED.decisao, decidido_em = NOW();
+
+        IF NOT v_aprovado THEN
+            UPDATE public.orcamento_consumos SET quantidade_aprovada = quantidade_baixada
+            WHERE verificacao_id = v_ver.id AND servico_id = v_servico->>'id';
+            CONTINUE;
+        END IF;
+
+        FOR v_item IN
+            SELECT (p->>'produto_id')::INTEGER AS produto_id, sum((p->>'quantidade')::INTEGER)::INTEGER AS quantidade
+            FROM jsonb_array_elements(CASE WHEN jsonb_typeof(v_servico->'pecas') = 'array' THEN v_servico->'pecas' ELSE '[]'::JSONB END) p
+            GROUP BY 1 ORDER BY 1
+        LOOP
+            SELECT quantidade_aprovada, quantidade_baixada INTO v_anterior
+            FROM public.orcamento_consumos
+            WHERE verificacao_id = v_ver.id AND servico_id = v_servico->>'id' AND produto_id = v_item.produto_id
+            FOR UPDATE;
+            v_nova := GREATEST(v_item.quantidade, COALESCE(v_anterior.quantidade_baixada, 0));
+            INSERT INTO public.orcamento_consumos
+                (verificacao_id, servico_id, produto_id, empresa_id, quantidade_aprovada, quantidade_baixada)
+            VALUES (v_ver.id, v_servico->>'id', v_item.produto_id, v_e.empresa_id, v_nova, 0)
+            ON CONFLICT (verificacao_id, servico_id, produto_id)
+            DO UPDATE SET quantidade_aprovada = EXCLUDED.quantidade_aprovada;
+
+            v_restante := GREATEST(v_nova - COALESCE(v_anterior.quantidade_aprovada, 0), 0);
+            IF v_restante > 0 THEN
+                -- baixar_disponivel: nunca negativo; o que faltar fica como pendência.
+                SELECT COALESCE(quantidade_estoque, 0) INTO v_saldo FROM public.produtos
+                WHERE id = v_item.produto_id AND empresa_id = v_e.empresa_id AND ativo = TRUE FOR UPDATE;
+                IF NOT FOUND THEN
+                    RAISE EXCEPTION 'PORTAL_EFETIVACAO:PRODUTO_INDISPONIVEL';
+                END IF;
+                v_baixa := LEAST(GREATEST(v_saldo, 0), v_restante);
+                IF v_baixa > 0 THEN
+                    UPDATE public.produtos SET quantidade_estoque = quantidade_estoque - v_baixa, atualizado_em = NOW()
+                    WHERE id = v_item.produto_id AND empresa_id = v_e.empresa_id;
+                    INSERT INTO public.movimentacoes_estoque
+                        (produto_id, tipo, quantidade, origem, referencia, usuario, data_hora, empresa_id)
+                    VALUES (v_item.produto_id, 'SAIDA', v_baixa, 'MANUTENCAO',
+                            format('verificacao:%s;servico:%s', v_ver.id, v_servico->>'id'), 'AutoOS', NOW(), v_e.empresa_id);
+                    UPDATE public.orcamento_consumos SET quantidade_baixada = quantidade_baixada + v_baixa
+                    WHERE verificacao_id = v_ver.id AND servico_id = v_servico->>'id' AND produto_id = v_item.produto_id;
+                END IF;
+                v_baixadas := v_baixadas + v_baixa;
+                v_pendentes := v_pendentes + (v_restante - v_baixa);
+            END IF;
+        END LOOP;
+
+        FOR v_peca IN SELECT value FROM jsonb_array_elements(
+                CASE WHEN jsonb_typeof(v_servico->'pecas') = 'array' THEN v_servico->'pecas' ELSE '[]'::JSONB END) LOOP
+            v_pecas_aceitas := v_pecas_aceitas || jsonb_build_array(jsonb_build_object(
+                'id', (v_servico->>'id') || ':' || (v_peca->>'produto_id')::INTEGER,
+                'nome', COALESCE(v_peca->>'nome', 'Peça'),
+                'quantidade', (v_peca->>'quantidade')::INTEGER,
+                'valorUnitario', COALESCE((v_peca->>'valor_unitario')::NUMERIC, 0),
+                'valorTotal', (v_peca->>'quantidade')::INTEGER * COALESCE((v_peca->>'valor_unitario')::NUMERIC, 0)
+            ));
+        END LOOP;
+    END LOOP;
+
+    IF v_aprovado THEN
+        v_status := 'APROVADO';
+        v_total := v_v.valor_total;
+        IF jsonb_array_length(v_servicos) = 0 THEN
+            v_pecas_aceitas := v_pecas_antigas;
+        END IF;
+    ELSE
+        v_status := 'REPROVADO';
+        v_pecas_aceitas := v_pecas_antigas;
+        v_total := COALESCE(NULLIF(v_e.valor_orcamento, 0), NULLIF(v_ver.custo_total::NUMERIC, 0),
+                            v_e.valor_orcamento, v_ver.custo_total::NUMERIC, 0);
+    END IF;
+    IF v_total IS NULL OR v_total < 0 THEN
+        RAISE EXCEPTION 'PORTAL_EFETIVACAO:TOTAL_INVALIDO';
+    END IF;
+
+    UPDATE public.verificacoes
+    SET forma_pagamento_codigo = CASE WHEN v_aprovado THEN COALESCE(forma_pagamento_codigo, 'A_COMBINAR') ELSE forma_pagamento_codigo END,
+        empresa_id = COALESCE(empresa_id, v_e.empresa_id),
+        servicos_orcamento_original = servicos_necessarios::JSONB,
+        pecas_orcamento_original = pecas_necessarias::JSONB,
+        valor_orcamento_original = custo_total,
+        servicos_necessarios = v_servicos::TEXT,
+        pecas_necessarias = v_pecas_aceitas::TEXT,
+        custo_total = v_total
+    WHERE id = v_ver.id AND equipamento_id = v_e.id AND (empresa_id = v_e.empresa_id OR empresa_id IS NULL);
+
+    UPDATE public.equipamentos
+    SET status = v_status, valor_orcamento = v_total,
+        data_aprovacao = CASE WHEN v_aprovado THEN NOW()::TEXT ELSE data_aprovacao END,
+        data_reprovacao = CASE WHEN NOT v_aprovado THEN NOW()::TEXT ELSE data_reprovacao END,
+        atualizado_em = NOW(),
+        ultima_atividade_cliente_em = CURRENT_TIMESTAMP
+    WHERE id = v_e.id AND empresa_id = v_e.empresa_id;
+
+    INSERT INTO public.security_audit_log (event_type, profile_id, profile_name, details, success, empresa_id)
+    VALUES (
+        CASE WHEN v_aprovado THEN 'BUDGET_APPROVED' ELSE 'BUDGET_REJECTED' END,
+        NULL,
+        left('Portal do cliente: ' || COALESCE(v_r.contato_nome, 'contato'), 120),
+        format('empresa_id=%s; equipamento_id=%s; verificacao_id=%s; pagamento_codigo=%s; status_anterior=AGUARDANDO_APROVACAO; status=%s; motivo=%s; origem=PORTAL_CLIENTE; resposta_id=%s; contato_id=%s; versao=%s; valor=%s; pecas_baixadas=%s; pecas_pendentes=%s',
+               v_e.empresa_id, v_e.id, v_ver.id, CASE WHEN v_aprovado THEN 'A_COMBINAR_SE_VAZIO' ELSE '' END,
+               v_status, CASE WHEN v_aprovado THEN 'Orçamento aceito pelo cliente no portal.' ELSE 'Orçamento recusado pelo cliente no portal.' END,
+               v_r.id, v_r.contato_id, v_v.versao, v_total, v_baixadas, v_pendentes),
+        TRUE,
+        v_e.empresa_id
+    );
+
+    PERFORM public.autoos_portal_alerta(
+        v_e.empresa_id, v_e.id, 'DECISAO_EFETIVADA',
+        CASE WHEN v_aprovado THEN 'Orçamento aprovado pelo cliente' ELSE 'Orçamento recusado pelo cliente' END,
+        public.autoos_portal_linha_alerta(v_e.id, v_e.empresa_id, v_total, v_r.contato_nome)
+            || CASE WHEN v_pendentes > 0 THEN chr(10) || format('%s peça(s) sem estoque ficaram pendentes.', v_pendentes) ELSE '' END,
+        v_r.id, NULL, v_r.contato_id);
+    RETURN 'EFETIVADA';
 END;
 $$;

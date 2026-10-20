@@ -480,14 +480,21 @@ SELECT pg_temp.ok((SELECT contato_telefone = '71912345678' AND contato_email = '
     'solicitação guarda telefone (dígitos) e e-mail (minúsculo)');
 SELECT pg_temp.ok((SELECT telefone IS NULL AND email = 'gil@cliente.invalid' FROM cliente_contatos WHERE id = pg_temp.g('gil')::INTEGER), 'sem marcar salvar, o cadastro não muda');
 SELECT pg_temp.ok(EXISTS (SELECT 1 FROM portal_alertas WHERE solicitacao_id = pg_temp.g('s_gil1')::BIGINT
-    AND detalhe LIKE '%Telefone: 71912345678%' AND detalhe LIKE '%E-mail: outro@empresa.invalid%'), 'alerta da equipe mostra telefone e e-mail');
+    AND detalhe LIKE '%Telefone: (71) 91234-5678%' AND detalhe LIKE '%E-mail: outro@empresa.invalid%'), 'alerta da equipe mostra telefone formatado e e-mail');
+-- Fixo de 10 dígitos com DDI 55 (12 dígitos): o alerta tira o 55 e usa 4+4.
+INSERT INTO t SELECT 's_gil_ddi', (portal_registrar_solicitacao(repeat('d', 64), pg_temp.g('eoc')::INTEGER, pg_temp.g('v2_eoc')::BIGINT, 'DUVIDA',
+    'Ligar no fixo', '+55 (71) 3333-4444', NULL, FALSE))->>'id';
+SELECT pg_temp.ok(EXISTS (SELECT 1 FROM portal_alertas WHERE solicitacao_id = pg_temp.g('s_gil_ddi')::BIGINT AND detalhe LIKE '%Telefone: (71) 3333-4444%' AND detalhe NOT LIKE '%Telefone: 55%'),
+    'alerta tira o DDI 55 de telefone fixo');
 -- Marcando "salvar": telefone vazio é preenchido, e-mail já existente é preservado.
 SELECT portal_registrar_solicitacao(repeat('d', 64), pg_temp.g('eoc')::INTEGER, pg_temp.g('v2_eoc')::BIGINT, 'DUVIDA',
     'Podem me ligar?', '(71) 91234-5678', 'outro@empresa.invalid', TRUE);
 SELECT pg_temp.ok((SELECT telefone = '(71) 91234-5678' AND email = 'gil@cliente.invalid' FROM cliente_contatos WHERE id = pg_temp.g('gil')::INTEGER),
     'salvar preenche só o campo vazio');
-SELECT portal_registrar_solicitacao(repeat('d', 64), pg_temp.g('eoc')::INTEGER, pg_temp.g('v2_eoc')::BIGINT, 'DUVIDA',
-    'Mudei o número', '71 90000-0000', NULL, TRUE);
+INSERT INTO t SELECT 's_gil_ddi2', (portal_registrar_solicitacao(repeat('d', 64), pg_temp.g('eoc')::INTEGER, pg_temp.g('v2_eoc')::BIGINT, 'DUVIDA',
+    'Mudei o número', '5571900000000', NULL, TRUE))->>'id';
+SELECT pg_temp.ok(EXISTS (SELECT 1 FROM portal_alertas WHERE solicitacao_id = pg_temp.g('s_gil_ddi2')::BIGINT AND detalhe LIKE '%Telefone: (71) 90000-0000%'),
+    'alerta tira o DDI 55 de celular (13 dígitos)');
 SELECT pg_temp.ok((SELECT telefone = '(71) 91234-5678' FROM cliente_contatos WHERE id = pg_temp.g('gil')::INTEGER), 'salvar nunca sobrescreve');
 SELECT pg_temp.ok((portal_detalhe_atendimento(repeat('d', 64), pg_temp.g('eoc')::INTEGER)->>'temTelefone') = 'true', 'Gil agora tem telefone');
 SELECT pg_temp.ok((SELECT portal_acesso = 'DECIDIR' AND portal_senha_hash IS NOT NULL FROM cliente_contatos WHERE id = pg_temp.g('gil')::INTEGER), 'salvar contato não tira o acesso');

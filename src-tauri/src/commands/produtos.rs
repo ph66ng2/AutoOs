@@ -570,18 +570,22 @@ pub(crate) async fn aplicar_movimentacao_em_tx(
     referencia: Option<&str>,
     valor_unitario: Option<f64>,
 ) -> Result<i32, String> {
+    // A devolução ao cancelar um orçamento de insumos aprovado precisa funcionar mesmo se o
+    // produto foi inativado depois da aprovação; as demais entradas exigem produto ativo.
+    let devolucao_de_orcamento = origem == super::orcamentos_insumos::ORIGEM_VENDA_INSUMOS;
     let saldo_resultante: i32 = if movimento == "ENTRADA" {
         sqlx::query_scalar(
             r#"
             UPDATE produtos
             SET quantidade_estoque = COALESCE(quantidade_estoque, 0) + $1, atualizado_em = NOW()
-            WHERE id = $2 AND empresa_id = $3 AND ativo = true
+            WHERE id = $2 AND empresa_id = $3 AND (ativo = true OR $4)
             RETURNING quantidade_estoque
             "#,
         )
         .bind(quantidade)
         .bind(produto_id)
         .bind(empresa_id)
+        .bind(devolucao_de_orcamento)
         .fetch_optional(&mut **tx)
         .await
         .map_err(|e| {

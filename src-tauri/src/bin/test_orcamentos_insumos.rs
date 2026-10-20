@@ -242,9 +242,12 @@ async fn main() -> Result<()> {
     let mensagem = erro(cancelar_orcamento_insumos(cancelar_input(&aprovado, false)).await);
     assert!(mensagem.contains("Confirme a devolução"), "{mensagem}");
     assert_eq!((saldo(etiqueta).await?, saldo(ribbon).await?), (6, 1));
+    // Produto inativado depois da aprovação: a devolução ainda tem de funcionar.
+    sqlx::query("UPDATE produtos SET ativo = false WHERE id = $1").bind(etiqueta).execute(&pool).await?;
     let cancelado = cancelar_orcamento_insumos(cancelar_input(&aprovado, true)).await.map_err(|e| anyhow!(e))?;
     assert_eq!(cancelado.orcamento.status, "CANCELADO");
-    assert_eq!((saldo(etiqueta).await?, saldo(ribbon).await?), (10, 3));
+    assert_eq!((saldo(etiqueta).await?, saldo(ribbon).await?), (10, 3), "saldo devolvido mesmo com produto inativo");
+    sqlx::query("UPDATE produtos SET ativo = true WHERE id = $1").bind(etiqueta).execute(&pool).await?;
     assert_eq!(contar_movimentos(&pool, "OI-1", "ENTRADA", empresa_a).await?, 2);
     assert!(erro(cancelar_orcamento_insumos(cancelar_input(&cancelado, true)).await).contains("não pode ir para"));
 

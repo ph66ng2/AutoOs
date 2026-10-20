@@ -302,7 +302,7 @@ pub struct PortalAjusteInfo {
 }
 
 impl PortalAjusteInfo {
-    fn nenhuma() -> Self {
+    pub(crate) fn nenhuma() -> Self {
         Self { acao: "NENHUMA".into(), versao: None, mensagem: None, aviso: None }
     }
 }
@@ -343,7 +343,7 @@ fn pode_publicar_no_portal(actor: &SecurityProfileSummary) -> bool {
 
 /// Publica a versão nova logo depois do ajuste já gravado. Nunca falha o ajuste: se não der,
 /// devolve um aviso para o operador publicar manualmente.
-async fn publicar_apos_ajuste(
+pub(crate) async fn publicar_apos_ajuste(
     pool: &PgPool,
     actor: &SecurityProfileSummary,
     empresa_id: i32,

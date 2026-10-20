@@ -211,7 +211,10 @@ describe("portal-cliente: sessão e orçamento", () => {
         defeitoRelatado: "Não imprime", valores: { orcamento: 120, final: null, atual: 120 },
         fotos: [
           { id: 1, categoria: "ENTRADA", caminho: "equipamento-imagens/1/28/10.jpg", largura: 640, altura: 480 },
-          { id: 2, categoria: "VERIFICACAO", caminho: "https://cdn.exemplo.invalid/v.png", largura: null, altura: null },
+          { id: 2, categoria: "VERIFICACAO", caminho: `${SUPABASE_URL}/storage/v1/object/public/equipamento-imagens/1/28/11.png`, largura: null, altura: null },
+          { id: 8, categoria: "ENTRADA", caminho: "https://cdn.exemplo.invalid/v.png", largura: 1, altura: 1 },
+          { id: 9, categoria: "ENTRADA", caminho: `${SUPABASE_URL}/rest/v1/clientes`, largura: 1, altura: 1 },
+          { id: 10, categoria: "ENTRADA", caminho: "https://outro.supabase.co/storage/v1/object/public/x.jpg", largura: 1, altura: 1 },
           { id: 3, categoria: "SAIDA", caminho: "/equipamento-imagens/1/28/12.jpg", largura: 800, altura: 600 },
           { id: 4, categoria: "ENTRADA", caminho: "../segredo/x.jpg", largura: 1, altura: 1 },
           { id: 5, categoria: "ENTRADA", caminho: "http://inseguro.invalid/x.jpg", largura: 1, altura: 1 },
@@ -224,7 +227,7 @@ describe("portal-cliente: sessão e orçamento", () => {
     const fotos = body.fotos as Array<Record<string, unknown>>;
     expect(fotos).toEqual([
       { id: 1, categoria: "ENTRADA", url: `${SUPABASE_URL}/storage/v1/object/public/equipamento-imagens/1/28/10.jpg`, largura: 640, altura: 480 },
-      { id: 2, categoria: "VERIFICACAO", url: "https://cdn.exemplo.invalid/v.png", largura: null, altura: null },
+      { id: 2, categoria: "VERIFICACAO", url: `${SUPABASE_URL}/storage/v1/object/public/equipamento-imagens/1/28/11.png`, largura: null, altura: null },
       { id: 3, categoria: "SAIDA", url: `${SUPABASE_URL}/storage/v1/object/public/equipamento-imagens/1/28/12.jpg`, largura: 800, altura: 600 },
     ]);
     expect(JSON.stringify(body)).not.toContain("caminho");
