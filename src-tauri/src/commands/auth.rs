@@ -388,8 +388,28 @@ fn store_profile_pin_record(profile_id: i32, record: &StoredSensitivePin) -> Res
 
     entry.set_password(&json).map_err(|e| {
         error!("Erro ao salvar PIN do acesso sensível: {}", e);
-        e.to_string()
+        KEYRING_UNAVAILABLE_MESSAGE.to_string()
     })
+}
+
+const KEYRING_UNAVAILABLE_MESSAGE: &str =
+    "O cofre de senhas do sistema está bloqueado ou indisponível. Desbloqueie-o e tente de novo.";
+const KEYRING_TIMEOUT_MESSAGE: &str =
+    "O cofre de senhas do sistema não respondeu a tempo. Responda ao aviso do sistema ou desbloqueie o cofre e tente de novo.";
+const KEYRING_WRITE_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(30);
+
+/// Roda uma chamada síncrona do keyring fora do worker async, com limite de tempo. Um cofre
+/// travado esperando resposta do usuário não pode prender o worker nem uma transação aberta.
+async fn run_keyring_blocking<T, F>(limit: std::time::Duration, work: F) -> Result<T, String>
+where
+    T: Send + 'static,
+    F: FnOnce() -> Result<T, String> + Send + 'static,
+{
+    match tokio::time::timeout(limit, tokio::task::spawn_blocking(work)).await {
+        Ok(Ok(result)) => result,
+        Ok(Err(_)) => Err(KEYRING_UNAVAILABLE_MESSAGE.to_string()),
+        Err(_) => Err(KEYRING_TIMEOUT_MESSAGE.to_string()),
+    }
 }
 
 pub(crate) fn store_profile_pin(profile_id: i32, pin: &str) -> Result<(), String> {
@@ -2167,8 +2187,14 @@ pub async fn ativar_perfil_com_codigo(
         .await
         .map_err(super::operator_errors::mapear_erro_sql)?;
 
-    // Se o keyring recusar, o `?` descarta a transação (rollback) e o código continua valendo.
-    store_profile_pin(profile_id, &pin)?;
+    // Se o keyring recusar ou não responder em 30 s, a transação volta (rollback) e o código
+    // continua valendo. Se o cofre responder depois do limite, o PIN fica gravado neste
+    // computador sem o código ter sido consumido; a pessoa usa o mesmo código para repetir.
+    let pin_para_gravar = pin.clone();
+    if let Err(motivo) = run_keyring_blocking(KEYRING_WRITE_TIMEOUT, move || store_profile_pin(profile_id, &pin_para_gravar)).await {
+        record_security_event("ACCESS_CODE_FAILED", Some(&summary), "Falha ao gravar o PIN no cofre de senhas do sistema; o código continua válido", false).await;
+        return Err(format!("{motivo} O código continua válido."));
+    }
     tx.commit().await.map_err(super::operator_errors::mapear_erro_sql)?;
 
     mark_profile_pin_required(profile_id).await?;
@@ -2271,6 +2297,37 @@ pub async fn listar_minhas_acoes(limit: Option<i32>) -> Result<Vec<SecurityAudit
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[tokio::test]
+    async fn keyring_call_that_never_answers_gives_up_instead_of_holding_the_worker() {
+        let started = std::time::Instant::now();
+        let result: Result<(), String> = run_keyring_blocking(std::time::Duration::from_millis(50), || {
+            std::thread::sleep(std::time::Duration::from_millis(600));
+            Ok(())
+        })
+        .await;
+
+        assert_eq!(result.unwrap_err(), KEYRING_TIMEOUT_MESSAGE);
+        assert!(started.elapsed() < std::time::Duration::from_millis(400));
+    }
+
+    #[tokio::test]
+    async fn keyring_call_passes_through_success_and_its_own_error() {
+        let ok = run_keyring_blocking(std::time::Duration::from_secs(5), || Ok(7)).await;
+        assert_eq!(ok, Ok(7));
+        let failed: Result<(), String> =
+            run_keyring_blocking(std::time::Duration::from_secs(5), || Err(KEYRING_UNAVAILABLE_MESSAGE.to_string())).await;
+        assert_eq!(failed.unwrap_err(), KEYRING_UNAVAILABLE_MESSAGE);
+    }
+
+    #[test]
+    fn keyring_messages_are_in_portuguese_and_leak_no_platform_detail() {
+        for message in [KEYRING_UNAVAILABLE_MESSAGE, KEYRING_TIMEOUT_MESSAGE] {
+            assert!(message.contains("cofre de senhas"));
+            assert!(!message.to_lowercase().contains("zbus"));
+            assert!(!message.contains("Platform"));
+        }
+    }
 
     #[tokio::test]
     async fn company_lookup_does_not_expose_database_error_details() {
