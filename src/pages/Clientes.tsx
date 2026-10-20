@@ -194,7 +194,7 @@ export default function Clientes() {
     try {
       const cliente = clientes.find(c => c.id === clienteId);
       if (cliente) {
-        const doCliente = await db.listarEquipamentosCliente(cliente.id, [nomeExibicaoCliente(cliente), cliente.nome]);
+        const doCliente = await db.listarEquipamentosCliente(clienteId, [nomeExibicaoCliente(cliente), cliente.nome ?? ""]);
         setEquipamentosCliente(doCliente);
       }
     } catch (err) {

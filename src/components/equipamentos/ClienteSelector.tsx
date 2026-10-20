@@ -152,7 +152,7 @@ export function ClienteSelector({
       return;
     }
     setCarregandoEquip(true);
-    const nomes = [nomeExibicaoCliente(clienteSelecionado), clienteSelecionado.nome];
+    const nomes = [nomeExibicaoCliente(clienteSelecionado), clienteSelecionado.nome ?? ""];
     db.listarEquipamentosCliente(clienteSelecionado.id, nomes)
       .then(setEquipamentosCliente)
       .catch(() => setEquipamentosCliente([]))
