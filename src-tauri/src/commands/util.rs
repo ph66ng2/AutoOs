@@ -1066,7 +1066,11 @@ $logo.Dispose()
 #[tauri::command]
 pub async fn abrir_url(url: String) -> Result<(), String> {
     let url_trimmed = url.trim().to_string();
-    if url_trimmed.is_empty() || (!url_trimmed.starts_with("http://") && !url_trimmed.starts_with("https://")) {
+    // `mailto:` abre o cliente de e-mail padrão (contato direto com o cliente no orçamento).
+    let esquema_permitido = url_trimmed.starts_with("http://")
+        || url_trimmed.starts_with("https://")
+        || url_trimmed.starts_with("mailto:");
+    if url_trimmed.is_empty() || !esquema_permitido {
         return Err("URL inválida".to_string());
     }
     #[cfg(target_os = "linux")]

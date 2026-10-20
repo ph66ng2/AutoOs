@@ -1,385 +1,297 @@
-import { useCallback, useEffect, useState, useRef } from "react";
-import { CheckCircle2, KeyRound, Loader2, RefreshCw } from "lucide-react";
+import { useState } from "react";
+import { Loader2, KeyRound, Mail, MessageCircle, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { db } from "@/lib/db";
-import { useSensitiveAccess } from "@/hooks/useSensitiveAccess";
-import { AcessoPortalDialog, respondeNoPortal } from "@/components/equipamentos/AcessoPortalDialog";
 import {
-  SENSITIVE_PERMISSIONS,
-  type ClienteContato,
-  type DecisaoOrcamentoInfo,
-  type Equipamento,
-  type RespostaOrcamentoInfo,
-} from "@/types";
+  contatoParaRetorno,
+  mensagemInicialContato,
+  montarLinkEmail,
+  montarLinkWhatsapp,
+  protocoloSolicitacao,
+} from "@/lib/contato-cliente";
+import { mensagemErro, usePortalCliente } from "@/components/equipamentos/portal-cliente-context";
+import {
+  DECISAO_TEXTO,
+  MOTIVO_FALHA,
+  TIPO_SOLICITACAO_TEXTO,
+  formatarHora,
+  formatarQuando,
+  formatarValor,
+  textoOrdemCompra,
+} from "@/components/equipamentos/portal-cliente-format";
+import type { DecisaoOrcamentoInfo, RespostaOrcamentoInfo, SolicitacaoOrcamentoInfo } from "@/types";
 
 type Props = {
-  equipamento: Equipamento;
-  /** Muda quando chega um alerta do portal para este equipamento: recarrega a resposta. */
-  sinalPortal?: number;
   /** Abre o fluxo atual de pagamento e aprovação já com a decisão do cliente. */
   onAplicar: (decisao: "aprovar" | "reprovar") => void;
 };
 
-const DECISAO_TEXTO: Record<RespostaOrcamentoInfo["decisao"], string> = {
-  APROVAR: "aprovou",
-  RECUSAR: "recusou",
-  DESFEITA: "retirou a resposta",
+type Tom = "neutro" | "verde" | "vermelho" | "ambar" | "violeta";
+
+const TOM_CLASSE: Record<Tom, string> = {
+  neutro: "border-border bg-muted/20 text-foreground",
+  verde: "border-emerald-300 bg-emerald-50 text-emerald-950",
+  vermelho: "border-red-300 bg-red-50 text-red-950",
+  ambar: "border-amber-300 bg-amber-50 text-amber-950",
+  violeta: "border-violet-300 bg-violet-50 text-violet-950",
 };
 
-function formatarHora(value?: string | null) {
-  if (!value) return "—";
-  const parsed = new Date(value);
-  return Number.isNaN(parsed.getTime())
-    ? "—"
-    : new Intl.DateTimeFormat("pt-BR", { dateStyle: "short", timeStyle: "short" }).format(parsed);
-}
-
-function formatarValor(value: number) {
-  return new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(value);
-}
-
-const MOTIVO_FALHA: Record<string, string> = {
-  ETAPA_ALTERADA: "a etapa do equipamento mudou",
-  PROPOSTA_ALTERADA: "o orçamento foi alterado",
-  ATENDIMENTO_TRANSFERIDO: "o atendimento foi transferido de cliente",
-  PECAS_SEM_SERVICO: "há peças antigas sem serviço vinculado",
-  PRODUTO_INDISPONIVEL: "um produto do orçamento está inativo ou é de outra empresa",
-  ORCAMENTO_INVALIDO: "os itens do orçamento estão inválidos",
+type Faixa = {
+  tom: Tom;
+  texto: string;
+  /** Segunda linha, menor. */
+  detalhe?: string;
+  oc?: string | null;
+  /** Botão de aplicar a decisão do cliente. */
+  aplicar?: { decisao: "aprovar" | "reprovar"; habilitado: boolean };
+  publicar?: boolean;
 };
 
-function origemTexto(item: RespostaOrcamentoInfo) {
-  if (item.origem === "PORTAL_CLIENTE") return `Cliente no portal (${item.contato ?? "contato"})`;
-  if (item.origem === "PORTAL") return "Cliente (link)";
-  return `Equipe (${item.registradaPor ?? "—"})`;
+function tomDaDecisao(decisao: RespostaOrcamentoInfo["decisao"]): Tom {
+  return decisao === "APROVAR" ? "verde" : decisao === "RECUSAR" ? "vermelho" : "neutro";
 }
 
-function mensagemErro(cause: unknown, fallback: string) {
-  return typeof cause === "string" && cause.trim() ? cause : fallback;
-}
+/** Resume em uma faixa o estado do orçamento no portal; `null` quando não há nada a mostrar. */
+export function resumirFaixa(
+  info: DecisaoOrcamentoInfo | null,
+  status: string | undefined,
+  respostaFinal: RespostaOrcamentoInfo | null,
+  agora = new Date(),
+): Faixa | null {
+  const aguardando = status === "AGUARDANDO_APROVACAO";
+  if (!info) {
+    return aguardando ? { tom: "neutro", texto: "Orçamento ainda não publicado no Portal do Cliente", publicar: true } : null;
+  }
 
-export function DecisaoOrcamentoCard({ equipamento, onAplicar, sinalPortal }: Props) {
-  const { ensureSensitiveAccess } = useSensitiveAccess();
-  const [info, setInfo] = useState<DecisaoOrcamentoInfo | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  // Até a primeira consulta terminar não há como saber se mostra o quadro ou só o botão.
-  const [consultado, setConsultado] = useState<number | null>(null);
-  const equipamentoId = equipamento.id;
-  // Troca rápida de equipamento: só a consulta do equipamento atual pode atualizar o quadro.
-  const atualRef = useRef(equipamentoId);
-  atualRef.current = equipamentoId;
-
-  const carregar = useCallback(async () => {
-    if (!equipamentoId) return;
-    setLoading(true);
-    setError(null);
-    try {
-      const next = await db.obterDecisaoOrcamento(equipamentoId);
-      if (atualRef.current !== equipamentoId) return;
-      setInfo(next);
-    } catch (cause) {
-      if (atualRef.current !== equipamentoId) return;
-      setError(mensagemErro(cause, "Não foi possível consultar a resposta do cliente."));
-    } finally {
-      if (atualRef.current === equipamentoId) {
-        setLoading(false);
-        setConsultado(equipamentoId);
+  if (respostaFinal) {
+    const decisao = respostaFinal.decisao === "APROVAR" ? "aprovar" : "reprovar";
+    const verbo = DECISAO_TEXTO[respostaFinal.decisao];
+    const oc = textoOrdemCompra(respostaFinal);
+    if (respostaFinal.origem === "PORTAL_CLIENTE") {
+      const emPrazo = Boolean(info.aplicavelAPartirDe && new Date(info.aplicavelAPartirDe).getTime() > agora.getTime());
+      const quem = `${respostaFinal.contato ?? "Contato autorizado"} em ${formatarHora(respostaFinal.registradaEm)}`;
+      if (respostaFinal.efetivacaoFalhouEm) {
+        const motivo = MOTIVO_FALHA[respostaFinal.efetivacaoErro ?? ""] ?? respostaFinal.efetivacaoErro ?? "não informado";
+        return {
+          tom: "ambar",
+          texto: `Cliente ${verbo}, mas a efetivação não foi concluída`,
+          detalhe: `${quem}. Motivo: ${motivo}. Confira com o cliente e aplique manualmente.`,
+          oc,
+          aplicar: { decisao, habilitado: info.podeAplicar },
+        };
       }
+      if (emPrazo) {
+        return {
+          tom: tomDaDecisao(respostaFinal.decisao),
+          texto: `Cliente ${verbo}: aplica às ${formatarQuando(info.aplicavelAPartirDe, agora)}`,
+          detalhe: `${quem}. Ele pode mudar de ideia até lá; não inicie o serviço nem separe peças antes disso.`,
+          oc,
+        };
+      }
+      return {
+        tom: tomDaDecisao(respostaFinal.decisao),
+        texto: `Cliente ${verbo}: aplicando automaticamente`,
+        detalhe: `${quem}. O sistema aplica status, pagamento (a combinar, se vazio) e estoque em instantes.`,
+        oc,
+      };
     }
-  }, [equipamentoId]);
+    const aindaCorrige = respostaFinal.origem === "PORTAL" && !info.podeAplicar && info.aplicavelAPartirDe;
+    return {
+      tom: "ambar",
+      texto: `Cliente ${verbo}: aguardando conferência`,
+      detalhe: `${respostaFinal.origem === "PORTAL" ? "Pelo link" : `Informado à equipe por ${respostaFinal.registradaPor ?? "—"}`} em ${formatarHora(respostaFinal.registradaEm)}.${
+        aindaCorrige ? ` O cliente ainda pode corrigir; a equipe aplica a partir de ${formatarHora(info.aplicavelAPartirDe)}.` : ""
+      }`,
+      oc,
+      aplicar: { decisao, habilitado: info.podeAplicar },
+    };
+  }
 
-  useEffect(() => {
-    void carregar();
-  }, [carregar, equipamento.atualizado_em, sinalPortal]);
-
-  if (!equipamentoId || consultado !== equipamentoId) return null;
-  const aberta = info != null && !info.encerradaMotivo;
-  async function executar(
-    permission: (typeof SENSITIVE_PERMISSIONS)[keyof typeof SENSITIVE_PERMISSIONS],
-    title: string,
-    description: string,
-    acao: () => Promise<void>,
-  ) {
-    const liberado = await ensureSensitiveAccess({ title, description, permission });
-    if (!liberado) return;
-    setBusy(true);
-    setError(null);
-    try {
-      await acao();
-      await carregar();
-    } catch (cause) {
-      setError(mensagemErro(cause, "A operação não foi concluída."));
-    } finally {
-      setBusy(false);
+  const resposta = info.resposta;
+  if (aguardando) {
+    if (info.encerradaMotivo) {
+      return {
+        tom: "neutro",
+        texto: `Versão ${info.versao} encerrada: o orçamento ou a etapa mudou`,
+        detalhe: "Publique de novo para o cliente responder.",
+        publicar: true,
+      };
     }
+    if (resposta?.decisao === "DESFEITA") {
+      return { tom: "neutro", texto: `Cliente retirou a resposta em ${formatarHora(resposta.registradaEm)}`, detalhe: "Aguardando nova resposta." };
+    }
+    return {
+      tom: "neutro",
+      texto: "Aguardando resposta do cliente",
+      detalhe: `Versão ${info.versao} · ${formatarValor(info.valorTotal)}${info.validoAte ? ` · válida até ${formatarHora(info.validoAte)}` : ""}${
+        info.aceiteOnlineAtivo ? "" : " · respostas pelo portal desligadas"
+      }`,
+    };
   }
 
-  function publicarNoPortal() {
-    void executar(
-      SENSITIVE_PERMISSIONS.MANAGE_STATUS_LINKS,
-      "Publicar orçamento no portal",
-      "Confirme o acesso para publicar o orçamento atual no Portal do Cliente. Se ele mudou, a versão anterior deixa de aceitar respostas.",
-      async () => {
-        const publicado = await db.publicarOrcamentoPortal(equipamentoId!);
-        toast.success(publicado.nova
-          ? `Versão ${publicado.versao} publicada no portal.`
-          : `A versão ${publicado.versao} já estava publicada com este conteúdo.`);
-      },
-    );
+  // Fora da etapa de aprovação: só o registro do que o cliente respondeu e foi aplicado.
+  if (resposta && resposta.decisao !== "DESFEITA" && resposta.aplicadaEm) {
+    return {
+      tom: tomDaDecisao(resposta.decisao),
+      texto: `Cliente ${DECISAO_TEXTO[resposta.decisao]} pelo portal em ${formatarHora(resposta.registradaEm)}`,
+      detalhe: `Aplicada em ${formatarHora(resposta.aplicadaEm)}${resposta.aplicadaPeloSistema ? " (efetivação automática)" : ""}.`,
+      oc: textoOrdemCompra(resposta),
+    };
   }
+  return null;
+}
 
-  function tratarSolicitacao(id: number) {
-    void executar(
-      SENSITIVE_PERMISSIONS.MANAGE_STATUS_LINKS,
-      "Mensagem do cliente",
-      "Confirme o acesso para marcar a mensagem do cliente como tratada.",
-      async () => {
-        await db.marcarSolicitacaoOrcamentoTratada(id);
-      },
-    );
-  }
+export function DecisaoOrcamentoCard({ onAplicar }: Props) {
+  const portal = usePortalCliente();
+  const { equipamento, info, error, loading, busy, consultado, respostaFinal, solicitacoesAbertas } = portal;
+  if (!equipamento.id || !consultado) return null;
 
-  const resposta = aberta ? info?.resposta : null;
-  const respostaFinal = resposta && resposta.decisao !== "DESFEITA" && !resposta.aplicadaEm ? resposta : null;
-  const aceiteAtivo = info?.aceiteOnlineAtivo ?? false;
+  const faixa = resumirFaixa(info, equipamento.status, respostaFinal);
+  if (!faixa && solicitacoesAbertas.length === 0 && !error) return null;
 
-  const solicitacoesAbertas = info?.solicitacoes.filter((item) => !item.tratadaEm).length ?? 0;
-  // Destaque (âmbar) só quando há algo para a equipe ver ou fazer; o resto fica neutro.
-  const precisaAtencao = Boolean(respostaFinal) || solicitacoesAbertas > 0;
-
-  // Nada publicado ainda: só a ação de publicar, sem quadro.
-  if (!info && !error) {
-    if (equipamento.status !== "AGUARDANDO_APROVACAO") return null;
-    return (
-      <div className="space-y-2 text-sm">
-        <QuemRespondeNoPortal equipamento={equipamento} />
-        <div className="flex flex-wrap items-center gap-2">
-          <Button size="sm" variant="outline" onClick={publicarNoPortal} disabled={busy}>
-            Publicar no Portal do Cliente
-          </Button>
-          <span className="text-xs text-muted-foreground">O cliente vê e responde ao orçamento em status.bmitag.com.br.</span>
-        </div>
-      </div>
-    );
-  }
+  const tomDestaque: Tom = faixa?.tom ?? "neutro";
+  const [primeira, ...outras] = solicitacoesAbertas;
 
   return (
-    <section
-      className={cn(
-        "space-y-3 rounded-md border p-3 text-sm",
-        precisaAtencao ? "border-amber-200 bg-amber-50/60" : "border-border bg-muted/20",
-      )}
-      aria-label="Resposta do cliente ao orçamento"
-    >
-      <div className="flex items-center justify-between gap-2">
-        <h4 className={cn("font-semibold", precisaAtencao ? "text-amber-950" : "text-foreground")}>
-          {precisaAtencao ? "Resposta do cliente ao orçamento" : "Orçamento no portal"}
-        </h4>
-        <Button size="sm" variant="ghost" onClick={() => void carregar()} disabled={loading || busy}>
-          {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
-          <span className="sr-only">Atualizar resposta</span>
-        </Button>
-      </div>
-
-      {error && <p role="alert" className="text-destructive">{error}</p>}
-
-      {info && (
-        <p className="text-muted-foreground">
-          Versão {info.versao} enviada em {formatarHora(info.criadaEm)} · {formatarValor(info.valorTotal)}
-          {info.validoAte ? ` · válida até ${formatarHora(info.validoAte)}` : ""}
-          {info.encerradaMotivo ? " · encerrada (o orçamento ou a etapa mudou; envie uma nova versão)" : ""}
-        </p>
-      )}
-
-      {respostaFinal?.origem === "PORTAL_CLIENTE" ? (
-        <RespostaPortalCliente
-          resposta={respostaFinal}
-          info={info!}
-          busy={busy}
-          onAplicar={() => onAplicar(respostaFinal.decisao === "APROVAR" ? "aprovar" : "reprovar")}
-        />
-      ) : respostaFinal ? (
-        <div className="space-y-1">
-          <p className="font-medium text-amber-950">
-            Cliente respondeu: {DECISAO_TEXTO[respostaFinal.decisao]} — aguardando conferência
-          </p>
-          <p className="text-muted-foreground">
-            {respostaFinal.origem === "PORTAL" ? "Pelo link" : `Informado à equipe por ${respostaFinal.registradaPor ?? "—"}`}
-            {" "}em {formatarHora(respostaFinal.registradaEm)}.
-            {respostaFinal.origem === "PORTAL" && !info?.podeAplicar && info?.aplicavelAPartirDe
-              ? ` O cliente ainda pode corrigir; a equipe aplica a partir de ${formatarHora(info.aplicavelAPartirDe)}.`
-              : ""}
-          </p>
-          <Button
-            size="sm"
-            disabled={!info?.podeAplicar || busy}
-            onClick={() => onAplicar(respostaFinal.decisao === "APROVAR" ? "aprovar" : "reprovar")}
-          >
-            Revisar e aplicar decisão
-          </Button>
-        </div>
-      ) : resposta?.decisao === "DESFEITA" ? (
-        <p className="text-muted-foreground">O cliente retirou a resposta em {formatarHora(resposta.registradaEm)}.</p>
-      ) : (
-        aberta && equipamento.status === "AGUARDANDO_APROVACAO" && <p className="text-muted-foreground">Aguardando resposta do cliente.</p>
-      )}
-
-      {equipamento.status === "AGUARDANDO_APROVACAO" && <QuemRespondeNoPortal equipamento={equipamento} />}
-
-      {/* Com resposta pendente, publicar criaria versão nova e anularia a resposta do cliente. */}
-      {equipamento.status === "AGUARDANDO_APROVACAO" && !respostaFinal && (
-        <div className="flex flex-wrap items-center gap-2">
-          <Button size="sm" variant="outline" onClick={publicarNoPortal} disabled={busy}>
-            Publicar no Portal do Cliente
-          </Button>
-          <span className="text-xs text-muted-foreground">
-            Alterou o orçamento? Publique de novo: a versão anterior deixa de aceitar respostas.
-          </span>
-        </div>
-      )}
-      {info && !aceiteAtivo && (
-        <p className="text-xs text-muted-foreground">
-          As respostas pelo Portal do Cliente estão desligadas: o cliente vê o orçamento, mas não aceita nem recusa por lá.
-        </p>
-      )}
-
-      {info && info.solicitacoes.length > 0 && (
-        <div className="space-y-1 border-t pt-2">
-          <p className="text-xs font-medium text-amber-950">Mensagens do cliente</p>
-          <ul className="space-y-1 text-xs">
-            {info.solicitacoes.map((item) => (
-              <li key={item.id} className="flex items-start justify-between gap-2">
-                <span className={item.tratadaEm ? "text-muted-foreground" : ""}>
-                  <strong>{item.tipo === "MUDANCA" ? "Pedido de mudança" : item.tipo === "NEGOCIAR" ? "Pedido de negociação" : "Dúvida"}</strong>
-                  {item.contato ? ` · ${item.contato}` : ""} · {formatarHora(item.criadaEm)} · {item.mensagem}
-                </span>
-                {item.tratadaEm ? (
-                  <span className="shrink-0 text-muted-foreground">tratada</span>
-                ) : (
-                  <Button size="sm" variant="outline" disabled={busy} onClick={() => tratarSolicitacao(item.id)}>Marcar como tratada</Button>
+    <section className="space-y-2 text-sm" aria-label="Resposta do cliente ao orçamento" data-tom={tomDestaque}>
+      {(faixa || error) && (
+        <div className={cn("flex flex-wrap items-center gap-x-3 gap-y-1 rounded-md border px-3 py-2", TOM_CLASSE[faixa?.tom ?? "neutro"])}>
+          <div className="min-w-0 flex-1">
+            {faixa && (
+              <p className="font-medium [overflow-wrap:anywhere]">
+                {faixa.texto}
+                {faixa.oc && (
+                  <span className="ml-2 rounded bg-background/70 px-1.5 py-0.5 text-xs font-semibold">{faixa.oc}</span>
                 )}
-              </li>
-            ))}
-          </ul>
+              </p>
+            )}
+            {faixa?.detalhe && <p className="text-xs opacity-80 [overflow-wrap:anywhere]">{faixa.detalhe}</p>}
+            {error && <p role="alert" className="text-xs text-destructive">{error}</p>}
+          </div>
+          <div className="flex shrink-0 items-center gap-1">
+            {faixa?.aplicar && (
+              <Button size="sm" disabled={!faixa.aplicar.habilitado || busy} onClick={() => onAplicar(faixa.aplicar!.decisao)}>
+                Revisar e aplicar decisão
+              </Button>
+            )}
+            {faixa?.publicar && (
+              <Button size="sm" variant="outline" onClick={portal.publicar} disabled={busy}>
+                Publicar no Portal do Cliente
+              </Button>
+            )}
+            <Button size="sm" variant="ghost" onClick={() => void portal.carregar()} disabled={loading || busy}>
+              {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
+              <span className="sr-only">Atualizar resposta</span>
+            </Button>
+          </div>
         </div>
       )}
 
-      {info && info.historico.length > 0 && (
-        <details>
-          <summary className="cursor-pointer text-xs text-muted-foreground">Histórico de respostas ({info.historico.length})</summary>
-          <ul className="mt-1 space-y-1 text-xs">
-            {info.historico.map((item) => (
-              <li key={item.id}>
-                {formatarHora(item.registradaEm)} · {origemTexto(item)} {DECISAO_TEXTO[item.decisao]}
-                {item.aplicadaEm ? ` · aplicada em ${formatarHora(item.aplicadaEm)}${item.aplicadaPeloSistema ? " (efetivação automática)" : ""}` : ""}
-                {item.efetivacaoFalhouEm ? ` · efetivação falhou: ${MOTIVO_FALHA[item.efetivacaoErro ?? ""] ?? item.efetivacaoErro ?? "motivo não informado"}` : ""}
-              </li>
-            ))}
-          </ul>
-        </details>
-      )}
+      {primeira && <PedidoDoCliente solicitacao={primeira} outras={outras.length} />}
     </section>
   );
 }
 
-/**
- * Resposta de um contato autorizado no Portal do Cliente. Dentro do prazo de correção a equipe não
- * deve agir como se estivesse aprovada; depois, o servidor efetiva sozinho. Se a efetivação falhar,
- * a resposta continua pendente e a equipe aplica pelo fluxo normal (pagamento, estoque, PIN).
- */
-function RespostaPortalCliente({
-  resposta,
-  info,
-  busy,
-  onAplicar,
-}: {
-  resposta: RespostaOrcamentoInfo;
-  info: DecisaoOrcamentoInfo;
-  busy: boolean;
-  onAplicar: () => void;
-}) {
-  const emPrazo = Boolean(info.aplicavelAPartirDe && new Date(info.aplicavelAPartirDe).getTime() > Date.now());
-  const falhou = Boolean(resposta.efetivacaoFalhouEm);
-  return (
-    <div className="space-y-1">
-      <p className="font-medium text-amber-950">
-        Cliente {DECISAO_TEXTO[resposta.decisao]} pelo portal
-        {emPrazo ? " — resposta recebida, em prazo de correção" : falhou ? " — efetivação NÃO concluída" : " — aguardando efetivação automática"}
-      </p>
-      <p className="text-muted-foreground">
-        {resposta.contato ?? "Contato autorizado"} em {formatarHora(resposta.registradaEm)}.
-        {emPrazo && ` O cliente pode mudar de ideia até ${formatarHora(info.aplicavelAPartirDe)}. Não inicie o serviço nem separe peças antes disso.`}
-        {!emPrazo && !falhou && " O sistema aplica status, pagamento (a combinar, se vazio) e estoque em instantes."}
-        {falhou && ` Motivo: ${MOTIVO_FALHA[resposta.efetivacaoErro ?? ""] ?? resposta.efetivacaoErro ?? "não informado"}. Confira com o cliente e aplique manualmente.`}
-      </p>
-      {falhou && (
-        <Button size="sm" disabled={!info.podeAplicar || busy} onClick={onAplicar}>
-          Revisar e aplicar decisão
-        </Button>
-      )}
-    </div>
-  );
-}
+const LIMITE_RESUMO = 140;
 
-/**
- * Quem deste cliente consegue responder pelo portal. Sem ninguém, o operador libera o acesso e cria
- * a senha aqui mesmo (inclusive cadastrando o contato), sem sair do equipamento.
- */
-function QuemRespondeNoPortal({ equipamento }: { equipamento: Equipamento }) {
-  const [contatos, setContatos] = useState<ClienteContato[] | null>(null);
-  const [aberto, setAberto] = useState(false);
-  const clienteId = equipamento.cliente_id;
-  const empresaId = equipamento.empresa_id;
+/** Pedido de negociação, ajuste ou dúvida do cliente, em destaque, com atalhos para falar com ele. */
+function PedidoDoCliente({ solicitacao, outras }: { solicitacao: SolicitacaoOrcamentoInfo; outras: number }) {
+  const { equipamento, busy, tratarSolicitacao, abrirPainel, abrirAcesso } = usePortalCliente();
+  const [expandida, setExpandida] = useState(false);
+  const tom: Tom = solicitacao.tipo === "NEGOCIAR" ? "violeta" : "ambar";
+  const longa = solicitacao.mensagem.length > LIMITE_RESUMO || solicitacao.mensagem.includes("\n");
+  const retorno = contatoParaRetorno(solicitacao, equipamento);
+  const protocolo = protocoloSolicitacao(solicitacao);
+  const texto = mensagemInicialContato(equipamento, solicitacao);
+  const temAlgumContato = Boolean(retorno.telefone || retorno.email);
 
-  const carregar = useCallback(async () => {
-    if (!clienteId || !empresaId) return;
+  async function abrir(url: string | null) {
+    if (!url) return;
     try {
-      setContatos(await db.listarClienteContatos(clienteId, empresaId));
-    } catch {
-      setContatos(null);
+      await db.abrirUrl(url);
+    } catch (cause) {
+      toast.error(mensagemErro(cause, "Não foi possível abrir o aplicativo."));
     }
-  }, [clienteId, empresaId]);
-
-  useEffect(() => { void carregar(); }, [carregar]);
-
-  if (!clienteId) {
-    return <p className="text-xs text-muted-foreground">Atendimento sem cliente cadastrado: vincule um cliente para usar o portal.</p>;
   }
-  if (!contatos) return null;
-  const respondem = contatos.filter(respondeNoPortal);
+
+  const assunto = `${equipamento.marca ?? ""} ${equipamento.modelo ?? ""} (protocolo ${protocolo})`.trim();
 
   return (
-    <div className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-md border bg-background px-3 py-2">
-      {respondem.length > 0 ? (
-        <p className="flex min-w-0 flex-1 items-center gap-1.5">
-          <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-600" aria-hidden="true" />
-          <span>
-            Quem responde no portal:{" "}
-            {respondem.map((contato, indice) => (
-              <span key={contato.id}>
-                {indice > 0 && ", "}
-                <strong>{contato.nome}</strong>
-              </span>
-            ))}
+    <div className={cn("space-y-2 rounded-md border-2 px-3 py-2", TOM_CLASSE[tom])} role="group" aria-label="Pedido do cliente">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <p className="font-semibold">
+          {TIPO_SOLICITACAO_TEXTO[solicitacao.tipo]}
+          <span className="ml-2 text-xs font-normal opacity-80">
+            {protocolo}{solicitacao.contato ? ` · ${solicitacao.contato}` : ""} · {formatarHora(solicitacao.criadaEm)}
           </span>
         </p>
-      ) : (
-        <p className="min-w-0 flex-1 text-muted-foreground">Ninguém deste cliente pode responder pelo portal.</p>
+        <div className="flex items-center gap-1">
+          {outras > 0 && (
+            <Button size="sm" variant="ghost" onClick={abrirPainel}>
+              +{outras} {outras > 1 ? "pedidos" : "pedido"}
+            </Button>
+          )}
+          <Button size="sm" variant="outline" disabled={busy} onClick={() => tratarSolicitacao(solicitacao.id)}>
+            Marcar como tratada
+          </Button>
+        </div>
+      </div>
+
+      <div>
+        <p
+          className={cn(
+            "whitespace-pre-wrap [overflow-wrap:anywhere]",
+            !expandida && "line-clamp-2",
+            expandida && "max-h-24 overflow-y-auto",
+          )}
+        >
+          {solicitacao.mensagem}
+        </p>
+        {longa && (
+          <button type="button" className="text-xs font-medium underline" onClick={() => setExpandida((v) => !v)}>
+            {expandida ? "ver menos" : "ver mais"}
+          </button>
+        )}
+      </div>
+
+      {(solicitacao.contatoTelefone || solicitacao.contatoEmail) && (
+        <p className="text-xs">
+          Contato informado pelo cliente:{" "}
+          <strong>{[solicitacao.contatoTelefone, solicitacao.contatoEmail].filter(Boolean).join(" · ")}</strong>
+        </p>
       )}
-      <Button size="sm" variant={respondem.length > 0 ? "ghost" : "default"} onClick={() => setAberto(true)}>
-        <KeyRound className="mr-1 h-4 w-4" /> {respondem.length > 0 ? "Gerenciar acesso" : "Dar acesso a um contato"}
-      </Button>
-      <AcessoPortalDialog
-        open={aberto}
-        onOpenChange={setAberto}
-        clienteId={clienteId}
-        empresaId={empresaId}
-        responsavelContatoId={equipamento.responsavel_contato_id}
-        onAlterado={() => void carregar()}
-      />
+
+      <div className="flex flex-wrap items-center gap-2">
+        {retorno.podeWhatsapp && (
+          <Button size="sm" variant="outline" className="bg-background" onClick={() => void abrir(montarLinkWhatsapp(retorno.telefone, texto))}>
+            <MessageCircle className="mr-1 h-4 w-4" /> WhatsApp
+          </Button>
+        )}
+        {retorno.podeEmail && (
+          <Button size="sm" variant="outline" className="bg-background" onClick={() => void abrir(montarLinkEmail(retorno.email, `Orçamento ${assunto}`, texto))}>
+            <Mail className="mr-1 h-4 w-4" /> E-mail
+          </Button>
+        )}
+        {!retorno.podeWhatsapp && !retorno.podeEmail && (
+          <>
+            <span className="text-xs">
+              {temAlgumContato
+                ? "O telefone ou e-mail disponível não é válido."
+                : "O cliente não deixou telefone nem e-mail."}
+            </span>
+            {equipamento.cliente_id ? (
+              <Button size="sm" variant="outline" className="bg-background" onClick={abrirAcesso}>
+                <KeyRound className="mr-1 h-4 w-4" /> Gerenciar contatos
+              </Button>
+            ) : null}
+          </>
+        )}
+        {(retorno.podeWhatsapp || retorno.podeEmail) && !solicitacao.contatoTelefone && !solicitacao.contatoEmail && (
+          <span className="text-xs opacity-80">Contato do cadastro do cliente.</span>
+        )}
+      </div>
     </div>
   );
 }

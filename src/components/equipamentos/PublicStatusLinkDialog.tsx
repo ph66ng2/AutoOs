@@ -194,9 +194,9 @@ export function PublicStatusLinkDialog({ equipamento, open, onOpenChange }: Prop
     <Dialog open={open} onOpenChange={changeOpen}>
       <DialogContent className="sm:max-w-xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle className="flex items-center gap-2"><Link2 className="h-5 w-5" /> Acompanhamento público</DialogTitle>
+          <DialogTitle className="flex items-center gap-2"><Link2 className="h-5 w-5" /> Link de acompanhamento sem login</DialogTitle>
           <DialogDescription>
-            O cliente poderá consultar a etapa atual por um link individual. O portal não altera status nem aprova orçamento.
+            O cliente consulta a etapa atual por um link individual, sem entrar. Esse link só mostra o andamento: para aceitar, recusar ou negociar o orçamento, o cliente entra no Portal do Cliente com a senha.
           </DialogDescription>
         </DialogHeader>
 
