@@ -129,7 +129,7 @@ describe("PortalClientePanel", () => {
     const painel = await abrirPainel();
     const mensagens = within(painel).getByRole("region", { name: "Mensagens do cliente" });
     expect(mensagens.querySelector("ul")?.className).toMatch(/max-h-.*overflow-y-auto/);
-    expect(within(mensagens).getByText(/71988887777/)).toBeInTheDocument();
+    expect(within(mensagens).getByText(/\(71\) 98888-7777/)).toBeInTheDocument();
     const historico = within(painel).getByRole("region", { name: /Histórico de respostas/ });
     expect(historico.querySelector("ul")?.className).toMatch(/max-h-.*overflow-y-auto/);
     expect(within(historico).getByText(/OC nº 4500123/)).toBeInTheDocument();

@@ -15,7 +15,7 @@ import {
   origemTexto,
   textoOrdemCompra,
 } from "@/components/equipamentos/portal-cliente-format";
-import { protocoloSolicitacao } from "@/lib/contato-cliente";
+import { protocoloSolicitacao, telefoneParaExibir } from "@/lib/contato-cliente";
 import { SENSITIVE_PERMISSIONS } from "@/types";
 
 type Props = {
@@ -127,7 +127,7 @@ export function PortalClientePanel({ open, onOpenChange }: Props) {
                       <span className={item.tratadaEm ? "text-muted-foreground" : ""}>
                         <strong>{TIPO_SOLICITACAO_TEXTO[item.tipo]}</strong> · {protocoloSolicitacao(item)}
                         {item.contato ? ` · ${item.contato}` : ""} · {formatarHora(item.criadaEm)}
-                        {item.contatoTelefone ? ` · ${item.contatoTelefone}` : ""}
+                        {item.contatoTelefone ? ` · ${telefoneParaExibir(item.contatoTelefone)}` : ""}
                         {item.contatoEmail ? ` · ${item.contatoEmail}` : ""}
                         <br />
                         <span className="whitespace-pre-wrap [overflow-wrap:anywhere]">{item.mensagem}</span>

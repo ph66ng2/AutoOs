@@ -10,6 +10,7 @@ import {
   montarLinkEmail,
   montarLinkWhatsapp,
   protocoloSolicitacao,
+  telefoneParaExibir,
 } from "@/lib/contato-cliente";
 import { mensagemErro, usePortalCliente } from "@/components/equipamentos/portal-cliente-context";
 import {
@@ -259,7 +260,7 @@ function PedidoDoCliente({ solicitacao, outras }: { solicitacao: SolicitacaoOrca
       {(solicitacao.contatoTelefone || solicitacao.contatoEmail) && (
         <p className="text-xs">
           Contato informado pelo cliente:{" "}
-          <strong>{[solicitacao.contatoTelefone, solicitacao.contatoEmail].filter(Boolean).join(" · ")}</strong>
+          <strong>{[solicitacao.contatoTelefone && telefoneParaExibir(solicitacao.contatoTelefone), solicitacao.contatoEmail].filter(Boolean).join(" · ")}</strong>
         </p>
       )}
 

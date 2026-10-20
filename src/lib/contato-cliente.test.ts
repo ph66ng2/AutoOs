@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  telefoneParaExibir,
   contatoParaRetorno,
   emailValido,
   mensagemInicialContato,
@@ -10,6 +11,13 @@ import {
 import type { Equipamento } from "@/types";
 
 describe("contato-cliente", () => {
+  it("exibe o telefone formatado, com ou sem DDI", () => {
+    expect(telefoneParaExibir("71991234567")).toBe("(71) 99123-4567");
+    expect(telefoneParaExibir("5571991234567")).toBe("(71) 99123-4567");
+    expect(telefoneParaExibir("7132345678")).toBe("(71) 3234-5678");
+    expect(telefoneParaExibir("123")).toBe("123");
+  });
+
   it("normaliza telefone brasileiro para o wa.me", () => {
     expect(telefoneParaWhatsapp("(71) 98888-7777")).toBe("5571988887777");
     expect(telefoneParaWhatsapp("7133334444")).toBe("557133334444");

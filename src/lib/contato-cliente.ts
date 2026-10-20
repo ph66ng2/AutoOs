@@ -1,4 +1,5 @@
 import { resolveRecipient } from "@/lib/recipient-resolver";
+import { formatarTelefone } from "@/lib/validations";
 import type { Equipamento, SolicitacaoOrcamentoInfo } from "@/types";
 
 function limpar(valor?: string | null) {
@@ -11,6 +12,12 @@ export function telefoneParaWhatsapp(telefone?: string | null): string | null {
   if (digitos.length === 10 || digitos.length === 11) return `55${digitos}`;
   if ((digitos.length === 12 || digitos.length === 13) && digitos.startsWith("55")) return digitos;
   return null;
+}
+
+/** Telefone para exibir: (71) 99123-4567; sem DDI 55. Fora do padrão, devolve como veio. */
+export function telefoneParaExibir(telefone?: string | null): string {
+  const numero = telefoneParaWhatsapp(telefone);
+  return numero ? formatarTelefone(numero.slice(2)) : limpar(telefone);
 }
 
 export function montarLinkWhatsapp(telefone: string | null | undefined, texto: string): string | null {
