@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { act, render, screen } from "@testing-library/react";
+import { act, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { TourController } from "./TourController";
 import { clearTourRequest, requestTour } from "@/lib/tour-request";
@@ -83,6 +83,35 @@ describe("TourController", () => {
     hookState.status = { ...hookState.status, unlocked: true };
     rerender(<MemoryRouter><TourController /></MemoryRouter>);
     expect(await screen.findByText("NOVO NO SEU PERFIL")).toBeInTheDocument();
+  });
+
+  it("não oferece o tour por cima do primeiro acesso nem depois de pular", async () => {
+    // Primeiro acesso concluído, tour ainda nunca visto, wizard (tela cheia) ainda aberto.
+    hookState.status = statusFor(["VIEW_EXPENSES"], null);
+    const wizard = document.createElement("div");
+    wizard.setAttribute("data-blocks-tour", "true");
+    document.body.appendChild(wizard);
+
+    const { rerender } = renderTour();
+    await new Promise((resolve) => setTimeout(resolve, 900));
+    expect(screen.queryByText("Conheça o AutoOS em 2 minutos")).not.toBeInTheDocument();
+
+    // "Pular por agora": grava como visto e fecha o wizard.
+    hookState.status = statusFor(["VIEW_EXPENSES"], ["VIEW_EXPENSES"]);
+    rerender(<MemoryRouter><TourController /></MemoryRouter>);
+    wizard.remove();
+    await new Promise((resolve) => setTimeout(resolve, 900));
+    expect(screen.queryByText("Conheça o AutoOS em 2 minutos")).not.toBeInTheDocument();
+  });
+
+  it("some a oferta já exibida quando o tour passa a constar como visto", async () => {
+    hookState.status = statusFor(["VIEW_EXPENSES"], null);
+    const { rerender } = renderTour();
+    expect(await screen.findByText("Conheça o AutoOS em 2 minutos")).toBeInTheDocument();
+
+    hookState.status = statusFor(["VIEW_EXPENSES"], ["VIEW_EXPENSES"]);
+    rerender(<MemoryRouter><TourController /></MemoryRouter>);
+    await waitFor(() => expect(screen.queryByText("Conheça o AutoOS em 2 minutos")).not.toBeInTheDocument());
   });
 
   it("espera a escolha de modo (tela que não é diálogo) antes de começar", async () => {

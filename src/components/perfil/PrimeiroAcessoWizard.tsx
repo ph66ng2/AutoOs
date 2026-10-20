@@ -122,7 +122,7 @@ export function PrimeiroAcessoWizard({
     : { initial: { opacity: 0, x: 24 }, animate: { opacity: 1, x: 0 }, exit: { opacity: 0, x: -24 } };
 
   return (
-    <div role="dialog" aria-modal="true" aria-labelledby="primeiro-acesso-titulo" className="dark fixed inset-0 z-[90] grid bg-background text-foreground lg:grid-cols-[minmax(0,600px)_minmax(0,1fr)]">
+    <div role="dialog" aria-modal="true" aria-labelledby="primeiro-acesso-titulo" data-blocks-tour="true" className="dark fixed inset-0 z-[90] grid bg-background text-foreground lg:grid-cols-[minmax(0,600px)_minmax(0,1fr)]">
       <div className="flex min-h-0 flex-col overflow-y-auto bg-card px-6 py-8 sm:px-12 lg:px-16">
         <div className="flex items-center gap-2.5">
           <img src="/logo-tag-trasparente.svg" alt="" className="h-8 w-auto" />

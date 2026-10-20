@@ -140,7 +140,12 @@ export function TourController() {
     if (checkedStateRef.current === stateKey) return;
     checkedStateRef.current = stateKey;
     const pending = pendingTour(permissions, seenPermissions);
-    if (!pending) return;
+    if (!pending) {
+      // O que estava pendente foi registrado como visto (ex.: "Pular por agora" no primeiro acesso).
+      setOffer(false);
+      setOfferQueued(false);
+      return;
+    }
     if (pending.kind === "novidades") requestTour("novidades");
     else setOfferQueued(true);
   }, [activeProfile, permissions, permissionsKey, run, seenKey, seenPermissions, unlocked]);

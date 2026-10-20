@@ -93,6 +93,11 @@ describe("primeiro acesso", () => {
     expect(screen.getByLabelText("Código de primeiro acesso")).toBeInTheDocument();
   });
 
+  it("marca a tela cheia como bloqueio para o tour não abrir por cima dela", () => {
+    render(<PrimeiroAcessoWizard profile={pending} needsCode onStatusChange={vi.fn()} onCancel={vi.fn()} onFinish={vi.fn()} />);
+    expect(screen.getByRole("dialog")).toHaveAttribute("data-blocks-tour", "true");
+  });
+
   it("perfil já autenticado começa direto pelo nome e visual", () => {
     render(<PrimeiroAcessoWizard profile={{ ...pending, pin_configured: true }} needsCode={false} onStatusChange={vi.fn()} onCancel={vi.fn()} onFinish={vi.fn()} />);
     expect(screen.getByLabelText("Nome de exibição")).toHaveValue("Recepção 2");
