@@ -8,8 +8,8 @@ use url::Url;
 
 static MIGRATOR: Migrator = sqlx::migrate!("./migrations");
 
-const REQUIRED_PROMOTION_MIGRATIONS: [i64; 13] = [27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39];
-const EXPECTED_MIGRATION_COUNT: usize = 39;
+const REQUIRED_PROMOTION_MIGRATIONS: [i64; 14] = [27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40];
+const EXPECTED_MIGRATION_COUNT: usize = 40;
 const LAST_REQUIRED_APPLIED_MIGRATION: i64 = 28;
 
 fn required_env(name: &str) -> Result<String> {
@@ -407,6 +407,25 @@ async fn verify_promoted_schema(pool: &PgPool) -> Result<()> {
         "estruturas das migrations SQLx 0031–0039 não foram encontradas"
     );
 
+    // 0040: orçamento de venda avulsa de insumos (tabelas, numeração por empresa e RLS ligado).
+    let orcamentos_insumos_schema_exists: bool = sqlx::query_scalar(
+        "SELECT to_regclass('public.orcamentos_insumos') IS NOT NULL
+             AND to_regclass('public.orcamento_insumos_itens') IS NOT NULL
+             AND to_regclass('public.orcamentos_insumos_contadores') IS NOT NULL
+             AND to_regclass('public.uq_orcamentos_insumos_numero') IS NOT NULL
+             AND (SELECT count(*) FROM pg_class
+                   WHERE relnamespace = 'public'::regnamespace
+                     AND relname IN ('orcamentos_insumos', 'orcamento_insumos_itens', 'orcamentos_insumos_contadores')
+                     AND relrowsecurity) = 3",
+    )
+    .fetch_one(pool)
+    .await
+    .context("não foi possível confirmar as estruturas do orçamento de insumos")?;
+    ensure!(
+        orcamentos_insumos_schema_exists,
+        "estruturas da migration SQLx 0040 (orçamento de insumos) não foram encontradas"
+    );
+
     let applied_count: i64 =
         sqlx::query_scalar("SELECT count(*) FROM public._sqlx_migrations WHERE success = true")
             .fetch_one(pool)
@@ -429,7 +448,7 @@ async fn required_promotion_migrations_already_applied(pool: &PgPool) -> Result<
     .bind(REQUIRED_PROMOTION_MIGRATIONS.as_slice())
     .fetch_one(pool)
     .await
-    .context("não foi possível consultar o status inicial das migrations 0027–0039")?;
+    .context("não foi possível consultar o status inicial das migrations 0027–0040")?;
     Ok(applied_count == REQUIRED_PROMOTION_MIGRATIONS.len() as i64)
 }
 
