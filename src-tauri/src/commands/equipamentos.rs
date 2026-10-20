@@ -1236,9 +1236,9 @@ pub async fn aprovar_orcamento(input: AprovarOrcamentoInput) -> Result<Equipamen
         "UPDATE verificacoes
          SET forma_pagamento_codigo = $1, forma_pagamento_detalhe = $2,
              empresa_id = COALESCE(empresa_id, $5),
-             servicos_orcamento_original = COALESCE(servicos_orcamento_original, servicos_necessarios::jsonb),
-             pecas_orcamento_original = COALESCE(pecas_orcamento_original, pecas_necessarias::jsonb),
-             valor_orcamento_original = COALESCE(valor_orcamento_original, custo_total),
+             servicos_orcamento_original = servicos_necessarios::jsonb,
+             pecas_orcamento_original = pecas_necessarias::jsonb,
+             valor_orcamento_original = custo_total,
              servicos_necessarios = $6, pecas_necessarias = $7, custo_total = $8
          WHERE id = $3 AND equipamento_id = $4
            AND (empresa_id = $5 OR empresa_id IS NULL)",

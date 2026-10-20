@@ -256,7 +256,7 @@ pub async fn analisar_correcao_decisao(equipamento_id: i32) -> Result<AnaliseCor
 /// mantém a atual, conforme o modo) e, só com confirmação explícita, devolve ao estoque as peças baixadas.
 #[tauri::command]
 #[instrument(skip_all, fields(equipamento_id = input.equipamento_id))]
-pub async fn corrigir_decisao_orcamento(input: CorrigirDecisaoInput) -> Result<EquipamentoRow, String> {
+pub async fn corrigir_decisao_orcamento(input: CorrigirDecisaoInput) -> Result<ResultadoCorrecaoDecisao, String> {
     let map = super::operator_errors::mapear_erro_sql;
     if !motivo_valido(&input.motivo) {
         return Err("Informe o motivo da correção (mínimo de 5 caracteres).".to_string());
@@ -270,10 +270,36 @@ pub async fn corrigir_decisao_orcamento(input: CorrigirDecisaoInput) -> Result<E
     let mut tx = pool.begin().await.map_err(map)?;
 
     let aplicada = corrigir_na_transacao(&mut tx, &actor, empresa_id, &input).await?;
+    let ja_publicado = super::orcamento_decisao::situacao_portal(&mut tx, empresa_id, input.equipamento_id, false)
+        .await?
+        .ja_publicado;
     tx.commit().await.map_err(map)?;
     registrar_auditoria_correcao(&actor, &input, &aplicada).await;
 
-    super::equipamentos::buscar_equipamento(input.equipamento_id).await
+    // Se o cliente já viu este orçamento no portal, a nova versão vai junto: sem isso o portal
+    // ficaria sem proposta aberta. Falha de publicação vira aviso e não desfaz a correção.
+    let portal = if ja_publicado {
+        super::verificacoes::publicar_apos_ajuste(&pool, &actor, empresa_id, input.equipamento_id, true).await
+    } else {
+        super::verificacoes::PortalAjusteInfo::nenhuma()
+    };
+    let equipamento = super::equipamentos::buscar_equipamento(input.equipamento_id).await?;
+    Ok(ResultadoCorrecaoDecisao { equipamento, portal })
+}
+
+/// Equipamento reaberto (campos na raiz do JSON, como antes) mais o que aconteceu no portal.
+#[derive(Debug, Serialize)]
+pub struct ResultadoCorrecaoDecisao {
+    #[serde(flatten)]
+    pub equipamento: EquipamentoRow,
+    pub portal: super::verificacoes::PortalAjusteInfo,
+}
+
+impl std::ops::Deref for ResultadoCorrecaoDecisao {
+    type Target = EquipamentoRow;
+    fn deref(&self) -> &EquipamentoRow {
+        &self.equipamento
+    }
 }
 
 /// O que a correção fez, para a auditoria feita depois do commit.

@@ -54,6 +54,9 @@ const MAX_ITENS: usize = 100;
 const MAX_QUANTIDADE: i32 = 100_000;
 /// R$ 10.000.000,00 por unidade: barra erro de digitação sem limitar vendas reais.
 const MAX_VALOR_CENTAVOS: i64 = 1_000_000_000;
+/// R$ 9.999.999.999,99: o que cabe em NUMERIC(12,2) nas colunas de total (0040). Item, subtotal e
+/// total acima disso seriam recusados pelo banco com um erro genérico; recusamos antes, com motivo.
+const MAX_TOTAL_CENTAVOS: i64 = 999_999_999_999;
 /// Trava de segurança contra estouro de i64 em qualquer valor monetário recebido.
 const LIMITE_ABSOLUTO_CENTAVOS: f64 = 1e15;
 const MAX_OBSERVACOES: usize = 2000;
@@ -239,9 +242,15 @@ pub fn calcular_totais(itens: &[(i32, i64)], desconto_centavos: i64) -> Result<T
         let total_item = i64::from(*quantidade)
             .checked_mul(*unitario)
             .ok_or_else(|| "Valor do item acima do limite permitido.".to_string())?;
+        if total_item > MAX_TOTAL_CENTAVOS {
+            return Err("O total de um item passa de R$ 9.999.999.999,99. Reduza a quantidade ou o valor unitário.".to_string());
+        }
         subtotal = subtotal
             .checked_add(total_item)
             .ok_or_else(|| "Total do orçamento acima do limite permitido.".to_string())?;
+        if subtotal > MAX_TOTAL_CENTAVOS {
+            return Err("O total do orçamento passa de R$ 9.999.999.999,99. Reduza quantidades ou valores.".to_string());
+        }
         itens_centavos.push(total_item);
     }
     if desconto_centavos < 0 {
@@ -1105,6 +1114,17 @@ mod tests {
         assert!(calcular_totais(&[(1, 1000)], 1001).unwrap_err().contains("desconto"));
         assert_eq!(calcular_totais(&[(1, 1000)], 1000).unwrap().total_centavos, 0);
         assert!(calcular_totais(&[(1, 1000)], -1).is_err());
+    }
+
+    #[test]
+    fn totais_recusam_o_que_nao_cabe_no_banco() {
+        // Limite exato (R$ 9.999.999.999,99) passa; um centavo a mais, em item ou soma, não.
+        assert_eq!(calcular_totais(&[(1, MAX_TOTAL_CENTAVOS)], 0).unwrap().total_centavos, MAX_TOTAL_CENTAVOS);
+        assert!(calcular_totais(&[(1, MAX_TOTAL_CENTAVOS + 1)], 0).unwrap_err().contains("9.999.999.999,99"));
+        // 100.000 unidades a R$ 10.000.000,00 (o que as validações por campo aceitam).
+        assert!(calcular_totais(&[(MAX_QUANTIDADE, MAX_VALOR_CENTAVOS)], 0).unwrap_err().contains("item"));
+        let soma = calcular_totais(&[(1, MAX_TOTAL_CENTAVOS), (1, 1)], 0).unwrap_err();
+        assert!(soma.contains("total do orçamento") && soma.contains("9.999.999.999,99"), "{soma}");
     }
 
     #[test]

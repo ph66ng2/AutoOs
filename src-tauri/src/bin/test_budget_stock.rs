@@ -300,6 +300,45 @@ async fn main() -> Result<()> {
     assert_eq!(sem_resposta_v2, 0, "o cliente vê a versão nova para responder");
     assert_eq!(valor_portal(&pool, &hash, eq_b).await?, 65.0);
 
+    // (f) Cenário do QA: aprovar, ajustar sem nova aprovação (95), pedir nova aprovação (110),
+    // aprovar de novo e corrigir a decisão restaurando: volta ao que o cliente aprovou POR ÚLTIMO
+    // (110) e a versão nova vai sozinha para o portal.
+    let eq_f = novo_orcamento(&pool, empresa, cliente, &suffix, "TF", &services).await?;
+    aprovar_com_resposta_do_portal(eq_f).await?;
+    ajustar(eq_f, 95.0, Some(true), opcoes(verificacoes::ModoAjusteAprovado::SemNovaAprovacao, false)).await.map_err(|e| anyhow!(e))?;
+    ajustar(eq_f, 110.0, None, opcoes(verificacoes::ModoAjusteAprovado::NovaAprovacao, true)).await.map_err(|e| anyhow!(e))?;
+    aprovar_com_resposta_do_portal(eq_f).await?;
+    let original_f: Option<f64> = sqlx::query_scalar("SELECT valor_orcamento_original::FLOAT8 FROM verificacoes WHERE equipamento_id=$1").bind(eq_f).fetch_one(&pool).await?;
+    assert_eq!(original_f, Some(110.0), "o original acompanha a última aprovação, não a primeira");
+    let versoes_f_antes = versoes(eq_f).await.len();
+    let token_f: String = sqlx::query_scalar("SELECT atualizado_em::TEXT FROM equipamentos WHERE id=$1").bind(eq_f).fetch_one(&pool).await?;
+    let analise_f = orcamento_correcao::analisar_correcao_decisao(eq_f).await.map_err(|e| anyhow!(e))?;
+    assert_eq!(analise_f.valor_original, Some(110.0));
+    let reaberto_f = orcamento_correcao::corrigir_decisao_orcamento(orcamento_correcao::CorrigirDecisaoInput {
+        equipamento_id: eq_f, expected_updated_em: token_f, motivo: "Cliente pediu para rever".into(), devolver_estoque: true,
+        modo: orcamento_correcao::ModoCorrecao::RestaurarOriginal }).await.map_err(|e| anyhow!(e))?;
+    assert_eq!(reaberto_f.status.as_deref(), Some("AGUARDANDO_APROVACAO"));
+    assert_eq!(reaberto_f.valor_orcamento, Some(110.0), "não volta ao R$ 80 da primeira aprovação");
+    let custo_f: Option<f64> = sqlx::query_scalar("SELECT custo_total::FLOAT8 FROM verificacoes WHERE equipamento_id=$1").bind(eq_f).fetch_one(&pool).await?;
+    assert_eq!(custo_f, Some(110.0));
+    assert_eq!(reaberto_f.portal.acao, "NOVA_APROVACAO_PUBLICADA", "{:?}", reaberto_f.portal);
+    let vs_f = versoes(eq_f).await;
+    assert_eq!(vs_f.len(), versoes_f_antes + 1, "a correção publicou uma versão nova");
+    assert!(vs_f.last().unwrap().1, "a versão nova está aberta");
+    assert_eq!(valor_portal(&pool, &hash, eq_f).await?, 110.0);
+    // Sem publicação anterior, a correção não publica nada.
+    let eq_g = novo_orcamento(&pool, empresa, cliente, &suffix, "TG", &services).await?;
+    let token_g: String = sqlx::query_scalar("SELECT atualizado_em::TEXT FROM equipamentos WHERE id=$1").bind(eq_g).fetch_one(&pool).await?;
+    equipamentos::aprovar_orcamento(AprovarOrcamentoInput { empresa_id:empresa,equipamento_id:eq_g,expected_updated_em:token_g,
+        pagamento:FormaPagamento { codigo:FormaPagamentoCodigo::Pix,detalhe:None },servicos_aprovados:vec!["a".into()],
+        aprovado:None,resposta_esperada_id:None,motivo_divergencia:None }).await.map_err(|e| anyhow!(e))?;
+    let token_g: String = sqlx::query_scalar("SELECT atualizado_em::TEXT FROM equipamentos WHERE id=$1").bind(eq_g).fetch_one(&pool).await?;
+    let reaberto_g = orcamento_correcao::corrigir_decisao_orcamento(orcamento_correcao::CorrigirDecisaoInput {
+        equipamento_id: eq_g, expected_updated_em: token_g, motivo: "Cliente pediu para rever".into(), devolver_estoque: true,
+        modo: orcamento_correcao::ModoCorrecao::RestaurarOriginal }).await.map_err(|e| anyhow!(e))?;
+    assert_eq!(reaberto_g.portal.acao, "NENHUMA");
+    assert!(versoes(eq_g).await.is_empty());
+
     // (c) Aguardando COM versão publicada: alterar republica sozinho; sem mudança não cria versão.
     let eq_c = novo_orcamento(&pool, empresa, cliente, &suffix, "TC", &services).await?;
     portal_cliente::publicar_orcamento_portal(eq_c).await.map_err(|e| anyhow!(e))?;
