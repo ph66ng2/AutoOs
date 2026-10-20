@@ -48,6 +48,7 @@ static SENSITIVE_SESSION: OnceLock<Mutex<SensitiveSession>> = OnceLock::new();
 static UNLOCK_ATTEMPTS: OnceLock<Mutex<HashMap<i32, UnlockAttemptTracker>>> = OnceLock::new();
 static SELECTED_PROFILE_ID: AtomicI32 = AtomicI32::new(0);
 static INACTIVITY_LOCK_ENABLED: AtomicBool = AtomicBool::new(false);
+static INACTIVITY_CONFIG_LOADED: AtomicBool = AtomicBool::new(false);
 
 #[derive(Debug, Default, Clone)]
 struct UnlockAttemptTracker {
@@ -517,7 +518,22 @@ async fn read_inactivity_config_from_db() -> Result<bool, String> {
         super::operator_errors::mapear_erro_sql(e)
     })?;
     INACTIVITY_LOCK_ENABLED.store(row, Ordering::Relaxed);
+    INACTIVITY_CONFIG_LOADED.store(true, Ordering::Relaxed);
     Ok(row)
+}
+
+/// Garante que a flag de bloqueio por inatividade veio do banco, sem depender de alguém abrir
+/// Configurações. Lê uma vez por processo e de novo a cada status com a sessão bloqueada, então
+/// uma mudança feita em outro computador vale no próximo desbloqueio. Se a leitura falhar, a
+/// flag continua como estava e a próxima consulta tenta de novo.
+async fn refresh_inactivity_config_if_needed() {
+    let locked = !matches!(current_session_profile(), Ok(Some(_)));
+    if INACTIVITY_CONFIG_LOADED.load(Ordering::Relaxed) && !locked {
+        return;
+    }
+    if let Err(error) = read_inactivity_config_from_db().await {
+        warn!("Não foi possível carregar a configuração de inatividade: {}", error);
+    }
 }
 
 #[tauri::command]
@@ -601,7 +617,9 @@ pub(crate) fn unlock_session(profile: SecurityProfileSummary) -> Result<(), Stri
 pub fn touch_sensitive_access() -> Result<(), String> {
     let mut session = session_state().lock().map_err(|_| "Sessão sensível indisponível".to_string())?;
     match (session.unlocked_until, session.profile_obfuscated.clone(), session.profile_key.clone()) {
-        (Some(until), Some(_), Some(_)) if until > Utc::now() => {
+        // Com o bloqueio por inatividade desativado a sessão não expira: segue o que
+        // `current_session_profile` já considera válido.
+        (Some(until), Some(_), Some(_)) if until > Utc::now() || !INACTIVITY_LOCK_ENABLED.load(Ordering::Relaxed) => {
             session.unlocked_until = Some(Utc::now() + Duration::minutes(SESSION_TIMEOUT_MINUTES));
             Ok(())
         }
@@ -631,10 +649,29 @@ pub fn require_sensitive_access() -> Result<SecurityProfileSummary, String> {
     Ok(profile)
 }
 
+/// Confere a sessão sem renová-la e sem registrar tentativa negada na auditoria. É para leituras
+/// de segundo plano (o sino do portal consulta a cada 30 s): só a ação do usuário prorroga os
+/// 15 minutos, senão o bloqueio por inatividade nunca dispara.
+pub fn require_sensitive_access_without_touch() -> Result<SecurityProfileSummary, String> {
+    current_session_profile()?
+        .map(|(_, profile)| profile)
+        .ok_or_else(|| "Acesso sensível bloqueado. Informe o PIN para continuar.".to_string())
+}
+
 /// Resolve a empresa exclusivamente a partir do perfil atualmente autenticado.
 /// Valores recebidos da interface nunca devem escolher o tenant de uma escrita.
 pub async fn require_active_session_company_id(pool: &PgPool) -> Result<i32, String> {
     let profile = require_sensitive_access()?;
+    company_id_for_profile(pool, &profile).await
+}
+
+/// Igual a `require_active_session_company_id`, para consultas de segundo plano: não renova a sessão.
+pub async fn require_active_session_company_id_without_touch(pool: &PgPool) -> Result<i32, String> {
+    let profile = require_sensitive_access_without_touch()?;
+    company_id_for_profile(pool, &profile).await
+}
+
+async fn company_id_for_profile(pool: &PgPool, profile: &SecurityProfileSummary) -> Result<i32, String> {
     let company_id = sqlx::query_scalar(
         "SELECT e.id
          FROM security_profiles p
@@ -918,6 +955,7 @@ async fn count_active_profiles_excluding(profile_id: i32) -> Result<i64, String>
 }
 
 async fn status_snapshot() -> Result<SensitiveAccessStatus, String> {
+    refresh_inactivity_config_if_needed().await;
     let active_profile = fetch_active_profile_record().await?;
     ensure_legacy_pin_migrated(active_profile.id).await?;
 
@@ -2297,6 +2335,73 @@ pub async fn listar_minhas_acoes(limit: Option<i32>) -> Result<Vec<SecurityAudit
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Os testes de sessão mexem em estáticos do processo (sessão e flag de inatividade).
+    static SESSION_TEST_LOCK: Mutex<()> = Mutex::new(());
+
+    fn session_test_guard() -> std::sync::MutexGuard<'static, ()> {
+        SESSION_TEST_LOCK.lock().unwrap_or_else(|poisoned| poisoned.into_inner())
+    }
+
+    fn unlocked_test_session(inactivity_lock: bool, expires_in: Duration) {
+        INACTIVITY_LOCK_ENABLED.store(inactivity_lock, Ordering::Relaxed);
+        unlock_session(SecurityProfileSummary {
+            id: 9001,
+            nome: "Sessão de teste".to_string(),
+            role: "TECNICO".to_string(),
+            ..Default::default()
+        })
+        .expect("sessão de teste");
+        session_state().lock().unwrap().unlocked_until = Some(Utc::now() + expires_in);
+    }
+
+    fn session_expiry() -> DateTime<Utc> {
+        session_state().lock().unwrap().unlocked_until.expect("sessão aberta")
+    }
+
+    #[test]
+    fn background_reads_do_not_extend_the_session_but_user_actions_do() {
+        let _guard = session_test_guard();
+        unlocked_test_session(true, Duration::minutes(1));
+        let before = session_expiry();
+
+        // O sino do portal consulta a cada 30 s: não pode prorrogar os 15 minutos.
+        for _ in 0..3 {
+            require_sensitive_access_without_touch().expect("sessão ainda aberta");
+        }
+        assert_eq!(session_expiry(), before);
+
+        require_sensitive_access().expect("ação do usuário");
+        assert!(session_expiry() > Utc::now() + Duration::minutes(10));
+
+        INACTIVITY_LOCK_ENABLED.store(false, Ordering::Relaxed);
+        clear_session().unwrap();
+    }
+
+    #[test]
+    fn expired_session_is_locked_for_background_reads_and_user_actions_when_the_lock_is_on() {
+        let _guard = session_test_guard();
+        unlocked_test_session(true, -Duration::minutes(1));
+
+        assert!(require_sensitive_access_without_touch().is_err());
+        assert!(require_sensitive_access().is_err());
+        assert!(current_session_profile().unwrap().is_none());
+
+        INACTIVITY_LOCK_ENABLED.store(false, Ordering::Relaxed);
+        clear_session().unwrap();
+    }
+
+    #[test]
+    fn with_the_lock_off_the_session_never_expires() {
+        let _guard = session_test_guard();
+        unlocked_test_session(false, -Duration::minutes(1));
+
+        assert!(require_sensitive_access_without_touch().is_ok());
+        assert!(require_sensitive_access().is_ok());
+        assert!(session_expiry() > Utc::now() + Duration::minutes(10));
+
+        clear_session().unwrap();
+    }
 
     #[tokio::test]
     async fn keyring_call_that_never_answers_gives_up_instead_of_holding_the_worker() {
