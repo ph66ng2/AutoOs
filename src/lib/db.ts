@@ -71,6 +71,12 @@ import type {
   PublicStatusLinkInfo,
   PaginatedResult,
   Produto,
+  OrcamentoInsumosDetalhe,
+  OrcamentoInsumos,
+  OrcamentoInsumosInput,
+  FiltrosOrcamentosInsumos,
+  FormaPagamento,
+  EmailSendRequest,
   ResultadoVerificacaoCredenciais,
   ServicoCatalogo,
   SupabaseStorageConfig,
@@ -465,6 +471,87 @@ export const db = {
         referencia: referencia ?? null,
       },
     });
+  },
+
+  // ─── Orçamento de venda avulsa de insumos (OI-<n>) ───────────
+
+  /** Lista orçamentos de insumos da empresa → Rust: listar_orcamentos_insumos */
+  async listarOrcamentosInsumos(filtros: FiltrosOrcamentosInsumos = {}): Promise<PaginatedResult<OrcamentoInsumos>> {
+    return invoke<PaginatedResult<OrcamentoInsumos>>("listar_orcamentos_insumos", {
+      filtros: {
+        status: filtros.status && filtros.status !== "TODOS" ? filtros.status : null,
+        cliente_id: filtros.cliente_id ?? null,
+        busca: filtros.busca?.trim() || null,
+        page: filtros.page ?? 0,
+      },
+    });
+  },
+
+  async obterOrcamentoInsumos(id: number): Promise<OrcamentoInsumosDetalhe> {
+    return invoke<OrcamentoInsumosDetalhe>("obter_orcamento_insumos", { id });
+  },
+
+  async criarOrcamentoInsumos(input: OrcamentoInsumosInput): Promise<OrcamentoInsumosDetalhe> {
+    return invoke<OrcamentoInsumosDetalhe>("criar_orcamento_insumos", { input });
+  },
+
+  async atualizarOrcamentoInsumos(id: number, input: OrcamentoInsumosInput): Promise<OrcamentoInsumosDetalhe> {
+    return invoke<OrcamentoInsumosDetalhe>("atualizar_orcamento_insumos", { id, input });
+  },
+
+  /** Marca como enviado ao cliente (o canal só vai para a auditoria). */
+  async marcarOrcamentoInsumosEnviado(
+    id: number,
+    atualizadoEm: string,
+    canal: "EMAIL" | "WHATSAPP" | "PDF",
+  ): Promise<OrcamentoInsumosDetalhe> {
+    return invoke<OrcamentoInsumosDetalhe>("marcar_orcamento_insumos_enviado", {
+      input: { id, atualizado_em: atualizadoEm, canal },
+    });
+  },
+
+  /** Aprova e baixa o estoque; sem pagamento vira "A combinar". */
+  async aprovarOrcamentoInsumos(
+    id: number,
+    atualizadoEm: string,
+    pagamento?: FormaPagamento,
+  ): Promise<OrcamentoInsumosDetalhe> {
+    return invoke<OrcamentoInsumosDetalhe>("aprovar_orcamento_insumos", {
+      input: { id, atualizado_em: atualizadoEm, pagamento: pagamento ?? null },
+    });
+  },
+
+  async reprovarOrcamentoInsumos(id: number, atualizadoEm: string): Promise<OrcamentoInsumosDetalhe> {
+    return invoke<OrcamentoInsumosDetalhe>("reprovar_orcamento_insumos", {
+      input: { id, atualizado_em: atualizadoEm },
+    });
+  },
+
+  /** Cancelar um aprovado devolve o estoque e exige `confirmarDevolucaoEstoque`. */
+  async cancelarOrcamentoInsumos(
+    id: number,
+    atualizadoEm: string,
+    confirmarDevolucaoEstoque = false,
+  ): Promise<OrcamentoInsumosDetalhe> {
+    return invoke<OrcamentoInsumosDetalhe>("cancelar_orcamento_insumos", {
+      input: { id, atualizado_em: atualizadoEm, confirmar_devolucao_estoque: confirmarDevolucaoEstoque },
+    });
+  },
+
+  async marcarOrcamentoInsumosEntregue(id: number, atualizadoEm: string): Promise<OrcamentoInsumosDetalhe> {
+    return invoke<OrcamentoInsumosDetalhe>("marcar_orcamento_insumos_entregue", {
+      input: { id, atualizado_em: atualizadoEm },
+    });
+  },
+
+  /** Envio direto de e-mail (SMTP configurado) → Rust: enviar_email */
+  async enviarEmail(input: EmailSendRequest): Promise<void> {
+    return invoke<void>("enviar_email", { input });
+  },
+
+  /** Envio direto de WhatsApp (API configurada) → Rust: enviar_whatsapp */
+  async enviarWhatsapp(contato: string, mensagem: string): Promise<void> {
+    return invoke<void>("enviar_whatsapp", { input: { contato, mensagem } });
   },
 
   // ─── Serviços de Catálogo ─────────────────────────────

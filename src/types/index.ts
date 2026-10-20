@@ -1086,3 +1086,96 @@ export interface AprovarOrcamentoInput {
   /** Motivo exigido para aplicar uma decisão diferente da registrada pelo cliente. */
   motivo_divergencia?: string;
 }
+
+// ─── Orçamento de venda avulsa de insumos (OI-<n>) ───────────────────────────
+
+export const STATUS_ORCAMENTO_INSUMOS = [
+  "RASCUNHO",
+  "ENVIADO",
+  "APROVADO",
+  "REPROVADO",
+  "CANCELADO",
+  "ENTREGUE",
+] as const;
+
+export type StatusOrcamentoInsumos = (typeof STATUS_ORCAMENTO_INSUMOS)[number];
+
+/** Item do orçamento, com nome e categoria copiados do produto no momento do orçamento. */
+export interface OrcamentoInsumosItem {
+  id: number;
+  orcamento_id: number;
+  produto_id: number;
+  descricao: string;
+  categoria: string;
+  quantidade: number;
+  valor_unitario: number;
+  valor_total: number;
+  /** Saldo atual do produto (pode ter mudado desde que o orçamento foi feito). */
+  saldo_estoque?: number | null;
+}
+
+/** Cabeçalho vindo do Rust (`OrcamentoInsumosRow`). Os valores já vêm calculados pelo backend. */
+export interface OrcamentoInsumos {
+  id: number;
+  empresa_id: number;
+  numero: number;
+  /** "OI-12" */
+  numero_exibicao: string;
+  cliente_id: number;
+  cliente_nome?: string | null;
+  cliente_documento?: string | null;
+  cliente_email?: string | null;
+  cliente_telefone?: string | null;
+  cliente_receber_email?: boolean | null;
+  cliente_receber_whatsapp?: boolean | null;
+  contato_id?: number | null;
+  contato_nome?: string | null;
+  contato_email?: string | null;
+  contato_telefone?: string | null;
+  status: StatusOrcamentoInsumos;
+  /** AAAA-MM-DD */
+  validade?: string | null;
+  observacoes?: string | null;
+  desconto: number;
+  valor_subtotal: number;
+  valor_total: number;
+  forma_pagamento_codigo?: FormaPagamentoCodigo | null;
+  forma_pagamento_detalhe?: string | null;
+  criado_por_profile_id?: number | null;
+  criado_em: string;
+  /** Token de concorrência: devolva-o ao salvar, enviar, aprovar, cancelar... */
+  atualizado_em: string;
+  enviado_em?: string | null;
+  decidido_em?: string | null;
+  entregue_em?: string | null;
+  total_itens: number;
+}
+
+export interface OrcamentoInsumosDetalhe extends OrcamentoInsumos {
+  itens: OrcamentoInsumosItem[];
+}
+
+export interface OrcamentoInsumosItemInput {
+  produto_id: number;
+  quantidade: number;
+  valor_unitario: number;
+}
+
+export interface OrcamentoInsumosInput {
+  cliente_id: number;
+  contato_id?: number | null;
+  validade?: string | null;
+  observacoes?: string | null;
+  desconto?: number;
+  itens: OrcamentoInsumosItemInput[];
+  /** Obrigatório ao atualizar. */
+  atualizado_em?: string;
+}
+
+export interface FiltrosOrcamentosInsumos {
+  status?: StatusOrcamentoInsumos | "TODOS";
+  cliente_id?: number | null;
+  busca?: string;
+  /** Página iniciando em 0. */
+  page?: number;
+}
