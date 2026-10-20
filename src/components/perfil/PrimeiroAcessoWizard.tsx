@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { ArrowLeft, ArrowRight, ShieldCheck } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -69,10 +69,15 @@ export function PrimeiroAcessoWizard({
     ...current.permissions.map((permission) => PERMISSION_DETAILS[permission]?.title).filter(Boolean),
   ], [current.permissions]);
 
+  // `busy` só vale no próximo render: Enter ou clique repetido chega antes disso.
+  const redeemInFlight = useRef(false);
+
   async function redeem() {
+    if (redeemInFlight.current) return;
     if (normalizeCode(codigo).length !== 6) return setError("Digite os 6 caracteres do código.");
     if (!/^\d{4,8}$/.test(pin)) return setError("O PIN deve ter de 4 a 8 dígitos.");
     if (pin !== confirmPin) return setError("Os PINs não conferem.");
+    redeemInFlight.current = true;
     setBusy(true);
     setError(null);
     try {
@@ -90,6 +95,7 @@ export function PrimeiroAcessoWizard({
     } catch (cause) {
       setError(errorMessage(cause));
     } finally {
+      redeemInFlight.current = false;
       setBusy(false);
     }
   }

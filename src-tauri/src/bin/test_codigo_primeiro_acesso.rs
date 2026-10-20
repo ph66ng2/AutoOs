@@ -173,13 +173,14 @@ async fn cenario_fluxo_completo(pool: &PgPool) -> Result<()> {
     assert_eq!(ociosas_em_transacao(pool).await?, 0, "a conferência não pode deixar transação aberta");
     assert!(linha_do_codigo_livre(pool, profile_id).await?, "a linha do código deve estar livre após conferir");
     tauri_result(auth::store_profile_pin(profile_id, "9999"), "Gravação do PIN novo")?;
+    let escrito = auth::load_profile_pin(profile_id).ok().flatten();
     sqlx::query("UPDATE codigos_primeiro_acesso SET revogado_em = NOW() WHERE id = $1")
         .bind(codigo_id)
         .execute(pool)
         .await?;
     let consumido = tauri_result(auth::consumir_codigo_primeiro_acesso(pool, codigo_id).await, "Consumo")?;
     assert!(!consumido, "código revogado não pode ser consumido");
-    auth::restaurar_pin_anterior(profile_id, anterior).await;
+    auth::restaurar_pin_anterior(profile_id, anterior, escrito).await;
     let restaurado = auth::load_profile_pin(profile_id).ok().flatten().ok_or_else(|| anyhow!("PIN anterior sumiu"))?;
     assert!(
         auth::verify_pin("2468", &restaurado),
@@ -189,8 +190,27 @@ async fn cenario_fluxo_completo(pool: &PgPool) -> Result<()> {
     // Sem PIN anterior, restaurar significa remover o que foi gravado.
     limpar_keyring(profile_id);
     tauri_result(auth::store_profile_pin(profile_id, "9999"), "Gravação do PIN novo (sem anterior)")?;
-    auth::restaurar_pin_anterior(profile_id, None).await;
+    let escrito = auth::load_profile_pin(profile_id).ok().flatten();
+    auth::restaurar_pin_anterior(profile_id, None, escrito.clone()).await;
     assert!(!pin_gravado(profile_id), "sem PIN anterior, a restauração remove o PIN gravado");
+
+    // Duas ativações simultâneas com o mesmo código: uma vence, a outra falha, e o PIN da vencedora fica.
+    limpar_keyring(profile_id);
+    let dupla = emitir(pool, profile_id).await?;
+    // Duas tarefas em threads diferentes, como dois envios do wizard no mesmo processo.
+    let primeira = tokio::spawn(auth::ativar_perfil_com_codigo(profile_id, dupla.clone(), "1111".into(), "1111".into()));
+    let segunda = tokio::spawn(auth::ativar_perfil_com_codigo(profile_id, dupla, "1111".into(), "1111".into()));
+    let (a, b) = (primeira.await?, segunda.await?);
+    assert_eq!([a.is_ok(), b.is_ok()].iter().filter(|ok| **ok).count(), 1, "exatamente uma ativação deve vencer");
+    let (_, usado, _) = estado_codigo(pool, profile_id).await?;
+    assert!(usado, "o código deve constar como usado");
+    assert!(pin_gravado(profile_id), "duas ativações simultâneas não podem deixar o computador sem PIN");
+
+    // Se o PIN do cofre já não é o que esta chamada gravou, a compensação não apaga nada.
+    tauri_result(auth::store_profile_pin(profile_id, "5555"), "Gravação de outro PIN")?;
+    auth::restaurar_pin_anterior(profile_id, None, escrito).await;
+    let alheio = auth::load_profile_pin(profile_id).ok().flatten().ok_or_else(|| anyhow!("PIN alheio foi apagado"))?;
+    assert!(auth::verify_pin("5555", &alheio), "um PIN que não é o desta chamada não pode ser apagado");
 
     limpar_keyring(profile_id);
     Ok(())

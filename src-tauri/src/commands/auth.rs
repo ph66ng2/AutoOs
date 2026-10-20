@@ -399,6 +399,10 @@ const KEYRING_TIMEOUT_MESSAGE: &str =
     "O cofre de senhas do sistema não respondeu a tempo. Responda ao aviso do sistema ou desbloqueie o cofre e tente de novo.";
 const KEYRING_WRITE_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(30);
 
+/// Uma ativação por vez neste processo: duplo clique ou Enter repetido não pode misturar o
+/// "guardar PIN anterior / gravar / consumir / desfazer" de duas chamadas sobre o mesmo cofre.
+static ATIVACAO_EM_ANDAMENTO: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
+
 /// Roda uma chamada síncrona do keyring fora do worker async, com limite de tempo. Um cofre
 /// travado esperando resposta do usuário não pode prender o worker nem uma transação aberta.
 async fn run_keyring_blocking<T, F>(limit: std::time::Duration, work: F) -> Result<T, String>
@@ -2231,15 +2235,30 @@ fn delete_profile_pin_record(profile_id: i32) -> Result<(), String> {
     }
 }
 
-/// Devolve o keyring ao estado anterior à ativação (PIN antigo, ou nenhum PIN).
-pub(crate) async fn restaurar_pin_anterior(profile_id: i32, anterior: Option<StoredSensitivePin>) {
-    let resultado = run_keyring_blocking(KEYRING_WRITE_TIMEOUT, move || match anterior {
-        Some(record) => store_profile_pin_record(profile_id, &record),
-        None => delete_profile_pin_record(profile_id),
+/// Devolve o keyring ao estado anterior à ativação (PIN antigo, ou nenhum PIN), mas só se o PIN
+/// que está lá ainda for o que esta chamada gravou: se outra coisa o trocou, não é mais nosso.
+pub(crate) async fn restaurar_pin_anterior(
+    profile_id: i32,
+    anterior: Option<StoredSensitivePin>,
+    escrito: Option<StoredSensitivePin>,
+) {
+    let resultado = run_keyring_blocking(KEYRING_WRITE_TIMEOUT, move || {
+        if let (Some(mine), Some(current)) = (escrito.as_ref(), load_profile_pin(profile_id).ok().flatten()) {
+            if current.pin_hash != mine.pin_hash || current.created_at != mine.created_at {
+                return Ok(false);
+            }
+        }
+        match anterior {
+            Some(record) => store_profile_pin_record(profile_id, &record)?,
+            None => delete_profile_pin_record(profile_id)?,
+        }
+        Ok(true)
     })
     .await;
-    if let Err(motivo) = resultado {
-        warn!("Não foi possível desfazer a gravação do PIN do perfil {}: {}", profile_id, motivo);
+    match resultado {
+        Ok(true) => {}
+        Ok(false) => warn!("PIN do perfil {} mudou depois da ativação; nada foi desfeito", profile_id),
+        Err(motivo) => warn!("Não foi possível desfazer a gravação do PIN do perfil {}: {}", profile_id, motivo),
     }
 }
 
@@ -2266,6 +2285,8 @@ pub async fn ativar_perfil_com_codigo(
         return Err("Os PINs não conferem.".to_string());
     }
 
+    let _ativacao = ATIVACAO_EM_ANDAMENTO.lock().await;
+
     let record = fetch_profile_record_by_id(profile_id).await?;
     let summary = to_profile_summary(record)?;
     let codigo = normalizar_codigo_acesso(&codigo);
@@ -2276,14 +2297,15 @@ pub async fn ativar_perfil_com_codigo(
     // Uma única chamada ao keyring, com um só limite de tempo: guarda o PIN anterior (recuperação
     // de PIN) para voltar se o código não puder ser consumido e grava o novo.
     let pin_para_gravar = pin.clone();
-    let anterior = match run_keyring_blocking(KEYRING_WRITE_TIMEOUT, move || {
+    let (anterior, escrito) = match run_keyring_blocking(KEYRING_WRITE_TIMEOUT, move || {
         let anterior = load_profile_pin(profile_id).ok().flatten();
         store_profile_pin(profile_id, &pin_para_gravar)?;
-        Ok(anterior)
+        let escrito = load_profile_pin(profile_id).ok().flatten();
+        Ok((anterior, escrito))
     })
     .await
     {
-        Ok(anterior) => anterior,
+        Ok(par) => par,
         Err(motivo) => {
             record_security_event("ACCESS_CODE_FAILED", Some(&summary), "Falha ao gravar o PIN no cofre de senhas do sistema; o código continua válido", false).await;
             return Err(format!("{motivo} O código continua válido."));
@@ -2293,12 +2315,12 @@ pub async fn ativar_perfil_com_codigo(
     match consumir_codigo_primeiro_acesso(&pool, codigo_id).await {
         Ok(true) => {}
         Ok(false) => {
-            restaurar_pin_anterior(profile_id, anterior).await;
+            restaurar_pin_anterior(profile_id, anterior, escrito).await;
             record_security_event("ACCESS_CODE_FAILED", Some(&summary), "O código deixou de valer durante a ativação", false).await;
             return Err("Este código não vale mais (já foi usado, revogado ou expirou). Peça um novo código ao administrador.".to_string());
         }
         Err(erro) => {
-            restaurar_pin_anterior(profile_id, anterior).await;
+            restaurar_pin_anterior(profile_id, anterior, escrito).await;
             return Err(erro);
         }
     }

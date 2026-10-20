@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { render, screen, waitFor } from "@testing-library/react";
+import { act, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { PrimeiroAcessoWizard } from "./PrimeiroAcessoWizard";
 import type { SecurityProfile, SensitiveAccessStatus } from "@/types";
@@ -77,6 +77,26 @@ describe("primeiro acesso", () => {
     await user.click(screen.getByRole("button", { name: "Começar tour" }));
     expect(onFinish).toHaveBeenCalledWith("tour");
     expect(onStatusChange).toHaveBeenCalledTimes(2);
+  });
+
+  it("um segundo envio antes do primeiro terminar não dispara outra ativação", async () => {
+    const user = userEvent.setup();
+    let finish: (status: SensitiveAccessStatus) => void = () => undefined;
+    service.redeemAccessCode.mockReturnValue(new Promise<SensitiveAccessStatus>((resolve) => { finish = resolve; }));
+    render(<PrimeiroAcessoWizard profile={pending} needsCode onStatusChange={vi.fn()} onCancel={vi.fn()} onFinish={vi.fn()} />);
+
+    await user.type(screen.getByLabelText("Código de primeiro acesso"), "K7Q42M");
+    await user.type(screen.getByLabelText("Crie seu PIN"), "2468");
+    await user.type(screen.getByLabelText("Repita o PIN"), "2468");
+    const continuar = screen.getByRole("button", { name: /Continuar/ });
+    // Dois cliques no mesmo tick, antes de o React desabilitar o botão.
+    act(() => {
+      continuar.click();
+      continuar.click();
+    });
+    expect(service.redeemAccessCode).toHaveBeenCalledTimes(1);
+
+    await act(async () => finish(statusWith({ ...pending, pin_configured: true })));
   });
 
   it("mostra o erro do código e permanece na etapa de acesso", async () => {
