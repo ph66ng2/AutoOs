@@ -187,6 +187,15 @@ export function OrcamentoInsumosDialog({
     && !totais.descontoExcedido
     && Boolean(validade);
   const bloqueadoPorEdicao = alterado || !detalhe;
+  /** Explica por que o Salvar está desabilitado (o aviso de desconto já aparece junto ao campo). */
+  const motivoSemSalvar = (() => {
+    if (!acoes.salvar || ocupado || podeSalvar) return null;
+    if (cliente?.id == null) return "Escolha o cliente para salvar.";
+    if (linhas.length === 0) return "Inclua ao menos um item para salvar.";
+    if (!quantidadesValidas) return "Informe uma quantidade maior que zero em todos os itens.";
+    if (!validade) return "Informe a validade do orçamento.";
+    return null;
+  })();
 
   function editar<T>(definir: (valor: T) => void) {
     return (valor: T) => {
@@ -502,6 +511,9 @@ export function OrcamentoInsumosDialog({
                   />
                 </div>
 
+                {motivoSemSalvar && (
+                  <p className="text-xs text-amber-700" data-testid="motivo-sem-salvar">{motivoSemSalvar}</p>
+                )}
                 {detalhe && !editavel && (
                   <p className="text-sm text-muted-foreground">
                     Pagamento: {formaPagamentoRotulo(detalhe.forma_pagamento_codigo, detalhe.forma_pagamento_detalhe)}

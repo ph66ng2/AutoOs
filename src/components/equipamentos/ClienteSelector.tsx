@@ -152,13 +152,10 @@ export function ClienteSelector({
       return;
     }
     setCarregandoEquip(true);
-    const nome = nomeExibicaoCliente(clienteSelecionado);
-    db.listarEquipamentos(nome).then((todos) => {
-      const doCliente = todos.filter(
-        (eq) => eq.cliente_id === clienteSelecionado.id || eq.cliente_nome === nome || eq.cliente_nome === clienteSelecionado.nome
-      );
-      setEquipamentosCliente(doCliente);
-    }).catch(() => setEquipamentosCliente([]))
+    const nomes = [nomeExibicaoCliente(clienteSelecionado), clienteSelecionado.nome ?? ""];
+    db.listarEquipamentosCliente(clienteSelecionado.id, nomes)
+      .then(setEquipamentosCliente)
+      .catch(() => setEquipamentosCliente([]))
       .finally(() => setCarregandoEquip(false));
   }, [clienteSelecionado]);
 

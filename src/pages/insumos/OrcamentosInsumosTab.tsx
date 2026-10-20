@@ -25,7 +25,12 @@ import {
   type StatusOrcamentoInsumos,
 } from "@/types";
 
-export function OrcamentosInsumosTab() {
+interface OrcamentosInsumosTabProps {
+  /** Chamado quando uma ação do orçamento (aprovar, cancelar, entregar, salvar) pode ter mudado o saldo do estoque. */
+  onEstoqueAlterado?: () => void;
+}
+
+export function OrcamentosInsumosTab({ onEstoqueAlterado }: OrcamentosInsumosTabProps = {}) {
   const [busca, setBusca] = useState("");
   const [status, setStatus] = useState<StatusOrcamentoInsumos | "TODOS">("TODOS");
   const [pagina, setPagina] = useState(1);
@@ -183,7 +188,10 @@ export function OrcamentosInsumosTab() {
         open={dialogAberto}
         onOpenChange={setDialogAberto}
         orcamentoId={orcamentoId}
-        onChanged={() => void recarregar()}
+        onChanged={() => {
+          void recarregar();
+          onEstoqueAlterado?.();
+        }}
       />
     </div>
   );

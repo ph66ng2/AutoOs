@@ -28,6 +28,7 @@ export async function invoke<T>(command: string, args?: Record<string, unknown>)
     case "unlock_sensitive_access": return status as T;
     case "lock_sensitive_access": return true as T;
     case "listar_equipamentos":
+    case "listar_equipamentos_cliente":
     case "listar_clientes":
     case "buscar_equipamentos_por_serial": return [] as T;
     case "listar_equipamentos_paginados":

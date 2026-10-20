@@ -180,8 +180,8 @@ export default function Clientes() {
 
   /**
    * Expande/recolhe a linha do cliente para exibir equipamentos vinculados.
-   * Busca equipamentos por nome do cliente via db.listarEquipamentos.
-   * Conecta-se a: db.listarEquipamentos → Rust listar_equipamentos
+   * Busca equipamentos pelo cliente_id via db.listarEquipamentosCliente.
+   * Conecta-se a: db.listarEquipamentosCliente → Rust listar_equipamentos_cliente
    */
   async function toggleExpandir(clienteId: number) {
     if (expandido === clienteId) {
@@ -194,9 +194,7 @@ export default function Clientes() {
     try {
       const cliente = clientes.find(c => c.id === clienteId);
       if (cliente) {
-        const nome = nomeExibicaoCliente(cliente);
-        const todos = await db.listarEquipamentos(nome);
-        const doCliente = todos.filter(eq => eq.cliente_nome === nome || eq.cliente_nome === cliente.nome);
+        const doCliente = await db.listarEquipamentosCliente(clienteId, [nomeExibicaoCliente(cliente), cliente.nome ?? ""]);
         setEquipamentosCliente(doCliente);
       }
     } catch (err) {

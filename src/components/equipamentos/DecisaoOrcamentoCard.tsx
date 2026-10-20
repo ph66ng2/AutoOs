@@ -144,6 +144,17 @@ export function resumirFaixa(
   return null;
 }
 
+const PRIORIDADE_PEDIDO: Record<SolicitacaoOrcamentoInfo["tipo"], number> = { NEGOCIAR: 0, MUDANCA: 1, DUVIDA: 2 };
+
+/** Negociação antes de ajuste, ajuste antes de dúvida; dentro do mesmo tipo, o mais recente primeiro. */
+function ordenarPedidosPorPrioridade(pedidos: SolicitacaoOrcamentoInfo[]): SolicitacaoOrcamentoInfo[] {
+  const instante = (pedido: SolicitacaoOrcamentoInfo) => Date.parse(pedido.criadaEm) || 0;
+  return [...pedidos].sort(
+    (a, b) =>
+      PRIORIDADE_PEDIDO[a.tipo] - PRIORIDADE_PEDIDO[b.tipo] || instante(b) - instante(a) || b.id - a.id,
+  );
+}
+
 export function DecisaoOrcamentoCard({ onAplicar }: Props) {
   const portal = usePortalCliente();
   const { equipamento, info, error, loading, busy, consultado, respostaFinal, solicitacoesAbertas } = portal;
@@ -153,7 +164,7 @@ export function DecisaoOrcamentoCard({ onAplicar }: Props) {
   if (!faixa && solicitacoesAbertas.length === 0 && !error) return null;
 
   const tomDestaque: Tom = faixa?.tom ?? "neutro";
-  const [primeira, ...outras] = solicitacoesAbertas;
+  const [primeira, ...outras] = ordenarPedidosPorPrioridade(solicitacoesAbertas);
 
   return (
     <section className="space-y-2 text-sm" aria-label="Resposta do cliente ao orçamento" data-tom={tomDestaque}>

@@ -175,6 +175,24 @@ describe("OrcamentoInsumosDialog: novo orçamento", () => {
     await waitFor(() => expect(onChanged).toHaveBeenCalled());
   });
 
+  it("explica por que o Salvar está desabilitado quando a quantidade é zero", async () => {
+    render(<OrcamentoInsumosDialog open onOpenChange={vi.fn()} orcamentoId={null} />);
+    expect(screen.getByTestId("motivo-sem-salvar")).toHaveTextContent("Escolha o cliente para salvar.");
+    fireEvent.click(screen.getByRole("button", { name: "Escolher cliente" }));
+    expect(screen.getByTestId("motivo-sem-salvar")).toHaveTextContent("Inclua ao menos um item para salvar.");
+    fireEvent.change(screen.getByLabelText("Buscar produto do estoque"), { target: { value: "etiq" } });
+    fireEvent.click(within(await screen.findByRole("option", { name: /etiqueta 100x50/i })).getByRole("button"));
+
+    fireEvent.change(screen.getByLabelText("Quantidade de Etiqueta 100x50"), { target: { value: "0" } });
+    expect(within(screen.getByTestId("item-10")).getByText("Informe uma quantidade maior que zero")).toBeInTheDocument();
+    expect(screen.getByTestId("motivo-sem-salvar")).toHaveTextContent("Informe uma quantidade maior que zero em todos os itens.");
+    expect(screen.getByRole("button", { name: "Salvar" })).toBeDisabled();
+
+    fireEvent.change(screen.getByLabelText("Quantidade de Etiqueta 100x50"), { target: { value: "2" } });
+    expect(screen.queryByTestId("motivo-sem-salvar")).toBeNull();
+    expect(screen.getByRole("button", { name: "Salvar" })).toBeEnabled();
+  });
+
   it("avisa saldo insuficiente e bloqueia desconto maior que o total", async () => {
     render(<OrcamentoInsumosDialog open onOpenChange={vi.fn()} orcamentoId={null} />);
     fireEvent.click(screen.getByRole("button", { name: "Escolher cliente" }));

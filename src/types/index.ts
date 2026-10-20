@@ -780,7 +780,7 @@ export const SENSITIVE_PERMISSION_LABELS: Record<SensitivePermission, string> = 
   FINANCIAL_ACTIONS: "alterar orçamentos, aprovações e valores",
   STOCK_CONTROL: "movimentar e editar estoque",
   MANAGE_PROFILES: "gerenciar perfis e auditoria",
-  MANAGE_STATUS_LINKS: "criar e revogar links públicos de acompanhamento",
+  MANAGE_STATUS_LINKS: "gerenciar o Portal do Cliente e os links de acompanhamento",
   VIEW_EXPENSES: "visualizar gastos e despesas",
 };
 

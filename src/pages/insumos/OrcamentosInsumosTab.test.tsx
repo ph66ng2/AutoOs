@@ -14,9 +14,14 @@ vi.mock("@/hooks/useSensitiveAccess", () => ({
   useSensitiveAccess: () => ({ ensureSensitiveAccess: mocks.ensureSensitiveAccess }),
 }));
 vi.mock("@/pages/insumos/OrcamentoInsumosDialog", () => ({
-  OrcamentoInsumosDialog: (props: { open: boolean; orcamentoId?: number | null }) => {
+  OrcamentoInsumosDialog: (props: { open: boolean; orcamentoId?: number | null; onChanged?: () => void }) => {
     mocks.dialogProps(props);
-    return props.open ? <div data-testid="dialogo">{props.orcamentoId ?? "novo"}</div> : null;
+    return props.open ? (
+      <div data-testid="dialogo">
+        {props.orcamentoId ?? "novo"}
+        <button onClick={props.onChanged}>simular-acao</button>
+      </div>
+    ) : null;
   },
 }));
 
@@ -121,5 +126,14 @@ describe("OrcamentosInsumosTab", () => {
     mocks.listar.mockRejectedValueOnce("Falha ao consultar o banco");
     render(<OrcamentosInsumosTab />);
     expect(await screen.findByText(/Falha ao consultar o banco/)).toBeInTheDocument();
+  });
+
+  it("avisa a página quando uma ação do orçamento muda o estoque", async () => {
+    const aoAlterarEstoque = vi.fn();
+    render(<OrcamentosInsumosTab onEstoqueAlterado={aoAlterarEstoque} />);
+    await screen.findByText("OI-2");
+    await userEvent.click(screen.getByRole("button", { name: /novo orçamento/i }));
+    await userEvent.click(await screen.findByText("simular-acao"));
+    expect(aoAlterarEstoque).toHaveBeenCalledTimes(1);
   });
 });
