@@ -338,6 +338,34 @@ describe("DecisaoOrcamentoCard", () => {
       expect(screen.queryByText("Segundo")).not.toBeInTheDocument();
       expect(screen.getByRole("button", { name: "+2 pedidos" })).toBeInTheDocument();
     });
+
+    it("destaca a negociação em aberto mesmo havendo uma dúvida mais nova", async () => {
+      mocks.obter.mockResolvedValue(info({
+        solicitacoes: [
+          solicitacao({ id: 40, tipo: "DUVIDA", mensagem: "Qual o prazo?", criadaEm: "2026-10-16T10:00:00Z" }),
+          solicitacao({ id: 38, tipo: "MUDANCA", mensagem: "Trocar o item", criadaEm: "2026-10-15T12:00:00Z" }),
+          solicitacao({ id: 30, tipo: "NEGOCIAR", mensagem: "Faz por 200?", criadaEm: "2026-10-14T10:00:00Z" }),
+          solicitacao({ id: 35, tipo: "NEGOCIAR", mensagem: "Faz por 250?", criadaEm: "2026-10-12T10:00:00Z" }),
+        ],
+      }));
+      renderCard();
+      expect(await screen.findByText("Faz por 200?")).toBeInTheDocument();
+      expect(screen.queryByText("Qual o prazo?")).not.toBeInTheDocument();
+      expect(screen.getByText("Pedido de negociação")).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "+3 pedidos" })).toBeInTheDocument();
+    });
+
+    it("sem negociação, o ajuste vem antes da dúvida mais nova", async () => {
+      mocks.obter.mockResolvedValue(info({
+        solicitacoes: [
+          solicitacao({ id: 40, tipo: "DUVIDA", mensagem: "Qual o prazo?", criadaEm: "2026-10-16T10:00:00Z" }),
+          solicitacao({ id: 38, tipo: "MUDANCA", mensagem: "Trocar o item", criadaEm: "2026-10-15T12:00:00Z" }),
+        ],
+      }));
+      renderCard();
+      expect(await screen.findByText("Trocar o item")).toBeInTheDocument();
+      expect(screen.queryByText("Qual o prazo?")).not.toBeInTheDocument();
+    });
   });
 
   describe("botão Portal do Cliente", () => {
