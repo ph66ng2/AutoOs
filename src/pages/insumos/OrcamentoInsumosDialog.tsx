@@ -429,6 +429,7 @@ export function OrcamentoInsumosDialog({
                         value={contato}
                         onChange={editar(setContato)}
                         disabled={ocupado}
+                        titulo="Quem recebe o orçamento"
                       />
                     ) : (
                       <p className="rounded-md border px-3 py-2 text-sm">{detalhe?.contato_nome ?? "—"}</p>
