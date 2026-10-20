@@ -49,9 +49,14 @@ describe("cadastro guiado de colaboradores", () => {
     ).toBeInTheDocument();
     expect(createProfileWithCode).not.toHaveBeenCalled();
     await user.click(screen.getByRole("button", { name: "Criar e gerar código" }));
+    expect(screen.getByRole("alert")).toHaveTextContent("Informe seu PIN de administrador");
+    expect(createProfileWithCode).not.toHaveBeenCalled();
+    await user.type(screen.getByLabelText("Seu PIN de administrador"), "4321");
+    await user.click(screen.getByRole("button", { name: "Criar e gerar código" }));
     await waitFor(() =>
       expect(createProfileWithCode).toHaveBeenCalledWith(
         { nome: "Recepção 2", role: "ATENDENTE", permissions: [] },
+        "4321",
       ),
     );
     expect(onCreated).toHaveBeenCalledOnce();

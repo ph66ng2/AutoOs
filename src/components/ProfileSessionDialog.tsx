@@ -83,7 +83,7 @@ export function ProfileSessionDialog({
 
   const primaryActionLabel = (() => {
     if (!selectedProfile) return "Selecione um perfil";
-    if (canStartFirstAccess) return "Fazer primeiro acesso";
+    if (canStartFirstAccess) return selectedProfile.onboarding_pendente ? "Fazer primeiro acesso" : "Ativar neste computador";
     if (missingRequiredPin) return "PIN pendente neste computador";
     if (isAdminWithoutPin) return "Configurar PIN e continuar";
     if (mode === "startup") return "Entrar com este perfil";
@@ -115,7 +115,9 @@ export function ProfileSessionDialog({
 
   const helperText = (() => {
     if (!selectedProfile) return "Escolha seu perfil para entrar.";
-    if (canStartFirstAccess) return "Este perfil ainda não foi ativado neste computador. Tenha em mãos o código de primeiro acesso que o administrador te passou.";
+    if (canStartFirstAccess) return selectedProfile.onboarding_pendente
+      ? "Este perfil ainda não foi ativado neste computador. Tenha em mãos o código de primeiro acesso que o administrador te passou."
+      : "Este perfil ainda não tem PIN neste computador. Peça um código ao administrador para ativá-lo aqui.";
     if (missingRequiredPin) return "Este perfil exige PIN. Peça a um administrador para configurá-lo neste computador em Equipe e acessos, ou use a recuperação de acesso.";
     if (isAdminWithoutPin) return "Seu perfil de administrador exige um PIN. Defina um PIN de 4 a 8 dígitos para continuar.";
     if (mode === "selector" && isCurrentProfileSelected) {
@@ -206,6 +208,9 @@ export function ProfileSessionDialog({
                   const isSelected = String(profile.id) === selectedProfileId;
                   const isCurrent = profile.id === activeProfileId && unlocked;
                   const pendingHere = needsFirstAccessHere(profile);
+                  // Tracejado só para quem ainda não montou o perfil; quem já o montou em outro
+                  // computador mantém o próprio avatar e só precisa ativá-lo neste.
+                  const neverSetUp = pendingHere && Boolean(profile.onboarding_pendente);
                   const look = profileAppearance(profile);
                   return (
                     <button
@@ -220,14 +225,14 @@ export function ProfileSessionDialog({
                     >
                       <span
                         className="flex rounded-[28px] transition-shadow"
-                        style={isSelected && !pendingHere ? { boxShadow: `0 0 0 3px hsl(var(--background)), 0 0 0 6px ${look.color}` } : undefined}
+                        style={isSelected && !neverSetUp ? { boxShadow: `0 0 0 3px hsl(var(--background)), 0 0 0 6px ${look.color}` } : undefined}
                       >
-                        <ProfileAvatar icon={look.icon} color={look.color} size="xl" pending={pendingHere} />
+                        <ProfileAvatar icon={look.icon} color={look.color} size="xl" pending={neverSetUp} />
                       </span>
-                      <span className="flex flex-col items-center gap-0.5">
-                        <span className="max-w-full truncate text-[15px] font-semibold">{profile.nome}</span>
-                        <span className="text-xs text-muted-foreground">
-                          {pendingHere ? "Primeiro acesso" : securityRoleLabel(profile.role)}
+                      <span className="flex w-full min-w-0 flex-col items-center gap-0.5">
+                        <span className="block w-full truncate text-center text-[15px] font-semibold" title={profile.nome}>{profile.nome}</span>
+                        <span className="block w-full truncate text-center text-xs text-muted-foreground">
+                          {neverSetUp ? "Primeiro acesso" : pendingHere ? "Ativar neste computador" : securityRoleLabel(profile.role)}
                         </span>
                         {isCurrent && <span className="mt-1 rounded-full bg-emerald-500/15 px-2 py-0.5 text-[11px] font-medium text-emerald-300">Perfil atual</span>}
                         {!pendingHere && !profile.pin_configured && profile.role !== "ADMIN" && (

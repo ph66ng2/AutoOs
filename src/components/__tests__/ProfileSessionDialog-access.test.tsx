@@ -69,10 +69,28 @@ describe("recuperação de PIN com código do administrador", () => {
 describe("primeiro acesso neste computador", () => {
   it("oferece o primeiro acesso com código para perfil sem PIN local", async () => {
     const onFirstAccess = vi.fn();
-    const pending = { ...admin, id: 5, nome: "Recepção 2", role: "ATENDENTE", pin_required: true, is_default: false };
+    const pending = { ...admin, id: 5, nome: "Recepção 2", role: "ATENDENTE", pin_required: true, is_default: false, onboarding_pendente: true };
     render(<ProfileSessionDialog {...defaults} profiles={[admin, pending]} selectedProfileId="5" selectedProfile={pending} onFirstAccess={onFirstAccess} />);
     expect(screen.getByText("Primeiro acesso")).toBeInTheDocument();
     screen.getByRole("button", { name: "Fazer primeiro acesso" }).click();
     expect(onFirstAccess).toHaveBeenCalledWith(5);
+  });
+
+  it("perfil já montado em outro computador pede só a ativação aqui, sem 'primeiro acesso'", () => {
+    const onFirstAccess = vi.fn();
+    const other = { ...admin, id: 6, nome: "Juliana", role: "ATENDENTE", pin_required: true, pin_configured: false, is_default: false, onboarding_pendente: false };
+    render(<ProfileSessionDialog {...defaults} profiles={[admin, other]} selectedProfileId="6" selectedProfile={other} onFirstAccess={onFirstAccess} />);
+    expect(screen.queryByText("Primeiro acesso")).not.toBeInTheDocument();
+    expect(screen.getByText("Ativar neste computador", { selector: "span" })).toBeInTheDocument();
+    screen.getByRole("button", { name: "Ativar neste computador" }).click();
+    expect(onFirstAccess).toHaveBeenCalledWith(6);
+  });
+
+  it("nomes longos são truncados dentro do cartão do perfil e continuam legíveis pelo title", () => {
+    const longo = { ...admin, id: 7, nome: "Maria Aparecida de Souza Albuquerque Filho", role: "ATENDENTE", is_default: false, pin_configured: true };
+    render(<ProfileSessionDialog {...defaults} profiles={[longo]} selectedProfileId="7" selectedProfile={longo} />);
+    const nome = screen.getByTitle(longo.nome);
+    expect(nome).toHaveClass("truncate", "w-full");
+    expect(nome.parentElement).toHaveClass("min-w-0", "w-full");
   });
 });

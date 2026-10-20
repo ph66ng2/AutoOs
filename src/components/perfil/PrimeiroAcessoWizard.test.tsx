@@ -113,8 +113,33 @@ describe("primeiro acesso", () => {
     await user.click(screen.getByRole("button", { name: /Redefinir PIN/ }));
 
     await waitFor(() => expect(service.redeemAccessCode).toHaveBeenCalledWith(7, "K7Q-42M", "1357", "1357"));
-    await waitFor(() => expect(onFinish).toHaveBeenCalledWith("recuperado"));
+    await waitFor(() => expect(onFinish).toHaveBeenCalledWith("ativado"));
     expect(service.savePersonalization).not.toHaveBeenCalled();
     expect(screen.queryByLabelText("Nome de exibição")).not.toBeInTheDocument();
+  });
+
+  it("2º computador: perfil que já concluiu o primeiro acesso só informa código e PIN", async () => {
+    const user = userEvent.setup();
+    const onFinish = vi.fn();
+    const outroPc = { ...pending, nome: "Juliana", pin_configured: false, onboarding_pendente: false };
+    service.redeemAccessCode.mockResolvedValue(statusWith({ ...outroPc, pin_configured: true }));
+    render(<PrimeiroAcessoWizard profile={outroPc} needsCode onStatusChange={vi.fn()} onCancel={vi.fn()} onFinish={onFinish} />);
+
+    expect(screen.getByRole("heading", { name: "Ativar Juliana neste computador" })).toBeInTheDocument();
+    // Sem CSS no jsdom, o fluxo curto esconde a barra de etapas pela classe `hidden`.
+    expect(screen.getByRole("list", { name: "Etapas", hidden: true })).toHaveClass("hidden");
+    await user.type(screen.getByLabelText("Código de primeiro acesso"), "K7Q42M");
+    await user.type(screen.getByLabelText("Crie seu PIN"), "2468");
+    await user.type(screen.getByLabelText("Repita o PIN"), "2468");
+    await user.click(screen.getByRole("button", { name: "Ativar neste computador" }));
+
+    await waitFor(() => expect(onFinish).toHaveBeenCalledWith("ativado"));
+    expect(service.savePersonalization).not.toHaveBeenCalled();
+    expect(screen.queryByLabelText("Nome de exibição")).not.toBeInTheDocument();
+  });
+
+  it("recuperação avisa que o PIN antigo só deixa de valer neste computador", () => {
+    render(<PrimeiroAcessoWizard profile={{ ...pending, pin_configured: true, onboarding_pendente: false }} needsCode recovery onStatusChange={vi.fn()} onCancel={vi.fn()} onFinish={vi.fn()} />);
+    expect(screen.getByText(/deixa de valer neste computador; nos outros, ele continua valendo/)).toBeInTheDocument();
   });
 });

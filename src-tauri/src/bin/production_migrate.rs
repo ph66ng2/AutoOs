@@ -9,7 +9,7 @@ use url::Url;
 static MIGRATOR: Migrator = sqlx::migrate!("./migrations");
 
 const REQUIRED_PROMOTION_MIGRATIONS: [i64; 12] = [27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38];
-const EXPECTED_MIGRATION_COUNT: usize = 38;
+const EXPECTED_MIGRATION_COUNT: usize = 41;
 const LAST_REQUIRED_APPLIED_MIGRATION: i64 = 28;
 
 fn required_env(name: &str) -> Result<String> {

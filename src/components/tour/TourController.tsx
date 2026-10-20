@@ -6,7 +6,7 @@ import { Sparkles, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useSensitiveAccess } from "@/hooks/useSensitiveAccess";
 import { SensitiveAccessService } from "@/lib/sensitive-access";
-import { onTourRequest, takeTourRequest } from "@/lib/tour-request";
+import { clearTourRequest, onTourRequest, peekTourRequest, requestTour, takeTourRequest } from "@/lib/tour-request";
 import { fullTour, pendingTour, type TourKind, type TourStep } from "@/lib/tour-steps";
 
 const CARD_WIDTH = 340;
@@ -15,9 +15,15 @@ const GAP = 16;
 const TARGET_WAIT_MS = 1200;
 const DIALOG_POLL_MS = 400;
 
-/** Diálogos do Radix bloqueiam cliques fora deles: o tour espera todos fecharem. */
-function otherDialogOpen() {
-  return document.querySelector('[role="dialog"][data-state="open"], [role="alertdialog"][data-state="open"]') !== null;
+/**
+ * O tour espera qualquer tela por cima do app: diálogos do Radix (bloqueiam cliques fora deles)
+ * e as telas de entrada que não são diálogos, como a escolha de modo, marcadas com
+ * `data-blocks-tour`.
+ */
+export function otherDialogOpen() {
+  return document.querySelector(
+    '[role="dialog"][data-state="open"], [role="alertdialog"][data-state="open"], [data-blocks-tour]',
+  ) !== null;
 }
 
 type Rect = { left: number; top: number; width: number; height: number };
@@ -61,8 +67,8 @@ export function TourController() {
   const [index, setIndex] = useState(0);
   const [rect, setRect] = useState<Rect | null>(null);
   const [offer, setOffer] = useState(false);
-  const [queued, setQueued] = useState<TourKind | null>(null);
-  const checkedProfileRef = useRef<number | null>(null);
+  const [requestPending, setRequestPending] = useState(() => peekTourRequest() !== null);
+  const checkedStateRef = useRef<string | null>(null);
   const primaryRef = useRef<HTMLButtonElement>(null);
 
   const activeProfile = status?.profiles.find((profile) => profile.id === status.active_profile_id) ?? null;
@@ -80,23 +86,23 @@ export function TourController() {
     setRun({ kind, steps });
   }, [activeProfile, status]);
 
-  // Pedido de tour (ou oferta) só aparece quando nenhum outro diálogo está aberto,
-  // como o resumo da versão ou a escolha de modo.
-  // Se um diálogo abrir durante o tour, o tour some e volta quando ele fechar.
-  const start = useCallback((kind: TourKind) => setQueued(kind), []);
+  // Pedido de tour (ou oferta) só aparece quando nenhum outro diálogo ou tela de entrada está
+  // aberto, como o resumo da versão ou a escolha de modo. O pedido continua guardado fora do
+  // componente até lá. Se algo abrir durante o tour, o tour some e volta quando fechar.
   const [offerQueued, setOfferQueued] = useState(false);
   const [blocked, setBlocked] = useState(false);
-  const watching = Boolean(queued || offerQueued || run || offer);
+  const watching = Boolean(requestPending || offerQueued || run || offer);
   useEffect(() => {
     if (!watching) return;
     const tick = () => {
       const dialogOpen = otherDialogOpen();
       setBlocked(dialogOpen);
-      if (dialogOpen) return;
-      if (queued) {
-        begin(queued);
-        setQueued(null);
+      if (dialogOpen || !unlocked) return;
+      if (requestPending) {
+        const kind = takeTourRequest();
+        setRequestPending(false);
         setOfferQueued(false);
+        if (kind) begin(kind);
       } else if (offerQueued) {
         setOffer(true);
         setOfferQueued(false);
@@ -105,7 +111,7 @@ export function TourController() {
     tick();
     const id = window.setInterval(tick, DIALOG_POLL_MS);
     return () => window.clearInterval(id);
-  }, [begin, offerQueued, queued, watching]);
+  }, [begin, offerQueued, requestPending, unlocked, watching]);
 
   const finish = useCallback(async () => {
     setRun(null);
@@ -119,38 +125,36 @@ export function TourController() {
     }
   }, [refreshStatus]);
 
-  // Pedidos de outras telas (primeiro acesso, Perfil › Tutorial).
-  useEffect(() => {
-    const consume = () => {
-      const kind = takeTourRequest();
-      if (kind) start(kind);
-    };
-    if (unlocked) consume();
-    return onTourRequest(() => {
-      if (unlocked) consume();
-    });
-  }, [start, unlocked]);
+  // Pedidos de outras telas (primeiro acesso, Perfil › Tutorial) e das novidades abaixo.
+  useEffect(() => onTourRequest(() => setRequestPending(true)), []);
 
-  // Verificação automática, uma vez por perfil ativo.
+  // Verificação automática. Reavalia sempre que o perfil, as permissões ou o que o tour já
+  // mostrou mudarem: liberar uma permissão a quem está com a sessão aberta (neste ou em outro
+  // computador) faz o tour de novidades aparecer sem trocar de perfil nem reiniciar o app.
+  const seenPermissions = activeProfile?.tour_permissoes_vistas;
+  const permissionsKey = permissions.join(",");
+  const seenKey = seenPermissions == null ? "-" : seenPermissions.join(",");
   useEffect(() => {
     if (!unlocked || !activeProfile || activeProfile.onboarding_pendente || run) return;
-    if (checkedProfileRef.current === activeProfile.id) return;
-    checkedProfileRef.current = activeProfile.id;
-    const pending = pendingTour(permissions, activeProfile.tour_permissoes_vistas);
+    const stateKey = `${activeProfile.id}|${permissionsKey}|${seenKey}`;
+    if (checkedStateRef.current === stateKey) return;
+    checkedStateRef.current = stateKey;
+    const pending = pendingTour(permissions, seenPermissions);
     if (!pending) return;
-    if (pending.kind === "novidades") start("novidades");
+    if (pending.kind === "novidades") requestTour("novidades");
     else setOfferQueued(true);
-  }, [activeProfile, permissions, run, start, unlocked]);
+  }, [activeProfile, permissions, permissionsKey, run, seenKey, seenPermissions, unlocked]);
 
-  // Sessão bloqueada ou troca de perfil interrompe o tour sem registrar nada.
+  // Sessão bloqueada interrompe o tour sem registrar nada e descarta pedidos pendentes.
   useEffect(() => {
     if (!unlocked) {
       setRun(null);
       setOffer(false);
-      setQueued(null);
       setOfferQueued(false);
+      setRequestPending(false);
+      clearTourRequest();
     }
-  }, [unlocked, activeProfile?.id]);
+  }, [unlocked]);
 
   const step = run?.steps[index] ?? null;
 
@@ -218,7 +222,7 @@ export function TourController() {
             </div>
             <div className="mt-4 flex justify-end gap-2">
               <Button variant="ghost" size="sm" onClick={() => void finish()}>Agora não</Button>
-              <Button size="sm" onClick={() => start("completo")}>Ver tour</Button>
+              <Button size="sm" onClick={() => begin("completo")}>Ver tour</Button>
             </div>
           </motion.div>
         )}

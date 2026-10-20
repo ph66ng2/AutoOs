@@ -411,6 +411,13 @@ async fn any_profile_has_pin() -> Result<bool, String> {
     Ok(false)
 }
 
+/// O PIN de cada perfil vive no keyring de cada computador, então o que decide se um perfil
+/// tem (ou terá) PIN é o banco: `pin_required`. `pin_configured` (só este computador) cobre
+/// perfis antigos que já têm PIN aqui. Quem exige PIN nunca abre sessão sem ele.
+fn profile_requires_pin(profile: &SecurityProfileSummary) -> bool {
+    profile.pin_required || profile.pin_configured
+}
+
 fn has_permission_values(permissions: &[String], permission: &str) -> bool {
     permissions.iter().any(|value| value == permission)
 }
@@ -1223,8 +1230,8 @@ pub async fn update_security_profile(profile_id: i32, input: SecurityProfileInpu
 
     let role = normalize_role(&input.role)?;
     let permissions = normalize_permissions(&role, &input.permissions)?;
-    if !current.pin_configured && (role == "ADMIN" || has_permission_values(&permissions, PERMISSION_MANAGE_PROFILES)) {
-        return Err("Configure o PIN deste perfil antes de conceder acesso à administração".to_string());
+    if !profile_requires_pin(&current) && (role == "ADMIN" || has_permission_values(&permissions, PERMISSION_MANAGE_PROFILES)) {
+        return Err("Este perfil não exige PIN. Gere um código de acesso para a pessoa criar o PIN antes de conceder acesso à administração".to_string());
     }
     if !has_permission_values(&permissions, PERMISSION_MANAGE_PROFILES)
         && has_permission(&current, PERMISSION_MANAGE_PROFILES)
@@ -1883,6 +1890,9 @@ const AVATAR_CORES: [&str; 10] = [
 const CODIGO_ALFABETO: &[u8] = b"ABCDEFGHJKMNPQRSTUVWXYZ23456789";
 const CODIGO_TAMANHO: usize = 6;
 const CODIGO_VALIDADE_HORAS: i64 = 24;
+/// Palpites errados que um código aguenta antes de ser revogado. Contados no banco: não
+/// somem ao reiniciar o app e não se misturam com o bloqueio de tentativas de PIN.
+const CODIGO_MAX_TENTATIVAS: i32 = 5;
 
 #[derive(Debug, Serialize)]
 pub struct CodigoPrimeiroAcesso {
@@ -1946,11 +1956,21 @@ fn validar_personalizacao(input: &PersonalizacaoPerfilInput) -> Result<(), Strin
 }
 
 /// Revoga os códigos abertos do perfil e emite um novo dentro da transação recebida.
+///
+/// Dois administradores podem emitir ao mesmo tempo para o mesmo perfil: a linha do perfil é
+/// travada para serializar as emissões (a segunda espera, revoga o código da primeira e emite
+/// o seu) e o índice único parcial garante, no banco, no máximo um código aberto por perfil.
 async fn emitir_codigo_primeiro_acesso(
     tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
     profile_id: i32,
     actor_id: i32,
 ) -> Result<(String, DateTime<Utc>), String> {
+    sqlx::query("SELECT id FROM security_profiles WHERE id = $1 FOR UPDATE")
+        .bind(profile_id)
+        .fetch_one(&mut **tx)
+        .await
+        .map_err(super::operator_errors::mapear_erro_sql)?;
+
     sqlx::query(
         "UPDATE codigos_primeiro_acesso SET revogado_em = NOW()
          WHERE profile_id = $1 AND usado_em IS NULL AND revogado_em IS NULL",
@@ -1981,8 +2001,9 @@ async fn emitir_codigo_primeiro_acesso(
 /// O administrador nunca define nem conhece o PIN definitivo.
 #[tauri::command]
 #[instrument(skip_all)]
-pub async fn criar_perfil_com_codigo(input: SecurityProfileInput) -> Result<CodigoPrimeiroAcesso, String> {
+pub async fn criar_perfil_com_codigo(input: SecurityProfileInput, admin_pin: String) -> Result<CodigoPrimeiroAcesso, String> {
     let actor = require_permission(PERMISSION_MANAGE_PROFILES)?;
+    confirm_authenticated_profile_pin(&actor, &admin_pin).await?;
 
     let nome = input.nome.trim();
     if nome.chars().count() < 3 {
@@ -2066,6 +2087,11 @@ pub async fn gerar_codigo_primeiro_acesso(profile_id: i32, admin_pin: String) ->
 
 /// Usa o código para ativar o perfil neste computador: grava o PIN escolhido pela
 /// pessoa no keyring local e abre a sessão. Não exige sessão prévia.
+///
+/// O código é consumido numa transação que só é confirmada depois de o PIN estar no
+/// keyring: se o keyring falhar, a transação volta e o código continua valendo para uma
+/// nova tentativa. Palpites errados são contados no banco e revogam o código ao atingir
+/// `CODIGO_MAX_TENTATIVAS`.
 #[tauri::command]
 #[instrument(skip_all)]
 pub async fn ativar_perfil_com_codigo(
@@ -2081,17 +2107,20 @@ pub async fn ativar_perfil_com_codigo(
     if pin.trim() != confirm_pin.trim() {
         return Err("Os PINs não conferem.".to_string());
     }
-    check_unlock_lockout(profile_id)?;
 
     let record = fetch_profile_record_by_id(profile_id).await?;
+    let summary = to_profile_summary(record)?;
     let codigo = normalizar_codigo_acesso(&codigo);
     let pool = get_pool().await.map_err(|e| e.to_string())?;
+    let mut tx = pool.begin().await.map_err(super::operator_errors::mapear_erro_sql)?;
+
     let abertos: Vec<(i32, String)> = sqlx::query_as(
         "SELECT id, codigo_hash FROM codigos_primeiro_acesso
-         WHERE profile_id = $1 AND usado_em IS NULL AND revogado_em IS NULL AND expira_em > NOW()",
+         WHERE profile_id = $1 AND usado_em IS NULL AND revogado_em IS NULL AND expira_em > NOW()
+         FOR UPDATE",
     )
     .bind(profile_id)
-    .fetch_all(&pool)
+    .fetch_all(&mut *tx)
     .await
     .map_err(super::operator_errors::mapear_erro_sql)?;
 
@@ -2101,28 +2130,47 @@ pub async fn ativar_perfil_com_codigo(
             .unwrap_or(false)
     });
 
-    let consumido = match encontrado {
-        Some((codigo_id, _)) => sqlx::query(
-            "UPDATE codigos_primeiro_acesso SET usado_em = NOW()
-             WHERE id = $1 AND usado_em IS NULL AND revogado_em IS NULL",
+    let Some((codigo_id, _)) = encontrado else {
+        let revogados: i64 = sqlx::query_scalar(
+            "WITH atualizados AS (
+                 UPDATE codigos_primeiro_acesso
+                    SET tentativas = tentativas + 1,
+                        revogado_em = CASE WHEN tentativas + 1 >= $2 THEN NOW() ELSE revogado_em END
+                  WHERE profile_id = $1 AND usado_em IS NULL AND revogado_em IS NULL AND expira_em > NOW()
+              RETURNING revogado_em
+             )
+             SELECT COUNT(*) FILTER (WHERE revogado_em IS NOT NULL) FROM atualizados",
         )
-        .bind(codigo_id)
-        .execute(&pool)
+        .bind(profile_id)
+        .bind(CODIGO_MAX_TENTATIVAS)
+        .fetch_one(&mut *tx)
         .await
-        .map_err(super::operator_errors::mapear_erro_sql)?
-        .rows_affected()
-            == 1,
-        None => false,
+        .map_err(super::operator_errors::mapear_erro_sql)?;
+        tx.commit().await.map_err(super::operator_errors::mapear_erro_sql)?;
+
+        let detalhe = if revogados > 0 {
+            "Código de primeiro acesso inválido; revogado por excesso de tentativas"
+        } else {
+            "Código de primeiro acesso inválido ou expirado"
+        };
+        record_security_event("ACCESS_CODE_FAILED", Some(&summary), detalhe, false).await;
+        return Err(if revogados > 0 {
+            "Muitas tentativas inválidas: o código foi bloqueado. Peça um novo código ao administrador.".to_string()
+        } else {
+            "Código inválido ou expirado. Peça um novo código ao administrador.".to_string()
+        });
     };
 
-    if !consumido {
-        record_unlock_failure(profile_id);
-        let summary = to_profile_summary(record)?;
-        record_security_event("ACCESS_CODE_FAILED", Some(&summary), "Código de primeiro acesso inválido ou expirado", false).await;
-        return Err("Código inválido ou expirado. Peça um novo código ao administrador.".to_string());
-    }
+    sqlx::query("UPDATE codigos_primeiro_acesso SET usado_em = NOW() WHERE id = $1")
+        .bind(codigo_id)
+        .execute(&mut *tx)
+        .await
+        .map_err(super::operator_errors::mapear_erro_sql)?;
 
+    // Se o keyring recusar, o `?` descarta a transação (rollback) e o código continua valendo.
     store_profile_pin(profile_id, &pin)?;
+    tx.commit().await.map_err(super::operator_errors::mapear_erro_sql)?;
+
     mark_profile_pin_required(profile_id).await?;
     reset_unlock_attempts(profile_id);
     let summary = to_profile_summary(fetch_profile_record_by_id(profile_id).await?)?;
@@ -2295,6 +2343,19 @@ mod tests {
             assert_eq!(codigo.len(), CODIGO_TAMANHO);
             assert!(codigo.bytes().all(|byte| CODIGO_ALFABETO.contains(&byte)));
         }
+    }
+
+    #[test]
+    fn promocao_a_administrador_nao_depende_do_keyring_deste_computador() {
+        // Ativado só em outro computador: sem PIN aqui, mas o banco diz que exige PIN.
+        let outro_pc = SecurityProfileSummary { pin_configured: false, pin_required: true, ..build_profile("TECNICO", &[]) };
+        assert!(profile_requires_pin(&outro_pc));
+        // Perfil antigo que tem PIN neste computador continua valendo.
+        let local = SecurityProfileSummary { pin_configured: true, pin_required: false, ..build_profile("TECNICO", &[]) };
+        assert!(profile_requires_pin(&local));
+        // Sem PIN em lugar nenhum e sem exigência: não pode virar administrador.
+        let sem_pin = SecurityProfileSummary { pin_configured: false, pin_required: false, ..build_profile("TECNICO", &[]) };
+        assert!(!profile_requires_pin(&sem_pin));
     }
 
     #[test]

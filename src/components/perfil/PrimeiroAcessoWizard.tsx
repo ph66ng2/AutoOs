@@ -42,10 +42,14 @@ export function PrimeiroAcessoWizard({
   onStatusChange: (status: SensitiveAccessStatus) => void;
   /** Só disponível antes da ativação: depois dela o perfil já está em uso. */
   onCancel: () => void;
-  onFinish: (result: "tour" | "pular" | "recuperado") => void;
+  onFinish: (result: "tour" | "pular" | "ativado") => void;
 }) {
   const reduceMotion = useReducedMotion();
-  const steps: Step[] = recovery ? ["acesso"] : needsCode ? ["acesso", "voce", "pronto"] : ["voce", "pronto"];
+  // Quem já concluiu o primeiro acesso em outro computador não escolhe nome e visual de novo:
+  // só o código e o PIN deste computador (mesma etapa da recuperação de PIN).
+  const reactivation = needsCode && !recovery && !profile.onboarding_pendente;
+  const shortFlow = recovery || reactivation;
+  const steps: Step[] = shortFlow ? ["acesso"] : needsCode ? ["acesso", "voce", "pronto"] : ["voce", "pronto"];
   const [step, setStep] = useState<Step>(steps[0]);
   const initialLook = profileAppearance(profile);
   const [codigo, setCodigo] = useState("");
@@ -78,8 +82,8 @@ export function PrimeiroAcessoWizard({
       if (updated) setCurrent(updated);
       setPin("");
       setConfirmPin("");
-      if (recovery) {
-        onFinish("recuperado");
+      if (shortFlow) {
+        onFinish("ativado");
         return;
       }
       setStep("voce");
@@ -125,7 +129,7 @@ export function PrimeiroAcessoWizard({
           <span className="text-lg font-bold">AutoOS</span>
         </div>
 
-        <ol aria-label="Etapas" className={cn("mt-10 flex gap-2", recovery && "hidden")}>
+        <ol aria-label="Etapas" className={cn("mt-10 flex gap-2", shortFlow && "hidden")}>
           {steps.map((item, index) => (
             <li key={item} aria-current={item === step ? "step" : undefined} className="flex flex-1 flex-col gap-2">
               <span className={cn("h-1 rounded-full transition-colors", index <= stepIndex ? "bg-primary" : "bg-border")} />
@@ -150,12 +154,18 @@ export function PrimeiroAcessoWizard({
                 >
                   <header className="space-y-2">
                     <h1 id="primeiro-acesso-titulo" className="text-3xl font-bold tracking-tight">
-                      {recovery ? `Redefinir o PIN de ${profile.nome}` : "Bem-vindo ao AutoOS"}
+                      {recovery
+                        ? `Redefinir o PIN de ${profile.nome}`
+                        : reactivation
+                          ? `Ativar ${profile.nome} neste computador`
+                          : "Bem-vindo ao AutoOS"}
                     </h1>
                     <p className="text-muted-foreground">
                       {recovery
-                        ? "Digite o código que o administrador gerou para você e crie o novo PIN deste computador. O PIN antigo deixa de valer."
-                        : "Digite o código que o administrador te passou e crie o PIN que você vai usar neste computador."}
+                        ? "Digite o código que o administrador gerou para você e crie o novo PIN deste computador. O PIN antigo deixa de valer neste computador; nos outros, ele continua valendo até você usar um código lá."
+                        : reactivation
+                          ? "Digite o código que o administrador gerou e crie o PIN que você vai usar neste computador. Seu nome e seu visual continuam os mesmos."
+                          : "Digite o código que o administrador te passou e crie o PIN que você vai usar neste computador."}
                     </p>
                   </header>
                   <div className="space-y-2">
@@ -270,7 +280,7 @@ export function PrimeiroAcessoWizard({
             </div>
           ) : (
             <Button type="submit" form="primeiro-acesso-form" disabled={busy}>
-              {busy ? "Salvando..." : recovery ? "Redefinir PIN" : "Continuar"} <ArrowRight className="ml-2 h-4 w-4" />
+              {busy ? "Salvando..." : recovery ? "Redefinir PIN" : reactivation ? "Ativar neste computador" : "Continuar"} <ArrowRight className="ml-2 h-4 w-4" />
             </Button>
           )}
         </div>

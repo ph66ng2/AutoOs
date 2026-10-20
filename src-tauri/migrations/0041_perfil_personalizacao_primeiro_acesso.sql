@@ -1,4 +1,4 @@
--- 0039: Personalização do perfil, primeiro acesso por código e tour por permissão.
+-- 0041: Personalização do perfil, primeiro acesso por código e tour por permissão.
 --
 -- 1. Cada perfil guarda seu visual (ícone e cor pré-definidos, tema claro/escuro). São preferências
 --    da pessoa, por isso ficam no banco e valem em qualquer computador.
@@ -9,6 +9,9 @@
 --    e ainda não está aqui.
 -- 4. `codigos_primeiro_acesso` libera um perfil em um computador sem PIN local. Guarda apenas o hash
 --    do código, expira e vale para um uso. O PIN definitivo continua só no keyring do computador.
+--    No máximo um código aberto por perfil (índice único parcial) e as tentativas erradas são
+--    contadas aqui, no banco: o código é revogado ao atingir o limite, sobrevive a reinício do app
+--    e não interfere no bloqueio de PIN.
 
 ALTER TABLE security_profiles ADD COLUMN IF NOT EXISTS avatar_icone TEXT;
 ALTER TABLE security_profiles ADD COLUMN IF NOT EXISTS avatar_cor TEXT;
@@ -39,11 +42,24 @@ CREATE TABLE IF NOT EXISTS codigos_primeiro_acesso (
     expira_em TIMESTAMPTZ NOT NULL,
     usado_em TIMESTAMPTZ,
     revogado_em TIMESTAMPTZ,
+    tentativas INTEGER NOT NULL DEFAULT 0,
     criado_por_profile_id INTEGER REFERENCES security_profiles(id) ON DELETE SET NULL,
     criado_em TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
-CREATE INDEX IF NOT EXISTS idx_codigos_primeiro_acesso_abertos
+ALTER TABLE codigos_primeiro_acesso ADD COLUMN IF NOT EXISTS tentativas INTEGER NOT NULL DEFAULT 0;
+
+-- Antes do índice único: se já houver mais de um código aberto por perfil, só o mais novo continua valendo.
+UPDATE codigos_primeiro_acesso AS c
+   SET revogado_em = NOW()
+ WHERE c.usado_em IS NULL AND c.revogado_em IS NULL
+   AND c.id <> (
+       SELECT MAX(o.id) FROM codigos_primeiro_acesso AS o
+        WHERE o.profile_id = c.profile_id AND o.usado_em IS NULL AND o.revogado_em IS NULL
+   );
+
+DROP INDEX IF EXISTS idx_codigos_primeiro_acesso_abertos;
+CREATE UNIQUE INDEX IF NOT EXISTS ux_codigos_primeiro_acesso_um_aberto
     ON codigos_primeiro_acesso (profile_id)
     WHERE usado_em IS NULL AND revogado_em IS NULL;
 

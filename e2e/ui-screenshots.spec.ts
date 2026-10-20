@@ -19,8 +19,10 @@ test("captura as telas principais com dados sintéticos", async ({ page }) => {
   mkdirSync(outDir, { recursive: true });
 
   await page.goto("/");
-  const entry = page.getByRole("dialog").filter({ hasText: "Selecionar perfil da sessão" });
+  const entry = page.getByRole("dialog").filter({ hasText: "Quem está usando o AutoOS?" });
   await expect(entry).toBeVisible();
+  await entry.getByRole("button", { name: /CI Admin Screenshot/ }).click();
+  await page.screenshot({ path: `${outDir}/08-selecao-perfil.png`, animations: "disabled" });
   await entry.getByRole("button", { name: /CI Admin Screenshot/ }).click();
   await entry.getByLabel("PIN do perfil", { exact: true }).fill("1234");
   await entry.getByRole("button", { name: "Entrar com este perfil" }).click();
@@ -64,8 +66,12 @@ test("captura as telas principais com dados sintéticos", async ({ page }) => {
   await expect(page.getByText("Ribbon sintético CI").first()).toBeVisible();
   await page.screenshot({ path: `${outDir}/05-insumos-estoque.png`, fullPage: true, animations: "disabled" });
 
-  await openScreen("Equipe e acessos");
-  await expect(page.locator("h1", { hasText: "Equipe e acessos" })).toBeVisible();
+  await openScreen("Perfil");
+  await expect(page.locator("h1", { hasText: "CI Admin Screenshot" })).toBeVisible();
+  await expect(page.getByText("O que você pode fazer")).toBeVisible();
+  await page.screenshot({ path: `${outDir}/09-perfil-visao-geral.png`, fullPage: true, animations: "disabled" });
+
+  await page.getByRole("tab", { name: "Equipe" }).click();
   await expect(page.getByText("CI Admin Screenshot").first()).toBeVisible();
   await expect(page.getByText("CI Tecnico Screenshot").first()).toBeVisible();
   await expect(page.getByText("CI Atendente Screenshot").first()).toBeVisible();

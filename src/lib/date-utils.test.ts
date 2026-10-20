@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { dateOnlyToLocalDate, formatDatePtBr, formatDateTimeSalvador, todayLocalIsoDate } from "./date-utils";
+import { dateOnlyToLocalDate, formatDatePtBr, formatDateTimeSalvador, parseDbTimestampUtc, todayLocalIsoDate } from "./date-utils";
 
 describe("date-utils", () => {
   it("formata data sem horário sem retroceder pelo fuso UTC", () => {
@@ -15,6 +15,20 @@ describe("date-utils", () => {
     expect(parsed.getFullYear()).toBe(2026);
     expect(parsed.getMonth()).toBe(8);
     expect(parsed.getDate()).toBe(10);
+  });
+
+  it("lê TIMESTAMP do banco (sem fuso) como UTC, não como horário do computador", () => {
+    // 21:35 UTC é 18:35 em Salvador; antes aparecia 21:35.
+    const parsed = parseDbTimestampUtc("2026-10-18 21:35:12.345");
+    expect(parsed?.toISOString()).toBe("2026-10-18T21:35:12.345Z");
+    expect(formatDateTimeSalvador(parsed)).toBe("18/10/2026, 18:35:12");
+  });
+
+  it("não mexe em textos que já trazem fuso e rejeita lixo", () => {
+    expect(parseDbTimestampUtc("2026-10-18T21:35:12Z")?.toISOString()).toBe("2026-10-18T21:35:12.000Z");
+    expect(parseDbTimestampUtc("2026-10-18T18:35:12-03:00")?.toISOString()).toBe("2026-10-18T21:35:12.000Z");
+    expect(parseDbTimestampUtc("não é data")).toBeNull();
+    expect(parseDbTimestampUtc(null)).toBeNull();
   });
 
   it("exibe data e hora no fuso de Salvador independentemente do computador", () => {

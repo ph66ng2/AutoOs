@@ -12,6 +12,7 @@ import { ProfileAvatar } from "@/components/perfil/ProfileAvatar";
 import { TeamAccessManager } from "@/components/TeamAccessManager";
 import { useSensitiveAccess } from "@/hooks/useSensitiveAccess";
 import { getAppMode, setAppMode } from "@/lib/app-mode";
+import { formatDateTimeSalvador, parseDbTimestampUtc } from "@/lib/date-utils";
 import { mensagemVisivelAoOperador } from "@/lib/operator-errors";
 import { profileAppearance, type ProfileTheme } from "@/lib/profile-appearance";
 import { PERMISSION_DETAILS } from "@/lib/profile-presets";
@@ -21,6 +22,7 @@ import { requestTour } from "@/lib/tour-request";
 import { BASE_MODULES, newPermissions } from "@/lib/tour-steps";
 import { cn } from "@/lib/utils";
 import {
+  SENSITIVE_PERMISSION_LABELS,
   SENSITIVE_PERMISSIONS,
   type SecurityAuditEvent,
   type SecurityProfile,
@@ -140,10 +142,7 @@ const EVENT_LABELS: Record<string, string> = {
 };
 
 function formatWhen(value?: string | null) {
-  if (!value) return "";
-  const date = new Date(value.replace(" ", "T"));
-  if (Number.isNaN(date.getTime())) return "";
-  return date.toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
+  return formatDateTimeSalvador(parseDbTimestampUtc(value), "");
 }
 
 function VisaoGeral({
@@ -182,7 +181,9 @@ function VisaoGeral({
               <CapabilityItem
                 key={permission}
                 title={PERMISSION_DETAILS[permission].title}
-                note={permissions.includes(permission) ? PERMISSION_DETAILS[permission].description : "Bloqueado"}
+                note={permissions.includes(permission)
+                  ? PERMISSION_DETAILS[permission].description
+                  : `Sem permissão para ${SENSITIVE_PERMISSION_LABELS[permission]}`}
                 allowed={permissions.includes(permission)}
               />
             ))}

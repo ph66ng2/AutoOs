@@ -23,6 +23,8 @@ interface Profile {
   pin_required: boolean;
   is_default: boolean;
   ativo: boolean;
+  onboarding_pendente?: boolean;
+  tour_permissoes_vistas?: string[] | null;
 }
 
 interface Seed {
@@ -70,6 +72,11 @@ function activeProfile(seed: Seed): Profile {
   return seed.profiles.find((profile) => profile.nome === "CI Admin Screenshot") ?? seed.profiles[0];
 }
 
+/** Perfis de demonstração já concluíram o primeiro acesso e já viram o tour: sem oferta de tour nas capturas. */
+function withTourSeen(profile: Profile): Profile {
+  return { ...profile, onboarding_pendente: false, tour_permissoes_vistas: profile.permissions };
+}
+
 function status(seed: Seed) {
   const profile = activeProfile(seed);
   return {
@@ -81,7 +88,7 @@ function status(seed: Seed) {
     active_role: profile.role,
     permissions: profile.permissions,
     can_manage_profiles: profile.permissions.includes("MANAGE_PROFILES"),
-    profiles: seed.profiles.filter((item) => item.ativo),
+    profiles: seed.profiles.filter((item) => item.ativo).map(withTourSeen),
   };
 }
 
@@ -114,9 +121,12 @@ export async function invoke<T>(command: string, args?: Record<string, unknown>)
     case "lock_sensitive_access":
       return true as T;
     case "list_security_profiles":
-      return structuredClone(seed.profiles) as T;
+      return structuredClone(seed.profiles.map(withTourSeen)) as T;
     case "list_security_audit_events":
+    case "listar_minhas_acoes":
       return [] as T;
+    case "registrar_tour_visto":
+      return structuredClone(status(seed)) as T;
     case "verificar_config_inatividade":
       return false as T;
     case "listar_clientes":

@@ -93,8 +93,8 @@ export const SensitiveAccessService = {
   },
 
   /** Cria o perfil sem PIN e devolve o código de primeiro acesso → Rust: criar_perfil_com_codigo */
-  async createProfileWithCode(input: SecurityProfileInput): Promise<CodigoPrimeiroAcesso> {
-    return sensitiveInvoke<CodigoPrimeiroAcesso>("criar_perfil_com_codigo", { input });
+  async createProfileWithCode(input: SecurityProfileInput, adminPin: string): Promise<CodigoPrimeiroAcesso> {
+    return sensitiveInvoke<CodigoPrimeiroAcesso>("criar_perfil_com_codigo", { input, adminPin });
   },
 
   /** Novo código para outro computador ou PIN esquecido → Rust: gerar_codigo_primeiro_acesso */

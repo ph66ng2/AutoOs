@@ -30,6 +30,19 @@ export function formatDateTimeSalvador(value?: string | Date | null, fallback = 
   });
 }
 
+/**
+ * Colunas `TIMESTAMP` (sem fuso) do PostgreSQL chegam como texto "2026-10-18 21:35:12.345" e o
+ * banco as grava em UTC. `new Date()` lê esse texto como horário do computador, o que desloca
+ * o instante em algumas horas; aqui ele é lido como UTC. Textos que já trazem fuso ficam como são.
+ */
+export function parseDbTimestampUtc(value?: string | null): Date | null {
+  if (!value) return null;
+  const iso = value.trim().replace(" ", "T");
+  const hasZone = /T.*(Z|[+-]\d{2}(:?\d{2})?)$/.test(iso);
+  const parsed = new Date(hasZone ? iso : `${iso}Z`);
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+}
+
 /** Converte uma data sem horário para meio-dia local, seguro para ordenação. */
 export function dateOnlyToLocalDate(value: string): Date {
   return /^\d{4}-\d{2}-\d{2}$/.test(value) ? new Date(`${value}T12:00:00`) : new Date(value);

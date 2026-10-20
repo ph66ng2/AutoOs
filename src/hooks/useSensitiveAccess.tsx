@@ -213,13 +213,17 @@ export function SensitiveAccessProvider({ children }: { children: ReactNode }) {
     }
   }, [status, loading]);
 
-  // O tema é do perfil: aplica o escolhido assim que a sessão dele abre.
-  const activeTheme = status?.unlocked
-    ? status.profiles.find((profile) => profile.id === status.active_profile_id)?.tema
+  // O tema é do perfil: aplica o escolhido assim que a sessão dele abre. Perfil que nunca
+  // escolheu (tema nulo) usa o padrão claro, em vez de herdar o tema de quem usou antes.
+  const activeProfileForTheme = status?.unlocked
+    ? status.profiles.find((profile) => profile.id === status.active_profile_id)
+    : undefined;
+  const profileTheme: "light" | "dark" | null = activeProfileForTheme
+    ? (activeProfileForTheme.tema === "dark" ? "dark" : "light")
     : null;
   useEffect(() => {
-    if (activeTheme) setTheme(activeTheme);
-  }, [activeTheme, setTheme]);
+    if (profileTheme) setTheme(profileTheme);
+  }, [profileTheme, setTheme, activeProfileForTheme?.id]);
 
   // Perfil já autenticado que ainda não escolheu nome e visual (ex.: administrador
   // de uma instalação nova) passa pelo primeiro acesso sem a etapa do código.
@@ -414,7 +418,7 @@ export function SensitiveAccessProvider({ children }: { children: ReactNode }) {
       }
 
       if (activeProfile?.pin_required && !activeProfile.pin_configured) {
-        setError("Este perfil ainda não foi ativado neste computador. Use \"Fazer primeiro acesso\" com o código que o administrador te passou.");
+        setError("Este perfil ainda não tem PIN neste computador. Use o código que o administrador te passou para ativá-lo aqui.");
         return;
       }
 
@@ -486,7 +490,7 @@ export function SensitiveAccessProvider({ children }: { children: ReactNode }) {
     setDialogOpen(true);
   }, []);
 
-  const finishFirstAccess = useCallback(async (result: "tour" | "pular" | "recuperado") => {
+  const finishFirstAccess = useCallback(async (result: "tour" | "pular" | "ativado") => {
     const profileId = firstAccess?.profileId;
     if (result === "tour") {
       requestTour("completo");

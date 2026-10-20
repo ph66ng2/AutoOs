@@ -33,6 +33,7 @@ export function CreateProfileCard({ profiles, onCreated }: Props) {
   const [role, setRole] = useState("ATENDENTE");
   const [permissions, setPermissions] = useState<SensitivePermission[]>([]);
   const [step, setStep] = useState(0);
+  const [adminPin, setAdminPin] = useState("");
   const [busy, setBusy] = useState(false);
   const [submitted, setSubmitted] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -53,6 +54,10 @@ export function CreateProfileCard({ profiles, onCreated }: Props) {
         ? "Já existe um perfil com este nome. Escolha outro nome."
         : null;
 
+  const adminPinError = !/^\d{4,8}$/.test(adminPin)
+    ? "Informe seu PIN de administrador (4 a 8 dígitos)."
+    : null;
+
   function goTo(next: number) {
     setStep(next);
     setSubmitted(false);
@@ -69,18 +74,22 @@ export function CreateProfileCard({ profiles, onCreated }: Props) {
     setName("");
     setRole("ATENDENTE");
     setPermissions([]);
+    setAdminPin("");
     goTo(0);
   }
   async function createProfile() {
-    if (nameError || inFlight.current) return;
+    setSubmitted(true);
+    if (nameError || adminPinError || inFlight.current) return;
     inFlight.current = true;
     setBusy(true);
     setError(null);
     try {
       const code = await SensitiveAccessService.createProfileWithCode(
         { nome: trimmedName, role, permissions },
+        adminPin,
       );
       setCreated(code);
+      setAdminPin("");
       toast.success(`Perfil ${trimmedName} criado com sucesso.`);
       try {
         await onCreated();
@@ -291,6 +300,26 @@ export function CreateProfileCard({ profiles, onCreated }: Props) {
                     Ao criar, você recebe o código de primeiro acesso para
                     passar à pessoa. Sua sessão não será trocada.
                   </p>
+                  <div className="space-y-2 border-t pt-4">
+                    <Label htmlFor="profile-admin-pin">Seu PIN de administrador</Label>
+                    <Input
+                      id="profile-admin-pin"
+                      type="password"
+                      inputMode="numeric"
+                      autoComplete="current-password"
+                      value={adminPin}
+                      onChange={(event) =>
+                        setAdminPin(event.target.value.replace(/\D/g, "").slice(0, 8))
+                      }
+                      maxLength={8}
+                      aria-invalid={submitted && !!adminPinError}
+                    />
+                    {submitted && adminPinError && (
+                      <p role="alert" className="text-sm text-destructive">
+                        {adminPinError}
+                      </p>
+                    )}
+                  </div>
                 </div>
               )}
               {error && (

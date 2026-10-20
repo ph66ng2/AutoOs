@@ -63,7 +63,7 @@ describe("useSensitiveAccess — integração com novos recursos de auth", () =>
     render(<TestHarness><HookInspector capture={captureHook} /></TestHarness>);
     await user.type(await screen.findByLabelText("PIN do perfil"), "1234");
     await user.click(screen.getByRole("button", { name: "Entrar com este perfil" }));
-    await screen.findByText(/ainda não foi ativado neste computador. Use "Fazer primeiro acesso"/);
+    await screen.findByText(/ainda não tem PIN neste computador. Use o código que o administrador te passou/);
     expect(screen.getByRole("button", { name: "Cancelar" })).toBeEnabled();
     expect(screen.queryByRole("button", { name: "Validando..." })).not.toBeInTheDocument();
     expect(mockInvoke.mock.calls.some(([cmd]) => cmd === "unlock_session_without_pin")).toBe(false);
