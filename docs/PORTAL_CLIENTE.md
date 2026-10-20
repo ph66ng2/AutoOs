@@ -157,29 +157,29 @@ Pré-requisitos: passos 1–4 da Ativação concluídos; build do AutoOS a parti
 
 1. `POST https://sgaqvxubopgwysnyocjs.supabase.co/functions/v1/portal-cliente` com `Origin: https://status.bmitag.com.br`, `Content-Type: application/json` e `{"acao":"entrarSenha","documento":"00000000000","senha":"x"}` → **400** `SENHA_INVALIDA`. Se vier **503**, falta o `PORTAL_CLIENTE_SECRET` ou o `PUBLIC_STATUS_RATE_LIMIT_SECRET`.
 2. Mesma chamada com `Origin: https://exemplo.com` → **403** “Origem não permitida”.
-3. Com o portal da empresa desligado, login com senha válida → **503** `PORTAL_PAUSADO`.
 
-**Desktop (AutoOS)**
+**Desktop (AutoOS), com o portal ainda desligado**
 
-4. Configurações → Integrações → **Portal do Cliente: funcionamento**: ligar “Portal ligado” e “Clientes podem responder orçamentos” (pede PIN). Conferir na auditoria o evento `PORTAL_CONFIG_CHANGED`.
-5. No equipamento de teste em **Aguardando aprovação** com orçamento: **Dar acesso** → escolher um contato → “pode responder orçamentos” → criar a senha (anotar; aparece uma vez).
-6. **Publicar no Portal do Cliente**. O quadro passa a “Orçamento no portal”, sem resposta.
+3. No equipamento de teste em **Aguardando aprovação** com orçamento: **Portal do Cliente** → **Dar acesso** → escolher um contato → “pode responder orçamentos” → criar a senha (anotar; aparece uma vez).
+4. Entrar no portal com o CPF/CNPJ + essa senha → “O portal está temporariamente indisponível” (`PORTAL_PAUSADO`). A pausa só é conferida depois de uma senha válida; com senha errada a resposta é `SENHA_INVALIDA`.
+5. Configurações → Integrações → **Portal do Cliente: funcionamento**: ligar “Portal ligado” e “Clientes podem responder orçamentos” (pede PIN). Conferir na auditoria o evento `PORTAL_CONFIG_CHANGED`.
+6. **Publicar no Portal do Cliente**. A faixa do orçamento passa a “Aguardando resposta do cliente”.
 
 **Portal (status.bmitag.com.br, celular e computador)**
 
 7. Entrar com o CPF/CNPJ do cliente + senha. A lista mostra o equipamento em “Atuais” como “aguarda sua resposta”.
-8. Senha errada 8 vezes no mesmo CPF/CNPJ → **Muitas tentativas… Aguarde 15 minutos**.
-9. Abrir o equipamento, **Aceitar** → confirmar impressora e valor → comprovante com protocolo. Se a entrada tiver mais de 10 minutos, pede a senha de novo antes.
-10. Dentro do prazo de correção: **Desfazer resposta** → volta a “aguardando resposta”. Aceitar de novo.
-11. No AutoOS: o sino mostra “Orçamento aprovado pelo cliente” (aba Portal do Cliente); o quadro mostra a resposta em prazo de correção, sem botão de aplicar.
-12. Passado o prazo, em até 1 minuto (Cron) o equipamento vira **Aprovado**, pagamento “a combinar” (se não houver outro), peças baixadas do estoque até o saldo (o que faltar vira pendência); a auditoria atribui ao contato. Repetir com **Recusar** num segundo equipamento → **Reprovado**.
-13. **Quero negociar** com uma mensagem → chega como alerta no AutoOS e não muda o status.
-14. Link individual antigo `status.bmitag.com.br/#/c/<token>` de outro equipamento continua abrindo a tela de status.
+8. Com a proposta ainda aberta: **Quero negociar** com uma mensagem → chega como alerta no AutoOS (faixa violeta com WhatsApp/e-mail) e não muda o status. Marcar como tratada no AutoOS.
+9. **Aceitar** → confirmar impressora e valor (e a OC, se o cliente exigir) → comprovante com protocolo. Se a entrada tiver mais de 10 minutos, pede a senha de novo antes.
+10. Dentro do prazo de correção: **Desfazer resposta** → volta a “aguardando resposta” e o comprovante some sem recarregar. Aceitar de novo.
+11. No AutoOS: o sino mostra “Aceite recebido — confirma às HH:MM” (aba Portal do Cliente); a faixa mostra a resposta em prazo de correção, sem botão de aplicar.
+12. Passado o prazo, em até 1 minuto (Cron) o equipamento vira **Aprovado** e o sino mostra “Orçamento aprovado pelo cliente”: pagamento “a combinar” (se não houver outro), peças baixadas do estoque até o saldo (o que faltar vira pendência); a auditoria atribui ao contato. Repetir com **Recusar** num segundo equipamento (passa pelo “Tem certeza?”) → **Reprovado**.
+13. Link individual antigo `status.bmitag.com.br/#/c/<token>` de outro equipamento continua abrindo a tela de status.
 
-**Isolamento e desligamento**
+**Isolamento, bloqueio e desligamento**
 
-15. Entrar com um contato só **ACOMPANHAR**: vê status e orçamento, mas responder dá “Seu contato pode acompanhar, mas não responder”.
-16. Atendimento de outro cliente nunca aparece na lista; outra empresa com o portal desligado continua desligada.
+14. Entrar com um contato só **ACOMPANHAR**: vê status e orçamento, mas responder dá “Seu contato pode acompanhar, mas não responder”.
+15. Atendimento de outro cliente nunca aparece na lista; outra empresa com o portal desligado continua desligada.
+16. Senha errada 8 vezes no mesmo CPF/CNPJ → **Muitas tentativas… Aguarde 15 minutos**. Fica por último porque bloqueia aquele CPF/CNPJ por 15 minutos.
 17. Desligar “Portal ligado” com a sessão aberta → a próxima ação no portal cai para “temporariamente indisponível”. Ao terminar o teste, deixar desligado se o piloto não for começar.
 
 ## Notificações no AutoOS (sino no canto superior direito)
