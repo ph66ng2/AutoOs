@@ -46,7 +46,7 @@ export function PortalClientePanel({ open, onOpenChange }: Props) {
   async function abrirLink() {
     const liberado = await ensureSensitiveAccess({
       title: "Link de acompanhamento sem login",
-      description: "Confirme o acesso para consultar e gerenciar links públicos deste atendimento.",
+      description: "Confirme o acesso para consultar e gerenciar os links de acompanhamento deste atendimento.",
       permission: SENSITIVE_PERMISSIONS.MANAGE_STATUS_LINKS,
     });
     if (liberado) setLinkAberto(true);
