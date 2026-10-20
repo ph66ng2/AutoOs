@@ -131,6 +131,8 @@ export async function invoke<T>(command: string, args?: Record<string, unknown>)
     }
     case "buscar_cliente":
       return structuredClone(seed.clientes.find((cliente) => cliente.id === args?.id) ?? seed.clientes[0]) as T;
+    case "listar_equipamentos_cliente":
+      return structuredClone(seed.equipamentos.filter((equipamento) => equipamento.cliente_id === args?.clienteId)) as T;
     case "listar_equipamentos": {
       const statusFiltro = args?.status as string | undefined;
       const items = seed.equipamentos.filter((equipamento) =>

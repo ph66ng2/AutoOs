@@ -2,6 +2,8 @@ import { beforeAll, describe, expect, it, vi } from "vitest";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
+const recarregarEstoque = vi.hoisted(() => vi.fn());
+
 vi.mock("@/hooks/useInsumos", () => ({
   useInsumos: () => ({
     produtos: [],
@@ -13,7 +15,7 @@ vi.mock("@/hooks/useInsumos", () => ({
     atualizar: vi.fn(),
     deletar: vi.fn(),
     registrarMovimentacao: vi.fn(),
-    recarregar: vi.fn(),
+    recarregar: recarregarEstoque,
   }),
 }));
 vi.mock("@/hooks/useSensitiveAccess", () => ({
@@ -23,7 +25,12 @@ vi.mock("@/hooks/useNotification", () => ({
   useNotification: () => ({ success: vi.fn(), warning: vi.fn(), error: vi.fn(), info: vi.fn() }),
 }));
 vi.mock("@/pages/insumos/OrcamentosInsumosTab", () => ({
-  OrcamentosInsumosTab: () => <div data-testid="aba-orcamentos">Lista de orçamentos</div>,
+  OrcamentosInsumosTab: ({ onEstoqueAlterado }: { onEstoqueAlterado?: () => void }) => (
+    <div data-testid="aba-orcamentos">
+      Lista de orçamentos
+      <button onClick={onEstoqueAlterado}>aprovar-oi</button>
+    </div>
+  ),
 }));
 
 import Insumos from "@/pages/Insumos";
@@ -55,5 +62,14 @@ describe("Insumos: abas Estoque e Orçamentos", () => {
     await usuario.click(screen.getByRole("tab", { name: "Estoque" }));
     expect(screen.queryByTestId("aba-orcamentos")).toBeNull();
     expect(screen.getByPlaceholderText(/buscar por nome, código/i)).toBeInTheDocument();
+  });
+
+  it("recarrega o estoque quando um orçamento é aprovado ou cancelado", async () => {
+    const usuario = userEvent.setup();
+    recarregarEstoque.mockClear();
+    render(<Insumos />);
+    await usuario.click(screen.getByRole("tab", { name: "Orçamentos" }));
+    await usuario.click(screen.getByText("aprovar-oi"));
+    expect(recarregarEstoque).toHaveBeenCalledTimes(1);
   });
 });

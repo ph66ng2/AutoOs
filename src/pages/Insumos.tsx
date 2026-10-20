@@ -323,7 +323,7 @@ export default function Insumos() {
       </Tabs>
 
       {aba === "orcamentos" ? (
-        <OrcamentosInsumosTab />
+        <OrcamentosInsumosTab onEstoqueAlterado={() => void recarregar()} />
       ) : (
         <>
 
