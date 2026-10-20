@@ -39,8 +39,10 @@ Desktop app for printer management, technical reception, operational communicati
 │   ├── build.rs                  # Standard tauri_build::build()
 │   ├── tauri.conf.json           # Windows signing timestampUrl (DigiCert); certThumbprint = null
 │   └── .env.example              # Template local; .env real nunca é versionado/bundled
+├── .claude/agents/               # Subagentes do Claude Code (modelo fixado por agente)
+├── .cursor/rules/                # Regras do Cursor (autoos.mdc aponta para este arquivo)
+├── CLAUDE.md                     # Só Claude Code: roteamento Opus/Sonnet/Haiku
 ├── .github/
-│   ├── copilot-instructions.md   # Main guidance (ALWAYS read first)
 │   └── workflows/
 │       ├── ci.yml                # Lint → Vitest → cargo check/clippy → e2e:real → build
 │       └── build.yml             # Windows release build on tag push
@@ -144,7 +146,7 @@ npm run bundle:prep:windows:sign # Injects certThumbprint from env into tauri.co
   4. Write operations call `db.*` then `await carregar()` to refresh
   5. Returns `{ data, loading, error, ...mutations, recarregar: carregar }`
   No React Query, no SWR, no caching.
-- **No Zustand stores exist in `src/`** — despite `copilot-instructions.md` mentioning "Zustand onde já existir". All state is React local state + `SensitiveAccessProvider` Context.
+- **No Zustand stores exist in `src/`** — all state is React local state + `SensitiveAccessProvider` Context.
 - **Forms** use React Hook Form + Zod (`zodResolver`). `validations.ts` has custom CPF/CNPJ digit-verifier algorithms (not just regex).
 - **shadcn/ui** components in `src/components/ui/` — lightly customized, kept close to original. `cn()` from `lib/utils.ts` used everywhere.
 - **Sensitive routes** use `<SensitiveRoute>` wrapper component (renders lock screen if unauthorized), not route guards in `App.tsx` logic.
@@ -173,11 +175,72 @@ npm run bundle:prep:windows:sign # Injects certThumbprint from env into tauri.co
 - Don't store sensitive data (PINs, SMTP passwords, WhatsApp tokens) in the database — use OS keyring.
 - Don't treat the Cloudflare photo tunnel (`cloudflared` / `*.trycloudflare.com`) as the SaaS photo architecture. It is a reception workaround: the phone uploads to **this PC** while the QR dialog is open. Future PHOTO / AO-EQP-ONLINE tickets must send photos to the company API or Storage (signed URL), not through a per-PC tunnel. Do not reopen PHOTO-001 or PHOTO-009 to "fix" the tunnel.
 
+## REGRAS DE DOMÍNIO (perfis, PIN, operações sensíveis)
+
+- A rota `/perfil` (Equipe e acessos) concentra cadastro guiado, gestão da equipe e troca da sessão com PIN do perfil de destino.
+- `pin_required` é política compartilhada; PIN/hash continuam no keyring. Ausência do PIN local não autoriza entrada em um perfil protegido.
+- Trocar a sessão é uma operação local: não alterar `is_default` no banco compartilhado.
+- Perfis operacionais podem ter zero permissões sensíveis. Os modelos em `src/lib/profile-presets.ts` somente preenchem permissões já verificadas pelo backend.
+- Ação administrativa ou destrutiva: preserve ou amplie trilha de auditoria e confirmação explícita.
+- Recuperação de PIN (`redefinir_pin_via_db`) usa credenciais PostgreSQL como fator alternativo. `verificar_credenciais_banco` tenta TLS primeiro e cai para `NoTls` (PostgreSQL local). Quando a migração para Supabase for definitiva, o fallback `NoTls` pode ser removido.
+- Ao alterar dados persistidos, mantenha frontend, backend, validações (`validations.ts`) e tipos (`src/types/`) alinhados.
+- Quando o comportamento mudar, atualize a documentação afetada (`README.md`, `1-SETUP.md`, `4-BACKUP.md`, `3-NEXT_STEPS.md`, `docs/`).
+
+## FLUXO DE TRABALHO COM AGENTES DE IA (Claude Code e Cursor)
+
+Vale para qualquer agente. O roteamento por modelo (Opus/Sonnet/Haiku) é específico do Claude Code e está em `CLAUDE.md`.
+
+**Contexto de custo:** o projeto usa uma assinatura de US$ 20/mês com cota limitada. Toda decisão abaixo existe para gastar menos cota por tarefa.
+
+### Fatiar antes de executar
+
+Tarefa que não cabe em um passo é dividida em fatias antes de qualquer código. Cada fatia deve:
+
+- Tocar **um arquivo** e, de preferência, **uma função ou um bloco**.
+- Ter **entrada e saída explícitas**: o que existe hoje e o que deve existir depois.
+- Ter **critério de pronto verificável por comando** (`npm run lint`, `cargo check`, um teste específico), não por julgamento.
+- Levar **só o contexto mínimo**: caminho, função, trecho relevante e a regra deste arquivo que se aplica.
+- **Não exigir decisão de design.** Se a fatia pede "escolha a melhor abordagem", ela ainda não está pronta: a decisão é tomada no plano.
+
+Bom: "Em `src/lib/validations.ts`, adicionar `telefone` opcional (string, máx. 20) ao `clienteSchema`. Pronto quando `npm run lint` passar."
+Ruim: "Refatorar o fluxo de orçamento em `Equipamentos.tsx`."
+
+Tarefa grande demais para fatiar (refatoração ampla, mudança de arquitetura) é discutida com o usuário antes, não forçada em dezenas de fatias.
+
+### Máquina antes de modelo
+
+Tudo que um comando verifica é verificado por comando, nunca pedindo a um modelo que "confira":
+
+```bash
+npm run lint                          # tsc --noEmit
+npm run test:run                      # Vitest
+cd src-tauri && cargo check           # Rust
+cd src-tauri && cargo clippy -- -W warnings
+```
+
+### Filtro de lixo antes do QA
+
+A revisão de qualidade é do **QA humano da empresa**. Antes de o diff ir para ele, rode:
+
+```bash
+scripts/pre-qa-check.sh        # checagens mecânicas sobre o diff
+npm run lint && npm run test:run
+```
+
+O script rejeita: debug esquecido (`console.log`, `dbg!`, `println!`), macros `query!`/`query_as!`, referência a SQLite, teste com `skip`/`only`/`ignore`, URL de banco com credencial, possível token, TODO/FIXME novo, `invoke()` fora de `src/lib/db.ts` e migration existente alterada. Ele também lista os arquivos alterados.
+
+O que o script não pega, quem coordena confere à mão, sem pedir a um modelo: arquivo alterado que não está no plano, refatoração não pedida e teste removido sem `skip`. Lógica, regra de negócio, nomes e estilo ficam com o QA.
+
+### Limites
+
+- Nenhum agente faz push, abre PR, aplica migration ou executa restore sem confirmação explícita do usuário.
+- Mudança de uma linha não precisa de plano, fatia nem subagente: faça direto.
+
 ## UNIQUE STYLES
 
 - **Large page files** — `Equipamentos.tsx` ≈ 2510 lines (god page with 5 dialogs, 4-tab details, photo upload, PDF generation, WhatsApp/Email automation, budget divergence handling). `Configuracoes.tsx` ≈ 993 lines.
 - **Integration tests as Rust binaries** — 10 `[[bin]]` entries in `Cargo.toml`, not `#[cfg(test)]` modules. Tests create temporary security profiles and clean them up.
-- **Agent docs in `.github/agents/`** — reality-checker, senior-developer, etc.
+- **Agentes de IA usados no projeto: Claude Code e Cursor.** Este AGENTS.md é a fonte única de regras para os dois. `CLAUDE.md` e `.claude/agents/` contêm só o que é específico do Claude Code; `.cursor/rules/` só o que é específico do Cursor.
 - **Frontend tests mock `db` centrally** — standard pattern: `vi.hoisted()` + `vi.mock("@/lib/db", () => ({ db: { ... } }))`.
 - **tsconfig excludes test files** — `"exclude": ["**/*.test.ts", "**/*.test.tsx", "**/*.spec.ts", "**/*.spec.tsx"]` means `tsc --noEmit` does not check tests.
 - **Vitest Windows stability** — `pool: 'threads'`, `fileParallelism: false`, `maxWorkers: 1` to avoid fork/AV issues on Windows.
