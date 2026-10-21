@@ -3708,7 +3708,7 @@
       "id": "AO-SUITE-002",
       "baseBranch": "origin/master",
       "title": "Produzir FatoComercial v2 imutável a partir da OS",
-      "status": "blocked",
+      "status": "ready",
       "blockedBy": [
         "AO-SUITE-001"
       ],
@@ -3734,6 +3734,7 @@
       "testInstructions": {
         "prerequisites": [
           "Usar a branch e worktree do ticket, criada a partir da branch principal indicada no workflow.",
+          "Consultar o ADR 0001 aceito na origin/feature; a origin/master de partida ainda não contém esse documento.",
           "Usar fixtures sintéticas e serviços falsos; não inserir dados ou credenciais BMITAG em testes automatizados."
         ],
         "steps": [
