@@ -4,6 +4,8 @@ import { db } from "@/lib/db";
 import { useSensitiveAccess } from "@/hooks/useSensitiveAccess";
 import { AcessoPortalDialog } from "@/components/equipamentos/AcessoPortalDialog";
 import { PortalClientePanel } from "@/components/equipamentos/PortalClientePanel";
+import { ProrrogarPrazoDialog } from "@/components/equipamentos/ProrrogarPrazoDialog";
+import { ehErroPrazoVencido } from "@/lib/orcamento-prazo";
 import {
   SENSITIVE_PERMISSIONS,
   type DecisaoOrcamentoInfo,
@@ -71,6 +73,7 @@ export function PortalClienteProvider({ equipamento, sinalPortal, children }: Pr
   const [consultado, setConsultado] = useState<number | null>(null);
   const [painelAberto, setPainelAberto] = useState(false);
   const [acessoAberto, setAcessoAberto] = useState(false);
+  const [prorrogarAberto, setProrrogarAberto] = useState(false);
   const [contatosVersao, setContatosVersao] = useState(0);
   const equipamentoId = equipamento.id;
   // Troca rápida de equipamento: só a consulta do equipamento atual pode atualizar o estado.
@@ -105,6 +108,7 @@ export function PortalClienteProvider({ equipamento, sinalPortal, children }: Pr
     setInfo(null);
     setPainelAberto(false);
     setAcessoAberto(false);
+    setProrrogarAberto(false);
   }, [equipamentoId]);
 
   const executar = useCallback(
@@ -141,10 +145,19 @@ export function PortalClienteProvider({ equipamento, sinalPortal, children }: Pr
       "Publicar orçamento no portal",
       "Confirme o acesso para publicar o orçamento atual no Portal do Cliente. Se ele mudou, a versão anterior deixa de aceitar respostas.",
       async () => {
-        const publicado = await db.publicarOrcamentoPortal(equipamentoId);
-        toast.success(publicado.nova
-          ? `Versão ${publicado.versao} publicada no portal.`
-          : `A versão ${publicado.versao} já estava publicada com este conteúdo.`);
+        try {
+          const publicado = await db.publicarOrcamentoPortal(equipamentoId);
+          toast.success(publicado.nova
+            ? `Versão ${publicado.versao} publicada no portal.`
+            : `A versão ${publicado.versao} já estava publicada com este conteúdo.`);
+        } catch (cause) {
+          // Prazo vencido tem saída própria: o diálogo prorroga e publica. Sem erro solto na tela.
+          if (typeof cause === "string" && ehErroPrazoVencido(cause)) {
+            setProrrogarAberto(true);
+            return;
+          }
+          throw cause;
+        }
       },
     );
   }, [equipamentoId, executar]);
@@ -189,6 +202,14 @@ export function PortalClienteProvider({ equipamento, sinalPortal, children }: Pr
     <PortalClienteContext.Provider value={valor}>
       {children}
       <PortalClientePanel open={painelAberto} onOpenChange={setPainelAberto} />
+      {equipamentoId ? (
+        <ProrrogarPrazoDialog
+          open={prorrogarAberto}
+          onOpenChange={setProrrogarAberto}
+          equipamentoId={equipamentoId}
+          onConcluido={carregar}
+        />
+      ) : null}
       {equipamento.cliente_id ? (
         <AcessoPortalDialog
           open={acessoAberto}
