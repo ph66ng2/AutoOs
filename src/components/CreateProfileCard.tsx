@@ -3,7 +3,6 @@ import {
   ArrowLeft,
   ArrowRight,
   Check,
-  CheckCircle2,
   KeyRound,
   UserPlus,
 } from "lucide-react";
@@ -20,25 +19,25 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { ProfilePermissions } from "@/components/ProfilePermissions";
+import { AccessCodeCard } from "@/components/perfil/AccessCodeCard";
 import { mensagemVisivelAoOperador } from "@/lib/operator-errors";
 import { PROFILE_PRESETS, PERMISSION_DETAILS } from "@/lib/profile-presets";
 import { SensitiveAccessService } from "@/lib/sensitive-access";
-import type { SecurityProfile, SensitivePermission } from "@/types";
+import type { CodigoPrimeiroAcesso, SecurityProfile, SensitivePermission } from "@/types";
 
 type Props = { profiles: SecurityProfile[]; onCreated: () => Promise<void> };
-const steps = ["Pessoa e função", "Acesso e PIN", "Revisão"];
+const steps = ["Pessoa e função", "Liberações", "Revisão"];
 
 export function CreateProfileCard({ profiles, onCreated }: Props) {
   const [name, setName] = useState("");
   const [role, setRole] = useState("ATENDENTE");
   const [permissions, setPermissions] = useState<SensitivePermission[]>([]);
-  const [pin, setPin] = useState("");
-  const [confirmPin, setConfirmPin] = useState("");
   const [step, setStep] = useState(0);
+  const [adminPin, setAdminPin] = useState("");
   const [busy, setBusy] = useState(false);
   const [submitted, setSubmitted] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [createdName, setCreatedName] = useState<string | null>(null);
+  const [created, setCreated] = useState<CodigoPrimeiroAcesso | null>(null);
   const inFlight = useRef(false);
   const heading = useRef<HTMLHeadingElement>(null);
   const trimmedName = name.trim();
@@ -54,10 +53,10 @@ export function CreateProfileCard({ profiles, onCreated }: Props) {
       : duplicate
         ? "Já existe um perfil com este nome. Escolha outro nome."
         : null;
-  const pinError = !/^\d{4,8}$/.test(pin)
-    ? "Use de 4 a 8 dígitos numéricos."
+
+  const adminPinError = !/^\d{4,8}$/.test(adminPin)
+    ? "Informe seu PIN de administrador (4 a 8 dígitos)."
     : null;
-  const confirmError = confirmPin !== pin ? "Os PINs não conferem." : null;
 
   function goTo(next: number) {
     setStep(next);
@@ -67,32 +66,30 @@ export function CreateProfileCard({ profiles, onCreated }: Props) {
   }
   function continueStep() {
     setSubmitted(true);
-    if ((step === 0 && nameError) || (step === 1 && (pinError || confirmError)))
-      return;
+    if (step === 0 && nameError) return;
     goTo(step + 1);
   }
   function reset() {
-    setCreatedName(null);
+    setCreated(null);
     setName("");
     setRole("ATENDENTE");
     setPermissions([]);
-    setPin("");
-    setConfirmPin("");
+    setAdminPin("");
     goTo(0);
   }
   async function createProfile() {
-    if (nameError || pinError || confirmError || inFlight.current) return;
+    setSubmitted(true);
+    if (nameError || adminPinError || inFlight.current) return;
     inFlight.current = true;
     setBusy(true);
     setError(null);
     try {
-      await SensitiveAccessService.createProfile(
+      const code = await SensitiveAccessService.createProfileWithCode(
         { nome: trimmedName, role, permissions },
-        pin,
+        adminPin,
       );
-      setCreatedName(trimmedName);
-      setPin("");
-      setConfirmPin("");
+      setCreated(code);
+      setAdminPin("");
       toast.success(`Perfil ${trimmedName} criado com sucesso.`);
       try {
         await onCreated();
@@ -121,24 +118,23 @@ export function CreateProfileCard({ profiles, onCreated }: Props) {
         </CardDescription>
       </CardHeader>
       <CardContent className="p-5 sm:p-6">
-        {createdName ? (
-          <div className="space-y-5 py-5 text-center">
-            <CheckCircle2 className="mx-auto h-12 w-12 text-emerald-600" />
-            <div role="status">
+        {created ? (
+          <div className="mx-auto max-w-sm space-y-5 py-2">
+            <div role="status" className="text-center">
               <h3 className="text-xl font-semibold">
-                Perfil {createdName} criado
+                Perfil {created.nome} criado
               </h3>
-              <p className="mt-2 text-sm text-muted-foreground">
-                Sua sessão continua a mesma. O novo colaborador já pode entrar
-                com o PIN neste computador.
+              <p className="mt-1 text-sm text-muted-foreground">
+                Sua sessão continua a mesma.
               </p>
             </div>
+            <AccessCodeCard code={created} />
             {error && (
               <p role="alert" className="text-sm text-destructive">
                 {error}
               </p>
             )}
-            <Button onClick={reset}>Cadastrar outra pessoa</Button>
+            <Button className="w-full" variant="ghost" onClick={reset}>Cadastrar outra pessoa</Button>
           </div>
         ) : (
           <>
@@ -180,12 +176,12 @@ export function CreateProfileCard({ profiles, onCreated }: Props) {
               {step === 0 && (
                 <>
                   <div className="space-y-2">
-                    <Label htmlFor="profile-name">Nome do colaborador</Label>
+                    <Label htmlFor="profile-name">Nome provisório</Label>
                     <Input
                       id="profile-name"
                       value={name}
                       onChange={(event) => setName(event.target.value)}
-                      placeholder="Ex.: Ivan Santos"
+                      placeholder="Ex.: Recepção 2"
                       maxLength={80}
                       aria-invalid={submitted && !!nameError}
                       aria-describedby={
@@ -194,13 +190,17 @@ export function CreateProfileCard({ profiles, onCreated }: Props) {
                           : undefined
                       }
                     />
-                    {submitted && nameError && (
+                    {submitted && nameError ? (
                       <p
                         id="profile-name-error"
                         role="alert"
                         className="text-sm text-destructive"
                       >
                         {nameError}
+                      </p>
+                    ) : (
+                      <p className="text-xs text-muted-foreground">
+                        A pessoa troca pelo próprio nome no primeiro acesso.
                       </p>
                     )}
                   </div>
@@ -249,59 +249,13 @@ export function CreateProfileCard({ profiles, onCreated }: Props) {
                   />
                   <div className="rounded-xl border bg-muted/30 p-4 text-sm">
                     <p className="flex items-center gap-2 font-medium">
-                      <KeyRound className="h-4 w-4" /> PIN neste computador
+                      <KeyRound className="h-4 w-4" /> Sem PIN definido por você
                     </p>
                     <p className="mt-1 text-muted-foreground">
-                      O perfil é compartilhado pelo banco, mas o PIN é local. Em
-                      outro computador, um administrador precisa configurar o
-                      acesso antes da entrada.
+                      Ao criar, o AutoOS gera um código de primeiro acesso. A
+                      pessoa usa o código e cria o próprio PIN em cada
+                      computador.
                     </p>
-                  </div>
-                  <div className="grid gap-4 sm:grid-cols-2">
-                    <div className="space-y-2">
-                      <Label htmlFor="profile-pin">PIN inicial</Label>
-                      <Input
-                        id="profile-pin"
-                        type="password"
-                        inputMode="numeric"
-                        autoComplete="new-password"
-                        value={pin}
-                        onChange={(event) =>
-                          setPin(
-                            event.target.value.replace(/\D/g, "").slice(0, 8),
-                          )
-                        }
-                        maxLength={8}
-                        aria-invalid={submitted && !!pinError}
-                      />
-                      {submitted && pinError && (
-                        <p role="alert" className="text-sm text-destructive">
-                          {pinError}
-                        </p>
-                      )}
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="profile-pin-confirm">Confirmar PIN</Label>
-                      <Input
-                        id="profile-pin-confirm"
-                        type="password"
-                        inputMode="numeric"
-                        autoComplete="new-password"
-                        value={confirmPin}
-                        onChange={(event) =>
-                          setConfirmPin(
-                            event.target.value.replace(/\D/g, "").slice(0, 8),
-                          )
-                        }
-                        maxLength={8}
-                        aria-invalid={submitted && !!confirmError}
-                      />
-                      {submitted && confirmError && (
-                        <p role="alert" className="text-sm text-destructive">
-                          {confirmError}
-                        </p>
-                      )}
-                    </div>
                   </div>
                 </>
               )}
@@ -343,9 +297,29 @@ export function CreateProfileCard({ profiles, onCreated }: Props) {
                     )}
                   </div>
                   <p className="border-t pt-4 text-sm text-muted-foreground">
-                    PIN de {pin.length} dígitos configurado neste computador.
-                    Sua sessão não será trocada.
+                    Ao criar, você recebe o código de primeiro acesso para
+                    passar à pessoa. Sua sessão não será trocada.
                   </p>
+                  <div className="space-y-2 border-t pt-4">
+                    <Label htmlFor="profile-admin-pin">Seu PIN de administrador</Label>
+                    <Input
+                      id="profile-admin-pin"
+                      type="password"
+                      inputMode="numeric"
+                      autoComplete="current-password"
+                      value={adminPin}
+                      onChange={(event) =>
+                        setAdminPin(event.target.value.replace(/\D/g, "").slice(0, 8))
+                      }
+                      maxLength={8}
+                      aria-invalid={submitted && !!adminPinError}
+                    />
+                    {submitted && adminPinError && (
+                      <p role="alert" className="text-sm text-destructive">
+                        {adminPinError}
+                      </p>
+                    )}
+                  </div>
                 </div>
               )}
               {error && (
@@ -375,7 +349,7 @@ export function CreateProfileCard({ profiles, onCreated }: Props) {
                     {busy
                       ? "Criando..."
                       : step === 2
-                        ? "Criar perfil"
+                        ? "Criar e gerar código"
                         : "Continuar"}
                     {step < 2 && <ArrowRight className="ml-2 h-4 w-4" />}
                   </Button>

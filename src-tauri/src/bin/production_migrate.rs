@@ -8,8 +8,8 @@ use url::Url;
 
 static MIGRATOR: Migrator = sqlx::migrate!("./migrations");
 
-const REQUIRED_PROMOTION_MIGRATIONS: [i64; 14] = [27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40];
-const EXPECTED_MIGRATION_COUNT: usize = 40;
+const REQUIRED_PROMOTION_MIGRATIONS: [i64; 15] = [27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41];
+const EXPECTED_MIGRATION_COUNT: usize = 41;
 const LAST_REQUIRED_APPLIED_MIGRATION: i64 = 28;
 
 fn required_env(name: &str) -> Result<String> {
@@ -426,6 +426,28 @@ async fn verify_promoted_schema(pool: &PgPool) -> Result<()> {
         "estruturas da migration SQLx 0040 (orçamento de insumos) não foram encontradas"
     );
 
+    // 0041: personalização do perfil, tour e códigos de primeiro acesso (um aberto por perfil, RLS ligado).
+    let perfil_primeiro_acesso_schema_exists: bool = sqlx::query_scalar(
+        "SELECT (SELECT count(*) FROM information_schema.columns
+                  WHERE table_schema = 'public' AND table_name = 'security_profiles'
+                    AND column_name IN ('avatar_icone', 'avatar_cor', 'tema',
+                                        'onboarding_concluido_em', 'tour_permissoes_vistas')) = 5
+             AND (SELECT count(*) FROM information_schema.columns
+                   WHERE table_schema = 'public' AND table_name = 'codigos_primeiro_acesso'
+                     AND column_name IN ('codigo_hash', 'expira_em', 'usado_em', 'revogado_em', 'tentativas')) = 5
+             AND to_regclass('public.ux_codigos_primeiro_acesso_um_aberto') IS NOT NULL
+             AND COALESCE((SELECT relrowsecurity FROM pg_class
+                            WHERE relnamespace = 'public'::regnamespace
+                              AND relname = 'codigos_primeiro_acesso'), false)",
+    )
+    .fetch_one(pool)
+    .await
+    .context("não foi possível confirmar as estruturas do primeiro acesso por código")?;
+    ensure!(
+        perfil_primeiro_acesso_schema_exists,
+        "estruturas da migration SQLx 0041 (perfil e códigos de primeiro acesso) não foram encontradas"
+    );
+
     let applied_count: i64 =
         sqlx::query_scalar("SELECT count(*) FROM public._sqlx_migrations WHERE success = true")
             .fetch_one(pool)
@@ -448,7 +470,7 @@ async fn required_promotion_migrations_already_applied(pool: &PgPool) -> Result<
     .bind(REQUIRED_PROMOTION_MIGRATIONS.as_slice())
     .fetch_one(pool)
     .await
-    .context("não foi possível consultar o status inicial das migrations 0027–0040")?;
+    .context("não foi possível consultar o status inicial das migrations 0027–0041")?;
     Ok(applied_count == REQUIRED_PROMOTION_MIGRATIONS.len() as i64)
 }
 

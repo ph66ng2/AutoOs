@@ -11,8 +11,10 @@ const screens = [
   ["03-equipamentos.png", "Equipamentos"],
   ["04-atendimento-os.png", "Atendimento / OS (detalhe do equipamento)"],
   ["05-insumos-estoque.png", "Insumos / estoque"],
-  ["06-equipe-acessos.png", "Equipe e acessos (Perfil)"],
+  ["06-equipe-acessos.png", "Perfil › Equipe"],
   ["07-portal-config.png", "Portal do Cliente (Configurações → Integrações)"],
+  ["08-selecao-perfil.png", "Seleção de perfil (entrada)"],
+  ["09-perfil-visao-geral.png", "Perfil › Visão geral"],
 ];
 
 const dir = resolve("e2e/ui-screenshots");

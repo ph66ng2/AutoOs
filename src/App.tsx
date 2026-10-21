@@ -20,6 +20,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { BrowserRouter, Routes, Route, useLocation, useNavigate } from "react-router-dom";
 import { Toaster } from "sonner";
+import { useTheme } from "next-themes";
 import { Button } from "@/components/ui/button";
 import { BootSplash } from "@/components/BootSplash";
 import { DatabaseConfigDialog } from "@/components/DatabaseConfigDialog";
@@ -49,7 +50,7 @@ import Balcao from "@/pages/Balcao";
 const MIN_BOOT_SPLASH_MS = 1_100;
 
 function AppContent() {
-  const { loading, bootProgress, status, pinPromptDismissed, openProfileSelector, refreshStatus } = useSensitiveAccess();
+  const { loading, bootProgress, status, pinPromptDismissed, openProfileSelector, refreshStatus, firstAccessOpen } = useSensitiveAccess();
   const [appMode, setCurrentAppMode] = useState<AppMode | null>(() => getAppMode());
   const [splashVisible, setSplashVisible] = useState(true);
   const [minSplashElapsed, setMinSplashElapsed] = useState(false);
@@ -99,19 +100,19 @@ function AppContent() {
       {showEntryGate ? (
         <SessionPinGate
           onEnter={() => void openProfileSelector({
-            title: "Selecionar perfil da sessão",
+            title: "Quem está usando o AutoOS?",
             description: "Escolha o perfil e informe o PIN. Sem o PIN, o atendimento continua bloqueado.",
           })}
         />
       ) : (
       <BrowserRouter>
         <AppModeChoice
-          visible={!loading && sessionReady && appMode === null}
+          visible={!loading && sessionReady && appMode === null && !firstAccessOpen}
           onSelect={setCurrentAppMode}
         />
         <AppModeRedirect mode={appMode} ready={!loading && sessionReady} />
         <ReleaseHighlightsDialog
-          enabled={!loading && !splashVisible && sessionReady && appMode !== null}
+          enabled={!loading && !splashVisible && sessionReady && appMode !== null && !firstAccessOpen}
         />
         <Routes>
           <Route element={<Layout />}>
@@ -199,6 +200,8 @@ function AppModeRedirect({ mode, ready }: { mode: AppMode | null; ready: boolean
 
 function App() {
   const [dbReady, setDbReady] = useState<boolean | null>(null);
+  const { resolvedTheme } = useTheme();
+  const toastTheme = resolvedTheme === "dark" ? "dark" : "light";
 
   useEffect(() => {
     void (async () => {
@@ -222,7 +225,7 @@ function App() {
   if (!dbReady) {
     return (
       <>
-        <Toaster position="top-right" offset={{ top: 64, right: 24 }} visibleToasts={3} richColors closeButton duration={5000} />
+        <Toaster theme={toastTheme} position="top-right" offset={{ top: 64, right: 24 }} visibleToasts={3} richColors closeButton duration={5000} />
         <ErrorBoundary>
           <DatabaseConfigDialog onConfigured={() => setDbReady(true)} />
         </ErrorBoundary>
@@ -232,7 +235,7 @@ function App() {
 
   return (
     <>
-      <Toaster position="top-right" offset={{ top: 64, right: 24 }} visibleToasts={3} richColors closeButton duration={5000} />
+      <Toaster theme={toastTheme} position="top-right" offset={{ top: 64, right: 24 }} visibleToasts={3} richColors closeButton duration={5000} />
       <ErrorBoundary>
         <AppContent />
       </ErrorBoundary>

@@ -2137,8 +2137,8 @@ export default function Equipamentos() {
         {eventos.map((ev, idx) => (
           <div key={`${ev.data}-${ev.status}-${idx}`} className="flex items-start gap-3 pb-4">
             <div className="flex flex-col items-center">
-              <div className={`w-3 h-3 rounded-full mt-1 ${idx === eventos.length - 1 ? "bg-blue-500 ring-2 ring-blue-200" : "bg-gray-300"}`} />
-              {idx < eventos.length - 1 && <div className="w-0.5 flex-1 bg-gray-200 mt-1 min-h-[16px]" />}
+              <div className={`w-3 h-3 rounded-full mt-1 ${idx === eventos.length - 1 ? "bg-blue-500 ring-2 ring-blue-200" : "bg-muted-foreground/40"}`} />
+              {idx < eventos.length - 1 && <div className="w-0.5 flex-1 bg-border mt-1 min-h-[16px]" />}
             </div>
             <div className="flex-1">
               <div className="flex flex-wrap items-center gap-2">

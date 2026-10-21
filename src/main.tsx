@@ -15,17 +15,21 @@ import App from "./App";
 import { BootUiProvider } from "@/components/BootUi";
 import { SensitiveAccessProvider } from "@/hooks/useSensitiveAccess";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
+import { ThemeProvider } from "next-themes";
 import "./index.css";
 
 /** Renderiza o app com StrictMode para detectar problemas em desenvolvimento */
 ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
     <ErrorBoundary>
-      <BootUiProvider>
-        <SensitiveAccessProvider>
-          <App />
-        </SensitiveAccessProvider>
-      </BootUiProvider>
+      {/* O tema é do perfil (salvo no banco); o último aplicado fica guardado para a próxima abertura. */}
+      <ThemeProvider attribute="class" defaultTheme="light" enableSystem={false} storageKey="autoos-theme" disableTransitionOnChange>
+        <BootUiProvider>
+          <SensitiveAccessProvider>
+            <App />
+          </SensitiveAccessProvider>
+        </BootUiProvider>
+      </ThemeProvider>
     </ErrorBoundary>
   </React.StrictMode>,
 );

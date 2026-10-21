@@ -36,7 +36,8 @@ describe("confirmação de sessão", () => {
     const required = { ...admin, id: 3, nome: "Caixa", role: "CUSTOM", pin_required: true, pin_configured: true, is_default: false };
     const unknown = { ...admin, id: 4, nome: "Antigo", role: "CUSTOM", pin_required: undefined, pin_configured: false, is_default: false };
     const { rerender } = render(<ProfileSessionDialog {...defaults} mode="selector" profiles={[required]} selectedProfileId="3" selectedProfile={required} activeProfileId={1} />);
-    expect(screen.getAllByText("PIN configurado neste PC").length).toBeGreaterThan(0);
+    // Perfil com PIN local pede o PIN e nunca se anuncia como "não exige PIN".
+    expect(screen.getByLabelText("PIN do perfil")).toBeInTheDocument();
     expect(screen.queryByText("Não exige PIN")).not.toBeInTheDocument();
     rerender(<ProfileSessionDialog {...defaults} mode="selector" profiles={[unknown]} selectedProfileId="4" selectedProfile={unknown} activeProfileId={1} />);
     expect(screen.queryByText(/não exige PIN/i)).not.toBeInTheDocument();
@@ -58,5 +59,50 @@ describe("confirmação de sessão", () => {
     render(<ProfileSessionDialog {...defaults} mode="selector" profiles={[current]} selectedProfile={current} error="O banco atingiu o limite de acessos ao mesmo tempo." />);
     expect(screen.getByText(/O banco atingiu o limite/)).toBeInTheDocument();
     expect(screen.queryByText(/Você já está neste perfil/)).not.toBeInTheDocument();
+  });
+});
+
+describe("recuperação de PIN com código do administrador", () => {
+  it("perfil que já tem PIN neste computador oferece o código do ADM e abre em modo recuperação", async () => {
+    const onFirstAccess = vi.fn();
+    const withPin = { ...admin, id: 4, nome: "Ivan", role: "TECNICO", pin_configured: true, pin_required: true, is_default: false };
+    render(<ProfileSessionDialog {...defaults} mode="selector" profiles={[withPin]} selectedProfileId="4" selectedProfile={withPin} activeProfileId={9} onFirstAccess={onFirstAccess} />);
+    screen.getByRole("button", { name: /tenho um código do administrador/i }).click();
+    expect(onFirstAccess).toHaveBeenCalledWith(4, true);
+  });
+
+  it("não oferece o código de recuperação a quem ainda não tem PIN aqui (é o primeiro acesso)", () => {
+    const pending = { ...admin, id: 5, role: "ATENDENTE", pin_required: true, pin_configured: false, is_default: false };
+    render(<ProfileSessionDialog {...defaults} profiles={[pending]} selectedProfileId="5" selectedProfile={pending} onFirstAccess={vi.fn()} />);
+    expect(screen.queryByRole("button", { name: /tenho um código do administrador/i })).not.toBeInTheDocument();
+  });
+});
+
+describe("primeiro acesso neste computador", () => {
+  it("oferece o primeiro acesso com código para perfil sem PIN local", async () => {
+    const onFirstAccess = vi.fn();
+    const pending = { ...admin, id: 5, nome: "Recepção 2", role: "ATENDENTE", pin_required: true, is_default: false, onboarding_pendente: true };
+    render(<ProfileSessionDialog {...defaults} profiles={[admin, pending]} selectedProfileId="5" selectedProfile={pending} onFirstAccess={onFirstAccess} />);
+    expect(screen.getByText("Primeiro acesso")).toBeInTheDocument();
+    screen.getByRole("button", { name: "Fazer primeiro acesso" }).click();
+    expect(onFirstAccess).toHaveBeenCalledWith(5);
+  });
+
+  it("perfil já montado em outro computador pede só a ativação aqui, sem 'primeiro acesso'", () => {
+    const onFirstAccess = vi.fn();
+    const other = { ...admin, id: 6, nome: "Juliana", role: "ATENDENTE", pin_required: true, pin_configured: false, is_default: false, onboarding_pendente: false };
+    render(<ProfileSessionDialog {...defaults} profiles={[admin, other]} selectedProfileId="6" selectedProfile={other} onFirstAccess={onFirstAccess} />);
+    expect(screen.queryByText("Primeiro acesso")).not.toBeInTheDocument();
+    expect(screen.getByText("Ativar neste computador", { selector: "span" })).toBeInTheDocument();
+    screen.getByRole("button", { name: "Ativar neste computador" }).click();
+    expect(onFirstAccess).toHaveBeenCalledWith(6);
+  });
+
+  it("nomes longos são truncados dentro do cartão do perfil e continuam legíveis pelo title", () => {
+    const longo = { ...admin, id: 7, nome: "Maria Aparecida de Souza Albuquerque Filho", role: "ATENDENTE", is_default: false, pin_configured: true };
+    render(<ProfileSessionDialog {...defaults} profiles={[longo]} selectedProfileId="7" selectedProfile={longo} />);
+    const nome = screen.getByTitle(longo.nome);
+    expect(nome).toHaveClass("truncate", "w-full");
+    expect(nome.parentElement).toHaveClass("min-w-0", "w-full");
   });
 });
