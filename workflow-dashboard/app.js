@@ -43,7 +43,7 @@ const PROJECTS = [
     sourceLabel: "feature / workflow.json",
     staticModeLabel: "feature / workflow.json",
     expectedBaseBranch: "origin/feature",
-    expectedPromotionTarget: "origin/master",
+    expectedTargetBranch: "origin/feature",
     repository: "ph66ng2/AutoOs",
     supportsTracks: true,
     supportsStatusRequests: true,
@@ -57,7 +57,7 @@ const PROJECTS = [
     sourceLabel: "AutoBO / workflow.json privado",
     staticModeLabel: "Espelho publicado",
     expectedBaseBranch: "origin/main",
-    expectedPromotionTarget: "origin/main",
+    expectedTargetBranch: "origin/main",
     repository: null,
     supportsTracks: false,
     supportsStatusRequests: false,
@@ -316,7 +316,8 @@ function validateWorkflow() {
   const project = currentProject();
   const issues = [];
   if (state.workflow?.baseBranch !== project.expectedBaseBranch) issues.push(`baseBranch diferente de ${project.expectedBaseBranch}`);
-  if (state.workflow?.promotionTarget !== project.expectedPromotionTarget) issues.push(`promotionTarget diferente de ${project.expectedPromotionTarget}`);
+  const targetBranch = state.workflow?.targetBranch ?? state.workflow?.promotionTarget;
+  if (targetBranch !== project.expectedTargetBranch) issues.push(`targetBranch diferente de ${project.expectedTargetBranch}`);
   for (const ticket of allTickets()) {
     if (!ticket.testInstructions) issues.push(`${ticket.id} sem testInstructions`);
   }

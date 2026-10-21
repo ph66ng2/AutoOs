@@ -25,7 +25,7 @@ async function makeFixture() {
   await mkdir(paths.workflowDir, { recursive: true });
   await writeFile(paths.workflowFile, JSON.stringify({
     baseBranch: "origin/feature",
-    promotionTarget: "origin/master",
+    targetBranch: "origin/feature",
     tickets: [
       { id: "AO-ROOT-001", status: "merged", blockedBy: [] },
       { id: "AO-CHILD-001", status: "ready", blockedBy: ["AO-ROOT-001"] },

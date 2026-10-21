@@ -200,8 +200,8 @@ npm run bundle:prep:windows:sign # Injects certThumbprint from env into tauri.co
 - O catálogo local fica em `.workflow/workflow.json`; ele é a fonte de verdade para tickets, estado e dependências (`blockedBy`).
 - Antes de implementar uma feature, transforme-a em tickets autocontidos com contexto, escopo, critérios de aceite, testes e dependências explícitas. Não infira dependências pelos títulos.
 - Só implemente tickets que estejam liberados pelo comando `.workflow/scripts/waves.sh plan .workflow/workflow.json`.
-- Cada ticket deve usar uma worktree e branch próprias, sempre criadas exclusivamente a partir de `origin/feature` com `.workflow/scripts/waves.sh spawn .workflow/workflow.json <ID>`.
-- `master` é a linha de produção e só recebe mudanças promovidas por decisão humana após validação em `feature`; agentes não criam worktrees a partir dela nem fazem merge automático para ela.
+- Cada ticket deve usar uma worktree e branch próprias, criadas com `.workflow/scripts/waves.sh spawn .workflow/workflow.json <ID>` a partir da base do ticket: `origin/master` para tickets do produto interno (`"baseBranch": "origin/master"`) e `origin/feature` para os demais. O PR vai para a mesma branch de onde o ticket partiu.
+- `master` é a linha de produção BMITAG e é integrada na `feature` toda semana; `feature` não é mesclada na `master` antes da virada para o SaaS. Agentes não fazem merge para nenhuma das duas.
 - Um agente implementa somente o ticket que recebeu; não inicia tickets bloqueados, não altera tickets vizinhos e não faz merge.
 - Antes de entregar, execute os checks relevantes definidos neste documento. O resultado deve ficar pronto para revisão humana; somente um humano faz merge.
 - Depois de um merge, atualize o ticket para `merged` e recalcule as ondas antes de iniciar dependentes.

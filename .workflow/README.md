@@ -4,7 +4,7 @@ Este diretório organiza mudanças em tarefas pequenas, com dependências explí
 
 **Foco atual:** uma OS real da BMITAG chegar ao [Fiscal PROD](https://github.com/ph66ng2/AutoPlatform/blob/main/.workflow/FISCAL_PROD_ROADMAP.md). AutoOS mantém a operação, produz `FatoComercial` v2 e oferece fila, revisão, retorno, documentos e histórico. AutoPlatform implementa contrato, ingestão e emissão. AutoBO é fonte de código e regras. O campo `roadmap` identifica tickets ativos e adiados; prioridade não altera status.
 
-**Próximo ticket AutoOS: `AO-SUITE-001`.** Os roadmaps iniciais foram mesclados nos PRs [AutoOS #102](https://github.com/ph66ng2/AutoOs/pull/102), [AutoPlatform #10](https://github.com/ph66ng2/AutoPlatform/pull/10) e [AutoBO #9](https://github.com/ph66ng2/AutoBO/pull/9). `AO-WF-RECONCILE-001` foi concluído pelo [PR #103](https://github.com/ph66ng2/AutoOs/pull/103), mesclado na `feature`. O [PR #101](https://github.com/ph66ng2/AutoOs/pull/101) entregou Insumos Online e agora está registrado como `AO-INS-ONLINE-001`; não é um pré-requisito para retomar a trilha Fiscal. A [reconciliação de PRs e tickets](../docs/WORKFLOW_RECONCILIATION.md) mostra os demais vínculos e lacunas.
+**Próximo ticket AutoOS: `AO-SUITE-002`, na linha `master`.** `AO-SUITE-001` foi concluído e o [ADR 0001](../docs/adr/0001-ownership-core-autoos-fiscal.md) foi aceito em 20/10/2026. Os roadmaps iniciais foram mesclados nos PRs [AutoOS #102](https://github.com/ph66ng2/AutoOs/pull/102), [AutoPlatform #10](https://github.com/ph66ng2/AutoPlatform/pull/10) e [AutoBO #9](https://github.com/ph66ng2/AutoBO/pull/9). `AO-WF-RECONCILE-001` foi concluído pelo [PR #103](https://github.com/ph66ng2/AutoOs/pull/103), mesclado na `feature`. O [PR #101](https://github.com/ph66ng2/AutoOs/pull/101) entregou Insumos Online e agora está registrado como `AO-INS-ONLINE-001`; não é um pré-requisito para retomar a trilha Fiscal. A [reconciliação de PRs e tickets](../docs/WORKFLOW_RECONCILIATION.md) mostra os demais vínculos e lacunas.
 
 Em paralelo ao ownership, `AP-CONTRACT-002` versiona o fato no AutoPlatform e a contabilidade valida `AP-FISC-ACCOUNTING-EXT-001`. `AO-SUITE-002` permanece `blocked` até o contrato externo ser aprovado. `AO-FISC-GATE-001` permanece `blocked` até o gate backend externo ser confirmado. `externalPrerequisites` é informativo: o planejador local ainda não aplica bloqueadores de outros repositórios. PowerSync fica reservado ao futuro Mobile Field; desktop AutoOS segue Online.
 
@@ -12,9 +12,9 @@ Em paralelo ao ownership, `AP-CONTRACT-002` versiona o fato no AutoPlatform e a 
 
 1. Primeiro, transforme uma feature em tickets no `workflow.json`.
 2. Depois, implemente somente tickets que aparecem como `PRONTA`.
-3. Cada ticket usa uma worktree e uma branch próprias, criadas exclusivamente a partir de `origin/feature`.
+3. Cada ticket usa uma worktree e uma branch próprias, criadas pelo `spawn` a partir da base do ticket: `origin/master` para o produto interno BMITAG (tickets com `"baseBranch": "origin/master"`, hoje `AO-SUITE-*` e `AO-FISC-*`) e `origin/feature` para o SaaS (padrão).
 4. O agente executa testes e deixa um PR pronto; o merge é sempre humano.
-5. Somente após validação e promoção humana as mudanças seguem de `feature` para `master`, que representa a linha usada em produção.
+5. O PR vai para a mesma branch de onde o ticket partiu. `master` é integrada na `feature` toda semana; `feature` não é mesclada na `master` antes da virada para o SaaS.
 6. Após o merge, mude o `status` do ticket para `merged` e rode o plano novamente.
 
 ## Comandos
@@ -47,7 +47,9 @@ Em staging, nunca use dados reais ou credenciais internas. Em bancos com dados o
 
 O campo deve usar as chaves `prerequisites`, `steps`, `expectedResultAndEvidence`, `dataImpact`, `cleanupAndRollback` e `stagingRestrictions`. O planejador valida esse contrato antes de listar ou criar qualquer worktree.
 
-`baseBranch` deve permanecer `origin/feature` e `promotionTarget` deve permanecer `origin/master`. O script recusa outra configuração; `master` só recebe mudanças por promoção humana depois dos testes e da revisão.
+No topo do arquivo, `baseBranch` e `targetBranch` são `origin/feature` (padrão SaaS) e `internalBaseBranch` é `origin/master`; `promotionTarget` não existe mais. Um ticket pode declarar `baseBranch` somente como `origin/feature` ou `origin/master`; o script recusa outro valor. O `plan` mostra a base de cada ticket `PRONTA`.
+
+A `master` não tem `.workflow/` nem `scripts/workflow-report.mjs`. Em ticket da `master`, rode o registro de progresso a partir do checkout da `feature`, de dentro da worktree do ticket, com o comando que o `spawn` imprime (`node <checkout-feature>/scripts/workflow-report.mjs <evento> <ID> "resumo"`); ele grava o branch e o commit da worktree do ticket.
 
 ## Registro de progresso
 

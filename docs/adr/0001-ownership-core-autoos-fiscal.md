@@ -1,6 +1,6 @@
 # ADR 0001 — Ownership do Core AutoOS no fluxo Fiscal PROD
 
-**Status:** proposta para revisão humana
+**Status:** aceito pelo responsável do produto em 20/10/2026 (proposta de 30/09/2026)
 **Data:** 2026-09-30
 **Escopo:** produto interno AutoOS e piloto Fiscal PROD BMITAG.
 
@@ -61,6 +61,13 @@ Os IDs abaixo são ilustrativos e não definem a serialização do contrato v2. 
 | Mista | `company_id=00000000-0000-4000-8000-0000000000a1`, `origin=autoos`, `os_id=OS-4203`, `os_version=1` | `service=SRV-31`, 1 × R$ 180,00; `product=PRD-88`, 2 × R$ 65,00 | R$ 310,00 | Nenhum. O fato não repete nem cria a baixa operacional das duas peças. |
 
 Em todos os cenários, alterar depois o cadastro `SRV-31`, `PRD-88` ou o cliente não muda `os_version=1` nem o conteúdo recebido pelo AutoPlatform. Se uma correção operacional for necessária, ela é feita no AutoOS e resulta em uma nova versão correlacionada à mesma OS.
+
+## Decisões complementares (20/10/2026)
+
+- **Dados tributários:** o AutoPlatform é a autoridade do cadastro tributário e do perfil emissor. Isso resolve a fronteira com o AutoBO deixada em aberto na tabela acima. O AutoBO mantém o código de criação de boletos, que deve passar para o AutoOS por ADR próprio.
+- **Elegibilidade:** a OS gera fato quando entra em `PRONTO`. OS reprovada nunca gera fato, mesmo com custo de verificação.
+- **Total e linhas:** total = `valor_orcamento`. Linhas = serviços aprovados e suas peças pela quantidade e valor aprovados, inclusive peças com baixa pendente por falta de estoque. Se a soma das linhas não bater com `valor_orcamento`, o fato fica bloqueado com motivo claro; não há ajuste silencioso.
+- **Runtime:** a primeira implementação é no produto interno (Tauri, linha `master`). A montagem do fato fica num módulo isolado, com fixtures de entrada/saída reaproveitáveis pela versão SaaS.
 
 ## Consequências
 
