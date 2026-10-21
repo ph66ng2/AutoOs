@@ -98,6 +98,30 @@ async fn main() -> Result<()> {
         .await
         .map_err(|error| anyhow!("failed to save whatsapp config: {}", error))?;
 
+        whatsapp::enviar_whatsapp(WhatsappSendInput {
+            contato: "5511999999999".to_string(),
+            mensagem: "P1 communication integration over controlled HTTP".to_string(),
+        })
+        .await
+        .map_err(|error| anyhow!("failed to send whatsapp message: {}", error))?;
+
+        // Um perfil operacional sem permissões sensíveis pode usar o SMTP já
+        // configurado, mas não pode consultar a configuração do canal.
+        sqlx::query("UPDATE security_profiles SET permissions = $1, atualizado_em = NOW() WHERE id = $2")
+            .bind("[]")
+            .bind(profile_id)
+            .execute(&pool)
+            .await
+            .context("failed to remove smtp configuration permission")?;
+        auth::lock_sensitive_access().await.map_err(|error| anyhow!(error))?;
+        auth::unlock_sensitive_access(PIN.to_string())
+            .await
+            .map_err(|error| anyhow!("failed to unlock operator profile: {}", error))?;
+
+        if smtp::carregar_config_smtp().await.is_ok() {
+            return Err(anyhow!("operator unexpectedly accessed smtp configuration"));
+        }
+
         smtp::enviar_email(EmailSendInput {
             destinatario: "Cliente Integracao".to_string(),
             email: "cliente@test.local".to_string(),
@@ -110,13 +134,6 @@ async fn main() -> Result<()> {
         })
         .await
         .map_err(|error| anyhow!("failed to send smtp email: {}", error))?;
-
-        whatsapp::enviar_whatsapp(WhatsappSendInput {
-            contato: "5511999999999".to_string(),
-            mensagem: "P1 communication integration over controlled HTTP".to_string(),
-        })
-        .await
-        .map_err(|error| anyhow!("failed to send whatsapp message: {}", error))?;
 
         let smtp_result = smtp_handle
             .join()

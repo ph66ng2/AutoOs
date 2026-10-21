@@ -10,7 +10,7 @@ use crate::commands::types::{
     EmailAttachmentInput, EmailSendInput, SmtpConfigInput, SmtpConfigResponse, SmtpConfigStored,
 };
 use crate::commands::auth::{
-    record_security_event, require_permission, PERMISSION_CONFIG_SMTP,
+    record_security_event, require_permission, require_sensitive_access, PERMISSION_CONFIG_SMTP,
 };
 use keyring::Entry;
 use lettre::{
@@ -247,7 +247,7 @@ pub async fn carregar_config_smtp() -> Result<SmtpConfigResponse, String> {
 #[tauri::command]
 #[instrument(skip_all)]
 pub async fn enviar_email(input: EmailSendInput) -> Result<bool, String> {
-    let actor = require_permission(PERMISSION_CONFIG_SMTP)?;
+    let actor = require_sensitive_access()?;
     debug!("Enviando email via SMTP");
 
     let audit_details = format!(
