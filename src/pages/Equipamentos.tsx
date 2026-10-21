@@ -191,7 +191,7 @@ import { toast } from "sonner";
 const AVISO_ATENDIMENTO_PENDENTE = "abrir-atendimento-pendente";
 import { CorrigirDecisaoDialog } from "@/components/equipamentos/CorrigirDecisaoDialog";
 import { EscolhaAjusteOrcamentoDialog } from "@/components/equipamentos/EscolhaAjusteOrcamentoDialog";
-import type { AnaliseAjusteOrcamento, EnvioManualOrcamento, OpcoesAjusteOrcamento, PortalAjusteInfo } from "@/types";
+import type { AnaliseAjusteOrcamento, EnvioManualOrcamento, OpcoesAjusteOrcamento, PortalAjusteInfo, PreparoAcessoPortal } from "@/types";
 import { FormaPagamentoFields } from "@/components/equipamentos/FormaPagamentoFields";
 import { resolveRecipient, type ResolvedRecipient } from "@/lib/recipient-resolver";
 import { mensagemEnvioFalhouComEmailSalvo, saveRecipientAddress } from "@/lib/recipient-persistence";
@@ -1740,7 +1740,7 @@ export default function Equipamentos() {
     if (wa.enviado) {
       success("Equipamentos", "Mensagem aceita pelo provedor de WhatsApp. A entrega não é confirmada neste momento.", "WhatsApp");
     } else if (wa.erro && ehErroPrazoVencido(wa.erro)) {
-      await prorrogarPrazoEEnviar(eq);
+      await prorrogarPrazoEEnviar(eq, envio.preparo);
       return;
     } else if (wa.estado === "INCERTA") {
       warning("Equipamentos", wa.erro || "O provedor não confirmou o envio. Confira antes de tentar de novo.");
@@ -1750,7 +1750,7 @@ export default function Equipamentos() {
     if (envio.avisos.length) warning("Equipamentos", envio.avisos.join("\n"));
   }
 
-  async function prorrogarPrazoEEnviar(eq: Equipamento) {
+  async function prorrogarPrazoEEnviar(eq: Equipamento, preparo?: PreparoAcessoPortal | null) {
     const liberado = await ensureSensitiveAccess({
       title: "Prorrogar prazo e enviar",
       description: "Informe o PIN para prorrogar o prazo de aprovação e reenviar o orçamento ao cliente.",
@@ -1773,6 +1773,7 @@ export default function Equipamentos() {
           "O cliente já respondeu. Prorrogar anula a resposta pendente. Continuar?",
           "Continuar",
         ),
+        { preparo },
       );
       if (r.respostaPendenteRecusada) return;
       if (r.envioManual) setEnvioManual(r.envioManual);

@@ -202,6 +202,20 @@ describe("prorrogarEEnviar", () => {
     expect(r.whatsapp?.enviado).toBe(true);
   });
 
+  it("reaproveita o preparo de uma tentativa anterior e não prepara o acesso de novo", async () => {
+    const p = preparo();
+    mocks.buscarEquipamento.mockResolvedValue({ ...equip, atualizado_em: "t1" });
+    mocks.prorrogarPrazoOrcamento.mockResolvedValue({ prorrogado: true, equipamento: { ...equip, atualizado_em: "t2" } });
+    mocks.publicarOrcamentoPortal.mockResolvedValue({});
+    mocks.buscarVerificacao.mockResolvedValue(verif);
+    mocks.solicitarEnvio.mockResolvedValue(okWpp);
+
+    await prorrogarEEnviar(equip, "2030-01-01", async () => true, { preparo: p });
+
+    expect(mocks.prepararAcessoPortal).not.toHaveBeenCalled();
+    expect(mocks.solicitarEnvio.mock.calls[0][2].senhaPortal).toBe("S3NHA");
+  });
+
   it("resposta pendente confirmada repete com confirmação", async () => {
     mocks.prorrogarPrazoOrcamento
       .mockResolvedValueOnce({ prorrogado: false, respostaPendente: { x: 1 }, equipamento: null })

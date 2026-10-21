@@ -205,6 +205,8 @@ export async function prorrogarEEnviar(
   equip: Equipamento,
   novoPrazo: string,
   confirmarRespostaPendente: () => Promise<boolean>,
+  /** `preparo` de um envio que falhou antes (ex.: prazo vencido): a senha criada nele não pode se perder. */
+  opcoes: { preparo?: PreparoAcessoPortal | null } = {},
 ): Promise<ResultadoProrrogarEEnviar> {
   const avisos: string[] = [];
   const equipId = equip.id!;
@@ -266,7 +268,10 @@ export async function prorrogarEEnviar(
         base = null;
       }
     }
-    const envio = await enviarOrcamentoAoCliente(base ?? equip, verificacao, { reenvioManual: true });
+    const envio = await enviarOrcamentoAoCliente(base ?? equip, verificacao, {
+      reenvioManual: true,
+      ...(opcoes.preparo ? { preparo: opcoes.preparo } : {}),
+    });
     resultado.whatsapp = envio.canais.whatsapp;
     resultado.email = envio.canais.email;
     if (envio.envioManual) resultado.envioManual = envio.envioManual;
