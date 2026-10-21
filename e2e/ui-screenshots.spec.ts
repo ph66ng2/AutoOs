@@ -1,5 +1,6 @@
 import { mkdirSync, readFileSync } from "node:fs";
 import { expect, test } from "@playwright/test";
+import { RELEASE_HIGHLIGHTS_STORAGE_KEY } from "../src/lib/releaseHighlightsKey";
 
 const seed = JSON.parse(readFileSync("e2e/fixtures/ui-screenshot-seed.json", "utf8")) as {
   marker: string;
@@ -8,10 +9,10 @@ const seed = JSON.parse(readFileSync("e2e/fixtures/ui-screenshot-seed.json", "ut
 const outDir = "e2e/ui-screenshots";
 
 test.beforeEach(async ({ page }) => {
-  await page.addInitScript(() => {
+  await page.addInitScript((key) => {
     localStorage.setItem("autoos_app_mode", "standard");
-    localStorage.setItem("autoos:release-highlights:0.5.6:fotos-celular", "seen");
-  });
+    localStorage.setItem(key, "seen");
+  }, RELEASE_HIGHLIGHTS_STORAGE_KEY);
 });
 
 test("captura as telas principais com dados sintéticos", async ({ page }) => {

@@ -18,10 +18,12 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import {
+  RELEASE_HIGHLIGHTS_STORAGE_KEY,
+  RELEASE_HIGHLIGHTS_VERSION,
+} from "@/lib/releaseHighlightsKey";
 
-export const RELEASE_HIGHLIGHTS_VERSION = "0.6.0";
-export const RELEASE_HIGHLIGHTS_STORAGE_KEY =
-  `autoos:release-highlights:${RELEASE_HIGHLIGHTS_VERSION}:portal-insumos-perfil`;
+export { RELEASE_HIGHLIGHTS_STORAGE_KEY, RELEASE_HIGHLIGHTS_VERSION };
 
 const highlights = [
   {

@@ -2,6 +2,7 @@
 import { mkdir } from "node:fs/promises";
 import { chromium, expect } from "@playwright/test";
 import { createServer } from "vite";
+import { RELEASE_HIGHLIGHTS_STORAGE_KEY } from "../src/lib/releaseHighlightsKey.ts";
 
 process.env.VITE_E2E_MOCK = "1";
 process.env.VITE_E2E_TEAM = "1";
@@ -16,10 +17,10 @@ const browser = await chromium.launch({
 const page = await browser.newPage({ reducedMotion: "reduce", viewport: { width: 1440, height: 1000 } });
 const errors = [];
 page.on("pageerror", error => errors.push(error.message));
-await page.addInitScript(() => {
+await page.addInitScript((key) => {
   localStorage.setItem("autoos_app_mode", "standard");
-  localStorage.setItem("autoos:release-highlights:0.6.0:portal-insumos-perfil", "seen");
-});
+  localStorage.setItem(key, "seen");
+}, RELEASE_HIGHLIGHTS_STORAGE_KEY);
 try {
   await page.goto("http://127.0.0.1:1420/perfil");
   const entry = page.getByRole("dialog").filter({ hasText: "Quem está usando o AutoOS?" });
