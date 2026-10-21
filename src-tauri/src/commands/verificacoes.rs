@@ -10,8 +10,9 @@ use crate::commands::types::{
     VERIFICACAO_SELECT,
 };
 use crate::commands::auth::{
-    record_security_event, require_permission, require_active_session_company_id, SecurityProfileSummary,
-    PERMISSION_FINANCIAL_ACTIONS, PERMISSION_MANAGE_STATUS_LINKS,
+    profile_has_permission, record_security_event, require_any_permission, require_active_session_company_id,
+    SecurityProfileSummary, PERMISSION_FINANCIAL_ACTIONS, PERMISSION_MANAGE_STATUS_LINKS,
+    PERMISSION_PREPARE_QUOTES,
 };
 use crate::db::get_pool;
 use crate::commands::orcamento_correcao::{
@@ -58,10 +59,36 @@ fn require_financial_actor_for_verification_write(
     input: &VerificacaoInput,
 ) -> Result<Option<SecurityProfileSummary>, String> {
     if verification_has_sensitive_financial_input(input) {
-        return Ok(Some(require_permission(PERMISSION_FINANCIAL_ACTIONS)?));
+        return Ok(Some(require_any_permission(&[
+            PERMISSION_FINANCIAL_ACTIONS,
+            PERMISSION_PREPARE_QUOTES,
+        ])?));
     }
 
     Ok(None)
+}
+
+/// Status em que o orçamento ainda não foi decidido pelo cliente.
+pub(crate) fn orcamento_em_elaboracao(status: &str) -> bool {
+    matches!(
+        status,
+        "RECEBIDO" | "EM_VERIFICACAO" | "VERIFICADO" | "AGUARDANDO_APROVACAO"
+    )
+}
+
+/// Perfil sem FINANCIAL_ACTIONS (só PREPARE_QUOTES) altera apenas orçamentos em elaboração.
+fn check_prepare_quotes_status(
+    actor: Option<&SecurityProfileSummary>,
+    status: &str,
+) -> Result<(), String> {
+    if let Some(actor) = actor {
+        if !profile_has_permission(actor, PERMISSION_FINANCIAL_ACTIONS)
+            && !orcamento_em_elaboracao(status)
+        {
+            return Err("Este perfil só altera orçamentos ainda não decididos.".into());
+        }
+    }
+    Ok(())
 }
 
 /// Salvar verificação técnica (upsert: cria ou atualiza).
@@ -87,6 +114,7 @@ pub async fn salvar_verificacao_tecnica(mut input: VerificacaoInput) -> Result<V
     let status: Option<String> = sqlx::query_scalar("SELECT status FROM equipamentos WHERE id = $1 AND empresa_id = $2 FOR UPDATE")
         .bind(input.equipamento_id).bind(empresa_id).fetch_optional(&mut *tx).await.map_err(super::operator_errors::mapear_erro_sql)?;
     let status = status.ok_or("Equipamento não encontrado na empresa ativa.")?;
+    check_prepare_quotes_status(financial_actor.as_ref(), &status)?;
     if matches!(status.as_str(), "APROVADO" | "EM_MANUTENCAO" | "AGUARDANDO_PECA" | "PRONTO" | "ENTREGUE") {
         return Err("Use Alterar Orçamento para modificar serviços de uma OS já aprovada.".to_string());
     }
@@ -338,7 +366,11 @@ fn mensagem_valor_atualizado(valor: Option<f64>) -> String {
 }
 
 fn pode_publicar_no_portal(actor: &SecurityProfileSummary) -> bool {
-    actor.role == "ADMIN" || actor.permissions.iter().any(|p| p == PERMISSION_MANAGE_STATUS_LINKS)
+    actor.role == "ADMIN"
+        || actor
+            .permissions
+            .iter()
+            .any(|p| p == PERMISSION_MANAGE_STATUS_LINKS || p == PERMISSION_PREPARE_QUOTES)
 }
 
 /// Publica a versão nova logo depois do ajuste já gravado. Nunca falha o ajuste: se não der,
@@ -425,7 +457,7 @@ pub async fn atualizar_servicos_verificacao(
     opcoes: Option<OpcoesAjusteOrcamento>,
 ) -> Result<ResultadoAjusteOrcamento, String> {
     let opcoes = opcoes.unwrap_or_default();
-    let actor = require_permission(PERMISSION_FINANCIAL_ACTIONS)?;
+    let actor = require_any_permission(&[PERMISSION_FINANCIAL_ACTIONS, PERMISSION_PREPARE_QUOTES])?;
     let (payment_code, payment_detail) = normalize_forma_pagamento(
         forma_pagamento_codigo.as_ref(),
         forma_pagamento_detalhe.as_deref(),
@@ -450,6 +482,7 @@ pub async fn atualizar_servicos_verificacao(
     let Some((resolved_empresa_id, status, versao_valida, valor_equipamento)) = equipment else {
         return Err("Equipamento não encontrado.".to_string());
     };
+    check_prepare_quotes_status(Some(&actor), &status)?;
     if resolved_empresa_id != Some(active_empresa_id) {
         return Err("O equipamento não pertence à empresa ativa.".to_string());
     }
@@ -750,8 +783,37 @@ mod tests {
         perfil.permissions.push(PERMISSION_MANAGE_STATUS_LINKS.to_string());
         assert!(pode_publicar_no_portal(&perfil));
         perfil.permissions.clear();
+        perfil.permissions.push(PERMISSION_PREPARE_QUOTES.to_string());
+        assert!(pode_publicar_no_portal(&perfil));
+        perfil.permissions.clear();
         perfil.role = "ADMIN".into();
         assert!(pode_publicar_no_portal(&perfil));
+    }
+
+    #[test]
+    fn orcamento_em_elaboracao_only_for_undecided_statuses() {
+        for s in ["RECEBIDO", "EM_VERIFICACAO", "VERIFICADO", "AGUARDANDO_APROVACAO"] {
+            assert!(orcamento_em_elaboracao(s), "{s}");
+        }
+        for s in ["APROVADO", "REPROVADO", "EM_MANUTENCAO", "AGUARDANDO_PECA", "PRONTO", "ENTREGUE", "ORCAMENTO_VENCIDO", ""] {
+            assert!(!orcamento_em_elaboracao(s), "{s}");
+        }
+    }
+
+    #[test]
+    fn prepare_quotes_only_profile_is_limited_to_undecided_budgets() {
+        let mut perfil = SecurityProfileSummary {
+            id: 1, nome: "Ana".into(), role: "OPERADOR".into(),
+            permissions: vec![PERMISSION_PREPARE_QUOTES.to_string()],
+            pin_configured: true, pin_required: true, is_default: false, ativo: true,
+            avatar_icone: None, avatar_cor: None, tema: None, onboarding_pendente: false,
+            tour_permissoes_vistas: None,
+        };
+        assert!(check_prepare_quotes_status(Some(&perfil), "VERIFICADO").is_ok());
+        assert!(check_prepare_quotes_status(Some(&perfil), "APROVADO").is_err());
+        assert!(check_prepare_quotes_status(None, "APROVADO").is_ok());
+        perfil.permissions.push(PERMISSION_FINANCIAL_ACTIONS.to_string());
+        assert!(check_prepare_quotes_status(Some(&perfil), "APROVADO").is_ok());
     }
 
     #[test]

@@ -6,8 +6,9 @@
 
 use crate::commands::auth::{
     record_security_event, require_active_session_company_id, require_active_session_company_id_without_touch,
-    require_permission,
+    require_any_permission, require_permission,
     require_sensitive_access, PERMISSION_FINANCIAL_ACTIONS, PERMISSION_MANAGE_STATUS_LINKS,
+    PERMISSION_PREPARE_QUOTES,
 };
 use crate::commands::orcamento_decisao::obter_ou_criar_versao;
 use crate::commands::types::{ClienteContato, CLIENTE_CONTATO_SELECT};
@@ -279,7 +280,7 @@ fn senha_aceitavel(senha: &str) -> bool {
 #[tauri::command]
 #[instrument(skip_all, fields(equipamento_id = equipamento_id))]
 pub async fn publicar_orcamento_portal(equipamento_id: i32) -> Result<OrcamentoPublicado, String> {
-    let actor = require_permission(PERMISSION_MANAGE_STATUS_LINKS)?;
+    let actor = require_any_permission(&[PERMISSION_MANAGE_STATUS_LINKS, PERMISSION_PREPARE_QUOTES])?;
     let pool = get_pool().await.map_err(|e| e.to_string())?;
     let empresa_id = require_active_session_company_id(&pool).await?;
     let mut tx = pool.begin().await.map_err(super::operator_errors::mapear_erro_sql)?;

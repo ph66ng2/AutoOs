@@ -15,8 +15,9 @@ use crate::commands::types::{
 };
 use crate::commands::auth::{
     current_session_profile, record_security_event, require_active_session_company_id,
-    require_permission,
+    require_any_permission, require_permission,
     SecurityProfileSummary, PERMISSION_DELETE_RECORDS, PERMISSION_FINANCIAL_ACTIONS,
+    PERMISSION_PREPARE_QUOTES,
 };
 use crate::db::get_pool;
 use crate::commands::orcamento_estoque::{aplicar_decisoes, normalizar_servicos, parse_servicos};
@@ -202,6 +203,18 @@ fn status_change_requires_sensitive_access(
             normalized_status,
             "AGUARDANDO_APROVACAO" | "APROVADO" | "REPROVADO" | "ORCAMENTO_VENCIDO" | "ENTREGUE" | "ABANDONADO"
         )
+}
+
+fn status_change_allows_quote_preparation(
+    atual: &str,
+    novo: &str,
+    is_correction: bool,
+    valor_final: Option<f64>,
+) -> bool {
+    !is_correction
+        && valor_final.is_none()
+        && novo == "AGUARDANDO_APROVACAO"
+        && matches!(atual, "VERIFICADO" | "AGUARDANDO_APROVACAO")
 }
 
 fn is_regular_status_transition(from: &str, to: &str) -> bool {
@@ -1049,7 +1062,16 @@ pub async fn atualizar_status_equipamento(
         prazo_aprovacao_value.as_deref(),
         valor_final,
     ) {
-        Some(require_permission(PERMISSION_FINANCIAL_ACTIONS)?)
+        if status_change_allows_quote_preparation(
+            &normalized_current_status,
+            &normalized_status,
+            is_correction,
+            valor_final,
+        ) {
+            Some(require_any_permission(&[PERMISSION_FINANCIAL_ACTIONS, PERMISSION_PREPARE_QUOTES])?)
+        } else {
+            Some(require_permission(PERMISSION_FINANCIAL_ACTIONS)?)
+        }
     } else {
         None
     };
@@ -1410,6 +1432,18 @@ mod tests {
             None,
         ));
         assert!(!status_change_requires_sensitive_access("RECEBIDO", None, None, None));
+    }
+
+    #[test]
+    fn quote_preparation_allows_only_verified_to_awaiting_approval_without_final_value() {
+        assert!(status_change_allows_quote_preparation("VERIFICADO", "AGUARDANDO_APROVACAO", false, None));
+        assert!(status_change_allows_quote_preparation("AGUARDANDO_APROVACAO", "AGUARDANDO_APROVACAO", false, None));
+        assert!(!status_change_allows_quote_preparation("VERIFICADO", "AGUARDANDO_APROVACAO", true, None));
+        assert!(!status_change_allows_quote_preparation("VERIFICADO", "AGUARDANDO_APROVACAO", false, Some(10.0)));
+        assert!(!status_change_allows_quote_preparation("VERIFICADO", "APROVADO", false, None));
+        assert!(!status_change_allows_quote_preparation("VERIFICADO", "REPROVADO", false, None));
+        assert!(!status_change_allows_quote_preparation("VERIFICADO", "ENTREGUE", false, None));
+        assert!(!status_change_allows_quote_preparation("EM_VERIFICACAO", "AGUARDANDO_APROVACAO", false, None));
     }
 
     #[test]

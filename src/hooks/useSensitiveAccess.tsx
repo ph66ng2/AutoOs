@@ -31,6 +31,8 @@ interface SensitiveAccessPromptOptions {
   title?: string;
   description?: string;
   permission?: SensitivePermission;
+  /** Libera se o perfil tiver qualquer uma destas (além de `permission`, se informada). */
+  anyPermission?: SensitivePermission[];
 }
 
 interface ProfileSelectorOptions {
@@ -54,6 +56,7 @@ interface SensitiveAccessContextValue {
   /** O primeiro pedido de PIN foi fechado sem desbloquear a sessão. */
   pinPromptDismissed: boolean;
   hasPermission: (permission: SensitivePermission) => boolean;
+  hasAnyPermission: (list: SensitivePermission[]) => boolean;
   setActiveProfile: (profileId: number, pin: string) => Promise<void>;
   /** Primeiro acesso (código, nome e visual) aberto: outras telas de entrada esperam. */
   firstAccessOpen: boolean;
@@ -64,8 +67,17 @@ const defaultPrompt: SensitiveAccessPromptOptions = {
   description: "Informe o PIN para continuar com esta ação.",
 };
 
-function profileHasPermission(status: SensitiveAccessStatus | null, permission?: SensitivePermission) {
-  if (!permission) {
+/**
+ * Sem exigência: libera. Com `permission` única e/ou `anyPermission`:
+ * libera se o perfil tem a única OU qualquer uma da lista.
+ */
+export function profileHasPermission(
+  status: SensitiveAccessStatus | null,
+  permission?: SensitivePermission,
+  anyPermission?: SensitivePermission[],
+) {
+  const hasAny = !!anyPermission && anyPermission.length > 0;
+  if (!permission && !hasAny) {
     return true;
   }
 
@@ -73,11 +85,25 @@ function profileHasPermission(status: SensitiveAccessStatus | null, permission?:
     return false;
   }
 
-  return status.permissions.includes(permission);
+  if (permission && status.permissions.includes(permission)) {
+    return true;
+  }
+
+  return hasAny && anyPermission.some((item) => status.permissions.includes(item));
 }
 
-function permissionDescription(permission?: SensitivePermission) {
-  return permission ? SENSITIVE_PERMISSION_LABELS[permission] : "executar esta ação";
+export function permissionDescription(permission?: SensitivePermission, anyPermission?: SensitivePermission[]) {
+  const labels: string[] = [];
+  if (permission) {
+    labels.push(SENSITIVE_PERMISSION_LABELS[permission]);
+  }
+  for (const item of anyPermission ?? []) {
+    const label = SENSITIVE_PERMISSION_LABELS[item];
+    if (!labels.includes(label)) {
+      labels.push(label);
+    }
+  }
+  return labels.length > 0 ? labels.join(" ou ") : "executar esta ação";
 }
 
 /**
@@ -296,7 +322,7 @@ export function SensitiveAccessProvider({ children }: { children: ReactNode }) {
     if (currentStatus) {
       setStatus(currentStatus);
       setSelectedProfileId(currentStatus.active_profile_id ? String(currentStatus.active_profile_id) : "");
-      if (currentStatus.unlocked && profileHasPermission(currentStatus, options?.permission)) {
+      if (currentStatus.unlocked && profileHasPermission(currentStatus, options?.permission, options?.anyPermission)) {
         return true;
       }
     }
@@ -311,8 +337,8 @@ export function SensitiveAccessProvider({ children }: { children: ReactNode }) {
       });
       setError(null);
       setPin("");
-      if (currentStatus?.unlocked && !profileHasPermission(currentStatus, options?.permission)) {
-        setError(`O perfil ativo não possui permissão para ${permissionDescription(options?.permission)}. Troque o perfil para continuar.`);
+      if (currentStatus?.unlocked && !profileHasPermission(currentStatus, options?.permission, options?.anyPermission)) {
+        setError(`O perfil ativo não possui permissão para ${permissionDescription(options?.permission, options?.anyPermission)}. Troque o perfil para continuar.`);
       }
       setDialogOpen(true);
     });
@@ -372,6 +398,10 @@ export function SensitiveAccessProvider({ children }: { children: ReactNode }) {
     return profileHasPermission(status, permission);
   }, [status]);
 
+  const hasAnyPermission = useCallback((list: SensitivePermission[]) => {
+    return profileHasPermission(status, undefined, list);
+  }, [status]);
+
   const submitSensitiveAccess = useCallback(async () => {
     setBusy(true);
     setError(null);
@@ -413,8 +443,8 @@ export function SensitiveAccessProvider({ children }: { children: ReactNode }) {
         setStatus(workingStatus);
         const switchedProfile = workingStatus.profiles.find((profile) => profile.id === targetProfileId);
         if (workingStatus.unlocked && switchedProfile?.pin_configured) {
-          if (!profileHasPermission(workingStatus, promptOptions.permission)) {
-            setError(`O perfil ativo não possui permissão para ${permissionDescription(promptOptions.permission)}.`);
+          if (!profileHasPermission(workingStatus, promptOptions.permission, promptOptions.anyPermission)) {
+            setError(`O perfil ativo não possui permissão para ${permissionDescription(promptOptions.permission, promptOptions.anyPermission)}.`);
             return;
           }
           try { localStorage.setItem("autoos_last_profile_id", String(targetProfileId)); } catch { /* storage indisponível */ }
@@ -461,8 +491,8 @@ export function SensitiveAccessProvider({ children }: { children: ReactNode }) {
         const nextStatus = await SensitiveAccessService.setActiveProfile(activeProfile.id, pin, confirmPin);
         setStatus(nextStatus);
 
-        if (!profileHasPermission(nextStatus, promptOptions.permission)) {
-          setError(`O perfil ativo não possui permissão para ${permissionDescription(promptOptions.permission)}.`);
+        if (!profileHasPermission(nextStatus, promptOptions.permission, promptOptions.anyPermission)) {
+          setError(`O perfil ativo não possui permissão para ${permissionDescription(promptOptions.permission, promptOptions.anyPermission)}.`);
           return;
         }
 
@@ -481,9 +511,9 @@ export function SensitiveAccessProvider({ children }: { children: ReactNode }) {
         nextStatus = await SensitiveAccessService.unlockWithoutPin();
       }
 
-      if (!profileHasPermission(nextStatus, promptOptions.permission)) {
+      if (!profileHasPermission(nextStatus, promptOptions.permission, promptOptions.anyPermission)) {
         setStatus(nextStatus);
-        setError(`O perfil ativo não possui permissão para ${permissionDescription(promptOptions.permission)}.`);
+        setError(`O perfil ativo não possui permissão para ${permissionDescription(promptOptions.permission, promptOptions.anyPermission)}.`);
         return;
       }
 
@@ -502,7 +532,7 @@ export function SensitiveAccessProvider({ children }: { children: ReactNode }) {
     } finally {
       setBusy(false);
     }
-  }, [closeDialog, pin, confirmPin, promptOptions.permission, selectedProfileId, status, dialogMode]);
+  }, [closeDialog, pin, confirmPin, promptOptions.permission, promptOptions.anyPermission, selectedProfileId, status, dialogMode]);
 
   const startFirstAccess = useCallback((profileId: number, recovery = false) => {
     // O pedido de perfil continua pendente: resolve quando a ativação terminar.
@@ -547,9 +577,10 @@ export function SensitiveAccessProvider({ children }: { children: ReactNode }) {
     lockSensitiveAccess,
     pinPromptDismissed,
     hasPermission,
+    hasAnyPermission,
     setActiveProfile,
     firstAccessOpen: firstAccess !== null,
-  }), [bootProgress, connectionUnavailable, ensureSensitiveAccess, firstAccess, hasPermission, loading, lockSensitiveAccess, openProfileSelector, pinPromptDismissed, refreshStatus, setActiveProfile, status]);
+  }), [bootProgress, connectionUnavailable, ensureSensitiveAccess, firstAccess, hasAnyPermission, hasPermission, loading, lockSensitiveAccess, openProfileSelector, pinPromptDismissed, refreshStatus, setActiveProfile, status]);
   const firstAccessProfile = firstAccess
     ? status?.profiles.find((profile) => profile.id === firstAccess.profileId) ?? null
     : null;

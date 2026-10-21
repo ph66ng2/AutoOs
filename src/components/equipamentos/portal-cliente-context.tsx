@@ -45,6 +45,8 @@ export function usePortalCliente(): PortalClienteValor {
   return valor;
 }
 
+type PermissaoSensivel = (typeof SENSITIVE_PERMISSIONS)[keyof typeof SENSITIVE_PERMISSIONS];
+
 export function mensagemErro(cause: unknown, fallback: string) {
   return typeof cause === "string" && cause.trim() ? cause : fallback;
 }
@@ -107,12 +109,16 @@ export function PortalClienteProvider({ equipamento, sinalPortal, children }: Pr
 
   const executar = useCallback(
     async (
-      permission: (typeof SENSITIVE_PERMISSIONS)[keyof typeof SENSITIVE_PERMISSIONS],
+      permission: PermissaoSensivel | PermissaoSensivel[],
       title: string,
       description: string,
       acao: () => Promise<void>,
     ) => {
-      const liberado = await ensureSensitiveAccess({ title, description, permission });
+      const liberado = await ensureSensitiveAccess({
+        title,
+        description,
+        ...(Array.isArray(permission) ? { anyPermission: permission } : { permission }),
+      });
       if (!liberado) return;
       setBusy(true);
       setError(null);
@@ -131,7 +137,7 @@ export function PortalClienteProvider({ equipamento, sinalPortal, children }: Pr
   const publicar = useCallback(() => {
     if (!equipamentoId) return;
     void executar(
-      SENSITIVE_PERMISSIONS.MANAGE_STATUS_LINKS,
+      [SENSITIVE_PERMISSIONS.MANAGE_STATUS_LINKS, SENSITIVE_PERMISSIONS.PREPARE_QUOTES],
       "Publicar orçamento no portal",
       "Confirme o acesso para publicar o orçamento atual no Portal do Cliente. Se ele mudou, a versão anterior deixa de aceitar respostas.",
       async () => {

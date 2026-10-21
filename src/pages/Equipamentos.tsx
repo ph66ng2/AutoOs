@@ -135,7 +135,7 @@ import { PhotoUploadDialog } from "@/components/equipamentos/PhotoUploadDialog";
 import { DocumentosEquipamento } from "@/components/equipamentos/DocumentosEquipamento";
 import { PdfPreviewDialog } from "@/components/equipamentos/PdfPreviewDialog";
 import { AjusteOrcamentoServicos } from "@/components/equipamentos/AjusteOrcamentoServicos";
-import { carregarProdutosOrcamento, normalizarServicosOrcamento, pecasParaOrcamento, orcamentoJaAprovado, orcamentoMudou, resumirPecas, validarPecas } from "@/lib/orcamento-estoque";
+import { carregarProdutosOrcamento, normalizarServicosOrcamento, orcamentoEmElaboracao, pecasParaOrcamento, orcamentoJaAprovado, orcamentoMudou, resumirPecas, validarPecas } from "@/lib/orcamento-estoque";
 import { ActionPriorityRow, type PriorityAction } from "@/components/ui/action-priority-row";
 import {
   arquivoParaImagemEquipamento,
@@ -894,7 +894,9 @@ export default function Equipamentos() {
     const liberado = await ensureSensitiveAccess({
       title: "Alterar orçamento",
       description: "Informe o PIN para editar serviços e valor sem alterar o status do equipamento.",
-      permission: SENSITIVE_PERMISSIONS.FINANCIAL_ACTIONS,
+      ...(orcamentoEmElaboracao(eq.status)
+        ? { anyPermission: [SENSITIVE_PERMISSIONS.FINANCIAL_ACTIONS, SENSITIVE_PERMISSIONS.PREPARE_QUOTES] }
+        : { permission: SENSITIVE_PERMISSIONS.FINANCIAL_ACTIONS }),
     });
     if (!liberado) return;
 
@@ -1093,7 +1095,7 @@ export default function Equipamentos() {
     const liberado = await ensureSensitiveAccess({
       title: "Finalizar verificação",
       description: "Informe o PIN para salvar orçamento, prazo de aprovação e disparar comunicações automáticas.",
-      permission: SENSITIVE_PERMISSIONS.FINANCIAL_ACTIONS,
+      anyPermission: [SENSITIVE_PERMISSIONS.FINANCIAL_ACTIONS, SENSITIVE_PERMISSIONS.PREPARE_QUOTES],
     });
     if (!liberado) return false;
 
@@ -1402,7 +1404,9 @@ export default function Equipamentos() {
       const liberado = await ensureSensitiveAccess({
         title: "Confirmar mudança de status",
         description: "Informe o PIN para aplicar esta transição e persistir dados sensíveis do equipamento.",
-        permission: SENSITIVE_PERMISSIONS.FINANCIAL_ACTIONS,
+        ...(ajusteOrcamentoSemMudancaStatus && orcamentoEmElaboracao(selecionado.status)
+          ? { anyPermission: [SENSITIVE_PERMISSIONS.FINANCIAL_ACTIONS, SENSITIVE_PERMISSIONS.PREPARE_QUOTES] }
+          : { permission: SENSITIVE_PERMISSIONS.FINANCIAL_ACTIONS }),
       });
       if (!liberado) return;
     }
