@@ -9,7 +9,10 @@ const mocks = vi.hoisted(() => ({
   publicar: vi.fn(),
   ensure: vi.fn(),
   toastOk: vi.fn(),
+  toastWarn: vi.fn(),
+  enviar: vi.fn(),
 }));
+vi.mock("@/lib/envio-orcamento", () => ({ prorrogarEEnviar: mocks.enviar }));
 
 vi.mock("@/lib/db", () => ({
   db: {
@@ -21,16 +24,18 @@ vi.mock("@/lib/db", () => ({
 vi.mock("@/hooks/useSensitiveAccess", () => ({
   useSensitiveAccess: () => ({ ensureSensitiveAccess: mocks.ensure }),
 }));
-vi.mock("sonner", () => ({ toast: { success: mocks.toastOk } }));
+vi.mock("sonner", () => ({ toast: { success: mocks.toastOk, warning: mocks.toastWarn } }));
 
 const NOVO_PRAZO = "2099-03-15";
 
-function abrir() {
+function abrir(enviar = false) {
   const onOpenChange = vi.fn();
   const onConcluido = vi.fn();
-  render(<ProrrogarPrazoDialog open onOpenChange={onOpenChange} equipamentoId={7} onConcluido={onConcluido} />);
+  const onEnvioManual = vi.fn();
+  render(<ProrrogarPrazoDialog open onOpenChange={onOpenChange} equipamentoId={7} onConcluido={onConcluido} onEnvioManual={onEnvioManual} />);
   fireEvent.change(screen.getByLabelText("Novo prazo de aprovação"), { target: { value: NOVO_PRAZO } });
-  return { onOpenChange, onConcluido };
+  if (!enviar) fireEvent.click(screen.getByLabelText(/Enviar o orçamento ao cliente agora/));
+  return { onOpenChange, onConcluido, onEnvioManual };
 }
 
 beforeEach(() => {
@@ -124,5 +129,49 @@ describe("ProrrogarPrazoDialog", () => {
       "Prazo prorrogado, mas a publicação falhou: Sem contato no portal",
     );
     expect(onOpenChange).not.toHaveBeenCalled();
+  });
+
+  describe("com envio ao cliente", () => {
+    it("vem marcado e usa prorrogarEEnviar com a data escolhida", async () => {
+      mocks.enviar.mockResolvedValue({
+        prorrogado: true, publicado: true, whatsapp: { enviado: true }, email: { enviado: true }, avisos: ["Aviso X"],
+      });
+      const { onConcluido, onOpenChange } = abrir(true);
+      expect(screen.getByLabelText(/Enviar o orçamento ao cliente agora/)).toBeChecked();
+      fireEvent.click(screen.getByRole("button", { name: "Prorrogar e enviar" }));
+
+      await waitFor(() => expect(onConcluido).toHaveBeenCalled());
+      expect(mocks.enviar).toHaveBeenCalledWith({ id: 7, atualizado_em: "t-novo" }, NOVO_PRAZO, expect.any(Function));
+      expect(mocks.prorrogar).not.toHaveBeenCalled();
+      expect(mocks.toastOk).toHaveBeenCalledWith(
+        "Prazo prorrogado até 15/03/2099, orçamento publicado no portal, WhatsApp enviado, e-mail enviado.",
+      );
+      expect(mocks.toastWarn).toHaveBeenCalledWith("Aviso X");
+      expect(onOpenChange).toHaveBeenCalledWith(false);
+    });
+
+    it("sobe o envio manual por onEnvioManual", async () => {
+      const envio = { equipamentoId: 7 };
+      mocks.enviar.mockResolvedValue({ prorrogado: true, publicado: true, envioManual: envio, avisos: [] });
+      const { onEnvioManual, onConcluido } = abrir(true);
+      fireEvent.click(screen.getByRole("button", { name: "Prorrogar e enviar" }));
+      await waitFor(() => expect(onConcluido).toHaveBeenCalled());
+      expect(onEnvioManual).toHaveBeenCalledWith(envio);
+    });
+
+    it("recusar a resposta pendente não envia nem conclui", async () => {
+      mocks.enviar.mockImplementation(async (_e: unknown, _d: string, confirmar: () => Promise<boolean>) => {
+        const ok = await confirmar();
+        return { prorrogado: false, publicado: false, avisos: [], respostaPendenteRecusada: !ok };
+      });
+      const { onConcluido, onEnvioManual } = abrir(true);
+      fireEvent.click(screen.getByRole("button", { name: "Prorrogar e enviar" }));
+      await screen.findByText(/O cliente já respondeu/);
+      fireEvent.click(screen.getAllByRole("button", { name: "Cancelar" }).at(-1)!);
+      await waitFor(() => expect(screen.queryByText(/O cliente já respondeu/)).not.toBeInTheDocument());
+      expect(mocks.toastOk).not.toHaveBeenCalled();
+      expect(onEnvioManual).not.toHaveBeenCalled();
+      expect(onConcluido).not.toHaveBeenCalled();
+    });
   });
 });

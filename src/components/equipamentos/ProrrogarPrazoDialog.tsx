@@ -8,8 +8,9 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useSensitiveAccess } from "@/hooks/useSensitiveAccess";
 import { db } from "@/lib/db";
+import { prorrogarEEnviar } from "@/lib/envio-orcamento";
 import { dataIsoEmDias, formatarDataIso } from "@/lib/orcamento-prazo";
-import { SENSITIVE_PERMISSIONS } from "@/types";
+import { SENSITIVE_PERMISSIONS, type EnvioManualOrcamento, type Equipamento } from "@/types";
 
 type Props = {
   open: boolean;
@@ -17,6 +18,8 @@ type Props = {
   equipamentoId: number;
   /** Chamado depois de prorrogar e publicar, para recarregar o estado do portal. */
   onConcluido: () => void | Promise<void>;
+  /** Chamado quando o envio automático precisa de ajuste manual do técnico. */
+  onEnvioManual?: (envio: EnvioManualOrcamento) => void;
 };
 
 function texto(cause: unknown, fallback: string) {
@@ -25,9 +28,10 @@ function texto(cause: unknown, fallback: string) {
 }
 
 /** Prorroga o prazo de aprovação vencido e publica o orçamento no portal em seguida. */
-export function ProrrogarPrazoDialog({ open, onOpenChange, equipamentoId, onConcluido }: Props) {
+export function ProrrogarPrazoDialog({ open, onOpenChange, equipamentoId, onConcluido, onEnvioManual }: Props) {
   const { ensureSensitiveAccess } = useSensitiveAccess();
   const [data, setData] = useState(() => dataIsoEmDias(7));
+  const [enviar, setEnviar] = useState(true);
   const [busy, setBusy] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
   const [confirmarResposta, setConfirmarResposta] = useState<((ok: boolean) => void) | null>(null);
@@ -36,6 +40,7 @@ export function ProrrogarPrazoDialog({ open, onOpenChange, equipamentoId, onConc
     if (open) {
       setData(dataIsoEmDias(7));
       setErro(null);
+      setEnviar(true);
     }
   }, [open]);
 
@@ -65,6 +70,28 @@ export function ProrrogarPrazoDialog({ open, onOpenChange, equipamentoId, onConc
     let prorrogou = false;
     try {
       const atual = await db.buscarEquipamento(equipamentoId);
+      if (enviar) {
+        const r = await prorrogarEEnviar(atual as Equipamento, data, perguntarRespostaPendente);
+        if (r.respostaPendenteRecusada) return;
+        if (!r.prorrogado) {
+          setErro(r.avisos.join(" ") || "Não foi possível prorrogar o prazo.");
+          return;
+        }
+        prorrogou = true;
+        window.dispatchEvent(new CustomEvent(EVENTO_ALERTAS_PORTAL, { detail: { equipamentoIds: [equipamentoId] } }));
+        const etapas = [
+          `prazo prorrogado até ${formatarDataIso(data)}`,
+          r.publicado ? "orçamento publicado no portal" : null,
+          r.whatsapp?.enviado ? "WhatsApp enviado" : null,
+          r.email?.enviado ? "e-mail enviado" : null,
+        ].filter(Boolean).join(", ");
+        toast.success(`${etapas.charAt(0).toUpperCase()}${etapas.slice(1)}.`);
+        r.avisos.forEach((aviso) => toast.warning(aviso));
+        if (r.envioManual) onEnvioManual?.(r.envioManual);
+        onOpenChange(false);
+        await onConcluido();
+        return;
+      }
       const base = { equipamentoId, novoPrazo: data, expectedUpdatedEm: atual.atualizado_em as string };
       let resultado = await db.prorrogarPrazoOrcamento(base);
       if (!resultado.prorrogado && resultado.respostaPendente) {
@@ -111,12 +138,21 @@ export function ProrrogarPrazoDialog({ open, onOpenChange, equipamentoId, onConc
               value={data}
               onChange={(e) => setData(e.target.value)}
             />
+            <label className="flex items-center gap-2 text-sm">
+              <input
+                type="checkbox"
+                checked={enviar}
+                disabled={busy}
+                onChange={(e) => setEnviar(e.target.checked)}
+              />
+              Enviar o orçamento ao cliente agora (WhatsApp e e-mail)
+            </label>
             {erro ? <p role="alert" className="text-sm text-destructive">{erro}</p> : null}
           </div>
           <DialogFooter className="gap-2">
             <Button variant="outline" disabled={busy} onClick={() => onOpenChange(false)}>Cancelar</Button>
             <Button disabled={busy || !data} onClick={() => void confirmar()}>
-              {busy ? "Aguarde..." : "Prorrogar e publicar"}
+              {busy ? "Aguarde..." : enviar ? "Prorrogar e enviar" : "Prorrogar e publicar"}
             </Button>
           </DialogFooter>
         </DialogContent>

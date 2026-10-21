@@ -713,6 +713,7 @@ function QuickEntry({ onBack }: { onBack: () => void }) {
                 empresaId={client.empresa_id}
                 value={responsavel}
                 onChange={setResponsavel}
+                preSelecionar
               />
               <Button
                 className="mt-6 min-h-12 text-base"
