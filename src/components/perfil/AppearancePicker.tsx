@@ -35,7 +35,7 @@ export function AppearancePicker({
                 aria-pressed={selected}
                 onClick={() => onColorChange(item.hex)}
                 className={cn(
-                  "flex h-8 w-8 items-center justify-center rounded-full ring-offset-2 ring-offset-background transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                  "flex h-8 w-8 items-center justify-center rounded-full ring-offset-2 ring-offset-background transition-[box-shadow,transform] duration-150 ease-out active:scale-[0.96] motion-reduce:active:scale-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
                   selected && "ring-2",
                 )}
                 style={{ backgroundColor: item.hex, ["--tw-ring-color" as string]: item.hex }}
@@ -60,7 +60,7 @@ export function AppearancePicker({
                 aria-pressed={selected}
                 onClick={() => onIconChange(id)}
                 className={cn(
-                  "flex h-11 w-11 items-center justify-center rounded-xl ring-offset-2 ring-offset-background transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                  "flex h-10 w-10 items-center justify-center rounded-xl ring-offset-2 ring-offset-background transition-[box-shadow,transform] duration-150 ease-out active:scale-[0.96] motion-reduce:active:scale-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
                   selected ? "text-white ring-2" : "bg-muted text-muted-foreground hover:text-foreground",
                 )}
                 style={selected ? { backgroundColor: color, ["--tw-ring-color" as string]: color } : undefined}
@@ -75,24 +75,8 @@ export function AppearancePicker({
       <fieldset disabled={disabled}>
         <legend className="mb-3 text-sm font-medium">Tema</legend>
         <div className="grid max-w-md grid-cols-2 gap-3">
-          <ThemeOption label="Claro" selected={theme === "light"} onSelect={() => onThemeChange("light")}>
-            <span className="flex h-20 overflow-hidden rounded-lg bg-[#F8F9FB]">
-              <span className="w-8 bg-[#1B2232]" />
-              <span className="flex flex-1 flex-col gap-1.5 p-2.5">
-                <span className="h-2 w-3/5 rounded bg-[#E1E5EB]" />
-                <span className="h-7 rounded-md border border-[#E1E5EB] bg-white" />
-              </span>
-            </span>
-          </ThemeOption>
-          <ThemeOption label="Escuro" selected={theme === "dark"} onSelect={() => onThemeChange("dark")}>
-            <span className="flex h-20 overflow-hidden rounded-lg bg-[#0B0E13]">
-              <span className="w-8 border-r border-[#1A2130] bg-[#0F131B]" />
-              <span className="flex flex-1 flex-col gap-1.5 p-2.5">
-                <span className="h-2 w-3/5 rounded bg-[#20293B]" />
-                <span className="h-7 rounded-md border border-[#20293B] bg-[#11151D]" />
-              </span>
-            </span>
-          </ThemeOption>
+          <ThemeOption label="Claro" scope="light" selected={theme === "light"} onSelect={() => onThemeChange("light")} />
+          <ThemeOption label="Escuro" scope="dark" selected={theme === "dark"} onSelect={() => onThemeChange("dark")} />
         </div>
       </fieldset>
     </div>
@@ -101,29 +85,34 @@ export function AppearancePicker({
 
 function ThemeOption({
   label,
+  scope,
   selected,
   onSelect,
-  children,
 }: {
   label: string;
+  scope: "light" | "dark";
   selected: boolean;
   onSelect: () => void;
-  children: React.ReactNode;
 }) {
   return (
     <button
       type="button"
       aria-pressed={selected}
       onClick={onSelect}
-      className="group flex flex-col gap-2 text-left focus-visible:outline-none"
+      className="group flex h-12 items-center gap-3 rounded-xl text-left transition-[box-shadow,transform] duration-150 ease-out active:scale-[0.96] motion-reduce:active:scale-100 focus-visible:outline-none"
     >
-      <span
-        className={cn(
-          "block rounded-xl p-0.5 ring-offset-2 ring-offset-background transition group-focus-visible:ring-2 group-focus-visible:ring-ring",
-          selected ? "ring-2 ring-primary" : "ring-1 ring-border",
-        )}
-      >
-        {children}
+      <span aria-hidden="true" className={scope}>
+        <span
+          className={cn(
+            "flex h-7 w-10 overflow-hidden rounded-md bg-background p-0.5 ring-offset-2 ring-offset-background transition-[box-shadow] duration-150 ease-out group-focus-visible:ring-2 group-focus-visible:ring-ring",
+            selected ? "ring-2 ring-primary" : "ring-1 ring-border",
+          )}
+        >
+          <span className="w-2.5 rounded-sm bg-sidebar" />
+          <span className="flex flex-1 items-start p-0.5 pl-1">
+            <span className="h-full w-full rounded-sm bg-card" />
+          </span>
+        </span>
       </span>
       <span className="text-sm">{label}</span>
     </button>

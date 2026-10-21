@@ -11,6 +11,8 @@ Esta matriz fecha o inventário do passo 1.1 do NEXT_STEPS para o backend Rust a
 | Exclusão | `DELETE_RECORDS` | Deletes físicos ou lógicos |
 | Administrativo | `MANAGE_PROFILES`, `CONFIG_SMTP`, `CONFIG_WHATSAPP` | Perfis locais, backup/restore e configurações sensíveis |
 
+Rota `/configuracoes` abre com qualquer de `MANAGE_PROFILES`, `CONFIG_SMTP`, `CONFIG_WHATSAPP`, `MANAGE_STATUS_LINKS`. Banco, Segurança e Suporte/Logs só com `MANAGE_PROFILES`. Cada comando continua checando a própria permissão no backend.
+
 ## Matriz Atual
 
 | Comando | Arquivo | Escrita sensível | Grupo | Contrato de permissão |

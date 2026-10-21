@@ -30,7 +30,7 @@ import {
 import { useState } from "react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
-import { SensitiveAccessBadge, useSensitiveAccess } from "@/hooks/useSensitiveAccess";
+import { SensitiveAccessBadge, routeAllows, useSensitiveAccess } from "@/hooks/useSensitiveAccess";
 import { SENSITIVE_PERMISSIONS, type SensitivePermission } from "@/types";
 import { PortalAlertasSino } from "@/components/PortalAlertas";
 import { ProfileAvatar } from "@/components/perfil/ProfileAvatar";
@@ -38,12 +38,20 @@ import { TourController } from "@/components/tour/TourController";
 import { profileAppearance } from "@/lib/profile-appearance";
 import { securityRoleLabel } from "@/lib/security-profile-labels";
 
+/** Permissões que abrem a rota /configuracoes (mesmas de App.tsx). */
+const CONFIGURACOES_PERMISSIONS: SensitivePermission[] = [
+  SENSITIVE_PERMISSIONS.MANAGE_PROFILES,
+  SENSITIVE_PERMISSIONS.CONFIG_SMTP,
+  SENSITIVE_PERMISSIONS.CONFIG_WHATSAPP,
+  SENSITIVE_PERMISSIONS.MANAGE_STATUS_LINKS,
+];
+
 /** Itens de navegação da sidebar. Cada item mapeia para uma rota do React Router */
 const navItems: {
   label: string;
   path: string;
   icon: React.ComponentType<{ className?: string }>;
-  permission?: SensitivePermission;
+  permission?: SensitivePermission | SensitivePermission[];
 }[] = [
   { label: "Perfil", path: "/perfil", icon: UserRound },
   { label: "Dashboard", path: "/", icon: LayoutDashboard },
@@ -52,7 +60,7 @@ const navItems: {
   { label: "Insumos/Peças", path: "/insumos", icon: Package },
   { label: "Serviços", path: "/servicos", icon: Wrench },
   { label: "Gastos", path: "/gastos", icon: Receipt, permission: SENSITIVE_PERMISSIONS.VIEW_EXPENSES },
-  { label: "Configurações", path: "/configuracoes", icon: Settings },
+  { label: "Configurações", path: "/configuracoes", icon: Settings, permission: CONFIGURACOES_PERMISSIONS },
 ];
 
 export function Layout() {
@@ -63,10 +71,7 @@ export function Layout() {
   const activeProfile = status?.profiles.find((profile) => profile.id === status.active_profile_id) ?? null;
   const activeLook = activeProfile ? profileAppearance(activeProfile) : null;
 
-  const visibleNavItems = navItems.filter(item => {
-    if (!item.permission) return true;
-    return status?.permissions?.includes(item.permission) ?? false;
-  });
+  const visibleNavItems = navItems.filter(item => routeAllows(status?.permissions ?? [], item.permission));
 
   return (
     <div className="flex h-screen overflow-hidden bg-background">

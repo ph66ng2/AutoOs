@@ -23,7 +23,6 @@ import { registerSensitiveAccessPrompt } from "@/lib/sensitive-action-retry";
 import { requestTour } from "@/lib/tour-request";
 import {
   SENSITIVE_PERMISSION_LABELS,
-  SENSITIVE_PERMISSIONS,
   type SensitiveAccessStatus,
   type SensitivePermission,
 } from "@/types";
@@ -79,6 +78,25 @@ function profileHasPermission(status: SensitiveAccessStatus | null, permission?:
 
 function permissionDescription(permission?: SensitivePermission) {
   return permission ? SENSITIVE_PERMISSION_LABELS[permission] : "executar esta ação";
+}
+
+/**
+ * Libera a rota se não exige permissão, se o perfil tem a permissão única,
+ * ou se tem pelo menos uma das permissões da lista.
+ */
+export function routeAllows(
+  permissions: SensitivePermission[],
+  required?: SensitivePermission | SensitivePermission[],
+): boolean {
+  if (!required) {
+    return true;
+  }
+
+  if (Array.isArray(required)) {
+    return required.some((permission) => permissions.includes(permission));
+  }
+
+  return permissions.includes(required);
 }
 
 const SensitiveAccessContext = createContext<SensitiveAccessContextValue | null>(null);
@@ -621,9 +639,9 @@ export function SensitiveRoute({
   children: ReactNode;
   title?: string;
   description?: string;
-  permission?: SensitivePermission;
+  permission?: SensitivePermission | SensitivePermission[];
 }) {
-  const { loading, status, ensureSensitiveAccess, hasPermission } = useSensitiveAccess();
+  const { loading, status, ensureSensitiveAccess } = useSensitiveAccess();
 
   if (loading || !status) {
     return (
@@ -659,7 +677,7 @@ export function SensitiveRoute({
                 void ensureSensitiveAccess({
                   title,
                   description,
-                  permission: SENSITIVE_PERMISSIONS.MANAGE_PROFILES,
+                  permission: Array.isArray(permission) ? undefined : permission,
                 })
               }
             >
@@ -671,7 +689,7 @@ export function SensitiveRoute({
     );
   }
 
-  if (permission && !hasPermission(permission)) {
+  if (permission && !routeAllows(status.permissions, permission)) {
     return (
       <div className="flex min-h-[60vh] items-center justify-center">
         <Card className="max-w-lg w-full">
@@ -681,7 +699,7 @@ export function SensitiveRoute({
               Acesso restrito
             </CardTitle>
             <CardDescription>
-              O perfil ativo não possui permissão para {permission ? permissionDescription(permission) : "acessar esta página"}.
+              O perfil ativo não possui permissão para {Array.isArray(permission) ? "acessar esta página" : permissionDescription(permission)}.
             </CardDescription>
           </CardHeader>
         </Card>
