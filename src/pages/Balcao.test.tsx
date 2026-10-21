@@ -65,8 +65,8 @@ describe("Modo Balcão", () => {
     expect(await screen.findByText(/entrada registrada/i)).toBeInTheDocument();
   });
 
-  it("mantém o e-mail salvo no cadastro quando o SMTP falha e avisa o operador", async () => {
-    ensureSensitiveAccess.mockResolvedValue(true);
+  it("permite ao técnico enviar a ordem sem permissão financeira e preserva o e-mail quando o SMTP falha", async () => {
+    ensureSensitiveAccess.mockImplementation(async ({ permission }) => !permission);
     db.buscarCliente.mockResolvedValue({ id: 9, empresa_id: 7, nome: "Cliente balcão", telefone: "71999999999" });
     db.atualizarCliente.mockResolvedValue(undefined);
     db.criarEquipamento.mockResolvedValue({ id: 42, cliente_id: 9, empresa_id: 7, serial_number: "SN-42", marca: "Zebra", modelo: "ZD220", tipo: "Impressora", status: "RECEBIDO", data_entrada: "2026-09-01" });

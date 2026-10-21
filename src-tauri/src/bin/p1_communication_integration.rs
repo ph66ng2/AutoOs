@@ -11,7 +11,10 @@ use anyhow::{anyhow, Context, Result};
 use chrono::Utc;
 use commands::auth;
 use commands::smtp;
-use commands::types::{EmailSendInput, SmtpConfigInput, WhatsappConfigInput, WhatsappSendInput};
+use commands::types::{
+    EmailAttachmentInput, EmailSendInput, SmtpConfigInput, WhatsappConfigInput, WhatsappSendInput,
+};
+use commands::util;
 use commands::whatsapp;
 use keyring::Entry;
 use sqlx::PgPool;
@@ -98,6 +101,46 @@ async fn main() -> Result<()> {
         .await
         .map_err(|error| anyhow!("failed to save whatsapp config: {}", error))?;
 
+        // Um perfil operacional sem permissões sensíveis pode enviar pelos
+        // canais configurados, mas não pode consultar suas configurações.
+        sqlx::query("UPDATE security_profiles SET permissions = $1, atualizado_em = NOW() WHERE id = $2")
+            .bind("[]")
+            .bind(profile_id)
+            .execute(&pool)
+            .await
+            .context("failed to remove smtp configuration permission")?;
+        auth::lock_sensitive_access().await.map_err(|error| anyhow!(error))?;
+        auth::unlock_sensitive_access(PIN.to_string())
+            .await
+            .map_err(|error| anyhow!("failed to unlock operator profile: {}", error))?;
+
+        if smtp::carregar_config_smtp().await.is_ok() {
+            return Err(anyhow!("operator unexpectedly accessed smtp configuration"));
+        }
+        if whatsapp::carregar_config_whatsapp().await.is_ok() {
+            return Err(anyhow!("operator unexpectedly accessed whatsapp configuration"));
+        }
+
+        whatsapp::enviar_whatsapp(WhatsappSendInput {
+            contato: "5511999999999".to_string(),
+            mensagem: "P1 communication integration over controlled HTTP".to_string(),
+        })
+        .await
+        .map_err(|error| anyhow!("failed to send whatsapp message: {}", error))?;
+
+        let source_name = format!("p1-order-source-{}.pdf", profile_id);
+        let attachment_name = format!("p1-order-attachment-{}.pdf", profile_id);
+        let source_path =
+            util::salvar_arquivo_temp(source_name, b"%PDF-1.4\nP1 attachment\n".to_vec())
+                .await
+                .map_err(|error| anyhow!("failed to save order PDF: {}", error))?;
+        let attachment_path = util::copiar_anexo_email_para_temp(
+            source_path.clone(),
+            attachment_name.clone(),
+        )
+        .await
+        .map_err(|error| anyhow!("operator failed to prepare order PDF attachment: {}", error))?;
+
         smtp::enviar_email(EmailSendInput {
             destinatario: "Cliente Integracao".to_string(),
             email: "cliente@test.local".to_string(),
@@ -106,17 +149,22 @@ async fn main() -> Result<()> {
             corpo: "Body from controlled SMTP integration".to_string(),
             corpo_texto: None,
             corpo_html: None,
-            anexos: None,
+            anexos: Some(vec![EmailAttachmentInput {
+                filename: attachment_name.clone(),
+                content_type: Some("application/pdf".to_string()),
+                bytes: None,
+                path: Some(attachment_path.clone()),
+            }]),
         })
         .await
         .map_err(|error| anyhow!("failed to send smtp email: {}", error))?;
 
-        whatsapp::enviar_whatsapp(WhatsappSendInput {
-            contato: "5511999999999".to_string(),
-            mensagem: "P1 communication integration over controlled HTTP".to_string(),
-        })
-        .await
-        .map_err(|error| anyhow!("failed to send whatsapp message: {}", error))?;
+        util::remover_anexo_email_temp(source_path)
+            .await
+            .map_err(|error| anyhow!(error))?;
+        util::remover_anexo_email_temp(attachment_path)
+            .await
+            .map_err(|error| anyhow!(error))?;
 
         let smtp_result = smtp_handle
             .join()
@@ -132,8 +180,9 @@ async fn main() -> Result<()> {
 
         if !smtp_result.raw_message.contains("Subject: P1 Communication Integration")
             || !smtp_result.raw_message.contains("Body from controlled SMTP integration")
+            || !smtp_result.raw_message.contains(&attachment_name)
         {
-            return Err(anyhow!("smtp capture missing expected subject/body"));
+            return Err(anyhow!("smtp capture missing expected subject/body/PDF attachment"));
         }
 
         if !http_result.body.contains("\"number\":\"5511999999999\"")

@@ -199,6 +199,20 @@ describe("EmailService", () => {
     expect(args.input.cc).toEqual(["medeiros@bmitag.com.br", "isaias@bmitag.com.br"]);
   });
 
+  it("não envia a ordem de entrada quando o PDF não pode ser anexado", async () => {
+    mockCopiarAnexoEmailParaTemp.mockRejectedValueOnce(new Error("Cópia indisponível"));
+
+    const res = await EmailService.enviarOrdemEntrada(equipamentoBase);
+
+    expect(res).toEqual({ sucesso: false, erro: "Não foi possível anexar o PDF da ordem de entrada." });
+    expect(mockInvoke).not.toHaveBeenCalled();
+    expect(mockRegistrarComunicacao).toHaveBeenCalledWith(expect.objectContaining({
+      canal: "EMAIL",
+      enviado: false,
+      erro: "Não foi possível anexar o PDF da ordem de entrada.",
+    }));
+  });
+
   it("enviarOrcamento registra falha quando invoke rejeita", async () => {
     mockInvoke.mockRejectedValueOnce("SMTP recusado");
 

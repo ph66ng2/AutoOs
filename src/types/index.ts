@@ -774,7 +774,7 @@ export const SENSITIVE_PERMISSIONS = {
 export type SensitivePermission = (typeof SENSITIVE_PERMISSIONS)[keyof typeof SENSITIVE_PERMISSIONS];
 
 export const SENSITIVE_PERMISSION_LABELS: Record<SensitivePermission, string> = {
-  CONFIG_SMTP: "configurar SMTP e envios de email",
+  CONFIG_SMTP: "configurar SMTP",
   CONFIG_WHATSAPP: "configurar API de WhatsApp",
   DELETE_RECORDS: "excluir registros",
   FINANCIAL_ACTIONS: "alterar orçamentos, aprovações e valores",
