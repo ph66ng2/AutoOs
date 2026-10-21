@@ -212,11 +212,51 @@ export interface ResultadoEnvioWhatsapp {
   estado: EstadoEnvioWhatsapp;
   ultimoEstado?: string | null;
   mensagem?: string | null;
+  senhaRetida?: boolean;
+}
+
+export interface DestinatarioOrcamento {
+  contatoId: number | null;
+  nome: string;
+  telefone: string | null;
+  email: string | null;
+  clienteNome: string;
+  clienteDocumento: string;
+  origem: "RESPONSAVEL" | "CONTATO" | "CLIENTE";
+  portalAcesso: "NENHUM" | "ACOMPANHAR" | "DECIDIR" | null;
+  temSenha: boolean;
+  usouSenhaAtual: boolean;
+  precisaContato: boolean;
+}
+
+export interface PreparoAcessoPortal {
+  destinatario: DestinatarioOrcamento;
+  portalAtivo: boolean;
+  credenciais: { usuario: string; senha: string } | null;
+  senhaExistente: boolean;
+  acessoConcedido: boolean;
+}
+
+export interface ContatoInicialInput {
+  nome: string;
+  telefone: string;
+  email?: string | null;
+}
+
+export interface EnvioManualOrcamento {
+  destinatario: DestinatarioOrcamento;
+  assunto: string;
+  texto: string;
+  temSenha: boolean;
+  podeGerarNovaSenha: boolean;
+  equipamentoId: number;
 }
 
 export interface SolicitarEnvioWhatsappInput {
   equipamento_id: number;
   tipo: TipoEnvioWhatsapp;
+  /** Senha do portal gerada na sessão; segue só no pedido e não é registrada. */
+  senha_portal?: string;
   /** Gesto explícito do operador: cria outra tentativa do mesmo pedido. */
   reenvio_manual?: boolean;
   /** Confirma que uma tentativa de resultado incerto pode ser repetida. */
@@ -771,6 +811,7 @@ export interface ResultadoAutomacao {
   sucesso: boolean;
   erro?: string;
   mensagem?: string;
+  envioManual?: EnvioManualOrcamento;
   canais?: {
     whatsapp?: { enviado: boolean; erro?: string };
     email?: { enviado: boolean; erro?: string };

@@ -44,7 +44,7 @@ const AVISO_TROCA_PECAS_TEXTO =
 const AVISO_TROCA_PECAS_HTML =
   "<strong>Atenção:</strong> em caso de troca de peças, o prazo de execução do serviço pode ser estendido.";
 
-function emailTecnicoPorNome(tecnicoNome?: string) {
+export function emailTecnicoPorNome(tecnicoNome?: string) {
   const normalizado = (tecnicoNome || "")
     .trim()
     .normalize("NFD")
@@ -67,7 +67,7 @@ function extrairTecnicoInicialDeObservacoes(observacoes?: string | null) {
  * - Inclui o email do técnico responsável quando conhecido.
  * - Remove vazios e duplicados (case-insensitive).
  */
-function montarCcs(emailTecnico?: string): string[] {
+export function montarCcs(emailTecnico?: string): string[] {
   const candidatos = [CC_GERENCIA, emailTecnico].filter(
     (email): email is string => !!email && email.trim().length > 0,
   );
@@ -115,7 +115,7 @@ async function registrarComunicacaoSegura(comunicacao: Omit<Comunicacao, "id">) 
  * backend SMTP) e devolve o `EmailAttachment` apontando para o caminho
  * temporário, junto da função para apagar o arquivo após o envio.
  */
-async function prepararAnexoTemporario(
+export async function prepararAnexoTemporario(
   caminhoOrigem: string,
   fallbackFilename: string,
 ): Promise<{ anexo: EmailAttachment; cleanup: () => Promise<void> } | null> {

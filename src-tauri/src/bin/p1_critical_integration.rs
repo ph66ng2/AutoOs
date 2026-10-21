@@ -925,8 +925,9 @@ async fn main() -> Result<()> {
         .execute(&pool)
         .await
         .context("cleanup equipment failed")?;
-    sqlx::query("DELETE FROM cliente_contatos WHERE id = $1")
+    sqlx::query("DELETE FROM cliente_contatos WHERE id = $1 OR cliente_id = $2")
         .bind(contato.id)
+        .bind(cliente.id)
         .execute(&pool)
         .await
         .context("cleanup contact failed")?;

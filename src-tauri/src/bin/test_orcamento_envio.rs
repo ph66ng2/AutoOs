@@ -136,6 +136,6 @@ async fn main() -> Result<()> {
         .await.err().unwrap();
     assert!(erro.contains("Este perfil só altera orçamentos ainda não decididos."), "{erro}");
 
-    println!("OK: perfil TECNICO prepara, envia e publica o orçamento, mas não aprova, reprova, altera OS decidida nem define senha do portal.");
+    eprintln!("OK: perfil TECNICO prepara, envia e publica o orçamento, mas não aprova, reprova, altera OS decidida nem define senha do portal.");
     Ok(())
 }

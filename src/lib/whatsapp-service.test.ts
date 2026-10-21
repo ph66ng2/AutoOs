@@ -72,6 +72,20 @@ describe("WhatsAppService — pedidos de envio ao backend", () => {
     }));
   });
 
+  it("senhaPortal segue como senha_portal e senhaRetida volta no resultado", async () => {
+    mockSolicitarEnvio.mockResolvedValue({ ...resposta("ENVIADA"), senhaRetida: true });
+    const res = await WhatsAppService.enviarOrcamento(equipamentoBase, undefined, { senhaPortal: "abc123" });
+
+    expect(mockSolicitarEnvio).toHaveBeenCalledWith(expect.objectContaining({ senha_portal: "abc123" }));
+    expect(res).toMatchObject({ sucesso: true, senhaRetida: true });
+  });
+
+  it("sem senhaPortal o pedido não leva senha_portal", async () => {
+    await WhatsAppService.enviarOrcamento(equipamentoBase);
+
+    expect(mockSolicitarEnvio.mock.calls[0][0]).not.toHaveProperty("senha_portal");
+  });
+
   it("modo central: a mensagem enfileirada conta como sucesso e avisa que ainda não saiu", async () => {
     mockSolicitarEnvio.mockResolvedValue(resposta("ENFILEIRADA", "Mensagem na fila; será enviada em instantes."));
     const res = await WhatsAppService.enviarEquipamentoPronto(equipamentoBase);

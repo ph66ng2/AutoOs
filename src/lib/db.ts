@@ -36,6 +36,9 @@ import type {
   Cliente,
   ClienteContato,
   ClienteContatoInput,
+  ContatoInicialInput,
+  DestinatarioOrcamento,
+  PreparoAcessoPortal,
   RegularizacaoLegadoPrevia,
   RegularizacaoLegadoResultado,
   VinculoEmpresaPerfilInput,
@@ -208,8 +211,30 @@ export const db = {
   },
 
   /** Cria novo cliente (PF ou PJ) → Rust: criar_cliente. Retorna o registro persistido */
-  async criarCliente(cliente: Omit<Cliente, "id">): Promise<Cliente> {
-    return invoke<Cliente>("criar_cliente", { input: clientePersistenciaParaInput(cliente) });
+  async criarCliente(cliente: Omit<Cliente, "id">, contatoInicial?: ContatoInicialInput): Promise<Cliente> {
+    const input = contatoInicial
+      ? { ...clientePersistenciaParaInput(cliente), contato_inicial: contatoInicial }
+      : clientePersistenciaParaInput(cliente);
+    return invoke<Cliente>("criar_cliente", { input });
+  },
+
+  /** Destinatário do orçamento da OS → Rust: obter_destinatario_orcamento */
+  async obterDestinatarioOrcamento(equipamentoId: number): Promise<DestinatarioOrcamento> {
+    return invoke<DestinatarioOrcamento>("obter_destinatario_orcamento", { equipamentoId });
+  },
+
+  /** Prepara acesso ao portal (e senha, se preciso) → Rust: preparar_acesso_portal */
+  async prepararAcessoPortal(equipamentoId: number, forcarNovaSenha = false): Promise<PreparoAcessoPortal> {
+    return invoke<PreparoAcessoPortal>("preparar_acesso_portal", { equipamentoId, forcarNovaSenha });
+  },
+
+  /** Define o contato responsável pela OS → Rust: definir_responsavel_equipamento */
+  async definirResponsavelEquipamento(
+    equipamentoId: number,
+    contatoId: number,
+    expectedUpdatedEm: string,
+  ): Promise<Equipamento> {
+    return invoke<Equipamento>("definir_responsavel_equipamento", { equipamentoId, contatoId, expectedUpdatedEm });
   },
 
   /** Atualiza cliente existente → Rust: atualizar_cliente */

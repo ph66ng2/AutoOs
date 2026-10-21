@@ -255,6 +255,7 @@ async fn run_client_concurrency(cliente_id: i32, cliente: &commands::types::Clie
         exige_ordem_compra: cliente.exige_ordem_compra,
         observacoes: Some("p1_concurrency_integration:client-a".to_string()),
         atualizado_em: base_token.clone(),
+        contato_inicial: None,
     };
 
     let update_b = ClienteInput {
@@ -281,6 +282,7 @@ async fn run_client_concurrency(cliente_id: i32, cliente: &commands::types::Clie
         exige_ordem_compra: cliente.exige_ordem_compra,
         observacoes: Some("p1_concurrency_integration:client-b".to_string()),
         atualizado_em: base_token,
+        contato_inicial: None,
     };
 
     let left = {
@@ -529,6 +531,11 @@ async fn cleanup_state(pool: &PgPool, cleanup: CleanupState) -> Result<()> {
     }
 
     if let Some(cliente_id) = cleanup.cliente_id {
+        sqlx::query("DELETE FROM cliente_contatos WHERE cliente_id = $1")
+            .bind(cliente_id)
+            .execute(pool)
+            .await
+            .context("failed to cleanup temporary client contacts")?;
         sqlx::query("DELETE FROM clientes WHERE id = $1")
             .bind(cliente_id)
             .execute(pool)
