@@ -793,6 +793,29 @@ export interface SecurityProfile {
   pin_required?: boolean;
   is_default: boolean;
   ativo: boolean;
+  avatar_icone?: string | null;
+  avatar_cor?: string | null;
+  tema?: "light" | "dark" | null;
+  /** Ainda não passou pelo primeiro acesso (nome, visual). */
+  onboarding_pendente?: boolean;
+  /** Permissões que o tour já apresentou; `null` = nunca viu o tour. */
+  tour_permissoes_vistas?: SensitivePermission[] | null;
+}
+
+export interface CodigoPrimeiroAcesso {
+  profile_id: number;
+  nome: string;
+  /** Formato XXX-XXX. */
+  codigo: string;
+  expira_em: string;
+}
+
+export interface PersonalizacaoPerfilInput {
+  nome: string;
+  avatar_icone: string | null;
+  avatar_cor: string | null;
+  tema: "light" | "dark" | null;
+  concluir_onboarding: boolean;
 }
 
 export interface SecurityProfileInput {

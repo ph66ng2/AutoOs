@@ -37,6 +37,7 @@ fn unlock_test_profile(profile_id: i32) -> Result<()> {
         pin_required: true,
         is_default: true,
         ativo: true,
+        ..Default::default()
     };
     tauri_result(auth::unlock_session(profile), "Falha ao desbloquear sessão")
 }

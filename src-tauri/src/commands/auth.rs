@@ -48,6 +48,7 @@ static SENSITIVE_SESSION: OnceLock<Mutex<SensitiveSession>> = OnceLock::new();
 static UNLOCK_ATTEMPTS: OnceLock<Mutex<HashMap<i32, UnlockAttemptTracker>>> = OnceLock::new();
 static SELECTED_PROFILE_ID: AtomicI32 = AtomicI32::new(0);
 static INACTIVITY_LOCK_ENABLED: AtomicBool = AtomicBool::new(false);
+static INACTIVITY_CONFIG_LOADED: AtomicBool = AtomicBool::new(false);
 
 #[derive(Debug, Default, Clone)]
 struct UnlockAttemptTracker {
@@ -62,7 +63,7 @@ pub(crate) struct SensitiveSession {
     pub(crate) profile_key: Option<Vec<u8>>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
 pub struct SecurityProfileSummary {
     pub id: i32,
     pub nome: String,
@@ -72,12 +73,23 @@ pub struct SecurityProfileSummary {
     pub pin_required: bool,
     pub is_default: bool,
     pub ativo: bool,
+    #[serde(default)]
+    pub avatar_icone: Option<String>,
+    #[serde(default)]
+    pub avatar_cor: Option<String>,
+    #[serde(default)]
+    pub tema: Option<String>,
+    #[serde(default)]
+    pub onboarding_pendente: bool,
+    /// Permissões que o tour já apresentou. `None` = o tour nunca foi visto.
+    #[serde(default)]
+    pub tour_permissoes_vistas: Option<Vec<String>>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum PermissionGateFailure {
     SessionLocked,
-    MissingPermission(SecurityProfileSummary),
+    MissingPermission(Box<SecurityProfileSummary>),
 }
 
 #[derive(Debug, Serialize)]
@@ -128,6 +140,19 @@ struct SecurityProfileRecord {
     ativo: bool,
     is_default: bool,
     criado_em: chrono::NaiveDateTime,
+    avatar_icone: Option<String>,
+    avatar_cor: Option<String>,
+    tema: Option<String>,
+    onboarding_concluido_em: Option<DateTime<Utc>>,
+    tour_permissoes_vistas: Option<String>,
+}
+
+/// Colunas de `SecurityProfileRecord`. Macro para compor SQL estático com `concat!`.
+macro_rules! profile_columns {
+    () => {
+        "id, nome, role, permissions, pin_required, ativo, is_default, criado_em, \
+         avatar_icone, avatar_cor, tema, onboarding_concluido_em, tour_permissoes_vistas"
+    };
 }
 
 pub(crate) fn session_state() -> &'static Mutex<SensitiveSession> {
@@ -364,8 +389,112 @@ fn store_profile_pin_record(profile_id: i32, record: &StoredSensitivePin) -> Res
 
     entry.set_password(&json).map_err(|e| {
         error!("Erro ao salvar PIN do acesso sensível: {}", e);
-        e.to_string()
+        KEYRING_UNAVAILABLE_MESSAGE.to_string()
     })
+}
+
+const KEYRING_UNAVAILABLE_MESSAGE: &str =
+    "O cofre de senhas do sistema está bloqueado ou indisponível. Desbloqueie-o e tente de novo.";
+const KEYRING_TIMEOUT_MESSAGE: &str =
+    "O cofre de senhas do sistema não respondeu a tempo. Responda ao aviso do sistema ou desbloqueie o cofre e tente de novo.";
+const KEYRING_WRITE_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(30);
+
+/// Uma ativação por vez neste processo: duplo clique ou Enter repetido não pode misturar o
+/// "guardar PIN anterior / gravar / consumir / desfazer" de duas chamadas sobre o mesmo cofre.
+/// A trava é tomada com `try_lock_owned` e acompanha a gravação no keyring: se o limite de tempo
+/// estourar, ela fica com a thread de fundo até a gravação terminar e ser desfeita, então uma nova
+/// tentativa nesse intervalo recebe um aviso imediato em vez de disputar o cofre.
+static ATIVACAO_EM_ANDAMENTO: OnceLock<std::sync::Arc<tokio::sync::Mutex<()>>> = OnceLock::new();
+
+fn ativacao_em_andamento() -> std::sync::Arc<tokio::sync::Mutex<()>> {
+    ATIVACAO_EM_ANDAMENTO
+        .get_or_init(|| std::sync::Arc::new(tokio::sync::Mutex::new(())))
+        .clone()
+}
+
+const ATIVACAO_OCUPADA_MESSAGE: &str =
+    "Já há uma ativação em andamento neste computador, esperando o cofre de senhas. Aguarde alguns instantes, ou desbloqueie o cofre, e tente de novo.";
+
+/// Roda uma chamada síncrona do keyring fora do worker async, com limite de tempo. Um cofre
+/// travado esperando resposta do usuário não pode prender o worker nem uma transação aberta.
+async fn run_keyring_blocking<T, F>(limit: std::time::Duration, work: F) -> Result<T, String>
+where
+    T: Send + 'static,
+    F: FnOnce() -> Result<T, String> + Send + 'static,
+{
+    match tokio::time::timeout(limit, tokio::task::spawn_blocking(work)).await {
+        Ok(Ok(result)) => result,
+        Ok(Err(_)) => Err(KEYRING_UNAVAILABLE_MESSAGE.to_string()),
+        Err(_) => Err(KEYRING_TIMEOUT_MESSAGE.to_string()),
+    }
+}
+
+#[derive(PartialEq)]
+enum FaseGravacao {
+    Gravando,
+    Concluida,
+    Cancelada,
+}
+
+/// Como `run_keyring_blocking`, mas para uma gravação que precisa ser desfeita se terminar depois
+/// do limite de tempo. Estourado o limite, a chamada devolve o erro de tempo e a própria thread,
+/// ao terminar a gravação, executa `desfazer` com o que gravou. A fase é decidida sob um mutex:
+/// ou a gravação conclui antes do cancelamento (e o resultado é entregue) ou depois (e é desfeita).
+///
+/// `retida` é uma trava (a de ativação) que viaja com a thread: volta ao chamador junto com o
+/// resultado quando a gravação conclui a tempo, e só é solta quando a thread termina (depois de
+/// desfazer) se o limite estourou. Assim nada mais mexe no cofre enquanto a gravação tardia pode
+/// acontecer.
+async fn run_keyring_cancelable<T, G, W, U>(
+    limit: std::time::Duration,
+    retida: G,
+    work: W,
+    desfazer: U,
+) -> Result<(T, G), String>
+where
+    T: Send + 'static,
+    G: Send + 'static,
+    W: FnOnce() -> Result<T, String> + Send + 'static,
+    U: FnOnce(&T) + Send + 'static,
+{
+    let fase = std::sync::Arc::new(Mutex::new(FaseGravacao::Gravando));
+    let fase_da_thread = fase.clone();
+    let mut tarefa = tokio::task::spawn_blocking(move || {
+        let retida = retida;
+        let produzido = work()?;
+        let mut fase = fase_da_thread.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+        if *fase == FaseGravacao::Cancelada {
+            drop(fase);
+            desfazer(&produzido);
+            return Err(KEYRING_TIMEOUT_MESSAGE.to_string());
+        }
+        *fase = FaseGravacao::Concluida;
+        Ok((produzido, retida))
+    });
+    match tokio::time::timeout(limit, &mut tarefa).await {
+        Ok(Ok(result)) => result,
+        Ok(Err(_)) => Err(KEYRING_UNAVAILABLE_MESSAGE.to_string()),
+        Err(_) => {
+            let ja_concluida = {
+                let mut fase = fase.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+                if *fase == FaseGravacao::Concluida {
+                    true
+                } else {
+                    *fase = FaseGravacao::Cancelada;
+                    false
+                }
+            };
+            if ja_concluida {
+                // Terminou no instante do limite: o resultado já existe, é só entregá-lo.
+                match tarefa.await {
+                    Ok(result) => result,
+                    Err(_) => Err(KEYRING_UNAVAILABLE_MESSAGE.to_string()),
+                }
+            } else {
+                Err(KEYRING_TIMEOUT_MESSAGE.to_string())
+            }
+        }
+    }
 }
 
 pub(crate) fn store_profile_pin(profile_id: i32, pin: &str) -> Result<(), String> {
@@ -387,6 +516,13 @@ async fn any_profile_has_pin() -> Result<bool, String> {
     Ok(false)
 }
 
+/// O PIN de cada perfil vive no keyring de cada computador, então o que decide se um perfil
+/// tem (ou terá) PIN é o banco: `pin_required`. `pin_configured` (só este computador) cobre
+/// perfis antigos que já têm PIN aqui. Quem exige PIN nunca abre sessão sem ele.
+fn profile_requires_pin(profile: &SecurityProfileSummary) -> bool {
+    profile.pin_required || profile.pin_configured
+}
+
 fn has_permission_values(permissions: &[String], permission: &str) -> bool {
     permissions.iter().any(|value| value == permission)
 }
@@ -403,7 +539,7 @@ fn evaluate_permission_gate(
     if has_permission(&profile, permission) {
         Ok(profile)
     } else {
-        Err(PermissionGateFailure::MissingPermission(profile))
+        Err(PermissionGateFailure::MissingPermission(Box::new(profile)))
     }
 }
 
@@ -466,7 +602,22 @@ async fn read_inactivity_config_from_db() -> Result<bool, String> {
         super::operator_errors::mapear_erro_sql(e)
     })?;
     INACTIVITY_LOCK_ENABLED.store(row, Ordering::Relaxed);
+    INACTIVITY_CONFIG_LOADED.store(true, Ordering::Relaxed);
     Ok(row)
+}
+
+/// Garante que a flag de bloqueio por inatividade veio do banco, sem depender de alguém abrir
+/// Configurações. Lê uma vez por processo e de novo a cada status com a sessão bloqueada, então
+/// uma mudança feita em outro computador vale no próximo desbloqueio. Se a leitura falhar, a
+/// flag continua como estava e a próxima consulta tenta de novo.
+async fn refresh_inactivity_config_if_needed() {
+    let locked = !matches!(current_session_profile(), Ok(Some(_)));
+    if INACTIVITY_CONFIG_LOADED.load(Ordering::Relaxed) && !locked {
+        return;
+    }
+    if let Err(error) = read_inactivity_config_from_db().await {
+        warn!("Não foi possível carregar a configuração de inatividade: {}", error);
+    }
 }
 
 #[tauri::command]
@@ -550,7 +701,9 @@ pub(crate) fn unlock_session(profile: SecurityProfileSummary) -> Result<(), Stri
 pub fn touch_sensitive_access() -> Result<(), String> {
     let mut session = session_state().lock().map_err(|_| "Sessão sensível indisponível".to_string())?;
     match (session.unlocked_until, session.profile_obfuscated.clone(), session.profile_key.clone()) {
-        (Some(until), Some(_), Some(_)) if until > Utc::now() => {
+        // Com o bloqueio por inatividade desativado a sessão não expira: segue o que
+        // `current_session_profile` já considera válido.
+        (Some(until), Some(_), Some(_)) if until > Utc::now() || !INACTIVITY_LOCK_ENABLED.load(Ordering::Relaxed) => {
             session.unlocked_until = Some(Utc::now() + Duration::minutes(SESSION_TIMEOUT_MINUTES));
             Ok(())
         }
@@ -580,10 +733,29 @@ pub fn require_sensitive_access() -> Result<SecurityProfileSummary, String> {
     Ok(profile)
 }
 
+/// Confere a sessão sem renová-la e sem registrar tentativa negada na auditoria. É para leituras
+/// de segundo plano (o sino do portal consulta a cada 30 s): só a ação do usuário prorroga os
+/// 15 minutos, senão o bloqueio por inatividade nunca dispara.
+pub fn require_sensitive_access_without_touch() -> Result<SecurityProfileSummary, String> {
+    current_session_profile()?
+        .map(|(_, profile)| profile)
+        .ok_or_else(|| "Acesso sensível bloqueado. Informe o PIN para continuar.".to_string())
+}
+
 /// Resolve a empresa exclusivamente a partir do perfil atualmente autenticado.
 /// Valores recebidos da interface nunca devem escolher o tenant de uma escrita.
 pub async fn require_active_session_company_id(pool: &PgPool) -> Result<i32, String> {
     let profile = require_sensitive_access()?;
+    company_id_for_profile(pool, &profile).await
+}
+
+/// Igual a `require_active_session_company_id`, para consultas de segundo plano: não renova a sessão.
+pub async fn require_active_session_company_id_without_touch(pool: &PgPool) -> Result<i32, String> {
+    let profile = require_sensitive_access_without_touch()?;
+    company_id_for_profile(pool, &profile).await
+}
+
+async fn company_id_for_profile(pool: &PgPool, profile: &SecurityProfileSummary) -> Result<i32, String> {
     let company_id = sqlx::query_scalar(
         "SELECT e.id
          FROM security_profiles p
@@ -626,7 +798,7 @@ pub fn require_permission(permission: &str) -> Result<SecurityProfileSummary, St
             let profile_name = profile.nome.clone();
             spawn_security_event(
                 "PERMISSION_DENIED",
-                Some(profile),
+                Some(*profile),
                 format!("permission={}", permission),
                 false,
             );
@@ -708,7 +880,7 @@ async fn fetch_profile_records_with_scope(include_inactive: bool) -> Result<Vec<
     ensure_default_profile_exists().await?;
     let pool = get_pool().await.map_err(|e| e.to_string())?;
     let mut query_builder = sqlx::QueryBuilder::<sqlx::Postgres>::new(
-        "SELECT id, nome, role, permissions, pin_required, ativo, is_default, criado_em FROM security_profiles",
+        concat!("SELECT ", profile_columns!(), " FROM security_profiles"),
     );
 
     if !include_inactive {
@@ -748,9 +920,7 @@ async fn fetch_active_profile_record() -> Result<SecurityProfileRecord, String> 
 async fn fetch_profile_record_by_id(profile_id: i32) -> Result<SecurityProfileRecord, String> {
     let pool = get_pool().await.map_err(|e| e.to_string())?;
     let profile = sqlx::query_as::<_, SecurityProfileRecord>(
-        "SELECT id, nome, role, permissions, pin_required, ativo, is_default, criado_em
-         FROM security_profiles
-         WHERE id = $1 AND ativo = true"
+        concat!("SELECT ", profile_columns!(), " FROM security_profiles WHERE id = $1 AND ativo = true"),
     )
     .bind(profile_id)
     .fetch_optional(&pool)
@@ -769,9 +939,7 @@ async fn fetch_profile_record_by_id(profile_id: i32) -> Result<SecurityProfileRe
 async fn fetch_profile_record_by_id_any(profile_id: i32) -> Result<SecurityProfileRecord, String> {
     let pool = get_pool().await.map_err(|e| e.to_string())?;
     sqlx::query_as::<_, SecurityProfileRecord>(
-        "SELECT id, nome, role, permissions, pin_required, ativo, is_default, criado_em
-         FROM security_profiles
-         WHERE id = $1"
+        concat!("SELECT ", profile_columns!(), " FROM security_profiles WHERE id = $1"),
     )
     .bind(profile_id)
     .fetch_optional(&pool)
@@ -808,6 +976,14 @@ fn to_profile_summary(record: SecurityProfileRecord) -> Result<SecurityProfileSu
         pin_required: record.pin_required,
         is_default: record.is_default,
         ativo: record.ativo,
+        avatar_icone: record.avatar_icone,
+        avatar_cor: record.avatar_cor,
+        tema: record.tema,
+        onboarding_pendente: record.onboarding_concluido_em.is_none(),
+        tour_permissoes_vistas: match record.tour_permissoes_vistas.as_deref() {
+            Some(raw) => Some(parse_permissions(raw)?),
+            None => None,
+        },
     })
 }
 
@@ -863,6 +1039,7 @@ async fn count_active_profiles_excluding(profile_id: i32) -> Result<i64, String>
 }
 
 async fn status_snapshot() -> Result<SensitiveAccessStatus, String> {
+    refresh_inactivity_config_if_needed().await;
     let active_profile = fetch_active_profile_record().await?;
     ensure_legacy_pin_migrated(active_profile.id).await?;
 
@@ -904,6 +1081,7 @@ async fn status_snapshot() -> Result<SensitiveAccessStatus, String> {
             .into_iter()
             .map(|mut profile| {
                 profile.permissions = Vec::new();
+                profile.tour_permissoes_vistas = None;
                 profile
             })
             .collect()
@@ -1194,8 +1372,8 @@ pub async fn update_security_profile(profile_id: i32, input: SecurityProfileInpu
 
     let role = normalize_role(&input.role)?;
     let permissions = normalize_permissions(&role, &input.permissions)?;
-    if !current.pin_configured && (role == "ADMIN" || has_permission_values(&permissions, PERMISSION_MANAGE_PROFILES)) {
-        return Err("Configure o PIN deste perfil antes de conceder acesso à administração".to_string());
+    if !profile_requires_pin(&current) && (role == "ADMIN" || has_permission_values(&permissions, PERMISSION_MANAGE_PROFILES)) {
+        return Err("Este perfil não exige PIN. Gere um código de acesso para a pessoa criar o PIN antes de conceder acesso à administração".to_string());
     }
     if !has_permission_values(&permissions, PERMISSION_MANAGE_PROFILES)
         && has_permission(&current, PERMISSION_MANAGE_PROFILES)
@@ -1234,43 +1412,6 @@ pub async fn update_security_profile(profile_id: i32, input: SecurityProfileInpu
         "PROFILE_UPDATED",
         Some(&actor),
         format!("Perfil {} atualizado", nome),
-        true,
-    )
-    .await;
-    status_snapshot().await
-}
-
-#[tauri::command]
-#[instrument(skip_all)]
-pub async fn reset_security_profile_pin(profile_id: i32, new_pin: String, admin_pin: String) -> Result<SensitiveAccessStatus, String> {
-    let actor = require_permission(PERMISSION_MANAGE_PROFILES)?;
-
-    let stored = load_profile_pin(actor.id)?;
-    if let Some(ref stored_pin) = stored {
-        if !verify_pin(admin_pin.trim(), stored_pin) {
-            spawn_security_event("PIN_RESET_FAILED", Some(actor.clone()), "PIN do administrador inválido".to_string(), false);
-            return Err("PIN do administrador inválido".to_string());
-        }
-    } else {
-        return Err("Seu perfil não possui PIN configurado".to_string());
-    }
-
-    validate_pin_format(&new_pin)?;
-    if new_pin.trim().is_empty() {
-        return Err("Informe um PIN de 4 a 8 dígitos.".to_string());
-    }
-    let profile = to_profile_summary(fetch_profile_record_by_id(profile_id).await?)?;
-    store_profile_pin(profile_id, &new_pin)?;
-    mark_profile_pin_required(profile_id).await?;
-
-    if actor.id == profile_id {
-        unlock_session(profile.clone())?;
-    }
-
-    record_security_event(
-        "PIN_RESET",
-        Some(&actor),
-        format!("PIN redefinido para o perfil {}", profile.nome),
         true,
     )
     .await;
@@ -1876,9 +2017,678 @@ pub async fn provision_pin_with_enrollment(
     }))
 }
 
+// ─── Perfil: primeiro acesso por código, personalização e tour ───────────────
+
+/// Ícones de avatar oferecidos na interface (nomes do lucide-react em kebab-case).
+const AVATAR_ICONES: [&str; 12] = [
+    "headphones", "wrench", "printer", "coffee", "star", "zap",
+    "leaf", "flame", "rocket", "heart", "music", "gamepad-2",
+];
+const AVATAR_CORES: [&str; 10] = [
+    "#2563EB", "#4F46E5", "#7C3AED", "#C026D3", "#E11D48",
+    "#EA580C", "#B45309", "#15803D", "#0F766E", "#475569",
+];
+/// Sem caracteres ambíguos (0/O, 1/I/L) para o código ser ditado sem erro.
+const CODIGO_ALFABETO: &[u8] = b"ABCDEFGHJKMNPQRSTUVWXYZ23456789";
+const CODIGO_TAMANHO: usize = 6;
+const CODIGO_VALIDADE_HORAS: i64 = 24;
+/// Palpites errados que um código aguenta antes de ser revogado. Contados no banco: não
+/// somem ao reiniciar o app e não se misturam com o bloqueio de tentativas de PIN.
+const CODIGO_MAX_TENTATIVAS: i32 = 5;
+
+#[derive(Debug, Serialize)]
+pub struct CodigoPrimeiroAcesso {
+    pub profile_id: i32,
+    pub nome: String,
+    pub codigo: String,
+    pub expira_em: String,
+}
+
+#[derive(Debug, Deserialize, Default)]
+#[serde(default)]
+pub struct PersonalizacaoPerfilInput {
+    pub nome: String,
+    pub avatar_icone: Option<String>,
+    pub avatar_cor: Option<String>,
+    pub tema: Option<String>,
+    pub concluir_onboarding: bool,
+}
+
+fn gerar_codigo_acesso() -> String {
+    use rand::Rng;
+    let mut rng = rand::rngs::OsRng;
+    (0..CODIGO_TAMANHO)
+        .map(|_| CODIGO_ALFABETO[rng.gen_range(0..CODIGO_ALFABETO.len())] as char)
+        .collect()
+}
+
+pub(crate) fn normalizar_codigo_acesso(raw: &str) -> String {
+    raw.chars()
+        .filter(|character| character.is_ascii_alphanumeric())
+        .map(|character| character.to_ascii_uppercase())
+        .collect()
+}
+
+fn formatar_codigo_acesso(codigo: &str) -> String {
+    let (inicio, fim) = codigo.split_at(CODIGO_TAMANHO / 2);
+    format!("{}-{}", inicio, fim)
+}
+
+fn validar_personalizacao(input: &PersonalizacaoPerfilInput) -> Result<(), String> {
+    let nome = input.nome.trim();
+    if nome.chars().count() < 3 || nome.chars().count() > 40 {
+        return Err("O nome deve ter entre 3 e 40 caracteres.".to_string());
+    }
+    if let Some(icone) = input.avatar_icone.as_deref() {
+        if !AVATAR_ICONES.contains(&icone) {
+            return Err("Ícone de perfil inválido.".to_string());
+        }
+    }
+    if let Some(cor) = input.avatar_cor.as_deref() {
+        if !AVATAR_CORES.contains(&cor) {
+            return Err("Cor de perfil inválida.".to_string());
+        }
+    }
+    if let Some(tema) = input.tema.as_deref() {
+        if tema != "light" && tema != "dark" {
+            return Err("Tema inválido.".to_string());
+        }
+    }
+    Ok(())
+}
+
+/// Revoga os códigos abertos do perfil e emite um novo dentro da transação recebida.
+///
+/// Dois administradores podem emitir ao mesmo tempo para o mesmo perfil: a linha do perfil é
+/// travada para serializar as emissões (a segunda espera, revoga o código da primeira e emite
+/// o seu) e o índice único parcial garante, no banco, no máximo um código aberto por perfil.
+pub(crate) async fn emitir_codigo_primeiro_acesso(
+    tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+    profile_id: i32,
+    actor_id: i32,
+) -> Result<(String, DateTime<Utc>), String> {
+    sqlx::query("SELECT id FROM security_profiles WHERE id = $1 FOR UPDATE")
+        .bind(profile_id)
+        .fetch_one(&mut **tx)
+        .await
+        .map_err(super::operator_errors::mapear_erro_sql)?;
+
+    sqlx::query(
+        "UPDATE codigos_primeiro_acesso SET revogado_em = NOW()
+         WHERE profile_id = $1 AND usado_em IS NULL AND revogado_em IS NULL",
+    )
+    .bind(profile_id)
+    .execute(&mut **tx)
+    .await
+    .map_err(super::operator_errors::mapear_erro_sql)?;
+
+    let codigo = gerar_codigo_acesso();
+    let expira_em: DateTime<Utc> = sqlx::query_scalar(
+        "INSERT INTO codigos_primeiro_acesso (profile_id, codigo_hash, expira_em, criado_por_profile_id)
+         VALUES ($1, $2, NOW() + make_interval(hours => $3), $4)
+         RETURNING expira_em",
+    )
+    .bind(profile_id)
+    .bind(hash_pin_argon2(&codigo)?)
+    .bind(CODIGO_VALIDADE_HORAS as i32)
+    .bind(actor_id)
+    .fetch_one(&mut **tx)
+    .await
+    .map_err(super::operator_errors::mapear_erro_sql)?;
+
+    Ok((codigo, expira_em))
+}
+
+/// Cria um perfil sem PIN local e devolve o código que a pessoa usa no primeiro acesso.
+/// O administrador nunca define nem conhece o PIN definitivo.
+#[tauri::command]
+#[instrument(skip_all)]
+pub async fn criar_perfil_com_codigo(input: SecurityProfileInput, admin_pin: String) -> Result<CodigoPrimeiroAcesso, String> {
+    let actor = require_permission(PERMISSION_MANAGE_PROFILES)?;
+    confirm_authenticated_profile_pin(&actor, &admin_pin).await?;
+
+    let nome = input.nome.trim();
+    if nome.chars().count() < 3 {
+        return Err("Nome do perfil deve ter no mínimo 3 caracteres".to_string());
+    }
+    let role = normalize_role(&input.role)?;
+    let permissions = normalize_permissions(&role, &input.permissions)?;
+    let permissions_json = serde_json::to_string(&permissions).map_err(|e| e.to_string())?;
+
+    let pool = get_pool().await.map_err(|e| e.to_string())?;
+    let mut tx = pool.begin().await.map_err(super::operator_errors::mapear_erro_sql)?;
+    // O novo membro herda a empresa de quem o cadastrou.
+    let profile_id: i32 = sqlx::query_scalar(
+        "INSERT INTO security_profiles (nome, role, permissions, ativo, is_default, pin_required, empresa_id, atualizado_em)
+         VALUES ($1, $2, $3, true, false, true, (SELECT empresa_id FROM security_profiles WHERE id = $4), NOW())
+         RETURNING id",
+    )
+    .bind(nome)
+    .bind(&role)
+    .bind(&permissions_json)
+    .bind(actor.id)
+    .fetch_one(&mut *tx)
+    .await
+    .map_err(|e| {
+        let resposta = super::operator_errors::mapear_erro_sql(e);
+        if resposta.starts_with("AUTOOS:23505") {
+            resposta
+        } else {
+            super::operator_errors::trocar_frase(&resposta, "Não foi possível criar o perfil. Tente novamente.")
+        }
+    })?;
+    let (codigo, expira_em) = emitir_codigo_primeiro_acesso(&mut tx, profile_id, actor.id).await?;
+    tx.commit().await.map_err(super::operator_errors::mapear_erro_sql)?;
+
+    record_security_event(
+        "PROFILE_CREATED",
+        Some(&actor),
+        format!("Perfil {} criado com papel {} e código de primeiro acesso", nome, role),
+        true,
+    )
+    .await;
+
+    Ok(CodigoPrimeiroAcesso {
+        profile_id,
+        nome: nome.to_string(),
+        codigo: formatar_codigo_acesso(&codigo),
+        expira_em: expira_em.to_rfc3339(),
+    })
+}
+
+/// Gera um novo código para um perfil existente: outro computador ou PIN esquecido.
+/// Qualquer código anterior ainda aberto deixa de valer. Como o código permite
+/// criar um PIN novo para o perfil, exige o PIN do administrador, igual à troca de PIN.
+#[tauri::command]
+#[instrument(skip_all)]
+pub async fn gerar_codigo_primeiro_acesso(profile_id: i32, admin_pin: String) -> Result<CodigoPrimeiroAcesso, String> {
+    let actor = require_permission(PERMISSION_MANAGE_PROFILES)?;
+    confirm_authenticated_profile_pin(&actor, &admin_pin).await?;
+    let profile = fetch_profile_record_by_id(profile_id).await?;
+
+    let pool = get_pool().await.map_err(|e| e.to_string())?;
+    let mut tx = pool.begin().await.map_err(super::operator_errors::mapear_erro_sql)?;
+    let (codigo, expira_em) = emitir_codigo_primeiro_acesso(&mut tx, profile.id, actor.id).await?;
+    tx.commit().await.map_err(super::operator_errors::mapear_erro_sql)?;
+
+    record_security_event(
+        "ACCESS_CODE_ISSUED",
+        Some(&actor),
+        format!("Código de primeiro acesso gerado para o perfil {}", profile.nome),
+        true,
+    )
+    .await;
+
+    Ok(CodigoPrimeiroAcesso {
+        profile_id: profile.id,
+        nome: profile.nome,
+        codigo: formatar_codigo_acesso(&codigo),
+        expira_em: expira_em.to_rfc3339(),
+    })
+}
+
+/// Confere o código sem consumi-lo. Palpite errado é contado no banco e revoga o código ao
+/// atingir `CODIGO_MAX_TENTATIVAS`. A transação é curta e termina aqui, antes de qualquer
+/// espera pelo keyring, para não deixar a linha do código travada.
+pub(crate) async fn conferir_codigo_primeiro_acesso(
+    pool: &PgPool,
+    summary: &SecurityProfileSummary,
+    codigo: &str,
+) -> Result<i32, String> {
+    let profile_id = summary.id;
+    let mut tx = pool.begin().await.map_err(super::operator_errors::mapear_erro_sql)?;
+
+    let abertos: Vec<(i32, String)> = sqlx::query_as(
+        "SELECT id, codigo_hash FROM codigos_primeiro_acesso
+         WHERE profile_id = $1 AND usado_em IS NULL AND revogado_em IS NULL AND expira_em > NOW()
+         FOR UPDATE",
+    )
+    .bind(profile_id)
+    .fetch_all(&mut *tx)
+    .await
+    .map_err(super::operator_errors::mapear_erro_sql)?;
+
+    let encontrado = abertos.into_iter().find(|(_, hash)| {
+        PasswordHash::new(hash)
+            .map(|parsed| Argon2::default().verify_password(codigo.as_bytes(), &parsed).is_ok())
+            .unwrap_or(false)
+    });
+
+    let Some((codigo_id, _)) = encontrado else {
+        let revogados: i64 = sqlx::query_scalar(
+            "WITH atualizados AS (
+                 UPDATE codigos_primeiro_acesso
+                    SET tentativas = tentativas + 1,
+                        revogado_em = CASE WHEN tentativas + 1 >= $2 THEN NOW() ELSE revogado_em END
+                  WHERE profile_id = $1 AND usado_em IS NULL AND revogado_em IS NULL AND expira_em > NOW()
+              RETURNING revogado_em
+             )
+             SELECT COUNT(*) FILTER (WHERE revogado_em IS NOT NULL) FROM atualizados",
+        )
+        .bind(profile_id)
+        .bind(CODIGO_MAX_TENTATIVAS)
+        .fetch_one(&mut *tx)
+        .await
+        .map_err(super::operator_errors::mapear_erro_sql)?;
+        tx.commit().await.map_err(super::operator_errors::mapear_erro_sql)?;
+
+        let detalhe = if revogados > 0 {
+            "Código de primeiro acesso inválido; revogado por excesso de tentativas"
+        } else {
+            "Código de primeiro acesso inválido ou expirado"
+        };
+        record_security_event("ACCESS_CODE_FAILED", Some(summary), detalhe, false).await;
+        return Err(if revogados > 0 {
+            "Muitas tentativas inválidas: o código foi bloqueado. Peça um novo código ao administrador.".to_string()
+        } else {
+            "Código inválido ou expirado. Peça um novo código ao administrador.".to_string()
+        });
+    };
+
+    // Nada mudou: só libera a linha.
+    tx.rollback().await.map_err(super::operator_errors::mapear_erro_sql)?;
+    Ok(codigo_id)
+}
+
+/// Consome o código com uma única instrução condicional. Devolve `false` se ele já foi usado,
+/// revogado ou expirou desde a conferência (por exemplo, usado em outro computador).
+pub(crate) async fn consumir_codigo_primeiro_acesso(pool: &PgPool, codigo_id: i32) -> Result<bool, String> {
+    let result = sqlx::query(
+        "UPDATE codigos_primeiro_acesso SET usado_em = NOW()
+         WHERE id = $1 AND usado_em IS NULL AND revogado_em IS NULL AND expira_em > NOW()",
+    )
+    .bind(codigo_id)
+    .execute(pool)
+    .await
+    .map_err(super::operator_errors::mapear_erro_sql)?;
+    Ok(result.rows_affected() == 1)
+}
+
+fn delete_profile_pin_record(profile_id: i32) -> Result<(), String> {
+    let entry = get_keyring_entry(&profile_keyring_user(profile_id))?;
+    match entry.delete_password() {
+        Ok(()) | Err(keyring::Error::NoEntry) => Ok(()),
+        Err(e) => {
+            error!("Erro ao remover PIN do acesso sensível: {}", e);
+            Err(KEYRING_UNAVAILABLE_MESSAGE.to_string())
+        }
+    }
+}
+
+/// Devolve o keyring ao estado anterior à ativação (PIN antigo, ou nenhum PIN), mas só se o PIN
+/// que está lá ainda for o que esta chamada gravou: se outra coisa o trocou, não é mais nosso.
+/// Devolve `false` quando o PIN mudou e nada foi desfeito.
+fn restaurar_pin_anterior_sync(
+    profile_id: i32,
+    anterior: Option<StoredSensitivePin>,
+    escrito: Option<StoredSensitivePin>,
+) -> Result<bool, String> {
+    if let (Some(mine), Some(current)) = (escrito.as_ref(), load_profile_pin(profile_id).ok().flatten()) {
+        if current.pin_hash != mine.pin_hash || current.created_at != mine.created_at {
+            return Ok(false);
+        }
+    }
+    match anterior {
+        Some(record) => store_profile_pin_record(profile_id, &record)?,
+        None => delete_profile_pin_record(profile_id)?,
+    }
+    Ok(true)
+}
+
+pub(crate) async fn restaurar_pin_anterior(
+    profile_id: i32,
+    anterior: Option<StoredSensitivePin>,
+    escrito: Option<StoredSensitivePin>,
+) {
+    let resultado = run_keyring_blocking(KEYRING_WRITE_TIMEOUT, move || {
+        restaurar_pin_anterior_sync(profile_id, anterior, escrito)
+    })
+    .await;
+    match resultado {
+        Ok(true) => {}
+        Ok(false) => warn!("PIN do perfil {} mudou depois da ativação; nada foi desfeito", profile_id),
+        Err(motivo) => warn!("Não foi possível desfazer a gravação do PIN do perfil {}: {}", profile_id, motivo),
+    }
+}
+
+/// Usa o código para ativar o perfil neste computador: grava o PIN escolhido pela
+/// pessoa no keyring local e abre a sessão. Não exige sessão prévia.
+///
+/// Ordem: (1) confere o código numa transação curta; (2) grava o PIN no keyring, sem nenhuma
+/// transação aberta, com limite de 30 s; (3) consome o código com um UPDATE condicional. Se o
+/// keyring recusar ou demorar, o código continua valendo; uma gravação que só termine depois do
+/// limite é desfeita pela própria thread. Se o código deixar de valer entre
+/// (1) e (3), o PIN anterior volta ao keyring. Palpites errados são contados no banco.
+#[tauri::command]
+#[instrument(skip_all)]
+pub async fn ativar_perfil_com_codigo(
+    profile_id: i32,
+    codigo: String,
+    pin: String,
+    confirm_pin: String,
+) -> Result<SensitiveAccessStatus, String> {
+    if pin.trim().is_empty() {
+        return Err("Crie um PIN de 4 a 8 dígitos.".to_string());
+    }
+    validate_pin_format(&pin)?;
+    if pin.trim() != confirm_pin.trim() {
+        return Err("Os PINs não conferem.".to_string());
+    }
+
+    let ativacao = ativacao_em_andamento()
+        .try_lock_owned()
+        .map_err(|_| ATIVACAO_OCUPADA_MESSAGE.to_string())?;
+
+    let record = fetch_profile_record_by_id(profile_id).await?;
+    let summary = to_profile_summary(record)?;
+    let codigo = normalizar_codigo_acesso(&codigo);
+    let pool = get_pool().await.map_err(|e| e.to_string())?;
+
+    let codigo_id = conferir_codigo_primeiro_acesso(&pool, &summary, &codigo).await?;
+
+    // Uma única chamada ao keyring, com um só limite de tempo: guarda o PIN anterior (recuperação
+    // de PIN) para voltar se o código não puder ser consumido e grava o novo.
+    let pin_para_gravar = pin.clone();
+    // Se o cofre só responder depois do limite, a própria thread desfaz a gravação.
+    let ((anterior, escrito), _ativacao) = match run_keyring_cancelable(
+        KEYRING_WRITE_TIMEOUT,
+        ativacao,
+        move || {
+            let anterior = load_profile_pin(profile_id).ok().flatten();
+            store_profile_pin(profile_id, &pin_para_gravar)?;
+            let escrito = load_profile_pin(profile_id).ok().flatten();
+            Ok((anterior, escrito))
+        },
+        move |(anterior, escrito): &(Option<StoredSensitivePin>, Option<StoredSensitivePin>)| {
+            if let Err(motivo) = restaurar_pin_anterior_sync(profile_id, anterior.clone(), escrito.clone()) {
+                warn!("Não foi possível desfazer a gravação tardia do PIN do perfil {}: {}", profile_id, motivo);
+            }
+        },
+    )
+    .await
+    {
+        Ok(par) => par,
+        Err(motivo) => {
+            record_security_event("ACCESS_CODE_FAILED", Some(&summary), "Falha ao gravar o PIN no cofre de senhas do sistema; o código continua válido", false).await;
+            return Err(format!("{motivo} O código continua válido."));
+        }
+    };
+
+    match consumir_codigo_primeiro_acesso(&pool, codigo_id).await {
+        Ok(true) => {}
+        Ok(false) => {
+            restaurar_pin_anterior(profile_id, anterior, escrito).await;
+            record_security_event("ACCESS_CODE_FAILED", Some(&summary), "O código deixou de valer durante a ativação", false).await;
+            return Err("Este código não vale mais (já foi usado, revogado ou expirou). Peça um novo código ao administrador.".to_string());
+        }
+        Err(erro) => {
+            restaurar_pin_anterior(profile_id, anterior, escrito).await;
+            return Err(erro);
+        }
+    }
+
+    mark_profile_pin_required(profile_id).await?;
+    reset_unlock_attempts(profile_id);
+    let summary = to_profile_summary(fetch_profile_record_by_id(profile_id).await?)?;
+    unlock_session(summary.clone())?;
+    record_security_event("ACCESS_CODE_REDEEMED", Some(&summary), "Perfil ativado neste computador com código de primeiro acesso", true).await;
+    status_snapshot().await
+}
+
+/// Salva nome, ícone, cor e tema do perfil da sessão. Com `concluir_onboarding`,
+/// marca o primeiro acesso como concluído.
+#[tauri::command]
+#[instrument(skip_all)]
+pub async fn salvar_personalizacao_perfil(input: PersonalizacaoPerfilInput) -> Result<SensitiveAccessStatus, String> {
+    let profile = require_sensitive_access()?;
+    validar_personalizacao(&input)?;
+
+    let pool = get_pool().await.map_err(|e| e.to_string())?;
+    let nome = input.nome.trim();
+    sqlx::query(
+        "UPDATE security_profiles
+         SET nome = $1, avatar_icone = $2, avatar_cor = $3, tema = $4,
+             onboarding_concluido_em = CASE WHEN $5 THEN COALESCE(onboarding_concluido_em, NOW()) ELSE onboarding_concluido_em END,
+             atualizado_em = NOW()
+         WHERE id = $6 AND ativo = true",
+    )
+    .bind(nome)
+    .bind(input.avatar_icone.as_deref())
+    .bind(input.avatar_cor.as_deref())
+    .bind(input.tema.as_deref())
+    .bind(input.concluir_onboarding)
+    .bind(profile.id)
+    .execute(&pool)
+    .await
+    .map_err(|e| {
+        let resposta = super::operator_errors::mapear_erro_sql(e);
+        if resposta.starts_with("AUTOOS:23505") {
+            resposta
+        } else {
+            super::operator_errors::trocar_frase(&resposta, "Não foi possível salvar o perfil. Tente novamente.")
+        }
+    })?;
+
+    if profile.nome != nome {
+        record_security_event(
+            "PROFILE_RENAMED",
+            Some(&profile),
+            format!("Perfil {} passou a se chamar {}", profile.nome, nome),
+            true,
+        )
+        .await;
+    }
+    status_snapshot().await
+}
+
+/// Registra que o tour apresentou todas as permissões atuais do perfil da sessão.
+#[tauri::command]
+#[instrument(skip_all)]
+pub async fn registrar_tour_visto() -> Result<SensitiveAccessStatus, String> {
+    let profile = require_sensitive_access()?;
+    let atual = to_profile_summary(fetch_profile_record_by_id(profile.id).await?)?;
+    let vistas = serde_json::to_string(&atual.permissions).map_err(|e| e.to_string())?;
+
+    let pool = get_pool().await.map_err(|e| e.to_string())?;
+    sqlx::query("UPDATE security_profiles SET tour_permissoes_vistas = $1 WHERE id = $2")
+        .bind(vistas)
+        .bind(atual.id)
+        .execute(&pool)
+        .await
+        .map_err(super::operator_errors::mapear_erro_sql)?;
+    status_snapshot().await
+}
+
+/// Últimos eventos de auditoria do próprio perfil (não exige gerenciar perfis).
+#[tauri::command]
+#[instrument(skip_all)]
+pub async fn listar_minhas_acoes(limit: Option<i32>) -> Result<Vec<SecurityAuditEventRow>, String> {
+    let profile = require_sensitive_access()?;
+    let pool = get_pool().await.map_err(|e| e.to_string())?;
+    let max_items = limit.unwrap_or(5).clamp(1, 20) as i64;
+
+    sqlx::query_as::<_, SecurityAuditEventRow>(
+        "SELECT id, event_type, profile_id, profile_name, details, success, created_at::text AS created_at
+         FROM security_audit_log
+         WHERE profile_id = $1 AND success = true
+         ORDER BY created_at DESC
+         LIMIT $2"
+    )
+    .bind(profile.id)
+    .bind(max_items)
+    .fetch_all(&pool)
+    .await
+    .map_err(|e| {
+        error!("Erro ao listar ações do perfil: {}", e);
+        super::operator_errors::mapear_erro_sql(e)
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Os testes de sessão mexem em estáticos do processo (sessão e flag de inatividade).
+    static SESSION_TEST_LOCK: Mutex<()> = Mutex::new(());
+
+    fn session_test_guard() -> std::sync::MutexGuard<'static, ()> {
+        SESSION_TEST_LOCK.lock().unwrap_or_else(|poisoned| poisoned.into_inner())
+    }
+
+    fn unlocked_test_session(inactivity_lock: bool, expires_in: Duration) {
+        INACTIVITY_LOCK_ENABLED.store(inactivity_lock, Ordering::Relaxed);
+        unlock_session(SecurityProfileSummary {
+            id: 9001,
+            nome: "Sessão de teste".to_string(),
+            role: "TECNICO".to_string(),
+            ..Default::default()
+        })
+        .expect("sessão de teste");
+        session_state().lock().unwrap().unlocked_until = Some(Utc::now() + expires_in);
+    }
+
+    fn session_expiry() -> DateTime<Utc> {
+        session_state().lock().unwrap().unlocked_until.expect("sessão aberta")
+    }
+
+    #[test]
+    fn background_reads_do_not_extend_the_session_but_user_actions_do() {
+        let _guard = session_test_guard();
+        unlocked_test_session(true, Duration::minutes(1));
+        let before = session_expiry();
+
+        // O sino do portal consulta a cada 30 s: não pode prorrogar os 15 minutos.
+        for _ in 0..3 {
+            require_sensitive_access_without_touch().expect("sessão ainda aberta");
+        }
+        assert_eq!(session_expiry(), before);
+
+        require_sensitive_access().expect("ação do usuário");
+        assert!(session_expiry() > Utc::now() + Duration::minutes(10));
+
+        INACTIVITY_LOCK_ENABLED.store(false, Ordering::Relaxed);
+        clear_session().unwrap();
+    }
+
+    #[test]
+    fn expired_session_is_locked_for_background_reads_and_user_actions_when_the_lock_is_on() {
+        let _guard = session_test_guard();
+        unlocked_test_session(true, -Duration::minutes(1));
+
+        assert!(require_sensitive_access_without_touch().is_err());
+        assert!(require_sensitive_access().is_err());
+        assert!(current_session_profile().unwrap().is_none());
+
+        INACTIVITY_LOCK_ENABLED.store(false, Ordering::Relaxed);
+        clear_session().unwrap();
+    }
+
+    #[test]
+    fn with_the_lock_off_the_session_never_expires() {
+        let _guard = session_test_guard();
+        unlocked_test_session(false, -Duration::minutes(1));
+
+        assert!(require_sensitive_access_without_touch().is_ok());
+        assert!(require_sensitive_access().is_ok());
+        assert!(session_expiry() > Utc::now() + Duration::minutes(10));
+
+        clear_session().unwrap();
+    }
+
+    #[tokio::test]
+    async fn keyring_call_that_never_answers_gives_up_instead_of_holding_the_worker() {
+        let started = std::time::Instant::now();
+        let result: Result<(), String> = run_keyring_blocking(std::time::Duration::from_millis(50), || {
+            std::thread::sleep(std::time::Duration::from_millis(600));
+            Ok(())
+        })
+        .await;
+
+        assert_eq!(result.unwrap_err(), KEYRING_TIMEOUT_MESSAGE);
+        assert!(started.elapsed() < std::time::Duration::from_millis(400));
+    }
+
+    #[tokio::test]
+    async fn write_that_finishes_after_the_timeout_is_undone_while_the_lock_is_still_held() {
+        let lock = std::sync::Arc::new(tokio::sync::Mutex::new(()));
+        let guard = lock.clone().try_lock_owned().expect("trava livre");
+        let undone = std::sync::Arc::new(std::sync::atomic::AtomicI32::new(0));
+        let lock_during_undo = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let (undone_in_thread, lock_in_thread, lock_probe) = (undone.clone(), lock_during_undo.clone(), lock.clone());
+        let result: Result<(i32, tokio::sync::OwnedMutexGuard<()>), String> = run_keyring_cancelable(
+            std::time::Duration::from_millis(50),
+            guard,
+            || {
+                std::thread::sleep(std::time::Duration::from_millis(300));
+                Ok(7)
+            },
+            move |written: &i32| {
+                // O desfazer roda com a trava de ativação ainda presa à thread.
+                lock_in_thread.store(lock_probe.try_lock().is_err(), std::sync::atomic::Ordering::SeqCst);
+                undone_in_thread.store(*written, std::sync::atomic::Ordering::SeqCst);
+            },
+        )
+        .await;
+
+        assert_eq!(result.err(), Some(KEYRING_TIMEOUT_MESSAGE.to_string()));
+        // Entre o limite e o fim da gravação tardia, uma nova tentativa não consegue tomar a trava.
+        assert!(lock.clone().try_lock_owned().is_err(), "a trava deve ficar com a thread de fundo");
+
+        tokio::time::sleep(std::time::Duration::from_millis(600)).await;
+        assert_eq!(undone.load(std::sync::atomic::Ordering::SeqCst), 7, "a gravação tardia deve ser desfeita");
+        assert!(lock_during_undo.load(std::sync::atomic::Ordering::SeqCst), "o desfazer deve acontecer antes de soltar a trava");
+        assert!(lock.clone().try_lock_owned().is_ok(), "a trava deve ser solta quando a thread termina");
+    }
+
+    #[tokio::test]
+    async fn write_that_finishes_in_time_is_delivered_with_the_lock_and_not_undone() {
+        let lock = std::sync::Arc::new(tokio::sync::Mutex::new(()));
+        let undone = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let undone_in_thread = undone.clone();
+        let (valor, guard) = run_keyring_cancelable(
+            std::time::Duration::from_secs(5),
+            lock.clone().try_lock_owned().expect("trava livre"),
+            || Ok(3),
+            move |_: &i32| undone_in_thread.store(true, std::sync::atomic::Ordering::SeqCst),
+        )
+        .await
+        .expect("gravação a tempo");
+        assert_eq!(valor, 3);
+        assert!(lock.clone().try_lock_owned().is_err(), "a trava volta ao chamador junto com o resultado");
+        drop(guard);
+        assert!(lock.clone().try_lock_owned().is_ok());
+
+        let failed: Result<(i32, tokio::sync::OwnedMutexGuard<()>), String> = run_keyring_cancelable(
+            std::time::Duration::from_secs(5),
+            lock.clone().try_lock_owned().expect("trava livre"),
+            || Err(KEYRING_UNAVAILABLE_MESSAGE.to_string()),
+            |_: &i32| panic!("não há o que desfazer quando a gravação falhou"),
+        )
+        .await;
+        assert_eq!(failed.err(), Some(KEYRING_UNAVAILABLE_MESSAGE.to_string()));
+
+        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+        assert!(!undone.load(std::sync::atomic::Ordering::SeqCst));
+        assert!(lock.clone().try_lock_owned().is_ok(), "a falha libera a trava");
+    }
+
+    #[tokio::test]
+    async fn keyring_call_passes_through_success_and_its_own_error() {
+        let ok = run_keyring_blocking(std::time::Duration::from_secs(5), || Ok(7)).await;
+        assert_eq!(ok, Ok(7));
+        let failed: Result<(), String> =
+            run_keyring_blocking(std::time::Duration::from_secs(5), || Err(KEYRING_UNAVAILABLE_MESSAGE.to_string())).await;
+        assert_eq!(failed.unwrap_err(), KEYRING_UNAVAILABLE_MESSAGE);
+    }
+
+    #[test]
+    fn keyring_messages_are_in_portuguese_and_leak_no_platform_detail() {
+        for message in [KEYRING_UNAVAILABLE_MESSAGE, KEYRING_TIMEOUT_MESSAGE] {
+            assert!(message.contains("cofre de senhas"));
+            assert!(!message.to_lowercase().contains("zbus"));
+            assert!(!message.contains("Platform"));
+        }
+    }
 
     #[tokio::test]
     async fn company_lookup_does_not_expose_database_error_details() {
@@ -1911,6 +2721,11 @@ mod tests {
                 .expect("data válida")
                 .and_hms_opt(12, 0, 0)
                 .expect("hora válida"),
+            avatar_icone: None,
+            avatar_cor: None,
+            tema: None,
+            onboarding_concluido_em: None,
+            tour_permissoes_vistas: None,
         };
         let stale = StoredSensitivePin {
             pin_hash: "$argon2id$placeholder".to_string(),
@@ -1935,6 +2750,61 @@ mod tests {
             pin_required: true,
             is_default: false,
             ativo: true,
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn codigo_de_acesso_usa_apenas_caracteres_sem_ambiguidade() {
+        for _ in 0..50 {
+            let codigo = gerar_codigo_acesso();
+            assert_eq!(codigo.len(), CODIGO_TAMANHO);
+            assert!(codigo.bytes().all(|byte| CODIGO_ALFABETO.contains(&byte)));
+        }
+    }
+
+    #[test]
+    fn promocao_a_administrador_nao_depende_do_keyring_deste_computador() {
+        // Ativado só em outro computador: sem PIN aqui, mas o banco diz que exige PIN.
+        let outro_pc = SecurityProfileSummary { pin_configured: false, pin_required: true, ..build_profile("TECNICO", &[]) };
+        assert!(profile_requires_pin(&outro_pc));
+        // Perfil antigo que tem PIN neste computador continua valendo.
+        let local = SecurityProfileSummary { pin_configured: true, pin_required: false, ..build_profile("TECNICO", &[]) };
+        assert!(profile_requires_pin(&local));
+        // Sem PIN em lugar nenhum e sem exigência: não pode virar administrador.
+        let sem_pin = SecurityProfileSummary { pin_configured: false, pin_required: false, ..build_profile("TECNICO", &[]) };
+        assert!(!profile_requires_pin(&sem_pin));
+    }
+
+    #[test]
+    fn codigo_digitado_e_normalizado_antes_da_conferencia() {
+        assert_eq!(normalizar_codigo_acesso(" k7q-42m "), "K7Q42M");
+        assert_eq!(formatar_codigo_acesso("K7Q42M"), "K7Q-42M");
+    }
+
+    #[test]
+    fn personalizacao_aceita_apenas_opcoes_da_interface() {
+        let valida = PersonalizacaoPerfilInput {
+            nome: "Juliana".to_string(),
+            avatar_icone: Some("headphones".to_string()),
+            avatar_cor: Some("#0F766E".to_string()),
+            tema: Some("dark".to_string()),
+            concluir_onboarding: true,
+        };
+        assert!(validar_personalizacao(&valida).is_ok());
+        assert!(validar_personalizacao(&PersonalizacaoPerfilInput { nome: "Jo".to_string(), ..Default::default() }).is_err());
+        assert!(validar_personalizacao(&PersonalizacaoPerfilInput { avatar_icone: Some("skull".to_string()), ..valida_clone(&valida) }).is_err());
+        assert!(validar_personalizacao(&PersonalizacaoPerfilInput { avatar_cor: Some("#123456".to_string()), ..valida_clone(&valida) }).is_err());
+        assert!(validar_personalizacao(&PersonalizacaoPerfilInput { tema: Some("system".to_string()), ..valida_clone(&valida) }).is_err());
+    }
+
+    fn valida_clone(input: &PersonalizacaoPerfilInput) -> PersonalizacaoPerfilInput {
+        PersonalizacaoPerfilInput {
+            nome: input.nome.clone(),
+            avatar_icone: input.avatar_icone.clone(),
+            avatar_cor: input.avatar_cor.clone(),
+            tema: input.tema.clone(),
+            concluir_onboarding: input.concluir_onboarding,
         }
     }
 

@@ -64,6 +64,7 @@ Desktop app for printer management, technical reception, operational communicati
 | Supply stock | `src/pages/Insumos.tsx` + `produtos.rs` | Currently blocked in routing (`BlockedInsumosPage`) |
 | Settings/security | `src/pages/Configuracoes.tsx` + `auth.rs` + `util.rs` | Profiles, PIN, audit, backup, schema status |
 | Auth/permissions | `auth.rs` | PINs in OS keyring (never DB), XOR session obfuscation |
+| Profiles, first access, tour | `src/pages/Perfil.tsx`, `src/components/perfil/`, `src/components/tour/`, `src/lib/tour-steps.ts` + `auth.rs` + `0041_perfil_personalizacao_primeiro_acesso.sql` | Admin creates a profile and gets a one-time access code (only its Argon2 hash in `codigos_primeiro_acesso`; 24h, single use, one open code per profile, revoked after 5 wrong guesses counted in the database, consumed only after the PIN is stored in the keyring). The person redeems it on each computer and creates their own PIN there. Name/icon/color/theme live in `security_profiles`. Tour steps per permission in `tour-steps.ts`; `tour_permissoes_vistas` drives the "what's new" tour |
 | Database | `db.rs` + `migrations/` | sqlx runtime queries only (no `query!` macros) |
 | PDF generation | `src/lib/pdf-service.ts` | jsPDF + autotable, 1211 lines with BMITAG branding |
 | Email/WhatsApp | `src/lib/email-service.ts`, `whatsapp-service.ts` | SMTP + Evolution API. Email CC hardcoded to `medeiros@bmitag.com.br` |
@@ -173,6 +174,10 @@ npm run bundle:prep:windows:sign # Injects certThumbprint from env into tauri.co
 - Don't introduce `query!` / `query_as!` sqlx macros — the project uses runtime queries exclusively.
 - Don't assume `serial_number` is a unique business key (multiple `equipamentos` rows can share it).
 - Don't store sensitive data (PINs, SMTP passwords, WhatsApp tokens) in the database — use OS keyring.
+- Don't let an administrator set or see someone else's definitive PIN. New computers and forgotten PINs go through a new access code (`gerar_codigo_primeiro_acesso`), never through a PIN typed by the admin; `reset_security_profile_pin` was removed for this reason. A person who still has a PIN on the computer uses "Esqueci meu PIN: tenho um código do administrador" (wizard in `recovery` mode). The only other path is the break-glass for whoever holds the database credentials (`redefinir_pin_via_db` via "Esqueci minha senha"), which is also how a sole administrator recovers.
+- Don't add a sensitive permission without its step in `PERMISSION_TOUR` (`src/lib/tour-steps.ts`); `tour-steps.test.ts` fails if one is missing.
+- Don't merge `feature` into `master` or start internal-product work from `feature` — see "Branches e decisões de arquitetura".
+- Don't add PowerSync or offline sync to the desktop app (internal or SaaS); it is reserved for a future Mobile Field app.
 - Don't treat the Cloudflare photo tunnel (`cloudflared` / `*.trycloudflare.com`) as the SaaS photo architecture. It is a reception workaround: the phone uploads to **this PC** while the QR dialog is open. Future PHOTO / AO-EQP-ONLINE tickets must send photos to the company API or Storage (signed URL), not through a per-PC tunnel. Do not reopen PHOTO-001 or PHOTO-009 to "fix" the tunnel.
 
 ## REGRAS DE DOMÍNIO (perfis, PIN, operações sensíveis)
@@ -185,6 +190,46 @@ npm run bundle:prep:windows:sign # Injects certThumbprint from env into tauri.co
 - Recuperação de PIN (`redefinir_pin_via_db`) usa credenciais PostgreSQL como fator alternativo. `verificar_credenciais_banco` tenta TLS primeiro e cai para `NoTls` (PostgreSQL local). Quando a migração para Supabase for definitiva, o fallback `NoTls` pode ser removido.
 - Ao alterar dados persistidos, mantenha frontend, backend, validações (`validations.ts`) e tipos (`src/types/`) alinhados.
 - Quando o comportamento mudar, atualize a documentação afetada (`README.md`, `1-SETUP.md`, `4-BACKUP.md`, `3-NEXT_STEPS.md`, `docs/`).
+
+## BRANCHES E DECISÕES DE ARQUITETURA
+
+### Duas linhas, fluxo num sentido só
+
+- `master` é o AutoOS interno (Tauri + PostgreSQL legado), em produção na BMITAG. `feature` é o AutoOS SaaS (build explícito, Supabase + RLS).
+- Trabalho do produto interno (correções, piloto fiscal no Tauri, funcionalidade validada pela BMITAG) parte de `origin/master` e vai em PR para `master`.
+- Trabalho exclusivo do SaaS (adaptadores Supabase, `supabase/migrations`, identidade por dispositivo, portes) parte de `origin/feature` e vai em PR para `feature`.
+- `master` é integrada na `feature` toda semana, se houver mudanças. A `feature` **não** é mesclada na `master` antes da virada para o SaaS. Hotfix vai para `master` e chega à `feature` por esse merge; não aplicar o mesmo hotfix duas vezes à mão.
+- No merge semanal, quem faz o merge esconde explicitamente no build SaaS cada funcionalidade da `master` ainda não portada (isso não acontece sozinho) e confirma `npm run build:saas` e `npm run test:run` na `feature` antes de abrir o PR.
+- Até o PR que atualiza `.workflow/` na `feature`, esta seção prevalece sobre `.workflow/README.md` e `workflow.json` (`baseBranch`, `promotionTarget` e `architectureDecisions` sobre login individual).
+- Meta para depois da virada, não para agora: uma única branch gerando os dois builds.
+
+### Produto e plataforma
+
+- O AutoOS vira SaaS quando o produto interno emitir nota fiscal de uma OS real da BMITAG. Na virada, a BMITAG passa a usar o build SaaS como primeiro cliente e funcionalidade nova passa a nascer só na linha SaaS.
+- Desktop (interno e SaaS) é Online. PowerSync é reservado a um futuro app Mobile Field, com tickets próprios. Não adicionar PowerSync, sync offline ou token PowerSync ao desktop.
+- Identidade no SaaS: o administrador faz login uma vez por máquina para **autorizar o dispositivo**, que recebe credencial própria e restrita à empresa (a sessão do administrador não fica na máquina). Funcionários escolhem perfil (UUID na nuvem) e usam PIN local; o PIN nunca autentica no Supabase nem concede permissão no servidor. Ações de financeiro, equipe e dispositivos pedem reautenticação do administrador. O servidor audita dispositivo e perfil declarado; o administrador pode revogar um dispositivo.
+
+### Fiscal (ADR 0001 aceito pelo responsável do produto em 20/10/2026)
+
+O arquivo `docs/adr/0001-ownership-core-autoos-fiscal.md` existe só na `feature` e ainda diz "proposta"; o status é atualizado no PR do workflow. As regras abaixo já valem.
+
+
+- O AutoOS é a única autoridade de cliente operacional, produto, serviço, equipamento/OS e estoque. O AutoPlatform recebe cópia imutável e é autoridade do ciclo fiscal e dos dados tributários (NCM, CFOP, CST/CSOSN, CRT, CNAE); o AutoOS não gera campos tributários.
+- O fato faturável nasce quando a OS entra em `PRONTO`. Total = `valor_orcamento`. Linhas = serviços aprovados e suas peças pela quantidade e valor aprovados, inclusive peças com baixa pendente.
+- Soma das linhas diferente de `valor_orcamento` bloqueia o fato com motivo claro; nunca ajustar em silêncio. OS reprovada nunca gera fato, mesmo com custo de verificação. O fato não movimenta estoque.
+- Primeira implementação no Tauri, na `master`. A montagem do fato fica num módulo isolado, com fixtures de entrada/saída reaproveitáveis pela versão SaaS.
+- Criação de boletos sai do AutoBO para o AutoOS somente após ADR próprio.
+
+### Código novo: reduzir o retrabalho do porte para o SaaS
+
+Vale para código **novo** nas duas branches; não refatorar o existente por causa disto.
+
+- Regra de negócio nova vai, preferencialmente, em função SQL (PL/pgSQL), chamada pelo Rust via sqlx no Tauri e por RPC no SaaS. O comando Rust só resolve a empresa, chama a função e mapeia o erro. Cada backend tem a sua migration com a sua versão da função; o SQL não é compartilhado por arquivo.
+- Quando possível, a regra é função pura (JSON de entrada → JSON de saída, sem ler tabela); leitura e gravação ficam numa camada fina por backend.
+- Migration nova segue a estrutura que facilita o porte, mantendo os tipos do backend dela: em `src-tauri/migrations`, IDs `INTEGER` e o fluxo de promoção de `production_migrate.rs` (atualizar `REQUIRED_PROMOTION_MIGRATIONS` e `EXPECTED_MIGRATION_COUNT`); em `supabase/migrations`, `UUID`. Nos dois: `empresa_id`, FK composta `(id, empresa_id)`, RLS habilitado, `NUMERIC(14,2)` para dinheiro, sem `float`.
+- Tela nova não chama `db.*`: acessa dados por um hook de domínio (`src/hooks/use*.ts`), que é onde o adaptador SaaS entra. Na `feature`, o hook usa o repositório de `src/lib/data/`, e `IS_SAAS_BUILD` não entra em tela nova.
+- Regra que existirá nos dois backends tem fixtures compartilhadas (mesmo caso, mesma saída esperada) rodando contra os dois.
+- Código novo não contém marca, e-mail ou texto fixo da BMITAG; use configuração da empresa.
 
 ## FLUXO DE TRABALHO COM AGENTES DE IA (Claude Code e Cursor)
 

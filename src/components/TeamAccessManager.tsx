@@ -21,13 +21,28 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { ProfilePermissions } from "@/components/ProfilePermissions";
 import { CreateProfileCard } from "@/components/CreateProfileCard";
+import { AccessCodeCard } from "@/components/perfil/AccessCodeCard";
+import { ProfileAvatar } from "@/components/perfil/ProfileAvatar";
+import { profileAppearance } from "@/lib/profile-appearance";
+import { newPermissions } from "@/lib/tour-steps";
 import { SensitiveAccessService } from "@/lib/sensitive-access";
 import { mensagemVisivelAoOperador } from "@/lib/operator-errors";
 import { PROFILE_PRESETS } from "@/lib/profile-presets";
 import { securityRoleLabel } from "@/lib/security-profile-labels";
-import type { SecurityProfile, SensitivePermission } from "@/types";
+import type { CodigoPrimeiroAcesso, SecurityProfile, SensitivePermission } from "@/types";
 
-type Action = "edit" | "pin" | "deactivate" | "reactivate";
+type Action = "edit" | "code" | "deactivate" | "reactivate";
+
+function memberStatus(profile: SecurityProfile): { label: string; className: string } {
+  if (!profile.ativo) return { label: "Inativo", className: "bg-muted text-muted-foreground" };
+  if (profile.onboarding_pendente) {
+    return { label: "Aguardando 1º acesso", className: "bg-amber-500/15 text-amber-800 dark:text-amber-300" };
+  }
+  if (profile.tour_permissoes_vistas && newPermissions(profile.permissions, profile.tour_permissoes_vistas).length > 0) {
+    return { label: "Vê novidades no próximo acesso", className: "bg-primary/10 text-primary" };
+  }
+  return { label: "Ativo", className: "bg-emerald-500/15 text-emerald-800 dark:text-emerald-300" };
+}
 export function TeamAccessManager({
   activeProfileId,
   onChanged,
@@ -49,8 +64,7 @@ export function TeamAccessManager({
   const [role, setRole] = useState("CUSTOM");
   const [permissions, setPermissions] = useState<SensitivePermission[]>([]);
   const [adminPin, setAdminPin] = useState("");
-  const [pin, setPin] = useState("");
-  const [confirmPin, setConfirmPin] = useState("");
+  const [issuedCode, setIssuedCode] = useState<CodigoPrimeiroAcesso | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
@@ -80,16 +94,14 @@ export function TeamAccessManager({
     setRole(profile.role);
     setPermissions([...profile.permissions]);
     setAdminPin("");
-    setPin("");
-    setConfirmPin("");
+    setIssuedCode(null);
     setError(null);
     setNotice(null);
   }
   function close() {
     setSelection(null);
     setAdminPin("");
-    setPin("");
-    setConfirmPin("");
+    setIssuedCode(null);
     setError(null);
   }
   async function submit(event: React.FormEvent) {
@@ -100,12 +112,8 @@ export function TeamAccessManager({
       setError("Informe um nome com pelo menos 3 caracteres.");
       return;
     }
-    if (action === "pin" && (!/^\d{4,8}$/.test(pin) || pin !== confirmPin)) {
-      setError("Informe um PIN de 4 a 8 dígitos e confirme o mesmo PIN.");
-      return;
-    }
     if (
-      (action === "edit" || action === "pin") &&
+      (action === "edit" || action === "code") &&
       !/^\d{4,8}$/.test(adminPin)
     ) {
       setError("Informe seu PIN para autorizar a alteração.");
@@ -120,15 +128,18 @@ export function TeamAccessManager({
           { nome: name.trim(), role, permissions },
           adminPin,
         );
-      if (action === "pin")
-        await SensitiveAccessService.resetProfilePin(profile.id, pin, adminPin);
+      if (action === "code") {
+        setIssuedCode(await SensitiveAccessService.issueAccessCode(profile.id, adminPin));
+        setAdminPin("");
+        await load();
+        return;
+      }
       if (action === "deactivate")
         await SensitiveAccessService.deactivateProfile(profile.id);
       if (action === "reactivate")
         await SensitiveAccessService.reactivateProfile(profile.id);
       close();
       const successMessage = action === "edit" ? `Acesso de ${name.trim()} atualizado com sucesso.`
-        : action === "pin" ? `PIN de ${profile.nome} configurado neste computador com sucesso.`
         : action === "deactivate" ? `Acesso de ${profile.nome} desativado com sucesso.`
         : `Acesso de ${profile.nome} reativado com sucesso.`;
       setNotice(successMessage);
@@ -151,8 +162,8 @@ export function TeamAccessManager({
         .includes(search.toLocaleLowerCase("pt-BR")),
   );
   const actionTitle =
-    selection?.action === "pin"
-      ? "Configurar PIN neste computador"
+    selection?.action === "code"
+      ? "Novo código de primeiro acesso"
       : selection?.action === "deactivate"
         ? "Desativar colaborador"
         : selection?.action === "reactivate"
@@ -234,21 +245,20 @@ export function TeamAccessManager({
                   className="flex flex-col gap-4 p-4 sm:flex-row sm:items-center sm:justify-between"
                 >
                   <div className="flex items-center gap-3">
-                    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-cyan-500/10 text-sm font-semibold text-cyan-700">
-                      {profile.nome
-                        .trim()
-                        .slice(0, 2)
-                        .toLocaleUpperCase("pt-BR")}
-                    </div>
+                    <ProfileAvatar
+                      icon={profileAppearance(profile).icon}
+                      color={profileAppearance(profile).color}
+                      pending={profile.onboarding_pendente}
+                    />
                     <div>
                       <div className="flex flex-wrap items-center gap-2">
                         <span className="font-medium">{profile.nome}</span>
                         {profile.id === activeProfileId && (
                           <Badge variant="secondary">Você</Badge>
                         )}
-                        {!profile.ativo && (
-                          <Badge variant="outline">Inativo</Badge>
-                        )}
+                        <span className={`rounded-full px-2.5 py-0.5 text-xs font-medium ${memberStatus(profile).className}`}>
+                          {memberStatus(profile).label}
+                        </span>
                       </div>
                       <p className="mt-1 text-xs text-muted-foreground">
                         {securityRoleLabel(profile.role)} ·{" "}
@@ -256,13 +266,7 @@ export function TeamAccessManager({
                           ? `${profile.permissions.length} permissões adicionais`
                           : "Acesso básico"}
                       </p>
-                      <p
-                        className={`mt-1 text-xs ${profile.pin_configured ? "text-emerald-700 dark:text-emerald-400" : "text-amber-700 dark:text-amber-400"}`}
-                      >
-                        {profile.pin_configured
-                          ? "PIN configurado neste PC"
-                          : "PIN não configurado neste PC"}
-                      </p>
+
                     </div>
                   </div>
                   <div className="flex flex-wrap gap-2">
@@ -279,10 +283,10 @@ export function TeamAccessManager({
                         <Button
                           size="sm"
                           variant="outline"
-                          onClick={() => open(profile, "pin")}
+                          onClick={() => open(profile, "code")}
                         >
                           <KeyRound className="mr-2 h-3.5 w-3.5" />
-                          PIN
+                          Novo código
                         </Button>
                       </>
                     )}
@@ -327,8 +331,8 @@ export function TeamAccessManager({
             <DialogTitle>{actionTitle}</DialogTitle>
             <DialogDescription>
               {selection?.profile.nome}.{" "}
-              {selection?.action === "pin"
-                ? "O PIN será configurado somente neste computador."
+              {selection?.action === "code"
+                ? "Para outro computador ou PIN esquecido. O código anterior deixa de valer."
                 : "Confira os dados antes de confirmar."}
             </DialogDescription>
           </DialogHeader>
@@ -380,41 +384,8 @@ export function TeamAccessManager({
                 />
               </>
             )}
-            {selection?.action === "pin" && (
-              <div className="grid gap-4 sm:grid-cols-2">
-                <div className="space-y-2">
-                  <Label htmlFor="team-pin">Novo PIN</Label>
-                  <Input
-                    id="team-pin"
-                    type="password"
-                    inputMode="numeric"
-                    autoComplete="new-password"
-                    value={pin}
-                    onChange={(event) =>
-                      setPin(event.target.value.replace(/\D/g, "").slice(0, 8))
-                    }
-                    disabled={busy}
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="team-pin-confirm">Confirmar novo PIN</Label>
-                  <Input
-                    id="team-pin-confirm"
-                    type="password"
-                    inputMode="numeric"
-                    autoComplete="new-password"
-                    value={confirmPin}
-                    onChange={(event) =>
-                      setConfirmPin(
-                        event.target.value.replace(/\D/g, "").slice(0, 8),
-                      )
-                    }
-                    disabled={busy}
-                  />
-                </div>
-              </div>
-            )}
-            {(selection?.action === "edit" || selection?.action === "pin") && (
+            {issuedCode && <AccessCodeCard code={issuedCode} />}
+            {!issuedCode && (selection?.action === "edit" || selection?.action === "code") && (
               <div className="space-y-2">
                 <Label htmlFor="team-admin-pin">Seu PIN de administrador</Label>
                 <Input
@@ -452,6 +423,10 @@ export function TeamAccessManager({
               </p>
             )}
             <div className="flex justify-end gap-2">
+              {issuedCode ? (
+                <Button type="button" onClick={close}>Concluir</Button>
+              ) : (
+              <>
               <Button
                 type="button"
                 variant="outline"
@@ -467,8 +442,10 @@ export function TeamAccessManager({
                   selection?.action === "deactivate" ? "destructive" : "default"
                 }
               >
-                {busy ? "Salvando..." : "Confirmar alteração"}
+                {busy ? "Salvando..." : selection?.action === "code" ? "Gerar código" : "Confirmar alteração"}
               </Button>
+              </>
+              )}
             </div>
           </form>
         </DialogContent>

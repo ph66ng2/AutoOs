@@ -743,6 +743,8 @@ mod tests {
         let mut perfil = SecurityProfileSummary {
             id: 1, nome: "Ana".into(), role: "OPERADOR".into(), permissions: vec![],
             pin_configured: true, pin_required: true, is_default: false, ativo: true,
+            avatar_icone: None, avatar_cor: None, tema: None, onboarding_pendente: false,
+            tour_permissoes_vistas: None,
         };
         assert!(!pode_publicar_no_portal(&perfil));
         perfil.permissions.push(PERMISSION_MANAGE_STATUS_LINKS.to_string());

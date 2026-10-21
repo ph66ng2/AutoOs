@@ -66,7 +66,7 @@ describe("cancelar o primeiro PIN", () => {
         <App />
       </SensitiveAccessProvider>,
     );
-    await screen.findByRole("heading", { name: "Selecionar perfil da sessão" }, { timeout: 8000 });
+    await screen.findByRole("heading", { name: "Quem está usando o AutoOS?" }, { timeout: 8000 });
     const consulta = withSensitiveAccessRetry(async () => {
       throw "Acesso sensível bloqueado. Informe o PIN para continuar.";
     }).catch(() => false);
@@ -102,7 +102,7 @@ describe("cancelar o primeiro PIN", () => {
     expect(screen.queryByText("Painel operacional")).not.toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: "Entrar com PIN" }));
-    expect(await screen.findByRole("heading", { name: "Selecionar perfil da sessão" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "Quem está usando o AutoOS?" })).toBeInTheDocument();
     expect(screen.queryByText("Painel operacional")).not.toBeInTheDocument();
   });
 

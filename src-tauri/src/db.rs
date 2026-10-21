@@ -288,6 +288,8 @@ const REQUIRED_RUNTIME_TABLES: &[&str] = &[
     "orcamentos_insumos",
     "orcamento_insumos_itens",
     "orcamentos_insumos_contadores",
+    // Perfil e primeiro acesso por código (0041): a tela de perfis lê estas colunas.
+    "codigos_primeiro_acesso",
 ];
 
 const REQUIRED_RUNTIME_COLUMNS: &[(&str, &str)] = &[
@@ -324,6 +326,12 @@ const REQUIRED_RUNTIME_COLUMNS: &[(&str, &str)] = &[
     ("orcamento_respostas", "ordem_compra"),
     ("orcamento_solicitacoes", "contato_telefone"),
     ("orcamento_solicitacoes", "contato_email"),
+    // Personalização e tour do perfil (0041).
+    ("security_profiles", "avatar_icone"),
+    ("security_profiles", "avatar_cor"),
+    ("security_profiles", "tema"),
+    ("security_profiles", "onboarding_concluido_em"),
+    ("security_profiles", "tour_permissoes_vistas"),
 ];
 
 const REQUIRED_RUNTIME_COLUMN_TYPES: &[(&str, &str, &str)] = &[
@@ -723,6 +731,20 @@ mod tests {
             ("orcamento_respostas", "ordem_compra"),
             ("orcamento_solicitacoes", "contato_telefone"),
             ("orcamento_solicitacoes", "contato_email"),
+        ] {
+            assert!(REQUIRED_RUNTIME_COLUMNS.contains(&coluna), "{coluna:?}");
+        }
+    }
+
+    #[test]
+    fn runtime_schema_requires_structures_from_migration_0041() {
+        assert!(REQUIRED_RUNTIME_TABLES.contains(&"codigos_primeiro_acesso"));
+        for coluna in [
+            ("security_profiles", "avatar_icone"),
+            ("security_profiles", "avatar_cor"),
+            ("security_profiles", "tema"),
+            ("security_profiles", "onboarding_concluido_em"),
+            ("security_profiles", "tour_permissoes_vistas"),
         ] {
             assert!(REQUIRED_RUNTIME_COLUMNS.contains(&coluna), "{coluna:?}");
         }

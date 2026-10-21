@@ -1,1 +1,1 @@
-0.6.0: em Equipamentos, pesquise por nome ou documento do cliente, série e outros dados do aparelho. Ordene pela alteração mais recente ou pelo cadastro mais recente para encontrar rapidamente o próximo atendimento.
+0.6.0: no Portal do Cliente o cliente vê fotos, PDF do orçamento e comprovante de entrega; na retirada, endereço e mapa. O aceite pode exigir ordem de compra, e antes de recusar dá para negociar. Em Insumos/Peças → Orçamentos há o OI (venda avulsa). O ADM cadastra com código de primeiro acesso; a pessoa cria o próprio PIN em cada computador.

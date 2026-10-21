@@ -5,7 +5,8 @@
 //! proposta (versão congelada) e o cartão de contato exibido ao cliente.
 
 use crate::commands::auth::{
-    record_security_event, require_active_session_company_id, require_permission,
+    record_security_event, require_active_session_company_id, require_active_session_company_id_without_touch,
+    require_permission,
     require_sensitive_access, PERMISSION_FINANCIAL_ACTIONS, PERMISSION_MANAGE_STATUS_LINKS,
 };
 use crate::commands::orcamento_decisao::obter_ou_criar_versao;
@@ -95,7 +96,8 @@ pub async fn listar_alertas_portal(
     limite: Option<i64>,
 ) -> Result<Vec<AlertaPortal>, String> {
     let pool = get_pool().await.map_err(|e| e.to_string())?;
-    let empresa_id = require_active_session_company_id(&pool).await?;
+    // Consulta de segundo plano (sino a cada 30 s): não renova a sessão sensível.
+    let empresa_id = require_active_session_company_id_without_touch(&pool).await?;
     let limite = limite.unwrap_or(50).clamp(1, MAX_ALERTAS);
     sqlx::query_as::<_, AlertaPortal>(sqlx::AssertSqlSafe(format!(
         "SELECT a.id, a.equipamento_id, a.tipo, a.titulo, a.detalhe,
@@ -120,7 +122,8 @@ pub async fn listar_alertas_portal(
 #[tauri::command]
 pub async fn contar_alertas_portal_nao_lidos() -> Result<i64, String> {
     let pool = get_pool().await.map_err(|e| e.to_string())?;
-    let empresa_id = require_active_session_company_id(&pool).await?;
+    // Consulta de segundo plano (sino a cada 30 s): não renova a sessão sensível.
+    let empresa_id = require_active_session_company_id_without_touch(&pool).await?;
     sqlx::query_scalar("SELECT COUNT(*) FROM portal_alertas WHERE empresa_id = $1 AND lido_em IS NULL")
         .bind(empresa_id)
         .fetch_one(&pool)

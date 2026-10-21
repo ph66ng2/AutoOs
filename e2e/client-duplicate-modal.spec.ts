@@ -1,7 +1,8 @@
 import { expect, test } from "@playwright/test";
+import { RELEASE_HIGHLIGHTS_STORAGE_KEY } from "../src/lib/releaseHighlightsKey";
 
 test("aviso de CPF duplicado aparece sobre o cadastro e permite voltar ou buscar", async ({ page }) => {
-  await page.addInitScript(() => localStorage.setItem("autoos:release-highlights:0.5.6:fotos-celular", "seen"));
+  await page.addInitScript((key) => localStorage.setItem(key, "seen"), RELEASE_HIGHLIGHTS_STORAGE_KEY);
   await page.goto("/clientes");
   await page.getByRole("button", { name: /AutoOS Completo/ }).click();
   await page.goto("/clientes");
