@@ -72,7 +72,8 @@ export function Layout() {
     <div className="flex h-screen overflow-hidden bg-background">
       {mobileOpen && <button type="button" aria-label="Fechar menu" onClick={() => setMobileOpen(false)} className="fixed inset-0 z-40 bg-black/60 md:hidden" /> }
       {/* Sidebar */}
-      <aside id="main-sidebar" aria-label="Menu principal" className={cn("fixed inset-y-0 left-0 z-50 flex w-60 shrink-0 flex-col bg-sidebar transition-all duration-300 md:static md:visible md:translate-x-0", mobileOpen ? "visible translate-x-0" : "invisible -translate-x-full", collapsed ? "md:w-16" : "md:w-60")}>
+      {/* z-50 só vale na gaveta do celular (acima do fundo z-40). Em md+ a sidebar é item de flex: com z-50 ela vencia o splash de abertura (z-40). */}
+      <aside id="main-sidebar" aria-label="Menu principal" className={cn("fixed inset-y-0 left-0 z-50 flex w-60 shrink-0 flex-col bg-sidebar transition-all duration-300 md:static md:z-auto md:visible md:translate-x-0", mobileOpen ? "visible translate-x-0" : "invisible -translate-x-full", collapsed ? "md:w-16" : "md:w-60")}>
         <Button type="button" variant="ghost" aria-label="Fechar menu lateral" className="absolute right-2 top-2 text-white md:hidden" onClick={() => setMobileOpen(false)}><X className="h-5 w-5" /></Button>
         {/* Logo */}
         <div className="flex h-[150px] items-center justify-center border-b border-sidebar-border px-4">
