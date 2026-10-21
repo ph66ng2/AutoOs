@@ -135,7 +135,7 @@ import { PhotoUploadDialog } from "@/components/equipamentos/PhotoUploadDialog";
 import { DocumentosEquipamento } from "@/components/equipamentos/DocumentosEquipamento";
 import { PdfPreviewDialog } from "@/components/equipamentos/PdfPreviewDialog";
 import { AjusteOrcamentoServicos } from "@/components/equipamentos/AjusteOrcamentoServicos";
-import { carregarProdutosOrcamento, normalizarServicosOrcamento, orcamentoEmElaboracao, pecasParaOrcamento, orcamentoJaAprovado, orcamentoMudou, resumirPecas, validarPecas } from "@/lib/orcamento-estoque";
+import { carregarProdutosOrcamento, normalizarServicosOrcamento, orcamentoEmElaboracao, transicaoElaboraOrcamento, pecasParaOrcamento, orcamentoJaAprovado, orcamentoMudou, resumirPecas, validarPecas } from "@/lib/orcamento-estoque";
 import { ActionPriorityRow, type PriorityAction } from "@/components/ui/action-priority-row";
 import {
   arquivoParaImagemEquipamento,
@@ -816,7 +816,10 @@ export default function Equipamentos() {
     const liberado = await ensureSensitiveAccess({
       title: "Alterar status sensível",
       description: "Informe o PIN para alterar status comerciais, prazos e valores do equipamento.",
-      permission: SENSITIVE_PERMISSIONS.FINANCIAL_ACTIONS,
+      // Em elaboração o diálogo abre para o Técnico; decisão, entrega e valor final pedem o PIN financeiro ao confirmar.
+      ...(orcamentoEmElaboracao(eq.status)
+        ? { anyPermission: [SENSITIVE_PERMISSIONS.FINANCIAL_ACTIONS, SENSITIVE_PERMISSIONS.PREPARE_QUOTES] }
+        : { permission: SENSITIVE_PERMISSIONS.FINANCIAL_ACTIONS }),
     });
     if (!liberado) return;
 
@@ -1405,7 +1408,8 @@ export default function Equipamentos() {
       const liberado = await ensureSensitiveAccess({
         title: "Confirmar mudança de status",
         description: "Informe o PIN para aplicar esta transição e persistir dados sensíveis do equipamento.",
-        ...(ajusteOrcamentoSemMudancaStatus && orcamentoEmElaboracao(selecionado.status)
+        ...((ajusteOrcamentoSemMudancaStatus && orcamentoEmElaboracao(selecionado.status))
+          || transicaoElaboraOrcamento(selecionado.status, novoStatus, correcaoStatus, valorFinal)
           ? { anyPermission: [SENSITIVE_PERMISSIONS.FINANCIAL_ACTIONS, SENSITIVE_PERMISSIONS.PREPARE_QUOTES] }
           : { permission: SENSITIVE_PERMISSIONS.FINANCIAL_ACTIONS }),
       });

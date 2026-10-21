@@ -27,8 +27,7 @@ Com a permissão, a pessoa pode:
 - finalizar a verificação com orçamento;
 - editar o orçamento enquanto ele não estiver decidido (RECEBIDO, EM_VERIFICACAO, VERIFICADO ou AGUARDANDO_APROVACAO);
 - prorrogar o prazo de aprovação;
-- publicar o orçamento no portal;
-- liberar o acesso de quem recebe o orçamento.
+- publicar o orçamento no portal.
 
 Não libera:
 

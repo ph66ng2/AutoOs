@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { orcamentoEmElaboracao } from "./orcamento-estoque";
+import { orcamentoEmElaboracao, transicaoElaboraOrcamento } from "./orcamento-estoque";
 
 describe("orcamentoEmElaboracao", () => {
   it("é verdadeiro enquanto o orçamento não foi decidido", () => {
@@ -12,5 +12,21 @@ describe("orcamentoEmElaboracao", () => {
     for (const status of ["APROVADO", "REPROVADO", "PRONTO", "ENTREGUE", ""]) {
       expect(orcamentoEmElaboracao(status)).toBe(false);
     }
+  });
+});
+
+describe("transicaoElaboraOrcamento", () => {
+  it("cobre só o envio do orçamento para aprovação, sem valor final nem correção", () => {
+    expect(transicaoElaboraOrcamento("VERIFICADO", "AGUARDANDO_APROVACAO", false)).toBe(true);
+    expect(transicaoElaboraOrcamento("AGUARDANDO_APROVACAO", "AGUARDANDO_APROVACAO", false, 0)).toBe(true);
+  });
+
+  it("não cobre decisão, entrega, valor final, correção nem origem fora da elaboração", () => {
+    expect(transicaoElaboraOrcamento("VERIFICADO", "APROVADO", false)).toBe(false);
+    expect(transicaoElaboraOrcamento("AGUARDANDO_APROVACAO", "REPROVADO", false)).toBe(false);
+    expect(transicaoElaboraOrcamento("PRONTO", "ENTREGUE", false)).toBe(false);
+    expect(transicaoElaboraOrcamento("VERIFICADO", "AGUARDANDO_APROVACAO", false, 100)).toBe(false);
+    expect(transicaoElaboraOrcamento("VERIFICADO", "AGUARDANDO_APROVACAO", true)).toBe(false);
+    expect(transicaoElaboraOrcamento("EM_VERIFICACAO", "AGUARDANDO_APROVACAO", false)).toBe(false);
   });
 });

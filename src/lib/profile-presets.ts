@@ -67,7 +67,7 @@ export const PERMISSION_DETAILS: Record<
   },
   PREPARE_QUOTES: {
     title: "Elaborar e enviar orçamentos",
-    description: "Finalizar verificação com orçamento, editar orçamento ainda não decidido, prorrogar prazo, publicar no portal e liberar o acesso de quem recebe o orçamento.",
+    description: "Finalizar verificação com orçamento, editar orçamento ainda não decidido, prorrogar prazo e publicar no portal.",
   },
   MANAGE_PROFILES: {
     title: "Gerenciar equipe",
