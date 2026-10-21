@@ -85,6 +85,10 @@ path = "src/bin/test_orcamentos_insumos.rs"
 name = "test_patrimonio_cycles"
 path = "src/bin/test_patrimonio_cycles.rs"
 
+[[bin]]
+name = "test_orcamento_envio"
+path = "src/bin/test_orcamento_envio.rs"
+
 [dependencies]
 tauri = { version = "2.11.0", features = [] }
 serde = { version = "1", features = ["derive"] }
