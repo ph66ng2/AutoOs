@@ -54,6 +54,13 @@ const BASE_TOUR: TourStep[] = [
     body: "Troque de perfil, mude nome, ícone e tema, e reveja este tour quando quiser em Perfil › Tutorial.",
     target: "profile-card",
   },
+  {
+    id: "balcao",
+    title: "Modo Balcão",
+    body: "Tela simplificada para a recepção: nova entrada, busca de equipamento e cliente, consulta de estoque. Troque em Perfil › Modo deste computador; a escolha vale só neste computador. Aprovar ou mudar valores ali pede a permissão de orçamentos.",
+    target: "perfil-modo",
+    route: "/perfil",
+  },
 ];
 
 export const PERMISSION_TOUR: Record<SensitivePermission, TourStep> = {
@@ -78,7 +85,7 @@ export const PERMISSION_TOUR: Record<SensitivePermission, TourStep> = {
   MANAGE_STATUS_LINKS: {
     id: "links",
     title: "Portal do Cliente",
-    body: "Publique orçamentos no portal, gerencie os acessos dos contatos e crie ou revogue os links de acompanhamento da OS.",
+    body: "Publique orçamentos no portal, gerencie os acessos dos contatos e crie ou revogue os links de acompanhamento da OS. Em Configurações › Integrações, ligue o portal e edite o contato da empresa.",
     target: "nav-/equipamentos",
   },
   DELETE_RECORDS: {

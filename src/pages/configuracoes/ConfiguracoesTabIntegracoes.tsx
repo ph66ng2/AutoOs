@@ -28,6 +28,7 @@ export type ConfiguracoesTabIntegracoesProps = {
   whatsappStatus: string | null;
   whatsappHasToken: boolean;
   canConfigurePhotoTunnel: boolean;
+  canManagePortal: boolean;
   photoTunnelToken: string;
   onPhotoTunnelTokenChange: (value: string) => void;
   onSubmitPhotoTunnel: () => void | Promise<void>;
@@ -57,6 +58,7 @@ export function ConfiguracoesTabIntegracoes({
   whatsappStatus,
   whatsappHasToken,
   canConfigurePhotoTunnel,
+  canManagePortal,
   photoTunnelToken,
   onPhotoTunnelTokenChange,
   onSubmitPhotoTunnel,
@@ -286,8 +288,12 @@ export function ConfiguracoesTabIntegracoes({
           )}
         </CardContent>
       </Card>
-      <PortalFuncionamentoCard />
-      <PortalContatoEmpresaCard />
+      {canManagePortal && (
+        <>
+          <PortalFuncionamentoCard />
+          <PortalContatoEmpresaCard />
+        </>
+      )}
     </TabsContent>
   );
 }

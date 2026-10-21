@@ -167,4 +167,97 @@ describe("primeiro acesso", () => {
     render(<PrimeiroAcessoWizard profile={{ ...pending, pin_configured: true, onboarding_pendente: false }} needsCode recovery onStatusChange={vi.fn()} onCancel={vi.fn()} onFinish={vi.fn()} />);
     expect(screen.getByText(/deixa de valer neste computador; nos outros, ele continua valendo/)).toBeInTheDocument();
   });
+
+  async function preencherCodigoEPin(user: ReturnType<typeof userEvent.setup>) {
+    await user.type(screen.getByLabelText("Código de primeiro acesso"), "K7Q42M");
+    await user.type(screen.getByLabelText("Crie seu PIN"), "2468");
+    await user.type(screen.getByLabelText("Repita o PIN"), "2468");
+    await user.click(screen.getByRole("button", { name: /Continuar/ }));
+  }
+
+  it("voltar depois do código mostra a etapa já resgatada sem pedir o código de novo", async () => {
+    const user = userEvent.setup();
+    service.redeemAccessCode.mockResolvedValue(statusWith({ ...pending, pin_configured: true }));
+    render(<PrimeiroAcessoWizard profile={pending} needsCode onStatusChange={vi.fn()} onCancel={vi.fn()} onFinish={vi.fn()} />);
+
+    await preencherCodigoEPin(user);
+    expect(await screen.findByLabelText("Nome de exibição")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Voltar" }));
+
+    expect(await screen.findByRole("heading", { name: "Código e PIN definidos" })).toBeInTheDocument();
+    expect(screen.queryByLabelText("Código de primeiro acesso")).not.toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: /Continuar/ }));
+    expect(await screen.findByLabelText("Nome de exibição")).toBeInTheDocument();
+    expect(service.redeemAccessCode).toHaveBeenCalledTimes(1);
+  });
+
+  it("voltar de pronto mantém o nome e salvar de novo chama a personalização outra vez", async () => {
+    const user = userEvent.setup();
+    const activated = { ...pending, pin_configured: true };
+    service.redeemAccessCode.mockResolvedValue(statusWith(activated));
+    service.savePersonalization.mockResolvedValue(statusWith({ ...activated, nome: "Juliana", onboarding_pendente: false }));
+    render(<PrimeiroAcessoWizard profile={pending} needsCode onStatusChange={vi.fn()} onCancel={vi.fn()} onFinish={vi.fn()} />);
+
+    await preencherCodigoEPin(user);
+    const nome = await screen.findByLabelText("Nome de exibição");
+    await user.clear(nome);
+    await user.type(nome, "Juliana");
+    await user.click(screen.getByRole("button", { name: /Continuar/ }));
+    expect(await screen.findByRole("heading", { name: "Tudo pronto, Juliana" })).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Voltar" }));
+    expect(await screen.findByLabelText("Nome de exibição")).toHaveValue("Juliana");
+    await user.click(screen.getByRole("button", { name: /Continuar/ }));
+    expect(await screen.findByRole("heading", { name: "Tudo pronto, Juliana" })).toBeInTheDocument();
+    expect(service.savePersonalization).toHaveBeenCalledTimes(2);
+  });
+
+  it("rerender com onboarding concluído em pronto mantém a lista de etapas visível", async () => {
+    const user = userEvent.setup();
+    const activated = { ...pending, pin_configured: true };
+    service.redeemAccessCode.mockResolvedValue(statusWith(activated));
+    service.savePersonalization.mockResolvedValue(statusWith({ ...activated, nome: "Juliana", onboarding_pendente: false }));
+    const onStatusChange = vi.fn();
+    const onCancel = vi.fn();
+    const onFinish = vi.fn();
+    const ui = (perfil: SecurityProfile) => (
+      <PrimeiroAcessoWizard profile={perfil} needsCode onStatusChange={onStatusChange} onCancel={onCancel} onFinish={onFinish} />
+    );
+    const { rerender } = render(ui(pending));
+
+    await preencherCodigoEPin(user);
+    const nome = await screen.findByLabelText("Nome de exibição");
+    await user.clear(nome);
+    await user.type(nome, "Juliana");
+    await user.click(screen.getByRole("button", { name: /Continuar/ }));
+    expect(await screen.findByRole("heading", { name: "Tudo pronto, Juliana" })).toBeInTheDocument();
+
+    rerender(ui({ ...activated, nome: "Juliana", onboarding_pendente: false }));
+    const etapas = screen.getByRole("list", { name: "Etapas" });
+    expect(etapas).toBeInTheDocument();
+    expect(etapas).not.toHaveClass("hidden");
+    expect(screen.getByRole("heading", { name: "Tudo pronto, Juliana" })).toBeInTheDocument();
+  });
+
+  it("sem código, a etapa de perfil não tem botão Voltar", () => {
+    render(<PrimeiroAcessoWizard profile={pending} needsCode={false} onStatusChange={vi.fn()} onCancel={vi.fn()} onFinish={vi.fn()} />);
+    expect(screen.getByRole("heading", { name: "Deixe com a sua cara" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Voltar" })).not.toBeInTheDocument();
+  });
+
+  it("a raiz começa claro e passa a escuro ao escolher o tema Escuro", async () => {
+    const user = userEvent.setup();
+    render(<PrimeiroAcessoWizard profile={pending} needsCode={false} onStatusChange={vi.fn()} onCancel={vi.fn()} onFinish={vi.fn()} />);
+    const raiz = screen.getByRole("dialog");
+    expect(raiz).toHaveClass("light");
+
+    await user.click(screen.getByRole("button", { name: "Escuro" }));
+    expect(raiz).toHaveClass("dark");
+    expect(raiz).not.toHaveClass("light");
+  });
+
+  it("o botão Continuar fica fora do conteúdo rolável", () => {
+    render(<PrimeiroAcessoWizard profile={pending} needsCode={false} onStatusChange={vi.fn()} onCancel={vi.fn()} onFinish={vi.fn()} />);
+    expect(screen.getByRole("button", { name: /continuar/i }).closest('[data-slot="wizard-scroll"]')).toBeNull();
+  });
 });

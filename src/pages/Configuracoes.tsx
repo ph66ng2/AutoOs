@@ -35,6 +35,7 @@ import { ConfiguracoesTabObservabilidade } from "@/pages/configuracoes/Configura
 import { ConfiguracoesTabSeguranca } from "@/pages/configuracoes/ConfiguracoesTabSeguranca";
 import { SMTP_DEFAULTS, type SmtpFormValues, type WhatsappFormValues } from "@/pages/configuracoes/configuracoes-shared";
 import { detectRestoreMode } from "@/pages/configuracoes/detect-restore-mode";
+import { abasConfiguracoes } from "@/pages/configuracoes/abas";
 import {
   SENSITIVE_PERMISSIONS,
   type DatabaseSchemaStatus,
@@ -71,7 +72,18 @@ export default function Configuracoes() {
     setSecurityFeedback(message ? { message, variant } : null);
   }, []);
   const [securityAdminUnlocked, setSecurityAdminUnlocked] = useState(false);
-  const [tab, setTab] = useState("smtp");
+  const canConfigureSmtp = hasPermission(SENSITIVE_PERMISSIONS.CONFIG_SMTP);
+  const canConfigureWhatsapp = hasPermission(SENSITIVE_PERMISSIONS.CONFIG_WHATSAPP);
+  const canManagePortal = hasPermission(SENSITIVE_PERMISSIONS.MANAGE_STATUS_LINKS);
+  const canManageProfiles = hasPermission(SENSITIVE_PERMISSIONS.MANAGE_PROFILES);
+  const canConfigurePhotoTunnel = canConfigureSmtp;
+  const abas = abasConfiguracoes({
+    smtp: canConfigureSmtp,
+    whatsapp: canConfigureWhatsapp,
+    portal: canManagePortal,
+    admin: canManageProfiles,
+  });
+  const [tab, setTab] = useState<string>(abas.inicial);
   const [auditEvents, setAuditEvents] = useState<SecurityAuditEvent[]>([]);
   const [profilesCatalog, setProfilesCatalog] = useState<SecurityProfile[]>([]);
   const [securityBusy, setSecurityBusy] = useState(false);
@@ -103,11 +115,6 @@ export default function Configuracoes() {
   const [supportError, setSupportError] = useState<string | null>(null);
   const [supportMessage, setSupportMessage] = useState<string | null>(null);
 
-  const canConfigureSmtp = hasPermission(SENSITIVE_PERMISSIONS.CONFIG_SMTP);
-  const canConfigureWhatsapp = hasPermission(SENSITIVE_PERMISSIONS.CONFIG_WHATSAPP);
-  const canConfigurePhotoTunnel = canConfigureSmtp;
-  const canConfigureIntegrations = canConfigureSmtp || canConfigureWhatsapp;
-  const canManageProfiles = hasPermission(SENSITIVE_PERMISSIONS.MANAGE_PROFILES);
   const restoreMode = detectRestoreMode(restoreFilePath);
   const restoreReady = restoreMode === "pg_restore"
     ? !!backupToolsStatus?.pg_restore_available
@@ -344,10 +351,12 @@ export default function Configuracoes() {
   }, [canConfigurePhotoTunnel, accessStatus?.active_profile_id]);
 
   useEffect(() => {
-    if (!canConfigureIntegrations) {
-      setTab("seguranca");
+    if (!abas.integracoes) {
+      setTab("infra");
+    } else if (!canManageProfiles) {
+      setTab("smtp");
     }
-  }, [canConfigureIntegrations]);
+  }, [abas.integracoes, canManageProfiles]);
 
   useEffect(() => {
     if (!accessStatus?.profiles.length) {
@@ -381,8 +390,12 @@ export default function Configuracoes() {
   }, [canManageProfiles, accessStatus?.active_profile_id]);
 
   useEffect(() => {
+    if (!canManageProfiles) {
+      return;
+    }
+
     void loadSchemaStatus();
-  }, []);
+  }, [canManageProfiles]);
 
   useEffect(() => {
     void loadBackupToolsStatus();
@@ -393,6 +406,10 @@ export default function Configuracoes() {
   }, [canManageProfiles, accessStatus?.active_profile_id]);
 
   useEffect(() => {
+    if (!canManageProfiles) {
+      return;
+    }
+
     void loadInactivityConfig();
   }, [canManageProfiles, accessStatus?.active_profile_id]);
 
@@ -735,9 +752,9 @@ export default function Configuracoes() {
 
       <Tabs value={tab} onValueChange={(nextTab) => { setTab(nextTab); setSecurityMessage(null); }} className="space-y-4">
         <TabsList>
-          <TabsTrigger value="smtp" disabled={!canConfigureIntegrations}>Integrações</TabsTrigger>
-          <TabsTrigger value="infra">Banco</TabsTrigger>
-          <TabsTrigger value="seguranca">Segurança</TabsTrigger>
+          {abas.integracoes && <TabsTrigger value="smtp">Integrações</TabsTrigger>}
+          {canManageProfiles && <TabsTrigger value="infra">Banco</TabsTrigger>}
+          {canManageProfiles && <TabsTrigger value="seguranca">Segurança</TabsTrigger>}
           {canManageProfiles && <TabsTrigger value="observabilidade">Suporte e Logs</TabsTrigger>}
         </TabsList>
 
@@ -760,6 +777,7 @@ export default function Configuracoes() {
           whatsappStatus={whatsappStatus}
           whatsappHasToken={whatsappHasToken}
           canConfigurePhotoTunnel={canConfigurePhotoTunnel}
+          canManagePortal={canManagePortal}
           photoTunnelToken={photoTunnelToken}
           onPhotoTunnelTokenChange={setPhotoTunnelToken}
           onSubmitPhotoTunnel={onSubmitPhotoTunnel}
@@ -770,30 +788,32 @@ export default function Configuracoes() {
           photoTunnelPublicHost={photoTunnelPublicHost}
         />
 
-        <ConfiguracoesTabInfra
-          canManageProfiles={canManageProfiles}
-          schemaLoading={schemaLoading}
-          schemaStatus={schemaStatus}
-          schemaError={schemaError}
-          loadSchemaStatus={loadSchemaStatus}
-          backupLoading={backupLoading}
-          backupToolsStatus={backupToolsStatus}
-          backupError={backupError}
-          backupMessage={backupMessage}
-          backupBusy={backupBusy}
-          restoreFilePath={restoreFilePath}
-          setRestoreFilePath={setRestoreFilePath}
-          restoreConfirmText={restoreConfirmText}
-          setRestoreConfirmText={setRestoreConfirmText}
-          restoreBusy={restoreBusy}
-          restoreError={restoreError}
-          restoreMessage={restoreMessage}
-          restoreMode={restoreMode}
-          restoreReady={restoreReady}
-          loadBackupToolsStatus={loadBackupToolsStatus}
-          gerarBackupBanco={gerarBackupBanco}
-          restaurarBackupBanco={restaurarBackupBanco}
-        />
+        {canManageProfiles && (
+          <ConfiguracoesTabInfra
+            canManageProfiles={canManageProfiles}
+            schemaLoading={schemaLoading}
+            schemaStatus={schemaStatus}
+            schemaError={schemaError}
+            loadSchemaStatus={loadSchemaStatus}
+            backupLoading={backupLoading}
+            backupToolsStatus={backupToolsStatus}
+            backupError={backupError}
+            backupMessage={backupMessage}
+            backupBusy={backupBusy}
+            restoreFilePath={restoreFilePath}
+            setRestoreFilePath={setRestoreFilePath}
+            restoreConfirmText={restoreConfirmText}
+            setRestoreConfirmText={setRestoreConfirmText}
+            restoreBusy={restoreBusy}
+            restoreError={restoreError}
+            restoreMessage={restoreMessage}
+            restoreMode={restoreMode}
+            restoreReady={restoreReady}
+            loadBackupToolsStatus={loadBackupToolsStatus}
+            gerarBackupBanco={gerarBackupBanco}
+            restaurarBackupBanco={restaurarBackupBanco}
+          />
+        )}
 
         {canManageProfiles && (
           <ConfiguracoesTabObservabilidade
@@ -816,32 +836,34 @@ export default function Configuracoes() {
           />
         )}
 
-        <ConfiguracoesTabSeguranca
-          canManageProfiles={canManageProfiles}
-          securityAdminUnlocked={securityAdminUnlocked}
-          securityBusy={securityBusy}
-          handleSecurityAdminToggle={handleSecurityAdminToggle}
-          accessStatus={accessStatus}
-          currentPin={currentPin}
-          setCurrentPin={setCurrentPin}
-          newPin={newPin}
-          setNewPin={setNewPin}
-          confirmPin={confirmPin}
-          setConfirmPin={setConfirmPin}
-          trocarMeuPin={trocarMeuPin}
-          managedProfileId={managedProfileId}
-          setManagedProfileId={setManagedProfileId}
-          profilesCatalog={profilesCatalog}
-          managedProfile={managedProfile}
-          securityMessage={securityMessage}
-          securityMessageVariant={securityFeedback?.variant}
-          onClearSecurityMessage={() => setSecurityMessage(null)}
-          inactivityLockEnabled={inactivityLockEnabled}
-          onToggleInactivityLock={handleInactivityToggle}
-          deleteDialogOpen={deleteDialogOpen}
-          onDeleteDialogOpenChange={setDeleteDialogOpen}
-          onDeleteSuccess={handleDeleteSuccess}
-        />
+        {canManageProfiles && (
+          <ConfiguracoesTabSeguranca
+            canManageProfiles={canManageProfiles}
+            securityAdminUnlocked={securityAdminUnlocked}
+            securityBusy={securityBusy}
+            handleSecurityAdminToggle={handleSecurityAdminToggle}
+            accessStatus={accessStatus}
+            currentPin={currentPin}
+            setCurrentPin={setCurrentPin}
+            newPin={newPin}
+            setNewPin={setNewPin}
+            confirmPin={confirmPin}
+            setConfirmPin={setConfirmPin}
+            trocarMeuPin={trocarMeuPin}
+            managedProfileId={managedProfileId}
+            setManagedProfileId={setManagedProfileId}
+            profilesCatalog={profilesCatalog}
+            managedProfile={managedProfile}
+            securityMessage={securityMessage}
+            securityMessageVariant={securityFeedback?.variant}
+            onClearSecurityMessage={() => setSecurityMessage(null)}
+            inactivityLockEnabled={inactivityLockEnabled}
+            onToggleInactivityLock={handleInactivityToggle}
+            deleteDialogOpen={deleteDialogOpen}
+            onDeleteDialogOpenChange={setDeleteDialogOpen}
+            onDeleteSuccess={handleDeleteSuccess}
+          />
+        )}
 
       </Tabs>
     </div>

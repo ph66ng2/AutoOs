@@ -140,8 +140,13 @@ function AppContent() {
               element={
                 <SensitiveRoute
                   title="Configurações protegidas"
-                  description="Desbloqueie o acesso administrativo para gerenciar segurança, banco e integrações."
-                  permission={SENSITIVE_PERMISSIONS.MANAGE_PROFILES}
+                  description="Desbloqueie o acesso para gerenciar integrações, banco e segurança."
+                  permission={[
+                    SENSITIVE_PERMISSIONS.MANAGE_PROFILES,
+                    SENSITIVE_PERMISSIONS.CONFIG_SMTP,
+                    SENSITIVE_PERMISSIONS.CONFIG_WHATSAPP,
+                    SENSITIVE_PERMISSIONS.MANAGE_STATUS_LINKS,
+                  ]}
                 >
                   <Configuracoes />
                 </SensitiveRoute>
