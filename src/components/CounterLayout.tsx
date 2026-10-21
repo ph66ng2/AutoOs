@@ -32,7 +32,7 @@ export function CounterLayout({ onChangeMode }: { onChangeMode: (mode: AppMode) 
 
   return (
     <CounterSessionContext.Provider value={{ reset, resetKey }}>
-      <div className="min-h-screen bg-slate-100 text-slate-950">
+      <div className="min-h-screen bg-muted text-foreground">
         <header className="sticky top-0 z-30 flex min-h-20 flex-wrap items-center gap-3 border-b bg-slate-950 px-4 py-3 text-white shadow-lg lg:px-8">
           <Button variant="ghost" className="min-h-12 gap-2 text-base text-white hover:bg-white/10 hover:text-white" onClick={reset}><Home /> Início</Button>
           <Button variant="ghost" className="min-h-12 gap-2 text-base text-white hover:bg-white/10 hover:text-white" onClick={() => navigate("/balcao/painel")}><LayoutPanelTop /> Painel operacional</Button>

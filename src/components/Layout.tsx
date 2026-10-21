@@ -12,7 +12,7 @@
  * ╚══════════════════════════════════════════════════════════════╝
  */
 
-import { NavLink, Outlet } from "react-router-dom";
+import { Link, NavLink, Outlet } from "react-router-dom";
 import {
   LayoutDashboard,
   Printer,
@@ -25,6 +25,7 @@ import {
   Lock,
   Settings,
   ShieldCheck,
+  UserRound,
 } from "lucide-react";
 import { useState } from "react";
 import { cn } from "@/lib/utils";
@@ -32,6 +33,10 @@ import { Button } from "@/components/ui/button";
 import { SensitiveAccessBadge, useSensitiveAccess } from "@/hooks/useSensitiveAccess";
 import { SENSITIVE_PERMISSIONS, type SensitivePermission } from "@/types";
 import { PortalAlertasSino } from "@/components/PortalAlertas";
+import { ProfileAvatar } from "@/components/perfil/ProfileAvatar";
+import { TourController } from "@/components/tour/TourController";
+import { profileAppearance } from "@/lib/profile-appearance";
+import { securityRoleLabel } from "@/lib/security-profile-labels";
 
 /** Itens de navegação da sidebar. Cada item mapeia para uma rota do React Router */
 const navItems: {
@@ -40,7 +45,7 @@ const navItems: {
   icon: React.ComponentType<{ className?: string }>;
   permission?: SensitivePermission;
 }[] = [
-  { label: "Equipe e acessos", path: "/perfil", icon: Users },
+  { label: "Perfil", path: "/perfil", icon: UserRound },
   { label: "Dashboard", path: "/", icon: LayoutDashboard },
   { label: "Equipamentos", path: "/equipamentos", icon: Printer },
   { label: "Clientes", path: "/clientes", icon: Users },
@@ -55,6 +60,8 @@ export function Layout() {
   const [mobileOpen, setMobileOpen] = useState(false);
   const collapsed = desktopCollapsed && !mobileOpen;
   const { status, lockSensitiveAccess } = useSensitiveAccess();
+  const activeProfile = status?.profiles.find((profile) => profile.id === status.active_profile_id) ?? null;
+  const activeLook = activeProfile ? profileAppearance(activeProfile) : null;
 
   const visibleNavItems = navItems.filter(item => {
     if (!item.permission) return true;
@@ -77,13 +84,14 @@ export function Layout() {
         </div>
 
         {/* Navigation */}
-        <nav className="flex-1 space-y-1 p-3">
+        <nav data-tour="nav" className="flex-1 space-y-1 p-3">
           {visibleNavItems.map(item => (
             <NavLink
               key={item.path}
               to={item.path}
               end={item.path === "/"}
               aria-label={item.label}
+              data-tour={`nav-${item.path}`}
               onClick={() => setMobileOpen(false)}
               className={({ isActive }) =>
                 cn(
@@ -102,17 +110,24 @@ export function Layout() {
 
         {/* Segurança */}
         <div className="border-t border-sidebar-border p-3 space-y-3">
-          {!collapsed && (
-            <div className="space-y-2">
-              <SensitiveAccessBadge />
-              {status?.active_profile_name && (
-                <p className="text-xs text-white/50">
-                  Perfil: {status.active_profile_name}
-                  {status.active_role ? ` (${status.active_role})` : ""}
-                </p>
+          {activeProfile && activeLook && (
+            <Link
+              to="/perfil"
+              data-tour="profile-card"
+              onClick={() => setMobileOpen(false)}
+              aria-label={`Perfil de ${activeProfile.nome}`}
+              className={cn("flex items-center gap-2.5 rounded-xl bg-white/5 p-2 transition-colors hover:bg-white/10", collapsed && "justify-center bg-transparent p-0")}
+            >
+              <ProfileAvatar icon={activeLook.icon} color={activeLook.color} size={collapsed ? "sm" : "md"} />
+              {!collapsed && (
+                <span className="flex min-w-0 flex-col">
+                  <span className="truncate text-sm font-semibold text-white">{activeProfile.nome}</span>
+                  <span className="truncate text-xs text-white/55">{status?.active_role ? securityRoleLabel(status.active_role) : "Sessão bloqueada"}</span>
+                </span>
               )}
-            </div>
+            </Link>
           )}
+          {!collapsed && <SensitiveAccessBadge />}
           {collapsed && status?.pin_configured && status.unlocked && (
             <div className="flex justify-center">
               <span className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-emerald-200 bg-emerald-50 text-emerald-700">
@@ -162,6 +177,7 @@ export function Layout() {
           <Outlet />
         </div>
       </main>
+      <TourController />
     </div>
   );
 }

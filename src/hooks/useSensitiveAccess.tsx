@@ -9,15 +9,18 @@ import {
   type ReactNode,
 } from "react";
 import { ShieldAlert, ShieldCheck, ShieldOff } from "lucide-react";
+import { useTheme } from "next-themes";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { useBootUi } from "@/components/BootUi";
 import { ProfileSessionDialog } from "@/components/ProfileSessionDialog";
 import { PasswordRecoveryDialog } from "@/components/PasswordRecoveryDialog";
+import { PrimeiroAcessoWizard } from "@/components/perfil/PrimeiroAcessoWizard";
 import { toast } from "sonner";
 import { SensitiveAccessService } from "@/lib/sensitive-access";
 import { isTemporaryDatabaseAccessMessage, sensitiveAccessErrorMessage } from "@/lib/sensitive-access-error";
 import { registerSensitiveAccessPrompt } from "@/lib/sensitive-action-retry";
+import { requestTour } from "@/lib/tour-request";
 import {
   SENSITIVE_PERMISSION_LABELS,
   SENSITIVE_PERMISSIONS,
@@ -53,6 +56,8 @@ interface SensitiveAccessContextValue {
   pinPromptDismissed: boolean;
   hasPermission: (permission: SensitivePermission) => boolean;
   setActiveProfile: (profileId: number, pin: string) => Promise<void>;
+  /** Primeiro acesso (código, nome e visual) aberto: outras telas de entrada esperam. */
+  firstAccessOpen: boolean;
 }
 
 const defaultPrompt: SensitiveAccessPromptOptions = {
@@ -94,6 +99,8 @@ export function SensitiveAccessProvider({ children }: { children: ReactNode }) {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [selectedProfileId, setSelectedProfileId] = useState<string>("");
+  const [firstAccess, setFirstAccess] = useState<{ profileId: number; needsCode: boolean; recovery: boolean } | null>(null);
+  const { setTheme } = useTheme();
   const resolverRef = useRef<((value: boolean) => void) | null>(null);
   const startupPromptedRef = useRef(false);
   const unlockedSinceBootRef = useRef(false);
@@ -153,8 +160,8 @@ export function SensitiveAccessProvider({ children }: { children: ReactNode }) {
         startupPromptedRef.current = true;
         setDialogMode("startup");
         setPromptOptions({
-          title: "Selecionar perfil da sessão",
-          description: "Escolha com clareza qual perfil local vai abrir esta sessão e confirme o PIN antes de entrar no AutoOS.",
+          title: "Quem está usando o AutoOS?",
+          description: "Escolha seu perfil e informe o PIN para entrar.",
         });
         setDialogMandatory(true);
         setPin("");
@@ -195,8 +202,8 @@ export function SensitiveAccessProvider({ children }: { children: ReactNode }) {
       startupPromptedRef.current = true;
       setDialogMode("startup");
       setPromptOptions({
-        title: "Selecionar perfil da sessão",
-        description: "Escolha com clareza qual perfil local vai abrir esta sessão e confirme o PIN antes de entrar no AutoOS.",
+        title: "Quem está usando o AutoOS?",
+        description: "Escolha seu perfil e informe o PIN para entrar.",
       });
       setDialogMandatory(true);
       setPin("");
@@ -205,6 +212,26 @@ export function SensitiveAccessProvider({ children }: { children: ReactNode }) {
       setDialogOpen(true);
     }
   }, [status, loading]);
+
+  // O tema é do perfil: aplica o escolhido assim que a sessão dele abre. Perfil que nunca
+  // escolheu (tema nulo) usa o padrão claro, em vez de herdar o tema de quem usou antes.
+  const activeProfileForTheme = status?.unlocked
+    ? status.profiles.find((profile) => profile.id === status.active_profile_id)
+    : undefined;
+  const profileTheme: "light" | "dark" | null = activeProfileForTheme
+    ? (activeProfileForTheme.tema === "dark" ? "dark" : "light")
+    : null;
+  useEffect(() => {
+    if (profileTheme) setTheme(profileTheme);
+  }, [profileTheme, setTheme, activeProfileForTheme?.id]);
+
+  // Perfil já autenticado que ainda não escolheu nome e visual (ex.: administrador
+  // de uma instalação nova) passa pelo primeiro acesso sem a etapa do código.
+  useEffect(() => {
+    if (!status?.unlocked || firstAccess || dialogOpen) return;
+    const active = status.profiles.find((profile) => profile.id === status.active_profile_id);
+    if (active?.onboarding_pendente) setFirstAccess({ profileId: active.id, needsCode: false, recovery: false });
+  }, [dialogOpen, firstAccess, status]);
 
   const resolvePending = useCallback((value: boolean) => {
     if (resolverRef.current) {
@@ -391,7 +418,7 @@ export function SensitiveAccessProvider({ children }: { children: ReactNode }) {
       }
 
       if (activeProfile?.pin_required && !activeProfile.pin_configured) {
-        setError("Este perfil exige um PIN local. Peça a um administrador para configurá-lo em Equipe e acessos.");
+        setError("Este perfil ainda não tem PIN neste computador. Use o código que o administrador te passou para ativá-lo aqui.");
         return;
       }
 
@@ -451,6 +478,38 @@ export function SensitiveAccessProvider({ children }: { children: ReactNode }) {
     }
   }, [closeDialog, pin, confirmPin, promptOptions.permission, selectedProfileId, status, dialogMode]);
 
+  const startFirstAccess = useCallback((profileId: number, recovery = false) => {
+    // O pedido de perfil continua pendente: resolve quando a ativação terminar.
+    setDialogOpen(false);
+    setError(null);
+    setFirstAccess({ profileId, needsCode: true, recovery });
+  }, []);
+
+  const cancelFirstAccess = useCallback(() => {
+    setFirstAccess(null);
+    setDialogOpen(true);
+  }, []);
+
+  const finishFirstAccess = useCallback(async (result: "tour" | "pular" | "ativado") => {
+    const profileId = firstAccess?.profileId;
+    if (result === "tour") {
+      requestTour("completo");
+    } else if (result === "pular") {
+      try {
+        setStatus(await SensitiveAccessService.markTourSeen());
+      } catch {
+        // Sem registro, o tour volta a ser oferecido no próximo acesso.
+      }
+    }
+    if (profileId) {
+      try { localStorage.setItem("autoos_last_profile_id", String(profileId)); } catch { /* storage indisponível */ }
+    }
+    setFirstAccess(null);
+    setDialogMandatory(false);
+    resetDialogState();
+    resolvePending(true);
+  }, [firstAccess?.profileId, resetDialogState, resolvePending]);
+
   const value = useMemo<SensitiveAccessContextValue>(() => ({
     status,
     loading,
@@ -463,7 +522,11 @@ export function SensitiveAccessProvider({ children }: { children: ReactNode }) {
     pinPromptDismissed,
     hasPermission,
     setActiveProfile,
-  }), [bootProgress, connectionUnavailable, ensureSensitiveAccess, hasPermission, loading, lockSensitiveAccess, openProfileSelector, pinPromptDismissed, refreshStatus, setActiveProfile, status]);
+    firstAccessOpen: firstAccess !== null,
+  }), [bootProgress, connectionUnavailable, ensureSensitiveAccess, firstAccess, hasPermission, loading, lockSensitiveAccess, openProfileSelector, pinPromptDismissed, refreshStatus, setActiveProfile, status]);
+  const firstAccessProfile = firstAccess
+    ? status?.profiles.find((profile) => profile.id === firstAccess.profileId) ?? null
+    : null;
 
   const activeProfile = status?.profiles.find((profile) => profile.id === status.active_profile_id) ?? null;
   const selectedProfile = status?.profiles.find((profile) => String(profile.id) === selectedProfileId) ?? activeProfile ?? null;
@@ -498,7 +561,24 @@ export function SensitiveAccessProvider({ children }: { children: ReactNode }) {
         onConfirmPinChange={(value) => { setConfirmPin(value); setError(null); }}
         onSubmit={() => void submitSensitiveAccess()}
         onForgotPassword={() => setRecoveryOpen(true)}
+        onFirstAccess={startFirstAccess}
       />
+
+      {firstAccess && firstAccessProfile && bootAnimationComplete && (
+        <PrimeiroAcessoWizard
+          key={firstAccessProfile.id}
+          profile={firstAccessProfile}
+          needsCode={firstAccess.needsCode}
+          recovery={firstAccess.recovery}
+          onStatusChange={(nextStatus) => {
+            setStatus(nextStatus);
+            setConnectionUnavailable(false);
+            if (nextStatus.unlocked) unlockedSinceBootRef.current = true;
+          }}
+          onCancel={cancelFirstAccess}
+          onFinish={(result) => void finishFirstAccess(result)}
+        />
+      )}
 
       <PasswordRecoveryDialog
         open={recoveryOpen}
