@@ -1675,7 +1675,6 @@ export default function Equipamentos() {
     const liberado = await ensureSensitiveAccess({
       title: "Enviar orçamento por WhatsApp",
       description: "Informe o PIN para disparar manualmente a mensagem de orçamento ao cliente.",
-      permission: SENSITIVE_PERMISSIONS.FINANCIAL_ACTIONS,
     });
     if (!liberado) return;
     await reenviarWhatsApp(eq, "orcamento_informativo");
@@ -1740,7 +1739,6 @@ export default function Equipamentos() {
     const liberado = await ensureSensitiveAccess({
       title: "Enviar aviso de equipamento pronto",
       description: "Informe o PIN para disparar manualmente a mensagem de retirada ao cliente.",
-      permission: SENSITIVE_PERMISSIONS.FINANCIAL_ACTIONS,
     });
     if (!liberado) return;
     await reenviarWhatsApp(eq, "equipamento_pronto");

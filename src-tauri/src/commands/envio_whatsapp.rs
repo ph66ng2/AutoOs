@@ -10,8 +10,7 @@
 //! confirmação explícita: a mensagem pode já ter saído.
 
 use crate::commands::auth::{
-    record_security_event, require_active_session_company_id, require_permission,
-    PERMISSION_CONFIG_WHATSAPP,
+    record_security_event, require_active_session_company_id, require_sensitive_access,
 };
 use crate::commands::orcamento_decisao::obter_ou_criar_versao;
 use crate::commands::types::WhatsappConfigStored;
@@ -734,7 +733,7 @@ async fn registrar_historico(
 #[instrument(skip_all, fields(equipamento_id = input.equipamento_id, tipo = %input.tipo, manual = input.reenvio_manual))]
 pub async fn solicitar_envio_whatsapp(input: SolicitarEnvioInput) -> Result<ResultadoEnvioWhatsapp, String> {
     let tipo = TipoEnvio::parse(&input.tipo)?;
-    let actor = require_permission(PERMISSION_CONFIG_WHATSAPP)?;
+    let actor = require_sensitive_access()?;
     let pool = get_pool().await.map_err(|error| error.to_string())?;
     let empresa_id = require_active_session_company_id(&pool).await?;
 
