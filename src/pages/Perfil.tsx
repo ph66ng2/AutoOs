@@ -197,7 +197,7 @@ function VisaoGeral({
             <CardTitle className="text-base">Modo deste computador</CardTitle>
           </CardHeader>
           <CardContent>
-            <div role="radiogroup" aria-label="Modo" className="grid grid-cols-2 gap-1 rounded-lg bg-muted p-1">
+            <div role="radiogroup" aria-label="Modo" data-tour="perfil-modo" className="grid grid-cols-2 gap-1 rounded-lg bg-muted p-1">
               {([["standard", "Sistema completo"], ["counter", "Balcão"]] as const).map(([value, label]) => (
                 <button
                   key={value}
