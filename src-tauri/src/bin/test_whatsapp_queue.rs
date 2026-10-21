@@ -64,7 +64,7 @@ fn iniciar_servidor(fake: Arc<Fake>) -> Result<String> {
 
 async fn pedir(eq: i32, tipo: &str, manual: bool, confirmar: bool) -> Result<ResultadoEnvioWhatsapp> {
     solicitar_envio_whatsapp(SolicitarEnvioInput {
-        equipamento_id: eq, tipo: tipo.into(), reenvio_manual: manual, confirmar_incerto: confirmar,
+        equipamento_id: eq, tipo: tipo.into(), reenvio_manual: manual, confirmar_incerto: confirmar, senha_portal: None,
     }).await.map_err(|e| anyhow!(e))
 }
 
@@ -241,12 +241,25 @@ async fn main() -> Result<()> {
     assert_eq!(pedir(eq_portal, "orcamento_informativo", false, false).await?.estado, "ENVIADA");
     let corpo = fake.corpos.lock().unwrap().last().unwrap().clone();
     assert!(corpo.contains("status.bmitag.com.br") && !corpo.contains("APROVADO"), "contato do portal: {corpo}");
-    // Só acompanha (não decide): volta a responder "APROVADO".
+    // Só acompanha (não decide): vê o portal, mas continua aprovando por "APROVADO".
     sqlx::query("UPDATE cliente_contatos SET portal_acesso = 'ACOMPANHAR' WHERE id = $1").bind(contato).execute(&pool).await?;
     let eq_sem = orcamento_para("Q").await?;
     assert_eq!(pedir(eq_sem, "orcamento_informativo", false, false).await?.estado, "ENVIADA");
     let corpo = fake.corpos.lock().unwrap().last().unwrap().clone();
-    assert!(corpo.contains("APROVADO") && !corpo.contains("status.bmitag.com.br"), "sem decisão no portal: {corpo}");
+    assert!(corpo.contains("APROVADO") && corpo.contains("acompanhar o orçamento") && !corpo.contains("aceitar ou recusar"), "só acompanha: {corpo}");
+    // Senha nova: vai em claro ao provedor (envio direto), mas nunca ao histórico.
+    let eq_senha = orcamento_para("S").await?;
+    let resp = solicitar_envio_whatsapp(SolicitarEnvioInput {
+        equipamento_id: eq_senha, tipo: "orcamento_informativo".into(), reenvio_manual: false, confirmar_incerto: false,
+        senha_portal: Some(serde_json::from_str("\"Kp7m-Tx4q-9Wbd\"")?),
+    }).await.map_err(|e| anyhow!(e))?;
+    assert_eq!(resp.estado, "ENVIADA");
+    assert!(!resp.senha_retida);
+    let corpo = fake.corpos.lock().unwrap().last().unwrap().clone();
+    assert!(corpo.contains("Senha: Kp7m-Tx4q-9Wbd"), "senha nova ao provedor: {corpo}");
+    let hist: String = sqlx::query_scalar("SELECT mensagem FROM comunicacoes WHERE equipamento_id = $1 ORDER BY id DESC LIMIT 1")
+        .bind(eq_senha).fetch_one(&pool).await?;
+    assert!(!hist.contains("Kp7m-Tx4q-9Wbd") && hist.contains("Senha: ••••"), "histórico: {hist}");
     sqlx::query("UPDATE portal_config_empresa SET portal_enabled = FALSE WHERE empresa_id = $1").bind(empresa).execute(&pool).await?;
 
     // 11. Estado errado e tipos que não existem mais são recusados sem rastro de envio.
