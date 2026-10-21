@@ -1,6 +1,8 @@
 # CLAUDE.md
 
-Leia `AGENTS.md` antes de começar. Ele é a fonte única das regras do projeto, incluindo o fluxo de fatiar, a checagem por comando e o filtro de lixo. Este arquivo só define o que é específico do Claude Code: qual modelo faz o quê.
+@AGENTS.md
+
+Este arquivo só define o que é específico do Claude Code: qual modelo faz o quê. As regras do projeto estão no AGENTS.md importado acima.
 
 ## Sessão principal
 
@@ -25,3 +27,4 @@ Regras:
 4. Se `scripts/pre-qa-check.sh` rejeitar, a fatia responsável volta para o `executor-haiku` com o motivo. Compare a lista de arquivos alterados que o script imprime com o plano: arquivo fora do plano também volta.
 5. Passe para cada subagente só a fatia e o contexto dela, nunca a conversa inteira. Peça resultado resumido.
 6. Mudança de uma linha: faça direto, sem subagente.
+7. Antes de executar qualquer plano com mais de uma fatia, mostre as fatias ao usuário e espere a confirmação dele. Não delegue para `executor-haiku` ou `executor-sonnet` sem o OK.
