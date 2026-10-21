@@ -1,9 +1,10 @@
 import {
   CheckCircle2,
-  QrCode,
-  Smartphone,
+  FileText,
+  KeyRound,
+  MapPin,
+  Package,
   Sparkles,
-  WifiOff,
   X,
 } from "lucide-react";
 import { useState } from "react";
@@ -18,31 +19,38 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 
-export const RELEASE_HIGHLIGHTS_VERSION = "0.5.6";
+export const RELEASE_HIGHLIGHTS_VERSION = "0.6.0";
 export const RELEASE_HIGHLIGHTS_STORAGE_KEY =
-  `autoos:release-highlights:${RELEASE_HIGHLIGHTS_VERSION}:fotos-celular`;
+  `autoos:release-highlights:${RELEASE_HIGHLIGHTS_VERSION}:portal-insumos-perfil`;
 
 const highlights = [
   {
-    icon: Smartphone,
-    title: "Foto pelo celular no 4G",
+    icon: FileText,
+    title: "Portal do Cliente com fotos e documentos",
     description:
-      "O QR de sempre agora pode abrir um endereço HTTPS. O celular não precisa estar no Wi-Fi da recepção.",
-    detail: "O AutoOS sobe um túnel temporário só enquanto o diálogo de foto estiver aberto.",
+      "O cliente vê as fotos do equipamento, baixa o PDF do orçamento e o comprovante de entrega, e acompanha cada etapa com data e hora.",
+    detail: "No AutoOS, o botão Portal do Cliente reúne publicar, acesso, link sem login e mensagens. Orçamento já publicado é republicado sozinho ao ser alterado.",
   },
   {
-    icon: QrCode,
-    title: "Três PCs ao mesmo tempo",
+    icon: MapPin,
+    title: "Retirada, ordem de compra e negociação",
     description:
-      "Cada computador gera o próprio endereço. Os três da recepção podem mandar foto juntos.",
-    detail: "Não usa o hostname único fotos.bmitag.com.br. Cada QR vale só naquele PC, naquele momento.",
+      "Pronto para retirada mostra o endereço e o mapa da empresa. Clientes marcados precisam informar a ordem de compra ao aprovar.",
+    detail: "Antes de recusar, o portal oferece negociar. Cadastre o endereço e o link do Maps em Configurações e marque Exige ordem de compra no cliente.",
   },
   {
-    icon: WifiOff,
-    title: "cloudflared no PC",
+    icon: Package,
+    title: "Orçamento de venda avulsa de insumos (OI)",
     description:
-      "Uma vez: copie o cloudflared.exe para o PATH ou para a pasta AutoOS em Dados de aplicativos.",
-    detail: "Sem o executável, o QR continua no IP da rede local, como nas versões anteriores.",
+      "Em Insumos/Peças → Orçamentos: itens do estoque, desconto, validade, PDF e envio por e-mail ou WhatsApp.",
+    detail: "Aprovar baixa o estoque e recusa se faltar item. Cancelar um orçamento aprovado devolve as quantidades.",
+  },
+  {
+    icon: KeyRound,
+    title: "Primeiro acesso por código e tour",
+    description:
+      "O ADM cadastra o colaborador e entrega um código de primeiro acesso. A pessoa cria o próprio PIN em cada computador e escolhe nome, ícone, cor e tema.",
+    detail: "O ADM não define nem vê o PIN de ninguém. Esqueceu o PIN? Peça um código novo ao ADM. O tour mostra só as telas liberadas para o seu perfil.",
   },
 ] as const;
 
@@ -108,10 +116,10 @@ export function ReleaseHighlightsDialog({ enabled }: { enabled: boolean }) {
             </div>
             <div>
               <DialogTitle className="text-2xl font-bold leading-tight tracking-tight text-white sm:text-3xl">
-                Fotos pelo celular sem depender do Wi-Fi
+                Portal do Cliente completo e orçamento de insumos
               </DialogTitle>
               <DialogDescription className="mt-2 max-w-2xl text-sm leading-relaxed text-slate-300 sm:text-base">
-                AutoOS 0.5.6: o QR de fotos usa HTTPS temporário. Os três PCs podem enviar ao mesmo tempo, e o celular pode estar no 4G.
+                AutoOS 0.6.0: o cliente acompanha fotos, PDF, comprovante e retirada pelo portal. A recepção faz orçamento de insumos (OI), e cada pessoa ativa o próprio perfil com um código.
               </DialogDescription>
             </div>
           </div>
@@ -143,13 +151,16 @@ export function ReleaseHighlightsDialog({ enabled }: { enabled: boolean }) {
 
           <div className="mt-5 flex flex-wrap gap-2" aria-label="Outras melhorias da versão">
             <Badge variant="secondary" className="gap-1.5 px-3 py-1.5 font-normal">
-              <Smartphone className="h-3.5 w-3.5" /> QR HTTPS temporário
+              <MapPin className="h-3.5 w-3.5" /> Endereço e mapa na retirada
             </Badge>
             <Badge variant="secondary" className="gap-1.5 px-3 py-1.5 font-normal">
-              <QrCode className="h-3.5 w-3.5" /> Três PCs em paralelo
+              <FileText className="h-3.5 w-3.5" /> Ordem de compra no aceite
             </Badge>
             <Badge variant="secondary" className="gap-1.5 px-3 py-1.5 font-normal">
-              <WifiOff className="h-3.5 w-3.5" /> Celular no 4G
+              <Package className="h-3.5 w-3.5" /> Baixa de estoque no OI
+            </Badge>
+            <Badge variant="secondary" className="gap-1.5 px-3 py-1.5 font-normal">
+              <KeyRound className="h-3.5 w-3.5" /> Tema escuro por perfil
             </Badge>
           </div>
         </div>

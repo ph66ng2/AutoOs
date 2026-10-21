@@ -14,11 +14,12 @@ describe("ReleaseHighlightsDialog", () => {
     render(<ReleaseHighlightsDialog enabled />);
 
     expect(screen.getByRole("dialog")).toBeInTheDocument();
-    expect(screen.getByText("Fotos pelo celular sem depender do Wi-Fi")).toBeInTheDocument();
-    expect(screen.getByText("Foto pelo celular no 4G")).toBeInTheDocument();
-    expect(screen.getByText("Três PCs ao mesmo tempo")).toBeInTheDocument();
-    expect(screen.getByText("cloudflared no PC")).toBeInTheDocument();
-    expect(screen.getByText(/Versão 0\.5\.6/)).toBeInTheDocument();
+    expect(screen.getByText("Portal do Cliente completo e orçamento de insumos")).toBeInTheDocument();
+    expect(screen.getByText("Portal do Cliente com fotos e documentos")).toBeInTheDocument();
+    expect(screen.getByText("Retirada, ordem de compra e negociação")).toBeInTheDocument();
+    expect(screen.getByText("Orçamento de venda avulsa de insumos (OI)")).toBeInTheDocument();
+    expect(screen.getByText("Primeiro acesso por código e tour")).toBeInTheDocument();
+    expect(screen.getByText(/Versão 0\.6\.0/)).toBeInTheDocument();
   });
 
   it("registra a confirmação e não reaparece na mesma versão", () => {

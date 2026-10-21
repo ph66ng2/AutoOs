@@ -18,7 +18,7 @@ const errors = [];
 page.on("pageerror", error => errors.push(error.message));
 await page.addInitScript(() => {
   localStorage.setItem("autoos_app_mode", "standard");
-  localStorage.setItem("autoos:release-highlights:0.5.6:fotos-celular", "seen");
+  localStorage.setItem("autoos:release-highlights:0.6.0:portal-insumos-perfil", "seen");
 });
 try {
   await page.goto("http://127.0.0.1:1420/perfil");
