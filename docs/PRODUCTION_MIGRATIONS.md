@@ -21,7 +21,7 @@ Configure também o secret de repositório `AUTOOS_BACKUP_EXPECTED_DB_USER` com 
 
 ## O que o workflow faz
 
-1. Confere que o build contém exatamente 42 migrations consecutivas (0001–0042). A 0042 é só de dados (adiciona a permissão `PREPARE_QUOTES` aos perfis Técnico, Financeiro e Administrador existentes), sem alteração de schema.
+1. Confere que o build contém exatamente 42 migrations consecutivas (0001–0042). A 0042 é só de dados (adiciona a permissão `PREPARE_QUOTES` ao perfil Administrador existente; Técnico e Financeiro ficam para uma migration posterior, depois que todos os PCs estiverem na 0.6.0), sem alteração de schema.
 2. Valida que produção já registra 0001–0028 com sucesso, sem migrations com falha. A pré-checagem de códigos duplicados em produtos ativos sem empresa e nomes de perfil duplicados após `trim` e conversão para minúsculas só roda se a 0027 estiver pendente; como esta versão exige 0001–0028 aplicadas, essa checagem não é acionada no fluxo atual.
 3. Executa o reconciliador da migration 0023, que só altera o checksum quando reconhece a variante conhecida e confirma que o schema já corresponde aos índices esperados; qualquer outra divergência interrompe o fluxo.
 4. Confere o histórico SQLx e bloqueia versões ausentes, falhas ou checksums desconhecidos.
