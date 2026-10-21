@@ -221,6 +221,8 @@ export default function Clientes() {
       telefone: "", telefone_secundario: "",
       email: "", cep: "", endereco: "", numero: "", complemento: "",
       bairro: "", cidade: "", uf: "", observacoes: "", exige_ordem_compra: false,
+      exigir_contato_inicial: true,
+      contato_nome: "", contato_telefone: "", contato_email: "",
     });
     setDialogOpen(true);
   }
@@ -250,6 +252,8 @@ export default function Clientes() {
       uf: c.uf || "",
       observacoes: c.observacoes || "",
       exige_ordem_compra: Boolean(c.exige_ordem_compra),
+      exigir_contato_inicial: false,
+      contato_nome: "", contato_telefone: "", contato_email: "",
     });
     setDialogOpen(true);
   }
@@ -300,7 +304,14 @@ export default function Clientes() {
           throw new Error(resultado.erro || "Não foi possível salvar o cliente.");
         }
       } else {
-        const resultado = await criar(payload);
+        const contatoInicial = isPJ && data.exigir_contato_inicial
+          ? {
+              nome: (data.contato_nome ?? "").trim(),
+              telefone: (data.contato_telefone ?? "").replace(/\D/g, ""),
+              email: data.contato_email?.trim() || undefined,
+            }
+          : undefined;
+        const resultado = await criar(payload, contatoInicial);
         if (!resultado.sucesso) {
           throw new Error(resultado.erro || "Não foi possível criar o cliente.");
         }
