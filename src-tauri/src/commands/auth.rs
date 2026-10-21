@@ -979,23 +979,18 @@ async fn fetch_profile_record_by_id_any(profile_id: i32) -> Result<SecurityProfi
     .ok_or_else(|| "Perfil de segurança não encontrado".to_string())
 }
 
-/// Resultado da consulta única ao cofre em cada status.
+/// Resultado da consulta única ao cofre em cada status. Só leitura.
 struct ConsultaCofre {
     com_pin: std::collections::HashSet<i32>,
-    /// O PIN do modelo antigo (um só para todos) foi copiado para o perfil ativo.
-    migrou_legado: bool,
+    /// O perfil ativo ainda não tem PIN próprio, mas existe o PIN do modelo antigo (um só para
+    /// todos) no cofre: ele deve ser copiado para o perfil, depois de marcá-lo no banco.
+    legado_pendente: bool,
 }
 
-/// Lê o cofre de uma vez só: migra o PIN legado para o perfil ativo se ele ainda não tem PIN e
-/// descobre quais perfis têm PIN neste computador. Para na primeira falha, sem insistir.
+/// Lê o cofre de uma vez só e descobre quais perfis têm PIN neste computador e se há PIN legado a
+/// migrar. Não grava nada. Para na primeira falha, sem insistir.
 fn consultar_cofre(records: &[SecurityProfileRecord], active_id: i32) -> Result<ConsultaCofre, String> {
-    let mut migrou_legado = false;
-    if load_profile_pin(active_id)?.is_none() {
-        if let Some(legacy_pin) = load_legacy_pin()? {
-            store_profile_pin_record(active_id, &legacy_pin)?;
-            migrou_legado = true;
-        }
-    }
+    let legado_pendente = load_profile_pin(active_id)?.is_none() && load_legacy_pin()?.is_some();
 
     let mut com_pin = std::collections::HashSet::new();
     for record in records {
@@ -1003,7 +998,15 @@ fn consultar_cofre(records: &[SecurityProfileRecord], active_id: i32) -> Result<
             com_pin.insert(record.id);
         }
     }
-    Ok(ConsultaCofre { com_pin, migrou_legado })
+    Ok(ConsultaCofre { com_pin, legado_pendente })
+}
+
+/// Copia o PIN legado para o perfil ativo. Só deve rodar depois de `mark_profile_pin_required`.
+fn copiar_pin_legado(active_id: i32) -> Result<(), String> {
+    if let Some(legacy_pin) = load_legacy_pin()? {
+        store_profile_pin_record(active_id, &legacy_pin)?;
+    }
+    Ok(())
 }
 
 /// Resumo do perfil lendo o cofre fora do worker async. Falha se o cofre estiver indisponível.
@@ -1097,14 +1100,24 @@ async fn status_snapshot() -> Result<SensitiveAccessStatus, String> {
     let records_para_o_cofre = records.clone();
     let active_id = active_profile.id;
     let consulta = run_keyring_blocking(KEYRING_READ_TIMEOUT, move || consultar_cofre(&records_para_o_cofre, active_id)).await;
-    let (com_pin, keyring_bloqueado) = match consulta {
-        Ok(consulta) => {
-            if consulta.migrou_legado {
-                // O PIN legado vale para o perfil ativo: ele passa a exigir PIN em todos os computadores.
-                mark_profile_pin_required(active_id).await?;
+    let consulta = match consulta {
+        Ok(mut consulta) if consulta.legado_pendente => {
+            // O PIN legado vale para o perfil ativo: ele passa a exigir PIN em todos os computadores.
+            // A marcação no banco vem ANTES da cópia: se a gravação no cofre estourar o limite e
+            // terminar depois, o perfil já está marcado e nenhum computador abre sem PIN.
+            mark_profile_pin_required(active_id).await?;
+            match run_keyring_blocking(KEYRING_READ_TIMEOUT, move || copiar_pin_legado(active_id)).await {
+                Ok(()) => {
+                    consulta.com_pin.insert(active_id);
+                    Ok(consulta)
+                }
+                Err(motivo) => Err(motivo),
             }
-            (consulta.com_pin, false)
         }
+        outro => outro,
+    };
+    let (com_pin, keyring_bloqueado) = match consulta {
+        Ok(consulta) => (consulta.com_pin, false),
         Err(motivo) => {
             warn!("Cofre de senhas indisponível ao montar o status: {}", motivo);
             (std::collections::HashSet::new(), true)
@@ -1617,13 +1630,31 @@ pub async fn redefinir_pin_via_db(
 pub async fn list_security_profiles(include_inactive: Option<bool>) -> Result<Vec<SecurityProfileSummary>, String> {
     require_permission(PERMISSION_MANAGE_PROFILES)?;
     let include_inactive = include_inactive.unwrap_or(false);
-    let mut profiles = Vec::new();
+    let records = fetch_profile_records_with_scope(include_inactive).await?;
+    resumos_lendo_o_cofre_uma_vez(records).await
+}
 
-    for profile in fetch_profile_records_with_scope(include_inactive).await? {
-        profiles.push(to_profile_summary(profile).await?);
-    }
-
-    Ok(profiles)
+/// Resumos de vários perfis com uma só passagem pelo cofre (um limite de tempo, e para na primeira
+/// falha), em vez de uma leitura com limite próprio por perfil.
+async fn resumos_lendo_o_cofre_uma_vez(records: Vec<SecurityProfileRecord>) -> Result<Vec<SecurityProfileSummary>, String> {
+    let para_o_cofre = records.clone();
+    let com_pin = run_keyring_blocking(KEYRING_READ_TIMEOUT, move || {
+        let mut com_pin = std::collections::HashSet::new();
+        for record in &para_o_cofre {
+            if load_profile_pin_for_record(record)?.is_some() {
+                com_pin.insert(record.id);
+            }
+        }
+        Ok(com_pin)
+    })
+    .await?;
+    records
+        .into_iter()
+        .map(|record| {
+            let pin_configured = com_pin.contains(&record.id);
+            profile_summary(record, pin_configured)
+        })
+        .collect()
 }
 
 #[tauri::command]
