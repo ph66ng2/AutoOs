@@ -62,6 +62,8 @@ import type {
   AnaliseCorrecaoDecisao,
   AnaliseAjusteOrcamento,
   PortalAjusteInfo,
+  ProrrogarPrazoInput,
+  ResultadoProrrogacao,
   CorrigirDecisaoInput,
   DecisaoOrcamentoInfo,
   EstadoPortal,
@@ -321,6 +323,11 @@ export const db = {
 
   async publicarOrcamentoPortal(equipamentoId: number): Promise<OrcamentoPublicado> {
     return invoke<OrcamentoPublicado>("publicar_orcamento_portal", { equipamentoId });
+  },
+
+  /** Prorroga o prazo de aprovação do orçamento → Rust: prorrogar_prazo_orcamento */
+  async prorrogarPrazoOrcamento(input: ProrrogarPrazoInput): Promise<ResultadoProrrogacao> {
+    return invoke<ResultadoProrrogacao>("prorrogar_prazo_orcamento", { input });
   },
 
   async obterContatoPortalEmpresa(): Promise<ContatoPortalEmpresa | null> {

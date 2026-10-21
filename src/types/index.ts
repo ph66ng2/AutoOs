@@ -298,6 +298,23 @@ export interface PortalAjusteInfo {
   aviso?: string | null;
 }
 
+/** Prorroga o prazo de aprovação do orçamento → Rust: prorrogar_prazo_orcamento */
+export interface ProrrogarPrazoInput {
+  equipamentoId: number;
+  /** AAAA-MM-DD */
+  novoPrazo: string;
+  expectedUpdatedEm: string;
+  /** Confirma que a prorrogação anula a resposta do cliente ainda não aplicada. */
+  confirmarRespostaPendente?: boolean;
+}
+
+export interface ResultadoProrrogacao {
+  prorrogado: boolean;
+  respostaPendente: RespostaPendenteAjuste | null;
+  equipamento: Equipamento | null;
+  portal: PortalAjusteInfo;
+}
+
 /** RESTAURAR_ORIGINAL volta à versão enviada ao cliente; MANTER_ATUAL desfaz só a decisão. */
 export type ModoCorrecaoDecisao = "RESTAURAR_ORIGINAL" | "MANTER_ATUAL";
 

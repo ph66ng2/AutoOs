@@ -169,6 +169,7 @@ fn main() {
             commands::orcamento_decisao::obter_decisao_orcamento,
             commands::orcamento_decisao::marcar_solicitacao_orcamento_tratada,
             commands::orcamento_decisao::analisar_ajuste_orcamento,
+            commands::orcamento_decisao::prorrogar_prazo_orcamento,
             commands::portal_cliente::listar_alertas_portal,
             commands::portal_cliente::contar_alertas_portal_nao_lidos,
             commands::portal_cliente::marcar_alertas_portal_lidos,

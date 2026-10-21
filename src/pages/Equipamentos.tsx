@@ -905,6 +905,7 @@ export default function Equipamentos() {
     setAjusteOrcamentoSemMudancaStatus(true);
     setCorrecaoStatus(false);
     setMotivoCorrecaoStatus("");
+    setPrazoAprovacao(eq.prazo_aprovacao || "");
     setValorFinal(0);
     setValorFinalSugerido(null);
     setAcordoExcecaoEntrega(false);
@@ -1491,15 +1492,52 @@ export default function Equipamentos() {
       }
 
       if (ajusteOrcamentoSemMudancaStatus) {
+        let portalProrrogacao: PortalAjusteInfo | undefined;
+        const prazoMudou = selecionado.status === "AGUARDANDO_APROVACAO"
+          && !!prazoAprovacao
+          && prazoAprovacao !== (selecionado.prazo_aprovacao || "").slice(0, 10);
+        if (prazoMudou) {
+          try {
+            const equipamentoId = selecionado.id!;
+            const prorrogar = async (confirmarRespostaPendente?: boolean) => {
+              const versao = (await db.buscarEquipamento(equipamentoId)).atualizado_em;
+              if (!versao) throw new Error("Versão do equipamento não encontrada.");
+              return db.prorrogarPrazoOrcamento({
+                equipamentoId,
+                novoPrazo: prazoAprovacao,
+                expectedUpdatedEm: versao,
+                ...(confirmarRespostaPendente ? { confirmarRespostaPendente: true } : {}),
+              });
+            };
+            let resultadoProrrogacao = await prorrogar();
+            if (!resultadoProrrogacao.prorrogado) {
+              const confirmado = await confirmarComOperador(
+                "O cliente já respondeu",
+                "Prorrogar anula a resposta pendente. Continuar?",
+                "Prorrogar",
+              );
+              if (confirmado) {
+                resultadoProrrogacao = await prorrogar(true);
+              } else {
+                warning("Equipamentos", "Orçamento salvo. O prazo não foi prorrogado.");
+              }
+            }
+            if (resultadoProrrogacao.prorrogado) portalProrrogacao = resultadoProrrogacao.portal;
+          } catch (err) {
+            const detalhe = err instanceof Error ? err.message : String(err);
+            warning("Equipamentos", `Orçamento salvo, mas o prazo não foi prorrogado: ${detalhe}`);
+          }
+        }
         await recarregar();
         setStatusDialogOpen(false);
         setAjusteOrcamentoSemMudancaStatus(false);
         success(
           "Equipamentos",
-          ["Orçamento atualizado.", portalAjuste?.mensagem].filter(Boolean).join(" "),
+          ["Orçamento atualizado.", portalAjuste?.mensagem, portalProrrogacao?.mensagem].filter(Boolean).join(" "),
           "Alterar orçamento",
         );
         if (portalAjuste?.aviso) warning("Equipamentos", portalAjuste.aviso);
+        if (portalProrrogacao?.aviso) warning("Equipamentos", portalProrrogacao.aviso);
         return;
       }
 
@@ -2942,8 +2980,8 @@ export default function Equipamentos() {
                     </div>
                   )}
                   <div className="space-y-2"><Label>Valor Orçamento (R$)</Label><Input data-testid="valor-orcamento-input" type="number" step="0.01" value={valorOrcamento || ""} onChange={e => setValorOrcamento(Number(e.target.value))} /></div>
-                  {!ajusteOrcamentoSemMudancaStatus && (
-                    <div className="space-y-2"><Label>Prazo Aprovação</Label><Input type="date" value={prazoAprovacao} onChange={e => setPrazoAprovacao(e.target.value)} /></div>
+                  {(!ajusteOrcamentoSemMudancaStatus || selecionado.status === "AGUARDANDO_APROVACAO") && (
+                    <div className="space-y-2"><Label>Prazo Aprovação</Label><Input type="date" min={new Date().toLocaleDateString("en-CA")} value={prazoAprovacao} onChange={e => setPrazoAprovacao(e.target.value)} /></div>
                   )}
                   <div className="space-y-2">
                     <Label htmlFor="observacoes-ajuste">Observações</Label>

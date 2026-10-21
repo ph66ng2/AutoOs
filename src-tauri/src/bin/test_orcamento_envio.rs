@@ -3,7 +3,7 @@
 #[path = "../commands/mod.rs"] mod commands;
 #[path = "../db.rs"] mod db;
 #[path = "../test_support/memory_keyring.rs"] mod memory_keyring;
-use commands::{auth, equipamentos, portal_cliente, verificacoes};
+use commands::{auth, equipamentos, orcamento_decisao, portal_cliente, verificacoes};
 use commands::types::*;
 use anyhow::{Result, anyhow};
 
@@ -71,6 +71,64 @@ async fn main() -> Result<()> {
     // NÃO CONSEGUE: definir senha de contato que decide orçamento.
     let erro = portal_cliente::definir_senha_portal_contato(contato, Some("Senha1234".into())).await.unwrap_err();
     assert!(erro.contains(SEM_PERMISSAO), "{erro}");
+
+    // PRORROGAR PRAZO (I2): equipamento AGUARDANDO_APROVACAO já publicado.
+    let prorrogar = |novo: String, tok: String, confirmar: bool| async move {
+        orcamento_decisao::prorrogar_prazo_orcamento(orcamento_decisao::ProrrogarPrazoInput {
+            equipamento_id: eq, novo_prazo: novo, expected_updated_em: tok, confirmar_resposta_pendente: confirmar,
+        }).await
+    };
+    // 1. Data passada: recusada.
+    let passado = (chrono::Utc::now() - chrono::Duration::days(2)).format("%Y-%m-%d").to_string();
+    let erro = prorrogar(passado, token(eq).await?, false).await.err().expect("data passada deveria falhar");
+    assert!(erro.contains("não pode ser anterior a hoje"), "{erro}");
+    // 2. Token de concorrência velho.
+    let erro = prorrogar("2027-01-10".into(), "2000-01-01 00:00:00+00".into(), false).await.err().expect("token velho deveria falhar");
+    assert!(erro.contains("Conflito de concorrência"), "{erro}");
+    let prazo_atual: Option<String> = sqlx::query_scalar("SELECT prazo_aprovacao FROM equipamentos WHERE id=$1").bind(eq).fetch_one(&pool).await?;
+    assert_eq!(prazo_atual.as_deref(), Some("2026-12-31"));
+    // 5. Perfil sem PREPARE_QUOTES nem FINANCIAL_ACTIONS.
+    let sem_perm: i32 = sqlx::query_scalar("INSERT INTO security_profiles(nome,role,permissions,empresa_id,ativo,is_default) VALUES ($1,'TECNICO',$2,$3,true,false) RETURNING id")
+        .bind(format!("SemOrc {suffix}")).bind(serde_json::to_string(&[auth::PERMISSION_STOCK_CONTROL])?).bind(empresa).fetch_one(&pool).await?;
+    auth::store_profile_pin(sem_perm, "2468").map_err(|e| anyhow!(e))?;
+    auth::set_active_security_profile(sem_perm, "2468".into(), Some("2468".into())).await.map_err(|e| anyhow!(e))?;
+    auth::unlock_sensitive_access("2468".into()).await.map_err(|e| anyhow!(e))?;
+    let erro = prorrogar("2027-01-10".into(), token(eq).await?, false).await.err().expect("sem permissão deveria falhar");
+    assert!(erro.contains(SEM_PERMISSAO), "{erro}");
+    auth::set_active_security_profile(profile, "1357".into(), Some("1357".into())).await.map_err(|e| anyhow!(e))?;
+    auth::unlock_sensitive_access("1357".into()).await.map_err(|e| anyhow!(e))?;
+    // 3. Resposta pendente do cliente.
+    sqlx::query("INSERT INTO orcamento_respostas (empresa_id, equipamento_id, versao_id, origem, decisao, contato_nome) VALUES ($1,$2,$3,'PORTAL_CLIENTE','APROVAR','Ana Envio')")
+        .bind(empresa).bind(eq).bind(publicado.versao_id).execute(&pool).await?;
+    let sem_confirmar = prorrogar("2027-01-10".into(), token(eq).await?, false).await.map_err(|e| anyhow!("prorrogar sem confirmar: {e}"))?;
+    assert!(!sem_confirmar.prorrogado);
+    assert!(sem_confirmar.resposta_pendente.is_some());
+    let prazo_atual: Option<String> = sqlx::query_scalar("SELECT prazo_aprovacao FROM equipamentos WHERE id=$1").bind(eq).fetch_one(&pool).await?;
+    assert_eq!(prazo_atual.as_deref(), Some("2026-12-31"));
+    // Com confirmação: prorroga e a resposta fica DESFEITA (4: prazo novo gravado e nova versão no portal).
+    let confirmado = prorrogar("2027-01-10".into(), token(eq).await?, true).await.map_err(|e| anyhow!("prorrogar confirmado: {e}"))?;
+    assert!(confirmado.prorrogado);
+    assert!(confirmado.resposta_pendente.is_none());
+    assert_eq!(confirmado.equipamento.as_ref().and_then(|e| e.prazo_aprovacao.clone()).as_deref(), Some("2027-01-10"));
+    let ultima: (String, ) = sqlx::query_as("SELECT decisao FROM orcamento_respostas WHERE versao_id=$1 ORDER BY id DESC LIMIT 1")
+        .bind(publicado.versao_id).fetch_one(&pool).await?;
+    assert_eq!(ultima.0, "DESFEITA");
+    let prazo_atual: Option<String> = sqlx::query_scalar("SELECT prazo_aprovacao FROM equipamentos WHERE id=$1").bind(eq).fetch_one(&pool).await?;
+    assert_eq!(prazo_atual.as_deref(), Some("2027-01-10"));
+    let (nova_id, nova_aberta, nova_valida): (i64, bool, bool) = sqlx::query_as(
+        "SELECT id, encerrada_em IS NULL, valido_ate = (('2027-01-11'::DATE)::TIMESTAMP AT TIME ZONE 'America/Sao_Paulo')
+         FROM orcamento_versoes WHERE equipamento_id=$1 ORDER BY versao DESC LIMIT 1").bind(eq).fetch_one(&pool).await?;
+    assert!(nova_id > publicado.versao_id, "deveria existir nova versão após a prorrogação");
+    assert!(nova_aberta && nova_valida, "nova versão aberta com validade do novo prazo");
+    let antiga_encerrada: bool = sqlx::query_scalar("SELECT encerrada_em IS NOT NULL FROM orcamento_versoes WHERE id=$1").bind(publicado.versao_id).fetch_one(&pool).await?;
+    assert!(antiga_encerrada);
+    // 4. Prorrogação válida sem resposta pendente.
+    let simples = prorrogar("2027-02-20".into(), token(eq).await?, false).await.map_err(|e| anyhow!("prorrogar simples: {e}"))?;
+    assert!(simples.prorrogado && simples.resposta_pendente.is_none());
+    let valida: bool = sqlx::query_scalar(
+        "SELECT encerrada_em IS NULL AND valido_ate = (('2027-02-21'::DATE)::TIMESTAMP AT TIME ZONE 'America/Sao_Paulo')
+         FROM orcamento_versoes WHERE equipamento_id=$1 ORDER BY versao DESC LIMIT 1").bind(eq).fetch_one(&pool).await?;
+    assert!(valida);
 
     // NÃO CONSEGUE: alterar serviços de OS já decidida (APROVADO).
     sqlx::query("UPDATE equipamentos SET status='APROVADO' WHERE id=$1").bind(eq).execute(&pool).await?;
