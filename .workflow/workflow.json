@@ -83,20 +83,22 @@
     }
   },
   "baseBranch": "origin/feature",
-  "promotionTarget": "origin/master",
+  "targetBranch": "origin/feature",
+  "internalBaseBranch": "origin/master",
+  "branchFlow": "Tickets sem baseBranch próprio são da linha SaaS: partem de origin/feature e o PR vai para feature. Tickets do produto interno BMITAG declaram baseBranch origin/master: partem de origin/master e o PR vai para master. master é integrada na feature toda semana; feature não é mesclada na master antes da virada para o SaaS.",
   "architectureDecisions": [
     "Uma base de código AutoOS mantém operação interna e build SaaS desktop explícito; o desktop SaaS permanece Online.",
     "O desktop SaaS usa Supabase Auth e RLS sem PowerSync; nenhum segredo privilegiado entra no cliente.",
     "PowerSync é reservado ao futuro AutoOS Field/mobile e não integra o runtime Tauri desktop nem um plano desktop Offline.",
     "Assinatura e capacidades são autoritativas no servidor; flags locais servem apenas como cache temporário.",
     "O provedor de cobrança será decidido em AO-SUB-001 e não fica implicitamente fixado como Stripe.",
-    "Toda worktree parte exclusivamente de origin/feature; master só recebe promoção humana após validação e representa a linha usada em produção.",
-    "A master é a linha produtiva BMITAG; promoção a partir de feature requer validação e decisão humana.",
-    "Cada usuário SaaS autentica individualmente no Supabase Auth e recebe vínculo ativo de empresa e perfil definido server-side; convites substituem o antigo modelo de único administrador.",
+    "Duas linhas: master é o AutoOS interno em produção na BMITAG e feature é o AutoOS SaaS. Trabalho do interno parte de origin/master com PR para master; trabalho só do SaaS parte de origin/feature com PR para feature.",
+    "master é integrada na feature toda semana, ocultando no build SaaS o que ainda não foi portado; feature não é mesclada na master antes da virada, que acontece quando o interno emitir nota fiscal de uma OS real.",
+    "Identidade SaaS por dispositivo: o administrador da empresa faz login uma vez por máquina para autorizá-la, e a máquina recebe credencial própria e restrita à empresa; a sessão do administrador não fica na máquina.",
     "Funcionários usam perfis UUID autoritativos na nuvem e PIN local por dispositivo; o PIN nunca autentica no Supabase, escolhe tenant ou concede capacidade cloud.",
     "A sessão Supabase é mantida no keyring e renovada automaticamente; senha, service_role, senha PostgreSQL e credenciais internas nunca são persistidas ou distribuídas no cliente.",
     "O build SaaS é explícito e não selecionável pelo usuário; nesse modo o AutoOS não inicializa o PostgreSQL legado nem exibe configuração de banco.",
-    "Identidade cloud individual e autorização sensível são resolvidas no servidor por sessão ativa, empresa e perfil; PIN local não concede permissão cloud."
+    "Autorização sensível (financeiro, equipe, dispositivos) exige reautenticação do administrador no servidor; o servidor audita dispositivo e perfil declarado e o administrador pode revogar um dispositivo. PIN local não concede permissão cloud."
   ],
   "ticketTestProtocol": {
     "requiredForNewOrModifiedTickets": true,
@@ -3704,6 +3706,7 @@
     },
     {
       "id": "AO-SUITE-002",
+      "baseBranch": "origin/master",
       "title": "Produzir FatoComercial v2 imutável a partir da OS",
       "status": "blocked",
       "blockedBy": [
@@ -3770,6 +3773,7 @@
     },
     {
       "id": "AO-FISC-001",
+      "baseBranch": "origin/master",
       "title": "Criar fila Pronto para Faturar da OS",
       "status": "ready",
       "blockedBy": [
@@ -3824,6 +3828,7 @@
     },
     {
       "id": "AO-FISC-002",
+      "baseBranch": "origin/master",
       "title": "Criar revisão e confirmação fiscal humana",
       "status": "ready",
       "blockedBy": [
@@ -3881,6 +3886,7 @@
     },
     {
       "id": "AO-FISC-003",
+      "baseBranch": "origin/master",
       "title": "Integrar AutoOS à API fiscal do AutoPlatform",
       "status": "ready",
       "blockedBy": [
@@ -3946,6 +3952,7 @@
     },
     {
       "id": "AO-FISC-004",
+      "baseBranch": "origin/master",
       "title": "Mostrar status e rejeições fiscais corrigíveis",
       "status": "ready",
       "blockedBy": [
@@ -4001,6 +4008,7 @@
     },
     {
       "id": "AO-FISC-005",
+      "baseBranch": "origin/master",
       "title": "Disponibilizar XML e documentos auxiliares fiscais",
       "status": "ready",
       "blockedBy": [
@@ -4056,6 +4064,7 @@
     },
     {
       "id": "AO-FISC-006",
+      "baseBranch": "origin/master",
       "title": "Vincular emissão e histórico fiscal à OS",
       "status": "ready",
       "blockedBy": [
@@ -4111,6 +4120,7 @@
     },
     {
       "id": "AO-FISC-GATE-001",
+      "baseBranch": "origin/master",
       "title": "Homologar jornada OS até documentos fiscais",
       "status": "blocked",
       "blockedBy": [
