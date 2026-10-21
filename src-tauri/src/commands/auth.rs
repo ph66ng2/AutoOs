@@ -103,6 +103,10 @@ pub struct SensitiveAccessStatus {
     pub permissions: Vec<String>,
     pub can_manage_profiles: bool,
     pub profiles: Vec<SecurityProfileSummary>,
+    /// O cofre de senhas do sistema não respondeu: `pin_configured` é desconhecido e nenhum perfil
+    /// com PIN deve ser tratado como "sem PIN".
+    #[serde(default)]
+    pub keyring_bloqueado: bool,
 }
 
 #[derive(Debug, Serialize, FromRow)]
@@ -329,17 +333,28 @@ fn parse_permissions(raw: &str) -> Result<Vec<String>, String> {
     })
 }
 
-fn load_stored_pin_by_user(user: &str) -> Result<Option<StoredSensitivePin>, String> {
-    let entry = get_keyring_entry(user)?;
-    let json = match entry.get_password() {
+/// Só a ausência da entrada significa "sem PIN neste computador". Qualquer outra falha do
+/// keyring (cofre travado, prompt cancelado, serviço ausente) não pode virar "sem PIN": quem
+/// não exige PIN abriria a sessão sem ele. Nesses casos a leitura falha e o acesso é recusado.
+fn interpretar_leitura_do_cofre(leitura: Result<String, keyring::Error>) -> Result<Option<StoredSensitivePin>, String> {
+    let json = match leitura {
         Ok(value) => value,
-        Err(_) => return Ok(None),
+        Err(keyring::Error::NoEntry) => return Ok(None),
+        Err(error) => {
+            error!("Erro ao ler PIN do acesso sensível no keyring: {}", error);
+            return Err(KEYRING_UNAVAILABLE_MESSAGE.to_string());
+        }
     };
 
     serde_json::from_str(&json).map(Some).map_err(|e| {
         error!("Erro ao deserializar PIN do acesso sensível: {}", e);
         e.to_string()
     })
+}
+
+fn load_stored_pin_by_user(user: &str) -> Result<Option<StoredSensitivePin>, String> {
+    let entry = get_keyring_entry(user)?;
+    interpretar_leitura_do_cofre(entry.get_password())
 }
 
 pub(crate) fn load_profile_pin(profile_id: i32) -> Result<Option<StoredSensitivePin>, String> {
@@ -374,6 +389,19 @@ fn pin_record_is_older_than_profile(stored: &StoredSensitivePin, profile: &Secur
     };
     let profile_created_at = DateTime::<Utc>::from_naive_utc_and_offset(profile.criado_em, Utc);
     stored_created_at.with_timezone(&Utc) < profile_created_at
+}
+
+const KEYRING_READ_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(15);
+
+/// Leituras do keyring nunca rodam no worker async: um cofre esperando resposta do usuário
+/// prenderia o worker. Com limite de tempo e erro claro.
+async fn load_profile_pin_async(profile_id: i32) -> Result<Option<StoredSensitivePin>, String> {
+    run_keyring_blocking(KEYRING_READ_TIMEOUT, move || load_profile_pin(profile_id)).await
+}
+
+async fn load_profile_pin_for_record_async(record: &SecurityProfileRecord) -> Result<Option<StoredSensitivePin>, String> {
+    let record = record.clone();
+    run_keyring_blocking(KEYRING_READ_TIMEOUT, move || load_profile_pin_for_record(&record)).await
 }
 
 fn load_legacy_pin() -> Result<Option<StoredSensitivePin>, String> {
@@ -508,7 +536,7 @@ pub(crate) fn store_profile_pin(profile_id: i32, pin: &str) -> Result<(), String
 
 async fn any_profile_has_pin() -> Result<bool, String> {
     for profile in fetch_profile_records().await? {
-        if load_profile_pin(profile.id)?.is_some() {
+        if load_profile_pin_async(profile.id).await?.is_some() {
             return Ok(true);
         }
     }
@@ -951,22 +979,46 @@ async fn fetch_profile_record_by_id_any(profile_id: i32) -> Result<SecurityProfi
     .ok_or_else(|| "Perfil de segurança não encontrado".to_string())
 }
 
-async fn ensure_legacy_pin_migrated(profile_id: i32) -> Result<(), String> {
-    if load_profile_pin(profile_id)?.is_some() {
-        return Ok(());
-    }
+/// Resultado da consulta única ao cofre em cada status. Só leitura.
+struct ConsultaCofre {
+    com_pin: std::collections::HashSet<i32>,
+    /// O perfil ativo ainda não tem PIN próprio, mas existe o PIN do modelo antigo (um só para
+    /// todos) no cofre: ele deve ser copiado para o perfil, depois de marcá-lo no banco.
+    legado_pendente: bool,
+}
 
+/// Lê o cofre de uma vez só e descobre quais perfis têm PIN neste computador e se há PIN legado a
+/// migrar. Não grava nada. Para na primeira falha, sem insistir.
+fn consultar_cofre(records: &[SecurityProfileRecord], active_id: i32) -> Result<ConsultaCofre, String> {
+    let legado_pendente = load_profile_pin(active_id)?.is_none() && load_legacy_pin()?.is_some();
+
+    let mut com_pin = std::collections::HashSet::new();
+    for record in records {
+        if load_profile_pin_for_record(record)?.is_some() {
+            com_pin.insert(record.id);
+        }
+    }
+    Ok(ConsultaCofre { com_pin, legado_pendente })
+}
+
+/// Copia o PIN legado para o perfil ativo. Só deve rodar depois de `mark_profile_pin_required`.
+fn copiar_pin_legado(active_id: i32) -> Result<(), String> {
     if let Some(legacy_pin) = load_legacy_pin()? {
-        store_profile_pin_record(profile_id, &legacy_pin)?;
+        store_profile_pin_record(active_id, &legacy_pin)?;
     }
-
     Ok(())
 }
 
-fn to_profile_summary(record: SecurityProfileRecord) -> Result<SecurityProfileSummary, String> {
+/// Resumo do perfil lendo o cofre fora do worker async. Falha se o cofre estiver indisponível.
+async fn to_profile_summary(record: SecurityProfileRecord) -> Result<SecurityProfileSummary, String> {
+    let pin_configured = load_profile_pin_for_record_async(&record).await?.is_some();
+    profile_summary(record, pin_configured)
+}
+
+/// Resumo do perfil sem consultar o cofre: `pin_configured` vem de quem já o consultou.
+fn profile_summary(record: SecurityProfileRecord, pin_configured: bool) -> Result<SecurityProfileSummary, String> {
     let parsed_permissions = parse_permissions(&record.permissions)?;
     let permissions = normalize_permissions(&record.role, &parsed_permissions)?;
-    let pin_configured = load_profile_pin_for_record(&record)?.is_some();
     Ok(SecurityProfileSummary {
         id: record.id,
         nome: record.nome,
@@ -1025,7 +1077,7 @@ async fn count_manager_profiles_excluding(profile_id: i32) -> Result<i64, String
     Ok(profiles
         .into_iter()
         .filter(|profile| profile.id != profile_id)
-        .filter_map(|profile| to_profile_summary(profile).ok())
+        .filter_map(|profile| profile_summary(profile, false).ok())
         .filter(|profile| has_permission(profile, PERMISSION_MANAGE_PROFILES))
         .count() as i64)
 }
@@ -1041,14 +1093,41 @@ async fn count_active_profiles_excluding(profile_id: i32) -> Result<i64, String>
 async fn status_snapshot() -> Result<SensitiveAccessStatus, String> {
     refresh_inactivity_config_if_needed().await;
     let active_profile = fetch_active_profile_record().await?;
-    ensure_legacy_pin_migrated(active_profile.id).await?;
+    let records = fetch_profile_records().await?;
+
+    // O cofre é consultado uma única vez por status, fora do worker async e com limite de tempo.
+    // Se estiver travado, o status sai marcado em vez de repetir um prompt do sistema por perfil.
+    let records_para_o_cofre = records.clone();
+    let active_id = active_profile.id;
+    let consulta = run_keyring_blocking(KEYRING_READ_TIMEOUT, move || consultar_cofre(&records_para_o_cofre, active_id)).await;
+    let consulta = match consulta {
+        Ok(mut consulta) if consulta.legado_pendente => {
+            // O PIN legado vale para o perfil ativo: ele passa a exigir PIN em todos os computadores.
+            // A marcação no banco vem ANTES da cópia: se a gravação no cofre estourar o limite e
+            // terminar depois, o perfil já está marcado e nenhum computador abre sem PIN.
+            mark_profile_pin_required(active_id).await?;
+            match run_keyring_blocking(KEYRING_READ_TIMEOUT, move || copiar_pin_legado(active_id)).await {
+                Ok(()) => {
+                    consulta.com_pin.insert(active_id);
+                    Ok(consulta)
+                }
+                Err(motivo) => Err(motivo),
+            }
+        }
+        outro => outro,
+    };
+    let (com_pin, keyring_bloqueado) = match consulta {
+        Ok(consulta) => (consulta.com_pin, false),
+        Err(motivo) => {
+            warn!("Cofre de senhas indisponível ao montar o status: {}", motivo);
+            (std::collections::HashSet::new(), true)
+        }
+    };
 
     let mut profiles = Vec::new();
-    for profile in fetch_profile_records().await? {
-        if profile.id == active_profile.id {
-            ensure_legacy_pin_migrated(profile.id).await?;
-        }
-        profiles.push(to_profile_summary(profile)?);
+    for profile in records {
+        let pin_configured = com_pin.contains(&profile.id);
+        profiles.push(profile_summary(profile, pin_configured)?);
     }
 
     let active_summary = profiles
@@ -1105,6 +1184,7 @@ async fn status_snapshot() -> Result<SensitiveAccessStatus, String> {
         },
         can_manage_profiles: unlocked && has_permission(&active_summary, PERMISSION_MANAGE_PROFILES),
         profiles: visible_profiles,
+        keyring_bloqueado,
     })
 }
 
@@ -1120,8 +1200,8 @@ pub async fn configure_sensitive_pin(pin: String, current_pin: Option<String>) -
     validate_pin_format(&pin)?;
 
     let active_record = fetch_active_profile_record().await?;
-    let active_profile = to_profile_summary(active_record.clone())?;
-    if let Some(stored) = load_profile_pin_for_record(&active_record)? {
+    let active_profile = to_profile_summary(active_record.clone()).await?;
+    if let Some(stored) = load_profile_pin_for_record_async(&active_record).await? {
         let provided_pin = current_pin.ok_or_else(|| "Informe o PIN atual para alterar o acesso sensível.".to_string())?;
         if !verify_pin(provided_pin.trim(), &stored) {
             warn!("Tentativa de alteração de PIN com credencial inválida");
@@ -1151,9 +1231,9 @@ pub async fn configure_sensitive_pin(pin: String, current_pin: Option<String>) -
 pub async fn unlock_sensitive_access(pin: String) -> Result<SensitiveAccessStatus, String> {
     validate_pin_format(&pin)?;
     let active_record = fetch_active_profile_record().await?;
-    let active_profile = to_profile_summary(active_record.clone())?;
+    let active_profile = to_profile_summary(active_record.clone()).await?;
     check_unlock_lockout(active_profile.id)?;
-    let stored = load_profile_pin_for_record(&active_record)?.ok_or_else(|| format!(
+    let stored = load_profile_pin_for_record_async(&active_record).await?.ok_or_else(|| format!(
         "O perfil \"{}\" (ID {}) não possui PIN local configurado. Esta tela está tentando desbloquear um PIN inexistente; feche e abra o AutoOS novamente para iniciar a criação do PIN.",
         active_profile.nome, active_profile.id
     ))?;
@@ -1186,7 +1266,7 @@ pub(crate) async fn confirm_authenticated_profile_pin(
     validate_pin_format(pin)?;
     check_unlock_lockout(profile.id)?;
     let record = fetch_profile_record_by_id(profile.id).await?;
-    let stored = load_profile_pin_for_record(&record)?
+    let stored = load_profile_pin_for_record_async(&record).await?
         .ok_or_else(|| "O perfil administrador não possui PIN configurado.".to_string())?;
 
     if !verify_pin(pin.trim(), &stored) {
@@ -1211,8 +1291,8 @@ pub(crate) async fn confirm_authenticated_profile_pin(
 #[instrument(skip_all)]
 pub async fn unlock_session_without_pin() -> Result<SensitiveAccessStatus, String> {
     let active_record = fetch_active_profile_record().await?;
-    let active_profile = to_profile_summary(active_record.clone())?;
-    let stored = load_profile_pin_for_record(&active_record)?;
+    let active_profile = to_profile_summary(active_record.clone()).await?;
+    let stored = load_profile_pin_for_record_async(&active_record).await?;
     if stored.is_some() {
         return Err(format!(
             "O perfil \"{}\" (ID {}) possui um PIN local configurado. Informe esse PIN para desbloquear ou use \"Esqueci minha senha\" para redefini-lo.",
@@ -1243,8 +1323,8 @@ pub async fn set_active_security_profile(profile_id: i32, pin: String, confirm_p
     // session instead of issuing another profile query before the actual switch.
     let actor = current_session_profile()?.map(|(_, profile)| profile);
     let profile = fetch_profile_record_by_id(profile_id).await?;
-    let summary = to_profile_summary(profile.clone())?;
-    let stored = load_profile_pin_for_record(&profile)?;
+    let summary = to_profile_summary(profile.clone()).await?;
+    let stored = load_profile_pin_for_record_async(&profile).await?;
     let provision_admin_pin = stored.is_none() && summary.role == "ADMIN" && !profile.pin_required;
     if stored.is_none() && profile.pin_required {
         return Err("Este perfil exige PIN, mas ele não está configurado neste computador. Peça a um administrador para configurar o PIN em Equipe e acessos, ou use a recuperação de acesso.".to_string());
@@ -1338,7 +1418,7 @@ pub async fn create_security_profile(input: SecurityProfileInput, pin: String) -
     }
     tx.commit().await.map_err(super::operator_errors::mapear_erro_sql)?;
 
-    let created = to_profile_summary(fetch_profile_record_by_id(profile_id).await?)?;
+    let created = to_profile_summary(fetch_profile_record_by_id(profile_id).await?).await?;
     record_security_event(
         "PROFILE_CREATED",
         Some(&actor),
@@ -1354,7 +1434,7 @@ pub async fn create_security_profile(input: SecurityProfileInput, pin: String) -
 pub async fn update_security_profile(profile_id: i32, input: SecurityProfileInput, admin_pin: String) -> Result<SensitiveAccessStatus, String> {
     let actor = require_permission(PERMISSION_MANAGE_PROFILES)?;
 
-    let stored = load_profile_pin(actor.id)?;
+    let stored = load_profile_pin_async(actor.id).await?;
     if let Some(ref stored_pin) = stored {
         if !verify_pin(admin_pin.trim(), stored_pin) {
             spawn_security_event("PROFILE_UPDATE_FAILED", Some(actor.clone()), "PIN do administrador inválido".to_string(), false);
@@ -1364,7 +1444,7 @@ pub async fn update_security_profile(profile_id: i32, input: SecurityProfileInpu
         return Err("Seu perfil não possui PIN configurado".to_string());
     }
 
-    let current = to_profile_summary(fetch_profile_record_by_id(profile_id).await?)?;
+    let current = to_profile_summary(fetch_profile_record_by_id(profile_id).await?).await?;
     let nome = input.nome.trim();
     if nome.len() < 3 {
         return Err("Nome do perfil deve ter no mínimo 3 caracteres".to_string());
@@ -1527,7 +1607,7 @@ pub async fn redefinir_pin_via_db(
 
     validate_pin_format(&new_pin)?;
 
-    let profile = to_profile_summary(fetch_profile_record_by_id(profile_id).await?)?;
+    let profile = to_profile_summary(fetch_profile_record_by_id(profile_id).await?).await?;
     if new_pin.trim().is_empty() {
         return Err("Informe um PIN de 4 a 8 dígitos.".to_string());
     }
@@ -1550,20 +1630,38 @@ pub async fn redefinir_pin_via_db(
 pub async fn list_security_profiles(include_inactive: Option<bool>) -> Result<Vec<SecurityProfileSummary>, String> {
     require_permission(PERMISSION_MANAGE_PROFILES)?;
     let include_inactive = include_inactive.unwrap_or(false);
-    let mut profiles = Vec::new();
+    let records = fetch_profile_records_with_scope(include_inactive).await?;
+    resumos_lendo_o_cofre_uma_vez(records).await
+}
 
-    for profile in fetch_profile_records_with_scope(include_inactive).await? {
-        profiles.push(to_profile_summary(profile)?);
-    }
-
-    Ok(profiles)
+/// Resumos de vários perfis com uma só passagem pelo cofre (um limite de tempo, e para na primeira
+/// falha), em vez de uma leitura com limite próprio por perfil.
+async fn resumos_lendo_o_cofre_uma_vez(records: Vec<SecurityProfileRecord>) -> Result<Vec<SecurityProfileSummary>, String> {
+    let para_o_cofre = records.clone();
+    let com_pin = run_keyring_blocking(KEYRING_READ_TIMEOUT, move || {
+        let mut com_pin = std::collections::HashSet::new();
+        for record in &para_o_cofre {
+            if load_profile_pin_for_record(record)?.is_some() {
+                com_pin.insert(record.id);
+            }
+        }
+        Ok(com_pin)
+    })
+    .await?;
+    records
+        .into_iter()
+        .map(|record| {
+            let pin_configured = com_pin.contains(&record.id);
+            profile_summary(record, pin_configured)
+        })
+        .collect()
 }
 
 #[tauri::command]
 #[instrument(skip_all)]
 pub async fn deactivate_security_profile(profile_id: i32) -> Result<SensitiveAccessStatus, String> {
     let actor = require_permission(PERMISSION_MANAGE_PROFILES)?;
-    let profile = to_profile_summary(fetch_profile_record_by_id(profile_id).await?)?;
+    let profile = to_profile_summary(fetch_profile_record_by_id(profile_id).await?).await?;
 
     if count_active_profiles_excluding(profile_id).await? == 0 {
         return Err("Deve permanecer pelo menos um perfil ativo no sistema".to_string());
@@ -1609,7 +1707,7 @@ pub async fn deactivate_security_profile(profile_id: i32) -> Result<SensitiveAcc
 #[instrument(skip_all)]
 pub async fn reactivate_security_profile(profile_id: i32) -> Result<SensitiveAccessStatus, String> {
     let actor = require_permission(PERMISSION_MANAGE_PROFILES)?;
-    let profile = to_profile_summary(fetch_profile_record_by_id_any(profile_id).await?)?;
+    let profile = to_profile_summary(fetch_profile_record_by_id_any(profile_id).await?).await?;
 
     if profile.ativo {
         return status_snapshot().await;
@@ -1652,7 +1750,7 @@ pub async fn deletar_perfil(
 ) -> Result<bool, String> {
     let actor = require_permission(PERMISSION_MANAGE_PROFILES)?;
 
-    let stored = load_profile_pin(actor.id)?;
+    let stored = load_profile_pin_async(actor.id).await?;
     if let Some(ref stored_pin) = stored {
         if !verify_pin(admin_pin.trim(), stored_pin) {
             spawn_security_event(
@@ -1692,7 +1790,7 @@ pub async fn deletar_perfil(
 
     drop(client);
 
-    let profile = to_profile_summary(fetch_profile_record_by_id_any(profile_id).await?)?;
+    let profile = to_profile_summary(fetch_profile_record_by_id_any(profile_id).await?).await?;
 
     let active = fetch_active_profile_record().await?;
     if active.id == profile_id {
@@ -2380,7 +2478,7 @@ pub async fn ativar_perfil_com_codigo(
         .map_err(|_| ATIVACAO_OCUPADA_MESSAGE.to_string())?;
 
     let record = fetch_profile_record_by_id(profile_id).await?;
-    let summary = to_profile_summary(record)?;
+    let summary = to_profile_summary(record).await?;
     let codigo = normalizar_codigo_acesso(&codigo);
     let pool = get_pool().await.map_err(|e| e.to_string())?;
 
@@ -2429,7 +2527,7 @@ pub async fn ativar_perfil_com_codigo(
 
     mark_profile_pin_required(profile_id).await?;
     reset_unlock_attempts(profile_id);
-    let summary = to_profile_summary(fetch_profile_record_by_id(profile_id).await?)?;
+    let summary = to_profile_summary(fetch_profile_record_by_id(profile_id).await?).await?;
     unlock_session(summary.clone())?;
     record_security_event("ACCESS_CODE_REDEEMED", Some(&summary), "Perfil ativado neste computador com código de primeiro acesso", true).await;
     status_snapshot().await
@@ -2486,7 +2584,7 @@ pub async fn salvar_personalizacao_perfil(input: PersonalizacaoPerfilInput) -> R
 #[instrument(skip_all)]
 pub async fn registrar_tour_visto() -> Result<SensitiveAccessStatus, String> {
     let profile = require_sensitive_access()?;
-    let atual = to_profile_summary(fetch_profile_record_by_id(profile.id).await?)?;
+    let atual = to_profile_summary(fetch_profile_record_by_id(profile.id).await?).await?;
     let vistas = serde_json::to_string(&atual.permissions).map_err(|e| e.to_string())?;
 
     let pool = get_pool().await.map_err(|e| e.to_string())?;
@@ -2606,6 +2704,23 @@ mod tests {
 
         assert_eq!(result.unwrap_err(), KEYRING_TIMEOUT_MESSAGE);
         assert!(started.elapsed() < std::time::Duration::from_millis(400));
+    }
+
+    #[test]
+    fn only_a_missing_entry_means_no_pin_and_any_other_vault_failure_is_an_error() {
+        assert!(interpretar_leitura_do_cofre(Err(keyring::Error::NoEntry)).unwrap().is_none());
+
+        let stored = r#"{"pin_hash":"$argon2id$x","created_at":"2026-01-01T00:00:00Z"}"#;
+        let found = interpretar_leitura_do_cofre(Ok(stored.to_string())).unwrap().expect("PIN guardado");
+        assert_eq!(found.pin_hash, "$argon2id$x");
+
+        // Cofre travado, prompt cancelado ou serviço ausente: nunca "sem PIN".
+        let platform = keyring::Error::PlatformFailure("zbus error: IsLocked".into());
+        assert_eq!(interpretar_leitura_do_cofre(Err(platform)).unwrap_err(), KEYRING_UNAVAILABLE_MESSAGE);
+        let no_access = keyring::Error::NoStorageAccess("locked".into());
+        assert_eq!(interpretar_leitura_do_cofre(Err(no_access)).unwrap_err(), KEYRING_UNAVAILABLE_MESSAGE);
+
+        assert!(interpretar_leitura_do_cofre(Ok("não é json".to_string())).is_err());
     }
 
     #[tokio::test]

@@ -83,6 +83,8 @@ function permissionDescription(permission?: SensitivePermission) {
 
 const SensitiveAccessContext = createContext<SensitiveAccessContextValue | null>(null);
 
+const KEYRING_BLOCKED_MESSAGE = "O cofre de senhas do sistema está bloqueado ou indisponível. Desbloqueie-o e tente de novo.";
+
 export function SensitiveAccessProvider({ children }: { children: ReactNode }) {
   const { bootAnimationComplete } = useBootUi();
   const [status, setStatus] = useState<SensitiveAccessStatus | null>(null);
@@ -377,6 +379,12 @@ export function SensitiveAccessProvider({ children }: { children: ReactNode }) {
       let workingStatus = await SensitiveAccessService.status();
       setStatus(workingStatus);
       setConnectionUnavailable(false);
+      // Com o cofre de senhas indisponível `pin_configured` é desconhecido: nunca cair no caminho
+      // "sem PIN" nem no de criar PIN. Para no aviso e deixa o usuário tentar de novo.
+      if (workingStatus.keyring_bloqueado) {
+        setError(KEYRING_BLOCKED_MESSAGE);
+        return;
+      }
       if (!workingStatus.active_profile_id) {
         setError("Não foi possível determinar o perfil ativo. Feche e abra o AutoOS novamente.");
         return;
@@ -562,6 +570,8 @@ export function SensitiveAccessProvider({ children }: { children: ReactNode }) {
         onSubmit={() => void submitSensitiveAccess()}
         onForgotPassword={() => setRecoveryOpen(true)}
         onFirstAccess={startFirstAccess}
+        keyringBlocked={Boolean(status?.keyring_bloqueado)}
+        onRetryKeyring={() => void refreshStatus()}
       />
 
       {firstAccess && firstAccessProfile && bootAnimationComplete && (

@@ -69,6 +69,27 @@ describe("useSensitiveAccess — integração com novos recursos de auth", () =>
     expect(mockInvoke.mock.calls.some(([cmd]) => cmd === "unlock_session_without_pin")).toBe(false);
   });
 
+  it("cofre indisponível entre abrir e confirmar: para no aviso, sem sessão sem PIN nem criação de PIN", async () => {
+    const user = userEvent.setup();
+    // Perfil que não exige PIN: sem a guarda, o submit cairia em unlock_session_without_pin.
+    const profile = { id: 2, nome: "Operador", role: "ATENDENTE", permissions: [], pin_required: false, pin_configured: false, is_default: false, ativo: true };
+    const initial = { ...EMPTY_STATUS, active_profile_id: 2, active_profile_name: "Operador", profiles: [profile] };
+    const blocked = { ...initial, keyring_bloqueado: true };
+    let reads = 0;
+    mockInvoke.mockImplementation((cmd: string) => {
+      if (cmd === "get_sensitive_access_status") return Promise.resolve(++reads === 1 ? initial : blocked);
+      return Promise.resolve(null);
+    });
+    render(<TestHarness><HookInspector capture={captureHook} /></TestHarness>);
+    await user.click(await screen.findByRole("button", { name: "Entrar com este perfil" }));
+
+    expect((await screen.findAllByText(/cofre de senhas do sistema está bloqueado/)).length).toBeGreaterThan(0);
+    const comandos = mockInvoke.mock.calls.map(([cmd]) => cmd);
+    for (const proibido of ["unlock_session_without_pin", "set_active_security_profile", "configure_sensitive_pin", "unlock_sensitive_access"]) {
+      expect(comandos).not.toContain(proibido);
+    }
+  });
+
   it("mantém os perfis em uma falha temporária e limpa o aviso após recuperar", async () => {
     const intervalSpy = vi.spyOn(window, "setInterval");
     const profile = { id: 1, nome: "Admin", role: "ADMIN", permissions: [], pin_configured: true, is_default: true, ativo: true };

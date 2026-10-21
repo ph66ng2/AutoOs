@@ -20,7 +20,7 @@ fn tauri_result<T>(result: std::result::Result<T, String>, context: &str) -> Res
 }
 
 async fn limpar(pool: &PgPool) {
-    let _ = sqlx::query("DELETE FROM security_profiles WHERE nome = $1")
+    let _ = sqlx::query("DELETE FROM security_profiles WHERE nome LIKE $1 || '%'")
         .bind(NOME)
         .execute(pool)
         .await;
@@ -213,6 +213,124 @@ async fn cenario_fluxo_completo(pool: &PgPool) -> Result<()> {
     assert!(auth::verify_pin("5555", &alheio), "um PIN que não é o desta chamada não pode ser apagado");
 
     limpar_keyring(profile_id);
+    cenario_leitura_do_cofre_fail_closed(pool).await?;
+    cenario_migracao_do_pin_legado(pool).await?;
+    Ok(())
+}
+
+/// O PIN do modelo antigo (um só para todos) é copiado para o perfil ativo no primeiro status, e o
+/// perfil passa a exigir PIN no banco: a marcação vale para todos os computadores.
+async fn cenario_migracao_do_pin_legado(pool: &PgPool) -> Result<()> {
+    let permissions = serde_json::to_string(&Vec::<String>::new())?;
+    let nome = format!("{NOME} (legado)");
+    let perfil: i32 = sqlx::query_scalar(
+        "INSERT INTO security_profiles (nome, role, permissions, ativo, is_default, pin_required, atualizado_em)
+         VALUES ($1, 'ATENDENTE', $2, true, false, false, NOW())
+         RETURNING id",
+    )
+    .bind(&nome)
+    .bind(&permissions)
+    .fetch_one(pool)
+    .await?;
+    limpar_keyring(perfil);
+
+    // PIN legado no cofre: a mesma estrutura de um PIN de perfil, gravada sob a chave antiga.
+    tauri_result(auth::store_profile_pin(perfil, "2468"), "PIN para servir de legado")?;
+    let registro = keyring::Entry::new("autoos", &format!("sensitive_access_profile_{perfil}"))?.get_password()?;
+    limpar_keyring(perfil);
+    let legado = keyring::Entry::new("autoos", "sensitive_access_pin")?;
+    let legado_anterior = legado.get_password().ok();
+    legado.set_password(&registro)?;
+
+    // Seleciona o perfil como ativo e fecha a sessão.
+    tauri_result(
+        auth::unlock_session(auth::SecurityProfileSummary { id: perfil, nome: nome.clone(), role: "ATENDENTE".into(), ..Default::default() }),
+        "Seleção do perfil do legado",
+    )?;
+    {
+        let mut sessao = auth::session_state().lock().map_err(|e| anyhow!("{e}"))?;
+        sessao.unlocked_until = None;
+        sessao.profile_obfuscated = None;
+        sessao.profile_key = None;
+    }
+
+    let status = tauri_result(auth::get_sensitive_access_status().await, "Status com PIN legado");
+    let exigido: bool = sqlx::query_scalar("SELECT pin_required FROM security_profiles WHERE id = $1").bind(perfil).fetch_one(pool).await?;
+    let copiado = pin_gravado(perfil);
+
+    // Restaura o cofre e o banco antes de qualquer asserção.
+    limpar_keyring(perfil);
+    match legado_anterior {
+        Some(valor) => legado.set_password(&valor)?,
+        None => {
+            let _ = legado.delete_password();
+        }
+    }
+    let _ = sqlx::query("DELETE FROM security_profiles WHERE id = $1").bind(perfil).execute(pool).await;
+
+    let status = status?;
+    assert!(!status.keyring_bloqueado, "o cofre responde");
+    assert!(exigido, "o PIN legado deve marcar o perfil como exigindo PIN no banco");
+    assert!(copiado, "o PIN legado deve ser copiado para o perfil ativo");
+    Ok(())
+}
+
+/// Cofre indisponível não pode virar "sem PIN": perfil que não exige PIN mas tem PIN local não
+/// abre a sessão sem ele, e o status avisa em vez de falhar ou repetir leituras.
+async fn cenario_leitura_do_cofre_fail_closed(pool: &PgPool) -> Result<()> {
+    let permissions = serde_json::to_string(&Vec::<String>::new())?;
+    let opcional: i32 = sqlx::query_scalar(
+        "INSERT INTO security_profiles (nome, role, permissions, ativo, is_default, pin_required, atualizado_em)
+         VALUES ($1, 'ATENDENTE', $2, true, false, false, NOW())
+         RETURNING id",
+    )
+    .bind(format!("{NOME} (PIN opcional)"))
+    .bind(&permissions)
+    .fetch_one(pool)
+    .await?;
+    limpar_keyring(opcional);
+    tauri_result(auth::store_profile_pin(opcional, "4321"), "PIN local do perfil opcional")?;
+    let resumo = auth::SecurityProfileSummary {
+        id: opcional,
+        nome: format!("{NOME} (PIN opcional)"),
+        role: "ATENDENTE".to_string(),
+        pin_required: false,
+        ..Default::default()
+    };
+    // Seleciona o perfil e fecha a sessão: o que importa é o que `unlock_session_without_pin` decide.
+    tauri_result(auth::unlock_session(resumo), "Seleção do perfil opcional")?;
+    {
+        let mut sessao = auth::session_state().lock().map_err(|e| anyhow!("{e}"))?;
+        sessao.unlocked_until = None;
+        sessao.profile_obfuscated = None;
+        sessao.profile_key = None;
+    }
+
+    // Cofre normal: o PIN local existe, então abrir sem PIN é recusado e o status não avisa nada.
+    let erro = auth::unlock_session_without_pin().await.expect_err("há PIN local");
+    assert!(erro.contains("possui um PIN local"), "mensagem inesperada: {erro}");
+    let status = tauri_result(auth::get_sensitive_access_status().await, "Status com o cofre normal")?;
+    assert!(!status.keyring_bloqueado, "o cofre responde");
+    assert!(status.profiles.iter().any(|p| p.id == opcional && p.pin_configured), "o PIN local deve aparecer");
+
+    // Cofre indisponível: nada de sessão sem PIN, e o status avisa sem falhar.
+    let anterior = std::env::var("DBUS_SESSION_BUS_ADDRESS").ok();
+    std::env::set_var("DBUS_SESSION_BUS_ADDRESS", "unix:path=/nonexistent");
+    let sem_cofre = auth::unlock_session_without_pin().await;
+    let status_sem_cofre = auth::get_sensitive_access_status().await;
+    match &anterior {
+        Some(valor) => std::env::set_var("DBUS_SESSION_BUS_ADDRESS", valor),
+        None => std::env::remove_var("DBUS_SESSION_BUS_ADDRESS"),
+    }
+    let erro = sem_cofre.expect_err("sem o cofre não pode abrir sessão sem PIN");
+    assert!(erro.contains("cofre de senhas"), "a recusa deve explicar o cofre: {erro}");
+    assert!(auth::current_session_profile().map_err(|e| anyhow!("{e}"))?.is_none(), "nenhuma sessão pode ter sido aberta");
+    let status_sem_cofre = tauri_result(status_sem_cofre, "O status não pode falhar com o cofre indisponível")?;
+    assert!(status_sem_cofre.keyring_bloqueado, "o status deve marcar o cofre como bloqueado");
+    assert!(status_sem_cofre.profiles.iter().all(|p| !p.pin_configured), "pin_configured é desconhecido sem o cofre");
+
+    let _ = sqlx::query("DELETE FROM security_profiles WHERE id = $1").bind(opcional).execute(pool).await;
+    limpar_keyring(opcional);
     Ok(())
 }
 
