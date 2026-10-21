@@ -562,6 +562,8 @@ export function SensitiveAccessProvider({ children }: { children: ReactNode }) {
         onSubmit={() => void submitSensitiveAccess()}
         onForgotPassword={() => setRecoveryOpen(true)}
         onFirstAccess={startFirstAccess}
+        keyringBlocked={Boolean(status?.keyring_bloqueado)}
+        onRetryKeyring={() => void refreshStatus()}
       />
 
       {firstAccess && firstAccessProfile && bootAnimationComplete && (

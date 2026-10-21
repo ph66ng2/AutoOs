@@ -844,6 +844,8 @@ export interface SensitiveAccessStatus {
   permissions: SensitivePermission[];
   can_manage_profiles: boolean;
   profiles: SecurityProfile[];
+  /** O cofre de senhas do sistema não respondeu: `pin_configured` é desconhecido. */
+  keyring_bloqueado?: boolean;
 }
 
 export interface DatabaseMigrationStatus {

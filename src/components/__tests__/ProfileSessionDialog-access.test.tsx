@@ -62,6 +62,27 @@ describe("confirmação de sessão", () => {
   });
 });
 
+describe("cofre de senhas indisponível", () => {
+  it("avisa, bloqueia o acesso e não trata ninguém como sem PIN nem oferece primeiro acesso", () => {
+    const onRetry = vi.fn();
+    const onFirstAccess = vi.fn();
+    const operador = { ...admin, id: 8, nome: "Ivan", role: "ATENDENTE", pin_required: true, pin_configured: false, is_default: false, onboarding_pendente: false };
+    render(<ProfileSessionDialog {...defaults} profiles={[admin, operador]} selectedProfileId="8" selectedProfile={operador} keyringBlocked onRetryKeyring={onRetry} onFirstAccess={onFirstAccess} />);
+
+    expect(screen.getByRole("alert")).toHaveTextContent("O cofre de senhas do sistema está bloqueado ou indisponível");
+    expect(screen.queryByText("Ativar neste computador", { exact: false })).not.toBeInTheDocument();
+    expect(screen.queryByText("PIN não configurado neste PC")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /tenho um código do administrador/i })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Entrar com este perfil|Continuar|Selecione/ })).toBeDisabled();
+    // O administrador também não cai no fluxo de "Novo PIN" quando o cofre não respondeu.
+    expect(screen.queryByLabelText("Novo PIN")).not.toBeInTheDocument();
+
+    screen.getByRole("button", { name: "Tentar de novo" }).click();
+    expect(onRetry).toHaveBeenCalledTimes(1);
+    expect(onFirstAccess).not.toHaveBeenCalled();
+  });
+});
+
 describe("recuperação de PIN com código do administrador", () => {
   it("perfil que já tem PIN neste computador oferece o código do ADM e abre em modo recuperação", async () => {
     const onFirstAccess = vi.fn();

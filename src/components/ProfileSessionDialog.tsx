@@ -38,6 +38,9 @@ interface ProfileSessionDialogProps {
   onConfirmPinChange: (value: string) => void;
   onSubmit: () => void;
   onForgotPassword?: () => void;
+  /** O cofre de senhas do sistema não respondeu: ninguém pode ser tratado como "sem PIN". */
+  keyringBlocked?: boolean;
+  onRetryKeyring?: () => void;
   /**
    * Abre o fluxo do código do administrador. `recovery` = o perfil já tem PIN neste
    * computador e a pessoa o esqueceu; sem ele, é o primeiro acesso.
@@ -72,13 +75,15 @@ export function ProfileSessionDialog({
   onSubmit,
   onForgotPassword,
   onFirstAccess,
+  keyringBlocked = false,
+  onRetryKeyring,
 }: ProfileSessionDialogProps) {
   const isSelectorMode = mode === "selector";
   const isCurrentProfileSelected = !!selectedProfile && selectedProfile.id === activeProfileId;
-  const missingRequiredPin = !!selectedProfile && needsFirstAccessHere(selectedProfile);
+  const missingRequiredPin = !keyringBlocked && !!selectedProfile && needsFirstAccessHere(selectedProfile);
   const canStartFirstAccess = missingRequiredPin && !!onFirstAccess;
-  const canRecoverWithCode = !!selectedProfile && selectedProfile.pin_configured && !!onFirstAccess;
-  const isAdminWithoutPin = selectedProfile?.role === "ADMIN" && !selectedProfile?.pin_configured && !missingRequiredPin;
+  const canRecoverWithCode = !keyringBlocked && !!selectedProfile && selectedProfile.pin_configured && !!onFirstAccess;
+  const isAdminWithoutPin = !keyringBlocked && selectedProfile?.role === "ADMIN" && !selectedProfile?.pin_configured && !missingRequiredPin;
   const shouldAskForPin = isAdminWithoutPin || (Boolean(selectedProfile?.pin_configured) && (!isSelectorMode || !isCurrentProfileSelected || !unlocked));
   // Só afirmamos "não exige PIN" quando o perfil realmente tem pin_required = false.
   const pinOptional = selectedProfile?.pin_required === false;
@@ -101,6 +106,7 @@ export function ProfileSessionDialog({
 
   const primaryDisabled =
     !selectedProfile ||
+    keyringBlocked ||
     (missingRequiredPin && !canStartFirstAccess) ||
     busy ||
     (shouldAskForPin && pin.length < 4) ||
@@ -213,7 +219,7 @@ export function ProfileSessionDialog({
                 {profiles.map((profile) => {
                   const isSelected = String(profile.id) === selectedProfileId;
                   const isCurrent = profile.id === activeProfileId && unlocked;
-                  const pendingHere = needsFirstAccessHere(profile);
+                  const pendingHere = !keyringBlocked && needsFirstAccessHere(profile);
                   // Tracejado só para quem ainda não montou o perfil; quem já o montou em outro
                   // computador mantém o próprio avatar e só precisa ativá-lo neste.
                   const neverSetUp = pendingHere && Boolean(profile.onboarding_pendente);
@@ -241,7 +247,7 @@ export function ProfileSessionDialog({
                           {neverSetUp ? "Primeiro acesso" : pendingHere ? "Ativar neste computador" : securityRoleLabel(profile.role)}
                         </span>
                         {isCurrent && <span className="mt-1 rounded-full bg-emerald-500/15 px-2 py-0.5 text-[11px] font-medium text-emerald-300">Perfil atual</span>}
-                        {!pendingHere && !profile.pin_configured && (
+                        {!keyringBlocked && !pendingHere && !profile.pin_configured && (
                           <span className="mt-1 text-[11px] text-muted-foreground">
                             {pinOptionalFor(profile) ? "Não exige PIN" : "PIN não configurado neste PC"}
                           </span>
@@ -253,7 +259,18 @@ export function ProfileSessionDialog({
               </div>
 
               <div className="mx-auto mt-8 flex max-w-md flex-col items-center gap-4 text-center">
-                {helperText && !(error && !shouldAskForPin && selectedProfile?.pin_configured) && (
+                {keyringBlocked && (
+                  <div role="alert" className="flex flex-col items-center gap-2 rounded-lg border border-amber-500/40 bg-amber-500/10 px-4 py-3 text-sm text-amber-200">
+                    <p>O cofre de senhas do sistema está bloqueado ou indisponível. Desbloqueie-o e tente de novo.</p>
+                    {onRetryKeyring && (
+                      <Button type="button" variant="outline" size="sm" onClick={onRetryKeyring} disabled={busy}>
+                        Tentar de novo
+                      </Button>
+                    )}
+                  </div>
+                )}
+
+                {helperText && !keyringBlocked && !(error && !shouldAskForPin && selectedProfile?.pin_configured) && (
                   <p className="text-sm leading-relaxed text-muted-foreground">{helperText}</p>
                 )}
 
