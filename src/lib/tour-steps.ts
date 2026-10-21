@@ -82,6 +82,12 @@ export const PERMISSION_TOUR: Record<SensitivePermission, TourStep> = {
     body: "Movimente e edite o estoque de peças e insumos.",
     target: "nav-/insumos",
   },
+  PREPARE_QUOTES: {
+    id: "orcamentos",
+    title: "Elaborar orçamentos",
+    body: "Finalize verificações com orçamento, ajuste valores e prazos antes da decisão do cliente e envie pelo portal.",
+    target: "nav-/equipamentos",
+  },
   MANAGE_STATUS_LINKS: {
     id: "links",
     title: "Portal do Cliente",

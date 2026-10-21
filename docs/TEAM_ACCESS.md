@@ -11,12 +11,32 @@ A rota `/perfil` reúne a equipe, o cadastro guiado e as ações administrativas
 | Modelo | Permissões adicionais iniciais |
 | --- | --- |
 | Recepção | Nenhuma |
-| Técnico | Estoque |
-| Financeiro | Ações financeiras e consulta de despesas |
+| Técnico | Estoque, elaborar e enviar orçamentos |
+| Financeiro | Ações financeiras, consulta de despesas e elaborar e enviar orçamentos |
 | Administrador | Todas as permissões sensíveis existentes |
 | Personalizado | Nenhuma; escolha as liberações individualmente |
 
 Os modelos não criam verificações novas nos módulos: aplicam as permissões já fiscalizadas pelo backend. Ajustar uma permissão transforma a função em Personalizado. O acesso básico não é um modo de leitura: mantém as operações comuns já permitidas pelo AutoOS.
+
+## Elaborar e enviar orçamentos
+
+A permissão `PREPARE_QUOTES` ("Elaborar e enviar orçamentos") é sensível. A migration `0042` é só de dados: adiciona essa permissão aos perfis Técnico, Financeiro e Administrador já existentes, sem alterar o schema.
+
+Com a permissão, a pessoa pode:
+
+- finalizar a verificação com orçamento;
+- editar o orçamento enquanto ele não estiver decidido (RECEBIDO, EM_VERIFICACAO, VERIFICADO ou AGUARDANDO_APROVACAO);
+- prorrogar o prazo de aprovação;
+- publicar o orçamento no portal;
+- liberar o acesso de quem recebe o orçamento.
+
+Não libera:
+
+- aprovar, reprovar, marcar o orçamento como vencido, entregar ou abandonar a OS;
+- alterar o valor final;
+- configurar SMTP ou WhatsApp;
+- definir senha manual do portal do cliente;
+- editar o acesso dos contatos.
 
 ## Sessão e autenticação
 

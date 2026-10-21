@@ -32,8 +32,9 @@ pub const PERMISSION_STOCK_CONTROL: &str = "STOCK_CONTROL";
 pub const PERMISSION_MANAGE_PROFILES: &str = "MANAGE_PROFILES";
 pub const PERMISSION_MANAGE_STATUS_LINKS: &str = "MANAGE_STATUS_LINKS";
 pub const PERMISSION_VIEW_EXPENSES: &str = "VIEW_EXPENSES";
+pub const PERMISSION_PREPARE_QUOTES: &str = "PREPARE_QUOTES";
 
-const ALL_PERMISSIONS: [&str; 8] = [
+const ALL_PERMISSIONS: [&str; 9] = [
     PERMISSION_CONFIG_SMTP,
     PERMISSION_CONFIG_WHATSAPP,
     PERMISSION_DELETE_RECORDS,
@@ -42,6 +43,7 @@ const ALL_PERMISSIONS: [&str; 8] = [
     PERMISSION_MANAGE_PROFILES,
     PERMISSION_MANAGE_STATUS_LINKS,
     PERMISSION_VIEW_EXPENSES,
+    PERMISSION_PREPARE_QUOTES,
 ];
 
 static SENSITIVE_SESSION: OnceLock<Mutex<SensitiveSession>> = OnceLock::new();
@@ -559,12 +561,28 @@ fn has_permission(profile: &SecurityProfileSummary, permission: &str) -> bool {
     profile.role == "ADMIN" || has_permission_values(&profile.permissions, permission)
 }
 
+pub fn profile_has_permission(profile: &SecurityProfileSummary, permission: &str) -> bool {
+    has_permission(profile, permission)
+}
+
 fn evaluate_permission_gate(
     profile: Option<SecurityProfileSummary>,
     permission: &str,
 ) -> Result<SecurityProfileSummary, PermissionGateFailure> {
     let profile = profile.ok_or(PermissionGateFailure::SessionLocked)?;
     if has_permission(&profile, permission) {
+        Ok(profile)
+    } else {
+        Err(PermissionGateFailure::MissingPermission(Box::new(profile)))
+    }
+}
+
+fn evaluate_any_permission_gate(
+    profile: Option<SecurityProfileSummary>,
+    permissions: &[&str],
+) -> Result<SecurityProfileSummary, PermissionGateFailure> {
+    let profile = profile.ok_or(PermissionGateFailure::SessionLocked)?;
+    if permissions.iter().any(|permission| has_permission(&profile, permission)) {
         Ok(profile)
     } else {
         Err(PermissionGateFailure::MissingPermission(Box::new(profile)))
@@ -828,6 +846,38 @@ pub fn require_permission(permission: &str) -> Result<SecurityProfileSummary, St
                 "PERMISSION_DENIED",
                 Some(*profile),
                 format!("permission={}", permission),
+                false,
+            );
+            format!(
+                "Perfil {} não possui permissão necessária para esta ação.",
+                profile_name
+            )
+        }
+    })?;
+
+    touch_sensitive_access()?;
+    Ok(profile)
+}
+
+pub fn require_any_permission(permissions: &[&str]) -> Result<SecurityProfileSummary, String> {
+    let permission_label = permissions.join("|");
+    let profile = evaluate_any_permission_gate(Some(require_sensitive_access()?), permissions)
+    .map_err(|failure| match failure {
+        PermissionGateFailure::SessionLocked => {
+            spawn_security_event(
+                "SENSITIVE_ACCESS_DENIED",
+                None,
+                format!("permission={}", permission_label),
+                false,
+            );
+            "Acesso sensível bloqueado. Informe o PIN para continuar.".to_string()
+        }
+        PermissionGateFailure::MissingPermission(profile) => {
+            let profile_name = profile.nome.clone();
+            spawn_security_event(
+                "PERMISSION_DENIED",
+                Some(*profile),
+                format!("permission={}", permission_label),
                 false,
             );
             format!(
@@ -2990,5 +3040,49 @@ mod tests {
             evaluate_permission_gate(Some(admin.clone()), PERMISSION_MANAGE_PROFILES),
             Ok(admin)
         );
+    }
+
+    #[test]
+    fn any_permission_gate_allows_when_second_permission_present() {
+        let profile = build_profile("OPERADOR", &[PERMISSION_STOCK_CONTROL]);
+        assert_eq!(
+            evaluate_any_permission_gate(
+                Some(profile.clone()),
+                &[PERMISSION_FINANCIAL_ACTIONS, PERMISSION_STOCK_CONTROL],
+            ),
+            Ok(profile)
+        );
+    }
+
+    #[test]
+    fn any_permission_gate_denies_when_no_listed_permission_present() {
+        let result = evaluate_any_permission_gate(
+            Some(build_profile("OPERADOR", &[])),
+            &[PERMISSION_FINANCIAL_ACTIONS, PERMISSION_STOCK_CONTROL],
+        );
+        assert!(matches!(
+            result,
+            Err(PermissionGateFailure::MissingPermission(profile)) if profile.nome == "Operador"
+        ));
+    }
+
+    #[test]
+    fn any_permission_gate_allows_admin_profile() {
+        let admin = build_profile("ADMIN", &[]);
+        assert_eq!(
+            evaluate_any_permission_gate(
+                Some(admin.clone()),
+                &[PERMISSION_FINANCIAL_ACTIONS, PERMISSION_STOCK_CONTROL],
+            ),
+            Ok(admin)
+        );
+    }
+
+    #[test]
+    fn any_permission_gate_denies_locked_session() {
+        assert!(matches!(
+            evaluate_any_permission_gate(None, &[PERMISSION_FINANCIAL_ACTIONS, PERMISSION_STOCK_CONTROL]),
+            Err(PermissionGateFailure::SessionLocked)
+        ));
     }
 }

@@ -5,6 +5,10 @@ export function orcamentoJaAprovado(status: string): boolean {
   return ["APROVADO", "EM_MANUTENCAO", "AGUARDANDO_PECA", "PRONTO", "ENTREGUE"].includes(status);
 }
 
+export function orcamentoEmElaboracao(status: string): boolean {
+  return ["RECEBIDO", "EM_VERIFICACAO", "VERIFICADO", "AGUARDANDO_APROVACAO"].includes(status);
+}
+
 /** Categoria do estoque (Insumos) oferecida em "Peças vinculadas". */
 export const CATEGORIA_PECAS_ORCAMENTO = "PEÇA";
 

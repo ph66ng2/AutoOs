@@ -11,14 +11,14 @@ export const PROFILE_PRESETS = [
   {
     role: "TECNICO",
     label: "Técnico",
-    description: "Rotina técnica e movimentação de estoque.",
-    permissions: [P.STOCK_CONTROL],
+    description: "Rotina técnica, orçamentos e estoque.",
+    permissions: [P.STOCK_CONTROL, P.PREPARE_QUOTES],
   },
   {
     role: "FINANCEIRO",
     label: "Financeiro",
     description: "Orçamentos, aprovações, valores e consulta de despesas.",
-    permissions: [P.FINANCIAL_ACTIONS, P.VIEW_EXPENSES],
+    permissions: [P.FINANCIAL_ACTIONS, P.PREPARE_QUOTES, P.VIEW_EXPENSES],
   },
   {
     role: "ADMIN",
@@ -64,6 +64,10 @@ export const PERMISSION_DETAILS: Record<
   STOCK_CONTROL: {
     title: "Estoque",
     description: "Movimentar e editar o estoque.",
+  },
+  PREPARE_QUOTES: {
+    title: "Elaborar e enviar orçamentos",
+    description: "Finalizar verificação com orçamento, editar orçamento ainda não decidido, prorrogar prazo, publicar no portal e liberar o acesso de quem recebe o orçamento.",
   },
   MANAGE_PROFILES: {
     title: "Gerenciar equipe",
