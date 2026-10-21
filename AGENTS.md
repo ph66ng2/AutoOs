@@ -199,7 +199,8 @@ npm run bundle:prep:windows:sign # Injects certThumbprint from env into tauri.co
 - Trabalho do produto interno (correções, piloto fiscal no Tauri, funcionalidade validada pela BMITAG) parte de `origin/master` e vai em PR para `master`.
 - Trabalho exclusivo do SaaS (adaptadores Supabase, `supabase/migrations`, identidade por dispositivo, portes) parte de `origin/feature` e vai em PR para `feature`.
 - `master` é integrada na `feature` toda semana, se houver mudanças. A `feature` **não** é mesclada na `master` antes da virada para o SaaS. Hotfix vai para `master` e chega à `feature` por esse merge; não aplicar o mesmo hotfix duas vezes à mão.
-- No merge semanal, funcionalidade da `master` ainda não portada fica oculta no build SaaS, sem quebrar o build.
+- No merge semanal, quem faz o merge esconde explicitamente no build SaaS cada funcionalidade da `master` ainda não portada (isso não acontece sozinho) e confirma `npm run build:saas` e `npm run test:run` na `feature` antes de abrir o PR.
+- Até o PR que atualiza `.workflow/` na `feature`, esta seção prevalece sobre `.workflow/README.md` e `workflow.json` (`baseBranch`, `promotionTarget` e `architectureDecisions` sobre login individual).
 - Meta para depois da virada, não para agora: uma única branch gerando os dois builds.
 
 ### Produto e plataforma
@@ -208,7 +209,10 @@ npm run bundle:prep:windows:sign # Injects certThumbprint from env into tauri.co
 - Desktop (interno e SaaS) é Online. PowerSync é reservado a um futuro app Mobile Field, com tickets próprios. Não adicionar PowerSync, sync offline ou token PowerSync ao desktop.
 - Identidade no SaaS: o administrador faz login uma vez por máquina para **autorizar o dispositivo**, que recebe credencial própria e restrita à empresa (a sessão do administrador não fica na máquina). Funcionários escolhem perfil (UUID na nuvem) e usam PIN local; o PIN nunca autentica no Supabase nem concede permissão no servidor. Ações de financeiro, equipe e dispositivos pedem reautenticação do administrador. O servidor audita dispositivo e perfil declarado; o administrador pode revogar um dispositivo.
 
-### Fiscal (ADR 0001 aceito; arquivo em `docs/adr/0001-ownership-core-autoos-fiscal.md` na `feature`)
+### Fiscal (ADR 0001 aceito pelo responsável do produto em 20/10/2026)
+
+O arquivo `docs/adr/0001-ownership-core-autoos-fiscal.md` existe só na `feature` e ainda diz "proposta"; o status é atualizado no PR do workflow. As regras abaixo já valem.
+
 
 - O AutoOS é a única autoridade de cliente operacional, produto, serviço, equipamento/OS e estoque. O AutoPlatform recebe cópia imutável e é autoridade do ciclo fiscal e dos dados tributários (NCM, CFOP, CST/CSOSN, CRT, CNAE); o AutoOS não gera campos tributários.
 - O fato faturável nasce quando a OS entra em `PRONTO`. Total = `valor_orcamento`. Linhas = serviços aprovados e suas peças pela quantidade e valor aprovados, inclusive peças com baixa pendente.
@@ -220,9 +224,9 @@ npm run bundle:prep:windows:sign # Injects certThumbprint from env into tauri.co
 
 Vale para código **novo** nas duas branches; não refatorar o existente por causa disto.
 
-- Regra de negócio nova vai em função SQL (PL/pgSQL), chamada pelo Rust via sqlx no Tauri e por RPC no SaaS. O comando Rust só resolve a empresa, chama a função e mapeia o erro.
+- Regra de negócio nova vai, preferencialmente, em função SQL (PL/pgSQL), chamada pelo Rust via sqlx no Tauri e por RPC no SaaS. O comando Rust só resolve a empresa, chama a função e mapeia o erro. Cada backend tem a sua migration com a sua versão da função; o SQL não é compartilhado por arquivo.
 - Quando possível, a regra é função pura (JSON de entrada → JSON de saída, sem ler tabela); leitura e gravação ficam numa camada fina por backend.
-- Migration nova já nasce no formato SaaS: `empresa_id`, FK composta `(id, empresa_id)`, RLS habilitado, `NUMERIC(14,2)` para dinheiro, sem `float`.
+- Migration nova segue a estrutura que facilita o porte, mantendo os tipos do backend dela: em `src-tauri/migrations`, IDs `INTEGER` e o fluxo de promoção de `production_migrate.rs` (atualizar `REQUIRED_PROMOTION_MIGRATIONS` e `EXPECTED_MIGRATION_COUNT`); em `supabase/migrations`, `UUID`. Nos dois: `empresa_id`, FK composta `(id, empresa_id)`, RLS habilitado, `NUMERIC(14,2)` para dinheiro, sem `float`.
 - Tela nova não chama `db.*`: acessa dados por um hook de domínio (`src/hooks/use*.ts`), que é onde o adaptador SaaS entra. Na `feature`, o hook usa o repositório de `src/lib/data/`, e `IS_SAAS_BUILD` não entra em tela nova.
 - Regra que existirá nos dois backends tem fixtures compartilhadas (mesmo caso, mesma saída esperada) rodando contra os dois.
 - Código novo não contém marca, e-mail ou texto fixo da BMITAG; use configuração da empresa.
