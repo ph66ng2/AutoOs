@@ -1,7 +1,23 @@
 /** UI smoke + screenshots with isolated, in-memory demo data. No production DB. */
+import { readFileSync } from "node:fs";
 import { mkdir } from "node:fs/promises";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { chromium, expect } from "@playwright/test";
 import { createServer } from "vite";
+
+const highlightsSource = readFileSync(
+  join(dirname(fileURLToPath(import.meta.url)), "../src/lib/releaseHighlightsKey.ts"),
+  "utf8",
+);
+const highlightsVersion = highlightsSource.match(/RELEASE_HIGHLIGHTS_VERSION = "([^"]+)"/)?.[1];
+const highlightsSlug = highlightsSource.match(
+  /autoos:release-highlights:\$\{RELEASE_HIGHLIGHTS_VERSION\}:([^`\n]+)/,
+)?.[1];
+if (!highlightsVersion || !highlightsSlug) {
+  throw new Error("Não foi possível ler a chave de novidades em src/lib/releaseHighlightsKey.ts");
+}
+const RELEASE_HIGHLIGHTS_STORAGE_KEY = `autoos:release-highlights:${highlightsVersion}:${highlightsSlug}`;
 
 process.env.VITE_E2E_MOCK = "1";
 process.env.VITE_E2E_TEAM = "1";
@@ -16,10 +32,10 @@ const browser = await chromium.launch({
 const page = await browser.newPage({ reducedMotion: "reduce", viewport: { width: 1440, height: 1000 } });
 const errors = [];
 page.on("pageerror", error => errors.push(error.message));
-await page.addInitScript(() => {
+await page.addInitScript((key) => {
   localStorage.setItem("autoos_app_mode", "standard");
-  localStorage.setItem("autoos:release-highlights:0.6.0:portal-insumos-perfil", "seen");
-});
+  localStorage.setItem(key, "seen");
+}, RELEASE_HIGHLIGHTS_STORAGE_KEY);
 try {
   await page.goto("http://127.0.0.1:1420/perfil");
   const entry = page.getByRole("dialog").filter({ hasText: "Quem está usando o AutoOS?" });
