@@ -24,7 +24,7 @@ Usa as versões e respostas de orçamento das migrations 0031–0032 (`docs/ACEI
 
 **Uma vez por contato do cliente (direto do equipamento):** o quadro do orçamento mostra “Quem responde no portal”. Sem ninguém, **Dar acesso a um contato** abre uma janela: escolher o contato (o responsável vem marcado), “pode responder orçamentos”, **Liberar acesso e criar senha**. Falta o contato? **Cadastrar ou editar contatos** abre os contatos na mesma janela e volta com o novo já marcado. A senha sai com **Enviar por WhatsApp** (link `wa.me` aberto no navegador; não passa pelo servidor nem fica no histórico) ou **Copiar**. O mesmo continua em Clientes → Contatos e Portal.
 
-**WhatsApp do orçamento:** se o destinatário (responsável ou cliente) é um contato que responde pelo portal, a mensagem automática diz para aceitar/recusar em status.bmitag.com.br; para os outros continua “responda APROVADO”. Na Cloud API isso usa o modelo `orcamento_portal`, que precisa ser aprovado pela Meta.
+**WhatsApp do orçamento:** se o destinatário (responsável ou cliente) é um contato que responde pelo portal, a mensagem automática diz para aceitar/recusar em status.bmitag.com.br; para os outros continua “responda APROVADO”. Na Cloud API isso usa o modelo já aprovado `orcamento_portal` (quem decide) ou `orcamento_informativo` (só acompanha) quando o contato já tem senha; os modelos `_v2` só entram quando há senha nova a enviar.
 
 **Em cada atendimento:**
 
@@ -42,6 +42,78 @@ Usa as versões e respostas de orçamento das migrations 0031–0032 (`docs/ACEI
 | Efetivação falhou (etapa ou orçamento mudou, peça sem serviço…) | Vermelho “Aceite não efetivado” + motivo | Abrir o atendimento → **Revisar e aplicar decisão** |
 | Cliente pediu correção depois de efetivado | Âmbar “Cliente pediu correção” | Conversar e, se for o caso, **Corrigir decisão do orçamento** (desfaz pagamento, serviços e baixas com escolha sobre o estoque) |
 | Cliente respondeu por telefone/WhatsApp | — | **Aprovar/Reprovar** direto no equipamento, como antes |
+
+## Envio do orçamento
+
+Ao concluir a verificação (e no reenvio), o orçamento vai para **um** contato, o destinatário. Quem envia precisa da permissão financeira ou de "Elaborar e enviar orçamentos" (`PREPARE_QUOTES`). A regra está em `resolver_destinatario_orcamento` e `preparar_acesso_portal` (`src-tauri/src/commands/portal_cliente.rs`).
+
+### Destinatário
+
+Entre os contatos ativos da OS com celular válido, nesta ordem:
+
+1. O responsável da OS.
+2. Um contato que decide e já tem senha.
+3. O primeiro contato por nome.
+
+Sem contato com celular, o sistema pergunta **"Quem recebe o orçamento?"** e grava o contato escolhido no cadastro do cliente antes do envio. Cliente PJ novo exige um contato com celular. Cliente PF ganha um contato criado a partir do próprio cadastro. Não há constraint no banco: a regra fica no aplicativo.
+
+### Acesso ao portal antes do envio
+
+Antes de cada envio, `preparar_acesso_portal` garante que o destinatário consiga entrar no portal:
+
+| Situação do contato | O que o envio faz |
+|---|---|
+| Decide (`DECIDIR`) | Mantém. |
+| Só acompanha (`ACOMPANHAR`) | Mantém. Nunca vira `DECIDIR`. |
+| Sem acesso (`NENHUM`) | Passa a `ACOMPANHAR`. Nunca vira `DECIDIR`. |
+| Sem senha | Cria a senha na hora (ver abaixo). |
+| Com senha | Não troca a senha. A mensagem pede a que ele já tem. |
+
+Com o portal desligado para a empresa, nada disso acontece: o envio sai sem a parte do portal.
+
+A senha criada no envio é uma exceção consciente à regra "a senha de quem decide é criada por quem tem a permissão financeira". Ela só é criada quando ainda não existe, pelo fluxo de envio do orçamento, por quem tem a permissão financeira ou "Elaborar e enviar orçamentos". Esse fluxo não aceita senha digitada: a senha é sempre gerada pelo sistema.
+
+### Senha gerada e mascaramento
+
+- A senha é gerada pelo sistema, em três blocos separados por hífen, e guardada só como hash (`portal_definir_senha_contato`). Se ela repetir a de outro contato do mesmo CPF/CNPJ, o sistema tenta outra, até 5 vezes.
+- Ela aparece uma única vez, no diálogo de envio.
+- Não vai para log. A auditoria (`PORTAL_ACCESS_PREPARED`) registra só que uma senha foi criada, nunca o valor.
+- Não vai para comunicações: o histórico grava a senha mascarada, `••••-••••-••••`.
+
+### Mensagens
+
+- **Sem portal** (contato sem acesso, ou portal desligado): mensagem informativa, como antes, no modelo `orcamento_informativo`. Traz contato, equipamento, total e prazo.
+- **Pode aceitar ou recusar**: aponta para o Portal das Impressoras com CPF/CNPJ e senha. Cloud API: `orcamento_portal_v2` se há senha nova; `orcamento_portal` (4 parâmetros) se o contato já tem senha.
+- **Só acompanha**: aponta para o portal com CPF/CNPJ e senha, mantém "responda APROVADO". Cloud API: `orcamento_portal_acompanhar_v2` se há senha nova; `orcamento_informativo` se o contato já tem senha.
+
+As duas variantes com portal trazem também o nome do contato, a empresa e o CNPJ/CPF. No modo central da fila, o envio com senha nova não é enfileirado: volta `senhaRetida` e o técnico usa o envio manual.
+
+No texto livre (Evolution), a senha vai em claro só no envio direto. O histórico grava `Senha: ••••-••••-••••`.
+
+No e-mail:
+
+- O cliente recebe o mesmo conteúdo do WhatsApp, **sem cópia** e **com a senha visível**.
+- A cópia interna (gerência e técnico) vai em e-mail separado, com assunto "[Cópia] ..." e a senha mascarada.
+- Fica uma única comunicação gravada, com a senha mascarada.
+
+Os modelos `_v2` ainda precisam de aprovação da Meta (ver `docs/MODELOS_WHATSAPP_META.md`). Até lá, o envio pela Cloud API com senha nova falha e o técnico usa **Enviar manualmente**; sem senha nova valem os modelos já aprovados.
+
+### Envio manual e falha
+
+Se o envio falha por qualquer motivo (WhatsApp ou e-mail), abre **Enviar manualmente**, com a senha. Dali o técnico envia pelo WhatsApp, pelo e-mail ou copia o texto. Fechar o diálogo sem usar nenhum desses botões avisa que a senha não aparece de novo.
+
+### Nova senha
+
+- Contato sem senha: o envio cria uma.
+- Contato com senha: o envio não troca. A mensagem pede a senha que ele já tem.
+- **Gerar nova senha** (no envio manual) só funciona se o contato ainda não entrou com a senha atual. Depois que entrou, a troca segue pela equipe, como na Jornada.
+
+### Prazo e prorrogação
+
+- O prazo de aprovação fica em **Alterar orçamento**.
+- Quando o prazo termina, a janela de prorrogação oferece **Prorrogar e publicar** (publica no portal) ou **Prorrogar e enviar** (também envia ao cliente). Só quem tem a permissão financeira ou "Elaborar e enviar orçamentos" pode prorrogar (`prorrogar_prazo_orcamento`), e só enquanto o orçamento aguarda aprovação.
+- Se o cliente já respondeu, prorrogar anula a resposta pendente, depois de confirmação.
+- O prazo vale até o fim do dia em Brasília.
 
 ## Estados
 

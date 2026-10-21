@@ -2,7 +2,7 @@
 
 Estes são os modelos novos que a Cloud API vai usar quando o orçamento for enviado com link do portal, usuário e senha. O texto da Evolution (mensagem livre) é montado no código e não precisa de aprovação.
 
-Os modelos antigos (`orcamento_portal`, `orcamento_informativo`, `equipamento_pronto`) **continuam como estão**. Os novos têm sufixo `_v2` para nada quebrar enquanto a Meta analisa.
+Os modelos antigos (`orcamento_portal`, `orcamento_informativo`, `equipamento_pronto`) **continuam como estão** e seguem em uso. Os novos têm sufixo `_v2` e **só são usados quando há senha nova a transmitir** (a senha acabou de ser criada no envio). Sem senha nova (o contato já tem senha), o código usa os modelos já aprovados: `orcamento_portal` (pode aceitar ou recusar) e `orcamento_informativo` (só acompanha), ambos com 4 parâmetros: contato, equipamento, total e prazo.
 
 ## Como criar
 
@@ -43,6 +43,12 @@ Olá, {{1}}! O orçamento da empresa {{2}} para o equipamento {{3}} está pronto
 | 5 | Prazo para aprovação | 29/10/2026 |
 | 6 | CPF ou CNPJ do cadastro | 12.345.678/0001-90 |
 | 7 | Senha do portal | K7mQ-9xRt-4wPz |
+
+## Contrato com o código
+
+- O nome do modelo, a ordem e a quantidade de parâmetros são o contrato com `mensagem_informativo` (`src-tauri/src/commands/envio_whatsapp.rs`). Mudar um deles exige mudar o outro e o teste de parâmetros.
+- O 7º parâmetro é **sempre a senha nova**, criada no envio (ex.: "K7mQ-9xRt-4wPz"). Os `_v2` só são usados nesse caso. Quando o contato **já tinha senha**, o código não usa `_v2`: envia `orcamento_portal` (nível Decidir) ou `orcamento_informativo` (nível Acompanhar), com 4 parâmetros, e a senha não é reexibida nem gravada.
+- O modelo sem portal (`orcamento_informativo`) tem 4 parâmetros: contato, equipamento, total e prazo.
 
 ## Atenção: risco de recusa
 

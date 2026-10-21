@@ -302,6 +302,20 @@ async fn main() -> Result<()> {
     let payload: String = sqlx::query_scalar("SELECT mensagem_payload::TEXT FROM envios_whatsapp_tentativas WHERE id = $1").bind(r.tentativa_id).fetch_one(&pool).await?;
     assert!(payload.contains("orcamento_informativo") && payload.contains("\"usaLink\": false") && !payload.contains("{{TOKEN}}"), "{payload}");
 
+    // Central + senha nova do portal: não enfileira nem grava pedido/tentativa; o técnico envia à mão.
+    sqlx::query("UPDATE portal_config_empresa SET portal_enabled = TRUE WHERE empresa_id = $1").bind(empresa).execute(&pool).await?;
+    sqlx::query("UPDATE cliente_contatos SET portal_acesso = 'DECIDIR' WHERE id = $1").bind(contato).execute(&pool).await?;
+    let eq_central_senha = orcamento_para("CS").await?;
+    let retida = solicitar_envio_whatsapp(SolicitarEnvioInput {
+        equipamento_id: eq_central_senha, tipo: "orcamento_informativo".into(), reenvio_manual: false, confirmar_incerto: false,
+        senha_portal: Some(serde_json::from_str("\"Kp7m-Tx4q-9Wbd\"")?),
+    }).await.map_err(|e| anyhow!(e))?;
+    assert!(retida.senha_retida && retida.estado == "FALHOU" && retida.tentativa_id.is_none() && retida.pedido_id.is_none(), "{retida:?}");
+    let rastros: i64 = sqlx::query_scalar("SELECT (SELECT COUNT(*) FROM envios_whatsapp_pedidos WHERE equipamento_id = $1) + (SELECT COUNT(*) FROM envios_whatsapp_tentativas t JOIN envios_whatsapp_pedidos p ON p.id = t.pedido_id WHERE p.equipamento_id = $1)")
+        .bind(eq_central_senha).fetch_one(&pool).await?;
+    assert_eq!(rastros, 0, "nada gravado quando o central retém a senha");
+    sqlx::query("UPDATE portal_config_empresa SET portal_enabled = FALSE WHERE empresa_id = $1").bind(empresa).execute(&pool).await?;
+
     // Processadores simultâneos nunca recebem a mesma tentativa.
     for indice in 0..7 {
         let eq = novo("PRONTO", Some("71911110000"), Box::leak(format!("F{indice}").into_boxed_str())).await?;

@@ -27,7 +27,8 @@ Com a permissão, a pessoa pode:
 - finalizar a verificação com orçamento;
 - editar o orçamento enquanto ele não estiver decidido (RECEBIDO, EM_VERIFICACAO, VERIFICADO ou AGUARDANDO_APROVACAO);
 - prorrogar o prazo de aprovação;
-- publicar o orçamento no portal.
+- publicar o orçamento no portal;
+- enviar o orçamento ao contato destinatário. Se esse contato ainda não tem senha do portal, o envio cria a senha inicial dele, sem que a pessoa a digite. Quem não tinha acesso passa a só acompanhar; esse caminho nunca cria quem decide.
 
 Não libera:
 

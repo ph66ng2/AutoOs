@@ -114,6 +114,28 @@ Antes de ligar uma empresa: aplicar 0033 e 0034, publicar a função, definir os
 
 `MensagemWhatsapp` (backend) carrega o texto da Evolution e, para a Cloud API, `template`, `parametros` e `url_botao`. No modo `CENTRAL` isso é gravado em `mensagem_payload`. No modo `LOCAL` o payload não é gravado. A Cloud API só é usada no modo `CENTRAL`.
 
+## Destinatário e senha do portal
+
+- **Destinatário escolhido no pedido.** `solicitar_envio_whatsapp` resolve o destinatário pelo cadastro atual, na ordem descrita em `PORTAL_CLIENTE.md` ("Envio do orçamento"). A fila grava o nome e o telefone desse momento; o processador central não refaz a escolha.
+- **`senha_portal` não é persistida.** A senha criada no envio chega ao comando só nessa chamada. Não entra em `envios_whatsapp_pedidos`, em `envios_whatsapp_tentativas`, em `erro_resumo`, em log nem em `comunicacoes`, onde fica mascarada (`••••-••••-••••`).
+- **Modo `CENTRAL`.** Com senha nova do portal, o comando **não enfileira**: não grava pedido nem tentativa e volta `estado: FALHOU`, `senhaRetida: true` e a mensagem "O envio central não leva a senha do portal. Use o envio manual.". A tela abre **Enviar manualmente** com a senha. Sem senha nova (o contato já tem senha), o central enfileira normalmente, com os modelos abaixo.
+
+Como a senha nova nunca entra na fila, nenhum payload gravado carrega a senha nem a máscara.
+
+## Modelos de template (Cloud API)
+
+| Caso | Modelo | Parâmetros |
+|---|---|---|
+| Orçamento sem portal | `orcamento_informativo` | 4: contato, equipamento, total, prazo |
+| Pode aceitar ou recusar, sem senha nova | `orcamento_portal` | 4: contato, equipamento, total, prazo |
+| Só acompanha, sem senha nova | `orcamento_informativo` | 4: contato, equipamento, total, prazo |
+| Pode aceitar ou recusar, com senha nova | `orcamento_portal_v2` | 7 (ver `MODELOS_WHATSAPP_META.md`) |
+| Só acompanha, com senha nova | `orcamento_portal_acompanhar_v2` | 7 (ver `MODELOS_WHATSAPP_META.md`) |
+
+Os `_v2` só são usados com senha nova; sem ela valem os modelos já aprovados.
+
+> **Aprovação da Meta:** os dois `_v2` precisam ser aprovados no Gerenciador do WhatsApp antes de um envio com senha nova pela Cloud API. Até lá, esse caso falha na Cloud e o técnico usa **Enviar manualmente**; os envios sem senha nova não dependem deles. Nomes, ordem e quantidade de parâmetros são o contrato de `MODELOS_WHATSAPP_META.md`.
+
 ## Testes
 
 - Unitários Rust (`cargo test --bin autoos envio_whatsapp`): formatação, mensagens, token fora do histórico, mascaramento.
