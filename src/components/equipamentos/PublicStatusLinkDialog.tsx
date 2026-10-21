@@ -149,7 +149,6 @@ export function PublicStatusLinkDialog({ equipamento, open, onOpenChange }: Prop
     const allowed = await ensureSensitiveAccess({
       title: "Enviar acompanhamento por email",
       description: "Confirme o acesso para enviar o link de consulta ao contato cadastrado.",
-      permission: SENSITIVE_PERMISSIONS.CONFIG_SMTP,
     });
     if (!allowed) return;
     setBusy(true);
@@ -170,7 +169,6 @@ export function PublicStatusLinkDialog({ equipamento, open, onOpenChange }: Prop
     const allowed = await ensureSensitiveAccess({
       title: "Enviar acompanhamento por WhatsApp",
       description: "Confirme o acesso para enviar o link de consulta ao contato cadastrado.",
-      permission: SENSITIVE_PERMISSIONS.CONFIG_WHATSAPP,
     });
     if (!allowed) return;
     setBusy(true);
