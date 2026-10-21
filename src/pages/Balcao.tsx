@@ -445,7 +445,6 @@ function QuickEntry({ onBack }: { onBack: () => void }) {
       title: "Enviar ordem de entrada",
       description:
         "Informe o PIN para enviar a ordem de entrada por e-mail ao cliente.",
-      permission: SENSITIVE_PERMISSIONS.FINANCIAL_ACTIONS,
     });
     if (permitted) {
       setEmailRecipient(resolveRecipient(equipment, "email"));

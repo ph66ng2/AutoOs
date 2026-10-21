@@ -21,6 +21,7 @@ O projeto não está mais em fase de scaffold. O estado atual é um app Tauri + 
 - Histórico de comunicações por WhatsApp e email
 - Consulta pública de etapa por link individual, com revogação e QR code
 - Perfis locais com PIN, permissões granulares e auditoria mínima
+- O envio operacional de e-mails usa o SMTP já configurado e exige sessão com PIN desbloqueado; consultar ou alterar a configuração SMTP exige a permissão `CONFIG_SMTP`.
 - A criação de perfis fica em `Perfil > Criar perfil` e exige uma sessão com permissão para gerenciar perfis. Informe nome, tipo de acesso, permissões e PIN com confirmação. Depois de criar, use `Ver perfis e decidir` para entrar com o PIN do novo perfil. O perfil ativo só muda após validar o PIN de destino.
 - Painel de conferência do schema em `Configurações > Segurança`
 - Backup manual PostgreSQL pelo app

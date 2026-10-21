@@ -1008,7 +1008,6 @@ export default function Equipamentos() {
         const liberadoEmail = await ensureSensitiveAccess({
           title: "Enviar ordem de entrada",
           description: "Informe o PIN para enviar a ordem de entrada por email ao cliente.",
-          permission: SENSITIVE_PERMISSIONS.FINANCIAL_ACTIONS,
         });
         if (liberadoEmail) {
           async function enviarOrdemEntrada(email: string, nomeDestinatario: string, emailSalvo: boolean) {
