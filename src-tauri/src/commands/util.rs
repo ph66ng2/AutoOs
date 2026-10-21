@@ -6,7 +6,7 @@
 //! ╚══════════════════════════════════════════════════════════════╝
 
 use crate::commands::auth::{
-    record_security_event, require_permission, PERMISSION_CONFIG_SMTP, PERMISSION_MANAGE_PROFILES,
+    record_security_event, require_permission, require_sensitive_access, PERMISSION_MANAGE_PROFILES,
 };
 use crate::db::{get_pool, known_migrations, validate_connected_migration_history};
 use base64::Engine;
@@ -735,7 +735,7 @@ pub async fn copiar_anexo_email_para_temp(
     origem: String,
     filename: String,
 ) -> Result<String, String> {
-    let _actor = require_permission(PERMISSION_CONFIG_SMTP)?;
+    let _actor = require_sensitive_access()?;
     let origem_path = resolve_allowed_app_document_path(&origem)?;
 
     let safe_filename = sanitize_temp_filename(&filename)?;

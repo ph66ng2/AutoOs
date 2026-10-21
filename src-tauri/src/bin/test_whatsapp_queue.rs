@@ -329,6 +329,15 @@ async fn main() -> Result<()> {
     let invalido: (i64, bool) = sqlx::query_as("SELECT tentativa_id, valido FROM reservar_envios_whatsapp('proc-editado', 1)").fetch_one(&pool).await?;
     assert!(!invalido.1, "a versão foi encerrada pela edição");
 
+    // Técnico sem permissões sensíveis pode solicitar o envio, sem acesso à configuração.
+    sqlx::query("UPDATE security_profiles SET role = 'TECNICO', permissions = '[]' WHERE id = $1")
+        .bind(perfil).execute(&pool).await?;
+    auth::lock_sensitive_access().await.map_err(|e| anyhow!(e))?;
+    auth::unlock_sensitive_access("1357".into()).await.map_err(|e| anyhow!(e))?;
+    assert!(whatsapp::carregar_config_whatsapp().await.is_err());
+    let envio_tecnico = novo("PRONTO", Some("71933334444"), "T").await?;
+    assert_eq!(pedir(envio_tecnico, "equipamento_pronto", false, false).await?.estado, "ENFILEIRADA");
+
     println!("OK: fila de WhatsApp — idempotência, concorrência, resultado incerto, reenvio, sem telefone, imutabilidade, versão do orçamento e modo central (fila, reserva concorrente).");
     Ok(())
 }

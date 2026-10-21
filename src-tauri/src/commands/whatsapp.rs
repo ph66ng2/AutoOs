@@ -1,5 +1,5 @@
 use crate::commands::auth::{
-    record_security_event, require_permission, PERMISSION_CONFIG_WHATSAPP,
+    record_security_event, require_permission, require_sensitive_access, PERMISSION_CONFIG_WHATSAPP,
 };
 use crate::commands::types::{
     WhatsappConfigInput, WhatsappConfigResponse, WhatsappConfigStored, WhatsappSendInput,
@@ -254,7 +254,7 @@ pub(crate) async fn despachar_evolution(
 #[tauri::command]
 #[instrument(skip_all)]
 pub async fn enviar_whatsapp(input: WhatsappSendInput) -> Result<bool, String> {
-    let actor = require_permission(PERMISSION_CONFIG_WHATSAPP)?;
+    let actor = require_sensitive_access()?;
     debug!("Enviando WhatsApp via provider HTTP");
 
     let audit_details = format!("contato={}", input.contato.trim());

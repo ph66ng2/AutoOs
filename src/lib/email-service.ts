@@ -240,29 +240,23 @@ Equipe Técnica BMITAG`;
     let limparAnexoTemp: (() => Promise<void>) | undefined;
     try {
       const caminhoPdf = await PdfService.gerarOrdemServico(equipamento);
-      if (caminhoPdf) {
-        const preparado = await prepararAnexoTemporario(caminhoPdf, "ordem_entrada.pdf");
-        if (preparado) {
-          anexos = [preparado.anexo];
-          limparAnexoTemp = preparado.cleanup;
-        }
-      }
-    } catch (error) {
-      console.warn("[EmailService] Falha ao gerar PDF de ordem de entrada:", error);
-    }
+      if (!caminhoPdf) throw new Error("Não foi possível gerar o PDF da ordem de entrada.");
+      const preparado = await prepararAnexoTemporario(caminhoPdf, "ordem_entrada.pdf");
+      if (!preparado) throw new Error("Não foi possível anexar o PDF da ordem de entrada.");
+      anexos = [preparado.anexo];
+      limparAnexoTemp = preparado.cleanup;
 
-    const emailData: EmailSendRequest = {
-      destinatario: equipamento.cliente_nome || "",
-      email: equipamento.cliente_email,
-      cc,
-      assunto,
-      corpo: corpoTexto,
-      corpo_texto: corpoTexto,
-      corpo_html: corpoHtml,
-      anexos,
-    };
+      const emailData: EmailSendRequest = {
+        destinatario: equipamento.cliente_nome || "",
+        email: equipamento.cliente_email,
+        cc,
+        assunto,
+        corpo: corpoTexto,
+        corpo_texto: corpoTexto,
+        corpo_html: corpoHtml,
+        anexos,
+      };
 
-    try {
       await invoke<void>("enviar_email", { input: emailData });
       await registrarComunicacaoSegura({
         equipamento_id: equipamento.id!,
