@@ -6,7 +6,6 @@
  */
 
 import { db } from "@/lib/db";
-import { whatsappNaoConfigurado } from "@/lib/error-utils";
 import { WhatsAppService } from "@/lib/whatsapp-service";
 import {
   enviarEmailOrcamentoPortal,
@@ -161,10 +160,9 @@ export async function enviarOrcamentoAoCliente(
   }
 
   // (d) envio manual
-  // WhatsApp ainda sem configuração e o e-mail já entregou o orçamento: não há o que enviar à mão,
-  // então o diálogo não abre a cada orçamento. Qualquer outra falha do WhatsApp continua abrindo.
-  const whatsappSemConfiguracao = !whatsapp.enviado && whatsappNaoConfigurado(whatsapp.erro);
-  const precisaManual = senhaRetida || (!whatsapp.enviado && !(whatsappSemConfiguracao && email.enviado));
+  // Sem WhatsApp automático (ainda não há canal definido) o envio manual por copia e cola é o caminho:
+  // o diálogo abre sempre que o WhatsApp não enviou, mesmo com o e-mail entregue.
+  const precisaManual = !whatsapp.enviado || senhaRetida;
   let envioManual: EnvioManualOrcamento | undefined;
   if (precisaManual) {
     try {

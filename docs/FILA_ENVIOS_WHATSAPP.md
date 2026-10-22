@@ -164,4 +164,4 @@ Decisão adiada: como enviar o WhatsApp do orçamento. O e-mail já leva link, u
   3. **Cloud API direto do computador** (modo local, token no cofre), para a senha não passar pelo banco. É trabalho novo.
   4. Semiautomático: abrir o WhatsApp do suporte com o texto pronto (`wa.me`), que é o **Enviar manualmente**.
 - **A fazer na Meta:** criar os modelos `orcamento_portal_v2` e `orcamento_portal_acompanhar_v2` (`MODELOS_WHATSAPP_META.md`); a Meta pode recusar modelo com senha (plano B no mesmo arquivo).
-- **Comportamento enquanto isso:** com o WhatsApp sem configuração e o e-mail entregue, o diálogo de envio manual não abre; qualquer outra falha do WhatsApp abre.
+- **Comportamento enquanto isso:** o orçamento sai por e-mail e o diálogo **Enviar manualmente** (copia e cola, ou abrir o WhatsApp do suporte com o texto pronto) abre ao finalizar a verificação sempre que o WhatsApp não enviou. O botão "Enviar por WhatsApp" do link de acompanhamento fica desativado pela constante `WHATSAPP_AUTOMATICO_DISPONIVEL` (`src/lib/whatsapp-automatico.ts`); para religar, troque-a por `true` quando houver um canal definido.
