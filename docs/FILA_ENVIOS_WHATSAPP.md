@@ -151,3 +151,17 @@ Os `_v2` só são usados com senha nova; sem ela valem os modelos já aprovados.
 1. Testar com a Meta e/ou a Evolution reais e ajustar os modelos aprovados aos parâmetros.
 2. Webhook de entrega (`ENVIADA` → entregue/falhou) e reconciliação das tentativas `INCERTA` pelo identificador da Meta.
 3. `codigo_verificacao` (modelo de autenticação) pelo mesmo processador.
+
+## Pendências do WhatsApp automático (retomar)
+
+Decisão adiada: como enviar o WhatsApp do orçamento. O e-mail já leva link, usuário e senha e não depende disto.
+
+- **Evolution descartada para o número de suporte.** Ela imita o WhatsApp Web, vai contra os termos do WhatsApp e o banimento é permanente; se o número do suporte for banido, as mensagens automáticas e o suporte caem juntos.
+- **Estado do código:** o envio local só fala com a Evolution. A Cloud API existe apenas no modo central (Edge Function `envio-whatsapp`), que nunca foi publicada nem testada contra a Meta, e não há tela para ligar uma empresa nesse modo. No modo central a senha nunca entra na fila: o envio com senha nova devolve `senhaRetida` e o técnico usa **Enviar manualmente**.
+- **Opções para decidir:**
+  1. Cloud API com **número dedicado** às mensagens automáticas (o suporte fica fora).
+  2. **Coexistência** (WhatsApp Business app + Cloud API no mesmo número): confirmar na documentação da Meta se vale no Brasil e quais as condições.
+  3. **Cloud API direto do computador** (modo local, token no cofre), para a senha não passar pelo banco. É trabalho novo.
+  4. Semiautomático: abrir o WhatsApp do suporte com o texto pronto (`wa.me`), que é o **Enviar manualmente**.
+- **A fazer na Meta:** criar os modelos `orcamento_portal_v2` e `orcamento_portal_acompanhar_v2` (`MODELOS_WHATSAPP_META.md`); a Meta pode recusar modelo com senha (plano B no mesmo arquivo).
+- **Comportamento enquanto isso:** com o WhatsApp sem configuração e o e-mail entregue, o diálogo de envio manual não abre; qualquer outra falha do WhatsApp abre.

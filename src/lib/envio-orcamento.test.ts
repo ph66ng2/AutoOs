@@ -123,6 +123,38 @@ describe("enviarOrcamentoAoCliente", () => {
     expect(r.envioManual?.assunto).toBe("Orçamento - HP M404 (SN: SN1)");
   });
 
+  it("WhatsApp sem configuração e e-mail entregue não abre o envio manual", async () => {
+    mocks.prepararAcessoPortal.mockResolvedValue(preparo());
+    mocks.solicitarEnvio.mockResolvedValue({ sucesso: false, erro: "Configure o WhatsApp primeiro." });
+    mocks.enviarEmailOrcamentoPortal.mockResolvedValue(okEmail);
+
+    const r = await enviarOrcamentoAoCliente(equip, verif);
+
+    expect(r.canais.email.enviado).toBe(true);
+    expect(r.canais.whatsapp.enviado).toBe(false);
+    expect(r.envioManual).toBeUndefined();
+  });
+
+  it("WhatsApp sem configuração e e-mail que falhou ainda abre o envio manual", async () => {
+    mocks.prepararAcessoPortal.mockResolvedValue(preparo());
+    mocks.solicitarEnvio.mockResolvedValue({ sucesso: false, erro: "Configure o WhatsApp primeiro." });
+    mocks.enviarEmailOrcamentoPortal.mockResolvedValue({ cliente: { enviado: false, erro: "falhou" }, copia: { enviado: false } });
+
+    const r = await enviarOrcamentoAoCliente(equip, verif);
+
+    expect(r.envioManual).toBeDefined();
+  });
+
+  it("outra falha do WhatsApp com e-mail entregue continua abrindo o envio manual", async () => {
+    mocks.prepararAcessoPortal.mockResolvedValue(preparo());
+    mocks.solicitarEnvio.mockResolvedValue({ sucesso: false, erro: "Token inválido." });
+    mocks.enviarEmailOrcamentoPortal.mockResolvedValue(okEmail);
+
+    const r = await enviarOrcamentoAoCliente(equip, verif);
+
+    expect(r.envioManual).toBeDefined();
+  });
+
   it("WhatsApp INCERTA gera envioManual", async () => {
     mocks.prepararAcessoPortal.mockResolvedValue(preparo());
     mocks.solicitarEnvio.mockResolvedValue({ sucesso: true, estado: "INCERTA" });
