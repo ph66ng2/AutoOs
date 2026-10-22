@@ -130,12 +130,16 @@ import {
 import { HistoricoComunicacoes } from "@/components/equipamentos/HistoricoComunicacoes";
 import { ClienteSelector } from "@/components/equipamentos/ClienteSelector";
 import { ContatoResponsavelSelector } from "@/components/equipamentos/ContatoResponsavelSelector";
+import { EnvioManualOrcamentoDialog } from "@/components/equipamentos/EnvioManualOrcamentoDialog";
+import { QuemRecebeOrcamentoDialog } from "@/components/equipamentos/QuemRecebeOrcamentoDialog";
+import { enviarOrcamentoAoCliente, gerarNovaSenhaEnvioManual, prorrogarEEnviar, sugerirNovoPrazo } from "@/lib/envio-orcamento";
+import { ehErroPrazoVencido, formatarDataIso } from "@/lib/orcamento-prazo";
 import { CommunicationEmailDialog } from "@/components/equipamentos/CommunicationEmailDialog";
 import { PhotoUploadDialog } from "@/components/equipamentos/PhotoUploadDialog";
 import { DocumentosEquipamento } from "@/components/equipamentos/DocumentosEquipamento";
 import { PdfPreviewDialog } from "@/components/equipamentos/PdfPreviewDialog";
 import { AjusteOrcamentoServicos } from "@/components/equipamentos/AjusteOrcamentoServicos";
-import { carregarProdutosOrcamento, normalizarServicosOrcamento, pecasParaOrcamento, orcamentoJaAprovado, orcamentoMudou, resumirPecas, validarPecas } from "@/lib/orcamento-estoque";
+import { carregarProdutosOrcamento, normalizarServicosOrcamento, orcamentoEmElaboracao, transicaoElaboraOrcamento, pecasParaOrcamento, orcamentoJaAprovado, orcamentoMudou, resumirPecas, validarPecas } from "@/lib/orcamento-estoque";
 import { ActionPriorityRow, type PriorityAction } from "@/components/ui/action-priority-row";
 import {
   arquivoParaImagemEquipamento,
@@ -187,7 +191,7 @@ import { toast } from "sonner";
 const AVISO_ATENDIMENTO_PENDENTE = "abrir-atendimento-pendente";
 import { CorrigirDecisaoDialog } from "@/components/equipamentos/CorrigirDecisaoDialog";
 import { EscolhaAjusteOrcamentoDialog } from "@/components/equipamentos/EscolhaAjusteOrcamentoDialog";
-import type { AnaliseAjusteOrcamento, OpcoesAjusteOrcamento, PortalAjusteInfo } from "@/types";
+import type { AnaliseAjusteOrcamento, EnvioManualOrcamento, OpcoesAjusteOrcamento, PortalAjusteInfo, PreparoAcessoPortal } from "@/types";
 import { FormaPagamentoFields } from "@/components/equipamentos/FormaPagamentoFields";
 import { resolveRecipient, type ResolvedRecipient } from "@/lib/recipient-resolver";
 import { mensagemEnvioFalhouComEmailSalvo, saveRecipientAddress } from "@/lib/recipient-persistence";
@@ -244,6 +248,12 @@ export default function Equipamentos() {
   const [correcaoStatus, setCorrecaoStatus] = useState(false);
   const [motivoCorrecaoStatus, setMotivoCorrecaoStatus] = useState("");
   const [editando, setEditando] = useState<Equipamento | null>(null);
+  const [envioManual, setEnvioManual] = useState<EnvioManualOrcamento | null>(null);
+  const [quemRecebe, setQuemRecebe] = useState<{
+    eq: Equipamento;
+    sugestao: { nome: string; telefone: string; email: string };
+    continuar: (eq: Equipamento) => Promise<void>;
+  } | null>(null);
   const [deletando, setDeletando] = useState<Equipamento | null>(null);
   const [selecionado, setSelecionado] = useState<Equipamento | null>(null);
   const selecionadoIdRef = useRef<number | undefined>();
@@ -816,7 +826,10 @@ export default function Equipamentos() {
     const liberado = await ensureSensitiveAccess({
       title: "Alterar status sensível",
       description: "Informe o PIN para alterar status comerciais, prazos e valores do equipamento.",
-      permission: SENSITIVE_PERMISSIONS.FINANCIAL_ACTIONS,
+      // Em elaboração o diálogo abre para o Técnico; decisão, entrega e valor final pedem o PIN financeiro ao confirmar.
+      ...(orcamentoEmElaboracao(eq.status)
+        ? { anyPermission: [SENSITIVE_PERMISSIONS.FINANCIAL_ACTIONS, SENSITIVE_PERMISSIONS.PREPARE_QUOTES] }
+        : { permission: SENSITIVE_PERMISSIONS.FINANCIAL_ACTIONS }),
     });
     if (!liberado) return;
 
@@ -894,7 +907,9 @@ export default function Equipamentos() {
     const liberado = await ensureSensitiveAccess({
       title: "Alterar orçamento",
       description: "Informe o PIN para editar serviços e valor sem alterar o status do equipamento.",
-      permission: SENSITIVE_PERMISSIONS.FINANCIAL_ACTIONS,
+      ...(orcamentoEmElaboracao(eq.status)
+        ? { anyPermission: [SENSITIVE_PERMISSIONS.FINANCIAL_ACTIONS, SENSITIVE_PERMISSIONS.PREPARE_QUOTES] }
+        : { permission: SENSITIVE_PERMISSIONS.FINANCIAL_ACTIONS }),
     });
     if (!liberado) return;
 
@@ -903,6 +918,7 @@ export default function Equipamentos() {
     setAjusteOrcamentoSemMudancaStatus(true);
     setCorrecaoStatus(false);
     setMotivoCorrecaoStatus("");
+    setPrazoAprovacao(eq.prazo_aprovacao || "");
     setValorFinal(0);
     setValorFinalSugerido(null);
     setAcordoExcecaoEntrega(false);
@@ -1093,54 +1109,71 @@ export default function Equipamentos() {
     const liberado = await ensureSensitiveAccess({
       title: "Finalizar verificação",
       description: "Informe o PIN para salvar orçamento, prazo de aprovação e disparar comunicações automáticas.",
-      permission: SENSITIVE_PERMISSIONS.FINANCIAL_ACTIONS,
+      anyPermission: [SENSITIVE_PERMISSIONS.FINANCIAL_ACTIONS, SENSITIVE_PERMISSIONS.PREPARE_QUOTES],
     });
     if (!liberado) return false;
 
-    async function executarComEmail(email: string | undefined, nomeDestinatario?: string, emailSalvo = false): Promise<boolean> {
+    async function finalizar(eq: Equipamento): Promise<boolean> {
       setSalvando(true);
       try {
-        const resultado = await finalizarVerificacao(selecionado!, dados, email, nomeDestinatario);
+        const resultado = await finalizarVerificacao(eq, dados);
         if (!resultado.sucesso) {
           throw new Error(resultado.erro || "Não foi possível finalizar a verificação.");
         }
         setVerificacaoDialogOpen(false);
         await recarregar();
         const resumoCanais = mensagemResultadoCanais(resultado);
-        if (emailSalvo && resultado.canais?.email && !resultado.canais.email.enviado) {
-          showError("Equipamentos", "Finalizar verificação", new Error([mensagemEnvioFalhouComEmailSalvo(resultado.canais.email.erro), ...resumoCanais.split("\n").filter((linha) => linha.startsWith("WhatsApp"))].join("\n")));
-        } else if (resumoCanais) {
+        if (resumoCanais) {
           success("Equipamentos", resumoCanais, "Finalizar verificação");
         }
+        if (resultado.avisos?.length) {
+          warning("Equipamentos", resultado.avisos.join("\n"));
+        }
+        if (resultado.envioManual) setEnvioManual(resultado.envioManual);
         return true;
       } catch (err: any) {
-        console.error("Erro ao finalizar verificação:", err);
         showError("Equipamentos", "Finalizar verificação", err);
-        if (emailSalvo) await atualizarEmSegundoPlano();
         return false;
       } finally {
         setSalvando(false);
       }
     }
 
-    const recipient = resolveRecipient(selecionado, "email");
-    setEmailFlow({
-      recipient,
-      onConfirm: async (email, salvar) => {
-        if (salvar) {
-          try {
-            await saveRecipientAddress(selecionado, "email", email);
-          } catch (cause) {
-            showError("Equipamentos", "Salvar destinatário", cause);
-            return false;
-          }
-        }
-        await executarComEmail(email, recipient.nome, salvar);
-      },
-      onSkip: async () => { await executarComEmail(""); },
-    });
-    setEmailDialogOpen(true);
-    return false;
+    let precisaContato = false;
+    try {
+      const dest = await db.obterDestinatarioOrcamento(selecionado.id!);
+      precisaContato = !!dest?.precisaContato;
+    } catch (err) {
+      showError("Equipamentos", "Finalizar verificação", err);
+      return false;
+    }
+
+    if (precisaContato) {
+      setQuemRecebe({
+        eq: selecionado,
+        sugestao: {
+          nome: selecionado.cliente_nome || "",
+          telefone: selecionado.cliente_telefone || "",
+          email: selecionado.cliente_email || "",
+        },
+        continuar: async (eqAtualizado) => { await finalizar(eqAtualizado); },
+      });
+      return false;
+    }
+    return finalizar(selecionado);
+  }
+
+  /** Gera nova senha de portal para o envio manual aberto e atualiza o diálogo. */
+  async function gerarNovaSenhaDoEnvioManual(): Promise<EnvioManualOrcamento | null> {
+    if (!envioManual) return null;
+    const [eq, verificacao] = await Promise.all([
+      db.buscarEquipamento(envioManual.equipamentoId),
+      db.buscarVerificacao(envioManual.equipamentoId),
+    ]);
+    if (!verificacao) throw new Error("Verificação não encontrada para gerar nova senha.");
+    const novo = await gerarNovaSenhaEnvioManual(eq, verificacao);
+    if (novo) setEnvioManual(novo);
+    return novo;
   }
 
   // ─── Automação: Marcar como Pronto ────────────────────
@@ -1402,7 +1435,10 @@ export default function Equipamentos() {
       const liberado = await ensureSensitiveAccess({
         title: "Confirmar mudança de status",
         description: "Informe o PIN para aplicar esta transição e persistir dados sensíveis do equipamento.",
-        permission: SENSITIVE_PERMISSIONS.FINANCIAL_ACTIONS,
+        ...((ajusteOrcamentoSemMudancaStatus && orcamentoEmElaboracao(selecionado.status))
+          || transicaoElaboraOrcamento(selecionado.status, novoStatus, correcaoStatus, valorFinal)
+          ? { anyPermission: [SENSITIVE_PERMISSIONS.FINANCIAL_ACTIONS, SENSITIVE_PERMISSIONS.PREPARE_QUOTES] }
+          : { permission: SENSITIVE_PERMISSIONS.FINANCIAL_ACTIONS }),
       });
       if (!liberado) return;
     }
@@ -1487,15 +1523,52 @@ export default function Equipamentos() {
       }
 
       if (ajusteOrcamentoSemMudancaStatus) {
+        let portalProrrogacao: PortalAjusteInfo | undefined;
+        const prazoMudou = selecionado.status === "AGUARDANDO_APROVACAO"
+          && !!prazoAprovacao
+          && prazoAprovacao !== (selecionado.prazo_aprovacao || "").slice(0, 10);
+        if (prazoMudou) {
+          try {
+            const equipamentoId = selecionado.id!;
+            const prorrogar = async (confirmarRespostaPendente?: boolean) => {
+              const versao = (await db.buscarEquipamento(equipamentoId)).atualizado_em;
+              if (!versao) throw new Error("Versão do equipamento não encontrada.");
+              return db.prorrogarPrazoOrcamento({
+                equipamentoId,
+                novoPrazo: prazoAprovacao,
+                expectedUpdatedEm: versao,
+                ...(confirmarRespostaPendente ? { confirmarRespostaPendente: true } : {}),
+              });
+            };
+            let resultadoProrrogacao = await prorrogar();
+            if (!resultadoProrrogacao.prorrogado) {
+              const confirmado = await confirmarComOperador(
+                "O cliente já respondeu",
+                "Prorrogar anula a resposta pendente. Continuar?",
+                "Prorrogar",
+              );
+              if (confirmado) {
+                resultadoProrrogacao = await prorrogar(true);
+              } else {
+                warning("Equipamentos", "Orçamento salvo. O prazo não foi prorrogado.");
+              }
+            }
+            if (resultadoProrrogacao.prorrogado) portalProrrogacao = resultadoProrrogacao.portal;
+          } catch (err) {
+            const detalhe = err instanceof Error ? err.message : String(err);
+            warning("Equipamentos", `Orçamento salvo, mas o prazo não foi prorrogado: ${detalhe}`);
+          }
+        }
         await recarregar();
         setStatusDialogOpen(false);
         setAjusteOrcamentoSemMudancaStatus(false);
         success(
           "Equipamentos",
-          ["Orçamento atualizado.", portalAjuste?.mensagem].filter(Boolean).join(" "),
+          ["Orçamento atualizado.", portalAjuste?.mensagem, portalProrrogacao?.mensagem].filter(Boolean).join(" "),
           "Alterar orçamento",
         );
         if (portalAjuste?.aviso) warning("Equipamentos", portalAjuste.aviso);
+        if (portalProrrogacao?.aviso) warning("Equipamentos", portalProrrogacao.aviso);
         return;
       }
 
@@ -1638,7 +1711,92 @@ export default function Equipamentos() {
    * Reenvio manual de WhatsApp. A tela só informa equipamento e tipo; o backend decide o texto,
    * evita duplicidade e pede confirmação quando o envio anterior tem resultado incerto.
    */
+  async function reenviarOrcamentoInformativo(eq: Equipamento) {
+    let verificacao: Awaited<ReturnType<typeof db.buscarVerificacao>>;
+    try {
+      verificacao = await db.buscarVerificacao(eq.id!);
+    } catch (err) {
+      showError("Equipamentos", "Enviar WhatsApp", err);
+      return;
+    }
+    if (!verificacao) {
+      warning("Equipamentos", "Verificação não encontrada; o orçamento não foi enviado.");
+      return;
+    }
+
+    let envio = await enviarOrcamentoAoCliente(eq, verificacao, { reenvioManual: true, enviarEmail: false });
+    if (envio.canais.whatsapp.estado === "REQUER_CONFIRMACAO") {
+      const confirmado = await confirmarComOperador(
+        "Enviar de novo?",
+        envio.canais.whatsapp.erro || "O resultado do envio anterior é incerto: a mensagem pode já ter chegado ao cliente.",
+        "Enviar mesmo assim",
+      );
+      if (!confirmado) return;
+      envio = await enviarOrcamentoAoCliente(eq, verificacao, { reenvioManual: true, enviarEmail: false, confirmarIncerto: true, preparo: envio.preparo });
+    }
+
+    const wa = envio.canais.whatsapp;
+    if (envio.envioManual) setEnvioManual(envio.envioManual);
+    if (wa.enviado) {
+      success("Equipamentos", "Mensagem aceita pelo provedor de WhatsApp. A entrega não é confirmada neste momento.", "WhatsApp");
+    } else if (wa.erro && ehErroPrazoVencido(wa.erro)) {
+      await prorrogarPrazoEEnviar(eq, envio.preparo);
+      return;
+    } else if (wa.estado === "INCERTA") {
+      warning("Equipamentos", wa.erro || "O provedor não confirmou o envio. Confira antes de tentar de novo.");
+    } else if (!envio.envioManual || !whatsappNaoConfigurado(wa.erro)) {
+      showError("Equipamentos", "Enviar WhatsApp", new Error(wa.erro || "Falha ao enviar WhatsApp."));
+    }
+    if (envio.avisos.length) warning("Equipamentos", envio.avisos.join("\n"));
+  }
+
+  async function prorrogarPrazoEEnviar(eq: Equipamento, preparo?: PreparoAcessoPortal | null) {
+    const liberado = await ensureSensitiveAccess({
+      title: "Prorrogar prazo e enviar",
+      description: "Informe o PIN para prorrogar o prazo de aprovação e reenviar o orçamento ao cliente.",
+      anyPermission: [SENSITIVE_PERMISSIONS.FINANCIAL_ACTIONS, SENSITIVE_PERMISSIONS.PREPARE_QUOTES],
+    });
+    if (!liberado) return;
+    const novoPrazo = sugerirNovoPrazo();
+    const dataBr = formatarDataIso(novoPrazo).slice(0, 5);
+    const confirmado = await confirmarComOperador(
+      "Prazo do orçamento vencido",
+      `O prazo de aprovação já terminou. Prorrogar até ${dataBr} e enviar o orçamento?`,
+      `Prorrogar até ${dataBr} e enviar`,
+    );
+    if (!confirmado) return;
+    setSalvando(true);
+    try {
+      const r = await prorrogarEEnviar(eq, novoPrazo, () =>
+        confirmarComOperador(
+          "Resposta pendente",
+          "O cliente já respondeu. Prorrogar anula a resposta pendente. Continuar?",
+          "Continuar",
+        ),
+        { preparo },
+      );
+      if (r.respostaPendenteRecusada) return;
+      if (r.envioManual) setEnvioManual(r.envioManual);
+      const etapas = [
+        r.prorrogado ? "Prazo prorrogado." : "Prazo não prorrogado.",
+        ...(r.prorrogado ? [r.publicado ? "Orçamento publicado no portal." : "Orçamento não publicado no portal."] : []),
+        ...(r.whatsapp ? [r.whatsapp.enviado ? "WhatsApp: enviado." : `WhatsApp: não enviado${r.whatsapp.erro ? ` (${r.whatsapp.erro})` : "."}`] : []),
+      ];
+      if (r.prorrogado) success("Equipamentos", etapas.join("\n"), "Prorrogar e enviar");
+      if (r.avisos.length) warning("Equipamentos", r.avisos.join("\n"));
+      await recarregar();
+    } catch (err) {
+      showError("Equipamentos", "Prorrogar e enviar", err);
+    } finally {
+      setSalvando(false);
+    }
+  }
+
   async function reenviarWhatsApp(eq: Equipamento, tipo: "orcamento_informativo" | "equipamento_pronto") {
+    if (tipo === "orcamento_informativo") {
+      await reenviarOrcamentoInformativo(eq);
+      return;
+    }
     let resultado = await WhatsAppService.solicitarEnvio(eq.id!, tipo, { reenvioManual: true });
     if (resultado.requerConfirmacao) {
       const confirmado = await confirmarComOperador(
@@ -2349,6 +2507,7 @@ export default function Equipamentos() {
                 value={responsavelVinculado}
                 onChange={setResponsavelVinculado}
                 disabled={salvando}
+                preSelecionar={!editando}
               />
               {erroCliente && (
                 <ErrorAlert variant="error" context="Equipamentos" message={erroCliente} />
@@ -2938,8 +3097,8 @@ export default function Equipamentos() {
                     </div>
                   )}
                   <div className="space-y-2"><Label>Valor Orçamento (R$)</Label><Input data-testid="valor-orcamento-input" type="number" step="0.01" value={valorOrcamento || ""} onChange={e => setValorOrcamento(Number(e.target.value))} /></div>
-                  {!ajusteOrcamentoSemMudancaStatus && (
-                    <div className="space-y-2"><Label>Prazo Aprovação</Label><Input type="date" value={prazoAprovacao} onChange={e => setPrazoAprovacao(e.target.value)} /></div>
+                  {(!ajusteOrcamentoSemMudancaStatus || selecionado.status === "AGUARDANDO_APROVACAO") && (
+                    <div className="space-y-2"><Label>Prazo Aprovação</Label><Input type="date" min={new Date().toLocaleDateString("en-CA")} value={prazoAprovacao} onChange={e => setPrazoAprovacao(e.target.value)} /></div>
                   )}
                   <div className="space-y-2">
                     <Label htmlFor="observacoes-ajuste">Observações</Label>
@@ -3321,6 +3480,24 @@ export default function Equipamentos() {
         onCancel={confirmProps.onCancel}
       />
 
+      <EnvioManualOrcamentoDialog
+        envio={envioManual}
+        onFechar={() => setEnvioManual(null)}
+        onGerarNovaSenha={gerarNovaSenhaDoEnvioManual}
+      />
+      {quemRecebe && (
+        <QuemRecebeOrcamentoDialog
+          open
+          equipamento={quemRecebe.eq}
+          sugestao={quemRecebe.sugestao}
+          onSalvo={async (eqAtualizado) => {
+            const { continuar } = quemRecebe;
+            setQuemRecebe(null);
+            await continuar(eqAtualizado);
+          }}
+          onCancelar={() => setQuemRecebe(null)}
+        />
+      )}
       <CommunicationEmailDialog
         open={emailDialogOpen}
         recipient={emailFlow?.recipient || null}

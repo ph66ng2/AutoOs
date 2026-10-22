@@ -9,6 +9,7 @@ import { resolveRecipient } from "@/lib/recipient-resolver";
 import { WhatsAppService } from "@/lib/whatsapp-service";
 import { useSensitiveAccess } from "@/hooks/useSensitiveAccess";
 import { SENSITIVE_PERMISSIONS, type Equipamento, type PublicStatusLinkInfo } from "@/types";
+import { WHATSAPP_AUTOMATICO_DISPONIVEL } from "@/lib/whatsapp-automatico";
 
 type Props = {
   equipamento: Equipamento | null;
@@ -261,13 +262,23 @@ export function PublicStatusLinkDialog({ equipamento, open, onOpenChange }: Prop
                   <Button variant="outline" disabled={busy || !recipientEmail?.endereco} onClick={() => void sendEmail()}>
                     <Mail className="mr-2 h-4 w-4" /> Enviar por email
                   </Button>
-                  <Button variant="outline" disabled={busy || !recipientPhone?.endereco} onClick={() => void sendWhatsApp()}>
+                  <Button
+                    variant="outline"
+                    disabled={busy || !recipientPhone?.endereco || !WHATSAPP_AUTOMATICO_DISPONIVEL}
+                    title={WHATSAPP_AUTOMATICO_DISPONIVEL ? undefined : "O envio automático por WhatsApp ainda não está disponível."}
+                    onClick={() => void sendWhatsApp()}
+                  >
                     <MessageCircle className="mr-2 h-4 w-4" /> Enviar por WhatsApp
                   </Button>
                 </div>
                 <p className="text-xs text-muted-foreground">
                   {recipientEmail?.endereco ? `Email: ${recipientEmail.endereco}` : "Sem email cadastrado."} {recipientPhone?.endereco ? `· WhatsApp: ${recipientPhone.endereco}` : "· Sem telefone cadastrado."}
                 </p>
+                {!WHATSAPP_AUTOMATICO_DISPONIVEL && (
+                  <p className="text-xs text-muted-foreground">
+                    O envio automático por WhatsApp ainda não está disponível. Copie o link acima para enviar à mão.
+                  </p>
+                )}
                 <p className="text-xs text-muted-foreground">Os históricos registram o canal e o resultado, sem guardar o token do link.</p>
               </div>
             )}

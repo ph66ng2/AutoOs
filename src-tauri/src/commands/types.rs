@@ -149,6 +149,15 @@ pub struct EquipamentoImagemInput {
     pub storage_path: String,
 }
 
+/// Contato inicial exigido na criação de cliente PJ.
+#[derive(Debug, Deserialize, Default, Clone)]
+#[serde(default)]
+pub struct ContatoInicialInput {
+    pub nome: String,
+    pub telefone: String,
+    pub email: Option<String>,
+}
+
 /// Input para criar/atualizar cliente (PF ou PJ).
 #[derive(Debug, Deserialize, Default)]
 #[serde(default)]
@@ -177,6 +186,8 @@ pub struct ClienteInput {
     pub exige_ordem_compra: Option<bool>,
     pub observacoes: Option<String>,
     pub atualizado_em: Option<String>,
+    /// Usado só na criação; obrigatório para PJ.
+    pub contato_inicial: Option<ContatoInicialInput>,
 }
 
 /// Input para criar/atualizar produto de estoque.

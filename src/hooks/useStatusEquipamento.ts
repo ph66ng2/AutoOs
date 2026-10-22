@@ -24,6 +24,12 @@ import { EmailService } from "@/lib/email-service";
 import type { Equipamento, ResultadoAutomacao } from "@/types";
 import type { DadosVerificacao } from "@/components/equipamentos/VerificacaoTecnica";
 import { resolveRecipient } from "@/lib/recipient-resolver";
+import { calcularPrazoAprovacao, enviarOrcamentoAoCliente } from "@/lib/envio-orcamento";
+
+/** Resultado de `finalizarVerificacao`: contrato de `ResultadoAutomacao` + avisos do envio. */
+export interface ResultadoFinalizarVerificacao extends ResultadoAutomacao {
+  avisos?: string[];
+}
 
 /**
  * Hook que gerencia transições de status com automação de comunicações.
@@ -44,9 +50,9 @@ export function useStatusEquipamento() {
   async function finalizarVerificacao(
     equipamento: Equipamento,
     dadosVerificacao: DadosVerificacao,
-    emailContato?: string,
-    emailDestinatario?: string,
-  ): Promise<ResultadoAutomacao> {
+    _emailContato?: string,
+    _emailDestinatario?: string,
+  ): Promise<ResultadoFinalizarVerificacao> {
     setLoading(true);
     try {
       // 1. Salvar verificação no banco
@@ -73,7 +79,7 @@ export function useStatusEquipamento() {
         equipamento.id!,
         "AGUARDANDO_APROVACAO",
         dadosVerificacao.custo_total || undefined,
-        prazo.toISOString().split("T")[0],
+        prazo,
         undefined,
         equipamentoVerificado.atualizado_em
       );
@@ -92,44 +98,26 @@ export function useStatusEquipamento() {
         };
       }
 
-      let resultadoWhatsApp: { sucesso: boolean; erro?: string };
+      // O status já foi salvo; falha no envio não desfaz a mudança.
       try {
-        const telefone = resolveRecipient(eqAtualizado, "telefone");
-        resultadoWhatsApp = await WhatsAppService.enviarOrcamento(
-          { ...eqAtualizado, cliente_telefone: telefone.endereco || undefined, cliente_nome: telefone.nome },
-          verificacao,
-        );
+        const envio = await enviarOrcamentoAoCliente(eqAtualizado, verificacao);
+        return {
+          sucesso: true,
+          canais: envio.canais,
+          ...(envio.envioManual ? { envioManual: envio.envioManual } : {}),
+          avisos: envio.avisos,
+        };
       } catch (error: any) {
-        resultadoWhatsApp = { sucesso: false, erro: error?.message || String(error) };
+        const erro = error?.message || String(error);
+        return {
+          sucesso: true,
+          canais: {
+            whatsapp: { enviado: false, erro },
+            email: { enviado: false, erro },
+          },
+          avisos: [`Não foi possível enviar o orçamento: ${erro}`],
+        };
       }
-
-      let resultadoEmail: { sucesso: boolean; erro?: string };
-      try {
-        // A ausência do terceiro argumento preserva o contrato legado para
-        // consumidores diretos do hook; a UI passa "" quando o operador
-        // escolhe seguir sem envio.
-        const emailContatoResolvido = emailContato === undefined
-          ? (eqAtualizado.cliente_email || "").trim()
-          : emailContato.trim();
-        if (!emailContatoResolvido) {
-          resultadoEmail = { sucesso: false, erro: "Cliente sem email cadastrado" };
-        } else {
-          resultadoEmail = await EmailService.enviarOrcamento(
-            { ...eqAtualizado, cliente_email: emailContatoResolvido, cliente_nome: emailDestinatario || eqAtualizado.cliente_nome },
-            verificacao
-          );
-        }
-      } catch (error: any) {
-        resultadoEmail = { sucesso: false, erro: error?.message || String(error) };
-      }
-
-      return {
-        sucesso: true,
-        canais: {
-          whatsapp: { enviado: !!resultadoWhatsApp.sucesso, erro: resultadoWhatsApp.erro },
-          email: { enviado: !!resultadoEmail.sucesso, erro: resultadoEmail.erro },
-        },
-      };
     } catch (error: any) {
       console.error("Erro ao finalizar verificação:", error);
       return { sucesso: false, erro: error?.message || String(error) };
@@ -209,18 +197,4 @@ export function useStatusEquipamento() {
     finalizarVerificacao,
     marcarComoPronto,
   };
-}
-
-// ─── Utilitário ─────────────────────────────────────────
-
-/** Calcula data futura pulando fins de semana */
-function calcularPrazoAprovacao(diasUteis: number): Date {
-  const data = new Date();
-  let adicionados = 0;
-  while (adicionados < diasUteis) {
-    data.setDate(data.getDate() + 1);
-    const dia = data.getDay();
-    if (dia !== 0 && dia !== 6) adicionados++;
-  }
-  return data;
 }

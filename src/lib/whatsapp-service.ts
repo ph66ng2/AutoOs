@@ -109,6 +109,7 @@ export const WhatsAppService = {
         tipo,
         reenvio_manual: opcoes.reenvioManual ?? false,
         confirmar_incerto: opcoes.confirmarIncerto ?? false,
+        ...(opcoes.senhaPortal ? { senha_portal: opcoes.senhaPortal } : {}),
       });
       return traduzirResultado(resultado);
     } catch (error: any) {
@@ -131,6 +132,8 @@ export const WhatsAppService = {
 export interface OpcoesEnvioWhatsapp {
   reenvioManual?: boolean;
   confirmarIncerto?: boolean;
+  /** Senha do portal gerada nesta sessão; vai ao backend como `senha_portal`. */
+  senhaPortal?: string;
 }
 
 export interface ResultadoSolicitacaoWhatsapp {
@@ -145,20 +148,23 @@ export interface ResultadoSolicitacaoWhatsapp {
   /** O envio anterior tem resultado incerto; repetir exige confirmação do operador. */
   requerConfirmacao?: boolean;
   mensagem?: string;
+  /** O backend não usou a senha informada (ex.: pedido já existia); ela segue só no canal manual. */
+  senhaRetida?: boolean;
 }
 
 function traduzirResultado(resultado: ResultadoEnvioWhatsapp): ResultadoSolicitacaoWhatsapp {
   const mensagem = resultado.mensagem ?? undefined;
+  const senha = resultado.senhaRetida === undefined ? {} : { senhaRetida: resultado.senhaRetida };
   switch (resultado.estado) {
     case "ENVIADA":
-      return { sucesso: true, estado: resultado.estado };
+      return { sucesso: true, estado: resultado.estado, ...senha };
     case "ENFILEIRADA":
-      return { sucesso: true, estado: resultado.estado, enfileirada: true, mensagem };
+      return { sucesso: true, estado: resultado.estado, enfileirada: true, mensagem, ...senha };
     case "JA_SOLICITADO":
-      return { sucesso: true, estado: resultado.estado, jaSolicitado: true, mensagem };
+      return { sucesso: true, estado: resultado.estado, jaSolicitado: true, mensagem, ...senha };
     case "REQUER_CONFIRMACAO":
-      return { sucesso: false, estado: resultado.estado, requerConfirmacao: true, erro: mensagem, mensagem };
+      return { sucesso: false, estado: resultado.estado, requerConfirmacao: true, erro: mensagem, mensagem, ...senha };
     default:
-      return { sucesso: false, estado: resultado.estado, erro: mensagem ?? "Falha ao enviar WhatsApp", mensagem };
+      return { sucesso: false, estado: resultado.estado, erro: mensagem ?? "Falha ao enviar WhatsApp", mensagem, ...senha };
   }
 }

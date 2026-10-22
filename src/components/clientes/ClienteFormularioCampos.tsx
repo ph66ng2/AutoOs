@@ -304,6 +304,54 @@ export function ClienteFormularioCampos({
         </div>
       </div>
 
+      {tipoPessoa === "PJ" && form.watch("exigir_contato_inicial") && (
+        <div className="space-y-4 p-4 rounded-lg border border-purple-200 bg-purple-50/50">
+          <div className="space-y-1">
+            <h3 className="text-sm font-semibold text-muted-foreground flex items-center gap-2">
+              <User className="h-4 w-4" /> Contato para orçamentos
+            </h3>
+            <p className="text-xs text-muted-foreground">
+              Recebe o orçamento e o acesso ao portal.
+            </p>
+          </div>
+          <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <Label htmlFor="cliente-contato-nome">Nome do contato *</Label>
+              <Input
+                id="cliente-contato-nome"
+                {...form.register("contato_nome")}
+                placeholder="Nome de quem recebe o orçamento"
+              />
+              <FormValidationError message={form.formState.errors.contato_nome?.message} />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="cliente-contato-telefone">Celular do contato *</Label>
+              <Input
+                id="cliente-contato-telefone"
+                value={form.watch("contato_telefone") || ""}
+                onChange={(e) => {
+                  const formatted = formatarTelefone(e.target.value);
+                  form.setValue("contato_telefone", formatted, { shouldDirty: true, shouldValidate: false });
+                }}
+                placeholder="(11) 99999-9999"
+                maxLength={15}
+              />
+              <FormValidationError message={form.formState.errors.contato_telefone?.message} />
+            </div>
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="cliente-contato-email">E-mail do contato</Label>
+            <Input
+              id="cliente-contato-email"
+              {...form.register("contato_email")}
+              placeholder="contato@empresa.com"
+              type="email"
+            />
+            <FormValidationError message={form.formState.errors.contato_email?.message} />
+          </div>
+        </div>
+      )}
+
       <div className="space-y-4">
         <h3 className="text-sm font-semibold text-muted-foreground flex items-center gap-2">
           <MapPin className="h-4 w-4" /> Endereço

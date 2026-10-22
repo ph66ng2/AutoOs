@@ -222,7 +222,7 @@ describe("DecisaoOrcamentoCard", () => {
     renderCard();
     fireEvent.click(await screen.findByRole("button", { name: "Publicar no Portal do Cliente" }));
     await waitFor(() => expect(mocks.publicar).toHaveBeenCalledWith(7));
-    expect(mocks.ensure).toHaveBeenCalledWith(expect.objectContaining({ permission: "MANAGE_STATUS_LINKS" }));
+    expect(mocks.ensure).toHaveBeenCalledWith(expect.objectContaining({ anyPermission: ["MANAGE_STATUS_LINKS", "PREPARE_QUOTES"] }));
   });
 
   it("troca rápida de equipamento: resposta atrasada do anterior não sobrescreve o quadro", async () => {

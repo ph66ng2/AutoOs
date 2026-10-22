@@ -13,6 +13,7 @@ use crate::commands::auth::{
     record_security_event, require_active_session_company_id, require_sensitive_access,
 };
 use crate::commands::orcamento_decisao::obter_ou_criar_versao;
+use crate::commands::portal_cliente::{resolver_destinatario_orcamento, SenhaPortal, SENHA_MASCARADA};
 use crate::commands::types::WhatsappConfigStored;
 use crate::commands::whatsapp::{
     carregar_config_armazenada, despachar_evolution, normalizar_telefone_br, redact_long_hex_values,
@@ -75,6 +76,9 @@ pub struct SolicitarEnvioInput {
     /// Confirma que uma tentativa de resultado incerto pode ser repetida.
     #[serde(default)]
     pub confirmar_incerto: bool,
+    /// Senha nova do portal, em claro, só para o envio direto deste pedido. Nunca é gravada.
+    #[serde(default)]
+    pub(crate) senha_portal: Option<SenhaPortal>,
 }
 
 #[derive(Debug, Serialize, PartialEq, Eq)]
@@ -87,6 +91,9 @@ pub struct ResultadoEnvioWhatsapp {
     /// Estado da última tentativa quando o pedido já existia (`JA_SOLICITADO`).
     pub ultimo_estado: Option<String>,
     pub mensagem: Option<String>,
+    /// A senha nova do portal não foi enviada (fila central): o técnico precisa do envio manual.
+    #[serde(default)]
+    pub senha_retida: bool,
 }
 
 // ─── Mensagens ──────────────────────────────────────────────────────────────
@@ -164,18 +171,36 @@ pub(crate) fn mensagem_pronto(
 /// Endereço do Portal do Cliente citado na mensagem do orçamento.
 pub(crate) const PORTAL_URL: &str = "https://status.bmitag.com.br";
 
-/// `responde_no_portal`: o destinatário é um contato que já pode aceitar/recusar pelo portal
-/// (acesso de decisão, senha criada e portal ligado). Os outros continuam respondendo "APROVADO".
+/// Nível de acesso do contato no Portal do Cliente.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum NivelPortal {
+    Decidir,
+    Acompanhar,
+}
+
+/// Como o destinatário é orientado a responder ao orçamento.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum AcessoMensagem {
+    /// Sem acesso ao portal: responde "APROVADO" no WhatsApp.
+    Nenhum,
+    /// `senha`: `None` quando o contato já tem uma senha cadastrada.
+    Portal { nivel: NivelPortal, usuario: String, senha: Option<String> },
+}
+
+const SENHA_JA_CADASTRADA: &str = "a que você já tem (esqueceu? fale com a nossa equipe)";
+
+/// `empresa`: (nome, documento já formatado). O `historico` nunca leva a senha nova.
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn mensagem_informativo(
-    nome: &str,
+    contato: &str,
+    empresa: Option<(&str, &str)>,
     marca: &str,
     modelo: &str,
     serial: &str,
     snapshot: &serde_json::Value,
     valor_total: f64,
     prazo: Option<&str>,
-    responde_no_portal: bool,
+    acesso: &AcessoMensagem,
 ) -> MensagemWhatsapp {
     let equipamento = nome_do_equipamento(marca, modelo);
     let servicos = snapshot.get("servicos").and_then(|v| v.as_array()).cloned().unwrap_or_default();
@@ -228,30 +253,86 @@ pub(crate) fn mensagem_informativo(
         .map(|p| format!("📅 Prazo para aprovação: {p}\n"))
         .unwrap_or_default();
 
-    let como_responder = if responde_no_portal {
+    let linha_empresa = empresa
+        .map(|(nome_empresa, documento)| {
+            if documento.trim().is_empty() {
+                format!("Empresa: {nome_empresa}\n")
+            } else {
+                format!("Empresa: {nome_empresa} — CNPJ/CPF {documento}\n")
+            }
+        })
+        .unwrap_or_default();
+
+    // `senha_exibida` é o que aparece no texto: a senha real no envio direto, a máscara no histórico.
+    let montar_texto = |senha_exibida: Option<&str>| {
+        let como_responder = match acesso {
+            AcessoMensagem::Nenhum => "Para aprovar, responda *APROVADO*.".to_string(),
+            AcessoMensagem::Portal { nivel, usuario, senha } => {
+                let senha_linha = match (senha, senha_exibida) {
+                    (Some(_), Some(exibida)) => exibida.to_string(),
+                    _ => SENHA_JA_CADASTRADA.to_string(),
+                };
+                let credenciais = format!("Usuário: {usuario}\nSenha: {senha_linha}");
+                match nivel {
+                    NivelPortal::Decidir => {
+                        let guarde = if senha.is_some() { " Guarde a senha e não a compartilhe." } else { "" };
+                        format!(
+                            "Para aceitar ou recusar, entre no *Portal das Impressoras*: {PORTAL_URL}\n{credenciais}\nLá você também pode pedir para negociar.{guarde}"
+                        )
+                    }
+                    NivelPortal::Acompanhar => format!(
+                        "Você pode acompanhar o orçamento no *Portal das Impressoras*: {PORTAL_URL}\n{credenciais}\nPara aprovar, responda *APROVADO*."
+                    ),
+                }
+            }
+        };
         format!(
-            "Para aceitar ou recusar, entre no *Portal das Impressoras*: {PORTAL_URL}\nUse o CPF/CNPJ do cadastro e a sua senha. Lá você também pode pedir para negociar."
+            "🔧 *Olá, {contato}!*\n{linha_empresa}\nSeu equipamento foi verificado e elaboramos o orçamento:\n\n*EQUIPAMENTO:*\n{equipamento}\nSN: {serial}\n{bloco_servicos}{bloco_pecas}\n\n*ORÇAMENTO:*\n{bloco_subtotais}*TOTAL: {total}*\n\n{linha_prazo}\n{como_responder}\nPara dúvidas, estamos à disposição! 😊",
+            total = formatar_brl(valor_total),
         )
-    } else {
-        "Para aprovar, responda *APROVADO*.".to_string()
     };
-    let texto = format!(
-        "🔧 *Olá, {nome}!*\n\nSeu equipamento foi verificado e elaboramos o orçamento:\n\n*EQUIPAMENTO:*\n{equipamento}\nSN: {serial}\n{bloco_servicos}{bloco_pecas}\n\n*ORÇAMENTO:*\n{bloco_subtotais}*TOTAL: {total}*\n\n{linha_prazo}\n{como_responder}\nPara dúvidas, estamos à disposição! 😊",
-        total = formatar_brl(valor_total),
-    );
-    MensagemWhatsapp {
-        // Cloud API: cada texto é um modelo aprovado pela Meta (o do portal cita o endereço).
-        template: if responde_no_portal { "orcamento_portal" } else { "orcamento_informativo" },
-        parametros: vec![
-            nome.to_string(),
-            equipamento,
-            formatar_brl(valor_total),
-            prazo_texto.unwrap_or_default(),
-        ],
-        url_botao: None,
-        historico: texto.clone(),
-        texto,
-    }
+    let senha_nova = match acesso {
+        AcessoMensagem::Portal { senha: Some(senha), .. } => Some(senha.as_str()),
+        _ => None,
+    };
+    let texto = montar_texto(senha_nova);
+    let historico = montar_texto(senha_nova.map(|_| SENHA_MASCARADA));
+
+    // Cloud API: cada texto é um modelo aprovado pela Meta (contrato em docs/MODELOS_WHATSAPP_META.md).
+    let total = formatar_brl(valor_total);
+    let prazo_param = prazo_texto.unwrap_or_default();
+    // Os modelos `_v2` (7 parâmetros) só existem para transmitir senha nova; sem ela valem os aprovados.
+    let (template, parametros) = match acesso {
+        AcessoMensagem::Portal { nivel, usuario, senha: Some(senha) } => (
+            match nivel {
+                NivelPortal::Decidir => "orcamento_portal_v2",
+                NivelPortal::Acompanhar => "orcamento_portal_acompanhar_v2",
+            },
+            vec![
+                contato.to_string(),
+                empresa.map(|(nome_empresa, _)| nome_empresa.to_string()).unwrap_or_default(),
+                equipamento,
+                total,
+                prazo_param,
+                usuario.clone(),
+                senha.clone(),
+            ],
+        ),
+        AcessoMensagem::Portal { nivel: NivelPortal::Decidir, senha: None, .. } => (
+            "orcamento_portal",
+            vec![contato.to_string(), equipamento, total, prazo_param],
+        ),
+        AcessoMensagem::Portal { nivel: NivelPortal::Acompanhar, senha: None, .. } | AcessoMensagem::Nenhum => (
+            "orcamento_informativo",
+            vec![contato.to_string(), equipamento, total, prazo_param],
+        ),
+    };
+    MensagemWhatsapp { template, parametros, url_botao: None, texto, historico }
+}
+
+/// Fila central: a senha nova não pode ser gravada, então o envio não é enfileirado.
+fn central_retem_senha(central: bool, acesso: &AcessoMensagem) -> bool {
+    central && matches!(acesso, AcessoMensagem::Portal { senha: Some(_), .. })
 }
 
 // ─── Apoio ──────────────────────────────────────────────────────────────────
@@ -297,8 +378,8 @@ struct DadosEquipamento {
     valor_final_ou_orcamento: Option<f64>,
     prazo_aprovacao: Option<String>,
     status_alterado_micros: Option<i64>,
-    /// O destinatário (responsável ou cliente) é um contato que responde pelo portal.
-    destinatario_no_portal: bool,
+    /// Portal e respostas ligados para a empresa.
+    portal_ativo: bool,
 }
 
 async fn carregar_equipamento(
@@ -320,17 +401,7 @@ async fn carregar_equipamento(
                 COALESCE(valor_final, valor_orcamento)::FLOAT8 AS valor,
                 prazo_aprovacao,
                 (EXTRACT(EPOCH FROM status_alterado_em) * 1000000)::BIGINT AS micros,
-                -- Mesmo telefone (DDD + número, sem DDI) de um contato com acesso de decisão e senha,
-                -- com o portal e as respostas ligados.
-                public.autoos_portal_respostas_ligadas(equipamentos.empresa_id)
-                AND EXISTS (
-                    SELECT 1 FROM cliente_contatos c
-                    WHERE c.cliente_id = equipamentos.cliente_id AND c.empresa_id = equipamentos.empresa_id
-                      AND c.ativo AND c.portal_acesso = 'DECIDIR' AND c.portal_senha_hash IS NOT NULL
-                      AND length(public.autoos_portal_telefone(c.telefone)) >= 10
-                      AND public.autoos_portal_telefone(c.telefone) = public.autoos_portal_telefone(
-                          COALESCE(NULLIF(BTRIM(equipamentos.responsavel_telefone), ''), equipamentos.cliente_telefone))
-                ) AS destinatario_no_portal
+                public.autoos_portal_respostas_ligadas(equipamentos.empresa_id) AS portal_ativo
          FROM equipamentos
          WHERE id = $1 AND empresa_id = $2
          FOR UPDATE OF equipamentos",
@@ -351,7 +422,7 @@ async fn carregar_equipamento(
         valor_final_ou_orcamento: row.try_get("valor").map_err(map)?,
         prazo_aprovacao: row.try_get("prazo_aprovacao").map_err(map)?,
         status_alterado_micros: row.try_get("micros").map_err(map)?,
-        destinatario_no_portal: row.try_get("destinatario_no_portal").map_err(map)?,
+        portal_ativo: row.try_get("portal_ativo").map_err(map)?,
     })
 }
 
@@ -367,6 +438,8 @@ struct EnvioPreparado {
 
 enum Reserva {
     Resposta(ResultadoEnvioWhatsapp),
+    /// Recusado sem rastro: a transação é desfeita (nenhum pedido, versão ou tentativa fica gravado).
+    Recusada(ResultadoEnvioWhatsapp),
     /// A tentativa já nasceu `FALHOU` (sem telefone, sem configuração): só falta o histórico.
     FalhaImediata {
         resposta: ResultadoEnvioWhatsapp,
@@ -467,6 +540,7 @@ async fn reservar(
                 estado: "EM_ANDAMENTO".to_string(),
                 ultimo_estado: Some(ultimo_estado),
                 mensagem: Some("Esta mensagem já está na fila de envio.".to_string()),
+                senha_retida: false,
             }));
         }
         if ultimo_estado == "PREPARANDO" {
@@ -477,6 +551,7 @@ async fn reservar(
                     estado: "EM_ANDAMENTO".to_string(),
                     ultimo_estado: Some(ultimo_estado),
                     mensagem: Some("Já existe um envio em andamento para este evento.".to_string()),
+                    senha_retida: false,
                 }));
             }
             // A instância que reservou parou antes de registrar o resultado: pode ter enviado.
@@ -499,6 +574,7 @@ async fn reservar(
                 estado: "JA_SOLICITADO".to_string(),
                 ultimo_estado: Some(ultimo_estado),
                 mensagem: Some("Este evento já foi solicitado e não será enviado de novo automaticamente.".to_string()),
+                senha_retida: false,
             }));
         }
         if ultimo_estado == "INCERTA" && !input.confirmar_incerto {
@@ -508,16 +584,26 @@ async fn reservar(
                 estado: "REQUER_CONFIRMACAO".to_string(),
                 ultimo_estado: Some(ultimo_estado),
                 mensagem: Some("O resultado do envio anterior é incerto: a mensagem pode já ter chegado ao cliente. Confirme para enviar de novo.".to_string()),
+                senha_retida: false,
             }));
         }
         numero = ultimo_numero + 1;
         origem = "REENVIO_MANUAL";
     }
 
-    let nome = equipamento.nome_destinatario.clone();
+    // O orçamento vai ao contato resolvido pelo portal; o aviso de pronto mantém a regra anterior.
+    let destinatario = if matches!(tipo, TipoEnvio::OrcamentoInformativo) {
+        Some(resolver_destinatario_orcamento(&mut **tx, empresa_id, input.equipamento_id).await?)
+    } else {
+        None
+    };
+    let (nome, telefone_bruto) = match &destinatario {
+        Some(d) => (d.nome.clone(), d.telefone.clone()),
+        None => (equipamento.nome_destinatario.clone(), equipamento.telefone.clone()),
+    };
 
     // Destino e configuração antes de gerar qualquer link.
-    let telefone = match equipamento.telefone.as_deref().map(normalizar_telefone_br) {
+    let telefone = match telefone_bruto.as_deref().map(normalizar_telefone_br) {
         Some(Ok(telefone)) => telefone,
         Some(Err(_)) | None => {
             return registrar_falha_imediata(
@@ -579,15 +665,48 @@ async fn reservar(
             .map_err(map)?;
             let snapshot: serde_json::Value =
                 serde_json::from_str(&snapshot_texto).map_err(|_| "Versão do orçamento inválida.".to_string())?;
+            let d = destinatario.as_ref().ok_or_else(|| "Destinatário do orçamento não resolvido.".to_string())?;
+            let nivel = match d.portal_acesso.as_deref() {
+                Some("DECIDIR") => Some(NivelPortal::Decidir),
+                Some("ACOMPANHAR") => Some(NivelPortal::Acompanhar),
+                _ => None,
+            };
+            let acesso = match (&input.senha_portal, nivel) {
+                (Some(senha), Some(nivel)) if d.contato_id.is_some() && equipamento.portal_ativo => {
+                    AcessoMensagem::Portal {
+                        nivel,
+                        usuario: d.cliente_documento.clone(),
+                        senha: Some(senha.expor().to_string()),
+                    }
+                }
+                (_, Some(nivel)) if equipamento.portal_ativo && d.tem_senha => AcessoMensagem::Portal {
+                    nivel,
+                    usuario: d.cliente_documento.clone(),
+                    senha: None,
+                },
+                _ => AcessoMensagem::Nenhum,
+            };
+            // Fila central: a senha em claro não pode ser gravada; o técnico faz o envio manual.
+            if central_retem_senha(central, &acesso) {
+                return Ok(Reserva::Recusada(ResultadoEnvioWhatsapp {
+                    pedido_id: None,
+                    tentativa_id: None,
+                    estado: "FALHOU".to_string(),
+                    ultimo_estado: None,
+                    mensagem: Some("O envio central não leva a senha do portal. Use o envio manual.".to_string()),
+                    senha_retida: true,
+                }));
+            }
             mensagem_informativo(
                 &nome,
+                Some((&d.cliente_nome, &d.cliente_documento)),
                 &equipamento.marca,
                 &equipamento.modelo,
                 &equipamento.serial,
                 &snapshot,
                 valor,
                 equipamento.prazo_aprovacao.as_deref(),
-                equipamento.destinatario_no_portal,
+                &acesso,
             )
         }
     };
@@ -623,6 +742,7 @@ async fn reservar(
                 estado: "EM_ANDAMENTO".to_string(),
                 ultimo_estado: Some("PREPARANDO".to_string()),
                 mensagem: Some("Já existe um envio em andamento para este evento.".to_string()),
+                senha_retida: false,
             }));
         }
         Err(erro) => return Err(map(erro)),
@@ -636,6 +756,7 @@ async fn reservar(
             estado: "ENFILEIRADA".to_string(),
             ultimo_estado: None,
             mensagem: Some("Mensagem na fila; será enviada em instantes.".to_string()),
+            senha_retida: false,
         }));
     };
 
@@ -682,6 +803,7 @@ async fn registrar_falha_imediata(
     Ok(Reserva::FalhaImediata {
         resposta: ResultadoEnvioWhatsapp {
             pedido_id: Some(pedido_id),
+            senha_retida: false,
             tentativa_id: Some(tentativa_id),
             estado: "FALHOU".to_string(),
             ultimo_estado: None,
@@ -740,6 +862,10 @@ pub async fn solicitar_envio_whatsapp(input: SolicitarEnvioInput) -> Result<Resu
     let mut tx = pool.begin().await.map_err(super::operator_errors::mapear_erro_sql)?;
     let reserva = reservar(&mut tx, empresa_id, actor.id, tipo, &input).await;
     let reserva = match reserva {
+        Ok(Reserva::Recusada(resposta)) => {
+            let _ = tx.rollback().await;
+            return Ok(resposta);
+        }
         Ok(reserva) => {
             tx.commit().await.map_err(super::operator_errors::mapear_erro_sql)?;
             reserva
@@ -753,6 +879,7 @@ pub async fn solicitar_envio_whatsapp(input: SolicitarEnvioInput) -> Result<Resu
 
     let preparado = match reserva {
         Reserva::Resposta(resposta) => return Ok(resposta),
+        Reserva::Recusada(resposta) => return Ok(resposta),
         Reserva::FalhaImediata { resposta, nome_destinatario, telefone_ou_vazio, erro } => {
             registrar_historico(
                 &pool, empresa_id, input.equipamento_id, tipo, &nome_destinatario,
@@ -766,7 +893,7 @@ pub async fn solicitar_envio_whatsapp(input: SolicitarEnvioInput) -> Result<Resu
     };
 
     // A chamada ao provedor acontece fora de qualquer transação.
-    let segredos: [&str; 0] = [];
+    let segredos: [&str; 1] = [input.senha_portal.as_ref().map(SenhaPortal::expor).unwrap_or_default()];
     let resultado = despachar_evolution(&preparado.config, &preparado.telefone, &preparado.mensagem.texto).await;
     let (estado, mensagem_externa, erro) = match resultado {
         Ok(id_externo) => ("ENVIADA", id_externo, None),
@@ -806,6 +933,7 @@ pub async fn solicitar_envio_whatsapp(input: SolicitarEnvioInput) -> Result<Resu
         estado: estado.to_string(),
         ultimo_estado: None,
         mensagem: erro,
+        senha_retida: false,
     };
     auditar(&actor, tipo, &resposta, input.equipamento_id).await;
     info!("Envio de WhatsApp {} concluído: {}", tipo.como_texto(), estado);
@@ -864,6 +992,18 @@ mod tests {
         assert!(TipoEnvio::parse("").is_err());
     }
 
+    fn portal(nivel: NivelPortal, senha: Option<&str>) -> AcessoMensagem {
+        AcessoMensagem::Portal {
+            nivel,
+            usuario: "12.345.678/0001-90".to_string(),
+            senha: senha.map(str::to_string),
+        }
+    }
+
+    fn vazio() -> serde_json::Value {
+        serde_json::json!({ "servicos": [], "pecas": [] })
+    }
+
     #[test]
     fn informative_message_is_built_from_the_frozen_snapshot() {
         let snapshot = serde_json::json!({
@@ -873,7 +1013,10 @@ mod tests {
             }],
             "pecas": []
         });
-        let mensagem = mensagem_informativo("Maria", "Zebra", "ZT230", "SN1", &snapshot, 40.0, Some("2026-10-30"), false);
+        let mensagem = mensagem_informativo(
+            "Maria", None, "Zebra", "ZT230", "SN1", &snapshot, 40.0, Some("2026-10-30"), &AcessoMensagem::Nenhum,
+        );
+        assert!(mensagem.texto.contains("Olá, Maria!"));
         assert!(mensagem.texto.contains("• Troca da cabeça: R$ 20,00"));
         assert!(mensagem.texto.contains("• Cabeça (x2): R$ 20,00"));
         assert!(mensagem.texto.contains("*TOTAL: R$ 40,00*"));
@@ -882,18 +1025,85 @@ mod tests {
     }
 
     #[test]
-    fn budget_message_points_to_the_portal_only_for_contacts_who_can_answer_there() {
-        let snapshot = serde_json::json!({ "servicos": [], "pecas": [] });
-        let portal = mensagem_informativo("Ana", "Zebra", "ZT230", "SN1", &snapshot, 40.0, None, true);
-        assert!(portal.texto.contains("https://status.bmitag.com.br"));
-        assert!(portal.texto.contains("CPF/CNPJ do cadastro e a sua senha"));
-        assert!(!portal.texto.contains("responda *APROVADO*"));
-        assert_eq!(portal.template, "orcamento_portal");
+    fn budget_without_portal_access_asks_for_aprovado() {
+        let m = mensagem_informativo(
+            "Ana", Some(("Gráfica X", "12.345.678/0001-90")), "Zebra", "ZT230", "SN1", &vazio(), 40.0, None,
+            &AcessoMensagem::Nenhum,
+        );
+        assert!(m.texto.contains("Empresa: Gráfica X — CNPJ/CPF 12.345.678/0001-90"));
+        assert!(m.texto.contains("Para aprovar, responda *APROVADO*."));
+        assert!(!m.texto.contains("status.bmitag.com.br"));
+        assert_eq!(m.template, "orcamento_informativo");
+        assert_eq!(m.parametros.len(), 4);
+    }
 
-        let sem_portal = mensagem_informativo("Ana", "Zebra", "ZT230", "SN1", &snapshot, 40.0, None, false);
-        assert!(sem_portal.texto.contains("responda *APROVADO*"));
-        assert!(!sem_portal.texto.contains("status.bmitag.com.br"));
-        assert_eq!(sem_portal.template, "orcamento_informativo");
+    #[test]
+    fn decision_portal_message_has_new_password_in_text_but_not_in_history() {
+        let senha = "Kp7m-Tx4q-9Wbd";
+        let m = mensagem_informativo(
+            "Ana", Some(("Gráfica X", "12.345.678/0001-90")), "Zebra", "ZT230", "SN1", &vazio(), 40.0,
+            Some("2026-10-29"), &portal(NivelPortal::Decidir, Some(senha)),
+        );
+        assert!(m.texto.contains("https://status.bmitag.com.br"));
+        assert!(m.texto.contains("Usuário: 12.345.678/0001-90"));
+        assert!(m.texto.contains(&format!("Senha: {senha}")));
+        assert!(m.texto.contains("Para aceitar ou recusar"));
+        assert!(m.texto.contains("Guarde a senha e não a compartilhe."));
+        assert!(!m.historico.contains(senha));
+        assert!(m.historico.contains(&format!("Senha: {SENHA_MASCARADA}")));
+        assert_eq!(m.template, "orcamento_portal_v2");
+        assert_eq!(
+            m.parametros,
+            vec!["Ana", "Gráfica X", "Zebra ZT230", "R$ 40,00", "29/10/2026", "12.345.678/0001-90", senha]
+        );
+    }
+
+    #[test]
+    fn existing_password_is_never_shown_and_uses_the_approved_template() {
+        let m = mensagem_informativo(
+            "Ana", Some(("Gráfica X", "12.345.678/0001-90")), "Zebra", "ZT230", "SN1", &vazio(), 40.0, None,
+            &portal(NivelPortal::Decidir, None),
+        );
+        assert!(m.texto.contains("Senha: a que você já tem (esqueceu? fale com a nossa equipe)"));
+        assert!(!m.texto.contains("Guarde a senha"));
+        assert_eq!(m.template, "orcamento_portal");
+        assert_eq!(m.parametros, vec!["Ana", "Zebra ZT230", "R$ 40,00", ""]);
+        assert!(m.historico.contains("a que você já tem"));
+    }
+
+    #[test]
+    fn follow_only_variant_still_asks_for_aprovado() {
+        let m = mensagem_informativo(
+            "Ana", Some(("Gráfica X", "12.345.678/0001-90")), "Zebra", "ZT230", "SN1", &vazio(), 40.0, None,
+            &portal(NivelPortal::Acompanhar, Some("Kp7m-Tx4q-9Wbd")),
+        );
+        let sem_senha_nova = mensagem_informativo(
+            "Ana", Some(("Gráfica X", "12.345.678/0001-90")), "Zebra", "ZT230", "SN1", &vazio(), 40.0, None,
+            &portal(NivelPortal::Acompanhar, None),
+        );
+        assert_eq!(sem_senha_nova.template, "orcamento_informativo");
+        assert_eq!(sem_senha_nova.parametros.len(), 4);
+        assert!(m.texto.contains("Você pode acompanhar o orçamento no *Portal das Impressoras*"));
+        assert!(m.texto.contains("Para aprovar, responda *APROVADO*."));
+        assert!(!m.texto.contains("Para aceitar ou recusar"));
+        assert!(!m.historico.contains("Kp7m-Tx4q-9Wbd"));
+        assert_eq!(m.template, "orcamento_portal_acompanhar_v2");
+        assert_eq!(m.parametros.len(), 7);
+    }
+
+    #[test]
+    fn central_mode_withholds_only_a_new_password() {
+        assert!(central_retem_senha(true, &portal(NivelPortal::Decidir, Some("x"))));
+        assert!(!central_retem_senha(true, &portal(NivelPortal::Decidir, None)));
+        assert!(!central_retem_senha(true, &AcessoMensagem::Nenhum));
+        assert!(!central_retem_senha(false, &portal(NivelPortal::Decidir, Some("x"))));
+    }
+
+    #[test]
+    fn password_is_scrubbed_from_provider_errors() {
+        let erro = sanear_erro("rejeitado: Senha: Kp7m-Tx4q-9Wbd", &["Kp7m-Tx4q-9Wbd"]);
+        assert!(!erro.contains("Kp7m-Tx4q-9Wbd"));
+        assert_eq!(format!("{:?}", serde_json::from_str::<SenhaPortal>("\"segredo\"").unwrap()), "***");
     }
 
     #[test]

@@ -15,8 +15,9 @@ use crate::commands::types::{
 };
 use crate::commands::auth::{
     current_session_profile, record_security_event, require_active_session_company_id,
-    require_permission,
+    require_any_permission, require_permission, require_sensitive_access,
     SecurityProfileSummary, PERMISSION_DELETE_RECORDS, PERMISSION_FINANCIAL_ACTIONS,
+    PERMISSION_PREPARE_QUOTES,
 };
 use crate::db::get_pool;
 use crate::commands::orcamento_estoque::{aplicar_decisoes, normalizar_servicos, parse_servicos};
@@ -204,6 +205,18 @@ fn status_change_requires_sensitive_access(
         )
 }
 
+fn status_change_allows_quote_preparation(
+    atual: &str,
+    novo: &str,
+    is_correction: bool,
+    valor_final: Option<f64>,
+) -> bool {
+    !is_correction
+        && valor_final.is_none()
+        && novo == "AGUARDANDO_APROVACAO"
+        && matches!(atual, "VERIFICADO" | "AGUARDANDO_APROVACAO")
+}
+
 fn is_regular_status_transition(from: &str, to: &str) -> bool {
     from == to
         || matches!(
@@ -343,7 +356,24 @@ async fn resolve_responsavel_snapshot(
         .cliente_id
         .ok_or_else(|| "cliente_id é obrigatório ao associar um contato responsável.".to_string())?;
 
-    let snapshot: Option<(String, Option<String>, Option<String>)> = sqlx::query_as(
+    let snapshot = buscar_contato_responsavel_ativo(pool, contact_id, empresa_id, cliente_id).await?;
+
+    let Some((nome, email, telefone)) = snapshot else {
+        return Err("Contato responsável não encontrado, inativo ou incompatível com o cliente/empresa.".to_string());
+    };
+
+    Ok((Some(contact_id), Some(nome), email, telefone))
+}
+
+/// Busca nome/email/telefone de um contato ativo do cliente, na empresa informada.
+/// Retorna `None` se o contato não existir, estiver inativo ou pertencer a outro cliente/empresa.
+async fn buscar_contato_responsavel_ativo(
+    pool: &PgPool,
+    contact_id: i32,
+    empresa_id: i32,
+    cliente_id: i32,
+) -> Result<Option<(String, Option<String>, Option<String>)>, String> {
+    sqlx::query_as(
         "SELECT nome, email, telefone
          FROM cliente_contatos
          WHERE id = $1 AND empresa_id = $2 AND cliente_id = $3 AND ativo = true",
@@ -353,13 +383,7 @@ async fn resolve_responsavel_snapshot(
     .bind(cliente_id)
     .fetch_optional(pool)
     .await
-    .map_err(super::operator_errors::mapear_erro_sql)?;
-
-    let Some((nome, email, telefone)) = snapshot else {
-        return Err("Contato responsável não encontrado, inativo ou incompatível com o cliente/empresa.".to_string());
-    };
-
-    Ok((Some(contact_id), Some(nome), email, telefone))
+    .map_err(super::operator_errors::mapear_erro_sql)
 }
 
 async fn require_cliente_da_empresa(
@@ -966,6 +990,80 @@ pub async fn atualizar_equipamento(id: i32, input: EquipamentoInput) -> Result<E
     buscar_equipamento(id).await
 }
 
+/// Define o responsável de um equipamento a partir de um contato ativo do cliente da OS.
+/// O snapshot (nome/email/telefone) é copiado do contato no momento da operação.
+#[tauri::command]
+#[instrument(skip_all, fields(equipamento_id = equipamento_id, contato_id = contato_id))]
+pub async fn definir_responsavel_equipamento(
+    equipamento_id: i32,
+    contato_id: i32,
+    expected_updated_em: String,
+) -> Result<EquipamentoRow, String> {
+    debug!("Definindo responsável do equipamento {}", equipamento_id);
+    let actor = require_sensitive_access()?;
+    let pool = get_pool().await.map_err(|e| e.to_string())?;
+    let empresa_id = require_active_session_company_id(&pool).await?;
+    let concurrency_token = required_concurrency_token(Some(expected_updated_em.as_str()), "equipamento")?;
+
+    let cliente_id: Option<i32> = sqlx::query_scalar(
+        "SELECT cliente_id FROM equipamentos WHERE id = $1 AND empresa_id = $2",
+    )
+    .bind(equipamento_id)
+    .bind(empresa_id)
+    .fetch_optional(&pool)
+    .await
+    .map_err(super::operator_errors::mapear_erro_sql)?
+    .ok_or_else(|| "Equipamento não encontrado.".to_string())?;
+
+    let cliente_id = cliente_id
+        .ok_or_else(|| "O equipamento não tem cliente associado; não é possível definir um responsável.".to_string())?;
+
+    let snapshot = buscar_contato_responsavel_ativo(&pool, contato_id, empresa_id, cliente_id).await?;
+    let Some((nome, email, telefone)) = snapshot else {
+        return Err("Contato responsável não encontrado, inativo ou incompatível com o cliente/empresa.".to_string());
+    };
+
+    let updated_rows = sqlx::query(
+        r#"
+        UPDATE equipamentos SET
+            responsavel_contato_id = $1, responsavel_nome = $2,
+            responsavel_email = $3, responsavel_telefone = $4,
+            atualizado_em = NOW()
+        WHERE id = $5 AND atualizado_em = $6::TIMESTAMPTZ
+          AND empresa_id = $7
+        "#,
+    )
+    .bind(contato_id)
+    .bind(nome)
+    .bind(email)
+    .bind(telefone)
+    .bind(equipamento_id)
+    .bind(concurrency_token)
+    .bind(empresa_id)
+    .execute(&pool)
+    .await
+    .map_err(|e| {
+        error!("Erro ao definir responsável do equipamento {}: {}", equipamento_id, e);
+        super::operator_errors::erro_sql_para_operador(&e)
+    })?
+    .rows_affected();
+
+    if updated_rows == 0 {
+        return Err(concurrency_conflict_message("o equipamento"));
+    }
+
+    record_security_event(
+        "EQUIPMENT_RESPONSIBLE_LINKED",
+        Some(&actor),
+        format!("equipamento_id={}; contato_id={}", equipamento_id, contato_id),
+        true,
+    )
+    .await;
+
+    info!("Responsável do equipamento {} definido", equipamento_id);
+    buscar_equipamento(equipamento_id).await
+}
+
 /// Deletar equipamento por ID.
 #[tauri::command]
 #[instrument(skip_all, fields(id = id))]
@@ -1049,7 +1147,16 @@ pub async fn atualizar_status_equipamento(
         prazo_aprovacao_value.as_deref(),
         valor_final,
     ) {
-        Some(require_permission(PERMISSION_FINANCIAL_ACTIONS)?)
+        if status_change_allows_quote_preparation(
+            &normalized_current_status,
+            &normalized_status,
+            is_correction,
+            valor_final,
+        ) {
+            Some(require_any_permission(&[PERMISSION_FINANCIAL_ACTIONS, PERMISSION_PREPARE_QUOTES])?)
+        } else {
+            Some(require_permission(PERMISSION_FINANCIAL_ACTIONS)?)
+        }
     } else {
         None
     };
@@ -1410,6 +1517,18 @@ mod tests {
             None,
         ));
         assert!(!status_change_requires_sensitive_access("RECEBIDO", None, None, None));
+    }
+
+    #[test]
+    fn quote_preparation_allows_only_verified_to_awaiting_approval_without_final_value() {
+        assert!(status_change_allows_quote_preparation("VERIFICADO", "AGUARDANDO_APROVACAO", false, None));
+        assert!(status_change_allows_quote_preparation("AGUARDANDO_APROVACAO", "AGUARDANDO_APROVACAO", false, None));
+        assert!(!status_change_allows_quote_preparation("VERIFICADO", "AGUARDANDO_APROVACAO", true, None));
+        assert!(!status_change_allows_quote_preparation("VERIFICADO", "AGUARDANDO_APROVACAO", false, Some(10.0)));
+        assert!(!status_change_allows_quote_preparation("VERIFICADO", "APROVADO", false, None));
+        assert!(!status_change_allows_quote_preparation("VERIFICADO", "REPROVADO", false, None));
+        assert!(!status_change_allows_quote_preparation("VERIFICADO", "ENTREGUE", false, None));
+        assert!(!status_change_allows_quote_preparation("EM_VERIFICACAO", "AGUARDANDO_APROVACAO", false, None));
     }
 
     #[test]

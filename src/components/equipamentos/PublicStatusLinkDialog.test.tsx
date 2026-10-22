@@ -10,6 +10,13 @@ const mocks = vi.hoisted(() => ({
   qr: vi.fn(),
   enviarEmail: vi.fn(),
   enviarWhatsApp: vi.fn(),
+  whatsappDisponivel: true,
+}));
+
+vi.mock("@/lib/whatsapp-automatico", () => ({
+  get WHATSAPP_AUTOMATICO_DISPONIVEL() {
+    return mocks.whatsappDisponivel;
+  },
 }));
 
 vi.mock("@/hooks/useSensitiveAccess", () => ({
@@ -41,6 +48,7 @@ const equipamento = {
 describe("PublicStatusLinkDialog", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mocks.whatsappDisponivel = true;
     mocks.obter.mockResolvedValue(null);
     mocks.criar.mockResolvedValue({ url: "https://status.test/link", expiresAt: null });
     mocks.qr.mockResolvedValue("<svg></svg>");
@@ -65,5 +73,17 @@ describe("PublicStatusLinkDialog", () => {
     expect(mocks.ensure).toHaveBeenCalledWith(expect.objectContaining({ permission: "MANAGE_STATUS_LINKS" }));
     expect(mocks.ensure).toHaveBeenCalledWith(expect.objectContaining({ title: "Enviar acompanhamento por email" }));
     expect(mocks.ensure).toHaveBeenCalledWith(expect.objectContaining({ title: "Enviar acompanhamento por WhatsApp" }));
+  });
+
+  it("com o WhatsApp automático indisponível, o botão fica desativado e o aviso aparece", async () => {
+    mocks.whatsappDisponivel = false;
+    render(<PublicStatusLinkDialog equipamento={equipamento} open onOpenChange={vi.fn()} />);
+    fireEvent.click(await screen.findByRole("button", { name: "Criar link de acompanhamento" }));
+    await waitFor(() => expect(mocks.criar).toHaveBeenCalledWith(7));
+
+    const botao = await screen.findByRole("button", { name: "Enviar por WhatsApp" });
+    expect(botao).toBeDisabled();
+    expect(screen.getByText(/envio automático por WhatsApp ainda não está disponível/i)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Enviar por email" })).toBeEnabled();
   });
 });

@@ -7,7 +7,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { ErrorAlert } from "@/components/ui/error-alert";
 import { useNotification } from "@/hooks/useNotification";
 import { db } from "@/lib/db";
-import { clienteContatoSchema, formatarTelefone, type ClienteContatoFormData } from "@/lib/validations";
+import { celularValido, clienteContatoSchema, formatarTelefone, type ClienteContatoFormData } from "@/lib/validations";
 import type { Cliente, ClienteContato } from "@/types";
 
 interface ContatoResponsavelSelectorProps {
@@ -18,6 +18,8 @@ interface ContatoResponsavelSelectorProps {
   disabled?: boolean;
   /** Rótulo do campo; no equipamento é o responsável por ele. */
   titulo?: string;
+  /** Pré-seleciona o primeiro contato ativo com celular válido, uma vez por cliente, quando não há responsável. */
+  preSelecionar?: boolean;
 }
 
 export function ContatoResponsavelSelector({
@@ -27,6 +29,7 @@ export function ContatoResponsavelSelector({
   onChange,
   disabled = false,
   titulo = "Responsável pelo equipamento",
+  preSelecionar = false,
 }: ContatoResponsavelSelectorProps) {
   const [contatos, setContatos] = useState<ClienteContato[]>([]);
   const [busca, setBusca] = useState("");
@@ -37,7 +40,11 @@ export function ContatoResponsavelSelector({
   const [erroNovo, setErroNovo] = useState<string | null>(null);
   const [salvando, setSalvando] = useState(false);
   const clienteAnterior = useRef<number | undefined>(cliente?.id);
+  const valorAtual = useRef<ClienteContato | null>(value);
+  const preSelecionadosPara = useRef<Set<number>>(new Set());
   const { error: showError } = useNotification();
+
+  valorAtual.current = value;
 
   useEffect(() => {
     if (clienteAnterior.current !== cliente?.id) {
@@ -51,10 +58,19 @@ export function ContatoResponsavelSelector({
       return;
     }
     let ativo = true;
+    const clienteId = cliente.id;
     setCarregando(true);
     setErro(null);
-    db.listarClienteContatos(cliente.id, empresaId)
-      .then((items) => { if (ativo) setContatos(items); })
+    db.listarClienteContatos(clienteId, empresaId)
+      .then((items) => {
+        if (!ativo) return;
+        setContatos(items);
+        if (preSelecionar && !valorAtual.current && !preSelecionadosPara.current.has(clienteId)) {
+          preSelecionadosPara.current.add(clienteId);
+          const primeiro = items.find((contato) => contato.ativo && celularValido(contato.telefone ?? ""));
+          if (primeiro) onChange(primeiro);
+        }
+      })
       .catch((cause) => { if (ativo) { setContatos([]); setErro(String(cause)); } })
       .finally(() => { if (ativo) setCarregando(false); });
     return () => { ativo = false; };

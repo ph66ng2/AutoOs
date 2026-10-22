@@ -621,6 +621,12 @@ async fn cleanup_smoke_data(pool: &PgPool, cliente_id: i32, equipamento_id: i32,
         .await
         .context("Falha ao remover equipamento do smoke")?;
 
+    sqlx::query("DELETE FROM cliente_contatos WHERE cliente_id = $1")
+        .bind(cliente_id)
+        .execute(&mut *tx)
+        .await
+        .context("Falha ao remover contatos do cliente do smoke")?;
+
     sqlx::query("DELETE FROM clientes WHERE id = $1")
         .bind(cliente_id)
         .execute(&mut *tx)

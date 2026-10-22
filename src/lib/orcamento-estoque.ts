@@ -5,6 +5,26 @@ export function orcamentoJaAprovado(status: string): boolean {
   return ["APROVADO", "EM_MANUTENCAO", "AGUARDANDO_PECA", "PRONTO", "ENTREGUE"].includes(status);
 }
 
+export function orcamentoEmElaboracao(status: string): boolean {
+  return ["RECEBIDO", "EM_VERIFICACAO", "VERIFICADO", "AGUARDANDO_APROVACAO"].includes(status);
+}
+
+/**
+ * Espelha `status_change_allows_quote_preparation` (equipamentos.rs): a transição que "Elaborar e enviar
+ * orçamentos" cobre sozinha. Qualquer outra mudança sensível continua exigindo a permissão financeira.
+ */
+export function transicaoElaboraOrcamento(
+  statusAtual: string,
+  novoStatus: string,
+  correcao: boolean,
+  valorFinal?: number | null,
+): boolean {
+  return !correcao
+    && !valorFinal
+    && novoStatus === "AGUARDANDO_APROVACAO"
+    && (statusAtual === "VERIFICADO" || statusAtual === "AGUARDANDO_APROVACAO");
+}
+
 /** Categoria do estoque (Insumos) oferecida em "Peças vinculadas". */
 export const CATEGORIA_PECAS_ORCAMENTO = "PEÇA";
 

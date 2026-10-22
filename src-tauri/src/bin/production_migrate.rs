@@ -8,8 +8,8 @@ use url::Url;
 
 static MIGRATOR: Migrator = sqlx::migrate!("./migrations");
 
-const REQUIRED_PROMOTION_MIGRATIONS: [i64; 15] = [27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41];
-const EXPECTED_MIGRATION_COUNT: usize = 41;
+const REQUIRED_PROMOTION_MIGRATIONS: [i64; 16] = [27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42];
+const EXPECTED_MIGRATION_COUNT: usize = 42;
 const LAST_REQUIRED_APPLIED_MIGRATION: i64 = 28;
 
 fn required_env(name: &str) -> Result<String> {
@@ -470,7 +470,7 @@ async fn required_promotion_migrations_already_applied(pool: &PgPool) -> Result<
     .bind(REQUIRED_PROMOTION_MIGRATIONS.as_slice())
     .fetch_one(pool)
     .await
-    .context("não foi possível consultar o status inicial das migrations 0027–0041")?;
+    .context("não foi possível consultar o status inicial das migrations 0027–0042")?;
     Ok(applied_count == REQUIRED_PROMOTION_MIGRATIONS.len() as i64)
 }
 

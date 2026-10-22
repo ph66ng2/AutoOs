@@ -8,7 +8,9 @@
 //! ║  - deletar_cliente: DELETE por ID                            ║
 //! ╚══════════════════════════════════════════════════════════════╝
 
-use crate::commands::types::{ClienteInput, ClienteRow, PaginatedResult, CLIENTE_SELECT};
+use crate::commands::types::{
+    ClienteInput, ClienteRow, ContatoInicialInput, PaginatedResult, CLIENTE_SELECT,
+};
 use crate::commands::auth::{
     record_security_event, require_active_session_company_id, require_permission,
     PERMISSION_DELETE_RECORDS,
@@ -32,6 +34,25 @@ fn digits_only(value: Option<&str>) -> String {
         .chars()
         .filter(|character| character.is_ascii_digit())
         .collect()
+}
+
+const MSG_CONTATO_OBRIGATORIO: &str = "Informe um contato com celular para receber orçamentos.";
+
+/// Valida o contato inicial de cliente novo. Devolve (nome, telefone só com dígitos, e-mail).
+fn validar_contato_inicial(
+    contato: Option<&ContatoInicialInput>,
+) -> Result<(String, String, Option<String>), String> {
+    let contato = contato.ok_or_else(|| MSG_CONTATO_OBRIGATORIO.to_string())?;
+    let nome = contato.nome.trim();
+    let telefone = digits_only(Some(contato.telefone.as_str()));
+    if nome.is_empty() || !(10..=11).contains(&telefone.len()) {
+        return Err(MSG_CONTATO_OBRIGATORIO.to_string());
+    }
+    Ok((
+        nome.to_string(),
+        telefone,
+        optional_text(contato.email.as_deref()),
+    ))
 }
 
 fn normalize_tipo_pessoa(tipo_pessoa: Option<&str>, documento: Option<&str>, cpf_cnpj: Option<&str>) -> Result<String, String> {
@@ -373,6 +394,22 @@ pub async fn criar_cliente(input: ClienteInput) -> Result<ClienteRow, String> {
         }
     }
 
+    let contato = if tipo_pessoa == "PJ" {
+        Some(validar_contato_inicial(input.contato_inicial.as_ref())?)
+    } else {
+        let telefone = digits_only(Some(input.telefone.as_str()));
+        if (10..=11).contains(&telefone.len()) {
+            Some((
+                nome_base.clone(),
+                telefone,
+                optional_text(input.email.as_deref()),
+            ))
+        } else {
+            None
+        }
+    };
+
+    let mut tx = pool.begin().await.map_err(|e| e.to_string())?;
     let row = sqlx::query(
         r#"
         INSERT INTO clientes (
@@ -408,12 +445,13 @@ pub async fn criar_cliente(input: ClienteInput) -> Result<ClienteRow, String> {
     .bind(input.receber_whatsapp.unwrap_or(true))
     .bind(optional_text(input.observacoes.as_deref()))
     .bind(input.exige_ordem_compra.unwrap_or(false))
-    .fetch_one(&pool)
+    .fetch_one(&mut *tx)
     .await;
     let row = match row {
         Ok(row) => row,
         Err(e) => {
             error!("Erro ao criar cliente: {}", e);
+            let _ = tx.rollback().await;
             return Err(duplicate_client_document_message(&e, &pool, empresa_id, &document_digits, None)
                 .await
                 .unwrap_or_else(|| super::operator_errors::erro_sql_para_operador(&e)));
@@ -421,6 +459,26 @@ pub async fn criar_cliente(input: ClienteInput) -> Result<ClienteRow, String> {
     };
 
     let id: i32 = row.get("id");
+    if let Some((nome, telefone, email)) = contato {
+        let inserido = sqlx::query(
+            "INSERT INTO cliente_contatos (empresa_id, cliente_id, nome, email, telefone)
+             VALUES ($1, $2, $3, $4, $5)",
+        )
+        .bind(empresa_id)
+        .bind(id)
+        .bind(nome)
+        .bind(email)
+        .bind(telefone)
+        .execute(&mut *tx)
+        .await;
+        if let Err(e) = inserido {
+            error!("Erro ao criar contato inicial do cliente {}: {}", id, e);
+            let _ = tx.rollback().await;
+            return Err(super::operator_errors::erro_sql_para_operador(&e));
+        }
+    }
+    tx.commit().await.map_err(|e| e.to_string())?;
+
     info!("Cliente criado: id={}", id);
     buscar_cliente(id).await
 }
@@ -557,4 +615,39 @@ pub async fn deletar_cliente(id: i32) -> Result<bool, String> {
         error!("Cliente {} não encontrado para deleção", id);
     }
     Ok(deleted)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn contato(nome: &str, telefone: &str) -> ContatoInicialInput {
+        ContatoInicialInput {
+            nome: nome.to_string(),
+            telefone: telefone.to_string(),
+            email: Some(" a@b.com ".to_string()),
+        }
+    }
+
+    #[test]
+    fn contato_inicial_ausente_e_rejeitado() {
+        assert_eq!(validar_contato_inicial(None), Err(MSG_CONTATO_OBRIGATORIO.to_string()));
+    }
+
+    #[test]
+    fn contato_inicial_sem_nome_ou_telefone_curto_e_rejeitado() {
+        assert!(validar_contato_inicial(Some(&contato("  ", "11999999999"))).is_err());
+        assert!(validar_contato_inicial(Some(&contato("Ana", "119999999"))).is_err());
+        assert!(validar_contato_inicial(Some(&contato("Ana", "119999999999"))).is_err());
+    }
+
+    #[test]
+    fn contato_inicial_valido_normaliza_campos() {
+        let (nome, tel, email) =
+            validar_contato_inicial(Some(&contato(" Ana ", "(11) 99999-9999"))).unwrap();
+        assert_eq!(nome, "Ana");
+        assert_eq!(tel, "11999999999");
+        assert_eq!(email.as_deref(), Some("a@b.com"));
+        assert!(validar_contato_inicial(Some(&contato("Ana", "1133334444"))).is_ok());
+    }
 }

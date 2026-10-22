@@ -168,6 +168,15 @@ export function formatarCEP(valor: string): string {
 export type EquipamentoFormData = z.infer<typeof equipamentoSchema>;
 
 /**
+ * Celular com DDD: 10 ou 11 dígitos após remover não-dígitos.
+ * Conecta-se a: clienteSchema (contato inicial de PJ)
+ */
+export function celularValido(valor: string): boolean {
+  const digitos = valor.replace(/\D/g, "");
+  return digitos.length === 10 || digitos.length === 11;
+}
+
+/**
  * Schema Zod para formulário de cliente (PF e PJ).
  * Usa superRefine para validar condicionalmente:
  * - PF (≤11 díg): nome obrigatório
@@ -231,6 +240,11 @@ uf: z.string().max(2).optional().or(z.literal("")),
    observacoes: z.string().optional().or(z.literal("")),
    // Portal do Cliente: exige o número da OC para aceitar orçamentos
    exige_ordem_compra: z.boolean().optional(),
+   // Contato inicial obrigatório para PJ (validado no superRefine)
+   exigir_contato_inicial: z.boolean().optional(),
+   contato_nome: z.string().optional(),
+   contato_telefone: z.string().optional(),
+   contato_email: z.string().optional(),
  }).superRefine((data, ctx) => {
    const numeros = data.documento.replace(/\D/g, "");
    if (numeros.length === 11) {
@@ -250,6 +264,33 @@ uf: z.string().max(2).optional().or(z.literal("")),
          message: "Razão Social é obrigatória para Pessoa Jurídica",
          path: ["razao_social"],
        });
+     }
+   }
+
+   // Contato inicial: só quando a flag está ligada e o cadastro é PJ
+   if (data.tipo_pessoa === "PJ" && data.exigir_contato_inicial) {
+     if (!data.contato_nome || data.contato_nome.trim().length < 2) {
+       ctx.addIssue({
+         code: z.ZodIssueCode.custom,
+         message: "Informe o nome do contato.",
+         path: ["contato_nome"],
+       });
+     }
+     if (!celularValido(data.contato_telefone ?? "")) {
+       ctx.addIssue({
+         code: z.ZodIssueCode.custom,
+         message: "Informe o celular do contato com DDD.",
+         path: ["contato_telefone"],
+       });
+     }
+     if (data.contato_email && data.contato_email.trim() !== "") {
+       if (!z.string().email().safeParse(data.contato_email.trim()).success) {
+         ctx.addIssue({
+           code: z.ZodIssueCode.custom,
+           message: "E-mail do contato inválido.",
+           path: ["contato_email"],
+         });
+       }
      }
    }
 

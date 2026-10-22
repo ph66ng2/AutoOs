@@ -18,7 +18,7 @@
  */
 import { useState, useEffect, useCallback } from "react";
 import { db } from "@/lib/db";
-import type { Cliente } from "@/types";
+import type { Cliente, ContatoInicialInput } from "@/types";
 
 /**
  * Parâmetros de pesquisa aceitos pelo hook useClientes.
@@ -89,9 +89,9 @@ export function useClientes(params?: UseClientesParams) {
    *          O `id` retornado é utilizado por ClienteSelector.tsx para
    *          vincular o cliente recém-criado a um equipamento.
    */
-  const criar = async (cliente: Omit<Cliente, "id">) => {
+  const criar = async (cliente: Omit<Cliente, "id">, contatoInicial?: ContatoInicialInput) => {
     try {
-      const criado = await db.criarCliente(cliente);
+      const criado = await db.criarCliente(cliente, contatoInicial);
       await carregar();
       return { sucesso: true, id: criado.id! };
     } catch (err: any) {

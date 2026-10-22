@@ -5,12 +5,17 @@
 //! portal com login (CPF/CNPJ + senha ou código).
 
 use crate::commands::auth::{
-    require_active_session_company_id, require_permission, PERMISSION_MANAGE_STATUS_LINKS,
+    record_security_event, require_active_session_company_id, require_any_permission,
+    require_permission, PERMISSION_FINANCIAL_ACTIONS, PERMISSION_MANAGE_STATUS_LINKS,
+    PERMISSION_PREPARE_QUOTES,
 };
+use crate::commands::equipamentos::buscar_equipamento;
 use crate::commands::orcamento_estoque::normalizar_servicos;
+use crate::commands::types::EquipamentoRow;
+use crate::commands::verificacoes::{publicar_apos_ajuste, PortalAjusteInfo};
 use crate::db::get_pool;
-use chrono::{DateTime, Duration, Utc};
-use serde::Serialize;
+use chrono::{DateTime, Duration, NaiveDate, Utc};
+use serde::{Deserialize, Serialize};
 use sqlx::{PgPool, Postgres, Row, Transaction};
 use tracing::instrument;
 
@@ -211,16 +216,22 @@ pub(crate) async fn obter_ou_criar_versao(
         "prazoAprovacao": prazo,
     });
 
-    // Fim do dia do prazo informado, quando ele está em formato de data.
-    let valido_ate: Option<DateTime<Utc>> = sqlx::query_scalar(
-        "SELECT CASE WHEN $1::TEXT ~ '^\\d{4}-\\d{2}-\\d{2}'
-                     THEN ((left($1::TEXT, 10))::DATE + 1)::TIMESTAMPTZ
-                END",
-    )
-    .bind(prazo.as_deref())
-    .fetch_one(&mut **tx)
-    .await
-    .map_err(|_| "Prazo de aprovação inválido.".to_string())?;
+    // Fim do dia do prazo informado em Brasília (00:00 de São Paulo do dia seguinte), quando ele
+    // está em formato de data. `valido_ate_legado` é a fórmula antiga (UTC), só para reconhecer
+    // versões abertas já congeladas antes da correção.
+    let (valido_ate, valido_ate_legado): (Option<DateTime<Utc>>, Option<DateTime<Utc>>) =
+        sqlx::query_as(
+            "SELECT CASE WHEN $1::TEXT ~ '^\\d{4}-\\d{2}-\\d{2}'
+                         THEN (((left($1::TEXT, 10))::DATE + 1)::TIMESTAMP AT TIME ZONE 'America/Sao_Paulo')
+                    END,
+                    CASE WHEN $1::TEXT ~ '^\\d{4}-\\d{2}-\\d{2}'
+                         THEN ((left($1::TEXT, 10))::DATE + 1)::TIMESTAMPTZ
+                    END",
+        )
+        .bind(prazo.as_deref())
+        .fetch_one(&mut **tx)
+        .await
+        .map_err(|_| "Prazo de aprovação inválido.".to_string())?;
     if valido_ate.is_some_and(|limit| limit <= Utc::now()) {
         return Err("O prazo de aprovação do orçamento já terminou. Atualize o prazo antes de enviar.".to_string());
     }
@@ -233,7 +244,7 @@ pub(crate) async fn obter_ou_criar_versao(
            AND verificacao_id IS NOT DISTINCT FROM $3
            AND snapshot = $4::TEXT::JSONB
            AND valor_total = ROUND($5::FLOAT8::NUMERIC, 2)
-           AND valido_ate IS NOT DISTINCT FROM $6
+           AND (valido_ate IS NOT DISTINCT FROM $6 OR valido_ate IS NOT DISTINCT FROM $7)
          ORDER BY versao DESC
          LIMIT 1",
     )
@@ -243,6 +254,7 @@ pub(crate) async fn obter_ou_criar_versao(
     .bind(&snapshot_texto)
     .bind(total)
     .bind(valido_ate)
+    .bind(valido_ate_legado)
     .fetch_optional(&mut **tx)
     .await
     .map_err(super::operator_errors::mapear_erro_sql)?;
@@ -740,6 +752,155 @@ fn horario_brasilia(instante: DateTime<Utc>) -> String {
     instante.with_timezone(&brasilia).format("%H:%M").to_string()
 }
 
+const MENSAGEM_CONFLITO_EQUIPAMENTO: &str =
+    "Conflito de concorrência: equipamento foi alterado por outro técnico. Recarregue os dados antes de tentar novamente.";
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ProrrogarPrazoInput {
+    pub equipamento_id: i32,
+    /// Novo prazo em `AAAA-MM-DD`.
+    pub novo_prazo: String,
+    pub expected_updated_em: String,
+    /// Confirma anular a resposta do cliente que a equipe ainda não aplicou.
+    #[serde(default)]
+    pub confirmar_resposta_pendente: bool,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ResultadoProrrogacao {
+    pub prorrogado: bool,
+    /// Preenchido quando há resposta do cliente pendente e a confirmação não foi enviada.
+    pub resposta_pendente: Option<RespostaPendenteInfo>,
+    pub equipamento: Option<EquipamentoRow>,
+    pub portal: PortalAjusteInfo,
+}
+
+fn validar_novo_prazo(texto: &str) -> Result<NaiveDate, String> {
+    let erro = || "Informe o novo prazo no formato AAAA-MM-DD.".to_string();
+    let limpo = texto.trim();
+    let formato_ok = limpo.len() == 10
+        && limpo.bytes().enumerate().all(|(i, b)| {
+            if i == 4 || i == 7 {
+                b == b'-'
+            } else {
+                b.is_ascii_digit()
+            }
+        });
+    if !formato_ok {
+        return Err(erro());
+    }
+    NaiveDate::parse_from_str(limpo, "%Y-%m-%d").map_err(|_| erro())
+}
+
+/// Prorroga o prazo de aprovação de um orçamento que aguarda aprovação. Se o cliente já respondeu
+/// no portal e a equipe não aplicou, só segue com a confirmação, que anula essa resposta.
+#[tauri::command]
+#[instrument(skip_all, fields(equipamento_id = input.equipamento_id))]
+pub async fn prorrogar_prazo_orcamento(input: ProrrogarPrazoInput) -> Result<ResultadoProrrogacao, String> {
+    let actor = require_any_permission(&[PERMISSION_FINANCIAL_ACTIONS, PERMISSION_PREPARE_QUOTES])?;
+    let novo_prazo = validar_novo_prazo(&input.novo_prazo)?;
+    let novo_prazo_texto = novo_prazo.format("%Y-%m-%d").to_string();
+    let token = input.expected_updated_em.trim();
+    if token.is_empty() {
+        return Err("Token de concorrência de equipamento é obrigatório para atualizar o registro.".to_string());
+    }
+    let pool = get_pool().await.map_err(|error| error.to_string())?;
+    let empresa_id = require_active_session_company_id(&pool).await?;
+    let map = super::operator_errors::mapear_erro_sql;
+    let mut tx = pool.begin().await.map_err(map)?;
+
+    let (status, prazo_anterior, versao_valida): (String, Option<String>, bool) = sqlx::query_as(
+        "SELECT COALESCE(status, ''), prazo_aprovacao,
+                COALESCE(atualizado_em = $3::TIMESTAMPTZ, FALSE)
+         FROM equipamentos
+         WHERE id = $1 AND empresa_id = $2
+         FOR UPDATE",
+    )
+    .bind(input.equipamento_id)
+    .bind(empresa_id)
+    .bind(token)
+    .fetch_optional(&mut *tx)
+    .await
+    .map_err(map)?
+    .ok_or_else(|| "Equipamento não encontrado na empresa do perfil ativo.".to_string())?;
+    if status != "AGUARDANDO_APROVACAO" {
+        return Err("Só dá para prorrogar enquanto o orçamento aguarda aprovação.".to_string());
+    }
+    if !versao_valida {
+        return Err(MENSAGEM_CONFLITO_EQUIPAMENTO.to_string());
+    }
+
+    let prazo_valido: bool = sqlx::query_scalar(
+        "SELECT $1::DATE >= (now() AT TIME ZONE 'America/Sao_Paulo')::DATE",
+    )
+    .bind(&novo_prazo_texto)
+    .fetch_one(&mut *tx)
+    .await
+    .map_err(map)?;
+    if !prazo_valido {
+        return Err("O novo prazo não pode ser anterior a hoje.".to_string());
+    }
+
+    let situacao = situacao_portal(&mut tx, empresa_id, input.equipamento_id, true).await?;
+    let resposta_desfeita = situacao.pendente.is_some();
+    if resposta_desfeita && !input.confirmar_resposta_pendente {
+        tx.rollback().await.map_err(map)?;
+        return Ok(ResultadoProrrogacao {
+            prorrogado: false,
+            resposta_pendente: situacao.pendente,
+            equipamento: None,
+            portal: PortalAjusteInfo::nenhuma(),
+        });
+    }
+    if resposta_desfeita {
+        desfazer_resposta_pendente(&mut tx, empresa_id, input.equipamento_id, actor.id).await?;
+    }
+
+    let atualizado = sqlx::query(
+        "UPDATE equipamentos SET prazo_aprovacao = $1, atualizado_em = NOW()
+         WHERE id = $2 AND empresa_id = $3 AND atualizado_em = $4::TIMESTAMPTZ",
+    )
+    .bind(&novo_prazo_texto)
+    .bind(input.equipamento_id)
+    .bind(empresa_id)
+    .bind(token)
+    .execute(&mut *tx)
+    .await
+    .map_err(map)?
+    .rows_affected();
+    if atualizado == 0 {
+        return Err(MENSAGEM_CONFLITO_EQUIPAMENTO.to_string());
+    }
+    tx.commit().await.map_err(map)?;
+
+    record_security_event(
+        "BUDGET_DEADLINE_EXTENDED",
+        Some(&actor),
+        format!(
+            "empresa_id={empresa_id}; equipamento_id={}; prazo_anterior={}; novo_prazo={novo_prazo_texto}; resposta_desfeita={resposta_desfeita}",
+            input.equipamento_id,
+            prazo_anterior.as_deref().unwrap_or("-"),
+        ),
+        true,
+    )
+    .await;
+
+    let portal = if situacao.ja_publicado {
+        publicar_apos_ajuste(&pool, &actor, empresa_id, input.equipamento_id, false).await
+    } else {
+        PortalAjusteInfo::nenhuma()
+    };
+    let equipamento = buscar_equipamento(input.equipamento_id).await?;
+    Ok(ResultadoProrrogacao {
+        prorrogado: true,
+        resposta_pendente: None,
+        equipamento: Some(equipamento),
+        portal,
+    })
+}
+
 #[cfg(test)]
 mod tests {
     #[test]
@@ -777,5 +938,31 @@ mod tests {
         assert!(decision_matches("RECUSAR", false));
         assert!(!decision_matches("APROVAR", false));
         assert!(!decision_matches("RECUSAR", true));
+    }
+
+    #[test]
+    fn novo_prazo_valido_em_formato_iso() {
+        assert_eq!(validar_novo_prazo("2026-11-30").unwrap(), NaiveDate::from_ymd_opt(2026, 11, 30).unwrap());
+        assert_eq!(validar_novo_prazo(" 2026-12-01 ").unwrap(), NaiveDate::from_ymd_opt(2026, 12, 1).unwrap());
+    }
+
+    #[test]
+    fn novo_prazo_com_formato_errado_e_recusado() {
+        for texto in ["30/11/2026", "2026-11-3", "2026/11/30", "2026-11-30T00:00", ""] {
+            assert_eq!(
+                validar_novo_prazo(texto).unwrap_err(),
+                "Informe o novo prazo no formato AAAA-MM-DD."
+            );
+        }
+    }
+
+    #[test]
+    fn novo_prazo_com_data_impossivel_e_recusado() {
+        for texto in ["2026-02-30", "2026-13-01", "2026-00-10"] {
+            assert_eq!(
+                validar_novo_prazo(texto).unwrap_err(),
+                "Informe o novo prazo no formato AAAA-MM-DD."
+            );
+        }
     }
 }

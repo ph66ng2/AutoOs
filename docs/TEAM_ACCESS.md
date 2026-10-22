@@ -11,12 +11,40 @@ A rota `/perfil` reúne a equipe, o cadastro guiado e as ações administrativas
 | Modelo | Permissões adicionais iniciais |
 | --- | --- |
 | Recepção | Nenhuma |
-| Técnico | Estoque |
-| Financeiro | Ações financeiras e consulta de despesas |
+| Técnico | Estoque (elaborar e enviar orçamentos após a transição para a 0.6.0) |
+| Financeiro | Ações financeiras e consulta de despesas (elaborar e enviar orçamentos após a transição para a 0.6.0) |
 | Administrador | Todas as permissões sensíveis existentes |
 | Personalizado | Nenhuma; escolha as liberações individualmente |
 
 Os modelos não criam verificações novas nos módulos: aplicam as permissões já fiscalizadas pelo backend. Ajustar uma permissão transforma a função em Personalizado. O acesso básico não é um modo de leitura: mantém as operações comuns já permitidas pelo AutoOS.
+
+## Elaborar e enviar orçamentos
+
+A permissão `PREPARE_QUOTES` ("Elaborar e enviar orçamentos") é sensível. A migration `0042` é só de dados: adiciona essa permissão apenas ao perfil Administrador já existente, sem alterar o schema. Técnico e Financeiro a recebem em uma migration posterior (ainda não criada); veja "Transição da 0.5.6 para a 0.6.0".
+
+Com a permissão, a pessoa pode:
+
+- finalizar a verificação com orçamento;
+- editar o orçamento enquanto ele não estiver decidido (RECEBIDO, EM_VERIFICACAO, VERIFICADO ou AGUARDANDO_APROVACAO);
+- prorrogar o prazo de aprovação;
+- publicar o orçamento no portal;
+- enviar o orçamento ao contato destinatário. Se esse contato ainda não tem senha do portal, o envio cria a senha inicial dele, sem que a pessoa a digite. Quem não tinha acesso passa a só acompanhar; esse caminho nunca cria quem decide.
+
+Não libera:
+
+- aprovar, reprovar, marcar o orçamento como vencido, entregar ou abandonar a OS;
+- alterar o valor final;
+- configurar SMTP ou WhatsApp;
+- definir senha manual do portal do cliente;
+- editar o acesso dos contatos.
+
+## Transição da 0.5.6 para a 0.6.0
+
+A 0.5.6 devolve "Permissão inválida" para perfil não-administrador que contenha uma chave de permissão desconhecida, como `PREPARE_QUOTES`. Isso quebra a tela de perfis e o desbloqueio nos PCs que ainda estão na 0.5.6. O Administrador não é afetado, pois recebe todas as permissões sem ler a coluna.
+
+- A 0042 concede `PREPARE_QUOTES` só ao Administrador.
+- Técnico e Financeiro recebem a permissão em migration posterior (ainda não criada), aplicada quando todos os PCs estiverem na 0.6.0. Nesse momento, `PREPARE_QUOTES_NOS_MODELOS` em `src/lib/profile-presets.ts` passa a `true`.
+- Enquanto isso, NÃO marque "Elaborar e enviar orçamentos" em perfis não-administradores com o build novo: os PCs na 0.5.6 recusam o perfil e quebram a tela de perfis e o desbloqueio.
 
 ## Sessão e autenticação
 

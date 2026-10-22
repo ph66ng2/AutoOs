@@ -4,9 +4,14 @@ import { db } from "@/lib/db";
 import { useSensitiveAccess } from "@/hooks/useSensitiveAccess";
 import { AcessoPortalDialog } from "@/components/equipamentos/AcessoPortalDialog";
 import { PortalClientePanel } from "@/components/equipamentos/PortalClientePanel";
+import { EnvioManualOrcamentoDialog } from "@/components/equipamentos/EnvioManualOrcamentoDialog";
+import { ProrrogarPrazoDialog } from "@/components/equipamentos/ProrrogarPrazoDialog";
+import { gerarNovaSenhaEnvioManual } from "@/lib/envio-orcamento";
+import { ehErroPrazoVencido } from "@/lib/orcamento-prazo";
 import {
   SENSITIVE_PERMISSIONS,
   type DecisaoOrcamentoInfo,
+  type EnvioManualOrcamento,
   type Equipamento,
   type RespostaOrcamentoInfo,
   type SolicitacaoOrcamentoInfo,
@@ -45,6 +50,8 @@ export function usePortalCliente(): PortalClienteValor {
   return valor;
 }
 
+type PermissaoSensivel = (typeof SENSITIVE_PERMISSIONS)[keyof typeof SENSITIVE_PERMISSIONS];
+
 export function mensagemErro(cause: unknown, fallback: string) {
   return typeof cause === "string" && cause.trim() ? cause : fallback;
 }
@@ -61,7 +68,7 @@ type Props = {
  * "Portal do Cliente" do cabeçalho, a faixa de resumo e o painel com as ações.
  */
 export function PortalClienteProvider({ equipamento, sinalPortal, children }: Props) {
-  const { ensureSensitiveAccess } = useSensitiveAccess();
+  const { ensureSensitiveAccess, hasAnyPermission } = useSensitiveAccess();
   const [info, setInfo] = useState<DecisaoOrcamentoInfo | null>(null);
   const [loading, setLoading] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -69,6 +76,8 @@ export function PortalClienteProvider({ equipamento, sinalPortal, children }: Pr
   const [consultado, setConsultado] = useState<number | null>(null);
   const [painelAberto, setPainelAberto] = useState(false);
   const [acessoAberto, setAcessoAberto] = useState(false);
+  const [prorrogarAberto, setProrrogarAberto] = useState(false);
+  const [envioManual, setEnvioManual] = useState<EnvioManualOrcamento | null>(null);
   const [contatosVersao, setContatosVersao] = useState(0);
   const equipamentoId = equipamento.id;
   // Troca rápida de equipamento: só a consulta do equipamento atual pode atualizar o estado.
@@ -103,16 +112,30 @@ export function PortalClienteProvider({ equipamento, sinalPortal, children }: Pr
     setInfo(null);
     setPainelAberto(false);
     setAcessoAberto(false);
+    setProrrogarAberto(false);
+    setEnvioManual(null);
   }, [equipamentoId]);
+
+  const gerarNovaSenha = useCallback(async () => {
+    if (!equipamentoId) return null;
+    const verificacao = await db.buscarVerificacao(equipamentoId);
+    if (!verificacao) throw new Error("Verificação não encontrada.");
+    return gerarNovaSenhaEnvioManual(equipamento, verificacao);
+  }, [equipamento, equipamentoId]);
+  const fecharEnvioManual = useCallback(() => setEnvioManual(null), []);
 
   const executar = useCallback(
     async (
-      permission: (typeof SENSITIVE_PERMISSIONS)[keyof typeof SENSITIVE_PERMISSIONS],
+      permission: PermissaoSensivel | PermissaoSensivel[],
       title: string,
       description: string,
       acao: () => Promise<void>,
     ) => {
-      const liberado = await ensureSensitiveAccess({ title, description, permission });
+      const liberado = await ensureSensitiveAccess({
+        title,
+        description,
+        ...(Array.isArray(permission) ? { anyPermission: permission } : { permission }),
+      });
       if (!liberado) return;
       setBusy(true);
       setError(null);
@@ -131,17 +154,30 @@ export function PortalClienteProvider({ equipamento, sinalPortal, children }: Pr
   const publicar = useCallback(() => {
     if (!equipamentoId) return;
     void executar(
-      SENSITIVE_PERMISSIONS.MANAGE_STATUS_LINKS,
+      [SENSITIVE_PERMISSIONS.MANAGE_STATUS_LINKS, SENSITIVE_PERMISSIONS.PREPARE_QUOTES],
       "Publicar orçamento no portal",
       "Confirme o acesso para publicar o orçamento atual no Portal do Cliente. Se ele mudou, a versão anterior deixa de aceitar respostas.",
       async () => {
-        const publicado = await db.publicarOrcamentoPortal(equipamentoId);
-        toast.success(publicado.nova
-          ? `Versão ${publicado.versao} publicada no portal.`
-          : `A versão ${publicado.versao} já estava publicada com este conteúdo.`);
+        try {
+          const publicado = await db.publicarOrcamentoPortal(equipamentoId);
+          toast.success(publicado.nova
+            ? `Versão ${publicado.versao} publicada no portal.`
+            : `A versão ${publicado.versao} já estava publicada com este conteúdo.`);
+        } catch (cause) {
+          // Prazo vencido tem saída própria: o diálogo prorroga e publica. Sem erro solto na tela.
+          if (typeof cause === "string" && ehErroPrazoVencido(cause)) {
+            // Prorrogar o prazo é da permissão financeira ou da de elaborar orçamentos: sem elas, o botão não funcionaria.
+            if (!hasAnyPermission([SENSITIVE_PERMISSIONS.FINANCIAL_ACTIONS, SENSITIVE_PERMISSIONS.PREPARE_QUOTES])) {
+              throw "O prazo de aprovação do orçamento já terminou. Peça a quem pode prorrogar o prazo para atualizá-lo antes de publicar.";
+            }
+            setProrrogarAberto(true);
+            return;
+          }
+          throw cause;
+        }
       },
     );
-  }, [equipamentoId, executar]);
+  }, [equipamentoId, executar, hasAnyPermission]);
 
   const tratarSolicitacao = useCallback((id: number) => {
     void executar(
@@ -183,6 +219,16 @@ export function PortalClienteProvider({ equipamento, sinalPortal, children }: Pr
     <PortalClienteContext.Provider value={valor}>
       {children}
       <PortalClientePanel open={painelAberto} onOpenChange={setPainelAberto} />
+      {equipamentoId ? (
+        <ProrrogarPrazoDialog
+          open={prorrogarAberto}
+          onOpenChange={setProrrogarAberto}
+          equipamentoId={equipamentoId}
+          onConcluido={carregar}
+          onEnvioManual={setEnvioManual}
+        />
+      ) : null}
+      <EnvioManualOrcamentoDialog envio={envioManual} onFechar={fecharEnvioManual} onGerarNovaSenha={gerarNovaSenha} />
       {equipamento.cliente_id ? (
         <AcessoPortalDialog
           open={acessoAberto}

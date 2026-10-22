@@ -75,7 +75,7 @@ describe("PortalClientePanel", () => {
     expect(within(painel).getByText(/respostas pelo Portal do Cliente estão desligadas/)).toBeInTheDocument();
     fireEvent.click(within(painel).getByRole("button", { name: "Publicar no Portal do Cliente" }));
     await waitFor(() => expect(mocks.publicar).toHaveBeenCalledWith(7));
-    expect(mocks.ensure).toHaveBeenCalledWith(expect.objectContaining({ permission: "MANAGE_STATUS_LINKS" }));
+    expect(mocks.ensure).toHaveBeenCalledWith(expect.objectContaining({ anyPermission: ["MANAGE_STATUS_LINKS", "PREPARE_QUOTES"] }));
   });
 
   it("com resposta pendente não oferece publicar (anularia a resposta)", async () => {

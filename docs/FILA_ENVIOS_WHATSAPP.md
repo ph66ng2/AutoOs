@@ -114,6 +114,28 @@ Antes de ligar uma empresa: aplicar 0033 e 0034, publicar a função, definir os
 
 `MensagemWhatsapp` (backend) carrega o texto da Evolution e, para a Cloud API, `template`, `parametros` e `url_botao`. No modo `CENTRAL` isso é gravado em `mensagem_payload`. No modo `LOCAL` o payload não é gravado. A Cloud API só é usada no modo `CENTRAL`.
 
+## Destinatário e senha do portal
+
+- **Destinatário escolhido no pedido.** `solicitar_envio_whatsapp` resolve o destinatário pelo cadastro atual, na ordem descrita em `PORTAL_CLIENTE.md` ("Envio do orçamento"). A fila grava o nome e o telefone desse momento; o processador central não refaz a escolha.
+- **`senha_portal` não é persistida.** A senha criada no envio chega ao comando só nessa chamada. Não entra em `envios_whatsapp_pedidos`, em `envios_whatsapp_tentativas`, em `erro_resumo`, em log nem em `comunicacoes`, onde fica mascarada (`••••-••••-••••`).
+- **Modo `CENTRAL`.** Com senha nova do portal, o comando **não enfileira**: não grava pedido nem tentativa e volta `estado: FALHOU`, `senhaRetida: true` e a mensagem "O envio central não leva a senha do portal. Use o envio manual.". A tela abre **Enviar manualmente** com a senha. Sem senha nova (o contato já tem senha), o central enfileira normalmente, com os modelos abaixo.
+
+Como a senha nova nunca entra na fila, nenhum payload gravado carrega a senha nem a máscara.
+
+## Modelos de template (Cloud API)
+
+| Caso | Modelo | Parâmetros |
+|---|---|---|
+| Orçamento sem portal | `orcamento_informativo` | 4: contato, equipamento, total, prazo |
+| Pode aceitar ou recusar, sem senha nova | `orcamento_portal` | 4: contato, equipamento, total, prazo |
+| Só acompanha, sem senha nova | `orcamento_informativo` | 4: contato, equipamento, total, prazo |
+| Pode aceitar ou recusar, com senha nova | `orcamento_portal_v2` | 7 (ver `MODELOS_WHATSAPP_META.md`) |
+| Só acompanha, com senha nova | `orcamento_portal_acompanhar_v2` | 7 (ver `MODELOS_WHATSAPP_META.md`) |
+
+Os `_v2` só são usados com senha nova; sem ela valem os modelos já aprovados.
+
+> **Aprovação da Meta:** os dois `_v2` precisam ser aprovados no Gerenciador do WhatsApp antes de um envio com senha nova pela Cloud API. Até lá, esse caso falha na Cloud e o técnico usa **Enviar manualmente**; os envios sem senha nova não dependem deles. Nomes, ordem e quantidade de parâmetros são o contrato de `MODELOS_WHATSAPP_META.md`.
+
 ## Testes
 
 - Unitários Rust (`cargo test --bin autoos envio_whatsapp`): formatação, mensagens, token fora do histórico, mascaramento.
@@ -129,3 +151,17 @@ Antes de ligar uma empresa: aplicar 0033 e 0034, publicar a função, definir os
 1. Testar com a Meta e/ou a Evolution reais e ajustar os modelos aprovados aos parâmetros.
 2. Webhook de entrega (`ENVIADA` → entregue/falhou) e reconciliação das tentativas `INCERTA` pelo identificador da Meta.
 3. `codigo_verificacao` (modelo de autenticação) pelo mesmo processador.
+
+## Pendências do WhatsApp automático (retomar)
+
+Decisão adiada: como enviar o WhatsApp do orçamento. O e-mail já leva link, usuário e senha e não depende disto.
+
+- **Evolution descartada para o número de suporte.** Ela imita o WhatsApp Web, vai contra os termos do WhatsApp e o banimento é permanente; se o número do suporte for banido, as mensagens automáticas e o suporte caem juntos.
+- **Estado do código:** o envio local só fala com a Evolution. A Cloud API existe apenas no modo central (Edge Function `envio-whatsapp`), que nunca foi publicada nem testada contra a Meta, e não há tela para ligar uma empresa nesse modo. No modo central a senha nunca entra na fila: o envio com senha nova devolve `senhaRetida` e o técnico usa **Enviar manualmente**.
+- **Opções para decidir:**
+  1. Cloud API com **número dedicado** às mensagens automáticas (o suporte fica fora).
+  2. **Coexistência** (WhatsApp Business app + Cloud API no mesmo número): confirmar na documentação da Meta se vale no Brasil e quais as condições.
+  3. **Cloud API direto do computador** (modo local, token no cofre), para a senha não passar pelo banco. É trabalho novo.
+  4. Semiautomático: abrir o WhatsApp do suporte com o texto pronto (`wa.me`), que é o **Enviar manualmente**.
+- **A fazer na Meta:** criar os modelos `orcamento_portal_v2` e `orcamento_portal_acompanhar_v2` (`MODELOS_WHATSAPP_META.md`); a Meta pode recusar modelo com senha (plano B no mesmo arquivo).
+- **Comportamento enquanto isso:** o orçamento sai por e-mail e o diálogo **Enviar manualmente** (copia e cola, ou abrir o WhatsApp do suporte com o texto pronto) abre ao finalizar a verificação sempre que o WhatsApp não enviou. O botão "Enviar por WhatsApp" do link de acompanhamento fica desativado pela constante `WHATSAPP_AUTOMATICO_DISPONIVEL` (`src/lib/whatsapp-automatico.ts`); para religar, troque-a por `true` quando houver um canal definido.

@@ -212,11 +212,51 @@ export interface ResultadoEnvioWhatsapp {
   estado: EstadoEnvioWhatsapp;
   ultimoEstado?: string | null;
   mensagem?: string | null;
+  senhaRetida?: boolean;
+}
+
+export interface DestinatarioOrcamento {
+  contatoId: number | null;
+  nome: string;
+  telefone: string | null;
+  email: string | null;
+  clienteNome: string;
+  clienteDocumento: string;
+  origem: "RESPONSAVEL" | "CONTATO" | "CLIENTE";
+  portalAcesso: "NENHUM" | "ACOMPANHAR" | "DECIDIR" | null;
+  temSenha: boolean;
+  usouSenhaAtual: boolean;
+  precisaContato: boolean;
+}
+
+export interface PreparoAcessoPortal {
+  destinatario: DestinatarioOrcamento;
+  portalAtivo: boolean;
+  credenciais: { usuario: string; senha: string } | null;
+  senhaExistente: boolean;
+  acessoConcedido: boolean;
+}
+
+export interface ContatoInicialInput {
+  nome: string;
+  telefone: string;
+  email?: string | null;
+}
+
+export interface EnvioManualOrcamento {
+  destinatario: DestinatarioOrcamento;
+  assunto: string;
+  texto: string;
+  temSenha: boolean;
+  podeGerarNovaSenha: boolean;
+  equipamentoId: number;
 }
 
 export interface SolicitarEnvioWhatsappInput {
   equipamento_id: number;
   tipo: TipoEnvioWhatsapp;
+  /** Senha do portal gerada na sessão; segue só no pedido e não é registrada. */
+  senha_portal?: string;
   /** Gesto explícito do operador: cria outra tentativa do mesmo pedido. */
   reenvio_manual?: boolean;
   /** Confirma que uma tentativa de resultado incerto pode ser repetida. */
@@ -296,6 +336,23 @@ export interface PortalAjusteInfo {
   versao?: number | null;
   mensagem?: string | null;
   aviso?: string | null;
+}
+
+/** Prorroga o prazo de aprovação do orçamento → Rust: prorrogar_prazo_orcamento */
+export interface ProrrogarPrazoInput {
+  equipamentoId: number;
+  /** AAAA-MM-DD */
+  novoPrazo: string;
+  expectedUpdatedEm: string;
+  /** Confirma que a prorrogação anula a resposta do cliente ainda não aplicada. */
+  confirmarRespostaPendente?: boolean;
+}
+
+export interface ResultadoProrrogacao {
+  prorrogado: boolean;
+  respostaPendente: RespostaPendenteAjuste | null;
+  equipamento: Equipamento | null;
+  portal: PortalAjusteInfo;
 }
 
 /** RESTAURAR_ORIGINAL volta à versão enviada ao cliente; MANTER_ATUAL desfaz só a decisão. */
@@ -754,6 +811,7 @@ export interface ResultadoAutomacao {
   sucesso: boolean;
   erro?: string;
   mensagem?: string;
+  envioManual?: EnvioManualOrcamento;
   canais?: {
     whatsapp?: { enviado: boolean; erro?: string };
     email?: { enviado: boolean; erro?: string };
@@ -766,6 +824,7 @@ export const SENSITIVE_PERMISSIONS = {
   DELETE_RECORDS: "DELETE_RECORDS",
   FINANCIAL_ACTIONS: "FINANCIAL_ACTIONS",
   STOCK_CONTROL: "STOCK_CONTROL",
+  PREPARE_QUOTES: "PREPARE_QUOTES",
   MANAGE_PROFILES: "MANAGE_PROFILES",
   MANAGE_STATUS_LINKS: "MANAGE_STATUS_LINKS",
   VIEW_EXPENSES: "VIEW_EXPENSES",
@@ -779,6 +838,7 @@ export const SENSITIVE_PERMISSION_LABELS: Record<SensitivePermission, string> = 
   DELETE_RECORDS: "excluir registros",
   FINANCIAL_ACTIONS: "alterar orçamentos, aprovações e valores",
   STOCK_CONTROL: "movimentar e editar estoque",
+  PREPARE_QUOTES: "elaborar e enviar orçamentos",
   MANAGE_PROFILES: "gerenciar perfis e auditoria",
   MANAGE_STATUS_LINKS: "gerenciar o Portal do Cliente e os links de acompanhamento",
   VIEW_EXPENSES: "visualizar gastos e despesas",
