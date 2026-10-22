@@ -30,7 +30,8 @@ import {
 import { useState } from "react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
-import { SensitiveAccessBadge, routeAllows, useSensitiveAccess } from "@/hooks/useSensitiveAccess";
+import { SensitiveAccessBadge, useSensitiveAccess } from "@/hooks/useSensitiveAccess";
+import { navItemVisible } from "@/lib/nav-visibility";
 import { SENSITIVE_PERMISSIONS, type SensitivePermission } from "@/types";
 import { PortalAlertasSino } from "@/components/PortalAlertas";
 import { ProfileAvatar } from "@/components/perfil/ProfileAvatar";
@@ -52,6 +53,7 @@ const navItems: {
   path: string;
   icon: React.ComponentType<{ className?: string }>;
   permission?: SensitivePermission | SensitivePermission[];
+  showWhenLocked?: boolean;
 }[] = [
   { label: "Perfil", path: "/perfil", icon: UserRound },
   { label: "Dashboard", path: "/", icon: LayoutDashboard },
@@ -60,7 +62,7 @@ const navItems: {
   { label: "Insumos/Peças", path: "/insumos", icon: Package },
   { label: "Serviços", path: "/servicos", icon: Wrench },
   { label: "Gastos", path: "/gastos", icon: Receipt, permission: SENSITIVE_PERMISSIONS.VIEW_EXPENSES },
-  { label: "Configurações", path: "/configuracoes", icon: Settings, permission: CONFIGURACOES_PERMISSIONS },
+  { label: "Configurações", path: "/configuracoes", icon: Settings, permission: CONFIGURACOES_PERMISSIONS, showWhenLocked: true },
 ];
 
 export function Layout() {
@@ -71,7 +73,7 @@ export function Layout() {
   const activeProfile = status?.profiles.find((profile) => profile.id === status.active_profile_id) ?? null;
   const activeLook = activeProfile ? profileAppearance(activeProfile) : null;
 
-  const visibleNavItems = navItems.filter(item => routeAllows(status?.permissions ?? [], item.permission));
+  const visibleNavItems = navItems.filter(item => navItemVisible(item, status));
 
   return (
     <div className="flex h-screen overflow-hidden bg-background">
