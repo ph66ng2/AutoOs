@@ -3,7 +3,7 @@ import { IS_SAAS_BUILD } from "@/lib/runtime-mode";
 import { loadSaasAuthConfiguration, type SaasAuthConfiguration } from "@/lib/saas-auth";
 import { tauriSaasSessionStore } from "@/lib/saas-session-store";
 import { ITEMS_PER_PAGE, paginateItems } from "@/lib/pagination";
-import type { Cliente, ClienteId } from "@/types";
+import type { Cliente, ClienteId, ContatoInicialInput } from "@/types";
 import type { SaasSession } from "@/types/saas-auth";
 
 export type ClienteInput = Omit<Cliente, "id">;
@@ -17,7 +17,7 @@ export interface ClientesRepository {
   listar(busca?: string): Promise<Cliente[]>;
   listarPagina?(busca: string | undefined, page: number): Promise<ClientesPage>;
   buscar(id: ClienteId): Promise<Cliente>;
-  criar(cliente: ClienteInput): Promise<Cliente>;
+  criar(cliente: ClienteInput, contatoInicial?: ContatoInicialInput): Promise<Cliente>;
   atualizar(id: ClienteId, cliente: ClienteInput): Promise<Cliente>;
   deletar(id: ClienteId): Promise<void>;
 }
@@ -204,10 +204,30 @@ export class SupabaseClientesRepository implements ClientesRepository {
     return rows[0];
   }
 
-  async criar(cliente: ClienteInput): Promise<Cliente> {
+  async criar(cliente: ClienteInput, contatoInicial?: ContatoInicialInput): Promise<Cliente> {
     const rows = await this.request<Cliente[]>(this.endpoint(), { method: "POST", headers: { Prefer: "return=representation" }, body: JSON.stringify({ ...clientePayload(cliente), empresa_id: this.session.companyId }) });
     if (!rows[0]) throw new OnlineDataError("RLS_DENIED", "O cliente não pôde ser criado para sua empresa.");
-    return rows[0];
+    const criado = rows[0];
+    if (contatoInicial) {
+      const nome = contatoInicial.nome.trim();
+      const telefone = (contatoInicial.telefone ?? "").trim();
+      if (!nome || !telefone) {
+        throw new OnlineDataError("INVALID_DATA", "Informe nome e telefone do contato inicial.");
+      }
+      await this.request(`${this.session.supabaseUrl}/rest/v1/cliente_contatos`, {
+        method: "POST",
+        headers: { Prefer: "return=representation" },
+        body: JSON.stringify({
+          empresa_id: this.session.companyId,
+          cliente_id: criado.id,
+          nome,
+          telefone,
+          email: contatoInicial.email || null,
+          ativo: true,
+        }),
+      });
+    }
+    return criado;
   }
 
   async atualizar(id: ClienteId, cliente: ClienteInput): Promise<Cliente> {
@@ -229,7 +249,7 @@ const tauriClientesRepository: ClientesRepository = {
     return { items: paginateItems(rows, page, ITEMS_PER_PAGE), total: rows.length };
   },
   buscar: (id) => db.buscarCliente(id),
-  criar: (cliente) => db.criarCliente(cliente),
+  criar: (cliente, contatoInicial) => db.criarCliente(cliente, contatoInicial),
   atualizar: async (id, cliente) => { await db.atualizarCliente(id, cliente); return db.buscarCliente(id); },
   deletar: (id) => db.deletarCliente(id),
 };

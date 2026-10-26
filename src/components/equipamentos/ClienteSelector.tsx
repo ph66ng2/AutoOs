@@ -110,6 +110,8 @@ export function ClienteSelector({
       telefone: "", telefone_secundario: "",
       email: "", cep: "", endereco: "", numero: "", complemento: "",
       bairro: "", cidade: "", uf: "", observacoes: "",
+      exigir_contato_inicial: true,
+      contato_nome: "", contato_telefone: "", contato_email: "",
     },
   });
 
@@ -241,6 +243,8 @@ export function ClienteSelector({
       telefone: "", telefone_secundario: "",
       email: "", cep: "", endereco: "", numero: "", complemento: "",
       bairro: "", cidade: "", uf: "", observacoes: "",
+      exigir_contato_inicial: true,
+      contato_nome: "", contato_telefone: "", contato_email: "",
     });
     setModo("novo");
   }
@@ -274,8 +278,15 @@ export function ClienteSelector({
         ativo: true,
       } as Omit<Cliente, "id">;
 
+      const contato = isPJ && data.exigir_contato_inicial
+        ? {
+            nome: (data.contato_nome ?? "").trim(),
+            telefone: (data.contato_telefone ?? "").replace(/\D/g, ""),
+            email: data.contato_email?.trim() || undefined,
+          }
+        : undefined;
       const repository = await carregarRepositorioClientes();
-      const novoCliente = await repository.criar(payload);
+      const novoCliente = await repository.criar(payload, contato);
       setClienteSelecionado(novoCliente);
       setModo("selecionado");
       onClienteSelecionado(novoCliente);

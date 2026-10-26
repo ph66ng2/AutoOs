@@ -135,7 +135,7 @@ import { DocumentosEquipamento } from "@/components/equipamentos/DocumentosEquip
 import { PdfPreviewDialog } from "@/components/equipamentos/PdfPreviewDialog";
 import { AjusteOrcamentoServicos } from "@/components/equipamentos/AjusteOrcamentoServicos";
 import { EscolhaAjusteOrcamentoDialog } from "@/components/equipamentos/EscolhaAjusteOrcamentoDialog";
-import { orcamentoJaAprovado, orcamentoMudou } from "@/lib/orcamento-estoque";
+import { orcamentoEmElaboracao, orcamentoJaAprovado, orcamentoMudou, transicaoElaboraOrcamento } from "@/lib/orcamento-estoque";
 import { validatePecasSugeridas } from "@/lib/data/servicos-repository";
 import { mesclarPecasDoOrcamento, somarPecas } from "@/lib/servico-pecas";
 import { ActionPriorityRow, type PriorityAction } from "@/components/ui/action-priority-row";
@@ -827,7 +827,10 @@ export default function Equipamentos({ operationalProfile }: { operationalProfil
     const liberado = await ensureSensitiveAccess({
       title: "Alterar status sensível",
       description: "Informe o PIN para alterar status comerciais, prazos e valores do equipamento.",
-      permission: SENSITIVE_PERMISSIONS.FINANCIAL_ACTIONS,
+      // Em elaboração o diálogo abre para o Técnico; decisão, entrega e valor final pedem o PIN financeiro ao confirmar.
+      ...(orcamentoEmElaboracao(eq.status)
+        ? { anyPermission: [SENSITIVE_PERMISSIONS.FINANCIAL_ACTIONS, SENSITIVE_PERMISSIONS.PREPARE_QUOTES] }
+        : { permission: SENSITIVE_PERMISSIONS.FINANCIAL_ACTIONS }),
     });
     if (!liberado) return;
 
@@ -896,7 +899,9 @@ export default function Equipamentos({ operationalProfile }: { operationalProfil
     const liberado = await ensureSensitiveAccess({
       title: "Alterar orçamento",
       description: "Informe o PIN para editar serviços e valor sem alterar o status do equipamento.",
-      permission: SENSITIVE_PERMISSIONS.FINANCIAL_ACTIONS,
+      ...(orcamentoEmElaboracao(eq.status)
+        ? { anyPermission: [SENSITIVE_PERMISSIONS.FINANCIAL_ACTIONS, SENSITIVE_PERMISSIONS.PREPARE_QUOTES] }
+        : { permission: SENSITIVE_PERMISSIONS.FINANCIAL_ACTIONS }),
     });
     if (!liberado) return;
 
@@ -1076,7 +1081,7 @@ export default function Equipamentos({ operationalProfile }: { operationalProfil
     const liberado = await ensureSensitiveAccess({
       title: "Finalizar verificação",
       description: "Informe o PIN para salvar orçamento, prazo de aprovação e disparar comunicações automáticas.",
-      permission: SENSITIVE_PERMISSIONS.FINANCIAL_ACTIONS,
+      anyPermission: [SENSITIVE_PERMISSIONS.FINANCIAL_ACTIONS, SENSITIVE_PERMISSIONS.PREPARE_QUOTES],
     });
     if (!liberado) return false;
 
@@ -1542,7 +1547,10 @@ export default function Equipamentos({ operationalProfile }: { operationalProfil
       const liberado = await ensureSensitiveAccess({
         title: "Confirmar mudança de status",
         description: "Informe o PIN para aplicar esta transição e persistir dados sensíveis do equipamento.",
-        permission: SENSITIVE_PERMISSIONS.FINANCIAL_ACTIONS,
+        ...((ajusteOrcamentoSemMudancaStatus && orcamentoEmElaboracao(selecionado.status))
+          || transicaoElaboraOrcamento(selecionado.status, novoStatus, correcaoStatus, valorFinal)
+          ? { anyPermission: [SENSITIVE_PERMISSIONS.FINANCIAL_ACTIONS, SENSITIVE_PERMISSIONS.PREPARE_QUOTES] }
+          : { permission: SENSITIVE_PERMISSIONS.FINANCIAL_ACTIONS }),
       });
       if (!liberado) return;
     }
@@ -2633,6 +2641,7 @@ export default function Equipamentos({ operationalProfile }: { operationalProfil
                 value={responsavelVinculado}
                 onChange={setResponsavelVinculado}
                 disabled={salvando}
+                preSelecionar={!editando}
               />
               {erroCliente && (
                 <ErrorAlert variant="error" context="Equipamentos" message={erroCliente} />

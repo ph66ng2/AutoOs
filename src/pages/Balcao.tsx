@@ -792,6 +792,7 @@ function QuickEntry({ onBack, operationalProfile }: { onBack: () => void; operat
                 empresaId={typeof client.empresa_id === "number" ? client.empresa_id : undefined}
                 value={responsavel}
                 onChange={setResponsavel}
+                preSelecionar
               />
               <Button
                 className="mt-6 min-h-12 text-base"
