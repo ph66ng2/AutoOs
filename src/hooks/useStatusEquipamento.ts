@@ -21,7 +21,7 @@ import { useState } from "react";
 import { db } from "@/lib/db";
 import { WhatsAppService } from "@/lib/whatsapp-service";
 import { EmailService } from "@/lib/email-service";
-import type { Equipamento, ResultadoAutomacao } from "@/types";
+import type { Equipamento, EnvioManualOrcamento, ResultadoAutomacao } from "@/types";
 import type { DadosVerificacao } from "@/components/equipamentos/VerificacaoTecnica";
 import { resolveRecipient } from "@/lib/recipient-resolver";
 import { calcularPrazoAprovacao, enviarOrcamentoAoCliente } from "@/lib/envio-orcamento";
@@ -29,6 +29,7 @@ import { calcularPrazoAprovacao, enviarOrcamentoAoCliente } from "@/lib/envio-or
 /** Resultado de `finalizarVerificacao`: contrato de `ResultadoAutomacao` + avisos do envio. */
 export interface ResultadoFinalizarVerificacao extends ResultadoAutomacao {
   avisos?: string[];
+  envioManual?: EnvioManualOrcamento;
 }
 
 /**
@@ -50,7 +51,7 @@ export function useStatusEquipamento() {
   async function finalizarVerificacao(
     equipamento: Equipamento,
     dadosVerificacao: DadosVerificacao,
-    _emailContato?: string,
+    emailContato?: string,
     _emailDestinatario?: string,
   ): Promise<ResultadoFinalizarVerificacao> {
     setLoading(true);
@@ -100,7 +101,12 @@ export function useStatusEquipamento() {
 
       // O status já foi salvo; falha no envio não desfaz a mudança.
       try {
-        const envio = await enviarOrcamentoAoCliente(eqAtualizado, verificacao);
+        const pularEmail = emailContato === "";
+        const emailDestino = emailContato?.trim();
+        const envio = await enviarOrcamentoAoCliente(eqAtualizado, verificacao, {
+          enviarEmail: !pularEmail,
+          ...(emailDestino ? { emailDestino } : {}),
+        });
         return {
           sucesso: true,
           canais: envio.canais,

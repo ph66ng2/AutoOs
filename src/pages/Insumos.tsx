@@ -320,14 +320,16 @@ export default function Insumos({ operationalProfile }: { operationalProfile?: S
         </div>
       </div>
 
-      <Tabs value={aba} onValueChange={(valor) => setAba(valor as "estoque" | "orcamentos")}>
-        <TabsList aria-label="Áreas de Insumos/Peças">
-          <TabsTrigger value="estoque">Estoque</TabsTrigger>
-          <TabsTrigger value="orcamentos">Orçamentos</TabsTrigger>
-        </TabsList>
-      </Tabs>
+      {!IS_SAAS_BUILD && (
+        <Tabs value={aba} onValueChange={(valor) => setAba(valor as "estoque" | "orcamentos")}>
+          <TabsList aria-label="Áreas de Insumos/Peças">
+            <TabsTrigger value="estoque">Estoque</TabsTrigger>
+            <TabsTrigger value="orcamentos">Orçamentos</TabsTrigger>
+          </TabsList>
+        </Tabs>
+      )}
 
-      {aba === "orcamentos" ? (
+      {!IS_SAAS_BUILD && aba === "orcamentos" ? (
         <OrcamentosInsumosTab onEstoqueAlterado={() => void recarregar()} />
       ) : (
         <>

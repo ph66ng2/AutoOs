@@ -176,6 +176,20 @@ describe("enviarOrcamentoAoCliente", () => {
     await enviarOrcamentoAoCliente(equip, verif, { enviarEmail: false });
     expect(mocks.enviarEmailOrcamentoPortal).not.toHaveBeenCalled();
   });
+
+  it("emailDestino substitui o e-mail do destinatário preparado", async () => {
+    mocks.prepararAcessoPortal.mockResolvedValue(preparo());
+    mocks.solicitarEnvio.mockResolvedValue(okWpp);
+    mocks.enviarEmailOrcamentoPortal.mockResolvedValue(okEmail);
+    await enviarOrcamentoAoCliente(equip, verif, { emailDestino: "outro@cliente.invalid" });
+    expect(mocks.enviarEmailOrcamentoPortal).toHaveBeenCalledWith(
+      equip,
+      verif,
+      expect.objectContaining({
+        destinatario: expect.objectContaining({ email: "outro@cliente.invalid" }),
+      }),
+    );
+  });
 });
 
 describe("gerarNovaSenhaEnvioManual", () => {

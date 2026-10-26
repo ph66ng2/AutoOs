@@ -10,6 +10,10 @@ static MIGRATOR: Migrator = sqlx::migrate!("./migrations");
 
 const REQUIRED_PROMOTION_MIGRATIONS: [i64; 16] = [27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42];
 const EXPECTED_MIGRATION_COUNT: usize = 42;
+/// Piso já aplicado antes da promoção (igual à master). O binário e o
+/// pós-apply exigem 0001–0042: `EXPECTED_MIGRATION_COUNT` e
+/// `verify_promoted_schema` recusam histórico incompleto. Subir este piso
+/// para 42 bloquearia a primeira aplicação de 0029–0042.
 const LAST_REQUIRED_APPLIED_MIGRATION: i64 = 28;
 
 fn required_env(name: &str) -> Result<String> {
@@ -196,8 +200,10 @@ mod tests {
     use super::*;
 
     #[test]
-    fn promotes_from_0028_with_a_contiguous_migration_set() {
+    fn promotes_from_0028_and_expects_the_full_0042_set() {
         assert_eq!(LAST_REQUIRED_APPLIED_MIGRATION, 28);
+        assert_eq!(EXPECTED_MIGRATION_COUNT, 42);
+        assert_eq!(REQUIRED_PROMOTION_MIGRATIONS.last().copied(), Some(42));
         assert!(validate_migration_set().is_ok());
         assert!(require_expected_migrations().is_ok());
     }

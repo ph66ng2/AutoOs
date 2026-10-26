@@ -24,6 +24,8 @@ export interface OpcoesEnvioOrcamento {
   confirmarIncerto?: boolean;
   /** Padrão true. */
   enviarEmail?: boolean;
+  /** E-mail escolhido no diálogo; substitui o do destinatário preparado. */
+  emailDestino?: string;
   /**
    * Acesso já preparado numa tentativa anterior. A senha só aparece na chamada que a cria: ao repetir o envio
    * (ex.: confirmação de resultado incerto) o chamador devolve o preparo para a senha não se perder.
@@ -120,6 +122,13 @@ export async function enviarOrcamentoAoCliente(
     } catch (error) {
       avisos.push(`Não foi possível preparar o acesso ao portal: ${msgErro(error, "erro desconhecido")}`);
     }
+  }
+  const emailDestino = opcoes.emailDestino?.trim();
+  if (preparo && emailDestino) {
+    preparo = {
+      ...preparo,
+      destinatario: { ...preparo.destinatario, email: emailDestino },
+    };
   }
 
   // (b) WhatsApp

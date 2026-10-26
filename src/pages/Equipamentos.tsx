@@ -54,6 +54,7 @@ import {
   Download,
   Smartphone,
   DollarSign,
+  RotateCcw,
 } from "lucide-react";
 import { useForm, Controller } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -117,6 +118,7 @@ import {
   type Comunicacao,
   type ResultadoAutomacao,
   type AnaliseAjusteOrcamento,
+  type EnvioManualOrcamento,
   type OpcoesAjusteOrcamento,
 } from "@/types";
 
@@ -178,6 +180,13 @@ import { PaginationControls } from "@/components/ui/pagination-controls";
 import { ITEMS_PER_PAGE, totalPages } from "@/lib/pagination";
 import { PagamentoOrcamentoDialog } from "@/components/equipamentos/PagamentoOrcamentoDialog";
 import { FormaPagamentoFields } from "@/components/equipamentos/FormaPagamentoFields";
+import { PortalClienteBotao } from "@/components/equipamentos/PortalClienteBotao";
+import { PortalClienteProvider } from "@/components/equipamentos/portal-cliente-context";
+import { DecisaoOrcamentoCard } from "@/components/equipamentos/DecisaoOrcamentoCard";
+import { CorrigirDecisaoDialog } from "@/components/equipamentos/CorrigirDecisaoDialog";
+import { EnvioManualOrcamentoDialog } from "@/components/equipamentos/EnvioManualOrcamentoDialog";
+import { gerarNovaSenhaEnvioManual } from "@/lib/envio-orcamento";
+import { EVENTO_ALERTAS_PORTAL } from "@/components/PortalAlertas";
 import { resolveRecipient, type ResolvedRecipient } from "@/lib/recipient-resolver";
 import { saveRecipientAddress } from "@/lib/recipient-persistence";
 import { IS_SAAS_BUILD } from "@/lib/runtime-mode";
@@ -248,6 +257,11 @@ export default function Equipamentos({ operationalProfile }: { operationalProfil
   const [dialogOpen, setDialogOpen] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [detalhesDialogOpen, setDetalhesDialogOpen] = useState(false);
+  const detalhesAbertoRef = useRef(false);
+  const [sinalPortal, setSinalPortal] = useState(0);
+  detalhesAbertoRef.current = detalhesDialogOpen;
+  const [corrigirDecisaoAlvo, setCorrigirDecisaoAlvo] = useState<Equipamento | null>(null);
+  const [envioManual, setEnvioManual] = useState<EnvioManualOrcamento | null>(null);
   const [verificacaoDialogOpen, setVerificacaoDialogOpen] = useState(false);
   const [statusDialogOpen, setStatusDialogOpen] = useState(false);
   const [pagamentoDialogOpen, setPagamentoDialogOpen] = useState(false);
@@ -386,7 +400,7 @@ export default function Equipamentos({ operationalProfile }: { operationalProfil
   // Hook de automação de status
   const { loading: loadingAutomacao, finalizarVerificacao, marcarComoPronto } =
     useStatusEquipamento();
-  const { ensureSensitiveAccess, status: sensitiveStatus, hasPermission } = useSensitiveAccess({ operationalProfile });
+  const { ensureSensitiveAccess, status: sensitiveStatus } = useSensitiveAccess({ operationalProfile });
   const location = useLocation();
   const navigate = useNavigate();
 
@@ -404,6 +418,19 @@ export default function Equipamentos({ operationalProfile }: { operationalProfil
         });
     }
   }, [location.state, detalhesDialogOpen]);
+
+  useEffect(() => {
+    const aoChegar = (event: Event) => {
+      const ids = (event as CustomEvent<{ equipamentoIds?: Array<number | string> }>).detail?.equipamentoIds ?? [];
+      void recarregar();
+      const abertoId = selecionadoIdRef.current;
+      if (detalhesAbertoRef.current && abertoId != null && ids.some((id) => String(id) === String(abertoId))) {
+        setSinalPortal((valor) => valor + 1);
+      }
+    };
+    window.addEventListener(EVENTO_ALERTAS_PORTAL, aoChegar);
+    return () => window.removeEventListener(EVENTO_ALERTAS_PORTAL, aoChegar);
+  }, [recarregar]);
 
   const carregarImagensComPreview = useCallback(async (equipamentoId: EquipamentoId) => {
     if (IS_SAAS_BUILD) return [];
@@ -876,6 +903,16 @@ export default function Equipamentos({ operationalProfile }: { operationalProfil
     setStatusDialogOpen(true);
   }
 
+  async function abrirCorrigirDecisao(eq: Equipamento) {
+    const liberado = await ensureSensitiveAccess({
+      title: "Corrigir decisão do orçamento",
+      description: "Informe o PIN para reabrir um orçamento já decidido. Pagamento, serviços e estoque serão conferidos.",
+      permission: SENSITIVE_PERMISSIONS.FINANCIAL_ACTIONS,
+    });
+    if (!liberado) return;
+    setCorrigirDecisaoAlvo(eq);
+  }
+
   async function abrirCorrecaoStatus(eq: Equipamento) {
     const liberado = await ensureSensitiveAccess({
       title: "Corrigir status",
@@ -1160,6 +1197,7 @@ export default function Equipamentos({ operationalProfile }: { operationalProfil
         if (!resultado.sucesso) {
           throw new Error(resultado.erro || "Não foi possível finalizar a verificação.");
         }
+        if (resultado.envioManual) setEnvioManual(resultado.envioManual);
         setVerificacaoDialogOpen(false);
         await recarregar();
         const resumoCanais = mensagemResultadoCanais(resultado);
@@ -1194,6 +1232,18 @@ export default function Equipamentos({ operationalProfile }: { operationalProfil
     });
     setEmailDialogOpen(true);
     return false;
+  }
+
+  async function gerarNovaSenhaDoEnvioManual(): Promise<EnvioManualOrcamento | null> {
+    if (!envioManual) return null;
+    const [eq, verificacao] = await Promise.all([
+      db.buscarEquipamento(envioManual.equipamentoId),
+      db.buscarVerificacao(envioManual.equipamentoId),
+    ]);
+    if (!verificacao) throw new Error("Verificação não encontrada para gerar nova senha.");
+    const novo = await gerarNovaSenhaEnvioManual(eq, verificacao);
+    if (novo) setEnvioManual(novo);
+    return novo;
   }
 
   // ─── Automação: Marcar como Pronto ────────────────────
@@ -1363,10 +1413,12 @@ export default function Equipamentos({ operationalProfile }: { operationalProfil
     void confirmarMudancaStatus(false);
   }
 
-  async function abrirDialogoAprovacao(eq: Equipamento) {
+  async function abrirDialogoAprovacao(eq: Equipamento, decisaoInicial: "aprovar" | "reprovar" = "aprovar") {
     const liberado = await ensureSensitiveAccess({
-      title: "Aprovar orçamento",
-      description: "Informe o PIN para aprovar o orçamento com a forma de pagamento escolhida.",
+      title: decisaoInicial === "aprovar" ? "Aprovar orçamento" : "Reprovar orçamento",
+      description: decisaoInicial === "aprovar"
+        ? "Informe o PIN para registrar a decisão do cliente sobre este orçamento."
+        : "Informe o PIN para registrar a reprovação do orçamento pelo cliente.",
       permission: SENSITIVE_PERMISSIONS.FINANCIAL_ACTIONS,
     });
     if (!liberado) return;
@@ -1381,7 +1433,7 @@ export default function Equipamentos({ operationalProfile }: { operationalProfil
       const servicosSalvos = JSON.parse(verificacao?.servicos_necessarios || "[]") as ServicoNecessario[];
       const servicos = normalizarServicosAprovacao(servicosSalvos);
       setServicosAprovacao(servicos);
-      setTodosServicosAprovados(null);
+      setTodosServicosAprovados(decisaoInicial === "reprovar" ? false : null);
       setIdsAprovados([]);
       setTotalOrcamentoAprovacao(verificacao?.custo_total ?? undefined);
       setProdutosAprovacao(IS_SAAS_BUILD
@@ -1980,6 +2032,13 @@ export default function Equipamentos({ operationalProfile }: { operationalProfil
       variant: "outline",
       onClick: () => void abrirCorrecaoStatus(eq),
     };
+    const acaoCorrigirDecisao: PriorityAction = {
+      id: "corrigir_decisao",
+      label: "Corrigir decisão do orçamento",
+      icon: <RotateCcw className="h-3.5 w-3.5" />,
+      variant: "outline",
+      onClick: () => void abrirCorrigirDecisao(eq),
+    };
     const acaoExcluir: PriorityAction = {
       id: "excluir",
       label: "Excluir",
@@ -1988,141 +2047,6 @@ export default function Equipamentos({ operationalProfile }: { operationalProfil
       className: "text-red-600",
       onClick: () => void solicitarExclusao(eq),
     };
-
-    if (IS_SAAS_BUILD) {
-      const onlineOverflow: PriorityAction[] = [acaoStatus, acaoEditar];
-      if (hasPermission(SENSITIVE_PERMISSIONS.DELETE_RECORDS)) onlineOverflow.push(acaoExcluir);
-      if (STATUS_COM_ORCAMENTO.includes(eq.status)) {
-        onlineOverflow.push(acaoAlterarOrcamento);
-      }
-      if (getStatusCorrecao(eq.status).length > 0) onlineOverflow.push(acaoCorrigirStatus);
-      if (hasPermission(SENSITIVE_PERMISSIONS.STOCK_CONTROL)
-        && ["APROVADO", "EM_MANUTENCAO", "AGUARDANDO_PECA", "PRONTO"].includes(eq.status)) {
-        onlineOverflow.unshift(acaoPecasOs);
-      }
-
-      switch (eq.status) {
-        case "RECEBIDO":
-          primary = {
-            id: "iniciar_verificacao",
-            label: "Iniciar Verificação",
-            icon: <Play className="h-3.5 w-3.5" />,
-            onClick: () => void acaoRapida(eq, "EM_VERIFICACAO"),
-            disabled: salvando,
-          };
-          break;
-        case "EM_VERIFICACAO":
-          primary = {
-            id: "abrir_verificacao",
-            label: "Abrir Verificação",
-            icon: <ClipboardCheck className="h-3.5 w-3.5" />,
-            onClick: () => abrirVerificacao(eq),
-            disabled: salvando,
-          };
-          break;
-        case "VERIFICADO":
-          primary = {
-            id: "enviar_orcamento",
-            label: "Enviar Orçamento",
-            icon: <Send className="h-3.5 w-3.5" />,
-            onClick: () => void abrirMudarStatus(eq, "AGUARDANDO_APROVACAO"),
-            disabled: salvando,
-          };
-          break;
-        case "AGUARDANDO_APROVACAO":
-          primary = {
-            id: "aprovar",
-            label: "Aprovar",
-            icon: <CheckCircle className="h-3.5 w-3.5" />,
-            onClick: () => void abrirDialogoAprovacao(eq),
-            disabled: salvando,
-          };
-          secondary = {
-            id: "reprovar",
-            label: "Reprovar",
-            icon: <XCircle className="h-3.5 w-3.5" />,
-            variant: "outline",
-            onClick: () => void abrirDialogoAprovacao(eq),
-            disabled: salvando,
-          };
-          break;
-        case "APROVADO":
-          primary = {
-            id: "iniciar_manutencao",
-            label: "Iniciar Manutenção",
-            icon: <Wrench className="h-3.5 w-3.5" />,
-            onClick: () => void acaoRapida(eq, "EM_MANUTENCAO"),
-            disabled: salvando,
-          };
-          break;
-        case "EM_MANUTENCAO":
-          primary = {
-            id: "marcar_pronto",
-            label: "Marcar Pronto",
-            icon: <PackageCheck className="h-3.5 w-3.5" />,
-            onClick: () => void handleMarcarPronto(eq),
-            disabled: salvando || loadingAutomacao,
-          };
-          secondary = {
-            id: "aguardando_peca",
-            label: "Aguardar Peça",
-            icon: <PackageCheck className="h-3.5 w-3.5" />,
-            variant: "outline",
-            onClick: () => void acaoRapida(eq, "AGUARDANDO_PECA"),
-            disabled: salvando,
-          };
-          break;
-        case "AGUARDANDO_PECA":
-          primary = {
-            id: "retomar_manutencao",
-            label: "Retomar Manutenção",
-            icon: <Wrench className="h-3.5 w-3.5" />,
-            onClick: () => void acaoRapida(eq, "EM_MANUTENCAO"),
-            disabled: salvando,
-          };
-          break;
-        case "PRONTO":
-          primary = {
-            id: "registrar_entrega",
-            label: "Registrar Entrega",
-            icon: <PackageCheck className="h-3.5 w-3.5" />,
-            onClick: () => void abrirMudarStatus(eq, "ENTREGUE"),
-            disabled: salvando,
-          };
-          break;
-        case "REPROVADO":
-        case "ORCAMENTO_VENCIDO":
-          primary = {
-            id: "reabrir_orcamento",
-            label: "Reabrir Orçamento",
-            icon: <RefreshCw className="h-3.5 w-3.5" />,
-            onClick: () => void abrirMudarStatus(eq, "AGUARDANDO_APROVACAO"),
-            disabled: salvando,
-          };
-          break;
-        default:
-          primary = acaoStatus;
-          if (getProximosStatus(eq.status).length > 0) {
-            secondary = {
-              id: "mudar_status",
-              label: "Mudar Status",
-              icon: <RefreshCw className="h-3.5 w-3.5" />,
-              variant: "outline",
-              onClick: () => void abrirMudarStatus(eq),
-              disabled: salvando,
-            };
-          }
-      }
-
-      return (
-        <ActionPriorityRow
-          primary={primary || acaoStatus}
-          secondary={secondary}
-          overflow={onlineOverflow}
-          iconOnlyOverflowTrigger
-        />
-      );
-    }
 
     switch (eq.status) {
       case "RECEBIDO":
@@ -2187,7 +2111,7 @@ export default function Equipamentos({ operationalProfile }: { operationalProfil
           icon: <CheckCircle className="h-3.5 w-3.5" />,
           variant: "default",
           className: "bg-green-600 hover:bg-green-700 text-white",
-          onClick: () => void abrirDialogoAprovacao(eq),
+          onClick: () => void abrirDialogoAprovacao(eq, "aprovar"),
           disabled: salvando,
         };
         secondary = {
@@ -2196,7 +2120,7 @@ export default function Equipamentos({ operationalProfile }: { operationalProfil
           icon: <XCircle className="h-3.5 w-3.5" />,
           variant: "default",
           className: "bg-red-600 text-white hover:bg-red-700",
-          onClick: () => void abrirDialogoAprovacao(eq),
+          onClick: () => void abrirDialogoAprovacao(eq, "reprovar"),
           disabled: salvando,
         };
         if (eq.cliente_telefone) {
@@ -2220,7 +2144,7 @@ export default function Equipamentos({ operationalProfile }: { operationalProfil
           disabled: salvando,
         };
         secondary = acaoStatus;
-        overflow.push(acaoEditar, acaoExcluir);
+        overflow.push(acaoCorrigirDecisao, acaoEditar, acaoExcluir);
         break;
       case "EM_MANUTENCAO":
         primary = {
@@ -2286,7 +2210,7 @@ export default function Equipamentos({ operationalProfile }: { operationalProfil
           onClick: () => void abrirMudarStatus(eq),
           disabled: salvando,
         };
-        overflow.push(acaoEditar, acaoExcluir);
+        overflow.push(acaoCorrigirDecisao, acaoEditar, acaoExcluir);
         break;
       case "ORCAMENTO_VENCIDO":
         primary = {
@@ -2330,6 +2254,9 @@ export default function Equipamentos({ operationalProfile }: { operationalProfil
         acaoOrcamentoPdf,
         acaoAlterarOrcamento,
       );
+    }
+    if (["APROVADO", "EM_MANUTENCAO", "AGUARDANDO_PECA", "PRONTO"].includes(eq.status)) {
+      overflow.unshift(acaoPecasOs);
     }
     if (getStatusCorrecao(eq.status).length > 0) {
       const editarIndex = overflow.findIndex((acao) => acao.id === acaoEditar.id);
@@ -2951,21 +2878,29 @@ export default function Equipamentos({ operationalProfile }: { operationalProfil
         <DialogContent className="sm:max-w-3xl max-h-[90vh] overflow-y-auto">
           <DialogHeader><DialogTitle>Detalhes do Equipamento</DialogTitle></DialogHeader>
           {selecionado && (
+            <PortalClienteProvider equipamento={selecionado} sinalPortal={sinalPortal}>
             <div className="space-y-4">
-              <div className="flex items-center justify-between">
-                <div>
-                  <h3 className="text-lg font-bold">{selecionado.marca} {selecionado.modelo}</h3>
-                  <p className="text-sm text-muted-foreground font-mono">{selecionado.serial_number}</p>
+              <div className="flex min-w-0 items-start justify-between gap-3">
+                <div className="min-w-0 flex-1">
+                  <h3 className="break-words text-lg font-bold [overflow-wrap:anywhere]">{selecionado.marca} {selecionado.modelo}</h3>
+                  <p className="break-words text-sm text-muted-foreground font-mono [overflow-wrap:anywhere]">{selecionado.serial_number}</p>
                   {selecionado.responsavel_nome && (
-                    <p className="mt-1 text-sm text-muted-foreground">
+                    <p className="mt-1 break-words text-sm text-muted-foreground [overflow-wrap:anywhere]">
                       Contato responsável: <span className="font-medium text-foreground">{selecionado.responsavel_nome}</span>
                     </p>
                   )}
                 </div>
-                <StatusBadge status={selecionado.status} />
+                <div className="flex shrink-0 flex-col items-end gap-2">
+                  <StatusBadge status={selecionado.status} />
+                  <PortalClienteBotao />
+                </div>
               </div>
 
-              <Tabs defaultValue="info">
+              <DecisaoOrcamentoCard
+                onAplicar={(decisao) => void abrirDialogoAprovacao(selecionado, decisao)}
+              />
+
+              <Tabs key={selecionado.id} defaultValue="info">
                 <TabsList className="grid grid-cols-4 w-full">
                   <TabsTrigger value="info"><FileText className="h-3.5 w-3.5 mr-1 hidden sm:inline" />Informações</TabsTrigger>
                   <TabsTrigger value="verificacao"><ClipboardCheck className="h-3.5 w-3.5 mr-1 hidden sm:inline" />Verificação</TabsTrigger>
@@ -3104,6 +3039,7 @@ export default function Equipamentos({ operationalProfile }: { operationalProfil
                 <TabsContent value="historico" className="mt-4">{renderHistoricoTab()}</TabsContent>
               </Tabs>
             </div>
+            </PortalClienteProvider>
           )}
         </DialogContent>
       </Dialog>
@@ -3423,6 +3359,22 @@ export default function Equipamentos({ operationalProfile }: { operationalProfil
         </DialogContent>
       </Dialog>
 
+      <CorrigirDecisaoDialog
+        equipamento={corrigirDecisaoAlvo}
+        open={corrigirDecisaoAlvo !== null}
+        onOpenChange={(open) => { if (!open) setCorrigirDecisaoAlvo(null); }}
+        onCorrigido={async (portal) => {
+          setSelecionado(null);
+          await recarregar();
+          if (portal?.aviso) {
+            warning("Equipamentos", `Orçamento reaberto, mas o portal não foi atualizado: ${portal.aviso}`);
+          } else {
+            const portalTexto = portal?.mensagem ? ` ${portal.mensagem}` : " Envie ou registre uma nova decisão do cliente.";
+            success("Equipamentos", `Orçamento reaberto.${portalTexto}`, "Decisão corrigida");
+          }
+        }}
+      />
+
       <EscolhaAjusteOrcamentoDialog
         open={escolhaAjuste !== null}
         variante={escolhaAjuste?.variante ?? "aprovado"}
@@ -3594,6 +3546,12 @@ export default function Equipamentos({ operationalProfile }: { operationalProfil
           setConfirmOpen(false);
         }}
         onCancel={confirmProps.onCancel}
+      />
+
+      <EnvioManualOrcamentoDialog
+        envio={envioManual}
+        onFechar={() => setEnvioManual(null)}
+        onGerarNovaSenha={gerarNovaSenhaDoEnvioManual}
       />
 
       <CommunicationEmailDialog
