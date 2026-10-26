@@ -17,11 +17,12 @@
  * ║  USADO POR: main.tsx (ponto de entrada)                    ║
  * ╚══════════════════════════════════════════════════════════════╝
  */
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { BrowserRouter, Routes, Route, useLocation, useNavigate } from "react-router-dom";
 import { Toaster } from "sonner";
-import { BootSplashGate } from "@/components/BootSplashGate";
-import { useBootUi } from "@/components/BootUi";
+import { useTheme } from "next-themes";
+import { Button } from "@/components/ui/button";
+import { BootSplash } from "@/components/BootSplash";
 import { DatabaseConfigDialog } from "@/components/DatabaseConfigDialog";
 import { SensitiveRoute, useSensitiveAccess } from "@/hooks/useSensitiveAccess";
 import { SENSITIVE_PERMISSIONS } from "@/types";
@@ -47,15 +48,21 @@ import Balcao from "@/pages/Balcao";
 import { SaasApp } from "@/components/SaasApp";
 import { IS_SAAS_BUILD } from "@/lib/runtime-mode";
 
-function AppContent({ splashActive }: { splashActive: boolean }) {
-  const { loading, status, refreshStatus } = useSensitiveAccess();
+/** Exibição mínima do boot (IPC em dev pode resolver em poucos ms). Prod fica igual ou mais pesado só se o Rust/DB demorar. */
+const MIN_BOOT_SPLASH_MS = 1_100;
+
+function AppContent() {
+  const { loading, bootProgress, status, pinPromptDismissed, openProfileSelector, refreshStatus, firstAccessOpen } = useSensitiveAccess();
   const [appMode, setCurrentAppMode] = useState<AppMode | null>(() => getAppMode());
+  const [splashVisible, setSplashVisible] = useState(true);
+  const [minSplashElapsed, setMinSplashElapsed] = useState(false);
+  const [completionAnimationElapsed, setCompletionAnimationElapsed] = useState(false);
 
   // Força refresh do status quando o banco fica pronto
   // Resolve race condition onde refreshStatus() falhou antes do banco estar inicializado
   useEffect(() => {
     if (status?.profiles.length === 0) {
-      void refreshStatus();
+      refreshStatus();
     }
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -65,60 +72,118 @@ function AppContent({ splashActive }: { splashActive: boolean }) {
     return () => window.removeEventListener("autoos:app-mode", syncAppMode);
   }, []);
 
+  useEffect(() => {
+    const t = window.setTimeout(() => setMinSplashElapsed(true), MIN_BOOT_SPLASH_MS);
+    return () => window.clearTimeout(t);
+  }, []);
+
+  useEffect(() => {
+    if (loading) setCompletionAnimationElapsed(false);
+  }, [loading]);
+
+  const handleBootAnimationComplete = useCallback(() => setCompletionAnimationElapsed(true), []);
+
+  const sessionBlocked = Boolean(status && status.profiles.length > 0 && !status.unlocked);
+  const showEntryGate = sessionBlocked && pinPromptDismissed;
+  const splashCanFadeOut = !loading && minSplashElapsed && completionAnimationElapsed && (
+    Boolean(status?.unlocked) || (status?.profiles.length === 0) || pinPromptDismissed
+  );
   const sessionReady = Boolean(status?.active_profile_id && status.unlocked);
-  // Login/PIN/modo só depois da abertura (stamp) terminar.
-  const postOpening = !splashActive && !loading;
+
+  useEffect(() => {
+    if (splashVisible && splashCanFadeOut) {
+      const t = window.setTimeout(() => setSplashVisible(false), 540);
+      return () => window.clearTimeout(t);
+    }
+  }, [splashVisible, splashCanFadeOut]);
 
   return (
-    <BrowserRouter>
-      <AppModeChoice
-        visible={postOpening && sessionReady && appMode === null}
-        onSelect={setCurrentAppMode}
-      />
-      <AppModeRedirect mode={appMode} ready={postOpening && sessionReady} />
-      <ReleaseHighlightsDialog
-        enabled={postOpening && sessionReady && appMode !== null}
-      />
-      <Routes>
-        <Route element={<Layout />}>
-          <Route path="/" element={<Dashboard />} />
-          <Route path="/perfil" element={<Perfil />} />
-          <Route path="/equipamentos" element={<Equipamentos />} />
-          <Route path="/clientes" element={<Clientes />} />
-          <Route path="/insumos" element={<Insumos />} />
-          <Route path="/servicos" element={<Servicos />} />
-          <Route path="/poc" element={<PowerSyncPOC />} />
-          <Route
-            path="/gastos"
-            element={
-              <SensitiveRoute
-                title="Gastos e despesas protegidos"
-                description="Desbloqueie o acesso sensível para visualizar gastos e despesas do sistema."
-                permission={SENSITIVE_PERMISSIONS.VIEW_EXPENSES}
-              >
-                <Gastos />
-              </SensitiveRoute>
-            }
-          />
-          <Route
-            path="/configuracoes"
-            element={
-              <SensitiveRoute
-                title="Configurações SMTP protegidas"
-                description="Desbloqueie o acesso sensível para visualizar ou alterar credenciais e envios SMTP."
-                permission={SENSITIVE_PERMISSIONS.MANAGE_PROFILES}
-              >
-                <Configuracoes />
-              </SensitiveRoute>
-            }
-          />
-        </Route>
-        <Route element={<CounterSessionGate><CounterLayout onChangeMode={setCurrentAppMode} /></CounterSessionGate>}>
-          <Route path="/balcao" element={<Balcao />} />
-          <Route path="/balcao/painel" element={<Balcao />} />
-        </Route>
-      </Routes>
-    </BrowserRouter>
+    <>
+      {showEntryGate ? (
+        <SessionPinGate
+          onEnter={() => void openProfileSelector({
+            title: "Quem está usando o AutoOS?",
+            description: "Escolha o perfil e informe o PIN. Sem o PIN, o atendimento continua bloqueado.",
+          })}
+        />
+      ) : (
+      <BrowserRouter>
+        <AppModeChoice
+          visible={!loading && sessionReady && appMode === null && !firstAccessOpen}
+          onSelect={setCurrentAppMode}
+        />
+        <AppModeRedirect mode={appMode} ready={!loading && sessionReady} />
+        <ReleaseHighlightsDialog
+          enabled={!loading && !splashVisible && sessionReady && appMode !== null && !firstAccessOpen}
+        />
+        <Routes>
+          <Route element={<Layout />}>
+            <Route path="/" element={<Dashboard />} />
+            <Route path="/perfil" element={<Perfil />} />
+            <Route path="/equipamentos" element={<Equipamentos />} />
+            <Route path="/clientes" element={<Clientes />} />
+            <Route path="/insumos" element={<Insumos />} />
+            <Route path="/servicos" element={<Servicos />} />
+            <Route path="/poc" element={<PowerSyncPOC />} />
+            <Route
+              path="/gastos"
+              element={
+                <SensitiveRoute
+                  title="Gastos e despesas protegidos"
+                  description="Desbloqueie o acesso sensível para visualizar gastos e despesas do sistema."
+                  permission={SENSITIVE_PERMISSIONS.VIEW_EXPENSES}
+                >
+                  <Gastos />
+                </SensitiveRoute>
+              }
+            />
+            <Route
+              path="/configuracoes"
+              element={
+                <SensitiveRoute
+                  title="Configurações protegidas"
+                  description="Desbloqueie o acesso para gerenciar integrações, banco e segurança."
+                  permission={[
+                    SENSITIVE_PERMISSIONS.MANAGE_PROFILES,
+                    SENSITIVE_PERMISSIONS.CONFIG_SMTP,
+                    SENSITIVE_PERMISSIONS.CONFIG_WHATSAPP,
+                    SENSITIVE_PERMISSIONS.MANAGE_STATUS_LINKS,
+                  ]}
+                >
+                  <Configuracoes />
+                </SensitiveRoute>
+              }
+            />
+          </Route>
+          <Route element={<CounterSessionGate><CounterLayout onChangeMode={setCurrentAppMode} /></CounterSessionGate>}>
+            <Route path="/balcao" element={<Balcao />} />
+            <Route path="/balcao/painel" element={<Balcao />} />
+          </Route>
+        </Routes>
+      </BrowserRouter>
+      )}
+      {splashVisible && (
+        <BootSplash
+          progress={loading ? bootProgress : 100}
+          fadeOut={splashCanFadeOut}
+          onAnimationComplete={handleBootAnimationComplete}
+        />
+      )}
+    </>
+  );
+}
+
+function SessionPinGate({ onEnter }: { onEnter: () => void }) {
+  return (
+    <div className="fixed inset-0 z-30 flex items-center justify-center bg-[#050608] px-6 text-white">
+      <div className="w-full max-w-md space-y-4 text-center">
+        <h1 className="text-2xl font-semibold">Informe o PIN para entrar</h1>
+        <p className="text-sm text-slate-300">
+          O AutoOS continua bloqueado. Sem o PIN do perfil, o atendimento não abre.
+        </p>
+        <Button type="button" onClick={onEnter}>Entrar com PIN</Button>
+      </div>
+    </div>
   );
 }
 
@@ -141,50 +206,35 @@ function AppModeRedirect({ mode, ready }: { mode: AppMode | null; ready: boolean
 }
 
 function InternalApp() {
-  const { loading, bootProgress, advanceBootProgress, refreshStatus } = useSensitiveAccess();
-  const { openingComplete, completeOpening } = useBootUi();
   const [dbReady, setDbReady] = useState<boolean | null>(null);
-  const [splashActive, setSplashActive] = useState(!openingComplete);
+  const { resolvedTheme } = useTheme();
+  const toastTheme = resolvedTheme === "dark" ? "dark" : "light";
 
   useEffect(() => {
-    let cancelled = false;
     void (async () => {
-      advanceBootProgress(14);
       try {
-        advanceBootProgress(28);
         const status = await DatabaseConfigService.checkStatus();
-        if (cancelled) return;
-        advanceBootProgress(48);
         setDbReady(status);
-        if (status) {
-          await refreshStatus();
-        }
       } catch {
-        if (!cancelled) setDbReady(false);
+        setDbReady(false);
       }
     })();
-    return () => {
-      cancelled = true;
-    };
-  }, [advanceBootProgress, refreshStatus]);
+  }, []);
 
-  const bootLoading = dbReady === null || (dbReady === true && loading);
-  const displayProgress = dbReady === null
-    ? Math.max(bootProgress, 28)
-    : bootProgress;
+  if (dbReady === null) {
+    return (
+      <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-[#050608]">
+        <div className="h-8 w-8 animate-spin rounded-full border-b-2 border-cyan-400" />
+      </div>
+    );
+  }
 
-  if (dbReady === false) {
+  if (!dbReady) {
     return (
       <>
-        <Toaster position="top-right" visibleToasts={3} richColors closeButton duration={5000} />
+        <Toaster theme={toastTheme} position="top-right" offset={{ top: 64, right: 24 }} visibleToasts={3} richColors closeButton duration={5000} />
         <ErrorBoundary>
-          <DatabaseConfigDialog
-            onConfigured={() => {
-              setDbReady(true);
-              if (!openingComplete) setSplashActive(true);
-              void refreshStatus();
-            }}
-          />
+          <DatabaseConfigDialog onConfigured={() => setDbReady(true)} />
         </ErrorBoundary>
       </>
     );
@@ -192,26 +242,10 @@ function InternalApp() {
 
   return (
     <>
-      <Toaster position="top-right" visibleToasts={3} richColors closeButton duration={5000} />
+      <Toaster theme={toastTheme} position="top-right" offset={{ top: 64, right: 24 }} visibleToasts={3} richColors closeButton duration={5000} />
       <ErrorBoundary>
-        {dbReady === true ? <AppContent splashActive={splashActive} /> : null}
+        <AppContent />
       </ErrorBoundary>
-      {splashActive ? (
-        <BootSplashGate
-          loading={bootLoading}
-          progress={displayProgress}
-          onFinished={() => {
-            setSplashActive(false);
-            completeOpening();
-          }}
-        />
-      ) : bootLoading ? (
-        <div
-          role="status"
-          aria-label="Preparando aplicativo"
-          className="fixed inset-0 z-[9999] bg-slate-950"
-        />
-      ) : null}
     </>
   );
 }
@@ -227,7 +261,6 @@ function App() {
       </>
     );
   }
-
   return <InternalApp />;
 }
 

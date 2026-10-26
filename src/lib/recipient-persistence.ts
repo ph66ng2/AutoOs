@@ -65,3 +65,12 @@ export async function saveRecipientAddress(
   };
   await db.atualizarCliente(equipamento.cliente_id, input);
 }
+
+/**
+ * O endereço é salvo ANTES do envio: se o SMTP falhar, o e-mail já está no cadastro.
+ * Esta frase deixa isso claro para o operador reenviar sem digitar de novo.
+ */
+export function mensagemEnvioFalhouComEmailSalvo(erro?: string | null): string {
+  const motivo = (erro || "").trim().replace(/[.\s]+$/, "") || "falha desconhecida";
+  return `O e-mail foi salvo no cadastro. O envio falhou: ${motivo}; tente reenviar.`;
+}

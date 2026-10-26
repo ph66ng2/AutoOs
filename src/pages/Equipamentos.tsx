@@ -116,6 +116,8 @@ import {
   type Verificacao,
   type Comunicacao,
   type ResultadoAutomacao,
+  type AnaliseAjusteOrcamento,
+  type OpcoesAjusteOrcamento,
 } from "@/types";
 
 // Componentes extraídos
@@ -132,6 +134,8 @@ import { PhotoUploadDialog } from "@/components/equipamentos/PhotoUploadDialog";
 import { DocumentosEquipamento } from "@/components/equipamentos/DocumentosEquipamento";
 import { PdfPreviewDialog } from "@/components/equipamentos/PdfPreviewDialog";
 import { AjusteOrcamentoServicos } from "@/components/equipamentos/AjusteOrcamentoServicos";
+import { EscolhaAjusteOrcamentoDialog } from "@/components/equipamentos/EscolhaAjusteOrcamentoDialog";
+import { orcamentoJaAprovado, orcamentoMudou } from "@/lib/orcamento-estoque";
 import { validatePecasSugeridas } from "@/lib/data/servicos-repository";
 import { mesclarPecasDoOrcamento, somarPecas } from "@/lib/servico-pecas";
 import { ActionPriorityRow, type PriorityAction } from "@/components/ui/action-priority-row";
@@ -190,12 +194,14 @@ import type { SaasOperationalProfile } from "@/types/saas-auth";
 
 type Equipamento = EquipamentoBase<number>;
 
+const EQUIPMENT_ROW_FOCUS_RING =
+  "border-b group-has-[.equipment-row-open:focus-visible]:z-[30] group-has-[.equipment-row-open:focus-visible]:bg-sky-100 group-has-[.equipment-row-open:focus-visible]:after:pointer-events-none group-has-[.equipment-row-open:focus-visible]:after:absolute group-has-[.equipment-row-open:focus-visible]:after:inset-0 group-has-[.equipment-row-open:focus-visible]:after:z-[1] group-has-[.equipment-row-open:focus-visible]:after:border-y-[3px] group-has-[.equipment-row-open:focus-visible]:after:border-[#1d4ed8] group-has-[.equipment-row-open:focus-visible]:after:content-['']";
+const EQUIPMENT_ROW_FOCUS_EDGE = `relative ${EQUIPMENT_ROW_FOCUS_RING}`;
+const EQUIPMENT_ROW_FOCUS_FIRST = `relative ${EQUIPMENT_ROW_FOCUS_RING} group-has-[.equipment-row-open:focus-visible]:after:border-l-[3px]`;
+const EQUIPMENT_ROW_FOCUS_LAST = `${EQUIPMENT_ROW_FOCUS_RING} group-has-[.equipment-row-open:focus-visible]:after:border-r-[3px]`;
+
 function normalizarServicosAprovacao(servicos: ServicoNecessario[]): ServicoNecessario[] {
   return servicos.map((servico, index) => ({ ...servico, id: servico.id || `legacy:${index}` }));
-}
-
-function orcamentoJaAprovado(status: string): boolean {
-  return ["APROVADO", "EM_MANUTENCAO", "AGUARDANDO_PECA", "PRONTO", "ENTREGUE"].includes(status);
 }
 
 async function carregarProdutosLocaisParaAprovacao(): Promise<ProdutoParaPecaSugerida[]> {
@@ -295,6 +301,8 @@ export default function Equipamentos({ operationalProfile }: { operationalProfil
   const [novoStatus, setNovoStatus] = useState("");
   const [valorOrcamento, setValorOrcamento] = useState<number>(0);
   const valorOrcamentoRef = useRef(valorOrcamento);
+  const [escolhaAjuste, setEscolhaAjuste] = useState<{ variante: "aprovado" | "pendente"; analise: AnaliseAjusteOrcamento } | null>(null);
+  const escolhaAjusteResolver = useRef<((opcoes: OpcoesAjusteOrcamento | null) => void) | null>(null);
   useEffect(() => { valorOrcamentoRef.current = valorOrcamento; }, [valorOrcamento]);
   const [prazoAprovacao, setPrazoAprovacao] = useState("");
   const [valorOrcamentoOriginal, setValorOrcamentoOriginal] = useState<number | null>(null);
@@ -1420,6 +1428,7 @@ export default function Equipamentos({ operationalProfile }: { operationalProfil
           pagamento,
           servicos_aprovados: idsAprovados,
           aprovar_sem_servicos: servicosAprovacao.length === 0 && todosServicosAprovados === true,
+          aprovado: idsAprovados.length > 0 || (servicosAprovacao.length === 0 && todosServicosAprovados === true),
         });
       }
       await recarregar();
@@ -1503,18 +1512,21 @@ export default function Equipamentos({ operationalProfile }: { operationalProfil
     }
   }
 
+  function pedirEscolhaAjuste(variante: "aprovado" | "pendente", analise: AnaliseAjusteOrcamento) {
+    return new Promise<OpcoesAjusteOrcamento | null>((resolve) => {
+      escolhaAjusteResolver.current = resolve;
+      setEscolhaAjuste({ variante, analise });
+    });
+  }
+
+  function responderEscolhaAjuste(opcoes: OpcoesAjusteOrcamento | null) {
+    escolhaAjusteResolver.current?.(opcoes);
+    escolhaAjusteResolver.current = null;
+    setEscolhaAjuste(null);
+  }
+
   async function confirmarMudancaStatus(divergencia = false) {
     if (!selecionado || (!novoStatus && !ajusteOrcamentoSemMudancaStatus)) return;
-    if (ajusteOrcamentoSemMudancaStatus && orcamentoJaAprovado(selecionado.status)) {
-      if (!formaPagamentoAjuste) {
-        warning("Equipamentos", "Escolha a forma de pagamento antes de salvar o orçamento aprovado.");
-        return;
-      }
-      if (formaPagamentoAjuste === "OUTRO" && !detalhePagamentoAjuste.trim()) {
-        warning("Equipamentos", "Descreva a forma de pagamento escolhida em Outro.");
-        return;
-      }
-    }
     const totalAtual = valorOrcamentoRef.current;
     if (correcaoStatus && !motivoCorrecaoStatus.trim()) {
       warning("Equipamentos", "Informe o motivo da correção antes de continuar.");
@@ -1533,6 +1545,33 @@ export default function Equipamentos({ operationalProfile }: { operationalProfil
         permission: SENSITIVE_PERMISSIONS.FINANCIAL_ACTIONS,
       });
       if (!liberado) return;
+    }
+
+    let opcoesAjuste: OpcoesAjusteOrcamento | undefined;
+    if (!IS_SAAS_BUILD && ajusteOrcamentoSemMudancaStatus && verificacaoAjusteOrcamento && selecionado.id) {
+      try {
+        const analise = await db.analisarAjusteOrcamento(selecionado.id);
+        const aprovado = orcamentoJaAprovado(selecionado.status);
+        const variante = aprovado ? "aprovado" as const : analise.respostaPendente ? "pendente" as const : null;
+        if (variante && orcamentoMudou(verificacaoAjusteOrcamento, servicosAjuste, totalAtual)) {
+          const escolha = await pedirEscolhaAjuste(variante, analise);
+          if (!escolha) return;
+          opcoesAjuste = escolha;
+        }
+      } catch (err) {
+        showError("Equipamentos", "Conferir o portal antes de salvar", err);
+        return;
+      }
+      if (opcoesAjuste?.modoAprovado === "SEM_NOVA_APROVACAO") {
+        if (!formaPagamentoAjuste) {
+          warning("Equipamentos", "Escolha a forma de pagamento antes de salvar o orçamento aprovado.");
+          return;
+        }
+        if (formaPagamentoAjuste === "OUTRO" && !detalhePagamentoAjuste.trim()) {
+          warning("Equipamentos", "Descreva a forma de pagamento escolhida em Outro.");
+          return;
+        }
+      }
     }
 
     setSalvando(true);
@@ -1613,6 +1652,7 @@ export default function Equipamentos({ operationalProfile }: { operationalProfil
           throw new Error("A versão deste orçamento não está disponível. Atualize a lista e tente novamente.");
         }
         const pecas = mesclarPecasDoOrcamento(pecasLegadasAjuste, servicosAjuste);
+        const pedeNovaAprovacao = opcoesAjuste?.modoAprovado === "NOVA_APROVACAO";
         const ajusteSalvo = await db.atualizarServicosVerificacao(
           {
             equipamento_id: selecionado.id!,
@@ -1621,20 +1661,21 @@ export default function Equipamentos({ operationalProfile }: { operationalProfil
                             pecas,
             custo_total: totalAtual,
             observacoes: observacoesAjuste,
-            ...(orcamentoJaAprovado(selecionado.status) && formaPagamentoAjuste
+            ...(orcamentoJaAprovado(selecionado.status) && formaPagamentoAjuste && !pedeNovaAprovacao
               ? {
                 forma_pagamento_codigo: formaPagamentoAjuste,
                 forma_pagamento_detalhe: formaPagamentoAjuste === "OUTRO" ? detalhePagamentoAjuste.trim() : undefined,
               }
               : {}),
             divergence: divergencia,
-            cliente_aprovou_alteracao: clienteAprovouAlteracao,
+            cliente_aprovou_alteracao: opcoesAjuste?.modoAprovado === "SEM_NOVA_APROVACAO",
             expected_updated_em: expectedUpdatedEmAtual,
+            ...(opcoesAjuste ? { opcoes: opcoesAjuste } : {}),
           },
           profileId,
         );
-        expectedUpdatedEm = ajusteSalvo.equipamento_atualizado_em;
-        if (!expectedUpdatedEm) {
+        expectedUpdatedEm = ajusteSalvo.equipamento_atualizado_em ?? expectedUpdatedEm;
+        if (!ajusteOrcamentoSemMudancaStatus && !expectedUpdatedEm) {
           throw new Error("O orçamento foi salvo, mas não foi possível confirmar sua nova versão. Atualize a lista antes de continuar.");
         }
       }
@@ -2501,25 +2542,41 @@ export default function Equipamentos({ operationalProfile }: { operationalProfil
                     <TableHead className="text-right">Ações</TableHead>
                   </TableRow>
                 </TableHeader>
-                <TableBody>
+                <TableBody className="[&_tr]:!border-b-0 [&_tr:last-child_td]:border-b-0">
                   {equipamentos.map(eq => (
-                    <TableRow key={eq.id}>
-                      <TableCell className="font-mono font-medium">{eq.serial_number}</TableCell>
-                      <TableCell>
-                        <div>
-                          <span className="font-medium">{eq.marca} {eq.modelo}</span>
-                          <p className="text-xs text-muted-foreground">{eq.tipo}</p>
+                    <TableRow
+                      key={eq.id}
+                      className="group cursor-pointer"
+                      onClick={() => void abrirDetalhes(eq)}
+                    >
+                      <TableCell className={`overflow-hidden font-mono font-medium ${EQUIPMENT_ROW_FOCUS_FIRST}`}>
+                        <span className="block truncate" title={eq.serial_number}>{eq.serial_number}</span>
+                      </TableCell>
+                      <TableCell className={`overflow-hidden ${EQUIPMENT_ROW_FOCUS_EDGE}`}>
+                        <div className="min-w-0">
+                          <button
+                            type="button"
+                            className="equipment-row-open block w-full min-w-0 cursor-pointer truncate border-0 bg-transparent p-0 text-left font-medium text-inherit focus-visible:outline-none"
+                            aria-label={`Abrir detalhes de ${eq.marca} ${eq.modelo}`}
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              void abrirDetalhes(eq);
+                            }}
+                          >
+                            <span className="block truncate" title={`${eq.marca} ${eq.modelo}`}>{eq.marca} {eq.modelo}</span>
+                          </button>
+                          <p className="truncate text-xs text-muted-foreground" title={eq.tipo}>{eq.tipo}</p>
                         </div>
                       </TableCell>
-                      <TableCell>
+                      <TableCell className={`overflow-hidden ${EQUIPMENT_ROW_FOCUS_EDGE}`}>
                         {eq.cliente_nome ? (
-                          <div>
-                            <span className="text-sm">{eq.cliente_nome}</span>
-                            {eq.cliente_telefone && <p className="text-xs text-muted-foreground">{eq.cliente_telefone}</p>}
+                          <div className="min-w-0">
+                            <span className="block truncate text-sm" title={eq.cliente_nome}>{eq.cliente_nome}</span>
+                            {eq.cliente_telefone && <p className="truncate text-xs text-muted-foreground" title={eq.cliente_telefone}>{eq.cliente_telefone}</p>}
                           </div>
                         ) : <span className="text-muted-foreground">—</span>}
                       </TableCell>
-                      <TableCell>
+                      <TableCell className={`overflow-hidden ${EQUIPMENT_ROW_FOCUS_EDGE}`}>
                         <div className="flex flex-wrap items-center gap-2">
                           <StatusBadge status={eq.status} />
                           {eq.valor_orcamento != null && eq.valor_orcamento > 0 && (
@@ -2529,11 +2586,15 @@ export default function Equipamentos({ operationalProfile }: { operationalProfil
                             )}
                         </div>
                       </TableCell>
-                      <TableCell className="text-sm text-muted-foreground">
+                      <TableCell className={`overflow-hidden text-sm text-muted-foreground ${EQUIPMENT_ROW_FOCUS_EDGE}`}>
                         {formatDatePtBr(eq.data_entrada)}
                       </TableCell>
-                      <TableCell className="text-sm text-muted-foreground">{formatDatePtBr(eq.atualizado_em || eq.criado_em)}</TableCell>
-                      <TableCell className="text-right">
+                      <TableCell className={`overflow-hidden text-sm text-muted-foreground ${EQUIPMENT_ROW_FOCUS_EDGE}`}>{formatDatePtBr(eq.atualizado_em || eq.criado_em)}</TableCell>
+                      <TableCell
+                        className={`text-right ${EQUIPMENT_ROW_FOCUS_LAST}`}
+                        onClick={(event) => event.stopPropagation()}
+                        onKeyDown={(event) => event.stopPropagation()}
+                      >
                         <div className="flex justify-end">
                           {renderAcoes(eq)}
                         </div>
@@ -3353,6 +3414,14 @@ export default function Equipamentos({ operationalProfile }: { operationalProfil
         </DialogContent>
       </Dialog>
 
+      <EscolhaAjusteOrcamentoDialog
+        open={escolhaAjuste !== null}
+        variante={escolhaAjuste?.variante ?? "aprovado"}
+        analise={escolhaAjuste?.analise ?? null}
+        onConfirmar={responderEscolhaAjuste}
+        onCancelar={() => responderEscolhaAjuste(null)}
+      />
+
       <Dialog open={consumosDialogOpen} onOpenChange={setConsumosDialogOpen}>
         <DialogContent className="sm:max-w-lg">
           <DialogHeader><DialogTitle>Peças da OS</DialogTitle></DialogHeader>
@@ -3383,14 +3452,23 @@ export default function Equipamentos({ operationalProfile }: { operationalProfil
         <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-xl">
           <DialogHeader><DialogTitle>Aprovação dos serviços pelo cliente</DialogTitle></DialogHeader>
           <div className="space-y-4">
-            <p className="text-sm">Todos os serviços de troca foram aprovados?</p>
-            <p className="text-sm text-muted-foreground">Somente peças dos serviços aprovados serão baixadas. Serviços não selecionados serão reprovados, sem baixa. Se faltar estoque, a quantidade restante ficará pendente para confirmação na OS.</p>
+            {servicosAprovacao.length === 0 ? (
+              <>
+                <p className="text-sm">Este orçamento antigo não possui serviços detalhados. O cliente aprovou o valor total?</p>
+                <p className="text-sm text-muted-foreground">A aprovação preserva o valor do orçamento e a forma de pagamento, sem baixar peças do estoque.</p>
+              </>
+            ) : (
+              <>
+                <p className="text-sm">Todos os serviços de troca foram aprovados?</p>
+                <p className="text-sm text-muted-foreground">Somente peças dos serviços aprovados serão baixadas. Serviços não selecionados serão reprovados, sem baixa. Se faltar estoque, a quantidade restante ficará pendente para confirmação na OS.</p>
+              </>
+            )}
             {pagamentoAprovacaoError && <p role="alert" className="text-sm text-destructive">{pagamentoAprovacaoError}</p>}
             <div className="flex flex-wrap gap-2">
               <Button type="button" variant={todosServicosAprovados === true ? "default" : "outline"}
-                onClick={() => { setTodosServicosAprovados(true); setIdsAprovados(servicosAprovacao.map((servico) => servico.id)); }}>Sim, todos</Button>
+                onClick={() => { setTodosServicosAprovados(true); setIdsAprovados(servicosAprovacao.map((servico) => servico.id)); }}>{servicosAprovacao.length === 0 ? "Aprovar orçamento" : "Sim, todos"}</Button>
               <Button type="button" variant={todosServicosAprovados === false ? "default" : "outline"}
-                onClick={() => { setTodosServicosAprovados(false); setIdsAprovados([]); }}>Não, selecionar</Button>
+                onClick={() => { setTodosServicosAprovados(false); setIdsAprovados([]); }}>{servicosAprovacao.length === 0 ? "Reprovar orçamento" : "Não, selecionar"}</Button>
             </div>
             {todosServicosAprovados === false && (
               <div className="max-h-64 space-y-2 overflow-y-auto rounded-md border p-3">
@@ -3413,8 +3491,11 @@ export default function Equipamentos({ operationalProfile }: { operationalProfil
                     {peca.nome}: {peca.quantidade} necessária(s), saldo {saldo}{saldo < peca.quantidade ? " · pendência" : ""}
                   </p>;
                 })}
+                {servicosAprovacao.length === 0 && todosServicosAprovados && (
+                  <p>Valor do orçamento: {formatCurrency(Number(selecionado?.valor_orcamento ?? totalOrcamentoAprovacao ?? 0))}</p>
+                )}
                 <p className="mt-2 font-semibold">Total aprovado: {formatCurrency(
-                  idsAprovados.length === servicosAprovacao.length && totalOrcamentoAprovacao != null
+                  idsAprovados.length === servicosAprovacao.length && totalOrcamentoAprovacao
                     ? totalOrcamentoAprovacao
                     : servicosAprovacao.filter((servico) => idsAprovados.includes(servico.id))
                       .reduce((total, servico) => total + Number(servico.valor || 0)

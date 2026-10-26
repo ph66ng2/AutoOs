@@ -24,6 +24,8 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
+import { db } from "@/lib/db";
+import { IS_SAAS_BUILD } from "@/lib/runtime-mode";
 import { carregarRepositorioClientes } from "@/lib/data/clientes-repository";
 import { carregarRepositorioEquipamentos } from "@/lib/data/equipamentos-repository";
 import type { Cliente, ClienteId, Equipamento } from "@/types";
@@ -159,12 +161,18 @@ export function ClienteSelector({
     }
     setCarregandoEquip(true);
     const nome = nomeExibicaoCliente(clienteSelecionado);
+    const nomes = [nome, clienteSelecionado.nome].filter((item): item is string => Boolean(item));
     let ativo = true;
-    void carregarRepositorioEquipamentos().then((repository) => repository.listar(nome)).then((todos) => {
+    const carregar = IS_SAAS_BUILD
+      ? carregarRepositorioEquipamentos().then((repository) =>
+          repository.listarPorClienteId
+            ? repository.listarPorClienteId(clienteSelecionado.id!)
+            : repository.listar(nome).then((todos) => todos.filter(
+                (eq) => eq.cliente_id === clienteSelecionado.id || eq.cliente_nome === nome || eq.cliente_nome === clienteSelecionado.nome
+              )))
+      : db.listarEquipamentosCliente(clienteSelecionado.id!, nomes);
+    void carregar.then((doCliente) => {
       if (!ativo) return;
-      const doCliente = todos.filter(
-        (eq) => eq.cliente_id === clienteSelecionado.id || eq.cliente_nome === nome || eq.cliente_nome === clienteSelecionado.nome
-      );
       setEquipamentosCliente(doCliente);
     }).catch(() => { if (ativo) setEquipamentosCliente([]); })
       .finally(() => { if (ativo) setCarregandoEquip(false); });

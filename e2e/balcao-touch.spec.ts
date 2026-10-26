@@ -1,6 +1,12 @@
 import { expect, test } from "@playwright/test";
+import { RELEASE_HIGHLIGHTS_STORAGE_KEY } from "../src/lib/releaseHighlightsKey";
 
 test.use({ hasTouch: true });
+
+// O resumo de novidades abre quando o splash sai e cobriria o painel no meio do teste.
+test.beforeEach(async ({ page }) => {
+  await page.addInitScript((key) => localStorage.setItem(key, "seen"), RELEASE_HIGHLIGHTS_STORAGE_KEY);
+});
 
 for (const viewport of [{ width: 1920, height: 1080 }, { width: 1366, height: 768 }]) {
   test(`modo balcão funciona em ${viewport.width}×${viewport.height} com toque`, async ({ page }) => {

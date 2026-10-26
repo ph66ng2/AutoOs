@@ -49,6 +49,9 @@ DECLARE current_checksum text;
 BEGIN
   SELECT encode(checksum, 'hex') INTO current_checksum
     FROM public._sqlx_migrations WHERE version = 23 AND success = true FOR UPDATE;
+  IF current_checksum IS NULL THEN
+    RAISE EXCEPTION 'Migration 0023 ausente ou sem sucesso no histórico SQLx';
+  END IF;
   IF current_checksum IS DISTINCT FROM '${master}'
      AND current_checksum IS DISTINCT FROM '${canonical}' THEN
     RAISE EXCEPTION '0023 não corresponde à variante conhecida da master';

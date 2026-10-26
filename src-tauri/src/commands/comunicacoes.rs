@@ -24,7 +24,7 @@ pub async fn registrar_comunicacao(input: ComunicacaoInput) -> Result<Comunicaca
     .bind(input.equipamento_id)
     .fetch_optional(&pool)
     .await
-    .map_err(|e| e.to_string())?
+    .map_err(super::operator_errors::mapear_erro_sql)?
     .ok_or_else(|| "O equipamento precisa estar vinculado à empresa antes de registrar uma comunicação.".to_string())?;
 
     let row = sqlx::query(
@@ -54,7 +54,7 @@ pub async fn registrar_comunicacao(input: ComunicacaoInput) -> Result<Comunicaca
     .await
     .map_err(|e| {
         error!("Erro ao registrar comunicação: {}", e);
-        e.to_string()
+        super::operator_errors::mapear_erro_sql(e)
     })?;
 
     let id: i32 = row.get("id");
@@ -66,7 +66,7 @@ pub async fn registrar_comunicacao(input: ComunicacaoInput) -> Result<Comunicaca
         .bind(id)
         .fetch_one(&pool)
         .await
-        .map_err(|e| e.to_string())?;
+        .map_err(super::operator_errors::mapear_erro_sql)?;
 
     Ok(com)
 }
@@ -92,7 +92,7 @@ pub async fn listar_comunicacoes(equipamento_id: i32) -> Result<Vec<ComunicacaoR
         .await
         .map_err(|e| {
             error!("Erro ao listar comunicações: {}", e);
-            e.to_string()
+            super::operator_errors::mapear_erro_sql(e)
         })?;
 
     info!("Comunicações do equipamento {}: {} itens", equipamento_id, rows.len());

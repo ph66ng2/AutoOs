@@ -1,3 +1,4 @@
+import { useEffect } from "react";
 import { useForm } from "react-hook-form";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
@@ -68,6 +69,57 @@ function FormHarness({
     </>
   );
 }
+
+function ContatoHarness({
+  tipo,
+  exigir,
+  comErros = false,
+}: {
+  tipo: "PF" | "PJ";
+  exigir: boolean;
+  comErros?: boolean;
+}) {
+  const form = useForm<ClienteFormData>({
+    defaultValues: { ...valoresVazios, tipo_pessoa: tipo, exigir_contato_inicial: exigir },
+  });
+  useEffect(() => {
+    if (comErros) {
+      form.setError("contato_nome", { message: "Informe o nome do contato." });
+      form.setError("contato_telefone", { message: "Informe um celular válido." });
+      form.setError("contato_email", { message: "E-mail do contato inválido." });
+    }
+  }, [comErros, form]);
+  return (
+    <ClienteFormularioCampos form={form} tipoPessoa={tipo} buscarCep={vi.fn()} buscandoCep={false} />
+  );
+}
+
+describe("ClienteFormularioCampos — contato para orçamentos", () => {
+  it("aparece para PJ quando exigir_contato_inicial está ativo", () => {
+    render(<ContatoHarness tipo="PJ" exigir />);
+    expect(screen.getByText("Contato para orçamentos")).toBeInTheDocument();
+    expect(screen.getByText("Recebe o orçamento e o acesso ao portal.")).toBeInTheDocument();
+  });
+
+  it("não aparece para PF nem quando a exigência está desligada", () => {
+    const { unmount } = render(<ContatoHarness tipo="PF" exigir />);
+    expect(screen.queryByText("Contato para orçamentos")).not.toBeInTheDocument();
+    unmount();
+    render(<ContatoHarness tipo="PJ" exigir={false} />);
+    expect(screen.queryByText("Contato para orçamentos")).not.toBeInTheDocument();
+  });
+
+  it("formata o celular e mostra os erros dos campos do contato", async () => {
+    const user = userEvent.setup();
+    render(<ContatoHarness tipo="PJ" exigir comErros />);
+    expect(await screen.findByText("Informe o nome do contato.")).toBeInTheDocument();
+    expect(screen.getByText("Informe um celular válido.")).toBeInTheDocument();
+    expect(screen.getByText("E-mail do contato inválido.")).toBeInTheDocument();
+
+    await user.type(screen.getByLabelText("Celular do contato *"), "71999998888");
+    expect(screen.getByDisplayValue("(71) 99999-8888")).toBeInTheDocument();
+  });
+});
 
 describe("ClienteFormularioCampos — consulta de CNPJ", () => {
   const consultarSpy = vi.spyOn(cnpjService, "consultarCnpj");

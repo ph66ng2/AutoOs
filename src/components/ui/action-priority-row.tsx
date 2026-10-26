@@ -16,6 +16,7 @@ export interface PriorityAction {
   variant?: "default" | "outline" | "ghost"
   className?: string
   disabled?: boolean
+  ariaExpanded?: boolean
 }
 
 interface ActionPriorityRowProps {
@@ -25,6 +26,7 @@ interface ActionPriorityRowProps {
   iconOnlyPrimary?: boolean
   iconOnlySecondary?: boolean
   iconOnlyOverflowTrigger?: boolean
+  wrap?: boolean
 }
 
 export function ActionPriorityRow({
@@ -34,6 +36,7 @@ export function ActionPriorityRow({
   iconOnlyPrimary = false,
   iconOnlySecondary = false,
   iconOnlyOverflowTrigger = false,
+  wrap = false,
 }: ActionPriorityRowProps) {
   const [selectedOverflow, setSelectedOverflow] = useState<string>("")
 
@@ -43,7 +46,7 @@ export function ActionPriorityRow({
   )
 
   return (
-    <div className="ml-auto inline-flex items-center justify-end gap-1 whitespace-nowrap">
+    <div className={`ml-auto items-center justify-end gap-1 whitespace-nowrap ${wrap ? "flex w-full flex-wrap" : "inline-flex"}`}>
       <Button
         variant={primary.variant || "default"}
         size={iconOnlyPrimary ? "icon" : "sm"}
@@ -56,6 +59,7 @@ export function ActionPriorityRow({
         disabled={primary.disabled}
         title={primary.label}
         aria-label={primary.label}
+        aria-expanded={primary.ariaExpanded}
       >
         {primary.icon}
         {!iconOnlyPrimary && primary.label}

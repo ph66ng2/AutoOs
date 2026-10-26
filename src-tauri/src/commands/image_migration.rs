@@ -38,7 +38,7 @@ pub async fn migrate_images_to_storage() -> Result<ImageMigrationResult, String>
     )
     .fetch_all(&pool)
     .await
-    .map_err(|e| format!("Erro ao buscar imagens pendentes de migração: {}", e))?;
+    .map_err(super::operator_errors::mapear_erro_sql)?;
 
     info!("Encontradas {} imagens para migrar para o storage", rows.len());
 
@@ -64,8 +64,7 @@ pub async fn migrate_images_to_storage() -> Result<ImageMigrationResult, String>
                         debug!("Imagem {} migrada para {}", row.id, public_url);
                     }
                     Err(e) => {
-                        let msg = format!("Imagem {}: upload ok mas falha ao atualizar DB: {}", row.id, e);
-                        error!("{}", msg);
+                        let msg = super::operator_errors::mapear_erro_sql(e);
                         errors.push(msg);
                         skipped += 1;
                     }

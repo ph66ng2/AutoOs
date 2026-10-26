@@ -22,12 +22,14 @@ import { formatDatePtBr } from "@/lib/date-utils";
 import { IS_SAAS_BUILD } from "@/lib/runtime-mode";
 import { loadSaasAuthConfiguration } from "@/lib/saas-auth";
 import { carregarRepositorioComunicacoes } from "@/lib/data/comunicacoes-repository";
+import { db } from "@/lib/db";
 import type {
   Comunicacao,
   Equipamento,
   EquipamentoId,
   PecaNecessaria,
   ServicoNecessario,
+  TipoEnvioWhatsapp,
   Verificacao,
   WhatsappSendRequest,
 } from "@/types";
@@ -57,7 +59,7 @@ async function enviarWhatsapp(request: WhatsappSendRequest): Promise<void> {
 }
 
 /** Adiciona DDI 55 (Brasil) se não presente. Remove caracteres não-numéricos */
-function formatarTelefone(telefone: string): string {
+export function formatarTelefone(telefone: string): string {
   const numeros = telefone.replace(/\D/g, "");
   const normalizado = numeros.startsWith("55") ? numeros : "55" + numeros;
   if (normalizado.length < 12) {
@@ -245,5 +247,34 @@ Aguardamos você! 😊`;
 
       return { sucesso: false, erro: erroMsg };
     }
+  },
+
+  async enviarLinkStatusPublico(equipamento: Equipamento<EquipamentoId>, url: string) {
+    const recipient = resolveRecipient(equipamento, "telefone");
+    if (!recipient.endereco) {
+      return { sucesso: false, erro: "Cliente não possui telefone cadastrado" };
+    }
+    const mensagem = `Olá, ${recipient.nome || "cliente"}!\nAcompanhe o status do equipamento:\n${url}`;
+    try {
+      const telefone = formatarTelefone(recipient.endereco);
+      await enviarWhatsapp({ contato: telefone, mensagem });
+      return { sucesso: true };
+    } catch (error: unknown) {
+      return { sucesso: false, erro: error instanceof Error ? error.message : String(error) };
+    }
+  },
+
+  async solicitarEnvio(
+    equipamentoId: number,
+    tipo: TipoEnvioWhatsapp,
+    opcoes: { senhaPortal?: string; reenvioManual?: boolean; confirmarIncerto?: boolean } = {},
+  ) {
+    return db.solicitarEnvioWhatsapp({
+      equipamento_id: equipamentoId,
+      tipo,
+      senha_portal: opcoes.senhaPortal,
+      reenvio_manual: opcoes.reenvioManual,
+      confirmar_incerto: opcoes.confirmarIncerto,
+    });
   },
 };

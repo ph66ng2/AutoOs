@@ -8,7 +8,7 @@ import { ErrorAlert } from "@/components/ui/error-alert";
 import { useNotification } from "@/hooks/useNotification";
 import { IS_SAAS_BUILD } from "@/lib/runtime-mode";
 import { carregarRepositorioClienteContatos } from "@/lib/data/cliente-contatos-repository";
-import { clienteContatoSchema, formatarTelefone, type ClienteContatoFormData } from "@/lib/validations";
+import { celularValido, clienteContatoSchema, formatarTelefone, type ClienteContatoFormData } from "@/lib/validations";
 import type { Cliente, ClienteContato, ClienteId } from "@/types";
 
 interface ContatoResponsavelSelectorProps {
@@ -17,6 +17,9 @@ interface ContatoResponsavelSelectorProps {
   value: ClienteContato | null;
   onChange: (contato: ClienteContato | null) => void;
   disabled?: boolean;
+  titulo?: string;
+  /** Pré-seleciona o primeiro contato ativo com celular válido, uma vez por cliente, quando não há responsável. */
+  preSelecionar?: boolean;
 }
 
 export function ContatoResponsavelSelector({
@@ -25,6 +28,8 @@ export function ContatoResponsavelSelector({
   value,
   onChange,
   disabled = false,
+  titulo = "Responsável pelo equipamento",
+  preSelecionar = false,
 }: ContatoResponsavelSelectorProps) {
   const [contatos, setContatos] = useState<ClienteContato[]>([]);
   const [busca, setBusca] = useState("");
@@ -35,7 +40,11 @@ export function ContatoResponsavelSelector({
   const [erroNovo, setErroNovo] = useState<string | null>(null);
   const [salvando, setSalvando] = useState(false);
   const clienteAnterior = useRef<ClienteId | undefined>(cliente?.id);
+  const valorAtual = useRef<ClienteContato | null>(value);
+  const preSelecionadosPara = useRef<Set<ClienteId>>(new Set());
   const { error: showError } = useNotification();
+
+  valorAtual.current = value;
 
   useEffect(() => {
     if (clienteAnterior.current !== cliente?.id) {
@@ -50,15 +59,21 @@ export function ContatoResponsavelSelector({
       return;
     }
     let ativo = true;
+    const clienteId = cliente.id;
     setCarregando(true);
     setErro(null);
     void carregarRepositorioClienteContatos()
-      .then((repository) => repository.listar(cliente.id!, companyId))
+      .then((repository) => repository.listar(clienteId, companyId))
       .then((items) => {
         if (!ativo) return;
         setContatos(items);
-        const linkedContact = value?.id ? items.find((item) => item.id === value.id) : undefined;
+        const linkedContact = valorAtual.current?.id ? items.find((item) => item.id === valorAtual.current?.id) : undefined;
         if (linkedContact) onChange(linkedContact);
+        if (preSelecionar && !valorAtual.current && !preSelecionadosPara.current.has(clienteId)) {
+          preSelecionadosPara.current.add(clienteId);
+          const primeiro = items.find((contato) => contato.ativo && celularValido(contato.telefone ?? ""));
+          if (primeiro) onChange(primeiro);
+        }
       })
       .catch((cause) => { if (ativo) { setContatos([]); setErro(String(cause)); } })
       .finally(() => { if (ativo) setCarregando(false); });
@@ -109,7 +124,7 @@ export function ContatoResponsavelSelector({
     <div className="space-y-2 rounded-md border bg-muted/10 p-3">
       <div className="flex items-center justify-between gap-2">
         <div>
-          <Label className="flex items-center gap-1"><UserRound className="h-3.5 w-3.5" /> Responsável pelo equipamento</Label>
+          <Label className="flex items-center gap-1"><UserRound className="h-3.5 w-3.5" /> {titulo}</Label>
           <p className="text-xs text-muted-foreground">Opcional. Escolha um contato ativo deste cliente.</p>
         </div>
         <Button type="button" size="sm" variant="outline" onClick={() => setNovoOpen(true)} disabled={disabled || !cliente?.id || (!IS_SAAS_BUILD && typeof (empresaId ?? cliente?.empresa_id) !== "number")}>

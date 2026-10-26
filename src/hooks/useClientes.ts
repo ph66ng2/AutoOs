@@ -105,7 +105,7 @@ export function useClientes(params?: UseClientesParams) {
    *          O `id` retornado é utilizado por ClienteSelector.tsx para
    *          vincular o cliente recém-criado a um equipamento.
    */
-  const criar = async (cliente: ClienteInput) => {
+  const criar = async (cliente: ClienteInput, _contatoInicial?: { nome: string; telefone: string; email?: string }) => {
     try {
       const repository = params?.repository ?? await carregarRepositorioClientes();
       const criado = await repository.criar(cliente);

@@ -20,7 +20,10 @@ O projeto não está mais em fase de scaffold. O estado atual é um app Tauri + 
 - No runtime SaaS: Balcão operacional, paginação de Clientes/Equipamentos, mínimos de estoque por categoria e baixa de peças vinculada aos serviços aprovados
 - Recebimento técnico com defeito relatado, patrimônio, acessórios e imagens de entrada/saída
 - Histórico de comunicações por WhatsApp e email
+- Consulta pública de etapa por link individual, com revogação e QR code
 - Perfis locais com PIN, permissões granulares e auditoria mínima
+- O envio operacional de e-mails usa o SMTP já configurado e exige sessão com PIN desbloqueado; a ordem de entrada só é enviada com o PDF anexado. Consultar ou alterar a configuração SMTP exige a permissão `CONFIG_SMTP`.
+- O envio operacional de WhatsApp usa a API já configurada e exige sessão com PIN desbloqueado; consultar ou alterar a configuração da API exige a permissão `CONFIG_WHATSAPP`.
 - A criação de perfis fica em `Perfil > Criar perfil` e exige uma sessão com permissão para gerenciar perfis. Informe nome, tipo de acesso, permissões e PIN com confirmação. Depois de criar, use `Ver perfis e decidir` para entrar com o PIN do novo perfil. O perfil ativo só muda após validar o PIN de destino.
 - Painel de conferência do schema em `Configurações > Segurança`
 - Backup manual PostgreSQL pelo app
@@ -91,6 +94,14 @@ Build local do desktop:
 npm run tauri build
 ```
 
+Build separado do portal público para publicar em `status.bmitag.com.br`:
+
+```bash
+npm run build:public-status
+```
+
+O conteúdo publicável é gerado em `dist-public-status/`. Veja os pré-requisitos de banco, Edge Function e hospedagem em [docs/PORTAL_STATUS_PUBLICO.md](./docs/PORTAL_STATUS_PUBLICO.md).
+
 Estado atual de distribuição Windows:
 
 - bundle Tauri ativo;
@@ -124,6 +135,7 @@ O app mantém housekeeping local desses diretórios e expõe um snapshot de supo
 - Assinatura Windows: [docs/WINDOWS_CODE_SIGNING.md](./docs/WINDOWS_CODE_SIGNING.md)
 - Roadmap: [3-NEXT_STEPS.md](./3-NEXT_STEPS.md)
 - Backup e restore: [4-BACKUP.md](./4-BACKUP.md)
+- Portal público de acompanhamento: [docs/PORTAL_STATUS_PUBLICO.md](./docs/PORTAL_STATUS_PUBLICO.md)
 
 ## Banco e migrações
 
@@ -189,3 +201,7 @@ Proprietário - BMITAG
 ### Estoque vinculado ao orçamento
 
 Serviços podem vincular peças e consumir estoque somente após aprovação do cliente, inclusive aprovação parcial. AutoOS e AutoBO compartilham o mesmo estoque no Supabase. Veja [regras de operação e publicação coordenada](docs/ESTOQUE_ORCAMENTO.md).
+
+### Equipe e acessos
+
+A aba **Equipe e acessos** reúne cadastro por função, revisão das permissões, edição, PIN local e desativação/reativação. A troca de perfil é independente em cada computador. Veja o fluxo, a migration e as condições de provisionamento em [Equipe e acessos](docs/TEAM_ACCESS.md).

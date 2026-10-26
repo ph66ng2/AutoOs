@@ -17,6 +17,33 @@ const defaults: React.ComponentProps<typeof ProfileSessionDialog> = {
 };
 
 describe("confirmação de sessão", () => {
+  it("não chama de PIN não configurado um perfil explicitamente sem exigência de PIN", () => {
+    const optional = { ...admin, id: 2, nome: "Operador", role: "CUSTOM", pin_required: false, is_default: false };
+    render(<ProfileSessionDialog {...defaults} mode="selector" profiles={[optional]} selectedProfileId="2" selectedProfile={optional} activeProfileId={1} />);
+    expect(screen.queryByText("PIN não configurado neste PC", { exact: true })).not.toBeInTheDocument();
+    expect(screen.getAllByText("Não exige PIN", { exact: true }).length).toBeGreaterThan(0);
+    expect(screen.getAllByText("Este perfil não exige PIN. Clique abaixo para continuar.").length).toBeGreaterThan(0);
+  });
+
+  it("bloqueia PIN exigido mas ausente neste PC, inclusive administrador", () => {
+    const protectedAdmin = { ...admin, pin_required: true };
+    render(<ProfileSessionDialog {...defaults} profiles={[protectedAdmin]} selectedProfile={protectedAdmin} />);
+    expect(screen.getByRole("button", { name: "PIN não configurado neste PC" })).toBeDisabled();
+    expect(screen.queryByRole("button", { name: /Criar meu acesso/ })).not.toBeInTheDocument();
+  });
+
+  it("reflete o valor real de pin_required nos textos do perfil", () => {
+    const required = { ...admin, id: 3, nome: "Caixa", role: "CUSTOM", pin_required: true, pin_configured: true, is_default: false };
+    const unknown = { ...admin, id: 4, nome: "Antigo", role: "CUSTOM", pin_required: undefined, pin_configured: false, is_default: false };
+    const { rerender } = render(<ProfileSessionDialog {...defaults} mode="selector" profiles={[required]} selectedProfileId="3" selectedProfile={required} activeProfileId={1} />);
+    // Perfil com PIN local pede o PIN e nunca se anuncia como "não exige PIN".
+    expect(screen.getByLabelText("PIN do perfil")).toBeInTheDocument();
+    expect(screen.queryByText("Não exige PIN")).not.toBeInTheDocument();
+    rerender(<ProfileSessionDialog {...defaults} mode="selector" profiles={[unknown]} selectedProfileId="4" selectedProfile={unknown} activeProfileId={1} />);
+    expect(screen.queryByText(/não exige PIN/i)).not.toBeInTheDocument();
+    expect(screen.getAllByText("PIN não configurado neste PC").length).toBeGreaterThan(0);
+  });
+
   it("impede criar o PIN inicial quando a confirmação diverge", () => {
     render(<ProfileSessionDialog {...defaults} />);
     expect(screen.getByRole("button", { name: /Criar meu acesso e entrar/i })).toBeDisabled();
@@ -25,5 +52,78 @@ describe("confirmação de sessão", () => {
   it("não anuncia zero permissões quando a sessão ainda está bloqueada", () => {
     render(<ProfileSessionDialog {...defaults} profiles={[admin, { ...admin, id: 2, nome: "Operador", role: "CUSTOM", is_default: false, pin_configured: true }]} selectedProfile={null} selectedProfileId="" />);
     expect(screen.queryByText(/0 permissões configuradas/)).not.toBeInTheDocument();
+  });
+
+  it("não mostra a dica de sucesso junto de um erro de acesso", () => {
+    const current = { ...admin, pin_configured: true };
+    render(<ProfileSessionDialog {...defaults} mode="selector" profiles={[current]} selectedProfile={current} error="O banco atingiu o limite de acessos ao mesmo tempo." />);
+    expect(screen.getByText(/O banco atingiu o limite/)).toBeInTheDocument();
+    expect(screen.queryByText(/Você já está neste perfil/)).not.toBeInTheDocument();
+  });
+});
+
+describe("cofre de senhas indisponível", () => {
+  it("avisa, bloqueia o acesso e não trata ninguém como sem PIN nem oferece primeiro acesso", () => {
+    const onRetry = vi.fn();
+    const onFirstAccess = vi.fn();
+    const operador = { ...admin, id: 8, nome: "Ivan", role: "ATENDENTE", pin_required: true, pin_configured: false, is_default: false, onboarding_pendente: false };
+    render(<ProfileSessionDialog {...defaults} profiles={[admin, operador]} selectedProfileId="8" selectedProfile={operador} keyringBlocked onRetryKeyring={onRetry} onFirstAccess={onFirstAccess} />);
+
+    expect(screen.getByRole("alert")).toHaveTextContent("O cofre de senhas do sistema está bloqueado ou indisponível");
+    expect(screen.queryByText("Ativar neste computador", { exact: false })).not.toBeInTheDocument();
+    expect(screen.queryByText("PIN não configurado neste PC")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /tenho um código do administrador/i })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Entrar com este perfil|Continuar|Selecione/ })).toBeDisabled();
+    // O administrador também não cai no fluxo de "Novo PIN" quando o cofre não respondeu.
+    expect(screen.queryByLabelText("Novo PIN")).not.toBeInTheDocument();
+
+    screen.getByRole("button", { name: "Tentar de novo" }).click();
+    expect(onRetry).toHaveBeenCalledTimes(1);
+    expect(onFirstAccess).not.toHaveBeenCalled();
+  });
+});
+
+describe("recuperação de PIN com código do administrador", () => {
+  it("perfil que já tem PIN neste computador oferece o código do ADM e abre em modo recuperação", async () => {
+    const onFirstAccess = vi.fn();
+    const withPin = { ...admin, id: 4, nome: "Ivan", role: "TECNICO", pin_configured: true, pin_required: true, is_default: false };
+    render(<ProfileSessionDialog {...defaults} mode="selector" profiles={[withPin]} selectedProfileId="4" selectedProfile={withPin} activeProfileId={9} onFirstAccess={onFirstAccess} />);
+    screen.getByRole("button", { name: /tenho um código do administrador/i }).click();
+    expect(onFirstAccess).toHaveBeenCalledWith(4, true);
+  });
+
+  it("não oferece o código de recuperação a quem ainda não tem PIN aqui (é o primeiro acesso)", () => {
+    const pending = { ...admin, id: 5, role: "ATENDENTE", pin_required: true, pin_configured: false, is_default: false };
+    render(<ProfileSessionDialog {...defaults} profiles={[pending]} selectedProfileId="5" selectedProfile={pending} onFirstAccess={vi.fn()} />);
+    expect(screen.queryByRole("button", { name: /tenho um código do administrador/i })).not.toBeInTheDocument();
+  });
+});
+
+describe("primeiro acesso neste computador", () => {
+  it("oferece o primeiro acesso com código para perfil sem PIN local", async () => {
+    const onFirstAccess = vi.fn();
+    const pending = { ...admin, id: 5, nome: "Recepção 2", role: "ATENDENTE", pin_required: true, is_default: false, onboarding_pendente: true };
+    render(<ProfileSessionDialog {...defaults} profiles={[admin, pending]} selectedProfileId="5" selectedProfile={pending} onFirstAccess={onFirstAccess} />);
+    expect(screen.getByText("Primeiro acesso")).toBeInTheDocument();
+    screen.getByRole("button", { name: "Fazer primeiro acesso" }).click();
+    expect(onFirstAccess).toHaveBeenCalledWith(5);
+  });
+
+  it("perfil já montado em outro computador pede só a ativação aqui, sem 'primeiro acesso'", () => {
+    const onFirstAccess = vi.fn();
+    const other = { ...admin, id: 6, nome: "Juliana", role: "ATENDENTE", pin_required: true, pin_configured: false, is_default: false, onboarding_pendente: false };
+    render(<ProfileSessionDialog {...defaults} profiles={[admin, other]} selectedProfileId="6" selectedProfile={other} onFirstAccess={onFirstAccess} />);
+    expect(screen.queryByText("Primeiro acesso")).not.toBeInTheDocument();
+    expect(screen.getByText("Ativar neste computador", { selector: "span" })).toBeInTheDocument();
+    screen.getByRole("button", { name: "Ativar neste computador" }).click();
+    expect(onFirstAccess).toHaveBeenCalledWith(6);
+  });
+
+  it("nomes longos são truncados dentro do cartão do perfil e continuam legíveis pelo title", () => {
+    const longo = { ...admin, id: 7, nome: "Maria Aparecida de Souza Albuquerque Filho", role: "ATENDENTE", is_default: false, pin_configured: true };
+    render(<ProfileSessionDialog {...defaults} profiles={[longo]} selectedProfileId="7" selectedProfile={longo} />);
+    const nome = screen.getByTitle(longo.nome);
+    expect(nome).toHaveClass("truncate", "w-full");
+    expect(nome.parentElement).toHaveClass("min-w-0", "w-full");
   });
 });

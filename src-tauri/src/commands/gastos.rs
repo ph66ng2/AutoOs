@@ -77,7 +77,7 @@ pub async fn listar_gastos_fixos() -> Result<Vec<GastoFixoRow>, String> {
         .await
         .map_err(|e| {
             error!("Erro ao listar gastos fixos: {}", e);
-            format!("Erro ao listar gastos fixos: {}", e)
+            super::operator_errors::mapear_erro_sql(e)
         })?;
 
     info!("Gastos fixos listados: {} itens", rows.len());
@@ -104,7 +104,7 @@ pub async fn criar_gasto_fixo(input: GastoFixoInput) -> Result<GastoFixoRow, Str
     .await
     .map_err(|e| {
         error!("Erro ao verificar unicidade do nome: {}", e);
-        e.to_string()
+        super::operator_errors::mapear_erro_sql(e)
     })?;
 
     if exists {
@@ -127,7 +127,7 @@ pub async fn criar_gasto_fixo(input: GastoFixoInput) -> Result<GastoFixoRow, Str
     .await
     .map_err(|e| {
         error!("Erro ao criar gasto fixo: {}", e);
-        e.to_string()
+        super::operator_errors::erro_sql_para_operador(&e)
     })?;
 
     let id: i32 = row.get("id");
@@ -163,7 +163,7 @@ pub async fn atualizar_gasto_fixo(id: i32, input: GastoFixoInput) -> Result<Gast
     .await
     .map_err(|e| {
         error!("Erro ao verificar unicidade do nome: {}", e);
-        e.to_string()
+        super::operator_errors::mapear_erro_sql(e)
     })?;
 
     if exists {
@@ -188,7 +188,7 @@ pub async fn atualizar_gasto_fixo(id: i32, input: GastoFixoInput) -> Result<Gast
     .await
     .map_err(|e| {
         error!("Erro ao atualizar gasto fixo {}: {}", id, e);
-        e.to_string()
+        super::operator_errors::erro_sql_para_operador(&e)
     })?
     .rows_affected();
 
@@ -218,7 +218,7 @@ async fn buscar_gasto_fixo(id: i32) -> Result<GastoFixoRow, String> {
         .await
         .map_err(|e| {
             error!("Gasto fixo {} não encontrado: {}", id, e);
-            e.to_string()
+            super::operator_errors::mapear_erro_sql(e)
         })?;
     Ok(row)
 }
@@ -245,7 +245,7 @@ pub async fn listar_gastos_variaveis(mes: i32, ano: i32) -> Result<Vec<GastoVari
         .await
         .map_err(|e| {
             error!("Erro ao listar gastos variáveis: {}", e);
-            format!("Erro ao listar gastos variáveis: {}", e)
+            super::operator_errors::mapear_erro_sql(e)
         })?;
 
     info!("Gastos variáveis listados: {} itens para {}/{}", rows.len(), mes, ano);
@@ -282,7 +282,7 @@ pub async fn criar_gasto_variavel(input: GastoVariavelInput) -> Result<GastoVari
     .await
     .map_err(|e| {
         error!("Erro ao criar gasto variável: {}", e);
-        e.to_string()
+        super::operator_errors::mapear_erro_sql(e)
     })?;
 
     let id: i32 = row.get("id");
@@ -307,7 +307,7 @@ async fn buscar_gasto_variavel(id: i32) -> Result<GastoVariavelRow, String> {
         .await
         .map_err(|e| {
             error!("Gasto variável {} não encontrado: {}", id, e);
-            e.to_string()
+            super::operator_errors::mapear_erro_sql(e)
         })?;
     Ok(row)
 }
@@ -330,7 +330,7 @@ pub async fn resumo_mensal(mes: i32, ano: i32) -> Result<GastoResumoMensal, Stri
     .await
     .map_err(|e| {
         error!("Erro ao calcular total fixo: {}", e);
-        format!("Erro ao calcular total fixo: {}", e)
+        super::operator_errors::mapear_erro_sql(e)
     })?;
 
     let total_variavel: f64 = sqlx::query_scalar(
@@ -346,7 +346,7 @@ pub async fn resumo_mensal(mes: i32, ano: i32) -> Result<GastoResumoMensal, Stri
     .await
     .map_err(|e| {
         error!("Erro ao calcular total variável: {}", e);
-        format!("Erro ao calcular total variável: {}", e)
+        super::operator_errors::mapear_erro_sql(e)
     })?;
 
     let por_categoria: Vec<CategoriaValor> = sqlx::query_as::<_, CategoriaValor>(
@@ -368,7 +368,7 @@ pub async fn resumo_mensal(mes: i32, ano: i32) -> Result<GastoResumoMensal, Stri
     .await
     .map_err(|e| {
         error!("Erro ao calcular por categoria: {}", e);
-        format!("Erro ao calcular por categoria: {}", e)
+        super::operator_errors::mapear_erro_sql(e)
     })?;
 
     let total_geral = total_fixo + total_variavel;

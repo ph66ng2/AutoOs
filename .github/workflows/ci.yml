@@ -2,7 +2,8 @@
 # ║  CI/CD — Build, Lint e Testes                                  ║
 # ╠══════════════════════════════════════════════════════════════╣
 # ║  Executa em: push para master e PRs para master/feature      ║
-# ║  Jobs: lint, test-frontend, test-rust, qa-real, build-tauri     ║
+# ║  Jobs: lint, test-frontend, test-rust, qa-real, ui-screenshots, ║
+# ║        build-tauri                                              ║
 # ╚══════════════════════════════════════════════════════════════╝
 
 name: CI/CD
@@ -18,6 +19,19 @@ env:
   DATABASE_URL: postgres://test_user:test_password@localhost:5432/test_autoos
 
 jobs:
+  migrations:
+    name: Verificar versões SQLx
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Check SQLx migration versions
+        run: node scripts/check-sqlx-migrations.mjs
+
   # ═══════════════════════════════════════════════════════════
   # Lint — TypeScript check
   # ═══════════════════════════════════════════════════════════
@@ -102,7 +116,7 @@ jobs:
   qa-real:
     name: QA Real (E2E + Integrations)
     runs-on: ubuntu-latest
-    needs: [lint, test-frontend, test-rust]
+    needs: [migrations, lint, test-frontend, test-rust]
     services:
       postgres:
         image: postgres:16
@@ -143,6 +157,17 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Verificar seed de estoque em Postgres local
+        env:
+          SEED_VERIFY_PGHOST: localhost
+          SEED_VERIFY_PGPORT: "5432"
+          SEED_VERIFY_PGUSER: test_user
+          SEED_VERIFY_PGPASSWORD: test_password
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y postgresql-client
+          bash scripts/verify-estoque-seed.sh
+
       - name: Apply migrations to disposable test database
         env:
           AUTOOS_MIGRATION_MODE: ci
@@ -150,6 +175,9 @@ jobs:
         run: |
           npm run check:migrations:db
           cargo run --manifest-path src-tauri/Cargo.toml --locked --quiet --bin ci_migrate
+
+      - name: Contrato SQL do Portal do Cliente
+        run: psql "$DATABASE_URL" --no-psqlrc --set ON_ERROR_STOP=1 --quiet --file=supabase/tests/portal_cliente_contract.sql
 
       - name: Install Playwright browser
         run: npx playwright install --with-deps chromium
@@ -166,7 +194,7 @@ jobs:
   # ═══════════════════════════════════════════════════════════
   build-tauri:
     name: Build Tauri App
-    needs: [lint, test-frontend, test-rust, qa-real]
+    needs: [migrations, lint, test-frontend, test-rust, qa-real]
     if: github.event_name == 'push' && github.ref == 'refs/heads/master'
     strategy:
       matrix:
@@ -220,3 +248,100 @@ jobs:
             src-tauri/target/release/autoos
             src-tauri/target/release/*.exe
           retention-days: 7
+
+  # ═══════════════════════════════════════════════════════════
+  # Screenshots de UI — Postgres local + Playwright/Vite
+  # Não bloqueia o workflow. Não usa segredo nem banco de produção.
+  # ═══════════════════════════════════════════════════════════
+  ui-screenshots:
+    name: UI screenshots
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    timeout-minutes: 15
+    permissions:
+      actions: write
+      contents: read
+      pull-requests: write
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: test_user
+          POSTGRES_PASSWORD: test_password
+          POSTGRES_DB: test_autoos
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U test_user -d test_autoos"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install PostgreSQL client and Playwright
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y postgresql-client
+          npx playwright install --with-deps chromium
+
+      - name: Seed disposable local database
+        env:
+          DATABASE_URL: postgres://test_user:test_password@127.0.0.1:5432/test_autoos
+          AUTOOS_MIGRATION_MODE: ci
+        run: node scripts/prepare-ui-screenshot-db.mjs
+
+      - name: Capture main screens
+        id: capture
+        continue-on-error: true
+        run: npm run e2e:ui-screenshots
+
+      - name: Upload UI screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ui-screenshots-${{ github.event.pull_request.head.sha || github.sha }}
+          path: e2e/ui-screenshots/*.png
+          if-no-files-found: warn
+          retention-days: 14
+
+      - name: Comment screenshot list on the PR
+        if: always() && github.event_name == 'pull_request'
+        continue-on-error: true
+        uses: actions/github-script@v7
+        env:
+          SCREENSHOT_SHA: ${{ github.event.pull_request.head.sha }}
+          SCREENSHOT_RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        with:
+          script: |
+            const { execFileSync } = require('child_process');
+            const body = execFileSync('node', ['scripts/render-ui-screenshot-comment.mjs'], {
+              encoding: 'utf8',
+              env: process.env,
+            });
+            const marker = '<!-- autoos-ui-screenshots -->';
+            const { owner, repo } = context.repo;
+            const issue_number = context.payload.pull_request.number;
+            const comments = await github.rest.issues.listComments({
+              owner, repo, issue_number, per_page: 100,
+            });
+            const existing = comments.data.find((comment) => comment.body?.includes(marker));
+            if (existing) {
+              await github.rest.issues.updateComment({
+                owner, repo, comment_id: existing.id, body,
+              });
+            } else {
+              await github.rest.issues.createComment({
+                owner, repo, issue_number, body,
+              });
+            }

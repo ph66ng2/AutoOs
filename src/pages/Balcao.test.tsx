@@ -8,11 +8,13 @@ import { CounterLayout } from "@/components/CounterLayout";
 const db = vi.hoisted(() => ({
   buscarEquipamentosPorSerial: vi.fn(), criarEquipamento: vi.fn(), listarEquipamentos: vi.fn(),
   listarClientes: vi.fn(), listarProdutos: vi.fn(), atualizarStatusEquipamento: vi.fn(), buscarEquipamento: vi.fn(), salvarVerificacao: vi.fn(), abrirPainelImpressorasWindows: vi.fn(), listarImpressorasWindows: vi.fn(), imprimirTesteBmitag: vi.fn(),
-  listarClienteContatos: vi.fn(), criarClienteContato: vi.fn(),
+  listarClienteContatos: vi.fn(), criarClienteContato: vi.fn(), buscarCliente: vi.fn(), atualizarCliente: vi.fn(),
 }));
+const emailService = vi.hoisted(() => ({ enviarOrdemEntrada: vi.fn() }));
 const ensureSensitiveAccess = vi.hoisted(() => vi.fn());
 
 vi.mock("@/lib/db", () => ({ db }));
+vi.mock("@/lib/email-service", () => ({ EmailService: emailService }));
 vi.mock("@/hooks/useSensitiveAccess", () => ({
   useSensitiveAccess: () => ({ status: { active_profile_name: "Atendente", unlocked: true }, ensureSensitiveAccess, lockSensitiveAccess: vi.fn(), openProfileSelector: vi.fn() }),
 }));
@@ -62,6 +64,40 @@ describe("Modo Balcão", () => {
     await waitFor(() => expect(db.criarEquipamento).toHaveBeenCalledWith(expect.objectContaining({ status: "RECEBIDO", cliente_id: 9, serial_number: "SN-42" })));
     expect(await screen.findByText(/entrada registrada/i)).toBeInTheDocument();
   });
+
+  it("permite ao técnico enviar a ordem sem permissão financeira e preserva o e-mail quando o SMTP falha", async () => {
+    ensureSensitiveAccess.mockImplementation(async ({ permission }) => !permission);
+    db.buscarCliente.mockResolvedValue({ id: 9, empresa_id: 7, nome: "Cliente balcão", telefone: "71999999999" });
+    db.atualizarCliente.mockResolvedValue(undefined);
+    db.criarEquipamento.mockResolvedValue({ id: 42, cliente_id: 9, empresa_id: 7, serial_number: "SN-42", marca: "Zebra", modelo: "ZD220", tipo: "Impressora", status: "RECEBIDO", data_entrada: "2026-09-01" });
+    db.buscarEquipamento.mockResolvedValue({ id: 42, serial_number: "SN-42", marca: "Zebra", modelo: "ZD220", tipo: "Impressora", status: "RECEBIDO", data_entrada: "2026-09-01", cliente_email: "novo@cliente.com" });
+    db.salvarVerificacao.mockResolvedValue({ id: 3 });
+    emailService.enviarOrdemEntrada.mockResolvedValue({ sucesso: false, erro: "SMTP recusou a autenticação" });
+    const user = userEvent.setup(); renderCounter(); await reachReview(user);
+    await user.click(screen.getByRole("button", { name: /salvar como recebido/i }));
+    await user.type(await screen.findByLabelText("E-mail para este envio"), "novo@cliente.com");
+    await user.click(screen.getByRole("checkbox", { name: /salvar este e-mail/i }));
+    await user.click(screen.getByRole("button", { name: "Enviar" }));
+    await waitFor(() => expect(emailService.enviarOrdemEntrada).toHaveBeenCalledWith(expect.objectContaining({ cliente_email: "novo@cliente.com" })));
+    // O endereço foi gravado no cliente antes da tentativa de envio, e continua gravado após a falha.
+    expect(db.atualizarCliente).toHaveBeenCalledWith(9, expect.objectContaining({ email: "novo@cliente.com" }));
+    expect(db.atualizarCliente.mock.invocationCallOrder[0]).toBeLessThan(emailService.enviarOrdemEntrada.mock.invocationCallOrder[0]!);
+    expect(await screen.findByRole("status")).toHaveTextContent("O e-mail foi salvo no cadastro. O envio falhou: SMTP recusou a autenticação; tente reenviar.");
+    expect(db.buscarEquipamento).toHaveBeenCalledWith(42);
+  }, 20000);
+
+  it("não afirma que salvou o e-mail quando o operador não pediu para salvar", async () => {
+    ensureSensitiveAccess.mockResolvedValue(true);
+    db.salvarVerificacao.mockResolvedValue({ id: 3 });
+    emailService.enviarOrdemEntrada.mockResolvedValue({ sucesso: false, erro: "timeout" });
+    const user = userEvent.setup(); renderCounter(); await reachReview(user);
+    await user.click(screen.getByRole("button", { name: /salvar como recebido/i }));
+    await user.type(await screen.findByLabelText("E-mail para este envio"), "novo@cliente.com");
+    await user.click(screen.getByRole("button", { name: "Enviar" }));
+    expect(await screen.findByRole("status")).toHaveTextContent("o e-mail não foi enviado: timeout");
+    expect(db.atualizarCliente).not.toHaveBeenCalled();
+    expect(screen.getByRole("status")).not.toHaveTextContent("salvo no cadastro");
+  }, 20000);
 
   it("consulta o estoque e mostra o preço de venda sem permitir alteração", async () => {
     const user = userEvent.setup(); renderCounter();

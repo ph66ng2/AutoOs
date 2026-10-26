@@ -40,7 +40,7 @@ import type {
  * Email da gerência que deve sempre receber cópia (CC) de toda comunicação
  * automática enviada ao cliente, independentemente do técnico responsável.
  */
-const CC_GERENCIA = "medeiros@bmitag.com.br";
+export const CC_GERENCIA = "medeiros@bmitag.com.br";
 
 /** Frase padrão sobre extensão de prazo em caso de troca de peças. */
 const AVISO_TROCA_PECAS_TEXTO =
@@ -48,7 +48,7 @@ const AVISO_TROCA_PECAS_TEXTO =
 const AVISO_TROCA_PECAS_HTML =
   "<strong>Atenção:</strong> em caso de troca de peças, o prazo de execução do serviço pode ser estendido.";
 
-function emailTecnicoPorNome(tecnicoNome?: string) {
+export function emailTecnicoPorNome(tecnicoNome?: string) {
   const normalizado = (tecnicoNome || "")
     .trim()
     .normalize("NFD")
@@ -71,7 +71,7 @@ function extrairTecnicoInicialDeObservacoes(observacoes?: string | null) {
  * - Inclui o email do técnico responsável quando conhecido.
  * - Remove vazios e duplicados (case-insensitive).
  */
-function montarCcs(emailTecnico?: string): string[] {
+export function montarCcs(emailTecnico?: string): string[] {
   const candidatos = [CC_GERENCIA, emailTecnico].filter(
     (email): email is string => !!email && email.trim().length > 0,
   );
@@ -138,7 +138,7 @@ function anexoPdfInline(artifact: PdfArtifact): EmailAttachment {
  * backend SMTP) e devolve o `EmailAttachment` apontando para o caminho
  * temporário, junto da função para apagar o arquivo após o envio.
  */
-async function prepararAnexoTemporario(
+export async function prepararAnexoTemporario(
   caminhoOrigem: string,
   fallbackFilename: string,
 ): Promise<{ anexo: EmailAttachment; cleanup: () => Promise<void> } | null> {
@@ -215,14 +215,31 @@ Equipe Técnica BMITAG`;
         const caminhoPdf = await PdfService.gerarOrdemServico(equipamento as Equipamento);
         if (caminhoPdf) {
           const preparado = await prepararAnexoTemporario(caminhoPdf, "ordem_entrada.pdf");
-          if (preparado) {
-            anexos = [preparado.anexo];
-            limparAnexoTemp = preparado.cleanup;
-          }
+          if (!preparado) throw new Error("Não foi possível anexar o PDF da ordem de entrada.");
+          anexos = [preparado.anexo];
+          limparAnexoTemp = preparado.cleanup;
+        } else {
+          throw new Error("Não foi possível anexar o PDF da ordem de entrada.");
         }
       }
     } catch (error) {
       console.warn("[EmailService] Falha ao gerar PDF de ordem de entrada:", error);
+    }
+
+    if (!anexos?.length) {
+      const erro = "Não foi possível anexar o PDF da ordem de entrada.";
+      await registrarComunicacaoSegura({
+        equipamento_id: equipamento.id!,
+        tipo: "MANUAL",
+        canal: "EMAIL",
+        destinatario: equipamento.cliente_nome || "",
+        contato: equipamento.cliente_email,
+        assunto,
+        mensagem: corpoTexto,
+        enviado: false,
+        erro,
+      });
+      return { sucesso: false, erro };
     }
 
     const emailData: EmailSendRequest = {
@@ -415,6 +432,26 @@ Equipe Técnica BMITAG`;
       });
 
       return { sucesso: false, erro: erroMsg };
+    }
+  },
+
+  async enviarLinkStatusPublico(equipamento: Equipamento<EquipamentoId>, url: string) {
+    const email = equipamento.cliente_email;
+    if (!email) {
+      return { sucesso: false, erro: "Cliente não possui email cadastrado" };
+    }
+    try {
+      await enviarEmail({
+        destinatario: equipamento.cliente_nome || "cliente",
+        email,
+        assunto: `Acompanhe o equipamento ${equipamento.marca} ${equipamento.modelo}`,
+        corpo: `Olá,\nAcompanhe o status do equipamento em:\n${url}\n`,
+        corpo_texto: `Olá,\nAcompanhe o status do equipamento em:\n${url}\n`,
+        corpo_html: `<p>Olá,</p><p>Acompanhe o status do equipamento em: <a href="${url}">${url}</a></p>`,
+      });
+      return { sucesso: true };
+    } catch (error: unknown) {
+      return { sucesso: false, erro: error instanceof Error ? error.message : String(error) };
     }
   },
 };

@@ -213,6 +213,33 @@ describe("db — new functions (inactivity, db credentials, budget)", () => {
       });
       expect(result.custo_total).toBe(0);
     });
+
+    it("envia as opções escolhidas pelo operador e devolve o resultado do portal", async () => {
+      mockInvoke.mockResolvedValue({
+        equipamento_id: 7,
+        custo_total: 65,
+        portal: { acao: "NOVA_APROVACAO_PUBLICADA", versao: 2, mensagem: "Nova aprovação pedida" },
+      });
+
+      const result = await db.atualizarServicosVerificacao(
+        {
+          equipamento_id: 7, servicos: [], pecas: [], custo_total: 65,
+          opcoes: { modoAprovado: "NOVA_APROVACAO", devolverEstoque: true },
+        },
+        1,
+      );
+
+      expect(mockInvoke).toHaveBeenCalledWith("atualizar_servicos_verificacao", expect.objectContaining({
+        opcoes: { modoAprovado: "NOVA_APROVACAO", devolverEstoque: true },
+      }));
+      expect(result.portal?.versao).toBe(2);
+    });
+
+    it("consulta a situação do portal antes de salvar", async () => {
+      mockInvoke.mockResolvedValue({ status: "APROVADO", podePedirNovaAprovacao: true });
+      await db.analisarAjusteOrcamento(7);
+      expect(mockInvoke).toHaveBeenCalledWith("analisar_ajuste_orcamento", { equipamentoId: 7 });
+    });
   });
 
   describe("listarServicosCatalogoAtivos", () => {

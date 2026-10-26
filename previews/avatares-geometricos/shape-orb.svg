@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" color="#475569" aria-hidden="true">
+  <rect width="128" height="128" rx="25" fill="currentColor"/>
+  <circle cx="64" cy="64" r="39" fill="#fff"/>
+  <rect x="49" y="53" width="8" height="20" rx="4" transform="rotate(-13 53 63)" fill="currentColor"/>
+  <rect x="71" y="50" width="8" height="20" rx="4" transform="rotate(-13 75 60)" fill="currentColor"/>
+</svg>

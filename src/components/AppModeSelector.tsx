@@ -4,7 +4,7 @@ import type { AppMode } from "@/lib/app-mode";
 
 export function AppModeSelector({ onSelect }: { onSelect: (mode: AppMode) => void }) {
   return (
-    <div className="fixed inset-0 z-[80] grid place-items-center bg-slate-950 p-6 text-slate-50">
+    <div data-blocks-tour="true" className="fixed inset-0 z-[80] grid place-items-center bg-slate-950 p-6 text-slate-50">
       <section className="w-full max-w-4xl">
         <p className="mb-2 text-center text-lg text-cyan-300">AutoOS</p>
         <h1 className="text-center text-3xl font-bold">Como deseja trabalhar nesta máquina?</h1>

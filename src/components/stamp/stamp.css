@@ -6,7 +6,7 @@
 
 .stp.is-loading {
   --product: #2b6ce8;
-  background: #020617;
+  background: #050608;
 }
 
 .stp.is-loading .stp-stage {
@@ -18,7 +18,7 @@
 }
 
 .stp.is-loading .stp-desk {
-  background: #020617;
+  background: #050608;
 }
 
 .stp.is-loading .stp-halo {
@@ -1078,7 +1078,7 @@ html[data-theme="dark"] .stp-desk {
 }
 
 html[data-theme="dark"] .stp.is-loading .stp-desk {
-  background: #020617;
+  background: #050608;
 }
 
 html[data-theme="dark"] .stp-halo {

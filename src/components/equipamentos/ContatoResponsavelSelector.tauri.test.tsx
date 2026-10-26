@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { Cliente, ClienteContato } from "@/types";
 
@@ -71,5 +71,53 @@ describe("ContatoResponsavelSelector Tauri", () => {
       nome: "Bruno",
     })));
     expect(onChange).toHaveBeenLastCalledWith(expect.objectContaining({ id: 21, nome: "Bruno" }));
+  });
+
+  it("pré-seleciona o contato uma única vez quando preSelecionar está ativo", async () => {
+    const onChange = vi.fn();
+    render(<ContatoResponsavelSelector cliente={clienteA} empresaId={7} value={null} onChange={onChange} preSelecionar />);
+    await screen.findByText("Ana");
+    await waitFor(() => expect(onChange).toHaveBeenCalledWith(contato));
+    expect(onChange).toHaveBeenCalledTimes(1);
+  });
+
+  it("não pré-seleciona de novo depois de remover o responsável", async () => {
+    const onChange = vi.fn();
+    const view = render(<ContatoResponsavelSelector cliente={clienteA} empresaId={7} value={null} onChange={onChange} preSelecionar />);
+    await waitFor(() => expect(onChange).toHaveBeenCalledWith(contato));
+
+    view.rerender(<ContatoResponsavelSelector cliente={clienteA} empresaId={7} value={contato} onChange={onChange} preSelecionar />);
+    fireEvent.click(await screen.findByRole("button", { name: /remover responsável/i }));
+    expect(onChange).toHaveBeenLastCalledWith(null);
+    view.rerender(<ContatoResponsavelSelector cliente={clienteA} empresaId={7} value={null} onChange={onChange} preSelecionar />);
+
+    await screen.findByText("Ana");
+    expect(onChange.mock.calls.filter(([arg]) => arg === contato)).toHaveLength(1);
+  });
+
+  it("não pré-seleciona quando value já existe", async () => {
+    const onChange = vi.fn();
+    const outro = { ...contato, id: 99, nome: "Outro", telefone: "11977776666" };
+    render(<ContatoResponsavelSelector cliente={clienteA} empresaId={7} value={outro} onChange={onChange} preSelecionar />);
+    await screen.findByText("Outro");
+    expect(onChange).not.toHaveBeenCalled();
+  });
+
+  it("ignora contato inativo ou sem celular válido", async () => {
+    const onChange = vi.fn();
+    const inativo = { ...contato, id: 22, nome: "Inativo", telefone: "11977776666", ativo: false };
+    const semCelular = { ...contato, id: 23, nome: "Sem celular", telefone: "123" };
+    listar.mockResolvedValue([inativo, semCelular, contato]);
+    render(<ContatoResponsavelSelector cliente={clienteA} empresaId={7} value={null} onChange={onChange} preSelecionar />);
+    await screen.findByText("Ana");
+    await waitFor(() => expect(onChange).toHaveBeenCalledWith(contato));
+    expect(onChange).toHaveBeenCalledTimes(1);
+  });
+
+  it("sem preSelecionar não seleciona nada", async () => {
+    const onChange = vi.fn();
+    render(<ContatoResponsavelSelector cliente={clienteA} empresaId={7} value={null} onChange={onChange} />);
+    await screen.findByText("Ana");
+    expect(onChange).not.toHaveBeenCalled();
   });
 });

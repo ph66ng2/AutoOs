@@ -8,7 +8,9 @@ use url::Url;
 
 static MIGRATOR: Migrator = sqlx::migrate!("./migrations");
 
-const REQUIRED_PROMOTION_MIGRATIONS: [i64; 2] = [27, 28];
+const REQUIRED_PROMOTION_MIGRATIONS: [i64; 16] = [27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42];
+const EXPECTED_MIGRATION_COUNT: usize = 42;
+const LAST_REQUIRED_APPLIED_MIGRATION: i64 = 28;
 
 fn required_env(name: &str) -> Result<String> {
     std::env::var(name)
@@ -20,6 +22,15 @@ fn required_env(name: &str) -> Result<String> {
             );
             Ok(value)
         })
+}
+
+/// Confirmação do destino, não é segredo.
+/// SHA-256 de `host|user` em hex minúsculo, sem newline — a mesma saída de
+/// `printf '%s|%s' HOST USER | sha256sum`. Quem conhece o host e o usuário
+/// recalcula o valor; a credencial continua somente na URL.
+fn target_fingerprint(host: &str, user: &str) -> String {
+    use sha2::{Digest, Sha256};
+    hex::encode(Sha256::digest(format!("{host}|{user}").as_bytes()))
 }
 
 fn validate_production_target() -> Result<String> {
@@ -39,15 +50,11 @@ fn validate_production_target() -> Result<String> {
     let database_url = required_env("AUTOOS_PRODUCTION_MIGRATION_DATABASE_URL")?;
     let expected_host = required_env("AUTOOS_PRODUCTION_DATABASE_HOST")?;
     let expected_user = required_env("AUTOOS_PRODUCTION_DATABASE_USER")?;
-    let confirmed_host = required_env("AUTOOS_PRODUCTION_MIGRATION_CONFIRMED_HOST")?;
-    let confirmed_user = required_env("AUTOOS_PRODUCTION_MIGRATION_CONFIRMED_USER")?;
+    let confirmed_sha = required_env("AUTOOS_PRODUCTION_MIGRATION_CONFIRMED_TARGET_SHA256")?
+        .to_ascii_lowercase();
     ensure!(
-        confirmed_host == expected_host,
-        "host confirmado não corresponde ao destino de produção configurado"
-    );
-    ensure!(
-        confirmed_user == expected_user,
-        "usuário confirmado não corresponde ao destino de produção configurado"
+        confirmed_sha == target_fingerprint(&expected_host, &expected_user),
+        "hash de destino confirmado não corresponde ao host/usuário de produção configurados"
     );
     let parsed = Url::parse(&database_url).context("URL de migração de produção inválida")?;
 
@@ -98,11 +105,7 @@ fn validate_production_target() -> Result<String> {
     Ok(database_url)
 }
 
-fn validate_migration_set() -> Result<()> {
-    let mut versions = MIGRATOR
-        .iter()
-        .map(|migration| migration.version)
-        .collect::<Vec<_>>();
+fn validate_migration_versions(mut versions: Vec<i64>, expected_count: usize) -> Result<()> {
     versions.sort_unstable();
 
     for pair in versions.windows(2) {
@@ -114,8 +117,8 @@ fn validate_migration_set() -> Result<()> {
     }
 
     ensure!(
-        versions.len() == 28,
-        "conjunto SQLx incompleto ou inesperado: esperadas 28 migrations (0001–0028), encontradas {}",
+        versions.len() == expected_count,
+        "conjunto SQLx incompleto ou inesperado: esperadas {expected_count} migrations (0001–{expected_count:04}), encontradas {}",
         versions.len()
     );
     for (index, version) in versions.iter().enumerate() {
@@ -126,6 +129,13 @@ fn validate_migration_set() -> Result<()> {
         );
     }
     Ok(())
+}
+
+fn validate_migration_set() -> Result<()> {
+    validate_migration_versions(
+        MIGRATOR.iter().map(|migration| migration.version).collect(),
+        EXPECTED_MIGRATION_COUNT,
+    )
 }
 
 fn require_expected_migrations() -> Result<()> {
@@ -154,18 +164,19 @@ async fn require_established_history(pool: &PgPool) -> Result<()> {
     let expected_versions_applied: bool = sqlx::query_scalar(
         "SELECT NOT EXISTS (
              SELECT expected.version
-               FROM generate_series(1, 26) AS expected(version)
+               FROM generate_series(1, $1) AS expected(version)
                LEFT JOIN public._sqlx_migrations AS applied
                  ON applied.version = expected.version AND applied.success = true
               WHERE applied.version IS NULL
          )",
     )
+    .bind(LAST_REQUIRED_APPLIED_MIGRATION)
     .fetch_one(pool)
     .await
-    .context("não foi possível validar as migrations SQLx 0001–0026")?;
+    .with_context(|| format!("não foi possível validar as migrations SQLx 0001–{LAST_REQUIRED_APPLIED_MIGRATION:04}"))?;
     ensure!(
         expected_versions_applied,
-        "produção não tem todas as migrations SQLx 0001–0026 aplicadas com sucesso"
+        "produção não tem todas as migrations SQLx 0001–{LAST_REQUIRED_APPLIED_MIGRATION:04} aplicadas com sucesso"
     );
 
     let failed_migrations: i64 =
@@ -178,6 +189,44 @@ async fn require_established_history(pool: &PgPool) -> Result<()> {
         "histórico SQLx de produção contém migrations com falha"
     );
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn promotes_from_0028_with_a_contiguous_migration_set() {
+        assert_eq!(LAST_REQUIRED_APPLIED_MIGRATION, 28);
+        assert!(validate_migration_set().is_ok());
+        assert!(require_expected_migrations().is_ok());
+    }
+
+    #[test]
+    fn target_fingerprint_matches_shell_printf_sha256sum() {
+        // printf '%s|%s' 'example.invalid' 'postgres.exampleref' | sha256sum
+        let got = target_fingerprint("example.invalid", "postgres.exampleref");
+        assert_eq!(
+            got,
+            "2d016a5e935f7d1084e61c8451edf0aa0e5292ea12e631806ae5e9028bea323f"
+        );
+        assert_ne!(got, target_fingerprint("example.invalid", "postgres.otherref"));
+    }
+
+    #[test]
+    fn rejects_duplicate_missing_and_out_of_order_versions() {
+        let complete = (1..=30).collect::<Vec<_>>();
+        assert!(validate_migration_versions(complete.clone(), 30).is_ok());
+
+        let mut duplicate = complete.clone();
+        duplicate[23] = 23;
+        assert!(validate_migration_versions(duplicate, 30).is_err());
+        assert!(validate_migration_versions(complete[..29].to_vec(), 30).is_err());
+
+        let mut gap = complete;
+        gap[23] = 31;
+        assert!(validate_migration_versions(gap, 30).is_err());
+    }
 }
 
 async fn preflight_migration_0027(pool: &PgPool) -> Result<()> {
@@ -292,6 +341,113 @@ async fn verify_promoted_schema(pool: &PgPool) -> Result<()> {
         "equipamentos.atualizado_em continua aceitando NULL após a migration 0028"
     );
 
+    let portal_schema_exists: bool = sqlx::query_scalar(
+        "SELECT to_regclass('public.links_status_publico') IS NOT NULL
+             AND to_regclass('public.status_portal_config') IS NOT NULL
+             AND to_regclass('public.status_portal_rate_limits') IS NOT NULL
+             AND EXISTS (
+                 SELECT 1 FROM information_schema.columns
+                  WHERE table_schema = 'public' AND table_name = 'equipamentos'
+                    AND column_name = 'status_alterado_em'
+             )",
+    )
+    .fetch_one(pool)
+    .await
+    .context("não foi possível confirmar as estruturas do portal público")?;
+    ensure!(
+        portal_schema_exists,
+        "estruturas da migration SQLx 0029 não foram encontradas"
+    );
+
+    let profile_pin_policy_exists: bool = sqlx::query_scalar(
+        "SELECT EXISTS (
+             SELECT 1 FROM information_schema.columns
+              WHERE table_schema = 'public' AND table_name = 'security_profiles'
+                AND column_name = 'pin_required' AND udt_name = 'bool'
+                AND is_nullable = 'NO'
+         )",
+    )
+    .fetch_one(pool)
+    .await
+    .context("não foi possível confirmar security_profiles.pin_required")?;
+    ensure!(profile_pin_policy_exists, "política de PIN da migration SQLx 0030 não foi encontrada");
+
+    // Orçamento pelo Portal do Cliente e fila de WhatsApp (0031–0039): as mesmas tabelas que o
+    // aplicativo exige ao abrir.
+    let portal_cliente_schema_exists: bool = sqlx::query_scalar(
+        "SELECT to_regclass('public.orcamento_versoes') IS NOT NULL
+             AND to_regclass('public.orcamento_respostas') IS NOT NULL
+             AND to_regclass('public.envios_whatsapp_pedidos') IS NOT NULL
+             AND to_regclass('public.portal_alertas') IS NOT NULL
+             AND to_regclass('public.portal_config_empresa') IS NOT NULL
+             AND to_regprocedure('public.portal_entrar_senha(text,text,text)') IS NOT NULL
+             AND to_regprocedure('public.portal_criar_desafio(text,text,uuid,text)') IS NULL
+             -- 0039: dados ampliados do portal (assinaturas novas, sem a antiga, e as colunas novas)
+             AND to_regprocedure('public.portal_registrar_resposta(text,integer,bigint,text,bigint,text)') IS NOT NULL
+             AND to_regprocedure('public.portal_registrar_resposta(text,integer,bigint,text,bigint)') IS NULL
+             AND to_regprocedure('public.portal_registrar_solicitacao(text,integer,bigint,text,text,text,text,boolean)') IS NOT NULL
+             AND to_regprocedure('public.portal_registrar_solicitacao(text,integer,bigint,text,text)') IS NULL
+             AND to_regprocedure('public.autoos_portal_ts(text)') IS NOT NULL
+             AND (SELECT count(*) FROM information_schema.columns
+                   WHERE table_schema = 'public'
+                     AND (table_name, column_name) IN (
+                         ('clientes', 'exige_ordem_compra'),
+                         ('orcamento_respostas', 'ordem_compra'),
+                         ('orcamento_solicitacoes', 'contato_telefone'),
+                         ('orcamento_solicitacoes', 'contato_email'),
+                         ('portal_contato_empresa', 'endereco'),
+                         ('portal_contato_empresa', 'maps_url')
+                     )) = 6",
+    )
+    .fetch_one(pool)
+    .await
+    .context("não foi possível confirmar as estruturas do Portal do Cliente")?;
+    ensure!(
+        portal_cliente_schema_exists,
+        "estruturas das migrations SQLx 0031–0039 não foram encontradas"
+    );
+
+    // 0040: orçamento de venda avulsa de insumos (tabelas, numeração por empresa e RLS ligado).
+    let orcamentos_insumos_schema_exists: bool = sqlx::query_scalar(
+        "SELECT to_regclass('public.orcamentos_insumos') IS NOT NULL
+             AND to_regclass('public.orcamento_insumos_itens') IS NOT NULL
+             AND to_regclass('public.orcamentos_insumos_contadores') IS NOT NULL
+             AND to_regclass('public.uq_orcamentos_insumos_numero') IS NOT NULL
+             AND (SELECT count(*) FROM pg_class
+                   WHERE relnamespace = 'public'::regnamespace
+                     AND relname IN ('orcamentos_insumos', 'orcamento_insumos_itens', 'orcamentos_insumos_contadores')
+                     AND relrowsecurity) = 3",
+    )
+    .fetch_one(pool)
+    .await
+    .context("não foi possível confirmar as estruturas do orçamento de insumos")?;
+    ensure!(
+        orcamentos_insumos_schema_exists,
+        "estruturas da migration SQLx 0040 (orçamento de insumos) não foram encontradas"
+    );
+
+    // 0041: personalização do perfil, tour e códigos de primeiro acesso (um aberto por perfil, RLS ligado).
+    let perfil_primeiro_acesso_schema_exists: bool = sqlx::query_scalar(
+        "SELECT (SELECT count(*) FROM information_schema.columns
+                  WHERE table_schema = 'public' AND table_name = 'security_profiles'
+                    AND column_name IN ('avatar_icone', 'avatar_cor', 'tema',
+                                        'onboarding_concluido_em', 'tour_permissoes_vistas')) = 5
+             AND (SELECT count(*) FROM information_schema.columns
+                   WHERE table_schema = 'public' AND table_name = 'codigos_primeiro_acesso'
+                     AND column_name IN ('codigo_hash', 'expira_em', 'usado_em', 'revogado_em', 'tentativas')) = 5
+             AND to_regclass('public.ux_codigos_primeiro_acesso_um_aberto') IS NOT NULL
+             AND COALESCE((SELECT relrowsecurity FROM pg_class
+                            WHERE relnamespace = 'public'::regnamespace
+                              AND relname = 'codigos_primeiro_acesso'), false)",
+    )
+    .fetch_one(pool)
+    .await
+    .context("não foi possível confirmar as estruturas do primeiro acesso por código")?;
+    ensure!(
+        perfil_primeiro_acesso_schema_exists,
+        "estruturas da migration SQLx 0041 (perfil e códigos de primeiro acesso) não foram encontradas"
+    );
+
     let applied_count: i64 =
         sqlx::query_scalar("SELECT count(*) FROM public._sqlx_migrations WHERE success = true")
             .fetch_one(pool)
@@ -314,7 +470,7 @@ async fn required_promotion_migrations_already_applied(pool: &PgPool) -> Result<
     .bind(REQUIRED_PROMOTION_MIGRATIONS.as_slice())
     .fetch_one(pool)
     .await
-    .context("não foi possível consultar o status inicial das migrations 0027–0028")?;
+    .context("não foi possível consultar o status inicial das migrations 0027–0042")?;
     Ok(applied_count == REQUIRED_PROMOTION_MIGRATIONS.len() as i64)
 }
 

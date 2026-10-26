@@ -12,3 +12,13 @@ uri = "pg-functions://postgres/public/autoos_custom_access_token_hook"
 
 [functions.saas-user-admin]
 verify_jwt = true
+
+[functions.public-status]
+verify_jwt = false
+
+[functions.envio-whatsapp]
+verify_jwt = false
+
+[functions.portal-cliente]
+verify_jwt = false
+
