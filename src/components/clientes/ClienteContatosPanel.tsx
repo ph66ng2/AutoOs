@@ -197,7 +197,7 @@ export function ClienteContatosPanel({ cliente, empresaId }: ClienteContatosPane
                   <span><Mail className="mr-1 inline h-3 w-3" />{contato.email || "Sem e-mail"}</span>
                   <span><Phone className="mr-1 inline h-3 w-3" />{contato.telefone ? formatarTelefone(contato.telefone) : "Sem telefone"}</span>
                 </div>
-                <div className="mt-2 flex flex-wrap items-center gap-2 text-xs">
+                {!IS_SAAS_BUILD && <div className="mt-2 flex flex-wrap items-center gap-2 text-xs">
                   <span className="text-muted-foreground">Portal das Impressoras:</span>
                   <select
                     aria-label={`Acesso de ${contato.nome} ao portal`}
@@ -221,7 +221,7 @@ export function ClienteContatosPanel({ cliente, empresaId }: ClienteContatosPane
                       {contato.portal_senha_definida_em ? "Senha criada" : "Sem senha (ainda não entra)"}
                     </span>
                   )}
-                </div>
+                </div>}
               </div>
               <div className="flex shrink-0 gap-1">
                 <Button type="button" size="sm" variant="outline" onClick={() => abrirEdicao(contato)}>

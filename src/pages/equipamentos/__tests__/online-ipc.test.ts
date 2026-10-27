@@ -15,8 +15,12 @@ describe("IPC Online vs desktop em Equipamentos", () => {
     expect(usaIpcDesktopDeEquipamento(false)).toBe(true);
     expect(DESKTOP_ONLY_EQUIPMENT_COMMANDS).toEqual(expect.arrayContaining([
       "analisar_ajuste_orcamento",
+      "analisar_correcao_decisao",
+      "corrigir_decisao_orcamento",
+      "prorrogar_prazo_orcamento",
       "buscar_verificacao_tecnica",
       "solicitar_envio_whatsapp",
+      "preparar_acesso_portal",
     ]));
   });
 

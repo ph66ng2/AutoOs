@@ -2033,6 +2033,28 @@ export default function Equipamentos({ operationalProfile }: { operationalProfil
     if (!confirmado) return;
     setSalvando(true);
     try {
+      if (IS_SAAS_BUILD) {
+        const repository = await carregarRepositorioOperacoesEquipamento();
+        const atual = await repository.extendApprovalDeadline({
+          equipmentId: String(eq.id),
+          expectedUpdatedAt: eq.atualizado_em || "",
+          newDeadline: novoPrazo,
+        });
+        const verificacao = await repository.getVerification(String(eq.id));
+        const etapas = [atual.prorrogado ? "Prazo prorrogado." : "Prazo não prorrogado."];
+        if (verificacao) {
+          const wa = await WhatsAppService.enviarOrcamento(
+            { ...eq, ...atual.equipment, prazo_aprovacao: novoPrazo } as Equipamento,
+            verificacao,
+          );
+          etapas.push(wa.sucesso ? "WhatsApp: enviado." : `WhatsApp: não enviado${wa.erro ? ` (${wa.erro})` : "."}`);
+        } else {
+          warning("Equipamentos", "Verificação não encontrada; o orçamento não foi reenviado.");
+        }
+        if (atual.prorrogado) success("Equipamentos", etapas.join("\n"), "Prorrogar e enviar");
+        await recarregar();
+        return;
+      }
       const r = await prorrogarEEnviar(eq, novoPrazo, () =>
         confirmarComOperador(
           "Resposta pendente",
@@ -3124,13 +3146,15 @@ export default function Equipamentos({ operationalProfile }: { operationalProfil
                 </div>
                 <div className="flex shrink-0 flex-col items-end gap-2">
                   <StatusBadge status={selecionado.status} />
-                  <PortalClienteBotao />
+                  {!IS_SAAS_BUILD && <PortalClienteBotao />}
                 </div>
               </div>
 
+              {!IS_SAAS_BUILD && (
               <DecisaoOrcamentoCard
                 onAplicar={(decisao) => void abrirDialogoAprovacao(selecionado, decisao)}
               />
+              )}
 
               <Tabs key={selecionado.id} defaultValue="info">
                 <TabsList className="grid grid-cols-4 w-full">
@@ -3614,6 +3638,19 @@ export default function Equipamentos({ operationalProfile }: { operationalProfil
         equipamento={corrigirDecisaoAlvo}
         open={corrigirDecisaoAlvo !== null}
         onOpenChange={(open) => { if (!open) setCorrigirDecisaoAlvo(null); }}
+        deps={IS_SAAS_BUILD ? {
+          analisar: async (id) => (await carregarRepositorioOperacoesEquipamento()).analyzeDecisionCorrection(String(id)),
+          corrigir: async (input) => {
+            const result = await (await carregarRepositorioOperacoesEquipamento()).correctQuoteDecision({
+              equipmentId: String(input.equipamento_id),
+              expectedUpdatedAt: input.expected_updated_em,
+              motivo: input.motivo,
+              devolverEstoque: input.devolver_estoque,
+              modo: input.modo,
+            });
+            return { portal: result.portal };
+          },
+        } : undefined}
         onCorrigido={async (portal) => {
           setSelecionado(null);
           await recarregar();
@@ -3853,7 +3890,7 @@ export default function Equipamentos({ operationalProfile }: { operationalProfil
         validate={(value) => value.trim().length >= 2 ? null : "Informe o tipo do equipamento."}
       />
 
-      <PhotoUploadDialog
+      {!IS_SAAS_BUILD && <PhotoUploadDialog
         equipamentoId={photoUploadNewEquip ? 0 : (selecionado?.id ?? 0)}
         categoria={photoUploadCategoria}
         open={photoUploadOpen}
@@ -3881,7 +3918,7 @@ export default function Equipamentos({ operationalProfile }: { operationalProfil
           };
           setImagensFormulario((prev) => [...prev, draft]);
         } : undefined}
-      />
+      />}
 
       <PdfPreviewDialog
         artifact={pdfPreview?.artifact || null}

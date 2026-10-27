@@ -3,10 +3,15 @@ import type { AnaliseAjusteOrcamento, Equipamento, Verificacao } from "@/types";
 /** Desktop-only Tauri commands that the SaaS invoke_handler does not register. */
 export const DESKTOP_ONLY_EQUIPMENT_COMMANDS = [
   "analisar_ajuste_orcamento",
+  "analisar_correcao_decisao",
+  "corrigir_decisao_orcamento",
+  "prorrogar_prazo_orcamento",
   "buscar_verificacao_tecnica",
   "solicitar_envio_whatsapp",
   "preparar_acesso_portal",
   "obter_destinatario_orcamento",
+  "definir_acesso_portal_contato",
+  "publicar_orcamento_portal",
 ] as const;
 
 export function usaIpcDesktopDeEquipamento(isSaasBuild: boolean): boolean {

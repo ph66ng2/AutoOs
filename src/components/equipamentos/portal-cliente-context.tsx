@@ -229,8 +229,8 @@ export function PortalClienteProvider({ equipamento, sinalPortal, children }: Pr
   return (
     <PortalClienteContext.Provider value={valor}>
       {children}
-      <PortalClientePanel open={painelAberto} onOpenChange={setPainelAberto} />
-      {equipamentoId ? (
+      {!IS_SAAS_BUILD && <PortalClientePanel open={painelAberto} onOpenChange={setPainelAberto} />}
+      {!IS_SAAS_BUILD && equipamentoId ? (
         <ProrrogarPrazoDialog
           open={prorrogarAberto}
           onOpenChange={setProrrogarAberto}
@@ -239,8 +239,8 @@ export function PortalClienteProvider({ equipamento, sinalPortal, children }: Pr
           onEnvioManual={setEnvioManual}
         />
       ) : null}
-      <EnvioManualOrcamentoDialog envio={envioManual} onFechar={fecharEnvioManual} onGerarNovaSenha={gerarNovaSenha} />
-      {equipamento.cliente_id ? (
+      {!IS_SAAS_BUILD && <EnvioManualOrcamentoDialog envio={envioManual} onFechar={fecharEnvioManual} onGerarNovaSenha={gerarNovaSenha} />}
+      {!IS_SAAS_BUILD && equipamento.cliente_id ? (
         <AcessoPortalDialog
           open={acessoAberto}
           onOpenChange={setAcessoAberto}
