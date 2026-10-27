@@ -51,6 +51,7 @@ import {
   formatarCEP,
   detectarTipoDocumento,
   digitosTelefoneBr,
+  celularValido,
 } from "@/lib/validations";
 import { useClientes } from "@/hooks/useClientes";
 import { useNotification } from "@/hooks/useNotification";
@@ -238,14 +239,28 @@ export default function Clientes() {
   }
 
   /** Abre dialog para editar cliente. Preenche form com dados existentes e detecta tipo PF/PJ */
-  function abrirEditar(c: Cliente) {
+  async function abrirEditar(c: Cliente) {
     setErroDocumentoDuplicado(null);
     setEditando(c);
     const doc = c.documento || c.cpf_cnpj || "";
-    setTipoPessoa(c.tipo_pessoa === "PJ" ? "PJ" : doc.replace(/\D/g, "").length === 14 ? "PJ" : "PF");
+    const isPj = c.tipo_pessoa === "PJ" || doc.replace(/\D/g, "").length === 14;
+    setTipoPessoa(isPj ? "PJ" : "PF");
+    let exigirContatoInicial = false;
+    if (isPj) {
+      if (c.id && c.empresa_id) {
+        try {
+          const contatos = await db.listarClienteContatos(c.id, c.empresa_id);
+          exigirContatoInicial = !contatos.some((contato) => contato.ativo && celularValido(contato.telefone ?? ""));
+        } catch {
+          exigirContatoInicial = true;
+        }
+      } else {
+        exigirContatoInicial = true;
+      }
+    }
     form.reset({
       documento: doc ? formatarDocumento(doc) : "",
-      tipo_pessoa: c.tipo_pessoa === "PJ" ? "PJ" : "PF",
+      tipo_pessoa: isPj ? "PJ" : "PF",
       nome: c.nome || "",
       razao_social: c.razao_social || "",
       nome_fantasia: c.nome_fantasia || "",
@@ -262,7 +277,7 @@ export default function Clientes() {
       uf: c.uf || "",
       observacoes: c.observacoes || "",
       exige_ordem_compra: Boolean(c.exige_ordem_compra),
-      exigir_contato_inicial: false,
+      exigir_contato_inicial: exigirContatoInicial,
       contato_nome: "", contato_telefone: "", contato_email: "",
     });
     setDialogOpen(true);
@@ -546,7 +561,7 @@ export default function Clientes() {
                             label: "Editar",
                             icon: <Edit className="h-4 w-4" />,
                             variant: "outline",
-                            onClick: () => abrirEditar(c),
+                            onClick: () => void abrirEditar(c),
                           }}
                           overflow={[
                             {

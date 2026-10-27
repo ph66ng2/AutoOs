@@ -19,7 +19,11 @@ vi.mock("@/hooks/useSensitiveAccess", () => ({ useSensitiveAccess: () => ({ ensu
 vi.mock("@/hooks/useNotification", () => ({
   useNotification: () => ({ error: vi.fn(), success: vi.fn(), warning: vi.fn() }),
 }));
-vi.mock("@/lib/db", () => ({ db: { listarEquipamentosCliente: vi.fn().mockResolvedValue([]) } }));
+const dbMocks = vi.hoisted(() => ({
+  listarEquipamentosCliente: vi.fn().mockResolvedValue([]),
+  listarClienteContatos: vi.fn().mockResolvedValue([]),
+}));
+vi.mock("@/lib/db", () => ({ db: dbMocks }));
 
 const CPF = "529.982.247-25";
 
@@ -41,6 +45,8 @@ describe("Clientes: ordem de compra e preferências", () => {
     mocks.clientes = [];
     mocks.criar.mockResolvedValue({ sucesso: true });
     mocks.atualizar.mockResolvedValue({ sucesso: true });
+    dbMocks.listarEquipamentosCliente.mockResolvedValue([]);
+    dbMocks.listarClienteContatos.mockResolvedValue([]);
   });
 
   it("mostra o selo Exige OC só para quem exige", () => {
@@ -77,5 +83,54 @@ describe("Clientes: ordem de compra e preferências", () => {
     expect(mocks.atualizar.mock.calls[0]![1]).toMatchObject({
       exige_ordem_compra: false, receber_email: false, receber_whatsapp: false,
     });
+  });
+});
+
+describe("Clientes: PJ legado sem celular na edição", () => {
+  const cnpj = "57522734000158";
+
+  function clientePj(extra: Record<string, unknown> = {}) {
+    return clienteSalvo({
+      id: 11,
+      empresa_id: 3,
+      tipo_pessoa: "PJ",
+      nome: "Oficina Norte",
+      razao_social: "Oficina Norte LTDA",
+      nome_fantasia: "Oficina Norte",
+      documento: cnpj,
+      cpf_cnpj: cnpj,
+      telefone: "7133334444",
+      ...extra,
+    });
+  }
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mocks.criar.mockResolvedValue({ sucesso: true });
+    mocks.atualizar.mockResolvedValue({ sucesso: true });
+    dbMocks.listarClienteContatos.mockResolvedValue([]);
+  });
+
+  it("pede o contato quando o PJ não tem celular ativo", async () => {
+    dbMocks.listarClienteContatos.mockResolvedValue([
+      { id: 1, empresa_id: 3, cliente_id: 11, nome: "Recepção", telefone: "7133334444", ativo: true },
+    ]);
+    mocks.clientes = [clientePj()];
+    renderPagina();
+    fireEvent.click(screen.getByRole("button", { name: /editar/i }));
+    expect(await screen.findByText("Contato para orçamentos")).toBeInTheDocument();
+    expect(screen.getByLabelText(/nome do contato/i)).toBeInTheDocument();
+    expect(dbMocks.listarClienteContatos).toHaveBeenCalledWith(11, 3);
+  });
+
+  it("não pede contato extra quando o PJ já tem celular", async () => {
+    dbMocks.listarClienteContatos.mockResolvedValue([
+      { id: 2, empresa_id: 3, cliente_id: 11, nome: "Ana", telefone: "71988887777", ativo: true },
+    ]);
+    mocks.clientes = [clientePj()];
+    renderPagina();
+    fireEvent.click(screen.getByRole("button", { name: /editar/i }));
+    expect(await screen.findByLabelText(/exige ordem de compra para aprovar orçamentos/i)).toBeInTheDocument();
+    expect(screen.queryByText("Contato para orçamentos")).not.toBeInTheDocument();
   });
 });

@@ -23,6 +23,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { FormValidationError } from "@/components/ui/form-validation-error";
+import { todayLocalIsoDate } from "@/lib/date-utils";
 import type { GastoVariavel, GastoVariavelInput, GastosFixosCategoria } from "@/types";
 
 const gastoVariavelSchema = z.object({
@@ -64,7 +65,7 @@ export function GastosFormVariavel({
     defaultValues: {
       descricao: "",
       valor: 0,
-      data: new Date().toISOString().split("T")[0],
+      data: todayLocalIsoDate(),
       categoria: "Outros",
       nota: "",
     },
@@ -75,7 +76,7 @@ export function GastosFormVariavel({
       form.reset({
         descricao: gasto.descricao,
         valor: gasto.valor,
-        data: gasto.data || new Date().toISOString().split("T")[0],
+        data: gasto.data || todayLocalIsoDate(),
         categoria: gasto.categoria,
         nota: gasto.nota || "",
       });
@@ -83,7 +84,7 @@ export function GastosFormVariavel({
       form.reset({
         descricao: "",
         valor: 0,
-        data: new Date().toISOString().split("T")[0],
+        data: todayLocalIsoDate(),
         categoria: "Outros",
         nota: "",
       });

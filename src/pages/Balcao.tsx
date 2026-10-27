@@ -57,6 +57,7 @@ import { resolveRecipient, type ResolvedRecipient } from "@/lib/recipient-resolv
 import { mensagemEnvioFalhouComEmailSalvo, saveRecipientAddress } from "@/lib/recipient-persistence";
 import { LOGO_BMITAG_MONOCHROME_PNG_BASE64 } from "@/lib/logo-monochrome-base64";
 import type { TecnicoDisponivel } from "@/components/equipamentos/VerificacaoTecnica";
+import { todayLocalIsoDate } from "@/lib/date-utils";
 import { canTransition, getTransitionError } from "@/lib/status-fsm";
 import {
   STATUS_LABELS,
@@ -76,7 +77,7 @@ const operationalStatuses = [
   "PRONTO",
   "ORCAMENTO_VENCIDO",
 ];
-const today = () => new Date().toISOString().slice(0, 10);
+const today = () => todayLocalIsoDate();
 const ACESSORIOS_OPTIONS = [
   "Cabo de Força",
   "Fonte",
