@@ -19,6 +19,7 @@ import { useNotification } from "@/hooks/useNotification";
 import { db } from "@/lib/db";
 import {
   clienteContatoSchema,
+  digitosTelefoneBr,
   formatarTelefone,
   type ClienteContatoFormData,
 } from "@/lib/validations";
@@ -107,7 +108,7 @@ export function ClienteContatosPanel({ cliente, empresaId }: ClienteContatosPane
       cliente_id: cliente.id,
       nome: data.nome.trim(),
       email: data.email.trim() || undefined,
-      telefone: data.telefone.replace(/\D/g, "") || undefined,
+      telefone: digitosTelefoneBr(data.telefone) || undefined,
       atualizado_em: editando?.atualizado_em,
     };
     try {

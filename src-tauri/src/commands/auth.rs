@@ -61,6 +61,8 @@ const PERMISSIONS_RECONHECIDAS_056: [&str; 7] = [
     PERMISSION_VIEW_EXPENSES,
 ];
 
+pub const MSG_COMPATIBILIDADE_056: &str = "Ainda há computadores na versão 0.5.6. Até todos atualizarem, perfis que não são Administrador precisam de ao menos uma permissão e não podem usar as permissões novas (Elaborar e enviar orçamentos, Links e Portal do Cliente).";
+
 fn validar_compatibilidade_056(role: &str, permissions: &[String], ativa: bool) -> Result<(), String> {
     if !ativa || role == "ADMIN" {
         return Ok(());
@@ -70,9 +72,14 @@ fn validar_compatibilidade_056(role: &str, permissions: &[String], ativa: bool) 
             .iter()
             .any(|permission| !PERMISSIONS_RECONHECIDAS_056.contains(&permission.as_str()));
     if incompativel {
-        return Err("Ainda há computadores na versão 0.5.6. Até todos atualizarem, perfis que não são Administrador precisam de ao menos uma permissão e não podem usar as permissões novas (Elaborar e enviar orçamentos, Links e Portal do Cliente).".to_string());
+        return Err(MSG_COMPATIBILIDADE_056.to_string());
     }
     Ok(())
+}
+
+/// Qualquer escrita que deixe o perfil ativo (criar, editar, reativar) passa por aqui.
+fn validar_perfil_ativo_056(role: &str, permissions: &[String]) -> Result<(), String> {
+    validar_compatibilidade_056(role, permissions, COMPATIBILIDADE_056_ATIVA)
 }
 
 static SENSITIVE_SESSION: OnceLock<Mutex<SensitiveSession>> = OnceLock::new();
@@ -1465,7 +1472,7 @@ pub async fn create_security_profile(input: SecurityProfileInput, pin: String) -
 
     let role = normalize_role(&input.role)?;
     let permissions = normalize_permissions(&role, &input.permissions)?;
-    validar_compatibilidade_056(&role, &permissions, COMPATIBILIDADE_056_ATIVA)?;
+    validar_perfil_ativo_056(&role, &permissions)?;
     if pin.trim().is_empty() && (role == "ADMIN" || has_permission_values(&permissions, PERMISSION_MANAGE_PROFILES)) {
         return Err("Perfis com acesso à administração exigem PIN".to_string());
     }
@@ -1532,7 +1539,7 @@ pub async fn update_security_profile(profile_id: i32, input: SecurityProfileInpu
 
     let role = normalize_role(&input.role)?;
     let permissions = normalize_permissions(&role, &input.permissions)?;
-    validar_compatibilidade_056(&role, &permissions, COMPATIBILIDADE_056_ATIVA)?;
+    validar_perfil_ativo_056(&role, &permissions)?;
     if !profile_requires_pin(&current) && (role == "ADMIN" || has_permission_values(&permissions, PERMISSION_MANAGE_PROFILES)) {
         return Err("Este perfil não exige PIN. Gere um código de acesso para a pessoa criar o PIN antes de conceder acesso à administração".to_string());
     }
@@ -1793,6 +1800,8 @@ pub async fn reactivate_security_profile(profile_id: i32) -> Result<SensitiveAcc
     if profile.ativo {
         return status_snapshot().await;
     }
+
+    validar_perfil_ativo_056(&profile.role, &profile.permissions)?;
 
     let pool = get_pool().await.map_err(|e| e.to_string())?;
     sqlx::query(
@@ -2144,7 +2153,7 @@ pub async fn provision_pin_with_enrollment(
     }
 
     // Falha antes de consumir o código: o perfil criado aqui nasce sem permissões.
-    validar_compatibilidade_056("TECNICO", &[], COMPATIBILIDADE_056_ATIVA)?;
+    validar_perfil_ativo_056("TECNICO", &[])?;
 
     // Validate the enrollment code (marks it as used in Supabase)
     let validation = validate_enrollment_code(enrollment_code).await?;
@@ -2335,7 +2344,7 @@ pub async fn criar_perfil_com_codigo(input: SecurityProfileInput, admin_pin: Str
     }
     let role = normalize_role(&input.role)?;
     let permissions = normalize_permissions(&role, &input.permissions)?;
-    validar_compatibilidade_056(&role, &permissions, COMPATIBILIDADE_056_ATIVA)?;
+    validar_perfil_ativo_056(&role, &permissions)?;
     let permissions_json = serde_json::to_string(&permissions).map_err(|e| e.to_string())?;
 
     let pool = get_pool().await.map_err(|e| e.to_string())?;
@@ -3054,6 +3063,16 @@ mod tests {
         for chave in PERMISSIONS_RECONHECIDAS_056 {
             assert!(ALL_PERMISSIONS.contains(&chave), "{chave} fora de ALL_PERMISSIONS");
         }
+    }
+
+    #[test]
+    fn compat_056_reativar_recusa_perfil_incompativel_com_a_mesma_mensagem() {
+        let vazio = validar_perfil_ativo_056("RECEPCAO", &[]);
+        let quotes = validar_perfil_ativo_056("TECNICO", &lista(&[PERMISSION_PREPARE_QUOTES]));
+        assert_eq!(vazio.unwrap_err(), MSG_COMPATIBILIDADE_056);
+        assert_eq!(quotes.unwrap_err(), MSG_COMPATIBILIDADE_056);
+        assert!(validar_perfil_ativo_056("TECNICO", &lista(&[PERMISSION_STOCK_CONTROL])).is_ok());
+        assert!(validar_perfil_ativo_056("ADMIN", &[]).is_ok());
     }
 
     #[test]

@@ -33,6 +33,8 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { ValorDecimalInput } from "@/components/ui/valor-decimal-input";
+import { formatCurrencyOrMissing } from "@/lib/utils";
 import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
@@ -333,7 +335,7 @@ export function VerificacaoTecnica({
                                 onClick={() => selecionarServicoCatalogo(s.id, item)}
                               >
                                 <span className="font-medium">{item.nome}</span>
-                                <span className="text-muted-foreground"> — R$ {Number(item.preco_padrao || 0).toFixed(2)}</span>
+                                <span className="text-muted-foreground"> — {formatCurrencyOrMissing(Number(item.preco_padrao))}</span>
                               </button>
                             ))}
                             {!carregandoCatalogo && catalogoServicos.filter((item) =>
@@ -346,13 +348,12 @@ export function VerificacaoTecnica({
                           </div>
                         )}
                       </div>
-                      <Input
-                        type="number"
+                      <ValorDecimalInput
                         min={0}
-                        step="0.01"
                         placeholder="Valor"
-                        value={Number.isFinite(Number(s.valor)) ? Number(s.valor) : ""}
-                        onChange={(e) => atualizarServico(s.id, { valor: Number(e.target.value) })}
+                        aria-label="Valor do serviço"
+                        value={Number(s.valor) || 0}
+                        onValueChange={(valor) => atualizarServico(s.id, { valor })}
                         className="w-32"
                       />
                       <Button

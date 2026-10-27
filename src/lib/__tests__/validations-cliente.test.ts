@@ -155,4 +155,9 @@ describe("celularValido", () => {
   it("rejeita string vazia", () => {
     expect(celularValido("")).toBe(false);
   });
+
+  it("aceita prefixo +55 no celular", () => {
+    expect(celularValido("+55 71 98888-7777")).toBe(true);
+    expect(celularValido("5571988887777")).toBe(true);
+  });
 });

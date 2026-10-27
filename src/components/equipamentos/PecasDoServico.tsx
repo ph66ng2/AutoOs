@@ -3,6 +3,7 @@ import { Plus, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { carregarProdutosOrcamento, produtosSelecionaveisComoPeca } from "@/lib/orcamento-estoque";
+import { formatCurrencyOrMissing } from "@/lib/utils";
 import type { PecaVinculada, Produto } from "@/types";
 
 interface Props {
@@ -66,7 +67,7 @@ export function PecasDoServico({ pecas, onChange }: Props) {
           value="" onChange={(event) => adicionar(Number(event.target.value))}>
           <option value="">Adicionar peça do estoque...</option>
           {opcoes.filter((produto) => produto.id && !pecas.some((peca) => peca.produto_id === produto.id))
-            .map((produto) => <option key={produto.id} value={produto.id}>{produto.nome} · saldo {produto.quantidade_estoque}</option>)}
+            .map((produto) => <option key={produto.id} value={produto.id}>{produto.nome} · {formatCurrencyOrMissing(Number(produto.preco_venda))} · saldo {produto.quantidade_estoque}</option>)}
         </select>
       </div>
       {erro && <p className="text-xs text-destructive">{erro}</p>}

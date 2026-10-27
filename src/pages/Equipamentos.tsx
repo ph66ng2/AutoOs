@@ -175,7 +175,8 @@ import {
   statusExigeAcessoSensivel,
   whatsappNaoConfigurado,
 } from "@/pages/equipamentos/equipamentos-page-utils";
-import { formatCurrency } from "@/lib/utils";
+import { DateIsoInput } from "@/components/ui/date-iso-input";
+import { formatCurrency, formatCurrencyOrMissing } from "@/lib/utils";
 import { useNotification } from "@/hooks/useNotification";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { InputDialog } from "@/components/ui/input-dialog";
@@ -1271,10 +1272,10 @@ export default function Equipamentos() {
       const lines = [
         "Revise as alterações antes de confirmar:",
         "",
-        ...servicosAjuste.map((s) => `• ${s.descricao || "(sem nome)"}: R$ ${Number(s.valor || 0).toFixed(2)}`),
+        ...servicosAjuste.map((s) => `• ${s.descricao || "(sem nome)"}: ${formatCurrency(Number(s.valor || 0))}`),
         "",
-        `Valor Original: R$ ${totalOriginal.toFixed(2)}`,
-        `Novo Valor: R$ ${totalNovo.toFixed(2)}`,
+        `Valor Original: ${formatCurrency(totalOriginal)}`,
+        `Novo Valor: ${formatCurrency(totalNovo)}`,
       ];
       setConfirmProps({
         title: "Resumo do Ajuste de Orçamento",
@@ -2240,7 +2241,7 @@ export default function Equipamentos() {
           <div>
             <p className="text-sm font-medium mb-2">Serviços</p>
             <div className="space-y-1">{servs.map(s => (
-              <div key={s.id} className="flex justify-between text-sm border-b pb-1"><span>{s.descricao}</span><span className="font-medium">R$ {s.valor.toFixed(2)}</span></div>
+              <div key={s.id} className="flex justify-between text-sm border-b pb-1"><span>{s.descricao}</span><span className="font-medium">{formatCurrency(s.valor)}</span></div>
             ))}</div>
           </div>
         )}
@@ -2248,15 +2249,15 @@ export default function Equipamentos() {
           <div>
             <p className="text-sm font-medium mb-2">Peças</p>
             <div className="space-y-1">{pcs.map(p => (
-              <div key={p.id} className="flex justify-between text-sm border-b pb-1"><span>{p.nome} (x{p.quantidade})</span><span className="font-medium">R$ {p.valorTotal.toFixed(2)}</span></div>
+              <div key={p.id} className="flex justify-between text-sm border-b pb-1"><span>{p.nome} (x{p.quantidade})</span><span className="font-medium">{formatCurrencyOrMissing(p.valorTotal)}</span></div>
             ))}</div>
           </div>
         )}
         <Card><CardContent className="pt-4">
-          <div className="flex justify-between text-sm"><span>Mão de obra:</span><span>R$ {(v.custo_estimado_mao_obra || 0).toFixed(2)}</span></div>
-          <div className="flex justify-between text-sm"><span>Peças:</span><span>R$ {(v.custo_estimado_pecas || 0).toFixed(2)}</span></div>
+          <div className="flex justify-between text-sm"><span>Mão de obra:</span><span>{formatCurrency(v.custo_estimado_mao_obra || 0)}</span></div>
+          <div className="flex justify-between text-sm"><span>Peças:</span><span>{formatCurrency(v.custo_estimado_pecas || 0)}</span></div>
           <hr className="my-2" />
-          <div className="flex justify-between font-bold"><span>Total:</span><span>R$ {(v.custo_total || 0).toFixed(2)}</span></div>
+          <div className="flex justify-between font-bold"><span>Total:</span><span>{formatCurrency(v.custo_total || 0)}</span></div>
         </CardContent></Card>
         {v.observacoes && <div className="text-sm"><p className="text-muted-foreground">Obs:</p><p>{v.observacoes}</p></div>}
       </div>
@@ -2436,7 +2437,7 @@ export default function Equipamentos() {
                           {(eq.status === "AGUARDANDO_APROVACAO" || eq.status === "ORCAMENTO_VENCIDO") &&
                             eq.valor_orcamento != null && eq.valor_orcamento > 0 && (
                               <div className="inline-flex max-w-full items-center truncate rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-xs font-medium text-amber-900">
-                                Orçamento: R$ {eq.valor_orcamento.toFixed(2)}
+                                Orçamento: {formatCurrency(eq.valor_orcamento)}
                               </div>
                             )}
                           {eq.status === "AGUARDANDO_APROVACAO" &&
@@ -2906,9 +2907,9 @@ export default function Equipamentos() {
                     <Card>
                       <CardHeader className="py-3"><CardTitle className="text-sm">Orçamento</CardTitle></CardHeader>
                       <CardContent className="text-sm space-y-1">
-                        <p>Valor: <strong>R$ {selecionado.valor_orcamento?.toFixed(2)}</strong></p>
+                        <p>Valor: <strong>{formatCurrency(selecionado.valor_orcamento)}</strong></p>
                         {selecionado.prazo_aprovacao && <p>Prazo: {formatDatePtBr(selecionado.prazo_aprovacao)}</p>}
-                        {selecionado.valor_final != null && <p>Valor final: <strong>R$ {selecionado.valor_final.toFixed(2)}</strong></p>}
+                        {selecionado.valor_final != null && <p>Valor final: <strong>{formatCurrency(selecionado.valor_final)}</strong></p>}
                       </CardContent>
                     </Card>
                   )}
@@ -3085,20 +3086,20 @@ export default function Equipamentos() {
                       <div className="rounded-md border bg-muted/30 px-3 py-2 text-sm">
                         <p className="text-xs text-muted-foreground">Valor original (verificação)</p>
                         <p className="font-semibold">
-                          {valorOrcamentoOriginal != null ? `R$ ${valorOrcamentoOriginal.toFixed(2)}` : "—"}
+                          {valorOrcamentoOriginal != null ? formatCurrency(valorOrcamentoOriginal) : "—"}
                         </p>
                       </div>
                       <div className="rounded-md border bg-blue-50 px-3 py-2 text-sm text-blue-900">
                         <p className="text-xs text-blue-700">Valor atual antes do ajuste</p>
                         <p className="font-semibold">
-                          {valorOrcamentoAnterior != null ? `R$ ${valorOrcamentoAnterior.toFixed(2)}` : "—"}
+                          {valorOrcamentoAnterior != null ? formatCurrency(valorOrcamentoAnterior) : "—"}
                         </p>
                       </div>
                     </div>
                   )}
                   <div className="space-y-2"><Label>Valor Orçamento (R$)</Label><Input data-testid="valor-orcamento-input" type="number" step="0.01" value={valorOrcamento || ""} onChange={e => setValorOrcamento(Number(e.target.value))} /></div>
                   {(!ajusteOrcamentoSemMudancaStatus || selecionado.status === "AGUARDANDO_APROVACAO") && (
-                    <div className="space-y-2"><Label>Prazo Aprovação</Label><Input type="date" min={new Date().toLocaleDateString("en-CA")} value={prazoAprovacao} onChange={e => setPrazoAprovacao(e.target.value)} /></div>
+                    <div className="space-y-2"><Label>Prazo Aprovação</Label><DateIsoInput min={new Date().toLocaleDateString("en-CA")} value={prazoAprovacao} onValueChange={setPrazoAprovacao} /></div>
                   )}
                   <div className="space-y-2">
                     <Label htmlFor="observacoes-ajuste">Observações</Label>
@@ -3130,7 +3131,7 @@ export default function Equipamentos() {
                   )}
                   {valorOrcamentoAnterior != null && valorOrcamento !== valorOrcamentoAnterior && (
                     <p className="text-xs text-amber-700">
-                      Novo valor em negociação: R$ {valorOrcamento.toFixed(2)} (antes: R$ {valorOrcamentoAnterior.toFixed(2)}).
+                      Novo valor em negociação: {formatCurrency(valorOrcamento)} (antes: {formatCurrency(valorOrcamentoAnterior)}).
                     </p>
                   )}
                   {verificacaoAjusteOrcamento && (
@@ -3160,7 +3161,7 @@ export default function Equipamentos() {
                           <p className="text-xs text-amber-800">Vincule cada peça a um serviço para permitir aprovação parcial e baixa automática. Remova a linha antiga depois de vinculá-la.</p>
                           {pecasLegadasAjuste.map((peca, indice) => (
                             <div key={`${peca.id}-${indice}`} className="flex items-center justify-between gap-2 text-sm">
-                              <span>{peca.nome} × {peca.quantidade} · R$ {peca.valorTotal.toFixed(2)}</span>
+                              <span>{peca.nome} × {peca.quantidade} · {formatCurrencyOrMissing(peca.valorTotal)}</span>
                               <Button type="button" variant="ghost" size="sm" onClick={() => setPecasLegadasAjuste((atual) => atual.filter((_, i) => i !== indice))}>Remover linha antiga</Button>
                             </div>
                           ))}
@@ -3175,11 +3176,11 @@ export default function Equipamentos() {
                     <div className="grid gap-2 sm:grid-cols-2">
                       <div className="rounded-md border bg-muted/30 px-3 py-2 text-sm">
                         <p className="text-xs text-muted-foreground">Valor original (verificação)</p>
-                        <p className="font-semibold">R$ {valorOrcamentoOriginal.toFixed(2)}</p>
+                        <p className="font-semibold">{formatCurrency(valorOrcamentoOriginal)}</p>
                       </div>
                       <div className="rounded-md border bg-emerald-50 px-3 py-2 text-sm text-emerald-900">
                         <p className="text-xs text-emerald-700">Novo valor calculado</p>
-                        <p className="font-semibold">R$ {valorOrcamento.toFixed(2)}</p>
+                        <p className="font-semibold">{formatCurrency(valorOrcamento)}</p>
                       </div>
                     </div>
                   )}
@@ -3190,7 +3191,7 @@ export default function Equipamentos() {
                   <div className="rounded-md border bg-accent/40 px-3 py-2 text-sm">
                     Valor padrão de entrega (verificação técnica):{" "}
                     <strong>
-                      R$ {(valorFinalSugerido ?? valorFinal ?? 0).toFixed(2)}
+                      {formatCurrency(valorFinalSugerido ?? valorFinal ?? 0)}
                     </strong>
                   </div>
                   <label className="flex items-center gap-2 text-sm">

@@ -27,6 +27,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { DateIsoInput } from "@/components/ui/date-iso-input";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
@@ -465,12 +466,11 @@ export function OrcamentoInsumosDialog({
                 <div className="grid gap-3 md:grid-cols-[1fr_1fr_1fr]">
                   <div className="space-y-1">
                     <Label htmlFor="oi-validade">Validade</Label>
-                    <Input
+                    <DateIsoInput
                       id="oi-validade"
-                      type="date"
                       value={validade}
                       disabled={!editavel || ocupado}
-                      onChange={(event) => editar(setValidade)(event.target.value)}
+                      onValueChange={editar(setValidade)}
                       className="h-9"
                     />
                   </div>

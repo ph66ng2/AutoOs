@@ -6,7 +6,7 @@
  * ╚══════════════════════════════════════════════════════════════╝
  */
 import { describe, it, expect } from 'vitest';
-import { cn, formatCurrency, formatDate } from '@/lib/utils';
+import { cn, formatCurrency, formatCurrencyOrMissing, formatDate, parseDecimalBr } from '@/lib/utils';
 
 describe('cn (classnames utility)', () => {
   it('deve combinar classes simples', () => {
@@ -38,6 +38,23 @@ describe('formatCurrency', () => {
     const result = formatCurrency(-50);
     expect(result).toContain('50,00');
     expect(result).toContain('-');
+  });
+
+  it('mostra sem preço quando o valor é zero ou ausente', () => {
+    expect(formatCurrencyOrMissing(0)).toBe('sem preço');
+    expect(formatCurrencyOrMissing(null)).toBe('sem preço');
+    expect(formatCurrencyOrMissing(15)).toContain('15,00');
+  });
+});
+
+describe('parseDecimalBr', () => {
+  it('aceita vírgula decimal pt-BR', () => {
+    expect(parseDecimalBr('1234,50')).toBe(1234.5);
+    expect(parseDecimalBr('1.234,50')).toBe(1234.5);
+  });
+
+  it('aceita ponto decimal', () => {
+    expect(parseDecimalBr('1234.50')).toBe(1234.5);
   });
 });
 

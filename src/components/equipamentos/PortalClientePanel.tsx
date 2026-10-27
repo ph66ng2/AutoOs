@@ -11,6 +11,7 @@ import {
   MOTIVO_FALHA,
   TIPO_SOLICITACAO_TEXTO,
   formatarHora,
+  formatarValidoAte,
   formatarValor,
   origemTexto,
   textoOrdemCompra,
@@ -70,7 +71,7 @@ export function PortalClientePanel({ open, onOpenChange }: Props) {
               {info ? (
                 <p className="text-sm text-muted-foreground">
                   Versão {info.versao} enviada em {formatarHora(info.criadaEm)} · {formatarValor(info.valorTotal)}
-                  {info.validoAte ? ` · válida até ${formatarHora(info.validoAte)}` : ""}
+                  {info.validoAte ? ` · válida até ${formatarValidoAte(info.validoAte)}` : ""}
                   {info.encerradaMotivo
                     ? aguardando
                       ? " · encerrada (o orçamento ou a etapa mudou; publique uma nova versão)"

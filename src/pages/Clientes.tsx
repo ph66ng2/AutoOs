@@ -50,6 +50,7 @@ import {
   formatarTelefone,
   formatarCEP,
   detectarTipoDocumento,
+  digitosTelefoneBr,
 } from "@/lib/validations";
 import { useClientes } from "@/hooks/useClientes";
 import { useNotification } from "@/hooks/useNotification";
@@ -151,10 +152,19 @@ export default function Clientes() {
     } else if (tipo === "CNPJ") {
       setTipoPessoa("PJ");
       form.setValue("tipo_pessoa", "PJ");
+      const eraPj = Boolean(
+        editando && (
+          editando.tipo_pessoa === "PJ"
+          || (editando.documento || editando.cpf_cnpj || "").replace(/\D/g, "").length === 14
+        ),
+      );
+      if (editando && !eraPj) {
+        form.setValue("exigir_contato_inicial", true);
+      }
     } else {
       setTipoPessoa(null);
     }
-  }, [documentoValue, form]);
+  }, [documentoValue, form, editando]);
 
   // Buscar CEP via ViaCEP
   const buscarCep = useCallback(async (cep: string) => {
@@ -298,19 +308,19 @@ export default function Clientes() {
         atualizado_em: editando?.atualizado_em,
       } as any;
 
+      const contatoInicial = isPJ && data.exigir_contato_inicial
+        ? {
+            nome: (data.contato_nome ?? "").trim(),
+            telefone: digitosTelefoneBr(data.contato_telefone ?? ""),
+            email: data.contato_email?.trim() || undefined,
+          }
+        : undefined;
       if (editando) {
-        const resultado = await atualizar(editando.id!, payload);
+        const resultado = await atualizar(editando.id!, payload, contatoInicial);
         if (!resultado.sucesso) {
           throw new Error(resultado.erro || "Não foi possível salvar o cliente.");
         }
       } else {
-        const contatoInicial = isPJ && data.exigir_contato_inicial
-          ? {
-              nome: (data.contato_nome ?? "").trim(),
-              telefone: (data.contato_telefone ?? "").replace(/\D/g, ""),
-              email: data.contato_email?.trim() || undefined,
-            }
-          : undefined;
         const resultado = await criar(payload, contatoInicial);
         if (!resultado.sucesso) {
           throw new Error(resultado.erro || "Não foi possível criar o cliente.");

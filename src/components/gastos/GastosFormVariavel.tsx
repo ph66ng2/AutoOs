@@ -11,6 +11,7 @@ import {
   DialogClose,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
+import { DateIsoInput } from "@/components/ui/date-iso-input";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
@@ -121,7 +122,10 @@ export function GastosFormVariavel({
 
             <div className="space-y-2">
               <Label>Data *</Label>
-              <Input type="date" {...form.register("data")} />
+              <DateIsoInput
+                value={form.watch("data") || ""}
+                onValueChange={(iso) => form.setValue("data", iso, { shouldValidate: true, shouldDirty: true })}
+              />
               <FormValidationError message={form.formState.errors.data?.message} />
             </div>
           </div>

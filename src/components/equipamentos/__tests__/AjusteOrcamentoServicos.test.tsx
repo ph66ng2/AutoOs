@@ -146,7 +146,7 @@ describe("AjusteOrcamentoServicos", () => {
     ];
     render(<Wrapper {...defaultProps} servicos={servicos} />);
     expect(screen.getByText("Total serviços")).toBeInTheDocument();
-    expect(screen.getByText("R$ 350.00")).toBeInTheDocument();
+    expect(screen.getByText(/R\$\s*350,00/)).toBeInTheDocument();
   });
 
   it("mostra mensagem quando catálogo não retorna resultados", async () => {
@@ -167,6 +167,6 @@ describe("AjusteOrcamentoServicos", () => {
     render(<Wrapper {...defaultProps} servicos={[{ id: "s1", descricao: "Garantia", valor: 0 }]} />);
     const valorInput = screen.getByPlaceholderText(/Valor/i);
     expect(valorInput).toHaveAttribute("min", "0");
-    expect(valorInput).toHaveValue(0);
+    expect(valorInput).toHaveValue("0");
   });
 });

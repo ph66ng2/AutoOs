@@ -27,7 +27,7 @@ import { profileAppearance } from "@/lib/profile-appearance";
 import { newPermissions } from "@/lib/tour-steps";
 import { SensitiveAccessService } from "@/lib/sensitive-access";
 import { mensagemVisivelAoOperador } from "@/lib/operator-errors";
-import { perfilCompativel056 } from "@/lib/compatibilidade-056";
+import { MENSAGEM_TRAVA_056, perfilCompativel056 } from "@/lib/compatibilidade-056";
 import { PROFILE_PRESETS } from "@/lib/profile-presets";
 import { securityRoleLabel } from "@/lib/security-profile-labels";
 import type { CodigoPrimeiroAcesso, SecurityProfile, SensitivePermission } from "@/types";
@@ -117,6 +117,13 @@ export function TeamAccessManager({
       const compat = perfilCompativel056(role, permissions);
       if (!compat.ok) {
         setError(compat.motivo ?? "Perfil incompatível com a versão 0.5.6.");
+        return;
+      }
+    }
+    if (action === "reactivate") {
+      const compat = perfilCompativel056(profile.role, profile.permissions);
+      if (!compat.ok) {
+        setError(MENSAGEM_TRAVA_056);
         return;
       }
     }

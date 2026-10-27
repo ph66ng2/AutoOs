@@ -14,6 +14,7 @@ import {
 import { useLocation } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { DateIsoInput } from "@/components/ui/date-iso-input";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
@@ -1516,19 +1517,17 @@ function OperationalPanel({ onBack }: { onBack: () => void }) {
           </Button>
           {period === "custom" && (
             <>
-              <Input
+              <DateIsoInput
                 aria-label="Data inicial"
-                type="date"
                 className="min-h-12 w-44"
                 value={customStart}
-                onChange={(e) => setCustomStart(e.target.value)}
+                onValueChange={setCustomStart}
               />
-              <Input
+              <DateIsoInput
                 aria-label="Data final"
-                type="date"
                 className="min-h-12 w-44"
                 value={customEnd}
-                onChange={(e) => setCustomEnd(e.target.value)}
+                onValueChange={setCustomEnd}
               />
             </>
           )}

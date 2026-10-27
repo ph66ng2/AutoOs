@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  MENSAGEM_TRAVA_056,
   PERMISSOES_056,
   perfilCompativel056,
   permissoesNovas,
@@ -14,6 +15,9 @@ describe("compatibilidade 0.5.6", () => {
     expect(perfilCompativel056("CUSTOM", [])).toMatchObject({ ok: false });
     expect(perfilCompativel056("CUSTOM", ["STOCK_CONTROL", "MANAGE_STATUS_LINKS"]).ok).toBe(false);
     expect(permissoesNovas([...PERMISSOES_056, "PREPARE_QUOTES"])).toEqual(["PREPARE_QUOTES"]);
+  });
+  it("a mensagem da trava descreve a 0.5.6", () => {
+    expect(MENSAGEM_TRAVA_056).toMatch(/0\.5\.6/);
   });
   it("aceita permissões antigas e trava desligada", () => {
     expect(perfilCompativel056("TECNICO", ["STOCK_CONTROL"]).ok).toBe(true);
