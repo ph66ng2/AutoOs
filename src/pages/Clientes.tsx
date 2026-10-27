@@ -20,7 +20,7 @@
  * ║  USADO POR: App.tsx (rota /clientes)                        ║
  * ╚══════════════════════════════════════════════════════════════╝
  */
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { formatDatePtBr } from "@/lib/date-utils";
 import {
@@ -107,6 +107,7 @@ export default function Clientes() {
   const [previaRegularizacao, setPreviaRegularizacao] = useState<RegularizacaoLegadoPrevia | null>(null);
   const [previaVinculoEmpresa, setPreviaVinculoEmpresa] = useState<VinculoEmpresaPerfilPrevia | null>(null);
   const [regularizando, setRegularizando] = useState(false);
+  const edicaoSeq = useRef(0);
 
   const { clientes, total: totalClientes, loading, error, criar, atualizar, deletar, recarregar } =
     useClientes({ busca: busca || undefined, page: abaAtual });
@@ -223,6 +224,7 @@ export default function Clientes() {
 
   /** Abre dialog para criar novo cliente. Reseta form e tipo de pessoa */
   function abrirNovo() {
+    edicaoSeq.current += 1;
     setEditando(null);
     setErroDocumentoDuplicado(null);
     setTipoPessoa(null);
@@ -240,24 +242,12 @@ export default function Clientes() {
 
   /** Abre dialog para editar cliente. Preenche form com dados existentes e detecta tipo PF/PJ */
   async function abrirEditar(c: Cliente) {
+    const seq = ++edicaoSeq.current;
     setErroDocumentoDuplicado(null);
     setEditando(c);
     const doc = c.documento || c.cpf_cnpj || "";
     const isPj = c.tipo_pessoa === "PJ" || doc.replace(/\D/g, "").length === 14;
     setTipoPessoa(isPj ? "PJ" : "PF");
-    let exigirContatoInicial = false;
-    if (isPj) {
-      if (c.id && c.empresa_id) {
-        try {
-          const contatos = await db.listarClienteContatos(c.id, c.empresa_id);
-          exigirContatoInicial = !contatos.some((contato) => contato.ativo && celularValido(contato.telefone ?? ""));
-        } catch {
-          exigirContatoInicial = true;
-        }
-      } else {
-        exigirContatoInicial = true;
-      }
-    }
     form.reset({
       documento: doc ? formatarDocumento(doc) : "",
       tipo_pessoa: isPj ? "PJ" : "PF",
@@ -277,10 +267,22 @@ export default function Clientes() {
       uf: c.uf || "",
       observacoes: c.observacoes || "",
       exige_ordem_compra: Boolean(c.exige_ordem_compra),
-      exigir_contato_inicial: exigirContatoInicial,
+      exigir_contato_inicial: false,
       contato_nome: "", contato_telefone: "", contato_email: "",
     });
     setDialogOpen(true);
+    if (!isPj) return;
+    let exigirContatoInicial = true;
+    if (c.id && c.empresa_id) {
+      try {
+        const contatos = await db.listarClienteContatos(c.id, c.empresa_id);
+        exigirContatoInicial = !contatos.some((contato) => contato.ativo && celularValido(contato.telefone ?? ""));
+      } catch {
+        exigirContatoInicial = true;
+      }
+    }
+    if (seq !== edicaoSeq.current) return;
+    form.setValue("exigir_contato_inicial", exigirContatoInicial);
   }
 
   /**
