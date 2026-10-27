@@ -168,12 +168,15 @@ export function formatarCEP(valor: string): string {
 export type EquipamentoFormData = z.infer<typeof equipamentoSchema>;
 
 /**
- * Celular com DDD: 10 ou 11 dígitos após remover não-dígitos.
- * Conecta-se a: clienteSchema (contato inicial de PJ)
+ * Celular brasileiro com DDD: 11 dígitos após remover não-dígitos, DDD entre 11 e 99
+ * e o 9 logo após o DDD. Fixo (10 dígitos) é recusado.
+ * Conecta-se a: clienteSchema (contato inicial de PJ), QuemRecebeOrcamentoDialog, ContatoResponsavelSelector
  */
 export function celularValido(valor: string): boolean {
   const digitos = valor.replace(/\D/g, "");
-  return digitos.length === 10 || digitos.length === 11;
+  if (digitos.length !== 11) return false;
+  const ddd = Number(digitos.slice(0, 2));
+  return ddd >= 11 && ddd <= 99 && digitos[2] === "9";
 }
 
 /**
@@ -279,7 +282,7 @@ uf: z.string().max(2).optional().or(z.literal("")),
      if (!celularValido(data.contato_telefone ?? "")) {
        ctx.addIssue({
          code: z.ZodIssueCode.custom,
-         message: "Informe o celular do contato com DDD.",
+         message: "Informe o celular com DDD e o 9 (11 dígitos).",
          path: ["contato_telefone"],
        });
      }

@@ -27,6 +27,7 @@ import { profileAppearance } from "@/lib/profile-appearance";
 import { newPermissions } from "@/lib/tour-steps";
 import { SensitiveAccessService } from "@/lib/sensitive-access";
 import { mensagemVisivelAoOperador } from "@/lib/operator-errors";
+import { perfilCompativel056 } from "@/lib/compatibilidade-056";
 import { PROFILE_PRESETS } from "@/lib/profile-presets";
 import { securityRoleLabel } from "@/lib/security-profile-labels";
 import type { CodigoPrimeiroAcesso, SecurityProfile, SensitivePermission } from "@/types";
@@ -111,6 +112,13 @@ export function TeamAccessManager({
     if (action === "edit" && name.trim().length < 3) {
       setError("Informe um nome com pelo menos 3 caracteres.");
       return;
+    }
+    if (action === "edit") {
+      const compat = perfilCompativel056(role, permissions);
+      if (!compat.ok) {
+        setError(compat.motivo ?? "Perfil incompatível com a versão 0.5.6.");
+        return;
+      }
     }
     if (
       (action === "edit" || action === "code") &&
@@ -368,8 +376,9 @@ export function TeamAccessManager({
                       <option value={role}>{securityRoleLabel(role)}</option>
                     )}
                     {PROFILE_PRESETS.map((item) => (
-                      <option key={item.role} value={item.role}>
+                      <option key={item.role} value={item.role} disabled={!item.disponivel && item.role !== role} title={item.motivoIndisponivel}>
                         {item.label}
+                        {!item.disponivel ? " (indisponível)" : ""}
                       </option>
                     ))}
                   </select>
@@ -381,6 +390,7 @@ export function TeamAccessManager({
                     setPermissions(next);
                   }}
                   disabled={busy || role === "ADMIN"}
+                  role={role}
                 />
               </>
             )}

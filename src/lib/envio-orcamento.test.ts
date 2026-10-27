@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
   prepararAcessoPortal: vi.fn(),
@@ -75,6 +75,24 @@ describe("prazo", () => {
   it("sugere data AAAA-MM-DD", () => {
     expect(sugerirNovoPrazo()).toMatch(/^\d{4}-\d{2}-\d{2}$/);
     expect(calcularPrazoAprovacao(0)).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+  });
+
+  describe("calcularPrazoAprovacao com relógio fixo", () => {
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    it("quinta às 22:00 locais com 1 dia útil devolve sexta, não sábado", () => {
+      vi.useFakeTimers();
+      vi.setSystemTime(new Date(2026, 9, 22, 22, 0, 0)); // quinta-feira 22/10/2026, horário local
+      expect(calcularPrazoAprovacao(1)).toBe("2026-10-23");
+    });
+
+    it("sexta com 1 dia útil devolve segunda, pulando o fim de semana", () => {
+      vi.useFakeTimers();
+      vi.setSystemTime(new Date(2026, 9, 23, 10, 0, 0)); // sexta-feira 23/10/2026
+      expect(calcularPrazoAprovacao(1)).toBe("2026-10-26");
+    });
   });
 });
 

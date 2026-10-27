@@ -46,6 +46,35 @@ const ALL_PERMISSIONS: [&str; 9] = [
     PERMISSION_PREPARE_QUOTES,
 ];
 
+/// Trava de transição: a v0.5.6 recusa perfis não-administradores sem permissões ou com
+/// permissões novas, e a lista de perfis dela fica vazia. Desligar quando todos os PCs
+/// estiverem na 0.6.0, no mesmo PR da migration que concede PREPARE_QUOTES a Técnico/Financeiro.
+pub const COMPATIBILIDADE_056_ATIVA: bool = true;
+
+const PERMISSIONS_RECONHECIDAS_056: [&str; 7] = [
+    PERMISSION_CONFIG_SMTP,
+    PERMISSION_CONFIG_WHATSAPP,
+    PERMISSION_DELETE_RECORDS,
+    PERMISSION_FINANCIAL_ACTIONS,
+    PERMISSION_STOCK_CONTROL,
+    PERMISSION_MANAGE_PROFILES,
+    PERMISSION_VIEW_EXPENSES,
+];
+
+fn validar_compatibilidade_056(role: &str, permissions: &[String], ativa: bool) -> Result<(), String> {
+    if !ativa || role == "ADMIN" {
+        return Ok(());
+    }
+    let incompativel = permissions.is_empty()
+        || permissions
+            .iter()
+            .any(|permission| !PERMISSIONS_RECONHECIDAS_056.contains(&permission.as_str()));
+    if incompativel {
+        return Err("Ainda há computadores na versão 0.5.6. Até todos atualizarem, perfis que não são Administrador precisam de ao menos uma permissão e não podem usar as permissões novas (Elaborar e enviar orçamentos, Links e Portal do Cliente).".to_string());
+    }
+    Ok(())
+}
+
 static SENSITIVE_SESSION: OnceLock<Mutex<SensitiveSession>> = OnceLock::new();
 static UNLOCK_ATTEMPTS: OnceLock<Mutex<HashMap<i32, UnlockAttemptTracker>>> = OnceLock::new();
 static SELECTED_PROFILE_ID: AtomicI32 = AtomicI32::new(0);
@@ -1436,6 +1465,7 @@ pub async fn create_security_profile(input: SecurityProfileInput, pin: String) -
 
     let role = normalize_role(&input.role)?;
     let permissions = normalize_permissions(&role, &input.permissions)?;
+    validar_compatibilidade_056(&role, &permissions, COMPATIBILIDADE_056_ATIVA)?;
     if pin.trim().is_empty() && (role == "ADMIN" || has_permission_values(&permissions, PERMISSION_MANAGE_PROFILES)) {
         return Err("Perfis com acesso à administração exigem PIN".to_string());
     }
@@ -1502,6 +1532,7 @@ pub async fn update_security_profile(profile_id: i32, input: SecurityProfileInpu
 
     let role = normalize_role(&input.role)?;
     let permissions = normalize_permissions(&role, &input.permissions)?;
+    validar_compatibilidade_056(&role, &permissions, COMPATIBILIDADE_056_ATIVA)?;
     if !profile_requires_pin(&current) && (role == "ADMIN" || has_permission_values(&permissions, PERMISSION_MANAGE_PROFILES)) {
         return Err("Este perfil não exige PIN. Gere um código de acesso para a pessoa criar o PIN antes de conceder acesso à administração".to_string());
     }
@@ -2112,6 +2143,9 @@ pub async fn provision_pin_with_enrollment(
         return Err("Nome do perfil deve ter no mínimo 3 caracteres".to_string());
     }
 
+    // Falha antes de consumir o código: o perfil criado aqui nasce sem permissões.
+    validar_compatibilidade_056("TECNICO", &[], COMPATIBILIDADE_056_ATIVA)?;
+
     // Validate the enrollment code (marks it as used in Supabase)
     let validation = validate_enrollment_code(enrollment_code).await?;
     let empresa_id = validation["empresa_id"]
@@ -2301,6 +2335,7 @@ pub async fn criar_perfil_com_codigo(input: SecurityProfileInput, admin_pin: Str
     }
     let role = normalize_role(&input.role)?;
     let permissions = normalize_permissions(&role, &input.permissions)?;
+    validar_compatibilidade_056(&role, &permissions, COMPATIBILIDADE_056_ATIVA)?;
     let permissions_json = serde_json::to_string(&permissions).map_err(|e| e.to_string())?;
 
     let pool = get_pool().await.map_err(|e| e.to_string())?;
@@ -2970,6 +3005,54 @@ mod tests {
             avatar_cor: input.avatar_cor.clone(),
             tema: input.tema.clone(),
             concluir_onboarding: input.concluir_onboarding,
+        }
+    }
+
+    fn lista(chaves: &[&str]) -> Vec<String> {
+        chaves.iter().map(|c| c.to_string()).collect()
+    }
+
+    #[test]
+    fn compat_056_recusa_lista_vazia() {
+        assert!(validar_compatibilidade_056("TECNICO", &[], true).is_err());
+    }
+
+    #[test]
+    fn compat_056_recusa_permissoes_novas() {
+        assert!(validar_compatibilidade_056("TECNICO", &lista(&[PERMISSION_PREPARE_QUOTES]), true).is_err());
+        assert!(validar_compatibilidade_056("TECNICO", &lista(&[PERMISSION_MANAGE_STATUS_LINKS]), true).is_err());
+        assert!(validar_compatibilidade_056(
+            "TECNICO",
+            &lista(&[PERMISSION_STOCK_CONTROL, PERMISSION_PREPARE_QUOTES]),
+            true
+        )
+        .is_err());
+    }
+
+    #[test]
+    fn compat_056_aceita_as_sete_chaves_antigas() {
+        for chave in PERMISSIONS_RECONHECIDAS_056 {
+            assert!(validar_compatibilidade_056("TECNICO", &lista(&[chave]), true).is_ok());
+        }
+        assert!(validar_compatibilidade_056("TECNICO", &lista(&PERMISSIONS_RECONHECIDAS_056), true).is_ok());
+    }
+
+    #[test]
+    fn compat_056_admin_aceita_qualquer_coisa() {
+        assert!(validar_compatibilidade_056("ADMIN", &[], true).is_ok());
+        assert!(validar_compatibilidade_056("ADMIN", &lista(&ALL_PERMISSIONS), true).is_ok());
+    }
+
+    #[test]
+    fn compat_056_desligada_mantem_comportamento_anterior() {
+        assert!(validar_compatibilidade_056("TECNICO", &[], false).is_ok());
+        assert!(validar_compatibilidade_056("TECNICO", &lista(&[PERMISSION_PREPARE_QUOTES, PERMISSION_MANAGE_STATUS_LINKS]), false).is_ok());
+    }
+
+    #[test]
+    fn compat_056_chaves_antigas_estao_em_all_permissions() {
+        for chave in PERMISSIONS_RECONHECIDAS_056 {
+            assert!(ALL_PERMISSIONS.contains(&chave), "{chave} fora de ALL_PERMISSIONS");
         }
     }
 

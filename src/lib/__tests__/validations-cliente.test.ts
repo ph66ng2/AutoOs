@@ -30,7 +30,7 @@ describe("clienteSchema: contato inicial de PJ", () => {
     expect(paths(result)).toEqual(["contato_nome", "contato_telefone"]);
     if (!result.success) {
       expect(result.error.issues[0]?.message).toBe("Informe o nome do contato.");
-      expect(result.error.issues[1]?.message).toBe("Informe o celular do contato com DDD.");
+      expect(result.error.issues[1]?.message).toBe("Informe o celular com DDD e o 9 (11 dígitos).");
     }
   });
 
@@ -40,6 +40,16 @@ describe("clienteSchema: contato inicial de PJ", () => {
       exigir_contato_inicial: true,
       contato_nome: "Ana",
       contato_telefone: "(11) 9999-999",
+    });
+    expect(paths(result)).toEqual(["contato_telefone"]);
+  });
+
+  it("PJ com a flag e telefone fixo de 10 dígitos falha em contato_telefone", () => {
+    const result = clienteSchema.safeParse({
+      ...PJ_BASE,
+      exigir_contato_inicial: true,
+      contato_nome: "Ana",
+      contato_telefone: "(11) 3333-4444",
     });
     expect(paths(result)).toEqual(["contato_telefone"]);
   });
@@ -84,7 +94,7 @@ describe("clienteSchema: contato inicial de PJ", () => {
       ...PJ_BASE,
       exigir_contato_inicial: true,
       contato_nome: "Ana Souza",
-      contato_telefone: "1133334444",
+      contato_telefone: "(11) 99333-4444",
     });
     expect(result.success).toBe(true);
   });
@@ -118,11 +128,19 @@ describe("clienteSchema: contato inicial de PJ", () => {
 });
 
 describe("celularValido", () => {
-  it("aceita 10 dígitos (fixo com DDD)", () => {
-    expect(celularValido("(11) 3333-4444")).toBe(true);
+  it("recusa fixo de 10 dígitos", () => {
+    expect(celularValido("(11) 3333-4444")).toBe(false);
   });
 
-  it("aceita 11 dígitos (celular com DDD)", () => {
+  it("recusa 11 dígitos sem o 9 após o DDD", () => {
+    expect(celularValido("(11) 83333-4444")).toBe(false);
+  });
+
+  it("recusa DDD fora de 11 a 99", () => {
+    expect(celularValido("(10) 99999-0000")).toBe(false);
+  });
+
+  it("aceita celular com DDD e o 9 com máscara", () => {
     expect(celularValido("(11) 99999-0000")).toBe(true);
   });
 

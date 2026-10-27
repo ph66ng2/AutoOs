@@ -21,17 +21,20 @@ import { Label } from "@/components/ui/label";
 import { ProfilePermissions } from "@/components/ProfilePermissions";
 import { AccessCodeCard } from "@/components/perfil/AccessCodeCard";
 import { mensagemVisivelAoOperador } from "@/lib/operator-errors";
+import { perfilCompativel056 } from "@/lib/compatibilidade-056";
 import { PROFILE_PRESETS, PERMISSION_DETAILS } from "@/lib/profile-presets";
 import { SensitiveAccessService } from "@/lib/sensitive-access";
 import type { CodigoPrimeiroAcesso, SecurityProfile, SensitivePermission } from "@/types";
 
 type Props = { profiles: SecurityProfile[]; onCreated: () => Promise<void> };
+const PRESET_INICIAL = PROFILE_PRESETS.find((item) => item.disponivel)!;
+const ROLE_INICIAL = PRESET_INICIAL.role;
 const steps = ["Pessoa e função", "Liberações", "Revisão"];
 
 export function CreateProfileCard({ profiles, onCreated }: Props) {
   const [name, setName] = useState("");
-  const [role, setRole] = useState("ATENDENTE");
-  const [permissions, setPermissions] = useState<SensitivePermission[]>([]);
+  const [role, setRole] = useState(ROLE_INICIAL);
+  const [permissions, setPermissions] = useState<SensitivePermission[]>([...PRESET_INICIAL.permissions]);
   const [step, setStep] = useState(0);
   const [adminPin, setAdminPin] = useState("");
   const [busy, setBusy] = useState(false);
@@ -54,6 +57,8 @@ export function CreateProfileCard({ profiles, onCreated }: Props) {
         ? "Já existe um perfil com este nome. Escolha outro nome."
         : null;
 
+  const compat = perfilCompativel056(role, permissions);
+
   const adminPinError = !/^\d{4,8}$/.test(adminPin)
     ? "Informe seu PIN de administrador (4 a 8 dígitos)."
     : null;
@@ -67,19 +72,20 @@ export function CreateProfileCard({ profiles, onCreated }: Props) {
   function continueStep() {
     setSubmitted(true);
     if (step === 0 && nameError) return;
+    if (step === 1 && !compat.ok) return;
     goTo(step + 1);
   }
   function reset() {
     setCreated(null);
     setName("");
-    setRole("ATENDENTE");
-    setPermissions([]);
+    setRole(ROLE_INICIAL);
+    setPermissions([...PRESET_INICIAL.permissions]);
     setAdminPin("");
     goTo(0);
   }
   async function createProfile() {
     setSubmitted(true);
-    if (nameError || adminPinError || inFlight.current) return;
+    if (nameError || !compat.ok || adminPinError || inFlight.current) return;
     inFlight.current = true;
     setBusy(true);
     setError(null);
@@ -212,13 +218,14 @@ export function CreateProfileCard({ profiles, onCreated }: Props) {
                       {PROFILE_PRESETS.map((item) => (
                         <label
                           key={item.role}
-                          className={`flex cursor-pointer items-start gap-3 rounded-xl border p-4 ${role === item.role ? "border-cyan-600 bg-cyan-500/5 ring-1 ring-cyan-600" : "hover:bg-muted/40"}`}
+                          className={`flex items-start gap-3 rounded-xl border p-4 ${!item.disponivel ? "cursor-not-allowed opacity-60" : "cursor-pointer"} ${role === item.role ? "border-cyan-600 bg-cyan-500/5 ring-1 ring-cyan-600" : "hover:bg-muted/40"}`}
                         >
                           <input
                             type="radio"
                             name="profile-role"
                             value={item.role}
                             checked={role === item.role}
+                            disabled={!item.disponivel}
                             onChange={() => {
                               setRole(item.role);
                               setPermissions([...item.permissions]);
@@ -230,6 +237,11 @@ export function CreateProfileCard({ profiles, onCreated }: Props) {
                             <span className="mt-1 block text-xs leading-relaxed text-muted-foreground">
                               {item.description}
                             </span>
+                            {!item.disponivel && (
+                              <span className="mt-1 block text-xs text-amber-700 dark:text-amber-400">
+                                {item.motivoIndisponivel}
+                              </span>
+                            )}
                           </span>
                         </label>
                       ))}
@@ -246,7 +258,13 @@ export function CreateProfileCard({ profiles, onCreated }: Props) {
                       setPermissions(next);
                     }}
                     disabled={role === "ADMIN"}
+                    role={role}
                   />
+                  {submitted && !compat.ok && (
+                    <p role="alert" className="text-sm text-destructive">
+                      {compat.motivo}
+                    </p>
+                  )}
                   <div className="rounded-xl border bg-muted/30 p-4 text-sm">
                     <p className="flex items-center gap-2 font-medium">
                       <KeyRound className="h-4 w-4" /> Sem PIN definido por você

@@ -96,6 +96,48 @@ describe("EnvioManualOrcamentoDialog", () => {
     expect(onFechar).toHaveBeenCalledTimes(1);
   });
 
+  it("confirmação com podeGerarNovaSenha oferece Voltar, Fechar mesmo assim e Gerar nova senha", async () => {
+    const onFechar = vi.fn();
+    const onGerarNovaSenha = vi.fn().mockResolvedValue(envio());
+    render(<EnvioManualOrcamentoDialog envio={envio()} onFechar={onFechar} onGerarNovaSenha={onGerarNovaSenha} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Fechar" }));
+
+    expect(await screen.findByText("A senha não aparece de novo.")).toBeInTheDocument();
+    expect(screen.getByText("Copie ou envie antes de fechar, ou gere uma nova senha.")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Voltar" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Fechar mesmo assim" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Gerar nova senha" })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Gerar nova senha" }));
+    await waitFor(() => expect(onGerarNovaSenha).toHaveBeenCalledTimes(1));
+    expect(onFechar).not.toHaveBeenCalled();
+  });
+
+  it("confirmação sem podeGerarNovaSenha oferece só Voltar e Fechar mesmo assim", async () => {
+    const onFechar = vi.fn();
+    render(<EnvioManualOrcamentoDialog envio={envio({ podeGerarNovaSenha: false })} onFechar={onFechar} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Fechar" }));
+
+    expect(await screen.findByText("Copie ou envie antes de fechar.")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Voltar" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Fechar mesmo assim" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Gerar nova senha" })).not.toBeInTheDocument();
+  });
+
+  it("Voltar mantém o diálogo aberto e não fecha", async () => {
+    const onFechar = vi.fn();
+    render(<EnvioManualOrcamentoDialog envio={envio({ podeGerarNovaSenha: false })} onFechar={onFechar} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Fechar" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Voltar" }));
+
+    await waitFor(() => expect(screen.queryByText("A senha não aparece de novo.")).not.toBeInTheDocument());
+    expect(onFechar).not.toHaveBeenCalled();
+    expect(screen.getByRole("button", { name: "Copiar" })).toBeInTheDocument();
+  });
+
   it("fecha direto depois de usar um botão de envio", async () => {
     const onFechar = vi.fn();
     render(<EnvioManualOrcamentoDialog envio={envio()} onFechar={onFechar} />);

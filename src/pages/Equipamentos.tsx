@@ -2907,7 +2907,7 @@ export default function Equipamentos() {
                       <CardHeader className="py-3"><CardTitle className="text-sm">Orçamento</CardTitle></CardHeader>
                       <CardContent className="text-sm space-y-1">
                         <p>Valor: <strong>R$ {selecionado.valor_orcamento?.toFixed(2)}</strong></p>
-                        {selecionado.prazo_aprovacao && <p>Prazo: {new Date(selecionado.prazo_aprovacao).toLocaleDateString("pt-BR")}</p>}
+                        {selecionado.prazo_aprovacao && <p>Prazo: {formatDatePtBr(selecionado.prazo_aprovacao)}</p>}
                         {selecionado.valor_final != null && <p>Valor final: <strong>R$ {selecionado.valor_final.toFixed(2)}</strong></p>}
                       </CardContent>
                     </Card>

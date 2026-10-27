@@ -36,7 +36,16 @@ fn digits_only(value: Option<&str>) -> String {
         .collect()
 }
 
-const MSG_CONTATO_OBRIGATORIO: &str = "Informe um contato com celular para receber orçamentos.";
+const MSG_CONTATO_OBRIGATORIO: &str =
+    "Informe um contato com nome e celular com DDD e o 9 (11 dígitos) para receber orçamentos.";
+
+/// Celular brasileiro: 11 dígitos, DDD entre 11 e 99 e o 9 logo após o DDD. Fixo (10 dígitos) é recusado.
+fn celular_valido(valor: &str) -> bool {
+    let digitos = digits_only(Some(valor));
+    digitos.len() == 11
+        && digitos[..2].parse::<u8>().is_ok_and(|ddd| (11..=99).contains(&ddd))
+        && digitos.as_bytes()[2] == b'9'
+}
 
 /// Valida o contato inicial de cliente novo. Devolve (nome, telefone só com dígitos, e-mail).
 fn validar_contato_inicial(
@@ -45,7 +54,7 @@ fn validar_contato_inicial(
     let contato = contato.ok_or_else(|| MSG_CONTATO_OBRIGATORIO.to_string())?;
     let nome = contato.nome.trim();
     let telefone = digits_only(Some(contato.telefone.as_str()));
-    if nome.is_empty() || !(10..=11).contains(&telefone.len()) {
+    if nome.is_empty() || !celular_valido(&telefone) {
         return Err(MSG_CONTATO_OBRIGATORIO.to_string());
     }
     Ok((
@@ -648,6 +657,24 @@ mod tests {
         assert_eq!(nome, "Ana");
         assert_eq!(tel, "11999999999");
         assert_eq!(email.as_deref(), Some("a@b.com"));
-        assert!(validar_contato_inicial(Some(&contato("Ana", "1133334444"))).is_ok());
+    }
+
+    #[test]
+    fn contato_inicial_fixo_de_10_digitos_e_rejeitado() {
+        assert_eq!(
+            validar_contato_inicial(Some(&contato("Ana", "1133334444"))),
+            Err(MSG_CONTATO_OBRIGATORIO.to_string())
+        );
+    }
+
+    #[test]
+    fn celular_valido_aceita_so_celular_com_ddd_e_o_9() {
+        assert!(celular_valido("(11) 99999-0000"));
+        assert!(celular_valido("71988887777"));
+        assert!(!celular_valido("(11) 3333-4444"));
+        assert!(!celular_valido("(11) 83333-4444"));
+        assert!(!celular_valido("(10) 99999-0000"));
+        assert!(!celular_valido("(100) 99999-0000"));
+        assert!(!celular_valido(""));
     }
 }

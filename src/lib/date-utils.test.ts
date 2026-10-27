@@ -6,6 +6,10 @@ describe("date-utils", () => {
     expect(formatDatePtBr("2026-09-10")).toBe("10/09/2026");
   });
 
+  it("exibe prazo AAAA-MM-DD sem recuar um dia no fuso do computador", () => {
+    expect(formatDatePtBr("2026-11-03")).toBe("03/11/2026");
+  });
+
   it("gera a data ISO usando o calendário local", () => {
     expect(todayLocalIsoDate(new Date(2026, 8, 10, 23, 30))).toBe("2026-09-10");
   });

@@ -306,7 +306,7 @@ async fn main() -> Result<()> {
         telefone: "7133334444".into(), contato_inicial: contato, ..ClienteInput::default()
     };
     let erro = clientes::criar_cliente(pj(None)).await.err().expect("PJ sem contato deveria falhar");
-    assert!(erro.contains("Informe um contato com celular para receber orçamentos."), "{erro}");
+    assert!(erro.contains("celular com DDD e o 9 (11 dígitos)"), "{erro}");
     let sem_cliente: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM clientes WHERE empresa_id=$1 AND documento='11222333000181'").bind(empresa).fetch_one(&pool).await?;
     assert_eq!(sem_cliente, 0);
     let criado = clientes::criar_cliente(pj(Some(ContatoInicialInput { nome: "Rita".into(), telefone: "(71) 98888-7777".into(), email: None })))
