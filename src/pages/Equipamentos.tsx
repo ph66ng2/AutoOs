@@ -206,6 +206,11 @@ import {
   carregarRepositorioOperacoesEquipamento,
   type EquipmentPartConsumption,
 } from "@/lib/data/equipamentos-operacoes-repository";
+import {
+  analisarAjusteDoEquipamento,
+  carregarVerificacaoDoEquipamento,
+  enviarWhatsAppOrcamentoOnline,
+} from "@/pages/equipamentos/online-ipc";
 import { carregarProdutosParaPecas, type ProdutoParaPecaSugerida } from "@/lib/data/servicos-repository";
 import type { SaasOperationalProfile } from "@/types/saas-auth";
 
@@ -1680,7 +1685,12 @@ export default function Equipamentos({ operationalProfile }: { operationalProfil
     let opcoesAjuste: OpcoesAjusteOrcamento | undefined;
     if (ajusteOrcamentoSemMudancaStatus && verificacaoAjusteOrcamento && selecionado.id) {
       try {
-        const analise = await db.analisarAjusteOrcamento(selecionado.id);
+        const analise = await analisarAjusteDoEquipamento(
+          IS_SAAS_BUILD,
+          selecionado.id,
+          (id) => db.analisarAjusteOrcamento(id),
+          async (id) => (await carregarRepositorioOperacoesEquipamento()).analyzeQuoteAdjustment(id),
+        );
         const aprovado = orcamentoJaAprovado(selecionado.status);
         const variante = aprovado ? "aprovado" as const : analise.respostaPendente ? "pendente" as const : null;
         if (variante && orcamentoMudou(verificacaoAjusteOrcamento, servicosAjuste, totalAtual)) {
@@ -1735,6 +1745,7 @@ export default function Equipamentos({ operationalProfile }: { operationalProfil
               ? { codigo: formaPagamentoAjuste, detalhe: formaPagamentoAjuste === "OUTRO" ? detalhePagamentoAjuste.trim() : undefined }
               : undefined,
             correctionReason: correcaoStatus ? motivoCorrecaoStatus.trim() : undefined,
+            adjustment: opcoesAjuste,
           });
         } else {
           const result = await repository.changeStatus({
@@ -2090,6 +2101,22 @@ export default function Equipamentos({ operationalProfile }: { operationalProfil
       description: "Informe o PIN para disparar manualmente a mensagem de orçamento ao cliente.",
     });
     if (!liberado) return;
+    if (IS_SAAS_BUILD) {
+      const r = await enviarWhatsAppOrcamentoOnline(eq, {
+        getVerification: async (id) => (await carregarRepositorioOperacoesEquipamento()).getVerification(id),
+        enviarOrcamento: (equipamento, verificacao) => WhatsAppService.enviarOrcamento(equipamento, verificacao),
+      });
+      if (!r.sucesso) {
+        if (whatsappNaoConfigurado(r.erro)) {
+          warning("Equipamentos", "WhatsApp ainda não está configurado. O histórico registra que o envio não foi realizado.");
+          return;
+        }
+        showError("Equipamentos", "Enviar WhatsApp", new Error(r.erro || "Falha ao enviar WhatsApp."));
+        return;
+      }
+      success("Equipamentos", "Mensagem aceita pelo provedor de WhatsApp. A entrega não é confirmada neste momento.", "WhatsApp");
+      return;
+    }
     await reenviarWhatsApp(eq, "orcamento_informativo");
   }
 
@@ -2097,7 +2124,12 @@ export default function Equipamentos({ operationalProfile }: { operationalProfil
   async function gerarOrcamentoPdf(eq: Equipamento) {
     try {
       setSalvando(true);
-      const verif = await db.buscarVerificacao(eq.id!);
+      const verif = await carregarVerificacaoDoEquipamento(
+        IS_SAAS_BUILD,
+        eq.id!,
+        (id) => db.buscarVerificacao(id),
+        async (id) => (await carregarRepositorioOperacoesEquipamento()).getVerification(id),
+      );
       if (!verif) { warning("Equipamentos", "Nenhuma verificação técnica encontrada para este equipamento."); return; }
       setPdfPreview({
         artifact: await PdfService.construirOrcamento(eq, verif),
@@ -2154,6 +2186,19 @@ export default function Equipamentos({ operationalProfile }: { operationalProfil
       description: "Informe o PIN para disparar manualmente a mensagem de retirada ao cliente.",
     });
     if (!liberado) return;
+    if (IS_SAAS_BUILD) {
+      const r = await WhatsAppService.enviarEquipamentoPronto(eq);
+      if (!r.sucesso) {
+        if (whatsappNaoConfigurado(r.erro)) {
+          warning("Equipamentos", "WhatsApp ainda não está configurado. O histórico registra que o envio não foi realizado.");
+          return;
+        }
+        showError("Equipamentos", "Enviar WhatsApp", new Error(r.erro));
+        return;
+      }
+      success("Equipamentos", "Mensagem aceita pelo provedor de WhatsApp. A entrega não é confirmada neste momento.", "WhatsApp");
+      return;
+    }
     await reenviarWhatsApp(eq, "equipamento_pronto");
   }
 

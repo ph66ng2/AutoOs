@@ -1,6 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { toast } from "sonner";
 import { db } from "@/lib/db";
+import { IS_SAAS_BUILD } from "@/lib/runtime-mode";
 import { useSensitiveAccess } from "@/hooks/useSensitiveAccess";
 import { AcessoPortalDialog } from "@/components/equipamentos/AcessoPortalDialog";
 import { PortalClientePanel } from "@/components/equipamentos/PortalClientePanel";
@@ -87,6 +88,13 @@ export function PortalClienteProvider({ equipamento, sinalPortal, children }: Pr
 
   const carregar = useCallback(async () => {
     if (!equipamentoId) return;
+    if (IS_SAAS_BUILD) {
+      setInfo(null);
+      setError(null);
+      setLoading(false);
+      setConsultado(equipamentoId);
+      return;
+    }
     setLoading(true);
     setError(null);
     try {
@@ -119,6 +127,7 @@ export function PortalClienteProvider({ equipamento, sinalPortal, children }: Pr
 
   const gerarNovaSenha = useCallback(async () => {
     if (!equipamentoId) return null;
+    if (IS_SAAS_BUILD) return null;
     const verificacao = await db.buscarVerificacao(equipamentoId);
     if (!verificacao) throw new Error("Verificação não encontrada.");
     return gerarNovaSenhaEnvioManual(equipamento, verificacao);
@@ -153,7 +162,7 @@ export function PortalClienteProvider({ equipamento, sinalPortal, children }: Pr
   );
 
   const publicar = useCallback(() => {
-    if (!equipamentoId) return;
+    if (!equipamentoId || IS_SAAS_BUILD) return;
     void executar(
       [SENSITIVE_PERMISSIONS.MANAGE_STATUS_LINKS, SENSITIVE_PERMISSIONS.PREPARE_QUOTES],
       "Publicar orçamento no portal",
@@ -181,6 +190,7 @@ export function PortalClienteProvider({ equipamento, sinalPortal, children }: Pr
   }, [equipamentoId, executar, hasAnyPermission]);
 
   const tratarSolicitacao = useCallback((id: number) => {
+    if (IS_SAAS_BUILD) return;
     void executar(
       SENSITIVE_PERMISSIONS.MANAGE_STATUS_LINKS,
       "Mensagem do cliente",
