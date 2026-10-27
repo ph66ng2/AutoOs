@@ -389,7 +389,7 @@ export interface RespostaPendenteAjuste {
 /** O que o operador precisa saber antes de salvar uma alteração no orçamento → Rust: analisar_ajuste_orcamento */
 
 export interface PecaBaixadaInfo {
-  produtoId: number;
+  produtoId: number | string;
   nome: string;
   quantidade: number;
 }
