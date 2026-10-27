@@ -145,6 +145,7 @@ import {
   arquivoParaImagemEquipamento,
   bytesParaDataUrl,
   imagemPersistidaParaDraft,
+  imagensPersistidasIguais,
   LIMITE_IMAGENS_POR_EQUIPAMENTO,
   normalizarOrdemPorCategoria,
   type EquipamentoImagemDraft,
@@ -323,6 +324,9 @@ export default function Equipamentos() {
   const [imagensFormulario, setImagensFormulario] = useState<EquipamentoImagemDraft[]>([]);
   const [erroImagens, setErroImagens] = useState<string | null>(null);
   const [carregandoImagensFormulario, setCarregandoImagensFormulario] = useState(false);
+  const fotoEdicaoSeq = useRef(0);
+  const fotoEdicaoEquipamentoId = useRef<number | null>(null);
+  const baselineFotosRef = useRef<{ equipamentoId: number; fotos: EquipamentoImagemDraft[] } | null>(null);
 
   const { success, error: showError, warning } = useNotification();
 
@@ -345,7 +349,7 @@ export default function Equipamentos() {
   } | null>(null);
   const [emailDialogOpen, setEmailDialogOpen] = useState(false);
 
-  const { equipamentos, total: totalEquipamentos, loading, criar, atualizar, deletar, atualizarStatus, recarregar, atualizarEmSegundoPlano } =
+  const { equipamentos, total: totalEquipamentos, loading, error: erroListaEquipamentos, avisoAtualizacao, criar, atualizar, deletar, atualizarStatus, recarregar, atualizarEmSegundoPlano } =
     useEquipamentos({ busca: busca || undefined, status: statusFiltro, ordenacao, page: paginaEquipamentos });
   const totalPaginasEquipamentos = totalPages(totalEquipamentos);
   const paginaEquipamentosExibida = Math.min(paginaEquipamentos, totalPaginasEquipamentos);
@@ -480,6 +484,9 @@ export default function Equipamentos() {
 
   /** Abre dialog para criar novo equipamento. Reseta form e limpa cliente */
   function abrirNovo() {
+    fotoEdicaoSeq.current += 1;
+    fotoEdicaoEquipamentoId.current = null;
+    baselineFotosRef.current = null;
     setEditando(null);
     setClienteVinculado(null);
     setResponsavelVinculado(null);
@@ -499,8 +506,43 @@ export default function Equipamentos() {
     setDialogOpen(true);
   }
 
+  async function carregarFotosDaEdicao(equipamentoId: number, sequencia: number) {
+    baselineFotosRef.current = null;
+    setImagensFormulario([]);
+    setErroImagens(null);
+    setCarregandoImagensFormulario(true);
+    const contextoAindaAtivo = () =>
+      fotoEdicaoSeq.current === sequencia
+      && fotoEdicaoEquipamentoId.current === equipamentoId;
+
+    try {
+      const imagens = await carregarImagensComPreview(equipamentoId);
+      if (!contextoAindaAtivo()) return;
+      const fotos = normalizarOrdemPorCategoria(imagens);
+      baselineFotosRef.current = { equipamentoId, fotos };
+      setImagensFormulario(fotos);
+      setErroImagens(null);
+    } catch (err) {
+      if (!contextoAindaAtivo()) return;
+      console.error("Erro ao carregar imagens do equipamento:", err);
+      setErroImagens("Não foi possível carregar as fotos já cadastradas.");
+    } finally {
+      if (contextoAindaAtivo()) setCarregandoImagensFormulario(false);
+    }
+  }
+
+  function recarregarFotosDaEdicao() {
+    if (!editando?.id) return;
+    const sequencia = ++fotoEdicaoSeq.current;
+    fotoEdicaoEquipamentoId.current = editando.id;
+    void carregarFotosDaEdicao(editando.id, sequencia);
+  }
+
   /** Abre dialog para editar equipamento existente. Carrega cliente vinculado do banco */
   function abrirEditar(eq: Equipamento) {
+    const sequencia = ++fotoEdicaoSeq.current;
+    fotoEdicaoEquipamentoId.current = eq.id ?? null;
+    baselineFotosRef.current = null;
     setEditando(eq);
     setResponsavelVinculado(eq.responsavel_contato_id ? {
       id: eq.responsavel_contato_id,
@@ -516,17 +558,8 @@ export default function Equipamentos() {
     setImagensFormulario([]);
     setCarregandoImagensFormulario(true);
     setTecnicoNovoEquipamento(extrairTecnicoInicialDeObservacoes(eq.observacoes) || "Ivan");
-    void carregarImagensComPreview(eq.id!)
-      .then((imagens) => {
-        setImagensFormulario(normalizarOrdemPorCategoria(imagens));
-      })
-      .catch((err) => {
-        console.error("Erro ao carregar imagens do equipamento:", err);
-        setErroImagens("Não foi possível carregar as fotos já cadastradas.");
-      })
-      .finally(() => {
-        setCarregandoImagensFormulario(false);
-      });
+    if (eq.id) void carregarFotosDaEdicao(eq.id, sequencia);
+    else setCarregandoImagensFormulario(false);
     // Se o equipamento tem cliente_id, carregar do banco; senão, montar objeto parcial
     if (eq.cliente_id) {
       // O fallback imediato mantém a seleção do responsável enquanto o
@@ -539,8 +572,10 @@ export default function Equipamentos() {
         email: eq.cliente_email || undefined,
       });
       db.buscarCliente(eq.cliente_id).then((c) => {
+        if (fotoEdicaoSeq.current !== sequencia || fotoEdicaoEquipamentoId.current !== eq.id) return;
         if (c) setClienteVinculado(c);
       }).catch(() => {
+        if (fotoEdicaoSeq.current !== sequencia || fotoEdicaoEquipamentoId.current !== eq.id) return;
         // Fallback: usar dados denormalizados
         if (eq.cliente_nome) {
           setClienteVinculado({
@@ -575,6 +610,7 @@ export default function Equipamentos() {
     event: React.ChangeEvent<HTMLInputElement>,
     categoria: EquipamentoImagemCategoria,
   ) {
+    const sequenciaEdicao = fotoEdicaoSeq.current;
     const arquivos = Array.from(event.target.files || []);
     event.target.value = "";
     if (arquivos.length === 0) return;
@@ -599,6 +635,8 @@ export default function Equipamentos() {
         )
       );
 
+      if (fotoEdicaoSeq.current !== sequenciaEdicao) return;
+
       const imagensBemSucedidas = resultados
         .filter((r): r is PromiseFulfilledResult<{ sucesso: true; imagem: any; arquivo: File }> => r.status === "fulfilled" && r.value.sucesso)
         .map((r) => r.value.imagem);
@@ -622,10 +660,11 @@ export default function Equipamentos() {
       }
       setErroImagens(mensagensErro.length > 0 ? mensagensErro.join("\n") : null);
     } catch (err: any) {
+      if (fotoEdicaoSeq.current !== sequenciaEdicao) return;
       console.error("Erro ao processar imagens do equipamento:", err);
       setErroImagens(err?.message || "Não foi possível processar as fotos selecionadas.");
     } finally {
-      setCarregandoImagensFormulario(false);
+      if (fotoEdicaoSeq.current === sequenciaEdicao) setCarregandoImagensFormulario(false);
     }
   }
 
@@ -957,6 +996,13 @@ export default function Equipamentos() {
    * Conecta-se a: useEquipamentos.criar/atualizar → db → Rust
    */
   async function onSubmit(data: EquipamentoFormData) {
+    const sequenciaEdicao = fotoEdicaoSeq.current;
+    const baselineFotos = editando ? baselineFotosRef.current : null;
+    if (editando && (carregandoImagensFormulario || !baselineFotos || baselineFotos.equipamentoId !== editando.id)) {
+      setErroImagens("As fotos ainda não foram carregadas com segurança. Recarregue as fotos antes de salvar.");
+      return;
+    }
+
     // Validar que um cliente foi vinculado
     if (!clienteVinculado) {
       setErroCliente("Selecione ou cadastre um cliente antes de salvar.");
@@ -1002,6 +1048,9 @@ export default function Equipamentos() {
       };
       const imagensPayload: EquipamentoImagemInput[] = normalizarOrdemPorCategoria(imagensFormulario)
         .map(({ local_id, preview_url, ...imagem }) => imagem);
+      const fotosAlteradas = editando
+        ? !imagensPersistidasIguais(imagensFormulario, baselineFotos!.fotos)
+        : imagensPayload.length > 0;
       const resultado = editando
         ? await atualizar(editando.id!, payload)
         : await criar(payload);
@@ -1009,28 +1058,62 @@ export default function Equipamentos() {
       if (!resultado.sucesso || !resultado.data?.id) {
         throw new Error(resultado.erro || "Não foi possível salvar o equipamento.");
       }
+      const equipamentoSalvo = resultado.data;
+      const equipamentoIdSalvo = equipamentoSalvo.id!;
 
-      try {
-        await db.substituirImagensEquipamento(resultado.data.id, imagensPayload);
-      } catch (err: any) {
-        setEditando(resultado.data);
-        throw new Error(
-          err?.message ||
-          "O equipamento foi salvo, mas as fotos não puderam ser persistidas. Revise e tente novamente."
-        );
+      if (fotosAlteradas) {
+        try {
+          const expectedImageIds = editando
+            ? baselineFotos!.fotos.flatMap((foto) => typeof foto.id === "number" ? [foto.id] : [])
+            : undefined;
+          const fotosSalvas = await db.substituirImagensEquipamento(
+            equipamentoIdSalvo,
+            imagensPayload,
+            expectedImageIds,
+          );
+          if (editando && Array.isArray(fotosSalvas)) {
+            const fotosPersistidas = normalizarOrdemPorCategoria(
+              await Promise.all(fotosSalvas.map(imagemPersistidaParaDraft)),
+            );
+            if (fotoEdicaoSeq.current === sequenciaEdicao && fotoEdicaoEquipamentoId.current === editando.id) {
+              baselineFotosRef.current = { equipamentoId: editando.id!, fotos: fotosPersistidas };
+              setImagensFormulario(fotosPersistidas);
+            }
+          }
+        } catch (err: any) {
+          if (fotoEdicaoSeq.current === sequenciaEdicao) {
+            setEditando(equipamentoSalvo);
+            baselineFotosRef.current = null;
+            if (!editando) {
+              fotoEdicaoEquipamentoId.current = equipamentoIdSalvo;
+            }
+            setErroImagens(
+              `O equipamento foi salvo, mas as fotos não foram salvas: ${err?.message || "falha ao persistir as fotos"}. Recarregue as fotos antes de tentar novamente.`,
+            );
+          }
+          throw new Error(
+            err?.message ||
+            "O equipamento foi salvo, mas as fotos não puderam ser persistidas. Revise e tente novamente."
+          );
+        }
       }
+
+      // A gravação iniciada para um formulário fechado pode terminar no banco,
+      // mas nunca deve fechar ou substituir um formulário aberto depois dele.
+      if (fotoEdicaoSeq.current !== sequenciaEdicao) return;
 
       if (!editando) {
         const liberadoEmail = await ensureSensitiveAccess({
           title: "Enviar ordem de entrada",
           description: "Informe o PIN para enviar a ordem de entrada por email ao cliente.",
         });
+        if (fotoEdicaoSeq.current !== sequenciaEdicao) return;
         if (liberadoEmail) {
           async function enviarOrdemEntrada(email: string, nomeDestinatario: string, emailSalvo: boolean) {
             let erroEnvio: string | undefined;
             try {
               const retornoEmailEntrada = await EmailService.enviarOrdemEntrada({
-                ...resultado.data,
+                ...equipamentoSalvo,
                 cliente_email: email,
                 cliente_nome: nomeDestinatario,
               } as Equipamento);
@@ -1044,13 +1127,13 @@ export default function Equipamentos() {
               success("Equipamentos", "Email de ordem de entrada enviado com sucesso.", "Enviar email");
             }
           }
-          const recipient = resolveRecipient(resultado.data, "email");
+          const recipient = resolveRecipient(equipamentoSalvo, "email");
           setEmailFlow({
             recipient,
             onConfirm: async (email, salvar) => {
               if (salvar) {
                 try {
-                  await saveRecipientAddress(resultado.data, "email", email);
+                  await saveRecipientAddress(equipamentoSalvo, "email", email);
                 } catch (cause) {
                   showError("Equipamentos", "Salvar destinatário", cause);
                   return false;
@@ -1066,12 +1149,15 @@ export default function Equipamentos() {
         }
       }
 
+      fotoEdicaoSeq.current += 1;
+      fotoEdicaoEquipamentoId.current = null;
+      baselineFotosRef.current = null;
       setDialogOpen(false);
       setImagensFormulario([]);
       setErroImagens(null);
     } catch (err: any) {
       console.error("Erro ao salvar:", err);
-      showError("Equipamentos", "Salvar equipamento", err);
+      if (fotoEdicaoSeq.current === sequenciaEdicao) showError("Equipamentos", "Salvar equipamento", err);
     }
     finally { setSalvando(false); }
   }
@@ -2320,6 +2406,8 @@ export default function Equipamentos() {
 
   // ─── Render principal ─────────────────────────────────
 
+  const sequenciaFotoFormulario = fotoEdicaoSeq.current;
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -2363,6 +2451,16 @@ export default function Equipamentos() {
           </div>
         </CardContent>
       </Card>
+
+      {erroListaEquipamentos && (
+        <ErrorAlert
+          variant="error"
+          context="Equipamentos"
+          message={avisoAtualizacao
+            ? `Equipamento salvo, mas a lista não foi atualizada: ${avisoAtualizacao}`
+            : erroListaEquipamentos}
+        />
+      )}
 
       {/* Tabela */}
       <Card>
@@ -2478,7 +2576,14 @@ export default function Equipamentos() {
 
       {/* ═══ Dialog Criar/Editar ═══ */}
       <Dialog open={dialogOpen} onOpenChange={(open) => {
-        if (!open) { setRegistrosAnteriores([]); setConfirmouNovoCiclo(false); setAnteriorEmAtendimento(null); }
+        if (!open) {
+          fotoEdicaoSeq.current += 1;
+          fotoEdicaoEquipamentoId.current = null;
+          baselineFotosRef.current = null;
+          setRegistrosAnteriores([]);
+          setConfirmouNovoCiclo(false);
+          setAnteriorEmAtendimento(null);
+        }
         setDialogOpen(open);
       }}>
         <DialogContent className="sm:max-w-2xl max-h-[85vh] overflow-y-auto">
@@ -2692,7 +2797,21 @@ export default function Equipamentos() {
                     {imagensFormulario.length}/{LIMITE_IMAGENS_POR_EQUIPAMENTO}
                   </span>
                 </div>
-                {erroImagens && <ErrorAlert variant="error" context="Equipamentos" message={erroImagens} />}
+                {erroImagens && (
+                  <div className="space-y-2">
+                    <ErrorAlert variant="error" context="Equipamentos" message={erroImagens} />
+                    {editando && !carregandoImagensFormulario && (
+                      <div className="space-y-1">
+                        <Button type="button" variant="outline" size="sm" onClick={recarregarFotosDaEdicao}>
+                          Recarregar fotos
+                        </Button>
+                        <p className="text-xs text-muted-foreground">
+                          Recarregar substitui a seleção local de fotos pelas fotos atualmente salvas. Os campos de texto serão preservados.
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                )}
                   <div className="grid gap-4 lg:grid-cols-2">
                     <div className="space-y-3 rounded-lg border p-3">
                          <div className="flex items-center gap-2">
@@ -2751,7 +2870,7 @@ export default function Equipamentos() {
                       }
                     />
                     {carregandoImagensFormulario ? (
-                      <div className="flex items-center justify-center rounded-lg border border-dashed p-6">
+                      <div role="status" aria-label="Carregando fotos" className="flex items-center justify-center rounded-lg border border-dashed p-6">
                         <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600" />
                       </div>
                     ) : (
@@ -3544,7 +3663,9 @@ export default function Equipamentos() {
           }
         }}
         onPhotoData={photoUploadNewEquip ? async (data) => {
+          if (fotoEdicaoSeq.current !== sequenciaFotoFormulario) return;
           const previewUrl = await bytesParaDataUrl(data.bytes, data.mime_type);
+          if (fotoEdicaoSeq.current !== sequenciaFotoFormulario) return;
           const nextOrdem = imagensFormulario
             .filter((img) => img.categoria === data.categoria)
             .reduce((max, img) => Math.max(max, img.ordem), -1) + 1;

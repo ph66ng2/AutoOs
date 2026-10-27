@@ -9,7 +9,7 @@
  * @depends types/index.ts - interface Equipamento
  * @usedBy pages/Equipamentos.tsx - página principal de equipamentos
  */
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useLayoutEffect, useCallback, useRef } from "react";
 import { db } from "@/lib/db";
 import type { Equipamento } from "@/types";
 
@@ -26,6 +26,15 @@ interface UseEquipamentosParams {
   page?: number;
 }
 
+type ResultadoCarregamento =
+  | { status: "atualizado" }
+  | { status: "obsoleto" }
+  | { status: "falhou"; erro: string };
+
+function mensagemErro(error: unknown, fallback: string): string {
+  return error instanceof Error ? error.message : String(error || fallback);
+}
+
 /**
  * Hook principal de equipamentos. Gerencia o estado da lista, loading e erros,
  * expondo funções CRUD e de atualização de status.
@@ -38,41 +47,83 @@ export function useEquipamentos(params?: UseEquipamentosParams) {
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [avisoAtualizacao, setAvisoAtualizacao] = useState<string | null>(null);
+  const requestIdRef = useRef(0);
+  const mountedRef = useRef(false);
+  const paramsRef = useRef(params);
+
+  useLayoutEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+      requestIdRef.current += 1;
+    };
+  }, []);
+
+  useLayoutEffect(() => {
+    paramsRef.current = params;
+    // Invalidate the previous filter request as soon as the new params commit,
+    // before a resolved promise can publish its stale result.
+    requestIdRef.current += 1;
+  }, [params?.busca, params?.status, params?.page, params?.ordenacao]);
 
   /**
    * Carrega a lista de equipamentos do banco de dados.
    * Disparado automaticamente quando os parâmetros de busca/status mudam.
    * Atualiza os estados loading e error durante a execução.
    */
-  const carregar = useCallback(async (opcoes?: { silencioso?: boolean }) => {
+  const carregar = useCallback(async (opcoes?: { silencioso?: boolean; aposGravacao?: boolean }): Promise<ResultadoCarregamento> => {
+    if (!mountedRef.current) return { status: "obsoleto" };
+
+    const requestId = ++requestIdRef.current;
+    const atual = () => mountedRef.current && requestIdRef.current === requestId;
     // Silencioso: atualização em segundo plano (ex.: cliente respondeu no portal) sem trocar a
     // lista pelo indicador de carregamento.
     const silencioso = opcoes?.silencioso === true;
     if (!silencioso) setLoading(true);
     setError(null);
+    setAvisoAtualizacao(null);
     try {
+      const params = paramsRef.current;
       const data = await db.listarEquipamentosPaginados(
         params?.busca,
         params?.status === "TODOS" ? undefined : params?.status,
         Math.max((params?.page ?? 1) - 1, 0),
         params?.ordenacao ?? "ATUALIZACAO_RECENTE",
       );
+      if (!atual()) return { status: "obsoleto" };
       setEquipamentos(data.items);
       setTotal(data.total);
+      return { status: "atualizado" };
     } catch (err: any) {
-      if (!silencioso) setError(err?.toString() || "Erro ao carregar equipamentos");
+      if (!atual()) return { status: "obsoleto" };
+      const erro = mensagemErro(err, "Erro ao carregar equipamentos");
+      setError(erro);
+      setAvisoAtualizacao(opcoes?.aposGravacao ? erro : null);
       console.error("Erro ao carregar equipamentos:", err);
+      return { status: "falhou", erro };
     } finally {
-      if (!silencioso) setLoading(false);
+      if (atual()) setLoading(false);
     }
-  }, [params?.busca, params?.status, params?.page, params?.ordenacao]);
+  }, []);
 
   useEffect(() => {
-    carregar();
-  }, [carregar]);
+    void carregar();
+    return () => {
+      requestIdRef.current += 1;
+    };
+  }, [carregar, params?.busca, params?.status, params?.page, params?.ordenacao]);
 
   const recarregar = useCallback(() => carregar(), [carregar]);
   const atualizarEmSegundoPlano = useCallback(() => carregar({ silencioso: true }), [carregar]);
+
+  const recarregarAposGravacao = async () => {
+    const resultado = await carregar({ silencioso: true, aposGravacao: true });
+    return {
+      recargaSucesso: resultado.status === "atualizado",
+      ...(resultado.status === "falhou" ? { avisoAtualizacao: resultado.erro } : {}),
+    };
+  };
 
   /**
    * Cria um novo equipamento e recarrega a lista.
@@ -84,10 +135,9 @@ export function useEquipamentos(params?: UseEquipamentosParams) {
   const criar = async (equipamento: Omit<Equipamento, "id">) => {
     try {
       const data = await db.criarEquipamento(equipamento);
-      await carregar();
-      return { sucesso: true, data };
+      return { sucesso: true as const, data, ...(await recarregarAposGravacao()) };
     } catch (err: any) {
-      return { sucesso: false, erro: err?.toString() };
+      return { sucesso: false as const, erro: err?.toString() };
     }
   };
 
@@ -102,10 +152,9 @@ export function useEquipamentos(params?: UseEquipamentosParams) {
   const atualizar = async (id: number, equipamento: Omit<Equipamento, "id">) => {
     try {
       const data = await db.atualizarEquipamento(id, equipamento);
-      await carregar();
-      return { sucesso: true, data };
+      return { sucesso: true as const, data, ...(await recarregarAposGravacao()) };
     } catch (err: any) {
-      return { sucesso: false, erro: err?.toString() };
+      return { sucesso: false as const, erro: err?.toString() };
     }
   };
 
@@ -119,10 +168,9 @@ export function useEquipamentos(params?: UseEquipamentosParams) {
   const deletar = async (id: number) => {
     try {
       await db.deletarEquipamento(id);
-      await carregar();
-      return { sucesso: true };
+      return { sucesso: true as const, ...(await recarregarAposGravacao()) };
     } catch (err: any) {
-      return { sucesso: false, erro: err?.toString() };
+      return { sucesso: false as const, erro: err?.toString() };
     }
   };
 
@@ -156,10 +204,9 @@ export function useEquipamentos(params?: UseEquipamentosParams) {
         expectedUpdatedEm,
         motivoCorrecao,
       );
-      await carregar();
-      return { sucesso: true };
+      return { sucesso: true as const, ...(await recarregarAposGravacao()) };
     } catch (err: any) {
-      return { sucesso: false, erro: err?.toString() };
+      return { sucesso: false as const, erro: err?.toString() };
     }
   };
 
@@ -168,6 +215,7 @@ export function useEquipamentos(params?: UseEquipamentosParams) {
     total,
     loading,
     error,
+    avisoAtualizacao,
     criar,
     atualizar,
     deletar,

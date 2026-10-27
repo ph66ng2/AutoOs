@@ -93,3 +93,7 @@ node scripts/benchmarks/equipment-photo-payload.mjs
 Os resultados são gravados no diretório temporário do sistema; o primeiro aceita `AUTOOS_UPDATE_BENCH_OUTPUT` e o segundo aceita o caminho de saída como primeiro argumento. Não usam banco, fotos ou equipamentos reais. O benchmark é opt-in e não acrescenta os atrasos artificiais à suíte unitária normal. Os JSONs desta rodada estão em `equipment-update-hook.json` e `equipment-photo-payload.json`.
 
 **Nenhuma otimização de comportamento foi aplicada nesta etapa**: foram adicionados somente os instrumentos e este diagnóstico. A estimativa estática e os cenários controlados servem para priorizar trabalho, não para afirmar latência ou ganho em PostgreSQL de produção.
+
+## Implementação posterior ao diagnóstico
+
+As correções foram aplicadas na mesma branch das otimizações desktop. Consulte `equipment-update-implementation-2026-10-27.md` para o comportamento final, compatibilidade com Cloudflare, trade-offs e limites de validação. As medições e problemas acima documentam o estado anterior às correções.

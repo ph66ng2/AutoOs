@@ -406,11 +406,13 @@ export const db = {
   /** Substitui integralmente o conjunto de imagens de um equipamento */
   async substituirImagensEquipamento(
     equipamentoId: number,
-    imagens: EquipamentoImagemInput[]
+    imagens: EquipamentoImagemInput[],
+    expectedImageIds?: number[],
   ): Promise<EquipamentoImagem[]> {
     return invoke<EquipamentoImagem[]>("substituir_imagens_equipamento", {
       equipamentoId,
       imagens,
+      ...(expectedImageIds !== undefined ? { expectedImageIds } : {}),
     });
   },
 
