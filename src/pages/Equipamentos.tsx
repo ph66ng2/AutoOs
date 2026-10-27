@@ -1458,7 +1458,7 @@ export default function Equipamentos() {
     }
     const precisaLiberacao = correcaoStatus || statusExigeAcessoSensivel(
       novoStatus,
-      Number.isFinite(totalAtual) ? totalAtual : undefined,
+      totalAtual || undefined,
       prazoAprovacao || undefined,
       valorFinal || undefined,
     );
@@ -1606,7 +1606,7 @@ export default function Equipamentos() {
       const resultado = await atualizarStatus(
         selecionado.id!,
         novoStatus,
-        Number.isFinite(totalAtual) ? totalAtual : undefined,
+        totalAtual || undefined,
         prazoAprovacao || undefined,
         valorFinal || undefined,
         versaoAtual,
