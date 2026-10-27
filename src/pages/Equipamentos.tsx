@@ -290,6 +290,7 @@ export default function Equipamentos() {
   // Mudança de status
   const [novoStatus, setNovoStatus] = useState("");
   const [valorOrcamento, setValorOrcamento] = useState<number>(0);
+  const [valorOrcamentoValido, setValorOrcamentoValido] = useState(true);
   const valorOrcamentoRef = useRef(valorOrcamento);
   useEffect(() => { valorOrcamentoRef.current = valorOrcamento; }, [valorOrcamento]);
   const [prazoAprovacao, setPrazoAprovacao] = useState("");
@@ -364,7 +365,7 @@ export default function Equipamentos() {
   // Hook de automação de status
   const { loading: loadingAutomacao, finalizarVerificacao, marcarComoPronto } =
     useStatusEquipamento();
-  const { ensureSensitiveAccess, status: sensitiveStatus } = useSensitiveAccess();
+  const { ensureSensitiveAccess, status: sensitiveStatus, hasPermission } = useSensitiveAccess();
   const location = useLocation();
   const navigate = useNavigate();
 
@@ -779,6 +780,7 @@ export default function Equipamentos() {
     setValorOrcamentoOriginal(valorOriginal);
     setValorOrcamentoAnterior(valorAnterior);
     setValorOrcamento(valorBase);
+    setValorOrcamentoValido(true);
     setPrazoAprovacao(eq.prazo_aprovacao || "");
     setVerificacaoAjusteOrcamento(verificacao);
     setObservacoesAjuste(verificacao?.observacoes || "");
@@ -841,6 +843,7 @@ export default function Equipamentos() {
     setSelecionado(eq);
     setNovoStatus(statusPreSelecionado || "");
     setValorOrcamento(eq.valor_orcamento ?? 0);
+    setValorOrcamentoValido(true);
     setPrazoAprovacao(eq.prazo_aprovacao || "");
     setValorOrcamentoOriginal(null);
     setValorOrcamentoAnterior(null);
@@ -900,6 +903,7 @@ export default function Equipamentos() {
     setMotivoCorrecaoStatus("");
     setNovoStatus("");
     setValorOrcamento(eq.valor_orcamento ?? 0);
+    setValorOrcamentoValido(true);
     setPrazoAprovacao(eq.prazo_aprovacao || "");
     setValorFinal(0);
     setStatusDialogOpen(true);
@@ -1237,6 +1241,9 @@ export default function Equipamentos() {
   }
 
   function iniciarConfirmacaoStatus() {
+    const mostraOrcamento = (novoStatus === "AGUARDANDO_APROVACAO" && selecionado && !reabreOrcamentoSemAjuste(selecionado.status, novoStatus))
+      || ajusteOrcamentoSemMudancaStatus;
+    if (mostraOrcamento && !valorOrcamentoValido) return;
     if ((novoStatus === "AGUARDANDO_APROVACAO" || ajusteOrcamentoSemMudancaStatus) && verificacaoAjusteOrcamento) {
       const servicosOriginal: ServicoNecessario[] = [];
       try {
@@ -1249,9 +1256,11 @@ export default function Equipamentos() {
         .reduce((sum, p) => sum + p.valorTotal, 0);
       const calculado = totalNovo + pecasTotal;
 
-      if (Math.abs(calculado - valorOrcamentoRef.current) > 0.001) {
+      const digitado = valorOrcamentoRef.current;
+      if (Math.abs(calculado - digitado) > 0.001) {
         setConfirmProps({
-          title: `Mudar Valor Total do Orçamento para ${formatCurrency(calculado)}?`,
+          title: `Valor digitado ${formatCurrency(digitado)} diferente da soma ${formatCurrency(calculado)}`,
+          description: `Sim grava a soma dos itens (${formatCurrency(calculado)}). Não grava o valor digitado (${formatCurrency(digitado)}).`,
           confirmLabel: "Sim",
           cancelLabel: "Não",
           variant: "default",
@@ -1419,6 +1428,12 @@ export default function Equipamentos() {
       return;
     }
     const totalAtual = valorOrcamentoRef.current;
+    const mostraOrcamento = (novoStatus === "AGUARDANDO_APROVACAO" && !reabreOrcamentoSemAjuste(selecionado.status, novoStatus))
+      || ajusteOrcamentoSemMudancaStatus;
+    if (mostraOrcamento && (!valorOrcamentoValido || !Number.isFinite(totalAtual))) {
+      warning("Equipamentos", "Informe um valor de orçamento válido.");
+      return;
+    }
     if (correcaoStatus && novoStatus === "AGUARDANDO_APROVACAO" && ["APROVADO", "REPROVADO"].includes(selecionado.status)) {
       warning("Equipamentos", "Para reabrir um orçamento já decidido use “Corrigir decisão do orçamento”: ela desfaz pagamento e estoque junto.");
       return;
@@ -2032,24 +2047,29 @@ export default function Equipamentos() {
         overflow.push(acaoEditar, acaoExcluir);
         break;
       case "AGUARDANDO_APROVACAO":
-        primary = {
-          id: "aprovar",
-          label: "Aprovar",
-          icon: <CheckCircle className="h-3.5 w-3.5" />,
-          variant: "default",
-          className: "bg-green-600 hover:bg-green-700 text-white",
-          onClick: () => void abrirDialogoAprovacao(eq, "aprovar"),
-          disabled: salvando,
-        };
-        secondary = {
-          id: "reprovar",
-          label: "Reprovar",
-          icon: <XCircle className="h-3.5 w-3.5" />,
-          variant: "default",
-          className: "bg-red-600 text-white hover:bg-red-700",
-          onClick: () => void abrirDialogoAprovacao(eq, "reprovar"),
-          disabled: salvando,
-        };
+        if (hasPermission(SENSITIVE_PERMISSIONS.FINANCIAL_ACTIONS)) {
+          primary = {
+            id: "aprovar",
+            label: "Aprovar",
+            icon: <CheckCircle className="h-3.5 w-3.5" />,
+            variant: "default",
+            className: "bg-green-600 hover:bg-green-700 text-white",
+            onClick: () => void abrirDialogoAprovacao(eq, "aprovar"),
+            disabled: salvando,
+          };
+          secondary = {
+            id: "reprovar",
+            label: "Reprovar",
+            icon: <XCircle className="h-3.5 w-3.5" />,
+            variant: "default",
+            className: "bg-red-600 text-white hover:bg-red-700",
+            onClick: () => void abrirDialogoAprovacao(eq, "reprovar"),
+            disabled: salvando,
+          };
+          overflow.push(acaoStatus);
+        } else {
+          primary = acaoStatus;
+        }
         if (eq.cliente_telefone) {
           overflow.push({
             id: "whatsapp_orcamento",
@@ -2058,7 +2078,7 @@ export default function Equipamentos() {
             onClick: () => void enviarWhatsAppOrcamento(eq),
           });
         }
-        overflow.push(acaoStatus, acaoEditar, acaoExcluir);
+        overflow.push(acaoEditar, acaoExcluir);
         break;
       case "APROVADO":
         primary = {
@@ -3099,7 +3119,7 @@ export default function Equipamentos() {
                       </div>
                     </div>
                   )}
-                  <div className="space-y-2"><Label htmlFor="valor-orcamento-input">Valor Orçamento (R$)</Label><ValorDecimalInput id="valor-orcamento-input" data-testid="valor-orcamento-input" required value={Number(valorOrcamento) || 0} onValueChange={setValorOrcamento} /></div>
+                  <div className="space-y-2"><Label htmlFor="valor-orcamento-input">Valor Orçamento (R$)</Label><ValorDecimalInput id="valor-orcamento-input" data-testid="valor-orcamento-input" required value={Number(valorOrcamento) || 0} onValueChange={setValorOrcamento} onValidityChange={setValorOrcamentoValido} /></div>
                   {(!ajusteOrcamentoSemMudancaStatus || selecionado.status === "AGUARDANDO_APROVACAO") && (
                     <div className="space-y-2"><Label>Prazo Aprovação</Label><DateIsoInput min={new Date().toLocaleDateString("en-CA")} value={prazoAprovacao} onValueChange={setPrazoAprovacao} /></div>
                   )}
@@ -3296,7 +3316,7 @@ export default function Equipamentos() {
             </div>
             <DialogFooter className="shrink-0 bg-background pt-3">
                 <Button type="button" variant="outline" onClick={() => setStatusDialogOpen(false)}>Cancelar</Button>
-                <Button type="button" onClick={iniciarConfirmacaoStatus} disabled={salvando || (!novoStatus && !ajusteOrcamentoSemMudancaStatus)}>
+                <Button type="button" onClick={iniciarConfirmacaoStatus} disabled={salvando || (!novoStatus && !ajusteOrcamentoSemMudancaStatus) || (((novoStatus === "AGUARDANDO_APROVACAO" && !reabreOrcamentoSemAjuste(selecionado.status, novoStatus)) || ajusteOrcamentoSemMudancaStatus) && !valorOrcamentoValido)}>
                   {salvando ? "Salvando..." : correcaoStatus ? "Corrigir status" : "Confirmar"}
                 </Button>
               </DialogFooter>

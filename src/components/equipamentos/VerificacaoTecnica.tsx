@@ -99,6 +99,7 @@ export function VerificacaoTecnica({
   const [linhaSugestaoAberta, setLinhaSugestaoAberta] = useState<string | null>(null);
   const [photoVerifOpen, setPhotoVerifOpen] = useState(false);
   const [imagensVerificacao, setImagensVerificacao] = useState<EquipamentoImagemDraft[]>([]);
+  const [valoresServicoInvalidos, setValoresServicoInvalidos] = useState<Record<string, boolean>>({});
   const { warning } = useNotification();
 
   useEffect(() => {
@@ -140,6 +141,7 @@ export function VerificacaoTecnica({
     setObservacoesVerif("");
     setTecnicoNome(tecnicoInicial);
     setImagensVerificacao([]);
+    setValoresServicoInvalidos({});
   }
 
   /** Adiciona um novo serviço vazio à lista (id = timestamp) */
@@ -152,6 +154,11 @@ export function VerificacaoTecnica({
   /** Remove serviço da lista pelo ID */
   function removerServico(id: string) {
     setServicos(servicos.filter((s) => s.id !== id));
+    setValoresServicoInvalidos((atual) => {
+      const proximo = { ...atual };
+      delete proximo[id];
+      return proximo;
+    });
   }
 
   function atualizarServico(id: string, patch: Partial<ServicoNecessario>) {
@@ -180,7 +187,10 @@ export function VerificacaoTecnica({
     if (!equipamento) return;
     const servicosInvalidos = servicos.some(
       (servico) =>
-        !servico.descricao.trim() || Number(servico.valor) < 0 || Number.isNaN(Number(servico.valor)),
+        !servico.descricao.trim()
+        || Number(servico.valor) < 0
+        || Number.isNaN(Number(servico.valor))
+        || valoresServicoInvalidos[servico.id],
     );
     if (servicosInvalidos || servicos.some((s) => !validarPecas(s.pecas ?? []))) {
       warning("Verificação", "Cada serviço precisa ter descrição e valor igual ou maior que zero (0,00 para garantia).");
@@ -354,6 +364,7 @@ export function VerificacaoTecnica({
                         aria-label="Valor do serviço"
                         value={Number(s.valor) || 0}
                         onValueChange={(valor) => atualizarServico(s.id, { valor })}
+                        onValidityChange={(valido) => setValoresServicoInvalidos((atual) => ({ ...atual, [s.id]: !valido }))}
                         className="w-32"
                       />
                       <Button
@@ -428,7 +439,7 @@ export function VerificacaoTecnica({
               </DialogClose>
               <Button
                 onClick={handleConcluir}
-                disabled={salvando || servicos.some((s) => !s.descricao.trim() || Number(s.valor) < 0)}
+                disabled={salvando || servicos.some((s) => !s.descricao.trim() || Number(s.valor) < 0 || valoresServicoInvalidos[s.id])}
                 className="bg-green-600 hover:bg-green-700"
               >
                 <Check className="mr-2 h-4 w-4" />

@@ -66,6 +66,19 @@ fn validate_non_negative_f64(value: Option<f64>, field: &str) -> Result<(), Stri
     Ok(())
 }
 
+/// Orçamento enviado para aprovação não pode ser 0 ou vazio: 0 é só garantia em item,
+/// não o total gravado neste caminho. None deixa o valor atual.
+fn reject_zero_quote_total(valor_orcamento: Option<f64>, status: &str) -> Result<(), String> {
+    if status != "AGUARDANDO_APROVACAO" {
+        return Ok(());
+    }
+    match valor_orcamento {
+        Some(value) if value.is_finite() && value > 0.0 => Ok(()),
+        Some(_) => Err("Informe um valor de orçamento maior que zero.".to_string()),
+        None => Ok(()),
+    }
+}
+
 fn normalize_status_key(status: &str) -> String {
     match status.trim() {
         "Recebido" | "RECEBIDO" => "RECEBIDO",
@@ -1114,6 +1127,7 @@ pub async fn atualizar_status_equipamento(
 ) -> Result<EquipamentoRow, String> {
     validate_non_negative_f64(valor_orcamento, "Valor do orçamento")?;
     validate_non_negative_f64(valor_final, "Valor final")?;
+    reject_zero_quote_total(valor_orcamento, &normalize_status_key(&novo_status))?;
     let concurrency_token = required_concurrency_token(expected_updated_em.as_deref(), "equipamento")?;
     let normalized_status = normalize_status_key(&novo_status);
     reject_direct_approval(&normalized_status)?;
@@ -1576,6 +1590,10 @@ mod tests {
             .unwrap_err()
             .contains("negativo"));
         assert!(validate_non_negative_f64(Some(0.0), "Valor do orçamento").is_ok());
+        assert!(reject_zero_quote_total(Some(0.0), "AGUARDANDO_APROVACAO").is_err());
+        assert!(reject_zero_quote_total(Some(10.0), "AGUARDANDO_APROVACAO").is_ok());
+        assert!(reject_zero_quote_total(None, "AGUARDANDO_APROVACAO").is_ok());
+        assert!(reject_zero_quote_total(Some(0.0), "RECEBIDO").is_ok());
     }
 
     #[test]

@@ -29,6 +29,10 @@ describe('formatCurrency', () => {
     expect(result).toContain('R$');
   });
 
+  it('formata 1234.50 como a lista de serviços (R$ 1.234,50)', () => {
+    expect(formatCurrency(1234.5)).toMatch(/R\$\s*1\.234,50/);
+  });
+
   it('deve formatar zero', () => {
     const result = formatCurrency(0);
     expect(result).toContain('0,00');

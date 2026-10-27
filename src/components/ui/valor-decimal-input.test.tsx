@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { describe, expect, it, vi } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { ValorDecimalInput } from "./valor-decimal-input";
 
@@ -57,17 +57,16 @@ describe("ValorDecimalInput", () => {
     expect(screen.queryByText("Informe um valor válido.")).not.toBeInTheDocument();
   });
 
-  it("mostra erro e não restaura o valor antigo quando o texto é inválido", async () => {
+  it("mostra erro e não manda 0 quando o texto é inválido", async () => {
     const user = userEvent.setup();
     render(<Harness inicial={10} />);
     const campo = screen.getByLabelText("Valor");
-    await user.clear(campo);
-    await user.paste("abc");
+    fireEvent.change(campo, { target: { value: "abc" } });
     expect(screen.getByText("Informe um valor válido.")).toBeInTheDocument();
-    expect(screen.getByTestId("valor-atual")).toHaveTextContent("0");
+    expect(screen.getByTestId("valor-atual")).toHaveTextContent("10");
     await user.tab();
     expect(campo).toHaveValue("abc");
-    expect(screen.getByTestId("valor-atual")).toHaveTextContent("0");
+    expect(screen.getByTestId("valor-atual")).toHaveTextContent("10");
   });
 
   it("campo opcional vazio vira 0 e não restaura o valor anterior", async () => {
@@ -81,15 +80,32 @@ describe("ValorDecimalInput", () => {
     expect(screen.queryByText("Informe um valor.")).not.toBeInTheDocument();
   });
 
-  it("campo obrigatório vazio mostra erro e não restaura o valor anterior", async () => {
+  it("campo obrigatório vazio mostra erro e não manda 0", async () => {
     const user = userEvent.setup();
     render(<Harness inicial={7.5} required />);
     const campo = screen.getByLabelText("Valor");
     await user.clear(campo);
     expect(screen.getByText("Informe um valor.")).toBeInTheDocument();
-    expect(screen.getByTestId("valor-atual")).toHaveTextContent("0");
+    expect(screen.getByTestId("valor-atual")).toHaveTextContent("7.5");
     await user.tab();
     expect(campo).toHaveValue("");
     expect(screen.getByText("Informe um valor.")).toBeInTheDocument();
+    expect(screen.getByTestId("valor-atual")).toHaveTextContent("7.5");
+  });
+
+  it("avisa o formulário quando o obrigatório fica inválido", async () => {
+    const onValidityChange = vi.fn();
+    const user = userEvent.setup();
+    render(
+      <ValorDecimalInput
+        aria-label="Valor"
+        required
+        value={20}
+        onValueChange={vi.fn()}
+        onValidityChange={onValidityChange}
+      />,
+    );
+    await user.clear(screen.getByLabelText("Valor"));
+    expect(onValidityChange).toHaveBeenLastCalledWith(false);
   });
 });

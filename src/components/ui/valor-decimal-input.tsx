@@ -6,6 +6,7 @@ import { parseDecimalBr } from "@/lib/utils";
 type Props = Omit<ComponentProps<typeof Input>, "type" | "value" | "onChange"> & {
   value: number;
   onValueChange: (valor: number) => void;
+  onValidityChange?: (valido: boolean) => void;
   required?: boolean;
 };
 
@@ -18,7 +19,13 @@ function textoDe(valor: number): string {
 }
 
 /** Valor em reais: aceita R$, vírgula decimal e ponto de milhar pt-BR (1.234,50). */
-export function ValorDecimalInput({ value, onValueChange, required, ...rest }: Props) {
+export function ValorDecimalInput({
+  value,
+  onValueChange,
+  onValidityChange,
+  required,
+  ...rest
+}: Props) {
   const [texto, setTexto] = useState(() => textoDe(value));
   const [erro, setErro] = useState<string | undefined>();
   const emitido = useRef(value);
@@ -30,9 +37,15 @@ export function ValorDecimalInput({ value, onValueChange, required, ...rest }: P
     setTexto(textoDe(value));
   }, [value, erro]);
 
-  function emitir(valor: number) {
+  function emitirValido(valor: number) {
     emitido.current = valor;
+    onValidityChange?.(true);
     onValueChange(valor);
+  }
+
+  function marcarInvalido(mensagem: string) {
+    setErro(mensagem);
+    onValidityChange?.(false);
   }
 
   return (
@@ -46,23 +59,26 @@ export function ValorDecimalInput({ value, onValueChange, required, ...rest }: P
           const next = event.target.value;
           setTexto(next);
           if (next.trim() === "") {
-            emitir(0);
-            setErro(required ? "Informe um valor." : undefined);
+            if (required) {
+              marcarInvalido("Informe um valor.");
+              return;
+            }
+            setErro(undefined);
+            emitirValido(0);
             return;
           }
           const parsed = parseDecimalBr(next);
           if (!Number.isFinite(parsed)) {
-            emitir(0);
-            setErro("Informe um valor válido.");
+            marcarInvalido("Informe um valor válido.");
             return;
           }
           setErro(undefined);
-          emitir(parsed);
+          emitirValido(parsed);
         }}
         onBlur={() => {
           if (texto.trim() === "") {
             if (required) {
-              setErro("Informe um valor.");
+              marcarInvalido("Informe um valor.");
               return;
             }
             setErro(undefined);
@@ -71,10 +87,11 @@ export function ValorDecimalInput({ value, onValueChange, required, ...rest }: P
           }
           const parsed = parseDecimalBr(texto);
           if (!Number.isFinite(parsed)) {
-            setErro("Informe um valor válido.");
+            marcarInvalido("Informe um valor válido.");
             return;
           }
           setErro(undefined);
+          onValidityChange?.(true);
           setTexto(textoDe(parsed));
         }}
       />

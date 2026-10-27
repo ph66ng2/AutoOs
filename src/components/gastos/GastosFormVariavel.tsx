@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -61,6 +61,7 @@ export function GastosFormVariavel({
   onSave,
   saving,
 }: GastosFormVariavelProps) {
+  const [valorInvalido, setValorInvalido] = useState(false);
   const form = useForm<GastoVariavelFormData>({
     resolver: zodResolver(gastoVariavelSchema),
     defaultValues: {
@@ -73,6 +74,7 @@ export function GastosFormVariavel({
   });
 
   useEffect(() => {
+    setValorInvalido(false);
     if (gasto) {
       form.reset({
         descricao: gasto.descricao,
@@ -93,6 +95,7 @@ export function GastosFormVariavel({
   }, [gasto, form]);
 
   async function onSubmit(data: GastoVariavelFormData) {
+    if (valorInvalido) return;
     await onSave({
       descricao: data.descricao,
       valor: Number(data.valor),
@@ -123,6 +126,7 @@ export function GastosFormVariavel({
                 required
                 value={Number(form.watch("valor")) || 0}
                 onValueChange={(valor) => form.setValue("valor", valor, { shouldValidate: true, shouldDirty: true })}
+                onValidityChange={(valido) => setValorInvalido(!valido)}
               />
               <FormValidationError message={form.formState.errors.valor?.message} />
             </div>
@@ -168,7 +172,7 @@ export function GastosFormVariavel({
                 Cancelar
               </Button>
             </DialogClose>
-            <Button type="submit" disabled={saving}>
+            <Button type="submit" disabled={saving || valorInvalido}>
               {saving ? "Salvando..." : gasto ? "Salvar" : "Cadastrar"}
             </Button>
           </DialogFooter>

@@ -18,6 +18,7 @@ const mockInvoke = vi.hoisted(() => vi.fn());
 const mockListen = vi.hoisted(() => vi.fn(() => Promise.resolve(vi.fn())));
 const mockNavigate = vi.hoisted(() => vi.fn());
 
+const mockPermissions = vi.hoisted(() => ({ list: ["FINANCIAL_ACTIONS"] as string[] }));
 const mockAtualizarServicosVerificacao = vi.hoisted(() => vi.fn());
 const mockAnalisarAjusteOrcamento = vi.hoisted(() => vi.fn());
 const mockAprovarOrcamento = vi.hoisted(() => vi.fn());
@@ -66,7 +67,8 @@ vi.mock("@/hooks/useStatusEquipamento", () => ({
 vi.mock("@/hooks/useSensitiveAccess", () => ({
   useSensitiveAccess: () => ({
     ensureSensitiveAccess: vi.fn().mockResolvedValue(true),
-    status: { active_profile_id: 1, unlocked: true, permissions: ["FINANCIAL_ACTIONS"] },
+    status: { active_profile_id: 1, unlocked: true, permissions: mockPermissions.list },
+    hasPermission: (permission: string) => mockPermissions.list.includes(permission),
   }),
 }));
 
@@ -263,6 +265,7 @@ import Equipamentos from "../../Equipamentos";
 describe("Equipamentos — Budget Divergence & Audit", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockPermissions.list = ["FINANCIAL_ACTIONS"];
     equipamentoVerificado.status = "VERIFICADO";
     equipamentoVerificado.valor_orcamento = 150;
     mockListarImagensEquipamento.mockResolvedValue([]);
@@ -368,8 +371,11 @@ describe("Equipamentos — Budget Divergence & Audit", () => {
       expect(screen.getByTestId("confirm-dialog")).toBeInTheDocument();
     });
 
-    expect(screen.getByTestId("confirm-title")).toHaveTextContent(/Mudar Valor Total do Orçamento para/i);
+    expect(screen.getByTestId("confirm-title")).toHaveTextContent(/Valor digitado/);
+    expect(screen.getByTestId("confirm-title")).toHaveTextContent(/200,00/);
     expect(screen.getByTestId("confirm-title")).toHaveTextContent(/150,00/);
+    expect(screen.getByTestId("confirm-description")).toHaveTextContent(/Sim grava a soma/);
+    expect(screen.getByTestId("confirm-description")).toHaveTextContent(/Não grava o valor digitado/);
     expect(screen.getByTestId("confirm-cancel")).toHaveTextContent(/^Não$/);
     expect(screen.getByTestId("confirm-action")).toHaveTextContent(/^Sim$/);
   });
@@ -546,8 +552,9 @@ describe("Equipamentos — Budget Divergence & Audit", () => {
     await clicarConfirmarStatus();
 
     await waitFor(() => {
-      expect(screen.getByTestId("confirm-title")).toHaveTextContent(/Mudar Valor Total do Orçamento para/i);
+      expect(screen.getByTestId("confirm-title")).toHaveTextContent(/Valor digitado/);
     });
+    expect(screen.getByTestId("confirm-title")).toHaveTextContent(/250,00/);
     expect(screen.getByTestId("confirm-title")).toHaveTextContent(/100,00/);
     expect(screen.getByTestId("confirm-cancel")).toHaveTextContent(/^Não$/);
     expect(screen.getByTestId("confirm-action")).toHaveTextContent(/^Sim$/);
@@ -858,5 +865,29 @@ describe("Equipamentos — Budget Divergence & Audit", () => {
     fireEvent.click(action);
     expect(await screen.findByText(/Ajuste de Orçamento/i)).toBeInTheDocument();
     expect(screen.queryByText("Detalhes do Equipamento")).not.toBeInTheDocument();
+  });
+
+  it("bloqueia Confirmar quando o valor do orçamento obrigatório fica vazio", async () => {
+    mockBuscarVerificacao.mockResolvedValue(makeVerificacao());
+    await abrirDialogoAjusteOrcamento();
+    const input = screen.getByTestId("valor-orcamento-input");
+    await act(async () => {
+      fireEvent.change(input, { target: { value: "" } });
+    });
+    const confirmar = screen.getByRole("button", { name: /Confirmar/i });
+    expect(confirmar).toBeDisabled();
+    await act(async () => {
+      fireEvent.click(confirmar);
+    });
+    expect(mockAtualizarServicosVerificacao).not.toHaveBeenCalled();
+  });
+
+  it("esconde Aprovar e Reprovar sem a permissão Orçamentos e valores", async () => {
+    mockPermissions.list = [];
+    equipamentoVerificado.status = "AGUARDANDO_APROVACAO";
+    render(<Equipamentos />);
+    await waitFor(() => expect(screen.getByTestId("action-status")).toBeInTheDocument());
+    expect(screen.queryByTestId("action-aprovar")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("action-reprovar")).not.toBeInTheDocument();
   });
 });

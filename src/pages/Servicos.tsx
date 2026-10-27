@@ -1,4 +1,5 @@
 import { validarPecas } from "@/lib/orcamento-estoque";
+import { formatCurrency } from "@/lib/utils";
 import { useEffect, useState } from "react";
 import { Plus, Search, Edit, Trash2, RefreshCw, Wrench } from "lucide-react";
 import { useForm } from "react-hook-form";
@@ -261,7 +262,7 @@ export default function Servicos() {
                         {servico.descricao || "—"}
                       </TableCell>
                       <TableCell className="text-right font-semibold">
-                        R$ {Number(servico.preco_padrao || 0).toFixed(2)}
+                        {formatCurrency(Number(servico.preco_padrao || 0))}
                       </TableCell>
                       <TableCell className="text-right">
                         <div className="flex justify-end gap-1">
