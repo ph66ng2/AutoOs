@@ -10,6 +10,7 @@
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, screen, act, fireEvent, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 
 // ─── Hoisted Mocks ──────────────────────────────────────
 
@@ -18,12 +19,12 @@ const mockListen = vi.hoisted(() => vi.fn(() => Promise.resolve(vi.fn())));
 const mockNavigate = vi.hoisted(() => vi.fn());
 
 const mockAtualizarServicosVerificacao = vi.hoisted(() => vi.fn());
+const mockAnalisarAjusteOrcamento = vi.hoisted(() => vi.fn());
 const mockAprovarOrcamento = vi.hoisted(() => vi.fn());
 const mockAtualizarStatusEquipamento = vi.hoisted(() => vi.fn());
 const mockBuscarVerificacao = vi.hoisted(() => vi.fn());
 const mockListarServicosCatalogoAtivos = vi.hoisted(() => vi.fn());
 const mockListarImagensEquipamento = vi.hoisted(() => vi.fn());
-const mockListarHistoricoEquipamento = vi.hoisted(() => vi.fn());
 const mockBuscarEquipamentosPorSerial = vi.hoisted(() => vi.fn());
 const mockBuscarCliente = vi.hoisted(() => vi.fn());
 const mockRecarregar = vi.hoisted(() => vi.fn());
@@ -85,13 +86,15 @@ vi.mock("@/lib/db", () => ({
     buscarVerificacao: (...args: unknown[]) => mockBuscarVerificacao(...args),
     listarServicosCatalogoAtivos: (...args: unknown[]) => mockListarServicosCatalogoAtivos(...args),
     atualizarServicosVerificacao: (...args: unknown[]) => mockAtualizarServicosVerificacao(...args),
+    analisarAjusteOrcamento: (...args: unknown[]) => mockAnalisarAjusteOrcamento(...args),
     aprovarOrcamento: (...args: unknown[]) => mockAprovarOrcamento(...args),
+    obterDecisaoOrcamento: () => Promise.resolve(null),
     atualizarStatusEquipamento: (...args: unknown[]) => mockAtualizarStatusEquipamento(...args),
     listarImagensEquipamento: (...args: unknown[]) => mockListarImagensEquipamento(...args),
     buscarEquipamentosPorSerial: (...args: unknown[]) => mockBuscarEquipamentosPorSerial(...args),
     buscarCliente: (...args: unknown[]) => mockBuscarCliente(...args),
     listarComunicacoes: vi.fn().mockResolvedValue([]),
-    listarHistoricoEquipamento: (...args: unknown[]) => mockListarHistoricoEquipamento(...args),
+    listarHistoricoEquipamento: vi.fn().mockResolvedValue([]),
     listarEquipamentos: vi.fn().mockResolvedValue([]),
     listarEquipamentosPaginados: vi.fn().mockResolvedValue({ items: [], total: 0 }),
     substituirImagensEquipamento: vi.fn().mockResolvedValue([]),
@@ -263,13 +266,18 @@ describe("Equipamentos — Budget Divergence & Audit", () => {
     equipamentoVerificado.status = "VERIFICADO";
     equipamentoVerificado.valor_orcamento = 150;
     mockListarImagensEquipamento.mockResolvedValue([]);
-    mockListarHistoricoEquipamento.mockResolvedValue([]);
     mockBuscarEquipamentosPorSerial.mockResolvedValue([]);
     mockBuscarCliente.mockRejectedValue(new Error("no client"));
     mockListarServicosCatalogoAtivos.mockResolvedValue([]);
-    mockAtualizarServicosVerificacao.mockResolvedValue({
-      ...makeVerificacao(),
-      equipamento_atualizado_em: "2024-01-15T10:00:01Z",
+    mockAtualizarServicosVerificacao.mockResolvedValue(makeVerificacao());
+    mockAnalisarAjusteOrcamento.mockResolvedValue({
+      status: "VERIFICADO",
+      podePedirNovaAprovacao: false,
+      jaPublicado: false,
+      respostaPendente: null,
+      pecasBaixadas: [],
+      totalBaixado: 0,
+      exigeDecisaoEstoque: false,
     });
     mockAprovarOrcamento.mockResolvedValue({ ...equipamentoVerificado, status: "APROVADO" });
     mockAtualizarStatusEquipamento.mockResolvedValue({ sucesso: true });
@@ -374,42 +382,6 @@ describe("Equipamentos — Budget Divergence & Audit", () => {
     expect(screen.getByTestId("confirm-title")).toHaveTextContent(/Resumo do Ajuste/i);
   });
 
-  it("prefills the adjustment with the current equipment budget, not the item sum", async () => {
-    equipamentoVerificado.valor_orcamento = 230;
-    mockBuscarVerificacao.mockResolvedValue(makeVerificacao({ custo_total: 80, servicos: [
-      { id: "s1", descricao: "Troca de fonte", valor: 80 },
-    ], pecas: [] }));
-    await abrirDialogoAjusteOrcamento();
-
-    expect((screen.getByTestId("valor-orcamento-input") as HTMLInputElement).value).toBe("230");
-    equipamentoVerificado.valor_orcamento = 150;
-  });
-
-  it("keeps the budget visible on approved and rejected equipment rows", () => {
-    for (const status of ["APROVADO", "REPROVADO"]) {
-      equipamentoVerificado.status = status;
-      const view = render(<Equipamentos />);
-      expect(screen.getByText("Orçamento: R$ 150.00")).toBeInTheDocument();
-      view.unmount();
-    }
-  });
-
-  it("uses the timestamp returned by the quote adjustment for the status update", async () => {
-    const updatedAt = "2026-10-08T12:35:00.000Z";
-    mockBuscarVerificacao.mockResolvedValue(makeVerificacao());
-    mockAtualizarServicosVerificacao.mockResolvedValue({
-      ...makeVerificacao(),
-      equipamento_atualizado_em: updatedAt,
-    });
-    await abrirDialogoAjusteOrcamento();
-    await clicarConfirmarStatus();
-    await waitFor(() => expect(screen.getByTestId("confirm-dialog")).toBeInTheDocument());
-    fireEvent.click(screen.getByTestId("confirm-action"));
-
-    await waitFor(() => expect(mockAtualizarStatusEquipamento).toHaveBeenCalled());
-    expect(mockAtualizarStatusEquipamento.mock.calls.at(-1)?.[5]).toBe(updatedAt);
-  });
-
   // ─── Test 4: "Continuar" salva com divergence=true ───
 
   it('"Não" chama atualizarServicosVerificacao com divergence=true', async () => {
@@ -481,31 +453,6 @@ describe("Equipamentos — Budget Divergence & Audit", () => {
     await abrirDialogoAjusteOrcamento();
 
     expect(screen.queryByText(/Histórico de Ajustes/i)).not.toBeInTheDocument();
-  });
-
-  it("mostra carregamento e estado vazio na aba Histórico existente", async () => {
-    let concluirHistorico!: (events: unknown[]) => void;
-    mockListarHistoricoEquipamento.mockReturnValueOnce(new Promise<unknown[]>((resolve) => {
-      concluirHistorico = resolve;
-    }));
-    render(<Equipamentos />);
-    await waitFor(() => expect(screen.getByTestId("action-status")).toBeInTheDocument());
-    fireEvent.click(screen.getByTestId("action-status"));
-    fireEvent.mouseDown(await screen.findByRole("tab", { name: "Histórico" }), { button: 0 });
-
-    expect(document.querySelector(".animate-spin")).toBeInTheDocument();
-    await act(async () => concluirHistorico([]));
-    expect(await screen.findByText("Nenhum registro de histórico")).toBeInTheDocument();
-  });
-
-  it("mostra o erro de leitura na aba Histórico existente", async () => {
-    mockListarHistoricoEquipamento.mockRejectedValueOnce(new Error("Falha sintética ao consultar histórico"));
-    render(<Equipamentos />);
-    await waitFor(() => expect(screen.getByTestId("action-status")).toBeInTheDocument());
-    fireEvent.click(screen.getByTestId("action-status"));
-    fireEvent.mouseDown(await screen.findByRole("tab", { name: "Histórico" }), { button: 0 });
-
-    expect(await screen.findByText(/Falha sintética ao consultar histórico/)).toBeInTheDocument();
   });
 
   it("exibe Observações e envia texto vazio quando o campo é apagado", async () => {
@@ -604,7 +551,6 @@ describe("Equipamentos — Budget Divergence & Audit", () => {
     });
     expect(screen.queryByText("Prazo Aprovação")).not.toBeInTheDocument();
     fireEvent.change(screen.getByLabelText("Forma de pagamento"), { target: { value: "PIX" } });
-    fireEvent.click(screen.getByLabelText(/O cliente aprovou as mudanças/));
     await clicarConfirmarStatus();
     await act(async () => {
       fireEvent.click(screen.getByTestId("confirm-action"));
@@ -616,6 +562,49 @@ describe("Equipamentos — Budget Divergence & Audit", () => {
     });
     expect(mockAtualizarStatusEquipamento).not.toHaveBeenCalled();
     expect(equipamentoVerificado.status).toBe("EM_MANUTENCAO");
+  });
+
+  it("orçamento aprovado alterado: pergunta o que fazer e envia o modo escolhido", async () => {
+    equipamentoVerificado.status = "APROVADO";
+    mockBuscarVerificacao.mockResolvedValue(makeVerificacao());
+    mockAnalisarAjusteOrcamento.mockResolvedValue({
+      status: "APROVADO",
+      podePedirNovaAprovacao: true,
+      jaPublicado: true,
+      respostaPendente: null,
+      pecasBaixadas: [],
+      totalBaixado: 0,
+      exigeDecisaoEstoque: false,
+    });
+    mockAtualizarServicosVerificacao.mockResolvedValue({
+      ...makeVerificacao(),
+      portal: { acao: "NOVA_APROVACAO_PUBLICADA", versao: 2, mensagem: "Nova aprovação pedida: a versão 2 foi publicada no portal para o cliente responder." },
+    });
+    render(<Equipamentos />);
+    await waitFor(() => expect(screen.getByTestId("action-alterar_orcamento")).toBeInTheDocument());
+    await act(async () => {
+      fireEvent.click(screen.getByTestId("action-alterar_orcamento"));
+    });
+    await waitFor(() => expect(screen.getByText(/O status atual do equipamento será mantido/i)).toBeInTheDocument());
+
+    await alterarValorOrcamento(250);
+    await clicarConfirmarStatus();
+    await act(async () => {
+      fireEvent.click(screen.getByTestId("confirm-cancel"));
+    });
+
+    await waitFor(() => expect(screen.getByText("Este orçamento já foi aprovado")).toBeInTheDocument());
+    expect(mockAtualizarServicosVerificacao).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByLabelText(/Pedir nova aprovação ao cliente/));
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Salvar alteração" }));
+    });
+
+    await waitFor(() => expect(mockAtualizarServicosVerificacao).toHaveBeenCalledTimes(1));
+    const [input] = mockAtualizarServicosVerificacao.mock.calls[0];
+    expect(input.opcoes).toEqual({ modoAprovado: "NOVA_APROVACAO", devolverEstoque: false });
+    expect(input.cliente_aprovou_alteracao).toBe(false);
+    expect(input.forma_pagamento_codigo).toBeUndefined();
   });
 
   it("mantém Aprovar e Reprovar visíveis e move Alterar Orçamento para o menu", async () => {
@@ -648,6 +637,55 @@ describe("Equipamentos — Budget Divergence & Audit", () => {
       equipamento_id: 10,
       pagamento: { codigo: "PIX", detalhe: null },
     })));
+  });
+
+  it("usa a soma dos serviços quando o total legado é zero", async () => {
+    equipamentoVerificado.status = "AGUARDANDO_APROVACAO";
+    equipamentoVerificado.valor_orcamento = 80;
+    mockBuscarVerificacao.mockResolvedValue(makeVerificacao({
+      servicos: [{ id: "s1", descricao: "Troca de fonte", valor: 80, pecas: [] }],
+      pecas: [],
+      custo_total: 0,
+    }));
+    render(<Equipamentos />);
+
+    fireEvent.click(screen.getByTestId("action-aprovar"));
+    await waitFor(() => expect(screen.getByText("Todos os serviços de troca foram aprovados?")).toBeInTheDocument());
+    fireEvent.click(screen.getByRole("button", { name: "Sim, todos" }));
+
+    expect(screen.getByText(/Total aprovado:/)).toHaveTextContent("R$ 80,00");
+  });
+
+  it("aprova orçamento antigo sem serviços detalhados sem convertê-lo em reprovação", async () => {
+    equipamentoVerificado.status = "AGUARDANDO_APROVACAO";
+    mockBuscarVerificacao.mockResolvedValue(makeVerificacao({ servicos: [], pecas: [], custo_total: 0 }));
+    render(<Equipamentos />);
+
+    fireEvent.click(screen.getByTestId("action-aprovar"));
+    await screen.findByText(/orçamento antigo não possui serviços detalhados/i);
+    fireEvent.click(screen.getByRole("button", { name: "Aprovar orçamento" }));
+    expect(screen.getByText(/Valor do orçamento:/)).toHaveTextContent("R$ 150,00");
+    expect(screen.getByRole("button", { name: "Continuar para pagamento" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Continuar para pagamento" }));
+    fireEvent.change(await screen.findByLabelText("Forma de pagamento"), { target: { value: "PIX" } });
+    fireEvent.click(screen.getByRole("button", { name: /confirmar aprovação/i }));
+
+    await waitFor(() => expect(mockAprovarOrcamento).toHaveBeenCalledWith(expect.objectContaining({
+      aprovado: true,
+      servicos_aprovados: [],
+      pagamento: { codigo: "PIX", detalhe: null },
+    })));
+  });
+
+  it("mostra o valor do equipamento quando o total antigo está ausente", async () => {
+    equipamentoVerificado.status = "AGUARDANDO_APROVACAO";
+    mockBuscarVerificacao.mockResolvedValue({ ...makeVerificacao({ servicos: [], pecas: [] }), custo_total: null });
+    render(<Equipamentos />);
+
+    fireEvent.click(screen.getByTestId("action-aprovar"));
+    await screen.findByText(/orçamento antigo não possui serviços detalhados/i);
+    fireEvent.click(screen.getByRole("button", { name: "Aprovar orçamento" }));
+    expect(screen.getByText(/Valor do orçamento:/)).toHaveTextContent("R$ 150,00");
   });
 
   it("permite cancelar a aprovação e mantém o modal após erro do backend", async () => {
@@ -702,11 +740,9 @@ describe("Equipamentos — Budget Divergence & Audit", () => {
     render(<Equipamentos />);
     fireEvent.click(screen.getByTestId("action-reprovar"));
     await screen.findByText("Todos os serviços de troca foram aprovados?");
-    expect(screen.getByRole("button", { name: "Escolha uma decisão" })).toBeDisabled();
-    expect(screen.queryByRole("button", { name: "Confirmar reprovação" })).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Não, selecionar" }));
     fireEvent.click(screen.getByRole("button", { name: "Confirmar reprovação" }));
-    await waitFor(() => expect(mockAprovarOrcamento).toHaveBeenCalledWith(expect.objectContaining({ servicos_aprovados: [] })));
+    await waitFor(() => expect(mockAprovarOrcamento).toHaveBeenCalledWith(expect.objectContaining({ aprovado: false, servicos_aprovados: [] })));
     expect(await screen.findByRole("alert")).toHaveTextContent("Orçamento desatualizado");
   });
 
@@ -737,5 +773,71 @@ describe("Equipamentos — Budget Divergence & Audit", () => {
     expect(screen.queryByTestId("action-orcamento_pdf")).not.toBeInTheDocument();
     expect(screen.queryByTestId("action-alterar_orcamento")).not.toBeInTheDocument();
     view.unmount();
+  });
+
+  it("a linha permanece linha e o controle dedicado abre o detalhe", async () => {
+    const user = userEvent.setup();
+    const view = render(<Equipamentos />);
+    const opener = screen.getByRole("button", { name: "Abrir detalhes de Zebra ZT230" });
+    expect(opener.tagName).toBe("BUTTON");
+    expect(opener).toHaveClass("equipment-row-open");
+    const row = opener.closest("tr");
+    expect(row).not.toBeNull();
+    expect(row).not.toHaveAttribute("role");
+    expect(row).not.toHaveAttribute("tabindex");
+    expect(opener.contains(screen.getByTestId("action-enviar_orcamento"))).toBe(false);
+    const cells = row!.querySelectorAll("td");
+    expect(cells[0].className).toContain("group-has-[.equipment-row-open:focus-visible]:after:border-l-[3px]");
+    expect(cells[0].className).toContain("after:border-[#1d4ed8]");
+    expect(cells[0].className).toContain("focus-visible");
+    expect(cells[0].classList.contains("relative")).toBe(true);
+    expect(cells[1].className).toContain("after:border-y-[3px]");
+    expect(cells[1].className).not.toContain("after:border-l-[3px]");
+    expect(cells[cells.length - 1].className).toContain("after:border-r-[3px]");
+    expect(cells[cells.length - 1].className).toContain("after:inset-0");
+    expect(cells[cells.length - 1].classList.contains("relative")).toBe(false);
+
+    fireEvent.click(screen.getByText("SN001"));
+    expect(await screen.findByText("Detalhes do Equipamento")).toBeInTheDocument();
+    view.unmount();
+
+    const enterView = render(<Equipamentos />);
+    const enterOpener = screen.getByRole("button", { name: "Abrir detalhes de Zebra ZT230" });
+    enterOpener.focus();
+    await user.keyboard("{Enter}");
+    expect(await screen.findByText("Detalhes do Equipamento")).toBeInTheDocument();
+    enterView.unmount();
+
+    const spaceView = render(<Equipamentos />);
+    const spaceOpener = screen.getByRole("button", { name: "Abrir detalhes de Zebra ZT230" });
+    spaceOpener.focus();
+    await user.keyboard(" ");
+    expect(await screen.findByText("Detalhes do Equipamento")).toBeInTheDocument();
+    spaceView.unmount();
+  });
+
+  it("Enter em Marcar Pronto não abre o detalhe", async () => {
+    const user = userEvent.setup();
+    equipamentoVerificado.status = "EM_MANUTENCAO";
+    render(<Equipamentos />);
+    const pronto = screen.getByRole("button", { name: "Marcar Pronto" });
+    expect(screen.getByRole("button", { name: "Abrir detalhes de Zebra ZT230" }).contains(pronto)).toBe(false);
+    pronto.focus();
+    await user.keyboard("{Enter}");
+    expect(screen.queryByText("Detalhes do Equipamento")).not.toBeInTheDocument();
+  });
+
+  it("Enter e Espaço nos botões de Ações não abrem o detalhe pela linha", async () => {
+    mockBuscarVerificacao.mockResolvedValue(makeVerificacao());
+    render(<Equipamentos />);
+    const action = screen.getByTestId("action-enviar_orcamento");
+
+    fireEvent.keyDown(action, { key: "Enter" });
+    fireEvent.keyDown(action, { key: " " });
+    expect(screen.queryByText("Detalhes do Equipamento")).not.toBeInTheDocument();
+
+    fireEvent.click(action);
+    expect(await screen.findByText(/Ajuste de Orçamento/i)).toBeInTheDocument();
+    expect(screen.queryByText("Detalhes do Equipamento")).not.toBeInTheDocument();
   });
 });

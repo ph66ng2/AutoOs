@@ -118,7 +118,7 @@ async fn main() -> Result<()> {
         data_entrada: data_entrada.clone(),
         cliente_id: Some(cliente_atualizado.id),
         cliente_nome: cliente_atualizado.nome.clone(),
-        cliente_telefone: Some(cliente_atualizado.telefone.clone()),
+        cliente_telefone: cliente_atualizado.telefone.clone(),
         cliente_email: cliente_atualizado.email.clone(),
         ..EquipamentoInput::default()
     })
@@ -620,6 +620,12 @@ async fn cleanup_smoke_data(pool: &PgPool, cliente_id: i32, equipamento_id: i32,
         .execute(&mut *tx)
         .await
         .context("Falha ao remover equipamento do smoke")?;
+
+    sqlx::query("DELETE FROM cliente_contatos WHERE cliente_id = $1")
+        .bind(cliente_id)
+        .execute(&mut *tx)
+        .await
+        .context("Falha ao remover contatos do cliente do smoke")?;
 
     sqlx::query("DELETE FROM clientes WHERE id = $1")
         .bind(cliente_id)

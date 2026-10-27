@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Edit, Mail, Phone, Plus, UserRound, UserX } from "lucide-react";
+import { Edit, KeyRound, Mail, Phone, Plus, UserRound, UserX } from "lucide-react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { Button } from "@/components/ui/button";
@@ -16,6 +16,7 @@ import {
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { ErrorAlert } from "@/components/ui/error-alert";
 import { useNotification } from "@/hooks/useNotification";
+import { db } from "@/lib/db";
 import { carregarRepositorioClienteContatos } from "@/lib/data/cliente-contatos-repository";
 import { IS_SAAS_BUILD } from "@/lib/runtime-mode";
 import {
@@ -24,11 +25,25 @@ import {
   type ClienteContatoFormData,
 } from "@/lib/validations";
 import { nomeExibicaoCliente } from "@/components/clientes/cliente-display-utils";
-import type { Cliente, ClienteContato, ClienteContatoInput } from "@/types";
+import { SenhaPortalDialog } from "@/components/clientes/SenhaPortalDialog";
+import type { AcessoPortalContato, Cliente, ClienteContato, ClienteContatoInput, ClienteId } from "@/types";
+
+const ACESSO_PORTAL: Record<AcessoPortalContato, string> = {
+  NENHUM: "Sem acesso ao portal",
+  ACOMPANHAR: "Portal: acompanha status",
+  DECIDIR: "Portal: acompanha e responde orçamentos",
+};
 
 interface ClienteContatosPanelProps {
   cliente: Cliente;
-  empresaId?: number;
+  empresaId?: ClienteId;
+}
+
+function formatarDocumentoCliente(valor: string) {
+  const d = valor.replace(/\D/g, "");
+  if (d.length === 14) return d.replace(/^(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})$/, "$1.$2.$3/$4-$5");
+  if (d.length === 11) return d.replace(/^(\d{3})(\d{3})(\d{3})(\d{2})$/, "$1.$2.$3-$4");
+  return valor;
 }
 
 export function ClienteContatosPanel({ cliente, empresaId }: ClienteContatosPanelProps) {
@@ -39,6 +54,8 @@ export function ClienteContatosPanel({ cliente, empresaId }: ClienteContatosPane
   const [editando, setEditando] = useState<ClienteContato | null>(null);
   const [inativando, setInativando] = useState<ClienteContato | null>(null);
   const [salvando, setSalvando] = useState(false);
+  const [alterandoAcesso, setAlterandoAcesso] = useState<ClienteId | null>(null);
+  const [senhaDe, setSenhaDe] = useState<ClienteContato | null>(null);
   const { success, error: showError } = useNotification();
   const form = useForm<ClienteContatoFormData>({
     resolver: zodResolver(clienteContatoSchema),
@@ -115,12 +132,28 @@ export function ClienteContatosPanel({ cliente, empresaId }: ClienteContatosPane
     }
   }
 
+  async function alterarAcessoPortal(contato: ClienteContato, acesso: AcessoPortalContato) {
+    if (!contato.id) return;
+    setAlterandoAcesso(contato.id);
+    try {
+      const atualizado = await db.definirAcessoPortalContato(contato.id, acesso);
+      success("Clientes", ACESSO_PORTAL[acesso] + ".", "Portal do cliente");
+      await carregarContatos();
+      // Liberar e criar a senha é um passo só: sem senha o contato não consegue entrar.
+      if (acesso !== "NENHUM" && !atualizado?.portal_senha_definida_em) setSenhaDe(atualizado ?? { ...contato, portal_acesso: acesso });
+    } catch (cause) {
+      showError("Clientes", "Alterar acesso ao portal", cause);
+    } finally {
+      setAlterandoAcesso(null);
+    }
+  }
+
   async function confirmarInativacao() {
     if (!inativando?.id || (!IS_SAAS_BUILD && !empresaId)) return;
     setSalvando(true);
     try {
       const repository = await carregarRepositorioClienteContatos();
-      await repository.inativar(inativando.id, empresaId);
+      await repository.inativar(inativando.id, empresaId == null ? undefined : Number(empresaId));
       setInativando(null);
       await carregarContatos();
       success("Clientes", "Contato inativado.", "Contatos");
@@ -164,6 +197,31 @@ export function ClienteContatosPanel({ cliente, empresaId }: ClienteContatosPane
                   <span><Mail className="mr-1 inline h-3 w-3" />{contato.email || "Sem e-mail"}</span>
                   <span><Phone className="mr-1 inline h-3 w-3" />{contato.telefone ? formatarTelefone(contato.telefone) : "Sem telefone"}</span>
                 </div>
+                {!IS_SAAS_BUILD && <div className="mt-2 flex flex-wrap items-center gap-2 text-xs">
+                  <span className="text-muted-foreground">Portal das Impressoras:</span>
+                  <select
+                    aria-label={`Acesso de ${contato.nome} ao portal`}
+                    className="h-8 rounded-md border border-input bg-background px-2 text-xs"
+                    value={contato.portal_acesso ?? "NENHUM"}
+                    disabled={alterandoAcesso === contato.id}
+                    onChange={(event) => void alterarAcessoPortal(contato, event.target.value as AcessoPortalContato)}
+                  >
+                    {(Object.keys(ACESSO_PORTAL) as AcessoPortalContato[]).map((acesso) => (
+                      <option key={acesso} value={acesso}>{ACESSO_PORTAL[acesso]}</option>
+                    ))}
+                  </select>
+                  {contato.portal_acesso && contato.portal_acesso !== "NENHUM" && (
+                    <Button type="button" size="sm" variant="outline" className="h-8 text-xs" onClick={() => setSenhaDe(contato)}>
+                      <KeyRound className="mr-1 h-3.5 w-3.5" />
+                      {contato.portal_senha_definida_em ? "Trocar senha" : "Criar senha"}
+                    </Button>
+                  )}
+                  {contato.portal_acesso && contato.portal_acesso !== "NENHUM" && (
+                    <span className="text-muted-foreground">
+                      {contato.portal_senha_definida_em ? "Senha criada" : "Sem senha (ainda não entra)"}
+                    </span>
+                  )}
+                </div>}
               </div>
               <div className="flex shrink-0 gap-1">
                 <Button type="button" size="sm" variant="outline" onClick={() => abrirEdicao(contato)}>
@@ -182,7 +240,12 @@ export function ClienteContatosPanel({ cliente, empresaId }: ClienteContatosPane
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle>{editando ? "Editar contato" : "Novo contato"}</DialogTitle>
-            <DialogDescription>Informe os canais que poderão ser usados para falar com este contato.</DialogDescription>
+            <DialogDescription>
+              Informe os canais que poderão ser usados para falar com este contato.
+              {editando?.portal_acesso && editando.portal_acesso !== "NENHUM" && (
+                <> O WhatsApp de orçamento só indica o portal se o telefone aqui for o mesmo que recebe a mensagem.</>
+              )}
+            </DialogDescription>
           </DialogHeader>
           <form className="space-y-4" onSubmit={form.handleSubmit(salvarContato)}>
             <div className="space-y-2">
@@ -213,6 +276,13 @@ export function ClienteContatosPanel({ cliente, empresaId }: ClienteContatosPane
           </form>
         </DialogContent>
       </Dialog>
+
+      <SenhaPortalDialog
+        contato={senhaDe}
+        documentoCliente={formatarDocumentoCliente(cliente.documento || cliente.cpf_cnpj || "")}
+        onClose={() => setSenhaDe(null)}
+        onSalvo={() => void carregarContatos()}
+      />
 
       <ConfirmDialog
         open={Boolean(inativando)}

@@ -3,20 +3,20 @@
 @tailwind utilities;
 
 @layer base {
-  :root {
-    --background: 210 20% 98%;
-    --foreground: 220 20% 10%;
+  :root, .light {
+    --background: 220 20% 97%;
+    --foreground: 222 25% 11%;
     --card: 0 0% 100%;
     --card-foreground: 220 20% 10%;
     --popover: 0 0% 100%;
     --popover-foreground: 220 20% 10%;
-    --primary: 220 70% 50%;
+    --primary: 221 72% 48%;
     --primary-foreground: 0 0% 100%;
-    --secondary: 215 20% 93%;
+    --secondary: 220 16% 93%;
     --secondary-foreground: 220 20% 15%;
-    --muted: 215 20% 95%;
-    --muted-foreground: 215 15% 50%;
-    --accent: 215 20% 93%;
+    --muted: 220 16% 94.5%;
+    --muted-foreground: 220 9% 42%;
+    --accent: 220 16% 93%;
     --accent-foreground: 220 20% 15%;
     --destructive: 0 72% 51%;
     --destructive-foreground: 0 0% 100%;
@@ -24,40 +24,277 @@
     --warning-foreground: 0 0% 100%;
     --info: 199 89% 48%;
     --info-foreground: 0 0% 100%;
-    --border: 215 20% 90%;
-    --input: 215 20% 90%;
-    --ring: 220 70% 50%;
+    --border: 220 14% 89%;
+    --input: 220 14% 86%;
+    --ring: 221 72% 48%;
     --radius: 0.5rem;
     --sidebar: 220 30% 15%;
     --sidebar-border: 220 20% 22%;
   }
 
   .dark {
-    --background: 220 25% 6%;
-    --foreground: 210 20% 95%;
-    --card: 220 25% 9%;
+    --background: 222 22% 7%;
+    --foreground: 210 20% 96%;
+    --card: 222 20% 10%;
     --card-foreground: 210 20% 95%;
-    --popover: 220 25% 9%;
+    --popover: 222 20% 12%;
     --popover-foreground: 210 20% 95%;
-    --primary: 217 91% 60%;
-    --primary-foreground: 220 25% 6%;
-    --secondary: 217 30% 18%;
+    --primary: 217 91% 62%;
+    --primary-foreground: 222 47% 11%;
+    --secondary: 222 16% 15%;
     --secondary-foreground: 210 20% 95%;
-    --muted: 217 30% 18%;
-    --muted-foreground: 215 18% 60%;
-    --accent: 217 30% 18%;
+    --muted: 222 16% 15%;
+    --muted-foreground: 218 12% 64%;
+    --accent: 222 16% 15%;
     --accent-foreground: 210 20% 95%;
-    --destructive: 0 63% 31%;
-    --destructive-foreground: 210 20% 95%;
+    --destructive: 0 65% 48%;
+    --destructive-foreground: 0 0% 100%;
     --warning: 38 92% 50%;
     --warning-foreground: 0 0% 100%;
     --info: 199 89% 48%;
     --info-foreground: 0 0% 100%;
-    --border: 217 30% 18%;
-    --input: 217 30% 18%;
-    --ring: 224 76% 48%;
-    --sidebar: 220 35% 8%;
-    --sidebar-border: 220 25% 14%;
+    --border: 222 16% 16%;
+    --input: 222 14% 22%;
+    --ring: 217 91% 62%;
+    --sidebar: 222 24% 5%;
+    --sidebar-border: 222 18% 12%;
+  }
+}
+
+@keyframes boot-particle-travel {
+  0%, 12% {
+    opacity: 0;
+    transform: translateX(0);
+  }
+  35% {
+    opacity: 1;
+  }
+  78% {
+    opacity: 1;
+    transform: translateX(36px);
+  }
+  100% {
+    opacity: 0;
+    transform: translateX(42px);
+  }
+}
+
+@keyframes boot-orbit-drift {
+  0%, 100% {
+    opacity: 0.25;
+    transform: translateY(0) scale(0.85);
+  }
+  50% {
+    opacity: 1;
+    transform: translateY(-8px) scale(1.15);
+  }
+}
+
+@keyframes boot-stage-in {
+  from {
+    opacity: 0;
+    transform: translateY(10px) scale(0.965);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes boot-breathe {
+  0%, 100% {
+    opacity: 0.75;
+    transform: scale(0.98);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.03);
+  }
+}
+
+/* Tremor curto da carcaça enquanto o recibo é impresso — dá "peso" mecânico. */
+@keyframes boot-printing {
+  0%, 100% { transform: translate(0, 0); }
+  20% { transform: translate(-0.6px, 0.3px); }
+  40% { transform: translate(0.5px, -0.2px); }
+  60% { transform: translate(-0.4px, -0.3px); }
+  80% { transform: translate(0.6px, 0.2px); }
+}
+
+@keyframes boot-led-blink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.35; }
+}
+
+@keyframes boot-led-ring {
+  from {
+    opacity: 0.9;
+    transform: scale(1);
+  }
+  to {
+    opacity: 0;
+    transform: scale(3.2);
+  }
+}
+
+@keyframes boot-equipment-out {
+  to {
+    opacity: 0;
+    transform: scale(0.94);
+    filter: blur(3px);
+  }
+}
+
+@keyframes boot-brand-in {
+  0% {
+    opacity: 0;
+    transform: scale(0.82);
+  }
+  60% {
+    opacity: 1;
+    transform: scale(1.035);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes boot-brand-ring {
+  0% {
+    opacity: 0;
+    transform: scale(0.7);
+  }
+  25% {
+    opacity: 0.7;
+  }
+  100% {
+    opacity: 0;
+    transform: scale(1.6);
+  }
+}
+
+@keyframes boot-label-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+    filter: blur(2px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+    filter: blur(0);
+  }
+}
+
+.boot-particle {
+  animation: boot-particle-travel 1.8s ease-in-out infinite;
+  transform-box: fill-box;
+  transform-origin: center;
+}
+
+.boot-particle-delayed {
+  animation-delay: 0.65s;
+}
+
+.boot-orbit-dot {
+  animation: boot-orbit-drift 2.1s ease-in-out infinite;
+  transform-box: fill-box;
+  transform-origin: center;
+}
+
+.boot-stage-in {
+  animation: boot-stage-in 650ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.boot-breathe {
+  animation: boot-breathe 3.2s ease-in-out infinite;
+  transform-box: fill-box;
+  transform-origin: center;
+}
+
+.boot-equipment {
+  transform-box: view-box;
+  transform-origin: 210px 166px;
+}
+
+.boot-equipment.is-leaving {
+  animation: boot-equipment-out 420ms cubic-bezier(0.55, 0, 1, 0.45) forwards;
+}
+
+.boot-printing {
+  animation: boot-printing 180ms linear infinite;
+}
+
+.boot-led-blink {
+  animation: boot-led-blink 0.9s ease-in-out infinite;
+}
+
+.boot-led-ring {
+  animation: boot-led-ring 700ms cubic-bezier(0.22, 1, 0.36, 1) forwards;
+  transform-box: fill-box;
+  transform-origin: center;
+}
+
+.boot-brand-in {
+  animation: boot-brand-in 720ms cubic-bezier(0.34, 1.3, 0.64, 1) 240ms both;
+  transform-box: view-box;
+  transform-origin: 210px 160px;
+}
+
+.boot-brand-ring {
+  animation: boot-brand-ring 1.1s cubic-bezier(0.22, 1, 0.36, 1) 300ms both;
+  transform-box: fill-box;
+  transform-origin: center;
+}
+
+.boot-label-in {
+  animation: boot-label-in 360ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+/* Brilho correndo sobre a barra enquanto carrega. */
+.boot-bar-fill {
+  background-image: linear-gradient(90deg, transparent 0%, rgb(255 255 255 / 0.28) 50%, transparent 100%);
+  background-size: 40% 100%;
+  background-repeat: no-repeat;
+  animation: boot-bar-shine 1.4s ease-in-out infinite;
+  transition: background-color 300ms ease-out;
+}
+
+@keyframes boot-bar-shine {
+  from { background-position: -40% 0; }
+  to { background-position: 140% 0; }
+}
+
+.boot-stage-out {
+  opacity: 0;
+  transform: scale(1.02);
+  filter: blur(4px);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .boot-particle,
+  .boot-orbit-dot,
+  .boot-stage-in,
+  .boot-breathe,
+  .boot-printing,
+  .boot-led-blink,
+  .boot-led-ring,
+  .boot-brand-in,
+  .boot-brand-ring,
+  .boot-label-in,
+  .boot-bar-fill {
+    animation: none;
+  }
+
+  .boot-equipment.is-leaving {
+    animation: none;
+    opacity: 0;
+  }
+
+  .boot-stage-out {
+    transform: none;
+    filter: none;
   }
 }
 
@@ -78,3 +315,247 @@
     font-family: 'Inter', 'Segoe UI', system-ui, -apple-system, sans-serif;
   }
 }
+
+/* Janela modal aberta deixa o <body> com pointer-events: none. Os avisos (Sonner) ficam acima
+   dela e precisam continuar clicáveis ("Ver", "Copiar detalhes", fechar). */
+[data-sonner-toaster] [data-sonner-toast] {
+  pointer-events: auto;
+}
+
+/*
+ * Modo escuro para avisos e selos em tons pastel (bg-*-50/100 com text-*-700/800).
+ * Esses pares foram pensados para o tema claro; no escuro viram um véu da cor com
+ * texto claro, sem exigir `dark:` em cada componente. Fundos brancos de verdade
+ * (QR code, PDF, botão de alternância) usam bg-white e não são afetados.
+ */
+@layer utilities {
+  .dark .bg-red-50 { background-color: theme('colors.red.500 / 10%'); }
+  .dark .bg-red-100 { background-color: theme('colors.red.500 / 16%'); }
+  .dark .bg-red-200 { background-color: theme('colors.red.500 / 22%'); }
+  .dark .text-red-600 { color: theme('colors.red.300'); }
+  .dark .text-red-700 { color: theme('colors.red.300'); }
+  .dark .text-red-800 { color: theme('colors.red.300'); }
+  .dark .text-red-900 { color: theme('colors.red.300'); }
+  .dark .text-red-950 { color: theme('colors.red.300'); }
+  .dark .border-red-100 { border-color: theme('colors.red.500 / 35%'); }
+  .dark .border-red-200 { border-color: theme('colors.red.500 / 35%'); }
+  .dark .border-red-300 { border-color: theme('colors.red.500 / 35%'); }
+  .dark .bg-orange-50 { background-color: theme('colors.orange.500 / 10%'); }
+  .dark .bg-orange-100 { background-color: theme('colors.orange.500 / 16%'); }
+  .dark .bg-orange-200 { background-color: theme('colors.orange.500 / 22%'); }
+  .dark .text-orange-600 { color: theme('colors.orange.300'); }
+  .dark .text-orange-700 { color: theme('colors.orange.300'); }
+  .dark .text-orange-800 { color: theme('colors.orange.300'); }
+  .dark .text-orange-900 { color: theme('colors.orange.300'); }
+  .dark .text-orange-950 { color: theme('colors.orange.300'); }
+  .dark .border-orange-100 { border-color: theme('colors.orange.500 / 35%'); }
+  .dark .border-orange-200 { border-color: theme('colors.orange.500 / 35%'); }
+  .dark .border-orange-300 { border-color: theme('colors.orange.500 / 35%'); }
+  .dark .bg-amber-50 { background-color: theme('colors.amber.500 / 10%'); }
+  .dark .bg-amber-100 { background-color: theme('colors.amber.500 / 16%'); }
+  .dark .bg-amber-200 { background-color: theme('colors.amber.500 / 22%'); }
+  .dark .text-amber-600 { color: theme('colors.amber.300'); }
+  .dark .text-amber-700 { color: theme('colors.amber.300'); }
+  .dark .text-amber-800 { color: theme('colors.amber.300'); }
+  .dark .text-amber-900 { color: theme('colors.amber.300'); }
+  .dark .text-amber-950 { color: theme('colors.amber.300'); }
+  .dark .border-amber-100 { border-color: theme('colors.amber.500 / 35%'); }
+  .dark .border-amber-200 { border-color: theme('colors.amber.500 / 35%'); }
+  .dark .border-amber-300 { border-color: theme('colors.amber.500 / 35%'); }
+  .dark .bg-yellow-50 { background-color: theme('colors.yellow.500 / 10%'); }
+  .dark .bg-yellow-100 { background-color: theme('colors.yellow.500 / 16%'); }
+  .dark .bg-yellow-200 { background-color: theme('colors.yellow.500 / 22%'); }
+  .dark .text-yellow-600 { color: theme('colors.yellow.300'); }
+  .dark .text-yellow-700 { color: theme('colors.yellow.300'); }
+  .dark .text-yellow-800 { color: theme('colors.yellow.300'); }
+  .dark .text-yellow-900 { color: theme('colors.yellow.300'); }
+  .dark .text-yellow-950 { color: theme('colors.yellow.300'); }
+  .dark .border-yellow-100 { border-color: theme('colors.yellow.500 / 35%'); }
+  .dark .border-yellow-200 { border-color: theme('colors.yellow.500 / 35%'); }
+  .dark .border-yellow-300 { border-color: theme('colors.yellow.500 / 35%'); }
+  .dark .bg-lime-50 { background-color: theme('colors.lime.500 / 10%'); }
+  .dark .bg-lime-100 { background-color: theme('colors.lime.500 / 16%'); }
+  .dark .bg-lime-200 { background-color: theme('colors.lime.500 / 22%'); }
+  .dark .text-lime-600 { color: theme('colors.lime.300'); }
+  .dark .text-lime-700 { color: theme('colors.lime.300'); }
+  .dark .text-lime-800 { color: theme('colors.lime.300'); }
+  .dark .text-lime-900 { color: theme('colors.lime.300'); }
+  .dark .text-lime-950 { color: theme('colors.lime.300'); }
+  .dark .border-lime-100 { border-color: theme('colors.lime.500 / 35%'); }
+  .dark .border-lime-200 { border-color: theme('colors.lime.500 / 35%'); }
+  .dark .border-lime-300 { border-color: theme('colors.lime.500 / 35%'); }
+  .dark .bg-green-50 { background-color: theme('colors.green.500 / 10%'); }
+  .dark .bg-green-100 { background-color: theme('colors.green.500 / 16%'); }
+  .dark .bg-green-200 { background-color: theme('colors.green.500 / 22%'); }
+  .dark .text-green-600 { color: theme('colors.green.300'); }
+  .dark .text-green-700 { color: theme('colors.green.300'); }
+  .dark .text-green-800 { color: theme('colors.green.300'); }
+  .dark .text-green-900 { color: theme('colors.green.300'); }
+  .dark .text-green-950 { color: theme('colors.green.300'); }
+  .dark .border-green-100 { border-color: theme('colors.green.500 / 35%'); }
+  .dark .border-green-200 { border-color: theme('colors.green.500 / 35%'); }
+  .dark .border-green-300 { border-color: theme('colors.green.500 / 35%'); }
+  .dark .bg-emerald-50 { background-color: theme('colors.emerald.500 / 10%'); }
+  .dark .bg-emerald-100 { background-color: theme('colors.emerald.500 / 16%'); }
+  .dark .bg-emerald-200 { background-color: theme('colors.emerald.500 / 22%'); }
+  .dark .text-emerald-600 { color: theme('colors.emerald.300'); }
+  .dark .text-emerald-700 { color: theme('colors.emerald.300'); }
+  .dark .text-emerald-800 { color: theme('colors.emerald.300'); }
+  .dark .text-emerald-900 { color: theme('colors.emerald.300'); }
+  .dark .text-emerald-950 { color: theme('colors.emerald.300'); }
+  .dark .border-emerald-100 { border-color: theme('colors.emerald.500 / 35%'); }
+  .dark .border-emerald-200 { border-color: theme('colors.emerald.500 / 35%'); }
+  .dark .border-emerald-300 { border-color: theme('colors.emerald.500 / 35%'); }
+  .dark .bg-teal-50 { background-color: theme('colors.teal.500 / 10%'); }
+  .dark .bg-teal-100 { background-color: theme('colors.teal.500 / 16%'); }
+  .dark .bg-teal-200 { background-color: theme('colors.teal.500 / 22%'); }
+  .dark .text-teal-600 { color: theme('colors.teal.300'); }
+  .dark .text-teal-700 { color: theme('colors.teal.300'); }
+  .dark .text-teal-800 { color: theme('colors.teal.300'); }
+  .dark .text-teal-900 { color: theme('colors.teal.300'); }
+  .dark .text-teal-950 { color: theme('colors.teal.300'); }
+  .dark .border-teal-100 { border-color: theme('colors.teal.500 / 35%'); }
+  .dark .border-teal-200 { border-color: theme('colors.teal.500 / 35%'); }
+  .dark .border-teal-300 { border-color: theme('colors.teal.500 / 35%'); }
+  .dark .bg-cyan-50 { background-color: theme('colors.cyan.500 / 10%'); }
+  .dark .bg-cyan-100 { background-color: theme('colors.cyan.500 / 16%'); }
+  .dark .bg-cyan-200 { background-color: theme('colors.cyan.500 / 22%'); }
+  .dark .text-cyan-600 { color: theme('colors.cyan.300'); }
+  .dark .text-cyan-700 { color: theme('colors.cyan.300'); }
+  .dark .text-cyan-800 { color: theme('colors.cyan.300'); }
+  .dark .text-cyan-900 { color: theme('colors.cyan.300'); }
+  .dark .text-cyan-950 { color: theme('colors.cyan.300'); }
+  .dark .border-cyan-100 { border-color: theme('colors.cyan.500 / 35%'); }
+  .dark .border-cyan-200 { border-color: theme('colors.cyan.500 / 35%'); }
+  .dark .border-cyan-300 { border-color: theme('colors.cyan.500 / 35%'); }
+  .dark .bg-sky-50 { background-color: theme('colors.sky.500 / 10%'); }
+  .dark .bg-sky-100 { background-color: theme('colors.sky.500 / 16%'); }
+  .dark .bg-sky-200 { background-color: theme('colors.sky.500 / 22%'); }
+  .dark .text-sky-600 { color: theme('colors.sky.300'); }
+  .dark .text-sky-700 { color: theme('colors.sky.300'); }
+  .dark .text-sky-800 { color: theme('colors.sky.300'); }
+  .dark .text-sky-900 { color: theme('colors.sky.300'); }
+  .dark .text-sky-950 { color: theme('colors.sky.300'); }
+  .dark .border-sky-100 { border-color: theme('colors.sky.500 / 35%'); }
+  .dark .border-sky-200 { border-color: theme('colors.sky.500 / 35%'); }
+  .dark .border-sky-300 { border-color: theme('colors.sky.500 / 35%'); }
+  .dark .bg-blue-50 { background-color: theme('colors.blue.500 / 10%'); }
+  .dark .bg-blue-100 { background-color: theme('colors.blue.500 / 16%'); }
+  .dark .bg-blue-200 { background-color: theme('colors.blue.500 / 22%'); }
+  .dark .text-blue-600 { color: theme('colors.blue.300'); }
+  .dark .text-blue-700 { color: theme('colors.blue.300'); }
+  .dark .text-blue-800 { color: theme('colors.blue.300'); }
+  .dark .text-blue-900 { color: theme('colors.blue.300'); }
+  .dark .text-blue-950 { color: theme('colors.blue.300'); }
+  .dark .border-blue-100 { border-color: theme('colors.blue.500 / 35%'); }
+  .dark .border-blue-200 { border-color: theme('colors.blue.500 / 35%'); }
+  .dark .border-blue-300 { border-color: theme('colors.blue.500 / 35%'); }
+  .dark .bg-indigo-50 { background-color: theme('colors.indigo.500 / 10%'); }
+  .dark .bg-indigo-100 { background-color: theme('colors.indigo.500 / 16%'); }
+  .dark .bg-indigo-200 { background-color: theme('colors.indigo.500 / 22%'); }
+  .dark .text-indigo-600 { color: theme('colors.indigo.300'); }
+  .dark .text-indigo-700 { color: theme('colors.indigo.300'); }
+  .dark .text-indigo-800 { color: theme('colors.indigo.300'); }
+  .dark .text-indigo-900 { color: theme('colors.indigo.300'); }
+  .dark .text-indigo-950 { color: theme('colors.indigo.300'); }
+  .dark .border-indigo-100 { border-color: theme('colors.indigo.500 / 35%'); }
+  .dark .border-indigo-200 { border-color: theme('colors.indigo.500 / 35%'); }
+  .dark .border-indigo-300 { border-color: theme('colors.indigo.500 / 35%'); }
+  .dark .bg-violet-50 { background-color: theme('colors.violet.500 / 10%'); }
+  .dark .bg-violet-100 { background-color: theme('colors.violet.500 / 16%'); }
+  .dark .bg-violet-200 { background-color: theme('colors.violet.500 / 22%'); }
+  .dark .text-violet-600 { color: theme('colors.violet.300'); }
+  .dark .text-violet-700 { color: theme('colors.violet.300'); }
+  .dark .text-violet-800 { color: theme('colors.violet.300'); }
+  .dark .text-violet-900 { color: theme('colors.violet.300'); }
+  .dark .text-violet-950 { color: theme('colors.violet.300'); }
+  .dark .border-violet-100 { border-color: theme('colors.violet.500 / 35%'); }
+  .dark .border-violet-200 { border-color: theme('colors.violet.500 / 35%'); }
+  .dark .border-violet-300 { border-color: theme('colors.violet.500 / 35%'); }
+  .dark .bg-purple-50 { background-color: theme('colors.purple.500 / 10%'); }
+  .dark .bg-purple-100 { background-color: theme('colors.purple.500 / 16%'); }
+  .dark .bg-purple-200 { background-color: theme('colors.purple.500 / 22%'); }
+  .dark .text-purple-600 { color: theme('colors.purple.300'); }
+  .dark .text-purple-700 { color: theme('colors.purple.300'); }
+  .dark .text-purple-800 { color: theme('colors.purple.300'); }
+  .dark .text-purple-900 { color: theme('colors.purple.300'); }
+  .dark .text-purple-950 { color: theme('colors.purple.300'); }
+  .dark .border-purple-100 { border-color: theme('colors.purple.500 / 35%'); }
+  .dark .border-purple-200 { border-color: theme('colors.purple.500 / 35%'); }
+  .dark .border-purple-300 { border-color: theme('colors.purple.500 / 35%'); }
+  .dark .bg-fuchsia-50 { background-color: theme('colors.fuchsia.500 / 10%'); }
+  .dark .bg-fuchsia-100 { background-color: theme('colors.fuchsia.500 / 16%'); }
+  .dark .bg-fuchsia-200 { background-color: theme('colors.fuchsia.500 / 22%'); }
+  .dark .text-fuchsia-600 { color: theme('colors.fuchsia.300'); }
+  .dark .text-fuchsia-700 { color: theme('colors.fuchsia.300'); }
+  .dark .text-fuchsia-800 { color: theme('colors.fuchsia.300'); }
+  .dark .text-fuchsia-900 { color: theme('colors.fuchsia.300'); }
+  .dark .text-fuchsia-950 { color: theme('colors.fuchsia.300'); }
+  .dark .border-fuchsia-100 { border-color: theme('colors.fuchsia.500 / 35%'); }
+  .dark .border-fuchsia-200 { border-color: theme('colors.fuchsia.500 / 35%'); }
+  .dark .border-fuchsia-300 { border-color: theme('colors.fuchsia.500 / 35%'); }
+  .dark .bg-pink-50 { background-color: theme('colors.pink.500 / 10%'); }
+  .dark .bg-pink-100 { background-color: theme('colors.pink.500 / 16%'); }
+  .dark .bg-pink-200 { background-color: theme('colors.pink.500 / 22%'); }
+  .dark .text-pink-600 { color: theme('colors.pink.300'); }
+  .dark .text-pink-700 { color: theme('colors.pink.300'); }
+  .dark .text-pink-800 { color: theme('colors.pink.300'); }
+  .dark .text-pink-900 { color: theme('colors.pink.300'); }
+  .dark .text-pink-950 { color: theme('colors.pink.300'); }
+  .dark .border-pink-100 { border-color: theme('colors.pink.500 / 35%'); }
+  .dark .border-pink-200 { border-color: theme('colors.pink.500 / 35%'); }
+  .dark .border-pink-300 { border-color: theme('colors.pink.500 / 35%'); }
+  .dark .bg-rose-50 { background-color: theme('colors.rose.500 / 10%'); }
+  .dark .bg-rose-100 { background-color: theme('colors.rose.500 / 16%'); }
+  .dark .bg-rose-200 { background-color: theme('colors.rose.500 / 22%'); }
+  .dark .text-rose-600 { color: theme('colors.rose.300'); }
+  .dark .text-rose-700 { color: theme('colors.rose.300'); }
+  .dark .text-rose-800 { color: theme('colors.rose.300'); }
+  .dark .text-rose-900 { color: theme('colors.rose.300'); }
+  .dark .text-rose-950 { color: theme('colors.rose.300'); }
+  .dark .border-rose-100 { border-color: theme('colors.rose.500 / 35%'); }
+  .dark .border-rose-200 { border-color: theme('colors.rose.500 / 35%'); }
+  .dark .border-rose-300 { border-color: theme('colors.rose.500 / 35%'); }
+  .dark .bg-slate-50 { background-color: theme('colors.slate.500 / 10%'); }
+  .dark .bg-slate-100 { background-color: theme('colors.slate.500 / 16%'); }
+  .dark .bg-slate-200 { background-color: theme('colors.slate.500 / 22%'); }
+  .dark .text-slate-600 { color: theme('colors.slate.300'); }
+  .dark .text-slate-700 { color: theme('colors.slate.300'); }
+  .dark .text-slate-800 { color: theme('colors.slate.300'); }
+  .dark .text-slate-900 { color: theme('colors.slate.300'); }
+  .dark .border-slate-100 { border-color: theme('colors.slate.500 / 35%'); }
+  .dark .border-slate-200 { border-color: theme('colors.slate.500 / 35%'); }
+  .dark .border-slate-300 { border-color: theme('colors.slate.500 / 35%'); }
+  .dark .bg-gray-50 { background-color: theme('colors.gray.500 / 10%'); }
+  .dark .bg-gray-100 { background-color: theme('colors.gray.500 / 16%'); }
+  .dark .bg-gray-200 { background-color: theme('colors.gray.500 / 22%'); }
+  .dark .text-gray-600 { color: theme('colors.gray.300'); }
+  .dark .text-gray-700 { color: theme('colors.gray.300'); }
+  .dark .text-gray-800 { color: theme('colors.gray.300'); }
+  .dark .text-gray-900 { color: theme('colors.gray.300'); }
+  .dark .border-gray-100 { border-color: theme('colors.gray.500 / 35%'); }
+  .dark .border-gray-200 { border-color: theme('colors.gray.500 / 35%'); }
+  .dark .border-gray-300 { border-color: theme('colors.gray.500 / 35%'); }
+  .dark .bg-zinc-50 { background-color: theme('colors.zinc.500 / 10%'); }
+  .dark .bg-zinc-100 { background-color: theme('colors.zinc.500 / 16%'); }
+  .dark .bg-zinc-200 { background-color: theme('colors.zinc.500 / 22%'); }
+  .dark .text-zinc-600 { color: theme('colors.zinc.300'); }
+  .dark .text-zinc-700 { color: theme('colors.zinc.300'); }
+  .dark .text-zinc-800 { color: theme('colors.zinc.300'); }
+  .dark .text-zinc-900 { color: theme('colors.zinc.300'); }
+  .dark .border-zinc-100 { border-color: theme('colors.zinc.500 / 35%'); }
+  .dark .border-zinc-200 { border-color: theme('colors.zinc.500 / 35%'); }
+  .dark .border-zinc-300 { border-color: theme('colors.zinc.500 / 35%'); }
+  .dark .bg-stone-50 { background-color: theme('colors.stone.500 / 10%'); }
+  .dark .bg-stone-100 { background-color: theme('colors.stone.500 / 16%'); }
+  .dark .bg-stone-200 { background-color: theme('colors.stone.500 / 22%'); }
+  .dark .text-stone-600 { color: theme('colors.stone.300'); }
+  .dark .text-stone-700 { color: theme('colors.stone.300'); }
+  .dark .text-stone-800 { color: theme('colors.stone.300'); }
+  .dark .text-stone-900 { color: theme('colors.stone.300'); }
+  .dark .border-stone-100 { border-color: theme('colors.stone.500 / 35%'); }
+  .dark .border-stone-200 { border-color: theme('colors.stone.500 / 35%'); }
+  .dark .border-stone-300 { border-color: theme('colors.stone.500 / 35%'); }
+}
+
+[data-theme-switching], [data-theme-switching] * { transition: none !important; }

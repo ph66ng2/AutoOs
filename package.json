@@ -8,6 +8,7 @@
     "dev:saas": "vite --mode saas",
     "build": "tsc && vite build",
     "build:saas": "tsc && vite build --mode saas",
+    "build:public-status": "vite build --config vite.public-status.config.ts",
     "preview": "vite preview",
     "tauri": "tauri",
     "tauri:dev:saas": "tauri dev --features saas --config src-tauri/tauri.saas.conf.json",
@@ -17,10 +18,11 @@
     "test:ui": "vitest --ui",
     "test:run": "vitest run && npm run test:server-scripts && npm run test:updater",
     "test:server-scripts": "node --test scripts/__tests__/saas-admin-identity.test.mjs scripts/__tests__/saas-user-admin.test.mjs",
-    "test:updater": "node --test scripts/__tests__/generate-update-manifest.test.mjs",
+    "test:updater": "node --test scripts/__tests__/generate-update-manifest.test.mjs scripts/__tests__/normalize-seed-empresa-id.test.mjs",
     "test:coverage": "vitest run --coverage",
     "lint": "tsc --noEmit",
     "check:migrations": "node scripts/check-sqlx-migrations.mjs",
+    "verify:estoque-seed": "bash scripts/verify-estoque-seed.sh",
     "check:migrations:db": "node scripts/check-sqlx-database-history.mjs",
     "e2e": "npm run e2e:web",
     "e2e:web": "playwright test",
@@ -30,6 +32,7 @@
     "qa:tier:e2e": "npm run e2e:web",
     "qa:integrations:critical": "cd src-tauri && cargo run --quiet --bin test_service_catalog_isolation && cargo run --quiet --bin p1_critical_integration",
     "qa:integrations:communication": "cd src-tauri && cargo run --quiet --bin p1_communication_integration",
+    "qa:integrations:whatsapp-queue": "cd src-tauri && cargo run --quiet --bin test_whatsapp_queue",
     "qa:photos": "cd src-tauri && cargo run --quiet --bin p1_photo_integration",
     "qa:integrations": "npm run qa:integrations:critical && npm run qa:integrations:communication",
     "qa:staging:auth": "node scripts/validate-staging-auth.mjs",
@@ -41,7 +44,9 @@
     "workflow:report": "node scripts/workflow-report.mjs",
     "workflow:dashboard:prepare": "node scripts/prepare-workflow-dashboard.mjs",
     "workflow:dashboard:sync-autobo": "node scripts/sync-autobo-workflow.mjs",
-    "test:workflow": "node --test workflow-dashboard/storage.test.mjs workflow-dashboard/tracks.test.mjs"
+    "test:workflow": "node --test workflow-dashboard/storage.test.mjs workflow-dashboard/tracks.test.mjs",
+    "e2e:ui-screenshots": "playwright test -c playwright.screenshots.config.ts"
+
   },
   "dependencies": {
     "@hookform/resolvers": "^3.9.0",

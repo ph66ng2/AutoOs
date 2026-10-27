@@ -231,6 +231,7 @@ export interface Cliente {
   uf?: string;
   receber_email?: boolean;
   receber_whatsapp?: boolean;
+  exige_ordem_compra?: boolean;
   observacoes?: string;
   ativo?: boolean;
   criado_em?: string;
@@ -365,6 +366,36 @@ export interface Verificacao {
   equipamento_atualizado_em?: string;
 }
 
+export type AcessoPortalContato = "NENHUM" | "ACOMPANHAR" | "DECIDIR";
+
+export interface OpcoesAjusteOrcamento {
+  modoAprovado?: ModoAjusteAprovado;
+  /** Confirma a devolução ao estoque das peças já baixadas (nova aprovação). */
+  devolverEstoque?: boolean;
+  /** Confirma que a nova versão anula a resposta do cliente ainda não aplicada. */
+  confirmarRespostaPendente?: boolean;
+}
+
+export type ModoAjusteAprovado = "SEM_NOVA_APROVACAO" | "NOVA_APROVACAO";
+
+/** Escolhas do operador ao salvar a alteração do orçamento. */
+
+export interface RespostaPendenteAjuste {
+  decisao: "APROVAR" | "RECUSAR";
+  contato?: string | null;
+  registradaEm: string;
+}
+
+/** O que o operador precisa saber antes de salvar uma alteração no orçamento → Rust: analisar_ajuste_orcamento */
+
+export interface PecaBaixadaInfo {
+  produtoId: number | string;
+  nome: string;
+  quantidade: number;
+}
+
+/** O que a aprovação/recusa fez e se a decisão pode ser corrigida (e de que modo). */
+
 /** Contato operacional pertencente a um cliente dentro de uma empresa. */
 export interface ClienteContato {
   id?: ClienteId;
@@ -374,6 +405,10 @@ export interface ClienteContato {
   email?: string;
   telefone?: string;
   ativo?: boolean;
+  /** Acesso ao Portal das Impressoras do Cliente. Alterado só por `definirAcessoPortalContato`. */
+  portal_acesso?: AcessoPortalContato;
+  /** Quando o operador criou a senha do portal; vazio = sem senha. */
+  portal_senha_definida_em?: string | null;
   criado_em?: string;
   atualizado_em?: string;
 }
@@ -548,7 +583,9 @@ export const SENSITIVE_PERMISSIONS = {
   DELETE_RECORDS: "DELETE_RECORDS",
   FINANCIAL_ACTIONS: "FINANCIAL_ACTIONS",
   STOCK_CONTROL: "STOCK_CONTROL",
+  PREPARE_QUOTES: "PREPARE_QUOTES",
   MANAGE_PROFILES: "MANAGE_PROFILES",
+  MANAGE_STATUS_LINKS: "MANAGE_STATUS_LINKS",
   VIEW_EXPENSES: "VIEW_EXPENSES",
 } as const;
 
@@ -560,7 +597,9 @@ export const SENSITIVE_PERMISSION_LABELS: Record<SensitivePermission, string> = 
   DELETE_RECORDS: "excluir registros",
   FINANCIAL_ACTIONS: "alterar orçamentos, aprovações e valores",
   STOCK_CONTROL: "movimentar e editar estoque",
+  PREPARE_QUOTES: "elaborar e enviar orçamentos",
   MANAGE_PROFILES: "gerenciar perfis e auditoria",
+  MANAGE_STATUS_LINKS: "gerenciar o Portal do Cliente e os links de acompanhamento",
   VIEW_EXPENSES: "visualizar gastos e despesas",
 };
 
@@ -570,8 +609,14 @@ export interface SecurityProfile {
   role: string;
   permissions: SensitivePermission[];
   pin_configured: boolean;
+  pin_required?: boolean;
   is_default: boolean;
   ativo: boolean;
+  avatar_icone?: string | null;
+  avatar_cor?: string | null;
+  tema?: "light" | "dark" | null;
+  onboarding_pendente?: boolean;
+  tour_permissoes_vistas?: SensitivePermission[] | null;
 }
 
 export interface SecurityProfileInput {
@@ -600,6 +645,7 @@ export interface SensitiveAccessStatus {
   permissions: SensitivePermission[];
   can_manage_profiles: boolean;
   profiles: SecurityProfile[];
+  keyring_bloqueado?: boolean;
 }
 
 export interface DatabaseMigrationStatus {
@@ -864,7 +910,8 @@ export interface AjusteOrcamentoInput {
   forma_pagamento_detalhe?: string;
   divergence?: boolean;
   cliente_aprovou_alteracao?: boolean;
-  expected_updated_em: string;
+  expected_updated_em?: string;
+  opcoes?: OpcoesAjusteOrcamento;
 }
 
 /** Payload da operação atômica de aprovação de orçamento. */
@@ -875,4 +922,394 @@ export interface AprovarOrcamentoInput {
   pagamento: FormaPagamento;
   servicos_aprovados: string[];
   aprovar_sem_servicos?: boolean;
+  aprovado?: boolean;
+  resposta_esperada_id?: number;
+  motivo_divergencia?: string;
 }
+
+// --- tipos trazidos da master (portal, OI, primeiro acesso) ---
+
+export interface AlertaPortal {
+  id: number;
+  equipamentoId?: number | null;
+  tipo:
+    | "RESPOSTA_RECEBIDA" | "RESPOSTA_ALTERADA" | "RESPOSTA_CANCELADA"
+    | "DECISAO_EFETIVADA" | "EFETIVACAO_FALHOU"
+    | "NEGOCIACAO_SOLICITADA" | "CORRECAO_SOLICITADA" | "DUVIDA_RECEBIDA"
+    | "CODIGO_NAO_ENTREGUE";
+  titulo: string;
+  detalhe?: string | null;
+  criadoEm: string;
+  lidoEm?: string | null;
+  lidoPor?: string | null;
+  /** Decisão da resposta ligada ao alerta, para escolher cor e ícone (aceite x recusa). */
+  decisao?: "APROVAR" | "RECUSAR" | "DESFEITA" | null;
+}
+
+export interface AnaliseAjusteOrcamento {
+  status: string;
+  podePedirNovaAprovacao: boolean;
+  jaPublicado: boolean;
+  versaoAberta?: number | null;
+  respostaPendente?: RespostaPendenteAjuste | null;
+  pecasBaixadas: PecaBaixadaInfo[];
+  totalBaixado: number;
+  exigeDecisaoEstoque: boolean;
+}
+
+/** O que aconteceu no portal por causa do ajuste (textos prontos para o operador). */
+
+export interface AnaliseCorrecaoDecisao {
+  status: string;
+  podeCorrigir: boolean;
+  bloqueios: string[];
+  /** O orçamento foi alterado depois da decisão (ajuste anterior à decisão não conta). */
+  ajustadoAposDecisao: boolean;
+  permiteRestaurar: boolean;
+  permiteManter: boolean;
+  pagamentoCodigo?: string | null;
+  pagamentoDetalhe?: string | null;
+  valorAtual?: number | null;
+  valorOriginal?: number | null;
+  pecasBaixadas: PecaBaixadaInfo[];
+  totalBaixado: number;
+  exigeDecisaoEstoque: boolean;
+}
+
+/** Orçamento já aprovado e alterado: segue aprovado ou pede nova aprovação ao cliente. */
+
+export interface CodigoPrimeiroAcesso {
+  profile_id: number;
+  nome: string;
+  /** Formato XXX-XXX. */
+  codigo: string;
+  expira_em: string;
+}
+
+export interface ConsumoOrcamento {
+  verificacao_id: number;
+  servico_id: string;
+  produto_id: number;
+  nome: string;
+  quantidade_aprovada: number;
+  quantidade_baixada: number;
+}
+
+/** Payload da operação atômica de aprovação de orçamento. */
+
+export interface ContatoInicialInput {
+  nome: string;
+  telefone: string;
+  email?: string | null;
+}
+
+export interface ContatoPortalEmpresa {
+  nomeExibicao: string;
+  whatsapp?: string | null;
+  email?: string | null;
+  telefone?: string | null;
+  horario?: string | null;
+  /** Endereço de retirada exibido no portal quando o equipamento está pronto. */
+  endereco?: string | null;
+  /** Link https do Google Maps (opcional). */
+  mapsUrl?: string | null;
+}
+
+export interface CorrigirDecisaoInput {
+  equipamento_id: number;
+  expected_updated_em: string;
+  motivo: string;
+  devolver_estoque: boolean;
+  modo: ModoCorrecaoDecisao;
+}
+
+/** Estado do aceite online: versão congelada, link, resposta vigente e histórico. */
+
+export type DecisaoOrcamento = "APROVAR" | "RECUSAR" | "DESFEITA";
+
+export interface DecisaoOrcamentoInfo {
+  versaoId: number;
+  versao: number;
+  valorTotal: number;
+  validoAte?: string | null;
+  criadaEm: string;
+  encerradaMotivo?: string | null;
+  /** Respostas pelo Portal do Cliente ligadas para a empresa (`portal_config_empresa`). */
+  aceiteOnlineAtivo: boolean;
+  resposta?: RespostaOrcamentoInfo | null;
+  historico: RespostaOrcamentoInfo[];
+  solicitacoes: SolicitacaoOrcamentoInfo[];
+  aplicavelAPartirDe?: string | null;
+  podeAplicar: boolean;
+  /** Resposta do Portal do Cliente: o servidor efetiva sozinho ao fim do prazo de correção. */
+  efetivacaoAutomatica?: boolean;
+}
+
+/** Liga/desliga do Portal do Cliente (Configurações → Integrações). */
+
+export interface DestinatarioOrcamento {
+  contatoId: number | null;
+  nome: string;
+  telefone: string | null;
+  email: string | null;
+  clienteNome: string;
+  clienteDocumento: string;
+  origem: "RESPONSAVEL" | "CONTATO" | "CLIENTE";
+  portalAcesso: "NENHUM" | "ACOMPANHAR" | "DECIDIR" | null;
+  temSenha: boolean;
+  usouSenhaAtual: boolean;
+  precisaContato: boolean;
+}
+
+export interface EnvioManualOrcamento {
+  destinatario: DestinatarioOrcamento;
+  assunto: string;
+  texto: string;
+  temSenha: boolean;
+  podeGerarNovaSenha: boolean;
+  equipamentoId: number;
+}
+
+export type EstadoEnvioWhatsapp =
+  | "ENFILEIRADA"
+  | "ENVIADA"
+  | "FALHOU"
+  | "INCERTA"
+  | "EM_ANDAMENTO"
+  | "JA_SOLICITADO"
+  | "REQUER_CONFIRMACAO";
+
+/** Resposta do comando central de envio. `ENVIADA` significa aceita pelo provedor, não entregue. */
+
+export interface EstadoPortal {
+  portalAtivo: boolean;
+  respostasAtivas: boolean;
+  /** Respostas vencidas e não aplicadas: o agendamento da efetivação pode estar parado. */
+  respostasAtrasadas: number;
+}
+
+/** Alerta interno persistente gerado pelo Portal do Cliente. */
+
+export interface FiltrosOrcamentosInsumos {
+  status?: StatusOrcamentoInsumos | "TODOS";
+  cliente_id?: number | null;
+  busca?: string;
+  /** Página iniciando em 0. */
+  page?: number;
+}
+
+export type ModoCorrecaoDecisao = "RESTAURAR_ORIGINAL" | "MANTER_ATUAL";
+
+export interface OrcamentoInsumos {
+  id: number;
+  empresa_id: number;
+  numero: number;
+  /** "OI-12" */
+  numero_exibicao: string;
+  cliente_id: number;
+  cliente_nome?: string | null;
+  cliente_documento?: string | null;
+  cliente_email?: string | null;
+  cliente_telefone?: string | null;
+  cliente_receber_email?: boolean | null;
+  cliente_receber_whatsapp?: boolean | null;
+  contato_id?: number | null;
+  contato_nome?: string | null;
+  contato_email?: string | null;
+  contato_telefone?: string | null;
+  status: StatusOrcamentoInsumos;
+  /** AAAA-MM-DD */
+  validade?: string | null;
+  observacoes?: string | null;
+  desconto: number;
+  valor_subtotal: number;
+  valor_total: number;
+  forma_pagamento_codigo?: FormaPagamentoCodigo | null;
+  forma_pagamento_detalhe?: string | null;
+  criado_por_profile_id?: number | null;
+  criado_em: string;
+  /** Token de concorrência: devolva-o ao salvar, enviar, aprovar, cancelar... */
+  atualizado_em: string;
+  enviado_em?: string | null;
+  decidido_em?: string | null;
+  entregue_em?: string | null;
+  total_itens: number;
+}
+
+export interface OrcamentoInsumosDetalhe extends OrcamentoInsumos {
+  itens: OrcamentoInsumosItem[];
+}
+
+export interface OrcamentoInsumosInput {
+  cliente_id: ClienteId;
+  contato_id?: ClienteId | null;
+  validade?: string | null;
+  observacoes?: string | null;
+  desconto?: number;
+  itens: OrcamentoInsumosItemInput[];
+  /** Obrigatório ao atualizar. */
+  atualizado_em?: string;
+}
+
+export interface OrcamentoInsumosItem {
+  id: number;
+  orcamento_id: number;
+  produto_id: number;
+  descricao: string;
+  categoria: string;
+  quantidade: number;
+  valor_unitario: number;
+  valor_total: number;
+  /** Saldo atual do produto (pode ter mudado desde que o orçamento foi feito). */
+  saldo_estoque?: number | null;
+}
+
+/** Cabeçalho vindo do Rust (`OrcamentoInsumosRow`). Os valores já vêm calculados pelo backend. */
+
+export interface OrcamentoInsumosItemInput {
+  produto_id: number;
+  quantidade: number;
+  valor_unitario: number;
+}
+
+export interface OrcamentoPublicado {
+  versaoId: number;
+  versao: number;
+  nova: boolean;
+}
+
+export interface PaginatedResult<T> {
+  items: T[];
+  total: number;
+  belowMinimum?: number;
+}
+
+/**
+ * Movimentação de entrada/saída de estoque.
+ * Espelha a tabela `movimentacoes_estoque` em db.rs.
+ *
+ * Usado por: useInsumos hook (registrarMovimentacao), Insumos.tsx
+ */
+
+export interface PersonalizacaoPerfilInput {
+  nome: string;
+  avatar_icone: string | null;
+  avatar_cor: string | null;
+  tema: "light" | "dark" | null;
+  concluir_onboarding: boolean;
+}
+
+export interface PortalAjusteInfo {
+  acao: "NENHUMA" | "VERSAO_PUBLICADA" | "NOVA_APROVACAO_PUBLICADA" | "VALOR_ATUALIZADO" | "NAO_PUBLICADA";
+  versao?: number | null;
+  mensagem?: string | null;
+  aviso?: string | null;
+}
+
+/** Prorroga o prazo de aprovação do orçamento → Rust: prorrogar_prazo_orcamento */
+
+export interface PreparoAcessoPortal {
+  destinatario: DestinatarioOrcamento;
+  portalAtivo: boolean;
+  credenciais: { usuario: string; senha: string } | null;
+  senhaExistente: boolean;
+  acessoConcedido: boolean;
+}
+
+export interface ProrrogarPrazoInput {
+  equipamentoId: number;
+  /** AAAA-MM-DD */
+  novoPrazo: string;
+  expectedUpdatedEm: string;
+  /** Confirma que a prorrogação anula a resposta do cliente ainda não aplicada. */
+  confirmarRespostaPendente?: boolean;
+}
+
+export interface PublicStatusLinkCreated {
+  url: string;
+  expiresAt: string;
+}
+
+export interface PublicStatusLinkInfo {
+  status: "ativo" | "expirado" | "revogado";
+  createdAt?: string | null;
+  expiresAt?: string | null;
+  lastAccessAt?: string | null;
+}
+
+export interface RespostaOrcamentoInfo {
+  id: number;
+  /** PORTAL_CLIENTE: contato autorizado no Portal do Cliente. PORTAL (link de decisão) e EQUIPE ficaram só no histórico. */
+  origem: "PORTAL" | "EQUIPE" | "PORTAL_CLIENTE";
+  decisao: DecisaoOrcamento;
+  registradaEm: string;
+  registradaPor?: string | null;
+  motivo?: string | null;
+  aplicadaEm?: string | null;
+  contato?: string | null;
+  aplicadaPeloSistema?: boolean;
+  efetivacaoErro?: string | null;
+  efetivacaoFalhouEm?: string | null;
+  /** Ordem de compra informada pelo cliente ao aprovar no portal. */
+  ordemCompra?: string | null;
+}
+
+export interface ResultadoEnvioWhatsapp {
+  pedidoId?: number | null;
+  tentativaId?: number | null;
+  estado: EstadoEnvioWhatsapp;
+  ultimoEstado?: string | null;
+  mensagem?: string | null;
+  senhaRetida?: boolean;
+  sucesso?: boolean;
+  erro?: string;
+}
+
+export interface ResultadoProrrogacao {
+  prorrogado: boolean;
+  respostaPendente: RespostaPendenteAjuste | null;
+  equipamento: Equipamento | null;
+  portal: PortalAjusteInfo;
+}
+
+/** RESTAURAR_ORIGINAL volta à versão enviada ao cliente; MANTER_ATUAL desfaz só a decisão. */
+
+export const STATUS_ORCAMENTO_INSUMOS = [
+  "RASCUNHO",
+  "ENVIADO",
+  "APROVADO",
+  "REPROVADO",
+  "CANCELADO",
+  "ENTREGUE",
+] as const;
+
+export interface SolicitacaoOrcamentoInfo {
+  id: number;
+  /** DUVIDA com o link aberto; MUDANCA depois da decisão aplicada; NEGOCIAR pelo Portal do Cliente. */
+  tipo: "DUVIDA" | "MUDANCA" | "NEGOCIAR";
+  mensagem: string;
+  criadaEm: string;
+  tratadaEm?: string | null;
+  contato?: string | null;
+  /** Telefone e e-mail que o cliente deixou na solicitação para retorno. */
+  contatoTelefone?: string | null;
+  contatoEmail?: string | null;
+}
+
+export interface SolicitarEnvioWhatsappInput {
+  equipamento_id: number;
+  tipo: TipoEnvioWhatsapp;
+  /** Senha do portal gerada na sessão; segue só no pedido e não é registrada. */
+  senha_portal?: string;
+  /** Gesto explícito do operador: cria outra tentativa do mesmo pedido. */
+  reenvio_manual?: boolean;
+  /** Confirma que uma tentativa de resultado incerto pode ser repetida. */
+  confirmar_incerto?: boolean;
+}
+
+export type StatusOrcamentoInsumos = (typeof STATUS_ORCAMENTO_INSUMOS)[number];
+
+/** Item do orçamento, com nome e categoria copiados do produto no momento do orçamento. */
+
+export type TipoEnvioWhatsapp = "orcamento_informativo" | "equipamento_pronto";
+

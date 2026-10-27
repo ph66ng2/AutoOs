@@ -284,7 +284,8 @@ export class SupabaseEquipamentosRepository implements EquipamentosRepository<st
 const tauriEquipamentosRepository: EquipamentosRepository<number> = {
   listar: (busca, status) => db.listarEquipamentos(busca, status),
   async listarPorClienteId(clienteId) {
-    return (await db.listarEquipamentos()).filter((equipment) => equipment.cliente_id === clienteId);
+    const nomes: string[] = [];
+    return db.listarEquipamentosCliente(clienteId, nomes);
   },
   async listarPagina(busca, status, page, ordenacao) {
     return db.listarEquipamentosPaginados(busca, status, Math.max(0, page - 1), ordenacao);

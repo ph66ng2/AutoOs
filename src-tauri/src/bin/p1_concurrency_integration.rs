@@ -78,7 +78,7 @@ async fn main() -> Result<()> {
             data_entrada: "2026-04-28".to_string(),
             cliente_id: Some(cliente.id),
             cliente_nome: cliente.nome.clone(),
-            cliente_telefone: Some(cliente.telefone.clone()),
+            cliente_telefone: cliente.telefone.clone(),
             cliente_email: cliente.email.clone(),
             observacoes: Some("p1_concurrency_integration:create".to_string()),
             ..EquipamentoInput::default()
@@ -240,7 +240,7 @@ async fn run_client_concurrency(cliente_id: i32, cliente: &commands::types::Clie
         nome_fantasia: cliente.nome_fantasia.clone(),
         inscricao_estadual: cliente.inscricao_estadual.clone(),
         cpf_cnpj: cliente.cpf_cnpj.clone(),
-        telefone: cliente.telefone.clone(),
+        telefone: cliente.telefone.clone().unwrap_or_default(),
         telefone_secundario: cliente.telefone_secundario.clone(),
         email: Some(format!("cliente-a.{}@autoos.local", suffix)),
         cep: cliente.cep.clone(),
@@ -252,8 +252,10 @@ async fn run_client_concurrency(cliente_id: i32, cliente: &commands::types::Clie
         uf: cliente.uf.clone(),
         receber_email: cliente.receber_email,
         receber_whatsapp: cliente.receber_whatsapp,
+        exige_ordem_compra: cliente.exige_ordem_compra,
         observacoes: Some("p1_concurrency_integration:client-a".to_string()),
         atualizado_em: base_token.clone(),
+        contato_inicial: None,
     };
 
     let update_b = ClienteInput {
@@ -265,7 +267,7 @@ async fn run_client_concurrency(cliente_id: i32, cliente: &commands::types::Clie
         nome_fantasia: cliente.nome_fantasia.clone(),
         inscricao_estadual: cliente.inscricao_estadual.clone(),
         cpf_cnpj: cliente.cpf_cnpj.clone(),
-        telefone: cliente.telefone.clone(),
+        telefone: cliente.telefone.clone().unwrap_or_default(),
         telefone_secundario: cliente.telefone_secundario.clone(),
         email: Some(format!("cliente-b.{}@autoos.local", suffix)),
         cep: cliente.cep.clone(),
@@ -277,8 +279,10 @@ async fn run_client_concurrency(cliente_id: i32, cliente: &commands::types::Clie
         uf: cliente.uf.clone(),
         receber_email: cliente.receber_email,
         receber_whatsapp: cliente.receber_whatsapp,
+        exige_ordem_compra: cliente.exige_ordem_compra,
         observacoes: Some("p1_concurrency_integration:client-b".to_string()),
         atualizado_em: base_token,
+        contato_inicial: None,
     };
 
     let left = {
@@ -527,6 +531,11 @@ async fn cleanup_state(pool: &PgPool, cleanup: CleanupState) -> Result<()> {
     }
 
     if let Some(cliente_id) = cleanup.cliente_id {
+        sqlx::query("DELETE FROM cliente_contatos WHERE cliente_id = $1")
+            .bind(cliente_id)
+            .execute(pool)
+            .await
+            .context("failed to cleanup temporary client contacts")?;
         sqlx::query("DELETE FROM clientes WHERE id = $1")
             .bind(cliente_id)
             .execute(pool)

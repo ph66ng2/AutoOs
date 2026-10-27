@@ -5,6 +5,8 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const databaseUrl = process.env.AUTOOS_MIGRATION_DATABASE_URL;
+const minimumAppliedVersion = 28;
+const ciMode = process.env.AUTOOS_MIGRATION_MODE === "ci";
 if (!databaseUrl) {
   console.error("Defina AUTOOS_MIGRATION_DATABASE_URL para conferir o histórico antes de migrar.");
   process.exit(2);
@@ -73,8 +75,12 @@ function query(sql) {
 }
 
 if (query("SELECT to_regclass('public._sqlx_migrations') IS NOT NULL") === "f") {
-  console.log("SQLX_DATABASE_HISTORY_OK applied=0 (sem tabela de histórico)");
-  process.exit(0);
+  if (ciMode) {
+    console.log("SQLX_DATABASE_HISTORY_OK applied=0 (sem tabela de histórico)");
+    process.exit(0);
+  }
+  console.error("SQLX_DATABASE_HISTORY_INCOMPATIBLE: tabela _sqlx_migrations ausente.");
+  process.exit(1);
 }
 
 const rows = query("SELECT version, success, encode(checksum, 'hex') FROM public._sqlx_migrations ORDER BY version");
@@ -106,11 +112,18 @@ for (let version = 1; version <= Math.min(highestApplied, Math.max(...checksums.
     errors.push(`Versão ${String(version).padStart(4, "0")} ausente no histórico aplicado.`);
   }
 }
+if (!ciMode && highestApplied < minimumAppliedVersion) {
+  errors.push(`Histórico SQLx incompleto: exigidas 0001–${String(minimumAppliedVersion).padStart(4, "0")}; última versão registrada ${String(highestApplied).padStart(4, "0")}.`);
+}
 
 if (errors.length) {
   console.error("SQLX_DATABASE_HISTORY_INCOMPATIBLE: migração bloqueada antes de qualquer alteração.");
   for (const error of errors) console.error(`- ${error}`);
-  console.error("Para a variante 0023 da master, use scripts/reconcile-sqlx-master-0023.mjs para conferir o schema e --apply para reconciliar após backup. Outras divergências exigem auditoria manual.");
+  if (!ciMode && highestApplied < minimumAppliedVersion) {
+    console.error("Audite as versões ausentes antes de migrar. O reconciliador da 0023 não preenche o histórico anterior.");
+  } else {
+    console.error("Para a variante 0023 da master, use scripts/reconcile-sqlx-master-0023.mjs para conferir o schema e --apply para reconciliar após backup. Outras divergências exigem auditoria manual.");
+  }
   process.exit(1);
 }
 

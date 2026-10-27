@@ -47,8 +47,11 @@ fn required_concurrency_token(token: Option<&str>) -> Result<String, String> {
 }
 
 fn duplicate_service_name_message(error: &sqlx::Error) -> Option<String> {
-    let lower = error.to_string().to_lowercase();
-    if lower.contains("ux_servicos_catalogo_nome_ativo") {
+    let database = error.as_database_error()?;
+    if database.code().as_deref() != Some("23505") {
+        return None;
+    }
+    if database.constraint() == Some("ux_servicos_catalogo_nome_ativo") {
         return Some("Já existe um serviço ativo com esse nome.".to_string());
     }
     None
@@ -97,7 +100,7 @@ async fn query_service_page(
         .build_query_scalar::<i64>()
         .fetch_one(pool)
         .await
-        .map_err(|error| format!("Erro ao contar serviços: {}", error))?;
+        .map_err(super::operator_errors::mapear_erro_sql)?;
 
     let safe_page = page.unwrap_or(0).max(0) as i64;
     let mut items_query = QueryBuilder::<Postgres>::new(SERVICO_CATALOGO_SELECT);
@@ -112,7 +115,7 @@ async fn query_service_page(
         .build_query_as::<ServicoCatalogoRow>()
         .fetch_all(pool)
         .await
-        .map_err(|error| format!("Erro ao listar serviços: {}", error))?;
+        .map_err(super::operator_errors::mapear_erro_sql)?;
 
     Ok(PaginatedResult {
         items,
@@ -154,7 +157,7 @@ async fn validate_suggested_products_belong_to_company(
     .bind(&product_ids)
     .fetch_all(pool)
     .await
-    .map_err(|error| format!("Erro ao validar peças vinculadas: {}", error))?;
+    .map_err(super::operator_errors::mapear_erro_sql)?;
 
     if owned_ids.len() != product_ids.len() {
         return Err("Uma peça vinculada não pertence à empresa ativa ou está inativa.".to_string());
@@ -218,7 +221,7 @@ pub async fn listar_servicos_catalogo_ativos() -> Result<Vec<ServicoCatalogoRow>
         .await
         .map_err(|e| {
             error!("Erro ao listar serviços ativos do catálogo: {}", e);
-            e.to_string()
+            super::operator_errors::mapear_erro_sql(e)
         })
 }
 
@@ -235,7 +238,7 @@ pub async fn buscar_servico(id: i32) -> Result<ServicoCatalogoRow, String> {
         .await
         .map_err(|e| {
             error!("Serviço {} não encontrado: {}", id, e);
-            e.to_string()
+            super::operator_errors::mapear_erro_sql(e)
         })
 }
 
@@ -271,7 +274,7 @@ pub async fn criar_servico(input: ServicoCatalogoInput) -> Result<ServicoCatalog
             return message;
         }
         error!("Erro ao criar serviço '{}': {}", nome, e);
-        e.to_string()
+        super::operator_errors::erro_sql_para_operador(&e)
     })?;
 
     record_security_event(
@@ -324,7 +327,7 @@ pub async fn atualizar_servico(id: i32, input: ServicoCatalogoInput) -> Result<S
             return message;
         }
         error!("Erro ao atualizar serviço {}: {}", id, e);
-        e.to_string()
+        super::operator_errors::erro_sql_para_operador(&e)
     })?
     .rows_affected();
 
@@ -358,7 +361,7 @@ pub async fn deletar_servico(id: i32) -> Result<bool, String> {
         .await
         .map_err(|e| {
             error!("Erro ao desativar serviço {}: {}", id, e);
-            e.to_string()
+            super::operator_errors::mapear_erro_sql(e)
         })?;
 
     let deleted = result.rows_affected() > 0;

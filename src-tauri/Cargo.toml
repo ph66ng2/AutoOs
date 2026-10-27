@@ -46,12 +46,20 @@ name = "p1_critical_integration"
 path = "src/bin/p1_critical_integration.rs"
 
 [[bin]]
+name = "test_whatsapp_queue"
+path = "src/bin/test_whatsapp_queue.rs"
+
+[[bin]]
 name = "p1_communication_integration"
 path = "src/bin/p1_communication_integration.rs"
 
 [[bin]]
 name = "test_auth_inactivity"
 path = "src/bin/test_auth_inactivity.rs"
+
+[[bin]]
+name = "test_codigo_primeiro_acesso"
+path = "src/bin/test_codigo_primeiro_acesso.rs"
 
 [[bin]]
 name = "test_auth_optional_pin"
@@ -74,8 +82,16 @@ name = "test_auth_integration"
 path = "src/bin/test_auth_integration.rs"
 
 [[bin]]
+name = "test_orcamentos_insumos"
+path = "src/bin/test_orcamentos_insumos.rs"
+
+[[bin]]
 name = "test_patrimonio_cycles"
 path = "src/bin/test_patrimonio_cycles.rs"
+
+[[bin]]
+name = "test_orcamento_envio"
+path = "src/bin/test_orcamento_envio.rs"
 
 [dependencies]
 tauri = { version = "2.11.0", features = [] }

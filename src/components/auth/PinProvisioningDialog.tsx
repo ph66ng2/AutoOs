@@ -14,6 +14,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Card, CardContent } from "@/components/ui/card";
+import { notificarErro } from "@/hooks/useNotification";
 
 type PinProvisioningDialogProps = {
   open: boolean;
@@ -80,7 +81,7 @@ export function PinProvisioningDialog({
       } else {
         setError("Erro ao validar código. Verifique sua conexão.");
       }
-      toast.error("Erro na validação", { description: msg });
+      notificarErro("Perfil", "Validar código de enrollment", err);
     } finally {
       setLoading(false);
     }
@@ -113,7 +114,7 @@ export function PinProvisioningDialog({
       toast.success("PIN configurado com sucesso");
     } catch (err) {
       setError("Erro ao configurar PIN. Tente novamente.");
-      toast.error("Erro ao provisionar PIN", { description: String(err) });
+      notificarErro("Perfil", "Provisionar PIN", err);
     } finally {
       setLoading(false);
     }

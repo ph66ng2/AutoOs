@@ -39,4 +39,16 @@ describe("useClientes — adapter de domínio", () => {
 
     expect(response).toEqual({ sucesso: false, erro: "Error: Você está sem conexão" });
   });
+
+  it("repassa o contato inicial do cadastro PJ para o adapter", async () => {
+    const data = repository();
+    const { result } = renderHook(() => useClientes({ repository: data }));
+    await waitFor(() => expect(result.current.loading).toBe(false));
+
+    const payload = { nome: "Oficina", tipo_pessoa: "PJ" as const, telefone: "11", ativo: true };
+    const contato = { nome: "Ana", telefone: "71988887777" };
+    await act(async () => { await result.current.criar(payload, contato); });
+
+    expect(data.criar).toHaveBeenCalledWith(payload, contato);
+  });
 });

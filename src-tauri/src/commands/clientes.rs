@@ -8,7 +8,9 @@
 //! ║  - deletar_cliente: DELETE por ID                            ║
 //! ╚══════════════════════════════════════════════════════════════╝
 
-use crate::commands::types::{ClienteInput, ClienteRow, PaginatedResult, CLIENTE_SELECT};
+use crate::commands::types::{
+    ClienteInput, ClienteRow, ContatoInicialInput, PaginatedResult, CLIENTE_SELECT,
+};
 use crate::commands::auth::{
     record_security_event, require_active_session_company_id, require_permission,
     PERMISSION_DELETE_RECORDS,
@@ -32,6 +34,25 @@ fn digits_only(value: Option<&str>) -> String {
         .chars()
         .filter(|character| character.is_ascii_digit())
         .collect()
+}
+
+const MSG_CONTATO_OBRIGATORIO: &str = "Informe um contato com celular para receber orçamentos.";
+
+/// Valida o contato inicial de cliente novo. Devolve (nome, telefone só com dígitos, e-mail).
+fn validar_contato_inicial(
+    contato: Option<&ContatoInicialInput>,
+) -> Result<(String, String, Option<String>), String> {
+    let contato = contato.ok_or_else(|| MSG_CONTATO_OBRIGATORIO.to_string())?;
+    let nome = contato.nome.trim();
+    let telefone = digits_only(Some(contato.telefone.as_str()));
+    if nome.is_empty() || !(10..=11).contains(&telefone.len()) {
+        return Err(MSG_CONTATO_OBRIGATORIO.to_string());
+    }
+    Ok((
+        nome.to_string(),
+        telefone,
+        optional_text(contato.email.as_deref()),
+    ))
 }
 
 fn normalize_tipo_pessoa(tipo_pessoa: Option<&str>, documento: Option<&str>, cpf_cnpj: Option<&str>) -> Result<String, String> {
@@ -201,22 +222,23 @@ async fn query_client_page(
         .build_query_scalar::<i64>()
         .fetch_one(pool)
         .await
-        .map_err(|error| format!("Erro ao contar clientes: {}", error))?;
+        .map_err(super::operator_errors::mapear_erro_sql)?;
 
     let safe_page = page.unwrap_or(0).max(0) as i64;
+    let page_limit = i64::from(page_size);
     let mut items_query = QueryBuilder::<Postgres>::new(CLIENTE_SELECT);
     add_client_filters(&mut items_query, empresa_id, busca);
     items_query
         .push(" ORDER BY id DESC LIMIT ")
-        .push_bind(page_size)
+        .push_bind(page_limit)
         .push(" OFFSET ")
-        .push_bind(safe_page * i64::from(page_size));
+        .push_bind(safe_page * page_limit);
 
     let items = items_query
         .build_query_as::<ClienteRow>()
         .fetch_all(pool)
         .await
-        .map_err(|error| format!("Erro ao listar clientes: {}", error))?;
+        .map_err(super::operator_errors::mapear_erro_sql)?;
 
     Ok(PaginatedResult {
         items,
@@ -236,7 +258,9 @@ pub async fn listar_clientes(page: Option<i32>, busca: Option<String>) -> Result
     })?;
     let empresa_id = require_active_session_company_id(&pool).await?;
 
-    let offset = page.unwrap_or(0) * PAGE_SIZE;
+    let safe_page = i64::from(page.unwrap_or(0).max(0));
+    let page_limit = i64::from(PAGE_SIZE);
+    let offset = safe_page * page_limit;
     let mut query_builder = sqlx::QueryBuilder::<sqlx::Postgres>::new(format!(
         "{} WHERE ativo = true AND empresa_id = ",
         CLIENTE_SELECT,
@@ -275,7 +299,7 @@ pub async fn listar_clientes(page: Option<i32>, busca: Option<String>) -> Result
     }
 
     query_builder.push(" ORDER BY id DESC LIMIT ");
-    query_builder.push_bind(PAGE_SIZE);
+    query_builder.push_bind(page_limit);
     query_builder.push(" OFFSET ");
     query_builder.push_bind(offset);
 
@@ -285,7 +309,7 @@ pub async fn listar_clientes(page: Option<i32>, busca: Option<String>) -> Result
         .await
         .map_err(|e| {
             error!("Erro ao listar clientes: {}", e);
-            e.to_string()
+            super::operator_errors::mapear_erro_sql(e)
         })?;
 
     info!("Clientes listados: {} itens (página {})", rows.len(), page.unwrap_or(0));
@@ -327,7 +351,7 @@ pub async fn buscar_cliente(id: i32) -> Result<ClienteRow, String> {
         .await
         .map_err(|e| {
             error!("Cliente {} não encontrado: {}", id, e);
-            e.to_string()
+            super::operator_errors::mapear_erro_sql(e)
         })?;
 
     info!("Cliente {} encontrado", id);
@@ -370,16 +394,32 @@ pub async fn criar_cliente(input: ClienteInput) -> Result<ClienteRow, String> {
         }
     }
 
+    let contato = if tipo_pessoa == "PJ" {
+        Some(validar_contato_inicial(input.contato_inicial.as_ref())?)
+    } else {
+        let telefone = digits_only(Some(input.telefone.as_str()));
+        if (10..=11).contains(&telefone.len()) {
+            Some((
+                nome_base.clone(),
+                telefone,
+                optional_text(input.email.as_deref()),
+            ))
+        } else {
+            None
+        }
+    };
+
+    let mut tx = pool.begin().await.map_err(|e| e.to_string())?;
     let row = sqlx::query(
         r#"
         INSERT INTO clientes (
             empresa_id, nome, tipo_pessoa, documento, razao_social, nome_fantasia,
             inscricao_estadual, cpf_cnpj, telefone, telefone_secundario, email,
             cep, endereco, numero, complemento, bairro, cidade, uf,
-            receber_email, receber_whatsapp, observacoes
+            receber_email, receber_whatsapp, observacoes, exige_ordem_compra
         ) VALUES (
             $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11,
-            $12, $13, $14, $15, $16, $17, $18, $19, $20, $21
+            $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22
         ) RETURNING id
         "#,
     )
@@ -401,22 +441,44 @@ pub async fn criar_cliente(input: ClienteInput) -> Result<ClienteRow, String> {
     .bind(optional_text(input.bairro.as_deref()))
     .bind(optional_text(input.cidade.as_deref()))
     .bind(uf)
-    .bind(input.receber_email)
-    .bind(input.receber_whatsapp)
+    .bind(input.receber_email.unwrap_or(true))
+    .bind(input.receber_whatsapp.unwrap_or(true))
     .bind(optional_text(input.observacoes.as_deref()))
-    .fetch_one(&pool)
+    .bind(input.exige_ordem_compra.unwrap_or(false))
+    .fetch_one(&mut *tx)
     .await;
     let row = match row {
         Ok(row) => row,
         Err(e) => {
             error!("Erro ao criar cliente: {}", e);
+            let _ = tx.rollback().await;
             return Err(duplicate_client_document_message(&e, &pool, empresa_id, &document_digits, None)
                 .await
-                .unwrap_or_else(|| e.to_string()));
+                .unwrap_or_else(|| super::operator_errors::erro_sql_para_operador(&e)));
         }
     };
 
     let id: i32 = row.get("id");
+    if let Some((nome, telefone, email)) = contato {
+        let inserido = sqlx::query(
+            "INSERT INTO cliente_contatos (empresa_id, cliente_id, nome, email, telefone)
+             VALUES ($1, $2, $3, $4, $5)",
+        )
+        .bind(empresa_id)
+        .bind(id)
+        .bind(nome)
+        .bind(email)
+        .bind(telefone)
+        .execute(&mut *tx)
+        .await;
+        if let Err(e) = inserido {
+            error!("Erro ao criar contato inicial do cliente {}: {}", id, e);
+            let _ = tx.rollback().await;
+            return Err(super::operator_errors::erro_sql_para_operador(&e));
+        }
+    }
+    tx.commit().await.map_err(|e| e.to_string())?;
+
     info!("Cliente criado: id={}", id);
     buscar_cliente(id).await
 }
@@ -466,7 +528,10 @@ pub async fn atualizar_cliente(id: i32, input: ClienteInput) -> Result<ClienteRo
             telefone = $8, telefone_secundario = $9, email = $10,
             cep = $11, endereco = $12, numero = $13, complemento = $14,
             bairro = $15, cidade = $16, uf = $17,
-            receber_email = $18, receber_whatsapp = $19, observacoes = $20,
+            receber_email = COALESCE($18, receber_email),
+            receber_whatsapp = COALESCE($19, receber_whatsapp),
+            observacoes = $20,
+            exige_ordem_compra = COALESCE($24, exige_ordem_compra),
             atualizado_em = NOW()
         WHERE id = $21 AND atualizado_em = $22::TIMESTAMPTZ
           AND empresa_id = $23
@@ -495,6 +560,7 @@ pub async fn atualizar_cliente(id: i32, input: ClienteInput) -> Result<ClienteRo
     .bind(id)
     .bind(concurrency_token)
     .bind(empresa_id)
+    .bind(input.exige_ordem_compra)
     .execute(&pool)
     .await;
     let updated_rows = match updated_rows {
@@ -503,7 +569,7 @@ pub async fn atualizar_cliente(id: i32, input: ClienteInput) -> Result<ClienteRo
             error!("Erro ao atualizar cliente {}: {}", id, e);
             return Err(duplicate_client_document_message(&e, &pool, empresa_id, &document_digits, Some(id))
                 .await
-                .unwrap_or_else(|| e.to_string()));
+                .unwrap_or_else(|| super::operator_errors::erro_sql_para_operador(&e)));
         }
     };
 
@@ -532,7 +598,7 @@ pub async fn deletar_cliente(id: i32) -> Result<bool, String> {
         .await
         .map_err(|e| {
             error!("Erro ao deletar cliente {}: {}", id, e);
-            e.to_string()
+            super::operator_errors::mapear_erro_sql(e)
         })?;
 
     let deleted = result.rows_affected() > 0;
@@ -549,4 +615,39 @@ pub async fn deletar_cliente(id: i32) -> Result<bool, String> {
         error!("Cliente {} não encontrado para deleção", id);
     }
     Ok(deleted)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn contato(nome: &str, telefone: &str) -> ContatoInicialInput {
+        ContatoInicialInput {
+            nome: nome.to_string(),
+            telefone: telefone.to_string(),
+            email: Some(" a@b.com ".to_string()),
+        }
+    }
+
+    #[test]
+    fn contato_inicial_ausente_e_rejeitado() {
+        assert_eq!(validar_contato_inicial(None), Err(MSG_CONTATO_OBRIGATORIO.to_string()));
+    }
+
+    #[test]
+    fn contato_inicial_sem_nome_ou_telefone_curto_e_rejeitado() {
+        assert!(validar_contato_inicial(Some(&contato("  ", "11999999999"))).is_err());
+        assert!(validar_contato_inicial(Some(&contato("Ana", "119999999"))).is_err());
+        assert!(validar_contato_inicial(Some(&contato("Ana", "119999999999"))).is_err());
+    }
+
+    #[test]
+    fn contato_inicial_valido_normaliza_campos() {
+        let (nome, tel, email) =
+            validar_contato_inicial(Some(&contato(" Ana ", "(11) 99999-9999"))).unwrap();
+        assert_eq!(nome, "Ana");
+        assert_eq!(tel, "11999999999");
+        assert_eq!(email.as_deref(), Some("a@b.com"));
+        assert!(validar_contato_inicial(Some(&contato("Ana", "1133334444"))).is_ok());
+    }
 }

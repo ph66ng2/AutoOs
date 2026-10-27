@@ -22,12 +22,16 @@ import { formatDatePtBr } from "@/lib/date-utils";
 import { IS_SAAS_BUILD } from "@/lib/runtime-mode";
 import { loadSaasAuthConfiguration } from "@/lib/saas-auth";
 import { carregarRepositorioComunicacoes } from "@/lib/data/comunicacoes-repository";
+import { db } from "@/lib/db";
 import type {
   Comunicacao,
   Equipamento,
   EquipamentoId,
+  EstadoEnvioWhatsapp,
   PecaNecessaria,
+  ResultadoEnvioWhatsapp,
   ServicoNecessario,
+  TipoEnvioWhatsapp,
   Verificacao,
   WhatsappSendRequest,
 } from "@/types";
@@ -57,7 +61,7 @@ async function enviarWhatsapp(request: WhatsappSendRequest): Promise<void> {
 }
 
 /** Adiciona DDI 55 (Brasil) se não presente. Remove caracteres não-numéricos */
-function formatarTelefone(telefone: string): string {
+export function formatarTelefone(telefone: string): string {
   const numeros = telefone.replace(/\D/g, "");
   const normalizado = numeros.startsWith("55") ? numeros : "55" + numeros;
   if (normalizado.length < 12) {
@@ -246,4 +250,67 @@ Aguardamos você! 😊`;
       return { sucesso: false, erro: erroMsg };
     }
   },
+
+  async enviarLinkStatusPublico(equipamento: Equipamento<EquipamentoId>, url: string) {
+    const recipient = resolveRecipient(equipamento, "telefone");
+    if (!recipient.endereco) {
+      return { sucesso: false, erro: "Cliente não possui telefone cadastrado" };
+    }
+    const mensagem = `Olá, ${recipient.nome || "cliente"}!\nAcompanhe o status do equipamento:\n${url}`;
+    try {
+      const telefone = formatarTelefone(recipient.endereco);
+      await enviarWhatsapp({ contato: telefone, mensagem });
+      return { sucesso: true };
+    } catch (error: unknown) {
+      return { sucesso: false, erro: error instanceof Error ? error.message : String(error) };
+    }
+  },
+
+  async solicitarEnvio(
+    equipamentoId: number,
+    tipo: TipoEnvioWhatsapp,
+    opcoes: { senhaPortal?: string; reenvioManual?: boolean; confirmarIncerto?: boolean } = {},
+  ): Promise<ResultadoSolicitacaoWhatsapp> {
+    try {
+      const resultado = await db.solicitarEnvioWhatsapp({
+        equipamento_id: equipamentoId,
+        tipo,
+        senha_portal: opcoes.senhaPortal,
+        reenvio_manual: opcoes.reenvioManual,
+        confirmar_incerto: opcoes.confirmarIncerto,
+      });
+      return traduzirResultado(resultado);
+    } catch (error: unknown) {
+      const erro = typeof error === "string" ? error : (error instanceof Error ? error.message : "Falha ao solicitar o envio de WhatsApp");
+      return { sucesso: false, estado: "FALHOU", erro };
+    }
+  },
 };
+
+export interface ResultadoSolicitacaoWhatsapp {
+  sucesso: boolean;
+  estado: EstadoEnvioWhatsapp;
+  erro?: string;
+  enfileirada?: boolean;
+  jaSolicitado?: boolean;
+  requerConfirmacao?: boolean;
+  mensagem?: string;
+  senhaRetida?: boolean;
+}
+
+function traduzirResultado(resultado: ResultadoEnvioWhatsapp): ResultadoSolicitacaoWhatsapp {
+  const mensagem = resultado.mensagem ?? undefined;
+  const senha = resultado.senhaRetida === undefined ? {} : { senhaRetida: resultado.senhaRetida };
+  switch (resultado.estado) {
+    case "ENVIADA":
+      return { sucesso: true, estado: resultado.estado, ...senha };
+    case "ENFILEIRADA":
+      return { sucesso: true, estado: resultado.estado, enfileirada: true, mensagem, ...senha };
+    case "JA_SOLICITADO":
+      return { sucesso: true, estado: resultado.estado, jaSolicitado: true, mensagem, ...senha };
+    case "REQUER_CONFIRMACAO":
+      return { sucesso: false, estado: resultado.estado, requerConfirmacao: true, erro: mensagem, mensagem, ...senha };
+    default:
+      return { sucesso: false, estado: resultado.estado, erro: mensagem ?? "Falha ao enviar WhatsApp", mensagem, ...senha };
+  }
+}

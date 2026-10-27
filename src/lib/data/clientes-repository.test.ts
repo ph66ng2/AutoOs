@@ -67,6 +67,37 @@ describe("SupabaseClientesRepository", () => {
     expect(JSON.parse(String(init?.body))).toMatchObject({ nome: "Ana", empresa_id: companyId });
   });
 
+  it("grava o contato inicial na mesma criação Online", async () => {
+    const clientId = "22222222-2222-4222-8222-222222222222";
+    const fetcher = vi.fn<typeof fetch>()
+      .mockResolvedValueOnce(new Response(JSON.stringify([{ id: clientId, nome: "Oficina", telefone: "11", empresa_id: companyId }]), { status: 201 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify([{
+        id: "33333333-3333-4333-8333-333333333333",
+        empresa_id: companyId,
+        cliente_id: clientId,
+        nome: "Ana",
+        telefone: "71988887777",
+        ativo: true,
+      }]), { status: 201 }));
+    const repository = new SupabaseClientesRepository(sessionFromSaasSession(session(), configuration), fetcher);
+
+    await repository.criar(
+      { nome: "Oficina", tipo_pessoa: "PJ", telefone: "11", ativo: true },
+      { nome: "Ana", telefone: "71988887777", email: "ana@cliente.invalid" },
+    );
+
+    expect(fetcher).toHaveBeenCalledTimes(2);
+    expect(String(fetcher.mock.calls[1]![0])).toBe("https://staging.example.supabase.co/rest/v1/cliente_contatos");
+    expect(JSON.parse(String(fetcher.mock.calls[1]![1]?.body))).toMatchObject({
+      empresa_id: companyId,
+      cliente_id: clientId,
+      nome: "Ana",
+      telefone: "71988887777",
+      email: "ana@cliente.invalid",
+      ativo: true,
+    });
+  });
+
   it("converte sessão expirada e falta de rede em erros recuperáveis", async () => {
     const onlineSession = sessionFromSaasSession(session(), configuration);
     const expired = new SupabaseClientesRepository(onlineSession, vi.fn<typeof fetch>().mockResolvedValue(new Response("", { status: 401 })));

@@ -19,7 +19,7 @@
  * ║  USADO POR: App.tsx (rota /configuracoes)                   ║
  * ╚══════════════════════════════════════════════════════════════╝
  */
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
 import { toast } from "sonner";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -35,6 +35,7 @@ import { ConfiguracoesTabObservabilidade } from "@/pages/configuracoes/Configura
 import { ConfiguracoesTabSeguranca } from "@/pages/configuracoes/ConfiguracoesTabSeguranca";
 import { SMTP_DEFAULTS, type SmtpFormValues, type WhatsappFormValues } from "@/pages/configuracoes/configuracoes-shared";
 import { detectRestoreMode } from "@/pages/configuracoes/detect-restore-mode";
+import { abasConfiguracoes } from "@/pages/configuracoes/abas";
 import {
   SENSITIVE_PERMISSIONS,
   type DatabaseSchemaStatus,
@@ -43,7 +44,6 @@ import {
   type PostgresBackupToolsStatus,
   type SecurityAuditEvent,
   type SecurityProfile,
-  type SensitivePermission,
   type SmtpConfigInput,
   type WhatsappConfigInput,
 } from "@/types";
@@ -66,9 +66,24 @@ export default function Configuracoes() {
   const [photoTunnelStatus, setPhotoTunnelStatus] = useState<string | null>(null);
   const [photoTunnelToken, setPhotoTunnelToken] = useState("");
   const [photoTunnelPublicHost, setPhotoTunnelPublicHost] = useState("fotos.bmitag.com.br");
-  const [securityMessage, setSecurityMessage] = useState<string | null>(null);
+  const [securityFeedback, setSecurityFeedback] = useState<{ message: string; variant: "error" | "info" | "success" } | null>(null);
+  const securityMessage = securityFeedback?.message ?? null;
+  const setSecurityMessage = useCallback((message: string | null, variant: "error" | "info" | "success" = "error") => {
+    setSecurityFeedback(message ? { message, variant } : null);
+  }, []);
   const [securityAdminUnlocked, setSecurityAdminUnlocked] = useState(false);
-  const [tab, setTab] = useState("smtp");
+  const canConfigureSmtp = hasPermission(SENSITIVE_PERMISSIONS.CONFIG_SMTP);
+  const canConfigureWhatsapp = hasPermission(SENSITIVE_PERMISSIONS.CONFIG_WHATSAPP);
+  const canManagePortal = hasPermission(SENSITIVE_PERMISSIONS.MANAGE_STATUS_LINKS);
+  const canManageProfiles = hasPermission(SENSITIVE_PERMISSIONS.MANAGE_PROFILES);
+  const canConfigurePhotoTunnel = canConfigureSmtp;
+  const abas = abasConfiguracoes({
+    smtp: canConfigureSmtp,
+    whatsapp: canConfigureWhatsapp,
+    portal: canManagePortal,
+    admin: canManageProfiles,
+  });
+  const [tab, setTab] = useState<string>(abas.inicial);
   const [auditEvents, setAuditEvents] = useState<SecurityAuditEvent[]>([]);
   const [profilesCatalog, setProfilesCatalog] = useState<SecurityProfile[]>([]);
   const [securityBusy, setSecurityBusy] = useState(false);
@@ -77,12 +92,6 @@ export default function Configuracoes() {
   const [newPin, setNewPin] = useState("");
   const [confirmPin, setConfirmPin] = useState("");
   const [managedProfileId, setManagedProfileId] = useState<number | null>(null);
-  const [editProfileName, setEditProfileName] = useState("");
-  const [editProfileRole, setEditProfileRole] = useState("CUSTOM");
-  const [editPermissions, setEditPermissions] = useState<SensitivePermission[]>([]);
-  const [resetPin, setResetPin] = useState("");
-  const [resetPinConfirm, setResetPinConfirm] = useState("");
-  const [adminPinVerify, setAdminPinVerify] = useState("");
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [auditSearch, setAuditSearch] = useState("");
   const [auditOutcomeFilter, setAuditOutcomeFilter] = useState("ALL");
@@ -106,12 +115,6 @@ export default function Configuracoes() {
   const [supportError, setSupportError] = useState<string | null>(null);
   const [supportMessage, setSupportMessage] = useState<string | null>(null);
 
-  const permissionOptions = Object.values(SENSITIVE_PERMISSIONS);
-  const canConfigureSmtp = hasPermission(SENSITIVE_PERMISSIONS.CONFIG_SMTP);
-  const canConfigureWhatsapp = hasPermission(SENSITIVE_PERMISSIONS.CONFIG_WHATSAPP);
-  const canConfigurePhotoTunnel = canConfigureSmtp;
-  const canConfigureIntegrations = canConfigureSmtp || canConfigureWhatsapp;
-  const canManageProfiles = hasPermission(SENSITIVE_PERMISSIONS.MANAGE_PROFILES);
   const restoreMode = detectRestoreMode(restoreFilePath);
   const restoreReady = restoreMode === "pg_restore"
     ? !!backupToolsStatus?.pg_restore_available
@@ -158,23 +161,6 @@ export default function Configuracoes() {
       token: "",
     },
   });
-
-  function permissionsForRole(role: string, permissions: SensitivePermission[]) {
-    return role === "ADMIN" ? permissionOptions : permissions;
-  }
-
-  function togglePermission(
-    currentPermissions: SensitivePermission[],
-    permission: SensitivePermission,
-    setter: (value: SensitivePermission[]) => void,
-  ) {
-    if (currentPermissions.includes(permission)) {
-      setter(currentPermissions.filter((value) => value !== permission));
-      return;
-    }
-
-    setter([...currentPermissions, permission]);
-  }
 
   async function loadAuditEvents() {
     if (!canManageProfiles) {
@@ -365,10 +351,12 @@ export default function Configuracoes() {
   }, [canConfigurePhotoTunnel, accessStatus?.active_profile_id]);
 
   useEffect(() => {
-    if (!canConfigureIntegrations) {
-      setTab("seguranca");
+    if (!abas.integracoes) {
+      setTab("infra");
+    } else if (!canManageProfiles) {
+      setTab("smtp");
     }
-  }, [canConfigureIntegrations]);
+  }, [abas.integracoes, canManageProfiles]);
 
   useEffect(() => {
     if (!accessStatus?.profiles.length) {
@@ -390,12 +378,8 @@ export default function Configuracoes() {
       return;
     }
 
-    setEditProfileName(managedProfile.nome);
-    setEditProfileRole(managedProfile.role === "ADMIN" ? "ADMIN" : "CUSTOM");
-    setEditPermissions(managedProfile.permissions);
-    setResetPin("");
-    setResetPinConfirm("");
-  }, [managedProfile?.id]);
+    setSecurityMessage(null);
+  }, [managedProfile?.id, setSecurityMessage]);
 
   useEffect(() => {
     void loadAuditEvents();
@@ -406,8 +390,12 @@ export default function Configuracoes() {
   }, [canManageProfiles, accessStatus?.active_profile_id]);
 
   useEffect(() => {
+    if (!canManageProfiles) {
+      return;
+    }
+
     void loadSchemaStatus();
-  }, []);
+  }, [canManageProfiles]);
 
   useEffect(() => {
     void loadBackupToolsStatus();
@@ -418,6 +406,10 @@ export default function Configuracoes() {
   }, [canManageProfiles, accessStatus?.active_profile_id]);
 
   useEffect(() => {
+    if (!canManageProfiles) {
+      return;
+    }
+
     void loadInactivityConfig();
   }, [canManageProfiles, accessStatus?.active_profile_id]);
 
@@ -620,11 +612,6 @@ export default function Configuracoes() {
   }
 
   async function trocarMeuPin() {
-    if (!securityAdminUnlocked) {
-      setSecurityMessage("Desbloqueie a gestão de segurança com PIN/Admin para alterar PINs e perfis.");
-      return;
-    }
-
     if (newPin.length < 4) {
       setSecurityMessage("O novo PIN deve ter entre 4 e 8 dígitos.");
       return;
@@ -642,7 +629,7 @@ export default function Configuracoes() {
       setCurrentPin("");
       setNewPin("");
       setConfirmPin("");
-      setSecurityMessage("PIN do perfil ativo atualizado com sucesso.");
+      setSecurityMessage("PIN do perfil ativo atualizado com sucesso.", "success");
       await atualizarEstadoSeguranca();
     } catch (error: any) {
       setSecurityMessage(error?.message || error?.toString() || "Falha ao atualizar o PIN do perfil ativo.");
@@ -651,113 +638,9 @@ export default function Configuracoes() {
     }
   }
 
-  async function salvarPerfilAtual() {
-    if (!managedProfileId) return;
-    if (!securityAdminUnlocked) {
-      setSecurityMessage("Desbloqueie a gestão de segurança com PIN/Admin para alterar perfis.");
-      return;
-    }
-
-    if (editProfileRole === "CUSTOM" && editPermissions.length === 0) {
-      setSecurityMessage("Um perfil CUSTOM deve ter pelo menos uma permissão.");
-      return;
-    }
-
-    const permissions = permissionsForRole(editProfileRole, editPermissions);
-    setSecurityBusy(true);
-    setSecurityMessage(null);
-    try {
-      await SensitiveAccessService.updateProfile(managedProfileId, {
-        nome: editProfileName.trim(),
-        role: editProfileRole,
-        permissions,
-      }, adminPinVerify);
-      setAdminPinVerify("");
-      setSecurityMessage("Perfil atualizado com sucesso.");
-      await atualizarEstadoSeguranca();
-    } catch (error: any) {
-      setSecurityMessage(error?.message || error?.toString() || "Falha ao atualizar o perfil.");
-    } finally {
-      setSecurityBusy(false);
-    }
-  }
-
-  async function resetarPinPerfil() {
-    if (!managedProfileId) return;
-    if (!securityAdminUnlocked) {
-      setSecurityMessage("Desbloqueie a gestão de segurança com PIN/Admin para resetar PINs.");
-      return;
-    }
-
-    if (resetPin.length < 4) {
-      setSecurityMessage("O novo PIN deve ter entre 4 e 8 dígitos.");
-      return;
-    }
-
-    if (resetPin !== resetPinConfirm) {
-      setSecurityMessage("A confirmação do reset de PIN não confere.");
-      return;
-    }
-
-    setSecurityBusy(true);
-    setSecurityMessage(null);
-    try {
-      await SensitiveAccessService.resetProfilePin(managedProfileId, resetPin, adminPinVerify);
-      setResetPin("");
-      setResetPinConfirm("");
-      setAdminPinVerify("");
-      setSecurityMessage("PIN do perfil selecionado redefinido com sucesso.");
-      await atualizarEstadoSeguranca();
-    } catch (error: any) {
-      setSecurityMessage(error?.message || error?.toString() || "Falha ao redefinir o PIN do perfil.");
-    } finally {
-      setSecurityBusy(false);
-    }
-  }
-
-  async function desativarPerfilSelecionado() {
-    if (!managedProfileId) return;
-    if (!securityAdminUnlocked) {
-      setSecurityMessage("Desbloqueie a gestão de segurança com PIN/Admin para alterar perfis.");
-      return;
-    }
-
-    setSecurityBusy(true);
-    setSecurityMessage(null);
-    try {
-      await SensitiveAccessService.deactivateProfile(managedProfileId);
-      setSecurityMessage("Perfil desativado com sucesso.");
-      await atualizarEstadoSeguranca();
-    } catch (error: any) {
-      setSecurityMessage(error?.message || error?.toString() || "Falha ao desativar o perfil selecionado.");
-    } finally {
-      setSecurityBusy(false);
-    }
-  }
-
-  async function reativarPerfilSelecionado() {
-    if (!managedProfileId) return;
-    if (!securityAdminUnlocked) {
-      setSecurityMessage("Desbloqueie a gestão de segurança com PIN/Admin para alterar perfis.");
-      return;
-    }
-
-    setSecurityBusy(true);
-    setSecurityMessage(null);
-    try {
-      await SensitiveAccessService.reactivateProfile(managedProfileId);
-      setSecurityMessage("Perfil reativado com sucesso.");
-      await atualizarEstadoSeguranca();
-    } catch (error: any) {
-      setSecurityMessage(error?.message || error?.toString() || "Falha ao reativar o perfil selecionado.");
-    } finally {
-      setSecurityBusy(false);
-    }
-  }
-
   async function exportarAuditoriaCsv() {
     if (!filteredAuditEvents.length) {
-      setSecurityMessage("Nenhum evento de auditoria corresponde aos filtros atuais.");
+      setSecurityMessage("Nenhum evento de auditoria corresponde aos filtros atuais.", "info");
       return;
     }
 
@@ -789,7 +672,7 @@ export default function Configuracoes() {
         profileId: auditProfileFilter === "ALL" ? undefined : Number(auditProfileFilter),
         exportedCount: filteredAuditEvents.length,
       });
-      setSecurityMessage("CSV da auditoria exportado para a pasta temporária do app.");
+      setSecurityMessage("CSV da auditoria exportado para a pasta temporária do app.", "info");
     } catch (error: any) {
       setSecurityMessage(error?.message || error?.toString() || "Falha ao exportar a auditoria.");
     }
@@ -814,24 +697,24 @@ export default function Configuracoes() {
   async function handleSecurityAdminToggle(nextValue: boolean) {
     if (!nextValue) {
       setSecurityAdminUnlocked(false);
-      setSecurityMessage("Gestão de segurança bloqueada novamente.");
+      setSecurityMessage("Exclusão de perfis bloqueada novamente.", "info");
       return;
     }
 
     const liberado = await ensureSensitiveAccess({
-      title: "Desbloquear gestão de segurança",
-      description: "Informe o PIN do administrador para liberar alterações de perfis e PINs.",
+      title: "Liberar exclusão de perfis",
+      description: "Informe o PIN do administrador para liberar a exclusão permanente de perfis.",
       permission: SENSITIVE_PERMISSIONS.MANAGE_PROFILES,
     });
 
     if (!liberado) {
       setSecurityAdminUnlocked(false);
-      setSecurityMessage("Desbloqueio não autorizado. PIN/Admin obrigatório.");
+      setSecurityMessage("Exclusão de perfis não liberada. Confirme o PIN de administrador.");
       return;
     }
 
     setSecurityAdminUnlocked(true);
-    setSecurityMessage("Gestão de segurança liberada para esta sessão.");
+    setSecurityMessage("Exclusão de perfis liberada para esta sessão.", "info");
   }
 
   async function handleInactivityToggle(enabled: boolean) {
@@ -848,7 +731,7 @@ export default function Configuracoes() {
   }
 
   async function handleDeleteSuccess() {
-    setSecurityMessage("Perfil excluído permanentemente.");
+    setSecurityMessage("Perfil excluído permanentemente.", "success");
     await atualizarEstadoSeguranca();
   }
 
@@ -867,11 +750,11 @@ export default function Configuracoes() {
         <p className="text-muted-foreground">Defina parâmetros do sistema e integrações.</p>
       </div>
 
-      <Tabs value={tab} onValueChange={setTab} className="space-y-4">
+      <Tabs value={tab} onValueChange={(nextTab) => { setTab(nextTab); setSecurityMessage(null); }} className="space-y-4">
         <TabsList>
-          <TabsTrigger value="smtp" disabled={!canConfigureIntegrations}>Integrações</TabsTrigger>
-          <TabsTrigger value="infra">Banco</TabsTrigger>
-          <TabsTrigger value="seguranca">Segurança</TabsTrigger>
+          {abas.integracoes && <TabsTrigger value="smtp">Integrações</TabsTrigger>}
+          {canManageProfiles && <TabsTrigger value="infra">Banco</TabsTrigger>}
+          {canManageProfiles && <TabsTrigger value="seguranca">Segurança</TabsTrigger>}
           {canManageProfiles && <TabsTrigger value="observabilidade">Suporte e Logs</TabsTrigger>}
         </TabsList>
 
@@ -894,6 +777,7 @@ export default function Configuracoes() {
           whatsappStatus={whatsappStatus}
           whatsappHasToken={whatsappHasToken}
           canConfigurePhotoTunnel={canConfigurePhotoTunnel}
+          canManagePortal={canManagePortal}
           photoTunnelToken={photoTunnelToken}
           onPhotoTunnelTokenChange={setPhotoTunnelToken}
           onSubmitPhotoTunnel={onSubmitPhotoTunnel}
@@ -904,30 +788,32 @@ export default function Configuracoes() {
           photoTunnelPublicHost={photoTunnelPublicHost}
         />
 
-        <ConfiguracoesTabInfra
-          canManageProfiles={canManageProfiles}
-          schemaLoading={schemaLoading}
-          schemaStatus={schemaStatus}
-          schemaError={schemaError}
-          loadSchemaStatus={loadSchemaStatus}
-          backupLoading={backupLoading}
-          backupToolsStatus={backupToolsStatus}
-          backupError={backupError}
-          backupMessage={backupMessage}
-          backupBusy={backupBusy}
-          restoreFilePath={restoreFilePath}
-          setRestoreFilePath={setRestoreFilePath}
-          restoreConfirmText={restoreConfirmText}
-          setRestoreConfirmText={setRestoreConfirmText}
-          restoreBusy={restoreBusy}
-          restoreError={restoreError}
-          restoreMessage={restoreMessage}
-          restoreMode={restoreMode}
-          restoreReady={restoreReady}
-          loadBackupToolsStatus={loadBackupToolsStatus}
-          gerarBackupBanco={gerarBackupBanco}
-          restaurarBackupBanco={restaurarBackupBanco}
-        />
+        {canManageProfiles && (
+          <ConfiguracoesTabInfra
+            canManageProfiles={canManageProfiles}
+            schemaLoading={schemaLoading}
+            schemaStatus={schemaStatus}
+            schemaError={schemaError}
+            loadSchemaStatus={loadSchemaStatus}
+            backupLoading={backupLoading}
+            backupToolsStatus={backupToolsStatus}
+            backupError={backupError}
+            backupMessage={backupMessage}
+            backupBusy={backupBusy}
+            restoreFilePath={restoreFilePath}
+            setRestoreFilePath={setRestoreFilePath}
+            restoreConfirmText={restoreConfirmText}
+            setRestoreConfirmText={setRestoreConfirmText}
+            restoreBusy={restoreBusy}
+            restoreError={restoreError}
+            restoreMessage={restoreMessage}
+            restoreMode={restoreMode}
+            restoreReady={restoreReady}
+            loadBackupToolsStatus={loadBackupToolsStatus}
+            gerarBackupBanco={gerarBackupBanco}
+            restaurarBackupBanco={restaurarBackupBanco}
+          />
+        )}
 
         {canManageProfiles && (
           <ConfiguracoesTabObservabilidade
@@ -950,48 +836,34 @@ export default function Configuracoes() {
           />
         )}
 
-        <ConfiguracoesTabSeguranca
-          canManageProfiles={canManageProfiles}
-          securityAdminUnlocked={securityAdminUnlocked}
-          securityBusy={securityBusy}
-          handleSecurityAdminToggle={handleSecurityAdminToggle}
-          accessStatus={accessStatus}
-          currentPin={currentPin}
-          setCurrentPin={setCurrentPin}
-          newPin={newPin}
-          setNewPin={setNewPin}
-          confirmPin={confirmPin}
-          setConfirmPin={setConfirmPin}
-          trocarMeuPin={trocarMeuPin}
-          managedProfileId={managedProfileId}
-          setManagedProfileId={setManagedProfileId}
-          profilesCatalog={profilesCatalog}
-          managedProfile={managedProfile}
-          editProfileName={editProfileName}
-          setEditProfileName={setEditProfileName}
-          editProfileRole={editProfileRole}
-          setEditProfileRole={setEditProfileRole}
-          editPermissions={editPermissions}
-          setEditPermissions={setEditPermissions}
-          permissionOptions={permissionOptions}
-          togglePermission={togglePermission}
-          desativarPerfilSelecionado={desativarPerfilSelecionado}
-          reativarPerfilSelecionado={reativarPerfilSelecionado}
-          salvarPerfilAtual={salvarPerfilAtual}
-          resetPin={resetPin}
-          setResetPin={setResetPin}
-          resetPinConfirm={resetPinConfirm}
-          setResetPinConfirm={setResetPinConfirm}
-          resetarPinPerfil={resetarPinPerfil}
-          securityMessage={securityMessage}
-          inactivityLockEnabled={inactivityLockEnabled}
-          onToggleInactivityLock={handleInactivityToggle}
-          deleteDialogOpen={deleteDialogOpen}
-          onDeleteDialogOpenChange={setDeleteDialogOpen}
-          onDeleteSuccess={handleDeleteSuccess}
-          adminPinVerify={adminPinVerify}
-          setAdminPinVerify={setAdminPinVerify}
-        />
+        {canManageProfiles && (
+          <ConfiguracoesTabSeguranca
+            canManageProfiles={canManageProfiles}
+            securityAdminUnlocked={securityAdminUnlocked}
+            securityBusy={securityBusy}
+            handleSecurityAdminToggle={handleSecurityAdminToggle}
+            accessStatus={accessStatus}
+            currentPin={currentPin}
+            setCurrentPin={setCurrentPin}
+            newPin={newPin}
+            setNewPin={setNewPin}
+            confirmPin={confirmPin}
+            setConfirmPin={setConfirmPin}
+            trocarMeuPin={trocarMeuPin}
+            managedProfileId={managedProfileId}
+            setManagedProfileId={setManagedProfileId}
+            profilesCatalog={profilesCatalog}
+            managedProfile={managedProfile}
+            securityMessage={securityMessage}
+            securityMessageVariant={securityFeedback?.variant}
+            onClearSecurityMessage={() => setSecurityMessage(null)}
+            inactivityLockEnabled={inactivityLockEnabled}
+            onToggleInactivityLock={handleInactivityToggle}
+            deleteDialogOpen={deleteDialogOpen}
+            onDeleteDialogOpenChange={setDeleteDialogOpen}
+            onDeleteSuccess={handleDeleteSuccess}
+          />
+        )}
 
       </Tabs>
     </div>

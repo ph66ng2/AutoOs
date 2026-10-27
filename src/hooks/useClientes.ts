@@ -22,7 +22,7 @@ import {
   type ClienteInput,
   type ClientesRepository,
 } from "@/lib/data/clientes-repository";
-import type { Cliente, ClienteId } from "@/types";
+import type { Cliente, ClienteId, ContatoInicialInput } from "@/types";
 import { ITEMS_PER_PAGE, paginateItems } from "@/lib/pagination";
 
 /**
@@ -105,10 +105,10 @@ export function useClientes(params?: UseClientesParams) {
    *          O `id` retornado é utilizado por ClienteSelector.tsx para
    *          vincular o cliente recém-criado a um equipamento.
    */
-  const criar = async (cliente: ClienteInput) => {
+  const criar = async (cliente: ClienteInput, contatoInicial?: ContatoInicialInput) => {
     try {
       const repository = params?.repository ?? await carregarRepositorioClientes();
-      const criado = await repository.criar(cliente);
+      const criado = await repository.criar(cliente, contatoInicial);
       await carregar();
       return { sucesso: true, id: criado.id! };
     } catch (err: any) {

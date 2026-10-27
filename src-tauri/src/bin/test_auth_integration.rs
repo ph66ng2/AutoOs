@@ -34,8 +34,10 @@ fn unlock_test_profile(profile_id: i32) -> Result<()> {
         role: "ADMIN".to_string(),
         permissions: vec![auth::PERMISSION_MANAGE_PROFILES.to_string()],
         pin_configured: true,
+        pin_required: true,
         is_default: true,
         ativo: true,
+        ..Default::default()
     };
     tauri_result(auth::unlock_session(profile), "Falha ao desbloquear sessão")
 }
@@ -220,8 +222,8 @@ async fn test_first_pin_for_inactive_admin(pool: &sqlx::PgPool) -> Result<()> {
     let admin_id = create_test_admin(pool).await?;
     let permissions = serde_json::to_string(&vec![auth::PERMISSION_MANAGE_PROFILES.to_string()])?;
     let pending_id: i32 = sqlx::query_scalar(
-        "INSERT INTO security_profiles (nome, role, permissions, ativo, is_default, atualizado_em)
-         VALUES ('Test Auth Integration Pending Admin', 'ADMIN', $1, true, false, NOW()) RETURNING id"
+        "INSERT INTO security_profiles (nome, role, permissions, ativo, is_default, pin_required, atualizado_em)
+         VALUES ('Test Auth Integration Pending Admin', 'ADMIN', $1, true, false, false, NOW()) RETURNING id"
     )
     .bind(permissions)
     .fetch_one(pool)

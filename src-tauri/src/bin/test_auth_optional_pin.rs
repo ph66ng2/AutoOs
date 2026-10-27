@@ -29,7 +29,7 @@ async fn main() -> Result<()> {
         serde_json::to_string(&vec![auth::PERMISSION_MANAGE_PROFILES.to_string()])?;
     let admin_id: i32 = sqlx::query_scalar(
         "INSERT INTO security_profiles (nome, role, permissions, ativo, is_default, atualizado_em)
-         VALUES ('Test Optional PIN Admin', 'ADMIN', $1, true, true, NOW())
+         VALUES ('Test Optional PIN Admin', 'ADMIN', $1, true, false, NOW())
          RETURNING id",
     )
     .bind(&permissions)
@@ -37,8 +37,9 @@ async fn main() -> Result<()> {
     .await
     .context("Falha ao criar perfil admin de teste")?;
 
-    // Unlock session without PIN (admin has no PIN in keyring yet)
-    tauri_result(auth::unlock_session_without_pin().await, "Falha ao desbloquear sessão sem PIN")?;
+    // A manager must authenticate before creating another identity.
+    auth::store_profile_pin(admin_id, "1234").map_err(|e| anyhow!(e))?;
+    tauri_result(auth::set_active_security_profile(admin_id, "1234".into(), None).await, "Falha ao autenticar administrador")?;
 
     // Create profile with empty PIN
     let input = SecurityProfileInput {

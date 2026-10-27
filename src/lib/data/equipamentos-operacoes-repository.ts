@@ -7,8 +7,13 @@ import {
 import { tauriSaasSessionStore } from "@/lib/saas-session-store";
 import { validatePecasSugeridas } from "@/lib/data/servicos-repository";
 import type {
+  AnaliseAjusteOrcamento,
+  AnaliseCorrecaoDecisao,
   Equipamento,
   FormaPagamento,
+  ModoCorrecaoDecisao,
+  OpcoesAjusteOrcamento,
+  PortalAjusteInfo,
   ServicoCatalogo,
   ServicoNecessario,
   PecaNecessaria,
@@ -35,6 +40,7 @@ export interface EquipmentQuoteInput {
   approvalDeadline?: string;
   payment?: FormaPagamento;
   correctionReason?: string;
+  adjustment?: OpcoesAjusteOrcamento;
 }
 
 export interface EquipmentPartConsumption {
@@ -56,8 +62,138 @@ export interface EquipmentStatusInput {
   correctionReason?: string;
 }
 
+export function quoteInputForAdjustment(
+  input: EquipmentQuoteInput,
+  adjustment?: OpcoesAjusteOrcamento,
+): EquipmentQuoteInput {
+  if (adjustment?.modoAprovado !== "NOVA_APROVACAO") {
+    return { ...input, adjustment };
+  }
+  return {
+    ...input,
+    adjustment,
+    newStatus: "AGUARDANDO_APROVACAO",
+    payment: undefined,
+    correctionReason:
+      input.correctionReason?.trim()
+      || "Orçamento alterado depois da aprovação: nova aprovação pedida ao cliente.",
+  };
+}
+
+function parseAnaliseAjuste(value: unknown): AnaliseAjusteOrcamento {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw new OnlineDataError("ONLINE_UNAVAILABLE", "O serviço Online retornou uma análise de orçamento inválida.");
+  }
+  const row = value as Record<string, unknown>;
+  const pecasRaw = Array.isArray(row.pecasBaixadas) ? row.pecasBaixadas : [];
+  const pecasBaixadas = pecasRaw.map((peca) => {
+    if (!peca || typeof peca !== "object") {
+      throw new OnlineDataError("ONLINE_UNAVAILABLE", "O serviço Online retornou peças baixadas inválidas.");
+    }
+    const item = peca as Record<string, unknown>;
+    const quantidade = Number(item.quantidade);
+    if ((typeof item.produtoId !== "string" && typeof item.produtoId !== "number")
+      || typeof item.nome !== "string"
+      || !Number.isFinite(quantidade) || quantidade <= 0) {
+      throw new OnlineDataError("ONLINE_UNAVAILABLE", "O serviço Online retornou peças baixadas inválidas.");
+    }
+    return { produtoId: item.produtoId, nome: item.nome, quantidade };
+  });
+  const totalBaixado = Number(row.totalBaixado);
+  return {
+    status: String(row.status ?? ""),
+    podePedirNovaAprovacao: row.podePedirNovaAprovacao === true,
+    jaPublicado: row.jaPublicado === true,
+    versaoAberta: typeof row.versaoAberta === "number" ? row.versaoAberta : null,
+    respostaPendente: row.respostaPendente && typeof row.respostaPendente === "object"
+      ? row.respostaPendente as AnaliseAjusteOrcamento["respostaPendente"]
+      : null,
+    pecasBaixadas,
+    totalBaixado: Number.isFinite(totalBaixado) ? totalBaixado : 0,
+    exigeDecisaoEstoque: row.exigeDecisaoEstoque === true,
+  };
+}
+
+function parsePecasBaixadas(value: unknown): AnaliseCorrecaoDecisao["pecasBaixadas"] {
+  if (!Array.isArray(value)) return [];
+  return value.map((peca) => {
+    if (!peca || typeof peca !== "object") {
+      throw new OnlineDataError("ONLINE_UNAVAILABLE", "O serviço Online retornou peças baixadas inválidas.");
+    }
+    const item = peca as Record<string, unknown>;
+    const quantidade = Number(item.quantidade);
+    if ((typeof item.produtoId !== "string" && typeof item.produtoId !== "number")
+      || typeof item.nome !== "string"
+      || !Number.isFinite(quantidade) || quantidade <= 0) {
+      throw new OnlineDataError("ONLINE_UNAVAILABLE", "O serviço Online retornou peças baixadas inválidas.");
+    }
+    return { produtoId: item.produtoId, nome: item.nome, quantidade };
+  });
+}
+
+function parseAnaliseCorrecao(value: unknown): AnaliseCorrecaoDecisao {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw new OnlineDataError("ONLINE_UNAVAILABLE", "O serviço Online retornou uma análise de correção inválida.");
+  }
+  const row = value as Record<string, unknown>;
+  const totalBaixado = Number(row.totalBaixado);
+  const bloqueios = Array.isArray(row.bloqueios)
+    ? row.bloqueios.filter((item): item is string => typeof item === "string")
+    : [];
+  return {
+    status: String(row.status ?? ""),
+    podeCorrigir: row.podeCorrigir === true,
+    bloqueios,
+    ajustadoAposDecisao: row.ajustadoAposDecisao === true,
+    permiteRestaurar: row.permiteRestaurar === true,
+    permiteManter: row.permiteManter === true,
+    pagamentoCodigo: typeof row.pagamentoCodigo === "string" ? row.pagamentoCodigo : null,
+    pagamentoDetalhe: typeof row.pagamentoDetalhe === "string" ? row.pagamentoDetalhe : null,
+    valorAtual: row.valorAtual == null ? null : Number(row.valorAtual),
+    valorOriginal: row.valorOriginal == null ? null : Number(row.valorOriginal),
+    pecasBaixadas: parsePecasBaixadas(row.pecasBaixadas),
+    totalBaixado: Number.isFinite(totalBaixado) ? totalBaixado : 0,
+    exigeDecisaoEstoque: row.exigeDecisaoEstoque === true,
+  };
+}
+
+function parsePortal(value: unknown): PortalAjusteInfo | undefined {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
+  const row = value as Record<string, unknown>;
+  const acao = row.acao;
+  if (acao !== "NENHUMA" && acao !== "VERSAO_PUBLICADA" && acao !== "NOVA_APROVACAO_PUBLICADA"
+    && acao !== "VALOR_ATUALIZADO" && acao !== "NAO_PUBLICADA") {
+    return undefined;
+  }
+  return {
+    acao,
+    versao: typeof row.versao === "number" ? row.versao : null,
+    mensagem: typeof row.mensagem === "string" ? row.mensagem : null,
+    aviso: typeof row.aviso === "string" ? row.aviso : null,
+  };
+}
+
+export interface EquipmentDecisionCorrectionInput {
+  equipmentId: string;
+  expectedUpdatedAt: string;
+  motivo: string;
+  devolverEstoque: boolean;
+  modo: ModoCorrecaoDecisao;
+}
+
 export interface EquipmentOperationsRepository {
   getVerification(equipmentId: string): Promise<Verificacao | null>;
+  analyzeQuoteAdjustment(equipmentId: string): Promise<AnaliseAjusteOrcamento>;
+  analyzeDecisionCorrection(equipmentId: string): Promise<AnaliseCorrecaoDecisao>;
+  correctQuoteDecision(input: EquipmentDecisionCorrectionInput): Promise<{
+    equipment: Equipamento<string>;
+    portal?: PortalAjusteInfo;
+  }>;
+  extendApprovalDeadline(input: {
+    equipmentId: string;
+    expectedUpdatedAt: string;
+    newDeadline: string;
+  }): Promise<{ prorrogado: boolean; equipment: Equipamento<string> }>;
   listActiveServices(): Promise<ServicoCatalogo<string>[]>;
   finalizeVerification(input: {
     equipmentId: string;
@@ -108,15 +244,30 @@ function parseArrayField(value: string | undefined, label: string): unknown[] {
   }
 }
 
-function operationHttpError(status: number, code?: string): OnlineDataError {
-  if (status === 401) return new OnlineDataError("SESSION_EXPIRED", "Sua sessão expirou. Entre novamente para continuar.");
-  if (status === 403 || code === "42501") return new OnlineDataError("RLS_DENIED", "Seu perfil não tem autorização para esta operação, ou o registro não pertence à sua empresa.");
-  if (code === "40001") return new OnlineDataError("CONFLICT", "O equipamento foi alterado por outra pessoa. Atualize a lista e tente novamente.");
-  if (code === "22023" || code === "22P02" || code?.startsWith("23")) {
-    return new OnlineDataError("INVALID_DATA", "A operação tem um status ou dados inválidos. Revise os campos e tente novamente.");
+function operatorFacingMessage(raw?: string): string | undefined {
+  const text = raw?.trim();
+  if (!text) return undefined;
+  if (/https?:\/\/|bearer\s|service_role|apikey|postgres:\/\//i.test(text)) return undefined;
+  return text.length > 400 ? text.slice(0, 400) : text;
+}
+
+function operationHttpError(status: number, code?: string, message?: string): OnlineDataError {
+  const operatorMessage = operatorFacingMessage(message);
+  if (status === 401) return new OnlineDataError("SESSION_EXPIRED", operatorMessage || "Sua sessão expirou. Entre novamente para continuar.");
+  if (status === 403 || code === "42501") {
+    return new OnlineDataError("RLS_DENIED", operatorMessage || "Seu perfil não tem autorização para esta operação, ou o registro não pertence à sua empresa.");
   }
-  if (code === "P0002") return new OnlineDataError("INVALID_DATA", "Não foi encontrada uma verificação técnica salva para este equipamento.");
-  return new OnlineDataError("ONLINE_UNAVAILABLE", "Não foi possível concluir a operação online. Seus dados foram mantidos; tente novamente.");
+  if (code === "40001") return new OnlineDataError("CONFLICT", operatorMessage || "O equipamento foi alterado por outra pessoa. Atualize a lista e tente novamente.");
+  if (code === "22023" || code === "22P02" || code?.startsWith("23")) {
+    return new OnlineDataError("INVALID_DATA", operatorMessage || "A operação tem um status ou dados inválidos. Revise os campos e tente novamente.");
+  }
+  if (code === "P0002") {
+    return new OnlineDataError("INVALID_DATA", operatorMessage || "Não foi encontrada uma verificação técnica salva para este equipamento.");
+  }
+  return new OnlineDataError(
+    "ONLINE_UNAVAILABLE",
+    operatorMessage || "Não foi possível concluir a operação online. Seus dados foram mantidos; tente novamente.",
+  );
 }
 
 function assertTenant<T extends { empresa_id?: string | number }>(row: T, session: SupabaseOnlineSession): T {
@@ -174,7 +325,7 @@ export class SupabaseEquipmentOperationsRepository implements EquipmentOperation
     if (!response.ok) {
       let body: { code?: string; message?: string } = {};
       try { body = await response.json() as typeof body; } catch { /* resposta sem JSON */ }
-      throw operationHttpError(response.status, body.code);
+      throw operationHttpError(response.status, body.code, body.message);
     }
     try {
       return await response.json() as T;
@@ -202,6 +353,76 @@ export class SupabaseEquipmentOperationsRepository implements EquipmentOperation
     const rows = await this.request<Verificacao[]>(`${this.session.supabaseUrl}/rest/v1/verificacoes?${query}`);
     const verification = rows[0];
     return verification ? assertTenant(verification, this.session) : null;
+  }
+
+  async analyzeQuoteAdjustment(equipmentId: string): Promise<AnaliseAjusteOrcamento> {
+    if (!validUuid(equipmentId)) throw new OnlineDataError("INVALID_DATA", "O identificador do equipamento Online é inválido.");
+    const result = await this.rpc<unknown>("saas_analisar_ajuste_orcamento", {
+      p_equipment_id: equipmentId,
+    });
+    return parseAnaliseAjuste(Array.isArray(result) && result.length === 1 ? result[0] : result);
+  }
+
+  async analyzeDecisionCorrection(equipmentId: string): Promise<AnaliseCorrecaoDecisao> {
+    if (!validUuid(equipmentId)) throw new OnlineDataError("INVALID_DATA", "O identificador do equipamento Online é inválido.");
+    const result = await this.rpc<unknown>("saas_analisar_correcao_decisao", {
+      p_equipment_id: equipmentId,
+    });
+    return parseAnaliseCorrecao(Array.isArray(result) && result.length === 1 ? result[0] : result);
+  }
+
+  async correctQuoteDecision(input: EquipmentDecisionCorrectionInput): Promise<{
+    equipment: Equipamento<string>;
+    portal?: PortalAjusteInfo;
+  }> {
+    assertOperationInput(input.equipmentId, input.expectedUpdatedAt);
+    if (input.motivo.trim().length < 5) {
+      throw new OnlineDataError("INVALID_DATA", "Informe o motivo da correção (mínimo de 5 caracteres).");
+    }
+    const result = await this.rpc<unknown>("saas_corrigir_decisao_orcamento", {
+      p_equipment_id: input.equipmentId,
+      p_expected_updated_em: input.expectedUpdatedAt,
+      p_motivo: input.motivo.trim(),
+      p_devolver_estoque: input.devolverEstoque,
+      p_modo: input.modo,
+    });
+    const payload = Array.isArray(result) && result.length === 1 ? result[0] : result;
+    if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
+      throw new OnlineDataError("ONLINE_UNAVAILABLE", "O serviço Online retornou uma correção inválida.");
+    }
+    const row = payload as { equipment?: Equipamento<string>; portal?: unknown };
+    if (!row.equipment || typeof row.equipment.id !== "string" || !validUuid(row.equipment.id)) {
+      throw new OnlineDataError("ONLINE_UNAVAILABLE", "O serviço Online retornou um equipamento inválido.");
+    }
+    return {
+      equipment: assertTenant(row.equipment, this.session),
+      portal: parsePortal(row.portal),
+    };
+  }
+
+  async extendApprovalDeadline(input: {
+    equipmentId: string;
+    expectedUpdatedAt: string;
+    newDeadline: string;
+  }): Promise<{ prorrogado: boolean; equipment: Equipamento<string> }> {
+    assertOperationInput(input.equipmentId, input.expectedUpdatedAt);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(input.newDeadline)) {
+      throw new OnlineDataError("INVALID_DATA", "Informe o novo prazo no formato AAAA-MM-DD.");
+    }
+    const result = await this.rpc<unknown>("saas_prorrogar_prazo_orcamento", {
+      p_equipment_id: input.equipmentId,
+      p_expected_updated_em: input.expectedUpdatedAt,
+      p_novo_prazo: input.newDeadline,
+    });
+    const payload = Array.isArray(result) && result.length === 1 ? result[0] : result;
+    if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
+      throw new OnlineDataError("ONLINE_UNAVAILABLE", "O serviço Online retornou uma prorrogação inválida.");
+    }
+    const row = payload as { prorrogado?: boolean; equipment?: Equipamento<string> };
+    if (row.prorrogado !== true || !row.equipment || typeof row.equipment.id !== "string" || !validUuid(row.equipment.id)) {
+      throw new OnlineDataError("ONLINE_UNAVAILABLE", "O serviço Online não confirmou a prorrogação do prazo.");
+    }
+    return { prorrogado: true, equipment: assertTenant(row.equipment, this.session) };
   }
 
   async listActiveServices(): Promise<ServicoCatalogo<string>[]> {
@@ -262,18 +483,26 @@ export class SupabaseEquipmentOperationsRepository implements EquipmentOperation
     if (!Number.isFinite(input.total) || input.total < 0) {
       throw new OnlineDataError("INVALID_DATA", "O valor total do orçamento precisa ser maior ou igual a zero.");
     }
-    const result = await this.rpc<unknown>("saas_update_equipment_quote", {
-      p_equipment_id: input.equipmentId,
-      p_expected_updated_em: input.expectedUpdatedAt,
-      p_services: input.services,
-      p_parts: input.parts,
-      p_total: input.total,
-      p_observations: input.observations ?? null,
-      p_new_status: input.newStatus ?? null,
-      p_approval_deadline: input.approvalDeadline || null,
-      p_payment_code: input.payment?.codigo ?? null,
-      p_payment_detail: input.payment?.detalhe ?? null,
-      p_correction_reason: input.correctionReason ?? null,
+    const adjusted = quoteInputForAdjustment(input, input.adjustment);
+    const rpcName = adjusted.adjustment?.modoAprovado
+      ? "saas_save_equipment_quote_adjustment"
+      : "saas_update_equipment_quote";
+    const result = await this.rpc<unknown>(rpcName, {
+      p_equipment_id: adjusted.equipmentId,
+      p_expected_updated_em: adjusted.expectedUpdatedAt,
+      p_services: adjusted.services,
+      p_parts: adjusted.parts,
+      p_total: adjusted.total,
+      p_observations: adjusted.observations ?? null,
+      p_new_status: adjusted.newStatus ?? null,
+      p_approval_deadline: adjusted.approvalDeadline || null,
+      p_payment_code: adjusted.payment?.codigo ?? null,
+      p_payment_detail: adjusted.payment?.detalhe ?? null,
+      p_correction_reason: adjusted.correctionReason ?? null,
+      ...(adjusted.adjustment?.modoAprovado ? {
+        p_modo_aprovado: adjusted.adjustment.modoAprovado,
+        p_devolver_estoque: adjusted.adjustment.devolverEstoque === true,
+      } : {}),
     });
     return operationResult(result, this.session);
   }

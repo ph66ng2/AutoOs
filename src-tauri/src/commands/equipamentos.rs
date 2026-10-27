@@ -15,13 +15,14 @@ use crate::commands::types::{
 };
 use crate::commands::auth::{
     current_session_profile, record_security_event, require_active_session_company_id,
-    require_permission,
+    require_any_permission, require_permission, require_sensitive_access,
     SecurityProfileSummary, PERMISSION_DELETE_RECORDS, PERMISSION_FINANCIAL_ACTIONS,
+    PERMISSION_PREPARE_QUOTES,
 };
 use crate::db::get_pool;
 use crate::commands::orcamento_estoque::{aplicar_decisoes, normalizar_servicos, parse_servicos};
 use chrono::NaiveDateTime;
-use sqlx::{PgPool, Postgres, QueryBuilder, Row};
+use sqlx::{PgConnection, PgPool, Postgres, QueryBuilder, Row};
 use std::collections::HashSet;
 use tracing::{debug, error, info, instrument};
 
@@ -143,12 +144,14 @@ fn add_equipment_filters(
 fn equipment_order_clause(ordenacao: Option<&str>) -> &'static str {
     match ordenacao {
         Some("CADASTRO_RECENTE") => " ORDER BY criado_em DESC NULLS LAST, id DESC",
-        _ => " ORDER BY COALESCE(atualizado_em, criado_em) DESC NULLS LAST, id DESC",
+        // Atividade recente inclui respostas e pedidos do cliente no portal, que não mexem em
+        // `atualizado_em` (token de concorrência do operador).
+        _ => " ORDER BY GREATEST(COALESCE(atualizado_em, criado_em), COALESCE(ultima_atividade_cliente_em, criado_em)) DESC NULLS LAST, id DESC",
     }
 }
 
-async fn query_equipment_page(
-    pool: &PgPool,
+pub(crate) async fn query_equipment_page_on_connection(
+    connection: &mut PgConnection,
     empresa_id: i32,
     page: Option<i32>,
     busca: Option<&str>,
@@ -160,9 +163,9 @@ async fn query_equipment_page(
     add_equipment_filters(&mut count_query, empresa_id, busca, status);
     let total = count_query
         .build_query_scalar::<i64>()
-        .fetch_one(pool)
+        .fetch_one(&mut *connection)
         .await
-        .map_err(|error| format!("Erro ao contar equipamentos: {}", error))?;
+        .map_err(super::operator_errors::mapear_erro_sql)?;
 
     let safe_page = page.unwrap_or(0).max(0) as i64;
     let mut items_query = QueryBuilder::<Postgres>::new(EQUIPAMENTO_SELECT);
@@ -170,15 +173,15 @@ async fn query_equipment_page(
     items_query
         .push(equipment_order_clause(ordenacao))
         .push(" LIMIT ")
-        .push_bind(page_size)
+        .push_bind(i64::from(page_size))
         .push(" OFFSET ")
         .push_bind(safe_page * i64::from(page_size));
 
     let items = items_query
         .build_query_as::<EquipamentoRow>()
-        .fetch_all(pool)
+        .fetch_all(&mut *connection)
         .await
-        .map_err(|error| format!("Erro ao listar equipamentos: {}", error))?;
+        .map_err(super::operator_errors::mapear_erro_sql)?;
 
     Ok(PaginatedResult {
         items,
@@ -200,6 +203,18 @@ fn status_change_requires_sensitive_access(
             normalized_status,
             "AGUARDANDO_APROVACAO" | "APROVADO" | "REPROVADO" | "ORCAMENTO_VENCIDO" | "ENTREGUE" | "ABANDONADO"
         )
+}
+
+fn status_change_allows_quote_preparation(
+    atual: &str,
+    novo: &str,
+    is_correction: bool,
+    valor_final: Option<f64>,
+) -> bool {
+    !is_correction
+        && valor_final.is_none()
+        && novo == "AGUARDANDO_APROVACAO"
+        && matches!(atual, "VERIFICADO" | "AGUARDANDO_APROVACAO")
 }
 
 fn is_regular_status_transition(from: &str, to: &str) -> bool {
@@ -327,6 +342,18 @@ fn audit_detail(details: &str, key: &str) -> Option<String> {
     })
 }
 
+/// Motivo dado pelo operador ao aplicar decisão diferente da do cliente, pronto para os detalhes
+/// da auditoria (`chave=valor; ...`): sem `;`/quebras de linha e com tamanho limitado.
+fn motivo_divergencia_auditoria(motivo: Option<&str>) -> String {
+    let limpo: String = motivo
+        .unwrap_or("")
+        .chars()
+        .map(|c| if c == ';' || c.is_control() { ' ' } else { c })
+        .collect();
+    let limpo = limpo.split_whitespace().collect::<Vec<_>>().join(" ");
+    limpo.chars().take(300).collect()
+}
+
 async fn resolve_responsavel_snapshot(
     pool: &PgPool,
     input: &EquipamentoInput,
@@ -345,7 +372,24 @@ async fn resolve_responsavel_snapshot(
         .cliente_id
         .ok_or_else(|| "cliente_id é obrigatório ao associar um contato responsável.".to_string())?;
 
-    let snapshot: Option<(String, Option<String>, Option<String>)> = sqlx::query_as(
+    let snapshot = buscar_contato_responsavel_ativo(pool, contact_id, empresa_id, cliente_id).await?;
+
+    let Some((nome, email, telefone)) = snapshot else {
+        return Err("Contato responsável não encontrado, inativo ou incompatível com o cliente/empresa.".to_string());
+    };
+
+    Ok((Some(contact_id), Some(nome), email, telefone))
+}
+
+/// Busca nome/email/telefone de um contato ativo do cliente, na empresa informada.
+/// Retorna `None` se o contato não existir, estiver inativo ou pertencer a outro cliente/empresa.
+async fn buscar_contato_responsavel_ativo(
+    pool: &PgPool,
+    contact_id: i32,
+    empresa_id: i32,
+    cliente_id: i32,
+) -> Result<Option<(String, Option<String>, Option<String>)>, String> {
+    sqlx::query_as(
         "SELECT nome, email, telefone
          FROM cliente_contatos
          WHERE id = $1 AND empresa_id = $2 AND cliente_id = $3 AND ativo = true",
@@ -355,13 +399,7 @@ async fn resolve_responsavel_snapshot(
     .bind(cliente_id)
     .fetch_optional(pool)
     .await
-    .map_err(|error| format!("Erro ao validar contato responsável: {}", error))?;
-
-    let Some((nome, email, telefone)) = snapshot else {
-        return Err("Contato responsável não encontrado, inativo ou incompatível com o cliente/empresa.".to_string());
-    };
-
-    Ok((Some(contact_id), Some(nome), email, telefone))
+    .map_err(super::operator_errors::mapear_erro_sql)
 }
 
 async fn require_cliente_da_empresa(
@@ -380,7 +418,7 @@ async fn require_cliente_da_empresa(
     .bind(empresa_id)
     .fetch_one(pool)
     .await
-    .map_err(|error| format!("Erro ao validar cliente do equipamento: {}", error))?;
+    .map_err(super::operator_errors::mapear_erro_sql)?;
 
     if exists {
         Ok(())
@@ -438,7 +476,7 @@ async fn require_cliente_da_empresa(
                 .await
                 .map_err(|e| {
                     error!("Erro ao consultar status atual do equipamento {}: {}", id, e);
-                    e.to_string()
+                    super::operator_errors::mapear_erro_sql(e)
                 })?;
 
                 if let Some(current_status) = current_status {
@@ -476,12 +514,33 @@ pub async fn listar_equipamentos(
     })?;
     let empresa_id = require_active_session_company_id(&pool).await?;
 
-    let offset = page.unwrap_or(0) * PAGE_SIZE;
+    let mut connection = pool.acquire().await.map_err(super::operator_errors::mapear_erro_sql)?;
+    listar_equipamentos_on_connection(
+        &mut connection,
+        empresa_id,
+        page,
+        busca.as_deref(),
+        status.as_deref(),
+    )
+    .await
+}
+
+/// Executa a consulta simples de equipamentos na conexão recebida.
+/// Os parâmetros de paginação usam o mesmo tipo da consulta paginada para
+/// evitar incompatibilidade no cache de prepared statements do PostgreSQL.
+pub(crate) async fn listar_equipamentos_on_connection(
+    connection: &mut PgConnection,
+    empresa_id: i32,
+    page: Option<i32>,
+    busca: Option<&str>,
+    status: Option<&str>,
+) -> Result<Vec<EquipamentoRow>, String> {
+    let offset = i64::from(page.unwrap_or(0).max(0)) * i64::from(PAGE_SIZE);
     let mut query_builder = sqlx::QueryBuilder::<sqlx::Postgres>::new(EQUIPAMENTO_SELECT);
     query_builder.push(" WHERE empresa_id = ");
     query_builder.push_bind(empresa_id);
 
-    if let Some(busca) = busca.as_deref().map(str::trim).filter(|value| !value.is_empty()) {
+    if let Some(busca) = busca.map(str::trim).filter(|value| !value.is_empty()) {
         let pattern = format!("%{}%", busca);
         query_builder.push(" AND (");
         query_builder.push("serial_number ILIKE ");
@@ -503,27 +562,73 @@ pub async fn listar_equipamentos(
         query_builder.push(")");
     }
 
-    if let Some(status) = status.as_deref().map(str::trim).filter(|value| !value.is_empty() && *value != "TODOS") {
+    if let Some(status) = status.map(str::trim).filter(|value| !value.is_empty() && *value != "TODOS") {
         query_builder.push(" AND status = ");
         query_builder.push_bind(normalize_status_key(status));
     }
 
     query_builder.push(" ORDER BY id DESC LIMIT ");
-    query_builder.push_bind(PAGE_SIZE);
+    query_builder.push_bind(i64::from(PAGE_SIZE));
     query_builder.push(" OFFSET ");
     query_builder.push_bind(offset);
 
     let rows = query_builder
         .build_query_as::<EquipamentoRow>()
-        .fetch_all(&pool)
+        .fetch_all(&mut *connection)
         .await
         .map_err(|e| {
             error!("Erro ao listar equipamentos: {}", e);
-            e.to_string()
+            super::operator_errors::mapear_erro_sql(e)
         })?;
 
     info!("Equipamentos listados: {} itens (página {})", rows.len(), page.unwrap_or(0));
     Ok(rows)
+}
+
+/// Lista os equipamentos de um cliente pelo `cliente_id`. Equipamentos antigos sem
+/// `cliente_id` entram apenas se o `cliente_nome` gravado for igual (sem diferenciar
+/// maiúsculas) a um dos `nomes` informados.
+#[tauri::command]
+#[instrument(skip_all, fields(cliente_id = cliente_id))]
+pub async fn listar_equipamentos_cliente(
+    cliente_id: i32,
+    nomes: Option<Vec<String>>,
+) -> Result<Vec<EquipamentoRow>, String> {
+    let pool = get_pool().await.map_err(|e| e.to_string())?;
+    let empresa_id = require_active_session_company_id(&pool).await?;
+    let mut connection = pool.acquire().await.map_err(super::operator_errors::mapear_erro_sql)?;
+    listar_equipamentos_cliente_on_connection(&mut connection, empresa_id, cliente_id, nomes.unwrap_or_default()).await
+}
+
+pub(crate) async fn listar_equipamentos_cliente_on_connection(
+    connection: &mut PgConnection,
+    empresa_id: i32,
+    cliente_id: i32,
+    nomes: Vec<String>,
+) -> Result<Vec<EquipamentoRow>, String> {
+    let nomes: Vec<String> = nomes
+        .into_iter()
+        .map(|nome| nome.trim().to_lowercase())
+        .filter(|nome| !nome.is_empty())
+        .collect();
+    let mut query_builder = sqlx::QueryBuilder::<sqlx::Postgres>::new(EQUIPAMENTO_SELECT);
+    query_builder.push(" WHERE empresa_id = ");
+    query_builder.push_bind(empresa_id);
+    query_builder.push(" AND (cliente_id = ");
+    query_builder.push_bind(cliente_id);
+    query_builder.push(" OR (cliente_id IS NULL AND LOWER(BTRIM(COALESCE(cliente_nome, ''))) = ANY(");
+    query_builder.push_bind(nomes);
+    query_builder.push(")))");
+    query_builder.push(" ORDER BY id DESC LIMIT 200");
+
+    query_builder
+        .build_query_as::<EquipamentoRow>()
+        .fetch_all(&mut *connection)
+        .await
+        .map_err(|e| {
+            error!("Erro ao listar equipamentos do cliente: {}", e);
+            super::operator_errors::mapear_erro_sql(e)
+        })
 }
 
 /// Lista uma página de equipamentos, com contagem aplicada aos mesmos filtros.
@@ -537,8 +642,9 @@ pub async fn listar_equipamentos_paginados(
 ) -> Result<PaginatedResult<EquipamentoRow>, String> {
     let pool = get_pool().await.map_err(|error| error.to_string())?;
     let empresa_id = require_active_session_company_id(&pool).await?;
-    query_equipment_page(
-        &pool,
+    let mut connection = pool.acquire().await.map_err(super::operator_errors::mapear_erro_sql)?;
+    query_equipment_page_on_connection(
+        &mut connection,
         empresa_id,
         page,
         busca.as_deref(),
@@ -565,7 +671,7 @@ pub async fn buscar_equipamento(id: i32) -> Result<EquipamentoRow, String> {
         .await
         .map_err(|e| {
             error!("Equipamento {} não encontrado: {}", id, e);
-            e.to_string()
+            super::operator_errors::mapear_erro_sql(e)
         })?;
 
     info!("Equipamento {} encontrado", id);
@@ -605,7 +711,7 @@ pub async fn listar_historico_equipamento(
     .bind(empresa_id)
     .fetch_optional(&pool)
     .await
-    .map_err(|error| format!("Erro ao carregar histórico do equipamento: {}", error))?;
+    .map_err(super::operator_errors::mapear_erro_sql)?;
     let Some((criado_em, data_entrada, data_aprovacao, data_reprovacao, data_pronto, data_saida, verificacao_inicio, verificacao_fim)) = equipamento else {
         return Err("Equipamento não encontrado na empresa do perfil ativo.".to_string());
     };
@@ -624,7 +730,7 @@ pub async fn listar_historico_equipamento(
     .bind(equipamento_id.to_string())
     .fetch_all(&pool)
     .await
-    .map_err(|error| format!("Erro ao carregar auditoria do equipamento: {}", error))?;
+    .map_err(super::operator_errors::mapear_erro_sql)?;
 
     let mut eventos = Vec::new();
     let mut statuses_auditados = HashSet::new();
@@ -705,7 +811,7 @@ pub async fn buscar_equipamentos_por_serial(serial: String) -> Result<Vec<Equipa
         .await
         .map_err(|e| {
             error!("Erro ao buscar equipamentos por serial: {}", e);
-            format!("Erro ao buscar equipamentos: {}", e)
+            super::operator_errors::mapear_erro_sql(e)
         })?;
     info!("Equipamentos encontrados para serial {}: {}", serial, rows.len());
     Ok(rows)
@@ -784,7 +890,8 @@ pub async fn criar_equipamento(input: EquipamentoInput) -> Result<EquipamentoRow
     .await
     .map_err(|e| {
         error!("Erro ao criar equipamento: {}", e);
-        duplicate_equipment_patrimonio_message(&e).unwrap_or_else(|| e.to_string())
+        duplicate_equipment_patrimonio_message(&e)
+            .unwrap_or_else(|| super::operator_errors::erro_sql_para_operador(&e))
     })?;
 
     let id: i32 = row.get("id");
@@ -876,7 +983,8 @@ pub async fn atualizar_equipamento(id: i32, input: EquipamentoInput) -> Result<E
     .await
     .map_err(|e| {
         error!("Erro ao atualizar equipamento {}: {}", id, e);
-        duplicate_equipment_patrimonio_message(&e).unwrap_or_else(|| e.to_string())
+        duplicate_equipment_patrimonio_message(&e)
+            .unwrap_or_else(|| super::operator_errors::erro_sql_para_operador(&e))
     })?
     .rows_affected();
 
@@ -898,6 +1006,80 @@ pub async fn atualizar_equipamento(id: i32, input: EquipamentoInput) -> Result<E
     buscar_equipamento(id).await
 }
 
+/// Define o responsável de um equipamento a partir de um contato ativo do cliente da OS.
+/// O snapshot (nome/email/telefone) é copiado do contato no momento da operação.
+#[tauri::command]
+#[instrument(skip_all, fields(equipamento_id = equipamento_id, contato_id = contato_id))]
+pub async fn definir_responsavel_equipamento(
+    equipamento_id: i32,
+    contato_id: i32,
+    expected_updated_em: String,
+) -> Result<EquipamentoRow, String> {
+    debug!("Definindo responsável do equipamento {}", equipamento_id);
+    let actor = require_sensitive_access()?;
+    let pool = get_pool().await.map_err(|e| e.to_string())?;
+    let empresa_id = require_active_session_company_id(&pool).await?;
+    let concurrency_token = required_concurrency_token(Some(expected_updated_em.as_str()), "equipamento")?;
+
+    let cliente_id: Option<i32> = sqlx::query_scalar(
+        "SELECT cliente_id FROM equipamentos WHERE id = $1 AND empresa_id = $2",
+    )
+    .bind(equipamento_id)
+    .bind(empresa_id)
+    .fetch_optional(&pool)
+    .await
+    .map_err(super::operator_errors::mapear_erro_sql)?
+    .ok_or_else(|| "Equipamento não encontrado.".to_string())?;
+
+    let cliente_id = cliente_id
+        .ok_or_else(|| "O equipamento não tem cliente associado; não é possível definir um responsável.".to_string())?;
+
+    let snapshot = buscar_contato_responsavel_ativo(&pool, contato_id, empresa_id, cliente_id).await?;
+    let Some((nome, email, telefone)) = snapshot else {
+        return Err("Contato responsável não encontrado, inativo ou incompatível com o cliente/empresa.".to_string());
+    };
+
+    let updated_rows = sqlx::query(
+        r#"
+        UPDATE equipamentos SET
+            responsavel_contato_id = $1, responsavel_nome = $2,
+            responsavel_email = $3, responsavel_telefone = $4,
+            atualizado_em = NOW()
+        WHERE id = $5 AND atualizado_em = $6::TIMESTAMPTZ
+          AND empresa_id = $7
+        "#,
+    )
+    .bind(contato_id)
+    .bind(nome)
+    .bind(email)
+    .bind(telefone)
+    .bind(equipamento_id)
+    .bind(concurrency_token)
+    .bind(empresa_id)
+    .execute(&pool)
+    .await
+    .map_err(|e| {
+        error!("Erro ao definir responsável do equipamento {}: {}", equipamento_id, e);
+        super::operator_errors::erro_sql_para_operador(&e)
+    })?
+    .rows_affected();
+
+    if updated_rows == 0 {
+        return Err(concurrency_conflict_message("o equipamento"));
+    }
+
+    record_security_event(
+        "EQUIPMENT_RESPONSIBLE_LINKED",
+        Some(&actor),
+        format!("equipamento_id={}; contato_id={}", equipamento_id, contato_id),
+        true,
+    )
+    .await;
+
+    info!("Responsável do equipamento {} definido", equipamento_id);
+    buscar_equipamento(equipamento_id).await
+}
+
 /// Deletar equipamento por ID.
 #[tauri::command]
 #[instrument(skip_all, fields(id = id))]
@@ -914,7 +1096,7 @@ pub async fn deletar_equipamento(id: i32) -> Result<bool, String> {
         .await
         .map_err(|e| {
             error!("Erro ao deletar equipamento {}: {}", id, e);
-            e.to_string()
+            super::operator_errors::mapear_erro_sql(e)
         })?;
 
     let deleted = result.rows_affected() > 0;
@@ -964,7 +1146,7 @@ pub async fn atualizar_status_equipamento(
         .bind(empresa_id)
         .fetch_optional(&pool)
         .await
-        .map_err(|e| e.to_string())?;
+        .map_err(super::operator_errors::mapear_erro_sql)?;
     let current_status = current_status.ok_or_else(|| "Equipamento não encontrado.".to_string())?;
     let normalized_current_status = normalize_status_key(&current_status);
     let is_regular = is_regular_status_transition(&normalized_current_status, &normalized_status);
@@ -981,7 +1163,16 @@ pub async fn atualizar_status_equipamento(
         prazo_aprovacao_value.as_deref(),
         valor_final,
     ) {
-        Some(require_permission(PERMISSION_FINANCIAL_ACTIONS)?)
+        if status_change_allows_quote_preparation(
+            &normalized_current_status,
+            &normalized_status,
+            is_correction,
+            valor_final,
+        ) {
+            Some(require_any_permission(&[PERMISSION_FINANCIAL_ACTIONS, PERMISSION_PREPARE_QUOTES])?)
+        } else {
+            Some(require_permission(PERMISSION_FINANCIAL_ACTIONS)?)
+        }
     } else {
         None
     };
@@ -1011,7 +1202,7 @@ pub async fn atualizar_status_equipamento(
         .await
         .map_err(|e| {
             error!("Erro ao atualizar status do equipamento {}: {}", id, e);
-            e.to_string()
+            super::operator_errors::mapear_erro_sql(e)
         })?
         .rows_affected();
 
@@ -1074,11 +1265,11 @@ pub async fn aprovar_orcamento(input: AprovarOrcamentoInput) -> Result<Equipamen
     if input.empresa_id != empresa_id { return Err("Empresa diferente do perfil autenticado.".to_string()); }
     let mut tx = pool.begin().await.map_err(|error| {
         error!("Erro ao iniciar transação de aprovação do equipamento {}: {}", input.equipamento_id, error);
-        error.to_string()
+        super::operator_errors::mapear_erro_sql(error)
     })?;
 
-    let equipment: Option<(String, String)> = sqlx::query_as(
-        "SELECT COALESCE(status, ''), atualizado_em::TEXT
+    let equipment: Option<(String, String, Option<f64>)> = sqlx::query_as(
+        "SELECT COALESCE(status, ''), atualizado_em::TEXT, valor_orcamento::FLOAT8
          FROM equipamentos
          WHERE id = $1 AND empresa_id = $2
          FOR UPDATE",
@@ -1087,9 +1278,9 @@ pub async fn aprovar_orcamento(input: AprovarOrcamentoInput) -> Result<Equipamen
     .bind(empresa_id)
     .fetch_optional(&mut *tx)
     .await
-    .map_err(|error| format!("Erro ao validar equipamento para aprovação: {}", error))?;
+    .map_err(super::operator_errors::mapear_erro_sql)?;
 
-    let Some((current_status, _current_updated_em)) = equipment else {
+    let Some((current_status, _current_updated_em, equipment_total)) = equipment else {
         return Err("Equipamento não encontrado na empresa do perfil autenticado.".to_string());
     };
     if normalize_status_key(&current_status) != "AGUARDANDO_APROVACAO" {
@@ -1108,7 +1299,7 @@ pub async fn aprovar_orcamento(input: AprovarOrcamentoInput) -> Result<Equipamen
     .bind(empresa_id)
     .fetch_optional(&mut *tx)
     .await
-    .map_err(|error| format!("Erro ao validar tenant da verificação: {}", error))?;
+    .map_err(super::operator_errors::mapear_erro_sql)?;
     if conflicting_verification.is_some() {
         return Err("A verificação técnica pertence a outra empresa e não pode ser usada nesta aprovação.".to_string());
     }
@@ -1125,7 +1316,7 @@ pub async fn aprovar_orcamento(input: AprovarOrcamentoInput) -> Result<Equipamen
     .bind(empresa_id)
     .fetch_optional(&mut *tx)
     .await
-    .map_err(|error| format!("Erro ao validar verificação para aprovação: {}", error))?;
+    .map_err(super::operator_errors::mapear_erro_sql)?;
 
     let Some((verification_id, verification_empresa_id, servicos_json, pecas_json, total_original)) = verification else {
         return Err("Não é possível aprovar sem uma verificação técnica.".to_string());
@@ -1133,6 +1324,13 @@ pub async fn aprovar_orcamento(input: AprovarOrcamentoInput) -> Result<Equipamen
     let servicos = parse_servicos(servicos_json.as_deref().unwrap_or("[]"))?;
     if input.aprovar_sem_servicos && (!servicos.is_empty() || !input.servicos_aprovados.is_empty()) {
         return Err("Aprovação sem serviços só é válida para orçamento sem serviços.".to_string());
+    }
+    let aprovado = input.aprovado.unwrap_or(!input.servicos_aprovados.is_empty() || input.aprovar_sem_servicos);
+    if aprovado && !servicos.is_empty() && input.servicos_aprovados.is_empty() && !input.aprovar_sem_servicos {
+        return Err("Selecione ao menos um serviço para aprovar este orçamento.".to_string());
+    }
+    if !aprovado && !input.servicos_aprovados.is_empty() {
+        return Err("Uma reprovação não pode conter serviços aprovados.".to_string());
     }
     let itens = normalizar_servicos(servicos_json.as_deref().unwrap_or("[]"))?;
     let vinculadas: HashSet<String> = itens.iter().flat_map(|s| {
@@ -1146,8 +1344,17 @@ pub async fn aprovar_orcamento(input: AprovarOrcamentoInput) -> Result<Equipamen
     if !input.servicos_aprovados.is_empty() && pecas_antigas.iter().any(|p| !p.get("id").and_then(|v| v.as_str()).is_some_and(|id| vinculadas.contains(id))) {
         return Err("Há peças antigas sem serviço vinculado. Use Alterar Orçamento para vinculá-las antes da aprovação.".to_string());
     }
+    super::orcamento_decisao::conferir_e_aplicar_resposta(
+        &mut tx,
+        empresa_id,
+        input.equipamento_id,
+        aprovado,
+        input.resposta_esperada_id,
+        input.motivo_divergencia.as_deref(),
+        actor.id,
+    )
+    .await?;
     aplicar_decisoes(&mut tx, empresa_id, verification_id, &servicos, &input.servicos_aprovados).await?;
-    let aprovado = !input.servicos_aprovados.is_empty() || input.aprovar_sem_servicos;
     let novo_status = if aprovado { "APROVADO" } else { "REPROVADO" };
     let todos = itens;
     let selecionados: HashSet<&str> = input.servicos_aprovados.iter().map(String::as_str).collect();
@@ -1173,8 +1380,17 @@ pub async fn aprovar_orcamento(input: AprovarOrcamentoInput) -> Result<Equipamen
             }
         }
     }
-    if aprovado && selecionados.len() == servicos.len() {
-        total = total_original.unwrap_or(total);
+    if aprovado && servicos.is_empty() {
+        total = equipment_total.filter(|value| *value > 0.0)
+            .or(total_original.filter(|value| *value > 0.0))
+            .or(equipment_total)
+            .or(total_original)
+            .unwrap_or(total);
+    } else if aprovado && selecionados.len() == servicos.len() {
+        total = total_original.filter(|value| *value > 0.0).unwrap_or(total);
+    }
+    if aprovado && servicos.is_empty() {
+        pecas_aceitas = pecas_antigas.clone();
     }
     if input.aprovar_sem_servicos {
         pecas_aceitas = pecas_antigas.clone();
@@ -1182,7 +1398,12 @@ pub async fn aprovar_orcamento(input: AprovarOrcamentoInput) -> Result<Equipamen
     if !aprovado {
         aceitos = normalizar_servicos(servicos_json.as_deref().unwrap_or("[]"))?;
         pecas_aceitas = pecas_antigas;
-        total = total_original.unwrap_or(0.0);
+        total = equipment_total
+            .filter(|value| *value > 0.0)
+            .or(total_original.filter(|value| *value > 0.0))
+            .or(equipment_total)
+            .or(total_original)
+            .unwrap_or(0.0);
     }
     if !total.is_finite() || total < 0.0 { return Err("Total aprovado inválido.".to_string()); }
 
@@ -1190,9 +1411,9 @@ pub async fn aprovar_orcamento(input: AprovarOrcamentoInput) -> Result<Equipamen
         "UPDATE verificacoes
          SET forma_pagamento_codigo = $1, forma_pagamento_detalhe = $2,
              empresa_id = COALESCE(empresa_id, $5),
-             servicos_orcamento_original = COALESCE(servicos_orcamento_original, servicos_necessarios::jsonb),
-             pecas_orcamento_original = COALESCE(pecas_orcamento_original, pecas_necessarias::jsonb),
-             valor_orcamento_original = COALESCE(valor_orcamento_original, custo_total),
+             servicos_orcamento_original = servicos_necessarios::jsonb,
+             pecas_orcamento_original = pecas_necessarias::jsonb,
+             valor_orcamento_original = custo_total,
              servicos_necessarios = $6, pecas_necessarias = $7, custo_total = $8
          WHERE id = $3 AND equipamento_id = $4
            AND (empresa_id = $5 OR empresa_id IS NULL)",
@@ -1207,7 +1428,7 @@ pub async fn aprovar_orcamento(input: AprovarOrcamentoInput) -> Result<Equipamen
     .bind(total)
     .execute(&mut *tx)
     .await
-    .map_err(|error| format!("Erro ao salvar pagamento do orçamento: {}", error))?
+    .map_err(super::operator_errors::mapear_erro_sql)?
     .rows_affected();
 
     if payment_updated_rows != 1 {
@@ -1229,7 +1450,7 @@ pub async fn aprovar_orcamento(input: AprovarOrcamentoInput) -> Result<Equipamen
     .bind(total)
     .execute(&mut *tx)
     .await
-    .map_err(|error| format!("Erro ao aprovar orçamento: {}", error))?
+    .map_err(super::operator_errors::mapear_erro_sql)?
     .rows_affected();
 
     if updated_rows == 0 {
@@ -1238,14 +1459,14 @@ pub async fn aprovar_orcamento(input: AprovarOrcamentoInput) -> Result<Equipamen
 
     tx.commit().await.map_err(|error| {
         error!("Erro ao confirmar aprovação do equipamento {}: {}", input.equipamento_id, error);
-        error.to_string()
+        super::operator_errors::mapear_erro_sql(error)
     })?;
 
     record_security_event(
         if aprovado { "BUDGET_APPROVED" } else { "BUDGET_REJECTED" },
         Some(&actor),
         format!(
-            "empresa_id={}; equipamento_id={}; verificacao_id={}; pagamento_codigo={}; status_anterior=AGUARDANDO_APROVACAO; status={}; motivo={}; servicos_aprovados={}; verificacao_legada_regularizada={}",
+            "empresa_id={}; equipamento_id={}; verificacao_id={}; pagamento_codigo={}; status_anterior=AGUARDANDO_APROVACAO; status={}; motivo={}; servicos_aprovados={}; verificacao_legada_regularizada={}; motivo_divergencia_cliente={}",
             empresa_id,
             input.equipamento_id,
             verification_id,
@@ -1254,6 +1475,7 @@ pub async fn aprovar_orcamento(input: AprovarOrcamentoInput) -> Result<Equipamen
             if aprovado { "Orçamento aprovado pelo cliente." } else { "Orçamento reprovado pelo cliente." },
             selecionados.len(),
             verification_empresa_id.is_none(),
+            motivo_divergencia_auditoria(input.motivo_divergencia.as_deref()),
         ),
         true,
     )
@@ -1265,12 +1487,20 @@ pub async fn aprovar_orcamento(input: AprovarOrcamentoInput) -> Result<Equipamen
         .bind(empresa_id)
         .fetch_one(&pool)
         .await
-        .map_err(|error| format!("Erro ao carregar equipamento aprovado: {}", error))
+        .map_err(super::operator_errors::mapear_erro_sql)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn motivo_divergencia_vai_para_auditoria_sem_quebrar_os_detalhes() {
+        let detalhes = format!("status=APROVADO; motivo_divergencia_cliente={}", motivo_divergencia_auditoria(Some("  Cliente ligou;\n confirmou  ")));
+        assert_eq!(audit_detail(&detalhes, "motivo_divergencia_cliente").as_deref(), Some("Cliente ligou confirmou"));
+        assert_eq!(motivo_divergencia_auditoria(None), "");
+        assert_eq!(motivo_divergencia_auditoria(Some(&"x".repeat(500))).chars().count(), 300);
+    }
 
     #[test]
     fn p0_sensitive_status_gate_flags_status_only_changes_on_update() {
@@ -1309,6 +1539,18 @@ mod tests {
             None,
         ));
         assert!(!status_change_requires_sensitive_access("RECEBIDO", None, None, None));
+    }
+
+    #[test]
+    fn quote_preparation_allows_only_verified_to_awaiting_approval_without_final_value() {
+        assert!(status_change_allows_quote_preparation("VERIFICADO", "AGUARDANDO_APROVACAO", false, None));
+        assert!(status_change_allows_quote_preparation("AGUARDANDO_APROVACAO", "AGUARDANDO_APROVACAO", false, None));
+        assert!(!status_change_allows_quote_preparation("VERIFICADO", "AGUARDANDO_APROVACAO", true, None));
+        assert!(!status_change_allows_quote_preparation("VERIFICADO", "AGUARDANDO_APROVACAO", false, Some(10.0)));
+        assert!(!status_change_allows_quote_preparation("VERIFICADO", "APROVADO", false, None));
+        assert!(!status_change_allows_quote_preparation("VERIFICADO", "REPROVADO", false, None));
+        assert!(!status_change_allows_quote_preparation("VERIFICADO", "ENTREGUE", false, None));
+        assert!(!status_change_allows_quote_preparation("EM_VERIFICACAO", "AGUARDANDO_APROVACAO", false, None));
     }
 
     #[test]
@@ -1408,6 +1650,8 @@ mod tests {
     #[test]
     fn equipment_order_is_whitelisted_and_defaults_to_recent_changes() {
         assert!(equipment_order_clause(None).contains("atualizado_em"));
+        assert!(equipment_order_clause(None).contains("ultima_atividade_cliente_em"));
+
         assert_eq!(equipment_order_clause(Some("CADASTRO_RECENTE")), " ORDER BY criado_em DESC NULLS LAST, id DESC");
         assert_eq!(equipment_order_clause(Some("id; DROP TABLE equipamentos")), equipment_order_clause(None));
     }

@@ -6,7 +6,7 @@
 //! ╚══════════════════════════════════════════════════════════════╝
 
 use crate::commands::auth::{
-    record_security_event, require_permission, PERMISSION_CONFIG_SMTP, PERMISSION_MANAGE_PROFILES,
+    record_security_event, require_permission, require_sensitive_access, PERMISSION_MANAGE_PROFILES,
 };
 use crate::db::{get_pool, known_migrations, validate_connected_migration_history};
 use base64::Engine;
@@ -546,7 +546,7 @@ fn reveal_file_in_manager(file_path: &Path) -> Result<(), String> {
             .arg("/select,")
             .arg(file_path)
             .spawn()
-            .map_err(|e| format!("Arquivo salvo, mas não foi possível abrir o Explorer: {}", e))?;
+            .map_err(super::operator_errors::mapear_erro_operacional)?;
         return Ok(());
     }
 
@@ -579,7 +579,7 @@ fn reveal_file_in_manager(file_path: &Path) -> Result<(), String> {
             .arg("-R")
             .arg(file_path)
             .spawn()
-            .map_err(|e| format!("Arquivo salvo, mas não foi possível abrir o Finder: {}", e))?;
+            .map_err(super::operator_errors::mapear_erro_operacional)?;
         return Ok(());
     }
 
@@ -735,7 +735,7 @@ pub async fn copiar_anexo_email_para_temp(
     origem: String,
     filename: String,
 ) -> Result<String, String> {
-    let _actor = require_permission(PERMISSION_CONFIG_SMTP)?;
+    let _actor = require_sensitive_access()?;
     let origem_path = resolve_allowed_app_document_path(&origem)?;
 
     let safe_filename = sanitize_temp_filename(&filename)?;
@@ -921,7 +921,7 @@ pub async fn abrir_painel_impressoras_windows() -> Result<(), String> {
         Command::new("control.exe")
             .arg("printers")
             .spawn()
-            .map_err(|e| format!("Não foi possível abrir o Painel de Controle de impressoras: {}", e))?;
+            .map_err(super::operator_errors::mapear_erro_operacional)?;
         return Ok(());
     }
 
@@ -944,8 +944,8 @@ pub async fn listar_impressoras_windows() -> Result<Vec<ImpressoraWindows>, Stri
                 .output()
         })
         .await
-        .map_err(|e| format!("Falha ao consultar as impressoras instaladas: {}", e))?
-        .map_err(|e| format!("Não foi possível executar o PowerShell: {}", e))?;
+        .map_err(super::operator_errors::mapear_erro_operacional)?
+        .map_err(super::operator_errors::mapear_erro_operacional)?;
 
         if !output.status.success() {
             return Err(format!(
@@ -959,7 +959,7 @@ pub async fn listar_impressoras_windows() -> Result<Vec<ImpressoraWindows>, Stri
             return Ok(Vec::new());
         }
         serde_json::from_str(json.trim())
-            .map_err(|e| format!("Resposta inválida ao listar as impressoras: {}", e))
+            .map_err(super::operator_errors::mapear_erro_operacional)
     }
 
     #[cfg(not(target_os = "windows"))]
@@ -979,7 +979,7 @@ pub async fn imprimir_teste_bmitag(input: TesteImpressaoBmitagInput) -> Result<(
 
         let image_path = autoos_temp_dir()?.join(format!("teste-bmitag-{}.png", uuid::Uuid::new_v4()));
         fs::write(&image_path, &input.logo_png)
-            .map_err(|e| format!("Não foi possível preparar a logo para impressão: {}", e))?;
+            .map_err(super::operator_errors::mapear_erro_operacional)?;
 
         let payload = json!({
             "impressora": input.impressora.trim(),
@@ -990,7 +990,7 @@ pub async fn imprimir_teste_bmitag(input: TesteImpressaoBmitagInput) -> Result<(
             "tecnico": input.tecnico.trim(),
         });
         let payload_base64 = base64::engine::general_purpose::STANDARD
-            .encode(serde_json::to_vec(&payload).map_err(|e| e.to_string())?);
+            .encode(serde_json::to_vec(&payload).map_err(super::operator_errors::mapear_erro_operacional)?);
         let script = format!(r#"
 Add-Type -AssemblyName System.Drawing
 $data = [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('{payload_base64}')) | ConvertFrom-Json
@@ -1036,8 +1036,8 @@ $logo.Dispose()
                 .output()
         })
         .await
-        .map_err(|e| format!("Falha ao enviar o teste para a fila de impressão: {}", e))?
-        .map_err(|e| format!("Não foi possível executar o PowerShell: {}", e));
+        .map_err(super::operator_errors::mapear_erro_operacional)?
+        .map_err(super::operator_errors::mapear_erro_operacional);
         let _ = fs::remove_file(&image_path);
         let output = output?;
         if !output.status.success() {
@@ -1066,7 +1066,11 @@ $logo.Dispose()
 #[tauri::command]
 pub async fn abrir_url(url: String) -> Result<(), String> {
     let url_trimmed = url.trim().to_string();
-    if url_trimmed.is_empty() || (!url_trimmed.starts_with("http://") && !url_trimmed.starts_with("https://")) {
+    // `mailto:` abre o cliente de e-mail padrão (contato direto com o cliente no orçamento).
+    let esquema_permitido = url_trimmed.starts_with("http://")
+        || url_trimmed.starts_with("https://")
+        || url_trimmed.starts_with("mailto:");
+    if url_trimmed.is_empty() || !esquema_permitido {
         return Err("URL inválida".to_string());
     }
     #[cfg(target_os = "linux")]
@@ -1078,17 +1082,18 @@ pub async fn abrir_url(url: String) -> Result<(), String> {
     }
     #[cfg(target_os = "windows")]
     {
-        std::process::Command::new("cmd")
-            .args(["/c", "start", "", &url_trimmed])
+        // Sem `cmd /c start`: o cmd interpreta `&`, `%` e `^` da URL (ex.: mensagem do wa.me).
+        std::process::Command::new("rundll32")
+            .args(["url.dll,FileProtocolHandler", &url_trimmed])
             .spawn()
-            .map_err(|e| format!("Erro ao abrir navegador: {}", e))?;
+            .map_err(super::operator_errors::mapear_erro_operacional)?;
     }
     #[cfg(target_os = "macos")]
     {
         std::process::Command::new("open")
             .arg(&url_trimmed)
             .spawn()
-            .map_err(|e| format!("Erro ao abrir navegador: {}", e))?;
+            .map_err(super::operator_errors::mapear_erro_operacional)?;
     }
     Ok(())
 }
@@ -1361,7 +1366,7 @@ pub async fn obter_status_schema_banco() -> Result<DatabaseSchemaStatus, String>
     .await
     .map_err(|e| {
         error!("Erro ao consultar identidade do banco: {}", e);
-        e.to_string()
+        super::operator_errors::mapear_erro_sql(e)
     })?;
 
     let applied_rows = sqlx::query_as::<_, AppliedMigrationRow>(
@@ -1373,7 +1378,7 @@ pub async fn obter_status_schema_banco() -> Result<DatabaseSchemaStatus, String>
     .await
     .map_err(|e| {
         error!("Erro ao consultar migrações aplicadas: {}", e);
-        e.to_string()
+        super::operator_errors::mapear_erro_sql(e)
     })?;
 
     let mut applied_by_version = BTreeMap::new();

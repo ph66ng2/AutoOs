@@ -12,9 +12,9 @@ import {
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { nomeExibicaoCliente } from "@/components/clientes/cliente-display-utils";
+import { nomeExibicaoCliente, telefoneExibicaoCliente } from "@/components/clientes/cliente-display-utils";
 import type { Cliente, Equipamento } from "@/types";
-import { formatarDocumento, formatarTelefone } from "@/lib/validations";
+import { formatarDocumento } from "@/lib/validations";
 import { useLocation, useNavigate } from "react-router-dom";
 
 export function ClienteSelectorClienteCard({
@@ -78,7 +78,7 @@ export function ClienteSelectorClienteCard({
         <div className="grid grid-cols-2 gap-2 text-sm">
           <div className="flex items-center gap-1">
             <Phone className="h-3 w-3 text-muted-foreground" />
-            <span>{c.telefone ? formatarTelefone(c.telefone) : "—"}</span>
+            <span>{telefoneExibicaoCliente(c.telefone)}</span>
           </div>
           {c.email && (
             <div className="flex items-center gap-1">

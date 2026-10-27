@@ -13,6 +13,7 @@
 //! ╚══════════════════════════════════════════════════════════════╝
 
 pub mod types;
+pub mod operator_errors;
 pub mod auth;
 pub mod equipamentos;
 pub mod equipamento_imagens;
@@ -24,6 +25,7 @@ pub mod contatos;
 pub mod cnpj;
 pub mod produtos;
 pub mod orcamento_estoque;
+pub mod orcamentos_insumos;
 pub mod servicos;
 pub mod verificacoes;
 pub mod comunicacoes;
@@ -34,6 +36,11 @@ pub mod gastos;
 pub mod qr_code;
 pub mod storage_config;
 pub mod enrollment;
+pub mod envio_whatsapp;
+pub mod orcamento_correcao;
+pub mod orcamento_decisao;
+pub mod portal_cliente;
+pub mod public_status;
 pub mod image_migration;
 pub mod saas_auth;
 pub mod saas_communication;

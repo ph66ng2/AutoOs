@@ -56,7 +56,7 @@ Na CI, o binário `ci_migrate` aplica migrations somente ao PostgreSQL descartá
 
 ### Migrations SQLx em produção
 
-As migrations em `src-tauri/migrations/` são aplicadas pelo workflow protegido [production-sqlx-migrations.yml](../.github/workflows/production-sqlx-migrations.yml), não pelo app nem pelo build de release. Configure o ambiente, a URL exclusiva de migration e os revisores conforme [PRODUCTION_MIGRATIONS.md](./PRODUCTION_MIGRATIONS.md). Aguarde o workflow concluir com sucesso antes de publicar um release que dependa dessas migrations.
+As migrations em `src-tauri/migrations/` (0001–0042 neste sync) são aplicadas pelo workflow protegido [production-sqlx-migrations.yml](../.github/workflows/production-sqlx-migrations.yml), não pelo app nem pelo build de release. Configure o ambiente, a URL exclusiva de migration e os revisores conforme [PRODUCTION_MIGRATIONS.md](./PRODUCTION_MIGRATIONS.md). Aguarde o workflow concluir com sucesso antes de publicar um release que dependa dessas migrations. O desktop não executa migrations ao iniciar.
 
 ## Windows (distribuição assistida)
 

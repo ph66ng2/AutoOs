@@ -1,14 +1,37 @@
-import { defineConfig } from "vite";
+import { defineConfig, type Plugin } from "vite";
 import react from "@vitejs/plugin-react";
+import fs from "fs";
 import path from "path";
 
 const host = process.env.TAURI_DEV_HOST;
-const isE2eMock = process.env.VITE_E2E_MOCK === "1";
+const isE2eScreenshots = process.env.VITE_E2E_SCREENSHOTS === "1";
+const isE2eMock = process.env.VITE_E2E_MOCK === "1" || isE2eScreenshots;
+const isE2eTeam = process.env.VITE_E2E_TEAM === "1";
 const isE2eDemo = process.env.VITE_E2E_DEMO === "1";
+
+/** Serve o JSON exportado do Postgres local só quando o job de screenshots pede. */
+function uiScreenshotSeedPlugin(): Plugin {
+  const file = path.resolve(__dirname, "e2e/fixtures/ui-screenshot-seed.json");
+  return {
+    name: "autoos-ui-screenshot-seed",
+    configureServer(server) {
+      server.middlewares.use("/__ui-screenshot-seed.json", (_req, res) => {
+        if (!fs.existsSync(file)) {
+          res.statusCode = 404;
+          res.end("missing ui-screenshot-seed.json");
+          return;
+        }
+        res.setHeader("Content-Type", "application/json; charset=utf-8");
+        res.setHeader("Cache-Control", "no-store");
+        fs.createReadStream(file).pipe(res);
+      });
+    },
+  };
+}
 
 // https://vitejs.dev/config/
 export default defineConfig(async () => ({
-  plugins: [react()],
+  plugins: [react(), ...(isE2eScreenshots ? [uiScreenshotSeedPlugin()] : [])],
   
   resolve: {
     alias: {
@@ -17,9 +40,15 @@ export default defineConfig(async () => ({
         ? {
             "@tauri-apps/api/core": path.resolve(
               __dirname,
-              isE2eDemo ? "./e2e/mocks/tauri-core-demo.ts" : "./e2e/mocks/tauri-core.ts",
+              isE2eScreenshots
+                ? "./e2e/mocks/tauri-core-screenshots.ts"
+                : isE2eTeam
+                  ? "./e2e/mocks/tauri-core-team.ts"
+                  : isE2eDemo
+                    ? "./e2e/mocks/tauri-core-demo.ts"
+                    : "./e2e/mocks/tauri-core.ts",
             ),
-            ...(isE2eDemo
+            ...((isE2eDemo || isE2eTeam || isE2eScreenshots)
               ? {
                   "@tauri-apps/api/event": path.resolve(
                     __dirname,

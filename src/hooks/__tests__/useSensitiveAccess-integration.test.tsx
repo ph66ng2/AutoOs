@@ -1,8 +1,8 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, screen, waitFor, act } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { useState } from "react";
-import { SensitiveAccessProvider, useSensitiveAccess } from "@/hooks/useSensitiveAccess";
+import { SensitiveAccessBadge, SensitiveAccessProvider, useSensitiveAccess } from "@/hooks/useSensitiveAccess";
 import type { SensitiveAccessStatus, SensitivePermission } from "@/types";
 
 const mockInvoke = vi.hoisted(() => vi.fn());
@@ -43,9 +43,93 @@ describe("useSensitiveAccess — integração com novos recursos de auth", () =>
     localStorage.removeItem("autoos_last_profile_id");
   });
 
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
   function captureHook(h: ReturnType<typeof useSensitiveAccess>) {
     hookRef = h;
   }
+
+  it("libera os controles quando o PIN local desaparece entre abrir e confirmar", async () => {
+    const user = userEvent.setup();
+    const profile = { id: 1, nome: "Admin", role: "ADMIN", permissions: [], pin_required: true, pin_configured: true, is_default: true, ativo: true };
+    const initial = { ...EMPTY_STATUS, pin_configured: true, active_profile_id: 1, active_profile_name: "Admin", profiles: [profile] };
+    let reads = 0;
+    mockInvoke.mockImplementation((cmd: string) => {
+      if (cmd === "get_sensitive_access_status") return Promise.resolve(++reads === 1 ? initial : { ...initial, pin_configured: false, profiles: [{ ...profile, pin_configured: false }] });
+      return Promise.resolve(null);
+    });
+    render(<TestHarness><HookInspector capture={captureHook} /></TestHarness>);
+    await user.type(await screen.findByLabelText("PIN do perfil"), "1234");
+    await user.click(screen.getByRole("button", { name: "Entrar com este perfil" }));
+    await screen.findByText(/ainda não tem PIN neste computador. Use o código que o administrador te passou/);
+    expect(screen.getByRole("button", { name: "Cancelar" })).toBeEnabled();
+    expect(screen.queryByRole("button", { name: "Validando..." })).not.toBeInTheDocument();
+    expect(mockInvoke.mock.calls.some(([cmd]) => cmd === "unlock_session_without_pin")).toBe(false);
+  });
+
+  it("cofre indisponível entre abrir e confirmar: para no aviso, sem sessão sem PIN nem criação de PIN", async () => {
+    const user = userEvent.setup();
+    // Perfil que não exige PIN: sem a guarda, o submit cairia em unlock_session_without_pin.
+    const profile = { id: 2, nome: "Operador", role: "ATENDENTE", permissions: [], pin_required: false, pin_configured: false, is_default: false, ativo: true };
+    const initial = { ...EMPTY_STATUS, active_profile_id: 2, active_profile_name: "Operador", profiles: [profile] };
+    const blocked = { ...initial, keyring_bloqueado: true };
+    let reads = 0;
+    mockInvoke.mockImplementation((cmd: string) => {
+      if (cmd === "get_sensitive_access_status") return Promise.resolve(++reads === 1 ? initial : blocked);
+      return Promise.resolve(null);
+    });
+    render(<TestHarness><HookInspector capture={captureHook} /></TestHarness>);
+    await user.click(await screen.findByRole("button", { name: "Entrar com este perfil" }));
+
+    expect((await screen.findAllByText(/cofre de senhas do sistema está bloqueado/)).length).toBeGreaterThan(0);
+    const comandos = mockInvoke.mock.calls.map(([cmd]) => cmd);
+    for (const proibido of ["unlock_session_without_pin", "set_active_security_profile", "configure_sensitive_pin", "unlock_sensitive_access"]) {
+      expect(comandos).not.toContain(proibido);
+    }
+  });
+
+  it("mantém os perfis em uma falha temporária e limpa o aviso após recuperar", async () => {
+    const intervalSpy = vi.spyOn(window, "setInterval");
+    const profile = { id: 1, nome: "Admin", role: "ADMIN", permissions: [], pin_configured: true, is_default: true, ativo: true };
+    const available = { ...EMPTY_STATUS, unlocked: true, active_profile_id: 1, active_profile_name: "Admin", pin_configured: true, profiles: [profile] };
+    mockInvoke
+      .mockResolvedValueOnce(available)
+      .mockRejectedValueOnce("MaxClientsInSessionMode: max clients reached")
+      .mockResolvedValueOnce(available);
+
+    render(<TestHarness><HookInspector capture={captureHook} /><SensitiveAccessBadge /></TestHarness>);
+    await waitFor(() => expect(hookRef?.status?.profiles).toHaveLength(1));
+
+    await act(async () => { await hookRef?.refreshStatus(); });
+    expect(hookRef?.status?.profiles).toHaveLength(1);
+    expect(screen.getByText("Banco temporariamente indisponível")).toBeInTheDocument();
+    expect(screen.getByText(/limite de acessos ao mesmo tempo/i)).toBeInTheDocument();
+    await waitFor(() => expect(intervalSpy.mock.calls.some(([, delay]) => delay === 30_000)).toBe(true));
+
+    await act(async () => { await hookRef?.refreshStatus(); });
+    expect(screen.queryByText("Banco temporariamente indisponível")).not.toBeInTheDocument();
+    expect(screen.queryByText(/limite de acessos ao mesmo tempo/i)).not.toBeInTheDocument();
+  });
+
+  it("remove o aviso quando a primeira consulta ao perfil volta a funcionar", async () => {
+    const profile = { id: 1, nome: "Admin", role: "ADMIN", permissions: [], pin_configured: true, is_default: true, ativo: true };
+    const available = { ...EMPTY_STATUS, unlocked: true, active_profile_id: 1, active_profile_name: "Admin", pin_configured: true, profiles: [profile] };
+    mockInvoke
+      .mockResolvedValueOnce(available)
+      .mockRejectedValueOnce("MaxClientsInSessionMode: max clients reached")
+      .mockResolvedValueOnce(available);
+
+    render(<TestHarness><HookInspector capture={captureHook} /><SensitiveAccessBadge /></TestHarness>);
+    await waitFor(() => expect(hookRef?.status?.profiles).toHaveLength(1));
+
+    await act(async () => { await hookRef?.refreshStatus(); });
+    expect(screen.getByText("Banco temporariamente indisponível")).toBeInTheDocument();
+
+    await act(async () => { expect(await hookRef?.ensureSensitiveAccess()).toBe(true); });
+    expect(screen.queryByText("Banco temporariamente indisponível")).not.toBeInTheDocument();
+  });
 
   it("mantém o perfil escolhido e o PIN digitado durante uma atualização de status", async () => {
     const user = userEvent.setup();

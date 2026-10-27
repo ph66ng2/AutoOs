@@ -65,7 +65,7 @@ export function PagamentoOrcamentoDialog({
             required
             disabled={loading}
           />
-          {(validationError || error) && <p className="text-sm text-red-600" role="alert">{validationError || error}</p>}
+          {(validationError || error) && <p className="whitespace-pre-line text-sm text-red-600" role="alert">{validationError || error}</p>}
         </div>
         <DialogFooter>
           <Button type="button" variant="outline" onClick={() => onOpenChange(false)} disabled={loading}>Cancelar</Button>

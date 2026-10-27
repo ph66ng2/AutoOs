@@ -80,4 +80,17 @@ describe("ContatoResponsavelSelector SaaS", () => {
     expect(screen.getByText("Snapshot legado")).toBeInTheDocument();
     expect(onChange).not.toHaveBeenCalled();
   });
+
+  it("pré-seleciona o contato Online uma única vez quando preSelecionar está ativo", async () => {
+    const onChange = vi.fn();
+    render(<ContatoResponsavelSelector
+      cliente={{ id: clientId, empresa_id: companyId, nome: "Cliente Online" }}
+      value={null}
+      onChange={onChange}
+      preSelecionar
+    />);
+    await screen.findByText("Contato Online");
+    await waitFor(() => expect(onChange).toHaveBeenCalledWith(contact));
+    expect(onChange).toHaveBeenCalledTimes(1);
+  });
 });

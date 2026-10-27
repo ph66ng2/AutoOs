@@ -6,13 +6,13 @@
   width: 100%;
   margin: 0;
   padding: 0;
-  background: #020617;
+  background: #050608;
 }
 
 .page-solo.is-boot {
   display: block;
   --product: #2b6ce8;
-  background: #020617;
+  background: #050608;
 }
 
 .page-solo.is-boot .stamp-solo {
@@ -23,4 +23,9 @@
 .stamp-solo {
   width: 100%;
   height: 100%;
+}
+
+/* Abertura do dia no AutoOS: o carimbo é a vinheta de marca; o progresso real fica com a impressora. */
+.page-solo.is-boot.is-opening .stp-hud {
+  display: none;
 }

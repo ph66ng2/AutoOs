@@ -12,7 +12,8 @@ use crate::commands::types::{
 #[cfg(feature = "saas")]
 use crate::commands::types::SaasCommunicationConfigInput;
 use crate::commands::auth::{
-    record_security_event, require_permission, SecurityProfileSummary, PERMISSION_CONFIG_SMTP,
+    record_security_event, require_permission, require_sensitive_access, SecurityProfileSummary,
+    PERMISSION_CONFIG_SMTP,
 };
 use keyring::Entry;
 use lettre::{
@@ -249,7 +250,7 @@ pub async fn carregar_config_smtp() -> Result<SmtpConfigResponse, String> {
 #[tauri::command]
 #[instrument(skip_all)]
 pub async fn enviar_email(input: EmailSendInput) -> Result<bool, String> {
-    let actor = require_permission(PERMISSION_CONFIG_SMTP)?;
+    let actor = require_sensitive_access()?;
     enviar_email_interno(input, Some(actor), true).await
 }
 
@@ -265,7 +266,7 @@ pub async fn enviar_email_saas(
     crate::commands::saas_communication::authorize_communication(
         &config.supabase_url,
         &config.publishable_key,
-        PERMISSION_CONFIG_SMTP,
+        None,
     )
     .await?;
     enviar_email_interno(input, None, false).await

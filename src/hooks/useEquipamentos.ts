@@ -54,9 +54,12 @@ export function useEquipamentos<Id extends EquipamentoId = number>(params?: UseE
    * Disparado automaticamente quando os parâmetros de busca/status mudam.
    * Atualiza os estados loading e error durante a execução.
    */
-  const carregar = useCallback(async () => {
+  const carregar = useCallback(async (opcoes?: { silencioso?: boolean }) => {
     const requestId = ++latestRequest.current;
-    setLoading(true);
+    // Silencioso: atualização em segundo plano (ex.: cliente respondeu no portal) sem trocar a
+    // lista pelo indicador de carregamento.
+    const silencioso = opcoes?.silencioso === true;
+    if (!silencioso) setLoading(true);
     setError(null);
     try {
       const repository = params?.repository ?? await carregarRepositorioEquipamentos<Id>();
@@ -74,10 +77,10 @@ export function useEquipamentos<Id extends EquipamentoId = number>(params?: UseE
       }
     } catch (err: any) {
       if (requestId !== latestRequest.current) return;
-      setError(err?.toString() || "Erro ao carregar equipamentos");
+      if (!silencioso) setError(err?.toString() || "Erro ao carregar equipamentos");
       console.error("Erro ao carregar equipamentos:", err);
     } finally {
-      if (requestId === latestRequest.current) setLoading(false);
+      if (requestId === latestRequest.current && !silencioso) setLoading(false);
     }
   }, [params?.busca, params?.status, params?.page, params?.ordenacao, params?.repository]);
 
@@ -89,6 +92,9 @@ export function useEquipamentos<Id extends EquipamentoId = number>(params?: UseE
     void carregar();
     return () => { latestRequest.current += 1; };
   }, [carregar]);
+
+  const recarregar = useCallback(() => carregar(), [carregar]);
+  const atualizarEmSegundoPlano = useCallback(() => carregar({ silencioso: true }), [carregar]);
 
   /**
    * Cria um novo equipamento e recarrega a lista.
@@ -218,7 +224,8 @@ export function useEquipamentos<Id extends EquipamentoId = number>(params?: UseE
     deletar,
     atualizarStatus,
     buscarPorSerial,
-    recarregar: carregar,
+    recarregar,
+    atualizarEmSegundoPlano,
     substituirLocal,
   };
 }

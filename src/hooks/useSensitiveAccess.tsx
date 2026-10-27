@@ -9,27 +9,45 @@ import {
   type ReactNode,
 } from "react";
 import { ShieldAlert, ShieldCheck, ShieldOff } from "lucide-react";
+import { useTheme } from "next-themes";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { useBootUi } from "@/components/BootUi";
 import { ProfileSessionDialog } from "@/components/ProfileSessionDialog";
 import { PasswordRecoveryDialog } from "@/components/PasswordRecoveryDialog";
+import { PrimeiroAcessoWizard } from "@/components/perfil/PrimeiroAcessoWizard";
 import { toast } from "sonner";
 import { SensitiveAccessService } from "@/lib/sensitive-access";
-import { IS_SAAS_BUILD } from "@/lib/runtime-mode";
-import { useBootUi } from "@/components/BootUi";
+import { isTemporaryDatabaseAccessMessage, sensitiveAccessErrorMessage } from "@/lib/sensitive-access-error";
 import { registerSensitiveAccessPrompt } from "@/lib/sensitive-action-retry";
+import { requestTour } from "@/lib/tour-request";
+import { IS_SAAS_BUILD } from "@/lib/runtime-mode";
 import {
-  SENSITIVE_PERMISSION_LABELS,
   SENSITIVE_PERMISSIONS,
+  SENSITIVE_PERMISSION_LABELS,
   type SensitiveAccessStatus,
   type SensitivePermission,
 } from "@/types";
 import type { SaasOperationalProfile } from "@/types/saas-auth";
 
+const EMPTY_SAAS_STATUS: SensitiveAccessStatus = {
+  pin_configured: false,
+  unlocked: false,
+  expires_at: null,
+  active_profile_id: null,
+  active_profile_name: null,
+  active_role: null,
+  permissions: [],
+  can_manage_profiles: false,
+  profiles: [],
+};
+
 interface SensitiveAccessPromptOptions {
   title?: string;
   description?: string;
   permission?: SensitivePermission;
+  /** Libera se o perfil tiver qualquer uma destas (além de `permission`, se informada). */
+  anyPermission?: SensitivePermission[];
 }
 
 interface ProfileSelectorOptions {
@@ -43,16 +61,20 @@ type SensitiveDialogMode = "startup" | "selector" | "sensitive";
 interface SensitiveAccessContextValue {
   status: SensitiveAccessStatus | null;
   loading: boolean;
+  connectionUnavailable: boolean;
   /** 0–100 durante o primeiro arranque (conexão com backend / status sensível). */
   bootProgress: number;
-  /** Avança o progresso do boot sem regredir (fases de infraestrutura externas ao refresh). */
-  advanceBootProgress: (value: number) => void;
   refreshStatus: () => Promise<void>;
   ensureSensitiveAccess: (options?: SensitiveAccessPromptOptions) => Promise<boolean>;
   openProfileSelector: (options?: ProfileSelectorOptions) => Promise<boolean>;
   lockSensitiveAccess: () => Promise<void>;
+  /** O primeiro pedido de PIN foi fechado sem desbloquear a sessão. */
+  pinPromptDismissed: boolean;
   hasPermission: (permission: SensitivePermission) => boolean;
+  hasAnyPermission: (list: SensitivePermission[]) => boolean;
   setActiveProfile: (profileId: number, pin: string) => Promise<void>;
+  /** Primeiro acesso (código, nome e visual) aberto: outras telas de entrada esperam. */
+  firstAccessOpen: boolean;
 }
 
 const defaultPrompt: SensitiveAccessPromptOptions = {
@@ -60,20 +82,17 @@ const defaultPrompt: SensitiveAccessPromptOptions = {
   description: "Informe o PIN para continuar com esta ação.",
 };
 
-const EMPTY_STATUS: SensitiveAccessStatus = {
-  pin_configured: false,
-  unlocked: false,
-  expires_at: null,
-  active_profile_id: null,
-  active_profile_name: null,
-  active_role: null,
-  permissions: [],
-  can_manage_profiles: false,
-  profiles: [],
-};
-
-function profileHasPermission(status: SensitiveAccessStatus | null, permission?: SensitivePermission) {
-  if (!permission) {
+/**
+ * Sem exigência: libera. Com `permission` única e/ou `anyPermission`:
+ * libera se o perfil tem a única OU qualquer uma da lista.
+ */
+export function profileHasPermission(
+  status: SensitiveAccessStatus | null,
+  permission?: SensitivePermission,
+  anyPermission?: SensitivePermission[],
+) {
+  const hasAny = !!anyPermission && anyPermission.length > 0;
+  if (!permission && !hasAny) {
     return true;
   }
 
@@ -81,28 +100,55 @@ function profileHasPermission(status: SensitiveAccessStatus | null, permission?:
     return false;
   }
 
-  return status.permissions.includes(permission);
-}
-
-function permissionDescription(permission?: SensitivePermission) {
-  return permission ? SENSITIVE_PERMISSION_LABELS[permission] : "executar esta ação";
-}
-
-function mensagemErroAcessoSensivel(error: unknown): string {
-  const mensagem = error instanceof Error ? error.message : String(error || "");
-  if (mensagem.toLowerCase().includes("pool timed out while waiting for an open connection")) {
-    return "O banco ainda está concluindo a conexão inicial e todas as conexões disponíveis estão ocupadas. Aguarde alguns segundos e tente novamente. Se continuar acontecendo, verifique a conexão com o PostgreSQL/Supabase e o limite de conexões do banco.";
+  if (permission && status.permissions.includes(permission)) {
+    return true;
   }
 
-  return mensagem || "Falha ao validar o acesso sensível.";
+  return hasAny && anyPermission.some((item) => status.permissions.includes(item));
+}
+
+export function permissionDescription(permission?: SensitivePermission, anyPermission?: SensitivePermission[]) {
+  const labels: string[] = [];
+  if (permission) {
+    labels.push(SENSITIVE_PERMISSION_LABELS[permission]);
+  }
+  for (const item of anyPermission ?? []) {
+    const label = SENSITIVE_PERMISSION_LABELS[item];
+    if (!labels.includes(label)) {
+      labels.push(label);
+    }
+  }
+  return labels.length > 0 ? labels.join(" ou ") : "executar esta ação";
+}
+
+/**
+ * Libera a rota se não exige permissão, se o perfil tem a permissão única,
+ * ou se tem pelo menos uma das permissões da lista.
+ */
+export function routeAllows(
+  permissions: SensitivePermission[],
+  required?: SensitivePermission | SensitivePermission[],
+): boolean {
+  if (!required) {
+    return true;
+  }
+
+  if (Array.isArray(required)) {
+    return required.some((permission) => permissions.includes(permission));
+  }
+
+  return permissions.includes(required);
 }
 
 const SensitiveAccessContext = createContext<SensitiveAccessContextValue | null>(null);
 
+const KEYRING_BLOCKED_MESSAGE = "O cofre de senhas do sistema está bloqueado ou indisponível. Desbloqueie-o e tente de novo.";
+
 export function SensitiveAccessProvider({ children }: { children: ReactNode }) {
-  const { openingComplete } = useBootUi();
+  const { bootAnimationComplete } = useBootUi();
   const [status, setStatus] = useState<SensitiveAccessStatus | null>(null);
   const [loading, setLoading] = useState(true);
+  const [connectionUnavailable, setConnectionUnavailable] = useState(false);
   const [bootProgress, setBootProgress] = useState(6);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [dialogMandatory, setDialogMandatory] = useState(false);
@@ -114,35 +160,43 @@ export function SensitiveAccessProvider({ children }: { children: ReactNode }) {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [selectedProfileId, setSelectedProfileId] = useState<string>("");
+  const [firstAccess, setFirstAccess] = useState<{ profileId: number; needsCode: boolean; recovery: boolean } | null>(null);
+  const { setTheme } = useTheme();
   const resolverRef = useRef<((value: boolean) => void) | null>(null);
   const startupPromptedRef = useRef(false);
+  const unlockedSinceBootRef = useRef(false);
+  const [pinPromptDismissed, setPinPromptDismissed] = useState(false);
   const bootPhasesTrackedRef = useRef(true);
   const dialogOpenRef = useRef(false);
+  const statusErrorRef = useRef<string | null>(null);
 
   useEffect(() => {
     dialogOpenRef.current = dialogOpen;
   }, [dialogOpen]);
 
-  const advanceBootProgress = useCallback((value: number) => {
-    if (!bootPhasesTrackedRef.current) return;
-    setBootProgress((p) => Math.max(p, Math.min(100, Math.max(0, value))));
-  }, []);
+  useEffect(() => {
+    if (status?.unlocked) {
+      unlockedSinceBootRef.current = true;
+    }
+  }, [status]);
 
   const refreshStatus = useCallback(async () => {
     if (bootPhasesTrackedRef.current) {
-      setBootProgress((p) => Math.max(p, 52));
+      setBootProgress((p) => Math.max(p, 14));
     }
-    let bootResolved = !bootPhasesTrackedRef.current;
     try {
       if (bootPhasesTrackedRef.current) {
-        setBootProgress((p) => Math.max(p, 68));
+        setBootProgress((p) => Math.max(p, 38));
       }
       const nextStatus = await SensitiveAccessService.status();
       if (bootPhasesTrackedRef.current) {
         setBootProgress((p) => Math.max(p, 86));
       }
       setStatus(nextStatus);
-      bootResolved = true;
+      setConnectionUnavailable(false);
+      const statusError = statusErrorRef.current;
+      setError((current) => current && (current === statusError || isTemporaryDatabaseAccessMessage(current)) ? null : current);
+      statusErrorRef.current = null;
 
       // Pré-selecionar o último perfil usado, se ainda existir e estiver ativo
       let lastProfileId: string | null = null;
@@ -167,8 +221,8 @@ export function SensitiveAccessProvider({ children }: { children: ReactNode }) {
         startupPromptedRef.current = true;
         setDialogMode("startup");
         setPromptOptions({
-          title: "Selecionar perfil da sessão",
-          description: "Escolha com clareza qual perfil local vai abrir esta sessão e confirme o PIN antes de entrar no AutoOS.",
+          title: "Quem está usando o AutoOS?",
+          description: "Escolha seu perfil e informe o PIN para entrar.",
         });
         setDialogMandatory(true);
         setPin("");
@@ -177,29 +231,30 @@ export function SensitiveAccessProvider({ children }: { children: ReactNode }) {
         setDialogOpen(true);
       }
     } catch (refreshError: any) {
-      setStatus(EMPTY_STATUS);
-      setError(refreshError?.message || refreshError?.toString() || "Não foi possível verificar o acesso sensível.");
-      // Falha antes da infraestrutura ficar pronta: mantém loading para o BootSplash continuar funcional.
+      setConnectionUnavailable(true);
+      const message = sensitiveAccessErrorMessage(refreshError, "Não foi possível verificar o acesso sensível.");
+      statusErrorRef.current = message;
+      setError(message);
     } finally {
-      if (bootResolved) {
-        if (bootPhasesTrackedRef.current) {
-          setBootProgress(100);
-          bootPhasesTrackedRef.current = false;
-        }
-        setLoading(false);
+      if (bootPhasesTrackedRef.current) {
+        setBootProgress(100);
+        bootPhasesTrackedRef.current = false;
       }
+      setLoading(false);
     }
   }, []);
 
   useEffect(() => {
     void refreshStatus();
+  }, [refreshStatus]);
 
+  useEffect(() => {
     const intervalId = window.setInterval(() => {
       void refreshStatus();
-    }, 60_000);
+    }, connectionUnavailable ? 30_000 : 60_000);
 
     return () => window.clearInterval(intervalId);
-  }, [refreshStatus]);
+  }, [connectionUnavailable, refreshStatus]);
 
   // Abre o dialog de startup somente quando perfis ficam disponíveis E já existe sessão ativa
   // Evita conflito com AuthDialog (multi-tenant) que deve aparecer primeiro
@@ -208,8 +263,8 @@ export function SensitiveAccessProvider({ children }: { children: ReactNode }) {
       startupPromptedRef.current = true;
       setDialogMode("startup");
       setPromptOptions({
-        title: "Selecionar perfil da sessão",
-        description: "Escolha com clareza qual perfil local vai abrir esta sessão e confirme o PIN antes de entrar no AutoOS.",
+        title: "Quem está usando o AutoOS?",
+        description: "Escolha seu perfil e informe o PIN para entrar.",
       });
       setDialogMandatory(true);
       setPin("");
@@ -218,6 +273,26 @@ export function SensitiveAccessProvider({ children }: { children: ReactNode }) {
       setDialogOpen(true);
     }
   }, [status, loading]);
+
+  // O tema é do perfil: aplica o escolhido assim que a sessão dele abre. Perfil que nunca
+  // escolheu (tema nulo) usa o padrão claro, em vez de herdar o tema de quem usou antes.
+  const activeProfileForTheme = status?.unlocked
+    ? status.profiles.find((profile) => profile.id === status.active_profile_id)
+    : undefined;
+  const profileTheme: "light" | "dark" | null = activeProfileForTheme
+    ? (activeProfileForTheme.tema === "dark" ? "dark" : "light")
+    : null;
+  useEffect(() => {
+    if (profileTheme) setTheme(profileTheme);
+  }, [profileTheme, setTheme, activeProfileForTheme?.id]);
+
+  // Perfil já autenticado que ainda não escolheu nome e visual (ex.: administrador
+  // de uma instalação nova) passa pelo primeiro acesso sem a etapa do código.
+  useEffect(() => {
+    if (!status?.unlocked || firstAccess || dialogOpen) return;
+    const active = status.profiles.find((profile) => profile.id === status.active_profile_id);
+    if (active?.onboarding_pendente) setFirstAccess({ profileId: active.id, needsCode: false, recovery: false });
+  }, [dialogOpen, firstAccess, status]);
 
   const resolvePending = useCallback((value: boolean) => {
     if (resolverRef.current) {
@@ -235,22 +310,34 @@ export function SensitiveAccessProvider({ children }: { children: ReactNode }) {
   }, [status?.active_profile_id]);
 
   const closeDialog = useCallback((result: boolean) => {
-    if (!result && dialogMandatory) {
+    if (!result && dialogMandatory && dialogMode !== "startup") {
       return;
+    }
+
+    // Uma consulta do boot pode trocar o diálogo de entrada para "PIN necessário
+    // para continuar" antes do fechamento. A dispensa vale sempre que a sessão
+    // ainda não foi desbloqueada desde o arranque, senão o splash fica preso.
+    if (!result && !unlockedSinceBootRef.current) {
+      setPinPromptDismissed(true);
     }
 
     setDialogMandatory(false);
     setDialogOpen(false);
     resetDialogState();
     resolvePending(result);
-  }, [dialogMandatory, resetDialogState, resolvePending]);
+  }, [dialogMandatory, dialogMode, resetDialogState, resolvePending]);
 
   const ensureSensitiveAccess = useCallback(async (options?: SensitiveAccessPromptOptions) => {
-    const currentStatus = await SensitiveAccessService.status().catch(() => status);
+    const currentStatus = await SensitiveAccessService.status()
+      .then((nextStatus) => {
+        setConnectionUnavailable(false);
+        return nextStatus;
+      })
+      .catch(() => status);
     if (currentStatus) {
       setStatus(currentStatus);
       setSelectedProfileId(currentStatus.active_profile_id ? String(currentStatus.active_profile_id) : "");
-      if (currentStatus.unlocked && profileHasPermission(currentStatus, options?.permission)) {
+      if (currentStatus.unlocked && profileHasPermission(currentStatus, options?.permission, options?.anyPermission)) {
         return true;
       }
     }
@@ -265,8 +352,8 @@ export function SensitiveAccessProvider({ children }: { children: ReactNode }) {
       });
       setError(null);
       setPin("");
-      if (currentStatus?.unlocked && !profileHasPermission(currentStatus, options?.permission)) {
-        setError(`O perfil ativo não possui permissão para ${permissionDescription(options?.permission)}. Troque o perfil para continuar.`);
+      if (currentStatus?.unlocked && !profileHasPermission(currentStatus, options?.permission, options?.anyPermission)) {
+        setError(`O perfil ativo não possui permissão para ${permissionDescription(options?.permission, options?.anyPermission)}. Troque o perfil para continuar.`);
       }
       setDialogOpen(true);
     });
@@ -278,7 +365,12 @@ export function SensitiveAccessProvider({ children }: { children: ReactNode }) {
   })), [ensureSensitiveAccess]);
 
   const openProfileSelector = useCallback(async (options?: ProfileSelectorOptions) => {
-    const currentStatus = await SensitiveAccessService.status().catch(() => status);
+    const currentStatus = await SensitiveAccessService.status()
+      .then((nextStatus) => {
+        setConnectionUnavailable(false);
+        return nextStatus;
+      })
+      .catch(() => status);
     if (!currentStatus || currentStatus.profiles.length === 0) {
       toast.error("Nenhum perfil encontrado. Crie um perfil na aba Perfil.");
       return false;
@@ -313,11 +405,16 @@ export function SensitiveAccessProvider({ children }: { children: ReactNode }) {
   const setActiveProfile = useCallback(async (profileId: number, pin: string) => {
     const nextStatus = await SensitiveAccessService.setActiveProfile(profileId, pin);
     setStatus(nextStatus);
+    setConnectionUnavailable(false);
     setSelectedProfileId(nextStatus.active_profile_id ? String(nextStatus.active_profile_id) : "");
   }, []);
 
   const hasPermission = useCallback((permission: SensitivePermission) => {
     return profileHasPermission(status, permission);
+  }, [status]);
+
+  const hasAnyPermission = useCallback((list: SensitivePermission[]) => {
+    return profileHasPermission(status, undefined, list);
   }, [status]);
 
   const submitSensitiveAccess = useCallback(async () => {
@@ -328,7 +425,6 @@ export function SensitiveAccessProvider({ children }: { children: ReactNode }) {
       const targetProfileId = selectedProfileId ? Number(selectedProfileId) : status?.active_profile_id ?? null;
       if (!targetProfileId) {
         setError("Selecione um perfil para continuar.");
-        setBusy(false);
         return;
       }
 
@@ -341,14 +437,19 @@ export function SensitiveAccessProvider({ children }: { children: ReactNode }) {
         return;
       }
 
-      // O dialog só abre depois do snapshot inicial. Reutilizá-lo evita uma
-      // segunda rajada de consultas ao banco no primeiro PIN do app. Se o
-      // operador trocar de perfil, setActiveProfile já devolve um snapshot novo.
-      let workingStatus = status ?? await SensitiveAccessService.status();
+      // O status exibido pode ter sido obtido antes de uma limpeza/redefinição
+      // do keyring. Reconsulta antes de escolher entre criar e desbloquear PIN.
+      let workingStatus = await SensitiveAccessService.status();
       setStatus(workingStatus);
+      setConnectionUnavailable(false);
+      // Com o cofre de senhas indisponível `pin_configured` é desconhecido: nunca cair no caminho
+      // "sem PIN" nem no de criar PIN. Para no aviso e deixa o usuário tentar de novo.
+      if (workingStatus.keyring_bloqueado) {
+        setError(KEYRING_BLOCKED_MESSAGE);
+        return;
+      }
       if (!workingStatus.active_profile_id) {
         setError("Não foi possível determinar o perfil ativo. Feche e abra o AutoOS novamente.");
-        setBusy(false);
         return;
       }
 
@@ -357,9 +458,8 @@ export function SensitiveAccessProvider({ children }: { children: ReactNode }) {
         setStatus(workingStatus);
         const switchedProfile = workingStatus.profiles.find((profile) => profile.id === targetProfileId);
         if (workingStatus.unlocked && switchedProfile?.pin_configured) {
-          if (!profileHasPermission(workingStatus, promptOptions.permission)) {
-            setError(`O perfil ativo não possui permissão para ${permissionDescription(promptOptions.permission)}.`);
-            setBusy(false);
+          if (!profileHasPermission(workingStatus, promptOptions.permission, promptOptions.anyPermission)) {
+            setError(`O perfil ativo não possui permissão para ${permissionDescription(promptOptions.permission, promptOptions.anyPermission)}.`);
             return;
           }
           try { localStorage.setItem("autoos_last_profile_id", String(targetProfileId)); } catch { /* storage indisponível */ }
@@ -385,7 +485,11 @@ export function SensitiveAccessProvider({ children }: { children: ReactNode }) {
           `O PIN do perfil "${activeProfile.nome}" já foi configurado desde que esta tela foi aberta. ` +
           "A tela foi atualizada para desbloqueio: informe o PIN já criado ou use \"Esqueci minha senha\" para redefini-lo."
         );
-        setBusy(false);
+        return;
+      }
+
+      if (activeProfile?.pin_required && !activeProfile.pin_configured) {
+        setError("Este perfil ainda não tem PIN neste computador. Use o código que o administrador te passou para ativá-lo aqui.");
         return;
       }
 
@@ -393,21 +497,17 @@ export function SensitiveAccessProvider({ children }: { children: ReactNode }) {
       if (activeProfile?.role === "ADMIN" && !activeProfile?.pin_configured) {
         if (pin !== confirmPin) {
           setError("Os PINs não conferem.");
-          setBusy(false);
           return;
         }
         if (pin.length < 4) {
           setError("O PIN deve ter entre 4 e 8 dígitos.");
-          setBusy(false);
           return;
         }
-        await SensitiveAccessService.unlockWithoutPin();
-        const nextStatus = await SensitiveAccessService.configurePin(pin);
+        const nextStatus = await SensitiveAccessService.setActiveProfile(activeProfile.id, pin, confirmPin);
         setStatus(nextStatus);
 
-        if (!profileHasPermission(nextStatus, promptOptions.permission)) {
-          setError(`O perfil ativo não possui permissão para ${permissionDescription(promptOptions.permission)}.`);
-          setBusy(false);
+        if (!profileHasPermission(nextStatus, promptOptions.permission, promptOptions.anyPermission)) {
+          setError(`O perfil ativo não possui permissão para ${permissionDescription(promptOptions.permission, promptOptions.anyPermission)}.`);
           return;
         }
 
@@ -426,10 +526,9 @@ export function SensitiveAccessProvider({ children }: { children: ReactNode }) {
         nextStatus = await SensitiveAccessService.unlockWithoutPin();
       }
 
-      if (!profileHasPermission(nextStatus, promptOptions.permission)) {
+      if (!profileHasPermission(nextStatus, promptOptions.permission, promptOptions.anyPermission)) {
         setStatus(nextStatus);
-        setError(`O perfil ativo não possui permissão para ${permissionDescription(promptOptions.permission)}.`);
-        setBusy(false);
+        setError(`O perfil ativo não possui permissão para ${permissionDescription(promptOptions.permission, promptOptions.anyPermission)}.`);
         return;
       }
 
@@ -442,23 +541,64 @@ export function SensitiveAccessProvider({ children }: { children: ReactNode }) {
 
       closeDialog(true);
     } catch (submitError: any) {
-      setError(mensagemErroAcessoSensivel(submitError));
+      const message = sensitiveAccessErrorMessage(submitError, "Falha ao validar o acesso sensível.");
+      setError(message);
+      if (isTemporaryDatabaseAccessMessage(message)) setConnectionUnavailable(true);
+    } finally {
       setBusy(false);
     }
-  }, [closeDialog, pin, confirmPin, promptOptions.permission, selectedProfileId, status, dialogMode]);
+  }, [closeDialog, pin, confirmPin, promptOptions.permission, promptOptions.anyPermission, selectedProfileId, status, dialogMode]);
+
+  const startFirstAccess = useCallback((profileId: number, recovery = false) => {
+    // O pedido de perfil continua pendente: resolve quando a ativação terminar.
+    setDialogOpen(false);
+    setError(null);
+    setFirstAccess({ profileId, needsCode: true, recovery });
+  }, []);
+
+  const cancelFirstAccess = useCallback(() => {
+    setFirstAccess(null);
+    setDialogOpen(true);
+  }, []);
+
+  const finishFirstAccess = useCallback(async (result: "tour" | "pular" | "ativado") => {
+    const profileId = firstAccess?.profileId;
+    if (result === "tour") {
+      requestTour("completo");
+    } else if (result === "pular") {
+      try {
+        setStatus(await SensitiveAccessService.markTourSeen());
+      } catch {
+        // Sem registro, o tour volta a ser oferecido no próximo acesso.
+      }
+    }
+    if (profileId) {
+      try { localStorage.setItem("autoos_last_profile_id", String(profileId)); } catch { /* storage indisponível */ }
+    }
+    setFirstAccess(null);
+    setDialogMandatory(false);
+    resetDialogState();
+    resolvePending(true);
+  }, [firstAccess?.profileId, resetDialogState, resolvePending]);
 
   const value = useMemo<SensitiveAccessContextValue>(() => ({
     status,
     loading,
+    connectionUnavailable,
     bootProgress,
-    advanceBootProgress,
     refreshStatus,
     ensureSensitiveAccess,
     openProfileSelector,
     lockSensitiveAccess,
+    pinPromptDismissed,
     hasPermission,
+    hasAnyPermission,
     setActiveProfile,
-  }), [advanceBootProgress, bootProgress, ensureSensitiveAccess, hasPermission, loading, lockSensitiveAccess, openProfileSelector, refreshStatus, setActiveProfile, status]);
+    firstAccessOpen: firstAccess !== null,
+  }), [bootProgress, connectionUnavailable, ensureSensitiveAccess, firstAccess, hasAnyPermission, hasPermission, loading, lockSensitiveAccess, openProfileSelector, pinPromptDismissed, refreshStatus, setActiveProfile, status]);
+  const firstAccessProfile = firstAccess
+    ? status?.profiles.find((profile) => profile.id === firstAccess.profileId) ?? null
+    : null;
 
   const activeProfile = status?.profiles.find((profile) => profile.id === status.active_profile_id) ?? null;
   const selectedProfile = status?.profiles.find((profile) => String(profile.id) === selectedProfileId) ?? activeProfile ?? null;
@@ -468,7 +608,7 @@ export function SensitiveAccessProvider({ children }: { children: ReactNode }) {
       {children}
 
       <ProfileSessionDialog
-        open={dialogOpen && openingComplete}
+        open={dialogOpen && bootAnimationComplete}
         mandatory={dialogMandatory}
         mode={dialogMode}
         title={promptOptions.title || defaultPrompt.title || "Perfis"}
@@ -489,11 +629,30 @@ export function SensitiveAccessProvider({ children }: { children: ReactNode }) {
           setConfirmPin("");
           setError(null);
         }}
-        onPinChange={setPin}
-        onConfirmPinChange={setConfirmPin}
+        onPinChange={(value) => { setPin(value); setError(null); }}
+        onConfirmPinChange={(value) => { setConfirmPin(value); setError(null); }}
         onSubmit={() => void submitSensitiveAccess()}
         onForgotPassword={() => setRecoveryOpen(true)}
+        onFirstAccess={startFirstAccess}
+        keyringBlocked={Boolean(status?.keyring_bloqueado)}
+        onRetryKeyring={() => void refreshStatus()}
       />
+
+      {firstAccess && firstAccessProfile && bootAnimationComplete && (
+        <PrimeiroAcessoWizard
+          key={firstAccessProfile.id}
+          profile={firstAccessProfile}
+          needsCode={firstAccess.needsCode}
+          recovery={firstAccess.recovery}
+          onStatusChange={(nextStatus) => {
+            setStatus(nextStatus);
+            setConnectionUnavailable(false);
+            if (nextStatus.unlocked) unlockedSinceBootRef.current = true;
+          }}
+          onCancel={cancelFirstAccess}
+          onFinish={(result) => void finishFirstAccess(result)}
+        />
+      )}
 
       <PasswordRecoveryDialog
         open={recoveryOpen}
@@ -520,7 +679,7 @@ export function useSensitiveAccess(options?: { operationalProfile?: SaasOperatio
           Object.values(SENSITIVE_PERMISSIONS).includes(permission as SensitivePermission),
       );
     const status: SensitiveAccessStatus = {
-      ...EMPTY_STATUS,
+      ...EMPTY_SAAS_STATUS,
       pin_configured: true,
       unlocked: true,
       active_profile_name: profile.name,
@@ -530,18 +689,21 @@ export function useSensitiveAccess(options?: { operationalProfile?: SaasOperatio
     return {
       status,
       loading: false,
+      connectionUnavailable: false,
       bootProgress: 100,
-      advanceBootProgress: () => undefined,
       refreshStatus: async () => undefined,
       ensureSensitiveAccess: async (promptOptions) => {
-        if (!promptOptions?.permission || permissions.includes(promptOptions.permission)) return true;
-        toast.error(`O perfil não possui permissão para ${permissionDescription(promptOptions.permission)}.`);
+        if (profileHasPermission(status, promptOptions?.permission, promptOptions?.anyPermission)) return true;
+        toast.error(`O perfil não possui permissão para ${permissionDescription(promptOptions?.permission, promptOptions?.anyPermission)}.`);
         return false;
       },
       openProfileSelector: async () => false,
       lockSensitiveAccess: async () => undefined,
+      pinPromptDismissed: false,
       hasPermission: (permission) => permissions.includes(permission),
+      hasAnyPermission: (list) => list.some((permission) => permissions.includes(permission)),
       setActiveProfile: async () => undefined,
+      firstAccessOpen: false,
     };
   }, [options?.operationalProfile]);
 
@@ -559,9 +721,9 @@ export function SensitiveRoute({
   children: ReactNode;
   title?: string;
   description?: string;
-  permission?: SensitivePermission;
+  permission?: SensitivePermission | SensitivePermission[];
 }) {
-  const { loading, status, ensureSensitiveAccess, hasPermission } = useSensitiveAccess();
+  const { loading, status, ensureSensitiveAccess } = useSensitiveAccess();
 
   if (loading || !status) {
     return (
@@ -597,7 +759,7 @@ export function SensitiveRoute({
                 void ensureSensitiveAccess({
                   title,
                   description,
-                  permission: SENSITIVE_PERMISSIONS.MANAGE_PROFILES,
+                  permission: Array.isArray(permission) ? undefined : permission,
                 })
               }
             >
@@ -609,7 +771,7 @@ export function SensitiveRoute({
     );
   }
 
-  if (permission && !hasPermission(permission)) {
+  if (permission && !routeAllows(status.permissions, permission)) {
     return (
       <div className="flex min-h-[60vh] items-center justify-center">
         <Card className="max-w-lg w-full">
@@ -619,7 +781,7 @@ export function SensitiveRoute({
               Acesso restrito
             </CardTitle>
             <CardDescription>
-              O perfil ativo não possui permissão para {permission ? permissionDescription(permission) : "acessar esta página"}.
+              O perfil ativo não possui permissão para {Array.isArray(permission) ? "acessar esta página" : permissionDescription(permission)}.
             </CardDescription>
           </CardHeader>
         </Card>
@@ -631,13 +793,22 @@ export function SensitiveRoute({
 }
 
 export function SensitiveAccessBadge() {
-  const { status } = useSensitiveAccess();
+  const { status, loading, connectionUnavailable } = useSensitiveAccess();
+
+  if (connectionUnavailable) {
+    return (
+      <span className="inline-flex items-center gap-1 rounded-md border border-amber-200 bg-amber-50 px-2.5 py-1 text-xs font-medium text-amber-900">
+        <ShieldAlert className="h-3.5 w-3.5" />
+        Banco temporariamente indisponível
+      </span>
+    );
+  }
 
   if (!status || !status.active_profile_id) {
     return (
       <span className="inline-flex items-center gap-1 rounded-md border border-slate-200 bg-slate-50 px-2.5 py-1 text-xs font-medium text-slate-700">
         <ShieldAlert className="h-3.5 w-3.5" />
-        Nenhum perfil configurado
+        {loading ? "Carregando perfis..." : status ? "Nenhum perfil configurado" : "Não foi possível verificar os perfis"}
       </span>
     );
   }
@@ -648,7 +819,7 @@ export function SensitiveAccessBadge() {
     return (
       <span className="inline-flex items-center gap-1 rounded-md border border-amber-200 bg-amber-50 px-2.5 py-1 text-xs font-medium text-amber-900">
         <ShieldOff className="h-3.5 w-3.5" />
-        {profileName}: PIN pendente
+        {profileName}: PIN não configurado neste PC
       </span>
     );
   }

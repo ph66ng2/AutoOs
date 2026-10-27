@@ -137,7 +137,8 @@ async fn main() -> Result<()> {
     .context("set company-bound bootstrap profile default failed")?;
 
     // O CRUD agora deriva o tenant da sessão sensível, inclusive na QA real.
-    auth::unlock_session_without_pin()
+    auth::store_profile_pin(bootstrap_profile_id, "2468").map_err(|error| anyhow!(error))?;
+    auth::set_active_security_profile(bootstrap_profile_id, "2468".to_string(), None)
         .await
         .map_err(|error| anyhow!(error))?;
 
@@ -155,6 +156,8 @@ async fn main() -> Result<()> {
     })
     .await
     .map_err(|error| anyhow!(error))?;
+    assert_lista_tolera_telefone_nulo(&pool, empresa_id, &prefix, cliente.id).await?;
+    println!("P1_INTEGRATION_NULL_TELEFONE=ok");
     let contato = contatos::criar_cliente_contato(ClienteContatoInput {
         empresa_id,
         cliente_id: cliente.id,
@@ -176,7 +179,7 @@ async fn main() -> Result<()> {
         data_entrada: Utc::now().date_naive().to_string(),
         cliente_id: Some(cliente.id),
         cliente_nome: cliente.nome.clone(),
-        cliente_telefone: Some(cliente.telefone.clone()),
+        cliente_telefone: cliente.telefone.clone(),
         cliente_email: cliente.email.clone(),
         empresa_id: Some(empresa_id),
         responsavel_contato_id: Some(contato.id),
@@ -184,6 +187,62 @@ async fn main() -> Result<()> {
     })
     .await
     .map_err(|error| anyhow!(error))?;
+
+    // As duas listagens podem produzir o mesmo texto SQL sem filtros. Verifique
+    // os dois sentidos em conexões diferentes, mantendo cada par na mesma
+    // conexão para cobrir o cache de prepared statements do SQLx.
+    let mut legacy_first_connection = pool.acquire().await?;
+    let mut paginated_first_connection = pool.acquire().await?;
+    let legacy_first = equipamentos::listar_equipamentos_on_connection(
+        &mut legacy_first_connection,
+        empresa_id,
+        Some(0),
+        None,
+        None,
+    )
+    .await
+    .map_err(|error| anyhow!(error))?;
+    let paginated_second = equipamentos::query_equipment_page_on_connection(
+        &mut legacy_first_connection,
+        empresa_id,
+        Some(0),
+        None,
+        None,
+        Some("CADASTRO_RECENTE"),
+        equipamentos::UI_PAGE_SIZE,
+    )
+    .await
+    .map_err(|error| anyhow!(error))?;
+    let paginated_first = equipamentos::query_equipment_page_on_connection(
+        &mut paginated_first_connection,
+        empresa_id,
+        Some(0),
+        None,
+        None,
+        Some("CADASTRO_RECENTE"),
+        equipamentos::UI_PAGE_SIZE,
+    )
+    .await
+    .map_err(|error| anyhow!(error))?;
+    let legacy_second = equipamentos::listar_equipamentos_on_connection(
+        &mut paginated_first_connection,
+        empresa_id,
+        Some(0),
+        None,
+        None,
+    )
+    .await
+    .map_err(|error| anyhow!(error))?;
+    for (label, contains_equipment) in [
+        ("simple equipment listing", legacy_first.iter().any(|item| item.id == equipamento.id)),
+        ("paged listing after simple listing", paginated_second.items.iter().any(|item| item.id == equipamento.id)),
+        ("recent paged listing", paginated_first.items.iter().any(|item| item.id == equipamento.id)),
+        ("simple listing after recent paged listing", legacy_second.iter().any(|item| item.id == equipamento.id)),
+    ] {
+        if !contains_equipment {
+            return Err(anyhow!("{} omitted the newly created equipment", label));
+        }
+    }
 
     verificacoes::salvar_verificacao_tecnica(VerificacaoInput {
         equipamento_id: equipamento.id,
@@ -198,13 +257,29 @@ async fn main() -> Result<()> {
     })
     .await
     .map_err(|error| anyhow!(error))?;
-    sqlx::query("UPDATE equipamentos SET status = 'AGUARDANDO_APROVACAO' WHERE id = $1")
+    sqlx::query(
+        "UPDATE equipamentos
+         SET status = 'AGUARDANDO_APROVACAO', valor_orcamento = 300, atualizado_em = NOW()
+         WHERE id = $1",
+    )
         .bind(equipamento.id)
         .execute(&pool)
         .await
         .context("prepare equipment approval status failed")?;
+    sqlx::query("UPDATE verificacoes SET custo_total = 0 WHERE equipamento_id = $1")
+        .bind(equipamento.id)
+        .execute(&pool)
+        .await
+        .context("prepare zero-total equipment approval failed")?;
     let approval_token: String = sqlx::query_scalar("SELECT atualizado_em::TEXT FROM equipamentos WHERE id=$1")
         .bind(equipamento.id).fetch_one(&pool).await?;
+
+    let recent_page = equipamentos::listar_equipamentos_paginados(
+        Some(0), None, Some("AGUARDANDO_APROVACAO".to_string()), Some("CADASTRO_RECENTE".to_string()),
+    ).await.map_err(|error| anyhow!(error))?;
+    if !recent_page.items.iter().any(|item| item.id == equipamento.id) {
+        return Err(anyhow!("recent equipment order omitted the expected record"));
+    }
 
     let restricted_profile_permissions = serde_json::to_string(&vec![
         auth::PERMISSION_STOCK_CONTROL.to_string(),
@@ -229,7 +304,9 @@ async fn main() -> Result<()> {
     .await
     .context("set restricted profile default failed")?;
 
-    auth::configure_sensitive_pin("2468".to_string(), None)
+    // Authentication selects this instance's profile; is_default is not a session switch.
+    auth::store_profile_pin(restricted_profile_id, "2468").map_err(|error| anyhow!(error))?;
+    auth::set_active_security_profile(restricted_profile_id, "2468".to_string(), None)
         .await
         .map_err(|error| anyhow!(error))?;
 
@@ -420,6 +497,9 @@ async fn main() -> Result<()> {
     let denied = equipamentos::aprovar_orcamento(AprovarOrcamentoInput {
         servicos_aprovados: vec!["test-service".to_string()],
         aprovar_sem_servicos: false,
+        aprovado: None,
+        resposta_esperada_id: None,
+        motivo_divergencia: None,
         empresa_id,
         equipamento_id: equipamento.id,
         expected_updated_em: approval_token.clone(),
@@ -468,13 +548,18 @@ async fn main() -> Result<()> {
     .await
     .context("set privileged profile default failed")?;
 
-    auth::configure_sensitive_pin("2468".to_string(), None)
+    // Authentication selects this instance's profile; is_default is not a session switch.
+    auth::store_profile_pin(privileged_profile_id, "2468").map_err(|error| anyhow!(error))?;
+    auth::set_active_security_profile(privileged_profile_id, "2468".to_string(), None)
         .await
         .map_err(|error| anyhow!(error))?;
 
     let stale_approval = equipamentos::aprovar_orcamento(AprovarOrcamentoInput {
         servicos_aprovados: vec!["test-service".to_string()],
         aprovar_sem_servicos: false,
+        aprovado: None,
+        resposta_esperada_id: None,
+        motivo_divergencia: None,
         empresa_id,
         equipamento_id: equipamento.id,
         expected_updated_em: "2000-01-01T00:00:00Z".to_string(),
@@ -501,6 +586,9 @@ async fn main() -> Result<()> {
     let equipamento_aprovado = equipamentos::aprovar_orcamento(AprovarOrcamentoInput {
         servicos_aprovados: vec!["test-service".to_string()],
         aprovar_sem_servicos: false,
+        aprovado: None,
+        resposta_esperada_id: None,
+        motivo_divergencia: None,
         empresa_id,
         equipamento_id: equipamento.id,
         expected_updated_em: approval_token,
@@ -512,6 +600,20 @@ async fn main() -> Result<()> {
     .await
     .map_err(|error| anyhow!(error))?;
     assert_approval_state(&pool, equipamento.id, "APROVADO", Some("PIX")).await?;
+    let approved_totals: (Option<f64>, Option<f64>) = sqlx::query_as(
+        "SELECT e.valor_orcamento::FLOAT8, v.custo_total::FLOAT8
+         FROM equipamentos e JOIN verificacoes v ON v.equipamento_id = e.id
+         WHERE e.id = $1",
+    )
+    .bind(equipamento.id)
+    .fetch_one(&pool)
+    .await?;
+    if approved_totals != (Some(120.0), Some(120.0)) {
+        return Err(anyhow!(
+            "approving all services replaced the zero legacy total with the wrong value"
+        ));
+    }
+    println!("P1_INTEGRATION_ZERO_TOTAL_ALL_SERVICES=ok");
     let adopted_company: Option<i32> = sqlx::query_scalar(
         "SELECT empresa_id FROM verificacoes WHERE equipamento_id = $1",
     )
@@ -535,8 +637,6 @@ async fn main() -> Result<()> {
     println!("P1_INTEGRATION_LEGACY_VERIFICATION_APPROVAL=ok");
     println!("P1_INTEGRATION_STATUS_HISTORY=ok");
 
-    let token_ajuste: String = sqlx::query_scalar("SELECT atualizado_em::TEXT FROM equipamentos WHERE id=$1")
-        .bind(equipamento.id).fetch_one(&pool).await?;
     let verificacao_ajustada = verificacoes::atualizar_servicos_verificacao(
         equipamento.id,
         Some(r#"[{"descricao":"Limpeza técnica completa","valor":120.0}]"#.to_string()),
@@ -549,7 +649,8 @@ async fn main() -> Result<()> {
         Some("Faturamento corporativo em 15 dias".to_string()),
         Some(empresa_id),
         Some(true),
-        token_ajuste,
+        None,
+        None,
     )
     .await
     .map_err(|error| anyhow!(error))?;
@@ -564,8 +665,6 @@ async fn main() -> Result<()> {
         ));
     }
 
-    let token_reajuste: String = sqlx::query_scalar("SELECT atualizado_em::TEXT FROM equipamentos WHERE id=$1")
-        .bind(equipamento.id).fetch_one(&pool).await?;
     let verificacao_sem_observacoes = verificacoes::atualizar_servicos_verificacao(
         equipamento.id,
         Some(r#"[{"descricao":"Limpeza técnica completa","valor":120.0}]"#.to_string()),
@@ -578,7 +677,8 @@ async fn main() -> Result<()> {
         Some("Faturamento corporativo em 15 dias".to_string()),
         Some(empresa_id),
         Some(true),
-        token_reajuste,
+        None,
+        None,
     )
     .await
     .map_err(|error| anyhow!(error))?;
@@ -660,6 +760,87 @@ async fn main() -> Result<()> {
         return Err(anyhow!("legacy nullable contracts were not preserved"));
     }
 
+    sqlx::query("UPDATE equipamentos SET status = 'AGUARDANDO_APROVACAO', valor_orcamento = 199 WHERE id = $1")
+        .bind(legacy_equipment_id).execute(&pool).await?;
+    sqlx::query("UPDATE verificacoes SET servicos_necessarios = '[]', pecas_necessarias = '[]', custo_total = 0 WHERE equipamento_id = $1")
+        .bind(legacy_equipment_id).execute(&pool).await?;
+    let legacy_token: String = sqlx::query_scalar("SELECT atualizado_em::TEXT FROM equipamentos WHERE id = $1")
+        .bind(legacy_equipment_id).fetch_one(&pool).await?;
+    equipamentos::aprovar_orcamento(AprovarOrcamentoInput {
+        empresa_id,
+        equipamento_id: legacy_equipment_id,
+        expected_updated_em: legacy_token,
+        pagamento: FormaPagamento { codigo: FormaPagamentoCodigo::Pix, detalhe: None },
+        servicos_aprovados: vec![],
+        aprovar_sem_servicos: true,
+        aprovado: Some(true),
+        resposta_esperada_id: None,
+        motivo_divergencia: None,
+    }).await.map_err(|error| anyhow!(error))?;
+    assert_approval_state(&pool, legacy_equipment_id, "APROVADO", Some("PIX")).await?;
+    let legacy_budget_totals: (Option<f64>, Option<f64>) = sqlx::query_as(
+        "SELECT e.valor_orcamento::FLOAT8, v.custo_total::FLOAT8
+         FROM equipamentos e JOIN verificacoes v ON v.equipamento_id = e.id
+         WHERE e.id = $1",
+    )
+        .bind(legacy_equipment_id).fetch_one(&pool).await?;
+    if legacy_budget_totals != (Some(199.0), Some(199.0)) {
+        return Err(anyhow!(
+            "approval without services changed the legacy budget total"
+        ));
+    }
+    sqlx::query(
+        "UPDATE equipamentos
+         SET status = 'AGUARDANDO_APROVACAO', valor_orcamento = 300, atualizado_em = NOW()
+         WHERE id = $1",
+    )
+        .bind(legacy_equipment_id)
+        .execute(&pool)
+        .await
+        .context("prepare legacy budget rejection failed")?;
+    sqlx::query("UPDATE verificacoes SET custo_total = 0 WHERE equipamento_id = $1")
+        .bind(legacy_equipment_id)
+        .execute(&pool)
+        .await
+        .context("prepare zero-total legacy rejection failed")?;
+    let reject_legacy_token: String = sqlx::query_scalar(
+        "SELECT atualizado_em::TEXT FROM equipamentos WHERE id = $1",
+    )
+    .bind(legacy_equipment_id)
+    .fetch_one(&pool)
+    .await?;
+    equipamentos::aprovar_orcamento(AprovarOrcamentoInput {
+        empresa_id,
+        equipamento_id: legacy_equipment_id,
+        expected_updated_em: reject_legacy_token,
+        pagamento: FormaPagamento {
+            codigo: FormaPagamentoCodigo::Pix,
+            detalhe: None,
+        },
+        servicos_aprovados: vec![],
+        aprovar_sem_servicos: true,
+        aprovado: Some(false),
+        resposta_esperada_id: None,
+        motivo_divergencia: None,
+    })
+    .await
+    .map_err(|error| anyhow!(error))?;
+    assert_approval_state(&pool, legacy_equipment_id, "REPROVADO", Some("PIX")).await?;
+    let rejected_budget_totals: (Option<f64>, Option<f64>) = sqlx::query_as(
+        "SELECT e.valor_orcamento::FLOAT8, v.custo_total::FLOAT8
+         FROM equipamentos e JOIN verificacoes v ON v.equipamento_id = e.id
+         WHERE e.id = $1",
+    )
+    .bind(legacy_equipment_id)
+    .fetch_one(&pool)
+    .await?;
+    if rejected_budget_totals != (Some(300.0), Some(300.0)) {
+        return Err(anyhow!(
+            "rejecting a zero-total legacy budget erased the equipment value"
+        ));
+    }
+    println!("P1_INTEGRATION_ZERO_TOTAL_LEGACY_REJECTION=ok");
+
     let produto = produtos::criar_produto(ProdutoInput {
         codigo: format!("{}-PROD", prefix),
         nome: format!("{} Produto", prefix),
@@ -705,6 +886,8 @@ async fn main() -> Result<()> {
     println!("P1_INTEGRATION_PERMISSION_DENIED=ok");
     println!("P1_INTEGRATION_CONCURRENCY_ROLLBACK=ok");
     println!("P1_INTEGRATION_PAYMENT_APPROVAL=ok");
+    println!("P1_INTEGRATION_LEGACY_APPROVAL_WITHOUT_SERVICES=ok");
+    println!("P1_INTEGRATION_RECENT_EQUIPMENT_ORDER=ok");
     println!("P1_INTEGRATION_CONTACT_SNAPSHOT=ok");
     println!("P1_INTEGRATION_LEGACY_NULLS=ok");
     println!("P1_INTEGRATION_LEGACY_REGULARIZATION=ok");
@@ -747,8 +930,9 @@ async fn main() -> Result<()> {
         .execute(&pool)
         .await
         .context("cleanup equipment failed")?;
-    sqlx::query("DELETE FROM cliente_contatos WHERE id = $1")
+    sqlx::query("DELETE FROM cliente_contatos WHERE id = $1 OR cliente_id = $2")
         .bind(contato.id)
+        .bind(cliente.id)
         .execute(&pool)
         .await
         .context("cleanup contact failed")?;
@@ -793,6 +977,84 @@ async fn main() -> Result<()> {
         .context("cleanup conflicting company failed")?;
 
     Ok(())
+}
+
+/// Um cliente com `telefone` NULL não pode derrubar a lista nem a busca.
+/// `email` e `telefone_secundario` já são opcionais e entram no mesmo assert.
+async fn assert_lista_tolera_telefone_nulo(
+    pool: &sqlx::PgPool,
+    empresa_id: i32,
+    prefix: &str,
+    cliente_com_telefone_id: i32,
+) -> Result<()> {
+    let nome = format!("{prefix} Sem Telefone");
+    let documento = format!(
+        "{:011}",
+        (Utc::now().timestamp_millis() + 97).rem_euclid(100_000_000_000)
+    );
+    let id: i32 = sqlx::query_scalar(
+        "INSERT INTO clientes (
+            empresa_id, nome, tipo_pessoa, documento, cpf_cnpj,
+            telefone, telefone_secundario, email, ativo
+         ) VALUES ($1, $2, 'PF', $3, $3, NULL, NULL, NULL, true)
+         RETURNING id",
+    )
+    .bind(empresa_id)
+    .bind(&nome)
+    .bind(&documento)
+    .fetch_one(pool)
+    .await
+    .context("insert client with NULL telefone failed")?;
+
+    let outcome = async {
+        let lista = clientes::listar_clientes(Some(0), None)
+            .await
+            .map_err(|error| anyhow!("listar_clientes failed with a NULL telefone row: {error}"))?;
+        let nulo = lista.iter().find(|row| row.id == id).ok_or_else(|| {
+            anyhow!("client with NULL telefone missing from list")
+        })?;
+        if nulo.telefone.is_some() || nulo.telefone_secundario.is_some() || nulo.email.is_some() {
+            return Err(anyhow!(
+                "NULL contact fields did not decode as None: telefone={:?} secundario={:?} email={:?}",
+                nulo.telefone,
+                nulo.telefone_secundario,
+                nulo.email
+            ));
+        }
+        if !lista.iter().any(|row| row.id == cliente_com_telefone_id) {
+            return Err(anyhow!("NULL telefone row hid the rest of the client list"));
+        }
+
+        let busca = clientes::listar_clientes(Some(0), Some(nome.clone()))
+            .await
+            .map_err(|error| anyhow!("search failed with a NULL telefone row: {error}"))?;
+        if !busca.iter().any(|row| row.id == id && row.telefone.is_none()) {
+            return Err(anyhow!("search did not return the client with NULL telefone"));
+        }
+
+        let pagina = clientes::listar_clientes_paginados(Some(0), Some(nome))
+            .await
+            .map_err(|error| anyhow!("paginated search failed with a NULL telefone row: {error}"))?;
+        if !pagina.items.iter().any(|row| row.id == id) {
+            return Err(anyhow!("paginated search did not return the client with NULL telefone"));
+        }
+
+        let buscado = clientes::buscar_cliente(id)
+            .await
+            .map_err(|error| anyhow!("buscar_cliente failed with NULL telefone: {error}"))?;
+        if buscado.id != id || buscado.telefone.is_some() || buscado.email.is_some() {
+            return Err(anyhow!("buscar_cliente did not tolerate NULL telefone"));
+        }
+        Ok(())
+    }
+    .await;
+
+    sqlx::query("DELETE FROM clientes WHERE id = $1")
+        .bind(id)
+        .execute(pool)
+        .await
+        .context("cleanup NULL telefone client failed")?;
+    outcome
 }
 
 async fn assert_approval_state(

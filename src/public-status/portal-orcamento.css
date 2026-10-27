@@ -1,0 +1,63 @@
+/* Portal: painel do orçamento, recusa, negociação e aviso de testes. Seletores mais específicos que public-status.css. */
+
+/* Recusa registrada: vermelho sóbrio, nunca verde. */
+.portal-quote .answer-box.is-recusa,
+.portal-quote .answer-box.is-recusa.answer-efetivada {
+  border-left-color: #b33a40;
+  background: #fdf3f3;
+  color: #6f1d23;
+}
+.portal-quote .answer-box.is-recusa h2 { color: #8a2229; }
+.portal-quote .sent-box.is-recusa {
+  border: 1px solid #b33a40;
+  background: #fdf3f3;
+  color: #6f1d23;
+}
+.portal-quote .sent-box.is-recusa .portal-message pre { border: 1px solid #efc9cb; }
+
+/* Etapa "Tem certeza?" antes da recusa. */
+.portal-retention p { color: #243d59; }
+.portal-retention-actions { align-items: stretch; }
+.portal-retention-actions .portal-link-button { justify-content: center; text-align: center; }
+.portal-refuse-anyway { display: block; margin: 0.75rem auto 0; color: #6f1d23; font-size: 0.9rem; font-weight: 600; }
+
+/* Ordem de compra. */
+.portal-oc { display: grid; gap: 0.35rem; margin-top: 0.75rem; }
+.portal-oc label { color: #102e50; font-weight: 700; }
+.portal-oc .answer-hint { margin: 0; }
+
+/* Negociar / pedir correção. */
+.portal-request-box { border: 2px solid #12619c; background: #f3f8fd; }
+.portal-request-box label { color: #102e50; font-size: 1rem; }
+.portal-request-box textarea { min-height: 6rem; border-color: #6f9fcb; background: #fff; font-size: 1rem; }
+.portal-request-box textarea:focus-visible { outline: 3px solid #8bbce7; outline-offset: 1px; }
+.portal-reach { display: grid; gap: 0.4rem; margin: 1rem 0 0; padding: 0.85rem 1rem; border: 1px solid #b9c9da; border-radius: 0.6rem; background: #fff; }
+.portal-reach legend { padding: 0 0.35rem; color: #102e50; font-weight: 750; }
+.portal-reach label { margin: 0.25rem 0 0; font-size: 0.9rem; }
+.portal-reach .portal-check { display: flex; align-items: flex-start; gap: 0.6rem; margin-top: 0.5rem; font-weight: 600; line-height: 1.4; }
+.portal-reach .portal-check input { flex-shrink: 0; width: 1.15rem; height: 1.15rem; margin-top: 0.1rem; }
+
+.portal-quote .sent-box.portal-request-done { border: 2px solid #318768; padding: 1.15rem 1.2rem; }
+.portal-request-done > strong { font-size: 1.1rem; }
+.portal-request-done p { margin: 0.4rem 0 0; line-height: 1.5; }
+.portal-message.is-highlight .action-row { flex-direction: column; }
+.portal-message.is-highlight .action-row > * { width: 100%; justify-content: center; text-align: center; }
+.portal-cta { min-height: 3.4rem; background: #1f7a4c; font-size: 1.1rem; }
+
+/* Aviso de período de testes: faixa discreta logo abaixo da marca. */
+.portal-beta {
+  margin: -0.25rem 0 0.75rem;
+  padding: 0.4rem 0.75rem;
+  border-radius: 0.5rem;
+  color: #435b76;
+  background: #eef4fa;
+  font-size: 0.8rem;
+  line-height: 1.4;
+  text-align: center;
+}
+.portal-beta a { color: #12619c; font-weight: 700; }
+
+@media (max-width: 640px) {
+  .portal-beta { margin: 0 0 0.4rem; padding: 0.3rem 0.6rem; font-size: 0.72rem; line-height: 1.3; }
+  .portal-quote .sent-box.portal-request-done { padding: 1rem; }
+}
