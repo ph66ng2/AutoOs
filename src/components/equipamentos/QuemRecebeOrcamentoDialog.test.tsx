@@ -144,6 +144,18 @@ describe("QuemRecebeOrcamentoDialog", () => {
     expect(mockDefinir).toHaveBeenCalledWith(5, 30, "2026-10-20T10:00:00Z");
   });
 
+  it("não copia telefone nem e-mail do cliente para o contato reaproveitado", async () => {
+    mockListar.mockResolvedValue([
+      { id: 30, empresa_id: 7, cliente_id: 11, nome: "Bruno", ativo: true, telefone: "", atualizado_em: "2026-10-01T00:00:00Z" },
+    ] as unknown as ClienteContato[]);
+    renderDialog({ sugestao: { nome: "Recepção", telefone: "7133334444", email: "recepcao@cliente.com" } });
+
+    await waitFor(() => expect(screen.getByLabelText("Nome *")).toHaveValue("Bruno"));
+    await waitFor(() => expect(screen.getByRole("button", { name: /salvar e continuar/i })).toBeEnabled());
+    expect(screen.getByLabelText("WhatsApp *")).toHaveValue("");
+    expect(screen.getByLabelText("E-mail")).toHaveValue("");
+  });
+
   it("avisa quando só há contatos inativos e cria um novo", async () => {
     const user = userEvent.setup();
     mockListar.mockResolvedValue([

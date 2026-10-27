@@ -70,8 +70,9 @@ export function QuemRecebeOrcamentoDialog({
         if (alvo) {
           setContatoExistente(alvo);
           setNome(alvo.nome);
-          setEmail(alvo.email || sugestaoEmail || "");
-          setTelefone(formatarTelefone(sugestaoTelefone || alvo.telefone || "") || "");
+          // Só dados do próprio contato: telefone/e-mail do cliente podem ser de outra pessoa.
+          setEmail(alvo.email ?? "");
+          setTelefone(alvo.telefone ? formatarTelefone(alvo.telefone) : "");
         } else if (lista.length > 0 && lista.every((c) => !c.ativo)) {
           setSoInativos(true);
         }
@@ -83,7 +84,7 @@ export function QuemRecebeOrcamentoDialog({
     return () => {
       vivo = false;
     };
-  }, [open, equipamento.cliente_id, equipamento.empresa_id, sugestaoTelefone, sugestaoEmail]);
+  }, [open, equipamento.cliente_id, equipamento.empresa_id]);
 
   function fechar() {
     if (!salvando) onCancelar();
