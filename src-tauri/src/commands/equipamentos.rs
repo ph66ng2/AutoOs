@@ -66,16 +66,24 @@ fn validate_non_negative_f64(value: Option<f64>, field: &str) -> Result<(), Stri
     Ok(())
 }
 
-/// Orçamento enviado para aprovação não pode ser 0 ou vazio: 0 é só garantia em item,
-/// não o total gravado neste caminho. None deixa o valor atual.
-fn reject_zero_quote_total(valor_orcamento: Option<f64>, status: &str) -> Result<(), String> {
+/// Orçamento enviado para aprovação não pode ser 0 ou ausente: 0 é só garantia em item,
+/// não o total deste caminho. None usa o valor já gravado.
+fn reject_zero_quote_total(
+    informado: Option<f64>,
+    persistido: Option<f64>,
+    status: &str,
+) -> Result<(), String> {
     if status != "AGUARDANDO_APROVACAO" {
         return Ok(());
     }
-    match valor_orcamento {
-        Some(value) if value.is_finite() && value > 0.0 => Ok(()),
-        Some(_) => Err("Informe um valor de orçamento maior que zero.".to_string()),
-        None => Ok(()),
+    let total = match informado {
+        Some(value) => Some(value),
+        None => persistido,
+    };
+    if total.is_some_and(|value| value.is_finite() && value > 0.0) {
+        Ok(())
+    } else {
+        Err("Informe um valor de orçamento maior que zero.".to_string())
     }
 }
 
@@ -1127,7 +1135,6 @@ pub async fn atualizar_status_equipamento(
 ) -> Result<EquipamentoRow, String> {
     validate_non_negative_f64(valor_orcamento, "Valor do orçamento")?;
     validate_non_negative_f64(valor_final, "Valor final")?;
-    reject_zero_quote_total(valor_orcamento, &normalize_status_key(&novo_status))?;
     let concurrency_token = required_concurrency_token(expected_updated_em.as_deref(), "equipamento")?;
     let normalized_status = normalize_status_key(&novo_status);
     reject_direct_approval(&normalized_status)?;
@@ -1139,13 +1146,17 @@ pub async fn atualizar_status_equipamento(
     let motivo_correcao_value = optional_text(motivo_correcao.as_deref());
     let pool = get_pool().await.map_err(|e| e.to_string())?;
     let empresa_id = require_active_session_company_id(&pool).await?;
-    let current_status: Option<String> = sqlx::query_scalar("SELECT status FROM equipamentos WHERE id = $1 AND empresa_id = $2")
+    let current: Option<(String, Option<f64>)> = sqlx::query_as(
+        "SELECT COALESCE(status, ''), valor_orcamento::FLOAT8 FROM equipamentos WHERE id = $1 AND empresa_id = $2",
+    )
         .bind(id)
         .bind(empresa_id)
         .fetch_optional(&pool)
         .await
         .map_err(super::operator_errors::mapear_erro_sql)?;
-    let current_status = current_status.ok_or_else(|| "Equipamento não encontrado.".to_string())?;
+    let (current_status, valor_orcamento_persistido) =
+        current.ok_or_else(|| "Equipamento não encontrado.".to_string())?;
+    reject_zero_quote_total(valor_orcamento, valor_orcamento_persistido, &normalized_status)?;
     let normalized_current_status = normalize_status_key(&current_status);
     let is_regular = is_regular_status_transition(&normalized_current_status, &normalized_status);
     let is_correction = !is_regular && is_status_correction(&normalized_current_status, &normalized_status);
@@ -1590,10 +1601,13 @@ mod tests {
             .unwrap_err()
             .contains("negativo"));
         assert!(validate_non_negative_f64(Some(0.0), "Valor do orçamento").is_ok());
-        assert!(reject_zero_quote_total(Some(0.0), "AGUARDANDO_APROVACAO").is_err());
-        assert!(reject_zero_quote_total(Some(10.0), "AGUARDANDO_APROVACAO").is_ok());
-        assert!(reject_zero_quote_total(None, "AGUARDANDO_APROVACAO").is_ok());
-        assert!(reject_zero_quote_total(Some(0.0), "RECEBIDO").is_ok());
+        assert!(reject_zero_quote_total(Some(0.0), Some(150.0), "AGUARDANDO_APROVACAO").is_err());
+        assert!(reject_zero_quote_total(Some(10.0), Some(0.0), "AGUARDANDO_APROVACAO").is_ok());
+        assert!(reject_zero_quote_total(None, Some(150.0), "AGUARDANDO_APROVACAO").is_ok());
+        assert!(reject_zero_quote_total(None, Some(0.0), "AGUARDANDO_APROVACAO").is_err());
+        assert!(reject_zero_quote_total(None, None, "AGUARDANDO_APROVACAO").is_err());
+        assert!(reject_zero_quote_total(Some(0.0), None, "RECEBIDO").is_ok());
+        assert!(reject_zero_quote_total(None, None, "RECEBIDO").is_ok());
     }
 
     #[test]

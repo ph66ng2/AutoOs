@@ -489,6 +489,11 @@ pub async fn atualizar_servicos_verificacao(
     if !versao_valida {
         return Err("O orçamento mudou em outra sessão. Reabra Alterar Orçamento antes de salvar.".to_string());
     }
+    if status == "AGUARDANDO_APROVACAO"
+        && !custo_total.is_some_and(|value| value.is_finite() && value > 0.0)
+    {
+        return Err("Informe um valor de orçamento maior que zero.".to_string());
+    }
     if claimed_tenant_conflicts(empresa_id, resolved_empresa_id) {
         return Err("O equipamento não pertence à empresa informada.".to_string());
     }

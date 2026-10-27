@@ -127,6 +127,11 @@ export function reabreOrcamentoSemAjuste(statusAtual: string, novoStatus: string
   return statusAtual === "REPROVADO" && novoStatus === "AGUARDANDO_APROVACAO";
 }
 
+/** Total do orçamento ao enviar para aprovação: 0,00 e vazio não passam. Itens em garantia podem ser 0. */
+export function totalOrcamentoAprovacaoValido(valor: number) {
+  return Number.isFinite(valor) && valor > 0;
+}
+
 export function getStatusCorrecao(statusAtual: string): string[] {
   return getCorrectionStates(statusAtual);
 }

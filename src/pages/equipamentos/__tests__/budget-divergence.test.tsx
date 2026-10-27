@@ -461,6 +461,18 @@ describe("Equipamentos — Budget Divergence & Audit", () => {
     const call = mockAtualizarServicosVerificacao.mock.calls[0];
     const input = call[0];
     expect(input.divergence).toBe(false);
+    expect(input.custo_total).toBe(150);
+    await waitFor(() => {
+      expect(mockAtualizarStatusEquipamento).toHaveBeenCalledWith(
+        10,
+        "AGUARDANDO_APROVACAO",
+        150,
+        undefined,
+        undefined,
+        "2024-01-15T10:00:01Z",
+        undefined,
+      );
+    });
   });
 
   // ─── Test 6: Histórico de Ajustes indicador ──────────
@@ -865,6 +877,29 @@ describe("Equipamentos — Budget Divergence & Audit", () => {
     fireEvent.click(action);
     expect(await screen.findByText(/Ajuste de Orçamento/i)).toBeInTheDocument();
     expect(screen.queryByText("Detalhes do Equipamento")).not.toBeInTheDocument();
+  });
+
+  it("não envia orçamento com total 0,00 para AGUARDANDO_APROVACAO", async () => {
+    equipamentoVerificado.valor_orcamento = 0;
+    mockBuscarVerificacao.mockResolvedValue(makeVerificacao({ servicos: [], pecas: [], custo_total: 0 }));
+    await abrirDialogoAjusteOrcamento();
+    await alterarValorOrcamento(0);
+    expect(screen.getByRole("button", { name: /Confirmar/i })).toBeDisabled();
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: /Confirmar/i }));
+    });
+    expect(mockAtualizarServicosVerificacao).not.toHaveBeenCalled();
+    expect(mockAtualizarStatusEquipamento).not.toHaveBeenCalled();
+  });
+
+  it("Não na divergência não grava total 0 ao enviar para aprovação", async () => {
+    mockBuscarVerificacao.mockResolvedValue(makeVerificacao());
+    await abrirDialogoAjusteOrcamento();
+    await alterarValorOrcamento(0);
+    expect(screen.getByRole("button", { name: /Confirmar/i })).toBeDisabled();
+    await clicarConfirmarStatus();
+    expect(screen.queryByTestId("confirm-dialog")).not.toBeInTheDocument();
+    expect(mockAtualizarServicosVerificacao).not.toHaveBeenCalled();
   });
 
   it("bloqueia Confirmar quando o valor do orçamento obrigatório fica vazio", async () => {

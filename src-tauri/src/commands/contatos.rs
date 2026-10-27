@@ -151,6 +151,10 @@ pub async fn criar_cliente_contato(input: ClienteContatoInput) -> Result<Cliente
     let nome = required_name(&input.nome)?;
     let pool = get_pool().await.map_err(|error| error.to_string())?;
     ensure_cliente_belongs_to_empresa(&pool, empresa_id, cliente_id).await?;
+    let telefone = telefone_contato_persistido(input.telefone.as_deref());
+    let (tipo_pessoa, outros) =
+        tipo_e_telefones_ativos_exceto(&pool, empresa_id, cliente_id, 0).await?;
+    recusar_se_pj_ficar_sem_celular(&tipo_pessoa, &outros, telefone.as_deref())?;
 
     let id: i32 = sqlx::query_scalar(
         "INSERT INTO cliente_contatos (empresa_id, cliente_id, nome, email, telefone)
@@ -161,7 +165,7 @@ pub async fn criar_cliente_contato(input: ClienteContatoInput) -> Result<Cliente
     .bind(cliente_id)
     .bind(nome)
     .bind(optional_text(input.email.as_deref()))
-    .bind(telefone_contato_persistido(input.telefone.as_deref()))
+    .bind(&telefone)
     .fetch_one(&pool)
     .await
     .map_err(|error| {
@@ -361,5 +365,12 @@ mod tests {
         assert!(recusar_se_pj_ficar_sem_celular("PJ", &outros_vazios, Some("+55 71 98888-7777")).is_ok());
         assert!(recusar_se_pj_ficar_sem_celular("PJ", &["71988880000".into()], None).is_ok());
         assert!(recusar_se_pj_ficar_sem_celular("PF", &outros_vazios, None).is_ok());
+    }
+
+    #[test]
+    fn criar_contato_usa_a_mesma_trava_de_pj_com_excluir_id_zero() {
+        let outros_vazios: Vec<String> = vec![];
+        assert!(recusar_se_pj_ficar_sem_celular("PJ", &outros_vazios, Some("7133334444")).is_err());
+        assert!(recusar_se_pj_ficar_sem_celular("PJ", &outros_vazios, Some("71988887777")).is_ok());
     }
 }

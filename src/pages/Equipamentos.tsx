@@ -173,6 +173,7 @@ import {
   reabreOrcamentoSemAjuste,
   removerTecnicoInicialDasObservacoes,
   statusExigeAcessoSensivel,
+  totalOrcamentoAprovacaoValido,
   whatsappNaoConfigurado,
 } from "@/pages/equipamentos/equipamentos-page-utils";
 import { DateIsoInput } from "@/components/ui/date-iso-input";
@@ -1243,7 +1244,14 @@ export default function Equipamentos() {
   function iniciarConfirmacaoStatus() {
     const mostraOrcamento = (novoStatus === "AGUARDANDO_APROVACAO" && selecionado && !reabreOrcamentoSemAjuste(selecionado.status, novoStatus))
       || ajusteOrcamentoSemMudancaStatus;
+    const enviandoParaAprovacao = novoStatus === "AGUARDANDO_APROVACAO"
+      && !!selecionado
+      && !reabreOrcamentoSemAjuste(selecionado.status, novoStatus);
     if (mostraOrcamento && !valorOrcamentoValido) return;
+    if (enviandoParaAprovacao && !totalOrcamentoAprovacaoValido(valorOrcamentoRef.current)) {
+      warning("Equipamentos", "Informe um valor de orçamento maior que zero.");
+      return;
+    }
     if ((novoStatus === "AGUARDANDO_APROVACAO" || ajusteOrcamentoSemMudancaStatus) && verificacaoAjusteOrcamento) {
       const servicosOriginal: ServicoNecessario[] = [];
       try {
@@ -1430,8 +1438,14 @@ export default function Equipamentos() {
     const totalAtual = valorOrcamentoRef.current;
     const mostraOrcamento = (novoStatus === "AGUARDANDO_APROVACAO" && !reabreOrcamentoSemAjuste(selecionado.status, novoStatus))
       || ajusteOrcamentoSemMudancaStatus;
+    const enviandoParaAprovacao = novoStatus === "AGUARDANDO_APROVACAO"
+      && !reabreOrcamentoSemAjuste(selecionado.status, novoStatus);
     if (mostraOrcamento && (!valorOrcamentoValido || !Number.isFinite(totalAtual))) {
       warning("Equipamentos", "Informe um valor de orçamento válido.");
+      return;
+    }
+    if (enviandoParaAprovacao && !totalOrcamentoAprovacaoValido(totalAtual)) {
+      warning("Equipamentos", "Informe um valor de orçamento maior que zero.");
       return;
     }
     if (correcaoStatus && novoStatus === "AGUARDANDO_APROVACAO" && ["APROVADO", "REPROVADO"].includes(selecionado.status)) {
@@ -1444,7 +1458,7 @@ export default function Equipamentos() {
     }
     const precisaLiberacao = correcaoStatus || statusExigeAcessoSensivel(
       novoStatus,
-      totalAtual || undefined,
+      Number.isFinite(totalAtual) ? totalAtual : undefined,
       prazoAprovacao || undefined,
       valorFinal || undefined,
     );
@@ -1592,7 +1606,7 @@ export default function Equipamentos() {
       const resultado = await atualizarStatus(
         selecionado.id!,
         novoStatus,
-        totalAtual || undefined,
+        Number.isFinite(totalAtual) ? totalAtual : undefined,
         prazoAprovacao || undefined,
         valorFinal || undefined,
         versaoAtual,
@@ -3316,7 +3330,7 @@ export default function Equipamentos() {
             </div>
             <DialogFooter className="shrink-0 bg-background pt-3">
                 <Button type="button" variant="outline" onClick={() => setStatusDialogOpen(false)}>Cancelar</Button>
-                <Button type="button" onClick={iniciarConfirmacaoStatus} disabled={salvando || (!novoStatus && !ajusteOrcamentoSemMudancaStatus) || (((novoStatus === "AGUARDANDO_APROVACAO" && !reabreOrcamentoSemAjuste(selecionado.status, novoStatus)) || ajusteOrcamentoSemMudancaStatus) && !valorOrcamentoValido)}>
+                <Button type="button" onClick={iniciarConfirmacaoStatus} disabled={salvando || (!novoStatus && !ajusteOrcamentoSemMudancaStatus) || (((novoStatus === "AGUARDANDO_APROVACAO" && !reabreOrcamentoSemAjuste(selecionado.status, novoStatus)) || ajusteOrcamentoSemMudancaStatus) && !valorOrcamentoValido) || (novoStatus === "AGUARDANDO_APROVACAO" && !reabreOrcamentoSemAjuste(selecionado.status, novoStatus) && !totalOrcamentoAprovacaoValido(Number(valorOrcamento)))}>
                   {salvando ? "Salvando..." : correcaoStatus ? "Corrigir status" : "Confirmar"}
                 </Button>
               </DialogFooter>
