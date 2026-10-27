@@ -266,7 +266,7 @@ pub async fn enviar_email_saas(
     crate::commands::saas_communication::authorize_communication(
         &config.supabase_url,
         &config.publishable_key,
-        PERMISSION_CONFIG_SMTP,
+        None,
     )
     .await?;
     enviar_email_interno(input, None, false).await

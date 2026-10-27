@@ -86,10 +86,14 @@ fn validate_publishable_key(value: &str) -> Result<(), String> {
 /// Validates the stored SaaS session with Supabase and checks its current
 /// operational profile before allowing a customer communication to be sent.
 /// The database remains the authority for tenant, identity and permissions.
+///
+/// `required_permission` is optional: sending mail/WhatsApp follows master #151
+/// (`require_sensitive_access` only). Pass `Some` only when a specific
+/// permission must still be present on the operational profile.
 pub async fn authorize_communication(
     supabase_url: &str,
     publishable_key: &str,
-    required_permission: &str,
+    required_permission: Option<&str>,
 ) -> Result<String, String> {
     let supabase_url = normalize_supabase_url(supabase_url)?;
     let key = publishable_key.trim();
@@ -144,14 +148,16 @@ pub async fn authorize_communication(
     let Some(profile) = profile else {
         return Err("O perfil operacional SaaS não está mais ativo para esta empresa.".to_string());
     };
-    let has_permission = profile.role.eq_ignore_ascii_case("ADMIN")
-        || profile.permissions.as_array().is_some_and(|permissions| {
-            permissions
-                .iter()
-                .any(|permission| permission.as_str() == Some(required_permission))
-        });
-    if !has_permission {
-        return Err("O perfil não tem permissão para usar este canal de comunicação.".to_string());
+    if let Some(required_permission) = required_permission {
+        let has_permission = profile.role.eq_ignore_ascii_case("ADMIN")
+            || profile.permissions.as_array().is_some_and(|permissions| {
+                permissions
+                    .iter()
+                    .any(|permission| permission.as_str() == Some(required_permission))
+            });
+        if !has_permission {
+            return Err("O perfil não tem permissão para usar este canal de comunicação.".to_string());
+        }
     }
 
     Ok(profile.nome)

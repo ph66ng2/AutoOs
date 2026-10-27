@@ -273,7 +273,7 @@ pub async fn enviar_whatsapp_saas(
     crate::commands::saas_communication::authorize_communication(
         &config.supabase_url,
         &config.publishable_key,
-        PERMISSION_CONFIG_WHATSAPP,
+        None,
     )
     .await?;
     enviar_whatsapp_interno(input, None, false).await
