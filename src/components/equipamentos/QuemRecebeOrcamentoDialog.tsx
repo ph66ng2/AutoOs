@@ -24,6 +24,8 @@ interface QuemRecebeOrcamentoDialogProps {
 
 const emailSchema = z.string().email();
 
+function telefoneValidoBackend(t?: string) { return (t ?? "").replace(/\D/g, "").length >= 10; }
+
 export function QuemRecebeOrcamentoDialog({
   open,
   equipamento,
@@ -38,6 +40,9 @@ export function QuemRecebeOrcamentoDialog({
   const [salvando, setSalvando] = useState(false);
   // Guarda o contato já criado para que uma nova tentativa só refaça o vínculo, sem duplicar o cadastro.
   const [contatoCriado, setContatoCriado] = useState<ClienteContato | null>(null);
+  const [contatoExistente, setContatoExistente] = useState<ClienteContato | null>(null);
+  const [soInativos, setSoInativos] = useState(false);
+  const [carregandoContatos, setCarregandoContatos] = useState(false);
 
   const sugestaoNome = sugestao?.nome;
   const sugestaoTelefone = sugestao?.telefone;
@@ -50,7 +55,35 @@ export function QuemRecebeOrcamentoDialog({
     setEmail(sugestaoEmail ?? "");
     setErro(null);
     setContatoCriado(null);
+    setContatoExistente(null);
+    setSoInativos(false);
   }, [open, sugestaoNome, sugestaoTelefone, sugestaoEmail]);
+
+  useEffect(() => {
+    if (!open || equipamento.cliente_id === undefined || equipamento.empresa_id === undefined) return;
+    let vivo = true;
+    setCarregandoContatos(true);
+    db.listarClienteContatos(equipamento.cliente_id, equipamento.empresa_id)
+      .then((lista) => {
+        if (!vivo) return;
+        const alvo = lista.find((c) => c.ativo && !telefoneValidoBackend(c.telefone));
+        if (alvo) {
+          setContatoExistente(alvo);
+          setNome(alvo.nome);
+          setEmail(alvo.email || sugestaoEmail || "");
+          setTelefone(formatarTelefone(sugestaoTelefone || alvo.telefone || "") || "");
+        } else if (lista.length > 0 && lista.every((c) => !c.ativo)) {
+          setSoInativos(true);
+        }
+      })
+      .catch(() => {})
+      .finally(() => {
+        if (vivo) setCarregandoContatos(false);
+      });
+    return () => {
+      vivo = false;
+    };
+  }, [open, equipamento.cliente_id, equipamento.empresa_id, sugestaoTelefone, sugestaoEmail]);
 
   function fechar() {
     if (!salvando) onCancelar();
@@ -81,16 +114,29 @@ export function QuemRecebeOrcamentoDialog({
     let contato = contatoCriado;
     if (!contato) {
       try {
-        contato = await db.criarClienteContato({
-          empresa_id: equipamento.empresa_id,
-          cliente_id: equipamento.cliente_id,
-          nome: nomeLimpo,
-          email: emailLimpo || undefined,
-          telefone: telefone.replace(/\D/g, ""),
-        });
+        if (contatoExistente?.id !== undefined) {
+          contato = await db.atualizarClienteContato(contatoExistente.id, {
+            empresa_id: equipamento.empresa_id,
+            cliente_id: equipamento.cliente_id,
+            nome: nomeLimpo,
+            email: emailLimpo || undefined,
+            telefone: telefone.replace(/\D/g, ""),
+            atualizado_em: contatoExistente.atualizado_em,
+          });
+        } else {
+          contato = await db.criarClienteContato({
+            empresa_id: equipamento.empresa_id,
+            cliente_id: equipamento.cliente_id,
+            nome: nomeLimpo,
+            email: emailLimpo || undefined,
+            telefone: telefone.replace(/\D/g, ""),
+          });
+        }
         setContatoCriado(contato);
       } catch (cause) {
-        setErro(`Não foi possível cadastrar o contato. ${String(cause)}`);
+        setErro(contatoExistente?.id !== undefined
+          ? `Não foi possível atualizar o contato. ${String(cause)}`
+          : `Não foi possível cadastrar o contato. ${String(cause)}`);
         setSalvando(false);
         return;
       }
@@ -101,7 +147,7 @@ export function QuemRecebeOrcamentoDialog({
       if (contato.id === undefined) throw new Error("Contato sem identificador.");
       equipamentoAtualizado = await db.definirResponsavelEquipamento(equipamento.id, contato.id, equipamento.atualizado_em);
     } catch (cause) {
-      setErro(`O contato foi cadastrado no cliente, mas não foi vinculado ao equipamento. Tente novamente. ${String(cause)}`);
+      setErro(`O contato foi ${contatoExistente ? "atualizado" : "cadastrado"} no cliente, mas não foi vinculado ao equipamento. Tente novamente. ${String(cause)}`);
       setSalvando(false);
       return;
     }
@@ -115,7 +161,7 @@ export function QuemRecebeOrcamentoDialog({
     }
   }
 
-  const bloqueado = salvando || contatoCriado !== null;
+  const bloqueado = salvando || carregandoContatos || contatoCriado !== null;
 
   return (
     <Dialog open={open} onOpenChange={(aberto) => { if (!aberto) fechar(); }}>
@@ -124,6 +170,8 @@ export function QuemRecebeOrcamentoDialog({
           <DialogTitle>Quem recebe o orçamento?</DialogTitle>
           <DialogDescription>
             O orçamento e o acesso ao portal vão para este contato. Ele fica salvo no cadastro do cliente.
+            {contatoExistente && ` Encontramos ${contatoExistente.nome} sem WhatsApp válido; o cadastro dele será atualizado.`}
+            {soInativos && " Os contatos deste cliente estão inativos. Um novo contato será cadastrado."}
           </DialogDescription>
         </DialogHeader>
         <div className="space-y-4">
@@ -150,7 +198,7 @@ export function QuemRecebeOrcamentoDialog({
         </div>
         <DialogFooter>
           <Button type="button" variant="outline" onClick={fechar} disabled={salvando}>Cancelar</Button>
-          <Button type="button" onClick={() => void salvar()} disabled={salvando}>{salvando ? "Salvando..." : "Salvar e continuar"}</Button>
+          <Button type="button" onClick={() => void salvar()} disabled={salvando || carregandoContatos}>{salvando ? "Salvando..." : "Salvar e continuar"}</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
