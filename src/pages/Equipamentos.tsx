@@ -186,6 +186,7 @@ import { PortalClienteProvider } from "@/components/equipamentos/portal-cliente-
 import { DecisaoOrcamentoCard } from "@/components/equipamentos/DecisaoOrcamentoCard";
 import { CorrigirDecisaoDialog } from "@/components/equipamentos/CorrigirDecisaoDialog";
 import { EnvioManualOrcamentoDialog } from "@/components/equipamentos/EnvioManualOrcamentoDialog";
+import { QuemRecebeOrcamentoDialog } from "@/components/equipamentos/QuemRecebeOrcamentoDialog";
 import { AnteriorEmAtendimentoAviso } from "@/components/equipamentos/AnteriorEmAtendimentoAviso";
 import {
   MENSAGEM_DADOS_PREENCHIDOS,
@@ -269,6 +270,11 @@ export default function Equipamentos({ operationalProfile }: { operationalProfil
   detalhesAbertoRef.current = detalhesDialogOpen;
   const [corrigirDecisaoAlvo, setCorrigirDecisaoAlvo] = useState<Equipamento | null>(null);
   const [envioManual, setEnvioManual] = useState<EnvioManualOrcamento | null>(null);
+  const [quemRecebe, setQuemRecebe] = useState<{
+    eq: Equipamento;
+    sugestao: { nome: string; telefone: string; email: string };
+    continuar: (eq: Equipamento) => void | Promise<void>;
+  } | null>(null);
   const [verificacaoDialogOpen, setVerificacaoDialogOpen] = useState(false);
   const [statusDialogOpen, setStatusDialogOpen] = useState(false);
   const [pagamentoDialogOpen, setPagamentoDialogOpen] = useState(false);
@@ -1150,15 +1156,15 @@ export default function Equipamentos({ operationalProfile }: { operationalProfil
     });
     if (!liberado) return false;
 
+    async function seguir(eq: Equipamento): Promise<boolean> {
     if (IS_SAAS_BUILD) {
-      const recipient = resolveRecipient(equipamentoSelecionado, "email");
       async function executarOnline(email: string, nomeDestinatario?: string): Promise<boolean> {
         setSalvando(true);
         try {
           const repository = await carregarRepositorioOperacoesEquipamento();
           const result = await repository.finalizeVerification({
-            equipmentId: String(equipamentoSelecionado!.id),
-            expectedUpdatedAt: equipamentoSelecionado!.atualizado_em || "",
+            equipmentId: String(eq.id),
+            expectedUpdatedAt: eq.atualizado_em || "",
             verification: dados,
             approvalDeadline: calcularPrazoAprovacaoOnline(3),
           });
@@ -1199,18 +1205,19 @@ export default function Equipamentos({ operationalProfile }: { operationalProfil
           setSalvando(false);
         }
       }
+      const recipientOnline = resolveRecipient(eq, "email");
       setEmailFlow({
-        recipient,
+        recipient: recipientOnline,
         onConfirm: async (email, salvar) => {
           if (salvar) {
             try {
-              await saveRecipientAddress(equipamentoSelecionado, "email", email);
+              await saveRecipientAddress(eq, "email", email);
             } catch (cause) {
               showError("Equipamentos", "Salvar destinatário", cause);
               return false;
             }
           }
-          return executarOnline(email, recipient.nome);
+          return executarOnline(email, recipientOnline.nome);
         },
         onSkip: async () => { await executarOnline(""); },
       });
@@ -1221,7 +1228,7 @@ export default function Equipamentos({ operationalProfile }: { operationalProfil
     async function executarComEmail(email: string | undefined, nomeDestinatario?: string): Promise<boolean> {
       setSalvando(true);
       try {
-        const resultado = await finalizarVerificacao(selecionado!, dados, email, nomeDestinatario);
+        const resultado = await finalizarVerificacao(eq, dados, email, nomeDestinatario);
         if (!resultado.sucesso) {
           throw new Error(resultado.erro || "Não foi possível finalizar a verificação.");
         }
@@ -1231,6 +1238,9 @@ export default function Equipamentos({ operationalProfile }: { operationalProfil
         const resumoCanais = mensagemResultadoCanais(resultado);
         if (resumoCanais) {
           success("Equipamentos", resumoCanais, "Finalizar verificação");
+        }
+        if (resultado.avisos?.length) {
+          warning("Equipamentos", resultado.avisos.join("\n"));
         }
         return true;
       } catch (err: any) {
@@ -1242,13 +1252,13 @@ export default function Equipamentos({ operationalProfile }: { operationalProfil
       }
     }
 
-    const recipient = resolveRecipient(selecionado, "email");
+    const recipient = resolveRecipient(eq, "email");
     setEmailFlow({
       recipient,
       onConfirm: async (email, salvar) => {
         if (salvar) {
           try {
-            await saveRecipientAddress(selecionado, "email", email);
+            await saveRecipientAddress(eq, "email", email);
           } catch (cause) {
             showError("Equipamentos", "Salvar destinatário", cause);
             return false;
@@ -1260,6 +1270,34 @@ export default function Equipamentos({ operationalProfile }: { operationalProfil
     });
     setEmailDialogOpen(true);
     return false;
+    }
+
+    if (!IS_SAAS_BUILD) {
+      let precisaContato = false;
+      try {
+        const dest = await db.obterDestinatarioOrcamento(equipamentoSelecionado.id!);
+        precisaContato = !!dest?.precisaContato;
+      } catch (err) {
+        showError("Equipamentos", "Finalizar verificação", err);
+        return false;
+      }
+      if (precisaContato) {
+        setQuemRecebe({
+          eq: equipamentoSelecionado,
+          sugestao: {
+            nome: equipamentoSelecionado.cliente_nome || "",
+            telefone: equipamentoSelecionado.cliente_telefone || "",
+            email: equipamentoSelecionado.cliente_email || "",
+          },
+          continuar: async (eqAtualizado) => {
+            setSelecionado(eqAtualizado);
+            await seguir(eqAtualizado);
+          },
+        });
+        return false;
+      }
+    }
+    return seguir(equipamentoSelecionado);
   }
 
   async function gerarNovaSenhaDoEnvioManual(): Promise<EnvioManualOrcamento | null> {
@@ -3721,6 +3759,20 @@ export default function Equipamentos({ operationalProfile }: { operationalProfil
         onFechar={() => setEnvioManual(null)}
         onGerarNovaSenha={gerarNovaSenhaDoEnvioManual}
       />
+
+      {quemRecebe && (
+        <QuemRecebeOrcamentoDialog
+          open
+          equipamento={quemRecebe.eq}
+          sugestao={quemRecebe.sugestao}
+          onSalvo={async (eqAtualizado) => {
+            const { continuar } = quemRecebe;
+            setQuemRecebe(null);
+            await continuar(eqAtualizado);
+          }}
+          onCancelar={() => setQuemRecebe(null)}
+        />
+      )}
 
       <CommunicationEmailDialog
         open={emailDialogOpen}
