@@ -33,7 +33,9 @@ const moeda = (valor?: number | null) =>
   valor == null ? "—" : new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(valor);
 
 function mensagemErro(cause: unknown, fallback: string) {
-  return typeof cause === "string" && cause.trim() ? cause : fallback;
+  if (typeof cause === "string" && cause.trim()) return cause;
+  if (cause instanceof Error && cause.message.trim()) return cause.message;
+  return fallback;
 }
 
 /** Com os dois modos disponíveis, começa pelo que não perde o ajuste feito no orçamento. */

@@ -244,15 +244,30 @@ function parseArrayField(value: string | undefined, label: string): unknown[] {
   }
 }
 
-function operationHttpError(status: number, code?: string): OnlineDataError {
-  if (status === 401) return new OnlineDataError("SESSION_EXPIRED", "Sua sessão expirou. Entre novamente para continuar.");
-  if (status === 403 || code === "42501") return new OnlineDataError("RLS_DENIED", "Seu perfil não tem autorização para esta operação, ou o registro não pertence à sua empresa.");
-  if (code === "40001") return new OnlineDataError("CONFLICT", "O equipamento foi alterado por outra pessoa. Atualize a lista e tente novamente.");
-  if (code === "22023" || code === "22P02" || code?.startsWith("23")) {
-    return new OnlineDataError("INVALID_DATA", "A operação tem um status ou dados inválidos. Revise os campos e tente novamente.");
+function operatorFacingMessage(raw?: string): string | undefined {
+  const text = raw?.trim();
+  if (!text) return undefined;
+  if (/https?:\/\/|bearer\s|service_role|apikey|postgres:\/\//i.test(text)) return undefined;
+  return text.length > 400 ? text.slice(0, 400) : text;
+}
+
+function operationHttpError(status: number, code?: string, message?: string): OnlineDataError {
+  const operatorMessage = operatorFacingMessage(message);
+  if (status === 401) return new OnlineDataError("SESSION_EXPIRED", operatorMessage || "Sua sessão expirou. Entre novamente para continuar.");
+  if (status === 403 || code === "42501") {
+    return new OnlineDataError("RLS_DENIED", operatorMessage || "Seu perfil não tem autorização para esta operação, ou o registro não pertence à sua empresa.");
   }
-  if (code === "P0002") return new OnlineDataError("INVALID_DATA", "Não foi encontrada uma verificação técnica salva para este equipamento.");
-  return new OnlineDataError("ONLINE_UNAVAILABLE", "Não foi possível concluir a operação online. Seus dados foram mantidos; tente novamente.");
+  if (code === "40001") return new OnlineDataError("CONFLICT", operatorMessage || "O equipamento foi alterado por outra pessoa. Atualize a lista e tente novamente.");
+  if (code === "22023" || code === "22P02" || code?.startsWith("23")) {
+    return new OnlineDataError("INVALID_DATA", operatorMessage || "A operação tem um status ou dados inválidos. Revise os campos e tente novamente.");
+  }
+  if (code === "P0002") {
+    return new OnlineDataError("INVALID_DATA", operatorMessage || "Não foi encontrada uma verificação técnica salva para este equipamento.");
+  }
+  return new OnlineDataError(
+    "ONLINE_UNAVAILABLE",
+    operatorMessage || "Não foi possível concluir a operação online. Seus dados foram mantidos; tente novamente.",
+  );
 }
 
 function assertTenant<T extends { empresa_id?: string | number }>(row: T, session: SupabaseOnlineSession): T {
@@ -310,7 +325,7 @@ export class SupabaseEquipmentOperationsRepository implements EquipmentOperation
     if (!response.ok) {
       let body: { code?: string; message?: string } = {};
       try { body = await response.json() as typeof body; } catch { /* resposta sem JSON */ }
-      throw operationHttpError(response.status, body.code);
+      throw operationHttpError(response.status, body.code, body.message);
     }
     try {
       return await response.json() as T;

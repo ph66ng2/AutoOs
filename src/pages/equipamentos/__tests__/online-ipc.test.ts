@@ -5,6 +5,7 @@ import {
   DESKTOP_ONLY_EQUIPMENT_COMMANDS,
   enviarWhatsAppOrcamentoOnline,
   usaIpcDesktopDeEquipamento,
+  whatsappOrcamentoPedeProrrogacao,
 } from "@/pages/equipamentos/online-ipc";
 import { quoteInputForAdjustment } from "@/lib/data/equipamentos-operacoes-repository";
 import type { Equipamento, Verificacao } from "@/types";
@@ -55,6 +56,18 @@ describe("IPC Online vs desktop em Equipamentos", () => {
     const resultado = await enviarWhatsAppOrcamentoOnline(equipamento, { getVerification, enviarOrcamento });
     expect(resultado).toEqual({ sucesso: true });
     expect(enviarOrcamento).toHaveBeenCalledWith(equipamento, verificacao);
+  });
+
+  it("pede prorrogação no SaaS quando o prazo já venceu", () => {
+    expect(whatsappOrcamentoPedeProrrogacao(true, "2026-01-01", () => true)).toBe(true);
+    expect(whatsappOrcamentoPedeProrrogacao(false, "2026-01-01", () => true)).toBe(false);
+    expect(whatsappOrcamentoPedeProrrogacao(
+      true,
+      "2026-12-01",
+      () => false,
+      "O prazo de aprovação do orçamento já terminou. Atualize o prazo antes de enviar.",
+      (msg) => msg.includes("prazo de aprovação"),
+    )).toBe(true);
   });
 
   it("mapeia SEM_NOVA_APROVACAO e NOVA_APROVACAO no saveQuote Online", () => {

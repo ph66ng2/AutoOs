@@ -55,6 +55,7 @@ import {
   Smartphone,
   DollarSign,
   RotateCcw,
+  CalendarClock,
 } from "lucide-react";
 import { useForm, Controller } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -193,7 +194,7 @@ import {
   usarEquipamentoAnteriorNoCadastro,
 } from "@/pages/equipamentos/equipamento-anterior";
 import { enviarOrcamentoAoCliente, gerarNovaSenhaEnvioManual, prorrogarEEnviar, sugerirNovoPrazo } from "@/lib/envio-orcamento";
-import { ehErroPrazoVencido, formatarDataIso } from "@/lib/orcamento-prazo";
+import { ehErroPrazoVencido, formatarDataIso, prazoAprovacaoVencido } from "@/lib/orcamento-prazo";
 import { EVENTO_ALERTAS_PORTAL } from "@/components/PortalAlertas";
 import { resolveRecipient, type ResolvedRecipient } from "@/lib/recipient-resolver";
 import { saveRecipientAddress } from "@/lib/recipient-persistence";
@@ -210,6 +211,7 @@ import {
   analisarAjusteDoEquipamento,
   carregarVerificacaoDoEquipamento,
   enviarWhatsAppOrcamentoOnline,
+  whatsappOrcamentoPedeProrrogacao,
 } from "@/pages/equipamentos/online-ipc";
 import { carregarProdutosParaPecas, type ProdutoParaPecaSugerida } from "@/lib/data/servicos-repository";
 import type { SaasOperationalProfile } from "@/types/saas-auth";
@@ -2124,11 +2126,19 @@ export default function Equipamentos({ operationalProfile }: { operationalProfil
     });
     if (!liberado) return;
     if (IS_SAAS_BUILD) {
+      if (whatsappOrcamentoPedeProrrogacao(true, eq.prazo_aprovacao, prazoAprovacaoVencido)) {
+        await prorrogarPrazoEEnviar(eq);
+        return;
+      }
       const r = await enviarWhatsAppOrcamentoOnline(eq, {
         getVerification: async (id) => (await carregarRepositorioOperacoesEquipamento()).getVerification(id),
         enviarOrcamento: (equipamento, verificacao) => WhatsAppService.enviarOrcamento(equipamento, verificacao),
       });
       if (!r.sucesso) {
+        if (whatsappOrcamentoPedeProrrogacao(true, eq.prazo_aprovacao, prazoAprovacaoVencido, r.erro, ehErroPrazoVencido)) {
+          await prorrogarPrazoEEnviar(eq);
+          return;
+        }
         if (whatsappNaoConfigurado(r.erro)) {
           warning("Equipamentos", "WhatsApp ainda não está configurado. O histórico registra que o envio não foi realizado.");
           return;
@@ -2286,6 +2296,14 @@ export default function Equipamentos({ operationalProfile }: { operationalProfil
       variant: "outline",
       onClick: () => void abrirCorrigirDecisao(eq),
     };
+    const acaoProrrogarPrazo: PriorityAction = {
+      id: "prorrogar_prazo",
+      label: "Prorrogar prazo",
+      icon: <CalendarClock className="h-3.5 w-3.5" />,
+      variant: "outline",
+      onClick: () => void prorrogarPrazoEEnviar(eq),
+      disabled: salvando,
+    };
     const acaoExcluir: PriorityAction = {
       id: "excluir",
       label: "Excluir",
@@ -2377,6 +2395,9 @@ export default function Equipamentos({ operationalProfile }: { operationalProfil
             icon: <MessageSquare className="h-3.5 w-3.5" />,
             onClick: () => void enviarWhatsAppOrcamento(eq),
           });
+        }
+        if (IS_SAAS_BUILD && prazoAprovacaoVencido(eq.prazo_aprovacao)) {
+          overflow.push(acaoProrrogarPrazo);
         }
         overflow.push(acaoStatus, acaoEditar, acaoExcluir);
         break;

@@ -54,3 +54,16 @@ export async function enviarWhatsAppOrcamentoOnline(
   }
   return deps.enviarOrcamento(equipamento, verificacao);
 }
+
+/** SaaS WhatsApp of a quote whose deadline already ended should extend the deadline first. */
+export function whatsappOrcamentoPedeProrrogacao(
+  isSaasBuild: boolean,
+  prazoAprovacao: string | null | undefined,
+  prazoVencido: (prazo?: string | null) => boolean,
+  erroEnvio?: string,
+  erroEhPrazoVencido?: (msg: string) => boolean,
+): boolean {
+  if (!isSaasBuild) return false;
+  if (prazoVencido(prazoAprovacao)) return true;
+  return Boolean(erroEnvio && erroEhPrazoVencido?.(erroEnvio));
+}

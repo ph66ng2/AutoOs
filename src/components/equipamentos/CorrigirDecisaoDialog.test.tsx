@@ -158,6 +158,12 @@ describe("CorrigirDecisaoDialog", () => {
     expect(onCorrigido).not.toHaveBeenCalled();
   });
 
+  it("mostra a mensagem de um OnlineDataError em vez do fallback genérico", async () => {
+    mocks.analisar.mockRejectedValue(new Error("3 peça(s) já foram baixadas do estoque. Confirme a devolução ao estoque, o que só vale se as peças estiverem intactas."));
+    abrir();
+    expect(await screen.findByRole("alert")).toHaveTextContent(/3 peça\(s\) já foram baixadas/);
+  });
+
   it("repassa o resultado do portal (aviso quando a republicação falha)", async () => {
     mocks.analisar.mockResolvedValue(analise());
     const portal = { acao: "NAO_PUBLICADA", aviso: "Perfil sem permissão para publicar no portal." };

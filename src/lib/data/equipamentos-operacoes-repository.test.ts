@@ -122,13 +122,34 @@ describe("SupabaseEquipmentOperationsRepository", () => {
       status: "EM_VERIFICACAO",
     })).rejects.toMatchObject({ code: "CONFLICT" });
 
-    const deniedFetch = vi.fn<typeof fetch>().mockResolvedValue(response({ code: "42501", message: "denied" }, 403));
+    const deniedFetch = vi.fn<typeof fetch>().mockResolvedValue(response({ code: "42501", message: "Financial permission is required" }, 403));
     const deniedRepository = new SupabaseEquipmentOperationsRepository(session, deniedFetch);
     await expect(deniedRepository.approveQuote({
       equipmentId,
       expectedUpdatedAt: equipment.atualizado_em,
       payment: { codigo: "PIX" },
-    })).rejects.toMatchObject({ code: "RLS_DENIED" });
+    })).rejects.toMatchObject({
+      code: "RLS_DENIED",
+      message: "Financial permission is required",
+    });
+  });
+
+  it("surfaces the PostgREST operator message for invalid quote corrections", async () => {
+    const fetcher = vi.fn<typeof fetch>().mockResolvedValue(response({
+      code: "22023",
+      message: "3 peça(s) já foram baixadas do estoque. Confirme a devolução ao estoque, o que só vale se as peças estiverem intactas.",
+    }, 400));
+    const repository = new SupabaseEquipmentOperationsRepository(session, fetcher);
+    await expect(repository.correctQuoteDecision({
+      equipmentId,
+      expectedUpdatedAt: equipment.atualizado_em,
+      motivo: "Cliente pediu para refazer",
+      devolverEstoque: false,
+      modo: "RESTAURAR_ORIGINAL",
+    })).rejects.toMatchObject({
+      code: "INVALID_DATA",
+      message: expect.stringMatching(/3 peça/),
+    });
   });
 
   it("rejects malformed equipment IDs and refuses data returned for another tenant", async () => {
