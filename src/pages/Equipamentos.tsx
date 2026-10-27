@@ -120,6 +120,7 @@ import {
   type AnaliseAjusteOrcamento,
   type EnvioManualOrcamento,
   type OpcoesAjusteOrcamento,
+  type PreparoAcessoPortal,
 } from "@/types";
 
 // Componentes extraídos
@@ -185,7 +186,13 @@ import { PortalClienteProvider } from "@/components/equipamentos/portal-cliente-
 import { DecisaoOrcamentoCard } from "@/components/equipamentos/DecisaoOrcamentoCard";
 import { CorrigirDecisaoDialog } from "@/components/equipamentos/CorrigirDecisaoDialog";
 import { EnvioManualOrcamentoDialog } from "@/components/equipamentos/EnvioManualOrcamentoDialog";
-import { gerarNovaSenhaEnvioManual } from "@/lib/envio-orcamento";
+import { AnteriorEmAtendimentoAviso } from "@/components/equipamentos/AnteriorEmAtendimentoAviso";
+import {
+  MENSAGEM_DADOS_PREENCHIDOS,
+  usarEquipamentoAnteriorNoCadastro,
+} from "@/pages/equipamentos/equipamento-anterior";
+import { enviarOrcamentoAoCliente, gerarNovaSenhaEnvioManual, prorrogarEEnviar, sugerirNovoPrazo } from "@/lib/envio-orcamento";
+import { ehErroPrazoVencido, formatarDataIso } from "@/lib/orcamento-prazo";
 import { EVENTO_ALERTAS_PORTAL } from "@/components/PortalAlertas";
 import { resolveRecipient, type ResolvedRecipient } from "@/lib/recipient-resolver";
 import { saveRecipientAddress } from "@/lib/recipient-persistence";
@@ -299,6 +306,7 @@ export default function Equipamentos({ operationalProfile }: { operationalProfil
   // Duplicidade de serial (múltiplos ciclos de manutenção)
   const [registrosAnteriores, setRegistrosAnteriores] = useState<Equipamento[]>([]);
   const [confirmouNovoCiclo, setConfirmouNovoCiclo] = useState(false);
+  const [anteriorEmAtendimento, setAnteriorEmAtendimento] = useState<Equipamento | null>(null);
   const [sugestoesSerial, setSugestoesSerial] = useState<Equipamento[]>([]);
   const [mostrarSugestoes, setMostrarSugestoes] = useState(false);
 
@@ -492,6 +500,7 @@ export default function Equipamentos({ operationalProfile }: { operationalProfil
     setTecnicoNovoEquipamento("Ivan");
     setRegistrosAnteriores([]);
     setConfirmouNovoCiclo(false);
+    setAnteriorEmAtendimento(null);
     setMarcaSelecionada("");
     setModeloSelecionado("");
     form.reset({
@@ -658,6 +667,25 @@ export default function Equipamentos({ operationalProfile }: { operationalProfil
     } catch (err) {
       console.error("Erro ao buscar registros anteriores:", err);
     }
+  }
+
+  /**
+   * Cadastro novo: clicar num equipamento anterior do cliente reaproveita só os dados do aparelho
+   * quando o atendimento já foi encerrado; se ainda está em atendimento, avisa e não preenche.
+   */
+  async function usarEquipamentoAnterior(anterior: Equipamento) {
+    const resultado = await usarEquipamentoAnteriorNoCadastro(form, anterior, async (serial) => {
+      return await buscarPorSerial(serial) as unknown as Equipamento[];
+    });
+    if (resultado.tipo === "em_atendimento") {
+      setAnteriorEmAtendimento(anterior);
+      return;
+    }
+    setAnteriorEmAtendimento(null);
+    setMostrarSugestoes(false);
+    setRegistrosAnteriores(resultado.registros);
+    setConfirmouNovoCiclo(resultado.confirmarNovoCiclo);
+    success("Equipamentos", MENSAGEM_DADOS_PREENCHIDOS);
   }
 
   async function handleSerialInput(value: string) {
@@ -1585,6 +1613,10 @@ export default function Equipamentos({ operationalProfile }: { operationalProfil
   async function confirmarMudancaStatus(divergencia = false) {
     if (!selecionado || (!novoStatus && !ajusteOrcamentoSemMudancaStatus)) return;
     const totalAtual = valorOrcamentoRef.current;
+    if (correcaoStatus && novoStatus === "AGUARDANDO_APROVACAO" && ["APROVADO", "REPROVADO"].includes(selecionado.status)) {
+      warning("Equipamentos", "Para reabrir um orçamento já decidido use “Corrigir decisão do orçamento”: ela desfaz pagamento e estoque junto.");
+      return;
+    }
     if (correcaoStatus && !motivoCorrecaoStatus.trim()) {
       warning("Equipamentos", "Informe o motivo da correção antes de continuar.");
       return;
@@ -1608,7 +1640,7 @@ export default function Equipamentos({ operationalProfile }: { operationalProfil
     }
 
     let opcoesAjuste: OpcoesAjusteOrcamento | undefined;
-    if (!IS_SAAS_BUILD && ajusteOrcamentoSemMudancaStatus && verificacaoAjusteOrcamento && selecionado.id) {
+    if (ajusteOrcamentoSemMudancaStatus && verificacaoAjusteOrcamento && selecionado.id) {
       try {
         const analise = await db.analisarAjusteOrcamento(selecionado.id);
         const aprovado = orcamentoJaAprovado(selecionado.status);
@@ -1877,29 +1909,150 @@ export default function Equipamentos({ operationalProfile }: { operationalProfil
     }
   }
 
-  /** Envia orçamento manualmente via WhatsApp. Busca verificação do banco primeiro */
+  /** Pergunta ao operador e devolve a resposta (usa o diálogo de confirmação da página). */
+  function confirmarComOperador(title: string, description: string, confirmLabel: string): Promise<boolean> {
+    return new Promise((resolve) => {
+      setConfirmProps({
+        title,
+        description,
+        confirmLabel,
+        cancelLabel: "Cancelar",
+        onConfirm: () => resolve(true),
+        onCancel: () => resolve(false),
+      });
+      setConfirmOpen(true);
+    });
+  }
+
+  /**
+   * Reenvio manual de WhatsApp. A tela só informa equipamento e tipo; o backend decide o texto,
+   * evita duplicidade e pede confirmação quando o envio anterior tem resultado incerto.
+   */
+  async function reenviarOrcamentoInformativo(eq: Equipamento) {
+    let verificacao: Awaited<ReturnType<typeof db.buscarVerificacao>>;
+    try {
+      verificacao = await db.buscarVerificacao(eq.id!);
+    } catch (err) {
+      showError("Equipamentos", "Enviar WhatsApp", err);
+      return;
+    }
+    if (!verificacao) {
+      warning("Equipamentos", "Verificação não encontrada; o orçamento não foi enviado.");
+      return;
+    }
+
+    let envio = await enviarOrcamentoAoCliente(eq, verificacao, { reenvioManual: true, enviarEmail: false });
+    if (envio.canais.whatsapp.estado === "REQUER_CONFIRMACAO") {
+      const confirmado = await confirmarComOperador(
+        "Enviar de novo?",
+        envio.canais.whatsapp.erro || "O resultado do envio anterior é incerto: a mensagem pode já ter chegado ao cliente.",
+        "Enviar mesmo assim",
+      );
+      if (!confirmado) return;
+      envio = await enviarOrcamentoAoCliente(eq, verificacao, { reenvioManual: true, enviarEmail: false, confirmarIncerto: true, preparo: envio.preparo });
+    }
+
+    const wa = envio.canais.whatsapp;
+    if (envio.envioManual) setEnvioManual(envio.envioManual);
+    if (wa.enviado) {
+      success("Equipamentos", "Mensagem aceita pelo provedor de WhatsApp. A entrega não é confirmada neste momento.", "WhatsApp");
+    } else if (wa.erro && ehErroPrazoVencido(wa.erro)) {
+      await prorrogarPrazoEEnviar(eq, envio.preparo);
+      return;
+    } else if (wa.estado === "INCERTA") {
+      warning("Equipamentos", wa.erro || "O provedor não confirmou o envio. Confira antes de tentar de novo.");
+    } else if (!envio.envioManual || !whatsappNaoConfigurado(wa.erro)) {
+      showError("Equipamentos", "Enviar WhatsApp", new Error(wa.erro || "Falha ao enviar WhatsApp."));
+    }
+    if (envio.avisos.length) warning("Equipamentos", envio.avisos.join("\n"));
+  }
+
+  async function prorrogarPrazoEEnviar(eq: Equipamento, preparo?: PreparoAcessoPortal | null) {
+    const liberado = await ensureSensitiveAccess({
+      title: "Prorrogar prazo e enviar",
+      description: "Informe o PIN para prorrogar o prazo de aprovação e reenviar o orçamento ao cliente.",
+      anyPermission: [SENSITIVE_PERMISSIONS.FINANCIAL_ACTIONS, SENSITIVE_PERMISSIONS.PREPARE_QUOTES],
+    });
+    if (!liberado) return;
+    const novoPrazo = sugerirNovoPrazo();
+    const dataBr = formatarDataIso(novoPrazo).slice(0, 5);
+    const confirmado = await confirmarComOperador(
+      "Prazo do orçamento vencido",
+      `O prazo de aprovação já terminou. Prorrogar até ${dataBr} e enviar o orçamento?`,
+      `Prorrogar até ${dataBr} e enviar`,
+    );
+    if (!confirmado) return;
+    setSalvando(true);
+    try {
+      const r = await prorrogarEEnviar(eq, novoPrazo, () =>
+        confirmarComOperador(
+          "Resposta pendente",
+          "O cliente já respondeu. Prorrogar anula a resposta pendente. Continuar?",
+          "Continuar",
+        ),
+        { preparo },
+      );
+      if (r.respostaPendenteRecusada) return;
+      if (r.envioManual) setEnvioManual(r.envioManual);
+      const etapas = [
+        r.prorrogado ? "Prazo prorrogado." : "Prazo não prorrogado.",
+        ...(r.prorrogado ? [r.publicado ? "Orçamento publicado no portal." : "Orçamento não publicado no portal."] : []),
+        ...(r.whatsapp ? [r.whatsapp.enviado ? "WhatsApp: enviado." : `WhatsApp: não enviado${r.whatsapp.erro ? ` (${r.whatsapp.erro})` : "."}`] : []),
+      ];
+      if (r.prorrogado) success("Equipamentos", etapas.join("\n"), "Prorrogar e enviar");
+      if (r.avisos.length) warning("Equipamentos", r.avisos.join("\n"));
+      await recarregar();
+    } catch (err) {
+      showError("Equipamentos", "Prorrogar e enviar", err);
+    } finally {
+      setSalvando(false);
+    }
+  }
+
+  async function reenviarWhatsApp(eq: Equipamento, tipo: "orcamento_informativo" | "equipamento_pronto") {
+    if (tipo === "orcamento_informativo") {
+      await reenviarOrcamentoInformativo(eq);
+      return;
+    }
+    let resultado = await WhatsAppService.solicitarEnvio(eq.id!, tipo, { reenvioManual: true });
+    if (resultado.requerConfirmacao) {
+      const confirmado = await confirmarComOperador(
+        "Enviar de novo?",
+        resultado.mensagem || "O resultado do envio anterior é incerto: a mensagem pode já ter chegado ao cliente.",
+        "Enviar mesmo assim",
+      );
+      if (!confirmado) return;
+      resultado = await WhatsAppService.solicitarEnvio(eq.id!, tipo, { reenvioManual: true, confirmarIncerto: true });
+    }
+    if (resultado.sucesso) {
+      success(
+        "Equipamentos",
+        resultado.enfileirada
+          ? "Mensagem na fila de envio. O resultado aparece no histórico de comunicações."
+          : "Mensagem aceita pelo provedor de WhatsApp. A entrega não é confirmada neste momento.",
+        "WhatsApp",
+      );
+      return;
+    }
+    if (whatsappNaoConfigurado(resultado.erro)) {
+      console.warn("[WhatsApp] Integração não configurada. Fluxo segue com envio manual.");
+      return;
+    }
+    if (resultado.estado === "INCERTA") {
+      warning("Equipamentos", resultado.erro || "O provedor não confirmou o envio. Confira antes de tentar de novo.");
+      return;
+    }
+    showError("Equipamentos", "Enviar WhatsApp", new Error(resultado.erro));
+  }
+
+  /** Envia orçamento manualmente via WhatsApp (texto da versão congelada do orçamento). */
   async function enviarWhatsAppOrcamento(eq: Equipamento) {
     const liberado = await ensureSensitiveAccess({
       title: "Enviar orçamento por WhatsApp",
       description: "Informe o PIN para disparar manualmente a mensagem de orçamento ao cliente.",
-      permission: SENSITIVE_PERMISSIONS.FINANCIAL_ACTIONS,
     });
     if (!liberado) return;
-
-    const verif = IS_SAAS_BUILD
-      ? await (await carregarRepositorioOperacoesEquipamento()).getVerification(String(eq.id))
-      : await db.buscarVerificacao(eq.id!);
-    if (!verif) { warning("Equipamentos", "Nenhuma verificação técnica encontrada para este equipamento."); return; }
-    const recipient = resolveRecipient(eq, "telefone");
-    if (!recipient.endereco) { warning("Equipamentos", "Nenhum telefone disponível para este envio."); return; }
-    const r = await WhatsAppService.enviarOrcamento({ ...eq, cliente_telefone: recipient.endereco, cliente_nome: recipient.nome }, verif);
-    if (!r.sucesso) {
-      if (whatsappNaoConfigurado(r.erro)) {
-        warning("Equipamentos", "WhatsApp ainda não está configurado. O histórico registra que o envio não foi realizado.");
-        return;
-      }
-      showError("Equipamentos", "Enviar WhatsApp", new Error(r.erro));
-    }
+    await reenviarWhatsApp(eq, "orcamento_informativo");
   }
 
   /** Constrói o orçamento para inspeção sem persistir o arquivo. */
@@ -1961,20 +2114,9 @@ export default function Equipamentos({ operationalProfile }: { operationalProfil
     const liberado = await ensureSensitiveAccess({
       title: "Enviar aviso de equipamento pronto",
       description: "Informe o PIN para disparar manualmente a mensagem de retirada ao cliente.",
-      permission: SENSITIVE_PERMISSIONS.FINANCIAL_ACTIONS,
     });
     if (!liberado) return;
-
-    const recipient = resolveRecipient(eq, "telefone");
-    if (!recipient.endereco) { warning("Equipamentos", "Nenhum telefone disponível para este envio."); return; }
-    const r = await WhatsAppService.enviarEquipamentoPronto({ ...eq, cliente_telefone: recipient.endereco, cliente_nome: recipient.nome });
-    if (!r.sucesso) {
-      if (whatsappNaoConfigurado(r.erro)) {
-        warning("Equipamentos", "WhatsApp ainda não está configurado. O histórico registra que o envio não foi realizado.");
-        return;
-      }
-      showError("Equipamentos", "Enviar WhatsApp", new Error(r.erro));
-    }
+    await reenviarWhatsApp(eq, "equipamento_pronto");
   }
 
   // ─── Botões de ação contextuais por status ────────────
@@ -2546,7 +2688,7 @@ export default function Equipamentos({ operationalProfile }: { operationalProfil
 
       {/* ═══ Dialog Criar/Editar ═══ */}
       <Dialog open={dialogOpen} onOpenChange={(open) => {
-        if (!open) { setRegistrosAnteriores([]); setConfirmouNovoCiclo(false); }
+        if (!open) { setRegistrosAnteriores([]); setConfirmouNovoCiclo(false); setAnteriorEmAtendimento(null); }
         setDialogOpen(open);
       }}>
         <DialogContent className="sm:max-w-2xl max-h-[85vh] overflow-y-auto">
@@ -2558,10 +2700,17 @@ export default function Equipamentos({ operationalProfile }: { operationalProfil
             <div className="space-y-2">
               <ClienteSelector
                 clienteInicial={clienteVinculado}
-                onClienteSelecionado={(c) => { setClienteVinculado(c); setResponsavelVinculado(null); setErroCliente(null); }}
-                onClienteRemovido={() => { setClienteVinculado(null); setResponsavelVinculado(null); }}
+                onClienteSelecionado={(c) => { setClienteVinculado(c); setResponsavelVinculado(null); setErroCliente(null); setAnteriorEmAtendimento(null); }}
+                onClienteRemovido={() => { setClienteVinculado(null); setResponsavelVinculado(null); setAnteriorEmAtendimento(null); }}
+                onEquipamentoSelecionado={editando ? undefined : (anterior) => void usarEquipamentoAnterior(anterior)}
                 readOnly={false}
               />
+              {anteriorEmAtendimento && (
+                <AnteriorEmAtendimentoAviso
+                  equipamento={anteriorEmAtendimento}
+                  onAbrirAtendimento={(eq) => navigate("/equipamentos", { state: { equipamentoId: eq.id } })}
+                />
+              )}
               <ContatoResponsavelSelector
                 cliente={clienteVinculado}
                 empresaId={clienteVinculado?.empresa_id ?? editando?.empresa_id}
@@ -3101,6 +3250,25 @@ export default function Equipamentos({ operationalProfile }: { operationalProfil
                           ))}
                         </SelectContent>
                       </Select>
+                    </div>
+                  )}
+                  {correcaoStatus && novoStatus === "AGUARDANDO_APROVACAO" && ["APROVADO", "REPROVADO"].includes(selecionado.status) && (
+                    <div role="alert" className="space-y-2 rounded-md border border-amber-300 bg-amber-50 p-3 text-sm text-amber-950">
+                      <p>
+                        Trocar só o status não desfaz pagamento, serviços aprovados nem baixa de estoque. Use a correção guiada da decisão.
+                      </p>
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        onClick={() => {
+                          const alvo = selecionado;
+                          setStatusDialogOpen(false);
+                          void abrirCorrigirDecisao(alvo);
+                        }}
+                      >
+                        Corrigir decisão do orçamento
+                      </Button>
                     </div>
                   )}
                   {correcaoStatus && (
