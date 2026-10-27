@@ -1,4 +1,4 @@
-import { createContext, useCallback, useContext, useState } from "react";
+import { createContext, Suspense, useCallback, useContext, useState } from "react";
 import { Home, LayoutPanelTop, Lock, LogOut, Repeat2, UserRound } from "lucide-react";
 import { useNavigate, Outlet } from "react-router-dom";
 import { Button } from "@/components/ui/button";
@@ -43,7 +43,11 @@ export function CounterLayout({ onChangeMode }: { onChangeMode: (mode: AppMode) 
             {status?.unlocked && <Button variant="ghost" size="icon" className="h-12 w-12 text-white hover:bg-white/10 hover:text-white" aria-label="Bloquear acesso" onClick={() => void lockSensitiveAccess()}><Lock /></Button>}
           </div>
         </header>
-        <main className="mx-auto max-w-[1600px] p-4 lg:p-8"><Outlet /></main>
+        <main className="mx-auto max-w-[1600px] p-4 lg:p-8">
+          <Suspense fallback={<div role="status" aria-live="polite">Carregando página</div>}>
+            <Outlet />
+          </Suspense>
+        </main>
       </div>
     </CounterSessionContext.Provider>
   );

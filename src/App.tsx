@@ -17,7 +17,7 @@
  * ║  USADO POR: main.tsx (ponto de entrada)                    ║
  * ╚══════════════════════════════════════════════════════════════╝
  */
-import { useCallback, useEffect, useState } from "react";
+import { lazy, useCallback, useEffect, useState } from "react";
 import { BrowserRouter, Routes, Route, useLocation, useNavigate } from "react-router-dom";
 import { Toaster } from "sonner";
 import { useTheme } from "next-themes";
@@ -28,23 +28,23 @@ import { SensitiveRoute, useSensitiveAccess } from "@/hooks/useSensitiveAccess";
 import { SENSITIVE_PERMISSIONS } from "@/types";
 import { Layout } from "@/components/Layout";
 import { DatabaseConfigService } from "@/lib/db-config";
-import Dashboard from "@/pages/Dashboard";
-import Equipamentos from "@/pages/Equipamentos";
-import Clientes from "@/pages/Clientes";
-import Insumos from "@/pages/Insumos";
-import Servicos from "@/pages/Servicos";
-import Gastos from "@/pages/Gastos";
-
-import Configuracoes from "@/pages/Configuracoes";
-import Perfil from "@/pages/Perfil";
-import PowerSyncPOC from "@/poc/PowerSyncPOC";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { AppModeSelector } from "@/components/AppModeSelector";
 import { CounterLayout } from "@/components/CounterLayout";
 import { CounterSessionGate } from "@/components/CounterSessionGate";
 import { ReleaseHighlightsDialog } from "@/components/ReleaseHighlightsDialog";
 import { getAppMode, setAppMode, type AppMode } from "@/lib/app-mode";
-import Balcao from "@/pages/Balcao";
+
+const Dashboard = lazy(() => import("@/pages/Dashboard"));
+const Equipamentos = lazy(() => import("@/pages/Equipamentos"));
+const Clientes = lazy(() => import("@/pages/Clientes"));
+const Insumos = lazy(() => import("@/pages/Insumos"));
+const Servicos = lazy(() => import("@/pages/Servicos"));
+const Gastos = lazy(() => import("@/pages/Gastos"));
+const Configuracoes = lazy(() => import("@/pages/Configuracoes"));
+const Perfil = lazy(() => import("@/pages/Perfil"));
+const PowerSyncPOC = lazy(() => import("@/poc/PowerSyncPOC"));
+const Balcao = lazy(() => import("@/pages/Balcao"));
 
 /** Exibição mínima do boot (IPC em dev pode resolver em poucos ms). Prod fica igual ou mais pesado só se o Rust/DB demorar. */
 const MIN_BOOT_SPLASH_MS = 1_100;
