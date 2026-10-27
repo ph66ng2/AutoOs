@@ -41,8 +41,9 @@ export function QuemRecebeOrcamentoDialog({
   // Guarda o contato já criado para que uma nova tentativa só refaça o vínculo, sem duplicar o cadastro.
   const [contatoCriado, setContatoCriado] = useState<ClienteContato | null>(null);
   const [contatoExistente, setContatoExistente] = useState<ClienteContato | null>(null);
-  const [soInativos, setSoInativos] = useState(false);
   const [carregandoContatos, setCarregandoContatos] = useState(false);
+  // Sem a lista não dá para saber se já existe contato a atualizar; salvar criaria um duplicado.
+  const [falhaListagem, setFalhaListagem] = useState(false);
 
   const sugestaoNome = sugestao?.nome;
   const sugestaoTelefone = sugestao?.telefone;
@@ -56,13 +57,13 @@ export function QuemRecebeOrcamentoDialog({
     setErro(null);
     setContatoCriado(null);
     setContatoExistente(null);
-    setSoInativos(false);
   }, [open, sugestaoNome, sugestaoTelefone, sugestaoEmail]);
 
   useEffect(() => {
     if (!open || equipamento.cliente_id === undefined || equipamento.empresa_id === undefined) return;
     let vivo = true;
     setCarregandoContatos(true);
+    setFalhaListagem(false);
     db.listarClienteContatos(equipamento.cliente_id, equipamento.empresa_id)
       .then((lista) => {
         if (!vivo) return;
@@ -73,11 +74,11 @@ export function QuemRecebeOrcamentoDialog({
           // Só dados do próprio contato: telefone/e-mail do cliente podem ser de outra pessoa.
           setEmail(alvo.email ?? "");
           setTelefone(alvo.telefone ? formatarTelefone(alvo.telefone) : "");
-        } else if (lista.length > 0 && lista.every((c) => !c.ativo)) {
-          setSoInativos(true);
         }
       })
-      .catch(() => {})
+      .catch(() => {
+        if (vivo) setFalhaListagem(true);
+      })
       .finally(() => {
         if (vivo) setCarregandoContatos(false);
       });
@@ -135,9 +136,21 @@ export function QuemRecebeOrcamentoDialog({
         }
         setContatoCriado(contato);
       } catch (cause) {
-        setErro(contatoExistente?.id !== undefined
-          ? `Não foi possível atualizar o contato. ${String(cause)}`
-          : `Não foi possível cadastrar o contato. ${String(cause)}`);
+        if (contatoExistente?.id !== undefined) {
+          // O token de concorrência pode ter vencido: relê o contato para a nova tentativa não repetir o mesmo erro.
+          let aviso = "";
+          try {
+            const lista = await db.listarClienteContatos(equipamento.cliente_id, equipamento.empresa_id);
+            const atual = lista.find((c) => c.id === contatoExistente.id);
+            setContatoExistente(atual ?? null);
+            if (!atual) aviso = " O contato não está mais disponível; salvar de novo cadastra um novo contato.";
+          } catch {
+            // Mantém o contato carregado antes; a mensagem abaixo já informa a falha.
+          }
+          setErro(`Não foi possível atualizar o contato. ${String(cause)}${aviso}`);
+        } else {
+          setErro(`Não foi possível cadastrar o contato. ${String(cause)}`);
+        }
         setSalvando(false);
         return;
       }
@@ -172,7 +185,6 @@ export function QuemRecebeOrcamentoDialog({
           <DialogDescription>
             O orçamento e o acesso ao portal vão para este contato. Ele fica salvo no cadastro do cliente.
             {contatoExistente && ` Encontramos ${contatoExistente.nome} sem WhatsApp válido; o cadastro dele será atualizado.`}
-            {soInativos && " Os contatos deste cliente estão inativos. Um novo contato será cadastrado."}
           </DialogDescription>
         </DialogHeader>
         <div className="space-y-4">
@@ -195,11 +207,16 @@ export function QuemRecebeOrcamentoDialog({
             <Label htmlFor="quem-recebe-email">E-mail</Label>
             <Input id="quem-recebe-email" type="email" value={email} disabled={bloqueado} onChange={(event) => { setEmail(event.target.value); setErro(null); }} />
           </div>
+          {falhaListagem && (
+            <p className="text-xs text-red-600" role="alert">
+              Não foi possível carregar os contatos do cliente. Feche e abra de novo para tentar outra vez.
+            </p>
+          )}
           {erro && <p className="text-xs text-red-600" role="alert">{erro}</p>}
         </div>
         <DialogFooter>
           <Button type="button" variant="outline" onClick={fechar} disabled={salvando}>Cancelar</Button>
-          <Button type="button" onClick={() => void salvar()} disabled={salvando || carregandoContatos}>{salvando ? "Salvando..." : "Salvar e continuar"}</Button>
+          <Button type="button" onClick={() => void salvar()} disabled={salvando || carregandoContatos || falhaListagem}>{salvando ? "Salvando..." : "Salvar e continuar"}</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>

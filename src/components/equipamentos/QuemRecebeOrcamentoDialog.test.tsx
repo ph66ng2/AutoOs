@@ -156,27 +156,37 @@ describe("QuemRecebeOrcamentoDialog", () => {
     expect(screen.getByLabelText("E-mail")).toHaveValue("");
   });
 
-  it("avisa quando só há contatos inativos e cria um novo", async () => {
+  it("bloqueia o salvamento e avisa quando a listagem de contatos falha", async () => {
+    mockListar.mockRejectedValue("sem conexão");
+    renderDialog({ sugestao: { nome: "Bruno", telefone: "71988880000", email: "" } });
+
+    expect(await screen.findByText(/Não foi possível carregar os contatos do cliente/)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /salvar e continuar/i })).toBeDisabled();
+    expect(mockCriar).not.toHaveBeenCalled();
+    expect(mockAtualizar).not.toHaveBeenCalled();
+  });
+
+  it("relê o contato após conflito e a nova tentativa usa o token atualizado", async () => {
     const user = userEvent.setup();
-    mockListar.mockResolvedValue([
-      { id: 40, empresa_id: 7, cliente_id: 11, nome: "Antigo", ativo: false, telefone: "71911110000", atualizado_em: "2026-09-01T00:00:00Z" },
-    ] as unknown as ClienteContato[]);
+    const base = { id: 30, empresa_id: 7, cliente_id: 11, nome: "Bruno", ativo: true, telefone: "" };
+    mockListar
+      .mockResolvedValueOnce([{ ...base, atualizado_em: "2026-10-01T00:00:00Z" }] as unknown as ClienteContato[])
+      .mockResolvedValueOnce([{ ...base, atualizado_em: "2026-10-02T00:00:00Z" }] as unknown as ClienteContato[]);
+    mockAtualizar.mockRejectedValueOnce("Contato não encontrado, inativo ou alterado por outro operador.");
     const { onSalvo } = renderDialog();
 
-    expect(await screen.findByText(/contatos deste cliente estão inativos/)).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByLabelText("Nome *")).toHaveValue("Bruno"));
     await waitFor(() => expect(screen.getByRole("button", { name: /salvar e continuar/i })).toBeEnabled());
-    await user.type(screen.getByLabelText("Nome *"), "Bruno");
     await user.type(screen.getByLabelText("WhatsApp *"), "71988880000");
     await user.click(screen.getByRole("button", { name: /salvar e continuar/i }));
 
+    expect(await screen.findByRole("alert")).toHaveTextContent("Não foi possível atualizar o contato");
+    await waitFor(() => expect(screen.getByRole("button", { name: /salvar e continuar/i })).toBeEnabled());
+    await user.click(screen.getByRole("button", { name: /salvar e continuar/i }));
+
     await waitFor(() => expect(onSalvo).toHaveBeenCalledTimes(1));
-    expect(mockCriar).toHaveBeenCalledWith({
-      empresa_id: 7,
-      cliente_id: 11,
-      nome: "Bruno",
-      email: undefined,
-      telefone: "71988880000",
-    });
-    expect(mockAtualizar).not.toHaveBeenCalled();
+    expect(mockAtualizar).toHaveBeenCalledTimes(2);
+    expect(mockAtualizar).toHaveBeenLastCalledWith(30, expect.objectContaining({ atualizado_em: "2026-10-02T00:00:00Z" }));
+    expect(mockCriar).not.toHaveBeenCalled();
   });
 });
