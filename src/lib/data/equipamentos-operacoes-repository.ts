@@ -8,9 +8,12 @@ import { tauriSaasSessionStore } from "@/lib/saas-session-store";
 import { validatePecasSugeridas } from "@/lib/data/servicos-repository";
 import type {
   AnaliseAjusteOrcamento,
+  AnaliseCorrecaoDecisao,
   Equipamento,
   FormaPagamento,
+  ModoCorrecaoDecisao,
   OpcoesAjusteOrcamento,
+  PortalAjusteInfo,
   ServicoCatalogo,
   ServicoNecessario,
   PecaNecessaria,
@@ -111,9 +114,86 @@ function parseAnaliseAjuste(value: unknown): AnaliseAjusteOrcamento {
   };
 }
 
+function parsePecasBaixadas(value: unknown): AnaliseCorrecaoDecisao["pecasBaixadas"] {
+  if (!Array.isArray(value)) return [];
+  return value.map((peca) => {
+    if (!peca || typeof peca !== "object") {
+      throw new OnlineDataError("ONLINE_UNAVAILABLE", "O serviço Online retornou peças baixadas inválidas.");
+    }
+    const item = peca as Record<string, unknown>;
+    const quantidade = Number(item.quantidade);
+    if ((typeof item.produtoId !== "string" && typeof item.produtoId !== "number")
+      || typeof item.nome !== "string"
+      || !Number.isFinite(quantidade) || quantidade <= 0) {
+      throw new OnlineDataError("ONLINE_UNAVAILABLE", "O serviço Online retornou peças baixadas inválidas.");
+    }
+    return { produtoId: item.produtoId, nome: item.nome, quantidade };
+  });
+}
+
+function parseAnaliseCorrecao(value: unknown): AnaliseCorrecaoDecisao {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw new OnlineDataError("ONLINE_UNAVAILABLE", "O serviço Online retornou uma análise de correção inválida.");
+  }
+  const row = value as Record<string, unknown>;
+  const totalBaixado = Number(row.totalBaixado);
+  const bloqueios = Array.isArray(row.bloqueios)
+    ? row.bloqueios.filter((item): item is string => typeof item === "string")
+    : [];
+  return {
+    status: String(row.status ?? ""),
+    podeCorrigir: row.podeCorrigir === true,
+    bloqueios,
+    ajustadoAposDecisao: row.ajustadoAposDecisao === true,
+    permiteRestaurar: row.permiteRestaurar === true,
+    permiteManter: row.permiteManter === true,
+    pagamentoCodigo: typeof row.pagamentoCodigo === "string" ? row.pagamentoCodigo : null,
+    pagamentoDetalhe: typeof row.pagamentoDetalhe === "string" ? row.pagamentoDetalhe : null,
+    valorAtual: row.valorAtual == null ? null : Number(row.valorAtual),
+    valorOriginal: row.valorOriginal == null ? null : Number(row.valorOriginal),
+    pecasBaixadas: parsePecasBaixadas(row.pecasBaixadas),
+    totalBaixado: Number.isFinite(totalBaixado) ? totalBaixado : 0,
+    exigeDecisaoEstoque: row.exigeDecisaoEstoque === true,
+  };
+}
+
+function parsePortal(value: unknown): PortalAjusteInfo | undefined {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
+  const row = value as Record<string, unknown>;
+  const acao = row.acao;
+  if (acao !== "NENHUMA" && acao !== "VERSAO_PUBLICADA" && acao !== "NOVA_APROVACAO_PUBLICADA"
+    && acao !== "VALOR_ATUALIZADO" && acao !== "NAO_PUBLICADA") {
+    return undefined;
+  }
+  return {
+    acao,
+    versao: typeof row.versao === "number" ? row.versao : null,
+    mensagem: typeof row.mensagem === "string" ? row.mensagem : null,
+    aviso: typeof row.aviso === "string" ? row.aviso : null,
+  };
+}
+
+export interface EquipmentDecisionCorrectionInput {
+  equipmentId: string;
+  expectedUpdatedAt: string;
+  motivo: string;
+  devolverEstoque: boolean;
+  modo: ModoCorrecaoDecisao;
+}
+
 export interface EquipmentOperationsRepository {
   getVerification(equipmentId: string): Promise<Verificacao | null>;
   analyzeQuoteAdjustment(equipmentId: string): Promise<AnaliseAjusteOrcamento>;
+  analyzeDecisionCorrection(equipmentId: string): Promise<AnaliseCorrecaoDecisao>;
+  correctQuoteDecision(input: EquipmentDecisionCorrectionInput): Promise<{
+    equipment: Equipamento<string>;
+    portal?: PortalAjusteInfo;
+  }>;
+  extendApprovalDeadline(input: {
+    equipmentId: string;
+    expectedUpdatedAt: string;
+    newDeadline: string;
+  }): Promise<{ prorrogado: boolean; equipment: Equipamento<string> }>;
   listActiveServices(): Promise<ServicoCatalogo<string>[]>;
   finalizeVerification(input: {
     equipmentId: string;
@@ -268,6 +348,68 @@ export class SupabaseEquipmentOperationsRepository implements EquipmentOperation
     return parseAnaliseAjuste(Array.isArray(result) && result.length === 1 ? result[0] : result);
   }
 
+  async analyzeDecisionCorrection(equipmentId: string): Promise<AnaliseCorrecaoDecisao> {
+    if (!validUuid(equipmentId)) throw new OnlineDataError("INVALID_DATA", "O identificador do equipamento Online é inválido.");
+    const result = await this.rpc<unknown>("saas_analisar_correcao_decisao", {
+      p_equipment_id: equipmentId,
+    });
+    return parseAnaliseCorrecao(Array.isArray(result) && result.length === 1 ? result[0] : result);
+  }
+
+  async correctQuoteDecision(input: EquipmentDecisionCorrectionInput): Promise<{
+    equipment: Equipamento<string>;
+    portal?: PortalAjusteInfo;
+  }> {
+    assertOperationInput(input.equipmentId, input.expectedUpdatedAt);
+    if (input.motivo.trim().length < 5) {
+      throw new OnlineDataError("INVALID_DATA", "Informe o motivo da correção (mínimo de 5 caracteres).");
+    }
+    const result = await this.rpc<unknown>("saas_corrigir_decisao_orcamento", {
+      p_equipment_id: input.equipmentId,
+      p_expected_updated_em: input.expectedUpdatedAt,
+      p_motivo: input.motivo.trim(),
+      p_devolver_estoque: input.devolverEstoque,
+      p_modo: input.modo,
+    });
+    const payload = Array.isArray(result) && result.length === 1 ? result[0] : result;
+    if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
+      throw new OnlineDataError("ONLINE_UNAVAILABLE", "O serviço Online retornou uma correção inválida.");
+    }
+    const row = payload as { equipment?: Equipamento<string>; portal?: unknown };
+    if (!row.equipment || typeof row.equipment.id !== "string" || !validUuid(row.equipment.id)) {
+      throw new OnlineDataError("ONLINE_UNAVAILABLE", "O serviço Online retornou um equipamento inválido.");
+    }
+    return {
+      equipment: assertTenant(row.equipment, this.session),
+      portal: parsePortal(row.portal),
+    };
+  }
+
+  async extendApprovalDeadline(input: {
+    equipmentId: string;
+    expectedUpdatedAt: string;
+    newDeadline: string;
+  }): Promise<{ prorrogado: boolean; equipment: Equipamento<string> }> {
+    assertOperationInput(input.equipmentId, input.expectedUpdatedAt);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(input.newDeadline)) {
+      throw new OnlineDataError("INVALID_DATA", "Informe o novo prazo no formato AAAA-MM-DD.");
+    }
+    const result = await this.rpc<unknown>("saas_prorrogar_prazo_orcamento", {
+      p_equipment_id: input.equipmentId,
+      p_expected_updated_em: input.expectedUpdatedAt,
+      p_novo_prazo: input.newDeadline,
+    });
+    const payload = Array.isArray(result) && result.length === 1 ? result[0] : result;
+    if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
+      throw new OnlineDataError("ONLINE_UNAVAILABLE", "O serviço Online retornou uma prorrogação inválida.");
+    }
+    const row = payload as { prorrogado?: boolean; equipment?: Equipamento<string> };
+    if (row.prorrogado !== true || !row.equipment || typeof row.equipment.id !== "string" || !validUuid(row.equipment.id)) {
+      throw new OnlineDataError("ONLINE_UNAVAILABLE", "O serviço Online não confirmou a prorrogação do prazo.");
+    }
+    return { prorrogado: true, equipment: assertTenant(row.equipment, this.session) };
+  }
+
   async listActiveServices(): Promise<ServicoCatalogo<string>[]> {
     const services: ServicoCatalogo<string>[] = [];
     for (let offset = 0; ; offset += SERVICE_PAGE_SIZE) {
@@ -327,12 +469,10 @@ export class SupabaseEquipmentOperationsRepository implements EquipmentOperation
       throw new OnlineDataError("INVALID_DATA", "O valor total do orçamento precisa ser maior ou igual a zero.");
     }
     const adjusted = quoteInputForAdjustment(input, input.adjustment);
-    if (adjusted.adjustment?.devolverEstoque) {
-      await this.rpc<unknown>("saas_devolver_pecas_baixadas_orcamento", {
-        p_equipment_id: adjusted.equipmentId,
-      });
-    }
-    const result = await this.rpc<unknown>("saas_update_equipment_quote", {
+    const rpcName = adjusted.adjustment?.modoAprovado
+      ? "saas_save_equipment_quote_adjustment"
+      : "saas_update_equipment_quote";
+    const result = await this.rpc<unknown>(rpcName, {
       p_equipment_id: adjusted.equipmentId,
       p_expected_updated_em: adjusted.expectedUpdatedAt,
       p_services: adjusted.services,
@@ -344,6 +484,10 @@ export class SupabaseEquipmentOperationsRepository implements EquipmentOperation
       p_payment_code: adjusted.payment?.codigo ?? null,
       p_payment_detail: adjusted.payment?.detalhe ?? null,
       p_correction_reason: adjusted.correctionReason ?? null,
+      ...(adjusted.adjustment?.modoAprovado ? {
+        p_modo_aprovado: adjusted.adjustment.modoAprovado,
+        p_devolver_estoque: adjusted.adjustment.devolverEstoque === true,
+      } : {}),
     });
     return operationResult(result, this.session);
   }
