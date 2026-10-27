@@ -393,7 +393,7 @@ describe("Equipamentos — Budget Divergence & Audit", () => {
 
     // O input de valor deve ter sido corrigido para 150
     const input = screen.getByTestId("valor-orcamento-input") as HTMLInputElement;
-    expect(Number(input.value)).toBe(150);
+    expect(input.value).toBe("150,00");
 
     await waitFor(() => {
       expect(screen.getByTestId("confirm-dialog")).toBeInTheDocument();

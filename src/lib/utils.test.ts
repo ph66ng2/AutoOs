@@ -61,6 +61,12 @@ describe('parseDecimalBr', () => {
     expect(parseDecimalBr('1234.50')).toBe(1234.5);
     expect(parseDecimalBr('1.5')).toBe(1.5);
   });
+
+  it('aceita prefixo R$ e espaço não separável', () => {
+    expect(parseDecimalBr('R$ 1.234,50')).toBe(1234.5);
+    expect(parseDecimalBr(`R$\u00a01.234,50`)).toBe(1234.5);
+    expect(parseDecimalBr('abc')).toBeNaN();
+  });
 });
 
 describe('formatDate', () => {

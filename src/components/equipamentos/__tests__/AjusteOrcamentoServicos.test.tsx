@@ -167,6 +167,6 @@ describe("AjusteOrcamentoServicos", () => {
     render(<Wrapper {...defaultProps} servicos={[{ id: "s1", descricao: "Garantia", valor: 0 }]} />);
     const valorInput = screen.getByPlaceholderText(/Valor/i);
     expect(valorInput).toHaveAttribute("min", "0");
-    expect(valorInput).toHaveValue("0");
+    expect(valorInput).toHaveValue("0,00");
   });
 });

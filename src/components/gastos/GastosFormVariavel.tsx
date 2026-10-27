@@ -120,6 +120,7 @@ export function GastosFormVariavel({
               <Label>Valor (R$) *</Label>
               <ValorDecimalInput
                 min={0.01}
+                required
                 value={Number(form.watch("valor")) || 0}
                 onValueChange={(valor) => form.setValue("valor", valor, { shouldValidate: true, shouldDirty: true })}
               />
