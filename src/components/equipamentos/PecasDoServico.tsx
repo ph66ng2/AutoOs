@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Plus, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { ValorDecimalInput } from "@/components/ui/valor-decimal-input";
 import { carregarProdutosOrcamento, produtosSelecionaveisComoPeca } from "@/lib/orcamento-estoque";
 import { formatCurrencyOrMissing } from "@/lib/utils";
 import type { PecaVinculada, Produto } from "@/types";
@@ -48,9 +49,9 @@ export function PecasDoServico({ pecas, onChange }: Props) {
             <Input aria-label={`Quantidade de ${peca.nome}`} className="w-20" type="number" min={1} step={1}
               value={peca.quantidade} onChange={(event) => onChange(pecas.map((item) =>
                 item.produto_id === peca.produto_id ? { ...item, quantidade: Number(event.target.value) } : item))} />
-            <Input aria-label={`Valor de ${peca.nome}`} className="w-24" type="number" min={0} step="0.01"
-              value={peca.valor_unitario} onChange={(event) => onChange(pecas.map((item) =>
-                item.produto_id === peca.produto_id ? { ...item, valor_unitario: Number(event.target.value) } : item))} />
+            <ValorDecimalInput aria-label={`Valor de ${peca.nome}`} className="w-24" min={0}
+              value={Number(peca.valor_unitario) || 0} onValueChange={(valor) => onChange(pecas.map((item) =>
+                item.produto_id === peca.produto_id ? { ...item, valor_unitario: valor } : item))} />
             <span className={saldo !== undefined && saldo < peca.quantidade ? "text-amber-700" : "text-muted-foreground"}>
               Saldo {saldo ?? "—"}{saldo !== undefined && saldo < peca.quantidade ? " · falta peça" : ""}
             </span>

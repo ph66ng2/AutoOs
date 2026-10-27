@@ -45,14 +45,20 @@ export function formatCurrencyOrMissing(value: number | null | undefined): strin
   return formatCurrency(value);
 }
 
-/** Interpreta "1.234,50" ou "1234.50". Vírgula é decimal pt-BR. */
+/** Interpreta "1.234,50" ou "1234.50". Vírgula é decimal; ponto com 3 dígitos é milhar pt-BR. */
 export function parseDecimalBr(value: string): number {
-  const trimmed = value.trim();
+  const trimmed = value.trim().replace(/\s/g, "");
   if (!trimmed) return Number.NaN;
-  const normalized = trimmed.includes(",")
-    ? trimmed.replace(/\./g, "").replace(",", ".")
-    : trimmed;
-  return Number(normalized);
+  if (trimmed.includes(",")) {
+    const last = trimmed.lastIndexOf(",");
+    const inteiro = trimmed.slice(0, last).replace(/\./g, "").replace(/,/g, "");
+    const frac = trimmed.slice(last + 1).replace(/\D/g, "");
+    return Number(`${inteiro}.${frac}`);
+  }
+  if (/^\d{1,3}(\.\d{3})+$/.test(trimmed)) {
+    return Number(trimmed.replace(/\./g, ""));
+  }
+  return Number(trimmed);
 }
 
 /**

@@ -151,7 +151,7 @@ describe("OrcamentoInsumosDialog: novo orçamento", () => {
 
     const quantidade = screen.getByLabelText("Quantidade de Etiqueta 100x50");
     const unitario = screen.getByLabelText("Valor unitário de Etiqueta 100x50");
-    expect(unitario).toHaveValue(10);
+    expect(unitario).toHaveValue("10");
     fireEvent.change(quantidade, { target: { value: "3" } });
     fireEvent.change(unitario, { target: { value: "12.5" } });
     fireEvent.change(screen.getByLabelText("Desconto (R$)"), { target: { value: "7.5" } });

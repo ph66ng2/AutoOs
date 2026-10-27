@@ -321,6 +321,25 @@ describe("Equipamentos — Budget Divergence & Audit", () => {
 
   // ─── Test 1: Sem divergência — fluxo normal ──────────
 
+  it("o Cancelar fecha o ajuste de orçamento", async () => {
+    mockBuscarVerificacao.mockResolvedValue(makeVerificacao());
+    await abrirDialogoAjusteOrcamento();
+    fireEvent.click(screen.getByRole("button", { name: "Cancelar" }));
+    await waitFor(() => {
+      expect(screen.queryByText(/Ajuste de Orçamento/i)).not.toBeInTheDocument();
+    });
+  });
+
+  it("aceita milhar e vírgula no valor do orçamento", async () => {
+    mockBuscarVerificacao.mockResolvedValue(makeVerificacao());
+    await abrirDialogoAjusteOrcamento();
+    const input = screen.getByTestId("valor-orcamento-input");
+    await act(async () => {
+      fireEvent.change(input, { target: { value: "1.234,50" } });
+    });
+    expect(screen.getByText(/Novo valor em negociação: R\$\s*1\.234,50/)).toBeInTheDocument();
+  });
+
   it("não exibe diálogo de divergência quando soma coincide com valor total", async () => {
     mockBuscarVerificacao.mockResolvedValue(makeVerificacao());
     await abrirDialogoAjusteOrcamento();

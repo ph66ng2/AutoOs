@@ -280,7 +280,7 @@ export function ClienteFormularioCampos({
                 form.setValue("telefone", formatted, { shouldValidate: false });
               }}
               placeholder="(11) 99999-9999"
-              maxLength={15}
+              maxLength={22}
             />
               <FormValidationError message={form.formState.errors.telefone?.message} />
           </div>
@@ -293,7 +293,7 @@ export function ClienteFormularioCampos({
                 form.setValue("telefone_secundario", formatted, { shouldValidate: false });
               }}
               placeholder="(11) 3333-3333"
-              maxLength={15}
+              maxLength={22}
             />
           </div>
         </div>
@@ -334,7 +334,7 @@ export function ClienteFormularioCampos({
                   form.setValue("contato_telefone", formatted, { shouldDirty: true, shouldValidate: false });
                 }}
                 placeholder="(11) 99999-9999"
-                maxLength={15}
+                maxLength={22}
               />
               <FormValidationError message={form.formState.errors.contato_telefone?.message} />
             </div>

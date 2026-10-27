@@ -12,6 +12,7 @@ import {
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { ValorDecimalInput } from "@/components/ui/valor-decimal-input";
 import { Label } from "@/components/ui/label";
 import {
   Select,
@@ -109,7 +110,11 @@ export function GastosFormFixo({ open, onOpenChange, gasto, onSave, saving }: Ga
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
               <Label>Valor (R$) *</Label>
-              <Input type="number" step="0.01" min={0.01} {...form.register("valor")} />
+              <ValorDecimalInput
+                min={0.01}
+                value={Number(form.watch("valor")) || 0}
+                onValueChange={(valor) => form.setValue("valor", valor, { shouldValidate: true, shouldDirty: true })}
+              />
               <FormValidationError message={form.formState.errors.valor?.message} />
             </div>
 

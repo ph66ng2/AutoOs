@@ -260,7 +260,7 @@ export function CreateProfileCard({ profiles, onCreated }: Props) {
                     disabled={role === "ADMIN"}
                     role={role}
                   />
-                  {submitted && !compat.ok && (
+                  {!compat.ok && (
                     <p role="alert" className="text-sm text-destructive">
                       {compat.motivo}
                     </p>
@@ -363,7 +363,7 @@ export function CreateProfileCard({ profiles, onCreated }: Props) {
                       <ArrowLeft className="mr-2 h-4 w-4" /> Voltar
                     </Button>
                   )}
-                  <Button type="submit" disabled={busy}>
+                  <Button type="submit" disabled={busy || (step === 1 && !compat.ok)}>
                     {busy
                       ? "Criando..."
                       : step === 2

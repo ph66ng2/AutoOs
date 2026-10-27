@@ -6,6 +6,7 @@ import { Controller, type UseFormReturn } from "react-hook-form";
 import { Button } from "@/components/ui/button";
 import { FormValidationError } from "@/components/ui/form-validation-error";
 import { Input } from "@/components/ui/input";
+import { ValorDecimalInput } from "@/components/ui/valor-decimal-input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import {
@@ -135,20 +136,18 @@ export function InsumosProdutoDialog({
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
               <Label>Preço Custo</Label>
-              <Input
-                type="number"
-                step="0.01"
-                {...form.register("preco_custo", { valueAsNumber: true })}
+              <ValorDecimalInput
                 min={0}
+                value={Number(form.watch("preco_custo")) || 0}
+                onValueChange={(valor) => form.setValue("preco_custo", valor, { shouldValidate: true, shouldDirty: true })}
               />
             </div>
             <div className="space-y-2">
               <Label>Preço Venda</Label>
-              <Input
-                type="number"
-                step="0.01"
-                {...form.register("preco_venda", { valueAsNumber: true })}
+              <ValorDecimalInput
                 min={0}
+                value={Number(form.watch("preco_venda")) || 0}
+                onValueChange={(valor) => form.setValue("preco_venda", valor, { shouldValidate: true, shouldDirty: true })}
               />
             </div>
           </div>

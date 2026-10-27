@@ -176,6 +176,7 @@ import {
   whatsappNaoConfigurado,
 } from "@/pages/equipamentos/equipamentos-page-utils";
 import { DateIsoInput } from "@/components/ui/date-iso-input";
+import { ValorDecimalInput } from "@/components/ui/valor-decimal-input";
 import { formatCurrency, formatCurrencyOrMissing } from "@/lib/utils";
 import { useNotification } from "@/hooks/useNotification";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
@@ -2996,7 +2997,8 @@ export default function Equipamentos() {
             </DialogTitle>
           </DialogHeader>
           {selecionado && (
-            <div className="min-h-0 space-y-4 overflow-y-auto pr-1">
+            <>
+            <div className="min-h-0 flex-1 space-y-4 overflow-y-auto pr-1">
               {!ajusteOrcamentoSemMudancaStatus && (
                 <>
                   <div className="flex items-center gap-2">
@@ -3097,7 +3099,7 @@ export default function Equipamentos() {
                       </div>
                     </div>
                   )}
-                  <div className="space-y-2"><Label>Valor Orçamento (R$)</Label><Input data-testid="valor-orcamento-input" type="number" step="0.01" value={valorOrcamento || ""} onChange={e => setValorOrcamento(Number(e.target.value))} /></div>
+                  <div className="space-y-2"><Label htmlFor="valor-orcamento-input">Valor Orçamento (R$)</Label><ValorDecimalInput id="valor-orcamento-input" data-testid="valor-orcamento-input" value={Number(valorOrcamento) || 0} onValueChange={setValorOrcamento} /></div>
                   {(!ajusteOrcamentoSemMudancaStatus || selecionado.status === "AGUARDANDO_APROVACAO") && (
                     <div className="space-y-2"><Label>Prazo Aprovação</Label><DateIsoInput min={new Date().toLocaleDateString("en-CA")} value={prazoAprovacao} onValueChange={setPrazoAprovacao} /></div>
                   )}
@@ -3204,11 +3206,9 @@ export default function Equipamentos() {
                   </label>
                   <div className="space-y-2">
                     <Label>Valor Final Pago (R$)</Label>
-                    <Input
-                      type="number"
-                      step="0.01"
-                      value={valorFinal || ""}
-                      onChange={e => setValorFinal(Number(e.target.value))}
+                    <ValorDecimalInput
+                      value={Number(valorFinal) || 0}
+                      onValueChange={setValorFinal}
                       disabled={!acordoExcecaoEntrega}
                     />
                   </div>
@@ -3293,13 +3293,14 @@ export default function Equipamentos() {
                   </div>
                 </div>
               )}
-              <DialogFooter className="sticky bottom-0 bg-background pt-3">
-                <DialogClose asChild><Button variant="outline">Cancelar</Button></DialogClose>
-                <Button onClick={iniciarConfirmacaoStatus} disabled={salvando || (!novoStatus && !ajusteOrcamentoSemMudancaStatus)}>
+            </div>
+            <DialogFooter className="shrink-0 bg-background pt-3">
+                <Button type="button" variant="outline" onClick={() => setStatusDialogOpen(false)}>Cancelar</Button>
+                <Button type="button" onClick={iniciarConfirmacaoStatus} disabled={salvando || (!novoStatus && !ajusteOrcamentoSemMudancaStatus)}>
                   {salvando ? "Salvando..." : correcaoStatus ? "Corrigir status" : "Confirmar"}
                 </Button>
               </DialogFooter>
-            </div>
+            </>
           )}
         </DialogContent>
       </Dialog>

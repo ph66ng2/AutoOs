@@ -53,8 +53,13 @@ describe('parseDecimalBr', () => {
     expect(parseDecimalBr('1.234,50')).toBe(1234.5);
   });
 
-  it('aceita ponto decimal', () => {
+  it('trata ponto com três dígitos como milhar pt-BR', () => {
+    expect(parseDecimalBr('1.234')).toBe(1234);
+  });
+
+  it('aceita ponto decimal com até dois dígitos', () => {
     expect(parseDecimalBr('1234.50')).toBe(1234.5);
+    expect(parseDecimalBr('1.5')).toBe(1.5);
   });
 });
 

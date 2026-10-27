@@ -13,4 +13,15 @@ describe("ValorDecimalInput", () => {
     await user.type(campo, "1234,50");
     expect(onValueChange).toHaveBeenLastCalledWith(1234.5);
   });
+
+  it("mantém o ponto de milhar enquanto digita 1.234,50", async () => {
+    const onValueChange = vi.fn();
+    const user = userEvent.setup();
+    render(<ValorDecimalInput aria-label="Valor" value={0} onValueChange={onValueChange} />);
+    const campo = screen.getByLabelText("Valor");
+    await user.clear(campo);
+    await user.type(campo, "1.234,50");
+    expect(campo).toHaveValue("1.234,50");
+    expect(onValueChange).toHaveBeenLastCalledWith(1234.5);
+  });
 });

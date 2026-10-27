@@ -41,8 +41,8 @@ describe("cadastro guiado de colaboradores", () => {
     await user.type(screen.getByLabelText("Nome provisório"), "Maria");
     await user.click(screen.getByRole("radio", { name: /^Personalizado/ }));
     await user.click(screen.getByRole("button", { name: "Continuar" }));
-    await user.click(screen.getByRole("button", { name: "Continuar" }));
     expect(screen.getByRole("heading", { name: "Liberações" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Continuar" })).toBeDisabled();
     expect(screen.getByRole("alert")).toHaveTextContent("ao menos uma permissão");
     expect(createProfileWithCode).not.toHaveBeenCalled();
   });

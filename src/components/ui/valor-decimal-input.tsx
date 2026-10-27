@@ -1,4 +1,4 @@
-import { useEffect, useState, type ComponentProps } from "react";
+import { useEffect, useRef, useState, type ComponentProps } from "react";
 import { Input } from "@/components/ui/input";
 import { parseDecimalBr } from "@/lib/utils";
 
@@ -12,11 +12,14 @@ function textoDe(valor: number): string {
   return String(valor).replace(".", ",");
 }
 
-/** Valor em reais: aceita vírgula decimal pt-BR (1234,50). */
+/** Valor em reais: aceita vírgula decimal e ponto de milhar pt-BR (1.234,50). */
 export function ValorDecimalInput({ value, onValueChange, ...rest }: Props) {
   const [texto, setTexto] = useState(() => textoDe(value));
+  const emitido = useRef(value);
 
   useEffect(() => {
+    if (value === emitido.current) return;
+    emitido.current = value;
     setTexto(textoDe(value));
   }, [value]);
 
@@ -29,7 +32,10 @@ export function ValorDecimalInput({ value, onValueChange, ...rest }: Props) {
         const next = event.target.value;
         setTexto(next);
         const parsed = parseDecimalBr(next);
-        if (Number.isFinite(parsed)) onValueChange(parsed);
+        if (Number.isFinite(parsed)) {
+          emitido.current = parsed;
+          onValueChange(parsed);
+        }
       }}
       onBlur={() => setTexto(textoDe(value))}
     />

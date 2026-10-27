@@ -28,7 +28,6 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { DateIsoInput } from "@/components/ui/date-iso-input";
-import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { ClienteSelector } from "@/components/equipamentos/ClienteSelector";
@@ -52,6 +51,7 @@ import {
 import { OrcamentoInsumosService } from "@/lib/orcamento-insumos-service";
 import { PdfService, type PdfArtifact } from "@/lib/pdf-service";
 import { formatCurrency } from "@/lib/utils";
+import { ValorDecimalInput } from "@/components/ui/valor-decimal-input";
 import { OrcamentoInsumosItensEditor } from "@/pages/insumos/OrcamentoInsumosItensEditor";
 import {
   SENSITIVE_PERMISSIONS,
@@ -476,14 +476,12 @@ export function OrcamentoInsumosDialog({
                   </div>
                   <div className="space-y-1">
                     <Label htmlFor="oi-desconto">Desconto (R$)</Label>
-                    <Input
+                    <ValorDecimalInput
                       id="oi-desconto"
-                      type="number"
                       min={0}
-                      step="0.01"
-                      value={desconto}
+                      value={descontoNumero}
                       disabled={!editavel || ocupado}
-                      onChange={(event) => editar(setDesconto)(event.target.value)}
+                      onValueChange={(valor) => editar(setDesconto)(String(valor))}
                       className="h-9"
                     />
                     {totais.descontoExcedido && (

@@ -33,6 +33,10 @@ fn optional_text(value: Option<&str>) -> Option<String> {
         .map(str::to_string)
 }
 
+fn telefone_contato_persistido(valor: Option<&str>) -> Option<String> {
+    optional_text(valor).and_then(|texto| celular_nacional(&texto).or(Some(texto)))
+}
+
 async fn ensure_cliente_belongs_to_empresa(
     pool: &PgPool,
     empresa_id: i32,
@@ -157,7 +161,7 @@ pub async fn criar_cliente_contato(input: ClienteContatoInput) -> Result<Cliente
     .bind(cliente_id)
     .bind(nome)
     .bind(optional_text(input.email.as_deref()))
-    .bind(optional_text(input.telefone.as_deref()))
+    .bind(telefone_contato_persistido(input.telefone.as_deref()))
     .fetch_one(&pool)
     .await
     .map_err(|error| {
@@ -196,8 +200,7 @@ pub async fn atualizar_cliente_contato(
     ensure_cliente_belongs_to_empresa(&pool, empresa_id, cliente_id).await?;
 
     let email = optional_text(input.email.as_deref());
-    let telefone = optional_text(input.telefone.as_deref())
-        .and_then(|valor| celular_nacional(&valor).or(Some(valor)));
+    let telefone = telefone_contato_persistido(input.telefone.as_deref());
     let (tipo_pessoa, outros) =
         tipo_e_telefones_ativos_exceto(&pool, empresa_id, cliente_id, id).await?;
     recusar_se_pj_ficar_sem_celular(&tipo_pessoa, &outros, telefone.as_deref())?;
@@ -329,6 +332,19 @@ mod tests {
     fn ids_must_be_positive() {
         assert!(required_positive_id(0, "Empresa").is_err());
         assert_eq!(required_positive_id(7, "Empresa").unwrap(), 7);
+    }
+
+    #[test]
+    fn criar_contato_grava_celular_nacional_sem_ddi() {
+        assert_eq!(
+            telefone_contato_persistido(Some("+55 71 98888-7777")).as_deref(),
+            Some("71988887777")
+        );
+        assert_eq!(
+            telefone_contato_persistido(Some("5571988887777")).as_deref(),
+            Some("71988887777")
+        );
+        assert_eq!(telefone_contato_persistido(Some("  ")), None);
     }
 
     #[test]
