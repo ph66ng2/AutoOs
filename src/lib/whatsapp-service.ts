@@ -27,7 +27,9 @@ import type {
   Comunicacao,
   Equipamento,
   EquipamentoId,
+  EstadoEnvioWhatsapp,
   PecaNecessaria,
+  ResultadoEnvioWhatsapp,
   ServicoNecessario,
   TipoEnvioWhatsapp,
   Verificacao,
@@ -268,13 +270,47 @@ Aguardamos você! 😊`;
     equipamentoId: number,
     tipo: TipoEnvioWhatsapp,
     opcoes: { senhaPortal?: string; reenvioManual?: boolean; confirmarIncerto?: boolean } = {},
-  ) {
-    return db.solicitarEnvioWhatsapp({
-      equipamento_id: equipamentoId,
-      tipo,
-      senha_portal: opcoes.senhaPortal,
-      reenvio_manual: opcoes.reenvioManual,
-      confirmar_incerto: opcoes.confirmarIncerto,
-    });
+  ): Promise<ResultadoSolicitacaoWhatsapp> {
+    try {
+      const resultado = await db.solicitarEnvioWhatsapp({
+        equipamento_id: equipamentoId,
+        tipo,
+        senha_portal: opcoes.senhaPortal,
+        reenvio_manual: opcoes.reenvioManual,
+        confirmar_incerto: opcoes.confirmarIncerto,
+      });
+      return traduzirResultado(resultado);
+    } catch (error: unknown) {
+      const erro = typeof error === "string" ? error : (error instanceof Error ? error.message : "Falha ao solicitar o envio de WhatsApp");
+      return { sucesso: false, estado: "FALHOU", erro };
+    }
   },
 };
+
+export interface ResultadoSolicitacaoWhatsapp {
+  sucesso: boolean;
+  estado: EstadoEnvioWhatsapp;
+  erro?: string;
+  enfileirada?: boolean;
+  jaSolicitado?: boolean;
+  requerConfirmacao?: boolean;
+  mensagem?: string;
+  senhaRetida?: boolean;
+}
+
+function traduzirResultado(resultado: ResultadoEnvioWhatsapp): ResultadoSolicitacaoWhatsapp {
+  const mensagem = resultado.mensagem ?? undefined;
+  const senha = resultado.senhaRetida === undefined ? {} : { senhaRetida: resultado.senhaRetida };
+  switch (resultado.estado) {
+    case "ENVIADA":
+      return { sucesso: true, estado: resultado.estado, ...senha };
+    case "ENFILEIRADA":
+      return { sucesso: true, estado: resultado.estado, enfileirada: true, mensagem, ...senha };
+    case "JA_SOLICITADO":
+      return { sucesso: true, estado: resultado.estado, jaSolicitado: true, mensagem, ...senha };
+    case "REQUER_CONFIRMACAO":
+      return { sucesso: false, estado: resultado.estado, requerConfirmacao: true, erro: mensagem, mensagem, ...senha };
+    default:
+      return { sucesso: false, estado: resultado.estado, erro: mensagem ?? "Falha ao enviar WhatsApp", mensagem, ...senha };
+  }
+}
