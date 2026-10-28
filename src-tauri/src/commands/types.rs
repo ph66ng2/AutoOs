@@ -269,6 +269,9 @@ pub struct ClienteContatoInput {
     pub email: Option<String>,
     pub telefone: Option<String>,
     pub atualizado_em: Option<String>,
+    /// Só o diálogo "Quem recebe o orçamento?" liga isto: nome/e-mail de contato com portal ficam como estão.
+    #[serde(default)]
+    pub preservar_identidade_portal: bool,
 }
 
 /// Input da aprovação transacional de um orçamento.

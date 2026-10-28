@@ -712,6 +712,8 @@ export interface VinculoEmpresaPerfilResultado {
 
 export type ClienteContatoInput = Omit<ClienteContato, "id" | "ativo" | "portal_acesso" | "portal_senha_definida_em" | "criado_em" | "atualizado_em"> & {
   atualizado_em?: string;
+  /** Só o diálogo "Quem recebe o orçamento?" envia: nome/e-mail de contato com portal não mudam. */
+  preservar_identidade_portal?: boolean;
 };
 
 // ─── Comunicações ───────────────────────────────────────

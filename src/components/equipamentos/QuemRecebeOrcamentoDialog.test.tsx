@@ -250,6 +250,7 @@ describe("QuemRecebeOrcamentoDialog", () => {
       nome: "Ana Portal",
       email: "ana@portal.test",
       telefone: "71988880000",
+      preservar_identidade_portal: true,
     }));
   });
 

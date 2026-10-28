@@ -172,6 +172,7 @@ export function QuemRecebeOrcamentoDialog({
             email: emailLimpo || undefined,
             telefone: digitosTelefoneBr(telefone),
             atualizado_em: existente.atualizado_em,
+            ...(preservarIdentidade ? { preservar_identidade_portal: true } : {}),
           });
         } else {
           contato = await db.criarClienteContato({

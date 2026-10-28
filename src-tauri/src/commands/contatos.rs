@@ -32,6 +32,22 @@ fn optional_text(value: Option<&str>) -> Option<String> {
         .map(str::to_string)
 }
 
+/// Só o diálogo "Quem recebe" pede isto: com portal, nome e e-mail ficam como estão.
+pub(crate) fn identidade_contato_com_portal(
+    preservar: bool,
+    portal_acesso: &str,
+    nome_atual: String,
+    email_atual: Option<String>,
+    nome_novo: String,
+    email_novo: Option<String>,
+) -> (String, Option<String>) {
+    if preservar && portal_acesso != "NENHUM" {
+        (nome_atual, email_atual)
+    } else {
+        (nome_novo, email_novo)
+    }
+}
+
 async fn ensure_cliente_belongs_to_empresa(
     pool: &PgPool,
     empresa_id: i32,
@@ -155,6 +171,19 @@ pub async fn atualizar_cliente_contato(
 
     let email = optional_text(input.email.as_deref());
     let telefone = optional_text(input.telefone.as_deref());
+    let (nome, email) = if input.preservar_identidade_portal {
+        let atual = fetch_contact(&pool, id, empresa_id).await?;
+        identidade_contato_com_portal(
+            true,
+            &atual.portal_acesso,
+            atual.nome,
+            atual.email,
+            nome,
+            email,
+        )
+    } else {
+        (nome, email)
+    };
     let updated_rows = if let Some(token) = input
         .atualizado_em
         .as_deref()
@@ -279,5 +308,47 @@ mod tests {
     fn ids_must_be_positive() {
         assert!(required_positive_id(0, "Empresa").is_err());
         assert_eq!(required_positive_id(7, "Empresa").unwrap(), 7);
+    }
+
+    #[test]
+    fn portal_contact_keeps_name_and_email_only_when_asked() {
+        let (nome, email) = identidade_contato_com_portal(
+            true,
+            "DECIDIR",
+            "Ana Portal".to_string(),
+            Some("ana@portal.test".to_string()),
+            "Nome Novo".to_string(),
+            Some("novo@test".to_string()),
+        );
+        assert_eq!(nome, "Ana Portal");
+        assert_eq!(email.as_deref(), Some("ana@portal.test"));
+    }
+
+    #[test]
+    fn clients_edit_writes_name_and_email_even_with_portal() {
+        let (nome, email) = identidade_contato_com_portal(
+            false,
+            "DECIDIR",
+            "Ana Portal".to_string(),
+            Some("ana@portal.test".to_string()),
+            "Nome Novo".to_string(),
+            Some("novo@test".to_string()),
+        );
+        assert_eq!(nome, "Nome Novo");
+        assert_eq!(email.as_deref(), Some("novo@test"));
+    }
+
+    #[test]
+    fn contact_without_portal_accepts_name_and_email() {
+        let (nome, email) = identidade_contato_com_portal(
+            true,
+            "NENHUM",
+            "Ana".to_string(),
+            Some("ana@test".to_string()),
+            "Nome Novo".to_string(),
+            Some("novo@test".to_string()),
+        );
+        assert_eq!(nome, "Nome Novo");
+        assert_eq!(email.as_deref(), Some("novo@test"));
     }
 }

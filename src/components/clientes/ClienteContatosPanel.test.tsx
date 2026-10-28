@@ -79,6 +79,24 @@ describe("ClienteContatosPanel", () => {
     fireEvent.change(screen.getByLabelText("Nome *"), { target: { value: "Ana Editada" } });
     fireEvent.click(screen.getByRole("button", { name: "Salvar" }));
     await waitFor(() => expect(mockAtualizar).toHaveBeenCalledWith(20, expect.objectContaining({ nome: "Ana Editada" })));
+    expect(mockAtualizar.mock.calls[0]?.[1]).not.toHaveProperty("preservar_identidade_portal", true);
+  });
+
+  it("grava nome e e-mail ao editar contato com acesso ao portal", async () => {
+    mockListar.mockResolvedValue([{ ...contato, portal_acesso: "DECIDIR" }]);
+    render(<ClienteContatosPanel cliente={cliente} empresaId={7} />);
+    expect(await screen.findByText("Ana")).toBeInTheDocument();
+
+    fireEvent.click(screen.getAllByRole("button", { name: /editar/i })[0]!);
+    fireEvent.change(screen.getByLabelText("Nome *"), { target: { value: "Ana Portal Editada" } });
+    fireEvent.change(screen.getByLabelText("E-mail"), { target: { value: "ana.nova@empresa.test" } });
+    fireEvent.click(screen.getByRole("button", { name: "Salvar" }));
+
+    await waitFor(() => expect(mockAtualizar).toHaveBeenCalledWith(20, expect.objectContaining({
+      nome: "Ana Portal Editada",
+      email: "ana.nova@empresa.test",
+    })));
+    expect(mockAtualizar.mock.calls[0]?.[1]).not.toHaveProperty("preservar_identidade_portal", true);
   });
 
   it("confirma inativação e recarrega a lista ativa", async () => {
