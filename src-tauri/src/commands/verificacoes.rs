@@ -11,6 +11,7 @@ use crate::commands::types::{
 };
 use crate::commands::auth::{
     profile_has_permission, record_security_event, require_any_permission, require_active_session_company_id,
+    require_permission,
     SecurityProfileSummary, PERMISSION_FINANCIAL_ACTIONS, PERMISSION_MANAGE_STATUS_LINKS,
     PERMISSION_PREPARE_QUOTES,
 };
@@ -62,6 +63,8 @@ fn claimed_tenant_conflicts(claimed: Option<i32>, actual: Option<i32>) -> bool {
 /// OS só de garantia (todos os itens R$ 0,00): grava valor_orcamento 0 e vai para APROVADO
 /// na mesma transação da verificação, sem passar por AGUARDANDO_APROVACAO.
 /// Não há coluna/flag de garantia; 0,00 no item é a convenção existente.
+/// É uma aprovação: exige FINANCIAL_ACTIONS (PREPARE_QUOTES nunca aprova).
+/// Devolve quem aprovou, para a auditoria depois do commit.
 async fn gravar_aprovacao_os_garantia(
     tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
     equipamento_id: i32,
@@ -70,13 +73,15 @@ async fn gravar_aprovacao_os_garantia(
     servicos: &[ServicoOrcamento],
     custo_total: Option<f64>,
     concluida: bool,
-) -> Result<(), String> {
+) -> Result<Option<SecurityProfileSummary>, String> {
     if !concluida
         || !os_somente_garantia(servicos)
         || custo_total.is_some_and(valor_monetario_positivo)
     {
-        return Ok(());
+        return Ok(None);
     }
+    let actor = require_permission(PERMISSION_FINANCIAL_ACTIONS)
+        .map_err(|erro| format!("OS só de garantia vai direto para Aprovado. {erro}"))?;
     let atualizados = sqlx::query(
         r#"UPDATE equipamentos
            SET status = 'APROVADO',
@@ -97,10 +102,22 @@ async fn gravar_aprovacao_os_garantia(
     .map_err(super::operator_errors::mapear_erro_sql)?
     .rows_affected();
     if atualizados == 0 {
-        return Ok(());
+        return Ok(None);
     }
     aplicar_decisoes_aprovacao_integral(tx, empresa_id, verificacao_id, servicos).await?;
-    Ok(())
+    Ok(Some(actor))
+}
+
+async fn auditar_aprovacao_os_garantia(actor: Option<SecurityProfileSummary>, equipamento_id: i32) {
+    if let Some(actor) = actor.as_ref() {
+        record_security_event(
+            "WARRANTY_QUOTE_APPROVED",
+            Some(actor),
+            format!("equipamento_id={}; valor_orcamento=0; motivo=OS só de garantia", equipamento_id),
+            true,
+        )
+        .await;
+    }
 }
 
 fn require_financial_actor_for_verification_write(
@@ -228,7 +245,7 @@ pub async fn salvar_verificacao_tecnica(mut input: VerificacaoInput) -> Result<V
             super::operator_errors::mapear_erro_sql(e)
         })?;
 
-        gravar_aprovacao_os_garantia(
+        let aprovador_garantia = gravar_aprovacao_os_garantia(
             &mut tx,
             input.equipamento_id,
             empresa_id,
@@ -239,6 +256,7 @@ pub async fn salvar_verificacao_tecnica(mut input: VerificacaoInput) -> Result<V
         )
         .await?;
         tx.commit().await.map_err(super::operator_errors::mapear_erro_sql)?;
+        auditar_aprovacao_os_garantia(aprovador_garantia, input.equipamento_id).await;
         if let Some(actor) = financial_actor.as_ref() {
             record_security_event(
                 "VERIFICATION_FINANCIAL_SAVED",
@@ -292,7 +310,7 @@ pub async fn salvar_verificacao_tecnica(mut input: VerificacaoInput) -> Result<V
         super::operator_errors::mapear_erro_sql(e)
     })?;
 
-    gravar_aprovacao_os_garantia(
+    let aprovador_garantia = gravar_aprovacao_os_garantia(
         &mut tx,
         input.equipamento_id,
         empresa_id,
@@ -303,6 +321,7 @@ pub async fn salvar_verificacao_tecnica(mut input: VerificacaoInput) -> Result<V
     )
     .await?;
     tx.commit().await.map_err(super::operator_errors::mapear_erro_sql)?;
+    auditar_aprovacao_os_garantia(aprovador_garantia, input.equipamento_id).await;
     if let Some(actor) = financial_actor.as_ref() {
         record_security_event(
             "VERIFICATION_FINANCIAL_SAVED",

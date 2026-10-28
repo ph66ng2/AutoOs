@@ -1114,10 +1114,16 @@ export default function Equipamentos() {
    */
   async function handleConcluirVerificacao(dados: DadosVerificacao): Promise<boolean> {
     if (!selecionado) return false;
+    // Total 0 só chega aqui em OS só de garantia, que sai aprovada: só quem aprova orçamento finaliza.
+    const garantiaAprovada = dados.custo_total === 0;
     const liberado = await ensureSensitiveAccess({
       title: "Finalizar verificação",
-      description: "Informe o PIN para salvar orçamento, prazo de aprovação e disparar comunicações automáticas.",
-      anyPermission: [SENSITIVE_PERMISSIONS.FINANCIAL_ACTIONS, SENSITIVE_PERMISSIONS.PREPARE_QUOTES],
+      description: garantiaAprovada
+        ? "OS só de garantia vai direto para Aprovado. Informe o PIN de quem aprova orçamentos."
+        : "Informe o PIN para salvar orçamento, prazo de aprovação e disparar comunicações automáticas.",
+      ...(garantiaAprovada
+        ? { permission: SENSITIVE_PERMISSIONS.FINANCIAL_ACTIONS }
+        : { anyPermission: [SENSITIVE_PERMISSIONS.FINANCIAL_ACTIONS, SENSITIVE_PERMISSIONS.PREPARE_QUOTES] }),
     });
     if (!liberado) return false;
 
