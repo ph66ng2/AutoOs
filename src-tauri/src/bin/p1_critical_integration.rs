@@ -213,7 +213,7 @@ async fn main() -> Result<()> {
             storage_path: "test://replacement".to_string(),
             ..EquipamentoImagemInput::default()
         }],
-        Some(vec![seed_image.id]),
+        vec![seed_image.id],
     )
     .await
     .map_err(|error| anyhow!(error))?;
@@ -227,7 +227,7 @@ async fn main() -> Result<()> {
             storage_path: "test://stale".to_string(),
             ..EquipamentoImagemInput::default()
         }],
-        Some(vec![seed_image.id]),
+        vec![seed_image.id],
     )
     .await;
     if !stale_result
@@ -267,7 +267,7 @@ async fn main() -> Result<()> {
             storage_path: "test://concurrent-replacement".to_string(),
             ..EquipamentoImagemInput::default()
         }],
-        Some(concurrent_snapshot),
+        concurrent_snapshot,
     );
     let (upload_result, replace_result) = tokio::join!(upload, replace);
     upload_result.map_err(|error| anyhow!(error))?;

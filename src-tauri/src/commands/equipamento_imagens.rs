@@ -266,7 +266,7 @@ pub async fn listar_imagens_equipamento(
 pub async fn substituir_imagens_equipamento(
     equipamento_id: i32,
     imagens: Vec<EquipamentoImagemInput>,
-    expected_image_ids: Option<Vec<i32>>,
+    expected_image_ids: Vec<i32>,
 ) -> Result<Vec<EquipamentoImagemRow>, String> {
     if imagens.len() > MAX_IMAGES_PER_EQUIPMENT {
         return Err(format!(
@@ -284,25 +284,24 @@ pub async fn substituir_imagens_equipamento(
 
     lock_equipment_for_update(&mut *tx, equipamento_id, Some(empresa_id)).await?;
 
-    if let Some(mut expected_ids) = expected_image_ids {
-        let mut current_ids: Vec<i32> = sqlx::query_scalar(
-            "SELECT id FROM equipamento_imagens WHERE equipamento_id = $1 ORDER BY id ASC",
-        )
-        .bind(equipamento_id)
-        .fetch_all(&mut *tx)
-        .await
-        .map_err(|e| {
-            error!("Erro ao ler snapshot de imagens do equipamento {}: {}", equipamento_id, e);
-            super::operator_errors::mapear_erro_sql(e)
-        })?;
-        expected_ids.sort_unstable();
-        current_ids.sort_unstable();
-        if current_ids != expected_ids {
-            return Err(
-                "Conflito de concorrência: as fotos do equipamento foram alteradas. Recarregue as fotos antes de salvar novamente."
-                    .to_string(),
-            );
-        }
+    let mut current_ids: Vec<i32> = sqlx::query_scalar(
+        "SELECT id FROM equipamento_imagens WHERE equipamento_id = $1 ORDER BY id ASC",
+    )
+    .bind(equipamento_id)
+    .fetch_all(&mut *tx)
+    .await
+    .map_err(|e| {
+        error!("Erro ao ler snapshot de imagens do equipamento {}: {}", equipamento_id, e);
+        super::operator_errors::mapear_erro_sql(e)
+    })?;
+    let mut expected_ids = expected_image_ids;
+    expected_ids.sort_unstable();
+    current_ids.sort_unstable();
+    if current_ids != expected_ids {
+        return Err(
+            "Conflito de concorrência: as fotos do equipamento foram alteradas. Recarregue as fotos antes de salvar novamente."
+                .to_string(),
+        );
     }
 
     sqlx::query("DELETE FROM equipamento_imagens WHERE equipamento_id = $1")

@@ -1347,4 +1347,56 @@ describe("Equipamentos — Budget Divergence & Audit", () => {
     });
     await waitFor(() => expect(mockEnsureSensitiveAccess).toHaveBeenCalled());
   });
+
+  it("entrega envia os IDs atuais como snapshot ao substituir fotos", async () => {
+    equipamentoVerificado.status = "PRONTO";
+    mockListarImagensEquipamento.mockResolvedValue([{
+      id: 77,
+      equipamento_id: 10,
+      categoria: "ENTRADA",
+      filename: "entrada.jpg",
+      mime_type: "image/jpeg",
+      tamanho_bytes: 123,
+      largura: 800,
+      altura: 600,
+      ordem: 0,
+      storage_path: "data:image/jpeg;base64,conteudo",
+    }]);
+    render(<Equipamentos />);
+    fireEvent.click(screen.getByTestId("action-registrar_entrega"));
+    await screen.findByText(/Foto da saída \(entrega\)/);
+    await clicarConfirmarStatus();
+    await waitFor(() => expect(mockSubstituirImagensEquipamento).toHaveBeenCalled());
+    expect(mockSubstituirImagensEquipamento).toHaveBeenCalledWith(
+      10,
+      expect.arrayContaining([expect.objectContaining({ filename: "entrada.jpg", categoria: "ENTRADA" })]),
+      [77],
+    );
+    await waitFor(() => expect(mockAtualizarStatusEquipamento).toHaveBeenCalled());
+  });
+
+  it("conflito de fotos na entrega não marca Entregue e mantém o diálogo", async () => {
+    equipamentoVerificado.status = "PRONTO";
+    mockListarImagensEquipamento.mockResolvedValue([{
+      id: 77,
+      equipamento_id: 10,
+      categoria: "ENTRADA",
+      filename: "entrada.jpg",
+      mime_type: "image/jpeg",
+      tamanho_bytes: 123,
+      ordem: 0,
+      storage_path: "data:image/jpeg;base64,conteudo",
+    }]);
+    mockSubstituirImagensEquipamento.mockRejectedValueOnce(
+      new Error("Conflito de concorrência: as fotos do equipamento foram alteradas. Recarregue as fotos antes de salvar novamente."),
+    );
+    render(<Equipamentos />);
+    fireEvent.click(screen.getByTestId("action-registrar_entrega"));
+    await screen.findByText(/Foto da saída \(entrega\)/);
+    await clicarConfirmarStatus();
+    await waitFor(() => expect(mockSubstituirImagensEquipamento).toHaveBeenCalledWith(10, expect.any(Array), [77]));
+    expect(mockAtualizarStatusEquipamento).not.toHaveBeenCalled();
+    expect(screen.getByText(/Foto da saída \(entrega\)/)).toBeInTheDocument();
+    expect(screen.getByText(/Conflito de concorrência/)).toBeInTheDocument();
+  });
 });

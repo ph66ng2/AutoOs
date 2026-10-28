@@ -1076,7 +1076,7 @@ export default function Equipamentos() {
         try {
           const expectedImageIds = editando
             ? baselineFotos!.fotos.flatMap((foto) => typeof foto.id === "number" ? [foto.id] : [])
-            : undefined;
+            : [];
           const fotosSalvas = await db.substituirImagensEquipamento(
             equipamentoIdSalvo,
             imagensPayload,
@@ -1665,10 +1665,22 @@ export default function Equipamentos() {
         const imagensSaidaPayload: EquipamentoImagemInput[] = normalizarOrdemPorCategoria(
           imagensSaidaEntrega
         ).map(({ local_id, preview_url, ...imagem }) => imagem);
-        await db.substituirImagensEquipamento(selecionado.id!, [
-          ...imagensEntradaPayload,
-          ...imagensSaidaPayload,
-        ]);
+        const expectedImageIds = imagensAtuais.flatMap((foto) => typeof foto.id === "number" ? [foto.id] : []);
+        try {
+          await db.substituirImagensEquipamento(
+            selecionado.id!,
+            [...imagensEntradaPayload, ...imagensSaidaPayload],
+            expectedImageIds,
+          );
+        } catch (err: any) {
+          setErroImagensSaidaEntrega(
+            `${err?.message || "falha ao persistir as fotos"}. Recarregue as fotos antes de salvar novamente.`,
+          );
+          throw new Error(
+            err?.message ||
+            "As fotos não puderam ser persistidas. Recarregue as fotos antes de tentar novamente.",
+          );
+        }
       }
 
       let versaoAtual = selecionado.atualizado_em;

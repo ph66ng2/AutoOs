@@ -410,12 +410,12 @@ export const db = {
   async substituirImagensEquipamento(
     equipamentoId: number,
     imagens: EquipamentoImagemInput[],
-    expectedImageIds?: number[],
+    expectedImageIds: number[],
   ): Promise<EquipamentoImagem[]> {
     return invoke<EquipamentoImagem[]>("substituir_imagens_equipamento", {
       equipamentoId,
       imagens,
-      ...(expectedImageIds !== undefined ? { expectedImageIds } : {}),
+      expectedImageIds,
     });
   },
 
