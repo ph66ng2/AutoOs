@@ -12,6 +12,7 @@ import type {
   EmailAttachment,
   EmailSendRequest,
   Equipamento,
+  PecaVinculada,
   PreparoAcessoPortal,
   ServicoNecessario,
   Verificacao,
@@ -44,8 +45,19 @@ function parseLista<T>(value?: string): T[] {
   }
 }
 
+const FORMATADOR_BRL = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" });
+
 function moeda(valor?: number) {
-  return `R$ ${(valor || 0).toFixed(2)}`;
+  // Intl usa espaço não separável (U+00A0) após "R$"; normaliza para espaço comum no texto do e-mail.
+  return FORMATADOR_BRL.format(Number(valor) || 0).replace(/ /g, " ");
+}
+
+function totalPeca(p: PecaVinculada) {
+  return (Number(p.quantidade) || 0) * (Number(p.valor_unitario) || 0);
+}
+
+function descricaoPeca(p: PecaVinculada) {
+  return `${p.nome} (x${p.quantidade}): ${moeda(totalPeca(p))}`;
 }
 
 function esc(value: string) {
@@ -108,7 +120,7 @@ export function gerarCorpoOrcamentoPortalTexto(
       ? servicos
           .map((s) => {
             const pecas = (s.pecas ?? [])
-              .map((p) => `      - ${p.quantidade}x ${p.nome}`)
+              .map((p) => `      • ${descricaoPeca(p)}`)
               .join("\n");
             return `  • ${s.descricao}: ${moeda(s.valor)}${pecas ? `\n${pecas}` : ""}`;
           })
@@ -161,7 +173,7 @@ export function gerarCorpoOrcamentoPortalHtml(
       ? servicos
           .map((s) => {
             const pecas = (s.pecas ?? [])
-              .map((p) => `<div style="font-size:12px;color:#6b7280;">${esc(`${p.quantidade}x ${p.nome}`)}</div>`)
+              .map((p) => `<div style="font-size:12px;color:#6b7280;">${esc(`• ${descricaoPeca(p)}`)}</div>`)
               .join("");
             return `<tr><td style="padding:6px 0;">${esc(s.descricao)}${pecas}</td><td style="padding:6px 0;text-align:right;">${esc(moeda(s.valor))}</td></tr>`;
           })

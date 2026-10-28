@@ -238,8 +238,11 @@ export const db = {
   },
 
   /** Atualiza cliente existente → Rust: atualizar_cliente */
-  async atualizarCliente(id: number, cliente: Omit<Cliente, "id">): Promise<void> {
-    return invoke<void>("atualizar_cliente", { id, input: clientePersistenciaParaInput(cliente) });
+  async atualizarCliente(id: number, cliente: Omit<Cliente, "id">, contatoInicial?: ContatoInicialInput): Promise<void> {
+    const input = contatoInicial
+      ? { ...clientePersistenciaParaInput(cliente), contato_inicial: contatoInicial }
+      : clientePersistenciaParaInput(cliente);
+    return invoke<void>("atualizar_cliente", { id, input });
   },
 
   /** Deleta cliente → Rust: deletar_cliente */

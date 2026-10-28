@@ -28,6 +28,7 @@ vi.mock("@/components/clientes/SenhaPortalDialog", () => ({
 
 import {
   enviarEmailOrcamentoPortal,
+  gerarCorpoOrcamentoPortalHtml,
   gerarCorpoOrcamentoPortalTexto,
   SENHA_MASCARADA,
 } from "@/lib/email-orcamento-portal";
@@ -170,6 +171,51 @@ describe("email-orcamento-portal", () => {
     expect(t).not.toMatch(/aceitar|recusar|negociar/);
     expect(t).not.toContain("wa.me");
     expect(t).not.toContain("mailto:");
+  });
+
+  it("valores em pt-BR com vírgula decimal e separador de milhar", () => {
+    const v: Verificacao = {
+      ...verificacao,
+      custo_total: 1234.5,
+      servicos_necessarios: JSON.stringify([{ id: "1", descricao: "Troca de fusor", valor: 150 }]),
+    };
+    const t = gerarCorpoOrcamentoPortalTexto(equip, v, preparoBase(), { mascarar: false });
+    expect(t).toContain("TOTAL: R$ 1.234,50");
+    expect(t).toContain("• Troca de fusor: R$ 150,00");
+    expect(t).not.toContain("R$ 150.00");
+  });
+
+  it("linha da peça mostra nome, quantidade e total (quantidade x valor unitário)", () => {
+    const v: Verificacao = {
+      ...verificacao,
+      servicos_necessarios: JSON.stringify([
+        {
+          id: "1",
+          descricao: "Troca de fusor",
+          valor: 100,
+          pecas: [{ produto_id: 5, nome: "Fusor HP", quantidade: 2, valor_unitario: 20 }],
+        },
+      ]),
+    };
+    const t = gerarCorpoOrcamentoPortalTexto(equip, v, preparoBase(), { mascarar: false });
+    expect(t).toContain("      • Fusor HP (x2): R$ 40,00");
+  });
+
+  it("HTML mostra a peça com quantidade e total", () => {
+    const v: Verificacao = {
+      ...verificacao,
+      servicos_necessarios: JSON.stringify([
+        {
+          id: "1",
+          descricao: "Troca de fusor",
+          valor: 100,
+          pecas: [{ produto_id: 5, nome: "Fusor HP", quantidade: 2, valor_unitario: 20.5 }],
+        },
+      ]),
+    };
+    const h = gerarCorpoOrcamentoPortalHtml(equip, v, preparoBase(), { mascarar: false });
+    expect(h).toContain("• Fusor HP (x2): R$ 41,00");
+    expect(h).toContain("R$ 100,00");
   });
 
   it("sem portal não aparece Senha:", () => {

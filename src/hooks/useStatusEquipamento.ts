@@ -55,9 +55,20 @@ export function useStatusEquipamento() {
   ): Promise<ResultadoFinalizarVerificacao> {
     setLoading(true);
     try {
-      // 1. Salvar verificação no banco
+      // 1. Salvar verificação no banco (OS só de garantia já sai APROVADO na mesma transação).
       await db.salvarVerificacao(dadosVerificacao);
       const equipamentoAposVerificacao = await db.buscarEquipamento(equipamento.id!);
+
+      if (equipamentoAposVerificacao.status === "APROVADO") {
+        return {
+          sucesso: true,
+          canais: {
+            whatsapp: { enviado: false },
+            email: { enviado: false },
+          },
+          avisos: ["OS só de garantia: orçamento R$ 0,00 segue aprovado, sem envio para aprovação de valor."],
+        };
+      }
 
       // 2. Atualizar para VERIFICADO
       await db.atualizarStatusEquipamento(

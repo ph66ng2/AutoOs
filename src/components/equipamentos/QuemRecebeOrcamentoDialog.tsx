@@ -5,7 +5,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { db } from "@/lib/db";
-import { celularValido, formatarTelefone } from "@/lib/validations";
+import { celularValido, digitosTelefoneBr, formatarTelefone } from "@/lib/validations";
 import type { ClienteContato, Equipamento } from "@/types";
 
 interface SugestaoContato {
@@ -86,7 +86,7 @@ export function QuemRecebeOrcamentoDialog({
           cliente_id: equipamento.cliente_id,
           nome: nomeLimpo,
           email: emailLimpo || undefined,
-          telefone: telefone.replace(/\D/g, ""),
+          telefone: digitosTelefoneBr(telefone),
         });
         setContatoCriado(contato);
       } catch (cause) {

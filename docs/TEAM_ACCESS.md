@@ -40,11 +40,12 @@ Não libera:
 
 ## Transição da 0.5.6 para a 0.6.0
 
-A 0.5.6 devolve "Permissão inválida" para perfil não-administrador que contenha uma chave de permissão desconhecida, como `PREPARE_QUOTES`. Isso quebra a tela de perfis e o desbloqueio nos PCs que ainda estão na 0.5.6. O Administrador não é afetado, pois recebe todas as permissões sem ler a coluna.
+A 0.5.6 recusa, ao montar a lista de perfis, qualquer perfil não-administrador que (a) não tenha nenhuma permissão ("Selecione ao menos uma permissão para o perfil") ou (b) contenha uma chave que ela não conhece, como `PREPARE_QUOTES` ou `MANAGE_STATUS_LINKS` ("Permissão inválida"). Um único perfil assim deixa a lista vazia e ninguém entra nos PCs que ainda estão na 0.5.6. O Administrador não é afetado, pois recebe todas as permissões sem ler a coluna. A 0.5.6 conhece só: `CONFIG_SMTP`, `CONFIG_WHATSAPP`, `DELETE_RECORDS`, `FINANCIAL_ACTIONS`, `STOCK_CONTROL`, `MANAGE_PROFILES` e `VIEW_EXPENSES`.
 
 - A 0042 concede `PREPARE_QUOTES` só ao Administrador.
-- Técnico e Financeiro recebem a permissão em migration posterior (ainda não criada), aplicada quando todos os PCs estiverem na 0.6.0. Nesse momento, `PREPARE_QUOTES_NOS_MODELOS` em `src/lib/profile-presets.ts` passa a `true`.
-- Enquanto isso, NÃO marque "Elaborar e enviar orçamentos" em perfis não-administradores com o build novo: os PCs na 0.5.6 recusam o perfil e quebram a tela de perfis e o desbloqueio.
+- **Trava de transição:** enquanto `COMPATIBILIDADE_056_ATIVA` estiver ligada (`src-tauri/src/commands/auth.rs` e `src/lib/compatibilidade-056.ts`), o backend recusa gravar perfil não-administrador sem permissão ou com permissão nova, e as telas de perfil escondem essas permissões, não deixam salvar perfil vazio e deixam o modelo Recepção (sem permissões) indisponível. A trava vale para criar, editar e o primeiro acesso por código.
+- Técnico e Financeiro recebem a permissão em migration posterior (ainda não criada), aplicada quando todos os PCs estiverem na 0.6.0. Nesse mesmo PR: desligar as duas constantes `COMPATIBILIDADE_056_ATIVA` e passar `PREPARE_QUOTES_NOS_MODELOS` (`src/lib/profile-presets.ts`) a `true`.
+- Builds de teste ligados ao banco de produção anteriores à trava podem criar perfis incompatíveis: não crie nem edite perfis neles enquanto houver PC na 0.5.6.
 
 ## Sessão e autenticação
 

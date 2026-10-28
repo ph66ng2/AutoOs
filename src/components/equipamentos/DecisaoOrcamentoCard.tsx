@@ -19,6 +19,7 @@ import {
   TIPO_SOLICITACAO_TEXTO,
   formatarHora,
   formatarQuando,
+  formatarValidoAte,
   formatarValor,
   textoOrdemCompra,
 } from "@/components/equipamentos/portal-cliente-format";
@@ -126,7 +127,7 @@ export function resumirFaixa(
     return {
       tom: "neutro",
       texto: "Aguardando resposta do cliente",
-      detalhe: `Versão ${info.versao} · ${formatarValor(info.valorTotal)}${info.validoAte ? ` · válida até ${formatarHora(info.validoAte)}` : ""}${
+      detalhe: `Versão ${info.versao} · ${formatarValor(info.valorTotal)}${info.validoAte ? ` · válida até ${formatarValidoAte(info.validoAte)}` : ""}${
         info.aceiteOnlineAtivo ? "" : " · respostas pelo portal desligadas"
       }`,
     };

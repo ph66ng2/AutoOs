@@ -36,7 +36,36 @@ fn digits_only(value: Option<&str>) -> String {
         .collect()
 }
 
-const MSG_CONTATO_OBRIGATORIO: &str = "Informe um contato com celular para receber orçamentos.";
+const MSG_CONTATO_OBRIGATORIO: &str =
+    "Informe um contato com nome e celular com DDD e o 9 (11 dígitos) para receber orçamentos.";
+
+pub(crate) const MSG_PJ_CONTATO: &str =
+    "Cliente PJ precisa manter um contato com celular (DDD e o 9) para receber orçamentos.";
+
+/// DDI 55 + DDD + número vira o nacional. Celular válido: 11 dígitos, DDD 11–99 e o 9 após o DDD.
+pub(crate) fn celular_nacional(valor: &str) -> Option<String> {
+    let mut digitos = digits_only(Some(valor));
+    if (digitos.len() == 12 || digitos.len() == 13) && digitos.starts_with("55") {
+        digitos = digitos[2..].to_string();
+    }
+    if digitos.len() == 11
+        && digitos[..2].parse::<u8>().is_ok_and(|ddd| (11..=99).contains(&ddd))
+        && digitos.as_bytes()[2] == b'9'
+    {
+        Some(digitos)
+    } else {
+        None
+    }
+}
+
+/// Celular brasileiro: 11 dígitos, DDD entre 11 e 99 e o 9 logo após o DDD. Aceita prefixo +55.
+fn celular_valido(valor: &str) -> bool {
+    celular_nacional(valor).is_some()
+}
+
+pub(crate) fn pj_tem_contato_celular(telefones: &[String]) -> bool {
+    telefones.iter().any(|telefone| celular_nacional(telefone).is_some())
+}
 
 /// Valida o contato inicial de cliente novo. Devolve (nome, telefone só com dígitos, e-mail).
 fn validar_contato_inicial(
@@ -44,8 +73,10 @@ fn validar_contato_inicial(
 ) -> Result<(String, String, Option<String>), String> {
     let contato = contato.ok_or_else(|| MSG_CONTATO_OBRIGATORIO.to_string())?;
     let nome = contato.nome.trim();
-    let telefone = digits_only(Some(contato.telefone.as_str()));
-    if nome.is_empty() || !(10..=11).contains(&telefone.len()) {
+    let Some(telefone) = celular_nacional(&contato.telefone) else {
+        return Err(MSG_CONTATO_OBRIGATORIO.to_string());
+    };
+    if nome.is_empty() {
         return Err(MSG_CONTATO_OBRIGATORIO.to_string());
     }
     Ok((
@@ -53,6 +84,22 @@ fn validar_contato_inicial(
         telefone,
         optional_text(contato.email.as_deref()),
     ))
+}
+
+async fn telefones_contatos_ativos(
+    executor: impl sqlx::Executor<'_, Database = sqlx::Postgres>,
+    empresa_id: i32,
+    cliente_id: i32,
+) -> Result<Vec<String>, String> {
+    sqlx::query_scalar(
+        "SELECT COALESCE(telefone, '') FROM cliente_contatos
+         WHERE cliente_id = $1 AND empresa_id = $2 AND ativo = true",
+    )
+    .bind(cliente_id)
+    .bind(empresa_id)
+    .fetch_all(executor)
+    .await
+    .map_err(super::operator_errors::mapear_erro_sql)
 }
 
 fn normalize_tipo_pessoa(tipo_pessoa: Option<&str>, documento: Option<&str>, cpf_cnpj: Option<&str>) -> Result<String, String> {
@@ -520,6 +567,18 @@ pub async fn atualizar_cliente(id: i32, input: ClienteInput) -> Result<ClienteRo
         }
     }
 
+    let contato_pj = if tipo_pessoa == "PJ" {
+        let existentes = telefones_contatos_ativos(&pool, empresa_id, id).await?;
+        if pj_tem_contato_celular(&existentes) {
+            None
+        } else {
+            Some(validar_contato_inicial(input.contato_inicial.as_ref())?)
+        }
+    } else {
+        None
+    };
+
+    let mut tx = pool.begin().await.map_err(|e| e.to_string())?;
     let updated_rows = sqlx::query(
         r#"
         UPDATE clientes SET
@@ -538,7 +597,7 @@ pub async fn atualizar_cliente(id: i32, input: ClienteInput) -> Result<ClienteRo
         "#,
     )
     .bind(Some(nome_exibicao))
-    .bind(tipo_pessoa)
+    .bind(&tipo_pessoa)
     .bind(Some(document_digits.clone()))
     .bind(razao_social)
     .bind(optional_text(input.nome_fantasia.as_deref()))
@@ -561,12 +620,13 @@ pub async fn atualizar_cliente(id: i32, input: ClienteInput) -> Result<ClienteRo
     .bind(concurrency_token)
     .bind(empresa_id)
     .bind(input.exige_ordem_compra)
-    .execute(&pool)
+    .execute(&mut *tx)
     .await;
     let updated_rows = match updated_rows {
         Ok(result) => result.rows_affected(),
         Err(e) => {
             error!("Erro ao atualizar cliente {}: {}", id, e);
+            let _ = tx.rollback().await;
             return Err(duplicate_client_document_message(&e, &pool, empresa_id, &document_digits, Some(id))
                 .await
                 .unwrap_or_else(|| super::operator_errors::erro_sql_para_operador(&e)));
@@ -574,8 +634,29 @@ pub async fn atualizar_cliente(id: i32, input: ClienteInput) -> Result<ClienteRo
     };
 
     if updated_rows == 0 {
+        let _ = tx.rollback().await;
         return Err(concurrency_conflict_message("o cliente"));
     }
+
+    if let Some((nome, telefone, email)) = contato_pj {
+        let inserido = sqlx::query(
+            "INSERT INTO cliente_contatos (empresa_id, cliente_id, nome, email, telefone)
+             VALUES ($1, $2, $3, $4, $5)",
+        )
+        .bind(empresa_id)
+        .bind(id)
+        .bind(nome)
+        .bind(email)
+        .bind(telefone)
+        .execute(&mut *tx)
+        .await;
+        if let Err(e) = inserido {
+            error!("Erro ao criar contato do cliente {}: {}", id, e);
+            let _ = tx.rollback().await;
+            return Err(super::operator_errors::erro_sql_para_operador(&e));
+        }
+    }
+    tx.commit().await.map_err(|e| e.to_string())?;
 
     info!("Cliente {} atualizado", id);
     buscar_cliente(id).await
@@ -648,6 +729,41 @@ mod tests {
         assert_eq!(nome, "Ana");
         assert_eq!(tel, "11999999999");
         assert_eq!(email.as_deref(), Some("a@b.com"));
-        assert!(validar_contato_inicial(Some(&contato("Ana", "1133334444"))).is_ok());
+    }
+
+    #[test]
+    fn contato_inicial_fixo_de_10_digitos_e_rejeitado() {
+        assert_eq!(
+            validar_contato_inicial(Some(&contato("Ana", "1133334444"))),
+            Err(MSG_CONTATO_OBRIGATORIO.to_string())
+        );
+    }
+
+    #[test]
+    fn celular_valido_aceita_so_celular_com_ddd_e_o_9() {
+        assert!(celular_valido("(11) 99999-0000"));
+        assert!(celular_valido("71988887777"));
+        assert!(!celular_valido("(11) 3333-4444"));
+        assert!(!celular_valido("(11) 83333-4444"));
+        assert!(!celular_valido("(10) 99999-0000"));
+        assert!(!celular_valido("(100) 99999-0000"));
+        assert!(!celular_valido(""));
+    }
+
+    #[test]
+    fn celular_nacional_aceita_prefixo_55() {
+        assert_eq!(celular_nacional("+55 71 98888-7777").as_deref(), Some("71988887777"));
+        assert_eq!(celular_nacional("5571988887777").as_deref(), Some("71988887777"));
+        assert_eq!(celular_nacional("71988887777").as_deref(), Some("71988887777"));
+        // DDD 55 (Santa Maria) sem DDI não é cortado.
+        assert_eq!(celular_nacional("55988887777").as_deref(), Some("55988887777"));
+    }
+
+    #[test]
+    fn pj_sem_contato_celular_exige_contato_inicial() {
+        assert!(!pj_tem_contato_celular(&[]));
+        assert!(!pj_tem_contato_celular(&["7133334444".into(), "".into()]));
+        assert!(pj_tem_contato_celular(&["+55 71 98888-7777".into()]));
+        assert_eq!(validar_contato_inicial(None), Err(MSG_CONTATO_OBRIGATORIO.to_string()));
     }
 }

@@ -81,6 +81,19 @@ describe("ClienteContatosPanel", () => {
     await waitFor(() => expect(mockAtualizar).toHaveBeenCalledWith(20, expect.objectContaining({ nome: "Ana Editada" })));
   });
 
+  it("PJ sem celular não cadastra contato só com telefone fixo", async () => {
+    mockListar.mockResolvedValue([]);
+    render(<ClienteContatosPanel cliente={cliente} empresaId={7} />);
+    fireEvent.click(await screen.findByRole("button", { name: /novo contato/i }));
+    fireEvent.change(screen.getByLabelText("Nome *"), { target: { value: "Bruno" } });
+    fireEvent.change(screen.getByLabelText("Telefone"), { target: { value: "(71) 3333-4444" } });
+    fireEvent.click(screen.getByRole("button", { name: "Cadastrar" }));
+    await waitFor(() => {
+      expect(screen.getByText("Informe o celular com DDD e o 9 (11 dígitos).")).toBeInTheDocument();
+    });
+    expect(mockCriar).not.toHaveBeenCalled();
+  });
+
   it("confirma inativação e recarrega a lista ativa", async () => {
     render(<ClienteContatosPanel cliente={cliente} empresaId={7} />);
     await screen.findByText("Ana");

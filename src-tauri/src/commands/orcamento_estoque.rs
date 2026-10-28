@@ -63,6 +63,134 @@ pub fn parse_servicos(json: &str) -> Result<Vec<ServicoOrcamento>, String> {
     Ok(servicos)
 }
 
+pub fn valor_monetario_positivo(value: f64) -> bool {
+    value.is_finite() && value > 0.0
+}
+
+fn itens_tem_valor_cobrado(servicos: &[ServicoOrcamento]) -> bool {
+    servicos.iter().any(|servico| {
+        valor_monetario_positivo(servico.valor)
+            || servico
+                .pecas
+                .iter()
+                .any(|peca| valor_monetario_positivo(peca.valor_unitario))
+    })
+}
+
+pub fn soma_itens_orcamento(servicos: &[ServicoOrcamento]) -> f64 {
+    servicos.iter().fold(0.0, |acc, servico| {
+        acc + servico.valor
+            + servico
+                .pecas
+                .iter()
+                .map(|peca| peca.quantidade as f64 * peca.valor_unitario)
+                .sum::<f64>()
+    })
+}
+
+/// `custo_total` ausente usa a soma dos itens, não 0,00.
+pub fn resolver_custo_total(custo_total: Option<f64>, servicos: &[ServicoOrcamento]) -> f64 {
+    custo_total.unwrap_or_else(|| soma_itens_orcamento(servicos))
+}
+
+/// OS só de garantia: há pelo menos um item e nenhum serviço/peça tem valor cobrado.
+/// Não existe coluna de garantia; 0,00 no item é a convenção já usada na verificação.
+pub fn os_somente_garantia(servicos: &[ServicoOrcamento]) -> bool {
+    !servicos.is_empty() && !itens_tem_valor_cobrado(servicos)
+}
+
+pub const MSG_TOTAL_ZERO_SEM_GARANTIA: &str = "Total R$ 0,00 só segue sem aprovação quando todos os itens são de garantia. Com item cobrado ou sem itens, informe um valor maior que zero.";
+pub const MSG_AGUARDANDO_TOTAL_ZERO: &str =
+    "Orçamento aguardando aprovação não pode ficar com R$ 0,00.";
+pub const MSG_ZERAR_APROVADO_PAGO: &str =
+    "Não é possível zerar um orçamento já aprovado e pago.";
+pub const MSG_CONFIRMAR_GARANTIA: &str =
+    "Confirme a OS só de garantia para gravar: o orçamento ficará R$ 0,00, será aprovado automaticamente e as peças sairão do estoque.";
+
+fn total_efetivo_positivo(custo_total: Option<f64>, servicos: &[ServicoOrcamento]) -> bool {
+    valor_monetario_positivo(resolver_custo_total(custo_total, servicos))
+}
+
+/// Recusa total 0,00 sem garantia. `custo_total` ausente usa a soma dos itens.
+pub fn recusar_total_zero_sem_garantia(
+    custo_total: Option<f64>,
+    servicos: &[ServicoOrcamento],
+) -> Result<(), String> {
+    if total_efetivo_positivo(custo_total, servicos) {
+        return Ok(());
+    }
+    if os_somente_garantia(servicos) {
+        return Ok(());
+    }
+    Err(MSG_TOTAL_ZERO_SEM_GARANTIA.to_string())
+}
+
+pub fn recusar_aguardando_aprovacao_total_zero(
+    status: &str,
+    custo_total: Option<f64>,
+    servicos: &[ServicoOrcamento],
+) -> Result<(), String> {
+    if status == "AGUARDANDO_APROVACAO" && !total_efetivo_positivo(custo_total, servicos) {
+        return Err(MSG_AGUARDANDO_TOTAL_ZERO.to_string());
+    }
+    Ok(())
+}
+
+fn status_depois_aprovacao(status: &str) -> bool {
+    matches!(
+        status,
+        "APROVADO" | "EM_MANUTENCAO" | "AGUARDANDO_PECA" | "PRONTO" | "ENTREGUE"
+    )
+}
+
+pub fn vai_auto_aprovar_os_garantia(
+    status: &str,
+    servicos: &[ServicoOrcamento],
+    custo_total: Option<f64>,
+) -> bool {
+    matches!(status, "RECEBIDO" | "EM_VERIFICACAO" | "VERIFICADO")
+        && os_somente_garantia(servicos)
+        && !custo_total.is_some_and(valor_monetario_positivo)
+}
+
+pub fn recusar_autoaprovacao_garantia_sem_confirmacao(
+    confirmar_garantia: bool,
+    status: &str,
+    servicos: &[ServicoOrcamento],
+    custo_total: Option<f64>,
+) -> Result<(), String> {
+    if vai_auto_aprovar_os_garantia(status, servicos, custo_total) && !confirmar_garantia {
+        return Err(MSG_CONFIRMAR_GARANTIA.to_string());
+    }
+    Ok(())
+}
+
+pub fn recusar_zerar_orcamento_aprovado_pago(
+    status: &str,
+    valor_anterior: Option<f64>,
+    custo_total: Option<f64>,
+    servicos: &[ServicoOrcamento],
+) -> Result<(), String> {
+    if status_depois_aprovacao(status)
+        && valor_anterior.is_some_and(valor_monetario_positivo)
+        && !total_efetivo_positivo(custo_total, servicos)
+    {
+        return Err(MSG_ZERAR_APROVADO_PAGO.to_string());
+    }
+    Ok(())
+}
+
+pub fn detalhes_auditoria_aprovacao_garantia(
+    empresa_id: i32,
+    equipamento_id: i32,
+    verificacao_id: i32,
+    status_anterior: &str,
+) -> String {
+    format!(
+        "empresa_id={empresa_id}; equipamento_id={equipamento_id}; verificacao_id={verificacao_id}; pagamento_codigo=N/A; status_anterior={status_anterior}; status=APROVADO; origem=GARANTIA; motivo=OS só de garantia aprovada sem cobrança nem pagamento."
+    )
+}
+
 pub fn normalizar_servicos(json: &str) -> Result<Vec<serde_json::Value>, String> {
     let mut servicos: Vec<serde_json::Value> = serde_json::from_str(json)
         .map_err(|_| "Os serviços do orçamento estão inválidos.".to_string())?;
@@ -234,6 +362,18 @@ pub async fn aplicar_decisoes(
     Ok(())
 }
 
+/// Aprovação integral (OS só de garantia): todos os serviços entram como APROVADO
+/// e as peças seguem a mesma baixa/pendência de `aprovar_orcamento`.
+pub async fn aplicar_decisoes_aprovacao_integral(
+    tx: &mut Transaction<'_, Postgres>,
+    empresa_id: i32,
+    verificacao_id: i32,
+    servicos: &[ServicoOrcamento],
+) -> Result<(), String> {
+    let aprovados: Vec<String> = servicos.iter().map(|servico| servico.id.clone()).collect();
+    aplicar_decisoes(tx, empresa_id, verificacao_id, servicos, &aprovados).await
+}
+
 /// Ajustes podem retirar um serviço/produto, mas não estornam peças já usadas.
 pub async fn cancelar_pendencias_ausentes(
     tx: &mut Transaction<'_, Postgres>,
@@ -358,6 +498,107 @@ mod tests {
     use sqlx::PgPool;
 
     #[test]
+    fn warranty_only_os_allows_zero_total_mixed_or_empty_does_not() {
+        let garantia = parse_servicos(
+            r#"[{"id":"g1","valor":0,"pecas":[{"produto_id":1,"quantidade":1,"valor_unitario":0}]},{"id":"g2","valor":0.0}]"#,
+        )
+        .unwrap();
+        assert!(os_somente_garantia(&garantia));
+        assert!(recusar_total_zero_sem_garantia(Some(0.0), &garantia).is_ok());
+        assert!(recusar_total_zero_sem_garantia(None, &garantia).is_ok());
+
+        let misto = parse_servicos(r#"[{"id":"g1","valor":0},{"id":"c1","valor":80}]"#).unwrap();
+        assert!(!os_somente_garantia(&misto));
+        assert!(recusar_total_zero_sem_garantia(Some(0.0), &misto).is_err());
+        assert!(recusar_total_zero_sem_garantia(Some(80.0), &misto).is_ok());
+        assert_eq!(resolver_custo_total(None, &misto), 80.0);
+        assert!(recusar_total_zero_sem_garantia(None, &misto).is_ok());
+
+        let peca_cobrada =
+            parse_servicos(r#"[{"id":"g1","valor":0,"pecas":[{"produto_id":1,"quantidade":1,"valor_unitario":10}]}]"#)
+                .unwrap();
+        assert!(recusar_total_zero_sem_garantia(Some(0.0), &peca_cobrada)
+            .unwrap_err()
+            .contains("garantia"));
+        assert_eq!(resolver_custo_total(None, &peca_cobrada), 10.0);
+        assert!(recusar_total_zero_sem_garantia(None, &peca_cobrada).is_ok());
+
+        let vazio = parse_servicos("[]").unwrap();
+        assert!(!os_somente_garantia(&vazio));
+        assert!(recusar_total_zero_sem_garantia(Some(0.0), &vazio).is_err());
+        assert!(recusar_total_zero_sem_garantia(Some(10.0), &vazio).is_ok());
+        assert_eq!(resolver_custo_total(None, &vazio), 0.0);
+        assert!(recusar_total_zero_sem_garantia(None, &vazio).is_err());
+
+        let pago_ci = parse_servicos(r#"[{"id":"test-service","descricao":"Limpeza","valor":120.0}]"#).unwrap();
+        assert_eq!(resolver_custo_total(None, &pago_ci), 120.0);
+        assert!(recusar_total_zero_sem_garantia(None, &pago_ci).is_ok());
+    }
+
+    #[test]
+    fn awaiting_approval_never_stays_at_zero_and_paid_approved_cannot_be_zeroed() {
+        let garantia = parse_servicos(r#"[{"id":"g1","valor":0}]"#).unwrap();
+        let misto = parse_servicos(r#"[{"id":"c1","valor":80}]"#).unwrap();
+        assert!(recusar_aguardando_aprovacao_total_zero("VERIFICADO", Some(0.0), &garantia).is_ok());
+        assert!(recusar_aguardando_aprovacao_total_zero("AGUARDANDO_APROVACAO", Some(80.0), &misto).is_ok());
+        assert!(recusar_aguardando_aprovacao_total_zero("AGUARDANDO_APROVACAO", Some(0.0), &garantia)
+            .unwrap_err()
+            .contains("aguardando aprovação"));
+        assert!(recusar_aguardando_aprovacao_total_zero("AGUARDANDO_APROVACAO", None, &garantia).is_err());
+
+        let zerados = parse_servicos(r#"[{"id":"c1","valor":0}]"#).unwrap();
+        assert!(recusar_zerar_orcamento_aprovado_pago("APROVADO", Some(80.0), Some(0.0), &zerados)
+            .unwrap_err()
+            .contains("aprovado e pago"));
+        assert!(recusar_zerar_orcamento_aprovado_pago(
+            "APROVADO",
+            Some(80.0),
+            Some(0.0),
+            &zerados
+        )
+        .is_err());
+        assert!(recusar_zerar_orcamento_aprovado_pago("APROVADO", Some(80.0), Some(80.0), &misto).is_ok());
+        assert!(recusar_zerar_orcamento_aprovado_pago("APROVADO", Some(0.0), Some(0.0), &garantia).is_ok());
+        assert!(recusar_zerar_orcamento_aprovado_pago("AGUARDANDO_APROVACAO", Some(80.0), Some(0.0), &zerados).is_ok());
+    }
+
+    #[test]
+    fn auto_approval_of_warranty_os_requires_explicit_confirmation() {
+        let garantia = parse_servicos(r#"[{"id":"g1","valor":0}]"#).unwrap();
+        let pago = parse_servicos(r#"[{"id":"c1","valor":80}]"#).unwrap();
+        assert!(vai_auto_aprovar_os_garantia("EM_VERIFICACAO", &garantia, Some(0.0)));
+        assert!(vai_auto_aprovar_os_garantia("VERIFICADO", &garantia, None));
+        assert!(!vai_auto_aprovar_os_garantia("APROVADO", &garantia, Some(0.0)));
+        assert!(!vai_auto_aprovar_os_garantia("EM_VERIFICACAO", &pago, Some(80.0)));
+        assert!(recusar_autoaprovacao_garantia_sem_confirmacao(false, "EM_VERIFICACAO", &garantia, Some(0.0))
+            .unwrap_err()
+            .contains("Confirme a OS só de garantia"));
+        assert!(recusar_autoaprovacao_garantia_sem_confirmacao(true, "EM_VERIFICACAO", &garantia, Some(0.0)).is_ok());
+        assert!(recusar_autoaprovacao_garantia_sem_confirmacao(false, "EM_VERIFICACAO", &pago, Some(80.0)).is_ok());
+    }
+
+    #[test]
+    fn warranty_approval_audit_matches_paid_shape_with_na_payment() {
+        let detalhes = detalhes_auditoria_aprovacao_garantia(3, 10, 20, "VERIFICADO");
+        assert!(detalhes.contains("origem=GARANTIA"));
+        assert!(detalhes.contains("pagamento_codigo=N/A"));
+        assert!(detalhes.contains("status=APROVADO"));
+        assert!(detalhes.contains("equipamento_id=10"));
+    }
+
+    #[test]
+    fn warranty_part_qty_2_is_approved_in_full_like_paid_approval() {
+        let servicos = parse_servicos(
+            r#"[{"id":"garantia","valor":0,"pecas":[{"produto_id":9,"quantidade":2,"valor_unitario":0}]}]"#,
+        )
+        .unwrap();
+        assert!(os_somente_garantia(&servicos));
+        assert_eq!(servicos[0].pecas[0].quantidade, 2);
+        let aprovados: Vec<String> = servicos.iter().map(|s| s.id.clone()).collect();
+        assert_eq!(aprovados, vec!["garantia".to_string()]);
+    }
+
+    #[test]
     fn rejects_invalid_parts_and_duplicate_services() {
         for json in [
             r#"[{"id":"a","pecas":[{"produto_id":1,"quantidade":0}]}]"#,
@@ -421,6 +662,49 @@ mod tests {
             .fetch_one(&mut **tx)
             .await
             .unwrap()
+    }
+
+    #[tokio::test]
+    #[ignore = "requer AUTOOS_STOCK_TEST_DATABASE_URL e migrations em banco descartável"]
+    async fn warranty_only_os_with_part_qty_2_consumes_stock_and_records_decisions() {
+        let pool = test_pool().await;
+        let mut tx = pool.begin().await.unwrap();
+        let (empresa, verificacao, produto) = fixture(&mut tx, "garantia-qtd2").await;
+        let servicos = parse_servicos(
+            &serde_json::json!([{
+                "id": "garantia",
+                "valor": 0,
+                "pecas": [{"produto_id": produto, "quantidade": 2, "valor_unitario": 0}]
+            }])
+            .to_string(),
+        )
+        .unwrap();
+        assert!(os_somente_garantia(&servicos));
+        aplicar_decisoes_aprovacao_integral(&mut tx, empresa, verificacao, &servicos)
+            .await
+            .unwrap();
+        assert_eq!(
+            saldo(&mut tx, produto).await,
+            1,
+            "peça de garantia qtd 2 baixa o estoque como no Aprovar"
+        );
+        let decisao: String = sqlx::query_scalar(
+            "SELECT decisao FROM orcamento_servicos_decisao WHERE verificacao_id=$1 AND servico_id='garantia'",
+        )
+        .bind(verificacao)
+        .fetch_one(&mut *tx)
+        .await
+        .unwrap();
+        assert_eq!(decisao, "APROVADO");
+        let consumo: (i32, i32) = sqlx::query_as(
+            "SELECT quantidade_aprovada, quantidade_baixada FROM orcamento_consumos WHERE verificacao_id=$1 AND servico_id='garantia'",
+        )
+        .bind(verificacao)
+        .fetch_one(&mut *tx)
+        .await
+        .unwrap();
+        assert_eq!(consumo, (2, 2));
+        tx.rollback().await.unwrap();
     }
 
     #[tokio::test]

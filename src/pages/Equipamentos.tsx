@@ -139,7 +139,7 @@ import { PhotoUploadDialog } from "@/components/equipamentos/PhotoUploadDialog";
 import { DocumentosEquipamento } from "@/components/equipamentos/DocumentosEquipamento";
 import { PdfPreviewDialog } from "@/components/equipamentos/PdfPreviewDialog";
 import { AjusteOrcamentoServicos } from "@/components/equipamentos/AjusteOrcamentoServicos";
-import { carregarProdutosOrcamento, normalizarServicosOrcamento, orcamentoEmElaboracao, transicaoElaboraOrcamento, pecasParaOrcamento, orcamentoJaAprovado, orcamentoMudou, resumirPecas, validarPecas } from "@/lib/orcamento-estoque";
+import { carregarProdutosOrcamento, LABEL_CONFIRMAR_OS_GARANTIA, MENSAGEM_CONFIRMAR_OS_GARANTIA, normalizarServicosOrcamento, orcamentoEmElaboracao, transicaoElaboraOrcamento, osSomenteGarantia, pecasParaOrcamento, orcamentoJaAprovado, orcamentoMudou, resumirPecas, TITULO_CONFIRMAR_OS_GARANTIA, vaiAutoAprovarOsGarantia, validarPecas } from "@/lib/orcamento-estoque";
 import { ActionPriorityRow, type PriorityAction } from "@/components/ui/action-priority-row";
 import {
   arquivoParaImagemEquipamento,
@@ -173,9 +173,14 @@ import {
   reabreOrcamentoSemAjuste,
   removerTecnicoInicialDasObservacoes,
   statusExigeAcessoSensivel,
+  mensagemAjusteTotalZero,
+  totalOrcamentoAjusteValido,
+  totalOrcamentoAprovacaoValido,
   whatsappNaoConfigurado,
 } from "@/pages/equipamentos/equipamentos-page-utils";
-import { formatCurrency } from "@/lib/utils";
+import { DateIsoInput } from "@/components/ui/date-iso-input";
+import { ValorDecimalInput } from "@/components/ui/valor-decimal-input";
+import { formatCurrency, formatCurrencyOrMissing } from "@/lib/utils";
 import { useNotification } from "@/hooks/useNotification";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { InputDialog } from "@/components/ui/input-dialog";
@@ -241,6 +246,7 @@ export default function Equipamentos() {
   const decisaoAprovada = todosServicosAprovados === true || idsAprovados.length > 0;
   const [escolhaAjuste, setEscolhaAjuste] = useState<{ variante: "aprovado" | "pendente"; analise: AnaliseAjusteOrcamento } | null>(null);
   const escolhaAjusteResolver = useRef<((opcoes: OpcoesAjusteOrcamento | null) => void) | null>(null);
+  const garantiaConfirmadaRef = useRef(false);
   const [consumosDetalhes, setConsumosDetalhes] = useState<ConsumoOrcamento[]>([]);
   const [baixandoPendentes, setBaixandoPendentes] = useState(false);
   const [consumosDialogOpen, setConsumosDialogOpen] = useState(false);
@@ -288,6 +294,7 @@ export default function Equipamentos() {
   // Mudança de status
   const [novoStatus, setNovoStatus] = useState("");
   const [valorOrcamento, setValorOrcamento] = useState<number>(0);
+  const [valorOrcamentoValido, setValorOrcamentoValido] = useState(true);
   const valorOrcamentoRef = useRef(valorOrcamento);
   useEffect(() => { valorOrcamentoRef.current = valorOrcamento; }, [valorOrcamento]);
   const [prazoAprovacao, setPrazoAprovacao] = useState("");
@@ -362,7 +369,7 @@ export default function Equipamentos() {
   // Hook de automação de status
   const { loading: loadingAutomacao, finalizarVerificacao, marcarComoPronto } =
     useStatusEquipamento();
-  const { ensureSensitiveAccess, status: sensitiveStatus } = useSensitiveAccess();
+  const { ensureSensitiveAccess, status: sensitiveStatus, hasPermission } = useSensitiveAccess();
   const location = useLocation();
   const navigate = useNavigate();
 
@@ -777,6 +784,7 @@ export default function Equipamentos() {
     setValorOrcamentoOriginal(valorOriginal);
     setValorOrcamentoAnterior(valorAnterior);
     setValorOrcamento(valorBase);
+    setValorOrcamentoValido(true);
     setPrazoAprovacao(eq.prazo_aprovacao || "");
     setVerificacaoAjusteOrcamento(verificacao);
     setObservacoesAjuste(verificacao?.observacoes || "");
@@ -839,6 +847,7 @@ export default function Equipamentos() {
     setSelecionado(eq);
     setNovoStatus(statusPreSelecionado || "");
     setValorOrcamento(eq.valor_orcamento ?? 0);
+    setValorOrcamentoValido(true);
     setPrazoAprovacao(eq.prazo_aprovacao || "");
     setValorOrcamentoOriginal(null);
     setValorOrcamentoAnterior(null);
@@ -898,6 +907,7 @@ export default function Equipamentos() {
     setMotivoCorrecaoStatus("");
     setNovoStatus("");
     setValorOrcamento(eq.valor_orcamento ?? 0);
+    setValorOrcamentoValido(true);
     setPrazoAprovacao(eq.prazo_aprovacao || "");
     setValorFinal(0);
     setStatusDialogOpen(true);
@@ -1106,10 +1116,16 @@ export default function Equipamentos() {
    */
   async function handleConcluirVerificacao(dados: DadosVerificacao): Promise<boolean> {
     if (!selecionado) return false;
+    // Total 0 só chega aqui em OS só de garantia, que sai aprovada: só quem aprova orçamento finaliza.
+    const garantiaAprovada = dados.custo_total === 0;
     const liberado = await ensureSensitiveAccess({
       title: "Finalizar verificação",
-      description: "Informe o PIN para salvar orçamento, prazo de aprovação e disparar comunicações automáticas.",
-      anyPermission: [SENSITIVE_PERMISSIONS.FINANCIAL_ACTIONS, SENSITIVE_PERMISSIONS.PREPARE_QUOTES],
+      description: garantiaAprovada
+        ? "OS só de garantia vai direto para Aprovado. Informe o PIN de quem aprova orçamentos."
+        : "Informe o PIN para salvar orçamento, prazo de aprovação e disparar comunicações automáticas.",
+      ...(garantiaAprovada
+        ? { permission: SENSITIVE_PERMISSIONS.FINANCIAL_ACTIONS }
+        : { anyPermission: [SENSITIVE_PERMISSIONS.FINANCIAL_ACTIONS, SENSITIVE_PERMISSIONS.PREPARE_QUOTES] }),
     });
     if (!liberado) return false;
 
@@ -1235,7 +1251,27 @@ export default function Equipamentos() {
   }
 
   function iniciarConfirmacaoStatus() {
+    const mostraOrcamento = (novoStatus === "AGUARDANDO_APROVACAO" && selecionado && !reabreOrcamentoSemAjuste(selecionado.status, novoStatus))
+      || ajusteOrcamentoSemMudancaStatus;
+    const enviandoParaAprovacao = novoStatus === "AGUARDANDO_APROVACAO"
+      && !!selecionado
+      && !reabreOrcamentoSemAjuste(selecionado.status, novoStatus);
+    if (mostraOrcamento && !valorOrcamentoValido) return;
+    if (enviandoParaAprovacao && !totalOrcamentoAprovacaoValido(valorOrcamentoRef.current)) {
+      warning("Equipamentos", osSomenteGarantia(servicosAjuste)
+        ? "OS só de garantia não envia orçamento para aprovação de valor."
+        : "Informe um valor de orçamento maior que zero.");
+      return;
+    }
+    if (ajusteOrcamentoSemMudancaStatus && !totalOrcamentoAjusteValido(valorOrcamentoRef.current, osSomenteGarantia(servicosAjuste), selecionado?.status, selecionado?.valor_orcamento)) {
+      warning("Equipamentos", mensagemAjusteTotalZero(selecionado?.status, selecionado?.valor_orcamento));
+      return;
+    }
     if ((novoStatus === "AGUARDANDO_APROVACAO" || ajusteOrcamentoSemMudancaStatus) && verificacaoAjusteOrcamento) {
+      if (ajusteOrcamentoSemMudancaStatus && vaiAutoAprovarOsGarantia(selecionado?.status, osSomenteGarantia(servicosAjuste), valorOrcamentoRef.current)) {
+        void confirmarMudancaStatus(false);
+        return;
+      }
       const servicosOriginal: ServicoNecessario[] = [];
       try {
         servicosOriginal.push(...JSON.parse(verificacaoAjusteOrcamento.servicos_necessarios || "[]") as ServicoNecessario[]);
@@ -1247,9 +1283,11 @@ export default function Equipamentos() {
         .reduce((sum, p) => sum + p.valorTotal, 0);
       const calculado = totalNovo + pecasTotal;
 
-      if (Math.abs(calculado - valorOrcamentoRef.current) > 0.001) {
+      const digitado = valorOrcamentoRef.current;
+      if (Math.abs(calculado - digitado) > 0.001) {
         setConfirmProps({
-          title: `Mudar Valor Total do Orçamento para ${formatCurrency(calculado)}?`,
+          title: `Valor digitado ${formatCurrency(digitado)} diferente da soma ${formatCurrency(calculado)}`,
+          description: `Sim grava a soma dos itens (${formatCurrency(calculado)}). Não grava o valor digitado (${formatCurrency(digitado)}).`,
           confirmLabel: "Sim",
           cancelLabel: "Não",
           variant: "default",
@@ -1268,13 +1306,17 @@ export default function Equipamentos() {
         return;
       }
 
+      const originalVigente = valorOrcamentoAnterior ?? totalOriginal;
+      const novoValor = digitado;
+      const diferenca = novoValor - originalVigente;
       const lines = [
         "Revise as alterações antes de confirmar:",
         "",
-        ...servicosAjuste.map((s) => `• ${s.descricao || "(sem nome)"}: R$ ${Number(s.valor || 0).toFixed(2)}`),
+        ...servicosAjuste.map((s) => `• ${s.descricao || "(sem nome)"}: ${formatCurrency(Number(s.valor || 0))}`),
         "",
-        `Valor Original: R$ ${totalOriginal.toFixed(2)}`,
-        `Novo Valor: R$ ${totalNovo.toFixed(2)}`,
+        `Valor original: ${formatCurrency(originalVigente)}`,
+        `Novo valor: ${formatCurrency(novoValor)}`,
+        `Diferença: ${formatCurrency(diferenca)}`,
       ];
       setConfirmProps({
         title: "Resumo do Ajuste de Orçamento",
@@ -1417,6 +1459,24 @@ export default function Equipamentos() {
       return;
     }
     const totalAtual = valorOrcamentoRef.current;
+    const mostraOrcamento = (novoStatus === "AGUARDANDO_APROVACAO" && !reabreOrcamentoSemAjuste(selecionado.status, novoStatus))
+      || ajusteOrcamentoSemMudancaStatus;
+    const enviandoParaAprovacao = novoStatus === "AGUARDANDO_APROVACAO"
+      && !reabreOrcamentoSemAjuste(selecionado.status, novoStatus);
+    if (mostraOrcamento && (!valorOrcamentoValido || !Number.isFinite(totalAtual))) {
+      warning("Equipamentos", "Informe um valor de orçamento válido.");
+      return;
+    }
+    if (enviandoParaAprovacao && !totalOrcamentoAprovacaoValido(totalAtual)) {
+      warning("Equipamentos", osSomenteGarantia(servicosAjuste)
+        ? "OS só de garantia não envia orçamento para aprovação de valor."
+        : "Informe um valor de orçamento maior que zero.");
+      return;
+    }
+    if (ajusteOrcamentoSemMudancaStatus && !totalOrcamentoAjusteValido(totalAtual, osSomenteGarantia(servicosAjuste), selecionado.status, selecionado.valor_orcamento)) {
+      warning("Equipamentos", mensagemAjusteTotalZero(selecionado.status, selecionado.valor_orcamento));
+      return;
+    }
     if (correcaoStatus && novoStatus === "AGUARDANDO_APROVACAO" && ["APROVADO", "REPROVADO"].includes(selecionado.status)) {
       warning("Equipamentos", "Para reabrir um orçamento já decidido use “Corrigir decisão do orçamento”: ela desfaz pagamento e estoque junto.");
       return;
@@ -1425,22 +1485,53 @@ export default function Equipamentos() {
       warning("Equipamentos", "Informe o motivo da correção antes de continuar.");
       return;
     }
+    const autoAprovaGarantia = vaiAutoAprovarOsGarantia(
+      selecionado.status,
+      osSomenteGarantia(servicosAjuste),
+      totalAtual,
+    );
+    if (autoAprovaGarantia && !garantiaConfirmadaRef.current) {
+      setConfirmProps({
+        title: TITULO_CONFIRMAR_OS_GARANTIA,
+        description: MENSAGEM_CONFIRMAR_OS_GARANTIA,
+        confirmLabel: LABEL_CONFIRMAR_OS_GARANTIA,
+        cancelLabel: "Cancelar",
+        onConfirm: () => {
+          garantiaConfirmadaRef.current = true;
+          setConfirmOpen(false);
+          void confirmarMudancaStatus(divergencia);
+        },
+        onCancel: () => {
+          garantiaConfirmadaRef.current = false;
+        },
+      });
+      setConfirmOpen(true);
+      return;
+    }
+    const valorSensivel = mostraOrcamento ? totalAtual : (totalAtual || undefined);
     const precisaLiberacao = correcaoStatus || statusExigeAcessoSensivel(
       novoStatus,
-      totalAtual || undefined,
+      valorSensivel,
       prazoAprovacao || undefined,
       valorFinal || undefined,
     );
     if (precisaLiberacao) {
       const liberado = await ensureSensitiveAccess({
-        title: "Confirmar mudança de status",
-        description: "Informe o PIN para aplicar esta transição e persistir dados sensíveis do equipamento.",
-        ...((ajusteOrcamentoSemMudancaStatus && orcamentoEmElaboracao(selecionado.status))
-          || transicaoElaboraOrcamento(selecionado.status, novoStatus, correcaoStatus, valorFinal)
-          ? { anyPermission: [SENSITIVE_PERMISSIONS.FINANCIAL_ACTIONS, SENSITIVE_PERMISSIONS.PREPARE_QUOTES] }
-          : { permission: SENSITIVE_PERMISSIONS.FINANCIAL_ACTIONS }),
+        title: autoAprovaGarantia ? "Confirmar OS só de garantia" : "Confirmar mudança de status",
+        description: autoAprovaGarantia
+          ? "OS só de garantia vai direto para Aprovado. Informe o PIN de quem aprova orçamentos."
+          : "Informe o PIN para aplicar esta transição e persistir dados sensíveis do equipamento.",
+        ...(autoAprovaGarantia
+          ? { permission: SENSITIVE_PERMISSIONS.FINANCIAL_ACTIONS }
+          : ((ajusteOrcamentoSemMudancaStatus && orcamentoEmElaboracao(selecionado.status))
+            || transicaoElaboraOrcamento(selecionado.status, novoStatus, correcaoStatus, valorFinal)
+            ? { anyPermission: [SENSITIVE_PERMISSIONS.FINANCIAL_ACTIONS, SENSITIVE_PERMISSIONS.PREPARE_QUOTES] }
+            : { permission: SENSITIVE_PERMISSIONS.FINANCIAL_ACTIONS })),
       });
-      if (!liberado) return;
+      if (!liberado) {
+        garantiaConfirmadaRef.current = false;
+        return;
+      }
     }
 
     // Alterar orçamento já aprovado ou já respondido no portal: o operador escolhe o que fazer.
@@ -1514,7 +1605,9 @@ export default function Equipamentos() {
             // Escolher "ajuste sem nova aprovação" é a confirmação de que o cliente concordou.
             cliente_aprovou_alteracao: opcoesAjuste?.modoAprovado === "SEM_NOVA_APROVACAO",
             expected_updated_em: selecionado.atualizado_em,
-            ...(opcoesAjuste ? { opcoes: opcoesAjuste } : {}),
+            ...((opcoesAjuste || autoAprovaGarantia)
+              ? { opcoes: { ...opcoesAjuste, ...(autoAprovaGarantia ? { confirmarGarantia: true } : {}) } }
+              : {}),
           },
           profileId,
         );
@@ -1591,7 +1684,10 @@ export default function Equipamentos() {
       console.error("Erro:", err);
       showError("Equipamentos", "Alterar status", err);
     }
-    finally { setSalvando(false); }
+    finally {
+      setSalvando(false);
+      garantiaConfirmadaRef.current = false;
+    }
   }
 
   // ─── Ações rápidas ────────────────────────────────────
@@ -1972,6 +2068,12 @@ export default function Equipamentos() {
       className: "text-red-600",
       onClick: () => void solicitarExclusao(eq),
     };
+    const podeFinanceiro = hasPermission(SENSITIVE_PERMISSIONS.FINANCIAL_ACTIONS);
+    const podeOrcamentoValores = podeFinanceiro
+      || hasPermission(SENSITIVE_PERMISSIONS.PREPARE_QUOTES);
+    const podeAlterarOrcamento = podeFinanceiro
+      || (hasPermission(SENSITIVE_PERMISSIONS.PREPARE_QUOTES) && orcamentoEmElaboracao(eq.status));
+    const podeExcluir = hasPermission(SENSITIVE_PERMISSIONS.DELETE_RECORDS);
 
     switch (eq.status) {
       case "RECEBIDO":
@@ -1994,7 +2096,7 @@ export default function Equipamentos() {
             disabled: salvando,
           },
           acaoEditar,
-          acaoExcluir
+          ...(podeExcluir ? [acaoExcluir] : []),
         );
         break;
       case "EM_VERIFICACAO":
@@ -2007,18 +2109,22 @@ export default function Equipamentos() {
           onClick: () => abrirVerificacao(eq),
         };
         secondary = acaoStatus;
-        overflow.push(acaoEditar, acaoExcluir);
+        overflow.push(acaoEditar, ...(podeExcluir ? [acaoExcluir] : []));
         break;
       case "VERIFICADO":
-        primary = {
-          id: "enviar_orcamento",
-          label: "Enviar Orçamento",
-          icon: <Send className="h-3.5 w-3.5" />,
-          variant: "default",
-          className: classeAcaoPrincipal,
-          onClick: () => void abrirMudarStatus(eq, "AGUARDANDO_APROVACAO"),
-        };
-        secondary = acaoStatus;
+        if (podeOrcamentoValores) {
+          primary = {
+            id: "enviar_orcamento",
+            label: "Enviar Orçamento",
+            icon: <Send className="h-3.5 w-3.5" />,
+            variant: "default",
+            className: classeAcaoPrincipal,
+            onClick: () => void abrirMudarStatus(eq, "AGUARDANDO_APROVACAO"),
+          };
+          secondary = acaoStatus;
+        } else {
+          primary = acaoStatus;
+        }
         if (eq.cliente_telefone) {
           overflow.push({
             id: "whatsapp_orcamento",
@@ -2027,27 +2133,32 @@ export default function Equipamentos() {
             onClick: () => void enviarWhatsAppOrcamento(eq),
           });
         }
-        overflow.push(acaoEditar, acaoExcluir);
+        overflow.push(acaoEditar, ...(podeExcluir ? [acaoExcluir] : []));
         break;
       case "AGUARDANDO_APROVACAO":
-        primary = {
-          id: "aprovar",
-          label: "Aprovar",
-          icon: <CheckCircle className="h-3.5 w-3.5" />,
-          variant: "default",
-          className: "bg-green-600 hover:bg-green-700 text-white",
-          onClick: () => void abrirDialogoAprovacao(eq, "aprovar"),
-          disabled: salvando,
-        };
-        secondary = {
-          id: "reprovar",
-          label: "Reprovar",
-          icon: <XCircle className="h-3.5 w-3.5" />,
-          variant: "default",
-          className: "bg-red-600 text-white hover:bg-red-700",
-          onClick: () => void abrirDialogoAprovacao(eq, "reprovar"),
-          disabled: salvando,
-        };
+        if (hasPermission(SENSITIVE_PERMISSIONS.FINANCIAL_ACTIONS)) {
+          primary = {
+            id: "aprovar",
+            label: "Aprovar",
+            icon: <CheckCircle className="h-3.5 w-3.5" />,
+            variant: "default",
+            className: "bg-green-600 hover:bg-green-700 text-white",
+            onClick: () => void abrirDialogoAprovacao(eq, "aprovar"),
+            disabled: salvando,
+          };
+          secondary = {
+            id: "reprovar",
+            label: "Reprovar",
+            icon: <XCircle className="h-3.5 w-3.5" />,
+            variant: "default",
+            className: "bg-red-600 text-white hover:bg-red-700",
+            onClick: () => void abrirDialogoAprovacao(eq, "reprovar"),
+            disabled: salvando,
+          };
+          overflow.push(acaoStatus);
+        } else {
+          primary = acaoStatus;
+        }
         if (eq.cliente_telefone) {
           overflow.push({
             id: "whatsapp_orcamento",
@@ -2056,7 +2167,7 @@ export default function Equipamentos() {
             onClick: () => void enviarWhatsAppOrcamento(eq),
           });
         }
-        overflow.push(acaoStatus, acaoEditar, acaoExcluir);
+        overflow.push(acaoEditar, ...(podeExcluir ? [acaoExcluir] : []));
         break;
       case "APROVADO":
         primary = {
@@ -2069,7 +2180,11 @@ export default function Equipamentos() {
           disabled: salvando,
         };
         secondary = acaoStatus;
-        overflow.push(acaoCorrigirDecisao, acaoEditar, acaoExcluir);
+        overflow.push(
+          ...(podeFinanceiro ? [acaoCorrigirDecisao] : []),
+          acaoEditar,
+          ...(podeExcluir ? [acaoExcluir] : []),
+        );
         break;
       case "EM_MANUTENCAO":
         primary = {
@@ -2082,7 +2197,7 @@ export default function Equipamentos() {
           disabled: salvando || loadingAutomacao,
         };
         secondary = acaoStatus;
-        overflow.push(acaoEditar, acaoExcluir);
+        overflow.push(acaoEditar, ...(podeExcluir ? [acaoExcluir] : []));
         break;
       case "AGUARDANDO_PECA":
         primary = {
@@ -2095,7 +2210,7 @@ export default function Equipamentos() {
           disabled: salvando,
         };
         secondary = acaoStatus;
-        overflow.push(acaoEditar, acaoExcluir);
+        overflow.push(acaoEditar, ...(podeExcluir ? [acaoExcluir] : []));
         break;
       case "PRONTO":
         primary = {
@@ -2115,45 +2230,55 @@ export default function Equipamentos() {
             onClick: () => void enviarWhatsAppPronto(eq),
           });
         }
-        overflow.push(acaoEditar, acaoExcluir);
+        overflow.push(acaoEditar, ...(podeExcluir ? [acaoExcluir] : []));
         break;
       case "REPROVADO":
-        primary = {
-          id: "reabrir_orcamento",
-          label: "Reabrir Orçamento",
-          icon: <RotateCcw className="h-3.5 w-3.5" />,
-          variant: "default",
-          className: classeAcaoPrincipal,
-          onClick: () => void abrirMudarStatus(eq, "AGUARDANDO_APROVACAO"),
-          disabled: salvando,
-        };
-        overflow.push({
-          id: "mudar_status",
-          label: "Mudar Status",
-          icon: <ArrowDownUp className="h-3.5 w-3.5" />,
-          variant: "outline",
-          onClick: () => void abrirMudarStatus(eq),
-          disabled: salvando,
-        });
-        overflow.push(acaoCorrigirDecisao, acaoEditar, acaoExcluir);
+        if (podeFinanceiro) {
+          primary = {
+            id: "reabrir_orcamento",
+            label: "Reabrir Orçamento",
+            icon: <RotateCcw className="h-3.5 w-3.5" />,
+            variant: "default",
+            className: classeAcaoPrincipal,
+            onClick: () => void abrirMudarStatus(eq, "AGUARDANDO_APROVACAO"),
+            disabled: salvando,
+          };
+          overflow.push({
+            id: "mudar_status",
+            label: "Mudar Status",
+            icon: <ArrowDownUp className="h-3.5 w-3.5" />,
+            variant: "outline",
+            onClick: () => void abrirMudarStatus(eq),
+            disabled: salvando,
+          });
+          overflow.push(acaoCorrigirDecisao);
+        } else {
+          primary = acaoStatus;
+        }
+        overflow.push(acaoEditar, ...(podeExcluir ? [acaoExcluir] : []));
         break;
       case "ORCAMENTO_VENCIDO":
-        primary = {
-          id: "ajustar_orcamento_vencido",
-          label: "Ajustar Orçamento",
-          icon: <RefreshCw className="h-3.5 w-3.5" />,
-          variant: "default",
-          className: classeAcaoPrincipal,
-          onClick: () => void abrirMudarStatus(eq, "AGUARDANDO_APROVACAO"),
-        };
-        secondary = {
-          id: "reenviar_orcamento",
-          label: "Reenviar",
-          icon: <Send className="h-3.5 w-3.5" />,
-          variant: "outline",
-          onClick: () => void abrirMudarStatus(eq, "AGUARDANDO_APROVACAO"),
-        };
-        overflow.push(acaoStatus, acaoEditar, acaoExcluir);
+        if (podeFinanceiro) {
+          primary = {
+            id: "ajustar_orcamento_vencido",
+            label: "Ajustar Orçamento",
+            icon: <RefreshCw className="h-3.5 w-3.5" />,
+            variant: "default",
+            className: classeAcaoPrincipal,
+            onClick: () => void abrirMudarStatus(eq, "AGUARDANDO_APROVACAO"),
+          };
+          secondary = {
+            id: "reenviar_orcamento",
+            label: "Reenviar",
+            icon: <Send className="h-3.5 w-3.5" />,
+            variant: "outline",
+            onClick: () => void abrirMudarStatus(eq, "AGUARDANDO_APROVACAO"),
+          };
+          overflow.push(acaoStatus);
+        } else {
+          primary = acaoStatus;
+        }
+        overflow.push(acaoEditar, ...(podeExcluir ? [acaoExcluir] : []));
         break;
       default:
         primary = acaoStatus;
@@ -2167,7 +2292,7 @@ export default function Equipamentos() {
             onClick: () => void abrirMudarStatus(eq),
           };
         }
-        overflow.push(acaoEditar, acaoExcluir);
+        overflow.push(acaoEditar, ...(podeExcluir ? [acaoExcluir] : []));
         break;
     }
 
@@ -2177,7 +2302,7 @@ export default function Equipamentos() {
         editarIndex >= 0 ? editarIndex : overflow.length,
         0,
         acaoOrcamentoPdf,
-        acaoAlterarOrcamento,
+        ...(podeAlterarOrcamento ? [acaoAlterarOrcamento] : []),
       );
     }
     if (["APROVADO", "EM_MANUTENCAO", "AGUARDANDO_PECA", "PRONTO"].includes(eq.status)) {
@@ -2240,7 +2365,7 @@ export default function Equipamentos() {
           <div>
             <p className="text-sm font-medium mb-2">Serviços</p>
             <div className="space-y-1">{servs.map(s => (
-              <div key={s.id} className="flex justify-between text-sm border-b pb-1"><span>{s.descricao}</span><span className="font-medium">R$ {s.valor.toFixed(2)}</span></div>
+              <div key={s.id} className="flex justify-between text-sm border-b pb-1"><span>{s.descricao}</span><span className="font-medium">{formatCurrency(s.valor)}</span></div>
             ))}</div>
           </div>
         )}
@@ -2248,15 +2373,15 @@ export default function Equipamentos() {
           <div>
             <p className="text-sm font-medium mb-2">Peças</p>
             <div className="space-y-1">{pcs.map(p => (
-              <div key={p.id} className="flex justify-between text-sm border-b pb-1"><span>{p.nome} (x{p.quantidade})</span><span className="font-medium">R$ {p.valorTotal.toFixed(2)}</span></div>
+              <div key={p.id} className="flex justify-between text-sm border-b pb-1"><span>{p.nome} (x{p.quantidade})</span><span className="font-medium">{formatCurrencyOrMissing(p.valorTotal)}</span></div>
             ))}</div>
           </div>
         )}
         <Card><CardContent className="pt-4">
-          <div className="flex justify-between text-sm"><span>Mão de obra:</span><span>R$ {(v.custo_estimado_mao_obra || 0).toFixed(2)}</span></div>
-          <div className="flex justify-between text-sm"><span>Peças:</span><span>R$ {(v.custo_estimado_pecas || 0).toFixed(2)}</span></div>
+          <div className="flex justify-between text-sm"><span>Mão de obra:</span><span>{formatCurrency(v.custo_estimado_mao_obra || 0)}</span></div>
+          <div className="flex justify-between text-sm"><span>Peças:</span><span>{formatCurrency(v.custo_estimado_pecas || 0)}</span></div>
           <hr className="my-2" />
-          <div className="flex justify-between font-bold"><span>Total:</span><span>R$ {(v.custo_total || 0).toFixed(2)}</span></div>
+          <div className="flex justify-between font-bold"><span>Total:</span><span>{formatCurrency(v.custo_total || 0)}</span></div>
         </CardContent></Card>
         {v.observacoes && <div className="text-sm"><p className="text-muted-foreground">Obs:</p><p>{v.observacoes}</p></div>}
       </div>
@@ -2436,7 +2561,7 @@ export default function Equipamentos() {
                           {(eq.status === "AGUARDANDO_APROVACAO" || eq.status === "ORCAMENTO_VENCIDO") &&
                             eq.valor_orcamento != null && eq.valor_orcamento > 0 && (
                               <div className="inline-flex max-w-full items-center truncate rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-xs font-medium text-amber-900">
-                                Orçamento: R$ {eq.valor_orcamento.toFixed(2)}
+                                Orçamento: {formatCurrency(eq.valor_orcamento)}
                               </div>
                             )}
                           {eq.status === "AGUARDANDO_APROVACAO" &&
@@ -2906,9 +3031,9 @@ export default function Equipamentos() {
                     <Card>
                       <CardHeader className="py-3"><CardTitle className="text-sm">Orçamento</CardTitle></CardHeader>
                       <CardContent className="text-sm space-y-1">
-                        <p>Valor: <strong>R$ {selecionado.valor_orcamento?.toFixed(2)}</strong></p>
-                        {selecionado.prazo_aprovacao && <p>Prazo: {new Date(selecionado.prazo_aprovacao).toLocaleDateString("pt-BR")}</p>}
-                        {selecionado.valor_final != null && <p>Valor final: <strong>R$ {selecionado.valor_final.toFixed(2)}</strong></p>}
+                        <p>Valor: <strong>{formatCurrency(selecionado.valor_orcamento)}</strong></p>
+                        {selecionado.prazo_aprovacao && <p>Prazo: {formatDatePtBr(selecionado.prazo_aprovacao)}</p>}
+                        {selecionado.valor_final != null && <p>Valor final: <strong>{formatCurrency(selecionado.valor_final)}</strong></p>}
                       </CardContent>
                     </Card>
                   )}
@@ -2995,7 +3120,8 @@ export default function Equipamentos() {
             </DialogTitle>
           </DialogHeader>
           {selecionado && (
-            <div className="min-h-0 space-y-4 overflow-y-auto pr-1">
+            <>
+            <div className="min-h-0 flex-1 space-y-4 overflow-y-auto pr-1">
               {!ajusteOrcamentoSemMudancaStatus && (
                 <>
                   <div className="flex items-center gap-2">
@@ -3085,20 +3211,24 @@ export default function Equipamentos() {
                       <div className="rounded-md border bg-muted/30 px-3 py-2 text-sm">
                         <p className="text-xs text-muted-foreground">Valor original (verificação)</p>
                         <p className="font-semibold">
-                          {valorOrcamentoOriginal != null ? `R$ ${valorOrcamentoOriginal.toFixed(2)}` : "—"}
+                          {valorOrcamentoOriginal != null ? formatCurrency(valorOrcamentoOriginal) : "—"}
                         </p>
                       </div>
                       <div className="rounded-md border bg-blue-50 px-3 py-2 text-sm text-blue-900">
                         <p className="text-xs text-blue-700">Valor atual antes do ajuste</p>
                         <p className="font-semibold">
-                          {valorOrcamentoAnterior != null ? `R$ ${valorOrcamentoAnterior.toFixed(2)}` : "—"}
+                          {valorOrcamentoAnterior != null ? formatCurrency(valorOrcamentoAnterior) : "—"}
                         </p>
                       </div>
                     </div>
                   )}
-                  <div className="space-y-2"><Label>Valor Orçamento (R$)</Label><Input data-testid="valor-orcamento-input" type="number" step="0.01" value={valorOrcamento || ""} onChange={e => setValorOrcamento(Number(e.target.value))} /></div>
+                  <div className="space-y-2"><Label htmlFor="valor-orcamento-input">Valor Orçamento (R$)</Label><ValorDecimalInput id="valor-orcamento-input" data-testid="valor-orcamento-input" required value={Number(valorOrcamento) || 0} onValueChange={setValorOrcamento} onValidityChange={setValorOrcamentoValido} />
+                    {Number(valorOrcamento) === 0 && !totalOrcamentoAjusteValido(0, osSomenteGarantia(servicosAjuste), selecionado.status, selecionado.valor_orcamento) && (
+                      <p className="text-xs text-red-600">{mensagemAjusteTotalZero(selecionado.status, selecionado.valor_orcamento)}</p>
+                    )}
+                  </div>
                   {(!ajusteOrcamentoSemMudancaStatus || selecionado.status === "AGUARDANDO_APROVACAO") && (
-                    <div className="space-y-2"><Label>Prazo Aprovação</Label><Input type="date" min={new Date().toLocaleDateString("en-CA")} value={prazoAprovacao} onChange={e => setPrazoAprovacao(e.target.value)} /></div>
+                    <div className="space-y-2"><Label>Prazo Aprovação</Label><DateIsoInput min={new Date().toLocaleDateString("en-CA")} value={prazoAprovacao} onValueChange={setPrazoAprovacao} /></div>
                   )}
                   <div className="space-y-2">
                     <Label htmlFor="observacoes-ajuste">Observações</Label>
@@ -3130,7 +3260,7 @@ export default function Equipamentos() {
                   )}
                   {valorOrcamentoAnterior != null && valorOrcamento !== valorOrcamentoAnterior && (
                     <p className="text-xs text-amber-700">
-                      Novo valor em negociação: R$ {valorOrcamento.toFixed(2)} (antes: R$ {valorOrcamentoAnterior.toFixed(2)}).
+                      Novo valor em negociação: {formatCurrency(valorOrcamento)} (antes: {formatCurrency(valorOrcamentoAnterior)}).
                     </p>
                   )}
                   {verificacaoAjusteOrcamento && (
@@ -3160,7 +3290,7 @@ export default function Equipamentos() {
                           <p className="text-xs text-amber-800">Vincule cada peça a um serviço para permitir aprovação parcial e baixa automática. Remova a linha antiga depois de vinculá-la.</p>
                           {pecasLegadasAjuste.map((peca, indice) => (
                             <div key={`${peca.id}-${indice}`} className="flex items-center justify-between gap-2 text-sm">
-                              <span>{peca.nome} × {peca.quantidade} · R$ {peca.valorTotal.toFixed(2)}</span>
+                              <span>{peca.nome} × {peca.quantidade} · {formatCurrencyOrMissing(peca.valorTotal)}</span>
                               <Button type="button" variant="ghost" size="sm" onClick={() => setPecasLegadasAjuste((atual) => atual.filter((_, i) => i !== indice))}>Remover linha antiga</Button>
                             </div>
                           ))}
@@ -3175,11 +3305,11 @@ export default function Equipamentos() {
                     <div className="grid gap-2 sm:grid-cols-2">
                       <div className="rounded-md border bg-muted/30 px-3 py-2 text-sm">
                         <p className="text-xs text-muted-foreground">Valor original (verificação)</p>
-                        <p className="font-semibold">R$ {valorOrcamentoOriginal.toFixed(2)}</p>
+                        <p className="font-semibold">{formatCurrency(valorOrcamentoOriginal)}</p>
                       </div>
                       <div className="rounded-md border bg-emerald-50 px-3 py-2 text-sm text-emerald-900">
                         <p className="text-xs text-emerald-700">Novo valor calculado</p>
-                        <p className="font-semibold">R$ {valorOrcamento.toFixed(2)}</p>
+                        <p className="font-semibold">{formatCurrency(valorOrcamento)}</p>
                       </div>
                     </div>
                   )}
@@ -3190,7 +3320,7 @@ export default function Equipamentos() {
                   <div className="rounded-md border bg-accent/40 px-3 py-2 text-sm">
                     Valor padrão de entrega (verificação técnica):{" "}
                     <strong>
-                      R$ {(valorFinalSugerido ?? valorFinal ?? 0).toFixed(2)}
+                      {formatCurrency(valorFinalSugerido ?? valorFinal ?? 0)}
                     </strong>
                   </div>
                   <label className="flex items-center gap-2 text-sm">
@@ -3203,11 +3333,9 @@ export default function Equipamentos() {
                   </label>
                   <div className="space-y-2">
                     <Label>Valor Final Pago (R$)</Label>
-                    <Input
-                      type="number"
-                      step="0.01"
-                      value={valorFinal || ""}
-                      onChange={e => setValorFinal(Number(e.target.value))}
+                    <ValorDecimalInput
+                      value={Number(valorFinal) || 0}
+                      onValueChange={setValorFinal}
                       disabled={!acordoExcecaoEntrega}
                     />
                   </div>
@@ -3292,13 +3420,14 @@ export default function Equipamentos() {
                   </div>
                 </div>
               )}
-              <DialogFooter className="sticky bottom-0 bg-background pt-3">
-                <DialogClose asChild><Button variant="outline">Cancelar</Button></DialogClose>
-                <Button onClick={iniciarConfirmacaoStatus} disabled={salvando || (!novoStatus && !ajusteOrcamentoSemMudancaStatus)}>
+            </div>
+            <DialogFooter className="shrink-0 bg-background pt-3">
+                <Button type="button" variant="outline" onClick={() => setStatusDialogOpen(false)}>Cancelar</Button>
+                <Button type="button" onClick={iniciarConfirmacaoStatus} disabled={salvando || (!novoStatus && !ajusteOrcamentoSemMudancaStatus) || (((novoStatus === "AGUARDANDO_APROVACAO" && !reabreOrcamentoSemAjuste(selecionado.status, novoStatus)) || ajusteOrcamentoSemMudancaStatus) && !valorOrcamentoValido) || (novoStatus === "AGUARDANDO_APROVACAO" && !reabreOrcamentoSemAjuste(selecionado.status, novoStatus) && !totalOrcamentoAprovacaoValido(Number(valorOrcamento))) || (ajusteOrcamentoSemMudancaStatus && !totalOrcamentoAjusteValido(Number(valorOrcamento), osSomenteGarantia(servicosAjuste), selecionado.status, selecionado.valor_orcamento))}>
                   {salvando ? "Salvando..." : correcaoStatus ? "Corrigir status" : "Confirmar"}
                 </Button>
               </DialogFooter>
-            </div>
+            </>
           )}
         </DialogContent>
       </Dialog>

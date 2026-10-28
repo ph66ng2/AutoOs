@@ -2,6 +2,8 @@ import { useState } from "react";
 import { Plus, Trash2, Search } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { ValorDecimalInput } from "@/components/ui/valor-decimal-input";
+import { formatCurrency, formatCurrencyOrMissing } from "@/lib/utils";
 import type { ServicoCatalogo, ServicoNecessario } from "@/types";
 import { PecasDoServico } from "@/components/equipamentos/PecasDoServico";
 
@@ -101,7 +103,7 @@ export function AjusteOrcamentoServicos({
                         <span className="font-medium">{item.nome}</span>
                         <span className="text-muted-foreground">
                           {" "}
-                          — R$ {Number(item.preco_padrao || 0).toFixed(2)}
+                          — {formatCurrencyOrMissing(Number(item.preco_padrao))}
                         </span>
                       </button>
                     ))}
@@ -116,13 +118,12 @@ export function AjusteOrcamentoServicos({
                 </div>
               )}
             </div>
-            <Input
-              type="number"
+            <ValorDecimalInput
               min={0}
-              step="0.01"
               placeholder="Valor"
-              value={Number.isFinite(Number(s.valor)) ? Number(s.valor) : ""}
-              onChange={(e) => atualizarServico(s.id, { valor: Number(e.target.value) })}
+              aria-label="Valor do serviço"
+              value={Number(s.valor) || 0}
+              onValueChange={(valor) => atualizarServico(s.id, { valor })}
               className="w-28 text-sm"
             />
             <Button
@@ -147,7 +148,7 @@ export function AjusteOrcamentoServicos({
       {servicos.length > 0 && (
         <div className="flex justify-between text-sm font-medium pt-1 border-t">
           <span>Total serviços</span>
-          <span>R$ {total.toFixed(2)}</span>
+          <span>{formatCurrency(total)}</span>
         </div>
       )}
     </div>

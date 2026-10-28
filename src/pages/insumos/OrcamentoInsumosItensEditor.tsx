@@ -14,6 +14,7 @@ import {
   type TotaisOrcamentoInsumos,
 } from "@/lib/orcamento-insumos";
 import { formatCurrency } from "@/lib/utils";
+import { ValorDecimalInput } from "@/components/ui/valor-decimal-input";
 import { categoriaProdutoLabel } from "@/pages/insumos/insumos-page-constants";
 import type { Produto } from "@/types";
 
@@ -211,14 +212,12 @@ export function OrcamentoInsumosItensEditor({
                     )}
                   </td>
                   <td className="px-2 py-1">
-                    <Input
-                      type="number"
+                    <ValorDecimalInput
                       min={0}
-                      step="0.01"
                       aria-label={`Valor unitário de ${linha.descricao}`}
-                      value={Number.isFinite(linha.valor_unitario) ? linha.valor_unitario : ""}
+                      value={Number.isFinite(linha.valor_unitario) ? linha.valor_unitario : 0}
                       disabled={disabled}
-                      onChange={(event) => alterar(linha.produto_id, { valor_unitario: Number(event.target.value) || 0 })}
+                      onValueChange={(valor) => alterar(linha.produto_id, { valor_unitario: valor })}
                       className="h-8 px-2 text-right"
                     />
                   </td>

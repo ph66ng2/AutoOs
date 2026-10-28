@@ -5,6 +5,7 @@ import {
   PROFILE_PRESETS,
   montarPresets,
 } from "@/lib/profile-presets";
+import { perfilCompativel056 } from "@/lib/compatibilidade-056";
 import { SENSITIVE_PERMISSION_LABELS } from "@/types";
 
 describe("permissão MANAGE_STATUS_LINKS", () => {
@@ -36,5 +37,35 @@ describe("PREPARE_QUOTES nos modelos", () => {
 
   it("Administrador sempre tem PREPARE_QUOTES", () => {
     expect(find(montarPresets(false), "ADMIN").permissions).toContain("PREPARE_QUOTES");
+  });
+});
+
+describe("trava de compatibilidade 0.5.6 nos modelos", () => {
+  const find = (list: ReturnType<typeof montarPresets>, role: string) =>
+    list.find((p) => p.role === role)!;
+
+  it("Recepção indisponível com motivo e sem permissão alguma", () => {
+    const recepcao = find(montarPresets(false, true), "ATENDENTE");
+    expect(recepcao.disponivel).toBe(false);
+    expect(recepcao.motivoIndisponivel).toBeTruthy();
+    expect(recepcao.permissions).toEqual([]);
+  });
+
+  it("todo modelo disponível (exceto Personalizado, que a tela impede de salvar vazio) é compatível", () => {
+    for (const preset of montarPresets(false, true)) {
+      if (!preset.disponivel || preset.role === "CUSTOM") continue;
+      expect(perfilCompativel056(preset.role, preset.permissions, true).ok).toBe(true);
+    }
+    for (const preset of PROFILE_PRESETS) {
+      if (preset.disponivel && preset.role !== "CUSTOM") {
+        expect(perfilCompativel056(preset.role, preset.permissions).ok).toBe(true);
+      }
+    }
+  });
+
+  it("com a trava desligada Recepção volta a ficar disponível", () => {
+    const recepcao = find(montarPresets(false, false), "ATENDENTE");
+    expect(recepcao.disponivel).toBe(true);
+    expect(recepcao.motivoIndisponivel).toBeUndefined();
   });
 });
