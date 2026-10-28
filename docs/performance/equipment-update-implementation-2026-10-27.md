@@ -14,7 +14,7 @@ Complementa o diagnóstico `equipment-update-2026-10-27.md` e as otimizações d
 
 ## Cloudflare e compatibilidade
 
-`photo_server.rs`, PhotoUploadDialog, geração de QR, localização/execução do cloudflared e o binário externo não foram alterados. A assinatura da função raw de recebimento continua igual. O novo parâmetro `expectedImageIds` é opcional para compatibilidade dos chamadores existentes.
+`photo_server.rs`, PhotoUploadDialog, geração de QR, localização/execução do cloudflared e o binário externo não foram alterados. A assinatura da função raw de recebimento continua igual. O parâmetro `expectedImageIds` é obrigatório na substituição de fotos: o frontend envia uma lista vazia na criação e os IDs do snapshot na edição ou entrega.
 
 Nenhuma migration, mudança de formato das fotos, backend SaaS ou realtime geral entre PCs foi adicionada. O formato storage_path/data URL continua igual.
 
