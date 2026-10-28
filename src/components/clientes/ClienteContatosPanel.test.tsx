@@ -79,6 +79,58 @@ describe("ClienteContatosPanel", () => {
     fireEvent.change(screen.getByLabelText("Nome *"), { target: { value: "Ana Editada" } });
     fireEvent.click(screen.getByRole("button", { name: "Salvar" }));
     await waitFor(() => expect(mockAtualizar).toHaveBeenCalledWith(20, expect.objectContaining({ nome: "Ana Editada" })));
+    expect(mockAtualizar.mock.calls[0]?.[1]).not.toHaveProperty("preservar_identidade_portal", true);
+  });
+
+  it("grava nome e e-mail ao editar contato com acesso ao portal", async () => {
+    mockListar.mockResolvedValue([{ ...contato, portal_acesso: "DECIDIR" }]);
+    render(<ClienteContatosPanel cliente={cliente} empresaId={7} />);
+    expect(await screen.findByText("Ana")).toBeInTheDocument();
+
+    fireEvent.click(screen.getAllByRole("button", { name: /editar/i })[0]!);
+    fireEvent.change(screen.getByLabelText("Nome *"), { target: { value: "Ana Portal Editada" } });
+    fireEvent.change(screen.getByLabelText("E-mail"), { target: { value: "ana.nova@empresa.test" } });
+    fireEvent.click(screen.getByRole("button", { name: "Salvar" }));
+
+    await waitFor(() => expect(mockAtualizar).toHaveBeenCalledWith(20, expect.objectContaining({
+      nome: "Ana Portal Editada",
+      email: "ana.nova@empresa.test",
+    })));
+    expect(mockAtualizar.mock.calls[0]?.[1]).not.toHaveProperty("preservar_identidade_portal", true);
+  });
+
+  it("PJ sem celular não cadastra contato só com telefone fixo", async () => {
+    mockListar.mockResolvedValue([]);
+    render(<ClienteContatosPanel cliente={cliente} empresaId={7} />);
+    fireEvent.click(await screen.findByRole("button", { name: /novo contato/i }));
+    fireEvent.change(screen.getByLabelText("Nome *"), { target: { value: "Bruno" } });
+    fireEvent.change(screen.getByLabelText("Telefone"), { target: { value: "(71) 3333-4444" } });
+    fireEvent.click(screen.getByRole("button", { name: "Cadastrar" }));
+    await waitFor(() => {
+      expect(screen.getByText("Informe o celular com DDD e o 9 (11 dígitos).")).toBeInTheDocument();
+    });
+    expect(mockCriar).not.toHaveBeenCalled();
+  });
+
+  it("PJ antigo só com contato fixo permite editar nome e o próprio fixo", async () => {
+    const contatoFixo: ClienteContato = {
+      ...contato,
+      nome: "Recepção",
+      telefone: "7133334444",
+    };
+    mockListar.mockResolvedValue([contatoFixo]);
+    mockAtualizar.mockResolvedValue({ ...contatoFixo, nome: "Recepção 2", telefone: "7133335555" });
+    render(<ClienteContatosPanel cliente={cliente} empresaId={7} />);
+    expect(await screen.findByText("Recepção")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /editar/i }));
+    fireEvent.change(screen.getByLabelText("Nome *"), { target: { value: "Recepção 2" } });
+    fireEvent.change(screen.getByLabelText("Telefone"), { target: { value: "(71) 3333-5555" } });
+    fireEvent.click(screen.getByRole("button", { name: "Salvar" }));
+    await waitFor(() => expect(mockAtualizar).toHaveBeenCalledWith(20, expect.objectContaining({
+      nome: "Recepção 2",
+      telefone: "7133335555",
+    })));
+    expect(screen.queryByText("Informe o celular com DDD e o 9 (11 dígitos).")).not.toBeInTheDocument();
   });
 
   it("confirma inativação e recarrega a lista ativa", async () => {

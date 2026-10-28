@@ -252,7 +252,7 @@ async fn main() -> Result<()> {
             pagamento:FormaPagamento { codigo:FormaPagamentoCodigo::Pix,detalhe:None },servicos_aprovados:vec!["a".into()],
             aprovado:Some(true),resposta_esperada_id:Some(resposta),motivo_divergencia:None }).await.map_err(|e| anyhow!(e))
     };
-    let opcoes = |modo: verificacoes::ModoAjusteAprovado, devolver: bool| Some(verificacoes::OpcoesAjusteOrcamento { modo_aprovado: Some(modo), devolver_estoque: devolver, confirmar_resposta_pendente: false });
+    let opcoes = |modo: verificacoes::ModoAjusteAprovado, devolver: bool| Some(verificacoes::OpcoesAjusteOrcamento { modo_aprovado: Some(modo), devolver_estoque: devolver, confirmar_resposta_pendente: false, confirmar_garantia: false });
 
     // (a) Aprovado, ajuste SEM nova aprovação: continua aprovado, o valor novo aparece no portal.
     let eq_a = novo_orcamento(&pool, empresa, cliente, &suffix, "TA", &services).await?;
@@ -379,6 +379,28 @@ async fn main() -> Result<()> {
     assert_eq!(ultima_v1, "DESFEITA");
     let depois_e = orcamento_decisao::analisar_ajuste_orcamento(eq_e).await.map_err(|e| anyhow!(e))?;
     assert!(depois_e.resposta_pendente.is_none() && depois_e.versao_aberta == Some(2));
+
+    let produto_g = produtos::criar_produto(ProdutoInput {
+        codigo: format!("G-{suffix}"), nome: "Peça garantia".into(), categoria: "PEÇA".into(),
+        quantidade_estoque: 5, preco_custo: 0.0, preco_venda: 0.0, ..ProdutoInput::default()
+    }).await.map_err(|e| anyhow!(e))?;
+    let eq_g: i32 = sqlx::query_scalar("INSERT INTO equipamentos(serial_number,marca,modelo,tipo,data_entrada,defeito_relatado,empresa_id,status) VALUES ($1,'Zebra','GC420t','Impressora','2026-09-27','Garantia',$2,'EM_VERIFICACAO') RETURNING id")
+        .bind(format!("G-{suffix}")).bind(empresa).fetch_one(&pool).await?;
+    let services_g = serde_json::json!([{"id":"garantia","descricao":"Atendimento em garantia","valor":0,"pecas":[{"produto_id":produto_g.id,"quantidade":2,"nome":"Peça garantia","valor_unitario":0}]}]);
+    verificacoes::salvar_verificacao_tecnica(VerificacaoInput {
+        equipamento_id: eq_g, empresa_id: Some(empresa), tecnico_nome: "Teste".into(), problema_relatado: "Garantia".into(),
+        servicos_necessarios: Some(services_g.to_string()), pecas_necessarias: Some("[]".into()),
+        custo_total: Some(0.0), concluida: Some(true), confirmar_garantia: true, ..VerificacaoInput::default()
+    }).await.map_err(|e| anyhow!(e))?;
+    let status_g: String = sqlx::query_scalar("SELECT status FROM equipamentos WHERE id=$1").bind(eq_g).fetch_one(&pool).await?;
+    assert_eq!(status_g, "APROVADO");
+    assert_eq!(produtos::buscar_produto(produto_g.id).await.map_err(|e| anyhow!(e))?.quantidade_estoque, Some(3));
+    let decisao_g: String = sqlx::query_scalar("SELECT d.decisao FROM orcamento_servicos_decisao d JOIN verificacoes v ON v.id=d.verificacao_id WHERE v.equipamento_id=$1 AND d.servico_id='garantia'")
+        .bind(eq_g).fetch_one(&pool).await?;
+    assert_eq!(decisao_g, "APROVADO");
+    let consumo_g: (i32, i32) = sqlx::query_as("SELECT c.quantidade_aprovada, c.quantidade_baixada FROM orcamento_consumos c JOIN verificacoes v ON v.id=c.verificacao_id WHERE v.equipamento_id=$1 AND c.servico_id='garantia'")
+        .bind(eq_g).fetch_one(&pool).await?;
+    assert_eq!(consumo_g, (2, 2));
 
     println!("OK (T7 incluído: ajuste de orçamento aprovado/aguardando e portal automático): catálogo, tenant, aprovação parcial, repetição, reposição, pendências, ajuste confirmado, concorrência otimista, reprovação conferência da resposta do cliente e correção guiada da decisão.");
     Ok(())

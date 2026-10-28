@@ -9,7 +9,15 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import {
+  AlertDialog,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Textarea } from "@/components/ui/textarea";
 import { db } from "@/lib/db";
 import { montarLinkEmail, montarLinkWhatsapp } from "@/lib/contato-cliente";
@@ -143,26 +151,42 @@ export function EnvioManualOrcamentoDialog({ envio, onFechar, onGerarNovaSenha }
         </DialogContent>
       </Dialog>
 
-      <ConfirmDialog
-        open={confirmarFechar}
-        onOpenChange={setConfirmarFechar}
-        title="A senha não aparece de novo."
-        description={
-          podeGerar
-            ? "Se fechar agora, o destinatário não terá como ver a senha. Gere uma nova senha ou feche mesmo assim."
-            : "Se fechar agora, o destinatário não terá como ver a senha."
-        }
-        confirmLabel={podeGerar ? "Gerar nova senha" : "Fechar mesmo assim"}
-        cancelLabel="Voltar"
-        onConfirm={() => {
-          setConfirmarFechar(false);
-          if (podeGerar) {
-            void gerarNovaSenha();
-          } else {
-            onFechar();
-          }
-        }}
-      />
+      <AlertDialog open={confirmarFechar} onOpenChange={setConfirmarFechar}>
+        <AlertDialogContent className="sm:max-w-md">
+          <AlertDialogHeader>
+            <AlertDialogTitle>A senha não aparece de novo.</AlertDialogTitle>
+            <AlertDialogDescription>
+              {podeGerar
+                ? "Copie ou envie antes de fechar, ou gere uma nova senha."
+                : "Copie ou envie antes de fechar."}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter className="gap-2">
+            <AlertDialogCancel>Voltar</AlertDialogCancel>
+            <Button
+              variant="ghost"
+              onClick={() => {
+                setConfirmarFechar(false);
+                onFechar();
+              }}
+            >
+              Fechar mesmo assim
+            </Button>
+            {podeGerar && (
+              <Button
+                variant="secondary"
+                disabled={gerando}
+                onClick={() => {
+                  setConfirmarFechar(false);
+                  void gerarNovaSenha();
+                }}
+              >
+                Gerar nova senha
+              </Button>
+            )}
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </>
   );
 }

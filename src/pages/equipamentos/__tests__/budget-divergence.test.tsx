@@ -19,6 +19,8 @@ const mockInvoke = vi.hoisted(() => vi.fn());
 const mockListen = vi.hoisted(() => vi.fn(() => Promise.resolve(vi.fn())));
 const mockNavigate = vi.hoisted(() => vi.fn());
 
+const mockPermissions = vi.hoisted(() => ({ list: ["FINANCIAL_ACTIONS"] as string[] }));
+const mockEnsureSensitiveAccess = vi.hoisted(() => vi.fn().mockResolvedValue(true));
 const mockAtualizarServicosVerificacao = vi.hoisted(() => vi.fn());
 const mockAnalisarAjusteOrcamento = vi.hoisted(() => vi.fn());
 const mockAprovarOrcamento = vi.hoisted(() => vi.fn());
@@ -70,8 +72,9 @@ vi.mock("@/hooks/useStatusEquipamento", () => ({
 
 vi.mock("@/hooks/useSensitiveAccess", () => ({
   useSensitiveAccess: () => ({
-    ensureSensitiveAccess: vi.fn().mockResolvedValue(true),
-    status: { active_profile_id: 1, unlocked: true, permissions: ["FINANCIAL_ACTIONS"] },
+    ensureSensitiveAccess: (...args: unknown[]) => mockEnsureSensitiveAccess(...args),
+    status: { active_profile_id: 1, unlocked: true, permissions: mockPermissions.list },
+    hasPermission: (permission: string) => mockPermissions.list.includes(permission),
   }),
 }));
 
@@ -298,6 +301,8 @@ describe("Equipamentos — Budget Divergence & Audit", () => {
       data: { ...equipamentoVerificado, atualizado_em: "2024-01-15T10:00:01Z" },
     });
     mockSubstituirImagensEquipamento.mockResolvedValue([]);
+    mockPermissions.list = ["FINANCIAL_ACTIONS"];
+    mockEnsureSensitiveAccess.mockResolvedValue(true);
     equipamentoVerificado.status = "VERIFICADO";
     equipamentoVerificado.valor_orcamento = 150;
     mockListarImagensEquipamento.mockResolvedValue([]);
@@ -356,6 +361,25 @@ describe("Equipamentos — Budget Divergence & Audit", () => {
 
   // ─── Test 1: Sem divergência — fluxo normal ──────────
 
+  it("o Cancelar fecha o ajuste de orçamento", async () => {
+    mockBuscarVerificacao.mockResolvedValue(makeVerificacao());
+    await abrirDialogoAjusteOrcamento();
+    fireEvent.click(screen.getByRole("button", { name: "Cancelar" }));
+    await waitFor(() => {
+      expect(screen.queryByText(/Ajuste de Orçamento/i)).not.toBeInTheDocument();
+    });
+  });
+
+  it("aceita milhar e vírgula no valor do orçamento", async () => {
+    mockBuscarVerificacao.mockResolvedValue(makeVerificacao());
+    await abrirDialogoAjusteOrcamento();
+    const input = screen.getByTestId("valor-orcamento-input");
+    await act(async () => {
+      fireEvent.change(input, { target: { value: "1.234,50" } });
+    });
+    expect(screen.getByText(/Novo valor em negociação: R\$\s*1\.234,50/)).toBeInTheDocument();
+  });
+
   it("não exibe diálogo de divergência quando soma coincide com valor total", async () => {
     mockBuscarVerificacao.mockResolvedValue(makeVerificacao());
     await abrirDialogoAjusteOrcamento();
@@ -368,6 +392,27 @@ describe("Equipamentos — Budget Divergence & Audit", () => {
       expect(screen.getByTestId("confirm-dialog")).toBeInTheDocument();
     });
     expect(screen.getByTestId("confirm-title")).toHaveTextContent(/Resumo do Ajuste/i);
+    expect(screen.getByTestId("confirm-description")).toHaveTextContent(/Valor original:/);
+    expect(screen.getByTestId("confirm-description")).toHaveTextContent(/Novo valor:/);
+    expect(screen.getByTestId("confirm-description")).toHaveTextContent(/Diferença:/);
+    expect(screen.getByTestId("confirm-description")).toHaveTextContent(/150,00/);
+  });
+
+  it("resumo usa o valor atual vigente, não o original da verificação", async () => {
+    equipamentoVerificado.valor_orcamento = 1300;
+    mockBuscarVerificacao.mockResolvedValue(makeVerificacao({
+      servicos: [{ id: "s1", descricao: "Troca de fonte", valor: 1300 }],
+      pecas: [],
+      custo_total: 1234.5,
+    }));
+    await abrirDialogoAjusteOrcamento();
+    await clicarConfirmarStatus();
+    await waitFor(() => {
+      expect(screen.getByTestId("confirm-dialog")).toBeInTheDocument();
+    });
+    const texto = screen.getByTestId("confirm-description").textContent || "";
+    expect(texto).toMatch(/Valor original:[\s\S]*1\.300,00/);
+    expect(texto).not.toMatch(/Valor original:[\s\S]*1\.234,50/);
   });
 
   // ─── Test 2: Divergência detectada ───────────────────
@@ -384,8 +429,11 @@ describe("Equipamentos — Budget Divergence & Audit", () => {
       expect(screen.getByTestId("confirm-dialog")).toBeInTheDocument();
     });
 
-    expect(screen.getByTestId("confirm-title")).toHaveTextContent(/Mudar Valor Total do Orçamento para/i);
+    expect(screen.getByTestId("confirm-title")).toHaveTextContent(/Valor digitado/);
+    expect(screen.getByTestId("confirm-title")).toHaveTextContent(/200,00/);
     expect(screen.getByTestId("confirm-title")).toHaveTextContent(/150,00/);
+    expect(screen.getByTestId("confirm-description")).toHaveTextContent(/Sim grava a soma/);
+    expect(screen.getByTestId("confirm-description")).toHaveTextContent(/Não grava o valor digitado/);
     expect(screen.getByTestId("confirm-cancel")).toHaveTextContent(/^Não$/);
     expect(screen.getByTestId("confirm-action")).toHaveTextContent(/^Sim$/);
   });
@@ -409,7 +457,7 @@ describe("Equipamentos — Budget Divergence & Audit", () => {
 
     // O input de valor deve ter sido corrigido para 150
     const input = screen.getByTestId("valor-orcamento-input") as HTMLInputElement;
-    expect(Number(input.value)).toBe(150);
+    expect(input.value).toBe("150,00");
 
     await waitFor(() => {
       expect(screen.getByTestId("confirm-dialog")).toBeInTheDocument();
@@ -471,6 +519,18 @@ describe("Equipamentos — Budget Divergence & Audit", () => {
     const call = mockAtualizarServicosVerificacao.mock.calls[0];
     const input = call[0];
     expect(input.divergence).toBe(false);
+    expect(input.custo_total).toBe(150);
+    await waitFor(() => {
+      expect(mockAtualizarStatusEquipamento).toHaveBeenCalledWith(
+        10,
+        "AGUARDANDO_APROVACAO",
+        150,
+        undefined,
+        undefined,
+        "2024-01-15T10:00:01Z",
+        undefined,
+      );
+    });
   });
 
   // ─── Test 6: Histórico de Ajustes indicador ──────────
@@ -562,8 +622,9 @@ describe("Equipamentos — Budget Divergence & Audit", () => {
     await clicarConfirmarStatus();
 
     await waitFor(() => {
-      expect(screen.getByTestId("confirm-title")).toHaveTextContent(/Mudar Valor Total do Orçamento para/i);
+      expect(screen.getByTestId("confirm-title")).toHaveTextContent(/Valor digitado/);
     });
+    expect(screen.getByTestId("confirm-title")).toHaveTextContent(/250,00/);
     expect(screen.getByTestId("confirm-title")).toHaveTextContent(/100,00/);
     expect(screen.getByTestId("confirm-cancel")).toHaveTextContent(/^Não$/);
     expect(screen.getByTestId("confirm-action")).toHaveTextContent(/^Sim$/);
@@ -1063,5 +1124,227 @@ describe("Equipamentos — Budget Divergence & Audit", () => {
     } finally {
       mockEquipamentos.splice(mockEquipamentos.indexOf(equipamentoMaisNovo), 1);
     }
+  });
+
+  it("não envia orçamento com total 0,00 para AGUARDANDO_APROVACAO", async () => {
+    equipamentoVerificado.valor_orcamento = 0;
+    mockBuscarVerificacao.mockResolvedValue(makeVerificacao({ servicos: [], pecas: [], custo_total: 0 }));
+    await abrirDialogoAjusteOrcamento();
+    await alterarValorOrcamento(0);
+    expect(screen.getByRole("button", { name: /Confirmar/i })).toBeDisabled();
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: /Confirmar/i }));
+    });
+    expect(mockAtualizarServicosVerificacao).not.toHaveBeenCalled();
+    expect(mockAtualizarStatusEquipamento).not.toHaveBeenCalled();
+  });
+
+  it("Não na divergência não grava total 0 ao enviar para aprovação", async () => {
+    mockBuscarVerificacao.mockResolvedValue(makeVerificacao());
+    await abrirDialogoAjusteOrcamento();
+    await alterarValorOrcamento(0);
+    expect(screen.getByRole("button", { name: /Confirmar/i })).toBeDisabled();
+    await clicarConfirmarStatus();
+    expect(screen.queryByTestId("confirm-dialog")).not.toBeInTheDocument();
+    expect(mockAtualizarServicosVerificacao).not.toHaveBeenCalled();
+  });
+
+  it("bloqueia Confirmar quando o valor do orçamento obrigatório fica vazio", async () => {
+    mockBuscarVerificacao.mockResolvedValue(makeVerificacao());
+    await abrirDialogoAjusteOrcamento();
+    const input = screen.getByTestId("valor-orcamento-input");
+    await act(async () => {
+      fireEvent.change(input, { target: { value: "" } });
+    });
+    const confirmar = screen.getByRole("button", { name: /Confirmar/i });
+    expect(confirmar).toBeDisabled();
+    await act(async () => {
+      fireEvent.click(confirmar);
+    });
+    expect(mockAtualizarServicosVerificacao).not.toHaveBeenCalled();
+  });
+
+  it("esconde Aprovar e Reprovar sem a permissão Orçamentos e valores", async () => {
+    mockPermissions.list = [];
+    equipamentoVerificado.status = "AGUARDANDO_APROVACAO";
+    render(<Equipamentos />);
+    await waitFor(() => expect(screen.getByTestId("action-status")).toBeInTheDocument());
+    expect(screen.queryByTestId("action-aprovar")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("action-reprovar")).not.toBeInTheDocument();
+  });
+
+  it("esconde Alterar Orçamento, Enviar Orçamento e Excluir sem as permissões correspondentes", async () => {
+    mockPermissions.list = [];
+    equipamentoVerificado.status = "VERIFICADO";
+    const view = render(<Equipamentos />);
+    await waitFor(() => expect(screen.getByTestId("action-status")).toBeInTheDocument());
+    expect(screen.queryByTestId("action-enviar_orcamento")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("action-alterar_orcamento")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("action-excluir")).not.toBeInTheDocument();
+    view.unmount();
+
+    mockPermissions.list = ["PREPARE_QUOTES"];
+    const prepareView = render(<Equipamentos />);
+    await waitFor(() => expect(screen.getByTestId("action-enviar_orcamento")).toBeInTheDocument());
+    expect(screen.getByTestId("action-alterar_orcamento")).toBeInTheDocument();
+    expect(screen.queryByTestId("action-excluir")).not.toBeInTheDocument();
+    prepareView.unmount();
+
+    mockPermissions.list = ["DELETE_RECORDS"];
+    render(<Equipamentos />);
+    await waitFor(() => expect(screen.getByTestId("action-excluir")).toBeInTheDocument());
+    expect(screen.queryByTestId("action-enviar_orcamento")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("action-alterar_orcamento")).not.toBeInTheDocument();
+  });
+
+  it("PREPARE_QUOTES não mostra Aprovar nem Reprovar", async () => {
+    mockPermissions.list = ["PREPARE_QUOTES"];
+    equipamentoVerificado.status = "AGUARDANDO_APROVACAO";
+    render(<Equipamentos />);
+    await waitFor(() => expect(screen.getByTestId("action-alterar_orcamento")).toBeInTheDocument());
+    expect(screen.queryByTestId("action-aprovar")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("action-reprovar")).not.toBeInTheDocument();
+  });
+
+  it("PREPARE_QUOTES não mostra Alterar Orçamento em APROVADO", async () => {
+    mockPermissions.list = ["PREPARE_QUOTES"];
+    equipamentoVerificado.status = "APROVADO";
+    render(<Equipamentos />);
+    await waitFor(() => expect(screen.getByTestId("action-iniciar_manutencao")).toBeInTheDocument());
+    expect(screen.queryByTestId("action-alterar_orcamento")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("action-corrigir_decisao")).not.toBeInTheDocument();
+  });
+
+  it("Técnico sem financeiro não vê Reabrir, Ajustar vencido nem Corrigir decisão", async () => {
+    mockPermissions.list = [];
+    equipamentoVerificado.status = "REPROVADO";
+    const reprovado = render(<Equipamentos />);
+    await waitFor(() => expect(screen.getByTestId("action-status")).toBeInTheDocument());
+    expect(screen.queryByTestId("action-reabrir_orcamento")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("action-corrigir_decisao")).not.toBeInTheDocument();
+    reprovado.unmount();
+
+    equipamentoVerificado.status = "ORCAMENTO_VENCIDO";
+    render(<Equipamentos />);
+    await waitFor(() => expect(screen.getByTestId("action-status")).toBeInTheDocument());
+    expect(screen.queryByTestId("action-ajustar_orcamento_vencido")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("action-reenviar_orcamento")).not.toBeInTheDocument();
+  });
+
+  it("em AGUARDANDO_APROVACAO, Confirmar fica desabilitado com 0,00 mesmo só de garantia", async () => {
+    mockPermissions.list = ["FINANCIAL_ACTIONS"];
+    equipamentoVerificado.status = "AGUARDANDO_APROVACAO";
+    equipamentoVerificado.valor_orcamento = 80;
+    mockBuscarVerificacao.mockResolvedValue(makeVerificacao({
+      servicos: [{ id: "g1", descricao: "Garantia", valor: 0 }],
+      pecas: [],
+      custo_total: 0,
+    }));
+    render(<Equipamentos />);
+    await waitFor(() => expect(screen.getByTestId("action-alterar_orcamento")).toBeInTheDocument());
+    fireEvent.click(screen.getByTestId("action-alterar_orcamento"));
+    await waitFor(() => expect(screen.getByText(/O status atual do equipamento será mantido/i)).toBeInTheDocument());
+    await alterarValorOrcamento(0);
+    expect(screen.getByText(/não pode ficar com R\$ 0,00/i)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Confirmar/i })).toBeDisabled();
+    mockEnsureSensitiveAccess.mockClear();
+    await clicarConfirmarStatus();
+    expect(mockAtualizarServicosVerificacao).not.toHaveBeenCalled();
+  });
+
+  it("em APROVADO, Confirmar fica desabilitado com 0,00 se houver item cobrado e não grava", async () => {
+    equipamentoVerificado.status = "APROVADO";
+    mockBuscarVerificacao.mockResolvedValue(makeVerificacao());
+    render(<Equipamentos />);
+    await waitFor(() => expect(screen.getByTestId("action-alterar_orcamento")).toBeInTheDocument());
+    fireEvent.click(screen.getByTestId("action-alterar_orcamento"));
+    await waitFor(() => expect(screen.getByText(/O status atual do equipamento será mantido/i)).toBeInTheDocument());
+    await alterarValorOrcamento(0);
+    expect(screen.getByText(/Não é possível zerar um orçamento já aprovado e pago/i)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Confirmar/i })).toBeDisabled();
+    mockEnsureSensitiveAccess.mockClear();
+    await clicarConfirmarStatus();
+    expect(mockAtualizarServicosVerificacao).not.toHaveBeenCalled();
+    expect(mockEnsureSensitiveAccess).not.toHaveBeenCalled();
+  });
+
+  it("em VERIFICADO, ajuste só de garantia pede confirmação antes do PIN e cancelar não grava", async () => {
+    mockPermissions.list = ["FINANCIAL_ACTIONS"];
+    equipamentoVerificado.status = "VERIFICADO";
+    equipamentoVerificado.valor_orcamento = 0;
+    mockBuscarVerificacao.mockResolvedValue(makeVerificacao({
+      servicos: [{ id: "g1", descricao: "Garantia", valor: 0 }],
+      pecas: [],
+      custo_total: 0,
+    }));
+    render(<Equipamentos />);
+    await waitFor(() => expect(screen.getByTestId("action-alterar_orcamento")).toBeInTheDocument());
+    fireEvent.click(screen.getByTestId("action-alterar_orcamento"));
+    await waitFor(() => expect(screen.getByText(/O status atual do equipamento será mantido/i)).toBeInTheDocument());
+    await alterarValorOrcamento(0);
+    mockEnsureSensitiveAccess.mockClear();
+    await clicarConfirmarStatus();
+    await waitFor(() => expect(screen.getByTestId("confirm-title")).toHaveTextContent("Confirmar OS só de garantia?"));
+    fireEvent.click(screen.getByTestId("confirm-cancel"));
+    expect(mockAtualizarServicosVerificacao).not.toHaveBeenCalled();
+    expect(mockEnsureSensitiveAccess).not.toHaveBeenCalled();
+  });
+
+  it("em VERIFICADO, confirmar garantia grava com confirmarGarantia e pede PIN de aprovador", async () => {
+    mockPermissions.list = ["FINANCIAL_ACTIONS"];
+    equipamentoVerificado.status = "VERIFICADO";
+    equipamentoVerificado.valor_orcamento = 0;
+    mockBuscarVerificacao.mockResolvedValue(makeVerificacao({
+      servicos: [{ id: "g1", descricao: "Garantia", valor: 0 }],
+      pecas: [],
+      custo_total: 0,
+    }));
+    render(<Equipamentos />);
+    await waitFor(() => expect(screen.getByTestId("action-alterar_orcamento")).toBeInTheDocument());
+    fireEvent.click(screen.getByTestId("action-alterar_orcamento"));
+    await waitFor(() => expect(screen.getByText(/O status atual do equipamento será mantido/i)).toBeInTheDocument());
+    await alterarValorOrcamento(0);
+    mockEnsureSensitiveAccess.mockClear();
+    await clicarConfirmarStatus();
+    await waitFor(() => expect(screen.getByTestId("confirm-action")).toHaveTextContent("Confirmar garantia"));
+    fireEvent.click(screen.getByTestId("confirm-action"));
+    await waitFor(() => expect(mockEnsureSensitiveAccess).toHaveBeenCalledWith(expect.objectContaining({
+      permission: "FINANCIAL_ACTIONS",
+    })));
+    await waitFor(() => expect(mockAtualizarServicosVerificacao).toHaveBeenCalled());
+    const input = mockAtualizarServicosVerificacao.mock.calls[0][0];
+    expect(input.opcoes.confirmarGarantia).toBe(true);
+  });
+
+  it("ajuste de OS só de garantia com 0,00 habilita Confirmar e exige PIN", async () => {
+    equipamentoVerificado.status = "APROVADO";
+    equipamentoVerificado.valor_orcamento = 0;
+    mockBuscarVerificacao.mockResolvedValue(makeVerificacao({
+      servicos: [{ id: "g1", descricao: "Garantia", valor: 0 }],
+      pecas: [],
+      custo_total: 0,
+    }));
+    mockAnalisarAjusteOrcamento.mockResolvedValue({
+      status: "APROVADO",
+      podePedirNovaAprovacao: true,
+      jaPublicado: false,
+      respostaPendente: null,
+      pecasBaixadas: [],
+      totalBaixado: 0,
+      exigeDecisaoEstoque: false,
+    });
+    render(<Equipamentos />);
+    await waitFor(() => expect(screen.getByTestId("action-alterar_orcamento")).toBeInTheDocument());
+    fireEvent.click(screen.getByTestId("action-alterar_orcamento"));
+    await waitFor(() => expect(screen.getByText(/O status atual do equipamento será mantido/i)).toBeInTheDocument());
+    fireEvent.change(screen.getByLabelText("Forma de pagamento"), { target: { value: "PIX" } });
+    expect(screen.getByRole("button", { name: /Confirmar/i })).toBeEnabled();
+    mockEnsureSensitiveAccess.mockClear();
+    await clicarConfirmarStatus();
+    await waitFor(() => expect(screen.getByTestId("confirm-dialog")).toBeInTheDocument());
+    await act(async () => {
+      fireEvent.click(screen.getByTestId("confirm-action"));
+    });
+    await waitFor(() => expect(mockEnsureSensitiveAccess).toHaveBeenCalled());
   });
 });

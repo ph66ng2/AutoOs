@@ -7,6 +7,7 @@ import type {
   EquipamentoImagemCategoria,
   ResultadoAutomacao,
 } from "@/types";
+import { MENSAGEM_AGUARDANDO_TOTAL_ZERO, MENSAGEM_TOTAL_ZERO_SEM_GARANTIA, MENSAGEM_ZERAR_APROVADO_PAGO } from "@/lib/orcamento-estoque";
 import { STATUS_SENSIVEIS } from "./equipamentos-page-constants";
 import { getCorrectionStates, getNextStates } from "@/lib/status-fsm";
 
@@ -127,6 +128,59 @@ export function reabreOrcamentoSemAjuste(statusAtual: string, novoStatus: string
   return statusAtual === "REPROVADO" && novoStatus === "AGUARDANDO_APROVACAO";
 }
 
+/** Total do orçamento ao enviar para aprovação: 0,00 e vazio não passam. Itens em garantia podem ser 0. */
+export function totalOrcamentoAprovacaoValido(valor: number) {
+  return Number.isFinite(valor) && valor > 0;
+}
+
+const STATUS_DEPOIS_APROVACAO = [
+  "APROVADO",
+  "EM_MANUTENCAO",
+  "AGUARDANDO_PECA",
+  "PRONTO",
+  "ENTREGUE",
+];
+
+/** Ajuste: AGUARDANDO nunca fica R$ 0; APROVADO pago não zera; garantia 0 só fora desses casos. */
+export function totalOrcamentoAjusteValido(
+  valor: number,
+  soGarantia: boolean,
+  status?: string,
+  valorAnterior?: number | null,
+) {
+  if (status === "AGUARDANDO_APROVACAO") {
+    return totalOrcamentoAprovacaoValido(valor);
+  }
+  if (
+    STATUS_DEPOIS_APROVACAO.includes(status ?? "")
+    && (Number(valorAnterior) || 0) > 0
+    && Number.isFinite(valor)
+    && valor === 0
+  ) {
+    return false;
+  }
+  return totalOrcamentoAprovacaoValido(valor)
+    || (Number.isFinite(valor) && valor === 0 && soGarantia);
+}
+
+export function mensagemAjusteTotalZero(
+  status?: string,
+  valorAnterior?: number | null,
+) {
+  if (status === "AGUARDANDO_APROVACAO") {
+    return MENSAGEM_AGUARDANDO_TOTAL_ZERO;
+  }
+  if (STATUS_DEPOIS_APROVACAO.includes(status ?? "") && (Number(valorAnterior) || 0) > 0) {
+    return MENSAGEM_ZERAR_APROVADO_PAGO;
+  }
+  return MENSAGEM_TOTAL_ZERO_SEM_GARANTIA;
+}
+
 export function getStatusCorrecao(statusAtual: string): string[] {
   return getCorrectionStates(statusAtual);
+}
+
+/** OS só de garantia (R$ 0) não envia orçamento ao cliente: não pede contato. */
+export function precisaPerguntarQuemRecebeOrcamento(precisaContato: boolean, osSoDeGarantia: boolean) {
+  return precisaContato && !osSoDeGarantia;
 }

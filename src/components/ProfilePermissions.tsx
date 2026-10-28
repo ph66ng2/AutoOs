@@ -1,5 +1,10 @@
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
+import {
+  AVISO_COMPATIBILIDADE_056,
+  COMPATIBILIDADE_056_ATIVA,
+  permissoesNovas,
+} from "@/lib/compatibilidade-056";
 import { PERMISSION_DETAILS } from "@/lib/profile-presets";
 import { SENSITIVE_PERMISSIONS, type SensitivePermission } from "@/types";
 
@@ -7,11 +12,21 @@ export function ProfilePermissions({
   permissions,
   onChange,
   disabled = false,
+  role = "CUSTOM",
+  travaAtiva = COMPATIBILIDADE_056_ATIVA,
 }: {
   permissions: SensitivePermission[];
   onChange: (permissions: SensitivePermission[]) => void;
   disabled?: boolean;
+  role?: string;
+  travaAtiva?: boolean;
 }) {
+  const restrito = travaAtiva && role !== "ADMIN";
+  const novas = permissoesNovas(Object.values(SENSITIVE_PERMISSIONS));
+  const oferecidas = Object.values(SENSITIVE_PERMISSIONS).filter(
+    (permission) =>
+      !restrito || !novas.includes(permission) || permissions.includes(permission),
+  );
   return (
     <fieldset disabled={disabled} className="space-y-3">
       <legend className="mb-3 text-sm font-medium">
@@ -21,8 +36,13 @@ export function ProfilePermissions({
         Sem liberações adicionais, a pessoa mantém apenas o acesso operacional
         básico. As restrições de cada módulo continuam valendo.
       </p>
+      {restrito && (
+        <p className="text-xs text-amber-700 dark:text-amber-400">
+          {AVISO_COMPATIBILIDADE_056}
+        </p>
+      )}
       <div className="grid gap-3 md:grid-cols-2">
-        {Object.values(SENSITIVE_PERMISSIONS).map((permission) => {
+        {oferecidas.map((permission) => {
           const detail = PERMISSION_DETAILS[permission];
           const checked = permissions.includes(permission);
           return (

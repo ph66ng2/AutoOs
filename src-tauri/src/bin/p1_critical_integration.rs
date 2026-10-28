@@ -166,6 +166,7 @@ async fn main() -> Result<()> {
         email: Some(format!("{}-contato@example.test", prefix.to_lowercase())),
         telefone: Some("11988887777".to_string()),
         atualizado_em: None,
+        preservar_identidade_portal: false,
     })
     .await
     .map_err(|error| anyhow!(error))?;
@@ -793,6 +794,7 @@ async fn main() -> Result<()> {
             email: Some(format!("{}-editado@example.test", prefix.to_lowercase())),
             telefone: Some("11911112222".to_string()),
             atualizado_em: Some(contato.atualizado_em.clone()),
+            preservar_identidade_portal: false,
         },
     )
     .await

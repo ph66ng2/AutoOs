@@ -6,6 +6,7 @@
  */
 
 import { db } from "@/lib/db";
+import { todayLocalIsoDate } from "@/lib/date-utils";
 import { WhatsAppService } from "@/lib/whatsapp-service";
 import {
   enviarEmailOrcamentoPortal,
@@ -78,7 +79,7 @@ export function calcularPrazoAprovacao(diasUteis: number): string {
     const dia = data.getDay();
     if (dia !== 0 && dia !== 6) adicionados++;
   }
-  return data.toISOString().split("T")[0];
+  return todayLocalIsoDate(data);
 }
 
 /** Sugestão de novo prazo: 3 dias úteis, AAAA-MM-DD. */

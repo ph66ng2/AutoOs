@@ -61,6 +61,7 @@ describe("saveRecipientAddress", () => {
       email: "ana.novo@empresa.test",
       telefone: "71988880000",
     }));
+    expect(mockAtualizarClienteContato.mock.calls[0]?.[1]).not.toHaveProperty("preservar_identidade_portal", true);
     expect(mockAtualizarCliente).not.toHaveBeenCalled();
   });
 

@@ -7,7 +7,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { ErrorAlert } from "@/components/ui/error-alert";
 import { useNotification } from "@/hooks/useNotification";
 import { db } from "@/lib/db";
-import { celularValido, clienteContatoSchema, formatarTelefone, type ClienteContatoFormData } from "@/lib/validations";
+import { celularValido, clienteContatoSchema, digitosTelefoneBr, formatarTelefone, type ClienteContatoFormData } from "@/lib/validations";
 import type { Cliente, ClienteContato } from "@/types";
 
 interface ContatoResponsavelSelectorProps {
@@ -101,7 +101,7 @@ export function ContatoResponsavelSelector({
         cliente_id: cliente.id,
         nome: resultado.data.nome.trim(),
         email: resultado.data.email.trim() || undefined,
-        telefone: resultado.data.telefone.replace(/\D/g, "") || undefined,
+        telefone: digitosTelefoneBr(resultado.data.telefone) || undefined,
       });
       setContatos((items) => [...items.filter((item) => item.id !== contato.id), contato].sort((a, b) => a.nome.localeCompare(b.nome)));
       onChange(contato);

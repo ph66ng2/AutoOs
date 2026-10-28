@@ -109,9 +109,9 @@ export function useClientes(params?: UseClientesParams) {
    * @param cliente — Novos dados do cliente (sem o campo `id`).
    * @returns `{ sucesso: true }` ou `{ sucesso: false, erro }` em caso de falha.
    */
-  const atualizar = async (id: number, cliente: Omit<Cliente, "id">) => {
+  const atualizar = async (id: number, cliente: Omit<Cliente, "id">, contatoInicial?: ContatoInicialInput) => {
     try {
-      await db.atualizarCliente(id, cliente);
+      await db.atualizarCliente(id, cliente, contatoInicial);
       await carregar();
       return { sucesso: true };
     } catch (err: any) {

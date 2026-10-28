@@ -257,6 +257,8 @@ pub struct VerificacaoInput {
     pub observacoes: Option<String>,
     pub forma_pagamento_codigo: Option<FormaPagamentoCodigo>,
     pub forma_pagamento_detalhe: Option<String>,
+    /// Confirma auto-aprovação de OS só de garantia (R$ 0,00 → APROVADO).
+    pub confirmar_garantia: bool,
 }
 
 /// Input para cadastro e edição de contato de cliente.
@@ -269,6 +271,9 @@ pub struct ClienteContatoInput {
     pub email: Option<String>,
     pub telefone: Option<String>,
     pub atualizado_em: Option<String>,
+    /// Só o diálogo "Quem recebe o orçamento?" liga isto: nome/e-mail de contato com portal ficam como estão.
+    #[serde(default)]
+    pub preservar_identidade_portal: bool,
 }
 
 /// Input da aprovação transacional de um orçamento.
