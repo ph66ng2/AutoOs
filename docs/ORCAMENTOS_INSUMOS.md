@@ -23,7 +23,7 @@ RASCUNHO ──enviar──> ENVIADO ──aprovar──> APROVADO ──entrega
   não ao abrir a prévia.
 - O número é sequencial **por empresa** (`orcamentos_insumos_contadores`) e aparece como `OI-<n>`.
   Cancelar ou reprovar não libera o número.
-- Um orçamento CANCELADO pode ser **excluído de vez** (botão "Excluir de vez" no diálogo, com confirmação
+- Um orçamento CANCELADO pode ser **excluído de vez** (botão "Excluir" no diálogo, com confirmação
   e PIN financeiro): apaga o orçamento e os itens; o número não é reaproveitado, então buracos na
   numeração são esperados.
 - Todo valor é calculado no backend, em centavos (`calcular_totais`). O total da tela é só prévia.

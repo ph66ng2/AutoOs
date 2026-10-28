@@ -394,9 +394,9 @@ export function OrcamentoInsumosDialog({
       botao: "Marcar entregue",
     },
     excluir: {
-      titulo: "Excluir orçamento de vez?",
+      titulo: "Excluir orçamento?",
       descricao: `O orçamento ${detalhe?.numero_exibicao ?? ""} e seus itens serão apagados definitivamente. O estoque não é alterado e o número não será reaproveitado. Esta ação não pode ser desfeita.`,
-      botao: "Excluir de vez",
+      botao: "Excluir",
     },
   };
 
@@ -572,7 +572,7 @@ export function OrcamentoInsumosDialog({
               )}
               {acoes.excluir && detalhe && (
                 <Button type="button" variant="outline" size="sm" className="text-red-600" disabled={ocupado} onClick={() => setConfirmando("excluir")}>
-                  <Trash2 className="mr-1.5 h-4 w-4" />Excluir de vez
+                  <Trash2 className="mr-1.5 h-4 w-4" />Excluir
                 </Button>
               )}
             </div>

@@ -283,18 +283,18 @@ describe("OrcamentoInsumosDialog: ações por status", () => {
     expect(screen.getByLabelText("Observações")).toHaveValue("minha anotação");
   });
 
-  it.each(["RASCUNHO", "ENVIADO", "APROVADO", "ENTREGUE", "REPROVADO"] as const)("%s: não oferece excluir de vez", async (status) => {
+  it.each(["RASCUNHO", "ENVIADO", "APROVADO", "ENTREGUE", "REPROVADO"] as const)("%s: não oferece excluir", async (status) => {
     await abrir(status);
-    expect(botao(/excluir de vez/i)).toBeNull();
+    expect(botao(/^excluir$/i)).toBeNull();
   });
 
-  it("cancelado: excluir de vez pede confirmação, PIN e apaga o orçamento", async () => {
+  it("cancelado: excluir pede confirmação, PIN e apaga o orçamento", async () => {
     mocks.db.excluirOrcamentoInsumos.mockResolvedValue(undefined);
     const { onChanged, onOpenChange } = await abrir("CANCELADO");
-    fireEvent.click(screen.getByRole("button", { name: /excluir de vez/i }));
+    fireEvent.click(screen.getByRole("button", { name: /^excluir$/i }));
     const confirmacao = await screen.findByRole("alertdialog");
     expect(confirmacao).toHaveTextContent(/não pode ser desfeita/i);
-    fireEvent.click(within(confirmacao).getByRole("button", { name: /^excluir de vez$/i }));
+    fireEvent.click(within(confirmacao).getByRole("button", { name: /^excluir$/i }));
 
     await waitFor(() => expect(mocks.db.excluirOrcamentoInsumos).toHaveBeenCalledWith(7, "token-CANCELADO"));
     expect(mocks.ensureSensitiveAccess).toHaveBeenCalledWith(expect.objectContaining({ permission: "FINANCIAL_ACTIONS" }));
@@ -304,7 +304,7 @@ describe("OrcamentoInsumosDialog: ações por status", () => {
 
   it("voltar na confirmação de exclusão não apaga nada", async () => {
     await abrir("CANCELADO");
-    fireEvent.click(screen.getByRole("button", { name: /excluir de vez/i }));
+    fireEvent.click(screen.getByRole("button", { name: /^excluir$/i }));
     const confirmacao = await screen.findByRole("alertdialog");
     fireEvent.click(within(confirmacao).getByRole("button", { name: "Voltar" }));
     expect(mocks.db.excluirOrcamentoInsumos).not.toHaveBeenCalled();
@@ -313,8 +313,8 @@ describe("OrcamentoInsumosDialog: ações por status", () => {
   it("PIN recusado não apaga o orçamento", async () => {
     mocks.ensureSensitiveAccess.mockResolvedValue(false);
     await abrir("CANCELADO");
-    fireEvent.click(screen.getByRole("button", { name: /excluir de vez/i }));
-    fireEvent.click(within(await screen.findByRole("alertdialog")).getByRole("button", { name: /^excluir de vez$/i }));
+    fireEvent.click(screen.getByRole("button", { name: /^excluir$/i }));
+    fireEvent.click(within(await screen.findByRole("alertdialog")).getByRole("button", { name: /^excluir$/i }));
     await waitFor(() => expect(mocks.ensureSensitiveAccess).toHaveBeenCalled());
     expect(mocks.db.excluirOrcamentoInsumos).not.toHaveBeenCalled();
   });
@@ -322,8 +322,8 @@ describe("OrcamentoInsumosDialog: ações por status", () => {
   it("backend rejeita a exclusão: mostra o motivo e mantém o diálogo aberto", async () => {
     mocks.db.excluirOrcamentoInsumos.mockRejectedValue("Conflito de concorrência: outro usuário alterou este orçamento.");
     const { onOpenChange } = await abrir("CANCELADO");
-    fireEvent.click(screen.getByRole("button", { name: /excluir de vez/i }));
-    fireEvent.click(within(await screen.findByRole("alertdialog")).getByRole("button", { name: /^excluir de vez$/i }));
+    fireEvent.click(screen.getByRole("button", { name: /^excluir$/i }));
+    fireEvent.click(within(await screen.findByRole("alertdialog")).getByRole("button", { name: /^excluir$/i }));
     expect(await screen.findByRole("alert")).toHaveTextContent("Conflito de concorrência: outro usuário alterou este orçamento.");
     expect(onOpenChange).not.toHaveBeenCalledWith(false);
   });
