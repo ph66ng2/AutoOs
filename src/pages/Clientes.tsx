@@ -20,7 +20,7 @@
  * ║  USADO POR: App.tsx (rota /clientes)                        ║
  * ╚══════════════════════════════════════════════════════════════╝
  */
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { formatDatePtBr } from "@/lib/date-utils";
 import {
@@ -51,7 +51,6 @@ import {
   formatarCEP,
   detectarTipoDocumento,
   digitosTelefoneBr,
-  celularValido,
 } from "@/lib/validations";
 import { useClientes } from "@/hooks/useClientes";
 import { useNotification } from "@/hooks/useNotification";
@@ -107,7 +106,6 @@ export default function Clientes() {
   const [previaRegularizacao, setPreviaRegularizacao] = useState<RegularizacaoLegadoPrevia | null>(null);
   const [previaVinculoEmpresa, setPreviaVinculoEmpresa] = useState<VinculoEmpresaPerfilPrevia | null>(null);
   const [regularizando, setRegularizando] = useState(false);
-  const edicaoSeq = useRef(0);
 
   const { clientes, total: totalClientes, loading, error, criar, atualizar, deletar, recarregar } =
     useClientes({ busca: busca || undefined, page: abaAtual });
@@ -224,7 +222,6 @@ export default function Clientes() {
 
   /** Abre dialog para criar novo cliente. Reseta form e tipo de pessoa */
   function abrirNovo() {
-    edicaoSeq.current += 1;
     setEditando(null);
     setErroDocumentoDuplicado(null);
     setTipoPessoa(null);
@@ -241,8 +238,7 @@ export default function Clientes() {
   }
 
   /** Abre dialog para editar cliente. Preenche form com dados existentes e detecta tipo PF/PJ */
-  async function abrirEditar(c: Cliente) {
-    const seq = ++edicaoSeq.current;
+  function abrirEditar(c: Cliente) {
     setErroDocumentoDuplicado(null);
     setEditando(c);
     const doc = c.documento || c.cpf_cnpj || "";
@@ -270,19 +266,8 @@ export default function Clientes() {
       exigir_contato_inicial: false,
       contato_nome: "", contato_telefone: "", contato_email: "",
     });
+    // PJ antigo sem celular salva como está; o contato com celular só é exigido de quem vira PJ agora.
     setDialogOpen(true);
-    if (!isPj) return;
-    let exigirContatoInicial = true;
-    if (c.id && c.empresa_id) {
-      try {
-        const contatos = await db.listarClienteContatos(c.id, c.empresa_id);
-        exigirContatoInicial = !contatos.some((contato) => contato.ativo && celularValido(contato.telefone ?? ""));
-      } catch {
-        exigirContatoInicial = true;
-      }
-    }
-    if (seq !== edicaoSeq.current) return;
-    form.setValue("exigir_contato_inicial", exigirContatoInicial);
   }
 
   /**

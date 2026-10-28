@@ -567,10 +567,30 @@ pub async fn atualizar_cliente(id: i32, input: ClienteInput) -> Result<ClienteRo
         }
     }
 
+    // Só quem passa a ser PJ agora (era PF) precisa do contato com celular. PJ antigo sem
+    // celular salva como está; o contato, se vier, é validado e gravado.
     let contato_pj = if tipo_pessoa == "PJ" {
         let existentes = telefones_contatos_ativos(&pool, empresa_id, id).await?;
+        let ja_era_pj: bool = sqlx::query_scalar(
+            "SELECT COALESCE(tipo_pessoa,
+                    CASE WHEN length(regexp_replace(COALESCE(documento, cpf_cnpj, ''), '\\D', '', 'g')) = 14
+                         THEN 'PJ' ELSE 'PF' END) = 'PJ'
+             FROM clientes WHERE id = $1 AND empresa_id = $2",
+        )
+        .bind(id)
+        .bind(empresa_id)
+        .fetch_optional(&pool)
+        .await
+        .map_err(super::operator_errors::mapear_erro_sql)?
+        .unwrap_or(false);
         if pj_tem_contato_celular(&existentes) {
             None
+        } else if ja_era_pj {
+            input
+                .contato_inicial
+                .as_ref()
+                .map(|contato| validar_contato_inicial(Some(contato)))
+                .transpose()?
         } else {
             Some(validar_contato_inicial(input.contato_inicial.as_ref())?)
         }
