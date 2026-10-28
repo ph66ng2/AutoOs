@@ -346,11 +346,13 @@ async fn main() -> Result<()> {
     }).await.map_err(|e| anyhow!("editar PJ antigo sem contato: {e}"))?;
     contatos::atualizar_cliente_contato(fixo, ClienteContatoInput {
         empresa_id: empresa, cliente_id: antigo, nome: "Recepção 2".into(), email: None, telefone: Some("7133335555".into()), atualizado_em: None,
+        preservar_identidade_portal: false,
     }).await.map_err(|e| anyhow!("editar contato fixo do PJ antigo: {e}"))?;
     contatos::inativar_cliente_contato(fixo, empresa).await.map_err(|e| anyhow!("inativar contato fixo do PJ antigo: {e}"))?;
     // Contato novo de PJ sem celular precisa ser celular.
     let erro = contatos::criar_cliente_contato(ClienteContatoInput {
         empresa_id: empresa, cliente_id: antigo, nome: "Fixo novo".into(), email: None, telefone: Some("7133336666".into()), atualizado_em: None,
+        preservar_identidade_portal: false,
     }).await.err().expect("contato novo sem celular em PJ sem celular deveria falhar");
     assert!(erro.contains("celular"), "{erro}");
     // PF sem celular que vira PJ agora precisa do contato com celular.

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { MENSAGEM_AGUARDANDO_TOTAL_ZERO, MENSAGEM_ZERAR_APROVADO_PAGO } from "@/lib/orcamento-estoque";
-import { mensagemAjusteTotalZero, totalOrcamentoAjusteValido, totalOrcamentoAprovacaoValido } from "./equipamentos-page-utils";
+import { mensagemAjusteTotalZero, precisaPerguntarQuemRecebeOrcamento, totalOrcamentoAjusteValido, totalOrcamentoAprovacaoValido } from "./equipamentos-page-utils";
 
 describe("totalOrcamentoAprovacaoValido", () => {
   it("recusa 0, vazio e inválido; aceita valor positivo", () => {
@@ -24,6 +24,12 @@ describe("totalOrcamentoAjusteValido", () => {
     expect(totalOrcamentoAjusteValido(0, true, "AGUARDANDO_APROVACAO")).toBe(false);
     expect(totalOrcamentoAjusteValido(80, true, "AGUARDANDO_APROVACAO")).toBe(true);
     expect(mensagemAjusteTotalZero("AGUARDANDO_APROVACAO")).toBe(MENSAGEM_AGUARDANDO_TOTAL_ZERO);
+  });
+
+  it("OS só de garantia não pergunta quem recebe o orçamento", () => {
+    expect(precisaPerguntarQuemRecebeOrcamento(true, true)).toBe(false);
+    expect(precisaPerguntarQuemRecebeOrcamento(true, false)).toBe(true);
+    expect(precisaPerguntarQuemRecebeOrcamento(false, false)).toBe(false);
   });
 
   it("recusa zerar orçamento APROVADO pago", () => {

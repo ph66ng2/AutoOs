@@ -170,6 +170,7 @@ import {
   getStatusCorrecao,
   getProximosStatus,
   mensagemResultadoCanais,
+  precisaPerguntarQuemRecebeOrcamento,
   reabreOrcamentoSemAjuste,
   removerTecnicoInicialDasObservacoes,
   statusExigeAcessoSensivel,
@@ -1164,7 +1165,7 @@ export default function Equipamentos() {
       return false;
     }
 
-    if (precisaContato) {
+    if (precisaPerguntarQuemRecebeOrcamento(precisaContato, garantiaAprovada)) {
       setQuemRecebe({
         eq: selecionado,
         sugestao: {

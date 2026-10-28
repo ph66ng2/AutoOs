@@ -179,3 +179,8 @@ export function mensagemAjusteTotalZero(
 export function getStatusCorrecao(statusAtual: string): string[] {
   return getCorrectionStates(statusAtual);
 }
+
+/** OS só de garantia (R$ 0) não envia orçamento ao cliente: não pede contato. */
+export function precisaPerguntarQuemRecebeOrcamento(precisaContato: boolean, osSoDeGarantia: boolean) {
+  return precisaContato && !osSoDeGarantia;
+}
