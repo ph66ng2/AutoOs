@@ -3097,6 +3097,7 @@ export default function Equipamentos() {
 
       {/* ═══ Dialog Verificação Técnica (componente extraído) ═══ */}
       <VerificacaoTecnica
+        key={selecionado?.id ?? "verificacao"}
         equipamento={selecionado}
         open={verificacaoDialogOpen}
         onOpenChange={setVerificacaoDialogOpen}
