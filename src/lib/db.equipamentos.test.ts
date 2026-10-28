@@ -54,4 +54,14 @@ describe("db — equipamentos", () => {
 
     expect(mockInvoke).toHaveBeenCalledWith("atualizar_equipamento", { id: 3, input: payload });
   });
+
+  it("substituirImagensEquipamento envia o snapshot de IDs", async () => {
+    mockInvoke.mockResolvedValue([]);
+    await db.substituirImagensEquipamento(10, [], [77, 88]);
+    expect(mockInvoke).toHaveBeenCalledWith("substituir_imagens_equipamento", {
+      equipamentoId: 10,
+      imagens: [],
+      expectedImageIds: [77, 88],
+    });
+  });
 });

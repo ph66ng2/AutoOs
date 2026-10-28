@@ -12,11 +12,12 @@ use commands::clientes;
 use commands::comunicacoes;
 use commands::contatos;
 use commands::equipamentos;
+use commands::equipamento_imagens;
 use commands::legacy_regularization;
 use commands::produtos;
 use commands::types::{
     AprovarOrcamentoInput, ClienteContatoInput, ClienteInput, ComunicacaoInput, EquipamentoInput,
-    FormaPagamento, FormaPagamentoCodigo, MovimentacaoEstoqueInput, ProdutoInput,
+    EquipamentoImagemInput, FormaPagamento, FormaPagamentoCodigo, MovimentacaoEstoqueInput, ProdutoInput,
     VerificacaoInput,
 };
 use commands::verificacoes;
@@ -188,6 +189,102 @@ async fn main() -> Result<()> {
     })
     .await
     .map_err(|error| anyhow!(error))?;
+
+    // A substituição usa os IDs carregados como compare-and-swap: uma edição
+    // desatualizada não deve apagar as fotos gravadas desde o snapshot.
+    let seed_image = equipamento_imagens::adicionar_imagem_equipamento_raw(
+        equipamento.id,
+        "ENTRADA".to_string(),
+        "seed.jpg".to_string(),
+        "image/jpeg".to_string(),
+        "test://seed".to_string(),
+        1,
+        None,
+    )
+    .await
+    .map_err(|error| anyhow!(error))?;
+    let replacement = equipamento_imagens::substituir_imagens_equipamento(
+        equipamento.id,
+        vec![EquipamentoImagemInput {
+            categoria: "ENTRADA".to_string(),
+            filename: "replacement.jpg".to_string(),
+            mime_type: "image/jpeg".to_string(),
+            tamanho_bytes: Some(1),
+            storage_path: "test://replacement".to_string(),
+            ..EquipamentoImagemInput::default()
+        }],
+        vec![seed_image.id],
+    )
+    .await
+    .map_err(|error| anyhow!(error))?;
+    let stale_result = equipamento_imagens::substituir_imagens_equipamento(
+        equipamento.id,
+        vec![EquipamentoImagemInput {
+            categoria: "ENTRADA".to_string(),
+            filename: "stale.jpg".to_string(),
+            mime_type: "image/jpeg".to_string(),
+            tamanho_bytes: Some(1),
+            storage_path: "test://stale".to_string(),
+            ..EquipamentoImagemInput::default()
+        }],
+        vec![seed_image.id],
+    )
+    .await;
+    if !stale_result
+        .as_ref()
+        .err()
+        .is_some_and(|message| message.contains("Conflito de concorrência"))
+    {
+        return Err(anyhow!("stale photo replacement was not rejected"));
+    }
+    let after_stale = equipamento_imagens::listar_imagens_equipamento(equipamento.id)
+        .await
+        .map_err(|error| anyhow!(error))?;
+    if after_stale.len() != 1 || after_stale[0].id != replacement[0].id {
+        return Err(anyhow!("stale photo replacement changed the current photos"));
+    }
+
+    // Upload celular (raw) e substituição disputam o mesmo lock. O upload deve
+    // sobreviver em ambos os ordenamentos; se ele ganhar, o CAS acusa o snapshot
+    // obsoleto e preserva a foto adicionada.
+    let concurrent_snapshot: Vec<i32> = after_stale.iter().map(|image| image.id).collect();
+    let upload = equipamento_imagens::adicionar_imagem_equipamento_raw(
+        equipamento.id,
+        "ENTRADA".to_string(),
+        "concurrent.jpg".to_string(),
+        "image/jpeg".to_string(),
+        "test://concurrent-upload".to_string(),
+        1,
+        None,
+    );
+    let replace = equipamento_imagens::substituir_imagens_equipamento(
+        equipamento.id,
+        vec![EquipamentoImagemInput {
+            categoria: "ENTRADA".to_string(),
+            filename: "concurrent-replacement.jpg".to_string(),
+            mime_type: "image/jpeg".to_string(),
+            tamanho_bytes: Some(1),
+            storage_path: "test://concurrent-replacement".to_string(),
+            ..EquipamentoImagemInput::default()
+        }],
+        concurrent_snapshot,
+    );
+    let (upload_result, replace_result) = tokio::join!(upload, replace);
+    upload_result.map_err(|error| anyhow!(error))?;
+    if let Err(error) = replace_result {
+        if !error.contains("Conflito de concorrência") {
+            return Err(anyhow!("unexpected concurrent photo replacement error: {}", error));
+        }
+    }
+    let after_race = equipamento_imagens::listar_imagens_equipamento(equipamento.id)
+        .await
+        .map_err(|error| anyhow!(error))?;
+    if !after_race
+        .iter()
+        .any(|image| image.storage_path == "test://concurrent-upload")
+    {
+        return Err(anyhow!("concurrent mobile upload was lost during replacement"));
+    }
 
     // As duas listagens podem produzir o mesmo texto SQL sem filtros. Verifique
     // os dois sentidos em conexões diferentes, mantendo cada par na mesma

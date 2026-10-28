@@ -1,0 +1,348 @@
+{
+  "allJs": {
+    "bytes": 3129821,
+    "gzipBytes": 954616
+  },
+  "allCss": {
+    "bytes": 104944,
+    "gzipBytes": 19808
+  },
+  "startup": {
+    "bytes": 724980,
+    "gzipBytes": 214504
+  },
+  "startupFiles": [
+    {
+      "file": "assets/index-W2pOw73I.js",
+      "bytes": 434346,
+      "gzipBytes": 140699
+    },
+    {
+      "file": "assets/react-vendor-CxCD_NS6.js",
+      "bytes": 142382,
+      "gzipBytes": 45638
+    },
+    {
+      "file": "assets/icons-CiUAvfpc.js",
+      "bytes": 43308,
+      "gzipBytes": 8359
+    },
+    {
+      "file": "assets/index-BHgOxmfA.css",
+      "bytes": 104944,
+      "gzipBytes": 19808
+    }
+  ],
+  "assets": [
+    {
+      "file": ".htaccess",
+      "bytes": 932,
+      "gzipBytes": 484
+    },
+    {
+      "file": "assets/AccessHandlePoolVFS-CxrlPMEm.js",
+      "bytes": 5067,
+      "gzipBytes": 2189
+    },
+    {
+      "file": "assets/Balcao-DKA7MwCL.js",
+      "bytes": 29615,
+      "gzipBytes": 8592
+    },
+    {
+      "file": "assets/ClienteContatosPanel-n89CwUHG.js",
+      "bytes": 12556,
+      "gzipBytes": 4399
+    },
+    {
+      "file": "assets/ClienteFormularioCampos-BrSAdvPv.js",
+      "bytes": 44705,
+      "gzipBytes": 14913
+    },
+    {
+      "file": "assets/Clientes-Duwe1u6s.js",
+      "bytes": 25356,
+      "gzipBytes": 7663
+    },
+    {
+      "file": "assets/Configuracoes-B-EFcFUW.js",
+      "bytes": 64902,
+      "gzipBytes": 17566
+    },
+    {
+      "file": "assets/Dashboard-CF2hNlG6.js",
+      "bytes": 38791,
+      "gzipBytes": 10328
+    },
+    {
+      "file": "assets/Equipamentos-D2qmDxul.js",
+      "bytes": 178335,
+      "gzipBytes": 48745
+    },
+    {
+      "file": "assets/FacadeVFS-DiPwyb-P.js",
+      "bytes": 7843,
+      "gzipBytes": 2367
+    },
+    {
+      "file": "assets/Gastos-B5oNwRLV.js",
+      "bytes": 18017,
+      "gzipBytes": 4993
+    },
+    {
+      "file": "assets/IDBBatchAtomicVFS-j4-8nWDs.js",
+      "bytes": 15570,
+      "gzipBytes": 5040
+    },
+    {
+      "file": "assets/Insumos-ChsUyMZy.js",
+      "bytes": 43015,
+      "gzipBytes": 12327
+    },
+    {
+      "file": "assets/LineChart-Br8u7GAX.js",
+      "bytes": 385239,
+      "gzipBytes": 105868
+    },
+    {
+      "file": "assets/MemoryVFS-PbXdPWBb.js",
+      "bytes": 1834,
+      "gzipBytes": 817
+    },
+    {
+      "file": "assets/OPFSCoopSyncVFS-Cn2B5Zgx.js",
+      "bytes": 9189,
+      "gzipBytes": 3013
+    },
+    {
+      "file": "assets/OPFSWriteAheadVFS-BVpzHltU.js",
+      "bytes": 28226,
+      "gzipBytes": 8593
+    },
+    {
+      "file": "assets/PagamentoOrcamentoDialog-baZM6yqO.js",
+      "bytes": 5237,
+      "gzipBytes": 2315
+    },
+    {
+      "file": "assets/PdfPreviewDialog-CE2NFW7W.js",
+      "bytes": 79434,
+      "gzipBytes": 30150
+    },
+    {
+      "file": "assets/PecasDoServico-DMKqNyrk.js",
+      "bytes": 3791,
+      "gzipBytes": 1694
+    },
+    {
+      "file": "assets/Perfil-DWIZYEl7.js",
+      "bytes": 29837,
+      "gzipBytes": 8966
+    },
+    {
+      "file": "assets/PowerSyncPOC-CMm68dZU.js",
+      "bytes": 60629,
+      "gzipBytes": 18071
+    },
+    {
+      "file": "assets/Servicos-BAJe_lKh.js",
+      "bytes": 9312,
+      "gzipBytes": 3310
+    },
+    {
+      "file": "assets/app-D2X4Crj2.js",
+      "bytes": 310,
+      "gzipBytes": 249
+    },
+    {
+      "file": "assets/checkbox-NyIfPpHU.js",
+      "bytes": 556,
+      "gzipBytes": 365
+    },
+    {
+      "file": "assets/confirm-dialog-XtPVjz83.js",
+      "bytes": 6151,
+      "gzipBytes": 2352
+    },
+    {
+      "file": "assets/error-alert-DF1Kbe_A.js",
+      "bytes": 80268,
+      "gzipBytes": 28644
+    },
+    {
+      "file": "assets/event-3kJ0U8H9.js",
+      "bytes": 1013,
+      "gzipBytes": 545
+    },
+    {
+      "file": "assets/form-validation-error-DcxKAEdo.js",
+      "bytes": 56054,
+      "gzipBytes": 13377
+    },
+    {
+      "file": "assets/html2canvas.esm-CBrSDip1.js",
+      "bytes": 202301,
+      "gzipBytes": 48033
+    },
+    {
+      "file": "assets/icons-CiUAvfpc.js",
+      "bytes": 43308,
+      "gzipBytes": 8359
+    },
+    {
+      "file": "assets/index-B4uWHgsp.js",
+      "bytes": 2716,
+      "gzipBytes": 1231
+    },
+    {
+      "file": "assets/index-BHgOxmfA.css",
+      "bytes": 104944,
+      "gzipBytes": 19808
+    },
+    {
+      "file": "assets/index-W2pOw73I.js",
+      "bytes": 434346,
+      "gzipBytes": 140699
+    },
+    {
+      "file": "assets/index.es-ZkINPuPH.js",
+      "bytes": 150614,
+      "gzipBytes": 51502
+    },
+    {
+      "file": "assets/insumos-page-constants-DYrMeZAc.js",
+      "bytes": 428,
+      "gzipBytes": 293
+    },
+    {
+      "file": "assets/jspdf.es.min-CkdiUcVm.js",
+      "bytes": 390402,
+      "gzipBytes": 128760
+    },
+    {
+      "file": "assets/jspdf.plugin.autotable-CyVc7Jkq.js",
+      "bytes": 31081,
+      "gzipBytes": 9906
+    },
+    {
+      "file": "assets/mc-wa-sqlite-B5EwuptG.wasm",
+      "bytes": 1317179,
+      "gzipBytes": 605340
+    },
+    {
+      "file": "assets/mc-wa-sqlite-DApvlUV9.js",
+      "bytes": 61672,
+      "gzipBytes": 20412
+    },
+    {
+      "file": "assets/mc-wa-sqlite-async-CWIXFzAI.js",
+      "bytes": 65469,
+      "gzipBytes": 21562
+    },
+    {
+      "file": "assets/mc-wa-sqlite-async-gzFY6s2-.wasm",
+      "bytes": 2518738,
+      "gzipBytes": 888059
+    },
+    {
+      "file": "assets/pagination-controls-BTlTnlTL.js",
+      "bytes": 2849,
+      "gzipBytes": 1294
+    },
+    {
+      "file": "assets/purify.es-BgtpMKW3.js",
+      "bytes": 22769,
+      "gzipBytes": 8790
+    },
+    {
+      "file": "assets/react-vendor-CxCD_NS6.js",
+      "bytes": 142382,
+      "gzipBytes": 45638
+    },
+    {
+      "file": "assets/recipient-persistence-D2CMMsxc.js",
+      "bytes": 9139,
+      "gzipBytes": 3397
+    },
+    {
+      "file": "assets/table-Bx8zKZOe.js",
+      "bytes": 1597,
+      "gzipBytes": 562
+    },
+    {
+      "file": "assets/tabs-l6ECapkO.js",
+      "bytes": 6625,
+      "gzipBytes": 2641
+    },
+    {
+      "file": "assets/validations-BpJUHUcY.js",
+      "bytes": 5466,
+      "gzipBytes": 1840
+    },
+    {
+      "file": "assets/wa-sqlite-D5ocM9af.js",
+      "bytes": 61358,
+      "gzipBytes": 20335
+    },
+    {
+      "file": "assets/wa-sqlite-DR-3Ak0t.wasm",
+      "bytes": 1129661,
+      "gzipBytes": 530116
+    },
+    {
+      "file": "assets/wa-sqlite-async-BZ9gIHv7.wasm",
+      "bytes": 2295539,
+      "gzipBytes": 804849
+    },
+    {
+      "file": "assets/wa-sqlite-async-CbVSNJH6.js",
+      "bytes": 65155,
+      "gzipBytes": 21503
+    },
+    {
+      "file": "assets/websockets-BVGb5XAD.js",
+      "bytes": 111331,
+      "gzipBytes": 26187
+    },
+    {
+      "file": "assets/worker-BbkWIAse.js",
+      "bytes": 77961,
+      "gzipBytes": 24221
+    },
+    {
+      "file": "bmi-tag-logo.png",
+      "bytes": 197343,
+      "gzipBytes": 193515
+    },
+    {
+      "file": "index.html",
+      "bytes": 651,
+      "gzipBytes": 372
+    },
+    {
+      "file": "logo-bmitag.png",
+      "bytes": 26027,
+      "gzipBytes": 25824
+    },
+    {
+      "file": "logo-tag-trasparente.svg",
+      "bytes": 210941,
+      "gzipBytes": 155777
+    },
+    {
+      "file": "portal-apple-touch-icon.png",
+      "bytes": 14873,
+      "gzipBytes": 14742
+    },
+    {
+      "file": "portal-favicon-32.png",
+      "bytes": 1349,
+      "gzipBytes": 1372
+    },
+    {
+      "file": "portal-favicon.ico",
+      "bytes": 4362,
+      "gzipBytes": 4358
+    }
+  ]
+}

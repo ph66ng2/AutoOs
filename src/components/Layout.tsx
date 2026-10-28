@@ -27,7 +27,7 @@ import {
   ShieldCheck,
   UserRound,
 } from "lucide-react";
-import { useState } from "react";
+import { Suspense, useState } from "react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { SensitiveAccessBadge, useSensitiveAccess } from "@/hooks/useSensitiveAccess";
@@ -182,7 +182,9 @@ export function Layout() {
           </div>
         </header>
         <div className="mx-auto max-w-7xl p-4 md:p-6">
-          <Outlet />
+          <Suspense fallback={<div role="status" aria-live="polite">Carregando página</div>}>
+            <Outlet />
+          </Suspense>
         </div>
       </main>
       <TourController />

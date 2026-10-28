@@ -11,6 +11,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, screen, act, fireEvent, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import * as equipamentoImagemUtils from "@/lib/equipamento-imagem-utils";
 
 // ─── Hoisted Mocks ──────────────────────────────────────
 
@@ -30,6 +31,8 @@ const mockListarImagensEquipamento = vi.hoisted(() => vi.fn());
 const mockBuscarEquipamentosPorSerial = vi.hoisted(() => vi.fn());
 const mockBuscarCliente = vi.hoisted(() => vi.fn());
 const mockRecarregar = vi.hoisted(() => vi.fn());
+const mockAtualizarEquipamento = vi.hoisted(() => vi.fn());
+const mockSubstituirImagensEquipamento = vi.hoisted(() => vi.fn());
 
 vi.mock("@tauri-apps/api/core", () => ({
   invoke: (...args: unknown[]) => mockInvoke(...args),
@@ -49,8 +52,10 @@ vi.mock("@/hooks/useEquipamentos", () => ({
     equipamentos: mockEquipamentos,
     total: 1,
     loading: false,
+    error: null,
+    avisoAtualizacao: null,
     criar: vi.fn(),
-    atualizar: vi.fn(),
+    atualizar: (...args: unknown[]) => mockAtualizarEquipamento(...args),
     deletar: vi.fn(),
     atualizarStatus: mockAtualizarStatusEquipamento,
     recarregar: mockRecarregar,
@@ -100,7 +105,7 @@ vi.mock("@/lib/db", () => ({
     listarHistoricoEquipamento: vi.fn().mockResolvedValue([]),
     listarEquipamentos: vi.fn().mockResolvedValue([]),
     listarEquipamentosPaginados: vi.fn().mockResolvedValue({ items: [], total: 0 }),
-    substituirImagensEquipamento: vi.fn().mockResolvedValue([]),
+    substituirImagensEquipamento: (...args: unknown[]) => mockSubstituirImagensEquipamento(...args),
   },
 }));
 
@@ -130,8 +135,21 @@ vi.mock("@/components/equipamentos/ClienteSelector", () => ({
   ClienteSelector: () => <div data-testid="cliente-selector" />,
 }));
 
+vi.mock("@/components/equipamentos/ContatoResponsavelSelector", () => ({
+  ContatoResponsavelSelector: () => <div data-testid="contato-responsavel-selector" />,
+}));
+
 vi.mock("@/components/equipamentos/PhotoUploadDialog", () => ({
-  PhotoUploadDialog: () => <div data-testid="photo-upload-dialog" />,
+  PhotoUploadDialog: ({ open, onPhotoData }: any) => (
+    <div data-testid="photo-upload-dialog">
+      {open && onPhotoData && <button type="button" data-testid="emitir-foto-celular" onClick={() => void onPhotoData({
+        bytes: [1, 2, 3],
+        mime_type: "image/jpeg",
+        categoria: "ENTRADA",
+        filename: "foto-celular.jpg",
+      })}>Emitir foto de teste</button>}
+    </div>
+  ),
 }));
 
 vi.mock("@/components/equipamentos/VerificacaoTecnica", () => ({
@@ -177,7 +195,18 @@ vi.mock("@/components/ui/action-priority-row", () => ({
 }));
 
 vi.mock("@/pages/equipamentos/EquipamentosPageGallery", () => ({
-  GaleriaImagensEquipamento: () => <div data-testid="galeria-imagens" />,
+  GaleriaImagensEquipamento: ({ imagens, mensagemVazia, onRemover, onLegendaChange }: any) => (
+    <div data-testid="galeria-imagens">
+      {imagens.length === 0 && <span>{mensagemVazia}</span>}
+      {imagens.map((imagem: any) => (
+        <div key={imagem.local_id}>
+          <span>{imagem.filename}</span>
+          {onRemover && <button type="button" aria-label={`Remover ${imagem.filename}`} onClick={() => onRemover(imagem)}>Remover</button>}
+          {onLegendaChange && <textarea aria-label={`Legenda ${imagem.filename}`} value={imagem.observacao || ""} onChange={(event) => onLegendaChange(imagem, event.target.value)} />}
+        </div>
+      ))}
+    </div>
+  ),
 }));
 
 vi.mock("@/pages/equipamentos/EquipamentosStatusBadge", () => ({
@@ -189,7 +218,7 @@ vi.mock("@/components/ui/input-dialog", () => ({
 }));
 
 vi.mock("@/components/ui/error-alert", () => ({
-  ErrorAlert: () => <div data-testid="error-alert" />,
+  ErrorAlert: ({ message }: any) => <div data-testid="error-alert">{message}</div>,
 }));
 
 vi.mock("@/components/ui/form-validation-error", () => ({
@@ -223,6 +252,7 @@ const equipamentoVerificado = {
   modelo: "ZT230",
   serial_number: "SN001",
   tipo: "Impressora",
+  defeito_relatado: "Não liga",
   status: "VERIFICADO",
   cliente_id: 1,
   empresa_id: 7,
@@ -266,6 +296,11 @@ import Equipamentos from "../../Equipamentos";
 describe("Equipamentos — Budget Divergence & Audit", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockAtualizarEquipamento.mockResolvedValue({
+      sucesso: true,
+      data: { ...equipamentoVerificado, atualizado_em: "2024-01-15T10:00:01Z" },
+    });
+    mockSubstituirImagensEquipamento.mockResolvedValue([]);
     mockPermissions.list = ["FINANCIAL_ACTIONS"];
     mockEnsureSensitiveAccess.mockResolvedValue(true);
     equipamentoVerificado.status = "VERIFICADO";
@@ -902,6 +937,195 @@ describe("Equipamentos — Budget Divergence & Audit", () => {
     expect(screen.queryByText("Detalhes do Equipamento")).not.toBeInTheDocument();
   });
 
+  it("salva edição textual sem substituir fotos inalteradas mesmo com aviso de arquivo inválido", async () => {
+    mockListarImagensEquipamento.mockResolvedValue([{
+      id: 77,
+      equipamento_id: 10,
+      categoria: "ENTRADA",
+      filename: "entrada.jpg",
+      mime_type: "image/jpeg",
+      tamanho_bytes: 123,
+      largura: 800,
+      altura: 600,
+      ordem: 0,
+      observacao: "frente",
+      storage_path: "data:image/jpeg;base64,conteudo",
+    }]);
+    render(<Equipamentos />);
+    fireEvent.click(screen.getByTestId("action-editar"));
+    await screen.findByText("entrada.jpg");
+    const arquivoInvalido = new File(["conteudo"], "anotacao.pdf", { type: "application/pdf" });
+    fireEvent.change(document.getElementById("equipamento-imagens-entrada")!, {
+      target: { files: [arquivoInvalido] },
+    });
+    await screen.findByText(/Erros no processamento/);
+    await waitFor(() => expect(screen.queryByRole("status", { name: "Carregando fotos" })).not.toBeInTheDocument());
+    fireEvent.change(screen.getByPlaceholderText("ZD421, GC420T"), { target: { value: "ZT230 revisada" } });
+    fireEvent.click(screen.getByRole("button", { name: "Salvar" }));
+
+    await waitFor(() => expect(mockAtualizarEquipamento).toHaveBeenCalledOnce());
+    expect(mockSubstituirImagensEquipamento).not.toHaveBeenCalled();
+  });
+
+  it("não grava o equipamento após falha ao carregar fotos e permite recarregá-las sem perder texto", async () => {
+    mockListarImagensEquipamento.mockRejectedValueOnce(new Error("offline"));
+    render(<Equipamentos />);
+    fireEvent.click(screen.getByTestId("action-editar"));
+    fireEvent.change(screen.getByPlaceholderText("ZD421, GC420T"), { target: { value: "texto preservado" } });
+    await screen.findByRole("button", { name: "Recarregar fotos" });
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Salvar" }));
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+    expect(mockAtualizarEquipamento).not.toHaveBeenCalled();
+
+    mockListarImagensEquipamento.mockResolvedValueOnce([]);
+    fireEvent.click(screen.getByRole("button", { name: "Recarregar fotos" }));
+    await screen.findByRole("status", { name: "Carregando fotos" });
+    await waitFor(() => {
+      expect(screen.queryByRole("status", { name: "Carregando fotos" })).not.toBeInTheDocument();
+      expect(screen.getByPlaceholderText("ZD421, GC420T")).toHaveValue("texto preservado");
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Salvar" }));
+    await waitFor(() => expect(mockAtualizarEquipamento).toHaveBeenCalledOnce());
+    expect(mockSubstituirImagensEquipamento).not.toHaveBeenCalled();
+  });
+
+  it("envia IDs do snapshot ao alterar fotos e mantém o diálogo após conflito CAS", async () => {
+    mockListarImagensEquipamento.mockResolvedValue([{
+      id: 77,
+      equipamento_id: 10,
+      categoria: "ENTRADA",
+      filename: "entrada.jpg",
+      mime_type: "image/jpeg",
+      tamanho_bytes: 123,
+      largura: 800,
+      altura: 600,
+      ordem: 0,
+      storage_path: "data:image/jpeg;base64,conteudo",
+    }]);
+    mockSubstituirImagensEquipamento.mockRejectedValueOnce(new Error("Conflito de concorrência nas fotos"));
+    render(<Equipamentos />);
+    fireEvent.click(screen.getByTestId("action-editar"));
+    await screen.findByText("entrada.jpg");
+    fireEvent.change(screen.getByPlaceholderText("ZD421, GC420T"), { target: { value: "texto mantido no conflito" } });
+    fireEvent.click(screen.getByRole("button", { name: "Remover entrada.jpg" }));
+    fireEvent.click(screen.getByRole("button", { name: "Salvar" }));
+
+    await waitFor(() => expect(mockSubstituirImagensEquipamento).toHaveBeenCalledOnce());
+    expect(mockSubstituirImagensEquipamento).toHaveBeenCalledWith(10, [], [77]);
+    expect(screen.getByRole("heading", { name: "Editar Equipamento" })).toBeInTheDocument();
+    expect(screen.getByPlaceholderText("ZD421, GC420T")).toHaveValue("texto mantido no conflito");
+
+    mockListarImagensEquipamento.mockResolvedValueOnce([{
+      id: 99,
+      equipamento_id: 10,
+      categoria: "ENTRADA",
+      filename: "foto-atualizada-externamente.jpg",
+      mime_type: "image/jpeg",
+      tamanho_bytes: 100,
+      ordem: 0,
+      storage_path: "data:image/jpeg;base64,externa",
+    }]);
+    fireEvent.click(screen.getByRole("button", { name: "Recarregar fotos" }));
+    await waitFor(() => expect(screen.queryByRole("button", { name: "Recarregar fotos" })).not.toBeInTheDocument());
+    expect(screen.getByPlaceholderText("ZD421, GC420T")).toHaveValue("texto mantido no conflito");
+    expect(screen.getByText("foto-atualizada-externamente.jpg")).toBeInTheDocument();
+  });
+
+  it("não fecha um formulário novo quando uma gravação anterior termina", async () => {
+    let concluirGravacao!: (value: any) => void;
+    mockAtualizarEquipamento.mockReturnValueOnce(new Promise((resolve) => { concluirGravacao = resolve; }));
+    mockListarImagensEquipamento.mockResolvedValue([]);
+    render(<Equipamentos />);
+    fireEvent.click(screen.getByTestId("action-editar"));
+    await screen.findByRole("heading", { name: "Editar Equipamento" });
+    fireEvent.change(screen.getByPlaceholderText("ZD421, GC420T"), { target: { value: "gravação antiga" } });
+    fireEvent.click(screen.getByRole("button", { name: "Salvar" }));
+    await waitFor(() => expect(mockAtualizarEquipamento).toHaveBeenCalledOnce());
+
+    fireEvent.click(screen.getByRole("button", { name: "Close" }));
+    await waitFor(() => expect(screen.queryByRole("heading", { name: "Editar Equipamento" })).not.toBeInTheDocument());
+    fireEvent.click(screen.getByTestId("action-editar"));
+    await screen.findByRole("heading", { name: "Editar Equipamento" });
+
+    await act(async () => {
+      concluirGravacao({
+        sucesso: true,
+        data: { ...equipamentoVerificado, modelo: "gravação antiga", atualizado_em: "2024-01-15T10:00:02Z" },
+      });
+    });
+
+    expect(screen.getByPlaceholderText("ZD421, GC420T")).toHaveValue("ZT230");
+    expect(screen.getByRole("heading", { name: "Editar Equipamento" })).toBeInTheDocument();
+  });
+
+  it("ignora uma foto de celular convertida depois que o formulário original foi fechado", async () => {
+    let concluirConversao!: (dataUrl: string) => void;
+    const conversao = new Promise<string>((resolve) => { concluirConversao = resolve; });
+    vi.spyOn(equipamentoImagemUtils, "bytesParaDataUrl").mockReturnValue(conversao);
+    mockListarImagensEquipamento.mockResolvedValue([]);
+    render(<Equipamentos />);
+    fireEvent.click(screen.getByTestId("action-editar"));
+    await screen.findByRole("button", { name: /Via Celular/ });
+    fireEvent.click(screen.getByRole("button", { name: /Via Celular/ }));
+    fireEvent.click(await screen.findByTestId("emitir-foto-celular"));
+    expect(equipamentoImagemUtils.bytesParaDataUrl).toHaveBeenCalledOnce();
+
+    fireEvent.click(screen.getByRole("button", { name: "Close" }));
+    await waitFor(() => expect(screen.queryByRole("heading", { name: "Editar Equipamento" })).not.toBeInTheDocument());
+    fireEvent.click(screen.getByRole("button", { name: "Novo Equipamento" }));
+    await screen.findByRole("heading", { name: "Novo Equipamento" });
+
+    await act(async () => {
+      concluirConversao("data:image/jpeg;base64,camera");
+      await conversao;
+    });
+    expect(screen.queryByText("foto-celular.jpg")).not.toBeInTheDocument();
+  });
+
+  it("ignora fotos de uma edição anterior que terminam após a edição atual", async () => {
+    const equipamentoMaisNovo = { ...equipamentoVerificado, id: 11, serial_number: "SN002", cliente_nome: "Cliente B" };
+    mockEquipamentos.push(equipamentoMaisNovo);
+    let concluirAntigo!: (value: any[]) => void;
+    mockListarImagensEquipamento.mockImplementation((id: number) => {
+      if (id === 10) return new Promise((resolve) => { concluirAntigo = resolve; });
+      return Promise.resolve([{
+        id: 88,
+        equipamento_id: 11,
+        categoria: "ENTRADA",
+        filename: "foto-nova.jpg",
+        mime_type: "image/jpeg",
+        tamanho_bytes: 100,
+        ordem: 0,
+        storage_path: "data:image/jpeg;base64,nova",
+      }]);
+    });
+    try {
+      render(<Equipamentos />);
+      const editButtons = screen.getAllByTestId("action-editar");
+      fireEvent.click(editButtons[0]);
+      fireEvent.click(editButtons[1]);
+      await screen.findByText("foto-nova.jpg");
+      await act(async () => {
+        concluirAntigo([{
+          id: 77,
+          equipamento_id: 10,
+          categoria: "ENTRADA",
+          filename: "foto-antiga.jpg",
+          mime_type: "image/jpeg",
+          tamanho_bytes: 100,
+          ordem: 0,
+          storage_path: "data:image/jpeg;base64,antiga",
+        }]);
+      });
+      expect(screen.queryByText("foto-antiga.jpg")).not.toBeInTheDocument();
+      expect(screen.getByText("foto-nova.jpg")).toBeInTheDocument();
+    } finally {
+      mockEquipamentos.splice(mockEquipamentos.indexOf(equipamentoMaisNovo), 1);
+    }
+  });
+
   it("não envia orçamento com total 0,00 para AGUARDANDO_APROVACAO", async () => {
     equipamentoVerificado.valor_orcamento = 0;
     mockBuscarVerificacao.mockResolvedValue(makeVerificacao({ servicos: [], pecas: [], custo_total: 0 }));
@@ -1122,5 +1346,57 @@ describe("Equipamentos — Budget Divergence & Audit", () => {
       fireEvent.click(screen.getByTestId("confirm-action"));
     });
     await waitFor(() => expect(mockEnsureSensitiveAccess).toHaveBeenCalled());
+  });
+
+  it("entrega envia os IDs atuais como snapshot ao substituir fotos", async () => {
+    equipamentoVerificado.status = "PRONTO";
+    mockListarImagensEquipamento.mockResolvedValue([{
+      id: 77,
+      equipamento_id: 10,
+      categoria: "ENTRADA",
+      filename: "entrada.jpg",
+      mime_type: "image/jpeg",
+      tamanho_bytes: 123,
+      largura: 800,
+      altura: 600,
+      ordem: 0,
+      storage_path: "data:image/jpeg;base64,conteudo",
+    }]);
+    render(<Equipamentos />);
+    fireEvent.click(screen.getByTestId("action-registrar_entrega"));
+    await screen.findByText(/Foto da saída \(entrega\)/);
+    await clicarConfirmarStatus();
+    await waitFor(() => expect(mockSubstituirImagensEquipamento).toHaveBeenCalled());
+    expect(mockSubstituirImagensEquipamento).toHaveBeenCalledWith(
+      10,
+      expect.arrayContaining([expect.objectContaining({ filename: "entrada.jpg", categoria: "ENTRADA" })]),
+      [77],
+    );
+    await waitFor(() => expect(mockAtualizarStatusEquipamento).toHaveBeenCalled());
+  });
+
+  it("conflito de fotos na entrega não marca Entregue e mantém o diálogo", async () => {
+    equipamentoVerificado.status = "PRONTO";
+    mockListarImagensEquipamento.mockResolvedValue([{
+      id: 77,
+      equipamento_id: 10,
+      categoria: "ENTRADA",
+      filename: "entrada.jpg",
+      mime_type: "image/jpeg",
+      tamanho_bytes: 123,
+      ordem: 0,
+      storage_path: "data:image/jpeg;base64,conteudo",
+    }]);
+    mockSubstituirImagensEquipamento.mockRejectedValueOnce(
+      new Error("Conflito de concorrência: as fotos do equipamento foram alteradas. Recarregue as fotos antes de salvar novamente."),
+    );
+    render(<Equipamentos />);
+    fireEvent.click(screen.getByTestId("action-registrar_entrega"));
+    await screen.findByText(/Foto da saída \(entrega\)/);
+    await clicarConfirmarStatus();
+    await waitFor(() => expect(mockSubstituirImagensEquipamento).toHaveBeenCalledWith(10, expect.any(Array), [77]));
+    expect(mockAtualizarStatusEquipamento).not.toHaveBeenCalled();
+    expect(screen.getByText(/Foto da saída \(entrega\)/)).toBeInTheDocument();
+    expect(screen.getByText(/Conflito de concorrência/)).toBeInTheDocument();
   });
 });
