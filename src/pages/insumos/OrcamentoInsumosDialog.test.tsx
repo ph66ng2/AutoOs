@@ -11,6 +11,7 @@ const mocks = vi.hoisted(() => ({
     aprovarOrcamentoInsumos: vi.fn(),
     reprovarOrcamentoInsumos: vi.fn(),
     cancelarOrcamentoInsumos: vi.fn(),
+    excluirOrcamentoInsumos: vi.fn(),
     marcarOrcamentoInsumosEntregue: vi.fn(),
     marcarOrcamentoInsumosEnviado: vi.fn(),
     listarProdutos: vi.fn(),
@@ -106,9 +107,10 @@ function detalhe(status: StatusOrcamentoInsumos = "RASCUNHO", sobrescrever: Part
 async function abrir(status: StatusOrcamentoInsumos, sobrescrever: Partial<OrcamentoInsumosDetalhe> = {}) {
   mocks.db.obterOrcamentoInsumos.mockResolvedValue(detalhe(status, sobrescrever));
   const onChanged = vi.fn();
-  render(<OrcamentoInsumosDialog open onOpenChange={vi.fn()} orcamentoId={7} onChanged={onChanged} />);
+  const onOpenChange = vi.fn();
+  render(<OrcamentoInsumosDialog open onOpenChange={onOpenChange} orcamentoId={7} onChanged={onChanged} />);
   await screen.findByText("Orçamento de insumos OI-12");
-  return { onChanged };
+  return { onChanged, onOpenChange };
 }
 
 const botao = (nome: RegExp | string) => screen.queryByRole("button", { name: nome });
@@ -279,6 +281,51 @@ describe("OrcamentoInsumosDialog: ações por status", () => {
     fireEvent.click(screen.getByRole("button", { name: "Salvar" }));
     expect(await screen.findByRole("alert")).toHaveTextContent(/Conflito de concorrência/);
     expect(screen.getByLabelText("Observações")).toHaveValue("minha anotação");
+  });
+
+  it.each(["RASCUNHO", "ENVIADO", "APROVADO", "ENTREGUE", "REPROVADO"] as const)("%s: não oferece excluir de vez", async (status) => {
+    await abrir(status);
+    expect(botao(/excluir de vez/i)).toBeNull();
+  });
+
+  it("cancelado: excluir de vez pede confirmação, PIN e apaga o orçamento", async () => {
+    mocks.db.excluirOrcamentoInsumos.mockResolvedValue(undefined);
+    const { onChanged, onOpenChange } = await abrir("CANCELADO");
+    fireEvent.click(screen.getByRole("button", { name: /excluir de vez/i }));
+    const confirmacao = await screen.findByRole("alertdialog");
+    expect(confirmacao).toHaveTextContent(/não pode ser desfeita/i);
+    fireEvent.click(within(confirmacao).getByRole("button", { name: /^excluir de vez$/i }));
+
+    await waitFor(() => expect(mocks.db.excluirOrcamentoInsumos).toHaveBeenCalledWith(7, "token-CANCELADO"));
+    expect(mocks.ensureSensitiveAccess).toHaveBeenCalledWith(expect.objectContaining({ permission: "FINANCIAL_ACTIONS" }));
+    await waitFor(() => expect(onChanged).toHaveBeenCalled());
+    expect(onOpenChange).toHaveBeenCalledWith(false);
+  });
+
+  it("voltar na confirmação de exclusão não apaga nada", async () => {
+    await abrir("CANCELADO");
+    fireEvent.click(screen.getByRole("button", { name: /excluir de vez/i }));
+    const confirmacao = await screen.findByRole("alertdialog");
+    fireEvent.click(within(confirmacao).getByRole("button", { name: "Voltar" }));
+    expect(mocks.db.excluirOrcamentoInsumos).not.toHaveBeenCalled();
+  });
+
+  it("PIN recusado não apaga o orçamento", async () => {
+    mocks.ensureSensitiveAccess.mockResolvedValue(false);
+    await abrir("CANCELADO");
+    fireEvent.click(screen.getByRole("button", { name: /excluir de vez/i }));
+    fireEvent.click(within(await screen.findByRole("alertdialog")).getByRole("button", { name: /^excluir de vez$/i }));
+    await waitFor(() => expect(mocks.ensureSensitiveAccess).toHaveBeenCalled());
+    expect(mocks.db.excluirOrcamentoInsumos).not.toHaveBeenCalled();
+  });
+
+  it("backend rejeita a exclusão: mostra o motivo e mantém o diálogo aberto", async () => {
+    mocks.db.excluirOrcamentoInsumos.mockRejectedValue("Conflito de concorrência: outro usuário alterou este orçamento.");
+    const { onOpenChange } = await abrir("CANCELADO");
+    fireEvent.click(screen.getByRole("button", { name: /excluir de vez/i }));
+    fireEvent.click(within(await screen.findByRole("alertdialog")).getByRole("button", { name: /^excluir de vez$/i }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("Conflito de concorrência: outro usuário alterou este orçamento.");
+    expect(onOpenChange).not.toHaveBeenCalledWith(false);
   });
 });
 

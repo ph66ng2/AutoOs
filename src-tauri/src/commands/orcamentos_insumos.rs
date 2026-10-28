@@ -14,6 +14,8 @@
 //! ║    item nada é aprovado.                                     ║
 //! ║  - Cancelar um APROVADO devolve o estoque (ENTRADA).         ║
 //! ║  - Toda alteração confere `atualizado_em` (concorrência).    ║
+//! ║  - Excluir de vez: só CANCELADO; itens por CASCADE;          ║
+//! ║    estoque intocado.                                         ║
 //! ╚══════════════════════════════════════════════════════════════╝
 
 use crate::commands::auth::{
@@ -344,6 +346,11 @@ fn exigir_transicao(de: &str, para: &str, referencia: &str) -> Result<(), String
         de.to_lowercase(),
         para.to_lowercase()
     ))
+}
+
+/// Só orçamento cancelado pode ser excluído de vez.
+pub fn pode_excluir(status: &str) -> bool {
+    status == STATUS_CANCELADO
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -1077,6 +1084,62 @@ pub async fn cancelar_orcamento_insumos(
     carregar_detalhe(&pool, empresa_id, input.id).await
 }
 
+/// Exclui de vez um orçamento CANCELADO. Só CANCELADO; os itens saem por CASCADE (0040);
+/// não mexe em estoque (cancelar já o devolveu); o número OI-n não é reaproveitado
+/// (o contador não é tocado).
+#[tauri::command]
+#[instrument(skip_all, fields(id = input.id))]
+pub async fn excluir_orcamento_insumos(input: OrcamentoInsumosAcaoInput) -> Result<(), String> {
+    let actor = require_permission(PERMISSION_FINANCIAL_ACTIONS)?;
+    let token = exigir_token(&input.atualizado_em)?.to_string();
+    let pool = get_pool().await.map_err(|e| e.to_string())?;
+    let empresa_id = require_active_session_company_id(&pool).await?;
+    let mut tx = abrir_transacao(&pool).await?;
+    let atual = travar_orcamento(&mut tx, empresa_id, input.id, &token).await?;
+    let referencia = referencia_orcamento(atual.numero);
+    if !pode_excluir(&atual.status) {
+        return Err(format!(
+            "O orçamento {referencia} está {} e não pode ser excluído: só orçamentos cancelados podem ser excluídos.",
+            atual.status.to_lowercase()
+        ));
+    }
+
+    let itens: i64 = sqlx::query_scalar::<_, i64>(
+        "SELECT COUNT(*) FROM orcamento_insumos_itens WHERE orcamento_id = $1 AND empresa_id = $2",
+    )
+    .bind(input.id)
+    .bind(empresa_id)
+    .fetch_one(&mut *tx)
+    .await
+    .map_err(super::operator_errors::mapear_erro_sql)?;
+
+    let apagadas = sqlx::query(
+        "DELETE FROM orcamentos_insumos
+         WHERE id = $1 AND empresa_id = $2 AND status = 'CANCELADO' AND atualizado_em = $3::TIMESTAMPTZ",
+    )
+    .bind(input.id)
+    .bind(empresa_id)
+    .bind(&token)
+    .execute(&mut *tx)
+    .await
+    .map_err(super::operator_errors::mapear_erro_sql)?
+    .rows_affected();
+    if apagadas == 0 {
+        return Err(conflito_de_concorrencia());
+    }
+    confirmar(tx).await?;
+
+    record_security_event(
+        "INSUMOS_QUOTE_DELETED",
+        Some(&actor),
+        format!("orcamento={referencia}; itens={itens}"),
+        true,
+    )
+    .await;
+    info!("Orçamento de insumos {} excluído", referencia);
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1175,6 +1238,13 @@ mod tests {
         assert!(!transicao_permitida("ENVIADO", "ENTREGUE"));
         assert!(!transicao_permitida("RASCUNHO", "ENTREGUE"));
         assert!(exigir_transicao("ENTREGUE", "CANCELADO", "OI-3").unwrap_err().contains("OI-3"));
+    }
+
+    #[test]
+    fn so_cancelado_pode_ser_excluido() {
+        for status in STATUS_VALIDOS {
+            assert_eq!(pode_excluir(status), status == STATUS_CANCELADO, "{status}");
+        }
     }
 
     #[test]

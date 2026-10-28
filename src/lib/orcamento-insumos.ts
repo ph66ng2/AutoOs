@@ -113,6 +113,8 @@ export interface AcoesOrcamentoInsumos {
   entregar: boolean;
   /** Cancelar devolve itens ao estoque e pede confirmação. */
   cancelarDevolveEstoque: boolean;
+  /** Excluir de vez (só CANCELADO). */
+  excluir: boolean;
 }
 
 /** Ações do diálogo por status. `existente` = já foi salvo (tem número). */
@@ -131,6 +133,7 @@ export function acoesOrcamentoInsumos(
     cancelar: aberto || status === "APROVADO",
     entregar: status === "APROVADO",
     cancelarDevolveEstoque: status === "APROVADO",
+    excluir: status === "CANCELADO",
   };
 }
 

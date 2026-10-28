@@ -256,6 +256,7 @@ fn main() {
             commands::orcamentos_insumos::aprovar_orcamento_insumos,
             commands::orcamentos_insumos::reprovar_orcamento_insumos,
             commands::orcamentos_insumos::cancelar_orcamento_insumos,
+            commands::orcamentos_insumos::excluir_orcamento_insumos,
             commands::orcamentos_insumos::marcar_orcamento_insumos_entregue,
             // Comunicações
             commands::comunicacoes::registrar_comunicacao,
