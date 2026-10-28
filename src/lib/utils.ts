@@ -39,6 +39,30 @@ export function formatCurrency(value: number): string {
   }).format(value);
 }
 
+/** Peça ou serviço sem preço cadastrado: não mostra R$ 0,00. */
+export function formatCurrencyOrMissing(value: number | null | undefined): string {
+  if (value == null || !Number.isFinite(value) || value === 0) return "sem preço";
+  return formatCurrency(value);
+}
+
+/** Interpreta "R$ 1.234,50" ou "1234.50". Vírgula é decimal; ponto com 3 dígitos é milhar pt-BR. */
+export function parseDecimalBr(value: string): number {
+  const semEspaco = value.replace(/[\s\u00a0\u202f]/g, "");
+  if (!semEspaco) return Number.NaN;
+  const trimmed = semEspaco.replace(/^R\$/i, "");
+  if (!trimmed || /[^0-9.,-]/.test(trimmed)) return Number.NaN;
+  if (trimmed.includes(",")) {
+    const last = trimmed.lastIndexOf(",");
+    const inteiro = trimmed.slice(0, last).replace(/\./g, "").replace(/,/g, "");
+    const frac = trimmed.slice(last + 1).replace(/\D/g, "");
+    return Number(`${inteiro}.${frac}`);
+  }
+  if (/^\d{1,3}(\.\d{3})+$/.test(trimmed)) {
+    return Number(trimmed.replace(/\./g, ""));
+  }
+  return Number(trimmed);
+}
+
 /**
  * Formata data ISO para formato brasileiro (DD/MM/YYYY).
  * Usa parsing direto do string para evitar problemas de timezone.

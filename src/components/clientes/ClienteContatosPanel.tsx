@@ -18,7 +18,9 @@ import { ErrorAlert } from "@/components/ui/error-alert";
 import { useNotification } from "@/hooks/useNotification";
 import { db } from "@/lib/db";
 import {
-  clienteContatoSchema,
+  celularValido,
+  schemaContatoCliente,
+  digitosTelefoneBr,
   formatarTelefone,
   type ClienteContatoFormData,
 } from "@/lib/validations";
@@ -55,8 +57,15 @@ export function ClienteContatosPanel({ cliente, empresaId }: ClienteContatosPane
   const [alterandoAcesso, setAlterandoAcesso] = useState<number | null>(null);
   const [senhaDe, setSenhaDe] = useState<ClienteContato | null>(null);
   const { success, error: showError } = useNotification();
+  const exigeCelularPj = cliente.tipo_pessoa === "PJ"
+    && !contatos.some((contato) =>
+      contato.ativo
+      && contato.id !== editando?.id
+      && celularValido(contato.telefone ?? ""),
+    );
   const form = useForm<ClienteContatoFormData>({
-    resolver: zodResolver(clienteContatoSchema),
+    resolver: (values, context, options) =>
+      zodResolver(schemaContatoCliente(exigeCelularPj))(values, context, options),
     defaultValues: { nome: "", email: "", telefone: "" },
   });
 
@@ -107,7 +116,7 @@ export function ClienteContatosPanel({ cliente, empresaId }: ClienteContatosPane
       cliente_id: cliente.id,
       nome: data.nome.trim(),
       email: data.email.trim() || undefined,
-      telefone: data.telefone.replace(/\D/g, "") || undefined,
+      telefone: digitosTelefoneBr(data.telefone) || undefined,
       atualizado_em: editando?.atualizado_em,
     };
     try {

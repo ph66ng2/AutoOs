@@ -71,6 +71,18 @@ async fn main() -> Result<()> {
     let st: String = sqlx::query_scalar("SELECT status FROM equipamentos WHERE id=$1").bind(eq).fetch_one(&pool).await?;
     assert_eq!(st, "AGUARDANDO_APROVACAO");
 
+    // NÃO CONSEGUE: finalizar OS só de garantia, que sai aprovada (PREPARE_QUOTES nunca aprova).
+    let eq_garantia: i32 = sqlx::query_scalar("INSERT INTO equipamentos(serial_number,marca,modelo,tipo,data_entrada,defeito_relatado,empresa_id,cliente_id,status) VALUES ($1,'Zebra','GC420t','Impressora','2026-09-27','Garantia',$2,$3,'EM_VERIFICACAO') RETURNING id")
+        .bind(format!("G-{suffix}")).bind(empresa).bind(cliente).fetch_one(&pool).await?;
+    let erro = verificacoes::salvar_verificacao_tecnica(VerificacaoInput {
+        equipamento_id:eq_garantia, empresa_id:Some(empresa), tecnico_nome:"Teste".into(), problema_relatado:"Teste".into(),
+        servicos_necessarios:Some(serde_json::json!([{"id":"g","descricao":"Garantia","valor":0,"pecas":[]}]).to_string()),
+        pecas_necessarias:Some("[]".into()), custo_total:Some(0.0), concluida:Some(true), confirmar_garantia: true, ..VerificacaoInput::default()
+    }).await.unwrap_err();
+    assert!(erro.contains(SEM_PERMISSAO), "{erro}");
+    let st: String = sqlx::query_scalar("SELECT status FROM equipamentos WHERE id=$1").bind(eq_garantia).fetch_one(&pool).await?;
+    assert_eq!(st, "EM_VERIFICACAO");
+
     // NÃO CONSEGUE: definir senha de contato que decide orçamento.
     let erro = portal_cliente::definir_senha_portal_contato(contato, Some("Senha1234".into())).await.unwrap_err();
     assert!(erro.contains(SEM_PERMISSAO), "{erro}");
@@ -306,7 +318,7 @@ async fn main() -> Result<()> {
         telefone: "7133334444".into(), contato_inicial: contato, ..ClienteInput::default()
     };
     let erro = clientes::criar_cliente(pj(None)).await.err().expect("PJ sem contato deveria falhar");
-    assert!(erro.contains("Informe um contato com celular para receber orçamentos."), "{erro}");
+    assert!(erro.contains("celular com DDD e o 9 (11 dígitos)"), "{erro}");
     let sem_cliente: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM clientes WHERE empresa_id=$1 AND documento='11222333000181'").bind(empresa).fetch_one(&pool).await?;
     assert_eq!(sem_cliente, 0);
     let criado = clientes::criar_cliente(pj(Some(ContatoInicialInput { nome: "Rita".into(), telefone: "(71) 98888-7777".into(), email: None })))

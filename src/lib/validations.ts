@@ -330,6 +330,20 @@ export const clienteContatoSchema = z.object({
   ),
 });
 
+/** Painel de contatos: PJ sem outro celular precisa do 11 dígitos neste cadastro/edição. */
+export function schemaContatoCliente(exigeCelularPj: boolean) {
+  return clienteContatoSchema.superRefine((data, ctx) => {
+    if (!exigeCelularPj) return;
+    if (!celularValido(data.telefone ?? "")) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "Informe o celular com DDD e o 9 (11 dígitos).",
+        path: ["telefone"],
+      });
+    }
+  });
+}
+
 export type ClienteContatoFormData = z.infer<typeof clienteContatoSchema>;
 
 /**

@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { ProrrogarPrazoDialog } from "@/components/equipamentos/ProrrogarPrazoDialog";
 import { dataIsoEmDias } from "@/lib/orcamento-prazo";
+import { isoDateToBr } from "@/lib/date-utils";
 
 const mocks = vi.hoisted(() => ({
   buscar: vi.fn(),
@@ -50,7 +51,7 @@ describe("ProrrogarPrazoDialog", () => {
   it("usa hoje + 7 dias como padrão e hoje como mínimo", () => {
     render(<ProrrogarPrazoDialog open onOpenChange={vi.fn()} equipamentoId={7} onConcluido={vi.fn()} />);
     const campo = screen.getByLabelText("Novo prazo de aprovação");
-    expect(campo).toHaveValue(dataIsoEmDias(7));
+    expect(campo).toHaveValue(isoDateToBr(dataIsoEmDias(7)));
     expect(campo).toHaveAttribute("min", dataIsoEmDias(0));
   });
 

@@ -134,6 +134,7 @@ export default function Gastos() {
       if (!resultado.sucesso) {
         throw new Error(resultado.erro || "Não foi possível salvar o gasto fixo.");
       }
+      recarregarResumo();
       setFixoDialogOpen(false);
       setEditandoFixo(null);
     } catch (err: any) {
@@ -151,6 +152,7 @@ export default function Gastos() {
       if (!resultado.sucesso) {
         throw new Error(resultado.erro || "Não foi possível salvar o gasto variável.");
       }
+      recarregarResumo();
       setVariavelDialogOpen(false);
       setEditandoVariavel(null);
     } catch (err: any) {
@@ -223,6 +225,7 @@ export default function Gastos() {
       <GastosSummaryCards
         resumo={resumo}
         gastosFixos={gastosFixos}
+        gastosVariaveis={gastosVariaveis}
         loading={loading}
       />
 

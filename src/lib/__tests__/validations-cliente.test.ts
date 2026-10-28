@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { celularValido, clienteSchema } from "@/lib/validations";
+import { celularValido, clienteSchema, schemaContatoCliente } from "@/lib/validations";
 
 const PJ_BASE = {
   documento: "11.222.333/0001-81",
@@ -124,6 +124,19 @@ describe("clienteSchema: contato inicial de PJ", () => {
       exigir_contato_inicial: true,
     });
     expect(result.success).toBe(true);
+  });
+});
+
+describe("schemaContatoCliente", () => {
+  it("PJ sem outro celular recusa telefone fixo e aceita celular", () => {
+    const schema = schemaContatoCliente(true);
+    expect(schema.safeParse({ nome: "Ana", email: "", telefone: "(71) 3333-4444" }).success).toBe(false);
+    expect(schema.safeParse({ nome: "Ana", email: "", telefone: "(71) 98888-7777" }).success).toBe(true);
+  });
+
+  it("com outro celular do PJ, telefone fixo continua aceito", () => {
+    const schema = schemaContatoCliente(false);
+    expect(schema.safeParse({ nome: "Ana", email: "", telefone: "(71) 3333-4444" }).success).toBe(true);
   });
 });
 

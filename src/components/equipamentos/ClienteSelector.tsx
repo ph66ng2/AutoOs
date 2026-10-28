@@ -31,6 +31,7 @@ import {
   clienteSchema,
   type ClienteFormData,
   detectarTipoDocumento,
+  digitosTelefoneBr,
 } from "@/lib/validations";
 import { nomeExibicaoCliente } from "@/components/clientes/cliente-display-utils";
 import { ClienteSelectorBusca } from "@/components/equipamentos/ClienteSelectorBusca";
@@ -262,7 +263,7 @@ export function ClienteSelector({
       const contato = isPJ && data.exigir_contato_inicial
         ? {
             nome: (data.contato_nome ?? "").trim(),
-            telefone: (data.contato_telefone ?? "").replace(/\D/g, ""),
+            telefone: digitosTelefoneBr(data.contato_telefone ?? ""),
             email: data.contato_email?.trim() || undefined,
           }
         : undefined;

@@ -1,9 +1,13 @@
 import { describe, expect, it } from "vitest";
-import { dateOnlyToLocalDate, formatDatePtBr, formatDateTimeSalvador, parseDbTimestampUtc, todayLocalIsoDate } from "./date-utils";
+import { dateOnlyToLocalDate, formatDatePtBr, formatDateTimeSalvador, isoDateToBr, parseDateBrToIso, parseDbTimestampUtc, todayLocalIsoDate } from "./date-utils";
 
 describe("date-utils", () => {
   it("formata data sem horário sem retroceder pelo fuso UTC", () => {
     expect(formatDatePtBr("2026-09-10")).toBe("10/09/2026");
+  });
+
+  it("exibe prazo AAAA-MM-DD sem recuar um dia no fuso do computador", () => {
+    expect(formatDatePtBr("2026-11-03")).toBe("03/11/2026");
   });
 
   it("gera a data ISO usando o calendário local", () => {
@@ -33,5 +37,12 @@ describe("date-utils", () => {
 
   it("exibe data e hora no fuso de Salvador independentemente do computador", () => {
     expect(formatDateTimeSalvador("2026-09-14T12:34:56.000Z")).toBe("14/09/2026, 09:34:56");
+  });
+
+  it("converte dd/mm/aaaa para ISO e de volta", () => {
+    expect(parseDateBrToIso("03/11/2026")).toBe("2026-11-03");
+    expect(parseDateBrToIso("11/03/2026")).toBe("2026-03-11");
+    expect(parseDateBrToIso("31/02/2026")).toBeNull();
+    expect(isoDateToBr("2026-11-03")).toBe("03/11/2026");
   });
 });

@@ -119,6 +119,13 @@ describe("ClienteFormularioCampos — contato para orçamentos", () => {
     await user.type(screen.getByLabelText("Celular do contato *"), "71999998888");
     expect(screen.getByDisplayValue("(71) 99999-8888")).toBeInTheDocument();
   });
+
+  it("aceita +55 no celular do contato e mostra o número nacional", async () => {
+    const user = userEvent.setup();
+    render(<ContatoHarness tipo="PJ" exigir />);
+    await user.type(screen.getByLabelText("Celular do contato *"), "+55 71 98888-7777");
+    expect(screen.getByDisplayValue("(71) 98888-7777")).toBeInTheDocument();
+  });
 });
 
 describe("ClienteFormularioCampos — consulta de CNPJ", () => {
