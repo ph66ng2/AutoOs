@@ -132,6 +132,12 @@ export function totalOrcamentoAprovacaoValido(valor: number) {
   return Number.isFinite(valor) && valor > 0;
 }
 
+/** Ajuste de orçamento: 0,00 só quando a OS é só de garantia. */
+export function totalOrcamentoAjusteValido(valor: number, soGarantia: boolean) {
+  return totalOrcamentoAprovacaoValido(valor)
+    || (Number.isFinite(valor) && valor === 0 && soGarantia);
+}
+
 export function getStatusCorrecao(statusAtual: string): string[] {
   return getCorrectionStates(statusAtual);
 }

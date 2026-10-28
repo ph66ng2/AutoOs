@@ -60,7 +60,7 @@ import {
 } from "@/types";
 import { db } from "@/lib/db";
 import { PecasDoServico } from "@/components/equipamentos/PecasDoServico";
-import { pecasParaOrcamento, validarPecas } from "@/lib/orcamento-estoque";
+import { MENSAGEM_TOTAL_ZERO_SEM_GARANTIA, osSomenteGarantia, pecasParaOrcamento, validarPecas } from "@/lib/orcamento-estoque";
 import { useNotification } from "@/hooks/useNotification";
 import { PhotoUploadDialog } from "@/components/equipamentos/PhotoUploadDialog";
 import { imagemPersistidaParaDraft, type EquipamentoImagemDraft } from "@/lib/equipamento-imagem-utils";
@@ -207,6 +207,11 @@ export function VerificacaoTecnica({
     const custoTotalServicos = servicosNormalizados.reduce((acum, servico) => acum + servico.valor, 0);
     const pecasOrcamento = pecasParaOrcamento(servicosNormalizados);
     const custoTotalPecas = pecasOrcamento.reduce((acum, peca) => acum + peca.valorTotal, 0);
+    const custoTotal = custoTotalServicos + custoTotalPecas;
+    if (custoTotal === 0 && !osSomenteGarantia(servicosNormalizados)) {
+      warning("Verificação", MENSAGEM_TOTAL_ZERO_SEM_GARANTIA);
+      return;
+    }
 
     const dados: DadosVerificacao = {
       equipamento_id: equipamento.id!,
@@ -218,7 +223,7 @@ export function VerificacaoTecnica({
       pecas_necessarias: JSON.stringify(pecasOrcamento),
       custo_estimado_mao_obra: custoTotalServicos,
       custo_estimado_pecas: custoTotalPecas,
-      custo_total: custoTotalServicos + custoTotalPecas,
+      custo_total: custoTotal,
       tempo_estimado: 0,
       concluida: true,
       observacoes: observacoesVerif,

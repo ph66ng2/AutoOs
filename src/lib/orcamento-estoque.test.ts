@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { orcamentoEmElaboracao, transicaoElaboraOrcamento } from "./orcamento-estoque";
+import { orcamentoEmElaboracao, osSomenteGarantia, transicaoElaboraOrcamento } from "./orcamento-estoque";
 
 describe("orcamentoEmElaboracao", () => {
   it("é verdadeiro enquanto o orçamento não foi decidido", () => {
@@ -28,5 +28,14 @@ describe("transicaoElaboraOrcamento", () => {
     expect(transicaoElaboraOrcamento("VERIFICADO", "AGUARDANDO_APROVACAO", false, 100)).toBe(false);
     expect(transicaoElaboraOrcamento("VERIFICADO", "AGUARDANDO_APROVACAO", true)).toBe(false);
     expect(transicaoElaboraOrcamento("EM_VERIFICACAO", "AGUARDANDO_APROVACAO", false)).toBe(false);
+  });
+});
+
+describe("osSomenteGarantia", () => {
+  it("exige ao menos um item e todos com valor 0", () => {
+    expect(osSomenteGarantia([])).toBe(false);
+    expect(osSomenteGarantia([{ valor: 0 }, { valor: 0, pecas: [{ valor_unitario: 0 }] }])).toBe(true);
+    expect(osSomenteGarantia([{ valor: 0 }, { valor: 80 }])).toBe(false);
+    expect(osSomenteGarantia([{ valor: 0, pecas: [{ valor_unitario: 10 }] }])).toBe(false);
   });
 });

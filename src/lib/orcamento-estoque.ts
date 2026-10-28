@@ -41,6 +41,25 @@ export async function carregarProdutosOrcamento(): Promise<Produto[]> {
   }
 }
 
+/** Não há flag de garantia no banco: item com valor 0,00 é a convenção da verificação. */
+export const MENSAGEM_TOTAL_ZERO_SEM_GARANTIA =
+  "Total R$ 0,00 só segue sem aprovação quando todos os itens são de garantia. Com item cobrado ou sem itens, informe um valor maior que zero.";
+
+export function osSomenteGarantia(
+  servicos: Array<{
+    valor?: number;
+    pecas?: Array<{ valor_unitario?: number; valorTotal?: number }>;
+  }>,
+): boolean {
+  if (servicos.length === 0) return false;
+  return servicos.every((servico) => {
+    if ((Number(servico.valor) || 0) > 0) return false;
+    return (servico.pecas ?? []).every((peca) => {
+      return !((Number(peca.valor_unitario) || 0) > 0) && !((Number(peca.valorTotal) || 0) > 0);
+    });
+  });
+}
+
 export function pecasParaOrcamento(servicos: ServicoNecessario[]): PecaNecessaria[] {
   return servicos.flatMap((servico) => (servico.pecas ?? []).map((peca) => ({
     id: `${servico.id}:${peca.produto_id}`,

@@ -21,7 +21,10 @@ use crate::commands::orcamento_correcao::{
 use crate::commands::orcamento_decisao::{
     desfazer_resposta_pendente, publicar_versao_isolada, situacao_portal,
 };
-use crate::commands::orcamento_estoque::{aplicar_decisoes, cancelar_pendencias_ausentes, normalizar_servicos, parse_servicos};
+use crate::commands::orcamento_estoque::{
+    aplicar_decisoes, cancelar_pendencias_ausentes, normalizar_servicos, os_somente_garantia,
+    parse_servicos, recusar_total_zero_sem_garantia, valor_monetario_positivo, ServicoOrcamento,
+};
 use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
 use std::collections::{HashMap, HashSet};
@@ -53,6 +56,44 @@ const VERIFICATION_TENANT_MATCH: &str =
 
 fn claimed_tenant_conflicts(claimed: Option<i32>, actual: Option<i32>) -> bool {
     matches!((claimed, actual), (Some(claimed_id), Some(actual_id)) if claimed_id != actual_id)
+}
+
+/// OS só de garantia (todos os itens R$ 0,00): grava valor_orcamento 0 e vai para APROVADO
+/// na mesma transação da verificação, sem passar por AGUARDANDO_APROVACAO.
+/// Não há coluna/flag de garantia; 0,00 no item é a convenção existente.
+async fn gravar_aprovacao_os_garantia(
+    tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+    equipamento_id: i32,
+    empresa_id: i32,
+    servicos: &[ServicoOrcamento],
+    custo_total: Option<f64>,
+    concluida: bool,
+) -> Result<(), String> {
+    if !concluida
+        || !os_somente_garantia(servicos)
+        || custo_total.is_some_and(valor_monetario_positivo)
+    {
+        return Ok(());
+    }
+    sqlx::query(
+        r#"UPDATE equipamentos
+           SET status = 'APROVADO',
+               valor_orcamento = 0,
+               data_verificacao = CASE
+                   WHEN data_verificacao IS NULL OR btrim(data_verificacao) = '' THEN NOW()::TEXT
+                   ELSE data_verificacao
+               END,
+               data_aprovacao = NOW()::TEXT,
+               atualizado_em = NOW()
+           WHERE id = $1 AND empresa_id = $2
+             AND status IN ('RECEBIDO', 'EM_VERIFICACAO', 'VERIFICADO')"#,
+    )
+    .bind(equipamento_id)
+    .bind(empresa_id)
+    .execute(&mut **tx)
+    .await
+    .map_err(super::operator_errors::mapear_erro_sql)?;
+    Ok(())
 }
 
 fn require_financial_actor_for_verification_write(
@@ -109,7 +150,11 @@ pub async fn salvar_verificacao_tecnica(mut input: VerificacaoInput) -> Result<V
         return Err("O equipamento não pertence à empresa ativa.".to_string());
     }
     input.empresa_id = Some(empresa_id);
-    parse_servicos(input.servicos_necessarios.as_deref().unwrap_or("[]"))?;
+    let servicos = parse_servicos(input.servicos_necessarios.as_deref().unwrap_or("[]"))?;
+    let concluida = input.concluida.unwrap_or(false);
+    if concluida {
+        recusar_total_zero_sem_garantia(input.custo_total, &servicos)?;
+    }
     let mut tx = pool.begin().await.map_err(super::operator_errors::mapear_erro_sql)?;
     let status: Option<String> = sqlx::query_scalar("SELECT status FROM equipamentos WHERE id = $1 AND empresa_id = $2 FOR UPDATE")
         .bind(input.equipamento_id).bind(empresa_id).fetch_optional(&mut *tx).await.map_err(super::operator_errors::mapear_erro_sql)?;
@@ -163,7 +208,7 @@ pub async fn salvar_verificacao_tecnica(mut input: VerificacaoInput) -> Result<V
         .bind(input.custo_estimado_pecas)
         .bind(input.custo_total)
         .bind(input.tempo_estimado)
-        .bind(input.concluida.unwrap_or(false))
+        .bind(concluida)
         .bind(&input.observacoes)
         .bind(payment_code.as_deref())
         .bind(payment_detail.as_deref())
@@ -176,6 +221,15 @@ pub async fn salvar_verificacao_tecnica(mut input: VerificacaoInput) -> Result<V
             super::operator_errors::mapear_erro_sql(e)
         })?;
 
+        gravar_aprovacao_os_garantia(
+            &mut tx,
+            input.equipamento_id,
+            empresa_id,
+            &servicos,
+            input.custo_total,
+            concluida,
+        )
+        .await?;
         tx.commit().await.map_err(super::operator_errors::mapear_erro_sql)?;
         if let Some(actor) = financial_actor.as_ref() {
             record_security_event(
@@ -218,7 +272,7 @@ pub async fn salvar_verificacao_tecnica(mut input: VerificacaoInput) -> Result<V
     .bind(input.custo_estimado_pecas)
     .bind(input.custo_total)
     .bind(input.tempo_estimado)
-    .bind(input.concluida.unwrap_or(false))
+    .bind(concluida)
     .bind(&input.observacoes)
     .bind(payment_code.as_deref())
     .bind(payment_detail.as_deref())
@@ -229,6 +283,15 @@ pub async fn salvar_verificacao_tecnica(mut input: VerificacaoInput) -> Result<V
         super::operator_errors::mapear_erro_sql(e)
     })?;
 
+    gravar_aprovacao_os_garantia(
+        &mut tx,
+        input.equipamento_id,
+        empresa_id,
+        &servicos,
+        input.custo_total,
+        concluida,
+    )
+    .await?;
     tx.commit().await.map_err(super::operator_errors::mapear_erro_sql)?;
     if let Some(actor) = financial_actor.as_ref() {
         record_security_event(
@@ -464,6 +527,8 @@ pub async fn atualizar_servicos_verificacao(
     )?;
     let pool = get_pool().await.map_err(|e| e.to_string())?;
     let active_empresa_id = require_active_session_company_id(&pool).await?;
+    let servicos_novos = parse_servicos(servicos_json.as_deref().unwrap_or("[]"))?;
+    recusar_total_zero_sem_garantia(custo_total, &servicos_novos)?;
     let mut tx = pool.begin().await.map_err(|error| {
         error!("Erro ao iniciar ajuste da verificação: {}", error);
         super::operator_errors::mapear_erro_sql(error)
@@ -488,11 +553,6 @@ pub async fn atualizar_servicos_verificacao(
     }
     if !versao_valida {
         return Err("O orçamento mudou em outra sessão. Reabra Alterar Orçamento antes de salvar.".to_string());
-    }
-    if status == "AGUARDANDO_APROVACAO"
-        && !custo_total.is_some_and(|value| value.is_finite() && value > 0.0)
-    {
-        return Err("Informe um valor de orçamento maior que zero.".to_string());
     }
     if claimed_tenant_conflicts(empresa_id, resolved_empresa_id) {
         return Err("O equipamento não pertence à empresa informada.".to_string());
@@ -541,7 +601,7 @@ pub async fn atualizar_servicos_verificacao(
         None => return Err("Nenhuma verificação encontrada para este equipamento.".to_string()),
     };
 
-    let servicos = parse_servicos(servicos_json.as_deref().unwrap_or("[]"))?;
+    let servicos = servicos_novos;
     let depois_aprovacao = matches!(status.as_str(), "APROVADO" | "EM_MANUTENCAO" | "AGUARDANDO_PECA" | "PRONTO" | "ENTREGUE");
     let alterou_itens = old_servicos != servicos_json || old_pecas != pecas_json || old_total != custo_total;
     let modo_aprovado = (depois_aprovacao && alterou_itens)
@@ -659,7 +719,9 @@ pub async fn atualizar_servicos_verificacao(
 
     // Pedir nova aprovação: na mesma transação, reabre a aprovação mantendo o orçamento alterado
     // (mesma regra de estoque da correção de decisão). Se algo falhar, nada é gravado.
-    let correcao = if nova_aprovacao {
+    let correcao = if nova_aprovacao
+        && !(os_somente_garantia(&servicos) && !custo_total.is_some_and(valor_monetario_positivo))
+    {
         let token: String = sqlx::query_scalar("SELECT atualizado_em::TEXT FROM equipamentos WHERE id = $1")
             .bind(equipamento_id)
             .fetch_one(&mut *tx)
@@ -686,8 +748,8 @@ pub async fn atualizar_servicos_verificacao(
         registrar_auditoria_correcao(&actor, input, aplicada).await;
     }
 
-    let portal = if nova_aprovacao || republicar {
-        publicar_apos_ajuste(&pool, &actor, active_empresa_id, equipamento_id, nova_aprovacao).await
+    let portal = if correcao.is_some() || republicar {
+        publicar_apos_ajuste(&pool, &actor, active_empresa_id, equipamento_id, correcao.is_some()).await
     } else if modo_aprovado == Some(ModoAjusteAprovado::SemNovaAprovacao)
         && old_total != custo_total
         && portal_ligado(&pool, active_empresa_id).await

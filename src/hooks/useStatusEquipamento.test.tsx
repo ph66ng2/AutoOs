@@ -188,6 +188,45 @@ describe("useStatusEquipamento", () => {
     expect(resposta?.avisos?.[0]).toContain("boom");
   });
 
+  it("OS só de garantia já aprovada não vai para AGUARDANDO_APROVACAO nem envia orçamento", async () => {
+    vi.mocked(db.salvarVerificacao).mockResolvedValue(1);
+    vi.mocked(db.buscarEquipamento).mockResolvedValue({
+      ...equipamentoBase,
+      status: "APROVADO",
+      valor_orcamento: 0,
+    });
+    const { result } = renderHook(() => useStatusEquipamento());
+    let resposta: Awaited<ReturnType<typeof result.current.finalizarVerificacao>> | undefined;
+    await act(async () => {
+      resposta = await result.current.finalizarVerificacao(equipamentoBase, {
+        ...verificacaoBase,
+        custo_total: 0,
+        servicos_necessarios: JSON.stringify([{ id: "g1", descricao: "Garantia", valor: 0 }]),
+      });
+    });
+    expect(resposta?.sucesso).toBe(true);
+    expect(db.atualizarStatusEquipamento).not.toHaveBeenCalled();
+    expect(enviarOrcamentoAoCliente).not.toHaveBeenCalled();
+    expect(resposta?.avisos?.[0]).toMatch(/garantia/i);
+  });
+
+  it("não avança status quando salvar verificação recusa total 0 misto", async () => {
+    vi.mocked(db.salvarVerificacao).mockRejectedValue(
+      new Error("Total R$ 0,00 só segue sem aprovação quando todos os itens são de garantia."),
+    );
+    const { result } = renderHook(() => useStatusEquipamento());
+    let resposta: Awaited<ReturnType<typeof result.current.finalizarVerificacao>> | undefined;
+    await act(async () => {
+      resposta = await result.current.finalizarVerificacao(equipamentoBase, {
+        ...verificacaoBase,
+        custo_total: 0,
+      });
+    });
+    expect(resposta?.sucesso).toBe(false);
+    expect(db.atualizarStatusEquipamento).not.toHaveBeenCalled();
+    expect(enviarOrcamentoAoCliente).not.toHaveBeenCalled();
+  });
+
   it("marca como pronto e retorna status por canal", async () => {
     vi.mocked(db.atualizarStatusEquipamento).mockResolvedValue();
     vi.mocked(db.buscarEquipamento).mockResolvedValue({
