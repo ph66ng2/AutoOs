@@ -1044,6 +1044,54 @@ describe("Equipamentos — Budget Divergence & Audit", () => {
     expect(mockEnsureSensitiveAccess).not.toHaveBeenCalled();
   });
 
+  it("em VERIFICADO, ajuste só de garantia pede confirmação antes do PIN e cancelar não grava", async () => {
+    mockPermissions.list = ["FINANCIAL_ACTIONS"];
+    equipamentoVerificado.status = "VERIFICADO";
+    equipamentoVerificado.valor_orcamento = 0;
+    mockBuscarVerificacao.mockResolvedValue(makeVerificacao({
+      servicos: [{ id: "g1", descricao: "Garantia", valor: 0 }],
+      pecas: [],
+      custo_total: 0,
+    }));
+    render(<Equipamentos />);
+    await waitFor(() => expect(screen.getByTestId("action-alterar_orcamento")).toBeInTheDocument());
+    fireEvent.click(screen.getByTestId("action-alterar_orcamento"));
+    await waitFor(() => expect(screen.getByText(/O status atual do equipamento será mantido/i)).toBeInTheDocument());
+    await alterarValorOrcamento(0);
+    mockEnsureSensitiveAccess.mockClear();
+    await clicarConfirmarStatus();
+    await waitFor(() => expect(screen.getByTestId("confirm-title")).toHaveTextContent("Confirmar OS só de garantia?"));
+    fireEvent.click(screen.getByTestId("confirm-cancel"));
+    expect(mockAtualizarServicosVerificacao).not.toHaveBeenCalled();
+    expect(mockEnsureSensitiveAccess).not.toHaveBeenCalled();
+  });
+
+  it("em VERIFICADO, confirmar garantia grava com confirmarGarantia e pede PIN de aprovador", async () => {
+    mockPermissions.list = ["FINANCIAL_ACTIONS"];
+    equipamentoVerificado.status = "VERIFICADO";
+    equipamentoVerificado.valor_orcamento = 0;
+    mockBuscarVerificacao.mockResolvedValue(makeVerificacao({
+      servicos: [{ id: "g1", descricao: "Garantia", valor: 0 }],
+      pecas: [],
+      custo_total: 0,
+    }));
+    render(<Equipamentos />);
+    await waitFor(() => expect(screen.getByTestId("action-alterar_orcamento")).toBeInTheDocument());
+    fireEvent.click(screen.getByTestId("action-alterar_orcamento"));
+    await waitFor(() => expect(screen.getByText(/O status atual do equipamento será mantido/i)).toBeInTheDocument());
+    await alterarValorOrcamento(0);
+    mockEnsureSensitiveAccess.mockClear();
+    await clicarConfirmarStatus();
+    await waitFor(() => expect(screen.getByTestId("confirm-action")).toHaveTextContent("Confirmar garantia"));
+    fireEvent.click(screen.getByTestId("confirm-action"));
+    await waitFor(() => expect(mockEnsureSensitiveAccess).toHaveBeenCalledWith(expect.objectContaining({
+      permission: "FINANCIAL_ACTIONS",
+    })));
+    await waitFor(() => expect(mockAtualizarServicosVerificacao).toHaveBeenCalled());
+    const input = mockAtualizarServicosVerificacao.mock.calls[0][0];
+    expect(input.opcoes.confirmarGarantia).toBe(true);
+  });
+
   it("ajuste de OS só de garantia com 0,00 habilita Confirmar e exige PIN", async () => {
     equipamentoVerificado.status = "APROVADO";
     equipamentoVerificado.valor_orcamento = 0;

@@ -104,6 +104,8 @@ pub const MSG_AGUARDANDO_TOTAL_ZERO: &str =
     "Orçamento aguardando aprovação não pode ficar com R$ 0,00.";
 pub const MSG_ZERAR_APROVADO_PAGO: &str =
     "Não é possível zerar um orçamento já aprovado e pago.";
+pub const MSG_CONFIRMAR_GARANTIA: &str =
+    "Confirme a OS só de garantia para gravar: o orçamento ficará R$ 0,00, será aprovado automaticamente e as peças sairão do estoque.";
 
 fn total_efetivo_positivo(custo_total: Option<f64>, servicos: &[ServicoOrcamento]) -> bool {
     valor_monetario_positivo(resolver_custo_total(custo_total, servicos))
@@ -139,6 +141,28 @@ fn status_depois_aprovacao(status: &str) -> bool {
         status,
         "APROVADO" | "EM_MANUTENCAO" | "AGUARDANDO_PECA" | "PRONTO" | "ENTREGUE"
     )
+}
+
+pub fn vai_auto_aprovar_os_garantia(
+    status: &str,
+    servicos: &[ServicoOrcamento],
+    custo_total: Option<f64>,
+) -> bool {
+    matches!(status, "RECEBIDO" | "EM_VERIFICACAO" | "VERIFICADO")
+        && os_somente_garantia(servicos)
+        && !custo_total.is_some_and(valor_monetario_positivo)
+}
+
+pub fn recusar_autoaprovacao_garantia_sem_confirmacao(
+    confirmar_garantia: bool,
+    status: &str,
+    servicos: &[ServicoOrcamento],
+    custo_total: Option<f64>,
+) -> Result<(), String> {
+    if vai_auto_aprovar_os_garantia(status, servicos, custo_total) && !confirmar_garantia {
+        return Err(MSG_CONFIRMAR_GARANTIA.to_string());
+    }
+    Ok(())
 }
 
 pub fn recusar_zerar_orcamento_aprovado_pago(
@@ -536,6 +560,21 @@ mod tests {
         assert!(recusar_zerar_orcamento_aprovado_pago("APROVADO", Some(80.0), Some(80.0), &misto).is_ok());
         assert!(recusar_zerar_orcamento_aprovado_pago("APROVADO", Some(0.0), Some(0.0), &garantia).is_ok());
         assert!(recusar_zerar_orcamento_aprovado_pago("AGUARDANDO_APROVACAO", Some(80.0), Some(0.0), &zerados).is_ok());
+    }
+
+    #[test]
+    fn auto_approval_of_warranty_os_requires_explicit_confirmation() {
+        let garantia = parse_servicos(r#"[{"id":"g1","valor":0}]"#).unwrap();
+        let pago = parse_servicos(r#"[{"id":"c1","valor":80}]"#).unwrap();
+        assert!(vai_auto_aprovar_os_garantia("EM_VERIFICACAO", &garantia, Some(0.0)));
+        assert!(vai_auto_aprovar_os_garantia("VERIFICADO", &garantia, None));
+        assert!(!vai_auto_aprovar_os_garantia("APROVADO", &garantia, Some(0.0)));
+        assert!(!vai_auto_aprovar_os_garantia("EM_VERIFICACAO", &pago, Some(80.0)));
+        assert!(recusar_autoaprovacao_garantia_sem_confirmacao(false, "EM_VERIFICACAO", &garantia, Some(0.0))
+            .unwrap_err()
+            .contains("Confirme a OS só de garantia"));
+        assert!(recusar_autoaprovacao_garantia_sem_confirmacao(true, "EM_VERIFICACAO", &garantia, Some(0.0)).is_ok());
+        assert!(recusar_autoaprovacao_garantia_sem_confirmacao(false, "EM_VERIFICACAO", &pago, Some(80.0)).is_ok());
     }
 
     #[test]

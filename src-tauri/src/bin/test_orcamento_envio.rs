@@ -77,7 +77,7 @@ async fn main() -> Result<()> {
     let erro = verificacoes::salvar_verificacao_tecnica(VerificacaoInput {
         equipamento_id:eq_garantia, empresa_id:Some(empresa), tecnico_nome:"Teste".into(), problema_relatado:"Teste".into(),
         servicos_necessarios:Some(serde_json::json!([{"id":"g","descricao":"Garantia","valor":0,"pecas":[]}]).to_string()),
-        pecas_necessarias:Some("[]".into()), custo_total:Some(0.0), concluida:Some(true), ..VerificacaoInput::default()
+        pecas_necessarias:Some("[]".into()), custo_total:Some(0.0), concluida:Some(true), confirmar_garantia: true, ..VerificacaoInput::default()
     }).await.unwrap_err();
     assert!(erro.contains(SEM_PERMISSAO), "{erro}");
     let st: String = sqlx::query_scalar("SELECT status FROM equipamentos WHERE id=$1").bind(eq_garantia).fetch_one(&pool).await?;

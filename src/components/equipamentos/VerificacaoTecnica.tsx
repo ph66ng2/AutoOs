@@ -60,7 +60,8 @@ import {
 } from "@/types";
 import { db } from "@/lib/db";
 import { PecasDoServico } from "@/components/equipamentos/PecasDoServico";
-import { MENSAGEM_TOTAL_ZERO_SEM_GARANTIA, osSomenteGarantia, pecasParaOrcamento, validarPecas } from "@/lib/orcamento-estoque";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { LABEL_CONFIRMAR_OS_GARANTIA, MENSAGEM_CONFIRMAR_OS_GARANTIA, MENSAGEM_TOTAL_ZERO_SEM_GARANTIA, osSomenteGarantia, pecasParaOrcamento, TITULO_CONFIRMAR_OS_GARANTIA, vaiAutoAprovarOsGarantia, validarPecas } from "@/lib/orcamento-estoque";
 import { useNotification } from "@/hooks/useNotification";
 import { PhotoUploadDialog } from "@/components/equipamentos/PhotoUploadDialog";
 import { imagemPersistidaParaDraft, type EquipamentoImagemDraft } from "@/lib/equipamento-imagem-utils";
@@ -100,6 +101,8 @@ export function VerificacaoTecnica({
   const [photoVerifOpen, setPhotoVerifOpen] = useState(false);
   const [imagensVerificacao, setImagensVerificacao] = useState<EquipamentoImagemDraft[]>([]);
   const [valoresServicoInvalidos, setValoresServicoInvalidos] = useState<Record<string, boolean>>({});
+  const [confirmGarantiaOpen, setConfirmGarantiaOpen] = useState(false);
+  const [dadosGarantiaPendentes, setDadosGarantiaPendentes] = useState<DadosVerificacao | null>(null);
   const { warning } = useNotification();
 
   useEffect(() => {
@@ -142,6 +145,8 @@ export function VerificacaoTecnica({
     setTecnicoNome(tecnicoInicial);
     setImagensVerificacao([]);
     setValoresServicoInvalidos({});
+    setConfirmGarantiaOpen(false);
+    setDadosGarantiaPendentes(null);
   }
 
   /** Adiciona um novo serviço vazio à lista (id = timestamp) */
@@ -229,6 +234,23 @@ export function VerificacaoTecnica({
       observacoes: observacoesVerif,
     };
 
+    if (vaiAutoAprovarOsGarantia(equipamento.status, osSomenteGarantia(servicosNormalizados), custoTotal)) {
+      setDadosGarantiaPendentes(dados);
+      setConfirmGarantiaOpen(true);
+      return;
+    }
+
+    const concluida = await onConcluir(dados);
+    if (concluida === false) return;
+    onOpenChange(false);
+    resetForm();
+  }
+
+  async function confirmarOsGarantia() {
+    if (!dadosGarantiaPendentes) return;
+    const dados = { ...dadosGarantiaPendentes, confirmar_garantia: true };
+    setConfirmGarantiaOpen(false);
+    setDadosGarantiaPendentes(null);
     const concluida = await onConcluir(dados);
     if (concluida === false) return;
     onOpenChange(false);
@@ -242,6 +264,7 @@ export function VerificacaoTecnica({
   }
   // ─── Render ─────────────────────────────────────────
   return (
+    <>
     <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogContent className="sm:max-w-3xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
@@ -471,5 +494,19 @@ export function VerificacaoTecnica({
         )}
       </DialogContent>
     </Dialog>
+    <ConfirmDialog
+      open={confirmGarantiaOpen}
+      onOpenChange={(aberto) => {
+        setConfirmGarantiaOpen(aberto);
+        if (!aberto) setDadosGarantiaPendentes(null);
+      }}
+      title={TITULO_CONFIRMAR_OS_GARANTIA}
+      description={MENSAGEM_CONFIRMAR_OS_GARANTIA}
+      confirmLabel={LABEL_CONFIRMAR_OS_GARANTIA}
+      cancelLabel="Cancelar"
+      onConfirm={() => void confirmarOsGarantia()}
+      onCancel={() => setDadosGarantiaPendentes(null)}
+    />
+    </>
   );
 }

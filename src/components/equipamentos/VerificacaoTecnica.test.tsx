@@ -85,7 +85,7 @@ describe("VerificacaoTecnica", () => {
     expect(onConcluir).not.toHaveBeenCalled();
   });
 
-  it("finaliza OS só de garantia com total 0", async () => {
+  it("finaliza OS só de garantia com total 0 só depois de confirmar garantia", async () => {
     const user = userEvent.setup();
     const onConcluir = vi.fn().mockResolvedValue(true);
     render(
@@ -99,9 +99,17 @@ describe("VerificacaoTecnica", () => {
     await user.click(screen.getByRole("button", { name: /Adicionar Serviço/i }));
     await user.type(screen.getByPlaceholderText("Nome do serviço"), "Atendimento em garantia");
     await user.click(screen.getByRole("button", { name: /Finalizar Verificação/i }));
+    expect(onConcluir).not.toHaveBeenCalled();
+    expect(screen.getByText("Confirmar OS só de garantia?")).toBeInTheDocument();
+    const cancelar = screen.getAllByRole("button", { name: "Cancelar" });
+    await user.click(cancelar[cancelar.length - 1]);
+    expect(onConcluir).not.toHaveBeenCalled();
+    await user.click(screen.getByRole("button", { name: /Finalizar Verificação/i }));
+    await user.click(screen.getByRole("button", { name: "Confirmar garantia" }));
     expect(onConcluir).toHaveBeenCalledWith(expect.objectContaining({
       custo_total: 0,
       concluida: true,
+      confirmar_garantia: true,
     }));
   });
 });

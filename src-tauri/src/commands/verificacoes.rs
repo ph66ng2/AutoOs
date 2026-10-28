@@ -25,8 +25,9 @@ use crate::commands::orcamento_decisao::{
 use crate::commands::orcamento_estoque::{
     aplicar_decisoes, aplicar_decisoes_aprovacao_integral, cancelar_pendencias_ausentes,
     detalhes_auditoria_aprovacao_garantia, normalizar_servicos, os_somente_garantia, parse_servicos,
-    recusar_aguardando_aprovacao_total_zero, recusar_total_zero_sem_garantia,
-    recusar_zerar_orcamento_aprovado_pago, resolver_custo_total, valor_monetario_positivo,
+    recusar_aguardando_aprovacao_total_zero, recusar_autoaprovacao_garantia_sem_confirmacao,
+    recusar_total_zero_sem_garantia, recusar_zerar_orcamento_aprovado_pago, resolver_custo_total,
+    valor_monetario_positivo, vai_auto_aprovar_os_garantia,
     ServicoOrcamento,
 };
 use serde::{Deserialize, Serialize};
@@ -213,6 +214,14 @@ pub async fn salvar_verificacao_tecnica(mut input: VerificacaoInput) -> Result<V
         .bind(input.equipamento_id).bind(empresa_id).fetch_optional(&mut *tx).await.map_err(super::operator_errors::mapear_erro_sql)?;
     let status = status.ok_or("Equipamento não encontrado na empresa ativa.")?;
     check_prepare_quotes_status(financial_actor.as_ref(), &status)?;
+    if concluida {
+        recusar_autoaprovacao_garantia_sem_confirmacao(
+            input.confirmar_garantia,
+            &status,
+            &servicos,
+            input.custo_total,
+        )?;
+    }
     if matches!(status.as_str(), "APROVADO" | "EM_MANUTENCAO" | "AGUARDANDO_PECA" | "PRONTO" | "ENTREGUE") {
         return Err("Use Alterar Orçamento para modificar serviços de uma OS já aprovada.".to_string());
     }
@@ -450,6 +459,8 @@ pub struct OpcoesAjusteOrcamento {
     pub devolver_estoque: bool,
     /// Confirma que a nova versão anula a resposta que o cliente deu e a equipe ainda não aplicou.
     pub confirmar_resposta_pendente: bool,
+    /// Confirma auto-aprovação de OS só de garantia (R$ 0,00 → APROVADO).
+    pub confirmar_garantia: bool,
 }
 
 /// O que aconteceu no portal por causa do ajuste, em palavras para o operador.
@@ -680,6 +691,12 @@ pub async fn atualizar_servicos_verificacao(
         custo_total,
         &servicos_novos,
     )?;
+    recusar_autoaprovacao_garantia_sem_confirmacao(
+        opcoes.confirmar_garantia,
+        &status,
+        &servicos_novos,
+        custo_total,
+    )?;
 
     let servicos = servicos_novos;
     let depois_aprovacao = matches!(status.as_str(), "APROVADO" | "EM_MANUTENCAO" | "AGUARDANDO_PECA" | "PRONTO" | "ENTREGUE");
@@ -797,6 +814,21 @@ pub async fn atualizar_servicos_verificacao(
         return Err("Equipamento não encontrado na empresa informada.".to_string());
     }
 
+    let aprovador_garantia = if vai_auto_aprovar_os_garantia(&status, &servicos, custo_total) {
+        gravar_aprovacao_os_garantia(
+            &mut tx,
+            equipamento_id,
+            active_empresa_id,
+            verificacao_id,
+            &servicos,
+            custo_total,
+            true,
+        )
+        .await?
+    } else {
+        None
+    };
+
     // Pedir nova aprovação: na mesma transação, reabre a aprovação mantendo o orçamento alterado
     // (mesma regra de estoque da correção de decisão). Se algo falhar, nada é gravado.
     let correcao = if nova_aprovacao
@@ -824,6 +856,14 @@ pub async fn atualizar_servicos_verificacao(
         error!("Erro ao confirmar ajuste da verificação {}: {}", verificacao_id, error);
         super::operator_errors::mapear_erro_sql(error)
     })?;
+    auditar_aprovacao_os_garantia(
+        aprovador_garantia,
+        active_empresa_id,
+        equipamento_id,
+        verificacao_id,
+        &status,
+    )
+    .await;
     if let Some((input, aplicada)) = correcao.as_ref() {
         registrar_auditoria_correcao(&actor, input, aplicada).await;
     }
@@ -913,7 +953,7 @@ mod tests {
         assert_eq!(modo, ModoAjusteAprovado::NovaAprovacao);
         assert_eq!(modo.codigo(), "NOVA_APROVACAO");
         let opcoes: OpcoesAjusteOrcamento = serde_json::from_str("{}").unwrap();
-        assert!(opcoes.modo_aprovado.is_none() && !opcoes.devolver_estoque && !opcoes.confirmar_resposta_pendente);
+        assert!(opcoes.modo_aprovado.is_none() && !opcoes.devolver_estoque && !opcoes.confirmar_resposta_pendente && !opcoes.confirmar_garantia);
         let opcoes: OpcoesAjusteOrcamento =
             serde_json::from_str(r#"{"modoAprovado":"SEM_NOVA_APROVACAO","devolverEstoque":true}"#).unwrap();
         assert_eq!(opcoes.modo_aprovado, Some(ModoAjusteAprovado::SemNovaAprovacao));

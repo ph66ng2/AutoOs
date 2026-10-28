@@ -48,6 +48,21 @@ export const MENSAGEM_AGUARDANDO_TOTAL_ZERO =
   "Orçamento aguardando aprovação não pode ficar com R$ 0,00.";
 export const MENSAGEM_ZERAR_APROVADO_PAGO =
   "Não é possível zerar um orçamento já aprovado e pago.";
+export const TITULO_CONFIRMAR_OS_GARANTIA = "Confirmar OS só de garantia?";
+export const MENSAGEM_CONFIRMAR_OS_GARANTIA =
+  "O orçamento ficará R$ 0,00, será aprovado automaticamente e as peças sairão do estoque.";
+export const LABEL_CONFIRMAR_OS_GARANTIA = "Confirmar garantia";
+
+export function vaiAutoAprovarOsGarantia(
+  status: string | undefined,
+  soGarantia: boolean,
+  total: number,
+) {
+  return ["RECEBIDO", "EM_VERIFICACAO", "VERIFICADO"].includes(status ?? "")
+    && soGarantia
+    && Number.isFinite(total)
+    && total === 0;
+}
 
 export function osSomenteGarantia(
   servicos: Array<{

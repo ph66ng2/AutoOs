@@ -139,7 +139,7 @@ import { PhotoUploadDialog } from "@/components/equipamentos/PhotoUploadDialog";
 import { DocumentosEquipamento } from "@/components/equipamentos/DocumentosEquipamento";
 import { PdfPreviewDialog } from "@/components/equipamentos/PdfPreviewDialog";
 import { AjusteOrcamentoServicos } from "@/components/equipamentos/AjusteOrcamentoServicos";
-import { carregarProdutosOrcamento, normalizarServicosOrcamento, orcamentoEmElaboracao, transicaoElaboraOrcamento, osSomenteGarantia, pecasParaOrcamento, orcamentoJaAprovado, orcamentoMudou, resumirPecas, validarPecas } from "@/lib/orcamento-estoque";
+import { carregarProdutosOrcamento, LABEL_CONFIRMAR_OS_GARANTIA, MENSAGEM_CONFIRMAR_OS_GARANTIA, normalizarServicosOrcamento, orcamentoEmElaboracao, transicaoElaboraOrcamento, osSomenteGarantia, pecasParaOrcamento, orcamentoJaAprovado, orcamentoMudou, resumirPecas, TITULO_CONFIRMAR_OS_GARANTIA, vaiAutoAprovarOsGarantia, validarPecas } from "@/lib/orcamento-estoque";
 import { ActionPriorityRow, type PriorityAction } from "@/components/ui/action-priority-row";
 import {
   arquivoParaImagemEquipamento,
@@ -246,6 +246,7 @@ export default function Equipamentos() {
   const decisaoAprovada = todosServicosAprovados === true || idsAprovados.length > 0;
   const [escolhaAjuste, setEscolhaAjuste] = useState<{ variante: "aprovado" | "pendente"; analise: AnaliseAjusteOrcamento } | null>(null);
   const escolhaAjusteResolver = useRef<((opcoes: OpcoesAjusteOrcamento | null) => void) | null>(null);
+  const garantiaConfirmadaRef = useRef(false);
   const [consumosDetalhes, setConsumosDetalhes] = useState<ConsumoOrcamento[]>([]);
   const [baixandoPendentes, setBaixandoPendentes] = useState(false);
   const [consumosDialogOpen, setConsumosDialogOpen] = useState(false);
@@ -1267,6 +1268,10 @@ export default function Equipamentos() {
       return;
     }
     if ((novoStatus === "AGUARDANDO_APROVACAO" || ajusteOrcamentoSemMudancaStatus) && verificacaoAjusteOrcamento) {
+      if (ajusteOrcamentoSemMudancaStatus && vaiAutoAprovarOsGarantia(selecionado?.status, osSomenteGarantia(servicosAjuste), valorOrcamentoRef.current)) {
+        void confirmarMudancaStatus(false);
+        return;
+      }
       const servicosOriginal: ServicoNecessario[] = [];
       try {
         servicosOriginal.push(...JSON.parse(verificacaoAjusteOrcamento.servicos_necessarios || "[]") as ServicoNecessario[]);
@@ -1480,6 +1485,29 @@ export default function Equipamentos() {
       warning("Equipamentos", "Informe o motivo da correção antes de continuar.");
       return;
     }
+    const autoAprovaGarantia = vaiAutoAprovarOsGarantia(
+      selecionado.status,
+      osSomenteGarantia(servicosAjuste),
+      totalAtual,
+    );
+    if (autoAprovaGarantia && !garantiaConfirmadaRef.current) {
+      setConfirmProps({
+        title: TITULO_CONFIRMAR_OS_GARANTIA,
+        description: MENSAGEM_CONFIRMAR_OS_GARANTIA,
+        confirmLabel: LABEL_CONFIRMAR_OS_GARANTIA,
+        cancelLabel: "Cancelar",
+        onConfirm: () => {
+          garantiaConfirmadaRef.current = true;
+          setConfirmOpen(false);
+          void confirmarMudancaStatus(divergencia);
+        },
+        onCancel: () => {
+          garantiaConfirmadaRef.current = false;
+        },
+      });
+      setConfirmOpen(true);
+      return;
+    }
     const valorSensivel = mostraOrcamento ? totalAtual : (totalAtual || undefined);
     const precisaLiberacao = correcaoStatus || statusExigeAcessoSensivel(
       novoStatus,
@@ -1489,14 +1517,21 @@ export default function Equipamentos() {
     );
     if (precisaLiberacao) {
       const liberado = await ensureSensitiveAccess({
-        title: "Confirmar mudança de status",
-        description: "Informe o PIN para aplicar esta transição e persistir dados sensíveis do equipamento.",
-        ...((ajusteOrcamentoSemMudancaStatus && orcamentoEmElaboracao(selecionado.status))
-          || transicaoElaboraOrcamento(selecionado.status, novoStatus, correcaoStatus, valorFinal)
-          ? { anyPermission: [SENSITIVE_PERMISSIONS.FINANCIAL_ACTIONS, SENSITIVE_PERMISSIONS.PREPARE_QUOTES] }
-          : { permission: SENSITIVE_PERMISSIONS.FINANCIAL_ACTIONS }),
+        title: autoAprovaGarantia ? "Confirmar OS só de garantia" : "Confirmar mudança de status",
+        description: autoAprovaGarantia
+          ? "OS só de garantia vai direto para Aprovado. Informe o PIN de quem aprova orçamentos."
+          : "Informe o PIN para aplicar esta transição e persistir dados sensíveis do equipamento.",
+        ...(autoAprovaGarantia
+          ? { permission: SENSITIVE_PERMISSIONS.FINANCIAL_ACTIONS }
+          : ((ajusteOrcamentoSemMudancaStatus && orcamentoEmElaboracao(selecionado.status))
+            || transicaoElaboraOrcamento(selecionado.status, novoStatus, correcaoStatus, valorFinal)
+            ? { anyPermission: [SENSITIVE_PERMISSIONS.FINANCIAL_ACTIONS, SENSITIVE_PERMISSIONS.PREPARE_QUOTES] }
+            : { permission: SENSITIVE_PERMISSIONS.FINANCIAL_ACTIONS })),
       });
-      if (!liberado) return;
+      if (!liberado) {
+        garantiaConfirmadaRef.current = false;
+        return;
+      }
     }
 
     // Alterar orçamento já aprovado ou já respondido no portal: o operador escolhe o que fazer.
@@ -1570,7 +1605,9 @@ export default function Equipamentos() {
             // Escolher "ajuste sem nova aprovação" é a confirmação de que o cliente concordou.
             cliente_aprovou_alteracao: opcoesAjuste?.modoAprovado === "SEM_NOVA_APROVACAO",
             expected_updated_em: selecionado.atualizado_em,
-            ...(opcoesAjuste ? { opcoes: opcoesAjuste } : {}),
+            ...((opcoesAjuste || autoAprovaGarantia)
+              ? { opcoes: { ...opcoesAjuste, ...(autoAprovaGarantia ? { confirmarGarantia: true } : {}) } }
+              : {}),
           },
           profileId,
         );
@@ -1647,7 +1684,10 @@ export default function Equipamentos() {
       console.error("Erro:", err);
       showError("Equipamentos", "Alterar status", err);
     }
-    finally { setSalvando(false); }
+    finally {
+      setSalvando(false);
+      garantiaConfirmadaRef.current = false;
+    }
   }
 
   // ─── Ações rápidas ────────────────────────────────────

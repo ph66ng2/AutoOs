@@ -390,7 +390,7 @@ async fn main() -> Result<()> {
     verificacoes::salvar_verificacao_tecnica(VerificacaoInput {
         equipamento_id: eq_g, empresa_id: Some(empresa), tecnico_nome: "Teste".into(), problema_relatado: "Garantia".into(),
         servicos_necessarios: Some(services_g.to_string()), pecas_necessarias: Some("[]".into()),
-        custo_total: Some(0.0), concluida: Some(true), ..VerificacaoInput::default()
+        custo_total: Some(0.0), concluida: Some(true), confirmar_garantia: true, ..VerificacaoInput::default()
     }).await.map_err(|e| anyhow!(e))?;
     let status_g: String = sqlx::query_scalar("SELECT status FROM equipamentos WHERE id=$1").bind(eq_g).fetch_one(&pool).await?;
     assert_eq!(status_g, "APROVADO");
