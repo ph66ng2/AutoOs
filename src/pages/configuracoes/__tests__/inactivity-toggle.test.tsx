@@ -1,6 +1,7 @@
 import { describe, it, expect, vi } from "vitest";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { MemoryRouter } from "react-router-dom";
 import { Tabs } from "@/components/ui/tabs";
 import { ConfiguracoesTabSeguranca, type ConfiguracoesTabSegurancaProps } from "../ConfiguracoesTabSeguranca";
 
@@ -10,13 +11,6 @@ const baseProps: ConfiguracoesTabSegurancaProps = {
   securityBusy: false,
   handleSecurityAdminToggle: vi.fn(),
   accessStatus: null,
-  currentPin: "",
-  setCurrentPin: vi.fn(),
-  newPin: "",
-  setNewPin: vi.fn(),
-  confirmPin: "",
-  setConfirmPin: vi.fn(),
-  trocarMeuPin: vi.fn(),
   managedProfileId: null,
   setManagedProfileId: vi.fn(),
   profilesCatalog: [],
@@ -40,7 +34,11 @@ const baseProps: ConfiguracoesTabSegurancaProps = {
 };
 
 function renderWithTabs(ui: React.ReactElement) {
-  return render(<Tabs defaultValue="seguranca">{ui}</Tabs>);
+  return render(
+    <MemoryRouter>
+      <Tabs defaultValue="seguranca">{ui}</Tabs>
+    </MemoryRouter>,
+  );
 }
 
 describe("ConfiguracoesTabSeguranca — inactivity lock toggle", () => {
