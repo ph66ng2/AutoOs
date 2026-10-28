@@ -330,7 +330,7 @@ export const clienteContatoSchema = z.object({
   ),
 });
 
-/** Painel de contatos: PJ sem outro celular precisa do 11 dígitos neste cadastro/edição. */
+/** Painel de contatos: contato novo de PJ sem outro celular, ou edição do último celular, exige 11 dígitos. */
 export function schemaContatoCliente(exigeCelularPj: boolean) {
   return clienteContatoSchema.superRefine((data, ctx) => {
     if (!exigeCelularPj) return;

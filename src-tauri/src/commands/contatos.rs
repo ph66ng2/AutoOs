@@ -115,6 +115,20 @@ fn recusar_se_pj_ficar_sem_celular(tipo_pessoa: &str, outros: &[String], telefon
     Err(MSG_PJ_CONTATO.to_string())
 }
 
+/// Editar ou inativar não pode tirar o último celular de um PJ. PJ antigo que nunca teve
+/// celular fica como está: mexer num contato fixo dele não perde nada e não é recusado.
+fn recusar_se_pj_perder_ultimo_celular(
+    tipo_pessoa: &str,
+    outros: &[String],
+    telefone_antes: Option<&str>,
+    telefone_depois: Option<&str>,
+) -> Result<(), String> {
+    if telefone_antes.and_then(celular_nacional).is_none() {
+        return Ok(());
+    }
+    recusar_se_pj_ficar_sem_celular(tipo_pessoa, outros, telefone_depois)
+}
+
 async fn fetch_contact(pool: &PgPool, id: i32, empresa_id: i32) -> Result<ClienteContato, String> {
     let query = format!(
         "{} WHERE id = $1 AND empresa_id = $2",
@@ -221,13 +235,13 @@ pub async fn atualizar_cliente_contato(
 
     let email = optional_text(input.email.as_deref());
     let telefone = telefone_contato_persistido(input.telefone.as_deref());
+    let atual = fetch_contact(&pool, id, empresa_id).await?;
     let (nome, email) = if input.preservar_identidade_portal {
-        let atual = fetch_contact(&pool, id, empresa_id).await?;
         identidade_contato_com_portal(
             true,
             &atual.portal_acesso,
-            atual.nome,
-            atual.email,
+            atual.nome.clone(),
+            atual.email.clone(),
             nome,
             email,
         )
@@ -236,7 +250,12 @@ pub async fn atualizar_cliente_contato(
     };
     let (tipo_pessoa, outros) =
         tipo_e_telefones_ativos_exceto(&pool, empresa_id, cliente_id, id).await?;
-    recusar_se_pj_ficar_sem_celular(&tipo_pessoa, &outros, telefone.as_deref())?;
+    recusar_se_pj_perder_ultimo_celular(
+        &tipo_pessoa,
+        &outros,
+        atual.telefone.as_deref(),
+        telefone.as_deref(),
+    )?;
     let updated_rows = if let Some(token) = input
         .atualizado_em
         .as_deref()
@@ -307,7 +326,7 @@ pub async fn inativar_cliente_contato(id: i32, empresa_id: i32) -> Result<Client
     let atual = fetch_contact(&pool, id, empresa_id).await?;
     let (tipo_pessoa, outros) =
         tipo_e_telefones_ativos_exceto(&pool, empresa_id, atual.cliente_id, id).await?;
-    recusar_se_pj_ficar_sem_celular(&tipo_pessoa, &outros, None)?;
+    recusar_se_pj_perder_ultimo_celular(&tipo_pessoa, &outros, atual.telefone.as_deref(), None)?;
 
     let updated_rows = sqlx::query(
         "UPDATE cliente_contatos
@@ -436,6 +455,25 @@ mod tests {
         assert!(recusar_se_pj_ficar_sem_celular("PJ", &outros_vazios, Some("+55 71 98888-7777")).is_ok());
         assert!(recusar_se_pj_ficar_sem_celular("PJ", &["71988880000".into()], None).is_ok());
         assert!(recusar_se_pj_ficar_sem_celular("PF", &outros_vazios, None).is_ok());
+    }
+
+    #[test]
+    fn pj_antigo_sem_celular_edita_e_inativa_contato_fixo() {
+        let outros_vazios: Vec<String> = vec![];
+        let fixo = Some("7133334444");
+        assert!(recusar_se_pj_perder_ultimo_celular("PJ", &outros_vazios, fixo, Some("7133335555")).is_ok());
+        assert!(recusar_se_pj_perder_ultimo_celular("PJ", &outros_vazios, fixo, None).is_ok());
+        assert!(recusar_se_pj_perder_ultimo_celular("PJ", &outros_vazios, None, None).is_ok());
+        let celular = Some("71988887777");
+        assert_eq!(
+            recusar_se_pj_perder_ultimo_celular("PJ", &outros_vazios, celular, fixo).unwrap_err(),
+            MSG_PJ_CONTATO
+        );
+        assert_eq!(
+            recusar_se_pj_perder_ultimo_celular("PJ", &outros_vazios, celular, None).unwrap_err(),
+            MSG_PJ_CONTATO
+        );
+        assert!(recusar_se_pj_perder_ultimo_celular("PJ", &["71977776666".into()], celular, None).is_ok());
     }
 
     #[test]
