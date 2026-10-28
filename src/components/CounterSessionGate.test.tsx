@@ -34,7 +34,8 @@ const access = vi.hoisted(() => {
       state.loading = false;
       state.unlocked = true;
       listeners.clear();
-      this.openProfileSelector.mockClear();
+      this.openProfileSelector.mockReset();
+      this.openProfileSelector.mockResolvedValue(true);
     },
   };
 });
@@ -105,5 +106,28 @@ describe("cadeado do Modo Balcão", () => {
 
     expect(await screen.findByText("Atendimento do balcão")).toBeInTheDocument();
     expect(screen.queryByText("Aguardando autenticação da sessão…")).not.toBeInTheDocument();
+  });
+
+  it("depois de fechar o diálogo, Desbloquear reabre o PIN e o PIN certo volta ao balcão", async () => {
+    const user = userEvent.setup();
+    access.openProfileSelector.mockResolvedValue(false);
+    renderBalcao();
+
+    await user.click(screen.getByRole("button", { name: "Bloquear acesso" }));
+    expect(await screen.findByText("Aguardando autenticação da sessão…")).toBeInTheDocument();
+    await waitFor(() => expect(access.openProfileSelector).toHaveBeenCalledTimes(1));
+    expect(screen.queryByText("Atendimento do balcão")).not.toBeInTheDocument();
+
+    access.openProfileSelector.mockClear();
+    await user.click(screen.getByRole("button", { name: "Desbloquear" }));
+    await waitFor(() => expect(access.openProfileSelector).toHaveBeenCalledTimes(1));
+    expect(screen.queryByText("Atendimento do balcão")).not.toBeInTheDocument();
+
+    await act(async () => {
+      access.unlock();
+    });
+
+    expect(await screen.findByText("Atendimento do balcão")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Desbloquear" })).not.toBeInTheDocument();
   });
 });
