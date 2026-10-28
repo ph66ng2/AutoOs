@@ -1543,20 +1543,26 @@ export default function Equipamentos() {
         const variante = aprovado ? "aprovado" : analise.respostaPendente ? "pendente" : null;
         if (variante && orcamentoMudou(verificacaoAjusteOrcamento, servicosAjuste, totalAtual)) {
           const escolha = await pedirEscolhaAjuste(variante, analise);
-          if (!escolha) return;
+          if (!escolha) {
+            garantiaConfirmadaRef.current = false;
+            return;
+          }
           opcoesAjuste = escolha;
         }
       } catch (err) {
         showError("Equipamentos", "Conferir o portal antes de salvar", err);
+        garantiaConfirmadaRef.current = false;
         return;
       }
       if (opcoesAjuste?.modoAprovado === "SEM_NOVA_APROVACAO") {
         if (!formaPagamentoAjuste) {
           warning("Equipamentos", "Escolha a forma de pagamento antes de salvar o orçamento aprovado.");
+          garantiaConfirmadaRef.current = false;
           return;
         }
         if (formaPagamentoAjuste === "OUTRO" && !detalhePagamentoAjuste.trim()) {
           warning("Equipamentos", "Descreva a forma de pagamento escolhida em Outro.");
+          garantiaConfirmadaRef.current = false;
           return;
         }
       }
