@@ -24,8 +24,10 @@ use crate::commands::orcamento_decisao::{
 };
 use crate::commands::orcamento_estoque::{
     aplicar_decisoes, aplicar_decisoes_aprovacao_integral, cancelar_pendencias_ausentes,
-    normalizar_servicos, os_somente_garantia, parse_servicos, recusar_total_zero_sem_garantia,
-    valor_monetario_positivo, ServicoOrcamento,
+    detalhes_auditoria_aprovacao_garantia, normalizar_servicos, os_somente_garantia, parse_servicos,
+    recusar_aguardando_aprovacao_total_zero, recusar_total_zero_sem_garantia,
+    recusar_zerar_orcamento_aprovado_pago, resolver_custo_total, valor_monetario_positivo,
+    ServicoOrcamento,
 };
 use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
@@ -104,16 +106,40 @@ async fn gravar_aprovacao_os_garantia(
     if atualizados == 0 {
         return Ok(None);
     }
+    sqlx::query(
+        r#"UPDATE verificacoes
+           SET servicos_orcamento_original = COALESCE(servicos_orcamento_original, servicos_necessarios::jsonb),
+               pecas_orcamento_original = COALESCE(pecas_orcamento_original, pecas_necessarias::jsonb),
+               valor_orcamento_original = COALESCE(valor_orcamento_original, COALESCE(custo_total, 0)),
+               forma_pagamento_codigo = NULL,
+               forma_pagamento_detalhe = NULL
+           WHERE id = $1"#,
+    )
+    .bind(verificacao_id)
+    .execute(&mut **tx)
+    .await
+    .map_err(super::operator_errors::mapear_erro_sql)?;
     aplicar_decisoes_aprovacao_integral(tx, empresa_id, verificacao_id, servicos).await?;
     Ok(Some(actor))
 }
 
-async fn auditar_aprovacao_os_garantia(actor: Option<SecurityProfileSummary>, equipamento_id: i32) {
+async fn auditar_aprovacao_os_garantia(
+    actor: Option<SecurityProfileSummary>,
+    empresa_id: i32,
+    equipamento_id: i32,
+    verificacao_id: i32,
+    status_anterior: &str,
+) {
     if let Some(actor) = actor.as_ref() {
         record_security_event(
-            "WARRANTY_QUOTE_APPROVED",
+            "BUDGET_APPROVED",
             Some(actor),
-            format!("equipamento_id={}; valor_orcamento=0; motivo=OS só de garantia", equipamento_id),
+            detalhes_auditoria_aprovacao_garantia(
+                empresa_id,
+                equipamento_id,
+                verificacao_id,
+                status_anterior,
+            ),
             true,
         )
         .await;
@@ -177,6 +203,9 @@ pub async fn salvar_verificacao_tecnica(mut input: VerificacaoInput) -> Result<V
     let servicos = parse_servicos(input.servicos_necessarios.as_deref().unwrap_or("[]"))?;
     let concluida = input.concluida.unwrap_or(false);
     if concluida {
+        if input.custo_total.is_none() {
+            input.custo_total = Some(resolver_custo_total(None, &servicos));
+        }
         recusar_total_zero_sem_garantia(input.custo_total, &servicos)?;
     }
     let mut tx = pool.begin().await.map_err(super::operator_errors::mapear_erro_sql)?;
@@ -256,7 +285,14 @@ pub async fn salvar_verificacao_tecnica(mut input: VerificacaoInput) -> Result<V
         )
         .await?;
         tx.commit().await.map_err(super::operator_errors::mapear_erro_sql)?;
-        auditar_aprovacao_os_garantia(aprovador_garantia, input.equipamento_id).await;
+        auditar_aprovacao_os_garantia(
+            aprovador_garantia,
+            empresa_id,
+            input.equipamento_id,
+            id,
+            &status,
+        )
+        .await;
         if let Some(actor) = financial_actor.as_ref() {
             record_security_event(
                 "VERIFICATION_FINANCIAL_SAVED",
@@ -321,7 +357,14 @@ pub async fn salvar_verificacao_tecnica(mut input: VerificacaoInput) -> Result<V
     )
     .await?;
     tx.commit().await.map_err(super::operator_errors::mapear_erro_sql)?;
-    auditar_aprovacao_os_garantia(aprovador_garantia, input.equipamento_id).await;
+    auditar_aprovacao_os_garantia(
+        aprovador_garantia,
+        empresa_id,
+        input.equipamento_id,
+        verificacao_id,
+        &status,
+    )
+    .await;
     if let Some(actor) = financial_actor.as_ref() {
         record_security_event(
             "VERIFICATION_FINANCIAL_SAVED",
@@ -557,6 +600,7 @@ pub async fn atualizar_servicos_verificacao(
     let pool = get_pool().await.map_err(|e| e.to_string())?;
     let active_empresa_id = require_active_session_company_id(&pool).await?;
     let servicos_novos = parse_servicos(servicos_json.as_deref().unwrap_or("[]"))?;
+    let custo_total = Some(resolver_custo_total(custo_total, &servicos_novos));
     recusar_total_zero_sem_garantia(custo_total, &servicos_novos)?;
     let mut tx = pool.begin().await.map_err(|error| {
         error!("Erro ao iniciar ajuste da verificação: {}", error);
@@ -577,6 +621,7 @@ pub async fn atualizar_servicos_verificacao(
         return Err("Equipamento não encontrado.".to_string());
     };
     check_prepare_quotes_status(Some(&actor), &status)?;
+    recusar_aguardando_aprovacao_total_zero(&status, custo_total, &servicos_novos)?;
     if resolved_empresa_id != Some(active_empresa_id) {
         return Err("O equipamento não pertence à empresa ativa.".to_string());
     }
@@ -629,6 +674,12 @@ pub async fn atualizar_servicos_verificacao(
         Some(row) => row,
         None => return Err("Nenhuma verificação encontrada para este equipamento.".to_string()),
     };
+    recusar_zerar_orcamento_aprovado_pago(
+        &status,
+        valor_equipamento.filter(|valor| valor_monetario_positivo(*valor)).or(old_total),
+        custo_total,
+        &servicos_novos,
+    )?;
 
     let servicos = servicos_novos;
     let depois_aprovacao = matches!(status.as_str(), "APROVADO" | "EM_MANUTENCAO" | "AGUARDANDO_PECA" | "PRONTO" | "ENTREGUE");
@@ -777,7 +828,9 @@ pub async fn atualizar_servicos_verificacao(
         registrar_auditoria_correcao(&actor, input, aplicada).await;
     }
 
-    let portal = if correcao.is_some() || republicar {
+    let portal = if (correcao.is_some() || republicar)
+        && custo_total.is_some_and(valor_monetario_positivo)
+    {
         publicar_apos_ajuste(&pool, &actor, active_empresa_id, equipamento_id, correcao.is_some()).await
     } else if modo_aprovado == Some(ModoAjusteAprovado::SemNovaAprovacao)
         && old_total != custo_total
@@ -884,6 +937,13 @@ mod tests {
         perfil.permissions.clear();
         perfil.role = "ADMIN".into();
         assert!(pode_publicar_no_portal(&perfil));
+    }
+
+    #[test]
+    fn concluded_verification_without_total_uses_item_sum() {
+        let servicos = parse_servicos(r#"[{"id":"test-service","descricao":"Limpeza","valor":120.0}]"#).unwrap();
+        assert_eq!(resolver_custo_total(None, &servicos), 120.0);
+        assert!(recusar_total_zero_sem_garantia(Some(resolver_custo_total(None, &servicos)), &servicos).is_ok());
     }
 
     #[test]

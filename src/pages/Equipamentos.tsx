@@ -139,7 +139,7 @@ import { PhotoUploadDialog } from "@/components/equipamentos/PhotoUploadDialog";
 import { DocumentosEquipamento } from "@/components/equipamentos/DocumentosEquipamento";
 import { PdfPreviewDialog } from "@/components/equipamentos/PdfPreviewDialog";
 import { AjusteOrcamentoServicos } from "@/components/equipamentos/AjusteOrcamentoServicos";
-import { carregarProdutosOrcamento, MENSAGEM_TOTAL_ZERO_SEM_GARANTIA, normalizarServicosOrcamento, orcamentoEmElaboracao, transicaoElaboraOrcamento, osSomenteGarantia, pecasParaOrcamento, orcamentoJaAprovado, orcamentoMudou, resumirPecas, validarPecas } from "@/lib/orcamento-estoque";
+import { carregarProdutosOrcamento, normalizarServicosOrcamento, orcamentoEmElaboracao, transicaoElaboraOrcamento, osSomenteGarantia, pecasParaOrcamento, orcamentoJaAprovado, orcamentoMudou, resumirPecas, validarPecas } from "@/lib/orcamento-estoque";
 import { ActionPriorityRow, type PriorityAction } from "@/components/ui/action-priority-row";
 import {
   arquivoParaImagemEquipamento,
@@ -173,6 +173,7 @@ import {
   reabreOrcamentoSemAjuste,
   removerTecnicoInicialDasObservacoes,
   statusExigeAcessoSensivel,
+  mensagemAjusteTotalZero,
   totalOrcamentoAjusteValido,
   totalOrcamentoAprovacaoValido,
   whatsappNaoConfigurado,
@@ -1261,8 +1262,8 @@ export default function Equipamentos() {
         : "Informe um valor de orçamento maior que zero.");
       return;
     }
-    if (ajusteOrcamentoSemMudancaStatus && !totalOrcamentoAjusteValido(valorOrcamentoRef.current, osSomenteGarantia(servicosAjuste))) {
-      warning("Equipamentos", MENSAGEM_TOTAL_ZERO_SEM_GARANTIA);
+    if (ajusteOrcamentoSemMudancaStatus && !totalOrcamentoAjusteValido(valorOrcamentoRef.current, osSomenteGarantia(servicosAjuste), selecionado?.status, selecionado?.valor_orcamento)) {
+      warning("Equipamentos", mensagemAjusteTotalZero(selecionado?.status, selecionado?.valor_orcamento));
       return;
     }
     if ((novoStatus === "AGUARDANDO_APROVACAO" || ajusteOrcamentoSemMudancaStatus) && verificacaoAjusteOrcamento) {
@@ -1467,8 +1468,8 @@ export default function Equipamentos() {
         : "Informe um valor de orçamento maior que zero.");
       return;
     }
-    if (ajusteOrcamentoSemMudancaStatus && !totalOrcamentoAjusteValido(totalAtual, osSomenteGarantia(servicosAjuste))) {
-      warning("Equipamentos", MENSAGEM_TOTAL_ZERO_SEM_GARANTIA);
+    if (ajusteOrcamentoSemMudancaStatus && !totalOrcamentoAjusteValido(totalAtual, osSomenteGarantia(servicosAjuste), selecionado.status, selecionado.valor_orcamento)) {
+      warning("Equipamentos", mensagemAjusteTotalZero(selecionado.status, selecionado.valor_orcamento));
       return;
     }
     if (correcaoStatus && novoStatus === "AGUARDANDO_APROVACAO" && ["APROVADO", "REPROVADO"].includes(selecionado.status)) {
@@ -2027,8 +2028,11 @@ export default function Equipamentos() {
       className: "text-red-600",
       onClick: () => void solicitarExclusao(eq),
     };
-    const podeOrcamentoValores = hasPermission(SENSITIVE_PERMISSIONS.FINANCIAL_ACTIONS)
+    const podeFinanceiro = hasPermission(SENSITIVE_PERMISSIONS.FINANCIAL_ACTIONS);
+    const podeOrcamentoValores = podeFinanceiro
       || hasPermission(SENSITIVE_PERMISSIONS.PREPARE_QUOTES);
+    const podeAlterarOrcamento = podeFinanceiro
+      || (hasPermission(SENSITIVE_PERMISSIONS.PREPARE_QUOTES) && orcamentoEmElaboracao(eq.status));
     const podeExcluir = hasPermission(SENSITIVE_PERMISSIONS.DELETE_RECORDS);
 
     switch (eq.status) {
@@ -2136,7 +2140,11 @@ export default function Equipamentos() {
           disabled: salvando,
         };
         secondary = acaoStatus;
-        overflow.push(acaoCorrigirDecisao, acaoEditar, ...(podeExcluir ? [acaoExcluir] : []));
+        overflow.push(
+          ...(podeFinanceiro ? [acaoCorrigirDecisao] : []),
+          acaoEditar,
+          ...(podeExcluir ? [acaoExcluir] : []),
+        );
         break;
       case "EM_MANUTENCAO":
         primary = {
@@ -2185,42 +2193,52 @@ export default function Equipamentos() {
         overflow.push(acaoEditar, ...(podeExcluir ? [acaoExcluir] : []));
         break;
       case "REPROVADO":
-        primary = {
-          id: "reabrir_orcamento",
-          label: "Reabrir Orçamento",
-          icon: <RotateCcw className="h-3.5 w-3.5" />,
-          variant: "default",
-          className: classeAcaoPrincipal,
-          onClick: () => void abrirMudarStatus(eq, "AGUARDANDO_APROVACAO"),
-          disabled: salvando,
-        };
-        overflow.push({
-          id: "mudar_status",
-          label: "Mudar Status",
-          icon: <ArrowDownUp className="h-3.5 w-3.5" />,
-          variant: "outline",
-          onClick: () => void abrirMudarStatus(eq),
-          disabled: salvando,
-        });
-        overflow.push(acaoCorrigirDecisao, acaoEditar, ...(podeExcluir ? [acaoExcluir] : []));
+        if (podeFinanceiro) {
+          primary = {
+            id: "reabrir_orcamento",
+            label: "Reabrir Orçamento",
+            icon: <RotateCcw className="h-3.5 w-3.5" />,
+            variant: "default",
+            className: classeAcaoPrincipal,
+            onClick: () => void abrirMudarStatus(eq, "AGUARDANDO_APROVACAO"),
+            disabled: salvando,
+          };
+          overflow.push({
+            id: "mudar_status",
+            label: "Mudar Status",
+            icon: <ArrowDownUp className="h-3.5 w-3.5" />,
+            variant: "outline",
+            onClick: () => void abrirMudarStatus(eq),
+            disabled: salvando,
+          });
+          overflow.push(acaoCorrigirDecisao);
+        } else {
+          primary = acaoStatus;
+        }
+        overflow.push(acaoEditar, ...(podeExcluir ? [acaoExcluir] : []));
         break;
       case "ORCAMENTO_VENCIDO":
-        primary = {
-          id: "ajustar_orcamento_vencido",
-          label: "Ajustar Orçamento",
-          icon: <RefreshCw className="h-3.5 w-3.5" />,
-          variant: "default",
-          className: classeAcaoPrincipal,
-          onClick: () => void abrirMudarStatus(eq, "AGUARDANDO_APROVACAO"),
-        };
-        secondary = {
-          id: "reenviar_orcamento",
-          label: "Reenviar",
-          icon: <Send className="h-3.5 w-3.5" />,
-          variant: "outline",
-          onClick: () => void abrirMudarStatus(eq, "AGUARDANDO_APROVACAO"),
-        };
-        overflow.push(acaoStatus, acaoEditar, ...(podeExcluir ? [acaoExcluir] : []));
+        if (podeFinanceiro) {
+          primary = {
+            id: "ajustar_orcamento_vencido",
+            label: "Ajustar Orçamento",
+            icon: <RefreshCw className="h-3.5 w-3.5" />,
+            variant: "default",
+            className: classeAcaoPrincipal,
+            onClick: () => void abrirMudarStatus(eq, "AGUARDANDO_APROVACAO"),
+          };
+          secondary = {
+            id: "reenviar_orcamento",
+            label: "Reenviar",
+            icon: <Send className="h-3.5 w-3.5" />,
+            variant: "outline",
+            onClick: () => void abrirMudarStatus(eq, "AGUARDANDO_APROVACAO"),
+          };
+          overflow.push(acaoStatus);
+        } else {
+          primary = acaoStatus;
+        }
+        overflow.push(acaoEditar, ...(podeExcluir ? [acaoExcluir] : []));
         break;
       default:
         primary = acaoStatus;
@@ -2244,7 +2262,7 @@ export default function Equipamentos() {
         editarIndex >= 0 ? editarIndex : overflow.length,
         0,
         acaoOrcamentoPdf,
-        ...(podeOrcamentoValores ? [acaoAlterarOrcamento] : []),
+        ...(podeAlterarOrcamento ? [acaoAlterarOrcamento] : []),
       );
     }
     if (["APROVADO", "EM_MANUTENCAO", "AGUARDANDO_PECA", "PRONTO"].includes(eq.status)) {
@@ -3165,8 +3183,8 @@ export default function Equipamentos() {
                     </div>
                   )}
                   <div className="space-y-2"><Label htmlFor="valor-orcamento-input">Valor Orçamento (R$)</Label><ValorDecimalInput id="valor-orcamento-input" data-testid="valor-orcamento-input" required value={Number(valorOrcamento) || 0} onValueChange={setValorOrcamento} onValidityChange={setValorOrcamentoValido} />
-                    {Number(valorOrcamento) === 0 && !osSomenteGarantia(servicosAjuste) && (
-                      <p className="text-xs text-red-600">{MENSAGEM_TOTAL_ZERO_SEM_GARANTIA}</p>
+                    {Number(valorOrcamento) === 0 && !totalOrcamentoAjusteValido(0, osSomenteGarantia(servicosAjuste), selecionado.status, selecionado.valor_orcamento) && (
+                      <p className="text-xs text-red-600">{mensagemAjusteTotalZero(selecionado.status, selecionado.valor_orcamento)}</p>
                     )}
                   </div>
                   {(!ajusteOrcamentoSemMudancaStatus || selecionado.status === "AGUARDANDO_APROVACAO") && (
@@ -3365,7 +3383,7 @@ export default function Equipamentos() {
             </div>
             <DialogFooter className="shrink-0 bg-background pt-3">
                 <Button type="button" variant="outline" onClick={() => setStatusDialogOpen(false)}>Cancelar</Button>
-                <Button type="button" onClick={iniciarConfirmacaoStatus} disabled={salvando || (!novoStatus && !ajusteOrcamentoSemMudancaStatus) || (((novoStatus === "AGUARDANDO_APROVACAO" && !reabreOrcamentoSemAjuste(selecionado.status, novoStatus)) || ajusteOrcamentoSemMudancaStatus) && !valorOrcamentoValido) || (novoStatus === "AGUARDANDO_APROVACAO" && !reabreOrcamentoSemAjuste(selecionado.status, novoStatus) && !totalOrcamentoAprovacaoValido(Number(valorOrcamento))) || (ajusteOrcamentoSemMudancaStatus && !totalOrcamentoAjusteValido(Number(valorOrcamento), osSomenteGarantia(servicosAjuste)))}>
+                <Button type="button" onClick={iniciarConfirmacaoStatus} disabled={salvando || (!novoStatus && !ajusteOrcamentoSemMudancaStatus) || (((novoStatus === "AGUARDANDO_APROVACAO" && !reabreOrcamentoSemAjuste(selecionado.status, novoStatus)) || ajusteOrcamentoSemMudancaStatus) && !valorOrcamentoValido) || (novoStatus === "AGUARDANDO_APROVACAO" && !reabreOrcamentoSemAjuste(selecionado.status, novoStatus) && !totalOrcamentoAprovacaoValido(Number(valorOrcamento))) || (ajusteOrcamentoSemMudancaStatus && !totalOrcamentoAjusteValido(Number(valorOrcamento), osSomenteGarantia(servicosAjuste), selecionado.status, selecionado.valor_orcamento))}>
                   {salvando ? "Salvando..." : correcaoStatus ? "Corrigir status" : "Confirmar"}
                 </Button>
               </DialogFooter>

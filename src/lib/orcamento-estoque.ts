@@ -44,6 +44,10 @@ export async function carregarProdutosOrcamento(): Promise<Produto[]> {
 /** Não há flag de garantia no banco: item com valor 0,00 é a convenção da verificação. */
 export const MENSAGEM_TOTAL_ZERO_SEM_GARANTIA =
   "Total R$ 0,00 só segue sem aprovação quando todos os itens são de garantia. Com item cobrado ou sem itens, informe um valor maior que zero.";
+export const MENSAGEM_AGUARDANDO_TOTAL_ZERO =
+  "Orçamento aguardando aprovação não pode ficar com R$ 0,00.";
+export const MENSAGEM_ZERAR_APROVADO_PAGO =
+  "Não é possível zerar um orçamento já aprovado e pago.";
 
 export function osSomenteGarantia(
   servicos: Array<{

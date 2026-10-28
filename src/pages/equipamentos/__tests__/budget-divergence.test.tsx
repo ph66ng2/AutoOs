@@ -982,6 +982,52 @@ describe("Equipamentos — Budget Divergence & Audit", () => {
     expect(screen.queryByTestId("action-reprovar")).not.toBeInTheDocument();
   });
 
+  it("PREPARE_QUOTES não mostra Alterar Orçamento em APROVADO", async () => {
+    mockPermissions.list = ["PREPARE_QUOTES"];
+    equipamentoVerificado.status = "APROVADO";
+    render(<Equipamentos />);
+    await waitFor(() => expect(screen.getByTestId("action-iniciar_manutencao")).toBeInTheDocument());
+    expect(screen.queryByTestId("action-alterar_orcamento")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("action-corrigir_decisao")).not.toBeInTheDocument();
+  });
+
+  it("Técnico sem financeiro não vê Reabrir, Ajustar vencido nem Corrigir decisão", async () => {
+    mockPermissions.list = [];
+    equipamentoVerificado.status = "REPROVADO";
+    const reprovado = render(<Equipamentos />);
+    await waitFor(() => expect(screen.getByTestId("action-status")).toBeInTheDocument());
+    expect(screen.queryByTestId("action-reabrir_orcamento")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("action-corrigir_decisao")).not.toBeInTheDocument();
+    reprovado.unmount();
+
+    equipamentoVerificado.status = "ORCAMENTO_VENCIDO";
+    render(<Equipamentos />);
+    await waitFor(() => expect(screen.getByTestId("action-status")).toBeInTheDocument());
+    expect(screen.queryByTestId("action-ajustar_orcamento_vencido")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("action-reenviar_orcamento")).not.toBeInTheDocument();
+  });
+
+  it("em AGUARDANDO_APROVACAO, Confirmar fica desabilitado com 0,00 mesmo só de garantia", async () => {
+    mockPermissions.list = ["FINANCIAL_ACTIONS"];
+    equipamentoVerificado.status = "AGUARDANDO_APROVACAO";
+    equipamentoVerificado.valor_orcamento = 80;
+    mockBuscarVerificacao.mockResolvedValue(makeVerificacao({
+      servicos: [{ id: "g1", descricao: "Garantia", valor: 0 }],
+      pecas: [],
+      custo_total: 0,
+    }));
+    render(<Equipamentos />);
+    await waitFor(() => expect(screen.getByTestId("action-alterar_orcamento")).toBeInTheDocument());
+    fireEvent.click(screen.getByTestId("action-alterar_orcamento"));
+    await waitFor(() => expect(screen.getByText(/O status atual do equipamento será mantido/i)).toBeInTheDocument());
+    await alterarValorOrcamento(0);
+    expect(screen.getByText(/não pode ficar com R\$ 0,00/i)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Confirmar/i })).toBeDisabled();
+    mockEnsureSensitiveAccess.mockClear();
+    await clicarConfirmarStatus();
+    expect(mockAtualizarServicosVerificacao).not.toHaveBeenCalled();
+  });
+
   it("em APROVADO, Confirmar fica desabilitado com 0,00 se houver item cobrado e não grava", async () => {
     equipamentoVerificado.status = "APROVADO";
     mockBuscarVerificacao.mockResolvedValue(makeVerificacao());
@@ -990,7 +1036,7 @@ describe("Equipamentos — Budget Divergence & Audit", () => {
     fireEvent.click(screen.getByTestId("action-alterar_orcamento"));
     await waitFor(() => expect(screen.getByText(/O status atual do equipamento será mantido/i)).toBeInTheDocument());
     await alterarValorOrcamento(0);
-    expect(screen.getByText(/só segue sem aprovação quando todos os itens são de garantia/i)).toBeInTheDocument();
+    expect(screen.getByText(/Não é possível zerar um orçamento já aprovado e pago/i)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /Confirmar/i })).toBeDisabled();
     mockEnsureSensitiveAccess.mockClear();
     await clicarConfirmarStatus();
