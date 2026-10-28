@@ -5,6 +5,7 @@
 //! evitar associações entre tenants.
 
 use crate::commands::auth::record_security_event;
+use crate::commands::clientes::{celular_nacional, pj_tem_contato_celular, MSG_PJ_CONTATO};
 use crate::commands::types::{CLIENTE_CONTATO_SELECT, ClienteContato, ClienteContatoInput};
 use crate::db::get_pool;
 use sqlx::PgPool;
@@ -32,6 +33,10 @@ fn optional_text(value: Option<&str>) -> Option<String> {
         .map(str::to_string)
 }
 
+fn telefone_contato_persistido(valor: Option<&str>) -> Option<String> {
+    optional_text(valor).and_then(|texto| celular_nacional(&texto).or(Some(texto)))
+}
+
 async fn ensure_cliente_belongs_to_empresa(
     pool: &PgPool,
     empresa_id: i32,
@@ -51,6 +56,47 @@ async fn ensure_cliente_belongs_to_empresa(
     }
 
     Ok(())
+}
+
+async fn tipo_e_telefones_ativos_exceto(
+    pool: &PgPool,
+    empresa_id: i32,
+    cliente_id: i32,
+    excluir_id: i32,
+) -> Result<(String, Vec<String>), String> {
+    let tipo: Option<String> = sqlx::query_scalar(
+        "SELECT tipo_pessoa FROM clientes WHERE id = $1 AND empresa_id = $2",
+    )
+    .bind(cliente_id)
+    .bind(empresa_id)
+    .fetch_optional(pool)
+    .await
+    .map_err(super::operator_errors::mapear_erro_sql)?;
+    let tipo = tipo.ok_or_else(|| "Cliente não encontrado na empresa informada.".to_string())?;
+    let telefones: Vec<String> = sqlx::query_scalar(
+        "SELECT COALESCE(telefone, '') FROM cliente_contatos
+         WHERE cliente_id = $1 AND empresa_id = $2 AND ativo = true AND id <> $3",
+    )
+    .bind(cliente_id)
+    .bind(empresa_id)
+    .bind(excluir_id)
+    .fetch_all(pool)
+    .await
+    .map_err(super::operator_errors::mapear_erro_sql)?;
+    Ok((tipo, telefones))
+}
+
+fn recusar_se_pj_ficar_sem_celular(tipo_pessoa: &str, outros: &[String], telefone_deste: Option<&str>) -> Result<(), String> {
+    if tipo_pessoa != "PJ" {
+        return Ok(());
+    }
+    if pj_tem_contato_celular(outros) {
+        return Ok(());
+    }
+    if telefone_deste.and_then(celular_nacional).is_some() {
+        return Ok(());
+    }
+    Err(MSG_PJ_CONTATO.to_string())
 }
 
 async fn fetch_contact(pool: &PgPool, id: i32, empresa_id: i32) -> Result<ClienteContato, String> {
@@ -105,6 +151,10 @@ pub async fn criar_cliente_contato(input: ClienteContatoInput) -> Result<Cliente
     let nome = required_name(&input.nome)?;
     let pool = get_pool().await.map_err(|error| error.to_string())?;
     ensure_cliente_belongs_to_empresa(&pool, empresa_id, cliente_id).await?;
+    let telefone = telefone_contato_persistido(input.telefone.as_deref());
+    let (tipo_pessoa, outros) =
+        tipo_e_telefones_ativos_exceto(&pool, empresa_id, cliente_id, 0).await?;
+    recusar_se_pj_ficar_sem_celular(&tipo_pessoa, &outros, telefone.as_deref())?;
 
     let id: i32 = sqlx::query_scalar(
         "INSERT INTO cliente_contatos (empresa_id, cliente_id, nome, email, telefone)
@@ -115,7 +165,7 @@ pub async fn criar_cliente_contato(input: ClienteContatoInput) -> Result<Cliente
     .bind(cliente_id)
     .bind(nome)
     .bind(optional_text(input.email.as_deref()))
-    .bind(optional_text(input.telefone.as_deref()))
+    .bind(&telefone)
     .fetch_one(&pool)
     .await
     .map_err(|error| {
@@ -154,7 +204,10 @@ pub async fn atualizar_cliente_contato(
     ensure_cliente_belongs_to_empresa(&pool, empresa_id, cliente_id).await?;
 
     let email = optional_text(input.email.as_deref());
-    let telefone = optional_text(input.telefone.as_deref());
+    let telefone = telefone_contato_persistido(input.telefone.as_deref());
+    let (tipo_pessoa, outros) =
+        tipo_e_telefones_ativos_exceto(&pool, empresa_id, cliente_id, id).await?;
+    recusar_se_pj_ficar_sem_celular(&tipo_pessoa, &outros, telefone.as_deref())?;
     let updated_rows = if let Some(token) = input
         .atualizado_em
         .as_deref()
@@ -222,6 +275,10 @@ pub async fn inativar_cliente_contato(id: i32, empresa_id: i32) -> Result<Client
     let id = required_positive_id(id, "Contato")?;
     let empresa_id = required_positive_id(empresa_id, "Empresa")?;
     let pool = get_pool().await.map_err(|error| error.to_string())?;
+    let atual = fetch_contact(&pool, id, empresa_id).await?;
+    let (tipo_pessoa, outros) =
+        tipo_e_telefones_ativos_exceto(&pool, empresa_id, atual.cliente_id, id).await?;
+    recusar_se_pj_ficar_sem_celular(&tipo_pessoa, &outros, None)?;
 
     let updated_rows = sqlx::query(
         "UPDATE cliente_contatos
@@ -279,5 +336,41 @@ mod tests {
     fn ids_must_be_positive() {
         assert!(required_positive_id(0, "Empresa").is_err());
         assert_eq!(required_positive_id(7, "Empresa").unwrap(), 7);
+    }
+
+    #[test]
+    fn criar_contato_grava_celular_nacional_sem_ddi() {
+        assert_eq!(
+            telefone_contato_persistido(Some("+55 71 98888-7777")).as_deref(),
+            Some("71988887777")
+        );
+        assert_eq!(
+            telefone_contato_persistido(Some("5571988887777")).as_deref(),
+            Some("71988887777")
+        );
+        assert_eq!(telefone_contato_persistido(Some("  ")), None);
+    }
+
+    #[test]
+    fn pj_nao_fica_sem_contato_com_celular() {
+        let outros_vazios: Vec<String> = vec![];
+        assert_eq!(
+            recusar_se_pj_ficar_sem_celular("PJ", &outros_vazios, None).unwrap_err(),
+            MSG_PJ_CONTATO
+        );
+        assert_eq!(
+            recusar_se_pj_ficar_sem_celular("PJ", &outros_vazios, Some("7133334444")).unwrap_err(),
+            MSG_PJ_CONTATO
+        );
+        assert!(recusar_se_pj_ficar_sem_celular("PJ", &outros_vazios, Some("+55 71 98888-7777")).is_ok());
+        assert!(recusar_se_pj_ficar_sem_celular("PJ", &["71988880000".into()], None).is_ok());
+        assert!(recusar_se_pj_ficar_sem_celular("PF", &outros_vazios, None).is_ok());
+    }
+
+    #[test]
+    fn criar_contato_usa_a_mesma_trava_de_pj_com_excluir_id_zero() {
+        let outros_vazios: Vec<String> = vec![];
+        assert!(recusar_se_pj_ficar_sem_celular("PJ", &outros_vazios, Some("7133334444")).is_err());
+        assert!(recusar_se_pj_ficar_sem_celular("PJ", &outros_vazios, Some("71988887777")).is_ok());
     }
 }

@@ -257,6 +257,8 @@ pub struct VerificacaoInput {
     pub observacoes: Option<String>,
     pub forma_pagamento_codigo: Option<FormaPagamentoCodigo>,
     pub forma_pagamento_detalhe: Option<String>,
+    /// Confirma auto-aprovação de OS só de garantia (R$ 0,00 → APROVADO).
+    pub confirmar_garantia: bool,
 }
 
 /// Input para cadastro e edição de contato de cliente.

@@ -310,6 +310,8 @@ export interface OpcoesAjusteOrcamento {
   devolverEstoque?: boolean;
   /** Confirma que a nova versão anula a resposta do cliente ainda não aplicada. */
   confirmarRespostaPendente?: boolean;
+  /** Confirma auto-aprovação de OS só de garantia (R$ 0,00 → APROVADO). */
+  confirmarGarantia?: boolean;
 }
 
 export interface RespostaPendenteAjuste {
@@ -635,6 +637,7 @@ export interface Verificacao {
   forma_pagamento_codigo?: FormaPagamentoCodigo;
   forma_pagamento_detalhe?: string;
   adjusted_at?: string;
+  confirmar_garantia?: boolean;
 }
 
 /** Contato operacional pertencente a um cliente dentro de uma empresa. */

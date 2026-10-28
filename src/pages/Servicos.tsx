@@ -1,4 +1,5 @@
 import { validarPecas } from "@/lib/orcamento-estoque";
+import { formatCurrency } from "@/lib/utils";
 import { useEffect, useState } from "react";
 import { Plus, Search, Edit, Trash2, RefreshCw, Wrench } from "lucide-react";
 import { useForm } from "react-hook-form";
@@ -30,6 +31,7 @@ import { useSensitiveAccess } from "@/hooks/useSensitiveAccess";
 import { useNotification } from "@/hooks/useNotification";
 import { ErrorAlert } from "@/components/ui/error-alert";
 import { FormValidationError } from "@/components/ui/form-validation-error";
+import { ValorDecimalInput } from "@/components/ui/valor-decimal-input";
 import { SENSITIVE_PERMISSIONS, type ServicoCatalogo, type PecaVinculada } from "@/types";
 import { PecasDoServico } from "@/components/equipamentos/PecasDoServico";
 import { ActionPriorityRow } from "@/components/ui/action-priority-row";
@@ -260,7 +262,7 @@ export default function Servicos() {
                         {servico.descricao || "—"}
                       </TableCell>
                       <TableCell className="text-right font-semibold">
-                        R$ {Number(servico.preco_padrao || 0).toFixed(2)}
+                        {formatCurrency(Number(servico.preco_padrao || 0))}
                       </TableCell>
                       <TableCell className="text-right">
                         <div className="flex justify-end gap-1">
@@ -327,7 +329,11 @@ export default function Servicos() {
             </div>
             <div className="space-y-2">
               <Label>Preço padrão *</Label>
-              <Input type="number" step="0.01" min={0} {...form.register("preco_padrao")} />
+              <ValorDecimalInput
+                min={0}
+                value={Number(form.watch("preco_padrao")) || 0}
+                onValueChange={(valor) => form.setValue("preco_padrao", valor, { shouldValidate: true, shouldDirty: true })}
+              />
               <p className="text-xs text-muted-foreground">Use 0,00 para serviços em garantia.</p>
               <FormValidationError message={form.formState.errors.preco_padrao?.message} />
             </div>

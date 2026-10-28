@@ -1,10 +1,17 @@
 import { SENSITIVE_PERMISSIONS as P, type SensitivePermission } from "@/types";
+import { COMPATIBILIDADE_056_ATIVA } from "@/lib/compatibilidade-056";
 
 // Virar true quando toda a frota estiver na 0.6.0, junto com a migration que
 // concede PREPARE_QUOTES a Técnico e Financeiro (a 0.5.6 recusa a chave em perfil não-ADMIN).
 export const PREPARE_QUOTES_NOS_MODELOS = false;
 
-export function montarPresets(prepareQuotes: boolean) {
+export const MOTIVO_RECEPCAO_INDISPONIVEL =
+  "Indisponível até todos os computadores atualizarem para a 0.6.0.";
+
+export function montarPresets(
+  prepareQuotes: boolean,
+  travaAtiva: boolean = COMPATIBILIDADE_056_ATIVA,
+) {
   const quotes: SensitivePermission[] = prepareQuotes ? [P.PREPARE_QUOTES] : [];
   return [
     {
@@ -13,6 +20,8 @@ export function montarPresets(prepareQuotes: boolean) {
       description:
         "Atendimento e rotina operacional, sem poderes administrativos.",
       permissions: [] as SensitivePermission[],
+      disponivel: !travaAtiva,
+      motivoIndisponivel: travaAtiva ? MOTIVO_RECEPCAO_INDISPONIVEL : undefined,
     },
     {
       role: "TECNICO",
@@ -21,18 +30,24 @@ export function montarPresets(prepareQuotes: boolean) {
         ? "Rotina técnica, orçamentos e estoque."
         : "Rotina técnica e estoque.",
       permissions: [P.STOCK_CONTROL, ...quotes],
+      disponivel: true,
+      motivoIndisponivel: undefined as string | undefined,
     },
     {
       role: "FINANCEIRO",
       label: "Financeiro",
       description: "Orçamentos, aprovações, valores e consulta de despesas.",
       permissions: [P.FINANCIAL_ACTIONS, ...quotes, P.VIEW_EXPENSES],
+      disponivel: true,
+      motivoIndisponivel: undefined as string | undefined,
     },
     {
       role: "ADMIN",
       label: "Administrador",
       description: "Acesso completo, incluindo equipe, exclusões e integrações.",
       permissions: Object.values(P) as SensitivePermission[],
+      disponivel: true,
+      motivoIndisponivel: undefined as string | undefined,
     },
     {
       role: "CUSTOM",
@@ -40,6 +55,8 @@ export function montarPresets(prepareQuotes: boolean) {
       description:
         "Comece pelo acesso básico e escolha as liberações adicionais.",
       permissions: [] as SensitivePermission[],
+      disponivel: true,
+      motivoIndisponivel: undefined as string | undefined,
     },
   ];
 }

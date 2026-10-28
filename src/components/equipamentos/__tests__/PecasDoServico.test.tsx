@@ -7,8 +7,8 @@ import type { PecaVinculada } from "@/types";
 const { listarProdutos } = vi.hoisted(() => ({ listarProdutos: vi.fn() }));
 vi.mock("@/lib/db", () => ({ db: { listarProdutos } }));
 
-const produto = (id: number, nome: string, categoria: string, quantidade_estoque = 5) =>
-  ({ id, nome, categoria, quantidade_estoque, preco_venda: 10 });
+const produto = (id: number, nome: string, categoria: string, quantidade_estoque = 5, preco_venda = 10) =>
+  ({ id, nome, categoria, quantidade_estoque, preco_venda });
 
 beforeEach(() => {
   listarProdutos.mockReset();
@@ -40,6 +40,12 @@ describe("PecasDoServico", () => {
     await screen.findByRole("option", { name: /Cabeçote térmico/ });
     await user.selectOptions(screen.getByLabelText("Adicionar peça"), "1");
     expect(onChange).toHaveBeenCalledWith([{ produto_id: 1, nome: "Cabeçote térmico", quantidade: 1, valor_unitario: 10 }]);
+  });
+
+  it("mostra sem preço quando a peça não tem valor de venda", async () => {
+    listarProdutos.mockResolvedValue([produto(1, "Cabeçote térmico", "PEÇA", 5, 0)]);
+    render(<PecasDoServico pecas={[]} onChange={vi.fn()} />);
+    expect(await screen.findByRole("option", { name: /sem preço/ })).toBeInTheDocument();
   });
 
   it("mantém legível, com saldo, uma peça antiga vinculada que não é da categoria Peça", async () => {

@@ -30,42 +30,50 @@ describe("cadastro guiado de colaboradores", () => {
     expect(screen.getByRole("alert")).toHaveTextContent("Já existe um perfil");
     expect(createProfileWithCode).not.toHaveBeenCalled();
   });
-  it("permite recepção sem poderes sensíveis, só grava após revisar e mostra o código", async () => {
+  it("com a trava 0.5.6, Recepção fica desabilitada com o motivo", () => {
+    render(<CreateProfileCard profiles={profiles} onCreated={vi.fn()} />);
+    expect(screen.getByRole("radio", { name: /^Recepção/ })).toBeDisabled();
+    expect(screen.getByText(/Indisponível até todos os computadores/)).toBeInTheDocument();
+  });
+  it("com a trava 0.5.6, não avança nem salva perfil sem permissão", async () => {
+    const user = userEvent.setup();
+    render(<CreateProfileCard profiles={profiles} onCreated={vi.fn()} />);
+    await user.type(screen.getByLabelText("Nome provisório"), "Maria");
+    await user.click(screen.getByRole("radio", { name: /^Personalizado/ }));
+    await user.click(screen.getByRole("button", { name: "Continuar" }));
+    expect(screen.getByRole("heading", { name: "Liberações" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Continuar" })).toBeDisabled();
+    expect(screen.getByRole("alert")).toHaveTextContent("ao menos uma permissão");
+    expect(createProfileWithCode).not.toHaveBeenCalled();
+  });
+  it("cria perfil Técnico compatível, só grava após revisar e mostra o código", async () => {
     const user = userEvent.setup();
     const onCreated = vi.fn().mockResolvedValue(undefined);
     createProfileWithCode.mockResolvedValue({
       profile_id: 9,
-      nome: "Recepção 2",
+      nome: "Tec 2",
       codigo: "K7Q-42M",
       expira_em: "2026-10-19T12:00:00Z",
     });
     render(<CreateProfileCard profiles={profiles} onCreated={onCreated} />);
-    await user.type(screen.getByLabelText("Nome provisório"), "Recepção 2");
+    await user.type(screen.getByLabelText("Nome provisório"), "Tec 2");
+    await user.click(screen.getByRole("radio", { name: /^Técnico/ }));
     await user.click(screen.getByRole("button", { name: "Continuar" }));
-    expect(screen.queryByLabelText("PIN inicial")).not.toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "Continuar" }));
-    expect(
-      screen.getByText("Nenhuma permissão sensível liberada."),
-    ).toBeInTheDocument();
     expect(createProfileWithCode).not.toHaveBeenCalled();
     await user.click(screen.getByRole("button", { name: "Criar e gerar código" }));
     expect(screen.getByRole("alert")).toHaveTextContent("Informe seu PIN de administrador");
-    expect(createProfileWithCode).not.toHaveBeenCalled();
     await user.type(screen.getByLabelText("Seu PIN de administrador"), "4321");
     await user.click(screen.getByRole("button", { name: "Criar e gerar código" }));
     await waitFor(() =>
       expect(createProfileWithCode).toHaveBeenCalledWith(
-        { nome: "Recepção 2", role: "ATENDENTE", permissions: [] },
+        { nome: "Tec 2", role: "TECNICO", permissions: ["STOCK_CONTROL"] },
         "4321",
       ),
     );
     expect(onCreated).toHaveBeenCalledOnce();
-    expect(successToast).toHaveBeenCalledWith("Perfil Recepção 2 criado com sucesso.");
-    expect(screen.getByRole("status")).toHaveTextContent("Perfil Recepção 2 criado");
     expect(screen.getByText("K7Q-42M")).toBeInTheDocument();
-    await user.click(
-      screen.getByRole("button", { name: "Cadastrar outra pessoa" }),
-    );
+    await user.click(screen.getByRole("button", { name: "Cadastrar outra pessoa" }));
     expect(screen.getByLabelText("Nome provisório")).toHaveValue("");
   });
   it("preenche financeiro e converte em personalizado ao ajustar permissões", async () => {

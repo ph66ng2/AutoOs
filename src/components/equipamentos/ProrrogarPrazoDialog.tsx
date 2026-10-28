@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { EVENTO_ALERTAS_PORTAL } from "@/components/PortalAlertas";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
+import { DateIsoInput } from "@/components/ui/date-iso-input";
 import { Label } from "@/components/ui/label";
 import { useSensitiveAccess } from "@/hooks/useSensitiveAccess";
 import { db } from "@/lib/db";
@@ -131,12 +131,11 @@ export function ProrrogarPrazoDialog({ open, onOpenChange, equipamentoId, onConc
           </DialogHeader>
           <div className="space-y-2">
             <Label htmlFor="novo-prazo-aprovacao">Novo prazo de aprovação</Label>
-            <Input
+            <DateIsoInput
               id="novo-prazo-aprovacao"
-              type="date"
               min={dataIsoEmDias(0)}
               value={data}
-              onChange={(e) => setData(e.target.value)}
+              onValueChange={setData}
             />
             <label className="flex items-center gap-2 text-sm">
               <input
