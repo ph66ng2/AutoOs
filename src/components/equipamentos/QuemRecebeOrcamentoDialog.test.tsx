@@ -75,7 +75,9 @@ describe("QuemRecebeOrcamentoDialog", () => {
     await user.type(screen.getByLabelText("WhatsApp *"), "1234");
     await user.click(screen.getByRole("button", { name: /salvar e continuar/i }));
 
-    expect(await screen.findByRole("alert")).toHaveTextContent("WhatsApp com DDD");
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "Informe o celular com DDD e o 9 (11 dígitos).",
+    );
     expect(mockCriar).not.toHaveBeenCalled();
     expect(mockDefinir).not.toHaveBeenCalled();
     expect(onSalvo).not.toHaveBeenCalled();
@@ -186,7 +188,84 @@ describe("QuemRecebeOrcamentoDialog", () => {
 
     await waitFor(() => expect(onSalvo).toHaveBeenCalledTimes(1));
     expect(mockAtualizar).toHaveBeenCalledTimes(2);
+    expect(mockAtualizar).toHaveBeenNthCalledWith(
+      1,
+      30,
+      expect.objectContaining({ atualizado_em: "2026-10-01T00:00:00Z" }),
+    );
     expect(mockAtualizar).toHaveBeenLastCalledWith(30, expect.objectContaining({ atualizado_em: "2026-10-02T00:00:00Z" }));
     expect(mockCriar).not.toHaveBeenCalled();
+  });
+
+  it("permite escolher qual contato sem WhatsApp atualizar", async () => {
+    const user = userEvent.setup();
+    mockListar.mockResolvedValue([
+      { id: 30, empresa_id: 7, cliente_id: 11, nome: "Bruno", ativo: true, telefone: "", atualizado_em: "2026-10-01T00:00:00Z" },
+      { id: 31, empresa_id: 7, cliente_id: 11, nome: "Carla", ativo: true, telefone: "", atualizado_em: "2026-10-03T00:00:00Z" },
+    ] as unknown as ClienteContato[]);
+    const { onSalvo } = renderDialog();
+
+    await waitFor(() => expect(screen.getByLabelText("Qual contato atualizar?")).toBeEnabled());
+    expect(screen.getByLabelText("Nome *")).toHaveValue("Bruno");
+    await user.selectOptions(screen.getByLabelText("Qual contato atualizar?"), "31");
+    expect(screen.getByLabelText("Nome *")).toHaveValue("Carla");
+    await user.type(screen.getByLabelText("WhatsApp *"), "71988880000");
+    await user.click(screen.getByRole("button", { name: /salvar e continuar/i }));
+
+    await waitFor(() => expect(onSalvo).toHaveBeenCalledTimes(1));
+    expect(mockAtualizar).toHaveBeenCalledWith(31, expect.objectContaining({
+      nome: "Carla",
+      telefone: "71988880000",
+      atualizado_em: "2026-10-03T00:00:00Z",
+    }));
+    expect(mockCriar).not.toHaveBeenCalled();
+  });
+
+  it("não sobrescreve nome nem e-mail de contato com acesso ao portal", async () => {
+    const user = userEvent.setup();
+    mockListar.mockResolvedValue([
+      {
+        id: 30,
+        empresa_id: 7,
+        cliente_id: 11,
+        nome: "Ana Portal",
+        email: "ana@portal.test",
+        ativo: true,
+        telefone: "",
+        portal_acesso: "DECIDIR",
+        atualizado_em: "2026-10-01T00:00:00Z",
+      },
+    ] as unknown as ClienteContato[]);
+    const { onSalvo } = renderDialog();
+
+    await waitFor(() => expect(screen.getByLabelText("Nome *")).toHaveValue("Ana Portal"));
+    expect(screen.getByLabelText("Nome *")).toBeDisabled();
+    expect(screen.getByLabelText("E-mail")).toBeDisabled();
+    expect(screen.getByText(/nome e e-mail não serão alterados/i)).toBeInTheDocument();
+    await user.type(screen.getByLabelText("WhatsApp *"), "71988880000");
+    await user.click(screen.getByRole("button", { name: /salvar e continuar/i }));
+
+    await waitFor(() => expect(onSalvo).toHaveBeenCalledTimes(1));
+    expect(mockAtualizar).toHaveBeenCalledWith(30, expect.objectContaining({
+      nome: "Ana Portal",
+      email: "ana@portal.test",
+      telefone: "71988880000",
+    }));
+  });
+
+  it("recusa telefone fixo de 10 dígitos como WhatsApp", async () => {
+    const user = userEvent.setup();
+    const { onSalvo } = renderDialog();
+
+    await waitFor(() => expect(screen.getByRole("button", { name: /salvar e continuar/i })).toBeEnabled());
+    await user.type(screen.getByLabelText("Nome *"), "Bruno");
+    await user.type(screen.getByLabelText("WhatsApp *"), "7133334444");
+    await user.click(screen.getByRole("button", { name: /salvar e continuar/i }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "Informe o celular com DDD e o 9 (11 dígitos).",
+    );
+    expect(mockCriar).not.toHaveBeenCalled();
+    expect(onSalvo).not.toHaveBeenCalled();
   });
 });
