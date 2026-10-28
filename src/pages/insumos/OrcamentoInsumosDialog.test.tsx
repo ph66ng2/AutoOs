@@ -406,3 +406,18 @@ describe("OrcamentoInsumosDialog: PDF e envios", () => {
     expect(mocks.db.marcarOrcamentoInsumosEnviado).not.toHaveBeenCalled();
   });
 });
+
+describe("OrcamentoInsumosDialog: carga pendente", () => {
+  it("não deixa o novo orçamento preso em 'Carregando' depois de fechar um existente com a carga pendente", async () => {
+    mocks.db.obterOrcamentoInsumos.mockReturnValue(new Promise(() => undefined));
+    const { rerender } = render(<OrcamentoInsumosDialog open onOpenChange={vi.fn()} orcamentoId={7} />);
+    expect(await screen.findByText("Carregando orçamento...")).toBeInTheDocument();
+
+    rerender(<OrcamentoInsumosDialog open={false} onOpenChange={vi.fn()} orcamentoId={7} />);
+    rerender(<OrcamentoInsumosDialog open onOpenChange={vi.fn()} orcamentoId={null} />);
+
+    expect(screen.getByText("Novo orçamento de insumos")).toBeInTheDocument();
+    expect(screen.queryByText("Carregando orçamento...")).toBeNull();
+    expect(screen.getByLabelText("Desconto (R$)")).toBeInTheDocument();
+  });
+});
