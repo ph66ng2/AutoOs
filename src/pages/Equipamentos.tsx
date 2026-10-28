@@ -2021,7 +2021,8 @@ export default function Equipamentos() {
       className: "text-red-600",
       onClick: () => void solicitarExclusao(eq),
     };
-    const podeOrcamentoValores = hasPermission(SENSITIVE_PERMISSIONS.FINANCIAL_ACTIONS);
+    const podeOrcamentoValores = hasPermission(SENSITIVE_PERMISSIONS.FINANCIAL_ACTIONS)
+      || hasPermission(SENSITIVE_PERMISSIONS.PREPARE_QUOTES);
     const podeExcluir = hasPermission(SENSITIVE_PERMISSIONS.DELETE_RECORDS);
 
     switch (eq.status) {

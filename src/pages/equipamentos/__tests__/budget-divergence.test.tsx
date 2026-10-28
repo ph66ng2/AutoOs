@@ -959,11 +959,27 @@ describe("Equipamentos — Budget Divergence & Audit", () => {
     expect(screen.queryByTestId("action-excluir")).not.toBeInTheDocument();
     view.unmount();
 
+    mockPermissions.list = ["PREPARE_QUOTES"];
+    const prepareView = render(<Equipamentos />);
+    await waitFor(() => expect(screen.getByTestId("action-enviar_orcamento")).toBeInTheDocument());
+    expect(screen.getByTestId("action-alterar_orcamento")).toBeInTheDocument();
+    expect(screen.queryByTestId("action-excluir")).not.toBeInTheDocument();
+    prepareView.unmount();
+
     mockPermissions.list = ["DELETE_RECORDS"];
     render(<Equipamentos />);
     await waitFor(() => expect(screen.getByTestId("action-excluir")).toBeInTheDocument());
     expect(screen.queryByTestId("action-enviar_orcamento")).not.toBeInTheDocument();
     expect(screen.queryByTestId("action-alterar_orcamento")).not.toBeInTheDocument();
+  });
+
+  it("PREPARE_QUOTES não mostra Aprovar nem Reprovar", async () => {
+    mockPermissions.list = ["PREPARE_QUOTES"];
+    equipamentoVerificado.status = "AGUARDANDO_APROVACAO";
+    render(<Equipamentos />);
+    await waitFor(() => expect(screen.getByTestId("action-alterar_orcamento")).toBeInTheDocument());
+    expect(screen.queryByTestId("action-aprovar")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("action-reprovar")).not.toBeInTheDocument();
   });
 
   it("em APROVADO, Confirmar fica desabilitado com 0,00 se houver item cobrado e não grava", async () => {

@@ -22,8 +22,9 @@ use crate::commands::orcamento_decisao::{
     desfazer_resposta_pendente, publicar_versao_isolada, situacao_portal,
 };
 use crate::commands::orcamento_estoque::{
-    aplicar_decisoes, cancelar_pendencias_ausentes, normalizar_servicos, os_somente_garantia,
-    parse_servicos, recusar_total_zero_sem_garantia, valor_monetario_positivo, ServicoOrcamento,
+    aplicar_decisoes, aplicar_decisoes_aprovacao_integral, cancelar_pendencias_ausentes,
+    normalizar_servicos, os_somente_garantia, parse_servicos, recusar_total_zero_sem_garantia,
+    valor_monetario_positivo, ServicoOrcamento,
 };
 use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
@@ -65,6 +66,7 @@ async fn gravar_aprovacao_os_garantia(
     tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
     equipamento_id: i32,
     empresa_id: i32,
+    verificacao_id: i32,
     servicos: &[ServicoOrcamento],
     custo_total: Option<f64>,
     concluida: bool,
@@ -75,7 +77,7 @@ async fn gravar_aprovacao_os_garantia(
     {
         return Ok(());
     }
-    sqlx::query(
+    let atualizados = sqlx::query(
         r#"UPDATE equipamentos
            SET status = 'APROVADO',
                valor_orcamento = 0,
@@ -92,7 +94,12 @@ async fn gravar_aprovacao_os_garantia(
     .bind(empresa_id)
     .execute(&mut **tx)
     .await
-    .map_err(super::operator_errors::mapear_erro_sql)?;
+    .map_err(super::operator_errors::mapear_erro_sql)?
+    .rows_affected();
+    if atualizados == 0 {
+        return Ok(());
+    }
+    aplicar_decisoes_aprovacao_integral(tx, empresa_id, verificacao_id, servicos).await?;
     Ok(())
 }
 
@@ -225,6 +232,7 @@ pub async fn salvar_verificacao_tecnica(mut input: VerificacaoInput) -> Result<V
             &mut tx,
             input.equipamento_id,
             empresa_id,
+            id,
             &servicos,
             input.custo_total,
             concluida,
@@ -247,7 +255,7 @@ pub async fn salvar_verificacao_tecnica(mut input: VerificacaoInput) -> Result<V
 
     // INSERT nova verificação
     debug!("Criando nova verificação");
-    sqlx::query(
+    let verificacao_id: i32 = sqlx::query_scalar(
         r#"
         INSERT INTO verificacoes (
             equipamento_id, empresa_id, tecnico_nome, problema_relatado, diagnostico,
@@ -258,6 +266,7 @@ pub async fn salvar_verificacao_tecnica(mut input: VerificacaoInput) -> Result<V
         ) VALUES (
             $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16
         )
+        RETURNING id
         "#,
     )
     .bind(input.equipamento_id)
@@ -276,7 +285,7 @@ pub async fn salvar_verificacao_tecnica(mut input: VerificacaoInput) -> Result<V
     .bind(&input.observacoes)
     .bind(payment_code.as_deref())
     .bind(payment_detail.as_deref())
-    .execute(&mut *tx)
+    .fetch_one(&mut *tx)
     .await
     .map_err(|e| {
         error!("Erro ao criar verificação: {}", e);
@@ -287,6 +296,7 @@ pub async fn salvar_verificacao_tecnica(mut input: VerificacaoInput) -> Result<V
         &mut tx,
         input.equipamento_id,
         empresa_id,
+        verificacao_id,
         &servicos,
         input.custo_total,
         concluida,

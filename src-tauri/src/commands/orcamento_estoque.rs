@@ -267,6 +267,18 @@ pub async fn aplicar_decisoes(
     Ok(())
 }
 
+/// Aprovação integral (OS só de garantia): todos os serviços entram como APROVADO
+/// e as peças seguem a mesma baixa/pendência de `aprovar_orcamento`.
+pub async fn aplicar_decisoes_aprovacao_integral(
+    tx: &mut Transaction<'_, Postgres>,
+    empresa_id: i32,
+    verificacao_id: i32,
+    servicos: &[ServicoOrcamento],
+) -> Result<(), String> {
+    let aprovados: Vec<String> = servicos.iter().map(|servico| servico.id.clone()).collect();
+    aplicar_decisoes(tx, empresa_id, verificacao_id, servicos, &aprovados).await
+}
+
 /// Ajustes podem retirar um serviço/produto, mas não estornam peças já usadas.
 pub async fn cancelar_pendencias_ausentes(
     tx: &mut Transaction<'_, Postgres>,
@@ -419,6 +431,18 @@ mod tests {
     }
 
     #[test]
+    fn warranty_part_qty_2_is_approved_in_full_like_paid_approval() {
+        let servicos = parse_servicos(
+            r#"[{"id":"garantia","valor":0,"pecas":[{"produto_id":9,"quantidade":2,"valor_unitario":0}]}]"#,
+        )
+        .unwrap();
+        assert!(os_somente_garantia(&servicos));
+        assert_eq!(servicos[0].pecas[0].quantidade, 2);
+        let aprovados: Vec<String> = servicos.iter().map(|s| s.id.clone()).collect();
+        assert_eq!(aprovados, vec!["garantia".to_string()]);
+    }
+
+    #[test]
     fn rejects_invalid_parts_and_duplicate_services() {
         for json in [
             r#"[{"id":"a","pecas":[{"produto_id":1,"quantidade":0}]}]"#,
@@ -482,6 +506,49 @@ mod tests {
             .fetch_one(&mut **tx)
             .await
             .unwrap()
+    }
+
+    #[tokio::test]
+    #[ignore = "requer AUTOOS_STOCK_TEST_DATABASE_URL e migrations em banco descartável"]
+    async fn warranty_only_os_with_part_qty_2_consumes_stock_and_records_decisions() {
+        let pool = test_pool().await;
+        let mut tx = pool.begin().await.unwrap();
+        let (empresa, verificacao, produto) = fixture(&mut tx, "garantia-qtd2").await;
+        let servicos = parse_servicos(
+            &serde_json::json!([{
+                "id": "garantia",
+                "valor": 0,
+                "pecas": [{"produto_id": produto, "quantidade": 2, "valor_unitario": 0}]
+            }])
+            .to_string(),
+        )
+        .unwrap();
+        assert!(os_somente_garantia(&servicos));
+        aplicar_decisoes_aprovacao_integral(&mut tx, empresa, verificacao, &servicos)
+            .await
+            .unwrap();
+        assert_eq!(
+            saldo(&mut tx, produto).await,
+            1,
+            "peça de garantia qtd 2 baixa o estoque como no Aprovar"
+        );
+        let decisao: String = sqlx::query_scalar(
+            "SELECT decisao FROM orcamento_servicos_decisao WHERE verificacao_id=$1 AND servico_id='garantia'",
+        )
+        .bind(verificacao)
+        .fetch_one(&mut *tx)
+        .await
+        .unwrap();
+        assert_eq!(decisao, "APROVADO");
+        let consumo: (i32, i32) = sqlx::query_as(
+            "SELECT quantidade_aprovada, quantidade_baixada FROM orcamento_consumos WHERE verificacao_id=$1 AND servico_id='garantia'",
+        )
+        .bind(verificacao)
+        .fetch_one(&mut *tx)
+        .await
+        .unwrap();
+        assert_eq!(consumo, (2, 2));
+        tx.rollback().await.unwrap();
     }
 
     #[tokio::test]
