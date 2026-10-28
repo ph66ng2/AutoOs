@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { VerificacaoTecnica } from "./VerificacaoTecnica";
 import { MENSAGEM_TOTAL_ZERO_SEM_GARANTIA } from "@/lib/orcamento-estoque";
@@ -111,5 +111,61 @@ describe("VerificacaoTecnica", () => {
       concluida: true,
       confirmar_garantia: true,
     }));
+  });
+
+  it("abre verificação de outro equipamento com formulário limpo depois de Quem recebe", async () => {
+    const user = userEvent.setup();
+    const onConcluir = vi.fn().mockResolvedValue(false);
+    const onOpenChange = vi.fn();
+    const equipamentoA = { ...equipamento, id: 1, marca: "Zebra", modelo: "ZT230" };
+    const equipamentoB = { ...equipamento, id: 2, marca: "Honeywell", modelo: "PC43" };
+
+    const { rerender } = render(
+      <VerificacaoTecnica
+        equipamento={equipamentoA as never}
+        open
+        onOpenChange={onOpenChange}
+        onConcluir={onConcluir}
+      />,
+    );
+
+    await user.type(
+      screen.getByPlaceholderText(/Descreva o diagnóstico/),
+      "Falha no cabeçote do equipamento A",
+    );
+    await user.click(screen.getByRole("button", { name: /Adicionar Serviço/i }));
+    await user.type(screen.getByPlaceholderText("Nome do serviço"), "Troca de cabeçote");
+    const campoValor = screen.getByLabelText("Valor do serviço");
+    await user.clear(campoValor);
+    await user.paste("10,00");
+    await user.click(screen.getByRole("button", { name: /Finalizar Verificação/i }));
+
+    await waitFor(() => expect(onConcluir).toHaveBeenCalled());
+    expect(onOpenChange).not.toHaveBeenCalled();
+    expect(screen.getByDisplayValue("Falha no cabeçote do equipamento A")).toBeInTheDocument();
+    expect(screen.getByDisplayValue("Troca de cabeçote")).toBeInTheDocument();
+
+    rerender(
+      <VerificacaoTecnica
+        equipamento={equipamentoA as never}
+        open={false}
+        onOpenChange={onOpenChange}
+        onConcluir={onConcluir}
+      />,
+    );
+    rerender(
+      <VerificacaoTecnica
+        equipamento={equipamentoB as never}
+        open
+        onOpenChange={onOpenChange}
+        onConcluir={onConcluir}
+      />,
+    );
+
+    expect(screen.getByText("Honeywell PC43")).toBeInTheDocument();
+    expect(screen.getByPlaceholderText(/Descreva o diagnóstico/)).toHaveValue("");
+    expect(screen.queryByDisplayValue("Falha no cabeçote do equipamento A")).not.toBeInTheDocument();
+    expect(screen.queryByDisplayValue("Troca de cabeçote")).not.toBeInTheDocument();
+    expect(screen.getByText("Nenhum serviço adicionado.")).toBeInTheDocument();
   });
 });

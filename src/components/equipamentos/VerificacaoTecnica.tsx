@@ -149,6 +149,16 @@ export function VerificacaoTecnica({
     setDadosGarantiaPendentes(null);
   }
 
+  // Parent pode fechar com setOpen(false) sem passar por handleOpenChange (ex.: Quem recebe).
+  // Troca de equipamento também precisa nascer limpa. Enquanto open permanece true
+  // (Quem recebe / confirmação de garantia), a digitação é preservada.
+  const equipamentoId = equipamento?.id ?? null;
+  useEffect(() => {
+    resetForm();
+    // resetForm lê tecnicoInicial do render atual; não resetar quando só o técnico sugerido muda.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, equipamentoId]);
+
   /** Adiciona um novo serviço vazio à lista (id = timestamp) */
   function adicionarServico() {
     setServicos([
