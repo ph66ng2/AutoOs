@@ -67,27 +67,33 @@ pub fn valor_monetario_positivo(value: f64) -> bool {
     value.is_finite() && value > 0.0
 }
 
+fn itens_tem_valor_cobrado(servicos: &[ServicoOrcamento]) -> bool {
+    servicos.iter().any(|servico| {
+        valor_monetario_positivo(servico.valor)
+            || servico
+                .pecas
+                .iter()
+                .any(|peca| valor_monetario_positivo(peca.valor_unitario))
+    })
+}
+
 /// OS só de garantia: há pelo menos um item e nenhum serviço/peça tem valor cobrado.
 /// Não existe coluna de garantia; 0,00 no item é a convenção já usada na verificação.
 pub fn os_somente_garantia(servicos: &[ServicoOrcamento]) -> bool {
-    !servicos.is_empty()
-        && servicos.iter().all(|servico| {
-            !valor_monetario_positivo(servico.valor)
-                && servico
-                    .pecas
-                    .iter()
-                    .all(|peca| !valor_monetario_positivo(peca.valor_unitario))
-        })
+    !servicos.is_empty() && !itens_tem_valor_cobrado(servicos)
 }
 
 pub const MSG_TOTAL_ZERO_SEM_GARANTIA: &str = "Total R$ 0,00 só segue sem aprovação quando todos os itens são de garantia. Com item cobrado ou sem itens, informe um valor maior que zero.";
 
-/// Recusa total 0/ausente, exceto OS só de garantia (todos os itens em R$ 0,00).
+/// Recusa total 0,00 sem garantia. `custo_total` ausente só conta como zero quando
+/// nenhum item tem valor cobrado (o front pode omitir o total se os itens já têm valor).
 pub fn recusar_total_zero_sem_garantia(
     custo_total: Option<f64>,
     servicos: &[ServicoOrcamento],
 ) -> Result<(), String> {
-    if custo_total.is_some_and(valor_monetario_positivo) {
+    if custo_total.is_some_and(valor_monetario_positivo)
+        || (custo_total.is_none() && itens_tem_valor_cobrado(servicos))
+    {
         return Ok(());
     }
     if os_somente_garantia(servicos) {
@@ -416,6 +422,7 @@ mod tests {
         assert!(!os_somente_garantia(&misto));
         assert!(recusar_total_zero_sem_garantia(Some(0.0), &misto).is_err());
         assert!(recusar_total_zero_sem_garantia(Some(80.0), &misto).is_ok());
+        assert!(recusar_total_zero_sem_garantia(None, &misto).is_ok());
 
         let peca_cobrada =
             parse_servicos(r#"[{"id":"g1","valor":0,"pecas":[{"produto_id":1,"quantidade":1,"valor_unitario":10}]}]"#)
@@ -423,11 +430,13 @@ mod tests {
         assert!(recusar_total_zero_sem_garantia(Some(0.0), &peca_cobrada)
             .unwrap_err()
             .contains("garantia"));
+        assert!(recusar_total_zero_sem_garantia(None, &peca_cobrada).is_ok());
 
         let vazio = parse_servicos("[]").unwrap();
         assert!(!os_somente_garantia(&vazio));
         assert!(recusar_total_zero_sem_garantia(Some(0.0), &vazio).is_err());
         assert!(recusar_total_zero_sem_garantia(Some(10.0), &vazio).is_ok());
+        assert!(recusar_total_zero_sem_garantia(None, &vazio).is_err());
     }
 
     #[test]
