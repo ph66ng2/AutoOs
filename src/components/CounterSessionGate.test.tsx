@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { describe, expect, it, vi, beforeEach } from "vitest";
-import { render, screen, waitFor } from "@testing-library/react";
+import { act, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { CounterSessionGate } from "@/components/CounterSessionGate";
@@ -99,7 +99,9 @@ describe("cadeado do Modo Balcão", () => {
     await user.click(screen.getByRole("button", { name: "Bloquear acesso" }));
     expect(await screen.findByText("Aguardando autenticação da sessão…")).toBeInTheDocument();
 
-    access.unlock();
+    await act(async () => {
+      access.unlock();
+    });
 
     expect(await screen.findByText("Atendimento do balcão")).toBeInTheDocument();
     expect(screen.queryByText("Aguardando autenticação da sessão…")).not.toBeInTheDocument();
