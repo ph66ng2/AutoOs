@@ -252,7 +252,7 @@ async fn main() -> Result<()> {
             pagamento:FormaPagamento { codigo:FormaPagamentoCodigo::Pix,detalhe:None },servicos_aprovados:vec!["a".into()],
             aprovado:Some(true),resposta_esperada_id:Some(resposta),motivo_divergencia:None }).await.map_err(|e| anyhow!(e))
     };
-    let opcoes = |modo: verificacoes::ModoAjusteAprovado, devolver: bool| Some(verificacoes::OpcoesAjusteOrcamento { modo_aprovado: Some(modo), devolver_estoque: devolver, confirmar_resposta_pendente: false });
+    let opcoes = |modo: verificacoes::ModoAjusteAprovado, devolver: bool| Some(verificacoes::OpcoesAjusteOrcamento { modo_aprovado: Some(modo), devolver_estoque: devolver, confirmar_resposta_pendente: false, confirmar_garantia: false });
 
     // (a) Aprovado, ajuste SEM nova aprovação: continua aprovado, o valor novo aparece no portal.
     let eq_a = novo_orcamento(&pool, empresa, cliente, &suffix, "TA", &services).await?;
