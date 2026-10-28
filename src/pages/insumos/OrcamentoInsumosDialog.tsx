@@ -141,6 +141,9 @@ export function OrcamentoInsumosDialog({
     setConfirmando(null);
     setPagamentoAberto(false);
     if (orcamentoId == null) {
+      // Uma abertura anterior pode ter sido fechada com a carga pendente (o `finally` dela não
+      // roda quando `ativo` já é falso); sem isto o "Novo" ficava preso em "Carregando...".
+      setCarregando(false);
       setDetalhe(null);
       setCliente(null);
       setContato(null);
