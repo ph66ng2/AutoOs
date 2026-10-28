@@ -23,6 +23,7 @@ export function ClienteSelectorBusca({
   resultados,
   onSelecionarCliente,
   onAbrirNovoCliente,
+  compacto = false,
 }: {
   dropdownRef: RefObject<HTMLDivElement>;
   termoBusca: string;
@@ -33,6 +34,8 @@ export function ClienteSelectorBusca({
   resultados: Cliente[];
   onSelecionarCliente: (c: Cliente) => void;
   onAbrirNovoCliente: () => void;
+  /** Layout enxuto para formulários densos: sem título repetido, campo e botão em tamanho normal. */
+  compacto?: boolean;
 }) {
   const [indiceAtivo, setIndiceAtivo] = useState(-1);
   const opcoesRef = useRef<Array<HTMLButtonElement | null>>([]);
@@ -86,10 +89,12 @@ export function ClienteSelectorBusca({
 
   return (
     <div className="space-y-3">
-      <div className="flex items-center gap-2">
-        <User className="h-4 w-4" />
-        <h3 className="font-semibold text-sm">Dados do Cliente</h3>
-      </div>
+      {!compacto && (
+        <div className="flex items-center gap-2">
+          <User className="h-4 w-4" />
+          <h3 className="font-semibold text-sm">Dados do Cliente</h3>
+        </div>
+      )}
       <div className="relative" ref={dropdownRef}>
         <div className="relative">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
@@ -100,7 +105,7 @@ export function ClienteSelectorBusca({
               setTermoBusca(e.target.value);
             }}
             placeholder="Buscar cliente por nome, CPF/CNPJ, telefone ou email..."
-            className="min-h-12 pl-10 pr-12 text-base"
+            className={compacto ? "h-10 pl-10 pr-10 text-sm" : "min-h-12 pl-10 pr-12 text-base"}
             onFocus={() => resultados.length > 0 && setDropdownAberto(true)}
             onKeyDown={navegarResultados}
             role="combobox"
@@ -155,9 +160,15 @@ export function ClienteSelectorBusca({
         )}
       </div>
 
-      <Button type="button" variant="outline" className="min-h-12 w-full gap-2 text-base" onClick={onAbrirNovoCliente}>
-        <Plus className="h-4 w-4" /> Cadastrar Novo Cliente
-      </Button>
+      {compacto ? (
+        <Button type="button" variant="ghost" size="sm" className="-ml-2 gap-1.5 text-muted-foreground" onClick={onAbrirNovoCliente}>
+          <Plus className="h-4 w-4" /> Cadastrar Novo Cliente
+        </Button>
+      ) : (
+        <Button type="button" variant="outline" className="min-h-12 w-full gap-2 text-base" onClick={onAbrirNovoCliente}>
+          <Plus className="h-4 w-4" /> Cadastrar Novo Cliente
+        </Button>
+      )}
     </div>
   );
 }

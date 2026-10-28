@@ -116,12 +116,12 @@ export function ContatoResponsavelSelector({
 
   return (
     <div className="space-y-2 rounded-md border bg-muted/10 p-3">
-      <div className="flex items-center justify-between gap-2">
-        <div>
-          <Label className="flex items-center gap-1"><UserRound className="h-3.5 w-3.5" /> {titulo}</Label>
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <Label className="flex items-center gap-1"><UserRound className="h-3.5 w-3.5 shrink-0" /> {titulo}</Label>
           <p className="text-xs text-muted-foreground">Opcional. Escolha um contato ativo deste cliente.</p>
         </div>
-        <Button type="button" size="sm" variant="outline" onClick={() => setNovoOpen(true)} disabled={disabled || !cliente?.id || !empresaId}>
+        <Button type="button" size="sm" variant="outline" className="shrink-0 whitespace-nowrap" onClick={() => setNovoOpen(true)} disabled={disabled || !cliente?.id || !empresaId}>
           <Plus className="mr-1 h-3.5 w-3.5" /> Novo contato
         </Button>
       </div>

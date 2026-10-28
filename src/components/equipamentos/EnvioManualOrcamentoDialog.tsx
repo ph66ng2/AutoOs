@@ -1,5 +1,7 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { Check, Copy, KeyRound, Mail, MessageCircle, UserRound } from "lucide-react";
 import { toast } from "sonner";
+import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -39,13 +41,18 @@ export function EnvioManualOrcamentoDialog({ envio, onFechar, onGerarNovaSenha }
   const [confirmarFechar, setConfirmarFechar] = useState(false);
   const [gerando, setGerando] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
+  const [copiado, setCopiado] = useState(false);
+  const timerCopiado = useRef<number>();
 
   useEffect(() => {
     setAtual(envio);
     setUsou(false);
     setConfirmarFechar(false);
     setErro(null);
+    setCopiado(false);
   }, [envio]);
+
+  useEffect(() => () => window.clearTimeout(timerCopiado.current), []);
 
   const linkWhatsapp = atual ? montarLinkWhatsapp(atual.destinatario.telefone, atual.texto) : null;
   const linkEmail = atual ? montarLinkEmail(atual.destinatario.email, atual.assunto, atual.texto) : null;
@@ -66,6 +73,9 @@ export function EnvioManualOrcamentoDialog({ envio, onFechar, onGerarNovaSenha }
     try {
       await navigator.clipboard.writeText(atual.texto);
       setUsou(true);
+      setCopiado(true);
+      window.clearTimeout(timerCopiado.current);
+      timerCopiado.current = window.setTimeout(() => setCopiado(false), 1600);
       toast.success("Texto copiado.");
     } catch {
       toast.error("Não foi possível copiar o texto.");
@@ -101,42 +111,95 @@ export function EnvioManualOrcamentoDialog({ envio, onFechar, onGerarNovaSenha }
   return (
     <>
       <Dialog open={envio !== null} onOpenChange={(aberto) => !aberto && tentarFechar()}>
-        <DialogContent className="sm:max-w-lg">
-          <DialogHeader>
+        <DialogContent className="gap-5 sm:max-w-xl">
+          <DialogHeader className="space-y-1.5 pr-6">
             <DialogTitle>Enviar manualmente</DialogTitle>
             <DialogDescription>
-              Copie o texto ou abra o WhatsApp ou o e-mail do destinatário.
+              Escolha como entregar o orçamento ao destinatário.
             </DialogDescription>
           </DialogHeader>
 
           {atual && (
-            <div className="grid gap-3">
-              <Textarea value={atual.texto} readOnly rows={10} aria-label="Texto do orçamento" />
+            <div className="grid gap-4">
+              <div className="flex items-center gap-3 rounded-lg bg-muted/50 px-3 py-2.5">
+                <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-background text-muted-foreground shadow-[0_0_0_1px_rgba(0,0,0,0.08)]">
+                  <UserRound className="h-4 w-4" aria-hidden />
+                </span>
+                <div className="min-w-0 text-sm">
+                  <p className="truncate font-medium">{atual.destinatario.nome}</p>
+                  <p className="truncate text-xs text-muted-foreground">
+                    {[atual.destinatario.telefone, atual.destinatario.email].filter(Boolean).join(" · ") || "Sem telefone ou e-mail"}
+                  </p>
+                </div>
+              </div>
 
-              <div className="flex flex-wrap gap-2">
+              <Textarea
+                value={atual.texto}
+                readOnly
+                rows={10}
+                aria-label="Texto do orçamento"
+                className="h-56 resize-none bg-muted/30 text-sm leading-relaxed"
+              />
+
+              <div className="grid grid-cols-3 gap-2">
                 <Button
                   variant="outline"
+                  className="gap-2 active:scale-[0.96] [transition-property:scale,background-color,color]"
                   disabled={!linkWhatsapp}
                   onClick={() => void abrir(linkWhatsapp)}
                 >
+                  <MessageCircle className="h-4 w-4" aria-hidden />
                   Abrir WhatsApp
                 </Button>
                 <Button
                   variant="outline"
+                  className="gap-2 active:scale-[0.96] [transition-property:scale,background-color,color]"
                   disabled={!linkEmail}
                   onClick={() => void abrir(linkEmail)}
                 >
+                  <Mail className="h-4 w-4" aria-hidden />
                   Abrir e-mail
                 </Button>
-                <Button variant="outline" onClick={() => void copiar()}>
+                <Button
+                  variant="outline"
+                  className="gap-2 active:scale-[0.96] [transition-property:scale,background-color,color]"
+                  onClick={() => void copiar()}
+                >
+                  <span className="relative h-4 w-4" aria-hidden>
+                    <Copy
+                      className={cn(
+                        "absolute inset-0 h-4 w-4 transition-[opacity,scale,filter] duration-200 ease-[cubic-bezier(0.2,0,0,1)]",
+                        copiado ? "scale-[0.25] opacity-0 blur-[4px]" : "scale-100 opacity-100 blur-0",
+                      )}
+                    />
+                    <Check
+                      className={cn(
+                        "absolute inset-0 h-4 w-4 text-emerald-600 transition-[opacity,scale,filter] duration-200 ease-[cubic-bezier(0.2,0,0,1)]",
+                        copiado ? "scale-100 opacity-100 blur-0" : "scale-[0.25] opacity-0 blur-[4px]",
+                      )}
+                    />
+                  </span>
                   Copiar
                 </Button>
               </div>
 
+              {atual.temSenha && !usou && (
+                <p className="flex items-start gap-2 text-xs text-amber-700">
+                  <KeyRound className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden />
+                  Esta mensagem contém a senha do portal, que não será exibida de novo depois que você fechar.
+                </p>
+              )}
+
               {!atual.temSenha && podeGerar && (
-                <Button variant="secondary" disabled={gerando} onClick={() => void gerarNovaSenha()}>
-                  Gerar nova senha
-                </Button>
+                <div className="flex items-center justify-between gap-3 rounded-lg border border-dashed px-3 py-2.5">
+                  <p className="text-xs text-muted-foreground">
+                    Esta mensagem está sem a senha de acesso ao portal.
+                  </p>
+                  <Button variant="secondary" size="sm" className="shrink-0 gap-1.5" disabled={gerando} onClick={() => void gerarNovaSenha()}>
+                    <KeyRound className="h-3.5 w-3.5" aria-hidden />
+                    Gerar nova senha
+                  </Button>
+                </div>
               )}
 
               {erro && <p role="alert" className="text-sm text-destructive">{erro}</p>}

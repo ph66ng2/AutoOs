@@ -10,6 +10,7 @@ import {
   Ban,
   CheckCircle2,
   FileText,
+  Info,
   Mail,
   MessageCircle,
   PackageCheck,
@@ -71,6 +72,8 @@ interface OrcamentoInsumosDialogProps {
 }
 
 type AcaoConfirmada = "reprovar" | "cancelar" | "entregar";
+
+const rotuloSecao = "text-xs font-medium uppercase tracking-wide text-muted-foreground";
 
 function linhasDoDetalhe(detalhe: OrcamentoInsumosDetalhe): LinhaOrcamentoInsumos[] {
   return detalhe.itens.map((item) => ({
@@ -374,8 +377,8 @@ export function OrcamentoInsumosDialog({
   return (
     <>
       <Dialog open={open} onOpenChange={onOpenChange}>
-        <DialogContent className="flex max-h-[calc(100vh-2rem)] flex-col gap-3 sm:max-w-4xl">
-          <DialogHeader className="space-y-1">
+        <DialogContent className="flex max-h-[calc(100vh-2rem)] flex-col gap-4 sm:max-w-5xl">
+          <DialogHeader className="space-y-1.5 pr-6">
             <DialogTitle className="flex items-center gap-2">
               {titulo}
               {status && (
@@ -389,7 +392,7 @@ export function OrcamentoInsumosDialog({
             </DialogDescription>
           </DialogHeader>
 
-          <div className="min-h-0 flex-1 space-y-3 overflow-y-auto pr-1">
+          <div className="-mx-1 min-h-0 flex-1 space-y-5 overflow-y-auto px-1 pb-1">
             {carregando ? (
               <p className="py-8 text-center text-sm text-muted-foreground">Carregando orçamento...</p>
             ) : (
@@ -400,9 +403,9 @@ export function OrcamentoInsumosDialog({
                   </p>
                 )}
 
-                <div className="grid gap-3 md:grid-cols-[3fr_2fr]">
-                  <div className="space-y-1">
-                    <Label>Cliente</Label>
+                <div className="grid gap-5 md:grid-cols-2">
+                  <div className="space-y-2">
+                    <Label className={rotuloSecao}>Cliente</Label>
                     {editavel ? (
                       <ClienteSelector
                         clienteInicial={cliente}
@@ -429,8 +432,8 @@ export function OrcamentoInsumosDialog({
                       <p className="text-xs text-amber-700">Este cliente pediu para não receber WhatsApp.</p>
                     )}
                   </div>
-                  <div className="space-y-1">
-                    <Label>Contato (opcional)</Label>
+                  <div className="space-y-2">
+                    <Label className={rotuloSecao}>Contato</Label>
                     {editavel ? (
                       <ContatoResponsavelSelector
                         key={`${detalhe?.id ?? "novo"}-${cliente?.id ?? "sem"}`}
@@ -447,8 +450,8 @@ export function OrcamentoInsumosDialog({
                   </div>
                 </div>
 
-                <div className="space-y-1">
-                  <Label>Itens</Label>
+                <div className="space-y-2">
+                  <Label className={rotuloSecao}>Itens</Label>
                   <OrcamentoInsumosItensEditor
                     linhas={linhas}
                     totais={totais}
@@ -463,42 +466,42 @@ export function OrcamentoInsumosDialog({
                   )}
                 </div>
 
-                <div className="grid gap-3 md:grid-cols-[1fr_1fr_1fr]">
-                  <div className="space-y-1">
-                    <Label htmlFor="oi-validade">Validade</Label>
+                <div className="grid items-start gap-5 md:grid-cols-[1fr_1fr_1.1fr]">
+                  <div className="space-y-2">
+                    <Label htmlFor="oi-validade" className={rotuloSecao}>Validade</Label>
                     <DateIsoInput
                       id="oi-validade"
                       value={validade}
                       disabled={!editavel || ocupado}
                       onValueChange={editar(setValidade)}
-                      className="h-9"
+                      className="h-10"
                     />
                   </div>
-                  <div className="space-y-1">
-                    <Label htmlFor="oi-desconto">Desconto (R$)</Label>
+                  <div className="space-y-2">
+                    <Label htmlFor="oi-desconto" className={rotuloSecao}>Desconto (R$)</Label>
                     <ValorDecimalInput
                       id="oi-desconto"
                       min={0}
                       value={descontoNumero}
                       disabled={!editavel || ocupado}
                       onValueChange={(valor) => editar(setDesconto)(String(valor))}
-                      className="h-9"
+                      className="h-10"
                     />
                     {totais.descontoExcedido && (
                       <p className="text-xs text-red-600" role="alert">O desconto passa do total dos itens.</p>
                     )}
                   </div>
-                  <div className="space-y-0.5 rounded-md border bg-muted/40 px-3 py-1.5 text-sm" aria-label="Totais">
-                    <div className="flex justify-between"><span>Subtotal</span><span>{formatCurrency(totais.subtotal)}</span></div>
-                    <div className="flex justify-between"><span>Desconto</span><span>- {formatCurrency(totais.desconto)}</span></div>
-                    <div className="flex justify-between text-base font-bold" data-testid="total-geral">
+                  <div className="space-y-1.5 rounded-lg bg-muted/50 px-4 py-3 text-sm tabular-nums" aria-label="Totais">
+                    <div className="flex justify-between text-muted-foreground"><span>Subtotal</span><span>{formatCurrency(totais.subtotal)}</span></div>
+                    <div className="flex justify-between text-muted-foreground"><span>Desconto</span><span>- {formatCurrency(totais.desconto)}</span></div>
+                    <div className="flex justify-between border-t pt-2 text-lg font-semibold" data-testid="total-geral">
                       <span>Total</span><span>{formatCurrency(totais.total)}</span>
                     </div>
                   </div>
                 </div>
 
-                <div className="space-y-1">
-                  <Label htmlFor="oi-observacoes">Observações</Label>
+                <div className="space-y-2">
+                  <Label htmlFor="oi-observacoes" className={rotuloSecao}>Observações</Label>
                   <Textarea
                     id="oi-observacoes"
                     rows={2}
@@ -509,9 +512,6 @@ export function OrcamentoInsumosDialog({
                   />
                 </div>
 
-                {motivoSemSalvar && (
-                  <p className="text-xs text-amber-700" data-testid="motivo-sem-salvar">{motivoSemSalvar}</p>
-                )}
                 {detalhe && !editavel && (
                   <p className="text-sm text-muted-foreground">
                     Pagamento: {formaPagamentoRotulo(detalhe.forma_pagamento_codigo, detalhe.forma_pagamento_detalhe)}
@@ -529,17 +529,23 @@ export function OrcamentoInsumosDialog({
             )}
           </div>
 
-          <DialogFooter className="flex-wrap gap-2 sm:justify-between">
-            <div className="flex flex-wrap gap-2">
+          <DialogFooter className="flex-wrap items-center gap-3 border-t pt-4 sm:justify-between sm:space-x-0">
+            <div className="flex flex-wrap items-center gap-2">
               {acoes.cancelar && (
-                <Button type="button" variant="outline" size="sm" className="text-red-600" disabled={ocupado} onClick={() => setConfirmando("cancelar")}>
+                <Button type="button" variant="ghost" size="sm" className="text-red-600 hover:bg-red-50 hover:text-red-700" disabled={ocupado} onClick={() => setConfirmando("cancelar")}>
                   <Ban className="mr-1.5 h-4 w-4" />Cancelar orçamento
                 </Button>
               )}
               {acoes.reprovar && (
-                <Button type="button" variant="outline" size="sm" disabled={ocupado} onClick={() => setConfirmando("reprovar")}>
+                <Button type="button" variant="ghost" size="sm" disabled={ocupado} onClick={() => setConfirmando("reprovar")}>
                   <ThumbsDown className="mr-1.5 h-4 w-4" />Reprovar
                 </Button>
+              )}
+              {motivoSemSalvar && (
+                <p className="flex items-center gap-1.5 text-sm text-amber-700" data-testid="motivo-sem-salvar">
+                  <Info className="h-4 w-4 shrink-0" aria-hidden />
+                  {motivoSemSalvar}
+                </p>
               )}
             </div>
             <div className="flex flex-wrap gap-2">
