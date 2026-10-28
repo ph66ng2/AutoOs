@@ -94,6 +94,27 @@ describe("ClienteContatosPanel", () => {
     expect(mockCriar).not.toHaveBeenCalled();
   });
 
+  it("PJ antigo só com contato fixo permite editar nome e o próprio fixo", async () => {
+    const contatoFixo: ClienteContato = {
+      ...contato,
+      nome: "Recepção",
+      telefone: "7133334444",
+    };
+    mockListar.mockResolvedValue([contatoFixo]);
+    mockAtualizar.mockResolvedValue({ ...contatoFixo, nome: "Recepção 2", telefone: "7133335555" });
+    render(<ClienteContatosPanel cliente={cliente} empresaId={7} />);
+    expect(await screen.findByText("Recepção")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /editar/i }));
+    fireEvent.change(screen.getByLabelText("Nome *"), { target: { value: "Recepção 2" } });
+    fireEvent.change(screen.getByLabelText("Telefone"), { target: { value: "(71) 3333-5555" } });
+    fireEvent.click(screen.getByRole("button", { name: "Salvar" }));
+    await waitFor(() => expect(mockAtualizar).toHaveBeenCalledWith(20, expect.objectContaining({
+      nome: "Recepção 2",
+      telefone: "7133335555",
+    })));
+    expect(screen.queryByText("Informe o celular com DDD e o 9 (11 dígitos).")).not.toBeInTheDocument();
+  });
+
   it("confirma inativação e recarrega a lista ativa", async () => {
     render(<ClienteContatosPanel cliente={cliente} empresaId={7} />);
     await screen.findByText("Ana");

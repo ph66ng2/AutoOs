@@ -57,12 +57,15 @@ export function ClienteContatosPanel({ cliente, empresaId }: ClienteContatosPane
   const [alterandoAcesso, setAlterandoAcesso] = useState<number | null>(null);
   const [senhaDe, setSenhaDe] = useState<ClienteContato | null>(null);
   const { success, error: showError } = useNotification();
+  const outrosComCelular = contatos.some((contato) =>
+    contato.ativo
+    && contato.id !== editando?.id
+    && celularValido(contato.telefone ?? ""),
+  );
+  const esteEraCelular = Boolean(editando && celularValido(editando.telefone ?? ""));
   const exigeCelularPj = cliente.tipo_pessoa === "PJ"
-    && !contatos.some((contato) =>
-      contato.ativo
-      && contato.id !== editando?.id
-      && celularValido(contato.telefone ?? ""),
-    );
+    && !outrosComCelular
+    && (!editando || esteEraCelular);
   const form = useForm<ClienteContatoFormData>({
     resolver: (values, context, options) =>
       zodResolver(schemaContatoCliente(exigeCelularPj))(values, context, options),
