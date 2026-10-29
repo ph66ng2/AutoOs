@@ -31,6 +31,8 @@ interface EnvioManualOrcamentoDialogProps {
   onGerarNovaSenha?: () => Promise<EnvioManualOrcamento | null>;
 }
 
+const botaoGrupo = "rounded-none active:scale-[0.96] [transition-property:scale,background-color,color]";
+
 function mensagemFalha(cause: unknown, fallback: string) {
   return typeof cause === "string" && cause.trim() ? cause : fallback;
 }
@@ -141,31 +143,50 @@ export function EnvioManualOrcamentoDialog({ envio, onFechar, onGerarNovaSenha }
                 className="h-56 resize-none bg-muted/30 text-sm leading-relaxed"
               />
 
-              <div className="grid grid-cols-3 gap-2">
+              {atual.temSenha && !usou && (
+                <p className="flex items-start gap-2 text-xs text-amber-700">
+                  <KeyRound className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden />
+                  Esta mensagem contém a senha do portal, que não será exibida de novo depois que você fechar.
+                </p>
+              )}
+
+              {!atual.temSenha && podeGerar && (
+                <div className="flex items-center justify-between gap-3 text-xs text-muted-foreground">
+                  <p>Esta mensagem está sem a senha de acesso ao portal.</p>
+                  <Button variant="ghost" size="sm" className="-mr-2 shrink-0 gap-1.5 text-foreground" disabled={gerando} onClick={() => void gerarNovaSenha()}>
+                    <KeyRound className="h-3.5 w-3.5" aria-hidden />
+                    Gerar nova senha
+                  </Button>
+                </div>
+              )}
+
+              {erro && <p role="alert" className="text-sm text-destructive">{erro}</p>}
+            </div>
+          )}
+
+          <DialogFooter className="items-center gap-3 border-t pt-4 sm:justify-between sm:space-x-0">
+            {atual ? (
+              <div role="group" aria-label="Enviar" className="inline-flex divide-x overflow-hidden rounded-md border bg-background">
                 <Button
-                  variant="outline"
-                  className="gap-2 active:scale-[0.96] [transition-property:scale,background-color,color]"
+                  variant="ghost"
+                  className={botaoGrupo}
                   disabled={!linkWhatsapp}
                   onClick={() => void abrir(linkWhatsapp)}
                 >
-                  <MessageCircle className="h-4 w-4" aria-hidden />
+                  <MessageCircle className="mr-2 h-4 w-4" aria-hidden />
                   Abrir WhatsApp
                 </Button>
                 <Button
-                  variant="outline"
-                  className="gap-2 active:scale-[0.96] [transition-property:scale,background-color,color]"
+                  variant="ghost"
+                  className={botaoGrupo}
                   disabled={!linkEmail}
                   onClick={() => void abrir(linkEmail)}
                 >
-                  <Mail className="h-4 w-4" aria-hidden />
+                  <Mail className="mr-2 h-4 w-4" aria-hidden />
                   Abrir e-mail
                 </Button>
-                <Button
-                  variant="outline"
-                  className="gap-2 active:scale-[0.96] [transition-property:scale,background-color,color]"
-                  onClick={() => void copiar()}
-                >
-                  <span className="relative h-4 w-4" aria-hidden>
+                <Button variant="ghost" className={botaoGrupo} onClick={() => void copiar()}>
+                  <span className="relative mr-2 h-4 w-4" aria-hidden>
                     <Copy
                       className={cn(
                         "absolute inset-0 h-4 w-4 transition-[opacity,scale,filter] duration-200 ease-[cubic-bezier(0.2,0,0,1)]",
@@ -182,32 +203,8 @@ export function EnvioManualOrcamentoDialog({ envio, onFechar, onGerarNovaSenha }
                   Copiar
                 </Button>
               </div>
-
-              {atual.temSenha && !usou && (
-                <p className="flex items-start gap-2 text-xs text-amber-700">
-                  <KeyRound className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden />
-                  Esta mensagem contém a senha do portal, que não será exibida de novo depois que você fechar.
-                </p>
-              )}
-
-              {!atual.temSenha && podeGerar && (
-                <div className="flex items-center justify-between gap-3 rounded-lg border border-dashed px-3 py-2.5">
-                  <p className="text-xs text-muted-foreground">
-                    Esta mensagem está sem a senha de acesso ao portal.
-                  </p>
-                  <Button variant="secondary" size="sm" className="shrink-0 gap-1.5" disabled={gerando} onClick={() => void gerarNovaSenha()}>
-                    <KeyRound className="h-3.5 w-3.5" aria-hidden />
-                    Gerar nova senha
-                  </Button>
-                </div>
-              )}
-
-              {erro && <p role="alert" className="text-sm text-destructive">{erro}</p>}
-            </div>
-          )}
-
-          <DialogFooter>
-            <Button variant="ghost" onClick={tentarFechar}>
+            ) : <span />}
+            <Button variant="outline" onClick={tentarFechar}>
               Fechar
             </Button>
           </DialogFooter>

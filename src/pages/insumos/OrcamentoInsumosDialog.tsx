@@ -73,6 +73,8 @@ interface OrcamentoInsumosDialogProps {
 
 type AcaoConfirmada = "reprovar" | "cancelar" | "entregar";
 
+const botaoGrupo = "rounded-none active:scale-[0.96] [transition-property:scale,background-color,color]";
+
 const rotuloSecao = "text-xs font-medium uppercase tracking-wide text-muted-foreground";
 
 function linhasDoDetalhe(detalhe: OrcamentoInsumosDetalhe): LinhaOrcamentoInsumos[] {
@@ -536,11 +538,6 @@ export function OrcamentoInsumosDialog({
                   <Ban className="mr-1.5 h-4 w-4" />Cancelar orçamento
                 </Button>
               )}
-              {acoes.reprovar && (
-                <Button type="button" variant="ghost" size="sm" disabled={ocupado} onClick={() => setConfirmando("reprovar")}>
-                  <ThumbsDown className="mr-1.5 h-4 w-4" />Reprovar
-                </Button>
-              )}
               {motivoSemSalvar && (
                 <p className="flex items-center gap-1.5 text-sm text-amber-700" data-testid="motivo-sem-salvar">
                   <Info className="h-4 w-4 shrink-0" aria-hidden />
@@ -548,21 +545,31 @@ export function OrcamentoInsumosDialog({
                 </p>
               )}
             </div>
-            <div className="flex flex-wrap gap-2">
-              {acoes.gerarPdf && (
-                <Button type="button" variant="outline" size="sm" disabled={ocupado || bloqueadoPorEdicao} onClick={() => void gerarPdf()}>
-                  <FileText className="mr-1.5 h-4 w-4" />Gerar PDF
-                </Button>
+            <div className="flex flex-wrap items-center justify-end gap-x-4 gap-y-2">
+              {(acoes.gerarPdf || acoes.enviar) && (
+                <div role="group" aria-label="Compartilhar" className="inline-flex divide-x overflow-hidden rounded-md border bg-background">
+                  {acoes.gerarPdf && (
+                    <Button type="button" variant="ghost" size="sm" className={botaoGrupo} aria-label="Gerar PDF" disabled={ocupado || bloqueadoPorEdicao} onClick={() => void gerarPdf()}>
+                      <FileText className="mr-1.5 h-4 w-4" aria-hidden />PDF
+                    </Button>
+                  )}
+                  {acoes.enviar && (
+                    <>
+                      <Button type="button" variant="ghost" size="sm" className={botaoGrupo} aria-label="Enviar por e-mail" disabled={ocupado || bloqueadoPorEdicao} onClick={() => void enviar("EMAIL")}>
+                        <Mail className="mr-1.5 h-4 w-4" aria-hidden />E-mail
+                      </Button>
+                      <Button type="button" variant="ghost" size="sm" className={botaoGrupo} aria-label="Enviar por WhatsApp" disabled={ocupado || bloqueadoPorEdicao} onClick={() => void enviar("WHATSAPP")}>
+                        <MessageCircle className="mr-1.5 h-4 w-4" aria-hidden />WhatsApp
+                      </Button>
+                    </>
+                  )}
+                </div>
               )}
-              {acoes.enviar && (
-                <>
-                  <Button type="button" variant="outline" size="sm" disabled={ocupado || bloqueadoPorEdicao} onClick={() => void enviar("EMAIL")}>
-                    <Mail className="mr-1.5 h-4 w-4" />Enviar por e-mail
-                  </Button>
-                  <Button type="button" variant="outline" size="sm" disabled={ocupado || bloqueadoPorEdicao} onClick={() => void enviar("WHATSAPP")}>
-                    <MessageCircle className="mr-1.5 h-4 w-4" />Enviar por WhatsApp
-                  </Button>
-                </>
+              <div className="flex flex-wrap items-center justify-end gap-2">
+              {acoes.reprovar && (
+                <Button type="button" variant="outline" size="sm" disabled={ocupado} onClick={() => setConfirmando("reprovar")}>
+                  <ThumbsDown className="mr-1.5 h-4 w-4" />Reprovar
+                </Button>
               )}
               {acoes.salvar && (
                 <Button type="button" size="sm" variant={acoes.aprovar && detalhe ? "outline" : "default"} disabled={!podeSalvar} onClick={() => void salvar()}>
@@ -579,6 +586,7 @@ export function OrcamentoInsumosDialog({
                   <PackageCheck className="mr-1.5 h-4 w-4" />Marcar entregue
                 </Button>
               )}
+              </div>
             </div>
           </DialogFooter>
         </DialogContent>
