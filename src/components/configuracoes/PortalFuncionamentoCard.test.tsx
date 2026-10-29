@@ -5,6 +5,7 @@ import { PortalFuncionamentoCard } from "@/components/configuracoes/PortalFuncio
 const mocks = vi.hoisted(() => ({ obter: vi.fn(), definir: vi.fn(), ensure: vi.fn() }));
 vi.mock("@/lib/db", () => ({ db: { obterEstadoPortal: mocks.obter, definirEstadoPortal: mocks.definir } }));
 vi.mock("@/hooks/useSensitiveAccess", () => ({ useSensitiveAccess: () => ({ ensureSensitiveAccess: mocks.ensure }) }));
+vi.mock("@/components/configuracoes/OrcamentosPendentesPortal", () => ({ OrcamentosPendentesPortal: () => null }));
 
 describe("PortalFuncionamentoCard", () => {
   beforeEach(() => {
