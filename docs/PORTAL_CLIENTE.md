@@ -108,6 +108,10 @@ Se o envio falha por qualquer motivo (WhatsApp ou e-mail), abre **Enviar manualm
 - Contato com senha: o envio não troca. A mensagem pede a senha que ele já tem.
 - **Gerar nova senha** (no envio manual) só funciona se o contato ainda não entrou com a senha atual. Depois que entrou, a troca segue pela equipe, como na Jornada.
 
+### Orçamentos pendentes de publicação
+
+OS em `AGUARDANDO_APROVACAO` sem versão aberta no portal (casos antigos, de antes do envio publicar sozinho) aparecem em Configurações → Integrações, no card do Portal, como **Enviar orçamentos pendentes ao portal (N)**. O botão some com N = 0, pede PIN (`MANAGE_STATUS_LINKS` ou `PREPARE_QUOTES`) e publica uma OS por vez pelo mesmo caminho de "Publicar no Portal do Cliente" (um `BUDGET_PUBLISHED_TO_PORTAL` por OS). Uma falha, como prazo vencido, não interrompe as outras: entra no resumo exibido no fim e no evento `BUDGET_PORTAL_BULK_PUBLISH`. O card do portal continua visível só para quem tem `MANAGE_STATUS_LINKS`.
+
 ### Prazo e prorrogação
 
 - O prazo de aprovação fica em **Alterar orçamento**.
