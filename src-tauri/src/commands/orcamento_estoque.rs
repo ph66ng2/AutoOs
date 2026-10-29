@@ -208,6 +208,18 @@ pub fn normalizar_servicos(json: &str) -> Result<Vec<serde_json::Value>, String>
     Ok(servicos)
 }
 
+/// `nome` = `Some` quando a peça existe mas está inativa; `None` quando não existe mais nesta empresa.
+pub fn mensagem_peca_indisponivel(produto_id: i32, nome: Option<&str>) -> String {
+    match nome {
+        Some(nome) => format!(
+            "A peça \"{nome}\" está inativa no estoque e não pode ser baixada. Abra \"Alterar Orçamento\", troque ou retire essa peça e tente de novo."
+        ),
+        None => format!(
+            "A peça (produto {produto_id}) não existe mais no estoque desta empresa. Abra \"Alterar Orçamento\", troque ou retire essa peça e tente de novo."
+        ),
+    }
+}
+
 async fn baixar_disponivel(
     tx: &mut Transaction<'_, Postgres>,
     empresa_id: i32,
@@ -216,21 +228,21 @@ async fn baixar_disponivel(
     produto_id: i32,
     quantidade: i32,
 ) -> Result<i32, String> {
-    let row: Option<(i32,)> = sqlx::query_as(
-        "SELECT COALESCE(quantidade_estoque, 0) FROM produtos
-         WHERE id = $1 AND empresa_id = $2 AND ativo = true FOR UPDATE",
+    let row: Option<(String, bool, i32)> = sqlx::query_as(
+        "SELECT nome, COALESCE(ativo, false), COALESCE(quantidade_estoque, 0) FROM produtos
+         WHERE id = $1 AND empresa_id = $2 FOR UPDATE",
     )
     .bind(produto_id)
     .bind(empresa_id)
     .fetch_optional(&mut **tx)
     .await
     .map_err(super::operator_errors::mapear_erro_sql)?;
-    let Some((saldo,)) = row else {
-        return Err(format!(
-            "Produto {} inexistente, inativo ou de outra empresa.",
-            produto_id
-        ));
+    let Some((nome, ativo, saldo)) = row else {
+        return Err(mensagem_peca_indisponivel(produto_id, None));
     };
+    if !ativo {
+        return Err(mensagem_peca_indisponivel(produto_id, Some(&nome)));
+    }
     let baixa = saldo.max(0).min(quantidade);
     if baixa == 0 {
         return Ok(0);
@@ -611,6 +623,16 @@ mod tests {
             parse_servicos(r#"[{"descricao":"Legado"}]"#).unwrap()[0].id,
             "legacy:0"
         );
+    }
+
+    #[test]
+    fn mensagem_de_peca_indisponivel_distingue_inativa_de_inexistente() {
+        let inativa = mensagem_peca_indisponivel(7, Some("Ribbon cera"));
+        assert!(inativa.contains("\"Ribbon cera\" está inativa no estoque"));
+        assert!(inativa.contains("Alterar Orçamento"));
+        let inexistente = mensagem_peca_indisponivel(7, None);
+        assert!(inexistente.contains("(produto 7) não existe mais no estoque desta empresa"));
+        assert!(!inexistente.contains("inativa"));
     }
 
     async fn test_pool() -> PgPool {
