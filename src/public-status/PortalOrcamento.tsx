@@ -26,7 +26,6 @@ type Etapa =
   | { tipo: "retencao" }
   | { tipo: "verificar"; depois: Decisao }
   | { tipo: "confirmar"; decisao: Decisao; versaoId: number }
-  | { tipo: "negociar" }
   | { tipo: "corrigir" }
   | null;
 
@@ -116,7 +115,7 @@ export default function PortalOrcamento({ session, detalhe, orcamento, recarrega
 
   // A barra fixa do celular inicia a confirmação longe dela: leva a caixa para a tela.
   useEffect(() => {
-    if (etapa && etapa.tipo !== "negociar" && etapa.tipo !== "corrigir") {
+    if (etapa && etapa.tipo !== "corrigir") {
       caixaEtapa.current?.scrollIntoView?.({ behavior: "smooth", block: "center" });
     }
   }, [etapa]);
@@ -184,7 +183,7 @@ export default function PortalOrcamento({ session, detalhe, orcamento, recarrega
     setEtapa({ tipo: "confirmar", decisao, versaoId: orcamento.versaoId });
   };
 
-  // Recusar passa antes por uma conversa: a equipe pode negociar valor e itens.
+  // Recusar passa antes por uma confirmação extra, com o contato da equipe para dúvidas.
   const iniciar = (decisao: Decisao) => {
     if (decisao === "RECUSAR") {
       limparResultados();
@@ -194,7 +193,7 @@ export default function PortalOrcamento({ session, detalhe, orcamento, recarrega
     prosseguir(decisao);
   };
 
-  const abrirSolicitacao = (tipo: "negociar" | "corrigir") => {
+  const abrirSolicitacao = (tipo: "corrigir") => {
     limparResultados();
     setErroContato(null);
     setTelefone("");
@@ -255,7 +254,7 @@ export default function PortalOrcamento({ session, detalhe, orcamento, recarrega
     }
   };
 
-  const solicitar = async (tipo: "NEGOCIAR" | "MUDANCA") => {
+  const solicitar = async (tipo: "MUDANCA") => {
     const tel = faltaTelefone ? telefone.trim() : "";
     const mail = faltaEmail ? email.trim() : "";
     if (tel && !telefoneValido(tel)) {
@@ -391,7 +390,7 @@ export default function PortalOrcamento({ session, detalhe, orcamento, recarrega
             <p>
               {respostaAtiva.propria
                 ? `A resposta é efetivada às ${shortTime(respostaAtiva.janelaAte)}. Se você errou, ainda dá para desfazer até lá.`
-                : `O prazo de correção vai até ${shortTime(respostaAtiva.janelaAte)}. Só quem respondeu pode mudar; para discutir, use “Quero negociar” ou fale com a equipe.`}
+                : `O prazo de correção vai até ${shortTime(respostaAtiva.janelaAte)}. Só quem respondeu pode mudar. Qualquer dúvida, entre em contato conosco.`}
             </p>
           )}
           {respostaAtiva.estado === "PROCESSANDO" && (
@@ -427,12 +426,8 @@ export default function PortalOrcamento({ session, detalhe, orcamento, recarrega
       {etapa?.tipo === "retencao" && (
         <div className="confirm-box portal-retention" ref={caixaEtapa} role="group" aria-labelledby="portal-retention-title">
           <h2 id="portal-retention-title">Tem certeza que quer recusar?</h2>
-          <p>
-            Antes de decidir: a nossa equipe pode negociar com você o valor e os itens deste orçamento.
-            Muitas vezes dá para chegar a uma proposta que faça sentido para os dois lados.
-          </p>
+          <p>Qualquer dúvida, entre em contato conosco.</p>
           <div className="action-row portal-retention-actions">
-            <button className="primary-button" type="button" onClick={() => abrirSolicitacao("negociar")}>Quero negociar</button>
             {whatsapp && (
               <a className="secondary-button portal-link-button" href={whatsappUrl(whatsapp, textoConversa)} target="_blank" rel="noopener noreferrer">
                 Falar com a equipe no WhatsApp
@@ -468,7 +463,7 @@ export default function PortalOrcamento({ session, detalhe, orcamento, recarrega
           <p><strong>{detalhe.equipamento}</strong>{detalhe.serie ? ` · série ${detalhe.serie}` : ""}</p>
           <p>Versão {orcamento.versao} · <strong>{money(orcamento.valorTotal)}</strong></p>
           {etapa.decisao === "APROVAR" && (
-            <p className="answer-hint">Você aceita todos os itens acima. Para discutir preço ou itens, use “Quero negociar”.</p>
+            <p className="answer-hint">Você aceita todos os itens acima.</p>
           )}
           {etapa.decisao === "APROVAR" && exigeOrdem && (
             <div className="portal-oc">
@@ -494,16 +489,14 @@ export default function PortalOrcamento({ session, detalhe, orcamento, recarrega
         </div>
       )}
 
-      {(etapa?.tipo === "negociar" || etapa?.tipo === "corrigir") && (
+      {etapa?.tipo === "corrigir" && (
         <div className="contact-box portal-request-box">
           <label htmlFor="portal-mensagem">
-            {etapa.tipo === "negociar" ? "O que você gostaria de negociar? (opcional)" : "O que precisa ser corrigido?"}
+            O que precisa ser corrigido?
           </label>
           <textarea id="portal-mensagem" rows={4} maxLength={500} value={mensagem} onChange={(event) => setMensagem(event.target.value)} />
           <p className="answer-hint">
-            {etapa.tipo === "negociar"
-              ? "O pedido avisa a equipe. Não é aceite, recusa nem prorrogação do prazo. Se a proposta mudar, uma nova versão aparecerá aqui."
-              : "A equipe vai analisar. Mudar só o status não desfaz peças já baixadas nem trabalho iniciado."}
+            A equipe vai analisar. Mudar só o status não desfaz peças já baixadas nem trabalho iniciado.
           </p>
           {(faltaTelefone || faltaEmail) && (
             <fieldset className="portal-reach">
@@ -531,9 +524,9 @@ export default function PortalOrcamento({ session, detalhe, orcamento, recarrega
           )}
           {erro && <p className="portal-error" role="alert">{erro}</p>}
           <div className="action-row">
-            <button className="primary-button" type="button" disabled={busy || (etapa.tipo === "corrigir" && mensagem.trim().length === 0)}
-              onClick={() => void solicitar(etapa.tipo === "negociar" ? "NEGOCIAR" : "MUDANCA")}>
-              {busy ? "Registrando…" : etapa.tipo === "negociar" ? "Registrar pedido de negociação" : "Solicitar correção"}
+            <button className="primary-button" type="button" disabled={busy || mensagem.trim().length === 0}
+              onClick={() => void solicitar("MUDANCA")}>
+              {busy ? "Registrando…" : "Solicitar correção"}
             </button>
             <button className="secondary-button" type="button" disabled={busy} onClick={() => setEtapa(null)}>Voltar</button>
           </div>
@@ -565,9 +558,6 @@ export default function PortalOrcamento({ session, detalhe, orcamento, recarrega
             <button className="link-button portal-undo" type="button" onClick={() => iniciar("DESFEITA")}>
               Errou? Desfazer resposta (até {shortTime(respostaAtiva.janelaAte)})
             </button>
-          )}
-          {detalhe.podeDecidir && orcamento.aceiteOnline && orcamento.estado === "ABERTA" && !respostaAtiva && (
-            <button className="link-button" type="button" onClick={() => abrirSolicitacao("negociar")}>Quero negociar</button>
           )}
           {detalhe.podeDecidir && respostaAtiva?.estado === "EFETIVADA" && (
             <button className="secondary-button" type="button" onClick={() => abrirSolicitacao("corrigir")}>Solicitar correção</button>

@@ -906,7 +906,7 @@ mod tests {
 pub struct EstadoPortal {
     /// `portal_config_empresa.portal_enabled`: login e consulta dos atendimentos desta empresa.
     pub portal_ativo: bool,
-    /// `portal_config_empresa.respostas_enabled`: aceitar, recusar e negociar pelo portal.
+    /// `portal_config_empresa.respostas_enabled`: aceitar e recusar pelo portal.
     pub respostas_ativas: bool,
     /// Respostas desta empresa que passaram do prazo de correção (+5 min) sem serem aplicadas nem
     /// falharem: sinal de que o agendamento da efetivação no Supabase não está rodando.

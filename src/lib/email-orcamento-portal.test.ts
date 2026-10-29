@@ -144,7 +144,8 @@ describe("email-orcamento-portal", () => {
     expect(t).toContain("Olá, Maria.");
     expect(t).toContain("Empresa: Empresa X — CNPJ/CPF 12.345.678/0001-90");
     expect(t).toContain("Usuário: maria");
-    expect(t).toContain("Para aceitar, recusar ou negociar, entre no Portal das Impressoras");
+    expect(t).toContain("Para aceitar ou recusar, entre no Portal das Impressoras");
+    expect(t).not.toMatch(/negoci/i);
     expect(t).toContain("Equipe técnica");
   });
 

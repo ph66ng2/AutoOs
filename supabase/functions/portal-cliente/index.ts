@@ -33,7 +33,7 @@ const DB_ERRORS: Record<string, { status: number; erro: string }> = {
   PROPOSTA_ALTERADA: { status: 409, erro: "A proposta mudou enquanto a página estava aberta. Releia a versão atual antes de responder." },
   PROPOSTA_VENCIDA: { status: 409, erro: "O prazo desta proposta terminou. Fale com a equipe para renovar." },
   RESPOSTA_DESATUALIZADA: { status: 409, erro: "A resposta deste orçamento mudou em outra tela. Atualizamos a página para você conferir." },
-  RESPOSTA_DE_OUTRO_CONTATO: { status: 409, erro: "Outro contato já respondeu. Só quem respondeu pode mudar de ideia no prazo; use “Quero negociar” ou fale com a equipe." },
+  RESPOSTA_DE_OUTRO_CONTATO: { status: 409, erro: "Outro contato já respondeu. Só quem respondeu pode mudar de ideia no prazo. Qualquer dúvida, fale com a equipe." },
   RESPOSTA_JA_REGISTRADA: { status: 409, erro: "Já existe uma resposta registrada por outro canal. Fale com a equipe para alterá-la." },
   RESPOSTA_JA_EFETIVADA: { status: 409, erro: "A resposta já foi efetivada. Use “Solicitar correção”." },
   PRAZO_CORRECAO_ENCERRADO: { status: 409, erro: "O prazo para mudar de ideia terminou. Use “Solicitar correção”." },
@@ -241,7 +241,7 @@ async function confirmPassword(context: Context, body: Json, sessionHash: string
 }
 
 const ORIENTACAO_ORCAMENTO: Record<string, string> = {
-  ABERTA: "Confira a proposta e responda por aqui. Para negociar valores ou itens, use “Quero negociar”.",
+  ABERTA: "Confira a proposta e responda por aqui. Qualquer dúvida, entre em contato conosco.",
   RESPONDIDA: "Sua resposta ao orçamento foi registrada. O andamento dela aparece no quadro do orçamento.",
   EM_REVISAO: "A equipe está revisando a proposta. A nova versão aparece aqui quando for publicada.",
   VENCIDA: "O prazo desta proposta terminou. Fale com a equipe BMI TAG para renová-la.",
@@ -416,7 +416,8 @@ Deno.serve(async (request: Request) => {
 
   if (acao === "solicitar") {
     const tipo = body.tipo;
-    if (tipo !== "NEGOCIAR" && tipo !== "DUVIDA" && tipo !== "MUDANCA") return json({ erro: "Requisição inválida." }, 400, origin);
+    // NEGOCIAR saiu do portal: o banco ainda guarda os pedidos antigos, mas não se cria pedido novo.
+    if (tipo !== "DUVIDA" && tipo !== "MUDANCA") return json({ erro: "Requisição inválida." }, 400, origin);
     const mensagem = typeof body.mensagem === "string" ? body.mensagem.slice(0, 500) : "";
     const args: Json = {
       p_sessao_hash: sessionHash,
