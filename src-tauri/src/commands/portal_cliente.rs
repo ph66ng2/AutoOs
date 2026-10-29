@@ -7,14 +7,14 @@
 use crate::commands::auth::{
     record_security_event, require_active_session_company_id, require_active_session_company_id_without_touch,
     require_any_permission, require_permission,
-    require_sensitive_access, PERMISSION_FINANCIAL_ACTIONS, PERMISSION_MANAGE_STATUS_LINKS,
+    require_sensitive_access, SecurityProfileSummary, PERMISSION_FINANCIAL_ACTIONS, PERMISSION_MANAGE_STATUS_LINKS,
     PERMISSION_PREPARE_QUOTES,
 };
 use crate::commands::orcamento_decisao::obter_ou_criar_versao;
 use crate::commands::types::{ClienteContato, CLIENTE_CONTATO_SELECT};
 use crate::db::get_pool;
 use serde::{Deserialize, Serialize};
-use sqlx::{Acquire, FromRow};
+use sqlx::{Acquire, FromRow, PgPool};
 use tracing::instrument;
 
 const TS_FMT: &str = "YYYY-MM-DD\"T\"HH24:MI:SS.US\"Z\"";
@@ -618,6 +618,17 @@ pub async fn publicar_orcamento_portal(equipamento_id: i32) -> Result<OrcamentoP
     let actor = require_any_permission(&[PERMISSION_MANAGE_STATUS_LINKS, PERMISSION_PREPARE_QUOTES])?;
     let pool = get_pool().await.map_err(|e| e.to_string())?;
     let empresa_id = require_active_session_company_id(&pool).await?;
+    publicar_versao(&pool, empresa_id, &actor, equipamento_id).await
+}
+
+/// Cria ou reaproveita a versão publicada de uma OS. Cada chamada tem a sua transação e grava o
+/// evento `BUDGET_PUBLISHED_TO_PORTAL`.
+async fn publicar_versao(
+    pool: &PgPool,
+    empresa_id: i32,
+    actor: &SecurityProfileSummary,
+    equipamento_id: i32,
+) -> Result<OrcamentoPublicado, String> {
     let mut tx = pool.begin().await.map_err(super::operator_errors::mapear_erro_sql)?;
 
     let antes: Option<i64> = sqlx::query_scalar(
@@ -634,12 +645,107 @@ pub async fn publicar_orcamento_portal(equipamento_id: i32) -> Result<OrcamentoP
     let nova = antes.is_none_or(|id| versao.id > id);
     record_security_event(
         "BUDGET_PUBLISHED_TO_PORTAL",
-        Some(&actor),
+        Some(actor),
         format!("empresa_id={empresa_id}; equipamento_id={equipamento_id}; versao={}; nova={nova}", versao.numero),
         true,
     )
     .await;
     Ok(OrcamentoPublicado { versao_id: versao.id, versao: versao.numero, nova })
+}
+
+#[derive(Debug, Serialize, FromRow)]
+pub struct OrcamentoPendentePortal {
+    pub equipamento_id: i32,
+    pub descricao: String,
+    pub prazo_aprovacao: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct FalhaPublicacaoPortal {
+    pub equipamento_id: i32,
+    pub descricao: String,
+    pub motivo: String,
+}
+
+#[derive(Debug, Serialize)]
+pub struct PublicacaoLotePortal {
+    pub publicados: Vec<i32>,
+    pub falhas: Vec<FalhaPublicacaoPortal>,
+}
+
+/// OS em AGUARDANDO_APROVACAO que ainda não têm versão aberta no portal.
+async fn consultar_pendentes_portal(pool: &PgPool, empresa_id: i32) -> Result<Vec<OrcamentoPendentePortal>, String> {
+    sqlx::query_as::<_, OrcamentoPendentePortal>(
+        "SELECT e.id AS equipamento_id,
+                CONCAT_WS(' ', e.marca, e.modelo, '- série', e.serial_number) AS descricao,
+                e.prazo_aprovacao
+         FROM equipamentos e
+         WHERE e.empresa_id = $1 AND e.status = 'AGUARDANDO_APROVACAO'
+           AND NOT EXISTS (
+             SELECT 1 FROM orcamento_versoes v
+             WHERE v.equipamento_id = e.id AND v.empresa_id = e.empresa_id AND v.encerrada_em IS NULL
+           )
+         ORDER BY e.id",
+    )
+    .bind(empresa_id)
+    .fetch_all(pool)
+    .await
+    .map_err(super::operator_errors::mapear_erro_sql)
+}
+
+#[tauri::command]
+pub async fn listar_orcamentos_pendentes_portal() -> Result<Vec<OrcamentoPendentePortal>, String> {
+    let pool = get_pool().await.map_err(|e| e.to_string())?;
+    let empresa_id = require_active_session_company_id(&pool).await?;
+    consultar_pendentes_portal(&pool, empresa_id).await
+}
+
+/// Publica no portal todos os orçamentos pendentes. Uma falha não interrompe as outras: cada OS
+/// tem a sua transação, e as que já foram publicadas continuam publicadas.
+#[tauri::command]
+#[instrument(skip_all)]
+pub async fn publicar_orcamentos_pendentes_portal() -> Result<PublicacaoLotePortal, String> {
+    let actor = require_any_permission(&[PERMISSION_MANAGE_STATUS_LINKS, PERMISSION_PREPARE_QUOTES])?;
+    let pool = get_pool().await.map_err(|e| e.to_string())?;
+    let empresa_id = require_active_session_company_id(&pool).await?;
+    let pendentes = consultar_pendentes_portal(&pool, empresa_id).await?;
+
+    let mut publicados = Vec::new();
+    let mut falhas = Vec::new();
+    for pendente in pendentes {
+        match publicar_versao(&pool, empresa_id, &actor, pendente.equipamento_id).await {
+            Ok(_) => publicados.push(pendente.equipamento_id),
+            Err(motivo) => falhas.push(FalhaPublicacaoPortal {
+                equipamento_id: pendente.equipamento_id,
+                descricao: pendente.descricao,
+                motivo,
+            }),
+        }
+    }
+
+    let falhas_auditoria: Vec<(i32, String)> = falhas
+        .iter()
+        .map(|falha: &FalhaPublicacaoPortal| (falha.equipamento_id, falha.motivo.clone()))
+        .collect();
+    record_security_event(
+        "BUDGET_PORTAL_BULK_PUBLISH",
+        Some(&actor),
+        format!("empresa_id={empresa_id}; {}", resumo_auditoria_lote(publicados.len(), &falhas_auditoria)),
+        falhas.is_empty(),
+    )
+    .await;
+
+    Ok(PublicacaoLotePortal { publicados, falhas })
+}
+
+/// Resumo do lote para a trilha de auditoria: `publicados=N; falhas=M; ids_falha=[id:motivo,…]`.
+/// Ponto e vírgula e quebra de linha no motivo viram vírgula, para o registro continuar legível.
+fn resumo_auditoria_lote(publicados: usize, falhas: &[(i32, String)]) -> String {
+    let ids: Vec<String> = falhas
+        .iter()
+        .map(|(id, motivo)| format!("{id}:{}", motivo.replace([';', '\n', '\r'], ",")))
+        .collect();
+    format!("publicados={publicados}; falhas={}; ids_falha=[{}]", falhas.len(), ids.join(","))
 }
 
 #[tauri::command]
@@ -701,6 +807,25 @@ pub async fn salvar_contato_portal_empresa(input: ContatoPortalEmpresa) -> Resul
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn resumo_auditoria_lote_lista_contagens_e_falhas() {
+        let falhas = vec![(7, "O prazo de aprovação do orçamento já terminou.".to_string())];
+        assert_eq!(
+            resumo_auditoria_lote(3, &falhas),
+            "publicados=3; falhas=1; ids_falha=[7:O prazo de aprovação do orçamento já terminou.]"
+        );
+        assert_eq!(resumo_auditoria_lote(0, &[]), "publicados=0; falhas=0; ids_falha=[]");
+    }
+
+    #[test]
+    fn resumo_auditoria_lote_nao_deixa_ponto_e_virgula_no_motivo() {
+        let falhas = vec![(2, "a; b\nc".to_string()), (5, "d".to_string())];
+        assert_eq!(
+            resumo_auditoria_lote(1, &falhas),
+            "publicados=1; falhas=2; ids_falha=[2:a, b,c,5:d]"
+        );
+    }
 
     #[test]
     fn portal_access_is_whitelisted() {
