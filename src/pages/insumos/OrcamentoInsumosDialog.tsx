@@ -75,7 +75,9 @@ type AcaoConfirmada = "reprovar" | "cancelar" | "entregar";
 
 const botaoGrupo = "rounded-none active:scale-[0.96] [transition-property:scale,background-color,color]";
 
-const rotuloSecao = "text-xs font-medium uppercase tracking-wide text-muted-foreground";
+const botaoNegativo = "text-red-600 hover:bg-red-50 hover:text-red-700";
+
+const rotuloSecao = "text-sm font-medium";
 
 function linhasDoDetalhe(detalhe: OrcamentoInsumosDetalhe): LinhaOrcamentoInsumos[] {
   return detalhe.itens.map((item) => ({
@@ -380,19 +382,40 @@ export function OrcamentoInsumosDialog({
     <>
       <Dialog open={open} onOpenChange={onOpenChange}>
         <DialogContent className="flex max-h-[calc(100vh-2rem)] flex-col gap-4 sm:max-w-5xl">
-          <DialogHeader className="space-y-1.5 pr-6">
-            <DialogTitle className="flex items-center gap-2">
-              {titulo}
-              {status && (
-                <Badge variant="outline" className={STATUS_ORCAMENTO_INSUMOS_COR[status]}>
-                  {STATUS_ORCAMENTO_INSUMOS_LABEL[status]}
-                </Badge>
-              )}
-            </DialogTitle>
-            <DialogDescription>
-              Venda avulsa de etiquetas, ribbons, peças e outros itens do estoque, sem equipamento em manutenção.
-            </DialogDescription>
-          </DialogHeader>
+          <div className="flex items-start justify-between gap-4 pr-8">
+            <DialogHeader className="min-w-0 space-y-1.5">
+              <DialogTitle className="flex items-center gap-2">
+                {titulo}
+                {status && (
+                  <Badge variant="outline" className={STATUS_ORCAMENTO_INSUMOS_COR[status]}>
+                    {STATUS_ORCAMENTO_INSUMOS_LABEL[status]}
+                  </Badge>
+                )}
+              </DialogTitle>
+              <DialogDescription>
+                Venda avulsa de etiquetas, ribbons, peças e outros itens do estoque, sem equipamento em manutenção.
+              </DialogDescription>
+            </DialogHeader>
+            {(acoes.gerarPdf || acoes.enviar) && (
+              <div role="group" aria-label="Compartilhar" className="inline-flex shrink-0 divide-x overflow-hidden rounded-md border bg-background">
+                {acoes.gerarPdf && (
+                  <Button type="button" variant="ghost" size="sm" className={botaoGrupo} aria-label="Gerar PDF" title={bloqueadoPorEdicao ? "Salve as alterações primeiro" : undefined} disabled={ocupado || bloqueadoPorEdicao} onClick={() => void gerarPdf()}>
+                    <FileText className="mr-1.5 h-4 w-4" aria-hidden />PDF
+                  </Button>
+                )}
+                {acoes.enviar && (
+                  <>
+                    <Button type="button" variant="ghost" size="sm" className={botaoGrupo} aria-label="Enviar por e-mail" title={bloqueadoPorEdicao ? "Salve as alterações primeiro" : undefined} disabled={ocupado || bloqueadoPorEdicao} onClick={() => void enviar("EMAIL")}>
+                      <Mail className="mr-1.5 h-4 w-4" aria-hidden />E-mail
+                    </Button>
+                    <Button type="button" variant="ghost" size="sm" className={botaoGrupo} aria-label="Enviar por WhatsApp" title={bloqueadoPorEdicao ? "Salve as alterações primeiro" : undefined} disabled={ocupado || bloqueadoPorEdicao} onClick={() => void enviar("WHATSAPP")}>
+                      <MessageCircle className="mr-1.5 h-4 w-4" aria-hidden />WhatsApp
+                    </Button>
+                  </>
+                )}
+              </div>
+            )}
+          </div>
 
           <div className="-mx-1 min-h-0 flex-1 space-y-5 overflow-y-auto px-1 pb-1">
             {carregando ? (
@@ -532,9 +555,14 @@ export function OrcamentoInsumosDialog({
           </div>
 
           <DialogFooter className="flex-wrap items-center gap-3 border-t pt-4 sm:justify-between sm:space-x-0">
-            <div className="flex flex-wrap items-center gap-2">
+            <div className="flex flex-wrap items-center gap-1">
+              {acoes.reprovar && (
+                <Button type="button" variant="ghost" size="sm" className={botaoNegativo} disabled={ocupado} onClick={() => setConfirmando("reprovar")}>
+                  <ThumbsDown className="mr-1.5 h-4 w-4" />Reprovar
+                </Button>
+              )}
               {acoes.cancelar && (
-                <Button type="button" variant="ghost" size="sm" className="text-red-600 hover:bg-red-50 hover:text-red-700" disabled={ocupado} onClick={() => setConfirmando("cancelar")}>
+                <Button type="button" variant="ghost" size="sm" className={botaoNegativo} disabled={ocupado} onClick={() => setConfirmando("cancelar")}>
                   <Ban className="mr-1.5 h-4 w-4" />Cancelar orçamento
                 </Button>
               )}
@@ -545,32 +573,7 @@ export function OrcamentoInsumosDialog({
                 </p>
               )}
             </div>
-            <div className="flex flex-wrap items-center justify-end gap-x-4 gap-y-2">
-              {(acoes.gerarPdf || acoes.enviar) && (
-                <div role="group" aria-label="Compartilhar" className="inline-flex divide-x overflow-hidden rounded-md border bg-background">
-                  {acoes.gerarPdf && (
-                    <Button type="button" variant="ghost" size="sm" className={botaoGrupo} aria-label="Gerar PDF" disabled={ocupado || bloqueadoPorEdicao} onClick={() => void gerarPdf()}>
-                      <FileText className="mr-1.5 h-4 w-4" aria-hidden />PDF
-                    </Button>
-                  )}
-                  {acoes.enviar && (
-                    <>
-                      <Button type="button" variant="ghost" size="sm" className={botaoGrupo} aria-label="Enviar por e-mail" disabled={ocupado || bloqueadoPorEdicao} onClick={() => void enviar("EMAIL")}>
-                        <Mail className="mr-1.5 h-4 w-4" aria-hidden />E-mail
-                      </Button>
-                      <Button type="button" variant="ghost" size="sm" className={botaoGrupo} aria-label="Enviar por WhatsApp" disabled={ocupado || bloqueadoPorEdicao} onClick={() => void enviar("WHATSAPP")}>
-                        <MessageCircle className="mr-1.5 h-4 w-4" aria-hidden />WhatsApp
-                      </Button>
-                    </>
-                  )}
-                </div>
-              )}
-              <div className="flex flex-wrap items-center justify-end gap-2">
-              {acoes.reprovar && (
-                <Button type="button" variant="outline" size="sm" disabled={ocupado} onClick={() => setConfirmando("reprovar")}>
-                  <ThumbsDown className="mr-1.5 h-4 w-4" />Reprovar
-                </Button>
-              )}
+            <div className="flex flex-wrap items-center justify-end gap-2">
               {acoes.salvar && (
                 <Button type="button" size="sm" variant={acoes.aprovar && detalhe ? "outline" : "default"} disabled={!podeSalvar} onClick={() => void salvar()}>
                   <Save className="mr-1.5 h-4 w-4" />Salvar
@@ -586,7 +589,6 @@ export function OrcamentoInsumosDialog({
                   <PackageCheck className="mr-1.5 h-4 w-4" />Marcar entregue
                 </Button>
               )}
-              </div>
             </div>
           </DialogFooter>
         </DialogContent>
