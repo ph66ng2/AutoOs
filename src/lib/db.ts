@@ -580,6 +580,13 @@ export const db = {
     });
   },
 
+  /** Exclui de vez um orçamento CANCELADO (itens juntos; estoque intocado). */
+  async excluirOrcamentoInsumos(id: number, atualizadoEm: string): Promise<void> {
+    return invoke<void>("excluir_orcamento_insumos", {
+      input: { id, atualizado_em: atualizadoEm },
+    });
+  },
+
   async marcarOrcamentoInsumosEntregue(id: number, atualizadoEm: string): Promise<OrcamentoInsumosDetalhe> {
     return invoke<OrcamentoInsumosDetalhe>("marcar_orcamento_insumos_entregue", {
       input: { id, atualizado_em: atualizadoEm },

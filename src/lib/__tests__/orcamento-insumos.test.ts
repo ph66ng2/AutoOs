@@ -148,6 +148,13 @@ describe("acoesOrcamentoInsumos", () => {
       expect(() => acoesOrcamentoInsumos(status)).not.toThrow();
     }
   });
+
+  it("só cancelado pode ser excluído de vez", () => {
+    for (const status of STATUS_ORCAMENTO_INSUMOS) {
+      expect(acoesOrcamentoInsumos(status).excluir).toBe(status === "CANCELADO");
+    }
+    expect(acoesOrcamentoInsumos(null).excluir).toBe(false);
+  });
 });
 
 describe("mensagens de envio", () => {
