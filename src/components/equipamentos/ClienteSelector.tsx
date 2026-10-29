@@ -324,6 +324,7 @@ export function ClienteSelector({
       resultados={resultados}
       onSelecionarCliente={selecionarCliente}
       onAbrirNovoCliente={abrirNovoCliente}
+      compacto={!touchMode}
     />
   );
 }
