@@ -16,7 +16,7 @@
  */
 import { useState, useEffect, useCallback } from "react";
 import { db } from "@/lib/db";
-import type { Produto } from "@/types";
+import type { Produto, UsoProdutoOrcamentos } from "@/types";
 
 /**
  * Parâmetros de filtragem para o hook {@link useInsumos}.
@@ -181,6 +181,27 @@ export function useInsumos(params?: UseInsumosParams) {
   };
 
   /**
+   * Consulta em quais OS e orçamentos de insumos a peça está em uso.
+   *
+   * Fluxo: `db.usoProdutoEmOrcamentos(id)` → comando Tauri
+   * `uso_produto_em_orcamentos` (Rust). Erro ou resposta vazia viram `null`.
+   *
+   * @param id - ID do produto.
+   * @returns Listas de uso ou `null` quando indisponível.
+   */
+  const consultarUsoEmOrcamentos = async (
+    id: number,
+  ): Promise<UsoProdutoOrcamentos | null> => {
+    try {
+      const uso = await db.usoProdutoEmOrcamentos(id);
+      return uso ?? null;
+    } catch (err: any) {
+      console.error("Erro ao consultar uso do produto em orçamentos:", err);
+      return null;
+    }
+  };
+
+  /**
    * Contagem computada de produtos cujo estoque atual (`quantidade_estoque`)
    * está abaixo do estoque mínimo configurado (`quantidade_minima`).
    *
@@ -198,6 +219,7 @@ export function useInsumos(params?: UseInsumosParams) {
     atualizar,
     deletar,
     registrarMovimentacao,
+    consultarUsoEmOrcamentos,
     recarregar: carregar,
   };
 }
