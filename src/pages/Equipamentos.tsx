@@ -166,6 +166,7 @@ import {
   usarEquipamentoAnteriorNoCadastro,
 } from "@/pages/equipamentos/equipamento-anterior";
 import {
+  agruparAcoesOs,
   extrairTecnicoInicialDeObservacoes,
   filtrarImagensPorCategoria,
   getStatusCorrecao,
@@ -197,6 +198,7 @@ import { toast } from "sonner";
 
 const AVISO_ATENDIMENTO_PENDENTE = "abrir-atendimento-pendente";
 import { CorrigirDecisaoDialog } from "@/components/equipamentos/CorrigirDecisaoDialog";
+import { ReabrirOrcamentoDialog } from "@/components/equipamentos/ReabrirOrcamentoDialog";
 import { EscolhaAjusteOrcamentoDialog } from "@/components/equipamentos/EscolhaAjusteOrcamentoDialog";
 import type { AnaliseAjusteOrcamento, EnvioManualOrcamento, OpcoesAjusteOrcamento, PortalAjusteInfo, PreparoAcessoPortal } from "@/types";
 import { FormaPagamentoFields } from "@/components/equipamentos/FormaPagamentoFields";
@@ -233,6 +235,9 @@ export default function Equipamentos() {
   const [respostaClienteDecisao, setRespostaClienteDecisao] = useState<"APROVAR" | "RECUSAR" | null>(null);
   const [motivoDivergencia, setMotivoDivergencia] = useState("");
   const [corrigirDecisaoAlvo, setCorrigirDecisaoAlvo] = useState<Equipamento | null>(null);
+  const [reabrirAlvo, setReabrirAlvo] = useState<Equipamento | null>(null);
+  // Diálogo "Mudar Status" aberto sem status pré-selecionado: REPROVADO não oferece "Aguardando aprovação" aí (use "Nova proposta").
+  const [statusSemPreSelecao, setStatusSemPreSelecao] = useState(false);
   const [verificacaoDialogOpen, setVerificacaoDialogOpen] = useState(false);
   const [statusDialogOpen, setStatusDialogOpen] = useState(false);
   const [pagamentoDialogOpen, setPagamentoDialogOpen] = useState(false);
@@ -886,6 +891,7 @@ export default function Equipamentos() {
     setMotivoCorrecaoStatus("");
     setSelecionado(eq);
     setNovoStatus(statusPreSelecionado || "");
+    setStatusSemPreSelecao(!statusPreSelecionado);
     setValorOrcamento(eq.valor_orcamento ?? 0);
     setValorOrcamentoValido(true);
     setPrazoAprovacao(eq.prazo_aprovacao || "");
@@ -2286,7 +2292,7 @@ export default function Equipamentos() {
         };
         secondary = acaoStatus;
         overflow.push(
-          ...(podeFinanceiro ? [acaoCorrigirDecisao] : []),
+          ...(podeFinanceiro ? [{ ...acaoCorrigirDecisao, id: "desfazer_aprovacao", label: "Desfazer aprovação" }] : []),
           acaoEditar,
           ...(podeExcluir ? [acaoExcluir] : []),
         );
@@ -2345,7 +2351,7 @@ export default function Equipamentos() {
             icon: <RotateCcw className="h-3.5 w-3.5" />,
             variant: "default",
             className: classeAcaoPrincipal,
-            onClick: () => void abrirMudarStatus(eq, "AGUARDANDO_APROVACAO"),
+            onClick: () => setReabrirAlvo(eq),
             disabled: salvando,
           };
           overflow.push({
@@ -2356,7 +2362,6 @@ export default function Equipamentos() {
             onClick: () => void abrirMudarStatus(eq),
             disabled: salvando,
           });
-          overflow.push(acaoCorrigirDecisao);
         } else {
           primary = acaoStatus;
         }
@@ -2365,21 +2370,14 @@ export default function Equipamentos() {
       case "ORCAMENTO_VENCIDO":
         if (podeFinanceiro) {
           primary = {
-            id: "ajustar_orcamento_vencido",
-            label: "Ajustar Orçamento",
+            id: "renovar_orcamento",
+            label: "Renovar orçamento",
             icon: <RefreshCw className="h-3.5 w-3.5" />,
             variant: "default",
             className: classeAcaoPrincipal,
             onClick: () => void abrirMudarStatus(eq, "AGUARDANDO_APROVACAO"),
           };
-          secondary = {
-            id: "reenviar_orcamento",
-            label: "Reenviar",
-            icon: <Send className="h-3.5 w-3.5" />,
-            variant: "outline",
-            onClick: () => void abrirMudarStatus(eq, "AGUARDANDO_APROVACAO"),
-          };
-          overflow.push(acaoStatus);
+          secondary = acaoStatus;
         } else {
           primary = acaoStatus;
         }
@@ -2424,7 +2422,7 @@ export default function Equipamentos() {
           primary={primary}
           iconOnlyPrimary={eq.status === "ENTREGUE" || eq.status === "ABANDONADO"}
           secondary={secondary}
-          overflow={overflow}
+          overflow={agruparAcoesOs(overflow)}
           iconOnlySecondary
           iconOnlyOverflowTrigger
         />
@@ -3226,6 +3224,13 @@ export default function Equipamentos() {
         }}
       />
 
+      <ReabrirOrcamentoDialog
+        open={reabrirAlvo !== null}
+        onOpenChange={(open) => { if (!open) setReabrirAlvo(null); }}
+        onCorrigirEngano={() => { if (reabrirAlvo) void abrirCorrigirDecisao(reabrirAlvo); }}
+        onNovaProposta={() => { if (reabrirAlvo) void abrirMudarStatus(reabrirAlvo, "AGUARDANDO_APROVACAO"); }}
+      />
+
       {/* ═══ Dialog Verificação Técnica (componente extraído) ═══ */}
       <VerificacaoTecnica
         key={selecionado?.id ?? "verificacao"}
@@ -3278,7 +3283,7 @@ export default function Equipamentos() {
                       <Select value={novoStatus} onValueChange={handleNovoStatusChange}>
                         <SelectTrigger><SelectValue placeholder="Selecione..." /></SelectTrigger>
                         <SelectContent>
-                          {(correcaoStatus ? getStatusCorrecao(selecionado.status) : getProximosStatus(selecionado.status)).map(s => (
+                          {(correcaoStatus ? getStatusCorrecao(selecionado.status) : getProximosStatus(selecionado.status, { semPreSelecao: statusSemPreSelecao })).map(s => (
                             <SelectItem key={s} value={s}>{STATUS_LABELS[s as StatusEquipamento] || s}</SelectItem>
                           ))}
                         </SelectContent>

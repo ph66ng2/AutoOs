@@ -9,7 +9,7 @@
  * - Verificação dos parâmetros do audit (old_total, new_total, services counts)
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { render, screen, act, fireEvent, waitFor } from "@testing-library/react";
+import { render, screen, act, fireEvent, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import * as equipamentoImagemUtils from "@/lib/equipamento-imagem-utils";
 
@@ -137,6 +137,10 @@ vi.mock("@/components/equipamentos/ClienteSelector", () => ({
 
 vi.mock("@/components/equipamentos/ContatoResponsavelSelector", () => ({
   ContatoResponsavelSelector: () => <div data-testid="contato-responsavel-selector" />,
+}));
+
+vi.mock("@/components/equipamentos/CorrigirDecisaoDialog", () => ({
+  CorrigirDecisaoDialog: () => null,
 }));
 
 vi.mock("@/components/equipamentos/PhotoUploadDialog", () => ({
@@ -1213,9 +1217,73 @@ describe("Equipamentos — Budget Divergence & Audit", () => {
     await waitFor(() => expect(screen.getByTestId("action-iniciar_manutencao")).toBeInTheDocument());
     expect(screen.queryByTestId("action-alterar_orcamento")).not.toBeInTheDocument();
     expect(screen.queryByTestId("action-corrigir_decisao")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("action-desfazer_aprovacao")).not.toBeInTheDocument();
   });
 
-  it("Técnico sem financeiro não vê Reabrir, Ajustar vencido nem Corrigir decisão", async () => {
+  it("REPROVADO com financeiro tem Reabrir e não tem Corrigir decisão nem Corrigir status", async () => {
+    equipamentoVerificado.status = "REPROVADO";
+    render(<Equipamentos />);
+    await waitFor(() => expect(screen.getByTestId("action-reabrir_orcamento")).toBeInTheDocument());
+    expect(screen.queryByTestId("action-corrigir_decisao")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("action-corrigir_status")).not.toBeInTheDocument();
+  });
+
+  it("REPROVADO: Foi um engano abre a correção da decisão", async () => {
+    equipamentoVerificado.status = "REPROVADO";
+    render(<Equipamentos />);
+    await waitFor(() => expect(screen.getByTestId("action-reabrir_orcamento")).toBeInTheDocument());
+    fireEvent.click(screen.getByTestId("action-reabrir_orcamento"));
+    fireEvent.click(await screen.findByRole("button", { name: /Foi um engano/i }));
+    await waitFor(() => expect(mockEnsureSensitiveAccess).toHaveBeenCalledWith(
+      expect.objectContaining({ title: "Corrigir decisão do orçamento" }),
+    ));
+  });
+
+  it("REPROVADO: Nova proposta abre o Mudar Status com Aguardando Aprovação pré-selecionado", async () => {
+    equipamentoVerificado.status = "REPROVADO";
+    render(<Equipamentos />);
+    await waitFor(() => expect(screen.getByTestId("action-reabrir_orcamento")).toBeInTheDocument());
+    fireEvent.click(screen.getByTestId("action-reabrir_orcamento"));
+    fireEvent.click(await screen.findByRole("button", { name: /Nova proposta/i }));
+    const dialog = await screen.findByRole("dialog");
+    expect(within(dialog).getByText("Novo:").parentElement).toHaveTextContent("AGUARDANDO_APROVACAO");
+  });
+
+  it("REPROVADO: Mudar Status sem pré-seleção não lista Aguardando Aprovação", async () => {
+    equipamentoVerificado.status = "REPROVADO";
+    render(<Equipamentos />);
+    await waitFor(() => expect(screen.getByTestId("action-mudar_status")).toBeInTheDocument());
+    fireEvent.click(screen.getByTestId("action-mudar_status"));
+    const dialog = await screen.findByRole("dialog");
+    // jsdom não implementa estes métodos que o Radix Select chama ao abrir.
+    Object.assign(Element.prototype, {
+      hasPointerCapture: () => false,
+      releasePointerCapture: () => undefined,
+      scrollIntoView: () => undefined,
+    });
+    fireEvent.pointerDown(within(dialog).getByRole("combobox"), { button: 0, ctrlKey: false, pointerType: "mouse" });
+    const opcoes = await screen.findAllByRole("option");
+    const textos = opcoes.map((opcao) => opcao.textContent);
+    expect(textos).not.toContain("Aguardando Aprovação");
+    expect(textos.length).toBeGreaterThan(0);
+  });
+
+  it("APROVADO tem Desfazer aprovação e não tem Corrigir status", async () => {
+    equipamentoVerificado.status = "APROVADO";
+    render(<Equipamentos />);
+    await waitFor(() => expect(screen.getByTestId("action-desfazer_aprovacao")).toBeInTheDocument());
+    expect(screen.queryByTestId("action-corrigir_decisao")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("action-corrigir_status")).not.toBeInTheDocument();
+  });
+
+  it("ORCAMENTO_VENCIDO tem Renovar orçamento e não tem Reenviar", async () => {
+    equipamentoVerificado.status = "ORCAMENTO_VENCIDO";
+    render(<Equipamentos />);
+    await waitFor(() => expect(screen.getByTestId("action-renovar_orcamento")).toBeInTheDocument());
+    expect(screen.queryByTestId("action-reenviar_orcamento")).not.toBeInTheDocument();
+  });
+
+  it("Técnico sem financeiro não vê Reabrir, Renovar nem Corrigir decisão", async () => {
     mockPermissions.list = [];
     equipamentoVerificado.status = "REPROVADO";
     const reprovado = render(<Equipamentos />);
@@ -1227,7 +1295,7 @@ describe("Equipamentos — Budget Divergence & Audit", () => {
     equipamentoVerificado.status = "ORCAMENTO_VENCIDO";
     render(<Equipamentos />);
     await waitFor(() => expect(screen.getByTestId("action-status")).toBeInTheDocument());
-    expect(screen.queryByTestId("action-ajustar_orcamento_vencido")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("action-renovar_orcamento")).not.toBeInTheDocument();
     expect(screen.queryByTestId("action-reenviar_orcamento")).not.toBeInTheDocument();
   });
 
