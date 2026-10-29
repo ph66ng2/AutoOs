@@ -508,6 +508,8 @@ export interface Cliente {
   ativo?: boolean;
   criado_em?: string;
   atualizado_em?: string;
+  /** Busca: nome do contato que trouxe o cliente, quando os dados do próprio cliente não bateram. */
+  contato_encontrado?: string | null;
 }
 
 /**
@@ -1268,4 +1270,29 @@ export interface FiltrosOrcamentosInsumos {
   busca?: string;
   /** Página iniciando em 0. */
   page?: number;
+}
+
+/** Onde uma peça ainda é usada antes de ser excluída (inativada). */
+export interface UsoProdutoOrcamentos {
+  os_em_aberto: string[];
+  os_baixa_pendente: string[];
+  orcamentos_insumos: string[];
+}
+
+/** OS aguardando aprovação sem orçamento publicado no portal. */
+export interface OrcamentoPendentePortal {
+  equipamento_id: number;
+  descricao: string;
+  prazo_aprovacao?: string | null;
+}
+
+export interface FalhaPublicacaoPortal {
+  equipamento_id: number;
+  descricao: string;
+  motivo: string;
+}
+
+export interface PublicacaoLotePortal {
+  publicados: number[];
+  falhas: FalhaPublicacaoPortal[];
 }

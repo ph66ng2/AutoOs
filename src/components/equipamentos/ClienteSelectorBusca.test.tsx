@@ -69,6 +69,34 @@ describe("ClienteSelectorBusca", () => {
     expect(option).not.toHaveTextContent("(");
   });
 
+  it("mostra o contato que trouxe o cliente na busca, só quando o campo vier", () => {
+    const pelaPessoaDeContato = {
+      id: 4,
+      nome: "Daniela Rocha",
+      tipo_pessoa: "PF",
+      documento: "11144477735",
+      telefone: null,
+      contato_encontrado: "Carlos Mendes",
+    } as Cliente;
+
+    render(
+      <ClienteSelectorBusca
+        dropdownRef={{ current: null }}
+        termoBusca="car"
+        setTermoBusca={vi.fn()}
+        buscando={false}
+        dropdownAberto
+        setDropdownAberto={vi.fn()}
+        resultados={[pelaPessoaDeContato, clientes[0]]}
+        onSelecionarCliente={vi.fn()}
+        onAbrirNovoCliente={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByRole("option", { name: /Daniela Rocha/i })).toHaveTextContent("Contato: Carlos Mendes");
+    expect(screen.getByRole("option", { name: /Ana Silva/i })).not.toHaveTextContent("Contato:");
+  });
+
   it("fecha as sugestões ao pressionar Esc", () => {
     const setDropdownAberto = vi.fn();
     render(

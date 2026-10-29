@@ -47,6 +47,7 @@ import {
   calcularTotaisOrcamentoInsumos,
   formaPagamentoRotulo,
   linhasSemSaldo,
+  orcamentoInsumosVencido,
   validadePadraoOrcamentoInsumos,
   type LinhaOrcamentoInsumos,
 } from "@/lib/orcamento-insumos";
@@ -199,6 +200,7 @@ export function OrcamentoInsumosDialog({
     && !totais.descontoExcedido
     && Boolean(validade);
   const bloqueadoPorEdicao = alterado || !detalhe;
+  const vencido = detalhe ? orcamentoInsumosVencido(detalhe) : false;
   /** Explica por que o Salvar está desabilitado (o aviso de desconto já aparece junto ao campo). */
   const motivoSemSalvar = (() => {
     if (!acoes.salvar || ocupado || podeSalvar) return null;
@@ -420,6 +422,9 @@ export function OrcamentoInsumosDialog({
                     {STATUS_ORCAMENTO_INSUMOS_LABEL[status]}
                   </Badge>
                 )}
+                {vencido && (
+                  <Badge variant="outline" className="border-red-200 bg-red-50 text-red-700">Vencido</Badge>
+                )}
               </DialogTitle>
               <DialogDescription>
                 Venda avulsa de etiquetas, ribbons, peças e outros itens do estoque, sem equipamento em manutenção.
@@ -530,6 +535,11 @@ export function OrcamentoInsumosDialog({
                       onValueChange={editar(setValidade)}
                       className="h-10"
                     />
+                    {vencido && !alterado && (
+                      <p className="text-xs text-amber-700">
+                        Validade vencida. Altere a validade e salve para renovar antes de aprovar.
+                      </p>
+                    )}
                   </div>
                   <div className="space-y-2">
                     <Label htmlFor="oi-desconto" className={rotuloSecao}>Desconto (R$)</Label>
@@ -614,7 +624,13 @@ export function OrcamentoInsumosDialog({
                 </Button>
               )}
               {acoes.aprovar && (
-                <Button type="button" size="sm" disabled={ocupado || bloqueadoPorEdicao} onClick={() => void iniciarAprovacao()}>
+                <Button
+                  type="button"
+                  size="sm"
+                  disabled={ocupado || bloqueadoPorEdicao || vencido}
+                  title={vencido ? "Orçamento vencido: altere a validade e salve antes de aprovar." : undefined}
+                  onClick={() => void iniciarAprovacao()}
+                >
                   <CheckCircle2 className="mr-1.5 h-4 w-4" />Aprovar
                 </Button>
               )}

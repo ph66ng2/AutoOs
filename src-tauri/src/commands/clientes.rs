@@ -9,7 +9,7 @@
 //! ╚══════════════════════════════════════════════════════════════╝
 
 use crate::commands::types::{
-    ClienteInput, ClienteRow, ContatoInicialInput, PaginatedResult, CLIENTE_SELECT,
+    ClienteInput, ClienteRow, ContatoInicialInput, PaginatedResult, CLIENTE_COLUNAS, CLIENTE_SELECT,
 };
 use crate::commands::auth::{
     record_security_event, require_active_session_company_id, require_permission,
@@ -219,41 +219,107 @@ fn document_search_digits(busca: &str) -> Option<String> {
     (is_document_search && digits.len() >= 3).then_some(digits)
 }
 
+fn telefone_search_digits(busca: &str) -> Option<String> {
+    let is_telefone_search = busca.chars().all(|character| {
+        character.is_ascii_digit() || character.is_ascii_whitespace() || matches!(character, '(' | ')' | '+' | '-' | '.')
+    });
+    let digits = digits_only(Some(busca));
+    (is_telefone_search && digits.len() >= 4).then_some(digits)
+}
+
+fn busca_util(busca: Option<&str>) -> Option<&str> {
+    busca.map(str::trim).filter(|value| !value.is_empty())
+}
+
+/// Grupo `( … )` com os campos do próprio cliente que a busca alcança.
+fn push_busca_no_cliente(query: &mut QueryBuilder<Postgres>, busca: &str) {
+    let pattern = format!("%{}%", busca);
+    query.push("(");
+    for (index, column) in [
+        "COALESCE(nome, '')",
+        "COALESCE(razao_social, '')",
+        "COALESCE(nome_fantasia, '')",
+        "COALESCE(documento, '')",
+        "COALESCE(cpf_cnpj, '')",
+        "COALESCE(telefone, '')",
+        "COALESCE(email, '')",
+    ]
+    .iter()
+    .enumerate()
+    {
+        if index > 0 {
+            query.push(" OR ");
+        }
+        query.push(*column).push(" ILIKE ").push_bind(pattern.clone());
+    }
+
+    if let Some(document_digits) = document_search_digits(busca) {
+        let document_pattern = format!("%{}%", document_digits);
+        query
+            .push(" OR REGEXP_REPLACE(COALESCE(documento, ''), '[^0-9]', '', 'g') ILIKE ")
+            .push_bind(document_pattern.clone())
+            .push(" OR REGEXP_REPLACE(COALESCE(cpf_cnpj, ''), '[^0-9]', '', 'g') ILIKE ")
+            .push_bind(document_pattern);
+    }
+
+    query.push(")");
+}
+
+/// Grupo `( … )` com os campos de um contato (`ct`) que a busca alcança.
+fn push_busca_no_contato(query: &mut QueryBuilder<Postgres>, busca: &str) {
+    let pattern = format!("%{}%", busca);
+    query
+        .push("(ct.nome ILIKE ")
+        .push_bind(pattern.clone())
+        .push(" OR COALESCE(ct.email, '') ILIKE ")
+        .push_bind(pattern);
+
+    if let Some(telefone_digits) = telefone_search_digits(busca) {
+        query
+            .push(" OR REGEXP_REPLACE(COALESCE(ct.telefone, ''), '[^0-9]', '', 'g') LIKE ")
+            .push_bind(format!("%{}%", telefone_digits));
+    }
+
+    query.push(")");
+}
+
 fn add_client_filters(query: &mut QueryBuilder<Postgres>, empresa_id: i32, busca: Option<&str>) {
     query.push(" WHERE ativo = true AND empresa_id = ").push_bind(empresa_id);
 
-    if let Some(busca) = busca.map(str::trim).filter(|value| !value.is_empty()) {
-        let pattern = format!("%{}%", busca);
+    if let Some(busca) = busca_util(busca) {
         query.push(" AND (");
-        for (index, column) in [
-            "COALESCE(nome, '')",
-            "COALESCE(razao_social, '')",
-            "COALESCE(nome_fantasia, '')",
-            "COALESCE(documento, '')",
-            "COALESCE(cpf_cnpj, '')",
-            "COALESCE(telefone, '')",
-            "COALESCE(email, '')",
-        ]
-        .iter()
-        .enumerate()
-        {
-            if index > 0 {
-                query.push(" OR ");
-            }
-            query.push(*column).push(" ILIKE ").push_bind(pattern.clone());
-        }
-
-        if let Some(document_digits) = document_search_digits(busca) {
-            let document_pattern = format!("%{}%", document_digits);
-            query
-                .push(" OR REGEXP_REPLACE(COALESCE(documento, ''), '[^0-9]', '', 'g') ILIKE ")
-                .push_bind(document_pattern.clone())
-                .push(" OR REGEXP_REPLACE(COALESCE(cpf_cnpj, ''), '[^0-9]', '', 'g') ILIKE ")
-                .push_bind(document_pattern);
-        }
-
-        query.push(")");
+        push_busca_no_cliente(query, busca);
+        query.push(
+            " OR EXISTS (SELECT 1 FROM cliente_contatos ct
+               WHERE ct.cliente_id = clientes.id AND ct.empresa_id = clientes.empresa_id
+                 AND ct.ativo = true AND ",
+        );
+        push_busca_no_contato(query, busca);
+        query.push("))");
     }
+}
+
+/// `SELECT <colunas>, contato_encontrado FROM clientes`. Com busca, informa o contato que
+/// fez o cliente aparecer (só quando o próprio cliente não bate com a busca).
+fn push_client_select(query: &mut QueryBuilder<Postgres>, busca: Option<&str>) {
+    query.push("SELECT ").push(CLIENTE_COLUNAS).push(", ");
+    match busca_util(busca) {
+        Some(busca) => {
+            query.push("CASE WHEN ");
+            push_busca_no_cliente(query, busca);
+            query.push(
+                " THEN NULL ELSE (SELECT ct.nome FROM cliente_contatos ct
+                   WHERE ct.cliente_id = clientes.id AND ct.empresa_id = clientes.empresa_id
+                     AND ct.ativo = true AND ",
+            );
+            push_busca_no_contato(query, busca);
+            query.push(" ORDER BY ct.nome LIMIT 1) END AS contato_encontrado");
+        }
+        None => {
+            query.push("NULL::TEXT AS contato_encontrado");
+        }
+    }
+    query.push(" FROM clientes");
 }
 
 async fn query_client_page(
@@ -273,7 +339,8 @@ async fn query_client_page(
 
     let safe_page = page.unwrap_or(0).max(0) as i64;
     let page_limit = i64::from(page_size);
-    let mut items_query = QueryBuilder::<Postgres>::new(CLIENTE_SELECT);
+    let mut items_query = QueryBuilder::<Postgres>::new("");
+    push_client_select(&mut items_query, busca);
     add_client_filters(&mut items_query, empresa_id, busca);
     items_query
         .push(" ORDER BY id DESC LIMIT ")
@@ -308,42 +375,10 @@ pub async fn listar_clientes(page: Option<i32>, busca: Option<String>) -> Result
     let safe_page = i64::from(page.unwrap_or(0).max(0));
     let page_limit = i64::from(PAGE_SIZE);
     let offset = safe_page * page_limit;
-    let mut query_builder = sqlx::QueryBuilder::<sqlx::Postgres>::new(format!(
-        "{} WHERE ativo = true AND empresa_id = ",
-        CLIENTE_SELECT,
-    ));
-    query_builder.push_bind(empresa_id);
-
-    if let Some(busca) = busca.as_deref().map(str::trim).filter(|value| !value.is_empty()) {
-        let pattern = format!("%{}%", busca);
-        query_builder.push(
-            " AND (COALESCE(nome, '') ILIKE ",
-        );
-        query_builder.push_bind(pattern.clone());
-        query_builder.push(" OR COALESCE(razao_social, '') ILIKE ");
-        query_builder.push_bind(pattern.clone());
-        query_builder.push(" OR COALESCE(nome_fantasia, '') ILIKE ");
-        query_builder.push_bind(pattern.clone());
-        query_builder.push(" OR COALESCE(documento, '') ILIKE ");
-        query_builder.push_bind(pattern.clone());
-        query_builder.push(" OR COALESCE(cpf_cnpj, '') ILIKE ");
-        query_builder.push_bind(pattern.clone());
-        query_builder.push(" OR COALESCE(telefone, '') ILIKE ");
-        query_builder.push_bind(pattern.clone());
-        query_builder.push(" OR COALESCE(email, '') ILIKE ");
-        query_builder.push_bind(pattern);
-
-        if let Some(document_digits) = document_search_digits(busca) {
-            let document_pattern = format!("%{}%", document_digits);
-            query_builder
-                .push(" OR REGEXP_REPLACE(COALESCE(documento, ''), '[^0-9]', '', 'g') ILIKE ")
-                .push_bind(document_pattern.clone())
-                .push(" OR REGEXP_REPLACE(COALESCE(cpf_cnpj, ''), '[^0-9]', '', 'g') ILIKE ")
-                .push_bind(document_pattern);
-        }
-
-        query_builder.push(")");
-    }
+    let busca_ref = busca.as_deref();
+    let mut query_builder = sqlx::QueryBuilder::<sqlx::Postgres>::new("");
+    push_client_select(&mut query_builder, busca_ref);
+    add_client_filters(&mut query_builder, empresa_id, busca_ref);
 
     query_builder.push(" ORDER BY id DESC LIMIT ");
     query_builder.push_bind(page_limit);
@@ -721,6 +756,35 @@ pub async fn deletar_cliente(id: i32) -> Result<bool, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn busca_de_cliente_tambem_olha_contatos_ativos() {
+        let mut query = QueryBuilder::<Postgres>::new("");
+        push_client_select(&mut query, Some("Maria"));
+        add_client_filters(&mut query, 1, Some("Maria"));
+        let sql = query.sql().as_str().to_string();
+        assert!(sql.contains("cliente_contatos"));
+        assert!(sql.contains("ct.ativo = true"));
+        assert!(sql.contains("contato_encontrado"));
+    }
+
+    #[test]
+    fn listagem_sem_busca_nao_junta_contatos() {
+        let mut query = QueryBuilder::<Postgres>::new("");
+        push_client_select(&mut query, None);
+        add_client_filters(&mut query, 1, None);
+        let sql = query.sql().as_str().to_string();
+        assert!(!sql.contains("cliente_contatos"));
+        assert!(sql.contains("NULL::TEXT AS contato_encontrado"));
+    }
+
+    #[test]
+    fn telefone_search_digits_exige_quatro_digitos_e_so_caracteres_de_telefone() {
+        assert_eq!(telefone_search_digits("(11) 9876-5432"), Some("1198765432".to_string()));
+        assert_eq!(telefone_search_digits("987"), None);
+        assert_eq!(telefone_search_digits("ab 1234"), None);
+        assert_eq!(telefone_search_digits("12/34"), None);
+    }
 
     fn contato(nome: &str, telefone: &str) -> ContatoInicialInput {
         ContatoInicialInput {

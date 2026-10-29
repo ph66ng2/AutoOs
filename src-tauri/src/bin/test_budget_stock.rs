@@ -2,7 +2,7 @@
 #[path = "../commands/mod.rs"] mod commands;
 #[path = "../db.rs"] mod db;
 #[path = "../test_support/memory_keyring.rs"] mod memory_keyring;
-use commands::{auth, equipamentos, orcamento_correcao, orcamento_decisao, portal_cliente, verificacoes, orcamento_estoque, produtos, servicos};
+use commands::{auth, clientes, equipamentos, orcamento_correcao, orcamento_decisao, portal_cliente, verificacoes, orcamento_estoque, produtos, servicos};
 use commands::types::*;
 use anyhow::{Result, anyhow};
 
@@ -401,6 +401,63 @@ async fn main() -> Result<()> {
     let consumo_g: (i32, i32) = sqlx::query_as("SELECT c.quantidade_aprovada, c.quantidade_baixada FROM orcamento_consumos c JOIN verificacoes v ON v.id=c.verificacao_id WHERE v.equipamento_id=$1 AND c.servico_id='garantia'")
         .bind(eq_g).fetch_one(&pool).await?;
     assert_eq!(consumo_g, (2, 2));
+
+    // PR 2: busca de cliente pelo contato, uso da peça antes de excluir e envio em lote ao portal.
+    let doc_busca = format!("8{:0>13}", &suffix[suffix.len().saturating_sub(13)..]);
+    let cliente_busca: i32 = sqlx::query_scalar("INSERT INTO clientes (empresa_id, nome, tipo_pessoa, documento) VALUES ($1,$2,'PJ',$3) RETURNING id")
+        .bind(empresa).bind(format!("Gráfica Busca {suffix}")).bind(&doc_busca).fetch_one(&pool).await?;
+    let nome_contato = format!("Leandro{suffix}");
+    sqlx::query("INSERT INTO cliente_contatos (empresa_id, cliente_id, nome, telefone) VALUES ($1,$2,$3,'71987654321')")
+        .bind(empresa).bind(cliente_busca).bind(&nome_contato).execute(&pool).await?;
+    sqlx::query("INSERT INTO cliente_contatos (empresa_id, cliente_id, nome, ativo) VALUES ($1,$2,$3,false)")
+        .bind(empresa).bind(cliente_busca).bind(format!("Inativo{suffix}")).execute(&pool).await?;
+    let achados = clientes::listar_clientes(None, Some(nome_contato.clone())).await.map_err(|e| anyhow!("busca contato: {e}"))?;
+    assert_eq!(achados.iter().map(|c| (c.id, c.contato_encontrado.clone())).collect::<Vec<_>>(), vec![(cliente_busca, Some(nome_contato.clone()))]);
+    let pagina = clientes::listar_clientes_paginados(None, Some(nome_contato.clone())).await.map_err(|e| anyhow!("busca paginada: {e}"))?;
+    assert_eq!(pagina.total, 1);
+    let pelo_telefone = clientes::listar_clientes(None, Some("(71) 98765-4321".into())).await.map_err(|e| anyhow!("busca telefone: {e}"))?;
+    assert!(pelo_telefone.iter().any(|c| c.id == cliente_busca), "busca pelo celular do contato");
+    let pelo_nome = clientes::listar_clientes(None, Some(format!("Gráfica Busca {suffix}"))).await.map_err(|e| anyhow!("busca nome: {e}"))?;
+    assert_eq!(pelo_nome.iter().map(|c| (c.id, c.contato_encontrado.clone())).collect::<Vec<_>>(), vec![(cliente_busca, None)]);
+    let inativo = clientes::listar_clientes(None, Some(format!("Inativo{suffix}"))).await.map_err(|e| anyhow!("busca inativo: {e}"))?;
+    assert!(inativo.is_empty(), "contato inativo não traz o cliente");
+
+    let peca_uso = produtos::criar_produto(ProdutoInput {
+        codigo: format!("U-{suffix}"), nome: "Cabeça uso".into(), categoria: "PEÇA".into(),
+        quantidade_estoque: 5, preco_custo: 1.0, preco_venda: 10.0, ..ProdutoInput::default()
+    }).await.map_err(|e| anyhow!(e))?;
+    let eq_uso: i32 = sqlx::query_scalar("INSERT INTO equipamentos(serial_number,marca,modelo,tipo,data_entrada,defeito_relatado,empresa_id,status) VALUES ($1,'Zebra','ZT411','Impressora','2026-09-27','Uso',$2,'VERIFICADO') RETURNING id")
+        .bind(format!("U-{suffix}")).bind(empresa).fetch_one(&pool).await?;
+    let servicos_uso = serde_json::json!([{"id":"u","descricao":"Troca cabeça","valor":40,"pecas":[{"produto_id":peca_uso.id,"quantidade":1,"nome":"Cabeça uso","valor_unitario":10}]}]);
+    verificacoes::salvar_verificacao_tecnica(VerificacaoInput {
+        equipamento_id:eq_uso, empresa_id:Some(empresa), tecnico_nome:"Teste".into(), problema_relatado:"Teste".into(),
+        servicos_necessarios:Some(servicos_uso.to_string()), pecas_necessarias:Some("[]".into()), custo_total:Some(50.0), ..VerificacaoInput::default()
+    }).await.map_err(|e| anyhow!("verificação uso: {e}"))?;
+    let uso = produtos::uso_produto_em_orcamentos(peca_uso.id).await.map_err(|e| anyhow!("uso da peça: {e}"))?;
+    assert_eq!(uso.os_em_aberto.len(), 1, "{:?}", uso.os_em_aberto);
+    assert!(uso.os_em_aberto[0].contains(&format!("U-{suffix}")), "{:?}", uso.os_em_aberto);
+    assert!(uso.os_baixa_pendente.is_empty() && uso.orcamentos_insumos.is_empty());
+
+    // Lote: a OS acima vai para Aguardando aprovação sem versão publicada; uma segunda com prazo vencido falha no resumo.
+    sqlx::query("UPDATE equipamentos SET status='AGUARDANDO_APROVACAO', valor_orcamento=50, prazo_aprovacao='2099-12-31' WHERE id=$1").bind(eq_uso).execute(&pool).await?;
+    let eq_vencido: i32 = sqlx::query_scalar("INSERT INTO equipamentos(serial_number,marca,modelo,tipo,data_entrada,defeito_relatado,empresa_id,status) VALUES ($1,'Zebra','ZT230','Impressora','2026-09-27','Vencido',$2,'VERIFICADO') RETURNING id")
+        .bind(format!("V-{suffix}")).bind(empresa).fetch_one(&pool).await?;
+    verificacoes::salvar_verificacao_tecnica(VerificacaoInput {
+        equipamento_id:eq_vencido, empresa_id:Some(empresa), tecnico_nome:"Teste".into(), problema_relatado:"Teste".into(),
+        servicos_necessarios:Some(serde_json::json!([{"id":"x","descricao":"Limpeza","valor":30,"pecas":[]}]).to_string()),
+        pecas_necessarias:Some("[]".into()), custo_total:Some(30.0), ..VerificacaoInput::default()
+    }).await.map_err(|e| anyhow!("verificação vencida: {e}"))?;
+    sqlx::query("UPDATE equipamentos SET status='AGUARDANDO_APROVACAO', valor_orcamento=30, prazo_aprovacao='2020-01-01' WHERE id=$1").bind(eq_vencido).execute(&pool).await?;
+    let pendentes = portal_cliente::listar_orcamentos_pendentes_portal().await.map_err(|e| anyhow!("pendentes: {e}"))?;
+    let ids_pendentes: Vec<i32> = pendentes.iter().map(|p| p.equipamento_id).collect();
+    assert!(ids_pendentes.contains(&eq_uso) && ids_pendentes.contains(&eq_vencido), "{ids_pendentes:?}");
+    let lote = portal_cliente::publicar_orcamentos_pendentes_portal().await.map_err(|e| anyhow!("lote: {e}"))?;
+    assert!(lote.publicados.contains(&eq_uso), "{:?}", lote.publicados);
+    let falha = lote.falhas.iter().find(|f| f.equipamento_id == eq_vencido).expect("prazo vencido aparece nas falhas");
+    assert!(falha.motivo.contains("prazo"), "{}", falha.motivo);
+    let depois: Vec<i32> = portal_cliente::listar_orcamentos_pendentes_portal().await.map_err(|e| anyhow!("pendentes depois: {e}"))?
+        .iter().map(|p| p.equipamento_id).collect();
+    assert!(!depois.contains(&eq_uso) && depois.contains(&eq_vencido), "{depois:?}");
 
     println!("OK (T7 incluído: ajuste de orçamento aprovado/aguardando e portal automático): catálogo, tenant, aprovação parcial, repetição, reposição, pendências, ajuste confirmado, concorrência otimista, reprovação conferência da resposta do cliente e correção guiada da decisão.");
     Ok(())

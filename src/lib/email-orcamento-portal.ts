@@ -90,7 +90,7 @@ function linhasAcessoTexto(preparo: PreparoAcessoPortal, mascarar: boolean): str
   if (modo === "SEM_PORTAL") return [];
   const linhas: string[] = [];
   if (modo === "DECIDIR") {
-    linhas.push("Para aceitar, recusar ou negociar, entre no Portal das Impressoras:");
+    linhas.push("Para aceitar ou recusar, entre no Portal das Impressoras:");
   } else {
     linhas.push("Você pode acompanhar o orçamento no Portal das Impressoras:");
   }
@@ -186,7 +186,7 @@ export function gerarCorpoOrcamentoPortalHtml(
   } else {
     const intro =
       modo === "DECIDIR"
-        ? "Para aceitar, recusar ou negociar, entre no Portal das Impressoras:"
+        ? "Para aceitar ou recusar, entre no Portal das Impressoras:"
         : "Você pode acompanhar o orçamento no Portal das Impressoras:";
     const partes = [`<p style="margin:0 0 8px 0;font-weight:600;">${esc(intro)}</p>`];
     partes.push(`<p style="margin:0 0 8px 0;"><a href="${esc(PORTAL_URL)}">${esc(PORTAL_URL)}</a></p>`);

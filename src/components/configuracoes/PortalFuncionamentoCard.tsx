@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { TriangleAlert } from "lucide-react";
+import { OrcamentosPendentesPortal } from "@/components/configuracoes/OrcamentosPendentesPortal";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { useSensitiveAccess } from "@/hooks/useSensitiveAccess";
 import { db } from "@/lib/db";
@@ -112,6 +113,7 @@ export function PortalFuncionamentoCard() {
             </span>
           </p>
         )}
+        <OrcamentosPendentesPortal />
       </CardContent>
     </Card>
   );

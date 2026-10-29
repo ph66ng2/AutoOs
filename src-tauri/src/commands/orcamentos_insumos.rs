@@ -373,6 +373,25 @@ pub fn faltas_de_estoque(itens: &[(String, i32, i32)]) -> Vec<FaltaEstoque> {
         .collect()
 }
 
+/// Orçamento vale até o fim do dia da validade: vence só quando `validade < hoje`. Validade nula nunca vence.
+pub fn orcamento_vencido(validade: Option<NaiveDate>, hoje: NaiveDate) -> bool {
+    validade.is_some_and(|data| data < hoje)
+}
+
+pub fn mensagem_orcamento_vencido(referencia: &str, validade: NaiveDate) -> String {
+    format!(
+        "O orçamento {referencia} venceu em {} e não pode ser aprovado. Altere a validade e salve para renovar antes de aprovar.",
+        validade.format("%d/%m/%Y")
+    )
+}
+
+pub fn mensagem_itens_inativos(referencia: &str, nomes: &[String]) -> String {
+    format!(
+        "Não dá para aprovar {referencia}: {} está(ão) inativo(s) no estoque. Edite o orçamento, troque ou retire esses itens e salve antes de aprovar.",
+        nomes.join(", ")
+    )
+}
+
 pub fn mensagem_falta_de_estoque(referencia: &str, faltas: &[FaltaEstoque]) -> String {
     let linhas = faltas
         .iter()
@@ -926,6 +945,18 @@ pub async fn aprovar_orcamento_insumos(
     let referencia = referencia_orcamento(atual.numero);
     exigir_transicao(&atual.status, STATUS_APROVADO, &referencia)?;
 
+    let validade: Option<NaiveDate> =
+        sqlx::query_scalar("SELECT validade FROM orcamentos_insumos WHERE id = $1 AND empresa_id = $2")
+            .bind(input.id)
+            .bind(empresa_id)
+            .fetch_one(&mut *tx)
+            .await
+            .map_err(super::operator_errors::mapear_erro_sql)?;
+    let hoje = chrono::Local::now().date_naive();
+    if let Some(data) = validade.filter(|data| orcamento_vencido(Some(*data), hoje)) {
+        return Err(mensagem_orcamento_vencido(&referencia, data));
+    }
+
     // Produtos travados em ordem de id: duas aprovações ao mesmo tempo não se bloqueiam em círculo.
     let linhas: Vec<(i32, String, i32, f64, i32, bool)> = sqlx::query_as(
         "SELECT i.produto_id, i.descricao, i.quantidade, i.valor_unitario::FLOAT8,
@@ -943,6 +974,15 @@ pub async fn aprovar_orcamento_insumos(
     .map_err(super::operator_errors::mapear_erro_sql)?;
     if linhas.is_empty() {
         return Err(format!("O orçamento {referencia} não tem itens."));
+    }
+
+    let inativos: Vec<String> = linhas
+        .iter()
+        .filter(|(_, _, _, _, _, ativo)| !*ativo)
+        .map(|(_, descricao, _, _, _, _)| descricao.clone())
+        .collect();
+    if !inativos.is_empty() {
+        return Err(mensagem_itens_inativos(&referencia, &inativos));
     }
 
     let conferencia = linhas
@@ -1265,6 +1305,14 @@ mod tests {
     }
 
     #[test]
+    fn itens_inativos_bloqueiam_com_a_lista() {
+        let nomes = vec!["Etiqueta 100x50".to_string(), "Ribbon cera".to_string()];
+        let texto = mensagem_itens_inativos("OI-9", &nomes);
+        assert!(texto.starts_with("Não dá para aprovar OI-9: Etiqueta 100x50, Ribbon cera está(ão) inativo(s)"));
+        assert!(texto.contains("troque ou retire esses itens"));
+    }
+
+    #[test]
     fn pagamento_padrao_e_a_combinar() {
         assert_eq!(pagamento_da_aprovacao(None).unwrap(), ("A_COMBINAR".to_string(), None));
         let pix = FormaPagamento { codigo: FormaPagamentoCodigo::Pix, detalhe: None };
@@ -1282,6 +1330,18 @@ mod tests {
         assert_eq!(normalizar_canal(Some("whatsapp")), "WHATSAPP");
         assert_eq!(normalizar_canal(Some("x")), "PDF");
         assert_eq!(normalizar_canal(None), "PDF");
+    }
+
+    #[test]
+    fn orcamento_vence_so_depois_do_dia_da_validade() {
+        let hoje = data("2026-10-27");
+        assert!(orcamento_vencido(Some(data("2026-10-26")), hoje));
+        assert!(!orcamento_vencido(Some(data("2026-10-27")), hoje));
+        assert!(!orcamento_vencido(Some(data("2026-11-01")), hoje));
+        assert!(!orcamento_vencido(None, hoje));
+        let texto = mensagem_orcamento_vencido("OI-7", data("2026-10-26"));
+        assert!(texto.contains("OI-7") && texto.contains("venceu em 26/10/2026"));
+        assert!(texto.contains("Altere a validade e salve"));
     }
 
     #[test]

@@ -88,7 +88,7 @@ function detalhe(status: StatusOrcamentoInsumos = "RASCUNHO", sobrescrever: Part
     cliente_documento: "57522734000158",
     contato_id: null,
     status,
-    validade: "2026-11-01",
+    validade: "2099-12-31",
     observacoes: null,
     desconto: 0,
     valor_subtotal: 30,
@@ -218,6 +218,30 @@ describe("OrcamentoInsumosDialog: novo orçamento", () => {
     }
     expect(screen.getAllByLabelText("Quantidade de Etiqueta 100x50")).toHaveLength(1);
     expect(screen.getByLabelText("Quantidade de Etiqueta 100x50")).toHaveValue(2);
+  });
+});
+
+describe("OrcamentoInsumosDialog: validade vencida", () => {
+  it("ENVIADO com validade passada mostra o selo, o aviso e bloqueia Aprovar", async () => {
+    await abrir("ENVIADO", { validade: "2000-01-01" });
+    expect(screen.getByText("Vencido")).toBeInTheDocument();
+    expect(screen.getByText(/Validade vencida/i)).toBeInTheDocument();
+    const aprovar = botao(/^aprovar$/i);
+    expect(aprovar).toBeDisabled();
+    expect(aprovar).toHaveAttribute("title", "Orçamento vencido: altere a validade e salve antes de aprovar.");
+  });
+
+  it("alterar a validade esconde o aviso, mas Aprovar continua bloqueado até salvar", async () => {
+    await abrir("ENVIADO", { validade: "2000-01-01" });
+    fireEvent.change(screen.getByLabelText("Observações"), { target: { value: "renovando" } });
+    expect(screen.queryByText(/Validade vencida/i)).toBeNull();
+    expect(botao(/^aprovar$/i)).toBeDisabled();
+  });
+
+  it("validade no futuro não mostra selo nem bloqueia Aprovar", async () => {
+    await abrir("ENVIADO", { validade: "2099-12-31" });
+    expect(screen.queryByText("Vencido")).toBeNull();
+    expect(botao(/^aprovar$/i)).toBeEnabled();
   });
 });
 

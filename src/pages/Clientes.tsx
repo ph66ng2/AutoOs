@@ -508,6 +508,9 @@ export default function Clientes() {
                             {c.tipo_pessoa === "PJ" && c.razao_social && c.nome_fantasia && (
                               <p className="break-words text-xs text-muted-foreground">{c.razao_social}</p>
                             )}
+                            {c.contato_encontrado && (
+                              <p className="break-words text-xs text-muted-foreground">Contato: {c.contato_encontrado}</p>
+                            )}
                           </div>
                         </div>
                         <dl className="grid min-w-0 gap-x-6 gap-y-3 text-sm sm:grid-cols-2 2xl:grid-cols-4">

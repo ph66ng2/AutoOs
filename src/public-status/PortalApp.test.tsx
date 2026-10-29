@@ -290,20 +290,18 @@ describe("detalhe e orçamento", () => {
     expect(api.solicitar).toHaveBeenCalledWith(TOKEN, 28, 9, "MUDANCA", "Aprovei a impressora errada");
   });
 
-  it("Quero negociar registra o pedido antes de oferecer o WhatsApp", async () => {
+  it("o portal não oferece negociação em lugar nenhum", async () => {
     api.detalhe.mockResolvedValue(detalhe());
-    api.solicitar.mockResolvedValue({ solicitacao: { id: 6, protocolo: "S-6", tipo: "NEGOCIAR", criadoEm: "2026-10-15T11:00:00Z" } });
-    render(<PortalApp />);
-    fireEvent.click(await screen.findByRole("button", { name: "Quero negociar" }));
-    expect(screen.queryByRole("link", { name: "Falar agora no WhatsApp" })).not.toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "Registrar pedido de negociação" }));
-    expect(await screen.findByText("Pedido S-6 registrado no AutoOS")).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "Falar agora no WhatsApp" })).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "Enviar por e-mail" }).getAttribute("href")).toMatch(/^mailto:contato@bmitag\.invalid\?subject=/);
-    expect(api.responder).not.toHaveBeenCalled();
+    const { container } = render(<PortalApp />);
+    expect(await screen.findByRole("button", { name: "Aceitar orçamento" })).toBeInTheDocument();
+    expect(container.textContent ?? "").not.toMatch(/negoci/i);
+    fireEvent.click(screen.getByRole("button", { name: "Recusar orçamento" }));
+    expect(container.textContent ?? "").not.toMatch(/negoci/i);
+    fireEvent.click(screen.getByRole("button", { name: "Recusar mesmo assim" }));
+    expect(container.textContent ?? "").not.toMatch(/negoci/i);
   });
 
-  it("respostas pausadas na empresa: sem aceitar, recusar nem negociar", async () => {
+  it("respostas pausadas na empresa: sem aceitar nem recusar", async () => {
     api.detalhe.mockResolvedValue(detalhe({ orcamento: orcamento({ aceiteOnline: false }) }));
     render(<PortalApp />);
     expect(await screen.findByText(/As respostas pelo portal estão pausadas/)).toBeInTheDocument();
@@ -352,16 +350,16 @@ describe("mensagens com documento do cliente", () => {
     expect(formatarDocumento(null)).toBeNull();
   });
 
-  it("negociação: texto caloroso com cliente, CNPJ, protocolo e contato informado", () => {
+  it("pedido de correção: texto com cliente, CNPJ, protocolo e contato informado", () => {
     const texto = mensagemWhatsapp({
-      contato: "Paulo", cliente: { nome: "ACME Ltda", documento: "11222333000181", exigeOrdemCompra: false }, intencao: "NEGOCIAR",
+      contato: "Paulo", cliente: { nome: "ACME Ltda", documento: "11222333000181", exigeOrdemCompra: false }, intencao: "MUDANCA",
       equipamento: "Impressora de Cartão Argox 13132", serie: "3123123132", versao: 2, valor: 1849.84, protocolo: "S-1",
       telefone: "(71) 99999-0000", email: "paulo@acme.com.br",
     });
     expect(texto).toContain("Olá, equipe BMI TAG! Aqui é Paulo, da ACME Ltda (CNPJ 11.222.333/0001-81).");
-    expect(texto).toMatch(/Pedi pelo Portal das Impressoras para negociar o orçamento da Impressora de Cartão Argox 13132 \(série 3123123132\), versão 2, R\$\s1\.849,84\./);
+    expect(texto).toMatch(/uma correção na minha decisão sobre o orçamento da Impressora de Cartão Argox 13132 \(série 3123123132\), versão 2, R\$\s1\.849,84\./);
     expect(texto).toContain("Para falar comigo: telefone (71) 99999-0000 ou e-mail paulo@acme.com.br.");
-    expect(texto).toContain("Protocolo S-1. Podemos conversar?");
+    expect(texto).toContain("Protocolo S-1. Podemos acertar isso?");
   });
 
   it("CPF de pessoa física e variantes de intenção", () => {
@@ -371,7 +369,8 @@ describe("mensagens com documento do cliente", () => {
     expect(mensagemWhatsapp({ ...base, intencao: "RECUSAR" })).toContain("a recusa do orçamento");
     expect(mensagemWhatsapp({ ...base, intencao: "MUDANCA" })).toContain("uma correção na minha decisão");
     expect(mensagemWhatsapp({ ...base, intencao: "DUVIDA" })).toContain("Tenho uma dúvida");
-    expect(mensagemWhatsapp({ ...base, cliente: null, intencao: "NEGOCIAR" })).toContain("Aqui é Maria.");
+    expect(mensagemWhatsapp({ ...base, intencao: "RECUSAR" })).not.toMatch(/ajustar valores|negoci/i);
+    expect(mensagemWhatsapp({ ...base, cliente: null, intencao: "DUVIDA" })).toContain("Aqui é Maria.");
   });
 });
 
@@ -428,24 +427,19 @@ describe("painel do orçamento (ticket T4)", () => {
     expect(container.querySelector(".sent-box")?.classList.contains("is-recusa")).toBe(true);
   });
 
-  it("Tem certeza?: negociar, WhatsApp com CNPJ e recusar mesmo assim", async () => {
+  it("Tem certeza?: contato da equipe, WhatsApp com CNPJ e recusar mesmo assim", async () => {
     api.detalhe.mockResolvedValue(detalhe());
     render(<PortalApp />);
     fireEvent.click(await screen.findByRole("button", { name: "Recusar orçamento" }));
     expect(screen.getByRole("heading", { name: "Tem certeza que quer recusar?" })).toBeInTheDocument();
-    expect(screen.getByText(/pode negociar com você o valor e os itens/)).toBeInTheDocument();
+    expect(screen.getByText("Qualquer dúvida, entre em contato conosco.")).toBeInTheDocument();
     const grupo = screen.getByRole("group", { name: "Tem certeza que quer recusar?" });
     const acoes = Array.from(grupo.querySelectorAll("button, a")).map((el) => el.textContent);
-    expect(acoes).toEqual(["Quero negociar", "Falar com a equipe no WhatsApp", "Recusar mesmo assim"]);
+    expect(acoes).toEqual(["Falar com a equipe no WhatsApp", "Recusar mesmo assim"]);
     const link = screen.getByRole("link", { name: "Falar com a equipe no WhatsApp" });
     expect(decodeURIComponent(link.getAttribute("href") ?? "")).toContain("CNPJ 11.222.333/0001-81");
     expect(api.responder).not.toHaveBeenCalled();
 
-    fireEvent.click(screen.getByRole("button", { name: "Quero negociar" }));
-    expect(screen.getByLabelText(/O que você gostaria de negociar/)).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "Voltar" }));
-
-    fireEvent.click(screen.getByRole("button", { name: "Recusar orçamento" }));
     fireEvent.click(screen.getByRole("button", { name: "Recusar mesmo assim" }));
     expect(screen.getByRole("heading", { name: "Confirmar RECUSA do orçamento inteiro?" })).toBeInTheDocument();
   });
@@ -494,26 +488,36 @@ describe("painel do orçamento (ticket T4)", () => {
     expect(screen.queryByLabelText("Número da ordem de compra")).not.toBeInTheDocument();
   });
 
-  it("negociação pede só o contato que falta, valida e salva no cadastro", async () => {
-    api.detalhe.mockResolvedValue(detalhe({ temTelefone: false, temEmail: true }));
-    api.solicitar.mockResolvedValue({ solicitacao: { id: 1, protocolo: "S-1", tipo: "NEGOCIAR", criadoEm: "2026-10-15T11:00:00Z" } });
+  it("correção pede só o contato que falta, valida e salva no cadastro", async () => {
+    api.detalhe.mockResolvedValue(detalhe({
+      status: "APROVADO",
+      titulo: "Orçamento aprovado",
+      orcamento: orcamento({
+        estado: "RESPONDIDA",
+        resposta: {
+          id: 77, decisao: "APROVAR", origem: "PORTAL_CLIENTE", registradaEm: "2026-10-15T10:00:00Z", janelaAte: "2026-10-15T10:15:00Z",
+          contato: "Ana Souza", propria: true, estado: "EFETIVADA", efetivadaEm: "2026-10-15T10:16:00Z", protocolo: "R-77", ordemCompra: null,
+        },
+      }),
+    temTelefone: false, temEmail: true }));
+    api.solicitar.mockResolvedValue({ solicitacao: { id: 1, protocolo: "S-1", tipo: "MUDANCA", criadoEm: "2026-10-15T11:00:00Z" } });
     render(<PortalApp />);
-    fireEvent.click(await screen.findByRole("button", { name: "Quero negociar" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Solicitar correção" }));
     expect(screen.getByText("Como a equipe pode falar com você?")).toBeInTheDocument();
     expect(screen.getByLabelText("Telefone com DDD")).toBeInTheDocument();
     expect(screen.queryByLabelText("E-mail")).not.toBeInTheDocument();
     expect(screen.getByLabelText(/salvar no meu cadastro/)).toBeChecked();
 
+    fireEvent.change(screen.getByLabelText("O que precisa ser corrigido?"), { target: { value: "Aprovei a impressora errada" } });
     fireEvent.change(screen.getByLabelText("Telefone com DDD"), { target: { value: "99999" } });
-    fireEvent.click(screen.getByRole("button", { name: "Registrar pedido de negociação" }));
+    fireEvent.click(screen.getAllByRole("button", { name: "Solicitar correção" }).at(-1)!);
     expect(screen.getByRole("alert")).toHaveTextContent(/telefone com DDD/);
     expect(api.solicitar).not.toHaveBeenCalled();
 
     fireEvent.change(screen.getByLabelText("Telefone com DDD"), { target: { value: "(71) 99999-0000" } });
-    fireEvent.change(screen.getByLabelText(/O que você gostaria de negociar/), { target: { value: "Desconto no fusor" } });
-    fireEvent.click(screen.getByRole("button", { name: "Registrar pedido de negociação" }));
+    fireEvent.click(screen.getAllByRole("button", { name: "Solicitar correção" }).at(-1)!);
     expect(await screen.findByText("Pedido S-1 registrado no AutoOS")).toBeInTheDocument();
-    expect(api.solicitar).toHaveBeenCalledWith(TOKEN, 28, 9, "NEGOCIAR", "Desconto no fusor", { telefone: "(71) 99999-0000", salvarNoContato: true });
+    expect(api.solicitar).toHaveBeenCalledWith(TOKEN, 28, 9, "MUDANCA", "Aprovei a impressora errada", { telefone: "(71) 99999-0000", salvarNoContato: true });
     const href = decodeURIComponent(screen.getByRole("link", { name: "Falar agora no WhatsApp" }).getAttribute("href") ?? "");
     expect(href).toContain("telefone (71) 99999-0000");
     expect(href).toContain("CNPJ 11.222.333/0001-81");
@@ -521,26 +525,47 @@ describe("painel do orçamento (ticket T4)", () => {
   });
 
   it("e-mail inválido, CONTATO_INVALIDO do servidor e checkbox desmarcado", async () => {
-    api.detalhe.mockResolvedValue(detalhe({ temTelefone: true, temEmail: false }));
+    api.detalhe.mockResolvedValue(detalhe({
+      status: "APROVADO",
+      titulo: "Orçamento aprovado",
+      orcamento: orcamento({
+        estado: "RESPONDIDA",
+        resposta: {
+          id: 77, decisao: "APROVAR", origem: "PORTAL_CLIENTE", registradaEm: "2026-10-15T10:00:00Z", janelaAte: "2026-10-15T10:15:00Z",
+          contato: "Ana Souza", propria: true, estado: "EFETIVADA", efetivadaEm: "2026-10-15T10:16:00Z", protocolo: "R-77", ordemCompra: null,
+        },
+      }),
+    temTelefone: true, temEmail: false }));
     api.solicitar.mockRejectedValue(new PortalError("Telefone ou e-mail inválido.", 400, "CONTATO_INVALIDO"));
     render(<PortalApp />);
-    fireEvent.click(await screen.findByRole("button", { name: "Quero negociar" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Solicitar correção" }));
     expect(screen.queryByLabelText("Telefone com DDD")).not.toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText("O que precisa ser corrigido?"), { target: { value: "Valor errado" } });
     fireEvent.change(screen.getByLabelText("E-mail"), { target: { value: "sem-arroba" } });
-    fireEvent.click(screen.getByRole("button", { name: "Registrar pedido de negociação" }));
+    fireEvent.click(screen.getAllByRole("button", { name: "Solicitar correção" }).at(-1)!);
     expect(screen.getByRole("alert")).toHaveTextContent(/e-mail válido/);
 
     fireEvent.change(screen.getByLabelText("E-mail"), { target: { value: "ana@acme.com.br" } });
     fireEvent.click(screen.getByLabelText(/salvar no meu cadastro/));
-    fireEvent.click(screen.getByRole("button", { name: "Registrar pedido de negociação" }));
+    fireEvent.click(screen.getAllByRole("button", { name: "Solicitar correção" }).at(-1)!);
     expect(await screen.findByText("Telefone ou e-mail inválido.")).toBeInTheDocument();
-    expect(api.solicitar).toHaveBeenCalledWith(TOKEN, 28, 9, "NEGOCIAR", "", { email: "ana@acme.com.br", salvarNoContato: false });
+    expect(api.solicitar).toHaveBeenCalledWith(TOKEN, 28, 9, "MUDANCA", "Valor errado", { email: "ana@acme.com.br", salvarNoContato: false });
   });
 
   it("com telefone e e-mail no cadastro, não pergunta contato", async () => {
-    api.detalhe.mockResolvedValue(detalhe());
+    api.detalhe.mockResolvedValue(detalhe({
+      status: "APROVADO",
+      titulo: "Orçamento aprovado",
+      orcamento: orcamento({
+        estado: "RESPONDIDA",
+        resposta: {
+          id: 77, decisao: "APROVAR", origem: "PORTAL_CLIENTE", registradaEm: "2026-10-15T10:00:00Z", janelaAte: "2026-10-15T10:15:00Z",
+          contato: "Ana Souza", propria: true, estado: "EFETIVADA", efetivadaEm: "2026-10-15T10:16:00Z", protocolo: "R-77", ordemCompra: null,
+        },
+      }),
+    }));
     render(<PortalApp />);
-    fireEvent.click(await screen.findByRole("button", { name: "Quero negociar" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Solicitar correção" }));
     expect(screen.queryByText("Como a equipe pode falar com você?")).not.toBeInTheDocument();
   });
 

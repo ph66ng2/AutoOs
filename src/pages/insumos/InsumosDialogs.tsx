@@ -28,7 +28,7 @@ import type {
   MovimentacaoFormData,
   ProdutoFormData,
 } from "@/lib/validations";
-import type { Produto } from "@/types";
+import type { Produto, UsoProdutoOrcamentos } from "@/types";
 import { CATEGORIA_OPTIONS, MINIMO_POR_CATEGORIA } from "./insumos-page-constants";
 
 export function InsumosProdutoDialog({
@@ -295,19 +295,33 @@ export function InsumosMovimentacaoDialog({
   );
 }
 
+const USO_GRUPOS: { chave: keyof UsoProdutoOrcamentos; rotulo: string }[] = [
+  { chave: "os_em_aberto", rotulo: "OS com orçamento ainda não decidido" },
+  { chave: "os_baixa_pendente", rotulo: "OS aprovadas com baixa pendente" },
+  { chave: "orcamentos_insumos", rotulo: "Orçamentos de insumos em aberto" },
+];
+
 export function InsumosDeleteDialog({
   open,
   onOpenChange,
   deletando,
   salvando,
   onDelete,
+  uso = null,
+  carregandoUso = false,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   deletando: Produto | null;
   salvando: boolean;
   onDelete: () => void | Promise<void>;
+  uso?: UsoProdutoOrcamentos | null;
+  carregandoUso?: boolean;
 }) {
+  const gruposComItens = uso
+    ? USO_GRUPOS.filter((grupo) => uso[grupo.chave].length > 0)
+    : [];
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-md">
@@ -318,6 +332,25 @@ export function InsumosDeleteDialog({
           Tem certeza que deseja excluir o insumo/peça{" "}
           <strong>{deletando?.nome}</strong>?
         </p>
+        {gruposComItens.length > 0 && uso && (
+          <div className="rounded-md border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">
+            <p className="font-medium">Esta peça está em orçamentos em andamento</p>
+            {gruposComItens.map((grupo) => (
+              <div key={grupo.chave} className="mt-2">
+                <p className="font-medium">{grupo.rotulo}</p>
+                <ul className="list-disc pl-5">
+                  {uso[grupo.chave].map((item) => (
+                    <li key={item}>{item}</li>
+                  ))}
+                </ul>
+              </div>
+            ))}
+            <p className="mt-2">
+              Depois de excluir, a aprovação e a baixa dessas peças vão falhar até a
+              peça ser trocada ou retirada do orçamento.
+            </p>
+          </div>
+        )}
         <p className="text-sm text-red-500">Esta ação não pode ser desfeita.</p>
         <DialogFooter>
           <DialogClose asChild>
@@ -326,7 +359,7 @@ export function InsumosDeleteDialog({
           <Button
             variant="destructive"
             onClick={onDelete}
-            disabled={salvando}
+            disabled={salvando || carregandoUso}
           >
             {salvando ? "Excluindo..." : "Excluir"}
           </Button>

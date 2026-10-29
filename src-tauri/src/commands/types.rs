@@ -511,6 +511,10 @@ pub struct ClienteRow {
     pub ativo: Option<bool>,
     pub criado_em: Option<String>,
     pub atualizado_em: Option<String>,
+    /// Contato que fez o cliente aparecer na busca. Só vem preenchido em `listar_clientes` e
+    /// `listar_clientes_paginados` com busca. `default` é obrigatório: sem ele, `buscar_cliente` quebra.
+    #[sqlx(default)]
+    pub contato_encontrado: Option<String>,
 }
 
 /// Produto completo retornado ao frontend.
@@ -793,6 +797,13 @@ pub const CLIENTE_SELECT: &str = "
            receber_email, receber_whatsapp, exige_ordem_compra, observacoes, ativo,
            criado_em::TEXT as criado_em, atualizado_em::TEXT as atualizado_em
     FROM clientes";
+
+/// Mesma lista de colunas de `CLIENTE_SELECT`, sem `SELECT` e sem `FROM`.
+pub const CLIENTE_COLUNAS: &str = "id, empresa_id, nome, tipo_pessoa, documento, razao_social, nome_fantasia,
+           inscricao_estadual, cpf_cnpj, telefone, telefone_secundario, email,
+           cep, endereco, numero, complemento, bairro, cidade, uf,
+           receber_email, receber_whatsapp, exige_ordem_compra, observacoes, ativo,
+           criado_em::TEXT as criado_em, atualizado_em::TEXT as atualizado_em";
 
 pub const PRODUTO_SELECT: &str = "
     SELECT id, codigo, nome, descricao, categoria,

@@ -12,11 +12,11 @@ Usa as versões e respostas de orçamento das migrations 0031–0032 (`docs/ACEI
 1. **Sem login por código.** A entrada por código enviado por WhatsApp/email existiu na 0035 e foi removida na 0038: só há senha. O CPF/CNPJ sozinho nunca dá acesso, e senha errada e CPF/CNPJ inexistente têm a mesma resposta.
 2. **Lista.** Todos os atendimentos com `empresa_id` + `cliente_id` do cadastro, separados em **Atuais** e **Histórico** (entregues e encerrados). Ordenação por atividade recente (padrão) ou data de entrada. O cartão mostra equipamento, série, patrimônio, entrada, etapa colorida e “Aguarda sua resposta”.
 3. **Detalhe.** A tela pública de status (`StatusView`: logo, etapa com pulso, linha do tempo, data) + orçamento publicado (versão, itens, total, validade) + pedidos enviados + cartão de contato.
-4. **Responder.** Aceitar ou recusar o **orçamento inteiro** (sem aprovação parcial) ou **Quero negociar**. Aceitar/recusar exige confirmação com impressora e valor e uma verificação feita há menos de 10 minutos (senão o portal pede a senha de novo). O comprovante tem protocolo `R-<id>`.
+4. **Responder.** Aceitar ou recusar o **orçamento inteiro** (sem aprovação parcial). Recusar passa antes por "Tem certeza que quer recusar?", que só oferece o contato da equipe ("Qualquer dúvida, entre em contato conosco") e "Recusar mesmo assim". Aceitar/recusar exige confirmação com impressora e valor e uma verificação feita há menos de 10 minutos (senão o portal pede a senha de novo). O comprovante tem protocolo `R-<id>`.
 5. **WhatsApp opcional.** Depois de registrar, o portal oferece a mensagem pronta (`wa.me`) e “Copiar mensagem”. O registro e o alerta já existem; fechar o WhatsApp não perde nada.
 6. **Mudei de ideia.** Por 15 minutos (`orcamento_aceite_config.janela_correcao_minutos`, mínimo 15) quem respondeu pode trocar ou cancelar. A equipe vê “resposta recebida, em prazo de correção” e o desktop recusa aplicar nesse período.
 7. **Efetivação.** Terminado o prazo, `portal_efetivar_respostas_vencidas` aplica APROVADO/REPROVADO numa transação com as regras de `aprovar_orcamento`. Se não conseguir, a resposta fica pendente, a equipe recebe alerta e o cliente vê “precisa ser confirmada pela equipe” — nunca uma aprovação falsa. Depois de efetivada, o botão vira **Solicitar correção** (pedido ao operador; não desfaz peças nem trabalho).
-8. **Quero negociar.** Registra um pedido (`orcamento_solicitacoes.tipo = NEGOCIAR`) e um alerta antes de oferecer o WhatsApp. Não é aceite, recusa nem prorrogação. Para mudar valores a equipe altera o orçamento e clica em **Publicar no Portal do Cliente**: nasce uma nova versão e a anterior deixa de aceitar respostas.
+8. **Sem negociação no portal.** Decisão do produto: o portal não oferece nem sugere negociação (sem botão, texto ou mensagem pronta). Quem quiser conversar usa o contato geral da equipe. Os pedidos antigos `orcamento_solicitacoes.tipo = NEGOCIAR` continuam no banco e no histórico, mas a função do portal recusa pedido novo desse tipo. Se a equipe mudar valores, altera o orçamento e clica em **Publicar no Portal do Cliente**: nasce uma nova versão e a anterior deixa de aceitar respostas.
 
 ## Fluxo de trabalho da equipe
 
@@ -30,7 +30,7 @@ Usa as versões e respostas de orçamento das migrations 0031–0032 (`docs/ACEI
 
 1. Recepção e verificação seguem como hoje. O cliente acompanha as etapas no portal.
 2. **Finalizar Verificação** → `AGUARDANDO_APROVACAO` e o WhatsApp informativo automático. O envio congela a versão do orçamento, e versão aberta = orçamento visível no portal. Se o WhatsApp não saiu ou o orçamento mudou, use **Publicar no Portal do Cliente** nos detalhes do equipamento.
-3. O cliente entra, confere e **aceita**, **recusa** ou **quer negociar**.
+3. O cliente entra, confere e **aceita** ou **recusa**.
 4. No AutoOS: aviso azul “Aceite recebido — confirma às HH:MM”, o equipamento sobe na lista e o quadro do orçamento fica âmbar. **Não comece o serviço antes do horário**: o cliente ainda pode desfazer.
 5. Passados 15 minutos, o servidor efetiva sozinho (status, pagamento “a combinar” se vazio, baixa de estoque) e chega o aviso verde “Orçamento aprovado pelo cliente”. Daí em diante o fluxo é o de sempre (manutenção → pronto → entrega), e o cliente vê as etapas no portal.
 
@@ -38,7 +38,7 @@ Usa as versões e respostas de orçamento das migrations 0031–0032 (`docs/ACEI
 
 | Situação | Aviso | O que fazer |
 |---|---|---|
-| Cliente quer negociar | Violeta “Cliente quer negociar” + mensagem | Combinar com o cliente, alterar o orçamento e **Publicar** de novo (versão nova; a anterior para de aceitar resposta) |
+| Cliente quer negociar (só pedidos antigos, de antes de sair do portal) | Violeta “Cliente quer negociar” + mensagem | Combinar com o cliente, alterar o orçamento e **Publicar** de novo (versão nova; a anterior para de aceitar resposta) |
 | Efetivação falhou (etapa ou orçamento mudou, peça sem serviço…) | Vermelho “Aceite não efetivado” + motivo | Abrir o atendimento → **Revisar e aplicar decisão** |
 | Cliente pediu correção depois de efetivado | Âmbar “Cliente pediu correção” | Conversar e, se for o caso, **Corrigir decisão do orçamento** (desfaz pagamento, serviços e baixas com escolha sobre o estoque) |
 | Cliente respondeu por telefone/WhatsApp | — | **Aprovar/Reprovar** direto no equipamento, como antes |
@@ -108,6 +108,10 @@ Se o envio falha por qualquer motivo (WhatsApp ou e-mail), abre **Enviar manualm
 - Contato com senha: o envio não troca. A mensagem pede a senha que ele já tem.
 - **Gerar nova senha** (no envio manual) só funciona se o contato ainda não entrou com a senha atual. Depois que entrou, a troca segue pela equipe, como na Jornada.
 
+### Orçamentos pendentes de publicação
+
+OS em `AGUARDANDO_APROVACAO` sem versão aberta no portal (casos antigos, de antes do envio publicar sozinho) aparecem em Configurações → Integrações, no card do Portal, como **Enviar orçamentos pendentes ao portal (N)**. O botão some com N = 0, pede PIN (`MANAGE_STATUS_LINKS` ou `PREPARE_QUOTES`) e publica uma OS por vez pelo mesmo caminho de "Publicar no Portal do Cliente" (um `BUDGET_PUBLISHED_TO_PORTAL` por OS). Uma falha, como prazo vencido, não interrompe as outras: entra no resumo exibido no fim e no evento `BUDGET_PORTAL_BULK_PUBLISH`. O card do portal continua visível só para quem tem `MANAGE_STATUS_LINKS`.
+
 ### Prazo e prorrogação
 
 - O prazo de aprovação fica em **Alterar orçamento**.
@@ -156,7 +160,7 @@ Respostas antigas de origem `PORTAL` (link removido) ou `EQUIPE` só existem em 
 | Objeto | Função |
 |---|---|
 | `cliente_contatos.portal_acesso` + trigger | Acesso por contato; inativar ou mudar de cliente zera o acesso |
-| `portal_config_empresa` (0038) | Chaves por empresa: `portal_enabled` (login e consulta) e `respostas_enabled` (aceitar/recusar/negociar; exige o portal ligado). Sem linha = desligado |
+| `portal_config_empresa` (0038) | Chaves por empresa: `portal_enabled` (login e consulta) e `respostas_enabled` (aceitar/recusar; exige o portal ligado). Sem linha = desligado |
 | `portal_cliente_config` | Reverificação e duração da sessão (globais do produto). `portal_enabled` daqui não é mais lido |
 | `portal_contato_empresa` | Cartão “Fale com a equipe” (Configurações → Integrações); `endereco` (até 300) e `maps_url` (só https, até 500) vieram na 0039 |
 | `portal_codigos` | Histórico do login por código (removido na 0038) |
@@ -240,7 +244,7 @@ Pré-requisitos: passos 1–4 da Ativação concluídos; build do AutoOS a parti
 **Portal (status.bmitag.com.br, celular e computador)**
 
 7. Entrar com o CPF/CNPJ do cliente + senha. A lista mostra o equipamento em “Atuais” como “aguarda sua resposta”.
-8. Com a proposta ainda aberta: **Quero negociar** com uma mensagem → chega como alerta no AutoOS (faixa violeta com WhatsApp/e-mail) e não muda o status. Marcar como tratada no AutoOS.
+8. Com a proposta ainda aberta: conferir que nenhuma tela fala em negociar e que "Recusar orçamento" mostra "Tem certeza que quer recusar?" só com o contato da equipe e "Recusar mesmo assim".
 9. **Aceitar** → confirmar impressora e valor (e a OC, se o cliente exigir) → comprovante com protocolo. Se a entrada tiver mais de 10 minutos, pede a senha de novo antes.
 10. Dentro do prazo de correção: **Desfazer resposta** → volta a “aguardando resposta” e o comprovante some sem recarregar. Aceitar de novo.
 11. No AutoOS: o sino mostra “Aceite recebido — confirma às HH:MM” (aba Portal do Cliente); a faixa mostra a resposta em prazo de correção, sem botão de aplicar.

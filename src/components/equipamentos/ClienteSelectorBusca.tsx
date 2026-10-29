@@ -143,6 +143,9 @@ export function ClienteSelectorBusca({
                       {formatarDocumento(c.documento || c.cpf_cnpj || "")}
                       {c.telefone ? ` • ${formatarTelefone(c.telefone)}` : ""}
                     </p>
+                    {c.contato_encontrado && (
+                      <p className="text-xs text-muted-foreground">Contato: {c.contato_encontrado}</p>
+                    )}
                   </div>
                 </div>
                 <Badge variant="outline" className="shrink-0 text-[10px]">

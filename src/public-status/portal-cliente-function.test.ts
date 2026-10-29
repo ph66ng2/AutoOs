@@ -48,7 +48,7 @@ beforeEach(() => {
       body: { id: 28, status: "AGUARDANDO_APROVACAO", equipamento: "Impressora Zebra", orcamento: { estado: "ABERTA", versaoId: 9 } },
     }),
     portal_registrar_resposta: () => ({ body: { id: 77, protocolo: "R-77", decisao: "APROVAR" } }),
-    portal_registrar_solicitacao: () => ({ body: { id: 5, protocolo: "S-5", tipo: "NEGOCIAR" } }),
+    portal_registrar_solicitacao: () => ({ body: { id: 5, protocolo: "S-5", tipo: "MUDANCA" } }),
     portal_encerrar_sessao: () => ({ body: null }),
     portal_entrar_senha: (args) => ({
       body: args.p_senha === "Ana-Senha-2026" && args.p_documento === "11222333000181"
@@ -110,7 +110,8 @@ describe("portal-cliente: sessão e orçamento", () => {
   it("detalhe usa o mesmo texto de status do link individual e orienta a responder pelo portal", async () => {
     const { body } = await call({ acao: "detalhe", sessao: SESSION, equipamentoId: 28 });
     expect(body.titulo).toBe("O orçamento aguarda sua resposta");
-    expect(String(body.orientacao)).toContain("Quero negociar");
+    expect(String(body.orientacao)).toContain("Qualquer dúvida, entre em contato conosco");
+    expect(String(body.orientacao)).not.toMatch(/negoci/i);
   });
 
   it("depois da resposta, a orientação não manda mais responder pelo outro canal", async () => {
@@ -141,11 +142,14 @@ describe("portal-cliente: sessão e orçamento", () => {
     expect(rpc("portal_registrar_resposta")).toHaveLength(0);
   });
 
-  it("registra resposta e negociação", async () => {
+  it("registra resposta e pedido de correção; pedido de negociação não é mais aceito", async () => {
     const resposta = await call({ acao: "responder", sessao: SESSION, equipamentoId: 28, versaoId: 9, decisao: "APROVAR", respostaVigenteId: 0 });
     expect((resposta.body.comprovante as Record<string, unknown>).protocolo).toBe("R-77");
+    const correcao = await call({ acao: "solicitar", sessao: SESSION, equipamentoId: 28, versaoId: 9, tipo: "MUDANCA", mensagem: "Aprovei errado" });
+    expect((correcao.body.solicitacao as Record<string, unknown>).protocolo).toBe("S-5");
     const negociacao = await call({ acao: "solicitar", sessao: SESSION, equipamentoId: 28, versaoId: 9, tipo: "NEGOCIAR", mensagem: "" });
-    expect((negociacao.body.solicitacao as Record<string, unknown>).protocolo).toBe("S-5");
+    expect(negociacao.response.status).toBe(400);
+    expect(rpc("portal_registrar_solicitacao")).toHaveLength(1);
   });
 
   it("sem ordem de compra nem contato de retorno, os parâmetros novos nem vão ao banco (compatível com a chamada antiga)", async () => {
@@ -180,12 +184,12 @@ describe("portal-cliente: sessão e orçamento", () => {
 
   it("repassa telefone, e-mail e salvarNoContato na solicitação", async () => {
     const { response } = await call({
-      acao: "solicitar", sessao: SESSION, equipamentoId: 28, versaoId: 9, tipo: "NEGOCIAR", mensagem: "Desconto?",
+      acao: "solicitar", sessao: SESSION, equipamentoId: 28, versaoId: 9, tipo: "MUDANCA", mensagem: "Aprovei errado",
       telefone: " (71) 91234-5678 ", email: "ana@cliente.invalid", salvarNoContato: true,
     });
     expect(response.status).toBe(200);
     expect(rpc("portal_registrar_solicitacao")[0].args).toMatchObject({
-      p_mensagem: "Desconto?", p_telefone: "(71) 91234-5678", p_email: "ana@cliente.invalid", p_salvar_no_contato: true,
+      p_mensagem: "Aprovei errado", p_telefone: "(71) 91234-5678", p_email: "ana@cliente.invalid", p_salvar_no_contato: true,
     });
   });
 

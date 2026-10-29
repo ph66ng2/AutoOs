@@ -15,6 +15,7 @@ use crate::commands::types::{
     MovimentacaoEstoqueInput, PaginatedResult, ProdutoInput, ProdutoRow, PRODUTO_SELECT,
 };
 use crate::db::get_pool;
+use serde::Serialize;
 use sqlx::{PgPool, Postgres, QueryBuilder, Row};
 use tracing::{debug, error, info, instrument};
 
@@ -560,6 +561,99 @@ pub async fn deletar_produto(id: i32) -> Result<bool, String> {
 /// (aprovar/cancelar orçamento) usam esta função, então a regra de saldo e o registro são os mesmos.
 /// O chamador valida permissão e empresa, abre e confirma a transação e registra a auditoria.
 #[allow(clippy::too_many_arguments)]
+#[derive(Debug, Serialize)]
+pub struct UsoProdutoOrcamentos {
+    pub os_em_aberto: Vec<String>,
+    pub os_baixa_pendente: Vec<String>,
+    pub orcamentos_insumos: Vec<String>,
+}
+
+/// Indica se algum serviço do JSON de `servicos_necessarios` usa a peça. JSON inválido conta como falso.
+pub fn servicos_usam_produto(json: &str, produto_id: i32) -> bool {
+    super::orcamento_estoque::parse_servicos(json)
+        .map(|servicos| {
+            servicos
+                .iter()
+                .any(|servico| servico.pecas.iter().any(|peca| peca.produto_id == produto_id))
+        })
+        .unwrap_or(false)
+}
+
+#[tauri::command]
+pub async fn uso_produto_em_orcamentos(id: i32) -> Result<UsoProdutoOrcamentos, String> {
+    require_permission(PERMISSION_DELETE_RECORDS)?;
+    let pool = get_pool().await.map_err(|e| e.to_string())?;
+    let empresa_id = require_active_session_company_id(&pool).await?;
+
+    // (a) OS com orçamento ainda não decidido: verificação mais recente de cada OS.
+    let verificacoes: Vec<(String, Option<String>)> = sqlx::query_as(
+        "SELECT DISTINCT ON (e.id)
+                CONCAT_WS(' ', e.marca, e.modelo, '- série', e.serial_number),
+                v.servicos_necessarios
+         FROM equipamentos e
+         JOIN verificacoes v ON v.equipamento_id = e.id
+           AND (v.empresa_id = e.empresa_id OR v.empresa_id IS NULL)
+         WHERE e.empresa_id = $1
+           AND e.status IN ('EM_VERIFICACAO', 'VERIFICADO', 'AGUARDANDO_APROVACAO', 'ORCAMENTO_VENCIDO')
+         ORDER BY e.id, v.id DESC",
+    )
+    .bind(empresa_id)
+    .fetch_all(&pool)
+    .await
+    .map_err(super::operator_errors::mapear_erro_sql)?;
+    let os_em_aberto: Vec<String> = verificacoes
+        .into_iter()
+        .filter(|(_, servicos)| {
+            servicos
+                .as_deref()
+                .is_some_and(|json| servicos_usam_produto(json, id))
+        })
+        .map(|(descricao, _)| descricao)
+        .collect();
+
+    // (b) OS aprovadas com baixa de peça pendente (mesma junção de baixar_pecas_pendentes).
+    let os_baixa_pendente: Vec<String> = sqlx::query_scalar(
+        "SELECT DISTINCT CONCAT_WS(' ', e.marca, e.modelo, '- série', e.serial_number)
+         FROM orcamento_consumos c
+         JOIN verificacoes v ON v.id = c.verificacao_id
+         JOIN orcamento_servicos_decisao d ON d.verificacao_id = c.verificacao_id
+           AND d.servico_id = c.servico_id AND d.decisao = 'APROVADO'
+         JOIN equipamentos e ON e.id = v.equipamento_id AND e.empresa_id = c.empresa_id
+         WHERE c.produto_id = $1 AND c.empresa_id = $2
+           AND c.quantidade_aprovada > c.quantidade_baixada
+           AND e.status IN ('APROVADO', 'EM_MANUTENCAO', 'AGUARDANDO_PECA', 'PRONTO')
+         ORDER BY 1",
+    )
+    .bind(id)
+    .bind(empresa_id)
+    .fetch_all(&pool)
+    .await
+    .map_err(super::operator_errors::mapear_erro_sql)?;
+
+    // (c) Orçamentos de insumos em aberto que usam a peça.
+    let orcamentos_insumos: Vec<String> = sqlx::query_scalar(
+        "SELECT 'OI-' || o.numero::text
+         FROM orcamentos_insumos o
+         WHERE o.empresa_id = $2 AND o.status IN ('RASCUNHO', 'ENVIADO')
+           AND EXISTS (
+             SELECT 1 FROM orcamento_insumos_itens i
+             WHERE i.orcamento_id = o.id AND i.empresa_id = o.empresa_id AND i.produto_id = $1
+           )
+         ORDER BY o.numero",
+    )
+    .bind(id)
+    .bind(empresa_id)
+    .fetch_all(&pool)
+    .await
+    .map_err(super::operator_errors::mapear_erro_sql)?;
+
+    Ok(UsoProdutoOrcamentos {
+        os_em_aberto,
+        os_baixa_pendente,
+        orcamentos_insumos,
+    })
+}
+
 pub(crate) async fn aplicar_movimentacao_em_tx(
     tx: &mut sqlx::Transaction<'_, Postgres>,
     empresa_id: i32,
@@ -709,6 +803,20 @@ pub async fn registrar_movimentacao_estoque(input: MovimentacaoEstoqueInput) -> 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn servicos_usam_produto_encontra_peca_so_no_produto_certo() {
+        let json = r#"[{"id":"c1","valor":80,"pecas":[{"produto_id":7,"quantidade":1,"valor_unitario":10}]},{"id":"c2","valor":50}]"#;
+        assert!(servicos_usam_produto(json, 7));
+        assert!(!servicos_usam_produto(json, 8));
+    }
+
+    #[test]
+    fn servicos_usam_produto_trata_json_invalido_e_vazio_como_falso() {
+        assert!(!servicos_usam_produto("não é json", 7));
+        assert!(!servicos_usam_produto("[]", 7));
+        assert!(!servicos_usam_produto(r#"[{"id":"c1","valor":50}]"#, 7));
+    }
 
     fn movement_input(tipo: &str, quantidade: i32, origem: &str) -> MovimentacaoEstoqueInput {
         MovimentacaoEstoqueInput {
