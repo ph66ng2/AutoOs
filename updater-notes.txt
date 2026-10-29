@@ -1,1 +1,7 @@
-0.6.0: no Portal do Cliente o cliente vê fotos, PDF do orçamento e comprovante de entrega; na retirada, endereço e mapa. O aceite pode exigir ordem de compra, e antes de recusar dá para negociar. Em Insumos/Peças → Orçamentos há o OI (venda avulsa). O ADM cadastra com código de primeiro acesso; a pessoa cria o próprio PIN em cada computador.
+AutoOS 0.6.1
+
+- Abertura do desktop e carregamento de equipamentos mais rápidos.
+- Edição de equipamentos evita substituir fotos inalteradas e avisa quando as fotos foram modificadas em outra sessão.
+- Orçamentos de insumos: corrigido o cadastro que ficava em "Carregando", adicionada exclusão definitiva de orçamentos cancelados e reorganizados os diálogos de orçamento e envio manual.
+- Portal do Cliente: fotos, PDF do orçamento e comprovante de entrega; endereço e mapa na retirada. O aceite pode exigir ordem de compra, e o cliente pode negociar antes de recusar.
+- O administrador cadastra perfis com código de primeiro acesso; cada pessoa cria o próprio PIN em cada computador.
