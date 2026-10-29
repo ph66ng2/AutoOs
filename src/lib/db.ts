@@ -31,6 +31,9 @@ import type {
   AlertaPortal,
   ContatoPortalEmpresa,
   OrcamentoPublicado,
+  OrcamentoPendentePortal,
+  PublicacaoLotePortal,
+  UsoProdutoOrcamentos,
   AprovarOrcamentoInput,
   ConsumoOrcamento,
   Cliente,
@@ -370,6 +373,14 @@ export const db = {
     return invoke<EstadoPortal>("definir_estado_portal", { portalAtivo, respostasAtivas });
   },
 
+  async listarOrcamentosPendentesPortal(): Promise<OrcamentoPendentePortal[]> {
+    return invoke<OrcamentoPendentePortal[]>("listar_orcamentos_pendentes_portal");
+  },
+
+  async publicarOrcamentosPendentesPortal(): Promise<PublicacaoLotePortal> {
+    return invoke<PublicacaoLotePortal>("publicar_orcamentos_pendentes_portal");
+  },
+
   async salvarContatoPortalEmpresa(input: ContatoPortalEmpresa): Promise<ContatoPortalEmpresa> {
     return invoke<ContatoPortalEmpresa>("salvar_contato_portal_empresa", { input });
   },
@@ -486,6 +497,11 @@ export const db = {
   /** Atualiza produto → Rust: atualizar_produto */
   async atualizarProduto(id: number, produto: Omit<Produto, "id">): Promise<Produto> {
     return invoke<Produto>("atualizar_produto", { id, input: produto });
+  },
+
+  /** Onde a peça ainda é usada (OS e orçamentos de insumos em aberto) → Rust: uso_produto_em_orcamentos */
+  async usoProdutoEmOrcamentos(id: number): Promise<UsoProdutoOrcamentos> {
+    return invoke<UsoProdutoOrcamentos>("uso_produto_em_orcamentos", { id });
   },
 
   /** Soft delete de produto (ativo = 0) → Rust: deletar_produto */
