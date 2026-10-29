@@ -8,6 +8,7 @@ const isE2eScreenshots = process.env.VITE_E2E_SCREENSHOTS === "1";
 const isE2eMock = process.env.VITE_E2E_MOCK === "1" || isE2eScreenshots;
 const isE2eTeam = process.env.VITE_E2E_TEAM === "1";
 const isE2eDemo = process.env.VITE_E2E_DEMO === "1";
+const isE2ePortalVideo = process.env.VITE_E2E_PORTAL_VIDEO === "1";
 
 /** Serve o JSON exportado do Postgres local só quando o job de screenshots pede. */
 function uiScreenshotSeedPlugin(): Plugin {
@@ -42,13 +43,15 @@ export default defineConfig(async () => ({
               __dirname,
               isE2eScreenshots
                 ? "./e2e/mocks/tauri-core-screenshots.ts"
+                : isE2ePortalVideo
+                  ? "./e2e/mocks/tauri-core-portal-video.ts"
                 : isE2eTeam
                   ? "./e2e/mocks/tauri-core-team.ts"
                   : isE2eDemo
                     ? "./e2e/mocks/tauri-core-demo.ts"
                     : "./e2e/mocks/tauri-core.ts",
             ),
-            ...((isE2eDemo || isE2eTeam || isE2eScreenshots)
+            ...((isE2eDemo || isE2eTeam || isE2eScreenshots || isE2ePortalVideo)
               ? {
                   "@tauri-apps/api/event": path.resolve(
                     __dirname,
