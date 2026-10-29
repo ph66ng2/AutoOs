@@ -55,6 +55,13 @@ describe("Clientes: ordem de compra e preferências", () => {
     expect(screen.getAllByText("Exige OC")).toHaveLength(1);
   });
 
+  it("mostra o contato que trouxe o cliente na busca, só quando o campo vier", () => {
+    mocks.clientes = [clienteSalvo({ contato_encontrado: "Carlos Mendes" }), clienteSalvo({ id: 8, nome: "Bruno Lima" })];
+    renderPagina();
+    expect(screen.getAllByText(/^Contato:/)).toHaveLength(1);
+    expect(screen.getByText("Contato: Carlos Mendes")).toBeInTheDocument();
+  });
+
   it("cria cliente com o checkbox marcado e preferências true por padrão", async () => {
     renderPagina();
     fireEvent.click(screen.getByRole("button", { name: /novo cliente/i }));
