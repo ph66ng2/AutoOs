@@ -16,6 +16,7 @@ import {
   PackageCheck,
   Save,
   ThumbsDown,
+  Trash2,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -71,7 +72,7 @@ interface OrcamentoInsumosDialogProps {
   onChanged?: () => void;
 }
 
-type AcaoConfirmada = "reprovar" | "cancelar" | "entregar";
+type AcaoConfirmada = "reprovar" | "cancelar" | "entregar" | "excluir";
 
 const botaoGrupo = "rounded-none active:scale-[0.96] [transition-property:scale,background-color,color]";
 
@@ -148,6 +149,9 @@ export function OrcamentoInsumosDialog({
     setConfirmando(null);
     setPagamentoAberto(false);
     if (orcamentoId == null) {
+      // Uma abertura anterior pode ter sido fechada com a carga pendente (o `finally` dela não
+      // roda quando `ativo` já é falso); sem isto o "Novo" ficava preso em "Carregando...".
+      setCarregando(false);
       setDetalhe(null);
       setCliente(null);
       setContato(null);
@@ -338,6 +342,24 @@ export function OrcamentoInsumosDialog({
     return true;
   }
 
+  async function excluir() {
+    if (!detalhe) return;
+    setOcupado(true);
+    setErro(null);
+    try {
+      await db.excluirOrcamentoInsumos(detalhe.id, detalhe.atualizado_em);
+      onChanged?.();
+      success("Orçamento de insumos", `Orçamento ${detalhe.numero_exibicao} excluído.`);
+      onOpenChange(false);
+    } catch (causa) {
+      const texto = typeof causa === "string" ? causa : String((causa as Error)?.message ?? causa);
+      setErro(texto);
+      showError("Orçamento de insumos", "Excluir orçamento", causa);
+    } finally {
+      setOcupado(false);
+    }
+  }
+
   async function confirmar() {
     const acao = confirmando;
     setConfirmando(null);
@@ -351,6 +373,8 @@ export function OrcamentoInsumosDialog({
         acoes.cancelarDevolveEstoque ? "Orçamento cancelado e estoque devolvido." : "Orçamento cancelado.",
         "Cancelar orçamento",
       );
+    } else if (acao === "excluir") {
+      await excluir();
     } else {
       await executar(() => db.marcarOrcamentoInsumosEntregue(detalhe.id, detalhe.atualizado_em), "Entrega registrada.", "Marcar como entregue");
     }
@@ -375,6 +399,11 @@ export function OrcamentoInsumosDialog({
       titulo: "Marcar como entregue?",
       descricao: "Confirma que os itens foram entregues ao cliente. Depois disso o orçamento não pode mais ser cancelado.",
       botao: "Marcar entregue",
+    },
+    excluir: {
+      titulo: "Excluir orçamento?",
+      descricao: `O orçamento ${detalhe?.numero_exibicao ?? ""} e seus itens serão apagados definitivamente. O estoque não é alterado e o número não será reaproveitado. Esta ação não pode ser desfeita.`,
+      botao: "Excluir",
     },
   };
 
@@ -564,6 +593,11 @@ export function OrcamentoInsumosDialog({
               {acoes.cancelar && (
                 <Button type="button" variant="ghost" size="sm" className={botaoNegativo} disabled={ocupado} onClick={() => setConfirmando("cancelar")}>
                   <Ban className="mr-1.5 h-4 w-4" />Cancelar orçamento
+                </Button>
+              )}
+              {acoes.excluir && detalhe && (
+                <Button type="button" variant="ghost" size="sm" className={botaoNegativo} disabled={ocupado} onClick={() => setConfirmando("excluir")}>
+                  <Trash2 className="mr-1.5 h-4 w-4" />Excluir
                 </Button>
               )}
               {motivoSemSalvar && (
