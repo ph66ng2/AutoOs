@@ -9,6 +9,7 @@ import {
   montarEmailOrcamentoInsumos,
   montarMensagemWhatsappOrcamentoInsumos,
   nomeDestinatario,
+  orcamentoInsumosVencido,
   telefoneDestinatario,
   validadePadraoOrcamentoInsumos,
   valorUnitarioPadrao,
@@ -205,6 +206,41 @@ describe("mensagens de envio", () => {
     expect(formaPagamentoRotulo(null)).toBe("Definida na aprovação");
     expect(formaPagamentoRotulo("PIX")).toBe("Pix");
     expect(formaPagamentoRotulo("OUTRO", " Contrato ")).toBe("Outro: Contrato");
+  });
+});
+
+describe("orcamentoInsumosVencido", () => {
+  const hoje = "2026-10-29";
+
+  it("vence só em RASCUNHO ou ENVIADO com validade anterior a hoje", () => {
+    expect(orcamentoInsumosVencido({ status: "RASCUNHO", validade: "2026-10-28" }, hoje)).toBe(true);
+    expect(orcamentoInsumosVencido({ status: "ENVIADO", validade: "2026-10-28" }, hoje)).toBe(true);
+  });
+
+  it("não vence no próprio dia da validade nem depois", () => {
+    expect(orcamentoInsumosVencido({ status: "ENVIADO", validade: "2026-10-29" }, hoje)).toBe(false);
+    expect(orcamentoInsumosVencido({ status: "ENVIADO", validade: "2026-11-01" }, hoje)).toBe(false);
+  });
+
+  it("validade nula nunca vence", () => {
+    expect(orcamentoInsumosVencido({ status: "ENVIADO", validade: null }, hoje)).toBe(false);
+    expect(orcamentoInsumosVencido({ status: "RASCUNHO", validade: undefined }, hoje)).toBe(false);
+  });
+
+  it("status fora de RASCUNHO e ENVIADO nunca aparece como vencido", () => {
+    for (const status of ["APROVADO", "REPROVADO", "CANCELADO", "ENTREGUE"] as const) {
+      expect(orcamentoInsumosVencido({ status, validade: "2026-01-01" }, hoje)).toBe(false);
+    }
+  });
+
+  it("usa a data local de hoje quando nenhuma data é passada", () => {
+    const amanha = new Date();
+    amanha.setDate(amanha.getDate() + 1);
+    const y = amanha.getFullYear();
+    const m = String(amanha.getMonth() + 1).padStart(2, "0");
+    const d = String(amanha.getDate()).padStart(2, "0");
+    expect(orcamentoInsumosVencido({ status: "ENVIADO", validade: `${y}-${m}-${d}` })).toBe(false);
+    expect(orcamentoInsumosVencido({ status: "ENVIADO", validade: "2000-01-01" })).toBe(true);
   });
 });
 

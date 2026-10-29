@@ -102,6 +102,19 @@ export function validadePadraoOrcamentoInsumos(hoje = new Date(), dias = 7): str
   return todayLocalIsoDate(data);
 }
 
+/**
+ * Orçamento em aberto (RASCUNHO ou ENVIADO) cuja validade já passou.
+ * Compara texto AAAA-MM-DD; sem validade nunca vence.
+ */
+export function orcamentoInsumosVencido(
+  o: Pick<OrcamentoInsumos, "status" | "validade">,
+  hoje = todayLocalIsoDate(),
+): boolean {
+  if (o.status !== "RASCUNHO" && o.status !== "ENVIADO") return false;
+  if (!o.validade) return false;
+  return o.validade < hoje;
+}
+
 export interface AcoesOrcamentoInsumos {
   editar: boolean;
   salvar: boolean;
