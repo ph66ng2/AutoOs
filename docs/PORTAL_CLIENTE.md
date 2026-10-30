@@ -173,7 +173,7 @@ Respostas antigas de origem `PORTAL` (link removido) ou `EQUIPE` só existem em 
 | `portal_sessoes` | Hash do token de sessão, `verificada_em`, expiração; só sessões `metodo = SENHA` valem |
 | `orcamento_respostas` (+colunas) | `PORTAL_CLIENTE`, contato, sessão, efetivação automática e falha; `ordem_compra` (1 a 60 caracteres, 0039) |
 | `orcamento_solicitacoes` (+colunas) | `NEGOCIAR` e contato; `contato_telefone` / `contato_email` de retorno (0039) |
-| `clientes.exige_ordem_compra` (0039) | Cliente que exige ordem de compra para aprovar pelo portal (padrão `FALSE`; ainda sem tela no desktop) |
+| `clientes.exige_ordem_compra` (0039) | Cliente que exige ordem de compra para aprovar pelo portal (padrão `FALSE`). Liga-se no cadastro do cliente, em "Exige ordem de compra para aprovar orçamentos", para qualquer cliente (CNPJ ou CPF); a lista de clientes mostra um selo nos que exigem. Vale para todos os contatos do cliente; pede só o número, sem anexo |
 | `portal_alertas` | Alertas persistentes; só `lido_em`/`lido_por` mudam |
 | `equipamentos.ultima_atividade_cliente_em` | Ordenação por atividade sem mexer no token de concorrência |
 | `portal_*` (SECURITY DEFINER) | Única porta da Edge Function (`service_role` só tem EXECUTE nelas) |
