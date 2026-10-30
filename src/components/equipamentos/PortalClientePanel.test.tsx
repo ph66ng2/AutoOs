@@ -185,4 +185,16 @@ describe("PortalClientePanel", () => {
     fireEvent.click(within(secao).getByRole("button", { name: "Gerenciar em Contatos" }));
     expect(await screen.findByText("Painel de contatos de Gráfica Exemplo")).toBeInTheDocument();
   });
+
+  it("fechar a gestão de contatos com Esc recarrega o resumo de acesso", async () => {
+    mocks.obter.mockResolvedValue(info());
+    const painel = await abrirPainel();
+    const secao = within(painel).getByRole("region", { name: "Acesso ao portal" });
+    await waitFor(() => expect(mocks.contatos).toHaveBeenCalled());
+    fireEvent.click(within(secao).getByRole("button", { name: "Gerenciar em Contatos" }));
+    await screen.findByText("Painel de contatos de Gráfica Exemplo");
+    const antes = mocks.contatos.mock.calls.length;
+    fireEvent.keyDown(screen.getByText("Painel de contatos de Gráfica Exemplo"), { key: "Escape" });
+    await waitFor(() => expect(mocks.contatos.mock.calls.length).toBeGreaterThan(antes));
+  });
 });

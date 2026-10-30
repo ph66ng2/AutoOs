@@ -241,7 +241,11 @@ export function PortalClienteProvider({ equipamento, sinalPortal, children }: Pr
       {equipamento.cliente_id ? (
         <AcessoPortalDialog
           open={acessoAberto}
-          onOpenChange={setAcessoAberto}
+          onOpenChange={(aberto) => {
+            setAcessoAberto(aberto);
+            // A tela de contatos salva sem avisar o provedor; ao fechar, recarrega o resumo de acesso.
+            if (!aberto) setContatosVersao((versao) => versao + 1);
+          }}
           clienteId={equipamento.cliente_id}
           empresaId={equipamento.empresa_id}
           telaInicial={acessoTela}
