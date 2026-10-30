@@ -1,4 +1,4 @@
-import { act, render, screen, waitFor } from "@testing-library/react";
+import { act, render, screen, waitFor, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import PublicStatusPage, { latestAcceptedPublicStatus } from "./PublicStatusPage";
 import { buscarStatusPublico } from "./api";
@@ -87,6 +87,28 @@ describe("PublicStatusPage", () => {
     expect(await screen.findByRole("heading", { name: "Equipamento entregue" })).toBeInTheDocument();
     expect(screen.queryByRole("heading", { name: staleTitle })).not.toBeInTheDocument();
     expect(latestAcceptedPublicStatus.title).toBe("Equipamento entregue");
+  });
+
+  it("mostra o endereço para retirada quando a resposta traz retirada", async () => {
+    vi.mocked(buscarStatusPublico).mockResolvedValue({
+      ...response("Equipamento pronto para retirada"),
+      retirada: { nome: "BMI Tag", endereco: "Rua A, 10", mapsUrl: null },
+    });
+
+    render(<PublicStatusPage />);
+
+    const regiao = await screen.findByRole("region", { name: "Endereço para retirada" });
+    expect(within(regiao).getByRole("link", { name: "Como chegar" })).toBeInTheDocument();
+    expect(within(regiao).getByRole("button", { name: "Compartilhar endereço" })).toBeInTheDocument();
+  });
+
+  it("não mostra o endereço para retirada quando a resposta não traz retirada", async () => {
+    vi.mocked(buscarStatusPublico).mockResolvedValue(response("Estamos analisando seu equipamento"));
+
+    render(<PublicStatusPage />);
+
+    await screen.findByRole("heading", { name: "Estamos analisando seu equipamento" });
+    expect(screen.queryByRole("region", { name: "Endereço para retirada" })).not.toBeInTheDocument();
   });
 
   it("remove o listener de hashchange ao desmontar", async () => {

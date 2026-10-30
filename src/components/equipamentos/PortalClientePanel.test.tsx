@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { PortalClienteBotao } from "@/components/equipamentos/PortalClienteBotao";
 import { PortalClienteProvider } from "@/components/equipamentos/portal-cliente-context";
-import type { DecisaoOrcamentoInfo, Equipamento } from "@/types";
+import type { Cliente, DecisaoOrcamentoInfo, Equipamento } from "@/types";
 
 const mocks = vi.hoisted(() => ({
   obter: vi.fn(),
@@ -11,6 +11,7 @@ const mocks = vi.hoisted(() => ({
   contatos: vi.fn(),
   tratar: vi.fn(),
   linkInfo: vi.fn(),
+  cliente: vi.fn(),
 }));
 
 vi.mock("@/lib/db", () => ({
@@ -19,7 +20,7 @@ vi.mock("@/lib/db", () => ({
     publicarOrcamentoPortal: mocks.publicar,
     listarClienteContatos: mocks.contatos,
     marcarSolicitacaoOrcamentoTratada: mocks.tratar,
-    buscarCliente: vi.fn().mockResolvedValue(null),
+    buscarCliente: mocks.cliente,
     abrirUrl: vi.fn(),
   },
 }));
@@ -30,6 +31,13 @@ vi.mock("@/hooks/useSensitiveAccess", () => ({
 vi.mock("@/components/equipamentos/PublicStatusLinkDialog", () => ({
   PublicStatusLinkDialog: ({ open }: { open: boolean }) => (open ? <p>Diálogo do link sem login aberto</p> : null),
 }));
+
+// O painel de contatos tem testes próprios; aqui só importa abri-lo a partir da OS.
+vi.mock("@/components/clientes/ClienteContatosPanel", () => ({
+  ClienteContatosPanel: ({ cliente }: { cliente: Cliente }) => <p>Painel de contatos de {cliente.nome}</p>,
+}));
+
+const cliente = { id: 2, empresa_id: 1, nome: "Gráfica Exemplo", tipo_pessoa: "PJ", documento: "11222333000181" } as Cliente;
 
 const equipamento = {
   id: 7, status: "AGUARDANDO_APROVACAO", atualizado_em: "t1", marca: "HP", modelo: "M404", cliente_id: 2, empresa_id: 1,
@@ -59,6 +67,7 @@ describe("PortalClientePanel", () => {
     vi.clearAllMocks();
     mocks.ensure.mockResolvedValue(true);
     mocks.contatos.mockResolvedValue([]);
+    mocks.cliente.mockResolvedValue(cliente);
   });
 
   it("mostra a situação da publicação: versão, data e validade", async () => {
@@ -100,7 +109,8 @@ describe("PortalClientePanel", () => {
       id: 5, empresa_id: 1, cliente_id: 2, nome: "Ana Souza", ativo: true, portal_acesso: "DECIDIR", portal_senha_definida_em: "2026-10-16T10:00:00Z",
     }]);
     const painel = await abrirPainel();
-    expect(await within(painel).findByText("Ana Souza")).toBeInTheDocument();
+    const quemResponde = within(painel).getByRole("region", { name: "Quem responde" });
+    expect(await within(quemResponde).findByText("Ana Souza")).toBeInTheDocument();
     expect(within(painel).getByRole("button", { name: /Gerenciar acesso/ })).toBeInTheDocument();
   });
 
@@ -141,5 +151,38 @@ describe("PortalClientePanel", () => {
     expect(within(painel).getByText(/já passou da etapa de aprovação/)).toBeInTheDocument();
     expect(within(painel).queryByText(/publique uma nova versão/)).not.toBeInTheDocument();
     expect(within(painel).queryByRole("button", { name: "Publicar no Portal do Cliente" })).not.toBeInTheDocument();
+  });
+
+  it("mostra o login do portal formatado e copia para a área de transferência", async () => {
+    const escrever = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, "clipboard", { value: { writeText: escrever }, configurable: true });
+    mocks.obter.mockResolvedValue(info());
+    const painel = await abrirPainel();
+    const secao = within(painel).getByRole("region", { name: "Acesso ao portal" });
+    expect(await within(secao).findByText("11.222.333/0001-81")).toBeInTheDocument();
+    fireEvent.click(within(secao).getByRole("button", { name: "Copiar" }));
+    await waitFor(() => expect(escrever).toHaveBeenCalledWith("11.222.333/0001-81"));
+  });
+
+  it("lista quem responde e quem só acompanha, com a situação da senha e sem mostrar senha", async () => {
+    mocks.obter.mockResolvedValue(info());
+    mocks.contatos.mockResolvedValue([
+      { id: 5, empresa_id: 1, cliente_id: 2, nome: "Ana Souza", ativo: true, portal_acesso: "DECIDIR", portal_senha_definida_em: "2026-10-16T10:00:00Z" },
+      { id: 6, empresa_id: 1, cliente_id: 2, nome: "Bruno Lima", ativo: true, portal_acesso: "ACOMPANHAR" },
+    ]);
+    const painel = await abrirPainel();
+    const lista = await within(painel).findByRole("list", { name: "Contatos com acesso" });
+    expect(within(lista).getByText("Aprovar e recusar")).toBeInTheDocument();
+    expect(within(lista).getByText("Senha criada")).toBeInTheDocument();
+    expect(within(lista).getByText("Só acompanhar")).toBeInTheDocument();
+    expect(within(lista).getByText("Sem senha")).toBeInTheDocument();
+  });
+
+  it("Gerenciar em Contatos abre o diálogo de acesso direto na tela de contatos", async () => {
+    mocks.obter.mockResolvedValue(info());
+    const painel = await abrirPainel();
+    const secao = within(painel).getByRole("region", { name: "Acesso ao portal" });
+    fireEvent.click(within(secao).getByRole("button", { name: "Gerenciar em Contatos" }));
+    expect(await screen.findByText("Painel de contatos de Gráfica Exemplo")).toBeInTheDocument();
   });
 });

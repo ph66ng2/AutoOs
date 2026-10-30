@@ -7,10 +7,14 @@ import type { EtapaAtendimento } from "./portal-api";
  */
 export const STEPS = ["Recebido", "Em verificação", "Aguardando aprovação", "Aprovado", "Pronto", "Entregue"] as const;
 
+export const TITULO_EM_PREPARACAO = "Orçamento em preparação";
+export const ORIENTACAO_EM_PREPARACAO = "A equipe está preparando o orçamento. Assim que ele for publicado, aparece aqui.";
+
 export const TITLE_STAGE: Record<string, { index: number; tone: string; deviation?: string }> = {
   "Recebemos seu equipamento": { index: 0, tone: "blue" },
   "Estamos analisando seu equipamento": { index: 1, tone: "indigo" },
   "Análise concluída": { index: 1, tone: "indigo" },
+  [TITULO_EM_PREPARACAO]: { index: 2, tone: "indigo" },
   "O orçamento aguarda sua resposta": { index: 2, tone: "amber" },
   "O prazo do orçamento terminou": { index: 2, tone: "amber" },
   "Orçamento aprovado": { index: 3, tone: "teal" },

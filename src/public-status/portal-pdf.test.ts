@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { DetalheAtendimento } from "./portal-api";
-import { formatarDocumento, gerarPdf, modeloComprovanteEntrega, modeloOrcamento } from "./portal-pdf";
+import { formatarDocumento, gerarPdf, modeloComprovanteEntrega, modeloOrcamento, modeloOrdemServico } from "./portal-pdf";
 
 const doc = vi.hoisted(() => ({
   internal: { pageSize: { getWidth: () => 210, getHeight: () => 297 } },
@@ -62,6 +62,25 @@ describe("comprovante de entrega", () => {
     expect(t).toMatch(/420,00/);
     expect(t).toMatch(/Valor orçado: R\$.*350,00/);
     expect(t).toContain("Entregue em");
+  });
+});
+
+describe("modelo da ordem de serviço", () => {
+  it("traz número, equipamento, CNPJ, defeito e andamento", () => {
+    const t = texto(modeloOrdemServico(detalhe()));
+    for (const parte of ["OS-00028", "SER-1", "11.222.333/0001-81", "Não imprime", "Andamento"]) {
+      expect(t).toContain(parte);
+    }
+  });
+
+  it("sem orçamento e em RECEBIDO não traz serviços aprovados", () => {
+    const t = texto(modeloOrdemServico(detalhe({ status: "RECEBIDO", orcamento: null })));
+    expect(t).not.toContain("Serviços aprovados");
+  });
+
+  it("com APROVADO traz os serviços aprovados", () => {
+    const t = texto(modeloOrdemServico(detalhe({ status: "APROVADO" })));
+    expect(t).toContain("Troca do fusor");
   });
 });
 

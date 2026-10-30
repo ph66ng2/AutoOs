@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import PortalOrcamento from "./PortalOrcamento";
 import { PortalError, portalApi, shortDate, type ContatoEmpresa, type DetalheAtendimento } from "./portal-api";
 import { navigate, type PortalSession } from "./portal-session";
-import { formatDate, StatusView } from "./StatusView";
+import { formatDate, ORIENTACAO_EM_PREPARACAO, StatusView, TITULO_EM_PREPARACAO } from "./StatusView";
 import PortalFotos from "./PortalFotos";
 import PortalHistorico from "./PortalHistorico";
 import { DestaqueConcluido, DestaqueProntoRetirada, DocumentosCard, LinhaValorAtualizado, NotaValorAtualizado } from "./PortalDestaques";
@@ -107,6 +107,7 @@ export default function PortalDetalhe({ session, equipamentoId, onExpirou }: Pro
           const resposta = data.orcamento?.resposta;
           const emDecisao = data.status === "AGUARDANDO_APROVACAO" && data.orcamento?.estado === "ABERTA" && !(resposta && resposta.decisao !== "DESFEITA");
           const concluido = data.status === "ENTREGUE";
+          const preparando = data.status === "AGUARDANDO_APROVACAO" && !data.orcamento;
           const galeriaLateral = emDecisao || concluido || data.status === "PRONTO";
           const galeria = fotos.length > 0 && <PortalFotos fotos={fotos} equipamento={data.equipamento} destaque={emDecisao} />;
           return (
@@ -116,8 +117,8 @@ export default function PortalDetalhe({ session, equipamentoId, onExpirou }: Pro
               <div className="portal-detail-main">
                 <StatusView
                   equipamento={data.equipamento}
-                  titulo={data.titulo}
-                  orientacao={data.orientacao}
+                  titulo={preparando ? TITULO_EM_PREPARACAO : data.titulo}
+                  orientacao={preparando ? ORIENTACAO_EM_PREPARACAO : data.orientacao}
                   statusAlteradoEm={data.statusAlteradoEm}
                   compacto
                   etapas={data.etapas}

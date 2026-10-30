@@ -48,6 +48,24 @@ function blocosEquipamento(detalhe: DetalheAtendimento): Bloco[] {
   return blocos;
 }
 
+type OrcamentoDetalhe = NonNullable<DetalheAtendimento["orcamento"]>;
+
+function blocosServicosEPecas(orc: OrcamentoDetalhe): Bloco[] {
+  const blocos: Bloco[] = [];
+  for (const servico of orc.servicos) {
+    blocos.push({
+      tipo: "linha",
+      esquerda: servico.descricao,
+      direita: money(servico.valor),
+      detalhes: servico.pecas.map((p) => `${p.quantidade} x ${p.nome} - ${money(p.valorUnitario)} cada`),
+    });
+  }
+  for (const peca of orc.pecas) {
+    blocos.push({ tipo: "linha", esquerda: `${peca.quantidade} x ${peca.nome}`, direita: money(peca.valorTotal) });
+  }
+  return blocos;
+}
+
 export function modeloOrcamento(detalhe: DetalheAtendimento): ModeloDocumento | null {
   const orc = detalhe.orcamento;
   if (!orc) return null;
@@ -62,17 +80,7 @@ export function modeloOrcamento(detalhe: DetalheAtendimento): ModeloDocumento | 
     blocos.push({ tipo: "campo", rotulo: "Válido até", valor: shortDate(new Date(new Date(orc.validoAte).getTime() - 1).toISOString()) });
   }
   blocos.push({ tipo: "secao", texto: "Serviços e peças" });
-  for (const servico of orc.servicos) {
-    blocos.push({
-      tipo: "linha",
-      esquerda: servico.descricao,
-      direita: money(servico.valor),
-      detalhes: servico.pecas.map((p) => `${p.quantidade} x ${p.nome} - ${money(p.valorUnitario)} cada`),
-    });
-  }
-  for (const peca of orc.pecas) {
-    blocos.push({ tipo: "linha", esquerda: `${peca.quantidade} x ${peca.nome}`, direita: money(peca.valorTotal) });
-  }
+  blocos.push(...blocosServicosEPecas(orc));
   blocos.push({ tipo: "total", rotulo: "Total do orçamento", valor: money(orc.valorTotal) });
 
   const final = detalhe.valores?.final ?? null;
@@ -91,6 +99,44 @@ export function modeloOrcamento(detalhe: DetalheAtendimento): ModeloDocumento | 
     if (resposta.ordemCompra) blocos.push({ tipo: "campo", rotulo: "Ordem de compra", valor: resposta.ordemCompra });
   }
   return { titulo: "Orçamento", arquivo: `orcamento-${detalhe.id}-v${orc.versao}.pdf`, blocos };
+}
+
+const STATUS_COM_SERVICOS_APROVADOS = new Set(["APROVADO", "EM_MANUTENCAO", "AGUARDANDO_PECA", "PRONTO", "ENTREGUE"]);
+
+const ETAPA_ROTULO: Record<string, string> = {
+  RECEBIDO: "Recebido",
+  EM_VERIFICACAO: "Em verificação",
+  VERIFICADO: "Verificado",
+  AGUARDANDO_APROVACAO: "Aguardando aprovação",
+  APROVADO: "Aprovado",
+  REPROVADO: "Reprovado",
+  EM_MANUTENCAO: "Em manutenção",
+  AGUARDANDO_PECA: "Aguardando peça",
+  PRONTO: "Pronto",
+  ENTREGUE: "Entregue",
+};
+
+/** Ordem de serviço: sempre gera um modelo; os serviços aprovados aparecem só quando já há aprovação. */
+export function modeloOrdemServico(detalhe: DetalheAtendimento): ModeloDocumento {
+  const orc = detalhe.orcamento;
+  const blocos: Bloco[] = [
+    { tipo: "secao", texto: "Ordem de serviço" },
+    { tipo: "campo", rotulo: "Número", valor: `OS-${String(detalhe.id).padStart(5, "0")}` },
+    { tipo: "campo", rotulo: "Situação", valor: detalhe.titulo },
+    ...blocosEquipamento(detalhe),
+    { tipo: "secao", texto: "Defeito relatado" },
+    { tipo: "nota", texto: detalhe.defeitoRelatado?.trim() || "Não informado." },
+  ];
+  if (orc && STATUS_COM_SERVICOS_APROVADOS.has(detalhe.status)) {
+    blocos.push({ tipo: "secao", texto: "Serviços aprovados" });
+    blocos.push(...blocosServicosEPecas(orc));
+    blocos.push({ tipo: "total", rotulo: "Valor do atendimento", valor: money(detalhe.valores?.atual ?? orc.valorTotal) });
+  }
+  blocos.push({ tipo: "secao", texto: "Andamento" });
+  for (const etapa of detalhe.etapas ?? []) {
+    blocos.push({ tipo: "campo", rotulo: ETAPA_ROTULO[etapa.status] ?? etapa.status, valor: dateTime(etapa.em) });
+  }
+  return { titulo: "Ordem de serviço", arquivo: `ordem-servico-${detalhe.id}.pdf`, blocos };
 }
 
 export function modeloComprovanteEntrega(detalhe: DetalheAtendimento): ModeloDocumento | null {
