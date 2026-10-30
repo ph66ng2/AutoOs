@@ -10,7 +10,7 @@ O cliente responde ao orçamento por um link próprio. A resposta é **registrad
 
 - Abrir o link ou tocar uma vez nunca decide nada: a página repete valor e ação e pede confirmação.
 - O cliente vê uma **versão congelada** do orçamento. Editar o orçamento, a verificação, o prazo ou a etapa do equipamento encerra a versão e revoga seus links; o cliente nunca aprova valores que não viu.
-- Até a equipe aplicar, o cliente pode **desfazer ou alterar** a resposta pelo link. Cada mudança entra no histórico; nada é apagado. A equipe só aplica uma resposta do portal depois de **pelo menos 15 minutos** (`janela_correcao_minutos`, mínimo 15) desde a última resposta.
+- Até a equipe aplicar, o cliente pode **desfazer ou alterar** a resposta pelo link. Cada mudança entra no histórico; nada é apagado. A equipe só aplica uma resposta do portal depois de **pelo menos 10 minutos** (`janela_correcao_minutos`, mínimo 10 desde a 0043) desde a última resposta.
 - Resposta dada por telefone ou WhatsApp é aplicada direto pelos botões Aprovar/Reprovar do equipamento (PIN + `FINANCIAL_ACTIONS`, registrado na auditoria). A mudança de status encerra a versão e o link público. Não há etapa intermediária de “decisão informada”.
 - A primeira versão aceita ou recusa o **orçamento inteiro**. Escolha de serviços individuais fica para uma etapa posterior.
 - Depois que a equipe aplica a decisão, o link deixa de aceitar respostas, mas continua aberto (até expirar) para mostrar o resultado e receber um **pedido de mudança**. O pedido apenas avisa a equipe: não cancela serviço nem devolve peça.
