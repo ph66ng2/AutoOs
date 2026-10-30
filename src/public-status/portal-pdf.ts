@@ -116,6 +116,20 @@ const ETAPA_ROTULO: Record<string, string> = {
   ENTREGUE: "Entregue",
 };
 
+/**
+ * ENTREGUE também é alcançável a partir de REPROVADO (devolução sem conserto), então lá a aprovação
+ * precisa constar nas etapas e não pode ser anterior a uma reprovação.
+ */
+function houveAprovacao(detalhe: DetalheAtendimento): boolean {
+  if (!STATUS_COM_SERVICOS_APROVADOS.has(detalhe.status)) return false;
+  if (detalhe.status !== "ENTREGUE") return true;
+  const em = (status: string) => detalhe.etapas?.find((etapa) => etapa.status === status)?.em ?? null;
+  const aprovado = em("APROVADO");
+  const reprovado = em("REPROVADO");
+  if (!aprovado) return false;
+  return !reprovado || new Date(aprovado).getTime() >= new Date(reprovado).getTime();
+}
+
 /** Ordem de serviço: sempre gera um modelo; os serviços aprovados aparecem só quando já há aprovação. */
 export function modeloOrdemServico(detalhe: DetalheAtendimento): ModeloDocumento {
   const orc = detalhe.orcamento;
@@ -127,7 +141,7 @@ export function modeloOrdemServico(detalhe: DetalheAtendimento): ModeloDocumento
     { tipo: "secao", texto: "Defeito relatado" },
     { tipo: "nota", texto: detalhe.defeitoRelatado?.trim() || "Não informado." },
   ];
-  if (orc && STATUS_COM_SERVICOS_APROVADOS.has(detalhe.status)) {
+  if (orc && houveAprovacao(detalhe)) {
     blocos.push({ tipo: "secao", texto: "Serviços aprovados" });
     blocos.push(...blocosServicosEPecas(orc));
     blocos.push({ tipo: "total", rotulo: "Valor do atendimento", valor: money(detalhe.valores?.atual ?? orc.valorTotal) });

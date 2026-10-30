@@ -82,6 +82,35 @@ describe("modelo da ordem de serviço", () => {
     const t = texto(modeloOrdemServico(detalhe({ status: "APROVADO" })));
     expect(t).toContain("Troca do fusor");
   });
+
+  it("entregue após reprovação não traz serviços como aprovados", () => {
+    const etapas = [
+      { status: "AGUARDANDO_APROVACAO", em: "2026-10-14T12:00:00Z" },
+      { status: "REPROVADO", em: "2026-10-15T12:00:00Z" },
+      { status: "ENTREGUE", em: "2026-10-16T12:00:00Z" },
+    ];
+    const t = texto(modeloOrdemServico(detalhe({ status: "ENTREGUE", etapas })));
+    expect(t).not.toContain("Serviços aprovados");
+  });
+
+  it("entregue com aprovação traz os serviços aprovados", () => {
+    const etapas = [
+      { status: "APROVADO", em: "2026-10-15T12:00:00Z" },
+      { status: "ENTREGUE", em: "2026-10-20T12:00:00Z" },
+    ];
+    const t = texto(modeloOrdemServico(detalhe({ status: "ENTREGUE", etapas })));
+    expect(t).toContain("Serviços aprovados");
+  });
+
+  it("reprovado, nova proposta aprovada e entregue traz os serviços aprovados", () => {
+    const etapas = [
+      { status: "REPROVADO", em: "2026-10-15T12:00:00Z" },
+      { status: "APROVADO", em: "2026-10-17T12:00:00Z" },
+      { status: "ENTREGUE", em: "2026-10-20T12:00:00Z" },
+    ];
+    const t = texto(modeloOrdemServico(detalhe({ status: "ENTREGUE", etapas })));
+    expect(t).toContain("Serviços aprovados");
+  });
 });
 
 describe("gerarPdf", () => {
