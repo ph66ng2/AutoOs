@@ -706,8 +706,14 @@ BEGIN
     PERFORM pg_temp.ok(status_publico_retirada(v_hash_exp) IS NULL, 'link expirado: sem endereço');
     PERFORM pg_temp.ok(status_publico_retirada(repeat('0', 64)) IS NULL, 'hash desconhecido: sem endereço');
 
-    PERFORM pg_temp.ok(NOT has_function_privilege('anon', 'public.status_publico_retirada(text)', 'EXECUTE'), 'anon sem acesso ao endereço');
-    PERFORM pg_temp.ok(has_function_privilege('service_role', 'public.status_publico_retirada(text)', 'EXECUTE'), 'service_role lê o endereço');
+    PERFORM pg_temp.ok(NOT has_function_privilege('public', 'public.status_publico_retirada(text)', 'EXECUTE'), 'PUBLIC sem acesso ao endereço');
+    -- Papéis do Supabase não existem no Postgres puro do CI.
+    IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'anon') THEN
+        PERFORM pg_temp.ok(NOT has_function_privilege('anon', 'public.status_publico_retirada(text)', 'EXECUTE'), 'anon sem acesso ao endereço');
+    END IF;
+    IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'service_role') THEN
+        PERFORM pg_temp.ok(has_function_privilege('service_role', 'public.status_publico_retirada(text)', 'EXECUTE'), 'service_role lê o endereço');
+    END IF;
 END $$;
 
 SELECT 'portal_cliente_contract: OK' AS resultado;
