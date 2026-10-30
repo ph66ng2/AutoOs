@@ -927,7 +927,7 @@ pub async fn obter_estado_portal() -> Result<EstadoPortal, String> {
                AND r.aplicada_em IS NULL AND r.efetivacao_falhou_em IS NULL AND v.encerrada_em IS NULL
                AND NOT EXISTS (SELECT 1 FROM orcamento_respostas n WHERE n.versao_id = r.versao_id AND n.id > r.id)
                AND r.registrada_em < NOW() - make_interval(mins => GREATEST(
-                   COALESCE((SELECT janela_correcao_minutos FROM orcamento_aceite_config WHERE singleton), 15), 15) + 5))",
+                   COALESCE((SELECT janela_correcao_minutos FROM orcamento_aceite_config WHERE singleton), 10), 10) + 5))",
     )
     .bind(empresa_id)
     .fetch_one(&pool)

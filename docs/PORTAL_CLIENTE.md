@@ -14,7 +14,7 @@ Usa as versões e respostas de orçamento das migrations 0031–0032 (`docs/ACEI
 3. **Detalhe.** A tela pública de status (`StatusView`: logo, etapa com pulso, linha do tempo, data) + orçamento publicado (versão, itens, total, validade) + pedidos enviados + cartão de contato.
 4. **Responder.** Aceitar ou recusar o **orçamento inteiro** (sem aprovação parcial). Recusar passa antes por "Tem certeza que quer recusar?", que só oferece o contato da equipe ("Qualquer dúvida, entre em contato conosco") e "Recusar mesmo assim". Aceitar/recusar exige confirmação com impressora e valor e uma verificação feita há menos de 10 minutos (senão o portal pede a senha de novo). O comprovante tem protocolo `R-<id>`.
 5. **WhatsApp opcional.** Depois de registrar, o portal oferece a mensagem pronta (`wa.me`) e “Copiar mensagem”. O registro e o alerta já existem; fechar o WhatsApp não perde nada.
-6. **Mudei de ideia.** Por 15 minutos (`orcamento_aceite_config.janela_correcao_minutos`, mínimo 15) quem respondeu pode trocar ou cancelar. A equipe vê “resposta recebida, em prazo de correção” e o desktop recusa aplicar nesse período.
+6. **Mudei de ideia.** Por 10 minutos (`orcamento_aceite_config.janela_correcao_minutos`, mínimo 10 desde a 0043; era 15) quem respondeu pode trocar ou cancelar. A equipe vê “resposta recebida, em prazo de correção” e o desktop recusa aplicar nesse período.
 7. **Efetivação.** Terminado o prazo, `portal_efetivar_respostas_vencidas` aplica APROVADO/REPROVADO numa transação com as regras de `aprovar_orcamento`. Se não conseguir, a resposta fica pendente, a equipe recebe alerta e o cliente vê “precisa ser confirmada pela equipe” — nunca uma aprovação falsa. Depois de efetivada, o botão vira **Solicitar correção** (pedido ao operador; não desfaz peças nem trabalho).
 8. **Sem negociação no portal.** Decisão do produto: o portal não oferece nem sugere negociação (sem botão, texto ou mensagem pronta). Quem quiser conversar usa o contato geral da equipe. Os pedidos antigos `orcamento_solicitacoes.tipo = NEGOCIAR` continuam no banco e no histórico, mas a função do portal recusa pedido novo desse tipo. Se a equipe mudar valores, altera o orçamento e clica em **Publicar no Portal do Cliente**: nasce uma nova versão e a anterior deixa de aceitar respostas.
 
@@ -32,7 +32,7 @@ Usa as versões e respostas de orçamento das migrations 0031–0032 (`docs/ACEI
 2. **Finalizar Verificação** → `AGUARDANDO_APROVACAO` e o WhatsApp informativo automático. O envio congela a versão do orçamento, e versão aberta = orçamento visível no portal. Se o WhatsApp não saiu ou o orçamento mudou, use **Publicar no Portal do Cliente** nos detalhes do equipamento.
 3. O cliente entra, confere e **aceita** ou **recusa**.
 4. No AutoOS: aviso azul “Aceite recebido — confirma às HH:MM”, o equipamento sobe na lista e o quadro do orçamento fica âmbar. **Não comece o serviço antes do horário**: o cliente ainda pode desfazer.
-5. Passados 15 minutos, o servidor efetiva sozinho (status, pagamento “a combinar” se vazio, baixa de estoque) e chega o aviso verde “Orçamento aprovado pelo cliente”. Daí em diante o fluxo é o de sempre (manutenção → pronto → entrega), e o cliente vê as etapas no portal.
+5. Passados 10 minutos, o servidor efetiva sozinho (status, pagamento “a combinar” se vazio, baixa de estoque) e chega o aviso verde “Orçamento aprovado pelo cliente”. Daí em diante o fluxo é o de sempre (manutenção → pronto → entrega), e o cliente vê as etapas no portal.
 
 **Exceções:**
 
