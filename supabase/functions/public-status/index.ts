@@ -340,12 +340,41 @@ Deno.serve(async (request: Request) => {
     cleanLabel(equipment.modelo, ""),
   ].filter(Boolean).join(" ").slice(0, 180);
 
-  return jsonResponse({
+  const payload: Record<string, unknown> = {
     equipamento: equipmentName || "Equipamento",
     titulo: copy.title,
     orientacao: copy.orientation,
     statusAlteradoEm: equipment.status_alterado_em,
-  }, 200, origin);
+  };
+
+  if (equipment.status === "PRONTO") {
+    try {
+      const retiradaResponse = await fetch(`${supabaseUrl}/rest/v1/rpc/status_publico_retirada`, {
+        method: "POST",
+        headers: serviceHeaders(serverKey),
+        body: JSON.stringify({ p_token_hash: tokenHash }),
+      });
+      const retirada = retiradaResponse.ok ? await readJson<Record<string, unknown>>(retiradaResponse) : null;
+      if (retirada && typeof retirada === "object" && !Array.isArray(retirada)) {
+        const endereco = typeof retirada.endereco === "string" ? retirada.endereco : "";
+        const mapsUrl = typeof retirada.mapsUrl === "string" ? retirada.mapsUrl : "";
+        if (endereco.trim()) {
+          payload.retirada = {
+            nome: cleanLabel(typeof retirada.nome === "string" ? retirada.nome : null, "Empresa"),
+            endereco: endereco.slice(0, 300),
+            mapsUrl: /^https:\/\//.test(mapsUrl) ? mapsUrl : null,
+          };
+        }
+      } else if (!retiradaResponse.ok) {
+        // NULL com 200 é normal (fora de PRONTO ou empresa sem endereço); só falha do RPC vai ao log.
+        console.error("public_status_retirada_unavailable", retiradaResponse.status);
+      }
+    } catch {
+      console.error("public_status_retirada_unavailable", 0);
+    }
+  }
+
+  return jsonResponse(payload, 200, origin);
 });
 
 export {};

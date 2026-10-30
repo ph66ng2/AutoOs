@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { money, type DetalheAtendimento } from "./portal-api";
-import { gerarPdf, modeloComprovanteEntrega, modeloOrcamento, valoresDeEntrega, valoresDiferem, type ModeloDocumento } from "./portal-pdf";
+import { EnderecoRetirada } from "./EnderecoRetirada";
+import { gerarPdf, modeloComprovanteEntrega, modeloOrcamento, modeloOrdemServico, valoresDeEntrega, valoresDiferem, type ModeloDocumento } from "./portal-pdf";
 
 /** Status em que o orçamento já foi aprovado (o valor pode ter sido ajustado pela equipe depois). */
 const POS_APROVACAO = new Set(["APROVADO", "EM_MANUTENCAO", "AGUARDANDO_PECA", "PRONTO", "ENTREGUE"]);
@@ -29,13 +30,7 @@ export function LinhaValorAtualizado({ detalhe }: { detalhe: DetalheAtendimento 
   return <p className="portal-valor-linha">Valor atualizado pela equipe: <strong>{money(v.atual)}</strong></p>;
 }
 
-export function mapaEmbedUrl(endereco: string) {
-  return `https://www.google.com/maps?q=${encodeURIComponent(endereco)}&output=embed`;
-}
-
-export function mapaLinkUrl(endereco: string, mapsUrl: string | null) {
-  return mapsUrl || `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(endereco)}`;
-}
+export { mapaEmbedUrl, mapaLinkUrl } from "./EnderecoRetirada";
 
 /** Pronto para retirada: endereço, mapa e valor. */
 export function DestaqueProntoRetirada({ detalhe }: { detalhe: DetalheAtendimento }) {
@@ -52,24 +47,7 @@ export function DestaqueProntoRetirada({ detalhe }: { detalhe: DetalheAtendiment
       )}
       {atualizado && <p className="portal-valor-nota">Valor atualizado pela equipe (orçamento aprovado: {money(atualizado.aprovado)})</p>}
       {endereco && contato && (
-        <>
-          <address className="portal-endereco">
-            <strong>{contato.nome}</strong>
-            <span>{endereco}</span>
-            {contato.horario && <span className="answer-hint">{contato.horario}</span>}
-          </address>
-          <iframe
-            className="portal-mapa"
-            title={`Mapa: ${endereco}`}
-            src={mapaEmbedUrl(endereco)}
-            loading="lazy"
-            referrerPolicy="no-referrer"
-            allowFullScreen={false}
-          />
-          <a className="secondary-button portal-link-button" href={mapaLinkUrl(endereco, contato.mapsUrl)} target="_blank" rel="noopener noreferrer">
-            Abrir no Google Maps
-          </a>
-        </>
+        <EnderecoRetirada nome={contato.nome} endereco={endereco} horario={contato.horario} mapsUrl={contato.mapsUrl} />
       )}
     </section>
   );
@@ -96,7 +74,9 @@ export function DocumentosCard({ detalhe, destaque = false }: { detalhe: Detalhe
   const [gerando, setGerando] = useState<string | null>(null);
   const [erro, setErro] = useState<string | null>(null);
 
-  const docs: Array<{ chave: string; rotulo: string; modelo: ModeloDocumento }> = [];
+  const docs: Array<{ chave: string; rotulo: string; modelo: ModeloDocumento }> = [
+    { chave: "os", rotulo: "Ordem de serviço (PDF)", modelo: modeloOrdemServico(detalhe) },
+  ];
   const orcamento = modeloOrcamento(detalhe);
   if (orcamento) docs.push({ chave: "orcamento", rotulo: "Orçamento (PDF)", modelo: orcamento });
   const comprovante = modeloComprovanteEntrega(detalhe);

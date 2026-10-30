@@ -40,6 +40,7 @@ export type PortalClienteValor = {
   tratarSolicitacao: (id: number) => void;
   abrirPainel: () => void;
   abrirAcesso: () => void;
+  abrirContatos: () => void;
 };
 
 const PortalClienteContext = createContext<PortalClienteValor | null>(null);
@@ -76,6 +77,7 @@ export function PortalClienteProvider({ equipamento, sinalPortal, children }: Pr
   const [consultado, setConsultado] = useState<number | null>(null);
   const [painelAberto, setPainelAberto] = useState(false);
   const [acessoAberto, setAcessoAberto] = useState(false);
+  const [acessoTela, setAcessoTela] = useState<"acesso" | "contatos">("acesso");
   const [prorrogarAberto, setProrrogarAberto] = useState(false);
   const [envioManual, setEnvioManual] = useState<EnvioManualOrcamento | null>(null);
   const [contatosVersao, setContatosVersao] = useState(0);
@@ -211,7 +213,14 @@ export function PortalClienteProvider({ equipamento, sinalPortal, children }: Pr
       publicar,
       tratarSolicitacao,
       abrirPainel: () => setPainelAberto(true),
-      abrirAcesso: () => setAcessoAberto(true),
+      abrirAcesso: () => {
+        setAcessoTela("acesso");
+        setAcessoAberto(true);
+      },
+      abrirContatos: () => {
+        setAcessoTela("contatos");
+        setAcessoAberto(true);
+      },
     };
   }, [equipamento, equipamentoId, info, loading, busy, error, consultado, contatosVersao, carregar, publicar, tratarSolicitacao]);
 
@@ -232,9 +241,14 @@ export function PortalClienteProvider({ equipamento, sinalPortal, children }: Pr
       {equipamento.cliente_id ? (
         <AcessoPortalDialog
           open={acessoAberto}
-          onOpenChange={setAcessoAberto}
+          onOpenChange={(aberto) => {
+            setAcessoAberto(aberto);
+            // A tela de contatos salva sem avisar o provedor; ao fechar, recarrega o resumo de acesso.
+            if (!aberto) setContatosVersao((versao) => versao + 1);
+          }}
           clienteId={equipamento.cliente_id}
           empresaId={equipamento.empresa_id}
+          telaInicial={acessoTela}
           responsavelContatoId={equipamento.responsavel_contato_id}
           onAlterado={() => setContatosVersao((versao) => versao + 1)}
         />

@@ -676,5 +676,45 @@ BEGIN
     PERFORM pg_temp.ok(NOT has_column_privilege('service_role', 'public.cliente_contatos', 'portal_senha_hash', 'SELECT'), 'hash fora do alcance da função');
 END $$;
 
+-- ─── Endereço no link público (0044) ─────────────────────────────────────────
+DO $$
+DECLARE
+    v_hash TEXT := repeat('d', 64);
+    v_hash_rev TEXT := repeat('e', 64);
+    v_hash_exp TEXT := repeat('f', 64);
+    v_eq INTEGER := pg_temp.g('eoc')::INTEGER;
+    v_emp INTEGER := pg_temp.g('ea')::INTEGER;
+    r JSONB;
+BEGIN
+    INSERT INTO links_status_publico (empresa_id, equipamento_id, token_hash, criado_em, expira_em)
+        VALUES (v_emp, v_eq, v_hash, statement_timestamp() - INTERVAL '1 hour', statement_timestamp() + INTERVAL '1 day');
+    INSERT INTO links_status_publico (empresa_id, equipamento_id, token_hash, criado_em, expira_em, revogado_em)
+        VALUES (v_emp, v_eq, v_hash_rev, statement_timestamp() - INTERVAL '1 hour', statement_timestamp() + INTERVAL '1 day', statement_timestamp());
+    INSERT INTO links_status_publico (empresa_id, equipamento_id, token_hash, criado_em, expira_em)
+        VALUES (v_emp, v_eq, v_hash_exp, statement_timestamp() - INTERVAL '2 hours', statement_timestamp() - INTERVAL '1 hour');
+
+    UPDATE equipamentos SET status = 'EM_VERIFICACAO' WHERE id = v_eq;
+    PERFORM pg_temp.ok(status_publico_retirada(v_hash) IS NULL, 'fora de PRONTO: sem endereço');
+
+    UPDATE equipamentos SET status = 'PRONTO' WHERE id = v_eq;
+    r := status_publico_retirada(v_hash);
+    PERFORM pg_temp.ok(r IS NOT NULL AND (SELECT array_agg(k ORDER BY k) FROM jsonb_object_keys(r) k) = ARRAY['endereco', 'mapsUrl', 'nome'],
+        'PRONTO: só nome, endereco e mapsUrl');
+    PERFORM pg_temp.ok(r->>'endereco' = 'Rua Teste, 10 - Salvador/BA' AND r->>'nome' = 'BMI TAG Teste'
+        AND r->>'mapsUrl' = 'https://maps.example.invalid/?q=bmitag', 'PRONTO: valores do cartão da empresa');
+    PERFORM pg_temp.ok(status_publico_retirada(v_hash_rev) IS NULL, 'link revogado: sem endereço');
+    PERFORM pg_temp.ok(status_publico_retirada(v_hash_exp) IS NULL, 'link expirado: sem endereço');
+    PERFORM pg_temp.ok(status_publico_retirada(repeat('0', 64)) IS NULL, 'hash desconhecido: sem endereço');
+
+    PERFORM pg_temp.ok(NOT has_function_privilege('public', 'public.status_publico_retirada(text)', 'EXECUTE'), 'PUBLIC sem acesso ao endereço');
+    -- Papéis do Supabase não existem no Postgres puro do CI.
+    IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'anon') THEN
+        PERFORM pg_temp.ok(NOT has_function_privilege('anon', 'public.status_publico_retirada(text)', 'EXECUTE'), 'anon sem acesso ao endereço');
+    END IF;
+    IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'service_role') THEN
+        PERFORM pg_temp.ok(has_function_privilege('service_role', 'public.status_publico_retirada(text)', 'EXECUTE'), 'service_role lê o endereço');
+    END IF;
+END $$;
+
 SELECT 'portal_cliente_contract: OK' AS resultado;
 ROLLBACK;

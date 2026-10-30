@@ -113,6 +113,22 @@ describe("documentos", () => {
     await abrir(detalhe({ status: "ENTREGUE", titulo: "Equipamento entregue", valores: { orcamento: 350, final: 350, atual: 350 } }));
     expect(screen.getByRole("button", { name: "Comprovante de entrega (PDF)" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Orçamento (PDF)" })).toBeInTheDocument();
+    const resumo = screen.getByRole("region", { name: "Resumo da entrega" });
+    expect(within(resumo).getByRole("button", { name: "Ordem de serviço (PDF)" })).toBeInTheDocument();
+  });
+
+  it("mostra a ordem de serviço em AGUARDANDO_APROVACAO e gera o PDF ao tocar", async () => {
+    await abrir(detalhe());
+    fireEvent.click(screen.getByRole("button", { name: "Ordem de serviço (PDF)" }));
+    await waitFor(() => expect(gerarPdf).toHaveBeenCalledTimes(1));
+  });
+});
+
+describe("orçamento em preparação", () => {
+  it("sem orçamento publicado, o título não pede resposta", async () => {
+    await abrir(detalhe({ orcamento: null }));
+    expect(screen.getByRole("heading", { level: 1, name: "Orçamento em preparação" })).toBeInTheDocument();
+    expect(screen.queryByText("O orçamento aguarda sua resposta")).toBeNull();
   });
 });
 
