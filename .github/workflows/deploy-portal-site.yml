@@ -1,0 +1,89 @@
+name: Publicar site do portal
+
+on:
+  push:
+    branches: [master]
+    paths:
+      - 'src/public-status/**'
+      - 'public-status.html'
+      - 'public/**'
+      - 'vite.public-status.config.ts'
+      - 'package.json'
+      - 'package-lock.json'
+      - '.github/workflows/deploy-portal-site.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: autoos-portal-site-deploy
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+      - run: npm ci
+      - run: npx vitest run src/public-status
+      - run: npm run build:public-status
+      - name: Conferir arquivos para publicação
+        run: |
+          test -f dist-public-status/index.html
+          test -f dist-public-status/.htaccess
+      - uses: actions/upload-artifact@v4
+        with:
+          name: portal-site
+          path: dist-public-status/
+          include-hidden-files: true
+          retention-days: 7
+
+  deploy:
+    needs: build
+    if: github.ref == 'refs/heads/master'
+    runs-on: ubuntu-latest
+    environment:
+      name: production-portal-site
+      url: https://status.bmitag.com.br
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: portal-site
+          path: dist-public-status/
+      - name: Conferir artifact
+        run: |
+          test -f dist-public-status/index.html
+          test -f dist-public-status/.htaccess
+      - name: Publicar via FTPS
+        uses: SamKirkland/FTP-Deploy-Action@v4.3.5
+        with:
+          server: ${{ secrets.PORTAL_FTP_HOST }}
+          username: ${{ secrets.PORTAL_FTP_USER }}
+          password: ${{ secrets.PORTAL_FTP_PASSWORD }}
+          protocol: ftps
+          port: 21
+          local-dir: ./dist-public-status/
+          server-dir: ${{ secrets.PORTAL_FTP_DIR }}
+          dangerous-clean-slate: false
+      - name: Conferir versão publicada
+        shell: bash
+        run: |
+          set -euo pipefail
+          script="$(grep -oE 'src="/assets/[^" ]+\.js"' dist-public-status/index.html | head -n 1 | cut -d '"' -f 2)"
+          test -n "$script"
+          for attempt in 1 2 3; do
+            if curl -fsS --max-time 20 https://status.bmitag.com.br/ -o /tmp/portal-live.html \
+              && grep -Fq "$script" /tmp/portal-live.html; then
+              echo "A versão publicada está no ar."
+              exit 0
+            fi
+            if (( attempt < 3 )); then sleep 10; fi
+          done
+          echo "O site ainda não apresenta o script desta versão."
+          exit 1

@@ -65,7 +65,9 @@ Rode:
 npm run build:public-status
 ```
 
-Envie o conteúdo de `dist-public-status/` para a raiz do subdomínio `status.bmitag.com.br`, preservando o arquivo `.htaccess`. Ele redireciona HTTP para HTTPS e aplica os cabeçalhos de segurança. O endereço de API padrão está no projeto Supabase `autoos`; para usar outro, defina `VITE_PUBLIC_STATUS_API_URL` antes do build e ajuste a allowlist CORS da Edge Function.
+O deploy automático pelo workflow `deploy-portal-site.yml` publica `dist-public-status/` no subdomínio após aprovação no ambiente `production-portal-site`. Configure os secrets `PORTAL_FTP_HOST`, `PORTAL_FTP_USER`, `PORTAL_FTP_PASSWORD` e `PORTAL_FTP_DIR` (diretório remoto com barra final; use `/` para uma conta FTP restrita à pasta do subdomínio). O arquivo `.htaccess` acompanha a publicação: ele redireciona HTTP para HTTPS e aplica os cabeçalhos de segurança.
+
+Como plano B, envie manualmente o conteúdo de `dist-public-status/` para a raiz do subdomínio, incluindo `.htaccess`. O endereço de API padrão está no projeto Supabase `autoos`; para usar outro, defina `VITE_PUBLIC_STATUS_API_URL` antes do build e ajuste a allowlist CORS da Edge Function.
 
 O DNS e a hospedagem HostGator de `status.bmitag.com.br` foram configurados em 2026-10-13. Antes de ativar o portal em outro ambiente, confirme o certificado HTTPS e o acesso ao site no domínio definitivo.
 

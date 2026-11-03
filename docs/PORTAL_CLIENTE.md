@@ -225,7 +225,9 @@ select cron.schedule('portal-efetivar-respostas', '* * * * *',
 -- conferir: select status, start_time from cron.job_run_details order by start_time desc limit 5;
 ```
 
-4. Publicar a página (`npm run build:public-status`, enviar `dist-public-status/` com o `.htaccess`). A URL da função pode ser trocada com `VITE_PORTAL_CLIENTE_API_URL`.
+4. Publicar a página pelo workflow `deploy-portal-site.yml` (aprovação em `production-portal-site`), que envia `dist-public-status/` com o `.htaccess`. A URL da função pode ser trocada com `VITE_PORTAL_CLIENTE_API_URL`.
+
+As Edge Functions são publicadas pelo workflow `deploy-edge-functions.yml`, após aprovação em `production-edge-functions`. Aplique primeiro as migrations necessárias pelo `production-sqlx-migrations.yml` e só então aprove o deploy das funções. No disparo manual, o input `funcoes` aceita nomes separados por vírgula (`portal-cliente`, `public-status`, `envio-whatsapp`); `todas` publica as três, e vazio usa as mudanças do último commit. O workflow usa o secret `SUPABASE_ACCESS_TOKEN` e não aplica migrations.
 5. No AutoOS: Configurações → Integrações → cartão “Fale com a equipe”; nos detalhes do equipamento, dar acesso ao contato e **Publicar no Portal do Cliente**.
 6. Ligar para um piloto em Configurações → Integrações → **Portal do Cliente: funcionamento**: “Portal ligado” e “Clientes podem responder orçamentos” (PIN; respostas exigem a permissão financeira; auditoria `PORTAL_CONFIG_CHANGED`). As chaves são de cada empresa (`portal_config_empresa`, 0038): ligar numa empresa não liga nas outras. Abre com a permissão do Portal (MANAGE_STATUS_LINKS); não exige Gerenciar perfis.
 

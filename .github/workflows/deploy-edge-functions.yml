@@ -1,0 +1,119 @@
+# Aprovar este deploy só depois de aplicar as migrations de que a função depende (production-sqlx-migrations.yml).
+name: Publicar Edge Functions do portal
+
+on:
+  push:
+    branches: [master]
+    paths:
+      - 'supabase/functions/**'
+      - 'supabase/config.toml'
+      - '.github/workflows/deploy-edge-functions.yml'
+  workflow_dispatch:
+    inputs:
+      funcoes:
+        description: 'Nomes separados por vírgula; vazio = mudanças no último commit; todas = publicar as três'
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: autoos-edge-functions-deploy
+  cancel-in-progress: false
+
+jobs:
+  plan:
+    runs-on: ubuntu-latest
+    outputs:
+      funcoes: ${{ steps.select.outputs.funcoes }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Selecionar funções
+        id: select
+        shell: bash
+        env:
+          REQUESTED_FUNCTIONS: ${{ inputs.funcoes }}
+          EVENT_NAME: ${{ github.event_name }}
+          BEFORE_SHA: ${{ github.event.before }}
+        run: |
+          set -euo pipefail
+          all=(portal-cliente public-status envio-whatsapp)
+          selected=()
+          if [[ "$EVENT_NAME" == workflow_dispatch && -n "${REQUESTED_FUNCTIONS//[[:space:]]/}" ]]; then
+            if [[ "${REQUESTED_FUNCTIONS,,}" == todas ]]; then
+              selected=("${all[@]}")
+            else
+              IFS=',' read -ra requested <<< "$REQUESTED_FUNCTIONS"
+              for item in "${requested[@]}"; do
+                name="$(echo "$item" | xargs)"
+                case "$name" in
+                  portal-cliente|public-status|envio-whatsapp) selected+=("$name") ;;
+                  *) echo "Função desconhecida: $name" >&2; exit 1 ;;
+                esac
+              done
+            fi
+          else
+            if [[ "$EVENT_NAME" == workflow_dispatch ]]; then
+              base="$(git rev-parse HEAD^ 2>/dev/null || true)"
+            else
+              base="$BEFORE_SHA"
+            fi
+            if [[ -z "$base" || "$base" =~ ^0+$ ]]; then
+              selected=("${all[@]}")
+            else
+              changed="$(git diff --name-only "$base" "$GITHUB_SHA")"
+              if grep -Eq '^supabase/functions/_shared/|^supabase/config\.toml$' <<< "$changed"; then
+                selected=("${all[@]}")
+              else
+                for name in "${all[@]}"; do
+                  if grep -Fq "supabase/functions/$name/" <<< "$changed"; then
+                    selected+=("$name")
+                  fi
+                done
+              fi
+            fi
+          fi
+          json="$(printf '%s\n' "${selected[@]}" | sed '/^$/d' | jq -R . | jq -sc 'unique')"
+          echo "funcoes=$json" >> "$GITHUB_OUTPUT"
+          echo "Funções selecionadas: $json"
+
+  test:
+    needs: plan
+    if: needs.plan.outputs.funcoes != '[]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+      - run: npm ci
+      - name: Conferir testes das funções
+        run: |
+          test -f src/public-status/portal-cliente-function.test.ts || { echo 'Teste portal-cliente ausente'; exit 1; }
+          test -f src/public-status/edge-function.test.ts || { echo 'Teste public-status ausente'; exit 1; }
+      - run: npx vitest run src/public-status/portal-cliente-function.test.ts src/public-status/edge-function.test.ts
+
+  deploy:
+    needs: [plan, test]
+    if: github.ref == 'refs/heads/master' && needs.plan.outputs.funcoes != '[]'
+    runs-on: ubuntu-latest
+    environment:
+      name: production-edge-functions
+    strategy:
+      matrix:
+        funcao: ${{ fromJSON(needs.plan.outputs.funcoes) }}
+      max-parallel: 1
+      fail-fast: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: supabase/setup-cli@v1
+        with:
+          version: 2.122.1
+      - name: Publicar função
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+        run: supabase functions deploy "${{ matrix.funcao }}" --project-ref sgaqvxubopgwysnyocjs --no-verify-jwt
