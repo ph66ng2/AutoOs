@@ -10,7 +10,8 @@ O portal permite que o cliente consulte a etapa atual de um ciclo de atendimento
 
 - O AutoOS gera um token aleatório de 32 bytes e salva somente seu hash SHA-256 em `links_status_publico`.
 - O link usa `https://status.bmitag.com.br/#/c/<token>`. A página envia o token à Edge Function em uma requisição `POST`; ele não vai na requisição inicial do HTML.
-- A Edge Function valida validade e revogação, consulta apenas `tipo`, `marca`, `modelo`, `status` e `status_alterado_em`, e devolve um texto público. Número de série, contatos, orçamento, observações e dados da empresa não são enviados.
+- A Edge Function valida validade e revogação, consulta apenas `tipo`, `marca`, `modelo`, `status` e `status_alterado_em`, e devolve um texto público. Número de série, contatos, orçamento, observações e dados da empresa não são enviados, exceto o nome de exibição e o endereço de retirada descritos abaixo.
+- Em `PRONTO`, a resposta traz `retirada`: `{ nome, endereco, mapsUrl }`. `nome` é o nome de exibição do contato da empresa, `endereco` vem limitado a 300 caracteres e `mapsUrl` só passa se começar com `https://` (senão vai `null`). O horário, o WhatsApp e o e-mail do contato não entram. Fora de `PRONTO` a chave não aparece. Se a consulta ao endereço falhar, a Edge Function registra `public_status_retirada_unavailable` e segue sem o campo: a página de status não cai por causa do endereço.
 - O link tem validade máxima de 180 dias e termina 30 dias após a entrega. A data de mudança de status só aparece quando existe registro confiável; a migration não preenche datas para atendimentos antigos.
 - Links ausentes, expirados ou revogados recebem a mesma resposta pública. Cada abertura atualiza somente `ultimo_acesso_em`.
 - O portal nasce pausado (`status_portal_config.public_enabled = false`). A função pública e a emissão no AutoOS respeitam essa chave global.
@@ -21,6 +22,8 @@ O portal permite que o cliente consulte a etapa atual de um ciclo de atendimento
 ## Banco
 
 A migration é `src-tauri/migrations/0029_portal_status_publico.sql`, a fonte de schema usada pelo aplicativo. Ela cria a data confiável de mudança de status, os links com vínculo composto por empresa e equipamento, e o limite de consultas. As versões 0024–0028 são promovidas pelo PR #123 e precisam estar aplicadas antes da 0029 em um banco real.
+
+A migration `src-tauri/migrations/0044_status_publico_endereco_retirada.sql` cria só a função `public.status_publico_retirada(p_token_hash TEXT)`, sem tabela nova. Ela é `SECURITY DEFINER`, só `service_role` tem `EXECUTE`, e valida o próprio link: devolve NULL se o token não existe, está revogado ou expirado, se o atendimento não está em `PRONTO` ou se o contato não tem endereço. Lê `portal_contato_empresa` (`nome_exibicao`, `endereco`, `maps_url`). A Edge Function chama a função por RPC; se ela ainda não existir, a página segue sem `retirada`, então a ordem entre publicar a 0044 e a função não importa.
 
 Na auditoria de produção de 2026-10-08, `autoos` usava IDs inteiros para `empresas` e `equipamentos`, não possuía `os_status_publico` nem Edge Functions. `supabase/schema.sql` ainda descreve um modelo com UUID e não corresponde a esse banco; **não aplique esse snapshot em produção para instalar o portal**. Use o processo administrativo já adotado para aplicar a migration SQLx e confirme o schema antes de publicar a função.
 

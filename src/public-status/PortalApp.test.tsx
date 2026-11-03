@@ -155,6 +155,24 @@ describe("lista", () => {
     expect(nomes()).toHaveLength(1);
     expect(nomes()[0]).toContain("HP entregue");
   });
+
+  it("não repete o selo de resposta e mostra orçamento em preparação sem resposta pendente", async () => {
+    logar();
+    api.listar.mockResolvedValue({
+      cliente: "Cliente A", contato: "Ana Souza", podeDecidir: true,
+      atendimentos: [
+        { id: 2, equipamento: "Epson com orçamento", serie: "B2", patrimonio: null, status: "AGUARDANDO_APROVACAO", titulo: "O orçamento aguarda sua resposta",
+          historico: false, entradaEm: "2026-10-01T00:00:00Z", atividadeEm: "2026-10-14T00:00:00Z", statusAlteradoEm: null, aguardaResposta: true, resposta: null },
+        { id: 4, equipamento: "Brother em preparação", serie: "D4", patrimonio: null, status: "AGUARDANDO_APROVACAO", titulo: "O orçamento aguarda sua resposta",
+          historico: false, entradaEm: "2026-10-02T00:00:00Z", atividadeEm: "2026-10-13T00:00:00Z", statusAlteradoEm: null, aguardaResposta: false, resposta: null },
+      ],
+    });
+    render(<PortalApp />);
+    const lista = await screen.findByRole("list");
+    expect(screen.getByText("1 orçamento aguarda sua resposta.")).toBeInTheDocument();
+    expect(within(lista).queryByText("Aguarda sua resposta")).not.toBeInTheDocument();
+    expect(within(lista).getByText("Orçamento em preparação")).toBeInTheDocument();
+  });
 });
 
 describe("detalhe e orçamento", () => {

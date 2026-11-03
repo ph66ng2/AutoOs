@@ -37,6 +37,8 @@ type Props = {
   onOpenChange: (open: boolean) => void;
   clienteId: number;
   empresaId?: number;
+  /** Tela que abre ao ser aberto: o acesso (padrão) ou direto a lista de contatos. */
+  telaInicial?: "acesso" | "contatos";
   /** Responsável pelo equipamento: já vem marcado. */
   responsavelContatoId?: number | null;
   /** Avisa o quadro do orçamento para atualizar "quem responde". */
@@ -47,7 +49,7 @@ type Props = {
  * Libera um contato para responder orçamentos e cria a senha, sem sair do equipamento.
  * Cadastrar ou editar contatos acontece aqui mesmo (painel de contatos embutido) e volta para o acesso.
  */
-export function AcessoPortalDialog({ open, onOpenChange, clienteId, empresaId, responsavelContatoId, onAlterado }: Props) {
+export function AcessoPortalDialog({ open, onOpenChange, clienteId, empresaId, telaInicial, responsavelContatoId, onAlterado }: Props) {
   const [tela, setTela] = useState<Tela>("acesso");
   const [cliente, setCliente] = useState<Cliente | null>(null);
   const [contatos, setContatos] = useState<ClienteContato[]>([]);
@@ -83,10 +85,10 @@ export function AcessoPortalDialog({ open, onOpenChange, clienteId, empresaId, r
 
   useEffect(() => {
     if (!open) return;
-    setTela("acesso");
+    setTela(telaInicial ?? "acesso");
     setPodeResponder(true);
     void carregar();
-  }, [open, carregar]);
+  }, [open, carregar, telaInicial]);
 
   const contato = contatos.find((item) => item.id === selecionado) ?? null;
   const acessoDesejado = podeResponder ? "DECIDIR" : "ACOMPANHAR";

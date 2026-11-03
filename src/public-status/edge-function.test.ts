@@ -16,6 +16,8 @@ type TestState = {
   equipment: Record<string, unknown>;
   allowedByRateLimit: boolean;
   blockedFingerprint: string | null;
+  retirada: Record<string, unknown> | null;
+  retiradaStatus: number;
 };
 
 let handler: PublicStatusHandler;
@@ -73,6 +75,8 @@ beforeEach(() => {
     equipment: equipmentRow(),
     allowedByRateLimit: true,
     blockedFingerprint: null,
+    retirada: null,
+    retiradaStatus: 200,
   };
 
   vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
@@ -91,6 +95,10 @@ beforeEach(() => {
     }
     if (url.pathname.endsWith("/links_status_publico")) {
       return mockResponse(url.searchParams.get("token_hash") === `eq.${TOKEN_HASH}` ? state.links : []);
+    }
+    if (url.pathname.endsWith("/rpc/status_publico_retirada")) {
+      if (state.retiradaStatus !== 200) return mockResponse({ message: "boom" }, state.retiradaStatus);
+      return mockResponse(state.retirada);
     }
     if (url.pathname.endsWith("/equipamentos")) {
       return mockResponse([state.equipment]);
@@ -268,6 +276,50 @@ describe("public status edge function", () => {
     }));
     expect(limited.status).toBe(429);
     expect(otherClient.status).toBe(200);
+  });
+
+  it("includes the pickup address only when the equipment is ready for pickup", async () => {
+    state.equipment = { ...equipmentRow(), status: "PRONTO" };
+    state.retirada = { nome: "BMI Tag", endereco: "Rua A, 10", mapsUrl: "https://maps.google.com/?q=rua" };
+    const { response, body } = await callPortal();
+    const fetchMock = vi.mocked(fetch);
+    const rpcCall = fetchMock.mock.calls.find(([input]) =>
+      new URL(input instanceof Request ? input.url : input.toString()).pathname.endsWith("/rpc/status_publico_retirada"),
+    );
+
+    expect(response.status).toBe(200);
+    expect(body.retirada).toEqual({ nome: "BMI Tag", endereco: "Rua A, 10", mapsUrl: "https://maps.google.com/?q=rua" });
+    expect(JSON.parse(String(rpcCall?.[1]?.body))).toEqual({ p_token_hash: TOKEN_HASH });
+  });
+
+  it("does not call the pickup function or include the address outside PRONTO", async () => {
+    state.retirada = { nome: "BMI Tag", endereco: "Rua A, 10", mapsUrl: null };
+    const { response, body } = await callPortal();
+    const rpcCalls = vi.mocked(fetch).mock.calls.filter(([input]) =>
+      new URL(input instanceof Request ? input.url : input.toString()).pathname.endsWith("/rpc/status_publico_retirada"),
+    );
+
+    expect(response.status).toBe(200);
+    expect(rpcCalls).toHaveLength(0);
+    expect(body).not.toHaveProperty("retirada");
+  });
+
+  it("keeps the status response when the pickup function fails", async () => {
+    state.equipment = { ...equipmentRow(), status: "PRONTO" };
+    state.retiradaStatus = 500;
+    const { response, body } = await callPortal();
+
+    expect(response.status).toBe(200);
+    expect(body).not.toHaveProperty("retirada");
+    expect(body.titulo).toBeTruthy();
+  });
+
+  it("drops a non-https maps link from the pickup address", async () => {
+    state.equipment = { ...equipmentRow(), status: "PRONTO" };
+    state.retirada = { nome: "BMI Tag", endereco: "Rua A, 10", mapsUrl: "http://maps.example.com/x" };
+    const { body } = await callPortal();
+
+    expect(body.retirada).toEqual({ nome: "BMI Tag", endereco: "Rua A, 10", mapsUrl: null });
   });
 
   it("rejects local browser origins unless explicitly enabled", async () => {

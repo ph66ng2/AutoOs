@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { PortalError, portalApi, shortDate, type AtendimentoResumo, type ListaAtendimentos } from "./portal-api";
 import { navigate, type PortalSession } from "./portal-session";
-import { toneForTitle } from "./StatusView";
+import { TITULO_EM_PREPARACAO, toneForTitle } from "./StatusView";
 
 type Ordem = "ATIVIDADE" | "ENTRADA";
 type Aba = "ATUAIS" | "HISTORICO";
@@ -104,7 +104,9 @@ export default function PortalLista({ session, onExpirou }: Props) {
       )}
 
       <ul className="portal-list">
-        {visiveis.map((item) => (
+        {visiveis.map((item) => {
+          const titulo = item.status === "AGUARDANDO_APROVACAO" && !item.aguardaResposta && !item.resposta ? TITULO_EM_PREPARACAO : item.titulo;
+          return (
           <li key={item.id}>
             <a className="portal-item" href={`#/atendimentos/${item.id}`} onClick={(event) => { event.preventDefault(); navigate(`#/atendimentos/${item.id}`); }}>
               <span className="portal-item-name">{item.equipamento}</span>
@@ -113,15 +115,15 @@ export default function PortalLista({ session, onExpirou }: Props) {
                 {item.patrimonio && <> · Patrimônio {item.patrimonio}</>}
                 {item.entradaEm && <> · Entrada {shortDate(item.entradaEm)}</>}
               </span>
-              <span className={`portal-pill tone-${toneForTitle(item.titulo)}`}>
+              <span className={`portal-pill tone-${toneForTitle(titulo)}`}>
                 <span className="portal-pill-dot" aria-hidden="true" />
-                {item.titulo}
+                {titulo}
               </span>
-              {item.aguardaResposta && data?.podeDecidir && <span className="portal-badge">Aguarda sua resposta</span>}
               {item.resposta && RESPOSTA_ROTULO[item.resposta] && <span className="portal-badge is-muted">{RESPOSTA_ROTULO[item.resposta]}</span>}
             </a>
           </li>
-        ))}
+          );
+        })}
       </ul>
 
       {data && (

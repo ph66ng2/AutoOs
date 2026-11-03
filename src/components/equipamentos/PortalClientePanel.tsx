@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { useSensitiveAccess } from "@/hooks/useSensitiveAccess";
 import { PublicStatusLinkDialog } from "@/components/equipamentos/PublicStatusLinkDialog";
+import { AcessoAoPortal } from "@/components/equipamentos/AcessoAoPortal";
 import { QuemRespondeNoPortal } from "@/components/equipamentos/QuemRespondeNoPortal";
 import { usePortalCliente } from "@/components/equipamentos/portal-cliente-context";
 import {
@@ -110,6 +111,10 @@ export function PortalClientePanel({ open, onOpenChange }: Props) {
                 <QuemRespondeNoPortal />
               </Secao>
             )}
+
+            <Secao titulo="Acesso ao portal">
+              <AcessoAoPortal />
+            </Secao>
 
             <Secao titulo="Link de acompanhamento sem login">
               <p className="text-xs text-muted-foreground">
