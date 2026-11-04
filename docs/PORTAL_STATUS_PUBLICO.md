@@ -65,7 +65,11 @@ Rode:
 npm run build:public-status
 ```
 
-Envie o conteúdo de `dist-public-status/` para a raiz do subdomínio `status.bmitag.com.br`, preservando o arquivo `.htaccess`. Ele redireciona HTTP para HTTPS e aplica os cabeçalhos de segurança. O endereço de API padrão está no projeto Supabase `autoos`; para usar outro, defina `VITE_PUBLIC_STATUS_API_URL` antes do build e ajuste a allowlist CORS da Edge Function.
+O deploy automático pelo workflow `deploy-portal-site.yml` publica `dist-public-status/` no subdomínio após aprovação no ambiente `production-portal-site`. Configure os secrets `PORTAL_FTP_HOST`, `PORTAL_FTP_USER`, `PORTAL_FTP_PASSWORD` e `PORTAL_FTP_DIR` (diretório remoto com barra final; use `/` para uma conta FTP restrita à pasta do subdomínio). O arquivo `.htaccess` acompanha a publicação: ele redireciona HTTP para HTTPS e aplica os cabeçalhos de segurança.
+
+O FTPS valida o certificado (`security: strict`): `PORTAL_FTP_HOST` precisa ser o nome que aparece no certificado do servidor. Na HostGator costuma ser o nome do servidor (`gatorXXXX.hostgator.com`, no cPanel), não `ftp.bmitag.com.br`; erro de certificado na primeira execução se resolve trocando o host. A action grava `.ftp-deploy-sync-state.json` na pasta para enviar só o que mudou (o `.htaccess` bloqueia o acesso público a ele).
+
+Como plano B, envie manualmente o conteúdo de `dist-public-status/` para a raiz do subdomínio, incluindo `.htaccess`. Depois de um envio manual, o próximo deploy pelo workflow pode pular arquivos que ele julga já enviados; nesse caso, apague `.ftp-deploy-sync-state.json` no servidor antes de rodar o workflow. O endereço de API padrão está no projeto Supabase `autoos`; para usar outro, defina `VITE_PUBLIC_STATUS_API_URL` antes do build e ajuste a allowlist CORS da Edge Function.
 
 O DNS e a hospedagem HostGator de `status.bmitag.com.br` foram configurados em 2026-10-13. Antes de ativar o portal em outro ambiente, confirme o certificado HTTPS e o acesso ao site no domínio definitivo.
 
