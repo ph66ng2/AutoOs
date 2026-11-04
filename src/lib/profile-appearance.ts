@@ -31,6 +31,26 @@ export const AVATAR_ICONS: { id: string; label: string; Icon: LucideIcon }[] = [
   { id: "gamepad-2", label: "Controle", Icon: Gamepad2 },
 ];
 
+/**
+ * Avatares geométricos (desenho em `components/perfil/GeometricAvatar.tsx`). Também aceitos
+ * pelo backend em `AVATAR_ICONES`. Ficam ao lado dos ícones; perfis já salvos não mudam.
+ */
+export const AVATAR_SHAPES: { id: string; label: string }[] = [
+  { id: "shape-orb", label: "Círculo" },
+  { id: "shape-square", label: "Quadrado" },
+  { id: "shape-peak", label: "Triângulo" },
+  { id: "shape-pill", label: "Cápsula" },
+  { id: "shape-bean", label: "Feijão" },
+  { id: "shape-hex", label: "Hexágono" },
+  { id: "shape-arch", label: "Arco" },
+  { id: "shape-cloud", label: "Nuvem" },
+  { id: "shape-block", label: "Bloco" },
+];
+
+export function isAvatarShape(id: string): boolean {
+  return AVATAR_SHAPES.some((item) => item.id === id);
+}
+
 /** Mesma lista aceita pelo backend (`AVATAR_CORES` em auth.rs). Todas com contraste para ícone branco. */
 export const AVATAR_COLORS: { hex: string; label: string }[] = [
   { hex: "#2563EB", label: "Azul" },
@@ -60,7 +80,7 @@ export interface ProfileAppearance {
 export function profileAppearance(profile: Pick<SecurityProfile, "id" | "avatar_icone" | "avatar_cor" | "tema">): ProfileAppearance {
   const fallbackIndex = Math.abs(profile.id);
   return {
-    icon: AVATAR_ICONS.some((item) => item.id === profile.avatar_icone)
+    icon: AVATAR_ICONS.some((item) => item.id === profile.avatar_icone) || isAvatarShape(profile.avatar_icone ?? "")
       ? profile.avatar_icone!
       : AVATAR_ICONS[fallbackIndex % AVATAR_ICONS.length].id,
     color: AVATAR_COLORS.some((item) => item.hex === profile.avatar_cor)
