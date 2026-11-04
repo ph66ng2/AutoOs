@@ -195,7 +195,19 @@ pub fn database_error_message(error: &sqlx::Error) -> String {
         sqlx::Error::Database(_) => {
             "O servidor PostgreSQL recusou a conexão ou a operação de inicialização.".to_string()
         }
-        sqlx::Error::Migrate(_) => {
+        sqlx::Error::Migrate(migrate_error) => {
+            if let sqlx::migrate::MigrateError::Source(source) = migrate_error.as_ref() {
+                if let Some(io_error) = source.downcast_ref::<std::io::Error>() {
+                    if io_error.kind() == std::io::ErrorKind::InvalidData {
+                        let causa = io_error.to_string();
+                        warn!("Validação estrutural do banco recusou a conexão: {}", causa);
+                        return format!(
+                            "A conexão foi aberta, mas o banco não é compatível com este AutoOS: {}",
+                            causa
+                        );
+                    }
+                }
+            }
             "A conexão foi aberta, mas a URL não aponta para o banco de produção compatível com o AutoOS."
                 .to_string()
         }
@@ -827,8 +839,17 @@ mod tests {
     #[test]
     fn reports_schema_validation_without_claiming_to_update_it() {
         let message = database_error_message(&schema_validation_error("incompatível".to_string()));
-        assert!(message.contains("não aponta para o banco de produção"));
+        assert!(message.contains("incompatível"));
+        assert!(message.contains("não é compatível com este AutoOS"));
         assert!(!message.contains("atualização"));
+    }
+
+    #[test]
+    fn keeps_generic_message_for_other_migrate_errors() {
+        let message = database_error_message(&sqlx::Error::Migrate(Box::new(
+            sqlx::migrate::MigrateError::VersionMissing(1),
+        )));
+        assert!(message.contains("não aponta para o banco de produção"));
     }
 
     #[test]
