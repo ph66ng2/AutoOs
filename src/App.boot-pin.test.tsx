@@ -9,6 +9,8 @@ const mockInvoke = vi.hoisted(() => vi.fn());
 
 vi.mock("@tauri-apps/api/core", () => ({
   invoke: (...args: unknown[]) => mockInvoke(...args),
+  // O aviso de atualização (Layout) só consulta dentro do Tauri.
+  isTauri: () => false,
 }));
 
 vi.mock("@/pages/Dashboard", () => ({ default: () => "Painel operacional" }));

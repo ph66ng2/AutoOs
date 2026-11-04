@@ -6,4 +6,5 @@ AutoOS 0.6.2
 - Perfil: nove avatares em formas geométricas para escolher, além dos ícones.
 - Clientes: a busca também encontra pelo nome, telefone e e-mail dos contatos.
 - Insumos/Peças: orçamento vencido ganha o selo "Vencido" e não pode ser aprovado; aviso ao excluir peça usada em OS ou orçamento em aberto.
+- Aviso automático quando sair versão nova do AutoOS: qualquer pessoa pode atualizar pelo próprio aviso.
 - Conexão com o banco mais estável ao abrir o app e ao reconectar.
