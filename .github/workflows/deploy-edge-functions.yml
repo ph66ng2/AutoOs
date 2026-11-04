@@ -11,7 +11,7 @@ on:
   workflow_dispatch:
     inputs:
       funcoes:
-        description: 'Nomes separados por vírgula; vazio = mudanças no último commit; todas = publicar as três'
+        description: 'Nomes separados por vírgula; vazio = mudanças no último commit; todas = portal-cliente e public-status; envio-whatsapp só pelo nome'
         required: false
         type: string
 
@@ -40,7 +40,9 @@ jobs:
           BEFORE_SHA: ${{ github.event.before }}
         run: |
           set -euo pipefail
-          all=(portal-cliente public-status envio-whatsapp)
+          # envio-whatsapp (fila central de WhatsApp) ainda não foi ativada em produção:
+          # fica fora da seleção automática e de "todas"; só sobe pelo nome, no disparo manual.
+          all=(portal-cliente public-status)
           selected=()
           if [[ "$EVENT_NAME" == workflow_dispatch && -n "${REQUESTED_FUNCTIONS//[[:space:]]/}" ]]; then
             if [[ "${REQUESTED_FUNCTIONS,,}" == todas ]]; then
@@ -101,6 +103,7 @@ jobs:
     needs: [plan, test]
     if: github.ref == 'refs/heads/master' && needs.plan.outputs.funcoes != '[]'
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     environment:
       name: production-edge-functions
     strategy:
@@ -110,7 +113,8 @@ jobs:
       fail-fast: true
     steps:
       - uses: actions/checkout@v4
-      - uses: supabase/setup-cli@v1
+      # Fixado por commit: o job recebe o token de acesso do Supabase.
+      - uses: supabase/setup-cli@1dedf2c611547ede7232d26866dd3c56ab903bbb # v1.7.3
         with:
           version: 2.122.1
       - name: Publicar função

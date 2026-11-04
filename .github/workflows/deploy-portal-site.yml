@@ -48,6 +48,7 @@ jobs:
     needs: build
     if: github.ref == 'refs/heads/master'
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     environment:
       name: production-portal-site
       url: https://status.bmitag.com.br
@@ -61,12 +62,15 @@ jobs:
           test -f dist-public-status/index.html
           test -f dist-public-status/.htaccess
       - name: Publicar via FTPS
-        uses: SamKirkland/FTP-Deploy-Action@v4.3.5
+        # Fixado por commit: a action recebe a senha do FTP.
+        uses: SamKirkland/FTP-Deploy-Action@8e83cea8672e3fbcbb9fdafff34debf6ae4c5f65 # v4.3.5
         with:
           server: ${{ secrets.PORTAL_FTP_HOST }}
           username: ${{ secrets.PORTAL_FTP_USER }}
           password: ${{ secrets.PORTAL_FTP_PASSWORD }}
           protocol: ftps
+          # Valida o certificado do servidor; o host precisa bater com o certificado.
+          security: strict
           port: 21
           local-dir: ./dist-public-status/
           server-dir: ${{ secrets.PORTAL_FTP_DIR }}
