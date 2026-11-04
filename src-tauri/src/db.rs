@@ -51,6 +51,47 @@ const DATABASE_ACCESS_LIMIT_ERROR: &str = "SQLSTATE 53300: too many clients";
 
 static LAST_DATABASE_CAPACITY_ERROR: Mutex<Option<Instant>> = Mutex::new(None);
 
+/// Single-flight: no máximo uma inicialização/troca de pool por vez. Chamadas
+/// concorrentes esperam e reaproveitam o pool já criado em vez de abrir outro.
+static INIT_LOCK: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
+/// Serializa o diagnóstico de capacidade (uma conexão extra por vez).
+static DIAGNOSTIC_LOCK: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
+static LAST_DIAGNOSTIC: Mutex<Option<Instant>> = Mutex::new(None);
+const DIAGNOSTIC_MIN_INTERVAL: Duration = Duration::from_secs(5);
+const STARTUP_RETRY_MAX_DELAY: Duration = Duration::from_secs(10);
+
+/// Espera exponencial (base × 2^(tentativa-1)) com teto. `attempt` começa em 1.
+pub(crate) fn retry_backoff_delay(attempt: u32, base: Duration, cap: Duration) -> Duration {
+    let shift = attempt.saturating_sub(1).min(16);
+    base.saturating_mul(1u32 << shift).min(cap)
+}
+
+fn diagnostic_allowed(last: Option<Instant>, now: Instant, min_interval: Duration) -> bool {
+    last.map_or(true, |at| now.saturating_duration_since(at) >= min_interval)
+}
+
+/// Devolve o valor guardado em `slot` se ainda utilizável; senão cria um único
+/// valor com `create`, mesmo com chamadas concorrentes.
+async fn get_or_create_single_flight<T, E, F, Fut>(
+    lock: &tokio::sync::Mutex<()>,
+    slot: &Mutex<Option<T>>,
+    is_usable: impl Fn(&T) -> bool,
+    create: F,
+) -> Result<T, E>
+where
+    T: Clone,
+    F: FnOnce() -> Fut,
+    Fut: std::future::Future<Output = Result<T, E>>,
+{
+    let _guard = lock.lock().await;
+    if let Some(existing) = slot.lock().ok().and_then(|g| g.clone()) {
+        if is_usable(&existing) {
+            return Ok(existing);
+        }
+    }
+    create().await
+}
+
 pub async fn get_pool() -> Result<PgPool, String> {
     let guard = POOL
         .lock()
@@ -189,6 +230,22 @@ pub async fn database_operation_error(error: sqlx::Error) -> String {
     let Ok(database_url) = resolve_database_url() else {
         return database_error_message(&error);
     };
+
+    // Uma conexão de diagnóstico por vez e no máximo a cada 5s: erros em rajada
+    // não podem virar rajada de conexões extras fora do pool.
+    let _diagnostic_guard = DIAGNOSTIC_LOCK.lock().await;
+    if database_capacity_backoff_active() {
+        return DATABASE_ACCESS_LIMIT_ERROR.to_string();
+    }
+    {
+        let Ok(mut last) = LAST_DIAGNOSTIC.lock() else {
+            return database_error_message(&error);
+        };
+        if !diagnostic_allowed(*last, Instant::now(), DIAGNOSTIC_MIN_INTERVAL) {
+            return database_error_message(&error);
+        }
+        *last = Some(Instant::now());
+    }
 
     match tokio::time::timeout(
         DATABASE_CAPACITY_DIAGNOSTIC_TIMEOUT,
@@ -572,7 +629,13 @@ pub async fn init_database() -> Result<PgPool, sqlx::Error> {
     clear_database_init_error();
     let result = async {
         let database_url = resolve_database_url()?;
-        connect_and_setup_pool_with_retry(&database_url).await
+        get_or_create_single_flight(
+            &INIT_LOCK,
+            &POOL,
+            |pool: &PgPool| !pool.is_closed(),
+            || connect_and_setup_pool_with_retry(&database_url),
+        )
+        .await
     }
     .await;
 
@@ -584,6 +647,7 @@ pub async fn init_database() -> Result<PgPool, sqlx::Error> {
 
 pub async fn init_database_with_url(database_url: &str) -> Result<PgPool, sqlx::Error> {
     clear_database_init_error();
+    let _init_guard = INIT_LOCK.lock().await;
     let result = connect_and_setup_pool(database_url).await;
     if let Err(error) = &result {
         set_database_init_error(database_error_message(error));
@@ -596,15 +660,18 @@ async fn connect_and_setup_pool_with_retry(database_url: &str) -> Result<PgPool,
         match connect_and_setup_pool(database_url).await {
             Ok(pool) => return Ok(pool),
             Err(error)
-                if attempt < STARTUP_CONNECT_ATTEMPTS && is_transient_connect_error(&error) =>
+                if attempt < STARTUP_CONNECT_ATTEMPTS
+                    && is_transient_connect_error(&error)
+                    && !database_capacity_backoff_active() =>
             {
+                let delay = retry_backoff_delay(attempt as u32, STARTUP_RETRY_DELAY, STARTUP_RETRY_MAX_DELAY);
                 warn!(
                     "Tentativa transitória de conexão {}/{} falhou; nova tentativa em {} ms",
                     attempt,
                     STARTUP_CONNECT_ATTEMPTS,
-                    STARTUP_RETRY_DELAY.as_millis()
+                    delay.as_millis()
                 );
-                tokio::time::sleep(STARTUP_RETRY_DELAY).await;
+                tokio::time::sleep(delay).await;
             }
             Err(error) => return Err(error),
         }
@@ -633,24 +700,31 @@ async fn connect_and_setup_pool(database_url: &str) -> Result<PgPool, sqlx::Erro
     // A validação é somente leitura e verifica o contrato real usado pelo app.
     // Ela não consulta `_sqlx_migrations` e não executa migrations, portanto não
     // disputa DDL/locks com outras máquinas e aceita históricos legados válidos.
-    let schema_result = tokio::time::timeout(
+    let schema_result = match tokio::time::timeout(
         DATABASE_SCHEMA_TIMEOUT,
         validate_runtime_schema_on_pool(&pool),
     )
     .await
-    .map_err(|_| {
-        schema_validation_error(format!(
-            "A validação estrutural excedeu {} segundos.",
-            DATABASE_SCHEMA_TIMEOUT.as_secs()
-        ))
-    })?;
+    {
+        Ok(result) => result,
+        Err(_) => {
+            pool.close().await;
+            return Err(schema_validation_error(format!(
+                "A validação estrutural excedeu {} segundos.",
+                DATABASE_SCHEMA_TIMEOUT.as_secs()
+            )));
+        }
+    };
     if let Err(message) = schema_result {
         pool.close().await;
         return Err(schema_validation_error(message));
     }
 
-    if let Ok(mut guard) = POOL.lock() {
-        *guard = Some(pool.clone());
+    // Troca de pool (ex.: nova configuração): fecha o antigo para não deixar
+    // conexões ociosas ocupando vagas no Supavisor.
+    let previous = POOL.lock().ok().and_then(|mut guard| guard.replace(pool.clone()));
+    if let Some(previous) = previous {
+        previous.close().await;
     }
     if let Ok(mut guard) = INIT_ERROR.lock() {
         *guard = None;
@@ -790,6 +864,78 @@ mod tests {
         assert_eq!(message, DATABASE_ACCESS_LIMIT_ERROR);
         clear_database_capacity_error();
         assert!(!database_capacity_backoff_active());
+    }
+
+    #[test]
+    fn backoff_grows_exponentially_and_respects_the_cap() {
+        let base = Duration::from_millis(750);
+        let cap = Duration::from_secs(10);
+        assert_eq!(retry_backoff_delay(1, base, cap), Duration::from_millis(750));
+        assert_eq!(retry_backoff_delay(2, base, cap), Duration::from_millis(1500));
+        assert_eq!(retry_backoff_delay(3, base, cap), Duration::from_millis(3000));
+        assert_eq!(retry_backoff_delay(5, base, cap), cap);
+        assert_eq!(retry_backoff_delay(u32::MAX, base, cap), cap);
+        assert_eq!(retry_backoff_delay(0, base, cap), base);
+    }
+
+    #[test]
+    fn diagnostic_connections_are_rate_limited() {
+        let now = Instant::now();
+        let gap = Duration::from_secs(5);
+        assert!(diagnostic_allowed(None, now, gap));
+        assert!(!diagnostic_allowed(Some(now), now, gap));
+        assert!(diagnostic_allowed(Some(now), now + gap, gap));
+    }
+
+    #[tokio::test]
+    async fn concurrent_initializations_create_a_single_pool() {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        use std::sync::Arc;
+
+        let lock = Arc::new(tokio::sync::Mutex::new(()));
+        let slot: Arc<Mutex<Option<u32>>> = Arc::new(Mutex::new(None));
+        let created = Arc::new(AtomicUsize::new(0));
+
+        let mut tasks = Vec::new();
+        for _ in 0..50 {
+            let (lock, slot, created) = (lock.clone(), slot.clone(), created.clone());
+            tasks.push(tokio::spawn(async move {
+                get_or_create_single_flight(&lock, &slot, |_| true, || async {
+                    created.fetch_add(1, Ordering::SeqCst);
+                    tokio::task::yield_now().await;
+                    *slot.lock().unwrap() = Some(7);
+                    Ok::<u32, String>(7)
+                })
+                .await
+            }));
+        }
+        for task in tasks {
+            assert_eq!(task.await.unwrap().unwrap(), 7);
+        }
+        assert_eq!(created.load(Ordering::SeqCst), 1);
+    }
+
+    #[tokio::test]
+    async fn unusable_pool_is_recreated_and_failures_are_not_cached() {
+        let lock = tokio::sync::Mutex::new(());
+        let slot: Mutex<Option<u32>> = Mutex::new(Some(1));
+
+        let reused = get_or_create_single_flight(&lock, &slot, |v| *v == 1, || async {
+            Err::<u32, String>("não deveria criar".into())
+        })
+        .await;
+        assert_eq!(reused.unwrap(), 1);
+
+        let failed = get_or_create_single_flight(&lock, &slot, |_| false, || async {
+            Err::<u32, String>("falhou".into())
+        })
+        .await;
+        assert!(failed.is_err());
+        let recreated = get_or_create_single_flight(&lock, &slot, |_| false, || async {
+            Ok::<u32, String>(2)
+        })
+        .await;
+        assert_eq!(recreated.unwrap(), 2);
     }
 
     #[test]
