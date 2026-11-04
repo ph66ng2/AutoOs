@@ -11,7 +11,7 @@ on:
   workflow_dispatch:
     inputs:
       funcoes:
-        description: 'Nomes separados por vírgula; vazio = mudanças no último commit; todas = portal-cliente e public-status; envio-whatsapp só pelo nome'
+        description: 'Nomes separados por vírgula; vazio ou todas = portal-cliente e public-status; envio-whatsapp só pelo nome'
         required: false
         type: string
 
@@ -28,16 +28,12 @@ jobs:
     outputs:
       funcoes: ${{ steps.select.outputs.funcoes }}
     steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
       - name: Selecionar funções
         id: select
         shell: bash
         env:
           REQUESTED_FUNCTIONS: ${{ inputs.funcoes }}
           EVENT_NAME: ${{ github.event_name }}
-          BEFORE_SHA: ${{ github.event.before }}
         run: |
           set -euo pipefail
           # envio-whatsapp (fila central de WhatsApp) ainda não foi ativada em produção:
@@ -58,25 +54,11 @@ jobs:
               done
             fi
           else
-            if [[ "$EVENT_NAME" == workflow_dispatch ]]; then
-              base="$(git rev-parse HEAD^ 2>/dev/null || true)"
-            else
-              base="$BEFORE_SHA"
-            fi
-            if [[ -z "$base" || "$base" =~ ^0+$ ]]; then
-              selected=("${all[@]}")
-            else
-              changed="$(git diff --name-only "$base" "$GITHUB_SHA")"
-              if grep -Eq '^supabase/functions/_shared/|^supabase/config\.toml$' <<< "$changed"; then
-                selected=("${all[@]}")
-              else
-                for name in "${all[@]}"; do
-                  if grep -Fq "supabase/functions/$name/" <<< "$changed"; then
-                    selected+=("$name")
-                  fi
-                done
-              fi
-            fi
+            # Push (ou disparo sem nomes): publica sempre as funções automáticas, mudando ou
+            # não. Um run pendente pode ser cancelado por outro push (concurrency); escolher
+            # pela diferença do push perderia a mudança do run cancelado. Republicar código
+            # igual não tem efeito, e o run que sobreviver leva o estado atual da master.
+            selected=("${all[@]}")
           fi
           json="$(printf '%s\n' "${selected[@]}" | sed '/^$/d' | jq -R . | jq -sc 'unique')"
           echo "funcoes=$json" >> "$GITHUB_OUTPUT"
