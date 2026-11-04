@@ -74,6 +74,20 @@ describe("UpdateNotice", () => {
     expect(mockCheck).toHaveBeenCalledTimes(2);
   });
 
+  it("não fecha o diálogo enquanto baixa (evita duas instalações)", async () => {
+    const emAndamento = { ...update(), downloadAndInstall: () => new Promise<void>(() => undefined) };
+    mockCheck.mockResolvedValue(emAndamento);
+    render(<UpdateNotice />);
+    await passar(UPDATE_NOTICE_FIRST_CHECK_MS);
+    fireEvent.click(screen.getByRole("button", { name: "Ver e atualizar" }));
+    await passar(0);
+    fireEvent.click(screen.getByRole("button", { name: /Baixar e instalar/ }));
+    await passar(0);
+    fireEvent.keyDown(screen.getByRole("dialog"), { key: "Escape" });
+    await passar(0);
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
+  });
+
   it("fora do Tauri não consulta", async () => {
     mockIsTauri.mockReturnValue(false);
     render(<UpdateNotice />);

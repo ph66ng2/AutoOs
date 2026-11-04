@@ -33,6 +33,7 @@ import { AppModeSelector } from "@/components/AppModeSelector";
 import { CounterLayout } from "@/components/CounterLayout";
 import { CounterSessionGate } from "@/components/CounterSessionGate";
 import { ReleaseHighlightsDialog } from "@/components/ReleaseHighlightsDialog";
+import { UpdateNotice } from "@/components/UpdateNotice";
 import { getAppMode, setAppMode, type AppMode } from "@/lib/app-mode";
 
 const Dashboard = lazy(() => import("@/pages/Dashboard"));
@@ -114,6 +115,8 @@ function AppContent() {
         <ReleaseHighlightsDialog
           enabled={!loading && !splashVisible && sessionReady && appMode !== null && !firstAccessOpen}
         />
+        {/* Fora dos layouts: vale para o modo padrão e para o Modo Balcão. */}
+        <UpdateNotice />
         <Routes>
           <Route element={<Layout />}>
             <Route path="/" element={<Dashboard />} />

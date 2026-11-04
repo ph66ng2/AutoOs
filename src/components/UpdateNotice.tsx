@@ -25,6 +25,8 @@ export function UpdateNotice() {
   const [version, setVersion] = useState<string | null>(null);
   const [dismissed, setDismissed] = useState<string | null>(null);
   const [open, setOpen] = useState(false);
+  // Fechar no meio do download desmontaria o painel com a instalação em andamento.
+  const [installing, setInstalling] = useState(false);
 
   useEffect(() => {
     if (!isTauri()) {
@@ -89,7 +91,7 @@ export function UpdateNotice() {
         </div>
       ) : null}
 
-      <Dialog open={open} onOpenChange={setOpen}>
+      <Dialog open={open} onOpenChange={(next) => { if (next || !installing) setOpen(next); }}>
         <DialogContent className="max-w-lg">
           <DialogHeader>
             <DialogTitle>Atualizar o AutoOS</DialogTitle>
@@ -97,7 +99,7 @@ export function UpdateNotice() {
               Salve o que estiver fazendo antes de instalar: o AutoOS fecha e reabre na versão nova.
             </DialogDescription>
           </DialogHeader>
-          {open ? <UpdateChecker autoCheck /> : null}
+          {open ? <UpdateChecker autoCheck onBusyChange={setInstalling} /> : null}
         </DialogContent>
       </Dialog>
     </>
