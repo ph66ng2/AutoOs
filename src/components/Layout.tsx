@@ -28,6 +28,7 @@ import {
   UserRound,
 } from "lucide-react";
 import { Suspense, useState } from "react";
+import { UpdateNotice } from "@/components/UpdateNotice";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { SensitiveAccessBadge, useSensitiveAccess } from "@/hooks/useSensitiveAccess";
@@ -188,6 +189,7 @@ export function Layout() {
         </div>
       </main>
       <TourController />
+      <UpdateNotice />
     </div>
   );
 }

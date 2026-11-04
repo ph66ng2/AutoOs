@@ -104,7 +104,8 @@ function createMockableUpdate(update: Update): Update {
   return update;
 }
 
-export function UpdateChecker() {
+/** `autoCheck`: consulta ao abrir (usado pelo aviso de nova versão, que já sabe que há atualização). */
+export function UpdateChecker({ autoCheck = false }: { autoCheck?: boolean } = {}) {
   const [state, setState] = useState<CheckerState>(INITIAL_STATE);
   const updateRef = useRef<Update | null>(null);
   const busyRef = useRef(false);
@@ -256,6 +257,15 @@ export function UpdateChecker() {
       busyRef.current = false;
     }
   }, [setPhase]);
+
+  const autoCheckedRef = useRef(false);
+  useEffect(() => {
+    if (!autoCheck || autoCheckedRef.current || !isTauri()) {
+      return;
+    }
+    autoCheckedRef.current = true;
+    void checkForUpdates();
+  }, [autoCheck, checkForUpdates]);
 
   const onPrimary = useCallback(() => {
     if (state.phase === "available" || (state.phase === "error" && state.retry === "install")) {
