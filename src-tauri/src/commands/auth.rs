@@ -2211,9 +2211,12 @@ pub async fn provision_pin_with_enrollment(
 // ─── Perfil: primeiro acesso por código, personalização e tour ───────────────
 
 /// Ícones de avatar oferecidos na interface (nomes do lucide-react em kebab-case).
-const AVATAR_ICONES: [&str; 12] = [
+const AVATAR_ICONES: [&str; 21] = [
     "headphones", "wrench", "printer", "coffee", "star", "zap",
     "leaf", "flame", "rocket", "heart", "music", "gamepad-2",
+    // Avatares geométricos (AVATAR_SHAPES em src/lib/profile-appearance.ts).
+    "shape-orb", "shape-square", "shape-peak", "shape-pill", "shape-bean",
+    "shape-hex", "shape-arch", "shape-cloud", "shape-block",
 ];
 const AVATAR_CORES: [&str; 10] = [
     "#2563EB", "#4F46E5", "#7C3AED", "#C026D3", "#E11D48",
@@ -3003,6 +3006,8 @@ mod tests {
         assert!(validar_personalizacao(&valida).is_ok());
         assert!(validar_personalizacao(&PersonalizacaoPerfilInput { nome: "Jo".to_string(), ..Default::default() }).is_err());
         assert!(validar_personalizacao(&PersonalizacaoPerfilInput { avatar_icone: Some("skull".to_string()), ..valida_clone(&valida) }).is_err());
+        assert!(validar_personalizacao(&PersonalizacaoPerfilInput { avatar_icone: Some("shape-orb".to_string()), ..valida_clone(&valida) }).is_ok());
+        assert!(validar_personalizacao(&PersonalizacaoPerfilInput { avatar_icone: Some("shape-block".to_string()), ..valida_clone(&valida) }).is_ok());
         assert!(validar_personalizacao(&PersonalizacaoPerfilInput { avatar_cor: Some("#123456".to_string()), ..valida_clone(&valida) }).is_err());
         assert!(validar_personalizacao(&PersonalizacaoPerfilInput { tema: Some("system".to_string()), ..valida_clone(&valida) }).is_err());
     }
