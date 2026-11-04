@@ -8,6 +8,12 @@ import { chromium } from '@playwright/test';
 const [directory, output] = process.argv.slice(2);
 if (!directory || !output) throw new Error('Usage: node scripts/measure-desktop.mjs <mock-dist> <output.json>');
 const root = resolve(directory);
+// Chave do card de novidades lida do código-fonte, para não ficar presa a uma versão.
+const highlightsSource = await readFile(resolve('src/lib/releaseHighlightsKey.ts'), 'utf8');
+const highlightsVersion = highlightsSource.match(/RELEASE_HIGHLIGHTS_VERSION = "([^"]+)"/)?.[1];
+const highlightsSlug = highlightsSource.match(/\$\{RELEASE_HIGHLIGHTS_VERSION\}:([\w-]+)`/)?.[1];
+if (!highlightsVersion || !highlightsSlug) throw new Error('Não foi possível ler a chave de novidades em src/lib/releaseHighlightsKey.ts');
+const highlightsKey = `autoos:release-highlights:${highlightsVersion}:${highlightsSlug}`;
 // Precompress before timing so server-side gzip CPU does not skew renderer metrics.
 const compressed = new Map();
 async function preload(directory) {
@@ -38,7 +44,7 @@ try {
   browser = await chromium.launch({ executablePath: process.env.CHROMIUM_PATH || undefined, args: ['--no-sandbox', '--disable-dev-shm-usage', '--disable-gpu'] });
   for (const slow of [false, true]) for (const route of ['/', '/clientes']) for (let run = 0; run < 5; run++) {
     const context = await browser.newContext({ viewport: { width: 1366, height: 768 }, reducedMotion: 'reduce' });
-    await context.addInitScript(() => {
+    await context.addInitScript(highlightsKey => {
       // The default IPC mock does not install native event callback registration.
       window.__TAURI_INTERNALS__ = {
         transformCallback: () => 0,
@@ -49,8 +55,8 @@ try {
       };
       window.__TAURI_EVENT_PLUGIN_INTERNALS__ = { unregisterListener: () => {} };
       localStorage.setItem('autoos_app_mode', 'standard');
-      localStorage.setItem('autoos:release-highlights:0.6.0:portal-insumos-perfil', 'seen');
-    });
+      localStorage.setItem(highlightsKey, 'seen');
+    }, highlightsKey);
     const page = await context.newPage();
     const errors = [];
     page.on('pageerror', e => errors.push(e.message));

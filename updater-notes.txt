@@ -1,7 +1,8 @@
-AutoOS 0.6.1
+AutoOS 0.6.2
 
-- Abertura do desktop e carregamento de equipamentos mais rápidos.
-- Edição de equipamentos evita substituir fotos inalteradas e avisa quando as fotos foram modificadas em outra sessão.
-- Orçamentos de insumos: corrigido o cadastro que ficava em "Carregando", adicionada exclusão definitiva de orçamentos cancelados e reorganizados os diálogos de orçamento e envio manual.
-- Portal do Cliente: fotos, PDF do orçamento e comprovante de entrega; endereço e mapa na retirada. O aceite pode exigir ordem de compra, e o cliente pode negociar antes de recusar.
-- O administrador cadastra perfis com código de primeiro acesso; cada pessoa cria o próprio PIN em cada computador.
+- Portal do Cliente: o orçamento não oferece mais negociação. Antes de recusar, o cliente vê "Qualquer dúvida, entre em contato conosco" com o WhatsApp da equipe. O prazo para o cliente mudar de ideia caiu de 15 para 10 minutos.
+- Equipamento: novo bloco "Acesso ao portal", com o login (CPF/CNPJ) e os contatos que entram no portal, sem mostrar senha. Botão para enviar ao portal os orçamentos pendentes.
+- Menu de ações do equipamento sem opções repetidas: "Reabrir orçamento", "Desfazer aprovação" e "Renovar orçamento".
+- Clientes: a busca também encontra pelo nome, telefone e e-mail dos contatos.
+- Insumos/Peças: orçamento vencido ganha o selo "Vencido" e não pode ser aprovado; aviso ao excluir peça usada em OS ou orçamento em aberto.
+- Conexão com o banco mais estável ao abrir o app e ao reconectar.
