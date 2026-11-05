@@ -36,6 +36,13 @@ vi.mock("@/components/ui/action-priority-row", () => ({
   ),
 }));
 
+// Modal de contatos simplificado: só expõe o fechamento para testar o refresh da linha.
+vi.mock("@/pages/clientes/ClientesDialogs", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/pages/clientes/ClientesDialogs")>()),
+  ClientesContatosModal: ({ open, onOpenChange }: any) =>
+    open ? <button onClick={() => onOpenChange(false)}>Fechar modal de contatos</button> : null,
+}));
+
 const CPF = "529.982.247-25";
 
 function clienteSalvo(extra: Record<string, unknown> = {}) {
@@ -101,6 +108,44 @@ describe("Clientes: ordem de compra e preferências", () => {
     expect(dbMocks.listarClienteContatos).toHaveBeenCalledWith(7, 3);
     fireEvent.click(screen.getByRole("button", { name: "Contatos" }));
     expect(screen.queryByText("carlos@x.com")).not.toBeInTheDocument();
+  });
+
+  it("ignora a resposta atrasada de um cliente já recolhido/trocado", async () => {
+    mocks.clientes = [
+      clienteSalvo({ empresa_id: 3 }),
+      clienteSalvo({ id: 8, nome: "Bruno Lima", documento: "11144477735", cpf_cnpj: "11144477735", empresa_id: 3 }),
+    ];
+    let resolverA!: (v: unknown[]) => void;
+    dbMocks.listarClienteContatos.mockImplementation((id: number) =>
+      id === 7 ? new Promise(r => { resolverA = r; }) : Promise.resolve([
+        { id: 20, empresa_id: 3, cliente_id: 8, nome: "Contato do B", ativo: true },
+      ]));
+    renderPagina();
+    const botoes = screen.getAllByRole("button", { name: "Contatos" });
+    fireEvent.click(botoes[0]!);
+    fireEvent.click(screen.getAllByRole("button", { name: "Contatos" })[1]!);
+    expect(await screen.findByText("Contato do B")).toBeInTheDocument();
+    resolverA([{ id: 10, empresa_id: 3, cliente_id: 7, nome: "Contato do A", ativo: true }]);
+    await new Promise(r => setTimeout(r, 0));
+    expect(screen.queryByText("Contato do A")).not.toBeInTheDocument();
+    expect(screen.getByText("Contato do B")).toBeInTheDocument();
+  });
+
+  it("recarrega a lista expandida ao fechar o modal de contatos", async () => {
+    mocks.clientes = [clienteSalvo({ empresa_id: 3 })];
+    dbMocks.listarClienteContatos.mockResolvedValueOnce([
+      { id: 1, empresa_id: 3, cliente_id: 7, nome: "Nome antigo", ativo: true },
+    ]);
+    renderPagina();
+    fireEvent.click(screen.getByRole("button", { name: "Contatos" }));
+    expect(await screen.findByText("Nome antigo")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /gerenciar contatos e portal/i }));
+    dbMocks.listarClienteContatos.mockResolvedValueOnce([
+      { id: 1, empresa_id: 3, cliente_id: 7, nome: "Nome novo", ativo: true },
+    ]);
+    fireEvent.click(await screen.findByRole("button", { name: "Fechar modal de contatos" }));
+    expect(await screen.findByText("Nome novo")).toBeInTheDocument();
+    expect(screen.queryByText("Nome antigo")).not.toBeInTheDocument();
   });
 
   it("na edição preserva receber_email/receber_whatsapp salvos e envia a opção de OC", async () => {

@@ -20,7 +20,7 @@
  * ║  USADO POR: App.tsx (rota /clientes)                        ║
  * ╚══════════════════════════════════════════════════════════════╝
  */
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { formatDatePtBr } from "@/lib/date-utils";
 import {
@@ -105,6 +105,7 @@ export default function Clientes() {
   const [clienteEquipamentosSelecionado, setClienteEquipamentosSelecionado] = useState<Cliente | null>(null);
   const [contatosClienteSelecionado, setContatosClienteSelecionado] = useState<Cliente | null>(null);
   const [contatosExpandido, setContatosExpandido] = useState<number | null>(null);
+  const contatosExpandidoRef = useRef<number | null>(null);
   const [contatosLista, setContatosLista] = useState<ClienteContato[]>([]);
   const [carregandoContatos, setCarregandoContatos] = useState(false);
   const [previaRegularizacao, setPreviaRegularizacao] = useState<RegularizacaoLegadoPrevia | null>(null);
@@ -192,25 +193,43 @@ export default function Clientes() {
     }
   }, [form]);
 
-  /** Expande/recolhe a lista de contatos do cliente. Conecta-se a: db.listarClienteContatos → Rust listar_cliente_contatos */
-  async function toggleContatos(cliente: Cliente) {
-    if (contatosExpandido === cliente.id) {
-      setContatosExpandido(null);
-      setContatosLista([]);
-      return;
-    }
-    setContatosExpandido(cliente.id!);
-    setContatosLista([]);
+  /** Carrega os contatos da linha expandida; ignora resposta de cliente que já não está expandido. */
+  async function carregarContatosExpandido(cliente: Cliente) {
     if (!cliente.empresa_id) return;
+    const clienteId = cliente.id!;
     setCarregandoContatos(true);
     try {
-      setContatosLista(await db.listarClienteContatos(cliente.id!, cliente.empresa_id));
+      const lista = await db.listarClienteContatos(clienteId, cliente.empresa_id);
+      if (contatosExpandidoRef.current === clienteId) setContatosLista(lista);
     } catch (err) {
       console.error("Erro ao buscar contatos:", err);
-      setContatosLista([]);
+      if (contatosExpandidoRef.current === clienteId) setContatosLista([]);
     } finally {
-      setCarregandoContatos(false);
+      if (contatosExpandidoRef.current === clienteId) setCarregandoContatos(false);
     }
+  }
+
+  /** Expande/recolhe a lista de contatos do cliente. Conecta-se a: db.listarClienteContatos → Rust listar_cliente_contatos */
+  async function toggleContatos(cliente: Cliente) {
+    if (contatosExpandidoRef.current === cliente.id) {
+      contatosExpandidoRef.current = null;
+      setContatosExpandido(null);
+      setContatosLista([]);
+      setCarregandoContatos(false);
+      return;
+    }
+    contatosExpandidoRef.current = cliente.id!;
+    setContatosExpandido(cliente.id!);
+    setContatosLista([]);
+    setCarregandoContatos(false);
+    await carregarContatosExpandido(cliente);
+  }
+
+  /** Ao fechar o modal de contatos, atualiza a linha se esse cliente ainda estiver expandido. */
+  function fecharModalContatos() {
+    const cliente = contatosClienteSelecionado;
+    setContatosClienteSelecionado(null);
+    if (cliente && contatosExpandidoRef.current === cliente.id) void carregarContatosExpandido(cliente);
   }
 
   /**
@@ -729,7 +748,7 @@ export default function Clientes() {
 
       <ClientesContatosModal
         open={Boolean(contatosClienteSelecionado)}
-        onOpenChange={(open) => { if (!open) setContatosClienteSelecionado(null); }}
+        onOpenChange={(open) => { if (!open) fecharModalContatos(); }}
         cliente={contatosClienteSelecionado}
       />
 
