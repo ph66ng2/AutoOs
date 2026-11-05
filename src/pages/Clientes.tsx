@@ -576,7 +576,7 @@ export default function Clientes() {
                             label: "Contatos",
                             icon: contatosExpandido === c.id ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />,
                             variant: "outline",
-                            className: "border-purple-300 bg-purple-50 text-purple-800 hover:bg-purple-100",
+                            className: "border-primary bg-primary/10 text-primary hover:bg-primary/20 hover:text-primary",
                             ariaExpanded: contatosExpandido === c.id,
                             onClick: () => void toggleContatos(c),
                           }}
@@ -605,7 +605,7 @@ export default function Clientes() {
                       </div>
                     </div>
                     {contatosExpandido === c.id && (
-                      <div id={`contatos-cliente-${c.id}`} className="min-w-0 border-t bg-purple-50/40 px-4 py-3">
+                      <div id={`contatos-cliente-${c.id}`} className="min-w-0 border-t bg-accent/30 px-4 py-3">
                         {carregandoContatos ? (
                           <span className="text-sm text-muted-foreground">Carregando contatos...</span>
                         ) : contatosLista.length === 0 ? (
@@ -616,7 +616,7 @@ export default function Clientes() {
                               <li
                                 key={ct.id}
                                 className={`grid min-w-0 gap-1 rounded border bg-background p-3 text-sm sm:grid-cols-3 ${
-                                  c.contato_encontrado && ct.nome === c.contato_encontrado ? "border-purple-400" : ""
+                                  c.contato_encontrado && ct.nome === c.contato_encontrado ? "border-primary" : ""
                                 }`}
                               >
                                 <span className="break-words font-medium">{ct.nome}</span>
