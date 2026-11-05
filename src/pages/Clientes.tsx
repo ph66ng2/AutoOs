@@ -59,6 +59,7 @@ import { mensagemCadastroDuplicado } from "@/lib/operator-errors";
 import {
   SENSITIVE_PERMISSIONS,
   type Cliente,
+  type ClienteContato,
   type Equipamento,
   type RegularizacaoLegadoPrevia,
   type VinculoEmpresaPerfilInput,
@@ -103,6 +104,9 @@ export default function Clientes() {
   const [modalEquipamentosOpen, setModalEquipamentosOpen] = useState(false);
   const [clienteEquipamentosSelecionado, setClienteEquipamentosSelecionado] = useState<Cliente | null>(null);
   const [contatosClienteSelecionado, setContatosClienteSelecionado] = useState<Cliente | null>(null);
+  const [contatosExpandido, setContatosExpandido] = useState<number | null>(null);
+  const [contatosLista, setContatosLista] = useState<ClienteContato[]>([]);
+  const [carregandoContatos, setCarregandoContatos] = useState(false);
   const [previaRegularizacao, setPreviaRegularizacao] = useState<RegularizacaoLegadoPrevia | null>(null);
   const [previaVinculoEmpresa, setPreviaVinculoEmpresa] = useState<VinculoEmpresaPerfilPrevia | null>(null);
   const [regularizando, setRegularizando] = useState(false);
@@ -187,6 +191,27 @@ export default function Clientes() {
       setBuscandoCep(false);
     }
   }, [form]);
+
+  /** Expande/recolhe a lista de contatos do cliente. Conecta-se a: db.listarClienteContatos → Rust listar_cliente_contatos */
+  async function toggleContatos(cliente: Cliente) {
+    if (contatosExpandido === cliente.id) {
+      setContatosExpandido(null);
+      setContatosLista([]);
+      return;
+    }
+    setContatosExpandido(cliente.id!);
+    setContatosLista([]);
+    if (!cliente.empresa_id) return;
+    setCarregandoContatos(true);
+    try {
+      setContatosLista(await db.listarClienteContatos(cliente.id!, cliente.empresa_id));
+    } catch (err) {
+      console.error("Erro ao buscar contatos:", err);
+      setContatosLista([]);
+    } finally {
+      setCarregandoContatos(false);
+    }
+  }
 
   /**
    * Expande/recolhe a linha do cliente para exibir equipamentos vinculados.
@@ -547,15 +572,23 @@ export default function Clientes() {
                             onClick: () => void toggleExpandir(c.id!),
                           }}
                           secondary={{
-                            id: `editar-${c.id}`,
-                            label: "Editar",
-                            icon: <Edit className="h-4 w-4" />,
+                            id: `contatos-${c.id}`,
+                            label: "Contatos",
+                            icon: contatosExpandido === c.id ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />,
                             variant: "outline",
-                            onClick: () => void abrirEditar(c),
+                            className: "border-purple-300 bg-purple-50 text-purple-800 hover:bg-purple-100",
+                            ariaExpanded: contatosExpandido === c.id,
+                            onClick: () => void toggleContatos(c),
                           }}
                           overflow={[
                             {
-                              id: `contatos-${c.id}`,
+                              id: `editar-${c.id}`,
+                              label: "Editar",
+                              icon: <Edit className="h-4 w-4" />,
+                              onClick: () => void abrirEditar(c),
+                            },
+                            {
+                              id: `gerenciar-contatos-${c.id}`,
                               label: "Contatos e Portal",
                               icon: <ContactRound className="h-4 w-4" />,
                               onClick: () => setContatosClienteSelecionado(c),
@@ -571,6 +604,35 @@ export default function Clientes() {
                         />
                       </div>
                     </div>
+                    {contatosExpandido === c.id && (
+                      <div id={`contatos-cliente-${c.id}`} className="min-w-0 border-t bg-purple-50/40 px-4 py-3">
+                        {carregandoContatos ? (
+                          <span className="text-sm text-muted-foreground">Carregando contatos...</span>
+                        ) : contatosLista.length === 0 ? (
+                          <span className="text-sm text-muted-foreground">Nenhum contato cadastrado</span>
+                        ) : (
+                          <ul className="space-y-2">
+                            {contatosLista.map(ct => (
+                              <li
+                                key={ct.id}
+                                className={`grid min-w-0 gap-1 rounded border bg-background p-3 text-sm sm:grid-cols-3 ${
+                                  c.contato_encontrado && ct.nome === c.contato_encontrado ? "border-purple-400" : ""
+                                }`}
+                              >
+                                <span className="break-words font-medium">{ct.nome}</span>
+                                <span className="break-all">{ct.telefone ? formatarTelefone(ct.telefone) : "—"}</span>
+                                <span className="break-all">{ct.email || "—"}</span>
+                              </li>
+                            ))}
+                          </ul>
+                        )}
+                        <div className="flex justify-end pt-2">
+                          <Button variant="outline" size="sm" className="h-8 text-xs" onClick={() => setContatosClienteSelecionado(c)}>
+                            Gerenciar contatos e portal
+                          </Button>
+                        </div>
+                      </div>
+                    )}
                     {expandido === c.id && (
                       <div id={`equipamentos-cliente-${c.id}`} className="min-w-0 border-t bg-accent/30 px-4 py-3">
                         {carregandoEquip ? (

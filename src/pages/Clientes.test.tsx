@@ -25,6 +25,17 @@ const dbMocks = vi.hoisted(() => ({
 }));
 vi.mock("@/lib/db", () => ({ db: dbMocks }));
 
+// O menu "Mais" é um Select do Radix; no jsdom as ações viram botões simples.
+vi.mock("@/components/ui/action-priority-row", () => ({
+  ActionPriorityRow: ({ primary, secondary, overflow }: any) => (
+    <div>
+      {[primary, secondary, ...(overflow ?? [])].filter(Boolean).map((a: any) => (
+        <button key={a.id} onClick={a.onClick} aria-expanded={a.ariaExpanded}>{a.label}</button>
+      ))}
+    </div>
+  ),
+}));
+
 const CPF = "529.982.247-25";
 
 function clienteSalvo(extra: Record<string, unknown> = {}) {
@@ -75,6 +86,21 @@ describe("Clientes: ordem de compra e preferências", () => {
     expect(mocks.criar.mock.calls[0]![0]).toMatchObject({
       exige_ordem_compra: true, receber_email: true, receber_whatsapp: true,
     });
+  });
+
+  it("o botão Contatos expande a lista de contatos do cliente na linha", async () => {
+    mocks.clientes = [clienteSalvo({ empresa_id: 3, contato_encontrado: "Carlos Mendes" })];
+    dbMocks.listarClienteContatos.mockResolvedValue([
+      { id: 1, empresa_id: 3, cliente_id: 7, nome: "Carlos Mendes", telefone: "71988887777", email: "carlos@x.com", ativo: true },
+      { id: 2, empresa_id: 3, cliente_id: 7, nome: "Bruno Lima", ativo: true },
+    ]);
+    renderPagina();
+    fireEvent.click(screen.getByRole("button", { name: "Contatos" }));
+    expect(await screen.findByText("carlos@x.com")).toBeInTheDocument();
+    expect(screen.getByText("Bruno Lima")).toBeInTheDocument();
+    expect(dbMocks.listarClienteContatos).toHaveBeenCalledWith(7, 3);
+    fireEvent.click(screen.getByRole("button", { name: "Contatos" }));
+    expect(screen.queryByText("carlos@x.com")).not.toBeInTheDocument();
   });
 
   it("na edição preserva receber_email/receber_whatsapp salvos e envia a opção de OC", async () => {
