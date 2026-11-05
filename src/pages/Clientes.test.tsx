@@ -131,6 +131,36 @@ describe("Clientes: ordem de compra e preferências", () => {
     expect(screen.getByText("Contato do B")).toBeInTheDocument();
   });
 
+  it("A→B→A: resposta antiga de A não sobrescreve a segunda expansão de A", async () => {
+    mocks.clientes = [
+      clienteSalvo({ empresa_id: 3 }),
+      clienteSalvo({ id: 8, nome: "Bruno Lima", documento: "11144477735", cpf_cnpj: "11144477735", empresa_id: 3 }),
+    ];
+    const resolvers: Array<(v: unknown[]) => void> = [];
+    dbMocks.listarClienteContatos.mockImplementation((id: number) =>
+      id === 7 ? new Promise(r => { resolvers.push(r); }) : new Promise(() => {}));
+    renderPagina();
+    fireEvent.click(screen.getAllByRole("button", { name: "Contatos" })[0]!);
+    fireEvent.click(screen.getAllByRole("button", { name: "Contatos" })[1]!);
+    fireEvent.click(screen.getAllByRole("button", { name: "Contatos" })[0]!);
+    await waitFor(() => expect(resolvers).toHaveLength(2));
+    resolvers[0]!([{ id: 10, empresa_id: 3, cliente_id: 7, nome: "A antigo", ativo: true }]);
+    await new Promise(r => setTimeout(r, 0));
+    expect(screen.queryByText("A antigo")).not.toBeInTheDocument();
+    expect(screen.getByText("Carregando contatos...")).toBeInTheDocument();
+    resolvers[1]!([{ id: 11, empresa_id: 3, cliente_id: 7, nome: "A fresco", ativo: true }]);
+    expect(await screen.findByText("A fresco")).toBeInTheDocument();
+  });
+
+  it("cliente legado sem empresa_id mostra mensagem distinta e não busca contatos", async () => {
+    mocks.clientes = [clienteSalvo({ empresa_id: null })];
+    renderPagina();
+    fireEvent.click(screen.getByRole("button", { name: "Contatos" }));
+    expect(await screen.findByText(/sem empresa vinculada/i)).toBeInTheDocument();
+    expect(screen.queryByText("Nenhum contato cadastrado")).not.toBeInTheDocument();
+    expect(dbMocks.listarClienteContatos).not.toHaveBeenCalled();
+  });
+
   it("recarrega a lista expandida ao fechar o modal de contatos", async () => {
     mocks.clientes = [clienteSalvo({ empresa_id: 3 })];
     dbMocks.listarClienteContatos.mockResolvedValueOnce([

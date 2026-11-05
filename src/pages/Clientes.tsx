@@ -106,6 +106,7 @@ export default function Clientes() {
   const [contatosClienteSelecionado, setContatosClienteSelecionado] = useState<Cliente | null>(null);
   const [contatosExpandido, setContatosExpandido] = useState<number | null>(null);
   const contatosExpandidoRef = useRef<number | null>(null);
+  const contatosRequisicaoRef = useRef(0);
   const [contatosLista, setContatosLista] = useState<ClienteContato[]>([]);
   const [carregandoContatos, setCarregandoContatos] = useState(false);
   const [previaRegularizacao, setPreviaRegularizacao] = useState<RegularizacaoLegadoPrevia | null>(null);
@@ -193,19 +194,25 @@ export default function Clientes() {
     }
   }, [form]);
 
-  /** Carrega os contatos da linha expandida; ignora resposta de cliente que já não está expandido. */
+  /** Carrega os contatos da linha expandida; ignora resposta de requisição antiga ou de cliente que já não está expandido. */
   async function carregarContatosExpandido(cliente: Cliente) {
-    if (!cliente.empresa_id) return;
+    const token = ++contatosRequisicaoRef.current;
+    if (!cliente.empresa_id) {
+      setContatosLista([]);
+      setCarregandoContatos(false);
+      return;
+    }
     const clienteId = cliente.id!;
+    const vigente = () => token === contatosRequisicaoRef.current && contatosExpandidoRef.current === clienteId;
     setCarregandoContatos(true);
     try {
       const lista = await db.listarClienteContatos(clienteId, cliente.empresa_id);
-      if (contatosExpandidoRef.current === clienteId) setContatosLista(lista);
+      if (vigente()) setContatosLista(lista);
     } catch (err) {
       console.error("Erro ao buscar contatos:", err);
-      if (contatosExpandidoRef.current === clienteId) setContatosLista([]);
+      if (vigente()) setContatosLista([]);
     } finally {
-      if (contatosExpandidoRef.current === clienteId) setCarregandoContatos(false);
+      if (vigente()) setCarregandoContatos(false);
     }
   }
 
@@ -213,6 +220,7 @@ export default function Clientes() {
   async function toggleContatos(cliente: Cliente) {
     if (contatosExpandidoRef.current === cliente.id) {
       contatosExpandidoRef.current = null;
+      contatosRequisicaoRef.current++;
       setContatosExpandido(null);
       setContatosLista([]);
       setCarregandoContatos(false);
@@ -625,7 +633,11 @@ export default function Clientes() {
                     </div>
                     {contatosExpandido === c.id && (
                       <div id={`contatos-cliente-${c.id}`} className="min-w-0 border-t bg-accent/30 px-4 py-3">
-                        {carregandoContatos ? (
+                        {!c.empresa_id ? (
+                          <span className="text-sm italic text-amber-700 dark:text-amber-400">
+                            Cliente sem empresa vinculada — contatos indisponíveis
+                          </span>
+                        ) : carregandoContatos ? (
                           <span className="text-sm text-muted-foreground">Carregando contatos...</span>
                         ) : contatosLista.length === 0 ? (
                           <span className="text-sm text-muted-foreground">Nenhum contato cadastrado</span>
