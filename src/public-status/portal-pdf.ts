@@ -50,9 +50,10 @@ function blocosEquipamento(detalhe: DetalheAtendimento): Bloco[] {
 
 type OrcamentoDetalhe = NonNullable<DetalheAtendimento["orcamento"]>;
 
-function blocosServicosEPecas(orc: OrcamentoDetalhe): Bloco[] {
+function blocosServicosEPecas(orc: OrcamentoDetalhe, somenteAprovados = false): Bloco[] {
   const blocos: Bloco[] = [];
-  for (const servico of orc.servicos) {
+  const servicos = somenteAprovados ? orc.servicos.filter((s) => s.aprovado !== false) : orc.servicos;
+  for (const servico of servicos) {
     blocos.push({
       tipo: "linha",
       esquerda: servico.descricao,
@@ -143,7 +144,7 @@ export function modeloOrdemServico(detalhe: DetalheAtendimento): ModeloDocumento
   ];
   if (orc && houveAprovacao(detalhe)) {
     blocos.push({ tipo: "secao", texto: "Serviços aprovados" });
-    blocos.push(...blocosServicosEPecas(orc));
+    blocos.push(...blocosServicosEPecas(orc, true));
     blocos.push({ tipo: "total", rotulo: "Valor do atendimento", valor: money(detalhe.valores?.atual ?? orc.valorTotal) });
   }
   blocos.push({ tipo: "secao", texto: "Andamento" });

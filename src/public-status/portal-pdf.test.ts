@@ -73,6 +73,18 @@ describe("modelo da ordem de serviço", () => {
     }
   });
 
+  it("OS parcialmente aprovada lista só os serviços aceitos", () => {
+    const base = detalhe();
+    const orc = base.orcamento!;
+    const m = modeloOrdemServico(detalhe({ orcamento: { ...orc, servicos: [
+      { descricao: "Troca do fusor", valor: 250, aprovado: true, pecas: [] },
+      { descricao: "Limpeza interna", valor: 100, aprovado: false, pecas: [] },
+    ] } }));
+    const t = texto(m);
+    expect(t).toContain("Troca do fusor");
+    expect(t).not.toContain("Limpeza interna");
+  });
+
   it("sem orçamento e em RECEBIDO não traz serviços aprovados", () => {
     const t = texto(modeloOrdemServico(detalhe({ status: "RECEBIDO", orcamento: null })));
     expect(t).not.toContain("Serviços aprovados");

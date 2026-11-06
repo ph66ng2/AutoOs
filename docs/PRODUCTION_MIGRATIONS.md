@@ -21,7 +21,7 @@ Configure também o secret de repositório `AUTOOS_BACKUP_EXPECTED_DB_USER` com 
 
 ## O que o workflow faz
 
-1. Confere que o build contém exatamente 44 migrations consecutivas (0001–0044). A 0042 é só de dados (adiciona a permissão `PREPARE_QUOTES` ao perfil Administrador existente; Técnico e Financeiro ficam para uma migration posterior, depois que todos os PCs estiverem na 0.6.0), sem alteração de schema. A 0044 cria só a função `status_publico_retirada` (endereço de retirada do link público), sem tabela, coluna ou dado novo.
+1. Confere que o build contém exatamente 45 migrations consecutivas (0001–0045). A 0042 é só de dados (adiciona a permissão `PREPARE_QUOTES` ao perfil Administrador existente; Técnico e Financeiro ficam para uma migration posterior, depois que todos os PCs estiverem na 0.6.0), sem alteração de schema. A 0044 cria só a função `status_publico_retirada` (endereço de retirada do link público), sem tabela, coluna ou dado novo. A 0045 só recria `portal_listar_atendimentos` (campo `orcamentoPublicado`) e `portal_detalhe_atendimento` (campo `aprovado` por serviço), sem tabela ou coluna.
 2. Valida que produção já registra 0001–0028 com sucesso, sem migrations com falha. A pré-checagem de códigos duplicados em produtos ativos sem empresa e nomes de perfil duplicados após `trim` e conversão para minúsculas só roda se a 0027 estiver pendente; como esta versão exige 0001–0028 aplicadas, essa checagem não é acionada no fluxo atual.
 3. Executa o reconciliador da migration 0023, que só altera o checksum quando reconhece a variante conhecida e confirma que o schema já corresponde aos índices esperados; qualquer outra divergência interrompe o fluxo.
 4. Confere o histórico SQLx e bloqueia versões ausentes, falhas ou checksums desconhecidos.
@@ -32,7 +32,7 @@ O workflow serializa execuções e não cancela uma migration em andamento. Para
 
 ### Histórico incompleto
 
-O reconciliador da 0023 só funciona quando a versão 23 já consta no histórico SQLx. O executor exige 0001–0028 registradas com sucesso antes de aplicar as pendentes até 0044; o verificador de histórico também recusa uma base anterior à 0028. Um banco cujo schema avançou por aplicações manuais, mas cujo `_sqlx_migrations` registra apenas a versão 1, será bloqueado antes de qualquer migration; **não preencha o histórico automaticamente**. Audite o schema e os checksums em uma cópia desse banco e estabeleça um procedimento de reconciliação específico antes de liberar o workflow. A reconciliação da 0023 não substitui essa auditoria.
+O reconciliador da 0023 só funciona quando a versão 23 já consta no histórico SQLx. O executor exige 0001–0028 registradas com sucesso antes de aplicar as pendentes até 0045; o verificador de histórico também recusa uma base anterior à 0028. Um banco cujo schema avançou por aplicações manuais, mas cujo `_sqlx_migrations` registra apenas a versão 1, será bloqueado antes de qualquer migration; **não preencha o histórico automaticamente**. Audite o schema e os checksums em uma cópia desse banco e estabeleça um procedimento de reconciliação específico antes de liberar o workflow. A reconciliação da 0023 não substitui essa auditoria.
 
 Para investigar conflitos de dados relacionados à 0027 em uma base anterior, use consultas somente de leitura:
 

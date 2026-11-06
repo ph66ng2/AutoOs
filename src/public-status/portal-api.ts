@@ -27,6 +27,8 @@ export interface AtendimentoResumo {
   /** COALESCE(valor final, valor do orçamento); null enquanto não há valor. */
   valorAtual: number | null;
   aguardaResposta: boolean;
+  /** Há versão aberta publicada (independe do aceite online). Ausente em backends antigos. */
+  orcamentoPublicado?: boolean;
   resposta: EstadoResposta;
 }
 
@@ -58,7 +60,7 @@ export interface OrcamentoPortal {
   valorTotal: number;
   validoAte: string | null;
   estado: EstadoOrcamento;
-  servicos: Array<{ descricao: string; valor: number; pecas: Array<{ nome: string; quantidade: number; valorUnitario: number }> }>;
+  servicos: Array<{ descricao: string; valor: number; /** false = recusado pelo cliente; null/ausente = sem decisão. */ aprovado?: boolean | null; pecas: Array<{ nome: string; quantidade: number; valorUnitario: number }> }>;
   pecas: Array<{ nome: string; quantidade: number; valorTotal: number }>;
   janelaMinutos: number;
   aceiteOnline: boolean;
