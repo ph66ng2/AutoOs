@@ -311,6 +311,7 @@ export default function Equipamentos({ operationalProfile }: { operationalProfil
   const [baixandoPendentes, setBaixandoPendentes] = useState(false);
   const [consumosDialogOpen, setConsumosDialogOpen] = useState(false);
   const [ajusteOrcamentoSemMudancaStatus, setAjusteOrcamentoSemMudancaStatus] = useState(false);
+  const [pecasAjusteInvalidas, setPecasAjusteInvalidas] = useState(false);
   const [correcaoStatus, setCorrecaoStatus] = useState(false);
   const [motivoCorrecaoStatus, setMotivoCorrecaoStatus] = useState("");
   const [editando, setEditando] = useState<Equipamento | null>(null);
@@ -1559,6 +1560,10 @@ export default function Equipamentos({ operationalProfile }: { operationalProfil
       && !!selecionado
       && !reabreOrcamentoSemAjuste(selecionado.status, novoStatus);
     if (mostraOrcamento && !valorOrcamentoValido) return;
+    if (ajusteOrcamentoSemMudancaStatus && pecasAjusteInvalidas) {
+      warning("Equipamentos", "Corrija o preço inválido de peça antes de continuar.");
+      return;
+    }
     if (enviandoParaAprovacao && !totalOrcamentoAprovacaoValido(valorOrcamentoRef.current)) {
       warning("Equipamentos", osSomenteGarantia(servicosAjuste)
         ? "OS só de garantia não envia orçamento para aprovação de valor."
@@ -1570,7 +1575,7 @@ export default function Equipamentos({ operationalProfile }: { operationalProfil
       return;
     }
     if ((novoStatus === "AGUARDANDO_APROVACAO" || ajusteOrcamentoSemMudancaStatus) && verificacaoAjusteOrcamento) {
-      if (ajusteOrcamentoSemMudancaStatus && vaiAutoAprovarOsGarantia(selecionado?.status, osSomenteGarantia(servicosAjuste), valorOrcamentoRef.current)) {
+      if (ajusteOrcamentoSemMudancaStatus && !IS_SAAS_BUILD && vaiAutoAprovarOsGarantia(selecionado?.status, osSomenteGarantia(servicosAjuste), valorOrcamentoRef.current)) {
         void confirmarMudancaStatus(false);
         return;
       }
@@ -1831,7 +1836,7 @@ export default function Equipamentos({ operationalProfile }: { operationalProfil
       warning("Equipamentos", "Informe o motivo da correção antes de continuar.");
       return;
     }
-    const autoAprovaGarantia = vaiAutoAprovarOsGarantia(
+    const autoAprovaGarantia = !IS_SAAS_BUILD && vaiAutoAprovarOsGarantia(
       selecionado.status,
       osSomenteGarantia(servicosAjuste),
       totalAtual,
@@ -3738,7 +3743,7 @@ export default function Equipamentos({ operationalProfile }: { operationalProfil
                       <p className="text-xs text-red-600">{mensagemAjusteTotalZero(selecionado.status, selecionado.valor_orcamento)}</p>
                     )}
                   </div>
-                  {(!ajusteOrcamentoSemMudancaStatus || selecionado.status === "AGUARDANDO_APROVACAO") && (
+                  {!ajusteOrcamentoSemMudancaStatus && (
                     <div className="space-y-2"><Label>Prazo Aprovação</Label><DateIsoInput min={new Date().toLocaleDateString("en-CA")} value={prazoAprovacao} onValueChange={setPrazoAprovacao} /></div>
                   )}
                   <div className="space-y-2">
@@ -3782,6 +3787,7 @@ export default function Equipamentos({ operationalProfile }: { operationalProfil
                         catalogo={catalogoServicosAjuste}
                         carregandoCatalogo={carregandoCatalogoAjuste}
                         saasMode={IS_SAAS_BUILD}
+                        onPecasValidityChange={(valido) => setPecasAjusteInvalidas(!valido)}
                         onChange={setServicosAjuste}
                         onRemoverTodos={() => {
                           setConfirmProps({
@@ -3934,7 +3940,7 @@ export default function Equipamentos({ operationalProfile }: { operationalProfil
             </div>
             <DialogFooter className="shrink-0 bg-background pt-3">
                 <Button type="button" variant="outline" onClick={() => setStatusDialogOpen(false)}>Cancelar</Button>
-                <Button type="button" onClick={iniciarConfirmacaoStatus} disabled={salvando || (!novoStatus && !ajusteOrcamentoSemMudancaStatus) || (((novoStatus === "AGUARDANDO_APROVACAO" && !reabreOrcamentoSemAjuste(selecionado.status, novoStatus)) || ajusteOrcamentoSemMudancaStatus) && !valorOrcamentoValido) || (novoStatus === "AGUARDANDO_APROVACAO" && !reabreOrcamentoSemAjuste(selecionado.status, novoStatus) && !totalOrcamentoAprovacaoValido(Number(valorOrcamento))) || (ajusteOrcamentoSemMudancaStatus && !totalOrcamentoAjusteValido(Number(valorOrcamento), osSomenteGarantia(servicosAjuste), selecionado.status, selecionado.valor_orcamento))}>
+                <Button type="button" onClick={iniciarConfirmacaoStatus} disabled={salvando || (ajusteOrcamentoSemMudancaStatus && pecasAjusteInvalidas) || (!novoStatus && !ajusteOrcamentoSemMudancaStatus) || (((novoStatus === "AGUARDANDO_APROVACAO" && !reabreOrcamentoSemAjuste(selecionado.status, novoStatus)) || ajusteOrcamentoSemMudancaStatus) && !valorOrcamentoValido) || (novoStatus === "AGUARDANDO_APROVACAO" && !reabreOrcamentoSemAjuste(selecionado.status, novoStatus) && !totalOrcamentoAprovacaoValido(Number(valorOrcamento))) || (ajusteOrcamentoSemMudancaStatus && !totalOrcamentoAjusteValido(Number(valorOrcamento), osSomenteGarantia(servicosAjuste), selecionado.status, selecionado.valor_orcamento))}>
                   {salvando ? "Salvando..." : correcaoStatus ? "Corrigir status" : "Confirmar"}
                 </Button>
               </DialogFooter>
