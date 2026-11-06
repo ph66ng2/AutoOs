@@ -131,6 +131,19 @@ async fn clear_token_store() {
     get_token_store().lock().await.clear();
 }
 
+/// Chaves atuais do store (tokens da sessão que está parando).
+async fn snapshot_token_keys(store: &TokenStore) -> Vec<String> {
+    store.lock().await.keys().cloned().collect()
+}
+
+/// Remove só as chaves informadas; tokens de uma sessão nova ficam intactos.
+async fn remove_token_keys(store: &TokenStore, keys: &[String]) {
+    let mut guard = store.lock().await;
+    for k in keys {
+        guard.remove(k);
+    }
+}
+
 fn generate_token() -> String {
     uuid::Uuid::new_v4().to_string()
 }
@@ -686,6 +699,11 @@ pub async fn stop_photo_server() -> Result<(), String> {
         return Err("Servidor de fotos não está em execução".to_string());
     };
 
+    // Tokens da sessão que está parando. Uma sessão nova pode subir durante a
+    // espera abaixo; seus tokens não podem ser apagados por este stop.
+    let store = get_token_store();
+    let tokens_da_sessao = snapshot_token_keys(&store).await;
+
     let tx = server
         .shutdown_trigger
         .lock()
@@ -706,7 +724,7 @@ pub async fn stop_photo_server() -> Result<(), String> {
     }
 
     photo_tunnel::stop_tunnel().await;
-    clear_token_store().await;
+    remove_token_keys(&store, &tokens_da_sessao).await;
     info!("Servidor de fotos parado");
     Ok(())
 }
@@ -821,6 +839,25 @@ mod tests {
         );
         clear_token_store().await;
         assert!(store.lock().await.is_empty());
+    }
+
+    #[tokio::test]
+    async fn stop_remove_so_tokens_da_sessao_antiga() {
+        let store: TokenStore = Arc::new(TokioMutex::new(HashMap::new()));
+        store.lock().await.insert(
+            "velho".to_string(),
+            token_de_teste(Instant::now() + Duration::from_secs(60), true),
+        );
+        let snapshot = snapshot_token_keys(&store).await;
+        // Sessão nova gera token enquanto o stop antigo espera o join.
+        store.lock().await.insert(
+            "novo".to_string(),
+            token_de_teste(Instant::now() + Duration::from_secs(60), true),
+        );
+        remove_token_keys(&store, &snapshot).await;
+        let s = store.lock().await;
+        assert!(!s.contains_key("velho"));
+        assert!(s.contains_key("novo"));
     }
 
     #[test]
