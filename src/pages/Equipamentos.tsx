@@ -3102,6 +3102,7 @@ export default function Equipamentos() {
                             className="h-6 w-6"
                             onClick={() => {
                               setPhotoUploadCategoria("ENTRADA");
+                              setPhotoUploadNewEquip(false);
                               setPhotoUploadOpen(true);
                             }}
                           >
@@ -3136,6 +3137,7 @@ export default function Equipamentos() {
                             className="h-6 w-6"
                             onClick={() => {
                               setPhotoUploadCategoria("SAIDA");
+                              setPhotoUploadNewEquip(false);
                               setPhotoUploadOpen(true);
                             }}
                           >
