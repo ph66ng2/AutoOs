@@ -25,6 +25,24 @@ const dbMocks = vi.hoisted(() => ({
 }));
 vi.mock("@/lib/db", () => ({ db: dbMocks }));
 
+// O menu "Mais" é um Select do Radix; no jsdom as ações viram botões simples.
+vi.mock("@/components/ui/action-priority-row", () => ({
+  ActionPriorityRow: ({ primary, secondary, overflow }: any) => (
+    <div>
+      {[primary, secondary, ...(overflow ?? [])].filter(Boolean).map((a: any) => (
+        <button key={a.id} onClick={a.onClick} aria-expanded={a.ariaExpanded}>{a.label}</button>
+      ))}
+    </div>
+  ),
+}));
+
+// Modal de contatos simplificado: só expõe o fechamento para testar o refresh da linha.
+vi.mock("@/pages/clientes/ClientesDialogs", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/pages/clientes/ClientesDialogs")>()),
+  ClientesContatosModal: ({ open, onOpenChange }: any) =>
+    open ? <button onClick={() => onOpenChange(false)}>Fechar modal de contatos</button> : null,
+}));
+
 const CPF = "529.982.247-25";
 
 function clienteSalvo(extra: Record<string, unknown> = {}) {
@@ -75,6 +93,89 @@ describe("Clientes: ordem de compra e preferências", () => {
     expect(mocks.criar.mock.calls[0]![0]).toMatchObject({
       exige_ordem_compra: true, receber_email: true, receber_whatsapp: true,
     });
+  });
+
+  it("o botão Contatos expande a lista de contatos do cliente na linha", async () => {
+    mocks.clientes = [clienteSalvo({ empresa_id: 3, contato_encontrado: "Carlos Mendes" })];
+    dbMocks.listarClienteContatos.mockResolvedValue([
+      { id: 1, empresa_id: 3, cliente_id: 7, nome: "Carlos Mendes", telefone: "71988887777", email: "carlos@x.com", ativo: true },
+      { id: 2, empresa_id: 3, cliente_id: 7, nome: "Bruno Lima", ativo: true },
+    ]);
+    renderPagina();
+    fireEvent.click(screen.getByRole("button", { name: "Contatos" }));
+    expect(await screen.findByText("carlos@x.com")).toBeInTheDocument();
+    expect(screen.getByText("Bruno Lima")).toBeInTheDocument();
+    expect(dbMocks.listarClienteContatos).toHaveBeenCalledWith(7, 3);
+    fireEvent.click(screen.getByRole("button", { name: "Contatos" }));
+    expect(screen.queryByText("carlos@x.com")).not.toBeInTheDocument();
+  });
+
+  it("ignora a resposta atrasada de um cliente já recolhido/trocado", async () => {
+    mocks.clientes = [
+      clienteSalvo({ empresa_id: 3 }),
+      clienteSalvo({ id: 8, nome: "Bruno Lima", documento: "11144477735", cpf_cnpj: "11144477735", empresa_id: 3 }),
+    ];
+    let resolverA!: (v: unknown[]) => void;
+    dbMocks.listarClienteContatos.mockImplementation((id: number) =>
+      id === 7 ? new Promise(r => { resolverA = r; }) : Promise.resolve([
+        { id: 20, empresa_id: 3, cliente_id: 8, nome: "Contato do B", ativo: true },
+      ]));
+    renderPagina();
+    const botoes = screen.getAllByRole("button", { name: "Contatos" });
+    fireEvent.click(botoes[0]!);
+    fireEvent.click(screen.getAllByRole("button", { name: "Contatos" })[1]!);
+    expect(await screen.findByText("Contato do B")).toBeInTheDocument();
+    resolverA([{ id: 10, empresa_id: 3, cliente_id: 7, nome: "Contato do A", ativo: true }]);
+    await new Promise(r => setTimeout(r, 0));
+    expect(screen.queryByText("Contato do A")).not.toBeInTheDocument();
+    expect(screen.getByText("Contato do B")).toBeInTheDocument();
+  });
+
+  it("A→B→A: resposta antiga de A não sobrescreve a segunda expansão de A", async () => {
+    mocks.clientes = [
+      clienteSalvo({ empresa_id: 3 }),
+      clienteSalvo({ id: 8, nome: "Bruno Lima", documento: "11144477735", cpf_cnpj: "11144477735", empresa_id: 3 }),
+    ];
+    const resolvers: Array<(v: unknown[]) => void> = [];
+    dbMocks.listarClienteContatos.mockImplementation((id: number) =>
+      id === 7 ? new Promise(r => { resolvers.push(r); }) : new Promise(() => {}));
+    renderPagina();
+    fireEvent.click(screen.getAllByRole("button", { name: "Contatos" })[0]!);
+    fireEvent.click(screen.getAllByRole("button", { name: "Contatos" })[1]!);
+    fireEvent.click(screen.getAllByRole("button", { name: "Contatos" })[0]!);
+    await waitFor(() => expect(resolvers).toHaveLength(2));
+    resolvers[0]!([{ id: 10, empresa_id: 3, cliente_id: 7, nome: "A antigo", ativo: true }]);
+    await new Promise(r => setTimeout(r, 0));
+    expect(screen.queryByText("A antigo")).not.toBeInTheDocument();
+    expect(screen.getByText("Carregando contatos...")).toBeInTheDocument();
+    resolvers[1]!([{ id: 11, empresa_id: 3, cliente_id: 7, nome: "A fresco", ativo: true }]);
+    expect(await screen.findByText("A fresco")).toBeInTheDocument();
+  });
+
+  it("cliente legado sem empresa_id mostra mensagem distinta e não busca contatos", async () => {
+    mocks.clientes = [clienteSalvo({ empresa_id: null })];
+    renderPagina();
+    fireEvent.click(screen.getByRole("button", { name: "Contatos" }));
+    expect(await screen.findByText(/sem empresa vinculada/i)).toBeInTheDocument();
+    expect(screen.queryByText("Nenhum contato cadastrado")).not.toBeInTheDocument();
+    expect(dbMocks.listarClienteContatos).not.toHaveBeenCalled();
+  });
+
+  it("recarrega a lista expandida ao fechar o modal de contatos", async () => {
+    mocks.clientes = [clienteSalvo({ empresa_id: 3 })];
+    dbMocks.listarClienteContatos.mockResolvedValueOnce([
+      { id: 1, empresa_id: 3, cliente_id: 7, nome: "Nome antigo", ativo: true },
+    ]);
+    renderPagina();
+    fireEvent.click(screen.getByRole("button", { name: "Contatos" }));
+    expect(await screen.findByText("Nome antigo")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /gerenciar contatos e portal/i }));
+    dbMocks.listarClienteContatos.mockResolvedValueOnce([
+      { id: 1, empresa_id: 3, cliente_id: 7, nome: "Nome novo", ativo: true },
+    ]);
+    fireEvent.click(await screen.findByRole("button", { name: "Fechar modal de contatos" }));
+    expect(await screen.findByText("Nome novo")).toBeInTheDocument();
+    expect(screen.queryByText("Nome antigo")).not.toBeInTheDocument();
   });
 
   it("na edição preserva receber_email/receber_whatsapp salvos e envia a opção de OC", async () => {

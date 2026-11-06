@@ -20,7 +20,7 @@
  * ║  USADO POR: App.tsx (rota /clientes)                        ║
  * ╚══════════════════════════════════════════════════════════════╝
  */
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { formatDatePtBr } from "@/lib/date-utils";
 import {
@@ -59,6 +59,7 @@ import { mensagemCadastroDuplicado } from "@/lib/operator-errors";
 import {
   SENSITIVE_PERMISSIONS,
   type Cliente,
+  type ClienteContato,
   type Equipamento,
   type RegularizacaoLegadoPrevia,
   type VinculoEmpresaPerfilInput,
@@ -103,6 +104,11 @@ export default function Clientes() {
   const [modalEquipamentosOpen, setModalEquipamentosOpen] = useState(false);
   const [clienteEquipamentosSelecionado, setClienteEquipamentosSelecionado] = useState<Cliente | null>(null);
   const [contatosClienteSelecionado, setContatosClienteSelecionado] = useState<Cliente | null>(null);
+  const [contatosExpandido, setContatosExpandido] = useState<number | null>(null);
+  const contatosExpandidoRef = useRef<number | null>(null);
+  const contatosRequisicaoRef = useRef(0);
+  const [contatosLista, setContatosLista] = useState<ClienteContato[]>([]);
+  const [carregandoContatos, setCarregandoContatos] = useState(false);
   const [previaRegularizacao, setPreviaRegularizacao] = useState<RegularizacaoLegadoPrevia | null>(null);
   const [previaVinculoEmpresa, setPreviaVinculoEmpresa] = useState<VinculoEmpresaPerfilPrevia | null>(null);
   const [regularizando, setRegularizando] = useState(false);
@@ -187,6 +193,52 @@ export default function Clientes() {
       setBuscandoCep(false);
     }
   }, [form]);
+
+  /** Carrega os contatos da linha expandida; ignora resposta de requisição antiga ou de cliente que já não está expandido. */
+  async function carregarContatosExpandido(cliente: Cliente) {
+    const token = ++contatosRequisicaoRef.current;
+    if (!cliente.empresa_id) {
+      setContatosLista([]);
+      setCarregandoContatos(false);
+      return;
+    }
+    const clienteId = cliente.id!;
+    const vigente = () => token === contatosRequisicaoRef.current && contatosExpandidoRef.current === clienteId;
+    setCarregandoContatos(true);
+    try {
+      const lista = await db.listarClienteContatos(clienteId, cliente.empresa_id);
+      if (vigente()) setContatosLista(lista);
+    } catch (err) {
+      console.error("Erro ao buscar contatos:", err);
+      if (vigente()) setContatosLista([]);
+    } finally {
+      if (vigente()) setCarregandoContatos(false);
+    }
+  }
+
+  /** Expande/recolhe a lista de contatos do cliente. Conecta-se a: db.listarClienteContatos → Rust listar_cliente_contatos */
+  async function toggleContatos(cliente: Cliente) {
+    if (contatosExpandidoRef.current === cliente.id) {
+      contatosExpandidoRef.current = null;
+      contatosRequisicaoRef.current++;
+      setContatosExpandido(null);
+      setContatosLista([]);
+      setCarregandoContatos(false);
+      return;
+    }
+    contatosExpandidoRef.current = cliente.id!;
+    setContatosExpandido(cliente.id!);
+    setContatosLista([]);
+    setCarregandoContatos(false);
+    await carregarContatosExpandido(cliente);
+  }
+
+  /** Ao fechar o modal de contatos, atualiza a linha se esse cliente ainda estiver expandido. */
+  function fecharModalContatos() {
+    const cliente = contatosClienteSelecionado;
+    setContatosClienteSelecionado(null);
+    if (cliente && contatosExpandidoRef.current === cliente.id) void carregarContatosExpandido(cliente);
+  }
 
   /**
    * Expande/recolhe a linha do cliente para exibir equipamentos vinculados.
@@ -547,15 +599,23 @@ export default function Clientes() {
                             onClick: () => void toggleExpandir(c.id!),
                           }}
                           secondary={{
-                            id: `editar-${c.id}`,
-                            label: "Editar",
-                            icon: <Edit className="h-4 w-4" />,
+                            id: `contatos-${c.id}`,
+                            label: "Contatos",
+                            icon: contatosExpandido === c.id ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />,
                             variant: "outline",
-                            onClick: () => void abrirEditar(c),
+                            className: "border-primary bg-primary/10 text-primary hover:bg-primary/20 hover:text-primary",
+                            ariaExpanded: contatosExpandido === c.id,
+                            onClick: () => void toggleContatos(c),
                           }}
                           overflow={[
                             {
-                              id: `contatos-${c.id}`,
+                              id: `editar-${c.id}`,
+                              label: "Editar",
+                              icon: <Edit className="h-4 w-4" />,
+                              onClick: () => void abrirEditar(c),
+                            },
+                            {
+                              id: `gerenciar-contatos-${c.id}`,
                               label: "Contatos e Portal",
                               icon: <ContactRound className="h-4 w-4" />,
                               onClick: () => setContatosClienteSelecionado(c),
@@ -571,6 +631,39 @@ export default function Clientes() {
                         />
                       </div>
                     </div>
+                    {contatosExpandido === c.id && (
+                      <div id={`contatos-cliente-${c.id}`} className="min-w-0 border-t bg-accent/30 px-4 py-3">
+                        {!c.empresa_id ? (
+                          <span className="text-sm italic text-amber-700 dark:text-amber-400">
+                            Cliente sem empresa vinculada — contatos indisponíveis
+                          </span>
+                        ) : carregandoContatos ? (
+                          <span className="text-sm text-muted-foreground">Carregando contatos...</span>
+                        ) : contatosLista.length === 0 ? (
+                          <span className="text-sm text-muted-foreground">Nenhum contato cadastrado</span>
+                        ) : (
+                          <ul className="space-y-2">
+                            {contatosLista.map(ct => (
+                              <li
+                                key={ct.id}
+                                className={`grid min-w-0 gap-1 rounded border bg-background p-3 text-sm sm:grid-cols-3 ${
+                                  c.contato_encontrado && ct.nome === c.contato_encontrado ? "border-primary" : ""
+                                }`}
+                              >
+                                <span className="break-words font-medium">{ct.nome}</span>
+                                <span className="break-all">{ct.telefone ? formatarTelefone(ct.telefone) : "—"}</span>
+                                <span className="break-all">{ct.email || "—"}</span>
+                              </li>
+                            ))}
+                          </ul>
+                        )}
+                        <div className="flex justify-end pt-2">
+                          <Button variant="outline" size="sm" className="h-8 text-xs" onClick={() => setContatosClienteSelecionado(c)}>
+                            Gerenciar contatos e portal
+                          </Button>
+                        </div>
+                      </div>
+                    )}
                     {expandido === c.id && (
                       <div id={`equipamentos-cliente-${c.id}`} className="min-w-0 border-t bg-accent/30 px-4 py-3">
                         {carregandoEquip ? (
@@ -667,7 +760,7 @@ export default function Clientes() {
 
       <ClientesContatosModal
         open={Boolean(contatosClienteSelecionado)}
-        onOpenChange={(open) => { if (!open) setContatosClienteSelecionado(null); }}
+        onOpenChange={(open) => { if (!open) fecharModalContatos(); }}
         cliente={contatosClienteSelecionado}
       />
 
