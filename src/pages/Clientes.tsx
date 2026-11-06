@@ -20,7 +20,7 @@
  * ║  USADO POR: App.tsx (rota /clientes)                        ║
  * ╚══════════════════════════════════════════════════════════════╝
  */
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { formatDatePtBr } from "@/lib/date-utils";
 import {
@@ -50,6 +50,7 @@ import {
   formatarTelefone,
   formatarCEP,
   detectarTipoDocumento,
+  digitosTelefoneBr,
 } from "@/lib/validations";
 import { useClientes } from "@/hooks/useClientes";
 import { useNotification } from "@/hooks/useNotification";
@@ -59,6 +60,7 @@ import {
   SENSITIVE_PERMISSIONS,
   type Cliente,
   type ClienteId,
+  type ClienteContato,
   type Equipamento,
   type RegularizacaoLegadoPrevia,
   type VinculoEmpresaPerfilInput,
@@ -103,6 +105,11 @@ export default function Clientes() {
   const [modalEquipamentosOpen, setModalEquipamentosOpen] = useState(false);
   const [clienteEquipamentosSelecionado, setClienteEquipamentosSelecionado] = useState<Cliente | null>(null);
   const [contatosClienteSelecionado, setContatosClienteSelecionado] = useState<Cliente | null>(null);
+  const [contatosExpandido, setContatosExpandido] = useState<ClienteId | null>(null);
+  const contatosExpandidoRef = useRef<ClienteId | null>(null);
+  const contatosRequisicaoRef = useRef(0);
+  const [contatosLista, setContatosLista] = useState<ClienteContato[]>([]);
+  const [carregandoContatos, setCarregandoContatos] = useState(false);
   const [previaRegularizacao, setPreviaRegularizacao] = useState<RegularizacaoLegadoPrevia | null>(null);
   const [previaVinculoEmpresa, setPreviaVinculoEmpresa] = useState<VinculoEmpresaPerfilPrevia | null>(null);
   const [regularizando, setRegularizando] = useState(false);
@@ -152,10 +159,19 @@ export default function Clientes() {
     } else if (tipo === "CNPJ") {
       setTipoPessoa("PJ");
       form.setValue("tipo_pessoa", "PJ");
+      const eraPj = Boolean(
+        editando && (
+          editando.tipo_pessoa === "PJ"
+          || (editando.documento || editando.cpf_cnpj || "").replace(/\D/g, "").length === 14
+        ),
+      );
+      if (editando && !eraPj) {
+        form.setValue("exigir_contato_inicial", true);
+      }
     } else {
       setTipoPessoa(null);
     }
-  }, [documentoValue, form]);
+  }, [documentoValue, form, editando]);
 
   // Buscar CEP via ViaCEP
   const buscarCep = useCallback(async (cep: string) => {
@@ -178,6 +194,52 @@ export default function Clientes() {
       setBuscandoCep(false);
     }
   }, [form]);
+
+  /** Carrega os contatos da linha expandida; ignora resposta de requisição antiga ou de cliente que já não está expandido. */
+  async function carregarContatosExpandido(cliente: Cliente) {
+    const token = ++contatosRequisicaoRef.current;
+    if (!cliente.empresa_id) {
+      setContatosLista([]);
+      setCarregandoContatos(false);
+      return;
+    }
+    const clienteId = cliente.id!;
+    const vigente = () => token === contatosRequisicaoRef.current && contatosExpandidoRef.current === clienteId;
+    setCarregandoContatos(true);
+    try {
+      const lista = await db.listarClienteContatos(clienteId, cliente.empresa_id);
+      if (vigente()) setContatosLista(lista);
+    } catch (err) {
+      console.error("Erro ao buscar contatos:", err);
+      if (vigente()) setContatosLista([]);
+    } finally {
+      if (vigente()) setCarregandoContatos(false);
+    }
+  }
+
+  /** Expande/recolhe a lista de contatos do cliente. Conecta-se a: db.listarClienteContatos → Rust listar_cliente_contatos */
+  async function toggleContatos(cliente: Cliente) {
+    if (contatosExpandidoRef.current === cliente.id) {
+      contatosExpandidoRef.current = null;
+      contatosRequisicaoRef.current++;
+      setContatosExpandido(null);
+      setContatosLista([]);
+      setCarregandoContatos(false);
+      return;
+    }
+    contatosExpandidoRef.current = cliente.id!;
+    setContatosExpandido(cliente.id!);
+    setContatosLista([]);
+    setCarregandoContatos(false);
+    await carregarContatosExpandido(cliente);
+  }
+
+  /** Ao fechar o modal de contatos, atualiza a linha se esse cliente ainda estiver expandido. */
+  function fecharModalContatos() {
+    const cliente = contatosClienteSelecionado;
+    setContatosClienteSelecionado(null);
+    if (cliente && contatosExpandidoRef.current === cliente.id) void carregarContatosExpandido(cliente);
+  }
 
   /**
    * Expande/recolhe a linha do cliente para exibir equipamentos vinculados.
@@ -233,10 +295,11 @@ export default function Clientes() {
     setErroDocumentoDuplicado(null);
     setEditando(c);
     const doc = c.documento || c.cpf_cnpj || "";
-    setTipoPessoa(c.tipo_pessoa === "PJ" ? "PJ" : doc.replace(/\D/g, "").length === 14 ? "PJ" : "PF");
+    const isPj = c.tipo_pessoa === "PJ" || doc.replace(/\D/g, "").length === 14;
+    setTipoPessoa(isPj ? "PJ" : "PF");
     form.reset({
       documento: doc ? formatarDocumento(doc) : "",
-      tipo_pessoa: c.tipo_pessoa === "PJ" ? "PJ" : "PF",
+      tipo_pessoa: isPj ? "PJ" : "PF",
       nome: c.nome || "",
       razao_social: c.razao_social || "",
       nome_fantasia: c.nome_fantasia || "",
@@ -256,6 +319,7 @@ export default function Clientes() {
       exigir_contato_inicial: false,
       contato_nome: "", contato_telefone: "", contato_email: "",
     });
+    // PJ antigo sem celular salva como está; o contato com celular só é exigido de quem vira PJ agora.
     setDialogOpen(true);
   }
 
@@ -299,19 +363,19 @@ export default function Clientes() {
         atualizado_em: editando?.atualizado_em,
       } as any;
 
+      const contatoInicial = isPJ && data.exigir_contato_inicial
+        ? {
+            nome: (data.contato_nome ?? "").trim(),
+            telefone: digitosTelefoneBr(data.contato_telefone ?? ""),
+            email: data.contato_email?.trim() || undefined,
+          }
+        : undefined;
       if (editando) {
-        const resultado = await atualizar(editando.id!, payload);
+        const resultado = await atualizar(editando.id!, payload, contatoInicial);
         if (!resultado.sucesso) {
           throw new Error(resultado.erro || "Não foi possível salvar o cliente.");
         }
       } else {
-        const contatoInicial = isPJ && data.exigir_contato_inicial
-          ? {
-              nome: (data.contato_nome ?? "").trim(),
-              telefone: (data.contato_telefone ?? "").replace(/\D/g, ""),
-              email: data.contato_email?.trim() || undefined,
-            }
-          : undefined;
         const resultado = await criar(payload, contatoInicial);
         if (!resultado.sucesso) {
           throw new Error(resultado.erro || "Não foi possível criar o cliente.");
@@ -497,6 +561,9 @@ export default function Clientes() {
                             {c.tipo_pessoa === "PJ" && c.razao_social && c.nome_fantasia && (
                               <p className="break-words text-xs text-muted-foreground">{c.razao_social}</p>
                             )}
+                            {c.contato_encontrado && (
+                              <p className="break-words text-xs text-muted-foreground">Contato: {c.contato_encontrado}</p>
+                            )}
                           </div>
                         </div>
                         <dl className="grid min-w-0 gap-x-6 gap-y-3 text-sm sm:grid-cols-2 2xl:grid-cols-4">
@@ -533,15 +600,23 @@ export default function Clientes() {
                             onClick: () => void toggleExpandir(c.id!),
                           }}
                           secondary={{
-                            id: `editar-${c.id}`,
-                            label: "Editar",
-                            icon: <Edit className="h-4 w-4" />,
+                            id: `contatos-${c.id}`,
+                            label: "Contatos",
+                            icon: contatosExpandido === c.id ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />,
                             variant: "outline",
-                            onClick: () => abrirEditar(c),
+                            className: "border-primary bg-primary/10 text-primary hover:bg-primary/20 hover:text-primary",
+                            ariaExpanded: contatosExpandido === c.id,
+                            onClick: () => void toggleContatos(c),
                           }}
                           overflow={[
                             {
-                              id: `contatos-${c.id}`,
+                              id: `editar-${c.id}`,
+                              label: "Editar",
+                              icon: <Edit className="h-4 w-4" />,
+                              onClick: () => void abrirEditar(c),
+                            },
+                            {
+                              id: `gerenciar-contatos-${c.id}`,
                               label: "Contatos e Portal",
                               icon: <ContactRound className="h-4 w-4" />,
                               onClick: () => setContatosClienteSelecionado(c),
@@ -557,6 +632,39 @@ export default function Clientes() {
                         />
                       </div>
                     </div>
+                    {contatosExpandido === c.id && (
+                      <div id={`contatos-cliente-${c.id}`} className="min-w-0 border-t bg-accent/30 px-4 py-3">
+                        {!c.empresa_id ? (
+                          <span className="text-sm italic text-amber-700 dark:text-amber-400">
+                            Cliente sem empresa vinculada — contatos indisponíveis
+                          </span>
+                        ) : carregandoContatos ? (
+                          <span className="text-sm text-muted-foreground">Carregando contatos...</span>
+                        ) : contatosLista.length === 0 ? (
+                          <span className="text-sm text-muted-foreground">Nenhum contato cadastrado</span>
+                        ) : (
+                          <ul className="space-y-2">
+                            {contatosLista.map(ct => (
+                              <li
+                                key={ct.id}
+                                className={`grid min-w-0 gap-1 rounded border bg-background p-3 text-sm sm:grid-cols-3 ${
+                                  c.contato_encontrado && ct.nome === c.contato_encontrado ? "border-primary" : ""
+                                }`}
+                              >
+                                <span className="break-words font-medium">{ct.nome}</span>
+                                <span className="break-all">{ct.telefone ? formatarTelefone(ct.telefone) : "—"}</span>
+                                <span className="break-all">{ct.email || "—"}</span>
+                              </li>
+                            ))}
+                          </ul>
+                        )}
+                        <div className="flex justify-end pt-2">
+                          <Button variant="outline" size="sm" className="h-8 text-xs" onClick={() => setContatosClienteSelecionado(c)}>
+                            Gerenciar contatos e portal
+                          </Button>
+                        </div>
+                      </div>
+                    )}
                     {expandido === c.id && (
                       <div id={`equipamentos-cliente-${c.id}`} className="min-w-0 border-t bg-accent/30 px-4 py-3">
                         {carregandoEquip ? (
@@ -653,7 +761,7 @@ export default function Clientes() {
 
       <ClientesContatosModal
         open={Boolean(contatosClienteSelecionado)}
-        onOpenChange={(open) => { if (!open) setContatosClienteSelecionado(null); }}
+        onOpenChange={(open) => { if (!open) fecharModalContatos(); }}
         cliente={contatosClienteSelecionado}
       />
 

@@ -37,6 +37,38 @@ export function normalizarOrdemPorCategoria(
   }));
 }
 
+/**
+ * Compara apenas os campos gravados no banco. IDs locais e URLs de preview
+ * representam a sessão da UI e não fazem parte do estado persistido da foto.
+ */
+export function imagensPersistidasIguais(
+  atuais: EquipamentoImagemDraft[],
+  baseline: EquipamentoImagemDraft[],
+): boolean {
+  const categorias: EquipamentoImagemCategoria[] = ["ENTRADA", "SAIDA", "VERIFICACAO"];
+  const canonicalizar = (imagens: EquipamentoImagemDraft[]) =>
+    normalizarOrdemPorCategoria(imagens)
+      .slice()
+      .sort((a, b) => categorias.indexOf(a.categoria) - categorias.indexOf(b.categoria) || a.ordem - b.ordem);
+
+  const a = canonicalizar(atuais);
+  const b = canonicalizar(baseline);
+  if (a.length !== b.length) return false;
+
+  return a.every((imagem, index) => {
+    const original = b[index];
+    return imagem.categoria === original.categoria
+      && imagem.filename === original.filename
+      && imagem.mime_type === original.mime_type
+      && imagem.tamanho_bytes === original.tamanho_bytes
+      && (imagem.largura ?? null) === (original.largura ?? null)
+      && (imagem.altura ?? null) === (original.altura ?? null)
+      && imagem.ordem === original.ordem
+      && (imagem.observacao ?? null) === (original.observacao ?? null)
+      && imagem.storage_path === original.storage_path;
+  });
+}
+
 function blobParaDataUrl(blob: Blob): Promise<string> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();

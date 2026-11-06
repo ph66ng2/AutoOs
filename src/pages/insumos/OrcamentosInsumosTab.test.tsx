@@ -62,6 +62,24 @@ beforeEach(() => {
 });
 
 describe("OrcamentosInsumosTab", () => {
+  it("mostra selo Vencido só em orçamento em aberto com validade passada", async () => {
+    mocks.listar.mockResolvedValue({
+      items: [
+        { ...linha(3, "ENVIADO", 90), validade: "2000-01-01" },
+        { ...linha(2, "ENVIADO", 80), validade: "2099-12-31" },
+        { ...linha(1, "APROVADO", 70), validade: "2000-01-01" },
+      ],
+      total: 3,
+    });
+    render(<OrcamentosInsumosTab />);
+    const vencido = await screen.findByRole("row", { name: /abrir orçamento OI-3/i });
+    expect(within(vencido).getByText("Vencido")).toBeInTheDocument();
+    const valido = screen.getByRole("row", { name: /abrir orçamento OI-2/i });
+    expect(within(valido).queryByText("Vencido")).not.toBeInTheDocument();
+    const aprovado = screen.getByRole("row", { name: /abrir orçamento OI-1/i });
+    expect(within(aprovado).queryByText("Vencido")).not.toBeInTheDocument();
+  });
+
   it("lista número, cliente, data, valor e status com a cor do status", async () => {
     render(<OrcamentosInsumosTab />);
     const primeira = await screen.findByRole("row", { name: /abrir orçamento OI-2/i });

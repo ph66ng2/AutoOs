@@ -1,10 +1,13 @@
-import { useMemo, useState, type ReactNode } from "react"
+import { Fragment, useMemo, useState, type ReactNode } from "react"
 import { Menu } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import {
   Select,
   SelectContent,
+  SelectGroup,
   SelectItem,
+  SelectLabel,
+  SelectSeparator,
   SelectTrigger,
 } from "@/components/ui/select"
 
@@ -17,6 +20,8 @@ export interface PriorityAction {
   className?: string
   disabled?: boolean
   ariaExpanded?: boolean
+  /** Seção do menu "Mais". Se alguma ação tiver grupo, o menu mostra os grupos em ordem de aparição. */
+  group?: string
 }
 
 interface ActionPriorityRowProps {
@@ -43,6 +48,25 @@ export function ActionPriorityRow({
   const overflowById = useMemo(
     () => Object.fromEntries(overflow.map((action) => [action.id, action])),
     [overflow]
+  )
+
+  const overflowGroups = useMemo(() => {
+    if (!overflow.some((action) => action.group)) return null
+    const grupos = new Map<string, PriorityAction[]>()
+    for (const action of overflow) {
+      const chave = action.group ?? ""
+      grupos.set(chave, [...(grupos.get(chave) ?? []), action])
+    }
+    return Array.from(grupos.entries())
+  }, [overflow])
+
+  const renderOverflowItem = (action: PriorityAction) => (
+    <SelectItem key={action.id} value={action.id} disabled={action.disabled}>
+      <span className={`flex items-center gap-2 ${action.className || ""}`.trim()}>
+        {action.icon}
+        {action.label}
+      </span>
+    </SelectItem>
   )
 
   return (
@@ -112,14 +136,17 @@ export function ActionPriorityRow({
             )}
           </SelectTrigger>
           <SelectContent>
-            {overflow.map((action) => (
-              <SelectItem key={action.id} value={action.id} disabled={action.disabled}>
-                <span className={`flex items-center gap-2 ${action.className || ""}`.trim()}>
-                  {action.icon}
-                  {action.label}
-                </span>
-              </SelectItem>
-            ))}
+            {overflowGroups
+              ? overflowGroups.map(([grupo, acoes], indice) => (
+                <Fragment key={grupo || "sem-grupo"}>
+                  {indice > 0 && <SelectSeparator />}
+                  <SelectGroup>
+                    {grupo && <SelectLabel>{grupo}</SelectLabel>}
+                    {acoes.map(renderOverflowItem)}
+                  </SelectGroup>
+                </Fragment>
+              ))
+              : overflow.map(renderOverflowItem)}
           </SelectContent>
         </Select>
       )}

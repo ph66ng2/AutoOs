@@ -15,13 +15,6 @@ const baseProps: ConfiguracoesTabSegurancaProps = {
   securityBusy: false,
   handleSecurityAdminToggle: vi.fn(),
   accessStatus: null,
-  currentPin: "",
-  setCurrentPin: vi.fn(),
-  newPin: "",
-  setNewPin: vi.fn(),
-  confirmPin: "",
-  setConfirmPin: vi.fn(),
-  trocarMeuPin: vi.fn(),
   managedProfileId: 2,
   setManagedProfileId: vi.fn(),
   profilesCatalog: [ivan, ana],
@@ -86,6 +79,8 @@ describe("painel de Segurança", () => {
   it("não mostra a administração para quem não gerencia perfis", () => {
     renderTab({ canManageProfiles: false });
     expect(screen.queryByRole("link", { name: "Abrir Equipe e acessos" })).not.toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Trocar meu PIN" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Trocar meu PIN em Equipe e acessos" })).toHaveAttribute("href", "/perfil");
+    expect(screen.queryByRole("button", { name: "Trocar meu PIN" })).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("PIN atual")).not.toBeInTheDocument();
   });
 });

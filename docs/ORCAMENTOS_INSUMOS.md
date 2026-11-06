@@ -23,6 +23,9 @@ RASCUNHO ──enviar──> ENVIADO ──aprovar──> APROVADO ──entrega
   não ao abrir a prévia.
 - O número é sequencial **por empresa** (`orcamentos_insumos_contadores`) e aparece como `OI-<n>`.
   Cancelar ou reprovar não libera o número.
+- Um orçamento CANCELADO pode ser **excluído de vez** (botão "Excluir" no diálogo, com confirmação
+  e PIN financeiro): apaga o orçamento e os itens; o número não é reaproveitado, então buracos na
+  numeração são esperados.
 - Todo valor é calculado no backend, em centavos (`calcular_totais`). O total da tela é só prévia.
   O desconto não pode passar do subtotal. Nome e categoria do item são copiados do produto na hora de
   salvar, então o documento não muda se o cadastro mudar depois.
@@ -38,19 +41,21 @@ RASCUNHO ──enviar──> ENVIADO ──aprovar──> APROVADO ──entrega
 - **Cancelar um APROVADO** (ainda não entregue) devolve cada item com uma `ENTRADA` de mesma origem e
   referência. Exige `confirmar_devolucao_estoque: true` no comando; a tela pede a confirmação.
 - ENTREGUE não devolve nada e não pode ser cancelado.
+- Excluir um cancelado não mexe no estoque (o cancelamento já devolveu); as movimentações com referência
+  OI-<n> permanecem no histórico.
 - Só produtos da empresa, ativos e que não sejam da categoria IMPRESSORA entram no orçamento.
 
 ## Permissões, concorrência e auditoria
 
 - Consultar a lista: qualquer perfil com sessão ativa.
-- Criar, editar, enviar, aprovar, reprovar, cancelar e entregar exigem `FINANCIAL_ACTIONS` (os valores
+- Criar, editar, enviar, aprovar, reprovar, cancelar, entregar e excluir exigem `FINANCIAL_ACTIONS` (os valores
   são do orçamento). O PIN segue a regra do perfil (`ensureSensitiveAccess`).
 - Toda alteração manda o `atualizado_em` que a tela viu; se mudou, o backend responde
   "Conflito de concorrência" e nada é gravado. Duas aprovações simultâneas: só uma vale.
 - Todas as consultas filtram por `empresa_id` do perfil ativo. As tabelas têm RLS ligado, sem policy e
   sem acesso para `anon`/`authenticated`.
 - Auditoria (`security_audit_log`): `INSUMOS_QUOTE_CREATED`, `_UPDATED`, `_SENT`, `_APPROVED`,
-  `_REJECTED`, `_CANCELLED`, `_DELIVERED`.
+  `_REJECTED`, `_CANCELLED`, `_DELIVERED`, `INSUMOS_QUOTE_DELETED`.
 
 ## Envios
 

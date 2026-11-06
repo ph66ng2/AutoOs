@@ -1662,8 +1662,10 @@ pub async fn testar_config_banco(config: DatabaseConnectionConfig) -> Result<boo
         .connect(&database_url)
         .await
         .map_err(|error| crate::db::database_error_message(&error))?;
-    let _ = sqlx::query("SELECT 1").fetch_one(&pool).await.map_err(|error| crate::db::database_error_message(&error))?;
+    let result = sqlx::query("SELECT 1").fetch_one(&pool).await;
+    // Sempre fecha o pool auxiliar, inclusive em erro, para liberar a vaga no pooler.
     pool.close().await;
+    result.map_err(|error| crate::db::database_error_message(&error))?;
     Ok(true)
 }
 

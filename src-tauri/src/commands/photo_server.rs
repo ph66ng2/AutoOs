@@ -121,6 +121,29 @@ fn get_token_store() -> TokenStore {
         .clone()
 }
 
+/// Remove tokens vencidos (e as fotos de rascunho que carregam).
+fn prune_expired(store: &mut HashMap<String, TokenData>, now: Instant) {
+    store.retain(|_, t| t.expires_at > now);
+}
+
+/// Esvazia o store de tokens, liberando `image_data` ainda retido.
+async fn clear_token_store() {
+    get_token_store().lock().await.clear();
+}
+
+/// Chaves atuais do store (tokens da sessão que está parando).
+async fn snapshot_token_keys(store: &TokenStore) -> Vec<String> {
+    store.lock().await.keys().cloned().collect()
+}
+
+/// Remove só as chaves informadas; tokens de uma sessão nova ficam intactos.
+async fn remove_token_keys(store: &TokenStore, keys: &[String]) {
+    let mut guard = store.lock().await;
+    for k in keys {
+        guard.remove(k);
+    }
+}
+
 fn generate_token() -> String {
     uuid::Uuid::new_v4().to_string()
 }
@@ -672,8 +695,14 @@ pub async fn stop_photo_server() -> Result<(), String> {
     };
 
     let Some(server) = server else {
+        clear_token_store().await;
         return Err("Servidor de fotos não está em execução".to_string());
     };
+
+    // Tokens da sessão que está parando. Uma sessão nova pode subir durante a
+    // espera abaixo; seus tokens não podem ser apagados por este stop.
+    let store = get_token_store();
+    let tokens_da_sessao = snapshot_token_keys(&store).await;
 
     let tx = server
         .shutdown_trigger
@@ -695,6 +724,7 @@ pub async fn stop_photo_server() -> Result<(), String> {
     }
 
     photo_tunnel::stop_tunnel().await;
+    remove_token_keys(&store, &tokens_da_sessao).await;
     info!("Servidor de fotos parado");
     Ok(())
 }
@@ -710,6 +740,7 @@ pub async fn generate_upload_token(
     let token_store = get_token_store();
 
     let mut store = token_store.lock().await;
+    prune_expired(&mut store, Instant::now());
     store.insert(
         token.clone(),
         TokenData {
@@ -760,6 +791,74 @@ pub async fn consultar_status_foto(token: String) -> Result<StatusResponse, Stri
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn token_de_teste(expires_at: Instant, image_data: bool) -> TokenData {
+        TokenData {
+            equipamento_id: 0,
+            categoria: "x".to_string(),
+            expires_at,
+            used: image_data,
+            received_count: 0,
+            image_data: image_data.then(|| {
+                Arc::new(vec![ImageData {
+                    bytes: vec![1, 2, 3],
+                    filename: "a.jpg".to_string(),
+                    mime_type: "image/jpeg".to_string(),
+                }])
+            }),
+        }
+    }
+
+    #[test]
+    fn prune_expired_remove_so_os_vencidos() {
+        let agora = Instant::now();
+        let mut store = HashMap::new();
+        store.insert("vencido".to_string(), token_de_teste(agora - Duration::from_secs(1), true));
+        store.insert("valido".to_string(), token_de_teste(agora + Duration::from_secs(60), false));
+        prune_expired(&mut store, agora);
+        assert!(!store.contains_key("vencido"));
+        assert!(store.contains_key("valido"));
+    }
+
+    #[tokio::test]
+    async fn gerar_token_poda_vencidos_e_stop_esvazia_o_store() {
+        let store = get_token_store();
+        store.lock().await.insert(
+            "velho".to_string(),
+            token_de_teste(Instant::now() - Duration::from_secs(5), true),
+        );
+        let novo = generate_upload_token(0, "x".to_string()).await.unwrap();
+        {
+            let s = store.lock().await;
+            assert!(!s.contains_key("velho"));
+            assert!(s.contains_key(&novo));
+        }
+        store.lock().await.insert(
+            "rascunho".to_string(),
+            token_de_teste(Instant::now() + Duration::from_secs(60), true),
+        );
+        clear_token_store().await;
+        assert!(store.lock().await.is_empty());
+    }
+
+    #[tokio::test]
+    async fn stop_remove_so_tokens_da_sessao_antiga() {
+        let store: TokenStore = Arc::new(TokioMutex::new(HashMap::new()));
+        store.lock().await.insert(
+            "velho".to_string(),
+            token_de_teste(Instant::now() + Duration::from_secs(60), true),
+        );
+        let snapshot = snapshot_token_keys(&store).await;
+        // Sessão nova gera token enquanto o stop antigo espera o join.
+        store.lock().await.insert(
+            "novo".to_string(),
+            token_de_teste(Instant::now() + Duration::from_secs(60), true),
+        );
+        remove_token_keys(&store, &snapshot).await;
+        let s = store.lock().await;
+        assert!(!s.contains_key("velho"));
+        assert!(s.contains_key("novo"));
+    }
 
     #[test]
     fn tunnel_binds_loopback_only() {

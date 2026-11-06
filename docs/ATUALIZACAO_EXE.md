@@ -2,7 +2,9 @@
 
 ## 1. Visão Geral
 
-O AutoOS é uma aplicação desktop construída com Tauri 2.x, React 18 e backend Rust. O release Windows assinado publica instalador, `.sig` e `latest.json` no GitHub Releases para o `tauri-plugin-updater`. A instalação manual continua disponível como fallback. Este documento cobre versionamento, build, assinatura Authenticode, chave do updater e distribuição.
+O AutoOS é uma aplicação desktop construída com Tauri 2.x, React 18 e backend Rust. O release Windows assinado publica instalador, `.sig` e `latest.json` no GitHub Releases para o `tauri-plugin-updater`. A instalação manual continua disponível como fallback.
+
+**No app (desde a 0.6.2):** qualquer pessoa vê o aviso "AutoOS X disponível" no canto da tela. O app consulta o `latest.json` 15 s depois de abrir e a cada 6 h, em silêncio (sem rede, nada aparece). "Ver e atualizar" abre o mesmo painel de Configurações › Banco, que baixa, valida a assinatura e reabre o app; "Depois" esconde o aviso daquela versão até o app ser aberto de novo. A instalação nunca começa sozinha. Este documento cobre versionamento, build, assinatura Authenticode, chave do updater e distribuição.
 
 Para detalhes sobre convenções de versão e camadas de QA, consulte [RELEASE.md](./RELEASE.md). Para assinatura Windows, consulte [WINDOWS_CODE_SIGNING.md](./WINDOWS_CODE_SIGNING.md).
 

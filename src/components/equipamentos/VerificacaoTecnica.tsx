@@ -33,6 +33,8 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { ValorDecimalInput } from "@/components/ui/valor-decimal-input";
+import { formatCurrencyOrMissing } from "@/lib/utils";
 import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
@@ -65,6 +67,8 @@ import { carregarRepositorioOperacoesEquipamento } from "@/lib/data/equipamentos
 import { validatePecasSugeridas } from "@/lib/data/servicos-repository";
 import { PecasDoServico } from "@/components/equipamentos/PecasDoServico";
 import { pecasDosServicosParaVerificacao } from "@/lib/servico-pecas";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { LABEL_CONFIRMAR_OS_GARANTIA, MENSAGEM_CONFIRMAR_OS_GARANTIA, MENSAGEM_TOTAL_ZERO_SEM_GARANTIA, osSomenteGarantia, TITULO_CONFIRMAR_OS_GARANTIA, vaiAutoAprovarOsGarantia } from "@/lib/orcamento-estoque";
 import { useNotification } from "@/hooks/useNotification";
 import { PhotoUploadDialog } from "@/components/equipamentos/PhotoUploadDialog";
 import { imagemPersistidaParaDraft, type EquipamentoImagemDraft } from "@/lib/equipamento-imagem-utils";
@@ -110,6 +114,9 @@ export function VerificacaoTecnica({
   const [linhaSugestaoAberta, setLinhaSugestaoAberta] = useState<string | null>(null);
   const [photoVerifOpen, setPhotoVerifOpen] = useState(false);
   const [imagensVerificacao, setImagensVerificacao] = useState<EquipamentoImagemDraft[]>([]);
+  const [valoresServicoInvalidos, setValoresServicoInvalidos] = useState<Record<string, boolean>>({});
+  const [confirmGarantiaOpen, setConfirmGarantiaOpen] = useState(false);
+  const [dadosGarantiaPendentes, setDadosGarantiaPendentes] = useState<DadosVerificacao | null>(null);
   const { warning } = useNotification();
 
   useEffect(() => {
@@ -157,7 +164,20 @@ export function VerificacaoTecnica({
     setObservacoesVerif("");
     setTecnicoNome(tecnicoInicial);
     setImagensVerificacao([]);
+    setValoresServicoInvalidos({});
+    setConfirmGarantiaOpen(false);
+    setDadosGarantiaPendentes(null);
   }
+
+  // Parent pode fechar com setOpen(false) sem passar por handleOpenChange (ex.: Quem recebe).
+  // Troca de equipamento também precisa nascer limpa. Enquanto open permanece true
+  // (Quem recebe / confirmação de garantia), a digitação é preservada.
+  const equipamentoId = equipamento?.id ?? null;
+  useEffect(() => {
+    resetForm();
+    // resetForm lê tecnicoInicial do render atual; não resetar quando só o técnico sugerido muda.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, equipamentoId]);
 
   /** Adiciona um novo serviço vazio à lista (id = timestamp) */
   function adicionarServico() {
@@ -169,6 +189,11 @@ export function VerificacaoTecnica({
   /** Remove serviço da lista pelo ID */
   function removerServico(id: string) {
     setServicos(servicos.filter((s) => s.id !== id));
+    setValoresServicoInvalidos((atual) => {
+      const proximo = { ...atual };
+      delete proximo[id];
+      return proximo;
+    });
   }
 
   function atualizarServico(id: string, patch: Partial<ServicoNecessario>) {
@@ -212,7 +237,10 @@ export function VerificacaoTecnica({
     if (!equipamento) return;
     const servicosInvalidos = servicos.some(
       (servico) =>
-        !servico.descricao.trim() || Number(servico.valor) < 0 || Number.isNaN(Number(servico.valor)),
+        !servico.descricao.trim()
+        || Number(servico.valor) < 0
+        || Number.isNaN(Number(servico.valor))
+        || valoresServicoInvalidos[servico.id],
     );
     if (servicosInvalidos) {
       warning("Verificação", "Cada serviço precisa ter descrição e valor igual ou maior que zero (0,00 para garantia).");
@@ -257,6 +285,10 @@ export function VerificacaoTecnica({
       }));
     const custoTotalPecas = pecasNormalizadas.reduce((acum, peca) => acum + peca.valorTotal, 0);
     const custoTotal = Math.round((custoTotalServicos + custoTotalPecas) * 100) / 100;
+    if (custoTotal === 0 && !osSomenteGarantia(servicosNormalizados)) {
+      warning("Verificação", MENSAGEM_TOTAL_ZERO_SEM_GARANTIA);
+      return;
+    }
 
     const dados: DadosVerificacao = {
       equipamento_id: equipamento.id!,
@@ -274,6 +306,23 @@ export function VerificacaoTecnica({
       observacoes: observacoesVerif,
     };
 
+    if (vaiAutoAprovarOsGarantia(equipamento.status, osSomenteGarantia(servicosNormalizados), custoTotal)) {
+      setDadosGarantiaPendentes(dados);
+      setConfirmGarantiaOpen(true);
+      return;
+    }
+
+    const concluida = await onConcluir(dados);
+    if (concluida === false) return;
+    onOpenChange(false);
+    resetForm();
+  }
+
+  async function confirmarOsGarantia() {
+    if (!dadosGarantiaPendentes) return;
+    const dados = { ...dadosGarantiaPendentes, confirmar_garantia: true };
+    setConfirmGarantiaOpen(false);
+    setDadosGarantiaPendentes(null);
     const concluida = await onConcluir(dados);
     if (concluida === false) return;
     onOpenChange(false);
@@ -293,6 +342,7 @@ export function VerificacaoTecnica({
 
   // ─── Render ─────────────────────────────────────────
   return (
+    <>
     <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogContent className="sm:max-w-3xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
@@ -431,7 +481,7 @@ export function VerificacaoTecnica({
                                 onClick={() => selecionarServicoCatalogo(s.id, item)}
                               >
                                 <span className="font-medium">{item.nome}</span>
-                                <span className="text-muted-foreground"> — R$ {Number(item.preco_padrao || 0).toFixed(2)}</span>
+                                <span className="text-muted-foreground"> — {formatCurrencyOrMissing(Number(item.preco_padrao))}</span>
                               </button>
                             ))}
                             {!carregandoCatalogo && catalogoServicos.filter((item) =>
@@ -444,13 +494,13 @@ export function VerificacaoTecnica({
                           </div>
                         )}
                       </div>
-                      <Input
-                        type="number"
+                      <ValorDecimalInput
                         min={0}
-                        step="0.01"
                         placeholder="Valor"
-                        value={Number.isFinite(Number(s.valor)) ? Number(s.valor) : ""}
-                        onChange={(e) => atualizarServico(s.id, { valor: Number(e.target.value) })}
+                        aria-label="Valor do serviço"
+                        value={Number(s.valor) || 0}
+                        onValueChange={(valor) => atualizarServico(s.id, { valor })}
+                        onValidityChange={(valido) => setValoresServicoInvalidos((atual) => ({ ...atual, [s.id]: !valido }))}
                         className="w-32"
                       />
                       <Button
@@ -584,7 +634,7 @@ export function VerificacaoTecnica({
               </DialogClose>
               <Button
                 onClick={handleConcluir}
-                disabled={salvando || servicos.some((s) => !s.descricao.trim() || Number(s.valor) < 0)}
+                disabled={salvando || servicos.some((s) => !s.descricao.trim() || Number(s.valor) < 0 || valoresServicoInvalidos[s.id])}
                 className="bg-green-600 hover:bg-green-700"
               >
                 <Check className="mr-2 h-4 w-4" />
@@ -611,5 +661,19 @@ export function VerificacaoTecnica({
         )}
       </DialogContent>
     </Dialog>
+    <ConfirmDialog
+      open={confirmGarantiaOpen}
+      onOpenChange={(aberto) => {
+        setConfirmGarantiaOpen(aberto);
+        if (!aberto) setDadosGarantiaPendentes(null);
+      }}
+      title={TITULO_CONFIRMAR_OS_GARANTIA}
+      description={MENSAGEM_CONFIRMAR_OS_GARANTIA}
+      confirmLabel={LABEL_CONFIRMAR_OS_GARANTIA}
+      cancelLabel="Cancelar"
+      onConfirm={() => void confirmarOsGarantia()}
+      onCancel={() => setDadosGarantiaPendentes(null)}
+    />
+    </>
   );
 }

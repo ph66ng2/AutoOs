@@ -311,15 +311,11 @@ export function mensagemWhatsapp(input: {
       break;
     case "RECUSAR":
       corpo = `Registrei pelo Portal das Impressoras a recusa do orçamento da ${item}${detalhes}.`;
-      fecho = "Se houver espaço para ajustar valores ou itens, vamos conversar?";
+      fecho = "Obrigado pela atenção.";
       break;
     case "DESFEITA":
       corpo = `Cancelei pelo Portal das Impressoras a minha resposta ao orçamento da ${item}${detalhes}.`;
       fecho = "Podemos conversar sobre a proposta?";
-      break;
-    case "NEGOCIAR":
-      corpo = `Pedi pelo Portal das Impressoras para negociar o orçamento da ${item}${detalhes}.`;
-      fecho = "Podemos conversar?";
       break;
     case "MUDANCA":
       corpo = `Pedi pelo Portal das Impressoras uma correção na minha decisão sobre o orçamento da ${item}${detalhes}.`;

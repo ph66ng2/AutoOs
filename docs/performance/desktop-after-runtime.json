@@ -1,0 +1,2578 @@
+{
+  "browser": "153.0.8010.0",
+  "viewport": "1366x768",
+  "runs": 5,
+  "slow": "CPU 4x; 4 Mbps; RTT 100ms; gzip; fresh contexts; reduced motion",
+  "results": [
+    {
+      "slow": false,
+      "route": "/",
+      "run": 0,
+      "readyMs": 2074.1999999997206,
+      "navigationMs": 112.10000000009313,
+      "scriptingMs": 122.34299999999999,
+      "taskMs": 303.22900000000004,
+      "heapBytes": 6720060,
+      "errors": [],
+      "navigation": {
+        "name": "http://127.0.0.1:41367/",
+        "entryType": "navigation",
+        "startTime": 0,
+        "duration": 77.59999999962747,
+        "navigationId": 1741,
+        "initiatorType": "navigation",
+        "deliveryType": "",
+        "nextHopProtocol": "http/1.1",
+        "renderBlockingStatus": "non-blocking",
+        "contentType": "text/html",
+        "contentEncoding": "gzip",
+        "workerStart": 0,
+        "workerRouterEvaluationStart": 0,
+        "workerCacheLookupStart": 0,
+        "workerMatchedSourceType": "",
+        "workerFinalSourceType": "",
+        "redirectStart": 0,
+        "redirectEnd": 0,
+        "fetchStart": 0.2999999998137355,
+        "domainLookupStart": 2.5,
+        "domainLookupEnd": 2.5,
+        "connectStart": 2.5,
+        "secureConnectionStart": 0,
+        "connectEnd": 2.6999999997206032,
+        "requestStart": 4,
+        "responseStart": 8.099999999627471,
+        "firstInterimResponseStart": 0,
+        "finalResponseHeadersStart": 8.099999999627471,
+        "responseEnd": 9.299999999813735,
+        "transferSize": 672,
+        "encodedBodySize": 372,
+        "decodedBodySize": 651,
+        "responseStatus": 200,
+        "serverTiming": [],
+        "unloadEventStart": 0,
+        "unloadEventEnd": 0,
+        "domInteractive": 59,
+        "domContentLoadedEventStart": 77.1999999997206,
+        "domContentLoadedEventEnd": 77.29999999981374,
+        "domComplete": 77.59999999962747,
+        "loadEventStart": 77.59999999962747,
+        "loadEventEnd": 77.59999999962747,
+        "type": "navigate",
+        "redirectCount": 0,
+        "activationStart": 0,
+        "criticalCHRestart": 0,
+        "notRestoredReasons": null,
+        "confidence": {
+          "randomizedTriggerRate": 0.4994798,
+          "value": "low"
+        }
+      },
+      "resources": [
+        {
+          "name": "/assets/index-B6aY9wY7.js",
+          "encodedBytes": 140434,
+          "decodedBytes": 433398
+        },
+        {
+          "name": "/assets/react-vendor-CxCD_NS6.js",
+          "encodedBytes": 45638,
+          "decodedBytes": 142382
+        },
+        {
+          "name": "/assets/icons-CiUAvfpc.js",
+          "encodedBytes": 8359,
+          "decodedBytes": 43308
+        },
+        {
+          "name": "/assets/index-BHgOxmfA.css",
+          "encodedBytes": 19808,
+          "decodedBytes": 104944
+        },
+        {
+          "name": "/assets/app-CzHRyaFM.js",
+          "encodedBytes": 209,
+          "decodedBytes": 246
+        },
+        {
+          "name": "/assets/core-C1V3-PH7.js",
+          "encodedBytes": 145,
+          "decodedBytes": 174
+        },
+        {
+          "name": "/assets/Dashboard-D72JQ8b3.js",
+          "encodedBytes": 10327,
+          "decodedBytes": 38791
+        },
+        {
+          "name": "/assets/insumos-page-constants-DYrMeZAc.js",
+          "encodedBytes": 293,
+          "decodedBytes": 428
+        },
+        {
+          "name": "/assets/LineChart-DPLAviF7.js",
+          "encodedBytes": 105869,
+          "decodedBytes": 385239
+        }
+      ]
+    },
+    {
+      "slow": false,
+      "route": "/",
+      "run": 1,
+      "readyMs": 2036.2000000001863,
+      "navigationMs": 97.60000000009313,
+      "scriptingMs": 94.416,
+      "taskMs": 250.08700000000002,
+      "heapBytes": 6736712,
+      "errors": [],
+      "navigation": {
+        "name": "http://127.0.0.1:41367/",
+        "entryType": "navigation",
+        "startTime": 0,
+        "duration": 57.90000000037253,
+        "navigationId": 395,
+        "initiatorType": "navigation",
+        "deliveryType": "",
+        "nextHopProtocol": "http/1.1",
+        "renderBlockingStatus": "non-blocking",
+        "contentType": "text/html",
+        "contentEncoding": "gzip",
+        "workerStart": 0,
+        "workerRouterEvaluationStart": 0,
+        "workerCacheLookupStart": 0,
+        "workerMatchedSourceType": "",
+        "workerFinalSourceType": "",
+        "redirectStart": 0,
+        "redirectEnd": 0,
+        "fetchStart": 0.10000000009313226,
+        "domainLookupStart": 0.900000000372529,
+        "domainLookupEnd": 0.900000000372529,
+        "connectStart": 0.900000000372529,
+        "secureConnectionStart": 0,
+        "connectEnd": 1.2000000001862645,
+        "requestStart": 1.2000000001862645,
+        "responseStart": 1.7000000001862645,
+        "firstInterimResponseStart": 0,
+        "finalResponseHeadersStart": 1.7000000001862645,
+        "responseEnd": 2.8000000002793968,
+        "transferSize": 672,
+        "encodedBodySize": 372,
+        "decodedBodySize": 651,
+        "responseStatus": 200,
+        "serverTiming": [],
+        "unloadEventStart": 0,
+        "unloadEventEnd": 0,
+        "domInteractive": 21.100000000093132,
+        "domContentLoadedEventStart": 56.5,
+        "domContentLoadedEventEnd": 56.700000000186265,
+        "domComplete": 57.90000000037253,
+        "loadEventStart": 57.90000000037253,
+        "loadEventEnd": 57.90000000037253,
+        "type": "navigate",
+        "redirectCount": 0,
+        "activationStart": 0,
+        "criticalCHRestart": 0,
+        "notRestoredReasons": null,
+        "confidence": {
+          "randomizedTriggerRate": 0.4994798,
+          "value": "low"
+        }
+      },
+      "resources": [
+        {
+          "name": "/assets/index-B6aY9wY7.js",
+          "encodedBytes": 140434,
+          "decodedBytes": 433398
+        },
+        {
+          "name": "/assets/icons-CiUAvfpc.js",
+          "encodedBytes": 8359,
+          "decodedBytes": 43308
+        },
+        {
+          "name": "/assets/react-vendor-CxCD_NS6.js",
+          "encodedBytes": 45638,
+          "decodedBytes": 142382
+        },
+        {
+          "name": "/assets/index-BHgOxmfA.css",
+          "encodedBytes": 19808,
+          "decodedBytes": 104944
+        },
+        {
+          "name": "/assets/app-CzHRyaFM.js",
+          "encodedBytes": 209,
+          "decodedBytes": 246
+        },
+        {
+          "name": "/assets/core-C1V3-PH7.js",
+          "encodedBytes": 145,
+          "decodedBytes": 174
+        },
+        {
+          "name": "/assets/Dashboard-D72JQ8b3.js",
+          "encodedBytes": 10327,
+          "decodedBytes": 38791
+        },
+        {
+          "name": "/assets/insumos-page-constants-DYrMeZAc.js",
+          "encodedBytes": 293,
+          "decodedBytes": 428
+        },
+        {
+          "name": "/assets/LineChart-DPLAviF7.js",
+          "encodedBytes": 105869,
+          "decodedBytes": 385239
+        }
+      ]
+    },
+    {
+      "slow": false,
+      "route": "/",
+      "run": 2,
+      "readyMs": 2034.2999999998137,
+      "navigationMs": 82,
+      "scriptingMs": 108.53999999999999,
+      "taskMs": 233.60500000000002,
+      "heapBytes": 6737144,
+      "errors": [],
+      "navigation": {
+        "name": "http://127.0.0.1:41367/",
+        "entryType": "navigation",
+        "startTime": 0,
+        "duration": 54.299999999813735,
+        "navigationId": 7308,
+        "initiatorType": "navigation",
+        "deliveryType": "",
+        "nextHopProtocol": "http/1.1",
+        "renderBlockingStatus": "non-blocking",
+        "contentType": "text/html",
+        "contentEncoding": "gzip",
+        "workerStart": 0,
+        "workerRouterEvaluationStart": 0,
+        "workerCacheLookupStart": 0,
+        "workerMatchedSourceType": "",
+        "workerFinalSourceType": "",
+        "redirectStart": 0,
+        "redirectEnd": 0,
+        "fetchStart": 0.19999999972060323,
+        "domainLookupStart": 1.3999999999068677,
+        "domainLookupEnd": 1.3999999999068677,
+        "connectStart": 1.3999999999068677,
+        "secureConnectionStart": 0,
+        "connectEnd": 1.6999999997206032,
+        "requestStart": 2,
+        "responseStart": 2.7999999998137355,
+        "firstInterimResponseStart": 0,
+        "finalResponseHeadersStart": 2.7999999998137355,
+        "responseEnd": 3.6999999997206032,
+        "transferSize": 672,
+        "encodedBodySize": 372,
+        "decodedBodySize": 651,
+        "responseStatus": 200,
+        "serverTiming": [],
+        "unloadEventStart": 0,
+        "unloadEventEnd": 0,
+        "domInteractive": 13.699999999720603,
+        "domContentLoadedEventStart": 53.6999999997206,
+        "domContentLoadedEventEnd": 53.6999999997206,
+        "domComplete": 54.299999999813735,
+        "loadEventStart": 54.299999999813735,
+        "loadEventEnd": 54.299999999813735,
+        "type": "navigate",
+        "redirectCount": 0,
+        "activationStart": 0,
+        "criticalCHRestart": 0,
+        "notRestoredReasons": null,
+        "confidence": {
+          "randomizedTriggerRate": 0.4994798,
+          "value": "high"
+        }
+      },
+      "resources": [
+        {
+          "name": "/assets/index-B6aY9wY7.js",
+          "encodedBytes": 140434,
+          "decodedBytes": 433398
+        },
+        {
+          "name": "/assets/react-vendor-CxCD_NS6.js",
+          "encodedBytes": 45638,
+          "decodedBytes": 142382
+        },
+        {
+          "name": "/assets/index-BHgOxmfA.css",
+          "encodedBytes": 19808,
+          "decodedBytes": 104944
+        },
+        {
+          "name": "/assets/icons-CiUAvfpc.js",
+          "encodedBytes": 8359,
+          "decodedBytes": 43308
+        },
+        {
+          "name": "/assets/app-CzHRyaFM.js",
+          "encodedBytes": 209,
+          "decodedBytes": 246
+        },
+        {
+          "name": "/assets/core-C1V3-PH7.js",
+          "encodedBytes": 145,
+          "decodedBytes": 174
+        },
+        {
+          "name": "/assets/Dashboard-D72JQ8b3.js",
+          "encodedBytes": 10327,
+          "decodedBytes": 38791
+        },
+        {
+          "name": "/assets/insumos-page-constants-DYrMeZAc.js",
+          "encodedBytes": 293,
+          "decodedBytes": 428
+        },
+        {
+          "name": "/assets/LineChart-DPLAviF7.js",
+          "encodedBytes": 105869,
+          "decodedBytes": 385239
+        }
+      ]
+    },
+    {
+      "slow": false,
+      "route": "/",
+      "run": 3,
+      "readyMs": 2030.1000000000931,
+      "navigationMs": 98.29999999981374,
+      "scriptingMs": 96.77199999999999,
+      "taskMs": 234.732,
+      "heapBytes": 5793996,
+      "errors": [],
+      "navigation": {
+        "name": "http://127.0.0.1:41367/",
+        "entryType": "navigation",
+        "startTime": 0,
+        "duration": 60.10000000009313,
+        "navigationId": 9153,
+        "initiatorType": "navigation",
+        "deliveryType": "",
+        "nextHopProtocol": "http/1.1",
+        "renderBlockingStatus": "non-blocking",
+        "contentType": "text/html",
+        "contentEncoding": "gzip",
+        "workerStart": 0,
+        "workerRouterEvaluationStart": 0,
+        "workerCacheLookupStart": 0,
+        "workerMatchedSourceType": "",
+        "workerFinalSourceType": "",
+        "redirectStart": 0,
+        "redirectEnd": 0,
+        "fetchStart": 0.10000000009313226,
+        "domainLookupStart": 1,
+        "domainLookupEnd": 1,
+        "connectStart": 1,
+        "secureConnectionStart": 0,
+        "connectEnd": 1.2000000001862645,
+        "requestStart": 1.3000000002793968,
+        "responseStart": 1.8000000002793968,
+        "firstInterimResponseStart": 0,
+        "finalResponseHeadersStart": 1.8000000002793968,
+        "responseEnd": 3.1000000000931323,
+        "transferSize": 672,
+        "encodedBodySize": 372,
+        "decodedBodySize": 651,
+        "responseStatus": 200,
+        "serverTiming": [],
+        "unloadEventStart": 0,
+        "unloadEventEnd": 0,
+        "domInteractive": 13.600000000093132,
+        "domContentLoadedEventStart": 59.5,
+        "domContentLoadedEventEnd": 59.60000000009313,
+        "domComplete": 60.10000000009313,
+        "loadEventStart": 60.10000000009313,
+        "loadEventEnd": 60.10000000009313,
+        "type": "navigate",
+        "redirectCount": 0,
+        "activationStart": 0,
+        "criticalCHRestart": 0,
+        "notRestoredReasons": null,
+        "confidence": {
+          "randomizedTriggerRate": 0.4994798,
+          "value": "high"
+        }
+      },
+      "resources": [
+        {
+          "name": "/assets/react-vendor-CxCD_NS6.js",
+          "encodedBytes": 45638,
+          "decodedBytes": 142382
+        },
+        {
+          "name": "/assets/index-B6aY9wY7.js",
+          "encodedBytes": 140434,
+          "decodedBytes": 433398
+        },
+        {
+          "name": "/assets/icons-CiUAvfpc.js",
+          "encodedBytes": 8359,
+          "decodedBytes": 43308
+        },
+        {
+          "name": "/assets/index-BHgOxmfA.css",
+          "encodedBytes": 19808,
+          "decodedBytes": 104944
+        },
+        {
+          "name": "/assets/app-CzHRyaFM.js",
+          "encodedBytes": 209,
+          "decodedBytes": 246
+        },
+        {
+          "name": "/assets/core-C1V3-PH7.js",
+          "encodedBytes": 145,
+          "decodedBytes": 174
+        },
+        {
+          "name": "/assets/Dashboard-D72JQ8b3.js",
+          "encodedBytes": 10327,
+          "decodedBytes": 38791
+        },
+        {
+          "name": "/assets/insumos-page-constants-DYrMeZAc.js",
+          "encodedBytes": 293,
+          "decodedBytes": 428
+        },
+        {
+          "name": "/assets/LineChart-DPLAviF7.js",
+          "encodedBytes": 105869,
+          "decodedBytes": 385239
+        }
+      ]
+    },
+    {
+      "slow": false,
+      "route": "/",
+      "run": 4,
+      "readyMs": 2081.3000000002794,
+      "navigationMs": 119.6999999997206,
+      "scriptingMs": 106.17,
+      "taskMs": 294.765,
+      "heapBytes": 5777536,
+      "errors": [],
+      "navigation": {
+        "name": "http://127.0.0.1:41367/",
+        "entryType": "navigation",
+        "startTime": 0,
+        "duration": 65.10000000009313,
+        "navigationId": 1276,
+        "initiatorType": "navigation",
+        "deliveryType": "",
+        "nextHopProtocol": "http/1.1",
+        "renderBlockingStatus": "non-blocking",
+        "contentType": "text/html",
+        "contentEncoding": "gzip",
+        "workerStart": 0,
+        "workerRouterEvaluationStart": 0,
+        "workerCacheLookupStart": 0,
+        "workerMatchedSourceType": "",
+        "workerFinalSourceType": "",
+        "redirectStart": 0,
+        "redirectEnd": 0,
+        "fetchStart": 0.20000000018626451,
+        "domainLookupStart": 1.1000000000931323,
+        "domainLookupEnd": 1.1000000000931323,
+        "connectStart": 1.1000000000931323,
+        "secureConnectionStart": 0,
+        "connectEnd": 1.2000000001862645,
+        "requestStart": 1.3000000002793968,
+        "responseStart": 1.8000000002793968,
+        "firstInterimResponseStart": 0,
+        "finalResponseHeadersStart": 1.8000000002793968,
+        "responseEnd": 3,
+        "transferSize": 672,
+        "encodedBodySize": 372,
+        "decodedBodySize": 651,
+        "responseStatus": 200,
+        "serverTiming": [],
+        "unloadEventStart": 0,
+        "unloadEventEnd": 0,
+        "domInteractive": 18.600000000093132,
+        "domContentLoadedEventStart": 64.70000000018626,
+        "domContentLoadedEventEnd": 64.8000000002794,
+        "domComplete": 65.10000000009313,
+        "loadEventStart": 65.10000000009313,
+        "loadEventEnd": 65.10000000009313,
+        "type": "navigate",
+        "redirectCount": 0,
+        "activationStart": 0,
+        "criticalCHRestart": 0,
+        "notRestoredReasons": null,
+        "confidence": {
+          "randomizedTriggerRate": 0.4994798,
+          "value": "high"
+        }
+      },
+      "resources": [
+        {
+          "name": "/assets/index-B6aY9wY7.js",
+          "encodedBytes": 140434,
+          "decodedBytes": 433398
+        },
+        {
+          "name": "/assets/react-vendor-CxCD_NS6.js",
+          "encodedBytes": 45638,
+          "decodedBytes": 142382
+        },
+        {
+          "name": "/assets/index-BHgOxmfA.css",
+          "encodedBytes": 19808,
+          "decodedBytes": 104944
+        },
+        {
+          "name": "/assets/icons-CiUAvfpc.js",
+          "encodedBytes": 8359,
+          "decodedBytes": 43308
+        },
+        {
+          "name": "/assets/app-CzHRyaFM.js",
+          "encodedBytes": 209,
+          "decodedBytes": 246
+        },
+        {
+          "name": "/assets/core-C1V3-PH7.js",
+          "encodedBytes": 145,
+          "decodedBytes": 174
+        },
+        {
+          "name": "/assets/Dashboard-D72JQ8b3.js",
+          "encodedBytes": 10327,
+          "decodedBytes": 38791
+        },
+        {
+          "name": "/assets/insumos-page-constants-DYrMeZAc.js",
+          "encodedBytes": 293,
+          "decodedBytes": 428
+        },
+        {
+          "name": "/assets/LineChart-DPLAviF7.js",
+          "encodedBytes": 105869,
+          "decodedBytes": 385239
+        }
+      ]
+    },
+    {
+      "slow": false,
+      "route": "/clientes",
+      "run": 0,
+      "readyMs": 2061.399999999907,
+      "navigationMs": 127.60000000009313,
+      "scriptingMs": 98.98400000000001,
+      "taskMs": 267.063,
+      "heapBytes": 5709472,
+      "errors": [],
+      "navigation": {
+        "name": "http://127.0.0.1:41367/clientes",
+        "entryType": "navigation",
+        "startTime": 0,
+        "duration": 85.5,
+        "navigationId": 8881,
+        "initiatorType": "navigation",
+        "deliveryType": "",
+        "nextHopProtocol": "http/1.1",
+        "renderBlockingStatus": "non-blocking",
+        "contentType": "text/html",
+        "contentEncoding": "gzip",
+        "workerStart": 0,
+        "workerRouterEvaluationStart": 0,
+        "workerCacheLookupStart": 0,
+        "workerMatchedSourceType": "",
+        "workerFinalSourceType": "",
+        "redirectStart": 0,
+        "redirectEnd": 0,
+        "fetchStart": 0.10000000009313226,
+        "domainLookupStart": 2.6000000000931323,
+        "domainLookupEnd": 2.6000000000931323,
+        "connectStart": 2.6000000000931323,
+        "secureConnectionStart": 0,
+        "connectEnd": 2.8000000002793968,
+        "requestStart": 2.8999999999068677,
+        "responseStart": 3.5,
+        "firstInterimResponseStart": 0,
+        "finalResponseHeadersStart": 3.5,
+        "responseEnd": 4.600000000093132,
+        "transferSize": 672,
+        "encodedBodySize": 372,
+        "decodedBodySize": 651,
+        "responseStatus": 200,
+        "serverTiming": [],
+        "unloadEventStart": 0,
+        "unloadEventEnd": 0,
+        "domInteractive": 35.5,
+        "domContentLoadedEventStart": 84.8000000002794,
+        "domContentLoadedEventEnd": 85,
+        "domComplete": 85.5,
+        "loadEventStart": 85.5,
+        "loadEventEnd": 85.5,
+        "type": "navigate",
+        "redirectCount": 0,
+        "activationStart": 0,
+        "criticalCHRestart": 0,
+        "notRestoredReasons": null,
+        "confidence": {
+          "randomizedTriggerRate": 0.4994798,
+          "value": "low"
+        }
+      },
+      "resources": [
+        {
+          "name": "/assets/index-B6aY9wY7.js",
+          "encodedBytes": 140434,
+          "decodedBytes": 433398
+        },
+        {
+          "name": "/assets/react-vendor-CxCD_NS6.js",
+          "encodedBytes": 45638,
+          "decodedBytes": 142382
+        },
+        {
+          "name": "/assets/icons-CiUAvfpc.js",
+          "encodedBytes": 8359,
+          "decodedBytes": 43308
+        },
+        {
+          "name": "/assets/index-BHgOxmfA.css",
+          "encodedBytes": 19808,
+          "decodedBytes": 104944
+        },
+        {
+          "name": "/assets/app-CzHRyaFM.js",
+          "encodedBytes": 209,
+          "decodedBytes": 246
+        },
+        {
+          "name": "/assets/core-C1V3-PH7.js",
+          "encodedBytes": 145,
+          "decodedBytes": 174
+        },
+        {
+          "name": "/assets/Clientes-qJmSl1f5.js",
+          "encodedBytes": 7660,
+          "decodedBytes": 25356
+        },
+        {
+          "name": "/assets/error-alert-DatZgApP.js",
+          "encodedBytes": 28640,
+          "decodedBytes": 80268
+        },
+        {
+          "name": "/assets/index-CAE4fXVc.js",
+          "encodedBytes": 1230,
+          "decodedBytes": 2716
+        },
+        {
+          "name": "/assets/form-validation-error-C7w6GkzU.js",
+          "encodedBytes": 13376,
+          "decodedBytes": 56054
+        },
+        {
+          "name": "/assets/validations-RtKNXORv.js",
+          "encodedBytes": 1843,
+          "decodedBytes": 5466
+        },
+        {
+          "name": "/assets/checkbox-OueAAwhs.js",
+          "encodedBytes": 360,
+          "decodedBytes": 556
+        },
+        {
+          "name": "/assets/pagination-controls-BqWIseqI.js",
+          "encodedBytes": 1293,
+          "decodedBytes": 2849
+        },
+        {
+          "name": "/assets/ClienteFormularioCampos-Des2ze1x.js",
+          "encodedBytes": 14913,
+          "decodedBytes": 44705
+        },
+        {
+          "name": "/assets/confirm-dialog-Chlte3L2.js",
+          "encodedBytes": 2350,
+          "decodedBytes": 6151
+        },
+        {
+          "name": "/assets/ClienteContatosPanel-D6fbCMlc.js",
+          "encodedBytes": 4397,
+          "decodedBytes": 12556
+        }
+      ]
+    },
+    {
+      "slow": false,
+      "route": "/clientes",
+      "run": 1,
+      "readyMs": 2013,
+      "navigationMs": 150,
+      "scriptingMs": 99.037,
+      "taskMs": 233.187,
+      "heapBytes": 5730552,
+      "errors": [],
+      "navigation": {
+        "name": "http://127.0.0.1:41367/clientes",
+        "entryType": "navigation",
+        "startTime": 0,
+        "duration": 58.3000000002794,
+        "navigationId": 1838,
+        "initiatorType": "navigation",
+        "deliveryType": "",
+        "nextHopProtocol": "http/1.1",
+        "renderBlockingStatus": "non-blocking",
+        "contentType": "text/html",
+        "contentEncoding": "gzip",
+        "workerStart": 0,
+        "workerRouterEvaluationStart": 0,
+        "workerCacheLookupStart": 0,
+        "workerMatchedSourceType": "",
+        "workerFinalSourceType": "",
+        "redirectStart": 0,
+        "redirectEnd": 0,
+        "fetchStart": 0.20000000018626451,
+        "domainLookupStart": 0.900000000372529,
+        "domainLookupEnd": 0.900000000372529,
+        "connectStart": 0.900000000372529,
+        "secureConnectionStart": 0,
+        "connectEnd": 1.1000000000931323,
+        "requestStart": 1.7000000001862645,
+        "responseStart": 3,
+        "firstInterimResponseStart": 0,
+        "finalResponseHeadersStart": 3,
+        "responseEnd": 4,
+        "transferSize": 672,
+        "encodedBodySize": 372,
+        "decodedBodySize": 651,
+        "responseStatus": 200,
+        "serverTiming": [],
+        "unloadEventStart": 0,
+        "unloadEventEnd": 0,
+        "domInteractive": 26.5,
+        "domContentLoadedEventStart": 57.60000000009313,
+        "domContentLoadedEventEnd": 57.8000000002794,
+        "domComplete": 58.3000000002794,
+        "loadEventStart": 58.3000000002794,
+        "loadEventEnd": 58.3000000002794,
+        "type": "navigate",
+        "redirectCount": 0,
+        "activationStart": 0,
+        "criticalCHRestart": 0,
+        "notRestoredReasons": null,
+        "confidence": {
+          "randomizedTriggerRate": 0.4994798,
+          "value": "low"
+        }
+      },
+      "resources": [
+        {
+          "name": "/assets/index-B6aY9wY7.js",
+          "encodedBytes": 140434,
+          "decodedBytes": 433398
+        },
+        {
+          "name": "/assets/react-vendor-CxCD_NS6.js",
+          "encodedBytes": 45638,
+          "decodedBytes": 142382
+        },
+        {
+          "name": "/assets/icons-CiUAvfpc.js",
+          "encodedBytes": 8359,
+          "decodedBytes": 43308
+        },
+        {
+          "name": "/assets/index-BHgOxmfA.css",
+          "encodedBytes": 19808,
+          "decodedBytes": 104944
+        },
+        {
+          "name": "/assets/app-CzHRyaFM.js",
+          "encodedBytes": 209,
+          "decodedBytes": 246
+        },
+        {
+          "name": "/assets/core-C1V3-PH7.js",
+          "encodedBytes": 145,
+          "decodedBytes": 174
+        },
+        {
+          "name": "/assets/Clientes-qJmSl1f5.js",
+          "encodedBytes": 7660,
+          "decodedBytes": 25356
+        },
+        {
+          "name": "/assets/index-CAE4fXVc.js",
+          "encodedBytes": 1230,
+          "decodedBytes": 2716
+        },
+        {
+          "name": "/assets/error-alert-DatZgApP.js",
+          "encodedBytes": 28640,
+          "decodedBytes": 80268
+        },
+        {
+          "name": "/assets/form-validation-error-C7w6GkzU.js",
+          "encodedBytes": 13376,
+          "decodedBytes": 56054
+        },
+        {
+          "name": "/assets/validations-RtKNXORv.js",
+          "encodedBytes": 1843,
+          "decodedBytes": 5466
+        },
+        {
+          "name": "/assets/pagination-controls-BqWIseqI.js",
+          "encodedBytes": 1293,
+          "decodedBytes": 2849
+        },
+        {
+          "name": "/assets/ClienteFormularioCampos-Des2ze1x.js",
+          "encodedBytes": 14913,
+          "decodedBytes": 44705
+        },
+        {
+          "name": "/assets/checkbox-OueAAwhs.js",
+          "encodedBytes": 360,
+          "decodedBytes": 556
+        },
+        {
+          "name": "/assets/confirm-dialog-Chlte3L2.js",
+          "encodedBytes": 2350,
+          "decodedBytes": 6151
+        },
+        {
+          "name": "/assets/ClienteContatosPanel-D6fbCMlc.js",
+          "encodedBytes": 4397,
+          "decodedBytes": 12556
+        }
+      ]
+    },
+    {
+      "slow": false,
+      "route": "/clientes",
+      "run": 2,
+      "readyMs": 2061.7000000001863,
+      "navigationMs": 148.39999999990687,
+      "scriptingMs": 110.357,
+      "taskMs": 259.904,
+      "heapBytes": 5697640,
+      "errors": [],
+      "navigation": {
+        "name": "http://127.0.0.1:41367/clientes",
+        "entryType": "navigation",
+        "startTime": 0,
+        "duration": 58.10000000009313,
+        "navigationId": 4469,
+        "initiatorType": "navigation",
+        "deliveryType": "",
+        "nextHopProtocol": "http/1.1",
+        "renderBlockingStatus": "non-blocking",
+        "contentType": "text/html",
+        "contentEncoding": "gzip",
+        "workerStart": 0,
+        "workerRouterEvaluationStart": 0,
+        "workerCacheLookupStart": 0,
+        "workerMatchedSourceType": "",
+        "workerFinalSourceType": "",
+        "redirectStart": 0,
+        "redirectEnd": 0,
+        "fetchStart": 0.40000000037252903,
+        "domainLookupStart": 1.1000000000931323,
+        "domainLookupEnd": 1.1000000000931323,
+        "connectStart": 1.1000000000931323,
+        "secureConnectionStart": 0,
+        "connectEnd": 1.900000000372529,
+        "requestStart": 2,
+        "responseStart": 2.5,
+        "firstInterimResponseStart": 0,
+        "finalResponseHeadersStart": 2.5,
+        "responseEnd": 3.5,
+        "transferSize": 672,
+        "encodedBodySize": 372,
+        "decodedBodySize": 651,
+        "responseStatus": 200,
+        "serverTiming": [],
+        "unloadEventStart": 0,
+        "unloadEventEnd": 0,
+        "domInteractive": 24,
+        "domContentLoadedEventStart": 57.60000000009313,
+        "domContentLoadedEventEnd": 57.700000000186265,
+        "domComplete": 58.10000000009313,
+        "loadEventStart": 58.10000000009313,
+        "loadEventEnd": 58.10000000009313,
+        "type": "navigate",
+        "redirectCount": 0,
+        "activationStart": 0,
+        "criticalCHRestart": 0,
+        "notRestoredReasons": null,
+        "confidence": {
+          "randomizedTriggerRate": 0.4994798,
+          "value": "high"
+        }
+      },
+      "resources": [
+        {
+          "name": "/assets/index-B6aY9wY7.js",
+          "encodedBytes": 140434,
+          "decodedBytes": 433398
+        },
+        {
+          "name": "/assets/react-vendor-CxCD_NS6.js",
+          "encodedBytes": 45638,
+          "decodedBytes": 142382
+        },
+        {
+          "name": "/assets/icons-CiUAvfpc.js",
+          "encodedBytes": 8359,
+          "decodedBytes": 43308
+        },
+        {
+          "name": "/assets/index-BHgOxmfA.css",
+          "encodedBytes": 19808,
+          "decodedBytes": 104944
+        },
+        {
+          "name": "/assets/app-CzHRyaFM.js",
+          "encodedBytes": 209,
+          "decodedBytes": 246
+        },
+        {
+          "name": "/assets/core-C1V3-PH7.js",
+          "encodedBytes": 145,
+          "decodedBytes": 174
+        },
+        {
+          "name": "/assets/Clientes-qJmSl1f5.js",
+          "encodedBytes": 7660,
+          "decodedBytes": 25356
+        },
+        {
+          "name": "/assets/error-alert-DatZgApP.js",
+          "encodedBytes": 28640,
+          "decodedBytes": 80268
+        },
+        {
+          "name": "/assets/index-CAE4fXVc.js",
+          "encodedBytes": 1230,
+          "decodedBytes": 2716
+        },
+        {
+          "name": "/assets/validations-RtKNXORv.js",
+          "encodedBytes": 1843,
+          "decodedBytes": 5466
+        },
+        {
+          "name": "/assets/form-validation-error-C7w6GkzU.js",
+          "encodedBytes": 13376,
+          "decodedBytes": 56054
+        },
+        {
+          "name": "/assets/pagination-controls-BqWIseqI.js",
+          "encodedBytes": 1293,
+          "decodedBytes": 2849
+        },
+        {
+          "name": "/assets/ClienteFormularioCampos-Des2ze1x.js",
+          "encodedBytes": 14913,
+          "decodedBytes": 44705
+        },
+        {
+          "name": "/assets/checkbox-OueAAwhs.js",
+          "encodedBytes": 360,
+          "decodedBytes": 556
+        },
+        {
+          "name": "/assets/confirm-dialog-Chlte3L2.js",
+          "encodedBytes": 2350,
+          "decodedBytes": 6151
+        },
+        {
+          "name": "/assets/ClienteContatosPanel-D6fbCMlc.js",
+          "encodedBytes": 4397,
+          "decodedBytes": 12556
+        }
+      ]
+    },
+    {
+      "slow": false,
+      "route": "/clientes",
+      "run": 3,
+      "readyMs": 2028.7999999998137,
+      "navigationMs": 140.3000000002794,
+      "scriptingMs": 99.648,
+      "taskMs": 242.533,
+      "heapBytes": 5682476,
+      "errors": [],
+      "navigation": {
+        "name": "http://127.0.0.1:41367/clientes",
+        "entryType": "navigation",
+        "startTime": 0,
+        "duration": 61.6999999997206,
+        "navigationId": 9782,
+        "initiatorType": "navigation",
+        "deliveryType": "",
+        "nextHopProtocol": "http/1.1",
+        "renderBlockingStatus": "non-blocking",
+        "contentType": "text/html",
+        "contentEncoding": "gzip",
+        "workerStart": 0,
+        "workerRouterEvaluationStart": 0,
+        "workerCacheLookupStart": 0,
+        "workerMatchedSourceType": "",
+        "workerFinalSourceType": "",
+        "redirectStart": 0,
+        "redirectEnd": 0,
+        "fetchStart": 0.10000000009313226,
+        "domainLookupStart": 2.7999999998137355,
+        "domainLookupEnd": 2.7999999998137355,
+        "connectStart": 2.7999999998137355,
+        "secureConnectionStart": 0,
+        "connectEnd": 3.1999999997206032,
+        "requestStart": 4.199999999720603,
+        "responseStart": 4.7999999998137355,
+        "firstInterimResponseStart": 0,
+        "finalResponseHeadersStart": 4.7999999998137355,
+        "responseEnd": 5.899999999906868,
+        "transferSize": 672,
+        "encodedBodySize": 372,
+        "decodedBodySize": 651,
+        "responseStatus": 200,
+        "serverTiming": [],
+        "unloadEventStart": 0,
+        "unloadEventEnd": 0,
+        "domInteractive": 20.600000000093132,
+        "domContentLoadedEventStart": 60.799999999813735,
+        "domContentLoadedEventEnd": 60.89999999990687,
+        "domComplete": 61.6999999997206,
+        "loadEventStart": 61.6999999997206,
+        "loadEventEnd": 61.6999999997206,
+        "type": "navigate",
+        "redirectCount": 0,
+        "activationStart": 0,
+        "criticalCHRestart": 0,
+        "notRestoredReasons": null,
+        "confidence": {
+          "randomizedTriggerRate": 0.4994798,
+          "value": "high"
+        }
+      },
+      "resources": [
+        {
+          "name": "/assets/index-B6aY9wY7.js",
+          "encodedBytes": 140434,
+          "decodedBytes": 433398
+        },
+        {
+          "name": "/assets/react-vendor-CxCD_NS6.js",
+          "encodedBytes": 45638,
+          "decodedBytes": 142382
+        },
+        {
+          "name": "/assets/icons-CiUAvfpc.js",
+          "encodedBytes": 8359,
+          "decodedBytes": 43308
+        },
+        {
+          "name": "/assets/index-BHgOxmfA.css",
+          "encodedBytes": 19808,
+          "decodedBytes": 104944
+        },
+        {
+          "name": "/assets/app-CzHRyaFM.js",
+          "encodedBytes": 209,
+          "decodedBytes": 246
+        },
+        {
+          "name": "/assets/core-C1V3-PH7.js",
+          "encodedBytes": 145,
+          "decodedBytes": 174
+        },
+        {
+          "name": "/assets/Clientes-qJmSl1f5.js",
+          "encodedBytes": 7660,
+          "decodedBytes": 25356
+        },
+        {
+          "name": "/assets/error-alert-DatZgApP.js",
+          "encodedBytes": 28640,
+          "decodedBytes": 80268
+        },
+        {
+          "name": "/assets/index-CAE4fXVc.js",
+          "encodedBytes": 1230,
+          "decodedBytes": 2716
+        },
+        {
+          "name": "/assets/form-validation-error-C7w6GkzU.js",
+          "encodedBytes": 13376,
+          "decodedBytes": 56054
+        },
+        {
+          "name": "/assets/validations-RtKNXORv.js",
+          "encodedBytes": 1843,
+          "decodedBytes": 5466
+        },
+        {
+          "name": "/assets/pagination-controls-BqWIseqI.js",
+          "encodedBytes": 1293,
+          "decodedBytes": 2849
+        },
+        {
+          "name": "/assets/ClienteFormularioCampos-Des2ze1x.js",
+          "encodedBytes": 14913,
+          "decodedBytes": 44705
+        },
+        {
+          "name": "/assets/checkbox-OueAAwhs.js",
+          "encodedBytes": 360,
+          "decodedBytes": 556
+        },
+        {
+          "name": "/assets/confirm-dialog-Chlte3L2.js",
+          "encodedBytes": 2350,
+          "decodedBytes": 6151
+        },
+        {
+          "name": "/assets/ClienteContatosPanel-D6fbCMlc.js",
+          "encodedBytes": 4397,
+          "decodedBytes": 12556
+        }
+      ]
+    },
+    {
+      "slow": false,
+      "route": "/clientes",
+      "run": 4,
+      "readyMs": 2048,
+      "navigationMs": 199.60000000009313,
+      "scriptingMs": 106.80099999999999,
+      "taskMs": 252.24600000000004,
+      "heapBytes": 5729964,
+      "errors": [],
+      "navigation": {
+        "name": "http://127.0.0.1:41367/clientes",
+        "entryType": "navigation",
+        "startTime": 0,
+        "duration": 57.200000000186265,
+        "navigationId": 8436,
+        "initiatorType": "navigation",
+        "deliveryType": "",
+        "nextHopProtocol": "http/1.1",
+        "renderBlockingStatus": "non-blocking",
+        "contentType": "text/html",
+        "contentEncoding": "gzip",
+        "workerStart": 0,
+        "workerRouterEvaluationStart": 0,
+        "workerCacheLookupStart": 0,
+        "workerMatchedSourceType": "",
+        "workerFinalSourceType": "",
+        "redirectStart": 0,
+        "redirectEnd": 0,
+        "fetchStart": 0.10000000009313226,
+        "domainLookupStart": 1.7000000001862645,
+        "domainLookupEnd": 1.7999999998137355,
+        "connectStart": 1.7999999998137355,
+        "secureConnectionStart": 0,
+        "connectEnd": 1.8999999999068677,
+        "requestStart": 1.8999999999068677,
+        "responseStart": 2.2999999998137355,
+        "firstInterimResponseStart": 0,
+        "finalResponseHeadersStart": 2.2999999998137355,
+        "responseEnd": 3.2000000001862645,
+        "transferSize": 672,
+        "encodedBodySize": 372,
+        "decodedBodySize": 651,
+        "responseStatus": 200,
+        "serverTiming": [],
+        "unloadEventStart": 0,
+        "unloadEventEnd": 0,
+        "domInteractive": 14.200000000186265,
+        "domContentLoadedEventStart": 55.799999999813735,
+        "domContentLoadedEventEnd": 56.700000000186265,
+        "domComplete": 57.200000000186265,
+        "loadEventStart": 57.200000000186265,
+        "loadEventEnd": 57.200000000186265,
+        "type": "navigate",
+        "redirectCount": 0,
+        "activationStart": 0,
+        "criticalCHRestart": 0,
+        "notRestoredReasons": null,
+        "confidence": {
+          "randomizedTriggerRate": 0.4994798,
+          "value": "high"
+        }
+      },
+      "resources": [
+        {
+          "name": "/assets/index-B6aY9wY7.js",
+          "encodedBytes": 140434,
+          "decodedBytes": 433398
+        },
+        {
+          "name": "/assets/icons-CiUAvfpc.js",
+          "encodedBytes": 8359,
+          "decodedBytes": 43308
+        },
+        {
+          "name": "/assets/react-vendor-CxCD_NS6.js",
+          "encodedBytes": 45638,
+          "decodedBytes": 142382
+        },
+        {
+          "name": "/assets/index-BHgOxmfA.css",
+          "encodedBytes": 19808,
+          "decodedBytes": 104944
+        },
+        {
+          "name": "/assets/app-CzHRyaFM.js",
+          "encodedBytes": 209,
+          "decodedBytes": 246
+        },
+        {
+          "name": "/assets/core-C1V3-PH7.js",
+          "encodedBytes": 145,
+          "decodedBytes": 174
+        },
+        {
+          "name": "/assets/Clientes-qJmSl1f5.js",
+          "encodedBytes": 7660,
+          "decodedBytes": 25356
+        },
+        {
+          "name": "/assets/index-CAE4fXVc.js",
+          "encodedBytes": 1230,
+          "decodedBytes": 2716
+        },
+        {
+          "name": "/assets/error-alert-DatZgApP.js",
+          "encodedBytes": 28640,
+          "decodedBytes": 80268
+        },
+        {
+          "name": "/assets/validations-RtKNXORv.js",
+          "encodedBytes": 1843,
+          "decodedBytes": 5466
+        },
+        {
+          "name": "/assets/form-validation-error-C7w6GkzU.js",
+          "encodedBytes": 13376,
+          "decodedBytes": 56054
+        },
+        {
+          "name": "/assets/pagination-controls-BqWIseqI.js",
+          "encodedBytes": 1293,
+          "decodedBytes": 2849
+        },
+        {
+          "name": "/assets/ClienteFormularioCampos-Des2ze1x.js",
+          "encodedBytes": 14913,
+          "decodedBytes": 44705
+        },
+        {
+          "name": "/assets/checkbox-OueAAwhs.js",
+          "encodedBytes": 360,
+          "decodedBytes": 556
+        },
+        {
+          "name": "/assets/confirm-dialog-Chlte3L2.js",
+          "encodedBytes": 2350,
+          "decodedBytes": 6151
+        },
+        {
+          "name": "/assets/ClienteContatosPanel-D6fbCMlc.js",
+          "encodedBytes": 4397,
+          "decodedBytes": 12556
+        }
+      ]
+    },
+    {
+      "slow": true,
+      "route": "/",
+      "run": 0,
+      "readyMs": 3228,
+      "navigationMs": 541.7999999998137,
+      "scriptingMs": 552.351,
+      "taskMs": 1330.0259999999998,
+      "heapBytes": 6352860,
+      "errors": [],
+      "navigation": {
+        "name": "http://127.0.0.1:41367/",
+        "entryType": "navigation",
+        "startTime": 0,
+        "duration": 791.6999999997206,
+        "navigationId": 7305,
+        "initiatorType": "navigation",
+        "deliveryType": "",
+        "nextHopProtocol": "http/1.1",
+        "renderBlockingStatus": "non-blocking",
+        "contentType": "text/html",
+        "contentEncoding": "gzip",
+        "workerStart": 0,
+        "workerRouterEvaluationStart": 0,
+        "workerCacheLookupStart": 0,
+        "workerMatchedSourceType": "",
+        "workerFinalSourceType": "",
+        "redirectStart": 0,
+        "redirectEnd": 0,
+        "fetchStart": 0.6999999997206032,
+        "domainLookupStart": 1.3999999999068677,
+        "domainLookupEnd": 1.3999999999068677,
+        "connectStart": 1.3999999999068677,
+        "secureConnectionStart": 0,
+        "connectEnd": 1.5,
+        "requestStart": 1.599999999627471,
+        "responseStart": 2.099999999627471,
+        "firstInterimResponseStart": 0,
+        "finalResponseHeadersStart": 2.099999999627471,
+        "responseEnd": 105.59999999962747,
+        "transferSize": 672,
+        "encodedBodySize": 372,
+        "decodedBodySize": 651,
+        "responseStatus": 200,
+        "serverTiming": [],
+        "unloadEventStart": 0,
+        "unloadEventEnd": 0,
+        "domInteractive": 168.39999999990687,
+        "domContentLoadedEventStart": 781,
+        "domContentLoadedEventEnd": 783.5,
+        "domComplete": 791.6999999997206,
+        "loadEventStart": 791.6999999997206,
+        "loadEventEnd": 791.6999999997206,
+        "type": "navigate",
+        "redirectCount": 0,
+        "activationStart": 0,
+        "criticalCHRestart": 0,
+        "notRestoredReasons": null,
+        "confidence": {
+          "randomizedTriggerRate": 0.4994798,
+          "value": "high"
+        }
+      },
+      "resources": [
+        {
+          "name": "/assets/index-B6aY9wY7.js",
+          "encodedBytes": 140434,
+          "decodedBytes": 433398
+        },
+        {
+          "name": "/assets/react-vendor-CxCD_NS6.js",
+          "encodedBytes": 45638,
+          "decodedBytes": 142382
+        },
+        {
+          "name": "/assets/icons-CiUAvfpc.js",
+          "encodedBytes": 8359,
+          "decodedBytes": 43308
+        },
+        {
+          "name": "/assets/index-BHgOxmfA.css",
+          "encodedBytes": 19808,
+          "decodedBytes": 104944
+        },
+        {
+          "name": "/assets/app-CzHRyaFM.js",
+          "encodedBytes": 209,
+          "decodedBytes": 246
+        },
+        {
+          "name": "/assets/core-C1V3-PH7.js",
+          "encodedBytes": 145,
+          "decodedBytes": 174
+        },
+        {
+          "name": "/assets/Dashboard-D72JQ8b3.js",
+          "encodedBytes": 10327,
+          "decodedBytes": 38791
+        },
+        {
+          "name": "/assets/insumos-page-constants-DYrMeZAc.js",
+          "encodedBytes": 293,
+          "decodedBytes": 428
+        },
+        {
+          "name": "/assets/LineChart-DPLAviF7.js",
+          "encodedBytes": 105869,
+          "decodedBytes": 385239
+        }
+      ]
+    },
+    {
+      "slow": true,
+      "route": "/",
+      "run": 1,
+      "readyMs": 3009.7999999998137,
+      "navigationMs": 532.8999999999069,
+      "scriptingMs": 662.759,
+      "taskMs": 1466.193,
+      "heapBytes": 6244560,
+      "errors": [],
+      "navigation": {
+        "name": "http://127.0.0.1:41367/",
+        "entryType": "navigation",
+        "startTime": 0,
+        "duration": 781,
+        "navigationId": 410,
+        "initiatorType": "navigation",
+        "deliveryType": "",
+        "nextHopProtocol": "http/1.1",
+        "renderBlockingStatus": "non-blocking",
+        "contentType": "text/html",
+        "contentEncoding": "gzip",
+        "workerStart": 0,
+        "workerRouterEvaluationStart": 0,
+        "workerCacheLookupStart": 0,
+        "workerMatchedSourceType": "",
+        "workerFinalSourceType": "",
+        "redirectStart": 0,
+        "redirectEnd": 0,
+        "fetchStart": 0,
+        "domainLookupStart": 2,
+        "domainLookupEnd": 2.099999999627471,
+        "connectStart": 2.099999999627471,
+        "secureConnectionStart": 0,
+        "connectEnd": 2.099999999627471,
+        "requestStart": 2.2999999998137355,
+        "responseStart": 2.7999999998137355,
+        "firstInterimResponseStart": 0,
+        "finalResponseHeadersStart": 2.7999999998137355,
+        "responseEnd": 106.5,
+        "transferSize": 672,
+        "encodedBodySize": 372,
+        "decodedBodySize": 651,
+        "responseStatus": 200,
+        "serverTiming": [],
+        "unloadEventStart": 0,
+        "unloadEventEnd": 0,
+        "domInteractive": 152.09999999962747,
+        "domContentLoadedEventStart": 770.1999999997206,
+        "domContentLoadedEventEnd": 770.2999999998137,
+        "domComplete": 780.8999999999069,
+        "loadEventStart": 781,
+        "loadEventEnd": 781,
+        "type": "navigate",
+        "redirectCount": 0,
+        "activationStart": 0,
+        "criticalCHRestart": 0,
+        "notRestoredReasons": null,
+        "confidence": {
+          "randomizedTriggerRate": 0.4994798,
+          "value": "high"
+        }
+      },
+      "resources": [
+        {
+          "name": "/assets/index-B6aY9wY7.js",
+          "encodedBytes": 140434,
+          "decodedBytes": 433398
+        },
+        {
+          "name": "/assets/react-vendor-CxCD_NS6.js",
+          "encodedBytes": 45638,
+          "decodedBytes": 142382
+        },
+        {
+          "name": "/assets/icons-CiUAvfpc.js",
+          "encodedBytes": 8359,
+          "decodedBytes": 43308
+        },
+        {
+          "name": "/assets/index-BHgOxmfA.css",
+          "encodedBytes": 19808,
+          "decodedBytes": 104944
+        },
+        {
+          "name": "/assets/app-CzHRyaFM.js",
+          "encodedBytes": 209,
+          "decodedBytes": 246
+        },
+        {
+          "name": "/assets/core-C1V3-PH7.js",
+          "encodedBytes": 145,
+          "decodedBytes": 174
+        },
+        {
+          "name": "/assets/Dashboard-D72JQ8b3.js",
+          "encodedBytes": 10327,
+          "decodedBytes": 38791
+        },
+        {
+          "name": "/assets/insumos-page-constants-DYrMeZAc.js",
+          "encodedBytes": 293,
+          "decodedBytes": 428
+        },
+        {
+          "name": "/assets/LineChart-DPLAviF7.js",
+          "encodedBytes": 105869,
+          "decodedBytes": 385239
+        }
+      ]
+    },
+    {
+      "slow": true,
+      "route": "/",
+      "run": 2,
+      "readyMs": 3187.399999999907,
+      "navigationMs": 483.60000000009313,
+      "scriptingMs": 571.788,
+      "taskMs": 1297.9099999999999,
+      "heapBytes": 6333188,
+      "errors": [],
+      "navigation": {
+        "name": "http://127.0.0.1:41367/",
+        "entryType": "navigation",
+        "startTime": 0,
+        "duration": 751.2000000001863,
+        "navigationId": 967,
+        "initiatorType": "navigation",
+        "deliveryType": "",
+        "nextHopProtocol": "http/1.1",
+        "renderBlockingStatus": "non-blocking",
+        "contentType": "text/html",
+        "contentEncoding": "gzip",
+        "workerStart": 0,
+        "workerRouterEvaluationStart": 0,
+        "workerCacheLookupStart": 0,
+        "workerMatchedSourceType": "",
+        "workerFinalSourceType": "",
+        "redirectStart": 0,
+        "redirectEnd": 0,
+        "fetchStart": 0.2999999998137355,
+        "domainLookupStart": 1.2999999998137355,
+        "domainLookupEnd": 1.2999999998137355,
+        "connectStart": 1.2999999998137355,
+        "secureConnectionStart": 0,
+        "connectEnd": 1.6000000000931323,
+        "requestStart": 1.7000000001862645,
+        "responseStart": 2.2000000001862645,
+        "firstInterimResponseStart": 0,
+        "finalResponseHeadersStart": 2.2000000001862645,
+        "responseEnd": 106.70000000018626,
+        "transferSize": 672,
+        "encodedBodySize": 372,
+        "decodedBodySize": 651,
+        "responseStatus": 200,
+        "serverTiming": [],
+        "unloadEventStart": 0,
+        "unloadEventEnd": 0,
+        "domInteractive": 165.89999999990687,
+        "domContentLoadedEventStart": 746.5,
+        "domContentLoadedEventEnd": 747,
+        "domComplete": 751.2000000001863,
+        "loadEventStart": 751.2000000001863,
+        "loadEventEnd": 751.2000000001863,
+        "type": "navigate",
+        "redirectCount": 0,
+        "activationStart": 0,
+        "criticalCHRestart": 0,
+        "notRestoredReasons": null,
+        "confidence": {
+          "randomizedTriggerRate": 0.4994798,
+          "value": "high"
+        }
+      },
+      "resources": [
+        {
+          "name": "/assets/index-B6aY9wY7.js",
+          "encodedBytes": 140434,
+          "decodedBytes": 433398
+        },
+        {
+          "name": "/assets/react-vendor-CxCD_NS6.js",
+          "encodedBytes": 45638,
+          "decodedBytes": 142382
+        },
+        {
+          "name": "/assets/icons-CiUAvfpc.js",
+          "encodedBytes": 8359,
+          "decodedBytes": 43308
+        },
+        {
+          "name": "/assets/index-BHgOxmfA.css",
+          "encodedBytes": 19808,
+          "decodedBytes": 104944
+        },
+        {
+          "name": "/assets/app-CzHRyaFM.js",
+          "encodedBytes": 209,
+          "decodedBytes": 246
+        },
+        {
+          "name": "/assets/core-C1V3-PH7.js",
+          "encodedBytes": 145,
+          "decodedBytes": 174
+        },
+        {
+          "name": "/assets/Dashboard-D72JQ8b3.js",
+          "encodedBytes": 10327,
+          "decodedBytes": 38791
+        },
+        {
+          "name": "/assets/insumos-page-constants-DYrMeZAc.js",
+          "encodedBytes": 293,
+          "decodedBytes": 428
+        },
+        {
+          "name": "/assets/LineChart-DPLAviF7.js",
+          "encodedBytes": 105869,
+          "decodedBytes": 385239
+        }
+      ]
+    },
+    {
+      "slow": true,
+      "route": "/",
+      "run": 3,
+      "readyMs": 5259.300000000279,
+      "navigationMs": 834.3999999999069,
+      "scriptingMs": 1048.0910000000001,
+      "taskMs": 3781.896,
+      "heapBytes": 6361596,
+      "errors": [],
+      "navigation": {
+        "name": "http://127.0.0.1:41367/",
+        "entryType": "navigation",
+        "startTime": 0,
+        "duration": 1042.5,
+        "navigationId": 2258,
+        "initiatorType": "navigation",
+        "deliveryType": "",
+        "nextHopProtocol": "http/1.1",
+        "renderBlockingStatus": "non-blocking",
+        "contentType": "text/html",
+        "contentEncoding": "gzip",
+        "workerStart": 0,
+        "workerRouterEvaluationStart": 0,
+        "workerCacheLookupStart": 0,
+        "workerMatchedSourceType": "",
+        "workerFinalSourceType": "",
+        "redirectStart": 0,
+        "redirectEnd": 0,
+        "fetchStart": 0.20000000018626451,
+        "domainLookupStart": 1.1000000000931323,
+        "domainLookupEnd": 1.1000000000931323,
+        "connectStart": 1.1000000000931323,
+        "secureConnectionStart": 0,
+        "connectEnd": 1.400000000372529,
+        "requestStart": 1.5,
+        "responseStart": 1.900000000372529,
+        "firstInterimResponseStart": 0,
+        "finalResponseHeadersStart": 1.900000000372529,
+        "responseEnd": 104.40000000037253,
+        "transferSize": 672,
+        "encodedBodySize": 372,
+        "decodedBodySize": 651,
+        "responseStatus": 200,
+        "serverTiming": [],
+        "unloadEventStart": 0,
+        "unloadEventEnd": 0,
+        "domInteractive": 165.90000000037253,
+        "domContentLoadedEventStart": 1003.7000000001863,
+        "domContentLoadedEventEnd": 1004.2000000001863,
+        "domComplete": 1042.5,
+        "loadEventStart": 1042.5,
+        "loadEventEnd": 1042.5,
+        "type": "navigate",
+        "redirectCount": 0,
+        "activationStart": 0,
+        "criticalCHRestart": 0,
+        "notRestoredReasons": null,
+        "confidence": {
+          "randomizedTriggerRate": 0.4994798,
+          "value": "low"
+        }
+      },
+      "resources": [
+        {
+          "name": "/assets/index-B6aY9wY7.js",
+          "encodedBytes": 140434,
+          "decodedBytes": 433398
+        },
+        {
+          "name": "/assets/react-vendor-CxCD_NS6.js",
+          "encodedBytes": 45638,
+          "decodedBytes": 142382
+        },
+        {
+          "name": "/assets/icons-CiUAvfpc.js",
+          "encodedBytes": 8359,
+          "decodedBytes": 43308
+        },
+        {
+          "name": "/assets/index-BHgOxmfA.css",
+          "encodedBytes": 19808,
+          "decodedBytes": 104944
+        },
+        {
+          "name": "/assets/app-CzHRyaFM.js",
+          "encodedBytes": 209,
+          "decodedBytes": 246
+        },
+        {
+          "name": "/assets/core-C1V3-PH7.js",
+          "encodedBytes": 145,
+          "decodedBytes": 174
+        },
+        {
+          "name": "/assets/Dashboard-D72JQ8b3.js",
+          "encodedBytes": 10327,
+          "decodedBytes": 38791
+        },
+        {
+          "name": "/assets/insumos-page-constants-DYrMeZAc.js",
+          "encodedBytes": 293,
+          "decodedBytes": 428
+        },
+        {
+          "name": "/assets/LineChart-DPLAviF7.js",
+          "encodedBytes": 105869,
+          "decodedBytes": 385239
+        }
+      ]
+    },
+    {
+      "slow": true,
+      "route": "/",
+      "run": 4,
+      "readyMs": 3263.100000000093,
+      "navigationMs": 602.8000000002794,
+      "scriptingMs": 612.64,
+      "taskMs": 1304.505,
+      "heapBytes": 6316916,
+      "errors": [],
+      "navigation": {
+        "name": "http://127.0.0.1:41367/",
+        "entryType": "navigation",
+        "startTime": 0,
+        "duration": 789.5,
+        "navigationId": 8469,
+        "initiatorType": "navigation",
+        "deliveryType": "",
+        "nextHopProtocol": "http/1.1",
+        "renderBlockingStatus": "non-blocking",
+        "contentType": "text/html",
+        "contentEncoding": "gzip",
+        "workerStart": 0,
+        "workerRouterEvaluationStart": 0,
+        "workerCacheLookupStart": 0,
+        "workerMatchedSourceType": "",
+        "workerFinalSourceType": "",
+        "redirectStart": 0,
+        "redirectEnd": 0,
+        "fetchStart": 0.39999999990686774,
+        "domainLookupStart": 8.700000000186265,
+        "domainLookupEnd": 8.700000000186265,
+        "connectStart": 8.700000000186265,
+        "secureConnectionStart": 0,
+        "connectEnd": 8.899999999906868,
+        "requestStart": 8.899999999906868,
+        "responseStart": 9.5,
+        "firstInterimResponseStart": 0,
+        "finalResponseHeadersStart": 9.5,
+        "responseEnd": 114,
+        "transferSize": 672,
+        "encodedBodySize": 372,
+        "decodedBodySize": 651,
+        "responseStatus": 200,
+        "serverTiming": [],
+        "unloadEventStart": 0,
+        "unloadEventEnd": 0,
+        "domInteractive": 176.29999999981374,
+        "domContentLoadedEventStart": 784.7000000001863,
+        "domContentLoadedEventEnd": 784.7999999998137,
+        "domComplete": 789.5,
+        "loadEventStart": 789.5,
+        "loadEventEnd": 789.5,
+        "type": "navigate",
+        "redirectCount": 0,
+        "activationStart": 0,
+        "criticalCHRestart": 0,
+        "notRestoredReasons": null,
+        "confidence": {
+          "randomizedTriggerRate": 0.4994798,
+          "value": "high"
+        }
+      },
+      "resources": [
+        {
+          "name": "/assets/index-B6aY9wY7.js",
+          "encodedBytes": 140434,
+          "decodedBytes": 433398
+        },
+        {
+          "name": "/assets/icons-CiUAvfpc.js",
+          "encodedBytes": 8359,
+          "decodedBytes": 43308
+        },
+        {
+          "name": "/assets/react-vendor-CxCD_NS6.js",
+          "encodedBytes": 45638,
+          "decodedBytes": 142382
+        },
+        {
+          "name": "/assets/index-BHgOxmfA.css",
+          "encodedBytes": 19808,
+          "decodedBytes": 104944
+        },
+        {
+          "name": "/assets/app-CzHRyaFM.js",
+          "encodedBytes": 209,
+          "decodedBytes": 246
+        },
+        {
+          "name": "/assets/core-C1V3-PH7.js",
+          "encodedBytes": 145,
+          "decodedBytes": 174
+        },
+        {
+          "name": "/assets/Dashboard-D72JQ8b3.js",
+          "encodedBytes": 10327,
+          "decodedBytes": 38791
+        },
+        {
+          "name": "/assets/insumos-page-constants-DYrMeZAc.js",
+          "encodedBytes": 293,
+          "decodedBytes": 428
+        },
+        {
+          "name": "/assets/LineChart-DPLAviF7.js",
+          "encodedBytes": 105869,
+          "decodedBytes": 385239
+        }
+      ]
+    },
+    {
+      "slow": true,
+      "route": "/clientes",
+      "run": 0,
+      "readyMs": 2825.3000000002794,
+      "navigationMs": 1012.1000000000931,
+      "scriptingMs": 486.514,
+      "taskMs": 1089.525,
+      "heapBytes": 6418732,
+      "errors": [],
+      "navigation": {
+        "name": "http://127.0.0.1:41367/clientes",
+        "entryType": "navigation",
+        "startTime": 0,
+        "duration": 808.4000000003725,
+        "navigationId": 4118,
+        "initiatorType": "navigation",
+        "deliveryType": "",
+        "nextHopProtocol": "http/1.1",
+        "renderBlockingStatus": "non-blocking",
+        "contentType": "text/html",
+        "contentEncoding": "gzip",
+        "workerStart": 0,
+        "workerRouterEvaluationStart": 0,
+        "workerCacheLookupStart": 0,
+        "workerMatchedSourceType": "",
+        "workerFinalSourceType": "",
+        "redirectStart": 0,
+        "redirectEnd": 0,
+        "fetchStart": 0.10000000009313226,
+        "domainLookupStart": 1,
+        "domainLookupEnd": 1,
+        "connectStart": 1,
+        "secureConnectionStart": 0,
+        "connectEnd": 1.2000000001862645,
+        "requestStart": 1.2000000001862645,
+        "responseStart": 1.6000000000931323,
+        "firstInterimResponseStart": 0,
+        "finalResponseHeadersStart": 1.6000000000931323,
+        "responseEnd": 105.90000000037253,
+        "transferSize": 672,
+        "encodedBodySize": 372,
+        "decodedBodySize": 651,
+        "responseStatus": 200,
+        "serverTiming": [],
+        "unloadEventStart": 0,
+        "unloadEventEnd": 0,
+        "domInteractive": 166.20000000018626,
+        "domContentLoadedEventStart": 803.6000000000931,
+        "domContentLoadedEventEnd": 804,
+        "domComplete": 808.4000000003725,
+        "loadEventStart": 808.4000000003725,
+        "loadEventEnd": 808.4000000003725,
+        "type": "navigate",
+        "redirectCount": 0,
+        "activationStart": 0,
+        "criticalCHRestart": 0,
+        "notRestoredReasons": null,
+        "confidence": {
+          "randomizedTriggerRate": 0.4994798,
+          "value": "high"
+        }
+      },
+      "resources": [
+        {
+          "name": "/assets/index-B6aY9wY7.js",
+          "encodedBytes": 140434,
+          "decodedBytes": 433398
+        },
+        {
+          "name": "/assets/react-vendor-CxCD_NS6.js",
+          "encodedBytes": 45638,
+          "decodedBytes": 142382
+        },
+        {
+          "name": "/assets/icons-CiUAvfpc.js",
+          "encodedBytes": 8359,
+          "decodedBytes": 43308
+        },
+        {
+          "name": "/assets/index-BHgOxmfA.css",
+          "encodedBytes": 19808,
+          "decodedBytes": 104944
+        },
+        {
+          "name": "/assets/app-CzHRyaFM.js",
+          "encodedBytes": 209,
+          "decodedBytes": 246
+        },
+        {
+          "name": "/assets/core-C1V3-PH7.js",
+          "encodedBytes": 145,
+          "decodedBytes": 174
+        },
+        {
+          "name": "/assets/Clientes-qJmSl1f5.js",
+          "encodedBytes": 7660,
+          "decodedBytes": 25356
+        },
+        {
+          "name": "/assets/error-alert-DatZgApP.js",
+          "encodedBytes": 28640,
+          "decodedBytes": 80268
+        },
+        {
+          "name": "/assets/index-CAE4fXVc.js",
+          "encodedBytes": 1230,
+          "decodedBytes": 2716
+        },
+        {
+          "name": "/assets/form-validation-error-C7w6GkzU.js",
+          "encodedBytes": 13376,
+          "decodedBytes": 56054
+        },
+        {
+          "name": "/assets/validations-RtKNXORv.js",
+          "encodedBytes": 1843,
+          "decodedBytes": 5466
+        },
+        {
+          "name": "/assets/pagination-controls-BqWIseqI.js",
+          "encodedBytes": 1293,
+          "decodedBytes": 2849
+        },
+        {
+          "name": "/assets/ClienteFormularioCampos-Des2ze1x.js",
+          "encodedBytes": 14913,
+          "decodedBytes": 44705
+        },
+        {
+          "name": "/assets/checkbox-OueAAwhs.js",
+          "encodedBytes": 360,
+          "decodedBytes": 556
+        },
+        {
+          "name": "/assets/confirm-dialog-Chlte3L2.js",
+          "encodedBytes": 2350,
+          "decodedBytes": 6151
+        },
+        {
+          "name": "/assets/ClienteContatosPanel-D6fbCMlc.js",
+          "encodedBytes": 4397,
+          "decodedBytes": 12556
+        }
+      ]
+    },
+    {
+      "slow": true,
+      "route": "/clientes",
+      "run": 1,
+      "readyMs": 3124.600000000093,
+      "navigationMs": 1045.1000000000931,
+      "scriptingMs": 407.923,
+      "taskMs": 935.84,
+      "heapBytes": 6492036,
+      "errors": [],
+      "navigation": {
+        "name": "http://127.0.0.1:41367/clientes",
+        "entryType": "navigation",
+        "startTime": 0,
+        "duration": 762.5,
+        "navigationId": 3703,
+        "initiatorType": "navigation",
+        "deliveryType": "",
+        "nextHopProtocol": "http/1.1",
+        "renderBlockingStatus": "non-blocking",
+        "contentType": "text/html",
+        "contentEncoding": "gzip",
+        "workerStart": 0,
+        "workerRouterEvaluationStart": 0,
+        "workerCacheLookupStart": 0,
+        "workerMatchedSourceType": "",
+        "workerFinalSourceType": "",
+        "redirectStart": 0,
+        "redirectEnd": 0,
+        "fetchStart": 0.20000000018626451,
+        "domainLookupStart": 1,
+        "domainLookupEnd": 1.1000000000931323,
+        "connectStart": 1.1000000000931323,
+        "secureConnectionStart": 0,
+        "connectEnd": 1.6000000000931323,
+        "requestStart": 1.6000000000931323,
+        "responseStart": 2.1000000000931323,
+        "firstInterimResponseStart": 0,
+        "finalResponseHeadersStart": 2.1000000000931323,
+        "responseEnd": 107.40000000037253,
+        "transferSize": 672,
+        "encodedBodySize": 372,
+        "decodedBodySize": 651,
+        "responseStatus": 200,
+        "serverTiming": [],
+        "unloadEventStart": 0,
+        "unloadEventEnd": 0,
+        "domInteractive": 158.60000000009313,
+        "domContentLoadedEventStart": 755.3000000002794,
+        "domContentLoadedEventEnd": 755.4000000003725,
+        "domComplete": 762.5,
+        "loadEventStart": 762.5,
+        "loadEventEnd": 762.5,
+        "type": "navigate",
+        "redirectCount": 0,
+        "activationStart": 0,
+        "criticalCHRestart": 0,
+        "notRestoredReasons": null,
+        "confidence": {
+          "randomizedTriggerRate": 0.4994798,
+          "value": "high"
+        }
+      },
+      "resources": [
+        {
+          "name": "/assets/index-B6aY9wY7.js",
+          "encodedBytes": 140434,
+          "decodedBytes": 433398
+        },
+        {
+          "name": "/assets/react-vendor-CxCD_NS6.js",
+          "encodedBytes": 45638,
+          "decodedBytes": 142382
+        },
+        {
+          "name": "/assets/icons-CiUAvfpc.js",
+          "encodedBytes": 8359,
+          "decodedBytes": 43308
+        },
+        {
+          "name": "/assets/index-BHgOxmfA.css",
+          "encodedBytes": 19808,
+          "decodedBytes": 104944
+        },
+        {
+          "name": "/assets/app-CzHRyaFM.js",
+          "encodedBytes": 209,
+          "decodedBytes": 246
+        },
+        {
+          "name": "/assets/core-C1V3-PH7.js",
+          "encodedBytes": 145,
+          "decodedBytes": 174
+        },
+        {
+          "name": "/assets/Clientes-qJmSl1f5.js",
+          "encodedBytes": 7660,
+          "decodedBytes": 25356
+        },
+        {
+          "name": "/assets/error-alert-DatZgApP.js",
+          "encodedBytes": 28640,
+          "decodedBytes": 80268
+        },
+        {
+          "name": "/assets/index-CAE4fXVc.js",
+          "encodedBytes": 1230,
+          "decodedBytes": 2716
+        },
+        {
+          "name": "/assets/form-validation-error-C7w6GkzU.js",
+          "encodedBytes": 13376,
+          "decodedBytes": 56054
+        },
+        {
+          "name": "/assets/validations-RtKNXORv.js",
+          "encodedBytes": 1843,
+          "decodedBytes": 5466
+        },
+        {
+          "name": "/assets/pagination-controls-BqWIseqI.js",
+          "encodedBytes": 1293,
+          "decodedBytes": 2849
+        },
+        {
+          "name": "/assets/ClienteFormularioCampos-Des2ze1x.js",
+          "encodedBytes": 14913,
+          "decodedBytes": 44705
+        },
+        {
+          "name": "/assets/checkbox-OueAAwhs.js",
+          "encodedBytes": 360,
+          "decodedBytes": 556
+        },
+        {
+          "name": "/assets/confirm-dialog-Chlte3L2.js",
+          "encodedBytes": 2350,
+          "decodedBytes": 6151
+        },
+        {
+          "name": "/assets/ClienteContatosPanel-D6fbCMlc.js",
+          "encodedBytes": 4397,
+          "decodedBytes": 12556
+        }
+      ]
+    },
+    {
+      "slow": true,
+      "route": "/clientes",
+      "run": 2,
+      "readyMs": 2807.7999999998137,
+      "navigationMs": 714.9000000003725,
+      "scriptingMs": 468.68199999999996,
+      "taskMs": 1114.351,
+      "heapBytes": 6427196,
+      "errors": [],
+      "navigation": {
+        "name": "http://127.0.0.1:41367/clientes",
+        "entryType": "navigation",
+        "startTime": 0,
+        "duration": 769.8999999999069,
+        "navigationId": 6206,
+        "initiatorType": "navigation",
+        "deliveryType": "",
+        "nextHopProtocol": "http/1.1",
+        "renderBlockingStatus": "non-blocking",
+        "contentType": "text/html",
+        "contentEncoding": "gzip",
+        "workerStart": 0,
+        "workerRouterEvaluationStart": 0,
+        "workerCacheLookupStart": 0,
+        "workerMatchedSourceType": "",
+        "workerFinalSourceType": "",
+        "redirectStart": 0,
+        "redirectEnd": 0,
+        "fetchStart": 0.20000000018626451,
+        "domainLookupStart": 0.8999999999068677,
+        "domainLookupEnd": 1,
+        "connectStart": 1,
+        "secureConnectionStart": 0,
+        "connectEnd": 1.1000000000931323,
+        "requestStart": 1.2000000001862645,
+        "responseStart": 2.5,
+        "firstInterimResponseStart": 0,
+        "finalResponseHeadersStart": 2.5,
+        "responseEnd": 105.70000000018626,
+        "transferSize": 672,
+        "encodedBodySize": 372,
+        "decodedBodySize": 651,
+        "responseStatus": 200,
+        "serverTiming": [],
+        "unloadEventStart": 0,
+        "unloadEventEnd": 0,
+        "domInteractive": 168.39999999990687,
+        "domContentLoadedEventStart": 765,
+        "domContentLoadedEventEnd": 765.1000000000931,
+        "domComplete": 769.8999999999069,
+        "loadEventStart": 769.8999999999069,
+        "loadEventEnd": 769.8999999999069,
+        "type": "navigate",
+        "redirectCount": 0,
+        "activationStart": 0,
+        "criticalCHRestart": 0,
+        "notRestoredReasons": null,
+        "confidence": {
+          "randomizedTriggerRate": 0.4994798,
+          "value": "low"
+        }
+      },
+      "resources": [
+        {
+          "name": "/assets/index-B6aY9wY7.js",
+          "encodedBytes": 140434,
+          "decodedBytes": 433398
+        },
+        {
+          "name": "/assets/react-vendor-CxCD_NS6.js",
+          "encodedBytes": 45638,
+          "decodedBytes": 142382
+        },
+        {
+          "name": "/assets/icons-CiUAvfpc.js",
+          "encodedBytes": 8359,
+          "decodedBytes": 43308
+        },
+        {
+          "name": "/assets/index-BHgOxmfA.css",
+          "encodedBytes": 19808,
+          "decodedBytes": 104944
+        },
+        {
+          "name": "/assets/app-CzHRyaFM.js",
+          "encodedBytes": 209,
+          "decodedBytes": 246
+        },
+        {
+          "name": "/assets/core-C1V3-PH7.js",
+          "encodedBytes": 145,
+          "decodedBytes": 174
+        },
+        {
+          "name": "/assets/Clientes-qJmSl1f5.js",
+          "encodedBytes": 7660,
+          "decodedBytes": 25356
+        },
+        {
+          "name": "/assets/error-alert-DatZgApP.js",
+          "encodedBytes": 28640,
+          "decodedBytes": 80268
+        },
+        {
+          "name": "/assets/index-CAE4fXVc.js",
+          "encodedBytes": 1230,
+          "decodedBytes": 2716
+        },
+        {
+          "name": "/assets/form-validation-error-C7w6GkzU.js",
+          "encodedBytes": 13376,
+          "decodedBytes": 56054
+        },
+        {
+          "name": "/assets/validations-RtKNXORv.js",
+          "encodedBytes": 1843,
+          "decodedBytes": 5466
+        },
+        {
+          "name": "/assets/pagination-controls-BqWIseqI.js",
+          "encodedBytes": 1293,
+          "decodedBytes": 2849
+        },
+        {
+          "name": "/assets/ClienteFormularioCampos-Des2ze1x.js",
+          "encodedBytes": 14913,
+          "decodedBytes": 44705
+        },
+        {
+          "name": "/assets/checkbox-OueAAwhs.js",
+          "encodedBytes": 360,
+          "decodedBytes": 556
+        },
+        {
+          "name": "/assets/confirm-dialog-Chlte3L2.js",
+          "encodedBytes": 2350,
+          "decodedBytes": 6151
+        },
+        {
+          "name": "/assets/ClienteContatosPanel-D6fbCMlc.js",
+          "encodedBytes": 4397,
+          "decodedBytes": 12556
+        }
+      ]
+    },
+    {
+      "slow": true,
+      "route": "/clientes",
+      "run": 3,
+      "readyMs": 3184.399999999907,
+      "navigationMs": 1025.2000000001863,
+      "scriptingMs": 450.26899999999995,
+      "taskMs": 1068.472,
+      "heapBytes": 6492744,
+      "errors": [],
+      "navigation": {
+        "name": "http://127.0.0.1:41367/clientes",
+        "entryType": "navigation",
+        "startTime": 0,
+        "duration": 762.1999999997206,
+        "navigationId": 7128,
+        "initiatorType": "navigation",
+        "deliveryType": "",
+        "nextHopProtocol": "http/1.1",
+        "renderBlockingStatus": "non-blocking",
+        "contentType": "text/html",
+        "contentEncoding": "gzip",
+        "workerStart": 0,
+        "workerRouterEvaluationStart": 0,
+        "workerCacheLookupStart": 0,
+        "workerMatchedSourceType": "",
+        "workerFinalSourceType": "",
+        "redirectStart": 0,
+        "redirectEnd": 0,
+        "fetchStart": 0.10000000009313226,
+        "domainLookupStart": 1.5,
+        "domainLookupEnd": 1.6999999997206032,
+        "connectStart": 1.6999999997206032,
+        "secureConnectionStart": 0,
+        "connectEnd": 2.1999999997206032,
+        "requestStart": 2.1999999997206032,
+        "responseStart": 9,
+        "firstInterimResponseStart": 0,
+        "finalResponseHeadersStart": 9,
+        "responseEnd": 106.60000000009313,
+        "transferSize": 672,
+        "encodedBodySize": 372,
+        "decodedBodySize": 651,
+        "responseStatus": 200,
+        "serverTiming": [],
+        "unloadEventStart": 0,
+        "unloadEventEnd": 0,
+        "domInteractive": 155.60000000009313,
+        "domContentLoadedEventStart": 755.1000000000931,
+        "domContentLoadedEventEnd": 755.6999999997206,
+        "domComplete": 762.1999999997206,
+        "loadEventStart": 762.1999999997206,
+        "loadEventEnd": 762.1999999997206,
+        "type": "navigate",
+        "redirectCount": 0,
+        "activationStart": 0,
+        "criticalCHRestart": 0,
+        "notRestoredReasons": null,
+        "confidence": {
+          "randomizedTriggerRate": 0.4994798,
+          "value": "low"
+        }
+      },
+      "resources": [
+        {
+          "name": "/assets/index-B6aY9wY7.js",
+          "encodedBytes": 140434,
+          "decodedBytes": 433398
+        },
+        {
+          "name": "/assets/react-vendor-CxCD_NS6.js",
+          "encodedBytes": 45638,
+          "decodedBytes": 142382
+        },
+        {
+          "name": "/assets/icons-CiUAvfpc.js",
+          "encodedBytes": 8359,
+          "decodedBytes": 43308
+        },
+        {
+          "name": "/assets/index-BHgOxmfA.css",
+          "encodedBytes": 19808,
+          "decodedBytes": 104944
+        },
+        {
+          "name": "/assets/app-CzHRyaFM.js",
+          "encodedBytes": 209,
+          "decodedBytes": 246
+        },
+        {
+          "name": "/assets/core-C1V3-PH7.js",
+          "encodedBytes": 145,
+          "decodedBytes": 174
+        },
+        {
+          "name": "/assets/Clientes-qJmSl1f5.js",
+          "encodedBytes": 7660,
+          "decodedBytes": 25356
+        },
+        {
+          "name": "/assets/error-alert-DatZgApP.js",
+          "encodedBytes": 28640,
+          "decodedBytes": 80268
+        },
+        {
+          "name": "/assets/index-CAE4fXVc.js",
+          "encodedBytes": 1230,
+          "decodedBytes": 2716
+        },
+        {
+          "name": "/assets/form-validation-error-C7w6GkzU.js",
+          "encodedBytes": 13376,
+          "decodedBytes": 56054
+        },
+        {
+          "name": "/assets/validations-RtKNXORv.js",
+          "encodedBytes": 1843,
+          "decodedBytes": 5466
+        },
+        {
+          "name": "/assets/pagination-controls-BqWIseqI.js",
+          "encodedBytes": 1293,
+          "decodedBytes": 2849
+        },
+        {
+          "name": "/assets/ClienteFormularioCampos-Des2ze1x.js",
+          "encodedBytes": 14913,
+          "decodedBytes": 44705
+        },
+        {
+          "name": "/assets/checkbox-OueAAwhs.js",
+          "encodedBytes": 360,
+          "decodedBytes": 556
+        },
+        {
+          "name": "/assets/confirm-dialog-Chlte3L2.js",
+          "encodedBytes": 2350,
+          "decodedBytes": 6151
+        },
+        {
+          "name": "/assets/ClienteContatosPanel-D6fbCMlc.js",
+          "encodedBytes": 4397,
+          "decodedBytes": 12556
+        }
+      ]
+    },
+    {
+      "slow": true,
+      "route": "/clientes",
+      "run": 4,
+      "readyMs": 2845.6999999997206,
+      "navigationMs": 2321.100000000093,
+      "scriptingMs": 548.0390000000001,
+      "taskMs": 1214.4360000000001,
+      "heapBytes": 6444672,
+      "errors": [],
+      "navigation": {
+        "name": "http://127.0.0.1:41367/clientes",
+        "entryType": "navigation",
+        "startTime": 0,
+        "duration": 792.3999999999069,
+        "navigationId": 3025,
+        "initiatorType": "navigation",
+        "deliveryType": "",
+        "nextHopProtocol": "http/1.1",
+        "renderBlockingStatus": "non-blocking",
+        "contentType": "text/html",
+        "contentEncoding": "gzip",
+        "workerStart": 0,
+        "workerRouterEvaluationStart": 0,
+        "workerCacheLookupStart": 0,
+        "workerMatchedSourceType": "",
+        "workerFinalSourceType": "",
+        "redirectStart": 0,
+        "redirectEnd": 0,
+        "fetchStart": 0.10000000009313226,
+        "domainLookupStart": 1.2999999998137355,
+        "domainLookupEnd": 1.2999999998137355,
+        "connectStart": 1.2999999998137355,
+        "secureConnectionStart": 0,
+        "connectEnd": 1.5,
+        "requestStart": 1.6000000000931323,
+        "responseStart": 2,
+        "firstInterimResponseStart": 0,
+        "finalResponseHeadersStart": 2,
+        "responseEnd": 105.6999999997206,
+        "transferSize": 672,
+        "encodedBodySize": 372,
+        "decodedBodySize": 651,
+        "responseStatus": 200,
+        "serverTiming": [],
+        "unloadEventStart": 0,
+        "unloadEventEnd": 0,
+        "domInteractive": 160.10000000009313,
+        "domContentLoadedEventStart": 781.5,
+        "domContentLoadedEventEnd": 787.1000000000931,
+        "domComplete": 792.3999999999069,
+        "loadEventStart": 792.3999999999069,
+        "loadEventEnd": 792.3999999999069,
+        "type": "navigate",
+        "redirectCount": 0,
+        "activationStart": 0,
+        "criticalCHRestart": 0,
+        "notRestoredReasons": null,
+        "confidence": {
+          "randomizedTriggerRate": 0.4994798,
+          "value": "low"
+        }
+      },
+      "resources": [
+        {
+          "name": "/assets/index-B6aY9wY7.js",
+          "encodedBytes": 140434,
+          "decodedBytes": 433398
+        },
+        {
+          "name": "/assets/react-vendor-CxCD_NS6.js",
+          "encodedBytes": 45638,
+          "decodedBytes": 142382
+        },
+        {
+          "name": "/assets/icons-CiUAvfpc.js",
+          "encodedBytes": 8359,
+          "decodedBytes": 43308
+        },
+        {
+          "name": "/assets/index-BHgOxmfA.css",
+          "encodedBytes": 19808,
+          "decodedBytes": 104944
+        },
+        {
+          "name": "/assets/app-CzHRyaFM.js",
+          "encodedBytes": 209,
+          "decodedBytes": 246
+        },
+        {
+          "name": "/assets/core-C1V3-PH7.js",
+          "encodedBytes": 145,
+          "decodedBytes": 174
+        },
+        {
+          "name": "/assets/Clientes-qJmSl1f5.js",
+          "encodedBytes": 7660,
+          "decodedBytes": 25356
+        },
+        {
+          "name": "/assets/error-alert-DatZgApP.js",
+          "encodedBytes": 28640,
+          "decodedBytes": 80268
+        },
+        {
+          "name": "/assets/index-CAE4fXVc.js",
+          "encodedBytes": 1230,
+          "decodedBytes": 2716
+        },
+        {
+          "name": "/assets/form-validation-error-C7w6GkzU.js",
+          "encodedBytes": 13376,
+          "decodedBytes": 56054
+        },
+        {
+          "name": "/assets/validations-RtKNXORv.js",
+          "encodedBytes": 1843,
+          "decodedBytes": 5466
+        },
+        {
+          "name": "/assets/pagination-controls-BqWIseqI.js",
+          "encodedBytes": 1293,
+          "decodedBytes": 2849
+        },
+        {
+          "name": "/assets/ClienteFormularioCampos-Des2ze1x.js",
+          "encodedBytes": 14913,
+          "decodedBytes": 44705
+        },
+        {
+          "name": "/assets/checkbox-OueAAwhs.js",
+          "encodedBytes": 360,
+          "decodedBytes": 556
+        },
+        {
+          "name": "/assets/confirm-dialog-Chlte3L2.js",
+          "encodedBytes": 2350,
+          "decodedBytes": 6151
+        },
+        {
+          "name": "/assets/ClienteContatosPanel-D6fbCMlc.js",
+          "encodedBytes": 4397,
+          "decodedBytes": 12556
+        }
+      ]
+    }
+  ]
+}

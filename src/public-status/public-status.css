@@ -296,6 +296,8 @@ h1 {
 .portal-message { margin-top: 0.75rem; }
 .portal-message pre { margin: 0; padding: 0.75rem; border-radius: 0.5rem; color: #243d59; background: #fff; font: inherit; font-size: 0.88rem; white-space: pre-wrap; overflow-wrap: anywhere; }
 .portal-link-button { display: inline-flex; align-items: center; text-decoration: none; }
+.portal-endereco-acoes { display: flex; flex-wrap: wrap; gap: 0.5rem; }
+.portal-endereco-acoes > * { flex: 1 1 10rem; }
 .answer-processando, .answer-pendente_equipe { border-left-color: #c47d12; background: #fff8ec; }
 .answer-efetivada { border-left-color: #318768; background: #eef8f3; }
 .portal-requests { margin-top: 1.5rem; }

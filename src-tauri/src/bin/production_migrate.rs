@@ -8,12 +8,12 @@ use url::Url;
 
 static MIGRATOR: Migrator = sqlx::migrate!("./migrations");
 
-const REQUIRED_PROMOTION_MIGRATIONS: [i64; 16] = [27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42];
-const EXPECTED_MIGRATION_COUNT: usize = 42;
+const REQUIRED_PROMOTION_MIGRATIONS: [i64; 18] = [27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44];
+const EXPECTED_MIGRATION_COUNT: usize = 44;
 /// Piso já aplicado antes da promoção (igual à master). O binário e o
-/// pós-apply exigem 0001–0042: `EXPECTED_MIGRATION_COUNT` e
+/// pós-apply exigem 0001–0044: `EXPECTED_MIGRATION_COUNT` e
 /// `verify_promoted_schema` recusam histórico incompleto. Subir este piso
-/// para 42 bloquearia a primeira aplicação de 0029–0042.
+/// para 44 bloquearia a primeira aplicação de 0029–0044.
 const LAST_REQUIRED_APPLIED_MIGRATION: i64 = 28;
 
 fn required_env(name: &str) -> Result<String> {
@@ -200,10 +200,10 @@ mod tests {
     use super::*;
 
     #[test]
-    fn promotes_from_0028_and_expects_the_full_0042_set() {
+    fn promotes_from_0028_and_expects_the_full_0044_set() {
         assert_eq!(LAST_REQUIRED_APPLIED_MIGRATION, 28);
-        assert_eq!(EXPECTED_MIGRATION_COUNT, 42);
-        assert_eq!(REQUIRED_PROMOTION_MIGRATIONS.last().copied(), Some(42));
+        assert_eq!(EXPECTED_MIGRATION_COUNT, 44);
+        assert_eq!(REQUIRED_PROMOTION_MIGRATIONS.last().copied(), Some(44));
         assert!(validate_migration_set().is_ok());
         assert!(require_expected_migrations().is_ok());
     }
@@ -476,7 +476,7 @@ async fn required_promotion_migrations_already_applied(pool: &PgPool) -> Result<
     .bind(REQUIRED_PROMOTION_MIGRATIONS.as_slice())
     .fetch_one(pool)
     .await
-    .context("não foi possível consultar o status inicial das migrations 0027–0042")?;
+    .context("não foi possível consultar o status inicial das migrations 0027–0044")?;
     Ok(applied_count == REQUIRED_PROMOTION_MIGRATIONS.len() as i64)
 }
 

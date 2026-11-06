@@ -236,6 +236,8 @@ export interface Cliente {
   ativo?: boolean;
   criado_em?: string;
   atualizado_em?: string;
+  /** Busca: nome do contato que trouxe o cliente, quando os dados do próprio cliente não bateram. */
+  contato_encontrado?: string | null;
 }
 
 /**
@@ -364,6 +366,7 @@ export interface Verificacao {
   adjusted_at?: string;
   /** Timestamp do equipamento após um ajuste de orçamento local. */
   equipamento_atualizado_em?: string;
+  confirmar_garantia?: boolean;
 }
 
 export type AcessoPortalContato = "NENHUM" | "ACOMPANHAR" | "DECIDIR";
@@ -374,6 +377,8 @@ export interface OpcoesAjusteOrcamento {
   devolverEstoque?: boolean;
   /** Confirma que a nova versão anula a resposta do cliente ainda não aplicada. */
   confirmarRespostaPendente?: boolean;
+  /** Confirma auto-aprovação de OS só de garantia (R$ 0,00 → APROVADO). */
+  confirmarGarantia?: boolean;
 }
 
 export type ModoAjusteAprovado = "SEM_NOVA_APROVACAO" | "NOVA_APROVACAO";
@@ -470,6 +475,8 @@ export interface VinculoEmpresaPerfilResultado {
 }
 
 export type ClienteContatoInput = Omit<ClienteContato, "id" | "empresa_id" | "ativo" | "criado_em" | "atualizado_em"> & {
+  /** Só o diálogo "Quem recebe o orçamento?" envia: nome/e-mail de contato com portal não mudam. */
+  preservar_identidade_portal?: boolean;
   empresa_id?: ClienteId;
   atualizado_em?: string;
 };
@@ -1313,3 +1320,27 @@ export type StatusOrcamentoInsumos = (typeof STATUS_ORCAMENTO_INSUMOS)[number];
 
 export type TipoEnvioWhatsapp = "orcamento_informativo" | "equipamento_pronto";
 
+/** Onde uma peça ainda é usada antes de ser excluída (inativada). */
+export interface UsoProdutoOrcamentos {
+  os_em_aberto: string[];
+  os_baixa_pendente: string[];
+  orcamentos_insumos: string[];
+}
+
+/** OS aguardando aprovação sem orçamento publicado no portal. */
+export interface OrcamentoPendentePortal {
+  equipamento_id: number;
+  descricao: string;
+  prazo_aprovacao?: string | null;
+}
+
+export interface FalhaPublicacaoPortal {
+  equipamento_id: number;
+  descricao: string;
+  motivo: string;
+}
+
+export interface PublicacaoLotePortal {
+  publicados: number[];
+  falhas: FalhaPublicacaoPortal[];
+}

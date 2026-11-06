@@ -1,0 +1,173 @@
+{
+  "allJs": {
+    "bytes": 3124540,
+    "gzipBytes": 933011
+  },
+  "allCss": {
+    "bytes": 104944,
+    "gzipBytes": 19808
+  },
+  "startup": {
+    "bytes": 2343228,
+    "gzipBytes": 688315
+  },
+  "startupFiles": [
+    {
+      "file": "assets/index-DqaLbqGh.js",
+      "bytes": 2238284,
+      "gzipBytes": 668507
+    },
+    {
+      "file": "assets/index-BHgOxmfA.css",
+      "bytes": 104944,
+      "gzipBytes": 19808
+    }
+  ],
+  "assets": [
+    {
+      "file": ".htaccess",
+      "bytes": 932,
+      "gzipBytes": 484
+    },
+    {
+      "file": "assets/AccessHandlePoolVFS-CxrlPMEm.js",
+      "bytes": 5067,
+      "gzipBytes": 2189
+    },
+    {
+      "file": "assets/FacadeVFS-DiPwyb-P.js",
+      "bytes": 7843,
+      "gzipBytes": 2367
+    },
+    {
+      "file": "assets/IDBBatchAtomicVFS-j4-8nWDs.js",
+      "bytes": 15570,
+      "gzipBytes": 5040
+    },
+    {
+      "file": "assets/MemoryVFS-PbXdPWBb.js",
+      "bytes": 1834,
+      "gzipBytes": 817
+    },
+    {
+      "file": "assets/OPFSCoopSyncVFS-Cn2B5Zgx.js",
+      "bytes": 9189,
+      "gzipBytes": 3013
+    },
+    {
+      "file": "assets/OPFSWriteAheadVFS-BVpzHltU.js",
+      "bytes": 28226,
+      "gzipBytes": 8593
+    },
+    {
+      "file": "assets/html2canvas.esm-CBrSDip1.js",
+      "bytes": 202301,
+      "gzipBytes": 48033
+    },
+    {
+      "file": "assets/index-BHgOxmfA.css",
+      "bytes": 104944,
+      "gzipBytes": 19808
+    },
+    {
+      "file": "assets/index-DqaLbqGh.js",
+      "bytes": 2238284,
+      "gzipBytes": 668507
+    },
+    {
+      "file": "assets/index.es-BCn60YH3.js",
+      "bytes": 150511,
+      "gzipBytes": 51442
+    },
+    {
+      "file": "assets/mc-wa-sqlite-B5EwuptG.wasm",
+      "bytes": 1317179,
+      "gzipBytes": 605340
+    },
+    {
+      "file": "assets/mc-wa-sqlite-DApvlUV9.js",
+      "bytes": 61672,
+      "gzipBytes": 20412
+    },
+    {
+      "file": "assets/mc-wa-sqlite-async-CWIXFzAI.js",
+      "bytes": 65469,
+      "gzipBytes": 21562
+    },
+    {
+      "file": "assets/mc-wa-sqlite-async-gzFY6s2-.wasm",
+      "bytes": 2518738,
+      "gzipBytes": 888059
+    },
+    {
+      "file": "assets/purify.es-BgtpMKW3.js",
+      "bytes": 22769,
+      "gzipBytes": 8790
+    },
+    {
+      "file": "assets/wa-sqlite-D5ocM9af.js",
+      "bytes": 61358,
+      "gzipBytes": 20335
+    },
+    {
+      "file": "assets/wa-sqlite-DR-3Ak0t.wasm",
+      "bytes": 1129661,
+      "gzipBytes": 530116
+    },
+    {
+      "file": "assets/wa-sqlite-async-BZ9gIHv7.wasm",
+      "bytes": 2295539,
+      "gzipBytes": 804849
+    },
+    {
+      "file": "assets/wa-sqlite-async-CbVSNJH6.js",
+      "bytes": 65155,
+      "gzipBytes": 21503
+    },
+    {
+      "file": "assets/websockets-BVGb5XAD.js",
+      "bytes": 111331,
+      "gzipBytes": 26187
+    },
+    {
+      "file": "assets/worker-BbkWIAse.js",
+      "bytes": 77961,
+      "gzipBytes": 24221
+    },
+    {
+      "file": "bmi-tag-logo.png",
+      "bytes": 197343,
+      "gzipBytes": 193515
+    },
+    {
+      "file": "index.html",
+      "bytes": 492,
+      "gzipBytes": 323
+    },
+    {
+      "file": "logo-bmitag.png",
+      "bytes": 26027,
+      "gzipBytes": 25824
+    },
+    {
+      "file": "logo-tag-trasparente.svg",
+      "bytes": 210941,
+      "gzipBytes": 155777
+    },
+    {
+      "file": "portal-apple-touch-icon.png",
+      "bytes": 14873,
+      "gzipBytes": 14742
+    },
+    {
+      "file": "portal-favicon-32.png",
+      "bytes": 1349,
+      "gzipBytes": 1372
+    },
+    {
+      "file": "portal-favicon.ico",
+      "bytes": 4362,
+      "gzipBytes": 4358
+    }
+  ]
+}

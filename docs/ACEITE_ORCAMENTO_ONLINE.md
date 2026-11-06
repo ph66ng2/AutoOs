@@ -10,7 +10,7 @@ O cliente responde ao orçamento por um link próprio. A resposta é **registrad
 
 - Abrir o link ou tocar uma vez nunca decide nada: a página repete valor e ação e pede confirmação.
 - O cliente vê uma **versão congelada** do orçamento. Editar o orçamento, a verificação, o prazo ou a etapa do equipamento encerra a versão e revoga seus links; o cliente nunca aprova valores que não viu.
-- Até a equipe aplicar, o cliente pode **desfazer ou alterar** a resposta pelo link. Cada mudança entra no histórico; nada é apagado. A equipe só aplica uma resposta do portal depois de **pelo menos 15 minutos** (`janela_correcao_minutos`, mínimo 15) desde a última resposta.
+- Até a equipe aplicar, o cliente pode **desfazer ou alterar** a resposta pelo link. Cada mudança entra no histórico; nada é apagado. A equipe só aplica uma resposta do portal depois de **pelo menos 10 minutos** (`janela_correcao_minutos`, mínimo 10 desde a 0043) desde a última resposta.
 - Resposta dada por telefone ou WhatsApp é aplicada direto pelos botões Aprovar/Reprovar do equipamento (PIN + `FINANCIAL_ACTIONS`, registrado na auditoria). A mudança de status encerra a versão e o link público. Não há etapa intermediária de “decisão informada”.
 - A primeira versão aceita ou recusa o **orçamento inteiro**. Escolha de serviços individuais fica para uma etapa posterior.
 - Depois que a equipe aplica a decisão, o link deixa de aceitar respostas, mas continua aberto (até expirar) para mostrar o resultado e receber um **pedido de mudança**. O pedido apenas avisa a equipe: não cancela serviço nem devolve peça.
@@ -63,7 +63,7 @@ Erros novos: `LIMITE_SOLICITACOES`, `MENSAGEM_INVALIDA`, `TIPO_INVALIDO`.
 
 ## Corrigir decisão do orçamento
 
-Ação ao lado de "Mudar Status" para orçamentos `APROVADO` ou `REPROVADO`. "Corrigir Status" para `AGUARDANDO_APROVACAO` nesses casos é recusado e aponta para ela, porque trocar só o rótulo não desfaz pagamento, serviços aprovados nem baixa de estoque.
+Em `APROVADO` aparece no menu ⋯ (seção "Corrigir um engano") como **Desfazer aprovação**. Em `REPROVADO` fica dentro de **Reabrir orçamento**, que pergunta se foi engano (abre esta correção) ou se é uma nova proposta (volta para `AGUARDANDO_APROVACAO` com o mesmo orçamento). "Corrigir Status" não oferece `AGUARDANDO_APROVACAO` nesses casos, porque trocar só o rótulo não desfaz pagamento, serviços aprovados nem baixa de estoque; o backend continua recusando essa troca direta.
 
 1. A análise mostra pagamento registrado, valor atual e o valor enviado ao cliente, e as peças já baixadas.
 2. **Bloqueia** só se a etapa já passou de `APROVADO`/`REPROVADO` (a mensagem diz a etapa e o que fazer). O ajuste de serviços só conta se `verificacoes.adjusted_at` for posterior à data da decisão (`data_aprovacao`/`data_reprovacao`); ajuste feito antes da aprovação não impede nada. Com ajuste posterior o operador escolhe o modo: **manter o orçamento atual** (desfaz só a decisão) ou **restaurar o orçamento enviado ao cliente** (perde o ajuste). Sem a versão original guardada (legado), só o modo manter está disponível.

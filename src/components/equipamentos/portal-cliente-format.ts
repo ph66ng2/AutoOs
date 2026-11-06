@@ -29,6 +29,22 @@ export function formatarHora(value?: string | null) {
     : new Intl.DateTimeFormat("pt-BR", { dateStyle: "short", timeStyle: "short" }).format(parsed);
 }
 
+/**
+ * `valido_ate` é o início do dia seguinte ao prazo (exclusivo). Mostra o último dia
+ * inclusive, só a data, para coincidir com o campo Prazo.
+ */
+export function formatarValidoAte(value?: string | null) {
+  if (!value) return "—";
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return "—";
+  return new Intl.DateTimeFormat("pt-BR", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    timeZone: "America/Sao_Paulo",
+  }).format(new Date(parsed.getTime() - 1));
+}
+
 /** "14:32" se for hoje; senão "16/10 14:32". Para frases curtas como "aplica às 14:32". */
 export function formatarQuando(value?: string | null, agora = new Date()) {
   if (!value) return "—";

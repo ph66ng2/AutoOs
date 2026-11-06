@@ -19,7 +19,8 @@ use serde::{Deserialize, Serialize};
 use sqlx::{PgPool, Postgres, Row, Transaction};
 use tracing::instrument;
 
-const MIN_CORRECTION_WINDOW_MINUTES: i32 = 15;
+/// Mesmo mínimo do CHECK de orcamento_aceite_config e de autoos_portal_janela_minutos (0043).
+const MIN_CORRECTION_WINDOW_MINUTES: i32 = 10;
 const TS_FMT: &str = "YYYY-MM-DD\"T\"HH24:MI:SS.US\"Z\"";
 
 #[derive(Debug, Serialize)]
@@ -912,9 +913,10 @@ mod tests {
     use super::*;
 
     #[test]
-    fn correction_window_never_drops_below_fifteen_minutes() {
+    fn correction_window_never_drops_below_ten_minutes() {
         let now = Utc::now();
-        assert_eq!(correction_window_end(now, 1), now + Duration::minutes(15));
+        assert_eq!(correction_window_end(now, 1), now + Duration::minutes(10));
+        assert_eq!(correction_window_end(now, 10), now + Duration::minutes(10));
         assert_eq!(correction_window_end(now, 30), now + Duration::minutes(30));
     }
 

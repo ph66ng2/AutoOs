@@ -4,8 +4,8 @@
 //!
 //! Cobre: criar → aprovar com baixa de estoque, saldo insuficiente recusado sem aprovação
 //! parcial, cancelar aprovado devolvendo estoque (com confirmação), entregue, isolamento por
-//! empresa, numeração por empresa, permissões e concorrência otimista (inclusive aprovação
-//! simultânea).
+//! empresa, numeração por empresa, exclusão física só de cancelado (sem mexer em estoque nem
+//! na numeração), permissões e concorrência otimista (inclusive aprovação simultânea).
 #[path = "../commands/mod.rs"] mod commands;
 #[path = "../db.rs"] mod db;
 #[path = "../test_support/memory_keyring.rs"] mod memory_keyring;
@@ -316,21 +316,73 @@ async fn main() -> Result<()> {
     assert!(erro(obter_orcamento_insumos(oi_b.orcamento.id).await).contains("não encontrado"));
     assert_eq!(saldo(etiqueta).await?, 7, "empresa A não foi afetada pela B");
 
+    // ── Excluir de vez: só cancelado ──────────────────────────────────────────
+    entrar(perfil_a).await?;
+    let mensagem = erro(excluir_orcamento_insumos(acao(&entregue)).await);
+    assert!(mensagem.contains("só orçamentos cancelados"), "{mensagem}");
+    let mensagem = erro(excluir_orcamento_insumos(acao(&reprovado)).await);
+    assert!(mensagem.contains("só orçamentos cancelados"), "{mensagem}");
+    // Token de antes do cancelamento: o conflito é checado antes do status.
+    assert!(erro(excluir_orcamento_insumos(acao(&curto)).await).contains("Conflito de concorrência"));
+    entrar(perfil_operador).await?;
+    assert!(erro(excluir_orcamento_insumos(acao(&cancelado)).await).contains("permissão"));
+    entrar(perfil_b).await?;
+    assert!(erro(excluir_orcamento_insumos(acao(&cancelado)).await).contains("não encontrado"));
+    entrar(perfil_a).await?;
+
+    // Fotografia antes da exclusão: itens, estoque, movimentos, total da lista e maior número.
+    let id_cancelado = cancelado.orcamento.id;
+    let referencia_cancelado = cancelado.orcamento.numero_exibicao.clone();
+    let itens_antes: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM orcamento_insumos_itens WHERE orcamento_id = $1")
+        .bind(id_cancelado).fetch_one(&pool).await?;
+    assert_eq!(itens_antes, 2);
+    let saldos_antes = (saldo(etiqueta).await?, saldo(ribbon).await?);
+    let movs_antes = (
+        contar_movimentos(&pool, &referencia_cancelado, "ENTRADA", empresa_a).await?,
+        contar_movimentos(&pool, &referencia_cancelado, "SAIDA", empresa_a).await?,
+    );
+    let total_antes = listar_orcamentos_insumos(None).await.map_err(|e| anyhow!(e))?.total;
+    let maior_numero_antes: i64 = sqlx::query_scalar("SELECT COALESCE(MAX(numero), 0)::BIGINT FROM orcamentos_insumos WHERE empresa_id = $1")
+        .bind(empresa_a).fetch_one(&pool).await?;
+
+    excluir_orcamento_insumos(acao(&cancelado)).await.map_err(|e| anyhow!(e))?;
+    assert!(erro(obter_orcamento_insumos(id_cancelado).await).contains("não encontrado"));
+    let itens_depois: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM orcamento_insumos_itens WHERE orcamento_id = $1")
+        .bind(id_cancelado).fetch_one(&pool).await?;
+    assert_eq!(itens_depois, 0, "itens apagados em cascata");
+    assert_eq!(
+        (saldo(etiqueta).await?, saldo(ribbon).await?),
+        saldos_antes,
+        "exclusão não mexe em estoque"
+    );
+    assert_eq!(
+        (
+            contar_movimentos(&pool, &referencia_cancelado, "ENTRADA", empresa_a).await?,
+            contar_movimentos(&pool, &referencia_cancelado, "SAIDA", empresa_a).await?,
+        ),
+        movs_antes,
+        "movimentos de estoque preservados"
+    );
+    let total_depois = listar_orcamentos_insumos(None).await.map_err(|e| anyhow!(e))?.total;
+    assert_eq!(total_depois, total_antes - 1);
+    let novo = criar_orcamento_insumos(entrada(cliente_a, vec![item(etiqueta, 1, 5.0)])).await.map_err(|e| anyhow!(e))?;
+    assert_eq!(i64::from(novo.orcamento.numero), maior_numero_antes + 1, "número excluído não é reaproveitado");
+
     // ── Auditoria ─────────────────────────────────────────────────────────────
     let eventos: Vec<String> = sqlx::query_scalar(
         "SELECT DISTINCT event_type FROM security_audit_log WHERE event_type LIKE 'INSUMOS_QUOTE_%' ORDER BY 1",
     ).fetch_all(&pool).await?;
-    for esperado in ["INSUMOS_QUOTE_APPROVED", "INSUMOS_QUOTE_CANCELLED", "INSUMOS_QUOTE_CREATED", "INSUMOS_QUOTE_DELIVERED",
+    for esperado in ["INSUMOS_QUOTE_APPROVED", "INSUMOS_QUOTE_CANCELLED", "INSUMOS_QUOTE_CREATED", "INSUMOS_QUOTE_DELETED", "INSUMOS_QUOTE_DELIVERED",
                      "INSUMOS_QUOTE_REJECTED", "INSUMOS_QUOTE_SENT", "INSUMOS_QUOTE_UPDATED"] {
         ensure!(eventos.iter().any(|e| e == esperado), "evento de auditoria ausente: {esperado} (há {eventos:?})");
     }
 
     // ── Constraints do banco como segunda barreira ────────────────────────────
     let direto = sqlx::query("UPDATE orcamentos_insumos SET status = 'APROVADO', forma_pagamento_codigo = NULL WHERE id = $1")
-        .bind(oi1.orcamento.id).execute(&pool).await;
+        .bind(entregue.orcamento.id).execute(&pool).await;
     assert!(direto.is_err(), "aprovado sem forma de pagamento deve ser barrado pelo banco");
     let direto = sqlx::query("UPDATE orcamentos_insumos SET status = 'INVENTADO' WHERE id = $1")
-        .bind(oi1.orcamento.id).execute(&pool).await;
+        .bind(entregue.orcamento.id).execute(&pool).await;
     assert!(direto.is_err(), "status fora da lista deve ser barrado pelo banco");
 
     println!("test_orcamentos_insumos: OK");
