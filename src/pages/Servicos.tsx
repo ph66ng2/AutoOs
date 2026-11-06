@@ -59,6 +59,7 @@ export default function Servicos({ operationalProfile }: { operationalProfile?: 
   const [deletando, setDeletando] = useState<ServicoCatalogo<ClienteId> | null>(null);
   const [salvando, setSalvando] = useState(false);
   const [precoInvalido, setPrecoInvalido] = useState(false);
+  const [pecasInvalidas, setPecasInvalidas] = useState(false);
   const { ensureSensitiveAccess } = useSensitiveAccess({ operationalProfile });
   const { error: showError } = useNotification();
 
@@ -132,7 +133,7 @@ export default function Servicos({ operationalProfile }: { operationalProfile?: 
   }
 
   async function onSubmit(data: ServicoCatalogoFormData) {
-    if (precoInvalido) return;
+    if (precoInvalido || (IS_SAAS_BUILD && pecasInvalidas)) return;
     setSalvando(true);
     try {
       if (IS_SAAS_BUILD) validatePecasSugeridas(pecasSugeridas);
@@ -344,13 +345,13 @@ export default function Servicos({ operationalProfile }: { operationalProfile?: 
               <Label>Descrição</Label>
               <Textarea {...form.register("descricao")} rows={3} placeholder="Detalhes opcionais do serviço..." />
             </div>
-            {IS_SAAS_BUILD && <PecasDoServico pecas={pecasSugeridas} onChange={setPecasSugeridas} />}
+            {IS_SAAS_BUILD && <PecasDoServico pecas={pecasSugeridas} onChange={setPecasSugeridas} onValidityChange={(valido) => setPecasInvalidas(!valido)} />}
 
             <DialogFooter>
               <DialogClose asChild>
                 <Button variant="outline" type="button">Cancelar</Button>
               </DialogClose>
-              <Button type="submit" disabled={salvando || precoInvalido}>
+              <Button type="submit" disabled={salvando || precoInvalido || (IS_SAAS_BUILD && pecasInvalidas)}>
                 {salvando ? "Salvando..." : editando ? "Salvar" : "Cadastrar"}
               </Button>
             </DialogFooter>

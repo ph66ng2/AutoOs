@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Plus, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -15,12 +15,23 @@ interface Props<Id extends ClienteId> {
   pecas: PecaVinculada<Id>[];
   onChange: (pecas: PecaVinculada<Id>[]) => void;
   saasMode?: boolean;
+  /** Informa o pai quando algum preço de peça tem texto inválido (bloqueia o submit). */
+  onValidityChange?: (valido: boolean) => void;
 }
 
-export function PecasDoServico<Id extends ClienteId>({ pecas, onChange, saasMode = true }: Props<Id>) {
+export function PecasDoServico<Id extends ClienteId>({ pecas, onChange, saasMode = true, onValidityChange }: Props<Id>) {
   const [produtos, setProdutos] = useState<ProdutoPeca[]>([]);
   const [erro, setErro] = useState("");
   const [carregando, setCarregando] = useState(true);
+  const [precosInvalidos, setPrecosInvalidos] = useState<Record<string, boolean>>({});
+  const validadeRef = useRef(onValidityChange);
+  validadeRef.current = onValidityChange;
+
+  const algumPrecoInvalido = pecas.some((peca) => precosInvalidos[String(peca.produto_id)]);
+  useEffect(() => {
+    validadeRef.current?.(!algumPrecoInvalido);
+  }, [algumPrecoInvalido]);
+  useEffect(() => () => validadeRef.current?.(true), []);
 
   useEffect(() => {
     let ativo = true;
@@ -80,6 +91,7 @@ export function PecasDoServico<Id extends ClienteId>({ pecas, onChange, saasMode
               className="w-24"
               min={0}
               value={Number(peca.valor_unitario) || 0}
+              onValidityChange={(valido) => setPrecosInvalidos((atual) => ({ ...atual, [String(peca.produto_id)]: !valido }))}
               onValueChange={(valor) => onChange(pecas.map((item) => item.produto_id === peca.produto_id
                 ? { ...item, valor_unitario: valor }
                 : item))}

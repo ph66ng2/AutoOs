@@ -192,6 +192,7 @@ export function VerificacaoTecnica({
     setValoresServicoInvalidos((atual) => {
       const proximo = { ...atual };
       delete proximo[id];
+      delete proximo[`${id}:pecas`];
       return proximo;
     });
   }
@@ -240,7 +241,8 @@ export function VerificacaoTecnica({
         !servico.descricao.trim()
         || Number(servico.valor) < 0
         || Number.isNaN(Number(servico.valor))
-        || valoresServicoInvalidos[servico.id],
+        || valoresServicoInvalidos[servico.id]
+        || valoresServicoInvalidos[`${servico.id}:pecas`],
     );
     if (servicosInvalidos) {
       warning("Verificação", "Cada serviço precisa ter descrição e valor igual ou maior que zero (0,00 para garantia).");
@@ -515,6 +517,9 @@ export function VerificacaoTecnica({
                       <PecasDoServico
                         pecas={s.pecas ?? []}
                         onChange={(pecasServ) => atualizarServico(s.id, { pecas: pecasServ })}
+                        onValidityChange={(valido) => setValoresServicoInvalidos((atual) => (
+                          atual[`${s.id}:pecas`] === !valido ? atual : { ...atual, [`${s.id}:pecas`]: !valido }
+                        ))}
                       />
                     )}
                     </div>
@@ -634,7 +639,7 @@ export function VerificacaoTecnica({
               </DialogClose>
               <Button
                 onClick={handleConcluir}
-                disabled={salvando || servicos.some((s) => !s.descricao.trim() || Number(s.valor) < 0 || valoresServicoInvalidos[s.id])}
+                disabled={salvando || servicos.some((s) => !s.descricao.trim() || Number(s.valor) < 0 || valoresServicoInvalidos[s.id] || valoresServicoInvalidos[`${s.id}:pecas`])}
                 className="bg-green-600 hover:bg-green-700"
               >
                 <Check className="mr-2 h-4 w-4" />

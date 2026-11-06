@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Plus, Trash2, Search } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -14,6 +14,8 @@ interface AjusteOrcamentoServicosProps {
   onChange: (servicos: ServicoNecessario[]) => void;
   onRemoverTodos?: () => void;
   saasMode?: boolean;
+  /** false enquanto algum preço de peça estiver com texto inválido. */
+  onPecasValidityChange?: (valido: boolean) => void;
 }
 
 export function AjusteOrcamentoServicos({
@@ -23,8 +25,17 @@ export function AjusteOrcamentoServicos({
   onChange,
   onRemoverTodos,
   saasMode = false,
+  onPecasValidityChange,
 }: AjusteOrcamentoServicosProps) {
   const [linhaSugestaoAberta, setLinhaSugestaoAberta] = useState<string | null>(null);
+  const [pecasInvalidasPorServico, setPecasInvalidasPorServico] = useState<Record<string, boolean>>({});
+  const validadeRef = useRef(onPecasValidityChange);
+  validadeRef.current = onPecasValidityChange;
+  const algumaInvalida = servicos.some((s) => pecasInvalidasPorServico[s.id]);
+  useEffect(() => {
+    validadeRef.current?.(!algumaInvalida);
+  }, [algumaInvalida]);
+  useEffect(() => () => validadeRef.current?.(true), []);
 
   function adicionarServico() {
     const novo: ServicoNecessario = {
@@ -139,7 +150,7 @@ export function AjusteOrcamentoServicos({
               <Trash2 className="h-4 w-4 text-red-500" />
             </Button>
           </div>
-          <PecasDoServico pecas={s.pecas ?? []} saasMode={saasMode} onChange={(pecas) => atualizarServico(s.id, { pecas })} />
+          <PecasDoServico pecas={s.pecas ?? []} saasMode={saasMode} onChange={(pecas) => atualizarServico(s.id, { pecas })} onValidityChange={(valido) => setPecasInvalidasPorServico((atual) => (atual[s.id] === !valido ? atual : { ...atual, [s.id]: !valido }))} />
           </div>
         ))}
         {servicos.length === 0 && (

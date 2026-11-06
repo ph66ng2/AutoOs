@@ -61,4 +61,18 @@ describe("PecasDoServico", () => {
     const select = screen.getByLabelText("Adicionar peça");
     expect(within(select).queryByRole("option", { name: /Etiqueta/ })).not.toBeInTheDocument();
   });
+  it("informa o pai quando o preço da peça tem texto inválido e volta a válido ao corrigir/desmontar", async () => {
+    const onValidity = vi.fn();
+    const pecas = [{ produto_id: product.id, nome: product.nome, quantidade: 1, valor_unitario: 10 }] as PecaVinculada<string>[];
+    const { unmount } = render(<PecasDoServico pecas={pecas} onChange={vi.fn()} onValidityChange={onValidity} />);
+    await waitFor(() => expect(onValidity).toHaveBeenLastCalledWith(true));
+
+    const campo = screen.getByLabelText(`Valor de ${product.nome}`);
+    fireEvent.change(campo, { target: { value: "abc" } });
+    fireEvent.blur(campo);
+    await waitFor(() => expect(onValidity).toHaveBeenLastCalledWith(false));
+
+    unmount();
+    expect(onValidity).toHaveBeenLastCalledWith(true);
+  });
 });
