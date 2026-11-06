@@ -449,6 +449,7 @@ export default function Equipamentos() {
   // ─── Event listener: photo-received ────────────────────
   useEffect(() => {
     let unlisten: (() => void) | undefined;
+    let cancelled = false;
 
     listen<{ equipamento_id: number; imagem_id: number }>("photo-received", (event) => {
       const { equipamento_id } = event.payload;
@@ -461,11 +462,15 @@ export default function Equipamentos() {
             console.error("Erro ao recarregar imagens após evento photo-received:", err);
           });
       }
-    }).then((fn) => {
-      unlisten = fn;
-    });
+    })
+      .then((fn) => {
+        if (cancelled) fn();
+        else unlisten = fn;
+      })
+      .catch(() => {});
 
     return () => {
+      cancelled = true;
       unlisten?.();
     };
   }, [carregarImagensComPreview]);
@@ -3097,6 +3102,7 @@ export default function Equipamentos() {
                             className="h-6 w-6"
                             onClick={() => {
                               setPhotoUploadCategoria("ENTRADA");
+                              setPhotoUploadNewEquip(false);
                               setPhotoUploadOpen(true);
                             }}
                           >
@@ -3131,6 +3137,7 @@ export default function Equipamentos() {
                             className="h-6 w-6"
                             onClick={() => {
                               setPhotoUploadCategoria("SAIDA");
+                              setPhotoUploadNewEquip(false);
                               setPhotoUploadOpen(true);
                             }}
                           >
