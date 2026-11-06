@@ -306,7 +306,7 @@ export function VerificacaoTecnica({
       observacoes: observacoesVerif,
     };
 
-    if (vaiAutoAprovarOsGarantia(equipamento.status, osSomenteGarantia(servicosNormalizados), custoTotal)) {
+    if (!saasMode && vaiAutoAprovarOsGarantia(equipamento.status, osSomenteGarantia(servicosNormalizados), custoTotal)) {
       setDadosGarantiaPendentes(dados);
       setConfirmGarantiaOpen(true);
       return;

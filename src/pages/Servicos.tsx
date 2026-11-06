@@ -58,6 +58,7 @@ export default function Servicos({ operationalProfile }: { operationalProfile?: 
   const [editando, setEditando] = useState<ServicoCatalogo<ClienteId> | null>(null);
   const [deletando, setDeletando] = useState<ServicoCatalogo<ClienteId> | null>(null);
   const [salvando, setSalvando] = useState(false);
+  const [precoInvalido, setPrecoInvalido] = useState(false);
   const { ensureSensitiveAccess } = useSensitiveAccess({ operationalProfile });
   const { error: showError } = useNotification();
 
@@ -87,6 +88,7 @@ export default function Servicos({ operationalProfile }: { operationalProfile?: 
   });
 
   async function abrirNovo() {
+    setPrecoInvalido(false);
     const liberado = await ensureSensitiveAccess({
       title: "Cadastrar serviço",
       description: "Informe o PIN para cadastrar serviços padrão com preço pré-definido.",
@@ -102,6 +104,7 @@ export default function Servicos({ operationalProfile }: { operationalProfile?: 
   }
 
   async function abrirEditar(servico: ServicoCatalogo<ClienteId>) {
+    setPrecoInvalido(false);
     const liberado = await ensureSensitiveAccess({
       title: "Editar serviço",
       description: "Informe o PIN para alterar nome e preço do serviço padrão.",
@@ -129,6 +132,7 @@ export default function Servicos({ operationalProfile }: { operationalProfile?: 
   }
 
   async function onSubmit(data: ServicoCatalogoFormData) {
+    if (precoInvalido) return;
     setSalvando(true);
     try {
       if (IS_SAAS_BUILD) validatePecasSugeridas(pecasSugeridas);
@@ -331,6 +335,7 @@ export default function Servicos({ operationalProfile }: { operationalProfile?: 
                 min={0}
                 value={Number(form.watch("preco_padrao")) || 0}
                 onValueChange={(valor) => form.setValue("preco_padrao", valor, { shouldValidate: true, shouldDirty: true })}
+                onValidityChange={(valido) => setPrecoInvalido(!valido)}
               />
               <p className="text-xs text-muted-foreground">Use 0,00 para serviços em garantia.</p>
               <FormValidationError message={form.formState.errors.preco_padrao?.message} />
@@ -345,7 +350,7 @@ export default function Servicos({ operationalProfile }: { operationalProfile?: 
               <DialogClose asChild>
                 <Button variant="outline" type="button">Cancelar</Button>
               </DialogClose>
-              <Button type="submit" disabled={salvando}>
+              <Button type="submit" disabled={salvando || precoInvalido}>
                 {salvando ? "Salvando..." : editando ? "Salvar" : "Cadastrar"}
               </Button>
             </DialogFooter>
