@@ -14,7 +14,7 @@ interface AjusteOrcamentoServicosProps {
   onChange: (servicos: ServicoNecessario[]) => void;
   onRemoverTodos?: () => void;
   saasMode?: boolean;
-  /** false enquanto algum preço de peça estiver com texto inválido. */
+  /** false enquanto algum preço de serviço ou de peça estiver com texto inválido. */
   onPecasValidityChange?: (valido: boolean) => void;
 }
 
@@ -29,9 +29,10 @@ export function AjusteOrcamentoServicos({
 }: AjusteOrcamentoServicosProps) {
   const [linhaSugestaoAberta, setLinhaSugestaoAberta] = useState<string | null>(null);
   const [pecasInvalidasPorServico, setPecasInvalidasPorServico] = useState<Record<string, boolean>>({});
+  const [valoresInvalidosPorServico, setValoresInvalidosPorServico] = useState<Record<string, boolean>>({});
   const validadeRef = useRef(onPecasValidityChange);
   validadeRef.current = onPecasValidityChange;
-  const algumaInvalida = servicos.some((s) => pecasInvalidasPorServico[s.id]);
+  const algumaInvalida = servicos.some((s) => pecasInvalidasPorServico[s.id] || valoresInvalidosPorServico[s.id]);
   useEffect(() => {
     validadeRef.current?.(!algumaInvalida);
   }, [algumaInvalida]);
@@ -138,6 +139,7 @@ export function AjusteOrcamentoServicos({
               aria-label="Valor do serviço"
               value={Number(s.valor) || 0}
               onValueChange={(valor) => atualizarServico(s.id, { valor })}
+              onValidityChange={(valido) => setValoresInvalidosPorServico((atual) => (atual[s.id] === !valido ? atual : { ...atual, [s.id]: !valido }))}
               className="col-start-1 w-full min-w-0 text-sm"
             />
             <Button
