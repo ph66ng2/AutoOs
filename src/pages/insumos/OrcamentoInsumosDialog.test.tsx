@@ -11,6 +11,7 @@ const mocks = vi.hoisted(() => ({
     aprovarOrcamentoInsumos: vi.fn(),
     reprovarOrcamentoInsumos: vi.fn(),
     cancelarOrcamentoInsumos: vi.fn(),
+    excluirOrcamentoInsumos: vi.fn(),
     marcarOrcamentoInsumosEntregue: vi.fn(),
     marcarOrcamentoInsumosEnviado: vi.fn(),
     listarProdutos: vi.fn(),
@@ -87,7 +88,7 @@ function detalhe(status: StatusOrcamentoInsumos = "RASCUNHO", sobrescrever: Part
     cliente_documento: "57522734000158",
     contato_id: null,
     status,
-    validade: "2026-11-01",
+    validade: "2099-12-31",
     observacoes: null,
     desconto: 0,
     valor_subtotal: 30,
@@ -106,9 +107,10 @@ function detalhe(status: StatusOrcamentoInsumos = "RASCUNHO", sobrescrever: Part
 async function abrir(status: StatusOrcamentoInsumos, sobrescrever: Partial<OrcamentoInsumosDetalhe> = {}) {
   mocks.db.obterOrcamentoInsumos.mockResolvedValue(detalhe(status, sobrescrever));
   const onChanged = vi.fn();
-  render(<OrcamentoInsumosDialog open onOpenChange={vi.fn()} orcamentoId={7} onChanged={onChanged} />);
+  const onOpenChange = vi.fn();
+  render(<OrcamentoInsumosDialog open onOpenChange={onOpenChange} orcamentoId={7} onChanged={onChanged} />);
   await screen.findByText("Orçamento de insumos OI-12");
-  return { onChanged };
+  return { onChanged, onOpenChange };
 }
 
 const botao = (nome: RegExp | string) => screen.queryByRole("button", { name: nome });
@@ -151,7 +153,7 @@ describe("OrcamentoInsumosDialog: novo orçamento", () => {
 
     const quantidade = screen.getByLabelText("Quantidade de Etiqueta 100x50");
     const unitario = screen.getByLabelText("Valor unitário de Etiqueta 100x50");
-    expect(unitario).toHaveValue(10);
+    expect(unitario).toHaveValue("10,00");
     fireEvent.change(quantidade, { target: { value: "3" } });
     fireEvent.change(unitario, { target: { value: "12.5" } });
     fireEvent.change(screen.getByLabelText("Desconto (R$)"), { target: { value: "7.5" } });
@@ -219,6 +221,30 @@ describe("OrcamentoInsumosDialog: novo orçamento", () => {
   });
 });
 
+describe("OrcamentoInsumosDialog: validade vencida", () => {
+  it("ENVIADO com validade passada mostra o selo, o aviso e bloqueia Aprovar", async () => {
+    await abrir("ENVIADO", { validade: "2000-01-01" });
+    expect(screen.getByText("Vencido")).toBeInTheDocument();
+    expect(screen.getByText(/Validade vencida/i)).toBeInTheDocument();
+    const aprovar = botao(/^aprovar$/i);
+    expect(aprovar).toBeDisabled();
+    expect(aprovar).toHaveAttribute("title", "Orçamento vencido: altere a validade e salve antes de aprovar.");
+  });
+
+  it("alterar a validade esconde o aviso, mas Aprovar continua bloqueado até salvar", async () => {
+    await abrir("ENVIADO", { validade: "2000-01-01" });
+    fireEvent.change(screen.getByLabelText("Observações"), { target: { value: "renovando" } });
+    expect(screen.queryByText(/Validade vencida/i)).toBeNull();
+    expect(botao(/^aprovar$/i)).toBeDisabled();
+  });
+
+  it("validade no futuro não mostra selo nem bloqueia Aprovar", async () => {
+    await abrir("ENVIADO", { validade: "2099-12-31" });
+    expect(screen.queryByText("Vencido")).toBeNull();
+    expect(botao(/^aprovar$/i)).toBeEnabled();
+  });
+});
+
 describe("OrcamentoInsumosDialog: ações por status", () => {
   it("rascunho: salvar, PDF, e-mail, WhatsApp, aprovar, reprovar e cancelar; sem entregar", async () => {
     await abrir("RASCUNHO");
@@ -279,6 +305,51 @@ describe("OrcamentoInsumosDialog: ações por status", () => {
     fireEvent.click(screen.getByRole("button", { name: "Salvar" }));
     expect(await screen.findByRole("alert")).toHaveTextContent(/Conflito de concorrência/);
     expect(screen.getByLabelText("Observações")).toHaveValue("minha anotação");
+  });
+
+  it.each(["RASCUNHO", "ENVIADO", "APROVADO", "ENTREGUE", "REPROVADO"] as const)("%s: não oferece excluir", async (status) => {
+    await abrir(status);
+    expect(botao(/^excluir$/i)).toBeNull();
+  });
+
+  it("cancelado: excluir pede confirmação, PIN e apaga o orçamento", async () => {
+    mocks.db.excluirOrcamentoInsumos.mockResolvedValue(undefined);
+    const { onChanged, onOpenChange } = await abrir("CANCELADO");
+    fireEvent.click(screen.getByRole("button", { name: /^excluir$/i }));
+    const confirmacao = await screen.findByRole("alertdialog");
+    expect(confirmacao).toHaveTextContent(/não pode ser desfeita/i);
+    fireEvent.click(within(confirmacao).getByRole("button", { name: /^excluir$/i }));
+
+    await waitFor(() => expect(mocks.db.excluirOrcamentoInsumos).toHaveBeenCalledWith(7, "token-CANCELADO"));
+    expect(mocks.ensureSensitiveAccess).toHaveBeenCalledWith(expect.objectContaining({ permission: "FINANCIAL_ACTIONS" }));
+    await waitFor(() => expect(onChanged).toHaveBeenCalled());
+    expect(onOpenChange).toHaveBeenCalledWith(false);
+  });
+
+  it("voltar na confirmação de exclusão não apaga nada", async () => {
+    await abrir("CANCELADO");
+    fireEvent.click(screen.getByRole("button", { name: /^excluir$/i }));
+    const confirmacao = await screen.findByRole("alertdialog");
+    fireEvent.click(within(confirmacao).getByRole("button", { name: "Voltar" }));
+    expect(mocks.db.excluirOrcamentoInsumos).not.toHaveBeenCalled();
+  });
+
+  it("PIN recusado não apaga o orçamento", async () => {
+    mocks.ensureSensitiveAccess.mockResolvedValue(false);
+    await abrir("CANCELADO");
+    fireEvent.click(screen.getByRole("button", { name: /^excluir$/i }));
+    fireEvent.click(within(await screen.findByRole("alertdialog")).getByRole("button", { name: /^excluir$/i }));
+    await waitFor(() => expect(mocks.ensureSensitiveAccess).toHaveBeenCalled());
+    expect(mocks.db.excluirOrcamentoInsumos).not.toHaveBeenCalled();
+  });
+
+  it("backend rejeita a exclusão: mostra o motivo e mantém o diálogo aberto", async () => {
+    mocks.db.excluirOrcamentoInsumos.mockRejectedValue("Conflito de concorrência: outro usuário alterou este orçamento.");
+    const { onOpenChange } = await abrir("CANCELADO");
+    fireEvent.click(screen.getByRole("button", { name: /^excluir$/i }));
+    fireEvent.click(within(await screen.findByRole("alertdialog")).getByRole("button", { name: /^excluir$/i }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("Conflito de concorrência: outro usuário alterou este orçamento.");
+    expect(onOpenChange).not.toHaveBeenCalledWith(false);
   });
 });
 
@@ -404,5 +475,20 @@ describe("OrcamentoInsumosDialog: PDF e envios", () => {
     fireEvent.click(screen.getByRole("button", { name: /enviar por e-mail/i }));
     expect(await screen.findByRole("alert")).toHaveTextContent(/não têm e-mail/);
     expect(mocks.db.marcarOrcamentoInsumosEnviado).not.toHaveBeenCalled();
+  });
+});
+
+describe("OrcamentoInsumosDialog: carga pendente", () => {
+  it("não deixa o novo orçamento preso em 'Carregando' depois de fechar um existente com a carga pendente", async () => {
+    mocks.db.obterOrcamentoInsumos.mockReturnValue(new Promise(() => undefined));
+    const { rerender } = render(<OrcamentoInsumosDialog open onOpenChange={vi.fn()} orcamentoId={7} />);
+    expect(await screen.findByText("Carregando orçamento...")).toBeInTheDocument();
+
+    rerender(<OrcamentoInsumosDialog open={false} onOpenChange={vi.fn()} orcamentoId={7} />);
+    rerender(<OrcamentoInsumosDialog open onOpenChange={vi.fn()} orcamentoId={null} />);
+
+    expect(screen.getByText("Novo orçamento de insumos")).toBeInTheDocument();
+    expect(screen.queryByText("Carregando orçamento...")).toBeNull();
+    expect(screen.getByLabelText("Desconto (R$)")).toBeInTheDocument();
   });
 });

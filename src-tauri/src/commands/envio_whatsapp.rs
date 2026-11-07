@@ -277,7 +277,7 @@ pub(crate) fn mensagem_informativo(
                     NivelPortal::Decidir => {
                         let guarde = if senha.is_some() { " Guarde a senha e não a compartilhe." } else { "" };
                         format!(
-                            "Para aceitar ou recusar, entre no *Portal das Impressoras*: {PORTAL_URL}\n{credenciais}\nLá você também pode pedir para negociar.{guarde}"
+                            "Para aceitar ou recusar, entre no *Portal das Impressoras*: {PORTAL_URL}\n{credenciais}\nQualquer dúvida, entre em contato conosco.{guarde}"
                         )
                     }
                     NivelPortal::Acompanhar => format!(

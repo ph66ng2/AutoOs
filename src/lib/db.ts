@@ -31,6 +31,9 @@ import type {
   AlertaPortal,
   ContatoPortalEmpresa,
   OrcamentoPublicado,
+  OrcamentoPendentePortal,
+  PublicacaoLotePortal,
+  UsoProdutoOrcamentos,
   AprovarOrcamentoInput,
   Cliente,
   ClienteContato,
@@ -241,8 +244,11 @@ export const db = {
   },
 
   /** Atualiza cliente existente → Rust: atualizar_cliente */
-  async atualizarCliente(id: ClienteId, cliente: Omit<Cliente, "id">): Promise<void> {
-    return invoke<void>("atualizar_cliente", { id, input: clientePersistenciaParaInput(cliente) });
+  async atualizarCliente(id: ClienteId, cliente: Omit<Cliente, "id">, contatoInicial?: ContatoInicialInput): Promise<void> {
+    const input = contatoInicial
+      ? { ...clientePersistenciaParaInput(cliente), contato_inicial: contatoInicial }
+      : clientePersistenciaParaInput(cliente);
+    return invoke<void>("atualizar_cliente", { id, input });
   },
 
   /** Deleta cliente → Rust: deletar_cliente */
@@ -370,6 +376,14 @@ export const db = {
     return invoke<EstadoPortal>("definir_estado_portal", { portalAtivo, respostasAtivas });
   },
 
+  async listarOrcamentosPendentesPortal(): Promise<OrcamentoPendentePortal[]> {
+    return invoke<OrcamentoPendentePortal[]>("listar_orcamentos_pendentes_portal");
+  },
+
+  async publicarOrcamentosPendentesPortal(): Promise<PublicacaoLotePortal> {
+    return invoke<PublicacaoLotePortal>("publicar_orcamentos_pendentes_portal");
+  },
+
   async salvarContatoPortalEmpresa(input: ContatoPortalEmpresa): Promise<ContatoPortalEmpresa> {
     return invoke<ContatoPortalEmpresa>("salvar_contato_portal_empresa", { input });
   },
@@ -409,11 +423,13 @@ export const db = {
   /** Substitui integralmente o conjunto de imagens de um equipamento */
   async substituirImagensEquipamento(
     equipamentoId: number,
-    imagens: EquipamentoImagemInput[]
+    imagens: EquipamentoImagemInput[],
+    expectedImageIds: number[],
   ): Promise<EquipamentoImagem[]> {
     return invoke<EquipamentoImagem[]>("substituir_imagens_equipamento", {
       equipamentoId,
       imagens,
+      expectedImageIds,
     });
   },
 
@@ -470,6 +486,11 @@ export const db = {
   /** Atualiza produto → Rust: atualizar_produto */
   async atualizarProduto(id: number, produto: Omit<Produto, "id">): Promise<Produto> {
     return invoke<Produto>("atualizar_produto", { id, input: produto });
+  },
+
+  /** Onde a peça ainda é usada (OS e orçamentos de insumos em aberto) → Rust: uso_produto_em_orcamentos */
+  async usoProdutoEmOrcamentos(id: number): Promise<UsoProdutoOrcamentos> {
+    return invoke<UsoProdutoOrcamentos>("uso_produto_em_orcamentos", { id });
   },
 
   /** Soft delete de produto (ativo = 0) → Rust: deletar_produto */
@@ -561,6 +582,13 @@ export const db = {
   ): Promise<OrcamentoInsumosDetalhe> {
     return invoke<OrcamentoInsumosDetalhe>("cancelar_orcamento_insumos", {
       input: { id, atualizado_em: atualizadoEm, confirmar_devolucao_estoque: confirmarDevolucaoEstoque },
+    });
+  },
+
+  /** Exclui de vez um orçamento CANCELADO (itens juntos; estoque intocado). */
+  async excluirOrcamentoInsumos(id: number, atualizadoEm: string): Promise<void> {
+    return invoke<void>("excluir_orcamento_insumos", {
+      input: { id, atualizado_em: atualizadoEm },
     });
   },
 

@@ -1,36 +1,49 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Plus, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { ValorDecimalInput } from "@/components/ui/valor-decimal-input";
 import { carregarProdutosParaPecas, type ProdutoParaPecaSugerida } from "@/lib/data/servicos-repository";
-import { db } from "@/lib/db";
+import { carregarProdutosOrcamento, CATEGORIA_PECAS_ORCAMENTO } from "@/lib/orcamento-estoque";
+import { formatCurrencyOrMissing } from "@/lib/utils";
 import type { ClienteId, PecaVinculada } from "@/types";
+
+/** Produto do SaaS não traz categoria; o do desktop só oferece a categoria Peça. */
+type ProdutoPeca = ProdutoParaPecaSugerida & { categoria?: string };
 
 interface Props<Id extends ClienteId> {
   pecas: PecaVinculada<Id>[];
   onChange: (pecas: PecaVinculada<Id>[]) => void;
   saasMode?: boolean;
+  /** Informa o pai quando algum preço de peça tem texto inválido (bloqueia o submit). */
+  onValidityChange?: (valido: boolean) => void;
 }
 
-export function PecasDoServico<Id extends ClienteId>({ pecas, onChange, saasMode = true }: Props<Id>) {
-  const [produtos, setProdutos] = useState<ProdutoParaPecaSugerida[]>([]);
+export function PecasDoServico<Id extends ClienteId>({ pecas, onChange, saasMode = true, onValidityChange }: Props<Id>) {
+  const [produtos, setProdutos] = useState<ProdutoPeca[]>([]);
   const [erro, setErro] = useState("");
   const [carregando, setCarregando] = useState(true);
+  const [precosInvalidos, setPrecosInvalidos] = useState<Record<string, boolean>>({});
+  const validadeRef = useRef(onValidityChange);
+  validadeRef.current = onValidityChange;
+
+  const algumPrecoInvalido = pecas.some((peca) => precosInvalidos[String(peca.produto_id)]);
+  useEffect(() => {
+    validadeRef.current?.(!algumPrecoInvalido);
+  }, [algumPrecoInvalido]);
+  useEffect(() => () => validadeRef.current?.(true), []);
 
   useEffect(() => {
     let ativo = true;
-    const carregar = async (): Promise<ProdutoParaPecaSugerida[]> => {
+    const carregar = async (): Promise<ProdutoPeca[]> => {
       if (saasMode) return carregarProdutosParaPecas();
-      const rows: ProdutoParaPecaSugerida[] = [];
-      for (let page = 0; ; page += 1) {
-        const lote = await db.listarProdutos(undefined, undefined, false, page);
-        rows.push(...lote.map((produto) => ({
-          id: produto.id!, empresa_id: produto.empresa_id!, nome: produto.nome,
-          quantidade_estoque: produto.quantidade_estoque,
-          preco_venda: produto.preco_venda, ativo: produto.ativo ?? true,
-        })));
-        if (lote.length < 50) return rows;
-      }
+      const lista = await carregarProdutosOrcamento();
+      return lista.map((produto) => ({
+        id: produto.id!, empresa_id: produto.empresa_id!, nome: produto.nome,
+        quantidade_estoque: produto.quantidade_estoque,
+        preco_venda: Number(produto.preco_venda ?? 0), ativo: produto.ativo ?? true,
+        categoria: produto.categoria,
+      }));
     };
     void carregar()
       .then((lista) => { if (ativo) setProdutos(lista); })
@@ -38,6 +51,10 @@ export function PecasDoServico<Id extends ClienteId>({ pecas, onChange, saasMode
       .finally(() => { if (ativo) setCarregando(false); });
     return () => { ativo = false; };
   }, [saasMode]);
+
+  // O saldo de peças já vinculadas em orçamentos antigos usa a lista completa;
+  // o seletor oferece só a categoria Peça (desktop).
+  const opcoes = produtos.filter((produto) => produto.categoria === undefined || produto.categoria === CATEGORIA_PECAS_ORCAMENTO);
 
   function adicionar(produtoId: string) {
     const produto = produtos.find((item) => String(item.id) === produtoId);
@@ -69,15 +86,14 @@ export function PecasDoServico<Id extends ClienteId>({ pecas, onChange, saasMode
                 ? { ...item, quantidade: Number(event.target.value) }
                 : item))}
             />
-            <Input
+            <ValorDecimalInput
               aria-label={`Valor de ${peca.nome}`}
               className="w-24"
-              type="number"
               min={0}
-              step="0.01"
-              value={peca.valor_unitario}
-              onChange={(event) => onChange(pecas.map((item) => item.produto_id === peca.produto_id
-                ? { ...item, valor_unitario: Number(event.target.value) }
+              value={Number(peca.valor_unitario) || 0}
+              onValidityChange={(valido) => setPrecosInvalidos((atual) => ({ ...atual, [String(peca.produto_id)]: !valido }))}
+              onValueChange={(valor) => onChange(pecas.map((item) => item.produto_id === peca.produto_id
+                ? { ...item, valor_unitario: valor }
                 : item))}
             />
             <span className={saldo !== undefined && saldo < peca.quantidade ? "text-amber-700" : "text-muted-foreground"}>
@@ -102,16 +118,16 @@ export function PecasDoServico<Id extends ClienteId>({ pecas, onChange, saasMode
           aria-busy={carregando}
           className="h-9 min-w-0 flex-1 rounded-md border bg-background px-2 text-sm"
           value=""
-          disabled={carregando || Boolean(erro) || produtos.length === 0}
+          disabled={carregando || Boolean(erro) || opcoes.length === 0}
           onChange={(event) => adicionar(event.target.value)}
         >
           <option value="">
-            {carregando ? "Carregando estoque..." : erro ? "Estoque indisponível" : produtos.length === 0 ? "Nenhuma peça ativa no estoque" : "Adicionar peça do estoque..."}
+            {carregando ? "Carregando estoque..." : erro ? "Estoque indisponível" : opcoes.length === 0 ? "Nenhuma peça ativa no estoque" : "Adicionar peça do estoque..."}
           </option>
-          {produtos.filter((produto) => !pecas.some((peca) => String(peca.produto_id) === String(produto.id)))
+          {opcoes.filter((produto) => !pecas.some((peca) => String(peca.produto_id) === String(produto.id)))
             .map((produto) => (
               <option key={produto.id} value={produto.id}>
-                {produto.nome} · saldo {produto.quantidade_estoque}
+                {produto.nome} · {formatCurrencyOrMissing(Number(produto.preco_venda))} · saldo {produto.quantidade_estoque}
               </option>
             ))}
         </select>

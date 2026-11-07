@@ -15,7 +15,11 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { useOrcamentosInsumos } from "@/hooks/useOrcamentosInsumos";
 import { useSensitiveAccess } from "@/hooks/useSensitiveAccess";
 import { parseTimestampPostgres } from "@/lib/date-utils";
-import { STATUS_ORCAMENTO_INSUMOS_COR, STATUS_ORCAMENTO_INSUMOS_LABEL } from "@/lib/orcamento-insumos";
+import {
+  orcamentoInsumosVencido,
+  STATUS_ORCAMENTO_INSUMOS_COR,
+  STATUS_ORCAMENTO_INSUMOS_LABEL,
+} from "@/lib/orcamento-insumos";
 import { totalPages } from "@/lib/pagination";
 import { formatCurrency } from "@/lib/utils";
 import { OrcamentoInsumosDialog } from "@/pages/insumos/OrcamentoInsumosDialog";
@@ -173,6 +177,11 @@ export function OrcamentosInsumosTab({ onEstoqueAlterado }: OrcamentosInsumosTab
                           <Badge variant="outline" className={STATUS_ORCAMENTO_INSUMOS_COR[orcamento.status]}>
                             {STATUS_ORCAMENTO_INSUMOS_LABEL[orcamento.status]}
                           </Badge>
+                          {orcamentoInsumosVencido(orcamento) && (
+                            <Badge variant="outline" className="ml-1 border-red-200 bg-red-50 text-red-700">
+                              Vencido
+                            </Badge>
+                          )}
                         </TableCell>
                       </TableRow>
                     ))}

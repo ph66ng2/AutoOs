@@ -63,7 +63,7 @@ import { useNotification } from "@/hooks/useNotification";
 import { useSensitiveAccess } from "@/hooks/useSensitiveAccess";
 import { ErrorAlert } from "@/components/ui/error-alert";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { SENSITIVE_PERMISSIONS, type ClienteId, type Produto } from "@/types";
+import { SENSITIVE_PERMISSIONS, type ClienteId, type Produto, type UsoProdutoOrcamentos } from "@/types";
 import { ActionPriorityRow } from "@/components/ui/action-priority-row";
 import { PaginationControls } from "@/components/ui/pagination-controls";
 import { formatCurrency } from "@/lib/utils";
@@ -90,6 +90,8 @@ export default function Insumos({ operationalProfile }: { operationalProfile?: S
   const [editando, setEditando] = useState<Produto<ClienteId> | null>(null);
   const [movimentando, setMovimentando] = useState<Produto<ClienteId> | null>(null);
   const [deletando, setDeletando] = useState<Produto<ClienteId> | null>(null);
+  const [usoDeletando, setUsoDeletando] = useState<UsoProdutoOrcamentos | null>(null);
+  const [carregandoUso, setCarregandoUso] = useState(false);
   const [salvando, setSalvando] = useState(false);
 
   const {
@@ -102,6 +104,7 @@ export default function Insumos({ operationalProfile }: { operationalProfile?: S
     atualizar,
     deletar,
     registrarMovimentacao,
+    consultarUsoEmOrcamentos,
     recarregar,
   } = useInsumos({
     busca: busca || undefined,
@@ -274,6 +277,7 @@ export default function Insumos({ operationalProfile }: { operationalProfile?: S
       }
       setDeleteDialogOpen(false);
       setDeletando(null);
+      setUsoDeletando(null);
     } catch (err) {
       console.error("Erro ao deletar:", err);
       showError("Insumos/Peças", "Excluir produto", err);
@@ -291,7 +295,23 @@ export default function Insumos({ operationalProfile }: { operationalProfile?: S
     if (!liberado) return;
 
     setDeletando(produto);
+    setUsoDeletando(null);
     setDeleteDialogOpen(true);
+    if (produto.id == null) return;
+    setCarregandoUso(true);
+    try {
+      setUsoDeletando(await consultarUsoEmOrcamentos(produto.id));
+    } finally {
+      setCarregandoUso(false);
+    }
+  }
+
+  function fecharExclusao(aberto: boolean) {
+    setDeleteDialogOpen(aberto);
+    if (!aberto) {
+      setUsoDeletando(null);
+      setCarregandoUso(false);
+    }
   }
 
   return (
@@ -528,10 +548,12 @@ export default function Insumos({ operationalProfile }: { operationalProfile?: S
       />
       <InsumosDeleteDialog
         open={deleteDialogOpen}
-        onOpenChange={setDeleteDialogOpen}
+        onOpenChange={fecharExclusao}
         deletando={deletando}
         salvando={salvando}
         onDelete={onDelete}
+        uso={usoDeletando}
+        carregandoUso={carregandoUso}
       />
     </div>
   );

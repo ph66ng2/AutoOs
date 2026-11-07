@@ -18,7 +18,7 @@ export interface ClientesRepository {
   listarPagina?(busca: string | undefined, page: number): Promise<ClientesPage>;
   buscar(id: ClienteId): Promise<Cliente>;
   criar(cliente: ClienteInput, contatoInicial?: ContatoInicialInput): Promise<Cliente>;
-  atualizar(id: ClienteId, cliente: ClienteInput): Promise<Cliente>;
+  atualizar(id: ClienteId, cliente: ClienteInput, contatoInicial?: ContatoInicialInput): Promise<Cliente>;
   deletar(id: ClienteId): Promise<void>;
 }
 
@@ -208,31 +208,34 @@ export class SupabaseClientesRepository implements ClientesRepository {
     const rows = await this.request<Cliente[]>(this.endpoint(), { method: "POST", headers: { Prefer: "return=representation" }, body: JSON.stringify({ ...clientePayload(cliente), empresa_id: this.session.companyId }) });
     if (!rows[0]) throw new OnlineDataError("RLS_DENIED", "O cliente não pôde ser criado para sua empresa.");
     const criado = rows[0];
-    if (contatoInicial) {
-      const nome = contatoInicial.nome.trim();
-      const telefone = (contatoInicial.telefone ?? "").trim();
-      if (!nome || !telefone) {
-        throw new OnlineDataError("INVALID_DATA", "Informe nome e telefone do contato inicial.");
-      }
-      await this.request(`${this.session.supabaseUrl}/rest/v1/cliente_contatos`, {
-        method: "POST",
-        headers: { Prefer: "return=representation" },
-        body: JSON.stringify({
-          empresa_id: this.session.companyId,
-          cliente_id: criado.id,
-          nome,
-          telefone,
-          email: contatoInicial.email || null,
-          ativo: true,
-        }),
-      });
-    }
+    if (contatoInicial) await this.criarContatoInicial(criado.id!, contatoInicial);
     return criado;
   }
 
-  async atualizar(id: ClienteId, cliente: ClienteInput): Promise<Cliente> {
+  private async criarContatoInicial(clienteId: ClienteId, contatoInicial: ContatoInicialInput): Promise<void> {
+    const nome = contatoInicial.nome.trim();
+    const telefone = (contatoInicial.telefone ?? "").trim();
+    if (!nome || !telefone) {
+      throw new OnlineDataError("INVALID_DATA", "Informe nome e telefone do contato inicial.");
+    }
+    await this.request(`${this.session.supabaseUrl}/rest/v1/cliente_contatos`, {
+      method: "POST",
+      headers: { Prefer: "return=representation" },
+      body: JSON.stringify({
+        empresa_id: this.session.companyId,
+        cliente_id: clienteId,
+        nome,
+        telefone,
+        email: contatoInicial.email || null,
+        ativo: true,
+      }),
+    });
+  }
+
+  async atualizar(id: ClienteId, cliente: ClienteInput, contatoInicial?: ContatoInicialInput): Promise<Cliente> {
     const rows = await this.request<Cliente[]>(this.endpoint(`?id=eq.${encodeURIComponent(String(id))}`), { method: "PATCH", headers: { Prefer: "return=representation" }, body: JSON.stringify(clientePayload(cliente)) });
     if (!rows[0]) throw new OnlineDataError("RLS_DENIED", "O cliente não pôde ser alterado para sua empresa.");
+    if (contatoInicial) await this.criarContatoInicial(rows[0].id!, contatoInicial);
     return rows[0];
   }
 
@@ -250,7 +253,7 @@ const tauriClientesRepository: ClientesRepository = {
   },
   buscar: (id) => db.buscarCliente(id),
   criar: (cliente, contatoInicial) => db.criarCliente(cliente, contatoInicial),
-  atualizar: async (id, cliente) => { await db.atualizarCliente(id, cliente); return db.buscarCliente(id); },
+  atualizar: async (id, cliente, contatoInicial) => { await db.atualizarCliente(id, cliente, contatoInicial); return db.buscarCliente(id); },
   deletar: (id) => db.deletarCliente(id),
 };
 

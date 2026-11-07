@@ -98,6 +98,7 @@ vi.mock("@/hooks/useStatusEquipamento", () => ({
 vi.mock("@/hooks/useSensitiveAccess", () => ({
   useSensitiveAccess: () => ({
     ensureSensitiveAccess: vi.fn().mockResolvedValue(true),
+    hasPermission: () => true,
   }),
 }));
 

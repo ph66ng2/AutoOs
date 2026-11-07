@@ -3,7 +3,7 @@
 #[path = "../commands/mod.rs"] mod commands;
 #[path = "../db.rs"] mod db;
 #[path = "../test_support/memory_keyring.rs"] mod memory_keyring;
-use commands::{auth, clientes, envio_whatsapp, equipamentos, orcamento_decisao, portal_cliente, verificacoes, whatsapp};
+use commands::{auth, clientes, contatos, envio_whatsapp, equipamentos, orcamento_decisao, portal_cliente, verificacoes, whatsapp};
 use commands::types::*;
 use anyhow::{Result, anyhow};
 use std::io::{Read, Write};
@@ -70,6 +70,18 @@ async fn main() -> Result<()> {
     assert!(erro.contains(SEM_PERMISSAO), "{erro}");
     let st: String = sqlx::query_scalar("SELECT status FROM equipamentos WHERE id=$1").bind(eq).fetch_one(&pool).await?;
     assert_eq!(st, "AGUARDANDO_APROVACAO");
+
+    // NÃO CONSEGUE: finalizar OS só de garantia, que sai aprovada (PREPARE_QUOTES nunca aprova).
+    let eq_garantia: i32 = sqlx::query_scalar("INSERT INTO equipamentos(serial_number,marca,modelo,tipo,data_entrada,defeito_relatado,empresa_id,cliente_id,status) VALUES ($1,'Zebra','GC420t','Impressora','2026-09-27','Garantia',$2,$3,'EM_VERIFICACAO') RETURNING id")
+        .bind(format!("G-{suffix}")).bind(empresa).bind(cliente).fetch_one(&pool).await?;
+    let erro = verificacoes::salvar_verificacao_tecnica(VerificacaoInput {
+        equipamento_id:eq_garantia, empresa_id:Some(empresa), tecnico_nome:"Teste".into(), problema_relatado:"Teste".into(),
+        servicos_necessarios:Some(serde_json::json!([{"id":"g","descricao":"Garantia","valor":0,"pecas":[]}]).to_string()),
+        pecas_necessarias:Some("[]".into()), custo_total:Some(0.0), concluida:Some(true), confirmar_garantia: true, ..VerificacaoInput::default()
+    }).await.unwrap_err();
+    assert!(erro.contains(SEM_PERMISSAO), "{erro}");
+    let st: String = sqlx::query_scalar("SELECT status FROM equipamentos WHERE id=$1").bind(eq_garantia).fetch_one(&pool).await?;
+    assert_eq!(st, "EM_VERIFICACAO");
 
     // NÃO CONSEGUE: definir senha de contato que decide orçamento.
     let erro = portal_cliente::definir_senha_portal_contato(contato, Some("Senha1234".into())).await.unwrap_err();
@@ -306,7 +318,7 @@ async fn main() -> Result<()> {
         telefone: "7133334444".into(), contato_inicial: contato, ..ClienteInput::default()
     };
     let erro = clientes::criar_cliente(pj(None)).await.err().expect("PJ sem contato deveria falhar");
-    assert!(erro.contains("Informe um contato com celular para receber orçamentos."), "{erro}");
+    assert!(erro.contains("celular com DDD e o 9 (11 dígitos)"), "{erro}");
     let sem_cliente: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM clientes WHERE empresa_id=$1 AND documento='11222333000181'").bind(empresa).fetch_one(&pool).await?;
     assert_eq!(sem_cliente, 0);
     let criado = clientes::criar_cliente(pj(Some(ContatoInicialInput { nome: "Rita".into(), telefone: "(71) 98888-7777".into(), email: None })))
@@ -319,6 +331,44 @@ async fn main() -> Result<()> {
     }).await.map_err(|e| anyhow!("criar PF: {e}"))?;
     let contatos_pf: Vec<(String, String)> = sqlx::query_as("SELECT nome, telefone FROM cliente_contatos WHERE cliente_id=$1").bind(pf.id).fetch_all(&pool).await?;
     assert_eq!(contatos_pf, vec![("Paulo Pessoa".to_string(), "71977776666".to_string())]);
+
+    // 7b. PJ antigo sem celular fica como está: salva sem contato e mexe no contato fixo.
+    let antigo: i32 = sqlx::query_scalar("INSERT INTO clientes (empresa_id, nome, tipo_pessoa, documento, razao_social, telefone) VALUES ($1,'Antiga','PJ','04252011000110','Antiga Ltda','7133334444') RETURNING id")
+        .bind(empresa).fetch_one(&pool).await?;
+    let fixo: i32 = sqlx::query_scalar("INSERT INTO cliente_contatos (empresa_id, cliente_id, nome, telefone) VALUES ($1,$2,'Recepção','7133334444') RETURNING id")
+        .bind(empresa).bind(antigo).fetch_one(&pool).await?;
+    let tok_cli = |id: i32| { let pool = pool.clone(); async move {
+        sqlx::query_scalar::<_, String>("SELECT atualizado_em::TEXT FROM clientes WHERE id=$1").bind(id).fetch_one(&pool).await
+    } };
+    clientes::atualizar_cliente(antigo, ClienteInput {
+        tipo_pessoa: Some("PJ".into()), razao_social: Some("Antiga Ltda ME".into()), documento: Some("04252011000110".into()),
+        telefone: "7133334444".into(), atualizado_em: Some(tok_cli(antigo).await?), ..ClienteInput::default()
+    }).await.map_err(|e| anyhow!("editar PJ antigo sem contato: {e}"))?;
+    contatos::atualizar_cliente_contato(fixo, ClienteContatoInput {
+        empresa_id: empresa, cliente_id: antigo, nome: "Recepção 2".into(), email: None, telefone: Some("7133335555".into()), atualizado_em: None,
+        preservar_identidade_portal: false,
+    }).await.map_err(|e| anyhow!("editar contato fixo do PJ antigo: {e}"))?;
+    contatos::inativar_cliente_contato(fixo, empresa).await.map_err(|e| anyhow!("inativar contato fixo do PJ antigo: {e}"))?;
+    // Contato novo de PJ sem celular precisa ser celular.
+    let erro = contatos::criar_cliente_contato(ClienteContatoInput {
+        empresa_id: empresa, cliente_id: antigo, nome: "Fixo novo".into(), email: None, telefone: Some("7133336666".into()), atualizado_em: None,
+        preservar_identidade_portal: false,
+    }).await.err().expect("contato novo sem celular em PJ sem celular deveria falhar");
+    assert!(erro.contains("celular"), "{erro}");
+    // PF sem celular que vira PJ agora precisa do contato com celular.
+    let pf_fixo: i32 = sqlx::query_scalar("INSERT INTO clientes (empresa_id, nome, tipo_pessoa, documento, telefone) VALUES ($1,'Pedro Fixo','PF','11144477735','7133334444') RETURNING id")
+        .bind(empresa).fetch_one(&pool).await?;
+    let virar_pj = |contato: Option<ContatoInicialInput>, tok: String| ClienteInput {
+        tipo_pessoa: Some("PJ".into()), razao_social: Some("Pedro Fixo Ltda".into()), documento: Some("33.000.167/0001-01".into()),
+        telefone: "7133334444".into(), contato_inicial: contato, atualizado_em: Some(tok), ..ClienteInput::default()
+    };
+    let erro = clientes::atualizar_cliente(pf_fixo, virar_pj(None, tok_cli(pf_fixo).await?)).await.err()
+        .expect("PF que vira PJ sem contato deveria falhar");
+    assert!(erro.contains("celular com DDD e o 9 (11 dígitos)"), "{erro}");
+    clientes::atualizar_cliente(pf_fixo, virar_pj(
+        Some(ContatoInicialInput { nome: "Pedro".into(), telefone: "(71) 96666-5555".into(), email: None }),
+        tok_cli(pf_fixo).await?,
+    )).await.map_err(|e| anyhow!("PF vira PJ com contato: {e}"))?;
 
     // 8. Responsável da OS: só contato do cliente da OS, com token de concorrência.
     let (_cli_d, ct_d, _) = novo_cliente(4, "NENHUM", "71944445555").await?;

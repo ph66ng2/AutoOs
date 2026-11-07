@@ -20,6 +20,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import type { GastoFixo, GastoVariavel, GastosFixosCategoria } from "@/types";
+import { formatDatePtBr } from "@/lib/date-utils";
 
 const currencyFormatter = new Intl.NumberFormat("pt-BR", {
   style: "currency",
@@ -72,7 +73,7 @@ export function GastosTable({
       descricao: g.descricao,
       valor: g.valor,
       categoria: g.categoria,
-      data: g.data ? new Date(g.data).toLocaleDateString("pt-BR") : "—",
+      data: g.data ? formatDatePtBr(g.data) : "—",
       ativo: true,
       original: g,
     }));

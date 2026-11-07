@@ -1,0 +1,61 @@
+{
+  "scope": "Node JSON serialization of synthetic storage_path data URLs; excludes JPEG encoding, Rust IPC, database and network",
+  "node": "v24.22.1",
+  "samples": 20,
+  "results": [
+    {
+      "binaryBytesPerPhoto": 262144,
+      "count": 0,
+      "ipcRequestBytes": 32,
+      "stringifyMedianMs": 0.0006479999999982056,
+      "stringifyP95Ms": 0.000950000000003115,
+      "parseMedianMs": 0.0007140000000021018,
+      "parseP95Ms": 0.0016170000000101936
+    },
+    {
+      "binaryBytesPerPhoto": 262144,
+      "count": 3,
+      "ipcRequestBytes": 1049152,
+      "stringifyMedianMs": 2.0286959999999965,
+      "stringifyP95Ms": 2.7082599999999957,
+      "parseMedianMs": 0.9666420000000073,
+      "parseP95Ms": 1.8912760000000048
+    },
+    {
+      "binaryBytesPerPhoto": 262144,
+      "count": 6,
+      "ipcRequestBytes": 2098273,
+      "stringifyMedianMs": 5.285578000000015,
+      "stringifyP95Ms": 8.498841999999968,
+      "parseMedianMs": 2.063046999999983,
+      "parseP95Ms": 6.581679000000008
+    },
+    {
+      "binaryBytesPerPhoto": 1048576,
+      "count": 0,
+      "ipcRequestBytes": 32,
+      "stringifyMedianMs": 0.0004180000000246764,
+      "stringifyP95Ms": 0.00048600000002352317,
+      "parseMedianMs": 0.0005449999999882493,
+      "parseP95Ms": 0.0006480000000124164
+    },
+    {
+      "binaryBytesPerPhoto": 1048576,
+      "count": 3,
+      "ipcRequestBytes": 4194883,
+      "stringifyMedianMs": 8.520469000000048,
+      "stringifyP95Ms": 13.428609000000051,
+      "parseMedianMs": 4.190397999999959,
+      "parseP95Ms": 8.522878999999989
+    },
+    {
+      "binaryBytesPerPhoto": 1048576,
+      "count": 6,
+      "ipcRequestBytes": 8389735,
+      "stringifyMedianMs": 19.683129999999892,
+      "stringifyP95Ms": 29.600925000000075,
+      "parseMedianMs": 9.213868999999931,
+      "parseP95Ms": 28.284325999999965
+    }
+  ]
+}

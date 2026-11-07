@@ -1,0 +1,105 @@
+# Aprovar este deploy só depois de aplicar as migrations de que a função depende (production-sqlx-migrations.yml).
+name: Publicar Edge Functions do portal
+
+on:
+  push:
+    branches: [master]
+    paths:
+      - 'supabase/functions/**'
+      - 'supabase/config.toml'
+      - '.github/workflows/deploy-edge-functions.yml'
+  workflow_dispatch:
+    inputs:
+      funcoes:
+        description: 'Nomes separados por vírgula; vazio ou todas = portal-cliente e public-status; envio-whatsapp só pelo nome'
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: autoos-edge-functions-deploy
+  cancel-in-progress: false
+
+jobs:
+  plan:
+    runs-on: ubuntu-latest
+    outputs:
+      funcoes: ${{ steps.select.outputs.funcoes }}
+    steps:
+      - name: Selecionar funções
+        id: select
+        shell: bash
+        env:
+          REQUESTED_FUNCTIONS: ${{ inputs.funcoes }}
+          EVENT_NAME: ${{ github.event_name }}
+        run: |
+          set -euo pipefail
+          # envio-whatsapp (fila central de WhatsApp) ainda não foi ativada em produção:
+          # fica fora da seleção automática e de "todas"; só sobe pelo nome, no disparo manual.
+          all=(portal-cliente public-status)
+          selected=()
+          if [[ "$EVENT_NAME" == workflow_dispatch && -n "${REQUESTED_FUNCTIONS//[[:space:]]/}" ]]; then
+            if [[ "${REQUESTED_FUNCTIONS,,}" == todas ]]; then
+              selected=("${all[@]}")
+            else
+              IFS=',' read -ra requested <<< "$REQUESTED_FUNCTIONS"
+              for item in "${requested[@]}"; do
+                name="$(echo "$item" | xargs)"
+                case "$name" in
+                  portal-cliente|public-status|envio-whatsapp) selected+=("$name") ;;
+                  *) echo "Função desconhecida: $name" >&2; exit 1 ;;
+                esac
+              done
+            fi
+          else
+            # Push (ou disparo sem nomes): publica sempre as funções automáticas, mudando ou
+            # não. Um run pendente pode ser cancelado por outro push (concurrency); escolher
+            # pela diferença do push perderia a mudança do run cancelado. Republicar código
+            # igual não tem efeito, e o run que sobreviver leva o estado atual da master.
+            selected=("${all[@]}")
+          fi
+          json="$(printf '%s\n' "${selected[@]}" | sed '/^$/d' | jq -R . | jq -sc 'unique')"
+          echo "funcoes=$json" >> "$GITHUB_OUTPUT"
+          echo "Funções selecionadas: $json"
+
+  test:
+    needs: plan
+    if: needs.plan.outputs.funcoes != '[]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+      - run: npm ci
+      - name: Conferir testes das funções
+        run: |
+          test -f src/public-status/portal-cliente-function.test.ts || { echo 'Teste portal-cliente ausente'; exit 1; }
+          test -f src/public-status/edge-function.test.ts || { echo 'Teste public-status ausente'; exit 1; }
+      - run: npx vitest run src/public-status/portal-cliente-function.test.ts src/public-status/edge-function.test.ts
+
+  deploy:
+    needs: [plan, test]
+    if: github.ref == 'refs/heads/master' && needs.plan.outputs.funcoes != '[]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment:
+      name: production-edge-functions
+    strategy:
+      matrix:
+        funcao: ${{ fromJSON(needs.plan.outputs.funcoes) }}
+      max-parallel: 1
+      fail-fast: true
+    steps:
+      - uses: actions/checkout@v4
+      # Fixado por commit: o job recebe o token de acesso do Supabase.
+      - uses: supabase/setup-cli@1dedf2c611547ede7232d26866dd3c56ab903bbb # v1.7.3
+        with:
+          version: 2.122.1
+      - name: Publicar função
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+        run: supabase functions deploy "${{ matrix.funcao }}" --project-ref sgaqvxubopgwysnyocjs --no-verify-jwt

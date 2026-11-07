@@ -323,6 +323,14 @@ pub(crate) async fn corrigir_na_transacao(
         return Err(primeiro.clone());
     }
     modo_permitido(&contexto, input.modo)?;
+    let servicos_json: String = sqlx::query_scalar(
+        "SELECT COALESCE(servicos_necessarios, '[]') FROM verificacoes WHERE id = $1",
+    )
+    .bind(contexto.verificacao_id)
+    .fetch_one(&mut **tx)
+    .await
+    .map_err(map)?;
+    let servicos_reabertos = super::orcamento_estoque::parse_servicos(&servicos_json)?;
     let valor_reaberto = match input.modo {
         ModoCorrecao::RestaurarOriginal => contexto
             .valor_original
@@ -331,6 +339,13 @@ pub(crate) async fn corrigir_na_transacao(
             .valor_atual
             .ok_or_else(|| "O orçamento atual não tem valor registrado. Restaure o orçamento enviado ao cliente.".to_string())?,
     };
+    super::orcamento_estoque::recusar_total_zero_sem_garantia(Some(valor_reaberto), &servicos_reabertos)?;
+    if !super::orcamento_estoque::valor_monetario_positivo(valor_reaberto) {
+        return Err(
+            "OS só de garantia permanece aprovada com R$ 0,00 e não pede nova aprovação de valor."
+                .to_string(),
+        );
+    }
 
     let pecas = pecas_baixadas(tx, empresa_id, contexto.verificacao_id).await?;
     let total_baixado: i32 = pecas.iter().map(|peca| peca.quantidade).sum();

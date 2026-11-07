@@ -44,14 +44,14 @@ describe("Servicos", () => {
     await user.click(screen.getByRole("button", { name: /Novo Serviço/ }));
     const name = screen.getByPlaceholderText("Ex.: Limpeza de cabeça térmica");
     await user.type(name, "Limpeza técnica");
-    const price = screen.getByRole("spinbutton");
+    const price = screen.getByDisplayValue("0,00");
     fireEvent.change(price, { target: { value: "150" } });
     await user.click(screen.getByRole("button", { name: "Cadastrar" }));
 
     await waitFor(() => expect(mocks.showError).toHaveBeenCalledWith("Serviços", "Salvar serviço", expect.any(Error)));
     expect(screen.getByRole("dialog")).toBeInTheDocument();
     expect(name).toHaveValue("Limpeza técnica");
-    expect(price).toHaveValue(150);
+    expect(price).toHaveValue("150");
   });
 
   it("preenche o formulário pelo modelo e cria um serviço SaaS com lista de peças vazia", async () => {

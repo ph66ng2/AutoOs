@@ -70,7 +70,7 @@ export class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoun
                   onClick={() => this.setState({ showDetails: !showDetails })}
                   className="text-sm text-muted-foreground hover:text-foreground underline underline-offset-2 mb-2"
                 >
-                  {showDetails ? "Ocultar detalhes t&eacute;cnicos" : "Ver detalhes t&eacute;cnicos"}
+                  {showDetails ? "Ocultar detalhes técnicos" : "Ver detalhes técnicos"}
                 </button>
                 {showDetails && (
                   <div className="mt-2 rounded-md bg-muted p-3 text-left">

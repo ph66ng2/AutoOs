@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -11,7 +11,9 @@ import {
   DialogClose,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
+import { DateIsoInput } from "@/components/ui/date-iso-input";
 import { Input } from "@/components/ui/input";
+import { ValorDecimalInput } from "@/components/ui/valor-decimal-input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import {
@@ -22,6 +24,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { FormValidationError } from "@/components/ui/form-validation-error";
+import { todayLocalIsoDate } from "@/lib/date-utils";
 import type { GastoVariavel, GastoVariavelInput, GastosFixosCategoria } from "@/types";
 
 const gastoVariavelSchema = z.object({
@@ -58,23 +61,25 @@ export function GastosFormVariavel({
   onSave,
   saving,
 }: GastosFormVariavelProps) {
+  const [valorInvalido, setValorInvalido] = useState(false);
   const form = useForm<GastoVariavelFormData>({
     resolver: zodResolver(gastoVariavelSchema),
     defaultValues: {
       descricao: "",
       valor: 0,
-      data: new Date().toISOString().split("T")[0],
+      data: todayLocalIsoDate(),
       categoria: "Outros",
       nota: "",
     },
   });
 
   useEffect(() => {
+    setValorInvalido(false);
     if (gasto) {
       form.reset({
         descricao: gasto.descricao,
         valor: gasto.valor,
-        data: gasto.data || new Date().toISOString().split("T")[0],
+        data: gasto.data || todayLocalIsoDate(),
         categoria: gasto.categoria,
         nota: gasto.nota || "",
       });
@@ -82,7 +87,7 @@ export function GastosFormVariavel({
       form.reset({
         descricao: "",
         valor: 0,
-        data: new Date().toISOString().split("T")[0],
+        data: todayLocalIsoDate(),
         categoria: "Outros",
         nota: "",
       });
@@ -90,6 +95,7 @@ export function GastosFormVariavel({
   }, [gasto, form]);
 
   async function onSubmit(data: GastoVariavelFormData) {
+    if (valorInvalido) return;
     await onSave({
       descricao: data.descricao,
       valor: Number(data.valor),
@@ -115,13 +121,22 @@ export function GastosFormVariavel({
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
               <Label>Valor (R$) *</Label>
-              <Input type="number" step="0.01" min={0.01} {...form.register("valor")} />
+              <ValorDecimalInput
+                min={0.01}
+                required
+                value={Number(form.watch("valor")) || 0}
+                onValueChange={(valor) => form.setValue("valor", valor, { shouldValidate: true, shouldDirty: true })}
+                onValidityChange={(valido) => setValorInvalido(!valido)}
+              />
               <FormValidationError message={form.formState.errors.valor?.message} />
             </div>
 
             <div className="space-y-2">
               <Label>Data *</Label>
-              <Input type="date" {...form.register("data")} />
+              <DateIsoInput
+                value={form.watch("data") || ""}
+                onValueChange={(iso) => form.setValue("data", iso, { shouldValidate: true, shouldDirty: true })}
+              />
               <FormValidationError message={form.formState.errors.data?.message} />
             </div>
           </div>
@@ -157,7 +172,7 @@ export function GastosFormVariavel({
                 Cancelar
               </Button>
             </DialogClose>
-            <Button type="submit" disabled={saving}>
+            <Button type="submit" disabled={saving || valorInvalido}>
               {saving ? "Salvando..." : gasto ? "Salvar" : "Cadastrar"}
             </Button>
           </DialogFooter>

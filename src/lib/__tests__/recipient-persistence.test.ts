@@ -28,7 +28,22 @@ describe("persistência do destinatário antes do envio", () => {
   it("grava no contato responsável quando o equipamento tem um", async () => {
     await saveRecipientAddress({ ...equipamento, responsavel_contato_id: 4, responsavel_nome: "Ana" } as Equipamento, "email", "ana@cliente.com");
     expect(db.atualizarClienteContato).toHaveBeenCalledWith(4, expect.objectContaining({ email: "ana@cliente.com", nome: "Ana" }));
+    expect(db.atualizarClienteContato.mock.calls[0]?.[1]).not.toHaveProperty("preservar_identidade_portal", true);
     expect(db.atualizarCliente).not.toHaveBeenCalled();
+  });
+
+  it("grava o e-mail mesmo quando o responsável tem acesso ao portal", async () => {
+    await saveRecipientAddress({
+      ...equipamento,
+      responsavel_contato_id: 4,
+      responsavel_nome: "Ana Portal",
+      responsavel_email: "ana@portal.test",
+    } as Equipamento, "email", "ana.novo@cliente.com");
+    expect(db.atualizarClienteContato).toHaveBeenCalledWith(4, expect.objectContaining({
+      nome: "Ana Portal",
+      email: "ana.novo@cliente.com",
+    }));
+    expect(db.atualizarClienteContato.mock.calls[0]?.[1]).not.toHaveProperty("preservar_identidade_portal", true);
   });
 
   it("não salva nada quando o endereço está vazio", async () => {

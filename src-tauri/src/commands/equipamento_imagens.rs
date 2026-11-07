@@ -3,8 +3,9 @@ use crate::commands::types::{
     EquipamentoImagemInput, EquipamentoImagemRow, EQUIPAMENTO_IMAGEM_SELECT,
 };
 use crate::db::get_pool;
-use keyring::Entry;
 use reqwest::Client;
+use sqlx::PgConnection;
+use keyring::Entry;
 use tracing::{debug, error, info, instrument};
 
 // Re-export for image_migration.rs
@@ -200,19 +201,38 @@ fn validate_dimension(value: Option<i32>, field: &str) -> Result<Option<i32>, St
     Ok(None)
 }
 
-async fn ensure_equipment_exists(equipamento_id: i32) -> Result<(), String> {
-    let pool = get_pool().await?;
-    let exists: Option<(i32,)> = sqlx::query_as("SELECT id FROM equipamentos WHERE id = $1")
+/// Serializa alterações nas imagens do mesmo equipamento. Todos os writers devem
+/// chamar este helper dentro da própria transação antes de ler ou gravar imagens.
+async fn lock_equipment_for_update(
+    connection: &mut PgConnection,
+    equipamento_id: i32,
+    empresa_id: Option<i32>,
+) -> Result<(), String> {
+    let exists: Option<i32> = if let Some(empresa_id) = empresa_id {
+        sqlx::query_scalar(
+            "SELECT id FROM equipamentos WHERE id = $1 AND empresa_id = $2 FOR UPDATE",
+        )
         .bind(equipamento_id)
-        .fetch_optional(&pool)
+        .bind(empresa_id)
+        .fetch_optional(&mut *connection)
         .await
-        .map_err(|e| {
-            error!("Erro ao validar equipamento {}: {}", equipamento_id, e);
-            super::operator_errors::mapear_erro_sql(e)
-        })?;
+    } else {
+        sqlx::query_scalar("SELECT id FROM equipamentos WHERE id = $1 FOR UPDATE")
+            .bind(equipamento_id)
+            .fetch_optional(&mut *connection)
+            .await
+    }
+    .map_err(|e| {
+        error!("Erro ao bloquear equipamento {}: {}", equipamento_id, e);
+        super::operator_errors::mapear_erro_sql(e)
+    })?;
 
     if exists.is_none() {
-        return Err("Equipamento não encontrado".to_string());
+        return Err(if empresa_id.is_some() {
+            "Equipamento não encontrado ou não pertence à empresa ativa".to_string()
+        } else {
+            "Equipamento não encontrado".to_string()
+        });
     }
 
     Ok(())
@@ -246,6 +266,7 @@ pub async fn listar_imagens_equipamento(
 pub async fn substituir_imagens_equipamento(
     equipamento_id: i32,
     imagens: Vec<EquipamentoImagemInput>,
+    expected_image_ids: Vec<i32>,
 ) -> Result<Vec<EquipamentoImagemRow>, String> {
     if imagens.len() > MAX_IMAGES_PER_EQUIPMENT {
         return Err(format!(
@@ -254,13 +275,34 @@ pub async fn substituir_imagens_equipamento(
         ));
     }
 
-    ensure_equipment_exists(equipamento_id).await?;
-
     let pool = get_pool().await.map_err(|e| e.to_string())?;
+    let empresa_id = crate::commands::auth::require_active_session_company_id(&pool).await?;
     let mut tx = pool.begin().await.map_err(|e| {
         error!("Erro ao iniciar transação de imagens: {}", e);
         super::operator_errors::mapear_erro_sql(e)
     })?;
+
+    lock_equipment_for_update(&mut *tx, equipamento_id, Some(empresa_id)).await?;
+
+    let mut current_ids: Vec<i32> = sqlx::query_scalar(
+        "SELECT id FROM equipamento_imagens WHERE equipamento_id = $1 ORDER BY id ASC",
+    )
+    .bind(equipamento_id)
+    .fetch_all(&mut *tx)
+    .await
+    .map_err(|e| {
+        error!("Erro ao ler snapshot de imagens do equipamento {}: {}", equipamento_id, e);
+        super::operator_errors::mapear_erro_sql(e)
+    })?;
+    let mut expected_ids = expected_image_ids;
+    expected_ids.sort_unstable();
+    current_ids.sort_unstable();
+    if current_ids != expected_ids {
+        return Err(
+            "Conflito de concorrência: as fotos do equipamento foram alteradas. Recarregue as fotos antes de salvar novamente."
+                .to_string(),
+        );
+    }
 
     sqlx::query("DELETE FROM equipamento_imagens WHERE equipamento_id = $1")
         .bind(equipamento_id)
@@ -341,15 +383,18 @@ pub async fn adicionar_imagem_equipamento_raw(
         return Err("Imagem sem storage_path informado".to_string());
     }
 
-    ensure_equipment_exists(equipamento_id).await?;
-
     let pool = get_pool().await.map_err(|e| e.to_string())?;
+    let mut tx = pool.begin().await.map_err(|e| {
+        error!("Erro ao iniciar transação para adicionar imagem: {}", e);
+        super::operator_errors::mapear_erro_sql(e)
+    })?;
+    lock_equipment_for_update(&mut *tx, equipamento_id, None).await?;
 
     let count: (i64,) = sqlx::query_as(
         "SELECT COUNT(*) FROM equipamento_imagens WHERE equipamento_id = $1"
     )
     .bind(equipamento_id)
-    .fetch_one(&pool)
+    .fetch_one(&mut *tx)
     .await
     .map_err(|e| {
         error!("Erro ao contar imagens do equipamento {}: {}", equipamento_id, e);
@@ -393,10 +438,15 @@ pub async fn adicionar_imagem_equipamento_raw(
     .bind(ordem)
     .bind(observacao)
     .bind(storage_path)
-    .fetch_one(&pool)
+    .fetch_one(&mut *tx)
     .await
     .map_err(|e| {
         error!("Erro ao inserir imagem do equipamento {}: {}", equipamento_id, e);
+        super::operator_errors::mapear_erro_sql(e)
+    })?;
+
+    tx.commit().await.map_err(|e| {
+        error!("Erro ao concluir adição de imagem: {}", e);
         super::operator_errors::mapear_erro_sql(e)
     })?;
 
@@ -408,10 +458,31 @@ pub async fn adicionar_imagem_equipamento_raw(
 #[instrument(skip_all, fields(imagem_id = imagem_id))]
 pub async fn remover_imagem_equipamento(imagem_id: i32) -> Result<(), String> {
     let pool = get_pool().await.map_err(|e| e.to_string())?;
+    let empresa_id = crate::commands::auth::require_active_session_company_id(&pool).await?;
+    let mut tx = pool.begin().await.map_err(|e| {
+        error!("Erro ao iniciar transação para remover imagem: {}", e);
+        super::operator_errors::mapear_erro_sql(e)
+    })?;
+
+    let equipamento_id: Option<i32> = sqlx::query_scalar(
+        "SELECT i.equipamento_id FROM equipamento_imagens i
+         JOIN equipamentos e ON e.id = i.equipamento_id
+         WHERE i.id = $1 AND e.empresa_id = $2",
+    )
+    .bind(imagem_id)
+    .bind(empresa_id)
+    .fetch_optional(&mut *tx)
+    .await
+    .map_err(|e| {
+        error!("Erro ao localizar imagem {}: {}", imagem_id, e);
+        super::operator_errors::mapear_erro_sql(e)
+    })?;
+    let equipamento_id = equipamento_id.ok_or_else(|| "Imagem não encontrada".to_string())?;
+    lock_equipment_for_update(&mut *tx, equipamento_id, Some(empresa_id)).await?;
 
     let result = sqlx::query("DELETE FROM equipamento_imagens WHERE id = $1")
         .bind(imagem_id)
-        .execute(&pool)
+        .execute(&mut *tx)
         .await
         .map_err(|e| {
             error!("Erro ao remover imagem {}: {}", imagem_id, e);
@@ -421,6 +492,11 @@ pub async fn remover_imagem_equipamento(imagem_id: i32) -> Result<(), String> {
     if result.rows_affected() == 0 {
         return Err("Imagem não encontrada".to_string());
     }
+
+    tx.commit().await.map_err(|e| {
+        error!("Erro ao concluir remoção de imagem: {}", e);
+        super::operator_errors::mapear_erro_sql(e)
+    })?;
 
     info!("Imagem {} removida com sucesso", imagem_id);
     Ok(())
@@ -434,15 +510,19 @@ pub async fn adicionar_imagem_equipamento(
 ) -> Result<EquipamentoImagemRow, String> {
     require_permission(PERMISSION_STOCK_CONTROL)?;
 
-    ensure_equipment_exists(equipamento_id).await?;
-
     let pool = get_pool().await.map_err(|e| e.to_string())?;
+    let empresa_id = crate::commands::auth::require_active_session_company_id(&pool).await?;
+    let mut tx = pool.begin().await.map_err(|e| {
+        error!("Erro ao iniciar transação para adicionar imagem: {}", e);
+        super::operator_errors::mapear_erro_sql(e)
+    })?;
+    lock_equipment_for_update(&mut *tx, equipamento_id, Some(empresa_id)).await?;
 
     let count: (i64,) = sqlx::query_as(
         "SELECT COUNT(*) FROM equipamento_imagens WHERE equipamento_id = $1",
     )
     .bind(equipamento_id)
-    .fetch_one(&pool)
+    .fetch_one(&mut *tx)
     .await
     .map_err(|e| {
         error!(
@@ -494,7 +574,7 @@ pub async fn adicionar_imagem_equipamento(
         .bind(ordem)
         .bind(observacao)
         .bind(&imagem.storage_path)
-        .fetch_one(&pool)
+        .fetch_one(&mut *tx)
         .await
         .map_err(|e| {
             error!(
@@ -504,20 +584,20 @@ pub async fn adicionar_imagem_equipamento(
             super::operator_errors::mapear_erro_sql(e)
         })?;
 
-    let select_query = format!(
-        "{} WHERE id = $1",
-        EQUIPAMENTO_IMAGEM_SELECT
-    );
-
-    sqlx::query_as::<_, EquipamentoImagemRow>(sqlx::AssertSqlSafe(&*select_query))
+    let select_query = format!("{} WHERE id = $1", EQUIPAMENTO_IMAGEM_SELECT);
+    let image = sqlx::query_as::<_, EquipamentoImagemRow>(sqlx::AssertSqlSafe(&*select_query))
         .bind(inserted_id.0)
-        .fetch_one(&pool)
+        .fetch_one(&mut *tx)
         .await
         .map_err(|e| {
-            error!(
-                "Erro ao buscar imagem inserida no equipamento {}: {}",
-                equipamento_id, e
-            );
+            error!("Erro ao buscar imagem inserida no equipamento {}: {}", equipamento_id, e);
             super::operator_errors::mapear_erro_sql(e)
-        })
+        })?;
+
+    tx.commit().await.map_err(|e| {
+        error!("Erro ao concluir adição de imagem: {}", e);
+        super::operator_errors::mapear_erro_sql(e)
+    })?;
+
+    Ok(image)
 }

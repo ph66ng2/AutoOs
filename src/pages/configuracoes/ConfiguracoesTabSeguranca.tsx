@@ -3,7 +3,6 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import { ErrorAlert } from "@/components/ui/error-alert";
-import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
   Select,
@@ -24,13 +23,6 @@ export type ConfiguracoesTabSegurancaProps = {
   securityBusy: boolean;
   handleSecurityAdminToggle: (nextValue: boolean) => void | Promise<void>;
   accessStatus: SensitiveAccessStatus | null;
-  currentPin: string;
-  setCurrentPin: (value: string) => void;
-  newPin: string;
-  setNewPin: (value: string) => void;
-  confirmPin: string;
-  setConfirmPin: (value: string) => void;
-  trocarMeuPin: () => void | Promise<void>;
   managedProfileId: number | null;
   setManagedProfileId: (value: number | null) => void;
   profilesCatalog: SecurityProfile[];
@@ -51,13 +43,6 @@ export function ConfiguracoesTabSeguranca({
   securityBusy,
   handleSecurityAdminToggle,
   accessStatus,
-  currentPin,
-  setCurrentPin,
-  newPin,
-  setNewPin,
-  confirmPin,
-  setConfirmPin,
-  trocarMeuPin,
   managedProfileId,
   setManagedProfileId,
   profilesCatalog,
@@ -82,28 +67,14 @@ export function ConfiguracoesTabSeguranca({
       </div>}
       <Card>
         <CardHeader>
-          <CardTitle>Minhas ações</CardTitle>
+          <CardTitle>Meu PIN</CardTitle>
           <CardDescription>
-            Gerencie o PIN do seu próprio perfil.
+            A troca do seu PIN fica em Equipe e acessos, na aba Segurança.
           </CardDescription>
         </CardHeader>
-        <CardContent className="space-y-3">
-          <div className="space-y-2">
-            <Label htmlFor="current-pin">PIN atual</Label>
-            <Input id="current-pin" type="password" inputMode="numeric" value={currentPin} onChange={(event) => setCurrentPin(event.target.value.replace(/\D/g, "").slice(0, 8))} disabled={securityBusy} />
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="new-pin">Novo PIN</Label>
-            <Input id="new-pin" type="password" inputMode="numeric" value={newPin} onChange={(event) => setNewPin(event.target.value.replace(/\D/g, "").slice(0, 8))} disabled={securityBusy} />
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="confirm-new-pin">Confirmar novo PIN</Label>
-            <Input id="confirm-new-pin" type="password" inputMode="numeric" value={confirmPin} onChange={(event) => setConfirmPin(event.target.value.replace(/\D/g, "").slice(0, 8))} disabled={securityBusy} />
-          </div>
+        <CardContent>
           <div className="flex justify-end">
-            <Button type="button" onClick={() => void trocarMeuPin()} disabled={securityBusy}>
-              {securityBusy ? "Processando..." : "Trocar meu PIN"}
-            </Button>
+            <Button asChild variant="outline"><Link to="/perfil">Trocar meu PIN em Equipe e acessos</Link></Button>
           </div>
         </CardContent>
       </Card>

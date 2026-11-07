@@ -1,3 +1,4 @@
+import { formatCurrency } from "@/lib/utils";
 import { useEffect, useState } from "react";
 import { Plus, Search, Edit, Trash2, RefreshCw, Wrench } from "lucide-react";
 import { useForm } from "react-hook-form";
@@ -29,6 +30,7 @@ import { useSensitiveAccess } from "@/hooks/useSensitiveAccess";
 import { useNotification } from "@/hooks/useNotification";
 import { ErrorAlert } from "@/components/ui/error-alert";
 import { FormValidationError } from "@/components/ui/form-validation-error";
+import { ValorDecimalInput } from "@/components/ui/valor-decimal-input";
 import { SENSITIVE_PERMISSIONS, type ClienteId, type PecaVinculada, type ServicoCatalogo } from "@/types";
 import { ActionPriorityRow } from "@/components/ui/action-priority-row";
 import { PaginationControls } from "@/components/ui/pagination-controls";
@@ -56,6 +58,8 @@ export default function Servicos({ operationalProfile }: { operationalProfile?: 
   const [editando, setEditando] = useState<ServicoCatalogo<ClienteId> | null>(null);
   const [deletando, setDeletando] = useState<ServicoCatalogo<ClienteId> | null>(null);
   const [salvando, setSalvando] = useState(false);
+  const [precoInvalido, setPrecoInvalido] = useState(false);
+  const [pecasInvalidas, setPecasInvalidas] = useState(false);
   const { ensureSensitiveAccess } = useSensitiveAccess({ operationalProfile });
   const { error: showError } = useNotification();
 
@@ -85,6 +89,7 @@ export default function Servicos({ operationalProfile }: { operationalProfile?: 
   });
 
   async function abrirNovo() {
+    setPrecoInvalido(false);
     const liberado = await ensureSensitiveAccess({
       title: "Cadastrar serviço",
       description: "Informe o PIN para cadastrar serviços padrão com preço pré-definido.",
@@ -100,6 +105,7 @@ export default function Servicos({ operationalProfile }: { operationalProfile?: 
   }
 
   async function abrirEditar(servico: ServicoCatalogo<ClienteId>) {
+    setPrecoInvalido(false);
     const liberado = await ensureSensitiveAccess({
       title: "Editar serviço",
       description: "Informe o PIN para alterar nome e preço do serviço padrão.",
@@ -127,6 +133,7 @@ export default function Servicos({ operationalProfile }: { operationalProfile?: 
   }
 
   async function onSubmit(data: ServicoCatalogoFormData) {
+    if (precoInvalido || (IS_SAAS_BUILD && pecasInvalidas)) return;
     setSalvando(true);
     try {
       if (IS_SAAS_BUILD) validatePecasSugeridas(pecasSugeridas);
@@ -260,7 +267,7 @@ export default function Servicos({ operationalProfile }: { operationalProfile?: 
                         {servico.descricao || "—"}
                       </TableCell>
                       <TableCell className="text-right font-semibold">
-                        R$ {Number(servico.preco_padrao || 0).toFixed(2)}
+                        {formatCurrency(Number(servico.preco_padrao || 0))}
                       </TableCell>
                       <TableCell className="text-right">
                         <div className="flex justify-end gap-1">
@@ -325,7 +332,12 @@ export default function Servicos({ operationalProfile }: { operationalProfile?: 
             </div>
             <div className="space-y-2">
               <Label>Preço padrão *</Label>
-              <Input type="number" step="0.01" min={0} {...form.register("preco_padrao")} />
+              <ValorDecimalInput
+                min={0}
+                value={Number(form.watch("preco_padrao")) || 0}
+                onValueChange={(valor) => form.setValue("preco_padrao", valor, { shouldValidate: true, shouldDirty: true })}
+                onValidityChange={(valido) => setPrecoInvalido(!valido)}
+              />
               <p className="text-xs text-muted-foreground">Use 0,00 para serviços em garantia.</p>
               <FormValidationError message={form.formState.errors.preco_padrao?.message} />
             </div>
@@ -333,13 +345,13 @@ export default function Servicos({ operationalProfile }: { operationalProfile?: 
               <Label>Descrição</Label>
               <Textarea {...form.register("descricao")} rows={3} placeholder="Detalhes opcionais do serviço..." />
             </div>
-            {IS_SAAS_BUILD && <PecasDoServico pecas={pecasSugeridas} onChange={setPecasSugeridas} />}
+            {IS_SAAS_BUILD && <PecasDoServico pecas={pecasSugeridas} onChange={setPecasSugeridas} onValidityChange={(valido) => setPecasInvalidas(!valido)} />}
 
             <DialogFooter>
               <DialogClose asChild>
                 <Button variant="outline" type="button">Cancelar</Button>
               </DialogClose>
-              <Button type="submit" disabled={salvando}>
+              <Button type="submit" disabled={salvando || precoInvalido || (IS_SAAS_BUILD && pecasInvalidas)}>
                 {salvando ? "Salvando..." : editando ? "Salvar" : "Cadastrar"}
               </Button>
             </DialogFooter>

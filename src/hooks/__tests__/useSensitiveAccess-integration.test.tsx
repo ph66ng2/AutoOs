@@ -91,7 +91,7 @@ describe("useSensitiveAccess — integração com novos recursos de auth", () =>
   });
 
   it("mantém os perfis em uma falha temporária e limpa o aviso após recuperar", async () => {
-    const intervalSpy = vi.spyOn(window, "setInterval");
+    const intervalSpy = vi.spyOn(window, "setTimeout");
     const profile = { id: 1, nome: "Admin", role: "ADMIN", permissions: [], pin_configured: true, is_default: true, ativo: true };
     const available = { ...EMPTY_STATUS, unlocked: true, active_profile_id: 1, active_profile_name: "Admin", pin_configured: true, profiles: [profile] };
     mockInvoke

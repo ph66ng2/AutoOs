@@ -127,7 +127,7 @@ import { z } from "zod";
  * Conecta-se a: ClienteSelector.tsx, Clientes.tsx, HistoricoComunicacoes
  */
 export function formatarTelefone(valor: string): string {
-  const numeros = valor.replace(/\D/g, "").substring(0, 11);
+  const numeros = digitosTelefoneBr(valor).substring(0, 11);
   if (numeros.length <= 10) {
     return numeros
       .replace(/(\d{2})(\d)/, "($1) $2")
@@ -168,12 +168,27 @@ export function formatarCEP(valor: string): string {
 export type EquipamentoFormData = z.infer<typeof equipamentoSchema>;
 
 /**
- * Celular com DDD: 10 ou 11 dígitos após remover não-dígitos.
- * Conecta-se a: clienteSchema (contato inicial de PJ)
+ * Remove máscara e, se houver DDI 55 (12 ou 13 dígitos), deixa só o número nacional.
+ * DDD 55 (Santa Maria) com 11 dígitos não é cortado.
+ */
+export function digitosTelefoneBr(valor: string): string {
+  let digitos = valor.replace(/\D/g, "");
+  if ((digitos.length === 12 || digitos.length === 13) && digitos.startsWith("55")) {
+    digitos = digitos.slice(2);
+  }
+  return digitos;
+}
+
+/**
+ * Celular brasileiro com DDD: 11 dígitos após remover não-dígitos, DDD entre 11 e 99
+ * e o 9 logo após o DDD. Aceita prefixo +55. Fixo (10 dígitos) é recusado.
+ * Conecta-se a: clienteSchema (contato inicial de PJ), QuemRecebeOrcamentoDialog, ContatoResponsavelSelector
  */
 export function celularValido(valor: string): boolean {
-  const digitos = valor.replace(/\D/g, "");
-  return digitos.length === 10 || digitos.length === 11;
+  const digitos = digitosTelefoneBr(valor);
+  if (digitos.length !== 11) return false;
+  const ddd = Number(digitos.slice(0, 2));
+  return ddd >= 11 && ddd <= 99 && digitos[2] === "9";
 }
 
 /**
@@ -279,7 +294,7 @@ uf: z.string().max(2).optional().or(z.literal("")),
      if (!celularValido(data.contato_telefone ?? "")) {
        ctx.addIssue({
          code: z.ZodIssueCode.custom,
-         message: "Informe o celular do contato com DDD.",
+         message: "Informe o celular com DDD e o 9 (11 dígitos).",
          path: ["contato_telefone"],
        });
      }
@@ -308,12 +323,26 @@ export const clienteContatoSchema = z.object({
   telefone: z.string().refine(
     (value) => {
       if (!value.trim()) return true;
-      const digits = value.replace(/\D/g, "");
+      const digits = digitosTelefoneBr(value);
       return digits.length === 10 || digits.length === 11;
     },
     "Telefone inválido",
   ),
 });
+
+/** Painel de contatos: contato novo de PJ sem outro celular, ou edição do último celular, exige 11 dígitos. */
+export function schemaContatoCliente(exigeCelularPj: boolean) {
+  return clienteContatoSchema.superRefine((data, ctx) => {
+    if (!exigeCelularPj) return;
+    if (!celularValido(data.telefone ?? "")) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "Informe o celular com DDD e o 9 (11 dígitos).",
+        path: ["telefone"],
+      });
+    }
+  });
+}
 
 export type ClienteContatoFormData = z.infer<typeof clienteContatoSchema>;
 

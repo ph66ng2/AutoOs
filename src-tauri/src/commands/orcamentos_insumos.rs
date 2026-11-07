@@ -14,6 +14,8 @@
 //! ║    item nada é aprovado.                                     ║
 //! ║  - Cancelar um APROVADO devolve o estoque (ENTRADA).         ║
 //! ║  - Toda alteração confere `atualizado_em` (concorrência).    ║
+//! ║  - Excluir de vez: só CANCELADO; itens por CASCADE;          ║
+//! ║    estoque intocado.                                         ║
 //! ╚══════════════════════════════════════════════════════════════╝
 
 use crate::commands::auth::{
@@ -346,6 +348,11 @@ fn exigir_transicao(de: &str, para: &str, referencia: &str) -> Result<(), String
     ))
 }
 
+/// Só orçamento cancelado pode ser excluído de vez.
+pub fn pode_excluir(status: &str) -> bool {
+    status == STATUS_CANCELADO
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FaltaEstoque {
     pub descricao: String,
@@ -364,6 +371,25 @@ pub fn faltas_de_estoque(itens: &[(String, i32, i32)]) -> Vec<FaltaEstoque> {
             disponivel: (*disponivel).max(0),
         })
         .collect()
+}
+
+/// Orçamento vale até o fim do dia da validade: vence só quando `validade < hoje`. Validade nula nunca vence.
+pub fn orcamento_vencido(validade: Option<NaiveDate>, hoje: NaiveDate) -> bool {
+    validade.is_some_and(|data| data < hoje)
+}
+
+pub fn mensagem_orcamento_vencido(referencia: &str, validade: NaiveDate) -> String {
+    format!(
+        "O orçamento {referencia} venceu em {} e não pode ser aprovado. Altere a validade e salve para renovar antes de aprovar.",
+        validade.format("%d/%m/%Y")
+    )
+}
+
+pub fn mensagem_itens_inativos(referencia: &str, nomes: &[String]) -> String {
+    format!(
+        "Não dá para aprovar {referencia}: {} está(ão) inativo(s) no estoque. Edite o orçamento, troque ou retire esses itens e salve antes de aprovar.",
+        nomes.join(", ")
+    )
 }
 
 pub fn mensagem_falta_de_estoque(referencia: &str, faltas: &[FaltaEstoque]) -> String {
@@ -919,6 +945,18 @@ pub async fn aprovar_orcamento_insumos(
     let referencia = referencia_orcamento(atual.numero);
     exigir_transicao(&atual.status, STATUS_APROVADO, &referencia)?;
 
+    let validade: Option<NaiveDate> =
+        sqlx::query_scalar("SELECT validade FROM orcamentos_insumos WHERE id = $1 AND empresa_id = $2")
+            .bind(input.id)
+            .bind(empresa_id)
+            .fetch_one(&mut *tx)
+            .await
+            .map_err(super::operator_errors::mapear_erro_sql)?;
+    let hoje = chrono::Local::now().date_naive();
+    if let Some(data) = validade.filter(|data| orcamento_vencido(Some(*data), hoje)) {
+        return Err(mensagem_orcamento_vencido(&referencia, data));
+    }
+
     // Produtos travados em ordem de id: duas aprovações ao mesmo tempo não se bloqueiam em círculo.
     let linhas: Vec<(i32, String, i32, f64, i32, bool)> = sqlx::query_as(
         "SELECT i.produto_id, i.descricao, i.quantidade, i.valor_unitario::FLOAT8,
@@ -936,6 +974,15 @@ pub async fn aprovar_orcamento_insumos(
     .map_err(super::operator_errors::mapear_erro_sql)?;
     if linhas.is_empty() {
         return Err(format!("O orçamento {referencia} não tem itens."));
+    }
+
+    let inativos: Vec<String> = linhas
+        .iter()
+        .filter(|(_, _, _, _, _, ativo)| !*ativo)
+        .map(|(_, descricao, _, _, _, _)| descricao.clone())
+        .collect();
+    if !inativos.is_empty() {
+        return Err(mensagem_itens_inativos(&referencia, &inativos));
     }
 
     let conferencia = linhas
@@ -1077,6 +1124,62 @@ pub async fn cancelar_orcamento_insumos(
     carregar_detalhe(&pool, empresa_id, input.id).await
 }
 
+/// Exclui de vez um orçamento CANCELADO. Só CANCELADO; os itens saem por CASCADE (0040);
+/// não mexe em estoque (cancelar já o devolveu); o número OI-n não é reaproveitado
+/// (o contador não é tocado).
+#[tauri::command]
+#[instrument(skip_all, fields(id = input.id))]
+pub async fn excluir_orcamento_insumos(input: OrcamentoInsumosAcaoInput) -> Result<(), String> {
+    let actor = require_permission(PERMISSION_FINANCIAL_ACTIONS)?;
+    let token = exigir_token(&input.atualizado_em)?.to_string();
+    let pool = get_pool().await.map_err(|e| e.to_string())?;
+    let empresa_id = require_active_session_company_id(&pool).await?;
+    let mut tx = abrir_transacao(&pool).await?;
+    let atual = travar_orcamento(&mut tx, empresa_id, input.id, &token).await?;
+    let referencia = referencia_orcamento(atual.numero);
+    if !pode_excluir(&atual.status) {
+        return Err(format!(
+            "O orçamento {referencia} está {} e não pode ser excluído: só orçamentos cancelados podem ser excluídos.",
+            atual.status.to_lowercase()
+        ));
+    }
+
+    let itens: i64 = sqlx::query_scalar::<_, i64>(
+        "SELECT COUNT(*) FROM orcamento_insumos_itens WHERE orcamento_id = $1 AND empresa_id = $2",
+    )
+    .bind(input.id)
+    .bind(empresa_id)
+    .fetch_one(&mut *tx)
+    .await
+    .map_err(super::operator_errors::mapear_erro_sql)?;
+
+    let apagadas = sqlx::query(
+        "DELETE FROM orcamentos_insumos
+         WHERE id = $1 AND empresa_id = $2 AND status = 'CANCELADO' AND atualizado_em = $3::TIMESTAMPTZ",
+    )
+    .bind(input.id)
+    .bind(empresa_id)
+    .bind(&token)
+    .execute(&mut *tx)
+    .await
+    .map_err(super::operator_errors::mapear_erro_sql)?
+    .rows_affected();
+    if apagadas == 0 {
+        return Err(conflito_de_concorrencia());
+    }
+    confirmar(tx).await?;
+
+    record_security_event(
+        "INSUMOS_QUOTE_DELETED",
+        Some(&actor),
+        format!("orcamento={referencia}; itens={itens}"),
+        true,
+    )
+    .await;
+    info!("Orçamento de insumos {} excluído", referencia);
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1178,6 +1281,13 @@ mod tests {
     }
 
     #[test]
+    fn so_cancelado_pode_ser_excluido() {
+        for status in STATUS_VALIDOS {
+            assert_eq!(pode_excluir(status), status == STATUS_CANCELADO, "{status}");
+        }
+    }
+
+    #[test]
     fn faltas_listam_so_o_que_nao_cobre() {
         let itens = vec![
             ("Etiqueta 100x50".to_string(), 10, 4),
@@ -1192,6 +1302,14 @@ mod tests {
         assert!(texto.contains("OI-12") && texto.contains("Nada foi baixado"));
         assert!(texto.contains("- Etiqueta 100x50: precisa de 10, há 4 em estoque"));
         assert!(faltas_de_estoque(&[("X".into(), 1, 1)]).is_empty());
+    }
+
+    #[test]
+    fn itens_inativos_bloqueiam_com_a_lista() {
+        let nomes = vec!["Etiqueta 100x50".to_string(), "Ribbon cera".to_string()];
+        let texto = mensagem_itens_inativos("OI-9", &nomes);
+        assert!(texto.starts_with("Não dá para aprovar OI-9: Etiqueta 100x50, Ribbon cera está(ão) inativo(s)"));
+        assert!(texto.contains("troque ou retire esses itens"));
     }
 
     #[test]
@@ -1212,6 +1330,18 @@ mod tests {
         assert_eq!(normalizar_canal(Some("whatsapp")), "WHATSAPP");
         assert_eq!(normalizar_canal(Some("x")), "PDF");
         assert_eq!(normalizar_canal(None), "PDF");
+    }
+
+    #[test]
+    fn orcamento_vence_so_depois_do_dia_da_validade() {
+        let hoje = data("2026-10-27");
+        assert!(orcamento_vencido(Some(data("2026-10-26")), hoje));
+        assert!(!orcamento_vencido(Some(data("2026-10-27")), hoje));
+        assert!(!orcamento_vencido(Some(data("2026-11-01")), hoje));
+        assert!(!orcamento_vencido(None, hoje));
+        let texto = mensagem_orcamento_vencido("OI-7", data("2026-10-26"));
+        assert!(texto.contains("OI-7") && texto.contains("venceu em 26/10/2026"));
+        assert!(texto.contains("Altere a validade e salve"));
     }
 
     #[test]

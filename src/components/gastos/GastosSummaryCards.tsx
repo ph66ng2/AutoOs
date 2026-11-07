@@ -1,9 +1,10 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import type { GastoResumoMensal, GastoFixo } from "@/types";
+import type { GastoResumoMensal, GastoFixo, GastoVariavel } from "@/types";
 
 interface GastosSummaryCardsProps {
   resumo: GastoResumoMensal | null;
   gastosFixos: GastoFixo[];
+  gastosVariaveis?: GastoVariavel[];
   loading: boolean;
 }
 
@@ -12,12 +13,14 @@ const currencyFormatter = new Intl.NumberFormat("pt-BR", {
   currency: "BRL",
 });
 
-export function GastosSummaryCards({ resumo, gastosFixos, loading }: GastosSummaryCardsProps) {
+export function GastosSummaryCards({ resumo, gastosFixos, gastosVariaveis, loading }: GastosSummaryCardsProps) {
   const totalFixo = gastosFixos
     .filter((g) => g.ativo !== false)
     .reduce((sum, g) => sum + (g.valor || 0), 0);
 
-  const totalVariavel = resumo?.total_variavel ?? 0;
+  const totalVariavel = gastosVariaveis
+    ? gastosVariaveis.reduce((sum, g) => sum + (g.valor || 0), 0)
+    : resumo?.total_variavel ?? 0;
   const totalGeral = totalFixo + totalVariavel;
 
   if (loading) {

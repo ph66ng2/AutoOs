@@ -1,5 +1,6 @@
 import { cn } from "@/lib/utils";
-import { avatarIcon } from "@/lib/profile-appearance";
+import { avatarIcon, isAvatarShape } from "@/lib/profile-appearance";
+import { GeometricAvatar } from "@/components/perfil/GeometricAvatar";
 
 const SIZES = {
   sm: { box: "h-8 w-8 rounded-lg", icon: "h-4 w-4" },
@@ -29,6 +30,14 @@ export function ProfileAvatar({
         aria-hidden="true"
         className={cn("inline-flex shrink-0 border-2 border-dashed border-muted-foreground/40", sizing.box, className)}
       />
+    );
+  }
+  if (isAvatarShape(icon)) {
+    // O desenho já traz o fundo; a caixa só recorta o canto.
+    return (
+      <span aria-hidden="true" className={cn("inline-flex shrink-0 overflow-hidden", sizing.box, className)}>
+        <GeometricAvatar shape={icon} color={color} className="h-full w-full" />
+      </span>
     );
   }
   const Icon = avatarIcon(icon);

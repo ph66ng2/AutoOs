@@ -1,7 +1,9 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Plus, Trash2, Search } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { ValorDecimalInput } from "@/components/ui/valor-decimal-input";
+import { formatCurrency, formatCurrencyOrMissing } from "@/lib/utils";
 import type { EquipamentoId, ServicoCatalogo, ServicoNecessario } from "@/types";
 import { PecasDoServico } from "@/components/equipamentos/PecasDoServico";
 
@@ -12,6 +14,8 @@ interface AjusteOrcamentoServicosProps {
   onChange: (servicos: ServicoNecessario[]) => void;
   onRemoverTodos?: () => void;
   saasMode?: boolean;
+  /** false enquanto algum preço de serviço ou de peça estiver com texto inválido. */
+  onPecasValidityChange?: (valido: boolean) => void;
 }
 
 export function AjusteOrcamentoServicos({
@@ -21,8 +25,18 @@ export function AjusteOrcamentoServicos({
   onChange,
   onRemoverTodos,
   saasMode = false,
+  onPecasValidityChange,
 }: AjusteOrcamentoServicosProps) {
   const [linhaSugestaoAberta, setLinhaSugestaoAberta] = useState<string | null>(null);
+  const [pecasInvalidasPorServico, setPecasInvalidasPorServico] = useState<Record<string, boolean>>({});
+  const [valoresInvalidosPorServico, setValoresInvalidosPorServico] = useState<Record<string, boolean>>({});
+  const validadeRef = useRef(onPecasValidityChange);
+  validadeRef.current = onPecasValidityChange;
+  const algumaInvalida = servicos.some((s) => pecasInvalidasPorServico[s.id] || valoresInvalidosPorServico[s.id]);
+  useEffect(() => {
+    validadeRef.current?.(!algumaInvalida);
+  }, [algumaInvalida]);
+  useEffect(() => () => validadeRef.current?.(true), []);
 
   function adicionarServico() {
     const novo: ServicoNecessario = {
@@ -104,7 +118,7 @@ export function AjusteOrcamentoServicos({
                         <span className="font-medium">{item.nome}</span>
                         <span className="text-muted-foreground">
                           {" "}
-                          — R$ {Number(item.preco_padrao || 0).toFixed(2)}
+                          — {formatCurrencyOrMissing(Number(item.preco_padrao))}
                         </span>
                       </button>
                     ))}
@@ -119,13 +133,13 @@ export function AjusteOrcamentoServicos({
                 </div>
               )}
             </div>
-            <Input
-              type="number"
+            <ValorDecimalInput
               min={0}
-              step="0.01"
               placeholder="Valor"
-              value={Number.isFinite(Number(s.valor)) ? Number(s.valor) : ""}
-              onChange={(e) => atualizarServico(s.id, { valor: Number(e.target.value) })}
+              aria-label="Valor do serviço"
+              value={Number(s.valor) || 0}
+              onValueChange={(valor) => atualizarServico(s.id, { valor })}
+              onValidityChange={(valido) => setValoresInvalidosPorServico((atual) => (atual[s.id] === !valido ? atual : { ...atual, [s.id]: !valido }))}
               className="col-start-1 w-full min-w-0 text-sm"
             />
             <Button
@@ -138,7 +152,7 @@ export function AjusteOrcamentoServicos({
               <Trash2 className="h-4 w-4 text-red-500" />
             </Button>
           </div>
-          <PecasDoServico pecas={s.pecas ?? []} saasMode={saasMode} onChange={(pecas) => atualizarServico(s.id, { pecas })} />
+          <PecasDoServico pecas={s.pecas ?? []} saasMode={saasMode} onChange={(pecas) => atualizarServico(s.id, { pecas })} onValidityChange={(valido) => setPecasInvalidasPorServico((atual) => (atual[s.id] === !valido ? atual : { ...atual, [s.id]: !valido }))} />
           </div>
         ))}
         {servicos.length === 0 && (
@@ -150,7 +164,7 @@ export function AjusteOrcamentoServicos({
       {servicos.length > 0 && (
         <div className="flex justify-between text-sm font-medium pt-1 border-t">
           <span>Total serviços</span>
-          <span>R$ {total.toFixed(2)}</span>
+          <span>{formatCurrency(total)}</span>
         </div>
       )}
     </div>

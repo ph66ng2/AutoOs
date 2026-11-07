@@ -202,6 +202,8 @@ fn main() {
             commands::portal_cliente::definir_acesso_portal_contato,
             commands::portal_cliente::definir_senha_portal_contato,
             commands::portal_cliente::publicar_orcamento_portal,
+            commands::portal_cliente::listar_orcamentos_pendentes_portal,
+            commands::portal_cliente::publicar_orcamentos_pendentes_portal,
             commands::portal_cliente::obter_contato_portal_empresa,
             commands::portal_cliente::salvar_contato_portal_empresa,
             commands::portal_cliente::obter_estado_portal,
@@ -254,6 +256,7 @@ fn main() {
             commands::produtos::atualizar_produto,
             commands::produtos::deletar_produto,
             commands::produtos::registrar_movimentacao_estoque,
+            commands::produtos::uso_produto_em_orcamentos,
             // Gastos
             commands::gastos::listar_gastos_fixos,
             commands::gastos::criar_gasto_fixo,
@@ -284,6 +287,7 @@ fn main() {
             commands::orcamentos_insumos::aprovar_orcamento_insumos,
             commands::orcamentos_insumos::reprovar_orcamento_insumos,
             commands::orcamentos_insumos::cancelar_orcamento_insumos,
+            commands::orcamentos_insumos::excluir_orcamento_insumos,
             commands::orcamentos_insumos::marcar_orcamento_insumos_entregue,
             // Comunicações
             commands::comunicacoes::registrar_comunicacao,

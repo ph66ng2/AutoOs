@@ -7,8 +7,9 @@ import type {
   EquipamentoImagemCategoria,
   ResultadoAutomacao,
 } from "@/types";
+import { MENSAGEM_AGUARDANDO_TOTAL_ZERO, MENSAGEM_TOTAL_ZERO_SEM_GARANTIA, MENSAGEM_ZERAR_APROVADO_PAGO } from "@/lib/orcamento-estoque";
 import { STATUS_SENSIVEIS } from "./equipamentos-page-constants";
-import { getCorrectionStates, getNextStates } from "@/lib/status-fsm";
+import { getCorrectionStates, getNextStates, normalizeStatusKey } from "@/lib/status-fsm";
 
 export function extrairTecnicoInicialDeObservacoes(observacoes?: string | null): TecnicoDisponivel | null {
   if (!observacoes) return null;
@@ -119,14 +120,108 @@ export function filtrarImagensPorCategoria(
  * Retorna array de status permitidos a partir do status atual.
  * Define o fluxo de transição (máquina de estados).
  */
-export function getProximosStatus(statusAtual: string): string[] {
-  return getNextStates(statusAtual);
+export function getProximosStatus(
+  statusAtual: string,
+  opcoes: { semPreSelecao?: boolean } = {},
+): string[] {
+  const proximos = getNextStates(statusAtual);
+  // Reabrir pelo "Mudar Status" sem pré-seleção fica com "Nova proposta" (ver ReabrirOrcamentoDialog).
+  if (opcoes.semPreSelecao && normalizeStatusKey(statusAtual) === "REPROVADO") {
+    return proximos.filter((status) => status !== "AGUARDANDO_APROVACAO");
+  }
+  return proximos;
 }
 
 export function reabreOrcamentoSemAjuste(statusAtual: string, novoStatus: string) {
   return statusAtual === "REPROVADO" && novoStatus === "AGUARDANDO_APROVACAO";
 }
 
+/** Total do orçamento ao enviar para aprovação: 0,00 e vazio não passam. Itens em garantia podem ser 0. */
+export function totalOrcamentoAprovacaoValido(valor: number) {
+  return Number.isFinite(valor) && valor > 0;
+}
+
+const STATUS_DEPOIS_APROVACAO = [
+  "APROVADO",
+  "EM_MANUTENCAO",
+  "AGUARDANDO_PECA",
+  "PRONTO",
+  "ENTREGUE",
+];
+
+/** Ajuste: AGUARDANDO nunca fica R$ 0; APROVADO pago não zera; garantia 0 só fora desses casos. */
+export function totalOrcamentoAjusteValido(
+  valor: number,
+  soGarantia: boolean,
+  status?: string,
+  valorAnterior?: number | null,
+) {
+  if (status === "AGUARDANDO_APROVACAO") {
+    return totalOrcamentoAprovacaoValido(valor);
+  }
+  if (
+    STATUS_DEPOIS_APROVACAO.includes(status ?? "")
+    && (Number(valorAnterior) || 0) > 0
+    && Number.isFinite(valor)
+    && valor === 0
+  ) {
+    return false;
+  }
+  return totalOrcamentoAprovacaoValido(valor)
+    || (Number.isFinite(valor) && valor === 0 && soGarantia);
+}
+
+export function mensagemAjusteTotalZero(
+  status?: string,
+  valorAnterior?: number | null,
+) {
+  if (status === "AGUARDANDO_APROVACAO") {
+    return MENSAGEM_AGUARDANDO_TOTAL_ZERO;
+  }
+  if (STATUS_DEPOIS_APROVACAO.includes(status ?? "") && (Number(valorAnterior) || 0) > 0) {
+    return MENSAGEM_ZERAR_APROVADO_PAGO;
+  }
+  return MENSAGEM_TOTAL_ZERO_SEM_GARANTIA;
+}
+
+/** Em APROVADO e REPROVADO a decisão é corrigida por "Corrigir decisão", não por status. */
+const STATUS_COM_DECISAO_PROPRIA = ["APROVADO", "REPROVADO"];
+
 export function getStatusCorrecao(statusAtual: string): string[] {
-  return getCorrectionStates(statusAtual);
+  const correcoes = getCorrectionStates(statusAtual);
+  if (STATUS_COM_DECISAO_PROPRIA.includes(normalizeStatusKey(statusAtual))) {
+    return correcoes.filter((status) => status !== "AGUARDANDO_APROVACAO");
+  }
+  return correcoes;
+}
+
+const SECOES_ACOES_OS = ["Orçamento", "Corrigir um engano", "Equipamento"] as const;
+
+const SECAO_POR_ACAO_OS: Record<string, (typeof SECOES_ACOES_OS)[number]> = {
+  orcamento_pdf: "Orçamento",
+  alterar_orcamento: "Orçamento",
+  pecas_os: "Orçamento",
+  whatsapp_orcamento: "Orçamento",
+  corrigir_status: "Corrigir um engano",
+  corrigir_decisao: "Corrigir um engano",
+  desfazer_aprovacao: "Corrigir um engano",
+};
+
+/** Seção do menu "Mais" da OS. Ações fora das listas caem em "Equipamento". */
+export function secaoAcaoOs(id: string): string {
+  return SECAO_POR_ACAO_OS[id] ?? "Equipamento";
+}
+
+/** Marca cada ação com a seção dela e ordena por seção, mantendo a ordem original dentro de cada uma. */
+export function agruparAcoesOs<T extends { id: string; group?: string }>(acoes: T[]): T[] {
+  const comSecao = acoes.map((acao, indice) => ({ acao: { ...acao, group: secaoAcaoOs(acao.id) } as T, indice }));
+  const ordemSecao = (secao: string) => SECOES_ACOES_OS.indexOf(secao as (typeof SECOES_ACOES_OS)[number]);
+  return comSecao
+    .sort((a, b) => ordemSecao(a.acao.group ?? "") - ordemSecao(b.acao.group ?? "") || a.indice - b.indice)
+    .map(({ acao }) => acao);
+}
+
+/** OS só de garantia (R$ 0) não envia orçamento ao cliente: não pede contato. */
+export function precisaPerguntarQuemRecebeOrcamento(precisaContato: boolean, osSoDeGarantia: boolean) {
+  return precisaContato && !osSoDeGarantia;
 }

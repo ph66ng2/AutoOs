@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -12,6 +12,7 @@ import {
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { ValorDecimalInput } from "@/components/ui/valor-decimal-input";
 import { Label } from "@/components/ui/label";
 import {
   Select,
@@ -52,6 +53,7 @@ interface GastosFormFixoProps {
 }
 
 export function GastosFormFixo({ open, onOpenChange, gasto, onSave, saving }: GastosFormFixoProps) {
+  const [valorInvalido, setValorInvalido] = useState(false);
   const form = useForm<GastoFixoFormData>({
     resolver: zodResolver(gastoFixoSchema),
     defaultValues: {
@@ -64,6 +66,7 @@ export function GastosFormFixo({ open, onOpenChange, gasto, onSave, saving }: Ga
   });
 
   useEffect(() => {
+    setValorInvalido(false);
     if (gasto) {
       form.reset({
         nome: gasto.nome,
@@ -84,6 +87,7 @@ export function GastosFormFixo({ open, onOpenChange, gasto, onSave, saving }: Ga
   }, [gasto, form]);
 
   async function onSubmit(data: GastoFixoFormData) {
+    if (valorInvalido) return;
     await onSave({
       nome: data.nome,
       valor: Number(data.valor),
@@ -109,7 +113,13 @@ export function GastosFormFixo({ open, onOpenChange, gasto, onSave, saving }: Ga
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
               <Label>Valor (R$) *</Label>
-              <Input type="number" step="0.01" min={0.01} {...form.register("valor")} />
+              <ValorDecimalInput
+                min={0.01}
+                required
+                value={Number(form.watch("valor")) || 0}
+                onValueChange={(valor) => form.setValue("valor", valor, { shouldValidate: true, shouldDirty: true })}
+                onValidityChange={(valido) => setValorInvalido(!valido)}
+              />
               <FormValidationError message={form.formState.errors.valor?.message} />
             </div>
 
@@ -155,7 +165,7 @@ export function GastosFormFixo({ open, onOpenChange, gasto, onSave, saving }: Ga
                 Cancelar
               </Button>
             </DialogClose>
-            <Button type="submit" disabled={saving}>
+            <Button type="submit" disabled={saving || valorInvalido}>
               {saving ? "Salvando..." : gasto ? "Salvar" : "Cadastrar"}
             </Button>
           </DialogFooter>

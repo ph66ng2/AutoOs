@@ -1,1 +1,10 @@
-0.6.0: no Portal do Cliente o cliente vê fotos, PDF do orçamento e comprovante de entrega; na retirada, endereço e mapa. O aceite pode exigir ordem de compra, e antes de recusar dá para negociar. Em Insumos/Peças → Orçamentos há o OI (venda avulsa). O ADM cadastra com código de primeiro acesso; a pessoa cria o próprio PIN em cada computador.
+AutoOS 0.6.2
+
+- Portal do Cliente: o orçamento não oferece mais negociação. Antes de recusar, o cliente vê "Qualquer dúvida, entre em contato conosco" com o WhatsApp da equipe. O prazo para o cliente mudar de ideia caiu de 15 para 10 minutos.
+- Equipamento: novo bloco "Acesso ao portal", com o login (CPF/CNPJ) e os contatos que entram no portal, sem mostrar senha. Botão para enviar ao portal os orçamentos pendentes.
+- Menu de ações do equipamento sem opções repetidas: "Reabrir orçamento", "Desfazer aprovação" e "Renovar orçamento".
+- Perfil: nove avatares em formas geométricas para escolher, além dos ícones.
+- Clientes: a busca também encontra pelo nome, telefone e e-mail dos contatos.
+- Insumos/Peças: orçamento vencido ganha o selo "Vencido" e não pode ser aprovado; aviso ao excluir peça usada em OS ou orçamento em aberto.
+- Aviso automático quando sair versão nova do AutoOS: qualquer pessoa pode atualizar pelo próprio aviso.
+- Conexão com o banco mais estável ao abrir o app e ao reconectar.

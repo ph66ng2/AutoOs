@@ -3,7 +3,9 @@
  * CRUD/movimentações ao adapter Tauri ou Supabase conforme o build ativo.
  */
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { ClienteId, Produto } from "@/types";
+import { db } from "@/lib/db";
+import { IS_SAAS_BUILD } from "@/lib/runtime-mode";
+import type { ClienteId, Produto, UsoProdutoOrcamentos } from "@/types";
 import {
   carregarRepositorioProdutos,
   type ProdutoInput,
@@ -106,6 +108,29 @@ export function useInsumos(params?: UseInsumosParams) {
     }
   };
 
+  /**
+   * Consulta em quais OS e orçamentos de insumos a peça está em uso.
+   *
+   * Fluxo: `db.usoProdutoEmOrcamentos(id)` → comando Tauri
+   * `uso_produto_em_orcamentos` (Rust). Erro, resposta vazia ou build SaaS
+   * (sem esse comando no adapter Supabase) viram `null`.
+   *
+   * @param id - ID do produto.
+   * @returns Listas de uso ou `null` quando indisponível.
+   */
+  const consultarUsoEmOrcamentos = async (
+    id: ClienteId,
+  ): Promise<UsoProdutoOrcamentos | null> => {
+    if (IS_SAAS_BUILD || typeof id !== "number") return null;
+    try {
+      const uso = await db.usoProdutoEmOrcamentos(id);
+      return uso ?? null;
+    } catch (err: any) {
+      console.error("Erro ao consultar uso do produto em orçamentos:", err);
+      return null;
+    }
+  };
+
   return {
     produtos,
     total,
@@ -116,6 +141,7 @@ export function useInsumos(params?: UseInsumosParams) {
     atualizar,
     deletar,
     registrarMovimentacao,
+    consultarUsoEmOrcamentos,
     recarregar: carregar,
   };
 }

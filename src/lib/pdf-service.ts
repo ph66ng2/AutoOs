@@ -22,8 +22,7 @@
  * ╚══════════════════════════════════════════════════════════════╝
  */
 
-import { jsPDF } from "jspdf";
-import autoTable from "jspdf-autotable";
+import type { jsPDF } from "jspdf";
 import { invoke } from "@tauri-apps/api/core";
 import { db } from "@/lib/db";
 import { IS_SAAS_BUILD } from "@/lib/runtime-mode";
@@ -94,6 +93,21 @@ const CABECALHO_EMPRESA = {
 };
 const LOGO_MONOCHROME_DATA_URL =
   `data:image/png;base64,${LOGO_BMITAG_MONOCHROME_PNG_BASE64}`;
+
+type AutoTable = typeof import("jspdf-autotable").default;
+type PdfModules = { jsPDF: typeof import("jspdf").jsPDF; autoTable: AutoTable };
+
+let pdfModulesPromise: Promise<PdfModules> | undefined;
+
+function carregarModulosPdf(): Promise<PdfModules> {
+  pdfModulesPromise ??= Promise.all([import("jspdf"), import("jspdf-autotable")]).then(
+    ([jspdf, autoTable]) => ({ jsPDF: jspdf.jsPDF, autoTable: autoTable.default }),
+  ).catch((error: unknown) => {
+    pdfModulesPromise = undefined;
+    throw error;
+  });
+  return pdfModulesPromise;
+}
 
 // ─── Utilitários de formatação ──────────────────────────
 
@@ -416,6 +430,7 @@ function opcoesTabelaMonocromatica() {
 
 function renderizarTabelaFormulario(
   doc: jsPDF,
+  autoTable: AutoTable,
   y: number,
   cabecalho: string[],
   corpo: string[][],
@@ -553,20 +568,22 @@ function renderizarDiagnostico(
 
 function renderizarIdentificacaoENotasOrcamento(
   doc: jsPDF,
+  autoTable: AutoTable,
   y: number,
   equipamento: EquipamentoPdf,
   verificacao: Verificacao,
 ): number {
-  y = renderizarIdentificacaoEquipamento(doc, y, equipamento);
+  y = renderizarIdentificacaoEquipamento(doc, autoTable, y, equipamento);
   y = renderizarDiagnostico(doc, y, verificacao.diagnostico);
   return renderizarDescricaoServico(doc, y, verificacao.observacoes);
 }
 
-function renderizarIdentificacaoEquipamento(doc: jsPDF, y: number, equipamento: EquipamentoPdf): number {
+function renderizarIdentificacaoEquipamento(doc: jsPDF, autoTable: AutoTable, y: number, equipamento: EquipamentoPdf): number {
   const patrimonio = equipamento.patrimonio?.trim();
   if (patrimonio) {
     return renderizarTabelaFormulario(
       doc,
+      autoTable,
       y,
       ["NÚMERO DE SÉRIE", "PATRIMÔNIO"],
       [[equipamento.serial_number || "—", patrimonio]],
@@ -576,6 +593,7 @@ function renderizarIdentificacaoEquipamento(doc: jsPDF, y: number, equipamento: 
 
   return renderizarTabelaFormulario(
     doc,
+    autoTable,
     y,
     ["NÚMERO DE SÉRIE"],
     [[equipamento.serial_number || "—"]],
@@ -962,6 +980,7 @@ export const PdfService = {
     prazoExecucao?: PrazoExecucaoPdf,
   ): Promise<PdfArtifact> {
     try {
+      const { jsPDF, autoTable } = await carregarModulosPdf();
       const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
       let y = 15; // posição vertical atual
 
@@ -1088,7 +1107,7 @@ export const PdfService = {
         y = yAposUltimaTabela(doc);
       }
 
-      y = renderizarIdentificacaoENotasOrcamento(doc, y, equipamento, verificacao);
+      y = renderizarIdentificacaoENotasOrcamento(doc, autoTable, y, equipamento, verificacao);
 
       if (exibirBlocosFinanceiros) {
         y = renderizarCondicoesComerciais(
@@ -1197,6 +1216,7 @@ export const PdfService = {
     }
 
     try {
+      const { jsPDF, autoTable } = await carregarModulosPdf();
       const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
       let y = 15;
 
@@ -1306,7 +1326,7 @@ export const PdfService = {
         y = yAposUltimaTabela(doc);
       }
 
-      y = renderizarIdentificacaoENotasOrcamento(doc, y, equipamento, verificacao);
+      y = renderizarIdentificacaoENotasOrcamento(doc, autoTable, y, equipamento, verificacao);
 
       if (exibirBlocosFinanceiros) {
         y = renderizarCondicoesComerciais(
@@ -1403,6 +1423,7 @@ export const PdfService = {
    */
   async construirOrdemServico(equipamento: EquipamentoPdf, nomeArquivo?: string): Promise<PdfArtifact> {
     try {
+      const { jsPDF, autoTable } = await carregarModulosPdf();
       const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
       let y = 15;
 
@@ -1442,6 +1463,7 @@ export const PdfService = {
       // os preenchimentos são brancos para manter a impressão econômica.
       y = renderizarTabelaFormulario(
         doc,
+        autoTable,
         y,
         ["STATUS ATUAL"],
         [[statusAtual]],
@@ -1449,6 +1471,7 @@ export const PdfService = {
       );
       y = renderizarTabelaFormulario(
         doc,
+        autoTable,
         y,
         ["EMPRESA CLIENTE (RAZÃO SOCIAL / DOCUMENTO)", "CONTATO RESPONSÁVEL"],
         [[identificacaoResponsavel.empresa, identificacaoResponsavel.responsavel]],
@@ -1456,6 +1479,7 @@ export const PdfService = {
       );
       y = renderizarTabelaFormulario(
         doc,
+        autoTable,
         y,
         ["CONTATO"],
         [[identificacaoResponsavel.contato]],
@@ -1463,6 +1487,7 @@ export const PdfService = {
       );
       y = renderizarTabelaFormulario(
         doc,
+        autoTable,
         y,
         ["EQUIPAMENTO", "TIPO"],
         [[`${equipamento.marca || "—"} ${equipamento.modelo || ""}`.trim(), equipamento.tipo || "—"]],
@@ -1470,6 +1495,7 @@ export const PdfService = {
       );
       y = renderizarTabelaFormulario(
         doc,
+        autoTable,
         y,
         ["Nº DE SÉRIE", "PATRIMÔNIO"],
         [[equipamento.serial_number || "—", equipamento.patrimonio?.trim() || "—"]],
@@ -1477,6 +1503,7 @@ export const PdfService = {
       );
       y = renderizarTabelaFormulario(
         doc,
+        autoTable,
         y,
         ["ESPECIFICAÇÕES"],
         [[especificacoes]],
@@ -1484,6 +1511,7 @@ export const PdfService = {
       );
       y = renderizarTabelaFormulario(
         doc,
+        autoTable,
         y,
         ["DEFEITO INFORMADO"],
         [[defeitoInformado]],
@@ -1491,6 +1519,7 @@ export const PdfService = {
       );
       y = renderizarTabelaFormulario(
         doc,
+        autoTable,
         y,
         ["LAUDO TÉCNICO"],
         [[diagnosticoTecnico]],
@@ -1498,6 +1527,7 @@ export const PdfService = {
       );
       y = renderizarTabelaFormulario(
         doc,
+        autoTable,
         y,
         ["ACESSÓRIOS", "OUTROS ACESSÓRIOS"],
         [[equipamento.acessorios || "—", equipamento.acessorios_outros || "—"]],
@@ -1505,6 +1535,7 @@ export const PdfService = {
       );
       y = renderizarTabelaFormulario(
         doc,
+        autoTable,
         y,
         ["OBSERVAÇÕES"],
         [[observacoesDocumento || "—"]],
@@ -1592,6 +1623,7 @@ export const PdfService = {
     historicoInformado?: EquipamentoHistoricoEvento[],
   ): Promise<PdfArtifact> {
     try {
+      const { jsPDF, autoTable } = await carregarModulosPdf();
       const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
       let y = 15;
 
@@ -1714,6 +1746,7 @@ export const PdfService = {
 
   async construirOrcamentoInsumos(orcamento: OrcamentoInsumosDetalhe, nomeArquivo?: string): Promise<PdfArtifact> {
     try {
+      const { jsPDF, autoTable } = await carregarModulosPdf();
       const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
       let y = 15;
       const dataGeracao = new Date();
