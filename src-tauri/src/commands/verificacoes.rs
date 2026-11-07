@@ -707,6 +707,9 @@ pub async fn atualizar_servicos_verificacao(
     if nova_aprovacao && status != "APROVADO" {
         return Err("Só dá para pedir nova aprovação enquanto o orçamento está Aprovado. Com o serviço em andamento, use o ajuste sem nova aprovação.".to_string());
     }
+    if nova_aprovacao && os_somente_garantia(&servicos) && !custo_total.is_some_and(valor_monetario_positivo) {
+        return Err("OS de garantia sem valor não passa por nova aprovação. Use o ajuste sem nova aprovação, que acerta o estoque das peças.".to_string());
+    }
     if depois_aprovacao && alterou_itens && !nova_aprovacao {
         if cliente_aprovou_alteracao != Some(true) {
             return Err("Confirme que o cliente aprovou as mudanças nos serviços e peças.".to_string());
