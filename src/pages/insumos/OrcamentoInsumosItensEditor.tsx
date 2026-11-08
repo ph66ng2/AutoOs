@@ -23,6 +23,8 @@ interface OrcamentoInsumosItensEditorProps {
   totais: TotaisOrcamentoInsumos;
   onChange: (linhas: LinhaOrcamentoInsumos[]) => void;
   disabled?: boolean;
+  /** Falso enquanto algum valor unitário digitado é inválido (a linha guarda o último valor válido). */
+  onValidityChange?: (valido: boolean) => void;
 }
 
 export function OrcamentoInsumosItensEditor({
@@ -30,7 +32,9 @@ export function OrcamentoInsumosItensEditor({
   totais,
   onChange,
   disabled = false,
+  onValidityChange,
 }: OrcamentoInsumosItensEditorProps) {
+  const [precosInvalidos, setPrecosInvalidos] = useState<ReadonlySet<number>>(new Set());
   const [busca, setBusca] = useState("");
   const [resultados, setResultados] = useState<Produto[]>([]);
   const [buscando, setBuscando] = useState(false);
@@ -93,6 +97,22 @@ export function OrcamentoInsumosItensEditor({
     }
     setBusca("");
     setResultados([]);
+  }
+
+  const todosPrecosValidos = linhas.every((linha) => !precosInvalidos.has(linha.produto_id));
+  useEffect(() => {
+    onValidityChange?.(todosPrecosValidos);
+    return () => onValidityChange?.(true);
+  }, [todosPrecosValidos, onValidityChange]);
+
+  function marcarPrecoValido(produtoId: number, valido: boolean) {
+    setPrecosInvalidos((atual) => {
+      if (atual.has(produtoId) !== valido) return atual;
+      const proximo = new Set(atual);
+      if (valido) proximo.delete(produtoId);
+      else proximo.add(produtoId);
+      return proximo;
+    });
   }
 
   function alterar(produtoId: number, alteracao: Partial<LinhaOrcamentoInsumos>) {
@@ -219,6 +239,7 @@ export function OrcamentoInsumosItensEditor({
                       aria-label={`Valor unitário de ${linha.descricao}`}
                       value={Number.isFinite(linha.valor_unitario) ? linha.valor_unitario : 0}
                       disabled={disabled}
+                      onValidityChange={(valido) => marcarPrecoValido(linha.produto_id, valido)}
                       onValueChange={(valor) => alterar(linha.produto_id, { valor_unitario: valor })}
                       className="h-8 px-2 text-right"
                     />

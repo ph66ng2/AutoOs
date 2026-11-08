@@ -369,6 +369,7 @@ export default function Equipamentos({ operationalProfile }: { operationalProfil
   const [valorFinal, setValorFinal] = useState<number>(0);
   const [valorFinalSugerido, setValorFinalSugerido] = useState<number | null>(null);
   const [acordoExcecaoEntrega, setAcordoExcecaoEntrega] = useState(false);
+  const [valorFinalValido, setValorFinalValido] = useState(true);
   const [tecnicoNovoEquipamento, setTecnicoNovoEquipamento] = useState<TecnicoDisponivel>("Ivan");
   const [marcaOutroOpen, setMarcaOutroOpen] = useState(false);
   const [tipoOutroOpen, setTipoOutroOpen] = useState(false);
@@ -892,7 +893,7 @@ export default function Equipamentos({ operationalProfile }: { operationalProfil
     const sugerido = verificacao?.custo_total ?? eq.valor_orcamento ?? 0;
     setValorFinalSugerido(sugerido);
     setValorFinal(sugerido);
-    setAcordoExcecaoEntrega(false);
+    setAcordoExcecaoEntrega(false); setValorFinalValido(true);
   }
 
   async function prepararAjusteOrcamentoPadrao(eq: Equipamento) {
@@ -948,7 +949,7 @@ export default function Equipamentos({ operationalProfile }: { operationalProfil
       void prepararValorEntregaPadrao(selecionado);
     } else {
       setValorFinalSugerido(null);
-      setAcordoExcecaoEntrega(false);
+      setAcordoExcecaoEntrega(false); setValorFinalValido(true);
     }
   }
 
@@ -983,7 +984,7 @@ export default function Equipamentos({ operationalProfile }: { operationalProfil
     setCarregandoCatalogoAjuste(false);
     setValorFinal(0);
     setValorFinalSugerido(null);
-    setAcordoExcecaoEntrega(false);
+    setAcordoExcecaoEntrega(false); setValorFinalValido(true);
     setErroImagensSaidaEntrega(null);
     setImagensSaidaEntrega([]);
     if ((statusPreSelecionado || "") === "ENTREGUE") {
@@ -1055,7 +1056,7 @@ export default function Equipamentos({ operationalProfile }: { operationalProfil
     setMotivoCorrecaoStatus("");
     setValorFinal(0);
     setValorFinalSugerido(null);
-    setAcordoExcecaoEntrega(false);
+    setAcordoExcecaoEntrega(false); setValorFinalValido(true);
     await prepararAjusteOrcamentoPadrao(eq);
     setStatusDialogOpen(true);
   }
@@ -1560,6 +1561,7 @@ export default function Equipamentos({ operationalProfile }: { operationalProfil
       && !!selecionado
       && !reabreOrcamentoSemAjuste(selecionado.status, novoStatus);
     if (mostraOrcamento && !valorOrcamentoValido) return;
+    if (novoStatus === "ENTREGUE" && acordoExcecaoEntrega && !valorFinalValido) return;
     if (ajusteOrcamentoSemMudancaStatus && pecasAjusteInvalidas) {
       warning("Equipamentos", "Corrija o preço inválido de peça antes de continuar.");
       return;
@@ -3844,7 +3846,10 @@ export default function Equipamentos({ operationalProfile }: { operationalProfil
                     <input
                       type="checkbox"
                       checked={acordoExcecaoEntrega}
-                      onChange={(e) => setAcordoExcecaoEntrega(e.target.checked)}
+                      onChange={(e) => {
+                        setAcordoExcecaoEntrega(e.target.checked);
+                        if (!e.target.checked) setValorFinalValido(true);
+                      }}
                     />
                     Acordo excepcional (usar valor diferente do verificado)
                   </label>
@@ -3853,6 +3858,7 @@ export default function Equipamentos({ operationalProfile }: { operationalProfil
                     <ValorDecimalInput
                       value={Number(valorFinal) || 0}
                       onValueChange={setValorFinal}
+                      onValidityChange={setValorFinalValido}
                       disabled={!acordoExcecaoEntrega}
                     />
                   </div>
@@ -3940,7 +3946,7 @@ export default function Equipamentos({ operationalProfile }: { operationalProfil
             </div>
             <DialogFooter className="shrink-0 bg-background pt-3">
                 <Button type="button" variant="outline" onClick={() => setStatusDialogOpen(false)}>Cancelar</Button>
-                <Button type="button" onClick={iniciarConfirmacaoStatus} disabled={salvando || (ajusteOrcamentoSemMudancaStatus && pecasAjusteInvalidas) || (!novoStatus && !ajusteOrcamentoSemMudancaStatus) || (((novoStatus === "AGUARDANDO_APROVACAO" && !reabreOrcamentoSemAjuste(selecionado.status, novoStatus)) || ajusteOrcamentoSemMudancaStatus) && !valorOrcamentoValido) || (novoStatus === "AGUARDANDO_APROVACAO" && !reabreOrcamentoSemAjuste(selecionado.status, novoStatus) && !totalOrcamentoAprovacaoValido(Number(valorOrcamento))) || (ajusteOrcamentoSemMudancaStatus && !totalOrcamentoAjusteValido(Number(valorOrcamento), osSomenteGarantia(servicosAjuste), selecionado.status, selecionado.valor_orcamento))}>
+                <Button type="button" onClick={iniciarConfirmacaoStatus} disabled={salvando || (novoStatus === "ENTREGUE" && acordoExcecaoEntrega && !valorFinalValido) || (ajusteOrcamentoSemMudancaStatus && pecasAjusteInvalidas) || (!novoStatus && !ajusteOrcamentoSemMudancaStatus) || (((novoStatus === "AGUARDANDO_APROVACAO" && !reabreOrcamentoSemAjuste(selecionado.status, novoStatus)) || ajusteOrcamentoSemMudancaStatus) && !valorOrcamentoValido) || (novoStatus === "AGUARDANDO_APROVACAO" && !reabreOrcamentoSemAjuste(selecionado.status, novoStatus) && !totalOrcamentoAprovacaoValido(Number(valorOrcamento))) || (ajusteOrcamentoSemMudancaStatus && !totalOrcamentoAjusteValido(Number(valorOrcamento), osSomenteGarantia(servicosAjuste), selecionado.status, selecionado.valor_orcamento))}>
                   {salvando ? "Salvando..." : correcaoStatus ? "Corrigir status" : "Confirmar"}
                 </Button>
               </DialogFooter>

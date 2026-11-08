@@ -210,6 +210,21 @@ describe("OrcamentoInsumosDialog: novo orçamento", () => {
     expect(screen.getByRole("button", { name: "Salvar" })).toBeDisabled();
   });
 
+  it("bloqueia o Salvar enquanto o valor unitário digitado é inválido", async () => {
+    render(<OrcamentoInsumosDialog open onOpenChange={vi.fn()} orcamentoId={null} />);
+    fireEvent.click(screen.getByRole("button", { name: "Escolher cliente" }));
+    fireEvent.change(screen.getByLabelText("Buscar produto do estoque"), { target: { value: "etiq" } });
+    fireEvent.click(within(await screen.findByRole("option", { name: /etiqueta 100x50/i })).getByRole("button"));
+    expect(screen.getByRole("button", { name: "Salvar" })).toBeEnabled();
+
+    fireEvent.change(screen.getByLabelText("Valor unitário de Etiqueta 100x50"), { target: { value: "abc" } });
+    expect(screen.getByRole("button", { name: "Salvar" })).toBeDisabled();
+    expect(screen.getByTestId("motivo-sem-salvar")).toHaveTextContent("Corrija o valor unitário inválido nos itens.");
+
+    fireEvent.change(screen.getByLabelText("Valor unitário de Etiqueta 100x50"), { target: { value: "12,50" } });
+    expect(screen.getByRole("button", { name: "Salvar" })).toBeEnabled();
+  });
+
   it("não inclui o mesmo produto duas vezes: soma a quantidade", async () => {
     render(<OrcamentoInsumosDialog open onOpenChange={vi.fn()} orcamentoId={null} />);
     for (let vez = 0; vez < 2; vez += 1) {

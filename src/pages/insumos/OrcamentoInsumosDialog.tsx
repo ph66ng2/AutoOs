@@ -118,6 +118,7 @@ export function OrcamentoInsumosDialog({
   const [cliente, setCliente] = useState<Cliente | null>(null);
   const [contato, setContato] = useState<ClienteContato | null>(null);
   const [linhas, setLinhas] = useState<LinhaOrcamentoInsumos[]>([]);
+  const [precosValidos, setPrecosValidos] = useState(true);
   const [desconto, setDesconto] = useState("");
   const [validade, setValidade] = useState("");
   const [observacoes, setObservacoes] = useState("");
@@ -197,6 +198,7 @@ export function OrcamentoInsumosDialog({
     && cliente?.id != null
     && linhas.length > 0
     && quantidadesValidas
+    && precosValidos
     && !totais.descontoExcedido
     && Boolean(validade);
   const bloqueadoPorEdicao = alterado || !detalhe;
@@ -207,6 +209,7 @@ export function OrcamentoInsumosDialog({
     if (cliente?.id == null) return "Escolha o cliente para salvar.";
     if (linhas.length === 0) return "Inclua ao menos um item para salvar.";
     if (!quantidadesValidas) return "Informe uma quantidade maior que zero em todos os itens.";
+    if (!precosValidos) return "Corrija o valor unitário inválido nos itens.";
     if (!validade) return "Informe a validade do orçamento.";
     return null;
   })();
@@ -515,6 +518,7 @@ export function OrcamentoInsumosDialog({
                     linhas={linhas}
                     totais={totais}
                     onChange={editar(setLinhas)}
+                    onValidityChange={setPrecosValidos}
                     disabled={!editavel || ocupado}
                   />
                   {faltas.length > 0 && editavel && (
