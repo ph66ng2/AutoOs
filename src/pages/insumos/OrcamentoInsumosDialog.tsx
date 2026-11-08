@@ -119,6 +119,7 @@ export function OrcamentoInsumosDialog({
   const [contato, setContato] = useState<ClienteContato | null>(null);
   const [linhas, setLinhas] = useState<LinhaOrcamentoInsumos[]>([]);
   const [precosValidos, setPrecosValidos] = useState(true);
+  const [descontoValido, setDescontoValido] = useState(true);
   const [desconto, setDesconto] = useState("");
   const [validade, setValidade] = useState("");
   const [observacoes, setObservacoes] = useState("");
@@ -135,6 +136,7 @@ export function OrcamentoInsumosDialog({
     setDetalhe(novo);
     setLinhas(linhasDoDetalhe(novo));
     setDesconto(novo.desconto > 0 ? String(novo.desconto) : "");
+    setDescontoValido(true);
     setValidade(novo.validade ?? "");
     setObservacoes(novo.observacoes ?? "");
     setContato(contatoDoDetalhe(novo));
@@ -159,6 +161,7 @@ export function OrcamentoInsumosDialog({
       setContato(null);
       setLinhas([]);
       setDesconto("");
+      setDescontoValido(true);
       setValidade(validadePadraoOrcamentoInsumos());
       setObservacoes("");
       setAlterado(false);
@@ -199,6 +202,7 @@ export function OrcamentoInsumosDialog({
     && linhas.length > 0
     && quantidadesValidas
     && precosValidos
+    && descontoValido
     && !totais.descontoExcedido
     && Boolean(validade);
   const bloqueadoPorEdicao = alterado || !detalhe;
@@ -210,6 +214,7 @@ export function OrcamentoInsumosDialog({
     if (linhas.length === 0) return "Inclua ao menos um item para salvar.";
     if (!quantidadesValidas) return "Informe uma quantidade maior que zero em todos os itens.";
     if (!precosValidos) return "Corrija o valor unitário inválido nos itens.";
+    if (!descontoValido) return "Corrija o desconto inválido.";
     if (!validade) return "Informe a validade do orçamento.";
     return null;
   })();
@@ -548,10 +553,12 @@ export function OrcamentoInsumosDialog({
                   <div className="space-y-2">
                     <Label htmlFor="oi-desconto" className={rotuloSecao}>Desconto (R$)</Label>
                     <ValorDecimalInput
+                      key={`desconto-${detalhe?.id ?? "novo"}`}
                       id="oi-desconto"
                       min={0}
                       value={descontoNumero}
                       disabled={!editavel || ocupado}
+                      onValidityChange={setDescontoValido}
                       onValueChange={(valor) => editar(setDesconto)(String(valor))}
                       className="h-10"
                     />

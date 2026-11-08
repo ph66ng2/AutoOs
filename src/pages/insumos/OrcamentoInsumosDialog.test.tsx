@@ -225,6 +225,22 @@ describe("OrcamentoInsumosDialog: novo orçamento", () => {
     expect(screen.getByRole("button", { name: "Salvar" })).toBeEnabled();
   });
 
+  it("bloqueia o Salvar enquanto o desconto digitado é inválido", async () => {
+    render(<OrcamentoInsumosDialog open onOpenChange={vi.fn()} orcamentoId={null} />);
+    fireEvent.click(screen.getByRole("button", { name: "Escolher cliente" }));
+    fireEvent.change(screen.getByLabelText("Buscar produto do estoque"), { target: { value: "etiq" } });
+    fireEvent.click(within(await screen.findByRole("option", { name: /etiqueta 100x50/i })).getByRole("button"));
+    expect(screen.getByRole("button", { name: "Salvar" })).toBeEnabled();
+
+    fireEvent.change(screen.getByLabelText("Desconto (R$)"), { target: { value: "abc" } });
+    expect(screen.getByRole("button", { name: "Salvar" })).toBeDisabled();
+    expect(screen.getByTestId("motivo-sem-salvar")).toHaveTextContent("Corrija o desconto inválido.");
+    expect(screen.getByText("Informe um valor válido.")).toBeInTheDocument();
+
+    fireEvent.change(screen.getByLabelText("Desconto (R$)"), { target: { value: "5,00" } });
+    expect(screen.getByRole("button", { name: "Salvar" })).toBeEnabled();
+  });
+
   it("não inclui o mesmo produto duas vezes: soma a quantidade", async () => {
     render(<OrcamentoInsumosDialog open onOpenChange={vi.fn()} orcamentoId={null} />);
     for (let vez = 0; vez < 2; vez += 1) {
