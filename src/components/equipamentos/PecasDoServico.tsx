@@ -104,7 +104,13 @@ export function PecasDoServico<Id extends ClienteId>({ pecas, onChange, saasMode
               variant="ghost"
               size="icon"
               aria-label={`Remover ${peca.nome}`}
-              onClick={() => onChange(pecas.filter((item) => item.produto_id !== peca.produto_id))}
+              onClick={() => {
+                setPrecosInvalidos((atual) => {
+                  const { [String(peca.produto_id)]: _removido, ...resto } = atual;
+                  return resto;
+                });
+                onChange(pecas.filter((item) => item.produto_id !== peca.produto_id));
+              }}
             >
               <Trash2 className="h-4 w-4" />
             </Button>

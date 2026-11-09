@@ -68,6 +68,21 @@ fn servicos_tem_pecas(servicos: &[ServicoOrcamento]) -> bool {
     servicos.iter().any(|servico| !servico.pecas.is_empty())
 }
 
+/// Peça de "Peças Necessárias" sem serviço vinculado (id fora de `servico:produto`): não gera
+/// consumo nem dedução pendente, então a aprovação de garantia não pode seguir com ela.
+/// Mesma regra de `aprovar_orcamento` na aprovação paga.
+fn tem_pecas_avulsas(servicos: &[ServicoOrcamento], pecas_json: Option<&str>) -> Result<bool, String> {
+    let pecas: Vec<serde_json::Value> = serde_json::from_str(pecas_json.unwrap_or("[]"))
+        .map_err(|_| "Peças do orçamento inválidas.".to_string())?;
+    let vinculadas: std::collections::HashSet<String> = servicos
+        .iter()
+        .flat_map(|s| s.pecas.iter().map(move |p| format!("{}:{}", s.id, p.produto_id)))
+        .collect();
+    Ok(pecas.iter().any(|p| {
+        !p.get("id").and_then(|v| v.as_str()).is_some_and(|id| vinculadas.contains(id))
+    }))
+}
+
 /// OS só de garantia (todos os itens R$ 0,00): grava valor_orcamento 0 e vai para APROVADO
 /// na mesma transação da verificação, sem passar por AGUARDANDO_APROVACAO.
 /// Não há coluna/flag de garantia; 0,00 no item é a convenção existente.
@@ -79,6 +94,7 @@ async fn gravar_aprovacao_os_garantia(
     empresa_id: i32,
     verificacao_id: i32,
     servicos: &[ServicoOrcamento],
+    pecas_necessarias: Option<&str>,
     custo_total: Option<f64>,
     concluida: bool,
 ) -> Result<Option<SecurityProfileSummary>, String> {
@@ -90,6 +106,9 @@ async fn gravar_aprovacao_os_garantia(
     }
     let actor = require_permission(PERMISSION_FINANCIAL_ACTIONS)
         .map_err(|erro| format!("OS só de garantia vai direto para Aprovado. {erro}"))?;
+    if tem_pecas_avulsas(servicos, pecas_necessarias)? {
+        return Err("Há peças em Peças Necessárias sem serviço vinculado. Vincule-as a um serviço com estoque antes de aprovar a OS de garantia.".to_string());
+    }
     if servicos_tem_pecas(servicos) {
         require_permission(PERMISSION_STOCK_CONTROL).map_err(|erro| {
             format!("OS de garantia com peças baixa o estoque ao ser aprovada. {erro}")
@@ -299,6 +318,7 @@ pub async fn salvar_verificacao_tecnica(mut input: VerificacaoInput) -> Result<V
             empresa_id,
             id,
             &servicos,
+            input.pecas_necessarias.as_deref(),
             input.custo_total,
             concluida,
         )
@@ -371,6 +391,7 @@ pub async fn salvar_verificacao_tecnica(mut input: VerificacaoInput) -> Result<V
         empresa_id,
         verificacao_id,
         &servicos,
+        input.pecas_necessarias.as_deref(),
         input.custo_total,
         concluida,
     )
@@ -834,6 +855,7 @@ pub async fn atualizar_servicos_verificacao(
             active_empresa_id,
             verificacao_id,
             &servicos,
+            pecas_json.as_deref(),
             custo_total,
             true,
         )
@@ -940,6 +962,20 @@ pub async fn atualizar_servicos_verificacao(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn garantia_rejeita_peca_avulsa_de_pecas_necessarias() {
+        let servicos = parse_servicos(
+            r#"[{"id":"a","valor":0,"pecas":[{"produto_id":1,"quantidade":1,"valor_unitario":0}]}]"#,
+        )
+        .unwrap();
+        let vinculada = r#"[{"id":"a:1","nome":"Cabeça"}]"#;
+        let avulsa = r#"[{"id":"a:1"},{"id":"solto","nome":"Rolo"}]"#;
+        assert!(!tem_pecas_avulsas(&servicos, Some(vinculada)).unwrap());
+        assert!(!tem_pecas_avulsas(&servicos, None).unwrap());
+        assert!(tem_pecas_avulsas(&servicos, Some(avulsa)).unwrap());
+        assert!(tem_pecas_avulsas(&servicos, Some("lixo")).is_err());
+    }
 
     #[test]
     fn garantia_com_peca_exige_controle_de_estoque() {
