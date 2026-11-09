@@ -1563,7 +1563,7 @@ export default function Equipamentos({ operationalProfile }: { operationalProfil
       && !reabreOrcamentoSemAjuste(selecionado.status, novoStatus);
     if (mostraOrcamento && (!valorOrcamentoValido || !prazoAprovacaoValido)) return;
     if (novoStatus === "ENTREGUE" && acordoExcecaoEntrega && !valorFinalValido) return;
-    if (ajusteOrcamentoSemMudancaStatus && pecasAjusteInvalidas) {
+    if (pecasAjusteInvalidas) {
       warning("Equipamentos", "Corrija o preço inválido de peça antes de continuar.");
       return;
     }
@@ -1819,6 +1819,10 @@ export default function Equipamentos({ operationalProfile }: { operationalProfil
       && !reabreOrcamentoSemAjuste(selecionado.status, novoStatus);
     if (mostraOrcamento && (!valorOrcamentoValido || !prazoAprovacaoValido || !Number.isFinite(totalAtual))) {
       warning("Equipamentos", "Informe um valor de orçamento válido.");
+      return;
+    }
+    if (pecasAjusteInvalidas) {
+      warning("Equipamentos", "Corrija o preço inválido antes de continuar.");
       return;
     }
     if (enviandoParaAprovacao && !totalOrcamentoAprovacaoValido(totalAtual)) {
@@ -3947,7 +3951,7 @@ export default function Equipamentos({ operationalProfile }: { operationalProfil
             </div>
             <DialogFooter className="shrink-0 bg-background pt-3">
                 <Button type="button" variant="outline" onClick={() => setStatusDialogOpen(false)}>Cancelar</Button>
-                <Button type="button" onClick={iniciarConfirmacaoStatus} disabled={salvando || (novoStatus === "ENTREGUE" && acordoExcecaoEntrega && !valorFinalValido) || (ajusteOrcamentoSemMudancaStatus && pecasAjusteInvalidas) || (!novoStatus && !ajusteOrcamentoSemMudancaStatus) || (((novoStatus === "AGUARDANDO_APROVACAO" && !reabreOrcamentoSemAjuste(selecionado.status, novoStatus)) || ajusteOrcamentoSemMudancaStatus) && !valorOrcamentoValido) || (novoStatus === "AGUARDANDO_APROVACAO" && !reabreOrcamentoSemAjuste(selecionado.status, novoStatus) && !totalOrcamentoAprovacaoValido(Number(valorOrcamento))) || (ajusteOrcamentoSemMudancaStatus && !totalOrcamentoAjusteValido(Number(valorOrcamento), osSomenteGarantia(servicosAjuste), selecionado.status, selecionado.valor_orcamento))}>
+                <Button type="button" onClick={iniciarConfirmacaoStatus} disabled={salvando || (novoStatus === "ENTREGUE" && acordoExcecaoEntrega && !valorFinalValido) || pecasAjusteInvalidas || (!novoStatus && !ajusteOrcamentoSemMudancaStatus) || (((novoStatus === "AGUARDANDO_APROVACAO" && !reabreOrcamentoSemAjuste(selecionado.status, novoStatus)) || ajusteOrcamentoSemMudancaStatus) && !valorOrcamentoValido) || (novoStatus === "AGUARDANDO_APROVACAO" && !reabreOrcamentoSemAjuste(selecionado.status, novoStatus) && !totalOrcamentoAprovacaoValido(Number(valorOrcamento))) || (ajusteOrcamentoSemMudancaStatus && !totalOrcamentoAjusteValido(Number(valorOrcamento), osSomenteGarantia(servicosAjuste), selecionado.status, selecionado.valor_orcamento))}>
                   {salvando ? "Salvando..." : correcaoStatus ? "Corrigir status" : "Confirmar"}
                 </Button>
               </DialogFooter>

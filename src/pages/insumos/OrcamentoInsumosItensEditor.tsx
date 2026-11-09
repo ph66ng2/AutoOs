@@ -255,7 +255,10 @@ export function OrcamentoInsumosItensEditor({
                         size="icon"
                         className="h-8 w-8 text-muted-foreground hover:bg-red-50 hover:text-red-600 active:scale-[0.96] [transition-property:scale,background-color,color]"
                         aria-label={`Remover ${linha.descricao}`}
-                        onClick={() => onChange(linhas.filter((outra) => outra.produto_id !== linha.produto_id))}
+                        onClick={() => {
+                          marcarPrecoValido(linha.produto_id, true);
+                          onChange(linhas.filter((outra) => outra.produto_id !== linha.produto_id));
+                        }}
                       >
                         <Trash2 className="h-3.5 w-3.5" />
                       </Button>
