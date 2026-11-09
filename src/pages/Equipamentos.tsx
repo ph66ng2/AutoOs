@@ -350,6 +350,7 @@ export default function Equipamentos({ operationalProfile }: { operationalProfil
   const [novoStatus, setNovoStatus] = useState("");
   const [valorOrcamento, setValorOrcamento] = useState<number>(0);
   const [valorOrcamentoValido, setValorOrcamentoValido] = useState(true);
+  const [prazoAprovacaoValido, setPrazoAprovacaoValido] = useState(true);
   const valorOrcamentoRef = useRef(valorOrcamento);
   const [escolhaAjuste, setEscolhaAjuste] = useState<{ variante: "aprovado" | "pendente"; analise: AnaliseAjusteOrcamento } | null>(null);
   const escolhaAjusteResolver = useRef<((opcoes: OpcoesAjusteOrcamento | null) => void) | null>(null);
@@ -1560,7 +1561,7 @@ export default function Equipamentos({ operationalProfile }: { operationalProfil
     const enviandoParaAprovacao = novoStatus === "AGUARDANDO_APROVACAO"
       && !!selecionado
       && !reabreOrcamentoSemAjuste(selecionado.status, novoStatus);
-    if (mostraOrcamento && !valorOrcamentoValido) return;
+    if (mostraOrcamento && (!valorOrcamentoValido || !prazoAprovacaoValido)) return;
     if (novoStatus === "ENTREGUE" && acordoExcecaoEntrega && !valorFinalValido) return;
     if (ajusteOrcamentoSemMudancaStatus && pecasAjusteInvalidas) {
       warning("Equipamentos", "Corrija o preço inválido de peça antes de continuar.");
@@ -1816,7 +1817,7 @@ export default function Equipamentos({ operationalProfile }: { operationalProfil
       || ajusteOrcamentoSemMudancaStatus;
     const enviandoParaAprovacao = novoStatus === "AGUARDANDO_APROVACAO"
       && !reabreOrcamentoSemAjuste(selecionado.status, novoStatus);
-    if (mostraOrcamento && (!valorOrcamentoValido || !Number.isFinite(totalAtual))) {
+    if (mostraOrcamento && (!valorOrcamentoValido || !prazoAprovacaoValido || !Number.isFinite(totalAtual))) {
       warning("Equipamentos", "Informe um valor de orçamento válido.");
       return;
     }
@@ -3746,7 +3747,7 @@ export default function Equipamentos({ operationalProfile }: { operationalProfil
                     )}
                   </div>
                   {!ajusteOrcamentoSemMudancaStatus && (
-                    <div className="space-y-2"><Label>Prazo Aprovação</Label><DateIsoInput min={new Date().toLocaleDateString("en-CA")} value={prazoAprovacao} onValueChange={setPrazoAprovacao} /></div>
+                    <div className="space-y-2"><Label>Prazo Aprovação</Label><DateIsoInput min={new Date().toLocaleDateString("en-CA")} value={prazoAprovacao} onValueChange={setPrazoAprovacao} onValidityChange={setPrazoAprovacaoValido} /></div>
                   )}
                   <div className="space-y-2">
                     <Label htmlFor="observacoes-ajuste">Observações</Label>

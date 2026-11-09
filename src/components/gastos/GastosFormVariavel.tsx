@@ -62,6 +62,7 @@ export function GastosFormVariavel({
   saving,
 }: GastosFormVariavelProps) {
   const [valorInvalido, setValorInvalido] = useState(false);
+  const [dataInvalida, setDataInvalida] = useState(false);
   const form = useForm<GastoVariavelFormData>({
     resolver: zodResolver(gastoVariavelSchema),
     defaultValues: {
@@ -95,7 +96,7 @@ export function GastosFormVariavel({
   }, [gasto, form]);
 
   async function onSubmit(data: GastoVariavelFormData) {
-    if (valorInvalido) return;
+    if (valorInvalido || dataInvalida) return;
     await onSave({
       descricao: data.descricao,
       valor: Number(data.valor),
@@ -136,6 +137,7 @@ export function GastosFormVariavel({
               <DateIsoInput
                 value={form.watch("data") || ""}
                 onValueChange={(iso) => form.setValue("data", iso, { shouldValidate: true, shouldDirty: true })}
+                onValidityChange={(valido) => setDataInvalida(!valido)}
               />
               <FormValidationError message={form.formState.errors.data?.message} />
             </div>
@@ -172,7 +174,7 @@ export function GastosFormVariavel({
                 Cancelar
               </Button>
             </DialogClose>
-            <Button type="submit" disabled={saving || valorInvalido}>
+            <Button type="submit" disabled={saving || valorInvalido || dataInvalida}>
               {saving ? "Salvando..." : gasto ? "Salvar" : "Cadastrar"}
             </Button>
           </DialogFooter>

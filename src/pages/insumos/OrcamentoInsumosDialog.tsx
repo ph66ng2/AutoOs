@@ -122,6 +122,7 @@ export function OrcamentoInsumosDialog({
   const [descontoValido, setDescontoValido] = useState(true);
   const [desconto, setDesconto] = useState("");
   const [validade, setValidade] = useState("");
+  const [validadeValida, setValidadeValida] = useState(true);
   const [observacoes, setObservacoes] = useState("");
   const [alterado, setAlterado] = useState(false);
   const [carregando, setCarregando] = useState(false);
@@ -204,7 +205,8 @@ export function OrcamentoInsumosDialog({
     && precosValidos
     && descontoValido
     && !totais.descontoExcedido
-    && Boolean(validade);
+    && Boolean(validade)
+    && validadeValida;
   const bloqueadoPorEdicao = alterado || !detalhe;
   const vencido = detalhe ? orcamentoInsumosVencido(detalhe) : false;
   /** Explica por que o Salvar está desabilitado (o aviso de desconto já aparece junto ao campo). */
@@ -215,7 +217,7 @@ export function OrcamentoInsumosDialog({
     if (!quantidadesValidas) return "Informe uma quantidade maior que zero em todos os itens.";
     if (!precosValidos) return "Corrija o valor unitário inválido nos itens.";
     if (!descontoValido) return "Corrija o desconto inválido.";
-    if (!validade) return "Informe a validade do orçamento.";
+    if (!validade || !validadeValida) return "Informe a validade do orçamento.";
     return null;
   })();
 
@@ -542,6 +544,7 @@ export function OrcamentoInsumosDialog({
                       value={validade}
                       disabled={!editavel || ocupado}
                       onValueChange={editar(setValidade)}
+                      onValidityChange={setValidadeValida}
                       className="h-10"
                     />
                     {vencido && !alterado && (

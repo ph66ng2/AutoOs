@@ -31,6 +31,7 @@ function texto(cause: unknown, fallback: string) {
 export function ProrrogarPrazoDialog({ open, onOpenChange, equipamentoId, onConcluido, onEnvioManual }: Props) {
   const { ensureSensitiveAccess } = useSensitiveAccess();
   const [data, setData] = useState(() => dataIsoEmDias(7));
+  const [dataInvalida, setDataInvalida] = useState(false);
   const [enviar, setEnviar] = useState(true);
   const [busy, setBusy] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
@@ -54,6 +55,10 @@ export function ProrrogarPrazoDialog({ open, onOpenChange, equipamentoId, onConc
   }
 
   async function confirmar() {
+    if (dataInvalida) {
+      setErro("Informe uma data válida a partir de hoje.");
+      return;
+    }
     if (!data || data < dataIsoEmDias(0)) {
       setErro("Escolha uma data a partir de hoje.");
       return;
@@ -136,6 +141,7 @@ export function ProrrogarPrazoDialog({ open, onOpenChange, equipamentoId, onConc
               min={dataIsoEmDias(0)}
               value={data}
               onValueChange={setData}
+              onValidityChange={(valido) => setDataInvalida(!valido)}
             />
             <label className="flex items-center gap-2 text-sm">
               <input
@@ -150,7 +156,7 @@ export function ProrrogarPrazoDialog({ open, onOpenChange, equipamentoId, onConc
           </div>
           <DialogFooter className="gap-2">
             <Button variant="outline" disabled={busy} onClick={() => onOpenChange(false)}>Cancelar</Button>
-            <Button disabled={busy || !data} onClick={() => void confirmar()}>
+            <Button disabled={busy || !data || dataInvalida} onClick={() => void confirmar()}>
               {busy ? "Aguarde..." : enviar ? "Prorrogar e enviar" : "Prorrogar e publicar"}
             </Button>
           </DialogFooter>
