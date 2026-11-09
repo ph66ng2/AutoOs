@@ -24,6 +24,11 @@ const dbMocks = vi.hoisted(() => ({
   listarClienteContatos: vi.fn().mockResolvedValue([]),
 }));
 vi.mock("@/lib/db", () => ({ db: dbMocks }));
+// Repositório de contatos: por padrão delega ao db mockado (caminho Tauri); o teste SaaS sobrescreve `listar`.
+const repoMocks = vi.hoisted(() => ({ listar: vi.fn() }));
+vi.mock("@/lib/data/cliente-contatos-repository", () => ({
+  carregarRepositorioClienteContatos: async () => ({ listar: repoMocks.listar }),
+}));
 
 // O menu "Mais" é um Select do Radix; no jsdom as ações viram botões simples.
 vi.mock("@/components/ui/action-priority-row", () => ({
@@ -65,6 +70,8 @@ describe("Clientes: ordem de compra e preferências", () => {
     mocks.atualizar.mockResolvedValue({ sucesso: true });
     dbMocks.listarEquipamentosCliente.mockResolvedValue([]);
     dbMocks.listarClienteContatos.mockResolvedValue([]);
+    repoMocks.listar.mockReset();
+    repoMocks.listar.mockImplementation((...args: unknown[]) => (dbMocks.listarClienteContatos as any)(...args));
   });
 
   it("mostra o selo Exige OC só para quem exige", () => {
@@ -108,6 +115,20 @@ describe("Clientes: ordem de compra e preferências", () => {
     expect(dbMocks.listarClienteContatos).toHaveBeenCalledWith(7, 3);
     fireEvent.click(screen.getByRole("button", { name: "Contatos" }));
     expect(screen.queryByText("carlos@x.com")).not.toBeInTheDocument();
+  });
+
+  it("lista os contatos pelo repositório (SaaS-aware) e mostra o erro em vez de lista vazia", async () => {
+    mocks.clientes = [clienteSalvo({ id: "11111111-1111-4111-8111-111111111111", empresa_id: "22222222-2222-4222-8222-222222222222" })];
+    repoMocks.listar.mockRejectedValueOnce(new Error("Sua sessão SaaS expirou."));
+    renderPagina();
+    fireEvent.click(screen.getByRole("button", { name: "Contatos" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("Sua sessão SaaS expirou.");
+    expect(screen.queryByText("Nenhum contato cadastrado")).not.toBeInTheDocument();
+    expect(repoMocks.listar).toHaveBeenCalledWith(
+      "11111111-1111-4111-8111-111111111111",
+      "22222222-2222-4222-8222-222222222222",
+    );
+    expect(dbMocks.listarClienteContatos).not.toHaveBeenCalled();
   });
 
   it("ignora a resposta atrasada de um cliente já recolhido/trocado", async () => {
