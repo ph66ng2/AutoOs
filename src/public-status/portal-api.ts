@@ -53,6 +53,14 @@ export interface RespostaOrcamento {
   ordemCompra: string | null;
 }
 
+export interface ServicoOrcamentoPortal {
+  descricao: string;
+  valor: number;
+  /** false = recusado pelo cliente; null/ausente = sem decisão. */
+  aprovado?: boolean | null;
+  pecas: Array<{ nome: string; quantidade: number; valorUnitario: number }>;
+}
+
 export interface OrcamentoPortal {
   versaoId: number;
   versao: number;
@@ -60,7 +68,9 @@ export interface OrcamentoPortal {
   valorTotal: number;
   validoAte: string | null;
   estado: EstadoOrcamento;
-  servicos: Array<{ descricao: string; valor: number; /** false = recusado pelo cliente; null/ausente = sem decisão. */ aprovado?: boolean | null; pecas: Array<{ nome: string; quantidade: number; valorUnitario: number }> }>;
+  servicos: ServicoOrcamentoPortal[];
+  /** Serviços aprovados da verificação atual (reflete ajustes sem nova aprovação). null/ausente = sem decisão: usar `servicos`. */
+  servicosAtuais?: ServicoOrcamentoPortal[] | null;
   pecas: Array<{ nome: string; quantidade: number; valorTotal: number }>;
   janelaMinutos: number;
   aceiteOnline: boolean;

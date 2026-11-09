@@ -52,7 +52,11 @@ type OrcamentoDetalhe = NonNullable<DetalheAtendimento["orcamento"]>;
 
 function blocosServicosEPecas(orc: OrcamentoDetalhe, somenteAprovados = false): Bloco[] {
   const blocos: Bloco[] = [];
-  const servicos = somenteAprovados ? orc.servicos.filter((s) => s.aprovado !== false) : orc.servicos;
+  // A ordem de serviço usa as linhas aprovadas atuais (ajustes sem nova aprovação não geram versão);
+  // o PDF do orçamento mantém o snapshot enviado ao cliente.
+  const servicos = !somenteAprovados
+    ? orc.servicos
+    : orc.servicosAtuais ?? orc.servicos.filter((s) => s.aprovado !== false);
   for (const servico of servicos) {
     blocos.push({
       tipo: "linha",

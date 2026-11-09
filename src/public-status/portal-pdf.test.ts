@@ -85,6 +85,23 @@ describe("modelo da ordem de serviço", () => {
     expect(t).not.toContain("Limpeza interna");
   });
 
+  it("OS usa as linhas aprovadas atuais após ajuste sem nova aprovação; o orçamento mantém o snapshot", () => {
+    const orc = detalhe().orcamento!;
+    const comAjuste = detalhe({ orcamento: { ...orc,
+      servicos: [{ descricao: "Troca do fusor", valor: 250, aprovado: true, pecas: [{ nome: "Fusor", quantidade: 1, valorUnitario: 250 }] }],
+      servicosAtuais: [
+        { descricao: "Troca do fusor", valor: 180, aprovado: true, pecas: [{ nome: "Fusor", quantidade: 2, valorUnitario: 90 }] },
+        { descricao: "Revisão extra", valor: 40, aprovado: true, pecas: [] },
+      ] } });
+    const os = texto(modeloOrdemServico(comAjuste));
+    expect(os).toContain("Revisão extra");
+    expect(os).toContain("2 x Fusor");
+    expect(os).not.toContain("1 x Fusor");
+    const orcamento = texto(modeloOrcamento(comAjuste)!);
+    expect(orcamento).toContain("1 x Fusor");
+    expect(orcamento).not.toContain("Revisão extra");
+  });
+
   it("sem orçamento e em RECEBIDO não traz serviços aprovados", () => {
     const t = texto(modeloOrdemServico(detalhe({ status: "RECEBIDO", orcamento: null })));
     expect(t).not.toContain("Serviços aprovados");
