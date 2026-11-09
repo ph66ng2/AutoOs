@@ -13,7 +13,7 @@ use crate::commands::auth::{
     profile_has_permission, record_security_event, require_any_permission, require_active_session_company_id,
     require_permission,
     SecurityProfileSummary, PERMISSION_FINANCIAL_ACTIONS, PERMISSION_MANAGE_STATUS_LINKS,
-    PERMISSION_PREPARE_QUOTES,
+    PERMISSION_PREPARE_QUOTES, PERMISSION_STOCK_CONTROL,
 };
 use crate::db::get_pool;
 use crate::commands::orcamento_correcao::{
@@ -63,6 +63,11 @@ fn claimed_tenant_conflicts(claimed: Option<i32>, actual: Option<i32>) -> bool {
     matches!((claimed, actual), (Some(claimed_id), Some(actual_id)) if claimed_id != actual_id)
 }
 
+/// A aprovação baixa estoque quando algum serviço leva peça (mesma regra do aprovar pago).
+fn servicos_tem_pecas(servicos: &[ServicoOrcamento]) -> bool {
+    servicos.iter().any(|servico| !servico.pecas.is_empty())
+}
+
 /// OS só de garantia (todos os itens R$ 0,00): grava valor_orcamento 0 e vai para APROVADO
 /// na mesma transação da verificação, sem passar por AGUARDANDO_APROVACAO.
 /// Não há coluna/flag de garantia; 0,00 no item é a convenção existente.
@@ -85,6 +90,11 @@ async fn gravar_aprovacao_os_garantia(
     }
     let actor = require_permission(PERMISSION_FINANCIAL_ACTIONS)
         .map_err(|erro| format!("OS só de garantia vai direto para Aprovado. {erro}"))?;
+    if servicos_tem_pecas(servicos) {
+        require_permission(PERMISSION_STOCK_CONTROL).map_err(|erro| {
+            format!("OS de garantia com peças baixa o estoque ao ser aprovada. {erro}")
+        })?;
+    }
     let atualizados = sqlx::query(
         r#"UPDATE equipamentos
            SET status = 'APROVADO',
@@ -930,6 +940,17 @@ pub async fn atualizar_servicos_verificacao(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn garantia_com_peca_exige_controle_de_estoque() {
+        let sem_pecas = parse_servicos(r#"[{"id":"a","valor":0}]"#).unwrap();
+        let com_pecas = parse_servicos(
+            r#"[{"id":"a","valor":0,"pecas":[{"produto_id":1,"quantidade":1,"valor_unitario":0}]}]"#,
+        )
+        .unwrap();
+        assert!(!servicos_tem_pecas(&sem_pecas));
+        assert!(servicos_tem_pecas(&com_pecas));
+    }
 
     #[test]
     fn claimed_tenant_is_ignored_when_either_side_is_missing() {
