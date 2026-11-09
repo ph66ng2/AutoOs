@@ -3,7 +3,7 @@
  * mostra o saldo de cada produto e deixa ajustar quantidade e valor unitário.
  */
 import { useEffect, useMemo, useState } from "react";
-import { AlertTriangle, Search, Trash2 } from "lucide-react";
+import { AlertTriangle, PackageSearch, Search, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { db } from "@/lib/db";
@@ -14,6 +14,7 @@ import {
   type TotaisOrcamentoInsumos,
 } from "@/lib/orcamento-insumos";
 import { formatCurrency } from "@/lib/utils";
+import { ValorDecimalInput } from "@/components/ui/valor-decimal-input";
 import { categoriaProdutoLabel } from "@/pages/insumos/insumos-page-constants";
 import type { Produto } from "@/types";
 
@@ -22,6 +23,8 @@ interface OrcamentoInsumosItensEditorProps {
   totais: TotaisOrcamentoInsumos;
   onChange: (linhas: LinhaOrcamentoInsumos[]) => void;
   disabled?: boolean;
+  /** Falso enquanto algum valor unitário digitado é inválido (a linha guarda o último valor válido). */
+  onValidityChange?: (valido: boolean) => void;
 }
 
 export function OrcamentoInsumosItensEditor({
@@ -29,7 +32,9 @@ export function OrcamentoInsumosItensEditor({
   totais,
   onChange,
   disabled = false,
+  onValidityChange,
 }: OrcamentoInsumosItensEditorProps) {
+  const [precosInvalidos, setPrecosInvalidos] = useState<ReadonlySet<number>>(new Set());
   const [busca, setBusca] = useState("");
   const [resultados, setResultados] = useState<Produto[]>([]);
   const [buscando, setBuscando] = useState(false);
@@ -94,6 +99,22 @@ export function OrcamentoInsumosItensEditor({
     setResultados([]);
   }
 
+  const todosPrecosValidos = linhas.every((linha) => !precosInvalidos.has(linha.produto_id));
+  useEffect(() => {
+    onValidityChange?.(todosPrecosValidos);
+    return () => onValidityChange?.(true);
+  }, [todosPrecosValidos, onValidityChange]);
+
+  function marcarPrecoValido(produtoId: number, valido: boolean) {
+    setPrecosInvalidos((atual) => {
+      if (atual.has(produtoId) !== valido) return atual;
+      const proximo = new Set(atual);
+      if (valido) proximo.delete(produtoId);
+      else proximo.add(produtoId);
+      return proximo;
+    });
+  }
+
   function alterar(produtoId: number, alteracao: Partial<LinhaOrcamentoInsumos>) {
     onChange(linhas.map((linha) => (linha.produto_id === produtoId ? { ...linha, ...alteracao } : linha)));
   }
@@ -108,7 +129,7 @@ export function OrcamentoInsumosItensEditor({
             placeholder="Buscar etiqueta, ribbon, peça... (nome ou código)"
             value={busca}
             onChange={(event) => setBusca(event.target.value)}
-            className="h-9 pl-9"
+            className="h-10 pl-9"
           />
           {(resultados.length > 0 || buscando || erroBusca) && (
             <ul
@@ -146,23 +167,25 @@ export function OrcamentoInsumosItensEditor({
         </div>
       )}
 
-      <div className="max-h-44 overflow-y-auto rounded-md border">
+      <div className="max-h-64 overflow-y-auto rounded-lg border">
         <table className="w-full text-sm">
-          <thead className="sticky top-0 bg-muted/80 text-xs text-muted-foreground">
+          <thead className="sticky top-0 z-10 bg-muted text-xs text-muted-foreground">
             <tr>
-              <th className="px-2 py-1 text-left font-medium">Produto</th>
-              <th className="w-16 px-2 py-1 text-center font-medium">Saldo</th>
-              <th className="w-20 px-2 py-1 text-center font-medium">Qtd</th>
-              <th className="w-28 px-2 py-1 text-right font-medium">Valor unit.</th>
-              <th className="w-24 px-2 py-1 text-right font-medium">Total</th>
-              {!disabled && <th className="w-9" />}
+              <th className="px-3 py-2 text-left font-medium">Produto</th>
+              <th className="w-16 px-2 py-2 text-center font-medium">Saldo</th>
+              <th className="w-24 px-2 py-2 text-center font-medium">Qtd</th>
+              <th className="w-32 px-2 py-2 text-right font-medium">Valor unit.</th>
+              <th className="w-28 px-3 py-2 text-right font-medium">Total</th>
+              {!disabled && <th className="w-10" />}
             </tr>
           </thead>
           <tbody>
             {linhas.length === 0 && (
               <tr>
-                <td colSpan={disabled ? 5 : 6} className="px-2 py-4 text-center text-muted-foreground">
-                  Nenhum item. Busque um produto do estoque para incluir.
+                <td colSpan={disabled ? 5 : 6} className="px-3 py-8 text-center">
+                  <PackageSearch className="mx-auto mb-2 h-6 w-6 text-muted-foreground/60" aria-hidden />
+                  <p className="text-sm font-medium">Nenhum item ainda</p>
+                  <p className="text-xs text-muted-foreground">Busque um produto do estoque para incluir.</p>
                 </td>
               </tr>
             )}
@@ -171,13 +194,13 @@ export function OrcamentoInsumosItensEditor({
               const semSaldo = linha.saldo != null && Math.floor(linha.quantidade || 0) > linha.saldo;
               return (
                 <tr key={linha.produto_id} className="border-t" data-testid={`item-${linha.produto_id}`}>
-                  <td className="px-2 py-1">
+                  <td className="px-3 py-2">
                     <span className="font-medium">{linha.descricao}</span>
-                    <span className="ml-2 text-xs text-muted-foreground">
+                    <span className="ml-2 rounded bg-muted px-1.5 py-0.5 text-[11px] text-muted-foreground">
                       {categoriaProdutoLabel(linha.categoria)}
                     </span>
                   </td>
-                  <td className="px-2 py-1 text-center">
+                  <td className="px-2 py-2 text-center tabular-nums">
                     {linha.saldo == null ? (
                       "—"
                     ) : (
@@ -190,7 +213,7 @@ export function OrcamentoInsumosItensEditor({
                       </span>
                     )}
                   </td>
-                  <td className="px-2 py-1">
+                  <td className="px-2 py-2">
                     <Input
                       type="number"
                       min={1}
@@ -210,30 +233,32 @@ export function OrcamentoInsumosItensEditor({
                       </p>
                     )}
                   </td>
-                  <td className="px-2 py-1">
-                    <Input
-                      type="number"
+                  <td className="px-2 py-2">
+                    <ValorDecimalInput
                       min={0}
-                      step="0.01"
                       aria-label={`Valor unitário de ${linha.descricao}`}
-                      value={Number.isFinite(linha.valor_unitario) ? linha.valor_unitario : ""}
+                      value={Number.isFinite(linha.valor_unitario) ? linha.valor_unitario : 0}
                       disabled={disabled}
-                      onChange={(event) => alterar(linha.produto_id, { valor_unitario: Number(event.target.value) || 0 })}
+                      onValidityChange={(valido) => marcarPrecoValido(linha.produto_id, valido)}
+                      onValueChange={(valor) => alterar(linha.produto_id, { valor_unitario: valor })}
                       className="h-8 px-2 text-right"
                     />
                   </td>
-                  <td className="px-2 py-1 text-right font-medium tabular-nums">
+                  <td className="px-3 py-2 text-right font-medium tabular-nums">
                     {formatCurrency(totais.linhas[indice] ?? 0)}
                   </td>
                   {!disabled && (
-                    <td className="px-1 py-1">
+                    <td className="px-1 py-2">
                       <Button
                         type="button"
                         variant="ghost"
                         size="icon"
-                        className="h-7 w-7 text-red-600"
+                        className="h-8 w-8 text-muted-foreground hover:bg-red-50 hover:text-red-600 active:scale-[0.96] [transition-property:scale,background-color,color]"
                         aria-label={`Remover ${linha.descricao}`}
-                        onClick={() => onChange(linhas.filter((outra) => outra.produto_id !== linha.produto_id))}
+                        onClick={() => {
+                          marcarPrecoValido(linha.produto_id, true);
+                          onChange(linhas.filter((outra) => outra.produto_id !== linha.produto_id));
+                        }}
                       >
                         <Trash2 className="h-3.5 w-3.5" />
                       </Button>

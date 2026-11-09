@@ -11,8 +11,9 @@ use crate::commands::types::{
 };
 use crate::commands::auth::{
     profile_has_permission, record_security_event, require_any_permission, require_active_session_company_id,
+    require_permission,
     SecurityProfileSummary, PERMISSION_FINANCIAL_ACTIONS, PERMISSION_MANAGE_STATUS_LINKS,
-    PERMISSION_PREPARE_QUOTES,
+    PERMISSION_PREPARE_QUOTES, PERMISSION_STOCK_CONTROL,
 };
 use crate::db::get_pool;
 use crate::commands::orcamento_correcao::{
@@ -21,7 +22,14 @@ use crate::commands::orcamento_correcao::{
 use crate::commands::orcamento_decisao::{
     desfazer_resposta_pendente, publicar_versao_isolada, situacao_portal,
 };
-use crate::commands::orcamento_estoque::{aplicar_decisoes, cancelar_pendencias_ausentes, normalizar_servicos, parse_servicos};
+use crate::commands::orcamento_estoque::{
+    aplicar_decisoes, aplicar_decisoes_aprovacao_integral, cancelar_pendencias_ausentes,
+    detalhes_auditoria_aprovacao_garantia, normalizar_servicos, os_somente_garantia, parse_servicos,
+    recusar_aguardando_aprovacao_total_zero, recusar_autoaprovacao_garantia_sem_confirmacao,
+    recusar_total_zero_sem_garantia, recusar_zerar_orcamento_aprovado_pago, resolver_custo_total,
+    valor_monetario_positivo, vai_auto_aprovar_os_garantia,
+    ServicoOrcamento,
+};
 use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
 use std::collections::{HashMap, HashSet};
@@ -53,6 +61,119 @@ const VERIFICATION_TENANT_MATCH: &str =
 
 fn claimed_tenant_conflicts(claimed: Option<i32>, actual: Option<i32>) -> bool {
     matches!((claimed, actual), (Some(claimed_id), Some(actual_id)) if claimed_id != actual_id)
+}
+
+/// A aprovação baixa estoque quando algum serviço leva peça (mesma regra do aprovar pago).
+fn servicos_tem_pecas(servicos: &[ServicoOrcamento]) -> bool {
+    servicos.iter().any(|servico| !servico.pecas.is_empty())
+}
+
+/// Peça de "Peças Necessárias" sem serviço vinculado (id fora de `servico:produto`): não gera
+/// consumo nem dedução pendente, então a aprovação de garantia não pode seguir com ela.
+/// Mesma regra de `aprovar_orcamento` na aprovação paga.
+fn tem_pecas_avulsas(servicos: &[ServicoOrcamento], pecas_json: Option<&str>) -> Result<bool, String> {
+    let pecas: Vec<serde_json::Value> = serde_json::from_str(pecas_json.unwrap_or("[]"))
+        .map_err(|_| "Peças do orçamento inválidas.".to_string())?;
+    let vinculadas: std::collections::HashSet<String> = servicos
+        .iter()
+        .flat_map(|s| s.pecas.iter().map(move |p| format!("{}:{}", s.id, p.produto_id)))
+        .collect();
+    Ok(pecas.iter().any(|p| {
+        !p.get("id").and_then(|v| v.as_str()).is_some_and(|id| vinculadas.contains(id))
+    }))
+}
+
+/// OS só de garantia (todos os itens R$ 0,00): grava valor_orcamento 0 e vai para APROVADO
+/// na mesma transação da verificação, sem passar por AGUARDANDO_APROVACAO.
+/// Não há coluna/flag de garantia; 0,00 no item é a convenção existente.
+/// É uma aprovação: exige FINANCIAL_ACTIONS (PREPARE_QUOTES nunca aprova).
+/// Devolve quem aprovou, para a auditoria depois do commit.
+async fn gravar_aprovacao_os_garantia(
+    tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+    equipamento_id: i32,
+    empresa_id: i32,
+    verificacao_id: i32,
+    servicos: &[ServicoOrcamento],
+    pecas_necessarias: Option<&str>,
+    custo_total: Option<f64>,
+    concluida: bool,
+) -> Result<Option<SecurityProfileSummary>, String> {
+    if !concluida
+        || !os_somente_garantia(servicos)
+        || custo_total.is_some_and(valor_monetario_positivo)
+    {
+        return Ok(None);
+    }
+    let actor = require_permission(PERMISSION_FINANCIAL_ACTIONS)
+        .map_err(|erro| format!("OS só de garantia vai direto para Aprovado. {erro}"))?;
+    if tem_pecas_avulsas(servicos, pecas_necessarias)? {
+        return Err("Há peças em Peças Necessárias sem serviço vinculado. Vincule-as a um serviço com estoque antes de aprovar a OS de garantia.".to_string());
+    }
+    if servicos_tem_pecas(servicos) {
+        require_permission(PERMISSION_STOCK_CONTROL).map_err(|erro| {
+            format!("OS de garantia com peças baixa o estoque ao ser aprovada. {erro}")
+        })?;
+    }
+    let atualizados = sqlx::query(
+        r#"UPDATE equipamentos
+           SET status = 'APROVADO',
+               valor_orcamento = 0,
+               data_verificacao = CASE
+                   WHEN data_verificacao IS NULL OR btrim(data_verificacao) = '' THEN NOW()::TEXT
+                   ELSE data_verificacao
+               END,
+               data_aprovacao = NOW()::TEXT,
+               atualizado_em = NOW()
+           WHERE id = $1 AND empresa_id = $2
+             AND status IN ('RECEBIDO', 'EM_VERIFICACAO', 'VERIFICADO')"#,
+    )
+    .bind(equipamento_id)
+    .bind(empresa_id)
+    .execute(&mut **tx)
+    .await
+    .map_err(super::operator_errors::mapear_erro_sql)?
+    .rows_affected();
+    if atualizados == 0 {
+        return Ok(None);
+    }
+    sqlx::query(
+        r#"UPDATE verificacoes
+           SET servicos_orcamento_original = COALESCE(servicos_orcamento_original, servicos_necessarios::jsonb),
+               pecas_orcamento_original = COALESCE(pecas_orcamento_original, pecas_necessarias::jsonb),
+               valor_orcamento_original = COALESCE(valor_orcamento_original, COALESCE(custo_total, 0)),
+               forma_pagamento_codigo = NULL,
+               forma_pagamento_detalhe = NULL
+           WHERE id = $1"#,
+    )
+    .bind(verificacao_id)
+    .execute(&mut **tx)
+    .await
+    .map_err(super::operator_errors::mapear_erro_sql)?;
+    aplicar_decisoes_aprovacao_integral(tx, empresa_id, verificacao_id, servicos).await?;
+    Ok(Some(actor))
+}
+
+async fn auditar_aprovacao_os_garantia(
+    actor: Option<SecurityProfileSummary>,
+    empresa_id: i32,
+    equipamento_id: i32,
+    verificacao_id: i32,
+    status_anterior: &str,
+) {
+    if let Some(actor) = actor.as_ref() {
+        record_security_event(
+            "BUDGET_APPROVED",
+            Some(actor),
+            detalhes_auditoria_aprovacao_garantia(
+                empresa_id,
+                equipamento_id,
+                verificacao_id,
+                status_anterior,
+            ),
+            true,
+        )
+        .await;
+    }
 }
 
 fn require_financial_actor_for_verification_write(
@@ -109,12 +230,27 @@ pub async fn salvar_verificacao_tecnica(mut input: VerificacaoInput) -> Result<V
         return Err("O equipamento não pertence à empresa ativa.".to_string());
     }
     input.empresa_id = Some(empresa_id);
-    parse_servicos(input.servicos_necessarios.as_deref().unwrap_or("[]"))?;
+    let servicos = parse_servicos(input.servicos_necessarios.as_deref().unwrap_or("[]"))?;
+    let concluida = input.concluida.unwrap_or(false);
+    if concluida {
+        if input.custo_total.is_none() {
+            input.custo_total = Some(resolver_custo_total(None, &servicos));
+        }
+        recusar_total_zero_sem_garantia(input.custo_total, &servicos)?;
+    }
     let mut tx = pool.begin().await.map_err(super::operator_errors::mapear_erro_sql)?;
     let status: Option<String> = sqlx::query_scalar("SELECT status FROM equipamentos WHERE id = $1 AND empresa_id = $2 FOR UPDATE")
         .bind(input.equipamento_id).bind(empresa_id).fetch_optional(&mut *tx).await.map_err(super::operator_errors::mapear_erro_sql)?;
     let status = status.ok_or("Equipamento não encontrado na empresa ativa.")?;
     check_prepare_quotes_status(financial_actor.as_ref(), &status)?;
+    if concluida {
+        recusar_autoaprovacao_garantia_sem_confirmacao(
+            input.confirmar_garantia,
+            &status,
+            &servicos,
+            input.custo_total,
+        )?;
+    }
     if matches!(status.as_str(), "APROVADO" | "EM_MANUTENCAO" | "AGUARDANDO_PECA" | "PRONTO" | "ENTREGUE") {
         return Err("Use Alterar Orçamento para modificar serviços de uma OS já aprovada.".to_string());
     }
@@ -163,7 +299,7 @@ pub async fn salvar_verificacao_tecnica(mut input: VerificacaoInput) -> Result<V
         .bind(input.custo_estimado_pecas)
         .bind(input.custo_total)
         .bind(input.tempo_estimado)
-        .bind(input.concluida.unwrap_or(false))
+        .bind(concluida)
         .bind(&input.observacoes)
         .bind(payment_code.as_deref())
         .bind(payment_detail.as_deref())
@@ -176,7 +312,26 @@ pub async fn salvar_verificacao_tecnica(mut input: VerificacaoInput) -> Result<V
             super::operator_errors::mapear_erro_sql(e)
         })?;
 
+        let aprovador_garantia = gravar_aprovacao_os_garantia(
+            &mut tx,
+            input.equipamento_id,
+            empresa_id,
+            id,
+            &servicos,
+            input.pecas_necessarias.as_deref(),
+            input.custo_total,
+            concluida,
+        )
+        .await?;
         tx.commit().await.map_err(super::operator_errors::mapear_erro_sql)?;
+        auditar_aprovacao_os_garantia(
+            aprovador_garantia,
+            empresa_id,
+            input.equipamento_id,
+            id,
+            &status,
+        )
+        .await;
         if let Some(actor) = financial_actor.as_ref() {
             record_security_event(
                 "VERIFICATION_FINANCIAL_SAVED",
@@ -193,7 +348,7 @@ pub async fn salvar_verificacao_tecnica(mut input: VerificacaoInput) -> Result<V
 
     // INSERT nova verificação
     debug!("Criando nova verificação");
-    sqlx::query(
+    let verificacao_id: i32 = sqlx::query_scalar(
         r#"
         INSERT INTO verificacoes (
             equipamento_id, empresa_id, tecnico_nome, problema_relatado, diagnostico,
@@ -204,6 +359,7 @@ pub async fn salvar_verificacao_tecnica(mut input: VerificacaoInput) -> Result<V
         ) VALUES (
             $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16
         )
+        RETURNING id
         "#,
     )
     .bind(input.equipamento_id)
@@ -218,18 +374,37 @@ pub async fn salvar_verificacao_tecnica(mut input: VerificacaoInput) -> Result<V
     .bind(input.custo_estimado_pecas)
     .bind(input.custo_total)
     .bind(input.tempo_estimado)
-    .bind(input.concluida.unwrap_or(false))
+    .bind(concluida)
     .bind(&input.observacoes)
     .bind(payment_code.as_deref())
     .bind(payment_detail.as_deref())
-    .execute(&mut *tx)
+    .fetch_one(&mut *tx)
     .await
     .map_err(|e| {
         error!("Erro ao criar verificação: {}", e);
         super::operator_errors::mapear_erro_sql(e)
     })?;
 
+    let aprovador_garantia = gravar_aprovacao_os_garantia(
+        &mut tx,
+        input.equipamento_id,
+        empresa_id,
+        verificacao_id,
+        &servicos,
+        input.pecas_necessarias.as_deref(),
+        input.custo_total,
+        concluida,
+    )
+    .await?;
     tx.commit().await.map_err(super::operator_errors::mapear_erro_sql)?;
+    auditar_aprovacao_os_garantia(
+        aprovador_garantia,
+        empresa_id,
+        input.equipamento_id,
+        verificacao_id,
+        &status,
+    )
+    .await;
     if let Some(actor) = financial_actor.as_ref() {
         record_security_event(
             "VERIFICATION_FINANCIAL_SAVED",
@@ -315,6 +490,8 @@ pub struct OpcoesAjusteOrcamento {
     pub devolver_estoque: bool,
     /// Confirma que a nova versão anula a resposta que o cliente deu e a equipe ainda não aplicou.
     pub confirmar_resposta_pendente: bool,
+    /// Confirma auto-aprovação de OS só de garantia (R$ 0,00 → APROVADO).
+    pub confirmar_garantia: bool,
 }
 
 /// O que aconteceu no portal por causa do ajuste, em palavras para o operador.
@@ -464,6 +641,9 @@ pub async fn atualizar_servicos_verificacao(
     )?;
     let pool = get_pool().await.map_err(|e| e.to_string())?;
     let active_empresa_id = require_active_session_company_id(&pool).await?;
+    let servicos_novos = parse_servicos(servicos_json.as_deref().unwrap_or("[]"))?;
+    let custo_total = Some(resolver_custo_total(custo_total, &servicos_novos));
+    recusar_total_zero_sem_garantia(custo_total, &servicos_novos)?;
     let mut tx = pool.begin().await.map_err(|error| {
         error!("Erro ao iniciar ajuste da verificação: {}", error);
         super::operator_errors::mapear_erro_sql(error)
@@ -483,6 +663,7 @@ pub async fn atualizar_servicos_verificacao(
         return Err("Equipamento não encontrado.".to_string());
     };
     check_prepare_quotes_status(Some(&actor), &status)?;
+    recusar_aguardando_aprovacao_total_zero(&status, custo_total, &servicos_novos)?;
     if resolved_empresa_id != Some(active_empresa_id) {
         return Err("O equipamento não pertence à empresa ativa.".to_string());
     }
@@ -535,8 +716,20 @@ pub async fn atualizar_servicos_verificacao(
         Some(row) => row,
         None => return Err("Nenhuma verificação encontrada para este equipamento.".to_string()),
     };
+    recusar_zerar_orcamento_aprovado_pago(
+        &status,
+        valor_equipamento.filter(|valor| valor_monetario_positivo(*valor)).or(old_total),
+        custo_total,
+        &servicos_novos,
+    )?;
+    recusar_autoaprovacao_garantia_sem_confirmacao(
+        opcoes.confirmar_garantia,
+        &status,
+        &servicos_novos,
+        custo_total,
+    )?;
 
-    let servicos = parse_servicos(servicos_json.as_deref().unwrap_or("[]"))?;
+    let servicos = servicos_novos;
     let depois_aprovacao = matches!(status.as_str(), "APROVADO" | "EM_MANUTENCAO" | "AGUARDANDO_PECA" | "PRONTO" | "ENTREGUE");
     let alterou_itens = old_servicos != servicos_json || old_pecas != pecas_json || old_total != custo_total;
     let modo_aprovado = (depois_aprovacao && alterou_itens)
@@ -544,6 +737,9 @@ pub async fn atualizar_servicos_verificacao(
     let nova_aprovacao = modo_aprovado == Some(ModoAjusteAprovado::NovaAprovacao);
     if nova_aprovacao && status != "APROVADO" {
         return Err("Só dá para pedir nova aprovação enquanto o orçamento está Aprovado. Com o serviço em andamento, use o ajuste sem nova aprovação.".to_string());
+    }
+    if nova_aprovacao && os_somente_garantia(&servicos) && !custo_total.is_some_and(valor_monetario_positivo) {
+        return Err("OS de garantia sem valor não passa por nova aprovação. Use o ajuste sem nova aprovação, que acerta o estoque das peças.".to_string());
     }
     if depois_aprovacao && alterou_itens && !nova_aprovacao {
         if cliente_aprovou_alteracao != Some(true) {
@@ -652,9 +848,27 @@ pub async fn atualizar_servicos_verificacao(
         return Err("Equipamento não encontrado na empresa informada.".to_string());
     }
 
+    let aprovador_garantia = if vai_auto_aprovar_os_garantia(&status, &servicos, custo_total) {
+        gravar_aprovacao_os_garantia(
+            &mut tx,
+            equipamento_id,
+            active_empresa_id,
+            verificacao_id,
+            &servicos,
+            pecas_json.as_deref(),
+            custo_total,
+            true,
+        )
+        .await?
+    } else {
+        None
+    };
+
     // Pedir nova aprovação: na mesma transação, reabre a aprovação mantendo o orçamento alterado
     // (mesma regra de estoque da correção de decisão). Se algo falhar, nada é gravado.
-    let correcao = if nova_aprovacao {
+    let correcao = if nova_aprovacao
+        && !(os_somente_garantia(&servicos) && !custo_total.is_some_and(valor_monetario_positivo))
+    {
         let token: String = sqlx::query_scalar("SELECT atualizado_em::TEXT FROM equipamentos WHERE id = $1")
             .bind(equipamento_id)
             .fetch_one(&mut *tx)
@@ -677,12 +891,22 @@ pub async fn atualizar_servicos_verificacao(
         error!("Erro ao confirmar ajuste da verificação {}: {}", verificacao_id, error);
         super::operator_errors::mapear_erro_sql(error)
     })?;
+    auditar_aprovacao_os_garantia(
+        aprovador_garantia,
+        active_empresa_id,
+        equipamento_id,
+        verificacao_id,
+        &status,
+    )
+    .await;
     if let Some((input, aplicada)) = correcao.as_ref() {
         registrar_auditoria_correcao(&actor, input, aplicada).await;
     }
 
-    let portal = if nova_aprovacao || republicar {
-        publicar_apos_ajuste(&pool, &actor, active_empresa_id, equipamento_id, nova_aprovacao).await
+    let portal = if (correcao.is_some() || republicar)
+        && custo_total.is_some_and(valor_monetario_positivo)
+    {
+        publicar_apos_ajuste(&pool, &actor, active_empresa_id, equipamento_id, correcao.is_some()).await
     } else if modo_aprovado == Some(ModoAjusteAprovado::SemNovaAprovacao)
         && old_total != custo_total
         && portal_ligado(&pool, active_empresa_id).await
@@ -740,6 +964,31 @@ mod tests {
     use super::*;
 
     #[test]
+    fn garantia_rejeita_peca_avulsa_de_pecas_necessarias() {
+        let servicos = parse_servicos(
+            r#"[{"id":"a","valor":0,"pecas":[{"produto_id":1,"quantidade":1,"valor_unitario":0}]}]"#,
+        )
+        .unwrap();
+        let vinculada = r#"[{"id":"a:1","nome":"Cabeça"}]"#;
+        let avulsa = r#"[{"id":"a:1"},{"id":"solto","nome":"Rolo"}]"#;
+        assert!(!tem_pecas_avulsas(&servicos, Some(vinculada)).unwrap());
+        assert!(!tem_pecas_avulsas(&servicos, None).unwrap());
+        assert!(tem_pecas_avulsas(&servicos, Some(avulsa)).unwrap());
+        assert!(tem_pecas_avulsas(&servicos, Some("lixo")).is_err());
+    }
+
+    #[test]
+    fn garantia_com_peca_exige_controle_de_estoque() {
+        let sem_pecas = parse_servicos(r#"[{"id":"a","valor":0}]"#).unwrap();
+        let com_pecas = parse_servicos(
+            r#"[{"id":"a","valor":0,"pecas":[{"produto_id":1,"quantidade":1,"valor_unitario":0}]}]"#,
+        )
+        .unwrap();
+        assert!(!servicos_tem_pecas(&sem_pecas));
+        assert!(servicos_tem_pecas(&com_pecas));
+    }
+
+    #[test]
     fn claimed_tenant_is_ignored_when_either_side_is_missing() {
         assert!(!claimed_tenant_conflicts(None, Some(1)));
         assert!(!claimed_tenant_conflicts(Some(1), None));
@@ -764,7 +1013,7 @@ mod tests {
         assert_eq!(modo, ModoAjusteAprovado::NovaAprovacao);
         assert_eq!(modo.codigo(), "NOVA_APROVACAO");
         let opcoes: OpcoesAjusteOrcamento = serde_json::from_str("{}").unwrap();
-        assert!(opcoes.modo_aprovado.is_none() && !opcoes.devolver_estoque && !opcoes.confirmar_resposta_pendente);
+        assert!(opcoes.modo_aprovado.is_none() && !opcoes.devolver_estoque && !opcoes.confirmar_resposta_pendente && !opcoes.confirmar_garantia);
         let opcoes: OpcoesAjusteOrcamento =
             serde_json::from_str(r#"{"modoAprovado":"SEM_NOVA_APROVACAO","devolverEstoque":true}"#).unwrap();
         assert_eq!(opcoes.modo_aprovado, Some(ModoAjusteAprovado::SemNovaAprovacao));
@@ -788,6 +1037,13 @@ mod tests {
         perfil.permissions.clear();
         perfil.role = "ADMIN".into();
         assert!(pode_publicar_no_portal(&perfil));
+    }
+
+    #[test]
+    fn concluded_verification_without_total_uses_item_sum() {
+        let servicos = parse_servicos(r#"[{"id":"test-service","descricao":"Limpeza","valor":120.0}]"#).unwrap();
+        assert_eq!(resolver_custo_total(None, &servicos), 120.0);
+        assert!(recusar_total_zero_sem_garantia(Some(resolver_custo_total(None, &servicos)), &servicos).is_ok());
     }
 
     #[test]

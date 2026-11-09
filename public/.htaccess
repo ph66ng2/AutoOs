@@ -4,6 +4,11 @@ RewriteRule ^ https://status.bmitag.com.br%{REQUEST_URI} [R=301,L]
 
 Options -Indexes
 
+# Arquivo de controle do deploy por FTP (lista de arquivos e hashes): não é público.
+<Files ".ftp-deploy-sync-state.json">
+  Require all denied
+</Files>
+
 <IfModule mod_headers.c>
   Header always set Cache-Control "no-store"
   Header always set Referrer-Policy "no-referrer"

@@ -1,0 +1,677 @@
+{
+  "scope": "real React hook in jsdom, mocked IPC; no database/browser layout timing",
+  "injectedDelayPerIpcMs": [
+    0,
+    50,
+    150
+  ],
+  "samplesPerScenario": 10,
+  "samples": [
+    {
+      "operation": "update",
+      "latencyMs": 0,
+      "run": 0,
+      "elapsedMs": 1.283744000000297,
+      "calls": [
+        "update",
+        "list-page"
+      ],
+      "mockedBridgeMs": 0.08184699999992517
+    },
+    {
+      "operation": "update",
+      "latencyMs": 0,
+      "run": 1,
+      "elapsedMs": 0.4824809999995523,
+      "calls": [
+        "update",
+        "list-page"
+      ],
+      "mockedBridgeMs": 0.02004800000031537
+    },
+    {
+      "operation": "update",
+      "latencyMs": 0,
+      "run": 2,
+      "elapsedMs": 0.5034260000002178,
+      "calls": [
+        "update",
+        "list-page"
+      ],
+      "mockedBridgeMs": 0.014992999999776657
+    },
+    {
+      "operation": "update",
+      "latencyMs": 0,
+      "run": 3,
+      "elapsedMs": 0.32759000000032756,
+      "calls": [
+        "update",
+        "list-page"
+      ],
+      "mockedBridgeMs": 0.021952999999484746
+    },
+    {
+      "operation": "update",
+      "latencyMs": 0,
+      "run": 4,
+      "elapsedMs": 0.49511600000005274,
+      "calls": [
+        "update",
+        "list-page"
+      ],
+      "mockedBridgeMs": 0.01891299999988405
+    },
+    {
+      "operation": "update",
+      "latencyMs": 0,
+      "run": 5,
+      "elapsedMs": 0.35063499999978376,
+      "calls": [
+        "update",
+        "list-page"
+      ],
+      "mockedBridgeMs": 0.012637999999697058
+    },
+    {
+      "operation": "update",
+      "latencyMs": 0,
+      "run": 6,
+      "elapsedMs": 0.26497699999981705,
+      "calls": [
+        "update",
+        "list-page"
+      ],
+      "mockedBridgeMs": 0.01061600000002727
+    },
+    {
+      "operation": "update",
+      "latencyMs": 0,
+      "run": 7,
+      "elapsedMs": 0.2636549999997442,
+      "calls": [
+        "update",
+        "list-page"
+      ],
+      "mockedBridgeMs": 0.01284399999985908
+    },
+    {
+      "operation": "update",
+      "latencyMs": 0,
+      "run": 8,
+      "elapsedMs": 0.22388600000022052,
+      "calls": [
+        "update",
+        "list-page"
+      ],
+      "mockedBridgeMs": 0.01347699999996621
+    },
+    {
+      "operation": "update",
+      "latencyMs": 0,
+      "run": 9,
+      "elapsedMs": 0.1861060000001089,
+      "calls": [
+        "update",
+        "list-page"
+      ],
+      "mockedBridgeMs": 0.03593899999941641
+    },
+    {
+      "operation": "status",
+      "latencyMs": 0,
+      "run": 0,
+      "elapsedMs": 0.5424679999996442,
+      "calls": [
+        "status",
+        "list-page"
+      ],
+      "mockedBridgeMs": 0.05936599999995451
+    },
+    {
+      "operation": "status",
+      "latencyMs": 0,
+      "run": 1,
+      "elapsedMs": 0.13859199999978955,
+      "calls": [
+        "status",
+        "list-page"
+      ],
+      "mockedBridgeMs": 0.012946000000283675
+    },
+    {
+      "operation": "status",
+      "latencyMs": 0,
+      "run": 2,
+      "elapsedMs": 0.1005179999997381,
+      "calls": [
+        "status",
+        "list-page"
+      ],
+      "mockedBridgeMs": 0.005518999999821972
+    },
+    {
+      "operation": "status",
+      "latencyMs": 0,
+      "run": 3,
+      "elapsedMs": 0.7229489999999714,
+      "calls": [
+        "status",
+        "list-page"
+      ],
+      "mockedBridgeMs": 0.010169000000587403
+    },
+    {
+      "operation": "status",
+      "latencyMs": 0,
+      "run": 4,
+      "elapsedMs": 1.0781259999998838,
+      "calls": [
+        "status",
+        "list-page"
+      ],
+      "mockedBridgeMs": 0.008901999999579857
+    },
+    {
+      "operation": "status",
+      "latencyMs": 0,
+      "run": 5,
+      "elapsedMs": 0.45098300000017844,
+      "calls": [
+        "status",
+        "list-page"
+      ],
+      "mockedBridgeMs": 0.0068660000001727894
+    },
+    {
+      "operation": "status",
+      "latencyMs": 0,
+      "run": 6,
+      "elapsedMs": 0.13704500000039843,
+      "calls": [
+        "status",
+        "list-page"
+      ],
+      "mockedBridgeMs": 0.007685999999921478
+    },
+    {
+      "operation": "status",
+      "latencyMs": 0,
+      "run": 7,
+      "elapsedMs": 0.20661299999983385,
+      "calls": [
+        "status",
+        "list-page"
+      ],
+      "mockedBridgeMs": 0.008761000000049535
+    },
+    {
+      "operation": "status",
+      "latencyMs": 0,
+      "run": 8,
+      "elapsedMs": 0.12826399999994464,
+      "calls": [
+        "status",
+        "list-page"
+      ],
+      "mockedBridgeMs": 0.008909000000130618
+    },
+    {
+      "operation": "status",
+      "latencyMs": 0,
+      "run": 9,
+      "elapsedMs": 0.16295199999967735,
+      "calls": [
+        "status",
+        "list-page"
+      ],
+      "mockedBridgeMs": 0.007236999999804539
+    },
+    {
+      "operation": "update",
+      "latencyMs": 50,
+      "run": 0,
+      "elapsedMs": 101.21179799999982,
+      "calls": [
+        "update",
+        "list-page"
+      ],
+      "mockedBridgeMs": 100.60888999999997
+    },
+    {
+      "operation": "update",
+      "latencyMs": 50,
+      "run": 1,
+      "elapsedMs": 101.65302900000006,
+      "calls": [
+        "update",
+        "list-page"
+      ],
+      "mockedBridgeMs": 100.91388899999993
+    },
+    {
+      "operation": "update",
+      "latencyMs": 50,
+      "run": 2,
+      "elapsedMs": 101.81531499999983,
+      "calls": [
+        "update",
+        "list-page"
+      ],
+      "mockedBridgeMs": 101.30249000000003
+    },
+    {
+      "operation": "update",
+      "latencyMs": 50,
+      "run": 3,
+      "elapsedMs": 101.62215199999991,
+      "calls": [
+        "update",
+        "list-page"
+      ],
+      "mockedBridgeMs": 100.56410499999993
+    },
+    {
+      "operation": "update",
+      "latencyMs": 50,
+      "run": 4,
+      "elapsedMs": 101.45476099999996,
+      "calls": [
+        "update",
+        "list-page"
+      ],
+      "mockedBridgeMs": 100.84128699999974
+    },
+    {
+      "operation": "update",
+      "latencyMs": 50,
+      "run": 5,
+      "elapsedMs": 101.02539300000035,
+      "calls": [
+        "update",
+        "list-page"
+      ],
+      "mockedBridgeMs": 100.56214800000043
+    },
+    {
+      "operation": "update",
+      "latencyMs": 50,
+      "run": 6,
+      "elapsedMs": 100.9757440000003,
+      "calls": [
+        "update",
+        "list-page"
+      ],
+      "mockedBridgeMs": 100.50280899999962
+    },
+    {
+      "operation": "update",
+      "latencyMs": 50,
+      "run": 7,
+      "elapsedMs": 101.07405699999981,
+      "calls": [
+        "update",
+        "list-page"
+      ],
+      "mockedBridgeMs": 100.5627629999999
+    },
+    {
+      "operation": "update",
+      "latencyMs": 50,
+      "run": 8,
+      "elapsedMs": 101.27929399999994,
+      "calls": [
+        "update",
+        "list-page"
+      ],
+      "mockedBridgeMs": 100.62823800000024
+    },
+    {
+      "operation": "update",
+      "latencyMs": 50,
+      "run": 9,
+      "elapsedMs": 101.58672800000022,
+      "calls": [
+        "update",
+        "list-page"
+      ],
+      "mockedBridgeMs": 100.52783300000056
+    },
+    {
+      "operation": "status",
+      "latencyMs": 50,
+      "run": 0,
+      "elapsedMs": 100.9497080000001,
+      "calls": [
+        "status",
+        "list-page"
+      ],
+      "mockedBridgeMs": 100.49473300000045
+    },
+    {
+      "operation": "status",
+      "latencyMs": 50,
+      "run": 1,
+      "elapsedMs": 101.05276200000026,
+      "calls": [
+        "status",
+        "list-page"
+      ],
+      "mockedBridgeMs": 100.57987699999967
+    },
+    {
+      "operation": "status",
+      "latencyMs": 50,
+      "run": 2,
+      "elapsedMs": 101.53396599999996,
+      "calls": [
+        "status",
+        "list-page"
+      ],
+      "mockedBridgeMs": 100.73542700000007
+    },
+    {
+      "operation": "status",
+      "latencyMs": 50,
+      "run": 3,
+      "elapsedMs": 101.05539100000033,
+      "calls": [
+        "status",
+        "list-page"
+      ],
+      "mockedBridgeMs": 100.62750499999993
+    },
+    {
+      "operation": "status",
+      "latencyMs": 50,
+      "run": 4,
+      "elapsedMs": 101.82273000000032,
+      "calls": [
+        "status",
+        "list-page"
+      ],
+      "mockedBridgeMs": 100.78418000000056
+    },
+    {
+      "operation": "status",
+      "latencyMs": 50,
+      "run": 5,
+      "elapsedMs": 101.09114399999999,
+      "calls": [
+        "status",
+        "list-page"
+      ],
+      "mockedBridgeMs": 100.52874299999985
+    },
+    {
+      "operation": "status",
+      "latencyMs": 50,
+      "run": 6,
+      "elapsedMs": 101.17350999999962,
+      "calls": [
+        "status",
+        "list-page"
+      ],
+      "mockedBridgeMs": 100.56079099999988
+    },
+    {
+      "operation": "status",
+      "latencyMs": 50,
+      "run": 7,
+      "elapsedMs": 101.03495999999996,
+      "calls": [
+        "status",
+        "list-page"
+      ],
+      "mockedBridgeMs": 100.61623299999974
+    },
+    {
+      "operation": "status",
+      "latencyMs": 50,
+      "run": 8,
+      "elapsedMs": 101.83020599999963,
+      "calls": [
+        "status",
+        "list-page"
+      ],
+      "mockedBridgeMs": 101.38178200000038
+    },
+    {
+      "operation": "status",
+      "latencyMs": 50,
+      "run": 9,
+      "elapsedMs": 101.07665199999974,
+      "calls": [
+        "status",
+        "list-page"
+      ],
+      "mockedBridgeMs": 100.4958289999995
+    },
+    {
+      "operation": "update",
+      "latencyMs": 150,
+      "run": 0,
+      "elapsedMs": 301.44704700000057,
+      "calls": [
+        "update",
+        "list-page"
+      ],
+      "mockedBridgeMs": 300.7823250000001
+    },
+    {
+      "operation": "update",
+      "latencyMs": 150,
+      "run": 1,
+      "elapsedMs": 301.1824230000002,
+      "calls": [
+        "update",
+        "list-page"
+      ],
+      "mockedBridgeMs": 300.71096599999964
+    },
+    {
+      "operation": "update",
+      "latencyMs": 150,
+      "run": 2,
+      "elapsedMs": 301.1853740000006,
+      "calls": [
+        "update",
+        "list-page"
+      ],
+      "mockedBridgeMs": 300.7330749999992
+    },
+    {
+      "operation": "update",
+      "latencyMs": 150,
+      "run": 3,
+      "elapsedMs": 301.43573800000013,
+      "calls": [
+        "update",
+        "list-page"
+      ],
+      "mockedBridgeMs": 300.7177379999994
+    },
+    {
+      "operation": "update",
+      "latencyMs": 150,
+      "run": 4,
+      "elapsedMs": 300.1792180000002,
+      "calls": [
+        "update",
+        "list-page"
+      ],
+      "mockedBridgeMs": 299.7637279999999
+    },
+    {
+      "operation": "update",
+      "latencyMs": 150,
+      "run": 5,
+      "elapsedMs": 301.6396400000003,
+      "calls": [
+        "update",
+        "list-page"
+      ],
+      "mockedBridgeMs": 300.70010100000036
+    },
+    {
+      "operation": "update",
+      "latencyMs": 150,
+      "run": 6,
+      "elapsedMs": 301.443534,
+      "calls": [
+        "update",
+        "list-page"
+      ],
+      "mockedBridgeMs": 300.83669199999986
+    },
+    {
+      "operation": "update",
+      "latencyMs": 150,
+      "run": 7,
+      "elapsedMs": 301.14641799999936,
+      "calls": [
+        "update",
+        "list-page"
+      ],
+      "mockedBridgeMs": 300.7444969999988
+    },
+    {
+      "operation": "update",
+      "latencyMs": 150,
+      "run": 8,
+      "elapsedMs": 301.43598099999963,
+      "calls": [
+        "update",
+        "list-page"
+      ],
+      "mockedBridgeMs": 300.747828999999
+    },
+    {
+      "operation": "update",
+      "latencyMs": 150,
+      "run": 9,
+      "elapsedMs": 301.13804400000026,
+      "calls": [
+        "update",
+        "list-page"
+      ],
+      "mockedBridgeMs": 300.6849820000016
+    },
+    {
+      "operation": "status",
+      "latencyMs": 150,
+      "run": 0,
+      "elapsedMs": 301.2257900000004,
+      "calls": [
+        "status",
+        "list-page"
+      ],
+      "mockedBridgeMs": 300.67967000000135
+    },
+    {
+      "operation": "status",
+      "latencyMs": 150,
+      "run": 1,
+      "elapsedMs": 301.21594000000005,
+      "calls": [
+        "status",
+        "list-page"
+      ],
+      "mockedBridgeMs": 300.78242500000124
+    },
+    {
+      "operation": "status",
+      "latencyMs": 150,
+      "run": 2,
+      "elapsedMs": 301.3441899999998,
+      "calls": [
+        "status",
+        "list-page"
+      ],
+      "mockedBridgeMs": 300.9380190000011
+    },
+    {
+      "operation": "status",
+      "latencyMs": 150,
+      "run": 3,
+      "elapsedMs": 301.70626600000105,
+      "calls": [
+        "status",
+        "list-page"
+      ],
+      "mockedBridgeMs": 300.54582800000026
+    },
+    {
+      "operation": "status",
+      "latencyMs": 150,
+      "run": 4,
+      "elapsedMs": 301.45912399999906,
+      "calls": [
+        "status",
+        "list-page"
+      ],
+      "mockedBridgeMs": 301.02895399999943
+    },
+    {
+      "operation": "status",
+      "latencyMs": 150,
+      "run": 5,
+      "elapsedMs": 301.1688779999986,
+      "calls": [
+        "status",
+        "list-page"
+      ],
+      "mockedBridgeMs": 300.74012700000094
+    },
+    {
+      "operation": "status",
+      "latencyMs": 150,
+      "run": 6,
+      "elapsedMs": 301.4577849999987,
+      "calls": [
+        "status",
+        "list-page"
+      ],
+      "mockedBridgeMs": 300.69869500000095
+    },
+    {
+      "operation": "status",
+      "latencyMs": 150,
+      "run": 7,
+      "elapsedMs": 301.4248040000002,
+      "calls": [
+        "status",
+        "list-page"
+      ],
+      "mockedBridgeMs": 300.7326689999991
+    },
+    {
+      "operation": "status",
+      "latencyMs": 150,
+      "run": 8,
+      "elapsedMs": 301.24727600000006,
+      "calls": [
+        "status",
+        "list-page"
+      ],
+      "mockedBridgeMs": 300.84225700000025
+    },
+    {
+      "operation": "status",
+      "latencyMs": 150,
+      "run": 9,
+      "elapsedMs": 302.8855740000017,
+      "calls": [
+        "status",
+        "list-page"
+      ],
+      "mockedBridgeMs": 302.28818499999943
+    }
+  ],
+  "staleResponseOverwritesNewerFilter": true,
+  "refreshFailure": {
+    "mutationReportedSuccess": true,
+    "errorAvailableInHook": true,
+    "displayedSerial": "BENCH-1"
+  }
+}

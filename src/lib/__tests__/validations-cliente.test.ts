@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { celularValido, clienteSchema } from "@/lib/validations";
+import { celularValido, clienteSchema, schemaContatoCliente } from "@/lib/validations";
 
 const PJ_BASE = {
   documento: "11.222.333/0001-81",
@@ -30,7 +30,7 @@ describe("clienteSchema: contato inicial de PJ", () => {
     expect(paths(result)).toEqual(["contato_nome", "contato_telefone"]);
     if (!result.success) {
       expect(result.error.issues[0]?.message).toBe("Informe o nome do contato.");
-      expect(result.error.issues[1]?.message).toBe("Informe o celular do contato com DDD.");
+      expect(result.error.issues[1]?.message).toBe("Informe o celular com DDD e o 9 (11 dígitos).");
     }
   });
 
@@ -40,6 +40,16 @@ describe("clienteSchema: contato inicial de PJ", () => {
       exigir_contato_inicial: true,
       contato_nome: "Ana",
       contato_telefone: "(11) 9999-999",
+    });
+    expect(paths(result)).toEqual(["contato_telefone"]);
+  });
+
+  it("PJ com a flag e telefone fixo de 10 dígitos falha em contato_telefone", () => {
+    const result = clienteSchema.safeParse({
+      ...PJ_BASE,
+      exigir_contato_inicial: true,
+      contato_nome: "Ana",
+      contato_telefone: "(11) 3333-4444",
     });
     expect(paths(result)).toEqual(["contato_telefone"]);
   });
@@ -84,7 +94,7 @@ describe("clienteSchema: contato inicial de PJ", () => {
       ...PJ_BASE,
       exigir_contato_inicial: true,
       contato_nome: "Ana Souza",
-      contato_telefone: "1133334444",
+      contato_telefone: "(11) 99333-4444",
     });
     expect(result.success).toBe(true);
   });
@@ -117,12 +127,33 @@ describe("clienteSchema: contato inicial de PJ", () => {
   });
 });
 
-describe("celularValido", () => {
-  it("aceita 10 dígitos (fixo com DDD)", () => {
-    expect(celularValido("(11) 3333-4444")).toBe(true);
+describe("schemaContatoCliente", () => {
+  it("PJ sem outro celular recusa telefone fixo e aceita celular", () => {
+    const schema = schemaContatoCliente(true);
+    expect(schema.safeParse({ nome: "Ana", email: "", telefone: "(71) 3333-4444" }).success).toBe(false);
+    expect(schema.safeParse({ nome: "Ana", email: "", telefone: "(71) 98888-7777" }).success).toBe(true);
   });
 
-  it("aceita 11 dígitos (celular com DDD)", () => {
+  it("com outro celular do PJ, telefone fixo continua aceito", () => {
+    const schema = schemaContatoCliente(false);
+    expect(schema.safeParse({ nome: "Ana", email: "", telefone: "(71) 3333-4444" }).success).toBe(true);
+  });
+});
+
+describe("celularValido", () => {
+  it("recusa fixo de 10 dígitos", () => {
+    expect(celularValido("(11) 3333-4444")).toBe(false);
+  });
+
+  it("recusa 11 dígitos sem o 9 após o DDD", () => {
+    expect(celularValido("(11) 83333-4444")).toBe(false);
+  });
+
+  it("recusa DDD fora de 11 a 99", () => {
+    expect(celularValido("(10) 99999-0000")).toBe(false);
+  });
+
+  it("aceita celular com DDD e o 9 com máscara", () => {
     expect(celularValido("(11) 99999-0000")).toBe(true);
   });
 
@@ -136,5 +167,10 @@ describe("celularValido", () => {
 
   it("rejeita string vazia", () => {
     expect(celularValido("")).toBe(false);
+  });
+
+  it("aceita prefixo +55 no celular", () => {
+    expect(celularValido("+55 71 98888-7777")).toBe(true);
+    expect(celularValido("5571988887777")).toBe(true);
   });
 });

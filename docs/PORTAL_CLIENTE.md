@@ -10,19 +10,19 @@ Usa as versões e respostas de orçamento das migrations 0031–0032 (`docs/ACEI
 
 0. **Senha criada pelo operador (padrão, migration 0036).** Nos detalhes do equipamento (**Dar acesso a um contato**) ou em Clientes → Contatos e Portal, o operador libera o portal para o contato e cria a senha (o AutoOS sugere uma senha forte; ele pode digitar outra com 8+ caracteres, letras e números). Os dados de acesso aparecem uma única vez para entregar ao contato; o banco guarda só o hash bcrypt (`pgcrypto`). O cliente entra com **CPF/CNPJ + senha**. A senha é **por contato**, não por CNPJ: é ela que diz quem entrou, se pode decidir e a quem a resposta é atribuída (senhas repetidas no mesmo CPF/CNPJ são recusadas). A senha vale por tempo indeterminado: para trocar ou se esquecer, o contato fala com a equipe, que cria outra. Trocar a senha desconecta o contato; retirar o acesso apaga a senha. Antes de aceitar/recusar, se a última conferência tiver mais de 10 minutos, o portal pede a senha de novo. Limite: 8 tentativas por CPF/CNPJ a cada 15 minutos.
 1. **Sem login por código.** A entrada por código enviado por WhatsApp/email existiu na 0035 e foi removida na 0038: só há senha. O CPF/CNPJ sozinho nunca dá acesso, e senha errada e CPF/CNPJ inexistente têm a mesma resposta.
-2. **Lista.** Todos os atendimentos com `empresa_id` + `cliente_id` do cadastro, separados em **Atuais** e **Histórico** (entregues e encerrados). Ordenação por atividade recente (padrão) ou data de entrada. O cartão mostra equipamento, série, patrimônio, entrada, etapa colorida e “Aguarda sua resposta”.
+2. **Lista.** Todos os atendimentos com `empresa_id` + `cliente_id` do cadastro, separados em **Atuais** e **Histórico** (entregues e encerrados). Ordenação por atividade recente (padrão) ou data de entrada. O cartão mostra equipamento, série, patrimônio, entrada e etapa colorida. O selo “Aguarda sua resposta” saiu do cartão; o resumo do topo continua contando os orçamentos que aguardam resposta. Ver “Orçamento em preparação” abaixo.
 3. **Detalhe.** A tela pública de status (`StatusView`: logo, etapa com pulso, linha do tempo, data) + orçamento publicado (versão, itens, total, validade) + pedidos enviados + cartão de contato.
-4. **Responder.** Aceitar ou recusar o **orçamento inteiro** (sem aprovação parcial) ou **Quero negociar**. Aceitar/recusar exige confirmação com impressora e valor e uma verificação feita há menos de 10 minutos (senão o portal pede a senha de novo). O comprovante tem protocolo `R-<id>`.
+4. **Responder.** Aceitar ou recusar o **orçamento inteiro** (sem aprovação parcial). Recusar passa antes por "Tem certeza que quer recusar?", que só oferece o contato da equipe ("Qualquer dúvida, entre em contato conosco") e "Recusar mesmo assim". Aceitar/recusar exige confirmação com impressora e valor e uma verificação feita há menos de 10 minutos (senão o portal pede a senha de novo). O comprovante tem protocolo `R-<id>`.
 5. **WhatsApp opcional.** Depois de registrar, o portal oferece a mensagem pronta (`wa.me`) e “Copiar mensagem”. O registro e o alerta já existem; fechar o WhatsApp não perde nada.
-6. **Mudei de ideia.** Por 15 minutos (`orcamento_aceite_config.janela_correcao_minutos`, mínimo 15) quem respondeu pode trocar ou cancelar. A equipe vê “resposta recebida, em prazo de correção” e o desktop recusa aplicar nesse período.
+6. **Mudei de ideia.** Por 10 minutos (`orcamento_aceite_config.janela_correcao_minutos`, mínimo 10 desde a 0043; era 15) quem respondeu pode trocar ou cancelar. A equipe vê “resposta recebida, em prazo de correção” e o desktop recusa aplicar nesse período.
 7. **Efetivação.** Terminado o prazo, `portal_efetivar_respostas_vencidas` aplica APROVADO/REPROVADO numa transação com as regras de `aprovar_orcamento`. Se não conseguir, a resposta fica pendente, a equipe recebe alerta e o cliente vê “precisa ser confirmada pela equipe” — nunca uma aprovação falsa. Depois de efetivada, o botão vira **Solicitar correção** (pedido ao operador; não desfaz peças nem trabalho).
-8. **Quero negociar.** Registra um pedido (`orcamento_solicitacoes.tipo = NEGOCIAR`) e um alerta antes de oferecer o WhatsApp. Não é aceite, recusa nem prorrogação. Para mudar valores a equipe altera o orçamento e clica em **Publicar no Portal do Cliente**: nasce uma nova versão e a anterior deixa de aceitar respostas.
+8. **Sem negociação no portal.** Decisão do produto: o portal não oferece nem sugere negociação (sem botão, texto ou mensagem pronta). Quem quiser conversar usa o contato geral da equipe. Os pedidos antigos `orcamento_solicitacoes.tipo = NEGOCIAR` continuam no banco e no histórico, mas a função do portal recusa pedido novo desse tipo. Se a equipe mudar valores, altera o orçamento e clica em **Publicar no Portal do Cliente**: nasce uma nova versão e a anterior deixa de aceitar respostas.
 
 ## Fluxo de trabalho da equipe
 
 **Uma vez (ativação):** aplicar as migrations, publicar `portal-cliente`, agendar a efetivação e ligar `portal_enabled` + `online_enabled` (ver Ativação). Em Configurações → Integrações, preencher o cartão “Fale com a equipe”.
 
-**Uma vez por contato do cliente (direto do equipamento):** o quadro do orçamento mostra “Quem responde no portal”. Sem ninguém, **Dar acesso a um contato** abre uma janela: escolher o contato (o responsável vem marcado), “pode responder orçamentos”, **Liberar acesso e criar senha**. Falta o contato? **Cadastrar ou editar contatos** abre os contatos na mesma janela e volta com o novo já marcado. A senha sai com **Enviar por WhatsApp** (link `wa.me` aberto no navegador; não passa pelo servidor nem fica no histórico) ou **Copiar**. O mesmo continua em Clientes → Contatos e Portal.
+**Uma vez por contato do cliente (direto do equipamento):** o quadro do orçamento mostra “Quem responde no portal”. Nos detalhes do equipamento, a aba do portal tem o bloco **Acesso ao portal**: o login (CPF/CNPJ do cliente, com **Copiar**), os contatos com nível (“Aprovar e recusar” ou “Só acompanhar”) e se têm senha (“Senha criada” ou “Sem senha”). Nenhuma senha é exibida ali; **Gerenciar em Contatos** abre a janela já na tela de contatos. Sem ninguém, **Dar acesso a um contato** abre uma janela: escolher o contato (o responsável vem marcado), “pode responder orçamentos”, **Liberar acesso e criar senha**. Falta o contato? **Cadastrar ou editar contatos** abre os contatos na mesma janela e volta com o novo já marcado. A senha sai com **Enviar por WhatsApp** (link `wa.me` aberto no navegador; não passa pelo servidor nem fica no histórico) ou **Copiar**. O mesmo continua em Clientes → Contatos e Portal.
 
 **WhatsApp do orçamento:** se o destinatário (responsável ou cliente) é um contato que responde pelo portal, a mensagem automática diz para aceitar/recusar em status.bmitag.com.br; para os outros continua “responda APROVADO”. Na Cloud API isso usa o modelo já aprovado `orcamento_portal` (quem decide) ou `orcamento_informativo` (só acompanha) quando o contato já tem senha; os modelos `_v2` só entram quando há senha nova a enviar.
 
@@ -30,15 +30,15 @@ Usa as versões e respostas de orçamento das migrations 0031–0032 (`docs/ACEI
 
 1. Recepção e verificação seguem como hoje. O cliente acompanha as etapas no portal.
 2. **Finalizar Verificação** → `AGUARDANDO_APROVACAO` e o WhatsApp informativo automático. O envio congela a versão do orçamento, e versão aberta = orçamento visível no portal. Se o WhatsApp não saiu ou o orçamento mudou, use **Publicar no Portal do Cliente** nos detalhes do equipamento.
-3. O cliente entra, confere e **aceita**, **recusa** ou **quer negociar**.
+3. O cliente entra, confere e **aceita** ou **recusa**.
 4. No AutoOS: aviso azul “Aceite recebido — confirma às HH:MM”, o equipamento sobe na lista e o quadro do orçamento fica âmbar. **Não comece o serviço antes do horário**: o cliente ainda pode desfazer.
-5. Passados 15 minutos, o servidor efetiva sozinho (status, pagamento “a combinar” se vazio, baixa de estoque) e chega o aviso verde “Orçamento aprovado pelo cliente”. Daí em diante o fluxo é o de sempre (manutenção → pronto → entrega), e o cliente vê as etapas no portal.
+5. Passados 10 minutos, o servidor efetiva sozinho (status, pagamento “a combinar” se vazio, baixa de estoque) e chega o aviso verde “Orçamento aprovado pelo cliente”. Daí em diante o fluxo é o de sempre (manutenção → pronto → entrega), e o cliente vê as etapas no portal.
 
 **Exceções:**
 
 | Situação | Aviso | O que fazer |
 |---|---|---|
-| Cliente quer negociar | Violeta “Cliente quer negociar” + mensagem | Combinar com o cliente, alterar o orçamento e **Publicar** de novo (versão nova; a anterior para de aceitar resposta) |
+| Cliente quer negociar (só pedidos antigos, de antes de sair do portal) | Violeta “Cliente quer negociar” + mensagem | Combinar com o cliente, alterar o orçamento e **Publicar** de novo (versão nova; a anterior para de aceitar resposta) |
 | Efetivação falhou (etapa ou orçamento mudou, peça sem serviço…) | Vermelho “Aceite não efetivado” + motivo | Abrir o atendimento → **Revisar e aplicar decisão** |
 | Cliente pediu correção depois de efetivado | Âmbar “Cliente pediu correção” | Conversar e, se for o caso, **Corrigir decisão do orçamento** (desfaz pagamento, serviços e baixas com escolha sobre o estoque) |
 | Cliente respondeu por telefone/WhatsApp | — | **Aprovar/Reprovar** direto no equipamento, como antes |
@@ -108,12 +108,22 @@ Se o envio falha por qualquer motivo (WhatsApp ou e-mail), abre **Enviar manualm
 - Contato com senha: o envio não troca. A mensagem pede a senha que ele já tem.
 - **Gerar nova senha** (no envio manual) só funciona se o contato ainda não entrou com a senha atual. Depois que entrou, a troca segue pela equipe, como na Jornada.
 
+### Orçamentos pendentes de publicação
+
+OS em `AGUARDANDO_APROVACAO` sem versão aberta no portal (casos antigos, de antes do envio publicar sozinho) aparecem em Configurações → Integrações, no card do Portal, como **Enviar orçamentos pendentes ao portal (N)**. O botão some com N = 0, pede PIN (`MANAGE_STATUS_LINKS` ou `PREPARE_QUOTES`) e publica uma OS por vez pelo mesmo caminho de "Publicar no Portal do Cliente" (um `BUDGET_PUBLISHED_TO_PORTAL` por OS). Uma falha, como prazo vencido, não interrompe as outras: entra no resumo exibido no fim e no evento `BUDGET_PORTAL_BULK_PUBLISH`. O card do portal continua visível só para quem tem `MANAGE_STATUS_LINKS`.
+
 ### Prazo e prorrogação
 
 - O prazo de aprovação fica em **Alterar orçamento**.
 - Quando o prazo termina, a janela de prorrogação oferece **Prorrogar e publicar** (publica no portal) ou **Prorrogar e enviar** (também envia ao cliente). Só quem tem a permissão financeira ou "Elaborar e enviar orçamentos" pode prorrogar (`prorrogar_prazo_orcamento`), e só enquanto o orçamento aguarda aprovação.
 - Se o cliente já respondeu, prorrogar anula a resposta pendente, depois de confirmação.
 - O prazo vale até o fim do dia em Brasília.
+
+## Retirada, Ordem de serviço e título do orçamento
+
+- **Endereço de retirada (em PRONTO).** O bloco de endereço traz **Como chegar** (abre a rota no Google Maps), **Abrir no Google Maps** e **Compartilhar endereço**. Este último usa o compartilhamento do celular, com nome, endereço e link do mapa; sem essa função no navegador, copia o endereço. O mesmo bloco aparece no link individual `#/c/` quando o atendimento está em PRONTO (campo `retirada`, ver `docs/PORTAL_STATUS_PUBLICO.md`).
+- **Ordem de serviço (PDF).** Aparece em Documentos em qualquer status. Serviços e valor só entram depois da aprovação (APROVADO, EM_MANUTENCAO, AGUARDANDO_PECA, PRONTO ou ENTREGUE). O PDF não traz acessórios, contador de páginas, técnico, responsável pela entrega nem observações: esses campos não fazem parte do contrato de `detalhe`.
+- **Orçamento em preparação.** Em AGUARDANDO_APROVACAO sem orçamento publicado, o título do detalhe é “Orçamento em preparação” (tom indigo, na 3ª etapa da linha do tempo). Na lista, o mesmo título aparece quando o atendimento está aguardando aprovação sem resposta pendente. Limitação: a lista decide isso só no front, sem saber se há versão publicada. Se as respostas online estiverem desligadas, ou a versão estiver encerrada ou vencida sem resposta, a lista mostra “Orçamento em preparação” mesmo com orçamento. O detalhe mantém o título do servidor quando há orçamento.
 
 ## Estados
 
@@ -156,14 +166,14 @@ Respostas antigas de origem `PORTAL` (link removido) ou `EQUIPE` só existem em 
 | Objeto | Função |
 |---|---|
 | `cliente_contatos.portal_acesso` + trigger | Acesso por contato; inativar ou mudar de cliente zera o acesso |
-| `portal_config_empresa` (0038) | Chaves por empresa: `portal_enabled` (login e consulta) e `respostas_enabled` (aceitar/recusar/negociar; exige o portal ligado). Sem linha = desligado |
+| `portal_config_empresa` (0038) | Chaves por empresa: `portal_enabled` (login e consulta) e `respostas_enabled` (aceitar/recusar; exige o portal ligado). Sem linha = desligado |
 | `portal_cliente_config` | Reverificação e duração da sessão (globais do produto). `portal_enabled` daqui não é mais lido |
 | `portal_contato_empresa` | Cartão “Fale com a equipe” (Configurações → Integrações); `endereco` (até 300) e `maps_url` (só https, até 500) vieram na 0039 |
 | `portal_codigos` | Histórico do login por código (removido na 0038) |
 | `portal_sessoes` | Hash do token de sessão, `verificada_em`, expiração; só sessões `metodo = SENHA` valem |
 | `orcamento_respostas` (+colunas) | `PORTAL_CLIENTE`, contato, sessão, efetivação automática e falha; `ordem_compra` (1 a 60 caracteres, 0039) |
 | `orcamento_solicitacoes` (+colunas) | `NEGOCIAR` e contato; `contato_telefone` / `contato_email` de retorno (0039) |
-| `clientes.exige_ordem_compra` (0039) | Cliente que exige ordem de compra para aprovar pelo portal (padrão `FALSE`; ainda sem tela no desktop) |
+| `clientes.exige_ordem_compra` (0039) | Cliente que exige ordem de compra para aprovar pelo portal (padrão `FALSE`). Liga-se no cadastro do cliente, em "Exige ordem de compra para aprovar orçamentos", para qualquer cliente (CNPJ ou CPF); a lista de clientes mostra um selo nos que exigem. Vale para todos os contatos do cliente; pede só o número, sem anexo |
 | `portal_alertas` | Alertas persistentes; só `lido_em`/`lido_por` mudam |
 | `equipamentos.ultima_atividade_cliente_em` | Ordenação por atividade sem mexer no token de concorrência |
 | `portal_*` (SECURITY DEFINER) | Única porta da Edge Function (`service_role` só tem EXECUTE nelas) |
@@ -215,7 +225,9 @@ select cron.schedule('portal-efetivar-respostas', '* * * * *',
 -- conferir: select status, start_time from cron.job_run_details order by start_time desc limit 5;
 ```
 
-4. Publicar a página (`npm run build:public-status`, enviar `dist-public-status/` com o `.htaccess`). A URL da função pode ser trocada com `VITE_PORTAL_CLIENTE_API_URL`.
+4. Publicar a página pelo workflow `deploy-portal-site.yml` (aprovação em `production-portal-site`), que envia `dist-public-status/` com o `.htaccess`. A URL da função pode ser trocada com `VITE_PORTAL_CLIENTE_API_URL`.
+
+As Edge Functions são publicadas pelo workflow `deploy-edge-functions.yml`, após aprovação em `production-edge-functions`. Aplique primeiro as migrations necessárias pelo `production-sqlx-migrations.yml` e só então aprove o deploy das funções. No disparo manual, o input `funcoes` aceita nomes separados por vírgula (`portal-cliente`, `public-status`, `envio-whatsapp`); `todas` ou vazio publicam `portal-cliente` e `public-status`. Num push, o workflow também publica as duas, mesmo que só uma tenha mudado: um deploy pendente pode ser cancelado por um push seguinte, e republicar código igual não tem efeito. A `envio-whatsapp` (fila central, ainda não ativada em produção) fica fora da seleção automática e de `todas`: só sobe quando o nome dela é digitado. O workflow usa o secret `SUPABASE_ACCESS_TOKEN` e não aplica migrations.
 5. No AutoOS: Configurações → Integrações → cartão “Fale com a equipe”; nos detalhes do equipamento, dar acesso ao contato e **Publicar no Portal do Cliente**.
 6. Ligar para um piloto em Configurações → Integrações → **Portal do Cliente: funcionamento**: “Portal ligado” e “Clientes podem responder orçamentos” (PIN; respostas exigem a permissão financeira; auditoria `PORTAL_CONFIG_CHANGED`). As chaves são de cada empresa (`portal_config_empresa`, 0038): ligar numa empresa não liga nas outras. Abre com a permissão do Portal (MANAGE_STATUS_LINKS); não exige Gerenciar perfis.
 
@@ -240,7 +252,7 @@ Pré-requisitos: passos 1–4 da Ativação concluídos; build do AutoOS a parti
 **Portal (status.bmitag.com.br, celular e computador)**
 
 7. Entrar com o CPF/CNPJ do cliente + senha. A lista mostra o equipamento em “Atuais” como “aguarda sua resposta”.
-8. Com a proposta ainda aberta: **Quero negociar** com uma mensagem → chega como alerta no AutoOS (faixa violeta com WhatsApp/e-mail) e não muda o status. Marcar como tratada no AutoOS.
+8. Com a proposta ainda aberta: conferir que nenhuma tela fala em negociar e que "Recusar orçamento" mostra "Tem certeza que quer recusar?" só com o contato da equipe e "Recusar mesmo assim".
 9. **Aceitar** → confirmar impressora e valor (e a OC, se o cliente exigir) → comprovante com protocolo. Se a entrada tiver mais de 10 minutos, pede a senha de novo antes.
 10. Dentro do prazo de correção: **Desfazer resposta** → volta a “aguardando resposta” e o comprovante some sem recarregar. Aceitar de novo.
 11. No AutoOS: o sino mostra “Aceite recebido — confirma às HH:MM” (aba Portal do Cliente); a faixa mostra a resposta em prazo de correção, sem botão de aplicar.

@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { DetalheAtendimento } from "./portal-api";
-import { formatarDocumento, gerarPdf, modeloComprovanteEntrega, modeloOrcamento } from "./portal-pdf";
+import { formatarDocumento, gerarPdf, modeloComprovanteEntrega, modeloOrcamento, modeloOrdemServico } from "./portal-pdf";
 
 const doc = vi.hoisted(() => ({
   internal: { pageSize: { getWidth: () => 210, getHeight: () => 297 } },
@@ -62,6 +62,83 @@ describe("comprovante de entrega", () => {
     expect(t).toMatch(/420,00/);
     expect(t).toMatch(/Valor orçado: R\$.*350,00/);
     expect(t).toContain("Entregue em");
+  });
+});
+
+describe("modelo da ordem de serviço", () => {
+  it("traz número, equipamento, CNPJ, defeito e andamento", () => {
+    const t = texto(modeloOrdemServico(detalhe()));
+    for (const parte of ["OS-00028", "SER-1", "11.222.333/0001-81", "Não imprime", "Andamento"]) {
+      expect(t).toContain(parte);
+    }
+  });
+
+  it("OS parcialmente aprovada lista só os serviços aceitos", () => {
+    const base = detalhe();
+    const orc = base.orcamento!;
+    const m = modeloOrdemServico(detalhe({ orcamento: { ...orc, servicos: [
+      { descricao: "Troca do fusor", valor: 250, aprovado: true, pecas: [] },
+      { descricao: "Limpeza interna", valor: 100, aprovado: false, pecas: [] },
+    ] } }));
+    const t = texto(m);
+    expect(t).toContain("Troca do fusor");
+    expect(t).not.toContain("Limpeza interna");
+  });
+
+  it("OS usa as linhas aprovadas atuais após ajuste sem nova aprovação; o orçamento mantém o snapshot", () => {
+    const orc = detalhe().orcamento!;
+    const comAjuste = detalhe({ orcamento: { ...orc,
+      servicos: [{ descricao: "Troca do fusor", valor: 250, aprovado: true, pecas: [{ nome: "Fusor", quantidade: 1, valorUnitario: 250 }] }],
+      servicosAtuais: [
+        { descricao: "Troca do fusor", valor: 180, aprovado: true, pecas: [{ nome: "Fusor", quantidade: 2, valorUnitario: 90 }] },
+        { descricao: "Revisão extra", valor: 40, aprovado: true, pecas: [] },
+      ] } });
+    const os = texto(modeloOrdemServico(comAjuste));
+    expect(os).toContain("Revisão extra");
+    expect(os).toContain("2 x Fusor");
+    expect(os).not.toContain("1 x Fusor");
+    const orcamento = texto(modeloOrcamento(comAjuste)!);
+    expect(orcamento).toContain("1 x Fusor");
+    expect(orcamento).not.toContain("Revisão extra");
+  });
+
+  it("sem orçamento e em RECEBIDO não traz serviços aprovados", () => {
+    const t = texto(modeloOrdemServico(detalhe({ status: "RECEBIDO", orcamento: null })));
+    expect(t).not.toContain("Serviços aprovados");
+  });
+
+  it("com APROVADO traz os serviços aprovados", () => {
+    const t = texto(modeloOrdemServico(detalhe({ status: "APROVADO" })));
+    expect(t).toContain("Troca do fusor");
+  });
+
+  it("entregue após reprovação não traz serviços como aprovados", () => {
+    const etapas = [
+      { status: "AGUARDANDO_APROVACAO", em: "2026-10-14T12:00:00Z" },
+      { status: "REPROVADO", em: "2026-10-15T12:00:00Z" },
+      { status: "ENTREGUE", em: "2026-10-16T12:00:00Z" },
+    ];
+    const t = texto(modeloOrdemServico(detalhe({ status: "ENTREGUE", etapas })));
+    expect(t).not.toContain("Serviços aprovados");
+  });
+
+  it("entregue com aprovação traz os serviços aprovados", () => {
+    const etapas = [
+      { status: "APROVADO", em: "2026-10-15T12:00:00Z" },
+      { status: "ENTREGUE", em: "2026-10-20T12:00:00Z" },
+    ];
+    const t = texto(modeloOrdemServico(detalhe({ status: "ENTREGUE", etapas })));
+    expect(t).toContain("Serviços aprovados");
+  });
+
+  it("reprovado, nova proposta aprovada e entregue traz os serviços aprovados", () => {
+    const etapas = [
+      { status: "REPROVADO", em: "2026-10-15T12:00:00Z" },
+      { status: "APROVADO", em: "2026-10-17T12:00:00Z" },
+      { status: "ENTREGUE", em: "2026-10-20T12:00:00Z" },
+    ];
+    const t = texto(modeloOrdemServico(detalhe({ status: "ENTREGUE", etapas })));
+    expect(t).toContain("Serviços aprovados");
   });
 });
 

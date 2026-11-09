@@ -51,7 +51,7 @@ export function ConfirmDialog({
         </button>
         <AlertDialogHeader>
           <AlertDialogTitle>{title}</AlertDialogTitle>
-          <AlertDialogDescription className={description ? undefined : "sr-only"}>
+          <AlertDialogDescription className={description ? "whitespace-pre-line" : "sr-only"}>
             {description || title}
           </AlertDialogDescription>
         </AlertDialogHeader>

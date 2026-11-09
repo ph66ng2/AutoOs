@@ -2,7 +2,7 @@ import { beforeAll, describe, expect, it, vi } from "vitest";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { useForm } from "react-hook-form";
-import { InsumosProdutoDialog } from "./InsumosDialogs";
+import { InsumosDeleteDialog, InsumosProdutoDialog } from "./InsumosDialogs";
 import type { ProdutoFormData } from "@/lib/validations";
 import type { Produto } from "@/types";
 
@@ -13,7 +13,13 @@ beforeAll(() => {
   HTMLElement.prototype.scrollIntoView = () => undefined;
 });
 
-function TestDialog({ editando = null }: { editando?: Produto | null }) {
+function TestDialog({
+  editando = null,
+  onSubmit = vi.fn(),
+}: {
+  editando?: Produto | null;
+  onSubmit?: () => void;
+}) {
   const form = useForm<ProdutoFormData>({
     defaultValues: {
       nome: "Insumo",
@@ -33,10 +39,71 @@ function TestDialog({ editando = null }: { editando?: Produto | null }) {
       editando={editando}
       form={form}
       salvando={false}
-      onSubmit={vi.fn()}
+      onSubmit={onSubmit}
     />
   );
 }
+
+describe("aviso de uso na exclusão de peça", () => {
+  const produto = { id: 1, nome: "Toner XYZ" } as Produto;
+
+  it("não mostra aviso quando a peça não está em orçamentos", () => {
+    render(
+      <InsumosDeleteDialog
+        open
+        onOpenChange={vi.fn()}
+        deletando={produto}
+        salvando={false}
+        onDelete={vi.fn()}
+        uso={{ os_em_aberto: [], os_baixa_pendente: [], orcamentos_insumos: [] }}
+      />,
+    );
+    expect(
+      screen.queryByText("Esta peça está em orçamentos em andamento"),
+    ).not.toBeInTheDocument();
+  });
+
+  it("lista os orçamentos em andamento e mantém o botão habilitado", () => {
+    render(
+      <InsumosDeleteDialog
+        open
+        onOpenChange={vi.fn()}
+        deletando={produto}
+        salvando={false}
+        onDelete={vi.fn()}
+        uso={{
+          os_em_aberto: ["OS-10"],
+          os_baixa_pendente: [],
+          orcamentos_insumos: ["OI-3"],
+        }}
+      />,
+    );
+    expect(
+      screen.getByText("Esta peça está em orçamentos em andamento"),
+    ).toBeInTheDocument();
+    expect(screen.getByText("OS com orçamento ainda não decidido")).toBeInTheDocument();
+    expect(screen.getByText("OS-10")).toBeInTheDocument();
+    expect(screen.getByText("Orçamentos de insumos em aberto")).toBeInTheDocument();
+    expect(screen.getByText("OI-3")).toBeInTheDocument();
+    expect(screen.queryByText("OS aprovadas com baixa pendente")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Excluir" })).toBeEnabled();
+  });
+
+  it("desabilita o botão Excluir enquanto o uso está carregando", () => {
+    render(
+      <InsumosDeleteDialog
+        open
+        onOpenChange={vi.fn()}
+        deletando={produto}
+        salvando={false}
+        onDelete={vi.fn()}
+        uso={null}
+        carregandoUso
+      />,
+    );
+    expect(screen.getByRole("button", { name: "Excluir" })).toBeDisabled();
+  });
+});
 
 describe("mínimo no cadastro de insumos", () => {
   it("acompanha cada categoria escolhida e permite ajuste manual", async () => {
@@ -69,5 +136,29 @@ describe("mínimo no cadastro de insumos", () => {
     await user.click(screen.getByRole("combobox"));
     await user.click(await screen.findByRole("option", { name: "Ribbon" }));
     expect(minimo).toHaveValue(7);
+  });
+});
+
+describe("preços no cadastro de insumos", () => {
+  it.each(["Preço Custo", "Preço Venda"])("bloqueia o salvar com %s inválido até corrigir", async (rotulo) => {
+    const user = userEvent.setup();
+    const onSubmit = vi.fn();
+    render(<TestDialog onSubmit={onSubmit} />);
+    const campo = screen.getByText(rotulo).parentElement!.querySelector("input") as HTMLInputElement;
+
+    await user.clear(campo);
+    await user.type(campo, "abc");
+    await user.tab();
+    const salvar = screen.getByRole("button", { name: "Cadastrar" });
+    expect(salvar).toBeDisabled();
+    await user.type(screen.getByPlaceholderText("Toner HP 26A"), "{Enter}");
+    expect(onSubmit).not.toHaveBeenCalled();
+
+    await user.clear(campo);
+    await user.type(campo, "12,50");
+    await user.tab();
+    expect(salvar).toBeEnabled();
+    await user.click(salvar);
+    expect(onSubmit).toHaveBeenCalledTimes(1);
   });
 });

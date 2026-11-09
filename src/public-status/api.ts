@@ -3,6 +3,7 @@ export interface PublicStatusResponse {
   titulo: string;
   orientacao: string;
   statusAlteradoEm: string | null;
+  retirada?: { nome: string; endereco: string; mapsUrl: string | null };
 }
 
 export class PublicStatusRequestError extends Error {

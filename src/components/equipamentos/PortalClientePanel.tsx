@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { useSensitiveAccess } from "@/hooks/useSensitiveAccess";
 import { PublicStatusLinkDialog } from "@/components/equipamentos/PublicStatusLinkDialog";
+import { AcessoAoPortal } from "@/components/equipamentos/AcessoAoPortal";
 import { QuemRespondeNoPortal } from "@/components/equipamentos/QuemRespondeNoPortal";
 import { usePortalCliente } from "@/components/equipamentos/portal-cliente-context";
 import {
@@ -11,6 +12,7 @@ import {
   MOTIVO_FALHA,
   TIPO_SOLICITACAO_TEXTO,
   formatarHora,
+  formatarValidoAte,
   formatarValor,
   origemTexto,
   textoOrdemCompra,
@@ -70,7 +72,7 @@ export function PortalClientePanel({ open, onOpenChange }: Props) {
               {info ? (
                 <p className="text-sm text-muted-foreground">
                   Versão {info.versao} enviada em {formatarHora(info.criadaEm)} · {formatarValor(info.valorTotal)}
-                  {info.validoAte ? ` · válida até ${formatarHora(info.validoAte)}` : ""}
+                  {info.validoAte ? ` · válida até ${formatarValidoAte(info.validoAte)}` : ""}
                   {info.encerradaMotivo
                     ? aguardando
                       ? " · encerrada (o orçamento ou a etapa mudou; publique uma nova versão)"
@@ -109,6 +111,10 @@ export function PortalClientePanel({ open, onOpenChange }: Props) {
                 <QuemRespondeNoPortal />
               </Secao>
             )}
+
+            <Secao titulo="Acesso ao portal">
+              <AcessoAoPortal />
+            </Secao>
 
             <Secao titulo="Link de acompanhamento sem login">
               <p className="text-xs text-muted-foreground">

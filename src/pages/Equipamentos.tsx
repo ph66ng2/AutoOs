@@ -138,8 +138,8 @@ import { PhotoUploadDialog } from "@/components/equipamentos/PhotoUploadDialog";
 import { DocumentosEquipamento } from "@/components/equipamentos/DocumentosEquipamento";
 import { PdfPreviewDialog } from "@/components/equipamentos/PdfPreviewDialog";
 import { AjusteOrcamentoServicos } from "@/components/equipamentos/AjusteOrcamentoServicos";
+import { LABEL_CONFIRMAR_OS_GARANTIA, MENSAGEM_CONFIRMAR_OS_GARANTIA, orcamentoEmElaboracao, transicaoElaboraOrcamento, osSomenteGarantia, orcamentoJaAprovado, orcamentoMudou, TITULO_CONFIRMAR_OS_GARANTIA, vaiAutoAprovarOsGarantia } from "@/lib/orcamento-estoque";
 import { EscolhaAjusteOrcamentoDialog } from "@/components/equipamentos/EscolhaAjusteOrcamentoDialog";
-import { orcamentoEmElaboracao, orcamentoJaAprovado, orcamentoMudou, transicaoElaboraOrcamento } from "@/lib/orcamento-estoque";
 import { validatePecasSugeridas } from "@/lib/data/servicos-repository";
 import { mesclarPecasDoOrcamento, somarPecas } from "@/lib/servico-pecas";
 import { ActionPriorityRow, type PriorityAction } from "@/components/ui/action-priority-row";
@@ -147,6 +147,7 @@ import {
   arquivoParaImagemEquipamento,
   bytesParaDataUrl,
   imagemPersistidaParaDraft,
+  imagensPersistidasIguais,
   LIMITE_IMAGENS_POR_EQUIPAMENTO,
   normalizarOrdemPorCategoria,
   type EquipamentoImagemDraft,
@@ -163,17 +164,24 @@ import {
 import { GaleriaImagensEquipamento } from "@/pages/equipamentos/EquipamentosPageGallery";
 import { StatusBadge } from "@/pages/equipamentos/EquipamentosStatusBadge";
 import {
+  agruparAcoesOs,
   extrairTecnicoInicialDeObservacoes,
   filtrarImagensPorCategoria,
   getStatusCorrecao,
   getProximosStatus,
   mensagemResultadoCanais,
+  precisaPerguntarQuemRecebeOrcamento,
   reabreOrcamentoSemAjuste,
   removerTecnicoInicialDasObservacoes,
   statusExigeAcessoSensivel,
+  mensagemAjusteTotalZero,
+  totalOrcamentoAjusteValido,
+  totalOrcamentoAprovacaoValido,
   whatsappNaoConfigurado,
 } from "@/pages/equipamentos/equipamentos-page-utils";
-import { formatCurrency } from "@/lib/utils";
+import { DateIsoInput } from "@/components/ui/date-iso-input";
+import { ValorDecimalInput } from "@/components/ui/valor-decimal-input";
+import { formatCurrency, formatCurrencyOrMissing } from "@/lib/utils";
 import { useNotification } from "@/hooks/useNotification";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { InputDialog } from "@/components/ui/input-dialog";
@@ -196,8 +204,9 @@ import {
 import { enviarOrcamentoAoCliente, gerarNovaSenhaEnvioManual, prorrogarEEnviar, sugerirNovoPrazo } from "@/lib/envio-orcamento";
 import { ehErroPrazoVencido, formatarDataIso, prazoAprovacaoVencido } from "@/lib/orcamento-prazo";
 import { EVENTO_ALERTAS_PORTAL } from "@/components/PortalAlertas";
+import { ReabrirOrcamentoDialog } from "@/components/equipamentos/ReabrirOrcamentoDialog";
 import { resolveRecipient, type ResolvedRecipient } from "@/lib/recipient-resolver";
-import { saveRecipientAddress } from "@/lib/recipient-persistence";
+import { mensagemEnvioFalhouComEmailSalvo, saveRecipientAddress } from "@/lib/recipient-persistence";
 import { IS_SAAS_BUILD } from "@/lib/runtime-mode";
 import { carregarRepositorioClientes } from "@/lib/data/clientes-repository";
 import { carregarRepositorioComunicacoes } from "@/lib/data/comunicacoes-repository";
@@ -282,6 +291,9 @@ export default function Equipamentos({ operationalProfile }: { operationalProfil
     sugestao: { nome: string; telefone: string; email: string };
     continuar: (eq: Equipamento) => void | Promise<void>;
   } | null>(null);
+  const [reabrirAlvo, setReabrirAlvo] = useState<Equipamento | null>(null);
+  // Diálogo "Mudar Status" aberto sem status pré-selecionado: REPROVADO não oferece "Aguardando aprovação" aí (use "Nova proposta").
+  const [statusSemPreSelecao, setStatusSemPreSelecao] = useState(false);
   const [verificacaoDialogOpen, setVerificacaoDialogOpen] = useState(false);
   const [statusDialogOpen, setStatusDialogOpen] = useState(false);
   const [pagamentoDialogOpen, setPagamentoDialogOpen] = useState(false);
@@ -294,10 +306,12 @@ export default function Equipamentos({ operationalProfile }: { operationalProfil
   const [todosServicosAprovados, setTodosServicosAprovados] = useState<boolean | null>(null);
   const [idsAprovados, setIdsAprovados] = useState<string[]>([]);
   const [totalOrcamentoAprovacao, setTotalOrcamentoAprovacao] = useState<number | undefined>();
+  const garantiaConfirmadaRef = useRef(false);
   const [consumosDetalhes, setConsumosDetalhes] = useState<EquipmentPartConsumption[]>([]);
   const [baixandoPendentes, setBaixandoPendentes] = useState(false);
   const [consumosDialogOpen, setConsumosDialogOpen] = useState(false);
   const [ajusteOrcamentoSemMudancaStatus, setAjusteOrcamentoSemMudancaStatus] = useState(false);
+  const [pecasAjusteInvalidas, setPecasAjusteInvalidas] = useState(false);
   const [correcaoStatus, setCorrecaoStatus] = useState(false);
   const [motivoCorrecaoStatus, setMotivoCorrecaoStatus] = useState("");
   const [editando, setEditando] = useState<Equipamento | null>(null);
@@ -335,6 +349,8 @@ export default function Equipamentos({ operationalProfile }: { operationalProfil
   // Mudança de status
   const [novoStatus, setNovoStatus] = useState("");
   const [valorOrcamento, setValorOrcamento] = useState<number>(0);
+  const [valorOrcamentoValido, setValorOrcamentoValido] = useState(true);
+  const [prazoAprovacaoValido, setPrazoAprovacaoValido] = useState(true);
   const valorOrcamentoRef = useRef(valorOrcamento);
   const [escolhaAjuste, setEscolhaAjuste] = useState<{ variante: "aprovado" | "pendente"; analise: AnaliseAjusteOrcamento } | null>(null);
   const escolhaAjusteResolver = useRef<((opcoes: OpcoesAjusteOrcamento | null) => void) | null>(null);
@@ -354,6 +370,7 @@ export default function Equipamentos({ operationalProfile }: { operationalProfil
   const [valorFinal, setValorFinal] = useState<number>(0);
   const [valorFinalSugerido, setValorFinalSugerido] = useState<number | null>(null);
   const [acordoExcecaoEntrega, setAcordoExcecaoEntrega] = useState(false);
+  const [valorFinalValido, setValorFinalValido] = useState(true);
   const [tecnicoNovoEquipamento, setTecnicoNovoEquipamento] = useState<TecnicoDisponivel>("Ivan");
   const [marcaOutroOpen, setMarcaOutroOpen] = useState(false);
   const [tipoOutroOpen, setTipoOutroOpen] = useState(false);
@@ -373,6 +390,9 @@ export default function Equipamentos({ operationalProfile }: { operationalProfil
   const [imagensFormulario, setImagensFormulario] = useState<EquipamentoImagemDraft[]>([]);
   const [erroImagens, setErroImagens] = useState<string | null>(null);
   const [carregandoImagensFormulario, setCarregandoImagensFormulario] = useState(false);
+  const fotoEdicaoSeq = useRef(0);
+  const fotoEdicaoEquipamentoId = useRef<number | null>(null);
+  const baselineFotosRef = useRef<{ equipamentoId: number; fotos: EquipamentoImagemDraft[] } | null>(null);
 
   const { success, error: showError, warning } = useNotification();
 
@@ -399,13 +419,15 @@ export default function Equipamentos({ operationalProfile }: { operationalProfil
     equipamentos: registrosEquipamento,
     total: totalEquipamentos,
     loading,
-    error: erroEquipamentos,
+    error: erroListaEquipamentos,
+    avisoAtualizacao,
     criar,
     atualizar,
     deletar,
     atualizarStatus,
     buscarPorSerial,
     recarregar,
+    atualizarEmSegundoPlano,
     substituirLocal,
   } =
     useEquipamentos<EquipamentoId>({ busca: busca || undefined, status: statusFiltro, page: paginaEquipamentos, ordenacao: ordenacaoEquipamentos });
@@ -421,7 +443,7 @@ export default function Equipamentos({ operationalProfile }: { operationalProfil
   // Hook de automação de status
   const { loading: loadingAutomacao, finalizarVerificacao, marcarComoPronto } =
     useStatusEquipamento();
-  const { ensureSensitiveAccess, status: sensitiveStatus } = useSensitiveAccess({ operationalProfile });
+  const { ensureSensitiveAccess, status: sensitiveStatus, hasPermission } = useSensitiveAccess({ operationalProfile });
   const location = useLocation();
   const navigate = useNavigate();
 
@@ -443,7 +465,7 @@ export default function Equipamentos({ operationalProfile }: { operationalProfil
   useEffect(() => {
     const aoChegar = (event: Event) => {
       const ids = (event as CustomEvent<{ equipamentoIds?: Array<number | string> }>).detail?.equipamentoIds ?? [];
-      void recarregar();
+      void atualizarEmSegundoPlano();
       const abertoId = selecionadoIdRef.current;
       if (detalhesAbertoRef.current && abertoId != null && ids.some((id) => String(id) === String(abertoId))) {
         setSinalPortal((valor) => valor + 1);
@@ -451,7 +473,7 @@ export default function Equipamentos({ operationalProfile }: { operationalProfil
     };
     window.addEventListener(EVENTO_ALERTAS_PORTAL, aoChegar);
     return () => window.removeEventListener(EVENTO_ALERTAS_PORTAL, aoChegar);
-  }, [recarregar]);
+  }, [atualizarEmSegundoPlano]);
 
   const carregarImagensComPreview = useCallback(async (equipamentoId: EquipamentoId) => {
     if (IS_SAAS_BUILD) return [];
@@ -464,6 +486,7 @@ export default function Equipamentos({ operationalProfile }: { operationalProfil
   useEffect(() => {
     if (IS_SAAS_BUILD) return;
     let unlisten: (() => void) | undefined;
+    let cancelled = false;
 
     listen<{ equipamento_id: number; imagem_id: number }>("photo-received", (event) => {
       const { equipamento_id } = event.payload;
@@ -476,11 +499,15 @@ export default function Equipamentos({ operationalProfile }: { operationalProfil
             console.error("Erro ao recarregar imagens após evento photo-received:", err);
           });
       }
-    }).then((fn) => {
-      unlisten = fn;
-    });
+    })
+      .then((fn) => {
+        if (cancelled) fn();
+        else unlisten = fn;
+      })
+      .catch(() => {});
 
     return () => {
+      cancelled = true;
       unlisten?.();
     };
   }, [carregarImagensComPreview]);
@@ -503,6 +530,9 @@ export default function Equipamentos({ operationalProfile }: { operationalProfil
 
   /** Abre dialog para criar novo equipamento. Reseta form e limpa cliente */
   function abrirNovo() {
+    fotoEdicaoSeq.current += 1;
+    fotoEdicaoEquipamentoId.current = null;
+    baselineFotosRef.current = null;
     setEditando(null);
     setClienteVinculado(null);
     setResponsavelVinculado(null);
@@ -524,8 +554,43 @@ export default function Equipamentos({ operationalProfile }: { operationalProfil
     setDialogOpen(true);
   }
 
+  async function carregarFotosDaEdicao(equipamentoId: number, sequencia: number) {
+    baselineFotosRef.current = null;
+    setImagensFormulario([]);
+    setErroImagens(null);
+    setCarregandoImagensFormulario(true);
+    const contextoAindaAtivo = () =>
+      fotoEdicaoSeq.current === sequencia
+      && fotoEdicaoEquipamentoId.current === equipamentoId;
+
+    try {
+      const imagens = await carregarImagensComPreview(equipamentoId);
+      if (!contextoAindaAtivo()) return;
+      const fotos = normalizarOrdemPorCategoria(imagens);
+      baselineFotosRef.current = { equipamentoId, fotos };
+      setImagensFormulario(fotos);
+      setErroImagens(null);
+    } catch (err) {
+      if (!contextoAindaAtivo()) return;
+      console.error("Erro ao carregar imagens do equipamento:", err);
+      setErroImagens("Não foi possível carregar as fotos já cadastradas.");
+    } finally {
+      if (contextoAindaAtivo()) setCarregandoImagensFormulario(false);
+    }
+  }
+
+  function recarregarFotosDaEdicao() {
+    if (!editando?.id) return;
+    const sequencia = ++fotoEdicaoSeq.current;
+    fotoEdicaoEquipamentoId.current = editando.id;
+    void carregarFotosDaEdicao(editando.id, sequencia);
+  }
+
   /** Abre dialog para editar equipamento existente. Carrega cliente vinculado do banco */
   function abrirEditar(eq: Equipamento) {
+    const sequencia = ++fotoEdicaoSeq.current;
+    fotoEdicaoEquipamentoId.current = eq.id ?? null;
+    baselineFotosRef.current = null;
     setEditando(eq);
     setResponsavelVinculado(eq.responsavel_contato_id && eq.cliente_id ? {
       id: eq.responsavel_contato_id,
@@ -541,17 +606,8 @@ export default function Equipamentos({ operationalProfile }: { operationalProfil
     setImagensFormulario([]);
     setCarregandoImagensFormulario(!IS_SAAS_BUILD);
     setTecnicoNovoEquipamento(extrairTecnicoInicialDeObservacoes(eq.observacoes) || "Ivan");
-    void carregarImagensComPreview(eq.id!)
-      .then((imagens) => {
-        setImagensFormulario(normalizarOrdemPorCategoria(imagens));
-      })
-      .catch((err) => {
-        console.error("Erro ao carregar imagens do equipamento:", err);
-        setErroImagens("Não foi possível carregar as fotos já cadastradas.");
-      })
-      .finally(() => {
-        setCarregandoImagensFormulario(false);
-      });
+    if (eq.id) void carregarFotosDaEdicao(eq.id, sequencia);
+    else setCarregandoImagensFormulario(false);
     // Se o equipamento tem cliente_id, carregar do banco; senão, montar objeto parcial
     if (eq.cliente_id) {
       // O fallback imediato mantém a seleção do responsável enquanto o
@@ -564,8 +620,10 @@ export default function Equipamentos({ operationalProfile }: { operationalProfil
         email: eq.cliente_email || undefined,
       });
       void carregarRepositorioClientes().then((repository) => repository.buscar(eq.cliente_id!)).then((c) => {
+        if (fotoEdicaoSeq.current !== sequencia || fotoEdicaoEquipamentoId.current !== eq.id) return;
         if (c) setClienteVinculado(c);
       }).catch(() => {
+        if (fotoEdicaoSeq.current !== sequencia || fotoEdicaoEquipamentoId.current !== eq.id) return;
         // Fallback: usar dados denormalizados
         if (eq.cliente_nome) {
           setClienteVinculado({
@@ -606,6 +664,7 @@ export default function Equipamentos({ operationalProfile }: { operationalProfil
     event: React.ChangeEvent<HTMLInputElement>,
     categoria: EquipamentoImagemCategoria,
   ) {
+    const sequenciaEdicao = fotoEdicaoSeq.current;
     const arquivos = Array.from(event.target.files || []);
     event.target.value = "";
     if (arquivos.length === 0) return;
@@ -630,6 +689,8 @@ export default function Equipamentos({ operationalProfile }: { operationalProfil
         )
       );
 
+      if (fotoEdicaoSeq.current !== sequenciaEdicao) return;
+
       const imagensBemSucedidas = resultados
         .filter((r): r is PromiseFulfilledResult<{ sucesso: true; imagem: any; arquivo: File }> => r.status === "fulfilled" && r.value.sucesso)
         .map((r) => r.value.imagem);
@@ -653,10 +714,11 @@ export default function Equipamentos({ operationalProfile }: { operationalProfil
       }
       setErroImagens(mensagensErro.length > 0 ? mensagensErro.join("\n") : null);
     } catch (err: any) {
+      if (fotoEdicaoSeq.current !== sequenciaEdicao) return;
       console.error("Erro ao processar imagens do equipamento:", err);
       setErroImagens(err?.message || "Não foi possível processar as fotos selecionadas.");
     } finally {
-      setCarregandoImagensFormulario(false);
+      if (fotoEdicaoSeq.current === sequenciaEdicao) setCarregandoImagensFormulario(false);
     }
   }
 
@@ -832,7 +894,7 @@ export default function Equipamentos({ operationalProfile }: { operationalProfil
     const sugerido = verificacao?.custo_total ?? eq.valor_orcamento ?? 0;
     setValorFinalSugerido(sugerido);
     setValorFinal(sugerido);
-    setAcordoExcecaoEntrega(false);
+    setAcordoExcecaoEntrega(false); setValorFinalValido(true);
   }
 
   async function prepararAjusteOrcamentoPadrao(eq: Equipamento) {
@@ -846,6 +908,7 @@ export default function Equipamentos({ operationalProfile }: { operationalProfil
     setValorOrcamentoOriginal(valorOriginal);
     setValorOrcamentoAnterior(valorAnterior);
     setValorOrcamento(valorBase);
+    setValorOrcamentoValido(true);
     setPrazoAprovacao(eq.prazo_aprovacao || "");
     setVerificacaoAjusteOrcamento(verificacao);
     setObservacoesAjuste(verificacao?.observacoes || "");
@@ -887,7 +950,7 @@ export default function Equipamentos({ operationalProfile }: { operationalProfil
       void prepararValorEntregaPadrao(selecionado);
     } else {
       setValorFinalSugerido(null);
-      setAcordoExcecaoEntrega(false);
+      setAcordoExcecaoEntrega(false); setValorFinalValido(true);
     }
   }
 
@@ -907,7 +970,9 @@ export default function Equipamentos({ operationalProfile }: { operationalProfil
     setMotivoCorrecaoStatus("");
     setSelecionado(eq);
     setNovoStatus(statusPreSelecionado || "");
+    setStatusSemPreSelecao(!statusPreSelecionado);
     setValorOrcamento(eq.valor_orcamento ?? 0);
+    setValorOrcamentoValido(true);
     setPrazoAprovacao(eq.prazo_aprovacao || "");
     setValorOrcamentoOriginal(null);
     setValorOrcamentoAnterior(null);
@@ -920,7 +985,7 @@ export default function Equipamentos({ operationalProfile }: { operationalProfil
     setCarregandoCatalogoAjuste(false);
     setValorFinal(0);
     setValorFinalSugerido(null);
-    setAcordoExcecaoEntrega(false);
+    setAcordoExcecaoEntrega(false); setValorFinalValido(true);
     setErroImagensSaidaEntrega(null);
     setImagensSaidaEntrega([]);
     if ((statusPreSelecionado || "") === "ENTREGUE") {
@@ -968,6 +1033,7 @@ export default function Equipamentos({ operationalProfile }: { operationalProfil
     setMotivoCorrecaoStatus("");
     setNovoStatus("");
     setValorOrcamento(eq.valor_orcamento ?? 0);
+    setValorOrcamentoValido(true);
     setPrazoAprovacao(eq.prazo_aprovacao || "");
     setValorFinal(0);
     setStatusDialogOpen(true);
@@ -991,7 +1057,7 @@ export default function Equipamentos({ operationalProfile }: { operationalProfil
     setMotivoCorrecaoStatus("");
     setValorFinal(0);
     setValorFinalSugerido(null);
-    setAcordoExcecaoEntrega(false);
+    setAcordoExcecaoEntrega(false); setValorFinalValido(true);
     await prepararAjusteOrcamentoPadrao(eq);
     setStatusDialogOpen(true);
   }
@@ -1002,6 +1068,13 @@ export default function Equipamentos({ operationalProfile }: { operationalProfil
    * Conecta-se a: useEquipamentos.criar/atualizar → db → Rust
    */
   async function onSubmit(data: EquipamentoFormData) {
+    const sequenciaEdicao = fotoEdicaoSeq.current;
+    const baselineFotos = editando ? baselineFotosRef.current : null;
+    if (editando && (carregandoImagensFormulario || !baselineFotos || baselineFotos.equipamentoId !== editando.id)) {
+      setErroImagens("As fotos ainda não foram carregadas com segurança. Recarregue as fotos antes de salvar.");
+      return;
+    }
+
     // Validar que um cliente foi vinculado
     if (!clienteVinculado) {
       setErroCliente("Selecione ou cadastre um cliente antes de salvar.");
@@ -1048,6 +1121,9 @@ export default function Equipamentos({ operationalProfile }: { operationalProfil
       };
       const imagensPayload: EquipamentoImagemInput[] = normalizarOrdemPorCategoria(imagensFormulario)
         .map(({ local_id, preview_url, ...imagem }) => imagem);
+      const fotosAlteradas = editando
+        ? !imagensPersistidasIguais(imagensFormulario, baselineFotos!.fotos)
+        : imagensPayload.length > 0;
       const resultado = editando
         ? await atualizar(editando.id!, payload, editando.atualizado_em)
         : await criar(payload);
@@ -1055,13 +1131,40 @@ export default function Equipamentos({ operationalProfile }: { operationalProfil
       if (!resultado.sucesso || !resultado.data?.id) {
         throw new Error(resultado.erro || "Não foi possível salvar o equipamento.");
       }
+      const equipamentoSalvo = resultado.data;
+      const equipamentoIdSalvo = equipamentoSalvo.id!;
 
-      if (!IS_SAAS_BUILD) {
+      if (fotosAlteradas && !IS_SAAS_BUILD) {
         try {
-          if (typeof resultado.data.id !== "number") throw new Error("O ID local do equipamento é inválido.");
-          await db.substituirImagensEquipamento(resultado.data.id, imagensPayload);
+          if (typeof equipamentoIdSalvo !== "number") throw new Error("O ID local do equipamento é inválido.");
+          const expectedImageIds = editando
+            ? baselineFotos!.fotos.flatMap((foto) => typeof foto.id === "number" ? [foto.id] : [])
+            : [];
+          const fotosSalvas = await db.substituirImagensEquipamento(
+            equipamentoIdSalvo,
+            imagensPayload,
+            expectedImageIds,
+          );
+          if (editando && Array.isArray(fotosSalvas)) {
+            const fotosPersistidas = normalizarOrdemPorCategoria(
+              await Promise.all(fotosSalvas.map(imagemPersistidaParaDraft)),
+            );
+            if (fotoEdicaoSeq.current === sequenciaEdicao && fotoEdicaoEquipamentoId.current === editando.id) {
+              baselineFotosRef.current = { equipamentoId: editando.id!, fotos: fotosPersistidas };
+              setImagensFormulario(fotosPersistidas);
+            }
+          }
         } catch (err: any) {
-          setEditando(equipamentoInterno(resultado.data));
+          if (fotoEdicaoSeq.current === sequenciaEdicao) {
+            setEditando(equipamentoInterno(equipamentoSalvo));
+            baselineFotosRef.current = null;
+            if (!editando) {
+              fotoEdicaoEquipamentoId.current = equipamentoIdSalvo as number;
+            }
+            setErroImagens(
+              `O equipamento foi salvo, mas as fotos não foram salvas: ${err?.message || "falha ao persistir as fotos"}. Recarregue as fotos antes de tentar novamente.`,
+            );
+          }
           throw new Error(
             err?.message ||
             "O equipamento foi salvo, mas as fotos não puderam ser persistidas. Revise e tente novamente."
@@ -1069,22 +1172,32 @@ export default function Equipamentos({ operationalProfile }: { operationalProfil
         }
       }
 
+      // A gravação iniciada para um formulário fechado pode terminar no banco,
+      // mas nunca deve fechar ou substituir um formulário aberto depois dele.
+      if (fotoEdicaoSeq.current !== sequenciaEdicao) return;
+
       if (!editando) {
         const liberadoEmail = await ensureSensitiveAccess({
           title: "Enviar ordem de entrada",
           description: "Informe o PIN para enviar a ordem de entrada por email ao cliente.",
           permission: SENSITIVE_PERMISSIONS.FINANCIAL_ACTIONS,
         });
+        if (fotoEdicaoSeq.current !== sequenciaEdicao) return;
         if (liberadoEmail) {
-          const equipamentoSalvo = resultado.data as unknown as Equipamento;
-          async function enviarOrdemEntrada(email: string, nomeDestinatario: string) {
-            const retornoEmailEntrada = await EmailService.enviarOrdemEntrada({
-              ...equipamentoSalvo,
-              cliente_email: email,
-              cliente_nome: nomeDestinatario,
-            });
-            if (!retornoEmailEntrada.sucesso) {
-              showError("Equipamentos", "Enviar ordem de entrada", new Error(retornoEmailEntrada.erro || "Falha desconhecida."));
+          async function enviarOrdemEntrada(email: string, nomeDestinatario: string, emailSalvo: boolean) {
+            let erroEnvio: string | undefined;
+            try {
+              const retornoEmailEntrada = await EmailService.enviarOrdemEntrada({
+                ...equipamentoSalvo,
+                cliente_email: email,
+                cliente_nome: nomeDestinatario,
+              } as unknown as Equipamento);
+              if (!retornoEmailEntrada.sucesso) erroEnvio = retornoEmailEntrada.erro || "Falha desconhecida.";
+            } catch (cause) {
+              erroEnvio = cause instanceof Error ? cause.message : String(cause);
+            }
+            if (erroEnvio) {
+              showError("Equipamentos", "Enviar ordem de entrada", new Error(emailSalvo ? mensagemEnvioFalhouComEmailSalvo(erroEnvio) : erroEnvio));
             } else {
               success("Equipamentos", "Email de ordem de entrada enviado com sucesso.", "Enviar email");
             }
@@ -1100,8 +1213,10 @@ export default function Equipamentos({ operationalProfile }: { operationalProfil
                   showError("Equipamentos", "Salvar destinatário", cause);
                   return false;
                 }
+                // O cadastro mudou: recarrega para o próximo envio já usar o e-mail salvo.
+                await atualizarEmSegundoPlano();
               }
-              await enviarOrdemEntrada(email, recipient.nome);
+              await enviarOrdemEntrada(email, recipient.nome, salvar);
             },
             onSkip: () => undefined,
           });
@@ -1109,12 +1224,15 @@ export default function Equipamentos({ operationalProfile }: { operationalProfil
         }
       }
 
+      fotoEdicaoSeq.current += 1;
+      fotoEdicaoEquipamentoId.current = null;
+      baselineFotosRef.current = null;
       setDialogOpen(false);
       setImagensFormulario([]);
       setErroImagens(null);
     } catch (err: any) {
       console.error("Erro ao salvar:", err);
-      showError("Equipamentos", "Salvar equipamento", err);
+      if (fotoEdicaoSeq.current === sequenciaEdicao) showError("Equipamentos", "Salvar equipamento", err);
     }
     finally { setSalvando(false); }
   }
@@ -1156,10 +1274,16 @@ export default function Equipamentos({ operationalProfile }: { operationalProfil
   async function handleConcluirVerificacao(dados: DadosVerificacao): Promise<boolean> {
     const equipamentoSelecionado = selecionado;
     if (!equipamentoSelecionado) return false;
+    // Total 0 só chega aqui em OS só de garantia, que sai aprovada: só quem aprova orçamento finaliza.
+    const garantiaAprovada = dados.custo_total === 0;
     const liberado = await ensureSensitiveAccess({
       title: "Finalizar verificação",
-      description: "Informe o PIN para salvar orçamento, prazo de aprovação e disparar comunicações automáticas.",
-      anyPermission: [SENSITIVE_PERMISSIONS.FINANCIAL_ACTIONS, SENSITIVE_PERMISSIONS.PREPARE_QUOTES],
+      description: garantiaAprovada
+        ? "OS só de garantia vai direto para Aprovado. Informe o PIN de quem aprova orçamentos."
+        : "Informe o PIN para salvar orçamento, prazo de aprovação e disparar comunicações automáticas.",
+      ...(garantiaAprovada
+        ? { permission: SENSITIVE_PERMISSIONS.FINANCIAL_ACTIONS }
+        : { anyPermission: [SENSITIVE_PERMISSIONS.FINANCIAL_ACTIONS, SENSITIVE_PERMISSIONS.PREPARE_QUOTES] }),
     });
     if (!liberado) return false;
 
@@ -1288,7 +1412,7 @@ export default function Equipamentos({ operationalProfile }: { operationalProfil
         showError("Equipamentos", "Finalizar verificação", err);
         return false;
       }
-      if (precisaContato) {
+      if (precisaPerguntarQuemRecebeOrcamento(precisaContato, garantiaAprovada)) {
         setQuemRecebe({
           eq: equipamentoSelecionado,
           sugestao: {
@@ -1432,7 +1556,32 @@ export default function Equipamentos({ operationalProfile }: { operationalProfil
   }
 
   function iniciarConfirmacaoStatus() {
+    const mostraOrcamento = (novoStatus === "AGUARDANDO_APROVACAO" && selecionado && !reabreOrcamentoSemAjuste(selecionado.status, novoStatus))
+      || ajusteOrcamentoSemMudancaStatus;
+    const enviandoParaAprovacao = novoStatus === "AGUARDANDO_APROVACAO"
+      && !!selecionado
+      && !reabreOrcamentoSemAjuste(selecionado.status, novoStatus);
+    if (mostraOrcamento && (!valorOrcamentoValido || !prazoAprovacaoValido)) return;
+    if (novoStatus === "ENTREGUE" && acordoExcecaoEntrega && !valorFinalValido) return;
+    if (pecasAjusteInvalidas) {
+      warning("Equipamentos", "Corrija o preço inválido de peça antes de continuar.");
+      return;
+    }
+    if (enviandoParaAprovacao && !totalOrcamentoAprovacaoValido(valorOrcamentoRef.current)) {
+      warning("Equipamentos", osSomenteGarantia(servicosAjuste)
+        ? "OS só de garantia não envia orçamento para aprovação de valor."
+        : "Informe um valor de orçamento maior que zero.");
+      return;
+    }
+    if (ajusteOrcamentoSemMudancaStatus && !totalOrcamentoAjusteValido(valorOrcamentoRef.current, osSomenteGarantia(servicosAjuste), selecionado?.status, selecionado?.valor_orcamento)) {
+      warning("Equipamentos", mensagemAjusteTotalZero(selecionado?.status, selecionado?.valor_orcamento));
+      return;
+    }
     if ((novoStatus === "AGUARDANDO_APROVACAO" || ajusteOrcamentoSemMudancaStatus) && verificacaoAjusteOrcamento) {
+      if (ajusteOrcamentoSemMudancaStatus && !IS_SAAS_BUILD && vaiAutoAprovarOsGarantia(selecionado?.status, osSomenteGarantia(servicosAjuste), valorOrcamentoRef.current)) {
+        void confirmarMudancaStatus(false);
+        return;
+      }
       const servicosOriginal: ServicoNecessario[] = [];
       try {
         servicosOriginal.push(...JSON.parse(verificacaoAjusteOrcamento.servicos_necessarios || "[]") as ServicoNecessario[]);
@@ -1442,9 +1591,11 @@ export default function Equipamentos({ operationalProfile }: { operationalProfil
 
       const calculado = totalNovo + somarPecas(mesclarPecasDoOrcamento(pecasLegadasAjuste, servicosAjuste));
 
-      if (Math.abs(calculado - valorOrcamentoRef.current) > 0.001) {
+      const digitado = valorOrcamentoRef.current;
+      if (Math.abs(calculado - digitado) > 0.001) {
         setConfirmProps({
-          title: `Mudar Valor Total do Orçamento para ${formatCurrency(calculado)}?`,
+          title: `Valor digitado ${formatCurrency(digitado)} diferente da soma ${formatCurrency(calculado)}`,
+          description: `Sim grava a soma dos itens (${formatCurrency(calculado)}). Não grava o valor digitado (${formatCurrency(digitado)}).`,
           confirmLabel: "Sim",
           cancelLabel: "Não",
           variant: "default",
@@ -1463,13 +1614,17 @@ export default function Equipamentos({ operationalProfile }: { operationalProfil
         return;
       }
 
+      const originalVigente = valorOrcamentoAnterior ?? totalOriginal;
+      const novoValor = digitado;
+      const diferenca = novoValor - originalVigente;
       const lines = [
         "Revise as alterações antes de confirmar:",
         "",
-        ...servicosAjuste.map((s) => `• ${s.descricao || "(sem nome)"}: R$ ${Number(s.valor || 0).toFixed(2)}`),
+        ...servicosAjuste.map((s) => `• ${s.descricao || "(sem nome)"}: ${formatCurrency(Number(s.valor || 0))}`),
         "",
-        `Valor Original: R$ ${totalOriginal.toFixed(2)}`,
-        `Novo Valor: R$ ${totalNovo.toFixed(2)}`,
+        `Valor original: ${formatCurrency(originalVigente)}`,
+        `Novo valor: ${formatCurrency(novoValor)}`,
+        `Diferença: ${formatCurrency(diferenca)}`,
       ];
       setConfirmProps({
         title: "Resumo do Ajuste de Orçamento",
@@ -1658,6 +1813,28 @@ export default function Equipamentos({ operationalProfile }: { operationalProfil
   async function confirmarMudancaStatus(divergencia = false) {
     if (!selecionado || (!novoStatus && !ajusteOrcamentoSemMudancaStatus)) return;
     const totalAtual = valorOrcamentoRef.current;
+    const mostraOrcamento = (novoStatus === "AGUARDANDO_APROVACAO" && !reabreOrcamentoSemAjuste(selecionado.status, novoStatus))
+      || ajusteOrcamentoSemMudancaStatus;
+    const enviandoParaAprovacao = novoStatus === "AGUARDANDO_APROVACAO"
+      && !reabreOrcamentoSemAjuste(selecionado.status, novoStatus);
+    if (mostraOrcamento && (!valorOrcamentoValido || !prazoAprovacaoValido || !Number.isFinite(totalAtual))) {
+      warning("Equipamentos", "Informe um valor de orçamento válido.");
+      return;
+    }
+    if (pecasAjusteInvalidas) {
+      warning("Equipamentos", "Corrija o preço inválido antes de continuar.");
+      return;
+    }
+    if (enviandoParaAprovacao && !totalOrcamentoAprovacaoValido(totalAtual)) {
+      warning("Equipamentos", osSomenteGarantia(servicosAjuste)
+        ? "OS só de garantia não envia orçamento para aprovação de valor."
+        : "Informe um valor de orçamento maior que zero.");
+      return;
+    }
+    if (ajusteOrcamentoSemMudancaStatus && !totalOrcamentoAjusteValido(totalAtual, osSomenteGarantia(servicosAjuste), selecionado.status, selecionado.valor_orcamento)) {
+      warning("Equipamentos", mensagemAjusteTotalZero(selecionado.status, selecionado.valor_orcamento));
+      return;
+    }
     if (correcaoStatus && novoStatus === "AGUARDANDO_APROVACAO" && ["APROVADO", "REPROVADO"].includes(selecionado.status)) {
       warning("Equipamentos", "Para reabrir um orçamento já decidido use “Corrigir decisão do orçamento”: ela desfaz pagamento e estoque junto.");
       return;
@@ -1666,22 +1843,53 @@ export default function Equipamentos({ operationalProfile }: { operationalProfil
       warning("Equipamentos", "Informe o motivo da correção antes de continuar.");
       return;
     }
+    const autoAprovaGarantia = !IS_SAAS_BUILD && vaiAutoAprovarOsGarantia(
+      selecionado.status,
+      osSomenteGarantia(servicosAjuste),
+      totalAtual,
+    );
+    if (autoAprovaGarantia && !garantiaConfirmadaRef.current) {
+      setConfirmProps({
+        title: TITULO_CONFIRMAR_OS_GARANTIA,
+        description: MENSAGEM_CONFIRMAR_OS_GARANTIA,
+        confirmLabel: LABEL_CONFIRMAR_OS_GARANTIA,
+        cancelLabel: "Cancelar",
+        onConfirm: () => {
+          garantiaConfirmadaRef.current = true;
+          setConfirmOpen(false);
+          void confirmarMudancaStatus(divergencia);
+        },
+        onCancel: () => {
+          garantiaConfirmadaRef.current = false;
+        },
+      });
+      setConfirmOpen(true);
+      return;
+    }
+    const valorSensivel = mostraOrcamento ? totalAtual : (totalAtual || undefined);
     const precisaLiberacao = correcaoStatus || statusExigeAcessoSensivel(
       novoStatus,
-      totalAtual || undefined,
+      valorSensivel,
       prazoAprovacao || undefined,
       valorFinal || undefined,
     );
     if (precisaLiberacao) {
       const liberado = await ensureSensitiveAccess({
-        title: "Confirmar mudança de status",
-        description: "Informe o PIN para aplicar esta transição e persistir dados sensíveis do equipamento.",
-        ...((ajusteOrcamentoSemMudancaStatus && orcamentoEmElaboracao(selecionado.status))
-          || transicaoElaboraOrcamento(selecionado.status, novoStatus, correcaoStatus, valorFinal)
-          ? { anyPermission: [SENSITIVE_PERMISSIONS.FINANCIAL_ACTIONS, SENSITIVE_PERMISSIONS.PREPARE_QUOTES] }
-          : { permission: SENSITIVE_PERMISSIONS.FINANCIAL_ACTIONS }),
+        title: autoAprovaGarantia ? "Confirmar OS só de garantia" : "Confirmar mudança de status",
+        description: autoAprovaGarantia
+          ? "OS só de garantia vai direto para Aprovado. Informe o PIN de quem aprova orçamentos."
+          : "Informe o PIN para aplicar esta transição e persistir dados sensíveis do equipamento.",
+        ...(autoAprovaGarantia
+          ? { permission: SENSITIVE_PERMISSIONS.FINANCIAL_ACTIONS }
+          : ((ajusteOrcamentoSemMudancaStatus && orcamentoEmElaboracao(selecionado.status))
+            || transicaoElaboraOrcamento(selecionado.status, novoStatus, correcaoStatus, valorFinal)
+            ? { anyPermission: [SENSITIVE_PERMISSIONS.FINANCIAL_ACTIONS, SENSITIVE_PERMISSIONS.PREPARE_QUOTES] }
+            : { permission: SENSITIVE_PERMISSIONS.FINANCIAL_ACTIONS })),
       });
-      if (!liberado) return;
+      if (!liberado) {
+        garantiaConfirmadaRef.current = false;
+        return;
+      }
     }
 
     let opcoesAjuste: OpcoesAjusteOrcamento | undefined;
@@ -1697,20 +1905,26 @@ export default function Equipamentos({ operationalProfile }: { operationalProfil
         const variante = aprovado ? "aprovado" as const : analise.respostaPendente ? "pendente" as const : null;
         if (variante && orcamentoMudou(verificacaoAjusteOrcamento, servicosAjuste, totalAtual)) {
           const escolha = await pedirEscolhaAjuste(variante, analise);
-          if (!escolha) return;
+          if (!escolha) {
+            garantiaConfirmadaRef.current = false;
+            return;
+          }
           opcoesAjuste = escolha;
         }
       } catch (err) {
         showError("Equipamentos", "Conferir o portal antes de salvar", err);
+        garantiaConfirmadaRef.current = false;
         return;
       }
       if (opcoesAjuste?.modoAprovado === "SEM_NOVA_APROVACAO") {
         if (!formaPagamentoAjuste) {
           warning("Equipamentos", "Escolha a forma de pagamento antes de salvar o orçamento aprovado.");
+          garantiaConfirmadaRef.current = false;
           return;
         }
         if (formaPagamentoAjuste === "OUTRO" && !detalhePagamentoAjuste.trim()) {
           warning("Equipamentos", "Descreva a forma de pagamento escolhida em Outro.");
+          garantiaConfirmadaRef.current = false;
           return;
         }
       }
@@ -1778,10 +1992,22 @@ export default function Equipamentos({ operationalProfile }: { operationalProfil
         const imagensSaidaPayload: EquipamentoImagemInput[] = normalizarOrdemPorCategoria(
           imagensSaidaEntrega
         ).map(({ local_id, preview_url, ...imagem }) => imagem);
-        await db.substituirImagensEquipamento(selecionado.id!, [
-          ...imagensEntradaPayload,
-          ...imagensSaidaPayload,
-        ]);
+        const expectedImageIds = imagensAtuais.flatMap((foto) => typeof foto.id === "number" ? [foto.id] : []);
+        try {
+          await db.substituirImagensEquipamento(
+            selecionado.id!,
+            [...imagensEntradaPayload, ...imagensSaidaPayload],
+            expectedImageIds,
+          );
+        } catch (err: any) {
+          setErroImagensSaidaEntrega(
+            `${err?.message || "falha ao persistir as fotos"}. Recarregue as fotos antes de salvar novamente.`,
+          );
+          throw new Error(
+            err?.message ||
+            "As fotos não puderam ser persistidas. Recarregue as fotos antes de tentar novamente.",
+          );
+        }
       }
 
       let expectedUpdatedEm = selecionado.atualizado_em;
@@ -1813,11 +2039,16 @@ export default function Equipamentos({ operationalProfile }: { operationalProfil
             divergence: divergencia,
             cliente_aprovou_alteracao: opcoesAjuste?.modoAprovado === "SEM_NOVA_APROVACAO",
             expected_updated_em: expectedUpdatedEmAtual,
-            ...(opcoesAjuste ? { opcoes: opcoesAjuste } : {}),
+            ...((opcoesAjuste || autoAprovaGarantia)
+              ? { opcoes: { ...opcoesAjuste, ...(autoAprovaGarantia ? { confirmarGarantia: true } : {}) } }
+              : {}),
           },
           profileId,
         );
-        expectedUpdatedEm = ajusteSalvo.equipamento_atualizado_em ?? expectedUpdatedEm;
+        expectedUpdatedEm = ajusteSalvo.equipamento_atualizado_em
+          ?? (!IS_SAAS_BUILD && !ajusteOrcamentoSemMudancaStatus
+            ? (await db.buscarEquipamento(selecionado.id!)).atualizado_em
+            : expectedUpdatedEm);
         if (!ajusteOrcamentoSemMudancaStatus && !expectedUpdatedEm) {
           throw new Error("O orçamento foi salvo, mas não foi possível confirmar sua nova versão. Atualize a lista antes de continuar.");
         }
@@ -1859,7 +2090,10 @@ export default function Equipamentos({ operationalProfile }: { operationalProfil
           && !reabreOrcamentoSemAjuste(selecionado.status, novoStatus));
       showError("Equipamentos", ajusteDeOrcamento ? "Alterar orçamento" : "Alterar status", err);
     }
-    finally { setSalvando(false); }
+    finally {
+      setSalvando(false);
+      garantiaConfirmadaRef.current = false;
+    }
   }
 
   // ─── Ações rápidas ────────────────────────────────────
@@ -2312,6 +2546,12 @@ export default function Equipamentos({ operationalProfile }: { operationalProfil
       className: "text-red-600",
       onClick: () => void solicitarExclusao(eq),
     };
+    const podeFinanceiro = hasPermission(SENSITIVE_PERMISSIONS.FINANCIAL_ACTIONS);
+    const podeOrcamentoValores = podeFinanceiro
+      || hasPermission(SENSITIVE_PERMISSIONS.PREPARE_QUOTES);
+    const podeAlterarOrcamento = podeFinanceiro
+      || (hasPermission(SENSITIVE_PERMISSIONS.PREPARE_QUOTES) && orcamentoEmElaboracao(eq.status));
+    const podeExcluir = hasPermission(SENSITIVE_PERMISSIONS.DELETE_RECORDS);
 
     switch (eq.status) {
       case "RECEBIDO":
@@ -2334,7 +2574,7 @@ export default function Equipamentos({ operationalProfile }: { operationalProfil
             disabled: salvando,
           },
           acaoEditar,
-          acaoExcluir
+          ...(podeExcluir ? [acaoExcluir] : []),
         );
         break;
       case "EM_VERIFICACAO":
@@ -2347,18 +2587,22 @@ export default function Equipamentos({ operationalProfile }: { operationalProfil
           onClick: () => abrirVerificacao(eq),
         };
         secondary = acaoStatus;
-        overflow.push(acaoEditar, acaoExcluir);
+        overflow.push(acaoEditar, ...(podeExcluir ? [acaoExcluir] : []));
         break;
       case "VERIFICADO":
-        primary = {
-          id: "enviar_orcamento",
-          label: "Enviar Orçamento",
-          icon: <Send className="h-3.5 w-3.5" />,
-          variant: "default",
-          className: classeAcaoPrincipal,
-          onClick: () => void abrirMudarStatus(eq, "AGUARDANDO_APROVACAO"),
-        };
-        secondary = acaoStatus;
+        if (podeOrcamentoValores) {
+          primary = {
+            id: "enviar_orcamento",
+            label: "Enviar Orçamento",
+            icon: <Send className="h-3.5 w-3.5" />,
+            variant: "default",
+            className: classeAcaoPrincipal,
+            onClick: () => void abrirMudarStatus(eq, "AGUARDANDO_APROVACAO"),
+          };
+          secondary = acaoStatus;
+        } else {
+          primary = acaoStatus;
+        }
         if (eq.cliente_telefone) {
           overflow.push({
             id: "whatsapp_orcamento",
@@ -2367,27 +2611,32 @@ export default function Equipamentos({ operationalProfile }: { operationalProfil
             onClick: () => void enviarWhatsAppOrcamento(eq),
           });
         }
-        overflow.push(acaoEditar, acaoExcluir);
+        overflow.push(acaoEditar, ...(podeExcluir ? [acaoExcluir] : []));
         break;
       case "AGUARDANDO_APROVACAO":
-        primary = {
-          id: "aprovar",
-          label: "Aprovar",
-          icon: <CheckCircle className="h-3.5 w-3.5" />,
-          variant: "default",
-          className: "bg-green-600 hover:bg-green-700 text-white",
-          onClick: () => void abrirDialogoAprovacao(eq, "aprovar"),
-          disabled: salvando,
-        };
-        secondary = {
-          id: "reprovar",
-          label: "Reprovar",
-          icon: <XCircle className="h-3.5 w-3.5" />,
-          variant: "default",
-          className: "bg-red-600 text-white hover:bg-red-700",
-          onClick: () => void abrirDialogoAprovacao(eq, "reprovar"),
-          disabled: salvando,
-        };
+        if (hasPermission(SENSITIVE_PERMISSIONS.FINANCIAL_ACTIONS)) {
+          primary = {
+            id: "aprovar",
+            label: "Aprovar",
+            icon: <CheckCircle className="h-3.5 w-3.5" />,
+            variant: "default",
+            className: "bg-green-600 hover:bg-green-700 text-white",
+            onClick: () => void abrirDialogoAprovacao(eq, "aprovar"),
+            disabled: salvando,
+          };
+          secondary = {
+            id: "reprovar",
+            label: "Reprovar",
+            icon: <XCircle className="h-3.5 w-3.5" />,
+            variant: "default",
+            className: "bg-red-600 text-white hover:bg-red-700",
+            onClick: () => void abrirDialogoAprovacao(eq, "reprovar"),
+            disabled: salvando,
+          };
+          overflow.push(acaoStatus);
+        } else {
+          primary = acaoStatus;
+        }
         if (eq.cliente_telefone) {
           overflow.push({
             id: "whatsapp_orcamento",
@@ -2399,7 +2648,7 @@ export default function Equipamentos({ operationalProfile }: { operationalProfil
         if (IS_SAAS_BUILD && prazoAprovacaoVencido(eq.prazo_aprovacao)) {
           overflow.push(acaoProrrogarPrazo);
         }
-        overflow.push(acaoStatus, acaoEditar, acaoExcluir);
+        overflow.push(acaoEditar, ...(podeExcluir ? [acaoExcluir] : []));
         break;
       case "APROVADO":
         primary = {
@@ -2412,7 +2661,11 @@ export default function Equipamentos({ operationalProfile }: { operationalProfil
           disabled: salvando,
         };
         secondary = acaoStatus;
-        overflow.push(acaoCorrigirDecisao, acaoEditar, acaoExcluir);
+        overflow.push(
+          ...(podeFinanceiro ? [{ ...acaoCorrigirDecisao, id: "desfazer_aprovacao", label: "Desfazer aprovação" }] : []),
+          acaoEditar,
+          ...(podeExcluir ? [acaoExcluir] : []),
+        );
         break;
       case "EM_MANUTENCAO":
         primary = {
@@ -2425,7 +2678,7 @@ export default function Equipamentos({ operationalProfile }: { operationalProfil
           disabled: salvando || loadingAutomacao,
         };
         secondary = acaoStatus;
-        overflow.push(acaoEditar, acaoExcluir);
+        overflow.push(acaoEditar, ...(podeExcluir ? [acaoExcluir] : []));
         break;
       case "AGUARDANDO_PECA":
         primary = {
@@ -2438,7 +2691,7 @@ export default function Equipamentos({ operationalProfile }: { operationalProfil
           disabled: salvando,
         };
         secondary = acaoStatus;
-        overflow.push(acaoEditar, acaoExcluir);
+        overflow.push(acaoEditar, ...(podeExcluir ? [acaoExcluir] : []));
         break;
       case "PRONTO":
         primary = {
@@ -2458,45 +2711,47 @@ export default function Equipamentos({ operationalProfile }: { operationalProfil
             onClick: () => void enviarWhatsAppPronto(eq),
           });
         }
-        overflow.push(acaoEditar, acaoExcluir);
+        overflow.push(acaoEditar, ...(podeExcluir ? [acaoExcluir] : []));
         break;
       case "REPROVADO":
-        primary = {
-          id: "reabrir_orcamento",
-          label: "Reabrir Orçamento",
-          icon: <RefreshCw className="h-3.5 w-3.5" />,
-          variant: "default",
-          className: classeAcaoPrincipal,
-          onClick: () => void abrirMudarStatus(eq, "AGUARDANDO_APROVACAO"),
-          disabled: salvando,
-        };
-        secondary = {
-          id: "mudar_status",
-          label: "Mudar Status",
-          icon: <RefreshCw className="h-3.5 w-3.5" />,
-          variant: "outline",
-          onClick: () => void abrirMudarStatus(eq),
-          disabled: salvando,
-        };
-        overflow.push(acaoCorrigirDecisao, acaoEditar, acaoExcluir);
+        if (podeFinanceiro) {
+          primary = {
+            id: "reabrir_orcamento",
+            label: "Reabrir Orçamento",
+            icon: <RotateCcw className="h-3.5 w-3.5" />,
+            variant: "default",
+            className: classeAcaoPrincipal,
+            onClick: () => setReabrirAlvo(eq),
+            disabled: salvando,
+          };
+          overflow.push({
+            id: "mudar_status",
+            label: "Mudar Status",
+            icon: <RefreshCw className="h-3.5 w-3.5" />,
+            variant: "outline",
+            onClick: () => void abrirMudarStatus(eq),
+            disabled: salvando,
+          });
+        } else {
+          primary = acaoStatus;
+        }
+        overflow.push(acaoEditar, ...(podeExcluir ? [acaoExcluir] : []));
         break;
       case "ORCAMENTO_VENCIDO":
-        primary = {
-          id: "ajustar_orcamento_vencido",
-          label: "Ajustar Orçamento",
-          icon: <RefreshCw className="h-3.5 w-3.5" />,
-          variant: "default",
-          className: classeAcaoPrincipal,
-          onClick: () => void abrirMudarStatus(eq, "AGUARDANDO_APROVACAO"),
-        };
-        secondary = {
-          id: "reenviar_orcamento",
-          label: "Reenviar",
-          icon: <Send className="h-3.5 w-3.5" />,
-          variant: "outline",
-          onClick: () => void abrirMudarStatus(eq, "AGUARDANDO_APROVACAO"),
-        };
-        overflow.push(acaoStatus, acaoEditar, acaoExcluir);
+        if (podeFinanceiro) {
+          primary = {
+            id: "renovar_orcamento",
+            label: "Renovar orçamento",
+            icon: <RefreshCw className="h-3.5 w-3.5" />,
+            variant: "default",
+            className: classeAcaoPrincipal,
+            onClick: () => void abrirMudarStatus(eq, "AGUARDANDO_APROVACAO"),
+          };
+          secondary = acaoStatus;
+        } else {
+          primary = acaoStatus;
+        }
+        overflow.push(acaoEditar, ...(podeExcluir ? [acaoExcluir] : []));
         break;
       default:
         primary = acaoStatus;
@@ -2510,7 +2765,7 @@ export default function Equipamentos({ operationalProfile }: { operationalProfil
             onClick: () => void abrirMudarStatus(eq),
           };
         }
-        overflow.push(acaoEditar, acaoExcluir);
+        overflow.push(acaoEditar, ...(podeExcluir ? [acaoExcluir] : []));
         break;
     }
 
@@ -2520,7 +2775,7 @@ export default function Equipamentos({ operationalProfile }: { operationalProfil
         editarIndex >= 0 ? editarIndex : overflow.length,
         0,
         acaoOrcamentoPdf,
-        acaoAlterarOrcamento,
+        ...(podeAlterarOrcamento ? [acaoAlterarOrcamento] : []),
       );
     }
     if (["APROVADO", "EM_MANUTENCAO", "AGUARDANDO_PECA", "PRONTO"].includes(eq.status)) {
@@ -2537,7 +2792,7 @@ export default function Equipamentos({ operationalProfile }: { operationalProfil
           primary={primary}
           iconOnlyPrimary={eq.status === "ENTREGUE" || eq.status === "ABANDONADO"}
           secondary={secondary}
-          overflow={overflow}
+          overflow={agruparAcoesOs(overflow)}
           iconOnlySecondary
           iconOnlyOverflowTrigger
         />
@@ -2583,7 +2838,7 @@ export default function Equipamentos({ operationalProfile }: { operationalProfil
           <div>
             <p className="text-sm font-medium mb-2">Serviços</p>
             <div className="space-y-1">{servs.map(s => (
-              <div key={s.id} className="flex justify-between text-sm border-b pb-1"><span>{s.descricao}</span><span className="font-medium">R$ {s.valor.toFixed(2)}</span></div>
+              <div key={s.id} className="flex justify-between text-sm border-b pb-1"><span>{s.descricao}</span><span className="font-medium">{formatCurrency(s.valor)}</span></div>
             ))}</div>
           </div>
         )}
@@ -2591,15 +2846,15 @@ export default function Equipamentos({ operationalProfile }: { operationalProfil
           <div>
             <p className="text-sm font-medium mb-2">Peças</p>
             <div className="space-y-1">{pcs.map(p => (
-              <div key={p.id} className="flex justify-between text-sm border-b pb-1"><span>{p.nome} (x{p.quantidade})</span><span className="font-medium">R$ {p.valorTotal.toFixed(2)}</span></div>
+              <div key={p.id} className="flex justify-between text-sm border-b pb-1"><span>{p.nome} (x{p.quantidade})</span><span className="font-medium">{formatCurrencyOrMissing(p.valorTotal)}</span></div>
             ))}</div>
           </div>
         )}
         <Card><CardContent className="pt-4">
-          <div className="flex justify-between text-sm"><span>Mão de obra:</span><span>R$ {(v.custo_estimado_mao_obra || 0).toFixed(2)}</span></div>
-          <div className="flex justify-between text-sm"><span>Peças:</span><span>R$ {(v.custo_estimado_pecas || 0).toFixed(2)}</span></div>
+          <div className="flex justify-between text-sm"><span>Mão de obra:</span><span>{formatCurrency(v.custo_estimado_mao_obra || 0)}</span></div>
+          <div className="flex justify-between text-sm"><span>Peças:</span><span>{formatCurrency(v.custo_estimado_pecas || 0)}</span></div>
           <hr className="my-2" />
-          <div className="flex justify-between font-bold"><span>Total:</span><span>R$ {(v.custo_total || 0).toFixed(2)}</span></div>
+          <div className="flex justify-between font-bold"><span>Total:</span><span>{formatCurrency(v.custo_total || 0)}</span></div>
         </CardContent></Card>
         {v.observacoes && <div className="text-sm"><p className="text-muted-foreground">Obs:</p><p>{v.observacoes}</p></div>}
       </div>
@@ -2667,6 +2922,8 @@ export default function Equipamentos({ operationalProfile }: { operationalProfil
 
   // ─── Render principal ─────────────────────────────────
 
+  const sequenciaFotoFormulario = fotoEdicaoSeq.current;
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -2709,10 +2966,19 @@ export default function Equipamentos({ operationalProfile }: { operationalProfil
         </CardContent>
       </Card>
 
+      {erroListaEquipamentos && (
+        <ErrorAlert
+          variant="error"
+          context="Equipamentos"
+          message={avisoAtualizacao
+            ? `Equipamento salvo, mas a lista não foi atualizada: ${avisoAtualizacao}`
+            : erroListaEquipamentos}
+        />
+      )}
+
       {/* Tabela */}
       <Card>
         <CardContent className="pt-6">
-          {erroEquipamentos && <div className="mb-4"><ErrorAlert variant="error" context="Equipamentos" message={erroEquipamentos} /></div>}
           {loading ? (
             <div className="flex items-center justify-center h-32"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600" /></div>
           ) : equipamentos.length === 0 ? (
@@ -2782,9 +3048,10 @@ export default function Equipamentos({ operationalProfile }: { operationalProfil
                       <TableCell className={`overflow-hidden ${EQUIPMENT_ROW_FOCUS_EDGE}`}>
                         <div className="flex flex-wrap items-center gap-2">
                           <StatusBadge status={eq.status} />
-                          {eq.valor_orcamento != null && eq.valor_orcamento > 0 && (
-                              <div className="inline-flex items-center rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-xs font-medium text-amber-900">
-                                Orçamento: R$ {eq.valor_orcamento.toFixed(2)}
+                          {(eq.status === "AGUARDANDO_APROVACAO" || eq.status === "ORCAMENTO_VENCIDO") &&
+                            eq.valor_orcamento != null && eq.valor_orcamento > 0 && (
+                              <div className="inline-flex max-w-full items-center truncate rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-xs font-medium text-amber-900">
+                                Orçamento: {formatCurrency(eq.valor_orcamento)}
                               </div>
                             )}
                         </div>
@@ -2814,7 +3081,14 @@ export default function Equipamentos({ operationalProfile }: { operationalProfil
 
       {/* ═══ Dialog Criar/Editar ═══ */}
       <Dialog open={dialogOpen} onOpenChange={(open) => {
-        if (!open) { setRegistrosAnteriores([]); setConfirmouNovoCiclo(false); setAnteriorEmAtendimento(null); }
+        if (!open) {
+          fotoEdicaoSeq.current += 1;
+          fotoEdicaoEquipamentoId.current = null;
+          baselineFotosRef.current = null;
+          setRegistrosAnteriores([]);
+          setConfirmouNovoCiclo(false);
+          setAnteriorEmAtendimento(null);
+        }
         setDialogOpen(open);
       }}>
         <DialogContent className="sm:max-w-2xl max-h-[85vh] overflow-y-auto">
@@ -3064,7 +3338,21 @@ export default function Equipamentos({ operationalProfile }: { operationalProfil
                     {imagensFormulario.length}/{LIMITE_IMAGENS_POR_EQUIPAMENTO}
                   </span>
                 </div>
-                {erroImagens && <ErrorAlert variant="error" context="Equipamentos" message={erroImagens} />}
+                {erroImagens && (
+                  <div className="space-y-2">
+                    <ErrorAlert variant="error" context="Equipamentos" message={erroImagens} />
+                    {editando && !carregandoImagensFormulario && (
+                      <div className="space-y-1">
+                        <Button type="button" variant="outline" size="sm" onClick={recarregarFotosDaEdicao}>
+                          Recarregar fotos
+                        </Button>
+                        <p className="text-xs text-muted-foreground">
+                          Recarregar substitui a seleção local de fotos pelas fotos atualmente salvas. Os campos de texto serão preservados.
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                )}
                   <div className="grid gap-4 lg:grid-cols-2">
                     <div className="space-y-3 rounded-lg border p-3">
                          <div className="flex items-center gap-2">
@@ -3123,7 +3411,7 @@ export default function Equipamentos({ operationalProfile }: { operationalProfil
                       }
                     />
                     {carregandoImagensFormulario ? (
-                      <div className="flex items-center justify-center rounded-lg border border-dashed p-6">
+                      <div role="status" aria-label="Carregando fotos" className="flex items-center justify-center rounded-lg border border-dashed p-6">
                         <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600" />
                       </div>
                     ) : (
@@ -3216,6 +3504,7 @@ export default function Equipamentos({ operationalProfile }: { operationalProfil
                             className="h-6 w-6"
                             onClick={() => {
                               setPhotoUploadCategoria("ENTRADA");
+                              setPhotoUploadNewEquip(false);
                               setPhotoUploadOpen(true);
                             }}
                           >
@@ -3250,6 +3539,7 @@ export default function Equipamentos({ operationalProfile }: { operationalProfil
                             className="h-6 w-6"
                             onClick={() => {
                               setPhotoUploadCategoria("SAIDA");
+                              setPhotoUploadNewEquip(false);
                               setPhotoUploadOpen(true);
                             }}
                           >
@@ -3288,9 +3578,9 @@ export default function Equipamentos({ operationalProfile }: { operationalProfil
                     <Card>
                       <CardHeader className="py-3"><CardTitle className="text-sm">Orçamento</CardTitle></CardHeader>
                       <CardContent className="text-sm space-y-1">
-                        <p>Valor: <strong>R$ {selecionado.valor_orcamento?.toFixed(2)}</strong></p>
-                        {selecionado.prazo_aprovacao && <p>Prazo: {new Date(selecionado.prazo_aprovacao).toLocaleDateString("pt-BR")}</p>}
-                        {selecionado.valor_final != null && <p>Valor final: <strong>R$ {selecionado.valor_final.toFixed(2)}</strong></p>}
+                        <p>Valor: <strong>{formatCurrency(selecionado.valor_orcamento)}</strong></p>
+                        {selecionado.prazo_aprovacao && <p>Prazo: {formatDatePtBr(selecionado.prazo_aprovacao)}</p>}
+                        {selecionado.valor_final != null && <p>Valor final: <strong>{formatCurrency(selecionado.valor_final)}</strong></p>}
                       </CardContent>
                     </Card>
                   )}
@@ -3321,8 +3611,16 @@ export default function Equipamentos({ operationalProfile }: { operationalProfil
         </DialogContent>
       </Dialog>
 
+      <ReabrirOrcamentoDialog
+        open={reabrirAlvo !== null}
+        onOpenChange={(open) => { if (!open) setReabrirAlvo(null); }}
+        onCorrigirEngano={() => { if (reabrirAlvo) void abrirCorrigirDecisao(reabrirAlvo); }}
+        onNovaProposta={() => { if (reabrirAlvo) void abrirMudarStatus(reabrirAlvo, "AGUARDANDO_APROVACAO"); }}
+      />
+
       {/* ═══ Dialog Verificação Técnica (componente extraído) ═══ */}
       <VerificacaoTecnica
+        key={selecionado?.id ?? "verificacao"}
         equipamento={selecionado}
         open={verificacaoDialogOpen}
         onOpenChange={setVerificacaoDialogOpen}
@@ -3355,7 +3653,7 @@ export default function Equipamentos({ operationalProfile }: { operationalProfil
           </DialogHeader>
           {selecionado && (
             <>
-            <div className="min-h-0 min-w-0 space-y-4 overflow-y-auto pr-5">
+            <div className="min-h-0 min-w-0 flex-1 space-y-4 overflow-y-auto pr-5">
               {!ajusteOrcamentoSemMudancaStatus && (
                 <>
                   <div className="flex items-center gap-2">
@@ -3373,7 +3671,7 @@ export default function Equipamentos({ operationalProfile }: { operationalProfil
                       <Select value={novoStatus} onValueChange={handleNovoStatusChange}>
                         <SelectTrigger><SelectValue placeholder="Selecione..." /></SelectTrigger>
                         <SelectContent>
-                          {(correcaoStatus ? getStatusCorrecao(selecionado.status) : getProximosStatus(selecionado.status)).map(s => (
+                          {(correcaoStatus ? getStatusCorrecao(selecionado.status) : getProximosStatus(selecionado.status, { semPreSelecao: statusSemPreSelecao })).map(s => (
                             <SelectItem key={s} value={s}>{STATUS_LABELS[s as StatusEquipamento] || s}</SelectItem>
                           ))}
                         </SelectContent>
@@ -3436,20 +3734,24 @@ export default function Equipamentos({ operationalProfile }: { operationalProfil
                       <div className="rounded-md border bg-muted/30 px-3 py-2 text-sm">
                         <p className="text-xs text-muted-foreground">Valor original (verificação)</p>
                         <p className="font-semibold">
-                          {valorOrcamentoOriginal != null ? `R$ ${valorOrcamentoOriginal.toFixed(2)}` : "—"}
+                          {valorOrcamentoOriginal != null ? formatCurrency(valorOrcamentoOriginal) : "—"}
                         </p>
                       </div>
                       <div className="rounded-md border bg-blue-50 px-3 py-2 text-sm text-blue-900">
                         <p className="text-xs text-blue-700">Valor atual antes do ajuste</p>
                         <p className="font-semibold">
-                          {valorOrcamentoAnterior != null ? `R$ ${valorOrcamentoAnterior.toFixed(2)}` : "—"}
+                          {valorOrcamentoAnterior != null ? formatCurrency(valorOrcamentoAnterior) : "—"}
                         </p>
                       </div>
                     </div>
                   )}
-                  <div className="space-y-2"><Label>Valor Orçamento (R$)</Label><Input data-testid="valor-orcamento-input" type="number" step="0.01" value={valorOrcamento || ""} onChange={e => setValorOrcamento(Number(e.target.value))} /></div>
+                  <div className="space-y-2"><Label htmlFor="valor-orcamento-input">Valor Orçamento (R$)</Label><ValorDecimalInput id="valor-orcamento-input" data-testid="valor-orcamento-input" required value={Number(valorOrcamento) || 0} onValueChange={setValorOrcamento} onValidityChange={setValorOrcamentoValido} />
+                    {Number(valorOrcamento) === 0 && !totalOrcamentoAjusteValido(0, osSomenteGarantia(servicosAjuste), selecionado.status, selecionado.valor_orcamento) && (
+                      <p className="text-xs text-red-600">{mensagemAjusteTotalZero(selecionado.status, selecionado.valor_orcamento)}</p>
+                    )}
+                  </div>
                   {!ajusteOrcamentoSemMudancaStatus && (
-                    <div className="space-y-2"><Label>Prazo Aprovação</Label><Input type="date" value={prazoAprovacao} onChange={e => setPrazoAprovacao(e.target.value)} /></div>
+                    <div className="space-y-2"><Label>Prazo Aprovação</Label><DateIsoInput min={new Date().toLocaleDateString("en-CA")} value={prazoAprovacao} onValueChange={setPrazoAprovacao} onValidityChange={setPrazoAprovacaoValido} /></div>
                   )}
                   <div className="space-y-2">
                     <Label htmlFor="observacoes-ajuste">Observações</Label>
@@ -3482,7 +3784,7 @@ export default function Equipamentos({ operationalProfile }: { operationalProfil
                   )}
                   {valorOrcamentoAnterior != null && valorOrcamento !== valorOrcamentoAnterior && (
                     <p className="text-xs text-amber-700">
-                      Novo valor em negociação: R$ {valorOrcamento.toFixed(2)} (antes: R$ {valorOrcamentoAnterior.toFixed(2)}).
+                      Novo valor em negociação: {formatCurrency(valorOrcamento)} (antes: {formatCurrency(valorOrcamentoAnterior)}).
                     </p>
                   )}
                   {verificacaoAjusteOrcamento && (
@@ -3492,6 +3794,7 @@ export default function Equipamentos({ operationalProfile }: { operationalProfil
                         catalogo={catalogoServicosAjuste}
                         carregandoCatalogo={carregandoCatalogoAjuste}
                         saasMode={IS_SAAS_BUILD}
+                        onPecasValidityChange={(valido) => setPecasAjusteInvalidas(!valido)}
                         onChange={setServicosAjuste}
                         onRemoverTodos={() => {
                           setConfirmProps({
@@ -3510,11 +3813,11 @@ export default function Equipamentos({ operationalProfile }: { operationalProfil
                       {pecasLegadasAjuste.length > 0 && (
                         <div className="rounded-md border border-amber-200 bg-amber-50 p-3">
                           <p className="text-xs font-semibold text-amber-900">Peças antigas sem serviço vinculado</p>
-                          <p className="text-xs text-amber-800">Adicione cada peça ao serviço correspondente acima e remova a linha antiga antes de aprovar.</p>
-                          {pecasLegadasAjuste.map((peca, index) => (
-                            <div key={`${peca.id}-${index}`} className="flex items-center justify-between gap-2 text-sm">
-                              <span>{peca.nome} × {peca.quantidade} · R$ {peca.valorTotal.toFixed(2)}</span>
-                              <Button type="button" variant="ghost" size="sm" onClick={() => setPecasLegadasAjuste((current) => current.filter((_, position) => position !== index))}>Remover linha antiga</Button>
+                          <p className="text-xs text-amber-800">Vincule cada peça a um serviço para permitir aprovação parcial e baixa automática. Remova a linha antiga depois de vinculá-la.</p>
+                          {pecasLegadasAjuste.map((peca, indice) => (
+                            <div key={`${peca.id}-${indice}`} className="flex items-center justify-between gap-2 text-sm">
+                              <span>{peca.nome} × {peca.quantidade} · {formatCurrencyOrMissing(peca.valorTotal)}</span>
+                              <Button type="button" variant="ghost" size="sm" onClick={() => setPecasLegadasAjuste((atual) => atual.filter((_, i) => i !== indice))}>Remover linha antiga</Button>
                             </div>
                           ))}
                         </div>
@@ -3526,11 +3829,11 @@ export default function Equipamentos({ operationalProfile }: { operationalProfil
                     <div className="grid gap-2 sm:grid-cols-2">
                       <div className="rounded-md border bg-muted/30 px-3 py-2 text-sm">
                         <p className="text-xs text-muted-foreground">Valor original (verificação)</p>
-                        <p className="font-semibold">R$ {valorOrcamentoOriginal.toFixed(2)}</p>
+                        <p className="font-semibold">{formatCurrency(valorOrcamentoOriginal)}</p>
                       </div>
                       <div className="rounded-md border bg-emerald-50 px-3 py-2 text-sm text-emerald-900">
                         <p className="text-xs text-emerald-700">Novo valor calculado</p>
-                        <p className="font-semibold">R$ {valorOrcamento.toFixed(2)}</p>
+                        <p className="font-semibold">{formatCurrency(valorOrcamento)}</p>
                       </div>
                     </div>
                   )}
@@ -3541,24 +3844,26 @@ export default function Equipamentos({ operationalProfile }: { operationalProfil
                   <div className="rounded-md border bg-accent/40 px-3 py-2 text-sm">
                     Valor padrão de entrega (verificação técnica):{" "}
                     <strong>
-                      R$ {(valorFinalSugerido ?? valorFinal ?? 0).toFixed(2)}
+                      {formatCurrency(valorFinalSugerido ?? valorFinal ?? 0)}
                     </strong>
                   </div>
                   <label className="flex items-center gap-2 text-sm">
                     <input
                       type="checkbox"
                       checked={acordoExcecaoEntrega}
-                      onChange={(e) => setAcordoExcecaoEntrega(e.target.checked)}
+                      onChange={(e) => {
+                        setAcordoExcecaoEntrega(e.target.checked);
+                        if (!e.target.checked) setValorFinalValido(true);
+                      }}
                     />
                     Acordo excepcional (usar valor diferente do verificado)
                   </label>
                   <div className="space-y-2">
                     <Label>Valor Final Pago (R$)</Label>
-                    <Input
-                      type="number"
-                      step="0.01"
-                      value={valorFinal || ""}
-                      onChange={e => setValorFinal(Number(e.target.value))}
+                    <ValorDecimalInput
+                      value={Number(valorFinal) || 0}
+                      onValueChange={setValorFinal}
+                      onValidityChange={setValorFinalValido}
                       disabled={!acordoExcecaoEntrega}
                     />
                   </div>
@@ -3644,9 +3949,9 @@ export default function Equipamentos({ operationalProfile }: { operationalProfil
                 </div>
               )}
             </div>
-              <DialogFooter className="shrink-0 bg-background pt-3">
-                <DialogClose asChild><Button variant="outline">Cancelar</Button></DialogClose>
-                <Button onClick={iniciarConfirmacaoStatus} disabled={salvando || (!novoStatus && !ajusteOrcamentoSemMudancaStatus)}>
+            <DialogFooter className="shrink-0 bg-background pt-3">
+                <Button type="button" variant="outline" onClick={() => setStatusDialogOpen(false)}>Cancelar</Button>
+                <Button type="button" onClick={iniciarConfirmacaoStatus} disabled={salvando || (novoStatus === "ENTREGUE" && acordoExcecaoEntrega && !valorFinalValido) || pecasAjusteInvalidas || (!novoStatus && !ajusteOrcamentoSemMudancaStatus) || (((novoStatus === "AGUARDANDO_APROVACAO" && !reabreOrcamentoSemAjuste(selecionado.status, novoStatus)) || ajusteOrcamentoSemMudancaStatus) && !valorOrcamentoValido) || (novoStatus === "AGUARDANDO_APROVACAO" && !reabreOrcamentoSemAjuste(selecionado.status, novoStatus) && !totalOrcamentoAprovacaoValido(Number(valorOrcamento))) || (ajusteOrcamentoSemMudancaStatus && !totalOrcamentoAjusteValido(Number(valorOrcamento), osSomenteGarantia(servicosAjuste), selecionado.status, selecionado.valor_orcamento))}>
                   {salvando ? "Salvando..." : correcaoStatus ? "Corrigir status" : "Confirmar"}
                 </Button>
               </DialogFooter>
@@ -3923,7 +4228,9 @@ export default function Equipamentos({ operationalProfile }: { operationalProfil
           }
         }}
         onPhotoData={photoUploadNewEquip ? async (data) => {
+          if (fotoEdicaoSeq.current !== sequenciaFotoFormulario) return;
           const previewUrl = await bytesParaDataUrl(data.bytes, data.mime_type);
+          if (fotoEdicaoSeq.current !== sequenciaFotoFormulario) return;
           const nextOrdem = imagensFormulario
             .filter((img) => img.categoria === data.categoria)
             .reduce((max, img) => Math.max(max, img.ordem), -1) + 1;

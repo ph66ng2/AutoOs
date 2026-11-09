@@ -190,9 +190,8 @@ describe('ErrorBoundary', () => {
       </ErrorBoundary>,
     );
 
-    // O botão contém HTML entities, buscamos pelo texto visível parcial
-    const toggleButton = screen.getByText(/Ver detalhes/, { exact: false });
-    expect(toggleButton).toBeInTheDocument();
+    expect(screen.getByText("Ver detalhes técnicos")).toBeInTheDocument();
+    expect(screen.queryByText("Ver detalhes t&eacute;cnicos")).not.toBeInTheDocument();
 
     reactErrorSpy.mockRestore();
   });
@@ -208,8 +207,7 @@ describe('ErrorBoundary', () => {
       </ErrorBoundary>,
     );
 
-    const toggleButton = screen.getByText(/Ver detalhes/, { exact: false });
-    fireEvent.click(toggleButton);
+    fireEvent.click(screen.getByText("Ver detalhes técnicos"));
 
     // Deve exibir a mensagem do erro
     expect(

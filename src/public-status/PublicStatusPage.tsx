@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { buscarStatusPublico, PublicStatusRequestError, type PublicStatusResponse } from "./api";
+import { EnderecoRetirada } from "./EnderecoRetirada";
 import { formatDate, StatusBrand, StatusView } from "./StatusView";
 
 function tokenFromFragment() {
@@ -102,6 +103,17 @@ export default function PublicStatusPage() {
               orientacao={data.orientacao}
               statusAlteradoEm={data.statusAlteradoEm}
             />
+
+            {data.retirada && (
+              <section className="portal-destaque is-pronto" aria-label="Endereço para retirada">
+                <EnderecoRetirada
+                  nome={data.retirada.nome}
+                  endereco={data.retirada.endereco}
+                  horario={null}
+                  mapsUrl={data.retirada.mapsUrl}
+                />
+              </section>
+            )}
 
             <button className="refresh-button" type="button" onClick={() => void loadStatus()}>
               Atualizar acompanhamento

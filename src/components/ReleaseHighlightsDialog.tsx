@@ -1,10 +1,12 @@
 import {
   CheckCircle2,
+  Clock,
   FileText,
-  KeyRound,
   MapPin,
   Package,
+  Server,
   Sparkles,
+  Users,
   X,
 } from "lucide-react";
 import { useState } from "react";
@@ -27,32 +29,32 @@ export { RELEASE_HIGHLIGHTS_STORAGE_KEY, RELEASE_HIGHLIGHTS_VERSION };
 
 const highlights = [
   {
-    icon: FileText,
-    title: "Portal do Cliente com fotos e documentos",
+    icon: MapPin,
+    title: "Portal mais claro",
     description:
-      "O cliente vê as fotos do equipamento, baixa o PDF do orçamento e o comprovante de entrega, e acompanha cada etapa com data e hora.",
-    detail: "No AutoOS, o botão Portal do Cliente reúne publicar, acesso, link sem login e mensagens. Orçamento já publicado é republicado sozinho ao ser alterado.",
+      "O cliente vê o botão \"Como chegar\" e baixa a OS em PDF. Enquanto o orçamento não é publicado, o portal mostra \"Orçamento em preparação\".",
+    detail: "O endereço de retirada também aparece no link de status quando o equipamento está pronto.",
   },
   {
-    icon: MapPin,
-    title: "Retirada, ordem de compra e negociação",
+    icon: Clock,
+    title: "Orçamento sem negociação",
     description:
-      "Pronto para retirada mostra o endereço e o mapa da empresa. Clientes marcados precisam informar a ordem de compra ao aprovar.",
-    detail: "Antes de recusar, o portal oferece negociar. Cadastre o endereço e o link do Maps em Configurações e marque Exige ordem de compra no cliente.",
+      "Antes de recusar, o cliente vê o contato da equipe. O prazo para corrigir a resposta caiu de 15 para 10 minutos.",
+    detail: "A equipe só aplica a resposta do portal depois desses 10 minutos.",
   },
   {
     icon: Package,
-    title: "Orçamento de venda avulsa de insumos (OI)",
+    title: "Menu e orçamento de insumos mais claros",
     description:
-      "Em Insumos/Peças → Orçamentos: itens do estoque, desconto, validade, PDF e envio por e-mail ou WhatsApp.",
-    detail: "Aprovar baixa o estoque e recusa se faltar item. Cancelar um orçamento aprovado devolve as quantidades.",
+      "O menu de ações da OS ficou sem itens repetidos. Orçamento de insumos vencido ganha o selo \"Vencido\" e não pode ser aprovado.",
+    detail: "Ao excluir uma peça que está em orçamentos em andamento, o app avisa onde ela é usada.",
   },
   {
-    icon: KeyRound,
-    title: "Primeiro acesso por código e tour",
+    icon: Users,
+    title: "Clientes e acesso ao portal",
     description:
-      "O ADM cadastra o colaborador e entrega um código de primeiro acesso. A pessoa cria o próprio PIN em cada computador e escolhe nome, ícone, cor e tema.",
-    detail: "O ADM não define nem vê o PIN de ninguém. Esqueceu o PIN? Peça um código novo ao ADM. O tour mostra só as telas liberadas para o seu perfil.",
+      "A busca de clientes encontra pelo contato, e orçamentos pendentes podem ser enviados ao portal em lote.",
+    detail: "Na OS, o bloco \"Acesso ao portal\" mostra login e contatos sem exibir senhas.",
   },
 ] as const;
 
@@ -118,10 +120,10 @@ export function ReleaseHighlightsDialog({ enabled }: { enabled: boolean }) {
             </div>
             <div>
               <DialogTitle className="text-2xl font-bold leading-tight tracking-tight text-white sm:text-3xl">
-                Portal do Cliente completo e orçamento de insumos
+                Portal mais claro e orçamento sem retrabalho
               </DialogTitle>
               <DialogDescription className="mt-2 max-w-2xl text-sm leading-relaxed text-slate-300 sm:text-base">
-                AutoOS 0.6.0: o cliente acompanha fotos, PDF, comprovante e retirada pelo portal. A recepção faz orçamento de insumos (OI), e cada pessoa ativa o próprio perfil com um código.
+                AutoOS {RELEASE_HIGHLIGHTS_VERSION}: o portal mostra como chegar, a OS em PDF e o orçamento em preparação. O menu de orçamento ficou sem repetição, e o app ficou mais estável na conexão com o banco.
               </DialogDescription>
             </div>
           </div>
@@ -153,16 +155,16 @@ export function ReleaseHighlightsDialog({ enabled }: { enabled: boolean }) {
 
           <div className="mt-5 flex flex-wrap gap-2" aria-label="Outras melhorias da versão">
             <Badge variant="secondary" className="gap-1.5 px-3 py-1.5 font-normal">
-              <MapPin className="h-3.5 w-3.5" /> Endereço e mapa na retirada
+              <MapPin className="h-3.5 w-3.5" /> Como chegar no portal
             </Badge>
             <Badge variant="secondary" className="gap-1.5 px-3 py-1.5 font-normal">
-              <FileText className="h-3.5 w-3.5" /> Ordem de compra no aceite
+              <FileText className="h-3.5 w-3.5" /> OS em PDF
             </Badge>
             <Badge variant="secondary" className="gap-1.5 px-3 py-1.5 font-normal">
-              <Package className="h-3.5 w-3.5" /> Baixa de estoque no OI
+              <Clock className="h-3.5 w-3.5" /> Correção em 10 min
             </Badge>
             <Badge variant="secondary" className="gap-1.5 px-3 py-1.5 font-normal">
-              <KeyRound className="h-3.5 w-3.5" /> Tema escuro por perfil
+              <Server className="h-3.5 w-3.5" /> Conexão mais estável
             </Badge>
           </div>
         </div>

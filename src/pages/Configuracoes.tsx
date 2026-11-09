@@ -88,9 +88,6 @@ export default function Configuracoes() {
   const [profilesCatalog, setProfilesCatalog] = useState<SecurityProfile[]>([]);
   const [securityBusy, setSecurityBusy] = useState(false);
   const [inactivityLockEnabled, setInactivityLockEnabled] = useState(false);
-  const [currentPin, setCurrentPin] = useState("");
-  const [newPin, setNewPin] = useState("");
-  const [confirmPin, setConfirmPin] = useState("");
   const [managedProfileId, setManagedProfileId] = useState<number | null>(null);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [auditSearch, setAuditSearch] = useState("");
@@ -611,33 +608,6 @@ export default function Configuracoes() {
     }
   }
 
-  async function trocarMeuPin() {
-    if (newPin.length < 4) {
-      setSecurityMessage("O novo PIN deve ter entre 4 e 8 dígitos.");
-      return;
-    }
-
-    if (newPin !== confirmPin) {
-      setSecurityMessage("A confirmação do novo PIN não confere.");
-      return;
-    }
-
-    setSecurityBusy(true);
-    setSecurityMessage(null);
-    try {
-      await SensitiveAccessService.configurePin(newPin, currentPin || undefined);
-      setCurrentPin("");
-      setNewPin("");
-      setConfirmPin("");
-      setSecurityMessage("PIN do perfil ativo atualizado com sucesso.", "success");
-      await atualizarEstadoSeguranca();
-    } catch (error: any) {
-      setSecurityMessage(error?.message || error?.toString() || "Falha ao atualizar o PIN do perfil ativo.");
-    } finally {
-      setSecurityBusy(false);
-    }
-  }
-
   async function exportarAuditoriaCsv() {
     if (!filteredAuditEvents.length) {
       setSecurityMessage("Nenhum evento de auditoria corresponde aos filtros atuais.", "info");
@@ -843,13 +813,6 @@ export default function Configuracoes() {
             securityBusy={securityBusy}
             handleSecurityAdminToggle={handleSecurityAdminToggle}
             accessStatus={accessStatus}
-            currentPin={currentPin}
-            setCurrentPin={setCurrentPin}
-            newPin={newPin}
-            setNewPin={setNewPin}
-            confirmPin={confirmPin}
-            setConfirmPin={setConfirmPin}
-            trocarMeuPin={trocarMeuPin}
             managedProfileId={managedProfileId}
             setManagedProfileId={setManagedProfileId}
             profilesCatalog={profilesCatalog}

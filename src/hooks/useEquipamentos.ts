@@ -9,7 +9,7 @@
  * @depends types/index.ts - interface Equipamento
  * @usedBy pages/Equipamentos.tsx - página principal de equipamentos
  */
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useLayoutEffect, useCallback, useRef } from "react";
 import { IS_SAAS_BUILD } from "@/lib/runtime-mode";
 import { db } from "@/lib/db";
 import {
@@ -35,6 +35,15 @@ interface UseEquipamentosParams<Id extends EquipamentoId> {
   repository?: EquipamentosRepository<Id>;
 }
 
+type ResultadoCarregamento =
+  | { status: "atualizado" }
+  | { status: "obsoleto" }
+  | { status: "falhou"; erro: string };
+
+function mensagemErro(error: unknown, fallback: string): string {
+  return error instanceof Error ? error.message : String(error || fallback);
+}
+
 /**
  * Hook principal de equipamentos. Gerencia o estado da lista, loading e erros,
  * expondo funções CRUD e de atualização de status.
@@ -47,40 +56,58 @@ export function useEquipamentos<Id extends EquipamentoId = number>(params?: UseE
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const latestRequest = useRef(0);
+  const [avisoAtualizacao, setAvisoAtualizacao] = useState<string | null>(null);
+  const requestIdRef = useRef(0);
+  const mountedRef = useRef(false);
+
+  useLayoutEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+      requestIdRef.current += 1;
+    };
+  }, []);
 
   /**
    * Carrega a lista de equipamentos do banco de dados.
    * Disparado automaticamente quando os parâmetros de busca/status mudam.
    * Atualiza os estados loading e error durante a execução.
    */
-  const carregar = useCallback(async (opcoes?: { silencioso?: boolean }) => {
-    const requestId = ++latestRequest.current;
+  const carregar = useCallback(async (opcoes?: { silencioso?: boolean; aposGravacao?: boolean }): Promise<ResultadoCarregamento> => {
+    if (!mountedRef.current) return { status: "obsoleto" };
+
+    const requestId = ++requestIdRef.current;
+    const atual = () => mountedRef.current && requestIdRef.current === requestId;
     // Silencioso: atualização em segundo plano (ex.: cliente respondeu no portal) sem trocar a
     // lista pelo indicador de carregamento.
     const silencioso = opcoes?.silencioso === true;
     if (!silencioso) setLoading(true);
     setError(null);
+    setAvisoAtualizacao(null);
     try {
       const repository = params?.repository ?? await carregarRepositorioEquipamentos<Id>();
       const status = params?.status === "TODOS" ? undefined : params?.status;
       if (params?.page !== undefined && repository.listarPagina) {
         const result = await repository.listarPagina(params.busca, status, params.page, params.ordenacao);
-        if (requestId !== latestRequest.current) return;
+        if (!atual()) return { status: "obsoleto" };
         setEquipamentos(result.items);
         setTotal(result.total);
       } else {
         const data = await repository.listar(params?.busca, status);
-        if (requestId !== latestRequest.current) return;
+        if (!atual()) return { status: "obsoleto" };
         setEquipamentos(params?.page === undefined ? data : paginateItems(data, params.page, ITEMS_PER_PAGE));
         setTotal(data.length);
       }
+      return { status: "atualizado" };
     } catch (err: any) {
-      if (requestId !== latestRequest.current) return;
-      if (!silencioso) setError(err?.toString() || "Erro ao carregar equipamentos");
+      if (!atual()) return { status: "obsoleto" };
+      const erro = mensagemErro(err, "Erro ao carregar equipamentos");
+      setError(erro);
+      setAvisoAtualizacao(opcoes?.aposGravacao ? erro : null);
       console.error("Erro ao carregar equipamentos:", err);
+      return { status: "falhou", erro };
     } finally {
-      if (requestId === latestRequest.current && !silencioso) setLoading(false);
+      if (atual()) setLoading(false);
     }
   }, [params?.busca, params?.status, params?.page, params?.ordenacao, params?.repository]);
 
@@ -90,11 +117,19 @@ export function useEquipamentos<Id extends EquipamentoId = number>(params?: UseE
 
   useEffect(() => {
     void carregar();
-    return () => { latestRequest.current += 1; };
+    return () => { requestIdRef.current += 1; };
   }, [carregar]);
 
   const recarregar = useCallback(() => carregar(), [carregar]);
   const atualizarEmSegundoPlano = useCallback(() => carregar({ silencioso: true }), [carregar]);
+
+  const recarregarAposGravacao = async () => {
+    const resultado = await carregar({ silencioso: true, aposGravacao: true });
+    return {
+      recargaSucesso: resultado.status === "atualizado",
+      ...(resultado.status === "falhou" ? { avisoAtualizacao: resultado.erro } : {}),
+    };
+  };
 
   /**
    * Cria um novo equipamento e recarrega a lista.
@@ -107,10 +142,9 @@ export function useEquipamentos<Id extends EquipamentoId = number>(params?: UseE
     try {
       const repository = params?.repository ?? await carregarRepositorioEquipamentos<Id>();
       const data = await repository.criar(equipamento);
-      await carregar();
-      return { sucesso: true, data };
+      return { sucesso: true as const, data, ...(await recarregarAposGravacao()) };
     } catch (err: any) {
-      return { sucesso: false, erro: err?.toString() };
+      return { sucesso: false as const, erro: err?.toString() };
     }
   };
 
@@ -126,10 +160,9 @@ export function useEquipamentos<Id extends EquipamentoId = number>(params?: UseE
     try {
       const repository = params?.repository ?? await carregarRepositorioEquipamentos<Id>();
       const data = await repository.atualizar(id, equipamento, atualizadoEm);
-      await carregar();
-      return { sucesso: true, data };
+      return { sucesso: true as const, data, ...(await recarregarAposGravacao()) };
     } catch (err: any) {
-      return { sucesso: false, erro: err?.toString() };
+      return { sucesso: false as const, erro: err?.toString() };
     }
   };
 
@@ -144,10 +177,9 @@ export function useEquipamentos<Id extends EquipamentoId = number>(params?: UseE
     try {
       const repository = params?.repository ?? await carregarRepositorioEquipamentos<Id>();
       await repository.deletar(id);
-      await carregar();
-      return { sucesso: true };
+      return { sucesso: true as const, ...(await recarregarAposGravacao()) };
     } catch (err: any) {
-      return { sucesso: false, erro: err?.toString() };
+      return { sucesso: false as const, erro: err?.toString() };
     }
   };
 
@@ -194,8 +226,7 @@ export function useEquipamentos<Id extends EquipamentoId = number>(params?: UseE
           finalValue: valorFinal,
           correctionReason: motivoCorrecao,
         });
-        await carregar();
-        return { sucesso: true };
+        return { sucesso: true as const, ...(await recarregarAposGravacao()) };
       }
       if (typeof id !== "number") throw new Error("Um identificador SaaS não pode ser encaminhado ao banco local.");
       await db.atualizarStatusEquipamento(
@@ -207,10 +238,9 @@ export function useEquipamentos<Id extends EquipamentoId = number>(params?: UseE
         expectedUpdatedEm,
         motivoCorrecao,
       );
-      await carregar();
-      return { sucesso: true };
+      return { sucesso: true as const, ...(await recarregarAposGravacao()) };
     } catch (err: any) {
-      return { sucesso: false, erro: err?.toString() };
+      return { sucesso: false as const, erro: err?.toString() };
     }
   };
 
@@ -219,6 +249,7 @@ export function useEquipamentos<Id extends EquipamentoId = number>(params?: UseE
     total,
     loading,
     error,
+    avisoAtualizacao,
     criar,
     atualizar,
     deletar,

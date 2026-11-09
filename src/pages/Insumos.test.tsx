@@ -15,6 +15,7 @@ vi.mock("@/hooks/useInsumos", () => ({
     atualizar: vi.fn(),
     deletar: vi.fn(),
     registrarMovimentacao: vi.fn(),
+    consultarUsoEmOrcamentos: vi.fn().mockResolvedValue(null),
     recarregar: recarregarEstoque,
   }),
 }));

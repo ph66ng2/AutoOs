@@ -27,6 +27,8 @@ export interface AtendimentoResumo {
   /** COALESCE(valor final, valor do orçamento); null enquanto não há valor. */
   valorAtual: number | null;
   aguardaResposta: boolean;
+  /** Há versão aberta publicada (independe do aceite online). Ausente em backends antigos. */
+  orcamentoPublicado?: boolean;
   resposta: EstadoResposta;
 }
 
@@ -51,6 +53,14 @@ export interface RespostaOrcamento {
   ordemCompra: string | null;
 }
 
+export interface ServicoOrcamentoPortal {
+  descricao: string;
+  valor: number;
+  /** false = recusado pelo cliente; null/ausente = sem decisão. */
+  aprovado?: boolean | null;
+  pecas: Array<{ nome: string; quantidade: number; valorUnitario: number }>;
+}
+
 export interface OrcamentoPortal {
   versaoId: number;
   versao: number;
@@ -58,7 +68,9 @@ export interface OrcamentoPortal {
   valorTotal: number;
   validoAte: string | null;
   estado: EstadoOrcamento;
-  servicos: Array<{ descricao: string; valor: number; pecas: Array<{ nome: string; quantidade: number; valorUnitario: number }> }>;
+  servicos: ServicoOrcamentoPortal[];
+  /** Serviços aprovados da verificação atual (reflete ajustes sem nova aprovação). null/ausente = sem decisão: usar `servicos`. */
+  servicosAtuais?: ServicoOrcamentoPortal[] | null;
   pecas: Array<{ nome: string; quantidade: number; valorTotal: number }>;
   janelaMinutos: number;
   aceiteOnline: boolean;
@@ -311,15 +323,11 @@ export function mensagemWhatsapp(input: {
       break;
     case "RECUSAR":
       corpo = `Registrei pelo Portal das Impressoras a recusa do orçamento da ${item}${detalhes}.`;
-      fecho = "Se houver espaço para ajustar valores ou itens, vamos conversar?";
+      fecho = "Obrigado pela atenção.";
       break;
     case "DESFEITA":
       corpo = `Cancelei pelo Portal das Impressoras a minha resposta ao orçamento da ${item}${detalhes}.`;
       fecho = "Podemos conversar sobre a proposta?";
-      break;
-    case "NEGOCIAR":
-      corpo = `Pedi pelo Portal das Impressoras para negociar o orçamento da ${item}${detalhes}.`;
-      fecho = "Podemos conversar?";
       break;
     case "MUDANCA":
       corpo = `Pedi pelo Portal das Impressoras uma correção na minha decisão sobre o orçamento da ${item}${detalhes}.`;

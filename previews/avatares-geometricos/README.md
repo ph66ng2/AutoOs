@@ -18,8 +18,8 @@ Nove propostas em SVG, inspiradas no preview aprovado. Cada arquivo tem `viewBox
 
 - Renderize o conteúdo SVG **inline** e defina `color` com `avatar_cor` (por exemplo, `style={{ color }}`). Como arquivo externo em `<img>`, o `currentColor` interno não recebe a cor do elemento pai.
 - O `color="#475569"` na raiz é apenas o fallback de visualização. A cor definida por CSS no SVG inline o substitui.
-- Os IDs sugeridos ainda não são aceitos pelo app. Adicione-os à lista `AVATAR_ICONS` em `src/lib/profile-appearance.ts` e à validação `AVATAR_ICONES` em `src-tauri/src/commands/auth.rs`. Atualize `ProfileAvatar.tsx` para renderizar as novas formas, preservando os ícones existentes para perfis já salvos.
+- Implementado na 0.6.2: os IDs estão em `AVATAR_SHAPES` (`src/lib/profile-appearance.ts`) e em `AVATAR_ICONES` (`src-tauri/src/commands/auth.rs`); o desenho inline fica em `src/components/perfil/GeometricAvatar.tsx`, e `ProfileAvatar.tsx` usa a forma quando o perfil a escolhe. Ícones já salvos continuam iguais. Mudou um desenho aqui? Atualize também `GeometricAvatar.tsx`.
 - O SVG já inclui o quadrado de fundo. Ao adaptar `ProfileAvatar.tsx`, evite desenhar um segundo fundo por cima ou escalar o desenho como se fosse um ícone Lucide de 16–44 px dentro de uma caixa separada.
 - Confira a leitura em tamanhos de 32, 40, 72 e 104 px e contraste com todas as cores de `AVATAR_COLORS`. Ajuste os olhos se algum tom perder definição.
 
-Estes são arquivos de design para passagem ao Claude; nenhum código do app foi alterado.
+Estes arquivos são a referência de design; o app usa a cópia em `GeometricAvatar.tsx`.

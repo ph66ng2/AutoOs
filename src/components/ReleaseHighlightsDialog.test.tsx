@@ -2,6 +2,7 @@ import { fireEvent, render, screen } from "@testing-library/react";
 import { beforeEach, describe, expect, it } from "vitest";
 import {
   RELEASE_HIGHLIGHTS_STORAGE_KEY,
+  RELEASE_HIGHLIGHTS_VERSION,
   ReleaseHighlightsDialog,
 } from "@/components/ReleaseHighlightsDialog";
 
@@ -14,12 +15,15 @@ describe("ReleaseHighlightsDialog", () => {
     render(<ReleaseHighlightsDialog enabled />);
 
     expect(screen.getByRole("dialog")).toBeInTheDocument();
-    expect(screen.getByText("Portal do Cliente completo e orçamento de insumos")).toBeInTheDocument();
-    expect(screen.getByText("Portal do Cliente com fotos e documentos")).toBeInTheDocument();
-    expect(screen.getByText("Retirada, ordem de compra e negociação")).toBeInTheDocument();
-    expect(screen.getByText("Orçamento de venda avulsa de insumos (OI)")).toBeInTheDocument();
-    expect(screen.getByText("Primeiro acesso por código e tour")).toBeInTheDocument();
-    expect(screen.getByText(/Versão 0\.6\.0/)).toBeInTheDocument();
+    expect(screen.getByText("Portal mais claro e orçamento sem retrabalho")).toBeInTheDocument();
+    expect(screen.getByText("Portal mais claro")).toBeInTheDocument();
+    expect(screen.getByText("Orçamento sem negociação")).toBeInTheDocument();
+    expect(screen.getByText("Menu e orçamento de insumos mais claros")).toBeInTheDocument();
+    expect(screen.getByText("Clientes e acesso ao portal")).toBeInTheDocument();
+    for (const selo of ["Como chegar no portal", "OS em PDF", "Correção em 10 min", "Conexão mais estável"]) {
+      expect(screen.getByText(selo)).toBeInTheDocument();
+    }
+    expect(screen.getByText(new RegExp(`Versão ${RELEASE_HIGHLIGHTS_VERSION.replace(/\./g, "\\.")}`))).toBeInTheDocument();
   });
 
   it("registra a confirmação e não reaparece na mesma versão", () => {

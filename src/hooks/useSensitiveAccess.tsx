@@ -8,6 +8,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
+import { nextPollDelay } from "@/lib/poll-backoff";
 import { ShieldAlert, ShieldCheck, ShieldOff } from "lucide-react";
 import { useTheme } from "next-themes";
 import { Button } from "@/components/ui/button";
@@ -149,6 +150,7 @@ export function SensitiveAccessProvider({ children }: { children: ReactNode }) {
   const [status, setStatus] = useState<SensitiveAccessStatus | null>(null);
   const [loading, setLoading] = useState(true);
   const [connectionUnavailable, setConnectionUnavailable] = useState(false);
+  const refreshFailuresRef = useRef(0);
   const [bootProgress, setBootProgress] = useState(6);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [dialogMandatory, setDialogMandatory] = useState(false);
@@ -194,6 +196,7 @@ export function SensitiveAccessProvider({ children }: { children: ReactNode }) {
       }
       setStatus(nextStatus);
       setConnectionUnavailable(false);
+      refreshFailuresRef.current = 0;
       const statusError = statusErrorRef.current;
       setError((current) => current && (current === statusError || isTemporaryDatabaseAccessMessage(current)) ? null : current);
       statusErrorRef.current = null;
@@ -232,6 +235,7 @@ export function SensitiveAccessProvider({ children }: { children: ReactNode }) {
       }
     } catch (refreshError: any) {
       setConnectionUnavailable(true);
+      refreshFailuresRef.current += 1;
       const message = sensitiveAccessErrorMessage(refreshError, "Não foi possível verificar o acesso sensível.");
       statusErrorRef.current = message;
       setError(message);
@@ -249,11 +253,21 @@ export function SensitiveAccessProvider({ children }: { children: ReactNode }) {
   }, [refreshStatus]);
 
   useEffect(() => {
-    const intervalId = window.setInterval(() => {
-      void refreshStatus();
-    }, connectionUnavailable ? 30_000 : 60_000);
+    // Backoff exponencial com teto: banco fora do ar não gera conexões a cada 30s.
+    let timeoutId: number | undefined;
+    let cancelled = false;
+    const schedule = () => {
+      timeoutId = window.setTimeout(async () => {
+        await refreshStatus();
+        if (!cancelled) schedule();
+      }, nextPollDelay(refreshFailuresRef.current, 60_000, 30_000));
+    };
+    schedule();
 
-    return () => window.clearInterval(intervalId);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timeoutId);
+    };
   }, [connectionUnavailable, refreshStatus]);
 
   // Abre o dialog de startup somente quando perfis ficam disponíveis E já existe sessão ativa

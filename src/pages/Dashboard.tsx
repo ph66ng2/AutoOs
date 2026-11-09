@@ -50,6 +50,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { db } from "@/lib/db";
+import { formatDatePtBr } from "@/lib/date-utils";
 import { STATUS_LABELS, STATUS_COLORS, type Equipamento, type Produto, type StatusEquipamento } from "@/types";
 import { categoriaProdutoLabel } from "@/pages/insumos/insumos-page-constants";
 
@@ -308,7 +309,7 @@ export default function Dashboard() {
                       <p className={`text-xs font-medium ${acao.cor}`}>{acao.label}</p>
                       {eq.prazo_aprovacao && (
                         <p className="text-xs text-muted-foreground">
-                          Prazo: {new Date(eq.prazo_aprovacao).toLocaleDateString("pt-BR")}
+                          Prazo: {formatDatePtBr(eq.prazo_aprovacao)}
                         </p>
                       )}
                     </div>

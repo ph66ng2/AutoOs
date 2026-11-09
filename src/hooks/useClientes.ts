@@ -126,10 +126,10 @@ export function useClientes(params?: UseClientesParams) {
    * @param cliente — Novos dados do cliente (sem o campo `id`).
    * @returns `{ sucesso: true }` ou `{ sucesso: false, erro }` em caso de falha.
    */
-  const atualizar = async (id: ClienteId, cliente: ClienteInput) => {
+  const atualizar = async (id: ClienteId, cliente: ClienteInput, contatoInicial?: ContatoInicialInput) => {
     try {
       const repository = params?.repository ?? await carregarRepositorioClientes();
-      await repository.atualizar(id, cliente);
+      await (contatoInicial ? repository.atualizar(id, cliente, contatoInicial) : repository.atualizar(id, cliente));
       await carregar();
       return { sucesso: true };
     } catch (err: any) {
