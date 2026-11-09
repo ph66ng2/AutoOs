@@ -2,6 +2,7 @@ import {
   ArrowDownCircle,
   ArrowUpCircle,
 } from "lucide-react";
+import { useEffect, useState } from "react";
 import { Controller, type UseFormReturn } from "react-hook-form";
 import { Button } from "@/components/ui/button";
 import { FormValidationError } from "@/components/ui/form-validation-error";
@@ -48,6 +49,17 @@ export function InsumosProdutoDialog({
   bloquearEdicaoEstoque: boolean;
   onSubmit: (data: ProdutoFormData) => void | Promise<void>;
 }) {
+  const [custoInvalido, setCustoInvalido] = useState(false);
+  const [vendaInvalido, setVendaInvalido] = useState(false);
+  const precoInvalido = custoInvalido || vendaInvalido;
+
+  useEffect(() => {
+    if (open) {
+      setCustoInvalido(false);
+      setVendaInvalido(false);
+    }
+  }, [open, editando]);
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-lg max-h-[85vh] overflow-y-auto">
@@ -56,7 +68,16 @@ export function InsumosProdutoDialog({
             {editando ? "Editar Insumo/Peça" : "Novo Insumo/Peça"}
           </DialogTitle>
         </DialogHeader>
-        <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+        <form
+          onSubmit={(event) => {
+            if (precoInvalido) {
+              event.preventDefault();
+              return;
+            }
+            void form.handleSubmit(onSubmit)(event);
+          }}
+          className="space-y-4"
+        >
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
               <Label>Nome *</Label>
@@ -146,6 +167,7 @@ export function InsumosProdutoDialog({
                 min={0}
                 value={Number(form.watch("preco_custo")) || 0}
                 onValueChange={(valor) => form.setValue("preco_custo", valor, { shouldValidate: true, shouldDirty: true })}
+                onValidityChange={(valido) => setCustoInvalido(!valido)}
               />
             </div>
             <div className="space-y-2">
@@ -154,6 +176,7 @@ export function InsumosProdutoDialog({
                 min={0}
                 value={Number(form.watch("preco_venda")) || 0}
                 onValueChange={(valor) => form.setValue("preco_venda", valor, { shouldValidate: true, shouldDirty: true })}
+                onValidityChange={(valido) => setVendaInvalido(!valido)}
               />
             </div>
           </div>
@@ -172,7 +195,7 @@ export function InsumosProdutoDialog({
                 Cancelar
               </Button>
             </DialogClose>
-            <Button type="submit" disabled={salvando}>
+            <Button type="submit" disabled={salvando || precoInvalido}>
               {salvando ? "Salvando..." : editando ? "Salvar" : "Cadastrar"}
             </Button>
           </DialogFooter>
