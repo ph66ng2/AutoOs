@@ -46,6 +46,16 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-cargo-
 
+      # O cache acima inclui src-tauri/target/. Sem esta limpeza, um instalador de versão
+      # anterior restaurado do cache pode ser escolhido para o latest.json (ocorreu na v0.6.2).
+      - name: Limpar bundles de builds anteriores
+        shell: pwsh
+        run: |
+          $bundle = "src-tauri/target/release/bundle"
+          if (Test-Path $bundle) {
+            Remove-Item -Recurse -Force $bundle
+          }
+
       - name: Instalar dependências do frontend
         run: npm install
 

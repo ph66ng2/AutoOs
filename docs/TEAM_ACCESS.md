@@ -51,6 +51,8 @@ A 0.5.6 recusa, ao montar a lista de perfis, qualquer perfil não-administrador 
 
 ## Sessão e autenticação
 
+Ao aceitar um PIN, o seletor mantém o campo com o cadeadinho verde até fechar. Fechar ou reabrir a confirmação durante essa animação conclui apenas o pedido já aceito e cancela seu temporizador; um pedido novo continua exigindo sua própria confirmação. Com movimento reduzido, o fechamento é imediato.
+
 - A pessoa e suas permissões continuam no PostgreSQL compartilhado.
 - O PIN e seu hash permanecem no cofre do sistema operacional. Não são sincronizados entre computadores.
 - A migration `0030` adiciona somente a política `pin_required`. Um perfil protegido sem segredo local fica bloqueado; ausência do cofre não equivale a autorização para entrar sem PIN.
