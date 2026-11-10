@@ -51,6 +51,37 @@ describe("useSensitiveAccess — integração com novos recursos de auth", () =>
     hookRef = h;
   }
 
+  it("fechar a janela durante o cadeadinho do acerto não fecha a próxima janela aberta", async () => {
+    const user = userEvent.setup();
+    const profile = { id: 1, nome: "Admin", role: "ADMIN", permissions: [], pin_required: true, pin_configured: true, is_default: true, ativo: true };
+    const locked = { ...EMPTY_STATUS, pin_configured: true, active_profile_id: 1, active_profile_name: "Admin", profiles: [profile] };
+    const unlocked = { ...locked, unlocked: true };
+    let current: SensitiveAccessStatus = locked;
+    mockInvoke.mockImplementation((cmd: string) => {
+      if (cmd === "get_sensitive_access_status") return Promise.resolve(current);
+      if (cmd === "unlock_sensitive_access") { current = unlocked; return Promise.resolve(unlocked); }
+      return Promise.resolve(null);
+    });
+    render(<TestHarness><HookInspector capture={captureHook} /></TestHarness>);
+    await user.type(await screen.findByLabelText("PIN do perfil"), "2580");
+    await user.click(screen.getByRole("button", { name: "Entrar com este perfil" }));
+    await waitFor(() => expect(document.querySelector(".pin-entry__lock")).not.toBeNull());
+
+    // Fecha durante o cadeadinho: o PIN já foi aceito, então a entrada conclui.
+    await user.click(screen.getByRole("button", { name: "Cancelar" }));
+    await waitFor(() => expect(screen.queryByLabelText("PIN do perfil")).not.toBeInTheDocument());
+
+    // Uma nova janela aberta logo depois não pode ser fechada pelo temporizador antigo.
+    let resultado: boolean | undefined;
+    act(() => {
+      void hookRef!.openProfileSelector({ title: "Trocar perfil" }).then((r) => { resultado = r; });
+    });
+    await screen.findByText("Trocar perfil");
+    await new Promise((resolve) => setTimeout(resolve, 1000));
+    expect(screen.getByText("Trocar perfil")).toBeInTheDocument();
+    expect(resultado).toBeUndefined();
+  });
+
   it("libera os controles quando o PIN local desaparece entre abrir e confirmar", async () => {
     const user = userEvent.setup();
     const profile = { id: 1, nome: "Admin", role: "ADMIN", permissions: [], pin_required: true, pin_configured: true, is_default: true, ativo: true };

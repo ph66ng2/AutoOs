@@ -322,6 +322,25 @@ fn validate_pin_format(pin: &str) -> Result<(), String> {
     Ok(())
 }
 
+/// Regras de um PIN **novo**. Valem só quando um PIN é criado ou trocado; conferir um PIN
+/// já salvo continua usando apenas `validate_pin_format`, então PINs antigos seguem valendo.
+fn validate_new_pin(pin: &str) -> Result<(), String> {
+    validate_pin_format(pin)?;
+    let digits = pin.trim().as_bytes();
+    if digits.is_empty() {
+        return Ok(());
+    }
+    if digits.iter().all(|digit| *digit == digits[0]) {
+        return Err("O PIN não pode ter todos os números iguais (como 1111).".to_string());
+    }
+    let ascending = digits.windows(2).all(|pair| pair[1] == pair[0] + 1);
+    let descending = digits.windows(2).all(|pair| pair[0] == pair[1] + 1);
+    if ascending || descending {
+        return Err("O PIN não pode ser uma sequência (como 1234 ou 4321).".to_string());
+    }
+    Ok(())
+}
+
 fn normalize_role(role: &str) -> Result<String, String> {
     let trimmed = role.trim();
     if trimmed.is_empty() {
@@ -1283,7 +1302,7 @@ pub async fn get_sensitive_access_status() -> Result<SensitiveAccessStatus, Stri
 #[tauri::command]
 #[instrument(skip_all)]
 pub async fn configure_sensitive_pin(pin: String, current_pin: Option<String>) -> Result<SensitiveAccessStatus, String> {
-    validate_pin_format(&pin)?;
+    validate_new_pin(&pin)?;
 
     let active_record = fetch_active_profile_record().await?;
     let active_profile = to_profile_summary(active_record.clone()).await?;
@@ -1425,7 +1444,7 @@ pub async fn set_active_security_profile(profile_id: i32, pin: String, confirm_p
         }
         upgrade_pin_hash_if_legacy(profile_id, pin.trim(), stored_pin)?;
     } else if provision_admin_pin {
-        validate_pin_format(&pin)?;
+        validate_new_pin(&pin)?;
         if pin.trim().is_empty() {
             return Err("Defina um PIN para o perfil administrador".to_string());
         }
@@ -1468,7 +1487,7 @@ pub async fn create_security_profile(input: SecurityProfileInput, pin: String) -
     if nome.chars().count() < 3 {
         return Err("Nome do perfil deve ter no mínimo 3 caracteres".to_string());
     }
-    validate_pin_format(&pin)?;
+    validate_new_pin(&pin)?;
 
     let role = normalize_role(&input.role)?;
     let permissions = normalize_permissions(&role, &input.permissions)?;
@@ -1693,7 +1712,7 @@ pub async fn redefinir_pin_via_db(
         return Err("Credenciais do banco de dados inválidas".to_string());
     }
 
-    validate_pin_format(&new_pin)?;
+    validate_new_pin(&new_pin)?;
 
     let profile = to_profile_summary(fetch_profile_record_by_id(profile_id).await?).await?;
     if new_pin.trim().is_empty() {
@@ -2145,7 +2164,7 @@ pub async fn provision_pin_with_enrollment(
 ) -> Result<serde_json::Value, String> {
     use crate::commands::enrollment::validate_enrollment_code;
 
-    validate_pin_format(&pin)?;
+    validate_new_pin(&pin)?;
 
     let nome = profile_name.trim();
     if nome.len() < 3 {
@@ -2565,7 +2584,7 @@ pub async fn ativar_perfil_com_codigo(
     if pin.trim().is_empty() {
         return Err("Crie um PIN de 4 a 8 dígitos.".to_string());
     }
-    validate_pin_format(&pin)?;
+    validate_new_pin(&pin)?;
     if pin.trim() != confirm_pin.trim() {
         return Err("Os PINs não conferem.".to_string());
     }
@@ -2744,6 +2763,24 @@ mod tests {
 
     fn session_expiry() -> DateTime<Utc> {
         session_state().lock().unwrap().unlocked_until.expect("sessão aberta")
+    }
+
+    #[test]
+    fn new_pin_rejects_repeated_and_sequential_digits() {
+        for pin in ["1111", "00000000", "1234", "4321", "56789", "9876", "01234567"] {
+            assert!(validate_new_pin(pin).is_err(), "{pin} deveria ser recusado");
+        }
+        for pin in ["2580", "1357", "2468", "1243", "9012", "11112", "8642"] {
+            assert!(validate_new_pin(pin).is_ok(), "{pin} deveria ser aceito");
+        }
+        assert!(validate_new_pin("123").is_err(), "menos de 4 dígitos continua recusado");
+        assert!(validate_new_pin("").is_ok(), "PIN vazio segue a regra de perfil sem PIN");
+    }
+
+    #[test]
+    fn checking_an_existing_pin_still_accepts_old_simple_pins() {
+        assert!(validate_pin_format("1234").is_ok());
+        assert!(validate_pin_format("1111").is_ok());
     }
 
     #[test]

@@ -14,6 +14,7 @@ import { useTheme } from "next-themes";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { useBootUi } from "@/components/BootUi";
+import { erroPinNovo } from "@/lib/pin-rules";
 import { ProfileSessionDialog } from "@/components/ProfileSessionDialog";
 import { PasswordRecoveryDialog } from "@/components/PasswordRecoveryDialog";
 import { PrimeiroAcessoWizard } from "@/components/perfil/PrimeiroAcessoWizard";
@@ -128,6 +129,8 @@ export function routeAllows(
 
 const SensitiveAccessContext = createContext<SensitiveAccessContextValue | null>(null);
 
+/** Tempo do cadeadinho abrindo no campo do PIN depois de um PIN certo. */
+const PIN_ACCEPTED_MS = 800;
 const KEYRING_BLOCKED_MESSAGE = "O cofre de senhas do sistema está bloqueado ou indisponível. Desbloqueie-o e tente de novo.";
 
 export function SensitiveAccessProvider({ children }: { children: ReactNode }) {
@@ -308,10 +311,26 @@ export function SensitiveAccessProvider({ children }: { children: ReactNode }) {
     setSelectedProfileId(status?.active_profile_id ? String(status.active_profile_id) : "");
   }, [status?.active_profile_id]);
 
+  // PIN aceito: o campo mostra o cadeadinho abrindo e só então a janela sai.
+  // O temporizador pertence a esta janela: fechar a janela de qualquer jeito o cancela.
+  const [pinAccepted, setPinAccepted] = useState(false);
+  const acceptTimerRef = useRef<number | null>(null);
+  const cancelAcceptTimer = useCallback(() => {
+    if (acceptTimerRef.current !== null) {
+      window.clearTimeout(acceptTimerRef.current);
+      acceptTimerRef.current = null;
+    }
+    setPinAccepted(false);
+  }, []);
+  useEffect(() => () => {
+    if (acceptTimerRef.current !== null) window.clearTimeout(acceptTimerRef.current);
+  }, []);
+
   const closeDialog = useCallback((result: boolean) => {
     if (!result && dialogMandatory && dialogMode !== "startup") {
       return;
     }
+    cancelAcceptTimer();
 
     // Uma consulta do boot pode trocar o diálogo de entrada para "PIN necessário
     // para continuar" antes do fechamento. A dispensa vale sempre que a sessão
@@ -324,7 +343,23 @@ export function SensitiveAccessProvider({ children }: { children: ReactNode }) {
     setDialogOpen(false);
     resetDialogState();
     resolvePending(result);
-  }, [dialogMandatory, dialogMode, resetDialogState, resolvePending]);
+  }, [dialogMandatory, dialogMode, resetDialogState, resolvePending, cancelAcceptTimer]);
+
+  const closeDialogRef = useRef(closeDialog);
+  closeDialogRef.current = closeDialog;
+  const acceptPinAndClose = useCallback(() => {
+    const reduced = typeof window.matchMedia === "function" && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    if (reduced) {
+      closeDialogRef.current(true);
+      return;
+    }
+    if (acceptTimerRef.current !== null) window.clearTimeout(acceptTimerRef.current);
+    setPinAccepted(true);
+    acceptTimerRef.current = window.setTimeout(() => {
+      acceptTimerRef.current = null;
+      closeDialogRef.current(true);
+    }, PIN_ACCEPTED_MS);
+  }, []);
 
   const ensureSensitiveAccess = useCallback(async (options?: SensitiveAccessPromptOptions) => {
     const currentStatus = await SensitiveAccessService.status()
@@ -462,7 +497,7 @@ export function SensitiveAccessProvider({ children }: { children: ReactNode }) {
             return;
           }
           try { localStorage.setItem("autoos_last_profile_id", String(targetProfileId)); } catch { /* storage indisponível */ }
-          closeDialog(true);
+          acceptPinAndClose();
           return;
         }
       }
@@ -494,12 +529,9 @@ export function SensitiveAccessProvider({ children }: { children: ReactNode }) {
 
       // Admin sem PIN: forçar configuração de PIN no primeiro acesso
       if (activeProfile?.role === "ADMIN" && !activeProfile?.pin_configured) {
-        if (pin !== confirmPin) {
-          setError("Os PINs não conferem.");
-          return;
-        }
-        if (pin.length < 4) {
-          setError("O PIN deve ter entre 4 e 8 dígitos.");
+        const pinInvalido = erroPinNovo(pin, confirmPin);
+        if (pinInvalido) {
+          setError(pinInvalido);
           return;
         }
         const nextStatus = await SensitiveAccessService.setActiveProfile(activeProfile.id, pin, confirmPin);
@@ -538,7 +570,7 @@ export function SensitiveAccessProvider({ children }: { children: ReactNode }) {
         localStorage.setItem("autoos_last_profile_id", String(workingStatus!.active_profile_id!));
       } catch { /* localStorage pode estar indisponível (modo anônimo, storage cheio) */ }
 
-      closeDialog(true);
+      acceptPinAndClose();
     } catch (submitError: any) {
       const message = sensitiveAccessErrorMessage(submitError, "Falha ao validar o acesso sensível.");
       setError(message);
@@ -546,7 +578,7 @@ export function SensitiveAccessProvider({ children }: { children: ReactNode }) {
     } finally {
       setBusy(false);
     }
-  }, [closeDialog, pin, confirmPin, promptOptions.permission, promptOptions.anyPermission, selectedProfileId, status, dialogMode]);
+  }, [closeDialog, acceptPinAndClose, pin, confirmPin, promptOptions.permission, promptOptions.anyPermission, selectedProfileId, status, dialogMode]);
 
   const startFirstAccess = useCallback((profileId: number, recovery = false) => {
     // O pedido de perfil continua pendente: resolve quando a ativação terminar.
@@ -621,7 +653,7 @@ export function SensitiveAccessProvider({ children }: { children: ReactNode }) {
         confirmPin={confirmPin}
         busy={busy}
         error={error}
-        onClose={() => closeDialog(false)}
+        onClose={() => closeDialog(pinAccepted)}
         onSelectProfile={(profileId) => {
           setSelectedProfileId(profileId);
           setPin("");
@@ -635,6 +667,7 @@ export function SensitiveAccessProvider({ children }: { children: ReactNode }) {
         onFirstAccess={startFirstAccess}
         keyringBlocked={Boolean(status?.keyring_bloqueado)}
         onRetryKeyring={() => void refreshStatus()}
+        accepted={pinAccepted}
       />
 
       {firstAccess && firstAccessProfile && bootAnimationComplete && (
