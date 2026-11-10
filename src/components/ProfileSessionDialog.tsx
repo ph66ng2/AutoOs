@@ -1,3 +1,4 @@
+import { useEffect, useRef, useState } from "react";
 import { ArrowRight, KeyRound } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -13,6 +14,9 @@ import { ProfileAvatar } from "@/components/perfil/ProfileAvatar";
 import { cn } from "@/lib/utils";
 import { needsFirstAccessHere, profileAppearance } from "@/lib/profile-appearance";
 import { securityRoleLabel } from "@/lib/security-profile-labels";
+import { erroPinNovo } from "@/lib/pin-rules";
+import { PinLock } from "@/components/auth/PinLock";
+import { PinCreateFields, regrasCumpridas } from "@/components/auth/PinCreateFields";
 import type { SecurityProfile } from "@/types";
 
 type ProfileDialogMode = "startup" | "selector" | "sensitive";
@@ -46,6 +50,8 @@ interface ProfileSessionDialogProps {
    * computador e a pessoa o esqueceu; sem ele, é o primeiro acesso.
    */
   onFirstAccess?: (profileId: number, recovery?: boolean) => void;
+  /** PIN aceito: o cadeado fecha com os 4 roletes em ✓ antes de a janela sair. */
+  accepted?: boolean;
 }
 
 /**
@@ -77,6 +83,7 @@ export function ProfileSessionDialog({
   onFirstAccess,
   keyringBlocked = false,
   onRetryKeyring,
+  accepted = false,
 }: ProfileSessionDialogProps) {
   const isSelectorMode = mode === "selector";
   const isCurrentProfileSelected = !!selectedProfile && selectedProfile.id === activeProfileId;
@@ -109,8 +116,27 @@ export function ProfileSessionDialog({
     keyringBlocked ||
     (missingRequiredPin && !canStartFirstAccess) ||
     busy ||
+    accepted ||
     (shouldAskForPin && pin.length < 4) ||
-    (isAdminWithoutPin && (confirmPin.length < 4 || pin !== confirmPin));
+    (isAdminWithoutPin && erroPinNovo(pin, confirmPin) !== null);
+
+  // Cadeado: cada tecla gira um rolete; cada erro novo faz o cadeado tremer.
+  const [pinKeys, setPinKeys] = useState(0);
+  const [errorShakes, setErrorShakes] = useState(0);
+  const previousError = useRef(error);
+  useEffect(() => {
+    if (error && error !== previousError.current && shouldAskForPin) setErrorShakes((n) => n + 1);
+    previousError.current = error;
+  }, [error, shouldAskForPin]);
+  const handlePinChange = (value: string) => {
+    onPinChange(value);
+    setPinKeys((n) => n + 1);
+  };
+  const handleConfirmPinChange = (value: string) => {
+    onConfirmPinChange(value);
+    setPinKeys((n) => n + 1);
+  };
+  const lockChecked = accepted ? 4 : isAdminWithoutPin ? regrasCumpridas(pin, confirmPin) : 0;
 
   const handlePrimaryAction = () => {
     if (primaryDisabled || !selectedProfile) return;
@@ -161,7 +187,7 @@ export function ProfileSessionDialog({
         <div className="max-h-[90vh] overflow-y-auto px-6 py-10 sm:px-12">
           {isFirstInstall && selectedProfile ? (
             <div className="mx-auto flex max-w-sm flex-col items-center gap-6 text-center">
-              <ProfileAvatar {...avatarProps(selectedProfile)} size="lg" />
+              <PinLock checked={lockChecked} spin={pinKeys} shake={errorShakes} />
               <DialogHeader className="items-center text-center">
                 <DialogTitle className="text-2xl font-bold tracking-tight">Bem-vindo ao AutoOS</DialogTitle>
                 <DialogDescription>Crie o PIN do administrador para começar. Ele fica guardado só neste computador.</DialogDescription>
@@ -174,31 +200,17 @@ export function ProfileSessionDialog({
                   handlePrimaryAction();
                 }}
               >
-                <div className="space-y-2">
-                  <Label htmlFor="sensitive-pin">Criar PIN</Label>
-                  <Input
-                    id="sensitive-pin"
-                    type="password"
-                    inputMode="numeric"
-                    value={pin}
-                    onChange={(event) => onPinChange(event.target.value.replace(/\D/g, "").slice(0, 8))}
-                    placeholder="••••"
-                    className={pinInputClass}
-                    autoFocus
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="sensitive-pin-confirm">Confirmar PIN</Label>
-                  <Input
-                    id="sensitive-pin-confirm"
-                    type="password"
-                    inputMode="numeric"
-                    value={confirmPin}
-                    onChange={(event) => onConfirmPinChange(event.target.value.replace(/\D/g, "").slice(0, 8))}
-                    placeholder="••••"
-                    className={pinInputClass}
-                  />
-                </div>
+                <PinCreateFields
+                  idPrefix="sensitive"
+                  pin={pin}
+                  confirmPin={confirmPin}
+                  onPinChange={handlePinChange}
+                  onConfirmPinChange={handleConfirmPinChange}
+                  pinLabel="Criar PIN"
+                  confirmLabel="Confirmar PIN"
+                  inputClassName={pinInputClass}
+                  autoFocus
+                />
                 {error && <p role="alert" className="text-sm text-red-400">{error}</p>}
                 <Button size="lg" type="submit" disabled={primaryDisabled} className="w-full">
                   {busy ? "Validando..." : <>Criar meu acesso e entrar <ArrowRight className="ml-2 h-4 w-4" /></>}
@@ -283,34 +295,33 @@ export function ProfileSessionDialog({
                       handlePrimaryAction();
                     }}
                   >
-                    <div className="space-y-2">
-                      <Label htmlFor="sensitive-pin" className="block text-center">
-                        {isAdminWithoutPin ? "Novo PIN" : "PIN do perfil"}
-                      </Label>
-                      <Input
-                        id="sensitive-pin"
-                        type="password"
-                        inputMode="numeric"
-                        value={pin}
-                        onChange={(event) => onPinChange(event.target.value.replace(/\D/g, "").slice(0, 8))}
-                        placeholder="••••"
-                        autoComplete="current-password"
-                        className={pinInputClass}
+                    <PinLock checked={lockChecked} spin={pinKeys} shake={errorShakes} className="mx-auto mb-2" />
+                    {isAdminWithoutPin ? (
+                      <PinCreateFields
+                        idPrefix="sensitive"
+                        pin={pin}
+                        confirmPin={confirmPin}
+                        onPinChange={handlePinChange}
+                        onConfirmPinChange={handleConfirmPinChange}
+                        pinLabel="Novo PIN"
+                        confirmLabel="Confirmar PIN"
+                        inputClassName={pinInputClass}
+                        centered
                         autoFocus
                       />
-                    </div>
-                    {isAdminWithoutPin && (
+                    ) : (
                       <div className="space-y-2">
-                        <Label htmlFor="sensitive-pin-confirm" className="block text-center">Confirmar PIN</Label>
+                        <Label htmlFor="sensitive-pin" className="block text-center">PIN do perfil</Label>
                         <Input
-                          id="sensitive-pin-confirm"
+                          id="sensitive-pin"
                           type="password"
                           inputMode="numeric"
-                          value={confirmPin}
-                          onChange={(event) => onConfirmPinChange(event.target.value.replace(/\D/g, "").slice(0, 8))}
+                          value={pin}
+                          onChange={(event) => handlePinChange(event.target.value.replace(/\D/g, "").slice(0, 8))}
                           placeholder="••••"
-                          autoComplete="new-password"
+                          autoComplete="current-password"
                           className={pinInputClass}
+                          autoFocus
                         />
                       </div>
                     )}
@@ -362,11 +373,6 @@ export function ProfileSessionDialog({
       </DialogContent>
     </Dialog>
   );
-}
-
-function avatarProps(profile: SecurityProfile) {
-  const look = profileAppearance(profile);
-  return { icon: look.icon, color: look.color };
 }
 
 // Só afirmamos "não exige PIN" quando o perfil realmente tem pin_required = false.
