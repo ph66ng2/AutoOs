@@ -25,14 +25,16 @@ describe("confirmação de sessão", () => {
     expect(screen.getAllByText("Este perfil não exige PIN. Clique abaixo para continuar.").length).toBeGreaterThan(0);
   });
 
-  it("mantém o campo do PIN com o cadeadinho quando o perfil já aparece desbloqueado no modo de troca", () => {
+  it.each([1, 2])("mantém o mesmo campo e cadeadinho ao aceitar o PIN no seletor (perfil ativo %i)", (activeProfileId) => {
     const ivan = { ...admin, id: 2, nome: "Ivan", role: "TECNICO", pin_required: true, pin_configured: true, is_default: false };
-    const { container } = render(
-      <ProfileSessionDialog {...defaults} mode="selector" profiles={[ivan]} selectedProfileId="2" selectedProfile={ivan} activeProfileId={2} unlocked accepted pin="2580" />,
-    );
-    expect(screen.getByLabelText("PIN do perfil")).toBeInTheDocument();
-    expect(container.ownerDocument.querySelector(".pin-entry__lock")).not.toBeNull();
-    expect(screen.queryByText(/Você já está usando este perfil/)).not.toBeInTheDocument();
+    const props = { ...defaults, mode: "selector" as const, profiles: [ivan], selectedProfileId: "2", selectedProfile: ivan, pin: "2580" };
+    const { rerender } = render(<ProfileSessionDialog {...props} activeProfileId={activeProfileId} unlocked={false} />);
+    const input = screen.getByLabelText("PIN do perfil");
+    rerender(<ProfileSessionDialog {...props} activeProfileId={2} unlocked accepted />);
+    expect(screen.getByLabelText("PIN do perfil")).toBe(input);
+    expect(input).toHaveValue("2580");
+    expect(document.querySelector(".pin-entry--ok .pin-entry__lock")).not.toBeNull();
+    expect(screen.queryByText(/Você já está (usando este|neste) perfil/)).not.toBeInTheDocument();
   });
 
   it("bloqueia PIN exigido mas ausente neste PC, inclusive administrador", () => {

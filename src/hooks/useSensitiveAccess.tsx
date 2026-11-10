@@ -362,6 +362,8 @@ export function SensitiveAccessProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const ensureSensitiveAccess = useCallback(async (options?: SensitiveAccessPromptOptions) => {
+    // Uma reabertura conclui só o pedido já aceito e cancela seu fechamento atrasado.
+    if (acceptTimerRef.current !== null) closeDialogRef.current(true);
     const currentStatus = await SensitiveAccessService.status()
       .then((nextStatus) => {
         setConnectionUnavailable(false);
@@ -399,6 +401,8 @@ export function SensitiveAccessProvider({ children }: { children: ReactNode }) {
   })), [ensureSensitiveAccess]);
 
   const openProfileSelector = useCallback(async (options?: ProfileSelectorOptions) => {
+    // Uma reabertura conclui só o pedido já aceito e cancela seu fechamento atrasado.
+    if (acceptTimerRef.current !== null) closeDialogRef.current(true);
     const currentStatus = await SensitiveAccessService.status()
       .then((nextStatus) => {
         setConnectionUnavailable(false);

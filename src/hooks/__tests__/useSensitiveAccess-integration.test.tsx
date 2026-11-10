@@ -82,6 +82,47 @@ describe("useSensitiveAccess — integração com novos recursos de auth", () =>
     expect(resultado).toBeUndefined();
   });
 
+  it.each(["selector", "sensitive"] as const)("reabrir %s durante o cadeadinho conclui só o pedido aceito", async (mode) => {
+    const user = userEvent.setup();
+    const profile = { id: 1, nome: "Admin", role: "ADMIN", permissions: [], pin_required: true, pin_configured: true, is_default: true, ativo: true };
+    const locked = { ...EMPTY_STATUS, pin_configured: true, active_profile_id: 1, active_profile_name: "Admin", profiles: [profile] };
+    const unlocked = { ...locked, unlocked: true };
+    let current: SensitiveAccessStatus = unlocked;
+    mockInvoke.mockImplementation((cmd: string) => {
+      if (cmd === "get_sensitive_access_status") return Promise.resolve(current);
+      if (cmd === "unlock_sensitive_access") { current = unlocked; return Promise.resolve(unlocked); }
+      return Promise.resolve(null);
+    });
+    render(<TestHarness><HookInspector capture={captureHook} /></TestHarness>);
+    await waitFor(() => expect(hookRef?.status?.unlocked).toBe(true));
+    current = locked;
+    let acceptedResult: boolean | undefined;
+    act(() => { void hookRef!.openProfileSelector().then((r) => { acceptedResult = r; }); });
+    await user.type(await screen.findByLabelText("PIN do perfil"), "2580");
+    await user.click(screen.getByRole("button", { name: "Desbloquear este perfil" }));
+    await waitFor(() => expect(document.querySelector(".pin-entry__lock")).not.toBeNull());
+
+    // Nova solicitação antes dos 800 ms, sem passar pelos controles de fechamento.
+    current = locked;
+    let nextResult: boolean | undefined;
+    act(() => {
+      const request = mode === "selector"
+        ? hookRef!.openProfileSelector({ title: "Nova confirmação" })
+        : hookRef!.ensureSensitiveAccess({ title: "Nova confirmação" });
+      void request.then((r) => { nextResult = r; });
+    });
+    await screen.findByText("Nova confirmação");
+    expect(acceptedResult).toBe(true);
+    expect(screen.getByLabelText("PIN do perfil")).toHaveValue("");
+    expect(document.querySelector(".pin-entry__lock")).toBeNull();
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 1000)); });
+    expect(screen.getByText("Nova confirmação")).toBeInTheDocument();
+    expect(nextResult).toBeUndefined();
+    expect(mockInvoke.mock.calls.filter(([cmd]) => cmd === "unlock_sensitive_access")).toHaveLength(1);
+    await user.click(screen.getByRole("button", { name: "Fechar" }));
+    await waitFor(() => expect(nextResult).toBe(false));
+  });
+
   it("libera os controles quando o PIN local desaparece entre abrir e confirmar", async () => {
     const user = userEvent.setup();
     const profile = { id: 1, nome: "Admin", role: "ADMIN", permissions: [], pin_required: true, pin_configured: true, is_default: true, ativo: true };
