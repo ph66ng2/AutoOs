@@ -55,7 +55,7 @@ describe("PublicStatusLinkDialog", () => {
     mocks.enviarEmail.mockResolvedValue({ sucesso: true });
     mocks.enviarWhatsApp.mockResolvedValue({ sucesso: true });
     mocks.ensure.mockImplementation(async ({ permission }: { permission?: string }) =>
-      permission !== "CONFIG_SMTP" && permission !== "CONFIG_WHATSAPP",
+      permission !== "COMMUNICATION_SETTINGS",
     );
   });
 

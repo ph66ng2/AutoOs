@@ -134,8 +134,7 @@ function AppContent() {
                   description="Desbloqueie o acesso para gerenciar integrações, banco e segurança."
                   permission={[
                     SENSITIVE_PERMISSIONS.MANAGE_PROFILES,
-                    SENSITIVE_PERMISSIONS.CONFIG_SMTP,
-                    SENSITIVE_PERMISSIONS.CONFIG_WHATSAPP,
+                    SENSITIVE_PERMISSIONS.COMMUNICATION_SETTINGS,
                     SENSITIVE_PERMISSIONS.MANAGE_STATUS_LINKS,
                   ]}
                 >

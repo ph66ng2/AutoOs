@@ -13,13 +13,14 @@ export function montarPresets(
   travaAtiva: boolean = COMPATIBILIDADE_056_ATIVA,
 ) {
   const quotes: SensitivePermission[] = prepareQuotes ? [P.PREPARE_QUOTES] : [];
+  const portal: SensitivePermission[] = travaAtiva ? [] : [P.MANAGE_STATUS_LINKS];
   return [
     {
       role: "ATENDENTE",
       label: "Recepção",
       description:
         "Atendimento e rotina operacional, sem poderes administrativos.",
-      permissions: [] as SensitivePermission[],
+      permissions: [...portal],
       disponivel: !travaAtiva,
       motivoIndisponivel: travaAtiva ? MOTIVO_RECEPCAO_INDISPONIVEL : undefined,
     },
@@ -29,7 +30,7 @@ export function montarPresets(
       description: prepareQuotes
         ? "Rotina técnica, orçamentos e estoque."
         : "Rotina técnica e estoque.",
-      permissions: [P.STOCK_CONTROL, ...quotes],
+      permissions: [P.STOCK_CONTROL, ...quotes, ...portal],
       disponivel: true,
       motivoIndisponivel: undefined as string | undefined,
     },
@@ -37,7 +38,7 @@ export function montarPresets(
       role: "FINANCEIRO",
       label: "Financeiro",
       description: "Orçamentos, aprovações, valores e consulta de despesas.",
-      permissions: [P.FINANCIAL_ACTIONS, ...quotes, P.VIEW_EXPENSES],
+      permissions: [P.FINANCIAL_ACTIONS, ...quotes, P.VIEW_EXPENSES, ...portal],
       disponivel: true,
       motivoIndisponivel: undefined as string | undefined,
     },
@@ -67,13 +68,10 @@ export const PERMISSION_DETAILS: Record<
   SensitivePermission,
   { title: string; description: string; critical?: boolean }
 > = {
-  CONFIG_SMTP: {
-    title: "E-mail",
-    description: "Configurar SMTP e envios de e-mail.",
-  },
-  CONFIG_WHATSAPP: {
-    title: "WhatsApp",
-    description: "Configurar a integração de WhatsApp.",
+  COMMUNICATION_SETTINGS: {
+    title: "Comunicação externa",
+    description: "Configurar SMTP e WhatsApp e ligar ou desligar o Portal do Cliente.",
+    critical: true,
   },
   DELETE_RECORDS: {
     title: "Excluir registros",
@@ -98,8 +96,8 @@ export const PERMISSION_DETAILS: Record<
     critical: true,
   },
   MANAGE_STATUS_LINKS: {
-    title: "Portal do Cliente e links de acompanhamento",
-    description: "Publicar orçamento no portal, gerenciar acessos de contatos e o contato da empresa, e criar ou revogar links de acompanhamento.",
+    title: "Acessos do portal",
+    description: "Enviar links de acompanhamento, criar ou redefinir senhas e acessos de contatos, publicar orçamentos e editar o contato da empresa. Não permite ligar ou desligar o portal.",
   },
   VIEW_EXPENSES: {
     title: "Consultar despesas",

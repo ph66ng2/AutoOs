@@ -8,8 +8,8 @@ use url::Url;
 
 static MIGRATOR: Migrator = sqlx::migrate!("./migrations");
 
-const REQUIRED_PROMOTION_MIGRATIONS: [i64; 19] = [27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 48];
-const EXPECTED_MIGRATION_COUNT: usize = 45;
+const REQUIRED_PROMOTION_MIGRATIONS: [i64; 20] = [27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 48, 46];
+const EXPECTED_MIGRATION_COUNT: usize = 46;
 // 0045/0046 pertencem à feature; 0047 está reservada ao PDF oficial do portal.
 const RESERVED_MIGRATION_VERSIONS: [i64; 3] = [45, 46, 47];
 const LAST_REQUIRED_APPLIED_MIGRATION: i64 = 28;
@@ -486,7 +486,7 @@ async fn required_promotion_migrations_already_applied(pool: &PgPool) -> Result<
     .bind(REQUIRED_PROMOTION_MIGRATIONS.as_slice())
     .fetch_one(pool)
     .await
-    .context("não foi possível consultar o status inicial das migrations 0027–0044 e 0048")?;
+    .context("não foi possível consultar o status inicial das migrations 0027–0044, 0048 e 0046")?;
     Ok(applied_count == REQUIRED_PROMOTION_MIGRATIONS.len() as i64)
 }
 

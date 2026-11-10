@@ -10,9 +10,9 @@ A rota `/perfil` reúne a equipe, o cadastro guiado e as ações administrativas
 
 | Modelo | Permissões adicionais iniciais |
 | --- | --- |
-| Recepção | Nenhuma |
-| Técnico | Estoque e elaborar e enviar orçamentos |
-| Financeiro | Ações financeiras, elaborar e enviar orçamentos e consulta de despesas |
+| Recepção | Acessos do portal |
+| Técnico | Estoque, elaborar e enviar orçamentos e acessos do portal |
+| Financeiro | Ações financeiras, elaborar e enviar orçamentos, consulta de despesas e acessos do portal |
 | Administrador | Todas as permissões sensíveis existentes |
 | Personalizado | Nenhuma; escolha as liberações individualmente |
 
@@ -38,14 +38,36 @@ Não libera:
 - definir senha manual do portal do cliente;
 - editar o acesso dos contatos.
 
+## Comunicação externa e acessos do portal (0046)
+
+| Antes | Depois | Escopo |
+| --- | --- | --- |
+| `CONFIG_SMTP` | `COMMUNICATION_SETTINGS` — Comunicação externa | SMTP, WhatsApp e ligar/desligar o portal |
+| `CONFIG_WHATSAPP` | `COMMUNICATION_SETTINGS` — Comunicação externa | Mesma liberação, sem separação por canal |
+| `MANAGE_STATUS_LINKS` — Portal do Cliente e links | `MANAGE_STATUS_LINKS` — Acessos do portal | Enviar links, criar/redefinir senhas e acessos de contatos, publicar orçamento e editar o contato público da empresa; não liga/desliga o portal |
+
+A migration **0046** é somente de dados e idempotente: quem tinha SMTP **ou** WhatsApp recebe Comunicação externa, com remoção das chaves antigas e duplicatas. Quem tinha apenas `MANAGE_STATUS_LINKS` mantém seus acessos, sem ganhar Comunicação externa. A contagem de promoção passa a 46. A numeração foi conferida contra `feature` (Tauri até 0042, SaaS por timestamp), depois da 0048 deste trabalho.
+
+Recepção, Técnico e Financeiro recebem **Acessos do portal nos modelos de novos cadastros**; permissões de perfis existentes só mudam pelo mapeamento acima. Financeiro ganha acesso operacional ao portal para gerenciar contatos, senhas e links, além de continuar preparando e decidindo orçamentos. Administrador continua com tudo. Personalizado pode ficar sem permissões. O envio/publicação por `PREPARE_QUOTES` continua permitido nos fluxos de orçamento, sem conceder configuração de comunicação.
+
+Conceder acesso `DECIDIR` ou redefinir manualmente a senha de quem decide continua exigindo a permissão financeira. Alterar “Clientes podem responder orçamentos” exige **Comunicação externa e Ações financeiras**; ligar/desligar somente o portal exige apenas Comunicação externa. Negativas e mudanças continuam auditadas pelo backend.
+
+**Distribuição coordenada:** a 0.6.2 não conhece `COMMUNICATION_SETTINGS`. Depois da 0046, um perfil não-administrador com essa chave pode impedir que clientes antigos listem perfis; o build novo, por sua vez, exige o mapeamento das chaves antigas para listar esses perfis. Paulo deve coordenar a distribuição do build e a execução da 0046 em uma janela de manutenção, com os PCs fechados até concluir ambos. Não integrar o PR nem executar a migration enquanto houver frota mista. Este PR é empilhado sobre o da 0048 e deve ser integrado depois dele; a ordem de merge/migration continua sendo do Paulo.
+
+## Avatar: somente formas
+
+O seletor compartilhado entre primeiro acesso e personalização oferece apenas nove formas. A 0046 troca qualquer ícone antigo salvo por `AVATAR_SHAPES[abs(id) % 9]`, preservando a forma já escolhida, a cor e o tema. `profileAppearance` usa o mesmo cálculo para valores ausentes ou antigos. O backend aceita apenas as nove formas; os ícones antigos não podem ser gravados novamente. O rótulo passa de “Ou uma forma” para **Forma**.
+
+Verificações adicionais (PostgreSQL local descartável): `scripts/tests/communication-appearance-migration.sql` testa o mapeamento de permissões/avatares e idempotência; `test_communication_permissions` testa o comando real, as permissões financeira/comunicação e a auditoria. Forneça `AUTOOS_STOCK_TEST_DATABASE_URL` de um banco **local** `autoos_stock_test*` com as migrations aplicadas.
+
 ## Transição da 0.5.6 para a 0.6.0
 
 A 0.5.6 recusa, ao montar a lista de perfis, qualquer perfil não-administrador que (a) não tenha nenhuma permissão ("Selecione ao menos uma permissão para o perfil") ou (b) contenha uma chave que ela não conhece, como `PREPARE_QUOTES` ou `MANAGE_STATUS_LINKS` ("Permissão inválida"). Um único perfil assim deixa a lista vazia e ninguém entra nos PCs que ainda estão na 0.5.6. O Administrador não é afetado, pois recebe todas as permissões sem ler a coluna. A 0.5.6 conhece só: `CONFIG_SMTP`, `CONFIG_WHATSAPP`, `DELETE_RECORDS`, `FINANCIAL_ACTIONS`, `STOCK_CONTROL`, `MANAGE_PROFILES` e `VIEW_EXPENSES`.
 
 - A 0042 concede `PREPARE_QUOTES` só ao Administrador.
 - **Transição concluída em 10/11/2026:** Paulo confirmou todos os PCs na **0.6.2**. `COMPATIBILIDADE_056_ATIVA` está desligada no Rust e no frontend, e `PREPARE_QUOTES_NOS_MODELOS` está ligada.
-- A migration de dados **0048** concede `PREPARE_QUOTES` a Técnico e Financeiro. A numeração reserva 0045/0046 para as migrations Tauri do portal já presentes na `feature` e 0047 para o PR de PDF oficial do portal. A 0048 é o próximo número livre comum; a contagem real continua em 45 arquivos.
-- Recepção (`ATENDENTE`, sem permissões) volta a estar disponível no cadastro. Todas as permissões do perfil também aparecem na criação, incluindo **Elaborar e enviar orçamentos** e **Portal do Cliente e links de acompanhamento**.
+- A migration de dados **0048** concede `PREPARE_QUOTES` a Técnico e Financeiro. Foi escolhido o próximo número livre da `master` (0044); a `feature` tem migrations Tauri até 0042 e migrations SaaS com timestamps, sem colisão.
+- Recepção (`ATENDENTE`) voltou a estar disponível no cadastro com a 0048, inclusive sem permissões; a 0046 adiciona Acessos do portal ao modelo para novos cadastros. Todas as permissões do perfil também aparecem na criação, incluindo **Elaborar e enviar orçamentos** e **Acessos do portal**.
 - **Impacto:** depois da concessão, PCs na 0.5.6 deixam de listar os perfis. Não há mais PCs nessa versão, conforme confirmação do Paulo; não voltar a distribuir a 0.5.6 nem religar a trava.
 - **Pós-merge, por ordem do Paulo:** acompanhar o workflow de migrations; confirmar a 0048 e a contagem de 45 migrations; validar Técnico criando/enviando orçamento, Recepção sem permissões e a lista completa de permissões no cadastro. Este PR não executa migrations em produção nem cria release/tag.
 

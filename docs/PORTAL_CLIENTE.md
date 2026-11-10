@@ -229,7 +229,7 @@ select cron.schedule('portal-efetivar-respostas', '* * * * *',
 
 As Edge Functions são publicadas pelo workflow `deploy-edge-functions.yml`, após aprovação em `production-edge-functions`. Aplique primeiro as migrations necessárias pelo `production-sqlx-migrations.yml` e só então aprove o deploy das funções. No disparo manual, o input `funcoes` aceita nomes separados por vírgula (`portal-cliente`, `public-status`, `envio-whatsapp`); `todas` ou vazio publicam `portal-cliente` e `public-status`. Num push, o workflow também publica as duas, mesmo que só uma tenha mudado: um deploy pendente pode ser cancelado por um push seguinte, e republicar código igual não tem efeito. A `envio-whatsapp` (fila central, ainda não ativada em produção) fica fora da seleção automática e de `todas`: só sobe quando o nome dela é digitado. O workflow usa o secret `SUPABASE_ACCESS_TOKEN` e não aplica migrations.
 5. No AutoOS: Configurações → Integrações → cartão “Fale com a equipe”; nos detalhes do equipamento, dar acesso ao contato e **Publicar no Portal do Cliente**.
-6. Ligar para um piloto em Configurações → Integrações → **Portal do Cliente: funcionamento**: “Portal ligado” e “Clientes podem responder orçamentos” (PIN; respostas exigem a permissão financeira; auditoria `PORTAL_CONFIG_CHANGED`). As chaves são de cada empresa (`portal_config_empresa`, 0038): ligar numa empresa não liga nas outras. Abre com a permissão do Portal (MANAGE_STATUS_LINKS); não exige Gerenciar perfis.
+6. Ligar para um piloto em Configurações → Integrações → **Portal do Cliente: funcionamento**: “Portal ligado” e “Clientes podem responder orçamentos” (PIN; respostas exigem a permissão financeira; auditoria `PORTAL_CONFIG_CHANGED`). As chaves são de cada empresa (`portal_config_empresa`, 0038): ligar numa empresa não liga nas outras. Ligar/desligar exige **Comunicação externa** (`COMMUNICATION_SETTINGS`); alterar respostas também exige `FINANCIAL_ACTIONS`. Não exige Gerenciar perfis.
 
 Pausar: desligar “Portal ligado” derruba login e sessões na hora; nada é apagado. Desligar só as respostas mantém o acompanhamento. O cartão avisa quando respostas vencidas não estão sendo aplicadas (agendamento do passo 3 parado).
 
@@ -285,3 +285,11 @@ Pré-requisitos: passos 1–4 da Ativação concluídos; build do AutoOS a parti
 - A equipe conhece a senha do contato (decisão de produto: a troca é feita pela equipe). A resposta prova que alguém com a senha daquele contato respondeu.
 - A senha identifica o contato; por isso duas senhas iguais no mesmo CPF/CNPJ são recusadas.
 - Documento repetido em duas empresas com o mesmo contato não entra (não há como escolher a empresa com segurança).
+
+
+## Permissões da equipe (0046)
+
+- **Acessos do portal** mantém a chave `MANAGE_STATUS_LINKS`: enviar links de acompanhamento, criar/redefinir senhas e acessos dos contatos, publicar orçamentos e editar o contato público da empresa. Não permite tirar o portal do ar. Para contatos com `DECIDIR`, continuam valendo as verificações financeiras adicionais.
+- **Comunicação externa** (`COMMUNICATION_SETTINGS`) unifica configuração SMTP/WhatsApp e ligar/desligar o Portal do Cliente. Alterar respostas pelo portal ainda exige também `FINANCIAL_ACTIONS`. `PREPARE_QUOTES` continua suficiente para os fluxos de envio/publicação de orçamento já permitidos, sem dar acesso às configurações.
+- A migration de dados `0046` substitui `CONFIG_SMTP`/`CONFIG_WHATSAPP` pela nova chave, mantendo as demais permissões e `MANAGE_STATUS_LINKS`. É idempotente. Os modelos Recepção, Técnico e Financeiro passam a incluir Acessos do portal; não recebem Comunicação externa. Administrador tem tudo.
+- Clientes desktop 0.6.2 não reconhecem a chave nova em perfis operacionais. O build novo exige as chaves mapeadas. Coordenar com Paulo uma **janela de manutenção para distribuir o build e executar a 0046**, mantendo os PCs fechados até concluir ambos; não integrar/aplicar em frota mista. Nenhuma migration de produção é executada por este PR.

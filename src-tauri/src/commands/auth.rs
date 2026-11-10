@@ -24,8 +24,7 @@ const SESSION_TIMEOUT_MINUTES: i64 = 15;
 const MAX_UNLOCK_ATTEMPTS: u32 = 5;
 const LOCKOUT_DURATION_MINUTES: i64 = 15;
 
-pub const PERMISSION_CONFIG_SMTP: &str = "CONFIG_SMTP";
-pub const PERMISSION_CONFIG_WHATSAPP: &str = "CONFIG_WHATSAPP";
+pub const PERMISSION_COMMUNICATION_SETTINGS: &str = "COMMUNICATION_SETTINGS";
 pub const PERMISSION_DELETE_RECORDS: &str = "DELETE_RECORDS";
 pub const PERMISSION_FINANCIAL_ACTIONS: &str = "FINANCIAL_ACTIONS";
 pub const PERMISSION_STOCK_CONTROL: &str = "STOCK_CONTROL";
@@ -34,9 +33,8 @@ pub const PERMISSION_MANAGE_STATUS_LINKS: &str = "MANAGE_STATUS_LINKS";
 pub const PERMISSION_VIEW_EXPENSES: &str = "VIEW_EXPENSES";
 pub const PERMISSION_PREPARE_QUOTES: &str = "PREPARE_QUOTES";
 
-const ALL_PERMISSIONS: [&str; 9] = [
-    PERMISSION_CONFIG_SMTP,
-    PERMISSION_CONFIG_WHATSAPP,
+const ALL_PERMISSIONS: [&str; 8] = [
+    PERMISSION_COMMUNICATION_SETTINGS,
     PERMISSION_DELETE_RECORDS,
     PERMISSION_FINANCIAL_ACTIONS,
     PERMISSION_STOCK_CONTROL,
@@ -53,8 +51,8 @@ const ALL_PERMISSIONS: [&str; 9] = [
 pub const COMPATIBILIDADE_056_ATIVA: bool = false;
 
 const PERMISSIONS_RECONHECIDAS_056: [&str; 7] = [
-    PERMISSION_CONFIG_SMTP,
-    PERMISSION_CONFIG_WHATSAPP,
+    "CONFIG_SMTP",
+    "CONFIG_WHATSAPP",
     PERMISSION_DELETE_RECORDS,
     PERMISSION_FINANCIAL_ACTIONS,
     PERMISSION_STOCK_CONTROL,
@@ -2211,10 +2209,8 @@ pub async fn provision_pin_with_enrollment(
 
 // ─── Perfil: primeiro acesso por código, personalização e tour ───────────────
 
-/// Ícones de avatar oferecidos na interface (nomes do lucide-react em kebab-case).
-const AVATAR_ICONES: [&str; 21] = [
-    "headphones", "wrench", "printer", "coffee", "star", "zap",
-    "leaf", "flame", "rocket", "heart", "music", "gamepad-2",
+/// Formas de avatar oferecidas na interface. Legados convertidos pela migration 0046.
+const AVATAR_ICONES: [&str; 9] = [
     // Avatares geométricos (AVATAR_SHAPES em src/lib/profile-appearance.ts).
     "shape-orb", "shape-square", "shape-peak", "shape-pill", "shape-bean",
     "shape-hex", "shape-arch", "shape-cloud", "shape-block",
@@ -2276,7 +2272,7 @@ fn validar_personalizacao(input: &PersonalizacaoPerfilInput) -> Result<(), Strin
     }
     if let Some(icone) = input.avatar_icone.as_deref() {
         if !AVATAR_ICONES.contains(&icone) {
-            return Err("Ícone de perfil inválido.".to_string());
+            return Err("Forma de perfil inválida.".to_string());
         }
     }
     if let Some(cor) = input.avatar_cor.as_deref() {
@@ -2999,7 +2995,7 @@ mod tests {
     fn personalizacao_aceita_apenas_opcoes_da_interface() {
         let valida = PersonalizacaoPerfilInput {
             nome: "Juliana".to_string(),
-            avatar_icone: Some("headphones".to_string()),
+            avatar_icone: Some("shape-orb".to_string()),
             avatar_cor: Some("#0F766E".to_string()),
             tema: Some("dark".to_string()),
             concluir_onboarding: true,
@@ -3025,6 +3021,15 @@ mod tests {
 
     fn lista(chaves: &[&str]) -> Vec<String> {
         chaves.iter().map(|c| c.to_string()).collect()
+    }
+
+    #[test]
+    fn avatares_aceitam_somente_formas() {
+        for icone in ["headphones", "wrench", "printer", "coffee", "star", "zap", "leaf", "flame", "rocket", "heart", "music", "gamepad-2"] {
+            assert!(validar_personalizacao(&PersonalizacaoPerfilInput {
+                nome: "Ana Teste".into(), avatar_icone: Some(icone.into()), ..Default::default()
+            }).is_err());
+        }
     }
 
     #[test]
@@ -3065,9 +3070,9 @@ mod tests {
     }
 
     #[test]
-    fn compat_056_chaves_antigas_estao_em_all_permissions() {
+    fn compat_056_preserva_lista_historica() {
         for chave in PERMISSIONS_RECONHECIDAS_056 {
-            assert!(ALL_PERMISSIONS.contains(&chave), "{chave} fora de ALL_PERMISSIONS");
+            assert!(ALL_PERMISSIONS.contains(&chave) || matches!(chave, "CONFIG_SMTP" | "CONFIG_WHATSAPP"));
         }
     }
 
@@ -3087,6 +3092,16 @@ mod tests {
         assert!(validar_perfil_ativo_056("ATENDENTE", &[]).is_ok());
         assert!(validar_perfil_ativo_056("TECNICO", &lista(&[PERMISSION_STOCK_CONTROL, PERMISSION_PREPARE_QUOTES])).is_ok());
         assert!(validar_perfil_ativo_056("FINANCEIRO", &lista(&[PERMISSION_MANAGE_STATUS_LINKS])).is_ok());
+    }
+
+    #[test]
+    fn comunicacao_externa_nao_e_concedida_por_acessos_do_portal() {
+        let portal = build_profile("CUSTOM", &[PERMISSION_MANAGE_STATUS_LINKS]);
+        assert!(evaluate_permission_gate(Some(portal), PERMISSION_COMMUNICATION_SETTINGS).is_err());
+        let comunicacao = build_profile("CUSTOM", &[PERMISSION_COMMUNICATION_SETTINGS]);
+        assert!(evaluate_permission_gate(Some(comunicacao), PERMISSION_COMMUNICATION_SETTINGS).is_ok());
+        assert!(normalize_permissions("CUSTOM", &lista(&["CONFIG_SMTP"])).is_err());
+        assert!(normalize_permissions("CUSTOM", &lista(&["CONFIG_WHATSAPP"])).is_err());
     }
 
     #[test]
