@@ -1,0 +1,292 @@
+/*
+ * Abertura "leitura de tag" — coreografia.
+ * Só transform e opacity são animados. Toda medida da marca é múltiplo de --u,
+ * que vale 1 pixel do PNG oficial (819×655) na escala atual.
+ *
+ * Linha do tempo (ms):
+ *     0– 220  QR e colchetes entram (opacidade, escala .955 → 1)
+ *   240– 700  leitura: uma linha desce uma vez pelo QR
+ *   640– 960  confirmação: colchetes clareiam e voltam
+ *   720–1320  o enquadramento recua e o QR vai ao lugar dele na logo
+ *   790–1420  BMI e TAG entram letra a letra, a partir do QR
+ *  1180–1500  filete e nome da solução
+ *  saída      300 ms de fade, disparada pelo componente (ou em 2000 no modo demonstração)
+ */
+
+.bto-root {
+  --bto-w: 280px;
+  --u: calc(var(--bto-w) / 628);
+  --bto-bg: #060a13;
+  --bto-ink: #e6edf7;
+
+  position: absolute;
+  inset: 0;
+  z-index: 50;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  /* A assinatura fica abaixo da marca: sobe o conjunto um pouco para o centro óptico. */
+  padding: env(safe-area-inset-top) env(safe-area-inset-right)
+    calc(env(safe-area-inset-bottom) + 5%) env(safe-area-inset-left);
+  box-sizing: border-box;
+  background: radial-gradient(ellipse 70% 55% at 50% 46%, #0b1322 0%, var(--bto-bg) 100%);
+  color: var(--bto-ink);
+  container-type: size;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+@supports (width: 1cqw) {
+  .bto-root {
+    /* 320 px → 200, 390 → 216, 430 → 225, janela de notebook → 320 (teto). */
+    --bto-w: clamp(190px, calc(22cqw + 130px), 320px);
+  }
+}
+
+/* O enquadramento. Origem no centro do QR (517u, 87u). */
+.bto-camera {
+  transform-origin: calc(517 * var(--u)) calc(87 * var(--u));
+  animation: bto-camera 600ms cubic-bezier(0.55, 0, 0.15, 1) 720ms both;
+}
+
+.bto-lockup {
+  width: calc(628 * var(--u));
+  height: calc(459 * var(--u));
+}
+
+.bto-logo {
+  position: relative;
+  width: calc(628 * var(--u));
+  height: calc(331 * var(--u));
+}
+
+.bto-part {
+  position: absolute;
+  left: calc((var(--x) - 69) * var(--u));
+  top: calc((var(--y) - 144) * var(--u));
+  width: calc(var(--pw) * var(--u));
+  height: calc(var(--ph) * var(--u));
+  background-image: var(--bto-logo);
+  background-repeat: no-repeat;
+  background-size: calc(819 * var(--u)) calc(655 * var(--u));
+  background-position: calc(var(--x) * -1 * var(--u)) calc(var(--y) * -1 * var(--u));
+}
+
+/* Etapa A — presença do QR. */
+.bto-part--qr {
+  overflow: hidden;
+  animation: bto-qr-in 220ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+
+/* Etapa B — leitura. */
+.bto-scan {
+  position: absolute;
+  left: calc(9 * var(--u));
+  right: calc(9 * var(--u));
+  top: 0;
+  height: max(1.5px, calc(3 * var(--u)));
+  border-radius: 999px;
+  background: linear-gradient(
+    90deg,
+    rgba(160, 232, 255, 0) 0%,
+    #c9f3ff 18%,
+    #ffffff 50%,
+    #c9f3ff 82%,
+    rgba(160, 232, 255, 0) 100%
+  );
+  box-shadow: 0 0 calc(10 * var(--u)) rgba(64, 200, 255, 0.55);
+  animation: bto-scan 460ms cubic-bezier(0.45, 0.1, 0.55, 0.9) 240ms both;
+}
+
+.bto-scan::before {
+  content: "";
+  position: absolute;
+  left: 8%;
+  right: 8%;
+  bottom: 100%;
+  height: calc(26 * var(--u));
+  background: linear-gradient(to top, rgba(56, 189, 248, 0.3), rgba(56, 189, 248, 0));
+}
+
+/* Confirmação — a mesma arte do QR, mais clara, por cima. Só os colchetes mudam de fato. */
+.bto-qr-confirm {
+  left: 0;
+  top: 0;
+  position: absolute;
+  width: 100%;
+  height: 100%;
+  background-image: var(--bto-logo);
+  background-repeat: no-repeat;
+  background-size: calc(819 * var(--u)) calc(655 * var(--u));
+  background-position: calc(var(--x) * -1 * var(--u)) calc(var(--y) * -1 * var(--u));
+  filter: brightness(1.6) saturate(0.9);
+  /* Moldura com furo: o quadro branco do QR fica de fora e não muda durante a confirmação. */
+  clip-path: polygon(
+    evenodd,
+    0 0, 100% 0, 100% 100%, 0 100%, 0 0,
+    11.5% 10.5%, 87.5% 10.5%, 87.5% 86%, 11.5% 86%, 11.5% 10.5%
+  );
+  animation: bto-confirm 320ms ease-out 640ms both;
+}
+
+/* Etapa C — a composição se abre a partir do QR. */
+.bto-part--b,
+.bto-part--m,
+.bto-part--i {
+  animation: bto-row-bmi 440ms cubic-bezier(0.2, 0.7, 0.2, 1) both;
+}
+
+.bto-part--t,
+.bto-part--a,
+.bto-part--g {
+  animation: bto-row-tag 440ms cubic-bezier(0.2, 0.7, 0.2, 1) both;
+}
+
+/* O B entra por último de propósito: em tela de 320 px ele só cabe depois de o enquadramento recuar ~60%. */
+.bto-part--i { animation-delay: 790ms; }
+.bto-part--m { animation-delay: 870ms; }
+.bto-part--b { animation-delay: 980ms; }
+.bto-part--g { animation-delay: 830ms; }
+.bto-part--a { animation-delay: 900ms; }
+.bto-part--t { animation-delay: 970ms; }
+
+/* Etapa D — assinatura da solução. */
+.bto-signature {
+  height: calc(128 * var(--u));
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-end;
+}
+
+.bto-rule {
+  width: calc(72 * var(--u));
+  height: 1px;
+  margin-bottom: calc(30 * var(--u));
+  background: rgba(230, 237, 247, 0.3);
+  animation: bto-rule 260ms cubic-bezier(0.2, 0.7, 0.2, 1) 1180ms both;
+}
+
+.bto-product {
+  font-family: inherit;
+  font-size: calc(54 * var(--u));
+  line-height: 1;
+  font-weight: 500;
+  letter-spacing: 0.045em;
+  /* compensa o espaçamento à direita da última letra para centralizar de fato */
+  margin-right: -0.045em;
+  white-space: nowrap;
+  animation: bto-product 280ms cubic-bezier(0.2, 0.7, 0.2, 1) 1220ms both;
+}
+
+.bto-status {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: calc(env(safe-area-inset-bottom) + 12%);
+  text-align: center;
+  font-size: 12px;
+  color: rgba(230, 237, 247, 0.55);
+  opacity: 0;
+  transition: opacity 300ms ease-out;
+}
+
+.bto-status--visible {
+  opacity: 1;
+}
+
+/* Etapa E — saída. */
+.bto-root--exiting {
+  pointer-events: none;
+  animation: bto-exit 300ms cubic-bezier(0.4, 0, 0.2, 1) both;
+}
+
+.bto-root--scripted {
+  animation: bto-exit 300ms cubic-bezier(0.4, 0, 0.2, 1) 2000ms both;
+}
+
+/* A marca sai antes do fundo, para não ficar sobreposta à interface que entra. */
+.bto-root--exiting .bto-lockup {
+  animation: bto-exit 180ms ease-out both;
+}
+
+.bto-root--scripted .bto-lockup {
+  animation: bto-exit 180ms ease-out 2000ms both;
+}
+
+@keyframes bto-qr-in {
+  from { opacity: 0; transform: scale(0.955); }
+  to { opacity: 1; transform: scale(1); }
+}
+
+@keyframes bto-scan {
+  0% { opacity: 0; transform: translateY(calc(12 * var(--u))); }
+  12% { opacity: 1; }
+  86% { opacity: 1; }
+  100% { opacity: 0; transform: translateY(calc(160 * var(--u))); }
+}
+
+@keyframes bto-confirm {
+  0% { opacity: 0; }
+  35% { opacity: 1; }
+  100% { opacity: 0; }
+}
+
+@keyframes bto-camera {
+  from {
+    transform: translate(calc(-203 * var(--u)), calc(142.5 * var(--u))) scale(1.4);
+  }
+  to {
+    transform: translate(0, 0) scale(1);
+  }
+}
+
+@keyframes bto-row-bmi {
+  from { opacity: 0; transform: translateX(calc(22 * var(--u))); }
+  to { opacity: 1; transform: translateX(0); }
+}
+
+@keyframes bto-row-tag {
+  from { opacity: 0; transform: translateY(calc(-18 * var(--u))); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes bto-rule {
+  from { opacity: 0; transform: scaleX(0.4); }
+  to { opacity: 1; transform: scaleX(1); }
+}
+
+@keyframes bto-product {
+  from { opacity: 0; transform: translateY(7px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes bto-exit {
+  from { opacity: 1; }
+  to { opacity: 0; }
+}
+
+@keyframes bto-reduced-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+/* Movimento reduzido: marca completa e parada, com um fade curto. Sem leitura. */
+@media (prefers-reduced-motion: reduce) {
+  .bto-camera,
+  .bto-part,
+  .bto-rule,
+  .bto-product {
+    animation: none;
+  }
+
+  .bto-scan,
+  .bto-qr-confirm {
+    display: none;
+  }
+
+  .bto-root:not(.bto-root--exiting):not(.bto-root--scripted) .bto-lockup {
+    animation: bto-reduced-in 200ms ease-out both;
+  }
+}
