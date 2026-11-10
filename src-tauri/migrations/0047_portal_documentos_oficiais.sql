@@ -1,8 +1,11 @@
--- 0045 e 0046 reservadas pelos PRs #184/#185; não copiar migrations da linha SaaS.
+-- 0045 e 0046 pertencem à linha SaaS (feature); ver scripts/sqlx-reserved-migrations.txt.
 CREATE TABLE IF NOT EXISTS public.portal_documentos_oficiais (
     id BIGSERIAL PRIMARY KEY,
     empresa_id INTEGER NOT NULL,
     equipamento_id INTEGER NOT NULL,
+    -- Cliente do equipamento na emissão: o portal autoriza por ele, não pelo cliente atual.
+    cliente_id INTEGER,
+    cliente_chave INTEGER GENERATED ALWAYS AS (COALESCE(cliente_id, 0)) STORED,
     tipo TEXT NOT NULL CHECK (tipo IN ('ORDEM_SERVICO', 'ORCAMENTO', 'ORCAMENTO_AJUSTADO')),
     versao_id BIGINT,
     versao_chave BIGINT GENERATED ALWAYS AS (COALESCE(versao_id, 0)) STORED,
@@ -12,7 +15,7 @@ CREATE TABLE IF NOT EXISTS public.portal_documentos_oficiais (
     revisao_em TIMESTAMPTZ NOT NULL,
     emitido_em TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
     UNIQUE (id, empresa_id),
-    UNIQUE (empresa_id, equipamento_id, tipo, versao_chave),
+    UNIQUE (empresa_id, equipamento_id, cliente_chave, tipo, versao_chave),
     FOREIGN KEY (equipamento_id, empresa_id) REFERENCES public.equipamentos(id, empresa_id) ON DELETE CASCADE,
     FOREIGN KEY (versao_id, empresa_id) REFERENCES public.orcamento_versoes(id, empresa_id) ON DELETE CASCADE,
     CHECK ((tipo = 'ORDEM_SERVICO') = (versao_id IS NULL)),
@@ -27,9 +30,9 @@ CREATE OR REPLACE FUNCTION public.autoos_registrar_documento_oficial(
     p_empresa_id INTEGER, p_equipamento_id INTEGER, p_tipo TEXT, p_versao_id BIGINT,
     p_atualizado_em TIMESTAMPTZ, p_caminho TEXT, p_sha256 TEXT, p_tamanho INTEGER
 ) RETURNS TEXT LANGUAGE plpgsql SECURITY INVOKER SET search_path = pg_catalog, public AS $$
-DECLARE v_caminho TEXT;
+DECLARE v_caminho TEXT; v_cliente_id INTEGER;
 BEGIN
-    PERFORM 1 FROM public.equipamentos
+    SELECT cliente_id INTO v_cliente_id FROM public.equipamentos
     WHERE id = p_equipamento_id AND empresa_id = p_empresa_id AND atualizado_em = p_atualizado_em
     FOR UPDATE;
     IF NOT FOUND THEN RAISE EXCEPTION 'DOCUMENTO_DESATUALIZADO'; END IF;
@@ -40,9 +43,9 @@ BEGIN
                     WHERE n.empresa_id = p_empresa_id AND n.equipamento_id = p_equipamento_id)
     ) THEN RAISE EXCEPTION 'DOCUMENTO_DESATUALIZADO'; END IF;
     INSERT INTO public.portal_documentos_oficiais
-        (empresa_id, equipamento_id, tipo, versao_id, caminho, sha256, tamanho_bytes, revisao_em)
-    VALUES (p_empresa_id, p_equipamento_id, p_tipo, p_versao_id, p_caminho, p_sha256, p_tamanho, p_atualizado_em)
-    ON CONFLICT (empresa_id, equipamento_id, tipo, versao_chave) DO UPDATE
+        (empresa_id, equipamento_id, cliente_id, tipo, versao_id, caminho, sha256, tamanho_bytes, revisao_em)
+    VALUES (p_empresa_id, p_equipamento_id, v_cliente_id, p_tipo, p_versao_id, p_caminho, p_sha256, p_tamanho, p_atualizado_em)
+    ON CONFLICT (empresa_id, equipamento_id, cliente_chave, tipo, versao_chave) DO UPDATE
     SET caminho = EXCLUDED.caminho, sha256 = EXCLUDED.sha256,
         tamanho_bytes = EXCLUDED.tamanho_bytes, emitido_em = CURRENT_TIMESTAMP, revisao_em = EXCLUDED.revisao_em
     WHERE portal_documentos_oficiais.tipo = 'ORCAMENTO_AJUSTADO'
@@ -50,6 +53,7 @@ BEGIN
     -- OS e orçamento original são canônicos: reenvios usam exatamente o primeiro arquivo publicado.
     SELECT caminho INTO v_caminho FROM public.portal_documentos_oficiais
     WHERE empresa_id=p_empresa_id AND equipamento_id=p_equipamento_id AND tipo=p_tipo
+        AND cliente_chave=COALESCE(v_cliente_id,0)
         AND versao_chave=COALESCE(p_versao_id,0);
     RETURN v_caminho;
 END;
@@ -71,7 +75,8 @@ BEGIN
     ) ORDER BY d.tipo, v.versao), '[]'::JSONB) INTO v_docs
     FROM public.portal_documentos_oficiais d
     LEFT JOIN public.orcamento_versoes v ON v.id = d.versao_id AND v.empresa_id = d.empresa_id
-    WHERE d.empresa_id = v_s.s_empresa_id AND d.equipamento_id = p_equipamento_id;
+    WHERE d.empresa_id = v_s.s_empresa_id AND d.equipamento_id = p_equipamento_id
+        AND d.cliente_id = v_s.s_cliente_id;
     RETURN v_docs;
 END;
 $$;

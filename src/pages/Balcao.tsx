@@ -568,6 +568,13 @@ function QuickEntry({ onBack }: { onBack: () => void }) {
         observacoes: `Registro imediato no balcão. Resultado do teste: ${rotuloResultadoTeste(resultadoTesteImpressao)}.`,
         concluida: false,
       });
+      // salvarVerificacao altera atualizado_em; a ordem impressa e publicada precisa do token novo.
+      try {
+        const recarregado = await db.buscarEquipamento(equipment.id!);
+        if (recarregado) setCreated(recarregado);
+      } catch (cause) {
+        console.warn("[Balcao] recarga pós-laudo indisponível", cause);
+      }
       void Promise.resolve(afterCounterRegistration(equipment)).catch(
         (cause: unknown) =>
           console.warn("[Balcao] extensão pós-cadastro indisponível", cause),

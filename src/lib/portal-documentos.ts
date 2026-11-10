@@ -51,8 +51,8 @@ export async function emitirOrcamentoPublicado(equipamentoId: number): Promise<v
     const verificacao = await db.buscarVerificacao(equipamentoId);
     if (!verificacao) return;
     const { PdfService } = await import("@/lib/pdf-service");
-    if (verificacao.adjusted_at) await PdfService.construirOrcamentoAjustado(equipamento, verificacao);
-    else await PdfService.construirOrcamento(equipamento, verificacao);
+    const artifact = await PdfService.construirOrcamentoAjustado(equipamento, verificacao);
+    if (artifact) await publicarPdfOficial(artifact, equipamento);
   } catch {
     console.warn("[PortalPDF] Emissão indisponível; nova tentativa na próxima publicação.");
   }

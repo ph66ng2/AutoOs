@@ -59,6 +59,7 @@ pub async fn publicar_documento_portal(
     let existente: Option<String> = sqlx::query_scalar(
         "SELECT caminho FROM portal_documentos_oficiais
          WHERE empresa_id=$1 AND equipamento_id=$2 AND tipo=$3 AND versao_chave=COALESCE($4,0)
+           AND cliente_chave=(SELECT COALESCE(cliente_id,0) FROM equipamentos WHERE id=$2 AND empresa_id=$1)
            AND (tipo <> 'ORCAMENTO_AJUSTADO' OR revisao_em >= $5::TEXT::TIMESTAMPTZ)",
     )
     .bind(empresa_id)

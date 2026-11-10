@@ -14,6 +14,7 @@ const emailService = vi.hoisted(() => ({ enviarOrdemEntrada: vi.fn() }));
 const ensureSensitiveAccess = vi.hoisted(() => vi.fn());
 
 vi.mock("@/lib/db", () => ({ db }));
+import { PdfService } from "@/lib/pdf-service";
 vi.mock("@/lib/email-service", () => ({ EmailService: emailService }));
 vi.mock("@/hooks/useSensitiveAccess", () => ({
   useSensitiveAccess: () => ({ status: { active_profile_name: "Atendente", unlocked: true }, ensureSensitiveAccess, lockSensitiveAccess: vi.fn(), openProfileSelector: vi.fn() }),
@@ -69,8 +70,10 @@ describe("Modo Balcão", () => {
     ensureSensitiveAccess.mockImplementation(async ({ permission }) => !permission);
     db.buscarCliente.mockResolvedValue({ id: 9, empresa_id: 7, nome: "Cliente balcão", telefone: "71999999999" });
     db.atualizarCliente.mockResolvedValue(undefined);
-    db.criarEquipamento.mockResolvedValue({ id: 42, cliente_id: 9, empresa_id: 7, serial_number: "SN-42", marca: "Zebra", modelo: "ZD220", tipo: "Impressora", status: "RECEBIDO", data_entrada: "2026-09-01" });
-    db.buscarEquipamento.mockResolvedValue({ id: 42, serial_number: "SN-42", marca: "Zebra", modelo: "ZD220", tipo: "Impressora", status: "RECEBIDO", data_entrada: "2026-09-01", cliente_email: "novo@cliente.com" });
+    const criado = { id: 42, cliente_id: 9, empresa_id: 7, serial_number: "SN-42", marca: "Zebra", modelo: "ZD220", tipo: "Impressora", status: "RECEBIDO", data_entrada: "2026-09-01" };
+    db.criarEquipamento.mockResolvedValue(criado);
+    // 1ª leitura: recarga depois do laudo; as seguintes refletem o e-mail salvo.
+    db.buscarEquipamento.mockResolvedValueOnce(criado).mockResolvedValue({ id: 42, serial_number: "SN-42", marca: "Zebra", modelo: "ZD220", tipo: "Impressora", status: "RECEBIDO", data_entrada: "2026-09-01", cliente_email: "novo@cliente.com" });
     db.salvarVerificacao.mockResolvedValue({ id: 3 });
     emailService.enviarOrdemEntrada.mockResolvedValue({ sucesso: false, erro: "SMTP recusou a autenticação" });
     const user = userEvent.setup(); renderCounter(); await reachReview(user);
@@ -84,6 +87,20 @@ describe("Modo Balcão", () => {
     expect(db.atualizarCliente.mock.invocationCallOrder[0]).toBeLessThan(emailService.enviarOrdemEntrada.mock.invocationCallOrder[0]!);
     expect(await screen.findByRole("status")).toHaveTextContent("O e-mail foi salvo no cadastro. O envio falhou: SMTP recusou a autenticação; tente reenviar.");
     expect(db.buscarEquipamento).toHaveBeenCalledWith(42);
+  }, 20000);
+
+  it("imprime a ordem com o equipamento recarregado depois do laudo (token atualizado)", async () => {
+    ensureSensitiveAccess.mockResolvedValue(false);
+    db.criarEquipamento.mockResolvedValue({ id: 42, cliente_id: 9, serial_number: "SN-42", marca: "Zebra", modelo: "ZD220", tipo: "Impressora", status: "RECEBIDO", data_entrada: "2026-09-01", atualizado_em: "2026-11-10T12:00:00.000Z" });
+    db.salvarVerificacao.mockResolvedValue({ id: 3 });
+    db.buscarEquipamento.mockResolvedValue({ id: 42, cliente_id: 9, serial_number: "SN-42", marca: "Zebra", modelo: "ZD220", tipo: "Impressora", status: "RECEBIDO", data_entrada: "2026-09-01", atualizado_em: "2026-11-10T12:00:01.000Z" });
+    const construir = vi.spyOn(PdfService, "construirOrdemServico").mockResolvedValue({ filename: "os.pdf", bytes: new Uint8Array([37]), mimeType: "application/pdf" });
+    const user = userEvent.setup(); renderCounter(); await reachReview(user);
+    await user.click(screen.getByRole("button", { name: /salvar como recebido/i }));
+    await waitFor(() => expect(db.buscarEquipamento).toHaveBeenCalledWith(42));
+    await user.click(await screen.findByRole("button", { name: /visualizar \/ imprimir ordem/i }));
+    await waitFor(() => expect(construir).toHaveBeenCalledWith(expect.objectContaining({ atualizado_em: "2026-11-10T12:00:01.000Z" })));
+    construir.mockRestore();
   }, 20000);
 
   it("não afirma que salvou o e-mail quando o operador não pediu para salvar", async () => {

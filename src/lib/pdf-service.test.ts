@@ -194,13 +194,37 @@ describe("PDF oficial no portal", () => {
     expect(mockInvoke.mock.calls[0][1].bytes).toEqual(canonico);
   });
 
-  it("upload falho não impede emissão; salvar faz nova tentativa com os mesmos bytes", async () => {
+  it("upload falho não impede salvar; o próximo salvamento tenta de novo com os mesmos bytes", async () => {
     mockPublicar.mockRejectedValueOnce(new Error("storage offline"));
     const artifact = await PdfService.construirOrdemServico(comToken);
     await expect(PdfService.salvarOrdemServico(artifact, comToken)).resolves.toBe("/tmp/oficial.pdf");
+    await expect(PdfService.salvarOrdemServico(artifact, comToken)).resolves.toBe("/tmp/oficial.pdf");
     expect(mockPublicar).toHaveBeenCalledTimes(2);
     expect(mockPublicar.mock.calls[0][1]).toEqual(mockPublicar.mock.calls[1][1]);
-    expect(Array.from(mockPublicar.mock.calls[1][1])).toEqual(mockInvoke.mock.calls[0][1].bytes);
+    expect(Array.from(mockPublicar.mock.calls[1][1])).toEqual(mockInvoke.mock.calls[1][1].bytes);
+  });
+
+  it("prévia não publica; o canônico é o artefato confirmado com o prazo final", async () => {
+    await PdfService.construirOrcamento(comToken, verificacao);
+    await PdfService.construirOrdemServico(comToken);
+    expect(mockPublicar).not.toHaveBeenCalled();
+    const final = await PdfService.construirOrcamento(comToken, verificacao, undefined, { minDiasUteis: 9, maxDiasUteis: 14 });
+    const bytesFinais = Array.from(final.bytes);
+    await PdfService.salvarOrcamento(final, comToken);
+    expect(mockPublicar).toHaveBeenCalledTimes(1);
+    expect(Array.from(mockPublicar.mock.calls[0][1])).toEqual(bytesFinais);
+    expect(mockInvoke.mock.calls[0][1].bytes).toEqual(bytesFinais);
+  });
+
+  it("verificação ajustada nunca publica como orçamento original", async () => {
+    const ajustada = { ...verificacao, adjusted_at: "2026-11-10T10:00:00Z" };
+    const comoOriginal = await PdfService.construirOrcamento(comToken, ajustada);
+    await PdfService.salvarOrcamento(comoOriginal, comToken);
+    expect(mockPublicar).not.toHaveBeenCalled();
+    const vigente = await PdfService.construirOrcamentoAjustado(comToken, ajustada);
+    await PdfService.salvarOrcamento(vigente!, comToken);
+    expect(mockPublicar).toHaveBeenCalledTimes(1);
+    expect(mockPublicar.mock.calls[0][2]).toMatchObject({ tipo: "ORCAMENTO_AJUSTADO" });
   });
 
   it("orçamento ajustado usa referência própria e os mesmos bytes salvos", async () => {

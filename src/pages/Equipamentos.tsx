@@ -2056,8 +2056,10 @@ export default function Equipamentos() {
       setSalvando(true);
       const verif = await db.buscarVerificacao(eq.id!);
       if (!verif) { warning("Equipamentos", "Nenhuma verificação técnica encontrada para este equipamento."); return; }
+      const artifact = await PdfService.construirOrcamentoAjustado(eq, verif);
+      if (!artifact) return;
       setPdfPreview({
-        artifact: await PdfService.construirOrcamento(eq, verif),
+        artifact,
         tipo: "orcamento",
         equipamento: eq,
         verificacao: verif,
@@ -3860,12 +3862,13 @@ export default function Equipamentos() {
             if (!pdfPreview.verificacao) return;
             setPdfPrazoUpdating(true);
             try {
-              const artifact = await PdfService.construirOrcamento(
+              const artifact = await PdfService.construirOrcamentoAjustado(
                 pdfPreview.equipamento,
                 pdfPreview.verificacao,
                 pdfPreview.artifact.filename,
                 { minDiasUteis, maxDiasUteis },
               );
+              if (!artifact) return;
               setPdfPreview((atual) => atual && atual.tipo === "orcamento"
                 ? { ...atual, artifact, prazoMin: minDiasUteis, prazoMax: maxDiasUteis }
                 : atual);

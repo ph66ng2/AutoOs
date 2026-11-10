@@ -69,6 +69,18 @@ BEGIN
     PERFORM pg_temp.erro(format('SELECT portal_documentos_atendimento(%L,%s)',repeat('a',64),e),'SESSAO_INVALIDA');
     UPDATE portal_sessoes SET encerrada_em=NULL, criada_em=now()-interval '2 hours', expira_em=now()-interval '1 hour' WHERE token_hash=repeat('a',64);
     PERFORM pg_temp.erro(format('SELECT portal_documentos_atendimento(%L,%s)',repeat('a',64),e),'SESSAO_INVALIDA');
+    -- Troca de cliente: o novo cliente não vê documentos emitidos para o anterior.
+    INSERT INTO cliente_contatos(empresa_id,cliente_id,nome,portal_acesso) VALUES(ea,outro_cliente,'Contato novo','ACOMPANHAR') RETURNING id INTO co;
+    INSERT INTO portal_sessoes(token_hash,empresa_id,cliente_id,contato_id,expira_em,verificada_em,metodo)
+    VALUES(repeat('b',64),ea,outro_cliente,co,now()+interval '1 hour',now(),'SENHA');
+    UPDATE equipamentos SET cliente_id=outro_cliente, atualizado_em=token+interval '1 second' WHERE id=e RETURNING atualizado_em INTO token;
+    PERFORM pg_temp.ok(portal_documentos_atendimento(repeat('b',64),e)='[]'::JSONB,'novo cliente não vê PDFs do anterior');
+    caminho := ea||'/'||e||'/ORDEM_SERVICO/0/'||repeat('7',64)||'.pdf';
+    retorno := autoos_registrar_documento_oficial(ea,e,'ORDEM_SERVICO',NULL,token,caminho,repeat('7',64),100);
+    PERFORM pg_temp.ok(retorno=caminho,'nova OS canônica para o novo cliente');
+    docs := portal_documentos_atendimento(repeat('b',64),e);
+    PERFORM pg_temp.ok(jsonb_array_length(docs)=1 AND docs->0->>'caminho'=caminho,'novo cliente vê só a própria OS');
+    PERFORM pg_temp.ok((SELECT count(*) FROM portal_documentos_oficiais WHERE equipamento_id=e AND cliente_id=ca)=4,'emissões do anterior preservadas');
     PERFORM pg_temp.ok(NOT has_function_privilege('public','public.portal_documentos_atendimento(text,integer)','EXECUTE'),'PUBLIC sem RPC');
     IF EXISTS(SELECT 1 FROM pg_roles WHERE rolname='anon') THEN
         PERFORM pg_temp.ok(NOT has_function_privilege('anon','public.portal_documentos_atendimento(text,integer)','EXECUTE'),'anon sem RPC');

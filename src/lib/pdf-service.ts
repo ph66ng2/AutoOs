@@ -960,7 +960,8 @@ export const PdfService = {
     nomeArquivo?: string,
     prazoExecucao?: PrazoExecucaoPdf,
   ): Promise<PdfArtifact> {
-    const portal = await referenciaPdfPortal(equipamento, "ORCAMENTO");
+    // Verificação ajustada nunca vira o canônico do orçamento original.
+    const portal = verificacao.adjusted_at ? undefined : await referenciaPdfPortal(equipamento, "ORCAMENTO");
     try {
       const { jsPDF, autoTable } = await carregarModulosPdf();
       const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
@@ -1154,7 +1155,6 @@ export const PdfService = {
         bytes: new Uint8Array(doc.output("arraybuffer")),
         mimeType: "application/pdf",
       };
-      await publicarPdfOficial(artifact, equipamento);
       return artifact;
     } catch (error) {
       console.error("[PdfService] Erro ao gerar orçamento PDF:", error);
@@ -1388,7 +1388,6 @@ export const PdfService = {
         bytes: new Uint8Array(doc.output("arraybuffer")),
         mimeType: "application/pdf",
       };
-      await publicarPdfOficial(artifact, equipamento);
       return artifact;
     } catch (error) {
       console.error("[PdfService] Erro ao gerar orçamento ajustado PDF:", error);
@@ -1574,7 +1573,6 @@ export const PdfService = {
         bytes: new Uint8Array(doc.output("arraybuffer")),
         mimeType: "application/pdf",
       };
-      await publicarPdfOficial(artifact, equipamento);
       return artifact;
     } catch (error) {
       console.error("[PdfService] Erro ao construir ordem de serviço PDF:", error);
