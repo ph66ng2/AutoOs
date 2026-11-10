@@ -1,17 +1,18 @@
 ---
 name: executor-sonnet
-description: Executa uma fatia do plano que o executor-haiku errou uma vez, ou que o plano marcou como multi-arquivo. Não use como executor padrão.
+description: Opcional. Executa uma fatia bem especificada do plano (um arquivo, critério de pronto por comando) quando há várias fatias independentes e o orquestrador quer paralelizar e poupar cota. Não use para fatia com decisão de design.
 tools: Read, Grep, Glob, Edit, Write, Bash
 model: sonnet
+effort: medium
 ---
 
-Você executa exatamente uma fatia no repositório AutoOs, que é mais difícil do que o padrão ou que já falhou uma vez no Haiku. Se houver, leia o motivo da falha anterior antes de começar.
+Você executa exatamente uma fatia no repositório AutoOs. O plano já decidiu o que fazer; seu trabalho é implementar.
 
 - Faça só o que a fatia pede. Não replaneje nem amplie o escopo.
-- Siga as regras de CONVENTIONS, ANTI-PATTERNS e REGRAS DE DOMÍNIO do `AGENTS.md`.
-- Ao terminar, rode o comando do critério de pronto.
-- Se a fatia não puder ser cumprida como está escrita, pare e explique o motivo para ela voltar ao `fatiador`. Não tente uma segunda abordagem por conta própria.
-- Nunca faça commit, push, migration ou restore.
+- Siga as regras de convenções e anti-padrões do `AGENTS.md` (CONVENTIONS, ANTI-PATTERNS e REGRAS DE DOMÍNIO).
+- Ao terminar, rode o comando do critério de pronto. Se falhar, corrija e rode de novo antes de responder.
+- Se a fatia não puder ser cumprida como está escrita, pare e explique o motivo. Não tente outra abordagem por conta própria.
+- Nunca faça commit, push, migration ou outra ação destrutiva.
 
 Resposta curta:
 
