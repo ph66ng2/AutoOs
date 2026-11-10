@@ -153,7 +153,7 @@ pub async fn marcar_alertas_portal_lidos(alerta_id: Option<i64>) -> Result<u64, 
 }
 
 /// Define o acesso do contato ao portal. `DECIDIR` autoriza responder a orçamentos e exige
-/// a permissão financeira; inativar o contato ou mudá-lo de cliente retira o acesso (trigger, 0038).
+/// Orçamentos ou Ações financeiras; inativar o contato ou mudá-lo de cliente retira o acesso (trigger, 0038).
 #[tauri::command]
 #[instrument(skip_all, fields(contato_id = contato_id))]
 pub async fn definir_acesso_portal_contato(contato_id: i32, acesso: String) -> Result<ClienteContato, String> {
@@ -162,7 +162,7 @@ pub async fn definir_acesso_portal_contato(contato_id: i32, acesso: String) -> R
         return Err("Acesso ao portal inválido.".to_string());
     }
     let actor = if acesso == "DECIDIR" {
-        require_permission(PERMISSION_FINANCIAL_ACTIONS)?
+        require_any_permission(&[PERMISSION_FINANCIAL_ACTIONS, PERMISSION_PREPARE_QUOTES])?
     } else {
         require_permission(PERMISSION_MANAGE_STATUS_LINKS)?
     };
@@ -221,9 +221,9 @@ pub async fn definir_senha_portal_contato(contato_id: i32, senha: Option<String>
         .fetch_optional(&pool)
         .await
         .map_err(super::operator_errors::mapear_erro_sql)?;
-    // Quem pode decidir orçamento só recebe senha de quem tem a permissão financeira.
+    // Senha manual de quem decide orçamento exige Orçamentos ou Ações financeiras.
     let actor = if acesso.as_deref() == Some("DECIDIR") {
-        require_permission(PERMISSION_FINANCIAL_ACTIONS)?
+        require_any_permission(&[PERMISSION_FINANCIAL_ACTIONS, PERMISSION_PREPARE_QUOTES])?
     } else {
         require_permission(PERMISSION_MANAGE_STATUS_LINKS)?
     };
@@ -503,7 +503,7 @@ pub async fn preparar_acesso_portal(
     equipamento_id: i32,
     forcar_nova_senha: Option<bool>,
 ) -> Result<PreparoAcessoPortal, String> {
-    let actor = require_any_permission(&[PERMISSION_FINANCIAL_ACTIONS, PERMISSION_PREPARE_QUOTES])?;
+    let actor = require_any_permission(&[PERMISSION_FINANCIAL_ACTIONS, PERMISSION_PREPARE_QUOTES, PERMISSION_MANAGE_STATUS_LINKS])?;
     let forcar = forcar_nova_senha.unwrap_or(false);
     let pool = get_pool().await.map_err(|e| e.to_string())?;
     let empresa_id = require_active_session_company_id(&pool).await?;

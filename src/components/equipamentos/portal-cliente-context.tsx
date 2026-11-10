@@ -183,7 +183,7 @@ export function PortalClienteProvider({ equipamento, sinalPortal, children }: Pr
 
   const tratarSolicitacao = useCallback((id: number) => {
     void executar(
-      SENSITIVE_PERMISSIONS.MANAGE_STATUS_LINKS,
+      [SENSITIVE_PERMISSIONS.MANAGE_STATUS_LINKS, SENSITIVE_PERMISSIONS.PREPARE_QUOTES],
       "Mensagem do cliente",
       "Confirme o acesso para marcar a mensagem do cliente como tratada.",
       async () => {

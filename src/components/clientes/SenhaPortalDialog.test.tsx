@@ -3,6 +3,9 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { gerarSenhaPortal, linkWhatsappAcesso, senhaPortalValida, SenhaPortalDialog } from "@/components/clientes/SenhaPortalDialog";
 import type { ClienteContato } from "@/types";
 
+const ensure = vi.hoisted(() => vi.fn());
+vi.mock("@/hooks/useSensitiveAccess", () => ({ useSensitiveAccess: () => ({ ensureSensitiveAccess: ensure }) }));
+
 const mocks = vi.hoisted(() => ({ definir: vi.fn(), abrirUrl: vi.fn() }));
 vi.mock("@/lib/db", () => ({ db: { definirSenhaPortalContato: mocks.definir, abrirUrl: mocks.abrirUrl } }));
 
@@ -11,7 +14,7 @@ const contato: ClienteContato = {
 };
 
 describe("SenhaPortalDialog", () => {
-  beforeEach(() => vi.clearAllMocks());
+  beforeEach(() => { vi.clearAllMocks(); ensure.mockResolvedValue(true); });
 
   it("gera senhas fortes que passam na regra do banco", () => {
     for (let i = 0; i < 50; i += 1) {
@@ -36,6 +39,27 @@ describe("SenhaPortalDialog", () => {
     expect(dados.textContent).toContain("Senha: Grafica-2026");
     expect(dados.textContent).toContain("Para trocá-la, fale com a equipe");
     expect(screen.getByText(/não será mostrada de novo/)).toBeInTheDocument();
+  });
+
+  it("senha de quem só acompanha pede Acessos do portal; de quem decide, Orçamentos ou financeiro", async () => {
+    mocks.definir.mockResolvedValue({ ...contato, portal_senha_definida_em: "2026-10-16T10:00:00Z" });
+    const { unmount } = render(<SenhaPortalDialog contato={{ ...contato, portal_acesso: "ACOMPANHAR" }} documentoCliente="11.222.333/0001-81" onClose={vi.fn()} onSalvo={vi.fn()} />);
+    fireEvent.click(screen.getByRole("button", { name: "Salvar senha" }));
+    await waitFor(() => expect(ensure).toHaveBeenCalledWith(expect.objectContaining({ permission: "MANAGE_STATUS_LINKS" })));
+    unmount();
+    ensure.mockClear();
+    render(<SenhaPortalDialog contato={{ ...contato, portal_acesso: "DECIDIR" }} documentoCliente="11.222.333/0001-81" onClose={vi.fn()} onSalvo={vi.fn()} />);
+    fireEvent.click(screen.getByRole("button", { name: "Salvar senha" }));
+    await waitFor(() => expect(ensure).toHaveBeenCalledWith(expect.objectContaining({ anyPermission: ["FINANCIAL_ACTIONS", "PREPARE_QUOTES"] })));
+  });
+
+  it("PIN negado não chama o backend nem mostra erro cru", async () => {
+    ensure.mockResolvedValue(false);
+    render(<SenhaPortalDialog contato={contato} documentoCliente="11.222.333/0001-81" onClose={vi.fn()} onSalvo={vi.fn()} />);
+    fireEvent.click(screen.getByRole("button", { name: "Salvar senha" }));
+    await waitFor(() => expect(ensure).toHaveBeenCalled());
+    expect(mocks.definir).not.toHaveBeenCalled();
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
   });
 
   it("recusa senha fraca sem chamar o backend", async () => {

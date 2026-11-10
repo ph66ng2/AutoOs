@@ -1,7 +1,7 @@
 import { SENSITIVE_PERMISSIONS as P, type SensitivePermission } from "@/types";
 import { COMPATIBILIDADE_056_ATIVA } from "@/lib/compatibilidade-056";
 
-// Ligada em 10/11/2026, com toda a frota na 0.6.2, junto com a migration 0045 que
+// Ligada em 10/11/2026, com toda a frota na 0.6.2, junto com a migration 0048 que
 // concede PREPARE_QUOTES a Técnico e Financeiro (a 0.5.6 recusava a chave em perfil não-ADMIN).
 export const PREPARE_QUOTES_NOS_MODELOS = true;
 
@@ -19,7 +19,7 @@ export function montarPresets(
       role: "ATENDENTE",
       label: "Recepção",
       description:
-        "Atendimento e rotina operacional, sem poderes administrativos.",
+        "Atendimento, retirada e acessos do portal, sem poderes administrativos.",
       permissions: [...portal],
       disponivel: !travaAtiva,
       motivoIndisponivel: travaAtiva ? MOTIVO_RECEPCAO_INDISPONIVEL : undefined,
@@ -28,16 +28,16 @@ export function montarPresets(
       role: "TECNICO",
       label: "Técnico",
       description: prepareQuotes
-        ? "Rotina técnica, orçamentos e estoque."
-        : "Rotina técnica e estoque.",
-      permissions: [P.STOCK_CONTROL, ...quotes, ...portal],
+        ? "Rotina técnica, estoque, orçamentos, acessos do portal e ações financeiras."
+        : "Rotina técnica, estoque, acessos do portal e ações financeiras.",
+      permissions: [P.STOCK_CONTROL, ...quotes, ...portal, P.FINANCIAL_ACTIONS],
       disponivel: true,
       motivoIndisponivel: undefined as string | undefined,
     },
     {
       role: "FINANCEIRO",
       label: "Financeiro",
-      description: "Orçamentos, aprovações, valores e consulta de despesas.",
+      description: "Orçamentos, ações financeiras, acessos do portal e consulta de despesas.",
       permissions: [P.FINANCIAL_ACTIONS, ...quotes, P.VIEW_EXPENSES, ...portal],
       disponivel: true,
       motivoIndisponivel: undefined as string | undefined,
@@ -79,16 +79,16 @@ export const PERMISSION_DETAILS: Record<
     critical: true,
   },
   FINANCIAL_ACTIONS: {
-    title: "Orçamentos e valores",
-    description: "Alterar orçamentos, aprovações e valores financeiros.",
+    title: "Ações financeiras",
+    description: "Corrigir decisões e status, alterar orçamentos já decididos, valor final e exceções de preço.",
   },
   STOCK_CONTROL: {
     title: "Estoque",
     description: "Movimentar e editar o estoque.",
   },
   PREPARE_QUOTES: {
-    title: "Elaborar e enviar orçamentos",
-    description: "Finalizar verificação com orçamento, editar orçamento ainda não decidido, prorrogar prazo e publicar no portal.",
+    title: "Orçamentos",
+    description: "Elaborar, enviar, publicar v2, criar nova proposta, renovar orçamento vencido, prorrogar prazo, aprovar ou reprovar e encerrar OS só de garantia.",
   },
   MANAGE_PROFILES: {
     title: "Gerenciar equipe",
