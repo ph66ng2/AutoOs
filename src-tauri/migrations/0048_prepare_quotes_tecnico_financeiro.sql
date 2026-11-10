@@ -41,7 +41,7 @@ BEGIN
                  WHERE id = rec.id;
             END IF;
         EXCEPTION WHEN others THEN
-            RAISE NOTICE 'security_profiles id=% ignorado na migration 0045: permissions não é JSON válido (%)',
+            RAISE NOTICE 'security_profiles id=% ignorado na migration 0048: permissions não é JSON válido (%)',
                 rec.id, SQLERRM;
         END;
     END LOOP;

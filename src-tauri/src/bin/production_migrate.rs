@@ -8,8 +8,10 @@ use url::Url;
 
 static MIGRATOR: Migrator = sqlx::migrate!("./migrations");
 
-const REQUIRED_PROMOTION_MIGRATIONS: [i64; 19] = [27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45];
+const REQUIRED_PROMOTION_MIGRATIONS: [i64; 19] = [27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 48];
 const EXPECTED_MIGRATION_COUNT: usize = 45;
+// 0045/0046 pertencem à feature; 0047 está reservada ao PDF oficial do portal.
+const RESERVED_MIGRATION_VERSIONS: [i64; 3] = [45, 46, 47];
 const LAST_REQUIRED_APPLIED_MIGRATION: i64 = 28;
 
 fn required_env(name: &str) -> Result<String> {
@@ -118,14 +120,14 @@ fn validate_migration_versions(mut versions: Vec<i64>, expected_count: usize) ->
 
     ensure!(
         versions.len() == expected_count,
-        "conjunto SQLx incompleto ou inesperado: esperadas {expected_count} migrations (0001–{expected_count:04}), encontradas {}",
+        "conjunto SQLx incompleto ou inesperado: esperadas {expected_count} migrations, encontradas {}",
         versions.len()
     );
-    for (index, version) in versions.iter().enumerate() {
-        let expected = index as i64 + 1;
+    ensure!(versions.iter().all(|version| *version > 0), "versão SQLx precisa ser positiva");
+    for expected in 1..=versions.last().copied().unwrap_or(0) {
         ensure!(
-            *version == expected,
-            "sequência SQLx inválida: esperada migration {expected:04}, encontrada {version:04}"
+            versions.binary_search(&expected).is_ok() || RESERVED_MIGRATION_VERSIONS.contains(&expected),
+            "sequência SQLx inválida: migration {expected:04} ausente e não reservada"
         );
     }
     Ok(())
@@ -196,10 +198,24 @@ mod tests {
     use super::*;
 
     #[test]
-    fn promotes_from_0028_with_a_contiguous_migration_set() {
+    fn promotes_from_0028_with_the_expected_migration_set() {
         assert_eq!(LAST_REQUIRED_APPLIED_MIGRATION, 28);
         assert!(validate_migration_set().is_ok());
         assert!(require_expected_migrations().is_ok());
+    }
+
+    #[test]
+    fn accepts_only_reserved_gaps_and_counts_actual_files() {
+        let branch = (1..=44).chain([48]).collect::<Vec<_>>();
+        assert!(validate_migration_versions(branch.clone(), 45).is_ok());
+        assert!(validate_migration_versions(branch.clone(), 48).is_err());
+        let mut synced = branch.clone();
+        synced.extend([45, 46, 47]);
+        assert!(validate_migration_versions(synced, 48).is_ok());
+        let missing = branch.into_iter().filter(|version| *version != 44).collect();
+        assert!(validate_migration_versions(missing, 44).is_err());
+        let unexpected_gap = (1..=44).chain([48, 50]).collect();
+        assert!(validate_migration_versions(unexpected_gap, 46).is_err());
     }
 
     #[test]
@@ -470,7 +486,7 @@ async fn required_promotion_migrations_already_applied(pool: &PgPool) -> Result<
     .bind(REQUIRED_PROMOTION_MIGRATIONS.as_slice())
     .fetch_one(pool)
     .await
-    .context("não foi possível consultar o status inicial das migrations 0027–0045")?;
+    .context("não foi possível consultar o status inicial das migrations 0027–0044 e 0048")?;
     Ok(applied_count == REQUIRED_PROMOTION_MIGRATIONS.len() as i64)
 }
 

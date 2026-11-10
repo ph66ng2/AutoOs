@@ -5,6 +5,8 @@ const migrationDir = fileURLToPath(new URL("../src-tauri/migrations/", import.me
 const files = readdirSync(migrationDir).filter((file) => file.endsWith(".sql")).sort();
 const byVersion = new Map();
 const errors = [];
+// 0045/0046: portal na feature; 0047: PDF oficial (PR independente).
+const reservedVersions = new Set([45, 46, 47]);
 
 for (const file of files) {
   const match = /^(\d{4})_[a-z0-9_]+\.sql$/.exec(file);
@@ -22,7 +24,7 @@ for (const file of files) {
 }
 
 for (let version = 1; version <= Math.max(0, ...byVersion.keys()); version += 1) {
-  if (!byVersion.has(version)) {
+  if (!byVersion.has(version) && !reservedVersions.has(version)) {
     errors.push(`Versão ${String(version).padStart(4, "0")} ausente`);
   }
 }

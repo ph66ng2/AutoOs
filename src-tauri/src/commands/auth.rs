@@ -48,8 +48,8 @@ const ALL_PERMISSIONS: [&str; 9] = [
 
 /// Trava de transição: a v0.5.6 recusa perfis não-administradores sem permissões ou com
 /// permissões novas, e a lista de perfis dela fica vazia. Desligada em 10/11/2026, com toda a
-/// frota na 0.6.2, junto com a migration 0045 (PREPARE_QUOTES para Técnico/Financeiro).
-/// Não religar: a 0045 já grava a permissão nova em perfis não-administradores.
+/// frota na 0.6.2, junto com a migration 0048 (PREPARE_QUOTES para Técnico/Financeiro).
+/// Não religar: a 0048 já grava a permissão nova em perfis não-administradores.
 pub const COMPATIBILIDADE_056_ATIVA: bool = false;
 
 const PERMISSIONS_RECONHECIDAS_056: [&str; 7] = [

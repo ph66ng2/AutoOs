@@ -18,7 +18,7 @@ INSERT INTO security_profiles (id, nome, role, permissions, ativo) VALUES
     (6, 'Admin', 'ADMIN', '["PREPARE_QUOTES"]', TRUE),
     (7, 'Outro', 'CUSTOM', '["STOCK_CONTROL"]', TRUE),
     (8, 'Já liberado', 'TECNICO', '["PREPARE_QUOTES"]', TRUE);
-\ir ../../src-tauri/migrations/0045_prepare_quotes_tecnico_financeiro.sql
+\ir ../../src-tauri/migrations/0048_prepare_quotes_tecnico_financeiro.sql
 DO $$ BEGIN
     IF EXISTS (SELECT 1 FROM security_profiles WHERE id IN (1,2,3,4,8) AND NOT permissions::jsonb ? 'PREPARE_QUOTES') THEN
         RAISE EXCEPTION 'Técnico/Financeiro não recebeu PREPARE_QUOTES';
@@ -31,10 +31,10 @@ DO $$ BEGIN
     END IF;
 END $$;
 CREATE TEMP TABLE primeira_execucao AS SELECT * FROM security_profiles;
-\ir ../../src-tauri/migrations/0045_prepare_quotes_tecnico_financeiro.sql
+\ir ../../src-tauri/migrations/0048_prepare_quotes_tecnico_financeiro.sql
 DO $$ BEGIN
     IF EXISTS (SELECT * FROM security_profiles EXCEPT SELECT * FROM primeira_execucao) THEN
-        RAISE EXCEPTION 'Migration 0045 não idempotente';
+        RAISE EXCEPTION 'Migration 0048 não idempotente';
     END IF;
 END $$;
 ROLLBACK;
