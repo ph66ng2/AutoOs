@@ -1,7 +1,7 @@
 import { SENSITIVE_PERMISSIONS as P, type SensitivePermission } from "@/types";
 import { COMPATIBILIDADE_056_ATIVA } from "@/lib/compatibilidade-056";
 
-// Ligada em 10/11/2026, com toda a frota na 0.6.2, junto com a migration 0045 que
+// Ligada em 10/11/2026, com toda a frota na 0.6.2, junto com a migration 0048 que
 // concede PREPARE_QUOTES a Técnico e Financeiro (a 0.5.6 recusava a chave em perfil não-ADMIN).
 export const PREPARE_QUOTES_NOS_MODELOS = true;
 
