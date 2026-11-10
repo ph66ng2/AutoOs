@@ -2209,7 +2209,7 @@ pub async fn provision_pin_with_enrollment(
 
 // ─── Perfil: primeiro acesso por código, personalização e tour ───────────────
 
-/// Formas de avatar oferecidas na interface. Legados convertidos pela migration 0046.
+/// Formas de avatar oferecidas na interface. Legados convertidos pela migration 0049.
 const AVATAR_ICONES: [&str; 9] = [
     // Avatares geométricos (AVATAR_SHAPES em src/lib/profile-appearance.ts).
     "shape-orb", "shape-square", "shape-peak", "shape-pill", "shape-bean",

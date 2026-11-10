@@ -287,9 +287,9 @@ Pré-requisitos: passos 1–4 da Ativação concluídos; build do AutoOS a parti
 - Documento repetido em duas empresas com o mesmo contato não entra (não há como escolher a empresa com segurança).
 
 
-## Permissões da equipe (0046)
+## Permissões da equipe (0049)
 
 - **Acessos do portal** mantém a chave `MANAGE_STATUS_LINKS`: enviar links de acompanhamento, criar/redefinir senhas e acessos dos contatos, publicar orçamentos e editar o contato público da empresa. Não permite tirar o portal do ar. Para contatos com `DECIDIR`, continuam valendo as verificações financeiras adicionais.
 - **Comunicação externa** (`COMMUNICATION_SETTINGS`) unifica configuração SMTP/WhatsApp e ligar/desligar o Portal do Cliente. Alterar respostas pelo portal ainda exige também `FINANCIAL_ACTIONS`. `PREPARE_QUOTES` continua suficiente para os fluxos de envio/publicação de orçamento já permitidos, sem dar acesso às configurações.
-- A migration de dados `0046` substitui `CONFIG_SMTP`/`CONFIG_WHATSAPP` pela nova chave, mantendo as demais permissões e `MANAGE_STATUS_LINKS`. É idempotente. Os modelos Recepção, Técnico e Financeiro passam a incluir Acessos do portal; não recebem Comunicação externa. Administrador tem tudo.
-- Clientes desktop 0.6.2 não reconhecem a chave nova em perfis operacionais. O build novo exige as chaves mapeadas. Coordenar com Paulo uma **janela de manutenção para distribuir o build e executar a 0046**, mantendo os PCs fechados até concluir ambos; não integrar/aplicar em frota mista. Nenhuma migration de produção é executada por este PR.
+- A migration de dados `0049` substitui `CONFIG_SMTP`/`CONFIG_WHATSAPP` pela nova chave, mantendo as demais permissões e `MANAGE_STATUS_LINKS`. É idempotente. Os modelos Recepção, Técnico e Financeiro passam a incluir Acessos do portal; não recebem Comunicação externa. Administrador tem tudo.
+- Clientes desktop 0.6.2 não reconhecem a chave nova em perfis operacionais. O build novo exige as chaves mapeadas. Coordenar com Paulo uma **janela de manutenção para distribuir o build e executar a 0049**, mantendo os PCs fechados até concluir ambos; não integrar/aplicar em frota mista. Nenhuma migration de produção é executada por este PR.

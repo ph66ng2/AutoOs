@@ -15,7 +15,7 @@ INSERT INTO security_profiles (id, permissions, avatar_icone) VALUES
     (5, '[]', NULL),
     (6, '["FINANCIAL_ACTIONS","PREPARE_QUOTES"]', 'coffee'),
     (7, '["COMMUNICATION_SETTINGS"]', 'shape-peak');
-\ir ../../src-tauri/migrations/0046_comunicacao_externa_avatares_formas.sql
+\ir ../../src-tauri/migrations/0049_comunicacao_externa_avatares_formas.sql
 DO $$ BEGIN
     IF EXISTS (SELECT 1 FROM security_profiles WHERE id IN (1,2,3,7) AND NOT permissions::jsonb ? 'COMMUNICATION_SETTINGS') THEN
         RAISE EXCEPTION 'Configuração antiga não mapeada';
@@ -41,10 +41,10 @@ DO $$ BEGIN
     END IF;
 END $$;
 CREATE TEMP TABLE primeira_execucao AS SELECT * FROM security_profiles;
-\ir ../../src-tauri/migrations/0046_comunicacao_externa_avatares_formas.sql
+\ir ../../src-tauri/migrations/0049_comunicacao_externa_avatares_formas.sql
 DO $$ BEGIN
     IF EXISTS (SELECT * FROM security_profiles EXCEPT SELECT * FROM primeira_execucao) THEN
-        RAISE EXCEPTION 'Migration 0046 não idempotente';
+        RAISE EXCEPTION 'Migration 0049 não idempotente';
     END IF;
 END $$;
 ROLLBACK;
