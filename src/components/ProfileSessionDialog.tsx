@@ -8,6 +8,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { ProfileAvatar } from "@/components/perfil/ProfileAvatar";
 import { cn } from "@/lib/utils";
@@ -15,7 +16,6 @@ import { needsFirstAccessHere, profileAppearance } from "@/lib/profile-appearanc
 import { securityRoleLabel } from "@/lib/security-profile-labels";
 import { erroPinNovo } from "@/lib/pin-rules";
 import { PinLock } from "@/components/auth/PinLock";
-import { PinShackleInput } from "@/components/auth/PinShackleInput";
 import { PinCreateFields, regrasCumpridas } from "@/components/auth/PinCreateFields";
 import type { SecurityProfile } from "@/types";
 
@@ -50,8 +50,6 @@ interface ProfileSessionDialogProps {
    * computador e a pessoa o esqueceu; sem ele, é o primeiro acesso.
    */
   onFirstAccess?: (profileId: number, recovery?: boolean) => void;
-  /** PIN aceito: o cadeado fecha com os 4 roletes em ✓ antes de a janela sair. */
-  accepted?: boolean;
 }
 
 /**
@@ -83,7 +81,6 @@ export function ProfileSessionDialog({
   onFirstAccess,
   keyringBlocked = false,
   onRetryKeyring,
-  accepted = false,
 }: ProfileSessionDialogProps) {
   const isSelectorMode = mode === "selector";
   const isCurrentProfileSelected = !!selectedProfile && selectedProfile.id === activeProfileId;
@@ -116,18 +113,17 @@ export function ProfileSessionDialog({
     keyringBlocked ||
     (missingRequiredPin && !canStartFirstAccess) ||
     busy ||
-    accepted ||
     (shouldAskForPin && pin.length < 4) ||
     (isAdminWithoutPin && erroPinNovo(pin, confirmPin) !== null);
 
-  // Cadeado: cada tecla gira um rolete; cada erro novo faz o cadeado tremer.
+  // Cadeado de roletes (só ao criar o PIN): cada tecla gira um rolete; cada erro novo faz o cadeado tremer.
   const [pinKeys, setPinKeys] = useState(0);
   const [errorShakes, setErrorShakes] = useState(0);
   const previousError = useRef(error);
   useEffect(() => {
-    if (error && error !== previousError.current && shouldAskForPin) setErrorShakes((n) => n + 1);
+    if (error && error !== previousError.current && isAdminWithoutPin) setErrorShakes((n) => n + 1);
     previousError.current = error;
-  }, [error, shouldAskForPin]);
+  }, [error, isAdminWithoutPin]);
   const handlePinChange = (value: string) => {
     onPinChange(value);
     setPinKeys((n) => n + 1);
@@ -136,7 +132,7 @@ export function ProfileSessionDialog({
     onConfirmPinChange(value);
     setPinKeys((n) => n + 1);
   };
-  const lockChecked = accepted ? 4 : isAdminWithoutPin ? regrasCumpridas(pin, confirmPin) : 0;
+  const lockChecked = isAdminWithoutPin ? regrasCumpridas(pin, confirmPin) : 0;
 
   const handlePrimaryAction = () => {
     if (primaryDisabled || !selectedProfile) return;
@@ -314,15 +310,16 @@ export function ProfileSessionDialog({
                     ) : (
                       <div className="space-y-2">
                         <Label htmlFor="sensitive-pin" className="block text-center">PIN do perfil</Label>
-                        <PinShackleInput
+                        <Input
                           id="sensitive-pin"
+                          type="password"
+                          inputMode="numeric"
                           value={pin}
-                          onChange={(event) => handlePinChange(event.target.value.replace(/\D/g, "").slice(0, 8))}
+                          onChange={(event) => onPinChange(event.target.value.replace(/\D/g, "").slice(0, 8))}
                           placeholder="••••"
                           autoComplete="current-password"
+                          className={pinInputClass}
                           autoFocus
-                          state={accepted ? "open" : error ? "error" : "idle"}
-                          errorCount={errorShakes}
                         />
                       </div>
                     )}

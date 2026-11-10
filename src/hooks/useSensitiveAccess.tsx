@@ -129,8 +129,6 @@ export function routeAllows(
 
 const SensitiveAccessContext = createContext<SensitiveAccessContextValue | null>(null);
 
-/** Tempo do cadeado fechando com os 4 roletes em ✓ depois de um PIN certo. */
-const PIN_ACCEPTED_MS = 700;
 const KEYRING_BLOCKED_MESSAGE = "O cofre de senhas do sistema está bloqueado ou indisponível. Desbloqueie-o e tente de novo.";
 
 export function SensitiveAccessProvider({ children }: { children: ReactNode }) {
@@ -329,23 +327,6 @@ export function SensitiveAccessProvider({ children }: { children: ReactNode }) {
     resolvePending(result);
   }, [dialogMandatory, dialogMode, resetDialogState, resolvePending]);
 
-  // PIN aceito: o cadeado mostra os 4 roletes em ✓ e só então a janela sai.
-  const [pinAccepted, setPinAccepted] = useState(false);
-  const closeDialogRef = useRef(closeDialog);
-  closeDialogRef.current = closeDialog;
-  const acceptPinAndClose = useCallback(() => {
-    const reduced = typeof window.matchMedia === "function" && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-    if (reduced) {
-      closeDialogRef.current(true);
-      return;
-    }
-    setPinAccepted(true);
-    window.setTimeout(() => {
-      setPinAccepted(false);
-      closeDialogRef.current(true);
-    }, PIN_ACCEPTED_MS);
-  }, []);
-
   const ensureSensitiveAccess = useCallback(async (options?: SensitiveAccessPromptOptions) => {
     const currentStatus = await SensitiveAccessService.status()
       .then((nextStatus) => {
@@ -482,7 +463,7 @@ export function SensitiveAccessProvider({ children }: { children: ReactNode }) {
             return;
           }
           try { localStorage.setItem("autoos_last_profile_id", String(targetProfileId)); } catch { /* storage indisponível */ }
-          acceptPinAndClose();
+          closeDialog(true);
           return;
         }
       }
@@ -531,7 +512,7 @@ export function SensitiveAccessProvider({ children }: { children: ReactNode }) {
           localStorage.setItem("autoos_last_profile_id", String(workingStatus!.active_profile_id!));
         } catch { /* localStorage pode estar indisponível */ }
 
-        acceptPinAndClose();
+        closeDialog(true);
         return;
       }
 
@@ -555,7 +536,7 @@ export function SensitiveAccessProvider({ children }: { children: ReactNode }) {
         localStorage.setItem("autoos_last_profile_id", String(workingStatus!.active_profile_id!));
       } catch { /* localStorage pode estar indisponível (modo anônimo, storage cheio) */ }
 
-      acceptPinAndClose();
+      closeDialog(true);
     } catch (submitError: any) {
       const message = sensitiveAccessErrorMessage(submitError, "Falha ao validar o acesso sensível.");
       setError(message);
@@ -563,7 +544,7 @@ export function SensitiveAccessProvider({ children }: { children: ReactNode }) {
     } finally {
       setBusy(false);
     }
-  }, [closeDialog, acceptPinAndClose, pin, confirmPin, promptOptions.permission, promptOptions.anyPermission, selectedProfileId, status, dialogMode]);
+  }, [closeDialog, pin, confirmPin, promptOptions.permission, promptOptions.anyPermission, selectedProfileId, status, dialogMode]);
 
   const startFirstAccess = useCallback((profileId: number, recovery = false) => {
     // O pedido de perfil continua pendente: resolve quando a ativação terminar.
@@ -652,7 +633,6 @@ export function SensitiveAccessProvider({ children }: { children: ReactNode }) {
         onFirstAccess={startFirstAccess}
         keyringBlocked={Boolean(status?.keyring_bloqueado)}
         onRetryKeyring={() => void refreshStatus()}
-        accepted={pinAccepted}
       />
 
       {firstAccess && firstAccessProfile && bootAnimationComplete && (
