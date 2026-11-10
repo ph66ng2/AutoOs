@@ -51,7 +51,7 @@ interface ProfileSessionDialogProps {
    * computador e a pessoa o esqueceu; sem ele, é o primeiro acesso.
    */
   onFirstAccess?: (profileId: number, recovery?: boolean) => void;
-  /** PIN aceito: o campo fica verde com um ✓ antes de a janela sair. */
+  /** PIN aceito: o campo fica verde com um cadeadinho abrindo antes de a janela sair. */
   accepted?: boolean;
 }
 
@@ -331,8 +331,11 @@ export function ProfileSessionDialog({
                             autoFocus
                           />
                           {accepted && (
-                            <svg viewBox="0 0 24 24" className="pin-entry__check" aria-hidden="true" focusable="false">
-                              <path d="M5 12.5l4.5 4.5L19 7.5" fill="none" stroke="currentColor" strokeWidth="2.8" strokeLinecap="round" strokeLinejoin="round" />
+                            <svg viewBox="0 0 40 40" className="pin-entry__lock" aria-hidden="true" focusable="false">
+                              <circle cx="20" cy="20" r="18.5" />
+                              {/* A alça é desenhada antes do corpo: as pernas entram nele e ficam escondidas. */}
+                              <path className="pin-entry__shackle" d="M15.5 27 V15.5 A4.5 4.5 0 0 1 24.5 15.5 V23.5" />
+                              <rect className="pin-entry__body" x="12.5" y="19" width="15" height="10.5" rx="1" />
                             </svg>
                           )}
                         </div>

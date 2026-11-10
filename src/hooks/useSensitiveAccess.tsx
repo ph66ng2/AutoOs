@@ -129,8 +129,8 @@ export function routeAllows(
 
 const SensitiveAccessContext = createContext<SensitiveAccessContextValue | null>(null);
 
-/** Tempo do ✓ verde no campo do PIN depois de um PIN certo. */
-const PIN_ACCEPTED_MS = 550;
+/** Tempo do cadeadinho abrindo no campo do PIN depois de um PIN certo. */
+const PIN_ACCEPTED_MS = 800;
 const KEYRING_BLOCKED_MESSAGE = "O cofre de senhas do sistema está bloqueado ou indisponível. Desbloqueie-o e tente de novo.";
 
 export function SensitiveAccessProvider({ children }: { children: ReactNode }) {
@@ -329,7 +329,7 @@ export function SensitiveAccessProvider({ children }: { children: ReactNode }) {
     resolvePending(result);
   }, [dialogMandatory, dialogMode, resetDialogState, resolvePending]);
 
-  // PIN aceito: o campo mostra o ✓ verde por um instante e só então a janela sai.
+  // PIN aceito: o campo mostra o cadeadinho abrindo e só então a janela sai.
   const [pinAccepted, setPinAccepted] = useState(false);
   const closeDialogRef = useRef(closeDialog);
   closeDialogRef.current = closeDialog;

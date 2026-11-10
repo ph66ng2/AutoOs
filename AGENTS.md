@@ -183,7 +183,7 @@ npm run bundle:prep:windows:sign # Injects certThumbprint from env into tauri.co
 ## REGRAS DE DOMÍNIO (perfis, PIN, operações sensíveis)
 
 - A rota `/perfil` (Equipe e acessos) concentra cadastro guiado, gestão da equipe e troca da sessão com PIN do perfil de destino.
-- PIN novo (criar ou trocar) segue `validate_new_pin` no backend e `src/lib/pin-rules.ts` no frontend: 4 a 8 dígitos, não todos iguais (1111) e não sequência (1234, 4321). Conferir um PIN já salvo usa só `validate_pin_format`, então PINs antigos continuam valendo. As telas de criar PIN mostram o cadeado de roletes (`src/components/auth/PinLock.tsx`), que nunca exibe o PIN digitado; a tela de digitar o PIN para entrar usa o campo simples, que treme em vermelho no erro e mostra um ✓ verde por 550 ms no acerto antes de fechar.
+- PIN novo (criar ou trocar) segue `validate_new_pin` no backend e `src/lib/pin-rules.ts` no frontend: 4 a 8 dígitos, não todos iguais (1111) e não sequência (1234, 4321). Conferir um PIN já salvo usa só `validate_pin_format`, então PINs antigos continuam valendo. As telas de criar PIN mostram o cadeado de roletes (`src/components/auth/PinLock.tsx`), que nunca exibe o PIN digitado; a tela de digitar o PIN para entrar usa o campo simples, que treme em vermelho no erro e mostra um cadeadinho verde abrindo (800 ms) no acerto antes de fechar.
 - `pin_required` é política compartilhada; PIN/hash continuam no keyring. Ausência do PIN local não autoriza entrada em um perfil protegido.
 - Trocar a sessão é uma operação local: não alterar `is_default` no banco compartilhado.
 - Perfis operacionais podem ter zero permissões sensíveis. Os modelos em `src/lib/profile-presets.ts` somente preenchem permissões já verificadas pelo backend.
