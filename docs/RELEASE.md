@@ -63,6 +63,70 @@ Antes de publicar um release que dependa das migrations 0024–0029, aplique-as 
 1. Thumbprint só no build: ver [WINDOWS_CODE_SIGNING.md](./WINDOWS_CODE_SIGNING.md).
 2. Timestamp já está configurado no `tauri.conf.json`; o bloqueio remanente de prontidão é normalmente apenas **thumbprint**.
 
+## Card de novidades por versão
+
+O card usa `getVersion()` do Tauri para identificar a versão instalada. Antes de abrir,
+registra a versão em `release-highlights.json` no **app data dir** do Tauri
+(`app.path().app_data_dir()`, conforme o identificador do aplicativo e o usuário do SO).
+O arquivo guarda somente `last_seen_version`, com substituição atômica; não depende de
+perfil, sessão ou banco. A chave antiga `autoos:release-highlights:0.6.2:portal-orcamento-conexao`
+com valor `seen` migra como vista somente para a 0.6.2. O localStorage continua como
+fallback. Na web, a versão vem de `package.json` e a persistência usa localStorage.
+
+O registro acontece na primeira apresentação, sem depender de clicar em “Começar a
+usar”: fechar o aplicativo com o card aberto também conta como visto. O antigo código
+só gravava ao dispensar, e engolia falhas do localStorage. Não foi encontrada limpeza
+da chave no código de produção. `SessionPinGate` substitui o `BrowserRouter` e pode
+desmontar o card; o splash do #181 só adia sua abertura. Essas são causas possíveis
+de repetição quando o registro não existe; não há reprodução confirmada no Windows
+da máquina afetada.
+
+Para escrever o resumo de uma mudança, preencha a seção do template de PR:
+
+```markdown
+## Novidades para o usuário
+
+- A busca de clientes agora encontra também pelo telefone do contato.
+- O orçamento vencido mostra um aviso antes da aprovação.
+```
+
+Use bullets curtos em pt-BR com o efeito percebido pelo usuário, sem Markdown
+complexo. Se a mudança for interna, deixe a seção vazia. Comentários HTML,
+blocos de código e checklists não entram. Somente os bullets dessa seção são lidos;
+o próximo título de nível 1 ou 2 encerra a seção.
+
+`npm run build` executa `npm run generate:release-highlights` no `prebuild`, inclusive
+quando chamado pelo Tauri na CI. O script usa `gh api` com `GH_TOKEN`/`GITHUB_TOKEN`
+ou a autenticação local do `gh`. Ele consulta releases publicadas estáveis, escolhe a
+última cuja tag é ancestral do checkout e reúne somente os PRs mergeados para `master`
+cujos commits de merge estão entre essa tag e o `HEAD` exato. Pagina releases,
+comparação de commits e PRs pela API, funcionando também em checkout raso.
+Tags de homologação, rascunhos e releases de outras linhas não viram base.
+
+O resultado é `src/generated/release-highlights.json`, empacotado pelo Vite. Não há
+consulta de rede ao abrir o card. Para preparar um fallback atualizado antes do
+release, depois do bump de versão rode `npm run generate:release-highlights`, confira
+o JSON e inclua-o no commit. Uma versão já publicada conserva seu JSON existente;
+a 0.6.2 mantém textos, ícones e selos anteriores. O gerador não altera versões nem
+cria tag ou release.
+
+Sem `gh`, rede, token autorizado ou resposta completa da API, o build conserva o
+JSON commitado. `AUTOOS_HIGHLIGHTS_OFFLINE=1 npm run build` força esse caminho. Se o
+JSON estiver ausente, vazio, inválido ou for de outra versão, aparece uma confirmação
+genérica da versão instalada, uma vez, sem apresentar novidades antigas.
+
+O campo `notes` de `latest.json` foi avaliado: ele já abastece o aviso do updater,
+mas o endpoint latest pode descrever uma versão posterior à instalada, exige rede e
+é produzido depois da compilação. Por isso não é a fonte deste card, nem foi alterado.
+
+Limitações: em outra conta do SO ou após excluir os dados do aplicativo o aviso pode
+voltar. Se arquivo e localStorage falharem juntos, a proteção dura apenas a sessão.
+PRs antigos sem a seção não têm resumo inferido do título. O token da CI precisa
+poder ler releases, commits e PRs (em repositório privado, `contents:read` e
+`pull-requests:read`); falta de acesso usa o fallback. Executar `vite build` diretamente
+ignora o gerador; use o comando npm documentado. O teste web não substitui validar
+instalação, atualização e persistência no Tauri/Windows.
+
 ## Auto-updater (GitHub Releases)
 
 O workflow `.github/workflows/build.yml` é a publicação oficial do canal `latest`. Detalhes operacionais, rotação de chave e schema de `latest.json` estão em [ATUALIZACAO_EXE.md](./ATUALIZACAO_EXE.md).
