@@ -12,6 +12,9 @@ import { profileAppearance, type ProfileTheme } from "@/lib/profile-appearance";
 import { PERMISSION_DETAILS } from "@/lib/profile-presets";
 import { securityRoleLabel } from "@/lib/security-profile-labels";
 import { BASE_MODULES } from "@/lib/tour-steps";
+import { erroPinNovo } from "@/lib/pin-rules";
+import { PinLock } from "@/components/auth/PinLock";
+import { PinCreateFields, regrasCumpridas } from "@/components/auth/PinCreateFields";
 import { cn } from "@/lib/utils";
 import type { SecurityProfile, SensitiveAccessStatus } from "@/types";
 
@@ -65,6 +68,8 @@ export function PrimeiroAcessoWizard({
   const [codigo, setCodigo] = useState("");
   const [pin, setPin] = useState("");
   const [confirmPin, setConfirmPin] = useState("");
+  /** Cada tecla nos campos de PIN gira um rolete do cadeado. */
+  const [pinKeys, setPinKeys] = useState(0);
   const [nome, setNome] = useState(profile.nome);
   const [color, setColor] = useState(initialLook.color);
   const [icon, setIcon] = useState(initialLook.icon);
@@ -109,8 +114,8 @@ export function PrimeiroAcessoWizard({
     }
     if (redeemInFlight.current) return;
     if (normalizeCode(codigo).length !== 6) return setError("Digite os 6 caracteres do código.");
-    if (!/^\d{4,8}$/.test(pin)) return setError("O PIN deve ter de 4 a 8 dígitos.");
-    if (pin !== confirmPin) return setError("Os PINs não conferem.");
+    const pinInvalido = erroPinNovo(pin, confirmPin);
+    if (pinInvalido) return setError(pinInvalido);
     redeemInFlight.current = true;
     setBusy(true);
     setError(null);
@@ -216,6 +221,7 @@ export function PrimeiroAcessoWizard({
                   }}
                 >
                   <header className="space-y-2">
+                    <PinLock checked={regrasCumpridas(pin, confirmPin)} spin={pinKeys} className="mb-3" />
                     <h1 id="primeiro-acesso-titulo" className="text-2xl font-semibold tracking-tight">
                       {recovery
                         ? `Redefinir o PIN de ${profile.nome}`
@@ -244,33 +250,13 @@ export function PrimeiroAcessoWizard({
                     />
                     <p className="text-sm text-muted-foreground">Vale por 24 horas. Expirou? Peça um novo ao administrador.</p>
                   </div>
-                  <div className="grid gap-4 sm:grid-cols-2">
-                    <div className="space-y-2">
-                      <Label htmlFor="primeiro-acesso-pin">Crie seu PIN</Label>
-                      <Input
-                        id="primeiro-acesso-pin"
-                        type="password"
-                        inputMode="numeric"
-                        autoComplete="new-password"
-                        value={pin}
-                        onChange={(event) => setPin(event.target.value.replace(/\D/g, "").slice(0, 8))}
-                        placeholder="4 a 8 dígitos"
-                        className="h-12"
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="primeiro-acesso-pin-confirm">Repita o PIN</Label>
-                      <Input
-                        id="primeiro-acesso-pin-confirm"
-                        type="password"
-                        inputMode="numeric"
-                        autoComplete="new-password"
-                        value={confirmPin}
-                        onChange={(event) => setConfirmPin(event.target.value.replace(/\D/g, "").slice(0, 8))}
-                        className="h-12"
-                      />
-                    </div>
-                  </div>
+                  <PinCreateFields
+                    idPrefix="primeiro-acesso"
+                    pin={pin}
+                    confirmPin={confirmPin}
+                    onPinChange={(value) => { setPin(value); setPinKeys((n) => n + 1); }}
+                    onConfirmPinChange={(value) => { setConfirmPin(value); setPinKeys((n) => n + 1); }}
+                  />
                   <p className="flex gap-2.5 rounded-xl bg-muted p-3.5 text-sm leading-relaxed text-muted-foreground">
                     <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0 text-foreground" />
                     Só você sabe este PIN, nem o administrador vê. Se esquecer, ele gera um novo código para você.

@@ -163,7 +163,7 @@ Schema publicado:
 2. O job valida o alinhamento entre tag, `package.json`, `src-tauri/Cargo.toml` e `src-tauri/tauri.conf.json`. Sem SemVer válida o job falha; **não existe fallback 0.0.0**.
 3. Exige `TAURI_SIGNING_PRIVATE_KEY` (alias `TAURI_SIGNING_KEY`) e `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` nos GitHub Secrets.
 4. O build Windows gera MSI/NSIS com `createUpdaterArtifacts` e assina o `.sig`.
-5. O script escolhe o MSI assinado (ou NSIS se o MSI não tiver `.sig`), recusa arquivos vazios e grava `latest.json`.
+5. O script escolhe o MSI assinado **da versão do release** (ou o NSIS dessa versão, se o MSI não tiver `.sig`), recusa arquivos vazios e grava `latest.json`. O nome do instalador precisa conter `_X.Y.Z_`; instalador de outra versão é recusado. Antes do build, o job apaga `src-tauri/target/release/bundle`, porque o cache do `target` pode restaurar bundles de um release anterior (foi o que fez o `latest.json` da v0.6.2 apontar para o MSI 0.6.1).
 6. Só então o rascunho é publicado como latest.
 
 Validação local com artefatos sintéticos (sem chave real):
@@ -203,18 +203,31 @@ Não apague o secret antigo antes de N+1 estar instalado nas máquinas que preci
 - Tag ou dispatch sem SemVer, ou versão `0.0.0`.
 - `package.json` / `Cargo.toml` / `tauri.conf.json` divergentes da tag.
 - Instalador ou `.sig` ausente ou vazio.
+- Instalador de outra versão no diretório de bundle, ou `latest.json` cuja URL aponta para artefato de versão diferente de `version`.
 - `latest.json` sem `windows-x86_64`, URL fora deste repositório ou assinatura diferente do `.sig`.
 - Publicar o canal `latest` antes do manifesto válido.
 
 ### Canal de homologação
 
-O teste N para N+1 não usa o endpoint de produção. O build de homologação mescla `src-tauri/tauri.homolog.conf.json` e consulta somente:
+O build de homologação/hotfix mescla `src-tauri/tauri.homolog.conf.json` e consulta, nesta ordem:
 
 ```text
 https://github.com/ph66ng2/AutoOs/releases/download/updater-homolog/latest.json
+https://github.com/ph66ng2/AutoOs/releases/latest/download/latest.json
 ```
 
-O workflow `.github/workflows/updater-homolog.yml` é `workflow_dispatch`. Ele exige a confirmação `HOMOLOG`, recusa variável de banco e publica a tag `updater-homolog` como prerelease com `make_latest: false`. O release marcado como Latest de produção permanece o que o `build.yml` publica.
+O segundo endpoint é só um fallback: o plugin passa para ele quando o primeiro não responde com sucesso (por exemplo, 404 porque a release `updater-homolog` ainda não existe). Enquanto o canal isolado responder, o build de homologação não olha a produção. O `tauri.conf.json` de produção continua com um endpoint só e nunca consulta o canal de homologação. Atenção: um build de homologação que cair no fallback recebe o instalador de produção, que sai conectado ao banco de produção.
+
+O workflow `.github/workflows/updater-homolog.yml` tem dois disparos:
+
+- `workflow_dispatch`, com `version` e a confirmação `HOMOLOG`;
+- push de tag `homolog-X.Y.Z` ou `hotfix-X.Y.Z`. A versão vem da tag e precisa bater com os três manifests do commit. Tag `v*` não dispara este workflow.
+
+Nos dois casos ele recusa variável de banco, compila só o NSIS, apaga bundles antigos antes do build e publica `latest.json`, o instalador e o `.sig` na tag fixa `updater-homolog`, como prerelease com `make_latest: false`. Os assets são sobrescritos a cada execução; a primeira execução cria a release. O release marcado como Latest de produção permanece o que o `build.yml` publica. `assertHomologWorkflow` (em `scripts/generate-update-manifest.mjs`, coberto por teste) recusa qualquer outro gatilho nesse YAML: push de branch, tag fora de `homolog-*`/`hotfix-*`, `pull_request`, `release`, `schedule`, `workflow_call`.
+
+O `windows-test-build.yml` não faz parte deste canal: ele gera um instalador interno ligado à produção e não publica release nem manifesto.
+
+Se o canal ou o instalador não existir, a tela mostra "O canal ou o pacote de atualização não foi encontrado no servidor", em vez do erro HTTP genérico.
 
 Para exercitar a jornada, dispare o workflow duas vezes, em commits com SemVer consecutivas e alinhadas nos três manifests. O primeiro instalador é N. O segundo substitui o manifesto nessa mesma tag, e o app N encontra só N+1. A tela desse build mostra que o canal é de homologação.
 

@@ -275,7 +275,7 @@ async fn test_recovery_success_then_login(
     let success = tauri_result(
         auth::redefinir_pin_via_db(
             host.clone(), port, database.clone(), username.clone(), password.clone(),
-            recovery_id, "9999".to_string(),
+            recovery_id, "9517".to_string(),
         )
         .await,
         "Falha ao redefinir PIN via recovery",
@@ -284,7 +284,7 @@ async fn test_recovery_success_then_login(
 
     let new_pin = tauri_result(auth::load_profile_pin(recovery_id), "Falha ao carregar PIN após recovery")?;
     assert!(new_pin.is_some(), "PIN deve existir após recovery");
-    assert!(auth::verify_pin("9999", new_pin.as_ref().unwrap()), "Novo PIN deve ser válido após recovery");
+    assert!(auth::verify_pin("9517", new_pin.as_ref().unwrap()), "Novo PIN deve ser válido após recovery");
     assert!(!auth::verify_pin("1111", new_pin.as_ref().unwrap()), "PIN antigo deve ser inválido após recovery");
 
     cleanup_test_keyring(recovery_id).await;
@@ -313,14 +313,14 @@ async fn test_recovery_wrong_creds_audit_logged(
 
     let wrong_reset = auth::redefinir_pin_via_db(
         host.clone(), port, database.clone(), username.clone(), "wrong_password".to_string(),
-        recovery_id, "8888".to_string(),
+        recovery_id, "8274".to_string(),
     )
     .await;
     assert!(wrong_reset.is_err(), "redefinir_pin_via_db deve falhar com credenciais inválidas");
 
     let pin_after_fail = tauri_result(auth::load_profile_pin(recovery_id), "Falha ao carregar PIN após falha")?;
     assert!(
-        pin_after_fail.is_none() || !auth::verify_pin("8888", pin_after_fail.as_ref().unwrap()),
+        pin_after_fail.is_none() || !auth::verify_pin("8274", pin_after_fail.as_ref().unwrap()),
         "PIN não deve ter sido alterado após falha de recovery"
     );
 

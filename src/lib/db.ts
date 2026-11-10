@@ -133,6 +133,9 @@ function clientePersistenciaParaInput(cliente: Omit<Cliente, "id">) {
 }
 
 export const db = {
+  getSeenReleaseHighlights: () => invoke<string | null>("get_seen_release_highlights"),
+  markReleaseHighlightsSeen: () => invoke<void>("mark_release_highlights_seen"),
+
   // ─── Equipamentos ─────────────────────────────────────
 
   /** Lista equipamentos com filtro opcional de busca e status → Rust: listar_equipamentos */

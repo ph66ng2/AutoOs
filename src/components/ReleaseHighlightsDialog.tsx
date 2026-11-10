@@ -9,7 +9,6 @@ import {
   Users,
   X,
 } from "lucide-react";
-import { useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -20,72 +19,21 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import {
-  RELEASE_HIGHLIGHTS_STORAGE_KEY,
-  RELEASE_HIGHLIGHTS_VERSION,
-} from "@/lib/releaseHighlightsKey";
+import { useReleaseHighlights } from "@/hooks/useReleaseHighlights";
+import { getReleaseHighlightsContent } from "@/lib/release-highlights-content";
 
-export { RELEASE_HIGHLIGHTS_STORAGE_KEY, RELEASE_HIGHLIGHTS_VERSION };
-
-const highlights = [
-  {
-    icon: MapPin,
-    title: "Portal mais claro",
-    description:
-      "O cliente vê o botão \"Como chegar\" e baixa a OS em PDF. Enquanto o orçamento não é publicado, o portal mostra \"Orçamento em preparação\".",
-    detail: "O endereço de retirada também aparece no link de status quando o equipamento está pronto.",
-  },
-  {
-    icon: Clock,
-    title: "Orçamento sem negociação",
-    description:
-      "Antes de recusar, o cliente vê o contato da equipe. O prazo para corrigir a resposta caiu de 15 para 10 minutos.",
-    detail: "A equipe só aplica a resposta do portal depois desses 10 minutos.",
-  },
-  {
-    icon: Package,
-    title: "Menu e orçamento de insumos mais claros",
-    description:
-      "O menu de ações da OS ficou sem itens repetidos. Orçamento de insumos vencido ganha o selo \"Vencido\" e não pode ser aprovado.",
-    detail: "Ao excluir uma peça que está em orçamentos em andamento, o app avisa onde ela é usada.",
-  },
-  {
-    icon: Users,
-    title: "Clientes e acesso ao portal",
-    description:
-      "A busca de clientes encontra pelo contato, e orçamentos pendentes podem ser enviados ao portal em lote.",
-    detail: "Na OS, o bloco \"Acesso ao portal\" mostra login e contatos sem exibir senhas.",
-  },
-] as const;
-
-function hasSeenReleaseHighlights(): boolean {
-  try {
-    return window.localStorage.getItem(RELEASE_HIGHLIGHTS_STORAGE_KEY) === "seen";
-  } catch {
-    return false;
-  }
-}
-
-function markReleaseHighlightsAsSeen(): void {
-  try {
-    window.localStorage.setItem(RELEASE_HIGHLIGHTS_STORAGE_KEY, "seen");
-  } catch {
-    // O aviso continua dispensável mesmo quando o armazenamento local não está disponível.
-  }
+const icons = { MapPin, Clock, Package, Users, FileText, Server, Sparkles };
+function iconFor(name?: string) {
+  return icons[name as keyof typeof icons] ?? Sparkles;
 }
 
 export function ReleaseHighlightsDialog({ enabled }: { enabled: boolean }) {
-  const [dismissed, setDismissed] = useState(hasSeenReleaseHighlights);
-  const shouldShow = enabled && !dismissed;
-
-  const dismiss = () => {
-    markReleaseHighlightsAsSeen();
-    setDismissed(true);
-  };
+  const { version, open, dismiss } = useReleaseHighlights(enabled);
+  const content = getReleaseHighlightsContent(version ?? "");
 
   return (
     <Dialog
-      open={shouldShow}
+      open={open}
       onOpenChange={(open) => {
         if (!open) dismiss();
       }}
@@ -108,7 +56,7 @@ export function ReleaseHighlightsDialog({ enabled }: { enabled: boolean }) {
 
           <div className="relative flex flex-wrap items-center gap-2">
             <Badge className="border border-cyan-300/30 bg-cyan-300/10 text-cyan-100 hover:bg-cyan-300/10">
-              Versão {RELEASE_HIGHLIGHTS_VERSION}
+              Versão {version}
             </Badge>
             <span className="text-xs font-medium uppercase tracking-[0.2em] text-slate-400">
               Atualização estável
@@ -120,10 +68,10 @@ export function ReleaseHighlightsDialog({ enabled }: { enabled: boolean }) {
             </div>
             <div>
               <DialogTitle className="text-2xl font-bold leading-tight tracking-tight text-white sm:text-3xl">
-                Portal mais claro e orçamento sem retrabalho
+                {content.title}
               </DialogTitle>
               <DialogDescription className="mt-2 max-w-2xl text-sm leading-relaxed text-slate-300 sm:text-base">
-                AutoOS {RELEASE_HIGHLIGHTS_VERSION}: o portal mostra como chegar, a OS em PDF e o orçamento em preparação. O menu de orçamento ficou sem repetição, e o app ficou mais estável na conexão com o banco.
+                {content.description}
               </DialogDescription>
             </div>
           </div>
@@ -131,47 +79,50 @@ export function ReleaseHighlightsDialog({ enabled }: { enabled: boolean }) {
 
         <div className="overflow-y-auto bg-background px-6 py-6 sm:px-8">
           <div className="grid gap-4 md:grid-cols-2">
-            {highlights.map(({ icon: Icon, title, description, detail }) => (
-              <article
-                key={title}
-                className="group rounded-2xl border bg-card p-5 shadow-sm transition-colors hover:border-cyan-500/40"
-              >
-                <div className="flex items-start gap-4">
-                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-cyan-500/10 text-cyan-600">
-                    <Icon className="h-5 w-5" />
+            {content.highlights.map(({ icon, title, description, detail }) => {
+              const Icon = iconFor(icon);
+              return (
+                <article
+                  key={title}
+                  className="group rounded-2xl border bg-card p-5 shadow-sm transition-colors hover:border-cyan-500/40"
+                >
+                  <div className="flex items-start gap-4">
+                    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-cyan-500/10 text-cyan-600">
+                      <Icon className="h-5 w-5" />
+                    </div>
+                    <div className="min-w-0">
+                      <h3 className="font-semibold text-foreground">{title}</h3>
+                      {description && <p className="mt-1 text-sm leading-relaxed text-muted-foreground">{description}</p>}
+                    </div>
                   </div>
-                  <div className="min-w-0">
-                    <h3 className="font-semibold text-foreground">{title}</h3>
-                    <p className="mt-1 text-sm leading-relaxed text-muted-foreground">{description}</p>
-                  </div>
-                </div>
-                <div className="mt-4 flex gap-2 rounded-xl bg-muted/60 px-3 py-2.5 text-xs leading-relaxed text-muted-foreground">
-                  <CheckCircle2 className="mt-0.5 h-3.5 w-3.5 shrink-0 text-emerald-600" />
-                  <span>{detail}</span>
-                </div>
-              </article>
-            ))}
+                  {detail && (
+                    <div className="mt-4 flex gap-2 rounded-xl bg-muted/60 px-3 py-2.5 text-xs leading-relaxed text-muted-foreground">
+                      <CheckCircle2 className="mt-0.5 h-3.5 w-3.5 shrink-0 text-emerald-600" />
+                      <span>{detail}</span>
+                    </div>
+                  )}
+                </article>
+              );
+            })}
           </div>
 
-          <div className="mt-5 flex flex-wrap gap-2" aria-label="Outras melhorias da versão">
-            <Badge variant="secondary" className="gap-1.5 px-3 py-1.5 font-normal">
-              <MapPin className="h-3.5 w-3.5" /> Como chegar no portal
-            </Badge>
-            <Badge variant="secondary" className="gap-1.5 px-3 py-1.5 font-normal">
-              <FileText className="h-3.5 w-3.5" /> OS em PDF
-            </Badge>
-            <Badge variant="secondary" className="gap-1.5 px-3 py-1.5 font-normal">
-              <Clock className="h-3.5 w-3.5" /> Correção em 10 min
-            </Badge>
-            <Badge variant="secondary" className="gap-1.5 px-3 py-1.5 font-normal">
-              <Server className="h-3.5 w-3.5" /> Conexão mais estável
-            </Badge>
-          </div>
+          {content.badges.length > 0 && (
+            <div className="mt-5 flex flex-wrap gap-2" aria-label="Outras melhorias da versão">
+              {content.badges.map(({ icon, label }) => {
+                const Icon = iconFor(icon);
+                return (
+                  <Badge key={label} variant="secondary" className="gap-1.5 px-3 py-1.5 font-normal">
+                    <Icon className="h-3.5 w-3.5" /> {label}
+                  </Badge>
+                );
+              })}
+            </div>
+          )}
         </div>
 
         <div className="flex flex-col gap-3 border-t bg-muted/30 px-6 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-8">
           <p className="text-xs text-muted-foreground">
-            Este resumo aparece uma única vez nesta máquina para a versão {RELEASE_HIGHLIGHTS_VERSION}.
+            Este resumo aparece uma única vez nesta máquina para a versão {version}.
           </p>
           <DialogClose asChild>
             <Button type="button" className="min-w-40 bg-cyan-600 hover:bg-cyan-500">
