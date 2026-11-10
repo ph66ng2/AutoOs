@@ -251,7 +251,7 @@ body {
   inset: 0;
   display: flex;
   background: var(--od-screen-app);
-  animation: od-app-in 340ms cubic-bezier(0.2, 0.7, 0.2, 1) 2000ms both;
+  animation: od-app-in 340ms cubic-bezier(0.2, 0.7, 0.2, 1) 3200ms both;
 }
 
 .od-app--mobile {

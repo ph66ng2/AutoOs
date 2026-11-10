@@ -10,8 +10,8 @@ import "./opening-demo.css";
  * inspeção quadro a quadro.
  */
 
-/** Fim da linha do tempo demonstrada: abertura (1500) + pausa (500) + saída (340). */
-const TIMELINE_MS = 2340;
+/** Fim da linha do tempo demonstrada: abertura (2600) + pausa (600) + saída (340). */
+const TIMELINE_MS = 3540;
 /** No modo loop, espera na interface antes de recomeçar. */
 const LOOP_REST_MS = 900;
 
@@ -29,12 +29,14 @@ const MOBILE_SIZES = [
 const PRODUCTS = ["AutoOS", "AutoBO"] as const;
 
 const MARKS = [
-  { t: 120, label: "QR" },
-  { t: 470, label: "Leitura" },
-  { t: 800, label: "Confirmação" },
-  { t: 1060, label: "Abertura" },
-  { t: 1500, label: "Assinatura" },
-  { t: 2150, label: "Interface" },
+  { t: 300, label: "Bloco" },
+  { t: 700, label: "Barras abertas" },
+  { t: 950, label: "Leitura" },
+  { t: 1280, label: "Confirmação" },
+  { t: 1800, label: "Recuo" },
+  { t: 2100, label: "BMI e TAG" },
+  { t: 2600, label: "Assinatura" },
+  { t: 3340, label: "Interface" },
 ] as const;
 
 function Segmented<T extends string>({

@@ -4,16 +4,19 @@ import "./bmi-tag-opening.css";
 /**
  * Abertura "leitura de tag".
  *
- * O QR da marca aparece, é lido uma vez, e o enquadramento se abre até mostrar a
- * logo inteira com o nome da solução. A coreografia (tempos, curvas, posições)
- * está em `bmi-tag-opening.css` e documentada em `docs/ABERTURA_BMITAG.md`.
+ * As duas barras da marca nascem juntas, como um bloco, e se abrem. A leitura
+ * imprime o QR entre elas. Só então o enquadramento recua, BMI sai de trás da
+ * barra, TAG desce e o nome da solução assina. A coreografia (tempos, curvas,
+ * posições) está em `bmi-tag-opening.css` e em `docs/ABERTURA_BMITAG.md`.
  *
- * A logo não é redesenhada: cada parte é um recorte retangular do PNG oficial
- * (`public/bmi-tag-logo.png`), posicionado nas coordenadas do próprio arquivo.
+ * Letras e QR são recortes retangulares do PNG oficial (`public/bmi-tag-logo.png`),
+ * nas coordenadas do próprio arquivo. As duas barras são retângulos com o degradê
+ * medido no PNG: no arquivo elas ficam parcialmente atrás do QR, então o recorte
+ * não serve enquanto o QR ainda não apareceu.
  */
 
 /** Duração da abertura de marca, do primeiro quadro até a assinatura assentar. */
-export const OPENING_INTRO_MS = 1500;
+export const OPENING_INTRO_MS = 2600;
 /** Duração da saída (crossfade para a interface). */
 export const OPENING_EXIT_MS = 300;
 /** Com movimento reduzido só há um fade curto da marca completa. */
@@ -26,7 +29,7 @@ const PARTS = {
   b: [69, 144, 147, 174],
   m: [228, 144, 187, 174],
   i: [436, 144, 51, 174],
-  qr: [500, 144, 172, 174],
+  card: [518, 162, 135, 132],
   t: [237, 328, 144, 147],
   a: [385, 328, 146, 147],
   g: [552, 328, 145, 147],
@@ -144,16 +147,26 @@ export function BmiTagOpening({
       <div className="bto-camera">
         <div className="bto-lockup" role="img" aria-label={label ?? `${product}, BMI TAG`}>
           <div className="bto-logo" aria-hidden="true">
-            <Part name="b" />
-            <Part name="m" />
-            <Part name="i" />
-            <Part name="t" />
-            <Part name="a" />
-            <Part name="g" />
-            <Part name="qr">
-              <span className="bto-qr-confirm" style={partStyle("qr")} />
+            <div className="bto-row bto-row--bmi">
+              <div className="bto-row__inner">
+                <Part name="b" />
+                <Part name="m" />
+                <Part name="i" />
+              </div>
+            </div>
+            <div className="bto-row bto-row--tag">
+              <div className="bto-row__inner">
+                <Part name="t" />
+                <Part name="a" />
+                <Part name="g" />
+              </div>
+            </div>
+            <div className="bto-symbol">
+              <span className="bto-bar bto-bar--l" />
+              <span className="bto-bar bto-bar--r" />
+              <Part name="card" />
               <span className="bto-scan" />
-            </Part>
+            </div>
           </div>
           <div className="bto-signature" aria-hidden="true">
             <span className="bto-rule" />

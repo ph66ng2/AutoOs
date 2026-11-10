@@ -10,21 +10,23 @@ Protótipo da abertura que deve substituir o carimbo. **Ainda não está ligado 
 
 Fonte: `public/bmi-tag-logo.png` (819×655, RGBA, fundo transparente). É a mesma arte de `public/logo-tag-trasparente.svg`, que não é vetorial: é esse PNG embutido em um SVG.
 
-A logo não foi redesenhada nem vetorizada. Cada parte animada é um recorte retangular do PNG, posicionado nas coordenadas do próprio arquivo, então a composição final coincide com o original pixel a pixel. Os recortes funcionam porque as partes são separadas por faixas transparentes:
+Letras e QR são recortes retangulares do PNG, posicionados nas coordenadas do próprio arquivo. Não foram redesenhados nem vetorizados.
 
 | Parte | x | y | largura | altura |
 |-------|---|---|---------|--------|
 | B | 69 | 144 | 147 | 174 |
 | M | 228 | 144 | 187 | 174 |
 | I | 436 | 144 | 51 | 174 |
-| QR + colchetes | 500 | 144 | 172 | 174 |
+| QR (cartão branco com a sombra) | 518 | 162 | 135 | 132 |
 | T | 237 | 328 | 144 | 147 |
 | A | 385 | 328 | 146 | 147 |
 | G | 552 | 328 | 145 | 147 |
 
+**Aproximação declarada: as duas barras.** O que parece um par de colchetes é, no arquivo, duas barras azuis retas (x 503–540 e 631–667, y 148–308) com o cartão do QR por cima. Como o meio de cada barra fica escondido atrás do QR, o recorte do PNG não serve enquanto o QR ainda não apareceu. As barras são retângulos em CSS com o degradê vertical medido no PNG em sete pontos. No quadro final elas ficam embaixo do recorte do QR, na mesma posição do original.
+
 O slogan "TECNOLOGIA QRCODE E RFID" (y 491–513) fica de fora: na escala da abertura ele teria menos de 6 px de altura.
 
-**Limitação de fidelidade.** O QR ocupa cerca de 122 px no arquivo. No primeiro quadro (zoom 1,4) em tela de densidade 2× ele é desenhado com até ~175 px físicos, ou seja, ampliado em ~1,4×. Fica aceitável, mas não nítido. Para finalizar é preciso a logo em vetor (SVG com letras em curvas e o QR em módulos) ou, no mínimo, um PNG transparente com 2000 px ou mais de largura. Com o vetor, os recortes viram grupos do SVG e nada mais muda na coreografia.
+**Limitação de fidelidade.** O QR ocupa cerca de 122 px no arquivo. Durante a leitura (zoom 1,4) em tela de densidade 2× ele é desenhado com até ~175 px físicos, ou seja, ampliado em ~1,4×. Fica aceitável, mas não nítido. Para finalizar é preciso a logo em vetor (SVG com letras em curvas e o QR em módulos) ou, no mínimo, um PNG transparente com 2000 px ou mais de largura. Com o vetor, os recortes viram grupos do SVG e nada mais muda na coreografia.
 
 ## Quadro final
 
@@ -35,29 +37,33 @@ Unidade `u` = 1 pixel do PNG na escala atual. Caixa do conjunto: 628u × 459u.
 - Nome da solução: 54u de corpo, peso 500, espaçamento 0,045em, fonte do app.
 - Largura da logo: `clamp(190px, 22cqw + 130px, 320px)` em relação ao contêiner. 320 px → 200, 390 → 216, 430 → 225, janela de notebook → 320. A logo não cresce com a janela.
 - O conjunto fica 5% acima do centro geométrico, por causa da assinatura abaixo.
+- Fundo liso `#070a10`.
 
 ## Coreografia
 
-Só `transform` e `opacity` são animados. Não há mudança de layout.
+Um ator por vez, com duas pausas. Abertura de marca: 2600 ms.
 
 | Etapa | Início–fim (ms) | Elemento | Do estado | Para o estado | Curva |
 |-------|-----------------|----------|-----------|---------------|-------|
-| A. Presença | 0–220 | QR + colchetes | opacidade 0, escala 0,955 | opacidade 1, escala 1 | `cubic-bezier(.2,.8,.2,1)` |
-| B. Leitura | 240–700 | linha de leitura | y = 12u (topo dos colchetes) | y = 160u (base) | `cubic-bezier(.45,.1,.55,.9)`, quase linear; opacidade entra e sai nos 12% das pontas |
-| B. Confirmação | 640–960 | cópia clara dos colchetes | opacidade 0 | 1 aos 35%, depois 0 | `ease-out` |
-| C. Enquadramento | 720–1320 | conjunto inteiro | `translate(-203u, 142.5u) scale(1.4)`, origem no centro do QR | identidade | `cubic-bezier(.55,0,.15,1)` |
-| C. BMI | I 790, M 870, B 980 (+440) | cada letra | opacidade 0, x +22u | opacidade 1, x 0 | `cubic-bezier(.2,.7,.2,1)` |
-| C. TAG | G 830, A 900, T 970 (+440) | cada letra | opacidade 0, y −18u | opacidade 1, y 0 | `cubic-bezier(.2,.7,.2,1)` |
-| D. Assinatura | 1180–1440 filete; 1220–1500 nome | filete, nome | opacidade 0; filete escala X 0,4; nome y +7 px | opacidade 1, sem deslocamento | `cubic-bezier(.2,.7,.2,1)` |
-| E. Saída | 300 (marca some em 180) | abertura inteira | opacidade 1 | opacidade 0 | `cubic-bezier(.4,0,.2,1)` |
+| 1. Bloco | 0–300 | símbolo (as duas barras encostadas) | opacidade 0, escala 0,6 | opacidade 1, escala 1 | mola curta `cubic-bezier(.3,1.35,.5,1)` |
+| 2. Abertura das barras | 360–700 | barra esquerda / direita | x +44,5u / −45,5u (encostadas no centro) | x 0 | mola curta |
+| 3. Leitura | 720–1180 | linha + cartão do QR | linha em y 18u; cartão com `clip-path: inset(0 0 100% 0)` | linha em y 150u; cartão inteiro | `cubic-bezier(.4,.1,.6,.9)`, a mesma nos dois, para a linha imprimir o QR |
+| 4. Confirmação | 1160–1460 | barras e símbolo | — | barras clareiam (0 → 0,75 → 0); símbolo escala 1 → 1,035 → 1 | `ease-out` |
+| pausa | 1460–1560 | — | — | — | — |
+| 5. Recuo | 1560–2040 | conjunto inteiro | `translate(-202u, 145.5u) scale(1.4)`, origem no centro do símbolo (516u, 84u) | identidade | `cubic-bezier(.6,0,.2,1)` |
+| 6. BMI | 1900–2300 | bloco BMI | x +150u, escondido atrás da barra esquerda | x 0 | `cubic-bezier(.2,.7,.2,1)` |
+| 7. TAG | 2020–2420 | bloco TAG | y −80u, escondido acima da própria janela | y 0 | `cubic-bezier(.2,.7,.2,1)` |
+| 8. Assinatura | 2300–2560 filete; 2320–2600 nome | filete, nome | opacidade 0; filete escala X 0,4; nome y +7 px | opacidade 1 | `cubic-bezier(.2,.7,.2,1)` |
+| pausa | até `ready` | — | — | — | — |
+| 9. Saída | 300 (marca some em 180) | abertura inteira | opacidade 1 | opacidade 0 | `cubic-bezier(.4,0,.2,1)` |
 
-Relações de posição:
+Máscaras e relações de posição:
 
-- O QR nunca sai da logo. No início o conjunto está ampliado 1,4× e deslocado de modo que o centro do QR (517u, 87u dentro da caixa) coincida com o centro da tela. Recuar o enquadramento leva o QR ao lugar definitivo. Não existe um segundo QR.
-- As letras entram inteiras, da mais próxima do QR para a mais distante. Nenhuma letra é cortada por máscara.
-- O B entra por último (980 ms) porque em tela de 320 px ele só cabe depois de o enquadramento recuar cerca de 60%. Se o zoom inicial ou a curva do enquadramento mudarem, reconferir esse quadro em 320 px.
-- A linha de leitura é filha do recorte do QR, que tem `overflow: hidden`: ela não passa por cima do resto da marca.
-- A confirmação é uma cópia do recorte do QR com `brightness(1.6)`, recortada em moldura (o quadro branco do QR fica de fora). Os módulos do QR não mudam.
+- O símbolo nunca sai da logo. No início o conjunto está ampliado 1,4× e deslocado de modo que o centro do símbolo coincida com o centro da tela. O recuo o leva ao lugar definitivo. Não existe um segundo QR.
+- BMI: janela com `overflow: hidden` que termina 3u antes da borda esquerda da barra. O bloco desliza por trás dessa borda, então as letras saem de trás do símbolo.
+- TAG: janela que começa em y 180u, logo abaixo da linha de base de BMI. O bloco desce de trás dessa linha.
+- A linha de leitura e o recorte do QR usam a mesma duração e a mesma curva: o QR aparece exatamente até onde a linha já passou.
+- A mola passa cerca de 4% do ponto e assenta. Ela só é usada no símbolo (etapas 1 e 2). Não há rotação.
 
 Movimento reduzido (`prefers-reduced-motion: reduce`): marca completa e parada, com fade de 200 ms. Sem leitura, sem deslocamento.
 
@@ -67,7 +73,7 @@ Movimento reduzido (`prefers-reduced-motion: reduce`): marca completa e parada, 
 <BmiTagOpening product="AutoOS" ready={appPronto} onFinished={desmontar} status="Conectando ao banco" />
 ```
 
-- A abertura dura 1500 ms (220 ms com movimento reduzido). Se `ready` já for verdadeiro nesse ponto, a saída começa na hora. Não há espera mínima além da própria abertura.
+- A abertura dura 2600 ms (220 ms com movimento reduzido). Se `ready` já for verdadeiro nesse ponto, a saída começa na hora. Não há espera mínima além da própria abertura.
 - Se `ready` ainda for falso, a marca fica parada. Depois de 900 ms aparece `status`, discreto, sem repetir a leitura.
 - `onFinished` é chamado uma vez, 300 ms depois do início da saída. Os temporizadores são limpos ao desmontar.
 - Erro de inicialização é responsabilidade de quem hospeda: ao detectar erro, desmonte a abertura e mostre a tela de erro. A abertura não deve cobrir um erro.
