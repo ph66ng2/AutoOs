@@ -41,7 +41,7 @@ Desktop app for printer management, technical reception, operational communicati
 │   └── .env.example              # Template local; .env real nunca é versionado/bundled
 ├── .claude/agents/               # Subagentes do Claude Code (modelo fixado por agente)
 ├── .cursor/rules/                # Regras do Cursor (autoos.mdc aponta para este arquivo)
-├── CLAUDE.md                     # Só Claude Code: roteamento Opus/Sonnet/Haiku
+├── CLAUDE.md                     # Só Claude Code: modelo/effort e subagentes
 ├── .github/
 │   └── workflows/
 │       ├── ci.yml                # Lint → Vitest → cargo check/clippy → e2e:real → build
@@ -233,7 +233,7 @@ Vale para código **novo** nas duas branches; não refatorar o existente por cau
 
 ## FLUXO DE TRABALHO COM AGENTES DE IA (Claude Code e Cursor)
 
-Vale para qualquer agente. O roteamento por modelo (Opus/Sonnet/Haiku) é específico do Claude Code e está em `CLAUDE.md`.
+Vale para qualquer agente. A escolha de modelo e effort (Opus 5.5 `medium` como padrão; Haiku só para busca e leitura) é específica do Claude Code e está em `CLAUDE.md`.
 
 **Contexto de custo:** o projeto usa uma assinatura de US$ 20/mês com cota limitada. Toda decisão abaixo existe para gastar menos cota por tarefa.
 
