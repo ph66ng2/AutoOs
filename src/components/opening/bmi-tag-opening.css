@@ -1,0 +1,302 @@
+/*
+ * Abertura "leitura de tag" — coreografia.
+ * Toda medida da marca é múltiplo de --u, que vale 1 pixel do PNG oficial
+ * (819×655) na escala atual. Um ator por vez, com duas pausas.
+ *
+ * Linha do tempo (ms):
+ *     0– 300  as duas barras nascem juntas, como um bloco (mola curta)
+ *   360– 700  o bloco se abre: as barras vão para os lugares delas (mola curta)
+ *   720–1180  leitura: a linha desce uma vez e imprime o QR
+ *  1160–1460  confirmação: as barras clareiam e o símbolo pulsa de leve
+ *  1460–1560  pausa com o símbolo pronto
+ *  1560–2040  o enquadramento recua e o símbolo vai ao lugar dele na logo
+ *  1900–2300  BMI sai de trás da barra esquerda
+ *  2020–2420  TAG desce da linha de base de BMI
+ *  saída      300 ms de fade, disparada pelo componente (ou em 3050 no modo demonstração)
+ */
+
+.bto-root {
+  --bto-w: 280px;
+  --u: calc(var(--bto-w) / 628);
+  --bto-bg: #070a10;
+  --bto-ink: #e6edf7;
+  /* mola curta: passa ~4% do ponto e assenta */
+  --bto-spring: cubic-bezier(0.3, 1.35, 0.5, 1);
+  --bto-out: cubic-bezier(0.2, 0.7, 0.2, 1);
+
+  position: absolute;
+  inset: 0;
+  z-index: 50;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom)
+    env(safe-area-inset-left);
+  box-sizing: border-box;
+  background: var(--bto-bg);
+  color: var(--bto-ink);
+  container-type: size;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+@supports (width: 1cqw) {
+  .bto-root {
+    /* 320 px → 212, 390 → 229, 430 → 238, janela de notebook → 360 (teto). */
+    --bto-w: clamp(200px, calc(24cqw + 135px), 360px);
+  }
+}
+
+/* O enquadramento. Origem no centro do símbolo (516u, 84u). */
+.bto-camera {
+  transform-origin: calc(516 * var(--u)) calc(84 * var(--u));
+  animation: bto-camera 480ms cubic-bezier(0.6, 0, 0.2, 1) 1560ms both;
+}
+
+.bto-lockup {
+  width: calc(628 * var(--u));
+  height: calc(331 * var(--u));
+}
+
+.bto-logo {
+  position: relative;
+  width: calc(628 * var(--u));
+  height: calc(331 * var(--u));
+}
+
+.bto-part {
+  position: absolute;
+  left: calc((var(--x) - 69) * var(--u));
+  top: calc((var(--y) - 144) * var(--u));
+  width: calc(var(--pw) * var(--u));
+  height: calc(var(--ph) * var(--u));
+  background-image: var(--bto-logo);
+  background-repeat: no-repeat;
+  background-size: calc(819 * var(--u)) calc(655 * var(--u));
+  background-position: calc(var(--x) * -1 * var(--u)) calc(var(--y) * -1 * var(--u));
+}
+
+/* ---------- Símbolo: duas barras + QR ---------- */
+
+.bto-symbol {
+  position: absolute;
+  inset: 0;
+  transform-origin: calc(516 * var(--u)) calc(84 * var(--u));
+  animation:
+    bto-symbol-in 300ms var(--bto-spring) both,
+    bto-symbol-pulse 300ms ease-out 1160ms;
+}
+
+.bto-bar {
+  position: absolute;
+  top: calc(4 * var(--u));
+  width: calc(37.5 * var(--u));
+  height: calc(160.5 * var(--u));
+  border-radius: calc(1.5 * var(--u));
+  overflow: hidden;
+}
+
+.bto-bar--l {
+  left: calc(434 * var(--u));
+  background: linear-gradient(#34aae8 0%, #24a6ea 20%, #25a4e9 39%, #249de4 57%, #1f8dd9 76%, #1b77c8 95%, #1e72c1 100%);
+  animation: bto-bar-l 340ms var(--bto-spring) 360ms both;
+}
+
+.bto-bar--r {
+  left: calc(561.5 * var(--u));
+  background: linear-gradient(#31b1e7 0%, #26a7e1 20%, #2395d8 39%, #1d7ec8 57%, #196dbb 76%, #1563b5 95%, #1c5da6 100%);
+  animation: bto-bar-r 340ms var(--bto-spring) 360ms both;
+}
+
+/* Confirmação: as barras clareiam e voltam. */
+.bto-bar::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: #bfeeff;
+  animation: bto-confirm 300ms ease-out 1160ms both;
+}
+
+/* O QR é impresso de cima para baixo, junto com a linha de leitura. */
+.bto-part--card {
+  animation: bto-card 460ms cubic-bezier(0.4, 0.1, 0.6, 0.9) 720ms both;
+}
+
+.bto-scan {
+  position: absolute;
+  left: calc(440 * var(--u));
+  width: calc(153 * var(--u));
+  top: calc(18 * var(--u));
+  height: max(1.5px, calc(3 * var(--u)));
+  border-radius: 999px;
+  background: linear-gradient(90deg, rgba(201, 243, 255, 0) 0%, #c9f3ff 14%, #ffffff 50%, #c9f3ff 86%, rgba(201, 243, 255, 0) 100%);
+  box-shadow: 0 0 calc(12 * var(--u)) rgba(64, 200, 255, 0.7);
+  animation: bto-scan 460ms cubic-bezier(0.4, 0.1, 0.6, 0.9) 720ms both;
+}
+
+/* ---------- BMI e TAG saem de trás do símbolo ---------- */
+
+.bto-row {
+  position: absolute;
+  overflow: hidden;
+}
+
+/* Janela de BMI: termina na borda esquerda da barra (x = 434u). */
+.bto-row--bmi {
+  left: calc(-40 * var(--u));
+  top: 0;
+  width: calc(471 * var(--u));
+  height: calc(176 * var(--u));
+}
+
+.bto-row--bmi .bto-row__inner {
+  position: absolute;
+  left: calc(40 * var(--u));
+  top: 0;
+  width: 0;
+  height: 0;
+  animation: bto-row-bmi 400ms var(--bto-out) 1900ms both;
+}
+
+/* Janela de TAG: começa logo abaixo da linha de base de BMI (y = 180u). */
+.bto-row--tag {
+  left: 0;
+  top: calc(180 * var(--u));
+  width: calc(628 * var(--u));
+  height: calc(160 * var(--u));
+}
+
+.bto-row--tag .bto-row__inner {
+  position: absolute;
+  left: 0;
+  top: calc(-180 * var(--u));
+  width: 0;
+  height: 0;
+  animation: bto-row-tag 400ms var(--bto-out) 2020ms both;
+}
+
+.bto-status {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: calc(env(safe-area-inset-bottom) + 12%);
+  text-align: center;
+  font-size: 12px;
+  color: rgba(230, 237, 247, 0.55);
+  opacity: 0;
+  transition: opacity 300ms ease-out;
+}
+
+.bto-status--visible {
+  opacity: 1;
+}
+
+/* ---------- Saída ---------- */
+
+.bto-root--exiting {
+  pointer-events: none;
+  animation: bto-exit 300ms cubic-bezier(0.4, 0, 0.2, 1) both;
+}
+
+.bto-root--scripted {
+  animation: bto-exit 300ms cubic-bezier(0.4, 0, 0.2, 1) 3050ms both;
+}
+
+/* A marca sai antes do fundo, para não ficar sobreposta à interface que entra. */
+.bto-root--exiting .bto-lockup {
+  animation: bto-exit 180ms ease-out both;
+}
+
+.bto-root--scripted .bto-lockup {
+  animation: bto-exit 180ms ease-out 3050ms both;
+}
+
+@keyframes bto-symbol-in {
+  from { opacity: 0; transform: scale(0.6); }
+  35% { opacity: 1; }
+  to { opacity: 1; transform: scale(1); }
+}
+
+@keyframes bto-symbol-pulse {
+  0% { transform: scale(1); }
+  40% { transform: scale(1.035); }
+  100% { transform: scale(1); }
+}
+
+/* Fechadas, as barras se encostam no centro do símbolo (x = 516u). */
+@keyframes bto-bar-l {
+  from { transform: translateX(calc(44.5 * var(--u))); }
+  to { transform: translateX(0); }
+}
+
+@keyframes bto-bar-r {
+  from { transform: translateX(calc(-45.5 * var(--u))); }
+  to { transform: translateX(0); }
+}
+
+@keyframes bto-card {
+  from { clip-path: inset(0 0 100% 0); }
+  to { clip-path: inset(0 0 0 0); }
+}
+
+@keyframes bto-scan {
+  0% { opacity: 0; transform: translateY(0); }
+  10% { opacity: 1; }
+  88% { opacity: 1; }
+  100% { opacity: 0; transform: translateY(calc(132 * var(--u))); }
+}
+
+@keyframes bto-confirm {
+  0% { opacity: 0; }
+  35% { opacity: 0.75; }
+  100% { opacity: 0; }
+}
+
+@keyframes bto-camera {
+  from { transform: translate(calc(-202 * var(--u)), calc(81.5 * var(--u))) scale(1.4); }
+  to { transform: translate(0, 0) scale(1); }
+}
+
+@keyframes bto-row-bmi {
+  from { opacity: 0; transform: translateX(calc(150 * var(--u))); }
+  30% { opacity: 1; }
+  to { opacity: 1; transform: translateX(0); }
+}
+
+@keyframes bto-row-tag {
+  from { opacity: 0; transform: translateY(calc(-80 * var(--u))); }
+  30% { opacity: 1; }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes bto-exit {
+  from { opacity: 1; }
+  to { opacity: 0; }
+}
+
+@keyframes bto-reduced-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+/* Movimento reduzido: marca completa e parada, com um fade curto. Sem leitura. */
+@media (prefers-reduced-motion: reduce) {
+  .bto-camera,
+  .bto-symbol,
+  .bto-bar,
+  .bto-bar::after,
+  .bto-part,
+  .bto-row__inner {
+    animation: none;
+  }
+
+  .bto-bar::after,
+  .bto-scan {
+    display: none;
+  }
+
+  .bto-root:not(.bto-root--exiting):not(.bto-root--scripted) .bto-lockup {
+    animation: bto-reduced-in 200ms ease-out both;
+  }
+}
