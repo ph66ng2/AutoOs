@@ -1,0 +1,11 @@
+{
+  "version": "0.9.9",
+  "notes": "Exemplo de manifesto do updater. Assinatura sintética: não é um release real.",
+  "pub_date": "2026-09-22T18:00:00.000Z",
+  "platforms": {
+    "windows-x86_64": {
+      "signature": "untrusted comment: minisign signature from synthetic key\nRWTfakeSignaturePayloadForTestsOnly==",
+      "url": "https://github.com/ph66ng2/AutoOs/releases/download/v0.9.9/AutoOS_0.9.9_x64_en-US.msi"
+    }
+  }
+}
