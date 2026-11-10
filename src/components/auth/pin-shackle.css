@@ -1,0 +1,152 @@
+/*
+ * Campo de PIN em forma de cadeado. A alça (SVG) fica atrás do campo: as pernas entram
+ * 14 px no corpo e somem atrás do fundo opaco do campo. Ao abrir, a alça sobe 16 px
+ * (as pernas saem do corpo) e gira 180° em torno da perna esquerda.
+ */
+.pin-shackle {
+  --pin-shackle-color: hsl(var(--muted-foreground) / 0.75);
+  --pin-shackle-ok: #22c55e;
+  --pin-shackle-bad: #f87171;
+  position: relative;
+  width: 200px;
+  max-width: 100%;
+  margin: 0 auto;
+  padding-top: 70px;
+  color: var(--pin-shackle-color);
+  transition: color 220ms ease-out;
+}
+
+.pin-shackle:focus-within {
+  --pin-shackle-color: hsl(var(--foreground) / 0.85);
+}
+
+.pin-shackle.pin-shackle--open {
+  --pin-shackle-color: var(--pin-shackle-ok);
+}
+
+.pin-shackle.pin-shackle--error {
+  --pin-shackle-color: var(--pin-shackle-bad);
+}
+
+.pin-shackle__lift {
+  position: absolute;
+  top: 0;
+  left: 50%;
+  width: 120px;
+  height: 84px;
+  margin-left: -60px;
+  perspective: 260px;
+  z-index: 0;
+}
+
+.pin-shackle__arc {
+  display: block;
+  /* eixo da perna esquerda (x = 16 de 120) */
+  transform-origin: 16px 50%;
+}
+
+.pin-shackle__body {
+  position: relative;
+  z-index: 1;
+  display: block;
+  width: 100%;
+  height: 64px;
+  border: 2.5px solid var(--pin-shackle-color);
+  border-radius: 16px;
+  background: hsl(var(--background));
+  color: hsl(var(--foreground));
+  text-align: center;
+  font-size: 22px;
+  font-weight: 600;
+  letter-spacing: 0.4em;
+  outline: none;
+  transition: border-color 220ms ease-out;
+}
+
+.pin-shackle__body::placeholder {
+  color: hsl(var(--muted-foreground) / 0.6);
+}
+
+.pin-shackle__body:focus-visible {
+  box-shadow: 0 0 0 4px hsl(var(--foreground) / 0.08);
+}
+
+/* Abrir: sobe, depois gira em torno da perna esquerda. */
+.pin-shackle--open .pin-shackle__lift {
+  animation: pin-shackle-lift 200ms cubic-bezier(0.3, 0, 0.2, 1) both;
+}
+
+.pin-shackle--open .pin-shackle__arc {
+  animation: pin-shackle-swing 380ms cubic-bezier(0.5, 0, 0.2, 1) 170ms both;
+}
+
+/* Erro: a alça dá um puxão e volta; o corpo treme. */
+.pin-shackle--tug-a .pin-shackle__lift { animation: pin-shackle-tug-a 360ms ease-out both; }
+.pin-shackle--tug-b .pin-shackle__lift { animation: pin-shackle-tug-b 360ms ease-out both; }
+.pin-shackle--tug-a .pin-shackle__body { animation: pin-shackle-shake-a 380ms cubic-bezier(0.36, 0.07, 0.19, 0.97) both; }
+.pin-shackle--tug-b .pin-shackle__body { animation: pin-shackle-shake-b 380ms cubic-bezier(0.36, 0.07, 0.19, 0.97) both; }
+
+@keyframes pin-shackle-lift {
+  from { transform: translateY(0); }
+  to { transform: translateY(-16px); }
+}
+
+@keyframes pin-shackle-swing {
+  from { transform: rotateY(0deg); }
+  to { transform: rotateY(180deg); }
+}
+
+@keyframes pin-shackle-tug-a {
+  0%, 100% { transform: translateY(0); }
+  30% { transform: translateY(-6px); }
+  55% { transform: translateY(0); }
+  75% { transform: translateY(-3px); }
+}
+
+@keyframes pin-shackle-tug-b {
+  0%, 100% { transform: translateY(0); }
+  30% { transform: translateY(-6px); }
+  55% { transform: translateY(0); }
+  75% { transform: translateY(-3px); }
+}
+
+@keyframes pin-shackle-shake-a {
+  0%, 100% { transform: translateX(0); }
+  20% { transform: translateX(-6px); }
+  40% { transform: translateX(5px); }
+  60% { transform: translateX(-3px); }
+  80% { transform: translateX(2px); }
+}
+
+@keyframes pin-shackle-shake-b {
+  0%, 100% { transform: translateX(0); }
+  20% { transform: translateX(-6px); }
+  40% { transform: translateX(5px); }
+  60% { transform: translateX(-3px); }
+  80% { transform: translateX(2px); }
+}
+
+/* Movimento reduzido: o cadeado aparece aberto ou fechado, sem giro nem tremor. */
+@media (prefers-reduced-motion: reduce) {
+  .pin-shackle,
+  .pin-shackle__body {
+    transition: none;
+  }
+
+  .pin-shackle--open .pin-shackle__lift,
+  .pin-shackle--open .pin-shackle__arc,
+  .pin-shackle--tug-a .pin-shackle__lift,
+  .pin-shackle--tug-b .pin-shackle__lift,
+  .pin-shackle--tug-a .pin-shackle__body,
+  .pin-shackle--tug-b .pin-shackle__body {
+    animation: none;
+  }
+
+  .pin-shackle--open .pin-shackle__lift {
+    transform: translateY(-16px);
+  }
+
+  .pin-shackle--open .pin-shackle__arc {
+    transform: rotateY(180deg);
+  }
+}

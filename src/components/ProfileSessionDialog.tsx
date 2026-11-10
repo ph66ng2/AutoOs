@@ -8,7 +8,6 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { ProfileAvatar } from "@/components/perfil/ProfileAvatar";
 import { cn } from "@/lib/utils";
@@ -16,6 +15,7 @@ import { needsFirstAccessHere, profileAppearance } from "@/lib/profile-appearanc
 import { securityRoleLabel } from "@/lib/security-profile-labels";
 import { erroPinNovo } from "@/lib/pin-rules";
 import { PinLock } from "@/components/auth/PinLock";
+import { PinShackleInput } from "@/components/auth/PinShackleInput";
 import { PinCreateFields, regrasCumpridas } from "@/components/auth/PinCreateFields";
 import type { SecurityProfile } from "@/types";
 
@@ -295,7 +295,9 @@ export function ProfileSessionDialog({
                       handlePrimaryAction();
                     }}
                   >
-                    <PinLock checked={lockChecked} spin={pinKeys} shake={errorShakes} className="mx-auto mb-2" />
+                    {isAdminWithoutPin && (
+                      <PinLock checked={lockChecked} spin={pinKeys} shake={errorShakes} className="mx-auto mb-2" />
+                    )}
                     {isAdminWithoutPin ? (
                       <PinCreateFields
                         idPrefix="sensitive"
@@ -312,16 +314,15 @@ export function ProfileSessionDialog({
                     ) : (
                       <div className="space-y-2">
                         <Label htmlFor="sensitive-pin" className="block text-center">PIN do perfil</Label>
-                        <Input
+                        <PinShackleInput
                           id="sensitive-pin"
-                          type="password"
-                          inputMode="numeric"
                           value={pin}
                           onChange={(event) => handlePinChange(event.target.value.replace(/\D/g, "").slice(0, 8))}
                           placeholder="••••"
                           autoComplete="current-password"
-                          className={pinInputClass}
                           autoFocus
+                          state={accepted ? "open" : error ? "error" : "idle"}
+                          errorCount={errorShakes}
                         />
                       </div>
                     )}
