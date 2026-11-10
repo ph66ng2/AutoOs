@@ -25,15 +25,15 @@ describe("BmiTagOpening", () => {
     vi.unstubAllGlobals();
   });
 
-  it("mostra o nome da solução e um rótulo acessível único", () => {
-    render(<BmiTagOpening product="AutoBO" />);
-    expect(screen.getByText("AutoBO")).toBeInTheDocument();
-    expect(screen.getByRole("img", { name: "AutoBO, BMI TAG" })).toBeInTheDocument();
+  it("mostra só a logo, com um rótulo acessível único", () => {
+    render(<BmiTagOpening />);
+    expect(screen.getByRole("img", { name: "BMI TAG" })).toBeInTheDocument();
+    expect(screen.queryByText(/AutoOS|AutoBO/)).not.toBeInTheDocument();
   });
 
   it("com o app pronto, termina uma vez depois da abertura e da saída", () => {
     const onFinished = vi.fn();
-    render(<BmiTagOpening product="AutoOS" ready onFinished={onFinished} />);
+    render(<BmiTagOpening ready onFinished={onFinished} />);
     advance(OPENING_INTRO_MS - 1);
     expect(screen.getByTestId("bmi-tag-opening")).not.toHaveClass("bto-root--exiting");
     advance(1);
@@ -48,7 +48,7 @@ describe("BmiTagOpening", () => {
   it("não sai enquanto o app não está pronto e mostra o status sem repetir a leitura", () => {
     const onFinished = vi.fn();
     const { rerender } = render(
-      <BmiTagOpening product="AutoOS" ready={false} status="Conectando" onFinished={onFinished} />,
+      <BmiTagOpening ready={false} status="Conectando" onFinished={onFinished} />,
     );
     advance(OPENING_INTRO_MS);
     advance(OPENING_STATUS_DELAY_MS - 1);
@@ -58,14 +58,14 @@ describe("BmiTagOpening", () => {
     advance(30_000);
     expect(onFinished).not.toHaveBeenCalled();
 
-    rerender(<BmiTagOpening product="AutoOS" ready status="Conectando" onFinished={onFinished} />);
+    rerender(<BmiTagOpening ready status="Conectando" onFinished={onFinished} />);
     advance(OPENING_EXIT_MS);
     expect(onFinished).toHaveBeenCalledTimes(1);
   });
 
   it("não chama onFinished depois de desmontar", () => {
     const onFinished = vi.fn();
-    const { unmount } = render(<BmiTagOpening product="AutoOS" onFinished={onFinished} />);
+    const { unmount } = render(<BmiTagOpening onFinished={onFinished} />);
     advance(OPENING_INTRO_MS + 50);
     unmount();
     advance(10_000);
@@ -76,7 +76,7 @@ describe("BmiTagOpening", () => {
     const onFinished = vi.fn();
     render(
       <StrictMode>
-        <BmiTagOpening product="AutoOS" onFinished={onFinished} />
+        <BmiTagOpening onFinished={onFinished} />
       </StrictMode>,
     );
     advance(OPENING_INTRO_MS);
@@ -92,7 +92,7 @@ describe("BmiTagOpening", () => {
       removeEventListener: () => {},
     }));
     const onFinished = vi.fn();
-    render(<BmiTagOpening product="AutoOS" onFinished={onFinished} />);
+    render(<BmiTagOpening onFinished={onFinished} />);
     advance(OPENING_REDUCED_INTRO_MS);
     expect(onFinished).not.toHaveBeenCalled();
     advance(OPENING_EXIT_MS);
@@ -101,7 +101,7 @@ describe("BmiTagOpening", () => {
 
   it("no modo demonstração não agenda término", () => {
     const onFinished = vi.fn();
-    render(<BmiTagOpening product="AutoOS" scripted onFinished={onFinished} />);
+    render(<BmiTagOpening scripted onFinished={onFinished} />);
     advance(10_000);
     expect(onFinished).not.toHaveBeenCalled();
     expect(screen.getByTestId("bmi-tag-opening")).toHaveClass("bto-root--scripted");

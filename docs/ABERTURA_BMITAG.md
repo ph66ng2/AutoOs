@@ -30,18 +30,15 @@ O slogan "TECNOLOGIA QRCODE E RFID" (y 491–513) fica de fora: na escala da abe
 
 ## Quadro final
 
-Unidade `u` = 1 pixel do PNG na escala atual. Caixa do conjunto: 628u × 459u.
+Unidade `u` = 1 pixel do PNG na escala atual. A logo fica sozinha, no centro da tela, sem nome de solução abaixo (decisão do responsável do produto). Caixa: 628u × 331u.
 
 - Logo (BMI + QR em cima, TAG embaixo): 628u × 331u.
-- Filete de 72u × 1 px, 30u acima do nome.
-- Nome da solução: 54u de corpo, peso 500, espaçamento 0,045em, fonte do app.
-- Largura da logo: `clamp(190px, 22cqw + 130px, 320px)` em relação ao contêiner. 320 px → 200, 390 → 216, 430 → 225, janela de notebook → 320. A logo não cresce com a janela.
-- O conjunto fica 5% acima do centro geométrico, por causa da assinatura abaixo.
+- Largura da logo: `clamp(200px, 24cqw + 135px, 360px)` em relação ao contêiner. 320 px → 212, 390 → 229, 430 → 238, janela de notebook → 360. A logo não cresce com a janela.
 - Fundo liso `#070a10`.
 
 ## Coreografia
 
-Um ator por vez, com duas pausas. Abertura de marca: 2600 ms.
+Um ator por vez, com duas pausas. Abertura de marca: 2450 ms.
 
 | Etapa | Início–fim (ms) | Elemento | Do estado | Para o estado | Curva |
 |-------|-----------------|----------|-----------|---------------|-------|
@@ -50,12 +47,11 @@ Um ator por vez, com duas pausas. Abertura de marca: 2600 ms.
 | 3. Leitura | 720–1180 | linha + cartão do QR | linha em y 18u; cartão com `clip-path: inset(0 0 100% 0)` | linha em y 150u; cartão inteiro | `cubic-bezier(.4,.1,.6,.9)`, a mesma nos dois, para a linha imprimir o QR |
 | 4. Confirmação | 1160–1460 | barras e símbolo | — | barras clareiam (0 → 0,75 → 0); símbolo escala 1 → 1,035 → 1 | `ease-out` |
 | pausa | 1460–1560 | — | — | — | — |
-| 5. Recuo | 1560–2040 | conjunto inteiro | `translate(-202u, 145.5u) scale(1.4)`, origem no centro do símbolo (516u, 84u) | identidade | `cubic-bezier(.6,0,.2,1)` |
+| 5. Recuo | 1560–2040 | conjunto inteiro | `translate(-202u, 81.5u) scale(1.4)`, origem no centro do símbolo (516u, 84u) | identidade | `cubic-bezier(.6,0,.2,1)` |
 | 6. BMI | 1900–2300 | bloco BMI | x +150u, escondido atrás da barra esquerda | x 0 | `cubic-bezier(.2,.7,.2,1)` |
 | 7. TAG | 2020–2420 | bloco TAG | y −80u, escondido acima da própria janela | y 0 | `cubic-bezier(.2,.7,.2,1)` |
-| 8. Assinatura | 2300–2560 filete; 2320–2600 nome | filete, nome | opacidade 0; filete escala X 0,4; nome y +7 px | opacidade 1 | `cubic-bezier(.2,.7,.2,1)` |
 | pausa | até `ready` | — | — | — | — |
-| 9. Saída | 300 (marca some em 180) | abertura inteira | opacidade 1 | opacidade 0 | `cubic-bezier(.4,0,.2,1)` |
+| 8. Saída | 300 (marca some em 180) | abertura inteira | opacidade 1 | opacidade 0 | `cubic-bezier(.4,0,.2,1)` |
 
 Máscaras e relações de posição:
 
@@ -70,10 +66,10 @@ Movimento reduzido (`prefers-reduced-motion: reduce`): marca completa e parada, 
 ## Ciclo de vida do componente
 
 ```tsx
-<BmiTagOpening product="AutoOS" ready={appPronto} onFinished={desmontar} status="Conectando ao banco" />
+<BmiTagOpening ready={appPronto} onFinished={desmontar} status="Conectando ao banco" />
 ```
 
-- A abertura dura 2600 ms (220 ms com movimento reduzido). Se `ready` já for verdadeiro nesse ponto, a saída começa na hora. Não há espera mínima além da própria abertura.
+- A abertura dura 2450 ms (220 ms com movimento reduzido). Se `ready` já for verdadeiro nesse ponto, a saída começa na hora. Não há espera mínima além da própria abertura.
 - Se `ready` ainda for falso, a marca fica parada. Depois de 900 ms aparece `status`, discreto, sem repetir a leitura.
 - `onFinished` é chamado uma vez, 300 ms depois do início da saída. Os temporizadores são limpos ao desmontar.
 - Erro de inicialização é responsabilidade de quem hospeda: ao detectar erro, desmonte a abertura e mostre a tela de erro. A abertura não deve cobrir um erro.
@@ -82,8 +78,8 @@ Movimento reduzido (`prefers-reduced-motion: reduce`): marca completa e parada, 
 
 Hoje `BootSplash` mostra o carimbo (`StampDemo`) na primeira abertura do dia e depois a impressora (`AutoOsBootAnimation`), e `App.tsx` segura o splash por `MIN_BOOT_SPLASH_MS = 1100`. Passos sugeridos, depois da aprovação visual:
 
-1. Em `BootSplash.tsx`, trocar o bloco do `StampDemo` por `<BmiTagOpening product="AutoOS" onFinished={finishOpening} />`. O `finishOpening` e o fallback já existentes continuam valendo.
-2. Decidir o destino da impressora. A abertura nova já tem assinatura e estado de espera, então manter as duas em sequência repete a marca. A recomendação é a abertura nova ser a única, com `ready` ligado ao fim real do boot.
+1. Em `BootSplash.tsx`, trocar o bloco do `StampDemo` por `<BmiTagOpening onFinished={finishOpening} />`. O `finishOpening` e o fallback já existentes continuam valendo.
+2. Decidir o destino da impressora. A abertura nova já tem estado de espera, então manter as duas em sequência repete a marca. A recomendação é a abertura nova ser a única, com `ready` ligado ao fim real do boot.
 3. Se a abertura nova for a única, `MIN_BOOT_SPLASH_MS` deixa de ser necessário: a duração mínima passa a ser a da própria abertura. Isso altera a regra "Boot splash mandatory" do `AGENTS.md`, que precisa ser atualizada no mesmo PR.
 4. Retomada do aplicativo (janela já carregada volta ao foco): não tocar a abertura.
 5. Remover `src/components/stamp/` e o áudio só depois de a troca estar em produção.

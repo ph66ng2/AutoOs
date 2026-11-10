@@ -6,7 +6,7 @@ import "./bmi-tag-opening.css";
  *
  * As duas barras da marca nascem juntas, como um bloco, e se abrem. A leitura
  * imprime o QR entre elas. Só então o enquadramento recua, BMI sai de trás da
- * barra, TAG desce e o nome da solução assina. A coreografia (tempos, curvas,
+ * barra e TAG desce. A logo fica sozinha, no centro. A coreografia (tempos, curvas,
  * posições) está em `bmi-tag-opening.css` e em `docs/ABERTURA_BMITAG.md`.
  *
  * Letras e QR são recortes retangulares do PNG oficial (`public/bmi-tag-logo.png`),
@@ -15,8 +15,8 @@ import "./bmi-tag-opening.css";
  * não serve enquanto o QR ainda não apareceu.
  */
 
-/** Duração da abertura de marca, do primeiro quadro até a assinatura assentar. */
-export const OPENING_INTRO_MS = 2600;
+/** Duração da abertura de marca, do primeiro quadro até a logo completa assentar. */
+export const OPENING_INTRO_MS = 2450;
 /** Duração da saída (crossfade para a interface). */
 export const OPENING_EXIT_MS = 300;
 /** Com movimento reduzido só há um fade curto da marca completa. */
@@ -59,8 +59,6 @@ function prefersReducedMotion(): boolean {
 }
 
 export interface BmiTagOpeningProps {
-  /** Nome da solução exibido como assinatura (ex.: "AutoOS", "AutoBO"). */
-  product: string;
   /**
    * `true` quando a interface já pode entrar. A abertura nunca termina antes
    * disso e nunca segura um app pronto além da própria duração.
@@ -68,7 +66,7 @@ export interface BmiTagOpeningProps {
   ready?: boolean;
   /** Chamado uma única vez, quando a saída terminou e a abertura pode ser desmontada. */
   onFinished?: () => void;
-  /** Conteúdo discreto mostrado abaixo da assinatura se a carga passar da abertura. */
+  /** Conteúdo discreto mostrado perto da base da tela se a carga passar da abertura. */
   status?: ReactNode;
   /** Texto para leitores de tela. */
   label?: string;
@@ -83,11 +81,10 @@ export interface BmiTagOpeningProps {
 }
 
 export function BmiTagOpening({
-  product,
   ready = true,
   onFinished,
   status,
-  label,
+  label = "BMI TAG",
   logoSrc = "/bmi-tag-logo.png",
   scripted = false,
   className,
@@ -145,7 +142,7 @@ export function BmiTagOpening({
       data-testid="bmi-tag-opening"
     >
       <div className="bto-camera">
-        <div className="bto-lockup" role="img" aria-label={label ?? `${product}, BMI TAG`}>
+        <div className="bto-lockup" role="img" aria-label={label}>
           <div className="bto-logo" aria-hidden="true">
             <div className="bto-row bto-row--bmi">
               <div className="bto-row__inner">
@@ -167,10 +164,6 @@ export function BmiTagOpening({
               <Part name="card" />
               <span className="bto-scan" />
             </div>
-          </div>
-          <div className="bto-signature" aria-hidden="true">
-            <span className="bto-rule" />
-            <span className="bto-product">{product}</span>
           </div>
         </div>
       </div>

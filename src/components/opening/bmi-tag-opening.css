@@ -12,8 +12,7 @@
  *  1560–2040  o enquadramento recua e o símbolo vai ao lugar dele na logo
  *  1900–2300  BMI sai de trás da barra esquerda
  *  2020–2420  TAG desce da linha de base de BMI
- *  2300–2600  filete e nome da solução
- *  saída      300 ms de fade, disparada pelo componente (ou em 3200 no modo demonstração)
+ *  saída      300 ms de fade, disparada pelo componente (ou em 3050 no modo demonstração)
  */
 
 .bto-root {
@@ -32,9 +31,8 @@
   align-items: center;
   justify-content: center;
   overflow: hidden;
-  /* A assinatura fica abaixo da marca: sobe o conjunto um pouco para o centro óptico. */
-  padding: env(safe-area-inset-top) env(safe-area-inset-right)
-    calc(env(safe-area-inset-bottom) + 5%) env(safe-area-inset-left);
+  padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom)
+    env(safe-area-inset-left);
   box-sizing: border-box;
   background: var(--bto-bg);
   color: var(--bto-ink);
@@ -45,8 +43,8 @@
 
 @supports (width: 1cqw) {
   .bto-root {
-    /* 320 px → 200, 390 → 216, 430 → 225, janela de notebook → 320 (teto). */
-    --bto-w: clamp(190px, calc(22cqw + 130px), 320px);
+    /* 320 px → 212, 390 → 229, 430 → 238, janela de notebook → 360 (teto). */
+    --bto-w: clamp(200px, calc(24cqw + 135px), 360px);
   }
 }
 
@@ -58,7 +56,7 @@
 
 .bto-lockup {
   width: calc(628 * var(--u));
-  height: calc(459 * var(--u));
+  height: calc(331 * var(--u));
 }
 
 .bto-logo {
@@ -178,36 +176,6 @@
   animation: bto-row-tag 400ms var(--bto-out) 2020ms both;
 }
 
-/* ---------- Assinatura da solução ---------- */
-
-.bto-signature {
-  height: calc(128 * var(--u));
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: flex-end;
-}
-
-.bto-rule {
-  width: calc(72 * var(--u));
-  height: 1px;
-  margin-bottom: calc(30 * var(--u));
-  background: rgba(230, 237, 247, 0.3);
-  animation: bto-rule 260ms var(--bto-out) 2300ms both;
-}
-
-.bto-product {
-  font-family: inherit;
-  font-size: calc(54 * var(--u));
-  line-height: 1;
-  font-weight: 500;
-  letter-spacing: 0.045em;
-  /* compensa o espaçamento à direita da última letra para centralizar de fato */
-  margin-right: -0.045em;
-  white-space: nowrap;
-  animation: bto-product 280ms var(--bto-out) 2320ms both;
-}
-
 .bto-status {
   position: absolute;
   left: 0;
@@ -232,7 +200,7 @@
 }
 
 .bto-root--scripted {
-  animation: bto-exit 300ms cubic-bezier(0.4, 0, 0.2, 1) 3200ms both;
+  animation: bto-exit 300ms cubic-bezier(0.4, 0, 0.2, 1) 3050ms both;
 }
 
 /* A marca sai antes do fundo, para não ficar sobreposta à interface que entra. */
@@ -241,7 +209,7 @@
 }
 
 .bto-root--scripted .bto-lockup {
-  animation: bto-exit 180ms ease-out 3200ms both;
+  animation: bto-exit 180ms ease-out 3050ms both;
 }
 
 @keyframes bto-symbol-in {
@@ -286,7 +254,7 @@
 }
 
 @keyframes bto-camera {
-  from { transform: translate(calc(-202 * var(--u)), calc(145.5 * var(--u))) scale(1.4); }
+  from { transform: translate(calc(-202 * var(--u)), calc(81.5 * var(--u))) scale(1.4); }
   to { transform: translate(0, 0) scale(1); }
 }
 
@@ -299,16 +267,6 @@
 @keyframes bto-row-tag {
   from { opacity: 0; transform: translateY(calc(-80 * var(--u))); }
   30% { opacity: 1; }
-  to { opacity: 1; transform: translateY(0); }
-}
-
-@keyframes bto-rule {
-  from { opacity: 0; transform: scaleX(0.4); }
-  to { opacity: 1; transform: scaleX(1); }
-}
-
-@keyframes bto-product {
-  from { opacity: 0; transform: translateY(7px); }
   to { opacity: 1; transform: translateY(0); }
 }
 
@@ -329,9 +287,7 @@
   .bto-bar,
   .bto-bar::after,
   .bto-part,
-  .bto-row__inner,
-  .bto-rule,
-  .bto-product {
+  .bto-row__inner {
     animation: none;
   }
 

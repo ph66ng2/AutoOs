@@ -10,8 +10,8 @@ import "./opening-demo.css";
  * inspeção quadro a quadro.
  */
 
-/** Fim da linha do tempo demonstrada: abertura (2600) + pausa (600) + saída (340). */
-const TIMELINE_MS = 3540;
+/** Fim da linha do tempo demonstrada: abertura (2450) + pausa (600) + saída (340). */
+const TIMELINE_MS = 3390;
 /** No modo loop, espera na interface antes de recomeçar. */
 const LOOP_REST_MS = 900;
 
@@ -26,8 +26,6 @@ const MOBILE_SIZES = [
   { id: "430", label: "430", w: 430, h: 932 },
 ] as const;
 
-const PRODUCTS = ["AutoOS", "AutoBO"] as const;
-
 const MARKS = [
   { t: 300, label: "Bloco" },
   { t: 700, label: "Barras abertas" },
@@ -35,8 +33,8 @@ const MARKS = [
   { t: 1280, label: "Confirmação" },
   { t: 1800, label: "Recuo" },
   { t: 2100, label: "BMI e TAG" },
-  { t: 2600, label: "Assinatura" },
-  { t: 3340, label: "Interface" },
+  { t: 2450, label: "Logo completa" },
+  { t: 3200, label: "Interface" },
 ] as const;
 
 function Segmented<T extends string>({
@@ -130,7 +128,6 @@ function PlaceholderApp({ kind }: { kind: "desktop" | "mobile" }) {
 }
 
 export function OpeningDemo() {
-  const [product, setProduct] = useState<(typeof PRODUCTS)[number]>("AutoOS");
   const [desktop, setDesktop] = useState<(typeof DESKTOP_SIZES)[number]["id"]>("notebook");
   const [mobile, setMobile] = useState<(typeof MOBILE_SIZES)[number]["id"]>("390");
   const [speed, setSpeed] = useState<"1" | "0.25">("1");
@@ -165,7 +162,7 @@ export function OpeningDemo() {
     [applyTime],
   );
 
-  // Trocar produto ou tamanho recria elementos: reaplica o tempo atual antes da pintura.
+  // Trocar o tamanho da tela pode recriar elementos: reaplica o tempo atual antes da pintura.
   useLayoutEffect(() => {
     applyTime(clockRef.current);
   });
@@ -231,12 +228,6 @@ export function OpeningDemo() {
               { id: "0.25", label: "Câmera lenta" },
             ]}
           />
-          <Segmented
-            label="Solução"
-            value={product}
-            onChange={setProduct}
-            options={PRODUCTS.map((p) => ({ id: p, label: p }))}
-          />
           <label className="od-check" htmlFor="od-loop">
             <input
               id="od-loop"
@@ -291,7 +282,7 @@ export function OpeningDemo() {
           </figcaption>
           <Viewport w={desktopSize.w} h={desktopSize.h} maxHeight={560} kind="desktop">
             <PlaceholderApp kind="desktop" />
-            <BmiTagOpening product={product} scripted />
+            <BmiTagOpening scripted />
           </Viewport>
         </figure>
 
@@ -302,7 +293,7 @@ export function OpeningDemo() {
           </figcaption>
           <Viewport w={mobileSize.w} h={mobileSize.h} maxHeight={560} kind="mobile">
             <PlaceholderApp kind="mobile" />
-            <BmiTagOpening product={product} scripted />
+            <BmiTagOpening scripted />
           </Viewport>
         </figure>
       </div>
