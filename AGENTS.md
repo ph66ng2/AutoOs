@@ -151,7 +151,7 @@ npm run bundle:prep:windows:sign # Injects certThumbprint from env into tauri.co
 - **Forms** use React Hook Form + Zod (`zodResolver`). `validations.ts` has custom CPF/CNPJ digit-verifier algorithms (not just regex).
 - **shadcn/ui** components in `src/components/ui/` — lightly customized, kept close to original. `cn()` from `lib/utils.ts` used everywhere.
 - **Sensitive routes** use `<SensitiveRoute>` wrapper component (renders lock screen if unauthorized), not route guards in `App.tsx` logic.
-- **Boot splash mandatory** — `MIN_BOOT_SPLASH_MS = 1100ms` in `useSensitiveAccess`. Ensures splash is visible even if backend resolves instantly.
+- **Boot splash** — every launch plays the BMI TAG opening (`src/components/opening/BmiTagOpening.tsx`, via `BootSplash`). Its own duration (2450 ms; 220 ms with reduced motion) is the minimum splash time; there is no separate timer and no "first boot of the day" variant. The PIN/profile dialog waits for `bootAnimationComplete` (`BootUi.tsx`), capped at 20 s. See `docs/ABERTURA_BMITAG.md`.
 - **Insumos module temporarily blocked** — marked with `[BLOQUEIO-TEMPORARIO-INSUMOS]` comments across `App.tsx`, `Layout.tsx`, `Dashboard.tsx`.
 
 ### Migrations (PostgreSQL)

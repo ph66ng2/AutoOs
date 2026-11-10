@@ -47,14 +47,10 @@ const Perfil = lazy(() => import("@/pages/Perfil"));
 const PowerSyncPOC = lazy(() => import("@/poc/PowerSyncPOC"));
 const Balcao = lazy(() => import("@/pages/Balcao"));
 
-/** Exibição mínima do boot (IPC em dev pode resolver em poucos ms). Prod fica igual ou mais pesado só se o Rust/DB demorar. */
-const MIN_BOOT_SPLASH_MS = 1_100;
-
 function AppContent() {
   const { loading, bootProgress, status, pinPromptDismissed, openProfileSelector, refreshStatus, firstAccessOpen } = useSensitiveAccess();
   const [appMode, setCurrentAppMode] = useState<AppMode | null>(() => getAppMode());
   const [splashVisible, setSplashVisible] = useState(true);
-  const [minSplashElapsed, setMinSplashElapsed] = useState(false);
   const [completionAnimationElapsed, setCompletionAnimationElapsed] = useState(false);
 
   // Força refresh do status quando o banco fica pronto
@@ -71,20 +67,12 @@ function AppContent() {
     return () => window.removeEventListener("autoos:app-mode", syncAppMode);
   }, []);
 
-  useEffect(() => {
-    const t = window.setTimeout(() => setMinSplashElapsed(true), MIN_BOOT_SPLASH_MS);
-    return () => window.clearTimeout(t);
-  }, []);
-
-  useEffect(() => {
-    if (loading) setCompletionAnimationElapsed(false);
-  }, [loading]);
-
   const handleBootAnimationComplete = useCallback(() => setCompletionAnimationElapsed(true), []);
 
   const sessionBlocked = Boolean(status && status.profiles.length > 0 && !status.unlocked);
   const showEntryGate = sessionBlocked && pinPromptDismissed;
-  const splashCanFadeOut = !loading && minSplashElapsed && completionAnimationElapsed && (
+  // A duração mínima do splash é a da própria abertura BMI TAG (`completionAnimationElapsed`).
+  const splashCanFadeOut = !loading && completionAnimationElapsed && (
     Boolean(status?.unlocked) || (status?.profiles.length === 0) || pinPromptDismissed
   );
   const sessionReady = Boolean(status?.active_profile_id && status.unlocked);
