@@ -92,7 +92,9 @@ export function ProfileSessionDialog({
   const canStartFirstAccess = missingRequiredPin && !!onFirstAccess;
   const canRecoverWithCode = !keyringBlocked && !!selectedProfile && selectedProfile.pin_configured && !!onFirstAccess;
   const isAdminWithoutPin = !keyringBlocked && selectedProfile?.role === "ADMIN" && !selectedProfile?.pin_configured && !missingRequiredPin;
-  const shouldAskForPin = isAdminWithoutPin || (Boolean(selectedProfile?.pin_configured) && (!isSelectorMode || !isCurrentProfileSelected || !unlocked));
+  // Com o PIN aceito, o status já mostra o perfil desbloqueado; o campo continua na tela
+  // até o cadeadinho terminar de abrir.
+  const shouldAskForPin = accepted || isAdminWithoutPin || (Boolean(selectedProfile?.pin_configured) && (!isSelectorMode || !isCurrentProfileSelected || !unlocked));
   // Só afirmamos "não exige PIN" quando o perfil realmente tem pin_required = false.
   const pinOptional = selectedProfile?.pin_required === false;
 
@@ -152,6 +154,7 @@ export function ProfileSessionDialog({
   };
 
   const helperText = (() => {
+    if (accepted) return null;
     if (!selectedProfile) return "Escolha seu perfil para entrar.";
     if (canStartFirstAccess) return selectedProfile.onboarding_pendente
       ? "Este perfil ainda não foi ativado neste computador. Tenha em mãos o código de primeiro acesso que o administrador te passou."

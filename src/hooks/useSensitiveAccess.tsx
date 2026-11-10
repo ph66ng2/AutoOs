@@ -311,10 +311,26 @@ export function SensitiveAccessProvider({ children }: { children: ReactNode }) {
     setSelectedProfileId(status?.active_profile_id ? String(status.active_profile_id) : "");
   }, [status?.active_profile_id]);
 
+  // PIN aceito: o campo mostra o cadeadinho abrindo e só então a janela sai.
+  // O temporizador pertence a esta janela: fechar a janela de qualquer jeito o cancela.
+  const [pinAccepted, setPinAccepted] = useState(false);
+  const acceptTimerRef = useRef<number | null>(null);
+  const cancelAcceptTimer = useCallback(() => {
+    if (acceptTimerRef.current !== null) {
+      window.clearTimeout(acceptTimerRef.current);
+      acceptTimerRef.current = null;
+    }
+    setPinAccepted(false);
+  }, []);
+  useEffect(() => () => {
+    if (acceptTimerRef.current !== null) window.clearTimeout(acceptTimerRef.current);
+  }, []);
+
   const closeDialog = useCallback((result: boolean) => {
     if (!result && dialogMandatory && dialogMode !== "startup") {
       return;
     }
+    cancelAcceptTimer();
 
     // Uma consulta do boot pode trocar o diálogo de entrada para "PIN necessário
     // para continuar" antes do fechamento. A dispensa vale sempre que a sessão
@@ -327,10 +343,8 @@ export function SensitiveAccessProvider({ children }: { children: ReactNode }) {
     setDialogOpen(false);
     resetDialogState();
     resolvePending(result);
-  }, [dialogMandatory, dialogMode, resetDialogState, resolvePending]);
+  }, [dialogMandatory, dialogMode, resetDialogState, resolvePending, cancelAcceptTimer]);
 
-  // PIN aceito: o campo mostra o cadeadinho abrindo e só então a janela sai.
-  const [pinAccepted, setPinAccepted] = useState(false);
   const closeDialogRef = useRef(closeDialog);
   closeDialogRef.current = closeDialog;
   const acceptPinAndClose = useCallback(() => {
@@ -339,9 +353,10 @@ export function SensitiveAccessProvider({ children }: { children: ReactNode }) {
       closeDialogRef.current(true);
       return;
     }
+    if (acceptTimerRef.current !== null) window.clearTimeout(acceptTimerRef.current);
     setPinAccepted(true);
-    window.setTimeout(() => {
-      setPinAccepted(false);
+    acceptTimerRef.current = window.setTimeout(() => {
+      acceptTimerRef.current = null;
       closeDialogRef.current(true);
     }, PIN_ACCEPTED_MS);
   }, []);
@@ -638,7 +653,7 @@ export function SensitiveAccessProvider({ children }: { children: ReactNode }) {
         confirmPin={confirmPin}
         busy={busy}
         error={error}
-        onClose={() => closeDialog(false)}
+        onClose={() => closeDialog(pinAccepted)}
         onSelectProfile={(profileId) => {
           setSelectedProfileId(profileId);
           setPin("");

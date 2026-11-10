@@ -25,6 +25,16 @@ describe("confirmação de sessão", () => {
     expect(screen.getAllByText("Este perfil não exige PIN. Clique abaixo para continuar.").length).toBeGreaterThan(0);
   });
 
+  it("mantém o campo do PIN com o cadeadinho quando o perfil já aparece desbloqueado no modo de troca", () => {
+    const ivan = { ...admin, id: 2, nome: "Ivan", role: "TECNICO", pin_required: true, pin_configured: true, is_default: false };
+    const { container } = render(
+      <ProfileSessionDialog {...defaults} mode="selector" profiles={[ivan]} selectedProfileId="2" selectedProfile={ivan} activeProfileId={2} unlocked accepted pin="2580" />,
+    );
+    expect(screen.getByLabelText("PIN do perfil")).toBeInTheDocument();
+    expect(container.ownerDocument.querySelector(".pin-entry__lock")).not.toBeNull();
+    expect(screen.queryByText(/Você já está usando este perfil/)).not.toBeInTheDocument();
+  });
+
   it("bloqueia PIN exigido mas ausente neste PC, inclusive administrador", () => {
     const protectedAdmin = { ...admin, pin_required: true };
     render(<ProfileSessionDialog {...defaults} profiles={[protectedAdmin]} selectedProfile={protectedAdmin} />);
