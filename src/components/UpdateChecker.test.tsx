@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   classifyUpdaterError,
   sanitizeUpdateNotes,
+  UPDATE_NOT_FOUND_MESSAGE,
   updaterChannelLabel,
   UpdateChecker,
 } from "@/components/UpdateChecker";
@@ -59,16 +60,46 @@ describe("sanitizeUpdateNotes e classifyUpdaterError", () => {
     expect(updaterChannelLabel(undefined)).toBeNull();
     expect(updaterChannelLabel("production")).toBeNull();
     expect(updaterChannelLabel("homolog")).toMatch(/homologação/i);
-    expect(updaterChannelLabel("homolog")).toMatch(/latest/i);
+    expect(updaterChannelLabel("homolog")).toMatch(/consulta a versão de produção/i);
+    expect(updaterChannelLabel("homolog")).not.toMatch(/não consulta/i);
   });
 
   it("classifica rede, HTTP, manifesto, plataforma, assinatura e instalação", () => {
     expect(classifyUpdaterError(new Error("Failed to fetch"))).toMatch(/rede/i);
-    expect(classifyUpdaterError(new Error("HTTP 404"))).toMatch(/HTTP/i);
+    expect(classifyUpdaterError(new Error("HTTP 503"))).toMatch(/erro HTTP/i);
+    expect(classifyUpdaterError(new Error("status code 500"))).toMatch(/erro HTTP/i);
+    expect(classifyUpdaterError(new Error("the platform `windows-x86_64` was not found in the response `platforms` object"))).toMatch(/plataforma/i);
     expect(classifyUpdaterError(new Error("Unexpected token in JSON"))).toMatch(/inválido/i);
     expect(classifyUpdaterError(new Error("no update for this target"))).toMatch(/plataforma/i);
     expect(classifyUpdaterError(new Error("invalid signature"))).toMatch(/assinatura/i);
     expect(classifyUpdaterError(new Error("install elevation required"))).toMatch(/rejeitada/i);
+  });
+});
+
+describe("classifyUpdaterError: canal ou pacote ausente (404)", () => {
+  it("não usa a frase genérica de erro HTTP para 404", () => {
+    const notFound = [
+      "HTTP 404",
+      "404 Not Found",
+      // Download do instalador que o manifesto aponta (texto real do plugin updater).
+      "`Download request failed with status: 404 Not Found`",
+      // Nenhum endpoint devolveu manifesto (canal sem release publicada).
+      "Could not fetch a valid release JSON from the remote",
+      "error sending request: HTTP status client error (404 Not Found) for url (https://github.com/x/y/releases/download/updater-homolog/latest.json)",
+    ];
+    for (const text of notFound) {
+      const message = classifyUpdaterError(new Error(text));
+      expect(message, text).toBe(UPDATE_NOT_FOUND_MESSAGE);
+      expect(message).not.toMatch(/erro HTTP/i);
+    }
+    expect(UPDATE_NOT_FOUND_MESSAGE).toMatch(/não foi encontrado/i);
+    expect(UPDATE_NOT_FOUND_MESSAGE).toMatch(/GitHub Releases/);
+  });
+
+  it("mantém 5xx e outros status como erro HTTP e DNS como rede", () => {
+    expect(classifyUpdaterError(new Error("`Download request failed with status: 502 Bad Gateway`"))).toMatch(/erro HTTP/i);
+    expect(classifyUpdaterError(new Error("HTTP 403"))).toMatch(/erro HTTP/i);
+    expect(classifyUpdaterError(new Error("dns error: host not found"))).toMatch(/rede/i);
   });
 });
 
@@ -219,5 +250,29 @@ describe("UpdateChecker", () => {
     await user.click(screen.getByRole("button", { name: "Tentar novamente" }));
     expect(downloadAndInstall).toHaveBeenCalledTimes(2);
     expect(mockCheck).toHaveBeenCalledTimes(1);
+  });
+
+  it("mostra canal não encontrado quando a consulta do manifesto dá 404", async () => {
+    mockCheck.mockRejectedValue(new Error("Could not fetch a valid release JSON from the remote"));
+    const user = userEvent.setup();
+    render(<UpdateChecker />);
+    await user.click(screen.getByRole("button", { name: "Verificar" }));
+    await waitFor(() => expect(screen.getByText(UPDATE_NOT_FOUND_MESSAGE)).toBeInTheDocument());
+    expect(screen.queryByText(/erro HTTP/i)).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Tentar novamente" })).toBeEnabled();
+  });
+
+  it("mostra pacote não encontrado quando o download do instalador dá 404", async () => {
+    const downloadAndInstall = vi.fn(async () => {
+      throw new Error("`Download request failed with status: 404 Not Found`");
+    });
+    mockCheck.mockResolvedValue(createUpdate({ downloadAndInstall }));
+    const user = userEvent.setup();
+    render(<UpdateChecker />);
+    await user.click(screen.getByRole("button", { name: "Verificar" }));
+    await user.click(await screen.findByRole("button", { name: "Baixar e instalar" }));
+    await waitFor(() => expect(screen.getByText(UPDATE_NOT_FOUND_MESSAGE)).toBeInTheDocument());
+    expect(screen.queryByText(/erro HTTP/i)).not.toBeInTheDocument();
+    expect(mockRelaunch).not.toHaveBeenCalled();
   });
 });

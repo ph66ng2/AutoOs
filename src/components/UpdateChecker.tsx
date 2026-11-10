@@ -49,7 +49,7 @@ export function isUpdaterBusy(phase: UpdaterPhase): boolean {
 
 export function updaterChannelLabel(channel: string | undefined): string | null {
   if (channel === "homolog") {
-    return "Canal de homologação. Este build não consulta o release latest de produção.";
+    return "Canal de homologação. Se este canal não responder, o AutoOS consulta a versão de produção.";
   }
   return null;
 }
@@ -66,11 +66,18 @@ export function sanitizeUpdateNotes(raw: string | undefined | null): string {
   return collapsed.slice(0, 400);
 }
 
+export const UPDATE_NOT_FOUND_MESSAGE =
+  "O canal ou o pacote de atualização não foi encontrado no servidor. Tente novamente mais tarde ou instale a versão mais recente pelo GitHub Releases.";
+
 export function classifyUpdaterError(error: unknown): string {
   const text = error instanceof Error ? error.message : String(error ?? "");
   const lower = text.toLowerCase();
   if (!text.trim() || text === "undefined" || text === "null") {
     return "Não foi possível verificar atualizações.";
+  }
+  // 404 explícito: canal sem release publicada ou manifesto apontando para instalador inexistente.
+  if (/\b404\b/.test(lower)) {
+    return UPDATE_NOT_FOUND_MESSAGE;
   }
   if (
     lower.includes("failed to fetch") ||
@@ -82,14 +89,18 @@ export function classifyUpdaterError(error: unknown): string {
   ) {
     return "Falha de rede ao consultar atualizações. Verifique a conexão e tente novamente.";
   }
-  if (/\b(401|403|404|408|429|500|502|503|504)\b/.test(lower) || lower.includes("http") || lower.includes("status code")) {
+  if (lower.includes("platform") || lower.includes("windows-x86_64") || lower.includes("no update for this target")) {
+    return "Não há pacote de atualização para esta plataforma.";
+  }
+  // "Could not fetch a valid release JSON from the remote": nenhum endpoint devolveu manifesto (plugin updater).
+  if (lower.includes("not found") || lower.includes("could not fetch a valid release json")) {
+    return UPDATE_NOT_FOUND_MESSAGE;
+  }
+  if (/\b(401|403|408|429|500|502|503|504)\b/.test(lower) || lower.includes("http") || lower.includes("status code")) {
     return "O servidor de atualizações respondeu com erro HTTP.";
   }
   if (lower.includes("json") || lower.includes("parse") || lower.includes("manifest") || lower.includes("unexpected token")) {
     return "O manifesto de atualização está inválido.";
-  }
-  if (lower.includes("platform") || lower.includes("windows-x86_64") || lower.includes("no update for this target")) {
-    return "Não há pacote de atualização para esta plataforma.";
   }
   if (lower.includes("signature") || lower.includes("minisign") || lower.includes("pubkey") || lower.includes("checksum")) {
     return "A assinatura da atualização foi rejeitada. O instalador atual não foi substituído.";

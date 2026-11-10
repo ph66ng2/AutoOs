@@ -73,8 +73,8 @@ Checklist extra antes da tag:
 2. `bundle.createUpdaterArtifacts` permanece `true`.
 3. `plugins.updater.pubkey` é o par da chave privada nos secrets `TAURI_SIGNING_PRIVATE_KEY` / `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` (alias `TAURI_SIGNING_KEY`).
 4. `workflow_dispatch` só publica se o input `version` for essa SemVer; sem versão o job falha e não altera latest.
-5. O release só deixa de ser rascunho depois de `scripts/generate-update-manifest.mjs` validar instalador, `.sig` e `latest.json`.
+5. O release só deixa de ser rascunho depois de `scripts/generate-update-manifest.mjs` validar instalador, `.sig` e `latest.json`. O instalador escolhido precisa ter a versão do release no nome; depois de publicar, confira se a URL do `latest.json` baixa (HTTP 200).
 
 Não imprima a chave privada, a senha ou `AUTOOS_DATABASE_URL` em logs, PRs ou evidências. Authenticode (thumbprint) e assinatura do updater (minisign) são camadas distintas.
 
-A jornada N para N+1 usa o workflow `updater-homolog.yml`, a tag `updater-homolog` e o endpoint de `tauri.homolog.conf.json`. Esse disparo pede a confirmação `HOMOLOG`, não embute banco e não pode ocupar o release latest. O `build.yml` permanece o único caminho do canal de produção.
+A jornada N para N+1 usa o workflow `updater-homolog.yml`, a tag `updater-homolog` e o endpoint de `tauri.homolog.conf.json`. O disparo é manual (confirmação `HOMOLOG`) ou por tag `homolog-X.Y.Z` / `hotfix-X.Y.Z`; não embute banco e não pode ocupar o release latest. O build de homologação consulta primeiro o canal isolado e só cai para o endpoint de produção se o canal não responder. O `build.yml` permanece o único caminho do canal de produção.
