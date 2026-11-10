@@ -1,0 +1,7 @@
+# Versões SQLx reservadas: podem faltar em src-tauri/migrations sem que isso seja um buraco.
+# Fonte única, lida por scripts/check-sqlx-migrations.mjs, scripts/verify-estoque-seed.sh e
+# src-tauri/src/bin/production_migrate.rs. Uma versão por linha; "#" inicia comentário.
+# Quando o arquivo da versão existe no build, ele é aplicado e exigido normalmente.
+45  # feature: portal_publicado_e_servicos_aprovados (portal SaaS)
+46  # feature: portal_servicos_atuais_aprovados (portal SaaS)
+47  # master: PDF oficial do portal (portal_documentos_oficiais)

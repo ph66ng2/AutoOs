@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
-# Aplica todas as migrations (0001 em diante, sem buracos) num Postgres local vazio, roda o seed duas
+# Aplica todas as migrations (0001 em diante) num Postgres local vazio, roda o seed duas
 # vezes e confere que saldo, preço, SKU inativo e movimentações sobrevivem.
+# A sequência só pode ter os buracos listados em scripts/sqlx-reserved-migrations.txt, a mesma
+# lista usada por check-sqlx-migrations.mjs e production_migrate.rs.
+# Com --check-migrations, valida só a sequência dos arquivos e sai sem tocar em banco.
 # Recusa host remoto. Ignora DATABASE_URL e qualquer credencial de produção.
 # O banco autoos_seed_verify é recriado a cada execução.
 #
@@ -45,6 +48,7 @@ DB_NAME="autoos_seed_verify"
 SEED="$ROOT/scripts/seed-estoque-ribbons-bopp.sql"
 CONFIRM="$ROOT/scripts/confirm-estoque-seed-empresa.sql"
 MIGRATIONS="$ROOT/src-tauri/migrations"
+RESERVED="$ROOT/scripts/sqlx-reserved-migrations.txt"
 
 psql_local() {
   local pgoptions="${1:-}"
@@ -106,15 +110,54 @@ if [[ "${#migration_files[@]}" -lt 30 ]]; then
   echo "Esperadas pelo menos 30 migrations (0001-0030); encontradas ${#migration_files[@]}." >&2
   exit 1
 fi
-for index in "${!migration_files[@]}"; do
-  expected="$(printf '%04d' "$((index + 1))")"
-  if [[ "$(basename "${migration_files[$index]}")" != "${expected}"_* ]]; then
-    echo "A sequência de migrations tem um buraco ou duplicata perto de ${expected} ($(basename "${migration_files[$index]}"))." >&2
+declare -A reserved_versions=()
+while IFS= read -r reserved_line || [[ -n "$reserved_line" ]]; do
+  reserved_line="${reserved_line%%#*}"
+  reserved_line="${reserved_line//[[:space:]]/}"
+  [[ -z "$reserved_line" ]] && continue
+  if [[ ! "$reserved_line" =~ ^[0-9]+$ ]]; then
+    echo "Linha inválida em $(basename "$RESERVED"): $reserved_line" >&2
     exit 1
   fi
+  reserved_versions[$((10#$reserved_line))]=1
+done < "$RESERVED"
+
+declare -A present_versions=()
+last_version=0
+for file in "${migration_files[@]}"; do
+  name="$(basename "$file")"
+  if [[ ! "$name" =~ ^([0-9]{4})_[a-z0-9_]+\.sql$ ]]; then
+    echo "Nome de migration inválido: $name" >&2
+    exit 1
+  fi
+  version=$((10#${BASH_REMATCH[1]}))
+  if [[ -n "${present_versions[$version]:-}" ]]; then
+    echo "A sequência de migrations tem uma duplicata em $(printf '%04d' "$version") ($name)." >&2
+    exit 1
+  fi
+  present_versions[$version]=1
+  last_version="$version"
 done
-last_migration="$(basename "${migration_files[-1]}")"
-last_migration="${last_migration%%_*}"
+skipped_reserved=()
+for ((version = 1; version <= last_version; version += 1)); do
+  [[ -n "${present_versions[$version]:-}" ]] && continue
+  if [[ -n "${reserved_versions[$version]:-}" ]]; then
+    skipped_reserved+=("$(printf '%04d' "$version")")
+    continue
+  fi
+  echo "A sequência de migrations tem um buraco não reservado em $(printf '%04d' "$version")." >&2
+  exit 1
+done
+last_migration="$(printf '%04d' "$last_version")"
+reserved_note=""
+if [[ "${#skipped_reserved[@]}" -gt 0 ]]; then
+  reserved_note=" (reservadas ausentes: ${skipped_reserved[*]})"
+fi
+
+if [[ "${1:-}" == "--check-migrations" ]]; then
+  echo "SEED_VERIFY_MIGRATIONS_OK count=${#migration_files[@]} last=${last_migration}${reserved_note}"
+  exit 0
+fi
 
 if [[ -n "$seed_user" ]]; then
   echo "Recriando $DB_NAME em 127.0.0.1:$seed_port"
@@ -125,7 +168,7 @@ psql_cmd -d postgres -c "SELECT pg_terminate_backend(pid) FROM pg_stat_activity 
 psql_cmd -d postgres -c "DROP DATABASE IF EXISTS ${DB_NAME};" >/dev/null
 psql_cmd -d postgres -c "CREATE DATABASE ${DB_NAME};" >/dev/null
 
-echo "Aplicando migrations 0001-${last_migration}"
+echo "Aplicando migrations 0001-${last_migration}${reserved_note}"
 for file in "${migration_files[@]}"; do
   psql_cmd -d "$DB_NAME" -f "$file" >/dev/null
 done
