@@ -21,14 +21,14 @@
   transition: color 120ms ease-out, border-color 160ms ease-out, box-shadow 220ms ease-out;
 }
 
-/* Cadeadinho de traço fino: aparece fechado, a alça sobe e gira em torno da perna esquerda. */
+/* Cadeadinho de traço fino, sem círculo: aparece fechado, a alça sobe e gira em torno da perna esquerda. */
 .pin-entry__lock {
   position: absolute;
   top: 50%;
   left: 50%;
-  width: 34px;
+  width: 36px;
   height: 34px;
-  margin: -17px 0 0 -17px;
+  margin: -17px 0 0 -18px;
   overflow: visible;
   color: #22c55e;
   fill: none;
