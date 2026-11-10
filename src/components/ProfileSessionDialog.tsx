@@ -16,6 +16,7 @@ import { needsFirstAccessHere, profileAppearance } from "@/lib/profile-appearanc
 import { securityRoleLabel } from "@/lib/security-profile-labels";
 import { erroPinNovo } from "@/lib/pin-rules";
 import { PinLock } from "@/components/auth/PinLock";
+import "@/components/auth/pin-entry.css";
 import { PinCreateFields, regrasCumpridas } from "@/components/auth/PinCreateFields";
 import type { SecurityProfile } from "@/types";
 
@@ -50,6 +51,8 @@ interface ProfileSessionDialogProps {
    * computador e a pessoa o esqueceu; sem ele, é o primeiro acesso.
    */
   onFirstAccess?: (profileId: number, recovery?: boolean) => void;
+  /** PIN aceito: o campo fica verde com um ✓ antes de a janela sair. */
+  accepted?: boolean;
 }
 
 /**
@@ -81,6 +84,7 @@ export function ProfileSessionDialog({
   onFirstAccess,
   keyringBlocked = false,
   onRetryKeyring,
+  accepted = false,
 }: ProfileSessionDialogProps) {
   const isSelectorMode = mode === "selector";
   const isCurrentProfileSelected = !!selectedProfile && selectedProfile.id === activeProfileId;
@@ -113,17 +117,21 @@ export function ProfileSessionDialog({
     keyringBlocked ||
     (missingRequiredPin && !canStartFirstAccess) ||
     busy ||
+    accepted ||
     (shouldAskForPin && pin.length < 4) ||
     (isAdminWithoutPin && erroPinNovo(pin, confirmPin) !== null);
 
-  // Cadeado de roletes (só ao criar o PIN): cada tecla gira um rolete; cada erro novo faz o cadeado tremer.
+  // Cada erro novo faz tremer o cadeado de roletes (criar PIN) ou o campo do PIN (entrar).
   const [pinKeys, setPinKeys] = useState(0);
   const [errorShakes, setErrorShakes] = useState(0);
   const previousError = useRef(error);
   useEffect(() => {
-    if (error && error !== previousError.current && isAdminWithoutPin) setErrorShakes((n) => n + 1);
+    if (error && error !== previousError.current && shouldAskForPin) setErrorShakes((n) => n + 1);
     previousError.current = error;
-  }, [error, isAdminWithoutPin]);
+  }, [error, shouldAskForPin]);
+  const entryState = accepted ? "pin-entry--ok" : error && errorShakes > 0
+    ? cn("pin-entry--error", errorShakes % 2 ? "pin-entry--shake-a" : "pin-entry--shake-b")
+    : "";
   const handlePinChange = (value: string) => {
     onPinChange(value);
     setPinKeys((n) => n + 1);
@@ -310,17 +318,24 @@ export function ProfileSessionDialog({
                     ) : (
                       <div className="space-y-2">
                         <Label htmlFor="sensitive-pin" className="block text-center">PIN do perfil</Label>
-                        <Input
-                          id="sensitive-pin"
-                          type="password"
-                          inputMode="numeric"
-                          value={pin}
-                          onChange={(event) => onPinChange(event.target.value.replace(/\D/g, "").slice(0, 8))}
-                          placeholder="••••"
-                          autoComplete="current-password"
-                          className={pinInputClass}
-                          autoFocus
-                        />
+                        <div className={cn("pin-entry", entryState)}>
+                          <Input
+                            id="sensitive-pin"
+                            type="password"
+                            inputMode="numeric"
+                            value={pin}
+                            onChange={(event) => onPinChange(event.target.value.replace(/\D/g, "").slice(0, 8))}
+                            placeholder="••••"
+                            autoComplete="current-password"
+                            className={pinInputClass}
+                            autoFocus
+                          />
+                          {accepted && (
+                            <svg viewBox="0 0 24 24" className="pin-entry__check" aria-hidden="true" focusable="false">
+                              <path d="M5 12.5l4.5 4.5L19 7.5" fill="none" stroke="currentColor" strokeWidth="2.8" strokeLinecap="round" strokeLinejoin="round" />
+                            </svg>
+                          )}
+                        </div>
                       </div>
                     )}
                   </form>
