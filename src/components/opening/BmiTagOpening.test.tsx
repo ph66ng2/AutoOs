@@ -99,6 +99,23 @@ describe("BmiTagOpening", () => {
     expect(onFinished).toHaveBeenCalledTimes(1);
   });
 
+  it("avisa uma vez quando a logo termina de montar, mesmo sem o app pronto", () => {
+    const onIntroDone = vi.fn();
+    const onFinished = vi.fn();
+    render(
+      <StrictMode>
+        <BmiTagOpening ready={false} onIntroDone={onIntroDone} onFinished={onFinished} />
+      </StrictMode>,
+    );
+    advance(OPENING_INTRO_MS - 1);
+    expect(onIntroDone).not.toHaveBeenCalled();
+    advance(1);
+    expect(onIntroDone).toHaveBeenCalledTimes(1);
+    advance(10_000);
+    expect(onIntroDone).toHaveBeenCalledTimes(1);
+    expect(onFinished).not.toHaveBeenCalled();
+  });
+
   it("no modo demonstração não agenda término", () => {
     const onFinished = vi.fn();
     render(<BmiTagOpening scripted onFinished={onFinished} />);

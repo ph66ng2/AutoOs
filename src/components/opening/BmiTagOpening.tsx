@@ -66,6 +66,8 @@ export interface BmiTagOpeningProps {
   ready?: boolean;
   /** Chamado uma única vez, quando a saída terminou e a abertura pode ser desmontada. */
   onFinished?: () => void;
+  /** Chamado uma única vez, quando a logo terminou de se montar (antes da saída). */
+  onIntroDone?: () => void;
   /** Conteúdo discreto mostrado perto da base da tela se a carga passar da abertura. */
   status?: ReactNode;
   /** Texto para leitores de tela. */
@@ -83,6 +85,7 @@ export interface BmiTagOpeningProps {
 export function BmiTagOpening({
   ready = true,
   onFinished,
+  onIntroDone,
   status,
   label = "BMI TAG",
   logoSrc = "/bmi-tag-logo.png",
@@ -92,15 +95,23 @@ export function BmiTagOpening({
   const [introDone, setIntroDone] = useState(false);
   const [showStatus, setShowStatus] = useState(false);
   const finishedRef = useRef(false);
+  const introNotifiedRef = useRef(false);
   const onFinishedRef = useRef(onFinished);
+  const onIntroDoneRef = useRef(onIntroDone);
   useEffect(() => {
     onFinishedRef.current = onFinished;
-  }, [onFinished]);
+    onIntroDoneRef.current = onIntroDone;
+  }, [onFinished, onIntroDone]);
 
   useEffect(() => {
     if (scripted) return;
     const ms = prefersReducedMotion() ? OPENING_REDUCED_INTRO_MS : OPENING_INTRO_MS;
-    const t = window.setTimeout(() => setIntroDone(true), ms);
+    const t = window.setTimeout(() => {
+      setIntroDone(true);
+      if (introNotifiedRef.current) return;
+      introNotifiedRef.current = true;
+      onIntroDoneRef.current?.();
+    }, ms);
     return () => window.clearTimeout(t);
   }, [scripted]);
 

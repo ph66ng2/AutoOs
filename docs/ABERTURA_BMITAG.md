@@ -1,9 +1,10 @@
 # Abertura BMI TAG: leitura de tag
 
-Protótipo da abertura que deve substituir o carimbo. **Ainda não está ligado ao fluxo de inicialização**: `BootSplash`, `StampDemo` e `App.tsx` não foram alterados.
+Abertura do AutoOS, tocada **em toda inicialização**. Substituiu o carimbo da primeira abertura do dia e a animação da impressora, que foram apagados.
 
 - Componente: `src/components/opening/BmiTagOpening.tsx` + `bmi-tag-opening.css`
-- Demonstração: `opening-demo.html` (entrada) + `src/opening-demo/`. Rode `npm run dev` e abra `http://localhost:1420/opening-demo.html`. A página não entra no `vite build` do app, porque não é uma entrada do Rollup.
+- Integração no boot: `src/components/BootSplash.tsx` e `src/components/BootUi.tsx`
+- Demonstração para ajustes (não faz parte do app): `opening-demo.html` (entrada) + `src/opening-demo/`. Rode `npm run dev` e abra `http://localhost:1420/opening-demo.html`. A página não entra no `vite build` do app, porque não é uma entrada do Rollup.
 - Testes do ciclo de vida: `src/components/opening/BmiTagOpening.test.tsx`
 
 ## Asset de marca
@@ -74,15 +75,17 @@ Movimento reduzido (`prefers-reduced-motion: reduce`): marca completa e parada, 
 - `onFinished` é chamado uma vez, 300 ms depois do início da saída. Os temporizadores são limpos ao desmontar.
 - Erro de inicialização é responsabilidade de quem hospeda: ao detectar erro, desmonte a abertura e mostre a tela de erro. A abertura não deve cobrir um erro.
 
-## Integração no AutoOS (não feita)
+## Integração no AutoOS
 
-Hoje `BootSplash` mostra o carimbo (`StampDemo`) na primeira abertura do dia e depois a impressora (`AutoOsBootAnimation`), e `App.tsx` segura o splash por `MIN_BOOT_SPLASH_MS = 1100`. Passos sugeridos, depois da aprovação visual:
-
-1. Em `BootSplash.tsx`, trocar o bloco do `StampDemo` por `<BmiTagOpening onFinished={finishOpening} />`. O `finishOpening` e o fallback já existentes continuam valendo.
-2. Decidir o destino da impressora. A abertura nova já tem estado de espera, então manter as duas em sequência repete a marca. A recomendação é a abertura nova ser a única, com `ready` ligado ao fim real do boot.
-3. Se a abertura nova for a única, `MIN_BOOT_SPLASH_MS` deixa de ser necessário: a duração mínima passa a ser a da própria abertura. Isso altera a regra "Boot splash mandatory" do `AGENTS.md`, que precisa ser atualizada no mesmo PR.
-4. Retomada do aplicativo (janela já carregada volta ao foco): não tocar a abertura.
-5. Remover `src/components/stamp/` e o áudio só depois de a troca estar em produção.
+- `BootSplash.tsx` renderiza `<BmiTagOpening ready={fadeOut} onIntroDone={...} status={...} />` dentro do contêiner `role="status"` (z-40) que o e2e `boot-splash-cobre-menu` confere.
+- `onIntroDone` (fim da montagem da logo) libera o PIN/perfil (`completeBootAnimation` em `BootUi.tsx`) e avisa o `App` (`completionAnimationElapsed`). O PIN abre por cima da logo parada.
+- O `App` só libera a saída (`fadeOut`) quando o boot real terminou e a sessão está resolvida. A saída é a da própria abertura (300 ms); o `App` desmonta o splash 540 ms depois.
+- Não existe mais duração mínima separada (`MIN_BOOT_SPLASH_MS` foi removido): o mínimo é a própria abertura.
+- Carga lenta: a logo fica parada e, 900 ms depois, aparece "Iniciando o AutoOS" perto da base, enquanto o progresso real for menor que 100.
+- Erro de banco: o `DatabaseConfigDialog` e a tela de PIN continuam abrindo por cima, como antes.
+- Trava de segurança: o PIN nunca espera a animação por mais de 20 s (`BOOT_ANIMATION_HARD_LIMIT_MS`).
+- E2E em modo mock (`VITE_E2E_MOCK=1`): a abertura toca, mas o PIN não espera por ela.
+- Retomada do aplicativo (janela que volta ao foco) não toca a abertura: ela só monta no carregamento do app.
 
 ## Adaptação mobile (React Native)
 
