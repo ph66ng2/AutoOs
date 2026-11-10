@@ -21,11 +21,19 @@ describe("PREPARE_QUOTES nos modelos", () => {
   const find = (list: ReturnType<typeof montarPresets>, role: string) =>
     list.find((p) => p.role === role)!;
 
-  it("flag desligada na 0.5.6 e modelos exportados a refletem", () => {
-    expect(PREPARE_QUOTES_NOS_MODELOS).toBe(false);
-    expect(find(PROFILE_PRESETS, "TECNICO").permissions).toEqual(["STOCK_CONTROL"]);
-    expect(find(PROFILE_PRESETS, "TECNICO").description).toBe("Rotina técnica e estoque.");
-    expect(find(PROFILE_PRESETS, "FINANCEIRO").permissions).not.toContain("PREPARE_QUOTES");
+  it("flag ligada e modelos exportados a refletem", () => {
+    expect(PREPARE_QUOTES_NOS_MODELOS).toBe(true);
+    expect(find(PROFILE_PRESETS, "TECNICO").permissions).toEqual(["STOCK_CONTROL", "PREPARE_QUOTES"]);
+    expect(find(PROFILE_PRESETS, "TECNICO").description).toBe("Rotina técnica, orçamentos e estoque.");
+    expect(find(PROFILE_PRESETS, "FINANCEIRO").permissions).toContain("PREPARE_QUOTES");
+    expect(find(PROFILE_PRESETS, "ATENDENTE").disponivel).toBe(true);
+  });
+
+  it("com a flag desligada, Técnico e Financeiro ficam sem PREPARE_QUOTES", () => {
+    const off = montarPresets(false);
+    expect(find(off, "TECNICO").permissions).toEqual(["STOCK_CONTROL"]);
+    expect(find(off, "TECNICO").description).toBe("Rotina técnica e estoque.");
+    expect(find(off, "FINANCEIRO").permissions).not.toContain("PREPARE_QUOTES");
   });
 
   it("com a flag ligada, Técnico e Financeiro incluem PREPARE_QUOTES", () => {

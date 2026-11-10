@@ -47,9 +47,10 @@ const ALL_PERMISSIONS: [&str; 9] = [
 ];
 
 /// Trava de transição: a v0.5.6 recusa perfis não-administradores sem permissões ou com
-/// permissões novas, e a lista de perfis dela fica vazia. Desligar quando todos os PCs
-/// estiverem na 0.6.0, no mesmo PR da migration que concede PREPARE_QUOTES a Técnico/Financeiro.
-pub const COMPATIBILIDADE_056_ATIVA: bool = true;
+/// permissões novas, e a lista de perfis dela fica vazia. Desligada em 10/11/2026, com toda a
+/// frota na 0.6.2, junto com a migration 0045 (PREPARE_QUOTES para Técnico/Financeiro).
+/// Não religar: a 0045 já grava a permissão nova em perfis não-administradores.
+pub const COMPATIBILIDADE_056_ATIVA: bool = false;
 
 const PERMISSIONS_RECONHECIDAS_056: [&str; 7] = [
     PERMISSION_CONFIG_SMTP,
@@ -3072,12 +3073,20 @@ mod tests {
 
     #[test]
     fn compat_056_reativar_recusa_perfil_incompativel_com_a_mesma_mensagem() {
-        let vazio = validar_perfil_ativo_056("RECEPCAO", &[]);
-        let quotes = validar_perfil_ativo_056("TECNICO", &lista(&[PERMISSION_PREPARE_QUOTES]));
+        let vazio = validar_compatibilidade_056("RECEPCAO", &[], true);
+        let quotes = validar_compatibilidade_056("TECNICO", &lista(&[PERMISSION_PREPARE_QUOTES]), true);
         assert_eq!(vazio.unwrap_err(), MSG_COMPATIBILIDADE_056);
         assert_eq!(quotes.unwrap_err(), MSG_COMPATIBILIDADE_056);
-        assert!(validar_perfil_ativo_056("TECNICO", &lista(&[PERMISSION_STOCK_CONTROL])).is_ok());
-        assert!(validar_perfil_ativo_056("ADMIN", &[]).is_ok());
+        assert!(validar_compatibilidade_056("TECNICO", &lista(&[PERMISSION_STOCK_CONTROL]), true).is_ok());
+        assert!(validar_compatibilidade_056("ADMIN", &[], true).is_ok());
+    }
+
+    #[test]
+    fn compat_056_trava_desligada_libera_perfil_vazio_e_permissoes_novas() {
+        assert!(!COMPATIBILIDADE_056_ATIVA);
+        assert!(validar_perfil_ativo_056("ATENDENTE", &[]).is_ok());
+        assert!(validar_perfil_ativo_056("TECNICO", &lista(&[PERMISSION_STOCK_CONTROL, PERMISSION_PREPARE_QUOTES])).is_ok());
+        assert!(validar_perfil_ativo_056("FINANCEIRO", &lista(&[PERMISSION_MANAGE_STATUS_LINKS])).is_ok());
     }
 
     #[test]

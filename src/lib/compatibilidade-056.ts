@@ -1,7 +1,8 @@
-// Desligar (false) quando todos os PCs estiverem na 0.6.0, junto com a migration
-// que concede PREPARE_QUOTES a Técnico/Financeiro. Na 0.5.6, perfil que não é
-// Administrador sem permissão, ou com permissão fora destas 7, trava o login.
-export const COMPATIBILIDADE_056_ATIVA = true;
+// Desligada em 10/11/2026, com toda a frota na 0.6.2, junto com a migration 0045
+// (PREPARE_QUOTES para Técnico/Financeiro). Na 0.5.6, perfil que não é Administrador
+// sem permissão, ou com permissão fora destas 7, travava o login. Não religar: a 0045
+// já grava a permissão nova em perfis não-administradores.
+export const COMPATIBILIDADE_056_ATIVA = false;
 
 export const PERMISSOES_056: readonly string[] = [
   "CONFIG_SMTP",

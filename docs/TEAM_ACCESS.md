@@ -11,8 +11,8 @@ A rota `/perfil` reúne a equipe, o cadastro guiado e as ações administrativas
 | Modelo | Permissões adicionais iniciais |
 | --- | --- |
 | Recepção | Nenhuma |
-| Técnico | Estoque (elaborar e enviar orçamentos após a transição para a 0.6.0) |
-| Financeiro | Ações financeiras e consulta de despesas (elaborar e enviar orçamentos após a transição para a 0.6.0) |
+| Técnico | Estoque e elaborar e enviar orçamentos |
+| Financeiro | Ações financeiras, elaborar e enviar orçamentos e consulta de despesas |
 | Administrador | Todas as permissões sensíveis existentes |
 | Personalizado | Nenhuma; escolha as liberações individualmente |
 
@@ -20,7 +20,7 @@ Os modelos não criam verificações novas nos módulos: aplicam as permissões 
 
 ## Elaborar e enviar orçamentos
 
-A permissão `PREPARE_QUOTES` ("Elaborar e enviar orçamentos") é sensível. A migration `0042` é só de dados: adiciona essa permissão apenas ao perfil Administrador já existente, sem alterar o schema. Técnico e Financeiro a recebem em uma migration posterior (ainda não criada); veja "Transição da 0.5.6 para a 0.6.0".
+A permissão `PREPARE_QUOTES` ("Elaborar e enviar orçamentos") é sensível. A migration `0042` é só de dados: adiciona essa permissão apenas ao perfil Administrador já existente, sem alterar o schema. A migration de dados `0045` concede a permissão aos perfis de role `TECNICO`/`FINANCEIRO` e aos perfis existentes de nome Técnico/Tecnico/Financeiro, inclusive inativos, sem duplicar permissões. Financeiro também precisa dela: `FINANCIAL_ACTIONS` cobre valores e decisões, mas publicar e enviar orçamento exigem `PREPARE_QUOTES` ou `MANAGE_STATUS_LINKS`.
 
 Com a permissão, a pessoa pode:
 
@@ -43,9 +43,11 @@ Não libera:
 A 0.5.6 recusa, ao montar a lista de perfis, qualquer perfil não-administrador que (a) não tenha nenhuma permissão ("Selecione ao menos uma permissão para o perfil") ou (b) contenha uma chave que ela não conhece, como `PREPARE_QUOTES` ou `MANAGE_STATUS_LINKS` ("Permissão inválida"). Um único perfil assim deixa a lista vazia e ninguém entra nos PCs que ainda estão na 0.5.6. O Administrador não é afetado, pois recebe todas as permissões sem ler a coluna. A 0.5.6 conhece só: `CONFIG_SMTP`, `CONFIG_WHATSAPP`, `DELETE_RECORDS`, `FINANCIAL_ACTIONS`, `STOCK_CONTROL`, `MANAGE_PROFILES` e `VIEW_EXPENSES`.
 
 - A 0042 concede `PREPARE_QUOTES` só ao Administrador.
-- **Trava de transição:** enquanto `COMPATIBILIDADE_056_ATIVA` estiver ligada (`src-tauri/src/commands/auth.rs` e `src/lib/compatibilidade-056.ts`), o backend recusa gravar perfil não-administrador sem permissão ou com permissão nova, e as telas de perfil escondem essas permissões, não deixam salvar perfil vazio e deixam o modelo Recepção (sem permissões) indisponível. A trava vale para criar, editar e o primeiro acesso por código.
-- Técnico e Financeiro recebem a permissão em migration posterior (ainda não criada), aplicada quando todos os PCs estiverem na 0.6.0. Nesse mesmo PR: desligar as duas constantes `COMPATIBILIDADE_056_ATIVA` e passar `PREPARE_QUOTES_NOS_MODELOS` (`src/lib/profile-presets.ts`) a `true`.
-- Builds de teste ligados ao banco de produção anteriores à trava podem criar perfis incompatíveis: não crie nem edite perfis neles enquanto houver PC na 0.5.6.
+- **Transição concluída em 10/11/2026:** Paulo confirmou todos os PCs na **0.6.2**. `COMPATIBILIDADE_056_ATIVA` está desligada no Rust e no frontend, e `PREPARE_QUOTES_NOS_MODELOS` está ligada.
+- A migration de dados **0045** concede `PREPARE_QUOTES` a Técnico e Financeiro. Foi escolhido o próximo número livre da `master` (0044); a `feature` tem migrations Tauri até 0042 e migrations SaaS com timestamps, sem colisão.
+- Recepção (`ATENDENTE`, sem permissões) volta a estar disponível no cadastro. Todas as permissões do perfil também aparecem na criação, incluindo **Elaborar e enviar orçamentos** e **Portal do Cliente e links de acompanhamento**.
+- **Impacto:** depois da concessão, PCs na 0.5.6 deixam de listar os perfis. Não há mais PCs nessa versão, conforme confirmação do Paulo; não voltar a distribuir a 0.5.6 nem religar a trava.
+- **Pós-merge, por ordem do Paulo:** acompanhar o workflow de migrations; confirmar a 0045 e a contagem de 45 migrations; validar Técnico criando/enviando orçamento, Recepção sem permissões e a lista completa de permissões no cadastro. Este PR não executa migrations em produção nem cria release/tag.
 
 ## Sessão e autenticação
 
