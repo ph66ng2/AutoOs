@@ -1,9 +1,17 @@
 name: Updater Homolog
 
-# Canal isolado de homologação do auto-updater. Não cria tag v* e não ocupa o release latest.
-run-name: Updater homolog ${{ inputs.version }}
+# Canal isolado de homologação/hotfix do auto-updater. Não cria tag v* e não ocupa o release latest.
+# Disparos aceitos (travados por assertHomologWorkflow em scripts/generate-update-manifest.mjs):
+#   - workflow_dispatch com version + confirmação HOMOLOG;
+#   - push de tag homolog-X.Y.Z ou hotfix-X.Y.Z (a versão vem da tag; nunca tag v*).
+# Os assets da release fixa updater-homolog são sobrescritos a cada execução.
+run-name: Updater homolog ${{ inputs.version || github.ref_name }}
 
 on:
+  push:
+    tags:
+      - "homolog-*"
+      - "hotfix-*"
   workflow_dispatch:
     inputs:
       version:
@@ -47,12 +55,19 @@ jobs:
       - name: Instalar dependências
         run: npm ci
 
+      - name: Resolver disparo (dispatch ou tag homolog-*/hotfix-*)
+        id: trigger
+        env:
+          AUTOOS_INPUT_VERSION: ${{ inputs.version }}
+          AUTOOS_INPUT_CONFIRMATION: ${{ inputs.confirmacao }}
+        run: node scripts/generate-update-manifest.mjs --resolve-homolog-trigger
+
       - name: Validar versão no canal isolado
         id: version
         env:
           AUTOOS_UPDATER_CHANNEL: homolog
-          AUTOOS_HOMOLOG_CONFIRMATION: ${{ inputs.confirmacao }}
-          AUTOOS_RELEASE_VERSION: ${{ inputs.version }}
+          AUTOOS_HOMOLOG_CONFIRMATION: ${{ steps.trigger.outputs.confirmacao }}
+          AUTOOS_RELEASE_VERSION: ${{ steps.trigger.outputs.version }}
         run: node scripts/generate-update-manifest.mjs --check-versions
 
       - name: Impedir empacotamento de arquivos de ambiente
@@ -64,13 +79,22 @@ jobs:
             throw "tauri.conf.json não pode empacotar .env no instalador."
           }
 
+      - name: Limpar bundles de builds anteriores
+        # O cache do target pode trazer instalador de outra versão; o manifesto e o upload só podem ver o build atual.
+        shell: pwsh
+        run: |
+          $bundle = "src-tauri/target/release/bundle"
+          if (Test-Path $bundle) {
+            Remove-Item -Recurse -Force $bundle
+          }
+
       - name: Compilar instalador de homologação
         # O endpoint isolado vem de src-tauri/tauri.homolog.conf.json.
         env:
           CI: true
           VITE_UPDATER_CHANNEL: homolog
           AUTOOS_UPDATER_CHANNEL: homolog
-          AUTOOS_HOMOLOG_CONFIRMATION: ${{ inputs.confirmacao }}
+          AUTOOS_HOMOLOG_CONFIRMATION: ${{ steps.trigger.outputs.confirmacao }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY || secrets.TAURI_SIGNING_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         run: npm run tauri:build:homolog
@@ -78,7 +102,7 @@ jobs:
       - name: Gerar manifesto da tag isolada
         env:
           AUTOOS_UPDATER_CHANNEL: homolog
-          AUTOOS_HOMOLOG_CONFIRMATION: ${{ inputs.confirmacao }}
+          AUTOOS_HOMOLOG_CONFIRMATION: ${{ steps.trigger.outputs.confirmacao }}
           AUTOOS_RELEASE_VERSION: ${{ steps.version.outputs.version }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY || secrets.TAURI_SIGNING_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
@@ -87,7 +111,7 @@ jobs:
       - name: Recusar publicação no latest
         env:
           AUTOOS_UPDATER_CHANNEL: homolog
-          AUTOOS_HOMOLOG_CONFIRMATION: ${{ inputs.confirmacao }}
+          AUTOOS_HOMOLOG_CONFIRMATION: ${{ steps.trigger.outputs.confirmacao }}
           AUTOOS_MAKE_LATEST: "false"
           AUTOOS_PRERELEASE: "true"
         run: node scripts/generate-update-manifest.mjs --assert-homolog-publish

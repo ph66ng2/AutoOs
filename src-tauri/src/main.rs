@@ -24,6 +24,7 @@
 
 mod commands;
 mod db;
+mod release_highlights;
 
 use std::sync::OnceLock;
 use tracing::{info, Level};
@@ -101,6 +102,8 @@ fn main() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
+            release_highlights::get_seen_release_highlights,
+            release_highlights::mark_release_highlights_seen,
             // Auth sensível
             commands::auth::get_sensitive_access_status,
             commands::auth::configure_sensitive_pin,

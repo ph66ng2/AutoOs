@@ -73,6 +73,8 @@ A 0.5.6 recusa, ao montar a lista de perfis, qualquer perfil não-administrador 
 
 ## Sessão e autenticação
 
+Ao aceitar um PIN, o seletor mantém o campo com o cadeadinho verde até fechar. Fechar ou reabrir a confirmação durante essa animação conclui apenas o pedido já aceito e cancela seu temporizador; um pedido novo continua exigindo sua própria confirmação. Com movimento reduzido, o fechamento é imediato.
+
 - A pessoa e suas permissões continuam no PostgreSQL compartilhado.
 - O PIN e seu hash permanecem no cofre do sistema operacional. Não são sincronizados entre computadores.
 - A migration `0030` adiciona somente a política `pin_required`. Um perfil protegido sem segredo local fica bloqueado; ausência do cofre não equivale a autorização para entrar sem PIN.
@@ -118,6 +120,6 @@ O reset preserva as permissões, é registrado na auditoria e altera apenas o se
 
 ## Numeração entre master e feature (10/11/2026)
 
-Este build da linha interna contém 0001–0044, 0048 (#184) e 0049 (#185), com 46 arquivos. Não criar arquivos vazios para preencher 0045–0047: 0045/0046 já pertencem ao portal na `feature` e 0047 está reservada ao PDF oficial. Os verificadores de arquivos e de promoção aceitam somente essas lacunas reservadas, preservando a verificação de duplicatas, demais ausências e contagem real. O verificador de histórico exige cada versão presente nos arquivos do build, sem inventar versões ausentes dele.
+Este build da linha interna contém 0001–0044, 0048 (#184) e 0049 (#185), com 46 arquivos. Não criar arquivos vazios para preencher 0045–0047: 0045/0046 já pertencem ao portal na `feature` e 0047 está reservada ao PDF oficial. Os verificadores de arquivos e de promoção aceitam somente essas lacunas reservadas, preservando a verificação de duplicatas, demais ausências e contagem real. A lista de reservas fica em um único arquivo, `scripts/sqlx-reserved-migrations.txt`, lido por `check-sqlx-migrations.mjs`, `verify-estoque-seed.sh` (job QA Real) e `production_migrate.rs`; alterar a reserva é alterar só esse arquivo. O verificador de histórico exige cada versão presente nos arquivos do build, sem inventar versões ausentes dele.
 
 No sync semanal **master → feature**, preservar as migrations 0045/0046 da `feature` e os arquivos vindos da `master`, sem renumerar migrations aplicadas. Reconciliar a união de `REQUIRED_PROMOTION_MIGRATIONS` e atualizar `EXPECTED_MIGRATION_COUNT` pelo número de arquivos, não pelo maior ID: após PDF + #184 + #185, 47 arquivos na `master` (0001–0044, 0047–0049) e 49 na `feature` (0001–0049). Rodar `node scripts/check-sqlx-migrations.mjs`, `cargo test --manifest-path src-tauri/Cargo.toml --bin production_migrate`, `npm run build:saas` e `npm run test:run` na `feature`. Nenhum merge nem aplicação em produção faz parte desta correção.

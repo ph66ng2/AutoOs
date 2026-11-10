@@ -10,8 +10,8 @@ static MIGRATOR: Migrator = sqlx::migrate!("./migrations");
 
 const REQUIRED_PROMOTION_MIGRATIONS: [i64; 20] = [27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 48, 49];
 const EXPECTED_MIGRATION_COUNT: usize = 46;
-// 0045/0046 pertencem à feature; 0047 está reservada ao PDF oficial do portal.
-const RESERVED_MIGRATION_VERSIONS: [i64; 3] = [45, 46, 47];
+// Fonte única das versões reservadas, compartilhada com check-sqlx-migrations.mjs e verify-estoque-seed.sh.
+const RESERVED_MIGRATION_VERSIONS_FILE: &str = include_str!("../../../scripts/sqlx-reserved-migrations.txt");
 const LAST_REQUIRED_APPLIED_MIGRATION: i64 = 28;
 
 fn required_env(name: &str) -> Result<String> {
@@ -107,7 +107,20 @@ fn validate_production_target() -> Result<String> {
     Ok(database_url)
 }
 
+fn reserved_migration_versions() -> Result<Vec<i64>> {
+    RESERVED_MIGRATION_VERSIONS_FILE
+        .lines()
+        .map(|line| line.split('#').next().unwrap_or("").trim())
+        .filter(|line| !line.is_empty())
+        .map(|line| {
+            line.parse::<i64>()
+                .with_context(|| format!("linha inválida em sqlx-reserved-migrations.txt: {line}"))
+        })
+        .collect()
+}
+
 fn validate_migration_versions(mut versions: Vec<i64>, expected_count: usize) -> Result<()> {
+    let reserved = reserved_migration_versions()?;
     versions.sort_unstable();
 
     for pair in versions.windows(2) {
@@ -126,7 +139,7 @@ fn validate_migration_versions(mut versions: Vec<i64>, expected_count: usize) ->
     ensure!(versions.iter().all(|version| *version > 0), "versão SQLx precisa ser positiva");
     for expected in 1..=versions.last().copied().unwrap_or(0) {
         ensure!(
-            versions.binary_search(&expected).is_ok() || RESERVED_MIGRATION_VERSIONS.contains(&expected),
+            versions.binary_search(&expected).is_ok() || reserved.contains(&expected),
             "sequência SQLx inválida: migration {expected:04} ausente e não reservada"
         );
     }
@@ -202,6 +215,11 @@ mod tests {
         assert_eq!(LAST_REQUIRED_APPLIED_MIGRATION, 28);
         assert!(validate_migration_set().is_ok());
         assert!(require_expected_migrations().is_ok());
+    }
+
+    #[test]
+    fn reserved_versions_come_from_the_shared_list() {
+        assert_eq!(reserved_migration_versions().unwrap(), vec![45, 46, 47]);
     }
 
     #[test]

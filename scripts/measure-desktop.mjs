@@ -8,12 +8,11 @@ import { chromium } from '@playwright/test';
 const [directory, output] = process.argv.slice(2);
 if (!directory || !output) throw new Error('Usage: node scripts/measure-desktop.mjs <mock-dist> <output.json>');
 const root = resolve(directory);
-// Chave do card de novidades lida do código-fonte, para não ficar presa a uma versão.
-const highlightsSource = await readFile(resolve('src/lib/releaseHighlightsKey.ts'), 'utf8');
-const highlightsVersion = highlightsSource.match(/RELEASE_HIGHLIGHTS_VERSION = "([^"]+)"/)?.[1];
-const highlightsSlug = highlightsSource.match(/\$\{RELEASE_HIGHLIGHTS_VERSION\}:([\w-]+)`/)?.[1];
-if (!highlightsVersion || !highlightsSlug) throw new Error('Não foi possível ler a chave de novidades em src/lib/releaseHighlightsKey.ts');
-const highlightsKey = `autoos:release-highlights:${highlightsVersion}:${highlightsSlug}`;
+// O benchmark web usa a versão empacotada e o fallback local do armazenamento nativo.
+const { version: highlightsVersion } = JSON.parse(await readFile(new URL('../package.json', import.meta.url), 'utf8'));
+const highlightsKey = highlightsVersion === '0.6.2'
+  ? 'autoos:release-highlights:0.6.2:portal-orcamento-conexao'
+  : `autoos:release-highlights:${highlightsVersion}:seen`;
 // Precompress before timing so server-side gzip CPU does not skew renderer metrics.
 const compressed = new Map();
 async function preload(directory) {

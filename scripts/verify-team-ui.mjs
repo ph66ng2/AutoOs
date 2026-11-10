@@ -1,23 +1,16 @@
 /** UI smoke + screenshots with isolated, in-memory demo data. No production DB. */
 import { readFileSync } from "node:fs";
 import { mkdir } from "node:fs/promises";
-import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
 import { chromium, expect } from "@playwright/test";
 import { createServer } from "vite";
 
-const highlightsSource = readFileSync(
-  join(dirname(fileURLToPath(import.meta.url)), "../src/lib/releaseHighlightsKey.ts"),
-  "utf8",
+// O smoke web semeia o fallback local; a 0.6.2 preserva a chave já publicada.
+const { version: highlightsVersion } = JSON.parse(
+  readFileSync(new URL("../package.json", import.meta.url), "utf8"),
 );
-const highlightsVersion = highlightsSource.match(/RELEASE_HIGHLIGHTS_VERSION = "([^"]+)"/)?.[1];
-const highlightsSlug = highlightsSource.match(
-  /autoos:release-highlights:\$\{RELEASE_HIGHLIGHTS_VERSION\}:([^`\n]+)/,
-)?.[1];
-if (!highlightsVersion || !highlightsSlug) {
-  throw new Error("Não foi possível ler a chave de novidades em src/lib/releaseHighlightsKey.ts");
-}
-const RELEASE_HIGHLIGHTS_STORAGE_KEY = `autoos:release-highlights:${highlightsVersion}:${highlightsSlug}`;
+const RELEASE_HIGHLIGHTS_STORAGE_KEY = highlightsVersion === "0.6.2"
+  ? "autoos:release-highlights:0.6.2:portal-orcamento-conexao"
+  : `autoos:release-highlights:${highlightsVersion}:seen`;
 
 process.env.VITE_E2E_MOCK = "1";
 process.env.VITE_E2E_TEAM = "1";
