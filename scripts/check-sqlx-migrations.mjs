@@ -4,6 +4,8 @@ import { fileURLToPath } from "node:url";
 const migrationDir = fileURLToPath(new URL("../src-tauri/migrations/", import.meta.url));
 const files = readdirSync(migrationDir).filter((file) => file.endsWith(".sql")).sort();
 const byVersion = new Map();
+// Reservadas em PRs abertos para master: #184 (0045), #185 (0046).
+const reservedVersions = new Set([45, 46]);
 const errors = [];
 
 for (const file of files) {
@@ -22,7 +24,7 @@ for (const file of files) {
 }
 
 for (let version = 1; version <= Math.max(0, ...byVersion.keys()); version += 1) {
-  if (!byVersion.has(version)) {
+  if (!byVersion.has(version) && !(byVersion.has(47) && reservedVersions.has(version))) {
     errors.push(`Versão ${String(version).padStart(4, "0")} ausente`);
   }
 }

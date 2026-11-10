@@ -1,6 +1,8 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import type { Equipamento, Verificacao } from "@/types";
 
+const mockPublicar = vi.hoisted(() => vi.fn());
+const mockDecisao = vi.hoisted(() => vi.fn());
 const mockInvoke = vi.hoisted(() => vi.fn());
 const mockListarImagens = vi.hoisted(() => vi.fn());
 const mockListarHistorico = vi.hoisted(() => vi.fn());
@@ -11,6 +13,8 @@ vi.mock("@tauri-apps/api/core", () => ({
 
 vi.mock("@/lib/db", () => ({
   db: {
+    publicarDocumentoPortal: (...args: unknown[]) => mockPublicar(...args),
+    obterVersaoDocumentoPortal: (...args: unknown[]) => mockDecisao(...args),
     listarImagensEquipamento: (...args: unknown[]) => mockListarImagens(...args),
     listarHistoricoEquipamento: (...args: unknown[]) => mockListarHistorico(...args),
     buscarVerificacao: vi.fn().mockResolvedValue(null),
@@ -152,5 +156,65 @@ describe("PdfService — orçamento/OS", () => {
     expect(pdfPadrao).toMatch(/02 a 04 dias/);
     expect(pdfCustomizado).toMatch(/05 a 10 dias/);
     expect(pdfCustomizado).not.toMatch(/02 a 04 dias/);
+  });
+});
+
+describe("PDF oficial no portal", () => {
+  const comToken = { ...equipamento, atualizado_em: "2026-11-10T12:00:00.123Z" };
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockListarImagens.mockResolvedValue([]);
+    mockListarHistorico.mockResolvedValue([]);
+    mockInvoke.mockResolvedValue("/tmp/oficial.pdf");
+    mockDecisao.mockResolvedValue({ versaoId: 91, versao: 1 });
+    mockPublicar.mockImplementation((_id, bytes) => Promise.resolve(Array.from(bytes)));
+  });
+
+  it("envia ao Storage os mesmos bytes da ficha de recebimento salva pelo balcão", async () => {
+    const artifact = await PdfService.construirOrdemServico(comToken);
+    await PdfService.salvarOrdemServico(artifact, comToken);
+    expect(mockPublicar).toHaveBeenCalledTimes(1);
+    const [id, bytes, ref] = mockPublicar.mock.calls[0];
+    expect(id).toBe(501);
+    expect(ref).toEqual({ tipo: "ORDEM_SERVICO", versaoId: null, atualizadoEm: comToken.atualizado_em });
+    expect(Array.from(bytes)).toEqual(mockInvoke.mock.calls[0][1].bytes);
+  });
+
+  it.each([91, 92])("congela a versão %s antes de gerar e salva os bytes que publica", async (versaoId) => {
+    mockDecisao.mockResolvedValue({ versaoId });
+    await PdfService.gerarOrcamento(comToken, verificacao);
+    expect(mockPublicar.mock.calls[0][2]).toMatchObject({ tipo: "ORCAMENTO", versaoId });
+    expect(Array.from(mockPublicar.mock.calls[0][1])).toEqual(mockInvoke.mock.calls[0][1].bytes);
+  });
+
+  it("reutiliza o arquivo canônico quando outro computador publicou antes", async () => {
+    const canonico = [37, 80, 68, 70, 45, 99];
+    mockPublicar.mockResolvedValue(canonico);
+    await PdfService.gerarOrcamento(comToken, verificacao);
+    expect(mockInvoke.mock.calls[0][1].bytes).toEqual(canonico);
+  });
+
+  it("upload falho não impede emissão; salvar faz nova tentativa com os mesmos bytes", async () => {
+    mockPublicar.mockRejectedValueOnce(new Error("storage offline"));
+    const artifact = await PdfService.construirOrdemServico(comToken);
+    await expect(PdfService.salvarOrdemServico(artifact, comToken)).resolves.toBe("/tmp/oficial.pdf");
+    expect(mockPublicar).toHaveBeenCalledTimes(2);
+    expect(mockPublicar.mock.calls[0][1]).toEqual(mockPublicar.mock.calls[1][1]);
+    expect(Array.from(mockPublicar.mock.calls[1][1])).toEqual(mockInvoke.mock.calls[0][1].bytes);
+  });
+
+  it("orçamento ajustado usa referência própria e os mesmos bytes salvos", async () => {
+    const artifact = await PdfService.construirOrcamentoAjustado(comToken, { ...verificacao, adjusted_at: "2026-11-10T10:00:00Z" });
+    expect(artifact).not.toBeNull();
+    await PdfService.salvarOrcamento(artifact!, comToken);
+    expect(mockPublicar.mock.calls[0][2]).toMatchObject({ tipo: "ORCAMENTO_AJUSTADO", versaoId: 91 });
+    expect(Array.from(mockPublicar.mock.calls[0][1])).toEqual(mockInvoke.mock.calls[0][1].bytes);
+  });
+
+  it("sem versão publicada não associa orçamento antigo à versão de outro atendimento", async () => {
+    mockDecisao.mockResolvedValue(null);
+    await PdfService.gerarOrcamento(comToken, verificacao);
+    expect(mockPublicar).not.toHaveBeenCalled();
+    expect(mockInvoke).toHaveBeenCalled();
   });
 });

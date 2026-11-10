@@ -249,10 +249,21 @@ export async function enviarEmailOrcamentoPortal(
   const corpoMascTexto = gerarCorpoOrcamentoPortalTexto(equip, verificacao, preparo, { mascarar: true });
   const corpoMascHtml = gerarCorpoOrcamentoPortalHtml(equip, verificacao, preparo, { mascarar: true });
 
+  // O envio por e-mail também pode ser usado quando o WhatsApp falhou antes de publicar.
+  if (equip.id && equip.status === "AGUARDANDO_APROVACAO") {
+    try {
+      await db.publicarOrcamentoPortal(equip.id);
+    } catch {
+      console.warn("[PortalPDF] Publicação indisponível; o e-mail continua e a próxima emissão tentará novamente.");
+    }
+  }
+
   let anexos: EmailAttachment[] | undefined;
   let limparAnexoTemp: (() => Promise<void>) | undefined;
   try {
-    const caminhoPdf = await PdfService.gerarOrcamento(equip, verificacao);
+    const caminhoPdf = verificacao.adjusted_at
+      ? await PdfService.gerarOrcamentoAjustado(equip, verificacao)
+      : await PdfService.gerarOrcamento(equip, verificacao);
     if (caminhoPdf) {
       const preparado = await prepararAnexoTemporario(caminhoPdf, "orcamento.pdf");
       if (preparado) {

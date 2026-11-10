@@ -42,3 +42,5 @@ pub mod portal_cliente;
 pub mod public_status;
 pub mod image_migration;
 pub mod legacy_regularization;
+
+pub mod portal_documentos;

@@ -70,8 +70,12 @@ export function DocumentosEquipamento({ equipamento }: DocumentosEquipamentoProp
           console.warn("[DocumentosEquipamento] Nenhuma verificação encontrada para gerar orçamento.");
           return;
         }
+        const artifact = verificacao.adjusted_at
+          ? await PdfService.construirOrcamentoAjustado(equipamento, verificacao, nomeArquivo)
+          : await PdfService.construirOrcamento(equipamento, verificacao, nomeArquivo);
+        if (!artifact) return;
         setPreview({
-          artifact: await PdfService.construirOrcamento(equipamento, verificacao, nomeArquivo),
+          artifact,
           documento: doc,
           verificacao,
           prazoMin: PRAZO_EXECUCAO_PADRAO.minDiasUteis,
@@ -153,12 +157,14 @@ export function DocumentosEquipamento({ equipamento }: DocumentosEquipamentoProp
           setPrazoUpdating(true);
           try {
             const nomeArquivo = buildDocumentName(preview.documento.tipo, equipamento);
-            const artifact = await PdfService.construirOrcamento(
+            const construir = preview.verificacao.adjusted_at ? PdfService.construirOrcamentoAjustado : PdfService.construirOrcamento;
+            const artifact = await construir(
               equipamento,
               preview.verificacao,
               nomeArquivo,
               { minDiasUteis, maxDiasUteis },
             );
+            if (!artifact) return;
             setPreview((atual) => atual ? { ...atual, artifact, prazoMin: minDiasUteis, prazoMax: maxDiasUteis } : atual);
             return artifact;
           } finally {

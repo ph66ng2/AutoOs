@@ -8,8 +8,10 @@ use url::Url;
 
 static MIGRATOR: Migrator = sqlx::migrate!("./migrations");
 
-const REQUIRED_PROMOTION_MIGRATIONS: [i64; 18] = [27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44];
-const EXPECTED_MIGRATION_COUNT: usize = 44;
+const REQUIRED_PROMOTION_MIGRATIONS: [i64; 19] = [27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 47];
+const EXPECTED_MIGRATION_COUNT: usize = 45;
+// Reservadas pelos PRs #184/#185. A promoção exige ambas antes de aplicar 0047.
+const RESERVED_MIGRATIONS: [i64; 2] = [45, 46];
 const LAST_REQUIRED_APPLIED_MIGRATION: i64 = 28;
 
 fn required_env(name: &str) -> Result<String> {
@@ -121,12 +123,16 @@ fn validate_migration_versions(mut versions: Vec<i64>, expected_count: usize) ->
         "conjunto SQLx incompleto ou inesperado: esperadas {expected_count} migrations (0001–{expected_count:04}), encontradas {}",
         versions.len()
     );
-    for (index, version) in versions.iter().enumerate() {
-        let expected = index as i64 + 1;
+    let mut expected = 1;
+    for version in &versions {
+        while RESERVED_MIGRATIONS.contains(&expected) && !versions.contains(&expected) && versions.contains(&47) {
+            expected += 1;
+        }
         ensure!(
             *version == expected,
             "sequência SQLx inválida: esperada migration {expected:04}, encontrada {version:04}"
         );
+        expected += 1;
     }
     Ok(())
 }
@@ -134,7 +140,7 @@ fn validate_migration_versions(mut versions: Vec<i64>, expected_count: usize) ->
 fn validate_migration_set() -> Result<()> {
     validate_migration_versions(
         MIGRATOR.iter().map(|migration| migration.version).collect(),
-        EXPECTED_MIGRATION_COUNT,
+        EXPECTED_MIGRATION_COUNT + RESERVED_MIGRATIONS.iter().filter(|v| MIGRATOR.iter().any(|m| m.version == **v)).count(),
     )
 }
 
@@ -200,6 +206,16 @@ mod tests {
         assert_eq!(LAST_REQUIRED_APPLIED_MIGRATION, 28);
         assert!(validate_migration_set().is_ok());
         assert!(require_expected_migrations().is_ok());
+    }
+
+    #[test]
+    fn pdf_reserves_only_0045_and_0046() {
+        let mut reserved = (1..=44).collect::<Vec<_>>();
+        reserved.push(47);
+        assert!(validate_migration_versions(reserved.clone(), 45).is_ok());
+        assert!(validate_migration_versions((1..=47).collect(), 47).is_ok());
+        reserved.remove(42);
+        assert!(validate_migration_versions(reserved, 44).is_err());
     }
 
     #[test]
@@ -485,6 +501,8 @@ async fn main() -> Result<()> {
 
     validate_migration_set()?;
     require_expected_migrations()?;
+    ensure!(RESERVED_MIGRATIONS.iter().all(|v| MIGRATOR.iter().any(|m| m.version == *v)),
+        "promoção bloqueada: integre as migrations 0045/0046 dos PRs #184/#185 antes de implantar 0047");
     let database_url = validate_production_target()?;
     let pool = PgPoolOptions::new()
         .max_connections(1)
