@@ -250,6 +250,24 @@ describe("PdfService.gerarOrcamentoAjustado", () => {
     alertSpy.mockRestore();
   });
 
+  it("nao acusa divergencia por arredondamento de ponto flutuante em valores com centavos", async () => {
+    const alertSpy = vi.spyOn(window, "alert").mockImplementation(() => {});
+    const verificacaoCentavos: Verificacao = {
+      ...verificacaoBase,
+      servicos_necessarios: JSON.stringify([
+        { id: "s1", catalogo_id: 1, descricao: "Limpeza", valor: 100.1 },
+        { id: "s2", catalogo_id: 2, descricao: "Calibração", valor: 200.2 },
+      ]),
+      pecas_necessarias: JSON.stringify([]),
+      custo_total: 300.3,
+    };
+    expect(100.1 + 200.2).not.toBe(300.3);
+    const artifact = await PdfService.construirOrcamentoAjustado(equipamentoBase, verificacaoCentavos);
+    expect(alertSpy).not.toHaveBeenCalled();
+    expect(artifact).not.toBeNull();
+    alertSpy.mockRestore();
+  });
+
   it.each([
     ["orçamento", () => PdfService.gerarOrcamento(equipamentoBase, verificacaoBase), "ORÇAMENTO TÉCNICO", "Emissão"],
     ["orçamento ajustado", () => PdfService.gerarOrcamentoAjustado(equipamentoBase, verificacaoBase), "ORÇAMENTO AJUSTADO", "Emissão"],

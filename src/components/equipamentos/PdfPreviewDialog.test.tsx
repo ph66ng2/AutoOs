@@ -43,6 +43,30 @@ describe("PdfPreviewDialog", () => {
     expect(print).toHaveBeenCalledTimes(1);
   });
 
+  it("chama onBeforePrint antes de imprimir e, se os bytes mudarem, recarrega e imprime o PDF canônico", async () => {
+    const proprio = { ...artifact, bytes: new Uint8Array([37]) };
+    const onBeforePrint = vi.fn(async (alvo: typeof proprio) => { alvo.bytes = new Uint8Array([37, 80, 68, 70]); });
+    render(<PdfPreviewDialog artifact={proprio} onOpenChange={vi.fn()} onBeforePrint={onBeforePrint} />);
+    const frame = screen.getByTitle("Prévia do PDF");
+    fireEvent.load(frame);
+    fireEvent.click(screen.getByRole("button", { name: "Imprimir" }));
+
+    await waitFor(() => expect(onBeforePrint).toHaveBeenCalledTimes(1));
+    expect(print).not.toHaveBeenCalled();
+    await waitFor(() => expect(URL.createObjectURL).toHaveBeenCalledTimes(2));
+    fireEvent.load(frame);
+    await waitFor(() => expect(print).toHaveBeenCalledTimes(1));
+  });
+
+  it("imprime direto quando onBeforePrint não troca os bytes", async () => {
+    const onBeforePrint = vi.fn();
+    render(<PdfPreviewDialog artifact={artifact} onOpenChange={vi.fn()} onBeforePrint={onBeforePrint} />);
+    fireEvent.load(screen.getByTitle("Prévia do PDF"));
+    fireEvent.click(screen.getByRole("button", { name: "Imprimir" }));
+    await waitFor(() => expect(print).toHaveBeenCalledTimes(1));
+    expect(onBeforePrint).toHaveBeenCalledTimes(1);
+  });
+
   it("mostra o prazo só quando a prévia é de orçamento", () => {
     const { rerender } = render(<PdfPreviewDialog artifact={artifact} onOpenChange={vi.fn()} />);
     expect(screen.queryByLabelText("Prazo mínimo em dias úteis")).not.toBeInTheDocument();

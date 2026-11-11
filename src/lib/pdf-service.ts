@@ -1193,7 +1193,8 @@ export const PdfService = {
     const totalPecas = pecas.reduce((acc, p) => acc + p.valorTotal, 0);
     const custoTotal = verificacao.custo_total ?? (totalServicos + totalPecas);
 
-    if (totalServicos + totalPecas !== custoTotal) {
+    // Compara em centavos inteiros: 100,10 + 200,20 dá 300,29999… em ponto flutuante.
+    if (Math.round((totalServicos + totalPecas) * 100) !== Math.round(custoTotal * 100)) {
       alert(
         `Divergência detectada: soma dos itens (${formatarMoeda(totalServicos + totalPecas)}) difere do custo total (${formatarMoeda(custoTotal)}).`
       );

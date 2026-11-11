@@ -11,6 +11,11 @@ interface PdfPreviewDialogProps {
   onOpenChange: (open: boolean) => void;
   /** Persiste o arquivo somente quando a pessoa solicitar o download. */
   onDownload?: (artifact: PdfArtifact) => Promise<void> | void;
+  /**
+   * Chamado antes de imprimir (ex.: publicar no portal). Se trocar `artifact.bytes`
+   * pelos bytes canônicos, a prévia recarrega e imprime exatamente esse arquivo.
+   */
+  onBeforePrint?: (artifact: PdfArtifact) => Promise<void> | void;
   /** Só na prévia de orçamento: ajusta o prazo impresso neste PDF, sem gravar no cadastro. */
   prazoExecucao?: {
     minDiasUteis: number;
@@ -26,16 +31,24 @@ function normalizarPrazo(minimo: number, maximo: number) {
   return { minDiasUteis: minOk, maxDiasUteis: maxOk };
 }
 
-export function PdfPreviewDialog({ artifact, onOpenChange, onDownload, prazoExecucao }: PdfPreviewDialogProps) {
+export function PdfPreviewDialog({ artifact, onOpenChange, onDownload, onBeforePrint, prazoExecucao }: PdfPreviewDialogProps) {
   const frameRef = useRef<HTMLIFrameElement>(null);
   const printAfterLoadRef = useRef(false);
   const [downloading, setDownloading] = useState(false);
+  const [preparingPrint, setPreparingPrint] = useState(false);
+  const [bytesRevision, setBytesRevision] = useState(0);
   const [previewReady, setPreviewReady] = useState(false);
   const [prazoMin, setPrazoMin] = useState(String(prazoExecucao?.minDiasUteis ?? PRAZO_EXECUCAO_PADRAO.minDiasUteis));
   const [prazoMax, setPrazoMax] = useState(String(prazoExecucao?.maxDiasUteis ?? PRAZO_EXECUCAO_PADRAO.maxDiasUteis));
-  const url = useMemo(
-    () => artifact ? URL.createObjectURL(new Blob([new Uint8Array(artifact.bytes).buffer], { type: artifact.mimeType })) : null,
-    [artifact],
+  // Os bytes podem ser trocados no próprio artefato (PDF canônico do portal); a revisão força nova URL.
+  const { url, urlBytes } = useMemo(
+    () => artifact
+      ? {
+        url: URL.createObjectURL(new Blob([new Uint8Array(artifact.bytes).buffer], { type: artifact.mimeType })),
+        urlBytes: artifact.bytes,
+      }
+      : { url: null, urlBytes: null },
+    [artifact, bytesRevision],
   );
 
   useEffect(() => () => { if (url) URL.revokeObjectURL(url); }, [url]);
@@ -77,9 +90,28 @@ export function PdfPreviewDialog({ artifact, onOpenChange, onDownload, prazoExec
     window.setTimeout(() => frameWindow.print(), 0);
   }
 
+  /** Executa `onBeforePrint`; se os bytes mudaram, recarrega a prévia e imprime ao terminar de carregar. */
+  async function prepararEImprimir() {
+    if (onBeforePrint && artifact) {
+      setPreparingPrint(true);
+      try {
+        await onBeforePrint(artifact);
+      } finally {
+        setPreparingPrint(false);
+      }
+      if (artifact.bytes !== urlBytes) {
+        printAfterLoadRef.current = true;
+        setPreviewReady(false);
+        setBytesRevision((rev) => rev + 1);
+        return;
+      }
+    }
+    imprimirIframe();
+  }
+
   async function print() {
     if (!prazoExecucao) {
-      imprimirIframe();
+      await prepararEImprimir();
       return;
     }
     const normalizado = normalizarPrazo(Number(prazoMin), Number(prazoMax));
@@ -87,7 +119,7 @@ export function PdfPreviewDialog({ artifact, onOpenChange, onDownload, prazoExec
       normalizado.minDiasUteis !== prazoExecucao.minDiasUteis
       || normalizado.maxDiasUteis !== prazoExecucao.maxDiasUteis;
     if (!mudou) {
-      imprimirIframe();
+      await prepararEImprimir();
       return;
     }
     printAfterLoadRef.current = true;
@@ -105,7 +137,7 @@ export function PdfPreviewDialog({ artifact, onOpenChange, onDownload, prazoExec
     }
   }
 
-  const ocupado = downloading || Boolean(prazoExecucao?.updating);
+  const ocupado = downloading || preparingPrint || Boolean(prazoExecucao?.updating);
 
   return (
     <Dialog open={Boolean(artifact)} onOpenChange={onOpenChange}>
@@ -129,7 +161,7 @@ export function PdfPreviewDialog({ artifact, onOpenChange, onDownload, prazoExec
             </Button>
           )}
           <Button className="min-h-12 gap-2 text-base" disabled={!previewReady || ocupado} onClick={() => void print()}>
-            {prazoExecucao?.updating ? <Loader2 className="animate-spin" /> : <Printer />} Imprimir
+            {prazoExecucao?.updating || preparingPrint ? <Loader2 className="animate-spin" /> : <Printer />} Imprimir
           </Button>
           {prazoExecucao && (
             <div className="flex items-center gap-2 text-sm">

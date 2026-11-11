@@ -8,7 +8,7 @@ import { CounterLayout } from "@/components/CounterLayout";
 const db = vi.hoisted(() => ({
   buscarEquipamentosPorSerial: vi.fn(), criarEquipamento: vi.fn(), listarEquipamentos: vi.fn(),
   listarClientes: vi.fn(), listarProdutos: vi.fn(), atualizarStatusEquipamento: vi.fn(), buscarEquipamento: vi.fn(), salvarVerificacao: vi.fn(), abrirPainelImpressorasWindows: vi.fn(), listarImpressorasWindows: vi.fn(), imprimirTesteBmitag: vi.fn(),
-  listarClienteContatos: vi.fn(), criarClienteContato: vi.fn(), buscarCliente: vi.fn(), atualizarCliente: vi.fn(),
+  listarClienteContatos: vi.fn(), criarClienteContato: vi.fn(), buscarCliente: vi.fn(), atualizarCliente: vi.fn(), publicarDocumentoPortal: vi.fn(),
 }));
 const emailService = vi.hoisted(() => ({ enviarOrdemEntrada: vi.fn() }));
 const ensureSensitiveAccess = vi.hoisted(() => vi.fn());
@@ -23,7 +23,10 @@ vi.mock("@/components/equipamentos/ClienteSelector", () => ({
   ClienteSelector: ({ onClienteSelecionado }: { onClienteSelecionado: (client: unknown) => void }) => <button onClick={() => onClienteSelecionado({ id: 9, empresa_id: 7, nome: "Cliente balcão", telefone: "71999999999" })}>Selecionar cliente de teste</button>,
 }));
 vi.mock("@/components/equipamentos/DocumentosEquipamento", () => ({ DocumentosEquipamento: () => <div>Documentos</div> }));
-vi.mock("@/components/equipamentos/PdfPreviewDialog", () => ({ PdfPreviewDialog: () => null }));
+const previewProps = vi.hoisted(() => ({ current: null as null | { onBeforePrint?: (artifact: unknown) => Promise<void> | void } }));
+vi.mock("@/components/equipamentos/PdfPreviewDialog", () => ({
+  PdfPreviewDialog: (props: { onBeforePrint?: (artifact: unknown) => Promise<void> | void }) => { previewProps.current = props; return null; },
+}));
 
 function renderCounter() {
   return render(<MemoryRouter initialEntries={["/balcao"]}><Routes><Route element={<CounterLayout onChangeMode={vi.fn()} />}><Route path="/balcao" element={<Balcao />} /></Route></Routes></MemoryRouter>);
@@ -100,6 +103,28 @@ describe("Modo Balcão", () => {
     await waitFor(() => expect(db.buscarEquipamento).toHaveBeenCalledWith(42));
     await user.click(await screen.findByRole("button", { name: /visualizar \/ imprimir ordem/i }));
     await waitFor(() => expect(construir).toHaveBeenCalledWith(expect.objectContaining({ atualizado_em: "2026-11-10T12:00:01.000Z" })));
+    construir.mockRestore();
+  }, 20000);
+
+  it("imprimir a ordem sem baixar publica o PDF oficial no portal uma única vez", async () => {
+    ensureSensitiveAccess.mockResolvedValue(false);
+    const equipamento = { id: 42, cliente_id: 9, serial_number: "SN-42", marca: "Zebra", modelo: "ZD220", tipo: "Impressora", status: "RECEBIDO", data_entrada: "2026-09-01", atualizado_em: "2026-11-10T12:00:01.000Z" };
+    db.criarEquipamento.mockResolvedValue(equipamento);
+    db.salvarVerificacao.mockResolvedValue({ id: 3 });
+    db.buscarEquipamento.mockResolvedValue(equipamento);
+    db.publicarDocumentoPortal.mockResolvedValue([37, 80, 68, 70]);
+    const artifact = { filename: "os.pdf", bytes: new Uint8Array([37]), mimeType: "application/pdf" as const, portal: { tipo: "ORDEM_SERVICO" as const, versaoId: null, atualizadoEm: equipamento.atualizado_em } };
+    const construir = vi.spyOn(PdfService, "construirOrdemServico").mockResolvedValue(artifact);
+    const user = userEvent.setup(); renderCounter(); await reachReview(user);
+    await user.click(screen.getByRole("button", { name: /salvar como recebido/i }));
+    await user.click(await screen.findByRole("button", { name: /visualizar \/ imprimir ordem/i }));
+    await waitFor(() => expect(construir).toHaveBeenCalled());
+    expect(previewProps.current?.onBeforePrint).toBeTypeOf("function");
+    await previewProps.current!.onBeforePrint!(artifact);
+    await previewProps.current!.onBeforePrint!(artifact);
+    expect(db.publicarDocumentoPortal).toHaveBeenCalledTimes(1);
+    expect(db.publicarDocumentoPortal).toHaveBeenCalledWith(42, expect.any(Uint8Array), artifact.portal);
+    expect(Array.from(artifact.bytes)).toEqual([37, 80, 68, 70]);
     construir.mockRestore();
   }, 20000);
 
