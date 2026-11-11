@@ -118,7 +118,14 @@ export interface ItemHistorico {
   ordemCompra: string | null;
 }
 
+export interface DocumentoOficialPortal {
+  id: number;
+  tipo: "ORDEM_SERVICO" | "ORCAMENTO" | "ORCAMENTO_AJUSTADO";
+  versao: number | null;
+}
+
 export interface DetalheAtendimento {
+  documentos?: DocumentoOficialPortal[];
   id: number;
   equipamento: string;
   serie: string | null;
@@ -224,6 +231,8 @@ export const portalApi = {
   confirmarSenha: (sessao: string, senha: string) => post<{ ok: boolean }>({ acao: "confirmarSenha", sessao, senha }),
   listar: (sessao: string) => post<ListaAtendimentos>({ acao: "listar", sessao }),
   detalhe: (sessao: string, equipamentoId: number) => post<DetalheAtendimento>({ acao: "detalhe", sessao, equipamentoId }),
+  documento: (sessao: string, equipamentoId: number, documentoId: number) =>
+    post<{ url: string; arquivo: string }>({ acao: "documento", sessao, equipamentoId, documentoId }),
   /** `ordemCompra` é obrigatória para APROVAR quando `cliente.exigeOrdemCompra` (erro ORDEM_COMPRA_OBRIGATORIA, 422). */
   responder: (
     sessao: string, equipamentoId: number, versaoId: number, decisao: Decisao, respostaVigenteId: number | null,
@@ -367,4 +376,23 @@ export function whatsappUrl(numero: string, texto: string): string {
   const digits = numero.replace(/\D/g, "");
   const full = digits.length >= 12 && digits.startsWith("55") ? digits : `55${digits}`;
   return `https://wa.me/${full}?text=${encodeURIComponent(texto)}`;
+}
+
+/** Reautoriza a cada clique; a URL curta nunca é persistida na sessão. */
+export async function baixarDocumentoOficial(sessao: string, equipamentoId: number, documentoId: number): Promise<void> {
+  const documento = await portalApi.documento(sessao, equipamentoId, documentoId);
+  const response = await fetch(documento.url, { credentials: "omit", cache: "no-store", referrerPolicy: "no-referrer" });
+  if (!response.ok) throw new Error("Download indisponível");
+  const blob = await response.blob();
+  const url = URL.createObjectURL(blob);
+  try {
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = documento.arquivo;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+  } finally {
+    window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+  }
 }

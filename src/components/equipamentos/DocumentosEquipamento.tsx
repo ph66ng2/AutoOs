@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { db } from "@/lib/db";
 import { PdfService, PRAZO_EXECUCAO_PADRAO, type PdfArtifact } from "@/lib/pdf-service";
 import { PdfPreviewDialog } from "@/components/equipamentos/PdfPreviewDialog";
+import { publicarPdfOficial } from "@/lib/portal-documentos";
 import { STATUS_COM_ORCAMENTO } from "@/pages/equipamentos/equipamentos-page-constants";
 import type { Equipamento, Verificacao } from "@/types";
 
@@ -70,8 +71,12 @@ export function DocumentosEquipamento({ equipamento }: DocumentosEquipamentoProp
           console.warn("[DocumentosEquipamento] Nenhuma verificação encontrada para gerar orçamento.");
           return;
         }
+        const artifact = verificacao.adjusted_at
+          ? await PdfService.construirOrcamentoAjustado(equipamento, verificacao, nomeArquivo)
+          : await PdfService.construirOrcamento(equipamento, verificacao, nomeArquivo);
+        if (!artifact) return;
         setPreview({
-          artifact: await PdfService.construirOrcamento(equipamento, verificacao, nomeArquivo),
+          artifact,
           documento: doc,
           verificacao,
           prazoMin: PRAZO_EXECUCAO_PADRAO.minDiasUteis,
@@ -153,12 +158,14 @@ export function DocumentosEquipamento({ equipamento }: DocumentosEquipamentoProp
           setPrazoUpdating(true);
           try {
             const nomeArquivo = buildDocumentName(preview.documento.tipo, equipamento);
-            const artifact = await PdfService.construirOrcamento(
+            const construir = preview.verificacao.adjusted_at ? PdfService.construirOrcamentoAjustado : PdfService.construirOrcamento;
+            const artifact = await construir(
               equipamento,
               preview.verificacao,
               nomeArquivo,
               { minDiasUteis, maxDiasUteis },
             );
+            if (!artifact) return;
             setPreview((atual) => atual ? { ...atual, artifact, prazoMin: minDiasUteis, prazoMax: maxDiasUteis } : atual);
             return artifact;
           } finally {
@@ -175,6 +182,8 @@ export function DocumentosEquipamento({ equipamento }: DocumentosEquipamentoProp
           await PdfService.salvarOrcamento(artifact, equipamento, nomeArquivo);
         }
       }}
+      // Imprimir sem baixar também publica; publicarPdfOficial é idempotente por artefato.
+      onBeforePrint={(artifact) => publicarPdfOficial(artifact, equipamento)}
     />
     </>
   );

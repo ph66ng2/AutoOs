@@ -1,7 +1,7 @@
 import { dateTime, money, shortDate, type DetalheAtendimento } from "./portal-api";
 
 /**
- * Documentos do portal gerados no navegador a partir do detalhe do atendimento.
+ * Comprovante de entrega gerado no portal. OS e orçamento vêm dos arquivos oficiais.
  * O modelo (blocos) é puro e testável; o `jspdf` só é carregado quando o cliente pede o PDF.
  */
 export type Bloco =
@@ -48,111 +48,6 @@ function blocosEquipamento(detalhe: DetalheAtendimento): Bloco[] {
   return blocos;
 }
 
-type OrcamentoDetalhe = NonNullable<DetalheAtendimento["orcamento"]>;
-
-function blocosServicosEPecas(orc: OrcamentoDetalhe): Bloco[] {
-  const blocos: Bloco[] = [];
-  for (const servico of orc.servicos) {
-    blocos.push({
-      tipo: "linha",
-      esquerda: servico.descricao,
-      direita: money(servico.valor),
-      detalhes: servico.pecas.map((p) => `${p.quantidade} x ${p.nome} - ${money(p.valorUnitario)} cada`),
-    });
-  }
-  for (const peca of orc.pecas) {
-    blocos.push({ tipo: "linha", esquerda: `${peca.quantidade} x ${peca.nome}`, direita: money(peca.valorTotal) });
-  }
-  return blocos;
-}
-
-export function modeloOrcamento(detalhe: DetalheAtendimento): ModeloDocumento | null {
-  const orc = detalhe.orcamento;
-  if (!orc) return null;
-  const blocos: Bloco[] = [
-    ...blocosEquipamento(detalhe),
-    { tipo: "secao", texto: "Defeito relatado" },
-    { tipo: "nota", texto: detalhe.defeitoRelatado?.trim() || "Não informado." },
-    { tipo: "secao", texto: `Orçamento, versão ${orc.versao}` },
-    { tipo: "campo", rotulo: "Publicado em", valor: shortDate(orc.publicadaEm) },
-  ];
-  if (orc.validoAte) {
-    blocos.push({ tipo: "campo", rotulo: "Válido até", valor: shortDate(new Date(new Date(orc.validoAte).getTime() - 1).toISOString()) });
-  }
-  blocos.push({ tipo: "secao", texto: "Serviços e peças" });
-  blocos.push(...blocosServicosEPecas(orc));
-  blocos.push({ tipo: "total", rotulo: "Total do orçamento", valor: money(orc.valorTotal) });
-
-  const final = detalhe.valores?.final ?? null;
-  if (final != null && valoresDiferem(final, orc.valorTotal)) {
-    blocos.push({ tipo: "total", rotulo: "Valor final", valor: money(final) });
-    blocos.push({ tipo: "nota", texto: `Valor orçado: ${money(orc.valorTotal)}. O valor final foi ajustado pela equipe.` });
-  }
-
-  const resposta = orc.resposta && orc.resposta.decisao !== "DESFEITA" ? orc.resposta : null;
-  if (resposta) {
-    blocos.push({ tipo: "secao", texto: "Resposta do cliente" });
-    blocos.push({ tipo: "campo", rotulo: "Decisão", valor: resposta.decisao === "APROVAR" ? "Orçamento aceito" : "Orçamento recusado" });
-    blocos.push({ tipo: "campo", rotulo: "Registrada em", valor: dateTime(resposta.registradaEm) });
-    blocos.push({ tipo: "campo", rotulo: "Protocolo", valor: resposta.protocolo });
-    if (resposta.contato) blocos.push({ tipo: "campo", rotulo: "Contato", valor: resposta.contato });
-    if (resposta.ordemCompra) blocos.push({ tipo: "campo", rotulo: "Ordem de compra", valor: resposta.ordemCompra });
-  }
-  return { titulo: "Orçamento", arquivo: `orcamento-${detalhe.id}-v${orc.versao}.pdf`, blocos };
-}
-
-const STATUS_COM_SERVICOS_APROVADOS = new Set(["APROVADO", "EM_MANUTENCAO", "AGUARDANDO_PECA", "PRONTO", "ENTREGUE"]);
-
-const ETAPA_ROTULO: Record<string, string> = {
-  RECEBIDO: "Recebido",
-  EM_VERIFICACAO: "Em verificação",
-  VERIFICADO: "Verificado",
-  AGUARDANDO_APROVACAO: "Aguardando aprovação",
-  APROVADO: "Aprovado",
-  REPROVADO: "Reprovado",
-  EM_MANUTENCAO: "Em manutenção",
-  AGUARDANDO_PECA: "Aguardando peça",
-  PRONTO: "Pronto",
-  ENTREGUE: "Entregue",
-};
-
-/**
- * ENTREGUE também é alcançável a partir de REPROVADO (devolução sem conserto), então lá a aprovação
- * precisa constar nas etapas e não pode ser anterior a uma reprovação.
- */
-function houveAprovacao(detalhe: DetalheAtendimento): boolean {
-  if (!STATUS_COM_SERVICOS_APROVADOS.has(detalhe.status)) return false;
-  if (detalhe.status !== "ENTREGUE") return true;
-  const em = (status: string) => detalhe.etapas?.find((etapa) => etapa.status === status)?.em ?? null;
-  const aprovado = em("APROVADO");
-  const reprovado = em("REPROVADO");
-  if (!aprovado) return false;
-  return !reprovado || new Date(aprovado).getTime() >= new Date(reprovado).getTime();
-}
-
-/** Ordem de serviço: sempre gera um modelo; os serviços aprovados aparecem só quando já há aprovação. */
-export function modeloOrdemServico(detalhe: DetalheAtendimento): ModeloDocumento {
-  const orc = detalhe.orcamento;
-  const blocos: Bloco[] = [
-    { tipo: "secao", texto: "Ordem de serviço" },
-    { tipo: "campo", rotulo: "Número", valor: `OS-${String(detalhe.id).padStart(5, "0")}` },
-    { tipo: "campo", rotulo: "Situação", valor: detalhe.titulo },
-    ...blocosEquipamento(detalhe),
-    { tipo: "secao", texto: "Defeito relatado" },
-    { tipo: "nota", texto: detalhe.defeitoRelatado?.trim() || "Não informado." },
-  ];
-  if (orc && houveAprovacao(detalhe)) {
-    blocos.push({ tipo: "secao", texto: "Serviços aprovados" });
-    blocos.push(...blocosServicosEPecas(orc));
-    blocos.push({ tipo: "total", rotulo: "Valor do atendimento", valor: money(detalhe.valores?.atual ?? orc.valorTotal) });
-  }
-  blocos.push({ tipo: "secao", texto: "Andamento" });
-  for (const etapa of detalhe.etapas ?? []) {
-    blocos.push({ tipo: "campo", rotulo: ETAPA_ROTULO[etapa.status] ?? etapa.status, valor: dateTime(etapa.em) });
-  }
-  return { titulo: "Ordem de serviço", arquivo: `ordem-servico-${detalhe.id}.pdf`, blocos };
-}
-
 export function modeloComprovanteEntrega(detalhe: DetalheAtendimento): ModeloDocumento | null {
   if (detalhe.status !== "ENTREGUE") return null;
   const { final, orcado, ajustado } = valoresDeEntrega(detalhe);
@@ -169,7 +64,7 @@ export function modeloComprovanteEntrega(detalhe: DetalheAtendimento): ModeloDoc
     blocos.push({ tipo: "campo", rotulo: "Protocolo do aceite", valor: resposta.protocolo });
     if (resposta.ordemCompra) blocos.push({ tipo: "campo", rotulo: "Ordem de compra", valor: resposta.ordemCompra });
   }
-  return { titulo: "Comprovante de entrega", arquivo: `comprovante-entrega-${detalhe.id}.pdf`, blocos };
+  return { titulo: "Comprovante de entrega — gerado no portal", arquivo: `comprovante-entrega-${detalhe.id}.pdf`, blocos };
 }
 
 /** Desenha o modelo num PDF A4 simples e salva o arquivo. `jspdf` entra por import dinâmico. */

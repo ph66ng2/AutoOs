@@ -1,12 +1,12 @@
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import PortalDetalhe from "./PortalDetalhe";
-import { portalApi, type DetalheAtendimento, type OrcamentoPortal } from "./portal-api";
+import { baixarDocumentoOficial, portalApi, type DetalheAtendimento, type OrcamentoPortal } from "./portal-api";
 import type { PortalSession } from "./portal-session";
 
 vi.mock("./portal-api", async (importOriginal) => {
   const original = await importOriginal<typeof import("./portal-api")>();
-  return { ...original, portalApi: { detalhe: vi.fn(), responder: vi.fn(), solicitar: vi.fn(), confirmarSenha: vi.fn() } };
+  return { ...original, baixarDocumentoOficial: vi.fn().mockResolvedValue(undefined), portalApi: { detalhe: vi.fn(), responder: vi.fn(), solicitar: vi.fn(), confirmarSenha: vi.fn() } };
 });
 
 const gerarPdf = vi.fn(async () => {});
@@ -30,6 +30,7 @@ const ENDERECO = "Rua das Flores, 100, Salvador - BA";
 
 function detalhe(extra: Partial<DetalheAtendimento> = {}): DetalheAtendimento {
   return {
+    documentos: [{ id: 1, tipo: "ORDEM_SERVICO", versao: null }, { id: 2, tipo: "ORCAMENTO", versao: 2 }],
     id: 28, equipamento: "Impressora Zebra ZT230", serie: "SER-123", patrimonio: null,
     status: "AGUARDANDO_APROVACAO", titulo: "O orçamento aguarda sua resposta", orientacao: "Confira a proposta abaixo.",
     statusAlteradoEm: "2026-10-14T12:00:00Z", entradaEm: "2026-10-10T12:00:00Z",
@@ -102,25 +103,45 @@ describe("fotos", () => {
 });
 
 describe("documentos", () => {
-  it("gera o PDF do orçamento sob demanda", async () => {
+  it("atendimento antigo oferece o balcão sem gerar um PDF paralelo", async () => {
+    await abrir(detalhe({ documentos: [] }));
+    expect(screen.getByText("Ordem de serviço: documento disponível no balcão.")).toBeInTheDocument();
+    expect(screen.getByText("Orçamento: documento disponível no balcão.")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Orçamento.*PDF/ })).toBeNull();
+    expect(screen.queryByRole("button", { name: /Ordem de serviço.*PDF/ })).toBeNull();
+    expect(gerarPdf).not.toHaveBeenCalled();
+  });
+
+  it("mostra falha de download e permite tentar novamente", async () => {
+    vi.mocked(baixarDocumentoOficial).mockRejectedValueOnce(new Error("offline"));
     await abrir(detalhe());
-    fireEvent.click(screen.getByRole("button", { name: "Orçamento (PDF)" }));
-    await waitFor(() => expect(gerarPdf).toHaveBeenCalledTimes(1));
+    fireEvent.click(screen.getByRole("button", { name: "Ordem de serviço (PDF)" }));
+    await screen.findByText(/Não foi possível baixar o documento/);
+    expect(screen.getByRole("button", { name: "Ordem de serviço (PDF)" })).toBeEnabled();
+  });
+
+  it("baixa o arquivo oficial do orçamento sob demanda", async () => {
+    await abrir(detalhe());
+    fireEvent.click(screen.getByRole("button", { name: "Orçamento v2 (PDF)" }));
+    await waitFor(() => expect(baixarDocumentoOficial).toHaveBeenCalled());
+    expect(gerarPdf).not.toHaveBeenCalled();
+    expect(baixarDocumentoOficial).toHaveBeenCalledWith(session.token, 28, 2);
     expect(screen.queryByRole("button", { name: /Comprovante de entrega/ })).toBeNull();
   });
 
   it("mostra o comprovante de entrega quando entregue", async () => {
     await abrir(detalhe({ status: "ENTREGUE", titulo: "Equipamento entregue", valores: { orcamento: 350, final: 350, atual: 350 } }));
-    expect(screen.getByRole("button", { name: "Comprovante de entrega (PDF)" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Orçamento (PDF)" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Comprovante de entrega — gerado no portal (PDF)" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Orçamento v2 (PDF)" })).toBeInTheDocument();
     const resumo = screen.getByRole("region", { name: "Resumo da entrega" });
     expect(within(resumo).getByRole("button", { name: "Ordem de serviço (PDF)" })).toBeInTheDocument();
   });
 
-  it("mostra a ordem de serviço em AGUARDANDO_APROVACAO e gera o PDF ao tocar", async () => {
+  it("baixa a ficha oficial de recebimento em AGUARDANDO_APROVACAO", async () => {
     await abrir(detalhe());
     fireEvent.click(screen.getByRole("button", { name: "Ordem de serviço (PDF)" }));
-    await waitFor(() => expect(gerarPdf).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(baixarDocumentoOficial).toHaveBeenCalled());
+    expect(gerarPdf).not.toHaveBeenCalled();
   });
 });
 
@@ -217,7 +238,7 @@ describe("entregue", () => {
     const resumo = screen.getByRole("region", { name: "Resumo da entrega" });
     expect(resumo).toHaveTextContent(/Valor final\s*R\$\s*350,00/);
     expect(resumo).not.toHaveTextContent("ajustado na entrega");
-    expect(within(resumo).getByRole("button", { name: "Comprovante de entrega (PDF)" })).toBeInTheDocument();
+    expect(within(resumo).getByRole("button", { name: "Comprovante de entrega — gerado no portal (PDF)" })).toBeInTheDocument();
   });
 
   it("valor final diferente mostra os dois com a nota", async () => {

@@ -124,7 +124,7 @@ OS em `AGUARDANDO_APROVACAO` sem versão aberta no portal (casos antigos, de ant
 ## Retirada, Ordem de serviço e título do orçamento
 
 - **Endereço de retirada (em PRONTO).** O bloco de endereço traz **Como chegar** (abre a rota no Google Maps), **Abrir no Google Maps** e **Compartilhar endereço**. Este último usa o compartilhamento do celular, com nome, endereço e link do mapa; sem essa função no navegador, copia o endereço. O mesmo bloco aparece no link individual `#/c/` quando o atendimento está em PRONTO (campo `retirada`, ver `docs/PORTAL_STATUS_PUBLICO.md`).
-- **Ordem de serviço (PDF).** Aparece em Documentos em qualquer status. Serviços e valor só entram depois da aprovação (APROVADO, EM_MANUTENCAO, AGUARDANDO_PECA, PRONTO ou ENTREGUE). O PDF não traz acessórios, contador de páginas, técnico, responsável pela entrega nem observações: esses campos não fazem parte do contrato de `detalhe`.
+- **Ordem de serviço (PDF).** Em Documentos, baixa a mesma ficha oficial de recebimento emitida no sistema, sem serviços nem valores. Só aparece o botão quando o arquivo oficial foi publicado; sem ele, informa que o documento está disponível no balcão. Ver “PDFs oficiais no portal” abaixo.
 - **Orçamento em preparação.** Em AGUARDANDO_APROVACAO sem orçamento publicado, o título do detalhe é “Orçamento em preparação” (tom indigo, na 3ª etapa da linha do tempo). Na lista, o mesmo título aparece quando o atendimento está aguardando aprovação sem resposta pendente. Limitação: a lista decide isso só no front, sem saber se há versão publicada. Se as respostas online estiverem desligadas, ou a versão estiver encerrada ou vencida sem resposta, a lista mostra “Orçamento em preparação” mesmo com orçamento. O detalhe mantém o título do servidor quando há orçamento.
 
 ## Estados
@@ -288,6 +288,36 @@ Pré-requisitos: passos 1–4 da Ativação concluídos; build do AutoOS a parti
 - A senha identifica o contato; por isso duas senhas iguais no mesmo CPF/CNPJ são recusadas.
 - Documento repetido em duas empresas com o mesmo contato não entra (não há como escolher a empresa com segurança).
 
+## PDFs oficiais no portal (0047, 10/11/2026)
+
+A OS e o orçamento não são mais desenhados pelo navegador do portal. O `PdfService` emite o documento oficial e manda seus bytes ao comando `publicar_documento_portal`. A prévia não publica: a publicação acontece só ao salvar/imprimir ou enviar, com o artefato final (inclusive o prazo escolhido no diálogo); o arquivo local e o anexo do e-mail usam esse mesmo artefato. Imprimir sem baixar também publica, em todas as prévias de OS/orçamento (Balcão, Equipamentos e Documentos do equipamento), inclusive depois de mudar o prazo no diálogo: a impressão aguarda a publicação e imprime os bytes canônicos. Imprimir e baixar o mesmo artefato publica uma vez só. Verificação com `adjusted_at` nunca é publicada como orçamento original. A OS é a ficha de recebimento do sistema, sem serviços nem valores. O e-mail e Documentos usam o construtor de orçamento ajustado quando existe `adjusted_at`.
+
+O comando reutiliza a configuração Supabase Storage existente no keyring (`autoos/storage_config`); URL e chave de serviço não vão para o portal. A empresa vem da sessão ativa, nunca de um caminho enviado pelo frontend. Os arquivos ficam em `portal-documentos/<empresa>/<atendimento>/<tipo>/<versaoId ou 0>/<sha256>.pdf`, bucket **privado**, limite 15 MiB e MIME `application/pdf`. A referência fica em `portal_documentos_oficiais`, com FK por empresa, RLS e sem acesso de `anon`/`authenticated`.
+
+A primeira OS publicada e o orçamento original de cada versão são canônicos: reemissões usam os bytes já publicados, inclusive no arquivo local e e-mail. O ajustado tem referência separada (`ORCAMENTO_AJUSTADO`) e pode avançar com uma nova revisão do atendimento. V1, V2 e ajustado aparecem com rótulos próprios; o original não é substituído pelo ajustado. A versão e o token `atualizado_em` são capturados antes de desenhar; registro desatualizado ou de outra empresa é recusado. Isso não cria versão de orçamento só por abrir uma prévia: um orçamento ainda não publicado fica sem referência; o envio por e-mail tenta publicar a versão antes de gerar seu anexo.
+
+A publicação individual, em lote, por WhatsApp e após alteração de serviços também emite o arquivo oficial. Falha nesse trabalho em segundo plano não desfaz a publicação da proposta. No salvamento e no envio, a publicação é aguardada para reutilizar o canônico; uma requisição ao Storage tem timeout de 12 segundos, e a falha é capturada. Emissão, salvamento e e-mail continuam com os bytes locais. Há log e nova tentativa no próximo salvamento, emissão ou publicação; não há fila persistente de uploads.
+
+Ao baixar, a Edge Function chama `portal_documentos_atendimento`: revalida a sessão por senha, contato ativo, portal ligado, empresa e cliente do atendimento. Cada documento guarda o `cliente_id` do equipamento na emissão e só é listado para esse cliente: se o equipamento trocar de cliente, o novo não vê os PDFs do anterior e recebe emissões próprias. O navegador manda só atendimento e ID do documento, nunca caminho/bucket. A função assina o caminho autorizado por **60 segundos** e o navegador salva o arquivo recebido, sem jsPDF. A política restritiva do bucket bloqueia `anon`/`authenticated` mesmo se existir uma política permissiva genérica. Uma URL já assinada continua válida até expirar, mesmo após revogar a sessão.
+
+**Legado e comprovante.** Sem arquivo, o portal mostra “documento disponível no balcão”, sem botão para PDF paralelo. Não há reconstrução nem importação automática dos PDFs antigos guardados nos PCs; uma nova emissão oficial pode disponibilizá-los. O comprovante de entrega continua sendo gerado no navegador e é rotulado **“Comprovante de entrega — gerado no portal”** no botão e no próprio PDF.
+
+### Implantação pelo Paulo (não executada neste PR)
+
+1. Ordem das migrations: a `master` já tem #184 (0048) e #185 (0049); a 0047 deste PR é anterior a elas na numeração, mas nova no banco. `feature` tem 0045/0046 com outros conteúdos (`portal_publicado_e_servicos_aprovados` e `portal_servicos_atuais_aprovados`); 0045–0047 estão em `scripts/sqlx-reserved-migrations.txt`. Não copiar migrations de `feature` para `master`.
+2. `production_migrate.rs` exige 0027–0044 e 0047–0049, com contagem de 47 arquivos (0001–0044, 0047–0049). Como 0048/0049 podem já estar aplicadas quando a 0047 chegar, aplicar a 0047 fora de ordem é esperado (SQLx aplica versões ausentes). Revalidar `node scripts/check-sqlx-migrations.mjs` e `cargo test --bin production_migrate`.
+3. Pelo fluxo aprovado de migrations, aplicar 0047 ao banco interno conectado ao portal. No Supabase ela cria/configura o bucket privado e a política de Storage; no PostgreSQL sem schema `storage`, só cria tabela/funções. Não executar `supabase db push` com as migrations SaaS. Confirmar bucket `portal-documentos` privado, MIME PDF e políticas; executar os contratos num ambiente descartável equivalente antes de promover.
+4. Publicar a Edge Function `portal-cliente` depois da migration; depois o site via `deploy-portal-site.yml` e o desktop atualizado. Usar os workflows e aprovações existentes. Nenhuma chave nova é necessária: a Edge usa o segredo de serviço já configurado, e cada PC emissor precisa da configuração de Storage no keyring apontando para o mesmo projeto do banco.
+5. Piloto: emitir e imprimir uma OS; publicar/enviar orçamento V1; comparar SHA-256 do anexo e do download; alterar/publicar V2 e emitir ajustado; verificar os rótulos e os arquivos anteriores. Testar contato de outro cliente, sessão revogada, portal pausado, URL expirada e falha de Storage (emissão/envio devem continuar). Para OS antigas, confirmar a mensagem de balcão.
+
+### Limitações e manutenção
+
+- A primeira emissão canônica não é reescrita ao mudar opções de apresentação (por exemplo, prazo de execução da prévia) na mesma versão original. Para mudar uma proposta já publicada, publicar nova versão; o ajustado fica separado.
+- PDFs anteriores à ativação não podem ser recuperados byte a byte do banco: existiam apenas nos PCs. Não são apresentados como documentos históricos oficiais reconstruídos.
+- Upload pode ter sucesso e o registro falhar por concorrência, ou duas emissões concorrentes subirem arquivos diferentes antes de a primeira registrar o canônico. Esses objetos privados sem referência podem exigir limpeza administrativa futura; não apagar por nome sem conferir as referências. O portal só assina arquivos referenciados.
+- Não houve implantação nem validação contra Storage real neste PR. O contrato SQL foi executado em PostgreSQL local descartável, incluindo simulação do schema Storage e políticas permissivas; o HTTP da assinatura é testado com mocks.
+
+Testes adicionais: `supabase/tests/portal_documentos_contract.sql` (incluído no CI), `portal-cliente-function.test.ts`, `portal-documento-download.test.ts`, `PortalDetalhe.test.tsx`, `pdf-service.test.ts` e `db-portal-documentos.test.ts`.
 
 ## Permissões da equipe (0049)
 

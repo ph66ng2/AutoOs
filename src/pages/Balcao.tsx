@@ -41,6 +41,7 @@ import { useCounterSession } from "@/components/CounterLayout";
 import { useSensitiveAccess } from "@/hooks/useSensitiveAccess";
 import { db, type ImpressoraWindows } from "@/lib/db";
 import { PdfService, type PdfArtifact } from "@/lib/pdf-service";
+import { publicarPdfOficial } from "@/lib/portal-documentos";
 import { PdfPreviewDialog } from "@/components/equipamentos/PdfPreviewDialog";
 import { CommunicationEmailDialog } from "@/components/equipamentos/CommunicationEmailDialog";
 import { afterCounterRegistration } from "@/lib/counter-registration";
@@ -567,6 +568,13 @@ function QuickEntry({ onBack }: { onBack: () => void }) {
         observacoes: `Registro imediato no balcão. Resultado do teste: ${rotuloResultadoTeste(resultadoTesteImpressao)}.`,
         concluida: false,
       });
+      // salvarVerificacao altera atualizado_em; a ordem impressa e publicada precisa do token novo.
+      try {
+        const recarregado = await db.buscarEquipamento(equipment.id!);
+        if (recarregado) setCreated(recarregado);
+      } catch (cause) {
+        console.warn("[Balcao] recarga pós-laudo indisponível", cause);
+      }
       void Promise.resolve(afterCounterRegistration(equipment)).catch(
         (cause: unknown) =>
           console.warn("[Balcao] extensão pós-cadastro indisponível", cause),
@@ -635,6 +643,8 @@ function QuickEntry({ onBack }: { onBack: () => void }) {
           onDownload={async (artifact) => {
             await PdfService.salvarOrdemServico(artifact, created);
           }}
+          // Imprimir sem baixar também publica; publicarPdfOficial é idempotente por artefato.
+          onBeforePrint={(artifact) => publicarPdfOficial(artifact, created)}
         />
         <CommunicationEmailDialog
           open={emailPromptOpen}
