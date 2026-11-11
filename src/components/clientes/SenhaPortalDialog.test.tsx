@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { gerarSenhaPortal, linkWhatsappAcesso, senhaPortalValida, SenhaPortalDialog } from "@/components/clientes/SenhaPortalDialog";
+import { gerarSenhaPortal, linkWhatsappAcesso, mensagemAcessoPortal, PORTAL_URL, senhaPortalValida, SenhaPortalDialog } from "@/components/clientes/SenhaPortalDialog";
 import type { ClienteContato } from "@/types";
 
 const mocks = vi.hoisted(() => ({ definir: vi.fn(), abrirUrl: vi.fn() }));
@@ -32,8 +32,8 @@ describe("SenhaPortalDialog", () => {
     await waitFor(() => expect(mocks.definir).toHaveBeenCalledWith(5, "Grafica-2026"));
     expect(onSalvo).toHaveBeenCalled();
     const dados = screen.getByLabelText("Dados de acesso");
-    expect(dados.textContent).toContain("CPF/CNPJ: 11.222.333/0001-81");
-    expect(dados.textContent).toContain("Senha: Grafica-2026");
+    expect(dados.textContent).toContain("Seu CPF/CNPJ:\n11222333000181\n");
+    expect(dados.textContent).toContain("Sua senha:\nGrafica-2026\n");
     expect(dados.textContent).toContain("Para trocá-la, fale com a equipe");
     expect(screen.getByText(/não será mostrada de novo/)).toBeInTheDocument();
   });
@@ -63,7 +63,29 @@ describe("SenhaPortalDialog", () => {
     await waitFor(() => expect(mocks.abrirUrl).toHaveBeenCalled());
     const url = mocks.abrirUrl.mock.calls[0][0] as string;
     expect(url.startsWith("https://wa.me/5571988887777?text=")).toBe(true);
-    expect(decodeURIComponent(url.split("text=")[1])).toContain("Senha: Grafica-2026");
+    const texto = decodeURIComponent(url.split("text=")[1]);
+    expect(texto).toBe(mensagemAcessoPortal("Ana Souza", "11.222.333/0001-81", "Grafica-2026"));
+    expect(texto).toContain("Sua senha:\nGrafica-2026\n");
+  });
+
+  it("mensagem de acesso: cada dado sozinho na linha, sem negrito, documento só com dígitos", () => {
+    expect(mensagemAcessoPortal("Maria", "123.456.789-09", "Kp7m-Tx4q-9Wbd")).toBe(
+      [
+        "Olá, Maria! Seu acesso ao Portal das Impressoras BMI TAG.",
+        "",
+        "Link do portal:",
+        PORTAL_URL,
+        "",
+        "Seu CPF/CNPJ:",
+        "12345678909",
+        "",
+        "Sua senha:",
+        "Kp7m-Tx4q-9Wbd",
+        "",
+        "A senha é pessoal. Para trocá-la, fale com a equipe BMI TAG.",
+      ].join("\n"),
+    );
+    expect(mensagemAcessoPortal("Maria", "11.222.333/0001-81", "x")).not.toContain("*");
   });
 
   it("sem telefone não oferece WhatsApp; número com DDI não ganha 55 de novo", () => {
