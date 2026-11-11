@@ -8,8 +8,8 @@ use url::Url;
 
 static MIGRATOR: Migrator = sqlx::migrate!("./migrations");
 
-const REQUIRED_PROMOTION_MIGRATIONS: [i64; 20] = [27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 48, 49];
-const EXPECTED_MIGRATION_COUNT: usize = 46;
+const REQUIRED_PROMOTION_MIGRATIONS: [i64; 21] = [27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 48, 49, 50];
+const EXPECTED_MIGRATION_COUNT: usize = 47;
 // Fonte única das versões reservadas, compartilhada com check-sqlx-migrations.mjs e verify-estoque-seed.sh.
 const RESERVED_MIGRATION_VERSIONS_FILE: &str = include_str!("../../../scripts/sqlx-reserved-migrations.txt");
 const LAST_REQUIRED_APPLIED_MIGRATION: i64 = 28;
