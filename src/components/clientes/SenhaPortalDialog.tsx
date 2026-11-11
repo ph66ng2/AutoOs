@@ -34,13 +34,23 @@ export function senhaPortalValida(senha: string): boolean {
   return senha.length >= 8 && new TextEncoder().encode(senha).length <= 72 && /\p{L}/u.test(senha) && /\d/.test(senha);
 }
 
-/** Texto entregue ao contato. A senha vale até a equipe trocá-la; o contato pede a troca à equipe. */
+/**
+ * Texto entregue ao contato. Cada dado fica sozinho na linha, sem formatação, para copiar com um toque no celular.
+ * O documento vai só com dígitos (o login do portal aceita assim). A senha vale até a equipe trocá-la.
+ */
 export function mensagemAcessoPortal(nome: string, documentoCliente: string, senha: string): string {
   return [
-    `Olá, ${nome}! Seu acesso ao Portal das Impressoras BMI TAG:`,
+    `Olá, ${nome}! Seu acesso ao Portal das Impressoras BMI TAG.`,
+    "",
+    "Link do portal:",
     PORTAL_URL,
-    `CPF/CNPJ: ${documentoCliente}`,
-    `Senha: ${senha}`,
+    "",
+    "Seu CPF/CNPJ:",
+    documentoCliente.replace(/\D/g, ""),
+    "",
+    "Sua senha:",
+    senha,
+    "",
     "A senha é pessoal. Para trocá-la, fale com a equipe BMI TAG.",
   ].join("\n");
 }
