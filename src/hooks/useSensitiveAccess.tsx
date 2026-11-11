@@ -15,7 +15,8 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { useBootUi } from "@/components/BootUi";
 import { erroPinNovo } from "@/lib/pin-rules";
-import { ProfileSessionDialog } from "@/components/ProfileSessionDialog";
+import { ProfileSessionDialog, type FirstAccessOrigin } from "@/components/ProfileSessionDialog";
+import { FirstAccessBridge } from "@/components/perfil/FirstAccessBridge";
 import { PasswordRecoveryDialog } from "@/components/PasswordRecoveryDialog";
 import { PrimeiroAcessoWizard } from "@/components/perfil/PrimeiroAcessoWizard";
 import { toast } from "sonner";
@@ -151,6 +152,8 @@ export function SensitiveAccessProvider({ children }: { children: ReactNode }) {
   const [busy, setBusy] = useState(false);
   const [selectedProfileId, setSelectedProfileId] = useState<string>("");
   const [firstAccess, setFirstAccess] = useState<{ profileId: number; needsCode: boolean; recovery: boolean } | null>(null);
+  /** Transição da tela de perfis para o primeiro acesso: a janela de perfis fica aberta até o cadeado pousar. */
+  const [firstAccessOrigin, setFirstAccessOrigin] = useState<FirstAccessOrigin | null>(null);
   const { setTheme } = useTheme();
   const resolverRef = useRef<((value: boolean) => void) | null>(null);
   const startupPromptedRef = useRef(false);
@@ -584,11 +587,22 @@ export function SensitiveAccessProvider({ children }: { children: ReactNode }) {
     }
   }, [closeDialog, acceptPinAndClose, pin, confirmPin, promptOptions.permission, promptOptions.anyPermission, selectedProfileId, status, dialogMode]);
 
-  const startFirstAccess = useCallback((profileId: number, recovery = false) => {
+  const startFirstAccess = useCallback((profileId: number, recovery = false, origin?: FirstAccessOrigin) => {
     // O pedido de perfil continua pendente: resolve quando a ativação terminar.
-    setDialogOpen(false);
     setError(null);
     setFirstAccess({ profileId, needsCode: true, recovery });
+    if (origin && !recovery) {
+      setFirstAccessOrigin(origin);
+      return;
+    }
+    setDialogOpen(false);
+  }, []);
+
+  const finishFirstAccessBridge = useCallback(() => {
+    setFirstAccessOrigin(null);
+    setDialogOpen(false);
+    // A janela de perfis prendia o foco durante a transição: devolve-o ao campo do código.
+    window.setTimeout(() => document.getElementById("primeiro-acesso-codigo")?.focus(), 0);
   }, []);
 
   const cancelFirstAccess = useCallback(() => {
@@ -673,6 +687,10 @@ export function SensitiveAccessProvider({ children }: { children: ReactNode }) {
         onRetryKeyring={() => void refreshStatus()}
         accepted={pinAccepted}
       />
+
+      {firstAccessOrigin && firstAccess && firstAccessProfile && bootAnimationComplete && (
+        <FirstAccessBridge from={firstAccessOrigin.avatar} dialog={firstAccessOrigin.dialog} onDone={finishFirstAccessBridge} />
+      )}
 
       {firstAccess && firstAccessProfile && bootAnimationComplete && (
         <PrimeiroAcessoWizard

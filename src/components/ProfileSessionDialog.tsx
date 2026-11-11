@@ -22,6 +22,12 @@ import type { SecurityProfile } from "@/types";
 
 type ProfileDialogMode = "startup" | "selector" | "sensitive";
 
+/** De onde sai a transição do primeiro acesso: o avatar tracejado e a janela de perfis. */
+export interface FirstAccessOrigin {
+  avatar: HTMLElement;
+  dialog: HTMLElement | null;
+}
+
 interface ProfileSessionDialogProps {
   open: boolean;
   mandatory: boolean;
@@ -50,7 +56,7 @@ interface ProfileSessionDialogProps {
    * Abre o fluxo do código do administrador. `recovery` = o perfil já tem PIN neste
    * computador e a pessoa o esqueceu; sem ele, é o primeiro acesso.
    */
-  onFirstAccess?: (profileId: number, recovery?: boolean) => void;
+  onFirstAccess?: (profileId: number, recovery?: boolean, origin?: FirstAccessOrigin) => void;
   /** PIN aceito: o campo fica verde com um cadeadinho abrindo antes de a janela sair. */
   accepted?: boolean;
 }
@@ -147,7 +153,11 @@ export function ProfileSessionDialog({
   const handlePrimaryAction = () => {
     if (primaryDisabled || !selectedProfile) return;
     if (canStartFirstAccess) {
-      onFirstAccess!(selectedProfile.id);
+      // Só o primeiro acesso de um perfil novo ganha a transição; "Ativar neste computador" abre direto.
+      const avatar = selectedProfile.onboarding_pendente
+        ? document.querySelector<HTMLElement>(`[data-profile-avatar="${selectedProfile.id}"] .border-dashed`)
+        : null;
+      onFirstAccess!(selectedProfile.id, false, avatar ? { avatar, dialog: avatar.closest<HTMLElement>("[role='dialog']") } : undefined);
       return;
     }
     onSubmit();
@@ -255,6 +265,7 @@ export function ProfileSessionDialog({
                       )}
                     >
                       <span
+                        data-profile-avatar={profile.id}
                         className="flex rounded-[28px] transition-shadow"
                         style={isSelected && !neverSetUp ? { boxShadow: `0 0 0 3px hsl(var(--background)), 0 0 0 6px ${look.color}` } : undefined}
                       >
