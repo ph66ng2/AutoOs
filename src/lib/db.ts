@@ -24,6 +24,7 @@
  */
 
 import { invoke as tauriInvoke } from "@tauri-apps/api/core";
+import { emitirOrcamentoPublicado, type ReferenciaPdfPortal } from "@/lib/portal-documentos";
 import { withSensitiveAccessRetry } from "@/lib/sensitive-action-retry";
 import type {
   AcessoPortalContato,
@@ -355,8 +356,19 @@ export const db = {
     return invoke<ClienteContato>("definir_senha_portal_contato", { contatoId, senha });
   },
 
+  async obterVersaoDocumentoPortal(equipamentoId: number): Promise<DecisaoOrcamentoInfo | null> {
+    return tauriInvoke<DecisaoOrcamentoInfo | null>("obter_decisao_orcamento", { equipamentoId });
+  },
+
+  async publicarDocumentoPortal(equipamentoId: number, bytes: Uint8Array, referencia: ReferenciaPdfPortal): Promise<number[]> {
+    // Upload opcional: não abre diálogo de PIN ao expirar a sessão no meio da emissão.
+    return tauriInvoke<number[]>("publicar_documento_portal", { equipamentoId, bytes: Array.from(bytes), ...referencia });
+  },
+
   async publicarOrcamentoPortal(equipamentoId: number): Promise<OrcamentoPublicado> {
-    return invoke<OrcamentoPublicado>("publicar_orcamento_portal", { equipamentoId });
+    const resultado = await invoke<OrcamentoPublicado>("publicar_orcamento_portal", { equipamentoId });
+    void emitirOrcamentoPublicado(equipamentoId);
+    return resultado;
   },
 
   /** Prorroga o prazo de aprovação do orçamento → Rust: prorrogar_prazo_orcamento */
@@ -381,7 +393,9 @@ export const db = {
   },
 
   async publicarOrcamentosPendentesPortal(): Promise<PublicacaoLotePortal> {
-    return invoke<PublicacaoLotePortal>("publicar_orcamentos_pendentes_portal");
+    const resultado = await invoke<PublicacaoLotePortal>("publicar_orcamentos_pendentes_portal");
+    for (const id of resultado.publicados) void emitirOrcamentoPublicado(id);
+    return resultado;
   },
 
   async salvarContatoPortalEmpresa(input: ContatoPortalEmpresa): Promise<ContatoPortalEmpresa> {
@@ -394,7 +408,9 @@ export const db = {
 
   /** Único ponto de envio de WhatsApp ao cliente → Rust: solicitar_envio_whatsapp */
   async solicitarEnvioWhatsapp(input: SolicitarEnvioWhatsappInput): Promise<ResultadoEnvioWhatsapp> {
-    return invoke<ResultadoEnvioWhatsapp>("solicitar_envio_whatsapp", { input });
+    const resultado = await invoke<ResultadoEnvioWhatsapp>("solicitar_envio_whatsapp", { input });
+    if (input.tipo === "orcamento_informativo") void emitirOrcamentoPublicado(input.equipamento_id);
+    return resultado;
   },
 
   async marcarSolicitacaoOrcamentoTratada(solicitacaoId: number): Promise<boolean> {
@@ -932,9 +948,9 @@ export const db = {
       ...(input.empresa_id === undefined ? {} : { empresaId: input.empresa_id }),
       ...(input.opcoes === undefined ? {} : { opcoes: input.opcoes }),
     };
-    return invoke<Verificacao & { portal?: PortalAjusteInfo }>("atualizar_servicos_verificacao", {
-      ...payload,
-    });
+    const resultado = await invoke<Verificacao & { portal?: PortalAjusteInfo }>("atualizar_servicos_verificacao", { ...payload });
+    void emitirOrcamentoPublicado(input.equipamento_id);
+    return resultado;
   },
 
   /** Situação do portal e do estoque antes de salvar uma alteração no orçamento → Rust: analisar_ajuste_orcamento */

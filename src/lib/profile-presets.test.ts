@@ -9,10 +9,10 @@ import { perfilCompativel056 } from "@/lib/compatibilidade-056";
 import { SENSITIVE_PERMISSION_LABELS } from "@/types";
 
 describe("permissão MANAGE_STATUS_LINKS", () => {
-  it("cita o Portal do Cliente além dos links de acompanhamento", () => {
-    expect(PERMISSION_DETAILS.MANAGE_STATUS_LINKS.title).toMatch(/Portal do Cliente/);
+  it("descreve acessos sem permitir desligar o portal", () => {
+    expect(PERMISSION_DETAILS.MANAGE_STATUS_LINKS.title).toBe("Acessos do portal");
     expect(PERMISSION_DETAILS.MANAGE_STATUS_LINKS.description).toMatch(/portal/i);
-    expect(SENSITIVE_PERMISSION_LABELS.MANAGE_STATUS_LINKS).toMatch(/Portal do Cliente/);
+    expect(SENSITIVE_PERMISSION_LABELS.MANAGE_STATUS_LINKS).toMatch(/acessos do portal/);
     expect(SENSITIVE_PERMISSION_LABELS.MANAGE_STATUS_LINKS).not.toMatch(/links públicos/);
   });
 });
@@ -23,23 +23,23 @@ describe("PREPARE_QUOTES nos modelos", () => {
 
   it("flag ligada e modelos exportados a refletem", () => {
     expect(PREPARE_QUOTES_NOS_MODELOS).toBe(true);
-    expect(find(PROFILE_PRESETS, "TECNICO").permissions).toEqual(["STOCK_CONTROL", "PREPARE_QUOTES"]);
-    expect(find(PROFILE_PRESETS, "TECNICO").description).toBe("Rotina técnica, orçamentos e estoque.");
+    expect(find(PROFILE_PRESETS, "TECNICO").permissions).toEqual(["STOCK_CONTROL", "PREPARE_QUOTES", "MANAGE_STATUS_LINKS", "FINANCIAL_ACTIONS"]);
+    expect(find(PROFILE_PRESETS, "TECNICO").description).toBe("Rotina técnica, estoque, orçamentos, acessos do portal e ações financeiras.");
     expect(find(PROFILE_PRESETS, "FINANCEIRO").permissions).toContain("PREPARE_QUOTES");
     expect(find(PROFILE_PRESETS, "ATENDENTE").disponivel).toBe(true);
   });
 
   it("com a flag desligada, Técnico e Financeiro ficam sem PREPARE_QUOTES", () => {
     const off = montarPresets(false);
-    expect(find(off, "TECNICO").permissions).toEqual(["STOCK_CONTROL"]);
-    expect(find(off, "TECNICO").description).toBe("Rotina técnica e estoque.");
+    expect(find(off, "TECNICO").permissions).toEqual(["STOCK_CONTROL", "MANAGE_STATUS_LINKS", "FINANCIAL_ACTIONS"]);
+    expect(find(off, "TECNICO").description).toBe("Rotina técnica, estoque, acessos do portal e ações financeiras.");
     expect(find(off, "FINANCEIRO").permissions).not.toContain("PREPARE_QUOTES");
   });
 
   it("com a flag ligada, Técnico e Financeiro incluem PREPARE_QUOTES", () => {
     const on = montarPresets(true);
-    expect(find(on, "TECNICO").permissions).toEqual(["STOCK_CONTROL", "PREPARE_QUOTES"]);
-    expect(find(on, "TECNICO").description).toBe("Rotina técnica, orçamentos e estoque.");
+    expect(find(on, "TECNICO").permissions).toEqual(["STOCK_CONTROL", "PREPARE_QUOTES", "MANAGE_STATUS_LINKS", "FINANCIAL_ACTIONS"]);
+    expect(find(on, "TECNICO").description).toBe("Rotina técnica, estoque, orçamentos, acessos do portal e ações financeiras.");
     expect(find(on, "FINANCEIRO").permissions).toContain("PREPARE_QUOTES");
   });
 
@@ -75,5 +75,28 @@ describe("trava de compatibilidade 0.5.6 nos modelos", () => {
     const recepcao = find(montarPresets(false, false), "ATENDENTE");
     expect(recepcao.disponivel).toBe(true);
     expect(recepcao.motivoIndisponivel).toBeUndefined();
+  });
+});
+
+
+describe("modelos de acessos do portal", () => {
+  it("Recepção, Técnico e Financeiro recebem acessos, sem comunicação externa", () => {
+    for (const role of ["ATENDENTE", "TECNICO", "FINANCEIRO"]) {
+      const preset = PROFILE_PRESETS.find((item) => item.role === role)!;
+      expect(preset.permissions).toContain("MANAGE_STATUS_LINKS");
+      expect(preset.permissions).not.toContain("COMMUNICATION_SETTINGS");
+    }
+    expect(PROFILE_PRESETS.find((item) => item.role === "ADMIN")!.permissions).toContain("COMMUNICATION_SETTINGS");
+  });
+});
+
+describe("rótulos e escopo operacional", () => {
+  it("Orçamentos inclui decisões e garantia; financeiro reserva correções e valores finais", () => {
+    expect(PERMISSION_DETAILS.PREPARE_QUOTES.title).toBe("Orçamentos");
+    expect(SENSITIVE_PERMISSION_LABELS.PREPARE_QUOTES).toBe("orçamentos");
+    expect(PERMISSION_DETAILS.PREPARE_QUOTES.description).toMatch(/nova proposta.*renovar.*prorrogar.*aprovar ou reprovar.*garantia/);
+    expect(PERMISSION_DETAILS.FINANCIAL_ACTIONS.title).toBe("Ações financeiras");
+    expect(PROFILE_PRESETS.find((p) => p.role === "ATENDENTE")!.permissions).toEqual(["MANAGE_STATUS_LINKS"]);
+    expect(PROFILE_PRESETS.find((p) => p.role === "FINANCEIRO")!.permissions).toEqual(["FINANCIAL_ACTIONS", "PREPARE_QUOTES", "VIEW_EXPENSES", "MANAGE_STATUS_LINKS"]);
   });
 });

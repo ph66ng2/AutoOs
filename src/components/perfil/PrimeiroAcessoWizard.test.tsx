@@ -61,19 +61,21 @@ describe("primeiro acesso", () => {
     const nome = await screen.findByLabelText("Nome de exibição");
     await user.clear(nome);
     await user.type(nome, "Juliana");
+    expect(screen.queryByRole("button", { name: "Fone" })).not.toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Hexágono" }));
     await user.click(screen.getByRole("button", { name: "Petróleo" }));
     await user.click(screen.getByRole("button", { name: "Escuro" }));
     await user.click(screen.getByRole("button", { name: /Continuar/ }));
     await waitFor(() => expect(service.savePersonalization).toHaveBeenCalledWith({
       nome: "Juliana",
-      avatar_icone: expect.any(String),
+      avatar_icone: "shape-hex",
       avatar_cor: "#0F766E",
       tema: "dark",
       concluir_onboarding: true,
     }));
 
     expect(await screen.findByRole("heading", { name: "Tudo pronto, Juliana" })).toBeInTheDocument();
-    expect(screen.getByText("Portal do Cliente e links de acompanhamento")).toBeInTheDocument();
+    expect(screen.getByText("Acessos do portal")).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "Começar tour" }));
     expect(onFinish).toHaveBeenCalledWith("tour");
     expect(onStatusChange).toHaveBeenCalledTimes(2);

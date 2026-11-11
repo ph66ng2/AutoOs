@@ -222,7 +222,7 @@ fn status_change_requires_sensitive_access(
         || valor_final.is_some()
         || matches!(
             normalized_status,
-            "AGUARDANDO_APROVACAO" | "APROVADO" | "REPROVADO" | "ORCAMENTO_VENCIDO" | "ENTREGUE" | "ABANDONADO"
+            "AGUARDANDO_APROVACAO" | "APROVADO" | "REPROVADO" | "ORCAMENTO_VENCIDO" | "ABANDONADO"
         )
 }
 
@@ -234,8 +234,9 @@ fn status_change_allows_quote_preparation(
 ) -> bool {
     !is_correction
         && valor_final.is_none()
-        && novo == "AGUARDANDO_APROVACAO"
-        && matches!(atual, "VERIFICADO" | "AGUARDANDO_APROVACAO")
+        && ((novo == "AGUARDANDO_APROVACAO"
+            && matches!(atual, "VERIFICADO" | "AGUARDANDO_APROVACAO" | "REPROVADO" | "ORCAMENTO_VENCIDO"))
+            || (atual == "AGUARDANDO_APROVACAO" && novo == "REPROVADO"))
 }
 
 fn is_regular_status_transition(from: &str, to: &str) -> bool {
@@ -1268,7 +1269,7 @@ pub async fn aprovar_orcamento(input: AprovarOrcamentoInput) -> Result<Equipamen
         Some(&input.pagamento.codigo),
         input.pagamento.detalhe.as_deref(),
     )?;
-    let actor = require_permission(PERMISSION_FINANCIAL_ACTIONS)?;
+    let actor = require_any_permission(&[PERMISSION_FINANCIAL_ACTIONS, PERMISSION_PREPARE_QUOTES])?;
     let pool = get_pool().await.map_err(|error| error.to_string())?;
     let empresa_id = require_active_session_company_id(&pool).await?;
     if input.empresa_id != empresa_id { return Err("Empresa diferente do perfil autenticado.".to_string()); }
@@ -1507,7 +1508,7 @@ mod tests {
 
     #[test]
     fn p0_sensitive_status_gate_flags_status_only_changes_on_update() {
-        assert!(status_change_requires_sensitive_access("ENTREGUE", None, None, None));
+        assert!(!status_change_requires_sensitive_access("ENTREGUE", None, None, None));
         assert!(!status_change_requires_sensitive_access("EM_VERIFICACAO", None, None, None));
     }
 
@@ -1547,6 +1548,14 @@ mod tests {
     #[test]
     fn quote_preparation_allows_only_verified_to_awaiting_approval_without_final_value() {
         assert!(status_change_allows_quote_preparation("VERIFICADO", "AGUARDANDO_APROVACAO", false, None));
+        assert!(status_change_allows_quote_preparation("REPROVADO", "AGUARDANDO_APROVACAO", false, None));
+        assert!(status_change_allows_quote_preparation("ORCAMENTO_VENCIDO", "AGUARDANDO_APROVACAO", false, None));
+        assert!(status_change_allows_quote_preparation("AGUARDANDO_APROVACAO", "REPROVADO", false, None));
+        assert!(!status_change_allows_quote_preparation("REPROVADO", "AGUARDANDO_APROVACAO", true, None));
+        assert!(!status_change_allows_quote_preparation("ORCAMENTO_VENCIDO", "AGUARDANDO_APROVACAO", false, Some(0.0)));
+        assert!(status_change_requires_sensitive_access("ENTREGUE", None, None, Some(0.0)));
+        assert!(status_change_requires_sensitive_access("ABANDONADO", None, None, None));
+        assert!(!status_change_requires_sensitive_access("PRONTO", None, None, None));
         assert!(status_change_allows_quote_preparation("AGUARDANDO_APROVACAO", "AGUARDANDO_APROVACAO", false, None));
         assert!(!status_change_allows_quote_preparation("VERIFICADO", "AGUARDANDO_APROVACAO", true, None));
         assert!(!status_change_allows_quote_preparation("VERIFICADO", "AGUARDANDO_APROVACAO", false, Some(10.0)));

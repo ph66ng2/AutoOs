@@ -4,6 +4,8 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { ClienteContatosPanel } from "@/components/clientes/ClienteContatosPanel";
 import { SenhaPortalForm } from "@/components/clientes/SenhaPortalDialog";
+import { useSensitiveAccess } from "@/hooks/useSensitiveAccess";
+import { SENSITIVE_PERMISSIONS } from "@/types";
 import { db } from "@/lib/db";
 import { cn } from "@/lib/utils";
 import type { Cliente, ClienteContato } from "@/types";
@@ -50,6 +52,7 @@ type Props = {
  * Cadastrar ou editar contatos acontece aqui mesmo (painel de contatos embutido) e volta para o acesso.
  */
 export function AcessoPortalDialog({ open, onOpenChange, clienteId, empresaId, telaInicial, responsavelContatoId, onAlterado }: Props) {
+  const { ensureSensitiveAccess } = useSensitiveAccess();
   const [tela, setTela] = useState<Tela>("acesso");
   const [cliente, setCliente] = useState<Cliente | null>(null);
   const [contatos, setContatos] = useState<ClienteContato[]>([]);
@@ -112,6 +115,14 @@ export function AcessoPortalDialog({ open, onOpenChange, clienteId, empresaId, t
 
   const liberar = async () => {
     if (!contato?.id) return;
+    const liberado = await ensureSensitiveAccess({
+      title: "Liberar acesso ao portal",
+      description: "Informe o PIN para definir o acesso deste contato.",
+      ...(acessoDesejado === "DECIDIR"
+        ? { anyPermission: [SENSITIVE_PERMISSIONS.FINANCIAL_ACTIONS, SENSITIVE_PERMISSIONS.PREPARE_QUOTES] }
+        : { permission: SENSITIVE_PERMISSIONS.MANAGE_STATUS_LINKS }),
+    });
+    if (!liberado) return;
     setBusy(true);
     setErro(null);
     try {
@@ -189,7 +200,7 @@ export function AcessoPortalDialog({ open, onOpenChange, clienteId, empresaId, t
                 <input type="checkbox" className="mt-1" checked={podeResponder} onChange={(event) => setPodeResponder(event.target.checked)} />
                 <span>
                   Pode responder orçamentos (aceitar, recusar e negociar)
-                  <span className="block text-xs text-muted-foreground">Desmarcado: só acompanha o andamento. Responder exige a permissão financeira.</span>
+                  <span className="block text-xs text-muted-foreground">Desmarcado: só acompanha o andamento. Responder exige Orçamentos ou Ações financeiras.</span>
                 </span>
               </label>
             )}

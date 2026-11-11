@@ -44,10 +44,10 @@ function fixture(t, versions) {
   };
 }
 
-const branchVersions = [...Array.from({ length: 44 }, (_, i) => i + 1), 48];
+const branchVersions = [...Array.from({ length: 44 }, (_, i) => i + 1), 48, 49, 50];
 
 test('arquivos aceitam as reservas 0045–0047 e a união futura das branches', (t) => {
-  for (const versions of [branchVersions, [...branchVersions, 45, 46, 47, 49]]) {
+  for (const versions of [branchVersions, [...branchVersions, 45, 46, 47]]) {
     const f = fixture(t, versions);
     const result = f.run('check-sqlx-migrations.mjs');
     assert.equal(result.status, 0, result.stderr);
@@ -79,7 +79,7 @@ test('histórico não pode omitir uma reserva que já está nos arquivos do buil
 });
 
 test('verificador do seed usa a mesma lista de reservas dos demais verificadores', (t) => {
-  for (const versions of [branchVersions, [...Array.from({ length: 44 }, (_, i) => i + 1), 47], [...branchVersions, 45, 46, 47, 49]]) {
+  for (const versions of [branchVersions, [...Array.from({ length: 44 }, (_, i) => i + 1), 47], [...branchVersions, 45, 46, 47]]) {
     const f = fixture(t, versions);
     const result = f.seedCheck();
     assert.equal(result.status, 0, result.stderr);

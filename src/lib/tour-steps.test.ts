@@ -32,8 +32,8 @@ describe("tour por permissão", () => {
     expect(pendingTour([], ["VIEW_EXPENSES"])).toBeNull();
   });
 
-  it("e-mail e WhatsApp viram um único passo de integrações", () => {
-    const ids = fullTour(["CONFIG_SMTP", "CONFIG_WHATSAPP"]).map((step) => step.id);
+  it("Comunicação externa tem um passo de integrações", () => {
+    const ids = fullTour(["COMMUNICATION_SETTINGS"]).map((step) => step.id);
     expect(ids.filter((id) => id === "integracoes")).toHaveLength(1);
   });
 });

@@ -42,8 +42,8 @@ describe("cadastro guiado de colaboradores", () => {
     await user.click(screen.getByRole("radio", { name: /^Personalizado/ }));
     await user.click(screen.getByRole("button", { name: "Continuar" }));
     expect(screen.getByRole("heading", { name: "Liberações" })).toBeInTheDocument();
-    expect(screen.getByRole("checkbox", { name: "Elaborar e enviar orçamentos" })).not.toBeChecked();
-    expect(screen.getByRole("checkbox", { name: "Portal do Cliente e links de acompanhamento" })).not.toBeChecked();
+    expect(screen.getByRole("checkbox", { name: "Orçamentos" })).not.toBeChecked();
+    expect(screen.getByRole("checkbox", { name: "Acessos do portal" })).not.toBeChecked();
     expect(screen.getByRole("button", { name: "Continuar" })).toBeEnabled();
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
     expect(createProfileWithCode).not.toHaveBeenCalled();
@@ -69,7 +69,7 @@ describe("cadastro guiado de colaboradores", () => {
     await user.click(screen.getByRole("button", { name: "Criar e gerar código" }));
     await waitFor(() =>
       expect(createProfileWithCode).toHaveBeenCalledWith(
-        { nome: "Tec 2", role: "TECNICO", permissions: ["STOCK_CONTROL", "PREPARE_QUOTES"] },
+        { nome: "Tec 2", role: "TECNICO", permissions: ["STOCK_CONTROL", "PREPARE_QUOTES", "MANAGE_STATUS_LINKS", "FINANCIAL_ACTIONS"] },
         "4321",
       ),
     );
@@ -85,13 +85,13 @@ describe("cadastro guiado de colaboradores", () => {
     await user.click(screen.getByRole("radio", { name: /^Financeiro/ }));
     await user.click(screen.getByRole("button", { name: "Continuar" }));
     expect(
-      screen.getByRole("checkbox", { name: "Orçamentos e valores" }),
+      screen.getByRole("checkbox", { name: "Ações financeiras" }),
     ).toBeChecked();
     expect(
       screen.getByRole("checkbox", { name: "Consultar despesas" }),
     ).toBeChecked();
     expect(
-      screen.getByRole("checkbox", { name: "Elaborar e enviar orçamentos" }),
+      screen.getByRole("checkbox", { name: "Orçamentos" }),
     ).toBeChecked();
     expect(
       screen.getByRole("checkbox", { name: "Gerenciar equipe" }),

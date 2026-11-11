@@ -10,7 +10,7 @@ use crate::commands::types::{
     EmailAttachmentInput, EmailSendInput, SmtpConfigInput, SmtpConfigResponse, SmtpConfigStored,
 };
 use crate::commands::auth::{
-    record_security_event, require_permission, require_sensitive_access, PERMISSION_CONFIG_SMTP,
+    record_security_event, require_permission, require_sensitive_access, PERMISSION_COMMUNICATION_SETTINGS,
 };
 use keyring::Entry;
 use lettre::{
@@ -159,7 +159,7 @@ fn resolve_allowed_attachment_path(path: &str) -> Result<PathBuf, String> {
 #[tauri::command]
 #[instrument(skip_all)]
 pub async fn salvar_config_smtp(config: SmtpConfigInput) -> Result<bool, String> {
-    let actor = require_permission(PERMISSION_CONFIG_SMTP)?;
+    let actor = require_permission(PERMISSION_COMMUNICATION_SETTINGS)?;
     validate_smtp_config(&config)?;
     debug!("Salvando configuração SMTP");
 
@@ -219,7 +219,7 @@ pub async fn salvar_config_smtp(config: SmtpConfigInput) -> Result<bool, String>
 #[tauri::command]
 #[instrument(skip_all)]
 pub async fn carregar_config_smtp() -> Result<SmtpConfigResponse, String> {
-    require_permission(PERMISSION_CONFIG_SMTP)?;
+    require_permission(PERMISSION_COMMUNICATION_SETTINGS)?;
     debug!("Carregando configuração SMTP");
 
     let stored = match load_stored_smtp_config()? {

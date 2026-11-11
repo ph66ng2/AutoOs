@@ -180,6 +180,7 @@ fn main() {
             commands::portal_cliente::definir_acesso_portal_contato,
             commands::portal_cliente::definir_senha_portal_contato,
             commands::portal_cliente::publicar_orcamento_portal,
+            commands::portal_documentos::publicar_documento_portal,
             commands::portal_cliente::listar_orcamentos_pendentes_portal,
             commands::portal_cliente::publicar_orcamentos_pendentes_portal,
             commands::portal_cliente::obter_contato_portal_empresa,

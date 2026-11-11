@@ -138,6 +138,7 @@ import { CommunicationEmailDialog } from "@/components/equipamentos/Communicatio
 import { PhotoUploadDialog } from "@/components/equipamentos/PhotoUploadDialog";
 import { DocumentosEquipamento } from "@/components/equipamentos/DocumentosEquipamento";
 import { PdfPreviewDialog } from "@/components/equipamentos/PdfPreviewDialog";
+import { publicarPdfOficial } from "@/lib/portal-documentos";
 import { AjusteOrcamentoServicos } from "@/components/equipamentos/AjusteOrcamentoServicos";
 import { carregarProdutosOrcamento, LABEL_CONFIRMAR_OS_GARANTIA, MENSAGEM_CONFIRMAR_OS_GARANTIA, normalizarServicosOrcamento, orcamentoEmElaboracao, transicaoElaboraOrcamento, osSomenteGarantia, pecasParaOrcamento, orcamentoJaAprovado, orcamentoMudou, resumirPecas, TITULO_CONFIRMAR_OS_GARANTIA, vaiAutoAprovarOsGarantia, validarPecas } from "@/lib/orcamento-estoque";
 import { ActionPriorityRow, type PriorityAction } from "@/components/ui/action-priority-row";
@@ -882,12 +883,8 @@ export default function Equipamentos() {
 
   async function abrirMudarStatus(eq: Equipamento, statusPreSelecionado?: string) {
     const liberado = await ensureSensitiveAccess({
-      title: "Alterar status sensível",
-      description: "Informe o PIN para alterar status comerciais, prazos e valores do equipamento.",
-      // Em elaboração o diálogo abre para o Técnico; decisão, entrega e valor final pedem o PIN financeiro ao confirmar.
-      ...(orcamentoEmElaboracao(eq.status)
-        ? { anyPermission: [SENSITIVE_PERMISSIONS.FINANCIAL_ACTIONS, SENSITIVE_PERMISSIONS.PREPARE_QUOTES] }
-        : { permission: SENSITIVE_PERMISSIONS.FINANCIAL_ACTIONS }),
+      title: "Alterar status",
+      description: "Informe o PIN para abrir a mudança de status. A ação escolhida será conferida na confirmação.",
     });
     if (!liberado) return;
 
@@ -1221,9 +1218,7 @@ export default function Equipamentos() {
       description: garantiaAprovada
         ? "OS só de garantia vai direto para Aprovado. Informe o PIN de quem aprova orçamentos."
         : "Informe o PIN para salvar orçamento, prazo de aprovação e disparar comunicações automáticas.",
-      ...(garantiaAprovada
-        ? { permission: SENSITIVE_PERMISSIONS.FINANCIAL_ACTIONS }
-        : { anyPermission: [SENSITIVE_PERMISSIONS.FINANCIAL_ACTIONS, SENSITIVE_PERMISSIONS.PREPARE_QUOTES] }),
+      anyPermission: [SENSITIVE_PERMISSIONS.FINANCIAL_ACTIONS, SENSITIVE_PERMISSIONS.PREPARE_QUOTES],
     });
     if (!liberado) return false;
 
@@ -1300,7 +1295,6 @@ export default function Equipamentos() {
     const liberado = await ensureSensitiveAccess({
       title: "Marcar equipamento como pronto",
       description: "Informe o PIN para finalizar a etapa e disparar as comunicações automáticas.",
-      permission: SENSITIVE_PERMISSIONS.FINANCIAL_ACTIONS,
     });
     if (!liberado) return;
 
@@ -1437,7 +1431,7 @@ export default function Equipamentos() {
       description: decisaoInicial === "aprovar"
         ? "Informe o PIN para registrar a decisão do cliente sobre este orçamento."
         : "Informe o PIN para registrar a reprovação do orçamento pelo cliente.",
-      permission: SENSITIVE_PERMISSIONS.FINANCIAL_ACTIONS,
+      anyPermission: [SENSITIVE_PERMISSIONS.FINANCIAL_ACTIONS, SENSITIVE_PERMISSIONS.PREPARE_QUOTES],
     });
     if (!liberado) return;
 
@@ -1606,30 +1600,35 @@ export default function Equipamentos() {
       setConfirmOpen(true);
       return;
     }
-    const valorSensivel = mostraOrcamento ? totalAtual : (totalAtual || undefined);
+    // Só campos efetivamente editados seguem no comando. Retirada comum não regrava valores.
+    const valorOrcamentoStatus = mostraOrcamento || novoStatus === "AGUARDANDO_APROVACAO"
+      ? totalAtual || undefined : undefined;
+    const prazoStatus = mostraOrcamento || novoStatus === "AGUARDANDO_APROVACAO"
+      ? prazoAprovacao || undefined : undefined;
+    const valorFinalStatus = novoStatus === "ENTREGUE" && acordoExcecaoEntrega ? valorFinal : undefined;
+    // Na conferência de acesso, total 0,00 editado (garantia) também conta como valor informado.
     const precisaLiberacao = correcaoStatus || statusExigeAcessoSensivel(
       novoStatus,
-      valorSensivel,
-      prazoAprovacao || undefined,
-      valorFinal || undefined,
+      mostraOrcamento ? totalAtual : valorOrcamentoStatus,
+      prazoStatus,
+      valorFinalStatus,
     );
-    if (precisaLiberacao) {
-      const liberado = await ensureSensitiveAccess({
-        title: autoAprovaGarantia ? "Confirmar OS só de garantia" : "Confirmar mudança de status",
-        description: autoAprovaGarantia
-          ? "OS só de garantia vai direto para Aprovado. Informe o PIN de quem aprova orçamentos."
-          : "Informe o PIN para aplicar esta transição e persistir dados sensíveis do equipamento.",
-        ...(autoAprovaGarantia
-          ? { permission: SENSITIVE_PERMISSIONS.FINANCIAL_ACTIONS }
-          : ((ajusteOrcamentoSemMudancaStatus && orcamentoEmElaboracao(selecionado.status))
-            || transicaoElaboraOrcamento(selecionado.status, novoStatus, correcaoStatus, valorFinal)
-            ? { anyPermission: [SENSITIVE_PERMISSIONS.FINANCIAL_ACTIONS, SENSITIVE_PERMISSIONS.PREPARE_QUOTES] }
-            : { permission: SENSITIVE_PERMISSIONS.FINANCIAL_ACTIONS })),
-      });
-      if (!liberado) {
-        garantiaConfirmadaRef.current = false;
-        return;
-      }
+    const liberado = await ensureSensitiveAccess({
+      title: autoAprovaGarantia ? "Confirmar OS só de garantia" : "Confirmar mudança de status",
+      description: autoAprovaGarantia
+        ? "OS só de garantia vai direto para Aprovado. Informe o PIN de quem aprova orçamentos."
+        : "Informe o PIN para aplicar esta transição do equipamento.",
+      ...(precisaLiberacao
+        ? (autoAprovaGarantia
+          || (!correcaoStatus && ajusteOrcamentoSemMudancaStatus && orcamentoEmElaboracao(selecionado.status))
+          || transicaoElaboraOrcamento(selecionado.status, novoStatus, correcaoStatus, valorFinalStatus)
+          ? { anyPermission: [SENSITIVE_PERMISSIONS.FINANCIAL_ACTIONS, SENSITIVE_PERMISSIONS.PREPARE_QUOTES] }
+          : { permission: SENSITIVE_PERMISSIONS.FINANCIAL_ACTIONS })
+        : {}),
+    });
+    if (!liberado) {
+      garantiaConfirmadaRef.current = false;
+      return;
     }
 
     // Alterar orçamento já aprovado ou já respondido no portal: o operador escolhe o que fazer.
@@ -1784,9 +1783,9 @@ export default function Equipamentos() {
       const resultado = await atualizarStatus(
         selecionado.id!,
         novoStatus,
-        totalAtual || undefined,
-        prazoAprovacao || undefined,
-        valorFinal || undefined,
+        valorOrcamentoStatus,
+        prazoStatus,
+        valorFinalStatus,
         versaoAtual,
         correcaoStatus ? motivoCorrecaoStatus.trim() : undefined,
       );
@@ -2056,8 +2055,10 @@ export default function Equipamentos() {
       setSalvando(true);
       const verif = await db.buscarVerificacao(eq.id!);
       if (!verif) { warning("Equipamentos", "Nenhuma verificação técnica encontrada para este equipamento."); return; }
+      const artifact = await PdfService.construirOrcamentoAjustado(eq, verif);
+      if (!artifact) return;
       setPdfPreview({
-        artifact: await PdfService.construirOrcamento(eq, verif),
+        artifact,
         tipo: "orcamento",
         equipamento: eq,
         verificacao: verif,
@@ -2252,7 +2253,7 @@ export default function Equipamentos() {
         overflow.push(acaoEditar, ...(podeExcluir ? [acaoExcluir] : []));
         break;
       case "AGUARDANDO_APROVACAO":
-        if (hasPermission(SENSITIVE_PERMISSIONS.FINANCIAL_ACTIONS)) {
+        if (podeOrcamentoValores) {
           primary = {
             id: "aprovar",
             label: "Aprovar",
@@ -2349,7 +2350,7 @@ export default function Equipamentos() {
         overflow.push(acaoEditar, ...(podeExcluir ? [acaoExcluir] : []));
         break;
       case "REPROVADO":
-        if (podeFinanceiro) {
+        if (podeOrcamentoValores) {
           primary = {
             id: "reabrir_orcamento",
             label: "Reabrir Orçamento",
@@ -2373,7 +2374,7 @@ export default function Equipamentos() {
         overflow.push(acaoEditar, ...(podeExcluir ? [acaoExcluir] : []));
         break;
       case "ORCAMENTO_VENCIDO":
-        if (podeFinanceiro) {
+        if (podeOrcamentoValores) {
           primary = {
             id: "renovar_orcamento",
             label: "Renovar orçamento",
@@ -3485,6 +3486,7 @@ export default function Equipamentos() {
                   <div className="space-y-2">
                     <Label>Valor Final Pago (R$)</Label>
                     <ValorDecimalInput
+                      aria-label="Valor final pago"
                       value={Number(valorFinal) || 0}
                       onValueChange={setValorFinal}
                       disabled={!acordoExcecaoEntrega}
@@ -3860,12 +3862,13 @@ export default function Equipamentos() {
             if (!pdfPreview.verificacao) return;
             setPdfPrazoUpdating(true);
             try {
-              const artifact = await PdfService.construirOrcamento(
+              const artifact = await PdfService.construirOrcamentoAjustado(
                 pdfPreview.equipamento,
                 pdfPreview.verificacao,
                 pdfPreview.artifact.filename,
                 { minDiasUteis, maxDiasUteis },
               );
+              if (!artifact) return;
               setPdfPreview((atual) => atual && atual.tipo === "orcamento"
                 ? { ...atual, artifact, prazoMin: minDiasUteis, prazoMax: maxDiasUteis }
                 : atual);
@@ -3886,6 +3889,10 @@ export default function Equipamentos() {
             await PdfService.salvarRelatorioStatus(artifact, equipamento);
           }
         }}
+        // Imprimir sem baixar também publica OS/orçamento; publicarPdfOficial é idempotente por artefato.
+        onBeforePrint={pdfPreview && pdfPreview.tipo !== "relatorio"
+          ? (artifact) => publicarPdfOficial(artifact, pdfPreview.equipamento)
+          : undefined}
       />
     </div>
   );

@@ -826,8 +826,7 @@ export interface ResultadoAutomacao {
 }
 
 export const SENSITIVE_PERMISSIONS = {
-  CONFIG_SMTP: "CONFIG_SMTP",
-  CONFIG_WHATSAPP: "CONFIG_WHATSAPP",
+  COMMUNICATION_SETTINGS: "COMMUNICATION_SETTINGS",
   DELETE_RECORDS: "DELETE_RECORDS",
   FINANCIAL_ACTIONS: "FINANCIAL_ACTIONS",
   STOCK_CONTROL: "STOCK_CONTROL",
@@ -840,14 +839,13 @@ export const SENSITIVE_PERMISSIONS = {
 export type SensitivePermission = (typeof SENSITIVE_PERMISSIONS)[keyof typeof SENSITIVE_PERMISSIONS];
 
 export const SENSITIVE_PERMISSION_LABELS: Record<SensitivePermission, string> = {
-  CONFIG_SMTP: "configurar SMTP",
-  CONFIG_WHATSAPP: "configurar API de WhatsApp",
+  COMMUNICATION_SETTINGS: "configurar comunicação externa e ligar ou desligar o portal",
   DELETE_RECORDS: "excluir registros",
-  FINANCIAL_ACTIONS: "alterar orçamentos, aprovações e valores",
+  FINANCIAL_ACTIONS: "ações financeiras",
   STOCK_CONTROL: "movimentar e editar estoque",
-  PREPARE_QUOTES: "elaborar e enviar orçamentos",
+  PREPARE_QUOTES: "orçamentos",
   MANAGE_PROFILES: "gerenciar perfis e auditoria",
-  MANAGE_STATUS_LINKS: "gerenciar o Portal do Cliente e os links de acompanhamento",
+  MANAGE_STATUS_LINKS: "gerenciar acessos do portal",
   VIEW_EXPENSES: "visualizar gastos e despesas",
 };
 

@@ -2,14 +2,15 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { PortalFuncionamentoCard } from "@/components/configuracoes/PortalFuncionamentoCard";
 
-const mocks = vi.hoisted(() => ({ obter: vi.fn(), definir: vi.fn(), ensure: vi.fn() }));
+const mocks = vi.hoisted(() => ({ obter: vi.fn(), definir: vi.fn(), ensure: vi.fn(), permissions: ["COMMUNICATION_SETTINGS", "FINANCIAL_ACTIONS"] as string[] }));
 vi.mock("@/lib/db", () => ({ db: { obterEstadoPortal: mocks.obter, definirEstadoPortal: mocks.definir } }));
-vi.mock("@/hooks/useSensitiveAccess", () => ({ useSensitiveAccess: () => ({ ensureSensitiveAccess: mocks.ensure }) }));
+vi.mock("@/hooks/useSensitiveAccess", () => ({ useSensitiveAccess: () => ({ ensureSensitiveAccess: mocks.ensure, hasPermission: (permission: string) => mocks.permissions.includes(permission) }) }));
 vi.mock("@/components/configuracoes/OrcamentosPendentesPortal", () => ({ OrcamentosPendentesPortal: () => null }));
 
 describe("PortalFuncionamentoCard", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mocks.permissions = ["COMMUNICATION_SETTINGS", "FINANCIAL_ACTIONS"];
     mocks.ensure.mockResolvedValue(true);
     mocks.obter.mockResolvedValue({ portalAtivo: true, respostasAtivas: false, respostasAtrasadas: 0 });
   });
@@ -23,6 +24,26 @@ describe("PortalFuncionamentoCard", () => {
     await waitFor(() => expect(mocks.definir).toHaveBeenCalledWith(true, true));
     expect(mocks.ensure).toHaveBeenCalledWith(expect.objectContaining({ permission: "FINANCIAL_ACTIONS" }));
     expect(await screen.findByRole("switch", { name: "Clientes podem responder orçamentos" })).toHaveAttribute("aria-checked", "true");
+  });
+
+  it("Acessos do portal não desliga o portal", async () => {
+    mocks.permissions = ["MANAGE_STATUS_LINKS"];
+    render(<PortalFuncionamentoCard />);
+    const toggle = await screen.findByRole("switch", { name: "Portal ligado" });
+    expect(toggle).toBeDisabled();
+    fireEvent.click(toggle);
+    expect(mocks.ensure).not.toHaveBeenCalled();
+    expect(mocks.definir).not.toHaveBeenCalled();
+  });
+
+  it("Comunicação externa desliga o portal sem permissão financeira", async () => {
+    mocks.permissions = ["COMMUNICATION_SETTINGS"];
+    mocks.definir.mockResolvedValue({ portalAtivo: false, respostasAtivas: false, respostasAtrasadas: 0 });
+    render(<PortalFuncionamentoCard />);
+    fireEvent.click(await screen.findByRole("switch", { name: "Portal ligado" }));
+    await waitFor(() => expect(mocks.definir).toHaveBeenCalledWith(false, false));
+    expect(mocks.ensure).toHaveBeenCalledWith(expect.objectContaining({ permission: "COMMUNICATION_SETTINGS" }));
+    expect(screen.getByRole("switch", { name: "Clientes podem responder orçamentos" })).toBeDisabled();
   });
 
   it("sem PIN não muda nada", async () => {
