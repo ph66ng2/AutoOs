@@ -37,7 +37,7 @@ export function AccessCodeCard({ code }: { code: CodigoPrimeiroAcesso }) {
         {copied ? "Copiado" : "Copiar código"}
       </Button>
       <p className="text-xs leading-relaxed text-muted-foreground">
-        Passe o código para {code.nome}. No primeiro acesso a pessoa cria o próprio PIN e escolhe nome, ícone e tema.
+        Passe o código para {code.nome}. No primeiro acesso a pessoa cria o próprio PIN e escolhe nome, forma e tema.
         O código não é o PIN e não aparece de novo: se perder, gere outro.
       </p>
     </div>

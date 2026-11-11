@@ -29,7 +29,9 @@ const ITENS: Array<{ chave: Chave; titulo: string; ligado: string; desligado: st
  * vencidas não estão sendo aplicadas, sinal de que o agendamento no Supabase parou.
  */
 export function PortalFuncionamentoCard() {
-  const { ensureSensitiveAccess } = useSensitiveAccess();
+  const { ensureSensitiveAccess, hasPermission } = useSensitiveAccess();
+  const canConfigure = hasPermission(SENSITIVE_PERMISSIONS.COMMUNICATION_SETTINGS);
+  const canChangeResponses = canConfigure && hasPermission(SENSITIVE_PERMISSIONS.FINANCIAL_ACTIONS);
   const [estado, setEstado] = useState<EstadoPortal | null>(null);
   const [salvando, setSalvando] = useState<Chave | null>(null);
   const [erro, setErro] = useState<string | null>(null);
@@ -46,14 +48,14 @@ export function PortalFuncionamentoCard() {
   useEffect(() => { void carregar(); }, [carregar]);
 
   const alternar = async (chave: Chave) => {
-    if (!estado) return;
+    if (!estado || !canConfigure || (chave === "respostasAtivas" && !canChangeResponses)) return;
     const novo = { ...estado, [chave]: !estado[chave] };
     const liberado = await ensureSensitiveAccess({
       title: novo[chave] ? `Ligar: ${ITENS.find((i) => i.chave === chave)!.titulo}` : `Desligar: ${ITENS.find((i) => i.chave === chave)!.titulo}`,
       description: chave === "respostasAtivas"
         ? "Informe o PIN. Respostas pelo portal mudam status, pagamento e estoque: exige a permissão financeira."
         : "Informe o PIN para mudar o acesso dos clientes ao portal.",
-      permission: chave === "respostasAtivas" ? SENSITIVE_PERMISSIONS.FINANCIAL_ACTIONS : SENSITIVE_PERMISSIONS.MANAGE_STATUS_LINKS,
+      permission: chave === "respostasAtivas" ? SENSITIVE_PERMISSIONS.FINANCIAL_ACTIONS : SENSITIVE_PERMISSIONS.COMMUNICATION_SETTINGS,
     });
     if (!liberado) return;
     setSalvando(chave);
@@ -74,6 +76,7 @@ export function PortalFuncionamentoCard() {
         <CardDescription>Desligar não apaga nada: contatos, senhas e respostas continuam guardados. Vale só para a empresa do perfil ativo.</CardDescription>
       </CardHeader>
       <CardContent className="space-y-3">
+        {!canConfigure && <p className="text-sm text-muted-foreground">Ligar ou desligar o portal exige Comunicação externa.</p>}
         {erro && <p className="text-sm text-destructive" role="alert">{erro}</p>}
         {estado && ITENS.map((item) => {
           const ligado = estado[item.chave];
@@ -91,7 +94,7 @@ export function PortalFuncionamentoCard() {
                 role="switch"
                 aria-checked={ligado}
                 aria-label={item.titulo}
-                disabled={salvando !== null}
+                disabled={salvando !== null || !canConfigure || (item.chave === "respostasAtivas" && !canChangeResponses)}
                 onClick={() => void alternar(item.chave)}
                 className={cn(
                   "relative mt-0.5 inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors disabled:opacity-50",

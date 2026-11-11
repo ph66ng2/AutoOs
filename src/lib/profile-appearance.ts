@@ -1,39 +1,8 @@
-import {
-  Coffee,
-  Flame,
-  Gamepad2,
-  Headphones,
-  Heart,
-  Leaf,
-  Music,
-  Printer,
-  Rocket,
-  Star,
-  Wrench,
-  Zap,
-  type LucideIcon,
-} from "lucide-react";
 import type { SecurityProfile } from "@/types";
-
-/** Mesma lista aceita pelo backend (`AVATAR_ICONES` em auth.rs). Sem upload de imagem. */
-export const AVATAR_ICONS: { id: string; label: string; Icon: LucideIcon }[] = [
-  { id: "headphones", label: "Fone", Icon: Headphones },
-  { id: "wrench", label: "Chave", Icon: Wrench },
-  { id: "printer", label: "Impressora", Icon: Printer },
-  { id: "coffee", label: "Café", Icon: Coffee },
-  { id: "star", label: "Estrela", Icon: Star },
-  { id: "zap", label: "Raio", Icon: Zap },
-  { id: "leaf", label: "Folha", Icon: Leaf },
-  { id: "flame", label: "Chama", Icon: Flame },
-  { id: "rocket", label: "Foguete", Icon: Rocket },
-  { id: "heart", label: "Coração", Icon: Heart },
-  { id: "music", label: "Música", Icon: Music },
-  { id: "gamepad-2", label: "Controle", Icon: Gamepad2 },
-];
 
 /**
  * Avatares geométricos (desenho em `components/perfil/GeometricAvatar.tsx`). Também aceitos
- * pelo backend em `AVATAR_ICONES`. Ficam ao lado dos ícones; perfis já salvos não mudam.
+ * pelo backend em `AVATAR_ICONES`. A migration 0046 converte os ícones antigos por ID.
  */
 export const AVATAR_SHAPES: { id: string; label: string }[] = [
   { id: "shape-orb", label: "Círculo" },
@@ -80,18 +49,14 @@ export interface ProfileAppearance {
 export function profileAppearance(profile: Pick<SecurityProfile, "id" | "avatar_icone" | "avatar_cor" | "tema">): ProfileAppearance {
   const fallbackIndex = Math.abs(profile.id);
   return {
-    icon: AVATAR_ICONS.some((item) => item.id === profile.avatar_icone) || isAvatarShape(profile.avatar_icone ?? "")
+    icon: isAvatarShape(profile.avatar_icone ?? "")
       ? profile.avatar_icone!
-      : AVATAR_ICONS[fallbackIndex % AVATAR_ICONS.length].id,
+      : AVATAR_SHAPES[fallbackIndex % AVATAR_SHAPES.length].id,
     color: AVATAR_COLORS.some((item) => item.hex === profile.avatar_cor)
       ? profile.avatar_cor!
       : AVATAR_COLORS[fallbackIndex % AVATAR_COLORS.length].hex,
     theme: profile.tema === "dark" ? "dark" : "light",
   };
-}
-
-export function avatarIcon(id: string): LucideIcon {
-  return (AVATAR_ICONS.find((item) => item.id === id) ?? AVATAR_ICONS[0]).Icon;
 }
 
 /** Perfil que exige PIN e ainda não foi ativado neste computador. */

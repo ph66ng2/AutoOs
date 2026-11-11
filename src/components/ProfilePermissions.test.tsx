@@ -9,8 +9,8 @@ const AVISO = /até todos os computadores atualizarem para a 0\.6\.0/;
 describe("ProfilePermissions com a trava 0.5.6", () => {
   it("só oferece permissões aceitas pela 0.5.6 e mostra o aviso", () => {
     render(<ProfilePermissions permissions={[]} onChange={vi.fn()} role="CUSTOM" travaAtiva />);
-    expect(screen.getAllByRole("checkbox")).toHaveLength(PERMISSOES_056.length);
-    expect(screen.queryByLabelText(/Portal do Cliente/)).toBeNull();
+    expect(screen.getAllByRole("checkbox")).toHaveLength(Object.values(SENSITIVE_PERMISSIONS).filter((p) => PERMISSOES_056.includes(p)).length);
+    expect(screen.queryByLabelText(/Acessos do portal/)).toBeNull();
     expect(screen.queryByLabelText(/Elaborar e enviar/)).toBeNull();
     expect(screen.getByText(AVISO)).toBeTruthy();
   });

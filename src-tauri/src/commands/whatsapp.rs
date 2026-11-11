@@ -1,5 +1,5 @@
 use crate::commands::auth::{
-    record_security_event, require_permission, require_sensitive_access, PERMISSION_CONFIG_WHATSAPP,
+    record_security_event, require_permission, require_sensitive_access, PERMISSION_COMMUNICATION_SETTINGS,
 };
 use crate::commands::types::{
     WhatsappConfigInput, WhatsappConfigResponse, WhatsappConfigStored, WhatsappSendInput,
@@ -79,7 +79,7 @@ fn sanitize_phone(raw: &str) -> Result<String, String> {
 #[tauri::command]
 #[instrument(skip_all)]
 pub async fn salvar_config_whatsapp(config: WhatsappConfigInput) -> Result<bool, String> {
-    let actor = require_permission(PERMISSION_CONFIG_WHATSAPP)?;
+    let actor = require_permission(PERMISSION_COMMUNICATION_SETTINGS)?;
     let (provider, api_url) = validate_whatsapp_config(&config)?;
     debug!("Salvando configuração de WhatsApp");
 
@@ -131,7 +131,7 @@ pub async fn salvar_config_whatsapp(config: WhatsappConfigInput) -> Result<bool,
 #[tauri::command]
 #[instrument(skip_all)]
 pub async fn carregar_config_whatsapp() -> Result<WhatsappConfigResponse, String> {
-    require_permission(PERMISSION_CONFIG_WHATSAPP)?;
+    require_permission(PERMISSION_COMMUNICATION_SETTINGS)?;
     debug!("Carregando configuração de WhatsApp");
 
     let stored = load_stored_whatsapp_config()?

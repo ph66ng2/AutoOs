@@ -11,7 +11,7 @@
 //! Opcional: token de túnel nomeado para `fotos.bmitag.com.br` (um PC por vez).
 
 use crate::commands::auth::{
-    record_security_event, require_permission, PERMISSION_CONFIG_SMTP,
+    record_security_event, require_permission, PERMISSION_COMMUNICATION_SETTINGS,
 };
 use crate::commands::util::{autoos_logs_dir, local_app_data_dir};
 use keyring::Entry;
@@ -379,7 +379,7 @@ pub async fn stop_tunnel() {
 pub async fn salvar_config_photo_tunnel(
     config: PhotoTunnelConfigInput,
 ) -> Result<bool, String> {
-    let actor = require_permission(PERMISSION_CONFIG_SMTP)?;
+    let actor = require_permission(PERMISSION_COMMUNICATION_SETTINGS)?;
     let token = config
         .token
         .as_deref()
@@ -424,7 +424,7 @@ pub async fn salvar_config_photo_tunnel(
 
 #[tauri::command]
 pub async fn carregar_config_photo_tunnel() -> Result<PhotoTunnelConfigResponse, String> {
-    require_permission(PERMISSION_CONFIG_SMTP)?;
+    require_permission(PERMISSION_COMMUNICATION_SETTINGS)?;
     Ok(PhotoTunnelConfigResponse {
         has_token: is_named_tunnel_configured(),
         env_override: load_env_token().is_some(),
