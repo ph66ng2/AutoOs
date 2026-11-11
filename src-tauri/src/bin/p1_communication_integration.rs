@@ -242,8 +242,7 @@ async fn current_default_profile_id(pool: &PgPool) -> Result<Option<i32>> {
 
 async fn create_temporary_profile(pool: &PgPool) -> Result<i32> {
     let permissions = serde_json::to_string(&vec![
-        auth::PERMISSION_CONFIG_SMTP.to_string(),
-        auth::PERMISSION_CONFIG_WHATSAPP.to_string(),
+        auth::PERMISSION_COMMUNICATION_SETTINGS.to_string(),
     ])
     .context("failed to serialize temp profile permissions")?;
 

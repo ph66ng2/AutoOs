@@ -51,7 +51,7 @@ const BASE_TOUR: TourStep[] = [
   {
     id: "perfil",
     title: "Seu perfil",
-    body: "Troque de perfil, mude nome, ícone e tema, e reveja este tour quando quiser em Perfil › Tutorial.",
+    body: "Troque de perfil, mude nome, forma e tema, e reveja este tour quando quiser em Perfil › Tutorial.",
     target: "profile-card",
   },
   {
@@ -90,8 +90,8 @@ export const PERMISSION_TOUR: Record<SensitivePermission, TourStep> = {
   },
   MANAGE_STATUS_LINKS: {
     id: "links",
-    title: "Portal do Cliente",
-    body: "Publique orçamentos no portal, gerencie os acessos dos contatos e crie ou revogue os links de acompanhamento da OS. Em Configurações › Integrações, ligue o portal e edite o contato da empresa.",
+    title: "Acessos do portal",
+    body: "Publique orçamentos no portal, gerencie os acessos dos contatos e crie ou revogue os links de acompanhamento da OS. Edite o contato da empresa em Configurações › Integrações. Ligar ou desligar o portal exige Comunicação externa.",
     target: "nav-/equipamentos",
   },
   DELETE_RECORDS: {
@@ -106,16 +106,10 @@ export const PERMISSION_TOUR: Record<SensitivePermission, TourStep> = {
     target: "perfil-tab-equipe",
     route: "/perfil",
   },
-  CONFIG_SMTP: {
+  COMMUNICATION_SETTINGS: {
     id: "integracoes",
-    title: "Integrações",
-    body: "Configure o envio de e-mail e o WhatsApp em Configurações.",
-    target: "nav-/configuracoes",
-  },
-  CONFIG_WHATSAPP: {
-    id: "integracoes",
-    title: "Integrações",
-    body: "Configure o envio de e-mail e o WhatsApp em Configurações.",
+    title: "Comunicação externa",
+    body: "Configure SMTP e WhatsApp e ligue ou desligue o Portal do Cliente em Configurações › Integrações. Respostas de orçamento também exigem a permissão financeira.",
     target: "nav-/configuracoes",
   },
 };

@@ -7,7 +7,7 @@ function statusWith(permissions: string[]) {
 }
 
 describe('profileHasPermission', () => {
-  const { PREPARE_QUOTES, CONFIG_SMTP, DELETE_RECORDS } = SENSITIVE_PERMISSIONS;
+  const { PREPARE_QUOTES, COMMUNICATION_SETTINGS, DELETE_RECORDS } = SENSITIVE_PERMISSIONS;
 
   it('libera quando nada é exigido', () => {
     expect(profileHasPermission(null)).toBe(true);
@@ -21,31 +21,31 @@ describe('profileHasPermission', () => {
 
   it('permissão única continua funcionando', () => {
     expect(profileHasPermission(statusWith([PREPARE_QUOTES]), PREPARE_QUOTES)).toBe(true);
-    expect(profileHasPermission(statusWith([CONFIG_SMTP]), PREPARE_QUOTES)).toBe(false);
+    expect(profileHasPermission(statusWith([COMMUNICATION_SETTINGS]), PREPARE_QUOTES)).toBe(false);
   });
 
   it('anyPermission libera com qualquer uma da lista', () => {
-    expect(profileHasPermission(statusWith([CONFIG_SMTP]), undefined, [PREPARE_QUOTES, CONFIG_SMTP])).toBe(true);
-    expect(profileHasPermission(statusWith([DELETE_RECORDS]), undefined, [PREPARE_QUOTES, CONFIG_SMTP])).toBe(false);
+    expect(profileHasPermission(statusWith([COMMUNICATION_SETTINGS]), undefined, [PREPARE_QUOTES, COMMUNICATION_SETTINGS])).toBe(true);
+    expect(profileHasPermission(statusWith([DELETE_RECORDS]), undefined, [PREPARE_QUOTES, COMMUNICATION_SETTINGS])).toBe(false);
   });
 
   it('única OU lista', () => {
-    expect(profileHasPermission(statusWith([CONFIG_SMTP]), PREPARE_QUOTES, [CONFIG_SMTP])).toBe(true);
-    expect(profileHasPermission(statusWith([PREPARE_QUOTES]), PREPARE_QUOTES, [CONFIG_SMTP])).toBe(true);
-    expect(profileHasPermission(statusWith([DELETE_RECORDS]), PREPARE_QUOTES, [CONFIG_SMTP])).toBe(false);
+    expect(profileHasPermission(statusWith([COMMUNICATION_SETTINGS]), PREPARE_QUOTES, [COMMUNICATION_SETTINGS])).toBe(true);
+    expect(profileHasPermission(statusWith([PREPARE_QUOTES]), PREPARE_QUOTES, [COMMUNICATION_SETTINGS])).toBe(true);
+    expect(profileHasPermission(statusWith([DELETE_RECORDS]), PREPARE_QUOTES, [COMMUNICATION_SETTINGS])).toBe(false);
   });
 });
 
 describe('permissionDescription', () => {
-  const { PREPARE_QUOTES, CONFIG_SMTP } = SENSITIVE_PERMISSIONS;
+  const { PREPARE_QUOTES, COMMUNICATION_SETTINGS } = SENSITIVE_PERMISSIONS;
 
   it('usa texto padrão sem permissões', () => {
     expect(permissionDescription()).toBe('executar esta ação');
   });
 
   it('junta rótulos com " ou "', () => {
-    expect(permissionDescription(undefined, [PREPARE_QUOTES, CONFIG_SMTP])).toBe(
-      `${SENSITIVE_PERMISSION_LABELS[PREPARE_QUOTES]} ou ${SENSITIVE_PERMISSION_LABELS[CONFIG_SMTP]}`,
+    expect(permissionDescription(undefined, [PREPARE_QUOTES, COMMUNICATION_SETTINGS])).toBe(
+      `${SENSITIVE_PERMISSION_LABELS[PREPARE_QUOTES]} ou ${SENSITIVE_PERMISSION_LABELS[COMMUNICATION_SETTINGS]}`,
     );
   });
 });

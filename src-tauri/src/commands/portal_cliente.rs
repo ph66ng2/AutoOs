@@ -8,7 +8,7 @@ use crate::commands::auth::{
     record_security_event, require_active_session_company_id, require_active_session_company_id_without_touch,
     require_any_permission, require_permission,
     require_sensitive_access, SecurityProfileSummary, PERMISSION_FINANCIAL_ACTIONS, PERMISSION_MANAGE_STATUS_LINKS,
-    PERMISSION_PREPARE_QUOTES,
+    PERMISSION_PREPARE_QUOTES, PERMISSION_COMMUNICATION_SETTINGS,
 };
 use crate::commands::orcamento_decisao::obter_ou_criar_versao;
 use crate::commands::types::{ClienteContato, CLIENTE_CONTATO_SELECT};
@@ -936,13 +936,13 @@ pub async fn obter_estado_portal() -> Result<EstadoPortal, String> {
     Ok(EstadoPortal { portal_ativo, respostas_ativas, respostas_atrasadas })
 }
 
-/// Liga/desliga o portal (gestão de links) e as respostas pelo portal (permissão financeira) da
+/// Liga/desliga o portal (comunicação externa) e as respostas pelo portal (permissão financeira) da
 /// empresa do perfil ativo. Desligar não apaga nada: o login cai na hora e as sessões voltam a
 /// valer ao religar.
 #[tauri::command]
 #[instrument(skip_all, fields(portal_ativo = portal_ativo, respostas_ativas = respostas_ativas))]
 pub async fn definir_estado_portal(portal_ativo: bool, respostas_ativas: bool) -> Result<EstadoPortal, String> {
-    let actor = require_permission(PERMISSION_MANAGE_STATUS_LINKS)?;
+    let actor = require_permission(PERMISSION_COMMUNICATION_SETTINGS)?;
     let pool = get_pool().await.map_err(|e| e.to_string())?;
     let empresa_id = require_active_session_company_id(&pool).await?;
     let map = super::operator_errors::mapear_erro_sql;

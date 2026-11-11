@@ -29,7 +29,7 @@ function errorMessage(cause: unknown) {
 
 /**
  * Primeiro acesso do perfil. Com `needsCode`, começa pelo código do administrador
- * e pela criação do PIN deste computador; depois a pessoa escolhe nome, ícone,
+ * e pela criação do PIN deste computador; depois a pessoa escolhe nome, forma,
  * cor e tema, e termina podendo abrir o tour.
  */
 export function PrimeiroAcessoWizard({
@@ -283,7 +283,7 @@ export function PrimeiroAcessoWizard({
                   >
                     <header className="space-y-2">
                       <h1 id="primeiro-acesso-titulo" className="text-2xl font-semibold tracking-tight">Deixe com a sua cara</h1>
-                      <p className="text-sm text-foreground">Seu nome aparece na tela de perfis, nas OS e no histórico. Dá para mudar tudo depois em Perfil.</p>
+                      <p className="text-sm text-foreground">Seu nome aparece na tela de perfis, nas OS e no histórico. Escolha uma cor e uma forma para seu avatar. Dá para mudar tudo depois em Perfil.</p>
                     </header>
                     <div className="space-y-2">
                       <Label htmlFor="primeiro-acesso-nome">Nome de exibição</Label>

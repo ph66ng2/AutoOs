@@ -1,12 +1,12 @@
 import { Check } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { AVATAR_COLORS, AVATAR_ICONS, AVATAR_SHAPES, type ProfileTheme } from "@/lib/profile-appearance";
+import { AVATAR_COLORS, AVATAR_SHAPES, type ProfileTheme } from "@/lib/profile-appearance";
 import { GeometricAvatar } from "@/components/perfil/GeometricAvatar";
 
-/** Forma não escolhida aparece em cinza, como os ícones não escolhidos. */
+/** Forma não escolhida aparece em cinza. */
 const SHAPE_IDLE_COLOR = "#94A3B8";
 
-/** Seletores de cor, ícone e tema usados no primeiro acesso e em Perfil › Personalizar. */
+/** Seletores de cor, forma e tema usados no primeiro acesso e em Perfil › Personalizar. */
 export function AppearancePicker({
   color,
   icon,
@@ -52,32 +52,7 @@ export function AppearancePicker({
       </fieldset>
 
       <fieldset disabled={disabled}>
-        <legend className="mb-3 text-sm font-medium">Ícone</legend>
-        <div className="flex flex-wrap gap-2.5">
-          {AVATAR_ICONS.map(({ id, label, Icon }) => {
-            const selected = id === icon;
-            return (
-              <button
-                key={id}
-                type="button"
-                aria-label={label}
-                aria-pressed={selected}
-                onClick={() => onIconChange(id)}
-                className={cn(
-                  "flex h-10 w-10 items-center justify-center rounded-xl ring-offset-2 ring-offset-background transition-[box-shadow,transform] duration-150 ease-out active:scale-[0.96] motion-reduce:active:scale-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-                  selected ? "text-white ring-2" : "bg-muted text-muted-foreground hover:text-foreground",
-                )}
-                style={selected ? { backgroundColor: color, ["--tw-ring-color" as string]: color } : undefined}
-              >
-                <Icon className="h-5 w-5" strokeWidth={1.8} />
-              </button>
-            );
-          })}
-        </div>
-      </fieldset>
-
-      <fieldset disabled={disabled}>
-        <legend className="mb-3 text-sm font-medium">Ou uma forma</legend>
+        <legend className="mb-3 text-sm font-medium">Forma</legend>
         <div className="flex flex-wrap gap-2.5">
           {AVATAR_SHAPES.map(({ id, label }) => {
             const selected = id === icon;
