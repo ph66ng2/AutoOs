@@ -8,8 +8,8 @@ use url::Url;
 
 static MIGRATOR: Migrator = sqlx::migrate!("./migrations");
 
-const REQUIRED_PROMOTION_MIGRATIONS: [i64; 21] = [27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 47, 48, 49];
-const EXPECTED_MIGRATION_COUNT: usize = 47;
+const REQUIRED_PROMOTION_MIGRATIONS: [i64; 22] = [27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 47, 48, 49, 50];
+const EXPECTED_MIGRATION_COUNT: usize = 48;
 // Fonte única das versões reservadas, compartilhada com check-sqlx-migrations.mjs e verify-estoque-seed.sh.
 const RESERVED_MIGRATION_VERSIONS_FILE: &str = include_str!("../../../scripts/sqlx-reserved-migrations.txt");
 const LAST_REQUIRED_APPLIED_MIGRATION: i64 = 28;
@@ -504,7 +504,7 @@ async fn required_promotion_migrations_already_applied(pool: &PgPool) -> Result<
     .bind(REQUIRED_PROMOTION_MIGRATIONS.as_slice())
     .fetch_one(pool)
     .await
-    .context("não foi possível consultar o status inicial das migrations 0027–0044 e 0047–0049")?;
+    .context("não foi possível consultar o status inicial das migrations 0027–0044 e 0047–0050")?;
     Ok(applied_count == REQUIRED_PROMOTION_MIGRATIONS.len() as i64)
 }
 

@@ -73,6 +73,8 @@ Com o portal desligado para a empresa, nada disso acontece: o envio sai sem a pa
 
 A senha criada no envio é uma exceção consciente à regra "a senha de quem decide é criada por quem tem a permissão financeira". Ela só é criada quando ainda não existe, pelo fluxo de envio do orçamento, por quem tem a permissão financeira ou "Elaborar e enviar orçamentos". Esse fluxo não aceita senha digitada: a senha é sempre gerada pelo sistema.
 
+Quem tem só "Acessos do portal" (`MANAGE_STATUS_LINKS`, ex.: Recepção) também passa por `preparar_acesso_portal` e cria a senha de quem só acompanha, mas **não** gera senha (nem nova senha) para um contato `DECIDIR`: o envio recusa com "Este contato decide orçamentos…". Se o contato `DECIDIR` já tem senha, nada é gerado e o preparo segue. A mesma regra vale para criar, trocar ou remover a senha manualmente (`definir_senha_portal_contato`, `SenhaPortalDialog.tsx`); ela está em `permissoes_senha_portal`.
+
 ### Senha gerada e mascaramento
 
 - A senha é gerada pelo sistema, em três blocos separados por hífen, e guardada só como hash (`portal_definir_senha_contato`). Se ela repetir a de outro contato do mesmo CPF/CNPJ, o sistema tenta outra, até 5 vezes.

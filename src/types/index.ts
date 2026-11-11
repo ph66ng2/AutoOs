@@ -841,9 +841,9 @@ export type SensitivePermission = (typeof SENSITIVE_PERMISSIONS)[keyof typeof SE
 export const SENSITIVE_PERMISSION_LABELS: Record<SensitivePermission, string> = {
   COMMUNICATION_SETTINGS: "configurar comunicação externa e ligar ou desligar o portal",
   DELETE_RECORDS: "excluir registros",
-  FINANCIAL_ACTIONS: "alterar orçamentos, aprovações e valores",
+  FINANCIAL_ACTIONS: "ações financeiras",
   STOCK_CONTROL: "movimentar e editar estoque",
-  PREPARE_QUOTES: "elaborar e enviar orçamentos",
+  PREPARE_QUOTES: "orçamentos",
   MANAGE_PROFILES: "gerenciar perfis e auditoria",
   MANAGE_STATUS_LINKS: "gerenciar acessos do portal",
   VIEW_EXPENSES: "visualizar gastos e despesas",

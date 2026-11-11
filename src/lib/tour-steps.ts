@@ -66,8 +66,8 @@ const BASE_TOUR: TourStep[] = [
 export const PERMISSION_TOUR: Record<SensitivePermission, TourStep> = {
   FINANCIAL_ACTIONS: {
     id: "financeiro",
-    title: "Orçamentos e valores",
-    body: "Você pode aprovar, reprovar e alterar valores e prazos de orçamento nos equipamentos.",
+    title: "Ações financeiras",
+    body: "Corrija decisões e status, altere orçamentos já decididos e autorize valor final e exceções de preço.",
     target: "nav-/equipamentos",
   },
   VIEW_EXPENSES: {
@@ -84,8 +84,8 @@ export const PERMISSION_TOUR: Record<SensitivePermission, TourStep> = {
   },
   PREPARE_QUOTES: {
     id: "orcamentos",
-    title: "Elaborar orçamentos",
-    body: "Finalize verificações com orçamento, ajuste valores e prazos antes da decisão do cliente e envie pelo portal.",
+    title: "Orçamentos",
+    body: "Elabore e envie orçamentos e novas versões, crie nova proposta, renove vencidos, prorrogue prazos, aprove ou reprove e encerre OS só de garantia.",
     target: "nav-/equipamentos",
   },
   MANAGE_STATUS_LINKS: {

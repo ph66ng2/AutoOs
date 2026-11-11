@@ -62,7 +62,6 @@ import { todayLocalIsoDate } from "@/lib/date-utils";
 import { canTransition, getTransitionError } from "@/lib/status-fsm";
 import {
   STATUS_LABELS,
-  SENSITIVE_PERMISSIONS,
   type Cliente,
   type ClienteContato,
   type Equipamento,
@@ -1363,7 +1362,6 @@ function EquipmentDetail({ equipamento }: { equipamento: Equipamento }) {
     const permitted = await ensureSensitiveAccess({
       title: "Confirmar retirada",
       description: "Informe o PIN para marcar este equipamento como entregue.",
-      permission: SENSITIVE_PERMISSIONS.FINANCIAL_ACTIONS,
     });
     if (!permitted) return setError("A retirada não foi autorizada.");
     setBusy(true);
