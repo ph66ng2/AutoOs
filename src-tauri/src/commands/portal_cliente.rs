@@ -7,7 +7,7 @@
 use crate::commands::auth::{
     record_security_event, require_active_session_company_id, require_active_session_company_id_without_touch,
     require_any_permission, require_permission,
-    require_sensitive_access, SecurityProfileSummary, PERMISSION_FINANCIAL_ACTIONS, PERMISSION_MANAGE_STATUS_LINKS,
+    profile_has_permission, require_sensitive_access, SecurityProfileSummary, PERMISSION_FINANCIAL_ACTIONS, PERMISSION_MANAGE_STATUS_LINKS,
     PERMISSION_PREPARE_QUOTES, PERMISSION_COMMUNICATION_SETTINGS,
 };
 use crate::commands::orcamento_decisao::obter_ou_criar_versao;
@@ -215,31 +215,33 @@ pub async fn definir_acesso_portal_contato(contato_id: i32, acesso: String) -> R
 #[tauri::command]
 #[instrument(skip_all, fields(contato_id = contato_id))]
 pub async fn definir_senha_portal_contato(contato_id: i32, senha: Option<String>) -> Result<ClienteContato, String> {
+    // Sessão travada falha aqui, antes de ler o contato.
+    require_sensitive_access()?;
     let pool = get_pool().await.map_err(|e| e.to_string())?;
-    let acesso: Option<String> = sqlx::query_scalar("SELECT portal_acesso FROM cliente_contatos WHERE id = $1")
-        .bind(contato_id)
-        .fetch_optional(&pool)
-        .await
-        .map_err(super::operator_errors::mapear_erro_sql)?;
-    // Senha manual de quem decide orçamento exige Orçamentos ou Ações financeiras.
-    let actor = if acesso.as_deref() == Some("DECIDIR") {
-        require_any_permission(&[PERMISSION_FINANCIAL_ACTIONS, PERMISSION_PREPARE_QUOTES])?
-    } else {
-        require_permission(PERMISSION_MANAGE_STATUS_LINKS)?
-    };
     let empresa_id = require_active_session_company_id(&pool).await?;
     if let Some(valor) = senha.as_deref() {
         if !senha_aceitavel(valor) {
             return Err("A senha precisa ter de 8 a 72 caracteres, com letras e números.".to_string());
         }
     }
+    let mut tx = pool.begin().await.map_err(super::operator_errors::mapear_erro_sql)?;
+    // Linha travada: o acesso conferido é o mesmo que vale quando a senha é gravada.
+    let acesso: Option<String> = sqlx::query_scalar(
+        "SELECT portal_acesso FROM cliente_contatos WHERE id = $1 AND empresa_id = $2 FOR UPDATE",
+    )
+    .bind(contato_id)
+    .bind(empresa_id)
+    .fetch_optional(&mut *tx)
+    .await
+    .map_err(super::operator_errors::mapear_erro_sql)?;
+    let actor = require_any_permission(permissoes_senha_portal(acesso.as_deref()))?;
 
     sqlx::query("SELECT public.portal_definir_senha_contato($1, $2, $3, $4)")
         .bind(empresa_id)
         .bind(contato_id)
         .bind(senha.as_deref())
         .bind(actor.id)
-        .execute(&pool)
+        .execute(&mut *tx)
         .await
         .map_err(|error| match error.as_database_error().map(|db| db.message().to_string()).as_deref() {
             Some("CONTATO_INDISPONIVEL") => "Contato não encontrado na empresa ativa.".to_string(),
@@ -248,6 +250,7 @@ pub async fn definir_senha_portal_contato(contato_id: i32, senha: Option<String>
             Some("SENHA_REPETIDA") => "Outro contato deste CPF/CNPJ já usa essa senha. Escolha outra: é a senha que identifica quem entrou.".to_string(),
             _ => super::operator_errors::mapear_erro_sql(error),
         })?;
+    tx.commit().await.map_err(super::operator_errors::mapear_erro_sql)?;
 
     record_security_event(
         if senha.is_some() { "PORTAL_PASSWORD_SET" } else { "PORTAL_PASSWORD_REMOVED" },
@@ -264,6 +267,27 @@ pub async fn definir_senha_portal_contato(contato_id: i32, senha: Option<String>
         .fetch_one(&pool)
         .await
         .map_err(super::operator_errors::mapear_erro_sql)
+}
+
+/// Permissões que autorizam criar, trocar ou remover a senha do portal de um contato. A senha de
+/// quem decide orçamento (`DECIDIR`) autoriza aprovar/reprovar, então exige Orçamentos ou Ações
+/// financeiras (mesma regra de `SenhaPortalDialog.tsx`); para os demais, Links de status basta.
+pub(crate) fn permissoes_senha_portal(acesso: Option<&str>) -> &'static [&'static str] {
+    if acesso == Some("DECIDIR") {
+        &[PERMISSION_FINANCIAL_ACTIONS, PERMISSION_PREPARE_QUOTES]
+    } else {
+        &[PERMISSION_MANAGE_STATUS_LINKS]
+    }
+}
+
+/// `preparar_acesso_portal` entra com qualquer uma das três permissões; gerar a senha de um contato
+/// `DECIDIR` exige as de `permissoes_senha_portal`. Para os demais, a entrada já basta (quem prepara
+/// orçamento entrega o acesso de acompanhamento junto).
+fn pode_gerar_senha_no_preparo(actor: &SecurityProfileSummary, acesso: &str) -> bool {
+    acesso != "DECIDIR"
+        || permissoes_senha_portal(Some(acesso))
+            .iter()
+            .any(|permissao| profile_has_permission(actor, permissao))
 }
 
 /// Mesma regra de `autoos_portal_senha_valida` (0036), conferida antes de ir ao banco.
@@ -477,6 +501,9 @@ pub(crate) struct PreparoAcessoPortal {
 
 const TENTATIVAS_SENHA: u8 = 5;
 
+const SEM_PERMISSAO_SENHA_DECIDIR: &str =
+    "Este contato decide orçamentos: a senha dele só pode ser criada por quem tem Orçamentos ou Ações financeiras.";
+
 /// Mesmo mapeamento de erros de `definir_senha_portal_contato`.
 fn mapear_erro_senha_portal(error: sqlx::Error) -> String {
     match error.as_database_error().map(|db| db.message().to_string()).as_deref() {
@@ -495,8 +522,9 @@ fn senha_repetida(error: &sqlx::Error) -> bool {
 /// Garante, ao enviar o orçamento, que o contato destinatário consegue entrar no portal: sem
 /// acesso passa a ACOMPANHAR (nunca vira DECIDIR) e, sem senha, recebe uma gerada aqui.
 ///
-/// Exceção deliberada à regra "senha de quem decide é criada por quem tem permissão financeira":
-/// quem prepara orçamento precisa entregar o acesso junto com ele, em qualquer dos três casos.
+/// Quem tem só Links de status (Recepção) não gera senha de contato `DECIDIR`: essa senha autoriza
+/// decidir o orçamento e segue `permissoes_senha_portal`. Se o contato já tem senha, nada é gerado e
+/// o preparo segue normalmente.
 #[tauri::command]
 #[instrument(skip_all, fields(equipamento_id = equipamento_id))]
 pub async fn preparar_acesso_portal(
@@ -555,6 +583,10 @@ pub async fn preparar_acesso_portal(
     let criar = !atual.tem_senha || forcar;
     if atual.tem_senha && forcar && atual.usou_senha_atual {
         return Err("Este contato já entrou no portal com a senha atual; não dá para gerar outra aqui.".to_string());
+    }
+
+    if criar && !pode_gerar_senha_no_preparo(&actor, &acesso_atual) {
+        return Err(SEM_PERMISSAO_SENHA_DECIDIR.to_string());
     }
 
     let mut credenciais = None;
@@ -824,6 +856,61 @@ mod tests {
         assert_eq!(
             resumo_auditoria_lote(1, &falhas),
             "publicados=1; falhas=2; ids_falha=[2:a, b,c,5:d]"
+        );
+    }
+
+    fn perfil(role: &str, permissoes: &[&str]) -> SecurityProfileSummary {
+        SecurityProfileSummary {
+            id: 1,
+            nome: "Teste".to_string(),
+            role: role.to_string(),
+            permissions: permissoes.iter().map(|p| p.to_string()).collect(),
+            ..Default::default()
+        }
+    }
+
+    fn pode_senha_manual(actor: &SecurityProfileSummary, acesso: &str) -> bool {
+        permissoes_senha_portal(Some(acesso))
+            .iter()
+            .any(|permissao| profile_has_permission(actor, permissao))
+    }
+
+    #[test]
+    fn recepcao_so_com_links_nao_cria_senha_de_quem_decide() {
+        let recepcao = perfil("ATENDENTE", &[PERMISSION_MANAGE_STATUS_LINKS]);
+        assert!(!pode_senha_manual(&recepcao, "DECIDIR"));
+        assert!(!pode_gerar_senha_no_preparo(&recepcao, "DECIDIR"));
+    }
+
+    #[test]
+    fn recepcao_so_com_links_cria_senha_de_contato_comum() {
+        let recepcao = perfil("ATENDENTE", &[PERMISSION_MANAGE_STATUS_LINKS]);
+        for acesso in ["ACOMPANHAR", "NENHUM"] {
+            assert!(pode_senha_manual(&recepcao, acesso), "{acesso}");
+            assert!(pode_gerar_senha_no_preparo(&recepcao, acesso), "{acesso}");
+        }
+    }
+
+    #[test]
+    fn orcamentos_financeiro_e_admin_criam_senha_de_quem_decide() {
+        for actor in [
+            perfil("TECNICO", &[PERMISSION_PREPARE_QUOTES]),
+            perfil("FINANCEIRO", &[PERMISSION_FINANCIAL_ACTIONS]),
+            perfil("ADMIN", &[]),
+        ] {
+            assert!(pode_senha_manual(&actor, "DECIDIR"), "{}", actor.role);
+            assert!(pode_gerar_senha_no_preparo(&actor, "DECIDIR"), "{}", actor.role);
+        }
+    }
+
+    #[test]
+    fn senha_manual_de_contato_comum_continua_exigindo_links_de_status() {
+        // Mesma regra do frontend: fora de DECIDIR, a tela pede Links de status.
+        assert_eq!(permissoes_senha_portal(Some("ACOMPANHAR")), &[PERMISSION_MANAGE_STATUS_LINKS]);
+        assert_eq!(permissoes_senha_portal(None), &[PERMISSION_MANAGE_STATUS_LINKS]);
+        assert_eq!(
+            permissoes_senha_portal(Some("DECIDIR")),
+            &[PERMISSION_FINANCIAL_ACTIONS, PERMISSION_PREPARE_QUOTES]
         );
     }
 
