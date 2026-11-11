@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, mkdirSync, writeFileSync, copyFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, writeFileSync, copyFileSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { spawnSync } from 'node:child_process';
@@ -18,7 +18,7 @@ function fixture(t, versions) {
     writeFileSync(join(root, 'src-tauri/migrations', name), sql);
     rows.push(`${version}|t|${createHash('sha384').update(sql).digest('hex')}`);
   }
-  for (const script of ['check-sqlx-migrations.mjs', 'check-sqlx-database-history.mjs']) {
+  for (const script of ['check-sqlx-migrations.mjs', 'check-sqlx-database-history.mjs', 'sqlx-reserved-migrations.txt', 'verify-estoque-seed.sh']) {
     copyFileSync(new URL(`../${script}`, import.meta.url), join(root, 'scripts', script));
   }
   // Substitui só o executável psql do processo filho; nenhum banco é acessado.
@@ -38,6 +38,9 @@ function fixture(t, versions) {
       });
     },
     rows,
+    seedCheck() {
+      return spawnSync('bash', [join(root, 'scripts/verify-estoque-seed.sh'), '--check-migrations'], { encoding: 'utf8' });
+    },
   };
 }
 
@@ -73,4 +76,29 @@ test('histórico não pode omitir uma reserva que já está nos arquivos do buil
   const f = fixture(t, [...branchVersions, 45, 46, 47]);
   const without45 = f.rows.filter((row) => !row.startsWith('45|')).join('\n');
   assert.match(f.run('check-sqlx-database-history.mjs', without45).stderr, /0045.*ausente/);
+});
+
+test('verificador do seed usa a mesma lista de reservas dos demais verificadores', (t) => {
+  for (const versions of [branchVersions, [...Array.from({ length: 44 }, (_, i) => i + 1), 47], [...branchVersions, 45, 46, 47]]) {
+    const f = fixture(t, versions);
+    const result = f.seedCheck();
+    assert.equal(result.status, 0, result.stderr);
+    assert.match(result.stdout, new RegExp(`SEED_VERIFY_MIGRATIONS_OK count=${versions.length}\\b`));
+    assert.equal(f.run('check-sqlx-migrations.mjs').status, 0);
+  }
+  const missing = fixture(t, branchVersions.filter((version) => version !== 44));
+  assert.match(missing.seedCheck().stderr, /buraco não reservado em 0044/);
+  const duplicate = fixture(t, branchVersions);
+  writeFileSync(join(duplicate.root, 'src-tauri/migrations/0048_duplicate.sql'), '-- duplicate');
+  assert.match(duplicate.seedCheck().stderr, /duplicata em 0048/);
+});
+
+test('a reserva vem do arquivo compartilhado, não de constante em cada verificador', (t) => {
+  const f = fixture(t, branchVersions);
+  writeFileSync(join(f.root, 'scripts/sqlx-reserved-migrations.txt'), '# só duas\n45\n46 # feature\n');
+  assert.match(f.run('check-sqlx-migrations.mjs').stderr, /0047 ausente/);
+  assert.match(f.seedCheck().stderr, /buraco não reservado em 0047/);
+  for (const script of ['check-sqlx-migrations.mjs', 'verify-estoque-seed.sh']) {
+    assert.doesNotMatch(readFileSync(new URL(`../${script}`, import.meta.url), 'utf8'), /\b45\b[^\n]*\b46\b/);
+  }
 });

@@ -1,12 +1,24 @@
-import { readdirSync } from "node:fs";
+import { readFileSync, readdirSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 
 const migrationDir = fileURLToPath(new URL("../src-tauri/migrations/", import.meta.url));
 const files = readdirSync(migrationDir).filter((file) => file.endsWith(".sql")).sort();
 const byVersion = new Map();
 const errors = [];
-// 0045/0046: portal na feature; 0047: PDF oficial (PR independente).
-const reservedVersions = new Set([45, 46, 47]);
+// Fonte única das versões reservadas, compartilhada com verify-estoque-seed.sh e production_migrate.rs.
+const reservedVersions = new Set(
+  readFileSync(new URL("./sqlx-reserved-migrations.txt", import.meta.url), "utf8")
+    .split("\n")
+    .map((line) => line.replace(/#.*$/, "").trim())
+    .filter(Boolean)
+    .map((line) => {
+      if (!/^\d+$/.test(line)) {
+        errors.push(`Linha inválida em sqlx-reserved-migrations.txt: ${line}`);
+        return 0;
+      }
+      return Number(line);
+    }),
+);
 
 for (const file of files) {
   const match = /^(\d{4})_[a-z0-9_]+\.sql$/.exec(file);

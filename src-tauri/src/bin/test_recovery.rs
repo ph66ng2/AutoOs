@@ -72,7 +72,7 @@ async fn main() -> Result<()> {
         username.clone(),
         "wrong_password".to_string(),
         profile_id,
-        "5678".to_string(),
+        "5862".to_string(),
     )
     .await;
     assert!(failed_reset.is_err(), "redefinir_pin_via_db deve falhar com credenciais inválidas");
@@ -92,7 +92,7 @@ async fn main() -> Result<()> {
             username.clone(),
             password.clone(),
             profile_id,
-            "5678".to_string(),
+            "5862".to_string(),
         )
         .await,
         "Falha ao redefinir PIN via recovery",
@@ -103,7 +103,7 @@ async fn main() -> Result<()> {
     assert!(new_pin.is_some(), "PIN deve existir após recovery bem-sucedido");
     let new_pin_ref = new_pin.as_ref().unwrap();
     assert!(
-        auth::verify_pin("5678", new_pin_ref),
+        auth::verify_pin("5862", new_pin_ref),
         "Novo PIN deve ser válido após recovery bem-sucedido"
     );
     assert!(

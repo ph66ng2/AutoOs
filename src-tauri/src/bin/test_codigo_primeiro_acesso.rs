@@ -198,8 +198,8 @@ async fn cenario_fluxo_completo(pool: &PgPool) -> Result<()> {
     limpar_keyring(profile_id);
     let dupla = emitir(pool, profile_id).await?;
     // Duas tarefas em threads diferentes, como dois envios do wizard no mesmo processo.
-    let primeira = tokio::spawn(auth::ativar_perfil_com_codigo(profile_id, dupla.clone(), "1111".into(), "1111".into()));
-    let segunda = tokio::spawn(auth::ativar_perfil_com_codigo(profile_id, dupla, "1111".into(), "1111".into()));
+    let primeira = tokio::spawn(auth::ativar_perfil_com_codigo(profile_id, dupla.clone(), "2580".into(), "2580".into()));
+    let segunda = tokio::spawn(auth::ativar_perfil_com_codigo(profile_id, dupla, "2580".into(), "2580".into()));
     let (a, b) = (primeira.await?, segunda.await?);
     assert_eq!([a.is_ok(), b.is_ok()].iter().filter(|ok| **ok).count(), 1, "exatamente uma ativação deve vencer");
     let (_, usado, _) = estado_codigo(pool, profile_id).await?;
