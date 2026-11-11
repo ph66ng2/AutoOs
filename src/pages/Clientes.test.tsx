@@ -186,7 +186,7 @@ describe("Clientes: ordem de compra e preferências", () => {
     renderPagina();
     fireEvent.click(screen.getByRole("button", { name: "Contatos" }));
     fireEvent.click(await screen.findByRole("button", { name: /Carlos Mendes/ }));
-    expect(await screen.findByText("Contatos do cliente")).toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: "Fechar modal de contatos" })).toBeInTheDocument();
   });
 
   it("na edição preserva receber_email/receber_whatsapp salvos e envia a opção de OC", async () => {
