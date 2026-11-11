@@ -179,21 +179,27 @@ describe("PdfService.gerarOrcamentoAjustado", () => {
     expect(hasVersaoAjustada).toBe(false);
   });
 
-  it("deve mostrar alerta e retornar null quando ha divergencia entre soma e custo_total", async () => {
+  function corpoValorTotal() {
+    const tabela = mockAutoTable.mock.calls
+      .map(([, options]) => options as { body?: string[][] })
+      .find((options) => options.body?.some((linha) => linha[0] === "VALOR TOTAL:"));
+    return tabela?.body?.find((linha) => linha[0] === "VALOR TOTAL:")?.[1];
+  }
+
+  it("total confirmado diferente da soma dos itens gera o PDF com o total gravado, sem alerta", async () => {
     const alertSpy = vi.spyOn(window, "alert").mockImplementation(() => {});
-    const verificacaoDivergente: Verificacao = {
+    // Itens somam R$ 100,00; o operador confirmou R$ 90,00 (“Não grava o valor digitado”).
+    const verificacaoConfirmada: Verificacao = {
       ...verificacaoBase,
       servicos_necessarios: JSON.stringify([
         { id: "s1", catalogo_id: 1, descricao: "Limpeza", valor: 100 },
       ]),
-      custo_total: 200,
+      custo_total: 90,
     };
-    const result = await PdfService.gerarOrcamentoAjustado(
-      equipamentoBase,
-      verificacaoDivergente
-    );
-    expect(alertSpy).toHaveBeenCalled();
-    expect(result).toBeNull();
+    const result = await PdfService.gerarOrcamentoAjustado(equipamentoBase, verificacaoConfirmada);
+    expect(alertSpy).not.toHaveBeenCalled();
+    expect(result).toBe("/tmp/orcamento.pdf");
+    expect(corpoValorTotal()).toMatch(/90,00/);
     alertSpy.mockRestore();
   });
 
@@ -208,7 +214,7 @@ describe("PdfService.gerarOrcamentoAjustado", () => {
     alertSpy.mockRestore();
   });
 
-  it("deve detectar divergencia incluindo pecas na soma", async () => {
+  it("total confirmado acima da soma de servicos e pecas tambem gera o PDF com o total gravado", async () => {
     const alertSpy = vi.spyOn(window, "alert").mockImplementation(() => {});
     const verificacaoComPeca: Verificacao = {
       ...verificacaoBase,
@@ -218,14 +224,12 @@ describe("PdfService.gerarOrcamentoAjustado", () => {
       pecas_necessarias: JSON.stringify([
         { id: "p1", nome: "Rolo", quantidade: 1, valorUnitario: 50, valorTotal: 50 },
       ]),
-      custo_total: 100,
+      custo_total: 175.5,
     };
-    const result = await PdfService.gerarOrcamentoAjustado(
-      equipamentoBase,
-      verificacaoComPeca
-    );
-    expect(alertSpy).toHaveBeenCalled();
-    expect(result).toBeNull();
+    const artifact = await PdfService.construirOrcamentoAjustado(equipamentoBase, verificacaoComPeca);
+    expect(alertSpy).not.toHaveBeenCalled();
+    expect(artifact).not.toBeNull();
+    expect(corpoValorTotal()).toMatch(/175,50/);
     alertSpy.mockRestore();
   });
 

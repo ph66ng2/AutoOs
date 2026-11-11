@@ -1191,15 +1191,10 @@ export const PdfService = {
 
     const totalServicos = servicos.reduce((acc, s) => acc + s.valor, 0);
     const totalPecas = pecas.reduce((acc, p) => acc + p.valorTotal, 0);
+    // `custo_total` é o total gravado. Se difere da soma dos itens, o operador confirmou
+    // esse valor ao salvar (“Não grava o valor digitado”): o PDF mostra o total gravado,
+    // igual ao orçamento original, e não bloqueia visualizar, imprimir, baixar nem publicar.
     const custoTotal = verificacao.custo_total ?? (totalServicos + totalPecas);
-
-    // Compara em centavos inteiros: 100,10 + 200,20 dá 300,29999… em ponto flutuante.
-    if (Math.round((totalServicos + totalPecas) * 100) !== Math.round(custoTotal * 100)) {
-      alert(
-        `Divergência detectada: soma dos itens (${formatarMoeda(totalServicos + totalPecas)}) difere do custo total (${formatarMoeda(custoTotal)}).`
-      );
-      return null;
-    }
 
     const portal = await referenciaPdfPortal(equipamento, "ORCAMENTO_AJUSTADO");
     try {

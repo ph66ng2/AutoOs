@@ -7,6 +7,8 @@ import { DocumentosEquipamento } from "./DocumentosEquipamento";
 const db = vi.hoisted(() => ({
   buscarVerificacao: vi.fn(),
   publicarDocumentoPortal: vi.fn(),
+  obterVersaoDocumentoPortal: vi.fn(),
+  listarImagensEquipamento: vi.fn(),
 }));
 const invoke = vi.hoisted(() => vi.fn());
 
@@ -87,4 +89,51 @@ describe("DocumentosEquipamento", () => {
     await waitFor(() => expect(invoke).toHaveBeenCalledWith("salvar_ordem_servico_pdf", expect.objectContaining({ bytes: [37, 80, 68, 70] })));
     expect(db.publicarDocumentoPortal).toHaveBeenCalledTimes(1);
   });
+
+  it("orçamento ajustado com total confirmado diferente da soma dos itens imprime, publica e baixa com o total gravado", async () => {
+    // Itens somam R$ 100,00; o operador confirmou R$ 90,00 (“Não grava o valor digitado”).
+    db.buscarVerificacao.mockResolvedValue({
+      id: 5,
+      equipamento_id: 42,
+      tecnico_nome: "Ivan",
+      problema_relatado: "Não imprime",
+      servicos_necessarios: JSON.stringify([{ id: "s1", catalogo_id: 1, descricao: "Limpeza", valor: 100 }]),
+      pecas_necessarias: "[]",
+      custo_total: 90,
+      adjusted_at: "2026-11-10T12:00:00",
+    });
+    db.obterVersaoDocumentoPortal.mockResolvedValue({ versaoId: 7 });
+    db.listarImagensEquipamento.mockResolvedValue([]);
+    db.publicarDocumentoPortal.mockImplementation(async (_id: number, bytes: Uint8Array) => Array.from(bytes));
+    invoke.mockResolvedValue("/tmp/orcamento.pdf");
+    const alertSpy = vi.spyOn(window, "alert").mockImplementation(() => {});
+    const construir = vi.spyOn(PdfService, "construirOrcamentoAjustado");
+    const orcamento = { ...equipamento, status: "AGUARDANDO_APROVACAO", valor_orcamento: 90 } as Equipamento;
+    render(<DocumentosEquipamento equipamento={orcamento} />);
+
+    fireEvent.click(screen.getAllByRole("button", { name: /visualizar pdf/i })[1]);
+    const frame = await screen.findByTitle("Prévia do PDF", {}, { timeout: 5000 });
+    const artifact = await construir.mock.results[0].value;
+    expect(alertSpy).not.toHaveBeenCalled();
+    expect(artifact).not.toBeNull();
+    expect(new TextDecoder("latin1").decode(artifact.bytes)).toContain("90,00");
+
+    fireEvent.load(frame);
+    fireEvent.click(screen.getByRole("button", { name: "Imprimir" }));
+    await waitFor(() => expect(db.publicarDocumentoPortal).toHaveBeenCalledTimes(1));
+    expect(db.publicarDocumentoPortal).toHaveBeenCalledWith(
+      42,
+      expect.any(Uint8Array),
+      expect.objectContaining({ tipo: "ORCAMENTO_AJUSTADO", versaoId: 7 }),
+    );
+    // A publicação devolve os bytes canônicos: a prévia recarrega e então imprime.
+    fireEvent.load(frame);
+    await waitFor(() => expect(print).toHaveBeenCalledTimes(1));
+
+    fireEvent.click(screen.getByRole("button", { name: /baixar/i }));
+    await waitFor(() => expect(invoke).toHaveBeenCalledWith("salvar_orcamento_pdf", expect.objectContaining({
+      bytes: Array.from(artifact.bytes),
+    })));
+    expect(db.publicarDocumentoPortal).toHaveBeenCalledTimes(1);
+  }, 15000);
 });
