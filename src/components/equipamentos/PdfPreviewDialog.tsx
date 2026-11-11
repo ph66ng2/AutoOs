@@ -90,40 +90,29 @@ export function PdfPreviewDialog({ artifact, onOpenChange, onDownload, onBeforeP
     window.setTimeout(() => frameWindow.print(), 0);
   }
 
-  /** Executa `onBeforePrint`; se os bytes mudaram, recarrega a prévia e imprime ao terminar de carregar. */
-  async function prepararEImprimir() {
-    if (onBeforePrint && artifact) {
-      setPreparingPrint(true);
-      try {
-        await onBeforePrint(artifact);
-      } finally {
-        setPreparingPrint(false);
-      }
-      if (artifact.bytes !== urlBytes) {
-        printAfterLoadRef.current = true;
-        setPreviewReady(false);
-        setBytesRevision((rev) => rev + 1);
-        return;
-      }
+  /**
+   * Aplica o prazo (se mudou), executa `onBeforePrint` no artefato final e imprime.
+   * Se o artefato ou seus bytes mudaram (novo prazo ou PDF canônico do portal),
+   * recarrega a prévia e imprime ao terminar de carregar, para imprimir exatamente esse arquivo.
+   */
+  async function print() {
+    printAfterLoadRef.current = false;
+    setPreparingPrint(true);
+    let atual: PdfArtifact | null;
+    try {
+      atual = await aplicarPrazo();
+      if (atual && onBeforePrint) await onBeforePrint(atual);
+    } finally {
+      setPreparingPrint(false);
+    }
+    if (!atual) return;
+    if (atual !== artifact || atual.bytes !== urlBytes) {
+      printAfterLoadRef.current = true;
+      setPreviewReady(false);
+      setBytesRevision((rev) => rev + 1);
+      return;
     }
     imprimirIframe();
-  }
-
-  async function print() {
-    if (!prazoExecucao) {
-      await prepararEImprimir();
-      return;
-    }
-    const normalizado = normalizarPrazo(Number(prazoMin), Number(prazoMax));
-    const mudou =
-      normalizado.minDiasUteis !== prazoExecucao.minDiasUteis
-      || normalizado.maxDiasUteis !== prazoExecucao.maxDiasUteis;
-    if (!mudou) {
-      await prepararEImprimir();
-      return;
-    }
-    printAfterLoadRef.current = true;
-    await aplicarPrazo();
   }
 
   async function download() {

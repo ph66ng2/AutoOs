@@ -138,6 +138,7 @@ import { CommunicationEmailDialog } from "@/components/equipamentos/Communicatio
 import { PhotoUploadDialog } from "@/components/equipamentos/PhotoUploadDialog";
 import { DocumentosEquipamento } from "@/components/equipamentos/DocumentosEquipamento";
 import { PdfPreviewDialog } from "@/components/equipamentos/PdfPreviewDialog";
+import { publicarPdfOficial } from "@/lib/portal-documentos";
 import { AjusteOrcamentoServicos } from "@/components/equipamentos/AjusteOrcamentoServicos";
 import { carregarProdutosOrcamento, LABEL_CONFIRMAR_OS_GARANTIA, MENSAGEM_CONFIRMAR_OS_GARANTIA, normalizarServicosOrcamento, orcamentoEmElaboracao, transicaoElaboraOrcamento, osSomenteGarantia, pecasParaOrcamento, orcamentoJaAprovado, orcamentoMudou, resumirPecas, TITULO_CONFIRMAR_OS_GARANTIA, vaiAutoAprovarOsGarantia, validarPecas } from "@/lib/orcamento-estoque";
 import { ActionPriorityRow, type PriorityAction } from "@/components/ui/action-priority-row";
@@ -3889,6 +3890,10 @@ export default function Equipamentos() {
             await PdfService.salvarRelatorioStatus(artifact, equipamento);
           }
         }}
+        // Imprimir sem baixar também publica OS/orçamento; publicarPdfOficial é idempotente por artefato.
+        onBeforePrint={pdfPreview && pdfPreview.tipo !== "relatorio"
+          ? (artifact) => publicarPdfOficial(artifact, pdfPreview.equipamento)
+          : undefined}
       />
     </div>
   );

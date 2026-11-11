@@ -109,12 +109,32 @@ vi.mock("@/lib/db", () => ({
   },
 }));
 
+const mockPdfService = vi.hoisted(() => ({
+  gerarOrcamento: vi.fn(),
+  gerarOrdemServico: vi.fn(),
+  gerarRelatorioStatus: vi.fn(),
+  construirOrcamentoAjustado: vi.fn(),
+  construirOrdemServico: vi.fn(),
+  construirRelatorioStatus: vi.fn(),
+}));
+const mockPublicarPdfOficial = vi.hoisted(() => vi.fn());
+const pdfPreviewProps = vi.hoisted(() => ({
+  current: null as null | { artifact: unknown; onBeforePrint?: (artifact: unknown) => Promise<void> | void },
+}));
+
 vi.mock("@/lib/pdf-service", () => ({
   PRAZO_EXECUCAO_PADRAO: { minDiasUteis: 2, maxDiasUteis: 4 },
-  PdfService: {
-    gerarOrcamento: vi.fn(),
-    gerarOrdemServico: vi.fn(),
-    gerarRelatorioStatus: vi.fn(),
+  PdfService: mockPdfService,
+}));
+
+vi.mock("@/lib/portal-documentos", () => ({
+  publicarPdfOficial: (...args: unknown[]) => mockPublicarPdfOficial(...args),
+}));
+
+vi.mock("@/components/equipamentos/PdfPreviewDialog", () => ({
+  PdfPreviewDialog: (props: { artifact: unknown; onBeforePrint?: (artifact: unknown) => Promise<void> | void }) => {
+    pdfPreviewProps.current = props;
+    return null;
   },
 }));
 
@@ -844,6 +864,30 @@ describe("Equipamentos — Budget Divergence & Audit", () => {
     fireEvent.click(screen.getByRole("button", { name: "Confirmar reprovação" }));
     await waitFor(() => expect(mockAprovarOrcamento).toHaveBeenCalledWith(expect.objectContaining({ aprovado: false, servicos_aprovados: [] })));
     expect(await screen.findByRole("alert")).toHaveTextContent("Orçamento desatualizado");
+  });
+
+  it("imprimir o Orçamento PDF sem baixar publica o PDF oficial no portal", async () => {
+    const artifact = { filename: "orc.pdf", bytes: new Uint8Array([37]), mimeType: "application/pdf" };
+    mockBuscarVerificacao.mockResolvedValue(makeVerificacao());
+    mockPdfService.construirOrcamentoAjustado.mockResolvedValue(artifact);
+    render(<Equipamentos />);
+    fireEvent.click(screen.getByTestId("action-orcamento_pdf"));
+    await waitFor(() => expect(pdfPreviewProps.current?.artifact).toBe(artifact));
+    expect(pdfPreviewProps.current?.onBeforePrint).toBeTypeOf("function");
+    await pdfPreviewProps.current!.onBeforePrint!(artifact);
+    expect(mockPublicarPdfOficial).toHaveBeenCalledTimes(1);
+    expect(mockPublicarPdfOficial).toHaveBeenCalledWith(artifact, expect.objectContaining({ id: equipamentoVerificado.id }));
+  });
+
+  it("imprimir a OS PDF sem baixar publica o PDF oficial no portal", async () => {
+    equipamentoVerificado.status = "RECEBIDO";
+    const artifact = { filename: "os.pdf", bytes: new Uint8Array([37]), mimeType: "application/pdf" };
+    mockPdfService.construirOrdemServico.mockResolvedValue(artifact);
+    render(<Equipamentos />);
+    fireEvent.click(screen.getByTestId("action-os_pdf"));
+    await waitFor(() => expect(pdfPreviewProps.current?.artifact).toBe(artifact));
+    await pdfPreviewProps.current!.onBeforePrint!(artifact);
+    expect(mockPublicarPdfOficial).toHaveBeenCalledWith(artifact, expect.objectContaining({ id: equipamentoVerificado.id }));
   });
 
   it("oferece Orçamento PDF e Alterar Orçamento no menu em todas as fases após a verificação", () => {
