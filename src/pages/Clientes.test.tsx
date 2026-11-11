@@ -178,6 +178,17 @@ describe("Clientes: ordem de compra e preferências", () => {
     expect(screen.queryByText("Nome antigo")).not.toBeInTheDocument();
   });
 
+  it("clicar em um contato da lista abre o gerenciamento de contatos", async () => {
+    mocks.clientes = [clienteSalvo({ empresa_id: 3 })];
+    dbMocks.listarClienteContatos.mockResolvedValue([
+      { id: 1, empresa_id: 3, cliente_id: 7, nome: "Carlos Mendes", email: "carlos@x.com", ativo: true },
+    ]);
+    renderPagina();
+    fireEvent.click(screen.getByRole("button", { name: "Contatos" }));
+    fireEvent.click(await screen.findByRole("button", { name: /Carlos Mendes/ }));
+    expect(await screen.findByText("Contatos do cliente")).toBeInTheDocument();
+  });
+
   it("na edição preserva receber_email/receber_whatsapp salvos e envia a opção de OC", async () => {
     mocks.clientes = [clienteSalvo({ exige_ordem_compra: true })];
     renderPagina();
