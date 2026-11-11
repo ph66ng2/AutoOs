@@ -1,0 +1,63 @@
+/* Ponte do primeiro acesso: o avatar tracejado vira o corpo do cadeado (mesmo degradê de pin-lock.css). */
+.first-access-bridge {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  pointer-events: none;
+}
+
+.first-access-bridge__clone {
+  position: fixed;
+  overflow: hidden;
+  border-radius: 28px;
+}
+
+.first-access-bridge__dashed {
+  position: absolute;
+  inset: 0;
+  border: 2px dashed rgb(148 163 184 / 0.45);
+  border-radius: inherit;
+}
+
+.first-access-bridge__body {
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  opacity: 0;
+  background: linear-gradient(160deg, #3a3b3e 0%, #1d1e20 55%, #141516 100%);
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 0.12),
+    inset 0 -2px 3px rgb(0 0 0 / 0.5),
+    0 10px 24px -8px rgb(0 0 0 / 0.65);
+}
+
+/* PIN aceito: o cadeado trava com um tranco antes de virar o avatar. */
+.first-access-clack .pin-lock__body {
+  animation: first-access-clack 260ms cubic-bezier(0.3, 0, 0.2, 1) both;
+}
+
+@keyframes first-access-clack {
+  0% { transform: scale(1); }
+  35% { transform: scale(0.93); }
+  70% { transform: scale(1.03); }
+  100% { transform: scale(1); }
+}
+
+/* Etapa "Pronto": o avatar ganha um anel de selo, duas vezes. */
+.first-access-seal {
+  animation: first-access-seal 1100ms ease-out 180ms 1 both;
+}
+
+@keyframes first-access-seal {
+  0% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--seal) 55%, transparent); }
+  45% { box-shadow: 0 0 0 14px color-mix(in srgb, var(--seal) 0%, transparent); }
+  46% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--seal) 45%, transparent); }
+  100% { box-shadow: 0 0 0 12px color-mix(in srgb, var(--seal) 0%, transparent); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .first-access-clack .pin-lock__body,
+  .first-access-seal {
+    animation: none;
+  }
+}

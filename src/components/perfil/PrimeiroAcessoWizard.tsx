@@ -15,6 +15,8 @@ import { BASE_MODULES } from "@/lib/tour-steps";
 import { erroPinNovo } from "@/lib/pin-rules";
 import { PinLock } from "@/components/auth/PinLock";
 import { PinCreateFields, regrasCumpridas } from "@/components/auth/PinCreateFields";
+import { playUiSound } from "@/lib/ui-sounds";
+import "./first-access-bridge.css";
 import { cn } from "@/lib/utils";
 import type { SecurityProfile, SensitiveAccessStatus } from "@/types";
 
@@ -90,6 +92,8 @@ export function PrimeiroAcessoWizard({
   }, [theme]);
   const [current, setCurrent] = useState<SecurityProfile>(profile);
   const [busy, setBusy] = useState(false);
+  /** O PIN foi aceito e o cadeado está travando, antes de virar o avatar. */
+  const [unlocking, setUnlocking] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const stepIndex = steps.indexOf(step);
 
@@ -124,12 +128,21 @@ export function PrimeiroAcessoWizard({
       onStatusChange(status);
       const updated = status.profiles.find((item) => item.id === profile.id);
       if (updated) setCurrent(updated);
-      setPin("");
-      setConfirmPin("");
       if (shortFlow) {
+        setPin("");
+        setConfirmPin("");
         onFinish("ativado");
         return;
       }
+      // O cadeado trava (com os 4 ✓ ainda na tela) e só então vira o avatar do perfil.
+      if (!reduceMotion) {
+        setUnlocking(true);
+        playUiSound("destravar");
+        await new Promise((resolve) => window.setTimeout(resolve, 280));
+        setUnlocking(false);
+      }
+      setPin("");
+      setConfirmPin("");
       setRedeemed(true);
       goTo("voce");
     } catch (cause) {
@@ -156,6 +169,7 @@ export function PrimeiroAcessoWizard({
       const updated = status.profiles.find((item) => item.id === profile.id);
       if (updated) setCurrent(updated);
       goTo("pronto");
+      window.setTimeout(() => playUiSound("pronto"), 180);
     } catch (cause) {
       setError(errorMessage(cause));
     } finally {
@@ -171,7 +185,7 @@ export function PrimeiroAcessoWizard({
   };
 
   return (
-    <div role="dialog" aria-modal="true" aria-labelledby="primeiro-acesso-titulo" data-blocks-tour="true" ref={rootRef} className={cn("fixed inset-0 z-[90] grid bg-background text-foreground lg:grid-cols-[minmax(0,560px)_minmax(0,1fr)]", theme === "dark" ? "dark" : "light")}>
+    <div role="dialog" aria-modal="true" aria-labelledby="primeiro-acesso-titulo" data-blocks-tour="true" data-first-access-wizard="" ref={rootRef} className={cn("fixed inset-0 z-[90] grid bg-background text-foreground lg:grid-cols-[minmax(0,560px)_minmax(0,1fr)]", theme === "dark" ? "dark" : "light")}>
       <div className="flex min-h-0 flex-col bg-background">
         <div className="mx-auto w-full max-w-[480px] shrink-0 px-6 pt-6 sm:px-10 lg:px-14">
         <div className="flex items-center gap-2.5">
@@ -179,10 +193,16 @@ export function PrimeiroAcessoWizard({
           <span className="text-lg font-bold">AutoOS</span>
         </div>
 
-        <ol aria-label="Etapas" className={cn("mt-6 flex gap-2", shortFlow && "hidden")}>
+        <ol aria-label="Etapas" data-first-access-piece="" className={cn("mt-6 flex gap-2", shortFlow && "hidden")}>
           {steps.map((item, index) => (
             <li key={item} aria-current={item === step ? "step" : undefined} className="flex flex-1 flex-col gap-2">
-              <span className={cn("h-1 rounded-full transition-colors", index <= stepIndex ? "bg-primary" : "bg-muted")} />
+              {/* A barra se preenche deslizando ao avançar e se esvazia ao voltar. */}
+              <span className="h-1 overflow-hidden rounded-full bg-muted">
+                <span
+                  className="block h-full origin-left rounded-full bg-primary transition-transform duration-500 ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:transition-none"
+                  style={{ transform: `scaleX(${index <= stepIndex ? 1 : 0})` }}
+                />
+              </span>
               <span className={cn("text-xs", index <= stepIndex ? "text-foreground" : "text-muted-foreground")}>
                 {item === "acesso" ? "Código e PIN" : item === "voce" ? "Seu perfil" : "Pronto"}
               </span>
@@ -193,6 +213,30 @@ export function PrimeiroAcessoWizard({
 
         <div data-slot="wizard-scroll" className="min-h-0 flex-1 overflow-y-auto">
         <div className="mx-auto flex min-h-full w-full max-w-[480px] flex-col justify-center px-6 py-6 sm:px-10 lg:px-14">
+          {/* O mesmo objeto atravessa as etapas: cadeado no código e PIN, avatar do perfil depois. */}
+          <div className="mb-5 flex h-[112px] items-start">
+            <AnimatePresence mode="popLayout" initial={false}>
+              {step === "acesso" && !redeemed ? (
+                <motion.div
+                  key="cadeado"
+                  exit={reduceMotion ? { opacity: 0 } : { opacity: 0, scale: 0.88, transition: { duration: 0.16, ease: "easeIn" } }}
+                  className={cn(unlocking && "first-access-clack")}
+                >
+                  <PinLock checked={unlocking ? 4 : regrasCumpridas(pin, confirmPin)} spin={pinKeys} />
+                </motion.div>
+              ) : (
+                <motion.div
+                  key="avatar"
+                  initial={reduceMotion ? { opacity: 0 } : { opacity: 0, scale: 1.18 }}
+                  animate={{ opacity: 1, scale: 1, transition: reduceMotion ? { duration: 0.12 } : { type: "spring", stiffness: 420, damping: 26, delay: 0.06 } }}
+                  className={cn("rounded-[28px]", step === "pronto" && "first-access-seal")}
+                  style={{ "--seal": color } as React.CSSProperties}
+                >
+                  <ProfileAvatar icon={icon} color={color} size="xl" />
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </div>
           <AnimatePresence mode="wait" initial={false} custom={direction}>
             <motion.div key={step} custom={direction} variants={slide} initial="initial" animate="animate" exit="exit" className="space-y-5">
               {step === "acesso" && redeemed && (
@@ -220,8 +264,7 @@ export function PrimeiroAcessoWizard({
                     void redeem();
                   }}
                 >
-                  <header className="space-y-2">
-                    <PinLock checked={regrasCumpridas(pin, confirmPin)} spin={pinKeys} className="mb-3" />
+                  <header className="space-y-2" data-first-access-piece="">
                     <h1 id="primeiro-acesso-titulo" className="text-2xl font-semibold tracking-tight">
                       {recovery
                         ? `Redefinir o PIN de ${profile.nome}`
@@ -237,7 +280,7 @@ export function PrimeiroAcessoWizard({
                           : "Digite o código que o administrador te passou e crie o PIN que você vai usar neste computador."}
                     </p>
                   </header>
-                  <div className="space-y-2">
+                  <div className="space-y-2" data-first-access-piece="">
                     <Label htmlFor="primeiro-acesso-codigo">Código de primeiro acesso</Label>
                     <Input
                       id="primeiro-acesso-codigo"
@@ -250,14 +293,16 @@ export function PrimeiroAcessoWizard({
                     />
                     <p className="text-sm text-muted-foreground">Vale por 24 horas. Expirou? Peça um novo ao administrador.</p>
                   </div>
-                  <PinCreateFields
-                    idPrefix="primeiro-acesso"
-                    pin={pin}
-                    confirmPin={confirmPin}
-                    onPinChange={(value) => { setPin(value); setPinKeys((n) => n + 1); }}
-                    onConfirmPinChange={(value) => { setConfirmPin(value); setPinKeys((n) => n + 1); }}
-                  />
-                  <p className="flex gap-2.5 rounded-xl bg-muted p-3.5 text-sm leading-relaxed text-muted-foreground">
+                  <div data-first-access-piece="">
+                    <PinCreateFields
+                      idPrefix="primeiro-acesso"
+                      pin={pin}
+                      confirmPin={confirmPin}
+                      onPinChange={(value) => { setPin(value); setPinKeys((n) => n + 1); }}
+                      onConfirmPinChange={(value) => { setConfirmPin(value); setPinKeys((n) => n + 1); }}
+                    />
+                  </div>
+                  <p data-first-access-piece="" className="flex gap-2.5 rounded-xl bg-muted p-3.5 text-sm leading-relaxed text-muted-foreground">
                     <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0 text-foreground" />
                     Só você sabe este PIN, nem o administrador vê. Se esquecer, ele gera um novo código para você.
                   </p>
@@ -266,13 +311,6 @@ export function PrimeiroAcessoWizard({
 
               {step === "voce" && (
                 <>
-                  <div className="lg:hidden flex items-center gap-3 rounded-xl bg-muted p-3">
-                    <ProfileAvatar icon={icon} color={color} size="md" />
-                    <span className="flex min-w-0 flex-col">
-                      <span className="truncate text-sm font-semibold">{nome.trim() || current.nome}</span>
-                      <span className="text-xs text-muted-foreground">{securityRoleLabel(current.role)}</span>
-                    </span>
-                  </div>
                   <form
                     id="primeiro-acesso-form"
                     className="space-y-5"
@@ -304,14 +342,20 @@ export function PrimeiroAcessoWizard({
 
               {step === "pronto" && (
                 <div className="space-y-6">
-                  <ProfileAvatar icon={icon} color={color} size="lg" />
                   <header className="space-y-2">
                     <h1 id="primeiro-acesso-titulo" className="text-2xl font-semibold tracking-tight">Tudo pronto, {current.nome}</h1>
                     <p className="text-sm text-foreground">O administrador liberou para você:</p>
                   </header>
                   <ul className="grid gap-x-6 gap-y-2 text-sm sm:grid-cols-2">
-                    {granted.map((title) => (
-                      <li key={title} className="flex items-center gap-2"><Check className="h-4 w-4 text-muted-foreground" />{title}</li>
+                    {granted.map((title, index) => (
+                      <motion.li
+                        key={title}
+                        initial={reduceMotion ? false : { opacity: 0, y: 4 }}
+                        animate={{ opacity: 1, y: 0, transition: { delay: 0.25 + index * 0.05, duration: 0.22, ease: [0.22, 1, 0.36, 1] } }}
+                        className="flex items-center gap-2"
+                      >
+                        <Check className="h-4 w-4 text-muted-foreground" />{title}
+                      </motion.li>
                     ))}
                   </ul>
                   <p className="text-sm leading-relaxed text-muted-foreground">
@@ -331,7 +375,7 @@ export function PrimeiroAcessoWizard({
         </div>
         </div>
 
-        <div className="shrink-0 border-t border-border">
+        <div className="shrink-0 border-t border-border" data-first-access-piece="">
         <div className="mx-auto flex w-full max-w-[480px] flex-wrap items-center justify-between gap-2 px-6 py-4 sm:px-10 lg:px-14">
           {step === "acesso" && !redeemed ? (
             <Button type="button" variant="ghost" onClick={onCancel} disabled={busy} className={PRESS}>
@@ -382,7 +426,7 @@ function ShellPreview({ name, role, icon, color }: { name: string; role: string;
     { title: "OS 1043 · Epson L3250", status: "Aguardando aprovação" },
   ];
   return (
-    <div aria-hidden="true" className="hidden lg:flex items-center justify-center bg-muted p-10">
+    <div aria-hidden="true" data-first-access-piece="" className="hidden lg:flex items-center justify-center bg-muted p-10">
       <div className="w-full max-w-[460px] rounded-2xl bg-card p-2 shadow-xl">
         <div className="flex aspect-[16/10] overflow-hidden rounded-lg bg-background">
           <div className="flex w-[38%] flex-col bg-sidebar p-3">
