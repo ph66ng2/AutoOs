@@ -74,7 +74,9 @@ export function FirstAccessBridge({ from, dialog, onDone }: FirstAccessBridgePro
     const radius = Math.hypot(Math.max(cx, window.innerWidth - cx), Math.max(cy, window.innerHeight - cy));
     run(wizard, [
       { clipPath: `circle(0px at ${cx}px ${cy}px)` },
-      { clipPath: `circle(0px at ${cx}px ${cy}px)`, offset: 0.55 },
+      // Com o easing desta animação, 0.12 cai perto de 230 ms: o círculo começa a abrir logo que a
+      // janela de perfis termina de sumir (30% de 720 ms), sem vão de fundo vazio.
+      { clipPath: `circle(0px at ${cx}px ${cy}px)`, offset: 0.12 },
       { clipPath: `circle(${radius}px at ${cx}px ${cy}px)` },
     ], { duration: ms + 260, easing: "cubic-bezier(0.55, 0, 0.2, 1)", fill: "backwards" });
 

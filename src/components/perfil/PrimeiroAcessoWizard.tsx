@@ -169,7 +169,8 @@ export function PrimeiroAcessoWizard({
       const updated = status.profiles.find((item) => item.id === profile.id);
       if (updated) setCurrent(updated);
       goTo("pronto");
-      window.setTimeout(() => playUiSound("pronto"), 180);
+      // Movimento reduzido também dispensa o som de conclusão, como os outros sons da animação.
+      if (!reduceMotion) window.setTimeout(() => playUiSound("pronto"), 180);
     } catch (cause) {
       setError(errorMessage(cause));
     } finally {

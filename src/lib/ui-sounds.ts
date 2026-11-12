@@ -5,19 +5,69 @@
  */
 export type UiSound = "abrir" | "destravar" | "pronto";
 
+/** Preferência deste computador (vale para todos os perfis). Ausente = sons ligados. */
+export const UI_SOUNDS_STORAGE_KEY = "autoos:ui-sounds";
+/** Sem tocar nada por este tempo, o contexto de áudio é suspenso e o sistema libera o fluxo. */
+export const UI_SOUNDS_IDLE_MS = 3000;
+
+export function uiSoundsEnabled(): boolean {
+  try {
+    return window.localStorage.getItem(UI_SOUNDS_STORAGE_KEY) !== "off";
+  } catch {
+    return true;
+  }
+}
+
+export function setUiSoundsEnabled(enabled: boolean) {
+  try {
+    if (enabled) window.localStorage.removeItem(UI_SOUNDS_STORAGE_KEY);
+    else window.localStorage.setItem(UI_SOUNDS_STORAGE_KEY, "off");
+  } catch {
+    // Sem localStorage a escolha vale só até fechar o app.
+  }
+  if (!enabled) suspendNow();
+}
+
 let context: AudioContext | null = null;
+let idleTimer: ReturnType<typeof setTimeout> | null = null;
+
+function suspendNow() {
+  if (idleTimer !== null) clearTimeout(idleTimer);
+  idleTimer = null;
+  const ctx = context;
+  if (!ctx || ctx.state === "closed") return;
+  try {
+    ctx.suspend().catch(() => undefined);
+  } catch {
+    // Falha ao suspender não afeta a interface.
+  }
+}
+
+/** Reinicia a contagem: suspende `afterMs` depois do fim do último som agendado. */
+function scheduleIdleSuspend(afterMs: number) {
+  if (idleTimer !== null) clearTimeout(idleTimer);
+  idleTimer = setTimeout(suspendNow, afterMs + UI_SOUNDS_IDLE_MS);
+}
 
 function audio(): AudioContext | null {
   if (typeof window === "undefined") return null;
   const Ctor = window.AudioContext ?? (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
   if (!Ctor) return null;
   try {
+    if (context?.state === "closed") context = null;
     context ??= new Ctor();
-    if (context.state === "suspended") void context.resume();
+    if (context.state === "suspended") context.resume().catch(() => undefined);
     return context;
   } catch {
     return null;
   }
+}
+
+/** Só para testes: esquece o contexto e o temporizador. */
+export function resetUiSoundsForTests() {
+  if (idleTimer !== null) clearTimeout(idleTimer);
+  idleTimer = null;
+  context = null;
 }
 
 /** Clique mecânico: estalo agudo bem curto com um "toc" grave por baixo. */
@@ -87,21 +137,28 @@ function chime(ctx: AudioContext, at: number, frequency: number, volume: number)
  * - `pronto`: o perfil está pronto (duas notas).
  */
 export function playUiSound(sound: UiSound, landingMs = 700) {
+  if (!uiSoundsEnabled()) return;
   const ctx = audio();
   if (!ctx) return;
+  let lengthMs = 0;
   try {
     const now = ctx.currentTime + 0.01;
     if (sound === "abrir") {
       whoosh(ctx, now, landingMs / 1000, 0.05);
       click(ctx, now + landingMs / 1000, 0.08);
+      lengthMs = landingMs + 120;
     } else if (sound === "destravar") {
       click(ctx, now, 0.07);
       click(ctx, now + 0.09, 0.09);
+      lengthMs = 210;
     } else {
       chime(ctx, now, 1318.5, 0.08);
       chime(ctx, now + 0.12, 1975.5, 0.07);
+      lengthMs = 870;
     }
   } catch {
     // Sem áudio disponível: a animação segue em silêncio.
+  } finally {
+    scheduleIdleSuspend(lengthMs);
   }
 }

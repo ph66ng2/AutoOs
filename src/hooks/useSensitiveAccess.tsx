@@ -587,25 +587,37 @@ export function SensitiveAccessProvider({ children }: { children: ReactNode }) {
     }
   }, [closeDialog, acceptPinAndClose, pin, confirmPin, promptOptions.permission, promptOptions.anyPermission, selectedProfileId, status, dialogMode]);
 
+  // A janela de perfis prendia o foco durante a transição: devolve-o ao campo do código.
+  const focusFirstAccessCode = useCallback(() => {
+    window.setTimeout(() => document.getElementById("primeiro-acesso-codigo")?.focus(), 0);
+  }, []);
+
+  /** Ainda há primeiro acesso em andamento? A ponte desmontada por um cancelamento não fecha a janela de perfis. */
+  const firstAccessActiveRef = useRef(false);
+
   const startFirstAccess = useCallback((profileId: number, recovery = false, origin?: FirstAccessOrigin) => {
     // O pedido de perfil continua pendente: resolve quando a ativação terminar.
     setError(null);
+    firstAccessActiveRef.current = true;
     setFirstAccess({ profileId, needsCode: true, recovery });
     if (origin && !recovery) {
       setFirstAccessOrigin(origin);
       return;
     }
     setDialogOpen(false);
-  }, []);
+    focusFirstAccessCode();
+  }, [focusFirstAccessCode]);
 
   const finishFirstAccessBridge = useCallback(() => {
     setFirstAccessOrigin(null);
+    if (!firstAccessActiveRef.current) return;
     setDialogOpen(false);
-    // A janela de perfis prendia o foco durante a transição: devolve-o ao campo do código.
-    window.setTimeout(() => document.getElementById("primeiro-acesso-codigo")?.focus(), 0);
-  }, []);
+    focusFirstAccessCode();
+  }, [focusFirstAccessCode]);
 
   const cancelFirstAccess = useCallback(() => {
+    firstAccessActiveRef.current = false;
+    setFirstAccessOrigin(null);
     setFirstAccess(null);
     setDialogOpen(true);
   }, []);
@@ -624,6 +636,7 @@ export function SensitiveAccessProvider({ children }: { children: ReactNode }) {
     if (profileId) {
       try { localStorage.setItem("autoos_last_profile_id", String(profileId)); } catch { /* storage indisponível */ }
     }
+    firstAccessActiveRef.current = false;
     setFirstAccess(null);
     setDialogMandatory(false);
     resetDialogState();
@@ -671,7 +684,8 @@ export function SensitiveAccessProvider({ children }: { children: ReactNode }) {
         confirmPin={confirmPin}
         busy={busy}
         error={error}
-        onClose={() => closeDialog(pinAccepted)}
+        // Esc durante o voo do avatar cancela o primeiro acesso e deixa a janela de perfis aberta.
+        onClose={() => (firstAccessOrigin ? cancelFirstAccess() : closeDialog(pinAccepted))}
         onSelectProfile={(profileId) => {
           setSelectedProfileId(profileId);
           setPin("");
