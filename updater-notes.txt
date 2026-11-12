@@ -1,10 +1,14 @@
-AutoOS 0.6.2
+AutoOS 0.6.3
 
-- Portal do Cliente: o orçamento não oferece mais negociação. Antes de recusar, o cliente vê "Qualquer dúvida, entre em contato conosco" com o WhatsApp da equipe. O prazo para o cliente mudar de ideia caiu de 15 para 10 minutos.
-- Equipamento: novo bloco "Acesso ao portal", com o login (CPF/CNPJ) e os contatos que entram no portal, sem mostrar senha. Botão para enviar ao portal os orçamentos pendentes.
-- Menu de ações do equipamento sem opções repetidas: "Reabrir orçamento", "Desfazer aprovação" e "Renovar orçamento".
-- Perfil: nove avatares em formas geométricas para escolher, além dos ícones.
-- Clientes: a busca também encontra pelo nome, telefone e e-mail dos contatos.
-- Insumos/Peças: orçamento vencido ganha o selo "Vencido" e não pode ser aprovado; aviso ao excluir peça usada em OS ou orçamento em aberto.
-- Aviso automático quando sair versão nova do AutoOS: qualquer pessoa pode atualizar pelo próprio aviso.
-- Conexão com o banco mais estável ao abrir o app e ao reconectar.
+- Técnico sem acesso financeiro passa a aprovar ou reprovar orçamento, marcar o equipamento como pronto e registrar a entrega só com o PIN da sessão. Entrega com valor final ou exceção continua com o Financeiro.
+- Perfis Personalizados e as Ações financeiras precisam ser ajustados à mão em Equipe e acessos; esta atualização não altera esses perfis automaticamente.
+- No portal, o cliente baixa os mesmos PDFs oficiais de OS e orçamento emitidos pelo AutoOS, com acesso privado.
+- Dados de acesso ao portal mais fáceis de copiar no celular.
+- Novidades do AutoOS exibidas uma única vez por versão neste computador.
+- Confirmação de PIN não fecha mais sozinha quando outra solicitação abre em seguida.
+- Em Clientes, cada contato aparece como um card clicável.
+- Primeiro acesso de um perfil novo com etapas animadas, sons (com opção de silenciar) e proteção para não travar ao salvar.
+- Abertura BMI TAG em toda inicialização do aplicativo.
+- Aviso de atualização mais confiável: canal de homologação, fallback e instalador da versão certa.
+- Permissões de comunicação reorganizadas, com avatares em formas geométricas.
+- PIN novo com cadeado de roletes ao criar e cadeadinho ao entrar.
