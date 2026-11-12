@@ -398,10 +398,17 @@ export function SensitiveAccessProvider({ children }: { children: ReactNode }) {
     });
   }, [status]);
 
-  useEffect(() => registerSensitiveAccessPrompt(() => ensureSensitiveAccess({
-    title: "PIN necessário para continuar",
-    description: "Sua sessão de segurança expirou. Informe o PIN e o AutoOS continuará esta ação automaticamente.",
-  })), [ensureSensitiveAccess]);
+  // O primeiro acesso cobre a tela inteira (z-[90]) e a janela de PIN ficaria escondida atrás dele,
+  // com a ação esperando para sempre. Enquanto ele está aberto, o pedido recusa na hora e a ação
+  // devolve o erro de sessão bloqueada; o assistente pede o PIN dentro do próprio fluxo.
+  const firstAccessOpenRef = useRef(false);
+  firstAccessOpenRef.current = firstAccess !== null;
+  useEffect(() => registerSensitiveAccessPrompt(() => firstAccessOpenRef.current
+    ? Promise.resolve(false)
+    : ensureSensitiveAccess({
+      title: "PIN necessário para continuar",
+      description: "Sua sessão de segurança expirou. Informe o PIN e o AutoOS continuará esta ação automaticamente.",
+    })), [ensureSensitiveAccess]);
 
   const openProfileSelector = useCallback(async (options?: ProfileSelectorOptions) => {
     // Uma reabertura conclui só o pedido já aceito e cancela seu fechamento atrasado.
@@ -686,6 +693,8 @@ export function SensitiveAccessProvider({ children }: { children: ReactNode }) {
         error={error}
         // Esc durante o voo do avatar cancela o primeiro acesso e deixa a janela de perfis aberta.
         onClose={() => (firstAccessOrigin ? cancelFirstAccess() : closeDialog(pinAccepted))}
+        // Já o clique fora durante o voo (ex.: no assistente que está abrindo) não cancela nada.
+        ignoreOutsideInteraction={firstAccessOrigin !== null}
         onSelectProfile={(profileId) => {
           setSelectedProfileId(profileId);
           setPin("");

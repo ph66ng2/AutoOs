@@ -1194,8 +1194,31 @@ async fn count_active_profiles_excluding(profile_id: i32) -> Result<i64, String>
         .count() as i64)
 }
 
+/// Quantas vezes o status é remontado quando outra sessão foi aberta no meio da montagem.
+const STATUS_SNAPSHOT_ATTEMPTS: usize = 3;
+
 async fn status_snapshot() -> Result<SensitiveAccessStatus, String> {
+    let mut attempt = 1;
+    loop {
+        match status_snapshot_attempt(attempt == STATUS_SNAPSHOT_ATTEMPTS).await? {
+            Some(status) => return Ok(status),
+            None => attempt += 1,
+        }
+    }
+}
+
+/// Ordem do perfil selecionado lida no início da montagem e no fim. `unlock_session` troca a
+/// seleção e a sessão juntas; se a troca aconteceu enquanto o status consultava banco e cofre, a
+/// sessão nova pertence à seleção atual e não pode ser apagada por um status montado com a antiga.
+fn selection_changed_since(selected_at_start: i32) -> bool {
+    SELECTED_PROFILE_ID.load(Ordering::Relaxed) != selected_at_start
+}
+
+/// `None` quando outra sessão foi aberta durante a montagem (ex.: ativação com código enquanto a
+/// consulta periódica de 30 s esperava o cofre). Na última tentativa devolve o status sem apagar a sessão.
+async fn status_snapshot_attempt(last_attempt: bool) -> Result<Option<SensitiveAccessStatus>, String> {
     refresh_inactivity_config_if_needed().await;
+    let selected_at_start = SELECTED_PROFILE_ID.load(Ordering::Relaxed);
     let active_profile = fetch_active_profile_record().await?;
     let records = fetch_profile_records().await?;
 
@@ -1250,6 +1273,12 @@ async fn status_snapshot() -> Result<SensitiveAccessStatus, String> {
             }
             (true, Some(until.to_rfc3339()))
         }
+        Some(_) if selection_changed_since(selected_at_start) => {
+            if !last_attempt {
+                return Ok(None);
+            }
+            (false, None)
+        }
         Some(_) => {
             clear_session()?;
             (false, None)
@@ -1270,7 +1299,7 @@ async fn status_snapshot() -> Result<SensitiveAccessStatus, String> {
             .collect()
     };
 
-    Ok(SensitiveAccessStatus {
+    Ok(Some(SensitiveAccessStatus {
         pin_configured: active_summary.pin_configured,
         unlocked,
         expires_at,
@@ -1289,7 +1318,7 @@ async fn status_snapshot() -> Result<SensitiveAccessStatus, String> {
         can_manage_profiles: unlocked && has_permission(&active_summary, PERMISSION_MANAGE_PROFILES),
         profiles: visible_profiles,
         keyring_bloqueado,
-    })
+    }))
 }
 
 #[tauri::command]
@@ -2820,6 +2849,25 @@ mod tests {
         assert!(require_sensitive_access_without_touch().is_ok());
         assert!(require_sensitive_access().is_ok());
         assert!(session_expiry() > Utc::now() + Duration::minutes(10));
+
+        clear_session().unwrap();
+    }
+
+    #[test]
+    fn a_session_opened_while_the_status_was_being_built_counts_as_a_new_selection() {
+        let _guard = session_test_guard();
+        let selected_at_start = SELECTED_PROFILE_ID.load(Ordering::Relaxed);
+        assert!(!selection_changed_since(selected_at_start));
+
+        // Ativação com código no meio da consulta periódica: o status não pode apagar esta sessão.
+        unlock_session(SecurityProfileSummary {
+            id: selected_at_start + 1,
+            nome: "Ativado agora".to_string(),
+            role: "TECNICO".to_string(),
+            ..Default::default()
+        })
+        .expect("sessão de teste");
+        assert!(selection_changed_since(selected_at_start));
 
         clear_session().unwrap();
     }
