@@ -306,18 +306,50 @@ describe("primeiro acesso", () => {
 
     it("salvar que não responde vira erro visível com Tentar de novo, sem Salvando… para sempre", async () => {
       const user = userEvent.setup();
-      service.savePersonalization
-        .mockReturnValueOnce(new Promise(() => undefined))
-        .mockResolvedValueOnce(statusWith({ ...ativo, onboarding_pendente: false }));
+      service.savePersonalization.mockReturnValue(new Promise(() => undefined));
       render(<PrimeiroAcessoWizard profile={ativo} needsCode={false} onStatusChange={vi.fn()} onCancel={vi.fn()} onFinish={vi.fn()} saveTimeoutMs={60} />);
 
       await user.click(screen.getByRole("button", { name: /Continuar/ }));
       expect(screen.getByRole("button", { name: /Salvando/ })).toBeDisabled();
       expect(await screen.findByRole("alert")).toHaveTextContent("não recebeu resposta");
+      expect(await screen.findByRole("alert")).toHaveTextContent("ainda está em andamento");
       expect(screen.queryByRole("button", { name: /Salvando/ })).not.toBeInTheDocument();
+      const retry = screen.getByRole("button", { name: /Tentar de novo/ });
+      expect(retry).toBeDisabled();
+      expect(service.savePersonalization).toHaveBeenCalledTimes(1);
+    });
 
+    it("gravação atrasada não dispara outro save nem sobrescreve o nome mais recente", async () => {
+      const user = userEvent.setup();
+      let finishFirst!: (status: SensitiveAccessStatus) => void;
+      const first = new Promise<SensitiveAccessStatus>((resolve) => { finishFirst = resolve; });
+      service.savePersonalization
+        .mockReturnValueOnce(first)
+        .mockResolvedValueOnce(statusWith({ ...ativo, nome: "Bia", onboarding_pendente: false }));
+      render(<PrimeiroAcessoWizard profile={ativo} needsCode={false} onStatusChange={vi.fn()} onCancel={vi.fn()} onFinish={vi.fn()} saveTimeoutMs={60} />);
+
+      const nome = screen.getByLabelText("Nome de exibição");
+      await user.clear(nome);
+      await user.type(nome, "Ana");
+      await user.click(screen.getByRole("button", { name: /Continuar/ }));
+      expect(await screen.findByRole("alert")).toHaveTextContent("ainda está em andamento");
+      expect(screen.getByRole("button", { name: /Tentar de novo/ })).toBeDisabled();
+
+      await user.clear(screen.getByLabelText("Nome de exibição"));
+      await user.type(screen.getByLabelText("Nome de exibição"), "Bia");
       await user.click(screen.getByRole("button", { name: /Tentar de novo/ }));
-      expect(await screen.findByRole("heading", { name: /Tudo pronto/ })).toBeInTheDocument();
+      expect(service.savePersonalization).toHaveBeenCalledTimes(1);
+      expect(service.savePersonalization).toHaveBeenCalledWith(expect.objectContaining({ nome: "Ana" }), { askPin: false });
+
+      await act(async () => finishFirst(statusWith({ ...ativo, nome: "Ana", onboarding_pendente: false })));
+      expect(screen.queryByRole("heading", { name: /Tudo pronto/ })).not.toBeInTheDocument();
+      const retry = await screen.findByRole("button", { name: /Tentar de novo/ });
+      expect(retry).toBeEnabled();
+
+      await user.click(retry);
+      expect(await screen.findByRole("heading", { name: "Tudo pronto, Bia" })).toBeInTheDocument();
+      expect(service.savePersonalization).toHaveBeenCalledTimes(2);
+      expect(service.savePersonalization).toHaveBeenLastCalledWith(expect.objectContaining({ nome: "Bia" }), { askPin: false });
     });
   });
 });

@@ -33,6 +33,7 @@ function errorMessage(cause: unknown) {
 /** Quanto o assistente espera o banco responder ao salvar antes de mostrar o erro e "Tentar de novo". */
 export const SAVE_TIMEOUT_MS = 20_000;
 const SAVE_TIMEOUT_MESSAGE = "O AutoOS não recebeu resposta ao salvar seu perfil. Confira a conexão e tente de novo.";
+const SAVE_STILL_RUNNING_MESSAGE = "O AutoOS não recebeu resposta ao salvar seu perfil. A tentativa anterior ainda está em andamento; quando ela terminar, você pode tentar de novo.";
 const SESSION_LOCKED_MESSAGE = "Sua sessão de segurança foi bloqueada. Digite o PIN deste computador para salvar seu perfil.";
 
 class SaveTimeoutError extends Error {}
@@ -123,7 +124,12 @@ export function PrimeiroAcessoWizard({
   const [unlockPin, setUnlockPin] = useState("");
   /** Resposta atrasada de uma tentativa que já estourou o limite não muda mais a tela. */
   const saveAttempt = useRef(0);
+  /** O IPC de salvar ainda corre, mesmo depois do timeout da UI. Impede um segundo UPDATE. */
+  const saveInFlight = useRef(false);
+  /** Timeout da UI com o comando ainda no backend: "Tentar de novo" só depois que ele terminar. */
+  const [waitingForSave, setWaitingForSave] = useState(false);
   const stepIndex = steps.indexOf(step);
+  const saveBlocked = busy || waitingForSave;
 
   function goTo(next: Step) {
     setDirection(steps.indexOf(next) > stepIndex ? 1 : -1);
@@ -182,15 +188,34 @@ export function PrimeiroAcessoWizard({
   }
 
   async function savePersonalization() {
+    if (saveInFlight.current) return;
     if (nome.trim().length < 3) return setError("O nome deve ter pelo menos 3 caracteres.");
     if (unlockPinNeeded && unlockPin.trim().length < 4) return setError("Digite o PIN deste computador (4 a 8 dígitos).");
+    saveInFlight.current = true;
     const attempt = ++saveAttempt.current;
     const stale = () => attempt !== saveAttempt.current;
     setBusy(true);
     setError(null);
+    let waitingOnBackend = false;
+
+    const waitForBackend = <T,>(promise: Promise<T>): Promise<T> =>
+      withTimeout(promise, saveTimeoutMs).catch((cause: unknown) => {
+        if (cause instanceof SaveTimeoutError) {
+          waitingOnBackend = true;
+          setWaitingForSave(true);
+          void promise.finally(() => {
+            if (attempt !== saveAttempt.current) return;
+            saveInFlight.current = false;
+            setWaitingForSave(false);
+            setError(SAVE_TIMEOUT_MESSAGE);
+          });
+        }
+        throw cause;
+      });
+
     try {
       if (unlockPinNeeded) {
-        const unlocked = await withTimeout(SensitiveAccessService.unlock(unlockPin.trim()), saveTimeoutMs);
+        const unlocked = await waitForBackend(SensitiveAccessService.unlock(unlockPin.trim()));
         if (stale()) return;
         onStatusChange(unlocked);
         if (!unlocked.unlocked || unlocked.active_profile_id !== profile.id) {
@@ -207,14 +232,14 @@ export function PrimeiroAcessoWizard({
         tema: theme,
         concluir_onboarding: true,
       };
-      const save = () => withTimeout(SensitiveAccessService.savePersonalization(input, { askPin: false }), saveTimeoutMs);
+      const save = () => waitForBackend(SensitiveAccessService.savePersonalization(input, { askPin: false }));
       let status: SensitiveAccessStatus;
       try {
         status = await save();
       } catch (cause) {
         // Perfil sem PIN: reabre a sessão sozinho e tenta mais uma vez.
         if (stale() || !isSensitiveAccessLockedError(cause) || current.pin_configured) throw cause;
-        const unlocked = await withTimeout(SensitiveAccessService.unlockWithoutPin(), saveTimeoutMs);
+        const unlocked = await waitForBackend(SensitiveAccessService.unlockWithoutPin());
         if (stale()) return;
         onStatusChange(unlocked);
         status = await save();
@@ -234,11 +259,16 @@ export function PrimeiroAcessoWizard({
         setUnlockPinNeeded(true);
         setError(SESSION_LOCKED_MESSAGE);
         window.setTimeout(() => document.getElementById("primeiro-acesso-pin-sessao")?.focus(), 0);
+      } else if (cause instanceof SaveTimeoutError) {
+        setError(waitingOnBackend ? SAVE_STILL_RUNNING_MESSAGE : SAVE_TIMEOUT_MESSAGE);
       } else {
         setError(errorMessage(cause));
       }
     } finally {
-      if (!stale()) setBusy(false);
+      if (!stale()) {
+        setBusy(false);
+        if (!waitingOnBackend) saveInFlight.current = false;
+      }
     }
   }
 
@@ -463,7 +493,7 @@ export function PrimeiroAcessoWizard({
               <ArrowLeft className="mr-2 h-4 w-4" /> Voltar aos perfis
             </Button>
           ) : stepIndex > 0 ? (
-            <Button type="button" variant="ghost" onClick={() => goTo(steps[stepIndex - 1])} disabled={busy} className={PRESS}>
+            <Button type="button" variant="ghost" onClick={() => goTo(steps[stepIndex - 1])} disabled={saveBlocked} className={PRESS}>
               <ArrowLeft className="mr-2 h-4 w-4" /> Voltar
             </Button>
           ) : <span />}
@@ -473,7 +503,7 @@ export function PrimeiroAcessoWizard({
               <Button type="button" onClick={() => onFinish("tour")} className={PRESS}>Começar tour</Button>
             </div>
           ) : (
-            <Button type="submit" form="primeiro-acesso-form" disabled={busy} className={PRESS}>
+            <Button type="submit" form="primeiro-acesso-form" disabled={saveBlocked} className={PRESS}>
               {busy ? "Salvando..." : step === "voce" && saveFailed ? "Tentar de novo" : redeemed ? "Continuar" : recovery ? "Redefinir PIN" : reactivation ? "Ativar neste computador" : "Continuar"} <ArrowRight className="ml-2 h-4 w-4" />
             </Button>
           )}
