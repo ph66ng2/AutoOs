@@ -398,10 +398,17 @@ export function SensitiveAccessProvider({ children }: { children: ReactNode }) {
     });
   }, [status]);
 
-  useEffect(() => registerSensitiveAccessPrompt(() => ensureSensitiveAccess({
-    title: "PIN necessário para continuar",
-    description: "Sua sessão de segurança expirou. Informe o PIN e o AutoOS continuará esta ação automaticamente.",
-  })), [ensureSensitiveAccess]);
+  // O primeiro acesso cobre a tela inteira (z-[90]) e a janela de PIN ficaria escondida atrás dele,
+  // com a ação esperando para sempre. Enquanto ele está aberto, o pedido recusa na hora e a ação
+  // devolve o erro de sessão bloqueada; o assistente pede o PIN dentro do próprio fluxo.
+  const firstAccessOpenRef = useRef(false);
+  firstAccessOpenRef.current = firstAccess !== null;
+  useEffect(() => registerSensitiveAccessPrompt(() => firstAccessOpenRef.current
+    ? Promise.resolve(false)
+    : ensureSensitiveAccess({
+      title: "PIN necessário para continuar",
+      description: "Sua sessão de segurança expirou. Informe o PIN e o AutoOS continuará esta ação automaticamente.",
+    })), [ensureSensitiveAccess]);
 
   const openProfileSelector = useCallback(async (options?: ProfileSelectorOptions) => {
     // Uma reabertura conclui só o pedido já aceito e cancela seu fechamento atrasado.
@@ -587,25 +594,37 @@ export function SensitiveAccessProvider({ children }: { children: ReactNode }) {
     }
   }, [closeDialog, acceptPinAndClose, pin, confirmPin, promptOptions.permission, promptOptions.anyPermission, selectedProfileId, status, dialogMode]);
 
+  // A janela de perfis prendia o foco durante a transição: devolve-o ao campo do código.
+  const focusFirstAccessCode = useCallback(() => {
+    window.setTimeout(() => document.getElementById("primeiro-acesso-codigo")?.focus(), 0);
+  }, []);
+
+  /** Ainda há primeiro acesso em andamento? A ponte desmontada por um cancelamento não fecha a janela de perfis. */
+  const firstAccessActiveRef = useRef(false);
+
   const startFirstAccess = useCallback((profileId: number, recovery = false, origin?: FirstAccessOrigin) => {
     // O pedido de perfil continua pendente: resolve quando a ativação terminar.
     setError(null);
+    firstAccessActiveRef.current = true;
     setFirstAccess({ profileId, needsCode: true, recovery });
     if (origin && !recovery) {
       setFirstAccessOrigin(origin);
       return;
     }
     setDialogOpen(false);
-  }, []);
+    focusFirstAccessCode();
+  }, [focusFirstAccessCode]);
 
   const finishFirstAccessBridge = useCallback(() => {
     setFirstAccessOrigin(null);
+    if (!firstAccessActiveRef.current) return;
     setDialogOpen(false);
-    // A janela de perfis prendia o foco durante a transição: devolve-o ao campo do código.
-    window.setTimeout(() => document.getElementById("primeiro-acesso-codigo")?.focus(), 0);
-  }, []);
+    focusFirstAccessCode();
+  }, [focusFirstAccessCode]);
 
   const cancelFirstAccess = useCallback(() => {
+    firstAccessActiveRef.current = false;
+    setFirstAccessOrigin(null);
     setFirstAccess(null);
     setDialogOpen(true);
   }, []);
@@ -624,6 +643,7 @@ export function SensitiveAccessProvider({ children }: { children: ReactNode }) {
     if (profileId) {
       try { localStorage.setItem("autoos_last_profile_id", String(profileId)); } catch { /* storage indisponível */ }
     }
+    firstAccessActiveRef.current = false;
     setFirstAccess(null);
     setDialogMandatory(false);
     resetDialogState();
@@ -671,7 +691,10 @@ export function SensitiveAccessProvider({ children }: { children: ReactNode }) {
         confirmPin={confirmPin}
         busy={busy}
         error={error}
-        onClose={() => closeDialog(pinAccepted)}
+        // Esc durante o voo do avatar cancela o primeiro acesso e deixa a janela de perfis aberta.
+        onClose={() => (firstAccessOrigin ? cancelFirstAccess() : closeDialog(pinAccepted))}
+        // Já o clique fora durante o voo (ex.: no assistente que está abrindo) não cancela nada.
+        ignoreOutsideInteraction={firstAccessOrigin !== null}
         onSelectProfile={(profileId) => {
           setSelectedProfileId(profileId);
           setPin("");

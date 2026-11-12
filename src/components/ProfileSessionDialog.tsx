@@ -59,6 +59,8 @@ interface ProfileSessionDialogProps {
   onFirstAccess?: (profileId: number, recovery?: boolean, origin?: FirstAccessOrigin) => void;
   /** PIN aceito: o campo fica verde com um cadeadinho abrindo antes de a janela sair. */
   accepted?: boolean;
+  /** Clique ou foco fora da janela não a fecha (voo do avatar até o primeiro acesso). */
+  ignoreOutsideInteraction?: boolean;
 }
 
 /**
@@ -91,6 +93,7 @@ export function ProfileSessionDialog({
   keyringBlocked = false,
   onRetryKeyring,
   accepted = false,
+  ignoreOutsideInteraction = false,
 }: ProfileSessionDialogProps) {
   const isSelectorMode = mode === "selector";
   const isCurrentProfileSelected = !!selectedProfile && selectedProfile.id === activeProfileId;
@@ -200,6 +203,12 @@ export function ProfileSessionDialog({
           "dark max-w-4xl gap-0 overflow-hidden border-sidebar-border bg-background p-0 text-foreground",
           mandatory && "[&>button]:hidden",
         )}
+        onPointerDownOutside={(event) => {
+          if (ignoreOutsideInteraction) event.preventDefault();
+        }}
+        onInteractOutside={(event) => {
+          if (ignoreOutsideInteraction) event.preventDefault();
+        }}
       >
         <div className="max-h-[90vh] overflow-y-auto px-6 py-10 sm:px-12">
           {isFirstInstall && selectedProfile ? (

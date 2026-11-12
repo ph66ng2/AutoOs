@@ -107,8 +107,13 @@ export const SensitiveAccessService = {
     return invoke<SensitiveAccessStatus>("ativar_perfil_com_codigo", { profileId, codigo, pin, confirmPin });
   },
 
-  /** Nome, ícone, cor e tema do perfil da sessão → Rust: salvar_personalizacao_perfil */
-  async savePersonalization(input: PersonalizacaoPerfilInput): Promise<SensitiveAccessStatus> {
+  /**
+   * Nome, ícone, cor e tema do perfil da sessão → Rust: salvar_personalizacao_perfil.
+   * Com `askPin: false` a sessão bloqueada volta como erro em vez de abrir a janela global de PIN:
+   * o primeiro acesso cobre a tela inteira e pede o PIN dentro do próprio fluxo.
+   */
+  async savePersonalization(input: PersonalizacaoPerfilInput, options?: { askPin?: boolean }): Promise<SensitiveAccessStatus> {
+    if (options?.askPin === false) return invoke<SensitiveAccessStatus>("salvar_personalizacao_perfil", { input });
     return sensitiveInvoke<SensitiveAccessStatus>("salvar_personalizacao_perfil", { input });
   },
 
