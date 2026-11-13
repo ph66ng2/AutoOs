@@ -13,8 +13,6 @@
  */
 import { defineConfig, devices } from '@playwright/test';
 import { RELEASE_HIGHLIGHTS_STORAGE_KEY } from './src/components/ReleaseHighlightsDialog';
-import { DAILY_BOOT_OPENING_STORAGE_KEY } from './src/lib/daily-boot-opening';
-import { todayLocalIsoDate } from './src/lib/date-utils';
 
 export default defineConfig({
   // Diretório dos testes E2E.
@@ -65,7 +63,6 @@ export default defineConfig({
           origin: 'http://localhost:1420',
           localStorage: [
             { name: RELEASE_HIGHLIGHTS_STORAGE_KEY, value: 'seen' },
-            { name: DAILY_BOOT_OPENING_STORAGE_KEY, value: todayLocalIsoDate() },
           ],
         },
       ],

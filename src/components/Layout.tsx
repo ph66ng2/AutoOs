@@ -42,8 +42,7 @@ import { securityRoleLabel } from "@/lib/security-profile-labels";
 /** Permissões que abrem a rota /configuracoes (mesmas de App.tsx). */
 const CONFIGURACOES_PERMISSIONS: SensitivePermission[] = [
   SENSITIVE_PERMISSIONS.MANAGE_PROFILES,
-  SENSITIVE_PERMISSIONS.CONFIG_SMTP,
-  SENSITIVE_PERMISSIONS.CONFIG_WHATSAPP,
+  SENSITIVE_PERMISSIONS.COMMUNICATION_SETTINGS,
   SENSITIVE_PERMISSIONS.MANAGE_STATUS_LINKS,
 ];
 

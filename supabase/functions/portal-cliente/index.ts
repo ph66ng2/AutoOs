@@ -26,6 +26,7 @@ type RpcResult = { ok: true; data: unknown } | { ok: false; status: number; code
 const DB_ERRORS: Record<string, { status: number; erro: string }> = {
   PORTAL_PAUSADO: { status: 503, erro: "O portal está temporariamente indisponível. Fale com a equipe BMI TAG." },
   SESSAO_INVALIDA: { status: 401, erro: "Sua sessão terminou. Entre novamente." },
+  DOCUMENTO_INDISPONIVEL: { status: 404, erro: "Documento disponível no balcão. Fale com a equipe." },
   ATENDIMENTO_INDISPONIVEL: { status: 404, erro: "Este atendimento não está disponível para o seu acesso." },
   SEM_PERMISSAO_DECISAO: { status: 403, erro: "Seu contato pode acompanhar, mas não responder a orçamentos. Fale com a equipe para liberar." },
   ACEITE_PAUSADO: { status: 409, erro: "As respostas pelo portal estão pausadas. Use o contato da equipe." },
@@ -192,6 +193,22 @@ function digits(value: unknown): string {
 
 function positiveInt(value: unknown): number | null {
   return typeof value === "number" && Number.isSafeInteger(value) && value > 0 ? value : null;
+}
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const DOCUMENTO_CAMINHO_RE =
+  /^[0-9a-f-]+\/[0-9a-f-]+\/(ORDEM_SERVICO|ORCAMENTO|ORCAMENTO_AJUSTADO)\/[0-9a-f-]+\/[a-f0-9]{64}\.pdf$/i;
+
+function parseEquipamentoId(value: unknown): number | string | null {
+  const asInt = positiveInt(value);
+  if (asInt) return asInt;
+  return typeof value === "string" && UUID_RE.test(value) ? value : null;
+}
+
+function parseDocumentoId(value: unknown): number | string | null {
+  const asInt = positiveInt(value);
+  if (asInt) return asInt;
+  return typeof value === "string" && UUID_RE.test(value) ? value : null;
 }
 
 type Context = { url: string; key: string; secret: string; origin: string | null; verifyFingerprint: string | null };
@@ -374,14 +391,49 @@ Deno.serve(async (request: Request) => {
     return result.ok ? json(publicList(result.data as Json), 200, origin) : errorResponse(result.code, origin);
   }
 
-  const equipamentoId = positiveInt(body.equipamentoId);
+  const equipamentoId = parseEquipamentoId(body.equipamentoId);
   if (!equipamentoId) return json({ erro: "Requisição inválida." }, 400, origin);
 
   if (acao === "detalhe") {
     const result = await callRpc(url, key, "portal_detalhe_atendimento", {
       p_sessao_hash: sessionHash, p_equipamento_id: equipamentoId,
     });
-    return result.ok ? json(publicDetail(result.data as Json, url), 200, origin) : errorResponse(result.code, origin);
+    if (!result.ok) return errorResponse(result.code, origin);
+    const documentos = await callRpc(url, key, "portal_documentos_atendimento", {
+      p_sessao_hash: sessionHash, p_equipamento_id: equipamentoId,
+    });
+    if (!documentos.ok) return errorResponse(documentos.code, origin);
+    const publicos = (documentos.data as Json[]).map(({ id, tipo, versao }) => ({ id, tipo, versao }));
+    return json({ ...publicDetail(result.data as Json, url), documentos: publicos }, 200, origin);
+  }
+
+  if (acao === "documento") {
+    const documentoId = parseDocumentoId(body.documentoId);
+    if (!documentoId) return json({ erro: "Requisição inválida." }, 400, origin);
+    // Não aceita bucket/caminho do navegador: ambos vêm da referência autorizada no banco.
+    const result = await callRpc(url, key, "portal_documentos_atendimento", {
+      p_sessao_hash: sessionHash, p_equipamento_id: equipamentoId,
+    });
+    if (!result.ok) return errorResponse(result.code, origin);
+    const documento = (result.data as Json[]).find((doc) => doc.id === documentoId);
+    if (!documento || typeof documento.caminho !== "string" ||
+        !DOCUMENTO_CAMINHO_RE.test(documento.caminho)) {
+      return errorResponse("DOCUMENTO_INDISPONIVEL", origin);
+    }
+    try {
+      const response = await fetch(`${url}/storage/v1/object/sign/portal-documentos/${documento.caminho}`, {
+        method: "POST", headers: serviceHeaders(key), body: JSON.stringify({ expiresIn: 60 }),
+      });
+      if (!response.ok) return errorResponse("INDISPONIVEL", origin);
+      const signed = await response.json();
+      // O endpoint de Storage devolve uma rota relativa; nunca devolver uma origem arbitrária.
+      if (typeof signed.signedURL !== "string" || !signed.signedURL.startsWith("/object/sign/portal-documentos/")) {
+        return errorResponse("INDISPONIVEL", origin);
+      }
+      return json({ url: `${url}/storage/v1${signed.signedURL}`, arquivo: `${documento.tipo}-${equipamentoId}-${documento.versao ?? 0}.pdf` }, 200, origin);
+    } catch {
+      return errorResponse("INDISPONIVEL", origin);
+    }
   }
 
   const versaoId = positiveInt(body.versaoId);

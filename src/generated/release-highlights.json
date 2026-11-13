@@ -1,0 +1,29 @@
+{
+  "version": "0.6.3",
+  "baseTag": "v0.6.2",
+  "head": "6c0abfab6ccfe2884e40ae0216192836b8ee8761",
+  "pullRequests": [
+    186,
+    193
+  ],
+  "title": "Novidades do AutoOS",
+  "description": "Confira o que mudou no AutoOS 0.6.3.",
+  "highlights": [
+    {
+      "title": "As novidades aparecem uma única vez por versão neste computador, mesmo ao fechar o app sem dispensar o aviso."
+    },
+    {
+      "title": "As próximas versões trazem um resumo das mudanças escrito pela equipe."
+    },
+    {
+      "title": "Agora dá para desligar os sons da interface em Perfil › Personalizar."
+    },
+    {
+      "title": "Ao ativar o perfil num computador ou usar \"Esqueci meu PIN\", o cursor já fica no campo do código."
+    },
+    {
+      "title": "Voltar aos perfis durante a animação do primeiro acesso não fecha mais a janela de perfis."
+    }
+  ],
+  "badges": []
+}

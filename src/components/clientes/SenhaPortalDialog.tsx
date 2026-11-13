@@ -4,6 +4,8 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { useSensitiveAccess } from "@/hooks/useSensitiveAccess";
+import { SENSITIVE_PERMISSIONS } from "@/types";
 import { db } from "@/lib/db";
 import type { ClienteContato } from "@/types";
 
@@ -32,13 +34,23 @@ export function senhaPortalValida(senha: string): boolean {
   return senha.length >= 8 && new TextEncoder().encode(senha).length <= 72 && /\p{L}/u.test(senha) && /\d/.test(senha);
 }
 
-/** Texto entregue ao contato. A senha vale até a equipe trocá-la; o contato pede a troca à equipe. */
+/**
+ * Texto entregue ao contato. Cada dado fica sozinho na linha, sem formatação, para copiar com um toque no celular.
+ * O documento vai só com dígitos (o login do portal aceita assim). A senha vale até a equipe trocá-la.
+ */
 export function mensagemAcessoPortal(nome: string, documentoCliente: string, senha: string): string {
   return [
-    `Olá, ${nome}! Seu acesso ao Portal das Impressoras BMI TAG:`,
+    `Olá, ${nome}! Seu acesso ao Portal das Impressoras BMI TAG.`,
+    "",
+    "Link do portal:",
     PORTAL_URL,
-    `CPF/CNPJ: ${documentoCliente}`,
-    `Senha: ${senha}`,
+    "",
+    "Seu CPF/CNPJ:",
+    documentoCliente.replace(/\D/g, ""),
+    "",
+    "Sua senha:",
+    senha,
+    "",
     "A senha é pessoal. Para trocá-la, fale com a equipe BMI TAG.",
   ].join("\n");
 }
@@ -61,6 +73,7 @@ type FormProps = {
 
 /** Criação da senha + entrega dos dados. Usado na janela de contatos e no acesso pelo equipamento. */
 export function SenhaPortalForm({ contato, documentoCliente, onCancelar, onSalvo, onConcluir }: FormProps) {
+  const { ensureSensitiveAccess } = useSensitiveAccess();
   const [senha, setSenha] = useState(() => gerarSenhaPortal());
   const [salva, setSalva] = useState<string | null>(null);
   const [erro, setErro] = useState<string | null>(null);
@@ -74,6 +87,14 @@ export function SenhaPortalForm({ contato, documentoCliente, onCancelar, onSalvo
     setCopiado(false);
   }, [contato.id]);
 
+  const autorizarSenha = () => ensureSensitiveAccess({
+    title: "Senha do portal",
+    description: "Informe o PIN para criar, trocar ou remover a senha deste contato.",
+    ...(contato.portal_acesso === "DECIDIR"
+      ? { anyPermission: [SENSITIVE_PERMISSIONS.FINANCIAL_ACTIONS, SENSITIVE_PERMISSIONS.PREPARE_QUOTES] }
+      : { permission: SENSITIVE_PERMISSIONS.MANAGE_STATUS_LINKS }),
+  });
+
   const salvar = async (event: FormEvent) => {
     event.preventDefault();
     if (!contato.id) return;
@@ -81,6 +102,7 @@ export function SenhaPortalForm({ contato, documentoCliente, onCancelar, onSalvo
       setErro("A senha precisa ter de 8 a 72 caracteres, com letras e números.");
       return;
     }
+    if (!await autorizarSenha()) return;
     setBusy(true);
     setErro(null);
     try {
@@ -96,6 +118,7 @@ export function SenhaPortalForm({ contato, documentoCliente, onCancelar, onSalvo
 
   const remover = async () => {
     if (!contato.id) return;
+    if (!await autorizarSenha()) return;
     setBusy(true);
     setErro(null);
     try {

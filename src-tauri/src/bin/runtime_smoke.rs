@@ -401,8 +401,7 @@ async fn create_temporary_stock_profile(
     .context("Falha ao localizar o perfil padrão atual")?;
 
     let permissions = serde_json::to_string(&vec![
-        auth::PERMISSION_CONFIG_SMTP.to_string(),
-        auth::PERMISSION_CONFIG_WHATSAPP.to_string(),
+        auth::PERMISSION_COMMUNICATION_SETTINGS.to_string(),
         auth::PERMISSION_DELETE_RECORDS.to_string(),
         auth::PERMISSION_FINANCIAL_ACTIONS.to_string(),
         auth::PERMISSION_STOCK_CONTROL.to_string(),

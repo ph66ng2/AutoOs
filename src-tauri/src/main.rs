@@ -25,6 +25,7 @@
 mod commands;
 mod db;
 mod runtime_mode;
+mod release_highlights;
 
 use std::sync::OnceLock;
 use tracing::{info, Level};
@@ -108,6 +109,8 @@ fn main() {
 
     #[cfg(feature = "saas")]
     let builder = builder.invoke_handler(tauri::generate_handler![
+        release_highlights::get_seen_release_highlights,
+        release_highlights::mark_release_highlights_seen,
         commands::saas_auth::salvar_sessao_saas,
         commands::saas_auth::carregar_sessao_saas,
         commands::saas_auth::remover_sessao_saas,
@@ -126,6 +129,8 @@ fn main() {
 
     #[cfg(not(feature = "saas"))]
     let builder = builder.invoke_handler(tauri::generate_handler![
+            release_highlights::get_seen_release_highlights,
+            release_highlights::mark_release_highlights_seen,
             // Auth sensível
             commands::auth::get_sensitive_access_status,
             commands::auth::configure_sensitive_pin,
@@ -202,6 +207,7 @@ fn main() {
             commands::portal_cliente::definir_acesso_portal_contato,
             commands::portal_cliente::definir_senha_portal_contato,
             commands::portal_cliente::publicar_orcamento_portal,
+            commands::portal_documentos::publicar_documento_portal,
             commands::portal_cliente::listar_orcamentos_pendentes_portal,
             commands::portal_cliente::publicar_orcamentos_pendentes_portal,
             commands::portal_cliente::obter_contato_portal_empresa,

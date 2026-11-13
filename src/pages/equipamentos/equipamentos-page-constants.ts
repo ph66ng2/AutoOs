@@ -47,7 +47,6 @@ export const STATUS_SENSIVEIS = new Set([
   "APROVADO",
   "REPROVADO",
   "ORCAMENTO_VENCIDO",
-  "ENTREGUE",
   "ABANDONADO",
 ]);
 

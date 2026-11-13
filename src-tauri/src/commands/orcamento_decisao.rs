@@ -6,7 +6,7 @@
 
 use crate::commands::auth::{
     record_security_event, require_active_session_company_id, require_any_permission,
-    require_permission, PERMISSION_FINANCIAL_ACTIONS, PERMISSION_MANAGE_STATUS_LINKS,
+    PERMISSION_FINANCIAL_ACTIONS, PERMISSION_MANAGE_STATUS_LINKS,
     PERMISSION_PREPARE_QUOTES,
 };
 use crate::commands::equipamentos::buscar_equipamento;
@@ -640,7 +640,7 @@ pub async fn obter_decisao_orcamento(
 #[tauri::command]
 #[instrument(skip_all, fields(solicitacao_id = solicitacao_id))]
 pub async fn marcar_solicitacao_orcamento_tratada(solicitacao_id: i64) -> Result<bool, String> {
-    let actor = require_permission(PERMISSION_MANAGE_STATUS_LINKS)?;
+    let actor = require_any_permission(&[PERMISSION_MANAGE_STATUS_LINKS, PERMISSION_PREPARE_QUOTES])?;
     let pool = get_pool().await.map_err(|error| error.to_string())?;
     let empresa_id = require_active_session_company_id(&pool).await?;
     let updated = sqlx::query(

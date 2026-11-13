@@ -141,13 +141,69 @@ export function assertPublishTarget({ channel, tag, makeLatest, prerelease }) {
   }
 }
 
+const HOMOLOG_TAG_PATTERN = /^(homolog|hotfix)-[0-9A-Za-z.*-]*$/;
+const FORBIDDEN_HOMOLOG_TRIGGERS = /^\s*(pull_request|pull_request_target|release|schedule|workflow_run|workflow_call):/m;
+
+function readPushTrigger(text) {
+  const lines = text.split(/\r?\n/);
+  const start = lines.findIndex((line) => /^\s*push:/.test(line));
+  if (start === -1) {
+    return null;
+  }
+  if (!/^\s*push:\s*$/.test(lines[start])) {
+    throw new Error("O gatilho push do workflow de homologação precisa listar tags homolog-*/hotfix-*.");
+  }
+  const indent = lines[start].match(/^\s*/)[0].length;
+  const tags = [];
+  for (const line of lines.slice(start + 1)) {
+    if (!line.trim() || /^\s*#/.test(line)) {
+      continue;
+    }
+    if (line.match(/^\s*/)[0].length <= indent) {
+      break;
+    }
+    const content = line.replace(/\s+#.*$/, "").trim();
+    if (content === "tags:") {
+      continue;
+    }
+    const item = content.match(/^-\s*["']?([^"'\s]+)["']?$/);
+    if (!item) {
+      throw new Error(
+        `O gatilho push do workflow de homologação só aceita tags homolog-*/hotfix-* (encontrado: ${content}).`,
+      );
+    }
+    tags.push(item[1]);
+  }
+  return tags;
+}
+
+/**
+ * Trava estática do YAML do canal de homologação. Gatilhos aceitos: workflow_dispatch
+ * (versão + confirmação HOMOLOG) e push somente de tags homolog-* / hotfix-*.
+ * Push de branch, tag v*, pull_request, release, make_latest: true, o endpoint latest
+ * de produção e variável de banco continuam recusados.
+ */
 export function assertHomologWorkflow(source) {
   const text = String(source || "");
-  if (/^\s*(push|pull_request|release):/m.test(text)) {
-    throw new Error("O workflow de homologação só pode ser workflow_dispatch.");
+  if (FORBIDDEN_HOMOLOG_TRIGGERS.test(text)) {
+    throw new Error(
+      "O workflow de homologação só pode ser workflow_dispatch ou push de tags homolog-*/hotfix-*.",
+    );
   }
   if (!text.includes("workflow_dispatch:")) {
     throw new Error("O workflow de homologação precisa de workflow_dispatch.");
+  }
+  const pushTags = readPushTrigger(text);
+  if (pushTags !== null) {
+    if (pushTags.length === 0) {
+      throw new Error("O gatilho push do workflow de homologação precisa listar tags homolog-*/hotfix-*.");
+    }
+    const invalid = pushTags.filter((tag) => !HOMOLOG_TAG_PATTERN.test(tag));
+    if (invalid.length > 0) {
+      throw new Error(
+        `O workflow de homologação só pode disparar por tags homolog-*/hotfix-* (recusado: ${invalid.join(", ")}).`,
+      );
+    }
   }
   if (!text.includes(HOMOLOG_RELEASE_TAG) || !text.includes("src-tauri/tauri.homolog.conf.json")) {
     throw new Error("O workflow de homologação precisa da tag isolada e do config de endpoint.");
@@ -155,7 +211,7 @@ export function assertHomologWorkflow(source) {
   if (!/make_latest:\s*false/.test(text) || /make_latest:\s*true/.test(text)) {
     throw new Error("O workflow de homologação precisa de make_latest: false.");
   }
-  if (!/prerelease:\s*true/.test(text)) {
+  if (!/prerelease:\s*true/.test(text) || /prerelease:\s*false/.test(text)) {
     throw new Error("O workflow de homologação precisa ser prerelease.");
   }
   if (/releases\/latest/.test(text) || DATABASE_ENV_KEYS.some((key) => text.includes(key))) {
@@ -165,6 +221,45 @@ export function assertHomologWorkflow(source) {
     throw new Error("O workflow de homologação precisa da confirmação HOMOLOG.");
   }
   return true;
+}
+
+/**
+ * Resolve versão e confirmação do disparo do canal de homologação.
+ * - workflow_dispatch: usa os inputs digitados (a confirmação é validada depois).
+ * - push de tag homolog-X.Y.Z / hotfix-X.Y.Z: a versão vem da tag e criar a tag com
+ *   esse prefixo é a confirmação explícita. Qualquer outra ref é recusada.
+ */
+export function resolveHomologTrigger({
+  eventName = "",
+  refType = "",
+  refName = "",
+  inputVersion = "",
+  inputConfirmation = "",
+} = {}) {
+  const event = String(eventName).trim();
+  if (event === "workflow_dispatch") {
+    return {
+      version: assertSemVer(normalizeVersion(inputVersion), "versão informada"),
+      confirmation: String(inputConfirmation || ""),
+      source: "workflow_dispatch",
+    };
+  }
+  if (event === "push" && String(refType).toLowerCase() === "tag") {
+    const match = String(refName).match(/^(homolog|hotfix)-v?([0-9]+\.[0-9]+\.[0-9]+)$/);
+    if (!match) {
+      throw new Error(
+        `Tag ${JSON.stringify(String(refName))} recusada no canal de homologação. Use homolog-X.Y.Z ou hotfix-X.Y.Z.`,
+      );
+    }
+    return {
+      version: assertSemVer(match[2], "tag"),
+      confirmation: "HOMOLOG",
+      source: `tag ${match[1]}`,
+    };
+  }
+  throw new Error(
+    "O canal de homologação só publica por workflow_dispatch ou por tag homolog-X.Y.Z / hotfix-X.Y.Z.",
+  );
 }
 
 export function assertSigningSecrets(env = process.env) {
@@ -199,12 +294,24 @@ function isMsiInstaller(filePath) {
   return filePath.toLowerCase().endsWith(".msi");
 }
 
-export function findWindowsUpdaterArtifact(files, { stat = statSync } = {}) {
-  const installers = files.filter((file) => isMsiInstaller(file) || isNsisInstaller(file));
-  const ranked = [
-    ...installers.filter(isMsiInstaller),
-    ...installers.filter(isNsisInstaller),
-  ];
+const INSTALLER_KINDS = { msi: isMsiInstaller, nsis: isNsisInstaller };
+
+/** O nome gerado pelo Tauri é `<produto>_<versão>_x64...`; a versão precisa ser a do release. */
+export function artifactMatchesVersion(fileName, version) {
+  return path.basename(String(fileName)).includes(`_${version}_`);
+}
+
+/**
+ * Escolhe o instalador que o latest.json vai apontar.
+ * - Só aceita instalador cujo nome contém a versão do release: um MSI/NSIS de outra
+ *   versão que sobrou no diretório de bundle (cache do target) nunca é escolhido.
+ * - `kinds` define os formatos aceitos, em ordem de preferência. Produção mantém o
+ *   histórico (MSI e, sem MSI assinado, NSIS); homologação publica só NSIS.
+ */
+export function findWindowsUpdaterArtifact(files, { version, kinds = ["msi", "nsis"], stat = statSync } = {}) {
+  assertSemVer(version, "versão do artefato");
+  const installers = kinds.flatMap((kind) => files.filter(INSTALLER_KINDS[kind]));
+  const ranked = installers.filter((file) => artifactMatchesVersion(file, version));
 
   for (const installerPath of ranked) {
     const signaturePath = `${installerPath}.sig`;
@@ -222,8 +329,19 @@ export function findWindowsUpdaterArtifact(files, { stat = statSync } = {}) {
     return { installerPath, signaturePath };
   }
 
+  const otherVersions = installers
+    .filter((file) => !artifactMatchesVersion(file, version))
+    .map((file) => path.basename(file));
+  const formats = kinds.map((kind) => kind.toUpperCase()).join("/");
+  if (ranked.length === 0 && otherVersions.length > 0) {
+    throw new Error(
+      `Nenhum instalador Windows (${formats}) da versão ${version} foi encontrado. ` +
+        `Artefatos de outra versão foram recusados: ${otherVersions.join(", ")}. ` +
+        "Limpe src-tauri/target/release/bundle e refaça o build.",
+    );
+  }
   throw new Error(
-    "Nenhum instalador Windows com assinatura .sig foi encontrado. " +
+    `Nenhum instalador Windows (${formats}) da versão ${version} com assinatura .sig foi encontrado. ` +
       "Confirme TAURI_SIGNING_PRIVATE_KEY, createUpdaterArtifacts e o bundle MSI/NSIS.",
   );
 }
@@ -307,6 +425,12 @@ export function validateManifest(manifest, {
   if (!String(platform.url || "").startsWith(`https://github.com/${expectedRepository || DEFAULT_REPOSITORY}/releases/download/`)) {
     throw new Error("URL do manifesto não aponta para o GitHub Release do repositório.");
   }
+  const urlArtifactName = decodeURIComponent(String(platform.url).split("/").pop() || "");
+  if (!artifactMatchesVersion(urlArtifactName, manifest.version)) {
+    throw new Error(
+      `URL do manifesto aponta para artefato de outra versão: ${urlArtifactName} (manifesto ${manifest.version}).`,
+    );
+  }
   if (/\.sig$/i.test(platform.url)) {
     throw new Error("URL do manifesto aponta para o arquivo .sig em vez do instalador.");
   }
@@ -371,7 +495,10 @@ export function generateUpdateManifest({
 
   const repository = String(env.GITHUB_REPOSITORY || DEFAULT_REPOSITORY).trim() || DEFAULT_REPOSITORY;
   const files = listFiles(bundleDirectory);
-  const { installerPath, signaturePath } = findWindowsUpdaterArtifact(files);
+  const { installerPath, signaturePath } = findWindowsUpdaterArtifact(files, {
+    version: checked.version,
+    kinds: checked.channel === "homolog" ? ["nsis"] : ["msi", "nsis"],
+  });
   const artifactName = path.basename(installerPath);
   const signature = readFileSync(signaturePath, "utf8").trim();
   const notes = readReleaseNotes(cwd, env);
@@ -419,6 +546,18 @@ export function runCli(argv = process.argv.slice(2), env = process.env, cwd = pr
     });
     console.log("Publicação de homologação isolada do latest de produção.");
     return { channel: "homolog", tag: HOMOLOG_RELEASE_TAG };
+  }
+  if (argv.includes("--resolve-homolog-trigger")) {
+    const trigger = resolveHomologTrigger({
+      eventName: env.GITHUB_EVENT_NAME,
+      refType: env.GITHUB_REF_TYPE,
+      refName: env.GITHUB_REF_NAME,
+      inputVersion: env.AUTOOS_INPUT_VERSION,
+      inputConfirmation: env.AUTOOS_INPUT_CONFIRMATION,
+    });
+    writeGithubOutput({ version: trigger.version, confirmacao: trigger.confirmation }, env);
+    console.log(`Disparo de homologação (${trigger.source}) para a versão ${trigger.version}.`);
+    return trigger;
   }
   const checkOnly = argv.includes("--check-versions");
   const skipSigning = argv.includes("--skip-signing-check");

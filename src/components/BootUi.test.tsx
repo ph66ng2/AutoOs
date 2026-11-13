@@ -1,35 +1,31 @@
-import { beforeEach, describe, expect, it } from "vitest";
-import { render, screen } from "@testing-library/react";
-import { BootUiProvider, useBootUi } from "@/components/BootUi";
-import { DAILY_BOOT_OPENING_STORAGE_KEY } from "@/lib/daily-boot-opening";
-import { todayLocalIsoDate } from "@/lib/date-utils";
+import { act, render, screen } from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { BOOT_ANIMATION_HARD_LIMIT_MS, BootUiProvider, useBootUi } from "@/components/BootUi";
 
 function Probe() {
-  const { openingComplete } = useBootUi();
-  return <p>{openingComplete ? "opening-done" : "opening-pending"}</p>;
+  const { bootAnimationComplete } = useBootUi();
+  return <p>{bootAnimationComplete ? "opening-done" : "opening-pending"}</p>;
 }
 
-beforeEach(() => {
-  window.localStorage.clear();
-});
-
 describe("BootUiProvider", () => {
-  it("segura a abertura no primeiro boot do dia", () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("segura a abertura até a animação terminar ou o limite de segurança", () => {
     render(
       <BootUiProvider>
         <Probe />
       </BootUiProvider>,
     );
     expect(screen.getByText("opening-pending")).toBeInTheDocument();
-  });
-
-  it("libera login imediatamente nos boots seguintes do mesmo dia", () => {
-    window.localStorage.setItem(DAILY_BOOT_OPENING_STORAGE_KEY, todayLocalIsoDate());
-    render(
-      <BootUiProvider>
-        <Probe />
-      </BootUiProvider>,
-    );
+    act(() => {
+      vi.advanceTimersByTime(BOOT_ANIMATION_HARD_LIMIT_MS);
+    });
     expect(screen.getByText("opening-done")).toBeInTheDocument();
   });
 });

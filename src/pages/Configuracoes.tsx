@@ -72,9 +72,9 @@ export default function Configuracoes() {
     setSecurityFeedback(message ? { message, variant } : null);
   }, []);
   const [securityAdminUnlocked, setSecurityAdminUnlocked] = useState(false);
-  const canConfigureSmtp = hasPermission(SENSITIVE_PERMISSIONS.CONFIG_SMTP);
-  const canConfigureWhatsapp = hasPermission(SENSITIVE_PERMISSIONS.CONFIG_WHATSAPP);
-  const canManagePortal = hasPermission(SENSITIVE_PERMISSIONS.MANAGE_STATUS_LINKS);
+  const canConfigureSmtp = hasPermission(SENSITIVE_PERMISSIONS.COMMUNICATION_SETTINGS);
+  const canConfigureWhatsapp = hasPermission(SENSITIVE_PERMISSIONS.COMMUNICATION_SETTINGS);
+  const canManagePortal = hasPermission(SENSITIVE_PERMISSIONS.MANAGE_STATUS_LINKS) || canConfigureSmtp;
   const canManageProfiles = hasPermission(SENSITIVE_PERMISSIONS.MANAGE_PROFILES);
   const canConfigurePhotoTunnel = canConfigureSmtp;
   const abas = abasConfiguracoes({
@@ -449,7 +449,7 @@ export default function Configuracoes() {
     const liberado = await ensureSensitiveAccess({
       title: "Liberar edição de SMTP",
       description: "Informe o PIN para permitir alterações na configuração padrão de SMTP.",
-      permission: SENSITIVE_PERMISSIONS.CONFIG_SMTP,
+      permission: SENSITIVE_PERMISSIONS.COMMUNICATION_SETTINGS,
     });
 
     if (!liberado) {
@@ -466,7 +466,7 @@ export default function Configuracoes() {
     const liberado = await ensureSensitiveAccess({
       title: "Salvar configuração do WhatsApp",
       description: "Informe o PIN para salvar credenciais e parâmetros do WhatsApp.",
-      permission: SENSITIVE_PERMISSIONS.CONFIG_WHATSAPP,
+      permission: SENSITIVE_PERMISSIONS.COMMUNICATION_SETTINGS,
     });
     if (!liberado) {
       setWhatsappStatus("Salvamento do WhatsApp não autorizado. PIN/permissão necessários.");
@@ -498,7 +498,7 @@ export default function Configuracoes() {
     const liberado = await ensureSensitiveAccess({
       title: "Salvar túnel de fotos",
       description: "Informe o PIN para salvar o token do Cloudflare Tunnel.",
-      permission: SENSITIVE_PERMISSIONS.CONFIG_SMTP,
+      permission: SENSITIVE_PERMISSIONS.COMMUNICATION_SETTINGS,
     });
     if (!liberado) {
       setPhotoTunnelStatus("Salvamento do túnel de fotos não autorizado. PIN/permissão necessários.");

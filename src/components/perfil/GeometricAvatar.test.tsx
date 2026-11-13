@@ -20,6 +20,12 @@ describe("avatares geométricos", () => {
     expect(profileAppearance({ id: 3, avatar_icone: "shape-hex", avatar_cor: "#15803D", tema: "light" }).icon).toBe("shape-hex");
   });
 
+  it("ícone antigo recebe a mesma forma estável da migration 0046", () => {
+    expect(profileAppearance({ id: 1, avatar_icone: "headphones" }).icon).toBe("shape-square");
+    expect(profileAppearance({ id: 2, avatar_icone: "wrench" }).icon).toBe("shape-peak");
+    expect(profileAppearance({ id: 3, avatar_icone: "printer" }).icon).toBe("shape-pill");
+  });
+
   it("desenha a forma inline com a cor do perfil", () => {
     const { container } = render(<ProfileAvatar icon="shape-orb" color="#2563EB" size="lg" />);
     const svg = container.querySelector("svg");
@@ -28,8 +34,9 @@ describe("avatares geométricos", () => {
     expect(svg?.querySelector("circle")).not.toBeNull();
   });
 
-  it("ícone antigo continua como ícone", () => {
+  it("ícone antigo recebe uma forma", () => {
     const { container } = render(<ProfileAvatar icon="printer" color="#2563EB" />);
-    expect(container.querySelector("svg.lucide")).not.toBeNull();
+    expect(container.querySelector("svg.lucide")).toBeNull();
+    expect(container.querySelector("svg")).not.toBeNull();
   });
 });

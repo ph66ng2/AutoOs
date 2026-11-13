@@ -10,9 +10,9 @@ A rota `/perfil` reúne a equipe, o cadastro guiado e as ações administrativas
 
 | Modelo | Permissões adicionais iniciais |
 | --- | --- |
-| Recepção | Nenhuma |
-| Técnico | Estoque (elaborar e enviar orçamentos após a transição para a 0.6.0) |
-| Financeiro | Ações financeiras e consulta de despesas (elaborar e enviar orçamentos após a transição para a 0.6.0) |
+| Recepção | Acessos do portal |
+| Técnico | Estoque, elaborar e enviar orçamentos e acessos do portal |
+| Financeiro | Ações financeiras, elaborar e enviar orçamentos, consulta de despesas e acessos do portal |
 | Administrador | Todas as permissões sensíveis existentes |
 | Personalizado | Nenhuma; escolha as liberações individualmente |
 
@@ -20,7 +20,7 @@ Os modelos não criam verificações novas nos módulos: aplicam as permissões 
 
 ## Elaborar e enviar orçamentos
 
-A permissão `PREPARE_QUOTES` ("Elaborar e enviar orçamentos") é sensível. A migration `0042` é só de dados: adiciona essa permissão apenas ao perfil Administrador já existente, sem alterar o schema. Técnico e Financeiro a recebem em uma migration posterior (ainda não criada); veja "Transição da 0.5.6 para a 0.6.0".
+A permissão `PREPARE_QUOTES` ("Elaborar e enviar orçamentos") é sensível. A migration `0042` é só de dados: adiciona essa permissão apenas ao perfil Administrador já existente, sem alterar o schema. A migration de dados `0048` concede a permissão aos perfis de role `TECNICO`/`FINANCEIRO` e aos perfis existentes de nome Técnico/Tecnico/Financeiro, inclusive inativos, sem duplicar permissões. Financeiro também precisa dela: `FINANCIAL_ACTIONS` cobre valores e decisões, mas publicar e enviar orçamento exigem `PREPARE_QUOTES` ou `MANAGE_STATUS_LINKS`.
 
 Com a permissão, a pessoa pode:
 
@@ -38,16 +38,42 @@ Não libera:
 - definir senha manual do portal do cliente;
 - editar o acesso dos contatos.
 
+## Comunicação externa e acessos do portal (0049)
+
+| Antes | Depois | Escopo |
+| --- | --- | --- |
+| `CONFIG_SMTP` | `COMMUNICATION_SETTINGS` — Comunicação externa | SMTP, WhatsApp e ligar/desligar o portal |
+| `CONFIG_WHATSAPP` | `COMMUNICATION_SETTINGS` — Comunicação externa | Mesma liberação, sem separação por canal |
+| `MANAGE_STATUS_LINKS` — Portal do Cliente e links | `MANAGE_STATUS_LINKS` — Acessos do portal | Enviar links, criar/redefinir senhas e acessos de contatos, publicar orçamento e editar o contato público da empresa; não liga/desliga o portal |
+
+A migration **0049** é somente de dados e idempotente: quem tinha SMTP **ou** WhatsApp recebe Comunicação externa, com remoção das chaves antigas e duplicatas. Quem tinha apenas `MANAGE_STATUS_LINKS` mantém seus acessos, sem ganhar Comunicação externa. A contagem de promoção passa a 46. A 0049 vem depois da 0048 do #184; 0045/0046 pertencem ao portal na `feature` e 0047 está reservada ao PDF oficial. São **46 arquivos**, não 49.
+
+Recepção, Técnico e Financeiro recebem **Acessos do portal nos modelos de novos cadastros**; permissões de perfis existentes só mudam pelo mapeamento acima. Financeiro ganha acesso operacional ao portal para gerenciar contatos, senhas e links, além de continuar preparando e decidindo orçamentos. Administrador continua com tudo. Personalizado pode ficar sem permissões. O envio/publicação por `PREPARE_QUOTES` continua permitido nos fluxos de orçamento, sem conceder configuração de comunicação.
+
+Conceder acesso `DECIDIR` ou redefinir manualmente a senha de quem decide continua exigindo a permissão financeira. Alterar “Clientes podem responder orçamentos” exige **Comunicação externa e Ações financeiras**; ligar/desligar somente o portal exige apenas Comunicação externa. Negativas e mudanças continuam auditadas pelo backend.
+
+**Distribuição coordenada:** a 0.6.2 não conhece `COMMUNICATION_SETTINGS`. Depois da 0049, um perfil não-administrador com essa chave pode impedir que clientes antigos listem perfis; o build novo, por sua vez, exige o mapeamento das chaves antigas para listar esses perfis. Paulo deve coordenar a distribuição do build e a execução da 0049 em uma janela de manutenção, com os PCs fechados até concluir ambos. Não integrar o PR nem executar a migration enquanto houver frota mista. Este PR é empilhado sobre o da 0048 e deve ser integrado depois dele; a ordem de merge/migration continua sendo do Paulo.
+
+## Avatar: somente formas
+
+O seletor compartilhado entre primeiro acesso e personalização oferece apenas nove formas. A 0049 troca qualquer ícone antigo salvo por `AVATAR_SHAPES[abs(id) % 9]`, preservando a forma já escolhida, a cor e o tema. `profileAppearance` usa o mesmo cálculo para valores ausentes ou antigos. O backend aceita apenas as nove formas; os ícones antigos não podem ser gravados novamente. O rótulo passa de “Ou uma forma” para **Forma**.
+
+Verificações adicionais (PostgreSQL local descartável): `scripts/tests/communication-appearance-migration.sql` testa o mapeamento de permissões/avatares e idempotência; `test_communication_permissions` testa o comando real, as permissões financeira/comunicação e a auditoria. Forneça `AUTOOS_STOCK_TEST_DATABASE_URL` de um banco **local** `autoos_stock_test*` com as migrations aplicadas.
+
 ## Transição da 0.5.6 para a 0.6.0
 
 A 0.5.6 recusa, ao montar a lista de perfis, qualquer perfil não-administrador que (a) não tenha nenhuma permissão ("Selecione ao menos uma permissão para o perfil") ou (b) contenha uma chave que ela não conhece, como `PREPARE_QUOTES` ou `MANAGE_STATUS_LINKS` ("Permissão inválida"). Um único perfil assim deixa a lista vazia e ninguém entra nos PCs que ainda estão na 0.5.6. O Administrador não é afetado, pois recebe todas as permissões sem ler a coluna. A 0.5.6 conhece só: `CONFIG_SMTP`, `CONFIG_WHATSAPP`, `DELETE_RECORDS`, `FINANCIAL_ACTIONS`, `STOCK_CONTROL`, `MANAGE_PROFILES` e `VIEW_EXPENSES`.
 
 - A 0042 concede `PREPARE_QUOTES` só ao Administrador.
-- **Trava de transição:** enquanto `COMPATIBILIDADE_056_ATIVA` estiver ligada (`src-tauri/src/commands/auth.rs` e `src/lib/compatibilidade-056.ts`), o backend recusa gravar perfil não-administrador sem permissão ou com permissão nova, e as telas de perfil escondem essas permissões, não deixam salvar perfil vazio e deixam o modelo Recepção (sem permissões) indisponível. A trava vale para criar, editar e o primeiro acesso por código.
-- Técnico e Financeiro recebem a permissão em migration posterior (ainda não criada), aplicada quando todos os PCs estiverem na 0.6.0. Nesse mesmo PR: desligar as duas constantes `COMPATIBILIDADE_056_ATIVA` e passar `PREPARE_QUOTES_NOS_MODELOS` (`src/lib/profile-presets.ts`) a `true`.
-- Builds de teste ligados ao banco de produção anteriores à trava podem criar perfis incompatíveis: não crie nem edite perfis neles enquanto houver PC na 0.5.6.
+- **Transição concluída em 10/11/2026:** Paulo confirmou todos os PCs na **0.6.2**. `COMPATIBILIDADE_056_ATIVA` está desligada no Rust e no frontend, e `PREPARE_QUOTES_NOS_MODELOS` está ligada.
+- A migration de dados **0048** concede `PREPARE_QUOTES` a Técnico e Financeiro. A numeração reserva 0045/0046 para o portal na `feature` e 0047 para o PDF oficial; 0048 e 0049 ficam para #184 e #185.
+- Recepção (`ATENDENTE`) voltou a estar disponível no cadastro com a 0048, inclusive sem permissões; a 0049 adiciona Acessos do portal ao modelo para novos cadastros. Todas as permissões do perfil também aparecem na criação, incluindo **Elaborar e enviar orçamentos** e **Acessos do portal**.
+- **Impacto:** depois da concessão, PCs na 0.5.6 deixam de listar os perfis. Não há mais PCs nessa versão, conforme confirmação do Paulo; não voltar a distribuir a 0.5.6 nem religar a trava.
+- **Pós-merge, por ordem do Paulo:** acompanhar o workflow de migrations; confirmar a 0048 e a contagem de 45 migrations; validar Técnico criando/enviando orçamento, Recepção sem permissões e a lista completa de permissões no cadastro. Este PR não executa migrations em produção nem cria release/tag.
 
 ## Sessão e autenticação
+
+Ao aceitar um PIN, o seletor mantém o campo com o cadeadinho verde até fechar. Fechar ou reabrir a confirmação durante essa animação conclui apenas o pedido já aceito e cancela seu temporizador; um pedido novo continua exigindo sua própria confirmação. Com movimento reduzido, o fechamento é imediato.
 
 - A pessoa e suas permissões continuam no PostgreSQL compartilhado.
 - O PIN e seu hash permanecem no cofre do sistema operacional. Não são sincronizados entre computadores.
@@ -91,3 +117,9 @@ A decisão é manter o bloqueio de perfis protegidos quando o PIN não existe no
 5. Aguarde a confirmação de sucesso e o indicador **PIN configurado neste PC**. Use **Trocar de perfil** e entre como o colaborador com o novo PIN.
 
 O reset preserva as permissões, é registrado na auditoria e altera apenas o segredo local deste PC. Se não houver nenhum administrador com PIN local, use **Esqueci minha senha** na entrada e a recuperação existente com credenciais PostgreSQL autorizadas; não remova `pin_required` nem habilite entrada sem PIN como atalho. O primeiro cadastro de uma instalação vazia continua seguindo a exceção de bootstrap já documentada acima.
+
+## Numeração entre master e feature (10/11/2026)
+
+Este build da linha interna contém 0001–0044, 0047 (PDF oficial do portal, #188), 0048 (#184), 0049 (#185) e 0050 (#189, acessos do portal à equipe operacional), com 48 arquivos. Não criar arquivos vazios para preencher 0045/0046: pertencem ao portal na `feature`. Os verificadores de arquivos e de promoção aceitam somente essas lacunas reservadas, preservando a verificação de duplicatas, demais ausências e contagem real. A lista de reservas fica em um único arquivo, `scripts/sqlx-reserved-migrations.txt`, lido por `check-sqlx-migrations.mjs`, `verify-estoque-seed.sh` (job QA Real) e `production_migrate.rs`; alterar a reserva é alterar só esse arquivo. O verificador de histórico exige cada versão presente nos arquivos do build, sem inventar versões ausentes dele.
+
+No sync semanal **master → feature**, preservar as migrations 0045/0046 da `feature` e os arquivos vindos da `master`, sem renumerar migrations aplicadas. Reconciliar a união de `REQUIRED_PROMOTION_MIGRATIONS` e atualizar `EXPECTED_MIGRATION_COUNT` pelo número de arquivos, não pelo maior ID: após PDF + #184 + #185 + #189, 48 arquivos na `master` (0001–0044, 0047–0050) e 50 na `feature` (0001–0050). Rodar `node scripts/check-sqlx-migrations.mjs`, `cargo test --manifest-path src-tauri/Cargo.toml --bin production_migrate`, `npm run build:saas` e `npm run test:run` na `feature`. Nenhum merge nem aplicação em produção faz parte desta correção.

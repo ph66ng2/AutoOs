@@ -4,8 +4,6 @@ import userEvent from "@testing-library/user-event";
 import { SaasApp } from "@/components/SaasApp";
 import { BootUiProvider } from "@/components/BootUi";
 import { SaasAuthProvider } from "@/hooks/useSaasAuth";
-import { DAILY_BOOT_OPENING_STORAGE_KEY } from "@/lib/daily-boot-opening";
-import { todayLocalIsoDate } from "@/lib/date-utils";
 import type { SaasAuthService, SaasSession } from "@/types/saas-auth";
 
 const { invokeMock } = vi.hoisted(() => ({ invokeMock: vi.fn() }));
@@ -102,24 +100,22 @@ describe("SaasApp", () => {
     expect(await screen.findByRole("heading", { name: "AutoOS SaaS" })).toBeInTheDocument();
     expect(screen.queryByText(/cadastrar/i)).not.toBeInTheDocument();
     expect(screen.getByText(/cadastro de empresas é feito somente pelo suporte/i)).toBeInTheDocument();
-    expect(window.localStorage.getItem(DAILY_BOOT_OPENING_STORAGE_KEY)).toBe(todayLocalIsoDate());
   });
 
-  it("pula a abertura nos boots seguintes do mesmo dia e vai direto ao login", async () => {
-    window.localStorage.setItem(DAILY_BOOT_OPENING_STORAGE_KEY, todayLocalIsoDate());
+  it("mostra a abertura BMI TAG em toda inicialização, mesmo com chave antiga do dia", async () => {
+    window.localStorage.setItem("autoos:daily-boot-opening", "2026-11-13");
     renderApp(service());
-    expect(screen.queryByText("Restaurando sessão segura...")).not.toBeInTheDocument();
+    expect(screen.getByText("Restaurando sessão segura...")).toBeInTheDocument();
     expect(await screen.findByRole("heading", { name: "AutoOS SaaS" })).toBeInTheDocument();
   });
 
-  it("nos boots seguintes espera a sessão sem repetir o stamp", async () => {
-    window.localStorage.setItem(DAILY_BOOT_OPENING_STORAGE_KEY, todayLocalIsoDate());
+  it("enquanto a sessão restaura, a abertura permanece na tela", async () => {
     renderApp(service({
       restoreSession: vi.fn().mockImplementation(() => new Promise(() => {})),
     }));
-    expect(screen.queryByText("Restaurando sessão segura...")).not.toBeInTheDocument();
-    expect(await screen.findByText("Preparando sessão…")).toBeInTheDocument();
+    expect(screen.getByText("Restaurando sessão segura...")).toBeInTheDocument();
     expect(screen.queryByRole("heading", { name: "AutoOS SaaS" })).not.toBeInTheDocument();
+    expect(screen.queryByText("Preparando sessão…")).not.toBeInTheDocument();
   });
 
   it("usa o perfil server-side sem seletor e mantém o PIN opcional/local", async () => {
@@ -167,7 +163,6 @@ describe("SaasApp", () => {
   });
 
   it("mantém a tela bloqueada após renovar a sessão e exige o PIN se o perfil mudar", async () => {
-    window.localStorage.setItem(DAILY_BOOT_OPENING_STORAGE_KEY, todayLocalIsoDate());
     const expiring = { ...session, expiresAt: Math.floor(Date.now() / 1_000) + 30 };
     const changedProfile: SaasSession = {
       ...session,
@@ -188,7 +183,6 @@ describe("SaasApp", () => {
   });
 
   it("continua renovando a sessão sem desbloquear a interface", async () => {
-    window.localStorage.setItem(DAILY_BOOT_OPENING_STORAGE_KEY, todayLocalIsoDate());
     const expiring = { ...session, expiresAt: Math.floor(Date.now() / 1_000) + 63 };
     const renewed = { ...session, expiresAt: Math.floor(Date.now() / 1_000) + 3_600 };
     const authService = service({

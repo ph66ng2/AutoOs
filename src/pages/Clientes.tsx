@@ -655,20 +655,33 @@ export default function Clientes() {
                         ) : contatosLista.length === 0 ? (
                           <span className="text-sm text-muted-foreground">Nenhum contato cadastrado</span>
                         ) : (
-                          <ul className="space-y-2">
+                          <div className="space-y-2">
+                            <p className="text-xs font-medium text-muted-foreground">
+                              {contatosLista.length} contato(s) cadastrado(s)
+                            </p>
                             {contatosLista.map(ct => (
-                              <li
+                              <button
                                 key={ct.id}
-                                className={`grid min-w-0 gap-1 rounded border bg-background p-3 text-sm sm:grid-cols-3 ${
+                                type="button"
+                                onClick={() => setContatosClienteSelecionado(c)}
+                                title="Abrir contatos e portal"
+                                className={`grid w-full min-w-0 gap-2 rounded border bg-background p-3 text-left hover:border-cyan-600 hover:bg-cyan-50 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center ${
                                   c.contato_encontrado && ct.nome === c.contato_encontrado ? "border-primary" : ""
                                 }`}
                               >
-                                <span className="break-words font-medium">{ct.nome}</span>
-                                <span className="break-all">{ct.telefone ? formatarTelefone(ct.telefone) : "—"}</span>
-                                <span className="break-all">{ct.email || "—"}</span>
-                              </li>
+                                <span className="flex min-w-0 items-start gap-3">
+                                  <ContactRound className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
+                                  <span className="min-w-0">
+                                    <span className="block break-words text-sm font-medium">{ct.nome}</span>
+                                    <span className="block break-all text-xs text-muted-foreground">{ct.email || "Sem e-mail"}</span>
+                                  </span>
+                                </span>
+                                <span className="text-xs text-muted-foreground sm:text-right">
+                                  {ct.telefone ? formatarTelefone(ct.telefone) : "Sem telefone"}
+                                </span>
+                              </button>
                             ))}
-                          </ul>
+                          </div>
                         )}
                         <div className="flex justify-end pt-2">
                           <Button variant="outline" size="sm" className="h-8 text-xs" onClick={() => setContatosClienteSelecionado(c)}>

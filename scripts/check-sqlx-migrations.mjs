@@ -1,10 +1,24 @@
-import { readdirSync } from "node:fs";
+import { readFileSync, readdirSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 
 const migrationDir = fileURLToPath(new URL("../src-tauri/migrations/", import.meta.url));
 const files = readdirSync(migrationDir).filter((file) => file.endsWith(".sql")).sort();
 const byVersion = new Map();
 const errors = [];
+// Fonte única das versões reservadas, compartilhada com verify-estoque-seed.sh e production_migrate.rs.
+const reservedVersions = new Set(
+  readFileSync(new URL("./sqlx-reserved-migrations.txt", import.meta.url), "utf8")
+    .split("\n")
+    .map((line) => line.replace(/#.*$/, "").trim())
+    .filter(Boolean)
+    .map((line) => {
+      if (!/^\d+$/.test(line)) {
+        errors.push(`Linha inválida em sqlx-reserved-migrations.txt: ${line}`);
+        return 0;
+      }
+      return Number(line);
+    }),
+);
 
 for (const file of files) {
   const match = /^(\d{4})_[a-z0-9_]+\.sql$/.exec(file);
@@ -22,7 +36,7 @@ for (const file of files) {
 }
 
 for (let version = 1; version <= Math.max(0, ...byVersion.keys()); version += 1) {
-  if (!byVersion.has(version)) {
+  if (!byVersion.has(version) && !reservedVersions.has(version)) {
     errors.push(`Versão ${String(version).padStart(4, "0")} ausente`);
   }
 }

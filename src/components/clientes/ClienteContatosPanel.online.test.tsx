@@ -9,6 +9,9 @@ vi.mock("@/lib/data/cliente-contatos-repository", () => ({
 }));
 vi.mock("@/lib/db", () => ({ db: { listarClienteContatos: tauriListar } }));
 vi.mock("@/hooks/useNotification", () => ({ useNotification: () => ({ success: vi.fn(), error: vi.fn() }) }));
+vi.mock("@/hooks/useSensitiveAccess", () => ({
+  useSensitiveAccess: () => ({ ensureSensitiveAccess: vi.fn().mockResolvedValue(true) }),
+}));
 
 import { ClienteContatosPanel } from "@/components/clientes/ClienteContatosPanel";
 

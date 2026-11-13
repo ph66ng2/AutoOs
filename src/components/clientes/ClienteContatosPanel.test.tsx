@@ -2,10 +2,14 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import type { ClienteContato } from "@/types";
 
+const ensure = vi.hoisted(() => vi.fn());
+vi.mock("@/hooks/useSensitiveAccess", () => ({ useSensitiveAccess: () => ({ ensureSensitiveAccess: ensure }) }));
+
 const mockListar = vi.hoisted(() => vi.fn());
 const mockCriar = vi.hoisted(() => vi.fn());
 const mockAtualizar = vi.hoisted(() => vi.fn());
 const mockInativar = vi.hoisted(() => vi.fn());
+const mockDefinirAcesso = vi.hoisted(() => vi.fn());
 
 vi.mock("@/lib/db", () => ({
   db: {
@@ -13,6 +17,7 @@ vi.mock("@/lib/db", () => ({
     criarClienteContato: mockCriar,
     atualizarClienteContato: mockAtualizar,
     inativarClienteContato: mockInativar,
+    definirAcessoPortalContato: mockDefinirAcesso,
   },
 }));
 
@@ -53,6 +58,7 @@ const contato: ClienteContato = {
 describe("ClienteContatosPanel", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    ensure.mockResolvedValue(true);
     mockListar.mockResolvedValue([contato]);
     mockCriar.mockResolvedValue({ ...contato, id: 21, nome: "Bruno" });
     mockAtualizar.mockResolvedValue({ ...contato, nome: "Ana Editada" });
@@ -141,5 +147,22 @@ describe("ClienteContatosPanel", () => {
     fireEvent.click(screen.getAllByRole("button", { name: "Inativar" })[1]!);
     await waitFor(() => expect(mockInativar).toHaveBeenCalledWith(20, 7));
     expect(mockListar).toHaveBeenCalledTimes(2);
+  });
+
+  it("acesso para acompanhar pede Acessos do portal; para decidir, Orçamentos ou financeiro; negado não grava", async () => {
+    mockDefinirAcesso.mockResolvedValue({ ...contato, portal_acesso: "ACOMPANHAR" });
+    render(<ClienteContatosPanel cliente={cliente} empresaId={7} />);
+    const seletor = await screen.findByLabelText("Acesso de Ana ao portal");
+    fireEvent.change(seletor, { target: { value: "ACOMPANHAR" } });
+    await waitFor(() => expect(mockDefinirAcesso).toHaveBeenCalledWith(20, "ACOMPANHAR"));
+    expect(ensure).toHaveBeenLastCalledWith(expect.objectContaining({ permission: "MANAGE_STATUS_LINKS" }));
+
+    mockDefinirAcesso.mockClear();
+    ensure.mockResolvedValue(false);
+    fireEvent.change(screen.getByLabelText("Acesso de Ana ao portal"), { target: { value: "DECIDIR" } });
+    await waitFor(() => expect(ensure).toHaveBeenLastCalledWith(expect.objectContaining({
+      anyPermission: ["FINANCIAL_ACTIONS", "PREPARE_QUOTES"],
+    })));
+    expect(mockDefinirAcesso).not.toHaveBeenCalled();
   });
 });

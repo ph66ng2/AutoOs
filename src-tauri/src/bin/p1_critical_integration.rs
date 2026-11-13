@@ -381,7 +381,7 @@ async fn main() -> Result<()> {
 
     let restricted_profile_permissions = serde_json::to_string(&vec![
         auth::PERMISSION_STOCK_CONTROL.to_string(),
-        auth::PERMISSION_CONFIG_SMTP.to_string(),
+        auth::PERMISSION_COMMUNICATION_SETTINGS.to_string(),
         auth::PERMISSION_MANAGE_PROFILES.to_string(),
     ])
     .context("serialize restricted permissions failed")?;
@@ -625,7 +625,7 @@ async fn main() -> Result<()> {
     let privileged_permissions = serde_json::to_string(&vec![
         auth::PERMISSION_FINANCIAL_ACTIONS.to_string(),
         auth::PERMISSION_STOCK_CONTROL.to_string(),
-        auth::PERMISSION_CONFIG_SMTP.to_string(),
+        auth::PERMISSION_COMMUNICATION_SETTINGS.to_string(),
     ])
     .context("serialize privileged permissions failed")?;
     let privileged_profile_id: i32 = sqlx::query_scalar(

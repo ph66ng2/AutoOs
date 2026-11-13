@@ -28,6 +28,7 @@ import { db } from "@/lib/db";
 import { IS_SAAS_BUILD } from "@/lib/runtime-mode";
 import { carregarRepositorioOperacoesEquipamento } from "@/lib/data/equipamentos-operacoes-repository";
 import { carregarRepositorioHistoricoEquipamento } from "@/lib/data/equipamentos-historico-repository";
+import { publicarPdfOficial, referenciaPdfPortal, type ReferenciaPdfPortal } from "@/lib/portal-documentos";
 import { formatDateTimeSalvador, parseTimestampPostgres } from "@/lib/date-utils";
 import { STATUS_LABELS } from "@/types";
 import type {
@@ -73,6 +74,7 @@ export interface PdfArtifact {
   filename: string;
   bytes: Uint8Array;
   mimeType: "application/pdf";
+  portal?: ReferenciaPdfPortal;
 }
 
 /** Paleta única dos quatro PDFs: branco, preto e cinzas econômicos. */
@@ -979,6 +981,8 @@ export const PdfService = {
     nomeArquivo?: string,
     prazoExecucao?: PrazoExecucaoPdf,
   ): Promise<PdfArtifact> {
+    // Verificação ajustada nunca vira o canônico do orçamento original.
+    const portal = verificacao.adjusted_at ? undefined : await referenciaPdfPortal(equipamento, "ORCAMENTO");
     try {
       const { jsPDF, autoTable } = await carregarModulosPdf();
       const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
@@ -1166,11 +1170,13 @@ export const PdfService = {
         aplicarRodape(doc, numeroOS, page, totalPages, dataGeracao);
       }
 
-      return {
+      const artifact: PdfArtifact = {
+        portal,
         filename: nomeArquivo || `Orcamento_${equipamento.id || "novo"}.pdf`,
         bytes: new Uint8Array(doc.output("arraybuffer")),
         mimeType: "application/pdf",
       };
+      return artifact;
     } catch (error) {
       console.error("[PdfService] Erro ao gerar orçamento PDF:", error);
       throw error;
@@ -1206,15 +1212,12 @@ export const PdfService = {
 
     const totalServicos = servicos.reduce((acc, s) => acc + s.valor, 0);
     const totalPecas = pecas.reduce((acc, p) => acc + p.valorTotal, 0);
+    // `custo_total` é o total gravado. Se difere da soma dos itens, o operador confirmou
+    // esse valor ao salvar (“Não grava o valor digitado”): o PDF mostra o total gravado,
+    // igual ao orçamento original, e não bloqueia visualizar, imprimir, baixar nem publicar.
     const custoTotal = verificacao.custo_total ?? (totalServicos + totalPecas);
 
-    if (totalServicos + totalPecas !== custoTotal) {
-      alert(
-        `Divergência detectada: soma dos itens (${formatarMoeda(totalServicos + totalPecas)}) difere do custo total (${formatarMoeda(custoTotal)}).`
-      );
-      return null;
-    }
-
+    const portal = await referenciaPdfPortal(equipamento, "ORCAMENTO_AJUSTADO");
     try {
       const { jsPDF, autoTable } = await carregarModulosPdf();
       const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
@@ -1396,11 +1399,13 @@ export const PdfService = {
         );
       }
 
-      return {
+      const artifact: PdfArtifact = {
+        portal,
         filename: nomeArquivo || `OrcamentoAjustado_${equipamento.id || "novo"}.pdf`,
         bytes: new Uint8Array(doc.output("arraybuffer")),
         mimeType: "application/pdf",
       };
+      return artifact;
     } catch (error) {
       console.error("[PdfService] Erro ao gerar orçamento ajustado PDF:", error);
       throw error;
@@ -1408,7 +1413,7 @@ export const PdfService = {
   },
 
   async gerarOrcamentoAjustado(
-    equipamento: Equipamento,
+    equipamento: EquipamentoPdf,
     verificacao: Verificacao,
     nomeArquivo?: string
   ): Promise<string | null> {
@@ -1422,6 +1427,7 @@ export const PdfService = {
    * Lista os campos preenchidos na seção "Dados do Equipamento".
    */
   async construirOrdemServico(equipamento: EquipamentoPdf, nomeArquivo?: string): Promise<PdfArtifact> {
+    const portal = await referenciaPdfPortal(equipamento, "ORDEM_SERVICO");
     try {
       const { jsPDF, autoTable } = await carregarModulosPdf();
       const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
@@ -1578,11 +1584,13 @@ export const PdfService = {
         aplicarRodape(doc, numeroOS, page, totalPages, dataGeracao);
       }
 
-      return {
+      const artifact: PdfArtifact = {
+        portal,
         filename: nomeArquivo || `OrdemServico_${equipamento.id || "novo"}.pdf`,
         bytes: new Uint8Array(doc.output("arraybuffer")),
         mimeType: "application/pdf",
       };
+      return artifact;
     } catch (error) {
       console.error("[PdfService] Erro ao construir ordem de serviço PDF:", error);
       throw error;
@@ -1596,6 +1604,7 @@ export const PdfService = {
   },
 
   async salvarOrcamento(artifact: PdfArtifact, equipamento: EquipamentoPdf, nomeArquivo?: string): Promise<string> {
+    await publicarPdfOficial(artifact, equipamento);
     const caminho = await invoke<string>("salvar_orcamento_pdf", {
       bytes: Array.from(artifact.bytes),
       empresaNome: equipamento.cliente_nome || equipamento.proprietario || "Cliente",
@@ -1606,6 +1615,7 @@ export const PdfService = {
   },
 
   async salvarOrdemServico(artifact: PdfArtifact, equipamento: EquipamentoPdf, nomeArquivo?: string): Promise<string> {
+    await publicarPdfOficial(artifact, equipamento);
     const caminho = await invoke<string>("salvar_ordem_servico_pdf", {
       bytes: Array.from(artifact.bytes),
       empresaNome: equipamento.cliente_nome || equipamento.proprietario || "Empresa",

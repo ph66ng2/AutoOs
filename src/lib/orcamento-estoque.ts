@@ -10,8 +10,8 @@ export function orcamentoEmElaboracao(status: string): boolean {
 }
 
 /**
- * Espelha `status_change_allows_quote_preparation` (equipamentos.rs): a transição que "Elaborar e enviar
- * orçamentos" cobre sozinha. Qualquer outra mudança sensível continua exigindo a permissão financeira.
+ * Espelha `status_change_allows_quote_preparation` (equipamentos.rs): as transições cobertas por Orçamentos.
+ * Correções e valor final continuam exigindo Ações financeiras.
  */
 export function transicaoElaboraOrcamento(
   statusAtual: string,
@@ -20,9 +20,10 @@ export function transicaoElaboraOrcamento(
   valorFinal?: number | null,
 ): boolean {
   return !correcao
-    && !valorFinal
-    && novoStatus === "AGUARDANDO_APROVACAO"
-    && (statusAtual === "VERIFICADO" || statusAtual === "AGUARDANDO_APROVACAO");
+    && valorFinal == null
+    && ((novoStatus === "AGUARDANDO_APROVACAO"
+      && ["VERIFICADO", "AGUARDANDO_APROVACAO", "REPROVADO", "ORCAMENTO_VENCIDO"].includes(statusAtual))
+      || (statusAtual === "AGUARDANDO_APROVACAO" && novoStatus === "REPROVADO"));
 }
 
 /** Categoria do estoque (Insumos) oferecida em "Peças vinculadas". */
