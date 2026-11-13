@@ -1652,17 +1652,24 @@ describe("Equipamentos — Budget Divergence & Audit", () => {
     expect(mockEnsureSensitiveAccess.mock.calls[0][0]).not.toHaveProperty("anyPermission");
   });
 
-  it("no SaaS, entrega comum exige financeiro e não grava se negado", async () => {
+  it("no SaaS, entrega comum pede só PIN e grava sem FINANCIAL_ACTIONS", async () => {
     mockRuntime.saas = true;
     mockPermissions.list = ["PREPARE_QUOTES"];
-    mockEnsureSensitiveAccess.mockImplementation(async ({ permission }) => !permission);
+    mockEnsureSensitiveAccess.mockImplementation(async ({ permission, anyPermission }) => !permission && !anyPermission);
+    mockAtualizarStatusEquipamento.mockResolvedValue({
+      sucesso: true,
+      data: { ...equipamentoVerificado, status: "ENTREGUE", atualizado_em: "2024-01-15T10:00:01Z" },
+    });
     equipamentoVerificado.status = "PRONTO";
     render(<Equipamentos />);
     fireEvent.click(screen.getByTestId("action-registrar_entrega"));
     await screen.findByRole("button", { name: /Confirmar/i });
     await clicarConfirmarStatus();
-    await waitFor(() => expect(mockEnsureSensitiveAccess).toHaveBeenLastCalledWith(expect.objectContaining({ permission: "FINANCIAL_ACTIONS" })));
-    expect(mockAtualizarStatusEquipamento).not.toHaveBeenCalled();
+    await waitFor(() => expect(mockAtualizarStatusEquipamento).toHaveBeenCalledWith(
+      expect.objectContaining({ status: "ENTREGUE" }),
+    ));
+    expect((mockAtualizarStatusEquipamento.mock.calls.at(-1)?.[0] as { finalValue?: number }).finalValue).toBeUndefined();
+    expect(mockEnsureSensitiveAccess.mock.calls.every(([options]) => !options.permission && !options.anyPermission)).toBe(true);
   });
 
   it("entrega com exceção, inclusive valor final zero, exige financeiro e não grava se negado", async () => {

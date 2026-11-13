@@ -195,17 +195,18 @@ describe("Modo Balcão", () => {
     expect(db.atualizarStatusEquipamento).not.toHaveBeenCalled();
   });
 
-  it("no SaaS, retirada exige financeiro e não grava se negado", async () => {
+  it("no SaaS, retirada pede só PIN e não FINANCIAL_ACTIONS", async () => {
     mockRuntime.saas = true;
     db.listarEquipamentos.mockResolvedValue([{ id: 8, serial_number: "SN-8", marca: "Zebra", modelo: "ZD220", tipo: "Impressora", status: "PRONTO", data_entrada: "2026-09-01", atualizado_em: "token" }]);
-    ensureSensitiveAccess.mockImplementation(async ({ permission }) => !permission);
+    ensureSensitiveAccess.mockResolvedValue(false);
     const user = userEvent.setup(); renderCounter();
     await user.click(screen.getByRole("button", { name: /buscar equipamento/i }));
     await user.type(screen.getByRole("textbox"), "SN-8");
     await waitFor(() => expect(screen.getByText(/atendimento #8/i)).toBeInTheDocument());
     await user.click(screen.getByText(/atendimento #8/i));
     await user.click(screen.getByRole("button", { name: /marcar como entregue/i }));
-    await waitFor(() => expect(ensureSensitiveAccess).toHaveBeenCalledWith(expect.objectContaining({ permission: "FINANCIAL_ACTIONS" })));
+    await waitFor(() => expect(ensureSensitiveAccess).toHaveBeenCalled());
+    expect(ensureSensitiveAccess.mock.calls.every(([options]) => !options?.permission && !options?.anyPermission)).toBe(true);
     expect(await screen.findByRole("alert")).toHaveTextContent("não foi autorizada");
     expect(db.atualizarStatusEquipamento).not.toHaveBeenCalled();
   });

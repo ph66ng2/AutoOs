@@ -1866,10 +1866,8 @@ export default function Equipamentos({ operationalProfile }: { operationalProfil
     const prazoStatus = mostraOrcamento || novoStatus === "AGUARDANDO_APROVACAO"
       ? prazoAprovacao || undefined : undefined;
     const valorFinalStatus = novoStatus === "ENTREGUE" && acordoExcecaoEntrega ? valorFinal : undefined;
-    // SaaS: ENTREGUE ainda exige FINANCIAL_ACTIONS no RPC; no desktop a retirada comum é operacional.
-    const entregaSaasExigeFinanceiro = IS_SAAS_BUILD && novoStatus === "ENTREGUE";
     // Na conferência de acesso, total 0,00 editado (garantia) também conta como valor informado.
-    const precisaLiberacao = correcaoStatus || entregaSaasExigeFinanceiro || statusExigeAcessoSensivel(
+    const precisaLiberacao = correcaoStatus || statusExigeAcessoSensivel(
       novoStatus,
       mostraOrcamento ? totalAtual : valorOrcamentoStatus,
       prazoStatus,
@@ -1969,9 +1967,9 @@ export default function Equipamentos({ operationalProfile }: { operationalProfil
             equipmentId: String(selecionado.id),
             expectedUpdatedAt: selecionado.atualizado_em || "",
             status: novoStatus,
-            budget: totalAtual || undefined,
-            approvalDeadline: prazoAprovacao || undefined,
-            finalValue: novoStatus === "ENTREGUE" ? valorFinal : valorFinal || undefined,
+            budget: valorOrcamentoStatus,
+            approvalDeadline: prazoStatus,
+            finalValue: valorFinalStatus,
             correctionReason: correcaoStatus ? motivoCorrecaoStatus.trim() : undefined,
           });
           void result;
