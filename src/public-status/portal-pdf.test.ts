@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { DetalheAtendimento } from "./portal-api";
-import { formatarDocumento, gerarPdf, modeloComprovanteEntrega, modeloOrcamento, modeloOrdemServico } from "./portal-pdf";
+import { formatarDocumento, gerarPdf, modeloComprovanteEntrega, modeloOrdemServico, modeloOrcamento } from "./portal-pdf";
 
 const doc = vi.hoisted(() => ({
   internal: { pageSize: { getWidth: () => 210, getHeight: () => 297 } },
@@ -27,30 +27,13 @@ function detalhe(extra: Partial<DetalheAtendimento> = {}): DetalheAtendimento {
   };
 }
 
-const texto = (m: ReturnType<typeof modeloOrcamento>) => JSON.stringify(m?.blocos);
+const texto = (m: ReturnType<typeof modeloComprovanteEntrega>) => JSON.stringify(m?.blocos);
 
 beforeEach(() => vi.clearAllMocks());
 
-describe("modelo do orçamento", () => {
-  it("traz equipamento, série, CNPJ, defeito, serviços, total, validade, protocolo e OC", () => {
-    const t = texto(modeloOrcamento(detalhe()));
-    for (const parte of ["Zebra ZT230", "SER-1", "11.222.333/0001-81", "Não imprime", "Troca do fusor", "1 x Fusor", "Total do orçamento", "Válido até", "R-1", "OC-9"]) {
-      expect(t).toContain(parte);
-    }
-    expect(t).not.toContain("Valor final");
-  });
-
-  it("CPF é formatado e valor final diferente mostra final e orçado", () => {
-    expect(formatarDocumento("12345678909")).toBe("123.456.789-09");
-    expect(formatarDocumento(null)).toBeNull();
-    const t = texto(modeloOrcamento(detalhe({ valores: { orcamento: 350, final: 420, atual: 420 } })));
-    expect(t).toMatch(/Valor final/);
-    expect(t).toMatch(/Valor orçado: R\$.*350,00/);
-  });
-
-  it("sem orçamento não há documento", () => {
-    expect(modeloOrcamento(detalhe({ orcamento: null }))).toBeNull();
-  });
+it("formata o documento do cliente no comprovante", () => {
+  expect(formatarDocumento("12345678909")).toBe("123.456.789-09");
+  expect(formatarDocumento(null)).toBeNull();
 });
 
 describe("comprovante de entrega", () => {
@@ -144,9 +127,9 @@ describe("modelo da ordem de serviço", () => {
 
 describe("gerarPdf", () => {
   it("carrega o jspdf sob demanda e salva o arquivo", async () => {
-    const m = modeloOrcamento(detalhe())!;
+    const m = modeloComprovanteEntrega(detalhe({ status: "ENTREGUE" }))!;
     await gerarPdf(m);
-    expect(doc.save).toHaveBeenCalledWith("orcamento-28-v2.pdf");
+    expect(doc.save).toHaveBeenCalledWith("comprovante-entrega-28.pdf");
     expect(doc.text).toHaveBeenCalled();
   });
 });

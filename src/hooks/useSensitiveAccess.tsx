@@ -14,7 +14,9 @@ import { useTheme } from "next-themes";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { useBootUi } from "@/components/BootUi";
-import { ProfileSessionDialog } from "@/components/ProfileSessionDialog";
+import { erroPinNovo } from "@/lib/pin-rules";
+import { ProfileSessionDialog, type FirstAccessOrigin } from "@/components/ProfileSessionDialog";
+import { FirstAccessBridge } from "@/components/perfil/FirstAccessBridge";
 import { PasswordRecoveryDialog } from "@/components/PasswordRecoveryDialog";
 import { PrimeiroAcessoWizard } from "@/components/perfil/PrimeiroAcessoWizard";
 import { toast } from "sonner";
@@ -143,6 +145,8 @@ export function routeAllows(
 
 const SensitiveAccessContext = createContext<SensitiveAccessContextValue | null>(null);
 
+/** Tempo do cadeadinho abrindo no campo do PIN depois de um PIN certo. */
+const PIN_ACCEPTED_MS = 800;
 const KEYRING_BLOCKED_MESSAGE = "O cofre de senhas do sistema está bloqueado ou indisponível. Desbloqueie-o e tente de novo.";
 
 export function SensitiveAccessProvider({ children }: { children: ReactNode }) {
@@ -163,6 +167,8 @@ export function SensitiveAccessProvider({ children }: { children: ReactNode }) {
   const [busy, setBusy] = useState(false);
   const [selectedProfileId, setSelectedProfileId] = useState<string>("");
   const [firstAccess, setFirstAccess] = useState<{ profileId: number; needsCode: boolean; recovery: boolean } | null>(null);
+  /** Transição da tela de perfis para o primeiro acesso: a janela de perfis fica aberta até o cadeado pousar. */
+  const [firstAccessOrigin, setFirstAccessOrigin] = useState<FirstAccessOrigin | null>(null);
   const { setTheme } = useTheme();
   const resolverRef = useRef<((value: boolean) => void) | null>(null);
   const startupPromptedRef = useRef(false);
@@ -323,10 +329,26 @@ export function SensitiveAccessProvider({ children }: { children: ReactNode }) {
     setSelectedProfileId(status?.active_profile_id ? String(status.active_profile_id) : "");
   }, [status?.active_profile_id]);
 
+  // PIN aceito: o campo mostra o cadeadinho abrindo e só então a janela sai.
+  // O temporizador pertence a esta janela: fechar a janela de qualquer jeito o cancela.
+  const [pinAccepted, setPinAccepted] = useState(false);
+  const acceptTimerRef = useRef<number | null>(null);
+  const cancelAcceptTimer = useCallback(() => {
+    if (acceptTimerRef.current !== null) {
+      window.clearTimeout(acceptTimerRef.current);
+      acceptTimerRef.current = null;
+    }
+    setPinAccepted(false);
+  }, []);
+  useEffect(() => () => {
+    if (acceptTimerRef.current !== null) window.clearTimeout(acceptTimerRef.current);
+  }, []);
+
   const closeDialog = useCallback((result: boolean) => {
     if (!result && dialogMandatory && dialogMode !== "startup") {
       return;
     }
+    cancelAcceptTimer();
 
     // Uma consulta do boot pode trocar o diálogo de entrada para "PIN necessário
     // para continuar" antes do fechamento. A dispensa vale sempre que a sessão
@@ -339,9 +361,27 @@ export function SensitiveAccessProvider({ children }: { children: ReactNode }) {
     setDialogOpen(false);
     resetDialogState();
     resolvePending(result);
-  }, [dialogMandatory, dialogMode, resetDialogState, resolvePending]);
+  }, [dialogMandatory, dialogMode, resetDialogState, resolvePending, cancelAcceptTimer]);
+
+  const closeDialogRef = useRef(closeDialog);
+  closeDialogRef.current = closeDialog;
+  const acceptPinAndClose = useCallback(() => {
+    const reduced = typeof window.matchMedia === "function" && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    if (reduced) {
+      closeDialogRef.current(true);
+      return;
+    }
+    if (acceptTimerRef.current !== null) window.clearTimeout(acceptTimerRef.current);
+    setPinAccepted(true);
+    acceptTimerRef.current = window.setTimeout(() => {
+      acceptTimerRef.current = null;
+      closeDialogRef.current(true);
+    }, PIN_ACCEPTED_MS);
+  }, []);
 
   const ensureSensitiveAccess = useCallback(async (options?: SensitiveAccessPromptOptions) => {
+    // Uma reabertura conclui só o pedido já aceito e cancela seu fechamento atrasado.
+    if (acceptTimerRef.current !== null) closeDialogRef.current(true);
     const currentStatus = await SensitiveAccessService.status()
       .then((nextStatus) => {
         setConnectionUnavailable(false);
@@ -373,12 +413,21 @@ export function SensitiveAccessProvider({ children }: { children: ReactNode }) {
     });
   }, [status]);
 
-  useEffect(() => registerSensitiveAccessPrompt(() => ensureSensitiveAccess({
-    title: "PIN necessário para continuar",
-    description: "Sua sessão de segurança expirou. Informe o PIN e o AutoOS continuará esta ação automaticamente.",
-  })), [ensureSensitiveAccess]);
+  // O primeiro acesso cobre a tela inteira (z-[90]) e a janela de PIN ficaria escondida atrás dele,
+  // com a ação esperando para sempre. Enquanto ele está aberto, o pedido recusa na hora e a ação
+  // devolve o erro de sessão bloqueada; o assistente pede o PIN dentro do próprio fluxo.
+  const firstAccessOpenRef = useRef(false);
+  firstAccessOpenRef.current = firstAccess !== null;
+  useEffect(() => registerSensitiveAccessPrompt(() => firstAccessOpenRef.current
+    ? Promise.resolve(false)
+    : ensureSensitiveAccess({
+      title: "PIN necessário para continuar",
+      description: "Sua sessão de segurança expirou. Informe o PIN e o AutoOS continuará esta ação automaticamente.",
+    })), [ensureSensitiveAccess]);
 
   const openProfileSelector = useCallback(async (options?: ProfileSelectorOptions) => {
+    // Uma reabertura conclui só o pedido já aceito e cancela seu fechamento atrasado.
+    if (acceptTimerRef.current !== null) closeDialogRef.current(true);
     const currentStatus = await SensitiveAccessService.status()
       .then((nextStatus) => {
         setConnectionUnavailable(false);
@@ -477,7 +526,7 @@ export function SensitiveAccessProvider({ children }: { children: ReactNode }) {
             return;
           }
           try { localStorage.setItem("autoos_last_profile_id", String(targetProfileId)); } catch { /* storage indisponível */ }
-          closeDialog(true);
+          acceptPinAndClose();
           return;
         }
       }
@@ -509,12 +558,9 @@ export function SensitiveAccessProvider({ children }: { children: ReactNode }) {
 
       // Admin sem PIN: forçar configuração de PIN no primeiro acesso
       if (activeProfile?.role === "ADMIN" && !activeProfile?.pin_configured) {
-        if (pin !== confirmPin) {
-          setError("Os PINs não conferem.");
-          return;
-        }
-        if (pin.length < 4) {
-          setError("O PIN deve ter entre 4 e 8 dígitos.");
+        const pinInvalido = erroPinNovo(pin, confirmPin);
+        if (pinInvalido) {
+          setError(pinInvalido);
           return;
         }
         const nextStatus = await SensitiveAccessService.setActiveProfile(activeProfile.id, pin, confirmPin);
@@ -553,7 +599,7 @@ export function SensitiveAccessProvider({ children }: { children: ReactNode }) {
         localStorage.setItem("autoos_last_profile_id", String(workingStatus!.active_profile_id!));
       } catch { /* localStorage pode estar indisponível (modo anônimo, storage cheio) */ }
 
-      closeDialog(true);
+      acceptPinAndClose();
     } catch (submitError: any) {
       const message = sensitiveAccessErrorMessage(submitError, "Falha ao validar o acesso sensível.");
       setError(message);
@@ -561,16 +607,39 @@ export function SensitiveAccessProvider({ children }: { children: ReactNode }) {
     } finally {
       setBusy(false);
     }
-  }, [closeDialog, pin, confirmPin, promptOptions.permission, promptOptions.anyPermission, selectedProfileId, status, dialogMode]);
+  }, [closeDialog, acceptPinAndClose, pin, confirmPin, promptOptions.permission, promptOptions.anyPermission, selectedProfileId, status, dialogMode]);
 
-  const startFirstAccess = useCallback((profileId: number, recovery = false) => {
-    // O pedido de perfil continua pendente: resolve quando a ativação terminar.
-    setDialogOpen(false);
-    setError(null);
-    setFirstAccess({ profileId, needsCode: true, recovery });
+  // A janela de perfis prendia o foco durante a transição: devolve-o ao campo do código.
+  const focusFirstAccessCode = useCallback(() => {
+    window.setTimeout(() => document.getElementById("primeiro-acesso-codigo")?.focus(), 0);
   }, []);
 
+  /** Ainda há primeiro acesso em andamento? A ponte desmontada por um cancelamento não fecha a janela de perfis. */
+  const firstAccessActiveRef = useRef(false);
+
+  const startFirstAccess = useCallback((profileId: number, recovery = false, origin?: FirstAccessOrigin) => {
+    // O pedido de perfil continua pendente: resolve quando a ativação terminar.
+    setError(null);
+    firstAccessActiveRef.current = true;
+    setFirstAccess({ profileId, needsCode: true, recovery });
+    if (origin && !recovery) {
+      setFirstAccessOrigin(origin);
+      return;
+    }
+    setDialogOpen(false);
+    focusFirstAccessCode();
+  }, [focusFirstAccessCode]);
+
+  const finishFirstAccessBridge = useCallback(() => {
+    setFirstAccessOrigin(null);
+    if (!firstAccessActiveRef.current) return;
+    setDialogOpen(false);
+    focusFirstAccessCode();
+  }, [focusFirstAccessCode]);
+
   const cancelFirstAccess = useCallback(() => {
+    firstAccessActiveRef.current = false;
+    setFirstAccessOrigin(null);
     setFirstAccess(null);
     setDialogOpen(true);
   }, []);
@@ -589,6 +658,7 @@ export function SensitiveAccessProvider({ children }: { children: ReactNode }) {
     if (profileId) {
       try { localStorage.setItem("autoos_last_profile_id", String(profileId)); } catch { /* storage indisponível */ }
     }
+    firstAccessActiveRef.current = false;
     setFirstAccess(null);
     setDialogMandatory(false);
     resetDialogState();
@@ -636,7 +706,10 @@ export function SensitiveAccessProvider({ children }: { children: ReactNode }) {
         confirmPin={confirmPin}
         busy={busy}
         error={error}
-        onClose={() => closeDialog(false)}
+        // Esc durante o voo do avatar cancela o primeiro acesso e deixa a janela de perfis aberta.
+        onClose={() => (firstAccessOrigin ? cancelFirstAccess() : closeDialog(pinAccepted))}
+        // Já o clique fora durante o voo (ex.: no assistente que está abrindo) não cancela nada.
+        ignoreOutsideInteraction={firstAccessOrigin !== null}
         onSelectProfile={(profileId) => {
           setSelectedProfileId(profileId);
           setPin("");
@@ -650,7 +723,12 @@ export function SensitiveAccessProvider({ children }: { children: ReactNode }) {
         onFirstAccess={startFirstAccess}
         keyringBlocked={Boolean(status?.keyring_bloqueado)}
         onRetryKeyring={() => void refreshStatus()}
+        accepted={pinAccepted}
       />
+
+      {firstAccessOrigin && firstAccess && firstAccessProfile && bootAnimationComplete && (
+        <FirstAccessBridge from={firstAccessOrigin.avatar} dialog={firstAccessOrigin.dialog} onDone={finishFirstAccessBridge} />
+      )}
 
       {firstAccess && firstAccessProfile && bootAnimationComplete && (
         <PrimeiroAcessoWizard

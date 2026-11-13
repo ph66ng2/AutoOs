@@ -3,7 +3,7 @@ import { navItemVisible } from "@/lib/nav-visibility";
 import { SENSITIVE_PERMISSIONS } from "@/types";
 
 const configuracoes = {
-  permission: [SENSITIVE_PERMISSIONS.MANAGE_PROFILES, SENSITIVE_PERMISSIONS.CONFIG_WHATSAPP],
+  permission: [SENSITIVE_PERMISSIONS.MANAGE_PROFILES, SENSITIVE_PERMISSIONS.COMMUNICATION_SETTINGS],
   showWhenLocked: true,
 };
 const gastos = { permission: SENSITIVE_PERMISSIONS.VIEW_EXPENSES };
@@ -24,7 +24,7 @@ describe("navItemVisible", () => {
   });
 
   it("desbloqueado: volta a valer o filtro por permissão", () => {
-    expect(navItemVisible(configuracoes, { unlocked: true, permissions: [SENSITIVE_PERMISSIONS.CONFIG_WHATSAPP] })).toBe(true);
+    expect(navItemVisible(configuracoes, { unlocked: true, permissions: [SENSITIVE_PERMISSIONS.COMMUNICATION_SETTINGS] })).toBe(true);
     expect(navItemVisible(configuracoes, { unlocked: true, permissions: [SENSITIVE_PERMISSIONS.VIEW_EXPENSES] })).toBe(false);
     expect(navItemVisible(gastos, { unlocked: true, permissions: [SENSITIVE_PERMISSIONS.VIEW_EXPENSES] })).toBe(true);
   });

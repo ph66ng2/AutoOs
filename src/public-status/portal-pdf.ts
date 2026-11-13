@@ -1,7 +1,7 @@
 import { dateTime, money, shortDate, type DetalheAtendimento } from "./portal-api";
 
 /**
- * Documentos do portal gerados no navegador a partir do detalhe do atendimento.
+ * Comprovante de entrega gerado no portal. OS e orçamento vêm dos arquivos oficiais.
  * O modelo (blocos) é puro e testável; o `jspdf` só é carregado quando o cliente pede o PDF.
  */
 export type Bloco =
@@ -174,7 +174,7 @@ export function modeloComprovanteEntrega(detalhe: DetalheAtendimento): ModeloDoc
     blocos.push({ tipo: "campo", rotulo: "Protocolo do aceite", valor: resposta.protocolo });
     if (resposta.ordemCompra) blocos.push({ tipo: "campo", rotulo: "Ordem de compra", valor: resposta.ordemCompra });
   }
-  return { titulo: "Comprovante de entrega", arquivo: `comprovante-entrega-${detalhe.id}.pdf`, blocos };
+  return { titulo: "Comprovante de entrega — gerado no portal", arquivo: `comprovante-entrega-${detalhe.id}.pdf`, blocos };
 }
 
 /** Desenha o modelo num PDF A4 simples e salva o arquivo. `jspdf` entra por import dinâmico. */

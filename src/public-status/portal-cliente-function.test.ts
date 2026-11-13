@@ -41,6 +41,7 @@ beforeEach(() => {
   externalCalls = [];
   rpcResponses = {
     consumir_limite_status_publico: () => ({ body: true }),
+    portal_documentos_atendimento: () => ({ body: [] }),
     portal_listar_atendimentos: () => ({
       body: { cliente: "Cliente A", contato: "Ana Souza", podeDecidir: true, atendimentos: [{ id: 28, status: "PRONTO", equipamento: "Impressora Zebra" }] },
     }),
@@ -282,5 +283,43 @@ describe("portal-cliente: senha definida pelo operador", () => {
   it("reconfirma a senha da sessão antes de decidir", async () => {
     expect((await call({ acao: "confirmarSenha", sessao: SESSION, senha: "errada-1" })).response.status).toBe(400);
     expect((await call({ acao: "confirmarSenha", sessao: SESSION, senha: "Ana-Senha-2026" })).response.status).toBe(200);
+  });
+});
+
+describe("PDF oficial privado", () => {
+  const caminho = `1/28/ORCAMENTO/9/${"a".repeat(64)}.pdf`;
+  it("detalhe divulga só referências, sem caminho nem URL permanente", async () => {
+    rpcResponses.portal_documentos_atendimento = () => ({ body: [{ id: 10, tipo: "ORCAMENTO", versao: 2, caminho }] });
+    const { response, body } = await call({ acao: "detalhe", sessao: SESSION, equipamentoId: 28 });
+    expect(response.status).toBe(200);
+    expect(body.documentos).toEqual([{ id: 10, tipo: "ORCAMENTO", versao: 2 }]);
+    expect(JSON.stringify(body)).not.toContain(caminho);
+  });
+
+  it("revalida o cliente e assina por 60s somente o caminho registrado", async () => {
+    rpcResponses.portal_documentos_atendimento = () => ({ body: [{ id: 10, tipo: "ORCAMENTO", versao: 2, caminho }] });
+    const original = globalThis.fetch;
+    const storage = vi.fn(async () => mockResponse({ signedURL: `/object/sign/portal-documentos/${caminho}?token=temporario` }));
+    vi.stubGlobal("fetch", vi.fn((input, init) => String(input).includes("/storage/v1/") ? storage(input, init) : original(input, init)));
+    const { response, body } = await call({ acao: "documento", sessao: SESSION, equipamentoId: 28, documentoId: 10, caminho: "outro-cliente.pdf" });
+    expect(response.status).toBe(200);
+    expect(body.url).toBe(`${SUPABASE_URL}/storage/v1/object/sign/portal-documentos/${caminho}?token=temporario`);
+    expect(storage.mock.calls[0][0]).toBe(`${SUPABASE_URL}/storage/v1/object/sign/portal-documentos/${caminho}`);
+    expect(JSON.parse(String(storage.mock.calls[0][1]?.body))).toEqual({ expiresIn: 60 });
+    expect(rpc("portal_documentos_atendimento")[0].args).toEqual({ p_sessao_hash: createHash("sha256").update(SESSION).digest("hex"), p_equipamento_id: 28 });
+  });
+
+  it.each(["SESSAO_INVALIDA", "PORTAL_PAUSADO", "ATENDIMENTO_INDISPONIVEL"])("%s nunca assina", async (message) => {
+    rpcResponses.portal_documentos_atendimento = () => ({ status: 400, body: { message } });
+    const { response } = await call({ acao: "documento", sessao: SESSION, equipamentoId: 28, documentoId: 10 });
+    expect(response.status).not.toBe(200);
+    expect(externalCalls).toEqual([]);
+  });
+
+  it("ID de outro documento ou legado sem arquivo não assina", async () => {
+    const { response, body } = await call({ acao: "documento", sessao: SESSION, equipamentoId: 28, documentoId: 999 });
+    expect(response.status).toBe(404);
+    expect(body.codigo).toBe("DOCUMENTO_INDISPONIVEL");
+    expect(externalCalls).toEqual([]);
   });
 });

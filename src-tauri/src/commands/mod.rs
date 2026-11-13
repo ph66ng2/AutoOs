@@ -47,3 +47,5 @@ pub mod saas_communication;
 pub mod saas_device;
 pub mod saas_profile_pin;
 pub mod legacy_regularization;
+
+pub mod portal_documentos;

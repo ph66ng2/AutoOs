@@ -8,10 +8,16 @@ import { AppearancePicker } from "@/components/perfil/AppearancePicker";
 import { ProfileAvatar } from "@/components/perfil/ProfileAvatar";
 import { SensitiveAccessService } from "@/lib/sensitive-access";
 import { mensagemVisivelAoOperador } from "@/lib/operator-errors";
+import { isSensitiveAccessLockedError } from "@/lib/sensitive-action-retry";
 import { profileAppearance, type ProfileTheme } from "@/lib/profile-appearance";
 import { PERMISSION_DETAILS } from "@/lib/profile-presets";
 import { securityRoleLabel } from "@/lib/security-profile-labels";
 import { BASE_MODULES } from "@/lib/tour-steps";
+import { erroPinNovo } from "@/lib/pin-rules";
+import { PinLock } from "@/components/auth/PinLock";
+import { PinCreateFields, regrasCumpridas } from "@/components/auth/PinCreateFields";
+import { playUiSound } from "@/lib/ui-sounds";
+import "./first-access-bridge.css";
 import { cn } from "@/lib/utils";
 import type { SecurityProfile, SensitiveAccessStatus } from "@/types";
 
@@ -24,9 +30,27 @@ function errorMessage(cause: unknown) {
   return mensagemVisivelAoOperador(message) ?? message;
 }
 
+/** Quanto o assistente espera o banco responder ao salvar antes de mostrar o erro e "Tentar de novo". */
+export const SAVE_TIMEOUT_MS = 20_000;
+const SAVE_TIMEOUT_MESSAGE = "O AutoOS não recebeu resposta ao salvar seu perfil. Confira a conexão e tente de novo.";
+const SAVE_STILL_RUNNING_MESSAGE = "O AutoOS não recebeu resposta ao salvar seu perfil. A tentativa anterior ainda está em andamento; quando ela terminar, você pode tentar de novo.";
+const SESSION_LOCKED_MESSAGE = "Sua sessão de segurança foi bloqueada. Digite o PIN deste computador para salvar seu perfil.";
+
+class SaveTimeoutError extends Error {}
+
+function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const id = window.setTimeout(() => reject(new SaveTimeoutError(SAVE_TIMEOUT_MESSAGE)), ms);
+    promise.then(
+      (value) => { window.clearTimeout(id); resolve(value); },
+      (cause) => { window.clearTimeout(id); reject(cause); },
+    );
+  });
+}
+
 /**
  * Primeiro acesso do perfil. Com `needsCode`, começa pelo código do administrador
- * e pela criação do PIN deste computador; depois a pessoa escolhe nome, ícone,
+ * e pela criação do PIN deste computador; depois a pessoa escolhe nome, forma,
  * cor e tema, e termina podendo abrir o tour.
  */
 export function PrimeiroAcessoWizard({
@@ -36,6 +60,7 @@ export function PrimeiroAcessoWizard({
   onStatusChange,
   onCancel,
   onFinish,
+  saveTimeoutMs = SAVE_TIMEOUT_MS,
 }: {
   profile: SecurityProfile;
   needsCode: boolean;
@@ -45,6 +70,8 @@ export function PrimeiroAcessoWizard({
   /** Só disponível antes da ativação: depois dela o perfil já está em uso. */
   onCancel: () => void;
   onFinish: (result: "tour" | "pular" | "ativado") => void;
+  /** Limite de espera ao salvar o perfil (testes usam um valor curto). */
+  saveTimeoutMs?: number;
 }) {
   const reduceMotion = useReducedMotion();
   const rootRef = useRef<HTMLDivElement>(null);
@@ -65,6 +92,8 @@ export function PrimeiroAcessoWizard({
   const [codigo, setCodigo] = useState("");
   const [pin, setPin] = useState("");
   const [confirmPin, setConfirmPin] = useState("");
+  /** Cada tecla nos campos de PIN gira um rolete do cadeado. */
+  const [pinKeys, setPinKeys] = useState(0);
   const [nome, setNome] = useState(profile.nome);
   const [color, setColor] = useState(initialLook.color);
   const [icon, setIcon] = useState(initialLook.icon);
@@ -85,8 +114,22 @@ export function PrimeiroAcessoWizard({
   }, [theme]);
   const [current, setCurrent] = useState<SecurityProfile>(profile);
   const [busy, setBusy] = useState(false);
+  /** O PIN foi aceito e o cadeado está travando, antes de virar o avatar. */
+  const [unlocking, setUnlocking] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  /** Salvar o perfil falhou (erro, demora ou sessão bloqueada): o botão vira "Tentar de novo". */
+  const [saveFailed, setSaveFailed] = useState(false);
+  /** A sessão foi bloqueada: o PIN é pedido aqui mesmo, nunca numa janela escondida atrás do assistente. */
+  const [unlockPinNeeded, setUnlockPinNeeded] = useState(false);
+  const [unlockPin, setUnlockPin] = useState("");
+  /** Resposta atrasada de uma tentativa que já estourou o limite não muda mais a tela. */
+  const saveAttempt = useRef(0);
+  /** O IPC de salvar ainda corre, mesmo depois do timeout da UI. Impede um segundo UPDATE. */
+  const saveInFlight = useRef(false);
+  /** Timeout da UI com o comando ainda no backend: "Tentar de novo" só depois que ele terminar. */
+  const [waitingForSave, setWaitingForSave] = useState(false);
   const stepIndex = steps.indexOf(step);
+  const saveBlocked = busy || waitingForSave;
 
   function goTo(next: Step) {
     setDirection(steps.indexOf(next) > stepIndex ? 1 : -1);
@@ -109,8 +152,8 @@ export function PrimeiroAcessoWizard({
     }
     if (redeemInFlight.current) return;
     if (normalizeCode(codigo).length !== 6) return setError("Digite os 6 caracteres do código.");
-    if (!/^\d{4,8}$/.test(pin)) return setError("O PIN deve ter de 4 a 8 dígitos.");
-    if (pin !== confirmPin) return setError("Os PINs não conferem.");
+    const pinInvalido = erroPinNovo(pin, confirmPin);
+    if (pinInvalido) return setError(pinInvalido);
     redeemInFlight.current = true;
     setBusy(true);
     setError(null);
@@ -119,12 +162,21 @@ export function PrimeiroAcessoWizard({
       onStatusChange(status);
       const updated = status.profiles.find((item) => item.id === profile.id);
       if (updated) setCurrent(updated);
-      setPin("");
-      setConfirmPin("");
       if (shortFlow) {
+        setPin("");
+        setConfirmPin("");
         onFinish("ativado");
         return;
       }
+      // O cadeado trava (com os 4 ✓ ainda na tela) e só então vira o avatar do perfil.
+      if (!reduceMotion) {
+        setUnlocking(true);
+        playUiSound("destravar");
+        await new Promise((resolve) => window.setTimeout(resolve, 280));
+        setUnlocking(false);
+      }
+      setPin("");
+      setConfirmPin("");
       setRedeemed(true);
       goTo("voce");
     } catch (cause) {
@@ -136,25 +188,87 @@ export function PrimeiroAcessoWizard({
   }
 
   async function savePersonalization() {
+    if (saveInFlight.current) return;
     if (nome.trim().length < 3) return setError("O nome deve ter pelo menos 3 caracteres.");
+    if (unlockPinNeeded && unlockPin.trim().length < 4) return setError("Digite o PIN deste computador (4 a 8 dígitos).");
+    saveInFlight.current = true;
+    const attempt = ++saveAttempt.current;
+    const stale = () => attempt !== saveAttempt.current;
     setBusy(true);
     setError(null);
+    let waitingOnBackend = false;
+
+    const waitForBackend = <T,>(promise: Promise<T>): Promise<T> =>
+      withTimeout(promise, saveTimeoutMs).catch((cause: unknown) => {
+        if (cause instanceof SaveTimeoutError) {
+          waitingOnBackend = true;
+          setWaitingForSave(true);
+          void promise.finally(() => {
+            if (attempt !== saveAttempt.current) return;
+            saveInFlight.current = false;
+            setWaitingForSave(false);
+            setError(SAVE_TIMEOUT_MESSAGE);
+          });
+        }
+        throw cause;
+      });
+
     try {
-      const status = await SensitiveAccessService.savePersonalization({
+      if (unlockPinNeeded) {
+        const unlocked = await waitForBackend(SensitiveAccessService.unlock(unlockPin.trim()));
+        if (stale()) return;
+        onStatusChange(unlocked);
+        if (!unlocked.unlocked || unlocked.active_profile_id !== profile.id) {
+          setSaveFailed(true);
+          return setError("A sessão aberta não é deste perfil. Feche o AutoOS, abra de novo e entre com este perfil para terminar.");
+        }
+        setUnlockPinNeeded(false);
+        setUnlockPin("");
+      }
+      const input = {
         nome: nome.trim(),
         avatar_icone: icon,
         avatar_cor: color,
         tema: theme,
         concluir_onboarding: true,
-      });
+      };
+      const save = () => waitForBackend(SensitiveAccessService.savePersonalization(input, { askPin: false }));
+      let status: SensitiveAccessStatus;
+      try {
+        status = await save();
+      } catch (cause) {
+        // Perfil sem PIN: reabre a sessão sozinho e tenta mais uma vez.
+        if (stale() || !isSensitiveAccessLockedError(cause) || current.pin_configured) throw cause;
+        const unlocked = await waitForBackend(SensitiveAccessService.unlockWithoutPin());
+        if (stale()) return;
+        onStatusChange(unlocked);
+        status = await save();
+      }
+      if (stale()) return;
       onStatusChange(status);
       const updated = status.profiles.find((item) => item.id === profile.id);
       if (updated) setCurrent(updated);
+      setSaveFailed(false);
       goTo("pronto");
+      // Movimento reduzido também dispensa o som de conclusão, como os outros sons da animação.
+      if (!reduceMotion) window.setTimeout(() => playUiSound("pronto"), 180);
     } catch (cause) {
-      setError(errorMessage(cause));
+      if (stale()) return;
+      setSaveFailed(true);
+      if (isSensitiveAccessLockedError(cause)) {
+        setUnlockPinNeeded(true);
+        setError(SESSION_LOCKED_MESSAGE);
+        window.setTimeout(() => document.getElementById("primeiro-acesso-pin-sessao")?.focus(), 0);
+      } else if (cause instanceof SaveTimeoutError) {
+        setError(waitingOnBackend ? SAVE_STILL_RUNNING_MESSAGE : SAVE_TIMEOUT_MESSAGE);
+      } else {
+        setError(errorMessage(cause));
+      }
     } finally {
-      setBusy(false);
+      if (!stale()) {
+        setBusy(false);
+        if (!waitingOnBackend) saveInFlight.current = false;
+      }
     }
   }
 
@@ -166,7 +280,7 @@ export function PrimeiroAcessoWizard({
   };
 
   return (
-    <div role="dialog" aria-modal="true" aria-labelledby="primeiro-acesso-titulo" data-blocks-tour="true" ref={rootRef} className={cn("fixed inset-0 z-[90] grid bg-background text-foreground lg:grid-cols-[minmax(0,560px)_minmax(0,1fr)]", theme === "dark" ? "dark" : "light")}>
+    <div role="dialog" aria-modal="true" aria-labelledby="primeiro-acesso-titulo" data-blocks-tour="true" data-first-access-wizard="" ref={rootRef} className={cn("fixed inset-0 z-[90] grid bg-background text-foreground lg:grid-cols-[minmax(0,560px)_minmax(0,1fr)]", theme === "dark" ? "dark" : "light")}>
       <div className="flex min-h-0 flex-col bg-background">
         <div className="mx-auto w-full max-w-[480px] shrink-0 px-6 pt-6 sm:px-10 lg:px-14">
         <div className="flex items-center gap-2.5">
@@ -174,10 +288,16 @@ export function PrimeiroAcessoWizard({
           <span className="text-lg font-bold">AutoOS</span>
         </div>
 
-        <ol aria-label="Etapas" className={cn("mt-6 flex gap-2", shortFlow && "hidden")}>
+        <ol aria-label="Etapas" data-first-access-piece="" className={cn("mt-6 flex gap-2", shortFlow && "hidden")}>
           {steps.map((item, index) => (
             <li key={item} aria-current={item === step ? "step" : undefined} className="flex flex-1 flex-col gap-2">
-              <span className={cn("h-1 rounded-full transition-colors", index <= stepIndex ? "bg-primary" : "bg-muted")} />
+              {/* A barra se preenche deslizando ao avançar e se esvazia ao voltar. */}
+              <span className="h-1 overflow-hidden rounded-full bg-muted">
+                <span
+                  className="block h-full origin-left rounded-full bg-primary transition-transform duration-500 ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:transition-none"
+                  style={{ transform: `scaleX(${index <= stepIndex ? 1 : 0})` }}
+                />
+              </span>
               <span className={cn("text-xs", index <= stepIndex ? "text-foreground" : "text-muted-foreground")}>
                 {item === "acesso" ? "Código e PIN" : item === "voce" ? "Seu perfil" : "Pronto"}
               </span>
@@ -188,6 +308,30 @@ export function PrimeiroAcessoWizard({
 
         <div data-slot="wizard-scroll" className="min-h-0 flex-1 overflow-y-auto">
         <div className="mx-auto flex min-h-full w-full max-w-[480px] flex-col justify-center px-6 py-6 sm:px-10 lg:px-14">
+          {/* O mesmo objeto atravessa as etapas: cadeado no código e PIN, avatar do perfil depois. */}
+          <div className="mb-5 flex h-[112px] items-start">
+            <AnimatePresence mode="popLayout" initial={false}>
+              {step === "acesso" && !redeemed ? (
+                <motion.div
+                  key="cadeado"
+                  exit={reduceMotion ? { opacity: 0 } : { opacity: 0, scale: 0.88, transition: { duration: 0.16, ease: "easeIn" } }}
+                  className={cn(unlocking && "first-access-clack")}
+                >
+                  <PinLock checked={unlocking ? 4 : regrasCumpridas(pin, confirmPin)} spin={pinKeys} />
+                </motion.div>
+              ) : (
+                <motion.div
+                  key="avatar"
+                  initial={reduceMotion ? { opacity: 0 } : { opacity: 0, scale: 1.18 }}
+                  animate={{ opacity: 1, scale: 1, transition: reduceMotion ? { duration: 0.12 } : { type: "spring", stiffness: 420, damping: 26, delay: 0.06 } }}
+                  className={cn("rounded-[28px]", step === "pronto" && "first-access-seal")}
+                  style={{ "--seal": color } as React.CSSProperties}
+                >
+                  <ProfileAvatar icon={icon} color={color} size="xl" />
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </div>
           <AnimatePresence mode="wait" initial={false} custom={direction}>
             <motion.div key={step} custom={direction} variants={slide} initial="initial" animate="animate" exit="exit" className="space-y-5">
               {step === "acesso" && redeemed && (
@@ -215,7 +359,7 @@ export function PrimeiroAcessoWizard({
                     void redeem();
                   }}
                 >
-                  <header className="space-y-2">
+                  <header className="space-y-2" data-first-access-piece="">
                     <h1 id="primeiro-acesso-titulo" className="text-2xl font-semibold tracking-tight">
                       {recovery
                         ? `Redefinir o PIN de ${profile.nome}`
@@ -231,7 +375,7 @@ export function PrimeiroAcessoWizard({
                           : "Digite o código que o administrador te passou e crie o PIN que você vai usar neste computador."}
                     </p>
                   </header>
-                  <div className="space-y-2">
+                  <div className="space-y-2" data-first-access-piece="">
                     <Label htmlFor="primeiro-acesso-codigo">Código de primeiro acesso</Label>
                     <Input
                       id="primeiro-acesso-codigo"
@@ -244,34 +388,16 @@ export function PrimeiroAcessoWizard({
                     />
                     <p className="text-sm text-muted-foreground">Vale por 24 horas. Expirou? Peça um novo ao administrador.</p>
                   </div>
-                  <div className="grid gap-4 sm:grid-cols-2">
-                    <div className="space-y-2">
-                      <Label htmlFor="primeiro-acesso-pin">Crie seu PIN</Label>
-                      <Input
-                        id="primeiro-acesso-pin"
-                        type="password"
-                        inputMode="numeric"
-                        autoComplete="new-password"
-                        value={pin}
-                        onChange={(event) => setPin(event.target.value.replace(/\D/g, "").slice(0, 8))}
-                        placeholder="4 a 8 dígitos"
-                        className="h-12"
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="primeiro-acesso-pin-confirm">Repita o PIN</Label>
-                      <Input
-                        id="primeiro-acesso-pin-confirm"
-                        type="password"
-                        inputMode="numeric"
-                        autoComplete="new-password"
-                        value={confirmPin}
-                        onChange={(event) => setConfirmPin(event.target.value.replace(/\D/g, "").slice(0, 8))}
-                        className="h-12"
-                      />
-                    </div>
+                  <div data-first-access-piece="">
+                    <PinCreateFields
+                      idPrefix="primeiro-acesso"
+                      pin={pin}
+                      confirmPin={confirmPin}
+                      onPinChange={(value) => { setPin(value); setPinKeys((n) => n + 1); }}
+                      onConfirmPinChange={(value) => { setConfirmPin(value); setPinKeys((n) => n + 1); }}
+                    />
                   </div>
-                  <p className="flex gap-2.5 rounded-xl bg-muted p-3.5 text-sm leading-relaxed text-muted-foreground">
+                  <p data-first-access-piece="" className="flex gap-2.5 rounded-xl bg-muted p-3.5 text-sm leading-relaxed text-muted-foreground">
                     <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0 text-foreground" />
                     Só você sabe este PIN, nem o administrador vê. Se esquecer, ele gera um novo código para você.
                   </p>
@@ -280,13 +406,6 @@ export function PrimeiroAcessoWizard({
 
               {step === "voce" && (
                 <>
-                  <div className="lg:hidden flex items-center gap-3 rounded-xl bg-muted p-3">
-                    <ProfileAvatar icon={icon} color={color} size="md" />
-                    <span className="flex min-w-0 flex-col">
-                      <span className="truncate text-sm font-semibold">{nome.trim() || current.nome}</span>
-                      <span className="text-xs text-muted-foreground">{securityRoleLabel(current.role)}</span>
-                    </span>
-                  </div>
                   <form
                     id="primeiro-acesso-form"
                     className="space-y-5"
@@ -297,7 +416,7 @@ export function PrimeiroAcessoWizard({
                   >
                     <header className="space-y-2">
                       <h1 id="primeiro-acesso-titulo" className="text-2xl font-semibold tracking-tight">Deixe com a sua cara</h1>
-                      <p className="text-sm text-foreground">Seu nome aparece na tela de perfis, nas OS e no histórico. Dá para mudar tudo depois em Perfil.</p>
+                      <p className="text-sm text-foreground">Seu nome aparece na tela de perfis, nas OS e no histórico. Escolha uma cor e uma forma para seu avatar. Dá para mudar tudo depois em Perfil.</p>
                     </header>
                     <div className="space-y-2">
                       <Label htmlFor="primeiro-acesso-nome">Nome de exibição</Label>
@@ -312,20 +431,42 @@ export function PrimeiroAcessoWizard({
                       onThemeChange={setTheme}
                       disabled={busy}
                     />
+                    {unlockPinNeeded && (
+                      <div className="space-y-2">
+                        <Label htmlFor="primeiro-acesso-pin-sessao">PIN deste computador</Label>
+                        <Input
+                          id="primeiro-acesso-pin-sessao"
+                          type="password"
+                          inputMode="numeric"
+                          autoComplete="off"
+                          maxLength={8}
+                          value={unlockPin}
+                          onChange={(event) => { setUnlockPin(event.target.value.replace(/\D/g, "")); setError(null); }}
+                          disabled={busy}
+                          className="h-11 w-full text-base tracking-[0.4em]"
+                        />
+                      </div>
+                    )}
                   </form>
                 </>
               )}
 
               {step === "pronto" && (
                 <div className="space-y-6">
-                  <ProfileAvatar icon={icon} color={color} size="lg" />
                   <header className="space-y-2">
                     <h1 id="primeiro-acesso-titulo" className="text-2xl font-semibold tracking-tight">Tudo pronto, {current.nome}</h1>
                     <p className="text-sm text-foreground">O administrador liberou para você:</p>
                   </header>
                   <ul className="grid gap-x-6 gap-y-2 text-sm sm:grid-cols-2">
-                    {granted.map((title) => (
-                      <li key={title} className="flex items-center gap-2"><Check className="h-4 w-4 text-muted-foreground" />{title}</li>
+                    {granted.map((title, index) => (
+                      <motion.li
+                        key={title}
+                        initial={reduceMotion ? false : { opacity: 0, y: 4 }}
+                        animate={{ opacity: 1, y: 0, transition: { delay: 0.25 + index * 0.05, duration: 0.22, ease: [0.22, 1, 0.36, 1] } }}
+                        className="flex items-center gap-2"
+                      >
+                        <Check className="h-4 w-4 text-muted-foreground" />{title}
+                      </motion.li>
                     ))}
                   </ul>
                   <p className="text-sm leading-relaxed text-muted-foreground">
@@ -345,14 +486,14 @@ export function PrimeiroAcessoWizard({
         </div>
         </div>
 
-        <div className="shrink-0 border-t border-border">
+        <div className="shrink-0 border-t border-border" data-first-access-piece="">
         <div className="mx-auto flex w-full max-w-[480px] flex-wrap items-center justify-between gap-2 px-6 py-4 sm:px-10 lg:px-14">
           {step === "acesso" && !redeemed ? (
             <Button type="button" variant="ghost" onClick={onCancel} disabled={busy} className={PRESS}>
               <ArrowLeft className="mr-2 h-4 w-4" /> Voltar aos perfis
             </Button>
           ) : stepIndex > 0 ? (
-            <Button type="button" variant="ghost" onClick={() => goTo(steps[stepIndex - 1])} disabled={busy} className={PRESS}>
+            <Button type="button" variant="ghost" onClick={() => goTo(steps[stepIndex - 1])} disabled={saveBlocked} className={PRESS}>
               <ArrowLeft className="mr-2 h-4 w-4" /> Voltar
             </Button>
           ) : <span />}
@@ -362,8 +503,8 @@ export function PrimeiroAcessoWizard({
               <Button type="button" onClick={() => onFinish("tour")} className={PRESS}>Começar tour</Button>
             </div>
           ) : (
-            <Button type="submit" form="primeiro-acesso-form" disabled={busy} className={PRESS}>
-              {busy ? "Salvando..." : redeemed ? "Continuar" : recovery ? "Redefinir PIN" : reactivation ? "Ativar neste computador" : "Continuar"} <ArrowRight className="ml-2 h-4 w-4" />
+            <Button type="submit" form="primeiro-acesso-form" disabled={saveBlocked} className={PRESS}>
+              {busy ? "Salvando..." : step === "voce" && saveFailed ? "Tentar de novo" : redeemed ? "Continuar" : recovery ? "Redefinir PIN" : reactivation ? "Ativar neste computador" : "Continuar"} <ArrowRight className="ml-2 h-4 w-4" />
             </Button>
           )}
         </div>
@@ -396,7 +537,7 @@ function ShellPreview({ name, role, icon, color }: { name: string; role: string;
     { title: "OS 1043 · Epson L3250", status: "Aguardando aprovação" },
   ];
   return (
-    <div aria-hidden="true" className="hidden lg:flex items-center justify-center bg-muted p-10">
+    <div aria-hidden="true" data-first-access-piece="" className="hidden lg:flex items-center justify-center bg-muted p-10">
       <div className="w-full max-w-[460px] rounded-2xl bg-card p-2 shadow-xl">
         <div className="flex aspect-[16/10] overflow-hidden rounded-lg bg-background">
           <div className="flex w-[38%] flex-col bg-sidebar p-3">

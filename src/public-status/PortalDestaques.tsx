@@ -1,7 +1,7 @@
 import { useState } from "react";
-import { money, type DetalheAtendimento } from "./portal-api";
+import { baixarDocumentoOficial, money, type DetalheAtendimento } from "./portal-api";
 import { EnderecoRetirada } from "./EnderecoRetirada";
-import { gerarPdf, modeloComprovanteEntrega, modeloOrcamento, modeloOrdemServico, valoresDeEntrega, valoresDiferem, type ModeloDocumento } from "./portal-pdf";
+import { gerarPdf, modeloComprovanteEntrega, valoresDeEntrega, valoresDiferem, type ModeloDocumento } from "./portal-pdf";
 
 /** Status em que o orçamento já foi aprovado (o valor pode ter sido ajustado pela equipe depois). */
 const POS_APROVACAO = new Set(["APROVADO", "EM_MANUTENCAO", "AGUARDANDO_PECA", "PRONTO", "ENTREGUE"]);
@@ -54,7 +54,7 @@ export function DestaqueProntoRetirada({ detalhe }: { detalhe: DetalheAtendiment
 }
 
 /** Atendimento concluído: valor final em evidência e os documentos. */
-export function DestaqueConcluido({ detalhe }: { detalhe: DetalheAtendimento }) {
+export function DestaqueConcluido({ detalhe, sessao }: { detalhe: DetalheAtendimento; sessao: string }) {
   const { final, orcado, ajustado } = valoresDeEntrega(detalhe);
   return (
     <section className="portal-destaque is-concluido" aria-labelledby="portal-concluido-titulo">
@@ -65,31 +65,34 @@ export function DestaqueConcluido({ detalhe }: { detalhe: DetalheAtendimento }) 
       {ajustado && orcado != null && (
         <p className="answer-hint portal-valor-ajustado">Valor orçado: {money(orcado)}. Valor final ajustado na entrega.</p>
       )}
-      <DocumentosCard detalhe={detalhe} destaque />
+      <DocumentosCard detalhe={detalhe} sessao={sessao} destaque />
     </section>
   );
 }
 
-export function DocumentosCard({ detalhe, destaque = false }: { detalhe: DetalheAtendimento; destaque?: boolean }) {
+export function DocumentosCard({ detalhe, sessao, destaque = false }: { detalhe: DetalheAtendimento; sessao: string; destaque?: boolean }) {
   const [gerando, setGerando] = useState<string | null>(null);
   const [erro, setErro] = useState<string | null>(null);
 
-  const docs: Array<{ chave: string; rotulo: string; modelo: ModeloDocumento }> = [
-    { chave: "os", rotulo: "Ordem de serviço (PDF)", modelo: modeloOrdemServico(detalhe) },
-  ];
-  const orcamento = modeloOrcamento(detalhe);
-  if (orcamento) docs.push({ chave: "orcamento", rotulo: "Orçamento (PDF)", modelo: orcamento });
+  const docs: Array<{ chave: string; rotulo: string; modelo?: ModeloDocumento; id?: number }> =
+    (detalhe.documentos ?? []).map((doc) => ({
+      chave: String(doc.id), id: doc.id,
+      rotulo: doc.tipo === "ORDEM_SERVICO" ? "Ordem de serviço (PDF)"
+        : `Orçamento v${doc.versao}${doc.tipo === "ORCAMENTO_AJUSTADO" ? " ajustado" : ""} (PDF)`,
+    }));
   const comprovante = modeloComprovanteEntrega(detalhe);
-  if (comprovante) docs.push({ chave: "entrega", rotulo: "Comprovante de entrega (PDF)", modelo: comprovante });
-  if (docs.length === 0) return null;
+  if (comprovante) docs.push({ chave: "entrega", rotulo: "Comprovante de entrega — gerado no portal (PDF)", modelo: comprovante });
+  const temOs = (detalhe.documentos ?? []).some((doc) => doc.tipo === "ORDEM_SERVICO");
+  const temOrcamento = (detalhe.documentos ?? []).some((doc) => doc.tipo !== "ORDEM_SERVICO" && doc.versao === detalhe.orcamento?.versao);
 
-  const baixar = async (chave: string, modelo: ModeloDocumento) => {
-    setGerando(chave);
+  const baixar = async (doc: typeof docs[number]) => {
+    setGerando(doc.chave);
     setErro(null);
     try {
-      await gerarPdf(modelo);
+      if (doc.id) await baixarDocumentoOficial(sessao, detalhe.id, doc.id);
+      else if (doc.modelo) await gerarPdf(doc.modelo);
     } catch {
-      setErro("Não foi possível gerar o documento agora. Tente novamente.");
+      setErro("Não foi possível baixar o documento agora. Tente novamente ou fale com a equipe.");
     } finally {
       setGerando(null);
     }
@@ -101,12 +104,14 @@ export function DocumentosCard({ detalhe, destaque = false }: { detalhe: Detalhe
       <ul>
         {docs.map((doc) => (
           <li key={doc.chave}>
-            <button type="button" className={destaque ? "primary-button" : "secondary-button"} disabled={gerando !== null} onClick={() => void baixar(doc.chave, doc.modelo)}>
-              {gerando === doc.chave ? "Gerando…" : doc.rotulo}
+            <button type="button" className={destaque ? "primary-button" : "secondary-button"} disabled={gerando !== null} onClick={() => void baixar(doc)}>
+              {gerando === doc.chave ? "Baixando…" : doc.rotulo}
             </button>
           </li>
         ))}
       </ul>
+      {!temOs && <p>Ordem de serviço: documento disponível no balcão.</p>}
+      {detalhe.orcamento && !temOrcamento && <p>Orçamento: documento disponível no balcão.</p>}
       {erro && <p className="portal-error" role="alert">{erro}</p>}
     </section>
   );

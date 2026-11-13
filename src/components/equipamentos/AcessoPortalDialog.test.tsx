@@ -3,6 +3,9 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { AcessoPortalDialog, situacaoPortal } from "@/components/equipamentos/AcessoPortalDialog";
 import type { Cliente, ClienteContato } from "@/types";
 
+const ensure = vi.hoisted(() => vi.fn());
+vi.mock("@/hooks/useSensitiveAccess", () => ({ useSensitiveAccess: () => ({ ensureSensitiveAccess: ensure }) }));
+
 const mocks = vi.hoisted(() => ({
   buscarCliente: vi.fn(),
   listar: vi.fn(),
@@ -36,6 +39,7 @@ function abrir(responsavel?: number) {
 describe("AcessoPortalDialog", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    ensure.mockResolvedValue(true);
     mocks.buscarCliente.mockResolvedValue(cliente);
     mocks.listar.mockResolvedValue([ana, bruno]);
   });
@@ -47,6 +51,7 @@ describe("AcessoPortalDialog", () => {
     expect(screen.getByText("responsável pelo equipamento")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Liberar acesso e criar senha" }));
     await waitFor(() => expect(mocks.definirAcesso).toHaveBeenCalledWith(6, "DECIDIR"));
+    expect(ensure).toHaveBeenCalledWith(expect.objectContaining({ anyPermission: ["FINANCIAL_ACTIONS", "PREPARE_QUOTES"] }));
     expect(onAlterado).toHaveBeenCalled();
     expect(await screen.findByLabelText("Senha")).toBeInTheDocument();
     expect(screen.getByText(/11\.222\.333\/0001-81/, { selector: "strong" })).toBeInTheDocument();
@@ -59,6 +64,17 @@ describe("AcessoPortalDialog", () => {
     fireEvent.click(screen.getByRole("checkbox", { name: /Pode responder orçamentos/ }));
     fireEvent.click(screen.getByRole("button", { name: "Liberar acesso e criar senha" }));
     await waitFor(() => expect(mocks.definirAcesso).toHaveBeenCalledWith(5, "ACOMPANHAR"));
+    expect(ensure).toHaveBeenCalledWith(expect.objectContaining({ permission: "MANAGE_STATUS_LINKS" }));
+  });
+
+  it("PIN negado não libera o acesso nem chama o backend", async () => {
+    ensure.mockResolvedValue(false);
+    abrir(6);
+    await screen.findByRole("radio", { name: /Bruno Lima/ });
+    fireEvent.click(screen.getByRole("button", { name: "Liberar acesso e criar senha" }));
+    await waitFor(() => expect(ensure).toHaveBeenCalled());
+    expect(mocks.definirAcesso).not.toHaveBeenCalled();
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
   });
 
   it("contato que já responde com senha só oferece criar nova senha, sem mudar o acesso", async () => {

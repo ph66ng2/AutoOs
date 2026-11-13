@@ -24,8 +24,7 @@ const SESSION_TIMEOUT_MINUTES: i64 = 15;
 const MAX_UNLOCK_ATTEMPTS: u32 = 5;
 const LOCKOUT_DURATION_MINUTES: i64 = 15;
 
-pub const PERMISSION_CONFIG_SMTP: &str = "CONFIG_SMTP";
-pub const PERMISSION_CONFIG_WHATSAPP: &str = "CONFIG_WHATSAPP";
+pub const PERMISSION_COMMUNICATION_SETTINGS: &str = "COMMUNICATION_SETTINGS";
 pub const PERMISSION_DELETE_RECORDS: &str = "DELETE_RECORDS";
 pub const PERMISSION_FINANCIAL_ACTIONS: &str = "FINANCIAL_ACTIONS";
 pub const PERMISSION_STOCK_CONTROL: &str = "STOCK_CONTROL";
@@ -34,9 +33,8 @@ pub const PERMISSION_MANAGE_STATUS_LINKS: &str = "MANAGE_STATUS_LINKS";
 pub const PERMISSION_VIEW_EXPENSES: &str = "VIEW_EXPENSES";
 pub const PERMISSION_PREPARE_QUOTES: &str = "PREPARE_QUOTES";
 
-const ALL_PERMISSIONS: [&str; 9] = [
-    PERMISSION_CONFIG_SMTP,
-    PERMISSION_CONFIG_WHATSAPP,
+const ALL_PERMISSIONS: [&str; 8] = [
+    PERMISSION_COMMUNICATION_SETTINGS,
     PERMISSION_DELETE_RECORDS,
     PERMISSION_FINANCIAL_ACTIONS,
     PERMISSION_STOCK_CONTROL,
@@ -47,13 +45,14 @@ const ALL_PERMISSIONS: [&str; 9] = [
 ];
 
 /// Trava de transição: a v0.5.6 recusa perfis não-administradores sem permissões ou com
-/// permissões novas, e a lista de perfis dela fica vazia. Desligar quando todos os PCs
-/// estiverem na 0.6.0, no mesmo PR da migration que concede PREPARE_QUOTES a Técnico/Financeiro.
-pub const COMPATIBILIDADE_056_ATIVA: bool = true;
+/// permissões novas, e a lista de perfis dela fica vazia. Desligada em 10/11/2026, com toda a
+/// frota na 0.6.2, junto com a migration 0048 (PREPARE_QUOTES para Técnico/Financeiro).
+/// Não religar: a 0048 já grava a permissão nova em perfis não-administradores.
+pub const COMPATIBILIDADE_056_ATIVA: bool = false;
 
 const PERMISSIONS_RECONHECIDAS_056: [&str; 7] = [
-    PERMISSION_CONFIG_SMTP,
-    PERMISSION_CONFIG_WHATSAPP,
+    "CONFIG_SMTP",
+    "CONFIG_WHATSAPP",
     PERMISSION_DELETE_RECORDS,
     PERMISSION_FINANCIAL_ACTIONS,
     PERMISSION_STOCK_CONTROL,
@@ -319,6 +318,25 @@ fn validate_pin_format(pin: &str) -> Result<(), String> {
         return Err("PIN deve conter entre 4 e 8 dígitos numéricos".to_string());
     }
 
+    Ok(())
+}
+
+/// Regras de um PIN **novo**. Valem só quando um PIN é criado ou trocado; conferir um PIN
+/// já salvo continua usando apenas `validate_pin_format`, então PINs antigos seguem valendo.
+fn validate_new_pin(pin: &str) -> Result<(), String> {
+    validate_pin_format(pin)?;
+    let digits = pin.trim().as_bytes();
+    if digits.is_empty() {
+        return Ok(());
+    }
+    if digits.iter().all(|digit| *digit == digits[0]) {
+        return Err("O PIN não pode ter todos os números iguais (como 1111).".to_string());
+    }
+    let ascending = digits.windows(2).all(|pair| pair[1] == pair[0] + 1);
+    let descending = digits.windows(2).all(|pair| pair[0] == pair[1] + 1);
+    if ascending || descending {
+        return Err("O PIN não pode ser uma sequência (como 1234 ou 4321).".to_string());
+    }
     Ok(())
 }
 
@@ -1176,8 +1194,31 @@ async fn count_active_profiles_excluding(profile_id: i32) -> Result<i64, String>
         .count() as i64)
 }
 
+/// Quantas vezes o status é remontado quando outra sessão foi aberta no meio da montagem.
+const STATUS_SNAPSHOT_ATTEMPTS: usize = 3;
+
 async fn status_snapshot() -> Result<SensitiveAccessStatus, String> {
+    let mut attempt = 1;
+    loop {
+        match status_snapshot_attempt(attempt == STATUS_SNAPSHOT_ATTEMPTS).await? {
+            Some(status) => return Ok(status),
+            None => attempt += 1,
+        }
+    }
+}
+
+/// Ordem do perfil selecionado lida no início da montagem e no fim. `unlock_session` troca a
+/// seleção e a sessão juntas; se a troca aconteceu enquanto o status consultava banco e cofre, a
+/// sessão nova pertence à seleção atual e não pode ser apagada por um status montado com a antiga.
+fn selection_changed_since(selected_at_start: i32) -> bool {
+    SELECTED_PROFILE_ID.load(Ordering::Relaxed) != selected_at_start
+}
+
+/// `None` quando outra sessão foi aberta durante a montagem (ex.: ativação com código enquanto a
+/// consulta periódica de 30 s esperava o cofre). Na última tentativa devolve o status sem apagar a sessão.
+async fn status_snapshot_attempt(last_attempt: bool) -> Result<Option<SensitiveAccessStatus>, String> {
     refresh_inactivity_config_if_needed().await;
+    let selected_at_start = SELECTED_PROFILE_ID.load(Ordering::Relaxed);
     let active_profile = fetch_active_profile_record().await?;
     let records = fetch_profile_records().await?;
 
@@ -1232,6 +1273,12 @@ async fn status_snapshot() -> Result<SensitiveAccessStatus, String> {
             }
             (true, Some(until.to_rfc3339()))
         }
+        Some(_) if selection_changed_since(selected_at_start) => {
+            if !last_attempt {
+                return Ok(None);
+            }
+            (false, None)
+        }
         Some(_) => {
             clear_session()?;
             (false, None)
@@ -1252,7 +1299,7 @@ async fn status_snapshot() -> Result<SensitiveAccessStatus, String> {
             .collect()
     };
 
-    Ok(SensitiveAccessStatus {
+    Ok(Some(SensitiveAccessStatus {
         pin_configured: active_summary.pin_configured,
         unlocked,
         expires_at,
@@ -1271,7 +1318,7 @@ async fn status_snapshot() -> Result<SensitiveAccessStatus, String> {
         can_manage_profiles: unlocked && has_permission(&active_summary, PERMISSION_MANAGE_PROFILES),
         profiles: visible_profiles,
         keyring_bloqueado,
-    })
+    }))
 }
 
 #[tauri::command]
@@ -1283,7 +1330,7 @@ pub async fn get_sensitive_access_status() -> Result<SensitiveAccessStatus, Stri
 #[tauri::command]
 #[instrument(skip_all)]
 pub async fn configure_sensitive_pin(pin: String, current_pin: Option<String>) -> Result<SensitiveAccessStatus, String> {
-    validate_pin_format(&pin)?;
+    validate_new_pin(&pin)?;
 
     let active_record = fetch_active_profile_record().await?;
     let active_profile = to_profile_summary(active_record.clone()).await?;
@@ -1425,7 +1472,7 @@ pub async fn set_active_security_profile(profile_id: i32, pin: String, confirm_p
         }
         upgrade_pin_hash_if_legacy(profile_id, pin.trim(), stored_pin)?;
     } else if provision_admin_pin {
-        validate_pin_format(&pin)?;
+        validate_new_pin(&pin)?;
         if pin.trim().is_empty() {
             return Err("Defina um PIN para o perfil administrador".to_string());
         }
@@ -1468,7 +1515,7 @@ pub async fn create_security_profile(input: SecurityProfileInput, pin: String) -
     if nome.chars().count() < 3 {
         return Err("Nome do perfil deve ter no mínimo 3 caracteres".to_string());
     }
-    validate_pin_format(&pin)?;
+    validate_new_pin(&pin)?;
 
     let role = normalize_role(&input.role)?;
     let permissions = normalize_permissions(&role, &input.permissions)?;
@@ -1693,7 +1740,7 @@ pub async fn redefinir_pin_via_db(
         return Err("Credenciais do banco de dados inválidas".to_string());
     }
 
-    validate_pin_format(&new_pin)?;
+    validate_new_pin(&new_pin)?;
 
     let profile = to_profile_summary(fetch_profile_record_by_id(profile_id).await?).await?;
     if new_pin.trim().is_empty() {
@@ -2145,7 +2192,7 @@ pub async fn provision_pin_with_enrollment(
 ) -> Result<serde_json::Value, String> {
     use crate::commands::enrollment::validate_enrollment_code;
 
-    validate_pin_format(&pin)?;
+    validate_new_pin(&pin)?;
 
     let nome = profile_name.trim();
     if nome.len() < 3 {
@@ -2210,10 +2257,8 @@ pub async fn provision_pin_with_enrollment(
 
 // ─── Perfil: primeiro acesso por código, personalização e tour ───────────────
 
-/// Ícones de avatar oferecidos na interface (nomes do lucide-react em kebab-case).
-const AVATAR_ICONES: [&str; 21] = [
-    "headphones", "wrench", "printer", "coffee", "star", "zap",
-    "leaf", "flame", "rocket", "heart", "music", "gamepad-2",
+/// Formas de avatar oferecidas na interface. Legados convertidos pela migration 0049.
+const AVATAR_ICONES: [&str; 9] = [
     // Avatares geométricos (AVATAR_SHAPES em src/lib/profile-appearance.ts).
     "shape-orb", "shape-square", "shape-peak", "shape-pill", "shape-bean",
     "shape-hex", "shape-arch", "shape-cloud", "shape-block",
@@ -2275,7 +2320,7 @@ fn validar_personalizacao(input: &PersonalizacaoPerfilInput) -> Result<(), Strin
     }
     if let Some(icone) = input.avatar_icone.as_deref() {
         if !AVATAR_ICONES.contains(&icone) {
-            return Err("Ícone de perfil inválido.".to_string());
+            return Err("Forma de perfil inválida.".to_string());
         }
     }
     if let Some(cor) = input.avatar_cor.as_deref() {
@@ -2565,7 +2610,7 @@ pub async fn ativar_perfil_com_codigo(
     if pin.trim().is_empty() {
         return Err("Crie um PIN de 4 a 8 dígitos.".to_string());
     }
-    validate_pin_format(&pin)?;
+    validate_new_pin(&pin)?;
     if pin.trim() != confirm_pin.trim() {
         return Err("Os PINs não conferem.".to_string());
     }
@@ -2747,6 +2792,24 @@ mod tests {
     }
 
     #[test]
+    fn new_pin_rejects_repeated_and_sequential_digits() {
+        for pin in ["1111", "00000000", "1234", "4321", "56789", "9876", "01234567"] {
+            assert!(validate_new_pin(pin).is_err(), "{pin} deveria ser recusado");
+        }
+        for pin in ["2580", "1357", "2468", "1243", "9012", "11112", "8642"] {
+            assert!(validate_new_pin(pin).is_ok(), "{pin} deveria ser aceito");
+        }
+        assert!(validate_new_pin("123").is_err(), "menos de 4 dígitos continua recusado");
+        assert!(validate_new_pin("").is_ok(), "PIN vazio segue a regra de perfil sem PIN");
+    }
+
+    #[test]
+    fn checking_an_existing_pin_still_accepts_old_simple_pins() {
+        assert!(validate_pin_format("1234").is_ok());
+        assert!(validate_pin_format("1111").is_ok());
+    }
+
+    #[test]
     fn background_reads_do_not_extend_the_session_but_user_actions_do() {
         let _guard = session_test_guard();
         unlocked_test_session(true, Duration::minutes(1));
@@ -2786,6 +2849,25 @@ mod tests {
         assert!(require_sensitive_access_without_touch().is_ok());
         assert!(require_sensitive_access().is_ok());
         assert!(session_expiry() > Utc::now() + Duration::minutes(10));
+
+        clear_session().unwrap();
+    }
+
+    #[test]
+    fn a_session_opened_while_the_status_was_being_built_counts_as_a_new_selection() {
+        let _guard = session_test_guard();
+        let selected_at_start = SELECTED_PROFILE_ID.load(Ordering::Relaxed);
+        assert!(!selection_changed_since(selected_at_start));
+
+        // Ativação com código no meio da consulta periódica: o status não pode apagar esta sessão.
+        unlock_session(SecurityProfileSummary {
+            id: selected_at_start + 1,
+            nome: "Ativado agora".to_string(),
+            role: "TECNICO".to_string(),
+            ..Default::default()
+        })
+        .expect("sessão de teste");
+        assert!(selection_changed_since(selected_at_start));
 
         clear_session().unwrap();
     }
@@ -2998,7 +3080,7 @@ mod tests {
     fn personalizacao_aceita_apenas_opcoes_da_interface() {
         let valida = PersonalizacaoPerfilInput {
             nome: "Juliana".to_string(),
-            avatar_icone: Some("headphones".to_string()),
+            avatar_icone: Some("shape-orb".to_string()),
             avatar_cor: Some("#0F766E".to_string()),
             tema: Some("dark".to_string()),
             concluir_onboarding: true,
@@ -3024,6 +3106,15 @@ mod tests {
 
     fn lista(chaves: &[&str]) -> Vec<String> {
         chaves.iter().map(|c| c.to_string()).collect()
+    }
+
+    #[test]
+    fn avatares_aceitam_somente_formas() {
+        for icone in ["headphones", "wrench", "printer", "coffee", "star", "zap", "leaf", "flame", "rocket", "heart", "music", "gamepad-2"] {
+            assert!(validar_personalizacao(&PersonalizacaoPerfilInput {
+                nome: "Ana Teste".into(), avatar_icone: Some(icone.into()), ..Default::default()
+            }).is_err());
+        }
     }
 
     #[test]
@@ -3064,20 +3155,38 @@ mod tests {
     }
 
     #[test]
-    fn compat_056_chaves_antigas_estao_em_all_permissions() {
+    fn compat_056_preserva_lista_historica() {
         for chave in PERMISSIONS_RECONHECIDAS_056 {
-            assert!(ALL_PERMISSIONS.contains(&chave), "{chave} fora de ALL_PERMISSIONS");
+            assert!(ALL_PERMISSIONS.contains(&chave) || matches!(chave, "CONFIG_SMTP" | "CONFIG_WHATSAPP"));
         }
     }
 
     #[test]
     fn compat_056_reativar_recusa_perfil_incompativel_com_a_mesma_mensagem() {
-        let vazio = validar_perfil_ativo_056("RECEPCAO", &[]);
-        let quotes = validar_perfil_ativo_056("TECNICO", &lista(&[PERMISSION_PREPARE_QUOTES]));
+        let vazio = validar_compatibilidade_056("RECEPCAO", &[], true);
+        let quotes = validar_compatibilidade_056("TECNICO", &lista(&[PERMISSION_PREPARE_QUOTES]), true);
         assert_eq!(vazio.unwrap_err(), MSG_COMPATIBILIDADE_056);
         assert_eq!(quotes.unwrap_err(), MSG_COMPATIBILIDADE_056);
-        assert!(validar_perfil_ativo_056("TECNICO", &lista(&[PERMISSION_STOCK_CONTROL])).is_ok());
-        assert!(validar_perfil_ativo_056("ADMIN", &[]).is_ok());
+        assert!(validar_compatibilidade_056("TECNICO", &lista(&[PERMISSION_STOCK_CONTROL]), true).is_ok());
+        assert!(validar_compatibilidade_056("ADMIN", &[], true).is_ok());
+    }
+
+    #[test]
+    fn compat_056_trava_desligada_libera_perfil_vazio_e_permissoes_novas() {
+        assert!(!COMPATIBILIDADE_056_ATIVA);
+        assert!(validar_perfil_ativo_056("ATENDENTE", &[]).is_ok());
+        assert!(validar_perfil_ativo_056("TECNICO", &lista(&[PERMISSION_STOCK_CONTROL, PERMISSION_PREPARE_QUOTES])).is_ok());
+        assert!(validar_perfil_ativo_056("FINANCEIRO", &lista(&[PERMISSION_MANAGE_STATUS_LINKS])).is_ok());
+    }
+
+    #[test]
+    fn comunicacao_externa_nao_e_concedida_por_acessos_do_portal() {
+        let portal = build_profile("CUSTOM", &[PERMISSION_MANAGE_STATUS_LINKS]);
+        assert!(evaluate_permission_gate(Some(portal), PERMISSION_COMMUNICATION_SETTINGS).is_err());
+        let comunicacao = build_profile("CUSTOM", &[PERMISSION_COMMUNICATION_SETTINGS]);
+        assert!(evaluate_permission_gate(Some(comunicacao), PERMISSION_COMMUNICATION_SETTINGS).is_ok());
+        assert!(normalize_permissions("CUSTOM", &lista(&["CONFIG_SMTP"])).is_err());
+        assert!(normalize_permissions("CUSTOM", &lista(&["CONFIG_WHATSAPP"])).is_err());
     }
 
     #[test]

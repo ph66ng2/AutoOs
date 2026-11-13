@@ -1,0 +1,8 @@
+# Versões SQLx reservadas: podem faltar em src-tauri/migrations sem que isso seja um buraco.
+# Fonte única, lida por scripts/check-sqlx-migrations.mjs, scripts/verify-estoque-seed.sh e
+# src-tauri/src/bin/production_migrate.rs. Uma versão por linha; "#" inicia comentário.
+#
+# Na feature, após o sync master → feature, 0001–0050 existem no disco (0045/0046 da
+# linha SaaS + 0047–0050 da master). A lista fica vazia: o validador exige sequência
+# sem buracos. A lista da master (45–47) vale só no build interno, onde 0045/0046 não
+# entram no pacote.

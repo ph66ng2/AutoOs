@@ -135,7 +135,7 @@ export default function PortalDetalhe({ session, equipamentoId, onExpirou }: Pro
               </div>
               <div className={`portal-detail-side${emDecisao ? " is-decisao" : ""}`}>
                 {data.status === "PRONTO" && <DestaqueProntoRetirada detalhe={data} />}
-                {concluido && <DestaqueConcluido detalhe={data} />}
+                {concluido && <DestaqueConcluido detalhe={data} sessao={session.token} />}
                 {galeriaLateral && galeria}
                 {!["PRONTO", "ENTREGUE"].includes(data.status) && <NotaValorAtualizado detalhe={data} />}
                 {data.orcamento && (
@@ -152,7 +152,7 @@ export default function PortalDetalhe({ session, equipamentoId, onExpirou }: Pro
                   <p className="notice-box">O orçamento ainda não foi publicado no portal. Fale com a equipe para recebê-lo.</p>
                 )}
 
-                {!concluido && <DocumentosCard detalhe={data} />}
+                {!concluido && <DocumentosCard detalhe={data} sessao={session.token} />}
                 <PortalHistorico historico={historico} />
 
                 <ContatoCard contato={data.contatoEmpresa} />

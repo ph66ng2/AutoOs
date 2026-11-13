@@ -18,16 +18,24 @@ describe("orcamentoEmElaboracao", () => {
 describe("transicaoElaboraOrcamento", () => {
   it("cobre só o envio do orçamento para aprovação, sem valor final nem correção", () => {
     expect(transicaoElaboraOrcamento("VERIFICADO", "AGUARDANDO_APROVACAO", false)).toBe(true);
-    expect(transicaoElaboraOrcamento("AGUARDANDO_APROVACAO", "AGUARDANDO_APROVACAO", false, 0)).toBe(true);
+    expect(transicaoElaboraOrcamento("AGUARDANDO_APROVACAO", "AGUARDANDO_APROVACAO", false)).toBe(true);
   });
 
-  it("não cobre decisão, entrega, valor final, correção nem origem fora da elaboração", () => {
+  it("não cobre entrega, valor final, correção nem origens inválidas", () => {
     expect(transicaoElaboraOrcamento("VERIFICADO", "APROVADO", false)).toBe(false);
-    expect(transicaoElaboraOrcamento("AGUARDANDO_APROVACAO", "REPROVADO", false)).toBe(false);
+    expect(transicaoElaboraOrcamento("AGUARDANDO_APROVACAO", "REPROVADO", false)).toBe(true);
     expect(transicaoElaboraOrcamento("PRONTO", "ENTREGUE", false)).toBe(false);
     expect(transicaoElaboraOrcamento("VERIFICADO", "AGUARDANDO_APROVACAO", false, 100)).toBe(false);
     expect(transicaoElaboraOrcamento("VERIFICADO", "AGUARDANDO_APROVACAO", true)).toBe(false);
     expect(transicaoElaboraOrcamento("EM_VERIFICACAO", "AGUARDANDO_APROVACAO", false)).toBe(false);
+  });
+});
+
+describe("novas propostas e renovações", () => {
+  it.each(["REPROVADO", "ORCAMENTO_VENCIDO"])("Orçamentos cobre %s sem correção nem valor final", (status) => {
+    expect(transicaoElaboraOrcamento(status, "AGUARDANDO_APROVACAO", false)).toBe(true);
+    expect(transicaoElaboraOrcamento(status, "AGUARDANDO_APROVACAO", true)).toBe(false);
+    expect(transicaoElaboraOrcamento(status, "AGUARDANDO_APROVACAO", false, 0)).toBe(false);
   });
 });
 

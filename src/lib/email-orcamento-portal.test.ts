@@ -3,6 +3,8 @@ import type { Equipamento, PreparoAcessoPortal, Verificacao } from "@/types";
 
 const mockEnviarEmail = vi.hoisted(() => vi.fn());
 const mockRegistrarComunicacao = vi.hoisted(() => vi.fn());
+const mockPublicarOrcamento = vi.hoisted(() => vi.fn());
+const mockGerarOrcamentoAjustado = vi.hoisted(() => vi.fn());
 const mockGerarOrcamento = vi.hoisted(() => vi.fn());
 const mockCopiar = vi.hoisted(() => vi.fn());
 const mockRemover = vi.hoisted(() => vi.fn());
@@ -11,6 +13,7 @@ vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
 
 vi.mock("@/lib/db", () => ({
   db: {
+    publicarOrcamentoPortal: (...args: unknown[]) => mockPublicarOrcamento(...args),
     enviarEmail: (...args: unknown[]) => mockEnviarEmail(...args),
     registrarComunicacao: (...args: unknown[]) => mockRegistrarComunicacao(...args),
     copiarAnexoEmailParaTemp: (...args: unknown[]) => mockCopiar(...args),
@@ -19,7 +22,7 @@ vi.mock("@/lib/db", () => ({
 }));
 
 vi.mock("@/lib/pdf-service", () => ({
-  PdfService: { gerarOrcamento: (...args: unknown[]) => mockGerarOrcamento(...args) },
+  PdfService: { gerarOrcamentoAjustado: (...args: unknown[]) => mockGerarOrcamentoAjustado(...args), gerarOrcamento: (...args: unknown[]) => mockGerarOrcamento(...args) },
 }));
 
 vi.mock("@/components/clientes/SenhaPortalDialog", () => ({
@@ -230,4 +233,15 @@ describe("email-orcamento-portal", () => {
     expect(t).not.toContain("Portal das Impressoras");
     expect(t).toContain("APROVADO");
   });
+});
+
+it("e-mail de orçamento ajustado anexa o oficial ajustado publicado no portal", async () => {
+  vi.clearAllMocks();
+  mockEnviarEmail.mockResolvedValue(undefined);
+  mockCopiar.mockResolvedValue("/tmp/autoos/ajustado.pdf");
+  mockGerarOrcamentoAjustado.mockResolvedValue("/tmp/ajustado.pdf");
+  await enviarEmailOrcamentoPortal(equip, { ...verificacao, adjusted_at: "2026-11-10T10:00:00Z" }, preparoBase());
+  expect(mockGerarOrcamentoAjustado).toHaveBeenCalled();
+  expect(mockGerarOrcamento).not.toHaveBeenCalled();
+  expect(mockCopiar.mock.calls[0][0]).toBe("/tmp/ajustado.pdf");
 });

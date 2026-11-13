@@ -10,10 +10,9 @@ use crate::commands::types::{
     VERIFICACAO_SELECT,
 };
 use crate::commands::auth::{
-    profile_has_permission, record_security_event, require_any_permission, require_active_session_company_id,
-    require_permission,
-    SecurityProfileSummary, PERMISSION_FINANCIAL_ACTIONS, PERMISSION_MANAGE_STATUS_LINKS,
-    PERMISSION_PREPARE_QUOTES, PERMISSION_STOCK_CONTROL,
+    profile_has_permission, record_security_event, require_any_permission, require_permission,
+    require_active_session_company_id, SecurityProfileSummary, PERMISSION_FINANCIAL_ACTIONS,
+    PERMISSION_MANAGE_STATUS_LINKS, PERMISSION_PREPARE_QUOTES, PERMISSION_STOCK_CONTROL,
 };
 use crate::db::get_pool;
 use crate::commands::orcamento_correcao::{
@@ -86,7 +85,7 @@ fn tem_pecas_avulsas(servicos: &[ServicoOrcamento], pecas_json: Option<&str>) ->
 /// OS só de garantia (todos os itens R$ 0,00): grava valor_orcamento 0 e vai para APROVADO
 /// na mesma transação da verificação, sem passar por AGUARDANDO_APROVACAO.
 /// Não há coluna/flag de garantia; 0,00 no item é a convenção existente.
-/// É uma aprovação: exige FINANCIAL_ACTIONS (PREPARE_QUOTES nunca aprova).
+/// A aprovação de garantia exige FINANCIAL_ACTIONS ou PREPARE_QUOTES.
 /// Devolve quem aprovou, para a auditoria depois do commit.
 async fn gravar_aprovacao_os_garantia(
     tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
@@ -104,7 +103,7 @@ async fn gravar_aprovacao_os_garantia(
     {
         return Ok(None);
     }
-    let actor = require_permission(PERMISSION_FINANCIAL_ACTIONS)
+    let actor = require_any_permission(&[PERMISSION_FINANCIAL_ACTIONS, PERMISSION_PREPARE_QUOTES])
         .map_err(|erro| format!("OS só de garantia vai direto para Aprovado. {erro}"))?;
     if tem_pecas_avulsas(servicos, pecas_necessarias)? {
         return Err("Há peças em Peças Necessárias sem serviço vinculado. Vincule-as a um serviço com estoque antes de aprovar a OS de garantia.".to_string());
@@ -197,14 +196,19 @@ pub(crate) fn orcamento_em_elaboracao(status: &str) -> bool {
     )
 }
 
-/// Perfil sem FINANCIAL_ACTIONS (só PREPARE_QUOTES) altera apenas orçamentos em elaboração.
+/// Orçamentos (PREPARE_QUOTES) também edita o orçamento vencido, para renová-lo.
+fn orcamento_editavel_sem_financeiro(status: &str) -> bool {
+    orcamento_em_elaboracao(status) || status == "ORCAMENTO_VENCIDO"
+}
+
+/// Perfil sem FINANCIAL_ACTIONS (só PREPARE_QUOTES) altera orçamentos em elaboração ou vencidos.
 fn check_prepare_quotes_status(
     actor: Option<&SecurityProfileSummary>,
     status: &str,
 ) -> Result<(), String> {
     if let Some(actor) = actor {
         if !profile_has_permission(actor, PERMISSION_FINANCIAL_ACTIONS)
-            && !orcamento_em_elaboracao(status)
+            && !orcamento_editavel_sem_financeiro(status)
         {
             return Err("Este perfil só altera orçamentos ainda não decididos.".into());
         }
@@ -1066,7 +1070,10 @@ mod tests {
             tour_permissoes_vistas: None,
         };
         assert!(check_prepare_quotes_status(Some(&perfil), "VERIFICADO").is_ok());
-        assert!(check_prepare_quotes_status(Some(&perfil), "APROVADO").is_err());
+        assert!(check_prepare_quotes_status(Some(&perfil), "ORCAMENTO_VENCIDO").is_ok());
+        for decidido in ["APROVADO", "REPROVADO", "EM_MANUTENCAO", "PRONTO", "ENTREGUE"] {
+            assert!(check_prepare_quotes_status(Some(&perfil), decidido).is_err(), "{decidido}");
+        }
         assert!(check_prepare_quotes_status(None, "APROVADO").is_ok());
         perfil.permissions.push(PERMISSION_FINANCIAL_ACTIONS.to_string());
         assert!(check_prepare_quotes_status(Some(&perfil), "APROVADO").is_ok());

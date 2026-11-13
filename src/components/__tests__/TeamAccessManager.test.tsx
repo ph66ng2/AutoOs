@@ -35,15 +35,16 @@ describe("gestão da equipe", () => {
     await waitFor(() => expect(service.updateProfile).toHaveBeenCalledWith(2, { nome: "Ivan", role: "TECNICO", permissions: ["STOCK_CONTROL"] }, "1234"));
     expect(changed).toHaveBeenCalledOnce();
   });
-  it("recusa reativar perfil incompatível e mostra o erro da trava", async () => {
+  it("sem a trava 0.5.6, reativa perfil sem permissões", async () => {
     const user = userEvent.setup();
-    render(<TeamAccessManager activeProfileId={1} onChanged={vi.fn()} />);
+    service.reactivateProfile.mockResolvedValue(undefined);
+    render(<TeamAccessManager activeProfileId={1} onChanged={vi.fn().mockResolvedValue(undefined)} />);
     await screen.findByText("Ivan");
     await user.click(screen.getByLabelText("Mostrar inativos"));
     await user.click(screen.getByRole("button", { name: "Reativar" }));
     await user.click(screen.getByRole("button", { name: "Confirmar alteração" }));
-    expect(service.reactivateProfile).not.toHaveBeenCalled();
-    expect(await screen.findByRole("alert")).toHaveTextContent("0.5.6");
+    await waitFor(() => expect(service.reactivateProfile).toHaveBeenCalled());
+    expect(screen.queryByText(/0\.5\.6/)).not.toBeInTheDocument();
   });
   it("cancelar desativação não altera o acesso", async () => {
     const user = userEvent.setup(); render(<TeamAccessManager activeProfileId={1} onChanged={vi.fn()} />);

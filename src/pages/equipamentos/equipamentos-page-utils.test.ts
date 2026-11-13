@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { MENSAGEM_AGUARDANDO_TOTAL_ZERO, MENSAGEM_ZERAR_APROVADO_PAGO } from "@/lib/orcamento-estoque";
 import {
   agruparAcoesOs,
+  statusExigeAcessoSensivel,
   getProximosStatus,
   getStatusCorrecao,
   mensagemAjusteTotalZero,
@@ -100,5 +101,15 @@ describe("agruparAcoesOs", () => {
     const acoes = [{ id: "editar" }, { id: "orcamento_pdf" }];
     agruparAcoesOs(acoes);
     expect(acoes).toEqual([{ id: "editar" }, { id: "orcamento_pdf" }]);
+  });
+});
+
+describe("retirada operacional", () => {
+  it("PRONTO e ENTREGUE são operacionais, mas campos financeiros e abandono são protegidos", () => {
+    expect(statusExigeAcessoSensivel("PRONTO")).toBe(false);
+    expect(statusExigeAcessoSensivel("ENTREGUE")).toBe(false);
+    expect(statusExigeAcessoSensivel("ENTREGUE", undefined, undefined, 0)).toBe(true);
+    expect(statusExigeAcessoSensivel("ENTREGUE", 80)).toBe(true);
+    expect(statusExigeAcessoSensivel("ABANDONADO")).toBe(true);
   });
 });

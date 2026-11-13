@@ -25,6 +25,18 @@ describe("confirmação de sessão", () => {
     expect(screen.getAllByText("Este perfil não exige PIN. Clique abaixo para continuar.").length).toBeGreaterThan(0);
   });
 
+  it.each([1, 2])("mantém o mesmo campo e cadeadinho ao aceitar o PIN no seletor (perfil ativo %i)", (activeProfileId) => {
+    const ivan = { ...admin, id: 2, nome: "Ivan", role: "TECNICO", pin_required: true, pin_configured: true, is_default: false };
+    const props = { ...defaults, mode: "selector" as const, profiles: [ivan], selectedProfileId: "2", selectedProfile: ivan, pin: "2580" };
+    const { rerender } = render(<ProfileSessionDialog {...props} activeProfileId={activeProfileId} unlocked={false} />);
+    const input = screen.getByLabelText("PIN do perfil");
+    rerender(<ProfileSessionDialog {...props} activeProfileId={2} unlocked accepted />);
+    expect(screen.getByLabelText("PIN do perfil")).toBe(input);
+    expect(input).toHaveValue("2580");
+    expect(document.querySelector(".pin-entry--ok .pin-entry__lock")).not.toBeNull();
+    expect(screen.queryByText(/Você já está (usando este|neste) perfil/)).not.toBeInTheDocument();
+  });
+
   it("bloqueia PIN exigido mas ausente neste PC, inclusive administrador", () => {
     const protectedAdmin = { ...admin, pin_required: true };
     render(<ProfileSessionDialog {...defaults} profiles={[protectedAdmin]} selectedProfile={protectedAdmin} />);
@@ -106,7 +118,7 @@ describe("primeiro acesso neste computador", () => {
     render(<ProfileSessionDialog {...defaults} profiles={[admin, pending]} selectedProfileId="5" selectedProfile={pending} onFirstAccess={onFirstAccess} />);
     expect(screen.getByText("Primeiro acesso")).toBeInTheDocument();
     screen.getByRole("button", { name: "Fazer primeiro acesso" }).click();
-    expect(onFirstAccess).toHaveBeenCalledWith(5);
+    expect(onFirstAccess).toHaveBeenCalledWith(5, false, expect.objectContaining({ avatar: expect.any(HTMLElement) }));
   });
 
   it("perfil já montado em outro computador pede só a ativação aqui, sem 'primeiro acesso'", () => {
@@ -116,7 +128,7 @@ describe("primeiro acesso neste computador", () => {
     expect(screen.queryByText("Primeiro acesso")).not.toBeInTheDocument();
     expect(screen.getByText("Ativar neste computador", { selector: "span" })).toBeInTheDocument();
     screen.getByRole("button", { name: "Ativar neste computador" }).click();
-    expect(onFirstAccess).toHaveBeenCalledWith(6);
+    expect(onFirstAccess).toHaveBeenCalledWith(6, false, undefined);
   });
 
   it("nomes longos são truncados dentro do cartão do perfil e continuam legíveis pelo title", () => {

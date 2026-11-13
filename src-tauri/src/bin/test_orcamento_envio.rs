@@ -282,9 +282,9 @@ async fn main() -> Result<()> {
             });
         }
     });
-    // Configurar o provedor exige CONFIG_WHATSAPP: perfil administrativo à parte, e volta ao técnico.
+    // Configurar o provedor exige COMMUNICATION_SETTINGS: perfil administrativo à parte, e volta ao técnico.
     let admin: i32 = sqlx::query_scalar("INSERT INTO security_profiles(nome,role,permissions,empresa_id,ativo,is_default) VALUES ($1,'ADMIN',$2,$3,true,false) RETURNING id")
-        .bind(format!("AdminWa {suffix}")).bind(serde_json::to_string(&[auth::PERMISSION_CONFIG_WHATSAPP])?).bind(empresa).fetch_one(&pool).await?;
+        .bind(format!("AdminWa {suffix}")).bind(serde_json::to_string(&[auth::PERMISSION_COMMUNICATION_SETTINGS])?).bind(empresa).fetch_one(&pool).await?;
     auth::store_profile_pin(admin, "8642").map_err(|e| anyhow!(e))?;
     auth::set_active_security_profile(admin, "8642".into(), Some("8642".into())).await.map_err(|e| anyhow!(e))?;
     auth::unlock_sensitive_access("8642".into()).await.map_err(|e| anyhow!(e))?;

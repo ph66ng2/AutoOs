@@ -1,12 +1,12 @@
 import { cn } from "@/lib/utils";
-import { avatarIcon, isAvatarShape } from "@/lib/profile-appearance";
+import { AVATAR_SHAPES, isAvatarShape } from "@/lib/profile-appearance";
 import { GeometricAvatar } from "@/components/perfil/GeometricAvatar";
 
 const SIZES = {
-  sm: { box: "h-8 w-8 rounded-lg", icon: "h-4 w-4" },
-  md: { box: "h-10 w-10 rounded-xl", icon: "h-5 w-5" },
-  lg: { box: "h-[72px] w-[72px] rounded-[20px]", icon: "h-8 w-8" },
-  xl: { box: "h-[104px] w-[104px] rounded-[28px]", icon: "h-11 w-11" },
+  sm: { box: "h-8 w-8 rounded-lg" },
+  md: { box: "h-10 w-10 rounded-xl" },
+  lg: { box: "h-[72px] w-[72px] rounded-[20px]" },
+  xl: { box: "h-[104px] w-[104px] rounded-[28px]" },
 } as const;
 
 export function ProfileAvatar({
@@ -19,7 +19,7 @@ export function ProfileAvatar({
   icon: string;
   color: string;
   size?: keyof typeof SIZES;
-  /** Perfil ainda não ativado: moldura tracejada no lugar do ícone. */
+  /** Perfil ainda não ativado: moldura tracejada no lugar da forma. */
   pending?: boolean;
   className?: string;
 }) {
@@ -32,22 +32,10 @@ export function ProfileAvatar({
       />
     );
   }
-  if (isAvatarShape(icon)) {
-    // O desenho já traz o fundo; a caixa só recorta o canto.
-    return (
-      <span aria-hidden="true" className={cn("inline-flex shrink-0 overflow-hidden", sizing.box, className)}>
-        <GeometricAvatar shape={icon} color={color} className="h-full w-full" />
-      </span>
-    );
-  }
-  const Icon = avatarIcon(icon);
+  const shape = isAvatarShape(icon) ? icon : AVATAR_SHAPES[0].id;
   return (
-    <span
-      aria-hidden="true"
-      className={cn("inline-flex shrink-0 items-center justify-center text-white", sizing.box, className)}
-      style={{ backgroundColor: color }}
-    >
-      <Icon className={sizing.icon} strokeWidth={1.8} />
+    <span aria-hidden="true" className={cn("inline-flex shrink-0 overflow-hidden", sizing.box, className)}>
+      <GeometricAvatar shape={shape} color={color} className="h-full w-full" />
     </span>
   );
 }

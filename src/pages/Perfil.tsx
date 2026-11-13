@@ -4,6 +4,7 @@ import { toast } from "sonner";
 import { ArrowRightLeft, Check, Lock, ShieldCheck, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -19,6 +20,7 @@ import { PERMISSION_DETAILS } from "@/lib/profile-presets";
 import { securityRoleLabel } from "@/lib/security-profile-labels";
 import { SensitiveAccessService } from "@/lib/sensitive-access";
 import { requestTour } from "@/lib/tour-request";
+import { setUiSoundsEnabled, uiSoundsEnabled } from "@/lib/ui-sounds";
 import { BASE_MODULES, newPermissions } from "@/lib/tour-steps";
 import { cn } from "@/lib/utils";
 import {
@@ -313,8 +315,32 @@ function Personalizar({ profile, onSaved }: { profile: SecurityProfile; onSaved:
           {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
           <Button type="submit" disabled={busy}>{busy ? "Salvando..." : "Salvar"}</Button>
         </form>
+        <SonsDaInterface />
       </CardContent>
     </Card>
+  );
+}
+
+/** Preferência local, como o modo do computador: muda na hora, sem o botão Salvar. */
+function SonsDaInterface() {
+  const [enabled, setEnabled] = useState(uiSoundsEnabled);
+  return (
+    <div className="mt-7 flex items-start gap-3 border-t border-border pt-6">
+      <Checkbox
+        id="perfil-sons"
+        checked={enabled}
+        onCheckedChange={(value) => {
+          const next = value === true;
+          setUiSoundsEnabled(next);
+          setEnabled(next);
+        }}
+        className="mt-0.5"
+      />
+      <div className="space-y-1">
+        <Label htmlFor="perfil-sons">Sons da interface</Label>
+        <p className="text-sm text-muted-foreground">Cliques e avisos curtos nas animações do primeiro acesso. Vale para este computador.</p>
+      </div>
+    </div>
   );
 }
 

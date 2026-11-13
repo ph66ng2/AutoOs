@@ -41,7 +41,7 @@ Desktop app for printer management, technical reception, operational communicati
 │   └── .env.example              # Template local; .env real nunca é versionado/bundled
 ├── .claude/agents/               # Subagentes do Claude Code (modelo fixado por agente)
 ├── .cursor/rules/                # Regras do Cursor (autoos.mdc aponta para este arquivo)
-├── CLAUDE.md                     # Só Claude Code: roteamento Opus/Sonnet/Haiku
+├── CLAUDE.md                     # Só Claude Code: modelo/effort e subagentes
 ├── .github/
 │   └── workflows/
 │       ├── ci.yml                # Lint → Vitest → cargo check/clippy → e2e:real → build
@@ -151,7 +151,7 @@ npm run bundle:prep:windows:sign # Injects certThumbprint from env into tauri.co
 - **Forms** use React Hook Form + Zod (`zodResolver`). `validations.ts` has custom CPF/CNPJ digit-verifier algorithms (not just regex).
 - **shadcn/ui** components in `src/components/ui/` — lightly customized, kept close to original. `cn()` from `lib/utils.ts` used everywhere.
 - **Sensitive routes** use `<SensitiveRoute>` wrapper component (renders lock screen if unauthorized), not route guards in `App.tsx` logic.
-- **Boot splash mandatory** — `MIN_BOOT_SPLASH_MS = 1100ms` in `useSensitiveAccess`. Ensures splash is visible even if backend resolves instantly.
+- **Boot splash** — every launch plays the BMI TAG opening (`src/components/opening/BmiTagOpening.tsx`, via `BootSplash`). Its own duration (2450 ms; 220 ms with reduced motion) is the minimum splash time; there is no separate timer and no "first boot of the day" variant. The PIN/profile dialog waits for `bootAnimationComplete` (`BootUi.tsx`), capped at 20 s. See `docs/ABERTURA_BMITAG.md`.
 - **Insumos module temporarily blocked** — marked with `[BLOQUEIO-TEMPORARIO-INSUMOS]` comments across `App.tsx`, `Layout.tsx`, `Dashboard.tsx`.
 
 ### Migrations (PostgreSQL)
@@ -183,6 +183,8 @@ npm run bundle:prep:windows:sign # Injects certThumbprint from env into tauri.co
 ## REGRAS DE DOMÍNIO (perfis, PIN, operações sensíveis)
 
 - A rota `/perfil` (Equipe e acessos) concentra cadastro guiado, gestão da equipe e troca da sessão com PIN do perfil de destino.
+- PIN novo (criar ou trocar) segue `validate_new_pin` no backend e `src/lib/pin-rules.ts` no frontend: 4 a 8 dígitos, não todos iguais (1111) e não sequência (1234, 4321). Conferir um PIN já salvo usa só `validate_pin_format`, então PINs antigos continuam valendo. As telas de criar PIN mostram o cadeado de roletes (`src/components/auth/PinLock.tsx`), que nunca exibe o PIN digitado; a tela de digitar o PIN para entrar usa o campo simples, que treme em vermelho no erro e mostra um cadeadinho verde abrindo (800 ms) no acerto antes de fechar.
+- Primeiro acesso de perfil novo (`onboarding_pendente`): ao clicar em "Fazer primeiro acesso", o avatar tracejado voa até o cadeado do `PrimeiroAcessoWizard` (`FirstAccessBridge`, ~0,7 s; a janela de perfis só fecha quando ele pousa). Nas etapas, o mesmo emblema evolui: cadeado → avatar do perfil (ao salvar o PIN) → anel de selo em "Pronto". "Ativar neste computador" e "Esqueci meu PIN" abrem direto. Sons curtos sintetizados em `src/lib/ui-sounds.ts` (sem arquivos de áudio), que podem ser desligados em Perfil › Personalizar (preferência deste computador, `localStorage` `autoos:ui-sounds`); o contexto de áudio é suspenso após 3 s sem som. Movimento reduzido pula as animações e o som de conclusão.
 - `pin_required` é política compartilhada; PIN/hash continuam no keyring. Ausência do PIN local não autoriza entrada em um perfil protegido.
 - Trocar a sessão é uma operação local: não alterar `is_default` no banco compartilhado.
 - Perfis operacionais podem ter zero permissões sensíveis. Os modelos em `src/lib/profile-presets.ts` somente preenchem permissões já verificadas pelo backend.
@@ -233,7 +235,7 @@ Vale para código **novo** nas duas branches; não refatorar o existente por cau
 
 ## FLUXO DE TRABALHO COM AGENTES DE IA (Claude Code e Cursor)
 
-Vale para qualquer agente. O roteamento por modelo (Opus/Sonnet/Haiku) é específico do Claude Code e está em `CLAUDE.md`.
+Vale para qualquer agente. A escolha de modelo e effort (Opus 5.5 `medium` como padrão; Haiku só para busca e leitura) é específica do Claude Code e está em `CLAUDE.md`.
 
 **Contexto de custo:** o projeto usa uma assinatura de US$ 20/mês com cota limitada. Toda decisão abaixo existe para gastar menos cota por tarefa.
 

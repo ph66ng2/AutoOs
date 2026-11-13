@@ -16,6 +16,7 @@ import { useClientes } from "@/hooks/useClientes";
 import { totalPages } from "@/lib/pagination";
 import { clienteSchema, detectarTipoDocumento, formatarCEP, formatarDocumento, formatarTelefone, type ClienteFormData } from "@/lib/validations";
 import type { Cliente } from "@/types";
+import type { SaasOperationalProfile } from "@/types/saas-auth";
 
 const EMPTY_FORM: ClienteFormData = {
   documento: "", tipo_pessoa: "PF", nome: "", razao_social: "", nome_fantasia: "",
@@ -32,7 +33,7 @@ const FORM_FIELD_LABELS: Partial<Record<keyof ClienteFormData, string>> = {
 };
 
 /** Clientes SaaS: usa exclusivamente o repository remoto selecionado por useClientes. */
-export default function SaasClientesPage() {
+export default function SaasClientesPage({ operationalProfile }: { operationalProfile?: SaasOperationalProfile } = {}) {
   const [busca, setBusca] = useState("");
   const [pagina, setPagina] = useState(1);
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -168,7 +169,7 @@ export default function SaasClientesPage() {
     <Dialog open={Boolean(contatosCliente)} onOpenChange={(open) => { if (!open) setContatosCliente(null); }}>
       <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-2xl">
         <DialogHeader><DialogTitle>Contatos do cliente</DialogTitle><DialogDescription>Gerencie os responsáveis e canais de contato vinculados a este cliente.</DialogDescription></DialogHeader>
-        {contatosCliente && <ClienteContatosPanel cliente={contatosCliente} />}
+        {contatosCliente && <ClienteContatosPanel cliente={contatosCliente} operationalProfile={operationalProfile} />}
       </DialogContent>
     </Dialog>
     <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>

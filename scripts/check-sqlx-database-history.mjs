@@ -108,7 +108,7 @@ for (const row of rows.split("\n").filter(Boolean)) {
   }
 }
 for (let version = 1; version <= Math.min(highestApplied, Math.max(...checksums.keys())); version += 1) {
-  if (!applied.has(version)) {
+  if (checksums.has(version) && !applied.has(version)) {
     errors.push(`Versão ${String(version).padStart(4, "0")} ausente no histórico aplicado.`);
   }
 }

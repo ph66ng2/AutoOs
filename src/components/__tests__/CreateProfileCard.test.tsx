@@ -30,23 +30,25 @@ describe("cadastro guiado de colaboradores", () => {
     expect(screen.getByRole("alert")).toHaveTextContent("Já existe um perfil");
     expect(createProfileWithCode).not.toHaveBeenCalled();
   });
-  it("com a trava 0.5.6, Recepção fica desabilitada com o motivo", () => {
+  it("sem a trava 0.5.6, Recepção fica disponível", () => {
     render(<CreateProfileCard profiles={profiles} onCreated={vi.fn()} />);
-    expect(screen.getByRole("radio", { name: /^Recepção/ })).toBeDisabled();
-    expect(screen.getByText(/Indisponível até todos os computadores/)).toBeInTheDocument();
+    expect(screen.getByRole("radio", { name: /^Recepção/ })).toBeEnabled();
+    expect(screen.queryByText(/Indisponível até todos os computadores/)).not.toBeInTheDocument();
   });
-  it("com a trava 0.5.6, não avança nem salva perfil sem permissão", async () => {
+  it("sem a trava 0.5.6, perfil sem permissão avança e oferece as permissões novas", async () => {
     const user = userEvent.setup();
     render(<CreateProfileCard profiles={profiles} onCreated={vi.fn()} />);
     await user.type(screen.getByLabelText("Nome provisório"), "Maria");
     await user.click(screen.getByRole("radio", { name: /^Personalizado/ }));
     await user.click(screen.getByRole("button", { name: "Continuar" }));
     expect(screen.getByRole("heading", { name: "Liberações" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Continuar" })).toBeDisabled();
-    expect(screen.getByRole("alert")).toHaveTextContent("ao menos uma permissão");
+    expect(screen.getByRole("checkbox", { name: "Orçamentos" })).not.toBeChecked();
+    expect(screen.getByRole("checkbox", { name: "Acessos do portal" })).not.toBeChecked();
+    expect(screen.getByRole("button", { name: "Continuar" })).toBeEnabled();
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
     expect(createProfileWithCode).not.toHaveBeenCalled();
   });
-  it("cria perfil Técnico compatível, só grava após revisar e mostra o código", async () => {
+  it("cria perfil Técnico com orçamentos, só grava após revisar e mostra o código", async () => {
     const user = userEvent.setup();
     const onCreated = vi.fn().mockResolvedValue(undefined);
     createProfileWithCode.mockResolvedValue({
@@ -67,7 +69,7 @@ describe("cadastro guiado de colaboradores", () => {
     await user.click(screen.getByRole("button", { name: "Criar e gerar código" }));
     await waitFor(() =>
       expect(createProfileWithCode).toHaveBeenCalledWith(
-        { nome: "Tec 2", role: "TECNICO", permissions: ["STOCK_CONTROL"] },
+        { nome: "Tec 2", role: "TECNICO", permissions: ["STOCK_CONTROL", "PREPARE_QUOTES", "MANAGE_STATUS_LINKS", "FINANCIAL_ACTIONS"] },
         "4321",
       ),
     );
@@ -83,10 +85,13 @@ describe("cadastro guiado de colaboradores", () => {
     await user.click(screen.getByRole("radio", { name: /^Financeiro/ }));
     await user.click(screen.getByRole("button", { name: "Continuar" }));
     expect(
-      screen.getByRole("checkbox", { name: "Orçamentos e valores" }),
+      screen.getByRole("checkbox", { name: "Ações financeiras" }),
     ).toBeChecked();
     expect(
       screen.getByRole("checkbox", { name: "Consultar despesas" }),
+    ).toBeChecked();
+    expect(
+      screen.getByRole("checkbox", { name: "Orçamentos" }),
     ).toBeChecked();
     expect(
       screen.getByRole("checkbox", { name: "Gerenciar equipe" }),

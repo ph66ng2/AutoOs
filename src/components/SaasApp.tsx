@@ -11,7 +11,7 @@ import type { SaasAuthState } from "@/types/saas-auth";
 
 export function SaasApp() {
   const { state, retry, lock, unlock, signOut, removeThisDevice } = useSaasAuth();
-  const { openingComplete, completeOpening } = useBootUi();
+  const { bootAnimationComplete, completeBootAnimation } = useBootUi();
   const [bootProgress, setBootProgress] = useState(8);
 
   useEffect(() => {
@@ -30,8 +30,8 @@ export function SaasApp() {
   }, [state.kind]);
 
   const onSplashFinished = useCallback(() => {
-    completeOpening();
-  }, [completeOpening]);
+    completeBootAnimation();
+  }, [completeBootAnimation]);
 
   function confirmDeviceRemoval() {
     if (window.confirm("Remover esta máquina? O dispositivo será revogado no servidor e a sessão local será apagada. Esta ação exige novo login nesta instalação.")) {
@@ -39,8 +39,8 @@ export function SaasApp() {
     }
   }
 
-  // Primeiro boot do dia: stamp até o fim, depois login. Nos outros, login direto.
-  if (!openingComplete) {
+  // Abertura BMI TAG em toda inicialização, igual ao desktop; o login espera ela terminar.
+  if (!bootAnimationComplete) {
     return (
       <>
         <main className="fixed inset-0 bg-slate-950" aria-hidden="true" />

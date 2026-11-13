@@ -48,6 +48,7 @@ import { carregarRepositorioOperacoesEquipamento } from "@/lib/data/equipamentos
 import { PaginationControls } from "@/components/ui/pagination-controls";
 import { ITEMS_PER_PAGE, totalPages } from "@/lib/pagination";
 import { PdfService, type PdfArtifact } from "@/lib/pdf-service";
+import { publicarPdfOficial } from "@/lib/portal-documentos";
 import { PdfPreviewDialog } from "@/components/equipamentos/PdfPreviewDialog";
 import { CommunicationEmailDialog } from "@/components/equipamentos/CommunicationEmailDialog";
 import { afterCounterRegistration } from "@/lib/counter-registration";
@@ -68,7 +69,6 @@ import { todayLocalIsoDate } from "@/lib/date-utils";
 import { canTransition, getTransitionError } from "@/lib/status-fsm";
 import {
   STATUS_LABELS,
-  SENSITIVE_PERMISSIONS,
   type Cliente,
   type ClienteContato,
   type Equipamento as EquipamentoTipo,
@@ -646,10 +646,19 @@ function QuickEntry({ onBack, operationalProfile }: { onBack: () => void; operat
           observacoes: `Registro imediato no balcão. Resultado do teste: ${rotuloResultadoTeste(resultadoTesteImpressao)}.`,
           concluida: false,
         });
-        void Promise.resolve(afterCounterRegistration(equipment as never)).catch(
-          (cause: unknown) => console.warn("[Balcao] extensão pós-cadastro indisponível", cause),
-        );
+        // salvarVerificacao altera atualizado_em; a ordem impressa e publicada precisa do token novo.
+        try {
+          if (typeof equipment.id === "number") {
+            const recarregado = await db.buscarEquipamento(equipment.id);
+            if (recarregado) setCreated(recarregado);
+          }
+        } catch (cause) {
+          console.warn("[Balcao] recarga pós-laudo indisponível", cause);
+        }
       }
+      void Promise.resolve(afterCounterRegistration(equipment as never)).catch(
+        (cause: unknown) => console.warn("[Balcao] extensão pós-cadastro indisponível", cause),
+      );
     } catch (cause) {
       setError(String(cause));
     } finally {
@@ -714,6 +723,8 @@ function QuickEntry({ onBack, operationalProfile }: { onBack: () => void; operat
           onDownload={async (artifact) => {
             await PdfService.salvarOrdemServico(artifact, created as never);
           }}
+          // Imprimir sem baixar também publica; publicarPdfOficial é idempotente por artefato.
+          onBeforePrint={(artifact) => publicarPdfOficial(artifact, created)}
         />
         <CommunicationEmailDialog
           open={emailPromptOpen}
@@ -1434,7 +1445,6 @@ function EquipmentDetail({ equipamento, operationalProfile }: { equipamento: Bal
     const permitted = await ensureSensitiveAccess({
       title: "Confirmar retirada",
       description: "Informe o PIN para marcar este equipamento como entregue.",
-      permission: SENSITIVE_PERMISSIONS.FINANCIAL_ACTIONS,
     });
     if (!permitted) return setError("A retirada não foi autorizada.");
     setBusy(true);

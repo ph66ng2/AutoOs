@@ -7,6 +7,8 @@ import { Label } from "@/components/ui/label";
 import { TabsContent } from "@/components/ui/tabs";
 import { PortalFuncionamentoCard } from "@/components/configuracoes/PortalFuncionamentoCard";
 import { PortalContatoEmpresaCard } from "@/components/configuracoes/PortalContatoEmpresaCard";
+import { useSensitiveAccess } from "@/hooks/useSensitiveAccess";
+import { SENSITIVE_PERMISSIONS } from "@/types";
 import type { SmtpFormValues, WhatsappFormValues } from "./configuracoes-shared";
 
 export type ConfiguracoesTabIntegracoesProps = {
@@ -68,12 +70,13 @@ export function ConfiguracoesTabIntegracoes({
   photoTunnelEnvOverride,
   photoTunnelPublicHost,
 }: ConfiguracoesTabIntegracoesProps) {
+  const { hasPermission } = useSensitiveAccess();
   return (
     <TabsContent value="smtp" className="space-y-4">
       <Card>
         <CardHeader>
           <CardTitle>SMTP (email real)</CardTitle>
-          <CardDescription>Credenciais e parâmetros de envio protegidos por permissão de SMTP.</CardDescription>
+          <CardDescription>Credenciais e parâmetros de envio protegidos por Comunicação externa.</CardDescription>
         </CardHeader>
         <CardContent>
           {canConfigureSmtp ? (
@@ -283,7 +286,7 @@ export function ConfiguracoesTabIntegracoes({
             </form>
           ) : (
             <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
-              O perfil ativo não possui permissão para configurar o túnel de fotos. Use um perfil com permissão de SMTP.
+              O perfil ativo não possui permissão para configurar o túnel de fotos. Use um perfil com Comunicação externa.
             </div>
           )}
         </CardContent>
@@ -291,7 +294,7 @@ export function ConfiguracoesTabIntegracoes({
       {canManagePortal && (
         <>
           <PortalFuncionamentoCard />
-          <PortalContatoEmpresaCard />
+          {hasPermission(SENSITIVE_PERMISSIONS.MANAGE_STATUS_LINKS) && <PortalContatoEmpresaCard />}
         </>
       )}
     </TabsContent>

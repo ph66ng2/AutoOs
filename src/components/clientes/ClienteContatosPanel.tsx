@@ -16,6 +16,8 @@ import {
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { ErrorAlert } from "@/components/ui/error-alert";
 import { useNotification } from "@/hooks/useNotification";
+import { useSensitiveAccess } from "@/hooks/useSensitiveAccess";
+import { SENSITIVE_PERMISSIONS } from "@/types";
 import { db } from "@/lib/db";
 import { carregarRepositorioClienteContatos } from "@/lib/data/cliente-contatos-repository";
 import { IS_SAAS_BUILD } from "@/lib/runtime-mode";
@@ -29,6 +31,7 @@ import {
 import { nomeExibicaoCliente } from "@/components/clientes/cliente-display-utils";
 import { SenhaPortalDialog } from "@/components/clientes/SenhaPortalDialog";
 import type { AcessoPortalContato, Cliente, ClienteContato, ClienteContatoInput, ClienteId } from "@/types";
+import type { SaasOperationalProfile } from "@/types/saas-auth";
 
 const ACESSO_PORTAL: Record<AcessoPortalContato, string> = {
   NENHUM: "Sem acesso ao portal",
@@ -39,6 +42,7 @@ const ACESSO_PORTAL: Record<AcessoPortalContato, string> = {
 interface ClienteContatosPanelProps {
   cliente: Cliente;
   empresaId?: ClienteId;
+  operationalProfile?: SaasOperationalProfile;
 }
 
 function formatarDocumentoCliente(valor: string) {
@@ -48,7 +52,8 @@ function formatarDocumentoCliente(valor: string) {
   return valor;
 }
 
-export function ClienteContatosPanel({ cliente, empresaId }: ClienteContatosPanelProps) {
+export function ClienteContatosPanel({ cliente, empresaId, operationalProfile }: ClienteContatosPanelProps) {
+  const { ensureSensitiveAccess } = useSensitiveAccess({ operationalProfile });
   const [contatos, setContatos] = useState<ClienteContato[]>([]);
   const [carregando, setCarregando] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
@@ -146,6 +151,14 @@ export function ClienteContatosPanel({ cliente, empresaId }: ClienteContatosPane
 
   async function alterarAcessoPortal(contato: ClienteContato, acesso: AcessoPortalContato) {
     if (!contato.id) return;
+    const liberado = await ensureSensitiveAccess({
+      title: "Alterar acesso ao portal",
+      description: "Informe o PIN para definir o acesso deste contato.",
+      ...(acesso === "DECIDIR"
+        ? { anyPermission: [SENSITIVE_PERMISSIONS.FINANCIAL_ACTIONS, SENSITIVE_PERMISSIONS.PREPARE_QUOTES] }
+        : { permission: SENSITIVE_PERMISSIONS.MANAGE_STATUS_LINKS }),
+    });
+    if (!liberado) return;
     setAlterandoAcesso(contato.id);
     try {
       const atualizado = await db.definirAcessoPortalContato(contato.id, acesso);
@@ -292,6 +305,7 @@ export function ClienteContatosPanel({ cliente, empresaId }: ClienteContatosPane
       <SenhaPortalDialog
         contato={senhaDe}
         documentoCliente={formatarDocumentoCliente(cliente.documento || cliente.cpf_cnpj || "")}
+        operationalProfile={operationalProfile}
         onClose={() => setSenhaDe(null)}
         onSalvo={() => void carregarContatos()}
       />
