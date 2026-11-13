@@ -9,9 +9,7 @@ vi.mock("@/lib/data/cliente-contatos-repository", () => ({
 }));
 vi.mock("@/lib/db", () => ({ db: { listarClienteContatos: tauriListar } }));
 vi.mock("@/hooks/useNotification", () => ({ useNotification: () => ({ success: vi.fn(), error: vi.fn() }) }));
-vi.mock("@/hooks/useSensitiveAccess", () => ({
-  useSensitiveAccess: () => ({ ensureSensitiveAccess: vi.fn().mockResolvedValue(true) }),
-}));
+vi.mock("sonner", () => ({ toast: { error: vi.fn() } }));
 
 import { ClienteContatosPanel } from "@/components/clientes/ClienteContatosPanel";
 
@@ -21,7 +19,10 @@ describe("ClienteContatosPanel no SaaS", () => {
   it("aceita UUID, usa o repository Online e nunca chama o Tauri", async () => {
     listar.mockResolvedValue([]);
     criar.mockResolvedValue({ id: "33333333-3333-4333-8333-333333333333" });
-    render(<ClienteContatosPanel cliente={{ id: clientId, nome: "Ana", telefone: "" }} />);
+    render(<ClienteContatosPanel
+      cliente={{ id: clientId, nome: "Ana", telefone: "" }}
+      operationalProfile={{ id: "p1", name: "Técnico", role: "TECNICO", permissions: ["MANAGE_STATUS_LINKS"] }}
+    />);
 
     await waitFor(() => expect(listar).toHaveBeenCalledWith(clientId, undefined));
     fireEvent.click(screen.getByRole("button", { name: /novo contato/i }));

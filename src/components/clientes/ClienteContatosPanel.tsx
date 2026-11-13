@@ -31,6 +31,7 @@ import {
 import { nomeExibicaoCliente } from "@/components/clientes/cliente-display-utils";
 import { SenhaPortalDialog } from "@/components/clientes/SenhaPortalDialog";
 import type { AcessoPortalContato, Cliente, ClienteContato, ClienteContatoInput, ClienteId } from "@/types";
+import type { SaasOperationalProfile } from "@/types/saas-auth";
 
 const ACESSO_PORTAL: Record<AcessoPortalContato, string> = {
   NENHUM: "Sem acesso ao portal",
@@ -41,6 +42,7 @@ const ACESSO_PORTAL: Record<AcessoPortalContato, string> = {
 interface ClienteContatosPanelProps {
   cliente: Cliente;
   empresaId?: ClienteId;
+  operationalProfile?: SaasOperationalProfile;
 }
 
 function formatarDocumentoCliente(valor: string) {
@@ -50,8 +52,8 @@ function formatarDocumentoCliente(valor: string) {
   return valor;
 }
 
-export function ClienteContatosPanel({ cliente, empresaId }: ClienteContatosPanelProps) {
-  const { ensureSensitiveAccess } = useSensitiveAccess();
+export function ClienteContatosPanel({ cliente, empresaId, operationalProfile }: ClienteContatosPanelProps) {
+  const { ensureSensitiveAccess } = useSensitiveAccess({ operationalProfile });
   const [contatos, setContatos] = useState<ClienteContato[]>([]);
   const [carregando, setCarregando] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
@@ -303,6 +305,7 @@ export function ClienteContatosPanel({ cliente, empresaId }: ClienteContatosPane
       <SenhaPortalDialog
         contato={senhaDe}
         documentoCliente={formatarDocumentoCliente(cliente.documento || cliente.cpf_cnpj || "")}
+        operationalProfile={operationalProfile}
         onClose={() => setSenhaDe(null)}
         onSalvo={() => void carregarContatos()}
       />
