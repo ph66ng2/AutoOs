@@ -70,6 +70,13 @@ pub async fn publicar_documento_portal(
     .fetch_optional(&pool)
     .await
     .map_err(|e| e.to_string())?;
+    let writer = config.supabase_service_key.trim();
+    if writer.is_empty() {
+        // Bucket com policy restritiva: JWT de usuário é recusado. Sem escritor
+        // service_role neste build, não registra referência órfã; o PDF local segue.
+        tracing::warn!(equipamento_id, "PORTAL_PDF_NO_STORAGE_WRITER");
+        return Ok(bytes);
+    }
     if let Some(canonico) = existente {
         return baixar_canonico(&client, &config, &canonico).await;
     }
@@ -78,8 +85,8 @@ pub async fn publicar_documento_portal(
             "{}/storage/v1/object/portal-documentos/{caminho}",
             config.supabase_url.trim_end_matches('/')
         ))
-        .header("apikey", &config.supabase_publishable_key)
-        .bearer_auth(&config.access_token)
+        .header("apikey", writer)
+        .bearer_auth(writer)
         .header("Content-Type", "application/pdf")
         .header("x-upsert", "true")
         .body(bytes.clone())
@@ -118,8 +125,8 @@ async fn baixar_canonico(
             "{}/storage/v1/object/authenticated/portal-documentos/{caminho}",
             config.supabase_url.trim_end_matches('/')
         ))
-        .header("apikey", &config.supabase_publishable_key)
-        .bearer_auth(&config.access_token)
+        .header("apikey", config.supabase_service_key.trim())
+        .bearer_auth(config.supabase_service_key.trim())
         .send()
         .await
         .map_err(|_| "Documento canônico indisponível.".to_string())?;

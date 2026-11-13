@@ -1641,7 +1641,9 @@ export default function Equipamentos({ operationalProfile }: { operationalProfil
       description: decisaoInicial === "aprovar"
         ? "Informe o PIN para registrar a decisão do cliente sobre este orçamento."
         : "Informe o PIN para registrar a reprovação do orçamento pelo cliente.",
-      anyPermission: [SENSITIVE_PERMISSIONS.FINANCIAL_ACTIONS, SENSITIVE_PERMISSIONS.PREPARE_QUOTES],
+      ...(IS_SAAS_BUILD
+        ? { permission: SENSITIVE_PERMISSIONS.FINANCIAL_ACTIONS }
+        : { anyPermission: [SENSITIVE_PERMISSIONS.FINANCIAL_ACTIONS, SENSITIVE_PERMISSIONS.PREPARE_QUOTES] }),
     });
     if (!liberado) return;
 
@@ -2615,7 +2617,7 @@ export default function Equipamentos({ operationalProfile }: { operationalProfil
         overflow.push(acaoEditar, ...(podeExcluir ? [acaoExcluir] : []));
         break;
       case "AGUARDANDO_APROVACAO":
-        if (podeOrcamentoValores) {
+        if (IS_SAAS_BUILD ? podeFinanceiro : podeOrcamentoValores) {
           primary = {
             id: "aprovar",
             label: "Aprovar",

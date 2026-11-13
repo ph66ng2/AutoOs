@@ -12,7 +12,7 @@
  * ╚══════════════════════════════════════════════════════════════╝
  */
 import { defineConfig, devices } from '@playwright/test';
-import { RELEASE_HIGHLIGHTS_STORAGE_KEY } from './src/components/ReleaseHighlightsDialog';
+import { RELEASE_HIGHLIGHTS_STORAGE_KEY } from './src/lib/releaseHighlightsKey';
 
 export default defineConfig({
   // Diretório dos testes E2E.

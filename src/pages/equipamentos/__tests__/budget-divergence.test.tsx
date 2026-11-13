@@ -22,6 +22,7 @@ const mockNavigate = vi.hoisted(() => vi.fn());
 const mockFinalizarVerificacao = vi.hoisted(() => vi.fn());
 const mockMarcarPronto = vi.hoisted(() => vi.fn());
 const mockPermissions = vi.hoisted(() => ({ list: ["FINANCIAL_ACTIONS"] as string[] }));
+const mockRuntime = vi.hoisted(() => ({ saas: false }));
 const mockEnsureSensitiveAccess = vi.hoisted(() => vi.fn().mockResolvedValue(true));
 const mockAtualizarServicosVerificacao = vi.hoisted(() => vi.fn());
 const mockAnalisarAjusteOrcamento = vi.hoisted(() => vi.fn());
@@ -70,6 +71,12 @@ vi.mock("@/hooks/useStatusEquipamento", () => ({
     finalizarVerificacao: mockFinalizarVerificacao,
     marcarComoPronto: mockMarcarPronto,
   }),
+}));
+
+vi.mock("@/lib/runtime-mode", () => ({
+  get IS_SAAS_BUILD() {
+    return mockRuntime.saas;
+  },
 }));
 
 vi.mock("@/hooks/useSensitiveAccess", () => ({
@@ -330,6 +337,7 @@ import Equipamentos from "../../Equipamentos";
 describe("Equipamentos — Budget Divergence & Audit", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockRuntime.saas = false;
     mockAtualizarEquipamento.mockResolvedValue({
       sucesso: true,
       data: { ...equipamentoVerificado, atualizado_em: "2024-01-15T10:00:01Z" },
@@ -1299,6 +1307,16 @@ describe("Equipamentos — Budget Divergence & Audit", () => {
     await waitFor(() => expect(screen.getByTestId("action-alterar_orcamento")).toBeInTheDocument());
     expect(screen.getByTestId("action-aprovar")).toBeInTheDocument();
     expect(screen.getByTestId("action-reprovar")).toBeInTheDocument();
+  });
+
+  it("no SaaS, PREPARE_QUOTES sem financeiro não mostra Aprovar nem Reprovar", async () => {
+    mockRuntime.saas = true;
+    mockPermissions.list = ["PREPARE_QUOTES"];
+    equipamentoVerificado.status = "AGUARDANDO_APROVACAO";
+    render(<Equipamentos />);
+    await waitFor(() => expect(screen.getByTestId("action-alterar_orcamento")).toBeInTheDocument());
+    expect(screen.queryByTestId("action-aprovar")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("action-reprovar")).not.toBeInTheDocument();
   });
 
   it("PREPARE_QUOTES não mostra Alterar Orçamento em APROVADO", async () => {
