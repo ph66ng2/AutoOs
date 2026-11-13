@@ -31,16 +31,20 @@ describe("ReleaseHighlightsDialog", () => {
     runtime.write.mockImplementation(async () => { runtime.savedVersion = runtime.version; });
   });
 
-  it("usa a versão real e preserva todos os textos da 0.6.2 no JSON", async () => {
-    runtime.version = "0.6.2";
+  it("usa a versão real e mostra os textos do JSON da 0.6.3", async () => {
+    runtime.version = "0.6.3";
     render(<ReleaseHighlightsDialog enabled />);
 
     expect(await screen.findByRole("dialog")).toBeInTheDocument();
-    expect(screen.getByText("Versão 0.6.2")).toBeInTheDocument();
+    expect(screen.getByText("Versão 0.6.3")).toBeInTheDocument();
     for (const text of [
-      "Portal mais claro e orçamento sem retrabalho", "Portal mais claro", "Orçamento sem negociação",
-      "Menu e orçamento de insumos mais claros", "Clientes e acesso ao portal",
-      "Como chegar no portal", "OS em PDF", "Correção em 10 min", "Conexão mais estável",
+      "Novidades do AutoOS",
+      "Confira o que mudou no AutoOS 0.6.3.",
+      "As novidades aparecem uma única vez por versão neste computador, mesmo ao fechar o app sem dispensar o aviso.",
+      "As próximas versões trazem um resumo das mudanças escrito pela equipe.",
+      "Agora dá para desligar os sons da interface em Perfil › Personalizar.",
+      "Ao ativar o perfil num computador ou usar \"Esqueci meu PIN\", o cursor já fica no campo do código.",
+      "Voltar aos perfis durante a animação do primeiro acesso não fecha mais a janela de perfis.",
     ]) expect(screen.getByText(text)).toBeInTheDocument();
     expect(runtime.getVersion).toHaveBeenCalled();
   });

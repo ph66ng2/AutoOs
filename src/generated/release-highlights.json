@@ -1,49 +1,29 @@
 {
-  "version": "0.6.2",
-  "title": "Portal mais claro e orçamento sem retrabalho",
-  "description": "AutoOS 0.6.2: o portal mostra como chegar, a OS em PDF e o orçamento em preparação. O menu de orçamento ficou sem repetição, e o app ficou mais estável na conexão com o banco.",
+  "version": "0.6.3",
+  "baseTag": "v0.6.2",
+  "head": "6c0abfab6ccfe2884e40ae0216192836b8ee8761",
+  "pullRequests": [
+    186,
+    193
+  ],
+  "title": "Novidades do AutoOS",
+  "description": "Confira o que mudou no AutoOS 0.6.3.",
   "highlights": [
     {
-      "icon": "MapPin",
-      "title": "Portal mais claro",
-      "description": "O cliente vê o botão \"Como chegar\" e baixa a OS em PDF. Enquanto o orçamento não é publicado, o portal mostra \"Orçamento em preparação\".",
-      "detail": "O endereço de retirada também aparece no link de status quando o equipamento está pronto."
+      "title": "As novidades aparecem uma única vez por versão neste computador, mesmo ao fechar o app sem dispensar o aviso."
     },
     {
-      "icon": "Clock",
-      "title": "Orçamento sem negociação",
-      "description": "Antes de recusar, o cliente vê o contato da equipe. O prazo para corrigir a resposta caiu de 15 para 10 minutos.",
-      "detail": "A equipe só aplica a resposta do portal depois desses 10 minutos."
+      "title": "As próximas versões trazem um resumo das mudanças escrito pela equipe."
     },
     {
-      "icon": "Package",
-      "title": "Menu e orçamento de insumos mais claros",
-      "description": "O menu de ações da OS ficou sem itens repetidos. Orçamento de insumos vencido ganha o selo \"Vencido\" e não pode ser aprovado.",
-      "detail": "Ao excluir uma peça que está em orçamentos em andamento, o app avisa onde ela é usada."
+      "title": "Agora dá para desligar os sons da interface em Perfil › Personalizar."
     },
     {
-      "icon": "Users",
-      "title": "Clientes e acesso ao portal",
-      "description": "A busca de clientes encontra pelo contato, e orçamentos pendentes podem ser enviados ao portal em lote.",
-      "detail": "Na OS, o bloco \"Acesso ao portal\" mostra login e contatos sem exibir senhas."
+      "title": "Ao ativar o perfil num computador ou usar \"Esqueci meu PIN\", o cursor já fica no campo do código."
+    },
+    {
+      "title": "Voltar aos perfis durante a animação do primeiro acesso não fecha mais a janela de perfis."
     }
   ],
-  "badges": [
-    {
-      "icon": "MapPin",
-      "label": "Como chegar no portal"
-    },
-    {
-      "icon": "FileText",
-      "label": "OS em PDF"
-    },
-    {
-      "icon": "Clock",
-      "label": "Correção em 10 min"
-    },
-    {
-      "icon": "Server",
-      "label": "Conexão mais estável"
-    }
-  ]
+  "badges": []
 }
