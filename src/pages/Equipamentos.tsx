@@ -1641,9 +1641,7 @@ export default function Equipamentos({ operationalProfile }: { operationalProfil
       description: decisaoInicial === "aprovar"
         ? "Informe o PIN para registrar a decisão do cliente sobre este orçamento."
         : "Informe o PIN para registrar a reprovação do orçamento pelo cliente.",
-      ...(IS_SAAS_BUILD
-        ? { permission: SENSITIVE_PERMISSIONS.FINANCIAL_ACTIONS }
-        : { anyPermission: [SENSITIVE_PERMISSIONS.FINANCIAL_ACTIONS, SENSITIVE_PERMISSIONS.PREPARE_QUOTES] }),
+      anyPermission: [SENSITIVE_PERMISSIONS.FINANCIAL_ACTIONS, SENSITIVE_PERMISSIONS.PREPARE_QUOTES],
     });
     if (!liberado) return;
 
@@ -2552,8 +2550,6 @@ export default function Equipamentos({ operationalProfile }: { operationalProfil
     const podeFinanceiro = hasPermission(SENSITIVE_PERMISSIONS.FINANCIAL_ACTIONS);
     const podeOrcamentoValores = podeFinanceiro
       || hasPermission(SENSITIVE_PERMISSIONS.PREPARE_QUOTES);
-    // SaaS: decisão/reabertura ainda exige FINANCIAL_ACTIONS no RPC; PREPARE_QUOTES só no desktop.
-    const podeDecidirOrcamento = IS_SAAS_BUILD ? podeFinanceiro : podeOrcamentoValores;
     const podeAlterarOrcamento = podeFinanceiro
       || (hasPermission(SENSITIVE_PERMISSIONS.PREPARE_QUOTES) && orcamentoEmElaboracao(eq.status));
     const podeExcluir = hasPermission(SENSITIVE_PERMISSIONS.DELETE_RECORDS);
@@ -2619,7 +2615,7 @@ export default function Equipamentos({ operationalProfile }: { operationalProfil
         overflow.push(acaoEditar, ...(podeExcluir ? [acaoExcluir] : []));
         break;
       case "AGUARDANDO_APROVACAO":
-        if (podeDecidirOrcamento) {
+        if (podeOrcamentoValores) {
           primary = {
             id: "aprovar",
             label: "Aprovar",
@@ -2719,7 +2715,7 @@ export default function Equipamentos({ operationalProfile }: { operationalProfil
         overflow.push(acaoEditar, ...(podeExcluir ? [acaoExcluir] : []));
         break;
       case "REPROVADO":
-        if (podeDecidirOrcamento) {
+        if (podeOrcamentoValores) {
           primary = {
             id: "reabrir_orcamento",
             label: "Reabrir Orçamento",
@@ -2743,7 +2739,7 @@ export default function Equipamentos({ operationalProfile }: { operationalProfil
         overflow.push(acaoEditar, ...(podeExcluir ? [acaoExcluir] : []));
         break;
       case "ORCAMENTO_VENCIDO":
-        if (podeDecidirOrcamento) {
+        if (podeOrcamentoValores) {
           primary = {
             id: "renovar_orcamento",
             label: "Renovar orçamento",

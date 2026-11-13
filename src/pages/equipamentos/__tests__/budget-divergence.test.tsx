@@ -1309,28 +1309,35 @@ describe("Equipamentos — Budget Divergence & Audit", () => {
     expect(screen.getByTestId("action-reprovar")).toBeInTheDocument();
   });
 
-  it("no SaaS, PREPARE_QUOTES sem financeiro não mostra Aprovar nem Reprovar", async () => {
+  it("no SaaS, PREPARE_QUOTES sem financeiro mostra Aprovar, Reprovar, Reabrir e Renovar", async () => {
     mockRuntime.saas = true;
     mockPermissions.list = ["PREPARE_QUOTES"];
     equipamentoVerificado.status = "AGUARDANDO_APROVACAO";
-    render(<Equipamentos />);
-    await waitFor(() => expect(screen.getByTestId("action-alterar_orcamento")).toBeInTheDocument());
-    expect(screen.queryByTestId("action-aprovar")).not.toBeInTheDocument();
-    expect(screen.queryByTestId("action-reprovar")).not.toBeInTheDocument();
-  });
+    const waiting = render(<Equipamentos />);
+    await waitFor(() => expect(screen.getByTestId("action-aprovar")).toBeInTheDocument());
+    expect(screen.getByTestId("action-reprovar")).toBeInTheDocument();
+    waiting.unmount();
 
-  it("no SaaS, PREPARE_QUOTES sem financeiro não mostra Reabrir nem Renovar", async () => {
-    mockRuntime.saas = true;
-    mockPermissions.list = ["PREPARE_QUOTES"];
     equipamentoVerificado.status = "REPROVADO";
-    const { unmount } = render(<Equipamentos />);
-    await waitFor(() => expect(screen.getByTestId("action-status")).toBeInTheDocument());
-    expect(screen.queryByTestId("action-reabrir_orcamento")).not.toBeInTheDocument();
-    unmount();
+    const reprovado = render(<Equipamentos />);
+    await waitFor(() => expect(screen.getByTestId("action-reabrir_orcamento")).toBeInTheDocument());
+    reprovado.unmount();
+
     equipamentoVerificado.status = "ORCAMENTO_VENCIDO";
     render(<Equipamentos />);
-    await waitFor(() => expect(screen.getByTestId("action-status")).toBeInTheDocument());
-    expect(screen.queryByTestId("action-renovar_orcamento")).not.toBeInTheDocument();
+    await waitFor(() => expect(screen.getByTestId("action-renovar_orcamento")).toBeInTheDocument());
+  });
+
+  it("no SaaS, PIN de Aprovar aceita PREPARE_QUOTES", async () => {
+    mockRuntime.saas = true;
+    mockPermissions.list = ["PREPARE_QUOTES"];
+    equipamentoVerificado.status = "AGUARDANDO_APROVACAO";
+    mockBuscarVerificacao.mockResolvedValue(makeVerificacao());
+    render(<Equipamentos />);
+    fireEvent.click(await screen.findByTestId("action-aprovar"));
+    await waitFor(() => expect(mockEnsureSensitiveAccess).toHaveBeenCalledWith(expect.objectContaining({
+      anyPermission: ["FINANCIAL_ACTIONS", "PREPARE_QUOTES"],
+    })));
   });
 
   it("PREPARE_QUOTES não mostra Alterar Orçamento em APROVADO", async () => {
