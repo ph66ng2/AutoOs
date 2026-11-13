@@ -60,6 +60,32 @@ export default {
           DEFAULT: "hsl(var(--sidebar))",
           border: "hsl(var(--sidebar-border))",
         },
+        "acc-soft": {
+          DEFAULT: "hsl(var(--acc-soft))",
+          foreground: "hsl(var(--acc-soft-foreground))",
+        },
+        track: "hsl(var(--track))",
+        ctl: "hsl(var(--ctl))",
+        "nav-active": {
+          DEFAULT: "hsl(var(--nav-active))",
+          foreground: "hsl(var(--nav-active-foreground))",
+        },
+        status: {
+          neutral: { DEFAULT: "hsl(var(--st-neutral))", bg: "hsl(var(--st-neutral-bg))" },
+          work: { DEFAULT: "hsl(var(--st-work))", bg: "hsl(var(--st-work-bg))" },
+          wait: { DEFAULT: "hsl(var(--st-wait))", bg: "hsl(var(--st-wait-bg))" },
+          ok: { DEFAULT: "hsl(var(--st-ok))", bg: "hsl(var(--st-ok-bg))" },
+          bad: { DEFAULT: "hsl(var(--st-bad))", bg: "hsl(var(--st-bad-bg))" },
+        },
+        chart: {
+          1: "hsl(var(--chart-1))",
+          2: "hsl(var(--chart-2))",
+          3: "hsl(var(--chart-3))",
+        },
+      },
+      fontFamily: {
+        sans: ["Manrope Variable", "Manrope", "Segoe UI", "system-ui", "sans-serif"],
+        mono: ["IBM Plex Mono", "ui-monospace", "Consolas", "monospace"],
       },
       borderRadius: {
         lg: "var(--radius)",
