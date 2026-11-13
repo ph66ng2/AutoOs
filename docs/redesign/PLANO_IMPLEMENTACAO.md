@@ -1,6 +1,6 @@
 # Plano de implementação do redesign (direção B)
 
-Este plano é para o agente que vai implementar o redesign do AutoOS. Leia inteiro antes de mexer em código. As regras do `AGENTS.md` e do `CLAUDE.md` continuam valendo e ganham de qualquer coisa escrita aqui.
+Este plano é para o agente que vai implementar o redesign do AutoOS. Leia antes o `ALVO.md` (o que o dono quer e o que já rejeitou) e depois este plano inteiro, antes de mexer em código. As regras do `AGENTS.md` e do `CLAUDE.md` continuam valendo e ganham de qualquer coisa escrita aqui.
 
 ## 1. Objetivo
 
@@ -10,11 +10,14 @@ Trocar a aparência do app interno (Tauri + React, branch `master`) pela direç�
 
 | O quê | Onde | Observação |
 |---|---|---|
-| Design System (tokens, 19 componentes, regras, capturas) | https://claude.ai/artifact/Anq1devqZurhUUPmurNof7 | Leia `project/README.md`, `project/tokens.json`, `project/components/bundle.css` e o `README.md` de cada componente. |
-| Canvas com todas as telas e modais, claro e escuro | https://claude.ai/artifact/8eViR9jqgzKn3cJ4U1Nj2E | Páginas Fundamentos, Entrada, Início, Atendimento, Balcão, Estoque, Finanças, Administração, Portal. |
+| Intenção, decisões e o que foi rejeitado | `docs/redesign/ALVO.md` | Comece por aqui. |
+| Todas as telas e modais, claro e escuro, em imagem | `docs/redesign/referencia/README.md` | Exportado do canvas; não precisa de acesso a nada. |
+| Tokens, classes e guia de cada componente | `docs/redesign/referencia/design-system/` | Cópia do Design System. |
+| Design System original | https://claude.ai/artifact/Anq1devqZurhUUPmurNof7 | Leia `project/README.md`, `project/tokens.json`, `project/components/bundle.css` e o `README.md` de cada componente. |
+| Canvas original | https://claude.ai/artifact/8eViR9jqgzKn3cJ4U1Nj2E | Páginas Fundamentos, Entrada, Início, Atendimento, Balcão, Estoque, Finanças, Administração, Portal. |
 | Comportamento | o código atual | Se o desenho e o código discordarem sobre **o que** acontece, o código vence. Pare e reporte. |
 
-Os dois links são privados. Um agente com a ferramenta Artifact na mesma conta consegue ler com `action: "read"`. Se você não conseguir abrir, pare e peça ao usuário para compartilhar. Não reconstrua o desenho de memória.
+Os dois links "original" da tabela são o desenho interativo, para quem tiver acesso; a cópia no repositório basta para o trabalho. Os links são privados. Um agente com a ferramenta Artifact na mesma conta consegue ler com `action: "read"`. Se você não conseguir abrir, pare e peça ao usuário para compartilhar. Não reconstrua o desenho de memória.
 
 As tabelas essenciais estão copiadas na seção 9 deste arquivo, para as fases 1 a 3 não dependerem dos links.
 
