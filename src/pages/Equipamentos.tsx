@@ -2552,6 +2552,8 @@ export default function Equipamentos({ operationalProfile }: { operationalProfil
     const podeFinanceiro = hasPermission(SENSITIVE_PERMISSIONS.FINANCIAL_ACTIONS);
     const podeOrcamentoValores = podeFinanceiro
       || hasPermission(SENSITIVE_PERMISSIONS.PREPARE_QUOTES);
+    // SaaS: decisão/reabertura ainda exige FINANCIAL_ACTIONS no RPC; PREPARE_QUOTES só no desktop.
+    const podeDecidirOrcamento = IS_SAAS_BUILD ? podeFinanceiro : podeOrcamentoValores;
     const podeAlterarOrcamento = podeFinanceiro
       || (hasPermission(SENSITIVE_PERMISSIONS.PREPARE_QUOTES) && orcamentoEmElaboracao(eq.status));
     const podeExcluir = hasPermission(SENSITIVE_PERMISSIONS.DELETE_RECORDS);
@@ -2617,7 +2619,7 @@ export default function Equipamentos({ operationalProfile }: { operationalProfil
         overflow.push(acaoEditar, ...(podeExcluir ? [acaoExcluir] : []));
         break;
       case "AGUARDANDO_APROVACAO":
-        if (IS_SAAS_BUILD ? podeFinanceiro : podeOrcamentoValores) {
+        if (podeDecidirOrcamento) {
           primary = {
             id: "aprovar",
             label: "Aprovar",
@@ -2717,7 +2719,7 @@ export default function Equipamentos({ operationalProfile }: { operationalProfil
         overflow.push(acaoEditar, ...(podeExcluir ? [acaoExcluir] : []));
         break;
       case "REPROVADO":
-        if (podeOrcamentoValores) {
+        if (podeDecidirOrcamento) {
           primary = {
             id: "reabrir_orcamento",
             label: "Reabrir Orçamento",
@@ -2741,7 +2743,7 @@ export default function Equipamentos({ operationalProfile }: { operationalProfil
         overflow.push(acaoEditar, ...(podeExcluir ? [acaoExcluir] : []));
         break;
       case "ORCAMENTO_VENCIDO":
-        if (podeOrcamentoValores) {
+        if (podeDecidirOrcamento) {
           primary = {
             id: "renovar_orcamento",
             label: "Renovar orçamento",

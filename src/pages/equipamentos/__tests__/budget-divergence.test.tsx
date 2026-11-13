@@ -1319,6 +1319,20 @@ describe("Equipamentos — Budget Divergence & Audit", () => {
     expect(screen.queryByTestId("action-reprovar")).not.toBeInTheDocument();
   });
 
+  it("no SaaS, PREPARE_QUOTES sem financeiro não mostra Reabrir nem Renovar", async () => {
+    mockRuntime.saas = true;
+    mockPermissions.list = ["PREPARE_QUOTES"];
+    equipamentoVerificado.status = "REPROVADO";
+    const { unmount } = render(<Equipamentos />);
+    await waitFor(() => expect(screen.getByTestId("action-status")).toBeInTheDocument());
+    expect(screen.queryByTestId("action-reabrir_orcamento")).not.toBeInTheDocument();
+    unmount();
+    equipamentoVerificado.status = "ORCAMENTO_VENCIDO";
+    render(<Equipamentos />);
+    await waitFor(() => expect(screen.getByTestId("action-status")).toBeInTheDocument());
+    expect(screen.queryByTestId("action-renovar_orcamento")).not.toBeInTheDocument();
+  });
+
   it("PREPARE_QUOTES não mostra Alterar Orçamento em APROVADO", async () => {
     mockPermissions.list = ["PREPARE_QUOTES"];
     equipamentoVerificado.status = "APROVADO";
