@@ -68,6 +68,7 @@ import type { TecnicoDisponivel } from "@/components/equipamentos/VerificacaoTec
 import { todayLocalIsoDate } from "@/lib/date-utils";
 import { canTransition, getTransitionError } from "@/lib/status-fsm";
 import {
+  SENSITIVE_PERMISSIONS,
   STATUS_LABELS,
   type Cliente,
   type ClienteContato,
@@ -1445,6 +1446,7 @@ function EquipmentDetail({ equipamento, operationalProfile }: { equipamento: Bal
     const permitted = await ensureSensitiveAccess({
       title: "Confirmar retirada",
       description: "Informe o PIN para marcar este equipamento como entregue.",
+      ...(IS_SAAS_BUILD ? { permission: SENSITIVE_PERMISSIONS.FINANCIAL_ACTIONS } : {}),
     });
     if (!permitted) return setError("A retirada não foi autorizada.");
     setBusy(true);

@@ -5,6 +5,7 @@ import { MemoryRouter, Route, Routes } from "react-router-dom";
 import Balcao from "@/pages/Balcao";
 import { CounterLayout } from "@/components/CounterLayout";
 
+const mockRuntime = vi.hoisted(() => ({ saas: false }));
 const db = vi.hoisted(() => ({
   buscarEquipamentosPorSerial: vi.fn(), criarEquipamento: vi.fn(), listarEquipamentos: vi.fn(),
   listarClientes: vi.fn(), listarProdutos: vi.fn(), atualizarStatusEquipamento: vi.fn(), buscarEquipamento: vi.fn(), salvarVerificacao: vi.fn(), abrirPainelImpressorasWindows: vi.fn(), listarImpressorasWindows: vi.fn(), imprimirTesteBmitag: vi.fn(),
@@ -13,6 +14,19 @@ const db = vi.hoisted(() => ({
 const emailService = vi.hoisted(() => ({ enviarOrdemEntrada: vi.fn() }));
 const ensureSensitiveAccess = vi.hoisted(() => vi.fn());
 
+vi.mock("@/lib/runtime-mode", () => ({
+  get IS_SAAS_BUILD() {
+    return mockRuntime.saas;
+  },
+}));
+vi.mock("@/lib/data/equipamentos-repository", () => ({
+  carregarRepositorioEquipamentos: async () => ({
+    listar: (...args: unknown[]) => db.listarEquipamentos(...args),
+    listarPorClienteId: () => db.listarEquipamentos(),
+    buscar: (id: unknown) => db.buscarEquipamento(id),
+    buscarPorSerial: (serial: string) => db.buscarEquipamentosPorSerial(serial),
+  }),
+}));
 vi.mock("@/lib/db", () => ({ db }));
 import { PdfService } from "@/lib/pdf-service";
 vi.mock("@/lib/email-service", () => ({ EmailService: emailService }));
@@ -39,6 +53,7 @@ describe("Modo Balcão", () => {
     Object.defineProperty(HTMLElement.prototype, "releasePointerCapture", { configurable: true, value: () => undefined });
     Object.defineProperty(HTMLElement.prototype, "scrollIntoView", { configurable: true, value: () => undefined });
     vi.clearAllMocks();
+    mockRuntime.saas = false;
     db.buscarEquipamentosPorSerial.mockResolvedValue([]);
     db.listarClienteContatos.mockResolvedValue([]);
     db.listarImpressorasWindows.mockResolvedValue([{ nome: "Zebra ZD220", padrao: true }]);
@@ -177,6 +192,21 @@ describe("Modo Balcão", () => {
     await user.click(screen.getByRole("button", { name: /marcar como entregue/i }));
     expect(await screen.findByRole("alert")).toHaveTextContent("não foi autorizada");
     expect(screen.getByText("Zebra ZD220")).toBeInTheDocument();
+    expect(db.atualizarStatusEquipamento).not.toHaveBeenCalled();
+  });
+
+  it("no SaaS, retirada exige financeiro e não grava se negado", async () => {
+    mockRuntime.saas = true;
+    db.listarEquipamentos.mockResolvedValue([{ id: 8, serial_number: "SN-8", marca: "Zebra", modelo: "ZD220", tipo: "Impressora", status: "PRONTO", data_entrada: "2026-09-01", atualizado_em: "token" }]);
+    ensureSensitiveAccess.mockImplementation(async ({ permission }) => !permission);
+    const user = userEvent.setup(); renderCounter();
+    await user.click(screen.getByRole("button", { name: /buscar equipamento/i }));
+    await user.type(screen.getByRole("textbox"), "SN-8");
+    await waitFor(() => expect(screen.getByText(/atendimento #8/i)).toBeInTheDocument());
+    await user.click(screen.getByText(/atendimento #8/i));
+    await user.click(screen.getByRole("button", { name: /marcar como entregue/i }));
+    await waitFor(() => expect(ensureSensitiveAccess).toHaveBeenCalledWith(expect.objectContaining({ permission: "FINANCIAL_ACTIONS" })));
+    expect(await screen.findByRole("alert")).toHaveTextContent("não foi autorizada");
     expect(db.atualizarStatusEquipamento).not.toHaveBeenCalled();
   });
 

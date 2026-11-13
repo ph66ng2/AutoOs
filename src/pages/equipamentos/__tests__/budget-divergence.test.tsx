@@ -96,6 +96,15 @@ vi.mock("@/hooks/useNotification", () => ({
   }),
 }));
 
+vi.mock("@/lib/data/equipamentos-operacoes-repository", () => ({
+  carregarRepositorioOperacoesEquipamento: async () => ({
+    getVerification: (...args: unknown[]) => mockBuscarVerificacao(...args),
+    analyzeQuoteAdjustment: (...args: unknown[]) => mockAnalisarAjusteOrcamento(...args),
+    changeStatus: (...args: unknown[]) => mockAtualizarStatusEquipamento(...args),
+    approveQuote: (...args: unknown[]) => mockAprovarOrcamento(...args),
+  }),
+}));
+
 vi.mock("@/lib/db", () => ({
   db: {
     listarProdutos: vi.fn().mockResolvedValue([]),
@@ -1641,6 +1650,19 @@ describe("Equipamentos — Budget Divergence & Audit", () => {
     await waitFor(() => expect(mockEnsureSensitiveAccess).toHaveBeenCalledWith(expect.objectContaining({ title: "Marcar equipamento como pronto" })));
     expect(mockEnsureSensitiveAccess.mock.calls[0][0]).not.toHaveProperty("permission");
     expect(mockEnsureSensitiveAccess.mock.calls[0][0]).not.toHaveProperty("anyPermission");
+  });
+
+  it("no SaaS, entrega comum exige financeiro e não grava se negado", async () => {
+    mockRuntime.saas = true;
+    mockPermissions.list = ["PREPARE_QUOTES"];
+    mockEnsureSensitiveAccess.mockImplementation(async ({ permission }) => !permission);
+    equipamentoVerificado.status = "PRONTO";
+    render(<Equipamentos />);
+    fireEvent.click(screen.getByTestId("action-registrar_entrega"));
+    await screen.findByRole("button", { name: /Confirmar/i });
+    await clicarConfirmarStatus();
+    await waitFor(() => expect(mockEnsureSensitiveAccess).toHaveBeenLastCalledWith(expect.objectContaining({ permission: "FINANCIAL_ACTIONS" })));
+    expect(mockAtualizarStatusEquipamento).not.toHaveBeenCalled();
   });
 
   it("entrega com exceção, inclusive valor final zero, exige financeiro e não grava se negado", async () => {
