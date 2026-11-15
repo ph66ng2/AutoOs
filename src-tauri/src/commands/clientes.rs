@@ -266,7 +266,8 @@ fn push_busca_no_cliente(query: &mut QueryBuilder<Postgres>, busca: &str) {
 }
 
 /// Grupo `( … )` com os campos de um contato (`ct`) que a busca alcança.
-fn push_busca_no_contato(query: &mut QueryBuilder<Postgres>, busca: &str) {
+/// Também usado pela busca de equipamentos.
+pub(crate) fn push_busca_no_contato(query: &mut QueryBuilder<Postgres>, busca: &str) {
     let pattern = format!("%{}%", busca);
     query
         .push("(ct.nome ILIKE ")
