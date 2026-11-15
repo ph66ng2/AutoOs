@@ -10,6 +10,27 @@ export const STATUS_OPTIONS = [
   ...Object.entries(STATUS_LABELS).map(([value, label]) => ({ value, label })),
 ];
 
+/** Chips do filtro da lista: "Todos" e os status na ordem do fluxo (desvios logo depois de onde acontecem). */
+const ORDEM_FILTRO_STATUS: StatusEquipamento[] = [
+  "RECEBIDO",
+  "EM_VERIFICACAO",
+  "VERIFICADO",
+  "AGUARDANDO_APROVACAO",
+  "APROVADO",
+  "EM_MANUTENCAO",
+  "AGUARDANDO_PECA",
+  "PRONTO",
+  "ENTREGUE",
+  "ORCAMENTO_VENCIDO",
+  "REPROVADO",
+  "ABANDONADO",
+];
+
+export const OPCOES_FILTRO_STATUS = [
+  { value: "TODOS", label: "Todos" },
+  ...ORDEM_FILTRO_STATUS.map((value) => ({ value, label: STATUS_LABELS[value] })),
+];
+
 export const TIPO_OPTIONS = [
   "Impressora de Código de Barra",
   "Coletor de Dados",

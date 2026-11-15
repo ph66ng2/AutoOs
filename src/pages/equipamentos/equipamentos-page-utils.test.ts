@@ -113,3 +113,12 @@ describe("retirada operacional", () => {
     expect(statusExigeAcessoSensivel("ABANDONADO")).toBe(true);
   });
 });
+
+describe("OPCOES_FILTRO_STATUS", () => {
+  it("começa em Todos e cobre cada status uma vez", async () => {
+    const { OPCOES_FILTRO_STATUS } = await import("./equipamentos-page-constants");
+    const { STATUS_EQUIPAMENTO } = await import("@/types");
+    expect(OPCOES_FILTRO_STATUS[0]).toEqual({ value: "TODOS", label: "Todos" });
+    expect(OPCOES_FILTRO_STATUS.slice(1).map((o) => o.value).sort()).toEqual(Object.values(STATUS_EQUIPAMENTO).sort());
+  });
+});

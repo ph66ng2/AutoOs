@@ -195,7 +195,7 @@ export function getStatusCorrecao(statusAtual: string): string[] {
   return correcoes;
 }
 
-const SECOES_ACOES_OS = ["Orçamento", "Corrigir um engano", "Equipamento"] as const;
+const SECOES_ACOES_OS = ["Neste status", "Orçamento", "Corrigir um engano", "Equipamento"] as const;
 
 const SECAO_POR_ACAO_OS: Record<string, (typeof SECOES_ACOES_OS)[number]> = {
   orcamento_pdf: "Orçamento",
@@ -212,9 +212,15 @@ export function secaoAcaoOs(id: string): string {
   return SECAO_POR_ACAO_OS[id] ?? "Equipamento";
 }
 
-/** Marca cada ação com a seção dela e ordena por seção, mantendo a ordem original dentro de cada uma. */
+/**
+ * Marca cada ação com a seção dela e ordena por seção, mantendo a ordem original dentro de cada uma.
+ * Ação que já chega com `group: "Neste status"` mantém essa seção (vem de acoesPorStatus).
+ */
 export function agruparAcoesOs<T extends { id: string; group?: string }>(acoes: T[]): T[] {
-  const comSecao = acoes.map((acao, indice) => ({ acao: { ...acao, group: secaoAcaoOs(acao.id) } as T, indice }));
+  const comSecao = acoes.map((acao, indice) => ({
+    acao: { ...acao, group: acao.group === "Neste status" ? acao.group : secaoAcaoOs(acao.id) } as T,
+    indice,
+  }));
   const ordemSecao = (secao: string) => SECOES_ACOES_OS.indexOf(secao as (typeof SECOES_ACOES_OS)[number]);
   return comSecao
     .sort((a, b) => ordemSecao(a.acao.group ?? "") - ordemSecao(b.acao.group ?? "") || a.indice - b.indice)

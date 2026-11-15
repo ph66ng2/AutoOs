@@ -1,5 +1,6 @@
 import { Fragment, useMemo, useState, type ReactNode } from "react"
-import { Menu } from "lucide-react"
+import { Menu, MoreHorizontal } from "lucide-react"
+import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 import {
   Select,
@@ -32,6 +33,13 @@ interface ActionPriorityRowProps {
   iconOnlySecondary?: boolean
   iconOnlyOverflowTrigger?: boolean
   wrap?: boolean
+  /**
+   * Forma AcaoDaLinha do DS (lista de equipamentos): botão principal de 176px em
+   * acc-soft, sem ícone, e ⋯ de 32px. A secundária, se houver, vai para o menu.
+   */
+  acaoDaLinha?: boolean
+  /** Título do menu ⋯ (ex.: "modelo · série"). */
+  menuTitulo?: string
 }
 
 export function ActionPriorityRow({
@@ -42,6 +50,8 @@ export function ActionPriorityRow({
   iconOnlySecondary = false,
   iconOnlyOverflowTrigger = false,
   wrap = false,
+  acaoDaLinha = false,
+  menuTitulo,
 }: ActionPriorityRowProps) {
   const [selectedOverflow, setSelectedOverflow] = useState<string>("")
 
@@ -61,13 +71,72 @@ export function ActionPriorityRow({
   }, [overflow])
 
   const renderOverflowItem = (action: PriorityAction) => (
-    <SelectItem key={action.id} value={action.id} disabled={action.disabled}>
+    <SelectItem
+      key={action.id}
+      value={action.id}
+      disabled={action.disabled}
+      className={acaoDaLinha ? "h-[34px] rounded-md py-0 pl-2.5 text-[13px] font-semibold" : undefined}
+    >
       <span className={`flex items-center gap-2 ${action.className || ""}`.trim()}>
-        {action.icon}
+        {!acaoDaLinha && action.icon}
         {action.label}
       </span>
     </SelectItem>
   )
+
+  if (acaoDaLinha) {
+    return (
+      <div className="ml-auto inline-flex items-center justify-end gap-2 whitespace-nowrap">
+        <Button
+          variant="ghost"
+          size="sm"
+          className={cn(
+            "h-8 w-[176px] justify-center bg-acc-soft px-3 text-[13px] font-semibold text-acc-soft-foreground hover:bg-acc-soft/70 hover:text-acc-soft-foreground",
+          )}
+          onClick={primary.onClick}
+          disabled={primary.disabled}
+          title={primary.label}
+          aria-label={primary.label}
+          aria-expanded={primary.ariaExpanded}
+        >
+          <span className="truncate">{primary.label}</span>
+        </Button>
+        {overflow.length > 0 && (
+          <Select
+            value={selectedOverflow}
+            onValueChange={(value) => {
+              setSelectedOverflow(value)
+              overflowById[value]?.onClick()
+              setTimeout(() => setSelectedOverflow(""), 0)
+            }}
+          >
+            <SelectTrigger
+              className="h-8 w-8 justify-center rounded-lg border-ctl bg-card px-0 [&>svg:last-child]:hidden"
+              title="Mais ações"
+              aria-label="Mais ações"
+            >
+              <MoreHorizontal className="h-4 w-4" />
+            </SelectTrigger>
+            <SelectContent className="max-h-[min(34rem,80vh)] w-[248px] rounded-2xl p-1.5 shadow-[0_12px_32px_rgba(0,0,0,0.18)]" align="end">
+              {menuTitulo && (
+                <div className="truncate px-2.5 pb-0.5 pt-1.5 text-xs font-extrabold text-foreground">{menuTitulo}</div>
+              )}
+              {(overflowGroups ?? [["", overflow] as [string, PriorityAction[]]]).map(([grupo, acoes]) => (
+                <SelectGroup key={grupo || "sem-grupo"}>
+                  {grupo && (
+                    <SelectLabel className="px-2.5 pb-1 pt-2 text-[11px] font-bold uppercase tracking-[0.06em] text-muted-foreground">
+                      {grupo}
+                    </SelectLabel>
+                  )}
+                  {acoes.map(renderOverflowItem)}
+                </SelectGroup>
+              ))}
+            </SelectContent>
+          </Select>
+        )}
+      </div>
+    )
+  }
 
   return (
     <div className={`ml-auto items-center justify-end gap-1 whitespace-nowrap ${wrap ? "flex w-full flex-wrap" : "inline-flex"}`}>

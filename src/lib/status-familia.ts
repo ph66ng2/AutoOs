@@ -35,6 +35,41 @@ export function statusFamilia(status: string): StatusFamilia {
   return FAMILIA_POR_STATUS[normalizeStatusKey(status)] ?? "neutral";
 }
 
+/** Cor cheia da família (traços da barra de etapas). */
+export const FAMILIA_COR_CHEIA: Record<StatusFamilia, string> = {
+  neutral: "bg-status-neutral",
+  work: "bg-status-work",
+  wait: "bg-status-wait",
+  ok: "bg-status-ok",
+  bad: "bg-status-bad",
+};
+
 export function statusFamiliaClasses(status: string): string {
   return FAMILIA_CLASSES[statusFamilia(status)];
+}
+
+/**
+ * Quantos dos 7 traços da barra compacta (lista de equipamentos) ficam preenchidos.
+ * Desvios param onde aconteceram: Aguardando peça na manutenção, Reprovado e
+ * Orçamento vencido no orçamento. Abandonado não mostra avanço.
+ */
+const ETAPA_COMPACTA: Record<string, number> = {
+  RECEBIDO: 1,
+  EM_VERIFICACAO: 2,
+  VERIFICADO: 3,
+  AGUARDANDO_APROVACAO: 4,
+  REPROVADO: 4,
+  ORCAMENTO_VENCIDO: 4,
+  APROVADO: 5,
+  EM_MANUTENCAO: 6,
+  AGUARDANDO_PECA: 6,
+  PRONTO: 7,
+  ENTREGUE: 7,
+  ABANDONADO: 0,
+};
+
+export const TOTAL_ETAPAS_COMPACTAS = 7;
+
+export function etapaCompacta(status: string): number {
+  return ETAPA_COMPACTA[normalizeStatusKey(status)] ?? 0;
 }

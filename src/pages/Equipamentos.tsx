@@ -36,7 +36,6 @@ import {
   X,
   Edit,
   Trash2,
-  Filter,
   RefreshCw,
   RotateCcw,
   MessageSquare,
@@ -155,7 +154,7 @@ import {
   EMAIL_POR_TECNICO,
   MARCA_EQUIPAMENTO_OPTIONS,
   STATUS_COM_ORCAMENTO,
-  STATUS_OPTIONS,
+  OPCOES_FILTRO_STATUS,
   TECNICOS_DISPONIVEIS,
   TIPO_OPTIONS,
 } from "@/pages/equipamentos/equipamentos-page-constants";
@@ -208,6 +207,8 @@ import { mensagemEnvioFalhouComEmailSalvo, saveRecipientAddress } from "@/lib/re
 import { totalPages } from "@/lib/pagination";
 import { acoesPorStatus, type AcaoStatus } from "@/lib/acoes-por-status";
 import { PageHeader } from "@/components/PageHeader";
+import { BarraDeEtapas } from "@/components/equipamentos/BarraDeEtapas";
+import { FiltroDeStatus } from "@/components/equipamentos/FiltroDeStatus";
 
 // O anel é a borda de um ::after dentro da célula. O box-shadow fica por baixo
 // do divisor colapsado e, na Ações sticky, o fundo branco cobre o topo.
@@ -2235,10 +2236,16 @@ export default function Equipamentos() {
           return { ...acaoCorrigirDecisao, id, label: rotulo };
       }
     };
+    // AcaoDaLinha: um botão visível por linha. A secundária vai para o ⋯ — "Status"
+    // abre a seção Equipamento; as outras (Reprovar) entram em "Neste status".
+    const nesteStatus = (acao: AcaoStatus): PriorityAction =>
+      acao.id === "status" ? criarAcao(acao) : { ...criarAcao(acao), className: undefined, group: "Neste status" };
     const primary: PriorityAction = criarAcao(acoes.principal);
-    const secondary: PriorityAction | undefined = acoes.secundaria ? criarAcao(acoes.secundaria) : undefined;
+    const secundaria = acoes.secundaria;
     const overflow: PriorityAction[] = [
-      ...acoes.nesteStatus.map(criarAcao),
+      ...(secundaria && secundaria.id !== "status" ? [nesteStatus(secundaria)] : []),
+      ...acoes.nesteStatus.map(nesteStatus),
+      ...(secundaria?.id === "status" ? [acaoStatus] : []),
       acaoEditar,
       ...(podeExcluir ? [acaoExcluir] : []),
     ];
@@ -2263,11 +2270,9 @@ export default function Equipamentos() {
     return (
       <ActionPriorityRow
         primary={primary}
-        iconOnlyPrimary={eq.status === "ENTREGUE" || eq.status === "ABANDONADO"}
-        secondary={secondary}
         overflow={agruparAcoesOs(overflow)}
-        iconOnlySecondary
-        iconOnlyOverflowTrigger
+        acaoDaLinha
+        menuTitulo={`${eq.marca} ${eq.modelo} · ${eq.serial_number}`}
       />
     );
   }
@@ -2401,37 +2406,6 @@ export default function Equipamentos() {
         </div>
       </PageHeader>
 
-      {/* Filtros */}
-      <Card>
-        <CardContent className="pt-6">
-          <div className="flex flex-col lg:flex-row gap-3">
-            <div className="relative flex-1">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-              <Input aria-label="Pesquisar equipamentos" placeholder="Série, patrimônio, equipamento, cliente ou CPF/CNPJ" value={busca} onChange={e => setBusca(e.target.value)} className="pl-9 pr-10" />
-              {busca && <Button type="button" variant="ghost" size="icon" aria-label="Limpar pesquisa" className="absolute right-0 top-0 h-full w-10" onClick={() => setBusca("")}><X className="h-4 w-4" /></Button>}
-            </div>
-            <Select value={statusFiltro} onValueChange={setStatusFiltro}>
-              <SelectTrigger aria-label="Filtrar equipamentos por status" className="w-full lg:w-48">
-                <Filter className="h-4 w-4 mr-2" /><SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {STATUS_OPTIONS.map(opt => (<SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>))}
-              </SelectContent>
-            </Select>
-            <Select value={ordenacao} onValueChange={(value: "ATUALIZACAO_RECENTE" | "CADASTRO_RECENTE") => setOrdenacao(value)}>
-              <SelectTrigger aria-label="Ordenar equipamentos" className="w-full lg:w-56">
-                <ArrowDownUp className="h-4 w-4 mr-2" /><SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="ATUALIZACAO_RECENTE">Alterados recentemente</SelectItem>
-                <SelectItem value="CADASTRO_RECENTE">Cadastros recentes</SelectItem>
-              </SelectContent>
-            </Select>
-            <Button variant="outline" size="icon" aria-label="Atualizar equipamentos" className="shrink-0" onClick={recarregar}><RefreshCw className="h-4 w-4" /></Button>
-          </div>
-        </CardContent>
-      </Card>
-
       {erroListaEquipamentos && (
         <ErrorAlert
           variant="error"
@@ -2442,9 +2416,34 @@ export default function Equipamentos() {
         />
       )}
 
-      {/* Tabela */}
-      <Card>
-        <CardContent className="pt-6">
+      {/* Lista: filtros, tabela e paginação num painel só */}
+      <Card className="rounded-2xl">
+        <CardContent className="space-y-4 p-5">
+          <FiltroDeStatus
+            rotulo="Filtrar equipamentos por status"
+            opcoes={OPCOES_FILTRO_STATUS}
+            valor={statusFiltro}
+            total={loading ? undefined : totalEquipamentos}
+            onChange={setStatusFiltro}
+          />
+          <div className="flex flex-col gap-3 lg:flex-row">
+            <div className="relative flex-1">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+              <Input aria-label="Pesquisar equipamentos" placeholder="Série, patrimônio, equipamento, cliente ou CPF/CNPJ" value={busca} onChange={e => setBusca(e.target.value)} className="h-10 bg-muted pl-9 pr-10" />
+              {busca && <Button type="button" variant="ghost" size="icon" aria-label="Limpar pesquisa" className="absolute right-0 top-0 h-full w-10" onClick={() => setBusca("")}><X className="h-4 w-4" /></Button>}
+            </div>
+            <Select value={ordenacao} onValueChange={(value: "ATUALIZACAO_RECENTE" | "CADASTRO_RECENTE") => setOrdenacao(value)}>
+              <SelectTrigger aria-label="Ordenar equipamentos" className="h-10 w-full lg:w-56">
+                <ArrowDownUp className="h-4 w-4 mr-2" /><SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="ATUALIZACAO_RECENTE">Alterados recentemente</SelectItem>
+                <SelectItem value="CADASTRO_RECENTE">Cadastros recentes</SelectItem>
+              </SelectContent>
+            </Select>
+            <Button variant="outline" size="icon" aria-label="Atualizar equipamentos" className="h-10 w-10 shrink-0" onClick={recarregar}><RefreshCw className="h-4 w-4" /></Button>
+          </div>
+
           {loading ? (
             <div className="flex items-center justify-center h-32"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary" /></div>
           ) : equipamentos.length === 0 ? (
@@ -2455,49 +2454,39 @@ export default function Equipamentos() {
             </div>
           ) : (
             <>
-              <PaginationControls
-                page={paginaEquipamentosExibida}
-                totalPages={totalPaginasEquipamentos}
-                onPageChange={setPaginaEquipamentos}
-                label="Paginação de equipamentos"
-              />
-              <div className="rounded-md border">
-                <Table className="min-w-[76rem] table-fixed border-separate border-spacing-0">
-                <TableHeader className="[&_tr]:!border-b-0 [&_th]:border-b">
+              <div className="overflow-hidden rounded-xl border">
+                <Table className="min-w-[64rem] table-fixed border-separate border-spacing-0">
+                <TableHeader className="bg-muted/60 [&_tr]:!border-b-0 [&_th]:h-10 [&_th]:border-b [&_th]:text-xs [&_th]:font-semibold">
                   <TableRow>
-                    <TableHead className="w-[8rem]">Nº Série</TableHead>
-                    <TableHead className="w-[14rem]">Equipamento</TableHead>
-                    <TableHead className="w-[10rem]">Cliente</TableHead>
-                    <TableHead className="w-[11rem]">Status</TableHead>
-                    <TableHead className="w-[7rem]">Entrada</TableHead>
-                    <TableHead className="w-[8rem]">Última alteração</TableHead>
-                    <TableHead className="sticky right-0 z-20 w-[18rem] min-w-[18rem] bg-card text-right">Ações</TableHead>
+                    <TableHead className="w-[13rem]">Equipamento</TableHead>
+                    <TableHead className="w-[11rem]">Cliente</TableHead>
+                    <TableHead className="w-[12rem]">Andamento</TableHead>
+                    <TableHead className="w-[6.5rem]">Entrada</TableHead>
+                    <TableHead className="w-[7rem] text-right">Orçamento</TableHead>
+                    <TableHead className="sticky right-0 z-20 w-[15.5rem] min-w-[15.5rem] bg-muted text-right">Próxima ação</TableHead>
                   </TableRow>
                 </TableHeader>
-                <TableBody className="[&_tr]:!border-b-0 [&_tr:last-child_td]:border-b-0">
+                <TableBody className="[&_tr]:!border-b-0 [&_tr:last-child_td]:border-b-0 [&_td]:py-2.5">
                   {equipamentosExibidos.map(eq => (
                     <TableRow
                       key={eq.id}
                       className="group cursor-pointer"
                       onClick={() => void abrirDetalhes(eq)}
                     >
-                      <TableCell className={`overflow-hidden font-mono font-medium ${EQUIPMENT_ROW_FOCUS_FIRST}`}>
-                        <span className="block truncate" title={eq.serial_number}>{eq.serial_number}</span>
-                      </TableCell>
-                      <TableCell className={`overflow-hidden ${EQUIPMENT_ROW_FOCUS_EDGE}`}>
+                      <TableCell className={`overflow-hidden ${EQUIPMENT_ROW_FOCUS_FIRST}`}>
                         <div className="min-w-0">
                           <button
                             type="button"
-                            className="equipment-row-open block w-full min-w-0 cursor-pointer truncate border-0 bg-transparent p-0 text-left font-medium text-inherit focus-visible:outline-none"
+                            className="equipment-row-open block w-full min-w-0 cursor-pointer truncate border-0 bg-transparent p-0 text-left font-semibold text-inherit focus-visible:outline-none"
                             aria-label={`Abrir detalhes de ${eq.marca} ${eq.modelo}`}
                             onClick={(event) => {
                               event.stopPropagation();
                               void abrirDetalhes(eq);
                             }}
                           >
-                            <span className="block truncate" title={`${eq.marca} ${eq.modelo}`}>{eq.marca} {eq.modelo}</span>
+                            <span className="block truncate" title={`${eq.marca} ${eq.modelo} · ${eq.tipo}`}>{eq.marca} {eq.modelo}</span>
                           </button>
-                          <p className="truncate text-xs text-muted-foreground" title={eq.tipo}>{eq.tipo}</p>
+                          <p className="truncate font-mono text-xs text-muted-foreground" title={eq.serial_number}>{eq.serial_number}</p>
                         </div>
                       </TableCell>
                       <TableCell className={`overflow-hidden ${EQUIPMENT_ROW_FOCUS_EDGE}`}>
@@ -2509,14 +2498,11 @@ export default function Equipamentos() {
                         ) : <span className="text-muted-foreground">—</span>}
                       </TableCell>
                       <TableCell className={`overflow-hidden ${EQUIPMENT_ROW_FOCUS_EDGE}`}>
-                        <div className="flex flex-wrap items-center gap-2">
-                          <StatusBadge status={eq.status} />
-                          {(eq.status === "AGUARDANDO_APROVACAO" || eq.status === "ORCAMENTO_VENCIDO") &&
-                            eq.valor_orcamento != null && eq.valor_orcamento > 0 && (
-                              <div className="inline-flex max-w-full items-center truncate rounded-full border border-status-wait/30 bg-status-wait-bg px-2 py-0.5 text-xs font-medium text-status-wait">
-                                Orçamento: {formatCurrency(eq.valor_orcamento)}
-                              </div>
-                            )}
+                        <div className="min-w-0 space-y-1.5">
+                          <span className="block truncate text-sm font-medium">
+                            {STATUS_LABELS[eq.status as StatusEquipamento] || eq.status}
+                          </span>
+                          <BarraDeEtapas status={eq.status} />
                           {eq.status === "AGUARDANDO_APROVACAO" &&
                             (eq.resposta_cliente === "APROVAR" || eq.resposta_cliente === "RECUSAR") && (
                               <div className="inline-flex max-w-full items-center truncate rounded-full border border-status-work/30 bg-status-work-bg px-2 py-0.5 text-xs font-medium text-status-work">
@@ -2529,14 +2515,14 @@ export default function Equipamentos() {
                             )}
                         </div>
                       </TableCell>
-                      <TableCell className={`overflow-hidden text-sm text-muted-foreground ${EQUIPMENT_ROW_FOCUS_EDGE}`}>
-                        <span className="block truncate">{formatDatePtBr(eq.data_entrada)}</span>
+                      <TableCell className={`overflow-hidden text-sm text-muted-foreground tabular-nums ${EQUIPMENT_ROW_FOCUS_EDGE}`}>
+                        <span className="block truncate" title={`Última alteração: ${formatDatePtBr(eq.atualizado_em || eq.criado_em)}`}>{formatDatePtBr(eq.data_entrada)}</span>
                       </TableCell>
-                      <TableCell className={`overflow-hidden text-sm text-muted-foreground ${EQUIPMENT_ROW_FOCUS_EDGE}`}>
-                        <span className="block truncate">{formatDatePtBr(eq.atualizado_em || eq.criado_em)}</span>
+                      <TableCell className={`overflow-hidden text-right text-sm font-semibold tabular-nums ${EQUIPMENT_ROW_FOCUS_EDGE}`}>
+                        {eq.valor_orcamento != null && eq.valor_orcamento > 0 ? formatCurrency(eq.valor_orcamento) : <span className="font-normal text-muted-foreground">—</span>}
                       </TableCell>
                       <TableCell
-                        className={`sticky right-0 z-10 w-[18rem] min-w-[18rem] bg-card text-right group-hover:bg-muted/50 ${EQUIPMENT_ROW_FOCUS_LAST}`}
+                        className={`sticky right-0 z-10 w-[15.5rem] min-w-[15.5rem] bg-card text-right group-hover:bg-muted/50 ${EQUIPMENT_ROW_FOCUS_LAST}`}
                         onClick={(event) => event.stopPropagation()}
                         onKeyDown={(event) => event.stopPropagation()}
                       >
@@ -2549,6 +2535,14 @@ export default function Equipamentos() {
                 </TableBody>
                 </Table>
               </div>
+              <PaginationControls
+                page={paginaEquipamentosExibida}
+                totalPages={totalPaginasEquipamentos}
+                onPageChange={setPaginaEquipamentos}
+                label="Paginação de equipamentos"
+                totalItems={totalEquipamentos}
+                className="pb-0"
+              />
             </>
           )}
         </CardContent>
