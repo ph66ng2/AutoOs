@@ -42,6 +42,7 @@ O AutoOS é o sistema de uma assistência técnica: recepção, verificação, o
 - Detalhes da OS e Orçamento de insumos são páginas, não modais.
 - Modais em três larguras e sete formatos (`Modal`). Ação principal à direita.
 - Barra de rolagem fina, trilho transparente, alça em `scroll-thumb`.
+- Notificações: sino na barra do topo, à direita, com contador em `acc`; o painel (`Notificacoes`) junta portal e erros. Avisos rápidos (`AvisoRapido`) no canto superior direito, com a cor só no ícone.
 
 ## Temas
 
