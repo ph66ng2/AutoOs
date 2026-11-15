@@ -36,6 +36,14 @@ Menu lateral com o perfil no pé.
 
 Tema escuro: [04-menu-lateral-escuro.webp](telas/01-fundamentos/04-menu-lateral-escuro.webp)
 
+### Notificações
+
+Sino na barra do topo, painel com abas Todos, Erros e Portal do Cliente, histórico, estado vazio e avisos rápidos. Mesmos textos e regras de hoje (`PortalAlertas.tsx`, `useNotification.ts`). A cor fica só no ícone: sem faixa lateral no item e sem fundo colorido no aviso.
+
+![notificacoes, tema claro](telas/01-fundamentos/05-notificacoes-claro.webp)
+
+Tema escuro: [05-notificacoes-escuro.webp](telas/01-fundamentos/05-notificacoes-escuro.webp)
+
 ## Entrada (PIN e primeiro acesso)
 
 ### Entrar com pin

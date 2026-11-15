@@ -185,6 +185,26 @@ Cada fase abaixo vira um PR (ou mais). Rode o `fatiador` uma vez no início de c
 - Equipe e acessos, e Configurações.
 - Entrar e Primeiro acesso: mantenha o `PinLock` e a animação dele.
 
+**Fase N: Notificações (acrescentada depois da fase 6; pode entrar em qualquer ponto após a fase 2).**
+
+Referência: `referencia/telas/01-fundamentos/05-notificacoes-*` e os componentes `Notificacoes` e `AvisoRapido` em `referencia/design-system/COMPONENTES.md`. Função, textos, polling, regra de leitura e quando avisar ficam como estão.
+
+- **N.1 `src/App.tsx`: avisos rápidos sem cor de fundo.**
+  - Tire `richColors` dos dois `<Toaster>`.
+  - Dê ao aviso o fundo `card`, a borda `border` e a sombra do menu, com `toastOptions.classNames`, como já faz `src/components/ui/sonner.tsx`.
+  - Mantenha posição, `offset`, `visibleToasts`, `closeButton` e `duration`.
+  - Pronto quando `grep -c richColors src/App.tsx` dá 0 e lint, testes e E2E passam.
+- **N.2 `src/components/PortalAlertas.tsx`, `visualDoAlerta`: cor só no ícone.**
+  - O campo `toast` de cada família deixa de pintar fundo e borda e pinta só o ícone, por exemplo `[&_[data-icon]]:!text-status-ok`. Ele precisa continuar contendo o nome da família, porque `PortalAlertas.test.tsx` confere `status-ok`.
+  - O campo `borda` deixa de existir.
+  - Pronto quando `grep -c "border-l-" src/components/PortalAlertas.tsx` dá 0 e os testes passam sem edição.
+- **N.3 `src/components/PortalAlertas.tsx`, painel, itens e sino.**
+  - Itens sem `border-l-4` e sem caixa própria: lista com divisor `border-t` entre os itens e ícone de 32px com raio 10px.
+  - Não lido: título em `font-extrabold` e ponto `bg-primary` de 8px ao lado da hora. Lido: título em `font-semibold` e opacidade de 78%.
+  - Painel com `rounded-2xl`, título "Notificações" em 16px e filtro Não lidas/Histórico no estilo segmentado.
+  - Contador do sino em `bg-primary text-primary-foreground`.
+  - Pronto quando lint, testes e E2E passam sem edição de teste, com capturas do painel nos dois temas no PR.
+
 **Fase 9: Portal do Cliente** (`src/public-status/`, build separado com `npm run build:public-status`).
 - Trocar `public-status.css` e `portal-orcamento.css` pelos tokens.
 - No celular, as respostas ao orçamento abrem como painel que sobe do rodapé.

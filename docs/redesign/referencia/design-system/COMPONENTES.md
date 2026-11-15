@@ -553,3 +553,84 @@ O modal do celular e do portal: sobe do rodapé, com alça, ocupando a largura.
 ```
 
 </details>
+
+## Notificacoes
+
+Sino na barra do topo, à direita, com o contador de não lidas, e o painel que abre embaixo dele: respostas do Portal do Cliente e erros do app numa lista só.
+
+
+**Estrutura (a de hoje, em `PortalAlertas.tsx`)**
+- Abas: Todos, Erros (erros do app e alertas do portal que pedem ação), Portal do Cliente. Contador em cada aba; o de Erros em `st-bad`.
+- Filtro Não lidas / Histórico e "Marcar todas como lidas".
+- Item: ícone, título, hora relativa ("há 3 min", "ontem 17:40"), detalhe em até 3 linhas, origem (PORTAL ou AUTOOS) e ações em texto: "Abrir atendimento", "Marcar como lido", "Copiar relatório". Lido mostra "Lido por Marina há 2 h".
+- Rodapé (fora da aba Erros): "Portal: “confirma às…” significa que o cliente ainda pode desfazer. Só inicie o serviço depois."
+- Vazio: "Nenhuma notificação nova." / "Nenhum erro novo." / "Nada registrado." no histórico.
+
+
+**Cor, pela família de significado** (a mesma no item e no aviso rápido):
+
+| Aviso do portal | Família | Ícone |
+|---|---|---|
+| Aceite ou recusa recebida — confirma às … | `work` (esperando o prazo) | ampulheta |
+| Orçamento aprovado pelo cliente | `ok` | selo com check |
+| Orçamento recusado pelo cliente, Cliente desfez a resposta | `neutral` | x, desfazer |
+| Cliente pediu correção | `wait` | seta de refazer |
+| Cliente quer negociar, Nova dúvida do cliente | `conversa` (`acc-soft`) | balões |
+| Falha ao efetivar, Código de acesso não entregue, erro do app | `bad` | alerta |
+
+
+**Regras**
+- A cor fica só no ícone. **Sem faixa colorida na lateral do item** (o código de hoje tem `border-l-4`; sai).
+- Não lida: título em 800 e ponto `acc` ao lado da hora. Lida: título em 600 e item a 78% de opacidade.
+- Contador do sino em `acc`, não em vermelho: conta tudo que não foi lido, não só problema.
+- Largura 432px, até 75% da altura da tela, `radius-xl`, `shadow-menu`. Fecha com Esc ou clique fora. Abrir o painel recolhe os avisos rápidos que já estão nele.
+
+
+**O que você fornece:** a lista de itens com tipo, título, detalhe, hora, lido por/quando e o vínculo com o atendimento.
+
+<details><summary>Marcação de exemplo</summary>
+
+```html
+<div class="ao" style="padding:20px;background:var(--bg);display:flex;flex-direction:column;align-items:flex-end;gap:8px;max-width:520px">
+ <button class="ao-sino" aria-label="Notificações, 3 não lidas" aria-expanded="true"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg><b>3</b></button>
+ <div class="ao-notif" role="dialog" aria-label="Notificações">
+  <header><h2>Notificações</h2><button class="ao-btn ao-btn--link" aria-label="Fechar notificações"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"/></svg></button></header>
+  <div role="tablist" aria-label="Tipo de notificação"><button role="tab" aria-selected="true">Todos<b>3</b></button><button role="tab" aria-selected="false">Erros<b class="is-erro">1</b></button><button role="tab" aria-selected="false">Portal do Cliente<b>2</b></button></div>
+  <div style="padding:10px 16px;display:flex;justify-content:space-between;align-items:center"><div class="ao-seg" style="padding:3px"><button aria-selected="true" style="height:28px;padding:0 12px">Não lidas</button><button aria-selected="false" style="height:28px;padding:0 12px">Histórico</button></div><button class="ao-btn ao-btn--link" style="height:28px;font-size:13px">Marcar todas como lidas</button></div>
+  <article class="ao-item"><span class="ao-ico ao-ico--work"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 22h14M5 2h14"/><path d="M17 22v-4.2a2 2 0 0 0-.6-1.4L12 12l-4.4 4.4a2 2 0 0 0-.6 1.4V22"/><path d="M7 2v4.2a2 2 0 0 0 .6 1.4L12 12l4.4-4.4a2 2 0 0 0 .6-1.4V2"/></svg></span><div style="flex:1;min-width:0"><div style="display:flex;justify-content:space-between;gap:8px;align-items:baseline"><h3>Aceite recebido — confirma às 08:50</h3><span class="ao-muted" style="font-size:12px;display:flex;gap:6px;align-items:center;flex:none">há 3 min<i class="ponto"></i></span></div><p>OS214-2203 · Argox OS-214 Plus · R$ 480,00 · Lúcia Costa</p><div class="meta"><small>PORTAL</small><button class="ao-btn ao-btn--link" style="height:auto;padding:0;font-size:13px">Abrir atendimento</button><span class="ao-muted">Marcar como lido</span></div></div></article>
+  <article class="ao-item"><span class="ao-ico ao-ico--wait"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg></span><div style="flex:1;min-width:0"><div style="display:flex;justify-content:space-between;gap:8px;align-items:baseline"><h3>Cliente pediu correção</h3><span class="ao-muted" style="font-size:12px;display:flex;gap:6px;align-items:center;flex:none">há 22 min<i class="ponto"></i></span></div><p>GK420-3310 · Zebra GK420t · Sônia Reis
+“O rolete já foi trocado no mês passado.”</p><div class="meta"><small>PORTAL</small><button class="ao-btn ao-btn--link" style="height:auto;padding:0;font-size:13px">Abrir atendimento</button><span class="ao-muted">Marcar como lido</span></div></div></article>
+  <article class="ao-item"><span class="ao-ico ao-ico--bad"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 8v4.5M12 16h.01"/></svg></span><div style="flex:1;min-width:0"><div style="display:flex;justify-content:space-between;gap:8px;align-items:baseline"><h3>Clientes — Salvar cliente</h3><span class="ao-muted" style="font-size:12px;display:flex;gap:6px;align-items:center;flex:none">há 2 h<i class="ponto"></i></span></div><p>Já existe um cliente com este CPF/CNPJ.</p><p class="ao-serial" style="color:var(--ink)">AUTOOS:23505:clientes_documento · ref 7f3a2c19</p><div class="meta"><small>AUTOOS</small><button class="ao-btn ao-btn--link" style="height:auto;padding:0;font-size:13px">Copiar relatório</button><span class="ao-muted">Marcar como lido</span></div></div></article>
+  <footer>Portal: “confirma às…” significa que o cliente ainda pode desfazer. Só inicie o serviço depois.</footer>
+ </div>
+</div>
+```
+
+</details>
+
+## AvisoRapido
+
+Aviso que aparece e some no canto superior direito (o "toast", biblioteca sonner), para confirmar uma ação ou avisar de algo que chegou.
+
+
+**Regras**
+- Posição: canto superior direito, abaixo da barra do topo; no máximo 3 de cada vez.
+- Fundo `surface`, borda `line`, `shadow-menu`. A cor da família fica só no ícone de 28px. **Sem fundo colorido**: tirar o `richColors` do `<Toaster>` em `App.tsx`.
+- Duração: 5 s; avisos do portal 10 s, com o botão "Ver" (abre o atendimento e conta como lido).
+- Erro (`notificarErro`): fica até alguém fechar, tem "Copiar detalhes" e é guardado em Sino › Erros.
+- Texto curto e no passado para o que deu certo ("Equipamento salvo"); para falha, o que fazer ("Não foi possível copiar. Abra o sino > Erros e copie de lá.").
+
+
+**O que você fornece:** título, descrição opcional, família e uma ação opcional.
+
+<details><summary>Marcação de exemplo</summary>
+
+```html
+<div class="ao" style="padding:20px;background:var(--bg);display:flex;flex-direction:column;gap:10px">
+ <div class="ao-toast" role="status"><span class="ao-ico ao-ico--work"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 22h14M5 2h14"/><path d="M17 22v-4.2a2 2 0 0 0-.6-1.4L12 12l-4.4 4.4a2 2 0 0 0-.6 1.4V22"/><path d="M7 2v4.2a2 2 0 0 0 .6 1.4L12 12l4.4-4.4a2 2 0 0 0 .6-1.4V2"/></svg></span><span style="flex:1;min-width:0"><strong>Aceite recebido — confirma às 08:50</strong><span>OS214-2203 · Argox OS-214 Plus · R$ 480,00</span></span><button class="ao-btn ao-btn--sm ao-btn--soft">Ver</button></div>
+ <div class="ao-toast" role="status"><span class="ao-ico ao-ico--ok"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="m8.5 12 2.5 2.5 4.5-5"/></svg></span><span style="flex:1;min-width:0"><strong>Equipamento salvo</strong></span></div>
+ <div class="ao-toast" role="alert"><span class="ao-ico ao-ico--bad"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 8v4.5M12 16h.01"/></svg></span><span style="flex:1;min-width:0"><strong>Clientes — Salvar cliente</strong><span>Já existe um cliente com este CPF/CNPJ.</span></span><button class="ao-btn ao-btn--sm ao-btn--soft">Copiar detalhes</button></div>
+</div>
+```
+
+</details>

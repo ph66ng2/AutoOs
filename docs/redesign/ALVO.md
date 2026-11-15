@@ -72,6 +72,17 @@ Cada linha é algo que o dono pediu ou aprovou. Onde diz **rejeitado**, foi test
 
 17. **Toda tela e todo modal tem versão clara e escura, com os mesmos elementos.** O escuro é escuro de verdade (fundo `#0a0c10`), não um cinza médio. Barras de rolagem acompanham o tema.
 
+### Notificações
+
+20. **Sino, painel e avisos rápidos seguem a folha "Notificações"** (`referencia/telas/01-fundamentos/05-notificacoes-*`). Mesmas abas, filtros, textos e regra de leitura de hoje. Muda o visual:
+    - a cor da família fica só no ícone;
+    - sai a faixa colorida na lateral do item;
+    - sai o fundo colorido do aviso rápido (o `richColors` do sonner);
+    - o contador do sino vai para petróleo, porque conta tudo o que não foi lido, não só problema;
+    - item não lido tem título em negrito e um ponto petróleo.
+
+    Este item foi acrescentado depois: no começo, as notificações ficaram fora do desenho.
+
 ### Produto
 
 18. **Função igual.** O redesign muda a aparência e, às vezes, o caminho (itens 8 a 10). Não muda regra, permissão, auditoria, PIN, confirmação ou texto de ação.
@@ -112,6 +123,7 @@ Abra a tela implementada ao lado da imagem em `referencia/telas/` e confira:
 - [ ] Mesmos campos, botões e textos de ação que o app tinha antes.
 - [ ] Os dois temas iguais em estrutura; o escuro escuro de verdade.
 - [ ] Nada em R$ no Início.
+- [ ] Notificações e avisos rápidos com a cor só no ícone, sem faixa lateral e sem fundo colorido.
 - [ ] Testes existentes passando sem edição.
 - [ ] Em caso de dúvida entre a imagem e o código, o comportamento do código venceu e a diferença está anotada no PR.
 
