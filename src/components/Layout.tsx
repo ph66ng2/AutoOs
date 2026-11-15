@@ -108,7 +108,11 @@ export function Layout() {
   const [mobileOpen, setMobileOpen] = useState(false);
   const collapsed = desktopCollapsed && !mobileOpen;
   const { status, lockSensitiveAccess, connectionUnavailable } = useSensitiveAccess();
-  const activeProfile = status?.profiles.find((profile) => profile.id === status.active_profile_id) ?? null;
+  // A lista de perfis pode não trazer o perfil da sessão; o nome da sessão basta para o cartão.
+  const activeProfile = status?.profiles.find((profile) => profile.id === status.active_profile_id)
+    ?? (status?.active_profile_id != null
+      ? { id: status.active_profile_id, nome: status.active_profile_name || "Perfil ativo", avatar_icone: null, avatar_cor: null, tema: null }
+      : null);
   const activeLook = activeProfile ? profileAppearance(activeProfile) : null;
   const sessaoAtiva = Boolean(status?.pin_configured && status.unlocked);
   // O selo só aparece quando há algo fora do normal (sem banco, sem perfil, sem PIN).
