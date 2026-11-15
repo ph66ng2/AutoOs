@@ -190,6 +190,59 @@ async fn main() -> Result<()> {
     .await
     .map_err(|error| anyhow!(error))?;
 
+    // A busca de equipamentos alcança os contatos: o responsável da OS (por e-mail,
+    // que não fica copiado na OS) e qualquer outro contato ativo do cliente.
+    let outro_contato = contatos::criar_cliente_contato(ClienteContatoInput {
+        empresa_id,
+        cliente_id: cliente.id,
+        nome: format!("{} Contato Financeiro", prefix),
+        email: None,
+        telefone: Some("21 97654-3210".to_string()),
+        atualizado_em: None,
+        preservar_identidade_portal: false,
+    })
+    .await
+    .map_err(|error| anyhow!(error))?;
+    let mut busca_connection = pool.acquire().await?;
+    for busca in [
+        format!("{} Contato Financeiro", prefix),
+        format!("{}-contato@example.test", prefix.to_lowercase()),
+        "97654-3210".to_string(),
+    ] {
+        let encontrados = equipamentos::query_equipment_page_on_connection(
+            &mut busca_connection,
+            empresa_id,
+            Some(0),
+            Some(&busca),
+            None,
+            None,
+            equipamentos::UI_PAGE_SIZE,
+        )
+        .await
+        .map_err(|error| anyhow!(error))?;
+        if !encontrados.items.iter().any(|item| item.id == equipamento.id) {
+            return Err(anyhow!("busca de equipamentos por contato não encontrou a OS: {busca}"));
+        }
+    }
+    contatos::inativar_cliente_contato(outro_contato.id, empresa_id)
+        .await
+        .map_err(|error| anyhow!(error))?;
+    let sem_inativo = equipamentos::query_equipment_page_on_connection(
+        &mut busca_connection,
+        empresa_id,
+        Some(0),
+        Some(&format!("{} Contato Financeiro", prefix)),
+        None,
+        None,
+        equipamentos::UI_PAGE_SIZE,
+    )
+    .await
+    .map_err(|error| anyhow!(error))?;
+    if sem_inativo.items.iter().any(|item| item.id == equipamento.id) {
+        return Err(anyhow!("contato inativo que não é o responsável não deveria achar a OS"));
+    }
+    drop(busca_connection);
+
     // A substituição usa os IDs carregados como compare-and-swap: uma edição
     // desatualizada não deve apagar as fotos gravadas desde o snapshot.
     let seed_image = equipamento_imagens::adicionar_imagem_equipamento_raw(

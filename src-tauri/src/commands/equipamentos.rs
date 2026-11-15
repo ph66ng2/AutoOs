@@ -151,6 +151,17 @@ fn add_equipment_filters(
                 .push_bind(format!("%{}%", document_digits));
         }
         query.push("))");
+        // Contato: o responsável da OS (mesmo inativo, porque continua ligado a ela) e
+        // qualquer contato ativo do cliente, como na busca de clientes.
+        query.push(
+            " OR EXISTS (SELECT 1 FROM cliente_contatos ct
+               WHERE ct.empresa_id = equipamentos.empresa_id
+                 AND (ct.id = equipamentos.responsavel_contato_id
+                      OR (ct.cliente_id = equipamentos.cliente_id AND ct.ativo = true))
+                 AND ",
+        );
+        super::clientes::push_busca_no_contato(query, busca);
+        query.push(")");
         query.push(")");
     }
 
