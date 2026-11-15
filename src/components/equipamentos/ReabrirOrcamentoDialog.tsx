@@ -22,7 +22,7 @@ export function ReabrirOrcamentoDialog({ open, onOpenChange, onCorrigirEngano, o
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-md">
+      <DialogContent tamanho="m">
         <DialogHeader>
           <DialogTitle>Reabrir orçamento</DialogTitle>
           <DialogDescription>Escolha o que aconteceu com a reprovação.</DialogDescription>

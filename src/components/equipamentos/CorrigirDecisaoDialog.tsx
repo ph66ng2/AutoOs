@@ -95,7 +95,7 @@ export function CorrigirDecisaoDialog({ equipamento, open, onOpenChange, onCorri
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-xl">
+      <DialogContent tamanho="m" className="max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Corrigir decisão do orçamento</DialogTitle>
           <DialogDescription>

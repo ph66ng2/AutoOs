@@ -35,7 +35,7 @@ export function EscolhaAjusteOrcamentoDialog({ open, variante, analise, salvando
     const aprovou = analise.respostaPendente?.decisao === "APROVAR";
     return (
       <Dialog open={open} onOpenChange={(aberto) => { if (!aberto) onCancelar(); }}>
-        <DialogContent className="sm:max-w-lg">
+        <DialogContent tamanho="m">
           <DialogHeader>
             <DialogTitle>O cliente já respondeu este orçamento</DialogTitle>
             <DialogDescription>
@@ -63,7 +63,7 @@ export function EscolhaAjusteOrcamentoDialog({ open, variante, analise, salvando
 
   return (
     <Dialog open={open} onOpenChange={(aberto) => { if (!aberto) onCancelar(); }}>
-      <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-lg">
+      <DialogContent tamanho="m" className="max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Este orçamento já foi aprovado</DialogTitle>
           <DialogDescription>Como o cliente deve ficar sabendo desta alteração?</DialogDescription>

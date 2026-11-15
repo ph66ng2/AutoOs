@@ -3517,7 +3517,7 @@ export default function Equipamentos() {
       </Dialog>
 
       <Dialog open={selecaoServicosOpen} onOpenChange={setSelecaoServicosOpen}>
-        <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-xl">
+        <DialogContent tamanho="m" className="max-h-[90vh] overflow-y-auto">
           <DialogHeader><DialogTitle>Decisão do cliente sobre o orçamento</DialogTitle><DialogDescription>Registre a decisão do cliente antes de movimentar o estoque.</DialogDescription></DialogHeader>
           <div className="space-y-4">
             {servicosAprovacao.length === 0 ? (

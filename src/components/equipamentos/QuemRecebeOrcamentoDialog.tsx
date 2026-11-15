@@ -229,7 +229,7 @@ export function QuemRecebeOrcamentoDialog({
 
   return (
     <Dialog open={open} onOpenChange={(aberto) => { if (!aberto) fechar(); }}>
-      <DialogContent className="sm:max-w-md">
+      <DialogContent tamanho="m">
         <DialogHeader>
           <DialogTitle>Quem recebe o orçamento?</DialogTitle>
           <DialogDescription>

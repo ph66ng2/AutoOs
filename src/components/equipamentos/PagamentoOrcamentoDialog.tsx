@@ -50,7 +50,7 @@ export function PagamentoOrcamentoDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-md">
+      <DialogContent tamanho="m">
         <DialogHeader>
           <DialogTitle>Forma de pagamento da aprovação</DialogTitle>
           <DialogDescription>Escolha a forma que será registrada junto com a aprovação do orçamento.</DialogDescription>

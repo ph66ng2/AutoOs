@@ -113,7 +113,7 @@ export function EnvioManualOrcamentoDialog({ envio, onFechar, onGerarNovaSenha }
   return (
     <>
       <Dialog open={envio !== null} onOpenChange={(aberto) => !aberto && tentarFechar()}>
-        <DialogContent className="gap-5 sm:max-w-xl">
+        <DialogContent tamanho="m" className="gap-5">
           <DialogHeader className="space-y-1.5 pr-6">
             <DialogTitle>Enviar manualmente</DialogTitle>
             <DialogDescription>
@@ -164,7 +164,7 @@ export function EnvioManualOrcamentoDialog({ envio, onFechar, onGerarNovaSenha }
             </div>
           )}
 
-          <DialogFooter className="items-center gap-3 border-t pt-4 sm:justify-between sm:space-x-0">
+          <DialogFooter className="items-center gap-3 sm:justify-between">
             {atual ? (
               <div role="group" aria-label="Enviar" className="inline-flex divide-x overflow-hidden rounded-md border bg-background">
                 <Button
@@ -212,7 +212,7 @@ export function EnvioManualOrcamentoDialog({ envio, onFechar, onGerarNovaSenha }
       </Dialog>
 
       <AlertDialog open={confirmarFechar} onOpenChange={setConfirmarFechar}>
-        <AlertDialogContent className="sm:max-w-md">
+        <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>A senha não aparece de novo.</AlertDialogTitle>
             <AlertDialogDescription>
