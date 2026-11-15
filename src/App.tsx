@@ -109,7 +109,8 @@ function AppContent() {
           <Route element={<Layout />}>
             <Route path="/" element={<Dashboard />} />
             <Route path="/perfil" element={<Perfil />} />
-            <Route path="/equipamentos" element={<Equipamentos />} />
+            {/* Mesmo elemento com e sem :id: filtros e página da lista sobrevivem aos Detalhes da OS. */}
+            <Route path="/equipamentos/:id?" element={<Equipamentos />} />
             <Route path="/clientes" element={<Clientes />} />
             <Route path="/insumos" element={<Insumos />} />
             <Route path="/servicos" element={<Servicos />} />

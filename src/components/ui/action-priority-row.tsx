@@ -40,6 +40,10 @@ interface ActionPriorityRowProps {
   acaoDaLinha?: boolean
   /** Título do menu ⋯ (ex.: "modelo · série"). */
   menuTitulo?: string
+  /** Com acaoDaLinha: botão principal cheio (primary) e mais alto, para o topo de Detalhes da OS. */
+  destaque?: boolean
+  /** Com acaoDaLinha: some o botão principal e fica só o ⋯. */
+  semPrincipal?: boolean
 }
 
 export function ActionPriorityRow({
@@ -52,6 +56,8 @@ export function ActionPriorityRow({
   wrap = false,
   acaoDaLinha = false,
   menuTitulo,
+  destaque = false,
+  semPrincipal = false,
 }: ActionPriorityRowProps) {
   const [selectedOverflow, setSelectedOverflow] = useState<string>("")
 
@@ -91,20 +97,25 @@ export function ActionPriorityRow({
   if (acaoDaLinha) {
     return (
       <div className="ml-auto inline-flex items-center justify-end gap-2 whitespace-nowrap">
-        <Button
-          variant="ghost"
-          size="sm"
-          className={cn(
-            "h-8 w-[176px] justify-center bg-acc-soft px-3 text-[13px] font-semibold text-acc-soft-foreground hover:bg-acc-soft/70 hover:text-acc-soft-foreground",
-          )}
-          onClick={primary.onClick}
-          disabled={primary.disabled}
-          title={primary.label}
-          aria-label={primary.label}
-          aria-expanded={primary.ariaExpanded}
-        >
-          <span className="truncate">{primary.label}</span>
-        </Button>
+        {!semPrincipal && (
+          <Button
+            variant={destaque ? "default" : "ghost"}
+            size="sm"
+            className={cn(
+              "w-[176px] justify-center px-3 font-semibold",
+              destaque
+                ? "h-10 text-sm"
+                : "h-8 bg-acc-soft text-[13px] text-acc-soft-foreground hover:bg-acc-soft/70 hover:text-acc-soft-foreground",
+            )}
+            onClick={primary.onClick}
+            disabled={primary.disabled}
+            title={primary.label}
+            aria-label={primary.label}
+            aria-expanded={primary.ariaExpanded}
+          >
+            <span className="truncate">{primary.label}</span>
+          </Button>
+        )}
         {overflow.length > 0 && (
           <Select
             value={selectedOverflow}
@@ -115,7 +126,7 @@ export function ActionPriorityRow({
             }}
           >
             <SelectTrigger
-              className="h-8 w-8 justify-center rounded-lg border-ctl bg-card px-0 [&>svg:last-child]:hidden"
+              className={cn("justify-center rounded-lg border-ctl bg-card px-0 [&>svg:last-child]:hidden", destaque ? "h-10 w-10" : "h-8 w-8")}
               title="Mais ações"
               aria-label="Mais ações"
             >

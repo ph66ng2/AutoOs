@@ -73,3 +73,29 @@ export const TOTAL_ETAPAS_COMPACTAS = 7;
 export function etapaCompacta(status: string): number {
   return ETAPA_COMPACTA[normalizeStatusKey(status)] ?? 0;
 }
+
+/** As 6 etapas da barra grande (Detalhes da OS e portal). */
+export const ETAPAS_OS = ["Recebido", "Verificação", "Orçamento", "Manutenção", "Pronto", "Entregue"] as const;
+
+/**
+ * Índice da etapa atual na barra grande (0 a 5). Desvios ficam na etapa onde
+ * aconteceram. Entregue conclui todas; Abandonado (-1) não marca nenhuma.
+ */
+const ETAPA_OS_ATUAL: Record<string, number> = {
+  RECEBIDO: 0,
+  EM_VERIFICACAO: 1,
+  VERIFICADO: 2,
+  AGUARDANDO_APROVACAO: 2,
+  REPROVADO: 2,
+  ORCAMENTO_VENCIDO: 2,
+  APROVADO: 3,
+  EM_MANUTENCAO: 3,
+  AGUARDANDO_PECA: 3,
+  PRONTO: 4,
+  ENTREGUE: 5,
+  ABANDONADO: -1,
+};
+
+export function etapaOsAtual(status: string): number {
+  return ETAPA_OS_ATUAL[normalizeStatusKey(status)] ?? -1;
+}

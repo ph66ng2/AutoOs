@@ -40,7 +40,6 @@ import {
   RotateCcw,
   MessageSquare,
   ClipboardCheck,
-  Users,
   Play,
   CheckCircle,
   XCircle,
@@ -48,13 +47,13 @@ import {
   PackageCheck,
   History,
   Send,
-  FileText,
   FileDown,
   ImagePlus,
   Eye,
   Download,
   Smartphone,
   DollarSign,
+  ChevronLeft,
 } from "lucide-react";
 import { useForm, Controller } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -62,7 +61,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import {
   Dialog,
   DialogContent,
@@ -210,6 +209,7 @@ import { acoesPorStatus, type AcaoStatus } from "@/lib/acoes-por-status";
 import { PageHeader } from "@/components/PageHeader";
 import { BarraDeEtapas } from "@/components/equipamentos/BarraDeEtapas";
 import { FiltroDeStatus } from "@/components/equipamentos/FiltroDeStatus";
+import { BarraDeEtapasGrande } from "@/components/equipamentos/BarraDeEtapasGrande";
 
 // O anel é a borda de um ::after dentro da célula. O box-shadow fica por baixo
 // do divisor colapsado e, na Ações sticky, o fundo branco cobre o topo.
@@ -229,7 +229,10 @@ export default function Equipamentos() {
   const [paginaEquipamentos, setPaginaEquipamentos] = useState(1);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
-  const [detalhesDialogOpen, setDetalhesDialogOpen] = useState(false);
+  // Detalhes da OS: a rota /equipamentos/:id manda, e o estado local acompanha
+  // (o mesmo componente atende a lista e os detalhes; ver idDetalhesRota abaixo).
+  const [idDetalhesAberto, setIdDetalhesAberto] = useState<number | null>(null);
+  const detalhesDialogOpen = idDetalhesAberto != null;
   const detalhesAbertoRef = useRef(false);
   const [sinalPortal, setSinalPortal] = useState(0);
   detalhesAbertoRef.current = detalhesDialogOpen;
@@ -387,6 +390,16 @@ export default function Equipamentos() {
   const { ensureSensitiveAccess, status: sensitiveStatus, hasPermission } = useSensitiveAccess();
   const location = useLocation();
   const navigate = useNavigate();
+  const pathnameAtualRef = useRef(location.pathname);
+  pathnameAtualRef.current = location.pathname;
+  const idDetalhesRota = (() => {
+    const encontrado = /^\/equipamentos\/(\d+)\/?$/.exec(location.pathname);
+    return encontrado ? Number(encontrado[1]) : null;
+  })();
+  // Voltar/avançar do navegador ou link direto: o endereço abre ou fecha os detalhes.
+  useEffect(() => {
+    setIdDetalhesAberto(idDetalhesRota);
+  }, [idDetalhesRota]);
 
   // Diálogo com algo sendo preenchido: abrir outro atendimento por cima perderia o que foi digitado.
   const edicaoEmAndamento =
@@ -785,7 +798,9 @@ export default function Equipamentos() {
     // Trocar de atendimento com a janela aberta: só a última abertura grava os dados.
     const seq = ++detalhesSeq.current;
     setSelecionado(eq);
-    setDetalhesDialogOpen(true);
+    setIdDetalhesAberto(eq.id ?? null);
+    const destino = `/equipamentos/${eq.id}`;
+    if (pathnameAtualRef.current !== destino) navigate(destino);
     setCarregandoDetalhes(true);
     setVerificacaoDetalhes(null);
     setComunicacoes([]);
@@ -814,7 +829,18 @@ export default function Equipamentos() {
     } finally {
       if (seq === detalhesSeq.current) setCarregandoDetalhes(false);
     }
-  }, [carregarImagensComPreview]);
+  }, [carregarImagensComPreview, navigate]);
+
+  // Rota aberta direto (voltar/avançar do navegador, link): carrega a OS do endereço.
+  useEffect(() => {
+    if (idDetalhesRota == null || selecionadoIdRef.current === idDetalhesRota) return;
+    db.buscarEquipamento(idDetalhesRota)
+      .then((eq) => abrirDetalhes(eq))
+      .catch((err) => {
+        showError("Equipamentos", "Abrir atendimento", err);
+        navigate("/equipamentos", { replace: true });
+      });
+  }, [idDetalhesRota, abrirDetalhes, navigate]);
 
   /** Abre dialog de verificação técnica (VerificacaoTecnica.tsx) */
   function abrirVerificacao(eq: Equipamento) {
@@ -2126,7 +2152,7 @@ export default function Equipamentos() {
    * Cada status tem ações específicas (ex: RECEBIDO → "Iniciar Verificação").
    * Conecta-se a: acaoRapida, abrirVerificacao, abrirMudarStatus, handleMarcarPronto, WhatsApp
    */
-  function renderAcoes(eq: Equipamento) {
+  function renderAcoes(eq: Equipamento, naPagina = false) {
     const classeAcaoPrincipal = "min-w-[170px] justify-center";
 
     const acaoStatus: PriorityAction = {
@@ -2271,8 +2297,11 @@ export default function Equipamentos() {
     return (
       <ActionPriorityRow
         primary={primary}
-        overflow={agruparAcoesOs(overflow)}
+        // Na própria página de Detalhes, "Status" (abrir os detalhes) não faz sentido.
+        overflow={agruparAcoesOs(naPagina ? overflow.filter((acao) => acao.id !== "status") : overflow)}
         acaoDaLinha
+        destaque={naPagina}
+        semPrincipal={naPagina && primary.id === "status"}
         menuTitulo={`${eq.marca} ${eq.modelo} · ${eq.serial_number}`}
       />
     );
@@ -2400,6 +2429,7 @@ export default function Equipamentos() {
 
   return (
     <div className="space-y-6">
+      {!detalhesDialogOpen && (<>
       {/* Header */}
       <PageHeader titulo="Equipamentos" descricao="Gerencie equipamentos, verificações e orçamentos">
         <div className="flex items-center gap-2">
@@ -2549,6 +2579,7 @@ export default function Equipamentos() {
           )}
         </CardContent>
       </Card>
+      </>)}
 
       {/* ═══ Dialog Criar/Editar ═══ */}
       <Dialog open={dialogOpen} onOpenChange={(open) => {
@@ -2871,169 +2902,215 @@ export default function Equipamentos() {
         </DialogContent>
       </Dialog>
 
-      {/* ═══ Dialog Detalhes com Abas ═══ */}
-      <Dialog open={detalhesDialogOpen} onOpenChange={setDetalhesDialogOpen}>
-        <DialogContent className="sm:max-w-3xl max-h-[90vh] overflow-y-auto">
-          <DialogHeader><DialogTitle>Detalhes do Equipamento</DialogTitle></DialogHeader>
-          {selecionado && (
-            <PortalClienteProvider equipamento={selecionado} sinalPortal={sinalPortal}>
-            <div className="space-y-4">
-              <div className="flex min-w-0 items-start justify-between gap-3">
-                <div className="min-w-0 flex-1">
-                  <h3 className="break-words text-lg font-bold [overflow-wrap:anywhere]">{selecionado.marca} {selecionado.modelo}</h3>
-                  <p className="break-words text-sm text-muted-foreground font-mono [overflow-wrap:anywhere]">{selecionado.serial_number}</p>
-                  {selecionado.responsavel_nome && (
-                    <p className="mt-1 break-words text-sm text-muted-foreground [overflow-wrap:anywhere]">
-                      Contato responsável: <span className="font-medium text-foreground">{selecionado.responsavel_nome}</span>
-                    </p>
-                  )}
-                </div>
-                <div className="flex shrink-0 flex-col items-end gap-2">
+      {/* ═══ Detalhes da OS (rota /equipamentos/:id) ═══ */}
+      {detalhesDialogOpen && selecionado?.id !== idDetalhesAberto && (
+        <div role="status" aria-label="Carregando atendimento" className="flex h-64 items-center justify-center">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary" />
+        </div>
+      )}
+      {detalhesDialogOpen && selecionado && selecionado.id === idDetalhesAberto && (
+        <PortalClienteProvider equipamento={selecionado} sinalPortal={sinalPortal}>
+          <section aria-labelledby="detalhes-equipamento-titulo" className="space-y-5">
+            <h2 id="detalhes-equipamento-titulo" className="sr-only">Detalhes do Equipamento</h2>
+            <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+              <div className="min-w-0">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIdDetalhesAberto(null);
+                    navigate("/equipamentos");
+                  }}
+                  className="mb-1 inline-flex items-center gap-0.5 text-[13px] font-medium text-muted-foreground hover:text-foreground"
+                >
+                  <ChevronLeft className="h-4 w-4" />Equipamentos
+                </button>
+                <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1">
+                  <h1 className="break-words text-[26px] font-bold leading-tight tracking-tight [overflow-wrap:anywhere]">{selecionado.marca} {selecionado.modelo}</h1>
+                  <span className="font-mono text-sm text-muted-foreground [overflow-wrap:anywhere]">{selecionado.serial_number}</span>
                   <StatusBadge status={selecionado.status} />
-                  <PortalClienteBotao />
                 </div>
               </div>
-
-              <DecisaoOrcamentoCard
-                onAplicar={(decisao) => void abrirDialogoAprovacao(selecionado, decisao)}
-              />
-
-              <Tabs key={selecionado.id} defaultValue="info">
-                <TabsList className="grid grid-cols-4 w-full">
-                  <TabsTrigger value="info"><FileText className="h-3.5 w-3.5 mr-1 hidden sm:inline" />Informações</TabsTrigger>
-                  <TabsTrigger value="verificacao"><ClipboardCheck className="h-3.5 w-3.5 mr-1 hidden sm:inline" />Verificação</TabsTrigger>
-                  <TabsTrigger value="comunicacoes"><MessageSquare className="h-3.5 w-3.5 mr-1 hidden sm:inline" />Comunicações</TabsTrigger>
-                  <TabsTrigger value="historico"><History className="h-3.5 w-3.5 mr-1 hidden sm:inline" />Histórico</TabsTrigger>
-                </TabsList>
-
-                <TabsContent value="info" className="space-y-4 mt-4">
-                  <div className="grid grid-cols-2 gap-4 text-sm">
-                    <div><span className="text-muted-foreground">Tipo:</span> <span className="ml-1 font-medium">{selecionado.tipo}</span></div>
-                    <div><span className="text-muted-foreground">Entrada:</span> <span className="ml-1 font-medium">{formatDatePtBr(selecionado.data_entrada)}</span></div>
-                    <div><span className="text-muted-foreground">Patrimônio:</span> <span className="ml-1 font-medium">{selecionado.patrimonio || "—"}</span></div>
-                    <div className="min-w-0 [overflow-wrap:anywhere]"><span className="text-muted-foreground">Nº Série:</span> <span className="ml-1 font-medium font-mono">{selecionado.serial_number}</span></div>
-                  </div>
-                  {selecionado.defeito_relatado && <div className="text-sm"><p className="text-muted-foreground mb-1">Defeito na entrada:</p><p className="bg-accent/50 p-2 rounded whitespace-pre-wrap">{selecionado.defeito_relatado}</p></div>}
-                  {selecionado.acessorios && <div className="text-sm"><p className="text-muted-foreground mb-1">Acessórios:</p><p className="bg-accent/50 p-2 rounded">{selecionado.acessorios}</p></div>}
-                  {selecionado.acessorios_outros && <div className="text-sm"><p className="text-muted-foreground mb-1">Outros Acessórios:</p><p className="bg-accent/50 p-2 rounded whitespace-pre-wrap">{selecionado.acessorios_outros}</p></div>}
-                  {selecionado.observacoes && <div className="text-sm"><p className="text-muted-foreground mb-1">Observação física:</p><p className="bg-accent/50 p-2 rounded whitespace-pre-wrap">{selecionado.observacoes}</p></div>}
-                  <div className="grid gap-4 lg:grid-cols-2">
-                    <div className="space-y-2">
-                      <div className="flex items-center justify-between">
-                        <p className="text-sm text-muted-foreground">Fotos da entrada</p>
-                        <div className="flex items-center gap-1">
-                          <span className="text-xs text-muted-foreground">
-                            {filtrarImagensPorCategoria(imagensDetalhes, "ENTRADA").length} registrada(s)
-                          </span>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="h-6 w-6"
-                            onClick={() => {
-                              setPhotoUploadCategoria("ENTRADA");
-                              setPhotoUploadNewEquip(false);
-                              setPhotoUploadOpen(true);
-                            }}
-                          >
-                            <Smartphone className="h-3.5 w-3.5" />
-                          </Button>
-                        </div>
-                      </div>
-                      {carregandoDetalhes ? (
-                        <div className="flex items-center justify-center rounded-lg border border-dashed p-6">
-                          <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-primary" />
-                        </div>
-                      ) : (
-                        <GaleriaImagensEquipamento
-                          imagens={filtrarImagensPorCategoria(imagensDetalhes, "ENTRADA")}
-                          mensagemVazia="Nenhuma foto de entrada foi registrada para este equipamento."
-                          onVisualizar={setImagemExpandida}
-                          onExportar={(imagem) => void exportarImagemEquipamento(imagem)}
-                          onRemover={(imagem) => void removerImagemDetalhes(imagem)}
-                        />
-                      )}
-                    </div>
-                    <div className="space-y-2">
-                      <div className="flex items-center justify-between">
-                        <p className="text-sm text-muted-foreground">Fotos da saída</p>
-                        <div className="flex items-center gap-1">
-                          <span className="text-xs text-muted-foreground">
-                            {filtrarImagensPorCategoria(imagensDetalhes, "SAIDA").length} registrada(s)
-                          </span>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="h-6 w-6"
-                            onClick={() => {
-                              setPhotoUploadCategoria("SAIDA");
-                              setPhotoUploadNewEquip(false);
-                              setPhotoUploadOpen(true);
-                            }}
-                          >
-                            <Smartphone className="h-3.5 w-3.5" />
-                          </Button>
-                        </div>
-                      </div>
-                      {carregandoDetalhes ? (
-                        <div className="flex items-center justify-center rounded-lg border border-dashed p-6">
-                          <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-primary" />
-                        </div>
-                      ) : (
-                        <GaleriaImagensEquipamento
-                          imagens={filtrarImagensPorCategoria(imagensDetalhes, "SAIDA")}
-                          mensagemVazia="Nenhuma foto de saída foi registrada para este equipamento."
-                          onVisualizar={setImagemExpandida}
-                          onExportar={(imagem) => void exportarImagemEquipamento(imagem)}
-                          onRemover={(imagem) => void removerImagemDetalhes(imagem)}
-                        />
-                      )}
-                    </div>
-                  </div>
-                  {selecionado.cliente_nome && (
-                    <Card>
-                      <CardHeader className="py-3"><CardTitle className="text-sm flex items-center gap-1"><Users className="h-4 w-4" />Cliente</CardTitle></CardHeader>
-                      <CardContent className="text-sm space-y-1">
-                        <p><strong>{selecionado.cliente_nome}</strong></p>
-                        {selecionado.cliente_telefone && <p>Tel: {selecionado.cliente_telefone}</p>}
-                        {selecionado.cliente_email && <p>Email: {selecionado.cliente_email}</p>}
-                      </CardContent>
-                    </Card>
-                  )}
-                  {selecionado.valor_orcamento != null && (
-                    <Card>
-                      <CardHeader className="py-3"><CardTitle className="text-sm">Orçamento</CardTitle></CardHeader>
-                      <CardContent className="text-sm space-y-1">
-                        <p>Valor: <strong>{formatCurrency(selecionado.valor_orcamento)}</strong></p>
-                        {selecionado.prazo_aprovacao && <p>Prazo: {formatDatePtBr(selecionado.prazo_aprovacao)}</p>}
-                        {selecionado.valor_final != null && <p>Valor final: <strong>{formatCurrency(selecionado.valor_final)}</strong></p>}
-                      </CardContent>
-                    </Card>
-                  )}
-                  {selecionado.observacoes && <div><p className="text-sm text-muted-foreground">Observações:</p><p className="text-sm mt-1 bg-accent/50 p-2 rounded">{selecionado.observacoes}</p></div>}
-                  <DocumentosEquipamento equipamento={selecionado} />
-                </TabsContent>
-
-                <TabsContent value="verificacao" className="mt-4">{renderVerificacaoTab()}</TabsContent>
-
-                {/* Comunicações — agora usa componente extraído */}
-                <TabsContent value="comunicacoes" className="mt-4">
-                  {carregandoDetalhes ? (
-                    <div className="flex justify-center py-8"><div className="animate-spin rounded-full h-6 w-6 border-b-2 border-primary" /></div>
-                  ) : (
-                    <HistoricoComunicacoes
-                      equipamentoId={selecionado.id!}
-                      comunicacoesExternas={comunicacoes}
-                    />
-                  )}
-                </TabsContent>
-
-                <TabsContent value="historico" className="mt-4">{renderHistoricoTab()}</TabsContent>
-              </Tabs>
+              <div className="flex shrink-0 justify-end">{renderAcoes(selecionado, true)}</div>
             </div>
-            </PortalClienteProvider>
-          )}
-        </DialogContent>
-      </Dialog>
+
+            <Card className="rounded-2xl">
+              <CardContent className="p-5">
+                <BarraDeEtapasGrande status={selecionado.status} />
+              </CardContent>
+            </Card>
+
+            <DecisaoOrcamentoCard
+              onAplicar={(decisao) => void abrirDialogoAprovacao(selecionado, decisao)}
+            />
+
+            <div className="grid items-start gap-5 xl:grid-cols-[minmax(0,1fr)_380px]">
+              <Card className="min-w-0 rounded-2xl">
+                <Tabs key={selecionado.id} defaultValue="orcamento">
+                  <TabsList className="h-auto w-full justify-start gap-1 overflow-x-auto rounded-none border-b bg-transparent px-3 pt-2 [scrollbar-width:none]">
+                    {[
+                      ["orcamento", "Orçamento"],
+                      ["verificacao", "Verificação"],
+                      ["fotos", `Fotos · ${imagensDetalhes.length}`],
+                      ["historico", "Histórico"],
+                      ["comunicacoes", "Comunicação"],
+                    ].map(([valor, rotulo]) => (
+                      <TabsTrigger
+                        key={valor}
+                        value={valor}
+                        className="relative rounded-none border-b-2 border-transparent px-3 pb-2.5 pt-2 text-sm font-medium text-muted-foreground shadow-none data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:font-semibold data-[state=active]:text-foreground data-[state=active]:shadow-none"
+                      >
+                        {rotulo}
+                      </TabsTrigger>
+                    ))}
+                  </TabsList>
+
+                  <TabsContent value="orcamento" className="mt-0 space-y-4 p-5">
+                    {selecionado.valor_orcamento != null ? (
+                      <div className="grid gap-3 sm:grid-cols-3">
+                        <div className="rounded-xl bg-muted p-3">
+                          <p className="text-xs text-muted-foreground">Valor do orçamento</p>
+                          <p className="mt-0.5 text-lg font-bold tabular-nums">{formatCurrency(selecionado.valor_orcamento)}</p>
+                        </div>
+                        <div className="rounded-xl bg-muted p-3">
+                          <p className="text-xs text-muted-foreground">Prazo de aprovação</p>
+                          <p className="mt-0.5 text-sm font-semibold">{selecionado.prazo_aprovacao ? formatDatePtBr(selecionado.prazo_aprovacao) : "—"}</p>
+                        </div>
+                        <div className="rounded-xl bg-muted p-3">
+                          <p className="text-xs text-muted-foreground">Valor final</p>
+                          <p className="mt-0.5 text-sm font-semibold tabular-nums">{selecionado.valor_final != null ? formatCurrency(selecionado.valor_final) : "—"}</p>
+                        </div>
+                      </div>
+                    ) : (
+                      <p className="text-sm text-muted-foreground">O orçamento ainda não foi elaborado. Os serviços e peças aparecem na aba Verificação.</p>
+                    )}
+                    <DocumentosEquipamento equipamento={selecionado} />
+                  </TabsContent>
+
+                  <TabsContent value="verificacao" className="mt-0 p-5">{renderVerificacaoTab()}</TabsContent>
+
+                  <TabsContent value="fotos" className="mt-0 p-5">
+                    <div className="grid gap-4 lg:grid-cols-2">
+                      {(["ENTRADA", "SAIDA"] as const).map((categoria) => (
+                        <div key={categoria} className="space-y-2">
+                          <div className="flex items-center justify-between">
+                            <p className="text-sm font-semibold">{categoria === "ENTRADA" ? "Fotos da entrada" : "Fotos da saída"}</p>
+                            <div className="flex items-center gap-1">
+                              <span className="text-xs text-muted-foreground">
+                                {filtrarImagensPorCategoria(imagensDetalhes, categoria).length} registrada(s)
+                              </span>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-7 w-7"
+                                aria-label={categoria === "ENTRADA" ? "Enviar fotos da entrada pelo celular" : "Enviar fotos da saída pelo celular"}
+                                onClick={() => {
+                                  setPhotoUploadCategoria(categoria);
+                                  setPhotoUploadNewEquip(false);
+                                  setPhotoUploadOpen(true);
+                                }}
+                              >
+                                <Smartphone className="h-3.5 w-3.5" />
+                              </Button>
+                            </div>
+                          </div>
+                          {carregandoDetalhes ? (
+                            <div className="flex items-center justify-center rounded-lg border border-dashed p-6">
+                              <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-primary" />
+                            </div>
+                          ) : (
+                            <GaleriaImagensEquipamento
+                              imagens={filtrarImagensPorCategoria(imagensDetalhes, categoria)}
+                              mensagemVazia={categoria === "ENTRADA"
+                                ? "Nenhuma foto de entrada foi registrada para este equipamento."
+                                : "Nenhuma foto de saída foi registrada para este equipamento."}
+                              onVisualizar={setImagemExpandida}
+                              onExportar={(imagem) => void exportarImagemEquipamento(imagem)}
+                              onRemover={(imagem) => void removerImagemDetalhes(imagem)}
+                            />
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </TabsContent>
+
+                  <TabsContent value="historico" className="mt-0 p-5">{renderHistoricoTab()}</TabsContent>
+
+                  <TabsContent value="comunicacoes" className="mt-0 p-5">
+                    {carregandoDetalhes ? (
+                      <div className="flex justify-center py-8"><div className="animate-spin rounded-full h-6 w-6 border-b-2 border-primary" /></div>
+                    ) : (
+                      <HistoricoComunicacoes
+                        equipamentoId={selecionado.id!}
+                        comunicacoesExternas={comunicacoes}
+                      />
+                    )}
+                  </TabsContent>
+                </Tabs>
+              </Card>
+
+              <div className="space-y-5">
+                <Card className="rounded-2xl">
+                  <CardContent className="space-y-3 p-5">
+                    <div className="flex items-center justify-between gap-2">
+                      <h2 className="text-base font-bold">Cliente</h2>
+                      <PortalClienteBotao />
+                    </div>
+                    {selecionado.cliente_nome ? (
+                      <div className="space-y-0.5 text-sm">
+                        <p className="font-semibold [overflow-wrap:anywhere]">{selecionado.cliente_nome}</p>
+                        {selecionado.cliente_telefone && <p className="text-muted-foreground">{selecionado.cliente_telefone}</p>}
+                        {selecionado.cliente_email && <p className="text-muted-foreground [overflow-wrap:anywhere]">{selecionado.cliente_email}</p>}
+                      </div>
+                    ) : (
+                      <p className="text-sm text-muted-foreground">Sem cliente vinculado.</p>
+                    )}
+                    {selecionado.responsavel_nome && (
+                      <div className="flex items-center gap-3 rounded-xl bg-muted p-3">
+                        <span aria-hidden="true" className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-acc-soft text-xs font-bold text-acc-soft-foreground">
+                          {selecionado.responsavel_nome.trim().split(/\s+/).slice(0, 2).map((parte) => parte[0]?.toUpperCase()).join("")}
+                        </span>
+                        <div className="min-w-0 text-sm">
+                          <p className="font-semibold [overflow-wrap:anywhere]">{selecionado.responsavel_nome}</p>
+                          <p className="text-xs text-muted-foreground">Contato responsável</p>
+                        </div>
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+
+                <Card className="rounded-2xl">
+                  <CardContent className="space-y-3 p-5">
+                    <h2 className="text-base font-bold">Equipamento</h2>
+                    <dl className="grid grid-cols-[96px_minmax(0,1fr)] gap-x-3 gap-y-1.5 text-sm">
+                      <dt className="text-muted-foreground">Tipo</dt><dd className="font-medium">{selecionado.tipo}</dd>
+                      <dt className="text-muted-foreground">Nº Série</dt><dd className="font-mono [overflow-wrap:anywhere]">{selecionado.serial_number}</dd>
+                      <dt className="text-muted-foreground">Patrimônio</dt><dd className="font-medium">{selecionado.patrimonio || "—"}</dd>
+                      <dt className="text-muted-foreground">Entrada</dt><dd className="font-medium">{formatDatePtBr(selecionado.data_entrada)}</dd>
+                      {verificacaoDetalhes?.tecnico_nome && (<><dt className="text-muted-foreground">Técnico</dt><dd className="font-medium">{verificacaoDetalhes.tecnico_nome}</dd></>)}
+                    </dl>
+                    {selecionado.acessorios && (
+                      <div className="flex flex-wrap gap-1.5">
+                        {selecionado.acessorios.split(",").map((item) => item.trim()).filter(Boolean).map((item) => (
+                          <span key={item} className="rounded-full bg-secondary px-2.5 py-0.5 text-xs font-medium">{item}</span>
+                        ))}
+                      </div>
+                    )}
+                    {selecionado.acessorios_outros && (
+                      <div className="rounded-xl bg-muted p-3 text-sm"><p className="text-xs text-muted-foreground">Outros acessórios</p><p className="whitespace-pre-wrap">{selecionado.acessorios_outros}</p></div>
+                    )}
+                    {selecionado.defeito_relatado && (
+                      <div className="rounded-xl bg-muted p-3 text-sm"><p className="text-xs text-muted-foreground">Defeito relatado</p><p className="whitespace-pre-wrap">{selecionado.defeito_relatado}</p></div>
+                    )}
+                    {selecionado.observacoes && (
+                      <div className="rounded-xl bg-muted p-3 text-sm"><p className="text-xs text-muted-foreground">Observação física</p><p className="whitespace-pre-wrap">{selecionado.observacoes}</p></div>
+                    )}
+                  </CardContent>
+                </Card>
+              </div>
+            </div>
+          </section>
+        </PortalClienteProvider>
+      )}
 
       <EscolhaAjusteOrcamentoDialog
         open={escolhaAjuste !== null}

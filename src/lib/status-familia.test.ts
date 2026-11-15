@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { STATUS_COLORS, STATUS_EQUIPAMENTO, STATUS_LABELS, type StatusEquipamento } from "@/types";
-import { FAMILIA_CLASSES, TOTAL_ETAPAS_COMPACTAS, etapaCompacta, statusFamilia, statusFamiliaClasses } from "./status-familia";
+import { ETAPAS_OS, FAMILIA_CLASSES, TOTAL_ETAPAS_COMPACTAS, etapaCompacta, etapaOsAtual, statusFamilia, statusFamiliaClasses } from "./status-familia";
 
 const ESPERADO: Record<StatusEquipamento, ReturnType<typeof statusFamilia>> = {
   RECEBIDO: "neutral",
@@ -48,5 +48,17 @@ describe("etapaCompacta", () => {
     expect(etapaCompacta("AGUARDANDO_PECA")).toBe(etapaCompacta("EM_MANUTENCAO"));
     expect(etapaCompacta("ENTREGUE")).toBe(TOTAL_ETAPAS_COMPACTAS);
     expect(etapaCompacta("DESCONHECIDO")).toBe(0);
+  });
+});
+
+describe("etapaOsAtual", () => {
+  it("põe cada status numa das 6 etapas", () => {
+    expect(etapaOsAtual("RECEBIDO")).toBe(0);
+    expect(etapaOsAtual("EM_VERIFICACAO")).toBe(1);
+    expect(["VERIFICADO", "AGUARDANDO_APROVACAO", "REPROVADO", "ORCAMENTO_VENCIDO"].map(etapaOsAtual)).toEqual([2, 2, 2, 2]);
+    expect(["APROVADO", "EM_MANUTENCAO", "AGUARDANDO_PECA"].map(etapaOsAtual)).toEqual([3, 3, 3]);
+    expect(etapaOsAtual("PRONTO")).toBe(4);
+    expect(etapaOsAtual("ENTREGUE")).toBe(ETAPAS_OS.length - 1);
+    expect(etapaOsAtual("ABANDONADO")).toBe(-1);
   });
 });

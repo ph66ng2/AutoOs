@@ -53,12 +53,15 @@ test("captura as telas principais com dados sintéticos", async ({ page }) => {
   await page.screenshot({ path: `${outDir}/03-equipamentos.png`, fullPage: true, animations: "disabled" });
 
   await page.getByRole("button", { name: "Abrir detalhes de Zebra ZD620" }).click();
-  const detalhes = page.getByRole("dialog").filter({ hasText: "Detalhes do Equipamento" });
+  // Detalhes da OS é página (/equipamentos/:id); as fotos ficam na aba Fotos.
+  const detalhes = page.getByRole("region", { name: "Detalhes do Equipamento" });
   await expect(detalhes).toBeVisible();
+  await expect(page).toHaveURL(/\/equipamentos\/\d+$/);
   await expect(detalhes.getByText("CI-UI-ZD620").first()).toBeVisible();
-  await expect(detalhes.getByText("Nenhuma foto de entrada foi registrada para este equipamento.")).toBeVisible();
   await page.screenshot({ path: `${outDir}/04-atendimento-os.png`, animations: "disabled" });
-  await page.keyboard.press("Escape");
+  await detalhes.getByRole("tab", { name: /Fotos/ }).click();
+  await expect(detalhes.getByText("Nenhuma foto de entrada foi registrada para este equipamento.")).toBeVisible();
+  await page.getByRole("button", { name: "Equipamentos", exact: true }).click();
   await expect(detalhes).toBeHidden();
 
   await openScreen("Insumos e peças");
