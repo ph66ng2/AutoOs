@@ -390,6 +390,7 @@ export default function Equipamentos() {
   const { ensureSensitiveAccess, status: sensitiveStatus, hasPermission } = useSensitiveAccess();
   const location = useLocation();
   const navigate = useNavigate();
+  const irParaConfiguracoesPortal = useCallback(() => navigate("/configuracoes?aba=portal"), [navigate]);
   const pathnameAtualRef = useRef(location.pathname);
   pathnameAtualRef.current = location.pathname;
   const idDetalhesRota = (() => {
@@ -2909,7 +2910,7 @@ export default function Equipamentos() {
         </div>
       )}
       {detalhesDialogOpen && selecionado && selecionado.id === idDetalhesAberto && (
-        <PortalClienteProvider equipamento={selecionado} sinalPortal={sinalPortal}>
+        <PortalClienteProvider equipamento={selecionado} sinalPortal={sinalPortal} onConfigurarPortal={irParaConfiguracoesPortal}>
           <section aria-labelledby="detalhes-equipamento-titulo" className="space-y-5">
             <h2 id="detalhes-equipamento-titulo" className="sr-only">Detalhes do Equipamento</h2>
             <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">

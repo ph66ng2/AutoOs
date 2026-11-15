@@ -20,6 +20,7 @@
  * ╚══════════════════════════════════════════════════════════════╝
  */
 import { useCallback, useEffect, useState } from "react";
+import { useLocation } from "react-router-dom";
 import { useForm } from "react-hook-form";
 import { toast } from "sonner";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -32,10 +33,11 @@ import { useSensitiveAccess } from "@/hooks/useSensitiveAccess";
 import { ConfiguracoesTabInfra } from "@/pages/configuracoes/ConfiguracoesTabInfra";
 import { ConfiguracoesTabIntegracoes } from "@/pages/configuracoes/ConfiguracoesTabIntegracoes";
 import { ConfiguracoesTabObservabilidade } from "@/pages/configuracoes/ConfiguracoesTabObservabilidade";
+import { ConfiguracoesTabPortal } from "@/pages/configuracoes/ConfiguracoesTabPortal";
 import { ConfiguracoesTabSeguranca } from "@/pages/configuracoes/ConfiguracoesTabSeguranca";
 import { SMTP_DEFAULTS, type SmtpFormValues, type WhatsappFormValues } from "@/pages/configuracoes/configuracoes-shared";
 import { detectRestoreMode } from "@/pages/configuracoes/detect-restore-mode";
-import { abasConfiguracoes } from "@/pages/configuracoes/abas";
+import { ABAS_CONFIGURACOES, abasConfiguracoes, type AbaConfiguracoesId } from "@/pages/configuracoes/abas";
 import { PageHeader } from "@/components/PageHeader";
 import {
   SENSITIVE_PERMISSIONS,
@@ -348,13 +350,21 @@ export default function Configuracoes() {
     void loadPhotoTunnelConfig();
   }, [canConfigurePhotoTunnel, accessStatus?.active_profile_id]);
 
+  // Aba pedida no endereço (/configuracoes?aba=portal), se o perfil puder vê-la.
+  const location = useLocation();
+  const abaPedida = new URLSearchParams(location.search).get("aba") as AbaConfiguracoesId | null;
+  const abaPermitida = (aba: AbaConfiguracoesId | null) =>
+    aba !== null && ABAS_CONFIGURACOES.includes(aba) &&
+    (aba === "smtp" ? abas.integracoes : aba === "portal" ? abas.portal : canManageProfiles);
+
   useEffect(() => {
-    if (!abas.integracoes) {
-      setTab("infra");
-    } else if (!canManageProfiles) {
-      setTab("smtp");
+    if (abaPermitida(abaPedida)) {
+      setTab(abaPedida!);
+      return;
     }
-  }, [abas.integracoes, canManageProfiles]);
+    setTab((atual) => (abaPermitida(atual as AbaConfiguracoesId) ? atual : abas.inicial));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [abaPedida, abas.integracoes, abas.portal, abas.inicial, canManageProfiles]);
 
   useEffect(() => {
     if (!accessStatus?.profiles.length) {
@@ -721,6 +731,7 @@ export default function Configuracoes() {
       <Tabs value={tab} onValueChange={(nextTab) => { setTab(nextTab); setSecurityMessage(null); }} className="space-y-4">
         <TabsList>
           {abas.integracoes && <TabsTrigger value="smtp">Integrações</TabsTrigger>}
+          {abas.portal && <TabsTrigger value="portal">Portal do Cliente</TabsTrigger>}
           {canManageProfiles && <TabsTrigger value="infra">Banco</TabsTrigger>}
           {canManageProfiles && <TabsTrigger value="seguranca">Segurança</TabsTrigger>}
           {canManageProfiles && <TabsTrigger value="observabilidade">Suporte e Logs</TabsTrigger>}
@@ -745,7 +756,6 @@ export default function Configuracoes() {
           whatsappStatus={whatsappStatus}
           whatsappHasToken={whatsappHasToken}
           canConfigurePhotoTunnel={canConfigurePhotoTunnel}
-          canManagePortal={canManagePortal}
           photoTunnelToken={photoTunnelToken}
           onPhotoTunnelTokenChange={setPhotoTunnelToken}
           onSubmitPhotoTunnel={onSubmitPhotoTunnel}
@@ -755,6 +765,8 @@ export default function Configuracoes() {
           photoTunnelEnvOverride={photoTunnelEnvOverride}
           photoTunnelPublicHost={photoTunnelPublicHost}
         />
+
+        {abas.portal && <ConfiguracoesTabPortal />}
 
         {canManageProfiles && (
           <ConfiguracoesTabInfra

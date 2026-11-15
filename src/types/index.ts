@@ -388,7 +388,7 @@ export interface DecisaoOrcamentoInfo {
   efetivacaoAutomatica?: boolean;
 }
 
-/** Liga/desliga do Portal do Cliente (Configurações → Integrações). */
+/** Liga/desliga do Portal do Cliente (Configurações → Portal do Cliente). */
 export interface EstadoPortal {
   portalAtivo: boolean;
   respostasAtivas: boolean;

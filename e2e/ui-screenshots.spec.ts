@@ -83,6 +83,8 @@ test("captura as telas principais com dados sintéticos", async ({ page }) => {
 
   await openScreen("Configurações");
   await expect(page.locator("h1", { hasText: "Configurações" })).toBeVisible();
+  // O portal tem aba própria em Configurações.
+  await page.getByRole("tab", { name: "Portal do Cliente" }).click();
   const portal = page.getByText("Portal do Cliente: funcionamento", { exact: true });
   await expect(portal).toBeVisible();
   await expect(page.getByRole("switch", { name: "Portal ligado" })).toHaveAttribute("aria-checked", "true");

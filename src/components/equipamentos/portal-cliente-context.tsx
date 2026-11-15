@@ -41,6 +41,8 @@ export type PortalClienteValor = {
   abrirPainel: () => void;
   abrirAcesso: () => void;
   abrirContatos: () => void;
+  /** Leva às configurações do portal (Configurações › Portal do Cliente), quando a tela oferece. */
+  configurarPortal?: () => void;
 };
 
 const PortalClienteContext = createContext<PortalClienteValor | null>(null);
@@ -61,6 +63,8 @@ type Props = {
   equipamento: Equipamento;
   /** Muda quando chega um alerta do portal para este equipamento: recarrega a resposta. */
   sinalPortal?: number;
+  /** Navegação para Configurações › Portal do Cliente (a página que usa o provider decide). */
+  onConfigurarPortal?: () => void;
   children: ReactNode;
 };
 
@@ -68,7 +72,7 @@ type Props = {
  * Estado do orçamento no Portal do Cliente para o equipamento aberto. Compartilhado entre o botão
  * "Portal do Cliente" do cabeçalho, a faixa de resumo e o painel com as ações.
  */
-export function PortalClienteProvider({ equipamento, sinalPortal, children }: Props) {
+export function PortalClienteProvider({ equipamento, sinalPortal, onConfigurarPortal, children }: Props) {
   const { ensureSensitiveAccess, hasAnyPermission } = useSensitiveAccess();
   const [info, setInfo] = useState<DecisaoOrcamentoInfo | null>(null);
   const [loading, setLoading] = useState(false);
@@ -221,8 +225,9 @@ export function PortalClienteProvider({ equipamento, sinalPortal, children }: Pr
         setAcessoTela("contatos");
         setAcessoAberto(true);
       },
+      configurarPortal: onConfigurarPortal,
     };
-  }, [equipamento, equipamentoId, info, loading, busy, error, consultado, contatosVersao, carregar, publicar, tratarSolicitacao]);
+  }, [equipamento, equipamentoId, info, loading, busy, error, consultado, contatosVersao, carregar, publicar, tratarSolicitacao, onConfigurarPortal]);
 
   return (
     <PortalClienteContext.Provider value={valor}>

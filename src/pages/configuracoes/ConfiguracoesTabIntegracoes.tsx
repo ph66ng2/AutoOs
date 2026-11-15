@@ -5,10 +5,6 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { TabsContent } from "@/components/ui/tabs";
-import { PortalFuncionamentoCard } from "@/components/configuracoes/PortalFuncionamentoCard";
-import { PortalContatoEmpresaCard } from "@/components/configuracoes/PortalContatoEmpresaCard";
-import { useSensitiveAccess } from "@/hooks/useSensitiveAccess";
-import { SENSITIVE_PERMISSIONS } from "@/types";
 import type { SmtpFormValues, WhatsappFormValues } from "./configuracoes-shared";
 
 export type ConfiguracoesTabIntegracoesProps = {
@@ -30,7 +26,6 @@ export type ConfiguracoesTabIntegracoesProps = {
   whatsappStatus: string | null;
   whatsappHasToken: boolean;
   canConfigurePhotoTunnel: boolean;
-  canManagePortal: boolean;
   photoTunnelToken: string;
   onPhotoTunnelTokenChange: (value: string) => void;
   onSubmitPhotoTunnel: () => void | Promise<void>;
@@ -60,7 +55,6 @@ export function ConfiguracoesTabIntegracoes({
   whatsappStatus,
   whatsappHasToken,
   canConfigurePhotoTunnel,
-  canManagePortal,
   photoTunnelToken,
   onPhotoTunnelTokenChange,
   onSubmitPhotoTunnel,
@@ -70,7 +64,6 @@ export function ConfiguracoesTabIntegracoes({
   photoTunnelEnvOverride,
   photoTunnelPublicHost,
 }: ConfiguracoesTabIntegracoesProps) {
-  const { hasPermission } = useSensitiveAccess();
   return (
     <TabsContent value="smtp" className="space-y-4">
       <Card>
@@ -291,12 +284,6 @@ export function ConfiguracoesTabIntegracoes({
           )}
         </CardContent>
       </Card>
-      {canManagePortal && (
-        <>
-          <PortalFuncionamentoCard />
-          {hasPermission(SENSITIVE_PERMISSIONS.MANAGE_STATUS_LINKS) && <PortalContatoEmpresaCard />}
-        </>
-      )}
     </TabsContent>
   );
 }
