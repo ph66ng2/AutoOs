@@ -82,6 +82,7 @@ import {
 import { ActionPriorityRow } from "@/components/ui/action-priority-row";
 import { RegularizacaoLegadosDialog } from "@/components/clientes/RegularizacaoLegadosDialog";
 import { VinculoEmpresaPerfilDialog } from "@/components/clientes/VinculoEmpresaPerfilDialog";
+import { PageHeader } from "@/components/PageHeader";
 
 export default function Clientes() {
   const navigate = useNavigate();
@@ -478,11 +479,7 @@ export default function Clientes() {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight">Clientes</h1>
-          <p className="text-muted-foreground">Gerencie clientes PF e PJ e seus equipamentos vinculados</p>
-        </div>
+      <PageHeader titulo="Clientes" descricao="Gerencie clientes PF e PJ e seus equipamentos vinculados">
         <div className="flex flex-wrap gap-2">
           <Button variant="outline" onClick={() => void abrirRegularizacaoLegados()}>
             Regularizar antigos
@@ -492,7 +489,7 @@ export default function Clientes() {
             Novo Cliente
           </Button>
         </div>
-      </div>
+      </PageHeader>
 
       {/* Filtros */}
       <Card>

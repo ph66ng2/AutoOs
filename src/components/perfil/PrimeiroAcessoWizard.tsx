@@ -540,10 +540,10 @@ function ShellPreview({ name, role, icon, color }: { name: string; role: string;
     <div aria-hidden="true" data-first-access-piece="" className="hidden lg:flex items-center justify-center bg-muted p-10">
       <div className="w-full max-w-[460px] rounded-2xl bg-card p-2 shadow-xl">
         <div className="flex aspect-[16/10] overflow-hidden rounded-lg bg-background">
-          <div className="flex w-[38%] flex-col bg-sidebar p-3">
+          <div className="flex w-[38%] flex-col border-r border-sidebar-border bg-sidebar p-3">
             <div className="flex items-center gap-1.5">
               <img src="/logo-tag-trasparente.svg" alt="" className="h-5 w-auto" />
-              <span className="text-xs font-semibold text-white">AutoOS</span>
+              <span className="text-xs font-semibold text-foreground">AutoOS</span>
             </div>
             <div className="mt-3 flex flex-col gap-1">
               {items.map(({ label, Icon, active }) => (
@@ -551,7 +551,7 @@ function ShellPreview({ name, role, icon, color }: { name: string; role: string;
                   key={label}
                   className={cn(
                     "flex items-center gap-2 rounded-md px-2 py-1.5 text-xs",
-                    active ? "bg-white/15 text-white shadow-sm" : "text-white/60",
+                    active ? "bg-nav-active font-semibold text-nav-active-foreground" : "text-sidebar-foreground",
                   )}
                 >
                   <Icon className="h-4 w-4" />

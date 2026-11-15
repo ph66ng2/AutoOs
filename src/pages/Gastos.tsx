@@ -24,6 +24,7 @@ import { GastosChart } from "@/components/gastos/GastosChart";
 import { GastosTable } from "@/components/gastos/GastosTable";
 import { GastosFormFixo } from "@/components/gastos/GastosFormFixo";
 import { GastosFormVariavel } from "@/components/gastos/GastosFormVariavel";
+import { PageHeader } from "@/components/PageHeader";
 
 const MESES = [
   "Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho",
@@ -165,13 +166,7 @@ export default function Gastos() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight">Gastos</h1>
-          <p className="text-muted-foreground">
-            Gestão de despesas fixas e variáveis
-          </p>
-        </div>
+      <PageHeader titulo="Gastos" descricao="Gestão de despesas fixas e variáveis">
         <div className="flex gap-2">
           <Button onClick={() => void abrirNovoFixo()}>
             <Plus className="h-4 w-4 mr-2" />
@@ -182,7 +177,7 @@ export default function Gastos() {
             Gasto Variável
           </Button>
         </div>
-      </div>
+      </PageHeader>
 
       <Card>
         <CardContent className="pt-6">

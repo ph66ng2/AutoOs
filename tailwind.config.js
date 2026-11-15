@@ -58,6 +58,7 @@ export default {
         },
         sidebar: {
           DEFAULT: "hsl(var(--sidebar))",
+          foreground: "hsl(var(--sidebar-foreground))",
           border: "hsl(var(--sidebar-border))",
         },
         "acc-soft": {

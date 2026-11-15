@@ -72,7 +72,7 @@ export const PERMISSION_TOUR: Record<SensitivePermission, TourStep> = {
   },
   VIEW_EXPENSES: {
     id: "gastos",
-    title: "Gastos",
+    title: "Finanças",
     body: "Consulte os gastos fixos e variáveis da empresa e o resumo de cada mês.",
     target: "nav-/gastos",
   },

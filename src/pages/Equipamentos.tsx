@@ -207,6 +207,7 @@ import { resolveRecipient, type ResolvedRecipient } from "@/lib/recipient-resolv
 import { mensagemEnvioFalhouComEmailSalvo, saveRecipientAddress } from "@/lib/recipient-persistence";
 import { totalPages } from "@/lib/pagination";
 import { acoesPorStatus, type AcaoStatus } from "@/lib/acoes-por-status";
+import { PageHeader } from "@/components/PageHeader";
 
 // O anel é a borda de um ::after dentro da célula. O box-shadow fica por baixo
 // do divisor colapsado e, na Ações sticky, o fundo branco cobre o topo.
@@ -2394,15 +2395,11 @@ export default function Equipamentos() {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight">Equipamentos</h1>
-          <p className="text-muted-foreground">Gerencie equipamentos, verificações e orçamentos</p>
-        </div>
+      <PageHeader titulo="Equipamentos" descricao="Gerencie equipamentos, verificações e orçamentos">
         <div className="flex items-center gap-2">
           <Button onClick={abrirNovo}><Plus className="h-4 w-4 mr-2" />Novo Equipamento</Button>
         </div>
-      </div>
+      </PageHeader>
 
       {/* Filtros */}
       <Card>

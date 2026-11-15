@@ -45,6 +45,7 @@ import {
 } from "@/components/ui/select";
 import { totalPages } from "@/lib/pagination";
 import { MODELOS_SERVICO } from "@/pages/servicos/servicos-modelos";
+import { PageHeader } from "@/components/PageHeader";
 
 export default function Servicos() {
   const [busca, setBusca] = useState("");
@@ -188,18 +189,12 @@ export default function Servicos() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight">Serviços</h1>
-          <p className="text-muted-foreground">
-            Catálogo de serviços padrão com preço para a verificação técnica
-          </p>
-        </div>
+      <PageHeader titulo="Serviços" descricao="Catálogo de serviços padrão com preço para a verificação técnica">
         <Button onClick={() => void abrirNovo()}>
           <Plus className="h-4 w-4 mr-2" />
           Novo Serviço
         </Button>
-      </div>
+      </PageHeader>
 
       {error && <ErrorAlert variant="error" context="Serviços" message={error} action="Carregar" />}
 

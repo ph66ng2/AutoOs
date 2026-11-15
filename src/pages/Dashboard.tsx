@@ -53,6 +53,7 @@ import { db } from "@/lib/db";
 import { formatDatePtBr } from "@/lib/date-utils";
 import { STATUS_LABELS, STATUS_COLORS, type Equipamento, type Produto, type StatusEquipamento } from "@/types";
 import { categoriaProdutoLabel } from "@/pages/insumos/insumos-page-constants";
+import { PageHeader } from "@/components/PageHeader";
 
 function StatusBadge({ status }: { status: string }) {
   const label = STATUS_LABELS[status as StatusEquipamento] || status;
@@ -211,11 +212,7 @@ export default function Dashboard() {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight">Dashboard</h1>
-          <p className="text-muted-foreground">Visão geral do sistema AutoOS</p>
-        </div>
+      <PageHeader titulo="Dashboard" descricao="Visão geral do sistema AutoOS">
         <div className="flex gap-2">
           <Button onClick={() => navigate("/equipamentos")} size="sm">
             <Plus className="h-4 w-4 mr-1" />Novo Equipamento
@@ -224,7 +221,7 @@ export default function Dashboard() {
             <Package className="h-4 w-4 mr-1" />Novo Insumo/Peça
           </Button>
         </div>
-      </div>
+      </PageHeader>
 
       {/* Metric Cards */}
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">

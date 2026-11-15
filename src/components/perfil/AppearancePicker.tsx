@@ -112,7 +112,7 @@ function ThemeOption({
             selected ? "ring-2 ring-primary" : "ring-1 ring-border",
           )}
         >
-          <span className="w-2.5 rounded-sm bg-sidebar" />
+          <span className="w-2.5 rounded-sm border border-sidebar-border bg-sidebar" />
           <span className="flex flex-1 items-start p-0.5 pl-1">
             <span className="h-full w-full rounded-sm bg-card" />
           </span>

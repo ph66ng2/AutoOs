@@ -75,6 +75,7 @@ import {
   InsumosProdutoDialog,
 } from "@/pages/insumos/InsumosDialogs";
 import { OrcamentosInsumosTab } from "@/pages/insumos/OrcamentosInsumosTab";
+import { PageHeader } from "@/components/PageHeader";
 
 export default function Insumos() {
   const [aba, setAba] = useState<"estoque" | "orcamentos">("estoque");
@@ -312,13 +313,7 @@ export default function Insumos() {
   return (
     <div className="space-y-4">
       {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight">Insumos/Peças & Estoque</h1>
-          <p className="text-muted-foreground">
-            Controle de suprimentos e movimentação de estoque
-          </p>
-        </div>
+      <PageHeader titulo="Insumos/Peças & Estoque" descricao="Controle de suprimentos e movimentação de estoque">
         <div className="flex gap-2">
           {aba === "estoque" && insumosAbaixoMinimo > 0 && (
             <Badge variant="destructive" className="h-8 px-3 flex items-center gap-1">
@@ -333,7 +328,7 @@ export default function Insumos() {
             </Button>
           )}
         </div>
-      </div>
+      </PageHeader>
 
       <Tabs value={aba} onValueChange={(valor) => setAba(valor as "estoque" | "orcamentos")}>
         <TabsList aria-label="Áreas de Insumos/Peças">

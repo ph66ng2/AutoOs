@@ -28,9 +28,9 @@
     --input: 214 15% 56%;
     --ring: 192 56% 28%;
     --radius: 0.5rem;
-    /* Menu lateral ainda usa texto branco (Layout.tsx); passa a nav-bg branco na fase 4. */
-    --sidebar: 220 30% 15%;
-    --sidebar-border: 220 20% 22%;
+    --sidebar: 0 0% 100%;
+    --sidebar-foreground: 213 13% 32%;
+    --sidebar-border: 213 18% 90%;
     --acc-soft: 192 25% 92%;
     --acc-soft-foreground: 192 56% 23%;
     --track: 213 19% 91%;
@@ -79,6 +79,7 @@
     --input: 212 17% 41%;
     --ring: 192 29% 59%;
     --sidebar: 216 24% 4%;
+    --sidebar-foreground: 213 11% 64%;
     --sidebar-border: 214 19% 17%;
     --acc-soft: 196 29% 13%;
     --acc-soft-foreground: 192 30% 74%;

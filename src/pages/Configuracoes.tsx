@@ -36,6 +36,7 @@ import { ConfiguracoesTabSeguranca } from "@/pages/configuracoes/ConfiguracoesTa
 import { SMTP_DEFAULTS, type SmtpFormValues, type WhatsappFormValues } from "@/pages/configuracoes/configuracoes-shared";
 import { detectRestoreMode } from "@/pages/configuracoes/detect-restore-mode";
 import { abasConfiguracoes } from "@/pages/configuracoes/abas";
+import { PageHeader } from "@/components/PageHeader";
 import {
   SENSITIVE_PERMISSIONS,
   type DatabaseSchemaStatus,
@@ -715,10 +716,7 @@ export default function Configuracoes() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-3xl font-bold tracking-tight">Configurações</h1>
-        <p className="text-muted-foreground">Defina parâmetros do sistema e integrações.</p>
-      </div>
+      <PageHeader titulo="Configurações" descricao="Defina parâmetros do sistema e integrações." />
 
       <Tabs value={tab} onValueChange={(nextTab) => { setTab(nextTab); setSecurityMessage(null); }} className="space-y-4">
         <TabsList>

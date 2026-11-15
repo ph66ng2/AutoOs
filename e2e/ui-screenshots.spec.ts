@@ -61,13 +61,13 @@ test("captura as telas principais com dados sintéticos", async ({ page }) => {
   await page.keyboard.press("Escape");
   await expect(detalhes).toBeHidden();
 
-  await openScreen("Insumos/Peças");
+  await openScreen("Insumos e peças");
   await expect(page.locator("h1", { hasText: "Insumos/Peças & Estoque" })).toBeVisible();
   await expect(page.getByText("Etiqueta sintética CI").first()).toBeVisible();
   await expect(page.getByText("Ribbon sintético CI").first()).toBeVisible();
   await page.screenshot({ path: `${outDir}/05-insumos-estoque.png`, fullPage: true, animations: "disabled" });
 
-  await openScreen("Perfil");
+  await openScreen("Equipe e acessos");
   await expect(page.locator("h1", { hasText: "CI Admin Screenshot" })).toBeVisible();
   await expect(page.getByText("O que você pode fazer")).toBeVisible();
   await page.screenshot({ path: `${outDir}/09-perfil-visao-geral.png`, fullPage: true, animations: "disabled" });
