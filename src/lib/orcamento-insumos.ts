@@ -23,12 +23,12 @@ export const STATUS_ORCAMENTO_INSUMOS_LABEL: Record<StatusOrcamentoInsumos, stri
 
 /** Cores do selo de status (Tailwind), com par claro/escuro. */
 export const STATUS_ORCAMENTO_INSUMOS_COR: Record<StatusOrcamentoInsumos, string> = {
-  RASCUNHO: "bg-slate-100 text-slate-700 border-slate-300 dark:bg-slate-800 dark:text-slate-200",
-  ENVIADO: "bg-blue-100 text-blue-800 border-blue-300 dark:bg-blue-950 dark:text-blue-200",
-  APROVADO: "bg-green-100 text-green-800 border-green-300 dark:bg-green-950 dark:text-green-200",
-  REPROVADO: "bg-red-100 text-red-800 border-red-300 dark:bg-red-950 dark:text-red-200",
-  CANCELADO: "bg-zinc-200 text-zinc-700 border-zinc-300 dark:bg-zinc-800 dark:text-zinc-300",
-  ENTREGUE: "bg-emerald-100 text-emerald-900 border-emerald-300 dark:bg-emerald-950 dark:text-emerald-200",
+  RASCUNHO: "bg-status-neutral-bg text-status-neutral border-status-neutral/30",
+  ENVIADO: "bg-status-wait-bg text-status-wait border-status-wait/30",
+  APROVADO: "bg-status-ok-bg text-status-ok border-status-ok/30",
+  REPROVADO: "bg-status-bad-bg text-status-bad border-status-bad/30",
+  CANCELADO: "bg-status-neutral-bg text-status-neutral border-status-neutral/30",
+  ENTREGUE: "bg-status-neutral-bg text-status-neutral border-status-neutral/30",
 };
 
 /** Categorias que podem entrar num orçamento de insumos: tudo do estoque, menos impressoras. */

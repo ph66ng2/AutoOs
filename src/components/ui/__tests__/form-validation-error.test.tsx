@@ -32,10 +32,10 @@ describe('FormValidationError', () => {
     expect(svg).toBeInTheDocument();
   });
 
-  it('aplica classe de cor vermelha (text-red-500)', () => {
+  it('aplica a cor de erro (text-destructive)', () => {
     render(<FormValidationError message="Erro" />);
     const paragraph = screen.getByText('Erro').closest('p');
-    expect(paragraph).toHaveClass('text-red-500');
+    expect(paragraph).toHaveClass('text-destructive');
   });
 
   it('aplica layout flex com gap', () => {

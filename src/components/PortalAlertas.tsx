@@ -61,12 +61,12 @@ type Visual = {
   erro?: boolean;
 };
 
-const VERDE = { chip: "bg-emerald-100 text-emerald-700", borda: "border-l-emerald-500", toast: "!border-emerald-200 !bg-emerald-50 !text-emerald-900 [&_[data-icon]]:!text-emerald-600" };
-const CINZA = { chip: "bg-slate-100 text-slate-600", borda: "border-l-slate-400", toast: "!border-slate-200 !bg-slate-50 !text-slate-800 [&_[data-icon]]:!text-slate-500" };
-const AZUL = { chip: "bg-sky-100 text-sky-700", borda: "border-l-sky-500", toast: "!border-sky-200 !bg-sky-50 !text-sky-900 [&_[data-icon]]:!text-sky-600" };
-const VIOLETA = { chip: "bg-violet-100 text-violet-700", borda: "border-l-violet-500", toast: "!border-violet-200 !bg-violet-50 !text-violet-900 [&_[data-icon]]:!text-violet-600" };
-const AMBAR = { chip: "bg-amber-100 text-amber-700", borda: "border-l-amber-500", toast: "!border-amber-200 !bg-amber-50 !text-amber-900 [&_[data-icon]]:!text-amber-600" };
-const VERMELHO = { chip: "bg-red-100 text-red-700", borda: "border-l-red-500", toast: "", erro: true };
+const VERDE = { chip: "bg-status-ok-bg text-status-ok", borda: "border-l-status-ok", toast: "!border-status-ok/30 !bg-status-ok-bg !text-foreground [&_[data-icon]]:!text-status-ok" };
+const CINZA = { chip: "bg-status-neutral-bg text-status-neutral", borda: "border-l-status-neutral", toast: "!border-status-neutral/30 !bg-status-neutral-bg !text-foreground [&_[data-icon]]:!text-status-neutral" };
+const AZUL = { chip: "bg-status-work-bg text-status-work", borda: "border-l-status-work", toast: "!border-status-work/30 !bg-status-work-bg !text-foreground [&_[data-icon]]:!text-status-work" };
+const VIOLETA = { chip: "bg-acc-soft text-acc-soft-foreground", borda: "border-l-primary", toast: "!border-primary/30 !bg-acc-soft !text-foreground [&_[data-icon]]:!text-primary" };
+const AMBAR = { chip: "bg-status-wait-bg text-status-wait", borda: "border-l-status-wait", toast: "!border-status-wait/30 !bg-status-wait-bg !text-foreground [&_[data-icon]]:!text-status-wait" };
+const VERMELHO = { chip: "bg-status-bad-bg text-status-bad", borda: "border-l-status-bad", toast: "", erro: true };
 
 export function visualDoAlerta(alerta: Pick<AlertaPortal, "tipo" | "decisao">): Visual {
   const recusa = alerta.decisao === "RECUSAR";
@@ -212,7 +212,7 @@ export function PortalAlertasSino() {
       >
         <Bell className="h-5 w-5" />
         {naoLidos > 0 && (
-          <span className="absolute -right-0.5 -top-0.5 flex h-5 min-w-5 items-center justify-center rounded-full bg-red-600 px-1 text-[11px] font-bold leading-none text-white ring-2 ring-background">
+          <span className="absolute -right-0.5 -top-0.5 flex h-5 min-w-5 items-center justify-center rounded-full bg-destructive px-1 text-[11px] font-bold leading-none text-destructive-foreground ring-2 ring-background">
             {naoLidos > 99 ? "99+" : naoLidos}
           </span>
         )}
@@ -339,7 +339,7 @@ export function PortalAlertasPainel({ erros, onFechar, onAbrirAtendimento, onCha
             {contagem[valor] > 0 && (
               <span className={cn(
                 "rounded-full px-1.5 text-[10px] font-semibold leading-4",
-                valor === "erros" ? "bg-red-100 text-red-700" : "bg-muted text-muted-foreground",
+                valor === "erros" ? "bg-status-bad-bg text-status-bad" : "bg-muted text-muted-foreground",
               )}>
                 {contagem[valor]}
               </span>
@@ -439,8 +439,8 @@ function ItemErro({ registro }: { registro: ErroRegistrado }) {
     window.setTimeout(() => setCopiado(null), 2500);
   };
   return (
-    <article className={cn("flex gap-3 rounded-md border border-l-4 border-l-red-500 bg-background px-3 py-2.5", registro.lido && "opacity-75")}>
-      <span className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-red-100 text-red-700" aria-hidden="true">
+    <article className={cn("flex gap-3 rounded-md border border-l-4 border-l-status-bad bg-background px-3 py-2.5", registro.lido && "opacity-75")}>
+      <span className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-status-bad-bg text-status-bad" aria-hidden="true">
         <CircleAlert className="h-4 w-4" />
       </span>
       <div className="min-w-0 flex-1">

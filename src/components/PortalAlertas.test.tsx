@@ -130,17 +130,17 @@ describe("PortalAlertasSino", () => {
     await act(async () => { await vi.advanceTimersByTimeAsync(30_000); });
     await waitFor(() => expect(mocks.toast).toHaveBeenCalledWith("Orçamento aprovado pelo cliente", expect.objectContaining({
       duration: 10_000,
-      classNames: expect.objectContaining({ toast: expect.stringContaining("emerald") }),
+      classNames: expect.objectContaining({ toast: expect.stringContaining("status-ok") }),
     })));
     expect(mocks.toast.error).not.toHaveBeenCalled();
   });
 
   it("cada tipo tem cor própria; recusa efetivada não fica verde", () => {
-    expect(visualDoAlerta({ tipo: "DECISAO_EFETIVADA", decisao: "APROVAR" }).chip).toContain("emerald");
-    expect(visualDoAlerta({ tipo: "DECISAO_EFETIVADA", decisao: "RECUSAR" }).chip).toContain("slate");
-    expect(visualDoAlerta({ tipo: "RESPOSTA_RECEBIDA", decisao: "APROVAR" }).chip).toContain("sky");
+    expect(visualDoAlerta({ tipo: "DECISAO_EFETIVADA", decisao: "APROVAR" }).chip).toContain("status-ok");
+    expect(visualDoAlerta({ tipo: "DECISAO_EFETIVADA", decisao: "RECUSAR" }).chip).toContain("status-neutral");
+    expect(visualDoAlerta({ tipo: "RESPOSTA_RECEBIDA", decisao: "APROVAR" }).chip).toContain("status-work");
     expect(visualDoAlerta({ tipo: "EFETIVACAO_FALHOU", decisao: "APROVAR" }).erro).toBe(true);
-    expect(visualDoAlerta({ tipo: "NEGOCIACAO_SOLICITADA" }).chip).toContain("violet");
+    expect(visualDoAlerta({ tipo: "NEGOCIACAO_SOLICITADA" }).chip).toContain("acc-soft");
   });
 
   it("'Ver' no aviso marca o alerta como lido, abre o atendimento e avisa a lista de equipamentos", async () => {

@@ -88,7 +88,7 @@ describe("OrcamentosInsumosTab", () => {
     expect(within(primeira).getByText("2 itens")).toBeInTheDocument();
     expect(within(primeira).getByText(/R\$\s*150,00/)).toBeInTheDocument();
     expect(within(primeira).getByText("20/10/2026")).toBeInTheDocument();
-    expect(within(primeira).getByText("Aprovado").className).toMatch(/green/);
+    expect(within(primeira).getByText("Aprovado").className).toMatch(/status-ok/);
 
     const segunda = screen.getByRole("row", { name: /abrir orçamento OI-1/i });
     expect(within(segunda).getByText("1 item")).toBeInTheDocument();

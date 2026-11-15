@@ -64,7 +64,7 @@ export function ConfirmDialog({
             className={cn(
               pressClass,
               cancelVariant === "destructive" &&
-                "border-transparent bg-red-600 text-white hover:bg-red-700 hover:text-white",
+                "border-transparent bg-destructive text-destructive-foreground hover:bg-destructive/90 hover:text-destructive-foreground",
             )}
           >
             {cancelLabel}
