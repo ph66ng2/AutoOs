@@ -80,19 +80,20 @@ export const STATUS_LABELS: Record<StatusEquipamento, string> = {
 };
 
 /** Classes CSS Tailwind de cor para cada status. Usado em StatusBadge (Equipamentos.tsx, Clientes.tsx) */
+// Uma família de cor por status (src/lib/status-familia.ts); o teste de lá garante que batem.
 export const STATUS_COLORS: Record<StatusEquipamento, string> = {
-  RECEBIDO: "bg-blue-100 text-blue-800",
-  EM_VERIFICACAO: "bg-yellow-100 text-yellow-800",
-  VERIFICADO: "bg-purple-100 text-purple-800",
-  AGUARDANDO_APROVACAO: "bg-orange-100 text-orange-800",
-  APROVADO: "bg-green-100 text-green-800",
-  REPROVADO: "bg-red-100 text-red-800",
-  EM_MANUTENCAO: "bg-indigo-100 text-indigo-800",
-  AGUARDANDO_PECA: "bg-amber-100 text-amber-800",
-  PRONTO: "bg-emerald-100 text-emerald-800",
-  ENTREGUE: "bg-gray-100 text-gray-800",
-  ORCAMENTO_VENCIDO: "bg-rose-100 text-rose-800",
-  ABANDONADO: "bg-stone-100 text-stone-800",
+  RECEBIDO: "bg-status-neutral-bg text-status-neutral",
+  EM_VERIFICACAO: "bg-status-work-bg text-status-work",
+  VERIFICADO: "bg-status-work-bg text-status-work",
+  AGUARDANDO_APROVACAO: "bg-status-wait-bg text-status-wait",
+  APROVADO: "bg-status-work-bg text-status-work",
+  REPROVADO: "bg-status-bad-bg text-status-bad",
+  EM_MANUTENCAO: "bg-status-work-bg text-status-work",
+  AGUARDANDO_PECA: "bg-status-wait-bg text-status-wait",
+  PRONTO: "bg-status-ok-bg text-status-ok",
+  ENTREGUE: "bg-status-neutral-bg text-status-neutral",
+  ORCAMENTO_VENCIDO: "bg-status-bad-bg text-status-bad",
+  ABANDONADO: "bg-status-neutral-bg text-status-neutral",
 };
 
 // ─── Interfaces ─────────────────────────────────────────

@@ -1,0 +1,40 @@
+import { describe, expect, it } from "vitest";
+import { STATUS_COLORS, STATUS_EQUIPAMENTO, STATUS_LABELS, type StatusEquipamento } from "@/types";
+import { FAMILIA_CLASSES, statusFamilia, statusFamiliaClasses } from "./status-familia";
+
+const ESPERADO: Record<StatusEquipamento, ReturnType<typeof statusFamilia>> = {
+  RECEBIDO: "neutral",
+  EM_VERIFICACAO: "work",
+  VERIFICADO: "work",
+  AGUARDANDO_APROVACAO: "wait",
+  APROVADO: "work",
+  REPROVADO: "bad",
+  EM_MANUTENCAO: "work",
+  AGUARDANDO_PECA: "wait",
+  PRONTO: "ok",
+  ENTREGUE: "neutral",
+  ORCAMENTO_VENCIDO: "bad",
+  ABANDONADO: "neutral",
+};
+
+describe("statusFamilia", () => {
+  it.each(Object.values(STATUS_EQUIPAMENTO))("classifica %s", (status) => {
+    expect(statusFamilia(status)).toBe(ESPERADO[status]);
+  });
+
+  it("aceita o rótulo legível que o app também aceita", () => {
+    expect(statusFamilia(STATUS_LABELS.AGUARDANDO_PECA)).toBe("wait");
+    expect(statusFamilia("  PRONTO ")).toBe("ok");
+  });
+
+  it("status desconhecido é neutro", () => {
+    expect(statusFamilia("QUALQUER_COISA")).toBe("neutral");
+    expect(statusFamiliaClasses("")).toBe(FAMILIA_CLASSES.neutral);
+  });
+
+  it("STATUS_COLORS segue a família de cada status", () => {
+    for (const status of Object.values(STATUS_EQUIPAMENTO)) {
+      expect(STATUS_COLORS[status]).toBe(FAMILIA_CLASSES[ESPERADO[status]]);
+    }
+  });
+});
