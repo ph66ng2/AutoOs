@@ -36,6 +36,25 @@ import { ReleaseHighlightsDialog } from "@/components/ReleaseHighlightsDialog";
 import { UpdateNotice } from "@/components/UpdateNotice";
 import { getAppMode, setAppMode, type AppMode } from "@/lib/app-mode";
 
+/**
+ * AvisoRapido do DS: fundo de cartão, borda e sombra de menu, sem cor de fundo por tipo
+ * (sem as cores ricas do sonner). A cor da família fica só no ícone.
+ */
+const AVISO_RAPIDO_OPCOES = {
+  classNames: {
+    toast: "!rounded-[14px] !border-border !bg-card !text-card-foreground !shadow-[0_12px_32px_rgba(0,0,0,0.18)]",
+    title: "!text-sm !font-bold",
+    description: "!text-[13px] !text-muted-foreground",
+    actionButton: "!bg-acc-soft !font-semibold !text-acc-soft-foreground",
+    cancelButton: "!bg-muted !text-muted-foreground",
+    closeButton: "!border-border !bg-card !text-muted-foreground",
+    success: "[&_[data-icon]]:!text-status-ok",
+    info: "[&_[data-icon]]:!text-status-work",
+    warning: "[&_[data-icon]]:!text-status-wait",
+    error: "[&_[data-icon]]:!text-status-bad",
+  },
+};
+
 const Dashboard = lazy(() => import("@/pages/Dashboard"));
 const Equipamentos = lazy(() => import("@/pages/Equipamentos"));
 const Clientes = lazy(() => import("@/pages/Clientes"));
@@ -221,7 +240,7 @@ function App() {
   if (!dbReady) {
     return (
       <>
-        <Toaster theme={toastTheme} position="top-right" offset={{ top: 64, right: 24 }} visibleToasts={3} richColors closeButton duration={5000} />
+        <Toaster theme={toastTheme} position="top-right" offset={{ top: 64, right: 24 }} visibleToasts={3} closeButton duration={5000} toastOptions={AVISO_RAPIDO_OPCOES} />
         <ErrorBoundary>
           <DatabaseConfigDialog onConfigured={() => setDbReady(true)} />
         </ErrorBoundary>
@@ -231,7 +250,7 @@ function App() {
 
   return (
     <>
-      <Toaster theme={toastTheme} position="top-right" offset={{ top: 64, right: 24 }} visibleToasts={3} richColors closeButton duration={5000} />
+      <Toaster theme={toastTheme} position="top-right" offset={{ top: 64, right: 24 }} visibleToasts={3} closeButton duration={5000} toastOptions={AVISO_RAPIDO_OPCOES} />
       <ErrorBoundary>
         <AppContent />
       </ErrorBoundary>
