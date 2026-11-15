@@ -206,6 +206,7 @@ import { FormaPagamentoFields } from "@/components/equipamentos/FormaPagamentoFi
 import { resolveRecipient, type ResolvedRecipient } from "@/lib/recipient-resolver";
 import { mensagemEnvioFalhouComEmailSalvo, saveRecipientAddress } from "@/lib/recipient-persistence";
 import { totalPages } from "@/lib/pagination";
+import { acoesPorStatus, type AcaoStatus } from "@/lib/acoes-por-status";
 
 // O anel é a borda de um ::after dentro da célula. O box-shadow fica por baixo
 // do divisor colapsado e, na Ações sticky, o fundo branco cobre o topo.
@@ -2123,9 +2124,6 @@ export default function Equipamentos() {
    * Conecta-se a: acaoRapida, abrirVerificacao, abrirMudarStatus, handleMarcarPronto, WhatsApp
    */
   function renderAcoes(eq: Equipamento) {
-    let primary: PriorityAction | null = null;
-    let secondary: PriorityAction | undefined;
-    const overflow: PriorityAction[] = [];
     const classeAcaoPrincipal = "min-w-[170px] justify-center";
 
     const acaoStatus: PriorityAction = {
@@ -2192,217 +2190,57 @@ export default function Equipamentos() {
       || (hasPermission(SENSITIVE_PERMISSIONS.PREPARE_QUOTES) && orcamentoEmElaboracao(eq.status));
     const podeExcluir = hasPermission(SENSITIVE_PERMISSIONS.DELETE_RECORDS);
 
-    switch (eq.status) {
-      case "RECEBIDO":
-        primary = {
-          id: "iniciar_verificacao",
-          label: "Iniciar Verificação",
-          icon: <Play className="h-3.5 w-3.5" />,
-          variant: "default",
-          className: classeAcaoPrincipal,
-          onClick: () => void acaoRapida(eq, "EM_VERIFICACAO"),
-          disabled: salvando,
-        };
-        secondary = acaoStatus;
-        overflow.push(
-          {
-            id: "os_pdf",
-            label: "OS PDF",
-            icon: <FileDown className="h-3.5 w-3.5" />,
-            onClick: () => void gerarOrdemServicoPdf(eq),
-            disabled: salvando,
-          },
-          acaoEditar,
-          ...(podeExcluir ? [acaoExcluir] : []),
-        );
-        break;
-      case "EM_VERIFICACAO":
-        primary = {
-          id: "abrir_verificacao",
-          label: "Abrir Verificação",
-          icon: <ClipboardCheck className="h-3.5 w-3.5" />,
-          variant: "default",
-          className: classeAcaoPrincipal,
-          onClick: () => abrirVerificacao(eq),
-        };
-        secondary = acaoStatus;
-        overflow.push(acaoEditar, ...(podeExcluir ? [acaoExcluir] : []));
-        break;
-      case "VERIFICADO":
-        if (podeOrcamentoValores) {
-          primary = {
-            id: "enviar_orcamento",
-            label: "Enviar Orçamento",
-            icon: <Send className="h-3.5 w-3.5" />,
-            variant: "default",
-            className: classeAcaoPrincipal,
-            onClick: () => void abrirMudarStatus(eq, "AGUARDANDO_APROVACAO"),
-          };
-          secondary = acaoStatus;
-        } else {
-          primary = acaoStatus;
-        }
-        if (eq.cliente_telefone) {
-          overflow.push({
-            id: "whatsapp_orcamento",
-            label: "WhatsApp",
-            icon: <MessageSquare className="h-3.5 w-3.5" />,
-            onClick: () => void enviarWhatsAppOrcamento(eq),
-          });
-        }
-        overflow.push(acaoEditar, ...(podeExcluir ? [acaoExcluir] : []));
-        break;
-      case "AGUARDANDO_APROVACAO":
-        if (podeOrcamentoValores) {
-          primary = {
-            id: "aprovar",
-            label: "Aprovar",
-            icon: <CheckCircle className="h-3.5 w-3.5" />,
-            variant: "default",
-            onClick: () => void abrirDialogoAprovacao(eq, "aprovar"),
-            disabled: salvando,
-          };
-          secondary = {
-            id: "reprovar",
-            label: "Reprovar",
-            icon: <XCircle className="h-3.5 w-3.5" />,
-            variant: "default",
-            className: "bg-destructive text-destructive-foreground hover:bg-destructive/90",
-            onClick: () => void abrirDialogoAprovacao(eq, "reprovar"),
-            disabled: salvando,
-          };
-          overflow.push(acaoStatus);
-        } else {
-          primary = acaoStatus;
-        }
-        if (eq.cliente_telefone) {
-          overflow.push({
-            id: "whatsapp_orcamento",
-            label: "WhatsApp",
-            icon: <MessageSquare className="h-3.5 w-3.5" />,
-            onClick: () => void enviarWhatsAppOrcamento(eq),
-          });
-        }
-        overflow.push(acaoEditar, ...(podeExcluir ? [acaoExcluir] : []));
-        break;
-      case "APROVADO":
-        primary = {
-          id: "iniciar_manutencao",
-          label: "Iniciar Manutenção",
-          icon: <Wrench className="h-3.5 w-3.5" />,
-          variant: "default",
-          className: classeAcaoPrincipal,
-          onClick: () => void acaoRapida(eq, "EM_MANUTENCAO"),
-          disabled: salvando,
-        };
-        secondary = acaoStatus;
-        overflow.push(
-          ...(podeFinanceiro ? [{ ...acaoCorrigirDecisao, id: "desfazer_aprovacao", label: "Desfazer aprovação" }] : []),
-          acaoEditar,
-          ...(podeExcluir ? [acaoExcluir] : []),
-        );
-        break;
-      case "EM_MANUTENCAO":
-        primary = {
-          id: "marcar_pronto",
-          label: "Marcar Pronto",
-          icon: <PackageCheck className="h-3.5 w-3.5" />,
-          variant: "default",
-          className: classeAcaoPrincipal,
-          onClick: () => void handleMarcarPronto(eq),
-          disabled: salvando || loadingAutomacao,
-        };
-        secondary = acaoStatus;
-        overflow.push(acaoEditar, ...(podeExcluir ? [acaoExcluir] : []));
-        break;
-      case "AGUARDANDO_PECA":
-        primary = {
-          id: "retomar_manutencao",
-          label: "Retomar Manutenção",
-          icon: <Wrench className="h-3.5 w-3.5" />,
-          variant: "default",
-          className: classeAcaoPrincipal,
-          onClick: () => void acaoRapida(eq, "EM_MANUTENCAO"),
-          disabled: salvando,
-        };
-        secondary = acaoStatus;
-        overflow.push(acaoEditar, ...(podeExcluir ? [acaoExcluir] : []));
-        break;
-      case "PRONTO":
-        primary = {
-          id: "registrar_entrega",
-          label: "Registrar Entrega",
-          icon: <PackageCheck className="h-3.5 w-3.5" />,
-          variant: "default",
-          className: classeAcaoPrincipal,
-          onClick: () => void abrirMudarStatus(eq, "ENTREGUE"),
-        };
-        secondary = acaoStatus;
-        if (eq.cliente_telefone) {
-          overflow.push({
-            id: "whatsapp_pronto",
-            label: "WhatsApp",
-            icon: <MessageSquare className="h-3.5 w-3.5" />,
-            onClick: () => void enviarWhatsAppPronto(eq),
-          });
-        }
-        overflow.push(acaoEditar, ...(podeExcluir ? [acaoExcluir] : []));
-        break;
-      case "REPROVADO":
-        if (podeOrcamentoValores) {
-          primary = {
-            id: "reabrir_orcamento",
-            label: "Reabrir Orçamento",
-            icon: <RotateCcw className="h-3.5 w-3.5" />,
-            variant: "default",
-            className: classeAcaoPrincipal,
-            onClick: () => setReabrirAlvo(eq),
-            disabled: salvando,
-          };
-          overflow.push({
-            id: "mudar_status",
-            label: "Mudar Status",
-            icon: <ArrowDownUp className="h-3.5 w-3.5" />,
-            variant: "outline",
-            onClick: () => void abrirMudarStatus(eq),
-            disabled: salvando,
-          });
-        } else {
-          primary = acaoStatus;
-        }
-        overflow.push(acaoEditar, ...(podeExcluir ? [acaoExcluir] : []));
-        break;
-      case "ORCAMENTO_VENCIDO":
-        if (podeOrcamentoValores) {
-          primary = {
-            id: "renovar_orcamento",
-            label: "Renovar orçamento",
-            icon: <RefreshCw className="h-3.5 w-3.5" />,
-            variant: "default",
-            className: classeAcaoPrincipal,
-            onClick: () => void abrirMudarStatus(eq, "AGUARDANDO_APROVACAO"),
-          };
-          secondary = acaoStatus;
-        } else {
-          primary = acaoStatus;
-        }
-        overflow.push(acaoEditar, ...(podeExcluir ? [acaoExcluir] : []));
-        break;
-      default:
-        primary = acaoStatus;
-        secondary = undefined;
-        if (getProximosStatus(eq.status).length > 0) {
-          secondary = {
-            id: "mudar_status",
-            label: "Mudar Status",
-            icon: <ArrowDownUp className="h-3.5 w-3.5" />,
-            variant: "outline",
-            onClick: () => void abrirMudarStatus(eq),
-          };
-        }
-        overflow.push(acaoEditar, ...(podeExcluir ? [acaoExcluir] : []));
-        break;
-    }
+    const acoes = acoesPorStatus(eq.status, {
+      podeOrcamentoValores,
+      podeFinanceiro,
+      temTelefone: Boolean(eq.cliente_telefone),
+      temProximosStatus: getProximosStatus(eq.status).length > 0,
+    });
+    const criarAcao = ({ id, rotulo }: AcaoStatus): PriorityAction => {
+      switch (id) {
+        case "status":
+          return acaoStatus;
+        case "iniciar_verificacao":
+          return { id, label: rotulo, icon: <Play className="h-3.5 w-3.5" />, variant: "default", className: classeAcaoPrincipal, onClick: () => void acaoRapida(eq, "EM_VERIFICACAO"), disabled: salvando };
+        case "abrir_verificacao":
+          return { id, label: rotulo, icon: <ClipboardCheck className="h-3.5 w-3.5" />, variant: "default", className: classeAcaoPrincipal, onClick: () => abrirVerificacao(eq) };
+        case "enviar_orcamento":
+          return { id, label: rotulo, icon: <Send className="h-3.5 w-3.5" />, variant: "default", className: classeAcaoPrincipal, onClick: () => void abrirMudarStatus(eq, "AGUARDANDO_APROVACAO") };
+        case "aprovar":
+          return { id, label: rotulo, icon: <CheckCircle className="h-3.5 w-3.5" />, variant: "default", onClick: () => void abrirDialogoAprovacao(eq, "aprovar"), disabled: salvando };
+        case "reprovar":
+          return { id, label: rotulo, icon: <XCircle className="h-3.5 w-3.5" />, variant: "default", className: "bg-destructive text-destructive-foreground hover:bg-destructive/90", onClick: () => void abrirDialogoAprovacao(eq, "reprovar"), disabled: salvando };
+        case "iniciar_manutencao":
+          return { id, label: rotulo, icon: <Wrench className="h-3.5 w-3.5" />, variant: "default", className: classeAcaoPrincipal, onClick: () => void acaoRapida(eq, "EM_MANUTENCAO"), disabled: salvando };
+        case "marcar_pronto":
+          return { id, label: rotulo, icon: <PackageCheck className="h-3.5 w-3.5" />, variant: "default", className: classeAcaoPrincipal, onClick: () => void handleMarcarPronto(eq), disabled: salvando || loadingAutomacao };
+        case "retomar_manutencao":
+          return { id, label: rotulo, icon: <Wrench className="h-3.5 w-3.5" />, variant: "default", className: classeAcaoPrincipal, onClick: () => void acaoRapida(eq, "EM_MANUTENCAO"), disabled: salvando };
+        case "registrar_entrega":
+          return { id, label: rotulo, icon: <PackageCheck className="h-3.5 w-3.5" />, variant: "default", className: classeAcaoPrincipal, onClick: () => void abrirMudarStatus(eq, "ENTREGUE") };
+        case "reabrir_orcamento":
+          return { id, label: rotulo, icon: <RotateCcw className="h-3.5 w-3.5" />, variant: "default", className: classeAcaoPrincipal, onClick: () => setReabrirAlvo(eq), disabled: salvando };
+        case "renovar_orcamento":
+          return { id, label: rotulo, icon: <RefreshCw className="h-3.5 w-3.5" />, variant: "default", className: classeAcaoPrincipal, onClick: () => void abrirMudarStatus(eq, "AGUARDANDO_APROVACAO") };
+        case "mudar_status":
+          return { id, label: rotulo, icon: <ArrowDownUp className="h-3.5 w-3.5" />, variant: "outline", onClick: () => void abrirMudarStatus(eq), ...(eq.status === "REPROVADO" ? { disabled: salvando } : {}) };
+        case "os_pdf":
+          return { id, label: rotulo, icon: <FileDown className="h-3.5 w-3.5" />, onClick: () => void gerarOrdemServicoPdf(eq), disabled: salvando };
+        case "whatsapp_orcamento":
+          return { id, label: rotulo, icon: <MessageSquare className="h-3.5 w-3.5" />, onClick: () => void enviarWhatsAppOrcamento(eq) };
+        case "whatsapp_pronto":
+          return { id, label: rotulo, icon: <MessageSquare className="h-3.5 w-3.5" />, onClick: () => void enviarWhatsAppPronto(eq) };
+        case "desfazer_aprovacao":
+          return { ...acaoCorrigirDecisao, id, label: rotulo };
+      }
+    };
+    const primary: PriorityAction = criarAcao(acoes.principal);
+    const secondary: PriorityAction | undefined = acoes.secundaria ? criarAcao(acoes.secundaria) : undefined;
+    const overflow: PriorityAction[] = [
+      ...acoes.nesteStatus.map(criarAcao),
+      acaoEditar,
+      ...(podeExcluir ? [acaoExcluir] : []),
+    ];
 
     if (STATUS_COM_ORCAMENTO.includes(eq.status)) {
       const editarIndex = overflow.findIndex((acao) => acao.id === acaoEditar.id);
@@ -2421,18 +2259,16 @@ export default function Equipamentos() {
       overflow.splice(editarIndex >= 0 ? editarIndex : overflow.length, 0, acaoCorrigirStatus);
     }
 
-    return primary
-      ? (
-        <ActionPriorityRow
-          primary={primary}
-          iconOnlyPrimary={eq.status === "ENTREGUE" || eq.status === "ABANDONADO"}
-          secondary={secondary}
-          overflow={agruparAcoesOs(overflow)}
-          iconOnlySecondary
-          iconOnlyOverflowTrigger
-        />
-      )
-      : null;
+    return (
+      <ActionPriorityRow
+        primary={primary}
+        iconOnlyPrimary={eq.status === "ENTREGUE" || eq.status === "ABANDONADO"}
+        secondary={secondary}
+        overflow={agruparAcoesOs(overflow)}
+        iconOnlySecondary
+        iconOnlyOverflowTrigger
+      />
+    );
   }
 
   // ─── Sub-renders para abas do drawer de detalhes ──────
