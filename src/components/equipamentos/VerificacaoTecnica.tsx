@@ -51,6 +51,7 @@ import {
   DialogTitle,
   DialogFooter,
   DialogClose,
+  DialogBody,
 } from "@/components/ui/dialog";
 import {
   type Equipamento,
@@ -276,7 +277,7 @@ export function VerificacaoTecnica({
   return (
     <>
     <Dialog open={open} onOpenChange={handleOpenChange}>
-      <DialogContent className="sm:max-w-3xl max-h-[90vh] overflow-y-auto">
+      <DialogContent tamanho="g">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Check className="h-5 w-5" />
@@ -285,7 +286,8 @@ export function VerificacaoTecnica({
         </DialogHeader>
 
         {equipamento && (
-          <div className="space-y-6">
+          <>
+          <DialogBody className="space-y-6">
             {/* Equipamento info */}
             <div className="bg-accent/50 p-3 rounded-lg">
               <p className="font-medium">
@@ -470,6 +472,7 @@ export function VerificacaoTecnica({
                 />
               </CardContent>
             </Card>
+          </DialogBody>
 
             <DialogFooter>
               <DialogClose asChild>
@@ -499,7 +502,7 @@ export function VerificacaoTecnica({
                 }}
               />
             )}
-          </div>
+          </>
         )}
       </DialogContent>
     </Dialog>

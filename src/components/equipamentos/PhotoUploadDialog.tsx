@@ -8,6 +8,7 @@ import {
   DialogHeader,
   DialogTitle,
   DialogDescription,
+  DialogFooter,
 } from "@/components/ui/dialog";
 import { db } from "@/lib/db";
 
@@ -285,9 +286,9 @@ export function PhotoUploadDialog({
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
-      <DialogContent className="flex max-h-[calc(100dvh-1rem)] w-[min(calc(100vw-1.5rem),22.5rem)] max-w-[min(calc(100vw-1.5rem),22.5rem)] flex-col gap-2 overflow-hidden p-4">
-        <DialogHeader className="shrink-0 space-y-1 pr-6">
-          <DialogTitle className="flex items-center gap-2 text-base">
+      <DialogContent tamanho="m" className="flex max-h-[calc(100dvh-1rem)] flex-col gap-4 overflow-hidden">
+        <DialogHeader className="shrink-0 space-y-1">
+          <DialogTitle className="flex items-center gap-2">
             <Smartphone className="h-5 w-5" />
             Foto pelo celular
           </DialogTitle>
@@ -386,12 +387,12 @@ export function PhotoUploadDialog({
           </div>
         )}
 
-        <div className="flex shrink-0 justify-end">
-          <Button variant="outline" size="sm" onClick={() => handleOpenChange(false)}>
+        <DialogFooter className="shrink-0">
+          <Button variant="outline" onClick={() => handleOpenChange(false)}>
             <X className="h-4 w-4 mr-1" />
             Fechar
           </Button>
-        </div>
+        </DialogFooter>
       </DialogContent>
     </Dialog>
   );

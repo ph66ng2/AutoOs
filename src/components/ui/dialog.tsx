@@ -39,8 +39,9 @@ function dentroDeAviso(target: EventTarget | null) {
 const TAMANHO_MODAL = {
   p: "sm:max-w-[440px]",
   m: "sm:max-w-[560px]",
-  g: "sm:max-w-[760px]",
-  visualizador: "sm:max-w-[1040px]",
+  // G e visualizador: cabeçalho e rodapé fixos; o meio rola dentro de <DialogBody>.
+  g: "sm:max-w-[760px] flex max-h-[calc(100dvh-2rem)] flex-col gap-0 overflow-hidden",
+  visualizador: "sm:max-w-[1040px] flex max-h-[calc(100dvh-2rem)] flex-col gap-0 overflow-hidden",
 } as const
 
 export type TamanhoModal = keyof typeof TAMANHO_MODAL
@@ -107,6 +108,22 @@ const DialogHeader = ({
 )
 DialogHeader.displayName = "DialogHeader"
 
+/**
+ * Corpo do Modal G/visualizador: a única parte que rola. Dentro de um <form>, o form precisa
+ * de `flex min-h-0 flex-1 flex-col` para o rodapé ficar fixo embaixo.
+ */
+const DialogBody = ({
+  className,
+  ...props
+}: React.HTMLAttributes<HTMLDivElement>) => (
+  <div
+    data-slot="dialog-body"
+    className={cn("-mx-6 min-h-0 flex-1 overflow-y-auto px-6 py-5", className)}
+    {...props}
+  />
+)
+DialogBody.displayName = "DialogBody"
+
 const DialogFooter = ({
   className,
   ...props
@@ -157,6 +174,7 @@ export {
   DialogClose,
   DialogContent,
   DialogHeader,
+  DialogBody,
   DialogFooter,
   DialogTitle,
   DialogDescription,

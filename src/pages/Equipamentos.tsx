@@ -70,6 +70,7 @@ import {
   DialogTitle,
   DialogFooter,
   DialogClose,
+  DialogBody,
 } from "@/components/ui/dialog";
 import {
   Select,
@@ -2594,11 +2595,12 @@ export default function Equipamentos() {
         }
         setDialogOpen(open);
       }}>
-        <DialogContent className="sm:max-w-2xl max-h-[85vh] overflow-y-auto">
+        <DialogContent tamanho="g">
           <DialogHeader>
             <DialogTitle>{editando ? "Editar Equipamento" : "Novo Equipamento"}</DialogTitle>
           </DialogHeader>
-          <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
+          <form onSubmit={form.handleSubmit(onSubmit)} className="flex min-h-0 flex-1 flex-col">
+            <DialogBody className="space-y-6">
             {/* ── Cliente ── */}
             <div className="space-y-2">
               <ClienteSelector
@@ -2893,6 +2895,7 @@ export default function Equipamentos() {
                 </div>
               </div>
             </div>
+            </DialogBody>
             <DialogFooter>
               <DialogClose asChild><Button variant="outline" type="button">Cancelar</Button></DialogClose>
               <Button type="submit" disabled={salvando || (registrosAnteriores.length > 0 && !confirmouNovoCiclo)}>
@@ -3168,7 +3171,7 @@ export default function Equipamentos() {
           }
         }}
       >
-        <DialogContent className="flex max-h-[calc(100vh-2rem)] flex-col overflow-hidden sm:max-w-md">
+        <DialogContent tamanho="m" className="flex max-h-[calc(100dvh-2rem)] flex-col overflow-hidden">
           <DialogHeader>
             <DialogTitle>
               {(
@@ -3480,7 +3483,7 @@ export default function Equipamentos() {
                 </div>
               )}
             </div>
-            <DialogFooter className="shrink-0 bg-background pt-3">
+            <DialogFooter className="shrink-0 bg-card">
                 <Button type="button" variant="outline" onClick={() => setStatusDialogOpen(false)}>Cancelar</Button>
                 <Button type="button" onClick={iniciarConfirmacaoStatus} disabled={salvando || (!novoStatus && !ajusteOrcamentoSemMudancaStatus) || (((novoStatus === "AGUARDANDO_APROVACAO" && !reabreOrcamentoSemAjuste(selecionado.status, novoStatus)) || ajusteOrcamentoSemMudancaStatus) && !valorOrcamentoValido) || (novoStatus === "AGUARDANDO_APROVACAO" && !reabreOrcamentoSemAjuste(selecionado.status, novoStatus) && !totalOrcamentoAprovacaoValido(Number(valorOrcamento))) || (ajusteOrcamentoSemMudancaStatus && !totalOrcamentoAjusteValido(Number(valorOrcamento), osSomenteGarantia(servicosAjuste), selecionado.status, selecionado.valor_orcamento))}>
                   {salvando ? "Salvando..." : correcaoStatus ? "Corrigir status" : "Confirmar"}
@@ -3492,7 +3495,7 @@ export default function Equipamentos() {
       </Dialog>
 
       <Dialog open={consumosDialogOpen} onOpenChange={setConsumosDialogOpen}>
-        <DialogContent className="sm:max-w-lg">
+        <DialogContent tamanho="m">
           <DialogHeader><DialogTitle>Peças da OS</DialogTitle><DialogDescription>Reposições ficam disponíveis no estoque. Confirme aqui o consumo das peças pendentes.</DialogDescription></DialogHeader>
           <div className="max-h-72 space-y-2 overflow-y-auto">
             {consumosDetalhes.length === 0 && <p className="text-sm text-muted-foreground">Nenhuma peça vinculada a serviços aprovados.</p>}
@@ -3616,11 +3619,16 @@ export default function Equipamentos() {
 
       {/* ═══ Dialog Exclusão ═══ */}
       <Dialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader><DialogTitle>Confirmar Exclusão</DialogTitle></DialogHeader>
-          <p className="text-muted-foreground">Excluir <strong>{deletando?.marca} {deletando?.modelo}</strong> (SN: {deletando?.serial_number})?</p>
-          <p className="text-sm text-destructive">Esta ação não pode ser desfeita.</p>
-          <DialogFooter>
+        <DialogContent tamanho="p">
+          <span aria-hidden="true" className="inline-flex h-11 w-11 items-center justify-center rounded-xl bg-status-bad-bg text-status-bad">
+            <Trash2 className="h-[22px] w-[22px]" />
+          </span>
+          <DialogTitle>Confirmar Exclusão</DialogTitle>
+          <div className="space-y-1">
+            <p className="text-muted-foreground">Excluir <strong className="text-foreground">{deletando?.marca} {deletando?.modelo}</strong> (SN: {deletando?.serial_number})?</p>
+            <p className="text-sm text-destructive">Esta ação não pode ser desfeita.</p>
+          </div>
+          <DialogFooter className="!border-t-0 !pt-2">
             <DialogClose asChild><Button variant="outline">Cancelar</Button></DialogClose>
             <Button variant="destructive" onClick={onDelete} disabled={salvando}>{salvando ? "Excluindo..." : "Excluir"}</Button>
           </DialogFooter>
@@ -3628,26 +3636,28 @@ export default function Equipamentos() {
       </Dialog>
 
       <Dialog open={Boolean(imagemExpandida)} onOpenChange={(open) => { if (!open) setImagemExpandida(null); }}>
-        <DialogContent className="sm:max-w-5xl">
+        <DialogContent tamanho="visualizador">
           <DialogHeader>
             <DialogTitle>Visualização da imagem</DialogTitle>
+            {imagemExpandida && <DialogDescription className="truncate">{imagemExpandida.filename}</DialogDescription>}
           </DialogHeader>
           {imagemExpandida && (
-            <div className="space-y-3">
-              <div className="max-h-[70vh] overflow-auto rounded-lg border bg-muted/20 p-2">
-                <img
-                  src={imagemExpandida.preview_url}
-                  alt={imagemExpandida.filename}
-                  className="mx-auto h-auto max-h-[65vh] w-auto rounded"
-                />
-              </div>
-              <div className="flex items-center justify-between text-sm text-muted-foreground">
-                <span>{imagemExpandida.filename}</span>
-                <Button variant="outline" size="sm" className="gap-1" onClick={() => void exportarImagemEquipamento(imagemExpandida)}>
+            <>
+              <DialogBody>
+                <div className="flex min-h-[40vh] items-center justify-center rounded-xl bg-muted p-2">
+                  <img
+                    src={imagemExpandida.preview_url}
+                    alt={imagemExpandida.filename}
+                    className="mx-auto h-auto max-h-[65vh] w-auto rounded-lg"
+                  />
+                </div>
+              </DialogBody>
+              <DialogFooter>
+                <Button className="gap-1" onClick={() => void exportarImagemEquipamento(imagemExpandida)}>
                   <Download className="h-3.5 w-3.5" />Exportar imagem
                 </Button>
-              </div>
-            </div>
+              </DialogFooter>
+            </>
           )}
         </DialogContent>
       </Dialog>
