@@ -191,14 +191,41 @@ export function Layout() {
 
         {/* Pé: Configurações e o cartão do perfil */}
         <div className="space-y-2 px-3 pb-3 pt-2">
-          {(mostrarConfiguracoes || sessaoAtiva) && (
-            <div className="flex items-center gap-1">
-              {mostrarConfiguracoes && <nav aria-label="Sistema" className="min-w-0 flex-1">{renderItem(configuracoesItem)}</nav>}
+          {mostrarConfiguracoes && <nav aria-label="Sistema">{renderItem(configuracoesItem)}</nav>}
+          {!collapsed && mostrarAvisoAcesso && <SensitiveAccessBadge />}
+          {activeProfile && activeLook && (
+            <div
+              className={cn(
+                "flex items-center gap-1 rounded-xl border border-sidebar-border bg-card p-1.5 shadow-sm",
+                collapsed && "flex-col border-transparent bg-transparent p-0 shadow-none",
+              )}
+            >
+              <Link
+                to="/perfil"
+                data-tour="profile-card"
+                onClick={() => setMobileOpen(false)}
+                aria-label={`Perfil de ${activeProfile.nome}`}
+                className={cn("flex min-w-0 flex-1 items-center gap-3 rounded-lg p-1 transition-colors hover:bg-muted", collapsed && "justify-center p-0")}
+              >
+                <ProfileAvatar icon={activeLook.icon} color={activeLook.color} size={collapsed ? "sm" : "md"} />
+                {!collapsed && (
+                  <span className="flex min-w-0 flex-1 flex-col">
+                    {/* Nome em até duas linhas: nomes compostos não somem atrás de reticências. */}
+                    <span className="line-clamp-2 break-words text-sm font-semibold leading-tight text-foreground [overflow-wrap:anywhere]">
+                      {activeProfile.nome}
+                      {sessaoAtiva && <BadgeCheck className="ml-1 inline h-3.5 w-3.5 align-[-2px] text-primary" aria-label="Acesso ativo" />}
+                    </span>
+                    <span className="mt-0.5 line-clamp-2 text-xs leading-snug text-muted-foreground">
+                      {status?.active_role ? `${securityRoleLabel(status.active_role)} · trocar perfil` : "Sessão bloqueada"}
+                    </span>
+                  </span>
+                )}
+              </Link>
               {sessaoAtiva && (
                 <Button
                   variant="ghost"
                   size="icon"
-                  className={cn("h-[42px] w-[42px] shrink-0 text-muted-foreground hover:text-foreground", !mostrarConfiguracoes && "mx-auto")}
+                  className="h-9 w-9 shrink-0 text-muted-foreground hover:text-foreground"
                   aria-label="Bloquear acesso sensível"
                   title="Bloquear acesso sensível"
                   onClick={() => void lockSensitiveAccess()}
@@ -208,31 +235,16 @@ export function Layout() {
               )}
             </div>
           )}
-          {!collapsed && mostrarAvisoAcesso && <SensitiveAccessBadge />}
-          {activeProfile && activeLook && (
-            <Link
-              to="/perfil"
-              data-tour="profile-card"
-              onClick={() => setMobileOpen(false)}
-              aria-label={`Perfil de ${activeProfile.nome}`}
-              className={cn("flex items-center gap-3 rounded-xl border border-sidebar-border bg-card p-2.5 shadow-sm transition-colors hover:bg-muted", collapsed && "justify-center border-transparent bg-transparent p-0 shadow-none")}
+          {!activeProfile && sessaoAtiva && (
+            <Button
+              variant="ghost"
+              size="sm"
+              className="w-full justify-center text-muted-foreground hover:text-foreground"
+              onClick={() => void lockSensitiveAccess()}
             >
-              <ProfileAvatar icon={activeLook.icon} color={activeLook.color} size={collapsed ? "sm" : "md"} />
-              {!collapsed && (
-                <>
-                  <span className="flex min-w-0 flex-1 flex-col">
-                    <span className="flex items-center gap-1.5">
-                      <span className="truncate text-[15px] font-semibold text-foreground">{activeProfile.nome}</span>
-                      {sessaoAtiva && <BadgeCheck className="h-4 w-4 shrink-0 text-primary" aria-label="Acesso ativo" />}
-                    </span>
-                    <span className="truncate text-xs text-muted-foreground">
-                      {status?.active_role ? `${securityRoleLabel(status.active_role)} · trocar perfil` : "Sessão bloqueada"}
-                    </span>
-                  </span>
-                  <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden="true" />
-                </>
-              )}
-            </Link>
+              <Lock className="h-4 w-4 shrink-0" />
+              {!collapsed && <span className="ml-2">Bloquear acesso sensível</span>}
+            </Button>
           )}
         </div>
       </aside>
