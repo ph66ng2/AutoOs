@@ -133,7 +133,7 @@ export function AjusteOrcamentoServicos({
               onClick={() => removerServico(s.id)}
               aria-label="Remover serviço"
             >
-              <Trash2 className="h-4 w-4 text-red-500" />
+              <Trash2 className="h-4 w-4 text-destructive" />
             </Button>
           </div>
           <PecasDoServico pecas={s.pecas ?? []} onChange={(pecas) => atualizarServico(s.id, { pecas })} />

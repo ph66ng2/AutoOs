@@ -166,7 +166,7 @@ function SessionPinGate({ onEnter }: { onEnter: () => void }) {
     <div className="fixed inset-0 z-30 flex items-center justify-center bg-[#050608] px-6 text-white">
       <div className="w-full max-w-md space-y-4 text-center">
         <h1 className="text-2xl font-semibold">Informe o PIN para entrar</h1>
-        <p className="text-sm text-slate-300">
+        <p className="text-sm text-muted-foreground">
           O AutoOS continua bloqueado. Sem o PIN do perfil, o atendimento não abre.
         </p>
         <Button type="button" onClick={onEnter}>Entrar com PIN</Button>
@@ -212,7 +212,7 @@ function App() {
   if (dbReady === null) {
     return (
       <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-[#050608]">
-        <div className="h-8 w-8 animate-spin rounded-full border-b-2 border-cyan-400" />
+        <div className="h-8 w-8 animate-spin rounded-full border-b-2 border-primary" />
       </div>
     );
   }

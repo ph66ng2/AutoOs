@@ -62,7 +62,7 @@ export function ConfiguracoesTabObservabilidade({
         <CardContent className="space-y-4">
           {supportLoading && !supportStatus ? (
             <div className="flex items-center justify-center h-24">
-              <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600" />
+              <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-primary" />
             </div>
           ) : supportStatus ? (
             <>
@@ -212,7 +212,7 @@ export function ConfiguracoesTabObservabilidade({
               <div key={event.id} className="rounded-lg border p-3 text-sm">
                 <div className="flex items-center justify-between gap-3">
                   <div className="font-medium">{event.event_type}</div>
-                  <span className={event.success ? "text-emerald-600" : "text-red-600"}>
+                  <span className={event.success ? "text-status-ok" : "text-destructive"}>
                     {event.success ? "sucesso" : "falha"}
                   </span>
                 </div>

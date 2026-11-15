@@ -144,7 +144,7 @@ export function EnvioManualOrcamentoDialog({ envio, onFechar, onGerarNovaSenha }
               />
 
               {atual.temSenha && !usou && (
-                <p className="flex items-start gap-2 text-xs text-amber-700">
+                <p className="flex items-start gap-2 text-xs text-status-wait">
                   <KeyRound className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden />
                   Esta mensagem contém a senha do portal, que não será exibida de novo depois que você fechar.
                 </p>
@@ -195,7 +195,7 @@ export function EnvioManualOrcamentoDialog({ envio, onFechar, onGerarNovaSenha }
                     />
                     <Check
                       className={cn(
-                        "absolute inset-0 h-4 w-4 text-emerald-600 transition-[opacity,scale,filter] duration-200 ease-[cubic-bezier(0.2,0,0,1)]",
+                        "absolute inset-0 h-4 w-4 text-status-ok transition-[opacity,scale,filter] duration-200 ease-[cubic-bezier(0.2,0,0,1)]",
                         copiado ? "scale-100 opacity-100 blur-0" : "scale-[0.25] opacity-0 blur-[4px]",
                       )}
                     />

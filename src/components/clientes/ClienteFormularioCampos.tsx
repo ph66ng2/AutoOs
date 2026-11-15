@@ -214,12 +214,12 @@ export function ClienteFormularioCampos({
           {tipoPessoa && (
             <div className="pt-1">
               {tipoPessoa === "PF" ? (
-                <Badge className="bg-blue-100 text-blue-800 hover:bg-blue-100">
+                <Badge className="bg-status-work-bg text-status-work hover:bg-status-work-bg">
                   <User className="h-3 w-3 mr-1" />
                   Pessoa Física
                 </Badge>
               ) : (
-                <Badge className="bg-purple-100 text-purple-800 hover:bg-purple-100">
+                <Badge className="bg-status-work-bg text-status-work hover:bg-status-work-bg">
                   <Building2 className="h-3 w-3 mr-1" />
                   Pessoa Jurídica
                 </Badge>
@@ -239,7 +239,7 @@ export function ClienteFormularioCampos({
       </div>
 
       {tipoPessoa === "PF" && (
-        <div className="space-y-2 p-4 rounded-lg border border-blue-200 bg-blue-50/50">
+        <div className="space-y-2 p-4 rounded-lg border border-status-work/30 bg-status-work-bg/50">
           <Label>Nome Completo *</Label>
           <Input {...form.register("nome")} placeholder="Nome completo do cliente" />
             <FormValidationError message={form.formState.errors.nome?.message} />
@@ -247,7 +247,7 @@ export function ClienteFormularioCampos({
       )}
 
       {tipoPessoa === "PJ" && (
-        <div className="space-y-4 p-4 rounded-lg border border-purple-200 bg-purple-50/50">
+        <div className="space-y-4 p-4 rounded-lg border border-status-work/30 bg-status-work-bg/50">
           <div className="space-y-2">
             <Label>Razão Social *</Label>
             <Input {...form.register("razao_social")} placeholder="Razão Social da empresa" />
@@ -305,7 +305,7 @@ export function ClienteFormularioCampos({
       </div>
 
       {tipoPessoa === "PJ" && form.watch("exigir_contato_inicial") && (
-        <div className="space-y-4 p-4 rounded-lg border border-purple-200 bg-purple-50/50">
+        <div className="space-y-4 p-4 rounded-lg border border-status-work/30 bg-status-work-bg/50">
           <div className="space-y-1">
             <h3 className="text-sm font-semibold text-muted-foreground flex items-center gap-2">
               <User className="h-4 w-4" /> Contato para orçamentos

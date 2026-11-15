@@ -282,11 +282,11 @@ export function QuemRecebeOrcamentoDialog({
             </p>
           )}
           {falhaListagem && (
-            <p className="text-xs text-red-600" role="alert">
+            <p className="text-xs text-destructive" role="alert">
               Não foi possível carregar os contatos do cliente. Feche e abra de novo para tentar outra vez.
             </p>
           )}
-          {erro && <p className="text-xs text-red-600" role="alert">{erro}</p>}
+          {erro && <p className="text-xs text-destructive" role="alert">{erro}</p>}
         </div>
         <DialogFooter>
           <Button type="button" variant="outline" onClick={fechar} disabled={salvando}>Cancelar</Button>

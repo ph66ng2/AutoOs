@@ -36,18 +36,18 @@ export function ClienteSelectorClienteCard({
   const location = useLocation();
   const c = cliente;
   return (
-    <Card className="border-green-200 bg-green-50/30">
+    <Card className="border-status-ok/30 bg-status-ok-bg/30">
       <CardHeader className="py-3 px-4">
         <div className="flex items-center justify-between">
           <CardTitle className="text-sm flex items-center gap-2">
-            <Check className="h-4 w-4 text-green-600" />
+            <Check className="h-4 w-4 text-status-ok" />
             Cliente Vinculado
             {c.tipo_pessoa === "PJ" ? (
-              <Badge variant="outline" className="bg-purple-50 text-purple-700 border-purple-200 text-xs">
+              <Badge variant="outline" className="bg-status-work-bg text-status-work border-status-work/30 text-xs">
                 <Building2 className="h-3 w-3 mr-1" />PJ
               </Badge>
             ) : (
-              <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-200 text-xs">
+              <Badge variant="outline" className="bg-status-work-bg text-status-work border-status-work/30 text-xs">
                 <User className="h-3 w-3 mr-1" />PF
               </Badge>
             )}
@@ -106,12 +106,12 @@ export function ClienteSelectorClienteCard({
             </p>
             <div className="space-y-1 max-h-32 overflow-y-auto">
               {equipamentosCliente.map((eq) => (
-                <button key={eq.id} type="button" onClick={() => onEquipamentoSelecionado ? onEquipamentoSelecionado(eq) : navigate(location.pathname.startsWith("/balcao") ? "/balcao" : "/equipamentos", { state: location.pathname.startsWith("/balcao") ? { counterEquipmentId: eq.id } : { equipamentoId: eq.id } })} className="flex w-full items-center justify-between rounded border bg-white/50 p-2 text-left text-xs hover:border-cyan-600 hover:bg-cyan-50">
+                <button key={eq.id} type="button" onClick={() => onEquipamentoSelecionado ? onEquipamentoSelecionado(eq) : navigate(location.pathname.startsWith("/balcao") ? "/balcao" : "/equipamentos", { state: location.pathname.startsWith("/balcao") ? { counterEquipmentId: eq.id } : { equipamentoId: eq.id } })} className="flex w-full items-center justify-between rounded border bg-white/50 p-2 text-left text-xs hover:border-primary hover:bg-acc-soft">
                   <span className="font-medium">{eq.marca} {eq.modelo} <span className="font-mono text-muted-foreground">• SN …{eq.serial_number.slice(-4)}</span></span>
                   <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-medium ${
-                    (eq.status === "ENTREGUE" || eq.status === "PRONTO") ? "bg-green-100 text-green-700" :
-                    eq.status === "EM_MANUTENCAO" ? "bg-indigo-100 text-indigo-700" :
-                    "bg-gray-100 text-gray-700"
+                    (eq.status === "ENTREGUE" || eq.status === "PRONTO") ? "bg-status-ok-bg text-status-ok" :
+                    eq.status === "EM_MANUTENCAO" ? "bg-status-work-bg text-status-work" :
+                    "bg-muted text-foreground"
                   }`}>
                     {eq.status.replace(/_/g, " ")}
                   </span>

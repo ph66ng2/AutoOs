@@ -115,7 +115,7 @@ export function CorrigirDecisaoDialog({ equipamento, open, onOpenChange, onCorri
             </div>
 
             {analise.bloqueios.length > 0 && (
-              <div role="alert" className="rounded-md border border-amber-300 bg-amber-50 p-3 text-amber-950">
+              <div role="alert" className="rounded-md border border-status-wait/30 bg-status-wait-bg p-3 text-status-wait">
                 <p className="font-semibold">Não dá para corrigir a decisão agora</p>
                 <ul className="mt-1 list-disc pl-5">
                   {analise.bloqueios.map((bloqueio) => <li key={bloqueio}>{bloqueio}</li>)}
@@ -161,7 +161,7 @@ export function CorrigirDecisaoDialog({ equipamento, open, onOpenChange, onCorri
                       </span>
                     </label>
                     {modo === "RESTAURAR_ORIGINAL" && (
-                      <p role="note" className="rounded-md border border-amber-300 bg-amber-50 p-2 text-amber-950">
+                      <p role="note" className="rounded-md border border-status-wait/30 bg-status-wait-bg p-2 text-status-wait">
                         Atenção: a alteração feita depois da {decisao} será perdida.
                       </p>
                     )}

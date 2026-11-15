@@ -87,7 +87,7 @@ export function GerarEnrollmentCodeDialog() {
                     className="shrink-0"
                   >
                     {copied ? (
-                      <Check className="h-4 w-4 text-green-600" />
+                      <Check className="h-4 w-4 text-status-ok" />
                     ) : (
                       <Copy className="h-4 w-4" />
                     )}
@@ -96,7 +96,7 @@ export function GerarEnrollmentCodeDialog() {
               </CardContent>
             </Card>
 
-            <div className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
+            <div className="flex items-start gap-2 rounded-lg border border-status-wait/30 bg-status-wait-bg p-3 text-sm text-status-wait">
               <AlertTriangle className="h-4 w-4 mt-0.5 shrink-0" />
               <p>
                 Este código será exibido apenas uma vez. Copie agora e guarde

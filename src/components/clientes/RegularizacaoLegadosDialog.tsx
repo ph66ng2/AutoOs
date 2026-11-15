@@ -37,7 +37,7 @@ export function RegularizacaoLegadosDialog({ open, previa, loading, onOpenChange
           ))}
         </div>
         {(previa.conflitos.length > 0 || previa.equipamentos_sem_cliente.length > 0 || previa.contatos_irregulares > 0) && (
-          <div className="space-y-2 rounded-md border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">
+          <div className="space-y-2 rounded-md border border-status-wait/30 bg-status-wait-bg p-3 text-sm text-status-wait">
             <p className="flex items-center gap-2 font-medium"><AlertTriangle className="h-4 w-4" />Itens que não serão alterados automaticamente</p>
             <p>{previa.conflitos.length} conflito(s), {previa.equipamentos_sem_cliente.length} equipamento(s) sem cliente e {previa.contatos_irregulares} contato(s) irregular(es).</p>
             {previa.conflitos.length > 0 && (

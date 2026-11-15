@@ -52,7 +52,7 @@ export function PecasDoServico({ pecas, onChange }: Props) {
             <ValorDecimalInput aria-label={`Valor de ${peca.nome}`} className="w-24" min={0}
               value={Number(peca.valor_unitario) || 0} onValueChange={(valor) => onChange(pecas.map((item) =>
                 item.produto_id === peca.produto_id ? { ...item, valor_unitario: valor } : item))} />
-            <span className={saldo !== undefined && saldo < peca.quantidade ? "text-amber-700" : "text-muted-foreground"}>
+            <span className={saldo !== undefined && saldo < peca.quantidade ? "text-status-wait" : "text-muted-foreground"}>
               Saldo {saldo ?? "—"}{saldo !== undefined && saldo < peca.quantidade ? " · falta peça" : ""}
             </span>
             <Button type="button" variant="ghost" size="icon" aria-label={`Remover ${peca.nome}`}

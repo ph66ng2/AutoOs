@@ -206,7 +206,7 @@ function Action({
     <Button
       type="button"
       variant="outline"
-      className="h-64 flex-col gap-5 rounded-2xl border-2 text-xl hover:border-cyan-600 hover:bg-cyan-50"
+      className="h-64 flex-col gap-5 rounded-2xl border-2 text-xl hover:border-primary hover:bg-acc-soft"
       onClick={onClick}
     >
       {icon}
@@ -302,7 +302,7 @@ function CounterStock({ onBack }: { onBack: () => void }) {
         </Button>
       </form>
 
-      {erro && <p role="alert" className="mt-4 text-red-700">{erro}</p>}
+      {erro && <p role="alert" className="mt-4 text-destructive">{erro}</p>}
       {carregando ? (
         <div className="mt-8 flex min-h-40 items-center justify-center gap-3 text-lg text-muted-foreground">
           <Loader2 className="animate-spin" /> Carregando estoque...
@@ -332,9 +332,9 @@ function CounterStock({ onBack }: { onBack: () => void }) {
                       <p className="text-sm text-muted-foreground">Disponível</p>
                       <p className="mt-1 text-2xl font-bold">{produto.quantidade_estoque}</p>
                     </div>
-                    <div className="rounded-lg bg-cyan-50 p-3">
+                    <div className="rounded-lg bg-acc-soft p-3">
                       <p className="text-sm text-muted-foreground">Preço de venda</p>
-                      <p className="mt-1 text-2xl font-bold text-cyan-800">{formatarPreco(produto.preco_venda)}</p>
+                      <p className="mt-1 text-2xl font-bold text-acc-soft-foreground">{formatarPreco(produto.preco_venda)}</p>
                     </div>
                   </div>
                 </CardContent>
@@ -626,7 +626,7 @@ function QuickEntry({ onBack }: { onBack: () => void }) {
           </Button>
         </div>
         {error && (
-          <p role="alert" className="mt-4 text-red-700">
+          <p role="alert" className="mt-4 text-destructive">
             {error}
           </p>
         )}
@@ -699,7 +699,7 @@ function QuickEntry({ onBack }: { onBack: () => void }) {
         {["Cliente", "Equipamento", "Laudo imediato", "Recapitulação"].map((name, index) => (
           <li
             key={name}
-            className={`rounded-full px-4 py-2 ${step === index + 1 ? "bg-cyan-600 text-white" : "bg-muted"}`}
+            className={`rounded-full px-4 py-2 ${step === index + 1 ? "bg-primary text-primary-foreground" : "bg-muted"}`}
           >
             {index + 1}. {name}
           </li>
@@ -863,7 +863,7 @@ function QuickEntry({ onBack }: { onBack: () => void }) {
             />
           </div>
           {history.length > 0 && (
-            <div className="rounded-lg border border-amber-400 bg-amber-50 p-4">
+            <div className="rounded-lg border border-status-wait bg-status-wait-bg p-4">
               <strong>Serial já possui {history.length} ciclo(s).</strong>
               <p className="mt-1">
                 Foi reaproveitada a marca, o modelo e o tipo somente quando
@@ -965,7 +965,7 @@ function QuickEntry({ onBack }: { onBack: () => void }) {
               Imprimir teste BMITAG
             </Button>
             {testeEnviado && (
-              <p role="status" className="text-sm text-emerald-700">
+              <p role="status" className="text-sm text-status-ok">
                 Teste enviado à fila de impressão. Confira a impressão física e
                 registre o resultado abaixo.
               </p>
@@ -998,7 +998,7 @@ function QuickEntry({ onBack }: { onBack: () => void }) {
               placeholder="Descreva o resultado do teste e o que foi constatado no recebimento."
             />
           </div>
-          {error && <p role="alert" className="text-red-700">{error}</p>}
+          {error && <p role="alert" className="text-destructive">{error}</p>}
           <div className="flex gap-3">
             <Button className="min-h-12 text-base" variant="outline" onClick={() => setStep(2)}>
               Voltar
@@ -1045,7 +1045,7 @@ function QuickEntry({ onBack }: { onBack: () => void }) {
               ))}
           </dl>
           {error && (
-            <p role="alert" className="mt-4 text-red-700">
+            <p role="alert" className="mt-4 text-destructive">
               {error}
             </p>
           )}
@@ -1196,7 +1196,7 @@ function EquipmentSearch({ onBack }: { onBack: () => void }) {
           <button
             type="button"
             key={eq.id}
-            className="min-h-28 rounded-xl border bg-card p-5 text-left shadow-sm hover:border-cyan-600"
+            className="min-h-28 rounded-xl border bg-card p-5 text-left shadow-sm hover:border-primary"
             onClick={() => setSelected(eq)}
           >
             <div className="flex flex-wrap items-center gap-3">
@@ -1274,7 +1274,7 @@ function ClientSearch({ onBack }: { onBack: () => void }) {
           <button
             key={client.id}
             type="button"
-            className="min-h-20 rounded-xl border bg-card p-4 text-left hover:border-cyan-600"
+            className="min-h-20 rounded-xl border bg-card p-4 text-left hover:border-primary"
             onClick={() => setSelected(client)}
           >
             <strong className="text-lg">
@@ -1332,7 +1332,7 @@ function ClientCycles({
           <button
             type="button"
             key={eq.id}
-            className="min-h-20 rounded-xl border bg-card p-4 text-left hover:border-cyan-600"
+            className="min-h-20 rounded-xl border bg-card p-4 text-left hover:border-primary"
             onClick={() => onSelectEquipment(eq)}
           >
             <strong>{equipmentTitle(eq)}</strong>
@@ -1408,7 +1408,7 @@ function EquipmentDetail({ equipamento }: { equipamento: Equipamento }) {
         </dl>
         <DocumentosEquipamento equipamento={current} />
         {error && (
-          <p role="alert" className="text-red-700">
+          <p role="alert" className="text-destructive">
             {error}
           </p>
         )}
@@ -1547,7 +1547,7 @@ function OperationalPanel({ onBack }: { onBack: () => void }) {
           <button
             type="button"
             key={eq.id}
-            className="min-h-20 rounded-xl border bg-card p-4 text-left hover:border-cyan-600"
+            className="min-h-20 rounded-xl border bg-card p-4 text-left hover:border-primary"
             onClick={() => setSelected(eq)}
           >
             <strong>{equipmentTitle(eq)}</strong>

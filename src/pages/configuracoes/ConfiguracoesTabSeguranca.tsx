@@ -134,7 +134,7 @@ export function ConfiguracoesTabSeguranca({
             </div>
 
             <div className="border-t pt-6 space-y-4">
-              <h3 className="text-lg font-semibold text-red-700">Excluir perfil</h3>
+              <h3 className="text-lg font-semibold text-destructive">Excluir perfil</h3>
               <p className="text-sm text-muted-foreground">
                 A exclusão é irreversível e exige verificação dupla (PIN do administrador + credenciais do banco).
                 Para apenas impedir o acesso de alguém, use Desativar em Equipe e acessos.
@@ -180,7 +180,7 @@ export function ConfiguracoesTabSeguranca({
               <Button
                 type="button"
                 variant="outline"
-                className="border-red-200 text-red-700 hover:bg-red-50"
+                className="border-destructive/30 text-destructive hover:bg-status-bad-bg"
                 onClick={() => onDeleteDialogOpenChange(true)}
                 disabled={securityBusy || !securityAdminUnlocked || !managedProfileId || !managedProfile?.ativo}
               >

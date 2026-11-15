@@ -207,9 +207,9 @@ export function PasswordRecoveryDialog({
         <DialogHeader>
           <div className="flex items-center gap-2">
             {step === "success" ? (
-              <CheckCircle2 className="h-5 w-5 text-emerald-500" />
+              <CheckCircle2 className="h-5 w-5 text-status-ok" />
             ) : (
-              <KeyRound className="h-5 w-5 text-cyan-500" />
+              <KeyRound className="h-5 w-5 text-primary" />
             )}
             <DialogTitle>Recuperação de PIN</DialogTitle>
           </div>
@@ -319,8 +319,8 @@ export function PasswordRecoveryDialog({
 
         {step === "success" && (
           <div className="flex flex-col items-center gap-4 py-6">
-            <CheckCircle2 className="h-12 w-12 text-emerald-500" />
-            <p className="text-center font-medium text-emerald-700">
+            <CheckCircle2 className="h-12 w-12 text-status-ok" />
+            <p className="text-center font-medium text-status-ok">
               PIN redefinido com sucesso!
             </p>
             <p className="text-center text-sm text-muted-foreground">
@@ -330,7 +330,7 @@ export function PasswordRecoveryDialog({
         )}
 
         {error && (
-          <div className="flex items-start gap-2 rounded-lg border border-red-500/20 bg-red-500/10 p-3 text-sm text-red-600">
+          <div className="flex items-start gap-2 rounded-lg border border-destructive/20 bg-destructive/10 p-3 text-sm text-destructive">
             <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
             <span>{error}</span>
           </div>

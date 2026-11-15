@@ -133,10 +133,10 @@ export default function Dashboard() {
 
   function getAcaoPendente(eq: Equipamento): { label: string; cor: string } {
     switch (eq.status) {
-      case "RECEBIDO": return { label: "Iniciar verificação", cor: "text-blue-600" };
-      case "AGUARDANDO_APROVACAO": return { label: "Aguardando resposta do cliente", cor: "text-orange-600" };
-      case "ORCAMENTO_VENCIDO": return { label: "Orçamento vencido - contatar cliente", cor: "text-red-600" };
-      case "PRONTO": return { label: "Pronto para entrega", cor: "text-emerald-600" };
+      case "RECEBIDO": return { label: "Iniciar verificação", cor: "text-primary" };
+      case "AGUARDANDO_APROVACAO": return { label: "Aguardando resposta do cliente", cor: "text-status-wait" };
+      case "ORCAMENTO_VENCIDO": return { label: "Orçamento vencido - contatar cliente", cor: "text-destructive" };
+      case "PRONTO": return { label: "Pronto para entrega", cor: "text-status-ok" };
       default: return { label: "Pendente", cor: "text-muted-foreground" };
     }
   }
@@ -203,7 +203,7 @@ export default function Dashboard() {
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600" />
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary" />
       </div>
     );
   }
@@ -242,10 +242,10 @@ export default function Dashboard() {
         <Card className="cursor-pointer hover:shadow-md transition-shadow" onClick={() => navigate("/equipamentos")}>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Em Manutenção</CardTitle>
-            <Wrench className="h-4 w-4 text-orange-500" />
+            <Wrench className="h-4 w-4 text-status-wait" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-orange-600">{metrics.emManutencao}</div>
+            <div className="text-2xl font-bold text-status-wait">{metrics.emManutencao}</div>
             <p className="text-xs text-muted-foreground">{metrics.emVerificacao} em verificação</p>
           </CardContent>
         </Card>
@@ -253,24 +253,24 @@ export default function Dashboard() {
         <Card className="cursor-pointer hover:shadow-md transition-shadow" onClick={() => navigate("/equipamentos")}>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Aguardando</CardTitle>
-            <Clock className="h-4 w-4 text-amber-500" />
+            <Clock className="h-4 w-4 text-status-wait" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-amber-600">{metrics.aguardandoAprovacao}</div>
+            <div className="text-2xl font-bold text-status-wait">{metrics.aguardandoAprovacao}</div>
             <p className="text-xs text-muted-foreground">{metrics.prontos} prontos para entrega</p>
           </CardContent>
         </Card>
 
         <Card
-          className={`cursor-pointer hover:shadow-md transition-shadow ${metrics.estoqueBaixo > 0 ? "border-red-200 bg-red-50/50" : ""}`}
+          className={`cursor-pointer hover:shadow-md transition-shadow ${metrics.estoqueBaixo > 0 ? "border-destructive/30 bg-status-bad-bg/50" : ""}`}
           onClick={() => navigate("/insumos")}
         >
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Estoque Baixo</CardTitle>
-            <AlertTriangle className={`h-4 w-4 ${metrics.estoqueBaixo > 0 ? "text-red-500" : "text-muted-foreground"}`} />
+            <AlertTriangle className={`h-4 w-4 ${metrics.estoqueBaixo > 0 ? "text-destructive" : "text-muted-foreground"}`} />
           </CardHeader>
           <CardContent>
-            <div className={`text-2xl font-bold ${metrics.estoqueBaixo > 0 ? "text-red-600" : ""}`}>{metrics.estoqueBaixo}</div>
+            <div className={`text-2xl font-bold ${metrics.estoqueBaixo > 0 ? "text-destructive" : ""}`}>{metrics.estoqueBaixo}</div>
             <p className="text-xs text-muted-foreground">itens abaixo do mínimo</p>
           </CardContent>
         </Card>
@@ -278,11 +278,11 @@ export default function Dashboard() {
 
       {/* Ações Pendentes */}
       {acoesPendentes.length > 0 && (
-        <Card className="border-amber-200 bg-amber-50/30">
+        <Card className="border-status-wait/30 bg-status-wait-bg/30">
           <CardHeader>
             <div className="flex items-center justify-between">
               <CardTitle className="text-lg flex items-center gap-2">
-                <Bell className="h-5 w-5 text-amber-500" />
+                <Bell className="h-5 w-5 text-status-wait" />
                 Ações Pendentes
                 <Badge variant="secondary" className="ml-1">{acoesPendentes.length}</Badge>
               </CardTitle>
@@ -384,15 +384,15 @@ export default function Dashboard() {
             ) : (
               <div className="space-y-3">
                 {produtosEstoqueBaixo.map(p => (
-                  <div key={p.id} className="flex items-center justify-between p-3 rounded-lg border border-red-100 bg-red-50/30">
+                  <div key={p.id} className="flex items-center justify-between p-3 rounded-lg border border-destructive/30 bg-status-bad-bg/30">
                     <div className="space-y-1">
                       <p className="font-medium text-sm">{p.nome}</p>
                       <p className="text-xs text-muted-foreground">{categoriaProdutoLabel(p.categoria)}</p>
                     </div>
                     <div className="text-right">
                       <div className="flex items-center gap-1">
-                        <TrendingDown className="h-3 w-3 text-red-500" />
-                        <span className="text-sm font-bold text-red-600">{p.quantidade_estoque}</span>
+                        <TrendingDown className="h-3 w-3 text-destructive" />
+                        <span className="text-sm font-bold text-destructive">{p.quantidade_estoque}</span>
                         <span className="text-xs text-muted-foreground">/ {p.quantidade_minima}</span>
                       </div>
                     </div>

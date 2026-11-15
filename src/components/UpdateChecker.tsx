@@ -332,7 +332,7 @@ export function UpdateChecker({
         <div className="space-y-1">
           <p className="text-sm font-medium">Atualizações do AutoOS</p>
           {channelLabel ? (
-            <p className="text-xs text-amber-700 dark:text-amber-400">{channelLabel}</p>
+            <p className="text-xs text-status-wait">{channelLabel}</p>
           ) : null}
           {state.currentVersion ? (
             <p className="text-xs text-muted-foreground">Versão instalada: {state.currentVersion}</p>
@@ -340,7 +340,7 @@ export function UpdateChecker({
             <p className="text-xs text-muted-foreground">Verifique se há novas versões disponíveis.</p>
           )}
           {state.phase === "upToDate" ? (
-            <p className="text-xs text-emerald-700 dark:text-emerald-400">
+            <p className="text-xs text-status-ok">
               Esta é a versão mais recente após uma consulta bem-sucedida.
             </p>
           ) : null}

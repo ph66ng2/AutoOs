@@ -49,7 +49,7 @@ export function GastosSummaryCards({ resumo, gastosFixos, gastosVariaveis, loadi
           </CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="text-2xl font-bold text-blue-600">
+          <div className="text-2xl font-bold text-primary">
             {currencyFormatter.format(totalFixo)}
           </div>
         </CardContent>
@@ -62,7 +62,7 @@ export function GastosSummaryCards({ resumo, gastosFixos, gastosVariaveis, loadi
           </CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="text-2xl font-bold text-amber-600">
+          <div className="text-2xl font-bold text-status-wait">
             {currencyFormatter.format(totalVariavel)}
           </div>
         </CardContent>
@@ -75,7 +75,7 @@ export function GastosSummaryCards({ resumo, gastosFixos, gastosVariaveis, loadi
           </CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="text-2xl font-bold text-green-600">
+          <div className="text-2xl font-bold text-status-ok">
             {currencyFormatter.format(totalGeral)}
           </div>
         </CardContent>

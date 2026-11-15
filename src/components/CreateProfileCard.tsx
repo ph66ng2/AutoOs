@@ -117,7 +117,7 @@ export function CreateProfileCard({ profiles, onCreated }: Props) {
     <Card id="novo-colaborador" className="overflow-hidden">
       <CardHeader className="border-b bg-muted/20">
         <CardTitle className="flex items-center gap-2">
-          <UserPlus className="h-5 w-5 text-cyan-600" /> Novo colaborador
+          <UserPlus className="h-5 w-5 text-primary" /> Novo colaborador
         </CardTitle>
         <CardDescription>
           Uma pessoa, uma função e somente as permissões necessárias.
@@ -152,10 +152,10 @@ export function CreateProfileCard({ profiles, onCreated }: Props) {
                 <li
                   key={label}
                   aria-current={index === step ? "step" : undefined}
-                  className={`flex items-center gap-2 border-b-2 pb-3 text-xs sm:text-sm ${index <= step ? "border-cyan-600 text-cyan-700 dark:text-cyan-400" : "border-muted text-muted-foreground"}`}
+                  className={`flex items-center gap-2 border-b-2 pb-3 text-xs sm:text-sm ${index <= step ? "border-primary text-primary" : "border-muted text-muted-foreground"}`}
                 >
                   <span
-                    className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full ${index <= step ? "bg-cyan-600 text-white" : "bg-muted"}`}
+                    className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full ${index <= step ? "bg-primary text-primary-foreground" : "bg-muted"}`}
                   >
                     {index < step ? <Check className="h-3 w-3" /> : index + 1}
                   </span>
@@ -218,7 +218,7 @@ export function CreateProfileCard({ profiles, onCreated }: Props) {
                       {PROFILE_PRESETS.map((item) => (
                         <label
                           key={item.role}
-                          className={`flex items-start gap-3 rounded-xl border p-4 ${!item.disponivel ? "cursor-not-allowed opacity-60" : "cursor-pointer"} ${role === item.role ? "border-cyan-600 bg-cyan-500/5 ring-1 ring-cyan-600" : "hover:bg-muted/40"}`}
+                          className={`flex items-start gap-3 rounded-xl border p-4 ${!item.disponivel ? "cursor-not-allowed opacity-60" : "cursor-pointer"} ${role === item.role ? "border-primary bg-primary/5 ring-1 ring-primary" : "hover:bg-muted/40"}`}
                         >
                           <input
                             type="radio"
@@ -230,7 +230,7 @@ export function CreateProfileCard({ profiles, onCreated }: Props) {
                               setRole(item.role);
                               setPermissions([...item.permissions]);
                             }}
-                            className="mt-1 accent-cyan-600"
+                            className="mt-1 accent-primary"
                           />
                           <span>
                             <span className="font-medium">{item.label}</span>
@@ -238,7 +238,7 @@ export function CreateProfileCard({ profiles, onCreated }: Props) {
                               {item.description}
                             </span>
                             {!item.disponivel && (
-                              <span className="mt-1 block text-xs text-amber-700 dark:text-amber-400">
+                              <span className="mt-1 block text-xs text-status-wait">
                                 {item.motivoIndisponivel}
                               </span>
                             )}
@@ -296,11 +296,11 @@ export function CreateProfileCard({ profiles, onCreated }: Props) {
                       <ul className="space-y-2 text-sm">
                         {permissions.map((permission) => (
                           <li key={permission} className="flex gap-2">
-                            <Check className="h-4 w-4 shrink-0 text-cyan-600" />
+                            <Check className="h-4 w-4 shrink-0 text-primary" />
                             <span>
                               {PERMISSION_DETAILS[permission].description}
                               {PERMISSION_DETAILS[permission].critical && (
-                                <strong className="ml-1 text-amber-700">
+                                <strong className="ml-1 text-status-wait">
                                   Acesso sensível.
                                 </strong>
                               )}

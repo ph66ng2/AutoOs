@@ -261,7 +261,7 @@ export function TourController() {
             transition={spring}
           >
             <div className="flex items-center justify-between">
-              <span className={run.kind === "novidades" ? "text-xs font-semibold tracking-wide text-amber-600 dark:text-amber-400" : "text-xs font-semibold tracking-wide text-primary"}>
+              <span className={run.kind === "novidades" ? "text-xs font-semibold tracking-wide text-status-wait" : "text-xs font-semibold tracking-wide text-primary"}>
                 {run.kind === "novidades" ? "NOVO NO SEU PERFIL" : `PASSO ${index + 1} DE ${run.steps.length}`}
               </span>
               <button type="button" onClick={() => void finish()} className="text-sm text-muted-foreground hover:text-foreground">

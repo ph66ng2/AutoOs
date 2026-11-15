@@ -186,7 +186,7 @@ export function AcessoPortalDialog({ open, onOpenChange, clienteId, empresaId, t
                       <span className="block text-xs text-muted-foreground">
                         {[item.telefone, item.email].filter(Boolean).join(" · ") || "sem telefone e email"}
                       </span>
-                      <span className={cn("block text-xs", respondeNoPortal(item) ? "text-emerald-700" : "text-muted-foreground")}>
+                      <span className={cn("block text-xs", respondeNoPortal(item) ? "text-status-ok" : "text-muted-foreground")}>
                         {situacaoPortal(item)}
                       </span>
                     </span>

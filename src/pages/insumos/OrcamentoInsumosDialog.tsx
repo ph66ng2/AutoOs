@@ -77,7 +77,7 @@ type AcaoConfirmada = "reprovar" | "cancelar" | "entregar" | "excluir";
 
 const botaoGrupo = "rounded-none active:scale-[0.96] [transition-property:scale,background-color,color]";
 
-const botaoNegativo = "text-red-600 hover:bg-red-50 hover:text-red-700";
+const botaoNegativo = "text-destructive hover:bg-status-bad-bg hover:text-destructive";
 
 const rotuloSecao = "text-sm font-medium";
 
@@ -423,7 +423,7 @@ export function OrcamentoInsumosDialog({
                   </Badge>
                 )}
                 {vencido && (
-                  <Badge variant="outline" className="border-red-200 bg-red-50 text-red-700">Vencido</Badge>
+                  <Badge variant="outline" className="border-destructive/30 bg-status-bad-bg text-destructive">Vencido</Badge>
                 )}
               </DialogTitle>
               <DialogDescription>
@@ -457,7 +457,7 @@ export function OrcamentoInsumosDialog({
             ) : (
               <>
                 {erro && (
-                  <p role="alert" className="whitespace-pre-line rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+                  <p role="alert" className="whitespace-pre-line rounded-md border border-destructive/30 bg-status-bad-bg px-3 py-2 text-sm text-destructive">
                     {erro}
                   </p>
                 )}
@@ -485,10 +485,10 @@ export function OrcamentoInsumosDialog({
                       </p>
                     )}
                     {cliente && cliente.receber_email === false && (
-                      <p className="text-xs text-amber-700">Este cliente pediu para não receber e-mails.</p>
+                      <p className="text-xs text-status-wait">Este cliente pediu para não receber e-mails.</p>
                     )}
                     {cliente && cliente.receber_whatsapp === false && (
-                      <p className="text-xs text-amber-700">Este cliente pediu para não receber WhatsApp.</p>
+                      <p className="text-xs text-status-wait">Este cliente pediu para não receber WhatsApp.</p>
                     )}
                   </div>
                   <div className="space-y-2">
@@ -518,7 +518,7 @@ export function OrcamentoInsumosDialog({
                     disabled={!editavel || ocupado}
                   />
                   {faltas.length > 0 && editavel && (
-                    <p className="text-xs text-amber-700" role="status">
+                    <p className="text-xs text-status-wait" role="status">
                       Saldo menor que o pedido em: {faltas.map((linha) => `${linha.descricao} (saldo ${linha.saldo})`).join(", ")}.
                       Dá para salvar, mas a aprovação só passa quando houver estoque.
                     </p>
@@ -536,7 +536,7 @@ export function OrcamentoInsumosDialog({
                       className="h-10"
                     />
                     {vencido && !alterado && (
-                      <p className="text-xs text-amber-700">
+                      <p className="text-xs text-status-wait">
                         Validade vencida. Altere a validade e salve para renovar antes de aprovar.
                       </p>
                     )}
@@ -552,7 +552,7 @@ export function OrcamentoInsumosDialog({
                       className="h-10"
                     />
                     {totais.descontoExcedido && (
-                      <p className="text-xs text-red-600" role="alert">O desconto passa do total dos itens.</p>
+                      <p className="text-xs text-destructive" role="alert">O desconto passa do total dos itens.</p>
                     )}
                   </div>
                   <div className="space-y-1.5 rounded-lg bg-muted/50 px-4 py-3 text-sm tabular-nums" aria-label="Totais">
@@ -582,7 +582,7 @@ export function OrcamentoInsumosDialog({
                   </p>
                 )}
                 {status === "ENVIADO" && alterado && (
-                  <p className="text-xs text-amber-700">
+                  <p className="text-xs text-status-wait">
                     Ao salvar, o orçamento volta para rascunho e precisa ser enviado de novo ao cliente.
                   </p>
                 )}
@@ -611,7 +611,7 @@ export function OrcamentoInsumosDialog({
                 </Button>
               )}
               {motivoSemSalvar && (
-                <p className="flex items-center gap-1.5 text-sm text-amber-700" data-testid="motivo-sem-salvar">
+                <p className="flex items-center gap-1.5 text-sm text-status-wait" data-testid="motivo-sem-salvar">
                   <Info className="h-4 w-4 shrink-0" aria-hidden />
                   {motivoSemSalvar}
                 </p>

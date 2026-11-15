@@ -117,7 +117,7 @@ export function OrcamentosInsumosTab({ onEstoqueAlterado }: OrcamentosInsumosTab
         <CardContent className="pt-4">
           {loading ? (
             <div className="flex h-24 items-center justify-center">
-              <div className="h-8 w-8 animate-spin rounded-full border-b-2 border-blue-600" />
+              <div className="h-8 w-8 animate-spin rounded-full border-b-2 border-primary" />
             </div>
           ) : orcamentos.length === 0 ? (
             <div className="py-8 text-center text-muted-foreground">
@@ -178,7 +178,7 @@ export function OrcamentosInsumosTab({ onEstoqueAlterado }: OrcamentosInsumosTab
                             {STATUS_ORCAMENTO_INSUMOS_LABEL[orcamento.status]}
                           </Badge>
                           {orcamentoInsumosVencido(orcamento) && (
-                            <Badge variant="outline" className="ml-1 border-red-200 bg-red-50 text-red-700">
+                            <Badge variant="outline" className="ml-1 border-destructive/30 bg-status-bad-bg text-destructive">
                               Vencido
                             </Badge>
                           )}

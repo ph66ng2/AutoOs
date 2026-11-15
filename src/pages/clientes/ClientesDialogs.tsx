@@ -87,7 +87,7 @@ export function ClientesFormDialog({
             overlayClassName="bg-black/30"
           >
             <AlertDialogHeader>
-              <AlertDialogTitle className="flex items-center gap-2 text-red-900">
+              <AlertDialogTitle className="flex items-center gap-2 text-destructive">
                 <AlertCircle className="h-5 w-5 shrink-0" aria-hidden="true" />
                 CPF/CNPJ já cadastrado
               </AlertDialogTitle>
@@ -128,7 +128,7 @@ export function ClientesDeleteDialog({
       <DialogContent className="sm:max-w-md">
         <DialogHeader><DialogTitle>Confirmar Exclusão</DialogTitle></DialogHeader>
         <p className="text-muted-foreground">Excluir cliente <strong>{deletando ? nomeExibicaoCliente(deletando) : ""}</strong>?</p>
-        <p className="text-sm text-red-500">Esta ação não pode ser desfeita.</p>
+        <p className="text-sm text-destructive">Esta ação não pode ser desfeita.</p>
         <DialogFooter>
           <DialogClose asChild><Button variant="outline">Cancelar</Button></DialogClose>
           <Button variant="destructive" onClick={onDelete} disabled={salvando}>{salvando ? "Excluindo..." : "Excluir"}</Button>

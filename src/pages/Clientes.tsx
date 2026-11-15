@@ -514,7 +514,7 @@ export default function Clientes() {
             <ErrorAlert variant="error" context="Clientes" message={error} action="Carregar" />
           )}
           {loading ? (
-            <div className="flex items-center justify-center h-32"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600" /></div>
+            <div className="flex items-center justify-center h-32"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary" /></div>
           ) : clientes.length === 0 ? (
             <div className="text-center py-12 text-muted-foreground">
               <Users className="h-16 w-16 mx-auto mb-4 opacity-20" />
@@ -536,11 +536,11 @@ export default function Clientes() {
                       <div className="min-w-0 space-y-3">
                         <div className="flex min-w-0 items-start gap-3">
                           {c.tipo_pessoa === "PJ" ? (
-                            <Badge variant="outline" className="shrink-0 border-purple-200 bg-purple-50 text-purple-700">
+                            <Badge variant="outline" className="shrink-0 border-status-work/30 bg-status-work-bg text-status-work">
                               <Building2 className="mr-1 h-3 w-3" />PJ
                             </Badge>
                           ) : (
-                            <Badge variant="outline" className="shrink-0 border-blue-200 bg-blue-50 text-blue-700">
+                            <Badge variant="outline" className="shrink-0 border-status-work/30 bg-status-work-bg text-status-work">
                               <User className="mr-1 h-3 w-3" />PF
                             </Badge>
                           )}
@@ -550,7 +550,7 @@ export default function Clientes() {
                               {c.exige_ordem_compra && (
                                 <Badge
                                   variant="outline"
-                                  className="ml-2 align-middle border-amber-200 bg-amber-50 text-[10px] font-normal text-amber-800"
+                                  className="ml-2 align-middle border-status-wait/30 bg-status-wait-bg text-[10px] font-normal text-status-wait"
                                   title="O Portal do Cliente exige o número da ordem de compra para aceitar orçamentos"
                                 >
                                   Exige OC
@@ -624,7 +624,7 @@ export default function Clientes() {
                               id: `excluir-${c.id}`,
                               label: "Excluir",
                               icon: <Trash2 className="h-4 w-4" />,
-                              className: "text-red-600",
+                              className: "text-destructive",
                               onClick: () => void solicitarExclusao(c),
                             },
                           ]}
@@ -634,7 +634,7 @@ export default function Clientes() {
                     {contatosExpandido === c.id && (
                       <div id={`contatos-cliente-${c.id}`} className="min-w-0 border-t bg-accent/30 px-4 py-3">
                         {!c.empresa_id ? (
-                          <span className="text-sm italic text-amber-700 dark:text-amber-400">
+                          <span className="text-sm italic text-status-wait">
                             Cliente sem empresa vinculada — contatos indisponíveis
                           </span>
                         ) : carregandoContatos ? (
@@ -652,7 +652,7 @@ export default function Clientes() {
                                 type="button"
                                 onClick={() => setContatosClienteSelecionado(c)}
                                 title="Abrir contatos e portal"
-                                className={`grid w-full min-w-0 gap-2 rounded border bg-background p-3 text-left hover:border-cyan-600 hover:bg-cyan-50 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center ${
+                                className={`grid w-full min-w-0 gap-2 rounded border bg-background p-3 text-left hover:border-primary hover:bg-acc-soft sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center ${
                                   c.contato_encontrado && ct.nome === c.contato_encontrado ? "border-primary" : ""
                                 }`}
                               >
@@ -681,7 +681,7 @@ export default function Clientes() {
                       <div id={`equipamentos-cliente-${c.id}`} className="min-w-0 border-t bg-accent/30 px-4 py-3">
                         {carregandoEquip ? (
                           <div className="flex items-center gap-2 py-2">
-                            <div className="h-4 w-4 animate-spin rounded-full border-b-2 border-blue-600" />
+                            <div className="h-4 w-4 animate-spin rounded-full border-b-2 border-primary" />
                             <span className="text-sm text-muted-foreground">Carregando equipamentos...</span>
                           </div>
                         ) : equipamentosCliente.length === 0 ? (
@@ -699,7 +699,7 @@ export default function Clientes() {
                                 key={eq.id}
                                 type="button"
                                 onClick={() => navigate("/equipamentos", { state: { equipamentoId: eq.id } })}
-                                className="grid w-full min-w-0 gap-2 rounded border bg-background p-3 text-left hover:border-cyan-600 hover:bg-cyan-50 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center"
+                                className="grid w-full min-w-0 gap-2 rounded border bg-background p-3 text-left hover:border-primary hover:bg-acc-soft sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center"
                               >
                                 <span className="flex min-w-0 items-start gap-3">
                                   <Printer className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />

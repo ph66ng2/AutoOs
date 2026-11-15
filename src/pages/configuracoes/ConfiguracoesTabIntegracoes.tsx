@@ -81,7 +81,7 @@ export function ConfiguracoesTabIntegracoes({
         <CardContent>
           {canConfigureSmtp ? (
             <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
-              <div className="rounded-lg border border-blue-200 bg-blue-50 p-4 text-sm text-blue-900">
+              <div className="rounded-lg border border-status-work/30 bg-status-work-bg p-4 text-sm text-status-work">
                 Configuração padrão aplicada no sistema: smtp.gmail.com, porta 465, TLS/SSL habilitado, remetente BMI Tag. Para usar Gmail, gere uma Senha de App em https://myaccount.google.com/apppasswords e cole-a no campo de senha abaixo.
               </div>
 
@@ -132,7 +132,7 @@ export function ConfiguracoesTabIntegracoes({
                     <p className="text-xs text-muted-foreground">Deixe em branco para manter a senha atual.</p>
                   )}
                   {!hasPassword && (
-                    <p className="text-xs text-amber-600">⚠️ Para Gmail, use uma Senha de App (não sua senha normal). Gere em: myaccount.google.com/apppasswords</p>
+                    <p className="text-xs text-status-wait">⚠️ Para Gmail, use uma Senha de App (não sua senha normal). Gere em: myaccount.google.com/apppasswords</p>
                   )}
                 </div>
               </div>
@@ -159,7 +159,7 @@ export function ConfiguracoesTabIntegracoes({
               </div>
             </form>
           ) : (
-            <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
+            <div className="rounded-lg border border-status-wait/30 bg-status-wait-bg p-4 text-sm text-status-wait">
               O perfil ativo não possui permissão para configurar SMTP. Troque para um perfil com essa permissão para editar este bloco.
             </div>
           )}
@@ -219,7 +219,7 @@ export function ConfiguracoesTabIntegracoes({
               </div>
             </form>
           ) : (
-            <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
+            <div className="rounded-lg border border-status-wait/30 bg-status-wait-bg p-4 text-sm text-status-wait">
               O perfil ativo não possui permissão para configurar a API de WhatsApp. Troque para um perfil com essa permissão para editar este bloco.
             </div>
           )}
@@ -242,7 +242,7 @@ export function ConfiguracoesTabIntegracoes({
               }}
               className="space-y-4"
             >
-              <div className="rounded-lg border border-blue-200 bg-blue-50 p-4 text-sm text-blue-900 space-y-2">
+              <div className="rounded-lg border border-status-work/30 bg-status-work-bg p-4 text-sm text-status-work space-y-2">
                 <p>
                   Coloque o <code>cloudflared</code> no PATH ou na pasta AutoOS de cada PC que for gerar QR. Não precisa criar DNS nem colar token.
                 </p>
@@ -285,7 +285,7 @@ export function ConfiguracoesTabIntegracoes({
               </div>
             </form>
           ) : (
-            <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
+            <div className="rounded-lg border border-status-wait/30 bg-status-wait-bg p-4 text-sm text-status-wait">
               O perfil ativo não possui permissão para configurar o túnel de fotos. Use um perfil com Comunicação externa.
             </div>
           )}

@@ -213,7 +213,7 @@ import { totalPages } from "@/lib/pagination";
 // :focus-visible do botão .equipment-row-open, então o clique do mouse não
 // acende e os botões de Ações continuam fora de um role=button.
 const EQUIPMENT_ROW_FOCUS_RING =
-  "border-b group-has-[.equipment-row-open:focus-visible]:z-[30] group-has-[.equipment-row-open:focus-visible]:bg-sky-100 group-has-[.equipment-row-open:focus-visible]:after:pointer-events-none group-has-[.equipment-row-open:focus-visible]:after:absolute group-has-[.equipment-row-open:focus-visible]:after:inset-0 group-has-[.equipment-row-open:focus-visible]:after:z-[1] group-has-[.equipment-row-open:focus-visible]:after:border-y-[3px] group-has-[.equipment-row-open:focus-visible]:after:border-[#1d4ed8] group-has-[.equipment-row-open:focus-visible]:after:content-['']";
+  "border-b group-has-[.equipment-row-open:focus-visible]:z-[30] group-has-[.equipment-row-open:focus-visible]:bg-status-work-bg group-has-[.equipment-row-open:focus-visible]:after:pointer-events-none group-has-[.equipment-row-open:focus-visible]:after:absolute group-has-[.equipment-row-open:focus-visible]:after:inset-0 group-has-[.equipment-row-open:focus-visible]:after:z-[1] group-has-[.equipment-row-open:focus-visible]:after:border-y-[3px] group-has-[.equipment-row-open:focus-visible]:after:border-[#1d4ed8] group-has-[.equipment-row-open:focus-visible]:after:content-['']";
 const EQUIPMENT_ROW_FOCUS_EDGE = `relative ${EQUIPMENT_ROW_FOCUS_RING}`;
 const EQUIPMENT_ROW_FOCUS_FIRST = `relative ${EQUIPMENT_ROW_FOCUS_RING} group-has-[.equipment-row-open:focus-visible]:after:border-l-[3px]`;
 const EQUIPMENT_ROW_FOCUS_LAST = `${EQUIPMENT_ROW_FOCUS_RING} group-has-[.equipment-row-open:focus-visible]:after:border-r-[3px]`;
@@ -2182,7 +2182,7 @@ export default function Equipamentos() {
       label: "Excluir",
       icon: <Trash2 className="h-3.5 w-3.5" />,
       variant: "ghost",
-      className: "text-red-600",
+      className: "text-destructive",
       onClick: () => void solicitarExclusao(eq),
     };
     const podeFinanceiro = hasPermission(SENSITIVE_PERMISSIONS.FINANCIAL_ACTIONS);
@@ -2259,7 +2259,6 @@ export default function Equipamentos() {
             label: "Aprovar",
             icon: <CheckCircle className="h-3.5 w-3.5" />,
             variant: "default",
-            className: "bg-green-600 hover:bg-green-700 text-white",
             onClick: () => void abrirDialogoAprovacao(eq, "aprovar"),
             disabled: salvando,
           };
@@ -2268,7 +2267,7 @@ export default function Equipamentos() {
             label: "Reprovar",
             icon: <XCircle className="h-3.5 w-3.5" />,
             variant: "default",
-            className: "bg-red-600 text-white hover:bg-red-700",
+            className: "bg-destructive text-destructive-foreground hover:bg-destructive/90",
             onClick: () => void abrirDialogoAprovacao(eq, "reprovar"),
             disabled: salvando,
           };
@@ -2439,7 +2438,7 @@ export default function Equipamentos() {
   // ─── Sub-renders para abas do drawer de detalhes ──────
 
   function renderVerificacaoTab() {
-    if (carregandoDetalhes) return <div className="flex justify-center py-8"><div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600" /></div>;
+    if (carregandoDetalhes) return <div className="flex justify-center py-8"><div className="animate-spin rounded-full h-6 w-6 border-b-2 border-primary" /></div>;
     if (!verificacaoDetalhes) return <div className="text-center py-8 text-muted-foreground"><ClipboardCheck className="h-10 w-10 mx-auto mb-2 opacity-20" /><p>Nenhuma verificação realizada</p></div>;
 
     const v = verificacaoDetalhes;
@@ -2463,7 +2462,7 @@ export default function Equipamentos() {
             <div className="space-y-1">
               {itens.map(item => (
                 <div key={item.id} className="flex items-center gap-2 text-sm">
-                  {item.verificado ? <CheckCircle className="h-4 w-4 text-green-500" /> : <XCircle className="h-4 w-4 text-red-400" />}
+                  {item.verificado ? <CheckCircle className="h-4 w-4 text-status-ok" /> : <XCircle className="h-4 w-4 text-destructive" />}
                   <span className={item.verificado ? "" : "text-muted-foreground"}>{item.nome}</span>
                 </div>
               ))}
@@ -2526,14 +2525,14 @@ export default function Equipamentos() {
         {eventos.map((ev, idx) => (
           <div key={`${ev.data}-${ev.status}-${idx}`} className="flex items-start gap-3 pb-4">
             <div className="flex flex-col items-center">
-              <div className={`w-3 h-3 rounded-full mt-1 ${idx === eventos.length - 1 ? "bg-blue-500 ring-2 ring-blue-200" : "bg-muted-foreground/40"}`} />
+              <div className={`w-3 h-3 rounded-full mt-1 ${idx === eventos.length - 1 ? "bg-primary ring-2 ring-status-work/30" : "bg-muted-foreground/40"}`} />
               {idx < eventos.length - 1 && <div className="w-0.5 flex-1 bg-border mt-1 min-h-[16px]" />}
             </div>
             <div className="flex-1">
               <div className="flex flex-wrap items-center gap-2">
                 {ev.status_anterior && <><StatusBadge status={ev.status_anterior} /><span className="text-muted-foreground">→</span></>}
                 <StatusBadge status={ev.status} />
-                {ev.tipo === "CORRECAO_STATUS" && <span className="text-xs font-medium text-amber-700">Correção</span>}
+                {ev.tipo === "CORRECAO_STATUS" && <span className="text-xs font-medium text-status-wait">Correção</span>}
                 <span className="text-xs text-muted-foreground">
                   {ev.data_confiavel !== false ? formatDateTimeSalvador(ev.data) : "Horário legado inconsistente"}
                 </span>
@@ -2614,7 +2613,7 @@ export default function Equipamentos() {
       <Card>
         <CardContent className="pt-6">
           {loading ? (
-            <div className="flex items-center justify-center h-32"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600" /></div>
+            <div className="flex items-center justify-center h-32"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary" /></div>
           ) : equipamentos.length === 0 ? (
             <div className="text-center py-12 text-muted-foreground">
               <Printer className="h-16 w-16 mx-auto mb-4 opacity-20" />
@@ -2681,13 +2680,13 @@ export default function Equipamentos() {
                           <StatusBadge status={eq.status} />
                           {(eq.status === "AGUARDANDO_APROVACAO" || eq.status === "ORCAMENTO_VENCIDO") &&
                             eq.valor_orcamento != null && eq.valor_orcamento > 0 && (
-                              <div className="inline-flex max-w-full items-center truncate rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-xs font-medium text-amber-900">
+                              <div className="inline-flex max-w-full items-center truncate rounded-full border border-status-wait/30 bg-status-wait-bg px-2 py-0.5 text-xs font-medium text-status-wait">
                                 Orçamento: {formatCurrency(eq.valor_orcamento)}
                               </div>
                             )}
                           {eq.status === "AGUARDANDO_APROVACAO" &&
                             (eq.resposta_cliente === "APROVAR" || eq.resposta_cliente === "RECUSAR") && (
-                              <div className="inline-flex max-w-full items-center truncate rounded-full border border-sky-200 bg-sky-50 px-2 py-0.5 text-xs font-medium text-sky-900">
+                              <div className="inline-flex max-w-full items-center truncate rounded-full border border-status-work/30 bg-status-work-bg px-2 py-0.5 text-xs font-medium text-status-work">
                                 Cliente respondeu: {eq.resposta_cliente === "APROVAR" ? "aprovou" : "recusou"} — {
                                   eq.resposta_cliente_situacao === "EM_CORRECAO" ? "em prazo de correção"
                                     : eq.resposta_cliente_situacao === "PROCESSANDO" ? "aguardando efetivação automática"
@@ -2804,13 +2803,13 @@ export default function Equipamentos() {
                   </div>
                   <FormValidationError message={form.formState.errors.serial_number?.message} />
                   {registrosAnteriores.length > 0 && (
-                    <div className="mt-2 rounded-md border border-amber-400 bg-amber-100 p-3 space-y-2">
-                      <p className="text-sm font-bold text-amber-900">
+                    <div className="mt-2 rounded-md border border-status-wait bg-status-wait-bg p-3 space-y-2">
+                      <p className="text-sm font-bold text-status-wait">
                         ⚠️ ATENÇÃO: Este número de série já foi registrado anteriormente. Marque esta caixa apenas se realmente deseja criar um NOVO ciclo de manutenção.
                       </p>
                       <ul className="space-y-1">
                         {registrosAnteriores.map((r) => (
-                          <li key={r.id} className="text-xs text-amber-800 flex items-center gap-1 flex-wrap">
+                          <li key={r.id} className="text-xs text-status-wait flex items-center gap-1 flex-wrap">
                             <span>• #{r.id}</span>
                             <StatusBadge status={r.status} />
                             <span>— Entrada: {formatDatePtBr(r.data_entrada)}</span>
@@ -2820,7 +2819,7 @@ export default function Equipamentos() {
                           </li>
                         ))}
                       </ul>
-                      <p className="text-xs text-amber-800">
+                      <p className="text-xs text-status-wait">
                         O histórico anterior será preservado. Este será um registro independente.
                       </p>
                       <label className="flex items-center gap-2 text-sm cursor-pointer pt-1">
@@ -2828,9 +2827,9 @@ export default function Equipamentos() {
                           type="checkbox"
                           checked={confirmouNovoCiclo}
                           onChange={(e) => setConfirmouNovoCiclo(e.target.checked)}
-                          className="rounded border-amber-400"
+                          className="rounded border-status-wait"
                         />
-                        <span className="text-amber-900 font-semibold">Confirmo que desejo criar um novo ciclo de manutenção para este equipamento</span>
+                        <span className="text-status-wait font-semibold">Confirmo que desejo criar um novo ciclo de manutenção para este equipamento</span>
                       </label>
                     </div>
                   )}
@@ -2987,7 +2986,7 @@ export default function Equipamentos() {
                               type="button"
                               variant="outline"
                               size="sm"
-                              className="gap-1.5 border-blue-300 bg-blue-50 text-blue-700 hover:bg-blue-100 hover:text-blue-800"
+                              className="gap-1.5 border-status-work/30 bg-status-work-bg text-status-work hover:bg-status-work-bg hover:text-status-work"
                               disabled={
                                 salvando ||
                                 carregandoImagensFormulario ||
@@ -3019,7 +3018,7 @@ export default function Equipamentos() {
                     />
                     {carregandoImagensFormulario ? (
                       <div role="status" aria-label="Carregando fotos" className="flex items-center justify-center rounded-lg border border-dashed p-6">
-                        <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600" />
+                        <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-primary" />
                       </div>
                     ) : (
                       <GaleriaImagensEquipamento
@@ -3113,7 +3112,7 @@ export default function Equipamentos() {
                       </div>
                       {carregandoDetalhes ? (
                         <div className="flex items-center justify-center rounded-lg border border-dashed p-6">
-                          <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600" />
+                          <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-primary" />
                         </div>
                       ) : (
                         <GaleriaImagensEquipamento
@@ -3148,7 +3147,7 @@ export default function Equipamentos() {
                       </div>
                       {carregandoDetalhes ? (
                         <div className="flex items-center justify-center rounded-lg border border-dashed p-6">
-                          <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600" />
+                          <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-primary" />
                         </div>
                       ) : (
                         <GaleriaImagensEquipamento
@@ -3190,7 +3189,7 @@ export default function Equipamentos() {
                 {/* Comunicações — agora usa componente extraído */}
                 <TabsContent value="comunicacoes" className="mt-4">
                   {carregandoDetalhes ? (
-                    <div className="flex justify-center py-8"><div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600" /></div>
+                    <div className="flex justify-center py-8"><div className="animate-spin rounded-full h-6 w-6 border-b-2 border-primary" /></div>
                   ) : (
                     <HistoricoComunicacoes
                       equipamentoId={selecionado.id!}
@@ -3299,7 +3298,7 @@ export default function Equipamentos() {
                     </div>
                   )}
                   {correcaoStatus && novoStatus === "AGUARDANDO_APROVACAO" && ["APROVADO", "REPROVADO"].includes(selecionado.status) && (
-                    <div role="alert" className="space-y-2 rounded-md border border-amber-300 bg-amber-50 p-3 text-sm text-amber-950">
+                    <div role="alert" className="space-y-2 rounded-md border border-status-wait/30 bg-status-wait-bg p-3 text-sm text-status-wait">
                       <p>
                         Trocar só o status não desfaz pagamento, serviços aprovados nem baixa de estoque. Use a correção guiada da decisão.
                       </p>
@@ -3333,7 +3332,7 @@ export default function Equipamentos() {
               )}
               {((novoStatus === "AGUARDANDO_APROVACAO" && !reabreOrcamentoSemAjuste(selecionado.status, novoStatus)) || ajusteOrcamentoSemMudancaStatus) && (
                 <>
-                  <div className="rounded-md border bg-amber-50 px-3 py-2 text-sm text-amber-900">
+                  <div className="rounded-md border bg-status-wait-bg px-3 py-2 text-sm text-status-wait">
                     {ajusteOrcamentoSemMudancaStatus
                       ? "Edite o orçamento. O status atual do equipamento será mantido."
                       : "Revise o valor e o prazo para reenviar o orçamento atualizado ao cliente."}
@@ -3348,10 +3347,10 @@ export default function Equipamentos() {
                     </details>
                   )}
                   {verificacaoAjusteOrcamento?.adjusted_at && (
-                    <div className="rounded-md border bg-blue-50 px-3 py-2 text-sm text-blue-900 flex items-center gap-2">
-                      <History className="h-4 w-4 text-blue-700" />
+                    <div className="rounded-md border bg-status-work-bg px-3 py-2 text-sm text-status-work flex items-center gap-2">
+                      <History className="h-4 w-4 text-status-work" />
                       <div>
-                        <p className="text-xs text-blue-700 font-medium">Histórico de Ajustes</p>
+                        <p className="text-xs text-status-work font-medium">Histórico de Ajustes</p>
                         <p className="text-xs">
                           Último ajuste em {new Date(verificacaoAjusteOrcamento.adjusted_at).toLocaleDateString("pt-BR")}
                         </p>
@@ -3366,8 +3365,8 @@ export default function Equipamentos() {
                           {valorOrcamentoOriginal != null ? formatCurrency(valorOrcamentoOriginal) : "—"}
                         </p>
                       </div>
-                      <div className="rounded-md border bg-blue-50 px-3 py-2 text-sm text-blue-900">
-                        <p className="text-xs text-blue-700">Valor atual antes do ajuste</p>
+                      <div className="rounded-md border bg-status-work-bg px-3 py-2 text-sm text-status-work">
+                        <p className="text-xs text-status-work">Valor atual antes do ajuste</p>
                         <p className="font-semibold">
                           {valorOrcamentoAnterior != null ? formatCurrency(valorOrcamentoAnterior) : "—"}
                         </p>
@@ -3376,7 +3375,7 @@ export default function Equipamentos() {
                   )}
                   <div className="space-y-2"><Label htmlFor="valor-orcamento-input">Valor Orçamento (R$)</Label><ValorDecimalInput id="valor-orcamento-input" data-testid="valor-orcamento-input" required value={Number(valorOrcamento) || 0} onValueChange={setValorOrcamento} onValidityChange={setValorOrcamentoValido} />
                     {Number(valorOrcamento) === 0 && !totalOrcamentoAjusteValido(0, osSomenteGarantia(servicosAjuste), selecionado.status, selecionado.valor_orcamento) && (
-                      <p className="text-xs text-red-600">{mensagemAjusteTotalZero(selecionado.status, selecionado.valor_orcamento)}</p>
+                      <p className="text-xs text-destructive">{mensagemAjusteTotalZero(selecionado.status, selecionado.valor_orcamento)}</p>
                     )}
                   </div>
                   {(!ajusteOrcamentoSemMudancaStatus || selecionado.status === "AGUARDANDO_APROVACAO") && (
@@ -3411,7 +3410,7 @@ export default function Equipamentos() {
                     </div>
                   )}
                   {valorOrcamentoAnterior != null && valorOrcamento !== valorOrcamentoAnterior && (
-                    <p className="text-xs text-amber-700">
+                    <p className="text-xs text-status-wait">
                       Novo valor em negociação: {formatCurrency(valorOrcamento)} (antes: {formatCurrency(valorOrcamentoAnterior)}).
                     </p>
                   )}
@@ -3437,9 +3436,9 @@ export default function Equipamentos() {
                         }}
                       />
                       {pecasLegadasAjuste.length > 0 && (
-                        <div className="rounded-md border border-amber-200 bg-amber-50 p-2">
-                          <p className="text-xs font-semibold text-amber-900">Peças antigas sem serviço vinculado</p>
-                          <p className="text-xs text-amber-800">Vincule cada peça a um serviço para permitir aprovação parcial e baixa automática. Remova a linha antiga depois de vinculá-la.</p>
+                        <div className="rounded-md border border-status-wait/30 bg-status-wait-bg p-2">
+                          <p className="text-xs font-semibold text-status-wait">Peças antigas sem serviço vinculado</p>
+                          <p className="text-xs text-status-wait">Vincule cada peça a um serviço para permitir aprovação parcial e baixa automática. Remova a linha antiga depois de vinculá-la.</p>
                           {pecasLegadasAjuste.map((peca, indice) => (
                             <div key={`${peca.id}-${indice}`} className="flex items-center justify-between gap-2 text-sm">
                               <span>{peca.nome} × {peca.quantidade} · {formatCurrencyOrMissing(peca.valorTotal)}</span>
@@ -3459,8 +3458,8 @@ export default function Equipamentos() {
                         <p className="text-xs text-muted-foreground">Valor original (verificação)</p>
                         <p className="font-semibold">{formatCurrency(valorOrcamentoOriginal)}</p>
                       </div>
-                      <div className="rounded-md border bg-emerald-50 px-3 py-2 text-sm text-emerald-900">
-                        <p className="text-xs text-emerald-700">Novo valor calculado</p>
+                      <div className="rounded-md border bg-status-ok-bg px-3 py-2 text-sm text-status-ok">
+                        <p className="text-xs text-status-ok">Novo valor calculado</p>
                         <p className="font-semibold">{formatCurrency(valorOrcamento)}</p>
                       </div>
                     </div>
@@ -3493,7 +3492,7 @@ export default function Equipamentos() {
                     />
                   </div>
                   {acordoExcecaoEntrega && valorFinalSugerido != null && valorFinal !== valorFinalSugerido && (
-                    <p className="text-xs text-amber-600">
+                    <p className="text-xs text-status-wait">
                       Exceção registrada: valor diferente da verificação técnica.
                     </p>
                   )}
@@ -3525,7 +3524,7 @@ export default function Equipamentos() {
                             type="button"
                             variant="outline"
                             size="sm"
-                            className="gap-1.5 border-blue-300 bg-blue-50 text-blue-700 hover:bg-blue-100 hover:text-blue-800"
+                            className="gap-1.5 border-status-work/30 bg-status-work-bg text-status-work hover:bg-status-work-bg hover:text-status-work"
                             disabled={
                               salvando ||
                               carregandoImagensSaidaEntrega ||
@@ -3543,7 +3542,7 @@ export default function Equipamentos() {
                         </div>
                       </div>
                     {erroImagensSaidaEntrega && (
-                      <p className="text-xs text-red-500">{erroImagensSaidaEntrega}</p>
+                      <p className="text-xs text-destructive">{erroImagensSaidaEntrega}</p>
                     )}
                     <input
                       id="equipamento-imagens-saida-entrega"
@@ -3560,7 +3559,7 @@ export default function Equipamentos() {
                     />
                     {carregandoImagensSaidaEntrega ? (
                       <div className="flex items-center justify-center rounded-lg border border-dashed p-6">
-                        <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600" />
+                        <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-primary" />
                       </div>
                     ) : (
                       <GaleriaImagensEquipamento
@@ -3594,7 +3593,7 @@ export default function Equipamentos() {
               <div key={`${consumo.verificacao_id}:${consumo.servico_id}:${consumo.produto_id}`} className="rounded-md border p-2 text-sm">
                 <p className="font-medium">{consumo.nome}</p>
                 <p>{consumo.quantidade_baixada} baixada(s) de {consumo.quantidade_aprovada} aprovada(s)
-                  {consumo.quantidade_baixada < consumo.quantidade_aprovada && <span className="text-amber-700"> · pendente</span>}
+                  {consumo.quantidade_baixada < consumo.quantidade_aprovada && <span className="text-status-wait"> · pendente</span>}
                 </p>
               </div>
             ))}
@@ -3630,7 +3629,7 @@ export default function Equipamentos() {
                 onClick={() => { setTodosServicosAprovados(false); setIdsAprovados([]); }}>{servicosAprovacao.length === 0 ? "Reprovar orçamento" : "Não, selecionar"}</Button>
             </div>
             {respostaClienteDecisao && (
-              <div className="rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-950">
+              <div className="rounded-md border border-status-wait/30 bg-status-wait-bg p-3 text-sm text-status-wait">
                 <p>O cliente respondeu pelo link: <strong>{respostaClienteDecisao === "APROVAR" ? "aprovou" : "recusou"}</strong> o orçamento.</p>
                 {decisaoDivergeDoCliente && (
                   <div className="mt-2 space-y-1">
@@ -3669,7 +3668,7 @@ export default function Equipamentos() {
                 {servicosAprovacao.length > 0 && <p className="font-medium">{idsAprovados.length} de {servicosAprovacao.length} serviços aprovados</p>}
                 {resumirPecas(servicosAprovacao.filter((s) => idsAprovados.includes(s.id))).map((peca, i) => {
                   const saldo = produtosAprovacao.find((p) => p.id === peca.produto_id)?.quantidade_estoque ?? 0;
-                  return <p key={`${peca.produto_id}-${i}`} className={saldo < peca.quantidade ? "text-amber-700" : ""}>
+                  return <p key={`${peca.produto_id}-${i}`} className={saldo < peca.quantidade ? "text-status-wait" : ""}>
                     {peca.nome}: {peca.quantidade} necessária(s), saldo {saldo}{saldo < peca.quantidade ? " · pendência" : ""}
                   </p>;
                 })}
@@ -3713,7 +3712,7 @@ export default function Equipamentos() {
         <DialogContent className="sm:max-w-md">
           <DialogHeader><DialogTitle>Confirmar Exclusão</DialogTitle></DialogHeader>
           <p className="text-muted-foreground">Excluir <strong>{deletando?.marca} {deletando?.modelo}</strong> (SN: {deletando?.serial_number})?</p>
-          <p className="text-sm text-red-500">Esta ação não pode ser desfeita.</p>
+          <p className="text-sm text-destructive">Esta ação não pode ser desfeita.</p>
           <DialogFooter>
             <DialogClose asChild><Button variant="outline">Cancelar</Button></DialogClose>
             <Button variant="destructive" onClick={onDelete} disabled={salvando}>{salvando ? "Excluindo..." : "Excluir"}</Button>

@@ -410,7 +410,7 @@ export function VerificacaoTecnica({
                         size="icon"
                         onClick={() => removerServico(s.id)}
                       >
-                        <Trash2 className="h-4 w-4 text-red-500" />
+                        <Trash2 className="h-4 w-4 text-destructive" />
                       </Button>
                     </div>
                     <PecasDoServico pecas={s.pecas ?? []} onChange={(pecas) => atualizarServico(s.id, { pecas })} />
@@ -478,7 +478,6 @@ export function VerificacaoTecnica({
               <Button
                 onClick={handleConcluir}
                 disabled={salvando || servicos.some((s) => !s.descricao.trim() || Number(s.valor) < 0 || valoresServicoInvalidos[s.id])}
-                className="bg-green-600 hover:bg-green-700"
               >
                 <Check className="mr-2 h-4 w-4" />
                 {salvando ? "Salvando..." : "Finalizar Verificação"}

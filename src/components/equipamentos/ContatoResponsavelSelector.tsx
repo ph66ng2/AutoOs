@@ -184,7 +184,7 @@ export function ContatoResponsavelSelector({
             <div className="space-y-2"><Label htmlFor="responsavel-novo-nome">Nome *</Label><Input id="responsavel-novo-nome" value={novo.nome} onChange={(event) => atualizarNovo("nome", event.target.value)} /></div>
             <div className="space-y-2"><Label htmlFor="responsavel-novo-email">E-mail</Label><Input id="responsavel-novo-email" type="email" value={novo.email} onChange={(event) => atualizarNovo("email", event.target.value)} /></div>
             <div className="space-y-2"><Label htmlFor="responsavel-novo-telefone">Telefone</Label><Input id="responsavel-novo-telefone" value={novo.telefone} onChange={(event) => atualizarNovo("telefone", event.target.value)} /></div>
-            {erroNovo && <p className="text-xs text-red-600" role="alert">{erroNovo}</p>}
+            {erroNovo && <p className="text-xs text-destructive" role="alert">{erroNovo}</p>}
           </div>
           <DialogFooter>
             <Button type="button" variant="outline" onClick={() => setNovoOpen(false)}>Cancelar</Button>

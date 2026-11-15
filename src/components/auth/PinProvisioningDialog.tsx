@@ -157,7 +157,7 @@ export function PinProvisioningDialog({
         </div>
 
         {error && (
-          <div className="flex items-start gap-2 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-800">
+          <div className="flex items-start gap-2 rounded-lg border border-destructive/30 bg-status-bad-bg p-3 text-sm text-destructive">
             <AlertCircle className="h-4 w-4 mt-0.5 shrink-0" />
             <p>{error}</p>
           </div>
@@ -298,8 +298,8 @@ export function PinProvisioningDialog({
 
         {step === "success" && (
           <div className="space-y-4 text-center py-4">
-            <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-green-100">
-              <Check className="h-8 w-8 text-green-600" />
+            <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-status-ok-bg">
+              <Check className="h-8 w-8 text-status-ok" />
             </div>
             <div>
               <h3 className="text-lg font-semibold">Configuração Concluída</h3>

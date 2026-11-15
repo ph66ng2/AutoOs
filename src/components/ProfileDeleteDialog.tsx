@@ -209,9 +209,9 @@ export function ProfileDeleteDialog({
         <DialogHeader>
           <div className="flex items-center gap-2">
             {step === "success" ? (
-              <CheckCircle2 className="h-5 w-5 text-emerald-500" />
+              <CheckCircle2 className="h-5 w-5 text-status-ok" />
             ) : (
-              <Trash2 className="h-5 w-5 text-red-500" />
+              <Trash2 className="h-5 w-5 text-destructive" />
             )}
             <DialogTitle>Excluir perfil</DialogTitle>
           </div>
@@ -299,7 +299,7 @@ export function ProfileDeleteDialog({
 
         {step === "confirm" && (
           <div className="space-y-4">
-            <div className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-800 space-y-2">
+            <div className="rounded-lg border border-destructive/30 bg-status-bad-bg p-4 text-sm text-destructive space-y-2">
               <p className="font-medium">Atenção: esta ação é irreversível!</p>
               <p>
                 O perfil <strong>{profile?.nome}</strong> será excluído permanentemente do sistema,
@@ -329,8 +329,8 @@ export function ProfileDeleteDialog({
 
         {step === "success" && (
           <div className="flex flex-col items-center gap-4 py-6">
-            <CheckCircle2 className="h-12 w-12 text-emerald-500" />
-            <p className="text-center font-medium text-emerald-700">
+            <CheckCircle2 className="h-12 w-12 text-status-ok" />
+            <p className="text-center font-medium text-status-ok">
               Perfil excluído com sucesso!
             </p>
             <p className="text-center text-sm text-muted-foreground">
@@ -340,7 +340,7 @@ export function ProfileDeleteDialog({
         )}
 
         {error && (
-          <div className="flex items-start gap-2 rounded-lg border border-red-500/20 bg-red-500/10 p-3 text-sm text-red-600">
+          <div className="flex items-start gap-2 rounded-lg border border-destructive/20 bg-destructive/10 p-3 text-sm text-destructive">
             <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
             <span>{error}</span>
           </div>

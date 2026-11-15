@@ -134,7 +134,7 @@ export function PdfPreviewDialog({ artifact, onOpenChange, onDownload, onBeforeP
         <DialogHeader>
           <DialogTitle className="text-xl">Prévia A4 — {artifact?.filename}</DialogTitle>
         </DialogHeader>
-        <div className="min-h-0 flex-1 overflow-hidden border bg-slate-200">
+        <div className="min-h-0 flex-1 overflow-hidden border bg-secondary">
           <iframe
             ref={frameRef}
             title="Prévia do PDF"

@@ -69,7 +69,7 @@ export function ConfiguracoesTabInfra({
         <CardContent className="space-y-4">
           {schemaLoading && !schemaStatus ? (
             <div className="flex items-center justify-center h-24">
-              <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600" />
+              <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-primary" />
             </div>
           ) : schemaError ? (
             <ErrorAlert variant="warning" context="Schema" message={schemaError} />
@@ -92,7 +92,7 @@ export function ConfiguracoesTabInfra({
                 <div className="rounded-lg border bg-muted/40 p-4 text-sm">
                   <div className="text-muted-foreground">Migrações</div>
                   <div className="font-medium">{schemaStatus.applied_count} de {schemaStatus.known_count}</div>
-                  <div className={`text-xs ${schemaStatus.pending_count === 0 ? "text-emerald-600" : "text-amber-600"}`}>
+                  <div className={`text-xs ${schemaStatus.pending_count === 0 ? "text-status-ok" : "text-status-wait"}`}>
                     {schemaStatus.pending_count === 0 ? "schema atualizado" : `${schemaStatus.pending_count} pendente(s)`}
                   </div>
                 </div>
@@ -103,7 +103,7 @@ export function ConfiguracoesTabInfra({
                   <div key={migration.version} className="rounded-lg border p-3 text-sm">
                     <div className="flex items-center justify-between gap-3">
                       <div className="font-medium">v{migration.version} • {migration.description}</div>
-                      <span className={migration.applied && migration.success ? "text-emerald-600" : "text-amber-600"}>
+                      <span className={migration.applied && migration.success ? "text-status-ok" : "text-status-wait"}>
                         {migration.applied && migration.success ? "aplicada" : "pendente"}
                       </span>
                     </div>
@@ -154,7 +154,7 @@ export function ConfiguracoesTabInfra({
             <>
               {backupLoading && !backupToolsStatus ? (
                 <div className="flex items-center justify-center h-24">
-                  <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600" />
+                  <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-primary" />
                 </div>
               ) : backupToolsStatus ? (
                 <div className="grid gap-4 md:grid-cols-4">
@@ -176,13 +176,13 @@ export function ConfiguracoesTabInfra({
                   <div className="rounded-lg border bg-muted/40 p-4 text-sm md:col-span-4">
                     <div className="text-muted-foreground mb-2">Ferramentas PostgreSQL</div>
                     <div className="grid gap-2 md:grid-cols-3">
-                      <div className={backupToolsStatus.pg_dump_available ? "text-emerald-600" : "text-amber-600"}>
+                      <div className={backupToolsStatus.pg_dump_available ? "text-status-ok" : "text-status-wait"}>
                         pg_dump: {backupToolsStatus.pg_dump_available ? "disponivel" : "ausente"}
                       </div>
-                      <div className={backupToolsStatus.pg_restore_available ? "text-emerald-600" : "text-amber-600"}>
+                      <div className={backupToolsStatus.pg_restore_available ? "text-status-ok" : "text-status-wait"}>
                         pg_restore: {backupToolsStatus.pg_restore_available ? "disponivel" : "ausente"}
                       </div>
-                      <div className={backupToolsStatus.psql_available ? "text-emerald-600" : "text-amber-600"}>
+                      <div className={backupToolsStatus.psql_available ? "text-status-ok" : "text-status-wait"}>
                         psql: {backupToolsStatus.psql_available ? "disponivel" : "ausente"}
                       </div>
                     </div>

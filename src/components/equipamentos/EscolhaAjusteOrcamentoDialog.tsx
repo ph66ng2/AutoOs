@@ -105,7 +105,7 @@ export function EscolhaAjusteOrcamentoDialog({ open, variante, analise, salvando
           </label>
 
           {exigeEstoque && (
-            <div className="space-y-2 rounded-md border border-amber-300 bg-amber-50 p-3 text-amber-950">
+            <div className="space-y-2 rounded-md border border-status-wait/30 bg-status-wait-bg p-3 text-status-wait">
               <p className="font-medium">{analise.totalBaixado} peça(s) já foram baixadas do estoque:</p>
               <ul className="list-disc pl-5">
                 {analise.pecasBaixadas.map((peca) => (

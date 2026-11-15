@@ -247,9 +247,9 @@ function VisaoGeral({
 
 function CapabilityItem({ title, note, allowed }: { title: string; note: string; allowed: boolean }) {
   return (
-    <li className={cn("flex items-start gap-2.5 rounded-lg p-3", allowed ? "bg-emerald-500/10" : "bg-muted")}>
+    <li className={cn("flex items-start gap-2.5 rounded-lg p-3", allowed ? "bg-status-ok/10" : "bg-muted")}>
       {allowed ? (
-        <Check className="mt-0.5 h-4 w-4 shrink-0 text-emerald-600 dark:text-emerald-400" strokeWidth={2.5} />
+        <Check className="mt-0.5 h-4 w-4 shrink-0 text-status-ok" strokeWidth={2.5} />
       ) : (
         <Lock className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
       )}
@@ -454,7 +454,7 @@ function Tutorial({ profile, permissions }: { profile: SecurityProfile; permissi
                 <li key={permission} className="flex items-center justify-between gap-3 py-3">
                   <span className="text-sm font-medium">{PERMISSION_DETAILS[permission].title}</span>
                   {pending.includes(permission) && seen !== null ? (
-                    <span className="rounded-full bg-amber-500/15 px-2.5 py-0.5 text-xs font-medium text-amber-700 dark:text-amber-300">Novo</span>
+                    <span className="rounded-full bg-warning/15 px-2.5 py-0.5 text-xs font-medium text-status-wait">Novo</span>
                   ) : (
                     <span className="text-xs text-muted-foreground">{seen === null ? "Ainda não visto" : "Visto no tour"}</span>
                   )}

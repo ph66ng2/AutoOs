@@ -403,7 +403,7 @@ export default function Insumos() {
         <CardContent className="pt-6">
           {loading ? (
             <div className="flex items-center justify-center h-32">
-              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600" />
+              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary" />
             </div>
           ) : produtos.length === 0 ? (
             <div className="text-center py-12 text-muted-foreground">
@@ -443,13 +443,13 @@ export default function Insumos() {
                     return (
                       <TableRow
                         key={p.id}
-                        className={estoqueBaixo ? "bg-red-50/50" : ""}
+                        className={estoqueBaixo ? "bg-status-bad-bg/50" : ""}
                       >
                         <TableCell>
                           <div className="flex items-center gap-2">
                             <span className="font-medium">{p.nome}</span>
                             {estoqueBaixo && (
-                              <AlertTriangle className="h-3.5 w-3.5 text-red-500" />
+                              <AlertTriangle className="h-3.5 w-3.5 text-destructive" />
                             )}
                           </div>
                         </TableCell>
@@ -465,7 +465,7 @@ export default function Insumos() {
                         <TableCell className="text-center">
                           <span
                             className={`font-bold ${
-                              estoqueBaixo ? "text-red-600" : "text-green-600"
+                              estoqueBaixo ? "text-destructive" : "text-status-ok"
                             }`}
                           >
                             {p.quantidade_estoque}
@@ -502,7 +502,7 @@ export default function Insumos() {
                                   id: `excluir-${p.id}`,
                                   label: "Excluir",
                                   icon: <Trash2 className="h-4 w-4" />,
-                                  className: "text-red-600",
+                                  className: "text-destructive",
                                   onClick: () => void solicitarExclusao(p),
                                 },
                               ]}

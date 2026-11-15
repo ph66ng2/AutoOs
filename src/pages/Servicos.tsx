@@ -226,7 +226,7 @@ export default function Servicos() {
         <CardContent className="pt-6">
           {loading ? (
             <div className="flex items-center justify-center h-32">
-              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600" />
+              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary" />
             </div>
           ) : servicos.length === 0 ? (
             <div className="text-center py-12 text-muted-foreground">
@@ -279,7 +279,7 @@ export default function Servicos() {
                                 id: `excluir-${servico.id}`,
                                 label: "Excluir",
                                 icon: <Trash2 className="h-4 w-4" />,
-                                className: "text-red-600",
+                                className: "text-destructive",
                                 onClick: () => void solicitarExclusao(servico),
                               },
                             ]}
@@ -363,7 +363,7 @@ export default function Servicos() {
           <p className="text-muted-foreground">
             Desativar o serviço <strong>{deletando?.nome}</strong>?
           </p>
-          <p className="text-sm text-red-500">Ele deixará de aparecer na verificação técnica.</p>
+          <p className="text-sm text-destructive">Ele deixará de aparecer na verificação técnica.</p>
           <DialogFooter>
             <DialogClose asChild>
               <Button variant="outline">Cancelar</Button>

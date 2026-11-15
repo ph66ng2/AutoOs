@@ -137,7 +137,7 @@ export function Layout() {
           {!collapsed && <SensitiveAccessBadge />}
           {collapsed && status?.pin_configured && status.unlocked && (
             <div className="flex justify-center">
-              <span className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-emerald-200 bg-emerald-50 text-emerald-700">
+              <span className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-status-ok/30 bg-status-ok-bg text-status-ok">
                 <ShieldCheck className="h-4 w-4" />
               </span>
             </div>

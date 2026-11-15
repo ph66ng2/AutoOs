@@ -103,7 +103,7 @@ export function HistoricoComunicacoes({
   if (loading) {
     return (
       <div className="flex justify-center py-8">
-        <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600" />
+        <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-primary" />
       </div>
     );
   }
@@ -170,7 +170,7 @@ export function HistoricoComunicacoes({
             )}
 
             {com.enviado === false && com.erro && (
-              <p className="text-xs text-red-500">Erro: {com.erro}</p>
+              <p className="text-xs text-destructive">Erro: {com.erro}</p>
             )}
           </div>
         </div>

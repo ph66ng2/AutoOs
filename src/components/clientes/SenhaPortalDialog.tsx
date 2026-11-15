@@ -156,7 +156,7 @@ export function SenhaPortalForm({ contato, documentoCliente, onCancelar, onSalvo
   if (salva) {
     return (
       <div className="space-y-3">
-        <p className="rounded-md border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-900">
+        <p className="rounded-md border border-status-ok/30 bg-status-ok-bg p-3 text-sm text-status-ok">
           Senha salva. Entregue os dados ao contato. <strong>Ela não será mostrada de novo</strong>: o AutoOS guarda só uma versão cifrada.
         </p>
         <pre className="whitespace-pre-wrap rounded-md border bg-muted/40 p-3 font-mono text-sm" aria-label="Dados de acesso">{instrucoes}</pre>
@@ -198,7 +198,7 @@ export function SenhaPortalForm({ contato, documentoCliente, onCancelar, onSalvo
       {erro && <p className="text-sm text-destructive" role="alert">{erro}</p>}
       <div className="flex flex-wrap items-center justify-between gap-2">
         {contato.portal_senha_definida_em ? (
-          <Button type="button" variant="ghost" className="text-red-600" disabled={busy} onClick={() => void remover()}>
+          <Button type="button" variant="ghost" className="text-destructive" disabled={busy} onClick={() => void remover()}>
             Remover senha
           </Button>
         ) : <span />}

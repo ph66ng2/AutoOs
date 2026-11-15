@@ -10,25 +10,25 @@ import {
 const statusConfig: Record<SyncState, { icon: typeof Wifi; color: string; label: string; srLabel: string }> = {
   connected: {
     icon: Wifi,
-    color: "text-green-500",
+    color: "text-status-ok",
     label: "Conectado",
     srLabel: "Sincronização conectada",
   },
   syncing: {
     icon: RefreshCw,
-    color: "text-blue-500",
+    color: "text-primary",
     label: "Sincronizando",
     srLabel: "Sincronização em andamento",
   },
   disconnected: {
     icon: WifiOff,
-    color: "text-yellow-500",
+    color: "text-status-wait",
     label: "Desconectado",
     srLabel: "Sincronização desconectada",
   },
   error: {
     icon: AlertTriangle,
-    color: "text-red-500",
+    color: "text-destructive",
     label: "Erro",
     srLabel: "Erro de sincronização",
   },
@@ -81,7 +81,7 @@ export function SyncStatusIndicator({ alwaysShow = false }: SyncStatusIndicatorP
           {pendingDownloads > 0 && (
             <div className="text-muted-foreground">{pendingDownloads} download(s) pendente(s)</div>
           )}
-          {error && <div className="text-red-500">{error}</div>}
+          {error && <div className="text-destructive">{error}</div>}
         </TooltipContent>
       </Tooltip>
     </TooltipProvider>

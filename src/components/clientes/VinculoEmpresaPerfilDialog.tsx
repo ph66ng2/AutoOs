@@ -56,7 +56,7 @@ export function VinculoEmpresaPerfilDialog({ open, previa, loading, onOpenChange
           </DialogDescription>
         </DialogHeader>
 
-        <div className="rounded-md border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">
+        <div className="rounded-md border border-status-wait/30 bg-status-wait-bg p-3 text-sm text-status-wait">
           <p className="flex items-center gap-2 font-medium"><ShieldCheck className="h-4 w-4" />Vínculo administrativo permanente</p>
           <p>Esta operação não cria contatos nem altera clientes. Um perfil já vinculado nunca será movido para outra empresa.</p>
         </div>

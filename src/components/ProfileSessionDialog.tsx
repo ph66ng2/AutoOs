@@ -237,7 +237,7 @@ export function ProfileSessionDialog({
                   inputClassName={pinInputClass}
                   autoFocus
                 />
-                {error && <p role="alert" className="text-sm text-red-400">{error}</p>}
+                {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
                 <Button size="lg" type="submit" disabled={primaryDisabled} className="w-full">
                   {busy ? "Validando..." : <>Criar meu acesso e entrar <ArrowRight className="ml-2 h-4 w-4" /></>}
                 </Button>
@@ -285,7 +285,7 @@ export function ProfileSessionDialog({
                         <span className="block w-full truncate text-center text-xs text-muted-foreground">
                           {neverSetUp ? "Primeiro acesso" : pendingHere ? "Ativar neste computador" : securityRoleLabel(profile.role)}
                         </span>
-                        {isCurrent && <span className="mt-1 rounded-full bg-emerald-500/15 px-2 py-0.5 text-[11px] font-medium text-emerald-300">Perfil atual</span>}
+                        {isCurrent && <span className="mt-1 rounded-full bg-status-ok/15 px-2 py-0.5 text-[11px] font-medium text-status-ok">Perfil atual</span>}
                         {!keyringBlocked && !pendingHere && !profile.pin_configured && (
                           <span className="mt-1 text-[11px] text-muted-foreground">
                             {pinOptionalFor(profile) ? "Não exige PIN" : "PIN não configurado neste PC"}
@@ -299,7 +299,7 @@ export function ProfileSessionDialog({
 
               <div className="mx-auto mt-8 flex max-w-md flex-col items-center gap-4 text-center">
                 {keyringBlocked && (
-                  <div role="alert" className="flex flex-col items-center gap-2 rounded-lg border border-amber-500/40 bg-amber-500/10 px-4 py-3 text-sm text-amber-200">
+                  <div role="alert" className="flex flex-col items-center gap-2 rounded-lg border border-status-wait/40 bg-warning/10 px-4 py-3 text-sm text-status-wait">
                     <p>O cofre de senhas do sistema está bloqueado ou indisponível. Desbloqueie-o e tente de novo.</p>
                     {onRetryKeyring && (
                       <Button type="button" variant="outline" size="sm" onClick={onRetryKeyring} disabled={busy}>
@@ -367,10 +367,10 @@ export function ProfileSessionDialog({
                 )}
 
                 {!shouldAskForPin && !error && selectedProfile?.pin_configured && (
-                  <p className="text-sm text-emerald-300">Você já está neste perfil. Use o botão abaixo para continuar sem trocar a conta atual.</p>
+                  <p className="text-sm text-status-ok">Você já está neste perfil. Use o botão abaixo para continuar sem trocar a conta atual.</p>
                 )}
 
-                {error && <p role="alert" className="text-sm text-red-400">{error}</p>}
+                {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
 
                 <div className="flex w-full flex-col-reverse items-center justify-center gap-2 sm:flex-row">
                   {mode === "startup" ? (

@@ -11,7 +11,7 @@ export function AnteriorEmAtendimentoAviso({
   onAbrirAtendimento: (equipamento: Equipamento) => void;
 }) {
   return (
-    <div role="alert" className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-amber-400 bg-amber-100 p-3 text-sm text-amber-900">
+    <div role="alert" className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-status-wait bg-status-wait-bg p-3 text-sm text-status-wait">
       <p>
         Este equipamento ({equipamento.marca} {equipamento.modelo}, série …{equipamento.serial_number.slice(-4)}) ainda está em atendimento: <strong>{rotuloStatusEquipamento(equipamento.status)}</strong>. Os dados não foram preenchidos.
       </p>

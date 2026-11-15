@@ -769,7 +769,7 @@ export function SensitiveRoute({
   if (loading || !status) {
     return (
       <div className="flex items-center justify-center h-64">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600" />
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary" />
       </div>
     );
   }
@@ -783,7 +783,7 @@ export function SensitiveRoute({
         <Card className="max-w-lg w-full">
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
-              <Icon className="h-5 w-5 text-amber-600" />
+              <Icon className="h-5 w-5 text-status-wait" />
               {title || "Configurações protegidas"}
             </CardTitle>
             <CardDescription>
@@ -791,7 +791,7 @@ export function SensitiveRoute({
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
-            <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
+            <div className="rounded-lg border border-status-wait/30 bg-status-wait-bg p-4 text-sm text-status-wait">
               SMTP, exclusões e alterações críticas ficam disponíveis apenas durante a sessão sensível desbloqueada.
             </div>
             <Button
@@ -818,7 +818,7 @@ export function SensitiveRoute({
         <Card className="max-w-lg w-full">
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
-              <ShieldAlert className="h-5 w-5 text-amber-600" />
+              <ShieldAlert className="h-5 w-5 text-status-wait" />
               Acesso restrito
             </CardTitle>
             <CardDescription>
@@ -838,7 +838,7 @@ export function SensitiveAccessBadge() {
 
   if (connectionUnavailable) {
     return (
-      <span className="inline-flex items-center gap-1 rounded-md border border-amber-200 bg-amber-50 px-2.5 py-1 text-xs font-medium text-amber-900">
+      <span className="inline-flex items-center gap-1 rounded-md border border-status-wait/30 bg-status-wait-bg px-2.5 py-1 text-xs font-medium text-status-wait">
         <ShieldAlert className="h-3.5 w-3.5" />
         Banco temporariamente indisponível
       </span>
@@ -847,7 +847,7 @@ export function SensitiveAccessBadge() {
 
   if (!status || !status.active_profile_id) {
     return (
-      <span className="inline-flex items-center gap-1 rounded-md border border-slate-200 bg-slate-50 px-2.5 py-1 text-xs font-medium text-slate-700">
+      <span className="inline-flex items-center gap-1 rounded-md border border-border bg-muted px-2.5 py-1 text-xs font-medium text-foreground">
         <ShieldAlert className="h-3.5 w-3.5" />
         {loading ? "Carregando perfis..." : status ? "Nenhum perfil configurado" : "Não foi possível verificar os perfis"}
       </span>
@@ -858,7 +858,7 @@ export function SensitiveAccessBadge() {
 
   if (!status.pin_configured) {
     return (
-      <span className="inline-flex items-center gap-1 rounded-md border border-amber-200 bg-amber-50 px-2.5 py-1 text-xs font-medium text-amber-900">
+      <span className="inline-flex items-center gap-1 rounded-md border border-status-wait/30 bg-status-wait-bg px-2.5 py-1 text-xs font-medium text-status-wait">
         <ShieldOff className="h-3.5 w-3.5" />
         {profileName}: PIN não configurado neste PC
       </span>
@@ -866,12 +866,12 @@ export function SensitiveAccessBadge() {
   }
 
   return status.unlocked ? (
-    <span className="inline-flex items-center gap-1 rounded-md border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-xs font-medium text-emerald-700">
+    <span className="inline-flex items-center gap-1 rounded-md border border-status-ok/30 bg-status-ok-bg px-2.5 py-1 text-xs font-medium text-status-ok">
       <ShieldCheck className="h-3.5 w-3.5" />
       {profileName}: acesso ativo
     </span>
   ) : (
-    <span className="inline-flex items-center gap-1 rounded-md border border-slate-200 bg-slate-50 px-2.5 py-1 text-xs font-medium text-slate-700">
+    <span className="inline-flex items-center gap-1 rounded-md border border-border bg-muted px-2.5 py-1 text-xs font-medium text-foreground">
       <ShieldAlert className="h-3.5 w-3.5" />
       {profileName}: bloqueado
     </span>

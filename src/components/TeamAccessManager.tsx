@@ -37,12 +37,12 @@ type Action = "edit" | "code" | "deactivate" | "reactivate";
 function memberStatus(profile: SecurityProfile): { label: string; className: string } {
   if (!profile.ativo) return { label: "Inativo", className: "bg-muted text-muted-foreground" };
   if (profile.onboarding_pendente) {
-    return { label: "Aguardando 1º acesso", className: "bg-amber-500/15 text-amber-800 dark:text-amber-300" };
+    return { label: "Aguardando 1º acesso", className: "bg-warning/15 text-status-wait" };
   }
   if (profile.tour_permissoes_vistas && newPermissions(profile.permissions, profile.tour_permissoes_vistas).length > 0) {
     return { label: "Vê novidades no próximo acesso", className: "bg-primary/10 text-primary" };
   }
-  return { label: "Ativo", className: "bg-emerald-500/15 text-emerald-800 dark:text-emerald-300" };
+  return { label: "Ativo", className: "bg-status-ok/15 text-status-ok" };
 }
 export function TeamAccessManager({
   activeProfileId,
@@ -192,7 +192,7 @@ export function TeamAccessManager({
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div>
               <CardTitle className="flex items-center gap-2">
-                <Users className="h-5 w-5 text-cyan-600" /> Sua equipe
+                <Users className="h-5 w-5 text-primary" /> Sua equipe
               </CardTitle>
               <CardDescription className="mt-2">
                 Gerencie as pessoas e o acesso de cada uma.
@@ -225,7 +225,7 @@ export function TeamAccessManager({
             </label>
           </div>
           {notice && (
-            <p role="status" className="rounded-xl border border-emerald-300 bg-emerald-50 p-4 text-sm text-emerald-900 dark:border-emerald-800 dark:bg-emerald-950 dark:text-emerald-200">
+            <p role="status" className="rounded-xl border border-status-ok/30 bg-status-ok-bg p-4 text-sm text-status-ok">
               {notice}
             </p>
           )}
@@ -309,7 +309,7 @@ export function TeamAccessManager({
                       size="sm"
                       variant="ghost"
                       className={
-                        profile.ativo ? "text-destructive" : "text-emerald-700"
+                        profile.ativo ? "text-destructive" : "text-status-ok"
                       }
                       onClick={() =>
                         open(
@@ -421,7 +421,7 @@ export function TeamAccessManager({
               </div>
             )}
             {selection?.action === "deactivate" && (
-              <p className="rounded-lg border border-amber-500/40 bg-amber-500/5 p-4 text-sm">
+              <p className="rounded-lg border border-status-wait/40 bg-warning/5 p-4 text-sm">
                 Este colaborador ficará impedido de entrar. O histórico será
                 preservado e você poderá reativá-lo depois.
                 {selection.profile.id === activeProfileId &&
