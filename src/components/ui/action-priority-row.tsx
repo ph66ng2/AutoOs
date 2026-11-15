@@ -78,7 +78,11 @@ export function ActionPriorityRow({
       className={acaoDaLinha ? "h-[34px] rounded-md py-0 pl-2.5 text-[13px] font-semibold" : undefined}
     >
       <span className={`flex items-center gap-2 ${action.className || ""}`.trim()}>
-        {!acaoDaLinha && action.icon}
+        {acaoDaLinha && action.icon ? (
+          <span className="inline-flex w-4 shrink-0 justify-center opacity-70 [&>svg]:h-4 [&>svg]:w-4">{action.icon}</span>
+        ) : (
+          action.icon
+        )}
         {action.label}
       </span>
     </SelectItem>

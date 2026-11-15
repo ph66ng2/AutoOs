@@ -154,7 +154,8 @@ import {
   EMAIL_POR_TECNICO,
   MARCA_EQUIPAMENTO_OPTIONS,
   STATUS_COM_ORCAMENTO,
-  OPCOES_FILTRO_STATUS,
+  FILTRO_STATUS_OUTROS,
+  FILTRO_STATUS_PRINCIPAIS,
   TECNICOS_DISPONIVEIS,
   TIPO_OPTIONS,
 } from "@/pages/equipamentos/equipamentos-page-constants";
@@ -2421,7 +2422,8 @@ export default function Equipamentos() {
         <CardContent className="space-y-4 p-5">
           <FiltroDeStatus
             rotulo="Filtrar equipamentos por status"
-            opcoes={OPCOES_FILTRO_STATUS}
+            principais={FILTRO_STATUS_PRINCIPAIS}
+            outros={FILTRO_STATUS_OUTROS}
             valor={statusFiltro}
             total={loading ? undefined : totalEquipamentos}
             onChange={setStatusFiltro}

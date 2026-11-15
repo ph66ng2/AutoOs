@@ -10,26 +10,6 @@ export const STATUS_OPTIONS = [
   ...Object.entries(STATUS_LABELS).map(([value, label]) => ({ value, label })),
 ];
 
-/** Chips do filtro da lista: "Todos" e os status na ordem do fluxo (desvios logo depois de onde acontecem). */
-const ORDEM_FILTRO_STATUS: StatusEquipamento[] = [
-  "RECEBIDO",
-  "EM_VERIFICACAO",
-  "VERIFICADO",
-  "AGUARDANDO_APROVACAO",
-  "APROVADO",
-  "EM_MANUTENCAO",
-  "AGUARDANDO_PECA",
-  "PRONTO",
-  "ENTREGUE",
-  "ORCAMENTO_VENCIDO",
-  "REPROVADO",
-  "ABANDONADO",
-];
-
-export const OPCOES_FILTRO_STATUS = [
-  { value: "TODOS", label: "Todos" },
-  ...ORDEM_FILTRO_STATUS.map((value) => ({ value, label: STATUS_LABELS[value] })),
-];
 
 export const TIPO_OPTIONS = [
   "Impressora de Código de Barra",
@@ -84,6 +64,39 @@ export const STATUS_BADGE_LABELS_PADRAO: Partial<Record<StatusEquipamento, strin
   ORCAMENTO_VENCIDO: "Orçam. Vencido",
   ABANDONADO: "Abandonado",
 };
+
+/** Chips do filtro da lista: "Todos" e os status na ordem do fluxo (desvios logo depois de onde acontecem). */
+const ORDEM_FILTRO_STATUS: StatusEquipamento[] = [
+  "RECEBIDO",
+  "EM_VERIFICACAO",
+  "VERIFICADO",
+  "AGUARDANDO_APROVACAO",
+  "APROVADO",
+  "EM_MANUTENCAO",
+  "AGUARDANDO_PECA",
+  "PRONTO",
+  "ENTREGUE",
+  "ORCAMENTO_VENCIDO",
+  "REPROVADO",
+  "ABANDONADO",
+];
+
+export const OPCOES_FILTRO_STATUS = [
+  { value: "TODOS", label: "Todos" },
+  ...ORDEM_FILTRO_STATUS.map((value) => ({ value, label: STATUS_LABELS[value] })),
+];
+
+/** Status fora do fluxo principal: ficam no menu "Outros" do filtro. */
+const STATUS_FILTRO_OUTROS = new Set<string>(["ENTREGUE", "ORCAMENTO_VENCIDO", "REPROVADO", "ABANDONADO"]);
+/** Na faixa, o rótulo curto que os selos já usam; o nome completo vai no title e no aria-label. */
+export const FILTRO_STATUS_PRINCIPAIS = OPCOES_FILTRO_STATUS
+  .filter((opcao) => !STATUS_FILTRO_OUTROS.has(opcao.value))
+  .map((opcao) => ({
+    ...opcao,
+    titulo: opcao.label,
+    label: STATUS_BADGE_LABELS_PADRAO[opcao.value as StatusEquipamento] ?? opcao.label,
+  }));
+export const FILTRO_STATUS_OUTROS = OPCOES_FILTRO_STATUS.filter((opcao) => STATUS_FILTRO_OUTROS.has(opcao.value));
 
 export const EMAIL_POR_TECNICO: Record<string, string> = {
   Ivan: "ivan@bmitag.com.br",

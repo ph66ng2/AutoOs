@@ -25,7 +25,7 @@ check '(it|test|describe)\.(skip|only)\(|#\[ignore\]' 'teste desativado ou isola
 check 'postgres(ql)?://[^[:space:]"'"'"']+:[^[:space:]"'"'"']+@' 'URL de banco com credencial'
 check '(sk-[A-Za-z0-9]{20,}|AKIA[0-9A-Z]{16}|-----BEGIN [A-Z ]*PRIVATE KEY-----)' 'possível segredo/token'
 check '[Ss][Qq][Ll]ite' 'referência a SQLite (proibida no projeto)'
-check '(TODO|FIXME|HACK)' 'TODO/FIXME novo (confirme se foi pedido)'
+check '\b(TODO|FIXME|HACK)\b' 'TODO/FIXME novo (confirme se foi pedido)'
 
 # invoke() fora de lib/db.ts
 inv=$(git diff "$BASE" -U0 -- src ':!src/lib/db.ts' ':!e2e' | grep -E '^\+[^+].*\binvoke\(' || true)
