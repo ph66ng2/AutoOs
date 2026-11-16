@@ -210,6 +210,8 @@ fn main() {
             // Clientes
             commands::clientes::listar_clientes,
             commands::clientes::listar_clientes_paginados,
+            commands::clientes::contar_clientes_por_filtro,
+            commands::clientes::resumo_cliente,
             commands::clientes::buscar_cliente,
             commands::clientes::criar_cliente,
             commands::clientes::atualizar_cliente,

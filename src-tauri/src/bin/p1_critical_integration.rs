@@ -224,6 +224,41 @@ async fn main() -> Result<()> {
             return Err(anyhow!("busca de equipamentos por contato não encontrou a OS: {busca}"));
         }
     }
+    // Lista e painel de Clientes: contato principal, OS abertas, filtros com contagem e resumo.
+    let busca_cliente = cliente.nome.clone().unwrap_or_default();
+    let com_os = clientes::listar_clientes_paginados(Some(0), Some(busca_cliente.clone()), Some("COM_OS_ABERTA".to_string()))
+        .await
+        .map_err(|error| anyhow!(error))?;
+    let linha = com_os
+        .items
+        .iter()
+        .find(|row| row.id == cliente.id)
+        .ok_or_else(|| anyhow!("filtro COM_OS_ABERTA não trouxe o cliente com OS recebida"))?;
+    if linha.os_abertas != Some(1) || linha.contato_principal.as_deref() != Some(format!("{} Responsável Original", prefix).as_str()) {
+        return Err(anyhow!("lista de clientes com os_abertas/contato_principal errados: {:?} {:?}", linha.os_abertas, linha.contato_principal));
+    }
+    let portal = clientes::listar_clientes_paginados(Some(0), Some(busca_cliente.clone()), Some("PORTAL_ATIVO".to_string()))
+        .await
+        .map_err(|error| anyhow!(error))?;
+    if portal.items.iter().any(|row| row.id == cliente.id) {
+        return Err(anyhow!("cliente sem senha de portal apareceu em PORTAL_ATIVO"));
+    }
+    let contagem = clientes::contar_clientes_por_filtro_on_pool(&pool, empresa_id, Some(&busca_cliente))
+        .await
+        .map_err(|error| anyhow!(error))?;
+    if contagem.todos < 1 || contagem.com_os_aberta < 1 || contagem.empresas + contagem.pessoas > contagem.todos {
+        return Err(anyhow!("contagem dos filtros de clientes inconsistente"));
+    }
+    let sem_financeiro = clientes::resumo_cliente_on_pool(&pool, empresa_id, cliente.id, false)
+        .await
+        .map_err(|error| anyhow!(error))?;
+    let com_financeiro = clientes::resumo_cliente_on_pool(&pool, empresa_id, cliente.id, true)
+        .await
+        .map_err(|error| anyhow!(error))?;
+    if sem_financeiro.faturado.is_some() || com_financeiro.faturado.is_none() || sem_financeiro.os_abertas != 1 || sem_financeiro.no_ano != 1 {
+        return Err(anyhow!("resumo do cliente errado: {:?} / {:?}", sem_financeiro, com_financeiro));
+    }
+
     contatos::inativar_cliente_contato(outro_contato.id, empresa_id)
         .await
         .map_err(|error| anyhow!(error))?;
@@ -1179,7 +1214,7 @@ async fn assert_lista_tolera_telefone_nulo(
             return Err(anyhow!("search did not return the client with NULL telefone"));
         }
 
-        let pagina = clientes::listar_clientes_paginados(Some(0), Some(nome))
+        let pagina = clientes::listar_clientes_paginados(Some(0), Some(nome), None)
             .await
             .map_err(|error| anyhow!("paginated search failed with a NULL telefone row: {error}"))?;
         if !pagina.items.iter().any(|row| row.id == id) {

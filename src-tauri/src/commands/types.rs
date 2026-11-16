@@ -515,6 +515,35 @@ pub struct ClienteRow {
     /// `listar_clientes_paginados` com busca. `default` é obrigatório: sem ele, `buscar_cliente` quebra.
     #[sqlx(default)]
     pub contato_encontrado: Option<String>,
+    /// Contato da OS mais recente (ou o primeiro ativo). Só na lista.
+    #[sqlx(default)]
+    pub contato_principal: Option<String>,
+    /// OS não entregues nem abandonadas. Só na lista.
+    #[sqlx(default)]
+    pub os_abertas: Option<i64>,
+    /// Data de entrada da OS mais recente. Só na lista.
+    #[sqlx(default)]
+    pub ultimo_atendimento: Option<String>,
+}
+
+/// Quantos clientes cada filtro da lista mostra, já com a busca aplicada.
+#[derive(Debug, Serialize, FromRow)]
+#[serde(rename_all = "camelCase")]
+pub struct ContagemClientes {
+    pub todos: i64,
+    pub empresas: i64,
+    pub pessoas: i64,
+    pub com_os_aberta: i64,
+    pub portal_ativo: i64,
+}
+
+/// Números do painel do cliente. `faturado` só vem para quem tem VIEW_EXPENSES.
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ResumoCliente {
+    pub os_abertas: i64,
+    pub no_ano: i64,
+    pub faturado: Option<f64>,
 }
 
 /// Produto completo retornado ao frontend.

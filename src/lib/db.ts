@@ -38,6 +38,9 @@ import type {
   AprovarOrcamentoInput,
   ConsumoOrcamento,
   Cliente,
+  ContagemClientes,
+  FiltroClientes,
+  ResumoCliente,
   ClienteContato,
   ClienteContatoInput,
   ContatoInicialInput,
@@ -208,8 +211,22 @@ export const db = {
     return invoke<Cliente[]>("listar_clientes", { busca: busca ?? null });
   },
 
-  async listarClientesPaginados(busca: string | undefined, page: number): Promise<PaginatedResult<Cliente>> {
-    return invoke<PaginatedResult<Cliente>>("listar_clientes_paginados", { busca: busca ?? null, page });
+  async listarClientesPaginados(busca: string | undefined, page: number, filtro?: FiltroClientes): Promise<PaginatedResult<Cliente>> {
+    return invoke<PaginatedResult<Cliente>>("listar_clientes_paginados", {
+      busca: busca ?? null,
+      page,
+      filtro: filtro && filtro !== "TODOS" ? filtro : null,
+    });
+  },
+
+  /** Contagem de cada filtro da lista de clientes → Rust: contar_clientes_por_filtro */
+  async contarClientesPorFiltro(busca?: string): Promise<ContagemClientes> {
+    return invoke<ContagemClientes>("contar_clientes_por_filtro", { busca: busca ?? null });
+  },
+
+  /** Números do painel do cliente → Rust: resumo_cliente (faturado só com permissão de Finanças) */
+  async resumoCliente(clienteId: number): Promise<ResumoCliente> {
+    return invoke<ResumoCliente>("resumo_cliente", { clienteId });
   },
 
   /** Busca cliente por ID → Rust: buscar_cliente */

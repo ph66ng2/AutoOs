@@ -2,11 +2,11 @@ import { useEffect, useState } from "react";
 
 /**
  * Verdadeiro quando a janela tem pelo menos `px` de largura. Sem `matchMedia`
- * (testes em jsdom), considera tela larga: o layout de computador é o padrão.
+ * (testes em jsdom) devolve `semConsulta`: por padrão, tela larga.
  */
-export function useLarguraMinima(px: number): boolean {
+export function useLarguraMinima(px: number, semConsulta = true): boolean {
   const consulta = `(min-width: ${px}px)`;
-  const ler = () => (typeof window === "undefined" || typeof window.matchMedia !== "function" ? true : window.matchMedia(consulta).matches);
+  const ler = () => (typeof window === "undefined" || typeof window.matchMedia !== "function" ? semConsulta : window.matchMedia(consulta).matches);
   const [larga, setLarga] = useState(ler);
 
   useEffect(() => {

@@ -23,5 +23,5 @@ test("aviso de CPF duplicado aparece sobre o cadastro e permite voltar ou buscar
   await page.getByRole("button", { name: "Cadastrar" }).click();
   await aviso.getByRole("button", { name: "Buscar cliente existente" }).click();
   await expect(page.getByRole("dialog", { name: "Novo Cliente" })).not.toBeVisible();
-  await expect(page.getByPlaceholder("Buscar por nome, razão social, CPF/CNPJ, telefone, email...")).toHaveValue("52998224725");
+  await expect(page.getByPlaceholder("Nome, CPF/CNPJ, contato ou telefone")).toHaveValue("52998224725");
 });

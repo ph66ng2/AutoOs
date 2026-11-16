@@ -511,6 +511,12 @@ export interface Cliente {
   atualizado_em?: string;
   /** Busca: nome do contato que trouxe o cliente, quando os dados do próprio cliente não bateram. */
   contato_encontrado?: string | null;
+  /** Só na lista: contato da OS mais recente (ou o primeiro ativo). */
+  contato_principal?: string | null;
+  /** Só na lista: OS não entregues nem abandonadas. */
+  os_abertas?: number | null;
+  /** Só na lista: data de entrada da OS mais recente. */
+  ultimo_atendimento?: string | null;
 }
 
 /**
@@ -1294,4 +1300,23 @@ export interface FalhaPublicacaoPortal {
 export interface PublicacaoLotePortal {
   publicados: number[];
   falhas: FalhaPublicacaoPortal[];
+}
+
+/** Filtros da lista de clientes. */
+export type FiltroClientes = "TODOS" | "EMPRESAS" | "PESSOAS" | "COM_OS_ABERTA" | "PORTAL_ATIVO";
+
+/** Quantos clientes cada filtro mostra, com a busca aplicada. */
+export interface ContagemClientes {
+  todos: number;
+  empresas: number;
+  pessoas: number;
+  comOsAberta: number;
+  portalAtivo: number;
+}
+
+/** Números do painel do cliente. `faturado` só vem para quem tem a permissão de Finanças. */
+export interface ResumoCliente {
+  osAbertas: number;
+  noAno: number;
+  faturado?: number | null;
 }

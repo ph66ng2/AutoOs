@@ -836,6 +836,14 @@ pub fn require_sensitive_access() -> Result<SecurityProfileSummary, String> {
 /// Confere a sessão sem renová-la e sem registrar tentativa negada na auditoria. É para leituras
 /// de segundo plano (o sino do portal consulta a cada 30 s): só a ação do usuário prorroga os
 /// 15 minutos, senão o bloqueio por inatividade nunca dispara.
+/// Checagem silenciosa (sem evento de auditoria nem renovar a sessão), para dados opcionais
+/// que só aparecem a quem tem a permissão, como o faturado do resumo do cliente.
+pub fn session_has_permission(permission: &str) -> bool {
+    require_sensitive_access_without_touch()
+        .map(|profile| has_permission(&profile, permission))
+        .unwrap_or(false)
+}
+
 pub fn require_sensitive_access_without_touch() -> Result<SecurityProfileSummary, String> {
     current_session_profile()?
         .map(|(_, profile)| profile)

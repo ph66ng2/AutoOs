@@ -18,7 +18,7 @@
  */
 import { useState, useEffect, useCallback } from "react";
 import { db } from "@/lib/db";
-import type { Cliente, ContatoInicialInput } from "@/types";
+import type { Cliente, ContatoInicialInput, FiltroClientes } from "@/types";
 
 /**
  * Parâmetros de pesquisa aceitos pelo hook useClientes.
@@ -30,6 +30,8 @@ interface UseClientesParams {
   busca?: string;
   /** Página apresentada pela interface, iniciando em 1. */
   page?: number;
+  /** Recorte da lista (Empresas, Pessoas, Com OS aberta, Portal ativo). */
+  filtro?: FiltroClientes;
 }
 
 /**
@@ -62,6 +64,7 @@ export function useClientes(params?: UseClientesParams) {
       const data = await db.listarClientesPaginados(
         params?.busca,
         Math.max((params?.page ?? 1) - 1, 0),
+        params?.filtro,
       );
       setClientes(data.items);
       setTotal(data.total);
@@ -71,7 +74,7 @@ export function useClientes(params?: UseClientesParams) {
     } finally {
       setLoading(false);
     }
-  }, [params?.busca, params?.page]);
+  }, [params?.busca, params?.page, params?.filtro]);
 
   useEffect(() => {
     carregar();
