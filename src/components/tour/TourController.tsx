@@ -284,7 +284,7 @@ export function TourController() {
             <div className="mt-1 flex items-center justify-between">
               <div className="flex gap-1.5" aria-label={`Passo ${index + 1} de ${run.steps.length}`}>
                 {run.steps.map((item, dot) => (
-                  <span key={item.id} className={dot === index ? "h-1.5 w-[18px] rounded-full bg-primary transition-all" : "h-1.5 w-1.5 rounded-full bg-border transition-all"} />
+                  <span key={item.id} className={dot === index ? "h-1.5 w-[18px] rounded-full bg-primary transition-[width,background-color] duration-rapida ease-saida" : "h-1.5 w-1.5 rounded-full bg-border transition-[width,background-color] duration-rapida ease-saida"} />
                 ))}
               </div>
               <div className="flex gap-2">

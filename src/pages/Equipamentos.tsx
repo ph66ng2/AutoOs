@@ -97,7 +97,7 @@ import { EmailService } from "@/lib/email-service";
 import { PdfService, PRAZO_EXECUCAO_PADRAO, type PdfArtifact } from "@/lib/pdf-service";
 import { FormValidationError } from "@/components/ui/form-validation-error";
 import { db } from "@/lib/db";
-import { formatDatePtBr, formatDateTimeSalvador, todayLocalIsoDate } from "@/lib/date-utils";
+import { formatDatePtBr, todayLocalIsoDate } from "@/lib/date-utils";
 import {
   STATUS_LABELS,
   SENSITIVE_PERMISSIONS,
@@ -212,6 +212,7 @@ import { useLarguraMinima } from "@/hooks/useLarguraMinima";
 import { BarraDeEtapas } from "@/components/equipamentos/BarraDeEtapas";
 import { FiltroDeStatus } from "@/components/equipamentos/FiltroDeStatus";
 import { BarraDeEtapasGrande } from "@/components/equipamentos/BarraDeEtapasGrande";
+import { HistoricoOs } from "@/components/equipamentos/HistoricoOs";
 
 // O anel é a borda de um ::after dentro da célula. O box-shadow fica por baixo
 // do divisor colapsado e, na Ações sticky, o fundo branco cobre o topo.
@@ -2397,31 +2398,10 @@ export default function Equipamentos() {
             Gerar Relatório de Status
           </Button>
         </div>
-        <div className="space-y-0">
-        {eventos.map((ev, idx) => (
-          <div key={`${ev.data}-${ev.status}-${idx}`} className="flex items-start gap-3 pb-4">
-            <div className="flex flex-col items-center">
-              <div className={`w-3 h-3 rounded-full mt-1 ${idx === eventos.length - 1 ? "bg-primary ring-2 ring-status-work/30" : "bg-muted-foreground/40"}`} />
-              {idx < eventos.length - 1 && <div className="w-0.5 flex-1 bg-border mt-1 min-h-[16px]" />}
-            </div>
-            <div className="flex-1">
-              <div className="flex flex-wrap items-center gap-2">
-                {ev.status_anterior && <><StatusBadge status={ev.status_anterior} /><span className="text-muted-foreground">→</span></>}
-                <StatusBadge status={ev.status} />
-                {ev.tipo === "CORRECAO_STATUS" && <span className="text-xs font-medium text-status-wait">Correção</span>}
-                <span className="text-xs text-muted-foreground">
-                  {ev.data_confiavel !== false ? formatDateTimeSalvador(ev.data) : "Horário legado inconsistente"}
-                </span>
-              </div>
-              <p className="mt-1 text-sm">{ev.motivo}</p>
-              {ev.autor && <p className="text-xs text-muted-foreground">Registrado por {ev.autor}</p>}
-            </div>
-          </div>
-        ))}
-        <div className="mt-2 p-2 bg-accent/50 rounded text-sm flex items-center gap-2">
+        <HistoricoOs eventos={eventos} />
+        <div className="flex items-center gap-2 rounded-lg bg-muted p-2.5 text-sm">
           <span className="text-muted-foreground">Status atual:</span>
-          <StatusBadge status={eq.status} />
-        </div>
+          <StatusBadge status={eq.status} completo />
         </div>
       </div>
     );

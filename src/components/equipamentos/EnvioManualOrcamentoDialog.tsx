@@ -189,13 +189,13 @@ export function EnvioManualOrcamentoDialog({ envio, onFechar, onGerarNovaSenha }
                   <span className="relative mr-2 h-4 w-4" aria-hidden>
                     <Copy
                       className={cn(
-                        "absolute inset-0 h-4 w-4 transition-[opacity,scale,filter] duration-200 ease-[cubic-bezier(0.2,0,0,1)]",
+                        "absolute inset-0 h-4 w-4 transition-[opacity,scale,filter] duration-rapida ease-saida",
                         copiado ? "scale-[0.25] opacity-0 blur-[4px]" : "scale-100 opacity-100 blur-0",
                       )}
                     />
                     <Check
                       className={cn(
-                        "absolute inset-0 h-4 w-4 text-status-ok transition-[opacity,scale,filter] duration-200 ease-[cubic-bezier(0.2,0,0,1)]",
+                        "absolute inset-0 h-4 w-4 text-status-ok transition-[opacity,scale,filter] duration-rapida ease-saida",
                         copiado ? "scale-100 opacity-100 blur-0" : "scale-[0.25] opacity-0 blur-[4px]",
                       )}
                     />

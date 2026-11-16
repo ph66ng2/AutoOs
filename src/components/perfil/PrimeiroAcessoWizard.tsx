@@ -23,7 +23,7 @@ import type { SecurityProfile, SensitiveAccessStatus } from "@/types";
 
 type Step = "acesso" | "voce" | "pronto";
 
-const PRESS = "active:scale-[0.96] transition-[transform,background-color] duration-150 ease-out motion-reduce:active:scale-100";
+const PRESS = "active:scale-[0.96] transition-[transform,background-color] duration-rapida ease-saida motion-reduce:active:scale-100";
 
 function errorMessage(cause: unknown) {
   const message = cause instanceof Error ? cause.message : String(cause);
@@ -294,7 +294,7 @@ export function PrimeiroAcessoWizard({
               {/* A barra se preenche deslizando ao avançar e se esvazia ao voltar. */}
               <span className="h-1 overflow-hidden rounded-full bg-muted">
                 <span
-                  className="block h-full origin-left rounded-full bg-primary transition-transform duration-500 ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:transition-none"
+                  className="block h-full origin-left rounded-full bg-primary transition-transform duration-lenta ease-saida motion-reduce:transition-none"
                   style={{ transform: `scaleX(${index <= stepIndex ? 1 : 0})` }}
                 />
               </span>

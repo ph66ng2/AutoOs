@@ -104,7 +104,7 @@ export function AuthDialog({ onAuthenticated }: AuthDialogProps) {
               type="button"
               onClick={() => { setMode("login"); setError(null); setSuccess(false); }}
               className={cn(
-                "flex-1 flex items-center justify-center gap-2 py-2 text-sm font-medium rounded-md transition-all",
+                "flex-1 flex items-center justify-center gap-2 py-2 text-sm font-medium rounded-md transition-colors duration-rapida",
                 mode === "login"
                   ? "bg-cyan-500 text-slate-950"
                   : "text-slate-400 hover:text-white"
@@ -117,7 +117,7 @@ export function AuthDialog({ onAuthenticated }: AuthDialogProps) {
               type="button"
               onClick={() => { setMode("register"); setError(null); setSuccess(false); }}
               className={cn(
-                "flex-1 flex items-center justify-center gap-2 py-2 text-sm font-medium rounded-md transition-all",
+                "flex-1 flex items-center justify-center gap-2 py-2 text-sm font-medium rounded-md transition-colors duration-rapida",
                 mode === "register"
                   ? "bg-cyan-500 text-slate-950"
                   : "text-slate-400 hover:text-white"

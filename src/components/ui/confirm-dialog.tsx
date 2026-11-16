@@ -37,7 +37,7 @@ export function ConfirmDialog({
   onCancel,
 }: ConfirmDialogProps) {
   const pressClass =
-    "transition-[transform,background-color,color] duration-150 ease-[cubic-bezier(0.2,0,0,1)] active:scale-[0.96] motion-reduce:active:scale-100";
+    "transition-[transform,background-color,color] duration-rapida ease-saida active:scale-[0.96] motion-reduce:active:scale-100";
 
   return (
     <AlertDialog open={open} onOpenChange={onOpenChange}>

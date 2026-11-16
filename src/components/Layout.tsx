@@ -95,7 +95,7 @@ const configuracoesItem: NavItem = {
 function navLinkClass(collapsed: boolean) {
   return ({ isActive }: { isActive: boolean }) =>
     cn(
-      "relative flex h-[42px] items-center gap-3 rounded-lg border px-3 text-sm font-medium transition-colors duration-150",
+      "relative flex h-[42px] items-center gap-3 rounded-lg border px-3 text-sm font-medium transition-colors duration-rapida",
       collapsed && "justify-center px-0",
       isActive
         ? "border-sidebar-border bg-card font-semibold text-foreground shadow-sm before:absolute before:-left-3 before:top-1/2 before:h-6 before:w-[3px] before:-translate-y-1/2 before:rounded-r-full before:bg-primary"
@@ -149,7 +149,7 @@ export function Layout() {
       {mobileOpen && <button type="button" aria-label="Fechar menu" onClick={() => setMobileOpen(false)} className="fixed inset-0 z-40 bg-black/60 md:hidden" /> }
       {/* Sidebar */}
       {/* z-50 só vale na gaveta do celular (acima do fundo z-40). Em md+ a sidebar é item de flex: com z-50 ela vencia o splash de abertura (z-40). */}
-      <aside id="main-sidebar" aria-label="Menu principal" className={cn("fixed inset-y-0 left-0 z-50 flex w-[264px] shrink-0 flex-col overflow-y-auto bg-sidebar transition-all md:overflow-visible duration-300 md:static md:z-auto md:visible md:translate-x-0", mobileOpen ? "visible translate-x-0" : "invisible -translate-x-full", collapsed ? "md:w-16" : "md:w-[264px]")}>
+      <aside id="main-sidebar" aria-label="Menu principal" className={cn("fixed inset-y-0 left-0 z-50 flex w-[264px] shrink-0 flex-col overflow-y-auto bg-sidebar transition-[width,transform] ease-saida md:overflow-visible duration-lenta md:static md:z-auto md:visible md:translate-x-0", mobileOpen ? "visible translate-x-0" : "invisible -translate-x-full", collapsed ? "md:w-16" : "md:w-[264px]")}>
         {/* Marca */}
         <div className={cn("flex h-[88px] shrink-0 items-center gap-3 px-5", collapsed && "justify-center px-0")}>
           <span className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-[10px] border border-sidebar-border bg-card shadow-sm" aria-hidden="true">

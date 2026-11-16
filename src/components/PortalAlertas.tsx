@@ -316,9 +316,9 @@ export function PortalAlertasPainel({ erros, onFechar, onAbrirAtendimento, onCha
     <div
       role="dialog"
       aria-label="Notificações"
-      className="absolute right-0 top-12 z-[1000000000] flex max-h-[75vh] w-[min(27rem,calc(100vw-2rem))] flex-col overflow-hidden rounded-2xl border border-border bg-card text-card-foreground shadow-[0_12px_32px_rgba(0,0,0,0.18)]"
+      className="absolute right-0 top-12 z-[1000000000] flex max-h-[75vh] animate-in fade-in-0 slide-in-from-top-1 duration-padrao ease-saida w-[min(27rem,calc(100vw-2rem))] flex-col overflow-hidden rounded-2xl border border-border bg-card text-card-foreground shadow-[0_12px_32px_rgba(0,0,0,0.18)]"
     >
-      <div className="flex items-center justify-between gap-3 px-4 pb-1 pt-3.5">
+      <div className="flex items-center justify-between gap-3 pb-1 pl-4 pr-3 pt-3">
         <h2 className="text-base font-extrabold">Notificações</h2>
         <button type="button" className="rounded-md p-1 text-muted-foreground hover:bg-muted hover:text-foreground" onClick={onFechar} aria-label="Fechar notificações">
           <X className="h-4 w-4" />

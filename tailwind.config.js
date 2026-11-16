@@ -84,6 +84,14 @@ export default {
           3: "hsl(var(--chart-3))",
         },
       },
+      transitionDuration: {
+        rapida: "var(--dur-rapida)",
+        padrao: "var(--dur-padrao)",
+        lenta: "var(--dur-lenta)",
+      },
+      transitionTimingFunction: {
+        saida: "var(--ease-saida)",
+      },
       fontFamily: {
         sans: ["Manrope Variable", "Manrope", "Segoe UI", "system-ui", "sans-serif"],
         mono: ["IBM Plex Mono", "ui-monospace", "Consolas", "monospace"],
