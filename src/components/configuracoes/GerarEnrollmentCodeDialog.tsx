@@ -58,7 +58,7 @@ export function GerarEnrollmentCodeDialog() {
           Gerar Código de Enrollment
         </Button>
       </DialogTrigger>
-      <DialogContent className="sm:max-w-md">
+      <DialogContent tamanho="m">
         <DialogHeader>
           <DialogTitle>Código de Enrollment</DialogTitle>
           <DialogDescription>

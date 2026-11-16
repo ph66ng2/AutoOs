@@ -254,7 +254,7 @@ export function ClienteContatosPanel({ cliente, empresaId }: ClienteContatosPane
       )}
 
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-        <DialogContent className="sm:max-w-md">
+        <DialogContent tamanho="m">
           <DialogHeader>
             <DialogTitle>{editando ? "Editar contato" : "Novo contato"}</DialogTitle>
             <DialogDescription>

@@ -48,7 +48,7 @@ export function InsumosProdutoDialog({
 }) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-lg max-h-[85vh] overflow-y-auto">
+      <DialogContent tamanho="m" className="max-h-[85vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>
             {editando ? "Editar Insumo/Peça" : "Novo Insumo/Peça"}
@@ -193,7 +193,7 @@ export function InsumosMovimentacaoDialog({
 }) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-md">
+      <DialogContent tamanho="m">
         <DialogHeader>
           <DialogTitle>Movimentação de Estoque</DialogTitle>
         </DialogHeader>
@@ -324,7 +324,7 @@ export function InsumosDeleteDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-md">
+      <DialogContent tamanho="p">
         <DialogHeader>
           <DialogTitle>Confirmar Exclusão</DialogTitle>
         </DialogHeader>

@@ -292,7 +292,7 @@ export default function Servicos() {
       </Card>
 
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-        <DialogContent className="sm:max-w-lg">
+        <DialogContent tamanho="m">
           <DialogHeader>
             <DialogTitle>{editando ? "Editar Serviço" : "Novo Serviço"}</DialogTitle>
           </DialogHeader>
@@ -351,7 +351,7 @@ export default function Servicos() {
       </Dialog>
 
       <Dialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
-        <DialogContent className="sm:max-w-md">
+        <DialogContent tamanho="p">
           <DialogHeader>
             <DialogTitle>Confirmar Exclusão</DialogTitle>
           </DialogHeader>

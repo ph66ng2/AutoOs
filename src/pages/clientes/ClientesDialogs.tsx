@@ -9,6 +9,7 @@ import {
   DialogDescription,
   DialogFooter,
   DialogClose,
+  DialogBody,
 } from "@/components/ui/dialog";
 import {
   AlertDialog,
@@ -57,20 +58,22 @@ export function ClientesFormDialog({
 }) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-2xl max-h-[85vh] overflow-y-auto">
+      <DialogContent tamanho="g">
         <DialogHeader>
           <DialogTitle>{editando ? "Editar Cliente" : "Novo Cliente"}</DialogTitle>
           <DialogDescription className="sr-only">
             Informe os dados do cliente e confirme o cadastro.
           </DialogDescription>
         </DialogHeader>
-        <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-5">
-          <ClienteFormularioCampos
-            form={form}
-            tipoPessoa={tipoPessoa}
-            buscarCep={buscarCep}
-            buscandoCep={buscandoCep}
-          />
+        <form onSubmit={form.handleSubmit(onSubmit)} className="flex min-h-0 flex-1 flex-col">
+          <DialogBody className="space-y-5">
+            <ClienteFormularioCampos
+              form={form}
+              tipoPessoa={tipoPessoa}
+              buscarCep={buscarCep}
+              buscandoCep={buscandoCep}
+            />
+          </DialogBody>
 
           <DialogFooter>
             <DialogClose asChild><Button variant="outline" type="button">Cancelar</Button></DialogClose>
@@ -125,7 +128,7 @@ export function ClientesDeleteDialog({
 }) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-md">
+      <DialogContent tamanho="p">
         <DialogHeader><DialogTitle>Confirmar Exclusão</DialogTitle></DialogHeader>
         <p className="text-muted-foreground">Excluir cliente <strong>{deletando ? nomeExibicaoCliente(deletando) : ""}</strong>?</p>
         <p className="text-sm text-destructive">Esta ação não pode ser desfeita.</p>
@@ -151,7 +154,7 @@ export function ClientesEquipamentosModal({
 }) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-3xl max-h-[80vh] overflow-y-auto">
+      <DialogContent tamanho="g" className="overflow-y-auto">
         <DialogHeader>
           <DialogTitle>
             Todos os equipamentos - {cliente ? nomeExibicaoCliente(cliente) : "Cliente"}
@@ -199,7 +202,7 @@ export function ClientesContatosModal({
 }) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-2xl max-h-[85vh] overflow-y-auto">
+      <DialogContent tamanho="g" className="overflow-y-auto">
         {cliente && (
           <ClienteContatosPanel
             cliente={cliente}

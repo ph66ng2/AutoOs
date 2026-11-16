@@ -341,7 +341,7 @@ export function TeamAccessManager({
           if (!value && !busy) close();
         }}
       >
-        <DialogContent className="max-h-[90vh] max-w-2xl overflow-y-auto">
+        <DialogContent tamanho="g" className="overflow-y-auto">
           <DialogHeader>
             <DialogTitle>{actionTitle}</DialogTitle>
             <DialogDescription>

@@ -221,7 +221,7 @@ type Props = {
 export function SenhaPortalDialog({ contato, documentoCliente, onClose, onSalvo }: Props) {
   return (
     <Dialog open={Boolean(contato)} onOpenChange={(open) => { if (!open) onClose(); }}>
-      <DialogContent className="sm:max-w-md">
+      <DialogContent tamanho="m">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2"><KeyRound className="h-4 w-4" /> Senha do Portal do Cliente</DialogTitle>
           <DialogDescription>

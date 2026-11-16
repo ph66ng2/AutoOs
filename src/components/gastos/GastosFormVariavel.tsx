@@ -107,7 +107,7 @@ export function GastosFormVariavel({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-lg">
+      <DialogContent tamanho="m">
         <DialogHeader>
           <DialogTitle>{gasto ? "Editar Gasto Variável" : "Novo Gasto Variável"}</DialogTitle>
         </DialogHeader>

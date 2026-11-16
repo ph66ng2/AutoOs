@@ -1072,7 +1072,7 @@ function QuickEntry({ onBack }: { onBack: () => void }) {
         open={Boolean(otherField)}
         onOpenChange={(open) => !open && setOtherField(null)}
       >
-        <DialogContent>
+        <DialogContent tamanho="m">
           <DialogHeader>
             <DialogTitle>
               Informar outro{" "}

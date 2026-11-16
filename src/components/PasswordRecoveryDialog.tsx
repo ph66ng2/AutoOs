@@ -203,7 +203,7 @@ export function PasswordRecoveryDialog({
 
   return (
     <Dialog open={open} onOpenChange={(v) => !v && handleClose()}>
-      <DialogContent className="max-w-md">
+      <DialogContent tamanho="m">
         <DialogHeader>
           <div className="flex items-center gap-2">
             {step === "success" ? (

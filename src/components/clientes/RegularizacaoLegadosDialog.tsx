@@ -26,7 +26,7 @@ export function RegularizacaoLegadosDialog({ open, previa, loading, onOpenChange
   const total = previa.clientes + previa.equipamentos + previa.verificacoes + previa.imagens + previa.comunicacoes;
   return (
     <Dialog open={open} onOpenChange={(value) => { if (!value) setPin(""); onOpenChange(value); }}>
-      <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-xl">
+      <DialogContent tamanho="m" className="max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2"><DatabaseZap className="h-5 w-5" />Regularizar cadastros antigos</DialogTitle>
           <DialogDescription>Os registros elegíveis serão vinculados à empresa <strong>{previa.empresa_nome}</strong>. Contatos continuam opcionais.</DialogDescription>
