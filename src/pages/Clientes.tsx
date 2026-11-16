@@ -33,8 +33,6 @@ import {
   ChevronDown,
   ChevronRight,
   Plus,
-  Building2,
-  User,
   ContactRound,
 } from "lucide-react";
 import { useForm } from "react-hook-form";
@@ -479,7 +477,10 @@ export default function Clientes() {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <PageHeader titulo="Clientes" descricao="Gerencie clientes PF e PJ e seus equipamentos vinculados">
+      <PageHeader
+        titulo="Clientes"
+        descricao={loading ? "Carregando…" : `${totalClientes} ${totalClientes === 1 ? "cliente" : "clientes"}${busca ? " nesta busca" : " cadastrados"}`}
+      >
         <div className="flex flex-wrap gap-2">
           <Button variant="outline" onClick={() => void abrirRegularizacaoLegados()}>
             Regularizar antigos
@@ -491,22 +492,16 @@ export default function Clientes() {
         </div>
       </PageHeader>
 
-      {/* Filtros */}
-      <Card>
-        <CardContent className="pt-6">
-          <div className="flex flex-col sm:flex-row gap-4">
+      {/* Lista: busca, clientes e paginação num painel só */}
+      <Card className="rounded-2xl">
+        <CardContent className="space-y-4 p-5">
+          <div className="flex gap-3">
             <div className="relative flex-1">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-              <Input placeholder="Buscar por nome, razão social, CPF/CNPJ, telefone, email..." value={busca} onChange={e => setBusca(e.target.value)} className="pl-9" />
+              <Input placeholder="Buscar por nome, razão social, CPF/CNPJ, telefone, email..." value={busca} onChange={e => setBusca(e.target.value)} className="h-10 bg-muted pl-9" />
             </div>
-            <Button variant="outline" size="icon" onClick={recarregar}><RefreshCw className="h-4 w-4" /></Button>
+            <Button variant="outline" size="icon" className="h-10 w-10 shrink-0" aria-label="Atualizar clientes" onClick={recarregar}><RefreshCw className="h-4 w-4" /></Button>
           </div>
-        </CardContent>
-      </Card>
-
-      {/* Lista */}
-      <Card>
-        <CardContent className="pt-6">
           {error && (
             <ErrorAlert variant="error" context="Clientes" message={error} action="Carregar" />
           )}
@@ -520,29 +515,20 @@ export default function Clientes() {
             </div>
           ) : (
             <>
-              <PaginationControls
-                page={abaExibida}
-                totalPages={totalAbas}
-                onPageChange={setAbaAtual}
-                label="Paginação de clientes"
-              />
-              <div className="divide-y rounded-md border" role="list" aria-label="Clientes">
+              <div className="divide-y overflow-hidden rounded-xl border" role="list" aria-label="Clientes">
                 {clientesExibidos.map(c => (
                   <div key={c.id} role="listitem" className="min-w-0">
                     <div className="grid min-w-0 gap-4 p-4 xl:grid-cols-[minmax(0,1fr)_auto]">
                       <div className="min-w-0 space-y-3">
                         <div className="flex min-w-0 items-start gap-3">
-                          {c.tipo_pessoa === "PJ" ? (
-                            <Badge variant="outline" className="shrink-0 border-status-work/30 bg-status-work-bg text-status-work">
-                              <Building2 className="mr-1 h-3 w-3" />PJ
-                            </Badge>
-                          ) : (
-                            <Badge variant="outline" className="shrink-0 border-status-work/30 bg-status-work-bg text-status-work">
-                              <User className="mr-1 h-3 w-3" />PF
-                            </Badge>
-                          )}
+                          <span
+                            className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-[10px] bg-secondary text-[11px] font-extrabold text-muted-foreground"
+                            title={c.tipo_pessoa === "PJ" ? "Pessoa jurídica" : "Pessoa física"}
+                          >
+                            {c.tipo_pessoa === "PJ" ? "PJ" : "PF"}
+                          </span>
                           <div className="min-w-0">
-                            <div className="break-words font-medium">
+                            <div className="break-words font-semibold">
                               {nomeExibicaoCliente(c)}
                               {c.exige_ordem_compra && (
                                 <Badge
@@ -587,11 +573,13 @@ export default function Clientes() {
                       <div className="flex min-w-0 items-start justify-end">
                         <ActionPriorityRow
                           wrap
+                          iconOnlyOverflowTrigger
                           primary={{
                             id: `equipamentos-${c.id}`,
                             label: "Equipamentos",
                             icon: expandido === c.id ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />,
-                            variant: "default",
+                            variant: "ghost",
+                            className: "bg-acc-soft text-acc-soft-foreground hover:bg-acc-soft/70 hover:text-acc-soft-foreground",
                             ariaExpanded: expandido === c.id,
                             onClick: () => void toggleExpandir(c.id!),
                           }}
@@ -600,7 +588,6 @@ export default function Clientes() {
                             label: "Contatos",
                             icon: contatosExpandido === c.id ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />,
                             variant: "outline",
-                            className: "border-primary bg-primary/10 text-primary hover:bg-primary/20 hover:text-primary",
                             ariaExpanded: contatosExpandido === c.id,
                             onClick: () => void toggleContatos(c),
                           }}
@@ -629,7 +616,7 @@ export default function Clientes() {
                       </div>
                     </div>
                     {contatosExpandido === c.id && (
-                      <div id={`contatos-cliente-${c.id}`} className="min-w-0 border-t bg-accent/30 px-4 py-3">
+                      <div id={`contatos-cliente-${c.id}`} className="min-w-0 border-t bg-muted/60 px-4 py-3">
                         {!c.empresa_id ? (
                           <span className="text-sm italic text-status-wait">
                             Cliente sem empresa vinculada — contatos indisponíveis
@@ -649,7 +636,7 @@ export default function Clientes() {
                                 type="button"
                                 onClick={() => setContatosClienteSelecionado(c)}
                                 title="Abrir contatos e portal"
-                                className={`grid w-full min-w-0 gap-2 rounded border bg-background p-3 text-left hover:border-primary hover:bg-acc-soft sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center ${
+                                className={`grid w-full min-w-0 gap-2 rounded-lg border bg-card p-3 text-left hover:border-ctl sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center ${
                                   c.contato_encontrado && ct.nome === c.contato_encontrado ? "border-primary" : ""
                                 }`}
                               >
@@ -675,7 +662,7 @@ export default function Clientes() {
                       </div>
                     )}
                     {expandido === c.id && (
-                      <div id={`equipamentos-cliente-${c.id}`} className="min-w-0 border-t bg-accent/30 px-4 py-3">
+                      <div id={`equipamentos-cliente-${c.id}`} className="min-w-0 border-t bg-muted/60 px-4 py-3">
                         {carregandoEquip ? (
                           <div className="flex items-center gap-2 py-2">
                             <div className="h-4 w-4 animate-spin rounded-full border-b-2 border-primary" />
@@ -696,7 +683,7 @@ export default function Clientes() {
                                 key={eq.id}
                                 type="button"
                                 onClick={() => navigate("/equipamentos", { state: { equipamentoId: eq.id } })}
-                                className="grid w-full min-w-0 gap-2 rounded border bg-background p-3 text-left hover:border-primary hover:bg-acc-soft sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center"
+                                className="grid w-full min-w-0 gap-2 rounded-lg border bg-card p-3 text-left hover:border-ctl sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center"
                               >
                                 <span className="flex min-w-0 items-start gap-3">
                                   <Printer className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
@@ -725,6 +712,14 @@ export default function Clientes() {
                   </div>
                 ))}
               </div>
+              <PaginationControls
+                page={abaExibida}
+                totalPages={totalAbas}
+                onPageChange={setAbaAtual}
+                label="Paginação de clientes"
+                totalItems={totalClientes}
+                className="pb-0"
+              />
             </>
           )}
         </CardContent>

@@ -211,10 +211,10 @@ export function ActionPriorityRow({
             aria-label="Mais ações"
           >
             {iconOnlyOverflowTrigger ? (
-              <Menu className="h-3.5 w-3.5 opacity-80" />
+              <MoreHorizontal className="h-4 w-4" />
             ) : (
               <span className="inline-flex items-center gap-1">
-                <Menu className="h-3.5 w-3.5" />
+                <MoreHorizontal className="h-4 w-4" />
                 <span>Mais</span>
               </span>
             )}
