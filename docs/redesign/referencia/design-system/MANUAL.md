@@ -44,11 +44,28 @@ O AutoOS é o sistema de uma assistência técnica: recepção, verificação, o
 - Barra de rolagem fina, trilho transparente, alça em `scroll-thumb`.
 - Notificações: sino na barra do topo, à direita, com contador em `acc`; o painel (`Notificacoes`) junta portal e erros. Avisos rápidos (`AvisoRapido`) no canto superior direito, com a cor só no ícone.
 
+## Acabamento
+
+Regras de detalhe que valem para todo componente. Medem-se com a régua do navegador, não no olho.
+
+- **Folga concêntrica.** Um elemento encostado no canto de um contêiner arredondado (ícone no início do item, ⋯ no fim da linha, seta de abrir no cabeçalho) fica à mesma distância das duas bordas próximas: em cima e do lado. Diferença maior que 1px é defeito. O raio de dentro é o raio de fora menos a folga (cartão `radius-xl` 16 com folga 8 → raio interno 8).
+- **Linha do tempo.** No histórico da OS e em qualquer lista com linha vertical ligando ícones: a linha passa pelo centro dos ícones, sem falhas nem sobras, começa no primeiro e termina no último. Não atravessa um item aberto.
+- **Movimento.** Só para mostrar de onde algo veio, nunca enfeite.
+  - Hover e foco em `dur-rapida` (150ms).
+  - Menu, painel de notificações e aviso rápido em `dur-padrao` (220ms).
+  - Expandir item, modal e painel inferior em `dur-lenta` (300ms). Nada de interface passa de 300ms.
+  - Tudo que abre usa `ease-saida`; fechar usa a mesma curva em `dur-rapida`.
+  - Anime só opacidade, posição (`transform`) e altura de quem expande. Nada pisca nem quica.
+  - Com `prefers-reduced-motion`, sem animação: a mudança acontece na hora.
+  - Exceções que já existem e ficam como estão: a abertura da marca no boot, o cadeado de roletes (`PinLock`) e o voo do avatar no primeiro acesso.
+- **O que abre e fecha.** O cabeçalho inteiro de um item que expande é **um único botão**, com `aria-expanded` e `aria-controls`, e o nome lido é o próprio texto visível ("Cliente pediu correção, há 22 min"). Sem um segundo botão só para a seta. Ícones decorativos com `aria-hidden`. O conteúdo aberto vem logo depois do botão na ordem de leitura.
+
 ## Temas
 
 - Claro e escuro, com a mesma estrutura: o escuro troca só cores. Toda tela e todo modal existem nos dois.
 - O tema é do perfil (fica em `security_profiles`) e pode seguir o sistema.
 - No escuro o acento clareia (`#7aa9b5`), então o texto sobre ele escurece (`acc-ink`).
+- **Alto contraste ainda não existe.** Se for feito, é um terceiro tema (texto ≥7:1, bordas ≥3:1 separando superfícies), não um ajuste dos dois atuais. Decisão pendente do dono do produto.
 
 ## Superfícies
 

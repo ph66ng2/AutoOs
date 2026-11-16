@@ -586,6 +586,11 @@ Sino na barra do topo, à direita, com o contador de não lidas, e o painel que 
 - Largura 432px, até 75% da altura da tela, `radius-xl`, `shadow-menu`. Fecha com Esc ou clique fora. Abrir o painel recolhe os avisos rápidos que já estão nele.
 
 
+**Acabamento** (ver "Acabamento" no manual)
+- Ícone de 32px com a mesma folga em cima e do lado dentro do item.
+- O painel abre em `dur-padrao` com `ease-saida`, descendo 4px a partir do sino; fecha em `dur-rapida`. Sem animação com movimento reduzido.
+
+
 **O que você fornece:** a lista de itens com tipo, título, detalhe, hora, lido por/quando e o vínculo com o atendimento.
 
 <details><summary>Marcação de exemplo</summary>

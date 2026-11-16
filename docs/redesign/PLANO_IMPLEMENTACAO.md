@@ -205,6 +205,24 @@ Referência: `referencia/telas/01-fundamentos/05-notificacoes-*` e os componente
   - Contador do sino em `bg-primary text-primary-foreground`.
   - Pronto quando lint, testes e E2E passam sem edição de teste, com capturas do painel nos dois temas no PR.
 
+**Fase A: Acabamento (acrescentada depois; vale a partir de agora em toda fase).**
+
+Referência: seção "Acabamento" de `referencia/design-system/MANUAL.md` e os tokens `transicao` em `referencia/design-system/tokens.json`.
+
+- **A.1 `src/index.css` e `tailwind.config.js`: tokens de movimento.**
+  - Acrescente `--dur-rapida: 150ms`, `--dur-padrao: 220ms`, `--dur-lenta: 300ms` e `--ease-saida: cubic-bezier(0.2, 0, 0, 1)` em `:root`.
+  - Zere as três durações dentro de `@media (prefers-reduced-motion: reduce)`.
+  - No Tailwind, exponha os tokens em `transitionDuration` (`rapida`, `padrao`, `lenta`) e em `transitionTimingFunction` (`saida`).
+  - Pronto quando lint e build passam e `duration-padrao` e `ease-saida` aparecem no CSS gerado.
+- **A.2 Histórico de Detalhes da OS (a página da fase 6).**
+  - Linha vertical pelo centro dos ícones, do primeiro ao último item.
+  - Ícones com folga igual dos dois lados.
+  - Item que expande com cabeçalho num botão só (`aria-expanded`), abrindo em `duration-lenta ease-saida`.
+  - Pronto quando lint, testes e E2E passam sem edição, com captura nos dois temas no PR.
+- **Daqui em diante:** cada PR das fases N e 7 a 9 confere os quatro itens de acabamento na lista do `ALVO.md` e usa só as durações dos tokens.
+  - Fica fora: as animações de abertura, `PinLock` e `FirstAccessBridge`.
+  - Para achar animação fora da regra: `grep -rnE "duration-[0-9]{3,}|transition-all" src --include=*.tsx`.
+
 **Fase 9: Portal do Cliente** (`src/public-status/`, build separado com `npm run build:public-status`).
 - Trocar `public-status.css` e `portal-orcamento.css` pelos tokens.
 - No celular, as respostas ao orçamento abrem como painel que sobe do rodapé.

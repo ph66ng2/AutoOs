@@ -83,6 +83,15 @@ Cada linha é algo que o dono pediu ou aprovou. Onde diz **rejeitado**, foi test
 
     Este item foi acrescentado depois: no começo, as notificações ficaram fora do desenho.
 
+### Acabamento
+
+21. **Detalhe medido, não no olho** (inspirado num vídeo de polimento de componente que o dono mostrou; regras em "Acabamento" no `referencia/design-system/MANUAL.md`):
+    - **Folga concêntrica:** ícone, ⋯ ou seta encostados no canto de um cartão ficam à mesma distância das duas bordas próximas, até 1px de diferença.
+    - **Linha do tempo:** no histórico, a linha vertical passa pelo centro dos ícones e vai do primeiro ao último, sem falha nem sobra.
+    - **Movimento curto e com propósito:** 150ms em hover, 220ms em menus e avisos, 300ms em expandir e modais, curva `ease-saida`. Nada passa de 300ms, e nada anima com movimento reduzido. A abertura da marca, o cadeado de roletes e o voo do avatar no primeiro acesso ficam como estão.
+    - **O que abre e fecha:** o cabeçalho inteiro é um botão só, e o nome lido é o texto visível.
+22. **Alto contraste: decisão pendente.** Se entrar, é um terceiro tema (texto ≥7:1), com ticket próprio. Não faz parte do redesign atual.
+
 ### Produto
 
 18. **Função igual.** O redesign muda a aparência e, às vezes, o caminho (itens 8 a 10). Não muda regra, permissão, auditoria, PIN, confirmação ou texto de ação.
@@ -124,6 +133,7 @@ Abra a tela implementada ao lado da imagem em `referencia/telas/` e confira:
 - [ ] Os dois temas iguais em estrutura; o escuro escuro de verdade.
 - [ ] Nada em R$ no Início.
 - [ ] Notificações e avisos rápidos com a cor só no ícone, sem faixa lateral e sem fundo colorido.
+- [ ] Folga igual dos dois lados nos ícones de canto; animações dentro dos tempos e desligadas com movimento reduzido; item que expande é um botão só.
 - [ ] Testes existentes passando sem edição.
 - [ ] Em caso de dúvida entre a imagem e o código, o comportamento do código venceu e a diferença está anotada no PR.
 
