@@ -137,6 +137,14 @@
   --modal-m: 560px;
   --modal-g: 760px;
   --viewer-width: 1040px;
+  --dur-rapida: 150ms;
+  --dur-padrao: 220ms;
+  --dur-lenta: 300ms;
+  --ease-saida: cubic-bezier(0.2, 0, 0, 1);
   --font-sans: "Manrope", "Segoe UI", system-ui, sans-serif;
   --font-mono: "IBM Plex Mono", ui-monospace, Consolas, monospace;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root { --dur-rapida: 0ms; --dur-padrao: 0ms; --dur-lenta: 0ms; }
 }
