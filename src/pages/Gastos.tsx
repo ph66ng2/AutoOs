@@ -21,6 +21,7 @@ import {
 } from "@/hooks/useGastos";
 import { GastosSummaryCards } from "@/components/gastos/GastosSummaryCards";
 import { GastosChart } from "@/components/gastos/GastosChart";
+import { ReceitaPorMesCard } from "@/components/gastos/ReceitaPorMesCard";
 import { GastosTable } from "@/components/gastos/GastosTable";
 import { GastosFormFixo } from "@/components/gastos/GastosFormFixo";
 import { GastosFormVariavel } from "@/components/gastos/GastosFormVariavel";
@@ -229,6 +230,8 @@ export default function Gastos() {
         ano={ano}
         gastosFixos={gastosFixos}
       />
+
+      <ReceitaPorMesCard />
 
       <GastosTable
         gastosFixos={gastosFixos}

@@ -21,50 +21,29 @@
 import { useState, useEffect, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import {
-  Printer,
   Package,
-  AlertTriangle,
-  Wrench,
   Plus,
   ArrowRight,
-  TrendingDown,
-  Clock,
-  Bell,
 } from "lucide-react";
 import {
   ResponsiveContainer,
-  PieChart,
-  Pie,
-  Cell,
   BarChart,
   Bar,
-  LineChart,
-  Line,
   XAxis,
   YAxis,
   CartesianGrid,
   Tooltip,
-  Legend,
 } from "recharts";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 import { db } from "@/lib/db";
 import { formatDatePtBr } from "@/lib/date-utils";
-import { STATUS_LABELS, STATUS_COLORS, type Equipamento, type Produto, type StatusEquipamento } from "@/types";
+import type { Equipamento, Produto } from "@/types";
 import { categoriaProdutoLabel } from "@/pages/insumos/insumos-page-constants";
 import { PageHeader } from "@/components/PageHeader";
+import { etapaOsAtual } from "@/lib/status-familia";
+import { StatusBadge } from "@/pages/equipamentos/EquipamentosStatusBadge";
 
-function StatusBadge({ status }: { status: string }) {
-  const label = STATUS_LABELS[status as StatusEquipamento] || status;
-  const color = STATUS_COLORS[status as StatusEquipamento] || STATUS_COLORS.RECEBIDO;
-  return (
-    <span className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-bold ${color}`}>
-      <span aria-hidden="true" className="h-[7px] w-[7px] shrink-0 rounded-full bg-current" />
-      {label}
-    </span>
-  );
-}
 
 interface DashboardMetrics {
   totalEquipamentos: number;
@@ -142,21 +121,6 @@ export default function Dashboard() {
     }
   }
 
-  const statusChartData = useMemo(() => {
-    const counts: Record<string, number> = {};
-    equipamentos.forEach(eq => {
-      const key = eq.status || "SEM_STATUS";
-      counts[key] = (counts[key] || 0) + 1;
-    });
-
-    return Object.entries(counts)
-      .map(([status, value]) => ({
-        status,
-        label: STATUS_LABELS[status as StatusEquipamento] || status,
-        value,
-      }))
-      .sort((a, b) => b.value - a.value);
-  }, [equipamentos]);
 
   const recebidosPorMes = useMemo(() => {
     const map = new Map<string, { label: string; value: number }>();
@@ -175,31 +139,16 @@ export default function Dashboard() {
       .map(([, value]) => value);
   }, [equipamentos]);
 
-  const receitaPorMes = useMemo(() => {
-    const map = new Map<string, { label: string; value: number }>();
-    equipamentos.forEach(eq => {
-      if (!eq.data_aprovacao) return;
-      const data = parseDate(eq.data_aprovacao);
-      if (!data) return;
-      const valor = eq.valor_orcamento ?? eq.valor_final ?? 0;
-      if (!valor) return;
-      const key = `${data.getFullYear()}-${String(data.getMonth() + 1).padStart(2, "0")}`;
-      const label = formatMonth(data);
-      const current = map.get(key) || { label, value: 0 };
-      current.value += valor;
-      map.set(key, current);
-    });
-
-    return Array.from(map.entries())
-      .sort(([a], [b]) => a.localeCompare(b))
-      .map(([, value]) => value);
+  const filaPorEtapa = useMemo(() => {
+    const etapas = ["Recebido", "Verificação", "Orçamento", "Manutenção", "Pronto"];
+    const contagem = etapas.map(() => 0);
+    for (const eq of equipamentos) {
+      const indice = etapaOsAtual(eq.status);
+      if (indice >= 0 && indice < etapas.length) contagem[indice] += 1;
+    }
+    return etapas.map((nome, indice) => ({ nome, valor: contagem[indice] }));
   }, [equipamentos]);
 
-  const currencyFormatter = useMemo(() => new Intl.NumberFormat("pt-BR", {
-    style: "currency",
-    currency: "BRL",
-    maximumFractionDigits: 0,
-  }), []);
 
   if (loading) {
     return (
@@ -209,261 +158,205 @@ export default function Dashboard() {
     );
   }
 
+  const hoje = new Date().toISOString().slice(0, 10);
+  const emAtendimento = equipamentos.filter((eq) => eq.status !== "ENTREGUE" && eq.status !== "ABANDONADO");
+  const entraramHoje = equipamentos.filter((eq) => (eq.data_entrada ?? "").slice(0, 10) === hoje).length;
+  const aguardandoPeca = equipamentos.filter((eq) => eq.status === "AGUARDANDO_PECA").length;
+  const cartoes = [
+    { titulo: "Em atendimento", valor: emAtendimento.length, rodape: `${entraramHoje} ${entraramHoje === 1 ? "entrou" : "entraram"} hoje`, cor: "bg-primary" },
+    { titulo: "Aguardando aprovação", valor: metrics.aguardandoAprovacao, rodape: "Orçamentos com o cliente", cor: "bg-status-wait" },
+    { titulo: "Prontos para entrega", valor: metrics.prontos, rodape: "Avisar o cliente e registrar a entrega", cor: "bg-status-ok" },
+    { titulo: "Aguardando peça", valor: aguardandoPeca, rodape: "Retomar quando a peça chegar", cor: "bg-status-wait" },
+  ];
+  const TRACOS = 30;
+  const maiorFila = Math.max(1, ...filaPorEtapa.map((etapa) => etapa.valor));
+
   return (
     <div className="space-y-6">
       {/* Header */}
-      <PageHeader titulo="Dashboard" descricao="Visão geral do sistema AutoOS">
-        <div className="flex gap-2">
-          <Button onClick={() => navigate("/equipamentos")} size="sm">
-            <Plus className="h-4 w-4 mr-1" />Novo Equipamento
-          </Button>
-          <Button onClick={() => navigate("/insumos")} variant="outline" size="sm">
-            <Package className="h-4 w-4 mr-1" />Novo Insumo/Peça
-          </Button>
-        </div>
+      <PageHeader titulo="Início" descricao={`${emAtendimento.length} em atendimento`}>
+        <Button onClick={() => navigate("/equipamentos")}>
+          <Plus className="h-4 w-4 mr-1" />Novo Equipamento
+        </Button>
+        <Button onClick={() => navigate("/insumos")} variant="outline">
+          <Package className="h-4 w-4 mr-1" />Novo Insumo/Peça
+        </Button>
       </PageHeader>
 
-      {/* Metric Cards */}
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-        <Card className="cursor-pointer hover:shadow-md transition-shadow" onClick={() => navigate("/equipamentos")}>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Total Equipamentos</CardTitle>
-            <Printer className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{metrics.totalEquipamentos}</div>
-            <p className="text-xs text-muted-foreground">{metrics.recebidos} recebidos recentemente</p>
-          </CardContent>
-        </Card>
-
-        <Card className="cursor-pointer hover:shadow-md transition-shadow" onClick={() => navigate("/equipamentos")}>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Em Manutenção</CardTitle>
-            <Wrench className="h-4 w-4 text-status-wait" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-status-wait">{metrics.emManutencao}</div>
-            <p className="text-xs text-muted-foreground">{metrics.emVerificacao} em verificação</p>
-          </CardContent>
-        </Card>
-
-        <Card className="cursor-pointer hover:shadow-md transition-shadow" onClick={() => navigate("/equipamentos")}>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Aguardando</CardTitle>
-            <Clock className="h-4 w-4 text-status-wait" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-status-wait">{metrics.aguardandoAprovacao}</div>
-            <p className="text-xs text-muted-foreground">{metrics.prontos} prontos para entrega</p>
-          </CardContent>
-        </Card>
-
-        <Card
-          className={`cursor-pointer hover:shadow-md transition-shadow ${metrics.estoqueBaixo > 0 ? "border-destructive/30 bg-status-bad-bg/50" : ""}`}
-          onClick={() => navigate("/insumos")}
-        >
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Estoque Baixo</CardTitle>
-            <AlertTriangle className={`h-4 w-4 ${metrics.estoqueBaixo > 0 ? "text-destructive" : "text-muted-foreground"}`} />
-          </CardHeader>
-          <CardContent>
-            <div className={`text-2xl font-bold ${metrics.estoqueBaixo > 0 ? "text-destructive" : ""}`}>{metrics.estoqueBaixo}</div>
-            <p className="text-xs text-muted-foreground">itens abaixo do mínimo</p>
-          </CardContent>
-        </Card>
+      {/* CartaoKPI: número, traços de proporção e o próximo passo no rodapé. Sem valores em R$. */}
+      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        {cartoes.map((cartao) => {
+          const cheios = Math.round((cartao.valor / Math.max(1, emAtendimento.length)) * TRACOS);
+          return (
+            <button
+              key={cartao.titulo}
+              type="button"
+              onClick={() => navigate("/equipamentos")}
+              className="group flex flex-col overflow-hidden rounded-2xl border bg-card text-left transition-colors hover:border-ctl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            >
+              <span className="space-y-3 p-4">
+                <span className="block text-sm font-medium text-muted-foreground">{cartao.titulo}</span>
+                <span className="block text-3xl font-extrabold tabular-nums">{cartao.valor}</span>
+                <span className="flex gap-[3px]" aria-hidden="true">
+                  {Array.from({ length: TRACOS }, (_, i) => (
+                    <span key={i} className={`h-7 flex-1 rounded-sm ${i < cheios ? cartao.cor : "bg-track"}`} />
+                  ))}
+                </span>
+              </span>
+              <span className="mt-auto flex items-center justify-between gap-2 border-t px-4 py-3 text-sm text-muted-foreground group-hover:text-foreground">
+                <span className="truncate">{cartao.rodape}</span>
+                <ArrowRight className="h-4 w-4 shrink-0" />
+              </span>
+            </button>
+          );
+        })}
       </div>
 
-      {/* Ações Pendentes */}
-      {acoesPendentes.length > 0 && (
-        <Card className="border-status-wait/30 bg-status-wait-bg/30">
-          <CardHeader>
-            <div className="flex items-center justify-between">
-              <CardTitle className="text-lg flex items-center gap-2">
-                <Bell className="h-5 w-5 text-status-wait" />
-                Ações Pendentes
-                <Badge variant="secondary" className="ml-1">{acoesPendentes.length}</Badge>
-              </CardTitle>
-              <Button variant="ghost" size="sm" onClick={() => navigate("/equipamentos")}>
-                Ver todos<ArrowRight className="h-4 w-4 ml-1" />
-              </Button>
-            </div>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-2">
-              {acoesPendentes.slice(0, 8).map(eq => {
-                const acao = getAcaoPendente(eq);
-                return (
-                  <div key={eq.id} className="flex items-center justify-between p-3 rounded-lg border bg-background hover:bg-accent/50 transition-colors cursor-pointer" onClick={() => navigate("/equipamentos", { state: { equipamentoId: eq.id } })}>
-                    <div className="flex items-center gap-3">
-                      <div className="flex-shrink-0">
-                        <StatusBadge status={eq.status} />
-                      </div>
-                      <div>
-                        <p className="text-sm font-medium">{eq.marca} {eq.modelo}</p>
-                        <p className="text-xs text-muted-foreground">{eq.cliente_nome || eq.serial_number}</p>
-                      </div>
-                    </div>
-                    <div className="text-right">
-                      <p className={`text-xs font-medium ${acao.cor}`}>{acao.label}</p>
-                      {eq.prazo_aprovacao && (
-                        <p className="text-xs text-muted-foreground">
-                          Prazo: {formatDatePtBr(eq.prazo_aprovacao)}
-                        </p>
-                      )}
-                    </div>
-                  </div>
-                );
-              })}
-              {acoesPendentes.length > 8 && (
-                <p className="text-xs text-muted-foreground text-center pt-1">
-                  + {acoesPendentes.length - 8} outras pendências
-                </p>
-              )}
-            </div>
-          </CardContent>
-        </Card>
-      )}
-
-      {/* Content Grid */}
-      <div className="grid gap-6 md:grid-cols-2">
-        {/* Equipamentos Recentes */}
-        <Card>
-          <CardHeader>
-            <div className="flex items-center justify-between">
-              <CardTitle className="text-lg">Equipamentos Recentes</CardTitle>
-              <Button variant="ghost" size="sm" onClick={() => navigate("/equipamentos")}>
-                Ver todos<ArrowRight className="h-4 w-4 ml-1" />
-              </Button>
-            </div>
-          </CardHeader>
-          <CardContent>
-            {equipamentosRecentes.length === 0 ? (
-              <div className="text-center py-8 text-muted-foreground">
-                <Printer className="h-12 w-12 mx-auto mb-3 opacity-20" />
-                <p>Nenhum equipamento cadastrado</p>
-                <Button variant="link" className="mt-2" onClick={() => navigate("/equipamentos")}>Cadastrar primeiro</Button>
-              </div>
-            ) : (
-              <div className="space-y-3">
-                {equipamentosRecentes.map(eq => (
-                  <div key={eq.id} className="flex items-center justify-between p-3 rounded-lg border hover:bg-accent/50 transition-colors cursor-pointer" onClick={() => navigate("/equipamentos", { state: { equipamentoId: eq.id } })}>
-                    <div className="space-y-1">
-                      <p className="font-medium text-sm">{eq.marca} {eq.modelo}</p>
-                      <p className="text-xs text-muted-foreground">{eq.cliente_nome || eq.serial_number}</p>
-                    </div>
-                    <StatusBadge status={eq.status} />
-                  </div>
-                ))}
-              </div>
-            )}
-          </CardContent>
-        </Card>
-
-        {/* Estoque Baixo */}
-        <Card>
-          <CardHeader>
-            <div className="flex items-center justify-between">
-              <CardTitle className="text-lg">
-                Alertas de Estoque
-                {metrics.estoqueBaixo > 0 && <Badge variant="destructive" className="ml-2">{metrics.estoqueBaixo}</Badge>}
-              </CardTitle>
-              <Button variant="ghost" size="sm" onClick={() => navigate("/insumos")}>
-                Ver todos<ArrowRight className="h-4 w-4 ml-1" />
-              </Button>
-            </div>
-          </CardHeader>
-          <CardContent>
-            {produtosEstoqueBaixo.length === 0 ? (
-              <div className="text-center py-8 text-muted-foreground">
-                <Package className="h-12 w-12 mx-auto mb-3 opacity-20" />
-                <p>Nenhum item com estoque baixo</p>
-              </div>
-            ) : (
-              <div className="space-y-3">
-                {produtosEstoqueBaixo.map(p => (
-                  <div key={p.id} className="flex items-center justify-between p-3 rounded-lg border border-destructive/30 bg-status-bad-bg/30">
-                    <div className="space-y-1">
-                      <p className="font-medium text-sm">{p.nome}</p>
-                      <p className="text-xs text-muted-foreground">{categoriaProdutoLabel(p.categoria)}</p>
-                    </div>
-                    <div className="text-right">
-                      <div className="flex items-center gap-1">
-                        <TrendingDown className="h-3 w-3 text-destructive" />
-                        <span className="text-sm font-bold text-destructive">{p.quantidade_estoque}</span>
-                        <span className="text-xs text-muted-foreground">/ {p.quantidade_minima}</span>
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* Graficos */}
-      <div className="grid gap-6 lg:grid-cols-3">
-        <Card>
-          <CardHeader><CardTitle className="text-lg">Distribuição por status</CardTitle></CardHeader>
-          <CardContent className="h-64">
-            {statusChartData.length === 0 ? (
-              <div className="flex items-center justify-center h-full text-muted-foreground">
-                Sem dados para exibir
-              </div>
-            ) : (
-              <ResponsiveContainer width="100%" height="100%">
-                <PieChart>
-                  <Pie data={statusChartData} dataKey="value" nameKey="label" innerRadius={40} outerRadius={80} paddingAngle={2}>
-                    {statusChartData.map((entry, index) => (
-                      <Cell key={entry.status} fill={STATUS_CHART_COLORS[index % STATUS_CHART_COLORS.length]} />
-                    ))}
-                  </Pie>
-                  <Tooltip formatter={(value: number) => [value, "Equipamentos"]} />
-                  <Legend />
-                </PieChart>
-              </ResponsiveContainer>
-            )}
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader><CardTitle className="text-lg">Recebidos por mês</CardTitle></CardHeader>
-          <CardContent className="h-64">
+      <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_400px]">
+        {/* Entradas por mês: uma série, uma cor; tooltip por barra. */}
+        <Card className="rounded-2xl">
+          <CardHeader className="pb-2"><CardTitle className="text-lg">Entradas por mês</CardTitle></CardHeader>
+          <CardContent className="h-72">
             {recebidosPorMes.length === 0 ? (
-              <div className="flex items-center justify-center h-full text-muted-foreground">
-                Sem dados para exibir
-              </div>
+              <div className="flex h-full items-center justify-center text-sm text-muted-foreground">Sem dados para exibir</div>
             ) : (
               <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={recebidosPorMes} margin={{ top: 8, right: 12, left: 0, bottom: 0 }}>
-                  <CartesianGrid strokeDasharray="3 3" />
-                  <XAxis dataKey="label" />
-                  <YAxis allowDecimals={false} />
-                  <Tooltip formatter={(value: number) => [value, "Equipamentos"]} />
-                  <Bar dataKey="value" fill="#3b82f6" radius={[4, 4, 0, 0]} />
+                <BarChart data={recebidosPorMes} margin={{ top: 8, right: 8, left: -16, bottom: 0 }}>
+                  <CartesianGrid vertical={false} stroke="hsl(var(--border))" />
+                  <XAxis dataKey="label" tickLine={false} axisLine={false} tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 12 }} />
+                  <YAxis allowDecimals={false} tickLine={false} axisLine={false} tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 12 }} />
+                  <Tooltip
+                    cursor={{ fill: "hsl(var(--muted))" }}
+                    formatter={(valor: number) => [valor, "Entradas"]}
+                    contentStyle={{ background: "hsl(var(--card))", border: "1px solid hsl(var(--border))", borderRadius: 12, color: "hsl(var(--foreground))" }}
+                  />
+                  <Bar dataKey="value" name="Entradas" fill="hsl(var(--chart-1))" radius={[4, 4, 0, 0]} maxBarSize={36} />
                 </BarChart>
               </ResponsiveContainer>
             )}
           </CardContent>
         </Card>
 
-        <Card>
-          <CardHeader><CardTitle className="text-lg">Receita por mês</CardTitle></CardHeader>
-          <CardContent className="h-64">
-            {receitaPorMes.length === 0 ? (
-              <div className="flex items-center justify-center h-full text-muted-foreground">
-                Sem dados para exibir
+        {/* Fila por etapa: identidade pelo rótulo; a barra só mostra a quantidade. */}
+        <Card className="rounded-2xl">
+          <CardHeader className="pb-2"><CardTitle className="text-lg">Fila por etapa</CardTitle></CardHeader>
+          <CardContent>
+            <ul className="space-y-3">
+              {filaPorEtapa.map((etapa) => (
+                <li key={etapa.nome} className="space-y-1">
+                  <div className="flex items-baseline justify-between text-sm">
+                    <span className="font-medium">{etapa.nome}</span>
+                    <span className="font-semibold tabular-nums">{etapa.valor}</span>
+                  </div>
+                  <div className="h-2 rounded-full bg-track">
+                    <div className="h-2 rounded-full bg-chart-1" style={{ width: `${(etapa.valor / maiorFila) * 100}%` }} />
+                  </div>
+                </li>
+              ))}
+            </ul>
+          </CardContent>
+        </Card>
+      </div>
+
+      <div className="grid gap-6 lg:grid-cols-2 xl:grid-cols-3">
+        {/* Pendências (as mesmas de antes) */}
+        <Card className="rounded-2xl">
+          <CardHeader className="flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-lg">Ações pendentes {acoesPendentes.length > 0 && <span className="ml-1 text-sm font-semibold text-muted-foreground">· {acoesPendentes.length}</span>}</CardTitle>
+            <Button variant="outline" size="sm" onClick={() => navigate("/equipamentos")}>Ver todos</Button>
+          </CardHeader>
+          <CardContent>
+            {acoesPendentes.length === 0 ? (
+              <p className="py-8 text-center text-sm text-muted-foreground">Nenhuma pendência.</p>
+            ) : (
+              <ul className="divide-y">
+                {acoesPendentes.slice(0, 6).map(eq => {
+                  const acao = getAcaoPendente(eq);
+                  return (
+                    <li key={eq.id}>
+                      <button
+                        type="button"
+                        className="flex w-full items-center justify-between gap-3 py-3 text-left hover:bg-muted/40"
+                        onClick={() => navigate("/equipamentos", { state: { equipamentoId: eq.id } })}
+                      >
+                        <span className="min-w-0 flex-1">
+                          <span className="block truncate text-sm font-semibold">{eq.marca} {eq.modelo}</span>
+                          <span className={`block truncate text-xs ${acao.cor}`}>{acao.label}{eq.prazo_aprovacao ? ` · prazo ${formatDatePtBr(eq.prazo_aprovacao)}` : ""}</span>
+                        </span>
+                        <span className="flex min-w-0 max-w-[40%] items-center gap-2 text-xs text-muted-foreground">
+                          <span className="hidden truncate sm:inline">{eq.cliente_nome || eq.serial_number}</span>
+                          <ArrowRight className="h-4 w-4" />
+                        </span>
+                      </button>
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
+            {acoesPendentes.length > 6 && (
+              <p className="pt-2 text-center text-xs text-muted-foreground">+ {acoesPendentes.length - 6} outras pendências</p>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* Equipamentos recentes (os mesmos de antes) */}
+        <Card className="rounded-2xl">
+          <CardHeader className="flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-lg">Equipamentos recentes</CardTitle>
+            <Button variant="outline" size="sm" onClick={() => navigate("/equipamentos")}>Ver todos</Button>
+          </CardHeader>
+          <CardContent>
+            {equipamentosRecentes.length === 0 ? (
+              <div className="py-8 text-center text-sm text-muted-foreground">
+                <p>Nenhum equipamento cadastrado</p>
+                <Button variant="link" className="mt-1" onClick={() => navigate("/equipamentos")}>Cadastrar primeiro</Button>
               </div>
             ) : (
-              <ResponsiveContainer width="100%" height="100%">
-                <LineChart data={receitaPorMes} margin={{ top: 8, right: 12, left: 0, bottom: 0 }}>
-                  <CartesianGrid strokeDasharray="3 3" />
-                  <XAxis dataKey="label" />
-                  <YAxis tickFormatter={(value: number) => currencyFormatter.format(value)} />
-                  <Tooltip formatter={(value: number) => [currencyFormatter.format(value), "Receita"]} />
-                  <Line type="monotone" dataKey="value" stroke="#10b981" strokeWidth={2} dot={{ r: 3 }} />
-                </LineChart>
-              </ResponsiveContainer>
+              <ul className="divide-y">
+                {equipamentosRecentes.map(eq => (
+                  <li key={eq.id}>
+                    <button
+                      type="button"
+                      className="flex w-full items-center justify-between gap-3 py-3 text-left hover:bg-muted/40"
+                      onClick={() => navigate("/equipamentos", { state: { equipamentoId: eq.id } })}
+                    >
+                      <span className="min-w-0">
+                        <span className="block truncate text-sm font-semibold">{eq.marca} {eq.modelo}</span>
+                        <span className="block truncate text-xs text-muted-foreground">{eq.cliente_nome || eq.serial_number}</span>
+                      </span>
+                      <span className="shrink-0"><StatusBadge status={eq.status} /></span>
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* Estoque baixo */}
+        <Card className="rounded-2xl">
+          <CardHeader className="flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-lg">Estoque baixo {metrics.estoqueBaixo > 0 && <span className="ml-1 text-sm font-semibold text-muted-foreground">· {metrics.estoqueBaixo}</span>}</CardTitle>
+            <Button variant="outline" size="sm" onClick={() => navigate("/insumos")}>Ver estoque</Button>
+          </CardHeader>
+          <CardContent>
+            {produtosEstoqueBaixo.length === 0 ? (
+              <p className="py-8 text-center text-sm text-muted-foreground">Nenhum item com estoque baixo.</p>
+            ) : (
+              <ul className="divide-y">
+                {produtosEstoqueBaixo.map(p => (
+                  <li key={p.id} className="space-y-1.5 py-3">
+                    <div className="flex items-baseline justify-between gap-3 text-sm">
+                      <span className="min-w-0 truncate font-semibold">{p.nome}</span>
+                      <span className="shrink-0 font-semibold tabular-nums">{p.quantidade_estoque} <span className="font-normal text-muted-foreground">/ mín. {p.quantidade_minima}</span></span>
+                    </div>
+                    <div className="h-2 rounded-full bg-track">
+                      <div className="h-2 rounded-full bg-status-bad" style={{ width: `${Math.min(100, (p.quantidade_estoque / Math.max(1, p.quantidade_minima)) * 100)}%` }} />
+                    </div>
+                    <p className="text-xs text-muted-foreground">{categoriaProdutoLabel(p.categoria)}</p>
+                  </li>
+                ))}
+              </ul>
             )}
           </CardContent>
         </Card>
@@ -471,21 +364,6 @@ export default function Dashboard() {
     </div>
   );
 }
-
-const STATUS_CHART_COLORS = [
-  "#3b82f6",
-  "#f59e0b",
-  "#10b981",
-  "#8b5cf6",
-  "#ef4444",
-  "#6366f1",
-  "#14b8a6",
-  "#f97316",
-  "#64748b",
-  "#a855f7",
-  "#0ea5e9",
-  "#22c55e",
-];
 
 function parseDate(value?: string) {
   if (!value) return null;

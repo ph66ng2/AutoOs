@@ -33,7 +33,7 @@ test("captura as telas principais com dados sintéticos", async ({ page }) => {
   const highlights = page.getByRole("button", { name: "Começar a usar" });
   if (await highlights.isVisible()) await highlights.click();
 
-  await expect(page.getByRole("heading", { name: "Dashboard", exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Início", exact: true })).toBeVisible();
   await expect(page.getByText("Zebra ZD620").first()).toBeVisible();
   await expect(page.getByText("Ribbon sintético CI").first()).toBeVisible();
   await page.screenshot({ path: `${outDir}/01-home.png`, fullPage: true, animations: "disabled" });
