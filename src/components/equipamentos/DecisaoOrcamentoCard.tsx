@@ -171,7 +171,7 @@ export function DecisaoOrcamentoCard({ onAplicar }: Props) {
     <section className="space-y-2 text-sm" aria-label="Resposta do cliente ao orçamento" data-tom={tomDestaque}>
       {(faixa || error) && (
         <div className={cn("flex flex-wrap items-center gap-x-3 gap-y-1 rounded-md border px-3 py-2", TOM_CLASSE[faixa?.tom ?? "neutro"])}>
-          <div className="min-w-0 flex-1">
+          <div className="min-w-[min(100%,16rem)] flex-1">
             {faixa && (
               <p className="font-medium [overflow-wrap:anywhere]">
                 {faixa.texto}
@@ -183,7 +183,7 @@ export function DecisaoOrcamentoCard({ onAplicar }: Props) {
             {faixa?.detalhe && <p className="text-xs opacity-80 [overflow-wrap:anywhere]">{faixa.detalhe}</p>}
             {error && <p role="alert" className="text-xs text-destructive">{error}</p>}
           </div>
-          <div className="flex shrink-0 items-center gap-1">
+          <div className="flex flex-wrap items-center gap-1">
             {faixa?.aplicar && (
               <Button size="sm" disabled={!faixa.aplicar.habilitado || busy} onClick={() => onAplicar(faixa.aplicar!.decisao)}>
                 Revisar e aplicar decisão

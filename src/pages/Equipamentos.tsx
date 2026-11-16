@@ -208,6 +208,7 @@ import { mensagemEnvioFalhouComEmailSalvo, saveRecipientAddress } from "@/lib/re
 import { totalPages } from "@/lib/pagination";
 import { acoesPorStatus, type AcaoStatus } from "@/lib/acoes-por-status";
 import { PageHeader } from "@/components/PageHeader";
+import { useLarguraMinima } from "@/hooks/useLarguraMinima";
 import { BarraDeEtapas } from "@/components/equipamentos/BarraDeEtapas";
 import { FiltroDeStatus } from "@/components/equipamentos/FiltroDeStatus";
 import { BarraDeEtapasGrande } from "@/components/equipamentos/BarraDeEtapasGrande";
@@ -391,6 +392,7 @@ export default function Equipamentos() {
   const { ensureSensitiveAccess, status: sensitiveStatus, hasPermission } = useSensitiveAccess();
   const location = useLocation();
   const navigate = useNavigate();
+  const telaLarga = useLarguraMinima(768);
   const irParaConfiguracoesPortal = useCallback(() => navigate("/configuracoes?aba=portal"), [navigate]);
   const pathnameAtualRef = useRef(location.pathname);
   pathnameAtualRef.current = location.pathname;
@@ -2433,7 +2435,12 @@ export default function Equipamentos() {
     <div className="space-y-6">
       {!detalhesDialogOpen && (<>
       {/* Header */}
-      <PageHeader titulo="Equipamentos" descricao="Gerencie equipamentos, verificações e orçamentos">
+      <PageHeader
+        titulo="Equipamentos"
+        descricao={loading
+          ? "Carregando…"
+          : `${totalEquipamentos} ${totalEquipamentos === 1 ? "equipamento" : "equipamentos"}${busca || statusFiltro !== "TODOS" ? " neste filtro" : ""}`}
+      >
         <div className="flex items-center gap-2">
           <Button onClick={abrirNovo}><Plus className="h-4 w-4 mr-2" />Novo Equipamento</Button>
         </div>
@@ -2466,8 +2473,9 @@ export default function Equipamentos() {
               <Input aria-label="Pesquisar equipamentos" placeholder="Série, patrimônio, equipamento, cliente, contato ou CPF/CNPJ" value={busca} onChange={e => setBusca(e.target.value)} className="h-10 bg-muted pl-9 pr-10" />
               {busca && <Button type="button" variant="ghost" size="icon" aria-label="Limpar pesquisa" className="absolute right-0 top-0 h-full w-10" onClick={() => setBusca("")}><X className="h-4 w-4" /></Button>}
             </div>
+            <div className="flex gap-3">
             <Select value={ordenacao} onValueChange={(value: "ATUALIZACAO_RECENTE" | "CADASTRO_RECENTE") => setOrdenacao(value)}>
-              <SelectTrigger aria-label="Ordenar equipamentos" className="h-10 w-full lg:w-56">
+              <SelectTrigger aria-label="Ordenar equipamentos" className="h-10 min-w-0 flex-1 lg:w-56 lg:flex-none">
                 <ArrowDownUp className="h-4 w-4 mr-2" /><SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -2476,6 +2484,7 @@ export default function Equipamentos() {
               </SelectContent>
             </Select>
             <Button variant="outline" size="icon" aria-label="Atualizar equipamentos" className="h-10 w-10 shrink-0" onClick={recarregar}><RefreshCw className="h-4 w-4" /></Button>
+            </div>
           </div>
 
           {loading ? (
@@ -2488,9 +2497,41 @@ export default function Equipamentos() {
             </div>
           ) : (
             <>
+              {/* Celular: um cartão por equipamento; a tabela larga com a coluna fixa só a partir de md. */}
+              {!telaLarga ? (
+              <ul className="space-y-3" aria-label="Equipamentos">
+                {equipamentosExibidos.map(eq => (
+                  <li key={eq.id} className="space-y-3 rounded-xl border p-4">
+                    <div className="flex items-start justify-between gap-3">
+                      <button
+                        type="button"
+                        className="min-w-0 text-left"
+                        aria-label={`Abrir detalhes de ${eq.marca} ${eq.modelo}`}
+                        onClick={() => void abrirDetalhes(eq)}
+                      >
+                        <span className="block truncate font-semibold">{eq.marca} {eq.modelo}</span>
+                        <span className="block truncate font-mono text-xs text-muted-foreground">{eq.serial_number}</span>
+                      </button>
+                      <span className="shrink-0 text-sm font-semibold tabular-nums">
+                        {eq.valor_orcamento != null && eq.valor_orcamento > 0 ? formatCurrency(eq.valor_orcamento) : <span className="font-normal text-muted-foreground">—</span>}
+                      </span>
+                    </div>
+                    <div className="space-y-1.5">
+                      <p className="truncate text-sm">
+                        {eq.cliente_nome || "—"}
+                        <span className="text-muted-foreground"> · entrada {formatDatePtBr(eq.data_entrada)}</span>
+                      </p>
+                      <p className="text-sm font-medium">{STATUS_LABELS[eq.status as StatusEquipamento] || eq.status}</p>
+                      <BarraDeEtapas status={eq.status} />
+                    </div>
+                    <div className="flex justify-end">{renderAcoes(eq)}</div>
+                  </li>
+                ))}
+              </ul>
+              ) : (
               <div className="overflow-hidden rounded-xl border">
                 <Table className="min-w-[64rem] table-fixed border-separate border-spacing-0">
-                <TableHeader className="bg-muted/60 [&_tr]:!border-b-0 [&_th]:h-10 [&_th]:border-b [&_th]:text-xs [&_th]:font-semibold">
+                <TableHeader className="bg-muted [&_tr]:!border-b-0 [&_th]:h-10 [&_th]:border-b [&_th]:text-xs [&_th]:font-semibold">
                   <TableRow>
                     <TableHead className="w-[13rem]">Equipamento</TableHead>
                     <TableHead className="w-[11rem]">Cliente</TableHead>
@@ -2569,6 +2610,7 @@ export default function Equipamentos() {
                 </TableBody>
                 </Table>
               </div>
+              )}
               <PaginationControls
                 page={paginaEquipamentosExibida}
                 totalPages={totalPaginasEquipamentos}
@@ -2931,7 +2973,7 @@ export default function Equipamentos() {
                 <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1">
                   <h1 className="break-words text-[26px] font-bold leading-tight tracking-tight [overflow-wrap:anywhere]">{selecionado.marca} {selecionado.modelo}</h1>
                   <span className="font-mono text-sm text-muted-foreground [overflow-wrap:anywhere]">{selecionado.serial_number}</span>
-                  <StatusBadge status={selecionado.status} />
+                  <StatusBadge status={selecionado.status} completo />
                 </div>
               </div>
               <div className="flex shrink-0 justify-end">{renderAcoes(selecionado, true)}</div>
@@ -2961,7 +3003,7 @@ export default function Equipamentos() {
                       <TabsTrigger
                         key={valor}
                         value={valor}
-                        className="relative rounded-none border-b-2 border-transparent px-3 pb-2.5 pt-2 text-sm font-medium text-muted-foreground shadow-none data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:font-semibold data-[state=active]:text-foreground data-[state=active]:shadow-none"
+                        className="relative rounded-none border-b-2 border-transparent px-3 pb-2.5 pt-2 text-sm font-semibold text-muted-foreground shadow-none data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:text-foreground data-[state=active]:shadow-none"
                       >
                         {rotulo}
                       </TabsTrigger>

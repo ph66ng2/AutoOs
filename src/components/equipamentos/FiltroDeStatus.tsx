@@ -68,7 +68,7 @@ export function FiltroDeStatus({
                 "inline-flex h-8 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-lg px-2.5 text-[13px] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring",
                 ligado
                   ? "bg-card font-semibold text-foreground shadow-sm"
-                  : "font-medium text-muted-foreground hover:bg-card/60 hover:text-foreground",
+                  : "font-semibold text-muted-foreground hover:bg-card/50 hover:text-foreground",
               )}
             >
               {opcao.value !== TODOS && <Ponto status={opcao.value} />}
@@ -88,7 +88,7 @@ export function FiltroDeStatus({
                 "h-8 w-auto shrink-0 gap-1.5 whitespace-nowrap rounded-lg border-0 px-2.5 text-[13px] shadow-none ring-offset-0 focus:ring-0 focus:ring-offset-0 [&>svg:last-child]:hidden",
                 outroLigado
                   ? "bg-card font-semibold text-foreground shadow-sm"
-                  : "bg-transparent font-medium text-muted-foreground hover:bg-card/60 hover:text-foreground",
+                  : "bg-transparent font-semibold text-muted-foreground hover:bg-card/50 hover:text-foreground",
               )}
             >
               {outroLigado ? (

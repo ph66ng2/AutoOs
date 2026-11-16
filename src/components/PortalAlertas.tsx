@@ -468,7 +468,12 @@ function ItemErro({ registro }: { registro: ErroRegistrado }) {
         <div className="mt-2 flex flex-wrap items-center gap-x-3.5 gap-y-1">
           <span className="text-[11px] font-bold uppercase tracking-[0.06em] text-muted-foreground">AutoOS</span>
           <button type="button" className="flex items-center gap-1 text-[13px] font-semibold text-primary hover:underline" onClick={() => void copiar()}>
-            {copiado === "ok" ? <><Check className="h-3.5 w-3.5" /> Copiado</> : <><Copy className="h-3.5 w-3.5" /> Copiar relatório</>}
+            {copiado === "ok" ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
+            {/* Os dois rótulos ocupam a mesma célula: trocar de um para o outro não mexe na largura. */}
+            <span className="inline-grid">
+              <span aria-hidden="true" className="invisible col-start-1 row-start-1">Copiar relatório</span>
+              <span className="col-start-1 row-start-1">{copiado === "ok" ? "Copiado" : "Copiar relatório"}</span>
+            </span>
           </button>
           {copiado === "falhou" && <span className="text-[11px] text-destructive">Não foi possível copiar.</span>}
           {!registro.lido && (

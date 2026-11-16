@@ -149,7 +149,7 @@ export function Layout() {
       {mobileOpen && <button type="button" aria-label="Fechar menu" onClick={() => setMobileOpen(false)} className="fixed inset-0 z-40 bg-black/60 md:hidden" /> }
       {/* Sidebar */}
       {/* z-50 só vale na gaveta do celular (acima do fundo z-40). Em md+ a sidebar é item de flex: com z-50 ela vencia o splash de abertura (z-40). */}
-      <aside id="main-sidebar" aria-label="Menu principal" className={cn("fixed inset-y-0 left-0 z-50 flex w-[264px] shrink-0 flex-col bg-sidebar transition-all duration-300 md:static md:z-auto md:visible md:translate-x-0", mobileOpen ? "visible translate-x-0" : "invisible -translate-x-full", collapsed ? "md:w-16" : "md:w-[264px]")}>
+      <aside id="main-sidebar" aria-label="Menu principal" className={cn("fixed inset-y-0 left-0 z-50 flex w-[264px] shrink-0 flex-col overflow-y-auto bg-sidebar transition-all md:overflow-visible duration-300 md:static md:z-auto md:visible md:translate-x-0", mobileOpen ? "visible translate-x-0" : "invisible -translate-x-full", collapsed ? "md:w-16" : "md:w-[264px]")}>
         {/* Marca */}
         <div className={cn("flex h-[88px] shrink-0 items-center gap-3 px-5", collapsed && "justify-center px-0")}>
           <span className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-[10px] border border-sidebar-border bg-card shadow-sm" aria-hidden="true">
@@ -177,7 +177,8 @@ export function Layout() {
         )}
 
         {/* Navigation */}
-        <nav data-tour="nav" className="flex-1 overflow-y-auto px-3 pb-3">
+        {/* No celular o menu inteiro rola (nada some atrás da rolagem da lista); no computador só a lista rola. */}
+        <nav data-tour="nav" className="shrink-0 px-3 pb-3 md:flex-1 md:shrink md:overflow-y-auto">
           {visibleGroups.map((grupo) => (
             <div key={grupo.titulo ?? "inicio"} className="space-y-0.5">
               {grupo.titulo && !collapsed && (
@@ -190,7 +191,7 @@ export function Layout() {
         </nav>
 
         {/* Pé: Configurações e o cartão do perfil */}
-        <div className="space-y-2 px-3 pb-3 pt-2">
+        <div className="mt-auto space-y-2 px-3 pb-3 pt-2">
           {mostrarConfiguracoes && <nav aria-label="Sistema">{renderItem(configuracoesItem)}</nav>}
           {!collapsed && mostrarAvisoAcesso && <SensitiveAccessBadge />}
           {activeProfile && activeLook && (
@@ -205,6 +206,7 @@ export function Layout() {
                 data-tour="profile-card"
                 onClick={() => setMobileOpen(false)}
                 aria-label={`Perfil de ${activeProfile.nome}`}
+                title="Trocar perfil"
                 className={cn("flex min-w-0 flex-1 items-center gap-3 rounded-lg p-1 transition-colors hover:bg-muted", collapsed && "justify-center p-0")}
               >
                 <ProfileAvatar icon={activeLook.icon} color={activeLook.color} size={collapsed ? "sm" : "md"} />
@@ -216,7 +218,7 @@ export function Layout() {
                       {sessaoAtiva && <BadgeCheck className="ml-1 inline h-3.5 w-3.5 align-[-2px] text-primary" aria-label="Acesso ativo" />}
                     </span>
                     <span className="mt-0.5 line-clamp-2 text-xs leading-snug text-muted-foreground">
-                      {status?.active_role ? `${securityRoleLabel(status.active_role)} · trocar perfil` : "Sessão bloqueada"}
+                      {status?.active_role ? securityRoleLabel(status.active_role) : "Sessão bloqueada"}
                     </span>
                   </span>
                 )}
