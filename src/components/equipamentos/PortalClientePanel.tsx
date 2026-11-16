@@ -59,7 +59,7 @@ export function PortalClientePanel({ open, onOpenChange }: Props) {
   return (
     <>
       <Dialog open={open} onOpenChange={onOpenChange}>
-        <DialogContent className="sm:max-w-xl max-h-[88vh] overflow-y-auto">
+        <DialogContent tamanho="m" className="max-h-[88vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2"><Globe className="h-5 w-5" /> Portal do Cliente</DialogTitle>
             <DialogDescription>

@@ -191,7 +191,7 @@ export function PublicStatusLinkDialog({ equipamento, open, onOpenChange }: Prop
 
   return (
     <Dialog open={open} onOpenChange={changeOpen}>
-      <DialogContent className="sm:max-w-xl max-h-[90vh] overflow-y-auto">
+      <DialogContent tamanho="m" className="max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2"><Link2 className="h-5 w-5" /> Link de acompanhamento sem login</DialogTitle>
           <DialogDescription>

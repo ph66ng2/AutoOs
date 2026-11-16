@@ -174,7 +174,7 @@ export function ContatoResponsavelSelector({
       )}
 
       <Dialog open={novoOpen} onOpenChange={setNovoOpen}>
-        <DialogContent className="sm:max-w-md">
+        <DialogContent tamanho="p">
           <DialogHeader>
             <DialogTitle>Novo contato do cliente</DialogTitle>
             <DialogDescription>O contato será cadastrado como ativo e selecionado para este equipamento.</DialogDescription>
