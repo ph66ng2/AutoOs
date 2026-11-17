@@ -1,4 +1,4 @@
-import { AlertCircle, Printer } from "lucide-react";
+import { AlertCircle } from "lucide-react";
 import type { UseFormReturn } from "react-hook-form";
 import { Button } from "@/components/ui/button";
 import {
@@ -24,9 +24,7 @@ import {
 import { ClienteFormularioCampos } from "@/components/clientes/ClienteFormularioCampos";
 import { nomeExibicaoCliente } from "@/components/clientes/cliente-display-utils";
 import type { ClienteFormData } from "@/lib/validations";
-import { formatDatePtBr } from "@/lib/date-utils";
-import type { Cliente, Equipamento } from "@/types";
-import { ClientesStatusBadge } from "./ClientesStatusBadge";
+import type { Cliente } from "@/types";
 import { ClienteContatosPanel } from "@/components/clientes/ClienteContatosPanel";
 
 export function ClientesFormDialog({
@@ -135,56 +133,6 @@ export function ClientesDeleteDialog({
         <DialogFooter>
           <DialogClose asChild><Button variant="outline">Cancelar</Button></DialogClose>
           <Button variant="destructive" onClick={onDelete} disabled={salvando}>{salvando ? "Excluindo..." : "Excluir"}</Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
-  );
-}
-
-export function ClientesEquipamentosModal({
-  open,
-  onOpenChange,
-  cliente,
-  equipamentos,
-}: {
-  open: boolean;
-  onOpenChange: (open: boolean) => void;
-  cliente: Cliente | null;
-  equipamentos: Equipamento[];
-}) {
-  return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent tamanho="g" className="overflow-y-auto">
-        <DialogHeader>
-          <DialogTitle>
-            Todos os equipamentos - {cliente ? nomeExibicaoCliente(cliente) : "Cliente"}
-          </DialogTitle>
-        </DialogHeader>
-        {equipamentos.length === 0 ? (
-          <div className="text-sm text-muted-foreground">Nenhum equipamento vinculado.</div>
-        ) : (
-          <div className="space-y-2">
-            {equipamentos.map((eq) => (
-              <div key={eq.id} className="flex items-center justify-between rounded border p-2">
-                <div className="flex items-center gap-3">
-                  <Printer className="h-4 w-4 text-muted-foreground" />
-                  <div>
-                    <p className="text-sm font-medium">{eq.marca} {eq.modelo}</p>
-                    <p className="text-xs text-muted-foreground font-mono">{eq.serial_number}</p>
-                  </div>
-                </div>
-                <div className="flex items-center gap-3">
-                  <ClientesStatusBadge status={eq.status} />
-                  <span className="text-xs text-muted-foreground">
-                    {formatDatePtBr(eq.data_entrada, "")}
-                  </span>
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-        <DialogFooter>
-          <DialogClose asChild><Button variant="outline">Fechar</Button></DialogClose>
         </DialogFooter>
       </DialogContent>
     </Dialog>

@@ -20,7 +20,7 @@
  * ║  USADO POR: App.tsx (rota /clientes)                        ║
  * ╚══════════════════════════════════════════════════════════════╝
  */
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { formatDatePtBr } from "@/lib/date-utils";
 import {
@@ -73,7 +73,6 @@ import {
 import {
   ClientesDeleteDialog,
   ClientesContatosModal,
-  ClientesEquipamentosModal,
   ClientesFormDialog,
 } from "@/pages/clientes/ClientesDialogs";
 import { ActionPriorityRow } from "@/components/ui/action-priority-row";
@@ -82,10 +81,11 @@ import { VinculoEmpresaPerfilDialog } from "@/components/clientes/VinculoEmpresa
 import { PageHeader } from "@/components/PageHeader";
 import { useContagemClientes, useResumoCliente } from "@/hooks/usePainelClientes";
 import { useLarguraMinima } from "@/hooks/useLarguraMinima";
+import { agruparHistoricoEquipamentos } from "@/lib/historico-equipamentos";
 
 export default function Clientes() {
   const navigate = useNavigate();
-  const LIMITE_EQUIPAMENTOS_EXPANDIDOS = 5;
+  const LIMITE_EQUIPAMENTOS_EXPANDIDOS = 3;
   const FILTROS_CLIENTES: Array<{ valor: FiltroClientes; rotulo: string }> = [
     { valor: "TODOS", rotulo: "Todos" },
     { valor: "EMPRESAS", rotulo: "Empresas" },
@@ -110,9 +110,8 @@ export default function Clientes() {
   const equipRequisicaoRef = useRef(0);
   const [filtro, setFiltro] = useState<FiltroClientes>("TODOS");
   const [equipamentosCliente, setEquipamentosCliente] = useState<Equipamento[]>([]);
+  const aparelhosCliente = useMemo(() => agruparHistoricoEquipamentos(equipamentosCliente), [equipamentosCliente]);
   const [carregandoEquip, setCarregandoEquip] = useState(false);
-  const [modalEquipamentosOpen, setModalEquipamentosOpen] = useState(false);
-  const [clienteEquipamentosSelecionado, setClienteEquipamentosSelecionado] = useState<Cliente | null>(null);
   const [contatosClienteSelecionado, setContatosClienteSelecionado] = useState<Cliente | null>(null);
   const [contatosExpandido, setContatosExpandido] = useState<number | null>(null);
   const contatosExpandidoRef = useRef<number | null>(null);
@@ -294,11 +293,6 @@ export default function Clientes() {
     if (contatosExpandidoRef.current === cliente.id) painelFechadoPeloUsuario.current = true;
     void toggleExpandir(cliente.id!);
     await toggleContatos(cliente);
-  }
-
-  function abrirModalTodosEquipamentos(cliente: Cliente) {
-    setClienteEquipamentosSelecionado(cliente);
-    setModalEquipamentosOpen(true);
   }
 
   /** Abre dialog para criar novo cliente. Reseta form e tipo de pessoa */
@@ -689,16 +683,16 @@ export default function Clientes() {
                 </div>
 
                 <div className={`grid gap-2 ${resumo?.faturado != null ? "grid-cols-3" : "grid-cols-2"}`}>
-                  <div className="rounded-xl bg-muted p-3">
+                  <div className="flex flex-col justify-between gap-1 rounded-xl bg-muted p-3">
                     <p className="text-xs text-muted-foreground">OS abertas</p>
                     <p className="text-lg font-extrabold tabular-nums">{resumo?.osAbertas ?? clienteAberto.os_abertas ?? "—"}</p>
                   </div>
-                  <div className="rounded-xl bg-muted p-3">
-                    <p className="text-xs text-muted-foreground">No ano</p>
+                  <div className="flex flex-col justify-between gap-1 rounded-xl bg-muted p-3">
+                    <p className="text-xs text-muted-foreground" title="OS que entraram neste ano, abertas ou já fechadas">Serviços no ano</p>
                     <p className="text-lg font-extrabold tabular-nums">{resumo?.noAno ?? "—"}</p>
                   </div>
                   {resumo?.faturado != null && (
-                    <div className="rounded-xl bg-muted p-3" title="Entregues no ano: valor final ou orçado. Só para quem vê Finanças.">
+                    <div className="flex flex-col justify-between gap-1 rounded-xl bg-muted p-3" title="Entregues no ano: valor final ou orçado. Só para quem vê Finanças.">
                       <p className="text-xs text-muted-foreground">Faturado</p>
                       <p className="whitespace-nowrap text-lg font-extrabold tabular-nums">{moedaCompacta.format(resumo.faturado)}</p>
                     </div>
@@ -709,9 +703,14 @@ export default function Clientes() {
                   <div className="flex items-center justify-between">
                     <h3 className="text-base font-bold">Contatos</h3>
                     {clienteAberto.empresa_id && (
-                      <button type="button" className="text-sm font-semibold text-primary hover:underline" onClick={() => setContatosClienteSelecionado(clienteAberto)}>
-                        + Contato
-                      </button>
+                      <div className="flex items-center gap-4">
+                        <button type="button" className="text-sm font-semibold text-primary hover:underline" onClick={() => setContatosClienteSelecionado(clienteAberto)}>
+                          Gerenciar portal
+                        </button>
+                        <button type="button" className="text-sm font-semibold text-primary hover:underline" onClick={() => setContatosClienteSelecionado(clienteAberto)}>
+                          + Contato
+                        </button>
+                      </div>
                     )}
                   </div>
                   {!clienteAberto.empresa_id ? (
@@ -759,39 +758,39 @@ export default function Clientes() {
                     <p className="py-2 text-sm text-muted-foreground">Nenhum equipamento vinculado</p>
                   ) : (
                     <ul className="divide-y">
-                      {equipamentosCliente.slice(0, LIMITE_EQUIPAMENTOS_EXPANDIDOS).map(eq => (
-                        <li key={eq.id}>
+                      {aparelhosCliente.slice(0, LIMITE_EQUIPAMENTOS_EXPANDIDOS).map(aparelho => (
+                        <li key={aparelho.chave}>
                           <button
                             type="button"
-                            onClick={() => navigate("/equipamentos", { state: { equipamentoId: eq.id } })}
+                            onClick={() => navigate("/equipamentos", { state: { equipamentoId: aparelho.passagens[0].id } })}
                             className="flex w-full items-start justify-between gap-3 py-2.5 text-left hover:text-primary"
                           >
                             <span className="min-w-0">
-                              <span className="block truncate text-sm font-semibold">{eq.marca} {eq.modelo}</span>
-                              <span className="block truncate font-mono text-xs text-muted-foreground">{eq.serial_number}</span>
+                              <span className="block truncate text-sm font-semibold">{aparelho.marca} {aparelho.modelo}</span>
+                              <span className="block truncate text-xs text-muted-foreground">
+                                <span className="font-mono">{aparelho.serial}</span>
+                                {aparelho.passagens.length > 1 && <> · {aparelho.passagens.length} passagens</>}
+                              </span>
                             </span>
-                            <span className="shrink-0 text-xs text-muted-foreground">{STATUS_LABELS[eq.status as StatusEquipamento] ?? eq.status}</span>
+                            <span className="shrink-0 text-xs text-muted-foreground">{STATUS_LABELS[aparelho.statusAtual as StatusEquipamento] ?? aparelho.statusAtual}</span>
                           </button>
                         </li>
                       ))}
                     </ul>
                   )}
-                  {equipamentosCliente.length > LIMITE_EQUIPAMENTOS_EXPANDIDOS && (
-                    <Button variant="ghost" size="sm" className="h-8 px-0 text-xs" onClick={() => abrirModalTodosEquipamentos(clienteAberto)}>
-                      Mostrar mais ({equipamentosCliente.length - LIMITE_EQUIPAMENTOS_EXPANDIDOS})
+                  {aparelhosCliente.length > 0 && (
+                    <Button
+                      variant="ghost"
+                      className="mt-2 h-11 w-full bg-acc-soft font-semibold text-acc-soft-foreground hover:bg-acc-soft/70 hover:text-acc-soft-foreground"
+                      onClick={() => navigate(`/clientes/${clienteAberto.id}/equipamentos`)}
+                    >
+                      {aparelhosCliente.length > LIMITE_EQUIPAMENTOS_EXPANDIDOS
+                        ? `Ver todos os ${aparelhosCliente.length} equipamentos (+${aparelhosCliente.length - LIMITE_EQUIPAMENTOS_EXPANDIDOS})`
+                        : "Ver histórico de equipamentos"}
                     </Button>
                   )}
                 </section>
 
-                {clienteAberto.empresa_id && (
-                  <Button
-                    variant="ghost"
-                    className="h-11 w-full bg-acc-soft font-semibold text-acc-soft-foreground hover:bg-acc-soft/70 hover:text-acc-soft-foreground"
-                    onClick={() => setContatosClienteSelecionado(clienteAberto)}
-                  >
-                    Gerenciar acesso ao portal
-                  </Button>
-                )}
               </>
             )}
           </CardContent>
@@ -827,13 +826,6 @@ export default function Clientes() {
         deletando={deletando}
         salvando={salvando}
         onDelete={onDelete}
-      />
-
-      <ClientesEquipamentosModal
-        open={modalEquipamentosOpen}
-        onOpenChange={setModalEquipamentosOpen}
-        cliente={clienteEquipamentosSelecionado}
-        equipamentos={equipamentosCliente}
       />
 
       <ClientesContatosModal

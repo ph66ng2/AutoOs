@@ -58,6 +58,7 @@ const AVISO_RAPIDO_OPCOES = {
 const Dashboard = lazy(() => import("@/pages/Dashboard"));
 const Equipamentos = lazy(() => import("@/pages/Equipamentos"));
 const Clientes = lazy(() => import("@/pages/Clientes"));
+const ClienteEquipamentos = lazy(() => import("@/pages/ClienteEquipamentos"));
 const Insumos = lazy(() => import("@/pages/Insumos"));
 const Servicos = lazy(() => import("@/pages/Servicos"));
 const Gastos = lazy(() => import("@/pages/Gastos"));
@@ -131,6 +132,7 @@ function AppContent() {
             {/* Mesmo elemento com e sem :id: filtros e página da lista sobrevivem aos Detalhes da OS. */}
             <Route path="/equipamentos/:id?" element={<Equipamentos />} />
             <Route path="/clientes" element={<Clientes />} />
+            <Route path="/clientes/:id/equipamentos" element={<ClienteEquipamentos />} />
             <Route path="/insumos" element={<Insumos />} />
             <Route path="/servicos" element={<Servicos />} />
             <Route path="/poc" element={<PowerSyncPOC />} />

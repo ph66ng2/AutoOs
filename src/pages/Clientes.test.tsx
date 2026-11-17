@@ -169,7 +169,7 @@ describe("Clientes: ordem de compra e preferências", () => {
     renderPagina();
     fireEvent.click(screen.getByRole("button", { name: "Ana Souza" }));
     expect(await screen.findByText("Nome antigo")).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: /gerenciar acesso ao portal/i }));
+    fireEvent.click(screen.getByRole("button", { name: /gerenciar portal/i }));
     dbMocks.listarClienteContatos.mockResolvedValueOnce([
       { id: 1, empresa_id: 3, cliente_id: 7, nome: "Nome novo", ativo: true },
     ]);
