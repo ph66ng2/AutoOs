@@ -92,6 +92,27 @@ Cada linha é algo que o dono pediu ou aprovou. Onde diz **rejeitado**, foi test
     - **O que abre e fecha:** o cabeçalho inteiro é um botão só, e o nome lido é o texto visível.
 22. **Alto contraste: decisão pendente.** Se entrar, é um terceiro tema (texto ≥7:1), com ticket próprio. Não faz parte do redesign atual.
 
+### Vendas de insumos
+
+23. **Orçamentos de insumos (OI-n) viram "Vendas de insumos" (`/vendas`)**, item próprio no menu em Atendimento, abaixo de Clientes. O nome fica; a sigla OI-n também. Desenho em `referencia/telas/10-vendas/`.
+    - **Ação principal por situação:**
+      - Rascunho → Enviar;
+      - Enviado → **Aprovar** (não "Abrir");
+      - Rascunho ou Enviado vencido → **Renovar validade**, que abre a edição, porque aprovar fica bloqueado;
+      - Aprovado → Marcar entregue;
+      - Entregue, Reprovado e Cancelado → Ver.
+    - **Validade só para Rascunho e Enviado.** Nas outras situações, a coluna mostra a data do que aconteceu ("aprovado 12/11 · Pix", "entregue 10/11").
+    - **Orçamento, criar e editar são páginas** (`/vendas/:id`, `/vendas/novo`, `/vendas/:id/editar`), não janela.
+    - **Falta de estoque aparece antes de aprovar:** na tabela ("6 · falta 4") e num aviso com "Dar entrada no estoque" e "Editar quantidades". A recusa do backend usa o texto dele.
+    - **Não desenhe como se existisse:**
+      - quem fez cada passo e por qual canal (só existem as datas; quem criou existe em `criado_por_profile_id`);
+      - pagamento recebido;
+      - versões do orçamento.
+    - **Pendente do dono do produto:**
+      - quem não tem "Ações financeiras" vê a prévia do PDF mas não salva, porque salvar marca Enviado;
+      - a data mostrada para Cancelado;
+      - "Dar entrada no estoque" abrir a movimentação já com o item e a quantidade que falta.
+
 ### Produto
 
 18. **Função igual.** O redesign muda a aparência e, às vezes, o caminho (itens 8 a 10). Não muda regra, permissão, auditoria, PIN, confirmação ou texto de ação.
