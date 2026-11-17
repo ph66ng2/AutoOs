@@ -5,12 +5,15 @@ import {
   ChevronRight,
   FileText,
   Loader2,
-  PackageSearch,
+  Box,
   Plus,
   RefreshCw,
   Search,
+  Tag,
   UserSearch,
 } from "lucide-react";
+import { useFilaBalcao } from "@/hooks/useFilaBalcao";
+import { cn } from "@/lib/utils";
 import { useLocation } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -117,9 +120,11 @@ export default function Balcao() {
   const [counterEquipment, setCounterEquipment] = useState<Equipamento | null>(
     null,
   );
+  const [termoBusca, setTermoBusca] = useState("");
   useEffect(() => {
     setView("home");
     setCounterEquipment(null);
+    setTermoBusca("");
   }, [resetKey]);
   useEffect(() => {
     if (location.pathname === "/balcao/painel") setView("panel");
@@ -143,80 +148,199 @@ export default function Balcao() {
     );
   if (view === "entry") return <QuickEntry onBack={() => setView("home")} />;
   if (view === "equipment")
-    return <EquipmentSearch onBack={() => setView("home")} />;
+    return <EquipmentSearch termoInicial={termoBusca} onBack={() => { setTermoBusca(""); setView("home"); }} />;
   if (view === "client") return <ClientSearch onBack={() => setView("home")} />;
   if (view === "panel")
     return <OperationalPanel onBack={() => setView("home")} />;
   if (view === "stock") return <CounterStock onBack={() => setView("home")} />;
   return (
-    <div className="mx-auto max-w-6xl py-8">
-      <h1 className="text-3xl font-bold">Atendimento de balcão</h1>
-      <p className="mt-2 text-lg text-muted-foreground">
-        Escolha a próxima ação.
-      </p>
-      <div className="mt-10 grid gap-6 md:grid-cols-2 xl:grid-cols-4">
-        <Action
-          icon={<Plus className="h-14 w-14" />}
-          title="Nova entrada"
-          description="Registrar cliente e equipamento"
-          onClick={() => setView("entry")}
-        />
-        <Action
-          icon={<PackageSearch className="h-14 w-14" />}
-          title="Buscar equipamento"
-          description="Localizar atendimento ou retirada"
-          onClick={() => setView("equipment")}
-        />
-        <Action
-          icon={<UserSearch className="h-14 w-14" />}
-          title="Buscar cliente"
-          description="Ver dados e ciclos vinculados"
-          onClick={() => setView("client")}
-        />
-        <Action
-          icon={<PackageSearch className="h-14 w-14" />}
-          title="Consultar estoque"
-          description="Ver insumos, saldo e preço"
-          onClick={() => setView("stock")}
-        />
-      </div>
-      <Button
-        className="mt-8 min-h-12 text-base"
-        variant="outline"
-        onClick={() => setView("panel")}
-      >
-        Abrir painel operacional
-      </Button>
+    <BalcaoInicio
+      onReceber={() => setView("entry")}
+      onEntregar={() => setView("equipment")}
+      onConsultarCliente={() => setView("client")}
+      onPrecoEstoque={() => setView("stock")}
+      onPainel={() => setView("panel")}
+      onBuscar={(termo) => {
+        setTermoBusca(termo);
+        setView("equipment");
+      }}
+      onAbrirEquipamento={setCounterEquipment}
+    />
+  );
+}
+
+/** Início do Balcão: busca grande, quatro blocos de toque e a fila do dia. */
+function BalcaoInicio({
+  onReceber,
+  onEntregar,
+  onConsultarCliente,
+  onPrecoEstoque,
+  onPainel,
+  onBuscar,
+  onAbrirEquipamento,
+}: {
+  onReceber: () => void;
+  onEntregar: () => void;
+  onConsultarCliente: () => void;
+  onPrecoEstoque: () => void;
+  onPainel: () => void;
+  onBuscar: (termo: string) => void;
+  onAbrirEquipamento: (equipamento: Equipamento) => void;
+}) {
+  const fila = useFilaBalcao();
+  return (
+    <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_360px]">
+      <section className="min-w-0 space-y-4">
+        <h1 className="text-2xl font-bold tracking-tight">Quem está no balcão?</h1>
+        <div className="relative">
+          <Search className="absolute left-5 top-1/2 h-5 w-5 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
+          <Input
+            aria-label="Buscar equipamento ou cliente"
+            className="h-16 rounded-xl border-2 border-primary/70 bg-card pl-14 text-lg"
+            placeholder="Série, nome do cliente, CPF/CNPJ ou telefone"
+            onChange={(e) => onBuscar(e.target.value)}
+          />
+        </div>
+        <div className="grid gap-4 sm:grid-cols-2">
+          <BlocoBalcao destaque icon={<Plus className="h-7 w-7" />} title="Receber equipamento" description="Nova entrada em 4 passos" onClick={onReceber} />
+          <BlocoBalcao
+            icon={<Box className="h-7 w-7" />}
+            title="Entregar equipamento"
+            description="Retirada pelo cliente"
+            contador={fila.totalProntos > 0 ? fila.totalProntos : undefined}
+            onClick={onEntregar}
+          />
+          <BlocoBalcao icon={<UserSearch className="h-7 w-7" />} title="Consultar cliente" description="Dados, contatos e histórico" onClick={onConsultarCliente} />
+          <BlocoBalcao icon={<Tag className="h-7 w-7" />} title="Preço e estoque" description="Insumos, saldo e valor de venda" onClick={onPrecoEstoque} />
+        </div>
+      </section>
+
+      <aside className="space-y-4" aria-label="Fila do dia">
+        <FilaCard titulo="Prontos para retirada" contagem={fila.loading ? undefined : fila.totalProntos}>
+          {fila.loading ? (
+            <p className="px-5 py-4 text-sm text-muted-foreground">Carregando...</p>
+          ) : fila.error ? (
+            <p className="px-5 py-4 text-sm text-muted-foreground">Não foi possível carregar a fila.</p>
+          ) : fila.prontos.length === 0 ? (
+            <p className="px-5 py-4 text-sm text-muted-foreground">Nenhum equipamento pronto.</p>
+          ) : (
+            <ul className="divide-y">
+              {fila.prontos.slice(0, 4).map((eq) => (
+                <li key={eq.id} className="flex items-center gap-3 px-5 py-3.5">
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate font-semibold">{eq.cliente_nome || "Cliente não informado"}</p>
+                    <p className="truncate text-xs text-muted-foreground">
+                      {equipmentTitle(eq)} · <span className="font-mono">{eq.serial_number}</span>
+                    </p>
+                  </div>
+                  <Button
+                    variant="ghost"
+                    className="min-h-12 shrink-0 bg-acc-soft px-4 font-semibold text-acc-soft-foreground hover:bg-acc-soft/70 hover:text-acc-soft-foreground"
+                    onClick={() => onAbrirEquipamento(eq)}
+                  >
+                    Registrar Entrega
+                  </Button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </FilaCard>
+        <FilaCard
+          titulo="Chegaram hoje"
+          contagem={fila.loading ? undefined : fila.chegaramHojeMais ? `${fila.chegaramHoje.length}+` : fila.chegaramHoje.length}
+        >
+          {fila.loading ? null : fila.chegaramHoje.length === 0 ? (
+            <p className="px-5 py-4 text-sm text-muted-foreground">Nenhuma entrada hoje.</p>
+          ) : (
+            <ul className="divide-y">
+              {fila.chegaramHoje.map((eq) => (
+                <li key={eq.id}>
+                  <button
+                    type="button"
+                    className="flex min-h-14 w-full items-start gap-3 px-5 py-3 text-left transition-colors duration-rapida hover:bg-muted/60"
+                    onClick={() => onAbrirEquipamento(eq)}
+                  >
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate text-sm font-semibold">{eq.cliente_nome || "Cliente não informado"}</span>
+                      <span className="block truncate text-xs text-muted-foreground">
+                        {equipmentTitle(eq)} · {(STATUS_LABELS[eq.status as keyof typeof STATUS_LABELS] || eq.status).toLowerCase()}
+                      </span>
+                    </span>
+                    <span className="shrink-0 text-xs tabular-nums text-muted-foreground">{horaDaEntrada(eq.criado_em)}</span>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </FilaCard>
+        <Button variant="ghost" className="min-h-12 w-full text-base text-muted-foreground" onClick={onPainel}>
+          Painel operacional
+        </Button>
+      </aside>
     </div>
   );
 }
 
-function Action({
+/** criado_em vem do PostgreSQL como texto; só a hora, no fuso de Salvador. */
+function horaDaEntrada(criadoEm?: string): string {
+  if (!criadoEm) return "";
+  const instante = new Date(criadoEm.replace(" ", "T").replace(/([+-]\d{2})$/, "$1:00"));
+  return Number.isNaN(instante.getTime())
+    ? ""
+    : instante.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit", timeZone: "America/Bahia" });
+}
+
+function FilaCard({ titulo, contagem, children }: { titulo: string; contagem?: number | string; children: React.ReactNode }) {
+  return (
+    <section className="overflow-hidden rounded-2xl border bg-card">
+      <header className="flex items-center justify-between border-b px-5 py-4">
+        <h2 className="font-bold">{titulo}</h2>
+        {contagem !== undefined && <span className="text-sm font-semibold tabular-nums text-muted-foreground">{contagem}</span>}
+      </header>
+      {children}
+    </section>
+  );
+}
+
+function BlocoBalcao({
   icon,
   title,
   description,
+  destaque = false,
+  contador,
   onClick,
 }: {
   icon: React.ReactNode;
   title: string;
   description: string;
+  destaque?: boolean;
+  contador?: number;
   onClick: () => void;
 }) {
   return (
-    <Button
+    <button
       type="button"
-      variant="outline"
-      className="h-64 flex-col gap-5 rounded-2xl border-2 text-xl hover:border-primary hover:bg-acc-soft"
       onClick={onClick}
+      className={cn(
+        "relative flex min-h-40 flex-col justify-between gap-6 rounded-2xl border p-6 text-left transition-colors duration-rapida focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
+        destaque ? "border-primary bg-primary text-primary-foreground hover:bg-primary/90" : "bg-card hover:border-ctl",
+      )}
     >
-      {icon}
-      <span>{title}</span>
-      <span className="text-base font-normal text-muted-foreground">
-        {description}
+      <span aria-hidden="true">{icon}</span>
+      <span>
+        <span className="block text-xl font-bold">{title}</span>
+        <span className={cn("mt-1 block text-sm", destaque ? "text-primary-foreground/80" : "text-muted-foreground")}>{description}</span>
       </span>
-    </Button>
+      {contador !== undefined && (
+        <span className="absolute right-6 top-6 inline-flex h-8 min-w-8 items-center justify-center rounded-full bg-acc-soft px-2 text-sm font-bold tabular-nums text-acc-soft-foreground">
+          {contador}
+          <span className="sr-only"> prontos para retirada</span>
+        </span>
+      )}
+    </button>
   );
 }
+
 function Back({ onBack }: { onBack: () => void }) {
   return (
     <Button
@@ -1135,8 +1259,8 @@ function labelFor(key: string) {
   return key.replace(/_/g, " ");
 }
 
-function EquipmentSearch({ onBack }: { onBack: () => void }) {
-  const [term, setTerm] = useState("");
+function EquipmentSearch({ onBack, termoInicial = "" }: { onBack: () => void; termoInicial?: string }) {
+  const [term, setTerm] = useState(termoInicial);
   const [rows, setRows] = useState<Equipamento[]>([]);
   const [selected, setSelected] = useState<Equipamento | null>(null);
   const [loading, setLoading] = useState(false);
