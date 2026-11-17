@@ -148,6 +148,10 @@ export function OrcamentoInsumosDialog({
   const [erroAprovacao, setErroAprovacao] = useState<string | null>(null);
   const [confirmando, setConfirmando] = useState<AcaoConfirmada | null>(null);
   const acaoInicialFeita = useRef(false);
+  /** Número desta abertura; a carga só libera a ação inicial se ainda for a abertura atual. */
+  const aberturaAtual = useRef(0);
+  /** Abertura cuja carga terminou com sucesso (o `detalhe` retido de uma abertura anterior não conta). */
+  const [aberturaCarregada, setAberturaCarregada] = useState<number | null>(null);
 
   const aplicarDetalhe = useCallback((novo: OrcamentoInsumosDetalhe) => {
     setDetalhe(novo);
@@ -163,6 +167,7 @@ export function OrcamentoInsumosDialog({
   useEffect(() => {
     if (!open) return;
     acaoInicialFeita.current = false;
+    const abertura = ++aberturaAtual.current;
     let ativo = true;
     setErro(null);
     setErroAprovacao(null);
@@ -190,6 +195,7 @@ export function OrcamentoInsumosDialog({
         if (!ativo) return;
         setCliente(clienteCarregado);
         aplicarDetalhe(carregado);
+        setAberturaCarregada(abertura);
       })
       .catch((causa) => {
         if (ativo) setErro(String(causa));
@@ -231,9 +237,19 @@ export function OrcamentoInsumosDialog({
     return null;
   })();
 
-  // A ação pedida na lista roda uma vez, quando o orçamento certo terminou de carregar.
+  // A ação pedida na lista roda uma vez, quando a carga desta abertura terminou com sucesso.
+  // Não basta o `detalhe` ter o mesmo id: ao reabrir, ele ainda é o da abertura anterior (talvez
+  // com edição não salva) até a carga nova chegar.
   useEffect(() => {
-    if (!open || !acaoInicial || acaoInicialFeita.current || carregando || !detalhe || detalhe.id !== orcamentoId) return;
+    if (
+      !open
+      || !acaoInicial
+      || acaoInicialFeita.current
+      || carregando
+      || aberturaCarregada !== aberturaAtual.current
+      || !detalhe
+      || detalhe.id !== orcamentoId
+    ) return;
     acaoInicialFeita.current = true;
     switch (acaoInicial) {
       case "pdf":
@@ -270,7 +286,7 @@ export function OrcamentoInsumosDialog({
     }
     // As funções chamadas leem o estado atual; rodar de novo a cada render repetiria a ação.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, acaoInicial, carregando, detalhe, orcamentoId]);
+  }, [open, acaoInicial, carregando, aberturaCarregada, detalhe, orcamentoId]);
 
   function editar<T>(definir: (valor: T) => void) {
     return (valor: T) => {
