@@ -5,7 +5,7 @@
  * O total mostrado aqui é só uma prévia. O backend recalcula tudo, confere o estoque e baixa os
  * itens na aprovação. Toda ação de escrita pede a permissão financeira (PIN, conforme o perfil).
  */
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Ban,
   CheckCircle2,
@@ -71,7 +71,24 @@ interface OrcamentoInsumosDialogProps {
   orcamentoId?: number | null;
   /** Chamado depois de qualquer alteração gravada, para a lista recarregar. */
   onChanged?: () => void;
+  /**
+   * Ação escolhida na lista (ação principal ou ⋯). Quando o orçamento termina de carregar,
+   * a janela chama a mesma função do botão de dentro, com o mesmo PIN e a mesma confirmação.
+   */
+  acaoInicial?: AcaoInicialOrcamentoInsumos | null;
 }
+
+export type AcaoInicialOrcamentoInsumos =
+  | "pdf"
+  | "email"
+  | "whatsapp"
+  | "aprovar"
+  | "renovar"
+  | "editar"
+  | "reprovar"
+  | "cancelar"
+  | "entregar"
+  | "excluir";
 
 type AcaoConfirmada = "reprovar" | "cancelar" | "entregar" | "excluir";
 
@@ -110,6 +127,7 @@ export function OrcamentoInsumosDialog({
   onOpenChange,
   orcamentoId = null,
   onChanged,
+  acaoInicial = null,
 }: OrcamentoInsumosDialogProps) {
   const { success, warning, error: showError } = useNotification();
   const { ensureSensitiveAccess } = useSensitiveAccess();
@@ -129,6 +147,7 @@ export function OrcamentoInsumosDialog({
   const [pagamentoAberto, setPagamentoAberto] = useState(false);
   const [erroAprovacao, setErroAprovacao] = useState<string | null>(null);
   const [confirmando, setConfirmando] = useState<AcaoConfirmada | null>(null);
+  const acaoInicialFeita = useRef(false);
 
   const aplicarDetalhe = useCallback((novo: OrcamentoInsumosDetalhe) => {
     setDetalhe(novo);
@@ -143,6 +162,7 @@ export function OrcamentoInsumosDialog({
   // Abre em branco (novo) ou carrega o orçamento e o cliente (existente).
   useEffect(() => {
     if (!open) return;
+    acaoInicialFeita.current = false;
     let ativo = true;
     setErro(null);
     setErroAprovacao(null);
@@ -210,6 +230,47 @@ export function OrcamentoInsumosDialog({
     if (!validade) return "Informe a validade do orçamento.";
     return null;
   })();
+
+  // A ação pedida na lista roda uma vez, quando o orçamento certo terminou de carregar.
+  useEffect(() => {
+    if (!open || !acaoInicial || acaoInicialFeita.current || carregando || !detalhe || detalhe.id !== orcamentoId) return;
+    acaoInicialFeita.current = true;
+    switch (acaoInicial) {
+      case "pdf":
+        void gerarPdf();
+        break;
+      case "email":
+        if (acoes.enviar) void enviar("EMAIL");
+        break;
+      case "whatsapp":
+        if (acoes.enviar) void enviar("WHATSAPP");
+        break;
+      case "aprovar":
+        if (acoes.aprovar) void iniciarAprovacao();
+        break;
+      case "renovar":
+        // Renovar validade é editar a data: o campo já está na janela.
+        window.setTimeout(() => document.getElementById("oi-validade")?.focus(), 0);
+        break;
+      case "editar":
+        // A janela já abre editável.
+        break;
+      case "reprovar":
+        if (acoes.reprovar) setConfirmando("reprovar");
+        break;
+      case "cancelar":
+        if (acoes.cancelar) setConfirmando("cancelar");
+        break;
+      case "entregar":
+        if (acoes.entregar) setConfirmando("entregar");
+        break;
+      case "excluir":
+        if (acoes.excluir) setConfirmando("excluir");
+        break;
+    }
+    // As funções chamadas leem o estado atual; rodar de novo a cada render repetiria a ação.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, acaoInicial, carregando, detalhe, orcamentoId]);
 
   function editar<T>(definir: (valor: T) => void) {
     return (valor: T) => {

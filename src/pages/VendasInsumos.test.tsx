@@ -9,11 +9,17 @@ vi.mock("@/hooks/useResumoEstoque", () => ({
     recarregar: recarregarResumo,
   }),
 }));
-const props = vi.hoisted(() => ({ atual: null as null | { contagemPorStatus?: unknown; onEstoqueAlterado?: () => void } }));
+type PropsLista = { contagemPorStatus?: unknown; onEstoqueAlterado?: () => void; renderCabecalho?: (botao: React.ReactNode) => React.ReactNode };
+const props = vi.hoisted(() => ({ atual: null as null | PropsLista }));
 vi.mock("@/pages/insumos/OrcamentosInsumosTab", () => ({
-  OrcamentosInsumosTab: (p: { contagemPorStatus?: unknown; onEstoqueAlterado?: () => void }) => {
+  OrcamentosInsumosTab: (p: PropsLista) => {
     props.atual = p;
-    return <button onClick={p.onEstoqueAlterado}>aprovar-oi</button>;
+    return (
+      <>
+        {p.renderCabecalho?.(<button>novo-orcamento</button>)}
+        <button onClick={p.onEstoqueAlterado}>aprovar-oi</button>
+      </>
+    );
   },
 }));
 
@@ -24,6 +30,7 @@ describe("Vendas de insumos", () => {
     render(<VendasInsumos />);
     expect(screen.getByRole("heading", { name: "Vendas de insumos" })).toBeInTheDocument();
     expect(screen.getByText("5 orçamentos abertos")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "novo-orcamento" })).toBeInTheDocument();
     expect(props.atual?.contagemPorStatus).toEqual([{ status: "ENVIADO", total: 3 }]);
     await userEvent.setup().click(screen.getByText("aprovar-oi"));
     expect(recarregarResumo).toHaveBeenCalledTimes(1);

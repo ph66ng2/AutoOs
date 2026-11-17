@@ -4,7 +4,7 @@
  * Só apoio: o backend (Rust) recalcula todos os valores e é quem decide o que é permitido.
  * Aqui ficam o cálculo da prévia do total, o saldo, as ações por status e os textos de envio.
  */
-import { todayLocalIsoDate } from "@/lib/date-utils";
+import { parseTimestampPostgres, todayLocalIsoDate } from "@/lib/date-utils";
 import { formatCurrency } from "@/lib/utils";
 import type {
   OrcamentoInsumos,
@@ -272,4 +272,63 @@ export function montarMensagemWhatsappOrcamentoInsumos(orcamento: OrcamentoInsum
     .filter((linha, indice, todas) => !(linha === "" && (indice === 0 || todas[indice - 1] === "")))
     .join("\n")
     .trim();
+}
+
+export type TipoAcaoVenda = "enviar" | "aprovar" | "renovar" | "entregar" | "ver";
+
+/**
+ * Ação principal da linha em Vendas de insumos (decisão 23 do redesign).
+ * Vencido não pode ser aprovado: a ação vira "Renovar validade", que abre a edição.
+ */
+export function proximaAcaoVenda(
+  status: StatusOrcamentoInsumos,
+  vencido: boolean,
+): { rotulo: string; tipo: TipoAcaoVenda } {
+  if ((status === "RASCUNHO" || status === "ENVIADO") && vencido) return { rotulo: "Renovar validade", tipo: "renovar" };
+  if (status === "RASCUNHO") return { rotulo: "Enviar", tipo: "enviar" };
+  if (status === "ENVIADO") return { rotulo: "Aprovar", tipo: "aprovar" };
+  if (status === "APROVADO") return { rotulo: "Marcar entregue", tipo: "entregar" };
+  return { rotulo: "Ver", tipo: "ver" };
+}
+
+/** "20/11" de uma data AAAA-MM-DD ou de um instante do PostgreSQL, no fuso de Salvador. */
+function diaMesVenda(valor?: string | null): string {
+  if (!valor) return "";
+  const soData = valor.trim().match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (soData) return `${soData[3]}/${soData[2]}`;
+  const instante = parseTimestampPostgres(valor);
+  if (Number.isNaN(instante.getTime())) return "";
+  return instante.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit", timeZone: "America/Bahia" });
+}
+
+function comData(rotulo: string, valor?: string | null): string {
+  const data = diaMesVenda(valor);
+  return data ? `${rotulo} ${data}` : rotulo;
+}
+
+/**
+ * Coluna "Prazo ou data": a validade só importa em Rascunho e Enviado; nas outras
+ * situações mostra quando o orçamento chegou onde está. Cancelado não tem data própria
+ * no banco, então mostra quando foi criado.
+ */
+export function prazoOuData(
+  o: Pick<OrcamentoInsumos, "status" | "validade" | "decidido_em" | "entregue_em" | "criado_em" | "forma_pagamento_codigo">,
+  hoje = todayLocalIsoDate(),
+): string {
+  switch (o.status) {
+    case "RASCUNHO":
+    case "ENVIADO":
+      if (!o.validade) return "sem validade";
+      return o.validade < hoje ? comData("venceu", o.validade) : comData("vence", o.validade);
+    case "APROVADO": {
+      const texto = comData("aprovado", o.decidido_em);
+      return o.forma_pagamento_codigo ? `${texto} · ${formaPagamentoRotulo(o.forma_pagamento_codigo)}` : texto;
+    }
+    case "ENTREGUE":
+      return comData("entregue", o.entregue_em);
+    case "REPROVADO":
+      return comData("reprovado", o.decidido_em);
+    default:
+      return comData("criado", o.criado_em);
+  }
 }

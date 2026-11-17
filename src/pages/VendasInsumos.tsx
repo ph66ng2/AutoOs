@@ -10,13 +10,24 @@ import { OrcamentosInsumosTab } from "@/pages/insumos/OrcamentosInsumosTab";
 export default function VendasInsumos() {
   const { resumo, recarregar } = useResumoEstoque();
   const abertos = resumo?.orcamentosAbertos;
+  const nenhum = resumo != null && resumo.orcamentosPorStatus.length === 0;
+  const descricao = nenhum
+    ? "Nenhum orçamento ainda"
+    : abertos != null
+      ? `${abertos} ${abertos === 1 ? "orçamento aberto" : "orçamentos abertos"}`
+      : undefined;
   return (
-    <div className="space-y-5">
-      <PageHeader
-        titulo="Vendas de insumos"
-        descricao={abertos != null ? `${abertos} ${abertos === 1 ? "orçamento aberto" : "orçamentos abertos"}` : undefined}
-      />
-      <OrcamentosInsumosTab contagemPorStatus={resumo?.orcamentosPorStatus} onEstoqueAlterado={() => void recarregar()} />
-    </div>
+    <OrcamentosInsumosTab
+      contagemPorStatus={resumo?.orcamentosPorStatus}
+      onEstoqueAlterado={() => void recarregar()}
+      renderCabecalho={(botaoNovo) => (
+        <PageHeader
+          titulo="Vendas de insumos"
+          descricao={descricao}
+        >
+          {botaoNovo}
+        </PageHeader>
+      )}
+    />
   );
 }
