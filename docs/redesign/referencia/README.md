@@ -238,6 +238,14 @@ Tema escuro: [02-balcao-nova-entrada-escuro.webp](telas/05-balcao/02-balcao-nova
 
 Tema escuro: [03-modais-balcao-escuro.webp](telas/05-balcao/03-modais-balcao-escuro.webp)
 
+### Entregar ao cliente
+
+O bloco "Entregar equipamento" vira "Entregar ao cliente": equipamentos prontos e vendas de insumos aprovadas na mesma fila, com etiqueta Equipamento ou Insumos. Entregar uma venda chama o mesmo "marcar entregue" de Vendas de insumos, com o PIN e a permissão de hoje.
+
+![entregar ao cliente, tema claro](telas/05-balcao/04-entregar-ao-cliente-claro.webp)
+
+Tema escuro: [04-entregar-ao-cliente-escuro.webp](telas/05-balcao/04-entregar-ao-cliente-escuro.webp)
+
 ## Estoque e serviços
 
 ### Insumos estoque
