@@ -1,7 +1,7 @@
 import { useEffect, useRef } from "react";
 import { ChevronDown } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { FAMILIA_COR_CHEIA, statusFamilia } from "@/lib/status-familia";
+import { FAMILIA_COR_CHEIA, statusFamilia, type StatusFamilia } from "@/lib/status-familia";
 import { Select, SelectContent, SelectItem, SelectTrigger } from "@/components/ui/select";
 
 export interface OpcaoFiltroStatus {
@@ -9,12 +9,14 @@ export interface OpcaoFiltroStatus {
   label: string;
   /** Nome completo, quando `label` é abreviado. */
   titulo?: string;
+  /** Cor do ponto, quando o status não é de equipamento (ex.: orçamento de insumos). */
+  familia?: StatusFamilia;
 }
 
 const TODOS = "TODOS";
 
-function Ponto({ status }: { status: string }) {
-  return <span aria-hidden="true" className={cn("h-1.5 w-1.5 shrink-0 rounded-full", FAMILIA_COR_CHEIA[statusFamilia(status)])} />;
+function Ponto({ status, familia }: { status: string; familia?: StatusFamilia }) {
+  return <span aria-hidden="true" className={cn("h-1.5 w-1.5 shrink-0 rounded-full", FAMILIA_COR_CHEIA[familia ?? statusFamilia(status)])} />;
 }
 
 /**
@@ -71,7 +73,7 @@ export function FiltroDeStatus({
                   : "font-semibold text-muted-foreground hover:bg-card/50 hover:text-foreground",
               )}
             >
-              {opcao.value !== TODOS && <Ponto status={opcao.value} />}
+              {opcao.value !== TODOS && <Ponto status={opcao.value} familia={opcao.familia} />}
               {opcao.label}
               {ligado && contador}
             </button>
@@ -93,7 +95,7 @@ export function FiltroDeStatus({
             >
               {outroLigado ? (
                 <span className="inline-flex items-center gap-1.5">
-                  <Ponto status={outroLigado.value} />
+                  <Ponto status={outroLigado.value} familia={outroLigado.familia} />
                   {outroLigado.label}
                   {contador}
                 </span>
@@ -106,7 +108,7 @@ export function FiltroDeStatus({
               {outros.map((opcao) => (
                 <SelectItem key={opcao.value} value={opcao.value} className="text-[13px]">
                   <span className="inline-flex items-center gap-2">
-                    <Ponto status={opcao.value} />
+                    <Ponto status={opcao.value} familia={opcao.familia} />
                     {opcao.label}
                   </span>
                 </SelectItem>
