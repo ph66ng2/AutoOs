@@ -42,6 +42,30 @@ export const STATUS_ORCAMENTO_INSUMOS_COR: Record<StatusOrcamentoInsumos, string
   ENTREGUE: "bg-status-neutral-bg text-status-neutral border-status-neutral/30",
 };
 
+/**
+ * Barra de etapas da lista de vendas, no mesmo desenho da lista de equipamentos:
+ * Rascunho → Enviado → Aprovado → Entregue. Reprovado para onde aconteceu (no envio);
+ * Cancelado não mostra avanço. Vencido pinta a barra de `bad` sem mudar a etapa.
+ */
+export const TOTAL_ETAPAS_VENDA = 4;
+
+const ETAPA_VENDA: Record<StatusOrcamentoInsumos, number> = {
+  RASCUNHO: 1,
+  ENVIADO: 2,
+  APROVADO: 3,
+  ENTREGUE: 4,
+  REPROVADO: 2,
+  CANCELADO: 0,
+};
+
+export function etapaVenda(status: StatusOrcamentoInsumos): number {
+  return ETAPA_VENDA[status] ?? 0;
+}
+
+export function familiaVenda(status: StatusOrcamentoInsumos, vencido: boolean): StatusFamilia {
+  return vencido ? "bad" : STATUS_ORCAMENTO_INSUMOS_FAMILIA[status] ?? "neutral";
+}
+
 /** Categorias que podem entrar num orçamento de insumos: tudo do estoque, menos impressoras. */
 export function categoriaOrcavel(categoria: string | undefined | null): boolean {
   return (categoria ?? "").trim().toUpperCase() !== "IMPRESSORA";

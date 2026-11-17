@@ -89,7 +89,10 @@ describe("OrcamentosInsumosTab", () => {
     expect(within(primeira).getByText("2 itens")).toBeInTheDocument();
     expect(within(primeira).getByText(/R\$\s*150,00/)).toBeInTheDocument();
     expect(within(primeira).getByText("20/10/2026")).toBeInTheDocument();
-    expect(within(primeira).getByText("Aprovado").className).toMatch(/status-ok/);
+    expect(within(primeira).getByText("Aprovado")).toBeInTheDocument();
+    // A cor do status fica na barra de etapas, como na lista de equipamentos.
+    const barra = within(primeira).getByRole("img", { name: "Etapa 3 de 4" });
+    expect(barra.firstElementChild?.className).toMatch(/bg-status-ok/);
 
     const segunda = screen.getByRole("row", { name: /abrir orçamento OI-1/i });
     expect(within(segunda).getByText("1 item")).toBeInTheDocument();
