@@ -4,6 +4,7 @@
  * ╠══════════════════════════════════════════════════════════════╣
  * ║  Componente de layout que envolve todas as páginas.          ║
  * ║  Sidebar com navegação: Dashboard, Equipamentos, Clientes,  ║
+ * ║  Vendas de insumos,                                         ║
  * ║  Insumos/Peças. Suporta collapse (16px / 60px).            ║
  * ║  Usa React Router <Outlet /> para renderizar a página ativa.║
  * ║                                                              ║
@@ -21,6 +22,7 @@ import {
   Shield,
   Wrench,
   Users,
+  ShoppingBag,
   Menu,
   X,
   Lock,
@@ -68,6 +70,7 @@ const navGroups: { titulo?: string; itens: NavItem[] }[] = [
     itens: [
       { label: "Equipamentos", path: "/equipamentos", icon: Printer },
       { label: "Clientes", path: "/clientes", icon: Users },
+      { label: "Vendas de insumos", path: "/vendas", icon: ShoppingBag },
     ],
   },
   {

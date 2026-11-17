@@ -60,6 +60,7 @@ const Equipamentos = lazy(() => import("@/pages/Equipamentos"));
 const Clientes = lazy(() => import("@/pages/Clientes"));
 const ClienteEquipamentos = lazy(() => import("@/pages/ClienteEquipamentos"));
 const Insumos = lazy(() => import("@/pages/Insumos"));
+const VendasInsumos = lazy(() => import("@/pages/VendasInsumos"));
 const Servicos = lazy(() => import("@/pages/Servicos"));
 const Gastos = lazy(() => import("@/pages/Gastos"));
 const Configuracoes = lazy(() => import("@/pages/Configuracoes"));
@@ -134,6 +135,7 @@ function AppContent() {
             <Route path="/clientes" element={<Clientes />} />
             <Route path="/clientes/:id/equipamentos" element={<ClienteEquipamentos />} />
             <Route path="/insumos" element={<Insumos />} />
+            <Route path="/vendas" element={<VendasInsumos />} />
             <Route path="/servicos" element={<Servicos />} />
             <Route path="/poc" element={<PowerSyncPOC />} />
             <Route

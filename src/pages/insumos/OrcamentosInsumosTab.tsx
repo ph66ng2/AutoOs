@@ -1,5 +1,5 @@
 /**
- * Aba "Orçamentos" de Insumos/Peças: lista compacta dos orçamentos de venda avulsa (OI-<n>)
+ * Lista da página Vendas de insumos (/vendas): lista dos orçamentos de venda avulsa (OI-<n>)
  * com busca e filtro de status. O formulário abre em diálogo (OrcamentoInsumosDialog).
  */
 import { useEffect, useState } from "react";

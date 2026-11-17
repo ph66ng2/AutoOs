@@ -51,7 +51,6 @@ import { useInsumos } from "@/hooks/useInsumos";
 import { useNotification } from "@/hooks/useNotification";
 import { useSensitiveAccess } from "@/hooks/useSensitiveAccess";
 import { ErrorAlert } from "@/components/ui/error-alert";
-import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { SENSITIVE_PERMISSIONS, type Produto, type UsoProdutoOrcamentos } from "@/types";
 import { ActionPriorityRow } from "@/components/ui/action-priority-row";
 import { PaginationControls } from "@/components/ui/pagination-controls";
@@ -63,7 +62,6 @@ import {
   InsumosMovimentacaoDialog,
   InsumosProdutoDialog,
 } from "@/pages/insumos/InsumosDialogs";
-import { OrcamentosInsumosTab } from "@/pages/insumos/OrcamentosInsumosTab";
 import { useResumoEstoque } from "@/hooks/useResumoEstoque";
 import { textoUltimaMovimentacao } from "@/lib/estoque-movimentacao";
 
@@ -78,7 +76,6 @@ function NumeroEstoque({ titulo, valor, detalhe, alerta = false }: { titulo: str
 }
 
 export default function Insumos() {
-  const [aba, setAba] = useState<"estoque" | "orcamentos">("estoque");
   const [busca, setBusca] = useState("");
   const [categoriaFiltro, setCategoriaFiltro] = useState("TODOS");
   const [apenasEstoqueBaixo, setApenasEstoqueBaixo] = useState(false);
@@ -321,24 +318,8 @@ export default function Insumos() {
   return (
     <div className="space-y-5">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <div className="flex flex-wrap items-center gap-4">
-          <h1 className="text-[26px] font-bold leading-tight tracking-tight">Insumos e peças</h1>
-          <Tabs value={aba} onValueChange={(valor) => setAba(valor as "estoque" | "orcamentos")}>
-            <TabsList aria-label="Áreas de Insumos/Peças" className="h-11 rounded-xl border bg-card p-1">
-              <TabsTrigger value="estoque" className="h-9 rounded-lg px-4 data-[state=active]:bg-acc-soft data-[state=active]:text-acc-soft-foreground data-[state=active]:shadow-none">
-                Estoque
-              </TabsTrigger>
-              <TabsTrigger value="orcamentos" className="h-9 rounded-lg px-4 data-[state=active]:bg-acc-soft data-[state=active]:text-acc-soft-foreground data-[state=active]:shadow-none">
-                Orçamentos
-                {resumo && resumo.orcamentosAbertos > 0 && (
-                  <span aria-hidden="true">&nbsp;· {resumo.orcamentosAbertos} {resumo.orcamentosAbertos === 1 ? "aberto" : "abertos"}</span>
-                )}
-              </TabsTrigger>
-            </TabsList>
-          </Tabs>
-        </div>
-        {aba === "estoque" && (
-          <div className="flex items-center gap-2">
+        <h1 className="text-[26px] font-bold leading-tight tracking-tight">Insumos e peças</h1>
+        <div className="flex items-center gap-2">
           <div className="relative w-full sm:w-64">
             <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
             <Input
@@ -353,14 +334,8 @@ export default function Insumos() {
             <Plus className="mr-2 h-4 w-4" />
             Novo item
           </Button>
-          </div>
-        )}
+        </div>
       </div>
-
-      {aba === "orcamentos" ? (
-        <OrcamentosInsumosTab contagemPorStatus={resumo?.orcamentosPorStatus} onEstoqueAlterado={() => { void recarregar(); void recarregarResumo(); }} />
-      ) : (
-        <>
 
       {error && (
         <ErrorAlert
@@ -567,8 +542,6 @@ export default function Insumos() {
         uso={usoDeletando}
         carregandoUso={carregandoUso}
       />
-        </>
-      )}
     </div>
   );
 }

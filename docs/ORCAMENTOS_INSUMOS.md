@@ -1,10 +1,10 @@
 # Orçamento de venda avulsa de insumos (OI-<n>)
 
 Orçamento de etiquetas, ribbons, peças e outros itens do estoque para um cliente, **sem equipamento em
-manutenção**. Fica na aba **Orçamentos** de Insumos/Peças (`/insumos`). Não tem item próprio no menu.
+manutenção**. Fica em **Vendas de insumos** (`/vendas`), item próprio do grupo Atendimento no menu. O estoque continua em Insumos e peças (`/insumos`).
 
 Migration `0040_orcamentos_insumos.sql`. Código: `src-tauri/src/commands/orcamentos_insumos.rs`,
-`src/pages/insumos/` (aba, diálogo, editor de itens), `src/lib/orcamento-insumos*.ts`,
+`src/pages/VendasInsumos.tsx` (página), `src/pages/insumos/` (lista, diálogo, editor de itens), `src/lib/orcamento-insumos*.ts`,
 `PdfService.construirOrcamentoInsumos`.
 
 ## Fluxo e status
