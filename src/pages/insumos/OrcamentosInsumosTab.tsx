@@ -7,6 +7,7 @@ import { FileText, Lock, Mail, MessageCircle, Package, Plus, Search } from "luci
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { ActionPriorityRow, type PriorityAction } from "@/components/ui/action-priority-row";
+import { FiltroDeStatus, type OpcaoFiltroStatus } from "@/components/equipamentos/FiltroDeStatus";
 import { Input } from "@/components/ui/input";
 import { PaginationControls } from "@/components/ui/pagination-controls";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -19,6 +20,7 @@ import {
   prazoOuData,
   proximaAcaoVenda,
   STATUS_ORCAMENTO_INSUMOS_COR,
+  STATUS_ORCAMENTO_INSUMOS_FAMILIA,
   STATUS_ORCAMENTO_INSUMOS_LABEL,
   type TipoAcaoVenda,
 } from "@/lib/orcamento-insumos";
@@ -27,7 +29,6 @@ import { formatCurrency } from "@/lib/utils";
 import { OrcamentoInsumosDialog, type AcaoInicialOrcamentoInsumos } from "@/pages/insumos/OrcamentoInsumosDialog";
 import {
   SENSITIVE_PERMISSIONS,
-  STATUS_ORCAMENTO_INSUMOS,
   type OrcamentoInsumos,
   type StatusOrcamentoInsumos,
 } from "@/types";
@@ -43,15 +44,26 @@ interface OrcamentosInsumosTabProps {
 
 const COLUNAS = 7;
 
+function opcaoFiltro(status: StatusOrcamentoInsumos): OpcaoFiltroStatus {
+  return { value: status, label: STATUS_ORCAMENTO_INSUMOS_LABEL[status], familia: STATUS_ORCAMENTO_INSUMOS_FAMILIA[status] };
+}
+
+/** Como em Equipamentos: o fluxo principal na faixa; desvio e encerrado em "Outros". */
+const FILTRO_PRINCIPAIS: OpcaoFiltroStatus[] = [
+  { value: "TODOS", label: "Todos" },
+  ...(["RASCUNHO", "ENVIADO", "APROVADO", "ENTREGUE"] as const).map(opcaoFiltro),
+];
+const FILTRO_OUTROS: OpcaoFiltroStatus[] = (["REPROVADO", "CANCELADO"] as const).map(opcaoFiltro);
+
 function SeloSituacao({ status, vencido }: { status: StatusOrcamentoInsumos; vencido: boolean }) {
   return (
     <div className="flex flex-col items-start gap-1">
-      <span className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-xs font-bold ${STATUS_ORCAMENTO_INSUMOS_COR[status]}`}>
+      <span className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-bold ${STATUS_ORCAMENTO_INSUMOS_COR[status]}`}>
         <span aria-hidden="true" className="h-[7px] w-[7px] rounded-full bg-current" />
         {STATUS_ORCAMENTO_INSUMOS_LABEL[status]}
       </span>
       {vencido && (
-        <span className="inline-flex items-center gap-1.5 rounded-full border border-status-bad/30 bg-status-bad-bg px-2.5 py-0.5 text-xs font-bold text-status-bad">
+        <span className="inline-flex items-center gap-1.5 rounded-full bg-status-bad-bg px-2.5 py-0.5 text-xs font-bold text-status-bad">
           <span aria-hidden="true" className="h-[7px] w-[7px] rounded-full bg-current" />
           Vencido
         </span>
@@ -162,28 +174,14 @@ export function OrcamentosInsumosTab({ onEstoqueAlterado, contagemPorStatus, ren
             </p>
           )}
 
-          <div role="group" aria-label="Filtrar por situação" className="flex flex-wrap gap-2">
-            {(["TODOS", ...STATUS_ORCAMENTO_INSUMOS] as const).map((item) => {
-              const ativo = status === item;
-              const contagem = item === "TODOS"
-                ? totalGeral
-                : contagemPorStatus ? (contagemPorStatus.find((c) => c.status === item)?.total ?? 0) : undefined;
-              return (
-                <button
-                  key={item}
-                  type="button"
-                  aria-pressed={ativo}
-                  onClick={() => setStatus(item)}
-                  className={`inline-flex h-9 items-center gap-2 rounded-full border px-3.5 text-sm font-medium transition-colors duration-rapida ${ativo ? "border-foreground bg-foreground text-background" : "bg-card hover:border-ctl"}`}
-                >
-                  {item === "TODOS" ? "Todos" : STATUS_ORCAMENTO_INSUMOS_LABEL[item]}
-                  {contagem !== undefined && (
-                    <span className={`rounded-full px-1.5 text-xs tabular-nums ${ativo ? "bg-background/20" : "bg-muted text-muted-foreground"}`}>{contagem}</span>
-                  )}
-                </button>
-              );
-            })}
-          </div>
+          <FiltroDeStatus
+            rotulo="Filtrar por situação"
+            principais={FILTRO_PRINCIPAIS}
+            outros={FILTRO_OUTROS}
+            valor={status}
+            total={loading ? undefined : total}
+            onChange={(valor) => setStatus(valor as StatusOrcamentoInsumos | "TODOS")}
+          />
 
           <div className="relative">
             <Search className="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />

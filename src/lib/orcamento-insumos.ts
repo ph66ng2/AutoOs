@@ -5,6 +5,7 @@
  * Aqui ficam o cálculo da prévia do total, o saldo, as ações por status e os textos de envio.
  */
 import { parseTimestampPostgres, todayLocalIsoDate } from "@/lib/date-utils";
+import type { StatusFamilia } from "@/lib/status-familia";
 import { formatCurrency } from "@/lib/utils";
 import type {
   OrcamentoInsumos,
@@ -19,6 +20,16 @@ export const STATUS_ORCAMENTO_INSUMOS_LABEL: Record<StatusOrcamentoInsumos, stri
   REPROVADO: "Reprovado",
   CANCELADO: "Cancelado",
   ENTREGUE: "Entregue",
+};
+
+/** Família de cor de cada situação (mesmas cinco famílias dos equipamentos). */
+export const STATUS_ORCAMENTO_INSUMOS_FAMILIA: Record<StatusOrcamentoInsumos, StatusFamilia> = {
+  RASCUNHO: "neutral",
+  ENVIADO: "wait",
+  APROVADO: "ok",
+  REPROVADO: "bad",
+  CANCELADO: "neutral",
+  ENTREGUE: "neutral",
 };
 
 /** Cores do selo de status (Tailwind), com par claro/escuro. */
