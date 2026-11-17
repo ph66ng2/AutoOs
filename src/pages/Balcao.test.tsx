@@ -170,7 +170,7 @@ describe("Modo Balcão", () => {
     db.listarEquipamentos.mockResolvedValue([{ id: 8, serial_number: "SN-8", marca: "Zebra", modelo: "ZD220", tipo: "Impressora", status: "PRONTO", data_entrada: "2026-09-01", atualizado_em: "token" }]);
     ensureSensitiveAccess.mockResolvedValue(false);
     const user = userEvent.setup(); renderCounter();
-    await user.click(screen.getByRole("button", { name: /entregar equipamento/i }));
+    await user.click(screen.getByRole("button", { name: /entregar ao cliente/i }));
     await user.type(screen.getByRole("textbox"), "SN-8");
     await waitFor(() => expect(screen.getByText(/atendimento #8/i)).toBeInTheDocument());
     await user.click(screen.getByText(/atendimento #8/i));
@@ -183,7 +183,7 @@ describe("Modo Balcão", () => {
   it("bloqueia retirada em transição inválida", async () => {
     db.listarEquipamentos.mockResolvedValue([{ id: 7, serial_number: "SN-7", marca: "Zebra", modelo: "ZD220", tipo: "Impressora", status: "RECEBIDO", data_entrada: "2026-09-01" }]);
     const user = userEvent.setup(); renderCounter();
-    await user.click(screen.getByRole("button", { name: /entregar equipamento/i }));
+    await user.click(screen.getByRole("button", { name: /entregar ao cliente/i }));
     await user.type(screen.getByRole("textbox"), "SN-7");
     await waitFor(() => expect(screen.getByText(/atendimento #7/i)).toBeInTheDocument());
     await user.click(screen.getByText(/atendimento #7/i));

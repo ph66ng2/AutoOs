@@ -36,7 +36,7 @@ describe("Balcão: início e fila do dia", () => {
 
     expect(screen.getByRole("heading", { name: "Quem está no balcão?" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /Marina Alves/ })).toBeInTheDocument();
-    expect(await screen.findByRole("button", { name: /Entregar equipamento.*4/ })).toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: /Entregar ao cliente.*4/ })).toBeInTheDocument();
 
     const chegaram = screen.getByRole("heading", { name: "Chegaram hoje" }).closest("section")!;
     expect(within(chegaram).getByText("Oficina do Porto")).toBeInTheDocument();

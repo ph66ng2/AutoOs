@@ -1,16 +1,18 @@
 import { useCallback, useEffect, useState } from "react";
 import { db } from "@/lib/db";
 import { todayLocalIsoDate } from "@/lib/date-utils";
+import { juntarFilaRetirada, type ItemRetirada } from "@/lib/retirada-balcao";
 import type { Equipamento } from "@/types";
 
 /**
- * Fila do dia do Balcão: o que está pronto para retirada e o que chegou hoje.
+ * Fila do dia do Balcão: o que está pronto para retirada (equipamentos prontos e
+ * vendas de insumos aprovadas) e o que chegou hoje.
  * Usa só a listagem paginada que já existe (10 por página): "chegaram hoje"
  * olha as 10 entradas mais recentes, então `chegaramHojeMais` avisa quando
  * todas eram de hoje e pode haver mais.
  */
 export function useFilaBalcao() {
-  const [prontos, setProntos] = useState<Equipamento[]>([]);
+  const [prontos, setProntos] = useState<ItemRetirada[]>([]);
   const [totalProntos, setTotalProntos] = useState(0);
   const [chegaramHoje, setChegaramHoje] = useState<Equipamento[]>([]);
   const [chegaramHojeMais, setChegaramHojeMais] = useState(false);
@@ -21,15 +23,19 @@ export function useFilaBalcao() {
     setLoading(true);
     setError(null);
     try {
-      const [paginaProntos, recentes] = await Promise.all([
+      const [paginaProntos, recentes, vendasAprovadas] = await Promise.all([
         db.listarEquipamentosPaginados(undefined, "PRONTO", 0),
         db.listarEquipamentosPaginados(undefined, undefined, 0, "CADASTRO_RECENTE"),
+        // Sem vendas (falha ou perfil sem acesso), a fila continua com os equipamentos.
+        Promise.resolve()
+          .then(() => db.listarOrcamentosInsumos({ status: "APROVADO", page: 0 }))
+          .catch(() => null),
       ]);
       const hoje = todayLocalIsoDate();
       const itensRecentes = recentes?.items ?? [];
       const deHoje = itensRecentes.filter((eq) => eq.data_entrada === hoje);
-      setProntos(paginaProntos?.items ?? []);
-      setTotalProntos(paginaProntos?.total ?? 0);
+      setProntos(juntarFilaRetirada(paginaProntos?.items ?? [], vendasAprovadas?.items ?? []));
+      setTotalProntos((paginaProntos?.total ?? 0) + (vendasAprovadas?.total ?? 0));
       setChegaramHoje(deHoje);
       setChegaramHojeMais(itensRecentes.length > 0 && deHoje.length === itensRecentes.length && (recentes?.total ?? 0) > itensRecentes.length);
     } catch (e) {
