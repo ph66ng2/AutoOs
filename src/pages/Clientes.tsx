@@ -532,10 +532,10 @@ export default function Clientes() {
         </Button>
       </PageHeader>
 
-      <div className="grid items-start gap-5 xl:grid-cols-[minmax(0,1fr)_420px]">
+      <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_420px]">
         {/* Lista: filtros, busca, tabela e paginação */}
-        <Card className="min-w-0 rounded-2xl">
-          <CardContent className="space-y-4 p-5">
+        <Card className="flex min-w-0 flex-col rounded-2xl">
+          <CardContent className="flex flex-1 flex-col gap-4 p-5">
             <div role="group" aria-label="Filtrar clientes" className="flex flex-wrap gap-2">
               {FILTROS_CLIENTES.map((opcao) => {
                 const ligado = filtro === opcao.valor;
@@ -659,7 +659,7 @@ export default function Clientes() {
                   onPageChange={setAbaAtual}
                   label="Paginação de clientes"
                   totalItems={totalClientes}
-                  className="pb-0"
+                  className="mt-auto pb-0"
                 />
               </>
             )}
@@ -667,7 +667,7 @@ export default function Clientes() {
         </Card>
 
         {/* Painel do cliente aberto */}
-        <Card className="rounded-2xl xl:sticky xl:top-20">
+        <Card className="rounded-2xl">
           <CardContent className="space-y-5 p-5">
             {!clienteAberto ? (
               <p className="py-10 text-center text-sm text-muted-foreground">Selecione um cliente para ver contatos e equipamentos.</p>
