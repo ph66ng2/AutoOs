@@ -223,6 +223,44 @@ Referência: seção "Acabamento" de `referencia/design-system/MANUAL.md` e os t
   - Fica fora: as animações de abertura, `PinLock` e `FirstAccessBridge`.
   - Para achar animação fora da regra: `grep -rnE "duration-[0-9]{3,}|transition-all" src --include=*.tsx`.
 
+**Fase V: Vendas de insumos (acrescentada depois; começa da versão já feita na `redesign/direcao-b`).**
+
+Referência: `referencia/telas/10-vendas/`, decisão 23 do `ALVO.md` e `docs/ORCAMENTOS_INSUMOS.md`. Regras de negócio, permissões (`FINANCIAL_ACTIONS` + `ensureSensitiveAccess`), concorrência e textos do backend ficam como estão.
+
+- **V.1 `src/lib/orcamento-insumos.ts`: duas funções puras, com teste.**
+  - `proximaAcaoVenda(status, vencido)` devolve `{ rotulo, tipo }`: Enviar, Aprovar, Renovar validade, Marcar entregue ou Ver. Substitui a `proximaAcao` de `OrcamentosInsumosTab.tsx`.
+  - `prazoOuData(orcamento, hoje)` devolve:
+    - "vence 20/11" ou "venceu 08/11" só para Rascunho e Enviado;
+    - para as outras situações, "aprovado 12/11 · Pix", "entregue 10/11", "reprovado 07/11" ou "criado 03/11".
+  - Pronto quando os testes novos passam e `npm run test:run` continua verde.
+- **V.2 `src/pages/insumos/OrcamentosInsumosTab.tsx`: lista.**
+  - Usa as funções da V.1, com o selo "Vencido" ao lado da situação.
+  - Ação principal com 176px e ⋯ (`ActionPriorityRow`) com as seções Enviar, Decidir e Orçamento.
+  - O parágrafo explicativo vai para o estado vazio.
+  - Estados: filtro sem resultado com "Limpar busca", carregando em linhas e erro com "Tentar novamente".
+  - Sem a permissão: sem "+ Novo orçamento" e sem ⋯, e a ação vira "Ver".
+  - Pronto com lint, testes e E2E.
+- **V.3 Página `/vendas/:id`.**
+  - Rota nova em `App.tsx`, que aponta para uma página nova `src/pages/vendas/VendaDetalhe.tsx`.
+  - O conteúdo de leitura sai de `OrcamentoInsumosDialog.tsx`, sem mudar a lógica: barra de 4 etapas, itens com "Saldo agora" e aviso de falta, cartões Cliente, Condições e Registro (só datas).
+  - Clicar no número ou na ação "Ver" navega para a página.
+  - Os testes do diálogo que abrem o orçamento podem mudar **só a navegação**, nunca a verificação, como na fase 6. Peça o OK antes.
+- **V.4 Páginas `/vendas/novo` e `/vendas/:id/editar`.**
+  - O formulário sai da janela para a página, com barra fixa no rodapé ("Descartar alterações" / "Salvar orçamento").
+  - Ao editar um Enviado, aviso no topo de que ele volta para Rascunho.
+  - Salvar continua chamando o mesmo comando.
+- **V.5 Modais**, com as larguras e formatos do DS:
+  - Enviar (M, com e-mail, WhatsApp e salvar PDF);
+  - Aprovar (M, com a forma de pagamento);
+  - recusa por falta de estoque (M, com "Dar entrada no estoque" e "Editar quantidades");
+  - cancelar aprovado (M, com a caixa que envia `confirmar_devolucao_estoque`);
+  - reprovar, entregar, cancelar e excluir (P).
+  
+  O PIN continua com `ensureSensitiveAccess`: não acrescente campo de PIN nos modais.
+- **V.6 Celular.** Abaixo de `md`, a lista vira cartões e o orçamento ganha a ação fixa no rodapé. Alvos de 44px ou mais.
+
+Antes da V.3, pergunte ao dono do produto os três pendentes da decisão 23.
+
 **Fase 9: Portal do Cliente** (`src/public-status/`, build separado com `npm run build:public-status`).
 - Trocar `public-status.css` e `portal-orcamento.css` pelos tokens.
 - No celular, as respostas ao orçamento abrem como painel que sobe do rodapé.

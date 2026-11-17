@@ -164,6 +164,58 @@ Tema escuro: [10-modal-novo-cliente-escuro.webp](telas/04-atendimento/10-modal-n
 
 Tema escuro: [11-modais-clientes-escuro.webp](telas/04-atendimento/11-modais-clientes-escuro.webp)
 
+## Vendas de insumos (/vendas)
+
+Orçamentos OI-n de etiquetas, ribbons e peças sem equipamento em manutenção. Item próprio no menu (Atendimento, abaixo de Clientes). Substitui as pranchetas antigas de orçamento de insumos em "Estoque e serviços". Regras: `docs/ORCAMENTOS_INSUMOS.md` e decisão 23 do `ALVO.md`.
+
+### Lista
+
+Uma ação principal por situação (Enviar, Aprovar, Renovar validade, Marcar entregue, Ver) e ⋯ com Enviar, Decidir e Orçamento. Coluna "Prazo ou data" muda conforme a situação.
+
+![lista, tema claro](telas/10-vendas/01-lista-claro.webp)
+
+Tema escuro: [01-lista-escuro.webp](telas/10-vendas/01-lista-escuro.webp)
+
+### Orçamento como página
+
+Barra de 4 etapas com datas, itens com saldo de agora e aviso de falta, cliente com canais, condições e registro só com datas.
+
+![orçamento como página, tema claro](telas/10-vendas/02-orcamento-pagina-claro.webp)
+
+Tema escuro: [02-orcamento-pagina-escuro.webp](telas/10-vendas/02-orcamento-pagina-escuro.webp)
+
+### Editar e criar como página
+
+Mesmo desenho do orçamento, editável, com barra fixa no rodapé. Editar um Enviado avisa que volta para Rascunho.
+
+![editar e criar como página, tema claro](telas/10-vendas/03-editar-e-criar-claro.webp)
+
+Tema escuro: [03-editar-e-criar-escuro.webp](telas/10-vendas/03-editar-e-criar-escuro.webp)
+
+### Modais
+
+Enviar, Aprovar (forma de pagamento), aprovação recusada por falta de estoque, cancelar aprovado (confirma devolução), reprovar, entregar, cancelar, excluir e o PIN com sessão bloqueada.
+
+![modais, tema claro](telas/10-vendas/04-modais-claro.webp)
+
+Tema escuro: [04-modais-escuro.webp](telas/10-vendas/04-modais-escuro.webp)
+
+### Estados da lista e celular
+
+Vazia, filtro sem resultado, carregando, erro, sem permissão e 390 px.
+
+![estados da lista e celular, tema claro](telas/10-vendas/05-estados-lista-e-celular-claro.webp)
+
+Tema escuro: [05-estados-lista-e-celular-escuro.webp](telas/10-vendas/05-estados-lista-e-celular-escuro.webp)
+
+### Estados do orçamento
+
+Vencido, aprovado, cancelado, cliente sem WhatsApp e sem permissão.
+
+![estados do orçamento, tema claro](telas/10-vendas/06-estados-orcamento-claro.webp)
+
+Tema escuro: [06-estados-orcamento-escuro.webp](telas/10-vendas/06-estados-orcamento-escuro.webp)
+
 ## Balcão
 
 ### Balcao inicio
