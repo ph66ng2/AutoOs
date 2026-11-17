@@ -104,6 +104,12 @@ Cada linha é algo que o dono pediu ou aprovou. Onde diz **rejeitado**, foi test
     - **Validade só para Rascunho e Enviado.** Nas outras situações, a coluna mostra a data do que aconteceu ("aprovado 12/11 · Pix", "entregue 10/11").
     - **Orçamento, criar e editar são páginas** (`/vendas/:id`, `/vendas/novo`, `/vendas/:id/editar`), não janela.
     - **Falta de estoque aparece antes de aprovar:** na tabela ("6 · falta 4") e num aviso com "Dar entrada no estoque" e "Editar quantidades". A recusa do backend usa o texto dele.
+    - **No Balcão, a venda aprovada se entrega como um equipamento pronto.** O bloco vira "Entregar ao cliente" e a fila "Prontos para retirada" mistura os dois, com etiqueta.
+      - O balcão mostra o que o cliente leva, o total e a forma de pagamento.
+      - Avisa que o app não sabe se foi pago.
+      - Confirma e usa o mesmo "marcar entregue", com PIN e "Ações financeiras".
+      - Venda ainda não aprovada aparece na busca, sem botão e com o motivo.
+      - Sem a permissão, o backend recusa e a tela explica.
     - **Não desenhe como se existisse:**
       - quem fez cada passo e por qual canal (só existem as datas; quem criou existe em `criado_por_profile_id`);
       - pagamento recebido;

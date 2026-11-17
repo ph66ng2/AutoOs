@@ -259,6 +259,18 @@ Referência: `referencia/telas/10-vendas/`, decisão 23 do `ALVO.md` e `docs/ORC
   O PIN continua com `ensureSensitiveAccess`: não acrescente campo de PIN nos modais.
 - **V.6 Celular.** Abaixo de `md`, a lista vira cartões e o orçamento ganha a ação fixa no rodapé. Alvos de 44px ou mais.
 
+- **V.7 Balcão: entregar venda de insumos** (`src/pages/Balcao.tsx`). Referência: `referencia/telas/05-balcao/01-balcao-inicio-*` e `04-entregar-ao-cliente-*`.
+  - O bloco "Entregar equipamento" vira "Entregar ao cliente", e o contador soma equipamentos prontos e vendas aprovadas.
+  - A tela de retirada (`view === "equipment"`) ganha:
+    - os filtros Tudo, Equipamentos e Insumos;
+    - a busca também por "OI-n";
+    - as vendas com situação Aprovado, com a etiqueta "Insumos".
+  - Venda Enviada aparece na busca sem botão: "Ainda não dá para entregar: o cliente não aprovou este orçamento."
+  - O detalhe da venda mostra o que o cliente leva, o total, a forma de pagamento e o aviso de que o app não registra pagamento recebido.
+  - "Registrar entrega" abre a confirmação (M, botões de 48px) e chama o mesmo comando de marcar entregue da Vendas de insumos, depois de `ensureSensitiveAccess` com `FINANCIAL_ACTIONS`. A permissão continua no backend; perfil sem ela recebe a recusa explicada.
+  - A fila "Prontos para retirada" da tela inicial mostra a forma de pagamento, não "pago" ou "a receber", que o app não sabe.
+  - Pronto com lint, testes e E2E (o `balcao-touch.spec.ts` continua passando).
+
 Antes da V.3, pergunte ao dono do produto os três pendentes da decisão 23.
 
 **Fase 9: Portal do Cliente** (`src/public-status/`, build separado com `npm run build:public-status`).
