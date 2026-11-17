@@ -606,6 +606,14 @@ pub struct ResumoEstoque {
     pub saidas_mes_os: i64,
     /// Orçamentos de insumos em rascunho, enviados ou aprovados (ainda não entregues).
     pub orcamentos_abertos: i64,
+    pub orcamentos_por_status: Vec<ContagemStatusOrcamento>,
+}
+
+/// Quantos orçamentos de insumos há em cada situação.
+#[derive(Debug, Serialize, FromRow)]
+pub struct ContagemStatusOrcamento {
+    pub status: String,
+    pub total: i64,
 }
 
 /// Serviço padrão retornado ao frontend para seleção na verificação técnica.

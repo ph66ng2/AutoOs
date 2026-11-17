@@ -107,8 +107,7 @@ describe("OrcamentosInsumosTab", () => {
     const usuario = userEvent.setup();
     render(<OrcamentosInsumosTab />);
     await screen.findByText("OI-2");
-    await usuario.click(screen.getByRole("combobox", { name: "Filtrar por status" }));
-    await usuario.click(await screen.findByRole("option", { name: "Aprovado" }));
+    await usuario.click(screen.getByRole("button", { name: /^Aprovado/ }));
     await waitFor(() => expect(mocks.listar).toHaveBeenLastCalledWith({ busca: undefined, status: "APROVADO", page: 0 }));
   });
 

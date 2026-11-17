@@ -358,7 +358,7 @@ export default function Insumos() {
       </div>
 
       {aba === "orcamentos" ? (
-        <OrcamentosInsumosTab onEstoqueAlterado={() => { void recarregar(); void recarregarResumo(); }} />
+        <OrcamentosInsumosTab contagemPorStatus={resumo?.orcamentosPorStatus} onEstoqueAlterado={() => { void recarregar(); void recarregarResumo(); }} />
       ) : (
         <>
 

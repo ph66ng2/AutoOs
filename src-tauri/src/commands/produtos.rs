@@ -12,7 +12,7 @@ use crate::commands::auth::{
     record_security_event, require_permission, require_active_session_company_id, PERMISSION_DELETE_RECORDS, PERMISSION_STOCK_CONTROL,
 };
 use crate::commands::types::{
-    ContagemCategoriaEstoque, MovimentacaoEstoqueInput, PaginatedResult, ProdutoInput, ProdutoRow, ResumoEstoque, PRODUTO_SELECT,
+    ContagemCategoriaEstoque, ContagemStatusOrcamento, MovimentacaoEstoqueInput, PaginatedResult, ProdutoInput, ProdutoRow, ResumoEstoque, PRODUTO_SELECT,
 };
 use crate::db::get_pool;
 use serde::Serialize;
@@ -218,13 +218,18 @@ pub async fn resumo_estoque_on_pool(pool: &PgPool, empresa_id: i32, ver_valor: b
     .fetch_one(pool)
     .await
     .map_err(map)?;
-    let orcamentos_abertos = sqlx::query_scalar::<_, i64>(
-        "SELECT COUNT(*) FROM orcamentos_insumos WHERE empresa_id = $1 AND status IN ('RASCUNHO', 'ENVIADO', 'APROVADO')",
+    let orcamentos_por_status = sqlx::query_as::<_, ContagemStatusOrcamento>(
+        "SELECT status, COUNT(*) AS total FROM orcamentos_insumos WHERE empresa_id = $1 GROUP BY status",
     )
     .bind(empresa_id)
-    .fetch_one(pool)
+    .fetch_all(pool)
     .await
     .map_err(map)?;
+    let orcamentos_abertos = orcamentos_por_status
+        .iter()
+        .filter(|c| matches!(c.status.as_str(), "RASCUNHO" | "ENVIADO" | "APROVADO"))
+        .map(|c| c.total)
+        .sum();
     let campo = |nome: &str| -> Result<i64, String> { estoque.try_get::<i64, _>(nome).map_err(|e| e.to_string()) };
     let abaixo_minimo = campo("abaixo_minimo")?;
     let valor_estoque: f64 = estoque.try_get("valor_estoque").map_err(|e| e.to_string())?;
@@ -237,6 +242,7 @@ pub async fn resumo_estoque_on_pool(pool: &PgPool, empresa_id: i32, ver_valor: b
         saidas_mes: saidas.try_get("saidas_mes").map_err(|e| e.to_string())?,
         saidas_mes_os: saidas.try_get("saidas_mes_os").map_err(|e| e.to_string())?,
         orcamentos_abertos,
+        orcamentos_por_status,
     })
 }
 

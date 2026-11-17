@@ -557,6 +557,7 @@ export interface ResumoEstoque {
   saidasMes: number;
   saidasMesOs: number;
   orcamentosAbertos: number;
+  orcamentosPorStatus: { status: StatusOrcamentoInsumos; total: number }[];
 }
 
 /** Serviço padrão do catálogo para orçamento/verificação técnica. */
@@ -1236,6 +1237,8 @@ export interface OrcamentoInsumos {
   numero: number;
   /** "OI-12" */
   numero_exibicao: string;
+  /** Categorias dos itens, em minúsculas ("etiqueta, ribbon"). */
+  categorias_itens?: string | null;
   cliente_id: number;
   cliente_nome?: string | null;
   cliente_documento?: string | null;

@@ -159,6 +159,8 @@ pub struct OrcamentoInsumosRow {
     pub decidido_em: Option<String>,
     pub entregue_em: Option<String>,
     pub total_itens: i64,
+    /// Categorias dos itens, em minúsculas e separadas por vírgula ("etiqueta, ribbon").
+    pub categorias_itens: Option<String>,
 }
 
 #[derive(Debug, Serialize, FromRow)]
@@ -200,7 +202,8 @@ const ORCAMENTO_SELECT: &str = "
            o.criado_em::TEXT AS criado_em, o.atualizado_em::TEXT AS atualizado_em,
            o.enviado_em::TEXT AS enviado_em, o.decidido_em::TEXT AS decidido_em,
            o.entregue_em::TEXT AS entregue_em,
-           (SELECT COUNT(*) FROM orcamento_insumos_itens i WHERE i.orcamento_id = o.id)::BIGINT AS total_itens
+           (SELECT COUNT(*) FROM orcamento_insumos_itens i WHERE i.orcamento_id = o.id)::BIGINT AS total_itens,
+           (SELECT string_agg(DISTINCT LOWER(i.categoria), ', ') FROM orcamento_insumos_itens i WHERE i.orcamento_id = o.id) AS categorias_itens
     FROM orcamentos_insumos o
     JOIN clientes c ON c.id = o.cliente_id
     LEFT JOIN cliente_contatos ct ON ct.id = o.contato_id";
