@@ -258,6 +258,19 @@ async fn main() -> Result<()> {
     if sem_financeiro.faturado.is_some() || com_financeiro.faturado.is_none() || sem_financeiro.os_abertas != 1 || sem_financeiro.no_ano != 1 {
         return Err(anyhow!("resumo do cliente errado: {:?} / {:?}", sem_financeiro, com_financeiro));
     }
+    let estoque_sem_valor = produtos::resumo_estoque_on_pool(&pool, empresa_id, false)
+        .await
+        .map_err(|error| anyhow!(error))?;
+    let estoque_com_valor = produtos::resumo_estoque_on_pool(&pool, empresa_id, true)
+        .await
+        .map_err(|error| anyhow!(error))?;
+    if estoque_sem_valor.valor_estoque.is_some()
+        || estoque_com_valor.valor_estoque.is_none()
+        || estoque_sem_valor.total_itens != estoque_sem_valor.por_categoria.iter().map(|c| c.total).sum::<i64>()
+        || estoque_sem_valor.saidas_mes_os > estoque_sem_valor.saidas_mes
+    {
+        return Err(anyhow!("resumo do estoque errado: {:?}", estoque_sem_valor));
+    }
 
     contatos::inativar_cliente_contato(outro_contato.id, empresa_id)
         .await

@@ -47,8 +47,8 @@ describe("Insumos: abas Estoque e Orçamentos", () => {
   it("abre no estoque, com o botão de novo insumo e o alerta de mínimo", () => {
     render(<Insumos />);
     expect(screen.getByRole("tab", { name: "Estoque" })).toHaveAttribute("aria-selected", "true");
-    expect(screen.getByRole("button", { name: /novo insumo\/peça/i })).toBeInTheDocument();
-    expect(screen.getByText(/2 abaixo do mínimo/)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /novo item/i })).toBeInTheDocument();
+    expect(screen.getByText("Abaixo do mínimo").parentElement).toHaveTextContent(/Abaixo do mínimo\s*2/);
     expect(screen.queryByTestId("aba-orcamentos")).toBeNull();
   });
 
@@ -57,7 +57,7 @@ describe("Insumos: abas Estoque e Orçamentos", () => {
     render(<Insumos />);
     await usuario.click(screen.getByRole("tab", { name: "Orçamentos" }));
     expect(screen.getByTestId("aba-orcamentos")).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: /novo insumo\/peça/i })).toBeNull();
+    expect(screen.queryByRole("button", { name: /novo item/i })).toBeNull();
     expect(screen.queryByPlaceholderText(/buscar por nome, código/i)).toBeNull();
 
     await usuario.click(screen.getByRole("tab", { name: "Estoque" }));

@@ -41,6 +41,7 @@ import type {
   ContagemClientes,
   FiltroClientes,
   ResumoCliente,
+  ResumoEstoque,
   ClienteContato,
   ClienteContatoInput,
   ContatoInicialInput,
@@ -509,6 +510,11 @@ export const db = {
       categoria: categoria ?? null,
       apenasEstoqueBaixo: apenasEstoqueBaixo || false,
     });
+  },
+
+  /** Números do topo de Insumos e peças → Rust: resumo_estoque */
+  async resumoEstoque(): Promise<ResumoEstoque> {
+    return invoke<ResumoEstoque>("resumo_estoque");
   },
 
   async listarProdutosPaginados(

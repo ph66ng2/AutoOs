@@ -539,6 +539,24 @@ export interface Produto {
   ativo?: boolean;
   criado_em?: string;
   atualizado_em?: string;
+  /** Última movimentação (só na listagem paginada). */
+  ultima_mov_tipo?: "ENTRADA" | "SAIDA" | string | null;
+  ultima_mov_origem?: string | null;
+  ultima_mov_referencia?: string | null;
+  ultima_mov_data?: string | null;
+}
+
+/** Números do topo de Insumos e peças (Rust: resumo_estoque). */
+export interface ResumoEstoque {
+  totalItens: number;
+  porCategoria: { categoria: string; total: number }[];
+  abaixoMinimo: number;
+  aguardandoPeca: number;
+  /** Só para quem pode consultar despesas; senão null. */
+  valorEstoque: number | null;
+  saidasMes: number;
+  saidasMesOs: number;
+  orcamentosAbertos: number;
 }
 
 /** Serviço padrão do catálogo para orçamento/verificação técnica. */

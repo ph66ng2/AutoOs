@@ -572,6 +572,40 @@ pub struct ProdutoRow {
     pub ativo: Option<bool>,
     pub criado_em: Option<String>,
     pub atualizado_em: Option<String>,
+    /// Última movimentação do item: preenchida só na listagem paginada, por uma segunda consulta.
+    #[sqlx(default)]
+    pub ultima_mov_tipo: Option<String>,
+    #[sqlx(default)]
+    pub ultima_mov_origem: Option<String>,
+    #[sqlx(default)]
+    pub ultima_mov_referencia: Option<String>,
+    #[sqlx(default)]
+    pub ultima_mov_data: Option<String>,
+}
+
+/// Quantos itens ativos há em uma categoria de estoque.
+#[derive(Debug, Serialize, FromRow)]
+pub struct ContagemCategoriaEstoque {
+    pub categoria: String,
+    pub total: i64,
+}
+
+/// Números do topo de Insumos e peças.
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ResumoEstoque {
+    pub total_itens: i64,
+    pub por_categoria: Vec<ContagemCategoriaEstoque>,
+    pub abaixo_minimo: i64,
+    /// OS paradas em "Aguardando peça".
+    pub aguardando_peca: i64,
+    /// Soma de saldo × preço de custo; só para quem pode consultar despesas.
+    pub valor_estoque: Option<f64>,
+    pub saidas_mes: i64,
+    /// Saídas do mês feitas pela manutenção de uma OS.
+    pub saidas_mes_os: i64,
+    /// Orçamentos de insumos em rascunho, enviados ou aprovados (ainda não entregues).
+    pub orcamentos_abertos: i64,
 }
 
 /// Serviço padrão retornado ao frontend para seleção na verificação técnica.

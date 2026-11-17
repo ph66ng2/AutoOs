@@ -65,7 +65,7 @@ test("captura as telas principais com dados sintéticos", async ({ page }) => {
   await expect(detalhes).toBeHidden();
 
   await openScreen("Insumos e peças");
-  await expect(page.locator("h1", { hasText: "Insumos/Peças & Estoque" })).toBeVisible();
+  await expect(page.locator("h1", { hasText: "Insumos e peças" })).toBeVisible();
   await expect(page.getByText("Etiqueta sintética CI").first()).toBeVisible();
   await expect(page.getByText("Ribbon sintético CI").first()).toBeVisible();
   await page.screenshot({ path: `${outDir}/05-insumos-estoque.png`, fullPage: true, animations: "disabled" });

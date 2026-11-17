@@ -229,6 +229,7 @@ fn main() {
             // Produtos
             commands::produtos::listar_produtos,
             commands::produtos::listar_produtos_paginados,
+            commands::produtos::resumo_estoque,
             commands::produtos::buscar_produto,
             commands::produtos::criar_produto,
             commands::produtos::atualizar_produto,

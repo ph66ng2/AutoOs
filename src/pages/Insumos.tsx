@@ -26,24 +26,13 @@ import {
   Search,
   Edit,
   Trash2,
-  ArrowUpCircle,
-  Filter,
   RefreshCw,
-  AlertTriangle,
 } from "lucide-react";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm } from "react-hook-form";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import {
   Table,
   TableBody,
@@ -75,7 +64,18 @@ import {
   InsumosProdutoDialog,
 } from "@/pages/insumos/InsumosDialogs";
 import { OrcamentosInsumosTab } from "@/pages/insumos/OrcamentosInsumosTab";
-import { PageHeader } from "@/components/PageHeader";
+import { useResumoEstoque } from "@/hooks/useResumoEstoque";
+import { textoUltimaMovimentacao } from "@/lib/estoque-movimentacao";
+
+function NumeroEstoque({ titulo, valor, detalhe, alerta = false }: { titulo: string; valor: string | number; detalhe?: string; alerta?: boolean }) {
+  return (
+    <div className="rounded-xl border p-4">
+      <p className="text-sm text-muted-foreground">{titulo}</p>
+      <p className={`mt-1 text-[28px] font-extrabold leading-tight tabular-nums ${alerta ? "text-status-bad" : ""}`}>{valor}</p>
+      {detalhe && <p className="mt-1 text-xs text-muted-foreground">{detalhe}</p>}
+    </div>
+  );
+}
 
 export default function Insumos() {
   const [aba, setAba] = useState<"estoque" | "orcamentos">("estoque");
@@ -123,6 +123,7 @@ export default function Insumos() {
     setPaginaInsumos((pagina) => Math.min(pagina, totalPaginasInsumos));
   }, [totalPaginasInsumos]);
   const { error: showError } = useNotification();
+  const { resumo, recarregar: recarregarResumo } = useResumoEstoque();
   const { ensureSensitiveAccess } = useSensitiveAccess();
 
   const form = useForm<ProdutoFormData>({
@@ -196,7 +197,7 @@ export default function Insumos() {
     setDialogOpen(true);
   }
 
-  async function abrirMovimentacao(p: Produto) {
+  async function abrirMovimentacao(p: Produto, tipo: "ENTRADA" | "SAIDA" = "ENTRADA") {
     const liberado = await ensureSensitiveAccess({
       title: "Movimentar estoque",
       description: "Informe o PIN para registrar entradas e saídas de estoque.",
@@ -205,7 +206,7 @@ export default function Insumos() {
     if (!liberado) return;
 
     setMovimentando(p);
-    movForm.reset({ tipo: "ENTRADA", quantidade: 1, origem: "", referencia: "" });
+    movForm.reset({ tipo, quantidade: 1, origem: "", referencia: "" });
     setMovDialogOpen(true);
   }
 
@@ -235,6 +236,7 @@ export default function Insumos() {
           throw new Error(resultado.erro || "Não foi possível criar o insumo/peça.");
         }
       }
+      void recarregarResumo();
       setDialogOpen(false);
     } catch (err: any) {
       console.error("Erro ao salvar:", err);
@@ -258,6 +260,7 @@ export default function Insumos() {
       if (!resultado.sucesso) {
         throw new Error(resultado.erro || "Não foi possível registrar a movimentação.");
       }
+      void recarregarResumo();
       setMovDialogOpen(false);
     } catch (err: any) {
       console.error("Erro movimentação:", err);
@@ -272,6 +275,7 @@ export default function Insumos() {
     setSalvando(true);
     try {
       await deletar(deletando.id!);
+      void recarregarResumo();
       setDeleteDialogOpen(false);
       setDeletando(null);
       setUsoDeletando(null);
@@ -310,35 +314,51 @@ export default function Insumos() {
     }
   }
 
-  return (
-    <div className="space-y-4">
-      {/* Header */}
-      <PageHeader titulo="Insumos/Peças & Estoque" descricao="Controle de suprimentos e movimentação de estoque">
-        <div className="flex gap-2">
-          {aba === "estoque" && insumosAbaixoMinimo > 0 && (
-            <Badge variant="destructive" className="h-8 px-3 flex items-center gap-1">
-              <AlertTriangle className="h-3.5 w-3.5" />
-              {insumosAbaixoMinimo} abaixo do mínimo
-            </Badge>
-          )}
-          {aba === "estoque" && (
-            <Button onClick={() => void abrirNovo()}>
-              <Plus className="h-4 w-4 mr-2" />
-              Novo Insumo/Peça
-            </Button>
-          )}
-        </div>
-      </PageHeader>
+  const contagemCategoria = (categoria: string) =>
+    resumo?.porCategoria.find((item) => item.categoria === categoria)?.total ?? 0;
+  const mostrarValor = resumo?.valorEstoque != null;
 
-      <Tabs value={aba} onValueChange={(valor) => setAba(valor as "estoque" | "orcamentos")}>
-        <TabsList aria-label="Áreas de Insumos/Peças">
-          <TabsTrigger value="estoque">Estoque</TabsTrigger>
-          <TabsTrigger value="orcamentos">Orçamentos</TabsTrigger>
-        </TabsList>
-      </Tabs>
+  return (
+    <div className="space-y-5">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex flex-wrap items-center gap-4">
+          <h1 className="text-[26px] font-bold leading-tight tracking-tight">Insumos e peças</h1>
+          <Tabs value={aba} onValueChange={(valor) => setAba(valor as "estoque" | "orcamentos")}>
+            <TabsList aria-label="Áreas de Insumos/Peças" className="h-11 rounded-xl border bg-card p-1">
+              <TabsTrigger value="estoque" className="h-9 rounded-lg px-4 data-[state=active]:bg-acc-soft data-[state=active]:text-acc-soft-foreground data-[state=active]:shadow-none">
+                Estoque
+              </TabsTrigger>
+              <TabsTrigger value="orcamentos" className="h-9 rounded-lg px-4 data-[state=active]:bg-acc-soft data-[state=active]:text-acc-soft-foreground data-[state=active]:shadow-none">
+                Orçamentos
+                {resumo && resumo.orcamentosAbertos > 0 && (
+                  <span aria-hidden="true">&nbsp;· {resumo.orcamentosAbertos} {resumo.orcamentosAbertos === 1 ? "aberto" : "abertos"}</span>
+                )}
+              </TabsTrigger>
+            </TabsList>
+          </Tabs>
+        </div>
+        {aba === "estoque" && (
+          <div className="flex items-center gap-2">
+          <div className="relative w-full sm:w-64">
+            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              placeholder="Buscar por nome, código..."
+              aria-label="Buscar insumos e peças"
+              value={busca}
+              onChange={(e) => setBusca(e.target.value)}
+              className="h-10 pl-9"
+            />
+          </div>
+          <Button className="shrink-0" onClick={() => void abrirNovo()}>
+            <Plus className="mr-2 h-4 w-4" />
+            Novo item
+          </Button>
+          </div>
+        )}
+      </div>
 
       {aba === "orcamentos" ? (
-        <OrcamentosInsumosTab onEstoqueAlterado={() => void recarregar()} />
+        <OrcamentosInsumosTab onEstoqueAlterado={() => { void recarregar(); void recarregarResumo(); }} />
       ) : (
         <>
 
@@ -351,51 +371,62 @@ export default function Insumos() {
         />
       )}
 
-      {/* Filtros */}
-      <Card>
-        <CardContent className="pt-6">
-          <div className="flex flex-col sm:flex-row gap-4">
-            <div className="relative flex-1">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-              <Input
-                placeholder="Buscar por nome, código, marca..."
-                value={busca}
-                onChange={(e) => setBusca(e.target.value)}
-                className="pl-9"
-              />
-            </div>
-            <Select value={categoriaFiltro} onValueChange={setCategoriaFiltro}>
-              <SelectTrigger className="w-full sm:w-48">
-                <Filter className="h-4 w-4 mr-2" />
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {CATEGORIA_OPTIONS.map((opt) => (
-                  <SelectItem key={opt.value} value={opt.value}>
-                    {opt.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <Button
-              variant={apenasEstoqueBaixo ? "destructive" : "outline"}
-              onClick={() => setApenasEstoqueBaixo(!apenasEstoqueBaixo)}
-              size="sm"
-              className="h-10"
-            >
-              <AlertTriangle className="h-4 w-4 mr-1" />
-              Estoque Baixo
-            </Button>
-            <Button variant="outline" size="icon" onClick={recarregar}>
-              <RefreshCw className="h-4 w-4" />
-            </Button>
+      <Card className="rounded-2xl">
+        <CardContent className="space-y-5 p-5">
+          <div className={`grid gap-3 sm:grid-cols-2 ${mostrarValor ? "xl:grid-cols-4" : "xl:grid-cols-3"}`}>
+            <NumeroEstoque titulo="Itens cadastrados" valor={resumo?.totalItens ?? "—"} detalhe={resumo ? `${resumo.porCategoria.length} ${resumo.porCategoria.length === 1 ? "categoria" : "categorias"}` : undefined} />
+            <NumeroEstoque
+              titulo="Abaixo do mínimo"
+              valor={resumo?.abaixoMinimo ?? insumosAbaixoMinimo}
+              alerta={(resumo?.abaixoMinimo ?? insumosAbaixoMinimo) > 0}
+              detalhe={resumo ? `${resumo.aguardandoPeca} ${resumo.aguardandoPeca === 1 ? "OS esperando peça" : "OS esperando peça"}` : undefined}
+            />
+            {mostrarValor && (
+              <NumeroEstoque titulo="Valor em estoque" valor={formatCurrency(resumo!.valorEstoque!).replace(/,00$/, "")} detalhe="pelo preço de custo" />
+            )}
+            <NumeroEstoque titulo="Saídas no mês" valor={resumo?.saidasMes ?? "—"} detalhe={resumo ? `${resumo.saidasMesOs} vinculadas a OS` : undefined} />
           </div>
-        </CardContent>
-      </Card>
 
-      {/* Tabela */}
-      <Card>
-        <CardContent className="pt-6">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div role="group" aria-label="Filtrar por categoria" className="flex flex-wrap gap-2">
+              {CATEGORIA_OPTIONS.map((opt) => {
+                const ativo = categoriaFiltro === opt.value;
+                const contagem = opt.value === "TODOS" ? resumo?.totalItens : contagemCategoria(opt.value);
+                return (
+                  <button
+                    key={opt.value}
+                    type="button"
+                    aria-pressed={ativo}
+                    onClick={() => setCategoriaFiltro(opt.value)}
+                    className={`inline-flex h-9 items-center gap-2 rounded-full border px-3.5 text-sm font-medium transition-colors duration-rapida ${ativo ? "border-foreground bg-foreground text-background" : "bg-card hover:border-ctl"}`}
+                  >
+                    {opt.value === "TODOS" ? "Todas" : opt.label}
+                    {resumo && (
+                      <span className={`rounded-full px-1.5 text-xs tabular-nums ${ativo ? "bg-background/20" : "bg-muted text-muted-foreground"}`}>{contagem}</span>
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                role="switch"
+                aria-checked={apenasEstoqueBaixo}
+                onClick={() => setApenasEstoqueBaixo(!apenasEstoqueBaixo)}
+                className="inline-flex h-9 shrink-0 items-center gap-2 rounded-full border bg-card px-3 text-sm font-medium"
+              >
+                <span aria-hidden="true" className={`relative h-4 w-7 rounded-full transition-colors duration-rapida ${apenasEstoqueBaixo ? "bg-primary" : "bg-track"}`}>
+                  <span className={`absolute top-0.5 h-3 w-3 rounded-full bg-card transition-transform duration-rapida ${apenasEstoqueBaixo ? "translate-x-3.5" : "translate-x-0.5"}`} />
+                </span>
+                Só estoque baixo
+              </button>
+              <Button variant="outline" size="icon" className="h-9 w-9 shrink-0" aria-label="Atualizar estoque" onClick={() => { void recarregar(); void recarregarResumo(); }}>
+                <RefreshCw className="h-4 w-4" />
+              </Button>
+            </div>
+          </div>
+
           {loading ? (
             <div className="flex items-center justify-center h-32">
               <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary" />
@@ -407,92 +438,80 @@ export default function Insumos() {
               <p className="text-sm">
                 {busca || categoriaFiltro !== "TODOS" || apenasEstoqueBaixo
                   ? "Tente ajustar os filtros"
-                  : "Clique em 'Novo Insumo/Peça' para cadastrar"}
+                  : "Clique em 'Novo item' para cadastrar"}
               </p>
             </div>
           ) : (
             <>
-              <PaginationControls
-                page={paginaInsumosExibida}
-                totalPages={totalPaginasInsumos}
-                onPageChange={setPaginaInsumos}
-                label="Paginação de estoque"
-              />
-              <div className="rounded-md border">
+              <div className="overflow-x-auto rounded-xl border">
                 <Table>
                 <TableHeader>
-                  <TableRow>
-                    <TableHead>Nome</TableHead>
-                    <TableHead>Código</TableHead>
+                  <TableRow className="bg-muted/50 hover:bg-muted/50">
+                    <TableHead>Item</TableHead>
                     <TableHead>Categoria</TableHead>
-                    <TableHead>Descrição</TableHead>
-                    <TableHead className="text-center">Estoque</TableHead>
-                    <TableHead className="text-center">Mínimo</TableHead>
-                    <TableHead className="text-right">Preço</TableHead>
-                    <TableHead className="text-right">Ações</TableHead>
+                    <TableHead className="min-w-[13rem]">Saldo</TableHead>
+                    <TableHead className="text-right">Preço de venda</TableHead>
+                    <TableHead>Última movimentação</TableHead>
+                    <TableHead className="text-right">Movimentar</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {produtosExibidos.map((p) => {
                     const estoqueBaixo = p.quantidade_estoque < p.quantidade_minima;
+                    const proporcao = p.quantidade_minima > 0 ? Math.min(Math.max(p.quantidade_estoque, 0) / p.quantidade_minima, 1) : 1;
+                    const ultima = textoUltimaMovimentacao(p);
                     return (
-                      <TableRow
-                        key={p.id}
-                        className={estoqueBaixo ? "bg-status-bad-bg/50" : ""}
-                      >
+                      <TableRow key={p.id} className="h-14">
                         <TableCell>
-                          <div className="flex items-center gap-2">
-                            <span className="font-medium">{p.nome}</span>
-                            {estoqueBaixo && (
-                              <AlertTriangle className="h-3.5 w-3.5 text-destructive" />
-                            )}
+                          <p className="font-semibold leading-snug">{p.nome}</p>
+                          <p className="font-mono text-xs text-muted-foreground">{p.codigo || "—"}</p>
+                        </TableCell>
+                        <TableCell>
+                          <span className="inline-flex rounded-full bg-muted px-2.5 py-0.5 text-xs font-medium">{categoriaProdutoLabel(p.categoria)}</span>
+                        </TableCell>
+                        <TableCell>
+                          <div className="flex items-baseline justify-between gap-3 text-sm">
+                            <span className={`font-semibold tabular-nums ${estoqueBaixo ? "text-status-bad" : ""}`}>
+                              {p.quantidade_estoque} un
+                              {estoqueBaixo && <span className="sr-only"> (abaixo do mínimo)</span>}
+                            </span>
+                            <span className="text-xs tabular-nums text-muted-foreground">mín. {p.quantidade_minima}</span>
+                          </div>
+                          <div aria-hidden="true" className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-track">
+                            <div className={`h-full rounded-full ${estoqueBaixo ? "bg-status-bad" : "bg-status-ok"}`} style={{ width: `${proporcao * 100}%` }} />
                           </div>
                         </TableCell>
-                        <TableCell className="font-mono text-sm">
-                          {p.codigo || "—"}
-                        </TableCell>
-                        <TableCell>
-                          <Badge variant="outline">{categoriaProdutoLabel(p.categoria)}</Badge>
-                        </TableCell>
-                        <TableCell className="text-sm text-muted-foreground">
-                          {p.descricao || "—"}
-                        </TableCell>
-                        <TableCell className="text-center">
-                          <span
-                            className={`font-bold ${
-                              estoqueBaixo ? "text-destructive" : "text-status-ok"
-                            }`}
-                          >
-                            {p.quantidade_estoque}
-                          </span>
-                          <span className="text-xs text-muted-foreground ml-1">
-                            un.
-                          </span>
-                        </TableCell>
-                        <TableCell className="text-center text-muted-foreground">
-                          {p.quantidade_minima}
-                        </TableCell>
-                        <TableCell className="text-right font-medium whitespace-nowrap">
+                        <TableCell className="whitespace-nowrap text-right font-semibold tabular-nums">
                           {formatCurrency(p.preco_venda)}
                         </TableCell>
+                        <TableCell className="max-w-[16rem] text-sm text-muted-foreground">{ultima ?? "—"}</TableCell>
                         <TableCell className="text-right">
-                          <div className="flex justify-end gap-1">
+                          <div className="flex items-center justify-end gap-1.5">
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              className="h-9 bg-acc-soft font-semibold text-acc-soft-foreground hover:bg-acc-soft/70 hover:text-acc-soft-foreground"
+                              aria-label={`Registrar entrada de ${p.nome}`}
+                              onClick={() => void abrirMovimentacao(p, "ENTRADA")}
+                            >
+                              + Entrada
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="h-9 font-semibold"
+                              aria-label={`Registrar saída de ${p.nome}`}
+                              onClick={() => void abrirMovimentacao(p, "SAIDA")}
+                            >
+                              − Saída
+                            </Button>
                             <ActionPriorityRow
-                              primary={{
-                                id: `movimentar-${p.id}`,
-                                label: "Movimentar",
-                                icon: <ArrowUpCircle className="h-4 w-4" />,
-                                variant: "default",
-                                onClick: () => void abrirMovimentacao(p),
-                              }}
-                              secondary={{
-                                id: `editar-${p.id}`,
-                                label: "Editar",
-                                icon: <Edit className="h-4 w-4" />,
-                                variant: "outline",
-                                onClick: () => void abrirEditar(p),
-                              }}
+                              acaoDaLinha
+                              semPrincipal
+                              menuTitulo={p.nome}
+                              primary={{ id: `editar-${p.id}`, label: "Editar", onClick: () => void abrirEditar(p) }}
                               overflow={[
+                                { id: `editar-menu-${p.id}`, label: "Editar", icon: <Edit className="h-4 w-4" />, onClick: () => void abrirEditar(p) },
                                 {
                                   id: `excluir-${p.id}`,
                                   label: "Excluir",
@@ -510,6 +529,14 @@ export default function Insumos() {
                 </TableBody>
                 </Table>
               </div>
+              <PaginationControls
+                page={paginaInsumosExibida}
+                totalPages={totalPaginasInsumos}
+                onPageChange={setPaginaInsumos}
+                label="Paginação de estoque"
+                totalItems={totalProdutos}
+                className="pb-0"
+              />
             </>
           )}
         </CardContent>
