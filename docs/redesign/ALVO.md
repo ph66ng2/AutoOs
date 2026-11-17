@@ -161,6 +161,8 @@ Abra a tela implementada ao lado da imagem em `referencia/telas/` e confira:
 - [ ] Nada em R$ no Início.
 - [ ] Notificações e avisos rápidos com a cor só no ícone, sem faixa lateral e sem fundo colorido.
 - [ ] Folga igual dos dois lados nos ícones de canto; animações dentro dos tempos e desligadas com movimento reduzido; item que expande é um botão só.
+- [ ] Nada pula: botão carregando, troca de rótulo, seleção e aba mantêm o tamanho (`PLANO_IMPLEMENTACAO.md`, 9.7).
+- [ ] Estados percorridos e anotados no PR, incluindo o conflito de concorrência nas telas que editam (`PLANO_IMPLEMENTACAO.md`, 9.6).
 - [ ] Testes existentes passando sem edição.
 - [ ] Em caso de dúvida entre a imagem e o código, o comportamento do código venceu e a diferença está anotada no PR.
 

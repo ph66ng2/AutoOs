@@ -31,6 +31,18 @@ check '(TODO|FIXME|HACK)' 'TODO/FIXME novo (confirme se foi pedido)'
 inv=$(git diff "$BASE" -U0 -- src ':!src/lib/db.ts' ':!e2e' | grep -E '^\+[^+].*\binvoke\(' || true)
 [ -n "$inv" ] && { report 'invoke() fora de src/lib/db.ts'; printf '%s\n' "$inv" | head -5; }
 
+# Cor fora dos tokens (redesign): hex e paleta fixa do Tailwind em linha nova de src/.
+# Ficam de fora os arquivos que definem tokens e os que precisam de cor literal (PDF, e-mail, avatar).
+COR_FORA=(':!src/index.css' ':!src/public-status/public-status.css' ':!src/opening-demo/*'
+  ':!src/lib/pdf-service.ts' ':!src/lib/email-service.ts' ':!src/lib/profile-appearance.ts'
+  ':!src/components/perfil/GeometricAvatar.tsx' ':!src/components/perfil/AppearancePicker.tsx'
+  ':!*.test.ts' ':!*.test.tsx')
+cor=$(git diff "$BASE" -U0 -- 'src/*.ts' 'src/*.tsx' 'src/*.css' "${COR_FORA[@]}" | grep -E '^\+[^+]' || true)
+hex=$(printf '%s\n' "$cor" | grep -E '(^|[^0-9A-Za-z&])#([0-9a-fA-F]{3,4}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})\b' || true)
+[ -n "$hex" ] && { report 'cor hex fora dos tokens (use var(--token); se for cor literal legítima, inclua o arquivo em COR_FORA)'; printf '%s\n' "$hex" | head -5; }
+tw=$(printf '%s\n' "$cor" | grep -E '\b(bg|text|border|ring|fill|stroke|from|via|to|outline|divide|shadow)-(red|green|blue|yellow|amber|emerald|orange|slate|gray|zinc|sky|rose|lime|teal|cyan|indigo|violet|purple|pink|fuchsia|neutral|stone)-[0-9]{2,3}\b' || true)
+[ -n "$tw" ] && { report 'cor fixa do Tailwind (ex.: bg-red-500): use os tokens do Design System'; printf '%s\n' "$tw" | head -5; }
+
 # Migration já existente editada
 mig=$(git diff "$BASE" --name-only --diff-filter=MD -- src-tauri/migrations || true)
 [ -n "$mig" ] && { report 'migration existente alterada ou removida'; echo "$mig"; }
