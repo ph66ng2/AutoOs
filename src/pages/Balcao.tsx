@@ -12,11 +12,11 @@ import {
   Tag,
   UserSearch,
 } from "lucide-react";
+import { useBuscaRetirada } from "@/hooks/useBuscaRetirada";
 import { useFilaBalcao } from "@/hooks/useFilaBalcao";
 import {
   clienteDoItem,
   descricaoDoItem,
-  juntarFilaRetirada,
   podeEntregar,
   valorDoItem,
   type ItemRetirada,
@@ -78,7 +78,6 @@ import {
   type Cliente,
   type ClienteContato,
   type Equipamento,
-  type OrcamentoInsumos,
   type Produto,
 } from "@/types";
 
@@ -1397,33 +1396,8 @@ function RetiradaBusca({
 }) {
   const fila = useFilaBalcao();
   const [term, setTerm] = useState(termoInicial);
-  const [encontrados, setEncontrados] = useState<ItemRetirada[]>([]);
+  const { buscando, data: encontrados, loading } = useBuscaRetirada(term);
   const [filtro, setFiltro] = useState<FiltroRetirada>("TUDO");
-  const [loading, setLoading] = useState(false);
-  const buscando = term.trim().length >= 2;
-  useEffect(() => {
-    const query = term.trim();
-    if (query.length < 2) {
-      setEncontrados([]);
-      return;
-    }
-    const timer = window.setTimeout(() => {
-      setLoading(true);
-      // Uma das buscas falhar não esconde a outra.
-      const equipamentos = Promise.resolve()
-        .then(() => db.listarEquipamentos(query))
-        .then((items) => items ?? [])
-        .catch(() => [] as Equipamento[]);
-      const vendas = Promise.resolve()
-        .then(() => db.listarOrcamentosInsumos({ busca: query, page: 0 }))
-        .then((pagina) => (pagina?.items ?? []).filter((venda) => ["RASCUNHO", "ENVIADO", "APROVADO"].includes(venda.status)))
-        .catch(() => [] as OrcamentoInsumos[]);
-      void Promise.all([equipamentos, vendas])
-        .then(([eqs, vds]) => setEncontrados(juntarFilaRetirada(eqs, vds)))
-        .finally(() => setLoading(false));
-    }, 250);
-    return () => window.clearTimeout(timer);
-  }, [term]);
 
   const itens = buscando ? encontrados : fila.prontos;
   const contagem = {
