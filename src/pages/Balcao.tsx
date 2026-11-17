@@ -477,6 +477,7 @@ function QuickEntry({ onBack }: { onBack: () => void }) {
   const [client, setClient] = useState<Cliente | null>(null);
   const [responsavel, setResponsavel] = useState<ClienteContato | null>(null);
   const [history, setHistory] = useState<Equipamento[]>([]);
+  const [mostrarOutros, setMostrarOutros] = useState(false);
   const [confirmedCycle, setConfirmedCycle] = useState(false);
   const [saving, setSaving] = useState(false);
   const [created, setCreated] = useState<Equipamento | null>(null);
@@ -815,22 +816,46 @@ function QuickEntry({ onBack }: { onBack: () => void }) {
     }
     setData((current) => ({ ...current, [field]: value }));
   };
+  const nomeCliente = client?.nome || client?.nome_fantasia || client?.razao_social || "";
   return (
-    <section className="mx-auto max-w-4xl">
-      <Back onBack={onBack} />
-      <h1 className="mt-3 text-3xl font-bold">Nova entrada</h1>
-      <ol className="my-6 flex gap-2 text-base">
-        {["Cliente", "Equipamento", "Laudo imediato", "Recapitulação"].map((name, index) => (
-          <li
-            key={name}
-            className={`rounded-full px-4 py-2 ${step === index + 1 ? "bg-primary text-primary-foreground" : "bg-muted"}`}
-          >
-            {index + 1}. {name}
-          </li>
-        ))}
-      </ol>
+    <section className="-m-4 flex min-h-[calc(100vh-72px)] flex-col lg:-m-8">
+      <div className="flex flex-wrap items-center gap-x-6 gap-y-2 border-b bg-card px-4 py-2 lg:px-8">
+        <Button variant="ghost" className="-ml-3 min-h-12 gap-1 text-base" onClick={onBack}>
+          <ChevronLeft /> Cancelar entrada
+        </Button>
+        <ol className="flex flex-1 flex-wrap justify-center gap-2" aria-label="Passos da entrada">
+          {["Cliente", "Equipamento", "Laudo imediato", "Recapitulação"].map((name, index) => {
+            const numero = index + 1;
+            const feito = numero < step;
+            const atual = numero === step;
+            return (
+              <li
+                key={name}
+                aria-current={atual ? "step" : undefined}
+                className={cn(
+                  "flex min-h-10 items-center gap-2 rounded-full py-1 pl-1 pr-4 text-sm font-semibold",
+                  atual ? "bg-primary text-primary-foreground" : feito ? "bg-acc-soft text-acc-soft-foreground" : "bg-muted text-muted-foreground",
+                )}
+              >
+                <span
+                  aria-hidden="true"
+                  className={cn(
+                    "inline-flex h-8 w-8 items-center justify-center rounded-full text-xs",
+                    atual ? "bg-primary-foreground text-primary" : "bg-card",
+                  )}
+                >
+                  {feito ? <Check className="h-4 w-4" /> : numero}
+                </span>
+                {name}
+              </li>
+            );
+          })}
+        </ol>
+      </div>
+      <div className="flex-1 px-4 py-6 lg:px-8">
       {step === 1 && (
-        <div className="rounded-xl border bg-card p-6 [&_button]:min-h-12 [&_button]:text-base [&_input]:min-h-12 [&_input]:text-base">
+        <div className="mx-auto max-w-4xl space-y-2 [&_button]:min-h-12 [&_button]:text-base [&_input]:min-h-12 [&_input]:text-base">
+          <h2 className="mb-4 text-2xl font-bold tracking-tight">Quem está trazendo o equipamento?</h2>
           <ClienteSelector
             onClienteSelecionado={(selectedClient) => {
               setClient(selectedClient);
@@ -850,19 +875,21 @@ function QuickEntry({ onBack }: { onBack: () => void }) {
                 onChange={setResponsavel}
                 preSelecionar
               />
-              <Button
-                className="mt-6 min-h-12 text-base"
-                onClick={() => setStep(2)}
-              >
-                Continuar <ChevronRight />
-              </Button>
             </>
           )}
         </div>
       )}
       {step === 2 && (
-        <div className="space-y-5 rounded-xl border bg-card p-6">
-          <h2 className="text-xl font-semibold">Dados do equipamento</h2>
+        <div className="grid items-start gap-6 lg:grid-cols-[minmax(0,1fr)_320px]">
+        <div className="min-w-0 space-y-5">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <h2 className="text-2xl font-bold tracking-tight">Dados do equipamento</h2>
+            {client && (
+              <span className="rounded-full bg-acc-soft px-4 py-2 text-sm font-semibold text-acc-soft-foreground">
+                Cliente: {nomeCliente}{responsavel ? ` · ${responsavel.nome}` : ""}
+              </span>
+            )}
+          </div>
           <div className="grid gap-4 md:grid-cols-2">
             <Field
               label="Serial *"
@@ -937,47 +964,64 @@ function QuickEntry({ onBack }: { onBack: () => void }) {
               </p>
             </div>
           </div>
-          <Label className="text-base">Defeito relatado *</Label>
-          <Textarea
-            className={inputClass}
-            value={data.defeito_relatado}
-            onChange={update("defeito_relatado")}
-          />
-          <div>
-            <Label className="text-base">Acessórios</Label>
-            <div className="mt-2 grid gap-2 sm:grid-cols-2">
-              {ACESSORIOS_OPTIONS.map((item) => (
-                <label
-                  key={item}
-                  className="flex min-h-12 items-center gap-3 rounded-lg border px-3 text-base"
-                >
-                  <Checkbox
-                    className="h-5 w-5"
-                    checked={data.acessorios.includes(item)}
-                    onCheckedChange={(checked) =>
-                      setData((current) => ({
-                        ...current,
-                        acessorios: checked
-                          ? [...current.acessorios, item]
-                          : current.acessorios.filter(
-                              (value) => value !== item,
-                            ),
-                      }))
-                    }
-                  />
-                  {item}
-                </label>
-              ))}
-            </div>
-          </div>
           <div className="space-y-2">
-            <Label className="text-base">Outros acessórios</Label>
+            <Label htmlFor="balcao-defeito" className="text-base">Defeito relatado pelo cliente *</Label>
             <Textarea
-              className={inputClass}
-              value={data.acessorios_outros}
-              onChange={update("acessorios_outros")}
+              id="balcao-defeito"
+              className={cn(inputClass, "min-h-24")}
+              value={data.defeito_relatado}
+              onChange={update("defeito_relatado")}
             />
           </div>
+          <div>
+            <p className="text-base font-medium" id="balcao-acessorios">Acessórios que vieram junto</p>
+            <div className="mt-2 flex flex-wrap gap-2" role="group" aria-labelledby="balcao-acessorios">
+              {ACESSORIOS_OPTIONS.map((item) => {
+                const marcado = data.acessorios.includes(item);
+                return (
+                  <button
+                    key={item}
+                    type="button"
+                    aria-pressed={marcado}
+                    onClick={() =>
+                      setData((current) => ({
+                        ...current,
+                        acessorios: marcado
+                          ? current.acessorios.filter((value) => value !== item)
+                          : [...current.acessorios, item],
+                      }))
+                    }
+                    className={cn(
+                      "inline-flex min-h-12 items-center gap-1.5 rounded-xl border px-4 text-base font-medium transition-colors duration-rapida",
+                      marcado ? "border-2 border-primary bg-acc-soft text-acc-soft-foreground" : "bg-card hover:border-ctl",
+                    )}
+                  >
+                    {marcado ? <Check className="h-4 w-4" aria-hidden="true" /> : <Plus className="h-4 w-4" aria-hidden="true" />}
+                    {item}
+                  </button>
+                );
+              })}
+              <button
+                type="button"
+                aria-expanded={mostrarOutros}
+                onClick={() => setMostrarOutros((atual) => !atual)}
+                className="inline-flex min-h-12 items-center gap-1.5 rounded-xl border border-dashed px-4 text-base font-medium text-muted-foreground transition-colors duration-rapida hover:border-ctl"
+              >
+                <Plus className="h-4 w-4" aria-hidden="true" /> Outro
+              </button>
+            </div>
+          </div>
+          {(mostrarOutros || data.acessorios_outros) && (
+            <div className="space-y-2">
+              <Label htmlFor="balcao-outros-acessorios" className="text-base">Outros acessórios</Label>
+              <Textarea
+                id="balcao-outros-acessorios"
+                className={inputClass}
+                value={data.acessorios_outros}
+                onChange={update("acessorios_outros")}
+              />
+            </div>
+          )}
           <div className="space-y-2">
             <Label className="text-base">Observações complementares</Label>
             <Textarea
@@ -986,41 +1030,43 @@ function QuickEntry({ onBack }: { onBack: () => void }) {
               onChange={update("observacoes")}
             />
           </div>
+        </div>
           {history.length > 0 && (
-            <div className="rounded-lg border border-status-wait bg-status-wait-bg p-4">
-              <strong>Serial já possui {history.length} ciclo(s).</strong>
-              <p className="mt-1">
-                Foi reaproveitada a marca, o modelo e o tipo somente quando
-                estavam vazios. Os acessórios e o laudo são sempre conferidos
-                nesta nova entrada.
+            <aside className="rounded-2xl border bg-card p-5" aria-label="Este serial já passou por aqui">
+              <h3 className="font-bold">Este serial já passou por aqui</h3>
+              <p className="mt-2 text-sm text-muted-foreground">
+                Marca, modelo e tipo foram preenchidos do último ciclo quando
+                estavam vazios. Acessórios e defeito são sempre conferidos de novo.
               </p>
-              <label className="mt-3 flex min-h-12 items-center gap-3 text-base">
+              <ul className="mt-3 divide-y border-y text-sm">
+                {history.slice(0, 4).map((ciclo) => (
+                  <li key={ciclo.id} className="flex items-center justify-between gap-3 py-2.5">
+                    <span className="min-w-0 truncate">
+                      {mesAno(ciclo.data_entrada)}
+                      {ciclo.defeito_relatado ? ` · ${ciclo.defeito_relatado}` : ""}
+                    </span>
+                    <span className="shrink-0 text-muted-foreground">
+                      {STATUS_LABELS[ciclo.status as keyof typeof STATUS_LABELS] || ciclo.status}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+              {history.length > 4 && <p className="mt-2 text-xs text-muted-foreground">e mais {history.length - 4} ciclos</p>}
+              <label className="mt-4 flex min-h-12 items-center gap-3 rounded-xl bg-acc-soft px-4 py-2 text-base font-semibold text-acc-soft-foreground">
                 <Checkbox
                   className="h-6 w-6"
                   checked={confirmedCycle}
                   onCheckedChange={setConfirmedCycle}
-                />{" "}
-                Confirmo criar um novo ciclo
+                />
+                Confirmo abrir um novo ciclo
               </label>
-            </div>
+            </aside>
           )}
-          <div className="flex gap-3">
-            <Button
-              className="min-h-12 text-base"
-              variant="outline"
-              onClick={() => setStep(1)}
-            >
-              Voltar
-            </Button>
-            <Button className="min-h-12 text-base" onClick={() => setStep(3)}>
-              Continuar para o laudo <ChevronRight />
-            </Button>
-          </div>
         </div>
       )}
       {step === 3 && (
-        <div className="space-y-5 rounded-xl border bg-card p-6">
-          <h2 className="text-xl font-semibold">Laudo imediato</h2>
+        <div className="mx-auto max-w-4xl space-y-5">
+          <h2 className="text-2xl font-bold tracking-tight">Laudo imediato</h2>
           <p className="text-base text-muted-foreground">
             Registre o teste feito no recebimento. O texto será salvo na
             verificação técnica e exibido na ordem de serviço.
@@ -1123,19 +1169,11 @@ function QuickEntry({ onBack }: { onBack: () => void }) {
             />
           </div>
           {error && <p role="alert" className="text-destructive">{error}</p>}
-          <div className="flex gap-3">
-            <Button className="min-h-12 text-base" variant="outline" onClick={() => setStep(2)}>
-              Voltar
-            </Button>
-            <Button className="min-h-12 text-base" onClick={() => setStep(4)}>
-              Recapitular <ChevronRight />
-            </Button>
-          </div>
         </div>
       )}
       {step === 4 && (
-        <div className="rounded-xl border bg-card p-6">
-          <h2 className="text-xl font-semibold">Recapitulação</h2>
+        <div className="mx-auto max-w-4xl rounded-2xl border bg-card p-6">
+          <h2 className="text-2xl font-bold tracking-tight">Recapitulação</h2>
           <dl className="mt-5 grid gap-3 text-base md:grid-cols-2">
             <Info
               label="Cliente"
@@ -1173,25 +1211,40 @@ function QuickEntry({ onBack }: { onBack: () => void }) {
               {error}
             </p>
           )}
-          <div className="mt-6 flex gap-3">
-            <Button
-              className="min-h-12 text-base"
-              variant="outline"
-              onClick={() => setStep(3)}
-            >
-              Corrigir
-            </Button>
-            <Button
-              className="min-h-12 text-base"
-              disabled={saving}
-              onClick={() => void save()}
-            >
-              {saving && <Loader2 className="animate-spin" />} Salvar como
-              Recebido
-            </Button>
-          </div>
         </div>
       )}
+      </div>
+      <div className="sticky bottom-0 z-20 flex items-center justify-between gap-3 border-t bg-card px-4 py-4 lg:px-8">
+        {step === 1 ? <span /> : (
+          <Button
+            className="min-h-14 px-6 text-base"
+            variant="outline"
+            onClick={() => setStep(step - 1)}
+          >
+            {step === 2 ? "Voltar para cliente" : step === 3 ? "Voltar para equipamento" : "Corrigir"}
+          </Button>
+        )}
+        {step === 1 && (
+          <Button className="min-h-14 px-6 text-base" disabled={!client} onClick={() => setStep(2)}>
+            Continuar <ChevronRight />
+          </Button>
+        )}
+        {step === 2 && (
+          <Button className="min-h-14 px-6 text-base" onClick={() => setStep(3)}>
+            Continuar para o laudo <ChevronRight />
+          </Button>
+        )}
+        {step === 3 && (
+          <Button className="min-h-14 px-6 text-base" onClick={() => setStep(4)}>
+            Recapitular <ChevronRight />
+          </Button>
+        )}
+        {step === 4 && (
+          <Button className="min-h-14 px-6 text-base" disabled={saving} onClick={() => void save()}>
+            {saving && <Loader2 className="animate-spin" />} Salvar como Recebido
+          </Button>
+        )}
+      </div>
       <Dialog
         open={Boolean(otherField)}
         onOpenChange={(open) => !open && setOtherField(null)}
@@ -1231,6 +1284,14 @@ function QuickEntry({ onBack }: { onBack: () => void }) {
     </section>
   );
 }
+/** "Mar 2026" a partir de uma data ISO (AAAA-MM-DD). */
+function mesAno(data?: string): string {
+  const partes = data?.match(/^(\d{4})-(\d{2})/);
+  if (!partes) return "Data desconhecida";
+  const mes = new Date(Number(partes[1]), Number(partes[2]) - 1, 1).toLocaleDateString("pt-BR", { month: "short" }).replace(".", "");
+  return `${mes.charAt(0).toUpperCase()}${mes.slice(1)} ${partes[1]}`;
+}
+
 function Field({
   label,
   value,

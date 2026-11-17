@@ -163,7 +163,7 @@ describe("Modo Balcão", () => {
     const user = userEvent.setup(); renderCounter(); await reachReview(user);
     await user.click(screen.getByRole("button", { name: /salvar como recebido/i }));
     expect(await screen.findByRole("alert")).toHaveTextContent("Banco indisponível");
-    expect(screen.getByText("Recapitulação")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Recapitulação" })).toBeInTheDocument();
   });
 
   it("não entrega quando o PIN é negado e mantém o detalhe aberto", async () => {
