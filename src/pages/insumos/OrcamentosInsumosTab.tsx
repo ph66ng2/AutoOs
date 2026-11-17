@@ -4,6 +4,7 @@
  */
 import { useEffect, useState, type ReactNode } from "react";
 import { FileText, Lock, Mail, MessageCircle, Package, Plus, Search } from "lucide-react";
+import { TracosDeEtapas } from "@/components/equipamentos/BarraDeEtapas";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { ActionPriorityRow, type PriorityAction } from "@/components/ui/action-priority-row";
@@ -16,12 +17,14 @@ import { useSensitiveAccess } from "@/hooks/useSensitiveAccess";
 import { parseTimestampPostgres } from "@/lib/date-utils";
 import {
   acoesOrcamentoInsumos,
+  etapaVenda,
+  familiaVenda,
   orcamentoInsumosVencido,
   prazoOuData,
   proximaAcaoVenda,
-  STATUS_ORCAMENTO_INSUMOS_COR,
   STATUS_ORCAMENTO_INSUMOS_FAMILIA,
   STATUS_ORCAMENTO_INSUMOS_LABEL,
+  TOTAL_ETAPAS_VENDA,
   type TipoAcaoVenda,
 } from "@/lib/orcamento-insumos";
 import { totalPages } from "@/lib/pagination";
@@ -55,19 +58,15 @@ const FILTRO_PRINCIPAIS: OpcaoFiltroStatus[] = [
 ];
 const FILTRO_OUTROS: OpcaoFiltroStatus[] = (["REPROVADO", "CANCELADO"] as const).map(opcaoFiltro);
 
-function SeloSituacao({ status, vencido }: { status: StatusOrcamentoInsumos; vencido: boolean }) {
+/** Situação no mesmo desenho da lista de equipamentos: nome e barra de etapas, sem selo. */
+function SituacaoComEtapas({ status, vencido }: { status: StatusOrcamentoInsumos; vencido: boolean }) {
   return (
-    <div className="flex flex-col items-start gap-1">
-      <span className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-bold ${STATUS_ORCAMENTO_INSUMOS_COR[status]}`}>
-        <span aria-hidden="true" className="h-[7px] w-[7px] rounded-full bg-current" />
+    <div className="min-w-0 space-y-1.5">
+      <span className="block truncate text-sm font-medium">
         {STATUS_ORCAMENTO_INSUMOS_LABEL[status]}
+        {vencido && <> · <span className="font-semibold text-status-bad">Vencido</span></>}
       </span>
-      {vencido && (
-        <span className="inline-flex items-center gap-1.5 rounded-full bg-status-bad-bg px-2.5 py-0.5 text-xs font-bold text-status-bad">
-          <span aria-hidden="true" className="h-[7px] w-[7px] rounded-full bg-current" />
-          Vencido
-        </span>
-      )}
+      <TracosDeEtapas feitas={etapaVenda(status)} total={TOTAL_ETAPAS_VENDA} familia={familiaVenda(status, vencido)} />
     </div>
   );
 }
@@ -279,7 +278,7 @@ export function OrcamentosInsumosTab({ onEstoqueAlterado, contagemPorStatus, ren
                                 {orcamento.categorias_itens && <span> · {orcamento.categorias_itens}</span>}
                               </TableCell>
                               <TableCell>
-                                <SeloSituacao status={orcamento.status} vencido={vencido} />
+                                <SituacaoComEtapas status={orcamento.status} vencido={vencido} />
                               </TableCell>
                               <TableCell className={`whitespace-nowrap text-sm tabular-nums ${vencido ? "font-semibold text-status-bad" : "text-muted-foreground"}`}>
                                 {prazoOuData(orcamento)}
