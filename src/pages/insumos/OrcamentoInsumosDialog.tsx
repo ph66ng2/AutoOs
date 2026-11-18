@@ -130,7 +130,10 @@ export function OrcamentoInsumosDialog({
   acaoInicial = null,
 }: OrcamentoInsumosDialogProps) {
   const { success, warning, error: showError } = useNotification();
-  const { ensureSensitiveAccess } = useSensitiveAccess();
+  const { ensureSensitiveAccess, hasPermission } = useSensitiveAccess();
+  // Decisão 23 (1A): sem Ações financeiras, a prévia do PDF abre, mas não há "Baixar",
+  // porque salvar o PDF de um rascunho o marca como enviado.
+  const podeSalvarPdf = hasPermission(SENSITIVE_PERMISSIONS.FINANCIAL_ACTIONS);
 
   const [detalhe, setDetalhe] = useState<OrcamentoInsumosDetalhe | null>(null);
   const [cliente, setCliente] = useState<Cliente | null>(null);
@@ -733,7 +736,7 @@ export function OrcamentoInsumosDialog({
         onOpenChange={(aberto) => {
           if (!aberto) setPdf(null);
         }}
-        onDownload={salvarPdf}
+        onDownload={podeSalvarPdf ? salvarPdf : undefined}
       />
       <ConfirmDialog
         open={confirmando !== null}

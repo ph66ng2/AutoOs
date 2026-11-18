@@ -3,12 +3,14 @@
  * com busca e filtro de status. O formulário abre em diálogo (OrcamentoInsumosDialog).
  */
 import { useEffect, useState, type ReactNode } from "react";
-import { FileText, Lock, Mail, MessageCircle, Package, Plus, Search } from "lucide-react";
+import { Lock, Package, Plus, Search } from "lucide-react";
 import { TracosDeEtapas } from "@/components/equipamentos/BarraDeEtapas";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import { ActionPriorityRow, type PriorityAction } from "@/components/ui/action-priority-row";
+import { ActionPriorityRow } from "@/components/ui/action-priority-row";
 import { FiltroDeStatus, type OpcaoFiltroStatus } from "@/components/equipamentos/FiltroDeStatus";
+import { menuVenda } from "@/components/vendas/menu-venda";
+import { useNavigate } from "react-router-dom";
 import { Input } from "@/components/ui/input";
 import { PaginationControls } from "@/components/ui/pagination-controls";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -16,7 +18,6 @@ import { useOrcamentosInsumos } from "@/hooks/useOrcamentosInsumos";
 import { useSensitiveAccess } from "@/hooks/useSensitiveAccess";
 import { parseTimestampPostgres } from "@/lib/date-utils";
 import {
-  acoesOrcamentoInsumos,
   etapaVenda,
   familiaVenda,
   orcamentoInsumosVencido,
@@ -25,14 +26,12 @@ import {
   STATUS_ORCAMENTO_INSUMOS_FAMILIA,
   STATUS_ORCAMENTO_INSUMOS_LABEL,
   TOTAL_ETAPAS_VENDA,
-  type TipoAcaoVenda,
 } from "@/lib/orcamento-insumos";
 import { totalPages } from "@/lib/pagination";
 import { formatCurrency } from "@/lib/utils";
 import { OrcamentoInsumosDialog, type AcaoInicialOrcamentoInsumos } from "@/pages/insumos/OrcamentoInsumosDialog";
 import {
   SENSITIVE_PERMISSIONS,
-  type OrcamentoInsumos,
   type StatusOrcamentoInsumos,
 } from "@/types";
 
@@ -79,6 +78,7 @@ export function OrcamentosInsumosTab({ onEstoqueAlterado, contagemPorStatus, ren
   const [orcamentoId, setOrcamentoId] = useState<number | null>(null);
   const [acaoInicial, setAcaoInicial] = useState<AcaoInicialOrcamentoInsumos | null>(null);
   const { ensureSensitiveAccess, hasPermission } = useSensitiveAccess();
+  const navigate = useNavigate();
   const podeAgir = hasPermission(SENSITIVE_PERMISSIONS.FINANCIAL_ACTIONS);
 
   const { orcamentos, total, loading, error, recarregar } = useOrcamentosInsumos({
@@ -115,21 +115,8 @@ export function OrcamentosInsumosTab({ onEstoqueAlterado, contagemPorStatus, ren
     setDialogAberto(true);
   }
 
-  function menuDaLinha(orcamento: OrcamentoInsumos, principal: TipoAcaoVenda): PriorityAction[] {
-    const acoes = acoesOrcamentoInsumos(orcamento.status);
-    const id = orcamento.id;
-    const itens: PriorityAction[] = [];
-    if (acoes.gerarPdf) itens.push({ id: `pdf-${id}`, label: "Gerar PDF", icon: <FileText />, group: "Enviar", onClick: () => abrir(id, "pdf") });
-    if (acoes.enviar) {
-      itens.push({ id: `email-${id}`, label: "Enviar por e-mail", icon: <Mail />, group: "Enviar", onClick: () => abrir(id, "email") });
-      itens.push({ id: `whatsapp-${id}`, label: "Enviar por WhatsApp", icon: <MessageCircle />, group: "Enviar", onClick: () => abrir(id, "whatsapp") });
-    }
-    if (acoes.aprovar && principal !== "aprovar" && principal !== "renovar") itens.push({ id: `aprovar-${id}`, label: "Aprovar", group: "Decidir", onClick: () => abrir(id, "aprovar") });
-    if (acoes.reprovar) itens.push({ id: `reprovar-${id}`, label: "Reprovar", group: "Decidir", onClick: () => abrir(id, "reprovar") });
-    if (acoes.editar) itens.push({ id: `editar-${id}`, label: "Editar", group: "Orçamento", onClick: () => abrir(id, "editar") });
-    if (acoes.cancelar) itens.push({ id: `cancelar-${id}`, label: "Cancelar orçamento", className: "text-destructive", group: "Orçamento", onClick: () => abrir(id, "cancelar") });
-    if (acoes.excluir) itens.push({ id: `excluir-${id}`, label: "Excluir", className: "text-destructive", group: "Orçamento", onClick: () => abrir(id, "excluir") });
-    return itens;
+  function verPagina(id: number) {
+    navigate(`/vendas/${id}`);
   }
 
   const botaoNovo = podeAgir ? (
@@ -252,13 +239,13 @@ export function OrcamentosInsumosTab({ onEstoqueAlterado, contagemPorStatus, ren
                             <TableRow
                               key={orcamento.id}
                               className="h-14 cursor-pointer"
-                              onClick={() => abrir(orcamento.id)}
+                              onClick={() => verPagina(orcamento.id)}
                               tabIndex={0}
                               onKeyDown={(event) => {
                                 if (event.target !== event.currentTarget) return;
                                 if (event.key === "Enter" || event.key === " ") {
                                   event.preventDefault();
-                                  abrir(orcamento.id);
+                                  verPagina(orcamento.id);
                                 }
                               }}
                               aria-label={`Abrir orçamento ${orcamento.numero_exibicao}`}
@@ -294,12 +281,12 @@ export function OrcamentosInsumosTab({ onEstoqueAlterado, contagemPorStatus, ren
                                     primary={{
                                       id: `principal-${orcamento.id}`,
                                       label: acao.rotulo,
-                                      onClick: () => abrir(orcamento.id, acaoNaJanela),
+                                      onClick: () => (acaoNaJanela ? abrir(orcamento.id, acaoNaJanela) : verPagina(orcamento.id)),
                                     }}
-                                    overflow={menuDaLinha(orcamento, acao.tipo)}
+                                    overflow={menuVenda(orcamento.id, orcamento.status, acaoNaJanela, (acaoMenu) => abrir(orcamento.id, acaoMenu))}
                                   />
                                 ) : (
-                                  <Button variant="outline" size="sm" className="h-[34px] w-[176px]" aria-label={`Ver orçamento ${orcamento.numero_exibicao}`} onClick={() => abrir(orcamento.id)}>
+                                  <Button variant="outline" size="sm" className="h-[34px] w-[176px]" aria-label={`Ver orçamento ${orcamento.numero_exibicao}`} onClick={() => verPagina(orcamento.id)}>
                                     Ver
                                   </Button>
                                 )}

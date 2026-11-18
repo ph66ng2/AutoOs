@@ -94,18 +94,21 @@ export function ActionPriorityRow({
     </SelectItem>
   )
 
+  // No topo de uma página (destaque), a ação principal pode ser de contorno (ex.: "Excluir de vez").
+  const contornoNoTopo = destaque && primary.variant === "outline";
   if (acaoDaLinha) {
     return (
       <div className="ml-auto inline-flex items-center justify-end gap-2 whitespace-nowrap">
         {!semPrincipal && (
           <Button
-            variant={destaque ? "default" : "ghost"}
+            variant={destaque ? (contornoNoTopo ? "outline" : "default") : "ghost"}
             size="sm"
             className={cn(
               "w-[176px] justify-center px-3 font-semibold",
               destaque
                 ? "h-10 text-sm"
                 : "h-8 bg-acc-soft text-[13px] text-acc-soft-foreground hover:bg-acc-soft/70 hover:text-acc-soft-foreground",
+              contornoNoTopo && primary.className,
             )}
             onClick={primary.onClick}
             disabled={primary.disabled}

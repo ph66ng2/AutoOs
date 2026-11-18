@@ -8,6 +8,13 @@ const mocks = vi.hoisted(() => ({
   listar: vi.fn(),
   ensureSensitiveAccess: vi.fn(),
   dialogProps: vi.fn(),
+  navigate: vi.fn(),
+}));
+
+// A lista navega para a página do orçamento (/vendas/:id).
+vi.mock("react-router-dom", async (original) => ({
+  ...(await original<typeof import("react-router-dom")>()),
+  useNavigate: () => mocks.navigate,
 }));
 
 vi.mock("@/lib/db", () => ({ db: { listarOrcamentosInsumos: mocks.listar } }));
@@ -118,7 +125,7 @@ describe("OrcamentosInsumosTab", () => {
   it("clicar numa linha abre o orçamento", async () => {
     render(<OrcamentosInsumosTab />);
     fireEvent.click(await screen.findByRole("row", { name: /abrir orçamento OI-1/i }));
-    expect(await screen.findByTestId("dialogo")).toHaveTextContent("10");
+    expect(mocks.navigate).toHaveBeenCalledWith("/vendas/10");
   });
 
   it("novo orçamento pede PIN financeiro antes de abrir em branco", async () => {

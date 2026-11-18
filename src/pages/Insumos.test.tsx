@@ -1,6 +1,10 @@
 import { beforeAll, describe, expect, it, vi } from "vitest";
 import { render, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 
+
+const buscarProduto = vi.hoisted(() => vi.fn());
+const registrarMovimentacao = vi.hoisted(() => vi.fn());
 
 vi.mock("@/hooks/useInsumos", () => ({
   useInsumos: () => ({
@@ -12,8 +16,9 @@ vi.mock("@/hooks/useInsumos", () => ({
     criar: vi.fn(),
     atualizar: vi.fn(),
     deletar: vi.fn(),
-    registrarMovimentacao: vi.fn(),
+    registrarMovimentacao: registrarMovimentacao,
     consultarUsoEmOrcamentos: vi.fn().mockResolvedValue(null),
+    buscarProduto: buscarProduto,
     recarregar: vi.fn(),
   }),
 }));
@@ -53,5 +58,45 @@ describe("Insumos: só o estoque", () => {
     render(<Insumos />);
     expect(screen.queryByRole("tab")).toBeNull();
     expect(screen.queryByTestId("aba-orcamentos")).toBeNull();
+  });
+});
+
+describe("Insumos: entrada pedida por uma venda de insumos", () => {
+  it("abre a movimentação de entrada do item já com a quantidade que falta", async () => {
+    buscarProduto.mockResolvedValue({ id: 9, codigo: "RIB-CE", nome: "Ribbon cera 110x74", categoria: "RIBBON", quantidade_estoque: 6, quantidade_minima: 10, preco_custo: 20, preco_venda: 32 });
+    window.history.pushState({}, "", "/insumos?entrada=9&quantidade=4");
+    render(<Insumos />);
+    expect(await screen.findByText("Movimentação de Estoque")).toBeInTheDocument();
+    expect(buscarProduto).toHaveBeenCalledWith(9);
+    expect(screen.getByRole("spinbutton")).toHaveValue(4);
+    expect(window.location.search).toBe("");
+  });
+});
+
+describe("Insumos: volta para a venda depois da entrada", () => {
+  it("salvar a entrada volta para a página da venda; fechar sem salvar não volta", async () => {
+    buscarProduto.mockResolvedValue({ id: 9, codigo: "RIB-CE", nome: "Ribbon cera 110x74", categoria: "RIBBON", quantidade_estoque: 6, quantidade_minima: 10, preco_custo: 20, preco_venda: 32 });
+    registrarMovimentacao.mockResolvedValue({ sucesso: true });
+    const usuario = userEvent.setup();
+    window.history.pushState({}, "", "/insumos?entrada=9&quantidade=4&voltar=%2Fvendas%2F34");
+    render(<Insumos />);
+    await screen.findByText("Movimentação de Estoque");
+    await usuario.type(screen.getByPlaceholderText("Compra, uso em manutenção..."), "Compra fornecedor");
+    await usuario.click(screen.getByRole("button", { name: "Registrar Movimentação" }));
+    await vi.waitFor(() => expect(window.location.pathname).toBe("/vendas/34"));
+    expect(registrarMovimentacao).toHaveBeenCalledWith(9, "ENTRADA", 4, "Compra fornecedor", undefined);
+  });
+
+  it("não aceita voltar para um endereço que não é de uma venda", async () => {
+    buscarProduto.mockResolvedValue({ id: 9, codigo: "RIB-CE", nome: "Ribbon cera 110x74", categoria: "RIBBON", quantidade_estoque: 6, quantidade_minima: 10, preco_custo: 20, preco_venda: 32 });
+    registrarMovimentacao.mockResolvedValue({ sucesso: true });
+    const usuario = userEvent.setup();
+    window.history.pushState({}, "", "/insumos?entrada=9&quantidade=4&voltar=https%3A%2F%2Fexemplo.test");
+    render(<Insumos />);
+    await screen.findByText("Movimentação de Estoque");
+    await usuario.type(screen.getByPlaceholderText("Compra, uso em manutenção..."), "Compra fornecedor");
+    await usuario.click(screen.getByRole("button", { name: "Registrar Movimentação" }));
+    await vi.waitFor(() => expect(registrarMovimentacao).toHaveBeenCalled());
+    expect(window.location.pathname).toBe("/insumos");
   });
 });
