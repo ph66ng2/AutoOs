@@ -1,7 +1,7 @@
 import { validarPecas } from "@/lib/orcamento-estoque";
 import { cn, formatCurrency } from "@/lib/utils";
 import { useEffect, useState } from "react";
-import { Plus, Search, Edit, Trash2, RefreshCw, Wrench } from "lucide-react";
+import { Plus, Search, Edit, RefreshCw, Wrench, AlertTriangle } from "lucide-react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { Button } from "@/components/ui/button";
@@ -24,7 +24,7 @@ import { useNotification } from "@/hooks/useNotification";
 import { ErrorAlert } from "@/components/ui/error-alert";
 import { FormValidationError } from "@/components/ui/form-validation-error";
 import { ValorDecimalInput } from "@/components/ui/valor-decimal-input";
-import { SENSITIVE_PERMISSIONS, type ServicoCatalogo, type PecaVinculada } from "@/types";
+import { SENSITIVE_PERMISSIONS, type ServicoCatalogo, type PecaVinculada, type SituacaoServico } from "@/types";
 import { PecasDoServico } from "@/components/equipamentos/PecasDoServico";
 import { ActionPriorityRow } from "@/components/ui/action-priority-row";
 import { PaginationControls } from "@/components/ui/pagination-controls";
@@ -41,8 +41,9 @@ import { PageHeader } from "@/components/PageHeader";
 
 export default function Servicos() {
   const [busca, setBusca] = useState("");
-  /** "Excluir" desativa; inativos só aparecem em Todos (o app não reativa serviço). */
-  const [mostrar, setMostrar] = useState<"ATIVOS" | "TODOS">("ATIVOS");
+  /** O interruptor de cada cartão desativa (com confirmação) ou reativa o serviço. */
+  const [mostrar, setMostrar] = useState<SituacaoServico>("ATIVOS");
+  const [alternando, setAlternando] = useState<number | null>(null);
   const [paginaServicos, setPaginaServicos] = useState(1);
   const [modeloSelecionado, setModeloSelecionado] = useState("");
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -54,9 +55,9 @@ export default function Servicos() {
   const { ensureSensitiveAccess } = useSensitiveAccess();
   const { error: showError } = useNotification();
 
-  const { servicos, total: totalServicos, loading, error, criar, atualizar, deletar, recarregar } = useServicos({
+  const { servicos, total: totalServicos, loading, error, criar, atualizar, deletar, reativar, recarregar } = useServicos({
     busca: busca || undefined,
-    apenasAtivos: mostrar === "ATIVOS",
+    situacao: mostrar,
     page: paginaServicos,
   });
   const totalPaginasServicos = totalPages(totalServicos);
@@ -153,7 +154,7 @@ export default function Servicos() {
 
   async function solicitarExclusao(servico: ServicoCatalogo) {
     const liberado = await ensureSensitiveAccess({
-      title: "Excluir serviço",
+      title: "Desativar serviço",
       description: "Informe o PIN para desativar um serviço padrão do catálogo.",
       permission: SENSITIVE_PERMISSIONS.DELETE_RECORDS,
     });
@@ -169,15 +170,37 @@ export default function Servicos() {
     try {
       const resultado = await deletar(deletando.id!);
       if (!resultado.sucesso) {
-        throw new Error(resultado.erro || "Não foi possível excluir o serviço.");
+        throw new Error(resultado.erro || "Não foi possível desativar o serviço.");
       }
       setDeleteDialogOpen(false);
       setDeletando(null);
     } catch (err: any) {
-      console.error("Erro ao excluir serviço:", err);
-      showError("Serviços", "Excluir serviço", err);
+      console.error("Erro ao desativar serviço:", err);
+      showError("Serviços", "Desativar serviço", err);
     } finally {
       setSalvando(false);
+    }
+  }
+
+  async function reativarServico(servico: ServicoCatalogo) {
+    const liberado = await ensureSensitiveAccess({
+      title: "Reativar serviço",
+      description: "Informe o PIN para o serviço voltar à verificação técnica.",
+      permission: SENSITIVE_PERMISSIONS.STOCK_CONTROL,
+    });
+    if (!liberado) return;
+
+    setAlternando(servico.id!);
+    try {
+      const resultado = await reativar(servico.id!);
+      if (!resultado.sucesso) {
+        throw new Error(resultado.erro || "Não foi possível reativar o serviço.");
+      }
+    } catch (err: any) {
+      console.error("Erro ao reativar serviço:", err);
+      showError("Serviços", "Reativar serviço", err);
+    } finally {
+      setAlternando(null);
     }
   }
 
@@ -209,7 +232,7 @@ export default function Servicos() {
               />
             </div>
             <div role="group" aria-label="Mostrar serviços" className="inline-flex rounded-xl bg-muted p-1">
-              {(["ATIVOS", "TODOS"] as const).map((opcao) => (
+              {(["ATIVOS", "INATIVOS", "TODOS"] as const).map((opcao) => (
                 <button
                   key={opcao}
                   type="button"
@@ -220,7 +243,7 @@ export default function Servicos() {
                     mostrar === opcao ? "bg-card text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground",
                   )}
                 >
-                  {opcao === "ATIVOS" ? "Ativos" : "Todos"}
+                  {opcao === "ATIVOS" ? "Ativos" : opcao === "INATIVOS" ? "Inativos" : "Todos"}
                   {mostrar === opcao && !loading && (
                     <span className="rounded-full bg-acc-soft px-1.5 text-[11px] font-bold tabular-nums text-acc-soft-foreground">{totalServicos}</span>
                   )}
@@ -260,48 +283,50 @@ export default function Servicos() {
                 {servicosExibidos.map((servico) => {
                   const inativo = servico.ativo === false;
                   return (
-                    <li key={servico.id} className={cn("flex flex-col gap-3 rounded-2xl border bg-card p-4", inativo && "bg-muted/40")}>
+                    <li key={servico.id} className="flex flex-col gap-3 rounded-2xl border bg-card p-4">
                       <div className="flex items-start justify-between gap-3">
-                        <div className="min-w-0">
-                          <p className={cn("font-semibold [overflow-wrap:anywhere]", inativo && "text-muted-foreground")}>{servico.nome}</p>
+                        <div className={cn("min-w-0", inativo && "opacity-55")}>
+                          <p className="font-semibold [overflow-wrap:anywhere]">{servico.nome}</p>
                           {servico.descricao && <p className="text-sm text-muted-foreground [overflow-wrap:anywhere]">{servico.descricao}</p>}
                         </div>
-                        {inativo && (
-                          <span className="shrink-0 rounded-full bg-status-neutral-bg px-2.5 py-0.5 text-xs font-bold text-status-neutral">Inativo</span>
-                        )}
+                        <button
+                          type="button"
+                          role="switch"
+                          aria-checked={!inativo}
+                          aria-label={`Serviço ativo: ${servico.nome}`}
+                          disabled={alternando === servico.id}
+                          onClick={() => void (inativo ? reativarServico(servico) : solicitarExclusao(servico))}
+                          className={cn(
+                            "relative mt-0.5 inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors duration-rapida focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50",
+                            inativo ? "bg-track" : "bg-primary",
+                          )}
+                        >
+                          <span
+                            aria-hidden="true"
+                            className={cn(
+                              "inline-block h-5 w-5 rounded-full bg-card shadow-sm transition-transform duration-rapida ease-saida",
+                              inativo ? "translate-x-0.5" : "translate-x-5",
+                            )}
+                          />
+                        </button>
                       </div>
                       <div className="mt-auto flex items-end justify-between gap-3 border-t pt-3">
-                        <div>
+                        <div className={cn(inativo && "opacity-55")}>
                           <p className="text-xs text-muted-foreground">Preço base</p>
-                          <p className={cn("text-lg font-bold tabular-nums", inativo && "text-muted-foreground")}>
+                          <p className="text-lg font-bold tabular-nums">
                             {Number(servico.preco_padrao || 0) === 0 ? "Garantia" : formatCurrency(Number(servico.preco_padrao || 0))}
                           </p>
                         </div>
-                        {inativo ? (
-                          <Button variant="outline" size="sm" className="h-11 md:h-8" onClick={() => void abrirEditar(servico)}>
-                            Editar
-                          </Button>
-                        ) : (
-                          <ActionPriorityRow
-                            acaoDaLinha
-                            menuTitulo={servico.nome}
-                            primary={{
-                              id: `editar-${servico.id}`,
-                              label: "Editar",
-                              icon: <Edit className="h-4 w-4" />,
-                              onClick: () => void abrirEditar(servico),
-                            }}
-                            overflow={[
-                              {
-                                id: `excluir-${servico.id}`,
-                                label: "Excluir",
-                                icon: <Trash2 className="h-4 w-4" />,
-                                className: "text-destructive",
-                                onClick: () => void solicitarExclusao(servico),
-                              },
-                            ]}
-                          />
-                        )}
+                        <ActionPriorityRow
+                          acaoDaLinha
+                          menuTitulo={servico.nome}
+                          primary={{
+                            id: `editar-${servico.id}`,
+                            label: "Editar",
+                            icon: <Edit className="h-4 w-4" />,
+                            onClick: () => void abrirEditar(servico),
+                          }}
+                        />
                       </div>
                     </li>
                   );
@@ -382,18 +407,20 @@ export default function Servicos() {
       <Dialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
         <DialogContent tamanho="p">
           <DialogHeader>
-            <DialogTitle>Confirmar Exclusão</DialogTitle>
+            <span aria-hidden="true" className="mb-2 inline-flex h-9 w-9 items-center justify-center rounded-lg bg-status-bad-bg text-status-bad">
+              <AlertTriangle className="h-5 w-5" />
+            </span>
+            <DialogTitle>Desativar o serviço?</DialogTitle>
           </DialogHeader>
-          <p className="text-muted-foreground">
-            Desativar o serviço <strong>{deletando?.nome}</strong>?
+          <p className="text-sm text-muted-foreground">
+            "{deletando?.nome}" deixará de aparecer na verificação técnica.
           </p>
-          <p className="text-sm text-destructive">Ele deixará de aparecer na verificação técnica.</p>
           <DialogFooter>
             <DialogClose asChild>
               <Button variant="outline">Cancelar</Button>
             </DialogClose>
             <Button variant="destructive" onClick={() => void onDelete()} disabled={salvando}>
-              {salvando ? "Excluindo..." : "Excluir"}
+              {salvando ? "Desativando..." : "Desativar o serviço"}
             </Button>
           </DialogFooter>
         </DialogContent>

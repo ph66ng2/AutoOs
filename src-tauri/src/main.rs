@@ -251,6 +251,7 @@ fn main() {
             commands::servicos::criar_servico,
             commands::servicos::atualizar_servico,
             commands::servicos::deletar_servico,
+            commands::servicos::reativar_servico,
             // Verificações
             commands::verificacoes::salvar_verificacao_tecnica,
             commands::verificacoes::buscar_verificacao_tecnica,

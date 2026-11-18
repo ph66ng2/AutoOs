@@ -561,6 +561,9 @@ export interface ResumoEstoque {
 }
 
 /** Serviço padrão do catálogo para orçamento/verificação técnica. */
+/** Filtro da lista de serviços do catálogo. */
+export type SituacaoServico = "ATIVOS" | "INATIVOS" | "TODOS";
+
 export interface ServicoCatalogo {
   id?: number;
   nome: string;

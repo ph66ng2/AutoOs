@@ -92,6 +92,7 @@ import type {
   EmailSendRequest,
   ResultadoVerificacaoCredenciais,
   ServicoCatalogo,
+  SituacaoServico,
   SupabaseStorageConfig,
   Verificacao,
 } from "@/types";
@@ -676,10 +677,12 @@ export const db = {
     });
   },
 
-  async listarServicosPaginados(busca: string | undefined, apenasAtivos: boolean, page: number): Promise<PaginatedResult<ServicoCatalogo>> {
+  /** Lista o catálogo por situação: ativos, só os inativos (para reativar) ou todos. */
+  async listarServicosPaginados(busca: string | undefined, situacao: SituacaoServico, page: number): Promise<PaginatedResult<ServicoCatalogo>> {
     return invoke<PaginatedResult<ServicoCatalogo>>("listar_servicos_paginados", {
       busca: busca ?? null,
-      apenasAtivos,
+      apenasAtivos: situacao === "ATIVOS",
+      apenasInativos: situacao === "INATIVOS",
       page,
     });
   },
@@ -702,6 +705,11 @@ export const db = {
   /** Desativa serviço de catálogo. */
   async deletarServico(id: number): Promise<void> {
     return invoke<void>("deletar_servico", { id });
+  },
+
+  /** Reativa serviço desativado → Rust: reativar_servico. */
+  async reativarServico(id: number): Promise<ServicoCatalogo> {
+    return invoke<ServicoCatalogo>("reativar_servico", { id });
   },
 
   // ─── Gastos Fixos e Variáveis ───────────────────────────
