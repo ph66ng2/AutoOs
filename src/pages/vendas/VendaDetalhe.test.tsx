@@ -109,7 +109,8 @@ describe("VendaDetalhe (/vendas/:id)", () => {
   });
 
   it("cancelado depois de aprovado: barra para em Cancelado, sem data, e a ação é excluir de vez", async () => {
-    mocks.obter.mockResolvedValue(venda({ status: "CANCELADO", decidido_em: "2026-11-12 13:40:00+00" }));
+    // A aprovação grava a forma de pagamento; o cancelamento não mexe nela.
+    mocks.obter.mockResolvedValue(venda({ status: "CANCELADO", decidido_em: "2026-11-12 13:40:00+00", forma_pagamento_codigo: "PIX" }));
     renderPagina();
     expect(await screen.findByText(/Cancelado depois de aprovado: os itens voltaram ao estoque/)).toBeInTheDocument();
     const etapas = screen.getByRole("region", { name: "Etapas do orçamento" });
@@ -117,6 +118,20 @@ describe("VendaDetalhe (/vendas/:id)", () => {
     expect(cancelado.textContent).toBe("Cancelado");
     expect(screen.getByRole("button", { name: "Excluir de vez" })).toBeInTheDocument();
     expect(screen.queryByText(/Saldo agora/)).not.toBeInTheDocument();
+  });
+
+  it("cancelado sem ter sido aprovado: não diz que o estoque voltou e mostra a data do cancelamento", async () => {
+    mocks.obter.mockResolvedValue(venda({ status: "CANCELADO", decidido_em: "2026-11-12 13:40:00+00", forma_pagamento_codigo: null }));
+    renderPagina();
+    expect(await screen.findByText(/^Cancelado\. Só dá para ver/)).toBeInTheDocument();
+    expect(screen.queryByText(/voltaram ao estoque/)).toBeNull();
+    const etapas = screen.getByRole("region", { name: "Etapas do orçamento" });
+    const cancelado = within(etapas).getByText("Cancelado").closest("[aria-current]")!;
+    expect(cancelado.textContent).toBe("Cancelado12/11");
+    expect(within(etapas).queryByText("Aprovado")).toBeNull();
+    const historico = screen.getByRole("heading", { name: "Histórico" }).closest("section")!;
+    expect(within(historico).getByText("Cancelado")).toBeInTheDocument();
+    expect(within(historico).queryByText("Aprovado")).toBeNull();
   });
 
   it("sem Ações financeiras: só leitura, Ver PDF, sem ⋯ e sem dar entrada", async () => {

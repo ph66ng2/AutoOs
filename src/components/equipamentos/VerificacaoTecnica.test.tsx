@@ -217,9 +217,29 @@ describe("VerificacaoTecnica", () => {
       await user.click(screen.getByRole("button", { name: /Adicionar Serviço/i }));
       const linha = screen.getByRole("button", { name: "Editar serviço Limpeza" });
       expect(linha).toHaveClass("min-h-11");
-      expect(screen.getAllByPlaceholderText("Nome do serviço")).toHaveLength(1);
+      expect(screen.getAllByPlaceholderText("Nome do serviço").filter((campo) => campo.closest("[hidden]") == null)).toHaveLength(1);
       await user.click(linha);
-      expect(screen.getByDisplayValue("Limpeza")).toBeInTheDocument();
+      expect(screen.getByDisplayValue("Limpeza").closest("[hidden]")).toBeNull();
+    } finally {
+      window.matchMedia = original;
+    }
+  });
+
+  it("no celular, recolher um serviço com valor inválido mantém o erro visível ao reabrir", async () => {
+    const original = window.matchMedia;
+    window.matchMedia = ((consulta: string) => ({ matches: false, media: consulta, addEventListener: () => undefined, removeEventListener: () => undefined })) as unknown as typeof window.matchMedia;
+    try {
+      const user = userEvent.setup();
+      render(<VerificacaoTecnica equipamento={equipamento} open onOpenChange={vi.fn()} onConcluir={vi.fn()} />);
+      await user.click(screen.getByRole("button", { name: /Adicionar Serviço/i }));
+      await user.type(screen.getByPlaceholderText("Nome do serviço"), "Limpeza");
+      const campo = screen.getByLabelText("Valor do serviço");
+      await user.clear(campo);
+      await user.paste("abc");
+      await user.click(screen.getByRole("button", { name: /Adicionar Serviço/i }));
+      await user.click(screen.getByRole("button", { name: "Editar serviço Limpeza" }));
+      expect(screen.getByText("Informe um valor válido.")).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: /Finalizar Verificação/i })).toBeDisabled();
     } finally {
       window.matchMedia = original;
     }

@@ -94,11 +94,12 @@ function etapasDaVenda(venda: OrcamentoInsumosDetalhe, vencido: boolean): EtapaD
       cor = "bg-primary";
       break;
     case "CANCELADO": {
-      // Aprovado e depois cancelado tem data de decisão; enviado tem data de envio.
-      const ultima = venda.decidido_em ? 2 : venda.enviado_em ? 1 : 0;
+      // Só a aprovação grava a forma de pagamento; sem ela, `decidido_em` é a data do cancelamento.
+      const aprovadoAntes = foiAprovadoAntes(venda);
+      const ultima = aprovadoAntes ? 2 : venda.enviado_em ? 1 : 0;
       atual = Math.min(ultima + 1, 3);
       rotulos[atual] = "Cancelado";
-      datas[atual] = null;
+      datas[atual] = aprovadoAntes ? null : venda.decidido_em ?? null;
       cor = "bg-status-neutral";
       break;
     }
@@ -144,6 +145,14 @@ function Condicao({ rotulo, destaque, children }: { rotulo: string; destaque?: b
  * O que aconteceu na venda (decisão 25): as mesmas datas do antigo "Registro", sem
  * "Registrado por" (não existe). Cancelado não tem data própria no banco: não entra.
  */
+/**
+ * Cancelado que passou por Aprovado. O cancelamento também grava `decidido_em`, então só a
+ * forma de pagamento (gravada apenas na aprovação) diz que houve aprovação e baixa de estoque.
+ */
+function foiAprovadoAntes(venda: OrcamentoInsumosDetalhe): boolean {
+  return venda.status === "CANCELADO" && venda.forma_pagamento_codigo != null;
+}
+
 function eventosDaVenda(venda: OrcamentoInsumosDetalhe): { titulo: string; data: string; familia: StatusFamilia }[] {
   const eventos: { titulo: string; data: string; familia: StatusFamilia }[] = [];
   const empurrar = (titulo: string, valor: string | null | undefined, familia: StatusFamilia) => {
@@ -151,8 +160,9 @@ function eventosDaVenda(venda: OrcamentoInsumosDetalhe): { titulo: string; data:
   };
   empurrar("Criado", venda.criado_em, "neutral");
   empurrar("Enviado", venda.enviado_em, "wait");
-  // Decidido e depois cancelado foi aprovado antes de cancelar.
-  empurrar(venda.status === "REPROVADO" ? "Reprovado" : "Aprovado", venda.decidido_em, venda.status === "REPROVADO" ? "bad" : "ok");
+  if (venda.status === "REPROVADO") empurrar("Reprovado", venda.decidido_em, "bad");
+  else if (venda.status === "CANCELADO" && !foiAprovadoAntes(venda)) empurrar("Cancelado", venda.decidido_em, "neutral");
+  else empurrar("Aprovado", venda.decidido_em, "ok");
   empurrar("Entregue", venda.entregue_em, "ok");
   return eventos;
 }
@@ -320,7 +330,7 @@ export default function VendaDetalhe() {
           )}
           {venda.status === "CANCELADO" && (
             <p className="rounded-xl bg-muted px-4 py-3 text-sm">
-              {venda.decidido_em ? "Cancelado depois de aprovado: os itens voltaram ao estoque. " : "Cancelado. "}
+              {foiAprovadoAntes(venda) ? "Cancelado depois de aprovado: os itens voltaram ao estoque. " : "Cancelado. "}
               Só dá para ver, gerar o PDF ou excluir de vez.
             </p>
           )}

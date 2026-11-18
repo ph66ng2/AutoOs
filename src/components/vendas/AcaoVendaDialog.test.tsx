@@ -59,6 +59,8 @@ function abrir(acao: string, status: StatusOrcamentoInsumos, props: Record<strin
   const onFechar = vi.fn();
   const onAlterado = vi.fn();
   const onExcluido = vi.fn();
+  // O modal sempre busca a versão atual; na página, a do banco é igual à mostrada (salvo no teste de cópia antiga).
+  if (!("venda" in props)) mocks.db.obterOrcamentoInsumos.mockResolvedValue(venda(status));
   render(
     <AcaoVendaDialog
       acao={acao as never}
@@ -311,5 +313,35 @@ describe("AcaoVendaDialog: casos da antiga janela do orçamento", () => {
     expect(screen.queryByRole("dialog")).toBeNull();
     expect(screen.queryByRole("alertdialog")).toBeNull();
     expect(mocks.ensureSensitiveAccess).not.toHaveBeenCalled();
+  });
+});
+
+describe("AcaoVendaDialog: revisão", () => {
+  it("na página, a ação usa a versão atual do banco, não a cópia mostrada", async () => {
+    mocks.db.obterOrcamentoInsumos.mockResolvedValue(venda("ENVIADO", { atualizado_em: "token-do-banco" }));
+    mocks.db.reprovarOrcamentoInsumos.mockResolvedValue(venda("REPROVADO"));
+    abrir("reprovar", "ENVIADO", { venda: venda("ENVIADO", { atualizado_em: "token-antigo" }) });
+    const modal = await screen.findByRole("alertdialog");
+    expect(screen.queryByText("Carregando orçamento...")).toBeNull();
+    fireEvent.click(within(modal).getByRole("button", { name: "Reprovar" }));
+    await waitFor(() => expect(mocks.db.reprovarOrcamentoInsumos).toHaveBeenCalledWith(34, "token-do-banco"));
+  });
+
+  it("recusa por falta com dois itens de mesmo nome não oferece Dar entrada", async () => {
+    const duplicada = venda("ENVIADO", {
+      itens: [
+        { id: 1, orcamento_id: 34, produto_id: 9, descricao: "Ribbon", categoria: "RIBBON", quantidade: 1, valor_unitario: 32, valor_total: 32, saldo_estoque: 9 },
+        { id: 2, orcamento_id: 34, produto_id: 10, descricao: "Ribbon", categoria: "RIBBON", quantidade: 10, valor_unitario: 32, valor_total: 320, saldo_estoque: 6 },
+      ],
+    } as Partial<OrcamentoInsumosDetalhe>);
+    mocks.db.aprovarOrcamentoInsumos.mockRejectedValue("Estoque insuficiente para aprovar OI-34. Nada foi baixado.\n- Ribbon: precisa de 10, há 6 em estoque");
+    mocks.db.obterOrcamentoInsumos.mockResolvedValue(duplicada);
+    abrir("aprovar", "ENVIADO", { venda: duplicada });
+    await screen.findByRole("heading", { name: "Aprovar OI-34" });
+    fireEvent.change(screen.getByLabelText("Forma de pagamento"), { target: { value: "PIX" } });
+    fireEvent.click(screen.getByRole("button", { name: "Aprovar e baixar estoque" }));
+    expect(await screen.findByRole("heading", { name: "Não deu para aprovar OI-34" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Dar entrada no estoque" })).toBeNull();
+    expect(screen.getByRole("button", { name: "Editar quantidades" })).toBeInTheDocument();
   });
 });

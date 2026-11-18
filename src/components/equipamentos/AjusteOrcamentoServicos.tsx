@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { Fragment, useState } from "react";
 import { Plus, Trash2, Search } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -72,10 +72,13 @@ export function AjusteOrcamentoServicos({
         </Button>
       </div>
       <div className="space-y-2">
-        {servicos.map((s) => !telaLarga && servicoAberto !== s.id ? (
-          <LinhaServicoCelular key={s.id} servico={s} onAbrir={() => setServicoAberto(s.id)} />
-        ) : (
-          <div key={s.id} className="rounded-md border p-2">
+        {servicos.map((s) => {
+          // No celular o serviço fechado vira linha; a edição continua montada (escondida) para não perder valor nem erro.
+          const recolhido = !telaLarga && servicoAberto !== s.id;
+          return (
+          <Fragment key={s.id}>
+          {recolhido && <LinhaServicoCelular servico={s} onAbrir={() => setServicoAberto(s.id)} />}
+          <div hidden={recolhido} className="rounded-md border p-2">
           <div className="flex flex-wrap items-start gap-2 md:flex-nowrap">
             <div className="relative min-w-full flex-1 md:min-w-0">
               <Search className="pointer-events-none absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
@@ -143,7 +146,9 @@ export function AjusteOrcamentoServicos({
           </div>
           <PecasDoServico pecas={s.pecas ?? []} onChange={(pecas) => atualizarServico(s.id, { pecas })} />
           </div>
-        ))}
+          </Fragment>
+          );
+        })}
         {servicos.length === 0 && (
           <p className="text-sm text-muted-foreground text-center py-3">
             Nenhum serviço adicionado.

@@ -23,7 +23,7 @@
  * ║  - VerificacaoTecnica (componente)                           ║
  * ╚══════════════════════════════════════════════════════════════╝
  */
-import { useEffect, useState } from "react";
+import { Fragment, useEffect, useState } from "react";
 import { Camera, ChevronLeft, Lock, Plus, Search, Trash2 } from "lucide-react";
 import { LinhaServicoCelular } from "@/components/equipamentos/LinhaServicoCelular";
 import { useLarguraMinima } from "@/hooks/useLarguraMinima";
@@ -389,10 +389,13 @@ export function VerificacaoTecnica({
           </Button>
         </div>
         <div className="space-y-3">
-          {servicos.map((s) => !telaLarga && servicoAberto !== s.id ? (
-            <LinhaServicoCelular key={s.id} servico={s} onAbrir={() => setServicoAberto(s.id)} />
-          ) : (
-            <div key={s.id} className="rounded-xl border p-3">
+          {servicos.map((s) => {
+            // No celular o serviço fechado vira linha; a edição continua montada (escondida) para não perder valor nem erro.
+            const recolhido = !telaLarga && servicoAberto !== s.id;
+            return (
+            <Fragment key={s.id}>
+            {recolhido && <LinhaServicoCelular servico={s} onAbrir={() => setServicoAberto(s.id)} />}
+            <div hidden={recolhido} className="rounded-xl border p-3">
             <div className="flex flex-wrap items-start gap-3 md:flex-nowrap">
               <div className="relative min-w-full flex-1 md:min-w-0">
                 <Search className="pointer-events-none absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
@@ -463,7 +466,9 @@ export function VerificacaoTecnica({
             </div>
             <PecasDoServico pecas={s.pecas ?? []} onChange={(pecas) => atualizarServico(s.id, { pecas })} />
             </div>
-          ))}
+            </Fragment>
+            );
+          })}
           {servicos.length === 0 && (
             <p className="py-4 text-center text-sm text-muted-foreground">
               Nenhum serviço adicionado.
