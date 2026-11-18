@@ -2,8 +2,8 @@ import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
-const mocks = vi.hoisted(() => ({ listar: vi.fn() }));
-vi.mock("@/lib/db", () => ({ db: { listarServicosPaginados: mocks.listar } }));
+const mocks = vi.hoisted(() => ({ listar: vi.fn(), reativar: vi.fn(), deletar: vi.fn() }));
+vi.mock("@/lib/db", () => ({ db: { listarServicosPaginados: mocks.listar, reativarServico: mocks.reativar, deletarServico: mocks.deletar } }));
 vi.mock("@/hooks/useSensitiveAccess", () => ({ useSensitiveAccess: () => ({ ensureSensitiveAccess: vi.fn().mockResolvedValue(true) }) }));
 vi.mock("@/hooks/useNotification", () => ({ useNotification: () => ({ error: vi.fn(), success: vi.fn(), warning: vi.fn() }) }));
 vi.mock("@/components/equipamentos/PecasDoServico", () => ({ PecasDoServico: () => null }));
@@ -21,9 +21,13 @@ beforeAll(() => {
 
 beforeEach(() => {
   vi.clearAllMocks();
-  mocks.listar.mockImplementation(async (_busca: unknown, apenasAtivos: boolean) =>
-    apenasAtivos ? { items: [ativo, garantia], total: 2 } : { items: [ativo, garantia, inativo], total: 3 },
+  mocks.listar.mockImplementation(async (_busca: unknown, situacao: string) =>
+    situacao === "ATIVOS" ? { items: [ativo, garantia], total: 2 }
+      : situacao === "INATIVOS" ? { items: [inativo], total: 1 }
+        : { items: [ativo, garantia, inativo], total: 3 },
   );
+  mocks.reativar.mockResolvedValue({ ...inativo, ativo: true });
+  mocks.deletar.mockResolvedValue(undefined);
 });
 
 describe("Serviços (fase 8)", () => {
@@ -34,17 +38,37 @@ describe("Serviços (fase 8)", () => {
     expect(within(lista).getByText("R$ 120,00")).toBeInTheDocument();
     expect(within(lista).getByText("Garantia")).toBeInTheDocument();
     expect(screen.getByText("2 ativos")).toBeInTheDocument();
-    expect(mocks.listar).toHaveBeenCalledWith(undefined, true, 0);
+    expect(mocks.listar).toHaveBeenCalledWith(undefined, "ATIVOS", 0);
   });
 
-  it("Todos mostra o inativo com selo e sem Excluir (o app não reativa)", async () => {
+  it("Todos mostra o inativo com o interruptor desligado e Editar", async () => {
     render(<Servicos />);
     await screen.findByRole("list", { name: "Serviços" });
     await userEvent.click(screen.getByRole("button", { name: /^Todos/ }));
-    await waitFor(() => expect(mocks.listar).toHaveBeenLastCalledWith(undefined, false, 0));
+    await waitFor(() => expect(mocks.listar).toHaveBeenLastCalledWith(undefined, "TODOS", 0));
     const cartao = (await screen.findByText("Visita técnica")).closest("li")!;
-    expect(within(cartao).getByText("Inativo")).toBeInTheDocument();
+    expect(within(cartao).getByRole("switch", { name: "Serviço ativo: Visita técnica" })).toHaveAttribute("aria-checked", "false");
     expect(within(cartao).getByRole("button", { name: "Editar" })).toBeInTheDocument();
     expect(within(cartao).queryByRole("combobox", { name: "Mais ações" })).toBeNull();
+  });
+
+  it("Inativos lista só os desativados e o interruptor reativa", async () => {
+    render(<Servicos />);
+    await screen.findByRole("list", { name: "Serviços" });
+    await userEvent.click(screen.getByRole("button", { name: /^Inativos/ }));
+    await waitFor(() => expect(mocks.listar).toHaveBeenLastCalledWith(undefined, "INATIVOS", 0));
+    await userEvent.click(await screen.findByRole("switch", { name: "Serviço ativo: Visita técnica" }));
+    await waitFor(() => expect(mocks.reativar).toHaveBeenCalledWith(3));
+    expect(mocks.deletar).not.toHaveBeenCalled();
+  });
+
+  it("desligar o interruptor pede confirmação antes de desativar", async () => {
+    render(<Servicos />);
+    await userEvent.click(await screen.findByRole("switch", { name: "Serviço ativo: Limpeza da cabeça" }));
+    expect(await screen.findByRole("heading", { name: "Desativar o serviço?" })).toBeInTheDocument();
+    expect(screen.getByText(/"Limpeza da cabeça" deixará de aparecer na verificação técnica/)).toBeInTheDocument();
+    expect(mocks.deletar).not.toHaveBeenCalled();
+    await userEvent.click(screen.getByRole("button", { name: "Desativar o serviço" }));
+    await waitFor(() => expect(mocks.deletar).toHaveBeenCalledWith(1));
   });
 });

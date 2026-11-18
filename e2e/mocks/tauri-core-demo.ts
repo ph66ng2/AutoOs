@@ -201,7 +201,9 @@ export async function invoke<T>(command: string, args?: Record<string, unknown>)
     case "listar_servicos_paginados": {
       const page = Math.max(0, Number(args?.page ?? 0));
       const busca = String(args?.busca ?? "").toLowerCase();
-      const items = catalogo.filter((item) => !busca || item.nome.toLowerCase().includes(busca));
+      const items = catalogo
+        .filter((item) => !busca || item.nome.toLowerCase().includes(busca))
+        .filter((item) => (args?.apenasInativos ? item.ativo === false : args?.apenasAtivos === false || item.ativo !== false));
       return { items: items.slice(page * 10, (page + 1) * 10), total: items.length } as T;
     }
     case "atualizar_servicos_verificacao": {
