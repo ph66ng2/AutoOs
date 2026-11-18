@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { VerificacaoTecnica } from "./VerificacaoTecnica";
 import { MENSAGEM_TOTAL_ZERO_SEM_GARANTIA } from "@/lib/orcamento-estoque";
@@ -167,5 +167,36 @@ describe("VerificacaoTecnica", () => {
     expect(screen.queryByDisplayValue("Falha no cabeçote do equipamento A")).not.toBeInTheDocument();
     expect(screen.queryByDisplayValue("Troca de cabeçote")).not.toBeInTheDocument();
     expect(screen.getByText("Nenhum serviço adicionado.")).toBeInTheDocument();
+  });
+  it("salva o checklist marcado e mostra os custos enquanto digita", async () => {
+    const user = userEvent.setup();
+    const onConcluir = vi.fn().mockResolvedValue(true);
+    render(
+      <VerificacaoTecnica
+        equipamento={equipamento}
+        open
+        onOpenChange={vi.fn()}
+        onConcluir={onConcluir}
+      />,
+    );
+    expect(screen.getByText("0 de 7")).toBeInTheDocument();
+    await user.click(screen.getByRole("checkbox", { name: "Teste de impressão" }));
+    await user.click(screen.getByRole("checkbox", { name: "Limpeza interna" }));
+    expect(screen.getByText("2 de 7")).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: /Adicionar Serviço/i }));
+    await user.type(screen.getByPlaceholderText("Nome do serviço"), "Limpeza da cabeça");
+    const campoValor = screen.getByLabelText("Valor do serviço");
+    await user.clear(campoValor);
+    await user.paste("120,00");
+    const custos = screen.getByRole("region", { name: "Custos" });
+    expect(within(custos).getAllByText("R$ 120,00").length).toBeGreaterThan(0);
+
+    await user.click(screen.getByRole("button", { name: /Finalizar Verificação/i }));
+    await waitFor(() => expect(onConcluir).toHaveBeenCalled());
+    const itens = JSON.parse(onConcluir.mock.calls[0][0].itens_verificados) as { nome: string; verificado: boolean }[];
+    expect(itens).toHaveLength(7);
+    expect(itens.filter((item) => item.verificado).map((item) => item.nome)).toEqual(["Teste de impressão", "Limpeza interna"]);
+    expect(onConcluir.mock.calls[0][0].custo_total).toBe(120);
   });
 });
