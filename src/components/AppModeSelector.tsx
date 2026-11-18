@@ -8,7 +8,6 @@ export function AppModeSelector({ onSelect }: { onSelect: (mode: AppMode) => voi
       <section className="w-full max-w-4xl">
         <p className="mb-2 text-center text-lg text-cyan-300">AutoOS</p>
         <h1 className="text-center text-3xl font-bold">Como deseja trabalhar nesta máquina?</h1>
-        <p className="mt-3 text-center text-base text-slate-300">A escolha pode ser alterada a qualquer momento no cabeçalho.</p>
         <div className="mt-10 grid gap-6 md:grid-cols-2">
           <Button type="button" onClick={() => onSelect("counter")} className="h-64 flex-col gap-5 rounded-2xl bg-cyan-600 text-xl hover:bg-cyan-500">
             <Store className="h-16 w-16" />

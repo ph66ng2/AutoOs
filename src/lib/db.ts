@@ -532,6 +532,11 @@ export const db = {
   },
 
   /** Cria novo produto → Rust: criar_produto */
+  /** Busca um produto do estoque → Rust: buscar_produto */
+  async buscarProduto(id: number): Promise<Produto> {
+    return invoke<Produto>("buscar_produto", { id });
+  },
+
   async criarProduto(produto: Omit<Produto, "id">): Promise<Produto> {
     return invoke<Produto>("criar_produto", { input: produto });
   },

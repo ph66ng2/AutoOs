@@ -167,7 +167,7 @@ export default function Gastos() {
 
   return (
     <div className="space-y-6">
-      <PageHeader titulo="Gastos" descricao="Gestão de despesas fixas e variáveis">
+      <PageHeader titulo="Gastos">
         <div className="flex gap-2">
           <Button onClick={() => void abrirNovoFixo()}>
             <Plus className="h-4 w-4 mr-2" />

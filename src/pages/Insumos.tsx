@@ -19,7 +19,7 @@
  * ║  USADO POR: App.tsx (rota /insumos)                         ║
  * ╚══════════════════════════════════════════════════════════════╝
  */
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   Package,
   Plus,
@@ -101,6 +101,7 @@ export default function Insumos() {
     deletar,
     registrarMovimentacao,
     consultarUsoEmOrcamentos,
+    buscarProduto,
     recarregar,
   } = useInsumos({
     busca: busca || undefined,
@@ -121,6 +122,25 @@ export default function Insumos() {
   }, [totalPaginasInsumos]);
   const { error: showError } = useNotification();
   const { resumo, recarregar: recarregarResumo } = useResumoEstoque();
+  const voltarDepoisDaEntrada = useRef<string | null>(null);
+
+  // "Dar entrada no estoque" de uma venda de insumos chega como /insumos?entrada=<id>&quantidade=<n>:
+  // abre a entrada do item já com a quantidade que falta (o PIN continua sendo pedido).
+  useEffect(() => {
+    const parametros = new URLSearchParams(window.location.search);
+    const produtoId = Number(parametros.get("entrada"));
+    if (!Number.isInteger(produtoId) || produtoId <= 0) return;
+    const quantidade = Math.max(1, Number(parametros.get("quantidade")) || 1);
+    // Só volta para a página de uma venda (nada de endereço arbitrário).
+    const voltar = parametros.get("voltar");
+    voltarDepoisDaEntrada.current = voltar && /^\/vendas\/\d+$/.test(voltar) ? voltar : null;
+    window.history.replaceState(window.history.state, "", window.location.pathname);
+    void buscarProduto(produtoId)
+      .then((produto) => abrirMovimentacao(produto, "ENTRADA", quantidade))
+      .catch((causa) => showError("Insumos/Peças", "Abrir entrada no estoque", causa));
+    // Só na abertura da página.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   const { ensureSensitiveAccess } = useSensitiveAccess();
 
   const form = useForm<ProdutoFormData>({
@@ -194,7 +214,7 @@ export default function Insumos() {
     setDialogOpen(true);
   }
 
-  async function abrirMovimentacao(p: Produto, tipo: "ENTRADA" | "SAIDA" = "ENTRADA") {
+  async function abrirMovimentacao(p: Produto, tipo: "ENTRADA" | "SAIDA" = "ENTRADA", quantidade = 1) {
     const liberado = await ensureSensitiveAccess({
       title: "Movimentar estoque",
       description: "Informe o PIN para registrar entradas e saídas de estoque.",
@@ -203,7 +223,7 @@ export default function Insumos() {
     if (!liberado) return;
 
     setMovimentando(p);
-    movForm.reset({ tipo, quantidade: 1, origem: "", referencia: "" });
+    movForm.reset({ tipo, quantidade, origem: "", referencia: "" });
     setMovDialogOpen(true);
   }
 
@@ -259,6 +279,13 @@ export default function Insumos() {
       }
       void recarregarResumo();
       setMovDialogOpen(false);
+      const voltar = voltarDepoisDaEntrada.current;
+      voltarDepoisDaEntrada.current = null;
+      if (voltar) {
+        // Insumos não usa o roteador; o popstate faz o BrowserRouter seguir a URL nova.
+        window.history.pushState(window.history.state, "", voltar);
+        window.dispatchEvent(new PopStateEvent("popstate"));
+      }
     } catch (err: any) {
       console.error("Erro movimentação:", err);
       showError("Insumos/Peças", "Registrar movimentação", err);
@@ -527,7 +554,11 @@ export default function Insumos() {
       />
       <InsumosMovimentacaoDialog
         open={movDialogOpen}
-        onOpenChange={setMovDialogOpen}
+        onOpenChange={(aberto) => {
+          setMovDialogOpen(aberto);
+          // Fechou sem salvar: não volta para a venda numa movimentação futura.
+          if (!aberto) voltarDepoisDaEntrada.current = null;
+        }}
         movimentando={movimentando}
         movForm={movForm}
         salvando={salvando}

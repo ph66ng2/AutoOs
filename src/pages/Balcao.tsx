@@ -12,7 +12,17 @@ import {
   Tag,
   UserSearch,
 } from "lucide-react";
+import { useBuscaRetirada } from "@/hooks/useBuscaRetirada";
 import { useFilaBalcao } from "@/hooks/useFilaBalcao";
+import {
+  clienteDoItem,
+  descricaoDoItem,
+  podeEntregar,
+  valorDoItem,
+  type ItemRetirada,
+} from "@/lib/retirada-balcao";
+import { STATUS_ORCAMENTO_INSUMOS_LABEL } from "@/lib/orcamento-insumos";
+import { VendaRetirada } from "@/pages/balcao/VendaRetirada";
 import { cn } from "@/lib/utils";
 import { useLocation } from "react-router-dom";
 import { Button } from "@/components/ui/button";
@@ -121,10 +131,13 @@ export default function Balcao() {
     null,
   );
   const [termoBusca, setTermoBusca] = useState("");
+  const [vendaAbertaId, setVendaAbertaId] = useState<number | null>(null);
+  const { openProfileSelector } = useSensitiveAccess();
   useEffect(() => {
     setView("home");
     setCounterEquipment(null);
     setTermoBusca("");
+    setVendaAbertaId(null);
   }, [resetKey]);
   useEffect(() => {
     if (location.pathname === "/balcao/painel") setView("panel");
@@ -139,6 +152,26 @@ export default function Balcao() {
       .then(setCounterEquipment)
       .catch(() => setCounterEquipment(null));
   }, [location.state]);
+  function abrirItem(item: ItemRetirada) {
+    if (item.tipo === "EQUIPAMENTO") setCounterEquipment(item.equipamento);
+    else setVendaAbertaId(item.venda.id);
+  }
+  if (vendaAbertaId != null)
+    return (
+      <VendaRetirada
+        vendaId={vendaAbertaId}
+        onVoltar={() => {
+          setVendaAbertaId(null);
+          setView("equipment");
+        }}
+        onInicio={() => {
+          setVendaAbertaId(null);
+          setTermoBusca("");
+          setView("home");
+        }}
+        onTrocarPerfil={() => void openProfileSelector()}
+      />
+    );
   if (counterEquipment)
     return (
       <section>
@@ -148,7 +181,14 @@ export default function Balcao() {
     );
   if (view === "entry") return <QuickEntry onBack={() => setView("home")} />;
   if (view === "equipment")
-    return <EquipmentSearch termoInicial={termoBusca} onBack={() => { setTermoBusca(""); setView("home"); }} />;
+    return (
+      <RetiradaBusca
+        termoInicial={termoBusca}
+        onTermoChange={setTermoBusca}
+        onBack={() => { setTermoBusca(""); setView("home"); }}
+        onAbrirItem={abrirItem}
+      />
+    );
   if (view === "client") return <ClientSearch onBack={() => setView("home")} />;
   if (view === "panel")
     return <OperationalPanel onBack={() => setView("home")} />;
@@ -165,6 +205,7 @@ export default function Balcao() {
         setView("equipment");
       }}
       onAbrirEquipamento={setCounterEquipment}
+      onAbrirItem={abrirItem}
     />
   );
 }
@@ -178,6 +219,7 @@ function BalcaoInicio({
   onPainel,
   onBuscar,
   onAbrirEquipamento,
+  onAbrirItem,
 }: {
   onReceber: () => void;
   onEntregar: () => void;
@@ -186,6 +228,7 @@ function BalcaoInicio({
   onPainel: () => void;
   onBuscar: (termo: string) => void;
   onAbrirEquipamento: (equipamento: Equipamento) => void;
+  onAbrirItem: (item: ItemRetirada) => void;
 }) {
   const fila = useFilaBalcao();
   return (
@@ -205,8 +248,8 @@ function BalcaoInicio({
           <BlocoBalcao destaque icon={<Plus className="h-7 w-7" />} title="Receber equipamento" description="Nova entrada em 4 passos" onClick={onReceber} />
           <BlocoBalcao
             icon={<Box className="h-7 w-7" />}
-            title="Entregar equipamento"
-            description="Retirada pelo cliente"
+            title="Entregar ao cliente"
+            description="Equipamentos prontos e insumos aprovados"
             contador={fila.totalProntos > 0 ? fila.totalProntos : undefined}
             onClick={onEntregar}
           />
@@ -222,21 +265,23 @@ function BalcaoInicio({
           ) : fila.error ? (
             <p className="px-5 py-4 text-sm text-muted-foreground">Não foi possível carregar a fila.</p>
           ) : fila.prontos.length === 0 ? (
-            <p className="px-5 py-4 text-sm text-muted-foreground">Nenhum equipamento pronto.</p>
+            <p className="px-5 py-4 text-sm text-muted-foreground">Nada pronto para retirada.</p>
           ) : (
             <ul className="divide-y">
-              {fila.prontos.slice(0, 4).map((eq) => (
-                <li key={eq.id} className="flex items-center gap-3 px-5 py-3.5">
+              {fila.prontos.slice(0, 5).map((item) => (
+                <li key={item.chave} className="flex items-center gap-3 px-5 py-3">
                   <div className="min-w-0 flex-1">
-                    <p className="truncate font-semibold">{eq.cliente_nome || "Cliente não informado"}</p>
-                    <p className="truncate text-xs text-muted-foreground">
-                      {equipmentTitle(eq)} · <span className="font-mono">{eq.serial_number}</span>
+                    <p className="truncate font-semibold">{clienteDoItem(item)}</p>
+                    <p className="flex min-w-0 items-center gap-1.5 text-xs text-muted-foreground">
+                      <EtiquetaRetirada tipo={item.tipo} />
+                      <span className="truncate">{descricaoDoItem(item)}</span>
                     </p>
+                    {valorDoItem(item) && <p className="text-xs font-semibold tabular-nums">{valorDoItem(item)}</p>}
                   </div>
                   <Button
                     variant="ghost"
                     className="min-h-12 shrink-0 bg-acc-soft px-4 font-semibold text-acc-soft-foreground hover:bg-acc-soft/70 hover:text-acc-soft-foreground"
-                    onClick={() => onAbrirEquipamento(eq)}
+                    onClick={() => onAbrirItem(item)}
                   >
                     Registrar Entrega
                   </Button>
@@ -341,14 +386,14 @@ function BlocoBalcao({
   );
 }
 
-function Back({ onBack }: { onBack: () => void }) {
+function Back({ onBack, rotulo = "Voltar" }: { onBack: () => void; rotulo?: string }) {
   return (
     <Button
       variant="ghost"
       className="min-h-12 gap-2 text-base"
       onClick={onBack}
     >
-      <ChevronLeft /> Voltar
+      <ChevronLeft /> {rotulo}
     </Button>
   );
 }
@@ -1320,93 +1365,141 @@ function labelFor(key: string) {
   return key.replace(/_/g, " ");
 }
 
-function EquipmentSearch({ onBack, termoInicial = "" }: { onBack: () => void; termoInicial?: string }) {
+/** Etiqueta da fila de retirada: diz se é um equipamento ou uma venda de insumos. */
+function EtiquetaRetirada({ tipo }: { tipo: ItemRetirada["tipo"] }) {
+  return (
+    <span
+      className={cn(
+        "inline-flex shrink-0 rounded-full px-2 py-px text-[11px] font-semibold",
+        tipo === "INSUMOS" ? "bg-acc-soft text-acc-soft-foreground" : "bg-muted text-foreground/80",
+      )}
+    >
+      {tipo === "INSUMOS" ? "Insumos" : "Equipamento"}
+    </span>
+  );
+}
+
+type FiltroRetirada = "TUDO" | "EQUIPAMENTO" | "INSUMOS";
+
+/**
+ * Entregar ao cliente: sem busca, mostra a fila (equipamentos prontos e vendas de
+ * insumos aprovadas); com busca, procura equipamentos e vendas (também por OI-n).
+ * Venda ainda não aprovada aparece sem botão, com o motivo.
+ */
+function RetiradaBusca({
+  onBack,
+  termoInicial = "",
+  onTermoChange,
+  onAbrirItem,
+}: {
+  onBack: () => void;
+  termoInicial?: string;
+  /** Guarda a busca no Balcão: abrir um item e voltar mantém o que foi digitado. */
+  onTermoChange?: (termo: string) => void;
+  onAbrirItem: (item: ItemRetirada) => void;
+}) {
+  const fila = useFilaBalcao();
   const [term, setTerm] = useState(termoInicial);
-  const [rows, setRows] = useState<Equipamento[]>([]);
-  const [selected, setSelected] = useState<Equipamento | null>(null);
-  const [loading, setLoading] = useState(false);
-  useEffect(() => {
-    const query = term.trim();
-    if (query.length < 2) {
-      setRows([]);
-      return;
-    }
-    const timer = window.setTimeout(() => {
-      setLoading(true);
-      void db
-        .listarEquipamentos(query)
-        .then((items) =>
-          setRows(
-            items.sort((a, b) =>
-              String(b.criado_em || b.data_entrada).localeCompare(
-                String(a.criado_em || a.data_entrada),
-              ),
-            ),
-          ),
-        )
-        .catch(() => setRows([]))
-        .finally(() => setLoading(false));
-    }, 250);
-    return () => window.clearTimeout(timer);
-  }, [term]);
-  if (selected)
-    return (
-      <section>
-        <Back onBack={() => setSelected(null)} />
-        <EquipmentDetail equipamento={selected} />
-      </section>
-    );
+  const { buscando, data: encontrados, loading } = useBuscaRetirada(term);
+  const [filtro, setFiltro] = useState<FiltroRetirada>("TUDO");
+
+  const itens = buscando ? encontrados : fila.prontos;
+  const contagem = {
+    TUDO: itens.length,
+    EQUIPAMENTO: itens.filter((item) => item.tipo === "EQUIPAMENTO").length,
+    INSUMOS: itens.filter((item) => item.tipo === "INSUMOS").length,
+  };
+  const visiveis = filtro === "TUDO" ? itens : itens.filter((item) => item.tipo === filtro);
+  const carregando = buscando ? loading : fila.loading;
+
   return (
     <section>
-      <Back onBack={onBack} />
-      <h1 className="mt-3 text-3xl font-bold">Buscar equipamento</h1>
-      <p className="mt-2 text-base text-muted-foreground">
-        Serial, patrimônio, marca, modelo, defeito ou dados do cliente.
-      </p>
-      <div className="relative mt-6 max-w-3xl">
+      <Back onBack={onBack} rotulo="Início" />
+      <h1 className="mt-3 text-3xl font-bold">Entregar ao cliente</h1>
+      <label htmlFor="busca-retirada" className="mt-5 block text-base font-semibold">
+        Quem veio buscar?
+      </label>
+      <div className="relative mt-2 max-w-3xl">
         <Search className="absolute left-4 top-1/2 h-6 w-6 -translate-y-1/2 text-muted-foreground" />
         <Input
+          id="busca-retirada"
           autoFocus
-          className="min-h-14 pl-12 text-lg"
+          className="min-h-14 border-2 border-primary/70 bg-card pl-12 text-lg"
           value={term}
-          onChange={(e) => setTerm(e.target.value)}
-          placeholder="Digite para buscar"
+          onChange={(e) => {
+            setTerm(e.target.value);
+            onTermoChange?.(e.target.value);
+          }}
+          placeholder="Nome do cliente, CPF/CNPJ, série ou OI-n"
         />
-        {loading && (
+        {carregando && (
           <Loader2 className="absolute right-4 top-1/2 h-6 w-6 -translate-y-1/2 animate-spin" />
         )}
       </div>
-      <div className="mt-6 grid gap-4">
-        {rows.map((eq) => (
+      <div role="group" aria-label="Filtrar o que entregar" className="mt-4 inline-flex rounded-xl border bg-card p-1">
+        {([
+          ["TUDO", "Tudo"],
+          ["EQUIPAMENTO", "Equipamentos"],
+          ["INSUMOS", "Insumos"],
+        ] as const).map(([valor, rotulo]) => (
           <button
+            key={valor}
             type="button"
-            key={eq.id}
-            className="min-h-28 rounded-xl border bg-card p-5 text-left shadow-sm hover:border-primary"
-            onClick={() => setSelected(eq)}
+            aria-pressed={filtro === valor}
+            onClick={() => setFiltro(valor)}
+            className={cn(
+              "min-h-11 rounded-lg px-4 text-base font-semibold transition-colors duration-rapida",
+              filtro === valor ? "bg-acc-soft text-acc-soft-foreground" : "text-muted-foreground hover:text-foreground",
+            )}
           >
-            <div className="flex flex-wrap items-center gap-3">
-              <strong className="text-xl">{equipmentTitle(eq)}</strong>
-              <Badge>
-                {STATUS_LABELS[eq.status as keyof typeof STATUS_LABELS] ||
-                  eq.status}
-              </Badge>
-            </div>
-            <p className="mt-2 text-base">
-              Atendimento #{eq.id} · Serial: {eq.serial_number}{" "}
-              {eq.patrimonio ? `· Patrimônio: ${eq.patrimonio}` : ""}
-            </p>
-            <p className="text-base text-muted-foreground">
-              {eq.cliente_nome || "Cliente não informado"} · Entrada:{" "}
-              {eq.data_entrada}
-            </p>
+            {rotulo} <span className="tabular-nums">{contagem[valor]}</span>
           </button>
         ))}
-        {term.length >= 2 && !loading && rows.length === 0 && (
-          <p className="text-lg text-muted-foreground">
-            Nenhum equipamento encontrado.
-          </p>
-        )}
       </div>
+      <ul className="mt-4 max-w-4xl divide-y rounded-2xl border bg-card">
+        {visiveis.map((item) => {
+          const entregavel = podeEntregar(item);
+          const titulo = item.tipo === "EQUIPAMENTO" ? `Atendimento #${item.equipamento.id}` : null;
+          return (
+            <li key={item.chave} className="flex flex-wrap items-center gap-4 px-5 py-4">
+              <button type="button" onClick={() => onAbrirItem(item)} className="min-w-0 flex-1 text-left">
+                <span className="flex flex-wrap items-center gap-2">
+                  <strong className="text-lg">{clienteDoItem(item)}</strong>
+                  <EtiquetaRetirada tipo={item.tipo} />
+                </span>
+                <span className="mt-0.5 block text-base text-muted-foreground">
+                  {[titulo, descricaoDoItem(item), item.tipo === "INSUMOS" && !entregavel ? STATUS_ORCAMENTO_INSUMOS_LABEL[item.venda.status] : null]
+                    .filter(Boolean)
+                    .join(" · ")}
+                </span>
+                {valorDoItem(item) && <span className="block text-base font-semibold tabular-nums">{valorDoItem(item)}</span>}
+              </button>
+              {entregavel ? (
+                <Button
+                  variant="ghost"
+                  className="min-h-12 shrink-0 bg-acc-soft px-5 text-base font-semibold text-acc-soft-foreground hover:bg-acc-soft/70 hover:text-acc-soft-foreground"
+                  onClick={() => onAbrirItem(item)}
+                >
+                  Registrar Entrega
+                </Button>
+              ) : item.tipo === "INSUMOS" ? (
+                <span className="max-w-[16rem] text-right text-sm text-muted-foreground">
+                  Ainda não dá para entregar: o cliente não aprovou este orçamento.
+                </span>
+              ) : (
+                <Badge variant="outline">
+                  {STATUS_LABELS[item.equipamento.status as keyof typeof STATUS_LABELS] || item.equipamento.status}
+                </Badge>
+              )}
+            </li>
+          );
+        })}
+        {!carregando && visiveis.length === 0 && (
+          <li className="px-5 py-8 text-center text-lg text-muted-foreground">
+            {buscando ? "Nada encontrado para essa busca." : "Nada pronto para retirada."}
+          </li>
+        )}
+      </ul>
     </section>
   );
 }
