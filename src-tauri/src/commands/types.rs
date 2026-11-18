@@ -468,6 +468,9 @@ pub struct EquipamentoRow {
     /// Ordem deste atendimento entre os registros com o mesmo número de série (1 = primeiro).
     #[sqlx(default)]
     pub ciclo_serial: Option<i32>,
+    /// Forma de pagamento combinada na verificação mais recente (mostrada no Balcão).
+    #[sqlx(default)]
+    pub forma_pagamento_codigo: Option<String>,
 }
 
 /// Quantos equipamentos há em cada status, já com busca e técnico aplicados.
@@ -794,7 +797,14 @@ pub const EQUIPAMENTO_SELECT: &str = "
                 WHERE ciclo.empresa_id IS NOT DISTINCT FROM equipamentos.empresa_id
                   AND ciclo.serial_number = equipamentos.serial_number
                   AND ciclo.id <= equipamentos.id
-           ) AS ciclo_serial
+           ) AS ciclo_serial,
+           (
+               SELECT v.forma_pagamento_codigo
+                 FROM verificacoes v
+                WHERE v.equipamento_id = equipamentos.id
+                ORDER BY v.id DESC
+                LIMIT 1
+           ) AS forma_pagamento_codigo
     FROM equipamentos";
 
     pub const EQUIPAMENTO_IMAGEM_SELECT: &str = "

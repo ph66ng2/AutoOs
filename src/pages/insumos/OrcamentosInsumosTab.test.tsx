@@ -97,7 +97,8 @@ describe("OrcamentosInsumosTab", () => {
     expect(within(primeira).getByText("Cliente 2")).toBeInTheDocument();
     expect(within(primeira).getByText("2 itens")).toBeInTheDocument();
     expect(within(primeira).getByText(/R\$\s*150,00/)).toBeInTheDocument();
-    expect(within(primeira).getByText("20/10/2026")).toBeInTheDocument();
+    // A data de criação fica no título do número (a coluna "Prazo ou data" já mostra a data que importa).
+    expect(within(primeira).getByText("OI-2")).toHaveAttribute("title", "Criado em 20/10/2026");
     expect(within(primeira).getByText("Aprovado")).toBeInTheDocument();
     // A cor do status fica na barra de etapas, como na lista de equipamentos.
     const barra = within(primeira).getByRole("img", { name: "Etapa 3 de 4" });

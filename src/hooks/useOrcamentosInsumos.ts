@@ -31,7 +31,7 @@ export function useOrcamentosInsumos(params: UseOrcamentosInsumosParams = {}) {
     setLoading(true);
     setError(null);
     try {
-      const contagem = db.contarOrcamentosInsumosPorStatus(params.busca).catch(() => null);
+      const contagem = Promise.resolve().then(() => db.contarOrcamentosInsumosPorStatus(params.busca)).catch(() => null);
       const resultado = await db.listarOrcamentosInsumos({
         busca: params.busca,
         status: params.status,

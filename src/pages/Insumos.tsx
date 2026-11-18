@@ -20,6 +20,7 @@
  * ╚══════════════════════════════════════════════════════════════╝
  */
 import { PilulaFiltro } from "@/components/equipamentos/FiltroDeStatus";
+import { EscolherItemDialog } from "@/pages/insumos/EscolherItemDialog";
 import { useEffect, useRef, useState } from "react";
 import {
   Package,
@@ -215,6 +216,8 @@ export default function Insumos() {
     setDialogOpen(true);
   }
 
+  const [escolherItemAberto, setEscolherItemAberto] = useState(false);
+
   async function abrirMovimentacao(p: Produto, tipo: "ENTRADA" | "SAIDA" = "ENTRADA", quantidade = 1) {
     const liberado = await ensureSensitiveAccess({
       title: "Movimentar estoque",
@@ -358,6 +361,9 @@ export default function Insumos() {
               className="h-10 pl-9"
             />
           </div>
+          <Button variant="outline" className="shrink-0" onClick={() => setEscolherItemAberto(true)}>
+            Movimentar estoque
+          </Button>
           <Button className="shrink-0" onClick={() => void abrirNovo()}>
             <Plus className="mr-2 h-4 w-4" />
             Novo item
@@ -547,6 +553,14 @@ export default function Insumos() {
         form={form}
         salvando={salvando}
         onSubmit={onSubmit}
+      />
+      <EscolherItemDialog
+        open={escolherItemAberto}
+        onOpenChange={setEscolherItemAberto}
+        onEscolher={(produto) => {
+          setEscolherItemAberto(false);
+          void abrirMovimentacao(produto, "ENTRADA");
+        }}
       />
       <InsumosMovimentacaoDialog
         open={movDialogOpen}

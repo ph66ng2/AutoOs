@@ -47,7 +47,10 @@ export function descricaoDoItem(item: ItemRetirada): string {
 export function valorDoItem(item: ItemRetirada): string {
   if (item.tipo === "EQUIPAMENTO") {
     const valor = item.equipamento.valor_final ?? item.equipamento.valor_orcamento;
-    return valor != null ? formatCurrency(valor) : "";
+    if (valor == null) return "";
+    if (valor === 0) return "Garantia · sem custo";
+    const forma = item.equipamento.forma_pagamento_codigo;
+    return forma ? `${formatCurrency(valor)} · ${formaPagamentoRotulo(forma)}` : formatCurrency(valor);
   }
   const { valor_total, forma_pagamento_codigo } = item.venda;
   return forma_pagamento_codigo ? `${formatCurrency(valor_total)} · ${formaPagamentoRotulo(forma_pagamento_codigo)}` : formatCurrency(valor_total);

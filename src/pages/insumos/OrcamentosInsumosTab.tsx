@@ -270,10 +270,7 @@ export function OrcamentosInsumosTab({ onEstoqueAlterado, contagemPorStatus, ren
                                 aria-label={`Abrir orçamento ${orcamento.numero_exibicao}`}
                               >
                                 <TableCell>
-                                  <p className="font-mono text-sm font-bold">{orcamento.numero_exibicao}</p>
-                                  <p className="text-xs tabular-nums text-muted-foreground">
-                                    {parseTimestampPostgres(orcamento.criado_em).toLocaleDateString("pt-BR")}
-                                  </p>
+                                  <p className="font-mono text-sm font-bold" title={`Criado em ${parseTimestampPostgres(orcamento.criado_em).toLocaleDateString("pt-BR")}`}>{orcamento.numero_exibicao}</p>
                                 </TableCell>
                                 <TableCell>
                                   <p className="font-semibold">{orcamento.cliente_nome ?? "—"}</p>

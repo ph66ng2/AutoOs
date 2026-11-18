@@ -91,7 +91,7 @@ export function useEquipamentos(params?: UseEquipamentosParams) {
       const params = paramsRef.current;
       const tecnico = params?.tecnico || undefined;
       // A contagem é só enfeite das pílulas: se falhar, a lista continua.
-      const contagem = db.contarEquipamentosPorStatus(params?.busca, tecnico).catch(() => null);
+      const contagem = Promise.resolve().then(() => db.contarEquipamentosPorStatus(params?.busca, tecnico)).catch(() => null);
       const data = await db.listarEquipamentosPaginados(
         params?.busca,
         params?.status === "TODOS" ? undefined : params?.status,

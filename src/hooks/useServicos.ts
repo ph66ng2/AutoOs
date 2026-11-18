@@ -21,7 +21,7 @@ export function useServicos(params?: UseServicosParams) {
     setLoading(true);
     setError(null);
     try {
-      const numeros = db.contarServicos(params?.busca).catch(() => null);
+      const numeros = Promise.resolve().then(() => db.contarServicos(params?.busca)).catch(() => null);
       const data = await db.listarServicosPaginados(
         params?.busca,
         params?.situacao ?? "ATIVOS",

@@ -64,7 +64,7 @@ export function PecasDoServico({ pecas, onChange }: Props) {
       })}
       <div className="flex items-center gap-2">
         <Plus className="h-4 w-4 text-muted-foreground" />
-        <select aria-label="Adicionar peça" className="h-9 flex-1 rounded-md border bg-background px-2 text-sm"
+        <select aria-label="Adicionar peça" className="h-9 w-full max-w-sm rounded-md border bg-background px-2 text-sm"
           value="" onChange={(event) => adicionar(Number(event.target.value))}>
           <option value="">Adicionar peça do estoque...</option>
           {opcoes.filter((produto) => produto.id && !pecas.some((peca) => peca.produto_id === produto.id))
