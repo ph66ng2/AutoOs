@@ -412,6 +412,13 @@ export default function Equipamentos() {
     const encontrado = /^\/equipamentos\/(\d+)\/orcamento\/?$/.exec(location.pathname);
     return encontrado ? Number(encontrado[1]) : null;
   })();
+  // Verificação técnica em página (decisão 24): /equipamentos/:id/verificacao.
+  const idVerificacaoRota = (() => {
+    const encontrado = /^\/equipamentos\/(\d+)\/verificacao\/?$/.exec(location.pathname);
+    return encontrado ? Number(encontrado[1]) : null;
+  })();
+  /** De onde a pessoa abriu a verificação: Cancelar e finalizar voltam para lá. */
+  const origemVerificacaoRef = useRef<string>("/equipamentos");
   /** De onde a pessoa abriu o ajuste: Cancelar e salvar voltam para lá. */
   const origemAjusteRef = useRef<string>("/equipamentos");
 
@@ -856,11 +863,55 @@ export default function Equipamentos() {
       });
   }, [idDetalhesRota, abrirDetalhes, navigate]);
 
-  /** Abre dialog de verificação técnica (VerificacaoTecnica.tsx) */
-  function abrirVerificacao(eq: Equipamento) {
+  const paginaVerificacaoAbertaRef = useRef(false);
+  paginaVerificacaoAbertaRef.current = verificacaoDialogOpen;
+  /** Abre a página de verificação técnica (VerificacaoTecnica.tsx, /equipamentos/:id/verificacao). */
+  function abrirVerificacao(eq: Equipamento, origem?: string) {
     setSelecionado(eq);
     setVerificacaoDialogOpen(true);
+    paginaVerificacaoAbertaRef.current = true;
+    origemVerificacaoRef.current = origem ?? pathnameAtualRef.current;
+    const destino = `/equipamentos/${eq.id}/verificacao`;
+    if (pathnameAtualRef.current !== destino) navigate(destino);
   }
+
+  /** Sai da página da verificação e volta para onde a pessoa estava; depois de finalizar, recarrega os detalhes. */
+  function fecharPaginaVerificacao(finalizou: boolean) {
+    // Finalizar já fecha; o "fechar" que a página manda logo depois não navega de novo.
+    if (!paginaVerificacaoAbertaRef.current) return;
+    paginaVerificacaoAbertaRef.current = false;
+    const alvo = selecionado;
+    setVerificacaoDialogOpen(false);
+    const origem = origemVerificacaoRef.current;
+    if (finalizou && alvo?.id && origem === `/equipamentos/${alvo.id}`) {
+      db.buscarEquipamento(alvo.id).then((eq) => abrirDetalhes(eq)).catch(() => navigate(origem));
+      return;
+    }
+    if (pathnameAtualRef.current !== origem) navigate(origem);
+  }
+
+  // Link direto, voltar ou avançar até a verificação: abre a página se a OS está em verificação.
+  const idVerificacaoRotaAnterior = useRef<number | null>(null);
+  useEffect(() => {
+    const anterior = idVerificacaoRotaAnterior.current;
+    idVerificacaoRotaAnterior.current = idVerificacaoRota;
+    if (idVerificacaoRota != null && !paginaVerificacaoAbertaRef.current) {
+      const origem = `/equipamentos/${idVerificacaoRota}`;
+      db.buscarEquipamento(idVerificacaoRota)
+        .then((eq) => {
+          if (eq.status === "EM_VERIFICACAO") abrirVerificacao(eq, origem);
+          else navigate(origem, { replace: true });
+        })
+        .catch((err) => {
+          showError("Equipamentos", "Abrir verificação", err);
+          navigate("/equipamentos", { replace: true });
+        });
+    } else if (idVerificacaoRota == null && anterior != null && paginaVerificacaoAbertaRef.current) {
+      // Saiu da página pelo navegador: a verificação não finalizada é descartada.
+      setVerificacaoDialogOpen(false);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [idVerificacaoRota]);
 
   /** Abre dialog de mudança manual de status com opção de pré-selecionar o status */
   async function prepararValorEntregaPadrao(eq: Equipamento) {
@@ -1316,8 +1367,8 @@ export default function Equipamentos() {
         if (!resultado.sucesso) {
           throw new Error(resultado.erro || "Não foi possível finalizar a verificação.");
         }
-        setVerificacaoDialogOpen(false);
         await recarregar();
+        fecharPaginaVerificacao(true);
         const resumoCanais = mensagemResultadoCanais(resultado);
         if (resumoCanais) {
           success("Equipamentos", resumoCanais, "Finalizar verificação");
@@ -2662,7 +2713,7 @@ export default function Equipamentos() {
 
   return (
     <div className="space-y-6">
-      {!detalhesDialogOpen && idAjusteRota == null && !paginaAjusteAberta && (<>
+      {!detalhesDialogOpen && idAjusteRota == null && !paginaAjusteAberta && idVerificacaoRota == null && !verificacaoDialogOpen && (<>
       {/* Header */}
       <PageHeader
         titulo="Equipamentos"
@@ -3178,6 +3229,22 @@ export default function Equipamentos() {
       </Dialog>
 
       {/* ═══ Detalhes da OS (rota /equipamentos/:id) ═══ */}
+      {idVerificacaoRota != null && !verificacaoDialogOpen && (
+        <div role="status" aria-label="Carregando verificação" className="flex h-64 items-center justify-center">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary" />
+        </div>
+      )}
+      {/* ═══ Verificação técnica (rota /equipamentos/:id/verificacao, decisão 24) ═══ */}
+      <VerificacaoTecnica
+        key={selecionado?.id ?? "verificacao"}
+        equipamento={selecionado}
+        open={verificacaoDialogOpen}
+        onOpenChange={(aberta) => { if (!aberta) fecharPaginaVerificacao(false); }}
+        onConcluir={handleConcluirVerificacao}
+        salvando={salvando || loadingAutomacao}
+        tecnicoInicial={extrairTecnicoInicialDeObservacoes(selecionado?.observacoes || "") || "Ivan"}
+      />
+
       {/* ═══ Ajuste de orçamento (rota /equipamentos/:id/orcamento, decisão 24) ═══ */}
       {idAjusteRota != null && !paginaAjusteAberta && (
         <div role="status" aria-label="Carregando ajuste de orçamento" className="flex h-64 items-center justify-center">
@@ -3186,12 +3253,12 @@ export default function Equipamentos() {
       )}
       {paginaAjusteAberta && selecionado && renderPaginaAjuste(selecionado)}
 
-      {detalhesDialogOpen && !paginaAjusteAberta && selecionado?.id !== idDetalhesAberto && (
+      {detalhesDialogOpen && !paginaAjusteAberta && !verificacaoDialogOpen && selecionado?.id !== idDetalhesAberto && (
         <div role="status" aria-label="Carregando atendimento" className="flex h-64 items-center justify-center">
           <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary" />
         </div>
       )}
-      {detalhesDialogOpen && !paginaAjusteAberta && selecionado && selecionado.id === idDetalhesAberto && (
+      {detalhesDialogOpen && !paginaAjusteAberta && !verificacaoDialogOpen && selecionado && selecionado.id === idDetalhesAberto && (
         <PortalClienteProvider equipamento={selecionado} sinalPortal={sinalPortal} onConfigurarPortal={irParaConfiguracoesPortal}>
           <section aria-labelledby="detalhes-equipamento-titulo" className="space-y-5">
             <h2 id="detalhes-equipamento-titulo" className="sr-only">Detalhes do Equipamento</h2>
@@ -3401,17 +3468,6 @@ export default function Equipamentos() {
         onOpenChange={(open) => { if (!open) setReabrirAlvo(null); }}
         onCorrigirEngano={() => { if (reabrirAlvo) void abrirCorrigirDecisao(reabrirAlvo); }}
         onNovaProposta={() => { if (reabrirAlvo) void abrirMudarStatus(reabrirAlvo, "AGUARDANDO_APROVACAO"); }}
-      />
-
-      {/* ═══ Dialog Verificação Técnica (componente extraído) ═══ */}
-      <VerificacaoTecnica
-        key={selecionado?.id ?? "verificacao"}
-        equipamento={selecionado}
-        open={verificacaoDialogOpen}
-        onOpenChange={setVerificacaoDialogOpen}
-        onConcluir={handleConcluirVerificacao}
-        salvando={salvando || loadingAutomacao}
-        tecnicoInicial={extrairTecnicoInicialDeObservacoes(selecionado?.observacoes || "") || "Ivan"}
       />
 
       {/* ═══ Dialog Mudar Status ═══ */}
