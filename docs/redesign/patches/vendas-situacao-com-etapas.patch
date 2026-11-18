@@ -1,0 +1,202 @@
+From 08c9dd1af87dc069c6f68f21ad6f607b0b2ac6cc Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Tue, 17 Nov 2026 20:01:04 +0000
+Subject: [PATCH] =?UTF-8?q?Vendas=20de=20insumos:=20situa=C3=A7=C3=A3o=20c?=
+ =?UTF-8?q?om=20barra=20de=20etapas,=20como=20na=20lista=20de=20equipament?=
+ =?UTF-8?q?os?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+A coluna Situação deixa o selo e passa a mostrar o nome e 4 traços
+(Rascunho, Enviado, Aprovado, Entregue) na cor da família; Vencido
+pinta a barra de vermelho e aparece ao lado do nome. TracosDeEtapas
+sai de BarraDeEtapas para as duas listas usarem o mesmo desenho.
+
+O teste da lista conferia a cor no texto do status; agora confere
+na barra, onde a cor passou a ficar.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01DaV7KuehXbtNNevy8Km2Vh
+---
+ src/components/equipamentos/BarraDeEtapas.tsx | 29 ++++++++++------
+ src/lib/orcamento-insumos.ts                  | 34 +++++++++++++++++++
+ .../insumos/OrcamentosInsumosTab.test.tsx     |  5 ++-
+ src/pages/insumos/OrcamentosInsumosTab.tsx    | 23 ++++++-------
+ 4 files changed, 67 insertions(+), 24 deletions(-)
+
+diff --git a/src/components/equipamentos/BarraDeEtapas.tsx b/src/components/equipamentos/BarraDeEtapas.tsx
+index 72f3a0a..f7747eb 100644
+--- a/src/components/equipamentos/BarraDeEtapas.tsx
++++ b/src/components/equipamentos/BarraDeEtapas.tsx
+@@ -1,19 +1,26 @@
+ import { cn } from "@/lib/utils";
+-import { FAMILIA_COR_CHEIA, TOTAL_ETAPAS_COMPACTAS, etapaCompacta, statusFamilia } from "@/lib/status-familia";
++import { FAMILIA_COR_CHEIA, TOTAL_ETAPAS_COMPACTAS, etapaCompacta, statusFamilia, type StatusFamilia } from "@/lib/status-familia";
+ 
+-/** Barra compacta de andamento (lista de equipamentos): 7 traços de 14×4px na cor da família. */
+-export function BarraDeEtapas({ status, className }: { status: string; className?: string }) {
+-  const feitas = etapaCompacta(status);
+-  const cor = FAMILIA_COR_CHEIA[statusFamilia(status)];
++/** Traços de andamento (14×4px) na cor cheia da família. Base da barra compacta de qualquer lista. */
++export function TracosDeEtapas({ feitas, total, familia, className }: { feitas: number; total: number; familia: StatusFamilia; className?: string }) {
++  const cor = FAMILIA_COR_CHEIA[familia];
+   return (
+-    <span
+-      className={cn("flex gap-0.5", className)}
+-      role="img"
+-      aria-label={`Etapa ${feitas} de ${TOTAL_ETAPAS_COMPACTAS}`}
+-    >
+-      {Array.from({ length: TOTAL_ETAPAS_COMPACTAS }, (_, indice) => (
++    <span className={cn("flex gap-0.5", className)} role="img" aria-label={`Etapa ${feitas} de ${total}`}>
++      {Array.from({ length: total }, (_, indice) => (
+         <span key={indice} className={cn("h-1 w-3.5 rounded-sm", indice < feitas ? cor : "bg-track")} />
+       ))}
+     </span>
+   );
+ }
++
++/** Barra compacta de andamento (lista de equipamentos): 7 traços na cor da família. */
++export function BarraDeEtapas({ status, className }: { status: string; className?: string }) {
++  return (
++    <TracosDeEtapas
++      feitas={etapaCompacta(status)}
++      total={TOTAL_ETAPAS_COMPACTAS}
++      familia={statusFamilia(status)}
++      className={className}
++    />
++  );
++}
+diff --git a/src/lib/orcamento-insumos.ts b/src/lib/orcamento-insumos.ts
+index ed60950..7ff79f0 100644
+--- a/src/lib/orcamento-insumos.ts
++++ b/src/lib/orcamento-insumos.ts
+@@ -6,6 +6,7 @@
+  */
+ import { parseTimestampPostgres, todayLocalIsoDate } from "@/lib/date-utils";
+ import { formatCurrency } from "@/lib/utils";
++import type { StatusFamilia } from "@/lib/status-familia";
+ import type {
+   OrcamentoInsumos,
+   OrcamentoInsumosDetalhe,
+@@ -31,6 +32,39 @@ export const STATUS_ORCAMENTO_INSUMOS_COR: Record<StatusOrcamentoInsumos, string
+   ENTREGUE: "bg-status-neutral-bg text-status-neutral border-status-neutral/30",
+ };
+ 
++/**
++ * Barra de etapas da lista de vendas, no mesmo desenho da lista de equipamentos:
++ * Rascunho → Enviado → Aprovado → Entregue. Reprovado para onde aconteceu (no envio);
++ * Cancelado não mostra avanço. Vencido pinta a barra de `bad` sem mudar a etapa.
++ */
++export const TOTAL_ETAPAS_VENDA = 4;
++
++const ETAPA_VENDA: Record<StatusOrcamentoInsumos, number> = {
++  RASCUNHO: 1,
++  ENVIADO: 2,
++  APROVADO: 3,
++  ENTREGUE: 4,
++  REPROVADO: 2,
++  CANCELADO: 0,
++};
++
++const FAMILIA_VENDA: Record<StatusOrcamentoInsumos, StatusFamilia> = {
++  RASCUNHO: "neutral",
++  ENVIADO: "wait",
++  APROVADO: "ok",
++  REPROVADO: "bad",
++  CANCELADO: "neutral",
++  ENTREGUE: "neutral",
++};
++
++export function etapaVenda(status: StatusOrcamentoInsumos): number {
++  return ETAPA_VENDA[status] ?? 0;
++}
++
++export function familiaVenda(status: StatusOrcamentoInsumos, vencido: boolean): StatusFamilia {
++  return vencido ? "bad" : FAMILIA_VENDA[status] ?? "neutral";
++}
++
+ /** Categorias que podem entrar num orçamento de insumos: tudo do estoque, menos impressoras. */
+ export function categoriaOrcavel(categoria: string | undefined | null): boolean {
+   return (categoria ?? "").trim().toUpperCase() !== "IMPRESSORA";
+diff --git a/src/pages/insumos/OrcamentosInsumosTab.test.tsx b/src/pages/insumos/OrcamentosInsumosTab.test.tsx
+index 1d7eab3..71bf54e 100644
+--- a/src/pages/insumos/OrcamentosInsumosTab.test.tsx
++++ b/src/pages/insumos/OrcamentosInsumosTab.test.tsx
+@@ -89,7 +89,10 @@ describe("OrcamentosInsumosTab", () => {
+     expect(within(primeira).getByText("2 itens")).toBeInTheDocument();
+     expect(within(primeira).getByText(/R\$\s*150,00/)).toBeInTheDocument();
+     expect(within(primeira).getByText("20/10/2026")).toBeInTheDocument();
+-    expect(within(primeira).getByText("Aprovado").className).toMatch(/status-ok/);
++    expect(within(primeira).getByText("Aprovado")).toBeInTheDocument();
++    // A cor do status fica na barra de etapas, como na lista de equipamentos.
++    const barra = within(primeira).getByRole("img", { name: "Etapa 3 de 4" });
++    expect(barra.firstElementChild?.className).toMatch(/bg-status-ok/);
+ 
+     const segunda = screen.getByRole("row", { name: /abrir orçamento OI-1/i });
+     expect(within(segunda).getByText("1 item")).toBeInTheDocument();
+diff --git a/src/pages/insumos/OrcamentosInsumosTab.tsx b/src/pages/insumos/OrcamentosInsumosTab.tsx
+index a718253..738ca04 100644
+--- a/src/pages/insumos/OrcamentosInsumosTab.tsx
++++ b/src/pages/insumos/OrcamentosInsumosTab.tsx
+@@ -4,6 +4,7 @@
+  */
+ import { useEffect, useState, type ReactNode } from "react";
+ import { FileText, Lock, Mail, MessageCircle, Package, Plus, Search } from "lucide-react";
++import { TracosDeEtapas } from "@/components/equipamentos/BarraDeEtapas";
+ import { Button } from "@/components/ui/button";
+ import { Card, CardContent } from "@/components/ui/card";
+ import { ActionPriorityRow, type PriorityAction } from "@/components/ui/action-priority-row";
+@@ -15,11 +16,13 @@ import { useSensitiveAccess } from "@/hooks/useSensitiveAccess";
+ import { parseTimestampPostgres } from "@/lib/date-utils";
+ import {
+   acoesOrcamentoInsumos,
++  etapaVenda,
++  familiaVenda,
+   orcamentoInsumosVencido,
+   prazoOuData,
+   proximaAcaoVenda,
+-  STATUS_ORCAMENTO_INSUMOS_COR,
+   STATUS_ORCAMENTO_INSUMOS_LABEL,
++  TOTAL_ETAPAS_VENDA,
+   type TipoAcaoVenda,
+ } from "@/lib/orcamento-insumos";
+ import { totalPages } from "@/lib/pagination";
+@@ -43,19 +46,15 @@ interface OrcamentosInsumosTabProps {
+ 
+ const COLUNAS = 7;
+ 
+-function SeloSituacao({ status, vencido }: { status: StatusOrcamentoInsumos; vencido: boolean }) {
++/** Situação no mesmo desenho da lista de equipamentos: nome e barra de etapas, sem selo. */
++function SituacaoComEtapas({ status, vencido }: { status: StatusOrcamentoInsumos; vencido: boolean }) {
+   return (
+-    <div className="flex flex-col items-start gap-1">
+-      <span className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-xs font-bold ${STATUS_ORCAMENTO_INSUMOS_COR[status]}`}>
+-        <span aria-hidden="true" className="h-[7px] w-[7px] rounded-full bg-current" />
++    <div className="min-w-0 space-y-1.5">
++      <span className="block truncate text-sm font-medium">
+         {STATUS_ORCAMENTO_INSUMOS_LABEL[status]}
++        {vencido && <> · <span className="font-semibold text-status-bad">Vencido</span></>}
+       </span>
+-      {vencido && (
+-        <span className="inline-flex items-center gap-1.5 rounded-full border border-status-bad/30 bg-status-bad-bg px-2.5 py-0.5 text-xs font-bold text-status-bad">
+-          <span aria-hidden="true" className="h-[7px] w-[7px] rounded-full bg-current" />
+-          Vencido
+-        </span>
+-      )}
++      <TracosDeEtapas feitas={etapaVenda(status)} total={TOTAL_ETAPAS_VENDA} familia={familiaVenda(status, vencido)} />
+     </div>
+   );
+ }
+@@ -281,7 +280,7 @@ export function OrcamentosInsumosTab({ onEstoqueAlterado, contagemPorStatus, ren
+                                 {orcamento.categorias_itens && <span> · {orcamento.categorias_itens}</span>}
+                               </TableCell>
+                               <TableCell>
+-                                <SeloSituacao status={orcamento.status} vencido={vencido} />
++                                <SituacaoComEtapas status={orcamento.status} vencido={vencido} />
+                               </TableCell>
+                               <TableCell className={`whitespace-nowrap text-sm tabular-nums ${vencido ? "font-semibold text-status-bad" : "text-muted-foreground"}`}>
+                                 {prazoOuData(orcamento)}
+-- 
+2.43.0
+
