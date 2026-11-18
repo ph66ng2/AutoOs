@@ -170,7 +170,8 @@ export default function Gastos() {
   const [todasAbertas, setTodasAbertas] = useState(false);
   const exportar = useExportarLancamentos();
   const mesAtual = meses[mes - 1];
-  const faturadoMes = mesAtual?.faturado ?? 0;
+  const faturadoDisponivel = !erroAno && mesAtual != null;
+  const faturadoMes = faturadoDisponivel ? mesAtual.faturado : 0;
   const saldo = faturadoMes - totais.total;
   const mesAnterior = mes === 1 ? anterior[11] : meses[mes - 2];
   const saldoAnterior = mesAnterior ? mesAnterior.faturado - mesAnterior.fixo - mesAnterior.variavel : null;
@@ -262,14 +263,24 @@ export default function Gastos() {
           <CartaoVariaveis valor={totais.variavel} quantidade={totais.quantidadeVariaveis} media={media} maximo={maiorVariavel} ocultar={ocultar} />
           <CartaoNumero
             rotulo="Saldo do mês"
-            valor={<span className={saldo < 0 ? "text-status-bad" : undefined}>{dinheiroComSinal(saldo, ocultar)}</span>}
+            valor={
+              faturadoDisponivel ? (
+                <span className={saldo < 0 ? "text-status-bad" : undefined}>{dinheiroComSinal(saldo, ocultar)}</span>
+              ) : (
+                "Indisponível"
+              )
+            }
             medida={
               <div
                 role="img"
-                aria-label={`Faturado ${dinheiro(faturadoMes, ocultar)} contra gastos ${dinheiro(totais.total, ocultar)}`}
+                aria-label={
+                  faturadoDisponivel
+                    ? `Faturado ${dinheiro(faturadoMes, ocultar)} contra gastos ${dinheiro(totais.total, ocultar)}`
+                    : "Faturado indisponível"
+                }
                 className="flex h-7 gap-1 overflow-hidden rounded-[4px]"
               >
-                {faturadoMes > 0 || totais.total > 0 ? (
+                {faturadoDisponivel && (faturadoMes > 0 || totais.total > 0) ? (
                   <>
                     {/* Entrou (azul) contra saiu (vermelho): saldo positivo deixa o azul maior. */}
                     {faturadoMes > 0 && <span className="rounded-[4px]" style={{ flexGrow: faturadoMes, background: COR_ENTRA }} />}
@@ -281,7 +292,7 @@ export default function Gastos() {
               </div>
             }
             rodape={
-              saldoAnterior == null || loadingAno ? (
+              !faturadoDisponivel || saldoAnterior == null || loadingAno ? (
                 "faturado menos gastos"
               ) : (
                 <>
@@ -347,7 +358,7 @@ export default function Gastos() {
         <div className="grid gap-4 lg:grid-cols-3">
           <ComposicaoGastos fixo={totais.fixo} variavel={totais.variavel} ocultar={ocultar} />
           <PorCategoria id="financas-por-categoria" categorias={categorias} ocultar={ocultar} />
-          <PesoNoFaturamento gastos={totais.total} faturado={faturadoMes} ocultar={ocultar} />
+          <PesoNoFaturamento gastos={totais.total} faturado={faturadoMes} ocultar={ocultar} disponivel={faturadoDisponivel} />
         </div>
       </div>
 

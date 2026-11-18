@@ -434,13 +434,15 @@ function Anel({ fracao, cor, rotulo }: { fracao: number; cor: string; rotulo: st
 }
 
 /** Quanto do faturado do mês foi para gastos. */
-export function PesoNoFaturamento({ gastos, faturado, ocultar }: { gastos: number; faturado: number; ocultar: boolean }) {
+export function PesoNoFaturamento({ gastos, faturado, ocultar, disponivel = true }: { gastos: number; faturado: number; ocultar: boolean; disponivel?: boolean }) {
   const fracao = faturado > 0 ? gastos / faturado : null;
   return (
     <section aria-labelledby="peso-titulo" className="rounded-2xl border bg-card p-5">
       <h2 id="peso-titulo" className="text-base font-bold">Peso no faturamento</h2>
       <div className="mt-4 flex items-center justify-between gap-4 border-t pt-4">
-        {fracao == null ? (
+        {!disponivel ? (
+          <p className="text-sm text-muted-foreground">Indisponível</p>
+        ) : fracao == null ? (
           <p className="text-sm text-muted-foreground">Sem faturado neste mês.</p>
         ) : (
           <>

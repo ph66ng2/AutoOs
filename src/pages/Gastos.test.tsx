@@ -68,6 +68,15 @@ describe("Finanças (fase 8)", () => {
     expect(screen.getByRole("heading", { name: "Peso no faturamento" }).closest("section")).toHaveTextContent("83% em gastos");
   });
 
+  it("saldo e peso ficam indisponíveis se o faturado do ano não carrega", async () => {
+    mocks.db.listarEquipamentos.mockRejectedValue(new Error("rede"));
+    render(<Gastos />);
+    const saldo = await screen.findByRole("region", { name: "Saldo do mês" });
+    await waitFor(() => expect(saldo).toHaveTextContent("Indisponível"));
+    expect(saldo).not.toHaveTextContent(/10\.000,00/);
+    expect(screen.getByRole("heading", { name: "Peso no faturamento" }).closest("section")).toHaveTextContent("Indisponível");
+  });
+
   it("o olho oculta os valores; Ver todas abre a lista completa", async () => {
     const usuario = userEvent.setup();
     render(<Gastos />);

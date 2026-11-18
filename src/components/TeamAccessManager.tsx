@@ -10,6 +10,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
+  DialogBody,
   DialogContent,
   DialogDescription,
   DialogHeader,
@@ -410,7 +411,6 @@ export function TeamAccessManager({
       >
         <DialogContent
           tamanho="g"
-          className="overflow-y-auto"
           onPointerDownOutside={(evento) => {
             if (criandoBusy) evento.preventDefault();
           }}
@@ -422,15 +422,17 @@ export function TeamAccessManager({
             <DialogTitle>Novo perfil</DialogTitle>
             <DialogDescription>Cadastrar uma pessoa da equipe.</DialogDescription>
           </DialogHeader>
-          {catalogReady && (
-            <CreateProfileCard
-              profiles={profiles}
-              onBusyChange={setCriandoBusy}
-              onCreated={async () => {
-                await changed();
-              }}
-            />
-          )}
+          <DialogBody>
+            {catalogReady && (
+              <CreateProfileCard
+                profiles={profiles}
+                onBusyChange={setCriandoBusy}
+                onCreated={async () => {
+                  await changed();
+                }}
+              />
+            )}
+          </DialogBody>
         </DialogContent>
       </Dialog>
       <Dialog

@@ -119,7 +119,7 @@ export function CreateProfileCard({ profiles, onCreated, onBusyChange }: Props) 
   }
 
   return (
-    <Card id="novo-colaborador" className="overflow-hidden">
+    <Card id="novo-colaborador" className="shrink-0 overflow-hidden">
       <CardHeader className="border-b bg-muted/20">
         <CardTitle className="flex items-center gap-2">
           <UserPlus className="h-5 w-5 text-primary" /> Novo colaborador

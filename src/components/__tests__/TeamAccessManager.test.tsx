@@ -67,6 +67,15 @@ describe("gestão da equipe", () => {
     expect(await screen.findByText("ABC-234")).toBeInTheDocument();
   });
 
+  it("o cadastro de perfil rola no corpo do diálogo", async () => {
+    const user = userEvent.setup();
+    render(<TeamAccessManager activeProfileId={1} onChanged={vi.fn()} />);
+    await screen.findByText("Ivan");
+    await user.click(screen.getByRole("button", { name: /Novo perfil/ }));
+    expect(screen.getByRole("dialog").querySelector("[data-slot=dialog-body]")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Continuar" })).toBeInTheDocument();
+  });
+
   it("não fecha o cadastro de perfil enquanto a criação está em andamento", async () => {
     const user = userEvent.setup();
     let concluir!: (valor: { profile_id: number; nome: string; codigo: string; expira_em: string }) => void;
