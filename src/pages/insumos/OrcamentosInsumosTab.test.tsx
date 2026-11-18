@@ -7,7 +7,7 @@ const mocks = vi.hoisted(() => ({
   hasPermission: vi.fn(() => true),
   listar: vi.fn(),
   ensureSensitiveAccess: vi.fn(),
-  dialogProps: vi.fn(),
+  modalProps: vi.fn(),
   navigate: vi.fn(),
 }));
 
@@ -21,17 +21,19 @@ vi.mock("@/lib/db", () => ({ db: { listarOrcamentosInsumos: mocks.listar } }));
 vi.mock("@/hooks/useSensitiveAccess", () => ({
   useSensitiveAccess: () => ({ ensureSensitiveAccess: mocks.ensureSensitiveAccess, hasPermission: mocks.hasPermission }),
 }));
-vi.mock("@/pages/insumos/OrcamentoInsumosDialog", () => ({
-  OrcamentoInsumosDialog: (props: { open: boolean; orcamentoId?: number | null; onChanged?: () => void }) => {
-    mocks.dialogProps(props);
-    return props.open ? (
-      <div data-testid="dialogo">
-        {props.orcamentoId ?? "novo"}
-        <button onClick={props.onChanged}>simular-acao</button>
+// Cada ação abre o seu modal (AcaoVendaDialog, V.5).
+vi.mock("@/components/vendas/AcaoVendaDialog", () => ({
+  AcaoVendaDialog: (props: { acao: string | null; vendaId: number | null; onAlterado?: () => void }) => {
+    mocks.modalProps(props);
+    return props.acao ? (
+      <div data-testid="modal-acao">
+        {props.acao} {props.vendaId}
+        <button onClick={props.onAlterado}>simular-acao</button>
       </div>
     ) : null;
   },
 }));
+
 
 import { OrcamentosInsumosTab } from "@/pages/insumos/OrcamentosInsumosTab";
 
@@ -132,7 +134,7 @@ describe("OrcamentosInsumosTab", () => {
     render(<OrcamentosInsumosTab />);
     await screen.findByText("OI-2");
     fireEvent.click(screen.getByRole("button", { name: /novo orçamento/i }));
-    expect(await screen.findByTestId("dialogo")).toHaveTextContent("novo");
+    await waitFor(() => expect(mocks.navigate).toHaveBeenCalledWith("/vendas/novo"));
     expect(mocks.ensureSensitiveAccess).toHaveBeenCalledWith(expect.objectContaining({ permission: "FINANCIAL_ACTIONS" }));
   });
 
@@ -142,7 +144,8 @@ describe("OrcamentosInsumosTab", () => {
     await screen.findByText("OI-2");
     fireEvent.click(screen.getByRole("button", { name: /novo orçamento/i }));
     await waitFor(() => expect(mocks.ensureSensitiveAccess).toHaveBeenCalled());
-    expect(screen.queryByTestId("dialogo")).toBeNull();
+    expect(mocks.navigate).not.toHaveBeenCalledWith("/vendas/novo");
+    expect(mocks.navigate).not.toHaveBeenCalledWith("/vendas/novo");
   });
 
   it("estado vazio e erro de carga", async () => {
@@ -160,7 +163,7 @@ describe("OrcamentosInsumosTab", () => {
     const aoAlterarEstoque = vi.fn();
     render(<OrcamentosInsumosTab onEstoqueAlterado={aoAlterarEstoque} />);
     await screen.findByText("OI-2");
-    await userEvent.click(screen.getByRole("button", { name: /novo orçamento/i }));
+    await userEvent.click(screen.getByRole("button", { name: "Marcar entregue" }));
     await userEvent.click(await screen.findByText("simular-acao"));
     expect(aoAlterarEstoque).toHaveBeenCalledTimes(1);
   });
@@ -175,7 +178,7 @@ describe("Vendas de insumos: ação principal, prazo e permissão (fase V.2)", (
     return { ...linha(numero, status, 100), validade };
   }
 
-  it("Enviado mostra Aprovar e a ação vai para a janela; vencido vira Renovar validade", async () => {
+  it("Enviado mostra Aprovar e a ação abre o modal; vencido vira Renovar validade", async () => {
     mocks.listar.mockResolvedValue({
       items: [comValidade(5, "ENVIADO", "2999-12-31"), comValidade(4, "ENVIADO", "2020-01-01")],
       total: 2,
@@ -190,7 +193,7 @@ describe("Vendas de insumos: ação principal, prazo e permissão (fase V.2)", (
     expect(within(emDia).getByRole("combobox", { name: "Mais ações" })).toBeInTheDocument();
 
     await usuario.click(within(emDia).getByRole("button", { name: "Aprovar" }));
-    expect(mocks.dialogProps).toHaveBeenLastCalledWith(expect.objectContaining({ open: true, orcamentoId: 50, acaoInicial: "aprovar" }));
+    expect(mocks.modalProps).toHaveBeenLastCalledWith(expect.objectContaining({ acao: "aprovar", vendaId: 50 }));
   });
 
   it("Aprovado mostra Marcar entregue e a data da aprovação, sem validade", async () => {
@@ -227,5 +230,40 @@ describe("Vendas de insumos: ação principal, prazo e permissão (fase V.2)", (
     await usuario.click(screen.getByRole("button", { name: "Limpar busca" }));
     expect(screen.getByLabelText("Buscar orçamento")).toHaveValue("");
     expect(await screen.findByText("OI-2")).toBeInTheDocument();
+  });
+});
+
+function telaEstreita() {
+  const original = window.matchMedia;
+  window.matchMedia = ((consulta: string) => ({
+    matches: false,
+    media: consulta,
+    addEventListener: () => undefined,
+    removeEventListener: () => undefined,
+  })) as unknown as typeof window.matchMedia;
+  return () => {
+    window.matchMedia = original;
+  };
+}
+
+describe("Vendas de insumos no celular (V.6)", () => {
+  it("abaixo de 768px a tabela vira cartões com a ação de 44px e o ⋯", async () => {
+    const restaurar = telaEstreita();
+    try {
+      mocks.hasPermission.mockReturnValue(true);
+      mocks.listar.mockResolvedValue({ items: [{ ...linha(5, "ENVIADO", 100), validade: "2999-12-31" }], total: 1 });
+      render(<OrcamentosInsumosTab />);
+      const lista = await screen.findByRole("list", { name: "Orçamentos de insumos" });
+      expect(screen.queryByRole("table")).toBeNull();
+      const cartao = within(lista).getByRole("listitem");
+      expect(within(cartao).getByText("OI-5")).toBeInTheDocument();
+      const aprovar = within(cartao).getByRole("button", { name: "Aprovar" });
+      expect(aprovar).toHaveClass("h-11");
+      expect(within(cartao).getByRole("combobox", { name: "Mais ações" })).toHaveClass("h-11");
+      await userEvent.click(within(cartao).getByRole("button", { name: "Abrir orçamento OI-5" }));
+      expect(mocks.navigate).toHaveBeenCalledWith("/vendas/50");
+    } finally {
+      restaurar();
+    }
   });
 });

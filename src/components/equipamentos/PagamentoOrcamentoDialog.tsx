@@ -53,10 +53,9 @@ export function PagamentoOrcamentoDialog({
       <DialogContent tamanho="m">
         <DialogHeader>
           <DialogTitle>Forma de pagamento da aprovação</DialogTitle>
-          <DialogDescription>Escolha a forma que será registrada junto com a aprovação do orçamento.</DialogDescription>
+          <DialogDescription className="sr-only">Escolha como o cliente vai pagar.</DialogDescription>
         </DialogHeader>
         <div className="space-y-3">
-          <p className="text-sm text-muted-foreground">Escolha obrigatória para aprovar o orçamento.</p>
           <FormaPagamentoFields
             codigo={codigo}
             detalhe={detalhe}

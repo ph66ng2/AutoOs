@@ -184,6 +184,7 @@ export default function Balcao() {
     return (
       <RetiradaBusca
         termoInicial={termoBusca}
+        onTermoChange={setTermoBusca}
         onBack={() => { setTermoBusca(""); setView("home"); }}
         onAbrirItem={abrirItem}
       />
@@ -1388,10 +1389,13 @@ type FiltroRetirada = "TUDO" | "EQUIPAMENTO" | "INSUMOS";
 function RetiradaBusca({
   onBack,
   termoInicial = "",
+  onTermoChange,
   onAbrirItem,
 }: {
   onBack: () => void;
   termoInicial?: string;
+  /** Guarda a busca no Balcão: abrir um item e voltar mantém o que foi digitado. */
+  onTermoChange?: (termo: string) => void;
   onAbrirItem: (item: ItemRetirada) => void;
 }) {
   const fila = useFilaBalcao();
@@ -1422,7 +1426,10 @@ function RetiradaBusca({
           autoFocus
           className="min-h-14 border-2 border-primary/70 bg-card pl-12 text-lg"
           value={term}
-          onChange={(e) => setTerm(e.target.value)}
+          onChange={(e) => {
+            setTerm(e.target.value);
+            onTermoChange?.(e.target.value);
+          }}
           placeholder="Nome do cliente, CPF/CNPJ, série ou OI-n"
         />
         {carregando && (

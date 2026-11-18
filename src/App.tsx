@@ -62,6 +62,7 @@ const ClienteEquipamentos = lazy(() => import("@/pages/ClienteEquipamentos"));
 const Insumos = lazy(() => import("@/pages/Insumos"));
 const VendasInsumos = lazy(() => import("@/pages/VendasInsumos"));
 const VendaDetalhe = lazy(() => import("@/pages/vendas/VendaDetalhe"));
+const VendaFormulario = lazy(() => import("@/pages/vendas/VendaFormulario"));
 const Servicos = lazy(() => import("@/pages/Servicos"));
 const Gastos = lazy(() => import("@/pages/Gastos"));
 const Configuracoes = lazy(() => import("@/pages/Configuracoes"));
@@ -133,11 +134,15 @@ function AppContent() {
             <Route path="/perfil" element={<Perfil />} />
             {/* Mesmo elemento com e sem :id: filtros e página da lista sobrevivem aos Detalhes da OS. */}
             <Route path="/equipamentos/:id?" element={<Equipamentos />} />
+            <Route path="/equipamentos/:id/orcamento" element={<Equipamentos />} />
+            <Route path="/equipamentos/:id/verificacao" element={<Equipamentos />} />
             <Route path="/clientes" element={<Clientes />} />
             <Route path="/clientes/:id/equipamentos" element={<ClienteEquipamentos />} />
             <Route path="/insumos" element={<Insumos />} />
             <Route path="/vendas" element={<VendasInsumos />} />
+            <Route path="/vendas/novo" element={<VendaFormulario />} />
             <Route path="/vendas/:id" element={<VendaDetalhe />} />
+            <Route path="/vendas/:id/editar" element={<VendaFormulario />} />
             <Route path="/servicos" element={<Servicos />} />
             <Route path="/poc" element={<PowerSyncPOC />} />
             <Route

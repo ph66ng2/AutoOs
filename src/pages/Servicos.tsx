@@ -189,7 +189,7 @@ export default function Servicos() {
 
   return (
     <div className="space-y-6">
-      <PageHeader titulo="Serviços" descricao="Catálogo de serviços padrão com preço para a verificação técnica">
+      <PageHeader titulo="Serviços">
         <Button onClick={() => void abrirNovo()}>
           <Plus className="h-4 w-4 mr-2" />
           Novo Serviço
