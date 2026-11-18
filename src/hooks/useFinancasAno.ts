@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { db } from "@/lib/db";
 import { receitaPorMes } from "@/hooks/useReceitaPorMes";
 import type { GastoFixo, GastoVariavel } from "@/types";
@@ -24,10 +24,12 @@ export function useFinancasAno(ano: number, totalFixo: number, hoje = new Date()
   const [anterior, setAnterior] = useState<MesFinancas[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const pedido = useRef(0);
   const anoAtual = hoje.getFullYear();
   const mesAtual = hoje.getMonth() + 1;
 
   const carregar = useCallback(async () => {
+    const id = ++pedido.current;
     setLoading(true);
     setError(null);
     const lista = [ano - 1, ano].flatMap((a) => Array.from({ length: 12 }, (_, i) => ({ mes: i + 1, ano: a })));
@@ -37,6 +39,7 @@ export function useFinancasAno(ano: number, totalFixo: number, hoje = new Date()
         db.listarEquipamentos().then(receitaPorMes).catch(() => null),
         Promise.all(lista.map((m) => (futuro(m) ? Promise.resolve(null) : db.resumoMensal(m.mes, m.ano).catch(() => null)))),
       ]);
+      if (id !== pedido.current) return;
       const porChave = new Map((receita ?? []).map((item) => [item.chave, item.valor]));
       const todos = lista.map((m, indice) => {
         const ehFuturo = futuro(m);
@@ -52,7 +55,7 @@ export function useFinancasAno(ano: number, totalFixo: number, hoje = new Date()
       setMeses(todos.slice(12));
       if (receita == null) setError("Não foi possível carregar o faturado.");
     } finally {
-      setLoading(false);
+      if (id === pedido.current) setLoading(false);
     }
   }, [ano, totalFixo, anoAtual, mesAtual]);
 

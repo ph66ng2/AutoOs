@@ -357,6 +357,7 @@ export default function Gastos() {
               gastosFixos={gastosFixos}
               gastosVariaveis={gastosVariaveis}
               loading={loading}
+              ocultar={ocultar}
               onEditFixo={(g) => { setTodasAbertas(false); void abrirEditarFixo(g); }}
               onEditVariavel={(g) => { setTodasAbertas(false); void abrirEditarVariavel(g); }}
             />

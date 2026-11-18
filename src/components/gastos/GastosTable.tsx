@@ -19,11 +19,7 @@ import {
 import { Button } from "@/components/ui/button";
 import type { GastoFixo, GastoVariavel, GastosFixosCategoria } from "@/types";
 import { formatDatePtBr } from "@/lib/date-utils";
-
-const currencyFormatter = new Intl.NumberFormat("pt-BR", {
-  style: "currency",
-  currency: "BRL",
-});
+import { dinheiro } from "@/lib/financas";
 
 const CATEGORIAS: GastosFixosCategoria[] = [
   "Aluguel",
@@ -38,6 +34,7 @@ interface GastosTableProps {
   gastosFixos: GastoFixo[];
   gastosVariaveis: GastoVariavel[];
   loading: boolean;
+  ocultar?: boolean;
   onEditFixo: (gasto: GastoFixo) => void;
   onEditVariavel: (gasto: GastoVariavel) => void;
 }
@@ -46,6 +43,7 @@ export function GastosTable({
   gastosFixos,
   gastosVariaveis,
   loading,
+  ocultar = false,
   onEditFixo,
   onEditVariavel,
 }: GastosTableProps) {
@@ -206,7 +204,7 @@ export function GastosTable({
                   <TableCell className="text-muted-foreground">{row.categoria}</TableCell>
                   <TableCell className="tabular-nums text-muted-foreground">{row.data}</TableCell>
                   <TableCell className="text-right font-semibold tabular-nums">
-                    {currencyFormatter.format(row.valor)}
+                    {dinheiro(row.valor, ocultar)}
                   </TableCell>
                   <TableCell className="text-right">
                     <Button

@@ -79,6 +79,8 @@ describe("Finanças (fase 8)", () => {
     await usuario.click(screen.getByRole("button", { name: "Ver todas" }));
     const janela = await screen.findByRole("dialog");
     expect(within(janela).getByText("Etiquetas")).toBeInTheDocument();
+    expect(janela).not.toHaveTextContent(/4\.800,00|3\.200,00|2\.000,00/);
+    expect(within(janela).getAllByText("R$ •••••")).toHaveLength(3);
   });
 
   it("Recarregar busca de novo o gráfico anual", async () => {
