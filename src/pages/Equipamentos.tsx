@@ -407,6 +407,13 @@ export default function Equipamentos() {
   useEffect(() => {
     setIdDetalhesAberto(idDetalhesRota);
   }, [idDetalhesRota]);
+  // Ajuste de orçamento em página (decisão 24): /equipamentos/:id/orcamento.
+  const idAjusteRota = (() => {
+    const encontrado = /^\/equipamentos\/(\d+)\/orcamento\/?$/.exec(location.pathname);
+    return encontrado ? Number(encontrado[1]) : null;
+  })();
+  /** De onde a pessoa abriu o ajuste: Cancelar e salvar voltam para lá. */
+  const origemAjusteRef = useRef<string>("/equipamentos");
 
   // Diálogo com algo sendo preenchido: abrir outro atendimento por cima perderia o que foi digitado.
   const edicaoEmAndamento =
@@ -998,7 +1005,7 @@ export default function Equipamentos() {
     setStatusDialogOpen(true);
   }
 
-  async function abrirAlterarOrcamento(eq: Equipamento) {
+  async function abrirAlterarOrcamento(eq: Equipamento, origem?: string): Promise<boolean> {
     const liberado = await ensureSensitiveAccess({
       title: "Alterar orçamento",
       description: "Informe o PIN para editar serviços e valor sem alterar o status do equipamento.",
@@ -1006,7 +1013,7 @@ export default function Equipamentos() {
         ? { anyPermission: [SENSITIVE_PERMISSIONS.FINANCIAL_ACTIONS, SENSITIVE_PERMISSIONS.PREPARE_QUOTES] }
         : { permission: SENSITIVE_PERMISSIONS.FINANCIAL_ACTIONS }),
     });
-    if (!liberado) return;
+    if (!liberado) return false;
 
     setSelecionado(eq);
     setNovoStatus("");
@@ -1019,7 +1026,50 @@ export default function Equipamentos() {
     setAcordoExcecaoEntrega(false);
     await prepararAjusteOrcamentoPadrao(eq);
     setStatusDialogOpen(true);
+    origemAjusteRef.current = origem ?? pathnameAtualRef.current;
+    const destino = `/equipamentos/${eq.id}/orcamento`;
+    if (pathnameAtualRef.current !== destino) navigate(destino);
+    return true;
   }
+
+  /** Fecha a página do ajuste e volta para onde a pessoa estava; depois de salvar, recarrega os detalhes. */
+  function fecharPaginaAjuste(salvou: boolean) {
+    const alvo = selecionado;
+    setStatusDialogOpen(false);
+    setAjusteOrcamentoSemMudancaStatus(false);
+    const origem = origemAjusteRef.current;
+    if (salvou && alvo?.id && origem === `/equipamentos/${alvo.id}`) {
+      db.buscarEquipamento(alvo.id).then((eq) => abrirDetalhes(eq)).catch(() => navigate(origem));
+      return;
+    }
+    if (pathnameAtualRef.current !== origem) navigate(origem);
+  }
+
+  // Link direto, voltar ou avançar até a página do ajuste: abre o ajuste dessa OS (com o PIN de sempre).
+  const paginaAjusteAberta = statusDialogOpen && ajusteOrcamentoSemMudancaStatus;
+  const paginaAjusteAbertaRef = useRef(false);
+  paginaAjusteAbertaRef.current = paginaAjusteAberta;
+  const idAjusteRotaAnterior = useRef<number | null>(null);
+  useEffect(() => {
+    const anterior = idAjusteRotaAnterior.current;
+    idAjusteRotaAnterior.current = idAjusteRota;
+    if (idAjusteRota != null && !paginaAjusteAbertaRef.current) {
+      const origem = `/equipamentos/${idAjusteRota}`;
+      db.buscarEquipamento(idAjusteRota)
+        .then(async (eq) => {
+          if (!(await abrirAlterarOrcamento(eq, origem))) navigate(origem, { replace: true });
+        })
+        .catch((err) => {
+          showError("Equipamentos", "Abrir ajuste de orçamento", err);
+          navigate("/equipamentos", { replace: true });
+        });
+    } else if (idAjusteRota == null && anterior != null && paginaAjusteAbertaRef.current) {
+      // Saiu da página pelo navegador: o ajuste não salvo é descartado.
+      setStatusDialogOpen(false);
+      setAjusteOrcamentoSemMudancaStatus(false);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [idAjusteRota]);
 
   async function abrirConsumosOrcamento(eq: Equipamento) {
     const liberado = await ensureSensitiveAccess({
@@ -1805,8 +1855,7 @@ export default function Equipamentos() {
           }
         }
         await recarregar();
-        setStatusDialogOpen(false);
-        setAjusteOrcamentoSemMudancaStatus(false);
+        fecharPaginaAjuste(true);
         success(
           "Equipamentos",
           ["Orçamento atualizado.", portalAjuste?.mensagem, portalProrrogacao?.mensagem].filter(Boolean).join(" "),
@@ -2409,13 +2458,211 @@ export default function Equipamentos() {
     );
   }
 
+  // ─── Ajuste de orçamento: peças usadas pela página (/equipamentos/:id/orcamento) e pela janela de status ───
+  function blocoAjusteHistorico() {
+    return (
+      <>
+      {verificacaoAjusteOrcamento?.servicos_orcamento_original && (
+        <details className="rounded-md border p-3 text-sm">
+          <summary className="cursor-pointer font-medium">Orçamento original e decisões do cliente</summary>
+          <p className="mt-2 text-muted-foreground">Itens da primeira decisão. Serviços reprovados precisam de nova aprovação para consumir peças.</p>
+          {normalizarServicosOrcamento(verificacaoAjusteOrcamento.servicos_orcamento_original).map((servico) => (
+            <p key={servico.id} className="mt-1">{servico.descricao} · {verificacaoAjusteOrcamento.decisoes_servicos?.find((d) => d.servico_id === servico.id)?.decisao ?? "Sem decisão"}</p>
+          ))}
+        </details>
+      )}
+      {verificacaoAjusteOrcamento?.adjusted_at && (
+        <div className="rounded-md border bg-status-work-bg px-3 py-2 text-sm text-status-work flex items-center gap-2">
+          <History className="h-4 w-4 text-status-work" />
+          <div>
+            <p className="text-xs text-status-work font-medium">Histórico de Ajustes</p>
+            <p className="text-xs">
+              Último ajuste em {new Date(verificacaoAjusteOrcamento.adjusted_at).toLocaleDateString("pt-BR")}
+            </p>
+          </div>
+        </div>
+      )}
+      </>
+    );
+  }
+
+  function blocoAjusteCampos(selecionado: Equipamento) {
+    return (
+      <>
+      <div className="space-y-2"><Label htmlFor="valor-orcamento-input">Valor Orçamento (R$)</Label><ValorDecimalInput id="valor-orcamento-input" data-testid="valor-orcamento-input" required value={Number(valorOrcamento) || 0} onValueChange={setValorOrcamento} onValidityChange={setValorOrcamentoValido} />
+        {Number(valorOrcamento) === 0 && !totalOrcamentoAjusteValido(0, osSomenteGarantia(servicosAjuste), selecionado.status, selecionado.valor_orcamento) && (
+          <p className="text-xs text-destructive">{mensagemAjusteTotalZero(selecionado.status, selecionado.valor_orcamento)}</p>
+        )}
+      </div>
+      {(!ajusteOrcamentoSemMudancaStatus || selecionado.status === "AGUARDANDO_APROVACAO") && (
+        <div className="space-y-2"><Label>Prazo Aprovação</Label><DateIsoInput min={new Date().toLocaleDateString("en-CA")} value={prazoAprovacao} onValueChange={setPrazoAprovacao} /></div>
+      )}
+      <div className="space-y-2">
+        <Label htmlFor="observacoes-ajuste">Observações</Label>
+        <Textarea
+          id="observacoes-ajuste"
+          value={observacoesAjuste}
+          onChange={(event) => setObservacoesAjuste(event.target.value)}
+          placeholder="Observações do orçamento"
+          rows={3}
+        />
+      </div>
+      {ajusteOrcamentoSemMudancaStatus && orcamentoJaAprovado(selecionado.status) ? (
+        <div className="space-y-3">
+        <p className="rounded-md border bg-muted/30 px-3 py-2 text-sm text-muted-foreground">
+          Ao salvar, você escolhe entre ajustar sem nova aprovação (o cliente já concordou; só a quantidade adicional terá baixa) ou pedir nova aprovação pelo portal.
+        </p>
+        <FormaPagamentoFields
+          codigo={formaPagamentoAjuste}
+          detalhe={detalhePagamentoAjuste}
+          onCodigoChange={setFormaPagamentoAjuste}
+          onDetalheChange={setDetalhePagamentoAjuste}
+          required
+        />
+        </div>
+      ) : (
+        <div className="rounded-md border bg-muted/30 px-3 py-2 text-sm text-muted-foreground">
+          A forma de pagamento será definida durante a aprovação.
+        </div>
+      )}
+      {valorOrcamentoAnterior != null && valorOrcamento !== valorOrcamentoAnterior && (
+        <p className="text-xs text-status-wait">
+          Novo valor em negociação: {formatCurrency(valorOrcamento)} (antes: {formatCurrency(valorOrcamentoAnterior)}).
+        </p>
+      )}
+      </>
+    );
+  }
+
+  function blocoAjusteServicos(moldura = "space-y-3 rounded-md border p-3") {
+    return (
+      <>
+      {verificacaoAjusteOrcamento && (
+        <div className={moldura}>
+          <AjusteOrcamentoServicos
+            servicos={servicosAjuste}
+            catalogo={catalogoServicosAjuste}
+            carregandoCatalogo={carregandoCatalogoAjuste}
+            onChange={setServicosAjuste}
+            onRemoverTodos={() => {
+              setConfirmProps({
+                title: "Remover todos os serviços",
+                description: "Você está removendo TODOS os serviços do orçamento. Deseja continuar?",
+                variant: "destructive",
+                onConfirm: () => {
+                  setServicosAjuste([]);
+                  setConfirmOpen(false);
+                },
+                onCancel: () => setConfirmOpen(false),
+              });
+              setConfirmOpen(true);
+            }}
+          />
+          {pecasLegadasAjuste.length > 0 && (
+            <div className="rounded-md border border-status-wait/30 bg-status-wait-bg p-2">
+              <p className="text-xs font-semibold text-status-wait">Peças antigas sem serviço vinculado</p>
+              <p className="text-xs text-status-wait">Vincule cada peça a um serviço para permitir aprovação parcial e baixa automática. Remova a linha antiga depois de vinculá-la.</p>
+              {pecasLegadasAjuste.map((peca, indice) => (
+                <div key={`${peca.id}-${indice}`} className="flex items-center justify-between gap-2 text-sm">
+                  <span>{peca.nome} × {peca.quantidade} · {formatCurrencyOrMissing(peca.valorTotal)}</span>
+                  <Button type="button" variant="ghost" size="sm" onClick={() => setPecasLegadasAjuste((atual) => atual.filter((_, i) => i !== indice))}>Remover linha antiga</Button>
+                </div>
+              ))}
+            </div>
+          )}
+          {pecasLegadasAjuste.length === 0 && servicosAjuste.length === 0 && (
+            <p className="text-xs text-muted-foreground">Nenhum serviço ou peça registrado na verificação.</p>
+          )}
+        </div>
+      )}
+      </>
+    );
+  }
+
+  /** Mesma regra do botão Confirmar da janela de status, para o ajuste. */
+  function confirmarStatusBloqueado(selecionado: Equipamento) {
+    return salvando || (!novoStatus && !ajusteOrcamentoSemMudancaStatus) || (((novoStatus === "AGUARDANDO_APROVACAO" && !reabreOrcamentoSemAjuste(selecionado.status, novoStatus)) || ajusteOrcamentoSemMudancaStatus) && !valorOrcamentoValido) || (novoStatus === "AGUARDANDO_APROVACAO" && !reabreOrcamentoSemAjuste(selecionado.status, novoStatus) && !totalOrcamentoAprovacaoValido(Number(valorOrcamento))) || (ajusteOrcamentoSemMudancaStatus && !totalOrcamentoAjusteValido(Number(valorOrcamento), osSomenteGarantia(servicosAjuste), selecionado.status, selecionado.valor_orcamento));
+  }
+
+  /** Soma dos serviços e peças do ajuste, ao vivo (a mesma conta do aviso de divergência ao confirmar). */
+  function somaDoAjuste() {
+    const servicos = servicosAjuste.reduce((soma, servico) => soma + (Number(servico.valor) || 0), 0);
+    const pecas = [...pecasParaOrcamento(servicosAjuste), ...pecasLegadasAjuste].reduce((soma, peca) => soma + peca.valorTotal, 0);
+    return servicos + pecas;
+  }
+
+  /** Ajuste de orçamento como página (decisão 24): mesmos campos e regras da janela; o status da OS não muda. */
+  function renderPaginaAjuste(selecionado: Equipamento) {
+    const soma = somaDoAjuste();
+    return (
+      <section aria-labelledby="ajuste-orcamento-titulo" className="-mb-4 flex min-h-[calc(100vh-8rem)] flex-col gap-4 lg:-mb-8">
+        <div>
+          <button
+            type="button"
+            onClick={() => fecharPaginaAjuste(false)}
+            className="inline-flex items-center gap-1 text-sm text-muted-foreground transition-colors duration-rapida hover:text-foreground"
+          >
+            <ChevronLeft className="h-4 w-4" aria-hidden="true" />
+            <span className="[overflow-wrap:anywhere]">{selecionado.marca} {selecionado.modelo} · {selecionado.serial_number}</span>
+          </button>
+          <div className="mt-1 flex flex-wrap items-center gap-3">
+            <h1 id="ajuste-orcamento-titulo" className="text-[26px] font-bold leading-tight tracking-tight">Ajuste de orçamento</h1>
+            <StatusBadge status={selecionado.status} completo />
+          </div>
+        </div>
+
+        {blocoAjusteHistorico()}
+
+        <section className="rounded-2xl border bg-card p-5">
+          <h2 className="mb-3 text-base font-bold">Valores</h2>
+          <div className="grid gap-3 sm:grid-cols-3">
+            <div className="rounded-xl bg-muted px-4 py-3">
+              <p className="text-xs text-muted-foreground">Valor original (verificação)</p>
+              <p className="mt-0.5 text-lg font-bold tabular-nums">{valorOrcamentoOriginal != null ? formatCurrency(valorOrcamentoOriginal) : "—"}</p>
+            </div>
+            <div className="rounded-xl bg-muted px-4 py-3">
+              <p className="text-xs text-muted-foreground">Valor atual antes do ajuste</p>
+              <p className="mt-0.5 text-lg font-bold tabular-nums">{valorOrcamentoAnterior != null ? formatCurrency(valorOrcamentoAnterior) : "—"}</p>
+            </div>
+            <div className="rounded-xl bg-status-ok-bg px-4 py-3 text-status-ok">
+              <p className="text-xs">Novo valor calculado</p>
+              <p className="mt-0.5 text-lg font-bold tabular-nums">{formatCurrency(soma)}</p>
+            </div>
+          </div>
+        </section>
+
+        {verificacaoAjusteOrcamento && (
+          <section className="rounded-2xl border bg-card p-5">
+            <h2 className="mb-3 text-base font-bold">Serviços e peças</h2>
+            {blocoAjusteServicos("space-y-3")}
+          </section>
+        )}
+
+        <section className="space-y-4 rounded-2xl border bg-card p-5">
+          <h2 className="text-base font-bold">Orçamento</h2>
+          {blocoAjusteCampos(selecionado)}
+        </section>
+
+        <div className="sticky bottom-0 z-20 -mx-4 mt-auto flex flex-wrap items-center justify-between gap-3 border-t bg-card px-4 py-3 lg:-mx-8 lg:px-8">
+          <p className="text-sm text-muted-foreground">O status atual do equipamento será mantido.</p>
+          <div className="flex gap-2">
+            <Button type="button" variant="outline" className="h-10" onClick={() => fecharPaginaAjuste(false)}>Cancelar</Button>
+            <Button type="button" className="h-10" onClick={iniciarConfirmacaoStatus} disabled={confirmarStatusBloqueado(selecionado)}>
+              {salvando ? "Salvando..." : "Confirmar"}
+            </Button>
+          </div>
+        </div>
+      </section>
+    );
+  }
+
   // ─── Render principal ─────────────────────────────────
 
   const sequenciaFotoFormulario = fotoEdicaoSeq.current;
 
   return (
     <div className="space-y-6">
-      {!detalhesDialogOpen && (<>
+      {!detalhesDialogOpen && idAjusteRota == null && !paginaAjusteAberta && (<>
       {/* Header */}
       <PageHeader
         titulo="Equipamentos"
@@ -2931,12 +3178,20 @@ export default function Equipamentos() {
       </Dialog>
 
       {/* ═══ Detalhes da OS (rota /equipamentos/:id) ═══ */}
-      {detalhesDialogOpen && selecionado?.id !== idDetalhesAberto && (
+      {/* ═══ Ajuste de orçamento (rota /equipamentos/:id/orcamento, decisão 24) ═══ */}
+      {idAjusteRota != null && !paginaAjusteAberta && (
+        <div role="status" aria-label="Carregando ajuste de orçamento" className="flex h-64 items-center justify-center">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary" />
+        </div>
+      )}
+      {paginaAjusteAberta && selecionado && renderPaginaAjuste(selecionado)}
+
+      {detalhesDialogOpen && !paginaAjusteAberta && selecionado?.id !== idDetalhesAberto && (
         <div role="status" aria-label="Carregando atendimento" className="flex h-64 items-center justify-center">
           <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary" />
         </div>
       )}
-      {detalhesDialogOpen && selecionado && selecionado.id === idDetalhesAberto && (
+      {detalhesDialogOpen && !paginaAjusteAberta && selecionado && selecionado.id === idDetalhesAberto && (
         <PortalClienteProvider equipamento={selecionado} sinalPortal={sinalPortal} onConfigurarPortal={irParaConfiguracoesPortal}>
           <section aria-labelledby="detalhes-equipamento-titulo" className="space-y-5">
             <h2 id="detalhes-equipamento-titulo" className="sr-only">Detalhes do Equipamento</h2>
@@ -3161,7 +3416,7 @@ export default function Equipamentos() {
 
       {/* ═══ Dialog Mudar Status ═══ */}
       <Dialog
-        open={statusDialogOpen}
+        open={statusDialogOpen && !ajusteOrcamentoSemMudancaStatus}
         onOpenChange={(open) => {
           setStatusDialogOpen(open);
           if (!open) {
@@ -3247,26 +3502,7 @@ export default function Equipamentos() {
                       ? "Edite o orçamento. O status atual do equipamento será mantido."
                       : "Revise o valor e o prazo para reenviar o orçamento atualizado ao cliente."}
                   </div>
-                  {verificacaoAjusteOrcamento?.servicos_orcamento_original && (
-                    <details className="rounded-md border p-3 text-sm">
-                      <summary className="cursor-pointer font-medium">Orçamento original e decisões do cliente</summary>
-                      <p className="mt-2 text-muted-foreground">Itens da primeira decisão. Serviços reprovados precisam de nova aprovação para consumir peças.</p>
-                      {normalizarServicosOrcamento(verificacaoAjusteOrcamento.servicos_orcamento_original).map((servico) => (
-                        <p key={servico.id} className="mt-1">{servico.descricao} · {verificacaoAjusteOrcamento.decisoes_servicos?.find((d) => d.servico_id === servico.id)?.decisao ?? "Sem decisão"}</p>
-                      ))}
-                    </details>
-                  )}
-                  {verificacaoAjusteOrcamento?.adjusted_at && (
-                    <div className="rounded-md border bg-status-work-bg px-3 py-2 text-sm text-status-work flex items-center gap-2">
-                      <History className="h-4 w-4 text-status-work" />
-                      <div>
-                        <p className="text-xs text-status-work font-medium">Histórico de Ajustes</p>
-                        <p className="text-xs">
-                          Último ajuste em {new Date(verificacaoAjusteOrcamento.adjusted_at).toLocaleDateString("pt-BR")}
-                        </p>
-                      </div>
-                    </div>
-                  )}
+                  {blocoAjusteHistorico()}
                   {(valorOrcamentoOriginal != null || valorOrcamentoAnterior != null) && (
                     <div className="grid gap-2 sm:grid-cols-2">
                       <div className="rounded-md border bg-muted/30 px-3 py-2 text-sm">
@@ -3283,85 +3519,8 @@ export default function Equipamentos() {
                       </div>
                     </div>
                   )}
-                  <div className="space-y-2"><Label htmlFor="valor-orcamento-input">Valor Orçamento (R$)</Label><ValorDecimalInput id="valor-orcamento-input" data-testid="valor-orcamento-input" required value={Number(valorOrcamento) || 0} onValueChange={setValorOrcamento} onValidityChange={setValorOrcamentoValido} />
-                    {Number(valorOrcamento) === 0 && !totalOrcamentoAjusteValido(0, osSomenteGarantia(servicosAjuste), selecionado.status, selecionado.valor_orcamento) && (
-                      <p className="text-xs text-destructive">{mensagemAjusteTotalZero(selecionado.status, selecionado.valor_orcamento)}</p>
-                    )}
-                  </div>
-                  {(!ajusteOrcamentoSemMudancaStatus || selecionado.status === "AGUARDANDO_APROVACAO") && (
-                    <div className="space-y-2"><Label>Prazo Aprovação</Label><DateIsoInput min={new Date().toLocaleDateString("en-CA")} value={prazoAprovacao} onValueChange={setPrazoAprovacao} /></div>
-                  )}
-                  <div className="space-y-2">
-                    <Label htmlFor="observacoes-ajuste">Observações</Label>
-                    <Textarea
-                      id="observacoes-ajuste"
-                      value={observacoesAjuste}
-                      onChange={(event) => setObservacoesAjuste(event.target.value)}
-                      placeholder="Observações do orçamento"
-                      rows={3}
-                    />
-                  </div>
-                  {ajusteOrcamentoSemMudancaStatus && orcamentoJaAprovado(selecionado.status) ? (
-                    <div className="space-y-3">
-                    <p className="rounded-md border bg-muted/30 px-3 py-2 text-sm text-muted-foreground">
-                      Ao salvar, você escolhe entre ajustar sem nova aprovação (o cliente já concordou; só a quantidade adicional terá baixa) ou pedir nova aprovação pelo portal.
-                    </p>
-                    <FormaPagamentoFields
-                      codigo={formaPagamentoAjuste}
-                      detalhe={detalhePagamentoAjuste}
-                      onCodigoChange={setFormaPagamentoAjuste}
-                      onDetalheChange={setDetalhePagamentoAjuste}
-                      required
-                    />
-                    </div>
-                  ) : (
-                    <div className="rounded-md border bg-muted/30 px-3 py-2 text-sm text-muted-foreground">
-                      A forma de pagamento será definida durante a aprovação.
-                    </div>
-                  )}
-                  {valorOrcamentoAnterior != null && valorOrcamento !== valorOrcamentoAnterior && (
-                    <p className="text-xs text-status-wait">
-                      Novo valor em negociação: {formatCurrency(valorOrcamento)} (antes: {formatCurrency(valorOrcamentoAnterior)}).
-                    </p>
-                  )}
-                  {verificacaoAjusteOrcamento && (
-                    <div className="space-y-3 rounded-md border p-3">
-                      <AjusteOrcamentoServicos
-                        servicos={servicosAjuste}
-                        catalogo={catalogoServicosAjuste}
-                        carregandoCatalogo={carregandoCatalogoAjuste}
-                        onChange={setServicosAjuste}
-                        onRemoverTodos={() => {
-                          setConfirmProps({
-                            title: "Remover todos os serviços",
-                            description: "Você está removendo TODOS os serviços do orçamento. Deseja continuar?",
-                            variant: "destructive",
-                            onConfirm: () => {
-                              setServicosAjuste([]);
-                              setConfirmOpen(false);
-                            },
-                            onCancel: () => setConfirmOpen(false),
-                          });
-                          setConfirmOpen(true);
-                        }}
-                      />
-                      {pecasLegadasAjuste.length > 0 && (
-                        <div className="rounded-md border border-status-wait/30 bg-status-wait-bg p-2">
-                          <p className="text-xs font-semibold text-status-wait">Peças antigas sem serviço vinculado</p>
-                          <p className="text-xs text-status-wait">Vincule cada peça a um serviço para permitir aprovação parcial e baixa automática. Remova a linha antiga depois de vinculá-la.</p>
-                          {pecasLegadasAjuste.map((peca, indice) => (
-                            <div key={`${peca.id}-${indice}`} className="flex items-center justify-between gap-2 text-sm">
-                              <span>{peca.nome} × {peca.quantidade} · {formatCurrencyOrMissing(peca.valorTotal)}</span>
-                              <Button type="button" variant="ghost" size="sm" onClick={() => setPecasLegadasAjuste((atual) => atual.filter((_, i) => i !== indice))}>Remover linha antiga</Button>
-                            </div>
-                          ))}
-                        </div>
-                      )}
-                      {pecasLegadasAjuste.length === 0 && servicosAjuste.length === 0 && (
-                        <p className="text-xs text-muted-foreground">Nenhum serviço ou peça registrado na verificação.</p>
-                      )}
-                    </div>
-                  )}
+                  {blocoAjusteCampos(selecionado)}
+                  {blocoAjusteServicos()}
                   {valorOrcamentoOriginal != null && (
                     <div className="grid gap-2 sm:grid-cols-2">
                       <div className="rounded-md border bg-muted/30 px-3 py-2 text-sm">
@@ -3485,7 +3644,7 @@ export default function Equipamentos() {
             </div>
             <DialogFooter className="shrink-0 bg-card">
                 <Button type="button" variant="outline" onClick={() => setStatusDialogOpen(false)}>Cancelar</Button>
-                <Button type="button" onClick={iniciarConfirmacaoStatus} disabled={salvando || (!novoStatus && !ajusteOrcamentoSemMudancaStatus) || (((novoStatus === "AGUARDANDO_APROVACAO" && !reabreOrcamentoSemAjuste(selecionado.status, novoStatus)) || ajusteOrcamentoSemMudancaStatus) && !valorOrcamentoValido) || (novoStatus === "AGUARDANDO_APROVACAO" && !reabreOrcamentoSemAjuste(selecionado.status, novoStatus) && !totalOrcamentoAprovacaoValido(Number(valorOrcamento))) || (ajusteOrcamentoSemMudancaStatus && !totalOrcamentoAjusteValido(Number(valorOrcamento), osSomenteGarantia(servicosAjuste), selecionado.status, selecionado.valor_orcamento))}>
+                <Button type="button" onClick={iniciarConfirmacaoStatus} disabled={confirmarStatusBloqueado(selecionado)}>
                   {salvando ? "Salvando..." : correcaoStatus ? "Corrigir status" : "Confirmar"}
                 </Button>
               </DialogFooter>
