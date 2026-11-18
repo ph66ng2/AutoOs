@@ -453,7 +453,7 @@ describe("painel do orçamento (ticket T4)", () => {
     expect(screen.getByText("Qualquer dúvida, entre em contato conosco.")).toBeInTheDocument();
     const grupo = screen.getByRole("group", { name: "Tem certeza que quer recusar?" });
     const acoes = Array.from(grupo.querySelectorAll("button, a")).map((el) => el.textContent);
-    expect(acoes).toEqual(["Falar com a equipe no WhatsApp", "Recusar mesmo assim"]);
+    expect(acoes).toEqual(["Falar com a equipe no WhatsApp", "Voltar", "Recusar mesmo assim"]);
     const link = screen.getByRole("link", { name: "Falar com a equipe no WhatsApp" });
     expect(decodeURIComponent(link.getAttribute("href") ?? "")).toContain("CNPJ 11.222.333/0001-81");
     expect(api.responder).not.toHaveBeenCalled();

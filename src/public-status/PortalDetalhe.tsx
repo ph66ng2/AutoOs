@@ -120,7 +120,6 @@ export default function PortalDetalhe({ session, equipamentoId, onExpirou }: Pro
                   titulo={preparando ? TITULO_EM_PREPARACAO : data.titulo}
                   orientacao={preparando ? ORIENTACAO_EM_PREPARACAO : data.orientacao}
                   statusAlteradoEm={data.statusAlteradoEm}
-                  compacto
                   etapas={data.etapas}
                   concluido={concluido}
                   identificacao={(data.serie || data.patrimonio || data.entradaEm) && (
@@ -185,13 +184,13 @@ function ContatoCard({ contato }: { contato: ContatoEmpresa | null }) {
       <ul>
         {contato.whatsapp && (
           <li>
-            <a href={`https://wa.me/${whatsappDigits.startsWith("55") && whatsappDigits.length >= 12 ? whatsappDigits : `55${whatsappDigits}`}`} target="_blank" rel="noopener noreferrer">
+            <a className="secondary-button portal-contato-whats" href={`https://wa.me/${whatsappDigits.startsWith("55") && whatsappDigits.length >= 12 ? whatsappDigits : `55${whatsappDigits}`}`} target="_blank" rel="noopener noreferrer">
               WhatsApp
             </a>
           </li>
         )}
-        {contato.email && <li><a href={`mailto:${contato.email}`}>{contato.email}</a></li>}
-        {contato.telefone && <li><a href={`tel:${contato.telefone.replace(/[^\d+]/g, "")}`}>{contato.telefone}</a></li>}
+        {contato.email && <li><a className="secondary-button" href={`mailto:${contato.email}`}>{contato.email}</a></li>}
+        {contato.telefone && <li><a className="secondary-button" href={`tel:${contato.telefone.replace(/[^\d+]/g, "")}`}>{contato.telefone}</a></li>}
       </ul>
       {contato.horario && <p className="answer-hint">{contato.horario}</p>}
     </div>
