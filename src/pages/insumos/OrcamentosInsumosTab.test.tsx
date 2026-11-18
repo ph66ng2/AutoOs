@@ -4,6 +4,7 @@ import userEvent from "@testing-library/user-event";
 import type { OrcamentoInsumos } from "@/types";
 
 const mocks = vi.hoisted(() => ({
+  hasPermission: vi.fn(() => true),
   listar: vi.fn(),
   ensureSensitiveAccess: vi.fn(),
   dialogProps: vi.fn(),
@@ -11,7 +12,7 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock("@/lib/db", () => ({ db: { listarOrcamentosInsumos: mocks.listar } }));
 vi.mock("@/hooks/useSensitiveAccess", () => ({
-  useSensitiveAccess: () => ({ ensureSensitiveAccess: mocks.ensureSensitiveAccess }),
+  useSensitiveAccess: () => ({ ensureSensitiveAccess: mocks.ensureSensitiveAccess, hasPermission: mocks.hasPermission }),
 }));
 vi.mock("@/pages/insumos/OrcamentoInsumosDialog", () => ({
   OrcamentoInsumosDialog: (props: { open: boolean; orcamentoId?: number | null; onChanged?: () => void }) => {
@@ -88,7 +89,10 @@ describe("OrcamentosInsumosTab", () => {
     expect(within(primeira).getByText("2 itens")).toBeInTheDocument();
     expect(within(primeira).getByText(/R\$\s*150,00/)).toBeInTheDocument();
     expect(within(primeira).getByText("20/10/2026")).toBeInTheDocument();
-    expect(within(primeira).getByText("Aprovado").className).toMatch(/status-ok/);
+    expect(within(primeira).getByText("Aprovado")).toBeInTheDocument();
+    // A cor do status fica na barra de etapas, como na lista de equipamentos.
+    const barra = within(primeira).getByRole("img", { name: "Etapa 3 de 4" });
+    expect(barra.firstElementChild?.className).toMatch(/bg-status-ok/);
 
     const segunda = screen.getByRole("row", { name: /abrir orçamento OI-1/i });
     expect(within(segunda).getByText("1 item")).toBeInTheDocument();
@@ -137,7 +141,7 @@ describe("OrcamentosInsumosTab", () => {
   it("estado vazio e erro de carga", async () => {
     mocks.listar.mockResolvedValueOnce({ items: [], total: 0 });
     const { unmount } = render(<OrcamentosInsumosTab />);
-    expect(await screen.findByText("Nenhum orçamento de insumos encontrado")).toBeInTheDocument();
+    expect(await screen.findByText("Nenhuma venda de insumos ainda")).toBeInTheDocument();
     unmount();
 
     mocks.listar.mockRejectedValueOnce("Falha ao consultar o banco");
@@ -152,5 +156,69 @@ describe("OrcamentosInsumosTab", () => {
     await userEvent.click(screen.getByRole("button", { name: /novo orçamento/i }));
     await userEvent.click(await screen.findByText("simular-acao"));
     expect(aoAlterarEstoque).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("Vendas de insumos: ação principal, prazo e permissão (fase V.2)", () => {
+  beforeEach(() => {
+    mocks.hasPermission.mockReturnValue(true);
+  });
+
+  function comValidade(numero: number, status: OrcamentoInsumos["status"], validade: string): OrcamentoInsumos {
+    return { ...linha(numero, status, 100), validade };
+  }
+
+  it("Enviado mostra Aprovar e a ação vai para a janela; vencido vira Renovar validade", async () => {
+    mocks.listar.mockResolvedValue({
+      items: [comValidade(5, "ENVIADO", "2999-12-31"), comValidade(4, "ENVIADO", "2020-01-01")],
+      total: 2,
+    });
+    const usuario = userEvent.setup();
+    render(<OrcamentosInsumosTab />);
+    const emDia = await screen.findByRole("row", { name: /abrir orçamento OI-5/i });
+    expect(within(emDia).getByText("vence 31/12")).toBeInTheDocument();
+    const vencido = screen.getByRole("row", { name: /abrir orçamento OI-4/i });
+    expect(within(vencido).getByText("venceu 01/01")).toBeInTheDocument();
+    expect(within(vencido).getByRole("button", { name: "Renovar validade" })).toBeInTheDocument();
+    expect(within(emDia).getByRole("combobox", { name: "Mais ações" })).toBeInTheDocument();
+
+    await usuario.click(within(emDia).getByRole("button", { name: "Aprovar" }));
+    expect(mocks.dialogProps).toHaveBeenLastCalledWith(expect.objectContaining({ open: true, orcamentoId: 50, acaoInicial: "aprovar" }));
+  });
+
+  it("Aprovado mostra Marcar entregue e a data da aprovação, sem validade", async () => {
+    mocks.listar.mockResolvedValue({
+      items: [{ ...comValidade(3, "APROVADO", "2020-01-01"), decidido_em: "2026-11-12 14:00:00+00", forma_pagamento_codigo: "PIX" }],
+      total: 1,
+    });
+    render(<OrcamentosInsumosTab />);
+    const linhaAprovada = await screen.findByRole("row", { name: /abrir orçamento OI-3/i });
+    expect(within(linhaAprovada).getByText("aprovado 12/11 · Pix")).toBeInTheDocument();
+    expect(within(linhaAprovada).queryByText("Vencido")).not.toBeInTheDocument();
+    expect(within(linhaAprovada).getByRole("button", { name: "Marcar entregue" })).toBeInTheDocument();
+  });
+
+  it("sem Ações financeiras: sem Novo orçamento, sem ⋯ e a ação vira Ver", async () => {
+    mocks.hasPermission.mockReturnValue(false);
+    render(<OrcamentosInsumosTab />);
+    const linhaRascunho = await screen.findByRole("row", { name: /abrir orçamento OI-1/i });
+    expect(within(linhaRascunho).getByRole("button", { name: /ver orçamento OI-1/i })).toBeInTheDocument();
+    expect(within(linhaRascunho).queryByRole("combobox", { name: "Mais ações" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /novo orçamento/i })).not.toBeInTheDocument();
+    expect(screen.getByText(/troque para um perfil com/i)).toBeInTheDocument();
+  });
+
+  it("filtro sem resultado diz o filtro e a busca e oferece limpar", async () => {
+    const usuario = userEvent.setup();
+    render(<OrcamentosInsumosTab />);
+    await screen.findByText("OI-2");
+    mocks.listar.mockImplementation(async ({ busca }: { busca?: string }) =>
+      busca ? { items: [], total: 0 } : { items: [linha(2, "APROVADO", 150)], total: 1 },
+    );
+    fireEvent.change(screen.getByLabelText("Buscar orçamento"), { target: { value: "Padaria" } });
+    expect(await screen.findByText('Nenhum orçamento de "Padaria".')).toBeInTheDocument();
+    await usuario.click(screen.getByRole("button", { name: "Limpar busca" }));
+    expect(screen.getByLabelText("Buscar orçamento")).toHaveValue("");
+    expect(await screen.findByText("OI-2")).toBeInTheDocument();
   });
 });
