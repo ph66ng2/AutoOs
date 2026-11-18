@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { db } from "@/lib/db";
 import { receitaPorMes } from "@/hooks/useReceitaPorMes";
 import type { GastoFixo, GastoVariavel } from "@/types";
@@ -24,46 +24,66 @@ export function useFinancasAno(ano: number, totalFixo: number, hoje = new Date()
   const [anterior, setAnterior] = useState<MesFinancas[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const pedido = useRef(0);
+  const [tick, setTick] = useState(0);
   const anoAtual = hoje.getFullYear();
   const mesAtual = hoje.getMonth() + 1;
+  const recarregar = useCallback(() => {
+    setTick((n) => n + 1);
+  }, []);
 
-  const carregar = useCallback(async () => {
-    const id = ++pedido.current;
+  useEffect(() => {
+    let ativo = true;
     setLoading(true);
     setError(null);
     const lista = [ano - 1, ano].flatMap((a) => Array.from({ length: 12 }, (_, i) => ({ mes: i + 1, ano: a })));
     const futuro = (m: { mes: number; ano: number }) => m.ano > anoAtual || (m.ano === anoAtual && m.mes > mesAtual);
-    try {
-      const [receita, resumos] = await Promise.all([
-        db.listarEquipamentos().then(receitaPorMes).catch(() => null),
-        Promise.all(lista.map((m) => (futuro(m) ? Promise.resolve(null) : db.resumoMensal(m.mes, m.ano).catch(() => null)))),
-      ]);
-      if (id !== pedido.current) return;
-      const porChave = new Map((receita ?? []).map((item) => [item.chave, item.valor]));
-      const todos = lista.map((m, indice) => {
-        const ehFuturo = futuro(m);
-        return {
-          ...m,
-          futuro: ehFuturo,
-          faturado: ehFuturo ? 0 : porChave.get(`${m.ano}-${String(m.mes).padStart(2, "0")}`) ?? 0,
-          fixo: ehFuturo ? 0 : totalFixo,
-          variavel: ehFuturo ? 0 : resumos[indice]?.total_variavel ?? 0,
-        };
-      });
-      setAnterior(todos.slice(0, 12));
-      setMeses(todos.slice(12));
-      if (receita == null) setError("Não foi possível carregar o faturado.");
-    } finally {
-      if (id === pedido.current) setLoading(false);
-    }
-  }, [ano, totalFixo, anoAtual, mesAtual]);
+    void (async () => {
+      try {
+        const [receita, resumos] = await Promise.all([
+          db.listarEquipamentos().then(receitaPorMes).catch(() => null),
+          Promise.all(
+            lista.map(async (m) => {
+              if (futuro(m)) return { ok: true as const, total_variavel: 0 };
+              try {
+                const resumo = await db.resumoMensal(m.mes, m.ano);
+                return { ok: true as const, total_variavel: resumo?.total_variavel ?? 0 };
+              } catch {
+                return { ok: false as const, total_variavel: 0 };
+              }
+            }),
+          ),
+        ]);
+        if (!ativo) return;
+        if (resumos.some((item) => !item.ok)) {
+          setAnterior([]);
+          setMeses([]);
+          setError("Não foi possível carregar os gastos de alguns meses.");
+          return;
+        }
+        const porChave = new Map((receita ?? []).map((item) => [item.chave, item.valor]));
+        const todos = lista.map((m, indice) => {
+          const ehFuturo = futuro(m);
+          return {
+            ...m,
+            futuro: ehFuturo,
+            faturado: ehFuturo ? 0 : porChave.get(`${m.ano}-${String(m.mes).padStart(2, "0")}`) ?? 0,
+            fixo: ehFuturo ? 0 : totalFixo,
+            variavel: ehFuturo ? 0 : resumos[indice].total_variavel,
+          };
+        });
+        setAnterior(todos.slice(0, 12));
+        setMeses(todos.slice(12));
+        if (receita == null) setError("Não foi possível carregar o faturado.");
+      } finally {
+        if (ativo) setLoading(false);
+      }
+    })();
+    return () => {
+      ativo = false;
+    };
+  }, [ano, totalFixo, anoAtual, mesAtual, tick]);
 
-  useEffect(() => {
-    void carregar();
-  }, [carregar]);
-
-  return { meses, anterior, loading, error, recarregar: carregar };
+  return { meses, anterior, loading, error, recarregar };
 }
 
 function campoCsv(valor: unknown) {

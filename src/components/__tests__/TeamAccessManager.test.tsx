@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { TeamAccessManager } from "../TeamAccessManager";
-const service = vi.hoisted(() => ({ listProfiles: vi.fn(), updateProfile: vi.fn(), issueAccessCode: vi.fn(), deactivateProfile: vi.fn(), reactivateProfile: vi.fn() }));
+const service = vi.hoisted(() => ({ listProfiles: vi.fn(), updateProfile: vi.fn(), issueAccessCode: vi.fn(), deactivateProfile: vi.fn(), reactivateProfile: vi.fn(), createProfileWithCode: vi.fn() }));
 vi.mock("@/lib/sensitive-access", () => ({ SensitiveAccessService: service }));
 const profiles = [
   { id: 1, nome: "Paulo", role: "ADMIN", permissions: ["MANAGE_PROFILES"], pin_configured: true, pin_required: true, ativo: true },
@@ -65,5 +65,25 @@ describe("gestão da equipe", () => {
     await user.click(screen.getByRole("button", { name: "Gerar código" }));
     await waitFor(() => expect(service.issueAccessCode).toHaveBeenCalledWith(2, "1234"));
     expect(await screen.findByText("ABC-234")).toBeInTheDocument();
+  });
+
+  it("não fecha o cadastro de perfil enquanto a criação está em andamento", async () => {
+    const user = userEvent.setup();
+    let concluir!: (valor: { profile_id: number; nome: string; codigo: string; expira_em: string }) => void;
+    service.createProfileWithCode.mockReturnValue(new Promise((resolve) => { concluir = resolve; }));
+    render(<TeamAccessManager activeProfileId={1} onChanged={vi.fn().mockResolvedValue(undefined)} />);
+    await screen.findByText("Ivan");
+    await user.click(screen.getByRole("button", { name: /Novo perfil/ }));
+    await user.type(screen.getByLabelText("Nome provisório"), "Nova pessoa");
+    await user.click(screen.getByRole("button", { name: "Continuar" }));
+    await user.click(screen.getByRole("button", { name: "Continuar" }));
+    await user.type(screen.getByLabelText("Seu PIN de administrador"), "1234");
+    await user.click(screen.getByRole("button", { name: "Criar e gerar código" }));
+    expect(await screen.findByRole("button", { name: "Criando..." })).toBeDisabled();
+    await user.click(screen.getByRole("button", { name: "Close" }));
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
+    expect(screen.getByText("Criando...")).toBeInTheDocument();
+    concluir({ profile_id: 9, nome: "Nova pessoa", codigo: "AAA-111", expira_em: "2026-12-01T00:00:00Z" });
+    expect(await screen.findByText("AAA-111")).toBeInTheDocument();
   });
 });

@@ -34,7 +34,7 @@ interface GastosTableProps {
   gastosFixos: GastoFixo[];
   gastosVariaveis: GastoVariavel[];
   loading: boolean;
-  ocultar?: boolean;
+  ocultar: boolean;
   onEditFixo: (gasto: GastoFixo) => void;
   onEditVariavel: (gasto: GastoVariavel) => void;
 }
@@ -43,7 +43,7 @@ export function GastosTable({
   gastosFixos,
   gastosVariaveis,
   loading,
-  ocultar = false,
+  ocultar,
   onEditFixo,
   onEditVariavel,
 }: GastosTableProps) {
