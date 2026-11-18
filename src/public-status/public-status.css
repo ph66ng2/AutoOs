@@ -27,6 +27,9 @@
   --st-bad: 3 45% 45%;
   --st-bad-bg: 7 47% 93%;
   --shadow: 212 30% 20%;
+  --on-primary: 0 0% 100%;
+  --scrim: 212 30% 10%;
+  --on-scrim: 0 0% 100%;
   --dur-rapida: 150ms;
   --dur-padrao: 220ms;
   --ease-saida: cubic-bezier(0.2, 0, 0, 1);
@@ -37,6 +40,39 @@
   text-rendering: optimizeLegibility;
 }
 
+
+/* Tema escuro: segue o aparelho do cliente, com os mesmos valores do tema escuro do app (src/index.css). */
+@media (prefers-color-scheme: dark) {
+  :root {
+    color-scheme: dark;
+    --bg: 220 23% 5%;
+    --surface: 216 22% 9%;
+    --soft: 220 23% 6%;
+    --ink: 218 19% 92%;
+    --ink-soft: 213 11% 64%;
+    --line: 214 19% 17%;
+    --track: 213 18% 20%;
+    --ctl: 213 19% 21%;
+    --primary: 192 29% 59%;
+    --primary-hover: 192 29% 66%;
+    --ring: 192 29% 59%;
+    --acc-soft: 196 29% 13%;
+    --acc-soft-ink: 192 30% 74%;
+    --st-neutral: 213 11% 64%;
+    --st-neutral-bg: 215 18% 13%;
+    --st-work: 215 35% 67%;
+    --st-work-bg: 215 28% 13%;
+    --st-wait: 38 50% 62%;
+    --st-wait-bg: 37 27% 13%;
+    --st-ok: 140 24% 59%;
+    --st-ok-bg: 143 22% 12%;
+    --st-bad: 4 49% 68%;
+    --st-bad-bg: 3 26% 14%;
+    --shadow: 0 0% 0%;
+    --on-primary: 192 29% 7%;
+    --scrim: 0 0% 0%;
+  }
+}
 * { box-sizing: border-box; }
 
 body {
@@ -184,7 +220,7 @@ h1 {
   margin-top: 1.5rem;
   border: 0;
   border-radius: 0.65rem;
-  color: hsl(var(--surface));
+  color: hsl(var(--on-primary));
   background: hsl(var(--primary));
   font-weight: 700;
   cursor: pointer;
@@ -260,7 +296,7 @@ h1 {
   cursor: pointer;
   overflow-wrap: anywhere;
 }
-.primary-button { border: 0; color: hsl(var(--surface)); background: hsl(var(--primary)); }
+.primary-button { border: 0; color: hsl(var(--on-primary)); background: hsl(var(--primary)); }
 .secondary-button { border: 1px solid hsl(var(--ctl)); color: hsl(var(--ink)); background: hsl(var(--surface)); }
 .action-stack .primary-button, .action-stack .secondary-button { width: 100%; }
 .primary-button:disabled, .secondary-button:disabled { opacity: 0.55; cursor: not-allowed; }
@@ -467,10 +503,10 @@ h1 {
 .portal-foto-miniatura:focus-visible { outline: 3px solid hsl(var(--ring) / 0.45); outline-offset: 2px; }
 .portal-foto-miniatura img { display: block; width: 100%; height: 100%; object-fit: cover; }
 .portal-lightbox { position: fixed; inset: 0; z-index: 50; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 0.75rem; padding: 1rem; background: rgb(10 20 35 / 90%); }
-.portal-lightbox-bar { display: flex; align-items: center; justify-content: space-between; gap: 1rem; width: min(100%, 60rem); color: hsl(var(--surface)); font-size: 0.9rem; }
+.portal-lightbox-bar { display: flex; align-items: center; justify-content: space-between; gap: 1rem; width: min(100%, 60rem); color: hsl(var(--on-scrim)); font-size: 0.9rem; }
 .portal-lightbox-img { display: block; width: auto; height: auto; max-width: min(100%, 60rem); max-height: calc(100vh - 11rem); object-fit: contain; border-radius: 0.5rem; background: hsl(var(--surface)); }
 .portal-lightbox-nav { display: flex; gap: 0.75rem; }
-.portal-lightbox button { min-height: 2.75rem; padding: 0.4rem 1rem; border: 1px solid rgb(255 255 255 / 45%); border-radius: 0.6rem; color: hsl(var(--surface)); background: rgb(255 255 255 / 12%); font-weight: 700; cursor: pointer; }
+.portal-lightbox button { min-height: 2.75rem; padding: 0.4rem 1rem; border: 1px solid rgb(255 255 255 / 45%); border-radius: 0.6rem; color: hsl(var(--on-scrim)); background: rgb(255 255 255 / 12%); font-weight: 700; cursor: pointer; }
 .portal-lightbox button:focus-visible { outline: 3px solid hsl(var(--ring) / 0.45); outline-offset: 2px; }
 
 /* ─── Histórico ─── */

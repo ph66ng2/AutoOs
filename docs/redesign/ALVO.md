@@ -150,13 +150,12 @@ Aparece nas telas para dar a ideia do todo, mas **não implemente sem um ticket 
 
   Hoje a tela de Gastos tem total fixo, total variável, total geral e o gráfico de 12 meses. A receita por mês existe no Início de hoje e pode ir para Finanças.
 - **Detalhes da OS:** "Portal do cliente ativo · último acesso" (confira no código antes; o número de ciclos do serial já existe).
-- **Serviços:** uso no ano.
+- **Serviços:** uso no ano. (O interruptor de desativar/reativar foi implementado com o OK do dono em 18/11/2026.)
 - **Insumos:** valor em estoque, saídas do mês.
 - **Clientes:** números do cliente no painel.
 - **Equipe:** último acesso.
 - **Menu lateral:** contadores (só onde o número já existe na tela).
 - **Balcão:** fila do dia ("Prontos para retirada" e "Chegaram hoje").
-- **Portal:** tema escuro.
 - **Verificação técnica:** checklist de 7 itens no formulário (os itens existem no código e aparecem em verificações antigas, mas o formulário de hoje não os mostra nem salva) e custos calculados enquanto digita (hoje o total só é calculado ao finalizar). Os dois estão marcados PROPOSTA na prancheta.
 
 O celular da equipe e o site do produto estão no canvas, mas **não fazem parte deste redesign**.

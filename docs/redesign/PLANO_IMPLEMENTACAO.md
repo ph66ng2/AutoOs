@@ -279,7 +279,7 @@ Antes da V.3, pergunte ao dono do produto os três pendentes da decisão 23.
 **Fase 9: Portal do Cliente** (`src/public-status/`, build separado com `npm run build:public-status`).
 - Trocar `public-status.css` e `portal-orcamento.css` pelos tokens.
 - No celular, as respostas ao orçamento abrem como painel que sobe do rodapé.
-- O tema escuro do portal depende de decisão do usuário.
+- Tema escuro do portal: aprovado pelo dono em 18/11/2026; segue o tema do aparelho (`prefers-color-scheme`), com os valores do tema escuro do app.
 - Pode correr em paralelo a qualquer fase depois da fase 1.
 
 ## 8. Divisão de trabalho (do `CLAUDE.md`)

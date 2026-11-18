@@ -123,7 +123,7 @@
     padding: 1.4rem 1.1rem calc(1.1rem + env(safe-area-inset-bottom));
     border: 0; border-radius: 1.25rem 1.25rem 0 0;
     color: hsl(var(--ink)); background: hsl(var(--surface));
-    box-shadow: 0 0 0 100vmax hsl(var(--ink) / 0.45);
+    box-shadow: 0 0 0 100vmax hsl(var(--scrim) / 0.55);
     animation: portal-folha var(--dur-padrao) var(--ease-saida) both;
   }
   .portal-quote :is(.confirm-box, .portal-request-box, .sent-box) .action-row { display: grid; grid-template-columns: 1fr 1fr; }
