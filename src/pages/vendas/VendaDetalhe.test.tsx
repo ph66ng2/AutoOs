@@ -14,8 +14,10 @@ vi.mock("@/lib/db", () => ({ db: { obterOrcamentoInsumos: mocks.obter } }));
 vi.mock("@/hooks/useSensitiveAccess", () => ({
   useSensitiveAccess: () => ({ hasPermission: mocks.hasPermission, ensureSensitiveAccess: vi.fn() }),
 }));
-vi.mock("@/pages/insumos/OrcamentoInsumosDialog", () => ({
-  OrcamentoInsumosDialog: (props: { open: boolean; acaoInicial?: string | null }) => {
+// V.5: as ações abrem o modal próprio (AcaoVendaDialog); as props são lidas como antes.
+vi.mock("@/components/vendas/AcaoVendaDialog", () => ({
+  AcaoVendaDialog: (modal: { acao: string | null }) => {
+    const props = { open: modal.acao != null, acaoInicial: modal.acao };
     mocks.dialogProps(props);
     return props.open ? <div data-testid="janela">{props.acaoInicial ?? "sem-acao"}</div> : null;
   },

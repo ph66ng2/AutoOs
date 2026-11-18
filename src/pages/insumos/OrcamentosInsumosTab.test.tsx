@@ -21,8 +21,10 @@ vi.mock("@/lib/db", () => ({ db: { listarOrcamentosInsumos: mocks.listar } }));
 vi.mock("@/hooks/useSensitiveAccess", () => ({
   useSensitiveAccess: () => ({ ensureSensitiveAccess: mocks.ensureSensitiveAccess, hasPermission: mocks.hasPermission }),
 }));
-vi.mock("@/pages/insumos/OrcamentoInsumosDialog", () => ({
-  OrcamentoInsumosDialog: (props: { open: boolean; orcamentoId?: number | null; onChanged?: () => void }) => {
+// V.5: as ações abrem o modal próprio (AcaoVendaDialog); as props são lidas como antes.
+vi.mock("@/components/vendas/AcaoVendaDialog", () => ({
+  AcaoVendaDialog: (modal: { acao: string | null; vendaId: number | null; onAlterado?: () => void }) => {
+    const props = { open: modal.acao != null, orcamentoId: modal.vendaId, acaoInicial: modal.acao, onChanged: modal.onAlterado };
     mocks.dialogProps(props);
     return props.open ? (
       <div data-testid="dialogo">

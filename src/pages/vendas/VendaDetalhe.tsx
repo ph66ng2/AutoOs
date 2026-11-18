@@ -20,7 +20,8 @@ import {
 } from "@/lib/orcamento-insumos";
 import type { StatusFamilia } from "@/lib/status-familia";
 import { cn, formatCurrency } from "@/lib/utils";
-import { OrcamentoInsumosDialog, type AcaoInicialOrcamentoInsumos } from "@/pages/insumos/OrcamentoInsumosDialog";
+import { AcaoVendaDialog } from "@/components/vendas/AcaoVendaDialog";
+import type { AcaoInicialOrcamentoInsumos } from "@/hooks/useOrcamentoInsumosEditor";
 import { SENSITIVE_PERMISSIONS, type OrcamentoInsumosDetalhe, type StatusOrcamentoInsumos } from "@/types";
 
 const FUSO = { timeZone: "America/Bahia" } as const;
@@ -164,7 +165,6 @@ export default function VendaDetalhe() {
   const { hasPermission } = useSensitiveAccess();
   const podeAgir = hasPermission(SENSITIVE_PERMISSIONS.FINANCIAL_ACTIONS);
   const [acao, setAcao] = useState<AcaoInicialOrcamentoInsumos | null>(null);
-  const [janelaAberta, setJanelaAberta] = useState(false);
   /** Número do orçamento excluído: depois de excluir, recarregar dá "não encontrado". */
   const [excluido, setExcluido] = useState<string | null>(null);
 
@@ -175,7 +175,6 @@ export default function VendaDetalhe() {
       return;
     }
     setAcao(nova);
-    setJanelaAberta(true);
   }
 
   const voltar = (
@@ -445,18 +444,14 @@ export default function VendaDetalhe() {
         </div>
       </div>
 
-      <OrcamentoInsumosDialog
-        open={janelaAberta}
-        onOpenChange={(aberta) => {
-          setJanelaAberta(aberta);
-          if (!aberta) void recarregar();
-        }}
-        orcamentoId={venda.id}
-        acaoInicial={acao}
-        onChanged={() => {
-          if (acao === "excluir") setExcluido(venda.numero_exibicao);
-          void recarregar();
-        }}
+      <AcaoVendaDialog
+        acao={acao}
+        vendaId={venda.id}
+        venda={venda}
+        voltarPara={`/vendas/${venda.id}`}
+        onFechar={() => setAcao(null)}
+        onAlterado={() => void recarregar()}
+        onExcluido={setExcluido}
       />
     </div>
   );

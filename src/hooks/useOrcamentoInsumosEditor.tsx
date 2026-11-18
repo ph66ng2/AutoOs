@@ -4,8 +4,7 @@
  * janela e as páginas /vendas/novo e /vendas/:id/editar usarem a mesma regra.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useNotification } from "@/hooks/useNotification";
-import { useSensitiveAccess } from "@/hooks/useSensitiveAccess";
+import { useAcoesOrcamentoInsumos } from "@/hooks/useAcoesOrcamentoInsumos";
 import { db } from "@/lib/db";
 import {
   acoesOrcamentoInsumos,
@@ -15,10 +14,7 @@ import {
   validadePadraoOrcamentoInsumos,
   type LinhaOrcamentoInsumos,
 } from "@/lib/orcamento-insumos";
-import { OrcamentoInsumosService } from "@/lib/orcamento-insumos-service";
-import { PdfService, type PdfArtifact } from "@/lib/pdf-service";
 import {
-  SENSITIVE_PERMISSIONS,
   type Cliente,
   type ClienteContato,
   type FormaPagamento,
@@ -79,11 +75,6 @@ export function useOrcamentoInsumosEditor({
   onChanged,
   acaoInicial = null,
 }: ParametrosEditorOrcamentoInsumos) {
-  const { success, warning, error: showError } = useNotification();
-  const { ensureSensitiveAccess, hasPermission } = useSensitiveAccess();
-  // Decisão 23 (1A): sem Ações financeiras, a prévia do PDF abre, mas não há "Baixar",
-  // porque salvar o PDF de um rascunho o marca como enviado.
-  const podeSalvarPdf = hasPermission(SENSITIVE_PERMISSIONS.FINANCIAL_ACTIONS);
 
   const [detalhe, setDetalhe] = useState<OrcamentoInsumosDetalhe | null>(null);
   const [cliente, setCliente] = useState<Cliente | null>(null);
@@ -94,9 +85,6 @@ export function useOrcamentoInsumosEditor({
   const [observacoes, setObservacoes] = useState("");
   const [alterado, setAlterado] = useState(false);
   const [carregando, setCarregando] = useState(false);
-  const [ocupado, setOcupado] = useState(false);
-  const [erro, setErro] = useState<string | null>(null);
-  const [pdf, setPdf] = useState<PdfArtifact | null>(null);
   const [pagamentoAberto, setPagamentoAberto] = useState(false);
   const [erroAprovacao, setErroAprovacao] = useState<string | null>(null);
   const [confirmando, setConfirmando] = useState<AcaoConfirmada | null>(null);
@@ -115,6 +103,16 @@ export function useOrcamentoInsumosEditor({
     setContato(contatoDoDetalhe(novo));
     setAlterado(false);
   }, []);
+
+  // `bloqueadoPorEdicao` depende do detalhe; a mesma conta é refeita abaixo para a tela.
+  const acoesDeEscrita = useAcoesOrcamentoInsumos({
+    detalhe,
+    aplicarDetalhe,
+    onChanged,
+    onExcluido: () => onOpenChange(false),
+    bloqueadoPorEdicao: alterado || !detalhe,
+  });
+  const { podeSalvarPdf, ocupado, setOcupado, erro, setErro, pdf, setPdf, liberar, executar, gerarPdf, salvarPdf } = acoesDeEscrita;
 
   // Abre em branco (novo) ou carrega o orçamento e o cliente (existente).
   useEffect(() => {
@@ -249,38 +247,6 @@ export function useOrcamentoInsumosEditor({
     };
   }
 
-  async function liberar(titulo: string, descricao: string): Promise<boolean> {
-    return ensureSensitiveAccess({
-      title: titulo,
-      description: descricao,
-      permission: SENSITIVE_PERMISSIONS.FINANCIAL_ACTIONS,
-    });
-  }
-
-  /** Roda uma ação do backend, aplica o orçamento devolvido e avisa a lista. Devolve a mensagem de erro, se houver. */
-  async function executar(
-    acao: () => Promise<OrcamentoInsumosDetalhe>,
-    mensagem: string,
-    contexto: string,
-  ): Promise<string | null> {
-    setOcupado(true);
-    setErro(null);
-    try {
-      const novo = await acao();
-      aplicarDetalhe(novo);
-      onChanged?.();
-      success("Orçamento de insumos", mensagem);
-      return null;
-    } catch (causa) {
-      const texto = typeof causa === "string" ? causa : String((causa as Error)?.message ?? causa);
-      setErro(texto);
-      showError("Orçamento de insumos", contexto, causa);
-      return texto;
-    } finally {
-      setOcupado(false);
-    }
-  }
-
   /** Devolve o orçamento salvo, ou null se não salvou (sem permissão, PIN recusado ou erro). */
   async function salvar(): Promise<OrcamentoInsumosDetalhe | null> {
     if (!podeSalvar || cliente?.id == null) return null;
@@ -311,50 +277,8 @@ export function useOrcamentoInsumosEditor({
     return falha ? null : salvo.orcamento;
   }
 
-  async function gerarPdf() {
-    if (!detalhe || bloqueadoPorEdicao) return;
-    try {
-      setPdf(await PdfService.construirOrcamentoInsumos(detalhe));
-    } catch (causa) {
-      showError("Orçamento de insumos", "Gerar PDF", causa);
-    }
-  }
-
-  /** Baixar/salvar o PDF é o momento em que o orçamento sai da empresa: marca como enviado. */
-  async function salvarPdf(artifact: PdfArtifact) {
-    if (!detalhe) return;
-    await PdfService.salvarOrcamentoInsumos(artifact, detalhe);
-    if (detalhe.status === "RASCUNHO" && (await liberar("Marcar como enviado", "Informe o PIN para marcar o orçamento como enviado."))) {
-      await executar(
-        () => db.marcarOrcamentoInsumosEnviado(detalhe.id, detalhe.atualizado_em, "PDF"),
-        "PDF salvo e orçamento marcado como enviado.",
-        "Marcar como enviado",
-      );
-    }
-  }
-
   async function enviar(canal: "EMAIL" | "WHATSAPP") {
-    if (!detalhe || bloqueadoPorEdicao) return;
-    if (!(await liberar("Enviar orçamento", "Informe o PIN para enviar o orçamento ao cliente."))) return;
-    setOcupado(true);
-    setErro(null);
-    const resultado =
-      canal === "EMAIL"
-        ? await OrcamentoInsumosService.enviarEmail(detalhe)
-        : await OrcamentoInsumosService.enviarWhatsapp(detalhe);
-    setOcupado(false);
-    if (!resultado.sucesso) {
-      setErro(resultado.erro ?? "Não foi possível enviar o orçamento.");
-      return;
-    }
-    const falha = await executar(
-      () => db.marcarOrcamentoInsumosEnviado(detalhe.id, detalhe.atualizado_em, canal),
-      canal === "EMAIL" ? "Orçamento enviado por e-mail." : "Orçamento enviado por WhatsApp.",
-      "Marcar como enviado",
-    );
-    if (falha) {
-      warning("Orçamento de insumos", "A mensagem foi enviada, mas o status não foi atualizado. Recarregue o orçamento.");
-    }
+    await acoesDeEscrita.enviar(canal);
   }
 
   async function iniciarAprovacao() {
@@ -367,11 +291,7 @@ export function useOrcamentoInsumosEditor({
   async function aprovar(pagamento: FormaPagamento): Promise<boolean> {
     if (!detalhe) return false;
     setErroAprovacao(null);
-    const falha = await executar(
-      () => db.aprovarOrcamentoInsumos(detalhe.id, detalhe.atualizado_em, pagamento),
-      "Orçamento aprovado e estoque baixado.",
-      "Aprovar orçamento",
-    );
+    const falha = await acoesDeEscrita.aprovar(pagamento);
     if (falha) {
       setErroAprovacao(falha);
       return false;
@@ -379,42 +299,17 @@ export function useOrcamentoInsumosEditor({
     return true;
   }
 
-  async function excluir() {
-    if (!detalhe) return;
-    setOcupado(true);
-    setErro(null);
-    try {
-      await db.excluirOrcamentoInsumos(detalhe.id, detalhe.atualizado_em);
-      onChanged?.();
-      success("Orçamento de insumos", `Orçamento ${detalhe.numero_exibicao} excluído.`);
-      onOpenChange(false);
-    } catch (causa) {
-      const texto = typeof causa === "string" ? causa : String((causa as Error)?.message ?? causa);
-      setErro(texto);
-      showError("Orçamento de insumos", "Excluir orçamento", causa);
-    } finally {
-      setOcupado(false);
-    }
-  }
+  const excluir = acoesDeEscrita.excluir;
 
   async function confirmar() {
     const acao = confirmando;
     setConfirmando(null);
     if (!detalhe || !acao) return;
     if (!(await liberar("Confirmar ação financeira", "Informe o PIN para continuar com o orçamento de insumos."))) return;
-    if (acao === "reprovar") {
-      await executar(() => db.reprovarOrcamentoInsumos(detalhe.id, detalhe.atualizado_em), "Orçamento reprovado.", "Reprovar orçamento");
-    } else if (acao === "cancelar") {
-      await executar(
-        () => db.cancelarOrcamentoInsumos(detalhe.id, detalhe.atualizado_em, acoes.cancelarDevolveEstoque),
-        acoes.cancelarDevolveEstoque ? "Orçamento cancelado e estoque devolvido." : "Orçamento cancelado.",
-        "Cancelar orçamento",
-      );
-    } else if (acao === "excluir") {
-      await excluir();
-    } else {
-      await executar(() => db.marcarOrcamentoInsumosEntregue(detalhe.id, detalhe.atualizado_em), "Entrega registrada.", "Marcar como entregue");
-    }
+    if (acao === "reprovar") await acoesDeEscrita.reprovar();
+    else if (acao === "cancelar") await acoesDeEscrita.cancelar(acoes.cancelarDevolveEstoque);
+    else if (acao === "excluir") await excluir();
+    else await acoesDeEscrita.entregar();
   }
 
   const titulo = detalhe ? `Orçamento de insumos ${detalhe.numero_exibicao}` : "Novo orçamento de insumos";

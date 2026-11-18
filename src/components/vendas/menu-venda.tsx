@@ -1,7 +1,7 @@
 import { FileText, Mail, MessageCircle } from "lucide-react";
 import type { PriorityAction } from "@/components/ui/action-priority-row";
 import { acoesOrcamentoInsumos } from "@/lib/orcamento-insumos";
-import type { AcaoInicialOrcamentoInsumos } from "@/pages/insumos/OrcamentoInsumosDialog";
+import type { AcaoInicialOrcamentoInsumos } from "@/hooks/useOrcamentoInsumosEditor";
 import type { StatusOrcamentoInsumos } from "@/types";
 
 /**

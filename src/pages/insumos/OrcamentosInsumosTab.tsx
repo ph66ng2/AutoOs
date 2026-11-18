@@ -1,6 +1,6 @@
 /**
  * Lista da página Vendas de insumos (/vendas): lista dos orçamentos de venda avulsa (OI-<n>)
- * com busca e filtro de status. O formulário abre em diálogo (OrcamentoInsumosDialog).
+ * com busca e filtro de status. Editar é página; cada ação abre o seu modal (AcaoVendaDialog).
  */
 import { useEffect, useState, type ReactNode } from "react";
 import { Lock, Package, Plus, Search } from "lucide-react";
@@ -29,7 +29,8 @@ import {
 } from "@/lib/orcamento-insumos";
 import { totalPages } from "@/lib/pagination";
 import { formatCurrency } from "@/lib/utils";
-import { OrcamentoInsumosDialog, type AcaoInicialOrcamentoInsumos } from "@/pages/insumos/OrcamentoInsumosDialog";
+import { AcaoVendaDialog } from "@/components/vendas/AcaoVendaDialog";
+import type { AcaoInicialOrcamentoInsumos } from "@/hooks/useOrcamentoInsumosEditor";
 import {
   SENSITIVE_PERMISSIONS,
   type StatusOrcamentoInsumos,
@@ -74,7 +75,6 @@ export function OrcamentosInsumosTab({ onEstoqueAlterado, contagemPorStatus, ren
   const [busca, setBusca] = useState("");
   const [status, setStatus] = useState<StatusOrcamentoInsumos | "TODOS">("TODOS");
   const [pagina, setPagina] = useState(1);
-  const [dialogAberto, setDialogAberto] = useState(false);
   const [orcamentoId, setOrcamentoId] = useState<number | null>(null);
   const [acaoInicial, setAcaoInicial] = useState<AcaoInicialOrcamentoInsumos | null>(null);
   const { ensureSensitiveAccess, hasPermission } = useSensitiveAccess();
@@ -113,9 +113,12 @@ export function OrcamentosInsumosTab({ onEstoqueAlterado, contagemPorStatus, ren
       navigate(`/vendas/${id}/editar${acao === "renovar" ? "?foco=validade" : ""}`);
       return;
     }
+    if (!acao) {
+      verPagina(id);
+      return;
+    }
     setOrcamentoId(id);
     setAcaoInicial(acao);
-    setDialogAberto(true);
   }
 
   function verPagina(id: number) {
@@ -316,12 +319,12 @@ export function OrcamentosInsumosTab({ onEstoqueAlterado, contagemPorStatus, ren
       </Card>
       )}
 
-      <OrcamentoInsumosDialog
-        open={dialogAberto}
-        onOpenChange={setDialogAberto}
-        orcamentoId={orcamentoId}
-        acaoInicial={acaoInicial}
-        onChanged={() => {
+      <AcaoVendaDialog
+        acao={acaoInicial}
+        vendaId={orcamentoId}
+        voltarPara="/vendas"
+        onFechar={() => setAcaoInicial(null)}
+        onAlterado={() => {
           void recarregar();
           onEstoqueAlterado?.();
         }}
