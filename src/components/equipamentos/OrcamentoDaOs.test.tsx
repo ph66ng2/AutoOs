@@ -27,6 +27,19 @@ describe("OrcamentoDaOs", () => {
     ]);
   });
 
+  it("peça do serviço que também está em pecas_necessarias não aparece duas vezes", async () => {
+    const { pecasParaOrcamento } = await import("@/lib/orcamento-estoque");
+    const servicos = [{ id: "a", descricao: "Troca do rolete", valor: 90, pecas: [{ produto_id: 7, nome: "Rolete", quantidade: 2, valor_unitario: 105 }] }];
+    const linhas = linhasDoOrcamento({
+      equipamento_id: 1,
+      tecnico_nome: "Ivan",
+      problema_relatado: "Falha",
+      servicos_necessarios: JSON.stringify(servicos),
+      pecas_necessarias: JSON.stringify([...pecasParaOrcamento(servicos), { id: "x", nome: "Sensor", quantidade: 1, valorUnitario: 40, valorTotal: 40 }]),
+    });
+    expect(linhas.map((l) => l.item)).toEqual(["Troca do rolete", "Rolete", "Sensor"]);
+  });
+
   it("total gravado na OS e só as condições que existem", () => {
     const equipamento = { id: 1, valor_orcamento: 340, prazo_aprovacao: "2026-11-15" } as Equipamento;
     render(<OrcamentoDaOs equipamento={equipamento} verificacao={verificacao} />);

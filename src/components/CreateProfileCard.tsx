@@ -12,7 +12,6 @@ import { Button } from "@/components/ui/button";
 import {
   Card,
   CardContent,
-  CardDescription,
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
@@ -119,9 +118,6 @@ export function CreateProfileCard({ profiles, onCreated }: Props) {
         <CardTitle className="flex items-center gap-2">
           <UserPlus className="h-5 w-5 text-primary" /> Novo colaborador
         </CardTitle>
-        <CardDescription>
-          Uma pessoa, uma função e somente as permissões necessárias.
-        </CardDescription>
       </CardHeader>
       <CardContent className="p-5 sm:p-6">
         {created ? (
