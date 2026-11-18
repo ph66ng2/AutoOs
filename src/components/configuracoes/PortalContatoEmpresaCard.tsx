@@ -1,6 +1,6 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { db } from "@/lib/db";
@@ -85,9 +85,6 @@ export function PortalContatoEmpresaCard() {
     <Card>
       <CardHeader>
         <CardTitle>Portal das Impressoras do Cliente</CardTitle>
-        <CardDescription>
-          Canais exibidos no cartão “Fale com a equipe” e usados na mensagem pronta de WhatsApp após o cliente responder.
-        </CardDescription>
       </CardHeader>
       <CardContent>
         <form className="grid gap-4 sm:grid-cols-2" onSubmit={(event) => void salvar(event)}>

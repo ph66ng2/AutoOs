@@ -1,6 +1,7 @@
+import { PROFILE_PRESETS } from "@/lib/profile-presets";
 import { Link } from "react-router-dom";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import { ErrorAlert } from "@/components/ui/error-alert";
 import { Label } from "@/components/ui/label";
@@ -13,7 +14,6 @@ import {
 } from "@/components/ui/select";
 import { TabsContent } from "@/components/ui/tabs";
 import { ProfileDeleteDialog } from "@/components/ProfileDeleteDialog";
-import { PROFILE_PRESETS } from "@/lib/profile-presets";
 import { securityPermissionLabel, securityRoleLabel } from "@/lib/security-profile-labels";
 import type { SecurityProfile, SensitiveAccessStatus } from "@/types";
 
@@ -68,9 +68,6 @@ export function ConfiguracoesTabSeguranca({
       <Card>
         <CardHeader>
           <CardTitle>Meu PIN</CardTitle>
-          <CardDescription>
-            A troca do seu PIN fica em Equipe e acessos, na aba Segurança.
-          </CardDescription>
         </CardHeader>
         <CardContent>
           <div className="flex justify-end">
@@ -82,9 +79,6 @@ export function ConfiguracoesTabSeguranca({
       <Card>
         <CardHeader>
           <CardTitle>Perfil ativo</CardTitle>
-          <CardDescription>
-            O acesso sensível atual está associado ao perfil {accessStatus?.active_profile_name || "selecionado"}.
-          </CardDescription>
         </CardHeader>
         <CardContent>
           <div className="rounded-lg border bg-muted/40 p-4 text-sm">
@@ -101,10 +95,6 @@ export function ConfiguracoesTabSeguranca({
         <Card>
           <CardHeader>
             <CardTitle>Equipe e acessos</CardTitle>
-            <CardDescription>
-              Cadastro, edição, PIN, desativação e reativação de pessoas ficam em Equipe e acessos.
-              Modelos prontos: {PROFILE_PRESETS.map((preset) => preset.label).join(", ")}.
-            </CardDescription>
           </CardHeader>
           <CardContent className="space-y-6">
             <div className="flex flex-col gap-3 rounded-lg border bg-muted/40 p-4 text-sm sm:flex-row sm:items-center sm:justify-between">
@@ -114,6 +104,7 @@ export function ConfiguracoesTabSeguranca({
                   {pinConfiguredCount} com PIN configurado neste PC
                   {pinMissingCount > 0 ? `, ${pinMissingCount} com PIN não configurado neste PC` : ""}
                 </div>
+                <div className="text-muted-foreground">Modelos prontos: {PROFILE_PRESETS.map((preset) => preset.label).join(", ")}</div>
               </div>
               <Button asChild variant="outline"><Link to="/perfil">Abrir Equipe e acessos</Link></Button>
             </div>
