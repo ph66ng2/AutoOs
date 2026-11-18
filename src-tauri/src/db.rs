@@ -38,7 +38,33 @@ pub struct KnownMigration {
 }
 
 static POOL: Mutex<Option<PgPool>> = Mutex::new(None);
-static INIT_ERROR: Mutex<Option<String>> = Mutex::new(None);
+static INIT_ERROR: Mutex<Option<DatabaseInitError>> = Mutex::new(None);
+
+/// Causa da falha de inicialização, para a tela de fallback decidir entre o
+/// formulário de configuração e a tela de reconexão.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum DatabaseErrorKind {
+    /// Nenhuma URL encontrada na cadeia de resolução.
+    NaoConfigurado,
+    /// URL presente, mas inválida ou apontando para banco inexistente.
+    ConfiguracaoInvalida,
+    /// Usuário ou senha recusados.
+    Credencial,
+    /// Banco alcançado, mas incompatível com este AutoOS.
+    Incompativel,
+    /// Rede, DNS, TLS ou timeout: costuma passar sozinho.
+    Rede,
+    /// Limite de conexões do servidor atingido.
+    Capacidade,
+    Desconhecido,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+pub struct DatabaseInitError {
+    pub tipo: DatabaseErrorKind,
+    pub mensagem: String,
+}
 
 const DATABASE_ACQUIRE_TIMEOUT: Duration = Duration::from_secs(6);
 const DATABASE_SCHEMA_TIMEOUT: Duration = Duration::from_secs(6);
@@ -101,7 +127,8 @@ pub async fn get_pool() -> Result<PgPool, String> {
             .lock()
             .unwrap_or_else(|e| panic!("Lock de erro corrompido: {}", e));
         err_guard
-            .clone()
+            .as_ref()
+            .map(|init_error| init_error.mensagem.clone())
             .unwrap_or_else(|| "Pool de conexões não inicializado".to_string())
     })
 }
@@ -110,7 +137,7 @@ pub fn is_database_initialized() -> bool {
     POOL.lock().map(|g| g.is_some()).unwrap_or(false)
 }
 
-pub fn database_init_error() -> Option<String> {
+pub fn database_init_error() -> Option<DatabaseInitError> {
     INIT_ERROR.lock().ok().and_then(|g| g.clone())
 }
 
@@ -163,9 +190,42 @@ pub fn clear_database_init_error() {
     }
 }
 
-fn set_database_init_error(message: impl Into<String>) {
+fn set_database_init_error(error: &sqlx::Error) {
+    let init_error = DatabaseInitError {
+        tipo: database_error_kind(error),
+        mensagem: database_error_message(error),
+    };
     if let Ok(mut guard) = INIT_ERROR.lock() {
-        *guard = Some(message.into());
+        *guard = Some(init_error);
+    }
+}
+
+/// Classifica o erro na mesma ordem de `database_error_message`, sem efeitos
+/// colaterais (não registra o backoff de capacidade).
+pub fn database_error_kind(error: &sqlx::Error) -> DatabaseErrorKind {
+    match error {
+        sqlx::Error::PoolTimedOut | sqlx::Error::Io(_) | sqlx::Error::Tls(_) => DatabaseErrorKind::Rede,
+        sqlx::Error::Configuration(source) => {
+            let missing = source
+                .downcast_ref::<std::io::Error>()
+                .is_some_and(|io_error| io_error.kind() == std::io::ErrorKind::NotFound);
+            if missing {
+                DatabaseErrorKind::NaoConfigurado
+            } else {
+                DatabaseErrorKind::ConfiguracaoInvalida
+            }
+        }
+        sqlx::Error::ConfigFile(_) => DatabaseErrorKind::ConfiguracaoInvalida,
+        sqlx::Error::Database(database_error) if database_error.code().as_deref() == Some("28P01") => {
+            DatabaseErrorKind::Credencial
+        }
+        sqlx::Error::Database(database_error) if database_error.code().as_deref() == Some("3D000") => {
+            DatabaseErrorKind::ConfiguracaoInvalida
+        }
+        error if is_database_capacity_error(error) => DatabaseErrorKind::Capacidade,
+        sqlx::Error::Database(_) => DatabaseErrorKind::Desconhecido,
+        sqlx::Error::Migrate(_) => DatabaseErrorKind::Incompativel,
+        _ => DatabaseErrorKind::Desconhecido,
     }
 }
 
@@ -174,6 +234,9 @@ pub fn database_error_message(error: &sqlx::Error) -> String {
         sqlx::Error::PoolTimedOut => {
             "A conexão com o banco excedeu 6 segundos. Verifique a internet e tente novamente."
                 .to_string()
+        }
+        sqlx::Error::Io(io_error) if io_error.kind() == std::io::ErrorKind::TimedOut => {
+            format!("O banco demorou para responder: {}", io_error)
         }
         sqlx::Error::Io(_) => {
             "Não foi possível alcançar o banco. Verifique a internet, DNS ou compatibilidade IPv4/IPv6."
@@ -553,6 +616,16 @@ fn schema_validation_error(message: String) -> sqlx::Error {
     ))))
 }
 
+fn schema_validation_timeout_error() -> sqlx::Error {
+    sqlx::Error::Io(std::io::Error::new(
+        std::io::ErrorKind::TimedOut,
+        format!(
+            "a validação estrutural excedeu {} segundos.",
+            DATABASE_SCHEMA_TIMEOUT.as_secs()
+        ),
+    ))
+}
+
 fn database_url_missing_error() -> sqlx::Error {
     sqlx::Error::Configuration(Box::new(std::io::Error::new(
         std::io::ErrorKind::NotFound,
@@ -652,7 +725,7 @@ pub async fn init_database() -> Result<PgPool, sqlx::Error> {
     .await;
 
     if let Err(error) = &result {
-        set_database_init_error(database_error_message(error));
+        set_database_init_error(error);
     }
     result
 }
@@ -662,7 +735,7 @@ pub async fn init_database_with_url(database_url: &str) -> Result<PgPool, sqlx::
     let _init_guard = INIT_LOCK.lock().await;
     let result = connect_and_setup_pool(database_url).await;
     if let Err(error) = &result {
-        set_database_init_error(database_error_message(error));
+        set_database_init_error(error);
     }
     result
 }
@@ -721,10 +794,9 @@ async fn connect_and_setup_pool(database_url: &str) -> Result<PgPool, sqlx::Erro
         Ok(result) => result,
         Err(_) => {
             pool.close().await;
-            return Err(schema_validation_error(format!(
-                "A validação estrutural excedeu {} segundos.",
-                DATABASE_SCHEMA_TIMEOUT.as_secs()
-            )));
+            // Lentidão não prova incompatibilidade: vira erro de rede, que a
+            // tela de reconexão trata como passageiro e tenta de novo.
+            return Err(schema_validation_timeout_error());
         }
     };
     if let Err(message) = schema_result {
@@ -796,6 +868,43 @@ mod tests {
         fn kind(&self) -> sqlx::error::ErrorKind {
             sqlx::error::ErrorKind::Other
         }
+    }
+
+    fn database_error(code: &'static str, message: &'static str) -> sqlx::Error {
+        sqlx::Error::Database(Box::new(TestDatabaseError { code, message }))
+    }
+
+    #[test]
+    fn classifies_error_kind_for_the_fallback_screen() {
+        assert_eq!(database_error_kind(&database_url_missing_error()), DatabaseErrorKind::NaoConfigurado);
+        let malformed = sqlx::Error::Configuration(Box::new(io::Error::new(io::ErrorKind::InvalidInput, "url")));
+        assert_eq!(database_error_kind(&malformed), DatabaseErrorKind::ConfiguracaoInvalida);
+        assert_eq!(database_error_kind(&sqlx::Error::PoolTimedOut), DatabaseErrorKind::Rede);
+        let io_error = sqlx::Error::Io(io::Error::new(io::ErrorKind::ConnectionRefused, "x"));
+        assert_eq!(database_error_kind(&io_error), DatabaseErrorKind::Rede);
+        assert_eq!(database_error_kind(&database_error("28P01", "auth")), DatabaseErrorKind::Credencial);
+        assert_eq!(database_error_kind(&database_error("3D000", "db")), DatabaseErrorKind::ConfiguracaoInvalida);
+        assert_eq!(database_error_kind(&database_error("53300", "too many clients")), DatabaseErrorKind::Capacidade);
+        assert_eq!(database_error_kind(&database_error("XX000", "boom")), DatabaseErrorKind::Desconhecido);
+    }
+
+    #[test]
+    fn slow_schema_validation_is_transient_not_incompatible() {
+        let slow = schema_validation_timeout_error();
+        assert_eq!(database_error_kind(&slow), DatabaseErrorKind::Rede);
+        assert!(database_error_message(&slow).contains("demorou para responder"));
+        let mismatch = schema_validation_error("tabela ausente".to_string());
+        assert_eq!(database_error_kind(&mismatch), DatabaseErrorKind::Incompativel);
+    }
+
+    #[test]
+    fn init_error_keeps_kind_and_sanitized_message() {
+        set_database_init_error(&sqlx::Error::PoolTimedOut);
+        let init_error = database_init_error().expect("erro registrado");
+        assert_eq!(init_error.tipo, DatabaseErrorKind::Rede);
+        assert!(init_error.mensagem.contains("6 segundos"));
+        clear_database_init_error();
+        assert!(database_init_error().is_none());
     }
 
     #[test]

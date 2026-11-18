@@ -1,4 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
+import { db } from "@/lib/db";
 import type { DatabaseConnectionConfig } from "@/types";
 
 export function parsePostgresConnectionUrl(value: string): DatabaseConnectionConfig | null {
@@ -26,6 +27,26 @@ export function parsePostgresConnectionUrl(value: string): DatabaseConnectionCon
   }
 }
 
+/** Espelha `DatabaseErrorKind` em `src-tauri/src/db.rs`. */
+export type DatabaseErrorKind =
+  | "nao_configurado"
+  | "configuracao_invalida"
+  | "credencial"
+  | "incompativel"
+  | "rede"
+  | "capacidade"
+  | "desconhecido";
+
+export interface DatabaseInitError {
+  tipo: DatabaseErrorKind;
+  mensagem: string;
+}
+
+/** Erros que costumam passar sozinhos; os demais exigem alguém ajustar a configuração. */
+export function isTransientDatabaseError(tipo: DatabaseErrorKind): boolean {
+  return tipo === "rede" || tipo === "capacidade" || tipo === "desconhecido";
+}
+
 export const DatabaseConfigService = {
   async load(): Promise<DatabaseConnectionConfig | null> {
     return invoke<DatabaseConnectionConfig | null>("carregar_config_banco");
@@ -51,8 +72,13 @@ export const DatabaseConfigService = {
     return invoke<boolean>("verificar_status_banco");
   },
 
-  async getInitializationError(): Promise<string | null> {
-    return invoke<string | null>("obter_erro_inicializacao_banco");
+  async getInitializationError(): Promise<DatabaseInitError | null> {
+    return db.obterErroInicializacaoBanco();
+  },
+
+  /** Reconecta com a configuração já salva. `null` significa que conectou. */
+  async reconnect(): Promise<DatabaseInitError | null> {
+    return db.tentarReconectarBanco();
   },
 
   async restartWithConfig(config: DatabaseConnectionConfig): Promise<boolean> {

@@ -48,12 +48,18 @@ describe("parsePostgresConnectionUrl", () => {
 describe("DatabaseConfigService", () => {
   beforeEach(() => mockInvoke.mockReset());
 
-  it("expõe o erro sanitizado da inicialização", async () => {
-    mockInvoke.mockResolvedValue("Não foi possível alcançar o banco.");
+  it("expõe o tipo e o erro sanitizado da inicialização", async () => {
+    const initError = { tipo: "rede", mensagem: "Não foi possível alcançar o banco." };
+    mockInvoke.mockResolvedValue(initError);
 
-    await expect(DatabaseConfigService.getInitializationError()).resolves.toBe(
-      "Não foi possível alcançar o banco.",
-    );
+    await expect(DatabaseConfigService.getInitializationError()).resolves.toEqual(initError);
     expect(mockInvoke).toHaveBeenCalledWith("obter_erro_inicializacao_banco");
+  });
+
+  it("reconecta sem enviar configuração nova", async () => {
+    mockInvoke.mockResolvedValue(null);
+
+    await expect(DatabaseConfigService.reconnect()).resolves.toBeNull();
+    expect(mockInvoke).toHaveBeenCalledWith("tentar_reconectar_banco");
   });
 });
