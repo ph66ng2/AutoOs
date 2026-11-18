@@ -84,7 +84,7 @@ const navGroups: { titulo?: string; itens: NavItem[] }[] = [
     titulo: "Financeiro",
     itens: [{ label: "Finanças", path: "/gastos", icon: DollarSign, permission: SENSITIVE_PERMISSIONS.VIEW_EXPENSES }],
   },
-  { titulo: "Administração", itens: [{ label: "Equipe e acessos", path: "/perfil", icon: Shield }] },
+  { titulo: "Administração", itens: [{ label: "Equipe e acessos", path: "/equipe", icon: Shield }] },
 ];
 
 const configuracoesItem: NavItem = {

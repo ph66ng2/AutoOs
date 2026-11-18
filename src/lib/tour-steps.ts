@@ -103,8 +103,7 @@ export const PERMISSION_TOUR: Record<SensitivePermission, TourStep> = {
     id: "equipe",
     title: "Equipe",
     body: "Crie perfis, gere códigos de primeiro acesso e ajuste o que cada pessoa pode fazer.",
-    target: "perfil-tab-equipe",
-    route: "/perfil",
+    target: "nav-/equipe",
   },
   COMMUNICATION_SETTINGS: {
     id: "integracoes",

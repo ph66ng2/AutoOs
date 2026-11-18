@@ -11,7 +11,6 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { EVENT_LABELS } from "@/lib/eventos-auditoria";
 import { AppearancePicker } from "@/components/perfil/AppearancePicker";
 import { ProfileAvatar } from "@/components/perfil/ProfileAvatar";
-import { TeamAccessManager } from "@/components/TeamAccessManager";
 import { useSensitiveAccess } from "@/hooks/useSensitiveAccess";
 import { getAppMode, setAppMode } from "@/lib/app-mode";
 import { formatDateTimeSalvador, parseDbTimestampUtc } from "@/lib/date-utils";
@@ -97,9 +96,6 @@ export default function Perfil() {
             ].map(([value, label]) => (
               <TabsTrigger key={value} value={value} className={TAB_CLASS}>{label}</TabsTrigger>
             ))}
-            {status?.can_manage_profiles && (
-              <TabsTrigger value="equipe" data-tour="perfil-tab-equipe" className={TAB_CLASS}>Equipe</TabsTrigger>
-            )}
           </TabsList>
 
           <TabsContent value="visao" className="mt-0">
@@ -117,11 +113,6 @@ export default function Perfil() {
           <TabsContent value="tutorial" className="mt-0">
             <Tutorial profile={profile} permissions={status?.permissions ?? []} />
           </TabsContent>
-          {status?.can_manage_profiles && (
-            <TabsContent value="equipe" className="mt-0">
-              <TeamAccessManager activeProfileId={status.active_profile_id} onChanged={refreshStatus} />
-            </TabsContent>
-          )}
         </Tabs>
       )}
     </div>

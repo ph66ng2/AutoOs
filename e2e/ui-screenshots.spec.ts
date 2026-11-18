@@ -70,12 +70,14 @@ test("captura as telas principais com dados sintéticos", async ({ page }) => {
   await expect(page.getByText("Ribbon sintético CI").first()).toBeVisible();
   await page.screenshot({ path: `${outDir}/05-insumos-estoque.png`, fullPage: true, animations: "disabled" });
 
-  await openScreen("Equipe e acessos");
+  // Equipe e acessos é página própria; o perfil pessoal abre pelo cartão do rodapé do menu.
+  await page.goto("/perfil");
   await expect(page.locator("h1", { hasText: "CI Admin Screenshot" })).toBeVisible();
   await expect(page.getByText("O que você pode fazer")).toBeVisible();
   await page.screenshot({ path: `${outDir}/09-perfil-visao-geral.png`, fullPage: true, animations: "disabled" });
 
-  await page.getByRole("tab", { name: "Equipe" }).click();
+  await openScreen("Equipe e acessos");
+  await expect(page.locator("h1", { hasText: "Equipe e acessos" })).toBeVisible();
   await expect(page.getByText("CI Admin Screenshot").first()).toBeVisible();
   await expect(page.getByText("CI Tecnico Screenshot").first()).toBeVisible();
   await expect(page.getByText("CI Atendente Screenshot").first()).toBeVisible();
