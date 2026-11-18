@@ -161,6 +161,7 @@ fn main() {
             // Equipamentos
             commands::equipamentos::listar_equipamentos,
             commands::equipamentos::listar_equipamentos_paginados,
+            commands::equipamentos::contar_equipamentos_por_status,
             commands::equipamentos::listar_equipamentos_cliente,
             commands::equipamentos::buscar_equipamento,
             commands::equipamentos::listar_historico_equipamento,
@@ -252,6 +253,7 @@ fn main() {
             commands::servicos::atualizar_servico,
             commands::servicos::deletar_servico,
             commands::servicos::reativar_servico,
+            commands::servicos::contar_servicos,
             // Verificações
             commands::verificacoes::salvar_verificacao_tecnica,
             commands::verificacoes::buscar_verificacao_tecnica,
@@ -260,6 +262,7 @@ fn main() {
             commands::orcamento_estoque::listar_consumos_orcamento,
             commands::orcamento_estoque::baixar_pecas_pendentes,
             commands::orcamentos_insumos::listar_orcamentos_insumos,
+            commands::orcamentos_insumos::contar_orcamentos_insumos_por_status,
             commands::orcamentos_insumos::obter_orcamento_insumos,
             commands::orcamentos_insumos::criar_orcamento_insumos,
             commands::orcamentos_insumos::atualizar_orcamento_insumos,

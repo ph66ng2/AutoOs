@@ -2,8 +2,8 @@ import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
-const mocks = vi.hoisted(() => ({ listar: vi.fn(), reativar: vi.fn(), deletar: vi.fn() }));
-vi.mock("@/lib/db", () => ({ db: { listarServicosPaginados: mocks.listar, reativarServico: mocks.reativar, deletarServico: mocks.deletar } }));
+const mocks = vi.hoisted(() => ({ listar: vi.fn(), reativar: vi.fn(), deletar: vi.fn(), contar: vi.fn() }));
+vi.mock("@/lib/db", () => ({ db: { listarServicosPaginados: mocks.listar, reativarServico: mocks.reativar, deletarServico: mocks.deletar, contarServicos: mocks.contar } }));
 vi.mock("@/hooks/useSensitiveAccess", () => ({ useSensitiveAccess: () => ({ ensureSensitiveAccess: vi.fn().mockResolvedValue(true) }) }));
 vi.mock("@/hooks/useNotification", () => ({ useNotification: () => ({ error: vi.fn(), success: vi.fn(), warning: vi.fn() }) }));
 vi.mock("@/components/equipamentos/PecasDoServico", () => ({ PecasDoServico: () => null }));
@@ -27,6 +27,7 @@ beforeEach(() => {
         : { items: [ativo, garantia, inativo], total: 3 },
   );
   mocks.reativar.mockResolvedValue({ ...inativo, ativo: true });
+  mocks.contar.mockResolvedValue({ ativos: 2, inativos: 1 });
   mocks.deletar.mockResolvedValue(undefined);
 });
 
@@ -39,6 +40,10 @@ describe("Serviços (fase 8)", () => {
     expect(within(lista).getByText("Garantia")).toBeInTheDocument();
     expect(screen.getByText("2 ativos")).toBeInTheDocument();
     expect(mocks.listar).toHaveBeenCalledWith(undefined, "ATIVOS", 0);
+    // Cada filtro mostra o seu número, como no canvas.
+    expect(screen.getByRole("button", { name: /^Ativos\s*2$/ })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /^Inativos\s*1$/ })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /^Todos\s*3$/ })).toBeInTheDocument();
   });
 
   it("Todos mostra o inativo com o interruptor desligado e Editar", async () => {
@@ -48,7 +53,7 @@ describe("Serviços (fase 8)", () => {
     await waitFor(() => expect(mocks.listar).toHaveBeenLastCalledWith(undefined, "TODOS", 0));
     const cartao = (await screen.findByText("Visita técnica")).closest("li")!;
     expect(within(cartao).getByRole("switch", { name: "Serviço ativo: Visita técnica" })).toHaveAttribute("aria-checked", "false");
-    expect(within(cartao).getByRole("button", { name: "Editar" })).toBeInTheDocument();
+    expect(within(cartao).getByRole("button", { name: "Editar Visita técnica" })).toBeInTheDocument();
     expect(within(cartao).queryByRole("combobox", { name: "Mais ações" })).toBeNull();
   });
 

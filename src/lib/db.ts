@@ -153,8 +153,14 @@ export const db = {
     return invoke<Equipamento[]>("listar_equipamentos_cliente", { clienteId, nomes });
   },
 
-  async listarEquipamentosPaginados(busca: string | undefined, status: string | undefined, page: number, ordenacao: "ATUALIZACAO_RECENTE" | "CADASTRO_RECENTE" = "ATUALIZACAO_RECENTE"): Promise<PaginatedResult<Equipamento>> {
-    return invoke<PaginatedResult<Equipamento>>("listar_equipamentos_paginados", { busca: busca ?? null, status: status ?? null, page, ordenacao });
+  async listarEquipamentosPaginados(busca: string | undefined, status: string | undefined, page: number, ordenacao: "ATUALIZACAO_RECENTE" | "CADASTRO_RECENTE" = "ATUALIZACAO_RECENTE", tecnico?: string): Promise<PaginatedResult<Equipamento>> {
+    return invoke<PaginatedResult<Equipamento>>("listar_equipamentos_paginados", { busca: busca ?? null, status: status ?? null, page, ordenacao, tecnico: tecnico ?? null });
+  },
+
+  /** Total por status com a mesma busca/técnico da lista (números das pílulas) → Rust: contar_equipamentos_por_status */
+  async contarEquipamentosPorStatus(busca?: string, tecnico?: string): Promise<Record<string, number>> {
+    const linhas = await invoke<Array<{ status: string; total: number }>>("contar_equipamentos_por_status", { busca: busca ?? null, tecnico: tecnico ?? null });
+    return Object.fromEntries(linhas.map((linha) => [linha.status, Number(linha.total)]));
   },
 
   /** Busca equipamento por ID → Rust: buscar_equipamento */
@@ -593,6 +599,14 @@ export const db = {
     });
   },
 
+  /** Total por situação com a mesma busca da lista (números das pílulas) → Rust: contar_orcamentos_insumos_por_status */
+  async contarOrcamentosInsumosPorStatus(busca?: string): Promise<Record<string, number>> {
+    const linhas = await invoke<Array<{ status: string; total: number }>>("contar_orcamentos_insumos_por_status", {
+      filtros: { status: null, cliente_id: null, busca: busca?.trim() || null, page: 0 },
+    });
+    return Object.fromEntries(linhas.map((linha) => [linha.status, Number(linha.total)]));
+  },
+
   async obterOrcamentoInsumos(id: number): Promise<OrcamentoInsumosDetalhe> {
     return invoke<OrcamentoInsumosDetalhe>("obter_orcamento_insumos", { id });
   },
@@ -705,6 +719,12 @@ export const db = {
   /** Desativa serviço de catálogo. */
   async deletarServico(id: number): Promise<void> {
     return invoke<void>("deletar_servico", { id });
+  },
+
+  /** Números dos filtros de Serviços → Rust: contar_servicos. */
+  async contarServicos(busca?: string): Promise<{ ativos: number; inativos: number }> {
+    const contagem = await invoke<{ ativos: number; inativos: number }>("contar_servicos", { busca: busca ?? null });
+    return { ativos: Number(contagem.ativos), inativos: Number(contagem.inativos) };
   },
 
   /** Reativa serviço desativado → Rust: reativar_servico. */

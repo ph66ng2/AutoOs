@@ -24,7 +24,6 @@ import {
   orcamentoInsumosVencido,
   prazoOuData,
   proximaAcaoVenda,
-  STATUS_ORCAMENTO_INSUMOS_FAMILIA,
   STATUS_ORCAMENTO_INSUMOS_LABEL,
   TOTAL_ETAPAS_VENDA,
 } from "@/lib/orcamento-insumos";
@@ -49,15 +48,14 @@ interface OrcamentosInsumosTabProps {
 const COLUNAS = 7;
 
 function opcaoFiltro(status: StatusOrcamentoInsumos): OpcaoFiltroStatus {
-  return { value: status, label: STATUS_ORCAMENTO_INSUMOS_LABEL[status], familia: STATUS_ORCAMENTO_INSUMOS_FAMILIA[status] };
+  return { value: status, label: STATUS_ORCAMENTO_INSUMOS_LABEL[status] };
 }
 
-/** Como em Equipamentos: o fluxo principal na faixa; desvio e encerrado em "Outros". */
+/** Todas as situações em pílulas, cada uma com o seu número (canvas de Vendas). */
 const FILTRO_PRINCIPAIS: OpcaoFiltroStatus[] = [
   { value: "TODOS", label: "Todos" },
-  ...(["RASCUNHO", "ENVIADO", "APROVADO", "ENTREGUE"] as const).map(opcaoFiltro),
+  ...(["RASCUNHO", "ENVIADO", "APROVADO", "ENTREGUE", "REPROVADO", "CANCELADO"] as const).map(opcaoFiltro),
 ];
-const FILTRO_OUTROS: OpcaoFiltroStatus[] = (["REPROVADO", "CANCELADO"] as const).map(opcaoFiltro);
 
 /** Situação no mesmo desenho da lista de equipamentos: nome e barra de etapas, sem selo. */
 /** A ação principal da lista vira a ação do modal (V.5); "Ver" abre a página. */
@@ -91,7 +89,7 @@ export function OrcamentosInsumosTab({ onEstoqueAlterado, contagemPorStatus, ren
   // Abaixo de md (768px) a tabela vira cartões (V.6).
   const telaLarga = useLarguraMinima(768);
 
-  const { orcamentos, total, loading, error, recarregar } = useOrcamentosInsumos({
+  const { orcamentos, total, contagens, loading, error, recarregar } = useOrcamentosInsumos({
     busca: busca.trim() || undefined,
     status,
     page: pagina,
@@ -185,9 +183,8 @@ export function OrcamentosInsumosTab({ onEstoqueAlterado, contagemPorStatus, ren
           <FiltroDeStatus
             rotulo="Filtrar por situação"
             principais={FILTRO_PRINCIPAIS}
-            outros={FILTRO_OUTROS}
             valor={status}
-            total={loading ? undefined : total}
+            contagens={contagens}
             onChange={(valor) => setStatus(valor as StatusOrcamentoInsumos | "TODOS")}
           />
 

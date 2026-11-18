@@ -19,6 +19,7 @@
  * ║  USADO POR: App.tsx (rota /insumos)                         ║
  * ╚══════════════════════════════════════════════════════════════╝
  */
+import { PilulaFiltro } from "@/components/equipamentos/FiltroDeStatus";
 import { useEffect, useRef, useState } from "react";
 import {
   Package,
@@ -395,18 +396,13 @@ export default function Insumos() {
                 const ativo = categoriaFiltro === opt.value;
                 const contagem = opt.value === "TODOS" ? resumo?.totalItens : contagemCategoria(opt.value);
                 return (
-                  <button
+                  <PilulaFiltro
                     key={opt.value}
-                    type="button"
-                    aria-pressed={ativo}
+                    ligado={ativo}
+                    rotulo={opt.value === "TODOS" ? "Todas" : opt.label}
+                    numero={resumo ? contagem : undefined}
                     onClick={() => setCategoriaFiltro(opt.value)}
-                    className={`inline-flex h-9 items-center gap-2 rounded-full border px-3.5 text-sm font-medium transition-colors duration-rapida ${ativo ? "border-foreground bg-foreground text-background" : "bg-card hover:border-ctl"}`}
-                  >
-                    {opt.value === "TODOS" ? "Todas" : opt.label}
-                    {resumo && (
-                      <span className={`rounded-full px-1.5 text-xs tabular-nums ${ativo ? "bg-background/20" : "bg-muted text-muted-foreground"}`}>{contagem}</span>
-                    )}
-                  </button>
+                  />
                 );
               })}
             </div>

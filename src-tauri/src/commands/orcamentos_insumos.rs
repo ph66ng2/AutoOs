@@ -703,6 +703,28 @@ pub async fn listar_orcamentos_insumos(
     Ok(PaginatedResult { items, total, below_minimum: None })
 }
 
+/// Quantos orçamentos cada status tem, com a mesma busca e cliente da lista (para os filtros).
+#[tauri::command]
+#[instrument(skip_all)]
+pub async fn contar_orcamentos_insumos_por_status(
+    filtros: Option<FiltrosOrcamentosInsumos>,
+) -> Result<Vec<crate::commands::types::ContagemStatusRow>, String> {
+    let mut filtros = filtros.unwrap_or_default();
+    filtros.status = None;
+    let pool = get_pool().await.map_err(|e| e.to_string())?;
+    let empresa_id = require_active_session_company_id(&pool).await?;
+    let mut consulta = QueryBuilder::<Postgres>::new(
+        "SELECT o.status AS status, COUNT(*) AS total FROM orcamentos_insumos o JOIN clientes c ON c.id = o.cliente_id",
+    );
+    add_filtros(&mut consulta, empresa_id, &filtros);
+    consulta.push(" GROUP BY o.status");
+    consulta
+        .build_query_as::<crate::commands::types::ContagemStatusRow>()
+        .fetch_all(&pool)
+        .await
+        .map_err(super::operator_errors::mapear_erro_sql)
+}
+
 #[tauri::command]
 #[instrument(skip_all, fields(id = id))]
 pub async fn obter_orcamento_insumos(id: i32) -> Result<OrcamentoInsumosDetalhe, String> {

@@ -375,15 +375,16 @@ export default function Equipamentos() {
   } | null>(null);
   const [emailDialogOpen, setEmailDialogOpen] = useState(false);
 
-  const { equipamentos, total: totalEquipamentos, loading, error: erroListaEquipamentos, avisoAtualizacao, criar, atualizar, deletar, atualizarStatus, recarregar, atualizarEmSegundoPlano } =
-    useEquipamentos({ busca: busca || undefined, status: statusFiltro, ordenacao, page: paginaEquipamentos });
+  const [tecnicoFiltro, setTecnicoFiltro] = useState<string>("TODOS");
+  const { equipamentos, total: totalEquipamentos, contagens: contagensStatus, loading, error: erroListaEquipamentos, avisoAtualizacao, criar, atualizar, deletar, atualizarStatus, recarregar, atualizarEmSegundoPlano } =
+    useEquipamentos({ busca: busca || undefined, status: statusFiltro, tecnico: tecnicoFiltro === "TODOS" ? undefined : tecnicoFiltro, ordenacao, page: paginaEquipamentos });
   const totalPaginasEquipamentos = totalPages(totalEquipamentos);
   const paginaEquipamentosExibida = Math.min(paginaEquipamentos, totalPaginasEquipamentos);
   const equipamentosExibidos = equipamentos;
 
   useEffect(() => {
     setPaginaEquipamentos(1);
-  }, [busca, statusFiltro, ordenacao]);
+  }, [busca, statusFiltro, ordenacao, tecnicoFiltro]);
 
   useEffect(() => {
     setPaginaEquipamentos((pagina) => Math.min(pagina, totalPaginasEquipamentos));
@@ -2770,7 +2771,7 @@ export default function Equipamentos() {
             principais={FILTRO_STATUS_PRINCIPAIS}
             outros={FILTRO_STATUS_OUTROS}
             valor={statusFiltro}
-            total={loading ? undefined : totalEquipamentos}
+            contagens={contagensStatus}
             onChange={setStatusFiltro}
           />
           <div className="flex flex-col gap-3 lg:flex-row">
@@ -2780,6 +2781,17 @@ export default function Equipamentos() {
               {busca && <Button type="button" variant="ghost" size="icon" aria-label="Limpar pesquisa" className="absolute right-0 top-0 h-full w-10" onClick={() => setBusca("")}><X className="h-4 w-4" /></Button>}
             </div>
             <div className="flex gap-3">
+            <Select value={tecnicoFiltro} onValueChange={setTecnicoFiltro}>
+              <SelectTrigger aria-label="Filtrar por técnico" className="h-10 min-w-0 flex-1 lg:w-44 lg:flex-none">
+                <span className="truncate">Técnico: {tecnicoFiltro === "TODOS" ? "todos" : tecnicoFiltro}</span>
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="TODOS">Todos os técnicos</SelectItem>
+                {TECNICOS_DISPONIVEIS.map((tecnico) => (
+                  <SelectItem key={tecnico} value={tecnico}>{tecnico}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
             <Select value={ordenacao} onValueChange={(value: "ATUALIZACAO_RECENTE" | "CADASTRO_RECENTE") => setOrdenacao(value)}>
               <SelectTrigger aria-label="Ordenar equipamentos" className="h-10 min-w-0 flex-1 lg:w-56 lg:flex-none">
                 <ArrowDownUp className="h-4 w-4 mr-2" /><SelectValue />

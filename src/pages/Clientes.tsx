@@ -505,6 +505,7 @@ export default function Clientes() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [painelAoLado, primeiroCliente?.id]);
   const clienteAberto = clientesExibidos.find((c) => c.id === contatosExpandido) ?? null;
+  const cadastrados = (n: number) => `${n} ${n === 1 ? "cadastrado" : "cadastrados"}`;
   const contagemFiltro = (valor: FiltroClientes) => {
     if (!contagem) return undefined;
     const porFiltro: Record<FiltroClientes, number> = { TODOS: contagem.todos, EMPRESAS: contagem.empresas, PESSOAS: contagem.pessoas, COM_OS_ABERTA: contagem.comOsAberta, PORTAL_ATIVO: contagem.portalAtivo };
@@ -521,7 +522,7 @@ export default function Clientes() {
       {/* Header */}
       <PageHeader
         titulo="Clientes"
-        descricao={contagem ? `${contagem.todos} cadastrados · ${contagem.comOsAberta} com OS aberta` : loading ? "Carregando…" : `${totalClientes} cadastrados`}
+        descricao={contagem ? `${cadastrados(contagem.todos)} · ${contagem.comOsAberta} com OS aberta` : loading ? "Carregando…" : cadastrados(totalClientes)}
       >
         <Button variant="outline" onClick={() => void abrirRegularizacaoLegados()}>
           Regularizar cadastros

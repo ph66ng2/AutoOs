@@ -462,6 +462,19 @@ pub struct EquipamentoRow {
     pub resposta_cliente_situacao: Option<String>,
     pub criado_em: Option<String>,
     pub atualizado_em: Option<String>,
+    /// Técnico da verificação mais recente (vem do EQUIPAMENTO_SELECT; ausente em SELECTs próprios).
+    #[sqlx(default)]
+    pub tecnico_nome: Option<String>,
+    /// Ordem deste atendimento entre os registros com o mesmo número de série (1 = primeiro).
+    #[sqlx(default)]
+    pub ciclo_serial: Option<i32>,
+}
+
+/// Quantos equipamentos há em cada status, já com busca e técnico aplicados.
+#[derive(Debug, Serialize, FromRow)]
+pub struct ContagemStatusRow {
+    pub status: String,
+    pub total: i64,
 }
 
 #[derive(Debug, Serialize, FromRow)]
@@ -767,7 +780,21 @@ pub const EQUIPAMENTO_SELECT: &str = "
                 ORDER BY r.id DESC
                 LIMIT 1
            ) END AS resposta_cliente_situacao,
-           criado_em::TEXT as criado_em, atualizado_em::TEXT as atualizado_em
+           criado_em::TEXT as criado_em, atualizado_em::TEXT as atualizado_em,
+           (
+               SELECT NULLIF(TRIM(v.tecnico_nome), '')
+                 FROM verificacoes v
+                WHERE v.equipamento_id = equipamentos.id
+                ORDER BY v.id DESC
+                LIMIT 1
+           ) AS tecnico_nome,
+           (
+               SELECT COUNT(*)::INT4
+                 FROM equipamentos ciclo
+                WHERE ciclo.empresa_id IS NOT DISTINCT FROM equipamentos.empresa_id
+                  AND ciclo.serial_number = equipamentos.serial_number
+                  AND ciclo.id <= equipamentos.id
+           ) AS ciclo_serial
     FROM equipamentos";
 
     pub const EQUIPAMENTO_IMAGEM_SELECT: &str = "
