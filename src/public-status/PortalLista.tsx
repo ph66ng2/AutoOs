@@ -56,7 +56,7 @@ export default function PortalLista({ session, onExpirou }: Props) {
   const aguardando = atuais.filter((item) => item.aguardaResposta).length;
 
   return (
-    <section className="status-card" aria-live="polite">
+    <section className="status-card portal-pagina" aria-live="polite">
       <p className="eyebrow">Portal das Impressoras</p>
       <h1 className="portal-title">{data?.cliente ?? "Seus atendimentos"}</h1>
       {aguardando > 0 && data?.podeDecidir && (

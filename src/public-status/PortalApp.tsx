@@ -60,14 +60,17 @@ export default function PortalApp() {
 
   return (
     <main className="status-shell portal-shell">
-      <StatusBrand />
+      {/* Barra do topo (prancheta do Portal): marca à esquerda, quem está logado e Sair à direita. */}
+      <div className="portal-topbar">
+        <StatusBrand />
+        {session && (
+          <div className="portal-userbar">
+            <span>{session.contato}{session.acesso === "ACOMPANHAR" ? " · somente acompanhamento" : ""}</span>
+            <button className="secondary-button portal-sair" type="button" onClick={() => void sair()}>Sair</button>
+          </div>
+        )}
+      </div>
       <AvisoTeste />
-      {session && (
-        <div className="portal-userbar">
-          <span>{session.contato}{session.acesso === "ACOMPANHAR" ? " · somente acompanhamento" : ""}</span>
-          <button className="link-button" type="button" onClick={() => void sair()}>Sair</button>
-        </div>
-      )}
 
       {!session && <PortalLogin aviso={aviso} onEntrou={entrou} />}
       {session && route.kind === "detalhe" && <PortalDetalhe session={session} equipamentoId={route.id} onExpirou={expirou} />}
