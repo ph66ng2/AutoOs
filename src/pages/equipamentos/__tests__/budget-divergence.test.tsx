@@ -979,7 +979,7 @@ describe("Equipamentos — Budget Divergence & Audit", () => {
     expect(opener.contains(screen.getByTestId("action-enviar_orcamento"))).toBe(false);
     const cells = row!.querySelectorAll("td");
     expect(cells[0].className).toContain("group-has-[.equipment-row-open:focus-visible]:after:border-l-[3px]");
-    expect(cells[0].className).toContain("after:border-[#1d4ed8]");
+    expect(cells[0].className).toContain("after:border-ring");
     expect(cells[0].className).toContain("focus-visible");
     expect(cells[0].classList.contains("relative")).toBe(true);
     expect(cells[1].className).toContain("after:border-y-[3px]");

@@ -2,10 +2,9 @@ import { useId, useState } from "react";
 import { ChevronDown } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { formatDateTimeSalvador } from "@/lib/date-utils";
-import { FAMILIA_CLASSES, statusFamilia } from "@/lib/status-familia";
+import { statusFamilia } from "@/lib/status-familia";
+import { ItemLinhaDoTempo } from "@/components/detalhe/LinhaDoTempo";
 import { STATUS_LABELS, type EquipamentoHistoricoEvento, type StatusEquipamento } from "@/types";
-
-const ICONE = 28; // px; a linha passa pelo centro (ICONE / 2)
 
 function rotulo(status?: string) {
   return status ? STATUS_LABELS[status as StatusEquipamento] ?? status : "";
@@ -39,26 +38,7 @@ export function HistoricoOs({ eventos }: { eventos: EquipamentoHistoricoEvento[]
         const data = ev.data_confiavel !== false ? formatDateTimeSalvador(ev.data) : "Horário legado inconsistente";
         const titulo = ev.status_anterior ? `${rotulo(ev.status_anterior)} → ${rotulo(ev.status)}` : rotulo(ev.status);
         return (
-          <li key={`${ev.data}-${ev.status}-${indice}`} className={cn("relative flex gap-3", !ultimo && "pb-4")}>
-            {!ultimo && (
-              <span
-                aria-hidden="true"
-                className="absolute w-0.5 bg-border"
-                style={{ left: ICONE / 2 - 1, top: ICONE / 2, height: "100%" }}
-              />
-            )}
-            <span
-              aria-hidden="true"
-              className={cn(
-                "relative z-10 flex shrink-0 items-center justify-center rounded-full",
-                FAMILIA_CLASSES[statusFamilia(ev.status)],
-                ultimo && "ring-2 ring-primary ring-offset-2 ring-offset-card",
-              )}
-              style={{ width: ICONE, height: ICONE }}
-            >
-              <span className="h-2 w-2 rounded-full bg-current" />
-            </span>
-            <div className="min-w-0 flex-1">
+          <ItemLinhaDoTempo key={`${ev.data}-${ev.status}-${indice}`} familia={statusFamilia(ev.status)} ultimo={ultimo}>
               <button
                 type="button"
                 aria-expanded={aberto}
@@ -85,8 +65,7 @@ export function HistoricoOs({ eventos }: { eventos: EquipamentoHistoricoEvento[]
                   {ev.autor && <p className="text-xs text-muted-foreground">Registrado por {ev.autor}</p>}
                 </div>
               </div>
-            </div>
-          </li>
+          </ItemLinhaDoTempo>
         );
       })}
     </ol>

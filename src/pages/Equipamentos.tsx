@@ -212,6 +212,8 @@ import { useLarguraMinima } from "@/hooks/useLarguraMinima";
 import { BarraDeEtapas } from "@/components/equipamentos/BarraDeEtapas";
 import { FiltroDeStatus } from "@/components/equipamentos/FiltroDeStatus";
 import { BarraDeEtapasGrande } from "@/components/equipamentos/BarraDeEtapasGrande";
+import { OrcamentoDaOs } from "@/components/equipamentos/OrcamentoDaOs";
+import { CartaoCliente } from "@/components/detalhe/CartaoCliente";
 import { HistoricoOs } from "@/components/equipamentos/HistoricoOs";
 
 // O anel é a borda de um ::after dentro da célula. O box-shadow fica por baixo
@@ -220,7 +222,7 @@ import { HistoricoOs } from "@/components/equipamentos/HistoricoOs";
 // :focus-visible do botão .equipment-row-open, então o clique do mouse não
 // acende e os botões de Ações continuam fora de um role=button.
 const EQUIPMENT_ROW_FOCUS_RING =
-  "border-b group-has-[.equipment-row-open:focus-visible]:z-[30] group-has-[.equipment-row-open:focus-visible]:bg-status-work-bg group-has-[.equipment-row-open:focus-visible]:after:pointer-events-none group-has-[.equipment-row-open:focus-visible]:after:absolute group-has-[.equipment-row-open:focus-visible]:after:inset-0 group-has-[.equipment-row-open:focus-visible]:after:z-[1] group-has-[.equipment-row-open:focus-visible]:after:border-y-[3px] group-has-[.equipment-row-open:focus-visible]:after:border-[#1d4ed8] group-has-[.equipment-row-open:focus-visible]:after:content-['']";
+  "border-b group-has-[.equipment-row-open:focus-visible]:z-[30] group-has-[.equipment-row-open:focus-visible]:bg-status-work-bg group-has-[.equipment-row-open:focus-visible]:after:pointer-events-none group-has-[.equipment-row-open:focus-visible]:after:absolute group-has-[.equipment-row-open:focus-visible]:after:inset-0 group-has-[.equipment-row-open:focus-visible]:after:z-[1] group-has-[.equipment-row-open:focus-visible]:after:border-y-[3px] group-has-[.equipment-row-open:focus-visible]:after:border-ring group-has-[.equipment-row-open:focus-visible]:after:content-['']";
 const EQUIPMENT_ROW_FOCUS_EDGE = `relative ${EQUIPMENT_ROW_FOCUS_RING}`;
 const EQUIPMENT_ROW_FOCUS_FIRST = `relative ${EQUIPMENT_ROW_FOCUS_RING} group-has-[.equipment-row-open:focus-visible]:after:border-l-[3px]`;
 const EQUIPMENT_ROW_FOCUS_LAST = `${EQUIPMENT_ROW_FOCUS_RING} group-has-[.equipment-row-open:focus-visible]:after:border-r-[3px]`;
@@ -2961,7 +2963,7 @@ export default function Equipamentos() {
 
             <Card className="rounded-2xl">
               <CardContent className="p-5">
-                <BarraDeEtapasGrande status={selecionado.status} />
+                <BarraDeEtapasGrande status={selecionado.status} historico={historicoDetalhes} />
               </CardContent>
             </Card>
 
@@ -2991,23 +2993,10 @@ export default function Equipamentos() {
                   </TabsList>
 
                   <TabsContent value="orcamento" className="mt-0 space-y-4 p-5">
-                    {selecionado.valor_orcamento != null ? (
-                      <div className="grid gap-3 sm:grid-cols-3">
-                        <div className="rounded-xl bg-muted p-3">
-                          <p className="text-xs text-muted-foreground">Valor do orçamento</p>
-                          <p className="mt-0.5 text-lg font-bold tabular-nums">{formatCurrency(selecionado.valor_orcamento)}</p>
-                        </div>
-                        <div className="rounded-xl bg-muted p-3">
-                          <p className="text-xs text-muted-foreground">Prazo de aprovação</p>
-                          <p className="mt-0.5 text-sm font-semibold">{selecionado.prazo_aprovacao ? formatDatePtBr(selecionado.prazo_aprovacao) : "—"}</p>
-                        </div>
-                        <div className="rounded-xl bg-muted p-3">
-                          <p className="text-xs text-muted-foreground">Valor final</p>
-                          <p className="mt-0.5 text-sm font-semibold tabular-nums">{selecionado.valor_final != null ? formatCurrency(selecionado.valor_final) : "—"}</p>
-                        </div>
-                      </div>
+                    {carregandoDetalhes ? (
+                      <div className="flex justify-center py-8"><div className="animate-spin rounded-full h-6 w-6 border-b-2 border-primary" /></div>
                     ) : (
-                      <p className="text-sm text-muted-foreground">O orçamento ainda não foi elaborado. Os serviços e peças aparecem na aba Verificação.</p>
+                      <OrcamentoDaOs equipamento={selecionado} verificacao={verificacaoDetalhes} />
                     )}
                     <DocumentosEquipamento equipamento={selecionado} />
                   </TabsContent>
@@ -3075,34 +3064,23 @@ export default function Equipamentos() {
               </Card>
 
               <div className="space-y-5">
-                <Card className="rounded-2xl">
-                  <CardContent className="space-y-3 p-5">
-                    <div className="flex items-center justify-between gap-2">
-                      <h2 className="text-base font-bold">Cliente</h2>
-                      <PortalClienteBotao />
-                    </div>
-                    {selecionado.cliente_nome ? (
-                      <div className="space-y-0.5 text-sm">
-                        <p className="font-semibold [overflow-wrap:anywhere]">{selecionado.cliente_nome}</p>
-                        {selecionado.cliente_telefone && <p className="text-muted-foreground">{selecionado.cliente_telefone}</p>}
-                        {selecionado.cliente_email && <p className="text-muted-foreground [overflow-wrap:anywhere]">{selecionado.cliente_email}</p>}
-                      </div>
-                    ) : (
-                      <p className="text-sm text-muted-foreground">Sem cliente vinculado.</p>
-                    )}
-                    {selecionado.responsavel_nome && (
-                      <div className="flex items-center gap-3 rounded-xl bg-muted p-3">
-                        <span aria-hidden="true" className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-acc-soft text-xs font-bold text-acc-soft-foreground">
-                          {selecionado.responsavel_nome.trim().split(/\s+/).slice(0, 2).map((parte) => parte[0]?.toUpperCase()).join("")}
-                        </span>
-                        <div className="min-w-0 text-sm">
-                          <p className="font-semibold [overflow-wrap:anywhere]">{selecionado.responsavel_nome}</p>
-                          <p className="text-xs text-muted-foreground">Contato responsável</p>
-                        </div>
-                      </div>
-                    )}
-                  </CardContent>
-                </Card>
+                <CartaoCliente
+                  dados={{
+                    nome: selecionado.cliente_nome,
+                    documento: selecionado.cliente_documento,
+                    email: selecionado.cliente_email,
+                    telefone: selecionado.cliente_telefone,
+                    contato: selecionado.responsavel_nome
+                      ? {
+                          nome: selecionado.responsavel_nome,
+                          papel: "Contato responsável",
+                          email: selecionado.responsavel_email,
+                          telefone: selecionado.responsavel_telefone,
+                        }
+                      : null,
+                  }}
+                  rodape={<div className="flex justify-end"><PortalClienteBotao /></div>}
+                />
 
                 <Card className="rounded-2xl">
                   <CardContent className="space-y-3 p-5">
