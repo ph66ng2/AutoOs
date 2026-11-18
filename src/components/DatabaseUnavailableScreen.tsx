@@ -1,13 +1,21 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { CloudOff, Loader2, RefreshCw, ServerCrash, Settings2, Wrench } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { Check, ChevronDown, CloudOff, Copy, KeyRound, Server } from "lucide-react";
+import { toast } from "sonner";
 import { DatabaseConfigDialog } from "@/components/DatabaseConfigDialog";
+import {
+  ConnectionIcon,
+  ConnectionShell,
+  ConnectionSpinner,
+  cxButton,
+  type ConnectionTone,
+} from "@/components/database-connection-shell";
 import {
   DatabaseConfigService,
   isTransientDatabaseError,
   type DatabaseErrorKind,
   type DatabaseInitError,
 } from "@/lib/db-config";
+import { versaoDoApp } from "@/lib/error-utils";
 
 /** Espera entre tentativas automáticas, em segundos; a última se repete. */
 export const RECONNECT_DELAYS_SECONDS = [5, 10, 20, 30];
@@ -20,36 +28,60 @@ export function reconnectDelaySeconds(attempt: number, tipo: DatabaseErrorKind):
   return tipo === "capacidade" ? Math.max(delay, CAPACITY_MIN_DELAY_SECONDS) : delay;
 }
 
-const COPY: Record<DatabaseErrorKind, { title: string; description: string }> = {
+type FailureKind = Exclude<DatabaseErrorKind, "nao_configurado">;
+
+const COPY: Record<FailureKind, { title: string; description: string }> = {
   rede: {
     title: "Sem conexão com o servidor",
-    description: "Verifique a internet deste computador. O AutoOS tenta conectar de novo sozinho.",
+    description: "Confira a internet deste computador. O AutoOS tenta de novo sozinho.",
   },
   capacidade: {
     title: "Servidor ocupado",
-    description: "O servidor atingiu o limite de conexões. O AutoOS tenta de novo em instantes.",
+    description: "Muitos computadores conectados agora. O AutoOS tenta de novo em instantes.",
   },
   desconhecido: {
     title: "Não foi possível abrir o AutoOS",
-    description: "O servidor não respondeu como esperado. O AutoOS tenta conectar de novo sozinho.",
+    description: "O servidor respondeu algo inesperado. O AutoOS tenta de novo sozinho.",
   },
   credencial: {
-    title: "A configuração do banco precisa de ajuste",
-    description: "O servidor recusou o acesso. Isso não se resolve sozinho: chame o administrador do sistema.",
+    title: "O banco precisa de ajuste",
+    description: "A senha ou o endereço salvo foi recusado. Chame o administrador.",
   },
   configuracao_invalida: {
-    title: "A configuração do banco precisa de ajuste",
-    description: "O endereço do banco salvo neste computador é inválido. Chame o administrador do sistema.",
+    title: "O banco precisa de ajuste",
+    description: "A senha ou o endereço salvo foi recusado. Chame o administrador.",
   },
   incompativel: {
-    title: "Banco incompatível com esta versão",
-    description: "Esta versão do AutoOS não reconhece o banco configurado. Chame o administrador do sistema.",
-  },
-  nao_configurado: {
-    title: "Banco não configurado",
-    description: "Este computador ainda não tem um banco configurado.",
+    title: "Banco de outra versão",
+    description: "Este AutoOS e o banco estão em versões diferentes. Chame o administrador para atualizar.",
   },
 };
+
+function copyFor(tipo: DatabaseErrorKind) {
+  return tipo === "nao_configurado" ? COPY.desconhecido : COPY[tipo];
+}
+
+function StateIcon({ tipo }: { tipo: DatabaseErrorKind }) {
+  const tone: ConnectionTone = isTransientDatabaseError(tipo) ? "wait" : "bad";
+  const Icon = tipo === "rede" ? CloudOff : tone === "wait" ? Server : KeyRound;
+  return (
+    <ConnectionIcon tone={tone}>
+      <Icon className="h-[30px] w-[30px]" strokeWidth={2} />
+    </ConnectionIcon>
+  );
+}
+
+/** Texto que o funcionário cola na conversa com o suporte. */
+export function supportDetailsText(error: DatabaseInitError, now: Date = new Date(), versao = versaoDoApp()): string {
+  const copy = copyFor(error.tipo);
+  return [
+    `AutoOS: ${copy.title}`,
+    `Detalhe: ${error.mensagem}`,
+    `Tipo: ${error.tipo}`,
+    `Versão: ${versao ?? "desconhecida"}`,
+    `Hora: ${now.toLocaleString("pt-BR")}`,
+  ].join("\n");
+}
 
 interface DatabaseUnavailableScreenProps {
   initialError: DatabaseInitError;
@@ -61,6 +93,7 @@ export function DatabaseUnavailableScreen({ initialError, onConnected, onOpenAdv
   const [error, setError] = useState(initialError);
   const [reconnecting, setReconnecting] = useState(false);
   const [secondsLeft, setSecondsLeft] = useState<number | null>(null);
+  const [detailsOpen, setDetailsOpen] = useState(false);
   const attemptRef = useRef(0);
   const reconnectingRef = useRef(false);
 
@@ -101,6 +134,19 @@ export function DatabaseUnavailableScreen({ initialError, onConnected, onOpenAdv
     }
   }, [onConnected, scheduleNext]);
 
+  const copyDetails = useCallback(async () => {
+    try {
+      await navigator.clipboard.writeText(supportDetailsText(error));
+      toast("Detalhes copiados", {
+        description: "Cole na conversa com o suporte.",
+        icon: <Check className="h-4 w-4 text-[var(--cx-ok,#3d7a55)]" aria-hidden="true" />,
+      });
+    } catch {
+      toast.error("Não foi possível copiar", { description: "Abra \"Detalhes para o suporte\" e copie o texto à mão." });
+      setDetailsOpen(true);
+    }
+  }, [error]);
+
   useEffect(() => {
     attemptRef.current = 0;
     scheduleNext(initialError.tipo);
@@ -116,64 +162,91 @@ export function DatabaseUnavailableScreen({ initialError, onConnected, onOpenAdv
     return () => window.clearTimeout(timer);
   }, [secondsLeft, reconnect]);
 
-  const copy = COPY[error.tipo] ?? COPY.desconhecido;
-  const Icon = automatic ? (error.tipo === "rede" ? CloudOff : ServerCrash) : Wrench;
+  const copy = copyFor(error.tipo);
+
+  const retryButton = (
+    <button
+      type="button"
+      className={`${automatic ? cxButton.primary : cxButton.secondary} ${cxButton.focus}`}
+      onClick={() => void reconnect()}
+      disabled={reconnecting}
+      aria-busy={reconnecting}
+    >
+      {reconnecting ? (
+        <>
+          <ConnectionSpinner />
+          Conectando...
+        </>
+      ) : (
+        "Tentar novamente"
+      )}
+    </button>
+  );
 
   return (
-    <div className="fixed inset-0 z-[9998] flex items-center justify-center bg-gradient-to-br from-slate-950 via-slate-900 to-slate-800 px-4">
-      <div className="w-full max-w-md space-y-6" role="alert" aria-live="polite">
-        <div className="space-y-2 text-center">
-          <div className="inline-flex h-14 w-14 items-center justify-center rounded-2xl border border-amber-500/20 bg-amber-500/10">
-            <Icon className="h-7 w-7 text-amber-400" />
-          </div>
-          <h1 className="text-2xl font-bold tracking-tight text-white">{copy.title}</h1>
-          <p className="text-sm text-slate-400">{copy.description}</p>
-        </div>
+    <ConnectionShell
+      footer={
+        <button
+          type="button"
+          className={`text-xs font-semibold text-[var(--cx-muted)] hover:text-[var(--cx-ink)] ${cxButton.focus}`}
+          onClick={onOpenAdvanced}
+        >
+          Configuração avançada
+        </button>
+      }
+    >
+      <div role="alert" aria-live="assertive" className="flex w-full max-w-[480px] flex-col items-center gap-4 text-center">
+        <StateIcon tipo={error.tipo} />
+        <h1 className="mt-2 text-2xl font-bold tracking-[-0.01em] [text-wrap:balance]">{copy.title}</h1>
+        <p className="m-0 max-w-[40ch] text-[15px] text-[var(--cx-muted)] [text-wrap:pretty]">{copy.description}</p>
 
-        <div className="space-y-4 rounded-2xl border border-white/10 bg-white/[0.03] p-6">
-          <p className="rounded-xl border border-white/10 bg-black/20 p-3 text-xs text-slate-300">
-            <span className="font-medium text-slate-200">Detalhe: </span>
-            {error.mensagem}
-          </p>
-
-          <Button
-            size="lg"
-            className="h-11 w-full bg-cyan-500 font-semibold text-slate-950 hover:bg-cyan-400"
-            onClick={() => void reconnect()}
-            disabled={reconnecting}
-          >
-            {reconnecting ? (
-              <>
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                Conectando...
-              </>
-            ) : (
-              <>
-                <RefreshCw className="mr-2 h-4 w-4" />
-                Tentar novamente
-              </>
-            )}
-          </Button>
-
-          {!reconnecting && secondsLeft !== null && (
-            <p className="text-center text-xs text-slate-400" data-testid="reconnect-countdown">
-              Nova tentativa automática em {secondsLeft} s
-            </p>
+        <div className="mt-2 flex flex-wrap justify-center gap-2">
+          {automatic ? (
+            retryButton
+          ) : (
+            <>
+              <button type="button" className={`${cxButton.primary} ${cxButton.focus}`} onClick={() => void copyDetails()}>
+                <Copy className="h-4 w-4" aria-hidden="true" />
+                Copiar detalhes para o suporte
+              </button>
+              {retryButton}
+            </>
           )}
         </div>
 
-        <div className="text-center">
+        {automatic && (
+          <span
+            role="timer"
+            aria-live="off"
+            data-testid={!reconnecting && secondsLeft !== null ? "reconnect-countdown" : undefined}
+            className="min-h-[19px] text-[13px] tabular-nums text-[var(--cx-muted)]"
+          >
+            {!reconnecting && secondsLeft !== null ? `Nova tentativa em ${secondsLeft} s` : "·"}
+          </span>
+        )}
+
+        <div className="w-full border-t border-[var(--cx-line-soft)] pt-4 text-left">
           <button
             type="button"
-            className="inline-flex items-center gap-1.5 text-xs text-slate-500 underline-offset-4 hover:text-slate-300 hover:underline"
-            onClick={onOpenAdvanced}
+            className={`${cxButton.link} h-8 ${cxButton.focus}`}
+            aria-expanded={detailsOpen}
+            aria-controls="detalhes-suporte"
+            onClick={() => setDetailsOpen((open) => !open)}
           >
-            <Settings2 className="h-3.5 w-3.5" />
-            Configuração avançada (suporte)
+            Detalhes para o suporte
+            <ChevronDown
+              className={`h-3.5 w-3.5 transition-transform motion-reduce:transition-none ${detailsOpen ? "rotate-180" : ""}`}
+              aria-hidden="true"
+            />
           </button>
+          {detailsOpen && (
+            <div id="detalhes-suporte" className="mt-2 rounded-xl bg-[var(--cx-sunken)] px-3.5 py-3">
+              <code className="block break-words font-mono text-xs leading-normal text-[var(--cx-muted)]">{error.mensagem}</code>
+            </div>
+          )}
         </div>
       </div>
-    </div>
+    </ConnectionShell>
   );
 }
 

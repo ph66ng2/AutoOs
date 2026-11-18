@@ -5,6 +5,7 @@ import {
   DatabaseFallback,
   DatabaseUnavailableScreen,
   reconnectDelaySeconds,
+  supportDetailsText,
 } from "./DatabaseUnavailableScreen";
 import { DatabaseConfigService, type DatabaseInitError } from "@/lib/db-config";
 
@@ -34,8 +35,7 @@ describe("DatabaseUnavailableScreen", () => {
     render(<DatabaseUnavailableScreen initialError={redeError} onConnected={onConnected} onOpenAdvanced={vi.fn()} />);
 
     expect(screen.getByText("Sem conexão com o servidor")).toBeInTheDocument();
-    expect(screen.getByText(/compatibilidade IPv4\/IPv6/)).toBeInTheDocument();
-    expect(screen.queryByLabelText("URL de Conexão PostgreSQL")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("URL do banco")).not.toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: "Tentar novamente" }));
 
@@ -59,6 +59,43 @@ describe("DatabaseUnavailableScreen", () => {
     expect(screen.getByTestId("reconnect-countdown")).toHaveTextContent("10 s");
   });
 
+  it("nos estados que pedem o administrador, copiar detalhes é a ação principal", async () => {
+    const user = userEvent.setup();
+    const writeText = vi.spyOn(navigator.clipboard, "writeText").mockResolvedValue(undefined);
+
+    render(
+      <DatabaseUnavailableScreen
+        initialError={{ tipo: "incompativel", mensagem: "A conexão foi aberta, mas o banco não é compatível." }}
+        onConnected={vi.fn()}
+        onOpenAdvanced={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByRole("heading", { name: "Banco de outra versão" })).toBeInTheDocument();
+    const [primeiro, segundo] = screen.getAllByRole("button").filter((b) => /copiar|tentar/i.test(b.textContent ?? ""));
+    expect(primeiro).toHaveTextContent("Copiar detalhes para o suporte");
+    expect(segundo).toHaveTextContent("Tentar novamente");
+
+    await user.click(primeiro);
+    await waitFor(() => expect(writeText).toHaveBeenCalledTimes(1));
+    expect(writeText.mock.calls[0][0]).toContain("Banco de outra versão");
+    expect(writeText.mock.calls[0][0]).toContain("não é compatível");
+  });
+
+  it("guarda o detalhe técnico recolhido até pedirem", async () => {
+    const user = userEvent.setup();
+
+    render(<DatabaseUnavailableScreen initialError={redeError} onConnected={vi.fn()} onOpenAdvanced={vi.fn()} />);
+
+    const toggle = screen.getByRole("button", { name: "Detalhes para o suporte" });
+    expect(toggle).toHaveAttribute("aria-expanded", "false");
+    expect(screen.queryByText(/compatibilidade IPv4\/IPv6/)).not.toBeInTheDocument();
+
+    await user.click(toggle);
+    expect(toggle).toHaveAttribute("aria-expanded", "true");
+    expect(screen.getByText(/compatibilidade IPv4\/IPv6/)).toBeInTheDocument();
+  });
+
   it("não tenta sozinho quando o erro exige ajuste de configuração", () => {
     vi.useFakeTimers();
     const reconnect = vi.spyOn(DatabaseConfigService, "reconnect");
@@ -80,6 +117,16 @@ describe("DatabaseUnavailableScreen", () => {
   });
 });
 
+describe("supportDetailsText", () => {
+  it("leva título, detalhe, versão e hora", () => {
+    const texto = supportDetailsText(redeError, new Date(2026, 10, 18, 9, 30), "0.6.3");
+    expect(texto).toContain("Sem conexão com o servidor");
+    expect(texto).toContain(redeError.mensagem);
+    expect(texto).toContain("Versão: 0.6.3");
+    expect(texto).toContain("18/11/2026");
+  });
+});
+
 describe("DatabaseFallback", () => {
   afterEach(() => vi.restoreAllMocks());
 
@@ -91,7 +138,7 @@ describe("DatabaseFallback", () => {
 
     render(<DatabaseFallback onConnected={vi.fn()} />);
 
-    expect(await screen.findByLabelText("URL de Conexão PostgreSQL")).toBeInTheDocument();
+    expect(await screen.findByLabelText("URL do banco")).toBeInTheDocument();
   });
 
   it("esconde o formulário atrás da configuração avançada quando o servidor caiu", async () => {
@@ -102,10 +149,10 @@ describe("DatabaseFallback", () => {
     render(<DatabaseFallback onConnected={vi.fn()} />);
 
     expect(await screen.findByText("Sem conexão com o servidor")).toBeInTheDocument();
-    expect(screen.queryByLabelText("URL de Conexão PostgreSQL")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("URL do banco")).not.toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: /configuração avançada/i }));
-    expect(await screen.findByLabelText("URL de Conexão PostgreSQL")).toBeInTheDocument();
+    expect(await screen.findByLabelText("URL do banco")).toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: /voltar e tentar/i }));
     expect(await screen.findByText("Sem conexão com o servidor")).toBeInTheDocument();
