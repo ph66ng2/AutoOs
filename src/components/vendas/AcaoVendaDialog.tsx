@@ -356,9 +356,7 @@ export function AcaoVendaDialog({ acao, vendaId, venda, voltarPara, onFechar, on
             <DialogContent tamanho="m">
               <DialogHeader>
                 <DialogTitle>Aprovar {numero}</DialogTitle>
-                <DialogDescription>
-                  O cliente aceitou. {detalhe.itens.length === 1 ? "O item sai" : `Os ${detalhe.itens.length} itens saem`} do estoque agora, todos de uma vez.
-                </DialogDescription>
+                <DialogDescription className="sr-only">Escolha a forma de pagamento para aprovar.</DialogDescription>
               </DialogHeader>
               <dl className="grid grid-cols-[4.5rem_1fr] gap-x-3 gap-y-1.5 rounded-xl bg-muted px-4 py-3 text-sm">
                 <dt className="text-muted-foreground">Cliente</dt>
@@ -434,7 +432,7 @@ export function AcaoVendaDialog({ acao, vendaId, venda, voltarPara, onFechar, on
             <DialogContent tamanho="m">
               <DialogHeader>
                 <DialogTitle>Cancelar {numero} aprovado</DialogTitle>
-                <DialogDescription>Os itens voltam ao estoque. O orçamento fica cancelado e não pode ser reaberto.</DialogDescription>
+                <DialogDescription className="sr-only">Confirme a devolução dos itens ao estoque.</DialogDescription>
               </DialogHeader>
               <dl className="grid grid-cols-[7.5rem_1fr] gap-x-3 rounded-xl bg-muted px-4 py-3 text-sm">
                 <dt className="text-muted-foreground">Volta ao estoque</dt>
