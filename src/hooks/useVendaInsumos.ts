@@ -31,3 +31,11 @@ export function useVendaInsumos(id: number | null) {
 
   return { venda, loading, error, recarregar: carregar };
 }
+
+/**
+ * Busca a versão atual de um orçamento, para os modais de ação (AcaoVendaDialog): cada ação
+ * parte do que está no banco agora, não de uma cópia que outra estação pode ter mudado.
+ */
+export function useBuscarVendaInsumos() {
+  return useCallback((id: number) => db.obterOrcamentoInsumos(id), []);
+}

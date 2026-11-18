@@ -172,7 +172,6 @@ function VisaoGeral({
       <Card>
         <CardHeader>
           <CardTitle className="text-base">O que você pode fazer</CardTitle>
-          <CardDescription>Precisa de algo bloqueado? Fale com o administrador da equipe.</CardDescription>
         </CardHeader>
         <CardContent>
           <ul className="grid gap-2.5 sm:grid-cols-2">
@@ -338,7 +337,6 @@ function SonsDaInterface() {
       />
       <div className="space-y-1">
         <Label htmlFor="perfil-sons">Sons da interface</Label>
-        <p className="text-sm text-muted-foreground">Cliques e avisos curtos nas animações do primeiro acesso. Vale para este computador.</p>
       </div>
     </div>
   );
@@ -427,7 +425,6 @@ function Tutorial({ profile, permissions }: { profile: SecurityProfile; permissi
         <CardContent className="flex flex-col gap-4 p-6 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <h2 className="font-semibold">Tour completo</h2>
-            <p className="mt-1 text-sm text-muted-foreground">Passa pelas telas liberadas para o seu perfil. Cerca de 2 minutos.</p>
           </div>
           <Button type="button" onClick={() => openTour("completo")}>
             <Sparkles className="mr-2 h-4 w-4" /> Ver tour

@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { Check, ChevronLeft, Loader2 } from "lucide-react";
+import { Selo } from "@/components/detalhe/Selo";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { useSensitiveAccess } from "@/hooks/useSensitiveAccess";
@@ -18,10 +19,6 @@ function dataHora(valor?: string | null): string {
   const dia = instante.toLocaleDateString("pt-BR", { ...opcoes, day: "2-digit", month: "2-digit" });
   const hora = instante.toLocaleTimeString("pt-BR", { ...opcoes, hour: "2-digit", minute: "2-digit" });
   return `${dia} ${hora}`;
-}
-
-function Selo({ children, className }: { children: React.ReactNode; className: string }) {
-  return <span className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-xs font-bold ${className}`}>{children}</span>;
 }
 
 /**
@@ -131,11 +128,8 @@ export function VendaRetirada({
         {voltar}
         <div className="flex flex-wrap items-center gap-3">
           <h1 className="text-2xl font-bold tracking-tight">{venda.cliente_nome}</h1>
-          <Selo className="border-transparent bg-acc-soft text-acc-soft-foreground">Insumos</Selo>
-          <Selo className={STATUS_ORCAMENTO_INSUMOS_COR[venda.status]}>
-            <span aria-hidden="true" className="h-[7px] w-[7px] rounded-full bg-current" />
-            {STATUS_ORCAMENTO_INSUMOS_LABEL[venda.status]}
-          </Selo>
+          <span className="inline-flex items-center rounded-full bg-acc-soft px-2.5 py-0.5 text-xs font-bold text-acc-soft-foreground">Insumos</span>
+          <Selo rotulo={STATUS_ORCAMENTO_INSUMOS_LABEL[venda.status]} classes={STATUS_ORCAMENTO_INSUMOS_COR[venda.status]} />
           <span className="font-mono text-sm text-muted-foreground">{venda.numero_exibicao}</span>
         </div>
 

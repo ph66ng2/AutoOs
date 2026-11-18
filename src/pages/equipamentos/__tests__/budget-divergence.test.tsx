@@ -697,6 +697,20 @@ describe("Equipamentos — Budget Divergence & Audit", () => {
     expect(equipamentoVerificado.status).toBe("EM_MANUTENCAO");
   });
 
+  it("Alterar Orçamento abre a página do ajuste, não uma janela", async () => {
+    equipamentoVerificado.status = "EM_MANUTENCAO";
+    mockBuscarVerificacao.mockResolvedValue(makeVerificacao());
+    render(<Equipamentos />);
+    await waitFor(() => expect(screen.getByTestId("action-alterar_orcamento")).toBeInTheDocument());
+    await act(async () => {
+      fireEvent.click(screen.getByTestId("action-alterar_orcamento"));
+    });
+    expect(await screen.findByRole("heading", { name: "Ajuste de orçamento" })).toBeInTheDocument();
+    expect(mockNavigate).toHaveBeenCalledWith(`/equipamentos/${equipamentoVerificado.id}/orcamento`);
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Serviços e peças" })).toBeInTheDocument();
+  });
+
   it("orçamento aprovado alterado: pergunta o que fazer e envia o modo escolhido", async () => {
     equipamentoVerificado.status = "APROVADO";
     mockBuscarVerificacao.mockResolvedValue(makeVerificacao());
@@ -979,7 +993,7 @@ describe("Equipamentos — Budget Divergence & Audit", () => {
     expect(opener.contains(screen.getByTestId("action-enviar_orcamento"))).toBe(false);
     const cells = row!.querySelectorAll("td");
     expect(cells[0].className).toContain("group-has-[.equipment-row-open:focus-visible]:after:border-l-[3px]");
-    expect(cells[0].className).toContain("after:border-[#1d4ed8]");
+    expect(cells[0].className).toContain("after:border-ring");
     expect(cells[0].className).toContain("focus-visible");
     expect(cells[0].classList.contains("relative")).toBe(true);
     expect(cells[1].className).toContain("after:border-y-[3px]");

@@ -6,7 +6,6 @@ import { Button } from "@/components/ui/button";
 import {
   Card,
   CardContent,
-  CardDescription,
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
@@ -194,9 +193,6 @@ export function TeamAccessManager({
               <CardTitle className="flex items-center gap-2">
                 <Users className="h-5 w-5 text-primary" /> Sua equipe
               </CardTitle>
-              <CardDescription className="mt-2">
-                Gerencie as pessoas e o acesso de cada uma.
-              </CardDescription>
             </div>
             <Badge variant="outline">
               {profiles.filter((profile) => profile.ativo).length} ativos
