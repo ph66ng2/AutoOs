@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
 import { Link, useInRouterContext } from "react-router-dom";
-import { KeyRound, Pencil, Plus, Search } from "lucide-react";
+import { KeyRound, Pencil, Plus, Search, UserCheck, UserX } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { EVENT_LABELS } from "@/lib/eventos-auditoria";
 import { formatDateTimeSalvador, parseDbTimestampUtc } from "@/lib/date-utils";
@@ -326,11 +326,18 @@ export function TeamAccessManager({
                       </p>
                     </div>
                     <Button
-                      variant="ghost"
+                      variant="outline"
                       size="sm"
-                      className={cn("h-11 shrink-0 px-2.5 md:h-8", profile.ativo ? "text-destructive" : "text-status-ok")}
+                      title={profile.ativo ? `Desativar o acesso de ${profile.nome}` : `Reativar o acesso de ${profile.nome}`}
+                      className={cn(
+                        "h-11 shrink-0 gap-1.5 rounded-lg px-3 text-xs font-semibold md:h-8",
+                        profile.ativo
+                          ? "border-destructive/30 text-destructive hover:border-destructive/50 hover:bg-destructive/10 hover:text-destructive"
+                          : "border-status-ok/30 text-status-ok hover:bg-status-ok-bg hover:text-status-ok",
+                      )}
                       onClick={() => open(profile, profile.ativo ? "deactivate" : "reactivate")}
                     >
+                      {profile.ativo ? <UserX className="h-3.5 w-3.5" aria-hidden="true" /> : <UserCheck className="h-3.5 w-3.5" aria-hidden="true" />}
                       {profile.ativo ? "Desativar" : "Reativar"}
                     </Button>
                   </div>

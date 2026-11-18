@@ -12,6 +12,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { ProfileAvatar } from "@/components/perfil/ProfileAvatar";
 import { cn } from "@/lib/utils";
+import { getAppMode, setAppMode, type AppMode } from "@/lib/app-mode";
 import { needsFirstAccessHere, profileAppearance } from "@/lib/profile-appearance";
 import { securityRoleLabel } from "@/lib/security-profile-labels";
 import { erroPinNovo } from "@/lib/pin-rules";
@@ -135,6 +136,8 @@ export function ProfileSessionDialog({
   // Cada erro novo faz tremer o cadeado de roletes (criar PIN) ou o campo do PIN (entrar).
   const [pinKeys, setPinKeys] = useState(0);
   const [errorShakes, setErrorShakes] = useState(0);
+  /** Só no login: em qual modo este computador entra (a mesma preferência de Perfil › Modo). */
+  const [modoEntrada, setModoEntrada] = useState<AppMode>(() => getAppMode() ?? "standard");
   const previousError = useRef(error);
   useEffect(() => {
     if (error && error !== previousError.current && shouldAskForPin) setErrorShakes((n) => n + 1);
@@ -163,6 +166,7 @@ export function ProfileSessionDialog({
       onFirstAccess!(selectedProfile.id, false, avatar ? { avatar, dialog: avatar.closest<HTMLElement>("[role='dialog']") } : undefined);
       return;
     }
+    if (mode === "startup" && modoEntrada !== getAppMode()) setAppMode(modoEntrada);
     onSubmit();
   };
 
@@ -280,7 +284,7 @@ export function ProfileSessionDialog({
                       <span
                         data-profile-avatar={profile.id}
                         className="flex rounded-[28px] transition-shadow"
-                        style={isSelected && !neverSetUp ? { boxShadow: `0 0 0 3px hsl(var(--background)), 0 0 0 6px ${look.color}` } : undefined}
+
                       >
                         <ProfileAvatar icon={look.icon} color={look.color} size="lg" pending={neverSetUp} />
                       </span>
@@ -376,6 +380,30 @@ export function ProfileSessionDialog({
                 )}
 
                 {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
+
+                {mode === "startup" && !canStartFirstAccess && !isAdminWithoutPin && (
+                  <div className="w-full text-left">
+                    <p id="modo-entrada-rotulo" className="mb-2 text-sm text-muted-foreground">Entrar no</p>
+                    <div role="radiogroup" aria-labelledby="modo-entrada-rotulo" className="grid grid-cols-2 gap-1 rounded-xl bg-muted p-1">
+                      {([["standard", "Modo completo", "Todas as telas"], ["counter", "Balcão", "Tela de toque"]] as const).map(([valor, rotulo, detalhe]) => (
+                        <button
+                          key={valor}
+                          type="button"
+                          role="radio"
+                          aria-checked={modoEntrada === valor}
+                          onClick={() => setModoEntrada(valor)}
+                          className={cn(
+                            "flex min-h-12 flex-col items-center justify-center rounded-lg px-3 py-1.5 text-sm font-semibold transition-colors duration-rapida focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                            modoEntrada === valor ? "bg-card text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground",
+                          )}
+                        >
+                          {rotulo}
+                          <span className="text-xs font-normal text-muted-foreground">{detalhe}</span>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
 
                 <div className="flex w-full flex-col-reverse items-stretch justify-center gap-2 sm:flex-row">
                   {mode === "startup" ? (
