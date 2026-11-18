@@ -8,6 +8,7 @@ import { CartaoCliente } from "@/components/detalhe/CartaoCliente";
 import { LinhaDoTempoSimples } from "@/components/detalhe/LinhaDoTempo";
 import { Selo } from "@/components/detalhe/Selo";
 import { menuVenda } from "@/components/vendas/menu-venda";
+import { useLarguraMinima } from "@/hooks/useLarguraMinima";
 import { useSensitiveAccess } from "@/hooks/useSensitiveAccess";
 import { useVendaInsumos } from "@/hooks/useVendaInsumos";
 import { parseTimestampPostgres, todayLocalIsoDate } from "@/lib/date-utils";
@@ -20,7 +21,8 @@ import {
 } from "@/lib/orcamento-insumos";
 import type { StatusFamilia } from "@/lib/status-familia";
 import { cn, formatCurrency } from "@/lib/utils";
-import { OrcamentoInsumosDialog, type AcaoInicialOrcamentoInsumos } from "@/pages/insumos/OrcamentoInsumosDialog";
+import { AcaoVendaDialog } from "@/components/vendas/AcaoVendaDialog";
+import type { AcaoInicialOrcamentoInsumos } from "@/lib/orcamento-insumos";
 import { SENSITIVE_PERMISSIONS, type OrcamentoInsumosDetalhe, type StatusOrcamentoInsumos } from "@/types";
 
 const FUSO = { timeZone: "America/Bahia" } as const;
@@ -92,11 +94,12 @@ function etapasDaVenda(venda: OrcamentoInsumosDetalhe, vencido: boolean): EtapaD
       cor = "bg-primary";
       break;
     case "CANCELADO": {
-      // Aprovado e depois cancelado tem data de decisão; enviado tem data de envio.
-      const ultima = venda.decidido_em ? 2 : venda.enviado_em ? 1 : 0;
+      // Só a aprovação grava a forma de pagamento; sem ela, `decidido_em` é a data do cancelamento.
+      const aprovadoAntes = foiAprovadoAntes(venda);
+      const ultima = aprovadoAntes ? 2 : venda.enviado_em ? 1 : 0;
       atual = Math.min(ultima + 1, 3);
       rotulos[atual] = "Cancelado";
-      datas[atual] = null;
+      datas[atual] = aprovadoAntes ? null : venda.decidido_em ?? null;
       cor = "bg-status-neutral";
       break;
     }
@@ -109,7 +112,7 @@ function etapasDaVenda(venda: OrcamentoInsumosDetalhe, vencido: boolean): EtapaD
   }));
 }
 
-const BOTAO_ENTRADA = "h-9 shrink-0 bg-acc-soft font-semibold text-acc-soft-foreground hover:bg-acc-soft/70 hover:text-acc-soft-foreground";
+const BOTAO_ENTRADA = "h-11 md:h-9 shrink-0 bg-acc-soft font-semibold text-acc-soft-foreground hover:bg-acc-soft/70 hover:text-acc-soft-foreground";
 
 function textoFalta(item: OrcamentoInsumosDetalhe["itens"][number]): string {
   return `${item.descricao}: precisa de ${item.quantidade}, há ${Math.max(item.saldo_estoque ?? 0, 0)}`;
@@ -142,6 +145,14 @@ function Condicao({ rotulo, destaque, children }: { rotulo: string; destaque?: b
  * O que aconteceu na venda (decisão 25): as mesmas datas do antigo "Registro", sem
  * "Registrado por" (não existe). Cancelado não tem data própria no banco: não entra.
  */
+/**
+ * Cancelado que passou por Aprovado. O cancelamento também grava `decidido_em`, então só a
+ * forma de pagamento (gravada apenas na aprovação) diz que houve aprovação e baixa de estoque.
+ */
+function foiAprovadoAntes(venda: OrcamentoInsumosDetalhe): boolean {
+  return venda.status === "CANCELADO" && venda.forma_pagamento_codigo != null;
+}
+
 function eventosDaVenda(venda: OrcamentoInsumosDetalhe): { titulo: string; data: string; familia: StatusFamilia }[] {
   const eventos: { titulo: string; data: string; familia: StatusFamilia }[] = [];
   const empurrar = (titulo: string, valor: string | null | undefined, familia: StatusFamilia) => {
@@ -149,8 +160,9 @@ function eventosDaVenda(venda: OrcamentoInsumosDetalhe): { titulo: string; data:
   };
   empurrar("Criado", venda.criado_em, "neutral");
   empurrar("Enviado", venda.enviado_em, "wait");
-  // Decidido e depois cancelado foi aprovado antes de cancelar.
-  empurrar(venda.status === "REPROVADO" ? "Reprovado" : "Aprovado", venda.decidido_em, venda.status === "REPROVADO" ? "bad" : "ok");
+  if (venda.status === "REPROVADO") empurrar("Reprovado", venda.decidido_em, "bad");
+  else if (venda.status === "CANCELADO" && !foiAprovadoAntes(venda)) empurrar("Cancelado", venda.decidido_em, "neutral");
+  else empurrar("Aprovado", venda.decidido_em, "ok");
   empurrar("Entregue", venda.entregue_em, "ok");
   return eventos;
 }
@@ -163,8 +175,9 @@ export default function VendaDetalhe() {
   const { venda, loading, error, recarregar } = useVendaInsumos(vendaId);
   const { hasPermission } = useSensitiveAccess();
   const podeAgir = hasPermission(SENSITIVE_PERMISSIONS.FINANCIAL_ACTIONS);
+  // Abaixo de md (768px): itens em lista e ação fixa no rodapé (V.6).
+  const telaLarga = useLarguraMinima(768);
   const [acao, setAcao] = useState<AcaoInicialOrcamentoInsumos | null>(null);
-  const [janelaAberta, setJanelaAberta] = useState(false);
   /** Número do orçamento excluído: depois de excluir, recarregar dá "não encontrado". */
   const [excluido, setExcluido] = useState<string | null>(null);
 
@@ -175,14 +188,13 @@ export default function VendaDetalhe() {
       return;
     }
     setAcao(nova);
-    setJanelaAberta(true);
   }
 
   const voltar = (
     <button
       type="button"
       onClick={() => navigate("/vendas")}
-      className="inline-flex items-center gap-1 text-sm text-muted-foreground transition-colors duration-rapida hover:text-foreground"
+      className="inline-flex min-h-11 items-center gap-1 text-sm md:min-h-0 text-muted-foreground transition-colors duration-rapida hover:text-foreground"
     >
       <ChevronLeft className="h-4 w-4" aria-hidden="true" /> Vendas de insumos
     </button>
@@ -254,6 +266,29 @@ export default function VendaDetalhe() {
     ? formaPagamentoRotulo(venda.forma_pagamento_codigo, venda.forma_pagamento_detalhe)
     : "Definida na aprovação";
 
+  /** Ação principal + ⋯: no cabeçalho na tela larga; no celular, fixa no rodapé com alvos de 44px (V.6). */
+  const acoesDaVenda = (cheia: boolean) =>
+    menu.length > 0 || !principal.contorno || principal.destrutiva ? (
+      <ActionPriorityRow
+        acaoDaLinha
+        destaque
+        cheia={cheia}
+        menuTitulo={`${venda.numero_exibicao} · ${venda.cliente_nome ?? ""}`}
+        primary={{
+          id: `principal-${venda.id}`,
+          label: principal.rotulo,
+          onClick: () => abrir(principal.acao),
+          variant: principal.destrutiva || principal.contorno ? "outline" : "default",
+          className: principal.destrutiva ? "border-destructive/50 text-destructive hover:bg-destructive/10 hover:text-destructive" : undefined,
+        }}
+        overflow={menu}
+      />
+    ) : (
+      <Button variant="outline" className={cheia ? "h-11 w-full" : "h-10"} onClick={() => abrir(principal.acao)}>
+        {principal.rotulo}
+      </Button>
+    );
+
   return (
     <div className="space-y-4">
       {voltar}
@@ -263,25 +298,7 @@ export default function VendaDetalhe() {
           <SeloVenda status={venda.status} vencido={vencido} />
           <span className="truncate text-muted-foreground">{venda.cliente_nome}</span>
         </div>
-        {menu.length > 0 || !principal.contorno || principal.destrutiva ? (
-          <ActionPriorityRow
-            acaoDaLinha
-            destaque
-            menuTitulo={`${venda.numero_exibicao} · ${venda.cliente_nome ?? ""}`}
-            primary={{
-              id: `principal-${venda.id}`,
-              label: principal.rotulo,
-              onClick: () => abrir(principal.acao),
-              variant: principal.destrutiva || principal.contorno ? "outline" : "default",
-              className: principal.destrutiva ? "border-destructive/50 text-destructive hover:bg-destructive/10 hover:text-destructive" : undefined,
-            }}
-            overflow={menu}
-          />
-        ) : (
-          <Button variant="outline" className="h-10" onClick={() => abrir(principal.acao)}>
-            {principal.rotulo}
-          </Button>
-        )}
+        {telaLarga && acoesDaVenda(false)}
       </div>
 
       <section aria-label="Etapas do orçamento" className="rounded-2xl border bg-card px-5 py-4">
@@ -289,7 +306,7 @@ export default function VendaDetalhe() {
       </section>
 
       {/* As duas colunas terminam na mesma linha: o último cartão de cada uma estica. */}
-      <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_380px]">
+      <div className="grid grid-cols-[minmax(0,1fr)] gap-4 xl:grid-cols-[minmax(0,1fr)_380px]">
         <div className="flex min-w-0 flex-col gap-4">
           {!podeAgir && (
             <p className="flex items-start gap-2 rounded-xl bg-muted px-4 py-3 text-sm">
@@ -313,7 +330,7 @@ export default function VendaDetalhe() {
           )}
           {venda.status === "CANCELADO" && (
             <p className="rounded-xl bg-muted px-4 py-3 text-sm">
-              {venda.decidido_em ? "Cancelado depois de aprovado: os itens voltaram ao estoque. " : "Cancelado. "}
+              {foiAprovadoAntes(venda) ? "Cancelado depois de aprovado: os itens voltaram ao estoque. " : "Cancelado. "}
               Só dá para ver, gerar o PDF ou excluir de vez.
             </p>
           )}
@@ -334,7 +351,7 @@ export default function VendaDetalhe() {
                         Dar entrada no estoque
                       </Button>
                     )}
-                    <Button variant="outline" size="sm" className="h-9 bg-card" onClick={() => abrir("editar")}>
+                    <Button variant="outline" size="sm" className="h-11 bg-card md:h-9" onClick={() => abrir("editar")}>
                       Editar quantidades
                     </Button>
                   </div>
@@ -366,42 +383,64 @@ export default function VendaDetalhe() {
           <Cartao
             titulo="Itens"
             className={venda.observacoes ? undefined : "flex-1"}
-            acao={<span className="text-xs text-muted-foreground">nome e categoria congelados no orçamento{aberto ? " · saldo é o de agora" : ""}</span>}
           >
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b text-left text-xs text-muted-foreground">
-                    <th className="py-2 pr-3 font-medium">Item</th>
-                    <th className="py-2 pr-3 font-medium">Categoria</th>
-                    <th className="py-2 pr-3 text-right font-medium">Qtd.</th>
-                    <th className="py-2 pr-3 text-right font-medium">Unitário</th>
-                    <th className="py-2 pr-3 text-right font-medium">Total</th>
-                    {aberto && <th className="py-2 text-right font-medium">Saldo agora</th>}
-                  </tr>
-                </thead>
-                <tbody className="divide-y">
-                  {venda.itens.map((item) => {
-                    const saldo = item.saldo_estoque;
-                    const falta = saldo != null && saldo < item.quantidade ? item.quantidade - Math.max(saldo, 0) : 0;
-                    return (
-                      <tr key={item.id} className="h-12">
-                        <td className="py-2 pr-3 font-semibold">{item.descricao}</td>
-                        <td className="py-2 pr-3 text-muted-foreground">{item.categoria.toLowerCase()}</td>
-                        <td className="py-2 pr-3 text-right tabular-nums">{item.quantidade}</td>
-                        <td className="whitespace-nowrap py-2 pr-3 text-right tabular-nums">{formatCurrency(item.valor_unitario)}</td>
-                        <td className="whitespace-nowrap py-2 pr-3 text-right font-semibold tabular-nums">{formatCurrency(item.valor_total)}</td>
-                        {aberto && (
-                          <td className={cn("whitespace-nowrap py-2 text-right tabular-nums", falta > 0 ? "font-semibold text-status-wait" : "text-muted-foreground")}>
-                            {saldo == null ? "—" : falta > 0 ? `${saldo} · falta ${falta}` : saldo}
-                          </td>
-                        )}
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
+            {telaLarga ? (
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b text-left text-xs text-muted-foreground">
+                      <th className="py-2 pr-3 font-medium">Item</th>
+                      <th className="py-2 pr-3 font-medium">Categoria</th>
+                      <th className="py-2 pr-3 text-right font-medium">Qtd.</th>
+                      <th className="py-2 pr-3 text-right font-medium">Unitário</th>
+                      <th className="py-2 pr-3 text-right font-medium">Total</th>
+                      {aberto && <th className="py-2 text-right font-medium">Saldo agora</th>}
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y">
+                    {venda.itens.map((item) => {
+                      const saldo = item.saldo_estoque;
+                      const falta = saldo != null && saldo < item.quantidade ? item.quantidade - Math.max(saldo, 0) : 0;
+                      return (
+                        <tr key={item.id} className="h-12">
+                          <td className="py-2 pr-3 font-semibold">{item.descricao}</td>
+                          <td className="py-2 pr-3 text-muted-foreground">{item.categoria.toLowerCase()}</td>
+                          <td className="py-2 pr-3 text-right tabular-nums">{item.quantidade}</td>
+                          <td className="whitespace-nowrap py-2 pr-3 text-right tabular-nums">{formatCurrency(item.valor_unitario)}</td>
+                          <td className="whitespace-nowrap py-2 pr-3 text-right font-semibold tabular-nums">{formatCurrency(item.valor_total)}</td>
+                          {aberto && (
+                            <td className={cn("whitespace-nowrap py-2 text-right tabular-nums", falta > 0 ? "font-semibold text-status-wait" : "text-muted-foreground")}>
+                              {saldo == null ? "—" : falta > 0 ? `${saldo} · falta ${falta}` : saldo}
+                            </td>
+                          )}
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            ) : (
+              <ul className="divide-y">
+                {venda.itens.map((item) => {
+                  const saldo = item.saldo_estoque;
+                  const falta = saldo != null && saldo < item.quantidade ? item.quantidade - Math.max(saldo, 0) : 0;
+                  return (
+                    <li key={item.id} className="flex items-start justify-between gap-3 py-3 text-sm">
+                      <span className="min-w-0">
+                        <span className="block font-semibold [overflow-wrap:anywhere]">{item.descricao}</span>
+                        <span className="block text-xs tabular-nums text-muted-foreground">
+                          {item.quantidade} × {formatCurrency(item.valor_unitario)}
+                          {aberto && saldo != null && (
+                            <span className={cn(falta > 0 && "font-semibold text-status-wait")}> · saldo {saldo}{falta > 0 ? ` · falta ${falta}` : ""}</span>
+                          )}
+                        </span>
+                      </span>
+                      <span className="shrink-0 font-semibold tabular-nums">{formatCurrency(item.valor_total)}</span>
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
             <dl className="ml-auto mt-3 grid max-w-xs grid-cols-[1fr_auto] gap-x-6 gap-y-1.5 text-sm">
               <dt className="text-muted-foreground">Subtotal</dt>
               <dd className="text-right tabular-nums">{formatCurrency(venda.valor_subtotal)}</dd>
@@ -424,7 +463,7 @@ export default function VendaDetalhe() {
           )}
         </div>
 
-        <div className="flex flex-col gap-4">
+        <div className="flex min-w-0 flex-col gap-4">
           <CartaoCliente
             dados={{
               nome: venda.cliente_nome,
@@ -445,18 +484,18 @@ export default function VendaDetalhe() {
         </div>
       </div>
 
-      <OrcamentoInsumosDialog
-        open={janelaAberta}
-        onOpenChange={(aberta) => {
-          setJanelaAberta(aberta);
-          if (!aberta) void recarregar();
-        }}
-        orcamentoId={venda.id}
-        acaoInicial={acao}
-        onChanged={() => {
-          if (acao === "excluir") setExcluido(venda.numero_exibicao);
-          void recarregar();
-        }}
+      {!telaLarga && (
+        <div className="sticky bottom-0 z-20 -mx-4 -mb-4 border-t bg-card px-4 py-3">{acoesDaVenda(true)}</div>
+      )}
+
+      <AcaoVendaDialog
+        acao={acao}
+        vendaId={venda.id}
+        venda={venda}
+        voltarPara={`/vendas/${venda.id}`}
+        onFechar={() => setAcao(null)}
+        onAlterado={() => void recarregar()}
+        onExcluido={setExcluido}
       />
     </div>
   );

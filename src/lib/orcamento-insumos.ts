@@ -367,3 +367,16 @@ export function prazoOuData(
       return comData("criado", o.criado_em);
   }
 }
+
+/** Ação pedida na lista ou na página da venda: "editar" e "renovar" são a página do formulário; as outras abrem o modal (AcaoVendaDialog). */
+export type AcaoInicialOrcamentoInsumos =
+  | "pdf"
+  | "email"
+  | "whatsapp"
+  | "aprovar"
+  | "renovar"
+  | "editar"
+  | "reprovar"
+  | "cancelar"
+  | "entregar"
+  | "excluir";

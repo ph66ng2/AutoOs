@@ -221,7 +221,6 @@ export function TourController() {
               </span>
               <div className="flex-1">
                 <h2 id="tour-oferta-titulo" className="font-semibold">Conheça o AutoOS em 2 minutos</h2>
-                <p className="mt-1 text-sm text-muted-foreground">Um tour pelas telas liberadas para o seu perfil.</p>
               </div>
               <button type="button" aria-label="Fechar" onClick={() => void finish()} className="rounded-md p-1 text-muted-foreground hover:text-foreground">
                 <X className="h-4 w-4" />

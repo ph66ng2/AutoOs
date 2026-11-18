@@ -177,7 +177,7 @@ export function ContatoResponsavelSelector({
         <DialogContent tamanho="p">
           <DialogHeader>
             <DialogTitle>Novo contato do cliente</DialogTitle>
-            <DialogDescription>O contato será cadastrado como ativo e selecionado para este equipamento.</DialogDescription>
+            <DialogDescription className="sr-only">Cadastrar contato para este equipamento.</DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
             <p className="text-sm text-muted-foreground">Cadastre rapidamente um contato para {cliente ? cliente.nome || cliente.nome_fantasia || cliente.razao_social : "o cliente"}.</p>

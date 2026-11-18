@@ -134,6 +134,8 @@ function AppContent() {
             <Route path="/perfil" element={<Perfil />} />
             {/* Mesmo elemento com e sem :id: filtros e página da lista sobrevivem aos Detalhes da OS. */}
             <Route path="/equipamentos/:id?" element={<Equipamentos />} />
+            <Route path="/equipamentos/:id/orcamento" element={<Equipamentos />} />
+            <Route path="/equipamentos/:id/verificacao" element={<Equipamentos />} />
             <Route path="/clientes" element={<Clientes />} />
             <Route path="/clientes/:id/equipamentos" element={<ClienteEquipamentos />} />
             <Route path="/insumos" element={<Insumos />} />
