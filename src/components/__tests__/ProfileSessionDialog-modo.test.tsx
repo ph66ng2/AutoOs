@@ -9,7 +9,7 @@ const marina: SecurityProfile = {
 };
 
 const props: React.ComponentProps<typeof ProfileSessionDialog> = {
-  open: true, mandatory: true, mode: "startup", title: "Quem está usando o AutoOS?", description: "Escolha seu perfil",
+  open: true, mandatory: true, mode: "startup", title: "Quem está usando?", description: "Escolha seu perfil",
   profiles: [marina], activeProfileId: null, unlocked: false,
   selectedProfileId: "2", selectedProfile: marina,
   pin: "2580", confirmPin: "", busy: false, error: null,

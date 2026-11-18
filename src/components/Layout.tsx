@@ -31,7 +31,11 @@ import {
   ChevronRight,
   PanelLeftClose,
   PanelLeftOpen,
+  Store,
 } from "lucide-react";
+import { setAppMode, type AppMode } from "@/lib/app-mode";
+import { useLarguraMinima } from "@/hooks/useLarguraMinima";
+import { useEmpresaAtiva } from "@/hooks/useEmpresaAtiva";
 import { Suspense, useState } from "react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -57,11 +61,13 @@ interface NavItem {
   icon: React.ComponentType<{ className?: string }>;
   permission?: SensitivePermission | SensitivePermission[];
   showWhenLocked?: boolean;
+  /** Item que troca o modo do app (Balcão) em vez de só navegar. */
+  modo?: AppMode;
 }
 
 /**
- * Menu agrupado por área (MenuLateral do DS). Balcão fica de fora: hoje ele é um
- * modo do app (CounterLayout), e /balcao no modo padrão volta para o Início.
+ * Menu agrupado por área (MenuLateral do DS). Balcão entra como no canvas: o item troca
+ * o app para o modo Balcão (CounterLayout), que tem o seu "Modo completo" para voltar.
  */
 const navGroups: { titulo?: string; itens: NavItem[] }[] = [
   { itens: [{ label: "Início", path: "/", icon: LayoutGrid }] },
@@ -69,6 +75,7 @@ const navGroups: { titulo?: string; itens: NavItem[] }[] = [
     titulo: "Atendimento",
     itens: [
       { label: "Equipamentos", path: "/equipamentos", icon: Printer },
+      { label: "Balcão", path: "/balcao", icon: Store, modo: "counter" },
       { label: "Clientes", path: "/clientes", icon: Users },
       { label: "Vendas de insumos", path: "/vendas", icon: ShoppingBag },
     ],
@@ -118,6 +125,8 @@ export function Layout() {
       : null);
   const activeLook = activeProfile ? profileAppearance(activeProfile) : null;
   const sessaoAtiva = Boolean(status?.pin_configured && status.unlocked);
+  const telaLarga = useLarguraMinima(768);
+  const empresa = useEmpresaAtiva(`${status?.active_profile_id ?? ""}-${status?.unlocked ?? ""}`);
   // O selo só aparece quando há algo fora do normal (sem banco, sem perfil, sem PIN).
   // Desbloqueado vira o ✓ ao lado do nome; bloqueado aparece na linha de baixo do cartão.
   const mostrarAvisoAcesso = connectionUnavailable || !status?.active_profile_id || !status.pin_configured;
@@ -134,7 +143,10 @@ export function Layout() {
       aria-label={item.label}
       title={collapsed ? item.label : undefined}
       data-tour={`nav-${item.path}`}
-      onClick={() => setMobileOpen(false)}
+      onClick={() => {
+        setMobileOpen(false);
+        if (item.modo) setAppMode(item.modo);
+      }}
       className={navLinkClass(collapsed)}
     >
       {({ isActive }) => (
@@ -158,7 +170,14 @@ export function Layout() {
           <span className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-[10px] border border-sidebar-border bg-card shadow-sm" aria-hidden="true">
             <span className="inline-flex h-[22px] w-[22px] items-center justify-center rounded-md bg-primary text-[9px] font-extrabold text-primary-foreground">OS</span>
           </span>
-          {!collapsed && <span className="flex-1 truncate text-[15px] font-bold text-foreground">AutoOS</span>}
+          {!collapsed && (
+            <span className="flex min-w-0 flex-1 flex-col leading-tight">
+              <span className="truncate text-[15px] font-bold text-foreground">{empresa ?? "AutoOS"}</span>
+              {empresa && <span className="truncate text-xs text-muted-foreground">AutoOS</span>}
+            </span>
+          )}
+          {/* No computador não há barra no topo (canvas): as notificações ficam aqui. */}
+          {telaLarga && !collapsed && <PortalAlertasSino />}
           <Button
             type="button"
             variant="ghost"
@@ -172,7 +191,8 @@ export function Layout() {
           <Button type="button" variant="ghost" size="icon" aria-label="Fechar menu lateral" className="h-8 w-8 text-muted-foreground md:hidden" onClick={() => setMobileOpen(false)}><X className="h-5 w-5" /></Button>
         </div>
         {collapsed && (
-          <div className="hidden justify-center pb-2 md:flex">
+          <div className="hidden flex-col items-center gap-1 pb-2 md:flex">
+            {telaLarga && <PortalAlertasSino />}
             <Button type="button" variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-foreground" aria-label="Expandir menu" onClick={() => setCollapsed(false)}>
               <PanelLeftOpen className="h-4 w-4" />
             </Button>
@@ -257,13 +277,16 @@ export function Layout() {
       {/* Main Content */}
       <main className="min-w-0 flex-1 overflow-auto bg-background">
         {/* Faixa superior: menu no celular e, à direita, as notificações (logo acima dos avisos). */}
-        <header className="sticky top-0 z-30 flex h-14 items-center gap-3 border-b bg-background/95 px-4 backdrop-blur supports-[backdrop-filter]:bg-background/80 md:px-6">
-          <Button type="button" variant="outline" size="icon" className="md:hidden" aria-label="Abrir menu" aria-expanded={mobileOpen} aria-controls="main-sidebar" onClick={() => setMobileOpen(true)}><Menu className="h-5 w-5" /></Button>
-          <span className="font-semibold md:hidden">AutoOS</span>
-          <div className="ml-auto flex items-center gap-2">
-            <PortalAlertasSino />
-          </div>
-        </header>
+        {/* Só no celular: abrir o menu e as notificações. No computador a página começa no título. */}
+        {!telaLarga && (
+          <header className="sticky top-0 z-30 flex h-14 items-center gap-3 border-b bg-background/95 px-4 backdrop-blur supports-[backdrop-filter]:bg-background/80">
+            <Button type="button" variant="outline" size="icon" aria-label="Abrir menu" aria-expanded={mobileOpen} aria-controls="main-sidebar" onClick={() => setMobileOpen(true)}><Menu className="h-5 w-5" /></Button>
+            <span className="font-semibold">{empresa ?? "AutoOS"}</span>
+            <div className="ml-auto flex items-center gap-2">
+              <PortalAlertasSino />
+            </div>
+          </header>
+        )}
         <div className="mx-auto max-w-7xl p-4 md:p-6">
           <Suspense fallback={<div role="status" aria-live="polite">Carregando página</div>}>
             <Outlet />

@@ -110,12 +110,12 @@ describe("useEquipamentos — registro", () => {
     );
 
     await waitFor(() => {
-      expect(mockListarPaginados).toHaveBeenCalledWith(undefined, undefined, 1, "ATUALIZACAO_RECENTE");
+      expect(mockListarPaginados).toHaveBeenCalledWith(undefined, undefined, 1, "ATUALIZACAO_RECENTE", undefined);
     });
 
     rerender({ ordenacao: "CADASTRO_RECENTE" });
     await waitFor(() => {
-      expect(mockListarPaginados).toHaveBeenCalledWith(undefined, undefined, 1, "CADASTRO_RECENTE");
+      expect(mockListarPaginados).toHaveBeenCalledWith(undefined, undefined, 1, "CADASTRO_RECENTE", undefined);
     });
   });
 

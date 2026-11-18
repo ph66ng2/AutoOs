@@ -64,7 +64,7 @@ export default function Perfil() {
           type="button"
           variant="outline"
           onClick={() => void openProfileSelector({
-            title: "Quem está usando o AutoOS?",
+            title: "Quem está usando?",
             description: "Escolha o perfil e informe o PIN para entrar.",
           })}
         >
@@ -79,7 +79,7 @@ export default function Perfil() {
               <Lock className="mt-0.5 h-5 w-5 text-muted-foreground" />
               <p className="text-sm text-muted-foreground">Informe seu PIN para ver e editar o seu perfil.</p>
             </div>
-            <Button type="button" onClick={() => void openProfileSelector({ title: "Quem está usando o AutoOS?", description: "Escolha o perfil e informe o PIN para entrar." })}>
+            <Button type="button" onClick={() => void openProfileSelector({ title: "Quem está usando?", description: "Escolha o perfil e informe o PIN para entrar." })}>
               Desbloquear
             </Button>
           </CardContent>

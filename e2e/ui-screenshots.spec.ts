@@ -20,7 +20,7 @@ test("captura as telas principais com dados sintéticos", async ({ page }) => {
   mkdirSync(outDir, { recursive: true });
 
   await page.goto("/");
-  const entry = page.getByRole("dialog").filter({ hasText: "Quem está usando o AutoOS?" });
+  const entry = page.getByRole("dialog").filter({ hasText: "Quem está usando?" });
   await expect(entry).toBeVisible();
   await entry.getByRole("button", { name: /CI Admin Screenshot/ }).click();
   await page.screenshot({ path: `${outDir}/08-selecao-perfil.png`, animations: "disabled" });

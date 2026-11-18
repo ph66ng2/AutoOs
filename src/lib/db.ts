@@ -157,6 +157,11 @@ export const db = {
     return invoke<PaginatedResult<Equipamento>>("listar_equipamentos_paginados", { busca: busca ?? null, status: status ?? null, page, ordenacao, tecnico: tecnico ?? null });
   },
 
+  /** Nome da empresa da sessão (topo do menu) → Rust: obter_empresa_ativa */
+  async obterEmpresaAtiva(): Promise<string> {
+    return invoke<string>("obter_empresa_ativa");
+  },
+
   /** Total por status com a mesma busca/técnico da lista (números das pílulas) → Rust: contar_equipamentos_por_status */
   async contarEquipamentosPorStatus(busca?: string, tecnico?: string): Promise<Record<string, number>> {
     const linhas = await invoke<Array<{ status: string; total: number }>>("contar_equipamentos_por_status", { busca: busca ?? null, tecnico: tecnico ?? null });

@@ -65,7 +65,7 @@ interface ProfileSessionDialogProps {
 }
 
 /**
- * Tela "Quem está usando o AutoOS?": grade de perfis com avatar e, abaixo,
+ * Tela "Quem está usando?": grade de perfis com avatar e, abaixo,
  * o PIN do perfil escolhido. Sempre escura, como o splash, porque aparece
  * antes de existir um perfil (e um tema) na sessão.
  */

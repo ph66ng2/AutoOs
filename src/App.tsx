@@ -113,7 +113,7 @@ function AppContent() {
       {showEntryGate ? (
         <SessionPinGate
           onEnter={() => void openProfileSelector({
-            title: "Quem está usando o AutoOS?",
+            title: "Quem está usando?",
             description: "Escolha o perfil e informe o PIN. Sem o PIN, o atendimento continua bloqueado.",
           })}
         />
