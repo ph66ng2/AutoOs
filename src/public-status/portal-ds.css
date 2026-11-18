@@ -210,3 +210,24 @@
 .portal-detail-side > .portal-destaque.is-pronto { border: 2px solid hsl(var(--primary)); }
 .portal-destaque.is-pronto h2 { margin: 0 0 0.75rem; color: hsl(var(--ink)); font-size: 1.25rem; }
 .contact-card .answer-hint { margin-top: 0.6rem; }
+
+/* A barra fica dentro do botão da etapa quando há data: tocar na barra mostra a data, inclusive no celular. */
+.timeline li:has(> .timeline-step)::before { display: none; }
+.timeline-step::before { content: ""; display: block; height: 5px; border-radius: 999px; background: hsl(var(--track)); }
+.timeline li.is-complete .timeline-step::before { background: hsl(var(--primary)); }
+.timeline li.is-current .timeline-step::before { background: var(--stage-color); }
+@media (max-width: 480px) {
+  .timeline-step { min-height: 1.75rem; }
+}
+@media (max-width: 480px) {
+  /* Data da etapa: balão escuro logo abaixo das barras, sem espremer na coluna. */
+  .timeline li .timeline-when,
+  .timeline li:has(.timeline-when) .timeline-when {
+    position: absolute; z-index: 5; top: auto; bottom: calc(100% + 0.35rem); left: 0; right: auto; transform: none;
+    display: block; width: max-content; max-width: 14rem; margin: 0; padding: 0.4rem 0.55rem;
+    border-radius: 0.45rem; color: hsl(var(--surface)); background: hsl(var(--ink));
+    font-weight: 600; white-space: nowrap; opacity: 0; visibility: hidden;
+  }
+  .timeline li:nth-child(n+4) .timeline-when { left: auto; right: 0; }
+  .timeline li.is-open > .timeline-when { opacity: 1; visibility: visible; }
+}
