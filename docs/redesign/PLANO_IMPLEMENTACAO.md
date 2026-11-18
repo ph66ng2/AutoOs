@@ -32,6 +32,9 @@ As tabelas essenciais estão copiadas na seção 9 deste arquivo, para as fases 
 7. **Não reescreva a lógica do `Equipamentos.tsx`** (3.892 linhas). Extraia componentes visuais e funções puras; a regra continua onde está.
 8. **Fora do escopo:** o app de celular, o site do AutoOS e os itens da nota vermelha do canvas (tempo até pronto, taxa de aprovação, lista "Precisa de atenção", ocultar valores, contadores no menu, fila do dia do Balcão, uso no ano dos serviços, valor em estoque, saídas do mês, números do cliente no painel, último acesso da equipe). Não implemente nenhum deles.
 
+9. **Estados e estabilidade em toda tela entregue.** Antes de dar a tela por pronta, preencha a tabela de estados (9.6) e confira as regras de estabilidade (9.7). A tabela serve para **inspecionar**, não autoriza função nova: estado que o código não trata hoje entra como "não existe" no PR e só é construído com OK do usuário.
+10. **Cor só por token.** `scripts/pre-qa-check.sh` rejeita hex e cor fixa do Tailwind (`bg-red-500`) em linha nova de `src/`. Cor literal legítima (PDF, e-mail, avatar) fica nos arquivos listados em `COR_FORA` no script; arquivo novo nessa lista precisa de justificativa no PR.
+
 ## 4. Decisões pendentes do usuário
 
 Pergunte antes da fase indicada. Sem resposta, siga a recomendação.
@@ -167,7 +170,7 @@ Cada fase abaixo vira um PR (ou mais). Rode o `fatiador` uma vez no início de c
 - No topo: ação principal com 176px e o ⋯.
 - Barra de 6 etapas e abas Orçamento, Verificação, Fotos, Histórico, Comunicação.
 - Coluna lateral com Cliente, Equipamento, Comunicação e o painel do portal.
-- Os diálogos que hoje abrem a partir dos detalhes continuam abrindo como modais.
+- Formulários que montam ou editam orçamento são páginas (ajuste de orçamento e verificação técnica, decisão 24 do `ALVO.md`); confirmações continuam modais.
 - O E2E que abre os detalhes vai precisar seguir a rota nova. É a única edição de teste permitida no plano: só a navegação, nunca a verificação. Peça o OK do usuário antes.
 
 **Fase 7: modais.**
@@ -392,6 +395,51 @@ As seções fixas do ⋯, nesta ordem:
 3. Corrigir um engano: Corrigir Status, Corrigir decisão do orçamento.
 4. Equipamento: Status, Editar Equipamento, Excluir (em vermelho, por último).
 
+### 9.6 Estados por tela
+
+Adaptado do catálogo de estados do [craft](https://github.com/diego3g/craft) (MIT). Para cada tela entregue, percorra a lista e marque cada estado como **aplica** (o que a tela mostra), **não aplica** (por quê) ou **pergunta aberta** (pare e pergunte). Os exemplos são do AutoOS.
+
+| Grupo | Estado | No AutoOS |
+|---|---|---|
+| Dados | Padrão | A lista com status misturados |
+| | Vazio, primeira vez | Nenhum cliente ou equipamento cadastrado ainda |
+| | Vazio por filtro ou busca | "Nenhum resultado para 'epson'", com o jeito de limpar que o app já tem |
+| | Um item, poucos itens | O layout continua intencional com 1 ou 3 linhas |
+| | Muitos | Rolagem com cabeçalho fixo |
+| | Texto longo | "Maria Fernanda de Albuquerque Santos", R$ 1.234.567,89, observação de 400 caracteres: título em uma linha com reticências, detalhe na segunda |
+| | Campo opcional ausente | Cliente sem telefone ou e-mail, OS sem observação |
+| Sistema | Primeiro carregamento | Enquanto o hook está em `loading`: esqueleto no layout final, sem pulo |
+| | Recarregar | Depois de `recarregar()`: a lista fica e não volta para o esqueleto inteiro |
+| | Falha ao carregar | O texto de erro do backend e "Tentar de novo" |
+| | Mudou enquanto via / já feito por outra pessoa | "Conflito de concorrência" (trava otimista por `atualizado_em`): mostrar a mensagem e recarregar. **Aplica em toda tela que edita.** |
+| | Lento | E-mail, WhatsApp, PDF, backup: o botão fica em carregamento sem mudar de tamanho (9.7) |
+| | Expirado | Sessão travada por inatividade (15 min), que pede PIN; código de primeiro acesso (24 h); status Orçamento vencido |
+| | Offline | **Não aplica:** o desktop é online por decisão de arquitetura. A queda de conexão cai em "Falha ao carregar". |
+| Atividade | Em andamento | Envio de e-mail, backup e restauração |
+| | Concluído agora | O aviso rápido que o app já mostra |
+| | Desfazer com contagem | **Não existe; não desenhar.** "Desfazer aprovação" é uma ação do ⋯, não um aviso. |
+| Pessoas | Sem permissão | Fica como o app faz hoje (esconder, desabilitar ou pedir PIN). Não mudar a regra. |
+| | Sessão travada | `ensureSensitiveAccess` pede o PIN |
+| | Primeiro acesso | Perfil com `onboarding_pendente` |
+| Interação | Normal, hover, pressionado, foco, desabilitado, carregando, selecionado | Vêm do DS (`componentes.css`). Não redesenhe por tela. Só confira a tela quando o estado muda layout ou conteúdo. |
+
+No PR, cole por tela uma tabela curta com três colunas: Estado, Aplica?, O que mostra ou por que não.
+
+### 9.7 Estabilidade (nada pula na tela)
+
+Também adaptado do craft. Confira à mão, com a tela aberta:
+
+- **Carregando mantém o tamanho.** O botão não muda de largura nem de altura. O rótulo continua no layout, invisível, e o spinner fica centralizado por cima.
+- **Troca de rótulo mantém o tamanho.** Em "Salvar" → "Salvando…" ou "Copiar" → "Copiado", o botão tem a largura do rótulo maior. Ações de linha já têm 176px fixos.
+- **Seleção mantém o tamanho.** Selecionar não deixa o texto em negrito nem acrescenta borda. A borda existe sempre e fica transparente em repouso.
+- **Troca de conteúdo mantém a altura.** Abas, etapas e mensagem de sucesso no lugar do formulário reservam a altura, para a página de baixo não pular.
+- **Hover mais discreto que selecionado.** Peça com borda só escurece a borda no hover.
+- **Pressionado é instantâneo.** Não há transição no clique. Hover usa `--dur-rapida`.
+- **Foco só pelo teclado.** O anel usa `:focus-visible` e não aparece depois de um clique de mouse.
+- **Uma ação primária por região**, como no checklist do `ALVO.md`.
+
+Se precisar de prova por comando: no Playwright, compare `boundingBox()` do botão antes e durante o carregamento.
+
 ## 10. Como reportar cada PR
 
 - **Título:** `redesign(fase N): <o que mudou>`.
@@ -399,6 +447,7 @@ As seções fixas do ⋯, nesta ordem:
   - fatias feitas;
   - comandos rodados, com o resultado;
   - capturas de antes e depois;
+  - a tabela de estados (9.6) de cada tela entregue, e a confirmação de que as regras de estabilidade (9.7) foram conferidas;
   - diferenças encontradas entre o desenho e o código;
   - o que ficou para a próxima fase.
 - **Se algo não couber nas regras acima:** pare, descreva o caso e pergunte. Não improvise.
