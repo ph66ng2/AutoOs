@@ -83,8 +83,7 @@ export default function PortalDetalhe({ session, equipamentoId, onExpirou }: Pro
           </button>
         )}
       </nav>
-      <section className={`status-card${data?.status === "ENTREGUE" ? " is-concluido" : ""}`} aria-live="polite">
-        <p className="eyebrow">Portal das Impressoras</p>
+      <section className={`status-card is-detalhe${data?.status === "ENTREGUE" ? " is-concluido" : ""}`} aria-live="polite">
 
         {loading && !data && (
           <div className="loading-state" role="status">
@@ -115,6 +114,7 @@ export default function PortalDetalhe({ session, equipamentoId, onExpirou }: Pro
             {/* Celular: uma coluna. Tela larga: status à esquerda, orçamento e contato à direita. */}
             <div className="portal-detail-grid">
               <div className="portal-detail-main">
+                <div className="portal-cartao portal-cartao-status">
                 <StatusView
                   equipamento={data.equipamento}
                   titulo={preparando ? TITULO_EM_PREPARACAO : data.titulo}
@@ -132,6 +132,8 @@ export default function PortalDetalhe({ session, equipamentoId, onExpirou }: Pro
                   )}
                 />
                 {!galeriaLateral && galeria}
+                </div>
+                {historico.length > 0 && <div className="portal-cartao"><PortalHistorico historico={historico} /></div>}
               </div>
               <div className={`portal-detail-side${emDecisao ? " is-decisao" : ""}`}>
                 {data.status === "PRONTO" && <DestaqueProntoRetirada detalhe={data} />}
@@ -153,7 +155,6 @@ export default function PortalDetalhe({ session, equipamentoId, onExpirou }: Pro
                 )}
 
                 {!concluido && <DocumentosCard detalhe={data} sessao={session.token} />}
-                <PortalHistorico historico={historico} />
 
                 <ContatoCard contato={data.contatoEmpresa} />
               </div>

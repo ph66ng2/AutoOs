@@ -3,7 +3,9 @@ import ReactDOM from "react-dom/client";
 import PublicStatusPage from "./PublicStatusPage";
 import PortalApp from "./PortalApp";
 import { areaFromHash, type Area } from "./portal-session";
+import "@fontsource-variable/manrope";
 import "./public-status.css";
+import "./portal-ds.css";
 
 /** `#/c/` (link de acompanhamento) continua como antes; o resto do endereço é o Portal do Cliente. */
 function App() {
