@@ -32,14 +32,14 @@ export function PaginationControls({
           Mostrando {primeiro}–{ultimo} de {totalItems}
         </span>
       )}
-      <ol className="flex h-8 items-center gap-1">
+      <ol className="flex h-11 items-center gap-1 md:h-8">
         {visiblePaginationItems(totalPages, page).map((item) =>
           typeof item === "number" ? (
             <li key={item}>
               <button
                 type="button"
                 className={cn(
-                  "h-8 min-w-8 rounded-lg px-2 text-[13px] font-semibold tabular-nums transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                  "h-11 min-w-11 rounded-lg px-2 text-[13px] md:h-8 md:min-w-8 font-semibold tabular-nums transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
                   item === page ? "bg-acc-soft font-extrabold text-acc-soft-foreground" : "text-foreground hover:bg-muted",
                 )}
                 aria-label={item === page ? `Página ${item}, atual` : `Ir para página ${item}`}
@@ -52,7 +52,7 @@ export function PaginationControls({
           ) : (
             <li
               key={item}
-              className="flex h-8 w-5 items-center justify-center text-xs text-muted-foreground"
+              className="flex h-11 w-5 items-center justify-center text-xs text-muted-foreground md:h-8"
               aria-hidden="true"
             >
               …

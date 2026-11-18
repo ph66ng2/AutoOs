@@ -138,3 +138,34 @@ describe("VendaDetalhe (/vendas/:id)", () => {
     expect(screen.getByText("WhatsApp").className).toMatch(/line-through/);
   });
 });
+
+function telaEstreita() {
+  const original = window.matchMedia;
+  window.matchMedia = ((consulta: string) => ({
+    matches: false,
+    media: consulta,
+    addEventListener: () => undefined,
+    removeEventListener: () => undefined,
+  })) as unknown as typeof window.matchMedia;
+  return () => {
+    window.matchMedia = original;
+  };
+}
+
+describe("VendaDetalhe no celular (V.6)", () => {
+  it("itens em lista e a ação principal fixa no rodapé, com 44px", async () => {
+    const restaurar = telaEstreita();
+    try {
+      mocks.hasPermission.mockReturnValue(true);
+      mocks.obter.mockResolvedValue(venda());
+      renderPagina();
+      expect(await screen.findByText("10 × R$ 32,00", { exact: false })).toBeInTheDocument();
+      expect(screen.queryByRole("table")).toBeNull();
+      const aprovar = screen.getByRole("button", { name: "Aprovar" });
+      expect(aprovar).toHaveClass("h-11");
+      expect(aprovar.closest(".sticky")).not.toBeNull();
+    } finally {
+      restaurar();
+    }
+  });
+});

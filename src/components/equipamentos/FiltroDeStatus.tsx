@@ -67,7 +67,7 @@ export function FiltroDeStatus({
               title={opcao.titulo}
               onClick={() => onChange(opcao.value)}
               className={cn(
-                "inline-flex h-8 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-lg px-2.5 text-[13px] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring",
+                "inline-flex h-11 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-lg px-2.5 text-[13px] md:h-8 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring",
                 ligado
                   ? "bg-card font-semibold text-foreground shadow-sm"
                   : "font-semibold text-muted-foreground hover:bg-card/50 hover:text-foreground",
@@ -87,7 +87,7 @@ export function FiltroDeStatus({
             <SelectTrigger
               aria-label="Outros status"
               className={cn(
-                "h-8 w-auto shrink-0 gap-1.5 whitespace-nowrap rounded-lg border-0 px-2.5 text-[13px] shadow-none ring-offset-0 focus:ring-0 focus:ring-offset-0 [&>svg:last-child]:hidden",
+                "h-11 w-auto shrink-0 gap-1.5 whitespace-nowrap rounded-lg border-0 md:h-8 px-2.5 text-[13px] shadow-none ring-offset-0 focus:ring-0 focus:ring-offset-0 [&>svg:last-child]:hidden",
                 outroLigado
                   ? "bg-card font-semibold text-foreground shadow-sm"
                   : "bg-transparent font-semibold text-muted-foreground hover:bg-card/50 hover:text-foreground",

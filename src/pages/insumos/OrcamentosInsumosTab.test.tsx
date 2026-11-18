@@ -232,3 +232,38 @@ describe("Vendas de insumos: ação principal, prazo e permissão (fase V.2)", (
     expect(await screen.findByText("OI-2")).toBeInTheDocument();
   });
 });
+
+function telaEstreita() {
+  const original = window.matchMedia;
+  window.matchMedia = ((consulta: string) => ({
+    matches: false,
+    media: consulta,
+    addEventListener: () => undefined,
+    removeEventListener: () => undefined,
+  })) as unknown as typeof window.matchMedia;
+  return () => {
+    window.matchMedia = original;
+  };
+}
+
+describe("Vendas de insumos no celular (V.6)", () => {
+  it("abaixo de 768px a tabela vira cartões com a ação de 44px e o ⋯", async () => {
+    const restaurar = telaEstreita();
+    try {
+      mocks.hasPermission.mockReturnValue(true);
+      mocks.listar.mockResolvedValue({ items: [{ ...linha(5, "ENVIADO", 100), validade: "2999-12-31" }], total: 1 });
+      render(<OrcamentosInsumosTab />);
+      const lista = await screen.findByRole("list", { name: "Orçamentos de insumos" });
+      expect(screen.queryByRole("table")).toBeNull();
+      const cartao = within(lista).getByRole("listitem");
+      expect(within(cartao).getByText("OI-5")).toBeInTheDocument();
+      const aprovar = within(cartao).getByRole("button", { name: "Aprovar" });
+      expect(aprovar).toHaveClass("h-11");
+      expect(within(cartao).getByRole("combobox", { name: "Mais ações" })).toHaveClass("h-11");
+      await userEvent.click(within(cartao).getByRole("button", { name: "Abrir orçamento OI-5" }));
+      expect(mocks.navigate).toHaveBeenCalledWith("/vendas/50");
+    } finally {
+      restaurar();
+    }
+  });
+});
