@@ -256,11 +256,16 @@ export default function Gastos() {
             rotulo="Saldo do mês"
             valor={<span className={saldo < 0 ? "text-status-bad" : undefined}>{dinheiroComSinal(saldo, ocultar)}</span>}
             medida={
-              <div role="img" aria-label="Gastos e o que sobrou do faturado" className="flex h-7 gap-1 overflow-hidden rounded-[4px]">
+              <div
+                role="img"
+                aria-label={`Faturado ${dinheiro(faturadoMes, ocultar)} contra gastos ${dinheiro(totais.total, ocultar)}`}
+                className="flex h-7 gap-1 overflow-hidden rounded-[4px]"
+              >
                 {faturadoMes > 0 || totais.total > 0 ? (
                   <>
-                    <span className="rounded-[4px]" style={{ flexGrow: Math.max(totais.total, 0.0001), background: COR_FIXO }} />
-                    {saldo > 0 && <span className="rounded-[4px]" style={{ flexGrow: saldo, background: COR_ENTRA }} />}
+                    {/* Entrou (azul) contra saiu (vermelho): saldo positivo deixa o azul maior. */}
+                    {faturadoMes > 0 && <span className="rounded-[4px]" style={{ flexGrow: faturadoMes, background: COR_ENTRA }} />}
+                    {totais.total > 0 && <span className="rounded-[4px]" style={{ flexGrow: totais.total, background: COR_FIXO }} />}
                   </>
                 ) : (
                   <span className="flex-1 rounded-[4px] bg-track" />
