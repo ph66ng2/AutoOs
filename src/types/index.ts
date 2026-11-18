@@ -1110,6 +1110,21 @@ export interface DatabaseConnectionConfig {
   connection_url?: string;
 }
 
+/** Espelha `DatabaseErrorKind` em `src-tauri/src/db.rs`. */
+export type DatabaseErrorKind =
+  | "nao_configurado"
+  | "configuracao_invalida"
+  | "credencial"
+  | "incompativel"
+  | "rede"
+  | "capacidade"
+  | "desconhecido";
+
+export interface DatabaseInitError {
+  tipo: DatabaseErrorKind;
+  mensagem: string;
+}
+
 /** Configuração de bloqueio por inatividade. Espelha a struct/config do backend. */
 export interface ConfigInatividade {
   inactivity_lock_enabled: boolean;
