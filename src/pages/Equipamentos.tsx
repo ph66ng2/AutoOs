@@ -2882,15 +2882,15 @@ export default function Equipamentos() {
               </ul>
               ) : (
               <div className="overflow-hidden rounded-xl border">
-                <Table className="min-w-[64rem] table-fixed border-separate border-spacing-0">
+                <Table className="min-w-[67.5rem] table-fixed border-separate border-spacing-0">
                 <TableHeader className="bg-muted [&_tr]:!border-b-0 [&_th]:h-10 [&_th]:border-b [&_th]:text-xs [&_th]:font-semibold">
                   <TableRow>
-                    <TableHead className="w-[13rem]">Equipamento</TableHead>
+                    <TableHead className="w-[12rem]">Equipamento</TableHead>
                     <TableHead className="w-[11rem]">Cliente</TableHead>
-                    <TableHead className="w-[12rem]">Andamento</TableHead>
+                    <TableHead className="w-[11rem]">Andamento</TableHead>
                     <TableHead className="w-[5.5rem]">Técnico</TableHead>
                     <TableHead className="w-[5rem]">Entrada</TableHead>
-                    <TableHead className="w-[7rem] text-right">Orçamento</TableHead>
+                    <TableHead className="w-[7.5rem] text-right">Orçamento</TableHead>
                     <TableHead className="sticky right-0 z-20 w-[15.5rem] min-w-[15.5rem] bg-muted text-right">Próxima ação</TableHead>
                   </TableRow>
                 </TableHeader>

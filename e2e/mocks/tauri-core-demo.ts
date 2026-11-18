@@ -198,6 +198,14 @@ export async function invoke<T>(command: string, args?: Record<string, unknown>)
       return verificacao as T;
     case "listar_servicos_catalogo_ativos":
       return catalogo as T;
+    case "contar_equipamentos_por_status":
+      return [{ status: equipamento.status, total: 1 }] as T;
+    case "contar_servicos":
+      return { ativos: catalogo.filter((item) => item.ativo !== false).length, inativos: catalogo.filter((item) => item.ativo === false).length } as T;
+    case "obter_empresa_ativa":
+      return "Sua empresa" as T;
+    case "listar_pecas_baixa_pendente":
+      return [] as T;
     case "listar_servicos_paginados": {
       const page = Math.max(0, Number(args?.page ?? 0));
       const busca = String(args?.busca ?? "").toLowerCase();

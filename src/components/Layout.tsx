@@ -176,8 +176,7 @@ export function Layout() {
               {empresa && <span className="truncate text-xs text-muted-foreground">AutoOS</span>}
             </span>
           )}
-          {/* No computador não há barra no topo (canvas): as notificações ficam aqui. */}
-          {telaLarga && !collapsed && <PortalAlertasSino />}
+
           <Button
             type="button"
             variant="ghost"
@@ -192,7 +191,6 @@ export function Layout() {
         </div>
         {collapsed && (
           <div className="hidden flex-col items-center gap-1 pb-2 md:flex">
-            {telaLarga && <PortalAlertasSino />}
             <Button type="button" variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-foreground" aria-label="Expandir menu" onClick={() => setCollapsed(false)}>
               <PanelLeftOpen className="h-4 w-4" />
             </Button>
@@ -215,7 +213,13 @@ export function Layout() {
 
         {/* Pé: Configurações e o cartão do perfil */}
         <div className="mt-auto space-y-2 px-3 pb-3 pt-2">
-          {mostrarConfiguracoes && <nav aria-label="Sistema">{renderItem(configuracoesItem)}</nav>}
+          {/* No computador não há barra no topo (canvas): as notificações ficam ao lado de Configurações. */}
+          {(mostrarConfiguracoes || telaLarga) && (
+            <div className={cn("flex items-center gap-1", collapsed && "flex-col")}>
+              {mostrarConfiguracoes && <nav aria-label="Sistema" className="min-w-0 flex-1">{renderItem(configuracoesItem)}</nav>}
+              {telaLarga && <PortalAlertasSino />}
+            </div>
+          )}
           {!collapsed && mostrarAvisoAcesso && <SensitiveAccessBadge />}
           {activeProfile && activeLook && (
             <div
