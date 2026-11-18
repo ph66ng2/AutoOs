@@ -1,39 +1,23 @@
 /**
- * Estado e ações do orçamento de insumos (OI-n): carga, formulário, salvar, PDF, envio,
- * aprovação e confirmações. Saiu de OrcamentoInsumosDialog sem mudar a lógica, para a
- * janela e as páginas /vendas/novo e /vendas/:id/editar usarem a mesma regra.
+ * Formulário do orçamento de insumos (OI-n) das páginas /vendas/novo e /vendas/:id/editar:
+ * carga, campos, totais, validação e salvar. As outras ações (enviar, aprovar, cancelar…)
+ * ficam em useAcoesOrcamentoInsumos e abrem como modais (AcaoVendaDialog).
  */
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useAcoesOrcamentoInsumos } from "@/hooks/useAcoesOrcamentoInsumos";
 import { db } from "@/lib/db";
 import {
   acoesOrcamentoInsumos,
   calcularTotaisOrcamentoInsumos,
   linhasSemSaldo,
-  orcamentoInsumosVencido,
   validadePadraoOrcamentoInsumos,
   type LinhaOrcamentoInsumos,
 } from "@/lib/orcamento-insumos";
 import {
   type Cliente,
   type ClienteContato,
-  type FormaPagamento,
   type OrcamentoInsumosDetalhe,
 } from "@/types";
-
-export type AcaoInicialOrcamentoInsumos =
-  | "pdf"
-  | "email"
-  | "whatsapp"
-  | "aprovar"
-  | "renovar"
-  | "editar"
-  | "reprovar"
-  | "cancelar"
-  | "entregar"
-  | "excluir";
-
-export type AcaoConfirmada = "reprovar" | "cancelar" | "entregar" | "excluir";
 
 function linhasDoDetalhe(detalhe: OrcamentoInsumosDetalhe): LinhaOrcamentoInsumos[] {
   return detalhe.itens.map((item) => ({
@@ -60,22 +44,12 @@ function contatoDoDetalhe(detalhe: OrcamentoInsumosDetalhe): ClienteContato | nu
 }
 
 export interface ParametrosEditorOrcamentoInsumos {
-  open: boolean;
-  onOpenChange: (open: boolean) => void;
   /** Vazio = novo orçamento. */
   orcamentoId?: number | null;
   onChanged?: () => void;
-  acaoInicial?: AcaoInicialOrcamentoInsumos | null;
 }
 
-export function useOrcamentoInsumosEditor({
-  open,
-  onOpenChange,
-  orcamentoId = null,
-  onChanged,
-  acaoInicial = null,
-}: ParametrosEditorOrcamentoInsumos) {
-
+export function useOrcamentoInsumosEditor({ orcamentoId = null, onChanged }: ParametrosEditorOrcamentoInsumos) {
   const [detalhe, setDetalhe] = useState<OrcamentoInsumosDetalhe | null>(null);
   const [cliente, setCliente] = useState<Cliente | null>(null);
   const [contato, setContato] = useState<ClienteContato | null>(null);
@@ -85,14 +59,6 @@ export function useOrcamentoInsumosEditor({
   const [observacoes, setObservacoes] = useState("");
   const [alterado, setAlterado] = useState(false);
   const [carregando, setCarregando] = useState(false);
-  const [pagamentoAberto, setPagamentoAberto] = useState(false);
-  const [erroAprovacao, setErroAprovacao] = useState<string | null>(null);
-  const [confirmando, setConfirmando] = useState<AcaoConfirmada | null>(null);
-  const acaoInicialFeita = useRef(false);
-  /** Número desta abertura; a carga só libera a ação inicial se ainda for a abertura atual. */
-  const aberturaAtual = useRef(0);
-  /** Abertura cuja carga terminou com sucesso (o `detalhe` retido de uma abertura anterior não conta). */
-  const [aberturaCarregada, setAberturaCarregada] = useState<number | null>(null);
 
   const aplicarDetalhe = useCallback((novo: OrcamentoInsumosDetalhe) => {
     setDetalhe(novo);
@@ -104,30 +70,13 @@ export function useOrcamentoInsumosEditor({
     setAlterado(false);
   }, []);
 
-  // `bloqueadoPorEdicao` depende do detalhe; a mesma conta é refeita abaixo para a tela.
-  const acoesDeEscrita = useAcoesOrcamentoInsumos({
-    detalhe,
-    aplicarDetalhe,
-    onChanged,
-    onExcluido: () => onOpenChange(false),
-    bloqueadoPorEdicao: alterado || !detalhe,
-  });
-  const { podeSalvarPdf, ocupado, setOcupado, erro, setErro, pdf, setPdf, liberar, executar, gerarPdf, salvarPdf } = acoesDeEscrita;
+  const { ocupado, erro, setErro, liberar, executar } = useAcoesOrcamentoInsumos({ detalhe, aplicarDetalhe, onChanged });
 
   // Abre em branco (novo) ou carrega o orçamento e o cliente (existente).
   useEffect(() => {
-    if (!open) return;
-    acaoInicialFeita.current = false;
-    const abertura = ++aberturaAtual.current;
     let ativo = true;
     setErro(null);
-    setErroAprovacao(null);
-    setPdf(null);
-    setConfirmando(null);
-    setPagamentoAberto(false);
     if (orcamentoId == null) {
-      // Uma abertura anterior pode ter sido fechada com a carga pendente (o `finally` dela não
-      // roda quando `ativo` já é falso); sem isto o "Novo" ficava preso em "Carregando...".
       setCarregando(false);
       setDetalhe(null);
       setCliente(null);
@@ -146,7 +95,6 @@ export function useOrcamentoInsumosEditor({
         if (!ativo) return;
         setCliente(clienteCarregado);
         aplicarDetalhe(carregado);
-        setAberturaCarregada(abertura);
       })
       .catch((causa) => {
         if (ativo) setErro(String(causa));
@@ -157,7 +105,9 @@ export function useOrcamentoInsumosEditor({
     return () => {
       ativo = false;
     };
-  }, [open, orcamentoId, aplicarDetalhe]);
+    // setErro é estável (useState).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [orcamentoId, aplicarDetalhe]);
 
   const status = detalhe?.status ?? null;
   const acoes = acoesOrcamentoInsumos(status);
@@ -176,8 +126,6 @@ export function useOrcamentoInsumosEditor({
     && quantidadesValidas
     && !totais.descontoExcedido
     && Boolean(validade);
-  const bloqueadoPorEdicao = alterado || !detalhe;
-  const vencido = detalhe ? orcamentoInsumosVencido(detalhe) : false;
   /** Explica por que o Salvar está desabilitado (o aviso de desconto já aparece junto ao campo). */
   const motivoSemSalvar = (() => {
     if (!acoes.salvar || ocupado || podeSalvar) return null;
@@ -187,57 +135,6 @@ export function useOrcamentoInsumosEditor({
     if (!validade) return "Informe a validade do orçamento.";
     return null;
   })();
-
-  // A ação pedida na lista roda uma vez, quando a carga desta abertura terminou com sucesso.
-  // Não basta o `detalhe` ter o mesmo id: ao reabrir, ele ainda é o da abertura anterior (talvez
-  // com edição não salva) até a carga nova chegar.
-  useEffect(() => {
-    if (
-      !open
-      || !acaoInicial
-      || acaoInicialFeita.current
-      || carregando
-      || aberturaCarregada !== aberturaAtual.current
-      || !detalhe
-      || detalhe.id !== orcamentoId
-    ) return;
-    acaoInicialFeita.current = true;
-    switch (acaoInicial) {
-      case "pdf":
-        void gerarPdf();
-        break;
-      case "email":
-        if (acoes.enviar) void enviar("EMAIL");
-        break;
-      case "whatsapp":
-        if (acoes.enviar) void enviar("WHATSAPP");
-        break;
-      case "aprovar":
-        if (acoes.aprovar) void iniciarAprovacao();
-        break;
-      case "renovar":
-        // Renovar validade é editar a data: o campo já está na janela.
-        window.setTimeout(() => document.getElementById("oi-validade")?.focus(), 0);
-        break;
-      case "editar":
-        // A janela já abre editável.
-        break;
-      case "reprovar":
-        if (acoes.reprovar) setConfirmando("reprovar");
-        break;
-      case "cancelar":
-        if (acoes.cancelar) setConfirmando("cancelar");
-        break;
-      case "entregar":
-        if (acoes.entregar) setConfirmando("entregar");
-        break;
-      case "excluir":
-        if (acoes.excluir) setConfirmando("excluir");
-        break;
-    }
-    // As funções chamadas leem o estado atual; rodar de novo a cada render repetiria a ação.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, acaoInicial, carregando, aberturaCarregada, detalhe, orcamentoId]);
 
   function editar<T>(definir: (valor: T) => void) {
     return (valor: T) => {
@@ -277,129 +174,32 @@ export function useOrcamentoInsumosEditor({
     return falha ? null : salvo.orcamento;
   }
 
-  async function enviar(canal: "EMAIL" | "WHATSAPP") {
-    await acoesDeEscrita.enviar(canal);
-  }
-
-  async function iniciarAprovacao() {
-    if (!detalhe || bloqueadoPorEdicao) return;
-    if (!(await liberar("Aprovar orçamento de insumos", "Informe o PIN para aprovar e baixar o estoque."))) return;
-    setErroAprovacao(null);
-    setPagamentoAberto(true);
-  }
-
-  async function aprovar(pagamento: FormaPagamento): Promise<boolean> {
-    if (!detalhe) return false;
-    setErroAprovacao(null);
-    const falha = await acoesDeEscrita.aprovar(pagamento);
-    if (falha) {
-      setErroAprovacao(falha);
-      return false;
-    }
-    return true;
-  }
-
-  const excluir = acoesDeEscrita.excluir;
-
-  async function confirmar() {
-    const acao = confirmando;
-    setConfirmando(null);
-    if (!detalhe || !acao) return;
-    if (!(await liberar("Confirmar ação financeira", "Informe o PIN para continuar com o orçamento de insumos."))) return;
-    if (acao === "reprovar") await acoesDeEscrita.reprovar();
-    else if (acao === "cancelar") await acoesDeEscrita.cancelar(acoes.cancelarDevolveEstoque);
-    else if (acao === "excluir") await excluir();
-    else await acoesDeEscrita.entregar();
-  }
-
-  const titulo = detalhe ? `Orçamento de insumos ${detalhe.numero_exibicao}` : "Novo orçamento de insumos";
-  const editavel = acoes.editar;
-  const textoConfirmacao: Record<AcaoConfirmada, { titulo: string; descricao: string; botao: string }> = {
-    reprovar: {
-      titulo: "Reprovar orçamento?",
-      descricao: "O orçamento fica como reprovado e não poderá mais ser aprovado.",
-      botao: "Reprovar",
-    },
-    cancelar: {
-      titulo: "Cancelar orçamento?",
-      descricao: acoes.cancelarDevolveEstoque
-        ? "Este orçamento já foi aprovado e baixou o estoque. Ao cancelar, todos os itens voltam para o estoque."
-        : "O orçamento fica como cancelado e não poderá mais ser aprovado.",
-      botao: acoes.cancelarDevolveEstoque ? "Cancelar e devolver ao estoque" : "Cancelar orçamento",
-    },
-    entregar: {
-      titulo: "Marcar como entregue?",
-      descricao: "Confirma que os itens foram entregues ao cliente. Depois disso o orçamento não pode mais ser cancelado.",
-      botao: "Marcar entregue",
-    },
-    excluir: {
-      titulo: "Excluir orçamento?",
-      descricao: `O orçamento ${detalhe?.numero_exibicao ?? ""} e seus itens serão apagados definitivamente. O estoque não é alterado e o número não será reaproveitado. Esta ação não pode ser desfeita.`,
-      botao: "Excluir",
-    },
-  };
-
-
   return {
     detalhe,
-    setDetalhe,
     cliente,
     setCliente,
     contato,
     setContato,
     linhas,
     setLinhas,
-    desconto,
-    setDesconto,
     validade,
     setValidade,
     observacoes,
     setObservacoes,
+    descontoNumero,
+    setDesconto,
     alterado,
     setAlterado,
     carregando,
-    setCarregando,
     ocupado,
-    setOcupado,
     erro,
-    setErro,
-    pdf,
-    setPdf,
-    pagamentoAberto,
-    setPagamentoAberto,
-    erroAprovacao,
-    setErroAprovacao,
-    confirmando,
-    setConfirmando,
-    aberturaCarregada,
-    setAberturaCarregada,
-    podeSalvarPdf,
-    acaoInicialFeita,
-    aberturaAtual,
-    aplicarDetalhe,
     status,
-    acoes,
-    descontoNumero,
     totais,
     faltas,
-    quantidadesValidas,
+    editavel: acoes.editar,
     podeSalvar,
-    bloqueadoPorEdicao,
-    vencido,
     motivoSemSalvar,
-    titulo,
-    editavel,
-    textoConfirmacao,
-    editar,
-    liberar,
-    executar,
     salvar,
-    gerarPdf,
-    salvarPdf,
-    enviar,
-    iniciarAprovacao,
-    aprovar,
-    excluir,
-    confirmar,
+    editar,
   };
 }
