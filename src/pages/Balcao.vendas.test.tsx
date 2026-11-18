@@ -62,10 +62,11 @@ describe("Balcão: entregar venda de insumos (V.7)", () => {
     db.listarEquipamentosPaginados.mockImplementation(async (_b: unknown, status?: string) =>
       status === "PRONTO" ? { items: [equipamentoPronto], total: 4 } : { items: [], total: 0 },
     );
+    // Como o backend: filtra status e busca antes de paginar.
+    const vendas = [venda(32, 32, "APROVADO"), venda(35, 35, "ENVIADO"), venda(30, 30, "ENTREGUE")];
     db.listarOrcamentosInsumos.mockImplementation(async ({ status, busca }: { status?: string; busca?: string }) => {
-      if (status === "APROVADO") return { items: [venda(32, 32, "APROVADO")], total: 1 };
-      if (busca) return { items: [venda(32, 32, "APROVADO"), venda(35, 35, "ENVIADO"), venda(30, 30, "ENTREGUE")], total: 3 };
-      return { items: [], total: 0 };
+      const items = vendas.filter((v) => (!status || v.status === status) && (!busca || v.numero_exibicao.startsWith(busca)));
+      return { items, total: items.length };
     });
     db.listarEquipamentos.mockResolvedValue([]);
     db.obterOrcamentoInsumos.mockResolvedValue(detalhe);
@@ -92,6 +93,26 @@ describe("Balcão: entregar venda de insumos (V.7)", () => {
     expect(screen.getAllByRole("button", { name: "Registrar Entrega" })).toHaveLength(1);
     await usuario.click(screen.getByRole("button", { name: /^Equipamentos/ }));
     expect(screen.queryByText(/OI-32/)).not.toBeInTheDocument();
+  });
+
+  it("venda aprovada antiga aparece mesmo atrás de mais de 10 orçamentos encerrados mais novos", async () => {
+    const encerrados = Array.from({ length: 10 }, (_, i) => venda(100 + i, 100 + i, i % 2 ? "ENTREGUE" : "CANCELADO"));
+    const aprovadas = Array.from({ length: 12 }, (_, i) => venda(50 + i, 50 + i, "APROVADO"));
+    const todas = [...encerrados, ...aprovadas].sort((a, b) => b.numero - a.numero);
+    db.listarOrcamentosInsumos.mockImplementation(async ({ status, page = 0 }: { status?: string; page?: number }) => {
+      const filtradas = todas.filter((v) => !status || v.status === status);
+      return { items: filtradas.slice(page * 10, page * 10 + 10), total: filtradas.length };
+    });
+    const usuario = userEvent.setup();
+    renderBalcao();
+    await usuario.click(await screen.findByRole("button", { name: /Entregar ao cliente/ }));
+    await usuario.type(screen.getByLabelText("Quem veio buscar?"), "Farmácia");
+    expect(await screen.findByText(/OI-50 · 1 item/)).toBeInTheDocument();
+    expect(screen.getByText(/OI-61 · 1 item/)).toBeInTheDocument();
+    expect(screen.getAllByRole("button", { name: "Registrar Entrega" })).toHaveLength(12);
+    expect(screen.queryByText(/OI-10\d/)).not.toBeInTheDocument();
+    expect(screen.queryByText("Nada encontrado para essa busca.")).not.toBeInTheDocument();
+    expect(db.listarOrcamentosInsumos).toHaveBeenCalledWith(expect.objectContaining({ busca: "Farmácia", status: "APROVADO", page: 1 }));
   });
 
   it("entregar confirma, pede o PIN com Ações financeiras e chama o mesmo marcar entregue", async () => {

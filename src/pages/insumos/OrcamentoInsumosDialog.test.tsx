@@ -492,3 +492,57 @@ describe("OrcamentoInsumosDialog: carga pendente", () => {
     expect(screen.getByLabelText("Desconto (R$)")).toBeInTheDocument();
   });
 });
+
+describe("OrcamentoInsumosDialog: ação inicial ao reabrir", () => {
+  function adiado<T>() {
+    let resolver!: (valor: T) => void;
+    const promessa = new Promise<T>((resolve) => {
+      resolver = resolve;
+    });
+    return { promessa, resolver };
+  }
+
+  it("reabrir o mesmo orçamento só envia o e-mail depois da carga desta abertura", async () => {
+    mocks.enviarEmail.mockResolvedValue({ sucesso: true });
+    mocks.db.marcarOrcamentoInsumosEnviado.mockResolvedValue(detalhe("ENVIADO"));
+    mocks.db.obterOrcamentoInsumos.mockResolvedValueOnce(detalhe("RASCUNHO", { atualizado_em: "token-antigo" }));
+    const { rerender } = render(<OrcamentoInsumosDialog open onOpenChange={vi.fn()} orcamentoId={7} />);
+    await screen.findByText("Orçamento de insumos OI-12");
+
+    rerender(<OrcamentoInsumosDialog open={false} onOpenChange={vi.fn()} orcamentoId={7} />);
+    const carga = adiado<OrcamentoInsumosDetalhe>();
+    mocks.db.obterOrcamentoInsumos.mockReturnValueOnce(carga.promessa);
+    rerender(<OrcamentoInsumosDialog open onOpenChange={vi.fn()} orcamentoId={7} acaoInicial="email" />);
+
+    expect(await screen.findByText("Carregando orçamento...")).toBeInTheDocument();
+    expect(mocks.ensureSensitiveAccess).not.toHaveBeenCalled();
+    expect(mocks.enviarEmail).not.toHaveBeenCalled();
+
+    carga.resolver(detalhe("RASCUNHO", { atualizado_em: "token-novo" }));
+    await waitFor(() => expect(mocks.db.marcarOrcamentoInsumosEnviado).toHaveBeenCalledWith(7, "token-novo", "EMAIL"));
+    expect(mocks.enviarEmail).toHaveBeenCalledTimes(1);
+    expect(mocks.enviarEmail).toHaveBeenCalledWith(expect.objectContaining({ atualizado_em: "token-novo" }));
+  });
+
+  it("edição não salva da abertura anterior não engole a ação: ela roda depois da carga nova", async () => {
+    mocks.enviarWhatsapp.mockResolvedValue({ sucesso: true });
+    mocks.db.marcarOrcamentoInsumosEnviado.mockResolvedValue(detalhe("ENVIADO"));
+    mocks.db.obterOrcamentoInsumos.mockResolvedValueOnce(detalhe("RASCUNHO", { atualizado_em: "token-antigo" }));
+    const { rerender } = render(<OrcamentoInsumosDialog open onOpenChange={vi.fn()} orcamentoId={7} />);
+    await screen.findByText("Orçamento de insumos OI-12");
+    fireEvent.change(screen.getByLabelText("Observações"), { target: { value: "edição não salva" } });
+    expect(botao(/enviar por whatsapp/i)).toBeDisabled();
+
+    rerender(<OrcamentoInsumosDialog open={false} onOpenChange={vi.fn()} orcamentoId={7} />);
+    const carga = adiado<OrcamentoInsumosDetalhe>();
+    mocks.db.obterOrcamentoInsumos.mockReturnValueOnce(carga.promessa);
+    rerender(<OrcamentoInsumosDialog open onOpenChange={vi.fn()} orcamentoId={7} acaoInicial="whatsapp" />);
+
+    expect(await screen.findByText("Carregando orçamento...")).toBeInTheDocument();
+    expect(mocks.enviarWhatsapp).not.toHaveBeenCalled();
+
+    carga.resolver(detalhe("RASCUNHO", { atualizado_em: "token-novo" }));
+    await waitFor(() => expect(mocks.db.marcarOrcamentoInsumosEnviado).toHaveBeenCalledWith(7, "token-novo", "WHATSAPP"));
+    expect(mocks.enviarWhatsapp).toHaveBeenCalledTimes(1);
+  });
+});
