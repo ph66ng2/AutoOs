@@ -127,6 +127,7 @@ export function TeamAccessManager({
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [criando, setCriando] = useState(false);
+  const [criandoBusy, setCriandoBusy] = useState(false);
 
   const load = useCallback(async () => {
     setLoadError(null);
@@ -392,8 +393,24 @@ export function TeamAccessManager({
         )}
         <AuditoriaRecente />
       </div>
-      <Dialog open={criando} onOpenChange={setCriando}>
-        <DialogContent tamanho="g" className="overflow-y-auto">
+      <Dialog
+        open={criando}
+        onOpenChange={(aberto) => {
+          if (!aberto && criandoBusy) return;
+          setCriando(aberto);
+          if (!aberto) setCriandoBusy(false);
+        }}
+      >
+        <DialogContent
+          tamanho="g"
+          className="overflow-y-auto"
+          onPointerDownOutside={(evento) => {
+            if (criandoBusy) evento.preventDefault();
+          }}
+          onEscapeKeyDown={(evento) => {
+            if (criandoBusy) evento.preventDefault();
+          }}
+        >
           <DialogHeader className="sr-only">
             <DialogTitle>Novo perfil</DialogTitle>
             <DialogDescription>Cadastrar uma pessoa da equipe.</DialogDescription>
@@ -401,6 +418,7 @@ export function TeamAccessManager({
           {catalogReady && (
             <CreateProfileCard
               profiles={profiles}
+              onBusyChange={setCriandoBusy}
               onCreated={async () => {
                 await changed();
               }}

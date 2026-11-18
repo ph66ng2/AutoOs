@@ -55,4 +55,17 @@ describe("useFinancasAno", () => {
     expect(result.current.meses[5]?.faturado).toBe(500);
     expect(result.current.meses.some((m) => m.faturado === 99999)).toBe(false);
   });
+
+  it("avisa quando um resumo mensal falha em vez de tratar o mês como zero", async () => {
+    mocks.listarEquipamentos.mockResolvedValue([]);
+    mocks.resumoMensal.mockImplementation(async (mes: number, ano: number) => {
+      if (ano === 2026 && mes === 3) throw new Error("falha no resumo");
+      return { total_fixo: 0, total_variavel: 250, total_geral: 0, por_categoria: [] };
+    });
+    const { result } = renderHook(() => useFinancasAno(2026, 1000, new Date("2026-11-18T12:00:00")));
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    expect(result.current.error).toBe("Não foi possível carregar os gastos de alguns meses.");
+    expect(result.current.meses).toEqual([]);
+    expect(result.current.anterior).toEqual([]);
+  });
 });

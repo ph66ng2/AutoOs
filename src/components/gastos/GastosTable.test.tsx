@@ -18,6 +18,7 @@ describe("GastosTable", () => {
         gastosFixos={[]}
         gastosVariaveis={[gasto]}
         loading={false}
+        ocultar={false}
         onEditFixo={vi.fn()}
         onEditVariavel={vi.fn()}
       />,

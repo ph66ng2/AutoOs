@@ -67,6 +67,7 @@ export default function Gastos() {
 
   const loading = loadingFixos || loadingVariaveis || loadingResumo;
   const error = errorFixos || errorVariaveis || errorResumo;
+  const lancamentosProntos = !loadingFixos && !loadingVariaveis && !errorFixos && !errorVariaveis;
   const totais = totaisDoMes(gastosFixos, gastosVariaveis);
   const { meses, anterior, loading: loadingAno, error: erroAno, recarregar: recarregarAno } = useFinancasAno(ano, totais.fixo);
 
@@ -183,6 +184,10 @@ export default function Gastos() {
   });
 
   async function baixarCsv() {
+    if (!lancamentosProntos) {
+      showError("Finanças", "Baixar lançamentos", new Error("Aguarde os lançamentos deste mês carregarem."));
+      return;
+    }
     try {
       const nome = await exportar(mes, ano, gastosFixos, gastosVariaveis);
       success("Finanças", `Lançamentos salvos em ${nome}, na pasta temporária do app.`);
@@ -238,7 +243,7 @@ export default function Gastos() {
             >
               {ocultar ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
             </Button>
-            <Button variant="outline" size="icon" className="h-10 w-10" aria-label="Baixar lançamentos do mês (CSV)" title="Baixar lançamentos do mês (CSV)" onClick={() => void baixarCsv()}>
+            <Button variant="outline" size="icon" className="h-10 w-10" aria-label="Baixar lançamentos do mês (CSV)" title="Baixar lançamentos do mês (CSV)" disabled={!lancamentosProntos} onClick={() => void baixarCsv()}>
               <Download className="h-4 w-4" />
             </Button>
             <Button variant="outline" size="icon" className="h-10 w-10" aria-label="Recarregar" title="Recarregar" onClick={() => void recarregarTudo()}>

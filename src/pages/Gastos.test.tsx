@@ -92,6 +92,16 @@ describe("Finanças (fase 8)", () => {
     await waitFor(() => expect(mocks.db.listarEquipamentos.mock.calls.length).toBeGreaterThan(chamadas));
   });
 
+  it("não exporta enquanto os lançamentos do mês ainda carregam", async () => {
+    let liberar!: (valor: typeof variaveis) => void;
+    mocks.db.listarGastosVariaveis.mockReturnValueOnce(new Promise((resolve) => { liberar = resolve; }));
+    render(<Gastos />);
+    expect(screen.getByRole("button", { name: "Baixar lançamentos do mês (CSV)" })).toBeDisabled();
+    expect(mocks.db.salvarArquivoTemp).not.toHaveBeenCalled();
+    liberar(variaveis);
+    await waitFor(() => expect(screen.getByRole("button", { name: "Baixar lançamentos do mês (CSV)" })).toBeEnabled());
+  });
+
   it("baixa os lançamentos do mês em CSV", async () => {
     const usuario = userEvent.setup();
     render(<Gastos />);
