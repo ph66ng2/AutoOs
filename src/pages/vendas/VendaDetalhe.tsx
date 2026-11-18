@@ -289,8 +289,9 @@ export default function VendaDetalhe() {
         ))}
       </section>
 
-      <div className="grid items-start gap-4 xl:grid-cols-[minmax(0,1fr)_380px]">
-        <div className="min-w-0 space-y-4">
+      {/* As duas colunas terminam na mesma linha: o último cartão de cada uma estica. */}
+      <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_380px]">
+        <div className="flex min-w-0 flex-col gap-4">
           {!podeAgir && (
             <p className="flex items-start gap-2 rounded-xl bg-muted px-4 py-3 text-sm">
               <Lock className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
@@ -349,6 +350,7 @@ export default function VendaDetalhe() {
 
           <Cartao
             titulo="Itens"
+            className={venda.observacoes ? undefined : "flex-1"}
             acao={<span className="text-xs text-muted-foreground">nome e categoria congelados no orçamento{aberto ? " · saldo é o de agora" : ""}</span>}
           >
             <div className="overflow-x-auto">
@@ -396,13 +398,13 @@ export default function VendaDetalhe() {
           </Cartao>
 
           {venda.observacoes && (
-            <Cartao titulo="Observações">
+            <Cartao titulo="Observações" className="flex-1">
               <p className="text-sm">{venda.observacoes}</p>
             </Cartao>
           )}
         </div>
 
-        <div className="space-y-4">
+        <div className="flex flex-col gap-4">
           <Cartao titulo="Cliente">
             <p className="font-semibold">{venda.cliente_nome}</p>
             {venda.cliente_documento && <p className="font-mono text-xs text-muted-foreground">{formatarDocumento(venda.cliente_documento)}</p>}
@@ -445,7 +447,7 @@ export default function VendaDetalhe() {
             </dl>
           </Cartao>
 
-          <Cartao titulo="Registro">
+          <Cartao titulo="Registro" className="flex-1">
             <dl className="grid grid-cols-[6rem_1fr] gap-x-3 gap-y-1.5 text-sm tabular-nums">
               <Linha rotulo="Criado">{dataHora(venda.criado_em)}</Linha>
               <Linha rotulo="Enviado">{dataHora(venda.enviado_em)}</Linha>
