@@ -211,6 +211,7 @@ import { PageHeader } from "@/components/PageHeader";
 import { useLarguraMinima } from "@/hooks/useLarguraMinima";
 import { BarraDeEtapas } from "@/components/equipamentos/BarraDeEtapas";
 import { FiltroDeStatus } from "@/components/equipamentos/FiltroDeStatus";
+import { useExportarEquipamentos } from "@/hooks/useExportarEquipamentos";
 import { BarraDeEtapasGrande } from "@/components/equipamentos/BarraDeEtapasGrande";
 import { OrcamentoDaOs } from "@/components/equipamentos/OrcamentoDaOs";
 import { CartaoCliente } from "@/components/detalhe/CartaoCliente";
@@ -376,6 +377,19 @@ export default function Equipamentos() {
   const [emailDialogOpen, setEmailDialogOpen] = useState(false);
 
   const [tecnicoFiltro, setTecnicoFiltro] = useState<string>("TODOS");
+  const [exportando, setExportando] = useState(false);
+  const exportarEquipamentos = useExportarEquipamentos();
+  async function baixarCsv() {
+    setExportando(true);
+    try {
+      const nome = await exportarEquipamentos({ busca: busca || undefined, status: statusFiltro, tecnico: tecnicoFiltro === "TODOS" ? undefined : tecnicoFiltro, ordenacao });
+      success("Equipamentos", `Lista salva em ${nome}, na pasta temporária do app.`);
+    } catch (err) {
+      showError("Equipamentos", "Exportar lista", err);
+    } finally {
+      setExportando(false);
+    }
+  }
   const { equipamentos, total: totalEquipamentos, contagens: contagensStatus, loading, error: erroListaEquipamentos, avisoAtualizacao, criar, atualizar, deletar, atualizarStatus, recarregar, atualizarEmSegundoPlano } =
     useEquipamentos({ busca: busca || undefined, status: statusFiltro, tecnico: tecnicoFiltro === "TODOS" ? undefined : tecnicoFiltro, ordenacao, page: paginaEquipamentos });
   const totalPaginasEquipamentos = totalPages(totalEquipamentos);
@@ -2749,7 +2763,8 @@ export default function Equipamentos() {
           : `${totalEquipamentos} ${totalEquipamentos === 1 ? "equipamento" : "equipamentos"}${busca || statusFiltro !== "TODOS" ? " neste filtro" : ""}`}
       >
         <div className="flex items-center gap-2">
-          <Button onClick={abrirNovo}><Plus className="h-4 w-4 mr-2" />Novo Equipamento</Button>
+          <Button variant="outline" onClick={() => void baixarCsv()} disabled={exportando}>{exportando ? "Exportando…" : "Exportar"}</Button>
+          <Button onClick={abrirNovo}><Plus className="h-4 w-4 mr-2" />Nova entrada</Button>
         </div>
       </PageHeader>
 
@@ -2811,7 +2826,7 @@ export default function Equipamentos() {
             <div className="text-center py-12 text-muted-foreground">
               <Printer className="h-16 w-16 mx-auto mb-4 opacity-20" />
               <p className="text-lg font-medium mb-1">Nenhum equipamento encontrado</p>
-              <p className="text-sm">{busca || statusFiltro !== "TODOS" ? "Tente ajustar os filtros" : "Clique em 'Novo Equipamento' para cadastrar"}</p>
+              <p className="text-sm">{busca || statusFiltro !== "TODOS" ? "Tente ajustar os filtros" : "Clique em 'Nova entrada' para cadastrar"}</p>
             </div>
           ) : (
             <>
@@ -2854,7 +2869,8 @@ export default function Equipamentos() {
                     <TableHead className="w-[13rem]">Equipamento</TableHead>
                     <TableHead className="w-[11rem]">Cliente</TableHead>
                     <TableHead className="w-[12rem]">Andamento</TableHead>
-                    <TableHead className="w-[6.5rem]">Entrada</TableHead>
+                    <TableHead className="w-[5.5rem]">Técnico</TableHead>
+                    <TableHead className="w-[5rem]">Entrada</TableHead>
                     <TableHead className="w-[7rem] text-right">Orçamento</TableHead>
                     <TableHead className="sticky right-0 z-20 w-[15.5rem] min-w-[15.5rem] bg-muted text-right">Próxima ação</TableHead>
                   </TableRow>
@@ -2886,7 +2902,9 @@ export default function Equipamentos() {
                         {eq.cliente_nome ? (
                           <div className="min-w-0">
                             <span className="block truncate text-sm" title={eq.cliente_nome}>{eq.cliente_nome}</span>
-                            {eq.cliente_telefone && <p className="truncate text-xs text-muted-foreground" title={eq.cliente_telefone}>{eq.cliente_telefone}</p>}
+                            {(eq.responsavel_nome || eq.cliente_telefone) && (
+                              <p className="truncate text-xs text-muted-foreground" title={eq.responsavel_nome || eq.cliente_telefone || undefined}>{eq.responsavel_nome || eq.cliente_telefone}</p>
+                            )}
                           </div>
                         ) : <span className="text-muted-foreground">—</span>}
                       </TableCell>
@@ -2908,8 +2926,11 @@ export default function Equipamentos() {
                             )}
                         </div>
                       </TableCell>
+                      <TableCell className={`overflow-hidden text-sm text-muted-foreground ${EQUIPMENT_ROW_FOCUS_EDGE}`}>
+                        <span className="block truncate" title={eq.tecnico_nome ?? undefined}>{eq.tecnico_nome || "—"}</span>
+                      </TableCell>
                       <TableCell className={`overflow-hidden text-sm text-muted-foreground tabular-nums ${EQUIPMENT_ROW_FOCUS_EDGE}`}>
-                        <span className="block truncate" title={`Última alteração: ${formatDatePtBr(eq.atualizado_em || eq.criado_em)}`}>{formatDatePtBr(eq.data_entrada)}</span>
+                        <span className="block truncate" title={`Entrada em ${formatDatePtBr(eq.data_entrada)} · última alteração: ${formatDatePtBr(eq.atualizado_em || eq.criado_em)}`}>{formatDatePtBr(eq.data_entrada).slice(0, 5)}</span>
                       </TableCell>
                       <TableCell className={`overflow-hidden text-right text-sm font-semibold tabular-nums ${EQUIPMENT_ROW_FOCUS_EDGE}`}>
                         {eq.valor_orcamento != null && eq.valor_orcamento > 0 ? formatCurrency(eq.valor_orcamento) : <span className="font-normal text-muted-foreground">—</span>}

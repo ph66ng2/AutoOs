@@ -1183,7 +1183,7 @@ describe("Equipamentos — Budget Divergence & Audit", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Close" }));
     await waitFor(() => expect(screen.queryByRole("heading", { name: "Editar Equipamento" })).not.toBeInTheDocument());
-    fireEvent.click(screen.getByRole("button", { name: "Novo Equipamento" }));
+    fireEvent.click(screen.getByRole("button", { name: "Nova entrada" }));
     await screen.findByRole("heading", { name: "Novo Equipamento" });
 
     await act(async () => {
