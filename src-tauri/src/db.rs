@@ -479,7 +479,32 @@ const REQUIRED_RUNTIME_COLUMN_TYPES: &[(&str, &str, &str)] = &[
     ("verificacoes", "adjusted_by_profile_id", "int4"),
 ];
 
+/// Falha da validação estrutural: a consulta em si falhou (rede, servidor
+/// lotado) ou o banco respondeu e falta estrutura. Só o segundo caso prova
+/// incompatibilidade.
+#[derive(Debug)]
+enum SchemaCheckFailure {
+    Query(sqlx::Error),
+    Mismatch(String),
+}
+
+/// Consulta que falhou mantém o tipo original (rede, capacidade...); só
+/// estrutura ausente vira erro de banco incompatível.
+fn schema_failure_into_error(failure: SchemaCheckFailure) -> sqlx::Error {
+    match failure {
+        SchemaCheckFailure::Query(error) => error,
+        SchemaCheckFailure::Mismatch(message) => schema_validation_error(message),
+    }
+}
+
 async fn validate_runtime_schema_on_pool(pool: &PgPool) -> Result<usize, String> {
+    check_runtime_schema(pool).await.map_err(|failure| match failure {
+        SchemaCheckFailure::Query(error) => crate::commands::operator_errors::mapear_erro_sql(error),
+        SchemaCheckFailure::Mismatch(message) => message,
+    })
+}
+
+async fn check_runtime_schema(pool: &PgPool) -> Result<usize, SchemaCheckFailure> {
     let table_names = REQUIRED_RUNTIME_TABLES
         .iter()
         .map(|value| value.to_string())
@@ -493,7 +518,7 @@ async fn validate_runtime_schema_on_pool(pool: &PgPool) -> Result<usize, String>
     .bind(table_names)
     .fetch_all(pool)
     .await
-    .map_err(crate::commands::operator_errors::mapear_erro_sql)?;
+    .map_err(SchemaCheckFailure::Query)?;
 
     let column_tables = REQUIRED_RUNTIME_COLUMNS
         .iter()
@@ -518,7 +543,7 @@ async fn validate_runtime_schema_on_pool(pool: &PgPool) -> Result<usize, String>
     .bind(column_names)
     .fetch_all(pool)
     .await
-    .map_err(crate::commands::operator_errors::mapear_erro_sql)?;
+    .map_err(SchemaCheckFailure::Query)?;
 
     let typed_tables = REQUIRED_RUNTIME_COLUMN_TYPES
         .iter()
@@ -549,7 +574,7 @@ async fn validate_runtime_schema_on_pool(pool: &PgPool) -> Result<usize, String>
     .bind(expected_types)
     .fetch_all(pool)
     .await
-    .map_err(crate::commands::operator_errors::mapear_erro_sql)?;
+    .map_err(SchemaCheckFailure::Query)?;
 
     if !missing_tables.is_empty()
         || !missing_columns.is_empty()
@@ -558,10 +583,10 @@ async fn validate_runtime_schema_on_pool(pool: &PgPool) -> Result<usize, String>
         let mut missing = missing_tables;
         missing.extend(missing_columns);
         missing.extend(incompatible_columns);
-        return Err(format!(
+        return Err(SchemaCheckFailure::Mismatch(format!(
             "Estruturas obrigatórias ausentes: {}.",
             missing.join(", ")
-        ));
+        )));
     }
 
     Ok(REQUIRED_RUNTIME_TABLES.len()
@@ -787,7 +812,7 @@ async fn connect_and_setup_pool(database_url: &str) -> Result<PgPool, sqlx::Erro
     // disputa DDL/locks com outras máquinas e aceita históricos legados válidos.
     let schema_result = match tokio::time::timeout(
         DATABASE_SCHEMA_TIMEOUT,
-        validate_runtime_schema_on_pool(&pool),
+        check_runtime_schema(&pool),
     )
     .await
     {
@@ -799,9 +824,9 @@ async fn connect_and_setup_pool(database_url: &str) -> Result<PgPool, sqlx::Erro
             return Err(schema_validation_timeout_error());
         }
     };
-    if let Err(message) = schema_result {
+    if let Err(failure) = schema_result {
         pool.close().await;
-        return Err(schema_validation_error(message));
+        return Err(schema_failure_into_error(failure));
     }
 
     // Troca de pool (ex.: nova configuração): fecha o antigo para não deixar
@@ -886,6 +911,20 @@ mod tests {
         assert_eq!(database_error_kind(&database_error("3D000", "db")), DatabaseErrorKind::ConfiguracaoInvalida);
         assert_eq!(database_error_kind(&database_error("53300", "too many clients")), DatabaseErrorKind::Capacidade);
         assert_eq!(database_error_kind(&database_error("XX000", "boom")), DatabaseErrorKind::Desconhecido);
+    }
+
+    #[test]
+    fn schema_query_failure_keeps_its_own_kind() {
+        // Uma consulta da validação que cai por rede não pode virar "outra versão".
+        let reset = sqlx::Error::Io(io::Error::new(io::ErrorKind::ConnectionReset, "reset"));
+        let error = schema_failure_into_error(SchemaCheckFailure::Query(reset));
+        assert_eq!(database_error_kind(&error), DatabaseErrorKind::Rede);
+
+        let lotado = schema_failure_into_error(SchemaCheckFailure::Query(database_error("53300", "too many clients")));
+        assert_eq!(database_error_kind(&lotado), DatabaseErrorKind::Capacidade);
+
+        let faltando = schema_failure_into_error(SchemaCheckFailure::Mismatch("tabela x ausente".to_string()));
+        assert_eq!(database_error_kind(&faltando), DatabaseErrorKind::Incompativel);
     }
 
     #[test]

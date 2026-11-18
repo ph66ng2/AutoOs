@@ -1,6 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import { db } from "@/lib/db";
-import type { DatabaseConnectionConfig } from "@/types";
+import type { DatabaseConnectionConfig, DatabaseErrorKind, DatabaseInitError } from "@/types";
 
 export function parsePostgresConnectionUrl(value: string): DatabaseConnectionConfig | null {
   try {
@@ -27,20 +27,7 @@ export function parsePostgresConnectionUrl(value: string): DatabaseConnectionCon
   }
 }
 
-/** Espelha `DatabaseErrorKind` em `src-tauri/src/db.rs`. */
-export type DatabaseErrorKind =
-  | "nao_configurado"
-  | "configuracao_invalida"
-  | "credencial"
-  | "incompativel"
-  | "rede"
-  | "capacidade"
-  | "desconhecido";
-
-export interface DatabaseInitError {
-  tipo: DatabaseErrorKind;
-  mensagem: string;
-}
+export type { DatabaseErrorKind, DatabaseInitError };
 
 /** Erros que costumam passar sozinhos; os demais exigem alguém ajustar a configuração. */
 export function isTransientDatabaseError(tipo: DatabaseErrorKind): boolean {

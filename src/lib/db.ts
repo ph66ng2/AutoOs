@@ -26,9 +26,9 @@
 import { invoke as tauriInvoke } from "@tauri-apps/api/core";
 import { emitirOrcamentoPublicado, type ReferenciaPdfPortal } from "@/lib/portal-documentos";
 import { withSensitiveAccessRetry } from "@/lib/sensitive-action-retry";
-import type { DatabaseInitError } from "@/lib/db-config";
 import type {
   AcessoPortalContato,
+  DatabaseInitError,
   AjusteOrcamentoInput,
   AlertaPortal,
   ContatoPortalEmpresa,
