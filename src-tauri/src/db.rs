@@ -235,6 +235,9 @@ pub fn database_error_message(error: &sqlx::Error) -> String {
             "A conexão com o banco excedeu 6 segundos. Verifique a internet e tente novamente."
                 .to_string()
         }
+        sqlx::Error::Io(io_error) if io_error.kind() == std::io::ErrorKind::TimedOut => {
+            format!("O banco demorou para responder: {}", io_error)
+        }
         sqlx::Error::Io(_) => {
             "Não foi possível alcançar o banco. Verifique a internet, DNS ou compatibilidade IPv4/IPv6."
                 .to_string()
@@ -613,6 +616,16 @@ fn schema_validation_error(message: String) -> sqlx::Error {
     ))))
 }
 
+fn schema_validation_timeout_error() -> sqlx::Error {
+    sqlx::Error::Io(std::io::Error::new(
+        std::io::ErrorKind::TimedOut,
+        format!(
+            "a validação estrutural excedeu {} segundos.",
+            DATABASE_SCHEMA_TIMEOUT.as_secs()
+        ),
+    ))
+}
+
 fn database_url_missing_error() -> sqlx::Error {
     sqlx::Error::Configuration(Box::new(std::io::Error::new(
         std::io::ErrorKind::NotFound,
@@ -781,10 +794,9 @@ async fn connect_and_setup_pool(database_url: &str) -> Result<PgPool, sqlx::Erro
         Ok(result) => result,
         Err(_) => {
             pool.close().await;
-            return Err(schema_validation_error(format!(
-                "A validação estrutural excedeu {} segundos.",
-                DATABASE_SCHEMA_TIMEOUT.as_secs()
-            )));
+            // Lentidão não prova incompatibilidade: vira erro de rede, que a
+            // tela de reconexão trata como passageiro e tenta de novo.
+            return Err(schema_validation_timeout_error());
         }
     };
     if let Err(message) = schema_result {
@@ -874,6 +886,15 @@ mod tests {
         assert_eq!(database_error_kind(&database_error("3D000", "db")), DatabaseErrorKind::ConfiguracaoInvalida);
         assert_eq!(database_error_kind(&database_error("53300", "too many clients")), DatabaseErrorKind::Capacidade);
         assert_eq!(database_error_kind(&database_error("XX000", "boom")), DatabaseErrorKind::Desconhecido);
+    }
+
+    #[test]
+    fn slow_schema_validation_is_transient_not_incompatible() {
+        let slow = schema_validation_timeout_error();
+        assert_eq!(database_error_kind(&slow), DatabaseErrorKind::Rede);
+        assert!(database_error_message(&slow).contains("demorou para responder"));
+        let mismatch = schema_validation_error("tabela ausente".to_string());
+        assert_eq!(database_error_kind(&mismatch), DatabaseErrorKind::Incompativel);
     }
 
     #[test]

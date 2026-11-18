@@ -1,4 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
+import { db } from "@/lib/db";
 import type { DatabaseConnectionConfig } from "@/types";
 
 export function parsePostgresConnectionUrl(value: string): DatabaseConnectionConfig | null {
@@ -72,12 +73,12 @@ export const DatabaseConfigService = {
   },
 
   async getInitializationError(): Promise<DatabaseInitError | null> {
-    return invoke<DatabaseInitError | null>("obter_erro_inicializacao_banco");
+    return db.obterErroInicializacaoBanco();
   },
 
   /** Reconecta com a configuração já salva. `null` significa que conectou. */
   async reconnect(): Promise<DatabaseInitError | null> {
-    return invoke<DatabaseInitError | null>("tentar_reconectar_banco");
+    return db.tentarReconectarBanco();
   },
 
   async restartWithConfig(config: DatabaseConnectionConfig): Promise<boolean> {
