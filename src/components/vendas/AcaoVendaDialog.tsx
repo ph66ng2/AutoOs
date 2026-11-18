@@ -13,7 +13,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { FormaPagamentoFields } from "@/components/equipamentos/FormaPagamentoFields";
 import { PdfPreviewDialog } from "@/components/equipamentos/PdfPreviewDialog";
 import { textoDoErro, useAcoesOrcamentoInsumos } from "@/hooks/useAcoesOrcamentoInsumos";
-import type { AcaoInicialOrcamentoInsumos } from "@/hooks/useOrcamentoInsumosEditor";
+import type { AcaoInicialOrcamentoInsumos } from "@/lib/orcamento-insumos";
 import { db } from "@/lib/db";
 import { acoesOrcamentoInsumos, emailDestinatario, nomeDestinatario, telefoneDestinatario } from "@/lib/orcamento-insumos";
 import { cn, formatCurrency } from "@/lib/utils";

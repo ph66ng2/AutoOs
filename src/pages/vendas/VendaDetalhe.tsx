@@ -22,7 +22,7 @@ import {
 import type { StatusFamilia } from "@/lib/status-familia";
 import { cn, formatCurrency } from "@/lib/utils";
 import { AcaoVendaDialog } from "@/components/vendas/AcaoVendaDialog";
-import type { AcaoInicialOrcamentoInsumos } from "@/hooks/useOrcamentoInsumosEditor";
+import type { AcaoInicialOrcamentoInsumos } from "@/lib/orcamento-insumos";
 import { SENSITIVE_PERMISSIONS, type OrcamentoInsumosDetalhe, type StatusOrcamentoInsumos } from "@/types";
 
 const FUSO = { timeZone: "America/Bahia" } as const;

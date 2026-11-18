@@ -7,21 +7,21 @@ import type { OrcamentoInsumosDetalhe } from "@/types";
 const mocks = vi.hoisted(() => ({
   obter: vi.fn(),
   hasPermission: vi.fn(() => true),
-  dialogProps: vi.fn(),
+  modalProps: vi.fn(),
   navigate: vi.fn(),
 }));
 vi.mock("@/lib/db", () => ({ db: { obterOrcamentoInsumos: mocks.obter } }));
 vi.mock("@/hooks/useSensitiveAccess", () => ({
   useSensitiveAccess: () => ({ hasPermission: mocks.hasPermission, ensureSensitiveAccess: vi.fn() }),
 }));
-// V.5: as ações abrem o modal próprio (AcaoVendaDialog); as props são lidas como antes.
+// Cada ação abre o seu modal (AcaoVendaDialog, V.5).
 vi.mock("@/components/vendas/AcaoVendaDialog", () => ({
-  AcaoVendaDialog: (modal: { acao: string | null }) => {
-    const props = { open: modal.acao != null, acaoInicial: modal.acao };
-    mocks.dialogProps(props);
-    return props.open ? <div data-testid="janela">{props.acaoInicial ?? "sem-acao"}</div> : null;
+  AcaoVendaDialog: (props: { acao: string | null }) => {
+    mocks.modalProps(props);
+    return props.acao ? <div data-testid="modal-acao">{props.acao}</div> : null;
   },
 }));
+
 vi.mock("react-router-dom", async (original) => ({
   ...(await original<typeof import("react-router-dom")>()),
   useNavigate: () => mocks.navigate,
@@ -76,7 +76,7 @@ describe("VendaDetalhe (/vendas/:id)", () => {
     expect(mocks.navigate).toHaveBeenCalledWith("/insumos?entrada=9&quantidade=4&voltar=%2Fvendas%2F34");
 
     await usuario.click(screen.getByRole("button", { name: "Aprovar" }));
-    expect(screen.getByTestId("janela")).toHaveTextContent("aprovar");
+    expect(screen.getByTestId("modal-acao")).toHaveTextContent("aprovar");
   });
 
   it("com mais de um item faltando, cada um tem o seu Dar entrada com a quantidade dele", async () => {
@@ -128,7 +128,7 @@ describe("VendaDetalhe (/vendas/:id)", () => {
     expect(screen.queryByRole("combobox", { name: "Mais ações" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Dar entrada no estoque" })).not.toBeInTheDocument();
     await usuario.click(screen.getByRole("button", { name: "Ver PDF" }));
-    expect(screen.getByTestId("janela")).toHaveTextContent("pdf");
+    expect(screen.getByTestId("modal-acao")).toHaveTextContent("pdf");
   });
 
   it("cliente que não quer WhatsApp: canal riscado e aviso", async () => {

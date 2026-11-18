@@ -31,7 +31,7 @@ import {
 import { totalPages } from "@/lib/pagination";
 import { formatCurrency } from "@/lib/utils";
 import { AcaoVendaDialog } from "@/components/vendas/AcaoVendaDialog";
-import type { AcaoInicialOrcamentoInsumos } from "@/hooks/useOrcamentoInsumosEditor";
+import type { AcaoInicialOrcamentoInsumos } from "@/lib/orcamento-insumos";
 import {
   SENSITIVE_PERMISSIONS,
   type StatusOrcamentoInsumos,
