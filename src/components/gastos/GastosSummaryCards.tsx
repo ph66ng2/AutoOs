@@ -1,4 +1,3 @@
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import type { GastoResumoMensal, GastoFixo, GastoVariavel } from "@/types";
 
 interface GastosSummaryCardsProps {
@@ -23,63 +22,32 @@ export function GastosSummaryCards({ resumo, gastosFixos, gastosVariaveis, loadi
     : resumo?.total_variavel ?? 0;
   const totalGeral = totalFixo + totalVariavel;
 
-  if (loading) {
-    return (
-      <div className="grid gap-4 md:grid-cols-3">
-        {[1, 2, 3].map((i) => (
-          <Card key={i}>
-            <CardHeader className="pb-2">
-              <div className="h-4 w-24 bg-muted animate-pulse rounded" />
-            </CardHeader>
-            <CardContent>
-              <div className="h-8 w-32 bg-muted animate-pulse rounded" />
-            </CardContent>
-          </Card>
-        ))}
-      </div>
-    );
-  }
+  const fixosAtivos = gastosFixos.filter((g) => g.ativo !== false).length;
+  const lancamentos = gastosVariaveis?.length ?? 0;
+  const cartoes = [
+    { rotulo: "Total Fixo", valor: totalFixo, rodape: `${fixosAtivos} ${fixosAtivos === 1 ? "gasto fixo" : "gastos fixos"} no mês`, traco: "bg-status-bad" },
+    { rotulo: "Total Variável", valor: totalVariavel, rodape: `${lancamentos} ${lancamentos === 1 ? "lançamento" : "lançamentos"} no mês`, traco: "bg-status-bad/45" },
+    { rotulo: "Total Geral", valor: totalGeral, rodape: "fixos e variáveis", traco: "bg-status-bad" },
+  ];
 
   return (
-    <div className="grid gap-4 md:grid-cols-3">
-      <Card>
-        <CardHeader className="pb-2">
-          <CardTitle className="text-sm font-medium text-muted-foreground">
-            Total Fixo
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="text-2xl font-bold text-primary">
-            {currencyFormatter.format(totalFixo)}
+    <div className="grid gap-4 md:grid-cols-3" aria-busy={loading || undefined}>
+      {cartoes.map((cartao) => (
+        <section key={cartao.rotulo} className="overflow-hidden rounded-2xl border bg-card">
+          <div className="px-5 pt-4">
+            <p className="flex items-center gap-2 text-sm text-muted-foreground">
+              <span aria-hidden="true" className={`h-2 w-2 rounded-full ${cartao.traco}`} />
+              {cartao.rotulo}
+            </p>
           </div>
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader className="pb-2">
-          <CardTitle className="text-sm font-medium text-muted-foreground">
-            Total Variável
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="text-2xl font-bold text-status-wait">
-            {currencyFormatter.format(totalVariavel)}
-          </div>
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader className="pb-2">
-          <CardTitle className="text-sm font-medium text-muted-foreground">
-            Total Geral
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="text-2xl font-bold text-status-ok">
-            {currencyFormatter.format(totalGeral)}
-          </div>
-        </CardContent>
-      </Card>
+          {loading ? (
+            <span aria-hidden="true" className="mx-5 mb-4 mt-2 block h-8 w-36 rounded-lg bg-muted" />
+          ) : (
+            <p className="px-5 pb-4 pt-1 text-[28px] font-extrabold leading-tight tabular-nums">{currencyFormatter.format(cartao.valor)}</p>
+          )}
+          <p className="border-t bg-muted/50 px-5 py-2.5 text-xs text-muted-foreground">{loading ? "\u00a0" : cartao.rodape}</p>
+        </section>
+      ))}
     </div>
   );
 }

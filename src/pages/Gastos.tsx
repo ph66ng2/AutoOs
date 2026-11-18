@@ -1,5 +1,5 @@
 import { useState, useCallback, useEffect } from "react";
-import { Plus, TrendingUp } from "lucide-react";
+import { Plus, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Select,
@@ -8,7 +8,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Card, CardContent } from "@/components/ui/card";
 import { useSensitiveAccess } from "@/hooks/useSensitiveAccess";
 import { useNotification } from "@/hooks/useNotification";
 import { ErrorAlert } from "@/components/ui/error-alert";
@@ -20,8 +19,8 @@ import {
   useResumoMensal,
 } from "@/hooks/useGastos";
 import { GastosSummaryCards } from "@/components/gastos/GastosSummaryCards";
-import { GastosChart } from "@/components/gastos/GastosChart";
-import { ReceitaPorMesCard } from "@/components/gastos/ReceitaPorMesCard";
+import { FaturamentoEGastosCard } from "@/components/gastos/FaturamentoEGastosCard";
+import { GastosPorCategoria } from "@/components/gastos/GastosPorCategoria";
 import { GastosTable } from "@/components/gastos/GastosTable";
 import { GastosFormFixo } from "@/components/gastos/GastosFormFixo";
 import { GastosFormVariavel } from "@/components/gastos/GastosFormVariavel";
@@ -165,26 +164,15 @@ export default function Gastos() {
     }
   }
 
-  return (
-    <div className="space-y-6">
-      <PageHeader titulo="Gastos">
-        <div className="flex gap-2">
-          <Button onClick={() => void abrirNovoFixo()}>
-            <Plus className="h-4 w-4 mr-2" />
-            Gasto Fixo
-          </Button>
-          <Button onClick={() => void abrirNovoVariavel()}>
-            <Plus className="h-4 w-4 mr-2" />
-            Gasto Variável
-          </Button>
-        </div>
-      </PageHeader>
+  const totalFixoAtivo = gastosFixos.filter((g) => g.ativo !== false).reduce((soma, g) => soma + (g.valor || 0), 0);
 
-      <Card>
-        <CardContent className="pt-6">
-          <div className="flex items-center gap-4">
+  return (
+    <div className="space-y-5">
+      <PageHeader titulo="Finanças">
+        <div className="flex flex-wrap items-center gap-2">
+          <div role="group" aria-label="Mês" className="flex items-center gap-1">
             <Select value={String(mes)} onValueChange={(v) => setMes(Number(v))}>
-              <SelectTrigger className="w-[160px]">
+              <SelectTrigger aria-label="Mês" className="h-10 w-[132px]">
                 <SelectValue placeholder="Mês" />
               </SelectTrigger>
               <SelectContent>
@@ -195,9 +183,8 @@ export default function Gastos() {
                 ))}
               </SelectContent>
             </Select>
-
             <Select value={String(ano)} onValueChange={(v) => setAno(Number(v))}>
-              <SelectTrigger className="w-[120px]">
+              <SelectTrigger aria-label="Ano" className="h-10 w-[92px]">
                 <SelectValue placeholder="Ano" />
               </SelectTrigger>
               <SelectContent>
@@ -208,13 +195,20 @@ export default function Gastos() {
                 ))}
               </SelectContent>
             </Select>
-
-            <Button variant="outline" size="icon" onClick={() => void recarregarTudo()}>
-              <TrendingUp className="h-4 w-4" />
+            <Button variant="outline" size="icon" className="h-10 w-10" aria-label="Recarregar" onClick={() => void recarregarTudo()}>
+              <RefreshCw className="h-4 w-4" />
             </Button>
           </div>
-        </CardContent>
-      </Card>
+          <Button variant="outline" className="h-10" onClick={() => void abrirNovoVariavel()}>
+            <Plus className="h-4 w-4 mr-2" />
+            Gasto Variável
+          </Button>
+          <Button className="h-10" onClick={() => void abrirNovoFixo()}>
+            <Plus className="h-4 w-4 mr-2" />
+            Gasto Fixo
+          </Button>
+        </div>
+      </PageHeader>
 
       {error && <ErrorAlert variant="error" context="Gastos" message={error} action="Carregar" />}
 
@@ -225,13 +219,10 @@ export default function Gastos() {
         loading={loading}
       />
 
-      <GastosChart
-        mes={mes}
-        ano={ano}
-        gastosFixos={gastosFixos}
-      />
-
-      <ReceitaPorMesCard />
+      <div className="grid grid-cols-[minmax(0,1fr)] gap-4 xl:grid-cols-[minmax(0,1fr)_360px]">
+        <FaturamentoEGastosCard mes={mes} ano={ano} totalFixo={totalFixoAtivo} />
+        <GastosPorCategoria categorias={resumo?.por_categoria ?? []} loading={loadingResumo} />
+      </div>
 
       <GastosTable
         gastosFixos={gastosFixos}
