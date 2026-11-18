@@ -875,15 +875,18 @@ export default function Equipamentos() {
     if (pathnameAtualRef.current !== destino) navigate(destino);
   }
 
-  /** Sai da página da verificação e volta para onde a pessoa estava; depois de finalizar, recarrega os detalhes. */
-  function fecharPaginaVerificacao(finalizou: boolean) {
+  /**
+   * Sai da página da verificação e volta para onde a pessoa estava. Voltando aos detalhes, eles
+   * são carregados de novo: depois de finalizar mudaram, e num link direto nunca foram carregados.
+   */
+  function fecharPaginaVerificacao() {
     // Finalizar já fecha; o "fechar" que a página manda logo depois não navega de novo.
     if (!paginaVerificacaoAbertaRef.current) return;
     paginaVerificacaoAbertaRef.current = false;
     const alvo = selecionado;
     setVerificacaoDialogOpen(false);
     const origem = origemVerificacaoRef.current;
-    if (finalizou && alvo?.id && origem === `/equipamentos/${alvo.id}`) {
+    if (alvo?.id && origem === `/equipamentos/${alvo.id}`) {
       db.buscarEquipamento(alvo.id).then((eq) => abrirDetalhes(eq)).catch(() => navigate(origem));
       return;
     }
@@ -895,14 +898,18 @@ export default function Equipamentos() {
   useEffect(() => {
     const anterior = idVerificacaoRotaAnterior.current;
     idVerificacaoRotaAnterior.current = idVerificacaoRota;
+    // A resposta só vale enquanto a pessoa continua nesta rota.
+    let ativo = true;
     if (idVerificacaoRota != null && !paginaVerificacaoAbertaRef.current) {
       const origem = `/equipamentos/${idVerificacaoRota}`;
       db.buscarEquipamento(idVerificacaoRota)
         .then((eq) => {
+          if (!ativo) return;
           if (eq.status === "EM_VERIFICACAO") abrirVerificacao(eq, origem);
           else navigate(origem, { replace: true });
         })
         .catch((err) => {
+          if (!ativo) return;
           showError("Equipamentos", "Abrir verificação", err);
           navigate("/equipamentos", { replace: true });
         });
@@ -910,6 +917,9 @@ export default function Equipamentos() {
       // Saiu da página pelo navegador: a verificação não finalizada é descartada.
       setVerificacaoDialogOpen(false);
     }
+    return () => {
+      ativo = false;
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [idVerificacaoRota]);
 
@@ -1056,7 +1066,8 @@ export default function Equipamentos() {
     setStatusDialogOpen(true);
   }
 
-  async function abrirAlterarOrcamento(eq: Equipamento, origem?: string): Promise<boolean> {
+  /** `aindaValido`: num link direto, para de abrir se a pessoa saiu da rota enquanto o PIN ou a carga esperavam. */
+  async function abrirAlterarOrcamento(eq: Equipamento, origem?: string, aindaValido: () => boolean = () => true): Promise<boolean> {
     const liberado = await ensureSensitiveAccess({
       title: "Alterar orçamento",
       description: "Informe o PIN para editar serviços e valor sem alterar o status do equipamento.",
@@ -1064,7 +1075,7 @@ export default function Equipamentos() {
         ? { anyPermission: [SENSITIVE_PERMISSIONS.FINANCIAL_ACTIONS, SENSITIVE_PERMISSIONS.PREPARE_QUOTES] }
         : { permission: SENSITIVE_PERMISSIONS.FINANCIAL_ACTIONS }),
     });
-    if (!liberado) return false;
+    if (!liberado || !aindaValido()) return false;
 
     setSelecionado(eq);
     setNovoStatus("");
@@ -1076,6 +1087,10 @@ export default function Equipamentos() {
     setValorFinalSugerido(null);
     setAcordoExcecaoEntrega(false);
     await prepararAjusteOrcamentoPadrao(eq);
+    if (!aindaValido()) {
+      setAjusteOrcamentoSemMudancaStatus(false);
+      return false;
+    }
     setStatusDialogOpen(true);
     origemAjusteRef.current = origem ?? pathnameAtualRef.current;
     const destino = `/equipamentos/${eq.id}/orcamento`;
@@ -1083,13 +1098,16 @@ export default function Equipamentos() {
     return true;
   }
 
-  /** Fecha a página do ajuste e volta para onde a pessoa estava; depois de salvar, recarrega os detalhes. */
-  function fecharPaginaAjuste(salvou: boolean) {
+  /**
+   * Fecha a página do ajuste e volta para onde a pessoa estava. Voltando aos detalhes, eles são
+   * carregados de novo: depois de salvar mudaram, e num link direto nunca foram carregados.
+   */
+  function fecharPaginaAjuste() {
     const alvo = selecionado;
     setStatusDialogOpen(false);
     setAjusteOrcamentoSemMudancaStatus(false);
     const origem = origemAjusteRef.current;
-    if (salvou && alvo?.id && origem === `/equipamentos/${alvo.id}`) {
+    if (alvo?.id && origem === `/equipamentos/${alvo.id}`) {
       db.buscarEquipamento(alvo.id).then((eq) => abrirDetalhes(eq)).catch(() => navigate(origem));
       return;
     }
@@ -1104,13 +1122,18 @@ export default function Equipamentos() {
   useEffect(() => {
     const anterior = idAjusteRotaAnterior.current;
     idAjusteRotaAnterior.current = idAjusteRota;
+    // A resposta (e o PIN pedido no meio) só vale enquanto a pessoa continua nesta rota.
+    let ativo = true;
     if (idAjusteRota != null && !paginaAjusteAbertaRef.current) {
       const origem = `/equipamentos/${idAjusteRota}`;
       db.buscarEquipamento(idAjusteRota)
         .then(async (eq) => {
-          if (!(await abrirAlterarOrcamento(eq, origem))) navigate(origem, { replace: true });
+          if (!ativo) return;
+          const aberto = await abrirAlterarOrcamento(eq, origem, () => ativo);
+          if (!aberto && ativo) navigate(origem, { replace: true });
         })
         .catch((err) => {
+          if (!ativo) return;
           showError("Equipamentos", "Abrir ajuste de orçamento", err);
           navigate("/equipamentos", { replace: true });
         });
@@ -1119,6 +1142,9 @@ export default function Equipamentos() {
       setStatusDialogOpen(false);
       setAjusteOrcamentoSemMudancaStatus(false);
     }
+    return () => {
+      ativo = false;
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [idAjusteRota]);
 
@@ -1368,7 +1394,7 @@ export default function Equipamentos() {
           throw new Error(resultado.erro || "Não foi possível finalizar a verificação.");
         }
         await recarregar();
-        fecharPaginaVerificacao(true);
+        fecharPaginaVerificacao();
         const resumoCanais = mensagemResultadoCanais(resultado);
         if (resumoCanais) {
           success("Equipamentos", resumoCanais, "Finalizar verificação");
@@ -1906,7 +1932,7 @@ export default function Equipamentos() {
           }
         }
         await recarregar();
-        fecharPaginaAjuste(true);
+        fecharPaginaAjuste();
         success(
           "Equipamentos",
           ["Orçamento atualizado.", portalAjuste?.mensagem, portalProrrogacao?.mensagem].filter(Boolean).join(" "),
@@ -2650,7 +2676,7 @@ export default function Equipamentos() {
         <div>
           <button
             type="button"
-            onClick={() => fecharPaginaAjuste(false)}
+            onClick={() => fecharPaginaAjuste()}
             className="inline-flex items-center gap-1 text-sm text-muted-foreground transition-colors duration-rapida hover:text-foreground"
           >
             <ChevronLeft className="h-4 w-4" aria-hidden="true" />
@@ -2696,9 +2722,9 @@ export default function Equipamentos() {
 
         <div className="sticky bottom-0 z-20 -mx-4 mt-auto flex flex-wrap items-center justify-between gap-3 border-t bg-card px-4 py-3 lg:-mx-8 lg:px-8">
           <p className="text-sm text-muted-foreground">O status atual do equipamento será mantido.</p>
-          <div className="flex gap-2">
-            <Button type="button" variant="outline" className="h-10" onClick={() => fecharPaginaAjuste(false)}>Cancelar</Button>
-            <Button type="button" className="h-10" onClick={iniciarConfirmacaoStatus} disabled={confirmarStatusBloqueado(selecionado)}>
+          <div className="flex w-full gap-2 md:w-auto">
+            <Button type="button" variant="outline" className="h-12 flex-1 md:h-10 md:flex-none" onClick={() => fecharPaginaAjuste()}>Cancelar</Button>
+            <Button type="button" className="h-12 flex-1 md:h-10 md:flex-none" onClick={iniciarConfirmacaoStatus} disabled={confirmarStatusBloqueado(selecionado)}>
               {salvando ? "Salvando..." : "Confirmar"}
             </Button>
           </div>
@@ -3239,10 +3265,11 @@ export default function Equipamentos() {
         key={selecionado?.id ?? "verificacao"}
         equipamento={selecionado}
         open={verificacaoDialogOpen}
-        onOpenChange={(aberta) => { if (!aberta) fecharPaginaVerificacao(false); }}
+        onOpenChange={(aberta) => { if (!aberta) fecharPaginaVerificacao(); }}
         onConcluir={handleConcluirVerificacao}
         salvando={salvando || loadingAutomacao}
         tecnicoInicial={extrairTecnicoInicialDeObservacoes(selecionado?.observacoes || "") || "Ivan"}
+        podeFinalizar={hasPermission(SENSITIVE_PERMISSIONS.FINANCIAL_ACTIONS) || hasPermission(SENSITIVE_PERMISSIONS.PREPARE_QUOTES)}
       />
 
       {/* ═══ Ajuste de orçamento (rota /equipamentos/:id/orcamento, decisão 24) ═══ */}

@@ -13,8 +13,8 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { FormaPagamentoFields } from "@/components/equipamentos/FormaPagamentoFields";
 import { PdfPreviewDialog } from "@/components/equipamentos/PdfPreviewDialog";
 import { textoDoErro, useAcoesOrcamentoInsumos } from "@/hooks/useAcoesOrcamentoInsumos";
-import type { AcaoInicialOrcamentoInsumos } from "@/hooks/useOrcamentoInsumosEditor";
-import { db } from "@/lib/db";
+import type { AcaoInicialOrcamentoInsumos } from "@/lib/orcamento-insumos";
+import { useBuscarVendaInsumos } from "@/hooks/useVendaInsumos";
 import { acoesOrcamentoInsumos, emailDestinatario, nomeDestinatario, telefoneDestinatario } from "@/lib/orcamento-insumos";
 import { cn, formatCurrency } from "@/lib/utils";
 import { formatarTelefone } from "@/lib/validations";
@@ -115,6 +115,7 @@ function Erro({ children }: { children: ReactNode }) {
 
 export function AcaoVendaDialog({ acao, vendaId, venda, voltarPara, onFechar, onAlterado, onExcluido }: AcaoVendaDialogProps) {
   const navigate = useNavigate();
+  const buscarVenda = useBuscarVendaInsumos();
   const [detalhe, setDetalhe] = useState<OrcamentoInsumosDetalhe | null>(venda ?? null);
   const [fase, setFase] = useState<Fase>({ tipo: "fechado" });
   const [codigoPagamento, setCodigoPagamento] = useState<FormaPagamentoCodigo | "">("");
@@ -193,21 +194,22 @@ export function AcaoVendaDialog({ acao, vendaId, venda, voltarPara, onFechar, on
       }
     }
 
-    if (venda && venda.id === vendaId) {
-      setDetalhe(venda);
-      void abrir(venda);
-    } else {
-      setFase({ tipo: "carregando" });
-      db.obterOrcamentoInsumos(vendaId)
-        .then((carregado) => {
-          if (!ativo) return;
-          setDetalhe(carregado);
-          void abrir(carregado);
-        })
-        .catch((causa) => {
-          if (ativo) setErroLocal(textoDoErro(causa));
-        });
-    }
+    // Sempre a versão atual do banco (outra estação pode ter mudado o orçamento); a página já
+    // mostra o orçamento, então lá a carga é silenciosa e só a lista vê "Carregando".
+    const naPagina = venda != null && venda.id === vendaId;
+    if (naPagina) setDetalhe(venda);
+    else setFase({ tipo: "carregando" });
+    buscarVenda(vendaId)
+      .then((carregado) => {
+        if (!ativo) return;
+        setDetalhe(carregado);
+        void abrir(carregado);
+      })
+      .catch((causa) => {
+        if (!ativo) return;
+        setErroLocal(textoDoErro(causa));
+        setFase({ tipo: "carregando" });
+      });
     return () => {
       ativo = false;
     };
@@ -269,8 +271,14 @@ export function AcaoVendaDialog({ acao, vendaId, venda, voltarPara, onFechar, on
     if (!falha) fechar();
   }
 
+  /** O item da falta, só quando o nome aponta para um item só (nomes de produto podem se repetir). */
+  function itemDaFalta(falta: FaltaAprovacao) {
+    const iguais = detalhe?.itens.filter((it) => it.descricao === falta.descricao) ?? [];
+    return iguais.length === 1 ? iguais[0] : null;
+  }
+
   function darEntrada(falta: FaltaAprovacao) {
-    const item = detalhe?.itens.find((it) => it.descricao === falta.descricao);
+    const item = itemDaFalta(falta);
     if (!item) return;
     const quantidade = falta.necessario - Math.max(falta.disponivel, 0);
     fechar();
@@ -421,7 +429,7 @@ export function AcaoVendaDialog({ acao, vendaId, venda, voltarPara, onFechar, on
                 >
                   Editar quantidades
                 </Button>
-                {fase.tipo === "recusa" && fase.faltas.length === 1 && (
+                {fase.tipo === "recusa" && fase.faltas.length === 1 && itemDaFalta(fase.faltas[0]) && (
                   <Button type="button" onClick={() => darEntrada(fase.faltas[0])}>Dar entrada no estoque</Button>
                 )}
               </DialogFooter>

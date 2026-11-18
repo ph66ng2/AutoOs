@@ -29,8 +29,8 @@ function Secao({ titulo, nota, children }: { titulo: string; nota?: string; chil
 }
 
 /**
- * Criar (/vendas/novo) e editar (/vendas/:id/editar) um orçamento de insumos. Usa o mesmo
- * hook da janela, então salvar chama os mesmos comandos, com o mesmo PIN e a mesma regra.
+ * Criar (/vendas/novo) e editar (/vendas/:id/editar) um orçamento de insumos. Salvar chama
+ * os mesmos comandos de sempre, com o mesmo PIN (useOrcamentoInsumosEditor).
  */
 export default function VendaFormulario() {
   const navigate = useNavigate();
@@ -38,7 +38,7 @@ export default function VendaFormulario() {
   const orcamentoId = id && /^\d+$/.test(id) ? Number(id) : null;
   const { hasPermission } = useSensitiveAccess();
   const podeAgir = hasPermission(SENSITIVE_PERMISSIONS.FINANCIAL_ACTIONS);
-  const editor = useOrcamentoInsumosEditor({ open: true, onOpenChange: () => undefined, orcamentoId });
+  const editor = useOrcamentoInsumosEditor({ orcamentoId });
   const {
     detalhe, cliente, setCliente, contato, setContato, setAlterado, linhas, setLinhas, validade, setValidade,
     observacoes, setObservacoes, descontoNumero, setDesconto, alterado, carregando, ocupado, erro, status,

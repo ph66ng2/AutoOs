@@ -44,6 +44,8 @@ interface ActionPriorityRowProps {
   destaque?: boolean
   /** Com acaoDaLinha: some o botão principal e fica só o ⋯. */
   semPrincipal?: boolean
+  /** Com acaoDaLinha: ocupa a largura toda, alvos de 44px (cartões e rodapé no celular). */
+  cheia?: boolean
 }
 
 export function ActionPriorityRow({
@@ -58,6 +60,7 @@ export function ActionPriorityRow({
   menuTitulo,
   destaque = false,
   semPrincipal = false,
+  cheia = false,
 }: ActionPriorityRowProps) {
   const [selectedOverflow, setSelectedOverflow] = useState<string>("")
 
@@ -98,16 +101,20 @@ export function ActionPriorityRow({
   const contornoNoTopo = destaque && primary.variant === "outline";
   if (acaoDaLinha) {
     return (
-      <div className="ml-auto inline-flex items-center justify-end gap-2 whitespace-nowrap">
+      <div className={cn("items-center justify-end gap-2 whitespace-nowrap", cheia ? "flex w-full" : "ml-auto inline-flex")}>
         {!semPrincipal && (
           <Button
             variant={destaque ? (contornoNoTopo ? "outline" : "default") : "ghost"}
             size="sm"
             className={cn(
-              "w-[176px] justify-center px-3 font-semibold",
+              "justify-center px-3 font-semibold",
+              cheia ? "min-w-0 flex-1" : "w-[176px]",
               destaque
-                ? "h-10 text-sm"
-                : "h-8 bg-acc-soft text-[13px] text-acc-soft-foreground hover:bg-acc-soft/70 hover:text-acc-soft-foreground",
+                ? cn("text-sm", cheia ? "h-11" : "h-10")
+                : cn(
+                    "bg-acc-soft text-acc-soft-foreground hover:bg-acc-soft/70 hover:text-acc-soft-foreground",
+                    cheia ? "h-11 text-sm" : "h-8 text-[13px]",
+                  ),
               contornoNoTopo && primary.className,
             )}
             onClick={primary.onClick}
@@ -129,7 +136,7 @@ export function ActionPriorityRow({
             }}
           >
             <SelectTrigger
-              className={cn("justify-center rounded-lg border-ctl bg-card px-0 [&>svg:last-child]:hidden", destaque ? "h-10 w-10" : "h-8 w-8")}
+              className={cn("justify-center rounded-lg border-ctl bg-card px-0 [&>svg:last-child]:hidden", cheia ? "h-11 w-11 shrink-0" : destaque ? "h-10 w-10" : "h-8 w-8")}
               title="Mais ações"
               aria-label="Mais ações"
             >
