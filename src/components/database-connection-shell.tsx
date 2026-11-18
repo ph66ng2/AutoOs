@@ -101,11 +101,8 @@ export function ConnectionShell({ children, footer }: ConnectionShellProps) {
       style={vars}
       className="fixed inset-0 z-[9998] flex items-center justify-center overflow-y-auto bg-[var(--cx-bg)] px-4 py-20 text-sm text-[var(--cx-ink)]"
     >
-      <div className="absolute left-7 top-6 flex items-center gap-2.5">
-        <span className="inline-flex h-9 w-9 items-center justify-center rounded-[10px] bg-[var(--cx-acc)] text-[13px] font-extrabold text-[var(--cx-acc-ink)]">
-          OS
-        </span>
-        <b>AutoOS</b>
+      <div className="absolute left-3 top-1">
+        <img src="/logo-tag-trasparente.svg" alt="BMI TAG" className="h-[72px] w-auto" />
       </div>
       {children}
       {footer && <div className="absolute bottom-5 left-0 right-0 flex justify-center">{footer}</div>}
