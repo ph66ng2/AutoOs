@@ -1,5 +1,5 @@
 import { validarPecas } from "@/lib/orcamento-estoque";
-import { formatCurrency } from "@/lib/utils";
+import { cn, formatCurrency } from "@/lib/utils";
 import { useEffect, useState } from "react";
 import { Plus, Search, Edit, Trash2, RefreshCw, Wrench } from "lucide-react";
 import { useForm } from "react-hook-form";
@@ -17,14 +17,6 @@ import {
   DialogFooter,
   DialogClose,
 } from "@/components/ui/dialog";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
 import { servicoCatalogoSchema, type ServicoCatalogoFormData } from "@/lib/validations";
 import { useServicos } from "@/hooks/useServicos";
 import { useSensitiveAccess } from "@/hooks/useSensitiveAccess";
@@ -49,6 +41,8 @@ import { PageHeader } from "@/components/PageHeader";
 
 export default function Servicos() {
   const [busca, setBusca] = useState("");
+  /** "Excluir" desativa; inativos só aparecem em Todos (o app não reativa serviço). */
+  const [mostrar, setMostrar] = useState<"ATIVOS" | "TODOS">("ATIVOS");
   const [paginaServicos, setPaginaServicos] = useState(1);
   const [modeloSelecionado, setModeloSelecionado] = useState("");
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -62,7 +56,7 @@ export default function Servicos() {
 
   const { servicos, total: totalServicos, loading, error, criar, atualizar, deletar, recarregar } = useServicos({
     busca: busca || undefined,
-    apenasAtivos: true,
+    apenasAtivos: mostrar === "ATIVOS",
     page: paginaServicos,
   });
   const totalPaginasServicos = totalPages(totalServicos);
@@ -71,7 +65,7 @@ export default function Servicos() {
 
   useEffect(() => {
     setPaginaServicos(1);
-  }, [busca]);
+  }, [busca, mostrar]);
 
   useEffect(() => {
     setPaginaServicos((pagina) => Math.min(pagina, totalPaginasServicos));
@@ -189,7 +183,10 @@ export default function Servicos() {
 
   return (
     <div className="space-y-6">
-      <PageHeader titulo="Serviços">
+      <PageHeader
+        titulo="Serviços"
+        descricao={!loading && mostrar === "ATIVOS" && !busca ? `${totalServicos} ${totalServicos === 1 ? "ativo" : "ativos"}` : undefined}
+      >
         <Button onClick={() => void abrirNovo()}>
           <Plus className="h-4 w-4 mr-2" />
           Novo Serviço
@@ -198,75 +195,100 @@ export default function Servicos() {
 
       {error && <ErrorAlert variant="error" context="Serviços" message={error} action="Carregar" />}
 
-      <Card>
-        <CardContent className="pt-6">
-          <div className="flex gap-4">
-            <div className="relative flex-1">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+      <Card className="rounded-2xl">
+        <CardContent className="space-y-4 p-5">
+          <div className="flex flex-wrap items-center gap-3">
+            <div className="relative min-w-[16rem] flex-1">
+              <Search className="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
               <Input
-                placeholder="Buscar por nome ou descrição..."
+                aria-label="Buscar serviço"
+                placeholder="Buscar serviço"
                 value={busca}
                 onChange={(e) => setBusca(e.target.value)}
-                className="pl-9"
+                className="h-11 border-transparent bg-muted pl-10"
               />
             </div>
-            <Button variant="outline" size="icon" onClick={recarregar}>
+            <div role="group" aria-label="Mostrar serviços" className="inline-flex rounded-xl bg-muted p-1">
+              {(["ATIVOS", "TODOS"] as const).map((opcao) => (
+                <button
+                  key={opcao}
+                  type="button"
+                  aria-pressed={mostrar === opcao}
+                  onClick={() => setMostrar(opcao)}
+                  className={cn(
+                    "inline-flex h-11 items-center gap-1.5 rounded-lg px-3 text-[13px] font-semibold transition-colors duration-rapida md:h-9",
+                    mostrar === opcao ? "bg-card text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground",
+                  )}
+                >
+                  {opcao === "ATIVOS" ? "Ativos" : "Todos"}
+                  {mostrar === opcao && !loading && (
+                    <span className="rounded-full bg-acc-soft px-1.5 text-[11px] font-bold tabular-nums text-acc-soft-foreground">{totalServicos}</span>
+                  )}
+                </button>
+              ))}
+            </div>
+            <Button variant="outline" size="icon" className="h-11 w-11 md:h-9 md:w-9" aria-label="Recarregar serviços" onClick={recarregar}>
               <RefreshCw className="h-4 w-4" />
             </Button>
           </div>
-        </CardContent>
-      </Card>
 
-      <Card>
-        <CardContent className="pt-6">
           {loading ? (
-            <div className="flex items-center justify-center h-32">
-              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary" />
-            </div>
+            <ul aria-busy="true" className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+              {Array.from({ length: 6 }, (_, indice) => (
+                <li key={indice} aria-hidden="true" className="space-y-3 rounded-2xl border p-4">
+                  <span className="block h-2.5 w-40 rounded-full bg-muted" />
+                  <span className="block h-2.5 w-24 rounded-full bg-muted" />
+                  <span className="block h-6 w-28 rounded-full bg-muted" />
+                </li>
+              ))}
+            </ul>
           ) : servicos.length === 0 ? (
-            <div className="text-center py-12 text-muted-foreground">
-              <Wrench className="h-16 w-16 mx-auto mb-4 opacity-20" />
-              <p className="text-lg font-medium mb-1">Nenhum serviço encontrado</p>
-              <p className="text-sm">
-                {busca ? "Tente ajustar a busca." : "Cadastre serviços para usar na verificação técnica."}
-              </p>
+            <div className="py-12 text-center">
+              <span aria-hidden="true" className="mx-auto mb-4 inline-flex h-11 w-11 items-center justify-center rounded-xl bg-acc-soft text-acc-soft-foreground">
+                <Wrench className="h-5 w-5" />
+              </span>
+              <p className="font-semibold">{busca ? `Nenhum serviço com "${busca}".` : "Nenhum serviço cadastrado."}</p>
+              {busca && (
+                <Button variant="outline" size="sm" className="mt-3" onClick={() => setBusca("")}>
+                  Limpar busca
+                </Button>
+              )}
             </div>
           ) : (
             <>
-              <PaginationControls
-                page={paginaServicosExibida}
-                totalPages={totalPaginasServicos}
-                onPageChange={setPaginaServicos}
-                label="Paginação de serviços"
-              />
-              <div className="rounded-md border">
-                <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Serviço</TableHead>
-                    <TableHead>Descrição</TableHead>
-                    <TableHead className="text-right">Preço Padrão</TableHead>
-                    <TableHead className="text-right">Ações</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {servicosExibidos.map((servico) => (
-                    <TableRow key={servico.id}>
-                      <TableCell className="font-medium">{servico.nome}</TableCell>
-                      <TableCell className="text-muted-foreground">
-                        {servico.descricao || "—"}
-                      </TableCell>
-                      <TableCell className="text-right font-semibold">
-                        {formatCurrency(Number(servico.preco_padrao || 0))}
-                      </TableCell>
-                      <TableCell className="text-right">
-                        <div className="flex justify-end gap-1">
+              <ul aria-label="Serviços" className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+                {servicosExibidos.map((servico) => {
+                  const inativo = servico.ativo === false;
+                  return (
+                    <li key={servico.id} className={cn("flex flex-col gap-3 rounded-2xl border bg-card p-4", inativo && "bg-muted/40")}>
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <p className={cn("font-semibold [overflow-wrap:anywhere]", inativo && "text-muted-foreground")}>{servico.nome}</p>
+                          {servico.descricao && <p className="text-sm text-muted-foreground [overflow-wrap:anywhere]">{servico.descricao}</p>}
+                        </div>
+                        {inativo && (
+                          <span className="shrink-0 rounded-full bg-status-neutral-bg px-2.5 py-0.5 text-xs font-bold text-status-neutral">Inativo</span>
+                        )}
+                      </div>
+                      <div className="mt-auto flex items-end justify-between gap-3 border-t pt-3">
+                        <div>
+                          <p className="text-xs text-muted-foreground">Preço base</p>
+                          <p className={cn("text-lg font-bold tabular-nums", inativo && "text-muted-foreground")}>
+                            {Number(servico.preco_padrao || 0) === 0 ? "Garantia" : formatCurrency(Number(servico.preco_padrao || 0))}
+                          </p>
+                        </div>
+                        {inativo ? (
+                          <Button variant="outline" size="sm" className="h-11 md:h-8" onClick={() => void abrirEditar(servico)}>
+                            Editar
+                          </Button>
+                        ) : (
                           <ActionPriorityRow
+                            acaoDaLinha
+                            menuTitulo={servico.nome}
                             primary={{
                               id: `editar-${servico.id}`,
                               label: "Editar",
                               icon: <Edit className="h-4 w-4" />,
-                              variant: "default",
                               onClick: () => void abrirEditar(servico),
                             }}
                             overflow={[
@@ -279,13 +301,20 @@ export default function Servicos() {
                               },
                             ]}
                           />
-                        </div>
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-                </Table>
-              </div>
+                        )}
+                      </div>
+                    </li>
+                  );
+                })}
+              </ul>
+              <PaginationControls
+                page={paginaServicosExibida}
+                totalPages={totalPaginasServicos}
+                onPageChange={setPaginaServicos}
+                label="Paginação de serviços"
+                totalItems={totalServicos}
+                className="pb-0"
+              />
             </>
           )}
         </CardContent>
