@@ -199,4 +199,29 @@ describe("VerificacaoTecnica", () => {
     expect(itens.filter((item) => item.verificado).map((item) => item.nome)).toEqual(["Teste de impressão", "Limpeza interna"]);
     expect(onConcluir.mock.calls[0][0].custo_total).toBe(120);
   });
+
+  it("sem permissão de orçamento a página abre e avisa quem pode finalizar", () => {
+    render(<VerificacaoTecnica equipamento={equipamento} open onOpenChange={vi.fn()} onConcluir={vi.fn()} podeFinalizar={false} />);
+    expect(screen.getByRole("status")).toHaveTextContent("Finalizar pede o PIN de quem tem Ações financeiras ou Elaborar e enviar orçamentos.");
+    expect(screen.getByRole("button", { name: /Finalizar Verificação/i })).toBeInTheDocument();
+  });
+
+  it("no celular cada serviço vira uma linha que abre a edição", async () => {
+    const original = window.matchMedia;
+    window.matchMedia = ((consulta: string) => ({ matches: false, media: consulta, addEventListener: () => undefined, removeEventListener: () => undefined })) as unknown as typeof window.matchMedia;
+    try {
+      const user = userEvent.setup();
+      render(<VerificacaoTecnica equipamento={equipamento} open onOpenChange={vi.fn()} onConcluir={vi.fn()} />);
+      await user.click(screen.getByRole("button", { name: /Adicionar Serviço/i }));
+      await user.type(screen.getByPlaceholderText("Nome do serviço"), "Limpeza");
+      await user.click(screen.getByRole("button", { name: /Adicionar Serviço/i }));
+      const linha = screen.getByRole("button", { name: "Editar serviço Limpeza" });
+      expect(linha).toHaveClass("min-h-11");
+      expect(screen.getAllByPlaceholderText("Nome do serviço")).toHaveLength(1);
+      await user.click(linha);
+      expect(screen.getByDisplayValue("Limpeza")).toBeInTheDocument();
+    } finally {
+      window.matchMedia = original;
+    }
+  });
 });

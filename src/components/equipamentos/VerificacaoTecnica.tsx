@@ -24,7 +24,9 @@
  * ╚══════════════════════════════════════════════════════════════╝
  */
 import { useEffect, useState } from "react";
-import { Camera, ChevronLeft, Plus, Search, Trash2 } from "lucide-react";
+import { Camera, ChevronLeft, Lock, Plus, Search, Trash2 } from "lucide-react";
+import { LinhaServicoCelular } from "@/components/equipamentos/LinhaServicoCelular";
+import { useLarguraMinima } from "@/hooks/useLarguraMinima";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ValorDecimalInput } from "@/components/ui/valor-decimal-input";
@@ -69,6 +71,8 @@ interface VerificacaoTecnicaProps {
   onConcluir: (dados: DadosVerificacao) => Promise<boolean | void>;
   salvando?: boolean;
   tecnicoInicial?: TecnicoDisponivel;
+  /** Sem Ações financeiras nem Elaborar e enviar orçamentos, a página abre, mas finalizar pede o PIN de quem tem. */
+  podeFinalizar?: boolean;
 }
 
 export function VerificacaoTecnica({
@@ -78,9 +82,13 @@ export function VerificacaoTecnica({
   onConcluir,
   salvando = false,
   tecnicoInicial = "Ivan",
+  podeFinalizar = true,
 }: VerificacaoTecnicaProps) {
   // ─── State ──────────────────────────────────────────
   const [diagnostico, setDiagnostico] = useState("");
+  const telaLarga = useLarguraMinima(768);
+  /** No celular, só o serviço tocado (ou o recém-adicionado) fica aberto para edição. */
+  const [servicoAberto, setServicoAberto] = useState<string | null>(null);
   const [checklist, setChecklist] = useState<ItemVerificacao[]>(() => CHECKLIST_PADRAO.map((item) => ({ ...item })));
   const [servicos, setServicos] = useState<ServicoNecessario[]>([]);
   const [observacoesVerif, setObservacoesVerif] = useState("");
@@ -150,12 +158,11 @@ export function VerificacaoTecnica({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, equipamentoId]);
 
-  /** Adiciona um novo serviço vazio à lista (id = timestamp) */
+  /** Adiciona um novo serviço vazio à lista; no celular ele já abre para edição. */
   function adicionarServico() {
-    setServicos([
-      ...servicos,
-      { id: crypto.randomUUID(), descricao: "", valor: 0, catalogo_id: undefined },
-    ]);
+    const id = crypto.randomUUID();
+    setServicos([...servicos, { id, descricao: "", valor: 0, catalogo_id: undefined }]);
+    setServicoAberto(id);
   }
   /** Remove serviço da lista pelo ID */
   function removerServico(id: string) {
@@ -290,6 +297,15 @@ export function VerificacaoTecnica({
         </div>
       </div>
 
+      {!podeFinalizar && (
+        <p role="status" className="flex items-start gap-2 rounded-xl bg-muted px-4 py-3 text-sm">
+          <Lock className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
+          <span>
+            Finalizar pede o PIN de quem tem <strong>Ações financeiras</strong> ou <strong>Elaborar e enviar orçamentos</strong>.
+          </span>
+        </p>
+      )}
+
       <dl className="flex flex-wrap gap-x-8 gap-y-2 rounded-2xl border bg-card px-5 py-4 text-sm">
         <div>
           <dt className="text-xs text-muted-foreground">Equipamento</dt>
@@ -373,10 +389,12 @@ export function VerificacaoTecnica({
           </Button>
         </div>
         <div className="space-y-3">
-          {servicos.map((s) => (
+          {servicos.map((s) => !telaLarga && servicoAberto !== s.id ? (
+            <LinhaServicoCelular key={s.id} servico={s} onAbrir={() => setServicoAberto(s.id)} />
+          ) : (
             <div key={s.id} className="rounded-xl border p-3">
-            <div className="flex items-start gap-3">
-              <div className="relative flex-1">
+            <div className="flex flex-wrap items-start gap-3 md:flex-nowrap">
+              <div className="relative min-w-full flex-1 md:min-w-0">
                 <Search className="pointer-events-none absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
                 <Input
                   placeholder="Nome do serviço"
@@ -503,10 +521,10 @@ export function VerificacaoTecnica({
             ? "Ao finalizar: OS só de garantia vai direto para Aprovado"
             : "Ao finalizar: Verificado → Aguardando aprovação, com envio automático"}
         </p>
-        <div className="flex gap-2">
-          <Button variant="outline" className="h-10" onClick={() => handleOpenChange(false)}>Cancelar</Button>
+        <div className="flex w-full gap-2 md:w-auto">
+          <Button variant="outline" className="h-12 flex-1 md:h-10 md:flex-none" onClick={() => handleOpenChange(false)}>Cancelar</Button>
           <Button
-            className="h-10"
+            className="h-12 flex-1 md:h-10 md:flex-none"
             onClick={handleConcluir}
             disabled={salvando || servicos.some((s) => !s.descricao.trim() || Number(s.valor) < 0 || valoresServicoInvalidos[s.id])}
           >

@@ -2696,9 +2696,9 @@ export default function Equipamentos() {
 
         <div className="sticky bottom-0 z-20 -mx-4 mt-auto flex flex-wrap items-center justify-between gap-3 border-t bg-card px-4 py-3 lg:-mx-8 lg:px-8">
           <p className="text-sm text-muted-foreground">O status atual do equipamento será mantido.</p>
-          <div className="flex gap-2">
-            <Button type="button" variant="outline" className="h-10" onClick={() => fecharPaginaAjuste(false)}>Cancelar</Button>
-            <Button type="button" className="h-10" onClick={iniciarConfirmacaoStatus} disabled={confirmarStatusBloqueado(selecionado)}>
+          <div className="flex w-full gap-2 md:w-auto">
+            <Button type="button" variant="outline" className="h-12 flex-1 md:h-10 md:flex-none" onClick={() => fecharPaginaAjuste(false)}>Cancelar</Button>
+            <Button type="button" className="h-12 flex-1 md:h-10 md:flex-none" onClick={iniciarConfirmacaoStatus} disabled={confirmarStatusBloqueado(selecionado)}>
               {salvando ? "Salvando..." : "Confirmar"}
             </Button>
           </div>
@@ -3243,6 +3243,7 @@ export default function Equipamentos() {
         onConcluir={handleConcluirVerificacao}
         salvando={salvando || loadingAutomacao}
         tecnicoInicial={extrairTecnicoInicialDeObservacoes(selecionado?.observacoes || "") || "Ivan"}
+        podeFinalizar={hasPermission(SENSITIVE_PERMISSIONS.FINANCIAL_ACTIONS) || hasPermission(SENSITIVE_PERMISSIONS.PREPARE_QUOTES)}
       />
 
       {/* ═══ Ajuste de orçamento (rota /equipamentos/:id/orcamento, decisão 24) ═══ */}

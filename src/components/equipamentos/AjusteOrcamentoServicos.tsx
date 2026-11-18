@@ -6,6 +6,8 @@ import { ValorDecimalInput } from "@/components/ui/valor-decimal-input";
 import { formatCurrency, formatCurrencyOrMissing } from "@/lib/utils";
 import type { ServicoCatalogo, ServicoNecessario } from "@/types";
 import { PecasDoServico } from "@/components/equipamentos/PecasDoServico";
+import { LinhaServicoCelular } from "@/components/equipamentos/LinhaServicoCelular";
+import { useLarguraMinima } from "@/hooks/useLarguraMinima";
 
 interface AjusteOrcamentoServicosProps {
   servicos: ServicoNecessario[];
@@ -23,6 +25,9 @@ export function AjusteOrcamentoServicos({
   onRemoverTodos,
 }: AjusteOrcamentoServicosProps) {
   const [linhaSugestaoAberta, setLinhaSugestaoAberta] = useState<string | null>(null);
+  const telaLarga = useLarguraMinima(768);
+  /** No celular, só o serviço tocado (ou o recém-adicionado) fica aberto para edição. */
+  const [servicoAberto, setServicoAberto] = useState<string | null>(null);
 
   function adicionarServico() {
     const novo: ServicoNecessario = {
@@ -31,6 +36,7 @@ export function AjusteOrcamentoServicos({
       valor: 0,
     };
     onChange([...servicos, novo]);
+    setServicoAberto(novo.id);
   }
 
   function removerServico(id: string) {
@@ -66,10 +72,12 @@ export function AjusteOrcamentoServicos({
         </Button>
       </div>
       <div className="space-y-2">
-        {servicos.map((s) => (
+        {servicos.map((s) => !telaLarga && servicoAberto !== s.id ? (
+          <LinhaServicoCelular key={s.id} servico={s} onAbrir={() => setServicoAberto(s.id)} />
+        ) : (
           <div key={s.id} className="rounded-md border p-2">
-          <div className="flex gap-2 items-start">
-            <div className="relative flex-1">
+          <div className="flex flex-wrap items-start gap-2 md:flex-nowrap">
+            <div className="relative min-w-full flex-1 md:min-w-0">
               <Search className="pointer-events-none absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
               <Input
                 placeholder="Nome do serviço"
