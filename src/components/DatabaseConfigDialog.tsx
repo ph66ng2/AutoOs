@@ -7,9 +7,11 @@ import { DatabaseConfigService, parsePostgresConnectionUrl } from "@/lib/db-conf
 
 interface DatabaseConfigDialogProps {
   onConfigured: () => void;
+  /** Quando aberto a partir da tela de reconexão, permite voltar para ela. */
+  onCancel?: () => void;
 }
 
-export function DatabaseConfigDialog({ onConfigured }: DatabaseConfigDialogProps) {
+export function DatabaseConfigDialog({ onConfigured, onCancel }: DatabaseConfigDialogProps) {
   const [connectionUrl, setConnectionUrl] = useState("");
   const [connecting, setConnecting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -18,7 +20,7 @@ export function DatabaseConfigDialog({ onConfigured }: DatabaseConfigDialogProps
   useEffect(() => {
     void DatabaseConfigService.getInitializationError()
       .then((initializationError) => {
-        if (initializationError) setError(initializationError);
+        if (initializationError) setError(initializationError.mensagem);
       })
       .catch(() => undefined);
   }, []);
@@ -121,9 +123,22 @@ export function DatabaseConfigDialog({ onConfigured }: DatabaseConfigDialogProps
         </div>
 
         {/* Footer */}
-        <p className="text-center text-xs text-slate-600">
-          Esta tela é apenas um fallback. Builds oficiais conectam automaticamente.
-        </p>
+        {onCancel ? (
+          <div className="text-center">
+            <button
+              type="button"
+              className="text-xs text-slate-500 underline-offset-4 hover:text-slate-300 hover:underline"
+              onClick={onCancel}
+              disabled={connecting}
+            >
+              Voltar e tentar com a configuração atual
+            </button>
+          </div>
+        ) : (
+          <p className="text-center text-xs text-slate-600">
+            Esta tela é apenas um fallback. Builds oficiais conectam automaticamente.
+          </p>
+        )}
       </div>
     </div>
   );

@@ -82,7 +82,7 @@ Movimento reduzido (`prefers-reduced-motion: reduce`): marca completa e parada, 
 - O `App` só libera a saída (`fadeOut`) quando o boot real terminou e a sessão está resolvida. A saída é a da própria abertura (300 ms); o `App` desmonta o splash 540 ms depois.
 - Não existe mais duração mínima separada (`MIN_BOOT_SPLASH_MS` foi removido): o mínimo é a própria abertura.
 - Carga lenta: a logo fica parada e, 900 ms depois, aparece "Iniciando o AutoOS" perto da base, enquanto o progresso real for menor que 100.
-- Erro de banco: o `DatabaseConfigDialog` e a tela de PIN continuam abrindo por cima, como antes.
+- Erro de banco: o `DatabaseFallback` (`src/components/DatabaseUnavailableScreen.tsx`) abre no lugar do app. Sem configuração nenhuma, mostra o formulário de URL (`DatabaseConfigDialog`). Com configuração salva e servidor fora do ar, mostra "Sem conexão com o servidor": causa sanitizada, botão Tentar novamente (`tentar_reconectar_banco`, usa a configuração já salva) e nova tentativa automática em 5, 10, 20 e depois a cada 30 s (nunca menos de 30 s com o servidor lotado). Erro de senha, URL inválida ou banco incompatível não se repete sozinho. O formulário fica em "Configuração avançada (suporte)". O tipo do erro vem de `DatabaseErrorKind` em `db.rs`.
 - Trava de segurança: o PIN nunca espera a animação por mais de 20 s (`BOOT_ANIMATION_HARD_LIMIT_MS`).
 - E2E em modo mock (`VITE_E2E_MOCK=1`): a abertura toca, mas o PIN não espera por ela.
 - Retomada do aplicativo (janela que volta ao foco) não toca a abertura: ela só monta no carregamento do app.

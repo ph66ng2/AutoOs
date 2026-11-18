@@ -23,6 +23,8 @@ export async function invoke<T>(command: string, args?: Record<string, unknown>)
       }
       return undefined as T;
     case "verificar_status_banco": return true as T;
+    case "obter_erro_inicializacao_banco":
+    case "tentar_reconectar_banco": return null as T;
     case "get_sensitive_access_status":
     case "set_active_security_profile":
     case "unlock_sensitive_access": return status as T;

@@ -30,9 +30,10 @@ describe("DatabaseConfigDialog", () => {
   });
 
   it("mostra a causa sanitizada do erro da primeira abertura", async () => {
-    vi.spyOn(DatabaseConfigService, "getInitializationError").mockResolvedValue(
-      "Não foi possível alcançar o banco. Verifique a internet, DNS ou compatibilidade IPv4/IPv6.",
-    );
+    vi.spyOn(DatabaseConfigService, "getInitializationError").mockResolvedValue({
+      tipo: "rede",
+      mensagem: "Não foi possível alcançar o banco. Verifique a internet, DNS ou compatibilidade IPv4/IPv6.",
+    });
 
     render(<DatabaseConfigDialog onConfigured={vi.fn()} />);
 
