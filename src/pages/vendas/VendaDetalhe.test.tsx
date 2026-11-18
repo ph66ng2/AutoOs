@@ -7,19 +7,21 @@ import type { OrcamentoInsumosDetalhe } from "@/types";
 const mocks = vi.hoisted(() => ({
   obter: vi.fn(),
   hasPermission: vi.fn(() => true),
-  dialogProps: vi.fn(),
+  modalProps: vi.fn(),
   navigate: vi.fn(),
 }));
 vi.mock("@/lib/db", () => ({ db: { obterOrcamentoInsumos: mocks.obter } }));
 vi.mock("@/hooks/useSensitiveAccess", () => ({
   useSensitiveAccess: () => ({ hasPermission: mocks.hasPermission, ensureSensitiveAccess: vi.fn() }),
 }));
-vi.mock("@/pages/insumos/OrcamentoInsumosDialog", () => ({
-  OrcamentoInsumosDialog: (props: { open: boolean; acaoInicial?: string | null }) => {
-    mocks.dialogProps(props);
-    return props.open ? <div data-testid="janela">{props.acaoInicial ?? "sem-acao"}</div> : null;
+// Cada ação abre o seu modal (AcaoVendaDialog, V.5).
+vi.mock("@/components/vendas/AcaoVendaDialog", () => ({
+  AcaoVendaDialog: (props: { acao: string | null }) => {
+    mocks.modalProps(props);
+    return props.acao ? <div data-testid="modal-acao">{props.acao}</div> : null;
   },
 }));
+
 vi.mock("react-router-dom", async (original) => ({
   ...(await original<typeof import("react-router-dom")>()),
   useNavigate: () => mocks.navigate,
@@ -74,7 +76,7 @@ describe("VendaDetalhe (/vendas/:id)", () => {
     expect(mocks.navigate).toHaveBeenCalledWith("/insumos?entrada=9&quantidade=4&voltar=%2Fvendas%2F34");
 
     await usuario.click(screen.getByRole("button", { name: "Aprovar" }));
-    expect(screen.getByTestId("janela")).toHaveTextContent("aprovar");
+    expect(screen.getByTestId("modal-acao")).toHaveTextContent("aprovar");
   });
 
   it("com mais de um item faltando, cada um tem o seu Dar entrada com a quantidade dele", async () => {
@@ -107,7 +109,8 @@ describe("VendaDetalhe (/vendas/:id)", () => {
   });
 
   it("cancelado depois de aprovado: barra para em Cancelado, sem data, e a ação é excluir de vez", async () => {
-    mocks.obter.mockResolvedValue(venda({ status: "CANCELADO", decidido_em: "2026-11-12 13:40:00+00" }));
+    // A aprovação grava a forma de pagamento; o cancelamento não mexe nela.
+    mocks.obter.mockResolvedValue(venda({ status: "CANCELADO", decidido_em: "2026-11-12 13:40:00+00", forma_pagamento_codigo: "PIX" }));
     renderPagina();
     expect(await screen.findByText(/Cancelado depois de aprovado: os itens voltaram ao estoque/)).toBeInTheDocument();
     const etapas = screen.getByRole("region", { name: "Etapas do orçamento" });
@@ -115,6 +118,20 @@ describe("VendaDetalhe (/vendas/:id)", () => {
     expect(cancelado.textContent).toBe("Cancelado");
     expect(screen.getByRole("button", { name: "Excluir de vez" })).toBeInTheDocument();
     expect(screen.queryByText(/Saldo agora/)).not.toBeInTheDocument();
+  });
+
+  it("cancelado sem ter sido aprovado: não diz que o estoque voltou e mostra a data do cancelamento", async () => {
+    mocks.obter.mockResolvedValue(venda({ status: "CANCELADO", decidido_em: "2026-11-12 13:40:00+00", forma_pagamento_codigo: null }));
+    renderPagina();
+    expect(await screen.findByText(/^Cancelado\. Só dá para ver/)).toBeInTheDocument();
+    expect(screen.queryByText(/voltaram ao estoque/)).toBeNull();
+    const etapas = screen.getByRole("region", { name: "Etapas do orçamento" });
+    const cancelado = within(etapas).getByText("Cancelado").closest("[aria-current]")!;
+    expect(cancelado.textContent).toBe("Cancelado12/11");
+    expect(within(etapas).queryByText("Aprovado")).toBeNull();
+    const historico = screen.getByRole("heading", { name: "Histórico" }).closest("section")!;
+    expect(within(historico).getByText("Cancelado")).toBeInTheDocument();
+    expect(within(historico).queryByText("Aprovado")).toBeNull();
   });
 
   it("sem Ações financeiras: só leitura, Ver PDF, sem ⋯ e sem dar entrada", async () => {
@@ -126,7 +143,7 @@ describe("VendaDetalhe (/vendas/:id)", () => {
     expect(screen.queryByRole("combobox", { name: "Mais ações" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Dar entrada no estoque" })).not.toBeInTheDocument();
     await usuario.click(screen.getByRole("button", { name: "Ver PDF" }));
-    expect(screen.getByTestId("janela")).toHaveTextContent("pdf");
+    expect(screen.getByTestId("modal-acao")).toHaveTextContent("pdf");
   });
 
   it("cliente que não quer WhatsApp: canal riscado e aviso", async () => {
@@ -134,5 +151,36 @@ describe("VendaDetalhe (/vendas/:id)", () => {
     renderPagina();
     expect(await screen.findByText(/pediu para não receber WhatsApp/)).toBeInTheDocument();
     expect(screen.getByText("WhatsApp").className).toMatch(/line-through/);
+  });
+});
+
+function telaEstreita() {
+  const original = window.matchMedia;
+  window.matchMedia = ((consulta: string) => ({
+    matches: false,
+    media: consulta,
+    addEventListener: () => undefined,
+    removeEventListener: () => undefined,
+  })) as unknown as typeof window.matchMedia;
+  return () => {
+    window.matchMedia = original;
+  };
+}
+
+describe("VendaDetalhe no celular (V.6)", () => {
+  it("itens em lista e a ação principal fixa no rodapé, com 44px", async () => {
+    const restaurar = telaEstreita();
+    try {
+      mocks.hasPermission.mockReturnValue(true);
+      mocks.obter.mockResolvedValue(venda());
+      renderPagina();
+      expect(await screen.findByText("10 × R$ 32,00", { exact: false })).toBeInTheDocument();
+      expect(screen.queryByRole("table")).toBeNull();
+      const aprovar = screen.getByRole("button", { name: "Aprovar" });
+      expect(aprovar).toHaveClass("h-11");
+      expect(aprovar.closest(".sticky")).not.toBeNull();
+    } finally {
+      restaurar();
+    }
   });
 });

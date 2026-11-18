@@ -1,6 +1,6 @@
 /**
  * Lista da página Vendas de insumos (/vendas): lista dos orçamentos de venda avulsa (OI-<n>)
- * com busca e filtro de status. O formulário abre em diálogo (OrcamentoInsumosDialog).
+ * com busca e filtro de status. Editar é página; cada ação abre o seu modal (AcaoVendaDialog).
  */
 import { useEffect, useState, type ReactNode } from "react";
 import { Lock, Package, Plus, Search } from "lucide-react";
@@ -15,6 +15,7 @@ import { Input } from "@/components/ui/input";
 import { PaginationControls } from "@/components/ui/pagination-controls";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { useOrcamentosInsumos } from "@/hooks/useOrcamentosInsumos";
+import { useLarguraMinima } from "@/hooks/useLarguraMinima";
 import { useSensitiveAccess } from "@/hooks/useSensitiveAccess";
 import { parseTimestampPostgres } from "@/lib/date-utils";
 import {
@@ -29,7 +30,8 @@ import {
 } from "@/lib/orcamento-insumos";
 import { totalPages } from "@/lib/pagination";
 import { formatCurrency } from "@/lib/utils";
-import { OrcamentoInsumosDialog, type AcaoInicialOrcamentoInsumos } from "@/pages/insumos/OrcamentoInsumosDialog";
+import { AcaoVendaDialog } from "@/components/vendas/AcaoVendaDialog";
+import type { AcaoInicialOrcamentoInsumos } from "@/lib/orcamento-insumos";
 import {
   SENSITIVE_PERMISSIONS,
   type StatusOrcamentoInsumos,
@@ -58,6 +60,13 @@ const FILTRO_PRINCIPAIS: OpcaoFiltroStatus[] = [
 const FILTRO_OUTROS: OpcaoFiltroStatus[] = (["REPROVADO", "CANCELADO"] as const).map(opcaoFiltro);
 
 /** Situação no mesmo desenho da lista de equipamentos: nome e barra de etapas, sem selo. */
+/** A ação principal da lista vira a ação do modal (V.5); "Ver" abre a página. */
+function acaoDaLista(tipo: string): AcaoInicialOrcamentoInsumos | null {
+  if (tipo === "enviar") return "email";
+  if (tipo === "aprovar" || tipo === "renovar" || tipo === "entregar") return tipo;
+  return null;
+}
+
 function SituacaoComEtapas({ status, vencido }: { status: StatusOrcamentoInsumos; vencido: boolean }) {
   return (
     <div className="min-w-0 space-y-1.5">
@@ -74,12 +83,13 @@ export function OrcamentosInsumosTab({ onEstoqueAlterado, contagemPorStatus, ren
   const [busca, setBusca] = useState("");
   const [status, setStatus] = useState<StatusOrcamentoInsumos | "TODOS">("TODOS");
   const [pagina, setPagina] = useState(1);
-  const [dialogAberto, setDialogAberto] = useState(false);
   const [orcamentoId, setOrcamentoId] = useState<number | null>(null);
   const [acaoInicial, setAcaoInicial] = useState<AcaoInicialOrcamentoInsumos | null>(null);
   const { ensureSensitiveAccess, hasPermission } = useSensitiveAccess();
   const navigate = useNavigate();
   const podeAgir = hasPermission(SENSITIVE_PERMISSIONS.FINANCIAL_ACTIONS);
+  // Abaixo de md (768px) a tabela vira cartões (V.6).
+  const telaLarga = useLarguraMinima(768);
 
   const { orcamentos, total, loading, error, recarregar } = useOrcamentosInsumos({
     busca: busca.trim() || undefined,
@@ -113,9 +123,12 @@ export function OrcamentosInsumosTab({ onEstoqueAlterado, contagemPorStatus, ren
       navigate(`/vendas/${id}/editar${acao === "renovar" ? "?foco=validade" : ""}`);
       return;
     }
+    if (!acao) {
+      verPagina(id);
+      return;
+    }
     setOrcamentoId(id);
     setAcaoInicial(acao);
-    setDialogAberto(true);
   }
 
   function verPagina(id: number) {
@@ -123,10 +136,16 @@ export function OrcamentosInsumosTab({ onEstoqueAlterado, contagemPorStatus, ren
   }
 
   const botaoNovo = podeAgir ? (
-    <Button onClick={() => void abrirNovo()}>
-      <Plus className="mr-1.5 h-4 w-4" />
-      Novo orçamento
-    </Button>
+    telaLarga ? (
+      <Button onClick={() => void abrirNovo()}>
+        <Plus className="mr-1.5 h-4 w-4" />
+        Novo orçamento
+      </Button>
+    ) : (
+      <Button size="icon" className="h-11 w-11" aria-label="Novo orçamento" title="Novo orçamento" onClick={() => void abrirNovo()}>
+        <Plus className="h-5 w-5" />
+      </Button>
+    )
   ) : null;
 
   // Com a contagem da empresa, "nenhuma venda ainda" não pisca enquanto a busca recarrega.
@@ -209,97 +228,159 @@ export function OrcamentosInsumosTab({ onEstoqueAlterado, contagemPorStatus, ren
             </div>
           ) : (
             <>
-              <div className="overflow-x-auto">
-                <Table>
-                  <TableHeader>
-                    <TableRow className="hover:bg-transparent">
-                      <TableHead className="w-24">Número</TableHead>
-                      <TableHead>Cliente</TableHead>
-                      <TableHead>Itens</TableHead>
-                      <TableHead>Situação</TableHead>
-                      <TableHead>Prazo ou data</TableHead>
-                      <TableHead className="text-right">Total</TableHead>
-                      <TableHead className="text-right">Próxima ação</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody aria-busy={loading || undefined}>
-                    {loading
-                      ? Array.from({ length: 4 }, (_, linha) => (
-                          <TableRow key={`carregando-${linha}`} className="h-14 hover:bg-transparent">
-                            {Array.from({ length: COLUNAS }, (__, coluna) => (
-                              <TableCell key={coluna}>
-                                <span aria-hidden="true" className={`block h-2.5 rounded-full bg-muted ${coluna === COLUNAS - 1 ? "ml-auto w-36" : coluna === 0 ? "w-10" : "w-24"}`} />
-                              </TableCell>
-                            ))}
-                          </TableRow>
-                        ))
-                      : orcamentos.map((orcamento) => {
-                          const vencido = orcamentoInsumosVencido(orcamento);
-                          const acao = podeAgir ? proximaAcaoVenda(orcamento.status, vencido) : { rotulo: "Ver", tipo: "ver" as const };
-                          const acaoNaJanela: AcaoInicialOrcamentoInsumos | null =
-                            acao.tipo === "enviar" ? "email" : acao.tipo === "aprovar" ? "aprovar" : acao.tipo === "renovar" ? "renovar" : acao.tipo === "entregar" ? "entregar" : null;
-                          return (
-                            <TableRow
-                              key={orcamento.id}
-                              className="h-14 cursor-pointer"
-                              onClick={() => verPagina(orcamento.id)}
-                              tabIndex={0}
-                              onKeyDown={(event) => {
-                                if (event.target !== event.currentTarget) return;
-                                if (event.key === "Enter" || event.key === " ") {
-                                  event.preventDefault();
-                                  verPagina(orcamento.id);
-                                }
-                              }}
-                              aria-label={`Abrir orçamento ${orcamento.numero_exibicao}`}
-                            >
-                              <TableCell>
-                                <p className="font-mono text-sm font-bold">{orcamento.numero_exibicao}</p>
-                                <p className="text-xs tabular-nums text-muted-foreground">
-                                  {parseTimestampPostgres(orcamento.criado_em).toLocaleDateString("pt-BR")}
-                                </p>
-                              </TableCell>
-                              <TableCell>
-                                <p className="font-semibold">{orcamento.cliente_nome ?? "—"}</p>
-                                <p className="text-xs text-muted-foreground">{orcamento.contato_nome || "—"}</p>
-                              </TableCell>
-                              <TableCell className="text-sm text-muted-foreground">
-                                <span>{orcamento.total_itens} {orcamento.total_itens === 1 ? "item" : "itens"}</span>
-                                {orcamento.categorias_itens && <span> · {orcamento.categorias_itens}</span>}
-                              </TableCell>
-                              <TableCell>
-                                <SituacaoComEtapas status={orcamento.status} vencido={vencido} />
-                              </TableCell>
-                              <TableCell className={`whitespace-nowrap text-sm tabular-nums ${vencido ? "font-semibold text-status-bad" : "text-muted-foreground"}`}>
-                                {prazoOuData(orcamento)}
-                              </TableCell>
-                              <TableCell className="whitespace-nowrap text-right font-semibold tabular-nums">
-                                {formatCurrency(orcamento.valor_total)}
-                              </TableCell>
-                              <TableCell className="text-right" onClick={(event) => event.stopPropagation()} onKeyDown={(event) => event.stopPropagation()}>
-                                {podeAgir ? (
-                                  <ActionPriorityRow
-                                    acaoDaLinha
-                                    menuTitulo={`${orcamento.numero_exibicao} · ${orcamento.cliente_nome ?? ""}`}
-                                    primary={{
-                                      id: `principal-${orcamento.id}`,
-                                      label: acao.rotulo,
-                                      onClick: () => (acaoNaJanela ? abrir(orcamento.id, acaoNaJanela) : verPagina(orcamento.id)),
-                                    }}
-                                    overflow={menuVenda(orcamento.id, orcamento.status, acaoNaJanela, (acaoMenu) => abrir(orcamento.id, acaoMenu))}
-                                  />
-                                ) : (
-                                  <Button variant="outline" size="sm" className="h-[34px] w-[176px]" aria-label={`Ver orçamento ${orcamento.numero_exibicao}`} onClick={() => verPagina(orcamento.id)}>
-                                    Ver
-                                  </Button>
-                                )}
-                              </TableCell>
+              {telaLarga ? (
+                <div className="overflow-x-auto">
+                  <Table>
+                    <TableHeader>
+                      <TableRow className="hover:bg-transparent">
+                        <TableHead className="w-24">Número</TableHead>
+                        <TableHead>Cliente</TableHead>
+                        <TableHead>Itens</TableHead>
+                        <TableHead>Situação</TableHead>
+                        <TableHead>Prazo ou data</TableHead>
+                        <TableHead className="text-right">Total</TableHead>
+                        <TableHead className="text-right">Próxima ação</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody aria-busy={loading || undefined}>
+                      {loading
+                        ? Array.from({ length: 4 }, (_, linha) => (
+                            <TableRow key={`carregando-${linha}`} className="h-14 hover:bg-transparent">
+                              {Array.from({ length: COLUNAS }, (__, coluna) => (
+                                <TableCell key={coluna}>
+                                  <span aria-hidden="true" className={`block h-2.5 rounded-full bg-muted ${coluna === COLUNAS - 1 ? "ml-auto w-36" : coluna === 0 ? "w-10" : "w-24"}`} />
+                                </TableCell>
+                              ))}
                             </TableRow>
-                          );
-                        })}
-                  </TableBody>
-                </Table>
-              </div>
+                          ))
+                        : orcamentos.map((orcamento) => {
+                            const vencido = orcamentoInsumosVencido(orcamento);
+                            const acao = podeAgir ? proximaAcaoVenda(orcamento.status, vencido) : { rotulo: "Ver", tipo: "ver" as const };
+                            const acaoNaJanela = acaoDaLista(acao.tipo);
+                            return (
+                              <TableRow
+                                key={orcamento.id}
+                                className="h-14 cursor-pointer"
+                                onClick={() => verPagina(orcamento.id)}
+                                tabIndex={0}
+                                onKeyDown={(event) => {
+                                  if (event.target !== event.currentTarget) return;
+                                  if (event.key === "Enter" || event.key === " ") {
+                                    event.preventDefault();
+                                    verPagina(orcamento.id);
+                                  }
+                                }}
+                                aria-label={`Abrir orçamento ${orcamento.numero_exibicao}`}
+                              >
+                                <TableCell>
+                                  <p className="font-mono text-sm font-bold">{orcamento.numero_exibicao}</p>
+                                  <p className="text-xs tabular-nums text-muted-foreground">
+                                    {parseTimestampPostgres(orcamento.criado_em).toLocaleDateString("pt-BR")}
+                                  </p>
+                                </TableCell>
+                                <TableCell>
+                                  <p className="font-semibold">{orcamento.cliente_nome ?? "—"}</p>
+                                  <p className="text-xs text-muted-foreground">{orcamento.contato_nome || "—"}</p>
+                                </TableCell>
+                                <TableCell className="text-sm text-muted-foreground">
+                                  <span>{orcamento.total_itens} {orcamento.total_itens === 1 ? "item" : "itens"}</span>
+                                  {orcamento.categorias_itens && <span> · {orcamento.categorias_itens}</span>}
+                                </TableCell>
+                                <TableCell>
+                                  <SituacaoComEtapas status={orcamento.status} vencido={vencido} />
+                                </TableCell>
+                                <TableCell className={`whitespace-nowrap text-sm tabular-nums ${vencido ? "font-semibold text-status-bad" : "text-muted-foreground"}`}>
+                                  {prazoOuData(orcamento)}
+                                </TableCell>
+                                <TableCell className="whitespace-nowrap text-right font-semibold tabular-nums">
+                                  {formatCurrency(orcamento.valor_total)}
+                                </TableCell>
+                                <TableCell className="text-right" onClick={(event) => event.stopPropagation()} onKeyDown={(event) => event.stopPropagation()}>
+                                  {podeAgir ? (
+                                    <ActionPriorityRow
+                                      acaoDaLinha
+                                      menuTitulo={`${orcamento.numero_exibicao} · ${orcamento.cliente_nome ?? ""}`}
+                                      primary={{
+                                        id: `principal-${orcamento.id}`,
+                                        label: acao.rotulo,
+                                        onClick: () => (acaoNaJanela ? abrir(orcamento.id, acaoNaJanela) : verPagina(orcamento.id)),
+                                      }}
+                                      overflow={menuVenda(orcamento.id, orcamento.status, acaoNaJanela, (acaoMenu) => abrir(orcamento.id, acaoMenu))}
+                                    />
+                                  ) : (
+                                    <Button variant="outline" size="sm" className="h-[34px] w-[176px]" aria-label={`Ver orçamento ${orcamento.numero_exibicao}`} onClick={() => verPagina(orcamento.id)}>
+                                      Ver
+                                    </Button>
+                                  )}
+                                </TableCell>
+                              </TableRow>
+                            );
+                          })}
+                    </TableBody>
+                  </Table>
+                </div>
+              ) : (
+                <ul aria-label="Orçamentos de insumos" aria-busy={loading || undefined} className="space-y-3">
+                  {loading
+                    ? Array.from({ length: 3 }, (_, indice) => (
+                        <li key={`carregando-${indice}`} aria-hidden="true" className="space-y-3 rounded-2xl border p-4">
+                          <span className="block h-2.5 w-16 rounded-full bg-muted" />
+                          <span className="block h-2.5 w-40 rounded-full bg-muted" />
+                          <span className="block h-11 rounded-lg bg-muted" />
+                        </li>
+                      ))
+                    : orcamentos.map((orcamento) => {
+                        const vencido = orcamentoInsumosVencido(orcamento);
+                        const acao = podeAgir ? proximaAcaoVenda(orcamento.status, vencido) : { rotulo: "Ver", tipo: "ver" as const };
+                        const acaoNaJanela = acaoDaLista(acao.tipo);
+                        return (
+                          <li key={orcamento.id} className="rounded-2xl border bg-card p-4">
+                            <button
+                              type="button"
+                              className="block w-full rounded-lg text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                              aria-label={`Abrir orçamento ${orcamento.numero_exibicao}`}
+                              onClick={() => verPagina(orcamento.id)}
+                            >
+                              <span className="flex items-baseline justify-between gap-3">
+                                <span className="font-mono text-sm font-bold">{orcamento.numero_exibicao}</span>
+                                <span className="font-semibold tabular-nums">{formatCurrency(orcamento.valor_total)}</span>
+                              </span>
+                              <span className="mt-1 block font-semibold [overflow-wrap:anywhere]">{orcamento.cliente_nome ?? "—"}</span>
+                              <span className="block text-xs text-muted-foreground">
+                                {orcamento.total_itens} {orcamento.total_itens === 1 ? "item" : "itens"}
+                                {orcamento.categorias_itens ? ` · ${orcamento.categorias_itens}` : ""}
+                              </span>
+                              <span className="mt-2 flex items-end justify-between gap-3">
+                                <SituacaoComEtapas status={orcamento.status} vencido={vencido} />
+                                <span className={`shrink-0 text-xs tabular-nums ${vencido ? "font-semibold text-status-bad" : "text-muted-foreground"}`}>
+                                  {prazoOuData(orcamento)}
+                                </span>
+                              </span>
+                            </button>
+                            <div className="mt-3">
+                              {podeAgir ? (
+                                <ActionPriorityRow
+                                  acaoDaLinha
+                                  cheia
+                                  menuTitulo={`${orcamento.numero_exibicao} · ${orcamento.cliente_nome ?? ""}`}
+                                  primary={{
+                                    id: `principal-${orcamento.id}`,
+                                    label: acao.rotulo,
+                                    onClick: () => (acaoNaJanela ? abrir(orcamento.id, acaoNaJanela) : verPagina(orcamento.id)),
+                                  }}
+                                  overflow={menuVenda(orcamento.id, orcamento.status, acaoNaJanela, (acaoMenu) => abrir(orcamento.id, acaoMenu))}
+                                />
+                              ) : (
+                                <Button variant="outline" className="h-11 w-full" aria-label={`Ver orçamento ${orcamento.numero_exibicao}`} onClick={() => verPagina(orcamento.id)}>
+                                  Ver
+                                </Button>
+                              )}
+                            </div>
+                          </li>
+                        );
+                      })}
+                </ul>
+              )}
               {!loading && (
                 <PaginationControls
                   page={Math.min(pagina, paginas)}
@@ -316,12 +397,12 @@ export function OrcamentosInsumosTab({ onEstoqueAlterado, contagemPorStatus, ren
       </Card>
       )}
 
-      <OrcamentoInsumosDialog
-        open={dialogAberto}
-        onOpenChange={setDialogAberto}
-        orcamentoId={orcamentoId}
-        acaoInicial={acaoInicial}
-        onChanged={() => {
+      <AcaoVendaDialog
+        acao={acaoInicial}
+        vendaId={orcamentoId}
+        voltarPara="/vendas"
+        onFechar={() => setAcaoInicial(null)}
+        onAlterado={() => {
           void recarregar();
           onEstoqueAlterado?.();
         }}

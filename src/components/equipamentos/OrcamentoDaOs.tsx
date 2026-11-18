@@ -1,4 +1,5 @@
 import { formatDatePtBr } from "@/lib/date-utils";
+import { normalizarServicosOrcamento, pecasParaOrcamento } from "@/lib/orcamento-estoque";
 import { formaPagamentoRotulo } from "@/lib/orcamento-insumos";
 import { cn, formatCurrency } from "@/lib/utils";
 import type { Equipamento, PecaNecessaria, ServicoNecessario, Verificacao } from "@/types";
@@ -27,7 +28,10 @@ export function linhasDoOrcamento(verificacao: Verificacao | null): LinhaOrcamen
   if (!verificacao) return [];
   const reprovados = new Set((verificacao.decisoes_servicos ?? []).filter((d) => d.decisao === "REPROVADO").map((d) => d.servico_id));
   const linhas: LinhaOrcamento[] = [];
-  for (const servico of lerJson<ServicoNecessario>(verificacao.servicos_necessarios)) {
+  const servicos = lerJson<ServicoNecessario>(verificacao.servicos_necessarios);
+  // `pecas_necessarias` também guarda as peças dos serviços (pecasParaOrcamento): só as avulsas entram aqui.
+  const vinculadas = new Set(pecasParaOrcamento(normalizarServicosOrcamento(servicos)).map((peca) => peca.id));
+  for (const servico of servicos) {
     const reprovado = reprovados.has(servico.id);
     linhas.push({ chave: `s-${servico.id}`, item: servico.descricao, tipo: "Serviço", quantidade: 1, valor: servico.valor, reprovado });
     for (const peca of servico.pecas ?? []) {
@@ -41,7 +45,7 @@ export function linhasDoOrcamento(verificacao: Verificacao | null): LinhaOrcamen
       });
     }
   }
-  for (const peca of lerJson<PecaNecessaria>(verificacao.pecas_necessarias)) {
+  for (const peca of lerJson<PecaNecessaria>(verificacao.pecas_necessarias).filter((peca) => !vinculadas.has(peca.id))) {
     linhas.push({ chave: `p-${peca.id}`, item: peca.nome, tipo: "Peça", quantidade: peca.quantidade, valor: peca.valorTotal, reprovado: false });
   }
   return linhas;

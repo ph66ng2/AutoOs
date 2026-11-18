@@ -726,7 +726,7 @@ export default function Configuracoes() {
 
   return (
     <div className="space-y-6">
-      <PageHeader titulo="Configurações" descricao="Defina parâmetros do sistema e integrações." />
+      <PageHeader titulo="Configurações" />
 
       <Tabs value={tab} onValueChange={(nextTab) => { setTab(nextTab); setSecurityMessage(null); }} className="space-y-4">
         <TabsList>
