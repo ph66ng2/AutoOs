@@ -27,42 +27,40 @@ export function useFinancasAno(ano: number, totalFixo: number, hoje = new Date()
   const anoAtual = hoje.getFullYear();
   const mesAtual = hoje.getMonth() + 1;
 
-  useEffect(() => {
-    let ativo = true;
+  const carregar = useCallback(async () => {
     setLoading(true);
     setError(null);
     const lista = [ano - 1, ano].flatMap((a) => Array.from({ length: 12 }, (_, i) => ({ mes: i + 1, ano: a })));
     const futuro = (m: { mes: number; ano: number }) => m.ano > anoAtual || (m.ano === anoAtual && m.mes > mesAtual);
-    Promise.all([
-      db.listarEquipamentos().then(receitaPorMes).catch(() => null),
-      Promise.all(lista.map((m) => (futuro(m) ? Promise.resolve(null) : db.resumoMensal(m.mes, m.ano).catch(() => null)))),
-    ])
-      .then(([receita, resumos]) => {
-        if (!ativo) return;
-        const porChave = new Map((receita ?? []).map((item) => [item.chave, item.valor]));
-        const todos = lista.map((m, indice) => {
-          const ehFuturo = futuro(m);
-          return {
-            ...m,
-            futuro: ehFuturo,
-            faturado: ehFuturo ? 0 : porChave.get(`${m.ano}-${String(m.mes).padStart(2, "0")}`) ?? 0,
-            fixo: ehFuturo ? 0 : totalFixo,
-            variavel: ehFuturo ? 0 : resumos[indice]?.total_variavel ?? 0,
-          };
-        });
-        setAnterior(todos.slice(0, 12));
-        setMeses(todos.slice(12));
-        if (receita == null) setError("Não foi possível carregar o faturado.");
-      })
-      .finally(() => {
-        if (ativo) setLoading(false);
+    try {
+      const [receita, resumos] = await Promise.all([
+        db.listarEquipamentos().then(receitaPorMes).catch(() => null),
+        Promise.all(lista.map((m) => (futuro(m) ? Promise.resolve(null) : db.resumoMensal(m.mes, m.ano).catch(() => null)))),
+      ]);
+      const porChave = new Map((receita ?? []).map((item) => [item.chave, item.valor]));
+      const todos = lista.map((m, indice) => {
+        const ehFuturo = futuro(m);
+        return {
+          ...m,
+          futuro: ehFuturo,
+          faturado: ehFuturo ? 0 : porChave.get(`${m.ano}-${String(m.mes).padStart(2, "0")}`) ?? 0,
+          fixo: ehFuturo ? 0 : totalFixo,
+          variavel: ehFuturo ? 0 : resumos[indice]?.total_variavel ?? 0,
+        };
       });
-    return () => {
-      ativo = false;
-    };
+      setAnterior(todos.slice(0, 12));
+      setMeses(todos.slice(12));
+      if (receita == null) setError("Não foi possível carregar o faturado.");
+    } finally {
+      setLoading(false);
+    }
   }, [ano, totalFixo, anoAtual, mesAtual]);
 
-  return { meses, anterior, loading, error };
+  useEffect(() => {
+    void carregar();
+  }, [carregar]);
+
+  return { meses, anterior, loading, error, recarregar: carregar };
 }
 
 function campoCsv(valor: unknown) {

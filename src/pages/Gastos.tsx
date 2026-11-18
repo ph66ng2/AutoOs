@@ -67,12 +67,15 @@ export default function Gastos() {
 
   const loading = loadingFixos || loadingVariaveis || loadingResumo;
   const error = errorFixos || errorVariaveis || errorResumo;
+  const totais = totaisDoMes(gastosFixos, gastosVariaveis);
+  const { meses, anterior, loading: loadingAno, error: erroAno, recarregar: recarregarAno } = useFinancasAno(ano, totais.fixo);
 
   const recarregarTudo = useCallback(() => {
     recarregarFixos();
     recarregarVariaveis();
     recarregarResumo();
-  }, [recarregarFixos, recarregarVariaveis, recarregarResumo]);
+    recarregarAno();
+  }, [recarregarFixos, recarregarVariaveis, recarregarResumo, recarregarAno]);
 
   useEffect(() => {
     void recarregarTudo();
@@ -132,6 +135,7 @@ export default function Gastos() {
         throw new Error(resultado.erro || "Não foi possível salvar o gasto fixo.");
       }
       recarregarResumo();
+      recarregarAno();
       setFixoDialogOpen(false);
       setEditandoFixo(null);
     } catch (err: any) {
@@ -150,6 +154,7 @@ export default function Gastos() {
         throw new Error(resultado.erro || "Não foi possível salvar o gasto variável.");
       }
       recarregarResumo();
+      recarregarAno();
       setVariavelDialogOpen(false);
       setEditandoVariavel(null);
     } catch (err: any) {
@@ -163,8 +168,6 @@ export default function Gastos() {
   const [ocultar, setOcultar] = useState(false);
   const [todasAbertas, setTodasAbertas] = useState(false);
   const exportar = useExportarLancamentos();
-  const totais = totaisDoMes(gastosFixos, gastosVariaveis);
-  const { meses, anterior, loading: loadingAno, error: erroAno } = useFinancasAno(ano, totais.fixo);
   const mesAtual = meses[mes - 1];
   const faturadoMes = mesAtual?.faturado ?? 0;
   const saldo = faturadoMes - totais.total;

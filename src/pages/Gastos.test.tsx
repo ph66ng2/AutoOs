@@ -81,6 +81,15 @@ describe("Finanças (fase 8)", () => {
     expect(within(janela).getByText("Etiquetas")).toBeInTheDocument();
   });
 
+  it("Recarregar busca de novo o gráfico anual", async () => {
+    const usuario = userEvent.setup();
+    render(<Gastos />);
+    await screen.findByRole("region", { name: "Gastos fixos" });
+    const chamadas = mocks.db.listarEquipamentos.mock.calls.length;
+    await usuario.click(screen.getByRole("button", { name: "Recarregar" }));
+    await waitFor(() => expect(mocks.db.listarEquipamentos.mock.calls.length).toBeGreaterThan(chamadas));
+  });
+
   it("baixa os lançamentos do mês em CSV", async () => {
     const usuario = userEvent.setup();
     render(<Gastos />);
