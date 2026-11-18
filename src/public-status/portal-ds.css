@@ -77,9 +77,17 @@
 .timeline-step { width: 100%; }
 @media (max-width: 480px) {
   .timeline ol { gap: 0.25rem; }
-  .timeline li:not(.is-current) .timeline-step > span:not(.timeline-marker),
-  .timeline li:not(.is-current) > span:not(.timeline-marker):not(.timeline-when) { visibility: hidden; }
-  .timeline li.is-current { white-space: nowrap; overflow: visible; }
+  /* Os nomes ficam sempre visíveis: também são o nome acessível dos botões de data. */
+  /* Seis colunas não cabem: a lista aberta fica vertical, com a barra à esquerda de cada etapa. */
+  .timeline ol { grid-template-columns: 1fr; gap: 0.35rem; margin-top: 0.6rem; }
+  .timeline li { flex-direction: row; flex-wrap: wrap; align-items: center; gap: 0.6rem; font-size: 0.85rem; }
+  .timeline li::before { flex: 0 0 1.5rem; height: 5px; }
+  .timeline li .timeline-step { flex-direction: row; align-items: center; gap: 0.6rem; width: auto; }
+  .timeline li .timeline-when { position: static; width: auto; margin-left: 2.1rem; padding: 0; color: hsl(var(--ink-soft)); background: none; display: none; opacity: 1; visibility: visible; }
+  .timeline li.is-open > .timeline-when { display: block; flex-basis: 100%; }
+  .timeline li.is-deviation { grid-column: auto; margin-top: 0.25rem; }
+  /* Lista aberta: as barras de cima já repetem as de baixo. */
+  .timeline.is-compact.is-open .timeline-compact-bar { display: none; }
 }
 
 /* "Etapa registrada em": uma linha discreta, sem caixa. */
