@@ -8,6 +8,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { EVENT_LABELS } from "@/lib/eventos-auditoria";
 import { AppearancePicker } from "@/components/perfil/AppearancePicker";
 import { ProfileAvatar } from "@/components/perfil/ProfileAvatar";
 import { TeamAccessManager } from "@/components/TeamAccessManager";
@@ -130,18 +131,6 @@ export default function Perfil() {
 const TAB_CLASS =
   "rounded-none border-b-2 border-transparent px-3.5 py-2.5 text-muted-foreground shadow-none data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:text-foreground data-[state=active]:shadow-none";
 
-const EVENT_LABELS: Record<string, string> = {
-  PROFILE_SWITCH: "Entrou no perfil",
-  UNLOCK_SUCCESS: "Desbloqueou a sessão",
-  SESSION_UNLOCKED_NO_PIN: "Desbloqueou a sessão",
-  LOCK: "Bloqueou a sessão",
-  PIN_CHANGED: "Trocou o PIN",
-  ACCESS_CODE_REDEEMED: "Ativou o perfil em um computador",
-  PROFILE_RENAMED: "Mudou o nome do perfil",
-  PROFILE_CREATED: "Criou um perfil",
-  PROFILE_UPDATED: "Alterou um perfil",
-  ACCESS_CODE_ISSUED: "Gerou um código de acesso",
-};
 
 function formatWhen(value?: string | null) {
   return formatDateTimeSalvador(parseDbTimestampUtc(value), "");
