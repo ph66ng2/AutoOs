@@ -728,13 +728,31 @@ export default function Configuracoes() {
     <div className="space-y-6">
       <PageHeader titulo="Configurações" />
 
-      <Tabs value={tab} onValueChange={(nextTab) => { setTab(nextTab); setSecurityMessage(null); }} className="space-y-4">
-        <TabsList>
-          {abas.integracoes && <TabsTrigger value="smtp">Integrações</TabsTrigger>}
-          {abas.portal && <TabsTrigger value="portal">Portal do Cliente</TabsTrigger>}
-          {canManageProfiles && <TabsTrigger value="infra">Banco</TabsTrigger>}
-          {canManageProfiles && <TabsTrigger value="seguranca">Segurança</TabsTrigger>}
-          {canManageProfiles && <TabsTrigger value="observabilidade">Suporte e Logs</TabsTrigger>}
+      <Tabs
+        value={tab}
+        onValueChange={(nextTab) => { setTab(nextTab); setSecurityMessage(null); }}
+        orientation="vertical"
+        className="grid grid-cols-[minmax(0,1fr)] overflow-hidden rounded-2xl border bg-card lg:grid-cols-[260px_minmax(0,1fr)]"
+      >
+        <TabsList className="flex h-auto flex-row items-stretch justify-start gap-1 overflow-x-auto rounded-none border-b bg-muted/40 p-3 lg:flex-col lg:border-b-0 lg:border-r">
+          {([
+            ["smtp", abas.integracoes],
+            ["portal", abas.portal],
+            ["infra", canManageProfiles],
+            ["seguranca", canManageProfiles],
+            ["observabilidade", canManageProfiles],
+          ] as const)
+            .filter(([, visivel]) => visivel)
+            .map(([valor]) => (
+              <TabsTrigger
+                key={valor}
+                value={valor}
+                className="flex min-h-11 shrink-0 flex-col items-start justify-center gap-0 whitespace-nowrap rounded-xl border border-transparent px-3 py-2 text-left font-semibold text-foreground shadow-none data-[state=active]:border-border data-[state=active]:bg-card data-[state=active]:shadow-sm lg:w-full lg:data-[state=active]:border-l-2 lg:data-[state=active]:border-l-primary"
+              >
+                <span className="text-sm">{ROTULO_ABA[valor].rotulo}</span>
+                <span className="hidden text-xs font-normal text-muted-foreground lg:block">{ROTULO_ABA[valor].detalhe}</span>
+              </TabsTrigger>
+            ))}
         </TabsList>
 
         <ConfiguracoesTabIntegracoes
@@ -842,3 +860,12 @@ export default function Configuracoes() {
     </div>
   );
 }
+
+/** Itens da navegação lateral de Configurações: nome e o que tem dentro. */
+const ROTULO_ABA: Record<AbaConfiguracoesId, { rotulo: string; detalhe: string }> = {
+  smtp: { rotulo: "Integrações", detalhe: "E-mail, WhatsApp, fotos" },
+  portal: { rotulo: "Portal do Cliente", detalhe: "Acesso e respostas" },
+  infra: { rotulo: "Banco de dados", detalhe: "Esquema, atualização e backup" },
+  seguranca: { rotulo: "Segurança", detalhe: "PIN, bloqueio e perfis" },
+  observabilidade: { rotulo: "Suporte e logs", detalhe: "Pacote de suporte e auditoria" },
+};

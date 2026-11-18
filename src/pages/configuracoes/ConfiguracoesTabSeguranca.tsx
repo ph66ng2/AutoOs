@@ -61,7 +61,8 @@ export function ConfiguracoesTabSeguranca({
   const pinMissingCount = activeProfiles.length - pinConfiguredCount;
 
   return (
-    <TabsContent value="seguranca" className="space-y-4" onChange={onClearSecurityMessage}>
+    <TabsContent value="seguranca" className="mt-0 space-y-4 p-5 md:p-6" onChange={onClearSecurityMessage}>
+      <h2 className="text-xl font-bold">Segurança</h2>
       {securityMessage && <div role={securityMessageVariant === "error" ? "alert" : "status"} aria-live={securityMessageVariant === "error" ? "assertive" : "polite"}>
         <ErrorAlert variant={securityMessageVariant} message={securityMessage} />
       </div>}

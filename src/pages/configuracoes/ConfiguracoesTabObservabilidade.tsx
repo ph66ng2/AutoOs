@@ -51,7 +51,8 @@ export function ConfiguracoesTabObservabilidade({
   exportarAuditoriaCsv,
 }: ConfiguracoesTabObservabilidadeProps) {
   return (
-    <TabsContent value="observabilidade" className="space-y-4">
+    <TabsContent value="observabilidade" className="mt-0 space-y-4 p-5 md:p-6">
+      <h2 className="text-xl font-bold">Suporte e logs</h2>
       <Card>
         <CardHeader>
           <CardTitle>Suporte local e observabilidade</CardTitle>
